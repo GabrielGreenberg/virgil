@@ -11,11 +11,11 @@ import type {
 } from "@/lib/types";
 import { normalizeRichContent, emptyRichContent } from "@/lib/footnote-content";
 import {
-  addParagraphLink,
+  addTextObjectLink,
   clearTextAnchorLink,
-  getLinkedParagraphIds,
+  getLinkedTextObjectIds,
   getTextAnchor,
-  removeParagraphLink,
+  removeTextObjectLink,
   setTextAnchorLink,
 } from "@/links/links";
 import { bridgeCardAiRequestFlag } from "@/lib/ai-request-bridge";
@@ -111,7 +111,7 @@ export function useNotes(docId: string | null, externalPristine?: PristineKindAp
         aiRequest: false,
         links: [],
       };
-      if (paragraphId) newNote = addParagraphLink(newNote, "note", paragraphId);
+      if (paragraphId) newNote = addTextObjectLink(newNote, "note", paragraphId);
       if (anchor) {
         newNote = setTextAnchorLink(newNote, "note", anchor.anchorId, anchor.anchorText);
       }
@@ -140,7 +140,7 @@ export function useNotes(docId: string | null, externalPristine?: PristineKindAp
         links: [],
       };
       if (paragraphId) {
-        newCard = addParagraphLink(newCard, "highlight", paragraphId);
+        newCard = addTextObjectLink(newCard, "highlight", paragraphId);
       }
       newCard = setTextAnchorLink(
         newCard,
@@ -241,7 +241,7 @@ export function useNotes(docId: string | null, externalPristine?: PristineKindAp
           {
             kind: "note",
             text: note.title || "<note>",
-            paragraphIds: getLinkedParagraphIds(note),
+            paragraphIds: getLinkedTextObjectIds(note),
             selectedText: getTextAnchor(note)?.anchorText,
           },
         );
@@ -267,7 +267,7 @@ export function useNotes(docId: string | null, externalPristine?: PristineKindAp
           {
             kind: "highlight",
             text: anchorText || "<highlight>",
-            paragraphIds: getLinkedParagraphIds(card),
+            paragraphIds: getLinkedTextObjectIds(card),
             selectedText: anchorText,
           },
         );
@@ -276,12 +276,12 @@ export function useNotes(docId: string | null, externalPristine?: PristineKindAp
     [update, docId, highlights],
   );
 
-  const addNoteParagraphId = useCallback(
+  const addNoteTextObjectId = useCallback(
     (id: string, paragraphId: string) => {
       update((prev) => ({
         cards: prev.cards.map((c) =>
           c.id === id && c.kind === "note"
-            ? addParagraphLink(c, "note", paragraphId)
+            ? addTextObjectLink(c, "note", paragraphId)
             : c,
         ),
       }));
@@ -289,12 +289,12 @@ export function useNotes(docId: string | null, externalPristine?: PristineKindAp
     [update],
   );
 
-  const removeNoteParagraphId = useCallback(
+  const removeNoteTextObjectId = useCallback(
     (id: string, paragraphId: string) => {
       update((prev) => ({
         cards: prev.cards.map((c) =>
           c.id === id && c.kind === "note"
-            ? removeParagraphLink(c, paragraphId)
+            ? removeTextObjectLink(c, paragraphId)
             : c,
         ),
       }));
@@ -302,12 +302,12 @@ export function useNotes(docId: string | null, externalPristine?: PristineKindAp
     [update],
   );
 
-  const addHighlightParagraphId = useCallback(
+  const addHighlightTextObjectId = useCallback(
     (id: string, paragraphId: string) => {
       update((prev) => ({
         cards: prev.cards.map((c) =>
           c.id === id && c.kind === "highlight"
-            ? addParagraphLink(c, "highlight", paragraphId)
+            ? addTextObjectLink(c, "highlight", paragraphId)
             : c,
         ),
       }));
@@ -315,12 +315,12 @@ export function useNotes(docId: string | null, externalPristine?: PristineKindAp
     [update],
   );
 
-  const removeHighlightParagraphId = useCallback(
+  const removeHighlightTextObjectId = useCallback(
     (id: string, paragraphId: string) => {
       update((prev) => ({
         cards: prev.cards.map((c) =>
           c.id === id && c.kind === "highlight"
-            ? removeParagraphLink(c, paragraphId)
+            ? removeTextObjectLink(c, paragraphId)
             : c,
         ),
       }));
@@ -346,7 +346,7 @@ export function useNotes(docId: string | null, externalPristine?: PristineKindAp
         droppedAt: new Date().toISOString(),
         anchorId: textAnchor.anchorId,
         textSnapshot: textAnchor.anchorText,
-        paragraphIds: getLinkedParagraphIds(card),
+        paragraphIds: getLinkedTextObjectIds(card),
       };
       update((prev) => ({
         cards: prev.cards.map((c) =>
@@ -395,10 +395,10 @@ export function useNotes(docId: string | null, externalPristine?: PristineKindAp
     updateNoteTitle,
     setNoteAiRequest,
     setHighlightAiRequest,
-    addNoteParagraphId,
-    removeNoteParagraphId,
-    addHighlightParagraphId,
-    removeHighlightParagraphId,
+    addNoteTextObjectId,
+    removeNoteTextObjectId,
+    addHighlightTextObjectId,
+    removeHighlightTextObjectId,
     preserveModeBAnchor,
     deleteNote,
     setNoteAnchor,

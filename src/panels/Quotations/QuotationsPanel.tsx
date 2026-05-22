@@ -15,7 +15,7 @@ import {
 import PanelThemePicker from "@/components/PanelThemePicker";
 import { CardListPanel } from "@/panels/_shared/CardListPanel";
 import { withRecentlyAddedFirst } from "@/hooks/useRecentlyAddedTracker";
-import { getLinkedParagraphIds } from "@/links/links";
+import { getLinkedTextObjectIds } from "@/links/links";
 import { QuotationGroupCard } from "./QuotationGroupCard";
 
 export interface QuotationsPanelProps {
@@ -103,7 +103,7 @@ export default function QuotationsPanel({
   }, [onAddGroup, setSelectedGroupId]);
 
   const anchoredGroups = useMemo(
-    () => groups.filter((g) => getLinkedParagraphIds(g).length > 0),
+    () => groups.filter((g) => getLinkedTextObjectIds(g).length > 0),
     [groups],
   );
 
@@ -138,7 +138,7 @@ export default function QuotationsPanel({
         onSelect={() => setSelectedGroupId(group.id)}
         onDelete={() => onDeleteGroup(group.id)}
         onJump={
-          onJumpToCard && getLinkedParagraphIds(group).length > 0
+          onJumpToCard && getLinkedTextObjectIds(group).length > 0
             ? () => onJumpToCard(group)
             : undefined
         }

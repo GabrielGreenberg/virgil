@@ -6,7 +6,7 @@ import { cardPopKey } from "@/panels/panel-registry";
 import type { OmniItem } from "@/panels/_shared/types";
 import { NoteCard } from "./NoteCard";
 import { HighlightCard } from "./HighlightCard";
-import { getLinkedParagraphIds } from "@/links/links";
+import { getLinkedTextObjectIds } from "@/links/links";
 
 interface BuildArgs {
   cards: NoteCardItem[];
@@ -29,7 +29,7 @@ export function buildNoteOmniItems(a: BuildArgs): OmniItem[] {
   const items: OmniItem[] = [];
 
   for (const card of a.cards) {
-    const pids = getLinkedParagraphIds(card);
+    const pids = getLinkedTextObjectIds(card);
     const isSelected = a.selectedNoteId === card.id;
     const baseId = cardPopKey(card.kind, card.id);
 

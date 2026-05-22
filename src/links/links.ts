@@ -931,7 +931,7 @@ type AnchorCardShape = {
 export type CardWithLinks = { id: string; links?: Link[] };
 
 /** All paragraph UUIDs any of this card's anchor-kind links cover. */
-export function getLinkedParagraphIds(card: CardWithLinks): string[] {
+export function getLinkedTextObjectIds(card: CardWithLinks): string[] {
   const links = card.links ?? [];
   const out: string[] = [];
   for (const link of links) {
@@ -982,7 +982,7 @@ export function getAnchorSummary(
   if (ta) {
     return { kind: "selection", words: countWords(ta.anchorText) };
   }
-  const pids = getLinkedParagraphIds(card);
+  const pids = getLinkedTextObjectIds(card);
   if (pids.length === 0) return null;
   if (editor) {
     let words = 0;
@@ -1035,7 +1035,7 @@ export function collectAllLinkedParagraphIds(
 ): Set<string> {
   const out = new Set<string>();
   for (const c of cards) {
-    for (const pid of getLinkedParagraphIds(c)) out.add(pid);
+    for (const pid of getLinkedTextObjectIds(c)) out.add(pid);
   }
   return out;
 }
@@ -1063,7 +1063,7 @@ function makeAnchorLink(
 /** Add a paragraph anchor to `card.links`. No-op if already present.
  *  Preserves any existing Mode B link's textRange by folding the new
  *  paragraph into its `paragraphIds` when one exists. */
-export function addParagraphLink<T extends CardWithLinks>(
+export function addTextObjectLink<T extends CardWithLinks>(
   card: T,
   cardKind: CardKind,
   paragraphId: string,
@@ -1089,7 +1089,7 @@ export function addParagraphLink<T extends CardWithLinks>(
     return { ...card, links: updatedLinks };
   }
   // Otherwise add a fresh Mode A link — unless one already covers it.
-  const existing = getLinkedParagraphIds(card);
+  const existing = getLinkedTextObjectIds(card);
   if (existing.includes(paragraphId)) return card;
   return {
     ...card,
@@ -1098,7 +1098,7 @@ export function addParagraphLink<T extends CardWithLinks>(
 }
 
 /** Remove a paragraph anchor from `card.links`. */
-export function removeParagraphLink<T extends CardWithLinks>(
+export function removeTextObjectLink<T extends CardWithLinks>(
   card: T,
   paragraphId: string,
 ): T {
@@ -1158,7 +1158,7 @@ export function setTextAnchorLink<T extends CardWithLinks>(
   anchorId: string,
   anchorText: string,
 ): T {
-  const paragraphIds = getLinkedParagraphIds(card);
+  const paragraphIds = getLinkedTextObjectIds(card);
   const next = makeAnchorLink(cardKind, card.id, paragraphIds, {
     anchorId,
     textSnapshot: anchorText,
@@ -1174,7 +1174,7 @@ export function clearTextAnchorLink<T extends CardWithLinks>(
   cardKind: CardKind,
 ): T {
   if (!hasTextAnchor(card)) return card;
-  const paragraphIds = getLinkedParagraphIds(card);
+  const paragraphIds = getLinkedTextObjectIds(card);
   const kept = (card.links ?? []).filter((l) => l.anchor.type !== "anchor");
   const newLinks: Link[] = [...kept];
   for (const pid of paragraphIds) {

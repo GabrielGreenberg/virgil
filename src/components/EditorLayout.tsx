@@ -82,7 +82,7 @@ const MARKER_KIND_TO_THEME_KEY: Partial<Record<string, PanelThemeKey>> = {
 };
 import {
   reanchorByText,
-  getLinkedParagraphIds,
+  getLinkedTextObjectIds,
   getTextAnchor,
 } from "@/links/links";
 import {
@@ -565,7 +565,7 @@ export default function EditorLayout() {
     cards: revisionCards,
     addComment: addRevisionComment,
     addSuggestion: addRevisionSuggestion,
-    removeCardParagraphId: removeRevisionParagraphId,
+    removeCardParagraphId: removeRevisionTextObjectId,
     deleteCard: deleteRevisionCard,
   } = useRevisions(docIdForHooks);
   const comments = revisionCards;
@@ -584,8 +584,8 @@ export default function EditorLayout() {
     highlights,
     addNote,
     addHighlight,
-    addNoteParagraphId,
-    removeNoteParagraphId,
+    addNoteTextObjectId,
+    removeNoteTextObjectId,
     deleteNote,
     setNoteAnchor,
     discardPristineNotes,
@@ -622,8 +622,8 @@ export default function EditorLayout() {
     groups: quotationGroups,
     addGroup: addQuotationGroup,
     deleteGroup: deleteQuotationGroup,
-    addParagraphId: addQuotationParagraphId,
-    removeParagraphId: removeQuotationParagraphId,
+    addParagraphId: addQuotationTextObjectId,
+    removeParagraphId: removeQuotationTextObjectId,
   } = useQuotations(docIdForHooks, quotationPristine);
   const {
     items: todoItems,
@@ -631,8 +631,8 @@ export default function EditorLayout() {
     updateItem: updateTodo,
     deleteItem: deleteTodo,
     archiveDone: archiveTodos,
-    addParagraphId: addTodoParagraphId,
-    removeParagraphId: removeTodoParagraphId,
+    addParagraphId: addTodoTextObjectId,
+    removeParagraphId: removeTodoTextObjectId,
     discardPristineTodos,
   } = useTodos(docIdForHooks, todoPristine);
 
@@ -648,8 +648,8 @@ export default function EditorLayout() {
     snippets: archiveSnippets,
     archiveContent,
     updateSnippet: updateArchiveSnippet,
-    addParagraphId: addArchiveParagraphId,
-    removeParagraphId: removeArchiveParagraphId,
+    addParagraphId: addArchiveTextObjectId,
+    removeParagraphId: removeArchiveTextObjectId,
     restoreSnippet,
     deleteSnippet,
   } = useArchive(docIdForHooks);
@@ -2132,8 +2132,8 @@ export default function EditorLayout() {
       });
     }
     return [...archiveSnippets].sort((a, b) => {
-      const aPids = getLinkedParagraphIds(a);
-      const bPids = getLinkedParagraphIds(b);
+      const aPids = getLinkedTextObjectIds(a);
+      const bPids = getLinkedTextObjectIds(b);
       const aPos = aPids.length > 0 ? paragraphOrder.get(aPids[0]) : undefined;
       const bPos = bPids.length > 0 ? paragraphOrder.get(bPids[0]) : undefined;
       if (aPos != null && bPos != null) return aPos - bPos;
@@ -2489,11 +2489,11 @@ export default function EditorLayout() {
   useFootnoteSyncBridges({ suppressOrphanRef, setOrphanedFootnotes, deleteSnippet });
 
   usePanelDropBridges({
-    addQuotationParagraphId,
+    addQuotationTextObjectId,
     setSelectedQuotationGroupId,
-    addTodoParagraphId,
+    addTodoTextObjectId,
     setSelectedTodoId,
-    addNoteParagraphId,
+    addNoteTextObjectId,
     setSelectedNoteId,
     addCardParagraphId,
     setSelectedCutterCardId,
@@ -2666,7 +2666,7 @@ export default function EditorLayout() {
           if (!archiveId) return;
           const paragraphId = editorRef.current?.ensureParagraphUuidAtCoords(e.clientX, e.clientY);
           if (paragraphId) {
-            addArchiveParagraphId(archiveId, paragraphId);
+            addArchiveTextObjectId(archiveId, paragraphId);
           }
         } catch { /* ignore */ }
         return;
@@ -2688,7 +2688,7 @@ export default function EditorLayout() {
       editorDom.removeEventListener("dragleave", handleDragLeave);
       editorDom.removeEventListener("drop", handleDrop);
     };
-  }, [editorInstance, deleteSnippet, addArchiveParagraphId]);
+  }, [editorInstance, deleteSnippet, addArchiveTextObjectId]);
 
   // Todo drop actions — create a new todo, link its paragraph, seed its
   // text from the dropped selection where applicable. Used both by the
@@ -3242,17 +3242,17 @@ export default function EditorLayout() {
       buildMarginItemHandlers({
         quotations: {
           groups: quotationGroups,
-          removeParagraphId: removeQuotationParagraphId,
+          removeParagraphId: removeQuotationTextObjectId,
           deleteGroup: deleteQuotationGroup,
         },
         notes: {
           notes,
-          removeNoteParagraphId,
+          removeNoteTextObjectId,
           deleteNote,
         },
         archive: {
           snippets: archiveSnippets,
-          removeParagraphId: removeArchiveParagraphId,
+          removeParagraphId: removeArchiveTextObjectId,
           deleteSnippet,
         },
         cutter: {
@@ -3262,22 +3262,22 @@ export default function EditorLayout() {
         },
         todos: {
           items: todoItems,
-          removeParagraphId: removeTodoParagraphId,
+          removeParagraphId: removeTodoTextObjectId,
           deleteItem: deleteTodo,
         },
         revisions: {
           cards: comments,
-          removeCardParagraphId: removeRevisionParagraphId,
+          removeCardParagraphId: removeRevisionTextObjectId,
           deleteCard: deleteRevisionCard,
         },
       }),
     [
-      quotationGroups, removeQuotationParagraphId, deleteQuotationGroup,
-      notes, removeNoteParagraphId, deleteNote,
-      archiveSnippets, removeArchiveParagraphId, deleteSnippet,
+      quotationGroups, removeQuotationTextObjectId, deleteQuotationGroup,
+      notes, removeNoteTextObjectId, deleteNote,
+      archiveSnippets, removeArchiveTextObjectId, deleteSnippet,
       cutterCards, removeCardParagraphId, deleteCutterCard,
-      todoItems, removeTodoParagraphId, deleteTodo,
-      comments, removeRevisionParagraphId, deleteRevisionCard,
+      todoItems, removeTodoTextObjectId, deleteTodo,
+      comments, removeRevisionTextObjectId, deleteRevisionCard,
     ],
   );
 
@@ -3310,14 +3310,14 @@ export default function EditorLayout() {
 
     // Quotation markers — one marker per paragraphId
     for (const g of quotationGroups) {
-      const pids = getLinkedParagraphIds(g);
+      const pids = getLinkedTextObjectIds(g);
       if (pids.length === 0) continue;
       for (const pid of pids) {
         result.push({
           id: `${g.id}:${pid}`,
           entityId: g.id,
           type: "quote",
-          paragraphId: pid,
+          textObjectId: pid,
           title: g.title || g.references[0]?.citeKey || "Quotation",
           onClick: (clickY?: number) => handleQuotationMarkerClick(g.id, clickY),
           onDelete: () => { void handleMarginItemDelete("quote", g.id, pid); },
@@ -3328,7 +3328,7 @@ export default function EditorLayout() {
 
     // Note markers — one marker per paragraphId (same pattern as quotations)
     for (const n of notes) {
-      const pids = getLinkedParagraphIds(n);
+      const pids = getLinkedTextObjectIds(n);
       if (pids.length === 0) continue;
       const noteAnchor = getTextAnchor(n);
       for (const pid of pids) {
@@ -3336,7 +3336,7 @@ export default function EditorLayout() {
           id: `${n.id}:${pid}`,
           entityId: n.id,
           type: "note",
-          paragraphId: pid,
+          textObjectId: pid,
           title: n.title || "Note",
           onClick: (clickY?: number) => handleNoteMarkerClick(n.id, clickY),
           onDelete: () => {
@@ -3351,14 +3351,14 @@ export default function EditorLayout() {
     // Archive markers — one marker per paragraphId. Routes through
     // `openForCard` so the card aligns to the click Y like other kinds.
     for (const snippet of archiveSnippets) {
-      const pids = getLinkedParagraphIds(snippet);
+      const pids = getLinkedTextObjectIds(snippet);
       if (pids.length === 0) continue;
       for (const pid of pids) {
         result.push({
           id: `${snippet.id}:${pid}`,
           entityId: snippet.id,
           type: "archive",
-          paragraphId: pid,
+          textObjectId: pid,
           title: "Archived snippet",
           onClick: (clickY?: number) => {
             setSelectedArchiveId(snippet.id);
@@ -3430,7 +3430,7 @@ export default function EditorLayout() {
           id: `${r.id}:${pid}`,
           entityId: r.id,
           type: "revision",
-          paragraphId: pid,
+          textObjectId: pid,
           title: r.selectedText || "Revision",
           anchorId,
           onClick: (clickY?: number) => {
@@ -3486,7 +3486,7 @@ export default function EditorLayout() {
     // Cutter markers — one per paragraphId. Both card kinds share the
     // "cut" gutter marker.
     for (const c of cutterCards) {
-      const pids = getLinkedParagraphIds(c);
+      const pids = getLinkedTextObjectIds(c);
       if (pids.length === 0) continue;
       const cardAnchor = getTextAnchor(c);
       const title =
@@ -3498,7 +3498,7 @@ export default function EditorLayout() {
           id: `${c.id}:${pid}`,
           entityId: c.id,
           type: "cut",
-          paragraphId: pid,
+          textObjectId: pid,
           title,
           onClick: (clickY?: number) => handleCutMarkerClick(c.id, clickY),
           onDelete: () => {
@@ -3512,14 +3512,14 @@ export default function EditorLayout() {
 
     // Todo markers — one marker per paragraphId
     for (const item of todoItems) {
-      const pids = getLinkedParagraphIds(item);
+      const pids = getLinkedTextObjectIds(item);
       if (pids.length === 0) continue;
       for (const pid of pids) {
         result.push({
           id: `${item.id}:${pid}`,
           entityId: item.id,
           type: "todo",
-          paragraphId: pid,
+          textObjectId: pid,
           title: item.text || "Todo",
           muted: item.done,
           onClick: (clickY?: number) => handleTodoMarkerClick(item.id, clickY),
@@ -3540,7 +3540,7 @@ export default function EditorLayout() {
         id: `${err.id}:${pid}`,
         entityId: err.id,
         type: "error",
-        paragraphId: pid,
+        textObjectId: pid,
         title:
           err.message.length > 80
             ? err.message.slice(0, 80) + "\u2026"

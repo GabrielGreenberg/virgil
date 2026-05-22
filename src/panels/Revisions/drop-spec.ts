@@ -6,9 +6,9 @@
  * hook with one ID space, so a single spec covers both.
  */
 
-import { paragraphSideReanchorSpec } from "@/components/drop-mode/util/paragraph-side-reanchor";
+import { textObjectSideReanchorSpec } from "@/components/drop-mode/util/text-object-side-reanchor";
 
-export const revisionDropSpec = paragraphSideReanchorSpec({
+export const revisionDropSpec = textObjectSideReanchorSpec({
   kindLabel: "revision",
   getApi: (ctx) => ctx.revisions,
 });

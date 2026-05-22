@@ -84,16 +84,16 @@ export type DropDecision =
  * Generic per-kind paragraph-anchor API. Every attachment-card kind
  * (note, todo, quotation, archive, cutter, revision) exposes the same
  * shape: lookup the entity, read its current paragraph anchor(s),
- * add or remove a link. The spec factory `paragraphSideReanchorSpec`
+ * add or remove a link. The spec factory `textObjectSideReanchorSpec`
  * consumes any API matching this contract.
  */
 export interface ParagraphAnchorApi {
   /** Returns true if the entity still exists in this doc. */
   exists: (id: string) => boolean;
   /** Linked paragraph UUIDs for this entity. */
-  getAnchorParagraphIds: (id: string) => string[];
-  addParagraphLink: (id: string, paragraphId: string) => void;
-  removeParagraphLink: (id: string, paragraphId: string) => void;
+  getAnchorTextObjectIds: (id: string) => string[];
+  addTextObjectLink: (id: string, paragraphId: string) => void;
+  removeTextObjectLink: (id: string, paragraphId: string) => void;
   /**
    * Phase 4 sidecar capture. If the entity carries a Mode B textRange
    * anchor, persist that anchor's data onto `card.originalAnchor` so

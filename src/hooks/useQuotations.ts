@@ -9,7 +9,7 @@ import type {
   Quote,
 } from "@/lib/types";
 import { migrateQuotationsState } from "@/lib/migrate-quotations";
-import { addParagraphLink, removeParagraphLink } from "@/links/links";
+import { addTextObjectLink, removeTextObjectLink } from "@/links/links";
 import { nextCardTitle } from "@/panels/panel-registry";
 import { usePersistentState } from "./usePersistentState";
 import type { PristineKindApi } from "./usePristineCardManager";
@@ -62,7 +62,7 @@ export function useQuotations(docId: string | null, pristine?: PristineKindApi |
         links: [],
       };
       if (init?.paragraphId) {
-        newGroup = addParagraphLink(newGroup, "quotation", init.paragraphId);
+        newGroup = addTextObjectLink(newGroup, "quotation", init.paragraphId);
       }
       const isBlank = !init || (!init.text && !init.paragraphId);
       if (isBlank) pristine?.markNew(newGroup.id);
@@ -98,14 +98,14 @@ export function useQuotations(docId: string | null, pristine?: PristineKindApi |
 
   const addParagraphId = useCallback(
     (groupId: string, paragraphId: string) => {
-      updateGroup(groupId, (g) => addParagraphLink(g, "quotation", paragraphId));
+      updateGroup(groupId, (g) => addTextObjectLink(g, "quotation", paragraphId));
     },
     [updateGroup],
   );
 
   const removeParagraphId = useCallback(
     (groupId: string, paragraphId: string) => {
-      updateGroup(groupId, (g) => removeParagraphLink(g, paragraphId));
+      updateGroup(groupId, (g) => removeTextObjectLink(g, paragraphId));
     },
     [updateGroup],
   );

@@ -462,7 +462,7 @@ function MarkerButton({ m, dragEnabled }: { m: PositionedMarker; dragEnabled: bo
           JSON.stringify({
             type: m.type,
             entityId: m.entityId,
-            currentParagraphId: m.paragraphId,
+            currentParagraphId: m.textObjectId,
           })
         );
         (e.target as HTMLElement).style.opacity = "0.4";

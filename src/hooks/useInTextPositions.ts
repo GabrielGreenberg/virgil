@@ -3,7 +3,7 @@
 import { useState, useEffect, useLayoutEffect, useMemo, useCallback, useRef } from "react";
 import type { Editor } from "@tiptap/react";
 import { isAnchorableNode } from "@/lib/marginalia";
-import { getLinkedParagraphIds } from "@/links/links";
+import { getLinkedTextObjectIds } from "@/links/links";
 import type { Link } from "@/links/_shared/types";
 
 export interface PositionItem {
@@ -29,7 +29,7 @@ export function getParagraphAnchorPositions(
   });
   const out: PositionItem[] = [];
   for (const it of items) {
-    const pids = getLinkedParagraphIds(it);
+    const pids = getLinkedTextObjectIds(it);
     if (pids.length > 0) {
       const pos = uuidToPos.get(pids[0]);
       if (pos !== undefined) out.push({ id: it.id, pos });

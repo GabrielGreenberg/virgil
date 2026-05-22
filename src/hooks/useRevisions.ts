@@ -16,11 +16,11 @@ import {
   richJsonToPlainText,
 } from "@/lib/footnote-content";
 import {
-  addParagraphLink,
+  addTextObjectLink,
   clearTextAnchorLink,
-  getLinkedParagraphIds,
+  getLinkedTextObjectIds,
   getTextAnchor,
-  removeParagraphLink,
+  removeTextObjectLink,
   setTextAnchorLink,
 } from "@/links/links";
 import { migrateCardLinks } from "@/links/migrate-card";
@@ -173,7 +173,7 @@ export function useRevisions(
         selectedText: anchor?.anchorText,
         links: [],
       };
-      if (paragraphId) card = addParagraphLink(card, "comment", paragraphId);
+      if (paragraphId) card = addTextObjectLink(card, "comment", paragraphId);
       if (anchor)
         card = setTextAnchorLink(
           card,
@@ -209,7 +209,7 @@ export function useRevisions(
         links: [],
       };
       if (paragraphId)
-        card = addParagraphLink(card, "revision-suggestion", paragraphId);
+        card = addTextObjectLink(card, "revision-suggestion", paragraphId);
       if (anchor)
         card = setTextAnchorLink(
           card,
@@ -275,7 +275,7 @@ export function useRevisions(
           value,
           {
             text: card.text || "<revision comment>",
-            paragraphIds: getLinkedParagraphIds(card),
+            paragraphIds: getLinkedTextObjectIds(card),
             selectedText: card.selectedText ?? getTextAnchor(card)?.anchorText,
           },
         );
@@ -393,7 +393,7 @@ export function useRevisions(
         ...prev,
         cards: prev.cards.map((c) =>
           c.id === id
-            ? addParagraphLink(
+            ? addTextObjectLink(
                 c,
                 c.kind === "suggestion" ? "revision-suggestion" : "comment",
                 paragraphId,
@@ -410,7 +410,7 @@ export function useRevisions(
       update((prev) => ({
         ...prev,
         cards: prev.cards.map((c) =>
-          c.id === id ? removeParagraphLink(c, paragraphId) : c,
+          c.id === id ? removeTextObjectLink(c, paragraphId) : c,
         ),
       }));
     },

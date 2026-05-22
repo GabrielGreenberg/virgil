@@ -9,7 +9,7 @@ import type {
   RevisionSuggestionCard as RevisionSuggestionCardData,
 } from "@/lib/types";
 import { ItemMenu, PANEL } from "@/components/panel-primitives";
-import { getLinkedParagraphIds } from "@/links/links";
+import { getLinkedTextObjectIds } from "@/links/links";
 import PanelThemePicker from "@/components/PanelThemePicker";
 import { CardListPanel } from "@/panels/_shared/CardListPanel";
 import { withRecentlyAddedFirst } from "@/hooks/useRecentlyAddedTracker";
@@ -137,7 +137,7 @@ export default function RevisionsPanel({
               onDelete={onDelete}
               onSelect={onSelect}
               onJump={
-                onJumpToCard && getLinkedParagraphIds(it.data).length > 0
+                onJumpToCard && getLinkedTextObjectIds(it.data).length > 0
                   ? (sourceEl) => onJumpToCard(it.data, sourceEl)
                   : undefined
               }
@@ -155,7 +155,7 @@ export default function RevisionsPanel({
             onDelete={onDelete}
             onSelect={onSelect}
             onJump={
-              onJumpToCard && getLinkedParagraphIds(it.data).length > 0
+              onJumpToCard && getLinkedTextObjectIds(it.data).length > 0
                 ? (sourceEl) => onJumpToCard(it.data, sourceEl)
                 : undefined
             }

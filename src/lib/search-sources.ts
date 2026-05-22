@@ -9,7 +9,7 @@
 import type { Editor } from "@tiptap/react";
 import type { JSONContent } from "@tiptap/core";
 import { richJsonToPlainText } from "./footnote-content";
-import { resolveAnchorRange, getLinkedParagraphIds, getTextAnchor } from "@/links/links";
+import { resolveAnchorRange, getLinkedTextObjectIds, getTextAnchor } from "@/links/links";
 import type { Link } from "@/links/_shared/types";
 import type {
   ArchivedSnippet,
@@ -212,7 +212,7 @@ function resolveItemPos(
     const r = resolveAnchorRange(editor, anchor.anchorId);
     if (r) return r.from;
   }
-  return lowestPos(uuidPos, getLinkedParagraphIds(item));
+  return lowestPos(uuidPos, getLinkedTextObjectIds(item));
 }
 
 /** Turn a matched string + context into a SearchHit. */
@@ -345,7 +345,7 @@ export function searchTodos(
 ): SearchHit[] {
   const out: SearchHit[] = [];
   for (const t of todos) {
-    const pos = lowestPos(uuidPos, getLinkedParagraphIds(t));
+    const pos = lowestPos(uuidPos, getLinkedTextObjectIds(t));
     for (const m of scanText(t.text, re)) {
       out.push(hitFromMatch("todos", t.id, pos, "text", m));
     }
@@ -367,7 +367,7 @@ export function searchArchive(
 ): SearchHit[] {
   const out: SearchHit[] = [];
   for (const s of snippets) {
-    const pos = lowestPos(uuidPos, getLinkedParagraphIds(s));
+    const pos = lowestPos(uuidPos, getLinkedTextObjectIds(s));
     if (s.title) {
       for (const m of scanText(s.title, re)) {
         out.push(hitFromMatch("archive", s.id, pos, "title", m));
@@ -421,7 +421,7 @@ export function searchQuotations(
 ): SearchHit[] {
   const out: SearchHit[] = [];
   for (const g of groups) {
-    const pos = lowestPos(uuidPos, getLinkedParagraphIds(g));
+    const pos = lowestPos(uuidPos, getLinkedTextObjectIds(g));
     if (g.title) {
       for (const m of scanText(g.title, re)) {
         out.push(hitFromMatch("quotations", g.id, pos, "title", m));

@@ -14,31 +14,31 @@ type AddRemove = {
  * an if/else ladder.
  */
 export function useAnchorRebindBridge(deps: {
-  addQuotationParagraphId: AddRemove["add"];
-  removeQuotationParagraphId: AddRemove["remove"];
-  addTodoParagraphId: AddRemove["add"];
-  removeTodoParagraphId: AddRemove["remove"];
-  addNoteParagraphId: AddRemove["add"];
-  removeNoteParagraphId: AddRemove["remove"];
-  addArchiveParagraphId: AddRemove["add"];
-  removeArchiveParagraphId: AddRemove["remove"];
+  addQuotationTextObjectId: AddRemove["add"];
+  removeQuotationTextObjectId: AddRemove["remove"];
+  addTodoTextObjectId: AddRemove["add"];
+  removeTodoTextObjectId: AddRemove["remove"];
+  addNoteTextObjectId: AddRemove["add"];
+  removeNoteTextObjectId: AddRemove["remove"];
+  addArchiveTextObjectId: AddRemove["add"];
+  removeArchiveTextObjectId: AddRemove["remove"];
   addCardParagraphId: AddRemove["add"];
   removeCardParagraphId: AddRemove["remove"];
 }) {
   const {
-    addQuotationParagraphId, removeQuotationParagraphId,
-    addTodoParagraphId, removeTodoParagraphId,
-    addNoteParagraphId, removeNoteParagraphId,
-    addArchiveParagraphId, removeArchiveParagraphId,
+    addQuotationTextObjectId, removeQuotationTextObjectId,
+    addTodoTextObjectId, removeTodoTextObjectId,
+    addNoteTextObjectId, removeNoteTextObjectId,
+    addArchiveTextObjectId, removeArchiveTextObjectId,
     addCardParagraphId, removeCardParagraphId,
   } = deps;
 
   useEffect(() => {
     const mutators: Record<string, AddRemove | undefined> = {
-      quote: { remove: removeQuotationParagraphId, add: addQuotationParagraphId },
-      todo: { remove: removeTodoParagraphId, add: addTodoParagraphId },
-      note: { remove: removeNoteParagraphId, add: addNoteParagraphId },
-      archive: { remove: removeArchiveParagraphId, add: addArchiveParagraphId },
+      quote: { remove: removeQuotationTextObjectId, add: addQuotationTextObjectId },
+      todo: { remove: removeTodoTextObjectId, add: addTodoTextObjectId },
+      note: { remove: removeNoteTextObjectId, add: addNoteTextObjectId },
+      archive: { remove: removeArchiveTextObjectId, add: addArchiveTextObjectId },
       cut: { remove: removeCardParagraphId, add: addCardParagraphId },
     };
     const handler = (e: Event) => {
@@ -51,5 +51,5 @@ export function useAnchorRebindBridge(deps: {
     };
     window.addEventListener("virgil-marginalia-reanchor", handler);
     return () => window.removeEventListener("virgil-marginalia-reanchor", handler);
-  }, [addQuotationParagraphId, removeQuotationParagraphId, addNoteParagraphId, removeNoteParagraphId, addTodoParagraphId, removeTodoParagraphId, addArchiveParagraphId, removeArchiveParagraphId, addCardParagraphId, removeCardParagraphId]);
+  }, [addQuotationTextObjectId, removeQuotationTextObjectId, addNoteTextObjectId, removeNoteTextObjectId, addTodoTextObjectId, removeTodoTextObjectId, addArchiveTextObjectId, removeArchiveTextObjectId, addCardParagraphId, removeCardParagraphId]);
 }

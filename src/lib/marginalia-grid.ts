@@ -46,15 +46,15 @@ export function computeMarkerPositions(
   const counters = new Map<string, number>();
 
   for (const m of markers) {
-    const node = metrics.get(m.paragraphId);
-    if (!node) continue; // paragraph not visible / not yet measured
+    const node = metrics.get(m.textObjectId);
+    if (!node) continue; // anchor TextObject not visible / not yet measured
 
     // Resolve side: explicit override > current panel dock > default
     const meta = MARKER_META[m.type];
     const dockedSide = panelSides[meta.panelId];
     const side: "left" | "right" = m.side ?? dockedSide ?? meta.defaultSide;
 
-    const key = `${m.paragraphId}|${side}`;
+    const key = `${m.textObjectId}|${side}`;
     const idx = counters.get(key) ?? 0;
     counters.set(key, idx + 1);
 

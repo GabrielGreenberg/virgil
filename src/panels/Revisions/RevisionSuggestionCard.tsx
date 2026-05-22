@@ -10,7 +10,7 @@ import {
 } from "@/components/panel-primitives";
 import { useCompressedLines } from "@/components/editor-layout/contexts/card-display";
 import { useCardTheme } from "@/hooks/usePanelTheme";
-import { getLinkedParagraphIds, hasTextAnchor } from "@/links/links";
+import { getLinkedTextObjectIds, hasTextAnchor } from "@/links/links";
 import { usePoppedCards } from "@/hooks/usePoppedCards";
 import { usePanelBodyStyle } from "@/hooks/usePanelTypography";
 import { useTabIndent } from "@/hooks/useTabIndent";
@@ -213,10 +213,10 @@ export function RevisionSuggestionCard({
   const cardRef = useRef<HTMLDivElement>(null);
   const isPending = card.status === "pending";
   const isAnchored =
-    getLinkedParagraphIds(card).length > 0 || hasTextAnchor(card);
+    getLinkedTextObjectIds(card).length > 0 || hasTextAnchor(card);
   const anchorKind: "selection" | "paragraph" | null = hasTextAnchor(card)
     ? "selection"
-    : getLinkedParagraphIds(card).length > 0
+    : getLinkedTextObjectIds(card).length > 0
       ? "paragraph"
       : null;
   const popped = usePoppedCards();

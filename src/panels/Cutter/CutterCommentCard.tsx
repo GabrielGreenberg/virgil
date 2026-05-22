@@ -12,7 +12,7 @@ import { useCompressedLines } from "@/components/editor-layout/contexts/card-dis
 import { useCardTheme } from "@/hooks/usePanelTheme";
 import {
   getAnchorSummary,
-  getLinkedParagraphIds,
+  getLinkedTextObjectIds,
   hasTextAnchor,
 } from "@/links/links";
 import { usePoppedCards } from "@/hooks/usePoppedCards";
@@ -67,7 +67,7 @@ export function CutterCommentCard({
   const cutBodyStyle = usePanelBodyStyle("cut");
   const cardRef = useRef<HTMLDivElement>(null);
   const isAnchored =
-    getLinkedParagraphIds(card).length > 0 || hasTextAnchor(card);
+    getLinkedTextObjectIds(card).length > 0 || hasTextAnchor(card);
   const isOrphaned = !isAnchored && !!card.selectedText;
   const anchorSummary = getAnchorSummary(card, editor ?? null);
   const popped = usePoppedCards();

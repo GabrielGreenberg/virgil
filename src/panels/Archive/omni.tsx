@@ -5,7 +5,7 @@ import type { ArchivedSnippet } from "@/lib/types";
 import { popKey } from "@/panels/panel-registry";
 import type { OmniItem } from "@/panels/_shared/types";
 import { ArchiveCard } from "./ArchiveCard";
-import { getLinkedParagraphIds } from "@/links/links";
+import { getLinkedTextObjectIds } from "@/links/links";
 
 interface BuildArgs {
   archiveSnippets: ArchivedSnippet[];
@@ -28,7 +28,7 @@ export function buildArchiveOmniItems(a: BuildArgs): OmniItem[] {
   for (const snippet of a.archiveSnippets) {
     const orphaned = a.anchoredIds && !a.anchoredIds.has(snippet.id);
     const isSelected = a.selectedArchiveId === snippet.id;
-    const pids = getLinkedParagraphIds(snippet);
+    const pids = getLinkedTextObjectIds(snippet);
     const baseId = popKey("archive", snippet.id);
 
     if (orphaned || pids.length === 0) {

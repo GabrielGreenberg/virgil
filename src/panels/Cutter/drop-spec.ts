@@ -6,14 +6,14 @@
  * so both specs map to `ctx.cutterCards`.
  */
 
-import { paragraphSideReanchorSpec } from "@/components/drop-mode/util/paragraph-side-reanchor";
+import { textObjectSideReanchorSpec } from "@/components/drop-mode/util/text-object-side-reanchor";
 
-export const cutterCommentDropSpec = paragraphSideReanchorSpec({
+export const cutterCommentDropSpec = textObjectSideReanchorSpec({
   kindLabel: "comment",
   getApi: (ctx) => ctx.cutterCards,
 });
 
-export const cutterSuggestionDropSpec = paragraphSideReanchorSpec({
+export const cutterSuggestionDropSpec = textObjectSideReanchorSpec({
   kindLabel: "suggestion",
   getApi: (ctx) => ctx.cutterCards,
 });

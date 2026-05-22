@@ -79,7 +79,7 @@ export interface CardCreationDeps {
   ) => RevisionSuggestionCard;
   addTodo: () => TodoItem;
   updateTodo: (id: string, text: string) => void;
-  addTodoParagraphId: (id: string, paragraphId: string) => void;
+  addTodoTextObjectId: (id: string, paragraphId: string) => void;
   addQuotationGroup: (init?: { text?: string; paragraphId?: string | null }) => QuotationGroup;
   addCitation: (command: string, existingId?: string, unanchored?: boolean) => CitationRef;
   setSelectedNoteId: Dispatch<SetStateAction<string | null>>;
@@ -208,7 +208,7 @@ export function useCardCreation(deps: CardCreationDeps): CardCreationApi {
     addRevisionSuggestion,
     addTodo,
     updateTodo,
-    addTodoParagraphId,
+    addTodoTextObjectId,
     addQuotationGroup,
     addCitation,
     setSelectedNoteId,
@@ -424,7 +424,7 @@ export function useCardCreation(deps: CardCreationDeps): CardCreationApi {
     (opts) => {
       const todo = addTodo();
       if (opts.text) updateTodo(todo.id, opts.text);
-      if (opts.paragraphId) addTodoParagraphId(todo.id, opts.paragraphId);
+      if (opts.paragraphId) addTodoTextObjectId(todo.id, opts.paragraphId);
       setSelectedTodoId(todo.id);
       pin("todo", todo.id);
       if (opts.mode === "omni") return todo;
@@ -432,7 +432,7 @@ export function useCardCreation(deps: CardCreationDeps): CardCreationApi {
       else ensurePanelActive("todo");
       return todo;
     },
-    [addTodo, updateTodo, addTodoParagraphId, setSelectedTodoId, pin, ensurePanelActive, popCardAtAnchor],
+    [addTodo, updateTodo, addTodoTextObjectId, setSelectedTodoId, pin, ensurePanelActive, popCardAtAnchor],
   );
 
   const createFootnote = useCallback<CardCreationApi["createFootnote"]>(

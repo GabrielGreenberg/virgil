@@ -4,9 +4,9 @@ import { useCallback } from "react";
 import { generateEntityId } from "@/lib/uuid";
 import type { TodoState, TodoItem } from "@/lib/types";
 import {
-  addParagraphLink,
-  getLinkedParagraphIds,
-  removeParagraphLink,
+  addTextObjectLink,
+  getLinkedTextObjectIds,
+  removeTextObjectLink,
 } from "@/links/links";
 import { migrateCardLinks } from "@/links/migrate-card";
 import { bridgeCardAiRequestFlag } from "@/lib/ai-request-bridge";
@@ -94,7 +94,7 @@ export function useTodos(docId: string | null, externalPristine?: PristineKindAp
         value,
         {
           text: todo.text || "<todo>",
-          paragraphIds: getLinkedParagraphIds(todo),
+          paragraphIds: getLinkedTextObjectIds(todo),
         },
       );
     }
@@ -121,7 +121,7 @@ export function useTodos(docId: string | null, externalPristine?: PristineKindAp
   const addParagraphId = useCallback((todoId: string, paragraphId: string) => {
     update((prev) => ({
       items: prev.items.map((i) =>
-        i.id === todoId ? addParagraphLink(i, "todo", paragraphId) : i,
+        i.id === todoId ? addTextObjectLink(i, "todo", paragraphId) : i,
       ),
     }));
   }, [update]);
@@ -129,7 +129,7 @@ export function useTodos(docId: string | null, externalPristine?: PristineKindAp
   const removeParagraphId = useCallback((todoId: string, paragraphId: string) => {
     update((prev) => ({
       items: prev.items.map((i) =>
-        i.id === todoId ? removeParagraphLink(i, paragraphId) : i,
+        i.id === todoId ? removeTextObjectLink(i, paragraphId) : i,
       ),
     }));
   }, [update]);

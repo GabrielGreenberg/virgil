@@ -190,7 +190,7 @@ import MenuBar, {
 import { resolveDragPosition, type SnapGrid } from "./editor-layout/snap-grid";
 import { useDragGap } from "@/hooks/useDragGap";
 import {
-  getLinkedParagraphIds,
+  getLinkedTextObjectIds,
   getTextAnchor,
   createLinkedAnchor,
   updateLinkedAnchorCard,
@@ -314,10 +314,13 @@ export interface EditorPaneViewPrefs {
   ) => void;
   redockPanel: (id: PanelId, slotKey: DockSlotKey) => void;
 
-  // ── Card popout (paragraph / heading / example) ─────────────────
-  /** Toggle a card's popped-out state. Key shape: `paragraph:${uuid}`,
-   *  `heading:${uuid}`, `example:${uuid}` — matches `prefs.poppedOutCards`
-   *  entries and the kind dispatch in `floating-cards.tsx`. */
+  // ── Card popout ─────────────────────────────────────────────────
+  /** Toggle a card's popped-out state. Key shape: panel cards use
+   *  `${kind}:${id}` (`note:`, `todo:`, `example:`, etc.); block-level
+   *  TextObject popouts use the unified `textobject:${kind}:${id}`
+   *  shape introduced in Phase D10. The selection float still emits
+   *  `selection:${id}` until Phase E hydrates it into a `linkedRange`.
+   *  See `floating-cards.tsx`'s `renderPoppedCard` dispatcher. */
   toggleCardPopout: (key: string) => void;
   /** Pop the card *off* without re-docking. Used by SelectionFloat's
    *  X button and by the PoppedCardsContext's `close` callback. */
@@ -1157,86 +1160,86 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
   const dropNotesApi = useMemo(
     () => ({
       exists: (id: string) => notesHook.notes.some((n) => n.id === id),
-      getAnchorParagraphIds: (id: string) => {
+      getAnchorTextObjectIds: (id: string) => {
         const n = notesHook.notes.find((nn) => nn.id === id);
-        return n ? getLinkedParagraphIds(n) : [];
+        return n ? getLinkedTextObjectIds(n) : [];
       },
-      addParagraphLink: notesHook.addNoteParagraphId,
-      removeParagraphLink: notesHook.removeNoteParagraphId,
+      addTextObjectLink: notesHook.addNoteTextObjectId,
+      removeTextObjectLink: notesHook.removeNoteTextObjectId,
       preserveModeBAnchor: notesHook.preserveModeBAnchor,
     }),
-    [notesHook.notes, notesHook.addNoteParagraphId, notesHook.removeNoteParagraphId, notesHook.preserveModeBAnchor],
+    [notesHook.notes, notesHook.addNoteTextObjectId, notesHook.removeNoteTextObjectId, notesHook.preserveModeBAnchor],
   );
   const dropHighlightsApi = useMemo(
     () => ({
       exists: (id: string) => notesHook.highlights.some((h) => h.id === id),
-      getAnchorParagraphIds: (id: string) => {
+      getAnchorTextObjectIds: (id: string) => {
         const h = notesHook.highlights.find((hh) => hh.id === id);
-        return h ? getLinkedParagraphIds(h) : [];
+        return h ? getLinkedTextObjectIds(h) : [];
       },
-      addParagraphLink: notesHook.addHighlightParagraphId,
-      removeParagraphLink: notesHook.removeHighlightParagraphId,
+      addTextObjectLink: notesHook.addHighlightTextObjectId,
+      removeTextObjectLink: notesHook.removeHighlightTextObjectId,
       preserveModeBAnchor: notesHook.preserveModeBAnchor,
     }),
-    [notesHook.highlights, notesHook.addHighlightParagraphId, notesHook.removeHighlightParagraphId, notesHook.preserveModeBAnchor],
+    [notesHook.highlights, notesHook.addHighlightTextObjectId, notesHook.removeHighlightTextObjectId, notesHook.preserveModeBAnchor],
   );
   const dropTodosApi = useMemo(
     () => ({
       exists: (id: string) => todosHook.items.some((t) => t.id === id),
-      getAnchorParagraphIds: (id: string) => {
+      getAnchorTextObjectIds: (id: string) => {
         const t = todosHook.items.find((tt) => tt.id === id);
-        return t ? getLinkedParagraphIds(t) : [];
+        return t ? getLinkedTextObjectIds(t) : [];
       },
-      addParagraphLink: todosHook.addParagraphId,
-      removeParagraphLink: todosHook.removeParagraphId,
+      addTextObjectLink: todosHook.addParagraphId,
+      removeTextObjectLink: todosHook.removeParagraphId,
     }),
     [todosHook.items, todosHook.addParagraphId, todosHook.removeParagraphId],
   );
   const dropQuotationsApi = useMemo(
     () => ({
       exists: (id: string) => quotationsHook.groups.some((g) => g.id === id),
-      getAnchorParagraphIds: (id: string) => {
+      getAnchorTextObjectIds: (id: string) => {
         const g = quotationsHook.groups.find((gg) => gg.id === id);
-        return g ? getLinkedParagraphIds(g) : [];
+        return g ? getLinkedTextObjectIds(g) : [];
       },
-      addParagraphLink: quotationsHook.addParagraphId,
-      removeParagraphLink: quotationsHook.removeParagraphId,
+      addTextObjectLink: quotationsHook.addParagraphId,
+      removeTextObjectLink: quotationsHook.removeParagraphId,
     }),
     [quotationsHook.groups, quotationsHook.addParagraphId, quotationsHook.removeParagraphId],
   );
   const dropArchiveApi = useMemo(
     () => ({
       exists: (id: string) => archiveHook.snippets.some((s) => s.id === id),
-      getAnchorParagraphIds: (id: string) => {
+      getAnchorTextObjectIds: (id: string) => {
         const s = archiveHook.snippets.find((ss) => ss.id === id);
-        return s ? getLinkedParagraphIds(s) : [];
+        return s ? getLinkedTextObjectIds(s) : [];
       },
-      addParagraphLink: archiveHook.addParagraphId,
-      removeParagraphLink: archiveHook.removeParagraphId,
+      addTextObjectLink: archiveHook.addParagraphId,
+      removeTextObjectLink: archiveHook.removeParagraphId,
     }),
     [archiveHook.snippets, archiveHook.addParagraphId, archiveHook.removeParagraphId],
   );
   const dropCutterApi = useMemo(
     () => ({
       exists: (id: string) => cutterHook.cards.some((c) => c.id === id),
-      getAnchorParagraphIds: (id: string) => {
+      getAnchorTextObjectIds: (id: string) => {
         const c = cutterHook.cards.find((cc) => cc.id === id);
-        return c ? getLinkedParagraphIds(c) : [];
+        return c ? getLinkedTextObjectIds(c) : [];
       },
-      addParagraphLink: cutterHook.addCardParagraphId,
-      removeParagraphLink: cutterHook.removeCardParagraphId,
+      addTextObjectLink: cutterHook.addCardParagraphId,
+      removeTextObjectLink: cutterHook.removeCardParagraphId,
     }),
     [cutterHook.cards, cutterHook.addCardParagraphId, cutterHook.removeCardParagraphId],
   );
   const dropRevisionsApi = useMemo(
     () => ({
       exists: (id: string) => revisionsHook.cards.some((c) => c.id === id),
-      getAnchorParagraphIds: (id: string) => {
+      getAnchorTextObjectIds: (id: string) => {
         const c = revisionsHook.cards.find((cc) => cc.id === id);
-        return c ? getLinkedParagraphIds(c) : [];
+        return c ? getLinkedTextObjectIds(c) : [];
       },
-      addParagraphLink: revisionsHook.addCardParagraphId,
-      removeParagraphLink: revisionsHook.removeCardParagraphId,
+      addTextObjectLink: revisionsHook.addCardParagraphId,
+      removeTextObjectLink: revisionsHook.removeCardParagraphId,
     }),
     [revisionsHook.cards, revisionsHook.addCardParagraphId, revisionsHook.removeCardParagraphId],
   );
@@ -1247,14 +1250,14 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
   // reanchor events into EditorLayout's mutators would update the wrong
   // state and leave the on-screen marker frozen.
   useAnchorRebindBridge({
-    addQuotationParagraphId: quotationsHook.addParagraphId,
-    removeQuotationParagraphId: quotationsHook.removeParagraphId,
-    addTodoParagraphId: todosHook.addParagraphId,
-    removeTodoParagraphId: todosHook.removeParagraphId,
-    addNoteParagraphId: notesHook.addNoteParagraphId,
-    removeNoteParagraphId: notesHook.removeNoteParagraphId,
-    addArchiveParagraphId: archiveHook.addParagraphId,
-    removeArchiveParagraphId: archiveHook.removeParagraphId,
+    addQuotationTextObjectId: quotationsHook.addParagraphId,
+    removeQuotationTextObjectId: quotationsHook.removeParagraphId,
+    addTodoTextObjectId: todosHook.addParagraphId,
+    removeTodoTextObjectId: todosHook.removeParagraphId,
+    addNoteTextObjectId: notesHook.addNoteTextObjectId,
+    removeNoteTextObjectId: notesHook.removeNoteTextObjectId,
+    addArchiveTextObjectId: archiveHook.addParagraphId,
+    removeArchiveTextObjectId: archiveHook.removeParagraphId,
     addCardParagraphId: cutterHook.addCardParagraphId,
     removeCardParagraphId: cutterHook.removeCardParagraphId,
   });
@@ -1435,7 +1438,7 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
       }),
     [
       quotationsHook.groups, quotationsHook.removeParagraphId, quotationsHook.deleteGroup,
-      notesHook.notes, notesHook.removeNoteParagraphId, notesHook.deleteNote,
+      notesHook.notes, notesHook.removeNoteTextObjectId, notesHook.deleteNote,
       archiveHook.snippets, archiveHook.removeParagraphId, archiveHook.deleteSnippet,
       cutterHook.cards, cutterHook.removeCardParagraphId, cutterHook.deleteCard,
       todosHook.items, todosHook.removeParagraphId, todosHook.deleteItem,
@@ -1475,7 +1478,7 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
 
     // Quotations
     for (const g of quotationsHook.groups) {
-      const pids = getLinkedParagraphIds(g);
+      const pids = getLinkedTextObjectIds(g);
       if (pids.length === 0) continue;
       for (const pid of pids) {
         result.push({
@@ -1483,7 +1486,7 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
           entityId: g.id,
           entityKind: "quotation",
           type: "quote",
-          paragraphId: pid,
+          textObjectId: pid,
           title: g.title || g.references[0]?.citeKey || "Quotation",
           onClick: () => {
             setSelectedQuotationGroupId(g.id);
@@ -1496,7 +1499,7 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
 
     // Notes
     for (const n of notesHook.notes) {
-      const pids = getLinkedParagraphIds(n);
+      const pids = getLinkedTextObjectIds(n);
       if (pids.length === 0) continue;
       const anchor = getTextAnchor(n);
       for (const pid of pids) {
@@ -1505,7 +1508,7 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
           entityId: n.id,
           entityKind: "note",
           type: "note",
-          paragraphId: pid,
+          textObjectId: pid,
           title: n.title || "Note",
           onClick: () => {
             setSelectedNoteId(n.id);
@@ -1521,7 +1524,7 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
 
     // Archive snippets
     for (const snippet of archiveHook.snippets) {
-      const pids = getLinkedParagraphIds(snippet);
+      const pids = getLinkedTextObjectIds(snippet);
       if (pids.length === 0) continue;
       for (const pid of pids) {
         result.push({
@@ -1529,7 +1532,7 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
           entityId: snippet.id,
           entityKind: "archive",
           type: "archive",
-          paragraphId: pid,
+          textObjectId: pid,
           title: "Archived snippet",
           onClick: () => {
             setSelectedArchiveId(snippet.id);
@@ -1574,7 +1577,7 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
           entityId: r.id,
           entityKind: r.kind === "suggestion" ? "revision-suggestion" : "comment",
           type: "revision",
-          paragraphId: pid,
+          textObjectId: pid,
           title: r.selectedText || "Revision",
           anchorId,
           onClick: () => {
@@ -1590,7 +1593,7 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
 
     // Cutter cards
     for (const c of cutterHook.cards) {
-      const pids = getLinkedParagraphIds(c);
+      const pids = getLinkedTextObjectIds(c);
       if (pids.length === 0) continue;
       const cardAnchor = getTextAnchor(c);
       const title = c.kind === "suggestion"
@@ -1602,7 +1605,7 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
           entityId: c.id,
           entityKind: c.kind === "suggestion" ? "cutter-suggestion" : "cutter-comment",
           type: "cut",
-          paragraphId: pid,
+          textObjectId: pid,
           title,
           onClick: () => {
             setSelectedCutterCardId(c.id);
@@ -1618,7 +1621,7 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
 
     // Todo
     for (const item of todosHook.items) {
-      const pids = getLinkedParagraphIds(item);
+      const pids = getLinkedTextObjectIds(item);
       if (pids.length === 0) continue;
       for (const pid of pids) {
         result.push({
@@ -1626,7 +1629,7 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
           entityId: item.id,
           entityKind: "todo",
           type: "todo",
-          paragraphId: pid,
+          textObjectId: pid,
           title: item.text || "Todo",
           muted: item.done,
           onClick: () => {
@@ -1647,7 +1650,7 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
         id: `${err.id}:${pid}`,
         entityId: err.id,
         type: "error",
-        paragraphId: pid,
+        textObjectId: pid,
         title: err.message.length > 80 ? err.message.slice(0, 80) + "…" : err.message,
         muted: err.severity === "info",
         onClick: () => {
@@ -1705,7 +1708,7 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
   const anchoredUuidsRef = useRef(new Set<string>());
   useMemo(() => {
     const set = new Set<string>();
-    for (const m of marginaliaMarkers) set.add(m.paragraphId);
+    for (const m of marginaliaMarkers) set.add(m.textObjectId);
     anchoredUuidsRef.current = set;
   }, [marginaliaMarkers]);
 
@@ -1739,7 +1742,7 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
     addRevisionSuggestion: revisionsHook.addSuggestion,
     addTodo: todosHook.addItem,
     updateTodo: todosHook.updateItem,
-    addTodoParagraphId: todosHook.addParagraphId,
+    addTodoTextObjectId: todosHook.addParagraphId,
     addQuotationGroup: quotationsHook.addGroup,
     addCitation: citationsHook.addCitation,
     setSelectedNoteId,
@@ -1804,7 +1807,7 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
     cardCreation,
     archiveContent: archiveHook.archiveContent,
     updateArchiveSnippet: archiveHook.updateSnippet,
-    addArchiveParagraphId: archiveHook.addParagraphId,
+    addArchiveTextObjectId: archiveHook.addParagraphId,
     setSelectedArchiveId,
     prefs: viewPrefs?.prefs ?? readerPrefs,
     expandLeft: viewPrefs?.expandLeft ?? stubSetActive,
@@ -2343,7 +2346,7 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
   const anchoredArchiveIds = useMemo<Set<string>>(() => {
     const ids = new Set<string>();
     for (const s of archiveHook.snippets) {
-      if (getLinkedParagraphIds(s).length > 0) ids.add(s.id);
+      if (getLinkedTextObjectIds(s).length > 0) ids.add(s.id);
     }
     return ids;
   }, [archiveHook.snippets]);
@@ -2361,8 +2364,8 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
       });
     }
     return [...archiveHook.snippets].sort((a, b) => {
-      const aPids = getLinkedParagraphIds(a);
-      const bPids = getLinkedParagraphIds(b);
+      const aPids = getLinkedTextObjectIds(a);
+      const bPids = getLinkedTextObjectIds(b);
       const aPos = aPids.length > 0 ? paragraphOrder.get(aPids[0]) : undefined;
       const bPos = bPids.length > 0 ? paragraphOrder.get(bPids[0]) : undefined;
       if (aPos != null && bPos != null) return aPos - bPos;

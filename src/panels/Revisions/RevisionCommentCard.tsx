@@ -10,7 +10,7 @@ import {
 } from "@/components/panel-primitives";
 import { useCompressedLines } from "@/components/editor-layout/contexts/card-display";
 import { useCardTheme } from "@/hooks/usePanelTheme";
-import { getLinkedParagraphIds, hasTextAnchor } from "@/links/links";
+import { getLinkedTextObjectIds, hasTextAnchor } from "@/links/links";
 import { usePoppedCards } from "@/hooks/usePoppedCards";
 import { FloatCard } from "@/components/FloatingCards";
 import { popKey } from "@/panels/panel-registry";
@@ -58,7 +58,7 @@ export function RevisionCommentCard({
 }) {
   const theme = useCardTheme("revision");
   const isAnchored =
-    getLinkedParagraphIds(card).length > 0 || hasTextAnchor(card);
+    getLinkedTextObjectIds(card).length > 0 || hasTextAnchor(card);
   const isOrphaned = !isAnchored && !!card.selectedText;
   const popped = usePoppedCards();
   const cardKey = popKey("revisions", card.id);

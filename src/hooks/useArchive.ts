@@ -4,7 +4,7 @@ import { useCallback } from "react";
 import { generateEntityId } from "@/lib/uuid";
 import type { ArchiveState, ArchivedSnippet } from "@/lib/types";
 import { normalizeRichContent } from "@/lib/footnote-content";
-import { addParagraphLink, removeParagraphLink } from "@/links/links";
+import { addTextObjectLink, removeTextObjectLink } from "@/links/links";
 import { migrateCardLinks } from "@/links/migrate-card";
 import { nextCardTitle } from "@/panels/panel-registry";
 import { usePersistentState } from "./usePersistentState";
@@ -78,7 +78,7 @@ export function useArchive(docId: string | null) {
     (id: string, paragraphId: string) => {
       update((prev) => ({
         snippets: prev.snippets.map((s) =>
-          s.id === id ? addParagraphLink(s, "archive", paragraphId) : s,
+          s.id === id ? addTextObjectLink(s, "archive", paragraphId) : s,
         ),
       }));
     },
@@ -89,7 +89,7 @@ export function useArchive(docId: string | null) {
     (id: string, paragraphId: string) => {
       update((prev) => ({
         snippets: prev.snippets.map((s) =>
-          s.id === id ? removeParagraphLink(s, paragraphId) : s,
+          s.id === id ? removeTextObjectLink(s, paragraphId) : s,
         ),
       }));
     },

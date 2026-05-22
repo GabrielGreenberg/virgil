@@ -61,7 +61,7 @@ export interface DragHandleActionsDeps {
   cardCreation: CardCreationApi;
   archiveContent: (content: unknown) => ArchivedSnippet;
   updateArchiveSnippet: (id: string, content: unknown) => void;
-  addArchiveParagraphId: (id: string, paragraphId: string) => void;
+  addArchiveTextObjectId: (id: string, paragraphId: string) => void;
   setSelectedArchiveId: (id: string | null) => void;
   pinRecentlyAddedArchive?: (id: string) => void;
   prefs: ViewPrefs;
@@ -88,7 +88,7 @@ export function useDragHandleActions(deps: DragHandleActionsDeps) {
     cardCreation,
     archiveContent,
     updateArchiveSnippet,
-    addArchiveParagraphId,
+    addArchiveTextObjectId,
     setSelectedArchiveId,
     pinRecentlyAddedArchive,
     prefs,
@@ -311,7 +311,7 @@ export function useDragHandleActions(deps: DragHandleActionsDeps) {
           if (result) {
             if (result.content) updateArchiveSnippet(snippet.id, result.content);
             if (result.paragraphId)
-              addArchiveParagraphId(snippet.id, result.paragraphId);
+              addArchiveTextObjectId(snippet.id, result.paragraphId);
           }
           setSelectedArchiveId(snippet.id);
           pinRecentlyAddedArchive?.(snippet.id);
@@ -340,7 +340,7 @@ export function useDragHandleActions(deps: DragHandleActionsDeps) {
       cardCreation,
       archiveContent,
       updateArchiveSnippet,
-      addArchiveParagraphId,
+      addArchiveTextObjectId,
       setSelectedArchiveId,
       pinRecentlyAddedArchive,
       ensureOmniActiveForPanel,

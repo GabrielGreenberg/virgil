@@ -4,7 +4,7 @@ import type { TodoItem } from "@/lib/types";
 import { popKey } from "@/panels/panel-registry";
 import type { OmniItem } from "@/panels/_shared/types";
 import { TodoRow } from "./TodoRow";
-import { getLinkedParagraphIds } from "@/links/links";
+import { getLinkedTextObjectIds } from "@/links/links";
 
 interface BuildArgs {
   todoItems: TodoItem[];
@@ -23,7 +23,7 @@ export function buildTodoOmniItems(a: BuildArgs): OmniItem[] {
   const items: OmniItem[] = [];
 
   for (const item of a.todoItems) {
-    const pids = getLinkedParagraphIds(item);
+    const pids = getLinkedTextObjectIds(item);
     const isAnchored = pids.length > 0;
     const isSelected = a.selectedTodoId === item.id;
     const baseId = popKey("todo", item.id);

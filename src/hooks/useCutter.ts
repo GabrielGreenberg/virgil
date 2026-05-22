@@ -16,11 +16,11 @@ import {
   richJsonToPlainText,
 } from "@/lib/footnote-content";
 import {
-  addParagraphLink,
+  addTextObjectLink,
   clearTextAnchorLink,
-  getLinkedParagraphIds,
+  getLinkedTextObjectIds,
   getTextAnchor,
-  removeParagraphLink,
+  removeTextObjectLink,
   setTextAnchorLink,
 } from "@/links/links";
 import { migrateCardLinks } from "@/links/migrate-card";
@@ -203,7 +203,7 @@ export function useCutter(
         selectedText: anchor?.anchorText,
         links: [],
       };
-      if (paragraphId) card = addParagraphLink(card, "cutter-comment", paragraphId);
+      if (paragraphId) card = addTextObjectLink(card, "cutter-comment", paragraphId);
       if (anchor)
         card = setTextAnchorLink(
           card,
@@ -240,7 +240,7 @@ export function useCutter(
         links: [],
       };
       if (paragraphId)
-        card = addParagraphLink(card, "cutter-suggestion", paragraphId);
+        card = addTextObjectLink(card, "cutter-suggestion", paragraphId);
       if (anchor)
         card = setTextAnchorLink(
           card,
@@ -307,7 +307,7 @@ export function useCutter(
           value,
           {
             text: card.text || "<cutter comment>",
-            paragraphIds: getLinkedParagraphIds(card),
+            paragraphIds: getLinkedTextObjectIds(card),
             selectedText: card.selectedText ?? getTextAnchor(card)?.anchorText,
           },
         );
@@ -375,7 +375,7 @@ export function useCutter(
         ...prev,
         cards: prev.cards.map((c) =>
           c.id === id
-            ? addParagraphLink(
+            ? addTextObjectLink(
                 c,
                 c.kind === "suggestion" ? "cutter-suggestion" : "cutter-comment",
                 paragraphId,
@@ -392,7 +392,7 @@ export function useCutter(
       update((prev) => ({
         ...prev,
         cards: prev.cards.map((c) =>
-          c.id === id ? removeParagraphLink(c, paragraphId) : c,
+          c.id === id ? removeTextObjectLink(c, paragraphId) : c,
         ),
       }));
     },

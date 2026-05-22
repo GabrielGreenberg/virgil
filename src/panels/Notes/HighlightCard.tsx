@@ -10,7 +10,7 @@ import {
 import { useCompressedLines } from "@/components/editor-layout/contexts/card-display";
 import { useCardTheme } from "@/hooks/usePanelTheme";
 import {
-  getLinkedParagraphIds,
+  getLinkedTextObjectIds,
   getTextAnchor,
   hasTextAnchor,
 } from "@/links/links";
@@ -49,7 +49,7 @@ export function HighlightCard({
   const theme = useCardTheme("highlight");
   const cardRef = useRef<HTMLDivElement>(null);
   const isAnchored =
-    getLinkedParagraphIds(card).length > 0 || hasTextAnchor(card);
+    getLinkedTextObjectIds(card).length > 0 || hasTextAnchor(card);
   const anchorText = getTextAnchor(card)?.anchorText ?? "";
   const isOrphaned = !isAnchored && !!anchorText;
   const popped = usePoppedCards();

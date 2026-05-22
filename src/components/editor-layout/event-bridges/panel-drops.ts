@@ -12,21 +12,21 @@ import { useEffect, type Dispatch, type SetStateAction } from "react";
  * they share the same shape and the same selection-setter dep pattern.
  */
 export function usePanelDropBridges(deps: {
-  addQuotationParagraphId: (groupId: string, paragraphId: string) => void;
+  addQuotationTextObjectId: (groupId: string, paragraphId: string) => void;
   setSelectedQuotationGroupId: Dispatch<SetStateAction<string | null>>;
-  addTodoParagraphId: (todoId: string, paragraphId: string) => void;
+  addTodoTextObjectId: (todoId: string, paragraphId: string) => void;
   setSelectedTodoId: Dispatch<SetStateAction<string | null>>;
-  addNoteParagraphId: (noteId: string, paragraphId: string) => void;
+  addNoteTextObjectId: (noteId: string, paragraphId: string) => void;
   setSelectedNoteId: Dispatch<SetStateAction<string | null>>;
   addCardParagraphId: (cutId: string, paragraphId: string) => void;
   setSelectedCutterCardId: Dispatch<SetStateAction<string | null>>;
 }) {
   const {
-    addQuotationParagraphId,
+    addQuotationTextObjectId,
     setSelectedQuotationGroupId,
-    addTodoParagraphId,
+    addTodoTextObjectId,
     setSelectedTodoId,
-    addNoteParagraphId,
+    addNoteTextObjectId,
     setSelectedNoteId,
     addCardParagraphId,
     setSelectedCutterCardId,
@@ -36,37 +36,37 @@ export function usePanelDropBridges(deps: {
     const handler = (e: Event) => {
       const detail = (e as CustomEvent).detail;
       if (detail?.groupId && detail?.paragraphId) {
-        addQuotationParagraphId(detail.groupId, detail.paragraphId);
+        addQuotationTextObjectId(detail.groupId, detail.paragraphId);
         setSelectedQuotationGroupId(detail.groupId);
       }
     };
     window.addEventListener("virgil-quotation-drop", handler);
     return () => window.removeEventListener("virgil-quotation-drop", handler);
-  }, [addQuotationParagraphId, setSelectedQuotationGroupId]);
+  }, [addQuotationTextObjectId, setSelectedQuotationGroupId]);
 
   useEffect(() => {
     const handler = (e: Event) => {
       const detail = (e as CustomEvent).detail;
       if (detail?.todoId && detail?.paragraphId) {
-        addTodoParagraphId(detail.todoId, detail.paragraphId);
+        addTodoTextObjectId(detail.todoId, detail.paragraphId);
         setSelectedTodoId(detail.todoId);
       }
     };
     window.addEventListener("virgil-todo-drop", handler);
     return () => window.removeEventListener("virgil-todo-drop", handler);
-  }, [addTodoParagraphId, setSelectedTodoId]);
+  }, [addTodoTextObjectId, setSelectedTodoId]);
 
   useEffect(() => {
     const handler = (e: Event) => {
       const detail = (e as CustomEvent).detail;
       if (detail?.noteId && detail?.paragraphId) {
-        addNoteParagraphId(detail.noteId, detail.paragraphId);
+        addNoteTextObjectId(detail.noteId, detail.paragraphId);
         setSelectedNoteId(detail.noteId);
       }
     };
     window.addEventListener("virgil-note-drop", handler);
     return () => window.removeEventListener("virgil-note-drop", handler);
-  }, [addNoteParagraphId, setSelectedNoteId]);
+  }, [addNoteTextObjectId, setSelectedNoteId]);
 
   useEffect(() => {
     const handler = (e: Event) => {

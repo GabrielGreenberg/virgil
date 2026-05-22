@@ -3,9 +3,9 @@
  * Paragraph-side re-anchor — see `noteDropSpec` for the shared shape.
  */
 
-import { paragraphSideReanchorSpec } from "@/components/drop-mode/util/paragraph-side-reanchor";
+import { textObjectSideReanchorSpec } from "@/components/drop-mode/util/text-object-side-reanchor";
 
-export const archiveDropSpec = paragraphSideReanchorSpec({
+export const archiveDropSpec = textObjectSideReanchorSpec({
   kindLabel: "archive snippet",
   getApi: (ctx) => ctx.archive,
 });

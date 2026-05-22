@@ -116,8 +116,11 @@ export interface MarginaliaMarker {
     | "cutter-comment" | "cutter-suggestion";
   /** Marker category — drives icon/color */
   type: MarkerType;
-  /** Paragraph UUID this marker is anchored to */
-  paragraphId: string;
+  /** TextObject UUID this marker is anchored to. May be any kind in
+   *  the `textObject` schema group (paragraph, heading, listItem,
+   *  exampleItem, atom blocks, etc.) — the field is kind-agnostic.
+   *  Renamed from `paragraphId` in Phase D7. */
+  textObjectId: string;
   /** Optional: side override. If omitted, uses MARKER_META[type].defaultSide */
   side?: "left" | "right";
   /** Click handler — typically opens the panel and selects the item.

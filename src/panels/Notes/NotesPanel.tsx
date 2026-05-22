@@ -13,7 +13,7 @@ import {
   PANEL,
   useCycle,
 } from "@/components/panel-primitives";
-import { getLinkedParagraphIds } from "@/links/links";
+import { getLinkedTextObjectIds } from "@/links/links";
 import PanelThemePicker from "@/components/PanelThemePicker";
 import { CardListPanel } from "@/panels/_shared/CardListPanel";
 import { withRecentlyAddedFirst } from "@/hooks/useRecentlyAddedTracker";
@@ -146,7 +146,7 @@ export default function NotesPanel({
               onDelete={onDelete}
               onSelect={onSelectNote}
               onJump={
-                onJumpToCard && getLinkedParagraphIds(card).length > 0
+                onJumpToCard && getLinkedTextObjectIds(card).length > 0
                   ? (sourceEl) => onJumpToCard(card, sourceEl)
                   : undefined
               }
@@ -163,7 +163,7 @@ export default function NotesPanel({
             onDelete={onDelete}
             onSelect={onSelectNote}
             onJump={
-              onJumpToCard && getLinkedParagraphIds(card).length > 0
+              onJumpToCard && getLinkedTextObjectIds(card).length > 0
                 ? (sourceEl) => onJumpToCard(card, sourceEl)
                 : undefined
             }

@@ -8,7 +8,7 @@ import type {
 } from "@/lib/types";
 import { cardPopKey } from "@/panels/panel-registry";
 import type { OmniItem } from "@/panels/_shared/types";
-import { getLinkedParagraphIds } from "@/links/links";
+import { getLinkedTextObjectIds } from "@/links/links";
 import { RevisionCommentCard } from "./RevisionCommentCard";
 import { RevisionSuggestionCard } from "./RevisionSuggestionCard";
 
@@ -45,7 +45,7 @@ export function buildRevisionOmniItems(a: BuildArgs): OmniItem[] {
 
   for (const card of a.cards) {
     const isSelected = a.selectedId === card.id;
-    const pids = getLinkedParagraphIds(card);
+    const pids = getLinkedTextObjectIds(card);
     const baseId =
       card.kind === "suggestion"
         ? cardPopKey("revision-suggestion", card.id)

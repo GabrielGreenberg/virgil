@@ -24,7 +24,7 @@ export interface ParagraphSideSpecOptions {
   getApi: (ctx: DropCtx) => ParagraphAnchorApi | undefined;
 }
 
-export function paragraphSideReanchorSpec(
+export function textObjectSideReanchorSpec(
   opts: ParagraphSideSpecOptions,
 ): DropSpec {
   return {
@@ -36,7 +36,7 @@ export function paragraphSideReanchorSpec(
       if (!api) return { kind: "no-op" };
       const id = extractId(cardKey);
       if (!id || !api.exists(id)) return { kind: "no-op" };
-      const current = api.getAnchorParagraphIds(id);
+      const current = api.getAnchorTextObjectIds(id);
       if (current.length === 1 && current[0] === placement.paragraphId) {
         return { kind: "no-op" };
       }
@@ -72,14 +72,14 @@ export function paragraphSideReanchorSpec(
           // The mark might already be gone (orphaned); ignore.
         }
       }
-      const current = api.getAnchorParagraphIds(id);
+      const current = api.getAnchorTextObjectIds(id);
       for (const pid of current) {
         if (pid !== placement.paragraphId) {
-          api.removeParagraphLink(id, pid);
+          api.removeTextObjectLink(id, pid);
         }
       }
       if (!current.includes(placement.paragraphId)) {
-        api.addParagraphLink(id, placement.paragraphId);
+        api.addTextObjectLink(id, placement.paragraphId);
       }
     },
     postDrop: "keep",

@@ -31,7 +31,7 @@
 
 import type { Editor } from "@tiptap/react";
 import {
-  getLinkedParagraphIds,
+  getLinkedTextObjectIds,
   removeLinkedAnchor,
   type CardWithLinks,
 } from "@/links/links";
@@ -94,7 +94,7 @@ export async function deleteMarginItem(args: DeleteMarginItemArgs): Promise<void
   // Compute remaining paragraph anchors after we drop this one. Cards
   // can be anchored to multiple paragraphs (`links[]` with N entries);
   // we only escalate to a card-delete when this was the LAST one.
-  const remaining = getLinkedParagraphIds(card).filter((p) => p !== paragraphId);
+  const remaining = getLinkedTextObjectIds(card).filter((p) => p !== paragraphId);
 
   if (remaining.length > 0) {
     // Multi-anchor: just remove this paragraph link. Do NOT strip the
@@ -139,7 +139,7 @@ interface QuotationsDep {
 }
 interface NotesDep {
   notes: ReadonlyArray<CardWithLinks>;
-  removeNoteParagraphId: (id: string, paragraphId: string) => void;
+  removeNoteTextObjectId: (id: string, paragraphId: string) => void;
   deleteNote: (id: string) => void;
 }
 interface ArchiveDep {
@@ -185,7 +185,7 @@ export function buildMarginItemHandlers(
     note: {
       findCard: (id) => deps.notes.notes.find((n) => n.id === id),
       contentKind: "note",
-      unanchor: deps.notes.removeNoteParagraphId,
+      unanchor: deps.notes.removeNoteTextObjectId,
       delete: deps.notes.deleteNote,
     },
     archive: {

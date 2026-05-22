@@ -3,7 +3,7 @@
 import { useMemo } from "react";
 import type { TodoItem, AiRequest } from "@/lib/types";
 import { ItemMenu, PANEL } from "@/components/panel-primitives";
-import { getLinkedParagraphIds } from "@/links/links";
+import { getLinkedTextObjectIds } from "@/links/links";
 import PanelThemePicker from "@/components/PanelThemePicker";
 import { CardListPanel } from "@/panels/_shared/CardListPanel";
 import { withRecentlyAddedFirst } from "@/hooks/useRecentlyAddedTracker";
@@ -90,9 +90,9 @@ export default function TodoPanel({
           onSetAiRequest={onSetAiRequest}
           onDelete={onDelete}
           onSelect={onSelectTodo}
-          isAnchored={getLinkedParagraphIds(item).length > 0}
+          isAnchored={getLinkedTextObjectIds(item).length > 0}
           onJump={
-            onJumpToCard && getLinkedParagraphIds(item).length > 0
+            onJumpToCard && getLinkedTextObjectIds(item).length > 0
               ? (sourceEl) => onJumpToCard(item, sourceEl)
               : undefined
           }

@@ -135,7 +135,7 @@ export interface ArchivedSnippet {
   content: unknown;
   createdAt: string;
   /** All paragraphs this snippet is anchored to. See src/links/links.ts
-   *  for helpers (getLinkedParagraphIds, addParagraphLink, …). */
+   *  for helpers (getLinkedTextObjectIds, addTextObjectLink, …). */
   links: Link[];
 }
 

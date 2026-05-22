@@ -10,7 +10,7 @@ import {
 } from "@/components/panel-primitives";
 import { useCompressedLines } from "@/components/editor-layout/contexts/card-display";
 import { useCardTheme } from "@/hooks/usePanelTheme";
-import { getLinkedParagraphIds } from "@/links/links";
+import { getLinkedTextObjectIds } from "@/links/links";
 import { usePoppedCards } from "@/hooks/usePoppedCards";
 import { FloatCard } from "@/components/FloatingCards";
 import { normalizeRichContent } from "@/lib/footnote-content";
@@ -80,7 +80,7 @@ export function NoteCard({
   // isOrphaned was previously surfaced as a BadgeOrphaned in the header;
   // unified-chrome cards have no badge so this state isn't rendered, but
   // we still compute it for the existing data-orphaned attribute callers.
-  const _isOrphaned = getLinkedParagraphIds(note).length === 0;
+  const _isOrphaned = getLinkedTextObjectIds(note).length === 0;
   void _isOrphaned;
   const theme = useCardTheme("note");
   const compressedLines = useCompressedLines();

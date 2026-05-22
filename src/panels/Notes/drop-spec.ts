@@ -9,14 +9,14 @@
  * work with.
  */
 
-import { paragraphSideReanchorSpec } from "@/components/drop-mode/util/paragraph-side-reanchor";
+import { textObjectSideReanchorSpec } from "@/components/drop-mode/util/text-object-side-reanchor";
 
-export const noteDropSpec = paragraphSideReanchorSpec({
+export const noteDropSpec = textObjectSideReanchorSpec({
   kindLabel: "note",
   getApi: (ctx) => ctx.notes,
 });
 
-export const highlightDropSpec = paragraphSideReanchorSpec({
+export const highlightDropSpec = textObjectSideReanchorSpec({
   kindLabel: "highlight",
   getApi: (ctx) => ctx.highlights,
 });

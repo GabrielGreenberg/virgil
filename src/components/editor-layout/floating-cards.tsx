@@ -18,7 +18,7 @@ import { TexBlockFloat } from "../TexBlockFloat";
 import { SelectionFloat } from "../SelectionFloat";
 import { parseTextObjectPopoutKey } from "@/text-objects/text-object-registry";
 import type { EditorHandle, FootnoteInfo, ExampleInfo } from "../Editor";
-import { getLinkedParagraphIds } from "@/links/links";
+import { getLinkedTextObjectIds } from "@/links/links";
 import type {
   UserNote,
   HighlightCard as HighlightCardData,
@@ -207,7 +207,7 @@ export function renderPoppedCard(key: string, d: PoppedCardDeps): ReactNode {
     case "note": {
       const note = d.notes.find((n) => n.id === id);
       if (!note) return null;
-      const canJump = getLinkedParagraphIds(note).length > 0;
+      const canJump = getLinkedTextObjectIds(note).length > 0;
       return (
         <NoteCard
           key={key}
@@ -229,7 +229,7 @@ export function renderPoppedCard(key: string, d: PoppedCardDeps): ReactNode {
     case "highlight": {
       const hl = d.highlights.find((h) => h.id === id);
       if (!hl) return null;
-      const canJump = getLinkedParagraphIds(hl).length > 0;
+      const canJump = getLinkedTextObjectIds(hl).length > 0;
       return (
         <HighlightCard
           key={key}
@@ -296,7 +296,7 @@ export function renderPoppedCard(key: string, d: PoppedCardDeps): ReactNode {
         (c) => c.id === id && c.kind === "comment",
       );
       if (!card || card.kind !== "comment") return null;
-      const canJump = getLinkedParagraphIds(card).length > 0;
+      const canJump = getLinkedTextObjectIds(card).length > 0;
       return (
         <CutterCommentCard
           key={key}
@@ -316,7 +316,7 @@ export function renderPoppedCard(key: string, d: PoppedCardDeps): ReactNode {
         (c) => c.id === id && c.kind === "suggestion",
       );
       if (!card || card.kind !== "suggestion") return null;
-      const canJump = getLinkedParagraphIds(card).length > 0;
+      const canJump = getLinkedTextObjectIds(card).length > 0;
       // Popped suggestions mirror status changes locally; the panel-host
       // owns the AiRequest enqueue path. Both buttons in popped mode just
       // flip status — the user can re-open the panel to trigger enqueue
@@ -339,7 +339,7 @@ export function renderPoppedCard(key: string, d: PoppedCardDeps): ReactNode {
     case "todo": {
       const item = d.todoItems.find((t) => t.id === id);
       if (!item) return null;
-      const canJump = getLinkedParagraphIds(item).length > 0;
+      const canJump = getLinkedTextObjectIds(item).length > 0;
       return (
         <TodoRow
           key={key}
@@ -452,7 +452,7 @@ export function renderPoppedCard(key: string, d: PoppedCardDeps): ReactNode {
     case "quotation": {
       const group = d.quotationGroups.find((g) => g.id === id);
       if (!group) return null;
-      const canJump = getLinkedParagraphIds(group).length > 0;
+      const canJump = getLinkedTextObjectIds(group).length > 0;
       return (
         <QuotationGroupCard
           key={key}
