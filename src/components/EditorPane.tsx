@@ -4190,20 +4190,26 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
                 puts the natural position at or below the sticky anchor
                 in every case, so sticky-top engages reliably. Sticks
                 at `top: scroll-viewport-h - editor-pb`, which is the
-                inner edge of the bottom margin band. */}
-            <div
-              aria-hidden
-              className="pointer-events-none shrink-0"
-              style={{
-                position: "sticky",
-                top: "calc(var(--scroll-viewport-h, 100vh) - var(--editor-pb, 40px))",
-                height: "var(--editor-pb, 40px)",
-                marginTop: "calc(-1 * var(--editor-pb, 40px))",
-                zIndex: 15,
-                background:
-                  "linear-gradient(to top, var(--surface) 0, var(--surface) calc(100% - 8px), transparent 100%)",
-              }}
-            />
+                inner edge of the bottom margin band.
+                Gated on `ready` (same as the top mask) so its
+                var(--surface) gradient doesn't leak through the
+                LoadingScreen curtain as a white band 2/3 down to
+                bottom during the loading window. */}
+            {ready && (
+              <div
+                aria-hidden
+                className="pointer-events-none shrink-0"
+                style={{
+                  position: "sticky",
+                  top: "calc(var(--scroll-viewport-h, 100vh) - var(--editor-pb, 40px))",
+                  height: "var(--editor-pb, 40px)",
+                  marginTop: "calc(-1 * var(--editor-pb, 40px))",
+                  zIndex: 15,
+                  background:
+                    "linear-gradient(to top, var(--surface) 0, var(--surface) calc(100% - 8px), transparent 100%)",
+                }}
+              />
+            )}
             </div>
             {viewPrefs?.zenMode ? (
               <ZenMargin
