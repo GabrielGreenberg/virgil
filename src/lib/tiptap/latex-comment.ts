@@ -16,7 +16,7 @@ export interface LatexCommentOptions {
 
 export const LatexComment = Node.create<LatexCommentOptions>({
   name: "latexComment",
-  group: "block",
+  group: "block textObject",
   atom: true,
 
   addOptions() {

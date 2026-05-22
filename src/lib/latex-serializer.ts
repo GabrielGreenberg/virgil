@@ -499,6 +499,13 @@ function serializeExampleItem(node: JSONContent): string {
   for (const child of node.content || []) {
     if (child.type === "paragraph") {
       pieces.push(serializeExampleInlineChildren(child.content));
+    } else if (child.type === "graphicsBlock") {
+      // Standalone `\includegraphics` inside the item body — emit the
+      // verbatim command (the generic graphicsBlock serializer adds a
+      // trailing blank-line we don't want inside an item, so just emit
+      // the command).
+      const command = (child.attrs?.command as string) ?? "";
+      pieces.push(command);
     } else if (child.type === "exampleGloss") {
       pieces.push(serializeExampleGloss(child).trimEnd());
     } else if (child.type === "exampleItemList") {

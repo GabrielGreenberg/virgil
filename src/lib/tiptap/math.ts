@@ -154,7 +154,7 @@ export const InlineMath = Node.create({
 
 export const DisplayMath = Node.create({
   name: "displayMath",
-  group: "block",
+  group: "block textObject",
   atom: true,
 
   addAttributes() {

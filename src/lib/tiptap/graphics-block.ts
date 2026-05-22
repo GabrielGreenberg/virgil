@@ -11,7 +11,7 @@ import type { FigureBlockOptions } from "./figure-block";
 // `widthPercent`) drive display only.
 export const GraphicsBlock = Node.create<FigureBlockOptions>({
   name: "graphicsBlock",
-  group: "block",
+  group: "block textObject",
   atom: true,
   draggable: true,
   selectable: true,

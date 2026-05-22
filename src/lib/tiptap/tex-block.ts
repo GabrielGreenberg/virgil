@@ -41,7 +41,7 @@ export interface TexBlockOptions {
 // LaTeX compiler treats the contents as real LaTeX (not verbatim).
 export const TexBlock = Node.create<TexBlockOptions>({
   name: "texBlock",
-  group: "block",
+  group: "block textObject",
   atom: true,
   draggable: true,
   // PM would otherwise create a NodeSelection on mousedown that scrolls the

@@ -550,6 +550,7 @@ const VirgilEditor = forwardRef<EditorHandle, EditorProps>(function VirgilEditor
     // own all paragraph repositioning; PM-native node-drag would be a third
     // text-move surface and is suppressed at the schema root.
     draggable: false,
+    group: "block textObject",
     addAttributes() {
       return {
         ...this.parent?.(),
@@ -1250,6 +1251,7 @@ const VirgilEditor = forwardRef<EditorHandle, EditorProps>(function VirgilEditor
   }
 
   const BulletListWithTitle = BulletList.extend({
+    group: "block list textObject",
     addAttributes() {
       return {
         ...this.parent?.(),
@@ -1264,6 +1266,7 @@ const VirgilEditor = forwardRef<EditorHandle, EditorProps>(function VirgilEditor
   });
 
   const OrderedListWithTitle = OrderedList.extend({
+    group: "block list textObject",
     addAttributes() {
       return {
         ...this.parent?.(),
@@ -1278,6 +1281,7 @@ const VirgilEditor = forwardRef<EditorHandle, EditorProps>(function VirgilEditor
   });
 
   const BlockquoteWithUuid = Blockquote.extend({
+    group: "block textObject",
     addAttributes() {
       return {
         ...this.parent?.(),
@@ -1287,6 +1291,14 @@ const VirgilEditor = forwardRef<EditorHandle, EditorProps>(function VirgilEditor
   });
 
   const ListItemWithUuid = ListItem.extend({
+    // Sub-object: lives only inside bulletList/orderedList. Widen content
+    // so the FIRST child may be a graphicsBlock (e.g. an item that's just
+    // `\includegraphics{...}`), not only a paragraph. Subsequent children
+    // were already free via `block*` since graphicsBlock is in the block
+    // group. Adding another inner kind (tables, etc.) is a one-token
+    // edit to the union.
+    content: "(paragraph | graphicsBlock) block*",
+    group: "textObject",
     addAttributes() {
       return {
         ...this.parent?.(),
@@ -1296,6 +1308,7 @@ const VirgilEditor = forwardRef<EditorHandle, EditorProps>(function VirgilEditor
   });
 
   const CodeBlockWithUuid = CodeBlock.extend({
+    group: "block textObject",
     addAttributes() {
       return {
         ...this.parent?.(),
@@ -1305,6 +1318,7 @@ const VirgilEditor = forwardRef<EditorHandle, EditorProps>(function VirgilEditor
   });
 
   const HeadingWithLabel = Heading.extend({
+    group: "block textObject",
     // TipTap's default markdown-style heading input rules (`#`/`##`/… + space)
     // are dead surface area in this LaTeX-first editor (slash popup + the
     // heading type menu cover heading creation). They also produce a real

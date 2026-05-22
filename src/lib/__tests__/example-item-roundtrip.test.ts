@@ -74,7 +74,7 @@ describe("exampleItem UUID round-trip (\\vxid)", () => {
         },
       ],
     };
-    const tex = serializeBody(doc, "");
+    const tex = serializeBody(doc);
     expect(tex).toContain("\\vxid{cd34}\\a");
   });
 
@@ -84,7 +84,7 @@ describe("exampleItem UUID round-trip (\\vxid)", () => {
 \\vxid{ef56}\\a second item
 \\xe`;
     const parsed = parseBody(original);
-    const serialized = serializeBody(parsed, "");
+    const serialized = serializeBody(parsed);
     expect(serialized).toContain("\\vxid{cd34}");
     expect(serialized).toContain("\\vxid{ef56}");
 

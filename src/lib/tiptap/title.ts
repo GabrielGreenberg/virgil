@@ -45,7 +45,7 @@ const FIELD_LABELS: Record<string, string> = {
 /** Block node with editable content, annotated "Title" / "Author" / "Date". */
 export const TitleField = Node.create({
   name: "titleField",
-  group: "block",
+  group: "block textObject",
   content: "inline*",
 
   addAttributes() {

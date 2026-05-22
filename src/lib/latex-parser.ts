@@ -1981,10 +1981,14 @@ function buildExampleItemFromText(
 
   const itemContent = parseExampleBodyAsBlocks(stripped);
   const normalized: JSONContent[] = [];
-  const paragraphs = itemContent.filter((n) => n.type === "paragraph");
+  // Head section: (paragraph | graphicsBlock)+. Preserve document order
+  // so `\includegraphics` between two paragraphs round-trips faithfully.
+  const head = itemContent.filter(
+    (n) => n.type === "paragraph" || n.type === "graphicsBlock",
+  );
   const glosses = itemContent.filter((n) => n.type === "exampleGloss");
-  if (paragraphs.length === 0) normalized.push({ type: "paragraph" });
-  else normalized.push(...paragraphs);
+  if (head.length === 0) normalized.push({ type: "paragraph" });
+  else normalized.push(...head);
   if (nestedList) normalized.push(nestedList);
   if (glosses.length > 0) normalized.push(glosses[0]);
 
@@ -2033,7 +2037,8 @@ function parseExampleBodyAsBlocks(body: string): JSONContent[] {
       child.type === "paragraph" ||
       child.type === "exampleGloss" ||
       child.type === "bulletList" ||
-      child.type === "orderedList"
+      child.type === "orderedList" ||
+      child.type === "graphicsBlock"
     ) {
       out.push(child);
     }

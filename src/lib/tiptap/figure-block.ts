@@ -45,7 +45,7 @@ export interface FigureBlockOptions {
 // is exposed as `source` for the common single-image case.
 export const FigureBlock = Node.create<FigureBlockOptions>({
   name: "figureBlock",
-  group: "block",
+  group: "block textObject",
   content: "figureCaption?",
   draggable: true,
   selectable: true,

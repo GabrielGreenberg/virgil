@@ -115,7 +115,7 @@ export function markerForDepth(depth: number, n: number): string {
 
 export const ExampleBlock = Node.create<ExampleBlockOptions>({
   name: "exampleBlock",
-  group: "block",
+  group: "block textObject",
 
   addOptions() {
     return {
@@ -935,7 +935,13 @@ export const ExampleItemList = Node.create({
 
 export const ExampleItem = Node.create({
   name: "exampleItem",
-  content: "paragraph+ exampleItemList? exampleGloss?",
+  // Widened from `paragraph+ exampleItemList? exampleGloss?` to allow
+  // `graphicsBlock` (an `\includegraphics` outside a figure env) inside an
+  // item. The shape is built so adding another inner kind (tables, etc.)
+  // is a one-token edit to the leading union. texBlock / figureBlock are
+  // intentionally NOT widened — see TEXT-OBJECT-REFACTOR.md §6.
+  content: "(paragraph | graphicsBlock)+ exampleItemList? exampleGloss?",
+  group: "textObject",
   defining: true,
   // NOTE: not isolating — prosemirror-schema-list's liftTarget breaks at
   // isolating ancestors, which would prevent Shift-Tab from un-nesting an
