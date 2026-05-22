@@ -134,7 +134,7 @@ import {
 } from "@/lib/stack/snapshot";
 import type { StackItem as StackItemType } from "@/lib/stack/types";
 import { resolveCardData, cardKeyPrefixToStackKind } from "@/lib/stack/resolve-card";
-import { useDragHandleActions, type DragHandlePassage } from "./editor-layout/card-actions/drag-handle-actions";
+import { useDragHandleActions, type DragHandleRef } from "./editor-layout/card-actions/drag-handle-actions";
 import { DragHandleMenuProvider, type DragHandleMenuApi } from "./editor-layout/card-actions/drag-handle-menu-context";
 import { DragHandleMenu } from "./DragHandleMenu";
 import { HeadingTypeMenu, type HeadingTypePick } from "./HeadingTypeMenu";
@@ -1102,106 +1102,18 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
     [viewPrefs],
   );
 
-  // ── Paragraph / heading / example popouts ────────────────────────
-  // Match EditorLayout's existing handlers (lines ~5705–5760). When
-  // viewPrefs is provided (main app post-7.8), the user's gutter
-  // popout button toggles a floating card via `toggleCardPopout`,
-  // optionally seeding a quadrant-aware spawn position from the
-  // anchor rect. Reader has no popout chrome → handlers no-op.
-  const paragraphIsPoppedRef = useRef<(uuid: string) => boolean>(
-    () => false,
-  );
-  const headingIsPoppedRef = useRef<(uuid: string) => boolean>(
-    () => false,
-  );
-  const listIsPoppedRef = useRef<(uuid: string) => boolean>(
-    () => false,
-  );
-  const exampleIsPoppedRef = useRef<(uuid: string) => boolean>(
-    () => false,
-  );
+  // ── TexBlock popped predicate ─────────────────────────────────────
+  // The texBlock NodeView reads this through its extension options to
+  // render `.is-popped` chrome when its float is open. Other kinds had
+  // analogous predicates here, but only to drive the per-NodeView
+  // grips that Phase D4 deleted — those are gone now.
   const texBlockIsPoppedRef = useRef<(uuid: string) => boolean>(
     () => false,
   );
   if (viewPrefs) {
     const popped = viewPrefs.prefs.poppedOutCards;
-    paragraphIsPoppedRef.current = (uuid) => popped.includes(`paragraph:${uuid}`);
-    headingIsPoppedRef.current = (uuid) => popped.includes(`heading:${uuid}`);
-    listIsPoppedRef.current = (uuid) => popped.includes(`list:${uuid}`);
-    exampleIsPoppedRef.current = (uuid) => popped.includes(`example:${uuid}`);
     texBlockIsPoppedRef.current = (uuid) => popped.includes(`texBlock:${uuid}`);
   }
-  const handleToggleParagraphPopout = useCallback(
-    (uuid: string, anchor?: DOMRect | null) => {
-      if (!viewPrefs) return;
-      const key = `paragraph:${uuid}`;
-      if (!viewPrefs.prefs.poppedOutCards.includes(key) && anchor) {
-        const pos = computeSpawnPosition(anchor, { width: POPUP_W, height: POPUP_H });
-        viewPrefs.setCardFloatPosition(key, pos);
-      }
-      viewPrefs.toggleCardPopout(key);
-    },
-    [viewPrefs],
-  );
-  const handleLiftParagraph = useCallback(
-    (uuid: string, rect: { x: number; y: number; width: number; height: number }) => {
-      if (!viewPrefs) return;
-      const key = `paragraph:${uuid}`;
-      if (viewPrefs.prefs.poppedOutCards.includes(key)) return;
-      viewPrefs.setCardFloatPosition(key, rect);
-      viewPrefs.toggleCardPopout(key);
-    },
-    [viewPrefs],
-  );
-  const handleToggleHeadingPopout = useCallback(
-    (uuid: string) => {
-      if (!viewPrefs) return;
-      viewPrefs.toggleCardPopout(`heading:${uuid}`);
-    },
-    [viewPrefs],
-  );
-  const handleLiftHeading = useCallback(
-    (uuid: string, rect: { x: number; y: number; width: number; height: number }) => {
-      if (!viewPrefs) return;
-      const key = `heading:${uuid}`;
-      if (viewPrefs.prefs.poppedOutCards.includes(key)) return;
-      viewPrefs.setCardFloatPosition(key, rect);
-      viewPrefs.toggleCardPopout(key);
-    },
-    [viewPrefs],
-  );
-  const handleLiftList = useCallback(
-    (uuid: string, rect: { x: number; y: number; width: number; height: number }) => {
-      if (!viewPrefs) return;
-      const key = `list:${uuid}`;
-      if (viewPrefs.prefs.poppedOutCards.includes(key)) return;
-      viewPrefs.setCardFloatPosition(key, rect);
-      viewPrefs.toggleCardPopout(key);
-    },
-    [viewPrefs],
-  );
-  const handleLiftTexBlock = useCallback(
-    (uuid: string, rect: { x: number; y: number; width: number; height: number }) => {
-      if (!viewPrefs) return;
-      const key = `texBlock:${uuid}`;
-      if (viewPrefs.prefs.poppedOutCards.includes(key)) return;
-      viewPrefs.setCardFloatPosition(key, rect);
-      viewPrefs.toggleCardPopout(key);
-    },
-    [viewPrefs],
-  );
-  const handleToggleExamplePopout = useCallback(
-    (uuid: string, anchor?: DOMRect | null) => {
-      if (!viewPrefs) return;
-      const key = `example:${uuid}`;
-      if (!viewPrefs.prefs.poppedOutCards.includes(key) && anchor) {
-        const pos = computeSpawnPosition(anchor, { width: POPUP_W, height: POPUP_H });
-        viewPrefs.setCardFloatPosition(key, pos);
-      }
-      viewPrefs.toggleCardPopout(key);
-    },
-    [viewPrefs],
-  );
   // Per-doc PoppedCardsContext value. Built from the `viewPrefs` prop so
   // both the main app (full `useViewPrefs`) and the Library Reader
   // (`useReaderViewPrefs` session shim) supply the same shape. Consumers
@@ -1895,12 +1807,12 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
     clearBlankIfSet: viewPrefs?.clearBlankIfSet ?? stubSetActive,
   });
   const [dragHandleMenuState, setDragHandleMenuState] = useState<{
-    passage: DragHandlePassage;
+    ref: DragHandleRef;
     anchorRect: DOMRect;
   } | null>(null);
   const openDragHandleMenu = useCallback(
-    (passage: DragHandlePassage, anchorRect: DOMRect) => {
-      setDragHandleMenuState({ passage, anchorRect });
+    (ref: DragHandleRef, anchorRect: DOMRect) => {
+      setDragHandleMenuState({ ref, anchorRect });
     },
     [],
   );
@@ -4001,19 +3913,7 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
                     editable={editable}
                     onEditorReady={handleEditorReady}
                     anchoredUuidsRef={anchoredUuidsRef}
-                    paragraphIsPoppedRef={paragraphIsPoppedRef}
-                    onToggleParagraphPopout={handleToggleParagraphPopout}
-                    onLiftParagraph={handleLiftParagraph}
-                    headingIsPoppedRef={headingIsPoppedRef}
-                    onToggleHeadingPopout={handleToggleHeadingPopout}
-                    onLiftHeading={handleLiftHeading}
-                    listIsPoppedRef={listIsPoppedRef}
-                    onLiftList={handleLiftList}
-                    exampleIsPoppedRef={exampleIsPoppedRef}
-                    onToggleExamplePopout={handleToggleExamplePopout}
                     texBlockIsPoppedRef={texBlockIsPoppedRef}
-                    onLiftTexBlock={handleLiftTexBlock}
-                    onDragHandleClick={openDragHandleMenu}
                     onOpenHeadingTypeMenu={openHeadingTypeMenu}
                     onConfirmHeadingDelete={handleConfirmHeadingDelete}
                     onConfirmFigureDelete={handleConfirmFigureDelete}
@@ -4308,10 +4208,11 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
           {dragHandleMenuState && (
             <DragHandleMenu
               anchorRect={dragHandleMenuState.anchorRect}
+              kind={dragHandleMenuState.ref.kind}
               onSelect={(action) => {
-                const passage = dragHandleMenuState.passage;
+                const ref = dragHandleMenuState.ref;
                 closeDragHandleMenu();
-                dragHandleActions.dispatch(action, passage);
+                dragHandleActions.dispatch(action, ref);
               }}
               onClose={closeDragHandleMenu}
             />

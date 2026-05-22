@@ -53,8 +53,7 @@ import { normalizeRichContent } from "@/lib/footnote-content";
 import type { JSONContent as TipJSON } from "@tiptap/react";
 import MenuBar from "./MenuBar";
 import { createPopoutButtonEl } from "./panel-primitives";
-import { setCardLiftTarget, setCardLiftHandoff } from "./card-lift";
-import { SelectionDragHandle } from "./SelectionDragHandle";
+import { TextObjectGrabHandle } from "@/text-objects/TextObjectGrabHandle";
 import { SelectionActionsMenu } from "./SelectionActionsMenu";
 import { SlashCommandPopup } from "./SlashCommandPopup";
 import {
@@ -125,68 +124,17 @@ interface EditorProps {
   activeAnchorId?: string | null;
   /** Color token used for the active anchor highlight. Defaults to yellow. */
   activeAnchorColor?: string | null;
-  /**
-   * Click handler for the gutter popout button on each paragraph. Called
-   * with the paragraph's UUID (generated if missing). When omitted, the
-   * button still renders but is a no-op — wire it up via EditorLayout to
-   * actually open/close the floating paragraph card.
-   */
-  onToggleParagraphPopout?: (uuid: string, anchor?: DOMRect | null) => void;
-  /**
-   * Lift-off pop-out: the drag handle has been grabbed and dragged past
-   * the lift threshold. The caller positions the float at exactly the
-   * given viewport rect (cursor-anchored) and the pointer drag continues
-   * via the FloatingPanel handoff (see card-lift.ts). Replaces the old
-   * gutter pop-out button for paragraphs.
-   */
-  onLiftParagraph?: (uuid: string, rect: { x: number; y: number; width: number; height: number }) => void;
-  /**
-   * Ref to a predicate that reports whether a given paragraph UUID is
-   * currently popped out. The node view consults this on each render to
-   * swap the popout button's glyph (up arrow ↔ down arrow). When omitted,
-   * the button always renders as "docked".
-   */
-  paragraphIsPoppedRef?: React.RefObject<(uuid: string) => boolean>;
-  /** Same as onToggleParagraphPopout, but for headings (chapters/sections/etc.). */
-  onToggleHeadingPopout?: (uuid: string) => void;
-  /** Same as onLiftParagraph, but for headings (chapters/sections/etc.). */
-  onLiftHeading?: (uuid: string, rect: { x: number; y: number; width: number; height: number }) => void;
-  /** Same as paragraphIsPoppedRef, but for headings. */
-  headingIsPoppedRef?: React.RefObject<(uuid: string) => boolean>;
-  /** Same as onLiftParagraph, but for bullet / ordered lists. Spawns a
-   *  `ListFloat` at the given cursor-anchored rect. */
-  onLiftList?: (uuid: string, rect: { x: number; y: number; width: number; height: number }) => void;
-  /** Same as paragraphIsPoppedRef, but for lists. */
-  listIsPoppedRef?: React.RefObject<(uuid: string) => boolean>;
-  /** Same as onToggleParagraphPopout, but for `\ex` / `\pex` example blocks. */
-  onToggleExamplePopout?: (uuid: string, anchor?: DOMRect | null) => void;
-  /** Same as paragraphIsPoppedRef, but for example blocks. */
-  exampleIsPoppedRef?: React.RefObject<(uuid: string) => boolean>;
-  /** Same as onLiftParagraph, but for texBlock atoms. */
-  onLiftTexBlock?: (uuid: string, rect: { x: number; y: number; width: number; height: number }) => void;
-  /** Same as paragraphIsPoppedRef, but for texBlock atoms. */
+  /** Predicate reporting whether a given texBlock uuid is currently
+   *  popped out. The TexBlock NodeView consults this on every render to
+   *  toggle the `.is-popped` class on its wrapper (dim the in-doc pod
+   *  while the float is open). Other kinds don't have an analogous
+   *  in-doc affordance today; their `is-popped` predicates lived here
+   *  only to drive the now-deleted per-NodeView grips. */
   texBlockIsPoppedRef?: React.RefObject<(uuid: string) => boolean>;
   /** Doc id, passed into the FigureBlock / GraphicsBlock extensions so
    *  their NodeViews can resolve `\includegraphics` paths against the
    *  active paper folder. `null` is fine — figures just won't render. */
   docId?: string | null;
-  /**
-   * Callback invoked when the user clicks (without dragging) a
-   * paragraph or heading drag grip. Opens the passage-action menu
-   * anchored to the handle. EditorPane wires this to its own
-   * `openDragHandleMenu`; node-view imperative code stores it through
-   * the standard `Ref` mirror pattern. When omitted, click is a no-op.
-   */
-  onDragHandleClick?: (
-    passage:
-      | { kind: "paragraph"; paragraphId: string }
-      | { kind: "heading"; paragraphId: string }
-      // Any block atom (texBlock today; figureBlock / graphicsBlock /
-      // aiRequest when their handles are wired) — routed through the
-      // shared `atomBlock` kind so the dispatcher can plant a NodeSelection.
-      | { kind: "atomBlock"; paragraphId: string },
-    anchorRect: DOMRect,
-  ) => void;
   /**
    * When `false`, the TipTap editor mounts with `editable: false` and the
    * top-level drop / paste handlers no-op. Defaults to `true`. Used by
@@ -349,15 +297,6 @@ export interface EditorHandle {
    *  end. Silently no-ops if the UUID is no longer in the doc. Used to
    *  restore the last-edited paragraph from persisted UI state on reload. */
   restoreCursorToParagraph: (uuid: string) => void;
-  /** Tell every paragraph node view to re-read the popped predicate.
-   *  Called by EditorLayout whenever the popped-cards list changes so
-   *  the gutter popout-button glyph (arrow ↔ X) stays in sync when the
-   *  float is closed via its own X button. */
-  refreshParagraphPopouts: () => void;
-  /** Same as refreshParagraphPopouts, but for heading node views. */
-  refreshHeadingPopouts: () => void;
-  /** Same as refreshParagraphPopouts, but for `\ex` / `\pex` example blocks. */
-  refreshExamplePopouts: () => void;
 }
 
 /**
@@ -425,7 +364,7 @@ function findTextRange(editor: Editor, searchText: string): { from: number; to: 
 }
 
 const VirgilEditor = forwardRef<EditorHandle, EditorProps>(function VirgilEditor(
-  { initialContent, onUpdate, highlightText, highlightRange, onAddComment, onArchive, onEditorReady, onCitationDrop, onConfirmFootnoteMove, onConfirmLabelRename, isLabelTaken, anchoredUuidsRef, activeAnchorId, activeAnchorColor, onToggleParagraphPopout, onLiftParagraph, paragraphIsPoppedRef, onToggleHeadingPopout, onLiftHeading, headingIsPoppedRef, onLiftList, listIsPoppedRef, onToggleExamplePopout, exampleIsPoppedRef, onLiftTexBlock, texBlockIsPoppedRef, onDragHandleClick, onOpenHeadingTypeMenu, onConfirmHeadingDelete, onConfirmFigureDelete, documentClass, editable = true, docId = null },
+  { initialContent, onUpdate, highlightText, highlightRange, onAddComment, onArchive, onEditorReady, onCitationDrop, onConfirmFootnoteMove, onConfirmLabelRename, isLabelTaken, anchoredUuidsRef, activeAnchorId, activeAnchorColor, texBlockIsPoppedRef, onOpenHeadingTypeMenu, onConfirmHeadingDelete, onConfirmFigureDelete, documentClass, editable = true, docId = null },
   ref
 ) {
   const highlightTextRef = useRef(highlightText);
@@ -454,65 +393,17 @@ const VirgilEditor = forwardRef<EditorHandle, EditorProps>(function VirgilEditor
   const readOnlyRef = useRef(!editable);
   readOnlyRef.current = !editable;
   // Stable ref to the live TipTap editor instance — used by the
-  // SelectionDragHandle to subscribe to selectionUpdate / coords without
+  // TextObjectGrabHandle to subscribe to selectionUpdate / coords without
   // re-renders. Populated below via useEffect once `useEditor` returns
   // the instance.
   const editorInstanceRef = useRef<Editor | null>(null);
-  const onToggleParagraphPopoutRef = useRef(onToggleParagraphPopout);
-  onToggleParagraphPopoutRef.current = onToggleParagraphPopout;
-  const onLiftParagraphRef = useRef(onLiftParagraph);
-  onLiftParagraphRef.current = onLiftParagraph;
-  // Mirror `onDragHandleClick` for the imperative paragraph/heading
-  // node-view code (see drag-handle mousedown blocks below).
-  const onDragHandleClickRef = useRef(onDragHandleClick);
-  onDragHandleClickRef.current = onDragHandleClick;
-  const paragraphIsPoppedPredicateRef = useRef(paragraphIsPoppedRef);
-  paragraphIsPoppedPredicateRef.current = paragraphIsPoppedRef;
-  // Registry of live paragraph node views. Each node view adds itself on
-  // create and removes itself on destroy; EditorLayout triggers a refresh
-  // through this when the popped-cards list changes (e.g. the float's own
-  // close button runs, or state is restored from localStorage).
-  const paragraphPopoutRefreshersRef = useRef<Set<() => void>>(new Set());
-  // Same triplet for headings (chapters/sections/subsections etc.).
-  const onToggleHeadingPopoutRef = useRef(onToggleHeadingPopout);
-  onToggleHeadingPopoutRef.current = onToggleHeadingPopout;
-  const onLiftHeadingRef = useRef(onLiftHeading);
-  onLiftHeadingRef.current = onLiftHeading;
-  const headingIsPoppedPredicateRef = useRef(headingIsPoppedRef);
-  headingIsPoppedPredicateRef.current = headingIsPoppedRef;
-  const headingPopoutRefreshersRef = useRef<Set<() => void>>(new Set());
-  // Same triplet for lists. The list-level drag handle (added to
-  // createListTitleNodeView) uses these to power its lift-to-pop and
-  // "already popped" check.
-  const onLiftListRef = useRef(onLiftList);
-  onLiftListRef.current = onLiftList;
-  const listIsPoppedPredicateRef = useRef(listIsPoppedRef);
-  listIsPoppedPredicateRef.current = listIsPoppedRef;
-  // Same triplet for example blocks (`\ex` / `\pex`). Threaded into the
-  // ExampleBlock extension via .configure() so its node view can dispatch
-  // popout toggles and read the current popped state.
-  const onToggleExamplePopoutRef = useRef(onToggleExamplePopout);
-  onToggleExamplePopoutRef.current = onToggleExamplePopout;
-  const exampleIsPoppedPredicateRef = useRef(exampleIsPoppedRef);
-  exampleIsPoppedPredicateRef.current = exampleIsPoppedRef;
-  const examplePopoutRefreshersRef = useRef<Set<() => void>>(new Set());
-  // Same triplet for texBlock atoms — wired into TexBlock via .configure().
-  const onLiftTexBlockRef = useRef(onLiftTexBlock);
-  onLiftTexBlockRef.current = onLiftTexBlock;
+  // The texBlock NodeView reads this through its extension options to
+  // mirror the "popped out" state into the in-doc rendering (dim the
+  // pod while its float is open). Other kinds don't have an analogous
+  // is-popped affordance today — their refs lived here only to drive
+  // the now-deleted per-NodeView grips.
   const texBlockIsPoppedPredicateRef = useRef(texBlockIsPoppedRef);
   texBlockIsPoppedPredicateRef.current = texBlockIsPoppedRef;
-  // Adapter ref: block-atom NodeViews receive a `(uuid, rect) => void`
-  // click callback; this wraps the broader prop so individual extensions
-  // (tex-block.ts, future figure/graphics) don't need to know about the
-  // full passage union. The wrap uses `kind: "atomBlock"`, so any block
-  // atom can share this adapter as-is.
-  const onTexBlockDragHandleClickRef = useRef<
-    ((uuid: string, anchorRect: DOMRect) => void) | undefined
-  >(undefined);
-  onTexBlockDragHandleClickRef.current = onDragHandleClick
-    ? (uuid, rect) =>
-        onDragHandleClick({ kind: "atomBlock", paragraphId: uuid }, rect)
-    : undefined;
   // docId mirror — FigureBlock / GraphicsBlock NodeViews read it via
   // `extension.options.docIdRef.current` to resolve `\includegraphics`
   // paths against the active paper folder.
@@ -561,7 +452,9 @@ const VirgilEditor = forwardRef<EditorHandle, EditorProps>(function VirgilEditor
     addNodeView() {
       return ({ node, getPos, editor: nodeEditor }) => {
         let currentNode = node;
-        let dragHandleEl: HTMLElement | null = null;
+        // dragHandleEl is gone — the editor-mounted TextObjectGrabHandle
+        // (src/text-objects/TextObjectGrabHandle.tsx) handles every block
+        // kind now via the registry-driven, cursor/hover-following handle.
 
         // Detect if this paragraph is inside a list item or an expex example
         // block — skip title controls + drag handle so the inner text reads
@@ -615,154 +508,7 @@ const VirgilEditor = forwardRef<EditorHandle, EditorProps>(function VirgilEditor
         const p = document.createElement("p");
         pContainer.appendChild(p);
 
-        // 6-dot drag grip — vertical orientation, positioned just left of paragraph text
-        const SVG_NS = "http://www.w3.org/2000/svg";
-        const dragHandle = document.createElement("div");
-        dragHandle.className = "par-drag-handle";
-        dragHandle.setAttribute("data-drag-handle", "");
-        // Carry the paragraph's UUID so SelectionDragHandle's first-line
-        // supersession can address this exact handle via querySelector.
-        const initialParUuid = currentNode.attrs?.uuid as string | null;
-        if (initialParUuid) dragHandle.setAttribute("data-par-uuid", initialParUuid);
-        const svg = document.createElementNS(SVG_NS, "svg");
-        svg.setAttribute("width", "10");
-        svg.setAttribute("height", "14");
-        svg.setAttribute("viewBox", "0 0 10 14");
-        svg.setAttribute("fill", "currentColor");
-        for (const [cx, cy] of [[3,2],[7,2],[3,7],[7,7],[3,12],[7,12]]) {
-          const c = document.createElementNS(SVG_NS, "circle");
-          c.setAttribute("cx", String(cx));
-          c.setAttribute("cy", String(cy));
-          c.setAttribute("r", "1.2");
-          svg.appendChild(c);
-        }
-        dragHandle.appendChild(svg);
-        pContainer.appendChild(dragHandle);
-
-        // Lift-off gesture: grab the drag handle and drag past a small
-        // threshold to pop the paragraph out as a floating card. The
-        // handle is a pure mousedown-driven lift — HTML5 drag stays off.
-        dragHandle.draggable = false;
-        const LIFT_THRESHOLD = 5;
-        const FLOAT_W = 360;
-        const FLOAT_H = 280;
-
         wrapper.appendChild(pContainer);
-        dragHandleEl = dragHandle;
-
-        // Button-like press feedback on the grip itself.
-        dragHandle.addEventListener("mousedown", () => {
-          dragHandle.classList.add("is-pressed");
-        });
-        dragHandle.addEventListener("mouseup", () => {
-          dragHandle.classList.remove("is-pressed");
-        });
-
-        dragHandle.addEventListener("mousedown", (downEv) => {
-          if (downEv.button !== 0) return;
-          // Suppress native text selection unconditionally — clicking on
-          // the grip should never plant a caret in the paragraph or paint
-          // a selection across it, regardless of whether the lift gesture
-          // ultimately fires.
-          downEv.preventDefault();
-          // If already popped, the docked paragraph stays put; the user
-          // closes the float via its X button rather than re-grabbing.
-          const uuidNow = currentNode.attrs?.uuid as string | null;
-          const predicate = paragraphIsPoppedPredicateRef.current?.current;
-          if (uuidNow && predicate?.(uuidNow)) return;
-          const startX = downEv.clientX;
-          const startY = downEv.clientY;
-          let triggered = false;
-          const onMove = (mv: MouseEvent) => {
-            if (triggered) return;
-            const dx = mv.clientX - startX;
-            const dy = mv.clientY - startY;
-            if (dx * dx + dy * dy < LIFT_THRESHOLD * LIFT_THRESHOLD) return;
-            triggered = true;
-            const handlePos = typeof getPos === "function" ? getPos() : null;
-            if (handlePos == null) { cleanup(); return; }
-            let ensuredUuid = currentNode.attrs?.uuid as string | null;
-            if (!ensuredUuid) {
-              ensuredUuid = ensureAnchorUuid(nodeEditor.view, handlePos + 1);
-            }
-            if (!ensuredUuid) { cleanup(); return; }
-            // Brief lift-off highlight on the source paragraph.
-            const wrapperRect = wrapper.getBoundingClientRect();
-            setCardLiftTarget({
-              cardKey: `paragraph:${ensuredUuid}`,
-              rect: {
-                left: wrapperRect.left,
-                top: wrapperRect.top,
-                width: wrapperRect.width,
-                height: wrapperRect.height,
-              },
-            });
-            window.setTimeout(() => setCardLiftTarget(null), 150);
-            // Spawn the float centered on the cursor's x, slightly below
-            // the cursor's y so the user's grip sits inside the header.
-            const spawn = {
-              x: Math.round(mv.clientX - FLOAT_W / 2),
-              y: Math.round(mv.clientY - 16),
-              width: FLOAT_W,
-              height: FLOAT_H,
-            };
-            // Set the handoff BEFORE flipping to popped so the FloatCard's
-            // mount-time `consumeCardLiftHandoff` picks up the in-flight
-            // gesture without a frame gap.
-            setCardLiftHandoff({
-              cardKey: `paragraph:${ensuredUuid}`,
-              clientX: mv.clientX,
-              clientY: mv.clientY,
-              width: FLOAT_W,
-              height: FLOAT_H,
-            });
-            if (onLiftParagraphRef.current) {
-              onLiftParagraphRef.current(ensuredUuid, spawn);
-            } else {
-              // Fallback: legacy toggle (won't be cursor-perfect).
-              onToggleParagraphPopoutRef.current?.(
-                ensuredUuid,
-                new DOMRect(spawn.x, spawn.y, spawn.width, spawn.height),
-              );
-            }
-            cleanup();
-          };
-          const onUp = () => {
-            // No drag fired — treat as a plain click and open the
-            // passage-action menu for this paragraph.
-            if (!triggered) {
-              const open = onDragHandleClickRef.current;
-              if (open) {
-                let ensuredUuid = currentNode.attrs?.uuid as string | null;
-                if (!ensuredUuid) {
-                  const handlePos = typeof getPos === "function" ? getPos() : null;
-                  if (handlePos != null) {
-                    ensuredUuid = ensureAnchorUuid(nodeEditor.view, handlePos + 1);
-                  }
-                }
-                if (ensuredUuid) {
-                  const rect = dragHandle.getBoundingClientRect();
-                  open(
-                    { kind: "paragraph", paragraphId: ensuredUuid },
-                    rect,
-                  );
-                }
-              }
-            }
-            cleanup();
-          };
-          const cleanup = () => {
-            window.removeEventListener("mousemove", onMove);
-            window.removeEventListener("mouseup", onUp);
-            dragHandle.classList.remove("is-pressed");
-          };
-          window.addEventListener("mousemove", onMove);
-          window.addEventListener("mouseup", onUp);
-        });
-
-        // Hover detection is handled by editor-level mouseover delegation
-        // (see useEffect below) — per-wrapper listeners don't work reliably
-        // inside contentEditable.
 
         function setTitle(newTitle: string | null) {
           const pos = typeof getPos === "function" ? getPos() : null;
@@ -901,16 +647,6 @@ const VirgilEditor = forwardRef<EditorHandle, EditorProps>(function VirgilEditor
           dom: wrapper,
           contentDOM: p,
           stopEvent(event) {
-            // Swallow events on the drag grip — without this, PM resolves
-            // the mousedown to the nearest content (the paragraph text) and
-            // primes its selection machinery, so the subsequent mousemove
-            // paints a text selection across the paragraph during the lift
-            // gesture. The lift itself runs on window-level mousemove
-            // listeners attached in our own mousedown handler, so PM doesn't
-            // need to see these events.
-            if (dragHandleEl && (dragHandleEl === event.target || dragHandleEl.contains(event.target as Node))) {
-              return true;
-            }
             return (
               titleAnnot === event.target || titleAnnot.contains(event.target as Node)
             );
@@ -918,18 +654,11 @@ const VirgilEditor = forwardRef<EditorHandle, EditorProps>(function VirgilEditor
           ignoreMutation(mutation) {
             if (titleAnnot.contains(mutation.target)) return true;
             if (mutation.target === wrapper) return true;
-            if (dragHandle.contains(mutation.target)) return true;
             return false;
           },
           update(updatedNode) {
             if (updatedNode.type.name !== "paragraph") return false;
             currentNode = updatedNode;
-            const uuidAttr = updatedNode.attrs?.uuid as string | null;
-            if (uuidAttr) {
-              dragHandle.setAttribute("data-par-uuid", uuidAttr);
-            } else {
-              dragHandle.removeAttribute("data-par-uuid");
-            }
             if (!titleAnnot.querySelector("input")) renderAnnot();
             return true;
           },
@@ -987,127 +716,11 @@ const VirgilEditor = forwardRef<EditorHandle, EditorProps>(function VirgilEditor
       const listEl = document.createElement(tagName);
       wrapper.appendChild(listEl);
 
-      // 6-dot drag grip — mirrors the paragraph drag handle. The list
-      // wrapper is `position: relative` (see globals.css) and has no
-      // padding-left, so the standard `.par-drag-handle { left: -18px }`
-      // CSS rule places this handle in the same document gutter as
-      // paragraph handles. Bullets/numbers draw inside the inner
-      // `<ul>`/`<ol>` padding, so they don't overlap.
-      const SVG_NS = "http://www.w3.org/2000/svg";
-      const dragHandle = document.createElement("div");
-      dragHandle.className = "par-drag-handle";
-      dragHandle.setAttribute("data-drag-handle", "");
-      const initialListUuid = currentNode.attrs?.uuid as string | null;
-      if (initialListUuid) dragHandle.setAttribute("data-par-uuid", initialListUuid);
-      dragHandle.draggable = false;
-      const dhSvg = document.createElementNS(SVG_NS, "svg");
-      dhSvg.setAttribute("width", "10");
-      dhSvg.setAttribute("height", "14");
-      dhSvg.setAttribute("viewBox", "0 0 10 14");
-      dhSvg.setAttribute("fill", "currentColor");
-      for (const [cx, cy] of [[3,2],[7,2],[3,7],[7,7],[3,12],[7,12]]) {
-        const c = document.createElementNS(SVG_NS, "circle");
-        c.setAttribute("cx", String(cx));
-        c.setAttribute("cy", String(cy));
-        c.setAttribute("r", "1.2");
-        dhSvg.appendChild(c);
-      }
-      dragHandle.appendChild(dhSvg);
-      wrapper.appendChild(dragHandle);
-
-      const LIST_LIFT_THRESHOLD = 5;
-      const LIST_FLOAT_W = 480;
-      const LIST_FLOAT_H = 360;
-
-      // Button-like press feedback on the grip itself.
-      dragHandle.addEventListener("mousedown", () => {
-        dragHandle.classList.add("is-pressed");
-      });
-      dragHandle.addEventListener("mouseup", () => {
-        dragHandle.classList.remove("is-pressed");
-      });
-
-      // Click → open passage-action menu; drag past threshold → lift the
-      // whole list as a float. Mirrors the paragraph mousedown handler.
-      dragHandle.addEventListener("mousedown", (downEv) => {
-        if (downEv.button !== 0) return;
-        downEv.preventDefault();
-        const uuidNow = currentNode.attrs?.uuid as string | null;
-        const predicate = listIsPoppedPredicateRef.current?.current;
-        if (uuidNow && predicate?.(uuidNow)) return;
-        const startX = downEv.clientX;
-        const startY = downEv.clientY;
-        let triggered = false;
-        const onMove = (mv: MouseEvent) => {
-          if (triggered) return;
-          const dx = mv.clientX - startX;
-          const dy = mv.clientY - startY;
-          if (dx * dx + dy * dy < LIST_LIFT_THRESHOLD * LIST_LIFT_THRESHOLD) return;
-          triggered = true;
-          const handlePos = typeof getPos === "function" ? getPos() : null;
-          if (handlePos == null) { cleanup(); return; }
-          let ensuredUuid = currentNode.attrs?.uuid as string | null;
-          if (!ensuredUuid) {
-            ensuredUuid = ensureAnchorUuid(nodeEditor.view, handlePos + 1);
-          }
-          if (!ensuredUuid) { cleanup(); return; }
-          const wrapperRect = wrapper.getBoundingClientRect();
-          setCardLiftTarget({
-            cardKey: `list:${ensuredUuid}`,
-            rect: {
-              left: wrapperRect.left,
-              top: wrapperRect.top,
-              width: wrapperRect.width,
-              height: wrapperRect.height,
-            },
-          });
-          window.setTimeout(() => setCardLiftTarget(null), 150);
-          const spawn = {
-            x: Math.round(mv.clientX - LIST_FLOAT_W / 2),
-            y: Math.round(mv.clientY - 16),
-            width: LIST_FLOAT_W,
-            height: LIST_FLOAT_H,
-          };
-          setCardLiftHandoff({
-            cardKey: `list:${ensuredUuid}`,
-            clientX: mv.clientX,
-            clientY: mv.clientY,
-            width: LIST_FLOAT_W,
-            height: LIST_FLOAT_H,
-          });
-          onLiftListRef.current?.(ensuredUuid, spawn);
-          cleanup();
-        };
-        const onUp = () => {
-          if (!triggered) {
-            const open = onDragHandleClickRef.current;
-            if (open) {
-              let ensuredUuid = currentNode.attrs?.uuid as string | null;
-              if (!ensuredUuid) {
-                const handlePos = typeof getPos === "function" ? getPos() : null;
-                if (handlePos != null) {
-                  ensuredUuid = ensureAnchorUuid(nodeEditor.view, handlePos + 1);
-                }
-              }
-              if (ensuredUuid) {
-                const rect = dragHandle.getBoundingClientRect();
-                open(
-                  { kind: "paragraph", paragraphId: ensuredUuid },
-                  rect,
-                );
-              }
-            }
-          }
-          cleanup();
-        };
-        const cleanup = () => {
-          window.removeEventListener("mousemove", onMove);
-          window.removeEventListener("mouseup", onUp);
-          dragHandle.classList.remove("is-pressed");
-        };
-        window.addEventListener("mousemove", onMove);
-        window.addEventListener("mouseup", onUp);
-      });
+      // The grip is gone — the editor-mounted TextObjectGrabHandle
+      // (src/text-objects/TextObjectGrabHandle.tsx) handles bulletList /
+      // orderedList lift via the registry-driven, cursor/hover-following
+      // handle. The list wrapper keeps its `position: relative` so the
+      // editor-level handle can pin to its gutter via DOM-rect math.
 
       function setTitle(newTitle: string | null) {
         const pos = typeof getPos === "function" ? getPos() : null;
@@ -1219,11 +832,6 @@ const VirgilEditor = forwardRef<EditorHandle, EditorProps>(function VirgilEditor
         dom: wrapper,
         contentDOM: listEl,
         stopEvent(event: any) {
-          // Swallow events on the drag grip so PM doesn't prime a text
-          // selection on the bullet zone while the lift gesture runs.
-          if (dragHandle === event.target || dragHandle.contains(event.target as Node)) {
-            return true;
-          }
           return (
             titleAnnot === event.target || titleAnnot.contains(event.target as Node)
           );
@@ -1231,18 +839,11 @@ const VirgilEditor = forwardRef<EditorHandle, EditorProps>(function VirgilEditor
         ignoreMutation(mutation: any) {
           if (mutation.target && titleAnnot.contains(mutation.target)) return true;
           if (mutation.target === wrapper) return true;
-          if (dragHandle.contains(mutation.target as Node)) return true;
           return false;
         },
         update(updatedNode: any) {
           if (updatedNode.type.name !== typeName) return false;
           currentNode = updatedNode;
-          const uuidAttr = updatedNode.attrs?.uuid as string | null;
-          if (uuidAttr) {
-            dragHandle.setAttribute("data-par-uuid", uuidAttr);
-          } else {
-            dragHandle.removeAttribute("data-par-uuid");
-          }
           if (!titleAnnot.querySelector("input")) renderAnnot();
           return true;
         },
@@ -1457,143 +1058,11 @@ const VirgilEditor = forwardRef<EditorHandle, EditorProps>(function VirgilEditor
         annot.contentEditable = "false";
         wrapper.appendChild(annot);
 
-        // 6-dot drag grip — same shape and behaviour as the paragraph drag
-        // handle. The handle is the lift affordance: a small mousemove past
-        // LIFT_THRESHOLD pops the heading out as a floating card.
-        //
-        // HTML5 drag is left disabled here (`draggable = false`): the
-        // previous heading-into-panel cross-editor drop is replaced by the
-        // lift gesture. Closing the float happens via the float's own X
-        // button.
-        const SVG_NS_DH = "http://www.w3.org/2000/svg";
-        const headingDrag = document.createElement("div");
-        headingDrag.className = "heading-drag-handle";
-        headingDrag.draggable = false;
-        const dhSvg = document.createElementNS(SVG_NS_DH, "svg");
-        dhSvg.setAttribute("width", "10");
-        dhSvg.setAttribute("height", "14");
-        dhSvg.setAttribute("viewBox", "0 0 10 14");
-        dhSvg.setAttribute("fill", "currentColor");
-        for (const [cx, cy] of [[3,2],[7,2],[3,7],[7,7],[3,12],[7,12]]) {
-          const c = document.createElementNS(SVG_NS_DH, "circle");
-          c.setAttribute("cx", String(cx));
-          c.setAttribute("cy", String(cy));
-          c.setAttribute("r", "1.2");
-          dhSvg.appendChild(c);
-        }
-        headingDrag.appendChild(dhSvg);
-        wrapper.appendChild(headingDrag);
-
-        const HEADING_LIFT_THRESHOLD = 5;
-        const HEADING_FLOAT_W = 480;
-        const HEADING_FLOAT_H = 360;
-
-        // Button-like press feedback on the grip itself.
-        headingDrag.addEventListener("mousedown", () => {
-          headingDrag.classList.add("is-pressed");
-        });
-        headingDrag.addEventListener("mouseup", () => {
-          headingDrag.classList.remove("is-pressed");
-        });
-
-        headingDrag.addEventListener("mousedown", (downEv) => {
-          if (downEv.button !== 0) return;
-          // Suppress native text selection unconditionally — clicking on
-          // the grip should never plant a caret in the heading or paint
-          // a selection across it, regardless of whether the lift gesture
-          // ultimately fires.
-          downEv.preventDefault();
-          // If already popped, the docked heading stays put; the user
-          // closes the float via its X button rather than re-grabbing.
-          const uuidNow = currentNode.attrs?.uuid as string | null;
-          const predicate = headingIsPoppedPredicateRef.current?.current;
-          if (uuidNow && predicate?.(uuidNow)) return;
-          const startX = downEv.clientX;
-          const startY = downEv.clientY;
-          let triggered = false;
-          const onMove = (mv: MouseEvent) => {
-            if (triggered) return;
-            const dx = mv.clientX - startX;
-            const dy = mv.clientY - startY;
-            if (dx * dx + dy * dy < HEADING_LIFT_THRESHOLD * HEADING_LIFT_THRESHOLD) return;
-            triggered = true;
-            const handlePos = typeof getPos === "function" ? getPos() : null;
-            if (handlePos == null) { cleanup(); return; }
-            let ensuredUuid = currentNode.attrs?.uuid as string | null;
-            if (!ensuredUuid) {
-              ensuredUuid = ensureAnchorUuid(nodeEditor.view, handlePos + 1);
-            }
-            if (!ensuredUuid) { cleanup(); return; }
-            // Brief lift-off highlight on the source heading.
-            const wrapperRect = wrapper.getBoundingClientRect();
-            setCardLiftTarget({
-              cardKey: `heading:${ensuredUuid}`,
-              rect: {
-                left: wrapperRect.left,
-                top: wrapperRect.top,
-                width: wrapperRect.width,
-                height: wrapperRect.height,
-              },
-            });
-            window.setTimeout(() => setCardLiftTarget(null), 150);
-            // Spawn the float centered on the cursor's x, slightly below
-            // the cursor's y so the user's grip sits inside the header.
-            const spawn = {
-              x: Math.round(mv.clientX - HEADING_FLOAT_W / 2),
-              y: Math.round(mv.clientY - 16),
-              width: HEADING_FLOAT_W,
-              height: HEADING_FLOAT_H,
-            };
-            // Set the handoff BEFORE flipping to popped so the FloatCard's
-            // mount-time `consumeCardLiftHandoff` picks up the in-flight
-            // gesture without a frame gap.
-            setCardLiftHandoff({
-              cardKey: `heading:${ensuredUuid}`,
-              clientX: mv.clientX,
-              clientY: mv.clientY,
-              width: HEADING_FLOAT_W,
-              height: HEADING_FLOAT_H,
-            });
-            if (onLiftHeadingRef.current) {
-              onLiftHeadingRef.current(ensuredUuid, spawn);
-            } else {
-              // Fallback: legacy toggle (won't be cursor-perfect).
-              onToggleHeadingPopoutRef.current?.(ensuredUuid);
-            }
-            cleanup();
-          };
-          const onUp = () => {
-            // No drag fired — treat as a plain click and open the
-            // passage-action menu for this section.
-            if (!triggered) {
-              const open = onDragHandleClickRef.current;
-              if (open) {
-                let ensuredUuid = currentNode.attrs?.uuid as string | null;
-                if (!ensuredUuid) {
-                  const handlePos = typeof getPos === "function" ? getPos() : null;
-                  if (handlePos != null) {
-                    ensuredUuid = ensureAnchorUuid(nodeEditor.view, handlePos + 1);
-                  }
-                }
-                if (ensuredUuid) {
-                  const rect = headingDrag.getBoundingClientRect();
-                  open(
-                    { kind: "heading", paragraphId: ensuredUuid },
-                    rect,
-                  );
-                }
-              }
-            }
-            cleanup();
-          };
-          const cleanup = () => {
-            window.removeEventListener("mousemove", onMove);
-            window.removeEventListener("mouseup", onUp);
-            headingDrag.classList.remove("is-pressed");
-          };
-          window.addEventListener("mousemove", onMove);
-          window.addEventListener("mouseup", onUp);
-        });
+        // The grip is gone — the editor-mounted TextObjectGrabHandle
+        // (src/text-objects/TextObjectGrabHandle.tsx) handles heading
+        // lift + click-to-menu via the registry-driven, cursor/hover-
+        // following handle. HTML5 drag stays disabled at the wrapper
+        // level; cross-editor drops route through drop-mode.
 
         function getTypeName(n: typeof node) {
           return headingTypeName(n.attrs.level as number);
@@ -1942,7 +1411,6 @@ const VirgilEditor = forwardRef<EditorHandle, EditorProps>(function VirgilEditor
             // Mutations inside the fold chevron (contentEditable=false) should
             // also be ignored.
             if (foldBtn.contains(mutation.target)) return true;
-            if (headingDrag.contains(mutation.target)) return true;
             return false;
           },
           destroy() {
@@ -2177,9 +1645,7 @@ const VirgilEditor = forwardRef<EditorHandle, EditorProps>(function VirgilEditor
       BlockquoteWithUuid,
       CodeBlockWithUuid,
       TexBlock.configure({
-        onLiftRef: onLiftTexBlockRef,
         isPoppedRef: texBlockIsPoppedPredicateRef,
-        onDragHandleClickRef: onTexBlockDragHandleClickRef,
       }),
       FigureBlock.configure({
         docIdRef,
@@ -2201,11 +1667,7 @@ const VirgilEditor = forwardRef<EditorHandle, EditorProps>(function VirgilEditor
       LatexComment,
       Citation,
       LabelRef,
-      ExampleBlock.configure({
-        onTogglePopoutRef: onToggleExamplePopoutRef,
-        isPoppedRef: exampleIsPoppedPredicateRef,
-        refresherRegistryRef: examplePopoutRefreshersRef,
-      }),
+      ExampleBlock,
       ExampleItemList,
       ExampleItem,
       ExampleGloss,
@@ -3664,15 +3126,6 @@ const VirgilEditor = forwardRef<EditorHandle, EditorProps>(function VirgilEditor
         /* position out of range — silently skip */
       }
     },
-    refreshParagraphPopouts(): void {
-      paragraphPopoutRefreshersRef.current.forEach((fn) => fn());
-    },
-    refreshHeadingPopouts(): void {
-      headingPopoutRefreshersRef.current.forEach((fn) => fn());
-    },
-    refreshExamplePopouts(): void {
-      examplePopoutRefreshersRef.current.forEach((fn) => fn());
-    },
   }), [editor]);
 
   const applyHighlight = useCallback(() => {
@@ -3796,7 +3249,7 @@ const VirgilEditor = forwardRef<EditorHandle, EditorProps>(function VirgilEditor
   return (
     <div className="flex flex-col flex-1 min-w-0">
       <EditorContent editor={editor} />
-      <SelectionDragHandle editorRef={editorInstanceRef} />
+      <TextObjectGrabHandle editorRef={editorInstanceRef} />
       <SelectionActionsMenu editorRef={editorInstanceRef} />
       <SlashCommandPopup editorRef={editorInstanceRef} />
     </div>

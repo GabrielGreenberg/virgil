@@ -922,41 +922,12 @@ export default function EditorLayout() {
   // ping the editor so every paragraph node view rebuilds its glyph.
   // (The ref EditorPane passes to its VirgilEditor handles the per-render
   // glyph predicate; this just nudges the editor on prefs change.)
-  const paragraphPoppedKeys = useMemo(
-    () =>
-      prefs.poppedOutCards
-        .filter((k) => k.startsWith("paragraph:"))
-        .sort()
-        .join("|"),
-    [prefs.poppedOutCards],
-  );
-  useEffect(() => {
-    editorRef.current?.refreshParagraphPopouts();
-  }, [paragraphPoppedKeys]);
-  // Same setup for headings.
-  const headingPoppedKeys = useMemo(
-    () =>
-      prefs.poppedOutCards
-        .filter((k) => k.startsWith("heading:"))
-        .sort()
-        .join("|"),
-    [prefs.poppedOutCards],
-  );
-  useEffect(() => {
-    editorRef.current?.refreshHeadingPopouts();
-  }, [headingPoppedKeys]);
-  // Same setup for example blocks.
-  const examplePoppedKeys = useMemo(
-    () =>
-      prefs.poppedOutCards
-        .filter((k) => k.startsWith("example:"))
-        .sort()
-        .join("|"),
-    [prefs.poppedOutCards],
-  );
-  useEffect(() => {
-    editorRef.current?.refreshExamplePopouts();
-  }, [examplePoppedKeys]);
+  // The paragraph / heading / example refreshers used to be needed by
+  // the per-NodeView gutter popout buttons to flip their glyphs when
+  // popout state changed externally. After Phase D4 (grab-handle
+  // unification), those buttons are gone and the editor-mounted
+  // TextObjectGrabHandle subscribes to viewPrefs directly via
+  // `usePoppedCards()` — no manual refresh ping needed.
   const [editorInstance, setEditorInstance] = useState<Editor | null>(null);
   // When a panel mini-editor (e.g. footnote RichTextField) is focused,
   // the main toolbar should route commands to it instead of the main editor.

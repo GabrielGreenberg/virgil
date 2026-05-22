@@ -1,23 +1,14 @@
 import { Node, Extension, mergeAttributes } from "@tiptap/react";
 import { Plugin, PluginKey } from "@tiptap/pm/state";
-import { TextSelection, NodeSelection } from "@tiptap/pm/state";
-import type { RefObject } from "react";
+import { TextSelection } from "@tiptap/pm/state";
 import { generateShortId } from "@/lib/uuid";
-import { createPopoutButtonEl } from "@/components/panel-primitives";
 
+// The exampleBlock NodeView no longer hosts a grip or popout button — the
+// editor-mounted TextObjectGrabHandle handles both. No per-extension
+// options needed for grip/popout wiring.
 export interface ExampleBlockOptions {
-  /** React ref to a callback dispatched when the user clicks the gutter
-   *  popout button on an example block. The example's uuid (auto-assigned
-   *  if missing) is passed alongside the popout button's anchor rect so
-   *  the EditorLayout can spawn the float near the click. */
-  onTogglePopoutRef: RefObject<((uuid: string, anchor?: DOMRect | null) => void) | undefined> | null;
-  /** React ref-of-ref reporting whether a given example uuid is currently
-   *  popped out. Read on each render to flip the popout button's glyph. */
-  isPoppedRef: RefObject<RefObject<(uuid: string) => boolean> | undefined> | null;
-  /** Optional registry of refresh callbacks. Each node view registers
-   *  itself; the Editor pings the set when poppedOutCards changes from
-   *  outside the gutter button so glyphs stay in sync. */
-  refresherRegistryRef: RefObject<Set<() => void> | undefined> | null;
+  /** Reserved — currently unused. */
+  _placeholder?: never;
 }
 
 function collectExampleIds(doc: import("@tiptap/pm/model").Node): Set<string> {
@@ -118,11 +109,7 @@ export const ExampleBlock = Node.create<ExampleBlockOptions>({
   group: "block textObject",
 
   addOptions() {
-    return {
-      onTogglePopoutRef: null,
-      isPoppedRef: null,
-      refresherRegistryRef: null,
-    };
+    return {};
   },
   // Free-order content: paragraphs, gloss blocks, and item lists can
   // interleave in any order. The relaxed schema lets list-item Shift-Tab
@@ -474,139 +461,11 @@ export const ExampleBlock = Node.create<ExampleBlockOptions>({
       if (node.attrs.tag) dom.dataset.tag = node.attrs.tag;
       if (node.attrs.label) dom.dataset.label = node.attrs.label;
 
-      // 6-dot drag grip on the far-left gutter, outside the number column.
-      // Drag picks up the whole exampleBlock (schema has draggable:true).
-      const SVG_NS = "http://www.w3.org/2000/svg";
-      const dragHandle = document.createElement("div");
-      dragHandle.className = "par-drag-handle expex-drag-handle";
-      dragHandle.setAttribute("data-drag-handle", "");
-      dragHandle.draggable = true;
-      const svg = document.createElementNS(SVG_NS, "svg");
-      svg.setAttribute("width", "10");
-      svg.setAttribute("height", "14");
-      svg.setAttribute("viewBox", "0 0 10 14");
-      svg.setAttribute("fill", "currentColor");
-      for (const [cx, cy] of [
-        [3, 2], [7, 2], [3, 7], [7, 7], [3, 12], [7, 12],
-      ]) {
-        const c = document.createElementNS(SVG_NS, "circle");
-        c.setAttribute("cx", String(cx));
-        c.setAttribute("cy", String(cy));
-        c.setAttribute("r", "1.2");
-        svg.appendChild(c);
-      }
-      dragHandle.appendChild(svg);
-      dom.appendChild(dragHandle);
-
-      // Visual feedback while held / dragged — same pattern as paragraph.
-      // Also force-select the whole exampleBlock as a NodeSelection on
-      // mousedown: PM's mousedown handler resolves coords-to-pos by
-      // proximity to *content*, and the handle sits in the far-left
-      // gutter where the closest content is the first paragraph inside
-      // `body`. Without this transaction PM would set up `mightDrag` for
-      // the inner paragraph (or skip it entirely), so the subsequent
-      // dragstart drags the wrong slice and the drop is a no-op. By
-      // setting a NodeSelection on the block before dragstart, PM's
-      // dragstart short-circuits and uses the block's slice directly.
-      dragHandle.addEventListener("mousedown", (e) => {
-        dragHandle.classList.add("is-pressed");
-        if ((e as MouseEvent).button !== 0) return;
-        const handlePos = typeof getPos === "function" ? getPos() : null;
-        if (handlePos == null) return;
-        const { state } = editor;
-        const $pos = state.doc.resolve(handlePos);
-        const node = $pos.nodeAfter;
-        if (!node || node.type.name !== "exampleBlock") return;
-        const sel = NodeSelection.create(state.doc, handlePos);
-        const tr = state.tr.setSelection(sel);
-        tr.setMeta("addToHistory", false);
-        editor.view.dispatch(tr);
-      });
-      dragHandle.addEventListener("dragend", () => {
-        dragHandle.classList.remove("is-pressed");
-      });
-      dragHandle.addEventListener("mouseup", () => {
-        dragHandle.classList.remove("is-pressed");
-      });
-
-      // Custom drag image — by default the browser uses the drag handle
-      // (a tiny 12px grip) as the image, which makes it impossible to see
-      // what's being moved. Use the example block itself as the ghost so
-      // the user can see the (n)+body trailing the cursor, and let
-      // ProseMirror handle the actual node drag via data-drag-handle.
-      dragHandle.addEventListener("dragstart", (e) => {
-        const dt = (e as DragEvent).dataTransfer;
-        if (dt) {
-          const ghost = dom.cloneNode(true) as HTMLElement;
-          // Strip our chrome from the ghost so it shows just (n) + body.
-          ghost.querySelectorAll(".par-drag-handle, .expex-popout-btn").forEach((n) => n.remove());
-          const cs = window.getComputedStyle(dom);
-          const w = dom.offsetWidth;
-          ghost.style.cssText =
-            "position:absolute;top:-9999px;left:-9999px;" +
-            (w > 0 ? `width:${w}px;` : "max-width:520px;") +
-            "opacity:0.5;margin:0;padding:0;background:transparent;" +
-            `color:${cs.color};` +
-            `font-family:${cs.fontFamily};` +
-            `font-size:${cs.fontSize};` +
-            "pointer-events:none;";
-          document.body.appendChild(ghost);
-          dt.setDragImage(ghost, 12, 12);
-          requestAnimationFrame(() => {
-            try { document.body.removeChild(ghost); } catch {}
-          });
-        }
-      });
-
-      // Popout button — sits in the same gutter strip as the drag handle,
-      // hover-revealed via the par-left-margin-zone. Wires through
-      // refs configured at the editor level so EditorLayout can pop a
-      // floating example card next to the block. Mirror the paragraph /
-      // heading pattern: track local popped state, sync it from the
-      // predicate ref each render, register a refresher so external
-      // changes (float close, prefs restore) keep the glyph in sync.
-      let popoutBtnEl: HTMLButtonElement | null = null;
-      let poppedState = false;
-      const syncPoppedFromPredicate = () => {
-        const uuid = currentNode.attrs?.uuid as string | null;
-        const predicate = opts.isPoppedRef?.current?.current;
-        if (uuid && predicate) poppedState = predicate(uuid);
-      };
-      const renderPopoutBtn = () => {
-        const next = createPopoutButtonEl({
-          isPoppedOut: poppedState,
-          variant: "x",
-          labelNoun: "example",
-          extraClass: "expex-popout-btn",
-          onClick: (anchor) => {
-            const uuid = (currentNode.attrs?.uuid as string | null) ?? null;
-            if (!uuid) return;
-            opts.onTogglePopoutRef?.current?.(uuid, anchor);
-            poppedState = !poppedState;
-            renderPopoutBtn();
-          },
-        });
-        if (popoutBtnEl && popoutBtnEl.parentNode === dom) {
-          dom.replaceChild(next, popoutBtnEl);
-        } else {
-          dom.appendChild(next);
-        }
-        popoutBtnEl = next;
-      };
-      syncPoppedFromPredicate();
-      renderPopoutBtn();
-
-      const refresher = () => {
-        const uuid = currentNode.attrs?.uuid as string | null;
-        const predicate = opts.isPoppedRef?.current?.current;
-        if (!uuid || !predicate) return;
-        const actual = predicate(uuid);
-        if (actual !== poppedState) {
-          poppedState = actual;
-          renderPopoutBtn();
-        }
-      };
-      opts.refresherRegistryRef?.current?.add(refresher);
+      // The grip and the in-gutter popout button moved to the editor-
+      // mounted TextObjectGrabHandle (src/text-objects/TextObjectGrabHandle.tsx).
+      // The handle drives lift-to-float for exampleBlock + exampleItem
+      // alike via the registry; HTML5 drag-to-reorder routes through
+      // the drop-mode infrastructure (Phase D6).
 
       const numberEl = document.createElement("span");
       numberEl.className = "expex-number";
@@ -855,8 +714,6 @@ export const ExampleBlock = Node.create<ExampleBlockOptions>({
           if (!target) return false;
           if (titleAnnot === target || titleAnnot.contains(target)) return true;
           if (labelAnnot === target || labelAnnot.contains(target)) return true;
-          if (dragHandle === target || dragHandle.contains(target)) return true;
-          if (popoutBtnEl && (popoutBtnEl === target || popoutBtnEl.contains(target))) return true;
           if (leftZone === target || leftZone.contains(target)) return true;
           return false;
         },
@@ -864,8 +721,6 @@ export const ExampleBlock = Node.create<ExampleBlockOptions>({
           const t = mutation.target as globalThis.Node;
           if (titleAnnot.contains(t)) return true;
           if (labelAnnot.contains(t)) return true;
-          if (dragHandle.contains(t)) return true;
-          if (popoutBtnEl && popoutBtnEl.contains(t)) return true;
           if (leftZone.contains(t)) return true;
           return false;
         },
@@ -887,15 +742,9 @@ export const ExampleBlock = Node.create<ExampleBlockOptions>({
           // Re-render title annot only if not currently being edited.
           if (!titleAnnot.querySelector("input")) renderTitle();
           if (!labelAnnot.querySelector("input")) renderLabelAnnot();
-          // Keep the popout glyph in sync if uuid arrives later or the
-          // popped state was changed externally.
-          syncPoppedFromPredicate();
-          renderPopoutBtn();
           return true;
         },
-        destroy() {
-          opts.refresherRegistryRef?.current?.delete(refresher);
-        },
+        destroy() {},
       };
     };
   },

@@ -5,32 +5,22 @@ import { generateShortId } from "@/lib/uuid";
 import TexBlockNodeView from "@/components/TexBlockNodeView";
 
 // Options injected from Editor.tsx via `TexBlock.configure({…})` so the
-// NodeView can dispatch lift-to-float and read the popped-out state. The
-// double-ref shape on `isPoppedRef` mirrors the ExampleBlock convention:
-// the outer ref tracks the (sometimes-changing) inner ref's identity, the
-// inner ref holds the live predicate. See ParagraphWithTitle node view in
-// Editor.tsx for the equivalent paragraph wiring.
+// NodeView can read the popped-out state. Lift + click-to-menu live in
+// the editor-mounted TextObjectGrabHandle
+// (src/text-objects/TextObjectGrabHandle.tsx); they are no longer per-
+// NodeView concerns. The NodeView keeps `isPoppedRef` so the in-doc
+// rendering can dim while the popout is open.
+//
+// `isPoppedRef`'s double-ref shape mirrors the ExampleBlock convention:
+// the outer ref tracks the (sometimes-changing) inner ref's identity,
+// the inner ref holds the live predicate.
 export interface TexBlockOptions {
-  onLiftRef: RefObject<
-    | ((
-        uuid: string,
-        rect: { x: number; y: number; width: number; height: number },
-      ) => void)
-    | undefined
-  > | null;
   isPoppedRef: RefObject<RefObject<(uuid: string) => boolean> | undefined> | null;
-  // Mirrors the paragraph/heading drag-handle pattern: a click on the
-  // grip (mouseup within the LIFT_THRESHOLD) opens the passage-action
-  // menu anchored to the handle's rect.
-  onDragHandleClickRef: RefObject<
-    | ((uuid: string, anchorRect: DOMRect) => void)
-    | undefined
-  > | null;
   // When true, the NodeView renders a compact static preview (no
-  // CodeMirror, no grab handle, no edit/delete chrome). Set by every
-  // card-bearing rich-text surface (RichTextField + HeadingFloat) so
-  // block atoms round-trip through archive / note / cut / heading-float
-  // bodies without TipTap silently dropping them as unknown nodes.
+  // CodeMirror, no edit/delete chrome). Set by every card-bearing
+  // rich-text surface (RichTextField + HeadingFloat) so block atoms
+  // round-trip through archive / note / cut / heading-float bodies
+  // without TipTap silently dropping them as unknown nodes.
   cardContext: boolean;
 }
 
@@ -50,9 +40,7 @@ export const TexBlock = Node.create<TexBlockOptions>({
 
   addOptions() {
     return {
-      onLiftRef: null,
       isPoppedRef: null,
-      onDragHandleClickRef: null,
       cardContext: false,
     };
   },

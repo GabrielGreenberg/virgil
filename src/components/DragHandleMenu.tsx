@@ -13,7 +13,7 @@
  * keybindings.
  */
 
-import { useEffect, useRef } from "react";
+import { useEffect, useMemo, useRef } from "react";
 import { createPortal } from "react-dom";
 import {
   IconArchive,
@@ -30,7 +30,16 @@ import {
   useFloatingMenuPosition,
   type FloatingMenuPlacement,
 } from "@/hooks/useFloatingMenuPosition";
+import {
+  TEXT_OBJECT_REGISTRY,
+  isTextObjectKind,
+} from "@/text-objects/text-object-registry";
+import type { TextObjectKind } from "@/text-objects/types";
 
+// The action union is owned here so the registry's per-kind action lists
+// in `text-object-registry.ts` constrain a subset of this union — the
+// menu is the source of truth for the global vocabulary, the registry
+// for the per-kind subset.
 export type DragHandleAction =
   | "footnote"
   | "citation"
@@ -78,9 +87,26 @@ interface Props {
   anchorRect: DOMRect | { left: number; top: number; right: number; bottom: number; width: number; height: number };
   onSelect: (action: DragHandleAction) => void;
   onClose: () => void;
+  /** The kind that opened the menu. Used to filter `MENU_ENTRIES` by the
+   *  registry's per-kind `actions` set. `"selection"` is the gesture-
+   *  input case and exposes the full action list (matches today's
+   *  behavior). Omit to expose the full list as well — defensive
+   *  default for legacy call sites until they pass a ref. */
+  kind?: TextObjectKind | "selection";
 }
 
-export function DragHandleMenu({ anchorRect, onSelect, onClose }: Props) {
+export function DragHandleMenu({ anchorRect, onSelect, onClose, kind }: Props) {
+  // Filter the global `MENU_ENTRIES` by what the registry advertises for
+  // this kind. Today every kind exposes `ALL_ACTIONS`, so this is a
+  // no-op visually — but the seam means per-kind filtering becomes a
+  // one-line registry change later (e.g. dropping `archive` from
+  // `linkedRange`).
+  const entries = useMemo(() => {
+    if (!kind || kind === "selection") return MENU_ENTRIES;
+    if (!isTextObjectKind(kind)) return MENU_ENTRIES;
+    const allowed = new Set(TEXT_OBJECT_REGISTRY[kind].actions);
+    return MENU_ENTRIES.filter((m) => allowed.has(m.action));
+  }, [kind]);
   const menuRef = useRef<HTMLDivElement | null>(null);
   // Left of the handle by default so the menu doesn't cover the grip or
   // the prose to its right; flip right if there's no room on the left.
@@ -108,7 +134,7 @@ export function DragHandleMenu({ anchorRect, onSelect, onClose }: Props) {
       if (e.metaKey || e.ctrlKey || e.altKey) return;
       if (e.key.length !== 1) return;
       const letter = e.key.toUpperCase();
-      const hit = MENU_ENTRIES.find((m) => m.letter === letter);
+      const hit = entries.find((m) => m.letter === letter);
       if (hit) {
         e.preventDefault();
         onSelect(hit.action);
@@ -151,7 +177,7 @@ export function DragHandleMenu({ anchorRect, onSelect, onClose }: Props) {
       // selection — opening the menu shouldn't shift the editor caret.
       onMouseDown={(e) => e.stopPropagation()}
     >
-      {MENU_ENTRIES.map((entry) => (
+      {entries.map((entry) => (
         <div key={entry.action}>
           {entry.separator && (
             <div

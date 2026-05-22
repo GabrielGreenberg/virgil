@@ -6,12 +6,7 @@ import CodeMirror, { EditorView } from "@uiw/react-codemirror";
 import { latex } from "codemirror-lang-latex";
 import { EditorState } from "@codemirror/state";
 import ConfirmDialog from "./ConfirmDialog";
-import { setCardLiftTarget, setCardLiftHandoff } from "./card-lift";
 import type { TexBlockOptions } from "@/lib/tiptap/tex-block";
-
-const LIFT_THRESHOLD = 5;
-const FLOAT_W = 480;
-const FLOAT_H = 280;
 
 // Slimmed-down version of CodeEditor.tsx's virgilTheme, sized for inline
 // embedding inside a doc paragraph rather than a full code-view pane.
@@ -61,11 +56,12 @@ export default function TexBlockNodeView({ node, updateAttributes, deleteNode, e
   const inputRef = useRef<HTMLInputElement | null>(null);
   const wrapperRef = useRef<HTMLDivElement | null>(null);
 
-  // Pull lift refs out of the extension's configure options.
+  // Pull the popped predicate out of the extension's configure options.
+  // The lift gesture itself lives in the editor-level TextObjectGrabHandle
+  // (src/text-objects/TextObjectGrabHandle.tsx); the NodeView only needs
+  // to know "am I popped out" so it can render the .is-popped chrome.
   const opts = extension.options as TexBlockOptions;
-  const onLiftRef = opts.onLiftRef;
   const isPoppedRef = opts.isPoppedRef;
-  const onDragHandleClickRef = opts.onDragHandleClickRef;
   const isPopped = !!(uuid && isPoppedRef?.current?.current?.(uuid));
   const cardContext = opts.cardContext === true;
 
@@ -96,71 +92,6 @@ export default function TexBlockNodeView({ node, updateAttributes, deleteNode, e
       </NodeViewWrapper>
     );
   }
-
-  // Mousedown gesture handler on the grab handle: track distance, past
-  // LIFT_THRESHOLD spawn the float via the global card-lift handoff +
-  // the per-block-type lift callback. If mouseup fires within the
-  // threshold (a plain click), open the passage-action menu instead.
-  // Matches paragraph/heading behavior at Editor.tsx:660-785 / 1561-1591.
-  const handleGripMouseDown = useCallback((downEv: React.MouseEvent) => {
-    if (downEv.button !== 0) return;
-    if (!uuid) return;
-    if (isPoppedRef?.current?.current?.(uuid)) return;
-    downEv.preventDefault();
-    const handleEl = downEv.currentTarget as HTMLElement;
-    const startX = downEv.clientX;
-    const startY = downEv.clientY;
-    let triggered = false;
-    handleEl.classList.add("is-pressed");
-    const onMove = (mv: MouseEvent) => {
-      if (triggered) return;
-      const dx = mv.clientX - startX;
-      const dy = mv.clientY - startY;
-      if (dx * dx + dy * dy < LIFT_THRESHOLD * LIFT_THRESHOLD) return;
-      triggered = true;
-      const wrapper = wrapperRef.current;
-      if (wrapper) {
-        const r = wrapper.getBoundingClientRect();
-        setCardLiftTarget({
-          cardKey: `texBlock:${uuid}`,
-          rect: { left: r.left, top: r.top, width: r.width, height: r.height },
-        });
-        window.setTimeout(() => setCardLiftTarget(null), 150);
-      }
-      const spawn = {
-        x: Math.round(mv.clientX - FLOAT_W / 2),
-        y: Math.round(mv.clientY - 16),
-        width: FLOAT_W,
-        height: FLOAT_H,
-      };
-      setCardLiftHandoff({
-        cardKey: `texBlock:${uuid}`,
-        clientX: mv.clientX,
-        clientY: mv.clientY,
-        width: FLOAT_W,
-        height: FLOAT_H,
-      });
-      onLiftRef?.current?.(uuid, spawn);
-      cleanup();
-    };
-    const onUp = () => {
-      if (!triggered) {
-        const open = onDragHandleClickRef?.current;
-        if (open) {
-          const rect = handleEl.getBoundingClientRect();
-          open(uuid, rect);
-        }
-      }
-      cleanup();
-    };
-    const cleanup = () => {
-      handleEl.classList.remove("is-pressed");
-      window.removeEventListener("mousemove", onMove);
-      window.removeEventListener("mouseup", onUp);
-    };
-    window.addEventListener("mousemove", onMove);
-    window.addEventListener("mouseup", onUp);
-  }, [uuid, isPoppedRef, onLiftRef, onDragHandleClickRef]);
 
   const handleCodeChange = useCallback(
     (val: string) => {
@@ -315,23 +246,10 @@ export default function TexBlockNodeView({ node, updateAttributes, deleteNode, e
           </svg>
         </button>
 
-        {/* 6-dot grab handle — mousedown gesture lifts the block as a
-            floating card past a 5px threshold. Matches paragraph behavior. */}
-        <div
-          className="tex-block-drag-handle"
-          contentEditable={false}
-          onMouseDown={handleGripMouseDown}
-          title={isPopped ? "Block is open in a floating card" : "Click for actions, drag to pop out"}
-        >
-          <svg width="10" height="14" viewBox="0 0 10 14" fill="currentColor">
-            <circle cx="3" cy="2" r="1.2" />
-            <circle cx="7" cy="2" r="1.2" />
-            <circle cx="3" cy="7" r="1.2" />
-            <circle cx="7" cy="7" r="1.2" />
-            <circle cx="3" cy="12" r="1.2" />
-            <circle cx="7" cy="12" r="1.2" />
-          </svg>
-        </div>
+        {/* The 6-dot grab handle moved to the editor-mounted
+            TextObjectGrabHandle (src/text-objects/TextObjectGrabHandle.tsx).
+            The NodeView still emits `.is-popped` chrome when the
+            corresponding popout is open. */}
 
       {collapsed ? (
         /* Compact preview: title (rendered above) + first 2 lines of code + … */

@@ -134,16 +134,16 @@ export function ActionsMenuPanel({
 
   const runAction = (action: (typeof MENU_ENTRIES)[number]["action"]) => {
     if (!dragHandleMenu) return;
-    const passage =
+    const ref =
       mode === "cursor"
-        ? { kind: "paragraph" as const, paragraphId: paragraphUuid }
+        ? { kind: "paragraph" as const, id: paragraphUuid }
         : {
             kind: "selection" as const,
             paragraphId: paragraphUuid,
             from: range.from,
             to: range.to,
           };
-    dragHandleMenu.dispatch(action, passage);
+    dragHandleMenu.dispatch(action, ref);
     onClose();
   };
 

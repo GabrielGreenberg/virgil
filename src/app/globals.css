@@ -1294,12 +1294,14 @@ textarea,
   display: none !important;
 }
 
-/* Floating selection drag handle — visually identical to the paragraph
-   drag handle (same 6-dot grip, same color/cursor), but portaled to the
-   document body and pinned in viewport coords so it tracks the current
-   text selection. Width/height match `.par-drag-handle` so first-line
-   supersession is a clean swap. */
-.selection-drag-handle {
+/* Unified TextObject grab handle — portaled to the document body,
+   pinned in viewport coords, tracks the active TextObject or selection.
+   Replaces the per-NodeView paragraph/heading/list/tex/example grips
+   (deleted in Phase D4) and the live-selection `SelectionDragHandle`
+   (also deleted in D4). Width/height match the legacy `.par-drag-handle`
+   so the visual continuity is intact.
+   See src/text-objects/TextObjectGrabHandle.tsx. */
+.text-object-grab-handle {
   position: fixed;
   display: flex;
   align-items: center;
@@ -1314,25 +1316,25 @@ textarea,
   z-index: 1000;
 }
 
-.selection-drag-handle:hover {
+.text-object-grab-handle:hover {
   color: var(--ink, #3a362f);
   background: rgba(0, 0, 0, 0.06);
   border-radius: 3px;
 }
 
-.selection-drag-handle:active {
+.text-object-grab-handle:active {
   cursor: grabbing;
 }
 
-.selection-drag-handle:active,
-.selection-drag-handle.is-pressed {
+.text-object-grab-handle:active,
+.text-object-grab-handle.is-pressed {
   color: var(--ink, #3a362f);
   background: rgba(0, 0, 0, 0.08);
   border-radius: 3px;
   transform: translateY(1px);
 }
 
-.selection-drag-handle.is-menu-open {
+.text-object-grab-handle.is-menu-open {
   color: var(--ink, #3a362f);
   background: rgba(0, 0, 0, 0.10);
   border-radius: 3px;
