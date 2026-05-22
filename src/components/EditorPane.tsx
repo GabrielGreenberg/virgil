@@ -3531,13 +3531,43 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
                 ['--menubar-width' as string]: `${menubarWidth}px`,
               }}
             >
+            {/* Top reading-frame mask — always-present letterbox at the
+                top of the visible reading area. Solid var(--surface)
+                hides any content that scrolls behind it; the inner 8px
+                fades to transparent so content disappearing into the
+                margin has a soft hard edge rather than a knife-cut.
+                Placed at the *column* level (rather than inside the
+                pod) so its natural flow position is above the sticky
+                anchor regardless of doc length — sticky-top engages
+                reliably for both short and long docs. The negative
+                margin removes it from flow; the chrome layout is
+                unchanged. z-15 sits above prose content but below the
+                chrome stack (menu band z-40, pod cap z-30).
+                Gated on `ready` so its var(--surface) band doesn't
+                leak through the LoadingScreen curtain as a white
+                rectangle. */}
+            {ready && (
+              <div
+                aria-hidden
+                className="pointer-events-none shrink-0"
+                style={{
+                  position: "sticky",
+                  top: menuBar ? 32 : 8,
+                  height: "var(--editor-pt, 40px)",
+                  marginBottom: "calc(-1 * var(--editor-pt, 40px))",
+                  zIndex: 15,
+                  background:
+                    "linear-gradient(to bottom, var(--surface) 0, var(--surface) calc(100% - 8px), transparent 100%)",
+                }}
+              />
+            )}
             {/* Section-path indicator — plain text in the chrome strip
                 above the pod, anchored to the pod's left edge. Renders
                 in the same 32px band as the docked MenuBar (z-41 lifts
                 it above the band's background) with a calc'd max-width
                 that prevents it from crossing into the centered
                 MenuBar's column. */}
-            {menuBar?.showSectionIndicator && viewPrefs && (overrideEditor ?? editor) && (
+            {ready && menuBar?.showSectionIndicator && viewPrefs && (overrideEditor ?? editor) && (
               <div
                 className="sticky shrink-0 pointer-events-none"
                 style={{ top: 0, height: 0, zIndex: 41 }}
@@ -3553,7 +3583,7 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
                 </div>
               </div>
             )}
-            {menuBar && (overrideEditor ?? editor) && (
+            {ready && menuBar && (overrideEditor ?? editor) && (
               <div
                 data-tool-strip="text"
                 className="flex justify-end items-start shrink-0 sticky z-40"
@@ -3633,7 +3663,7 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
                 masks scrolling content beneath it. Sticks at top:24
                 directly under the docked MenuBar's 24px band when
                 present (main editor); top:0 otherwise (Reader). */}
-            {(overrideEditor ?? editor) && (
+            {ready && (overrideEditor ?? editor) && (
               <div
                 data-editor-pod-cap
                 className="sticky z-30 shrink-0 pointer-events-none flex flex-col"
@@ -3711,10 +3741,14 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
               style={{
                 flex: viewPrefs ? "1000 1 0" : "1 1 0",
                 minWidth: 0,
-                background: "var(--surface)",
-                border: "var(--pod-border)",
-                borderRadius: "var(--pod-radius)",
-                boxShadow: "var(--pod-shadow)",
+                // While !ready, drop the pod's visible chrome so the
+                // LoadingScreen curtain reads as a single uninterrupted
+                // manilla field — no border / shadow / rounded corners
+                // peeking out around it.
+                background: ready ? "var(--surface)" : "var(--background)",
+                border: ready ? "var(--pod-border)" : "none",
+                borderRadius: ready ? "var(--pod-radius)" : 0,
+                boxShadow: ready ? "var(--pod-shadow)" : "none",
                 // Clip the box-shadow at top and bottom so it doesn't
                 // bleed into the manilla band (top) or past the bottom
                 // cap into the column padding region. The caps carry
@@ -3766,173 +3800,189 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
                 </div>
               )}
               <div className="paper-render" data-editor-page="true" style={{ position: "relative" }}>
-                {/* In-text margin guides — only render in margin-edit
-                    mode. Each guide is a 13px draggable hit area
-                    centered on a 1px glowing-blue line. L/R guides
-                    span the full page height; T/B guides span the
-                    prose width (between the L/R margins) so they
-                    visualize the text-block edge, not the pod edge.
-                    The +1px offset accounts for the pod's 1px border.
-                    Symmetry marker shows on a side when that side's
-                    axis is symmetric (L=R or T=B). */}
-                {marginEditMode && viewPrefs && MARGIN_SIDES.map((side: MarginSide) => {
-                  const axis = MARGIN_AXIS[side];
-                  const symmetric = axis === "x" ? marginSymmetricX : marginSymmetricY;
-                  const cssVarName =
-                    side === "left" ? "--editor-pl"
-                    : side === "right" ? "--editor-pr"
-                    : side === "top" ? "--editor-pt"
-                    : "--editor-pb";
-                  // (margin + 1px pod border) - half the 13px hit area.
-                  const offset = `calc(var(${cssVarName}) + 1px - 6px)`;
-                  // L/R: full-height vertical strip. T/B: horizontal
-                  // strip spanning the prose-text width.
-                  const positionStyle: React.CSSProperties = axis === "x"
-                    ? ({
-                        top: 0,
-                        bottom: 0,
-                        width: 13,
-                        cursor: "ew-resize",
-                        [side]: offset,
-                      } as React.CSSProperties)
-                    : ({
-                        left: "calc(var(--editor-pl) + 1px)",
-                        right: "calc(var(--editor-pr) + 1px)",
-                        height: 13,
-                        cursor: "ns-resize",
-                        [side]: offset,
-                      } as React.CSSProperties);
-                  // The 1px line, centered in the 13px hit area.
-                  const lineStyle: React.CSSProperties = axis === "x"
-                    ? {
-                        position: "absolute",
-                        top: 0,
-                        bottom: 0,
-                        left: 6.5,
-                        width: 1,
-                        background: "var(--drag-highlight)",
-                        boxShadow: "0 0 4px rgba(59, 130, 246, 0.35)",
-                        pointerEvents: "none",
-                      }
-                    : {
-                        position: "absolute",
-                        left: 0,
-                        right: 0,
-                        top: 6.5,
-                        height: 1,
-                        background: "var(--drag-highlight)",
-                        boxShadow: "0 0 4px rgba(59, 130, 246, 0.35)",
-                        pointerEvents: "none",
-                      };
-                  // The symmetry marker — a small blue dot with a
-                  // white ring at the line's sticky-anchored end. The
-                  // axis-major coordinate uses `sticky` so the marker
-                  // follows the viewport along the line's length.
-                  const markerStyle: React.CSSProperties = axis === "x"
-                    ? {
-                        position: "sticky",
-                        top: 44,
-                        left: 1.5,
-                        width: 10,
-                        height: 10,
-                        borderRadius: "50%",
-                        background: "var(--drag-highlight)",
-                        border: "1.5px solid #fff",
-                        boxShadow: "0 0 8px rgba(59, 130, 246, 0.7), 0 0 2px rgba(59, 130, 246, 0.9)",
-                        pointerEvents: "none",
-                      }
-                    : {
-                        position: "sticky",
-                        left: 12,
-                        top: 1.5,
-                        width: 10,
-                        height: 10,
-                        borderRadius: "50%",
-                        background: "var(--drag-highlight)",
-                        border: "1.5px solid #fff",
-                        boxShadow: "0 0 8px rgba(59, 130, 246, 0.7), 0 0 2px rgba(59, 130, 246, 0.9)",
-                        pointerEvents: "none",
-                      };
+                {/* Reading frame overlay — only renders in margin-edit
+                    mode. A SINGLE sticky element that fills the
+                    visible reading rectangle (viewport minus chrome
+                    minus T/B margins). All four guide lines and the
+                    Save/Cancel pill live inside as absolutely-
+                    positioned children, so they naturally form a
+                    viewport-locked frame that follows the scroll.
+                    Sticky positioning here keeps the rectangle pinned
+                    to the viewport; negative margin pulls the
+                    rectangle out of flow so the editor content scrolls
+                    freely underneath rather than being pushed down by
+                    the overlay's natural height.
+                    Chrome offset (32 / 8) accounts for the menu band
+                    + pod cap above the pod's reading area. */}
+                {marginEditMode && viewPrefs && (() => {
+                  const chromeOffset = menuBar ? "32px" : "8px";
+                  const frameHeightExpr =
+                    `calc(var(--scroll-viewport-h, 100vh) - ${chromeOffset} - var(--editor-pt) - var(--editor-pb))`;
                   return (
                     <div
-                      key={side}
-                      data-margin-guide={side}
-                      data-margin-snap={symmetric ? "true" : undefined}
-                      className="absolute z-10 pointer-events-auto"
-                      style={positionStyle}
-                      onMouseDown={(e) => beginMarginDrag(e, side)}
-                      title={`Drag to set ${side} margin`}
+                      data-margin-frame
+                      className="pointer-events-none"
+                      style={{
+                        position: "sticky",
+                        top: `calc(${chromeOffset} + var(--editor-pt))`,
+                        height: frameHeightExpr,
+                        marginBottom: `calc(-1 * (${frameHeightExpr}))`,
+                        zIndex: 25,
+                      }}
                     >
-                      <div style={lineStyle} />
-                      {symmetric && <div style={markerStyle} />}
+                      {MARGIN_SIDES.map((side: MarginSide) => {
+                        const axis = MARGIN_AXIS[side];
+                        const symmetric = axis === "x" ? marginSymmetricX : marginSymmetricY;
+                        // L/R: vertical strip at column edge, full
+                        // height of the frame. T/B: horizontal strip
+                        // straddling the frame's top/bottom edge (so
+                        // the 13px hit area is centered on the mask's
+                        // inner edge), spanning the prose width.
+                        const positionStyle: React.CSSProperties = axis === "x"
+                          ? ({
+                              position: "absolute",
+                              top: 0,
+                              bottom: 0,
+                              width: 13,
+                              cursor: "ew-resize",
+                              [side]: `calc(var(${
+                                side === "left" ? "--editor-pl" : "--editor-pr"
+                              }) + 1px - 6px)`,
+                            } as React.CSSProperties)
+                          : ({
+                              position: "absolute",
+                              left: "calc(var(--editor-pl) + 1px)",
+                              right: "calc(var(--editor-pr) + 1px)",
+                              height: 13,
+                              cursor: "ns-resize",
+                              [side]: -6,
+                            } as React.CSSProperties);
+                        // The 1px glowing-blue line, centered in the
+                        // 13px hit area.
+                        const lineStyle: React.CSSProperties = axis === "x"
+                          ? {
+                              position: "absolute",
+                              top: 0,
+                              bottom: 0,
+                              left: 6.5,
+                              width: 1,
+                              background: "var(--drag-highlight)",
+                              boxShadow: "0 0 4px rgba(59, 130, 246, 0.35)",
+                              pointerEvents: "none",
+                            }
+                          : {
+                              position: "absolute",
+                              left: 0,
+                              right: 0,
+                              top: 6.5,
+                              height: 1,
+                              background: "var(--drag-highlight)",
+                              boxShadow: "0 0 4px rgba(59, 130, 246, 0.35)",
+                              pointerEvents: "none",
+                            };
+                        // Symmetry marker — small blue dot with a
+                        // white ring at the line's near-anchor corner.
+                        const markerStyle: React.CSSProperties = axis === "x"
+                          ? {
+                              position: "absolute",
+                              top: 4,
+                              left: 1.5,
+                              width: 10,
+                              height: 10,
+                              borderRadius: "50%",
+                              background: "var(--drag-highlight)",
+                              border: "1.5px solid #fff",
+                              boxShadow: "0 0 8px rgba(59, 130, 246, 0.7), 0 0 2px rgba(59, 130, 246, 0.9)",
+                              pointerEvents: "none",
+                            }
+                          : {
+                              position: "absolute",
+                              left: 12,
+                              top: 1.5,
+                              width: 10,
+                              height: 10,
+                              borderRadius: "50%",
+                              background: "var(--drag-highlight)",
+                              border: "1.5px solid #fff",
+                              boxShadow: "0 0 8px rgba(59, 130, 246, 0.7), 0 0 2px rgba(59, 130, 246, 0.9)",
+                              pointerEvents: "none",
+                            };
+                        return (
+                          <div
+                            key={side}
+                            data-margin-guide={side}
+                            data-margin-snap={symmetric ? "true" : undefined}
+                            className="pointer-events-auto"
+                            style={positionStyle}
+                            onMouseDown={(e) => beginMarginDrag(e, side)}
+                            title={`Drag to set ${side} margin`}
+                          >
+                            <div style={lineStyle} />
+                            {symmetric && <div style={markerStyle} />}
+                          </div>
+                        );
+                      })}
+                      {/* Save/Cancel pill — absolutely positioned at
+                          the top-center of the reading frame, just
+                          inside the top guide line. Reuses the
+                          symmetry-marker visual vocabulary so it reads
+                          as part of the margin tool. */}
+                      <div
+                        className="flex items-center justify-center gap-2 pointer-events-auto"
+                        style={{
+                          position: "absolute",
+                          top: 8,
+                          left: 0,
+                          right: 0,
+                        }}
+                      >
+                        <button
+                          type="button"
+                          onClick={cancelMarginEdit}
+                          title="Discard margin changes (Esc)"
+                          aria-label="Cancel margin edit"
+                          className="flex items-center justify-center"
+                          style={{
+                            width: 28,
+                            height: 28,
+                            borderRadius: "50%",
+                            background: "var(--drag-highlight)",
+                            border: "1.5px solid #fff",
+                            boxShadow: "0 0 8px rgba(59, 130, 246, 0.7), 0 0 2px rgba(59, 130, 246, 0.9)",
+                            color: "#fff",
+                            cursor: "pointer",
+                          }}
+                        >
+                          <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                            <path d="M3 3 L11 11" />
+                            <path d="M11 3 L3 11" />
+                          </svg>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={saveMarginEdit}
+                          title="Save margins"
+                          aria-label="Save margins"
+                          className="flex items-center justify-center"
+                          style={{
+                            width: 28,
+                            height: 28,
+                            borderRadius: "50%",
+                            background: "var(--drag-highlight)",
+                            border: "1.5px solid #fff",
+                            boxShadow: "0 0 8px rgba(59, 130, 246, 0.7), 0 0 2px rgba(59, 130, 246, 0.9)",
+                            color: "#fff",
+                            cursor: "pointer",
+                          }}
+                        >
+                          <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                            <path d="M3 7.5 L6 10.5 L11 4.5" />
+                          </svg>
+                        </button>
+                      </div>
                     </div>
                   );
-                })}
-                {/* Save/Cancel pill — sticky just below the menu band,
-                    centered over the page. Glowing-blue circular icon
-                    buttons reuse the symmetry-marker visual vocabulary
-                    so they read as "part of the margin tool" rather
-                    than as a generic dialog. Only renders while
-                    margin-edit is active. */}
-                {marginEditMode && viewPrefs && (
-                  <div
-                    className="sticky z-20 pointer-events-none"
-                    style={{
-                      top: menuBar ? 36 : 12,
-                      width: "100%",
-                      height: 0,
-                    }}
-                  >
-                    <div
-                      className="flex items-center justify-center gap-2 pointer-events-auto"
-                      style={{ transform: "translateY(0)" }}
-                    >
-                      <button
-                        type="button"
-                        onClick={cancelMarginEdit}
-                        title="Discard margin changes (Esc)"
-                        aria-label="Cancel margin edit"
-                        className="flex items-center justify-center"
-                        style={{
-                          width: 28,
-                          height: 28,
-                          borderRadius: "50%",
-                          background: "var(--drag-highlight)",
-                          border: "1.5px solid #fff",
-                          boxShadow: "0 0 8px rgba(59, 130, 246, 0.7), 0 0 2px rgba(59, 130, 246, 0.9)",
-                          color: "#fff",
-                          cursor: "pointer",
-                        }}
-                      >
-                        <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-                          <path d="M3 3 L11 11" />
-                          <path d="M11 3 L3 11" />
-                        </svg>
-                      </button>
-                      <button
-                        type="button"
-                        onClick={saveMarginEdit}
-                        title="Save margins"
-                        aria-label="Save margins"
-                        className="flex items-center justify-center"
-                        style={{
-                          width: 28,
-                          height: 28,
-                          borderRadius: "50%",
-                          background: "var(--drag-highlight)",
-                          border: "1.5px solid #fff",
-                          boxShadow: "0 0 8px rgba(59, 130, 246, 0.7), 0 0 2px rgba(59, 130, 246, 0.9)",
-                          color: "#fff",
-                          cursor: "pointer",
-                        }}
-                      >
-                        <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-                          <path d="M3 7.5 L6 10.5 L11 4.5" />
-                        </svg>
-                      </button>
-                    </div>
-                  </div>
-                )}
+                })()}
                 {(initialContent ?? docHook.content) != null && (
                   <VirgilEditor
                     ref={innerRef}
@@ -4097,7 +4147,7 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
                 viewport, so only manilla is visible there. The cap
                 container's lateral bleed (calc(-4px - var(--pod-gap)))
                 extends the manilla into the column gutters too. */}
-            {(overrideEditor ?? editor) && (
+            {ready && (overrideEditor ?? editor) && (
               <div
                 data-editor-pod-cap-bottom
                 className="sticky z-30 shrink-0 pointer-events-none flex flex-col"
@@ -4133,6 +4183,27 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
                 />
               </div>
             )}
+            {/* Bottom reading-frame mask — mirror of the top mask.
+                Placed at the end of the column so its natural flow
+                position is at the column's bottom (= scroll-port
+                bottom for short docs, or below it for long docs). This
+                puts the natural position at or below the sticky anchor
+                in every case, so sticky-top engages reliably. Sticks
+                at `top: scroll-viewport-h - editor-pb`, which is the
+                inner edge of the bottom margin band. */}
+            <div
+              aria-hidden
+              className="pointer-events-none shrink-0"
+              style={{
+                position: "sticky",
+                top: "calc(var(--scroll-viewport-h, 100vh) - var(--editor-pb, 40px))",
+                height: "var(--editor-pb, 40px)",
+                marginTop: "calc(-1 * var(--editor-pb, 40px))",
+                zIndex: 15,
+                background:
+                  "linear-gradient(to top, var(--surface) 0, var(--surface) calc(100% - 8px), transparent 100%)",
+              }}
+            />
             </div>
             {viewPrefs?.zenMode ? (
               <ZenMargin

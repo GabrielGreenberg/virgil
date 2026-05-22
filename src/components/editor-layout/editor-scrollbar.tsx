@@ -134,6 +134,13 @@ export function EditorScrollbar({
       const required = paperH + 40;
       const h = Math.max(required, row.clientHeight);
       row.style.setProperty("--row-bound-h", `${h}px`);
+      // Visible-viewport height of the scroll port. Distinct from
+      // `--row-bound-h`, which is the column's *content* height (max
+      // of doc scrollHeight and visible height). Margin-frame sticky
+      // descendants (the L/R guide lines in margin-edit mode) need
+      // the visible port height to compute `height: vp - chrome - T - B`
+      // for the rectangle they span.
+      row.style.setProperty("--scroll-viewport-h", `${row.clientHeight}px`);
       // When the doc fits within the row's visible viewport, hide the
       // sticky bottom cap. The cap exists to mask editor content
       // scrolling past the bottom 8px of the viewport for long docs;

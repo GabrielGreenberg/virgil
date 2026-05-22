@@ -2251,14 +2251,23 @@ const VirgilEditor = forwardRef<EditorHandle, EditorProps>(function VirgilEditor
     editorProps: {
       attributes: {
         // Page padding driven by --editor-pl / --editor-pr / --editor-pt
-        // / --editor-pb (set on the editor column in EditorLayout from
-        // the persisted user prefs `editor{Left,Right,Top,Bottom}Margin`,
-        // defaults 88/72/40/40). The left default 88 = 72px marginalia
-        // gutter + 8px breathing strip for heading fold-chevron + extra.
-        // Right 72 sits flush against the 72px right gutter. Top/bottom
-        // 40 matches the original py-10. The "Margins…" ViewMenu mode
-        // renders draggable in-text guides on all four sides that update
-        // these vars live.
+        // / --editor-pb (set on the editor column from the persisted
+        // user prefs `editor{Left,Right,Top,Bottom}Margin`, defaults
+        // 88/72/40/40). The left default 88 = 72px marginalia gutter
+        // + 8px breathing strip for heading fold-chevron + extra.
+        // Right 72 sits flush against the 72px right gutter.
+        //
+        // L/R control prose column width directly (page padding).
+        // T/B serve a dual role: they set the height of the persistent
+        // top/bottom mask overlays (in EditorPane pod) AND match the
+        // prose pt/pb so the document's first line stays visible just
+        // below the top mask at scroll y=0 and the last line just
+        // above the bottom mask at scroll max. Without the prose
+        // padding, content at scroll extremes would be trapped behind
+        // the mask bands.
+        //
+        // The "Margins…" ViewMenu mode renders draggable in-text guides
+        // on all four sides that update these vars live.
         class:
           "prose prose-stone max-w-none focus:outline-none min-h-[calc(100vh-8rem)] pl-[var(--editor-pl,88px)] pr-[var(--editor-pr,72px)] pt-[var(--editor-pt,40px)] pb-[var(--editor-pb,40px)]",
         // PM keeps the DOM at `contenteditable="true"` even in Reader
