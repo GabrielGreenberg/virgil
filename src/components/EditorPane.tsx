@@ -1112,7 +1112,12 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
   );
   if (viewPrefs) {
     const popped = viewPrefs.prefs.poppedOutCards;
-    texBlockIsPoppedRef.current = (uuid) => popped.includes(`texBlock:${uuid}`);
+    // Phase D10 unified the key shape to `textobject:texBlock:<uuid>`;
+    // a `texBlock:<uuid>` fallback covers any pre-D10 keys still in
+    // prefs that the read-side migration hasn't rewritten yet.
+    texBlockIsPoppedRef.current = (uuid) =>
+      popped.includes(`textobject:texBlock:${uuid}`) ||
+      popped.includes(`texBlock:${uuid}`);
   }
   // Per-doc PoppedCardsContext value. Built from the `viewPrefs` prop so
   // both the main app (full `useViewPrefs`) and the Library Reader

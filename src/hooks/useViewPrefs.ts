@@ -409,6 +409,45 @@ function loadPrefs(): ViewPrefs {
     }
 
     const parsed = { ...windowParsed, ...globalParsed };
+
+    // Phase D10 popout-key migration. Block-popout prefixes
+    // (`paragraph:`, `heading:`, `texBlock:`) rewrite to the unified
+    // `textobject:<kind>:<id>` shape that `floating-cards.tsx`'s
+    // `case "textobject"` dispatcher now consumes. `list:<uuid>` and
+    // `example:<uuid>` need the doc to determine kind / disambiguate
+    // from the Examples panel-card prefix — those migrations live in
+    // EditorPane.tsx as a useEffect that fires when the editor + doc
+    // are both available. `selection:<id>` / `sel:<id>` were
+    // session-only (their floats were lost on reload anyway); drop
+    // them with a console.warn.
+    if (Array.isArray(parsed.poppedOutCards)) {
+      const before = parsed.poppedOutCards as unknown as string[];
+      const after: string[] = [];
+      const droppedSelection: string[] = [];
+      for (const key of before) {
+        if (typeof key !== "string") continue;
+        if (key.startsWith("paragraph:")) {
+          after.push(`textobject:paragraph:${key.slice("paragraph:".length)}`);
+        } else if (key.startsWith("heading:")) {
+          after.push(`textobject:heading:${key.slice("heading:".length)}`);
+        } else if (key.startsWith("texBlock:")) {
+          after.push(`textobject:texBlock:${key.slice("texBlock:".length)}`);
+        } else if (key.startsWith("selection:") || key.startsWith("sel:")) {
+          droppedSelection.push(key);
+        } else {
+          // list:<id>, example:<id>, textobject:<kind>:<id>, and every
+          // panel-card prefix (note:, todo:, bib:, etc.) pass through.
+          after.push(key);
+        }
+      }
+      if (droppedSelection.length > 0) {
+        console.warn(
+          `[viewPrefs] Phase D10 migration dropped ${droppedSelection.length} session-only selection popout key(s): ${droppedSelection.slice(0, 3).join(", ")}${droppedSelection.length > 3 ? ", …" : ""}`,
+        );
+      }
+      parsed.poppedOutCards = after;
+    }
+
     // Migrate: replace old "references" panel with "citations" + "bibliography"
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     let placements: any[] = parsed.placements || [];

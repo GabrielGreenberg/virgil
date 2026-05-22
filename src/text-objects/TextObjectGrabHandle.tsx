@@ -63,6 +63,7 @@ import {
 import {
   TEXT_OBJECT_REGISTRY,
   isTextObjectKind,
+  textObjectPopoutKey,
 } from "./text-object-registry";
 import {
   BULLET_DECORATION_WIDTH,
@@ -104,33 +105,28 @@ function floatSizeFor(kind: TextObjectKind | "selection") {
 }
 
 /**
- * Map a `TextObjectRef | SelectionRef` to the legacy popout key shape used
- * by `viewPrefs.poppedOutCards`. Phase D10 migrates these to the unified
- * `textobject:<kind>:<id>` shape; until then, the new handle emits the
- * keys the existing float dispatcher (`floating-cards.tsx`) expects.
+ * Map a `TextObjectRef | SelectionRef` to the popout key used by
+ * `viewPrefs.poppedOutCards`. Phase D10 unified every block-popout
+ * prefix into `textobject:<kind>:<id>`; selection lifts stay on
+ * `selection:<id>` (session-only) until Phase E hydrates them into
+ * `linkedRange` TextObjects.
  *
- * Returns null for kinds that don't have a float today — the handle still
- * opens the action menu on click for those, it just doesn't lift.
+ * Returns null for TextObject kinds that don't have a float wired today
+ * — the handle still opens the action menu on click, it just doesn't
+ * lift. Phase D5 wires the missing bodies via `registerFloatBody`.
  */
-function legacyPopoutKey(ref: TextObjectRef | SelectionRef): string | null {
+function popoutKeyForLift(ref: TextObjectRef | SelectionRef): string | null {
   if (ref.kind === "selection") return `selection:${generateShortId()}`;
+  // Whitelist of kinds with a wired float today. Phase D5 expands this.
   switch (ref.kind) {
     case "paragraph":
-      return `paragraph:${ref.id}`;
     case "heading":
-      return `heading:${ref.id}`;
     case "bulletList":
     case "orderedList":
-      return `list:${ref.id}`;
     case "texBlock":
-      return `texBlock:${ref.id}`;
     case "exampleBlock":
-      return `example:${ref.id}`;
+      return textObjectPopoutKey(ref);
     default:
-      // listItem, exampleItem, figureBlock, graphicsBlock, displayMath,
-      // latexComment, blockquote, codeBlock, titleField, linkedRange —
-      // no legacy float. Lift is a no-op until Phase D5 wires the
-      // unified TextObjectFloat body components.
       return null;
   }
 }
@@ -702,7 +698,7 @@ export function TextObjectGrabHandle({ editorRef }: Props) {
       // Refuse to lift if the resolved popout is already open (matches
       // legacy per-NodeView behavior — the user closes the float via
       // its X button rather than re-grabbing).
-      const tentativeKey = legacyPopoutKey(startRef);
+      const tentativeKey = popoutKeyForLift(startRef);
       if (tentativeKey && poppedRef.current?.isPopped(tentativeKey)) {
         // Still allow click-to-open-menu below; just no lift.
       }
@@ -765,11 +761,11 @@ export function TextObjectGrabHandle({ editorRef }: Props) {
           return;
         }
 
-        // TextObjectRef path. Use the legacy popout key for kinds that
-        // have a float today (paragraph / heading / list / texBlock /
-        // exampleBlock); skip lift for kinds without (Phase D5 wires
-        // their float bodies via the registry).
-        const cardKey = legacyPopoutKey(ref);
+        // TextObjectRef path. Emit `textobject:<kind>:<id>` via
+        // `textObjectPopoutKey` (Phase D10); skip lift for kinds whose
+        // float bodies haven't been wired yet (Phase D5 wires them via
+        // `registerFloatBody`).
+        const cardKey = popoutKeyForLift(ref);
         if (!cardKey) {
           cleanup();
           return;

@@ -16,6 +16,7 @@ import { HeadingFloat } from "../HeadingFloat";
 import { ListFloat } from "../ListFloat";
 import { TexBlockFloat } from "../TexBlockFloat";
 import { SelectionFloat } from "../SelectionFloat";
+import { parseTextObjectPopoutKey } from "@/text-objects/text-object-registry";
 import type { EditorHandle, FootnoteInfo, ExampleInfo } from "../Editor";
 import { getLinkedParagraphIds } from "@/links/links";
 import type {
@@ -491,19 +492,56 @@ export function renderPoppedCard(key: string, d: PoppedCardDeps): ReactNode {
         />
       );
     }
-    case "paragraph": {
-      return <ParagraphFloat key={key} cardKey={key} uuid={id} editorRef={d.editorRef} />;
-    }
-    case "heading": {
-      return <HeadingFloat key={key} cardKey={key} uuid={id} editorRef={d.editorRef} />;
-    }
-    case "list": {
-      return <ListFloat key={key} cardKey={key} uuid={id} editorRef={d.editorRef} />;
-    }
-    case "texBlock": {
-      return <TexBlockFloat key={key} cardKey={key} uuid={id} editorRef={d.editorRef} />;
+    case "textobject": {
+      // Unified block-popout dispatcher (Phase D10). The legacy
+      // `paragraph:` / `heading:` / `list:` / `texBlock:` prefixes are
+      // gone — every block lift goes through `textobject:<kind>:<id>`
+      // emitted by `textObjectPopoutKey` (registry helper). Phase D5
+      // replaces the per-kind body components below with the unified
+      // `TextObjectFloat` reading `meta.floatBodyComponent` from the
+      // registry; for now we dispatch to the existing per-kind floats.
+      const ref = parseTextObjectPopoutKey(key);
+      if (!ref) return null;
+      switch (ref.kind) {
+        case "paragraph":
+          return <ParagraphFloat key={key} cardKey={key} uuid={ref.id} editorRef={d.editorRef} />;
+        case "heading":
+          return <HeadingFloat key={key} cardKey={key} uuid={ref.id} editorRef={d.editorRef} />;
+        case "bulletList":
+        case "orderedList":
+          return <ListFloat key={key} cardKey={key} uuid={ref.id} editorRef={d.editorRef} />;
+        case "texBlock":
+          return <TexBlockFloat key={key} cardKey={key} uuid={ref.id} editorRef={d.editorRef} />;
+        case "exampleBlock": {
+          // Phase D5 wires a proper exampleBlock float body; for now
+          // dispatch to the Examples panel-card preview when one exists.
+          const ex = d.examples.find((e) => e.exampleId === ref.id);
+          if (!ex) return null;
+          return (
+            <ExampleCard
+              key={key}
+              example={ex}
+              isSelected={d.selectedExampleId === ex.exampleId}
+              onSelect={() =>
+                d.setSelectedExampleId(d.selectedExampleId === ex.exampleId ? null : ex.exampleId)
+              }
+              onJump={() => d.editorRef.current?.scrollToExample(ex.exampleId)}
+              isPoppedOut
+            />
+          );
+        }
+        // listItem, exampleItem, figureBlock, graphicsBlock, displayMath,
+        // latexComment, blockquote, codeBlock, titleField, linkedRange —
+        // no float body wired yet; Phase D5 registers them via
+        // `registerFloatBody` so the registry lookup lights them up.
+        default:
+          return null;
+      }
     }
     case "selection": {
+      // Selection floats are session-only and live in `selection-floats.ts`.
+      // Phase E hydrates a SelectionRef into a `linkedRange` TextObject at
+      // lift time and removes this case along with `selection-floats.ts`.
       return (
         <SelectionFloat
           key={key}
@@ -513,7 +551,21 @@ export function renderPoppedCard(key: string, d: PoppedCardDeps): ReactNode {
         />
       );
     }
+    case "list": {
+      // Transitional fallback for pre-D10 legacy keys still in prefs.
+      // No new writers — TextObjectGrabHandle emits
+      // `textobject:bulletList:<id>` / `textobject:orderedList:<id>`.
+      // Migration to the unified shape requires a doc walk (to resolve
+      // bullet vs ordered); deferred to a Phase F sweep so loadPrefs()
+      // can stay doc-free.
+      return <ListFloat key={key} cardKey={key} uuid={id} editorRef={d.editorRef} />;
+    }
     case "example": {
+      // The `example:` prefix is the Examples panel-card popout key (a
+      // stable card-prefix in the same family as `note:`, `todo:`,
+      // `bib:`, etc., per the plan's "DO NOT rename" list). The
+      // exampleBlock block-popout path now goes through
+      // `textobject:exampleBlock:<id>` above.
       const ex = d.examples.find((e) => e.exampleId === id);
       if (!ex) return null;
       return (
