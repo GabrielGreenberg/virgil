@@ -1,6 +1,45 @@
 # Text-Object Refactor — A Unified Canonical Pathway
 
-Working memo for the next-session implementation. Captures the design conversation that produced it. The implementing session should read this end-to-end before touching code, and consult it whenever a question arises about scope or shape.
+Working memo. Captures the design conversation that produced it, the implementation plan, and progress through the refactor. The implementing session should read this end-to-end before touching code, and consult it whenever a question arises about scope or shape.
+
+---
+
+## Progress (updated 2026-05-22)
+
+Branch: **`text-object-refactor`** (3 commits landed, 8 remaining).
+
+### Landed
+
+| # | Phase | Commit | Spirit |
+|---|---|---|---|
+| 1 | A1 + A3 | `c705d3e` | `exampleItem` becomes a first-class TextObject — it now carries a `uuid` attr and round-trips through `\vxid{xxxx}` in the LaTeX source, completing the family alongside `\vfid`/`\vcid`/`\vexid`. Deprecated `ANCHORABLE_NODES`/`ANCHORABLE_ATOMS` sets retired (the schema-based `isAnchorableNode` was already canonical; the deprecated sets had drifted to omit `figureBlock`/`graphicsBlock` and were dead weight). 5 round-trip tests in `src/lib/__tests__/example-item-roundtrip.test.ts`. |
+| 2 | B + C1 | `8b2fa20` | Every persistent TextObject node now declares the `textObject` schema group. Top-level kinds get `"block textObject"` (lists keep `"block list textObject"`); sub-objects (`listItem`, `exampleItem`) get `"textObject"` alone. `linkedRange` membership lives in the registry, not the schema (mark, not node). Same commit widens `listItem.content` and `exampleItem.content` so `graphicsBlock` may sit mid-item (the parser + serializer were extended end-to-end; `texBlock`/`figureBlock` were intentionally NOT widened, per memo §6). 3 round-trip tests in `src/lib/__tests__/graphic-in-item-roundtrip.test.ts`. |
+| 3 | C2 | `f089f95` | `src/text-objects/` skeleton — the SSOT. `types.ts` (TextObjectKind union, TextObjectRef, SelectionRef, TextObjectMeta, DropTarget/DropAction, TextObjectTransportPayload, MIME_TEXTOBJECT), `text-object-registry.ts` (16-kind registry + helpers `isTextObjectKind` / `textObjectForNode` / `textObjectPopoutKey` / `parseTextObjectPopoutKey` / `registerFloatBody`), `drop-adapters.ts` (per-kind wrap/no-wrap functions replacing the per-spec switches), `hydrate-selection.ts` (selection → linkedRange minting with anchorId reuse when a range is already covered), `handle-layout.ts` (one shared `computeHandleLeftEdge` utility replacing scattered placement math). Float body components are placeholders; Phase D5 wires real bodies via `registerFloatBody`. 21 unit tests in `src/text-objects/__tests__/`. |
+
+After commits 1–3: typecheck clean, full suite 151/159 passing (the 8 failures are pre-existing in `usePersistentState.test.ts`, unrelated).
+
+### Remaining (8 commits)
+
+Strict dependencies: D10 before D5+D6; D8 before E. Otherwise order is flexible.
+
+| # | Phase | Spirit (NOT a surgical patch — keep the architectural ambition) |
+|---|---|---|
+| 4 | D2 + D3 + D4 | Refactor `SelectionDragHandle.tsx` (~630 lines) into `TextObjectGrabHandle.tsx` backed by the registry. Replace the 4-variant `DragHandlePassage` union with `TextObjectRef \| SelectionRef`. Delete per-node-view grips on `texBlock`/`figureBlock`/`graphicsBlock`/`exampleBlock` — the editor-level handle covers them via the schema group. One canonical grab handle in the codebase. |
+| 5 | D7 | Code-mod: `MarginaliaMarker.paragraphId` → `textObjectId`; `addParagraphLink` → `addTextObjectLink`; `getAnchorParagraphIds` → `getAnchorTextObjectIds`; `paragraphSideReanchorSpec` → `textObjectSideReanchorSpec`. ~159 call sites across hooks (Notes/Todos/Archive/Cutter/Revisions/Quotations), drop specs, drop-ctx APIs. Mechanical but bulky. Do NOT rename `data-link-id`/`data-link-card`/`data-link-kind`/`data-card-key` DOM attrs (stable user-facing contract); do NOT rename `LinkResolution.paragraph.paragraphId` (single resolved match); do NOT rename in `migrate-card.ts` (it IS the migration shim). |
+| 6 | D8 | Full restructure of `Link.anchor`: rename `type: "anchor"` → `"textObject"`; add `targetKind: TextObjectKind`; rename `paragraphIds` → `textObjectIds`. `isModeB(link)` becomes `link.anchor.type === "textObject" && link.anchor.targetKind === "linkedRange"`. `migrateCardLinks` extended with one-shot read-side migration: infer `targetKind` by resolving the node id in the doc (sub-objects get their actual kind; missing → `"paragraph"` + console.warn). Mode B/A distinction collapses to a derived check. |
+| 7 | D10 | Popout-key migration: all block popouts use `textobject:<kind>:<id>` (centralized via `textObjectPopoutKey` from C2). One `case "textobject"` in the `floating-cards.tsx` dispatcher; explicit deletion of `case "selection"` and the per-block-kind cases (`paragraph`, `heading`, `list`, `texBlock`, `example`). One-time read-side migration in `useViewPrefs.ts`: `paragraph:<uuid>` / `heading:<uuid>` → `textobject:<kind>:<uuid>`; `list:<uuid>` resolved by walking the doc for the actual node kind; `selection:<id>` / `sel:<id>` dropped (session-only). Card popout prefixes (`note:`, `todo:`, etc.) stay — they're a stable contract. |
+| 8 | D5 + D6 | Float collapse: delete `ParagraphFloat.tsx`, `HeadingFloat.tsx`, `ListFloat.tsx`, `SelectionFloat.tsx`, `TexBlockFloat.tsx`, and `selection-floats.ts`. Their bodies relocate as registry-registered components via `registerFloatBody`; chrome is the unified `TextObjectFloat`. **Chrome unified; body sync stays per-kind** — abstracting CodeMirror-vs-TipTap sync would create false unification (TexBlockFloat keeps its CodeMirror sync internally). `cardContext` becomes a body-component concern. Same commit: drop-spec collapse — delete `paragraph.ts`/`heading.ts`/`selection.ts` from `drop-mode/specs/`; new `textobject.ts` consumes `TextObjectTransportPayload` and dispatches through `dropAdapterFor`. |
+| 9 | E | Selection hydration + multi-paragraph linkedAnchor LaTeX round-trip. `hydrateSelectionToTextObject` (already exists in C2) wired at three commit sites: popout commit, card-anchor commit, drop-mode commit. The session-only "selection float" category is gone. New paired markers `\vlid{anchorId}…\vlidend{anchorId}` introduced in the parser + serializer (this is a NEW LaTeX-level round-trip — the mark was app-state-only before, persisted via sidecar `anchorText`). Parser is defensive: unmatched `\vlid` logs a console.warn and recovers via sidecar `textSnapshot`. Sidecar `paragraphId` (single) → `paragraphIds` (array). |
+| 10 | F | Final migration audits: `\vxid` lazy assignment confirmed working for legacy docs; `migrateCardLinks` covers every consumer; orphan link surfacing; no silent data loss. No doc-format version sentinel needed (migration is additive). |
+| 11 | G | Sample extension + agent-docs refresh + dev-preview walkthrough. Extend `samples/annotation-history/` with graphic-in-list-item, graphic-in-example-item, multi-paragraph linkedAnchor, sub-object card anchors. Walk the §13 checklist end-to-end. Refresh `docs/agents/main-text.md` (Block nodes + Link architecture sections), `docs/agents/architecture.md` (SSOTs table + MIME map + popout-key prefixes + float collapse note), `docs/agents/glossary.md` (TextObject entry, Mode A/B collapse), `docs/agents/overview.md` (text-objects in core concepts). |
+
+### The spirit (re-stated for the next session)
+
+**Deep architectural fixes — not surgical patches.** This refactor exists because the existing consistency is enforced by team vigilance, not by design. Every parallel implementation §4 enumerates is something to delete or merge through the new pathway. Where you find drift (the deprecated `ANCHORABLE_NODES` set omitting `figureBlock`/`graphicsBlock`; `figureBlock` lumped with "atom blocks" when it's actually `content: "figureCaption?"`; the `EntityKind`/`TextObjectKind` name collision around `example`), surface and fix it as part of the refactor — don't leave the drift behind for the next vigilant person.
+
+When fixing a reported case, look for the class of bug and the analogous siblings. When extending functionality (sub-object popout, multi-paragraph linkedAnchor, graphicsBlock-in-list, cards-on-any-text-object), the extensions should be trivial after the refactor — if they're not, the abstraction isn't right yet.
+
+Detailed plan (with all the cross-cutting concerns called out): `/Users/gabriel/.claude/plans/we-re-undertaking-a-major-quizzical-truffle.md`.
 
 ---
 
