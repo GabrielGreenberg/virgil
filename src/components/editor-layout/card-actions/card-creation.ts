@@ -290,7 +290,7 @@ export function useCardCreation(deps: CardCreationDeps): CardCreationApi {
       if (!highlight) return null;
       const textAnchor = getTextAnchor(highlight);
       const pids = highlight.links
-        .flatMap((l) => (l.anchor.type === "anchor" ? l.anchor.paragraphIds : []));
+        .flatMap((l) => (l.anchor.type === "textObject" ? l.anchor.textObjectIds : []));
       const paragraphId = pids[0] ?? null;
       // The new note shares the highlight's existing `linkedAnchor` mark
       // by referencing the same `anchorId` — no new mark is created, so

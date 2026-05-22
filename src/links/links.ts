@@ -18,6 +18,7 @@
 import type { Editor } from "@tiptap/react";
 import type { Node as PMNode } from "@tiptap/pm/model";
 import type { CardKind } from "@/panels/_shared/types";
+import type { TextObjectKind } from "@/text-objects/types";
 import { countWords } from "@/hooks/useWordCount";
 import type { Link, LinkResolution } from "./_shared/types";
 import { generateEntityId } from "@/lib/uuid";
@@ -100,7 +101,8 @@ function paragraphUuidAt(doc: PMNode, pos: number): string | null {
  *
  *   - footnote atoms     → kind "footnote",  anchor.type "inline-atom"
  *   - citation atoms     → kind "citation",  anchor.type "inline-atom"
- *   - linkedAnchor marks → kind "anchor",    anchor.type "anchor" (Mode B)
+ *   - linkedAnchor marks → kind "anchor",    anchor.type "textObject"
+ *                                            with targetKind "linkedRange" (Mode B)
  *
  * Mode A pure-paragraph anchor links (no linkedAnchor mark) are NOT
  * returned by this function — they live only in card sidecars until
@@ -186,8 +188,9 @@ export function collectLinksFromEditor(editor: Editor): Link[] {
       id: a.linkId,
       kind: "anchor",
       anchor: {
-        type: "anchor",
-        paragraphIds: a.paragraphId ? [a.paragraphId] : [],
+        type: "textObject",
+        targetKind: "linkedRange",
+        textObjectIds: a.paragraphId ? [a.paragraphId] : [],
         margin: { side: inferMarginSide(a.cardKind) },
         textRange: {
           anchorId,
@@ -243,9 +246,13 @@ export type CreateLinkArgs =
     }
   | {
       kind: "anchor";
+      /** TextObject kind being anchored to. Use `"linkedRange"` for a
+       *  text-range (Mode B); persistent-node kinds (paragraph, heading,
+       *  listItem, exampleItem, atom blocks, etc.) are Mode A. */
+      targetKind: TextObjectKind;
       targetCardKind: CardKind;
       targetCardId: string;
-      paragraphIds: string[];
+      textObjectIds: string[];
       textRange?: { from: number; to: number };
     };
 
@@ -336,20 +343,21 @@ function createAnchorLink(
     }
   }
 
-  // Paragraph ids: either explicit, or derived from the text range's
+  // TextObject ids: either explicit, or derived from the text range's
   // containing paragraph.
-  let paragraphIds = args.paragraphIds.slice();
-  if (paragraphIds.length === 0 && args.textRange) {
+  let textObjectIds = args.textObjectIds.slice();
+  if (textObjectIds.length === 0 && args.textRange) {
     const pid = paragraphUuidAt(editor.state.doc, args.textRange.from);
-    if (pid) paragraphIds = [pid];
+    if (pid) textObjectIds = [pid];
   }
 
   return {
     id: linkId,
     kind: "anchor",
     anchor: {
-      type: "anchor",
-      paragraphIds,
+      type: "textObject",
+      targetKind: args.targetKind,
+      textObjectIds,
       margin: { side: inferMarginSide(args.targetCardKind) },
       ...(textRange ? { textRange } : {}),
     },
@@ -437,7 +445,7 @@ export function resolveLink(
       domEl,
     };
   }
-  if (link.anchor.type === "anchor") {
+  if (link.anchor.type === "textObject") {
     // Mode B: prefer the text-range mark.
     if (link.anchor.textRange) {
       const range = resolveTextRangeByAnchorId(
@@ -451,11 +459,11 @@ export function resolveLink(
         return { kind: "text-range", from: range.from, to: range.to, domEl };
       }
     }
-    // Mode A (or Mode B with a lost mark): try each paragraphId and take
-    // the first that still exists in the doc. Callers that passed multiple
-    // paragraphIds shouldn't fail just because the first one was edited
+    // Mode A (or Mode B with a lost mark): try each textObject UUID and
+    // take the first that still exists in the doc. Callers that passed
+    // multiple ids shouldn't fail just because the first one was edited
     // away.
-    for (const paragraphId of link.anchor.paragraphIds) {
+    for (const paragraphId of link.anchor.textObjectIds) {
       if (!paragraphId) continue;
       const pos = findParagraphByUuid(editor, paragraphId);
       if (pos == null) continue;
@@ -621,7 +629,7 @@ export function deleteLink(editor: Editor, link: Link): void {
     editor.view.dispatch(tr);
     return;
   }
-  if (link.anchor.type === "anchor" && link.anchor.textRange) {
+  if (link.anchor.type === "textObject" && link.anchor.textRange) {
     removeLinkedAnchorMark(editor, link.anchor.textRange.anchorId);
   }
 }
@@ -930,13 +938,13 @@ type AnchorCardShape = {
 
 export type CardWithLinks = { id: string; links?: Link[] };
 
-/** All paragraph UUIDs any of this card's anchor-kind links cover. */
+/** All TextObject UUIDs any of this card's anchor-kind links cover. */
 export function getLinkedTextObjectIds(card: CardWithLinks): string[] {
   const links = card.links ?? [];
   const out: string[] = [];
   for (const link of links) {
-    if (link.anchor.type !== "anchor") continue;
-    for (const pid of link.anchor.paragraphIds) {
+    if (link.anchor.type !== "textObject") continue;
+    for (const pid of link.anchor.textObjectIds) {
       if (!out.includes(pid)) out.push(pid);
     }
   }
@@ -950,7 +958,11 @@ export function getTextAnchor(
 ): { anchorId: string; anchorText: string } | null {
   const links = card.links ?? [];
   for (const link of links) {
-    if (link.anchor.type === "anchor" && link.anchor.textRange) {
+    if (
+      link.anchor.type === "textObject" &&
+      link.anchor.targetKind === "linkedRange" &&
+      link.anchor.textRange
+    ) {
       return {
         anchorId: link.anchor.textRange.anchorId,
         anchorText: link.anchor.textRange.textSnapshot,
@@ -1043,15 +1055,17 @@ export function collectAllLinkedParagraphIds(
 function makeAnchorLink(
   cardKind: CardKind,
   cardId: string,
-  paragraphIds: string[],
+  targetKind: TextObjectKind,
+  textObjectIds: string[],
   textRange?: { anchorId: string; textSnapshot: string },
 ): Link {
   return {
-    id: textRange?.anchorId ?? `${cardId}@${paragraphIds[0] ?? ""}`,
+    id: textRange?.anchorId ?? `${cardId}@${textObjectIds[0] ?? ""}`,
     kind: "anchor",
     anchor: {
-      type: "anchor",
-      paragraphIds,
+      type: "textObject",
+      targetKind,
+      textObjectIds,
       margin: { side: inferMarginSide(cardKind) },
       ...(textRange ? { textRange } : {}),
     },
@@ -1060,91 +1074,97 @@ function makeAnchorLink(
   };
 }
 
-/** Add a paragraph anchor to `card.links`. No-op if already present.
- *  Preserves any existing Mode B link's textRange by folding the new
- *  paragraph into its `paragraphIds` when one exists. */
+/** Add a TextObject anchor to `card.links`. No-op if already present.
+ *  Preserves any existing Mode B link's textRange by folding the new id
+ *  into its `textObjectIds` when one exists.
+ *
+ *  Pre-D9, all callers add `paragraph`-kind anchors; the `targetKind`
+ *  defaults to `"paragraph"`. D9 generalizes this to other kinds. */
 export function addTextObjectLink<T extends CardWithLinks>(
   card: T,
   cardKind: CardKind,
-  paragraphId: string,
+  textObjectId: string,
 ): T {
-  if (!paragraphId) return card;
+  if (!textObjectId) return card;
   const links = card.links ?? [];
-  // If the card has a Mode B link, fold the new paragraph into it.
+  // If the card has a Mode B link, fold the new id into it.
   const modeBIdx = links.findIndex(
-    (l) => l.anchor.type === "anchor" && l.anchor.textRange,
+    (l) =>
+      l.anchor.type === "textObject" &&
+      l.anchor.targetKind === "linkedRange" &&
+      l.anchor.textRange,
   );
   if (modeBIdx !== -1) {
     const link = links[modeBIdx];
-    if (link.anchor.type !== "anchor") return card;
-    if (link.anchor.paragraphIds.includes(paragraphId)) return card;
+    if (link.anchor.type !== "textObject") return card;
+    if (link.anchor.textObjectIds.includes(textObjectId)) return card;
     const updatedLinks = links.slice();
     updatedLinks[modeBIdx] = {
       ...link,
       anchor: {
         ...link.anchor,
-        paragraphIds: [...link.anchor.paragraphIds, paragraphId],
+        textObjectIds: [...link.anchor.textObjectIds, textObjectId],
       },
     };
     return { ...card, links: updatedLinks };
   }
   // Otherwise add a fresh Mode A link — unless one already covers it.
   const existing = getLinkedTextObjectIds(card);
-  if (existing.includes(paragraphId)) return card;
+  if (existing.includes(textObjectId)) return card;
   return {
     ...card,
-    links: [...links, makeAnchorLink(cardKind, card.id, [paragraphId])],
+    links: [...links, makeAnchorLink(cardKind, card.id, "paragraph", [textObjectId])],
   };
 }
 
-/** Remove a paragraph anchor from `card.links`. */
+/** Remove a TextObject anchor from `card.links`. */
 export function removeTextObjectLink<T extends CardWithLinks>(
   card: T,
-  paragraphId: string,
+  textObjectId: string,
 ): T {
   const links = card.links ?? [];
   let changed = false;
   const next: Link[] = [];
   for (const link of links) {
-    if (link.anchor.type !== "anchor") {
+    if (link.anchor.type !== "textObject") {
       next.push(link);
       continue;
     }
-    if (!link.anchor.paragraphIds.includes(paragraphId)) {
+    if (!link.anchor.textObjectIds.includes(textObjectId)) {
       next.push(link);
       continue;
     }
     changed = true;
-    const remaining = link.anchor.paragraphIds.filter((p) => p !== paragraphId);
-    // Keep Mode B links even when they lose all paragraphs — the
+    const remaining = link.anchor.textObjectIds.filter((p) => p !== textObjectId);
+    // Keep Mode B links even when they lose all textObjectIds — the
     // text-range anchor itself is the primary binding.
     if (remaining.length === 0 && !link.anchor.textRange) continue;
     next.push({
       ...link,
-      anchor: { ...link.anchor, paragraphIds: remaining },
+      anchor: { ...link.anchor, textObjectIds: remaining },
     });
   }
   return changed ? { ...card, links: next } : card;
 }
 
-/** Replace all paragraph anchors on the card with `paragraphIds`. */
+/** Replace all paragraph anchors on the card with `textObjectIds`. */
 export function setParagraphLinks<T extends CardWithLinks>(
   card: T,
   cardKind: CardKind,
-  paragraphIds: string[],
+  textObjectIds: string[],
 ): T {
   const textAnchor = getTextAnchor(card);
   const links: Link[] = [];
   if (textAnchor) {
     links.push(
-      makeAnchorLink(cardKind, card.id, paragraphIds, {
+      makeAnchorLink(cardKind, card.id, "linkedRange", textObjectIds, {
         anchorId: textAnchor.anchorId,
         textSnapshot: textAnchor.anchorText,
       }),
     );
   } else {
-    for (const pid of paragraphIds) {
-      links.push(makeAnchorLink(cardKind, card.id, [pid]));
+    for (const pid of textObjectIds) {
+      links.push(makeAnchorLink(cardKind, card.id, "paragraph", [pid]));
     }
   }
   return { ...card, links };
@@ -1158,13 +1178,13 @@ export function setTextAnchorLink<T extends CardWithLinks>(
   anchorId: string,
   anchorText: string,
 ): T {
-  const paragraphIds = getLinkedTextObjectIds(card);
-  const next = makeAnchorLink(cardKind, card.id, paragraphIds, {
+  const textObjectIds = getLinkedTextObjectIds(card);
+  const next = makeAnchorLink(cardKind, card.id, "linkedRange", textObjectIds, {
     anchorId,
     textSnapshot: anchorText,
   });
   // Drop any existing anchor-kind links; this new one is canonical.
-  const kept = (card.links ?? []).filter((l) => l.anchor.type !== "anchor");
+  const kept = (card.links ?? []).filter((l) => l.anchor.type !== "textObject");
   return { ...card, links: [...kept, next] };
 }
 
@@ -1174,11 +1194,11 @@ export function clearTextAnchorLink<T extends CardWithLinks>(
   cardKind: CardKind,
 ): T {
   if (!hasTextAnchor(card)) return card;
-  const paragraphIds = getLinkedTextObjectIds(card);
-  const kept = (card.links ?? []).filter((l) => l.anchor.type !== "anchor");
+  const textObjectIds = getLinkedTextObjectIds(card);
+  const kept = (card.links ?? []).filter((l) => l.anchor.type !== "textObject");
   const newLinks: Link[] = [...kept];
-  for (const pid of paragraphIds) {
-    newLinks.push(makeAnchorLink(cardKind, card.id, [pid]));
+  for (const pid of textObjectIds) {
+    newLinks.push(makeAnchorLink(cardKind, card.id, "paragraph", [pid]));
   }
   return { ...card, links: newLinks };
 }
@@ -1195,8 +1215,9 @@ export function derivedLinksForCard(
       id: card.anchorId,
       kind: "anchor",
       anchor: {
-        type: "anchor",
-        paragraphIds: card.paragraphIds?.slice() ?? [],
+        type: "textObject",
+        targetKind: "linkedRange",
+        textObjectIds: card.paragraphIds?.slice() ?? [],
         margin: { side },
         textRange: {
           anchorId: card.anchorId,
@@ -1214,8 +1235,12 @@ export function derivedLinksForCard(
       id: `${card.id}@${paragraphId}`,
       kind: "anchor",
       anchor: {
-        type: "anchor",
-        paragraphIds: [paragraphId],
+        type: "textObject",
+        // Pre-D9, derived Mode A anchors all target paragraphs. D9
+        // generalizes; until then `"paragraph"` is correct for every
+        // legacy sidecar that hits this branch.
+        targetKind: "paragraph",
+        textObjectIds: [paragraphId],
         margin: { side },
       },
       target: { type: "card", ref: { kind: cardKind, id: card.id } },

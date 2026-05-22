@@ -6,19 +6,31 @@
  *
  *  - `footnote` / `citation` — inline atom nodes in the editor; 1:1 with
  *    a panel card; bidirectional jump.
- *  - `anchor` — paragraph-anchored (Mode A) or text-range-anchored
- *    (Mode B); always has a margin-gutter icon; many anchor links can
- *    point at the same card.
+ *  - `anchor` — anchored to a TextObject (any kind: paragraph, heading,
+ *    listItem, exampleItem, atom block, linkedRange, …); always has a
+ *    margin-gutter icon; many anchor links can point at the same card.
  *
  * Mode is derived, not declared: an `anchor` link is Mode B iff
- * `anchor.textRange` is populated. Mode A has only `paragraphIds` + a
- * margin icon.
+ * `anchor.targetKind === "linkedRange"` (the TextObject kind is a
+ * mark-backed range). Persistent-node kinds are Mode A. The legacy
+ * `textRange` payload is still carried on Mode B links — its presence
+ * is implied by `targetKind === "linkedRange"`, but kept as a distinct
+ * field so Phase E (multi-paragraph linkedAnchor LaTeX round-trip) can
+ * persist the snapshot + anchorId without a separate sidecar shape.
+ *
+ * Naming asymmetry to note: `LinkKind`'s `"anchor"` value (Link.kind)
+ * stays unchanged — it's about "what kind of link is this" (footnote /
+ * citation / anchor). The new `LinkAnchor` discriminator value is
+ * `"textObject"` — it describes the anchor target's shape. The two are
+ * deliberately distinct concepts; renaming `LinkKind.anchor` is a
+ * future cleanup of its own.
  *
  * The `id` on `Link` is stable and independent of both endpoints, so
  * the link is addressable without describing the DOM marker or the card.
  */
 
 import type { CardKind } from "@/panels/_shared/types";
+import type { TextObjectKind } from "@/text-objects/types";
 
 export type LinkKind = "footnote" | "citation" | "anchor";
 
@@ -31,15 +43,23 @@ export type LinkAnchor =
       pos: number | null;
     }
   | {
-      type: "anchor";
-      /** Paragraph UUID(s) the link is anchored to. Always present — a
-       *  Mode B link also lives inside one paragraph (the containing one).
-       *  Multi-anchor is allowed for Mode A. */
-      paragraphIds: string[];
-      /** Every `anchor` link carries a margin-gutter entry. */
+      type: "textObject";
+      /** The kind of TextObject this link anchors to. Drives marker
+       *  placement and behavior. `"linkedRange"` is Mode B (range
+       *  backed by a `linkedAnchor` mark); every other value is a
+       *  persistent-node kind (Mode A, generalized to all TextObject
+       *  kinds — paragraph, heading, listItem, exampleItem, atom
+       *  blocks, etc.). */
+      targetKind: TextObjectKind;
+      /** TextObject UUID(s) the link is anchored to. Always present —
+       *  a Mode B link also lives inside the containing TextObject(s).
+       *  Multi-anchor (N > 1) is allowed for Mode A. */
+      textObjectIds: string[];
+      /** Every TextObject-anchor link carries a margin-gutter entry. */
       margin: { side: "left" | "right" };
-      /** Present iff Mode B. Pin-points a specific text range via the
-       *  `linkedAnchor` mark. */
+      /** Present iff `targetKind === "linkedRange"`. Carries the
+       *  underlying `linkedAnchor` mark's id and a text snapshot used
+       *  for re-anchoring if the mark is lost across a parse. */
       textRange?: {
         /** The mark's anchor id (same value lives on the mark's attrs). */
         anchorId: string;
@@ -63,21 +83,22 @@ export interface Link {
   createdAt: string;
 }
 
-/** A Mode B anchor link (has a textRange). Not a separate runtime kind —
- *  just a type-level refinement. */
+/** A Mode B anchor link (targets a `linkedRange`). Not a separate runtime
+ *  kind — just a type-level refinement. */
 export type ModeBAnchorLink = Link & {
   kind: "anchor";
-  anchor: Extract<LinkAnchor, { type: "anchor" }> & {
-    textRange: NonNullable<Extract<LinkAnchor, { type: "anchor" }>["textRange"]>;
+  anchor: Extract<LinkAnchor, { type: "textObject" }> & {
+    targetKind: "linkedRange";
+    textRange: NonNullable<Extract<LinkAnchor, { type: "textObject" }>["textRange"]>;
   };
 };
 
-export function isAnchorLink(link: Link): link is Link & { anchor: Extract<LinkAnchor, { type: "anchor" }> } {
-  return link.anchor.type === "anchor";
+export function isAnchorLink(link: Link): link is Link & { anchor: Extract<LinkAnchor, { type: "textObject" }> } {
+  return link.anchor.type === "textObject";
 }
 
 export function isModeB(link: Link): link is ModeBAnchorLink {
-  return link.anchor.type === "anchor" && !!link.anchor.textRange;
+  return link.anchor.type === "textObject" && link.anchor.targetKind === "linkedRange";
 }
 
 /** Result of looking up a link's current position in the live editor. */

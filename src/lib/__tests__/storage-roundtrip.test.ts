@@ -19,7 +19,12 @@ describe("sidecar roundtrip (canonical shape)", () => {
             {
               id: "note-1@para-a",
               kind: "anchor",
-              anchor: { type: "anchor", paragraphIds: ["para-a"], margin: { side: "right" } },
+              anchor: {
+                type: "textObject",
+                targetKind: "paragraph",
+                textObjectIds: ["para-a"],
+                margin: { side: "right" },
+              },
               target: { type: "card", ref: { kind: "note", id: "note-1" } },
               createdAt: "",
             },
@@ -64,13 +69,44 @@ describe("sidecar roundtrip (canonical shape)", () => {
       content: { type: "doc", content: [] },
       paragraphIds: ["p-1"],
     };
-    const firstLinks = migrateCardLinks("cutter-comment",legacy);
+    const firstLinks = migrateCardLinks("cutter-comment", legacy);
     expect(firstLinks).toHaveLength(1);
 
     // After migration, persist the new shape (links[] canonical, legacy
-    // field dropped) — second pass should not change anything.
+    // field dropped) — second pass should yield equivalent content.
     const upgraded = { id: legacy.id, content: legacy.content, links: firstLinks };
-    const secondLinks = migrateCardLinks("cutter-comment",upgraded);
-    expect(secondLinks).toBe(firstLinks);
+    const secondLinks = migrateCardLinks("cutter-comment", upgraded);
+    expect(secondLinks).toEqual(firstLinks);
+  });
+
+  it("D8 anchor-shape upgrade: pre-D8 sidecar migrates to new shape on load", () => {
+    const preD8 = {
+      id: "note-old",
+      title: "",
+      content: { type: "doc", content: [] },
+      createdAt: "2026-01-01T00:00:00Z",
+      links: [
+        {
+          id: "lk-old",
+          kind: "anchor",
+          anchor: {
+            type: "anchor",
+            paragraphIds: ["para-x"],
+            margin: { side: "right" },
+          },
+          target: { type: "card", ref: { kind: "note", id: "note-old" } },
+          createdAt: "",
+        },
+      ],
+    };
+    const migrated = migrateCardLinks("note", preD8);
+    expect(migrated[0].anchor.type).toBe("textObject");
+    if (migrated[0].anchor.type === "textObject") {
+      expect(migrated[0].anchor.targetKind).toBe("paragraph");
+      expect(migrated[0].anchor.textObjectIds).toEqual(["para-x"]);
+    }
+    // Stable on second pass.
+    const second = migrateCardLinks("note", { ...preD8, links: migrated });
+    expect(second).toEqual(migrated);
   });
 });

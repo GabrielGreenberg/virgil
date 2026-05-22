@@ -217,7 +217,7 @@ export function useAnchorHighlightReconciler({
             ? paragraphKindFor(link.target.ref.kind as CardKind)
             : null;
         const side =
-          resolved.kind === "paragraph" && link.anchor.type === "anchor"
+          resolved.kind === "paragraph" && link.anchor.type === "textObject"
             ? link.anchor.margin.side
             : null;
         into.set(resolved.domEl, { kind, side, valueAttr });

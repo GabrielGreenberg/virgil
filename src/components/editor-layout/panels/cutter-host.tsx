@@ -49,8 +49,8 @@ function buildSuggestionPrompt(s: CutterSuggestionCard): string {
   if (s.links.length > 0) {
     const pids = new Set<string>();
     for (const l of s.links) {
-      if (l.anchor.type === "anchor") {
-        for (const p of l.anchor.paragraphIds) pids.add(p);
+      if (l.anchor.type === "textObject") {
+        for (const p of l.anchor.textObjectIds) pids.add(p);
       }
     }
     if (pids.size > 0) anchorBits.push(`paragraphs: ${[...pids].join(", ")}`);

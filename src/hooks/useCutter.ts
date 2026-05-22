@@ -72,7 +72,7 @@ function migrateComment(raw: unknown): CutterCommentCard | null {
   const content = normalizeRichContent(r.content);
   const text = typeof r.text === "string" ? r.text : richJsonToPlainText(content) || "";
   const links = migrateCardLinks("cutter-comment", raw);
-  const ta = links.find((l) => l.anchor.type === "anchor" && l.anchor.textRange);
+  const ta = links.find((l) => l.anchor.type === "textObject" && l.anchor.targetKind === "linkedRange" && l.anchor.textRange);
   return {
     kind: "comment",
     id: r.id,
@@ -82,7 +82,7 @@ function migrateComment(raw: unknown): CutterCommentCard | null {
     aiRequest: !!r.aiRequest,
     selectedText:
       r.selectedText ??
-      (ta?.anchor.type === "anchor" ? ta.anchor.textRange?.textSnapshot : undefined),
+      (ta?.anchor.type === "textObject" ? ta.anchor.textRange?.textSnapshot : undefined),
     links,
   };
 }
@@ -91,7 +91,7 @@ function migrateSuggestion(raw: unknown): CutterSuggestionCard | null {
   const r = (raw ?? {}) as Partial<CutterSuggestionCard>;
   if (!r.id || !r.createdAt) return null;
   const links = migrateCardLinks("cutter-suggestion", raw);
-  const ta = links.find((l) => l.anchor.type === "anchor" && l.anchor.textRange);
+  const ta = links.find((l) => l.anchor.type === "textObject" && l.anchor.targetKind === "linkedRange" && l.anchor.textRange);
   const status: CutterSuggestionCard["status"] =
     r.status === "accepted" || r.status === "rejected" ? r.status : "pending";
   return {
@@ -107,7 +107,7 @@ function migrateSuggestion(raw: unknown): CutterSuggestionCard | null {
     status,
     selectedText:
       r.selectedText ??
-      (ta?.anchor.type === "anchor" ? ta.anchor.textRange?.textSnapshot : undefined),
+      (ta?.anchor.type === "textObject" ? ta.anchor.textRange?.textSnapshot : undefined),
     links,
   };
 }
@@ -154,7 +154,10 @@ function migrateCutter(raw: unknown): CutterState {
         "cutter-comment",
       );
       const ta = links.find(
-        (l) => l.anchor.type === "anchor" && l.anchor.textRange,
+        (l) =>
+          l.anchor.type === "textObject" &&
+          l.anchor.targetKind === "linkedRange" &&
+          l.anchor.textRange,
       );
       cards.push({
         kind: "comment",
@@ -164,7 +167,7 @@ function migrateCutter(raw: unknown): CutterState {
         content,
         aiRequest: false,
         selectedText:
-          ta?.anchor.type === "anchor" ? ta.anchor.textRange?.textSnapshot : undefined,
+          ta?.anchor.type === "textObject" ? ta.anchor.textRange?.textSnapshot : undefined,
         links,
       });
     }

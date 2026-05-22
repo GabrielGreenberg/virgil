@@ -159,7 +159,7 @@ export const LinkedAnchorGuard = Extension.create({
 // shared `anchoredUuidsRef`) OR an inline `linkedAnchor` mark inside it
 // (notes / cuts / revisions text-range anchors) — the plugin re-inserts
 // an empty paragraph carrying the same UUID at the deletion site. The
-// card's `links[].anchor.paragraphIds` entry therefore stays valid and
+// card's `links[].anchor.textObjectIds` entry therefore stays valid and
 // no card silently goes orphan through editor edits.
 //
 // To remove a card entirely, the user explicitly deletes it from the

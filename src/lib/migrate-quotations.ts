@@ -1,6 +1,7 @@
 import { generateEntityId } from "@/lib/uuid";
 import type { QuotationGroup, QuotationsState, Reference, Quote } from "@/lib/types";
 import { derivedLinksForCard } from "@/links/links";
+import { migrateCardLinks } from "@/links/migrate-card";
 
 /**
  * Legacy shapes — kept here only for migration. The current model lives in
@@ -103,7 +104,10 @@ export function migrateQuotationsState(
           : [];
       const links =
         Array.isArray(g.links) && g.links.length > 0
-          ? g.links
+          ? // Route existing links through `migrateCardLinks` so any
+            // pre-D8 `anchor.type: "anchor"` entries upgrade to the
+            // canonical `type: "textObject"` shape on read.
+            migrateCardLinks("quotation", { id: g.id, links: g.links })
           : derivedLinksForCard("quotation", {
               id: g.id,
               paragraphIds: legacyParagraphIds,

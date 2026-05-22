@@ -55,7 +55,7 @@ function migrateCommentRecord(raw: unknown): RevisionCommentCard | null {
       ? r.text
       : richJsonToPlainText(content) || "";
   const links = migrateCardLinks("comment", raw);
-  const ta = links.find((l) => l.anchor.type === "anchor" && l.anchor.textRange);
+  const ta = links.find((l) => l.anchor.type === "textObject" && l.anchor.targetKind === "linkedRange" && l.anchor.textRange);
   return {
     kind: "comment",
     id: r.id,
@@ -65,7 +65,7 @@ function migrateCommentRecord(raw: unknown): RevisionCommentCard | null {
     aiRequest: !!r.aiRequest,
     selectedText:
       r.selectedText ??
-      (ta?.anchor.type === "anchor" ? ta.anchor.textRange?.textSnapshot : undefined),
+      (ta?.anchor.type === "textObject" ? ta.anchor.textRange?.textSnapshot : undefined),
     links,
   };
 }
@@ -74,7 +74,7 @@ function migrateSuggestionRecord(raw: unknown): RevisionSuggestionCard | null {
   const r = (raw ?? {}) as Partial<RevisionSuggestionCard>;
   if (!r.id || !r.createdAt) return null;
   const links = migrateCardLinks("revision-suggestion", raw);
-  const ta = links.find((l) => l.anchor.type === "anchor" && l.anchor.textRange);
+  const ta = links.find((l) => l.anchor.type === "textObject" && l.anchor.targetKind === "linkedRange" && l.anchor.textRange);
   const status: RevisionSuggestionCard["status"] =
     r.status === "accepted" || r.status === "rejected" ? r.status : "pending";
   return {
@@ -90,7 +90,7 @@ function migrateSuggestionRecord(raw: unknown): RevisionSuggestionCard | null {
     status,
     selectedText:
       r.selectedText ??
-      (ta?.anchor.type === "anchor" ? ta.anchor.textRange?.textSnapshot : undefined),
+      (ta?.anchor.type === "textObject" ? ta.anchor.textRange?.textSnapshot : undefined),
     links,
   };
 }
