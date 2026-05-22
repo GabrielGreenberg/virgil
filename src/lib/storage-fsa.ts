@@ -635,38 +635,61 @@ export async function readFigureSource(
   return null;
 }
 
-/** Import a figure file that the user picked via `showOpenFilePicker`.
+/** Backend-agnostic picked-figure descriptor.
  *
- *  - If the picked file is already inside the paper folder, returns the
- *    relative path joined with `/` (no copy needed).
- *  - Otherwise, copies the file bytes into `<paper>/<subdir>/<basename>`
+ *  Wraps the picked `File` (always present) and the optional
+ *  `FileSystemFileHandle` (only when the FSA picker was used). The handle
+ *  enables the FSA backend's "file is already inside the paper folder"
+ *  short-circuit; without it, the backend always copies bytes in.
+ *
+ *  Produced by `pickFigureFile()` in `src/lib/figures/pick-file.ts`.
+ */
+export interface PickedFigureFile {
+  file: File;
+  handle: FileSystemFileHandle | null;
+}
+
+/** Import a figure file that the user picked (via `showOpenFilePicker` or
+ *  the `<input type="file">` fallback).
+ *
+ *  FSA backend:
+ *  - If a `handle` is present AND the file lives inside the paper folder,
+ *    returns the relative path joined with `/` (no copy needed).
+ *  - Otherwise copies the file bytes into `<paper>/<subdir>/<basename>`
  *    (creating `<subdir>` on demand) and returns `<subdir>/<basename>`.
  *
- *  Returns the path that should land in `\includegraphics{...}`. The write
- *  goes through `enqueueDocWrite` with a `figures/` subkey so it serializes
- *  with the raster cache.
+ *  The dev backend has its own implementation in `storage-dev.ts` that
+ *  always copies via the dev API's PUT route; pick from the facade.
+ *
+ *  The write goes through `enqueueDocWrite` with a `figures/import/` key
+ *  prefix so concurrent imports of the same destination serialize.
  */
 export async function importFigureFile(
   h: DocWriteHandle,
-  fileHandle: FileSystemFileHandle,
+  picked: PickedFigureFile,
   subdir: string = "figures",
 ): Promise<string> {
   const docHandle = await requireDocHandle(h.docId);
-  // FSA tells us whether the picked file is under our paper folder.
-  const relative = await docHandle.resolve(fileHandle);
-  if (relative && relative.length > 0) {
-    return relative.join("/");
+  // FSA-only short-circuit: if the picker handed us a real handle and the
+  // file already lives inside the paper folder, just record the relative
+  // path. `resolve()` returns the path components (or null if outside).
+  if (picked.handle) {
+    const relative = await docHandle.resolve(picked.handle);
+    if (relative && relative.length > 0) {
+      return relative.join("/");
+    }
   }
-  // Outside the paper folder — copy bytes in.
-  const file = await fileHandle.getFile();
-  const basename = file.name;
+  // Outside the paper folder, or no handle (e.g. <input type="file">) — copy
+  // bytes in. The destination follows the same convention either way:
+  // `<paper>/<subdir>/<basename>`.
+  const basename = picked.file.name;
   const destPath = `${subdir}/${basename}`;
   await enqueueDocWrite(h, `figures/import/${destPath}`, async () => {
     const dh = await requireDocHandle(h.docId);
     const subdirHandle = await dh.getDirectoryHandle(subdir, { create: true });
     const destFh = await subdirHandle.getFileHandle(basename, { create: true });
     const writable = await destFh.createWritable();
-    await writable.write(await file.arrayBuffer());
+    await writable.write(await picked.file.arrayBuffer());
     await writable.close();
   });
   return destPath;

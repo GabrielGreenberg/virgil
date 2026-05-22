@@ -71,9 +71,15 @@ export const deleteFigureRaster = backend.deleteFigureRaster;
 export const readFigureIndex = backend.readFigureIndex;
 export const writeFigureIndex = backend.writeFigureIndex;
 export const getDocWriteHandle = backend.getDocWriteHandle;
+// Figure file importer — copies a picked file into the paper folder (or
+// short-circuits when the FSA picker confirmed it's already inside).
+// Backend dispatches: FSA uses `docHandle.resolve()` + `createWritable`,
+// dev uses the existing PUT route. The `PickedFigureFile` contract is
+// shared, produced by `src/lib/figures/pick-file.ts`.
+export const importFigureFile = backend.importFigureFile;
 
 // Re-export types (these are the same in both backends).
-export type { DocBundle, BibReadResult, BibPackage, FolderPickResult, PaperFile } from "@/lib/storage-fsa";
+export type { DocBundle, BibReadResult, BibPackage, FolderPickResult, PaperFile, PickedFigureFile } from "@/lib/storage-fsa";
 
 // Re-export the pipeline handle type so storage callers don't need to
 // import from the multi-window subdirectory.

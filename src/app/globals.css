@@ -2070,6 +2070,24 @@ textarea,
   pointer-events: auto;
 }
 
+/* Read-only gating. The editor mirrors its `editable` prop onto its
+ * ProseMirror DOM as `data-editable` (see Editor.tsx). When false, hide
+ * every figure-edit affordance — the chrome row, the empty-state CTA, and
+ * the body-click → popover hint cursor. The readOnlyEnforcer plugin would
+ * silently reject any docChanged transaction, so showing active controls
+ * is a UX trap: hide them instead.
+ *
+ * Leaves the rendered image itself untouched — viewers still see the
+ * figure exactly as it would render in the doc. */
+.ProseMirror[data-editable="false"] .figure-block .figure-chrome,
+.ProseMirror[data-editable="false"] .figure-block .figure-empty-cta {
+  display: none;
+}
+.ProseMirror[data-editable="false"] .figure-block,
+.ProseMirror[data-editable="false"] .figure-block.figure-block-empty {
+  cursor: default;
+}
+
 .figure-block .figure-chrome-btn {
   width: 22px;
   height: 22px;

@@ -11,7 +11,11 @@ import {
   withUpdatedFigureWidth,
 } from "@/lib/figures/parse-attrs";
 import { useResolvedFigureUrl } from "@/hooks/useResolvedFigureUrl";
-import { getDocWriteHandle, importFigureFile } from "@/lib/storage-fsa";
+// Route through the storage facade, not directly at the FSA backend — the
+// dev backend has its own `importFigureFile` that PUTs to the dev API.
+// `pickFigureFile` encapsulates the FSA-picker vs hidden-`<input>` dispatch.
+import { getDocWriteHandle, importFigureFile } from "@/lib/storage";
+import { pickFigureFile } from "@/lib/figures/pick-file";
 import { parseInlineContent } from "@/lib/latex-parser";
 import type { FigureBlockOptions } from "@/lib/tiptap/figure-block";
 import { synthesizeFigureRaw } from "@/lib/tiptap/figure-block";
@@ -274,10 +278,6 @@ function FigureFullView({ node, getPos, editor, extension }: NodeViewProps) {
       e.preventDefault();
       e.stopPropagation();
     }
-    if (typeof window === "undefined" || typeof window.showOpenFilePicker !== "function") {
-      console.warn("[figure] showOpenFilePicker is not available in this environment");
-      return;
-    }
     if (!docId) {
       console.warn("[figure] no docId — cannot resolve picked file against paper folder");
       return;
@@ -287,31 +287,16 @@ function FigureFullView({ node, getPos, editor, extension }: NodeViewProps) {
       console.warn("[figure] no active write pipeline — cannot import file");
       return;
     }
-    let fileHandle: FileSystemFileHandle | null = null;
+    let picked;
     try {
-      const [picked] = await window.showOpenFilePicker({
-        multiple: false,
-        types: [
-          {
-            description: "Image",
-            accept: {
-              "image/png": [".png"],
-              "image/jpeg": [".jpg", ".jpeg"],
-              "image/webp": [".webp"],
-              "application/pdf": [".pdf"],
-            },
-          },
-        ],
-      });
-      fileHandle = picked ?? null;
+      picked = await pickFigureFile();
     } catch (err) {
-      if ((err as Error).name === "AbortError") return;
       console.error("[figure] file picker failed:", err);
       return;
     }
-    if (!fileHandle) return;
+    if (!picked) return;
     try {
-      const relPath = await importFigureFile(handle, fileHandle);
+      const relPath = await importFigureFile(handle, picked);
       applyPath(relPath);
     } catch (err) {
       console.error("[figure] failed to import picked file:", err);
@@ -328,6 +313,13 @@ function FigureFullView({ node, getPos, editor, extension }: NodeViewProps) {
       )
     )
       return;
+    // Read-only bail: the popover's save would dispatch a doc-changing
+    // transaction that the readOnlyEnforcer plugin silently rejects. Skip
+    // the popover entirely rather than open it for a guaranteed-fail save.
+    // The CSS rules under `.ProseMirror[data-editable="false"]` also hide
+    // the chrome / empty-CTA so they can't even reach this branch.
+    const editorRoot = wrapperRef.current?.closest(".ProseMirror");
+    if (editorRoot?.getAttribute("data-editable") === "false") return;
     e.preventDefault();
     e.stopPropagation();
     const pos = typeof getPos === "function" ? getPos() : undefined;

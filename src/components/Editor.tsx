@@ -3755,6 +3755,21 @@ const VirgilEditor = forwardRef<EditorHandle, EditorProps>(function VirgilEditor
     };
   }, [editor]);
 
+  // Mirror the React `editable` prop onto the ProseMirror DOM as a
+  // `data-editable` attribute. Lets NodeViews (and CSS) react declaratively
+  // to read-only mode without each one having to wire its own ref.
+  //
+  // We still keep `view.editable = true` always (see `readOnlyRef` comment
+  // above): this attribute is a *display* signal, not an editability one.
+  // The `readOnlyEnforcer` plugin remains the source of truth for blocking
+  // doc-changing transactions; this attribute just lets the UI hide
+  // affordances that would silently fail when read-only.
+  useEffect(() => {
+    const dom = editor?.view.dom;
+    if (!dom) return;
+    dom.setAttribute("data-editable", String(editable));
+  }, [editor, editable]);
+
   // Register the editor's ProseMirror DOM with the drop-mode target
   // registry, so shift-drag hit-testing can find this editor under the
   // cursor. Re-registers when the editor instance changes (extension

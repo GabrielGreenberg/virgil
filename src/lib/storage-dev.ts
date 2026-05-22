@@ -19,7 +19,7 @@ import { DEFAULT_STYLE_ID } from "@/lib/document-styles";
 import { resolveStyle } from "@/lib/style-library";
 import { migrateDocumentSettings } from "@/lib/document-settings";
 import type { FsaDocMeta } from "@/lib/doc-index";
-import type { FolderPickResult } from "@/lib/storage-fsa";
+import type { FolderPickResult, PickedFigureFile } from "@/lib/storage-fsa";
 
 import {
   detectBibPackage,
@@ -501,6 +501,45 @@ export async function requireDocHandleForRead(): Promise<never> {
 // Re-export the same active-handle helper so the storage facade has it
 // regardless of backend.
 export { getActiveHandle as getDocWriteHandle } from "@/lib/multi-window/doc-pipeline";
+
+/** Dev-backend mirror of `storage-fsa.ts`'s `importFigureFile`.
+ *
+ *  The dev backend can't replicate FSA's `docHandle.resolve(fileHandle)`
+ *  same-folder short-circuit — there are no `FileSystemFileHandle`s here
+ *  (the picker fell back to `<input type="file">`, which yields a bare
+ *  `File`). We always copy into `<paper>/<subdir>/<basename>` via the
+ *  existing PUT route, which already handles binary uploads and creates
+ *  parent dirs (see `src/app/api/dev/[...path]/route.dev.ts`'s PUT).
+ *
+ *  Honors the same signature as the FSA version so the storage facade
+ *  re-export works without per-backend branching at call sites.
+ */
+export async function importFigureFile(
+  h: DocWriteHandle,
+  picked: PickedFigureFile,
+  subdir: string = "figures",
+): Promise<string> {
+  assertActive(h);
+  assertNotSuperseded(h);
+  const basename = picked.file.name;
+  const destPath = `${subdir}/${basename}`;
+  const url = docFileUrl(h.docId, destPath);
+  // Reuse the figure-raster MIME conventions — the PUT route inspects
+  // Content-Type to decide whether to read the body as binary or text.
+  const contentType = picked.file.type || "application/octet-stream";
+  const buf = await picked.file.arrayBuffer();
+  const res = await fetch(url, {
+    method: "PUT",
+    headers: { "Content-Type": contentType },
+    body: buf,
+  });
+  if (!res.ok) {
+    throw new Error(
+      `[storage-dev] importFigureFile PUT ${url} failed: ${res.status}`,
+    );
+  }
+  return destPath;
+}
 
 // ---------------------------------------------------------------------------
 // Document creation, opening, and index management
