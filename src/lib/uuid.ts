@@ -4,8 +4,9 @@
  * Two flavours:
  *  1. **Short IDs** — 4-char hex strings used wherever an id appears in the
  *     `.tex` source: `%!v:xxxx` paragraph anchors and the `\vfid{xxxx}` /
- *     `\vcid{xxxx}` / `\vexid{xxxx}` no-op markers serialized before
- *     footnotes, citations, and example blocks. Compact and human-readable
+ *     `\vcid{xxxx}` / `\vexid{xxxx}` / `\vxid{xxxx}` / `\vlid{xxxx}` no-op
+ *     markers serialized before footnotes, citations, example blocks,
+ *     example items, and linked-anchor ranges. Compact and human-readable
  *     in the source. 65K-id space with optional collision-avoidance retry.
  *  2. **Entity IDs** — full v4 UUIDs for sidecar-only entities (notes,
  *     todos, comments, archive, revisions, links, etc.) that never appear

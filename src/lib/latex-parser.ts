@@ -1675,7 +1675,7 @@ function readParagraph(ctx: ParseContext): string {
     if (ctx.src[ctx.pos] === "\\" && result.trim()) {
       const rest = ctx.src.slice(ctx.pos);
       if (
-        /^\\(part|chapter|section|subsection|subsubsection|paragraph|subparagraph|begin|end|\[|hrulefill|title|author|date|maketitle|noindent|vspace|hspace|newcounter|setcounter|renewcommand|newcommand|usepackage|bibliographystyle|bibliography|tableofcontents|appendix|clearpage|newpage|par|ex|pex|xe|vexid|begingl|endgl)\b/.test(
+        /^\\(part|chapter|section|subsection|subsubsection|paragraph|subparagraph|begin|end|\[|hrulefill|title|author|date|maketitle|noindent|vspace|hspace|newcounter|setcounter|renewcommand|newcommand|usepackage|bibliographystyle|bibliography|tableofcontents|appendix|clearpage|newpage|par|ex|pex|xe|vexid|vxid|begingl|endgl)\b/.test(
           rest
         )
       ) {
@@ -1762,6 +1762,7 @@ function splitPexBody(
     tag: string;
     label: string;
     exnoOverride: string | null;
+    uuid: string | null;
     text: string;
   }>;
 } {
@@ -1769,15 +1770,20 @@ function splitPexBody(
     tag: string;
     label: string;
     exnoOverride: string | null;
+    uuid: string | null;
     text: string;
   }> = [];
   let preamble = "";
   let pos = 0;
   let firstAt = -1;
+  // Stashed uuid from a `\vxid{xxxx}` marker immediately preceding the next
+  // `\a` item. Consumed when the item begins.
+  let pendingItemUuid: string | null = null;
   let current: {
     tag: string;
     label: string;
     exnoOverride: string | null;
+    uuid: string | null;
     start: number;
   } | null = null;
 
@@ -1787,6 +1793,7 @@ function splitPexBody(
       tag: current.tag,
       label: current.label,
       exnoOverride: current.exnoOverride,
+      uuid: current.uuid,
       text: body.slice(current.start, endPos).trim(),
     });
     current = null;
@@ -1812,6 +1819,15 @@ function splitPexBody(
       const innerEnd = findMatchingXe(body, pos);
       pos = innerEnd === -1 ? body.length : innerEnd + "\\xe".length;
       continue;
+    }
+    // \vxid{xxxx} — id marker preceding the next \a item. Stash and skip.
+    if (body.startsWith("\\vxid{", pos)) {
+      const idArg = extractBraced(body, pos + "\\vxid".length);
+      if (idArg !== null) {
+        pendingItemUuid = idArg.content || null;
+        pos = idArg.end;
+        continue;
+      }
     }
     // Top-level \a with word-boundary
     if (body.startsWith("\\a", pos)) {
@@ -1855,7 +1871,14 @@ function splitPexBody(
         }
         // Consume one leading space for cleanliness
         while (cursor < body.length && /[ \t]/.test(body[cursor])) cursor++;
-        current = { tag, label, exnoOverride, start: cursor };
+        current = {
+          tag,
+          label,
+          exnoOverride,
+          uuid: pendingItemUuid,
+          start: cursor,
+        };
+        pendingItemUuid = null;
         pos = cursor;
         continue;
       }
@@ -1909,12 +1932,14 @@ function buildExampleBlockFromBody(
     }
     const itemNodes: JSONContent[] = [];
     for (const item of items) {
-      itemNodes.push(buildExampleItemFromText(item.tag, item.label, item.text));
+      itemNodes.push(
+        buildExampleItemFromText(item.tag, item.label, item.uuid, item.text),
+      );
     }
     if (itemNodes.length === 0) {
       itemNodes.push({
         type: "exampleItem",
-        attrs: { tag: "", label: "", subLabel: "" },
+        attrs: { uuid: generateShortId(), tag: "", label: "", subLabel: "" },
         content: [{ type: "paragraph" }],
       });
     }
@@ -1932,6 +1957,7 @@ function buildExampleBlockFromBody(
 function buildExampleItemFromText(
   tag: string,
   label: string,
+  uuid: string | null,
   text: string,
 ): JSONContent {
   // Slice out any `\begin{xlist}…\end{xlist}` body before parsing the
@@ -1964,7 +1990,11 @@ function buildExampleItemFromText(
 
   return {
     type: "exampleItem",
-    attrs: { tag, label, subLabel: "" },
+    // Assign a fresh UUID when the source had no preceding `\vxid{…}`
+    // marker so the panel and sidecar have a stable id to key by. The
+    // serializer emits `\vxid{…}` on the next save, anchoring the id in
+    // the .tex itself.
+    attrs: { uuid: uuid || generateShortId(), tag, label, subLabel: "" },
     content: normalized,
   };
 }
@@ -1977,12 +2007,14 @@ function buildExampleItemListFromBody(body: string): JSONContent {
   const { items } = splitPexBody(body);
   const itemNodes: JSONContent[] = [];
   for (const item of items) {
-    itemNodes.push(buildExampleItemFromText(item.tag, item.label, item.text));
+    itemNodes.push(
+      buildExampleItemFromText(item.tag, item.label, item.uuid, item.text),
+    );
   }
   if (itemNodes.length === 0) {
     itemNodes.push({
       type: "exampleItem",
-      attrs: { tag: "", label: "", subLabel: "" },
+      attrs: { uuid: generateShortId(), tag: "", label: "", subLabel: "" },
       content: [{ type: "paragraph" }],
     });
   }

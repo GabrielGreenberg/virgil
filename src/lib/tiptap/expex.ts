@@ -1113,6 +1113,7 @@ export const ExampleItem = Node.create({
 
   addAttributes() {
     return {
+      uuid: { default: null, rendered: false },
       tag: { default: "" },
       label: { default: "" },
       subLabel: { default: "" },

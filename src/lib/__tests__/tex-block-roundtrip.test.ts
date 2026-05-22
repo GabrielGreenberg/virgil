@@ -140,9 +140,9 @@ After.`;
   });
 
   it("collects parTitle into the sidecar when set on a texBlock", () => {
-    // The sidecar pipeline walks any node whose type is in ANCHORABLE_NODES
-    // and has both `uuid` and `parTitle`. Adding texBlock to that set lets
-    // user-supplied titles round-trip through .virgil/sidecar.yaml.
+    // The sidecar pipeline walks any node whose type carries a `uuid` attr
+    // and has a `parTitle`. texBlock being in that set lets user-supplied
+    // titles round-trip through .virgil/sidecar.yaml.
     const doc = {
       type: "doc",
       content: [

@@ -1,6 +1,5 @@
 import { JSONContent } from "@tiptap/react";
 import type { VirgilSidecar } from "@/lib/types";
-import { ANCHORABLE_NODES } from "@/lib/marginalia";
 import { generateShortId } from "@/lib/uuid";
 import { richJsonToLatex, richJsonToPlainText, normalizeRichContent } from "@/lib/footnote-content";
 import { CLASSIC_PREAMBLE } from "@/lib/document-styles";
@@ -8,6 +7,28 @@ import { CLASSIC_PREAMBLE } from "@/lib/document-styles";
 // The classic preset is the historical default — used as the fallback
 // when a doc has no preserved preamble and the caller didn't pass one.
 const DEFAULT_PREAMBLE = CLASSIC_PREAMBLE;
+
+// Node types that carry a `uuid` attr — kept as a local list because the
+// serializer operates on JSONContent without access to the live schema.
+// Mirror the `textObject` schema group declared in Editor.tsx / tiptap
+// node specs. Adding a kind to that group requires adding it here too.
+const UUID_BEARING_NODE_TYPES = new Set([
+  "paragraph",
+  "heading",
+  "bulletList",
+  "orderedList",
+  "listItem",
+  "blockquote",
+  "codeBlock",
+  "displayMath",
+  "latexComment",
+  "titleField",
+  "texBlock",
+  "figureBlock",
+  "graphicsBlock",
+  "exampleBlock",
+  "exampleItem",
+]);
 
 const DEFAULT_POSTAMBLE = `
 \\end{document}
@@ -25,11 +46,12 @@ function ensureVirgilCommands(preamble: string): string {
   const hasVfid = /\\(?:provide|new|renew)command\{\\vfid\}/.test(preamble);
   const hasVcid = /\\(?:provide|new|renew)command\{\\vcid\}/.test(preamble);
   const hasVexid = /\\(?:provide|new|renew)command\{\\vexid\}/.test(preamble);
+  const hasVxid = /\\(?:provide|new|renew)command\{\\vxid\}/.test(preamble);
   // xcolor is needed for `\textcolor[HTML]{...}` emitted by the textColor
   // mark. New docs get it from CLASSIC_PREAMBLE; older docs get it
   // injected lazily on first save.
   const hasXcolor = /\\usepackage(?:\[[^\]]*\])?\{xcolor\}/.test(preamble);
-  if (hasVfid && hasVcid && hasVexid && hasXcolor) return preamble;
+  if (hasVfid && hasVcid && hasVexid && hasVxid && hasXcolor) return preamble;
 
   const beginMarker = "\\begin{document}";
   const beginIdx = preamble.indexOf(beginMarker);
@@ -41,6 +63,7 @@ function ensureVirgilCommands(preamble: string): string {
   if (!hasVfid) additions.push("\\providecommand{\\vfid}[1]{}");
   if (!hasVcid) additions.push("\\providecommand{\\vcid}[1]{}");
   if (!hasVexid) additions.push("\\providecommand{\\vexid}[1]{}");
+  if (!hasVxid) additions.push("\\providecommand{\\vxid}[1]{}");
 
   const before = preamble.slice(0, beginIdx).replace(/\s*$/, "");
   const after = preamble.slice(beginIdx);
@@ -466,6 +489,8 @@ function serializeExampleBlock(node: JSONContent): string {
 }
 
 function serializeExampleItem(node: JSONContent): string {
+  const uuid = node.attrs?.uuid as string | null;
+  const idMarker = uuid ? `\\vxid{${uuid}}` : "";
   const tag = (node.attrs?.tag as string) || "";
   const tagStr = tag ? `<${tag}>` : "";
   const label = (node.attrs?.label as string) || "";
@@ -490,7 +515,7 @@ function serializeExampleItem(node: JSONContent): string {
     }
   }
   const body = pieces.join("\n");
-  return `\\a${tagStr}${labelStr} ${body}\n`;
+  return `${idMarker}\\a${tagStr}${labelStr} ${body}\n`;
 }
 
 function glossCellToText(cell: JSONContent): string {
@@ -606,7 +631,7 @@ export function assignUuids(doc: JSONContent): void {
   // fresh unique UUIDs.
   const seen = new Set<string>();
   function dedup(node: JSONContent) {
-    if (ANCHORABLE_NODES.has(node.type!) && node.attrs?.uuid) {
+    if (UUID_BEARING_NODE_TYPES.has(node.type!) && node.attrs?.uuid) {
       const uuid = node.attrs.uuid as string;
       if (seen.has(uuid)) {
         // Duplicate — clear so it gets a fresh UUID in pass 2
@@ -757,7 +782,7 @@ function computeFingerprint(node: JSONContent): string {
   return text.toLowerCase().replace(/\s+/g, " ").trim().slice(0, 80);
 }
 
-const UUID_ELIGIBLE = ANCHORABLE_NODES;
+const UUID_ELIGIBLE = UUID_BEARING_NODE_TYPES;
 
 /** Extract sidecar data (titles + fingerprints keyed by UUID) from the document. */
 export function extractSidecarData(doc: JSONContent): VirgilSidecar {

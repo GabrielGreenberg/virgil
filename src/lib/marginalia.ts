@@ -41,25 +41,6 @@ export function isAnchorableAtom(nodeType: NodeType): boolean {
   return isAnchorableNode(nodeType) && nodeType.isAtom;
 }
 
-/** @deprecated Use `isAnchorableNode(node.type)` instead. */
-export const ANCHORABLE_NODES = new Set([
-  "paragraph",
-  "heading",
-  "bulletList",
-  "orderedList",
-  "listItem",
-  "displayMath",
-  "latexComment",
-  "titleField",
-  "blockquote",
-  "codeBlock",
-  "texBlock",
-  "exampleBlock",
-]);
-
-/** @deprecated Use `isAnchorableAtom(node.type)` instead. */
-export const ANCHORABLE_ATOMS = new Set(["displayMath", "latexComment"]);
-
 // ---------------------------------------------------------------------------
 // Centralized MIME type constants
 // ---------------------------------------------------------------------------
