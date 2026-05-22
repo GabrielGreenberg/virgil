@@ -29,13 +29,19 @@
 import { useEffect, useState } from "react";
 import type { Editor, JSONContent } from "@tiptap/react";
 
-export type FloatSourceKind = "paragraph" | "section" | "selection" | "list";
+export type FloatSourceKind =
+  | "paragraph"
+  | "section"
+  | "selection"
+  | "list"
+  | "example";
 
 const KIND_LABEL: Record<FloatSourceKind, string> = {
   paragraph: "Source paragraph deleted",
   section: "Source section deleted",
   selection: "Source selection deleted",
   list: "Source list deleted",
+  example: "Source example deleted",
 };
 
 /**

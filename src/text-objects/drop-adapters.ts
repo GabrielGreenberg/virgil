@@ -13,6 +13,8 @@
  * See TEXT-OBJECT-REFACTOR.md §8.
  */
 
+import type { Node as PMNode, Schema } from "@tiptap/pm/model";
+import { generateShortId } from "@/lib/uuid";
 import type {
   DropAction,
   DropTarget,
@@ -101,4 +103,44 @@ export function isCompatibleParent(
     return parentKind === "exampleBlock";
   }
   return false;
+}
+
+// ---------------------------------------------------------------------------
+// Wrap construction — build a fresh single-item parent of `parentKind`
+// containing `sourceNode`. Called by the drop spec when the adapter
+// returns `{ kind: "wrap", parentKind }`. Lives here (not in the spec)
+// so the wrap shape stays co-located with the adapter that produced it.
+// ---------------------------------------------------------------------------
+
+export function buildWrap(
+  schema: Schema,
+  sourceNode: PMNode,
+  parentKind: TextObjectKind,
+): PMNode {
+  const newUuid = generateShortId();
+  switch (parentKind) {
+    case "bulletList":
+    case "orderedList": {
+      const parent = schema.nodes[parentKind];
+      if (!parent) {
+        throw new Error(`buildWrap: schema has no node "${parentKind}"`);
+      }
+      return parent.create({ uuid: newUuid }, [sourceNode]);
+    }
+    case "exampleBlock": {
+      const itemList = schema.nodes.exampleItemList;
+      const block = schema.nodes.exampleBlock;
+      if (!itemList || !block) {
+        throw new Error(
+          "buildWrap: schema missing exampleBlock or exampleItemList",
+        );
+      }
+      const inner = itemList.create({}, [sourceNode]);
+      return block.create({ uuid: newUuid }, [inner]);
+    }
+    default:
+      throw new Error(
+        `buildWrap: parentKind "${parentKind}" is not a wrap target`,
+      );
+  }
 }

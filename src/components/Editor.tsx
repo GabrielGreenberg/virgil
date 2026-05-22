@@ -44,6 +44,9 @@ import {
 } from "@/lib/marginalia";
 import { getAtomText } from "@/lib/atom-text";
 import { registerDropTarget } from "@/components/drop-mode/target-registry";
+// Side-effect import: registers every TextObject float body with the
+// registry via `registerFloatBody`. Must run before any popout renders.
+import "@/text-objects/floats";
 import { generateShortId } from "@/lib/uuid";
 import { ensureAnchorUuid } from "@/lib/anchor-uuid";
 import { parseLatex } from "@/lib/latex-parser";

@@ -172,13 +172,18 @@ export interface TextObjectFloatBodyProps {
   /** Ref to the main-editor handle (`EditorHandle`). Bodies reach into
    *  the main editor through this to read/write the source-of-truth
    *  node/range. Typed as `unknown` here to keep this module React-free;
-   *  the registry module narrows it. */
+   *  the chrome narrows it. */
   editorRef: unknown;
   /** Whether the body should render in "card context" mode — typically
    *  compact, with atom-block extensions configured for inline preview
    *  rather than full interactive nodes. Defaults to true inside floats
-   *  that show a snippet of a larger doc context (e.g. HeadingFloat). */
+   *  that show a snippet of a larger doc context (e.g. heading bodies). */
   cardContext: boolean;
+  /** Optional per-instance label override. Most bodies ignore this and
+   *  let the chrome use the static `meta.label`; headings flip it to
+   *  "Chapter" / "Section" / "Subsection" based on the underlying node's
+   *  level. Pass `null` to revert to the static label. */
+  setHeaderLabel: (next: string | null) => void;
 }
 
 // ---------------------------------------------------------------------------
@@ -247,6 +252,28 @@ export interface TextObjectMeta {
     sourceRef: TextObjectRef & { sourceContext: TextObjectSourceContext },
     target: DropTarget,
   ) => DropAction;
+
+  /** Collect the doc range a move-drop should pick up. Default behavior
+   *  (used when this is omitted) is "the single node whose `attrs.uuid`
+   *  matches `uuid`." Headings override this to collect the entire
+   *  section (heading + every block under it up to the next heading of
+   *  equal or higher rank) so a section moves as a unit. Keep this
+   *  function pure — it's called inside the drop spec without any
+   *  view-level context. */
+  collectMoveSource?: (
+    doc: PMNode,
+    uuid: string,
+  ) => MoveSource | null;
+}
+
+/** Per-kind "what to move" payload. The drop spec deletes
+ *  `[from, to)` from the source doc and re-inserts `nodes` at the
+ *  target. Single-node kinds emit a one-element `nodes` array.
+ *  Headings emit the whole section. */
+export interface MoveSource {
+  from: number;
+  to: number;
+  nodes: ReadonlyArray<PMNode>;
 }
 
 // ---------------------------------------------------------------------------

@@ -14,8 +14,7 @@
  */
 
 import type { DropSpec } from "./types";
-import { paragraphDropSpec } from "./specs/paragraph";
-import { headingDropSpec } from "./specs/heading";
+import { textObjectDropSpec } from "./specs/textobject";
 import { selectionDropSpec } from "./specs/selection";
 import { aiRequestDropSpec } from "./specs/ai-request";
 import { noteDropSpec, highlightDropSpec } from "@/panels/Notes/drop-spec";
@@ -40,9 +39,17 @@ import { STACK_PULL_PREFIX } from "@/lib/stack/types";
  * `bib` is intentionally absent — bib entries don't anchor to text.
  */
 const SPECS: Record<string, DropSpec | undefined> = {
-  paragraph: paragraphDropSpec,
-  heading: headingDropSpec,
+  // Unified spec for every block lift — paragraph, heading, list,
+  // texBlock, exampleBlock, sub-objects. Resolves via the TextObject
+  // registry's `dropAdapter` (wrap vs. drop-direct) and
+  // `collectMoveSource` (single node vs. section range).
+  textobject: textObjectDropSpec,
+  // Transitional: session-only selection floats stay routed here until
+  // Phase E hydrates SelectionRef lifts into `linkedRange` TextObjects.
   selection: selectionDropSpec,
+  // The Examples *panel-card* popout (a sibling of `note:` / `todo:` /
+  // `bib:`). The in-editor exampleBlock popout goes through
+  // `textobject:exampleBlock:<id>` instead.
   example: exampleDropSpec,
   note: noteDropSpec,
   highlight: highlightDropSpec,

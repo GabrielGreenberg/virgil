@@ -12,6 +12,7 @@
  */
 
 import type { Node as PMNode } from "@tiptap/pm/model";
+import { getSectionRangeByUuid } from "@/lib/section-range";
 import {
   topLevelDropAdapter,
   listItemDropAdapter,
@@ -23,6 +24,7 @@ import {
 } from "./handle-layout";
 import type {
   DragHandleAction,
+  MoveSource,
   TextObjectKind,
   TextObjectMeta,
   TextObjectRef,
@@ -82,6 +84,13 @@ export const TEXT_OBJECT_REGISTRY: Record<TextObjectKind, TextObjectMeta> = {
     floatBodyComponent: PLACEHOLDER_FLOAT_BODY,
     actions: ALL_ACTIONS,
     dropAdapter: topLevelDropAdapter,
+    // Headings move as a section, not a single node — pick up every
+    // block from the heading down to the next equal-or-higher heading.
+    collectMoveSource: (doc, uuid): MoveSource | null => {
+      const range = getSectionRangeByUuid(doc, uuid);
+      if (!range) return null;
+      return { from: range.start, to: range.end, nodes: range.nodes };
+    },
   },
   bulletList: {
     label: "Bullet list",

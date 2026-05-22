@@ -11,12 +11,12 @@ import { QuotationGroupCard } from "@/panels/Quotations";
 import { ExampleCard } from "@/panels/Examples/ExampleCard";
 import BibEntryCard from "../BibEntryCard";
 import { AiRequestCard } from "../panel-primitives";
-import { ParagraphFloat } from "../ParagraphFloat";
-import { HeadingFloat } from "../HeadingFloat";
-import { ListFloat } from "../ListFloat";
-import { TexBlockFloat } from "../TexBlockFloat";
 import { SelectionFloat } from "../SelectionFloat";
-import { parseTextObjectPopoutKey } from "@/text-objects/text-object-registry";
+import { TextObjectFloat } from "@/text-objects/TextObjectFloat";
+import {
+  parseTextObjectPopoutKey,
+  TEXT_OBJECT_REGISTRY,
+} from "@/text-objects/text-object-registry";
 import type { EditorHandle, FootnoteInfo, ExampleInfo } from "../Editor";
 import { getLinkedTextObjectIds } from "@/links/links";
 import type {
@@ -493,50 +493,27 @@ export function renderPoppedCard(key: string, d: PoppedCardDeps): ReactNode {
       );
     }
     case "textobject": {
-      // Unified block-popout dispatcher (Phase D10). The legacy
+      // Unified block-popout dispatcher (Phase D10 + D5). The legacy
       // `paragraph:` / `heading:` / `list:` / `texBlock:` prefixes are
       // gone — every block lift goes through `textobject:<kind>:<id>`
-      // emitted by `textObjectPopoutKey` (registry helper). Phase D5
-      // replaces the per-kind body components below with the unified
-      // `TextObjectFloat` reading `meta.floatBodyComponent` from the
-      // registry; for now we dispatch to the existing per-kind floats.
+      // emitted by `textObjectPopoutKey` (registry helper). The body
+      // component for each kind is registered in
+      // `src/text-objects/floats/index.ts` via `registerFloatBody`. If
+      // a kind has no body wired yet (sub-objects, atom blocks,
+      // linkedRange before Phase E), the chrome renders null.
       const ref = parseTextObjectPopoutKey(key);
       if (!ref) return null;
-      switch (ref.kind) {
-        case "paragraph":
-          return <ParagraphFloat key={key} cardKey={key} uuid={ref.id} editorRef={d.editorRef} />;
-        case "heading":
-          return <HeadingFloat key={key} cardKey={key} uuid={ref.id} editorRef={d.editorRef} />;
-        case "bulletList":
-        case "orderedList":
-          return <ListFloat key={key} cardKey={key} uuid={ref.id} editorRef={d.editorRef} />;
-        case "texBlock":
-          return <TexBlockFloat key={key} cardKey={key} uuid={ref.id} editorRef={d.editorRef} />;
-        case "exampleBlock": {
-          // Phase D5 wires a proper exampleBlock float body; for now
-          // dispatch to the Examples panel-card preview when one exists.
-          const ex = d.examples.find((e) => e.exampleId === ref.id);
-          if (!ex) return null;
-          return (
-            <ExampleCard
-              key={key}
-              example={ex}
-              isSelected={d.selectedExampleId === ex.exampleId}
-              onSelect={() =>
-                d.setSelectedExampleId(d.selectedExampleId === ex.exampleId ? null : ex.exampleId)
-              }
-              onJump={() => d.editorRef.current?.scrollToExample(ex.exampleId)}
-              isPoppedOut
-            />
-          );
-        }
-        // listItem, exampleItem, figureBlock, graphicsBlock, displayMath,
-        // latexComment, blockquote, codeBlock, titleField, linkedRange —
-        // no float body wired yet; Phase D5 registers them via
-        // `registerFloatBody` so the registry lookup lights them up.
-        default:
-          return null;
-      }
+      const meta = TEXT_OBJECT_REGISTRY[ref.kind];
+      if (!meta.floatBodyComponent) return null;
+      return (
+        <TextObjectFloat
+          key={key}
+          cardKey={key}
+          kind={ref.kind}
+          id={ref.id}
+          editorRef={d.editorRef}
+        />
+      );
     }
     case "selection": {
       // Selection floats are session-only and live in `selection-floats.ts`.
@@ -557,8 +534,19 @@ export function renderPoppedCard(key: string, d: PoppedCardDeps): ReactNode {
       // `textobject:bulletList:<id>` / `textobject:orderedList:<id>`.
       // Migration to the unified shape requires a doc walk (to resolve
       // bullet vs ordered); deferred to a Phase F sweep so loadPrefs()
-      // can stay doc-free.
-      return <ListFloat key={key} cardKey={key} uuid={id} editorRef={d.editorRef} />;
+      // can stay doc-free. The unified `ListBody` works for both list
+      // kinds (it inspects the live node to drive its dynamic label),
+      // so picking `bulletList` here is harmless — the rendered label
+      // tracks the underlying node.
+      return (
+        <TextObjectFloat
+          key={key}
+          cardKey={key}
+          kind="bulletList"
+          id={id}
+          editorRef={d.editorRef}
+        />
+      );
     }
     case "example": {
       // The `example:` prefix is the Examples panel-card popout key (a

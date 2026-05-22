@@ -14,10 +14,8 @@
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { useStackDropTarget, setStackIconRect } from "@/lib/stack/stack-drop-target";
-import { MIME_PAR_CAPTURE, MIME_TEXT_CAPTURE } from "@/hooks/usePanelCapture";
 import { MIME_TEXT_INSERT } from "@/lib/marginalia";
 import type { Editor } from "@tiptap/react";
-import { snapshotParagraph } from "@/lib/stack/snapshot";
 import { addStackItem } from "@/hooks/useStack";
 
 export interface StackIconProps {
@@ -68,15 +66,16 @@ export function StackIcon({
     };
   }, []);
 
-  // HTML5 drag handlers — accept paragraph captures, text-capture
-  // payloads, and TEXT_INSERT payloads.
+  // HTML5 drag-to-stack handlers — today the only live HTML5 producer
+  // is `MIME_TEXT_INSERT` (from external paste / selection sources). The
+  // legacy `MIME_PAR_CAPTURE` / `MIME_TEXT_CAPTURE` MIMEs are gone — the
+  // float-to-stack path now runs entirely through the in-app drop session
+  // (the `virgil-stack-drop` event fired by FloatingPanel.tsx). Phase E
+  // and beyond may emit `MIME_TEXTOBJECT` from TextObjectGrabHandle for
+  // selection-hydration drag-out; we'll wire the consumer here then.
   const onDragOver = (e: React.DragEvent) => {
     const t = e.dataTransfer?.types ?? [];
-    if (
-      t.includes(MIME_PAR_CAPTURE) ||
-      t.includes(MIME_TEXT_CAPTURE) ||
-      t.includes(MIME_TEXT_INSERT)
-    ) {
+    if (t.includes(MIME_TEXT_INSERT)) {
       e.preventDefault();
       e.dataTransfer.dropEffect = "copy";
       if (!html5Hover) setHtml5Hover(true);
@@ -93,41 +92,6 @@ export function StackIcon({
     e.stopPropagation();
     setHtml5Hover(false);
     if (!mainEditor) return;
-    const parData = e.dataTransfer.getData(MIME_PAR_CAPTURE);
-    if (parData) {
-      try {
-        const { uuid } = JSON.parse(parData) as { uuid: string };
-        const item = snapshotParagraph(mainEditor, uuid, source);
-        if (item) addStackItem(item);
-      } catch {
-        /* ignore bad payload */
-      }
-      return;
-    }
-    const textData = e.dataTransfer.getData(MIME_TEXT_CAPTURE);
-    if (textData) {
-      try {
-        const { from, to } = JSON.parse(textData) as { from: number; to: number };
-        if (typeof from === "number" && typeof to === "number" && to > from) {
-          const slice = mainEditor.state.doc.slice(from, to);
-          const plain = mainEditor.state.doc
-            .textBetween(from, to, " ", " ")
-            .trim();
-          const sliceJson = slice.toJSON();
-          if (sliceJson && plain) {
-            addStackItem({
-              id: crypto.randomUUID(),
-              capturedAt: new Date().toISOString(),
-              source,
-              payload: { kind: "text", slice: sliceJson, plain },
-            });
-          }
-        }
-      } catch {
-        /* ignore */
-      }
-      return;
-    }
     const insertData = e.dataTransfer.getData(MIME_TEXT_INSERT);
     if (insertData) {
       try {
