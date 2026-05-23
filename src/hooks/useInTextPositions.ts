@@ -5,6 +5,12 @@ import type { Editor } from "@tiptap/react";
 import { isAnchorableNode } from "@/lib/marginalia";
 import { getLinkedTextObjectIds } from "@/links/links";
 import type { Link } from "@/links/_shared/types";
+import { findEditorScrollFor } from "@/components/editor-layout/layout-scroll";
+
+/** Viewport gating margin — items within ±NEAR_ZONE_PX of the visible
+ *  range still get measured, so scrolling slightly doesn't flash through
+ *  default-height placeholders. */
+const NEAR_ZONE_PX = 600;
 
 export interface PositionItem {
   id: string;
@@ -221,30 +227,42 @@ export function useInTextPositions(
       prev === nextContentHeight ? prev : nextContentHeight,
     );
 
+    // Viewport gate for per-card measurement: items whose paragraph
+    // anchor sits far outside the visible scroll range get DEFAULT_ENTRY_HEIGHT
+    // instead of a per-card `getBoundingClientRect`. The cascade resolver
+    // still positions them so click/scroll-into-view works; we just
+    // don't pay the layout-read cost for cards the user can't see.
+    const scrollEl = findEditorScrollFor(editorDom);
+    let viewTop = -Infinity;
+    let viewBottom = Infinity;
+    if (scrollEl) {
+      const sr = scrollEl.getBoundingClientRect();
+      viewTop = sr.top - NEAR_ZONE_PX;
+      viewBottom = sr.bottom + NEAR_ZONE_PX;
+    }
+
     const next = new Map<string, NaturalEntry>();
     for (const item of items) {
       const pos = Math.min(item.pos, editor.state.doc.content.size);
       let naturalTop: number;
+      let coordsTop: number;
       try {
         const coords = editor.view.coordsAtPos(pos);
+        coordsTop = coords.top;
         naturalTop = coords.top - podRect.top;
       } catch {
         continue; // skip items with invalid positions
       }
-      // Clamp negative tops. When an unanchored block (e.g. in
-      // OmniViewPanel) sits above panelScrollRef, podRect.top is pushed
-      // down past nodes near the top of the doc (notably titleField).
-      // Without clamping, those cards get a negative `top` and render
-      // upward into the unanchored block — visual overlap.
       if (naturalTop < 0) naturalTop = 0;
 
-      // Measure rendered card height. Cards not yet rendered fall back
-      // to DEFAULT_ENTRY_HEIGHT; their resize observer (below) will
-      // re-trigger measure once they paint.
-      const selector =
-        typeof entry === "string" ? `[${entry}="${item.id}"]` : entry(item.id);
-      const el = panelEl.querySelector(selector) as HTMLElement | null;
-      const height = el ? el.getBoundingClientRect().height : DEFAULT_ENTRY_HEIGHT;
+      const inViewport = coordsTop >= viewTop && coordsTop <= viewBottom;
+      let height: number = DEFAULT_ENTRY_HEIGHT;
+      if (inViewport) {
+        const selector =
+          typeof entry === "string" ? `[${entry}="${item.id}"]` : entry(item.id);
+        const el = panelEl.querySelector(selector) as HTMLElement | null;
+        if (el) height = el.getBoundingClientRect().height;
+      }
 
       next.set(item.id, { naturalTop, height });
     }
