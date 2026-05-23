@@ -27,6 +27,7 @@ import {
   DisplayMath,
   TexBlock,
   FigureBlock,
+  FigureCaption,
   GraphicsBlock,
   LatexComment,
 } from "@/lib/tiptap-extensions";
@@ -260,6 +261,7 @@ function RichTextFieldImpl({
       // register it here (or the same bug class will re-appear).
       TexBlock.configure({ cardContext: true }),
       FigureBlock.configure({ cardContext: true }),
+      FigureCaption,
       GraphicsBlock.configure({ cardContext: true }),
       LatexComment.configure({ cardContext: true }),
       DisplayMath,
