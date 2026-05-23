@@ -1233,73 +1233,10 @@ textarea,
   position: relative;
 }
 
-/* 6-dot drag grip — vertical orientation, positioned just left of paragraph text.
-   Sticks slightly into the margin gutter but stays clear of marginalia icons. */
-.par-drag-handle {
-  position: absolute;
-  left: -18px;
-  top: 0;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 12px;
-  height: calc(var(--editor-font-size, 1.05rem) * var(--editor-line-height, 1.8));
-  opacity: 0;
-  pointer-events: none;
-  transition: opacity 0.15s;
-  cursor: grab;
-  user-select: none;
-  color: var(--muted-light, #b5b0aa);
-}
-
-.par-drag-handle:hover {
-  color: var(--ink, #3a362f);
-  background: rgba(0, 0, 0, 0.06);
-  border-radius: 3px;
-}
-
-.par-drag-handle:active {
-  cursor: grabbing;
-}
-
-/* Button-like pressed state — darkens + depresses while held */
-.par-drag-handle:active,
-.par-drag-handle.is-pressed {
-  color: var(--ink, #3a362f);
-  background: rgba(0, 0, 0, 0.08);
-  border-radius: 3px;
-  transform: translateY(1px);
-}
-
-/* While the click-menu popover is open, keep the handle in its pressed look
-   so the user has a clear visual anchor for the menu. */
-.par-drag-handle.is-menu-open {
-  color: var(--ink, #3a362f);
-  background: rgba(0, 0, 0, 0.10);
-  border-radius: 3px;
-}
-
-.par-title-wrapper.has-text.hovered .par-drag-handle,
-.par-title-wrapper.has-text:hover .par-drag-handle,
-.list-title-wrapper.has-text.hovered > .par-drag-handle,
-.list-title-wrapper.has-text:hover > .par-drag-handle {
-  opacity: 1;
-  pointer-events: auto;
-}
-
-/* Suppressed paragraph drag handle — set by SelectionDragHandle when a
-   selection's handle lands on this paragraph's first visual line, so the
-   two handles don't visually collide. */
-.par-drag-handle.is-superseded {
-  display: none !important;
-}
-
 /* Unified TextObject grab handle — portaled to the document body,
    pinned in viewport coords, tracks the active TextObject or selection.
    Replaces the per-NodeView paragraph/heading/list/tex/example grips
-   (deleted in Phase D4) and the live-selection `SelectionDragHandle`
-   (also deleted in D4). Width/height match the legacy `.par-drag-handle`
-   so the visual continuity is intact.
+   and the live-selection `SelectionDragHandle` (all deleted in Phase D4).
    See src/text-objects/TextObjectGrabHandle.tsx. */
 .text-object-grab-handle {
   position: fixed;
@@ -1387,30 +1324,16 @@ textarea,
   transition: opacity 0.15s;
   z-index: 2;
 }
-.par-title-wrapper.has-text:has(.par-drag-handle:hover) .par-popout-btn,
 .par-title-wrapper.has-text:has(.par-left-margin-zone:hover) .par-popout-btn,
 .par-title-wrapper.has-text .par-popout-btn:hover {
   opacity: 1;
 }
 
-/* Inside the float popup, the drag handle is always visible. The popup
-   is dedicated to a single paragraph and the user expects the handle
-   to be reachable from any horizontal position within the window —
-   text, padding to either side, anywhere. Hover-gating it the way the
-   main editor does means the handle disappears the moment the cursor
-   leaves the text rectangle, which makes it nearly impossible to
-   actually grab. */
-.par-title-wrapper.par-float-paragraph .par-drag-handle {
-  opacity: 1;
-  pointer-events: auto;
-}
-
 /* Heading drag handle and popout button — counterpart of the paragraph
    chrome, sitting in the same inner-left margin slot for chapters/
-   sections/subsections. Geometry mirrors .par-drag-handle / .par-popout-btn
-   on the paragraph wrapper, but level-specific top adjustments line the
-   chrome up with the heading text baseline (larger headings have more
-   leading and need to drop the chrome a bit). */
+   sections/subsections. Level-specific top adjustments line the chrome
+   up with the heading text baseline (larger headings have more leading
+   and need to drop the chrome a bit). */
 .heading-wrapper {
   /* heading-wrapper already has position: relative implicitly via the
      fold chevron rules, but make it explicit so the absolutely-
@@ -1588,9 +1511,7 @@ textarea,
    text line. Fallback selector covers bare <p> children.
 
    The negative margin-left + matching extra padding-left shifts the grey
-   bar a little further into the gutter without moving the text, so the
-   bar doesn't sit flush against the paragraph drag handle (see
-   .tiptap blockquote .par-drag-handle override below). */
+   bar a little further into the gutter without moving the text. */
 .tiptap blockquote .par-body-container,
 .tiptap blockquote > p {
   margin-left: -0.3em;
@@ -1598,12 +1519,8 @@ textarea,
   padding-left: 1.3em;
 }
 
-/* Push the drag handle (and its centered popout button) further into the
-   gutter inside blockquotes so they have breathing room from the grey
-   quote bar. Default handle sits at -14px; -22px clears the shifted bar. */
-.tiptap blockquote .par-drag-handle {
-  left: -22px;
-}
+/* Push the popout button further into the gutter inside blockquotes so it
+   has breathing room from the grey quote bar. */
 .tiptap blockquote .par-popout-btn {
   left: -44px;
 }

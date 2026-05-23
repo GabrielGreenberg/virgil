@@ -42,7 +42,6 @@
 
 import {
   useEffect,
-  useLayoutEffect,
   useRef,
   useState,
   type RefObject,
@@ -54,6 +53,7 @@ import { usePoppedCards } from "@/hooks/usePoppedCards";
 import { setCardLiftHandoff, setCardLiftTarget } from "@/components/card-lift";
 import { ensureAnchorUuid } from "@/lib/anchor-uuid";
 import { hydrateSelectionToTextObject } from "./hydrate-selection";
+import { walkAnchorableBlocks } from "@/lib/marginalia-blocks";
 import { useDragHandleMenu } from "@/components/editor-layout/card-actions/drag-handle-menu-context";
 import {
   useEditorViewportCache,
@@ -76,7 +76,6 @@ import type {
 } from "./types";
 
 const LIFT_THRESHOLD = 5;
-const FIRST_LINE_EPSILON = 2;
 /** Vertical offset between the cursor and the spawned float's top edge.
  *  The grip sits inside the float's header, so the cursor lands on the
  *  header (not on the body) after the lift. */
@@ -129,21 +128,11 @@ interface Placement {
   top: number;
   /** The resolved ref the handle represents. */
   ref: TextObjectRef | SelectionRef | null;
-  /** Source paragraph's uuid (for SelectionRef supersession on the
-   *  legacy `.par-drag-handle`, while it still exists). Phase D4 deletes
-   *  the legacy handles; this field can go away then. */
-  paragraphUuid: string | null;
-  /** True iff the active range starts on the source block's first
-   *  visual line — supersedes any legacy `.par-drag-handle` on that
-   *  block during D2-D4 cohabitation. */
-  superseded: boolean;
 }
 
 function placementsEqual(a: Placement, b: Placement): boolean {
   if (a.visible !== b.visible) return false;
   if (a.left !== b.left || a.top !== b.top) return false;
-  if (a.superseded !== b.superseded) return false;
-  if (a.paragraphUuid !== b.paragraphUuid) return false;
   if (refsEqual(a.ref, b.ref)) return true;
   return false;
 }
@@ -192,6 +181,20 @@ function resolveTextObjectAtPos(
 }
 
 /**
+ * Hit-test cache for `resolveTextObjectAtMouse`. Per-pixel mousemove
+ * inside the same DOM element cannot change the resolved ref — short-
+ * circuit by element identity. Invalidate on any doc-change transaction
+ * via `invalidateMouseResolverCache`.
+ */
+let lastHitElement: Element | null = null;
+let lastHitResult: TextObjectRef | null = null;
+
+function invalidateMouseResolverCache(): void {
+  lastHitElement = null;
+  lastHitResult = null;
+}
+
+/**
  * Hit-test the mouse position against the editor's DOM to find a hovered
  * TextObject. Returns the innermost-matching node. Used as the discovery
  * path for atom blocks that the caret can't reach.
@@ -201,17 +204,28 @@ function resolveTextObjectAtMouse(
   clientX: number,
   clientY: number,
 ): TextObjectRef | null {
-  if (!editor.view.dom.contains(document.elementFromPoint(clientX, clientY))) {
+  const hit = document.elementFromPoint(clientX, clientY);
+  if (hit === lastHitElement) {
+    return lastHitResult;
+  }
+  if (!editor.view.dom.contains(hit)) {
+    lastHitElement = hit;
+    lastHitResult = null;
     return null;
   }
   // posAtCoords returns the nearest doc position to the mouse.
   const pos = editor.view.posAtCoords({ left: clientX, top: clientY });
-  if (!pos) return null;
+  if (!pos) {
+    lastHitElement = hit;
+    lastHitResult = null;
+    return null;
+  }
   // Use `inside` (the position INSIDE the node under the cursor) so atom
   // blocks at the cursor's position are reachable. For a position
   // adjacent to an atom (caret just before the atom), `inside === -1`;
   // falling back to `resolveTextObjectAtPos(pos.pos)` then climbs
   // ancestors.
+  let result: TextObjectRef | null = null;
   if (pos.inside >= 0) {
     const node = editor.state.doc.nodeAt(pos.inside);
     if (
@@ -222,16 +236,18 @@ function resolveTextObjectAtMouse(
     ) {
       const name = node.type.name as TextObjectKind;
       const id = node.attrs.uuid as string;
-      // Prefer atom blocks at mouse position (discovery path); fall
-      // through to the climb for non-atoms (the caret-based resolver
-      // gives a better answer for those).
       const meta = TEXT_OBJECT_REGISTRY[name];
       if (meta.isAtomBlock) {
-        return { kind: name, id };
+        result = { kind: name, id };
       }
     }
   }
-  return resolveTextObjectAtPos(editor, pos.pos);
+  if (!result) {
+    result = resolveTextObjectAtPos(editor, pos.pos);
+  }
+  lastHitElement = hit;
+  lastHitResult = result;
+  return result;
 }
 
 /**
@@ -250,62 +266,48 @@ function computePlacement(
     left: 0,
     top: 0,
     ref,
-    paragraphUuid: null,
-    superseded: false,
   };
   if (!ref) return hidden;
 
   let from = -1;
   let to = -1;
-  let paragraphUuid: string | null = null;
-  let blockStartPos = -1;
   let blockNodePos = -1;
 
   if (ref.kind === "selection") {
     from = ref.from;
     to = ref.to;
-    paragraphUuid = ref.paragraphId;
-    // Resolve the source block for placement math (DOM rect on its
-    // wrapper).
     const $from = editor.state.doc.resolve(from);
     for (let d = $from.depth; d >= 0; d--) {
       const node = $from.node(d);
       if (!isTextObjectKind(node.type.name) || node.type.name === "linkedRange") continue;
       if (!(node.attrs?.uuid as string | null)) continue;
-      blockStartPos = $from.start(d);
       blockNodePos = d === 0 ? 0 : $from.before(d);
       break;
     }
   } else {
-    // Locate the TextObject node by uuid for placement.
-    editor.state.doc.descendants((node, pos) => {
-      if (from >= 0) return false;
-      if (
-        node.type.name === ref.kind &&
-        (node.attrs?.uuid as string | null) === ref.id
-      ) {
-        from = pos + (node.isAtom ? 0 : 1);
-        to = pos + node.nodeSize - (node.isAtom ? 0 : 1);
-        blockStartPos = pos + (node.isAtom ? 0 : 1);
-        blockNodePos = pos;
-        paragraphUuid = ref.id;
-        return false;
+    // Use the shared walker (same util the marginalia registry uses)
+    // instead of an open-coded `doc.descendants` walk — keeps the UUID-
+    // lookup pattern uniform across the codebase.
+    const block = walkAnchorableBlocks(editor).find(
+      (b) => b.uuid === ref.id,
+    );
+    if (block) {
+      const node = editor.state.doc.nodeAt(block.pos);
+      if (node && node.type.name === ref.kind) {
+        from = block.pos + (block.isAtom ? 0 : 1);
+        to = block.pos + node.nodeSize - (block.isAtom ? 0 : 1);
+        blockNodePos = block.pos;
       }
-      return true;
-    });
+    }
   }
   if (from < 0 || blockNodePos < 0) return hidden;
 
   let fromCoords: { left: number; top: number; bottom: number };
   let toCoords: { top: number; bottom: number };
-  let blockStartCoords: { left: number; top: number } | null = null;
   let anchorDom: HTMLElement | null = null;
   try {
     fromCoords = editor.view.coordsAtPos(from);
     toCoords = editor.view.coordsAtPos(to);
-    if (blockStartPos >= 0) {
-      blockStartCoords = editor.view.coordsAtPos(blockStartPos);
-    }
     const dom = editor.view.nodeDOM(blockNodePos);
     if (dom instanceof HTMLElement) anchorDom = dom;
   } catch {
@@ -315,13 +317,9 @@ function computePlacement(
 
   const scrollTop = cache.scrollTop;
   const scrollBottom = cache.scrollBottom;
-  if (toCoords.bottom < scrollTop) return { ...hidden, ref, paragraphUuid };
-  if (fromCoords.top > scrollBottom) return { ...hidden, ref, paragraphUuid };
+  if (toCoords.bottom < scrollTop) return { ...hidden, ref };
+  if (fromCoords.top > scrollBottom) return { ...hidden, ref };
 
-  // Horizontal placement via the shared registry-driven layout utility.
-  // For atom blocks, the anchor DOM's left edge IS the content edge
-  // (there's no per-line text). For non-atoms, prefer the anchor DOM
-  // rect over coordsAtPos to avoid the bullet-zone offset.
   const kind: TextObjectKind | null =
     ref.kind === "selection" ? null : ref.kind;
   const meta = kind ? TEXT_OBJECT_REGISTRY[kind] : null;
@@ -338,27 +336,11 @@ function computePlacement(
 
   const top = Math.max(fromCoords.top, scrollTop);
 
-  // Supersede the legacy `.par-drag-handle` on the source block when the
-  // source-block's first line is the same as the active ref's top. Only
-  // meaningful while the legacy handles still exist (Phase D4 deletes
-  // them and this becomes a no-op).
-  let superseded = false;
-  if (
-    paragraphUuid &&
-    blockStartCoords &&
-    Math.abs(fromCoords.top - blockStartCoords.top) < FIRST_LINE_EPSILON &&
-    fromCoords.top >= scrollTop - FIRST_LINE_EPSILON
-  ) {
-    superseded = true;
-  }
-
   return {
     visible: true,
     left,
     top,
     ref,
-    paragraphUuid,
-    superseded,
   };
 }
 
@@ -373,8 +355,6 @@ export function TextObjectGrabHandle({ editorRef }: Props) {
     left: 0,
     top: 0,
     ref: null,
-    paragraphUuid: null,
-    superseded: false,
   });
 
   const handleElRef = useRef<HTMLDivElement | null>(null);
@@ -391,17 +371,21 @@ export function TextObjectGrabHandle({ editorRef }: Props) {
   // RAF handle for coalescing high-frequency events (selection, doc,
   // mousemove) into one placement compute per frame.
   const rafRef = useRef<number>(0);
-  // Track which paragraph (by uuid) currently has its legacy
-  // `.par-drag-handle` superseded so we can restore it cleanly. Drops
-  // out of the codebase in Phase D4.
-  const supersededUuidRef = useRef<string | null>(null);
+  // Stable indirection so the listener-install effect (deps: []) can
+  // call the latest schedule closure without re-attaching listeners on
+  // every viewport-cache version bump. Populated by the schedule-setup
+  // effect below.
+  const scheduleRefRef = useRef<() => void>(() => {});
 
   const { cacheRef, version: cacheVersion } = useEditorViewportCache(
     editorRef.current,
   );
 
   // ---------------------------------------------------------------------------
-  // Resolution + placement loop
+  // Resolution + placement loop — split into three effects:
+  //   1. Listener install + editor subscription (mounts once)
+  //   2. Recompute trigger on viewport-cache version bumps
+  //   3. (the inline schedule closure lives in effect 1)
   // ---------------------------------------------------------------------------
 
   useEffect(() => {
@@ -482,8 +466,6 @@ export function TextObjectGrabHandle({ editorRef }: Props) {
                 left: 0,
                 top: 0,
                 ref: null,
-                paragraphUuid: null,
-                superseded: false,
               }
             : p,
         );
@@ -505,6 +487,8 @@ export function TextObjectGrabHandle({ editorRef }: Props) {
         schedule();
       });
     };
+    // Publish for the cache-version effect below.
+    scheduleRefRef.current = scheduleRaf;
 
     const onSelectionUpdate = () => scheduleRaf();
     const onDocUpdate = ({
@@ -513,6 +497,9 @@ export function TextObjectGrabHandle({ editorRef }: Props) {
       transaction: import("@tiptap/pm/state").Transaction;
     }) => {
       if (!transaction.docChanged) return;
+      // Mouse-hit cache reads `nodeAt(pos)`; any structural change
+      // invalidates it.
+      invalidateMouseResolverCache();
       scheduleRaf();
     };
 
@@ -542,15 +529,15 @@ export function TextObjectGrabHandle({ editorRef }: Props) {
     const onScroll = () => scheduleRaf();
     const onResize = () => scheduleRaf();
     const onMouseMove = (e: MouseEvent) => {
-      mousePosRef.current = { clientX: e.clientX, clientY: e.clientY };
-      // Throttled — only re-compute when no selection is active (the
-      // selection path doesn't depend on mouse).
+      // Bail before the ref-write when a selection is active: the
+      // selection path doesn't depend on mouse, so the position write +
+      // schedule are both useless churn during active drag-selection.
       const editor = editorRef.current;
       if (!editor) return;
       const sel = editor.state.selection;
-      if (sel.from === sel.to && !(sel instanceof NodeSelection)) {
-        scheduleRaf();
-      }
+      if (sel.from !== sel.to || sel instanceof NodeSelection) return;
+      mousePosRef.current = { clientX: e.clientX, clientY: e.clientY };
+      scheduleRaf();
     };
     const onDocSelectionChange = () => {
       const editor = editorRef.current;
@@ -598,8 +585,21 @@ export function TextObjectGrabHandle({ editorRef }: Props) {
 
     window.addEventListener("scroll", onScroll, true);
     window.addEventListener("resize", onResize);
-    window.addEventListener("mousemove", onMouseMove);
-    document.addEventListener("selectionchange", onDocSelectionChange);
+    // Mousemove scoped to the editor DOM. Window-wide subscription would
+    // fire for every pixel of mouse movement anywhere on screen (over
+    // panels, menus, other monitors); the grab handle's hover-discovery
+    // only matters when the cursor is over the editor.
+    const editorDom = editorRef.current?.view.dom ?? null;
+    editorDom?.addEventListener("mousemove", onMouseMove);
+    // ProseMirror's `selectionUpdate` covers the editable mode; this DOM
+    // mirror is only needed for the Reader (`editable: false`) where PM
+    // doesn't dispatch on contenteditable=false selection changes.
+    const editorForGate = editorRef.current;
+    const installSelectionChange =
+      editorForGate !== null && !editorForGate.isEditable;
+    if (installSelectionChange) {
+      document.addEventListener("selectionchange", onDocSelectionChange);
+    }
     return () => {
       cleanupListeners();
       if (rafRef.current) {
@@ -610,51 +610,26 @@ export function TextObjectGrabHandle({ editorRef }: Props) {
       prevEditor = null;
       window.removeEventListener("scroll", onScroll, true);
       window.removeEventListener("resize", onResize);
-      window.removeEventListener("mousemove", onMouseMove);
-      document.removeEventListener("selectionchange", onDocSelectionChange);
-    };
-  }, [editorRef, cacheRef, cacheVersion]);
-
-  // ---------------------------------------------------------------------------
-  // Legacy `.par-drag-handle` supersession (D2-D4 cohabitation)
-  // ---------------------------------------------------------------------------
-
-  useLayoutEffect(() => {
-    const editor = editorRef.current;
-    const root = editor?.view.dom as HTMLElement | undefined;
-    const prev = supersededUuidRef.current;
-    const nextUuid =
-      placement.visible && placement.superseded ? placement.paragraphUuid : null;
-    if (prev && prev !== nextUuid && root) {
-      const el = root.querySelector(
-        `.par-drag-handle[data-par-uuid="${prev}"]`,
-      );
-      if (el) el.classList.remove("is-superseded");
-    }
-    if (nextUuid && root) {
-      const el = root.querySelector(
-        `.par-drag-handle[data-par-uuid="${nextUuid}"]`,
-      );
-      if (el) el.classList.add("is-superseded");
-    }
-    supersededUuidRef.current = nextUuid;
-  }, [editorRef, placement.visible, placement.superseded, placement.paragraphUuid]);
-
-  useEffect(() => {
-    const editor = editorRef.current;
-    const root = editor?.view.dom as HTMLElement | undefined;
-    const supersededRef = supersededUuidRef;
-    return () => {
-      const prev = supersededRef.current;
-      if (prev && root) {
-        const el = root.querySelector(
-          `.par-drag-handle[data-par-uuid="${prev}"]`,
-        );
-        if (el) el.classList.remove("is-superseded");
+      editorDom?.removeEventListener("mousemove", onMouseMove);
+      if (installSelectionChange) {
+        document.removeEventListener("selectionchange", onDocSelectionChange);
       }
-      supersededRef.current = null;
     };
+    // editorRef is a stable React ref; this effect mounts the listeners
+    // exactly once. The schedule closure reads `cacheRef.current` at call
+    // time, so it always sees the latest cache without a re-attach.
   }, [editorRef]);
+
+  // Recompute placement when the viewport cache version bumps (editor
+  // resize, sidebar toggle). Only triggers a schedule — no listener
+  // churn. Before Cut 7 this dep lived on the listener-install effect
+  // and re-attached every DOM listener per cache tick.
+  useEffect(() => {
+    scheduleRefRef.current();
+    // cacheRef is read inside the schedule closure; we only need to
+    // trigger on version bumps.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [cacheVersion]);
 
   // ---------------------------------------------------------------------------
   // Click / lift gesture
