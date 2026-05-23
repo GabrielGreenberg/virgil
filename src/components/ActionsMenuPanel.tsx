@@ -171,7 +171,13 @@ export function ActionsMenuPanel({
     let inlineContent: unknown[] = [];
     try {
       const slice = editor.state.doc.slice(from, to);
-      inlineContent = slice.content.toJSON() as unknown[];
+      // `Fragment.toJSON()` returns `null` when the fragment is empty
+      // (e.g. a collapsed selection, or a selection consisting only of
+      // node-boundary openings). The cast to `unknown[]` lies in that
+      // case; guard explicitly so `inlineContent.length` below doesn't
+      // throw.
+      const json = slice.content.toJSON();
+      if (Array.isArray(json)) inlineContent = json as unknown[];
     } catch {
       /* fall through with empty content */
     }
