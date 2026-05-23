@@ -82,6 +82,7 @@ export const TEXT_OBJECT_REGISTRY: Record<TextObjectKind, TextObjectMeta> = {
     isRange: false,
     decorationSafety: 0,
     floatBodyComponent: PLACEHOLDER_FLOAT_BODY,
+    initialFloatSize: { width: 480, height: 360 },
     actions: ALL_ACTIONS,
     dropAdapter: topLevelDropAdapter,
     // Headings move as a section, not a single node — pick up every
@@ -99,6 +100,7 @@ export const TEXT_OBJECT_REGISTRY: Record<TextObjectKind, TextObjectMeta> = {
     isRange: false,
     decorationSafety: 0,
     floatBodyComponent: PLACEHOLDER_FLOAT_BODY,
+    initialFloatSize: { width: 480, height: 360 },
     actions: ALL_ACTIONS,
     dropAdapter: topLevelDropAdapter,
   },
@@ -109,6 +111,7 @@ export const TEXT_OBJECT_REGISTRY: Record<TextObjectKind, TextObjectMeta> = {
     isRange: false,
     decorationSafety: 0,
     floatBodyComponent: PLACEHOLDER_FLOAT_BODY,
+    initialFloatSize: { width: 480, height: 360 },
     actions: ALL_ACTIONS,
     dropAdapter: topLevelDropAdapter,
   },
@@ -172,6 +175,7 @@ export const TEXT_OBJECT_REGISTRY: Record<TextObjectKind, TextObjectMeta> = {
     isRange: false,
     decorationSafety: 0,
     floatBodyComponent: PLACEHOLDER_FLOAT_BODY,
+    initialFloatSize: { width: 480, height: 280 },
     actions: ALL_ACTIONS,
     // texBlock uses `%!vtex:begin <uuid>` / `%!vtex:end <uuid>` comment
     // sentinels for round-trip, not a \v*id command. Left empty here

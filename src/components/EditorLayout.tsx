@@ -8,6 +8,7 @@ import { VIRGIL_COMMAND_NAMES } from "@/lib/tiptap-extensions";
 import { isLabelTaken as isLabelTakenIn } from "@/lib/labels";
 import { isDevStorage } from "@/lib/storage-mode";
 import { readPdf } from "@/lib/storage";
+import { migrateLegacyPopoutKeys } from "@/text-objects/post-load-migrations";
 import { type MarginaliaType, type DividerLevel, type DividerWidth } from "@/hooks/useViewPrefs";
 import { Editor } from "@tiptap/react";
 import { type SectionPathEntry, buildPerBlockCounts, sumIncludedWords, extractHeadings } from "@/panels/Outline";
@@ -743,6 +744,7 @@ export default function EditorLayout() {
     toggleCardPopout,
     closeCardPopout,
     setCardFloatPosition,
+    migratePoppedOutCards,
     setPrintOptions,
     setEditorLeftMargin,
     setEditorRightMargin,
@@ -3692,6 +3694,19 @@ export default function EditorLayout() {
     // Mode B (selection) anchors now persist via the unified link helpers,
     // so there's nothing to reanchor here.
   }, [editorInstance, docIdForHooks, notes, highlights, comments, cutterCards]);
+
+  // Phase F: doc-aware legacy popout-key sweep. The boot-time
+  // `useViewPrefs.loadPrefs` migrator handles the kinds that don't
+  // need a doc walk (paragraph, heading, texBlock); `list:<uuid>` and
+  // the in-editor `example:<uuid>` need to know the actual node kind
+  // to disambiguate, so they're swept here once per doc-load.
+  const popoutKeysSweptDocRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (!editorInstance || !docIdForHooks) return;
+    if (popoutKeysSweptDocRef.current === docIdForHooks) return;
+    popoutKeysSweptDocRef.current = docIdForHooks;
+    migratePoppedOutCards((prev) => migrateLegacyPopoutKeys(editorInstance, prev));
+  }, [editorInstance, docIdForHooks, migratePoppedOutCards]);
 
   // Filter marginalia by visibility settings
   const visibleMarginaliaMarkers = useMemo(() => {

@@ -1361,6 +1361,24 @@ export function useViewPrefs() {
     [update],
   );
 
+  /**
+   * Apply a transform to `poppedOutCards`. The transform may return the
+   * same array reference to indicate "no change"; only a new reference
+   * triggers a prefs write. Used by post-load migrations that need the
+   * editor doc to make decisions (e.g. resolving legacy `list:<uuid>`
+   * keys to `textobject:bulletList:<uuid>` vs `textobject:orderedList:<uuid>`).
+   */
+  const migratePoppedOutCards = useCallback(
+    (transform: (prev: readonly string[]) => readonly string[]) => {
+      update((p) => {
+        const next = transform(p.poppedOutCards);
+        if (next === p.poppedOutCards) return p;
+        return { ...p, poppedOutCards: [...next] };
+      });
+    },
+    [update],
+  );
+
   const setEditorSplitRatio = useCallback((ratio: number) => {
     update((p) => ({ ...p, editorSplitRatio: Math.max(0.15, Math.min(0.85, ratio)) }));
   }, [update]);
@@ -1469,6 +1487,7 @@ export function useViewPrefs() {
     toggleCardPopout,
     closeCardPopout,
     setCardFloatPosition,
+    migratePoppedOutCards,
     setPrintOptions,
     setTopbarRightCollapsed,
   };

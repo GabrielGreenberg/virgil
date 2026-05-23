@@ -514,26 +514,6 @@ export function renderPoppedCard(key: string, d: PoppedCardDeps): ReactNode {
         />
       );
     }
-    case "list": {
-      // Transitional fallback for pre-D10 legacy keys still in prefs.
-      // No new writers — TextObjectGrabHandle emits
-      // `textobject:bulletList:<id>` / `textobject:orderedList:<id>`.
-      // Migration to the unified shape requires a doc walk (to resolve
-      // bullet vs ordered); deferred to a Phase F sweep so loadPrefs()
-      // can stay doc-free. The unified `ListBody` works for both list
-      // kinds (it inspects the live node to drive its dynamic label),
-      // so picking `bulletList` here is harmless — the rendered label
-      // tracks the underlying node.
-      return (
-        <TextObjectFloat
-          key={key}
-          cardKey={key}
-          kind="bulletList"
-          id={id}
-          editorRef={d.editorRef}
-        />
-      );
-    }
     case "example": {
       // The `example:` prefix is the Examples panel-card popout key (a
       // stable card-prefix in the same family as `note:`, `todo:`,

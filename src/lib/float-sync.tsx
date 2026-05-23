@@ -31,19 +31,30 @@
 import { useEffect, useState } from "react";
 import type { Editor, JSONContent } from "@tiptap/react";
 
+/**
+ * Kinds the source-missing banner can describe. Roughly tracks
+ * `TextObjectKind` but intentionally collapses the persistent-node
+ * variants into a small label set — "Source paragraph deleted",
+ * "Source list deleted", etc. — since the banner is for the user and
+ * doesn't need to distinguish bulletList vs orderedList or
+ * codeBlock vs blockquote. Add a new entry here when a new TextObject
+ * kind ships a float body that this banner could surface.
+ */
 export type FloatSourceKind =
   | "paragraph"
   | "section"
-  | "selection"
   | "list"
-  | "example";
+  | "example"
+  | "linkedRange"
+  | "texBlock";
 
 const KIND_LABEL: Record<FloatSourceKind, string> = {
   paragraph: "Source paragraph deleted",
   section: "Source section deleted",
-  selection: "Source selection deleted",
   list: "Source list deleted",
   example: "Source example deleted",
+  linkedRange: "Linked range deleted",
+  texBlock: "Source TeX block deleted",
 };
 
 /**

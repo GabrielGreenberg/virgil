@@ -212,7 +212,7 @@ export function LinkedRangeBody({
     <>
       {sourceMissing ? (
         <SourceMissingBanner
-          kind="selection"
+          kind="linkedRange"
           onClose={() => popped?.close(cardKey)}
         />
       ) : null}

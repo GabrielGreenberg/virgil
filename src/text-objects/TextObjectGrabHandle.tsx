@@ -83,23 +83,14 @@ const FIRST_LINE_EPSILON = 2;
 const SPAWN_CURSOR_OFFSET_Y = 16;
 
 /**
- * Per-kind initial float size at spawn time. Today's per-kind grips use
- * different defaults — paragraphs are narrow, headings/lists/tex blocks
- * are wider. Phase F moves this into `meta.initialFloatSize` on the
- * registry; for now it lives here.
+ * Default initial float size at spawn time. Per-kind overrides live on
+ * the registry as `meta.initialFloatSize`; wider kinds (headings,
+ * lists, tex blocks) populate it.
  */
 const DEFAULT_FLOAT_SIZE: { width: number; height: number } = { width: 360, height: 280 };
-const PER_KIND_FLOAT_SIZE: Partial<
-  Record<TextObjectKind, { width: number; height: number }>
-> = {
-  heading: { width: 480, height: 360 },
-  bulletList: { width: 480, height: 360 },
-  orderedList: { width: 480, height: 360 },
-  texBlock: { width: 480, height: 280 },
-};
 
 function floatSizeFor(kind: TextObjectKind) {
-  return PER_KIND_FLOAT_SIZE[kind] ?? DEFAULT_FLOAT_SIZE;
+  return TEXT_OBJECT_REGISTRY[kind].initialFloatSize ?? DEFAULT_FLOAT_SIZE;
 }
 
 /**

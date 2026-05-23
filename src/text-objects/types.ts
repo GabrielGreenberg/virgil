@@ -229,6 +229,12 @@ export interface TextObjectMeta {
    *  this module React-free; the registry module narrows it. */
   floatBodyComponent: unknown;
 
+  /** Initial size for a freshly popped-out float, in viewport pixels.
+   *  Omitted → use the DEFAULT_FLOAT_SIZE in TextObjectGrabHandle.
+   *  Mostly used by wider kinds (headings, lists, tex-blocks) that
+   *  want more room than a paragraph float. */
+  initialFloatSize?: { width: number; height: number };
+
   /** DragHandleMenu actions this kind exposes. Subset of the global
    *  `DragHandleAction` union, selected per kind. */
   actions: ReadonlyArray<DragHandleAction>;
