@@ -3,6 +3,7 @@ import type { Editor } from "@tiptap/react";
 import { generateShortId } from "@/lib/uuid";
 import FigureBlockNodeView from "@/components/FigureBlockNodeView";
 import type { FigureBlockOptions } from "./figure-block";
+import { UUID_ATTR_SPEC } from "./uuid-attr";
 
 // `graphicsBlock` — represents a standalone `\includegraphics` that lives
 // at block level (not inside a `\begin{figure}` env). Common in informal
@@ -28,7 +29,7 @@ export const GraphicsBlock = Node.create<FigureBlockOptions>({
   addAttributes() {
     return {
       command: { default: "" },
-      uuid: { default: null, renderHTML: () => ({}) },
+      uuid: UUID_ATTR_SPEC.uuid,
       source: { default: "", renderHTML: () => ({}) },
       widthPercent: { default: null, renderHTML: () => ({}) },
     };

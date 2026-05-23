@@ -2,6 +2,7 @@ import { Node, Extension, mergeAttributes } from "@tiptap/react";
 import { Plugin, PluginKey } from "@tiptap/pm/state";
 import { TextSelection } from "@tiptap/pm/state";
 import { generateShortId } from "@/lib/uuid";
+import { UUID_ATTR_SPEC } from "./uuid-attr";
 
 // The exampleBlock NodeView no longer hosts a grip or popout button — the
 // editor-mounted TextObjectGrabHandle handles both. No per-extension
@@ -968,7 +969,7 @@ export const ExampleItem = Node.create({
 
   addAttributes() {
     return {
-      uuid: { default: null, rendered: false },
+      uuid: UUID_ATTR_SPEC.uuid,
       tag: { default: "" },
       label: { default: "" },
       subLabel: { default: "" },

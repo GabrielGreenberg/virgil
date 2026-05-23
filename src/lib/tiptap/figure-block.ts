@@ -3,6 +3,7 @@ import type { Editor } from "@tiptap/react";
 import type { MutableRefObject, RefObject } from "react";
 import { generateShortId } from "@/lib/uuid";
 import FigureBlockNodeView from "@/components/FigureBlockNodeView";
+import { UUID_ATTR_SPEC } from "./uuid-attr";
 
 type LabelRenameHandler = (
   oldLabel: string,
@@ -64,7 +65,7 @@ export const FigureBlock = Node.create<FigureBlockOptions>({
       extras: { default: "" },
       placement: { default: "" },
       starred: { default: false, renderHTML: () => ({}) },
-      uuid: { default: null, renderHTML: () => ({}) },
+      uuid: UUID_ATTR_SPEC.uuid,
       source: { default: null, renderHTML: () => ({}) },
       widthPercent: { default: null, renderHTML: () => ({}) },
       sources: { default: [], renderHTML: () => ({}) },

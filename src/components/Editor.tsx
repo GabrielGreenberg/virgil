@@ -48,6 +48,7 @@ import { registerDropTarget } from "@/components/drop-mode/target-registry";
 // registry via `registerFloatBody`. Must run before any popout renders.
 import "@/text-objects/floats";
 import { generateShortId } from "@/lib/uuid";
+import { UUID_ATTR_SPEC, UuidAttrDecorator } from "@/lib/tiptap/uuid-attr";
 import { ensureAnchorUuid } from "@/lib/anchor-uuid";
 import { parseLatex } from "@/lib/latex-parser";
 import { serializeBodyOnly } from "@/lib/latex-serializer";
@@ -449,7 +450,7 @@ const VirgilEditor = forwardRef<EditorHandle, EditorProps>(function VirgilEditor
       return {
         ...this.parent?.(),
         parTitle: { default: null },
-        uuid: { default: null, rendered: false },
+        uuid: UUID_ATTR_SPEC.uuid,
       };
     },
     addNodeView() {
@@ -860,7 +861,7 @@ const VirgilEditor = forwardRef<EditorHandle, EditorProps>(function VirgilEditor
       return {
         ...this.parent?.(),
         parTitle: { default: null },
-        uuid: { default: null, rendered: false },
+        uuid: UUID_ATTR_SPEC.uuid,
         listPreamble: { default: null, rendered: false },
       };
     },
@@ -875,7 +876,7 @@ const VirgilEditor = forwardRef<EditorHandle, EditorProps>(function VirgilEditor
       return {
         ...this.parent?.(),
         parTitle: { default: null },
-        uuid: { default: null, rendered: false },
+        uuid: UUID_ATTR_SPEC.uuid,
         listPreamble: { default: null, rendered: false },
       };
     },
@@ -889,7 +890,7 @@ const VirgilEditor = forwardRef<EditorHandle, EditorProps>(function VirgilEditor
     addAttributes() {
       return {
         ...this.parent?.(),
-        uuid: { default: null, rendered: false },
+        uuid: UUID_ATTR_SPEC.uuid,
       };
     },
   });
@@ -906,7 +907,7 @@ const VirgilEditor = forwardRef<EditorHandle, EditorProps>(function VirgilEditor
     addAttributes() {
       return {
         ...this.parent?.(),
-        uuid: { default: null, rendered: false },
+        uuid: UUID_ATTR_SPEC.uuid,
       };
     },
   });
@@ -916,7 +917,7 @@ const VirgilEditor = forwardRef<EditorHandle, EditorProps>(function VirgilEditor
     addAttributes() {
       return {
         ...this.parent?.(),
-        uuid: { default: null, rendered: false },
+        uuid: UUID_ATTR_SPEC.uuid,
       };
     },
   });
@@ -939,7 +940,7 @@ const VirgilEditor = forwardRef<EditorHandle, EditorProps>(function VirgilEditor
       return {
         ...this.parent?.(),
         label: { default: null },
-        uuid: { default: null, rendered: false },
+        uuid: UUID_ATTR_SPEC.uuid,
         numbered: { default: true, rendered: false },
         sectionNumber: { default: null, rendered: false },
       };
@@ -1693,6 +1694,11 @@ const VirgilEditor = forwardRef<EditorHandle, EditorProps>(function VirgilEditor
         : []),
       TabIndent,
       PgMarkChip,
+      // Emits `data-uuid` decorations on every anchorable block's outer
+      // DOM element. The marginalia registry + drag hit-test depend on
+      // these attributes being present in the live DOM. See uuid-attr.ts
+      // for why this needs to be a decoration and not renderHTML.
+      UuidAttrDecorator,
       // Read-only enforcement plugin: rejects any transaction that
       // mutates the document when the React `editable` prop is false.
       // See the `readOnlyRef` comment near the top of this component

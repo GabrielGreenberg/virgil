@@ -1,6 +1,7 @@
 import { Node, mergeAttributes } from "@tiptap/react";
 import { NodeSelection, Plugin, PluginKey } from "@tiptap/pm/state";
 import { editableAtomView } from "./editable-atom-view";
+import { UUID_ATTR_SPEC } from "./uuid-attr";
 
 // Flag: when a LatexComment is created via input rule, auto-focus it
 let _pendingAutoFocusComment = false;
@@ -28,7 +29,7 @@ export const LatexComment = Node.create<LatexCommentOptions>({
   addAttributes() {
     return {
       text: { default: "" },
-      uuid: { default: null, rendered: false },
+      uuid: UUID_ATTR_SPEC.uuid,
     };
   },
 

@@ -1,6 +1,7 @@
 import { Node, mergeAttributes } from "@tiptap/react";
 import { Plugin, PluginKey } from "@tiptap/pm/state";
 import katex from "katex";
+import { UUID_ATTR_SPEC } from "./uuid-attr";
 
 function renderMath(target: HTMLElement, latex: string, displayMode: boolean) {
   target.innerHTML = "";
@@ -160,7 +161,7 @@ export const DisplayMath = Node.create({
   addAttributes() {
     return {
       latex: { default: "" },
-      uuid: { default: null, rendered: false },
+      uuid: UUID_ATTR_SPEC.uuid,
     };
   },
 

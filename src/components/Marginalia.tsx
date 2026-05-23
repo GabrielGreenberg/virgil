@@ -3,7 +3,10 @@
 import { useEffect, useRef, useMemo, useSyncExternalStore } from "react";
 import { createPortal } from "react-dom";
 import type { Editor } from "@tiptap/react";
-import { useMarginalia } from "@/hooks/useMarginalia";
+import {
+  useMarginaliaRegistry,
+  useRegistryVersion,
+} from "@/hooks/useMarginaliaRegistry";
 import {
   MARKER_META,
   MARGINALIA_GUTTER_WIDTH_LEFT,
@@ -106,21 +109,24 @@ function useMarginaliaHost(editor: Editor | null): HTMLElement | null {
  * Markers fill left-to-right, top-to-bottom.
  */
 export default function Marginalia({ editor, markers, panelSides }: MarginaliaProps) {
-  const metrics = useMarginalia(editor);
+  const registry = useMarginaliaRegistry(editor);
+  // Subscribe to the registry's version so we re-render whenever any
+  // observed block's metrics change (or blocks enter/leave the near-zone).
+  const registryVersion = useRegistryVersion(registry);
   const scrollEl = useMarginaliaHost(editor);
 
   // The host pod is already `position: relative` (set on the white pod
   // wrapper in EditorLayout), so no need to mutate position here.
 
-  // Compute line-aligned grid positions for all markers
+  // Compute line-aligned grid positions for all markers. The registry
+  // returns null for off-screen blocks — those markers are skipped,
+  // which is correct since their anchor isn't visible either.
   const positioned = useMemo(
-    () => computeMarkerPositions(metrics, markers, panelSides),
-    [metrics, markers, panelSides],
+    () => computeMarkerPositions(registry.getMetrics, markers, panelSides),
+    // registryVersion is the re-render trigger; getMetrics itself is stable.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [registry, markers, panelSides, registryVersion],
   );
-
-  // Keep a ref to metrics so the imperative drag handler can read it
-  const metricsRef = useRef(metrics);
-  metricsRef.current = metrics;
 
   // Imperative vertical drop indicator for paragraph-linking drags
   // (marginalia gutter icons, quotation panel, note panel).
@@ -133,7 +139,7 @@ export default function Marginalia({ editor, markers, panelSides }: MarginaliaPr
     let indicatedParagraphId: string | null = null;
 
     const showIndicator = (paragraphId: string, side: "left" | "right") => {
-      const pos = metricsRef.current.get(paragraphId);
+      const pos = registry.getMetrics(paragraphId);
       if (!pos) { hideIndicator(); return; }
       if (!indicator) {
         indicator = document.createElement("div");
@@ -175,24 +181,34 @@ export default function Marginalia({ editor, markers, panelSides }: MarginaliaPr
       cancelAnimationFrame(rafId);
       rafId = requestAnimationFrame(() => {
         const scrollRect = scrollEl.getBoundingClientRect();
-        const yInScroll = e.clientY - scrollRect.top + scrollEl.scrollTop;
         const side = e.clientX < scrollRect.left + scrollRect.width / 2 ? "left" : "right";
 
-        let bestId: string | null = null;
-        let bestDist = Infinity;
-        for (const [id, pos] of metricsRef.current) {
-          if (yInScroll >= pos.domTop && yInScroll <= pos.domTop + pos.height) {
-            bestId = id;
-            break;
-          }
-          // Use nearest-edge distance (not midpoint) so gaps between
-          // elements resolve to the closer edge, not the closer center.
-          const distTop = Math.abs(yInScroll - pos.domTop);
-          const distBottom = Math.abs(yInScroll - (pos.domTop + pos.height));
-          const dist = Math.min(distTop, distBottom);
-          if (dist < bestDist) {
-            bestDist = dist;
-            bestId = id;
+        // Hit-test by what's actually under the pointer. The browser is
+        // the authoritative source for "which block is at (x, y)" — that's
+        // what `elementFromPoint` answers. Each anchorable block now
+        // carries a `data-uuid` (see UUID_ATTR_SPEC); walk up to find it.
+        //
+        // The marginalia gutter itself is `pointer-events: none` and the
+        // drop indicator is `pointer-events: none`, so neither intercepts.
+        // The marker buttons HAVE `pointer-events: auto`, but they live
+        // inside the gutter, which has no `[data-uuid]`, so closest()
+        // walks past them and returns null — falling through to the
+        // micro-scan below, which finds the paragraph underneath.
+        const findUuidAt = (x: number, y: number): string | null => {
+          const el = document.elementFromPoint(x, y) as HTMLElement | null;
+          if (!el) return null;
+          const block = el.closest("[data-uuid]") as HTMLElement | null;
+          return block?.getAttribute("data-uuid") ?? null;
+        };
+
+        let bestId: string | null = findUuidAt(e.clientX, e.clientY);
+        if (!bestId) {
+          // Pointer is in a gap between blocks (block spacing, list-item
+          // gutter, etc.). Probe vertically at ±a few px until we hit a
+          // UUID-bearing element.
+          for (const dy of [-4, 4, -10, 10, -20, 20]) {
+            bestId = findUuidAt(e.clientX, e.clientY + dy);
+            if (bestId) break;
           }
         }
 
@@ -359,7 +375,9 @@ export default function Marginalia({ editor, markers, panelSides }: MarginaliaPr
       document.removeEventListener("dragend", onDragEnd);
       scrollEl.removeEventListener("drop", onDrop);
     };
-  }, [scrollEl, editor]);
+    // `registry` is memoized with empty deps — its identity is stable
+    // across renders, so adding it here doesn't re-run the effect.
+  }, [scrollEl, editor, registry]);
 
   if (!scrollEl) return null;
   if (positioned.length === 0) return null;

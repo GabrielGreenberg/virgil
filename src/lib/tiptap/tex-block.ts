@@ -3,6 +3,7 @@ import type { Editor } from "@tiptap/react";
 import type { RefObject } from "react";
 import { generateShortId } from "@/lib/uuid";
 import TexBlockNodeView from "@/components/TexBlockNodeView";
+import { UUID_ATTR_SPEC } from "./uuid-attr";
 
 // Options injected from Editor.tsx via `TexBlock.configure({…})` so the
 // NodeView can read the popped-out state. Lift + click-to-menu live in
@@ -48,8 +49,7 @@ export const TexBlock = Node.create<TexBlockOptions>({
   addAttributes() {
     return {
       code: { default: "" },
-      // Hidden from HTML; carried in JSON only.
-      uuid: { default: null, renderHTML: () => ({}) },
+      uuid: UUID_ATTR_SPEC.uuid,
       // Optional user-supplied title shown above the pod via the +T affordance.
       // Persisted in the sidecar YAML (keyed by uuid) — see
       // extractSidecarData/recoverOrphanedUuids. Same attr name as

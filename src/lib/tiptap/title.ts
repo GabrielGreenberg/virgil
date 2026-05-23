@@ -1,5 +1,6 @@
 import { Node, Extension, mergeAttributes } from "@tiptap/react";
 import { Plugin, PluginKey } from "@tiptap/pm/state";
+import { UUID_ATTR_SPEC } from "./uuid-attr";
 
 /**
  * Clears parTitle (and uuid) from empty paragraphs.
@@ -53,7 +54,7 @@ export const TitleField = Node.create({
       field: { default: "title" },
       rawPrefix: { default: null },
       isToday: { default: false },
-      uuid: { default: null, rendered: false },
+      uuid: UUID_ATTR_SPEC.uuid,
       // True when this title/author/date originated from the preamble
       // (i.e. before `\begin{document}`). Serializer uses this flag to
       // emit the command back into the preamble instead of the body.
@@ -117,7 +118,7 @@ export const MaketitleMarker = Node.create({
 
   addAttributes() {
     return {
-      uuid: { default: null, rendered: false },
+      uuid: UUID_ATTR_SPEC.uuid,
     };
   },
 

@@ -29,24 +29,28 @@ import {
  * Compute final pixel positions for all margin markers using the
  * line-aligned grid system.
  *
- * @param metrics  Per-node measurements from useMarginalia (top, lineHeight, lineCount, etc.)
- * @param markers  Flat list of markers from EditorLayout
+ * @param getMetrics  Per-UUID lookup of measurements from
+ *                    useMarginaliaRegistry. Returns `null` for off-screen
+ *                    or not-yet-measured blocks — those markers are
+ *                    silently skipped, which is correct (off-screen
+ *                    blocks don't render marginalia).
+ * @param markers     Flat list of markers from EditorLayout
  * @param panelSides  Which side each panel is currently docked on
  * @returns Markers with resolved side, grid cell, and pixel coordinates
  */
 export function computeMarkerPositions(
-  metrics: Map<string, AnchorNodeMetrics>,
+  getMetrics: (uuid: string) => AnchorNodeMetrics | null,
   markers: readonly MarginaliaMarker[],
   panelSides: Partial<Record<PanelId, "left" | "right" | null>>,
 ): PositionedMarker[] {
-  if (metrics.size === 0 || markers.length === 0) return [];
+  if (markers.length === 0) return [];
 
   const result: PositionedMarker[] = [];
   // Track how many markers have been placed per paragraph+side
   const counters = new Map<string, number>();
 
   for (const m of markers) {
-    const node = metrics.get(m.textObjectId);
+    const node = getMetrics(m.textObjectId);
     if (!node) continue; // anchor TextObject not visible / not yet measured
 
     // Resolve side: explicit override > current panel dock > default
