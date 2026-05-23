@@ -126,6 +126,18 @@ export default function LinkConnector({
     const mRect = markerEl.getBoundingClientRect();
     const eRect = entryEl.getBoundingClientRect();
 
+    // Viewport gate: if both endpoints are off-screen, skip bezier
+    // generation entirely. Previously the floating variant checked only
+    // the entry rect (and the in-text variant only the marker rect), so
+    // either-on-screen + other-off-screen still paid the full path-math
+    // cost. Off-screen pairs are common when a long doc has many open
+    // cards and the user scrolls — most connectors should bail here.
+    const inView = (r: DOMRect) => r.bottom >= cr.top && r.top <= cr.bottom;
+    if (!inView(mRect) && !inView(eRect)) {
+      setConnectors([]);
+      return;
+    }
+
     if (variant === "in-text") {
       // Simple L-shape: horizontal from entry edge to marker X, then a
       // short vertical to the marker's vertical midpoint.
@@ -145,11 +157,6 @@ export default function LinkConnector({
         ? `M ${entryX} ${entryY} L ${markerX} ${entryY} L ${markerX} ${markerY}`
         : `M ${entryX} ${entryY} L ${markerX} ${markerY}`;
       setConnectors([{ id: linkId, d }]);
-      return;
-    }
-
-    if (eRect.bottom < cr.top || eRect.top > cr.bottom) {
-      setConnectors([]);
       return;
     }
 
