@@ -12,11 +12,12 @@
  * component subscribes via {@link useSlashPopupState}.
  */
 
-import { useEffect, useState, type RefObject } from "react";
+import { useEffect, useRef, useState, type RefObject } from "react";
 import { createPortal } from "react-dom";
 import type { Editor } from "@tiptap/react";
 import { useSlashPopupState } from "@/lib/slash-popup-store";
 import { executeSlashSelectionAt } from "@/lib/tiptap/slash-popup";
+import { findEditorScrollFor } from "@/components/editor-layout/layout-scroll";
 
 const POPUP_WIDTH = 180;
 const VIEWPORT_MARGIN = 8;
@@ -38,6 +39,7 @@ export function SlashCommandPopup({
   const state = useSlashPopupState();
   const [coords, setCoords] = useState<Coords | null>(null);
 
+  const rafRef = useRef<number>(0);
   useEffect(() => {
     const editor = editorRef.current;
     if (!editor) return;
@@ -54,15 +56,34 @@ export function SlashCommandPopup({
         setCoords(null);
       }
     };
+    // RAF-coalesce: scroll/resize fire per-tick; only one recompute per
+    // frame is actually useful. Previously every scroll tick called
+    // `coordsAtPos` + `setCoords` synchronously.
+    const scheduleUpdate = () => {
+      if (rafRef.current) return;
+      rafRef.current = requestAnimationFrame(() => {
+        rafRef.current = 0;
+        update();
+      });
+    };
     update();
-    const onTr = () => update();
+    const onTr = () => scheduleUpdate();
     editor.on("transaction", onTr);
-    window.addEventListener("scroll", update, true);
-    window.addEventListener("resize", update);
+    // Scroll: the editor's actual scroll container, not window — the
+    // editor's column scrolls via the unified row scroll, and a window-
+    // scope listener picks up unrelated scroll events from panels.
+    const scrollParent = findEditorScrollFor(view.dom);
+    scrollParent?.addEventListener("scroll", scheduleUpdate, { passive: true });
+    // Resize is genuinely window-scoped (viewport change).
+    window.addEventListener("resize", scheduleUpdate);
     return () => {
       editor.off("transaction", onTr);
-      window.removeEventListener("scroll", update, true);
-      window.removeEventListener("resize", update);
+      scrollParent?.removeEventListener("scroll", scheduleUpdate);
+      window.removeEventListener("resize", scheduleUpdate);
+      if (rafRef.current) {
+        cancelAnimationFrame(rafRef.current);
+        rafRef.current = 0;
+      }
     };
   }, [state.open, state.open ? state.slashPos : -1, editorRef]);
 
