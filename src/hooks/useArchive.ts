@@ -75,10 +75,14 @@ export function useArchive(docId: string | null) {
   );
 
   const addParagraphId = useCallback(
-    (id: string, paragraphId: string) => {
+    (
+      id: string,
+      paragraphId: string,
+      targetKind?: import("@/text-objects/types").TextObjectKind,
+    ) => {
       update((prev) => ({
         snippets: prev.snippets.map((s) =>
-          s.id === id ? addTextObjectLink(s, "archive", paragraphId) : s,
+          s.id === id ? addTextObjectLink(s, "archive", paragraphId, targetKind) : s,
         ),
       }));
     },

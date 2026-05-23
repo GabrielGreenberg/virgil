@@ -61,7 +61,11 @@ export interface DragHandleActionsDeps {
   cardCreation: CardCreationApi;
   archiveContent: (content: unknown) => ArchivedSnippet;
   updateArchiveSnippet: (id: string, content: unknown) => void;
-  addArchiveTextObjectId: (id: string, paragraphId: string) => void;
+  addArchiveTextObjectId: (
+    id: string,
+    paragraphId: string,
+    targetKind?: import("@/text-objects/types").TextObjectKind,
+  ) => void;
   setSelectedArchiveId: (id: string | null) => void;
   pinRecentlyAddedArchive?: (id: string) => void;
   prefs: ViewPrefs;
@@ -152,6 +156,14 @@ export function useDragHandleActions(deps: DragHandleActionsDeps) {
       const range = { from: resolved.from, to: resolved.to };
       const text = ed.state.doc.textBetween(range.from, range.to, " ").trim();
       const paragraphId = ref.kind === "selection" ? ref.paragraphId : ref.id;
+      // The kind of TextObject the new card's Mode A link should record
+      // as `targetKind`. SelectionRefs anchor to the containing paragraph
+      // (ref.paragraphId is a paragraph uuid). Block refs (paragraph,
+      // heading, listItem, exampleItem, atom blocks, …) anchor at the
+      // block level and record their actual kind — D9 sub-object
+      // anchoring depends on this being correct.
+      const targetKind: import("@/text-objects/types").TextObjectKind =
+        ref.kind === "selection" ? "paragraph" : ref.kind;
       // Only the selection / linkedRange refs hold a literal text range
       // whose first-line top is meaningful for a range anchor — Mode B
       // cards (note/highlight/cutter/revision) drop a linkedAnchor mark
@@ -215,6 +227,7 @@ export function useDragHandleActions(deps: DragHandleActionsDeps) {
           const group = cardCreation.createQuotation({
             text: text || undefined,
             paragraphId,
+            targetKind,
             mode: "omni",
           });
           panelId = "quotations";
@@ -226,6 +239,7 @@ export function useDragHandleActions(deps: DragHandleActionsDeps) {
           const note = cardCreation.createNote({
             paragraphId,
             anchor,
+            targetKind,
             mode: "omni",
           });
           if (anchor) {
@@ -258,6 +272,7 @@ export function useDragHandleActions(deps: DragHandleActionsDeps) {
           const todo = cardCreation.createTodo({
             text: text || undefined,
             paragraphId,
+            targetKind,
             mode: "omni",
           });
           panelId = "todo";
@@ -269,6 +284,7 @@ export function useDragHandleActions(deps: DragHandleActionsDeps) {
           const card = cardCreation.createRevisionComment({
             paragraphId,
             anchor,
+            targetKind,
             mode: "omni",
           });
           if (anchor) {
@@ -285,6 +301,7 @@ export function useDragHandleActions(deps: DragHandleActionsDeps) {
           const card = cardCreation.createCutterComment({
             paragraphId,
             anchor,
+            targetKind,
             mode: "omni",
           });
           if (anchor) {
@@ -311,7 +328,7 @@ export function useDragHandleActions(deps: DragHandleActionsDeps) {
           if (result) {
             if (result.content) updateArchiveSnippet(snippet.id, result.content);
             if (result.paragraphId)
-              addArchiveTextObjectId(snippet.id, result.paragraphId);
+              addArchiveTextObjectId(snippet.id, result.paragraphId, targetKind);
           }
           setSelectedArchiveId(snippet.id);
           pinRecentlyAddedArchive?.(snippet.id);

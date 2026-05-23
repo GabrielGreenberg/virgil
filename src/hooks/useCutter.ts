@@ -195,6 +195,7 @@ export function useCutter(
       paragraphId: string | null,
       content?: JSONContent,
       anchor?: { anchorId: string; anchorText: string },
+      targetKind?: import("@/text-objects/types").TextObjectKind,
     ) => {
       let card: CutterCommentCard = {
         kind: "comment",
@@ -206,7 +207,7 @@ export function useCutter(
         selectedText: anchor?.anchorText,
         links: [],
       };
-      if (paragraphId) card = addTextObjectLink(card, "cutter-comment", paragraphId);
+      if (paragraphId) card = addTextObjectLink(card, "cutter-comment", paragraphId, targetKind);
       if (anchor)
         card = setTextAnchorLink(
           card,

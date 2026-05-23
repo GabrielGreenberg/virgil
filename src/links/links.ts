@@ -1078,12 +1078,19 @@ function makeAnchorLink(
  *  Preserves any existing Mode B link's textRange by folding the new id
  *  into its `textObjectIds` when one exists.
  *
- *  Pre-D9, all callers add `paragraph`-kind anchors; the `targetKind`
- *  defaults to `"paragraph"`. D9 generalizes this to other kinds. */
+ *  `targetKind` defaults to `"paragraph"` to preserve the pre-D9
+ *  behavior for callers that don't carry kind information through
+ *  (most card-hook entry points take only a uuid). Callers that DO
+ *  have the actual kind — typically anything resolving a
+ *  `TextObjectRef` — should pass it explicitly so the resulting Mode A
+ *  link records the right kind. After Phase G, the drag-handle and
+ *  selection actions paths thread the kind through; other entry
+ *  points continue to default. */
 export function addTextObjectLink<T extends CardWithLinks>(
   card: T,
   cardKind: CardKind,
   textObjectId: string,
+  targetKind: TextObjectKind = "paragraph",
 ): T {
   if (!textObjectId) return card;
   const links = card.links ?? [];
@@ -1113,7 +1120,7 @@ export function addTextObjectLink<T extends CardWithLinks>(
   if (existing.includes(textObjectId)) return card;
   return {
     ...card,
-    links: [...links, makeAnchorLink(cardKind, card.id, "paragraph", [textObjectId])],
+    links: [...links, makeAnchorLink(cardKind, card.id, targetKind, [textObjectId])],
   };
 }
 

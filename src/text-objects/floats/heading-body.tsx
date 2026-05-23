@@ -47,6 +47,7 @@ import {
   TabIndent,
   TexBlock,
   FigureBlock,
+  FigureCaption,
   GraphicsBlock,
 } from "@/lib/tiptap-extensions";
 import type { EditorHandle } from "@/components/Editor";
@@ -129,6 +130,7 @@ export function HeadingBody({
       TabIndent,
       TexBlock.configure({ cardContext: true }),
       FigureBlock.configure({ cardContext: true }),
+      FigureCaption,
       GraphicsBlock.configure({ cardContext: true }),
     ],
     content: initial.doc,

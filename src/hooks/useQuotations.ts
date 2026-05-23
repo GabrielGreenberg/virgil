@@ -52,7 +52,11 @@ export function useQuotations(docId: string | null, pristine?: PristineKindApi |
   // --- Group ops ---
 
   const addGroup = useCallback(
-    (init?: { text?: string; paragraphId?: string | null }) => {
+    (init?: {
+      text?: string;
+      paragraphId?: string | null;
+      targetKind?: import("@/text-objects/types").TextObjectKind;
+    }) => {
       let newGroup: QuotationGroup = {
         id: generateEntityId(),
         title: nextCardTitle("quotation", state.groups.length),
@@ -62,7 +66,7 @@ export function useQuotations(docId: string | null, pristine?: PristineKindApi |
         links: [],
       };
       if (init?.paragraphId) {
-        newGroup = addTextObjectLink(newGroup, "quotation", init.paragraphId);
+        newGroup = addTextObjectLink(newGroup, "quotation", init.paragraphId, init.targetKind);
       }
       const isBlank = !init || (!init.text && !init.paragraphId);
       if (isBlank) pristine?.markNew(newGroup.id);

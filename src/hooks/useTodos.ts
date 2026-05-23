@@ -118,13 +118,20 @@ export function useTodos(docId: string | null, externalPristine?: PristineKindAp
     update((prev) => ({ items: prev.items.filter((i) => !i.done) }));
   }, [update]);
 
-  const addParagraphId = useCallback((todoId: string, paragraphId: string) => {
-    update((prev) => ({
-      items: prev.items.map((i) =>
-        i.id === todoId ? addTextObjectLink(i, "todo", paragraphId) : i,
-      ),
-    }));
-  }, [update]);
+  const addParagraphId = useCallback(
+    (
+      todoId: string,
+      paragraphId: string,
+      targetKind?: import("@/text-objects/types").TextObjectKind,
+    ) => {
+      update((prev) => ({
+        items: prev.items.map((i) =>
+          i.id === todoId ? addTextObjectLink(i, "todo", paragraphId, targetKind) : i,
+        ),
+      }));
+    },
+    [update],
+  );
 
   const removeParagraphId = useCallback((todoId: string, paragraphId: string) => {
     update((prev) => ({

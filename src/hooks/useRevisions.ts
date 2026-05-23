@@ -162,6 +162,7 @@ export function useRevisions(
       paragraphId: string | null,
       content?: JSONContent,
       anchor?: { anchorId: string; anchorText: string },
+      targetKind?: import("@/text-objects/types").TextObjectKind,
     ) => {
       let card: RevisionCommentCard = {
         kind: "comment",
@@ -173,7 +174,7 @@ export function useRevisions(
         selectedText: anchor?.anchorText,
         links: [],
       };
-      if (paragraphId) card = addTextObjectLink(card, "comment", paragraphId);
+      if (paragraphId) card = addTextObjectLink(card, "comment", paragraphId, targetKind);
       if (anchor)
         card = setTextAnchorLink(
           card,

@@ -101,6 +101,7 @@ export function useNotes(docId: string | null, externalPristine?: PristineKindAp
       paragraphId: string | null,
       content?: JSONContent,
       anchor?: { anchorId: string; anchorText: string },
+      targetKind?: import("@/text-objects/types").TextObjectKind,
     ) => {
       let newNote: UserNote = {
         kind: "note",
@@ -111,7 +112,7 @@ export function useNotes(docId: string | null, externalPristine?: PristineKindAp
         aiRequest: false,
         links: [],
       };
-      if (paragraphId) newNote = addTextObjectLink(newNote, "note", paragraphId);
+      if (paragraphId) newNote = addTextObjectLink(newNote, "note", paragraphId, targetKind);
       if (anchor) {
         newNote = setTextAnchorLink(newNote, "note", anchor.anchorId, anchor.anchorText);
       }

@@ -13,6 +13,7 @@ import type {
   CitationRef,
 } from "@/lib/types";
 import type { PanelId, ViewPrefs } from "@/hooks/useViewPrefs";
+import type { TextObjectKind } from "@/text-objects/types";
 import { nextCardTitle } from "@/panels/panel-registry";
 import { getTextAnchor } from "@/links/links";
 import type { EditorHandle } from "../../Editor";
@@ -45,6 +46,7 @@ export interface CardCreationDeps {
     paragraphId: string | null,
     content?: JSONContent,
     anchor?: AnchorRef,
+    targetKind?: TextObjectKind,
   ) => UserNote;
   addHighlight: (
     anchor: AnchorRef,
@@ -61,6 +63,7 @@ export interface CardCreationDeps {
     paragraphId: string | null,
     content?: JSONContent,
     anchor?: AnchorRef,
+    targetKind?: TextObjectKind,
   ) => CutterCommentCard;
   addCutterSuggestion: (
     paragraphId: string | null,
@@ -71,6 +74,7 @@ export interface CardCreationDeps {
     paragraphId: string | null,
     content?: JSONContent,
     anchor?: AnchorRef,
+    targetKind?: TextObjectKind,
   ) => RevisionCommentCard;
   addRevisionSuggestion: (
     paragraphId: string | null,
@@ -79,8 +83,12 @@ export interface CardCreationDeps {
   ) => RevisionSuggestionCard;
   addTodo: () => TodoItem;
   updateTodo: (id: string, text: string) => void;
-  addTodoTextObjectId: (id: string, paragraphId: string) => void;
-  addQuotationGroup: (init?: { text?: string; paragraphId?: string | null }) => QuotationGroup;
+  addTodoTextObjectId: (id: string, paragraphId: string, targetKind?: TextObjectKind) => void;
+  addQuotationGroup: (init?: {
+    text?: string;
+    paragraphId?: string | null;
+    targetKind?: TextObjectKind;
+  }) => QuotationGroup;
   addCitation: (command: string, existingId?: string, unanchored?: boolean) => CitationRef;
   setSelectedNoteId: Dispatch<SetStateAction<string | null>>;
   setSelectedCutterCardId: Dispatch<SetStateAction<string | null>>;
@@ -120,6 +128,11 @@ export interface CardCreationApi {
     anchor?: AnchorRef;
     anchorRect?: DOMRect | null;
     mode?: CardCreateMode;
+    /** TextObject kind being anchored to. Defaults to "paragraph" when
+     *  unspecified. Pass explicitly when the caller resolved a
+     *  `TextObjectRef` (e.g. anchoring to a `listItem` or `exampleItem`)
+     *  so the link records the right `targetKind`. */
+    targetKind?: TextObjectKind;
   }) => UserNote;
   createHighlight: (opts: {
     /** Mandatory — highlights are always a text-range gesture. */
@@ -143,6 +156,7 @@ export interface CardCreationApi {
     anchor?: AnchorRef;
     anchorRect?: DOMRect | null;
     mode?: CardCreateMode;
+    targetKind?: TextObjectKind;
   }) => CutterCommentCard;
   createCutterSuggestion: (opts: {
     paragraphId?: string | null;
@@ -157,6 +171,7 @@ export interface CardCreationApi {
     anchor?: AnchorRef;
     anchorRect?: DOMRect | null;
     mode?: CardCreateMode;
+    targetKind?: TextObjectKind;
   }) => RevisionCommentCard;
   createRevisionSuggestion: (opts: {
     paragraphId?: string | null;
@@ -170,6 +185,7 @@ export interface CardCreationApi {
     paragraphId?: string | null;
     anchorRect?: DOMRect | null;
     mode?: CardCreateMode;
+    targetKind?: TextObjectKind;
   }) => TodoItem;
   createFootnote: (opts: {
     fromSelection?: boolean;
@@ -181,6 +197,7 @@ export interface CardCreationApi {
     paragraphId?: string | null;
     anchorRect?: DOMRect | null;
     mode?: CardCreateMode;
+    targetKind?: TextObjectKind;
   }) => QuotationGroup;
   createCitation: (opts: {
     command?: string;
@@ -257,7 +274,7 @@ export function useCardCreation(deps: CardCreationDeps): CardCreationApi {
 
   const createNote = useCallback<CardCreationApi["createNote"]>(
     (opts) => {
-      const note = addNote(opts.paragraphId ?? null, opts.content, opts.anchor);
+      const note = addNote(opts.paragraphId ?? null, opts.content, opts.anchor, opts.targetKind);
       setSelectedNoteId(note.id);
       pin("note", note.id);
       if (opts.mode === "omni") return note;
@@ -324,6 +341,7 @@ export function useCardCreation(deps: CardCreationDeps): CardCreationApi {
         opts.paragraphId ?? null,
         opts.content,
         opts.anchor,
+        opts.targetKind,
       );
       setSelectedCutterCardId(card.id);
       pin("cutter", card.id);
@@ -376,6 +394,7 @@ export function useCardCreation(deps: CardCreationDeps): CardCreationApi {
         opts.paragraphId ?? null,
         opts.content,
         opts.anchor,
+        opts.targetKind,
       );
       setSelectedCommentId(card.id);
       pin("revision", card.id);
@@ -424,7 +443,7 @@ export function useCardCreation(deps: CardCreationDeps): CardCreationApi {
     (opts) => {
       const todo = addTodo();
       if (opts.text) updateTodo(todo.id, opts.text);
-      if (opts.paragraphId) addTodoTextObjectId(todo.id, opts.paragraphId);
+      if (opts.paragraphId) addTodoTextObjectId(todo.id, opts.paragraphId, opts.targetKind);
       setSelectedTodoId(todo.id);
       pin("todo", todo.id);
       if (opts.mode === "omni") return todo;
@@ -460,7 +479,11 @@ export function useCardCreation(deps: CardCreationDeps): CardCreationApi {
     (opts) => {
       const group =
         opts.text || opts.paragraphId
-          ? addQuotationGroup({ text: opts.text, paragraphId: opts.paragraphId })
+          ? addQuotationGroup({
+              text: opts.text,
+              paragraphId: opts.paragraphId,
+              targetKind: opts.targetKind,
+            })
           : addQuotationGroup();
       setSelectedQuotationGroupId(group.id);
       pin("quotation", group.id);

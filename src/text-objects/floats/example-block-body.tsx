@@ -41,6 +41,7 @@ import {
   TabIndent,
   TexBlock,
   FigureBlock,
+  FigureCaption,
   GraphicsBlock,
 } from "@/lib/tiptap-extensions";
 import type { EditorHandle } from "@/components/Editor";
@@ -137,6 +138,7 @@ export function ExampleBlockBody({
       // pattern as heading-body. The user edits atoms in the main doc.
       TexBlock.configure({ cardContext: true }),
       FigureBlock.configure({ cardContext: true }),
+      FigureCaption,
       GraphicsBlock.configure({ cardContext: true }),
     ],
     content: initial.doc,
