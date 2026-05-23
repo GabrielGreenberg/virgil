@@ -1,4 +1,4 @@
-<!-- last-verified: 7c45771 2026-05-21 -->
+<!-- last-verified: e86a264 2026-05-22 -->
 
 # Main Text: Editor, Content Model, Links, Marginalia
 
@@ -16,7 +16,9 @@ Key props: `initialContent: JSONContent`, `onUpdate: (doc) => void`, `highlightT
 
 ## Block nodes
 
-All carry a `uuid` attr so they can serve as marginalia anchors. `uuid` detection uses `isAnchorableNode()` in [src/lib/marginalia.ts](../../src/lib/marginalia.ts).
+All carry a `uuid` attr so they can serve as marginalia anchors. Detection is schema-based via the `textObject` schema group: `nodeType.isInGroup("textObject")`. `isAnchorableNode()` in [src/lib/marginalia.ts](../../src/lib/marginalia.ts) is now a one-line wrapper over that predicate.
+
+The `textObject` schema group is the single canonical answer to "is this graspable?" — paragraph, heading, list, list item, blockquote, codeBlock, displayMath, titleField, latexComment, texBlock, figureBlock, graphicsBlock, exampleBlock, exampleItem are all members. `linkedRange` (range-backed via the `linkedAnchor` mark) is a TextObject too but lives outside the schema group since it's a mark, not a node. See [TEXT-OBJECT-REFACTOR.md](../../TEXT-OBJECT-REFACTOR.md) for the full taxonomy and [src/text-objects/text-object-registry.ts](../../src/text-objects/text-object-registry.ts) for the per-kind meta that drives grab-handle layout, float body, and drop adapter.
 
 | Node | LaTeX | Notes |
 |---|---|---|
@@ -86,14 +88,31 @@ Round-trip files: [src/lib/latex-parser.ts](../../src/lib/latex-parser.ts) (`.te
 |---|---|---|---|---|
 | `footnote` | inline atom (footnote node) | superscript number | 1:1 | footnote |
 | `citation` | inline atom (citation node) | styled pill | 1:1 | citation |
-| `anchor` | paragraph UUID **or** text range (linkedAnchor mark) | gutter icon (+ optional text highlight) | many | note, highlight, revision, cut, archive, todo, quotation |
+| `anchor` | any TextObject (`targetKind`) — paragraph, heading, list item, example item, atom block, or linkedRange | gutter icon (+ optional text highlight for `linkedRange`) | many | note, highlight, revision, cut, archive, todo, quotation |
 
-### Mode A vs Mode B (anchor kind only)
+### Anchor shape (Mode A / Mode B unified)
 
-- **Mode A** — paragraph-only. Card stores only `paragraphIds`; no inline mark in editor.
-- **Mode B** — paragraph + text range. Card stores `anchor.textRange` with `anchorId` (the `linkedAnchor` mark id) and `textSnapshot`; editor has the `linkedAnchor` mark on the range.
+Phase D8 collapsed the Mode A vs Mode B distinction into a derived check on a single `targetKind: TextObjectKind` field. The anchor shape:
 
-Derivation helper: `isModeB(link)` in `src/links/links.ts`.
+```ts
+type LinkAnchor =
+  | { type: "inline-atom"; nodeName: "footnote" | "citation"; pos }
+  | {
+      type: "textObject";
+      targetKind: TextObjectKind;       // any TextObject kind
+      textObjectIds: string[];          // node uuid(s) (or anchorId, for linkedRange)
+      margin: { side: "left" | "right" };
+      textRange?: { anchorId; textSnapshot };  // present iff targetKind === "linkedRange"
+    };
+```
+
+**Mode A** (legacy term) = `targetKind !== "linkedRange"`. The card is anchored to one or more TextObject nodes by uuid; no inline mark.
+
+**Mode B** (legacy term) = `targetKind === "linkedRange"`. The card is anchored to a `linkedAnchor` mark range (Phase E now also persists this range to LaTeX via `\vlid{}` / `\vlidend{}` paired markers). The `textRange.textSnapshot` is the canonical recovery path when the mark vanishes — `reanchorByText` in [src/links/links.ts](../../src/links/links.ts) searches the doc by text content.
+
+Derivation helper: `isModeB(link)` is now `link.anchor.type === "textObject" && link.anchor.targetKind === "linkedRange"` — kept for ripple minimization, the underlying check is fully derived.
+
+Legacy sidecar shapes (`anchor.type: "anchor"` with `paragraphIds`) migrate on read via `migrateCardLinks` in [src/links/migrate-card.ts](../../src/links/migrate-card.ts).
 
 ### DOM contract (uniform across all kinds)
 
@@ -140,7 +159,7 @@ Shift-grabbing a popped float's grab bar puts the app into **drop mode** — the
 
 - Entry: `beginDropSession({ cardKey })` in [src/components/drop-mode/controller.ts](../../src/components/drop-mode/controller.ts) — called by `FloatingPanel`'s shift-drag and by `StackThumbnail` (with cardKey `stack-pull:<id>`).
 - Provider: [src/components/drop-mode/DropModeProvider.tsx](../../src/components/drop-mode/DropModeProvider.tsx). Indicator: [Indicator.tsx](../../src/components/drop-mode/Indicator.tsx). Hit-testing: [hit-test.ts](../../src/components/drop-mode/hit-test.ts).
-- Per-payload behavior is a `DropSpec` keyed by card-key prefix in [registry.ts](../../src/components/drop-mode/registry.ts); specs live in [specs/](../../src/components/drop-mode/specs/) (`paragraph`, `heading`, `selection`, `ai-request`, `stack-pull`). Each panel that participates also re-exports its spec via a panel-local `drop-spec.ts` (Archive, Citations, Cutter, Examples, Footnotes, Notes, Quotations, Revisions, Todo).
+- Per-payload behavior is a `DropSpec` keyed by card-key prefix in [registry.ts](../../src/components/drop-mode/registry.ts). The block-source specs collapsed into one [specs/textobject.ts](../../src/components/drop-mode/specs/textobject.ts) (D5+D6) — it parses the `textobject:<kind>:<id>` cardKey, walks the doc for source + parent, classifies the target context (top-level / inside-compatible / inside-incompatible), and routes through `meta.dropAdapter` (wrap vs drop-direct) and `meta.collectMoveSource` (single node vs section range). Adding a new TextObject kind = one registry entry; no edit to the spec. Other specs in [specs/](../../src/components/drop-mode/specs/) (`ai-request`, `stack-pull`) carry different payloads. Each panel that participates also re-exports its spec via a panel-local `drop-spec.ts` (Archive, Citations, Cutter, Examples, Footnotes, Notes, Quotations, Revisions, Todo).
 - CSS for the placement bars lives in [src/app/globals.css](../../src/app/globals.css) (`.dropmode-bar-*`).
 
 ## Marginalia

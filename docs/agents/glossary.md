@@ -1,4 +1,4 @@
-<!-- last-verified: 7c45771 2026-05-21 -->
+<!-- last-verified: e86a264 2026-05-22 -->
 
 # Glossary
 
@@ -122,9 +122,12 @@ Each panel lives in `src/panels/<PanelFolder>/`.
 | **Popped-out card** / **floating card** | `FloatCard` wrapping `FloatingPanel` | [src/components/FloatingCards.tsx](../../src/components/FloatingCards.tsx), [src/components/FloatingPanel.tsx](../../src/components/FloatingPanel.tsx) |
 | **Floating panel** | `FloatingPanel` (portal, drag + resize) | [src/components/FloatingPanel.tsx](../../src/components/FloatingPanel.tsx) |
 | **Quick card** (compact bib-entry card with chip, target icon, popout button in header) | `BibEntryCard` | [src/components/BibEntryCard.tsx](../../src/components/BibEntryCard.tsx) |
-| **Paragraph float** (popped-out single paragraph with editable title + drag handle) | `ParagraphFloat`; popout key `paragraph:${uuid}` in `prefs.poppedOutCards` | [src/components/ParagraphFloat.tsx](../../src/components/ParagraphFloat.tsx) |
-| **Heading float** (popped-out heading + its body section) | `HeadingFloat`; popout key `heading:${uuid}` in `prefs.poppedOutCards`; section-body extraction in `section-range.ts` | [src/components/HeadingFloat.tsx](../../src/components/HeadingFloat.tsx); [src/lib/section-range.ts](../../src/lib/section-range.ts) |
-| **Example float** (popped-out example block from the editor gutter) | `ExampleBlock` node-view popout button (via `ExampleBlockOptions`); popout key `example:${uuid}` in `prefs.poppedOutCards` (NOTE: this is the in-editor block popout — distinct from the Examples panel's `ExampleCard` popout, which uses the same key prefix) | [src/lib/tiptap/expex.ts](../../src/lib/tiptap/expex.ts); render via `FloatCard` in [src/components/editor-layout/floating-cards.tsx](../../src/components/editor-layout/floating-cards.tsx) |
+| **Paragraph float** (popped-out single paragraph with editable title + drag handle) | `ParagraphBody` body component under the unified `TextObjectFloat` chrome; popout key `textobject:paragraph:${uuid}` in `prefs.poppedOutCards` | [src/text-objects/floats/paragraph-body.tsx](../../src/text-objects/floats/paragraph-body.tsx); [src/text-objects/TextObjectFloat.tsx](../../src/text-objects/TextObjectFloat.tsx) |
+| **Heading float** (popped-out heading + its body section) | `HeadingBody`; popout key `textobject:heading:${uuid}`; section-body extraction in `section-range.ts` | [src/text-objects/floats/heading-body.tsx](../../src/text-objects/floats/heading-body.tsx); [src/lib/section-range.ts](../../src/lib/section-range.ts) |
+| **List float** (popped-out bullet / ordered list) | `ListBody`; popout key `textobject:bulletList:${uuid}` or `textobject:orderedList:${uuid}` | [src/text-objects/floats/list-body.tsx](../../src/text-objects/floats/list-body.tsx) |
+| **TeX-block float** (popped-out `texBlock` with CodeMirror sync) | `TexBlockBody`; popout key `textobject:texBlock:${uuid}`; hand-rolled CodeMirror-to-main sync stays per-kind | [src/text-objects/floats/tex-block-body.tsx](../../src/text-objects/floats/tex-block-body.tsx) |
+| **Example float** (popped-out example block from the editor gutter) | `ExampleBlockBody`; popout key `textobject:exampleBlock:${uuid}` (NOTE: distinct from the Examples panel's `ExampleCard` popout, which uses the legacy `example:${uuid}` prefix — both still render correctly per the F-era disambiguation) | [src/text-objects/floats/example-block-body.tsx](../../src/text-objects/floats/example-block-body.tsx) |
+| **Selection float** / **linked-range float** (popped-out text range carrying a `linkedAnchor` mark) | `LinkedRangeBody`; popout key `textobject:linkedRange:${anchorId}`. Replaces the session-only SelectionFloat retired in Phase E — the range now persists via the mark + `\vlid{}/\vlidend{}` LaTeX markers and survives reload | [src/text-objects/floats/linked-range-body.tsx](../../src/text-objects/floats/linked-range-body.tsx) |
 
 ## General buttons
 
@@ -148,9 +151,10 @@ Each panel lives in `src/panels/<PanelFolder>/`.
 |---|---|---|
 | **Link** | `Link` type | [src/links/_shared/types.ts](../../src/links/_shared/types.ts) |
 | **Link kind** | `LinkKind = "footnote" \| "citation" \| "anchor"` | Same |
-| **Anchor** (the in-text side of a link) | `LinkAnchor` | Same |
-| **Mode A** | Paragraph-only anchor (no text range) | `isModeB(link) === false`; see `src/links/links.ts` |
-| **Mode B** | Paragraph + text-range anchor (linkedAnchor mark) | `isModeB(link) === true` |
+| **Anchor** (the in-text side of a link) | `LinkAnchor = { type: "inline-atom"; … } \| { type: "textObject"; targetKind: TextObjectKind; textObjectIds: string[]; margin; textRange? }` | Same |
+| **TextObject** (the unified abstraction for every graspable text unit — paragraph, heading, list, list item, example item, atom block, linkedRange, etc.) | `TextObjectRef = { kind: TextObjectKind; id }`; closed kind union + meta registry; chrome (`TextObjectFloat`) + body components + drop-spec all collapse to one pathway routed through `TEXT_OBJECT_REGISTRY` | [src/text-objects/](../../src/text-objects/); [src/text-objects/text-object-registry.ts](../../src/text-objects/text-object-registry.ts); see [TEXT-OBJECT-REFACTOR.md](../../TEXT-OBJECT-REFACTOR.md) |
+| **Mode A** (legacy term) | Pre-D8 name for "paragraph-only anchor with no text range." After D8 collapsed Mode A/B into `targetKind`, "Mode A" describes any `targetKind !== "linkedRange"` anchor | `isModeB(link) === false`; see `src/links/links.ts` |
+| **Mode B** (legacy term) | Pre-D8 name for "paragraph + text-range anchor (linkedAnchor mark)." After D8 this is `targetKind === "linkedRange"`. `isModeB(link)` is the derived predicate, kept for ripple minimization | `isModeB(link) === true` |
 | **DOM contract** | `data-link-id`, `data-link-kind`, `data-link-card` attrs on in-editor markers; `data-link-card` on cards | [src/links/link-registry.ts](../../src/links/link-registry.ts) |
 | **Linked surfaces** / **three-surface hover** (text passage + margin icon + panel card all light up together; click-to-select propagates) | Module-level `cardStore` (selection + hover) in `anchored-card-store.ts`; per-card hook `useAnchoredCard` returns the `data-card-key`, mouse handlers and selected/hovered booleans every anchored card needs; `usePlacement` scrolls the editor when card→anchor selection changes. Consumers `useLinkHighlight`, `useCardHoverHighlight`, `useCardSelectionHighlight`; sources `useTextHoverBridge`, `usePanelCardHoverBridge`, generic margin `onHover` | [src/links/_shared/anchored-card-store.ts](../../src/links/_shared/anchored-card-store.ts); [src/links/_shared/useAnchoredCard.ts](../../src/links/_shared/useAnchoredCard.ts); [src/links/_shared/usePlacement.ts](../../src/links/_shared/usePlacement.ts); see `main-text.md` → Highlight coupling |
 | **EntityKind** | Linking-vocabulary subset of `CardKind`: `note \| cut \| revision \| todo \| archive \| quotation \| footnote \| citation`. Used by hover/selection plumbing | [src/links/_shared/entity-hover.ts](../../src/links/_shared/entity-hover.ts) |
