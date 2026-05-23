@@ -27,6 +27,7 @@ import {
   useEditorViewportCache,
   type EditorViewportCache,
 } from "@/hooks/useEditorViewportCache";
+import { findEditorScrollFor } from "@/components/editor-layout/layout-scroll";
 
 const VIEWPORT_MARGIN = 8;
 const RIGHT_GAP = 6;
@@ -255,9 +256,19 @@ export function SelectionActionsMenu({
       readyRaf = requestAnimationFrame(waitForEditor);
     };
     waitForEditor();
+    // Mousedown/mouseup at window scope: the drag may originate inside
+    // the editor and complete outside, so we need both ends. Captured
+    // phase to beat React's bubbling cleanup.
     window.addEventListener("mousedown", onMouseDown, true);
     window.addEventListener("mouseup", onMouseUp, true);
-    window.addEventListener("scroll", onScroll, true);
+    // Scroll: the editor's scroll parent only. Window-scope previously
+    // fired this handler for every panel/list scroll in the app even
+    // though the menu only tracks the editor's vertical scroll.
+    const scrollParent = findEditorScrollFor(
+      editorRef.current?.view.dom ?? null,
+    );
+    scrollParent?.addEventListener("scroll", onScroll, { passive: true });
+    // Resize is a genuinely global event.
     window.addEventListener("resize", update);
     return () => {
       if (rafId) cancelAnimationFrame(rafId);
@@ -266,7 +277,7 @@ export function SelectionActionsMenu({
       unsubscribe();
       window.removeEventListener("mousedown", onMouseDown, true);
       window.removeEventListener("mouseup", onMouseUp, true);
-      window.removeEventListener("scroll", onScroll, true);
+      scrollParent?.removeEventListener("scroll", onScroll);
       window.removeEventListener("resize", update);
     };
     // cacheVersion re-runs the effect when the cache changes (e.g.,
