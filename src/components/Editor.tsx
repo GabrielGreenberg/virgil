@@ -58,6 +58,7 @@ import type { JSONContent as TipJSON } from "@tiptap/react";
 import MenuBar from "./MenuBar";
 import { createPopoutButtonEl } from "./panel-primitives";
 import { TextObjectGrabHandle } from "@/text-objects/TextObjectGrabHandle";
+import { ActiveTextObjectProvider } from "@/text-objects/active-text-object-context";
 import { SelectionActionsMenu } from "./SelectionActionsMenu";
 import { SlashCommandPopup } from "./SlashCommandPopup";
 import {
@@ -3257,12 +3258,14 @@ const VirgilEditor = forwardRef<EditorHandle, EditorProps>(function VirgilEditor
   }, [editor]);
 
   return (
-    <div className="flex flex-col flex-1 min-w-0">
-      <EditorContent editor={editor} />
-      <TextObjectGrabHandle editorRef={editorInstanceRef} />
-      <SelectionActionsMenu editorRef={editorInstanceRef} />
-      <SlashCommandPopup editorRef={editorInstanceRef} />
-    </div>
+    <ActiveTextObjectProvider editorRef={editorInstanceRef}>
+      <div className="flex flex-col flex-1 min-w-0">
+        <EditorContent editor={editor} />
+        <TextObjectGrabHandle editorRef={editorInstanceRef} />
+        <SelectionActionsMenu editorRef={editorInstanceRef} />
+        <SlashCommandPopup editorRef={editorInstanceRef} />
+      </div>
+    </ActiveTextObjectProvider>
   );
 });
 
