@@ -2,11 +2,11 @@
 
 import { useEffect, useMemo, useRef, useSyncExternalStore } from "react";
 import type { Editor } from "@tiptap/react";
+import { type AnchorNodeMetrics } from "@/lib/marginalia";
 import {
-  isAnchorableNode,
-  isAnchorableAtom,
-  type AnchorNodeMetrics,
-} from "@/lib/marginalia";
+  walkAnchorableBlocks,
+  resolveDomForUuid,
+} from "@/lib/marginalia-blocks";
 import { findRowScroll } from "@/components/editor-layout/layout-scroll";
 
 /**
@@ -162,32 +162,8 @@ function measureBlock(
   }
 }
 
-/**
- * Walk the doc once, collecting every anchorable block's
- * `{ uuid, pos, isAtom, dom }`. Used for structure-change diffing and
- * initial-mount priming. Drops blocks with a null UUID (TipTap allocates
- * UUIDs lazily on first interaction — until then the block isn't a
- * sticky anchor target).
- */
-function walkAnchorableBlocks(
-  editor: Editor,
-): Array<{ uuid: string; pos: number; isAtom: boolean }> {
-  const out: Array<{ uuid: string; pos: number; isAtom: boolean }> = [];
-  editor.state.doc.descendants((node, pos) => {
-    if (isAnchorableNode(node.type)) {
-      const uuid = node.attrs?.uuid as string | null | undefined;
-      if (uuid) {
-        out.push({ uuid, pos, isAtom: isAnchorableAtom(node.type) });
-      }
-      // Don't recurse into anchorable containers — they own the UUID.
-      return false;
-    }
-    return true;
-  });
-  return out;
-}
-
-function resolveHost(editor: Editor): HTMLElement | null {
+function resolveHost(editor: Editor | null | undefined): HTMLElement | null {
+  if (!editor) return null;
   try {
     return (
       (editor.view?.dom?.closest(
@@ -197,30 +173,6 @@ function resolveHost(editor: Editor): HTMLElement | null {
   } catch {
     return null;
   }
-}
-
-function resolveDomForUuid(
-  editor: Editor,
-  uuid: string,
-): HTMLElement | null {
-  try {
-    const queried = editor.view.dom.querySelector(
-      `[data-uuid="${cssEscape(uuid)}"]`,
-    ) as HTMLElement | null;
-    return queried;
-  } catch {
-    return null;
-  }
-}
-
-function cssEscape(s: string): string {
-  // UUIDs are alphanumeric + dashes by construction (see generateShortId
-  // in src/lib/uuid.ts), so the native CSS.escape call is overkill — but
-  // belt-and-suspenders against future ID schemes.
-  if (typeof CSS !== "undefined" && typeof CSS.escape === "function") {
-    return CSS.escape(s);
-  }
-  return s.replace(/[^a-zA-Z0-9_-]/g, "\\$&");
 }
 
 export function useMarginaliaRegistry(
