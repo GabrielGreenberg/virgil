@@ -52,9 +52,8 @@ import type { Editor } from "@tiptap/react";
 import { NodeSelection, TextSelection } from "@tiptap/pm/state";
 import { usePoppedCards } from "@/hooks/usePoppedCards";
 import { setCardLiftHandoff, setCardLiftTarget } from "@/components/card-lift";
-import { registerSelectionFloat } from "@/components/selection-floats";
-import { generateShortId } from "@/lib/uuid";
 import { ensureAnchorUuid } from "@/lib/anchor-uuid";
+import { hydrateSelectionToTextObject } from "./hydrate-selection";
 import { useDragHandleMenu } from "@/components/editor-layout/card-actions/drag-handle-menu-context";
 import {
   useEditorViewportCache,
@@ -86,38 +85,36 @@ const SPAWN_CURSOR_OFFSET_Y = 16;
 /**
  * Per-kind initial float size at spawn time. Today's per-kind grips use
  * different defaults — paragraphs are narrow, headings/lists/tex blocks
- * are wider. The registry will absorb this in Phase D5 (alongside the
- * float-body registration); for now keep the map local.
+ * are wider. Phase F moves this into `meta.initialFloatSize` on the
+ * registry; for now it lives here.
  */
 const DEFAULT_FLOAT_SIZE: { width: number; height: number } = { width: 360, height: 280 };
 const PER_KIND_FLOAT_SIZE: Partial<
-  Record<TextObjectKind | "selection", { width: number; height: number }>
+  Record<TextObjectKind, { width: number; height: number }>
 > = {
   heading: { width: 480, height: 360 },
   bulletList: { width: 480, height: 360 },
   orderedList: { width: 480, height: 360 },
   texBlock: { width: 480, height: 280 },
-  selection: { width: 360, height: 280 },
 };
 
-function floatSizeFor(kind: TextObjectKind | "selection") {
+function floatSizeFor(kind: TextObjectKind) {
   return PER_KIND_FLOAT_SIZE[kind] ?? DEFAULT_FLOAT_SIZE;
 }
 
 /**
- * Map a `TextObjectRef | SelectionRef` to the popout key used by
- * `viewPrefs.poppedOutCards`. Phase D10 unified every block-popout
- * prefix into `textobject:<kind>:<id>`; selection lifts stay on
- * `selection:<id>` (session-only) until Phase E hydrates them into
- * `linkedRange` TextObjects.
+ * Map a `TextObjectRef` to the popout key used by
+ * `viewPrefs.poppedOutCards`. Every block-popout key collapses to
+ * `textobject:<kind>:<id>` emitted by `textObjectPopoutKey` (Phase D10).
+ * Returns null for TextObject kinds whose float body isn't registered
+ * yet — the handle still opens the action menu on click, it just
+ * doesn't lift.
  *
- * Returns null for TextObject kinds that don't have a float wired today
- * — the handle still opens the action menu on click, it just doesn't
- * lift. Phase D5 wires the missing bodies via `registerFloatBody`.
+ * SelectionRef lifts hydrate into `linkedRange` TextObjects at the
+ * lift commit (Phase E); after hydration they pass through this
+ * function as a normal TextObjectRef.
  */
-function popoutKeyForLift(ref: TextObjectRef | SelectionRef): string | null {
-  if (ref.kind === "selection") return `selection:${generateShortId()}`;
-  // Whitelist of kinds with a wired float today. Phase D5 expands this.
+function popoutKeyForLift(ref: TextObjectRef): string | null {
   switch (ref.kind) {
     case "paragraph":
     case "heading":
@@ -125,6 +122,7 @@ function popoutKeyForLift(ref: TextObjectRef | SelectionRef): string | null {
     case "orderedList":
     case "texBlock":
     case "exampleBlock":
+    case "linkedRange":
       return textObjectPopoutKey(ref);
     default:
       return null;
@@ -695,12 +693,17 @@ export function TextObjectGrabHandle({ editorRef }: Props) {
       // can collapse the live selection in some browsers).
       const startRef = lastRefRef.current;
       if (!startRef) return;
-      // Refuse to lift if the resolved popout is already open (matches
-      // legacy per-NodeView behavior — the user closes the float via
-      // its X button rather than re-grabbing).
-      const tentativeKey = popoutKeyForLift(startRef);
-      if (tentativeKey && poppedRef.current?.isPopped(tentativeKey)) {
-        // Still allow click-to-open-menu below; just no lift.
+      // For TextObjectRefs, derive the tentative popout key up front and
+      // refuse to lift if it's already popped (matches legacy per-NodeView
+      // behavior — the user closes the float via its X button rather than
+      // re-grabbing). SelectionRefs have no key until hydration at lift
+      // time; we can't pre-check them, so the isPopped check happens
+      // after hydration below.
+      if (startRef.kind !== "selection") {
+        const tentativeKey = popoutKeyForLift(startRef);
+        if (tentativeKey && poppedRef.current?.isPopped(tentativeKey)) {
+          // Still allow click-to-open-menu below; just no lift.
+        }
       }
       handleEl.classList.add("is-pressed");
       const startX = downEv.clientX;
@@ -714,10 +717,37 @@ export function TextObjectGrabHandle({ editorRef }: Props) {
         if (dx * dx + dy * dy < LIFT_THRESHOLD * LIFT_THRESHOLD) return;
         triggered = true;
 
-        const ref = lastRefRef.current ?? startRef;
-        const sizeKind: TextObjectKind | "selection" =
-          ref.kind === "selection" ? "selection" : ref.kind;
-        const { width, height } = floatSizeFor(sizeKind);
+        // Selection lifts hydrate at commit (Phase E): stamp the
+        // `linkedAnchor` mark with a fresh `anchorId` (or reuse an
+        // existing one that already covers the range) and convert to a
+        // `linkedRange` TextObjectRef. After this conversion, every
+        // popout shares the unified TextObject path — there's no
+        // session-only float category left.
+        let ref: TextObjectRef = lastRefRef.current as TextObjectRef ?? startRef as TextObjectRef;
+        const rawRef = lastRefRef.current ?? startRef;
+        if (rawRef.kind === "selection") {
+          const docSize = editor.state.doc.content.size;
+          const safeFrom = Math.max(0, Math.min(rawRef.from, docSize));
+          const safeTo = Math.max(0, Math.min(rawRef.to, docSize));
+          if (safeFrom >= safeTo) {
+            cleanup();
+            return;
+          }
+          const hydrated = hydrateSelectionToTextObject(
+            editor.view,
+            safeFrom,
+            safeTo,
+          );
+          if (!hydrated) {
+            cleanup();
+            return;
+          }
+          ref = hydrated;
+        } else {
+          ref = rawRef;
+        }
+
+        const { width, height } = floatSizeFor(ref.kind);
         const spawn = {
           x: Math.round(mv.clientX - width / 2),
           y: Math.round(mv.clientY - SPAWN_CURSOR_OFFSET_Y),
@@ -725,46 +755,9 @@ export function TextObjectGrabHandle({ editorRef }: Props) {
           height,
         };
 
-        if (ref.kind === "selection") {
-          // Legacy selection-float path — Phase E hydrates via
-          // linkedAnchor and deletes selection-floats.ts.
-          const docSize = editor.state.doc.content.size;
-          const safeFrom = Math.max(0, Math.min(ref.from, docSize));
-          const safeTo = Math.max(0, Math.min(ref.to, docSize));
-          if (safeFrom >= safeTo) {
-            cleanup();
-            return;
-          }
-          const slice = editor.state.doc.slice(safeFrom, safeTo);
-          const contentJson = {
-            type: "doc",
-            content: [{ type: "paragraph", content: slice.content.toJSON() }],
-          };
-          const text = editor.state.doc.textBetween(safeFrom, safeTo, " ");
-          const id = generateShortId();
-          registerSelectionFloat(id, {
-            range: { from: safeFrom, to: safeTo },
-            contentJson,
-            paragraphId: ref.paragraphId,
-            text,
-          });
-          const cardKey = `selection:${id}`;
-          setCardLiftHandoff({
-            cardKey,
-            clientX: mv.clientX,
-            clientY: mv.clientY,
-            width,
-            height,
-          });
-          poppedRef.current?.popOutAtRect(cardKey, spawn);
-          cleanup();
-          return;
-        }
-
-        // TextObjectRef path. Emit `textobject:<kind>:<id>` via
-        // `textObjectPopoutKey` (Phase D10); skip lift for kinds whose
-        // float bodies haven't been wired yet (Phase D5 wires them via
-        // `registerFloatBody`).
+        // TextObjectRef path (includes `linkedRange` post-hydration).
+        // Emit `textobject:<kind>:<id>` via `textObjectPopoutKey`; skip
+        // lift for kinds whose float bodies haven't been wired yet.
         const cardKey = popoutKeyForLift(ref);
         if (!cardKey) {
           cleanup();

@@ -1751,9 +1751,10 @@ const VirgilEditor = forwardRef<EditorHandle, EditorProps>(function VirgilEditor
           "prose prose-stone max-w-none focus:outline-none min-h-[calc(100vh-8rem)] pl-[var(--editor-pl,88px)] pr-[var(--editor-pr,72px)] pt-[var(--editor-pt,40px)] pb-[var(--editor-pb,40px)]",
         // PM keeps the DOM at `contenteditable="true"` even in Reader
         // mode (so native drag-to-select reaches `view.state.selection`,
-        // and the SelectionDragHandle / SelectionFloat flow inherits
-        // from the main editor). Suppress the spellcheck underlines
-        // that would otherwise appear under prose in read-only docs.
+        // and the unified TextObjectGrabHandle / linkedRange-float flow
+        // inherits from the main editor). Suppress the spellcheck
+        // underlines that would otherwise appear under prose in
+        // read-only docs.
         ...(editable ? {} : { spellcheck: "false" }),
       },
       handleDOMEvents: {

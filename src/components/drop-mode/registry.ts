@@ -5,9 +5,8 @@
  *
  * Specs are co-located with their panel under
  * src/panels/<panel>/drop-spec.ts for attachment cards, and under
- * src/components/drop-mode/specs/ for document-level kinds
- * (paragraph, heading, selection). Each spec is imported here and
- * added to the SPECS record below.
+ * src/components/drop-mode/specs/ for document-level kinds. Each spec
+ * is imported here and added to the SPECS record below.
  *
  * Phase 0 ships with no specs registered — shift-grab is a no-op. Each
  * subsequent phase wires its specs in by editing this file.
@@ -15,7 +14,6 @@
 
 import type { DropSpec } from "./types";
 import { textObjectDropSpec } from "./specs/textobject";
-import { selectionDropSpec } from "./specs/selection";
 import { aiRequestDropSpec } from "./specs/ai-request";
 import { noteDropSpec, highlightDropSpec } from "@/panels/Notes/drop-spec";
 import { todoDropSpec } from "@/panels/Todo/drop-spec";
@@ -40,13 +38,10 @@ import { STACK_PULL_PREFIX } from "@/lib/stack/types";
  */
 const SPECS: Record<string, DropSpec | undefined> = {
   // Unified spec for every block lift — paragraph, heading, list,
-  // texBlock, exampleBlock, sub-objects. Resolves via the TextObject
-  // registry's `dropAdapter` (wrap vs. drop-direct) and
-  // `collectMoveSource` (single node vs. section range).
+  // texBlock, exampleBlock, linkedRange, sub-objects. Resolves via
+  // the TextObject registry's `dropAdapter` (wrap vs. drop-direct)
+  // and `collectMoveSource` (single node vs. section range).
   textobject: textObjectDropSpec,
-  // Transitional: session-only selection floats stay routed here until
-  // Phase E hydrates SelectionRef lifts into `linkedRange` TextObjects.
-  selection: selectionDropSpec,
   // The Examples *panel-card* popout (a sibling of `note:` / `todo:` /
   // `bib:`). The in-editor exampleBlock popout goes through
   // `textobject:exampleBlock:<id>` instead.

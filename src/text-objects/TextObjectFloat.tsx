@@ -4,11 +4,12 @@
  * Unified float chrome for every TextObject popout.
  *
  * Five per-kind float components used to live in `src/components/`
- * (ParagraphFloat, HeadingFloat, ListFloat, SelectionFloat, TexBlockFloat),
- * each re-implementing the same chrome — FloatCard wrapper, 6-line header
- * with a kind label + jump-to button + X close, drop-mode shift+mousedown
- * on the header, mounting via the popped-cards context. Phase D5 collapses
- * all of that into this one component.
+ * (ParagraphFloat, HeadingFloat, ListFloat, TexBlockFloat — plus the
+ * session-only SelectionFloat that Phase E retired), each
+ * re-implementing the same chrome — FloatCard wrapper, 6-line header
+ * with a kind label + jump-to button + X close, drop-mode
+ * shift+mousedown on the header, mounting via the popped-cards
+ * context. Phase D5 collapsed all of that into this one component.
  *
  * Body sync stays per-kind. Chrome owns:
  *  - FloatCard mounting / position

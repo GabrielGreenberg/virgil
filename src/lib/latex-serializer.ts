@@ -47,11 +47,22 @@ function ensureVirgilCommands(preamble: string): string {
   const hasVcid = /\\(?:provide|new|renew)command\{\\vcid\}/.test(preamble);
   const hasVexid = /\\(?:provide|new|renew)command\{\\vexid\}/.test(preamble);
   const hasVxid = /\\(?:provide|new|renew)command\{\\vxid\}/.test(preamble);
+  const hasVlid = /\\(?:provide|new|renew)command\{\\vlid\}/.test(preamble);
+  const hasVlidend = /\\(?:provide|new|renew)command\{\\vlidend\}/.test(preamble);
   // xcolor is needed for `\textcolor[HTML]{...}` emitted by the textColor
   // mark. New docs get it from CLASSIC_PREAMBLE; older docs get it
   // injected lazily on first save.
   const hasXcolor = /\\usepackage(?:\[[^\]]*\])?\{xcolor\}/.test(preamble);
-  if (hasVfid && hasVcid && hasVexid && hasVxid && hasXcolor) return preamble;
+  if (
+    hasVfid &&
+    hasVcid &&
+    hasVexid &&
+    hasVxid &&
+    hasVlid &&
+    hasVlidend &&
+    hasXcolor
+  )
+    return preamble;
 
   const beginMarker = "\\begin{document}";
   const beginIdx = preamble.indexOf(beginMarker);
@@ -64,6 +75,8 @@ function ensureVirgilCommands(preamble: string): string {
   if (!hasVcid) additions.push("\\providecommand{\\vcid}[1]{}");
   if (!hasVexid) additions.push("\\providecommand{\\vexid}[1]{}");
   if (!hasVxid) additions.push("\\providecommand{\\vxid}[1]{}");
+  if (!hasVlid) additions.push("\\providecommand{\\vlid}[1]{}");
+  if (!hasVlidend) additions.push("\\providecommand{\\vlidend}[1]{}");
 
   const before = preamble.slice(0, beginIdx).replace(/\s*$/, "");
   const after = preamble.slice(beginIdx);
@@ -142,7 +155,7 @@ function serializeTitleField(node: JSONContent): string {
   if (node.attrs?.isToday) {
     return `\\${field}{\\today}${anchor}\n`;
   }
-  const inner = (node.content || []).map(serializeInline).join("");
+  const inner = serializeInlineSequence(node.content || []);
   return `\\${field}{${rawPrefix}${inner}}${anchor}\n`;
 }
 
@@ -181,7 +194,7 @@ function serializeNode(node: JSONContent, suppressChildUuids = false, listDepth 
         const uuid = node.attrs?.uuid as string | null;
         return uuid ? `%!v:${uuid}\n` : "%!v:blank\n";
       }
-      const inner = (node.content || []).map(serializeInline).join("");
+      const inner = serializeInlineSequence(node.content || []);
       if (suppressChildUuids) return inner;
       const uuid = node.attrs?.uuid as string | null;
       const anchor = uuid ? ` %!v:${uuid}` : "";
@@ -194,7 +207,7 @@ function serializeNode(node: JSONContent, suppressChildUuids = false, listDepth 
       const label = node.attrs?.label as string | null;
       const uuid = node.attrs?.uuid as string | null;
       const numbered = node.attrs?.numbered;
-      const inner = (node.content || []).map(serializeInline).join("");
+      const inner = serializeInlineSequence(node.content || []);
       // Indexed by level 0..6 directly.
       const commands = ["\\part", "\\chapter", "\\section", "\\subsection", "\\subsubsection", "\\paragraph", "\\subparagraph"];
       const clampedLevel = Math.max(0, Math.min(level, 6));
@@ -220,7 +233,7 @@ function serializeNode(node: JSONContent, suppressChildUuids = false, listDepth 
     }
 
     case "codeBlock": {
-      const inner = (node.content || []).map(serializeInline).join("");
+      const inner = serializeInlineSequence(node.content || []);
       const uuid = node.attrs?.uuid as string | null;
       const anchor = uuid ? ` %!v:${uuid}` : "";
       return `\\begin{verbatim}\n${inner}\n\\end{verbatim}${anchor}\n\n`;
@@ -253,7 +266,7 @@ function serializeNode(node: JSONContent, suppressChildUuids = false, listDepth 
         (c) => c.type === "figureCaption",
       );
       const captionTex = captionChild
-        ? (captionChild.content || []).map(serializeInline).join("")
+        ? serializeInlineSequence(captionChild.content || [])
         : "";
       const anchor = uuid ? ` %!v:${uuid}` : "";
       const envName = starred ? "figure*" : "figure";
@@ -328,7 +341,7 @@ function serializeNode(node: JSONContent, suppressChildUuids = false, listDepth 
       const tail = children.slice(1);
       const headText =
         head && head.type === "paragraph"
-          ? (head.content || []).map(serializeInline).join("")
+          ? serializeInlineSequence(head.content || [])
           : "";
       const uuid = node.attrs?.uuid as string | null;
       const anchor = uuid ? ` %!v:${uuid}` : "";
@@ -425,7 +438,7 @@ function serializeLabelRef(node: JSONContent): string {
 
 function serializeExampleInlineChildren(nodes: JSONContent[] | undefined): string {
   if (!nodes) return "";
-  return nodes.map(serializeInline).join("");
+  return serializeInlineSequence(nodes);
 }
 
 function serializeExampleBlockBodyParagraphs(
@@ -555,6 +568,54 @@ function serializeExampleGloss(node: JSONContent): string {
     }
   }
   return `\\begingl\n${lines.join("\n")}\n\\endgl\n`;
+}
+
+/**
+ * Walk a sequence of inline nodes, emitting `\vlid{id}` / `\vlidend{id}`
+ * marker transitions around the `linkedAnchor` marks on text. Block-
+ * local: anchors still open at the end of the sequence are closed with
+ * `\vlidend`. A `linkedAnchor` that spans multiple blocks therefore
+ * emits a close+reopen pair at each block boundary — verbose but the
+ * parser's `applyLinkedAnchorBoundaries` reassembles them correctly.
+ *
+ * `serializeMarks` already ignores `linkedAnchor` marks (no case in its
+ * switch), so the inline wrapping (`\textbf{…}` etc.) sits inside
+ * `\vlid…\vlidend`, e.g.: `\vlid{x}\textbf{bold range}\vlidend{x}`.
+ */
+function serializeInlineSequence(nodes: JSONContent[]): string {
+  const open = new Set<string>();
+  let out = "";
+  for (const node of nodes) {
+    if (node.type === "text") {
+      const marks = node.marks || [];
+      const currentIds = new Set<string>();
+      for (const m of marks) {
+        if (m.type === "linkedAnchor") {
+          const id = m.attrs?.anchorId as string | undefined;
+          if (id) currentIds.add(id);
+        }
+      }
+      for (const id of [...open]) {
+        if (!currentIds.has(id)) {
+          out += `\\vlidend{${id}}`;
+          open.delete(id);
+        }
+      }
+      for (const id of currentIds) {
+        if (!open.has(id)) {
+          out += `\\vlid{${id}}`;
+          open.add(id);
+        }
+      }
+      out += serializeMarks(node.text || "", marks);
+    } else {
+      out += serializeInline(node);
+    }
+  }
+  for (const id of open) {
+    out += `\\vlidend{${id}}`;
+  }
+  return out;
 }
 
 function serializeInline(node: JSONContent): string {

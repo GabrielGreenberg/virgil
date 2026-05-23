@@ -1,10 +1,12 @@
 "use client";
 
 /**
- * Bidirectional sync plumbing between a floating editor (ParagraphFloat,
- * HeadingFloat, SelectionFloat) and the main editor. Each float owns its
- * own Tiptap instance and a "source" in the main doc (paragraph by uuid,
- * section range by heading uuid, or a tracked `{from, to}` range).
+ * Bidirectional sync plumbing between a floating editor (the per-kind
+ * bodies under `src/text-objects/floats/` — paragraph, heading, list,
+ * tex-block, example-block, linked-range) and the main editor. Each
+ * float owns its own Tiptap instance and a "source" in the main doc
+ * (paragraph by uuid, section range by heading uuid, range tracked by
+ * `linkedAnchor` mark, etc.).
  *
  * Sync model:
  *  - Float → main: caller does the write inside Tiptap's `onUpdate`. It

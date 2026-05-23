@@ -354,6 +354,38 @@ export function parseInlineContent(text: string): JSONContent[] {
         }
       }
 
+      // \vlid{anchorId} / \vlidend{anchorId} — paired markers for a
+      // `linkedAnchor` mark that spans the enclosed text. May span
+      // paragraph boundaries; the post-pass `applyLinkedAnchorBoundaries`
+      // walks the assembled doc and stamps marks over each open range.
+      // Here we emit transient boundary sentinels in the inline stream.
+      const vlidMatch = rest.match(/^\\vlid\{/);
+      if (vlidMatch) {
+        const idArg = extractBraced(text, i + "\\vlid".length);
+        if (idArg !== null) {
+          flush();
+          nodes.push({
+            type: "_linkedAnchorBoundary",
+            attrs: { kind: "open", anchorId: idArg.content || "" },
+          });
+          i = idArg.end;
+          continue;
+        }
+      }
+      const vlidendMatch = rest.match(/^\\vlidend\{/);
+      if (vlidendMatch) {
+        const idArg = extractBraced(text, i + "\\vlidend".length);
+        if (idArg !== null) {
+          flush();
+          nodes.push({
+            type: "_linkedAnchorBoundary",
+            attrs: { kind: "close", anchorId: idArg.content || "" },
+          });
+          i = idArg.end;
+          continue;
+        }
+      }
+
       // \footnote{...}
       const fnMatch = rest.match(/^\\footnote\{/);
       if (fnMatch) {
@@ -653,6 +685,12 @@ export function parseLatex(latex: string, sidecar?: VirgilSidecar): JSONContent 
     doc.content = [{ type: "paragraph" }];
   }
 
+  // Stamp `linkedAnchor` marks on text nodes between `\vlid` / `\vlidend`
+  // boundaries (which the inline parser emitted as transient sentinel
+  // nodes). Runs before any other post-pass so the rest of the pipeline
+  // sees a doc with the boundary sentinels removed.
+  applyLinkedAnchorBoundaries(doc);
+
   // Number footnotes sequentially
   numberFootnotes(doc);
 
@@ -706,6 +744,87 @@ function numberFootnotes(node: JSONContent): void {
     }
   }
   walk(node);
+}
+
+/**
+ * Walk the doc in order. Maintain a stack of open `linkedAnchor`
+ * anchorIds. For each `_linkedAnchorBoundary` sentinel inserted by
+ * `parseInlineContent` for a `\vlid{}` / `\vlidend{}` marker, push or
+ * pop the stack and remove the sentinel. For each text node between an
+ * open and close, stamp a `linkedAnchor` mark with the topmost anchorId.
+ *
+ * Cross-paragraph spans are natural: state survives across container
+ * boundaries. Nested anchors with different ids are tolerated — only
+ * the topmost is visible on text (ProseMirror's same-name mark
+ * exclusivity), but the outer's range is preserved on text before and
+ * after the inner.
+ *
+ * Defensive recovery:
+ *  - Unmatched `\vlidend{x}` (no matching opener) — drop silently.
+ *  - Unmatched `\vlid{x}` at EOF — `console.warn`; the sidecar's
+ *    `textSnapshot` re-anchoring (`reanchorByText`) is the recovery
+ *    path for any cards still pointing at the orphan.
+ */
+function applyLinkedAnchorBoundaries(doc: JSONContent): void {
+  const open: string[] = [];
+
+  function walk(n: JSONContent): void {
+    if (!n.content || n.content.length === 0) return;
+    const next: JSONContent[] = [];
+    for (const child of n.content) {
+      if (child.type === "_linkedAnchorBoundary") {
+        const kind = child.attrs?.kind as "open" | "close" | undefined;
+        const id = child.attrs?.anchorId as string | undefined;
+        if (!id) continue;
+        if (kind === "open") {
+          open.push(id);
+        } else if (kind === "close") {
+          // Pop the matching id (innermost match wins).
+          for (let j = open.length - 1; j >= 0; j--) {
+            if (open[j] === id) {
+              open.splice(j, 1);
+              break;
+            }
+          }
+        }
+        // Sentinel removed from output.
+        continue;
+      }
+      if (child.type === "text" && open.length > 0) {
+        const topId = open[open.length - 1];
+        const existingMarks = child.marks || [];
+        const hasLinkedAnchor = existingMarks.some(
+          (m) => m.type === "linkedAnchor",
+        );
+        if (!hasLinkedAnchor) {
+          next.push({
+            ...child,
+            marks: [
+              ...existingMarks,
+              {
+                type: "linkedAnchor",
+                attrs: { anchorId: topId, kind: "note", linkId: topId },
+              },
+            ],
+          });
+          continue;
+        }
+      }
+      // Recurse into block children to pick up their inline content.
+      walk(child);
+      next.push(child);
+    }
+    n.content = next;
+  }
+
+  walk(doc);
+
+  if (open.length > 0) {
+    console.warn(
+      "applyLinkedAnchorBoundaries: unmatched \\vlid opener(s) at EOF; recovery via sidecar reanchoring:",
+      open,
+    );
+  }
 }
 
 /** Assign hierarchical section numbers (e.g. "1", "2.3", "2.3.1") to heading nodes. */

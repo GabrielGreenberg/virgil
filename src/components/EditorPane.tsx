@@ -318,12 +318,13 @@ export interface EditorPaneViewPrefs {
   /** Toggle a card's popped-out state. Key shape: panel cards use
    *  `${kind}:${id}` (`note:`, `todo:`, `example:`, etc.); block-level
    *  TextObject popouts use the unified `textobject:${kind}:${id}`
-   *  shape introduced in Phase D10. The selection float still emits
-   *  `selection:${id}` until Phase E hydrates it into a `linkedRange`.
+   *  shape introduced in Phase D10. After Phase E, selection lifts
+   *  hydrate into `linkedRange` TextObjects so they take the same
+   *  unified path — there is no session-only float category left.
    *  See `floating-cards.tsx`'s `renderPoppedCard` dispatcher. */
   toggleCardPopout: (key: string) => void;
-  /** Pop the card *off* without re-docking. Used by SelectionFloat's
-   *  X button and by the PoppedCardsContext's `close` callback. */
+  /** Pop the card *off* without re-docking. Used by float X buttons
+   *  and by the PoppedCardsContext's `close` callback. */
   closeCardPopout: (key: string) => void;
   setCardFloatPosition: (
     key: string,

@@ -1,9 +1,10 @@
 /**
  * Grab-handle placement — single shared utility consumed by every grab
  * handle. Replaces the scattered per-component placement math that
- * accumulated in ParagraphFloat, HeadingFloat, ListFloat, SelectionFloat,
- * the per-node-view grips on tex/figure/graphics/example blocks, and the
- * main-editor SelectionDragHandle.
+ * accumulated in ParagraphFloat, HeadingFloat, ListFloat (and the
+ * SelectionFloat that Phase E retired), the per-node-view grips on
+ * tex/figure/graphics/example blocks, and the main-editor
+ * SelectionDragHandle.
  *
  * Algorithm (memo §7):
  *

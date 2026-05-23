@@ -372,7 +372,7 @@ function CardKindDropdown({
 
 /** Rightward chevron jump-to-source button. Renders in the card header
  *  only when the card is popped out (matches the popped-text UX in
- *  ParagraphFloat / HeadingFloat / SelectionFloat). */
+ *  every TextObject float body — paragraph, heading, list, etc.). */
 export function CardJumpChevron({
   onClick,
   title = "Jump to source",

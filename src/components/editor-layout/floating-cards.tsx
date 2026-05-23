@@ -11,7 +11,6 @@ import { QuotationGroupCard } from "@/panels/Quotations";
 import { ExampleCard } from "@/panels/Examples/ExampleCard";
 import BibEntryCard from "../BibEntryCard";
 import { AiRequestCard } from "../panel-primitives";
-import { SelectionFloat } from "../SelectionFloat";
 import { TextObjectFloat } from "@/text-objects/TextObjectFloat";
 import {
   parseTextObjectPopoutKey,
@@ -511,19 +510,6 @@ export function renderPoppedCard(key: string, d: PoppedCardDeps): ReactNode {
           cardKey={key}
           kind={ref.kind}
           id={ref.id}
-          editorRef={d.editorRef}
-        />
-      );
-    }
-    case "selection": {
-      // Selection floats are session-only and live in `selection-floats.ts`.
-      // Phase E hydrates a SelectionRef into a `linkedRange` TextObject at
-      // lift time and removes this case along with `selection-floats.ts`.
-      return (
-        <SelectionFloat
-          key={key}
-          cardKey={key}
-          selectionFloatId={id}
           editorRef={d.editorRef}
         />
       );

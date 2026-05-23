@@ -94,7 +94,7 @@ function nowIso(): string {
  * Capture the current text selection as a snapshot. Uses
  * `editor.state.doc.slice(from, to)` so we get a real ProseMirror Slice
  * with open depths preserved — `tr.replace` on the destination side
- * does the merging math, exactly like `selectionDropSpec`.
+ * does the merging math.
  */
 export function snapshotSelection(
   editor: Editor,

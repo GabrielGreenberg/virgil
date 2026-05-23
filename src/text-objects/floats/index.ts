@@ -22,6 +22,7 @@ import { HeadingBody } from "./heading-body";
 import { ListBody } from "./list-body";
 import { TexBlockBody } from "./tex-block-body";
 import { ExampleBlockBody } from "./example-block-body";
+import { LinkedRangeBody } from "./linked-range-body";
 
 registerFloatBody("paragraph", ParagraphBody);
 registerFloatBody("heading", HeadingBody);
@@ -29,3 +30,4 @@ registerFloatBody("bulletList", ListBody);
 registerFloatBody("orderedList", ListBody);
 registerFloatBody("texBlock", TexBlockBody);
 registerFloatBody("exampleBlock", ExampleBlockBody);
+registerFloatBody("linkedRange", LinkedRangeBody);
