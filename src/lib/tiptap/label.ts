@@ -1,5 +1,6 @@
 import { Node, Extension, mergeAttributes } from "@tiptap/react";
 import { Plugin, PluginKey } from "@tiptap/pm/state";
+import { readPendingDiff } from "./doc-structure";
 
 /** \ref{label} — inline cross-reference rendered as a clickable pod. */
 export const LabelRef = Node.create({
@@ -92,6 +93,20 @@ export const LabelHandler = Extension.create({
         key: new PluginKey("labelHandler"),
         appendTransaction(transactions, _oldState, newState) {
           if (!transactions.some((tr) => tr.docChanged)) return null;
+
+          // Gate: this plugin's job is to absorb `\label{...}` paragraphs
+          // that follow headings. It only matters when a paragraph's
+          // text content was touched (typing) or when blocks were added
+          // (paste). Pure-text edits in non-paragraph blocks, or
+          // selection-only transactions, skip.
+          const pending = readPendingDiff(newState);
+          if (pending) {
+            const couldMatter =
+              pending.addedBlocks.length > 0 ||
+              pending.contentChangedUuids.size > 0 ||
+              pending.changedHeadings.length > 0;
+            if (!couldMatter) return null;
+          }
 
           const { doc, schema } = newState;
           const headingType = schema.nodes.heading;

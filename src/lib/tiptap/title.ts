@@ -1,6 +1,7 @@
 import { Node, Extension, mergeAttributes } from "@tiptap/react";
 import { Plugin, PluginKey } from "@tiptap/pm/state";
 import { UUID_ATTR_SPEC } from "./uuid-attr";
+import { readPendingDiff } from "./doc-structure";
 
 /**
  * Clears parTitle (and uuid) from empty paragraphs.
@@ -15,6 +16,17 @@ export const EmptyParagraphTitleCleaner = Extension.create({
         key: new PluginKey("emptyParagraphTitleCleaner"),
         appendTransaction(transactions, _oldState, newState) {
           if (!transactions.some((tr) => tr.docChanged)) return null;
+
+          // Gate: parTitle-cleanup only matters for paragraphs whose
+          // content just changed (typing) or blocks newly added. Pure
+          // selection moves and non-paragraph edits skip.
+          const pending = readPendingDiff(newState);
+          if (pending) {
+            const couldMatter =
+              pending.addedBlocks.length > 0 ||
+              pending.contentChangedUuids.size > 0;
+            if (!couldMatter) return null;
+          }
 
           const { doc, schema } = newState;
           const paragraphType = schema.nodes.paragraph;

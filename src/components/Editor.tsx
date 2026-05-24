@@ -49,6 +49,7 @@ import { registerDropTarget } from "@/components/drop-mode/target-registry";
 import "@/text-objects/floats";
 import { generateShortId } from "@/lib/uuid";
 import { UUID_ATTR_SPEC, UuidAttrDecorator } from "@/lib/tiptap/uuid-attr";
+import { DocStructureObserver, readPendingDiff } from "@/lib/tiptap/doc-structure";
 import { ensureAnchorUuid } from "@/lib/anchor-uuid";
 import { parseLatex } from "@/lib/latex-parser";
 import { serializeBodyOnly } from "@/lib/latex-serializer";
@@ -1448,6 +1449,35 @@ const VirgilEditor = forwardRef<EditorHandle, EditorProps>(function VirgilEditor
           appendTransaction(transactions, _oldState, newState) {
             if (!transactions.some((tr) => tr.docChanged)) return null;
 
+            // Gate: skip the entire numberer (3 doc walks) unless the
+            // observer says headings / figures / examples / labels
+            // actually changed. Pure text edits inside a paragraph
+            // produce contentChangedUuids only — the numberer's output
+            // can't change in that case, so we bail immediately.
+            //
+            // Trade-off (memo §5): manually editing a labelRef's
+            // `label` attribute via the popover doesn't trigger this
+            // gate, so the labelRef's displayText may stay stale until
+            // the next structural change. The labelRef-insert flow
+            // (`\ref{x}` + Enter) sets displayText at insertion, so
+            // the common case still works.
+            const pending = readPendingDiff(newState);
+            if (pending) {
+              const structuralChange =
+                pending.addedHeadings.length > 0 ||
+                pending.removedHeadings.length > 0 ||
+                pending.changedHeadings.length > 0 ||
+                pending.addedFigures.length > 0 ||
+                pending.removedFigures.length > 0 ||
+                pending.changedFigures.length > 0 ||
+                pending.addedExamples.length > 0 ||
+                pending.removedExamples.length > 0 ||
+                pending.exampleStructureChanged ||
+                pending.addedLabels.length > 0 ||
+                pending.removedLabels.length > 0;
+              if (!structuralChange) return null;
+            }
+
             // Collect heading positions & attrs
             const headings: { pos: number; level: number; numbered: boolean; cur: string | null }[] = [];
             newState.doc.descendants((nd, pos) => {
@@ -1642,6 +1672,12 @@ const VirgilEditor = forwardRef<EditorHandle, EditorProps>(function VirgilEditor
         codeBlock: false,
         dropcursor: { color: "var(--drag-highlight)", width: 2 },
       }),
+      // Position 0 (after StarterKit). The observer must run first so
+      // any appendTransaction plugin that wants to read the diff via
+      // `readPendingDiff(state)` can do so. See
+      // `docs/perf/keystroke-sanctity-findings.md` and
+      // `src/lib/tiptap/doc-structure/`.
+      DocStructureObserver,
       ParagraphWithTitle,
       HeadingWithLabel,
       BulletListWithTitle,
@@ -3230,6 +3266,33 @@ const VirgilEditor = forwardRef<EditorHandle, EditorProps>(function VirgilEditor
       if (editorInstanceRef.current === editor) {
         editorInstanceRef.current = null;
       }
+    };
+  }, [editor]);
+
+  // Verification hook: expose the DocStructureObserver's emit counter
+  // on `window.__virgilBusStats` so the keystroke-sanctity success
+  // criteria can be checked live in the dev preview. The getter reads
+  // the bus on demand — no RAF polling, zero per-keystroke cost.
+  // See `docs/perf/keystroke-sanctity-findings.md` §9.
+  useEffect(() => {
+    if (typeof window === "undefined" || !editor) return;
+    type BusStats = { emitCount: number; version: number };
+    type StatsHost = {
+      __virgilBusStats?: BusStats | (() => BusStats | null) | null;
+    };
+    const w = window as unknown as StatsHost;
+    let cancelled = false;
+    void import("@/lib/tiptap/doc-structure").then(({ getBus }) => {
+      if (cancelled) return;
+      w.__virgilBusStats = (): BusStats | null => {
+        const bus = getBus(editor);
+        if (!bus) return null;
+        return { emitCount: bus.emitCount, version: bus.structure.version };
+      };
+    });
+    return () => {
+      cancelled = true;
+      w.__virgilBusStats = null;
     };
   }, [editor]);
 

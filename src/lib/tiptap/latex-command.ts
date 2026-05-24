@@ -80,7 +80,9 @@ export const LatexCommandMark = Mark.create({
     }
 
     return [
-      // Live decoration for \commands while typing
+      // Live decoration for \commands while typing.
+      // Canonical mapping pattern: forward-map existing decorations,
+      // then rebuild only when a changed region might contain `\`.
       new Plugin({
         key: new PluginKey("latexCmdDecorations"),
         state: {
@@ -88,8 +90,36 @@ export const LatexCommandMark = Mark.create({
             return buildDecorations(state.doc);
           },
           apply(tr, oldSet) {
-            if (!tr.docChanged) return oldSet.map(tr.mapping, tr.doc);
-            return buildDecorations(tr.doc);
+            const mapped = oldSet.map(tr.mapping, tr.doc);
+            if (!tr.docChanged) return mapped;
+            // Cheap text scan of the changed regions for a backslash —
+            // the only character that could create or break a command.
+            // If absent, the mapped set is correct.
+            let touched = false;
+            tr.mapping.maps.forEach((stepMap) => {
+              if (touched) return;
+              stepMap.forEach((_oldFrom, _oldTo, newFrom, newTo) => {
+                if (touched) return;
+                const expandedFrom = Math.max(0, newFrom - 1);
+                const expandedTo = Math.min(tr.doc.content.size, newTo + 1);
+                if (expandedTo <= expandedFrom) return;
+                const text = tr.doc.textBetween(expandedFrom, expandedTo, "\n", "\n");
+                if (text.includes("\\")) touched = true;
+              });
+            });
+            // Also rebuild if any existing decoration overlaps a
+            // changed region (the typed text might land mid-command and
+            // change its length without inserting a `\`).
+            if (!touched && oldSet.find().length > 0) {
+              tr.mapping.maps.forEach((stepMap) => {
+                if (touched) return;
+                stepMap.forEach((_oldFrom, _oldTo, newFrom, newTo) => {
+                  if (touched) return;
+                  if (mapped.find(newFrom, newTo).length > 0) touched = true;
+                });
+              });
+            }
+            return touched ? buildDecorations(tr.doc) : mapped;
           },
         },
         props: {

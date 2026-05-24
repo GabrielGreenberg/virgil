@@ -2,6 +2,7 @@ import { Mark, Extension, mergeAttributes } from "@tiptap/react";
 import { Plugin, PluginKey } from "@tiptap/pm/state";
 import { Fragment as PMFragmentCtor, Slice as PMSliceCtor, type Node as PMNode2, type Fragment as PMFragment } from "@tiptap/pm/model";
 import type { MutableRefObject } from "react";
+import { readPendingDiff } from "@/lib/tiptap/doc-structure";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // LinkedAnchor — invisible mark placed on a text range. Used by Notes,
@@ -87,23 +88,6 @@ export const LinkedAnchor = Mark.create({
 // slices to prevent duplicate-id collisions via copy-paste.
 // ─────────────────────────────────────────────────────────────────────────────
 
-function collectAnchorIds(doc: import("@tiptap/pm/model").Node): Map<string, string> {
-  const ids = new Map<string, string>();
-  doc.descendants((node) => {
-    if (node.isText) {
-      for (const m of node.marks) {
-        if (m.type.name === "linkedAnchor") {
-          const id = m.attrs.anchorId as string | undefined;
-          const kind = (m.attrs.kind as string | undefined) || "note";
-          if (id) ids.set(id, kind);
-        }
-      }
-    }
-    return true;
-  });
-  return ids;
-}
-
 export const LinkedAnchorGuard = Extension.create({
   name: "linkedAnchorGuard",
 
@@ -111,20 +95,19 @@ export const LinkedAnchorGuard = Extension.create({
     return [
       new Plugin({
         key: new PluginKey("linkedAnchorGuard"),
-        appendTransaction(transactions, oldState, newState) {
+        appendTransaction(transactions, _oldState, newState) {
           if (!transactions.some((tr) => tr.docChanged)) return null;
-          const oldIds = collectAnchorIds(oldState.doc);
-          if (oldIds.size === 0) return null;
-          const newIds = collectAnchorIds(newState.doc);
-          const vanished: Array<{ anchorId: string; kind: string }> = [];
-          for (const [id, kind] of oldIds) {
-            if (!newIds.has(id)) vanished.push({ anchorId: id, kind });
-          }
-          if (vanished.length === 0) return null;
+          // Read the diff already computed by DocStructureObserver
+          // (which runs before us). No doc walks — just the typed
+          // delta the observer published.
+          const diff = readPendingDiff(newState);
+          if (!diff || diff.removedAnchors.length === 0) return null;
           setTimeout(() => {
-            for (const v of vanished) {
+            for (const a of diff.removedAnchors) {
               window.dispatchEvent(
-                new CustomEvent("virgil-anchor-orphaned", { detail: v })
+                new CustomEvent("virgil-anchor-orphaned", {
+                  detail: { anchorId: a.id, kind: a.kind },
+                }),
               );
             }
           }, 0);
@@ -184,52 +167,37 @@ export const MarginaliaAnchorGuard = Extension.create<{
     return [
       new Plugin({
         key: new PluginKey("marginaliaAnchorGuard"),
-        appendTransaction(transactions, oldState, newState) {
+        appendTransaction(transactions, _oldState, newState) {
           if (!transactions.some((tr) => tr.docChanged)) return null;
+
+          // Consume the typed diff already computed by
+          // DocStructureObserver — no doc walks needed.
+          const diff = readPendingDiff(newState);
+          if (!diff) return null;
+          if (
+            diff.removedBlocks.length === 0 &&
+            diff.removedAnchors.length === 0
+          ) {
+            return null;
+          }
+
+          // A block "needs preserving" if it had a gutter marker
+          // (anchoredUuidsRef) or hosted any linkedAnchor mark
+          // (signalled by removedAnchors that landed in the same range).
           const anchored = anchoredUuidsRef.current;
-          // Cheap short-circuit: if nothing in the doc is anchored, there
-          // is nothing to preserve.
-          const oldHasAnchorIds = collectAnchorIds(oldState.doc).size > 0;
-          if (anchored.size === 0 && !oldHasAnchorIds) return null;
+          // Track which removed-block UUIDs hosted a linkedAnchor we
+          // also saw vanish. We can't recompute it after the fact, so
+          // be conservative: if any anchor was removed, treat all
+          // removed blocks as candidates (the orphan-event consumer
+          // for inline anchors clears the card anyway; preserving the
+          // paragraph here keeps gutter cards consistent).
+          const anchorVanished = diff.removedAnchors.length > 0;
 
-          // Walk oldState: collect every UUID-bearing block with its
-          // start position and whether it hosted a linkedAnchor mark.
-          // A block is worth preserving if it had a gutter marker
-          // (anchored set) OR an inline text-range anchor (hasLinkedAnchor).
-          type OldBlock = { uuid: string; pos: number; hasLinkedAnchor: boolean };
-          const oldBlocks: OldBlock[] = [];
-          oldState.doc.descendants((node, pos) => {
-            const uuid = node.attrs?.uuid as string | undefined;
-            if (!uuid) return true;
-            let hasLinkedAnchor = false;
-            node.descendants((child) => {
-              if (hasLinkedAnchor) return false;
-              if (
-                child.isText &&
-                child.marks.some((m) => m.type.name === "linkedAnchor")
-              ) {
-                hasLinkedAnchor = true;
-                return false;
-              }
-              return true;
-            });
-            oldBlocks.push({ uuid, pos, hasLinkedAnchor });
-            return true;
-          });
-          if (oldBlocks.length === 0) return null;
-
-          const newUuids = new Set<string>();
-          newState.doc.descendants((node) => {
-            const uuid = node.attrs?.uuid as string | undefined;
-            if (uuid) newUuids.add(uuid);
-            return true;
-          });
-
-          const vanished: OldBlock[] = [];
-          for (const ob of oldBlocks) {
-            if (newUuids.has(ob.uuid)) continue;
-            if (anchored.has(ob.uuid) || ob.hasLinkedAnchor) {
-              vanished.push(ob);
+          type Vanished = { uuid: string; pos: number };
+          const vanished: Vanished[] = [];
+          for (const b of diff.removedBlocks) {
+            if (anchored.has(b.uuid) || anchorVanished) {
+              vanished.push({ uuid: b.uuid, pos: b.pos });
             }
           }
           if (vanished.length === 0) return null;
@@ -241,11 +209,9 @@ export const MarginaliaAnchorGuard = Extension.create<{
             .filter((t) => t.docChanged)
             .map((t) => t.mapping);
 
-          // Map each vanished block's old start-position forward through
-          // the transaction mapping to find where to drop the placeholder.
-          // Bias `-1` keeps us to the left of any deletion so the
-          // placeholder lands at the deletion site, not past it.
-          // Defensive fallback to end-of-doc if the result is out of range.
+          // Map each vanished block's old start-position forward
+          // through the transaction mapping. Bias -1 lands the
+          // placeholder at the deletion site, not past it.
           type InsertSpec = { pos: number; uuid: string };
           const inserts: InsertSpec[] = [];
           const docSize = tr.doc.content.size;
@@ -259,9 +225,6 @@ export const MarginaliaAnchorGuard = Extension.create<{
             inserts.push({ pos, uuid: v.uuid });
           }
 
-          // Insert from the highest position backwards so each insert
-          // doesn't shift the others. Earlier inserts at the same pos
-          // stack in document order.
           inserts.sort((a, b) => b.pos - a.pos);
           for (const spec of inserts) {
             const emptyPara = paraType.create({ uuid: spec.uuid });
@@ -269,12 +232,10 @@ export const MarginaliaAnchorGuard = Extension.create<{
             try {
               tr.insert(insertPos, emptyPara);
             } catch {
-              // Schema may reject (e.g. position inside a non-block-
-              // accepting container). Fall back to the end of the doc.
               try {
                 tr.insert(tr.doc.content.size, emptyPara);
               } catch {
-                /* give up on this one — better than crashing the doc */
+                /* give up — better than crashing the doc */
               }
             }
           }

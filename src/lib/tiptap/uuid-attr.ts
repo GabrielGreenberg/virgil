@@ -3,6 +3,7 @@ import { Plugin, PluginKey } from "@tiptap/pm/state";
 import { Decoration, DecorationSet } from "@tiptap/pm/view";
 import type { Node as PMNode } from "@tiptap/pm/model";
 import { isAnchorableNode } from "@/lib/marginalia";
+import { readPendingDiff } from "@/lib/tiptap/doc-structure";
 
 /**
  * Shared spec for the `uuid` attribute used by every anchorable node type.
@@ -100,15 +101,49 @@ export const UuidAttrDecorator = Extension.create({
             return buildUuidDecorations(state.doc);
           },
           apply(tr, value, _oldState, newState) {
-            // Re-walk when the doc has changed structurally. We can't
-            // cheaply tell "was a UUID added/removed/changed" from the
-            // step list, so on any docChanged we rebuild. The walk is
-            // O(top-level blocks) which is cheap; the decoration map
-            // diff is what we'd otherwise be paying for anyway.
-            if (!tr.docChanged) {
-              return value.map(tr.mapping, tr.doc);
+            // Step 1: cheap forward map for any existing decorations
+            // whose position shifted. Microseconds for a doc with N
+            // decorations, no matter how big N is.
+            let set = value.map(tr.mapping, tr.doc);
+            if (!tr.docChanged) return set;
+
+            // Step 2: consult the observer's diff. Add decorations for
+            // any UUID that became live this transaction, drop them
+            // for any UUID that left. The diff is computed once by
+            // DocStructureObserver upstream of every consumer; we just
+            // read its output.
+            const diff = readPendingDiff(newState);
+            if (!diff) {
+              // Observer plugin not installed (e.g. tests). Fall back
+              // to a full rebuild — correct, just slower.
+              return buildUuidDecorations(newState.doc);
             }
-            return buildUuidDecorations(newState.doc);
+
+            // Remove decorations for vanished UUIDs.
+            if (diff.removedBlocks.length > 0) {
+              const removedUuids = new Set(diff.removedBlocks.map((b) => b.uuid));
+              const survivors = set.find().filter((d) => {
+                const spec = (d as Decoration & { type?: { attrs?: Record<string, string> } });
+                const uuid = spec.type?.attrs?.["data-uuid"];
+                return !uuid || !removedUuids.has(uuid);
+              });
+              set = DecorationSet.create(newState.doc, survivors);
+            }
+
+            // Add decorations for newly-arrived UUIDs.
+            if (diff.addedBlocks.length > 0) {
+              const adds: Decoration[] = [];
+              for (const b of diff.addedBlocks) {
+                const node = newState.doc.nodeAt(b.pos);
+                if (!node || !isAnchorableNode(node.type)) continue;
+                adds.push(
+                  Decoration.node(b.pos, b.pos + node.nodeSize, { "data-uuid": b.uuid }),
+                );
+              }
+              if (adds.length > 0) set = set.add(newState.doc, adds);
+            }
+
+            return set;
           },
         },
         props: {

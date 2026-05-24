@@ -6,6 +6,7 @@ import { isAnchorableNode } from "@/lib/marginalia";
 import { getLinkedTextObjectIds } from "@/links/links";
 import type { Link } from "@/links/_shared/types";
 import { findEditorScrollFor } from "@/components/editor-layout/layout-scroll";
+import { getBus } from "@/lib/tiptap/doc-structure";
 
 /** Viewport gating margin — items within ±NEAR_ZONE_PX of the visible
  *  range still get measured, so scrolling slightly doesn't flash through
@@ -307,19 +308,23 @@ export function useInTextPositions(
       cancelAnimationFrame(computeRafRef.current);
       computeRafRef.current = requestAnimationFrame(measure);
     };
-    // Card positions are anchored to PM coords, which only shift when
-    // the doc changes. Skip metadata-only transactions to avoid a
-    // layout-reading recompute per keystroke that doesn't change layout.
-    const onDocUpdate = ({
-      transaction,
-    }: {
-      transaction: import("@tiptap/pm/state").Transaction;
-    }) => {
-      if (!transaction.docChanged) return;
-      schedule();
-    };
+    // Card positions are anchored to PM coords. Subscribe to the
+    // DocStructureObserver: structural changes (block add/remove) are
+    // when card mappings might shift. Pure text edits don't move
+    // cards; the editor DOM's ResizeObserver below covers any
+    // wrap-induced reflow that would shift Y coords.
+    const bus = getBus(editor);
+    const unsubBlocks = bus
+      ? (() => {
+          const u1 = bus.onBlocksAdded(schedule);
+          const u2 = bus.onBlocksRemoved(schedule);
+          return () => {
+            u1();
+            u2();
+          };
+        })()
+      : null;
 
-    editor.on("update", onDocUpdate);
     window.addEventListener("resize", schedule);
 
     let editorObs: ResizeObserver | null = null;
@@ -335,7 +340,7 @@ export function useInTextPositions(
 
     return () => {
       cancelAnimationFrame(computeRafRef.current);
-      editor.off("update", onDocUpdate);
+      unsubBlocks?.();
       window.removeEventListener("resize", schedule);
       editorObs?.disconnect();
     };

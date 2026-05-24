@@ -26,6 +26,41 @@ If the user uses a term that doesn't resolve cleanly to a code name, append it t
 
 Each sub-doc begins with `<!-- last-verified: <sha> <date> -->`. If the hash is far behind `HEAD` and something feels stale, verify against the current code before relying on the doc.
 
+## Keystroke sanctity
+
+> **No plugin, hook, or React effect may do work proportional to document size on each keystroke.** Doc-walking work must be event-driven from the typed structural diff. Decoration plugins must use `DecorationSet.map(tr.mapping)` and re-scan only changed regions.
+
+The diff is produced once per transaction by `DocStructureObserver` ([src/lib/tiptap/doc-structure/](src/lib/tiptap/doc-structure/)) — the **first** extension in the editor's extension list. It inspects `tr.steps` (O(edit-size), O(1) bail on `!tr.docChanged`) and publishes typed events on an editor-attached `DocStructureBus`.
+
+**Consume the diff. Don't walk the doc.**
+
+- From a ProseMirror `appendTransaction`: `readPendingDiff(newState)` returns the current `StructureDiff`.
+- From a React component: `useDocStructure(editor)` / `useDocStructureBus(editor)` / `useDocStructureEvent(editor, "onHeadingsRecomputable", fn)`.
+- From a long-lived hook: `getBus(editor)` for direct subscription.
+
+### Permitted `editor.on('update' | 'transaction')` subscribers
+
+The keystroke-sanctity sweep allows these direct subscriptions, because each is O(1) per transaction (debounced timer reset, counter bump, or RAF-coalesced layout read):
+
+- `useDocument.ts` autosaver (1500 ms debounce)
+- `useWordCount.ts` (300 ms debounce, then full doc walk)
+- `useLatexLint.ts` (1500 ms debounce, full AST parse)
+- `useEditorUIState.ts` last-paragraph saver (400 ms debounce)
+- `EditorLayout.tsx` activity-presence bumper (counter increment)
+- `EditorPane.tsx` PDF-stale bump (O(1) timer)
+- `LinkConnector.tsx` (docChanged-gated, RAF-coalesced bezier)
+- `SlashCommandPopup.tsx` (closes popup, O(1))
+- `TextObjectGrabHandle.tsx` (docChanged-gated, cheap)
+- `EditorMirror.tsx` (RAF-deferred replay)
+- `Marginalia.tsx` (RAF-coalesced host-element notify)
+- `float-sync.tsx` (docChanged-gated + own-write meta filter)
+
+Anything else added to that list needs a comment explaining why it's O(1).
+
+### Why this exists
+
+Memo: [docs/perf/keystroke-sanctity-findings.md](docs/perf/keystroke-sanctity-findings.md). Predecessor sweeps in [docs/perf/cursor-selection-reactor-audit.md](docs/perf/cursor-selection-reactor-audit.md) and [docs/perf/reactor-sweep-followup-findings.md](docs/perf/reactor-sweep-followup-findings.md).
+
 ## Style
 
 [src/STYLE_GUIDE.md](src/STYLE_GUIDE.md) is the design-system reference. Check it before building new UI. Update it when a UI decision feels generalizable.

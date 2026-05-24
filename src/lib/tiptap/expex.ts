@@ -3,6 +3,7 @@ import { Plugin, PluginKey } from "@tiptap/pm/state";
 import { TextSelection } from "@tiptap/pm/state";
 import { generateShortId } from "@/lib/uuid";
 import { UUID_ATTR_SPEC } from "./uuid-attr";
+import { readDocStructure, readPendingDiff } from "@/lib/tiptap/doc-structure";
 
 // The exampleBlock NodeView no longer hosts a grip or popout button — the
 // editor-mounted TextObjectGrabHandle handles both. No per-extension
@@ -1330,6 +1331,54 @@ export const ExpexNumbering = Extension.create({
         key: new PluginKey("expexNumbering"),
         appendTransaction(transactions, _oldState, newState) {
           if (!transactions.some((tr) => tr.docChanged)) return null;
+
+          // Gate: only run when the observer says the example set or
+          // its nesting actually changed (or some content inside an
+          // example block was touched — covers gloss-cell column
+          // adjustments). Typing in a paragraph outside any example
+          // bails immediately.
+          const pending = readPendingDiff(newState);
+          if (pending) {
+            const exampleAffected =
+              pending.addedExamples.length > 0 ||
+              pending.removedExamples.length > 0 ||
+              pending.exampleStructureChanged;
+            // Content-change inside an example block (gloss cells, items)
+            // may shift the column count or item ordering.
+            let exampleContentTouched = false;
+            if (!exampleAffected && pending.contentChangedUuids.size > 0) {
+              for (const uuid of pending.contentChangedUuids) {
+                const block = pending.addedBlocks.find((b) => b.uuid === uuid);
+                if (block?.typeName === "exampleBlock") {
+                  exampleContentTouched = true;
+                  break;
+                }
+                // Also check the existing structure for the typeName.
+                // We don't have prev here; rely on `readDocStructure`
+                // when needed — but that requires importing it. For
+                // now, conservatively run if any contentChange could
+                // be in an example. A second-pass optimization would
+                // check the index.
+              }
+              // Conservative: if there are content changes and no
+              // structural diff says it's NOT an example, fall through
+              // to run the numberer. The cost is a doc walk in those
+              // cases, but those are still rarer than pure-text edits.
+              if (!exampleContentTouched && pending.contentChangedUuids.size > 0) {
+                // Re-check by reading the structure-index.
+                const structure = readDocStructure(newState);
+                for (const uuid of pending.contentChangedUuids) {
+                  const block = structure.blocks.get(uuid);
+                  if (block?.typeName === "exampleBlock") {
+                    exampleContentTouched = true;
+                    break;
+                  }
+                }
+              }
+            }
+            if (!exampleAffected && !exampleContentTouched) return null;
+          }
+
           const tr = newState.tr;
           let changed = false;
 

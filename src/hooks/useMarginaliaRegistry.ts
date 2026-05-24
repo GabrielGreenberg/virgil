@@ -8,6 +8,7 @@ import {
   resolveDomForUuid,
 } from "@/lib/marginalia-blocks";
 import { findRowScroll } from "@/components/editor-layout/layout-scroll";
+import { getBus } from "@/lib/tiptap/doc-structure";
 
 /**
  * Viewport-scoped, on-demand layout registry for UUID-bearing blocks.
@@ -424,38 +425,22 @@ export function useMarginaliaRegistry(
     }
 
     /**
-     * TipTap `update` listener with `docChanged` gate (mirrors the
-     * pattern in `LinkConnector.tsx:241-254`). Bails on selection-only
-     * txns. On a structural change (block count or UUID-set
-     * membership differs), sync the observed set.
+     * Subscribe to the DocStructureObserver — wakes only when blocks
+     * are added or removed. Text edits within blocks don't wake the
+     * registry; the IntersectionObserver / ResizeObserver pair handles
+     * any wrap-induced layout change.
      */
-    const onUpdate = ({
-      transaction,
-    }: {
-      transaction: import("@tiptap/pm/state").Transaction;
-    }) => {
-      if (!transaction.docChanged) return;
-      // Quick structural check: compare the new UUID list against the
-      // last one we observed. Walk is O(blocks); no DOM reads.
-      const blocks = walkAnchorableBlocks(editor);
-      const nextSet = new Set(blocks.map((b) => b.uuid));
-      let structureChanged = nextSet.size !== state.lastUuidSet.size;
-      if (!structureChanged) {
-        for (const uuid of nextSet) {
-          if (!state.lastUuidSet.has(uuid)) {
-            structureChanged = true;
-            break;
-          }
-        }
-      }
-      if (structureChanged) {
-        syncObservedSet();
-      } else {
-        // Same UUIDs, but doc changed (text edit, attribute change).
-        // The IntersectionObserver/ResizeObserver pair handles any
-        // resulting layout change. Nothing to do here.
-      }
-    };
+    const bus = getBus(editor);
+    const unsubBus = bus
+      ? (() => {
+          const u1 = bus.onBlocksAdded(() => syncObservedSet());
+          const u2 = bus.onBlocksRemoved(() => syncObservedSet());
+          return () => {
+            u1();
+            u2();
+          };
+        })()
+      : null;
 
     /** First-measure pass on mount. */
     function prime() {
@@ -492,12 +477,11 @@ export function useMarginaliaRegistry(
       editor.on("create", tryPrime);
     }
 
-    editor.on("update", onUpdate);
     window.addEventListener("resize", onWindowResize);
 
     return () => {
       editor.off("create", tryPrime);
-      editor.off("update", onUpdate);
+      unsubBus?.();
       window.removeEventListener("resize", onWindowResize);
       if (state.rafId) cancelAnimationFrame(state.rafId);
       state.intersectionObserver?.disconnect();

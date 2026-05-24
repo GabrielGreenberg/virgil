@@ -21,6 +21,7 @@ import type {
   TextObjectKind,
   TextObjectRef,
 } from "./types";
+import { getBus } from "@/lib/tiptap/doc-structure";
 
 /**
  * Shared subscription that resolves the active TextObject from the
@@ -149,14 +150,11 @@ export function ActiveTextObjectProvider({ editorRef, children }: ProviderProps)
     }
 
     const onSelection = () => recompute();
-    const onTransaction = ({
-      transaction,
-    }: {
-      transaction: import("@tiptap/pm/state").Transaction;
-    }) => {
-      if (!transaction.docChanged) return;
-      recompute();
-    };
+    // Block-structure changes via DocStructureObserver replace the
+    // direct `transaction` subscription. Typing-only transactions
+    // don't shift which block the cursor is in; only blocks-added /
+    // blocks-removed events matter.
+    let busUnsubs: (() => void)[] = [];
 
     let attached: Editor | null = null;
     let pollAttempts = 0;
@@ -165,11 +163,16 @@ export function ActiveTextObjectProvider({ editorRef, children }: ProviderProps)
       if (!editor || editor === attached) return;
       if (attached) {
         attached.off("selectionUpdate", onSelection);
-        attached.off("transaction", onTransaction);
+        for (const u of busUnsubs) u();
+        busUnsubs = [];
       }
       attached = editor;
       editor.on("selectionUpdate", onSelection);
-      editor.on("transaction", onTransaction);
+      const bus = getBus(editor);
+      if (bus) {
+        busUnsubs.push(bus.onBlocksAdded(recompute));
+        busUnsubs.push(bus.onBlocksRemoved(recompute));
+      }
       recompute();
     }
 
@@ -185,7 +188,8 @@ export function ActiveTextObjectProvider({ editorRef, children }: ProviderProps)
     return () => {
       if (attached) {
         attached.off("selectionUpdate", onSelection);
-        attached.off("transaction", onTransaction);
+        for (const u of busUnsubs) u();
+        busUnsubs = [];
         attached = null;
       }
     };

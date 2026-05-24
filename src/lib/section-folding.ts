@@ -1,6 +1,7 @@
 import { Plugin, PluginKey, type EditorState } from "@tiptap/pm/state";
 import { Decoration, DecorationSet } from "@tiptap/pm/view";
 import type { Node as PMNode } from "@tiptap/pm/model";
+import { readPendingDiff } from "@/lib/tiptap/doc-structure";
 
 export interface SectionFoldingState {
   folded: Set<string>;
@@ -132,7 +133,29 @@ export function sectionFoldingPlugin(): Plugin<SectionFoldingState> {
         }
         // Doc may have changed — prune UUIDs that no longer exist so fold
         // state doesn't linger on removed headings.
+        //
+        // Cheap path via DocStructureObserver: only prune when the diff
+        // says headings were actually removed. Most keystrokes (typing
+        // inside any block, including a heading's text) leave the fold
+        // set untouched.
         if (tr.docChanged && value.folded.size > 0) {
+          const diff = readPendingDiff(newState);
+          if (diff) {
+            if (diff.removedHeadings.length === 0) return value;
+            const removed = new Set(diff.removedHeadings.map((h) => h.uuid));
+            let changed = false;
+            const next = new Set<string>();
+            for (const u of value.folded) {
+              if (removed.has(u)) {
+                changed = true;
+                continue;
+              }
+              next.add(u);
+            }
+            if (changed) return { folded: next };
+            return value;
+          }
+          // Observer not installed (tests). Fall back to the full prune.
           const alive = new Set(collectHeadingUuids(newState.doc));
           let changed = false;
           const next = new Set<string>();

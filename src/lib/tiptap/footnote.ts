@@ -3,6 +3,7 @@ import type { Node as PMNode } from "@tiptap/pm/model";
 import { Plugin, PluginKey } from "@tiptap/pm/state";
 import { richJsonToPlainText, normalizeRichContent } from "@/lib/footnote-content";
 import { generateShortId } from "@/lib/uuid";
+import { readDocStructure, readPendingDiff } from "@/lib/tiptap/doc-structure";
 
 // Options accepted by the Footnote extension. `idGenerator` lets a host
 // (e.g. the Library Reader) substitute a different ID strategy for newly
@@ -152,65 +153,65 @@ export const Footnote = Node.create<FootnoteOptions>({
       }),
       // Orphan detector + auto-renumber plugin.
       //
-      // Per-keystroke critical path: fires on every docChanged transaction.
-      // Reduced from 3-4 doc walks to 2: one consolidated newState walk
-      // that collects IDs, the (pos, node) list for renumbering, AND the
-      // renumber-needed flag; then a single oldState walk to emit orphan
-      // events. The renumber step reuses the already-collected node list.
+      // Orphan detection + auto-renumber. Both consume the typed diff
+      // already computed by DocStructureObserver — zero doc walks per
+      // keystroke that doesn't touch a footnote node. The renumber
+      // pass walks the index's `footnotes` array (in doc order), which
+      // is at most one entry per footnote in the doc.
       new Plugin({
         key: new PluginKey("footnoteOrphanDetector"),
         appendTransaction(transactions, oldState, newState) {
           if (!transactions.some((tr) => tr.docChanged)) return null;
+          const diff = readPendingDiff(newState);
+          if (!diff) return null;
 
-          const newFootnotes = new Set<string>();
-          const newNodes: Array<{ node: PMNode; pos: number }> = [];
-          let counter = 1;
-          let needsRenumber = false;
-          newState.doc.descendants((node, pos) => {
-            if (node.type.name === "footnote") {
-              if (node.attrs.footnoteId) newFootnotes.add(node.attrs.footnoteId);
-              newNodes.push({ node, pos });
-              if (node.attrs.thanks) {
-                if (node.attrs.number !== 0) needsRenumber = true;
-              } else {
-                if (node.attrs.number !== counter) needsRenumber = true;
-                counter++;
+          // Orphan dispatch — only when footnote nodes vanished.
+          if (diff.removedFootnotes.length > 0) {
+            // The diff entries don't carry rich-text content, but the
+            // event consumer needs it. Look up each removed id in
+            // oldState (we have its pos in the diff).
+            for (const removed of diff.removedFootnotes) {
+              const oldNode = oldState.doc.nodeAt(removed.pos);
+              const content =
+                oldNode?.type?.name === "footnote" ? oldNode.attrs.content : null;
+              if (content && richJsonToPlainText(content).trim()) {
+                setTimeout(() => {
+                  window.dispatchEvent(
+                    new CustomEvent("virgil-footnote-orphaned", {
+                      detail: { footnoteId: removed.id, content },
+                    }),
+                  );
+                }, 0);
               }
             }
-            return true;
-          });
+          }
 
-          oldState.doc.descendants((node) => {
-            if (node.type.name === "footnote" && node.attrs.footnoteId) {
-              const id = node.attrs.footnoteId as string;
-              if (!newFootnotes.has(id)) {
-                const content = node.attrs.content;
-                if (richJsonToPlainText(content).trim()) {
-                  setTimeout(() => {
-                    window.dispatchEvent(
-                      new CustomEvent("virgil-footnote-orphaned", {
-                        detail: { footnoteId: id, content },
-                      })
-                    );
-                  }, 0);
-                }
-              }
-            }
-            return true;
-          });
+          // Renumber only when the footnote set or order changed.
+          // Typing a character that doesn't touch a footnote node skips
+          // entirely — `addedFootnotes`, `removedFootnotes`, and
+          // `footnoteOrderChanged` are all empty.
+          const renumberMaybe =
+            diff.addedFootnotes.length > 0 ||
+            diff.removedFootnotes.length > 0 ||
+            diff.footnoteOrderChanged;
+          if (!renumberMaybe) return null;
 
-          if (!needsRenumber) return null;
+          const structure = readDocStructure(newState);
+          const footnotes = structure.footnotes;
+          if (footnotes.length === 0) return null;
 
           const tr = newState.tr;
           let num = 1;
-          for (const { node, pos } of newNodes) {
-            if (node.attrs.thanks) {
+          for (const f of footnotes) {
+            const node = newState.doc.nodeAt(f.pos);
+            if (!node || node.type.name !== "footnote") continue;
+            if (f.thanks) {
               if (node.attrs.number !== 0) {
-                tr.setNodeMarkup(pos, undefined, { ...node.attrs, number: 0 });
+                tr.setNodeMarkup(f.pos, undefined, { ...node.attrs, number: 0 });
               }
             } else {
               if (node.attrs.number !== num) {
-                tr.setNodeMarkup(pos, undefined, { ...node.attrs, number: num });
+                tr.setNodeMarkup(f.pos, undefined, { ...node.attrs, number: num });
               }
               num++;
             }

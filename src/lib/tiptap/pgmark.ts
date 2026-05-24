@@ -143,6 +143,35 @@ function buildDecorations(doc: PMNode): DecorationSet {
   return DecorationSet.create(doc, decos);
 }
 
+/**
+ * Returns true iff any region touched by `tr.mapping` contains
+ * "\pgmark" text (slightly expanded so a split match like "\pgmar" +
+ * "k" still trips). Used to gate the expensive full-doc rebuild.
+ *
+ * O(changed-region-size) — for typing in a paragraph that has no
+ * `\pgmark` text, the inspection returns false and the apply() exits
+ * via the cheap mapped-set path.
+ */
+function changedRegionTouchesPgmark(
+  tr: import("@tiptap/pm/state").Transaction,
+): boolean {
+  let found = false;
+  tr.mapping.maps.forEach((stepMap) => {
+    if (found) return;
+    stepMap.forEach((_oldFrom, _oldTo, newFrom, newTo) => {
+      if (found) return;
+      // Expand the window by 8 chars on each side so partial matches
+      // straddling the edit boundary aren't missed.
+      const expandedFrom = Math.max(0, newFrom - 8);
+      const expandedTo = Math.min(tr.doc.content.size, newTo + 8);
+      if (expandedTo <= expandedFrom) return;
+      const text = tr.doc.textBetween(expandedFrom, expandedTo, "\n", "\n");
+      if (text.includes("\\pgmark")) found = true;
+    });
+  });
+  return found;
+}
+
 export const PgMarkChip = Extension.create({
   name: "pgmarkChip",
   addProseMirrorPlugins() {
@@ -151,8 +180,19 @@ export const PgMarkChip = Extension.create({
         key: new PluginKey("pgmarkChip"),
         state: {
           init: (_c, state) => buildDecorations(state.doc),
-          apply: (tr, old) =>
-            tr.docChanged ? buildDecorations(tr.doc) : old.map(tr.mapping, tr.doc),
+          apply: (tr, old) => {
+            // Cheap forward-map first — keeps existing decorations
+            // anchored to their new positions for any docChanged tx
+            // that didn't touch a `\pgmark` region.
+            const mapped = old.map(tr.mapping, tr.doc);
+            if (!tr.docChanged) return mapped;
+            // Full rebuild only when the user actually edited near a
+            // `\pgmark`. Most keystrokes elsewhere skip it entirely.
+            if (changedRegionTouchesPgmark(tr)) {
+              return buildDecorations(tr.doc);
+            }
+            return mapped;
+          },
         },
         props: {
           decorations(state) {
