@@ -1965,15 +1965,22 @@ function splitPexBody(
         continue;
       }
     }
-    // Top-level \a with word-boundary
-    if (body.startsWith("\\a", pos)) {
+    // Top-level item marker. expex itself only defines `\a` (the visible
+    // sub-label `a`/`b`/`c`/… is computed by expex from position), but
+    // hand-authored sources sometimes track the position by typing `\b`,
+    // `\c`, … to match the rendered label. Accept the full `\[a-z]` range
+    // here for forgiveness; the serializer always emits `\a`, so on the
+    // next save the document normalizes to the canonical form.
+    if (
+      body[pos] === "\\" &&
+      body[pos + 1] !== undefined &&
+      /[a-z]/.test(body[pos + 1])
+    ) {
       const after = body[pos + 2];
-      const isAccent = after === " " && /[a-zA-Z]/.test(body[pos + 3] || "");
-      // `\a ` followed by a single letter is the LaTeX accent, not a part
-      // marker. Real part markers are `\a<tag>`, `\a[opts]`, `\a\label`, or
-      // `\a` at end of line followed by content. Heuristic: treat as part
-      // marker unless followed by " X" where X is a single letter and then
-      // whitespace/non-letter (true accent).
+      // Real part markers are `\a<tag>`, `\a[opts]`, `\a\label`, or `\a`
+      // at end of line followed by content. Anything else (letter, `{`,
+      // punctuation) is some other LaTeX command — accents like `\b{x}`,
+      // multi-letter commands like `\begin`/`\bf`, etc.
       if (after === undefined || /[\s<\[\\]/.test(after)) {
         if (firstAt === -1) firstAt = pos;
         flushCurrent(pos);
@@ -2018,7 +2025,6 @@ function splitPexBody(
         pos = cursor;
         continue;
       }
-      void isAccent;
     }
     pos++;
   }
