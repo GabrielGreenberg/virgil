@@ -40,7 +40,7 @@
  *
  * Chrome wiring already in place (carries through the extraction):
  *   - `chrome.showActionToolbar` + `chrome.actionToolbarKinds` filter
- *     `MarginActionToolbar` and `ActionButtonsRow`.
+ *     `ActionButtonsRow`.
  *   - `chrome.showParagraphFloatTitleEdit` /
  *     `chrome.showHeadingFloatLabelEdit` already gated.
  *   - Read-only `Marginalia` suppresses drag-to-rebind via
@@ -174,7 +174,6 @@ import { SearchHost } from "./editor-layout/panels/search-host";
 import WordCountPanel from "@/panels/WordCount";
 import { INITIAL_SEARCH_STATE, type SearchPanelState } from "@/panels/Search";
 import type { LatexError } from "@/lib/latex-errors";
-import { MarginActionToolbar } from "./MarginActionToolbar";
 import Marginalia from "./Marginalia";
 import { StripButton, useStripHandlers } from "./editor-layout/drag-drop";
 import { useSelectionsContext } from "./editor-layout/contexts/selections";
@@ -3379,13 +3378,6 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
                 openItemInPanel={openItemInPanel}
                 wordCountHook={wordCountHook}
                 tail={leftGutterPrelude}
-                topOverlay={
-                  <MarginActionToolbar
-                    side="left"
-                    actions={actionsBundle}
-                    placements={effectivePlacements}
-                  />
-                }
               />
             )}
             {/* Column wrapper — sits between the two PaneRails. Holds the
@@ -4190,13 +4182,6 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
                 setSearchHighlightRange={setSearchHighlightRange}
                 openItemInPanel={openItemInPanel}
                 wordCountHook={wordCountHook}
-                topOverlay={
-                  <MarginActionToolbar
-                    side="right"
-                    actions={actionsBundle}
-                    placements={effectivePlacements}
-                  />
-                }
               />
             )}
           </div>
@@ -4345,10 +4330,6 @@ interface PaneRailProps {
    *  its `PageScrollStrip` here so the drag-gap line lands just inboard
    *  of the page-mark navigator. */
   tail?: React.ReactNode;
-  /** Sticky overlay rendered at the top of the panel column — the
-   *  per-side `MarginActionToolbar`. Forwarded as `topOverlay` to
-   *  `PanelColumn`. */
-  topOverlay?: React.ReactNode;
 }
 
 /**
@@ -4525,7 +4506,6 @@ function PaneRail({
   wordCountHook,
   viewPrefs,
   tail,
-  topOverlay,
 }: PaneRailProps) {
   const isLeft = side === "left";
 
@@ -4682,7 +4662,6 @@ function PaneRail({
         focusedHalf={focusedHalf}
         onFocusHalf={onFocusHalf}
         tail={tail}
-        topOverlay={topOverlay}
       >
         {{
           top: omniSlot,
@@ -4703,7 +4682,6 @@ function PaneRail({
         dockOccupancy={dockOccupancy}
         collapsed={isCollapsed}
         tail={tail}
-        topOverlay={topOverlay}
       >
         {omniSlot}
       </PanelColumn>

@@ -1811,9 +1811,9 @@ const VirgilEditor = forwardRef<EditorHandle, EditorProps>(function VirgilEditor
         // mousedown lift on the 6-dot grip) and drop-mode (shift-drag on a
         // float header). Both bypass HTML5 drag. Anything else — browser-
         // native text-selection drag from contenteditable, an accidental
-        // node drag — is suppressed here. Intentional inline-node drags
-        // (footnote, ai-request, example block, tex-block) opt in via
-        // `draggable="true"` on their own NodeView DOM and are allowed.
+        // node drag — is suppressed here. The surviving inline-atom native
+        // drags (footnote and aiRequestMarker) opt in via `draggable="true"`
+        // on their own NodeView DOM and are allowed through.
         dragstart(view, event) {
           const rawTarget = event.target as Node | null;
           const target =

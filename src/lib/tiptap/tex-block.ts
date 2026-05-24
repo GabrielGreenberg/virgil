@@ -34,7 +34,6 @@ export const TexBlock = Node.create<TexBlockOptions>({
   name: "texBlock",
   group: "block textObject",
   atom: true,
-  draggable: true,
   // PM would otherwise create a NodeSelection on mousedown that scrolls the
   // row before CodeMirror gets focus. Matching footnote.ts rationale.
   selectable: false,

@@ -121,7 +121,6 @@ export const ExampleBlock = Node.create<ExampleBlockOptions>({
   content: "(paragraph | exampleGloss | exampleItemList | bulletList | orderedList)*",
   defining: true,
   isolating: true,
-  draggable: true,
 
   // Top-level keyboard shortcuts:
   //   Enter — when cursor is at the end of the LAST paragraph of the

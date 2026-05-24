@@ -48,7 +48,6 @@ export const FigureBlock = Node.create<FigureBlockOptions>({
   name: "figureBlock",
   group: "block textObject",
   content: "figureCaption?",
-  draggable: true,
   selectable: true,
 
   addOptions() {

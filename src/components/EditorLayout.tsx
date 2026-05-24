@@ -2725,10 +2725,6 @@ export default function EditorLayout() {
     [footnotePristine, handleDeleteFootnote],
   );
 
-  // Toolbar action handlers (handleToolbarAdd* and the marginToolbarActions
-  // bag) moved into EditorPane along with the toolbar machinery they
-  // serve. EditorLayout no longer needs them.
-
   const editorPaneViewPrefs: EditorPaneViewPrefs = useMemo(() => ({
     prefs,
     focusedHalfLeft,

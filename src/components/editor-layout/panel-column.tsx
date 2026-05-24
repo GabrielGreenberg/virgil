@@ -60,7 +60,6 @@ export function PanelColumn({
   onFocusHalf,
   topPanelId,
   bottomPanelId,
-  topOverlay,
   dockOccupancy,
   tail,
 }: {
@@ -84,7 +83,6 @@ export function PanelColumn({
   onFocusHalf?: (half: "top" | "bottom") => void;
   topPanelId?: PanelId;
   bottomPanelId?: PanelId;
-  topOverlay?: React.ReactNode;
   /** Which dock slots on this side are currently occupied. The slot's
    *  pod element gets `data-dock-slot="${side}-${half}"` so the
    *  panel-shell portal can find it. */
@@ -293,28 +291,6 @@ export function PanelColumn({
         paddingRight: collapsed ? 0 : 4,
       }}
     >
-      {/* Sticky action-buttons slot — hidden when the column has a top-
-          region docked panel that covers the toolbar area, or when the
-          side is fully collapsed. */}
-      {topOverlay && !extendsOverToolbar && !collapsed && (
-        <div
-          data-tool-strip={side === "left" ? "left-action" : "right-action"}
-          className="sticky z-20 flex justify-center items-start"
-          style={{
-            top: 0,
-            alignSelf: 'stretch',
-            background:
-              'linear-gradient(to bottom, var(--background) 0, var(--background) 32px, transparent 64px)',
-            height: 64,
-            paddingTop: 4,
-            marginLeft: -4,
-            marginRight: -4,
-            pointerEvents: 'none',
-          }}
-        >
-          <div className="pointer-events-auto">{topOverlay}</div>
-        </div>
-      )}
       <div className="flex flex-1 min-h-0 w-full">
       {collapsed ? (
         <div className={`flex-1 min-w-0 ${side === "left" ? "order-1" : "order-3"}`} />

@@ -126,9 +126,8 @@ export function isActionVisible(
  * to their corresponding `ActionKind`. Buttons with no entry here
  * (currently just `onCreateBibEntry`) are not subject to the
  * `actionToolbarKinds` whitelist — they show whenever their callback
- * is provided. Used by `MarginActionToolbar` and `ActionButtonsRow`
- * to filter buttons against the chrome config without each call site
- * repeating the mapping.
+ * is provided. Used by `ActionButtonsRow` to filter buttons against
+ * the chrome config without each call site repeating the mapping.
  */
 export const CALLBACK_TO_ACTION_KIND: Record<string, ActionKind | undefined> = {
   onAddComment: "comment",

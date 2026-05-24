@@ -28,8 +28,6 @@ import {
 import { useEditorChrome } from "./editor-layout/chrome-context";
 import { isActionCallbackVisible } from "./editor-layout/chrome-config";
 import type { PanelThemeKey } from "@/lib/panel-theme";
-import { usePanelMarkerPalette } from "@/hooks/usePanelTheme";
-import { MARGINALIA_ICON_SIZE, MARGINALIA_COL_GAP } from "@/lib/marginalia";
 import { ActionsStripButton } from "./ActionsStripButton";
 
 export { type ToolbarOrientation };
@@ -844,76 +842,12 @@ export function ActionButton({
   );
 }
 
-/**
- * Marginalia-style chip variant of {@link ActionButton}. Renders the panel
- * icon inside the same colored chip frame the gutter uses (size, bg, border
- * via `usePanelMarkerPalette`) so the floating action toolbar reads as
- * "create one of these" and visually matches the markers it produces.
- *
- * Used by `MarginActionToolbar` (the top-of-omni-view action bar). The bare
- * `ActionButton` continues to render the legacy icon-only style for the
- * MenuBar's Actions popover and the detached floating toolbar.
- */
-export function ActionChipButton({
-  onClick,
-  title,
-  themeKey,
-  icon,
-}: {
-  onClick: ActionToolbarCallback;
-  title: string;
-  themeKey: PanelThemeKey;
-  icon: React.ReactNode;
-}) {
-  const palette = usePanelMarkerPalette(themeKey);
-  return (
-    <button
-      onClick={(e) => {
-        const pod = (e.currentTarget as HTMLElement).closest<HTMLElement>("[data-action-pod]");
-        onClick(pod?.getBoundingClientRect() ?? null);
-      }}
-      title={title}
-      data-helper={title}
-      className="rounded flex items-center justify-center transition-shadow focus:outline-none"
-      style={{
-        width: MARGINALIA_ICON_SIZE,
-        height: MARGINALIA_ICON_SIZE,
-        color: palette.color,
-        background: palette.bg,
-        border: `1.5px solid ${palette.border}`,
-        padding: 0,
-        lineHeight: 1,
-      }}
-      onMouseEnter={(e) => {
-        e.currentTarget.style.boxShadow = `0 0 0 1.5px ${palette.border}`;
-      }}
-      onMouseLeave={(e) => {
-        e.currentTarget.style.boxShadow = "";
-        e.currentTarget.style.transform = "";
-      }}
-      onMouseDown={(e) => {
-        e.currentTarget.style.background = palette.color;
-        e.currentTarget.style.color = "#ffffff";
-        e.currentTarget.style.transform = "translateY(0.5px)";
-      }}
-      onMouseUp={(e) => {
-        e.currentTarget.style.background = palette.bg;
-        e.currentTarget.style.color = palette.color;
-        e.currentTarget.style.transform = "";
-        e.currentTarget.style.boxShadow = `0 0 0 1.5px ${palette.border}`;
-      }}
-    >
-      {icon}
-    </button>
-  );
-}
-
 /** Static registry for every user-creatable item surfaced by the Actions
  *  toolbar. Each entry pairs a callback key with its source panel (used
  *  to look up side placement in viewPrefs) and its visual identity.
- *  Shared by `ActionButtonsRow` (main + detached) and `MarginActionToolbar`.
- *  Order is the display order in the main toolbar. `dataAttr` keeps the
- *  existing test/e2e hooks that some callers rely on. */
+ *  Used by `ActionButtonsRow` (main + detached). Order is the display
+ *  order in the main toolbar. `dataAttr` keeps the existing test/e2e
+ *  hooks that some callers rely on. */
 export interface ActionButtonDef {
   callbackKey: keyof ActionToolbarCallbacks;
   panelId: "revisions" | "notes" | "todo" | "cutter" | "archive" | "footnotes" | "citations" | "bibliography" | "quotations" | "examples";

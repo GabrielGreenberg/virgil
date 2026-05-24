@@ -14,7 +14,6 @@ export const GraphicsBlock = Node.create<FigureBlockOptions>({
   name: "graphicsBlock",
   group: "block textObject",
   atom: true,
-  draggable: true,
   selectable: true,
 
   addOptions() {
