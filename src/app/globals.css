@@ -604,6 +604,76 @@ textarea,
   margin-top: 0;
 }
 
+/* ── Long-document scroll perf: CSS containment ──────────────────
+ *
+ * `content-visibility: auto` lets the browser skip layout and paint
+ * for top-level editor blocks outside the viewport (plus a generous
+ * render buffer the browser maintains automatically). On long docs
+ * this stops the per-keystroke browser cost from scaling with total
+ * document length — without it, any layout-affecting edit can ripple
+ * reflow through every paragraph in the doc.
+ *
+ * Prerequisites this codebase already meets:
+ *   1. Marginalia (useMarginaliaRegistry) and link-connector
+ *      positioning (useInTextPositions, LinkConnector) already gate
+ *      on viewport proximity (±800px / ±600px near-zones), so they
+ *      never try to measure off-screen blocks whose containment
+ *      makes getBoundingClientRect() return a synthetic rect.
+ *   2. No sticky-positioned descendants live inside editor blocks —
+ *      the MenuBar and the top/bottom mask caps are siblings of
+ *      .ProseMirror, not children of any block.
+ *   3. No custom Find-in-page logic; we rely on the browser, and
+ *      modern Chrome/Firefox/Safari handle content-visibility for
+ *      find correctly (off-screen matches auto-reveal).
+ *
+ * `contain-intrinsic-size` provides the placeholder height the
+ * browser uses while a block is render-skipped. Slight over-estimates
+ * are safer than under-estimates: under-estimates cause scroll-jump
+ * when blocks paint in. Values are picked from the line-heights +
+ * margins in the rules below; tune as needed.
+ *
+ * Print is exempt by the CSS Containment spec — `@media print` always
+ * forces full rendering of contained blocks.
+ *
+ * :where() keeps specificity at 0 so any per-block override wins. */
+:where(.tiptap) > :where(
+  p,
+  .par-title-wrapper,
+  .list-title-wrapper,
+  blockquote,
+  pre,
+  hr,
+  ul,
+  ol,
+  .latex-comment,
+  .display-math,
+  .title-field-wrapper,
+  .expex-par-wrapper
+) {
+  content-visibility: auto;
+  contain-intrinsic-size: auto 90px;
+}
+
+:where(.tiptap) > :where(.heading-wrapper) {
+  content-visibility: auto;
+  contain-intrinsic-size: auto 120px;
+}
+
+:where(.tiptap) > :where(.expex-block) {
+  content-visibility: auto;
+  contain-intrinsic-size: auto 180px;
+}
+
+:where(.tiptap) > :where(.figure-block) {
+  content-visibility: auto;
+  contain-intrinsic-size: auto 220px;
+}
+
+:where(.tiptap) > :where(.tex-block) {
+  content-visibility: auto;
+  contain-intrinsic-size: auto 140px;
+}
+
 /* Inter-paragraph spacing in nested multi-paragraph contexts (blockquote
  * bodies, expex bodies). Direct-children of .tiptap already get their
  * gap from the universal inter-block rule above; this preserves rhythm
