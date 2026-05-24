@@ -1792,19 +1792,13 @@ const VirgilEditor = forwardRef<EditorHandle, EditorProps>(function VirgilEditor
         // on all four sides that update these vars live.
         class:
           "prose prose-stone max-w-none focus:outline-none min-h-[calc(100vh-8rem)] pl-[var(--editor-pl,88px)] pr-[var(--editor-pr,72px)] pt-[var(--editor-pt,40px)] pb-[var(--editor-pb,40px)]",
-        // Disable browser-native spellcheck unconditionally. Two reasons:
-        // (1) Perf — the browser re-scans the visible viewport on every
-        //     keystroke; on long docs this is a meaningful chunk of the
-        //     main-thread budget. See docs/perf/keystroke-sanctity-findings.md.
-        // (2) UX — academic LaTeX is full of "misspellings" (citation
-        //     keys, command names, jargon) that produce noisy underlines.
-        // PM keeps the DOM at `contenteditable="true"` even in Reader mode
-        // (so native drag-to-select reaches `view.state.selection`, and the
-        // unified TextObjectGrabHandle / linkedRange-float flow inherits
-        // from the main editor), so this attribute applies in both modes.
-        // If a user-facing spellcheck toggle is wanted later, gate this
-        // here on a preference.
-        spellcheck: "false",
+        // PM keeps the DOM at `contenteditable="true"` even in Reader
+        // mode (so native drag-to-select reaches `view.state.selection`,
+        // and the unified TextObjectGrabHandle / linkedRange-float flow
+        // inherits from the main editor). Suppress the spellcheck
+        // underlines that would otherwise appear under prose in
+        // read-only docs.
+        ...(editable ? {} : { spellcheck: "false" }),
       },
       handleDOMEvents: {
         // The only two canonical text moves are drag-to-pop-out (custom
