@@ -1241,6 +1241,23 @@ function parseBody(ctx: ParseContext, parent: JSONContent): void {
       }
     }
 
+    // \vxid{uuid} — id marker for the next \a item inside an expex
+    // exampleItemList. Its legit consumer is splitPexBody (which stashes
+    // the uuid for the next \a); a `\vxid` reaching parseBody means it's
+    // either (a) at the top of a preamble/item-body slice that
+    // splitPexBody has already drained, or (b) a stray from a previous
+    // round-trip. Discard so it doesn't fall through to readParagraph and
+    // get absorbed as paragraph text — which would re-serialize on next
+    // save and accumulate +1 per cycle.
+    const vxidBlockMatch = rest.match(/^\\vxid\{/);
+    if (vxidBlockMatch) {
+      const idArg = extractBraced(ctx.src, ctx.pos + "\\vxid".length);
+      if (idArg !== null) {
+        ctx.pos = idArg.end;
+        continue;
+      }
+    }
+
     // \ex / \pex … \xe  — expex single or multi-part example block.
     const exStartMatch = rest.match(/^\\(ex|pex)(~?)/);
     if (exStartMatch) {

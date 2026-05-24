@@ -110,3 +110,77 @@ describe("exampleItem UUID round-trip (\\vxid)", () => {
     expect(items[2].attrs?.uuid).toBe("0003");
   });
 });
+
+describe("exampleItem stray \\vxid resilience (corruption recovery)", () => {
+  // Pre-fix bug: stray `\vxid{…}` lines accumulated as paragraph children of
+  // the example block on every parse → serialize cycle. The parseBody
+  // handler now discards stray markers so they don't survive as text.
+
+  it("discards stray \\vxid lines in pex preamble", () => {
+    const tex = `\\pex
+\\vxid{aa11}
+\\vxid{aa11}
+\\vxid{aa11}\\a body
+\\xe`;
+    const json = parseBody(tex);
+    const items = findAll(json, "exampleItem");
+    const blocks = findAll(json, "exampleBlock");
+    expect(items).toHaveLength(1);
+    expect(items[0].attrs?.uuid).toBe("aa11");
+    // The exampleBlock must have zero paragraph children — only the
+    // exampleItemList. Strays must not survive as preamble paragraphs.
+    const paragraphsBefore = (blocks[0].content || []).filter(
+      (c) => c.type === "paragraph",
+    );
+    expect(paragraphsBefore).toHaveLength(0);
+  });
+
+  it("discards stray \\vxid inside item bodies", () => {
+    const tex = `\\pex
+\\vxid{aa11}\\a first
+\\vxid{aa11}
+\\vxid{bb22}\\a second
+\\xe`;
+    const json = parseBody(tex);
+    const items = findAll(json, "exampleItem");
+    expect(items).toHaveLength(2);
+    expect(items[0].attrs?.uuid).toBe("aa11");
+    expect(items[1].attrs?.uuid).toBe("bb22");
+    // No item's serialized JSON should contain a literal `\vxid` — that
+    // would mean a marker was absorbed as paragraph text.
+    for (const item of items) {
+      expect(JSON.stringify(item)).not.toMatch(/\\\\vxid/);
+    }
+  });
+
+  it("is idempotent under parse → serialize → parse → serialize on corrupted source", () => {
+    const corrupt = `\\pex
+\\vxid{aa11}
+\\vxid{aa11}\\a first
+\\vxid{aa11}
+\\vxid{bb22}\\a second
+\\xe`;
+    const j1 = parseBody(corrupt);
+    const t1 = serializeBody(j1);
+    const j2 = parseBody(t1);
+    const t2 = serializeBody(j2);
+    expect(t2).toBe(t1);
+    // Exactly one \vxid per item — no accumulation.
+    expect((t1.match(/\\vxid/g) || []).length).toBe(2);
+  });
+
+  it("legit \\vxid{...}\\a path still produces zero stray paragraphs", () => {
+    const tex = `\\pex
+\\vxid{aa11}\\a only item
+\\xe`;
+    const json = parseBody(tex);
+    const items = findAll(json, "exampleItem");
+    const blocks = findAll(json, "exampleBlock");
+    expect(items).toHaveLength(1);
+    expect(items[0].attrs?.uuid).toBe("aa11");
+    const paragraphsBefore = (blocks[0].content || []).filter(
+      (c) => c.type === "paragraph",
+    );
+    expect(paragraphsBefore).toHaveLength(0);
+  });
+});
