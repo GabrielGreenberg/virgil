@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback, useRef } from "react";
-import { JSONContent } from "@tiptap/react";
+import { JSONContent, type Editor } from "@tiptap/react";
 import { readDocBundle, writeDocBundle } from "@/lib/storage";
 import { isStalePipelineError } from "@/lib/multi-window/doc-pipeline";
 import { useDocWriteHandle } from "@/components/editor-layout/DocPipeline";
@@ -41,8 +41,25 @@ export function useDocument() {
   const [loading, setLoading] = useState(true);
   const [saveStatus, setSaveStatus] = useState<SaveStatus>("idle");
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // `latestContentRef` holds the last-debounce-fired JSON snapshot (or
+  // the last-flushed snapshot). It's the *fallback* source for the
+  // unmount cleanup, which fires AFTER React destroys the editor (child
+  // cleanups precede parent cleanups). All other flush paths (pagehide,
+  // beforeunload, external `flushPending`) run while the editor is still
+  // alive and prefer a fresh `editor.getJSON()` snapshot — see those
+  // call sites below. The unmount cleanup can lose up to one debounce
+  // window (~1500 ms) of edits in the degenerate case where the caller
+  // didn't run `flushPendingForDoc` first; in production, `useFiles`
+  // calls `drainDoc(prevId)` before doc switch, so the live-editor
+  // path captures the freshest snapshot.
   const latestContentRef = useRef<JSONContent | null>(null);
   const lastSavedRef = useRef<JSONContent | null>(null);
+  // Editor reference captured on every onUpdate. Used by flush paths to
+  // call `editor.getJSON()` lazily (only when a debounce settles or a
+  // flush fires) instead of per keystroke. The reference itself is
+  // refreshed on every call so a remount-without-onUpdate can't leave
+  // it pointing at a stale editor.
+  const editorRef = useRef<Editor | null>(null);
 
   const save = useCallback(
     async (doc: JSONContent) => {
@@ -83,17 +100,32 @@ export function useDocument() {
   );
 
   // External flush hook: cancel the pending debounce, fire the latest
-  // content immediately, return the write promise. No-op if nothing is
-  // pending. Used by the unmount cleanup, pagehide listener, and the
-  // doc-switch barrier in useFiles. Must close over the CURRENT save
-  // (and thus current handle) so the registered flusher always writes
-  // to the doc that registered it.
+  // content immediately, return the write promise. Used by the unmount
+  // cleanup, pagehide listener, and the doc-switch barrier in useFiles.
+  // Must close over the CURRENT save (and thus current handle) so the
+  // registered flusher always writes to the doc that registered it.
+  //
+  // Snapshot source: prefer a fresh `editor.getJSON()` so we capture
+  // every keystroke right up to the flush moment (the debounce timer
+  // and the per-keystroke snapshot are separated post-perf-fix; the
+  // ref alone lags up to ~1500 ms). Fall back to the ref only when
+  // the editor is gone (unmount path).
   const flushPending = useCallback(async (): Promise<void> => {
-    if (saveTimerRef.current) {
-      clearTimeout(saveTimerRef.current);
-      saveTimerRef.current = null;
+    // `saveTimerRef.current !== null` is the canonical "there are
+    // unsaved edits" signal post-perf-fix. A clean state (no debounce
+    // in flight, last save completed) has saveTimer === null and
+    // latestContentRef === the saved doc — so we'd otherwise re-save
+    // the same content on every flushPending call.
+    if (saveTimerRef.current === null) return;
+    clearTimeout(saveTimerRef.current);
+    saveTimerRef.current = null;
+    const editor = editorRef.current;
+    let pending: JSONContent | null;
+    if (editor && !editor.isDestroyed) {
+      pending = editor.getJSON();
+    } else {
+      pending = latestContentRef.current;
     }
-    const pending = latestContentRef.current;
     if (!pending) return;
     latestContentRef.current = null;
     await save(pending);
@@ -140,11 +172,25 @@ export function useDocument() {
   // over.
   useEffect(() => {
     return () => {
-      if (saveTimerRef.current) {
-        clearTimeout(saveTimerRef.current);
-        saveTimerRef.current = null;
+      // Nothing pending — last save already captured everything.
+      if (saveTimerRef.current === null) return;
+      clearTimeout(saveTimerRef.current);
+      saveTimerRef.current = null;
+      // Defensive: prefer the live editor if it's still alive (e.g.,
+      // test environments where the editor isn't a real TipTap instance
+      // that destroys itself). In production, React destroys the editor
+      // in child cleanup BEFORE this parent cleanup runs, so this
+      // branch typically falls through to the ref snapshot — which
+      // may lag by up to one debounce window (~1500 ms). The doc-switch
+      // path in `useFiles` calls `drainDoc(prevId)` → `flushPendingForDoc`
+      // BEFORE unmount, capturing the live snapshot.
+      const editor = editorRef.current;
+      let pending: JSONContent | null;
+      if (editor && !editor.isDestroyed) {
+        pending = editor.getJSON();
+      } else {
+        pending = latestContentRef.current;
       }
-      const pending = latestContentRef.current;
       latestContentRef.current = null;
       if (pending) void save(pending);
     };
@@ -156,31 +202,47 @@ export function useDocument() {
   // edits, buying the in-flight write time to land.
   useEffect(() => {
     const onPageHide = () => {
-      if (saveTimerRef.current) {
-        clearTimeout(saveTimerRef.current);
-        saveTimerRef.current = null;
+      // No pending edits — nothing to flush. Without this guard, every
+      // mounted useDocument instance whose editorRef happens to be alive
+      // would re-save on every pagehide, which manifests as extra
+      // writes across test suites where multiple instances co-exist
+      // (and as wasted work in prod for multi-doc sessions).
+      if (saveTimerRef.current === null) return;
+      clearTimeout(saveTimerRef.current);
+      saveTimerRef.current = null;
+      // Pagehide fires before component unmount, so the editor is
+      // still alive here. Prefer the live snapshot.
+      const editor = editorRef.current;
+      let pending: JSONContent | null;
+      if (editor && !editor.isDestroyed) {
+        pending = editor.getJSON();
+      } else {
+        pending = latestContentRef.current;
       }
-      const pending = latestContentRef.current;
       if (pending) {
         latestContentRef.current = null;
         void save(pending);
       }
     };
     const onBeforeUnload = (e: BeforeUnloadEvent) => {
-      const pending = latestContentRef.current;
-      const dirty = pending && pending !== lastSavedRef.current;
-      if (dirty) {
-        // Kick off the save now so it has a chance to land while the
-        // browser shows the prompt.
-        if (saveTimerRef.current) {
-          clearTimeout(saveTimerRef.current);
-          saveTimerRef.current = null;
-        }
-        latestContentRef.current = null;
-        void save(pending);
-        e.preventDefault();
-        e.returnValue = "";
-      }
+      // `saveTimerRef.current` is the canonical "there's pending unsaved
+      // work" signal post-perf-fix: it's set on every keystroke and
+      // cleared when the debounce fires (or a flush happens). The
+      // earlier ref-comparison-based dirty check is unreliable here
+      // because `latestContentRef` is only populated at debounce-fire,
+      // not per keystroke.
+      if (saveTimerRef.current === null) return;
+      clearTimeout(saveTimerRef.current);
+      saveTimerRef.current = null;
+      const editor = editorRef.current;
+      const pending = editor && !editor.isDestroyed
+        ? editor.getJSON()
+        : latestContentRef.current;
+      if (!pending) return;
+      latestContentRef.current = null;
+      void save(pending);
+      e.preventDefault();
+      e.returnValue = "";
     };
     window.addEventListener("pagehide", onPageHide);
     window.addEventListener("beforeunload", onBeforeUnload);
@@ -190,28 +252,37 @@ export function useDocument() {
     };
   }, [save]);
 
-  const debouncedSave = useCallback(
-    (doc: JSONContent) => {
+  // Debounced save — schedules a 1500 ms timer that, on fire, asks the
+  // live editor for its current JSON snapshot and writes it. The doc
+  // argument used to be a per-keystroke `editor.getJSON()` snapshot;
+  // moving serialization INSIDE the timer means we pay O(doc-size) at
+  // most once per 1500 ms during sustained typing instead of once per
+  // keystroke. See plan: ok-lets-do-a-dreamy-thacker.md.
+  const debouncedSave = useCallback(() => {
+    if (saveTimerRef.current) {
+      clearTimeout(saveTimerRef.current);
+    }
+    saveTimerRef.current = setTimeout(() => {
+      saveTimerRef.current = null;
+      const editor = editorRef.current;
+      if (!editor || editor.isDestroyed) return;
+      const doc = editor.getJSON();
+      // Populate the snapshot ref so the unmount cleanup (which fires
+      // after the editor is destroyed) has something to flush.
       latestContentRef.current = doc;
-      if (saveTimerRef.current) {
-        clearTimeout(saveTimerRef.current);
-      }
-      saveTimerRef.current = setTimeout(() => {
-        saveTimerRef.current = null;
-        const pending = latestContentRef.current;
-        if (pending) {
-          latestContentRef.current = null;
-          save(pending);
-        }
-      }, 1500);
-    },
-    [save],
-  );
+      save(doc);
+    }, 1500);
+  }, [save]);
 
+  // Called by TipTap's `onUpdate` (via the EditorPane wrapper) on every
+  // docChanged transaction. Per-keystroke cost is O(1): capture the
+  // editor reference + reset the debounce timer. No serialization, no
+  // React state change — the per-keystroke React render storm through
+  // EditorPane is gone.
   const onUpdate = useCallback(
-    (doc: JSONContent) => {
-      setContent(doc);
-      debouncedSave(doc);
+    (editor: Editor) => {
+      editorRef.current = editor;
+      debouncedSave();
     },
     [debouncedSave],
   );

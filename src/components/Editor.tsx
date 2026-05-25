@@ -85,7 +85,11 @@ const exampleLatexCache = new WeakMap<PMNode, string>();
 
 interface EditorProps {
   initialContent: JSONContent;
-  onUpdate: (doc: JSONContent) => void;
+  /** Called per docChanged transaction with the live editor instance.
+   *  Pass-by-reference (not getJSON snapshot) so downstream consumers
+   *  can defer O(doc-size) serialization to inside their own debounce
+   *  timers — see useDocument.ts / editor-ops.ts handleUpdate. */
+  onUpdate: (editor: Editor) => void;
   highlightText: string | null;
   /** Position-based highlight (from search panel). Takes priority over highlightText. */
   highlightRange: { from: number; to: number } | null;
@@ -2168,8 +2172,13 @@ const VirgilEditor = forwardRef<EditorHandle, EditorProps>(function VirgilEditor
       },
     },
     immediatelyRender: false,
+    // Pass the editor by reference — downstream consumers (useDocument
+    // autosave, editor-ops handleUpdate -> setLatestDoc) call
+    // `editor.getJSON()` only when their debounce settles. Pre-fix this
+    // called `getJSON()` on every keystroke and triggered a React
+    // re-render cascade through EditorPane via `useDocument.setContent`.
     onUpdate: ({ editor }) => {
-      onUpdate(editor.getJSON());
+      onUpdate(editor);
     },
   });
 

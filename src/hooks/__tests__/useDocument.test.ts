@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { renderHook, act, waitFor } from "@testing-library/react";
-import type { JSONContent } from "@tiptap/react";
+import type { Editor, JSONContent } from "@tiptap/react";
 import type { ReactNode } from "react";
 import React from "react";
 
@@ -62,6 +62,17 @@ beforeEach(() => {
   resetFlushers();
 });
 
+/** Build a minimal TipTap-editor stub. `useDocument.onUpdate` now takes
+ *  an Editor (not a JSON snapshot) so it can defer `getJSON()` into its
+ *  own debounce timer; the stub satisfies the shape that flush paths
+ *  (`getJSON`, `isDestroyed`) read. */
+function makeMockEditor(content: JSONContent): Editor {
+  return {
+    getJSON: () => content,
+    isDestroyed: false,
+  } as unknown as Editor;
+}
+
 /** Wrap a test component in a DocPipeline ancestor so useDocument can
  *  read its handle from context. Mirrors the production wrap in
  *  `EditorLayout.tsx` / `library/components/PaperRender.tsx`. */
@@ -82,7 +93,7 @@ describe("useDocument autosave persistence", () => {
     await waitFor(() => expect(result.current.loading).toBe(false));
 
     act(() => {
-      result.current.onUpdate(SAMPLE_CONTENT);
+      result.current.onUpdate(makeMockEditor(SAMPLE_CONTENT));
     });
     // Debounce is 1500 ms; we unmount immediately, well inside that window.
     expect(mockWrite).not.toHaveBeenCalled();
@@ -102,7 +113,7 @@ describe("useDocument autosave persistence", () => {
     await waitFor(() => expect(result.current.loading).toBe(false));
 
     act(() => {
-      result.current.onUpdate(SAMPLE_CONTENT);
+      result.current.onUpdate(makeMockEditor(SAMPLE_CONTENT));
     });
     expect(mockWrite).not.toHaveBeenCalled();
 
@@ -121,7 +132,7 @@ describe("useDocument autosave persistence", () => {
     await waitFor(() => expect(result.current.loading).toBe(false));
 
     act(() => {
-      result.current.onUpdate(SAMPLE_CONTENT);
+      result.current.onUpdate(makeMockEditor(SAMPLE_CONTENT));
     });
     expect(mockWrite).not.toHaveBeenCalled();
 
@@ -145,7 +156,7 @@ describe("useDocument autosave persistence", () => {
       await vi.runOnlyPendingTimersAsync();
 
       act(() => {
-        result.current.onUpdate(SAMPLE_CONTENT);
+        result.current.onUpdate(makeMockEditor(SAMPLE_CONTENT));
       });
 
       await act(async () => {
@@ -174,7 +185,7 @@ describe("useDocument autosave persistence", () => {
     await waitFor(() => expect(result.current.loading).toBe(false));
 
     act(() => {
-      result.current.onUpdate(SAMPLE_CONTENT);
+      result.current.onUpdate(makeMockEditor(SAMPLE_CONTENT));
     });
     act(() => {
       window.dispatchEvent(new PageTransitionEvent("pagehide"));
@@ -243,7 +254,7 @@ describe("useDocument architectural guarantees", () => {
     );
     await waitFor(() => expect(result1.current.loading).toBe(false));
     act(() => {
-      result1.current.onUpdate(PRIOR_DOC_CONTENT);
+      result1.current.onUpdate(makeMockEditor(PRIOR_DOC_CONTENT));
     });
     unmount1();
     await waitFor(() => expect(mockWrite).toHaveBeenCalledTimes(1));
@@ -264,7 +275,7 @@ describe("useDocument architectural guarantees", () => {
 
     // Edit on the new doc -> save targets doc-new with new content.
     act(() => {
-      result2.current.onUpdate(NEW_DOC_CONTENT);
+      result2.current.onUpdate(makeMockEditor(NEW_DOC_CONTENT));
     });
     act(() => {
       window.dispatchEvent(new PageTransitionEvent("pagehide"));
@@ -292,7 +303,7 @@ describe("useDocument architectural guarantees", () => {
     await waitFor(() => expect(result.current.loading).toBe(false));
 
     act(() => {
-      result.current.onUpdate(SAMPLE_CONTENT);
+      result.current.onUpdate(makeMockEditor(SAMPLE_CONTENT));
     });
     act(() => {
       window.dispatchEvent(new PageTransitionEvent("pagehide"));

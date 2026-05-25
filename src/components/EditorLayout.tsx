@@ -7,6 +7,7 @@ import { LoadingScreen } from "./LoadingScreen";
 import { VIRGIL_COMMAND_NAMES } from "@/lib/tiptap-extensions";
 import { isLabelTaken as isLabelTakenIn } from "@/lib/labels";
 import { isDevStorage } from "@/lib/storage-mode";
+import { isTier1BDisabled } from "@/lib/perf-flags";
 import { readPdf } from "@/lib/storage";
 import { migrateLegacyPopoutKeys } from "@/text-objects/post-load-migrations";
 import { type MarginaliaType, type DividerLevel, type DividerWidth } from "@/hooks/useViewPrefs";
@@ -2025,15 +2026,24 @@ export default function EditorLayout() {
       cancelAnimationFrame(raf);
       raf = requestAnimationFrame(compute);
     };
+    // Editor-update path is wrapped so the perf-flag gate (Tier 1 B)
+    // can disable per-keystroke recompute without taking the scroll-
+    // driven recomputes down with it. `off()` only removes a listener
+    // when given the SAME reference we registered with `on()`, so the
+    // wrapper is hoisted into a const used in both places.
+    const onEditorUpdate = () => {
+      if (isTier1BDisabled()) return;
+      schedule();
+    };
     compute();
     scrollEl.addEventListener("scroll", schedule, { passive: true });
     window.addEventListener("resize", schedule);
-    editorInstance.on("update", schedule);
+    editorInstance.on("update", onEditorUpdate);
     return () => {
       cancelAnimationFrame(raf);
       scrollEl.removeEventListener("scroll", schedule);
       window.removeEventListener("resize", schedule);
-      editorInstance.off("update", schedule);
+      editorInstance.off("update", onEditorUpdate);
     };
   }, [editorInstance]);
 
@@ -2097,16 +2107,24 @@ export default function EditorLayout() {
 
     let raf = 0;
     const schedule = () => { cancelAnimationFrame(raf); raf = requestAnimationFrame(compute); };
+    // Editor-update path wrapped so the perf-flag gate (Tier 1 B) can
+    // suppress per-keystroke recompute on the mirror pane while leaving
+    // scroll/resize-driven recomputes live. Same `off()`-needs-same-ref
+    // reason as the main pane above.
+    const onEditorUpdate = () => {
+      if (isTier1BDisabled()) return;
+      schedule();
+    };
     compute();
     scrollEl.addEventListener("scroll", schedule, { passive: true });
     window.addEventListener("resize", schedule);
     // Re-compute when the doc changes (shared state with main editor).
-    editorInstance?.on("update", schedule);
+    editorInstance?.on("update", onEditorUpdate);
     return () => {
       cancelAnimationFrame(raf);
       scrollEl.removeEventListener("scroll", schedule);
       window.removeEventListener("resize", schedule);
-      editorInstance?.off("update", schedule);
+      editorInstance?.off("update", onEditorUpdate);
     };
   }, [editorSplit, mirrorViewGen, editorInstance]);
 

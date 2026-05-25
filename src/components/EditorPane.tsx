@@ -92,6 +92,7 @@ import { CardCreationProvider } from "./editor-layout/contexts/card-creation";
 import { useCardCreation } from "./editor-layout/card-actions/card-creation";
 import { useCitationActions } from "./editor-layout/card-actions/citations";
 import { isAnchorableNode } from "@/lib/marginalia";
+import { isTier1CDisabled } from "@/lib/perf-flags";
 import { useCitations, type CitationsHook } from "@/hooks/useCitations";
 import { useAutoAddLibraryEntriesForCitations } from "@/hooks/useAutoAddLibraryEntriesForCitations";
 import { useLibraryMasterBib } from "@/hooks/useLibrary";
@@ -533,8 +534,11 @@ export interface EditorPaneProps {
    */
   chrome?: EditorChromeConfig;
 
-  /** Forwarded to TipTap's `onUpdate` via `VirgilEditor`. */
-  onUpdate?: (doc: JSONContent) => void;
+  /** Forwarded to TipTap's `onUpdate` via `VirgilEditor`. Receives the
+   *  live editor instance — callers that need a JSON snapshot must call
+   *  `editor.getJSON()` themselves, ideally inside their own debounce
+   *  timer (see editor-ops.ts handleUpdate). */
+  onUpdate?: (editor: Editor) => void;
 
   /** Search-bar / link-jump highlight forwarded straight through. */
   highlightText?: string | null;
@@ -3144,7 +3148,7 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
                     panelKind={pid as PanelKind}
                     editor={editor}
                     editorRef={innerRef}
-                    content={editor ? (editor.getJSON() as JSONContent) : null}
+                    content={editor && !isTier1CDisabled() ? (editor.getJSON() as JSONContent) : null}
                     docVersion={docVersion}
                     docId={docId}
                     citationsHook={citationsHook}
@@ -3212,7 +3216,7 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
                       panelKind={pid as PanelKind}
                       editor={editor}
                       editorRef={innerRef}
-                      content={editor ? (editor.getJSON() as JSONContent) : null}
+                      content={editor && !isTier1CDisabled() ? (editor.getJSON() as JSONContent) : null}
                       docVersion={docVersion}
                       docId={docId}
                       citationsHook={citationsHook}
@@ -3900,14 +3904,21 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
                   <VirgilEditor
                     ref={innerRef}
                     initialContent={(initialContent ?? docHook.content) as JSONContent}
-                    onUpdate={(doc) => {
+                    onUpdate={(editor) => {
                       // Forward to caller-supplied handler first (Reader
                       // omits — read-only), then drive the canonical
                       // debounced writeback through `useDocument` so
                       // EditorPane is the sole save path once mounted
                       // in the main app.
-                      onUpdate?.(doc);
-                      docHook.onUpdate(doc);
+                      //
+                      // Both consumers receive the editor by reference;
+                      // each invokes `editor.getJSON()` from inside its
+                      // own debounce timer. Pre-fix the doc was
+                      // serialized here per keystroke and shipped through
+                      // both branches — the dominant typing-lag cost on
+                      // long docs.
+                      onUpdate?.(editor);
+                      docHook.onUpdate(editor);
                     }}
                     highlightText={highlightText}
                     highlightRange={highlightRange}

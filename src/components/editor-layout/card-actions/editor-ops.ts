@@ -1,5 +1,5 @@
 import { useCallback, useRef, type RefObject } from "react";
-import type { JSONContent } from "@tiptap/react";
+import type { Editor, JSONContent } from "@tiptap/react";
 import type { EditorView } from "prosemirror-view";
 import type { EditorHandle } from "../../Editor";
 import { findEditorScrollFor } from "../layout-scroll";
@@ -37,9 +37,15 @@ export function useEditorOps(deps: {
   const latestDocTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const handleUpdate = useCallback(
-    (doc: JSONContent) => {
+    (editor: Editor) => {
       if (latestDocTimerRef.current) clearTimeout(latestDocTimerRef.current);
-      latestDocTimerRef.current = setTimeout(() => setLatestDoc(doc), 300);
+      // Defer `editor.getJSON()` to inside the 300 ms timeout — the
+      // serialization cost is O(doc-size) and pre-fix ran on every
+      // keystroke even though `setLatestDoc` was already debounced.
+      latestDocTimerRef.current = setTimeout(() => {
+        if (editor.isDestroyed) return;
+        setLatestDoc(editor.getJSON());
+      }, 300);
     },
     [setLatestDoc],
   );
