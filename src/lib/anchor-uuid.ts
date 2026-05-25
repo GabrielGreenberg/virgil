@@ -19,7 +19,12 @@ import type { Node as PMNode } from "@tiptap/pm/model";
 import { isAnchorableNode } from "@/lib/marginalia";
 import { generateShortId } from "@/lib/uuid";
 
-const DEFERRING_PARENTS = new Set(["listItem", "blockquote", "codeBlock"]);
+const DEFERRING_PARENTS = new Set([
+  "listItem",
+  "blockquote",
+  "codeBlock",
+  "exampleItem",
+]);
 
 /**
  * Resolve a ProseMirror position to the nearest anchorable node, handling

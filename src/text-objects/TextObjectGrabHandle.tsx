@@ -323,7 +323,13 @@ function computePlacement(
   const kind: TextObjectKind | null =
     ref.kind === "selection" ? null : ref.kind;
   const meta = kind ? TEXT_OBJECT_REGISTRY[kind] : null;
-  const editorColumnLeft = anchorDom.getBoundingClientRect().left;
+  // editorColumnLeft is the editor's content-column edge — the gutter
+  // ceiling that top-level handles clamp to. Sub-objects (listItem /
+  // exampleItem) are themselves indented past it, so their handles can
+  // legitimately render further left than the sub-object's own DOM edge
+  // (into the decoration zone). Reading this from `editor.view.dom`
+  // (the .ProseMirror element) gives the right reference for both.
+  const editorColumnLeft = editor.view.dom.getBoundingClientRect().left;
   const left = meta
     ? computeHandleLeftEdge({
         elDOM: anchorDom,

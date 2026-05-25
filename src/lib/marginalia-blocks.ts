@@ -9,10 +9,14 @@ export interface AnchorableBlock {
 
 /**
  * Walk the doc once, collecting every anchorable block's
- * `{ uuid, pos, isAtom }`. Used by:
+ * `{ uuid, pos, isAtom }` at every level. Used by:
  *   - useMarginaliaRegistry — structure-change diffing + initial prime.
  *   - TextObjectGrabHandle — resolving a known UUID to its current pos.
  *   - ActiveTextObjectContext — resolving the active block by UUID.
+ *
+ * Walks into anchorable containers so sub-objects (`listItem`,
+ * `exampleItem`) and nested kinds (`graphicsBlock` inside a list item)
+ * are enumerated too — they're first-class TextObjects post-refactor.
  *
  * Drops blocks with a null UUID. TipTap allocates UUIDs lazily on first
  * interaction; until then the block isn't a sticky anchor target.
@@ -28,7 +32,6 @@ export function walkAnchorableBlocks(
       if (uuid) {
         out.push({ uuid, pos, isAtom: isAnchorableAtom(node.type) });
       }
-      return false;
     }
     return true;
   });

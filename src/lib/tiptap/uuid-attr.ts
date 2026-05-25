@@ -49,10 +49,11 @@ export const UUID_ATTR_SPEC = {
 };
 
 /**
- * Walk the doc top-level and emit a `data-uuid` node-attribute decoration
- * for every anchorable block that has a UUID. Skips blocks whose UUID
- * is still null (lazy-hydration via `ensureAnchorUuid` happens on first
- * interaction — until then the block has no sticky identity to expose).
+ * Walk every level of the doc and emit a `data-uuid` node-attribute
+ * decoration for every anchorable block that has a UUID. Skips blocks
+ * whose UUID is still null (lazy-hydration via `ensureAnchorUuid`
+ * happens on first interaction — until then the block has no sticky
+ * identity to expose).
  */
 function buildUuidDecorations(doc: PMNode): DecorationSet {
   const decos: Decoration[] = [];
@@ -64,10 +65,11 @@ function buildUuidDecorations(doc: PMNode): DecorationSet {
         Decoration.node(pos, pos + node.nodeSize, { "data-uuid": uuid }),
       );
     }
-    // Don't recurse into anchorable containers — the deferring-parent
-    // rule (see anchor-uuid.ts) means inner anchorables don't carry
-    // their own identity.
-    return false;
+    // Walk into anchorable containers: listItem and exampleItem are
+    // themselves anchorable text objects (Phase B+ of the TextObject
+    // refactor). The deferring-parent rule in anchor-uuid.ts controls
+    // which inner nodes get UUIDs minted, not whether we decorate.
+    return true;
   });
   return decos.length > 0 ? DecorationSet.create(doc, decos) : DecorationSet.empty;
 }
