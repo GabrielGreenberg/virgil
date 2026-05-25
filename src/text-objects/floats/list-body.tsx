@@ -38,6 +38,10 @@ import {
   ProseGlossRow,
   GlossCell,
   TabIndent,
+  TexBlock,
+  FigureBlock,
+  FigureCaption,
+  GraphicsBlock,
 } from "@/lib/tiptap-extensions";
 import type { EditorHandle } from "@/components/Editor";
 import { usePoppedCards } from "@/hooks/usePoppedCards";
@@ -147,6 +151,17 @@ export function ListBody({
       ProseGlossRow,
       GlossCell,
       TabIndent,
+      // Atom block kinds. Required because `listItem.content` and
+      // `exampleItem.content` were widened to allow `graphicsBlock`
+      // (Phase B of the TextObject refactor) — the schema fails to
+      // construct without GraphicsBlock registered. TexBlock /
+      // FigureBlock / FigureCaption included for parity with
+      // heading-body so lists can render compact previews of those
+      // kinds if a deeply-nested doc places them inside list items.
+      TexBlock.configure({ cardContext: true }),
+      FigureBlock.configure({ cardContext: true }),
+      FigureCaption,
+      GraphicsBlock.configure({ cardContext: true }),
     ],
     content: initial.doc,
     editable: true,

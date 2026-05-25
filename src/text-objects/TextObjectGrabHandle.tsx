@@ -13,37 +13,31 @@
  * click + lift gestures through the unified
  * `useDragHandleMenu` + `usePoppedCards` contexts.
  *
- * Resolution order, top to bottom (first match wins):
- *   1. Non-empty TextSelection            → `SelectionRef`
- *   2. NodeSelection on a TextObject      → `TextObjectRef` for that node
- *   3. Mouse hover over a TextObject       → `TextObjectRef` for the hover
- *      (provides discoverability for atom blocks — `texBlock`,
- *      `graphicsBlock`, `displayMath`, `latexComment`, `figureBlock` —
- *      which can't be reached by a collapsed caret)
- *   4. Collapsed caret in a sub-object    → `TextObjectRef` for the
- *      innermost sub-object (`listItem` / `exampleItem`)
- *   5. Collapsed caret in a top-level kind → `TextObjectRef` for the
- *      OUTERMOST top-level kind (so the cursor in a paragraph inside a
- *      blockquote grabs the blockquote, not the inner paragraph)
+ * Discovery model (hover-driven, multi-level):
+ *   1. Non-empty TextSelection   → one handle for the SelectionRef
+ *      (text-lift gesture; hydrates to a linkedRange on lift).
+ *   2. NodeSelection on a TextObject → one handle for the selected node.
+ *   3. Mouse over the editor     → one handle for EVERY containing
+ *      TextObject from innermost to outermost. Hovering text inside a
+ *      `listItem` shows handles for both the listItem AND its parent
+ *      `bulletList`. For deeper nesting (graphicsBlock inside listItem),
+ *      every level gets a handle, each at its own decorationSafety indent.
+ *   4. No mouse position / mouse outside editor + no handle hovered →
+ *      no handles. (Cursor-based discovery is intentionally removed —
+ *      the handle is a pure hover affordance, like a tooltip.)
  *
- * Lift gesture spawns a popout via the legacy popout-key for kinds that
- * have an existing float component today (paragraph / heading / list /
- * texBlock / exampleBlock / linkedRange-as-selection). Other TextObject
- * kinds (`listItem`, `exampleItem`, `figureBlock`, `graphicsBlock`,
- * `displayMath`, `latexComment`, `blockquote`, `codeBlock`, `titleField`)
- * open the action menu on click but do not lift today — Phase D5 wires
- * up the unified `TextObjectFloat` body component per kind.
- *
- * Phase D10 migrates every popout key to `textobject:<kind>:<id>` via
- * `textObjectPopoutKey`. Phase E hydrates a `SelectionRef` into a
- * `linkedRange` TextObject at lift time, deleting the `selection:<id>`
- * fallback entirely.
+ * Mouse-leave grace: the handles are portal-rendered into document.body,
+ * so moving the mouse from the editor onto a handle would fire the
+ * editor's mouseleave. Handle DOM elements report their own enter/leave
+ * via `mouseOverHandleRef`; the editor's leave handler defers clearing
+ * `mousePosRef` until we know the mouse hasn't landed on a handle.
  */
 
 import {
   useEffect,
   useRef,
   useState,
+  useCallback,
   type RefObject,
 } from "react";
 import { createPortal } from "react-dom";
@@ -80,6 +74,10 @@ const LIFT_THRESHOLD = 5;
  *  The grip sits inside the float's header, so the cursor lands on the
  *  header (not on the body) after the lift. */
 const SPAWN_CURSOR_OFFSET_Y = 16;
+
+/** Time after the mouse leaves the editor before handles are hidden.
+ *  Long enough for the user to move from the editor onto a handle. */
+const MOUSE_LEAVE_GRACE_MS = 120;
 
 /**
  * Default initial float size at spawn time. Per-kind overrides live on
@@ -120,29 +118,33 @@ function popoutKeyForLift(ref: TextObjectRef): string | null {
 }
 
 interface Placement {
-  visible: boolean;
   /** Viewport-x of the handle's left edge. */
   left: number;
   /** Viewport-y of the handle's top edge (sticky-to-top when the source
    *  has scrolled above the viewport). */
   top: number;
   /** The resolved ref the handle represents. */
-  ref: TextObjectRef | SelectionRef | null;
+  ref: TextObjectRef | SelectionRef;
 }
 
 function placementsEqual(a: Placement, b: Placement): boolean {
-  if (a.visible !== b.visible) return false;
   if (a.left !== b.left || a.top !== b.top) return false;
-  if (refsEqual(a.ref, b.ref)) return true;
-  return false;
+  return refsEqual(a.ref, b.ref);
+}
+
+function placementArrayEqual(a: Placement[], b: Placement[]): boolean {
+  if (a.length !== b.length) return false;
+  for (let i = 0; i < a.length; i++) {
+    if (!placementsEqual(a[i], b[i])) return false;
+  }
+  return true;
 }
 
 function refsEqual(
-  a: TextObjectRef | SelectionRef | null,
-  b: TextObjectRef | SelectionRef | null,
+  a: TextObjectRef | SelectionRef,
+  b: TextObjectRef | SelectionRef,
 ): boolean {
   if (a === b) return true;
-  if (!a || !b) return false;
   if (a.kind !== b.kind) return false;
   if (a.kind === "selection" && b.kind === "selection") {
     return a.from === b.from && a.to === b.to && a.paragraphId === b.paragraphId;
@@ -153,122 +155,113 @@ function refsEqual(
   return false;
 }
 
+/** Stable React key for a placement's ref. */
+function refKey(ref: TextObjectRef | SelectionRef): string {
+  if (ref.kind === "selection") {
+    return `selection:${ref.paragraphId}:${ref.from}-${ref.to}`;
+  }
+  return `${ref.kind}:${ref.id}`;
+}
+
 /**
- * Walk the resolved position chain for the active TextObject ref:
- *   - prefer the innermost sub-object (listItem / exampleItem)
- *   - else pick the OUTERMOST top-level kind (so blockquote wins over a
- *     paragraph inside it).
+ * Hit-test cache for `resolveTextObjectsAtMouse`. Per-pixel mousemove
+ * inside the same DOM element cannot change the resolved ref set —
+ * short-circuit by element identity. Invalidate on any doc-change
+ * transaction via `invalidateMouseResolverCache`.
  */
-function resolveTextObjectAtPos(
+let lastHitElement: Element | null = null;
+let lastHitResult: TextObjectRef[] = [];
+
+function invalidateMouseResolverCache(): void {
+  lastHitElement = null;
+  lastHitResult = [];
+}
+
+/**
+ * Hit-test the mouse position against the editor's DOM to find every
+ * TextObject containing the mouse, from innermost to outermost.
+ *
+ * Returned order:
+ *   1. Atom block at `pos.inside` (if any) — innermost.
+ *   2. Every ancestor along the $pos depth chain that is a TextObject
+ *      with a UUID, from deepest to shallowest.
+ *
+ * Dedupe by id so a single atom doesn't appear twice when it's both at
+ * `pos.inside` and reachable through `$pos.node(d)`.
+ */
+function resolveTextObjectsAtMouse(
   editor: Editor,
-  pos: number,
-): TextObjectRef | null {
-  const $pos = editor.state.doc.resolve(pos);
-  let outermostTopLevel: TextObjectRef | null = null;
+  clientX: number,
+  clientY: number,
+): TextObjectRef[] {
+  const hit = document.elementFromPoint(clientX, clientY);
+  if (hit === lastHitElement) {
+    return lastHitResult;
+  }
+  if (!hit || !editor.view.dom.contains(hit)) {
+    lastHitElement = hit;
+    lastHitResult = [];
+    return lastHitResult;
+  }
+  const pos = editor.view.posAtCoords({ left: clientX, top: clientY });
+  if (!pos) {
+    lastHitElement = hit;
+    lastHitResult = [];
+    return lastHitResult;
+  }
+
+  const refs: TextObjectRef[] = [];
+  const seenIds = new Set<string>();
+
+  // Atom block at `pos.inside` — the caret can't enter atoms, so they're
+  // only reachable through hover. Collect explicitly before the depth
+  // walk (which still encounters them but `$pos.depth` for a position
+  // inside an atom returns the atom's PARENT level, not the atom itself).
+  if (pos.inside >= 0) {
+    const node = editor.state.doc.nodeAt(pos.inside);
+    if (node && isTextObjectKind(node.type.name) && node.type.name !== "linkedRange") {
+      const id = node.attrs?.uuid as string | null;
+      const meta = TEXT_OBJECT_REGISTRY[node.type.name];
+      if (id && meta.isAtomBlock) {
+        refs.push({ kind: node.type.name as TextObjectKind, id });
+        seenIds.add(id);
+      }
+    }
+  }
+
+  // Walk every containing level. ProseMirror's `$pos.depth` gives us the
+  // ancestor chain; iterate from innermost (depth) to outermost (0).
+  const $pos = editor.state.doc.resolve(pos.pos);
   for (let d = $pos.depth; d >= 0; d--) {
     const node = $pos.node(d);
     const name = node.type.name;
     if (!isTextObjectKind(name) || name === "linkedRange") continue;
     const id = node.attrs?.uuid as string | null;
     if (!id) continue;
-    const meta = TEXT_OBJECT_REGISTRY[name];
-    if (meta.isSubObject) {
-      return { kind: name, id };
-    }
-    outermostTopLevel = { kind: name, id };
+    if (seenIds.has(id)) continue;
+    refs.push({ kind: name as TextObjectKind, id });
+    seenIds.add(id);
   }
-  return outermostTopLevel;
-}
 
-/**
- * Hit-test cache for `resolveTextObjectAtMouse`. Per-pixel mousemove
- * inside the same DOM element cannot change the resolved ref — short-
- * circuit by element identity. Invalidate on any doc-change transaction
- * via `invalidateMouseResolverCache`.
- */
-let lastHitElement: Element | null = null;
-let lastHitResult: TextObjectRef | null = null;
-
-function invalidateMouseResolverCache(): void {
-  lastHitElement = null;
-  lastHitResult = null;
-}
-
-/**
- * Hit-test the mouse position against the editor's DOM to find a hovered
- * TextObject. Returns the innermost-matching node. Used as the discovery
- * path for atom blocks that the caret can't reach.
- */
-function resolveTextObjectAtMouse(
-  editor: Editor,
-  clientX: number,
-  clientY: number,
-): TextObjectRef | null {
-  const hit = document.elementFromPoint(clientX, clientY);
-  if (hit === lastHitElement) {
-    return lastHitResult;
-  }
-  if (!editor.view.dom.contains(hit)) {
-    lastHitElement = hit;
-    lastHitResult = null;
-    return null;
-  }
-  // posAtCoords returns the nearest doc position to the mouse.
-  const pos = editor.view.posAtCoords({ left: clientX, top: clientY });
-  if (!pos) {
-    lastHitElement = hit;
-    lastHitResult = null;
-    return null;
-  }
-  // Use `inside` (the position INSIDE the node under the cursor) so atom
-  // blocks at the cursor's position are reachable. For a position
-  // adjacent to an atom (caret just before the atom), `inside === -1`;
-  // falling back to `resolveTextObjectAtPos(pos.pos)` then climbs
-  // ancestors.
-  let result: TextObjectRef | null = null;
-  if (pos.inside >= 0) {
-    const node = editor.state.doc.nodeAt(pos.inside);
-    if (
-      node &&
-      isTextObjectKind(node.type.name) &&
-      node.type.name !== "linkedRange" &&
-      (node.attrs?.uuid as string | null)
-    ) {
-      const name = node.type.name as TextObjectKind;
-      const id = node.attrs.uuid as string;
-      const meta = TEXT_OBJECT_REGISTRY[name];
-      if (meta.isAtomBlock) {
-        result = { kind: name, id };
-      }
-    }
-  }
-  if (!result) {
-    result = resolveTextObjectAtPos(editor, pos.pos);
-  }
   lastHitElement = hit;
-  lastHitResult = result;
-  return result;
+  lastHitResult = refs;
+  return refs;
 }
 
 /**
- * Compute placement for the active ref. Pins the handle's left edge to
+ * Compute placement for a single ref. Pins the handle's left edge to
  * the source block's gutter via `computeHandleLeftEdge`; pins the top
  * edge to the range's first-line top (clamped to the editor scroll
  * container's top when scrolled above the viewport).
+ *
+ * Returns null when the ref isn't visible (off-screen, source missing,
+ * or coords lookup fails).
  */
 function computePlacement(
   editor: Editor,
   cache: EditorViewportCache,
-  ref: TextObjectRef | SelectionRef | null,
-): Placement {
-  const hidden: Placement = {
-    visible: false,
-    left: 0,
-    top: 0,
-    ref,
-  };
-  if (!ref) return hidden;
-
+  ref: TextObjectRef | SelectionRef,
+): Placement | null {
   let from = -1;
   let to = -1;
   let blockNodePos = -1;
@@ -285,9 +278,6 @@ function computePlacement(
       break;
     }
   } else {
-    // Use the shared walker (same util the marginalia registry uses)
-    // instead of an open-coded `doc.descendants` walk — keeps the UUID-
-    // lookup pattern uniform across the codebase.
     const block = walkAnchorableBlocks(editor).find(
       (b) => b.uuid === ref.id,
     );
@@ -300,7 +290,7 @@ function computePlacement(
       }
     }
   }
-  if (from < 0 || blockNodePos < 0) return hidden;
+  if (from < 0 || blockNodePos < 0) return null;
 
   let fromCoords: { left: number; top: number; bottom: number };
   let toCoords: { top: number; bottom: number };
@@ -311,14 +301,19 @@ function computePlacement(
     const dom = editor.view.nodeDOM(blockNodePos);
     if (dom instanceof HTMLElement) anchorDom = dom;
   } catch {
-    return hidden;
+    return null;
   }
-  if (!anchorDom) return hidden;
+  if (!anchorDom) return null;
 
   const scrollTop = cache.scrollTop;
   const scrollBottom = cache.scrollBottom;
-  if (toCoords.bottom < scrollTop) return { ...hidden, ref };
-  if (fromCoords.top > scrollBottom) return { ...hidden, ref };
+  // Use the anchor DOM's rect for the visibility check rather than the
+  // coordsAtPos values, which return {0, 0} for some multi-line block
+  // kinds (exampleBlock with deep content tree). The DOM rect is the
+  // authoritative visible bounds of the block.
+  const anchorRect = anchorDom.getBoundingClientRect();
+  if (anchorRect.bottom < scrollTop) return null;
+  if (anchorRect.top > scrollBottom) return null;
 
   const kind: TextObjectKind | null =
     ref.kind === "selection" ? null : ref.kind;
@@ -340,14 +335,14 @@ function computePlacement(
       })
     : editorColumnLeft - HANDLE_GAP - BULLET_DECORATION_WIDTH / 2;
 
-  const top = Math.max(fromCoords.top, scrollTop);
+  // Top edge: prefer fromCoords.top (the first-line top), but fall back
+  // to the anchor DOM's top when coordsAtPos returns 0 for multi-line
+  // block containers. Either way, pin to scrollTop when the source has
+  // scrolled above the viewport so the handle stays in view.
+  const candidateTop = fromCoords.top > 0 ? fromCoords.top : anchorRect.top;
+  const top = Math.max(candidateTop, scrollTop);
 
-  return {
-    visible: true,
-    left,
-    top,
-    ref,
-  };
+  return { left, top, ref };
 }
 
 interface Props {
@@ -356,21 +351,20 @@ interface Props {
 
 export function TextObjectGrabHandle({ editorRef }: Props) {
   const popped = usePoppedCards();
-  const [placement, setPlacement] = useState<Placement>({
-    visible: false,
-    left: 0,
-    top: 0,
-    ref: null,
-  });
+  const [placements, setPlacements] = useState<Placement[]>([]);
 
-  const handleElRef = useRef<HTMLDivElement | null>(null);
-  // Mouse position for hover-based resolution (atom-block discovery).
-  // null until the first mousemove on the editor.
+  // Mouse position drives the hover-based discovery path. null when the
+  // mouse hasn't moved over the editor (or has left and the grace period
+  // elapsed without a handle hover).
   const mousePosRef = useRef<{ clientX: number; clientY: number } | null>(null);
-  // Last-known active ref. Used by the lift gesture as the source of
-  // truth (the editor's live selection may have collapsed by the time
-  // the user starts dragging).
-  const lastRefRef = useRef<TextObjectRef | SelectionRef | null>(null);
+  // True while the pointer is over one of the rendered handle elements.
+  // Read by the editor's mouseleave grace-period closure to decide
+  // whether the leave really should clear the position.
+  const mouseOverHandleRef = useRef(false);
+  // Pending clear-mouse-pos timer from the editor's mouseleave. Cancelled
+  // when the mouse re-enters the editor or arrives on a handle.
+  const leaveTimerRef = useRef<number>(0);
+
   // Track the editor instance currently subscribed-to so we don't double-
   // subscribe across re-renders.
   const subscribedEditorRef = useRef<Editor | null>(null);
@@ -388,26 +382,178 @@ export function TextObjectGrabHandle({ editorRef }: Props) {
   );
 
   // ---------------------------------------------------------------------------
-  // Resolution + placement loop — split into three effects:
-  //   1. Listener install + editor subscription (mounts once)
-  //   2. Recompute trigger on viewport-cache version bumps
-  //   3. (the inline schedule closure lives in effect 1)
+  // Click / lift gesture
+  //
+  // Each rendered handle binds its own mousedown. The shared `beginGesture`
+  // closes over a captured ref (one per handle), so a click/drag dispatches
+  // to the right kind without consulting the resolver again.
+  // ---------------------------------------------------------------------------
+
+  const poppedRef = useRef(popped);
+  useEffect(() => {
+    poppedRef.current = popped;
+  }, [popped]);
+  const dragHandleMenu = useDragHandleMenu();
+  const dragHandleMenuRef = useRef(dragHandleMenu);
+  useEffect(() => {
+    dragHandleMenuRef.current = dragHandleMenu;
+  }, [dragHandleMenu]);
+
+  const beginGesture = useCallback((
+    downEv: MouseEvent,
+    handleEl: HTMLDivElement,
+    startRef: TextObjectRef | SelectionRef,
+  ) => {
+    if (downEv.button !== 0) return;
+    downEv.preventDefault();
+    downEv.stopPropagation();
+    const editor = editorRef.current;
+    if (!editor) return;
+    // For TextObjectRefs, derive the tentative popout key up front. If
+    // already popped we still allow click-to-open-menu; just no lift.
+    if (startRef.kind !== "selection") {
+      const tentativeKey = popoutKeyForLift(startRef);
+      if (tentativeKey && poppedRef.current?.isPopped(tentativeKey)) {
+        // tentativeKey check below in the drag branch reuses this.
+      }
+    }
+    handleEl.classList.add("is-pressed");
+    const startX = downEv.clientX;
+    const startY = downEv.clientY;
+    let triggered = false;
+
+    const onMove = (mv: MouseEvent) => {
+      if (triggered) return;
+      const dx = mv.clientX - startX;
+      const dy = mv.clientY - startY;
+      if (dx * dx + dy * dy < LIFT_THRESHOLD * LIFT_THRESHOLD) return;
+      triggered = true;
+
+      let ref: TextObjectRef;
+      if (startRef.kind === "selection") {
+        const docSize = editor.state.doc.content.size;
+        const safeFrom = Math.max(0, Math.min(startRef.from, docSize));
+        const safeTo = Math.max(0, Math.min(startRef.to, docSize));
+        if (safeFrom >= safeTo) {
+          cleanup();
+          return;
+        }
+        const hydrated = hydrateSelectionToTextObject(
+          editor.view,
+          safeFrom,
+          safeTo,
+        );
+        if (!hydrated) {
+          cleanup();
+          return;
+        }
+        ref = hydrated;
+      } else {
+        ref = startRef;
+      }
+
+      const { width, height } = floatSizeFor(ref.kind);
+      const spawn = {
+        x: Math.round(mv.clientX - width / 2),
+        y: Math.round(mv.clientY - SPAWN_CURSOR_OFFSET_Y),
+        width,
+        height,
+      };
+
+      const cardKey = popoutKeyForLift(ref);
+      if (!cardKey) {
+        cleanup();
+        return;
+      }
+      if (poppedRef.current?.isPopped(cardKey)) {
+        cleanup();
+        return;
+      }
+      const wrapperRect = handleEl.getBoundingClientRect();
+      setCardLiftTarget({
+        cardKey,
+        rect: {
+          left: wrapperRect.left,
+          top: wrapperRect.top,
+          width: wrapperRect.width,
+          height: wrapperRect.height,
+        },
+      });
+      window.setTimeout(() => setCardLiftTarget(null), 150);
+      setCardLiftHandoff({
+        cardKey,
+        clientX: mv.clientX,
+        clientY: mv.clientY,
+        width,
+        height,
+      });
+      poppedRef.current?.popOutAtRect(cardKey, spawn);
+      cleanup();
+    };
+
+    const onUp = () => {
+      // No drag → treat as a click and open the action menu for the
+      // captured ref.
+      if (!triggered) {
+        const open = dragHandleMenuRef.current?.open;
+        if (open) {
+          if (startRef.kind !== "selection") {
+            const ed = editorRef.current;
+            if (ed && !startRef.id) {
+              cleanup();
+              return;
+            }
+          }
+          const rect = handleEl.getBoundingClientRect();
+          open(startRef, rect);
+        }
+      }
+      cleanup();
+    };
+    const cleanup = () => {
+      window.removeEventListener("mousemove", onMove);
+      window.removeEventListener("mouseup", onUp);
+      handleEl.classList.remove("is-pressed");
+    };
+    window.addEventListener("mousemove", onMove);
+    window.addEventListener("mouseup", onUp);
+  }, [editorRef]);
+
+  // Click-to-ensure-anchor-uuid fast path is wired through `beginGesture`'s
+  // !startRef.id check above. Keep the import alive for clarity.
+  void ensureAnchorUuid;
+
+  // ---------------------------------------------------------------------------
+  // Resolution + placement loop
   // ---------------------------------------------------------------------------
 
   useEffect(() => {
     let prevEditor: Editor | null = null;
+    let prevEditorDom: HTMLElement | null = null;
     const cleanupListeners = () => {
       if (prevEditor) {
         prevEditor.off("selectionUpdate", onSelectionUpdate);
         prevEditor.off("update", onDocUpdate);
       }
+      if (prevEditorDom) {
+        prevEditorDom.removeEventListener("mousemove", onMouseMove);
+        prevEditorDom.removeEventListener("mouseleave", onMouseLeave);
+      }
     };
 
-    const resolveActiveRef = (
+    /**
+     * Resolve the array of refs the schedule should render handles for.
+     * Order (first match wins, except for hover which returns multiple):
+     *   1. Non-empty TextSelection → [SelectionRef]
+     *   2. NodeSelection on TextObject → [TextObjectRef]
+     *   3. Mouse hover over editor → [innermost..outermost TextObjectRefs]
+     *   4. Nothing → []
+     */
+    const resolveActiveRefs = (
       editor: Editor,
-    ): TextObjectRef | SelectionRef | null => {
+    ): Array<TextObjectRef | SelectionRef> => {
       const sel = editor.state.selection;
-      // 1. Non-empty TextSelection
+      // 1. Non-empty TextSelection — text-lift gesture.
       if (sel.from !== sel.to && !(sel instanceof NodeSelection)) {
         const $from = editor.state.doc.resolve(sel.from);
         let paragraphId: string | null = null;
@@ -421,15 +567,15 @@ export function TextObjectGrabHandle({ editorRef }: Props) {
           }
         }
         if (paragraphId) {
-          return {
+          return [{
             kind: "selection",
             from: sel.from,
             to: sel.to,
             paragraphId,
-          };
+          }];
         }
       }
-      // 2. NodeSelection on a TextObject (e.g. atom block selected)
+      // 2. NodeSelection on a TextObject (atom blocks chiefly).
       if (sel instanceof NodeSelection) {
         const node = sel.node;
         const name = node.type.name;
@@ -438,53 +584,31 @@ export function TextObjectGrabHandle({ editorRef }: Props) {
           name !== "linkedRange" &&
           (node.attrs?.uuid as string | null)
         ) {
-          return { kind: name, id: node.attrs.uuid as string };
+          return [{ kind: name as TextObjectKind, id: node.attrs.uuid as string }];
         }
       }
-      // 3. Mouse hover (atom-block discovery)
+      // 3. Mouse hover — every containing TextObject level.
       const mouse = mousePosRef.current;
-      if (sel.from === sel.to && mouse) {
-        const hoverRef = resolveTextObjectAtMouse(
-          editor,
-          mouse.clientX,
-          mouse.clientY,
-        );
-        if (hoverRef) {
-          const hoverMeta = TEXT_OBJECT_REGISTRY[hoverRef.kind];
-          // Use hover only for atom blocks (their carets aren't reachable
-          // by collapsed selection). Other kinds defer to the cursor-
-          // based resolver below.
-          if (hoverMeta.isAtomBlock) return hoverRef;
-        }
+      if (mouse) {
+        return resolveTextObjectsAtMouse(editor, mouse.clientX, mouse.clientY);
       }
-      // 4-5. Collapsed caret → resolve via containment
-      return resolveTextObjectAtPos(editor, sel.from);
+      // 4. No fallback (cursor-based discovery removed).
+      return [];
     };
 
     const schedule = () => {
       const editor = editorRef.current;
       if (!editor || editor.isDestroyed) {
-        lastRefRef.current = null;
-        setPlacement((p) =>
-          p.visible
-            ? {
-                visible: false,
-                left: 0,
-                top: 0,
-                ref: null,
-              }
-            : p,
-        );
+        setPlacements((p) => (p.length === 0 ? p : []));
         return;
       }
-      const ref = resolveActiveRef(editor);
-      const next = computePlacement(editor, cacheRef.current, ref);
-      if (next.visible && next.ref) {
-        lastRefRef.current = next.ref;
-      } else {
-        lastRefRef.current = ref;
+      const refs = resolveActiveRefs(editor);
+      const next: Placement[] = [];
+      for (const r of refs) {
+        const p = computePlacement(editor, cacheRef.current, r);
+        if (p) next.push(p);
       }
-      setPlacement((prev) => (placementsEqual(prev, next) ? prev : next));
+      setPlacements((prev) => (placementArrayEqual(prev, next) ? prev : next));
     };
     const scheduleRaf = () => {
       if (rafRef.current) cancelAnimationFrame(rafRef.current);
@@ -493,7 +617,6 @@ export function TextObjectGrabHandle({ editorRef }: Props) {
         schedule();
       });
     };
-    // Publish for the cache-version effect below.
     scheduleRefRef.current = scheduleRaf;
 
     const onSelectionUpdate = () => scheduleRaf();
@@ -503,8 +626,6 @@ export function TextObjectGrabHandle({ editorRef }: Props) {
       transaction: import("@tiptap/pm/state").Transaction;
     }) => {
       if (!transaction.docChanged) return;
-      // Mouse-hit cache reads `nodeAt(pos)`; any structural change
-      // invalidates it.
       invalidateMouseResolverCache();
       scheduleRaf();
     };
@@ -515,9 +636,14 @@ export function TextObjectGrabHandle({ editorRef }: Props) {
       cleanupListeners();
       subscribedEditorRef.current = editor;
       prevEditor = editor;
+      prevEditorDom = editor?.view.dom ?? null;
       if (editor) {
         editor.on("selectionUpdate", onSelectionUpdate);
         editor.on("update", onDocUpdate);
+      }
+      if (prevEditorDom) {
+        prevEditorDom.addEventListener("mousemove", onMouseMove);
+        prevEditorDom.addEventListener("mouseleave", onMouseLeave);
       }
     };
 
@@ -535,15 +661,28 @@ export function TextObjectGrabHandle({ editorRef }: Props) {
     const onScroll = () => scheduleRaf();
     const onResize = () => scheduleRaf();
     const onMouseMove = (e: MouseEvent) => {
-      // Bail before the ref-write when a selection is active: the
-      // selection path doesn't depend on mouse, so the position write +
-      // schedule are both useless churn during active drag-selection.
-      const editor = editorRef.current;
-      if (!editor) return;
-      const sel = editor.state.selection;
-      if (sel.from !== sel.to || sel instanceof NodeSelection) return;
+      // Always-on tracking: hover is the primary discovery mechanism, so
+      // the position must update during text selection / node selection
+      // too. (The resolver prioritizes selection/node refs above hover,
+      // so the array won't surprise during an active gesture.)
+      if (leaveTimerRef.current) {
+        clearTimeout(leaveTimerRef.current);
+        leaveTimerRef.current = 0;
+      }
       mousePosRef.current = { clientX: e.clientX, clientY: e.clientY };
       scheduleRaf();
+    };
+    const onMouseLeave = () => {
+      // Defer the clear: the mouse may be landing on a portal-rendered
+      // handle, which fires the editor's mouseleave. The handle's own
+      // mouseenter cancels this timer.
+      if (leaveTimerRef.current) clearTimeout(leaveTimerRef.current);
+      leaveTimerRef.current = window.setTimeout(() => {
+        leaveTimerRef.current = 0;
+        if (mouseOverHandleRef.current) return;
+        mousePosRef.current = null;
+        scheduleRaf();
+      }, MOUSE_LEAVE_GRACE_MS);
     };
     const onDocSelectionChange = () => {
       const editor = editorRef.current;
@@ -591,15 +730,8 @@ export function TextObjectGrabHandle({ editorRef }: Props) {
 
     window.addEventListener("scroll", onScroll, true);
     window.addEventListener("resize", onResize);
-    // Mousemove scoped to the editor DOM. Window-wide subscription would
-    // fire for every pixel of mouse movement anywhere on screen (over
-    // panels, menus, other monitors); the grab handle's hover-discovery
-    // only matters when the cursor is over the editor.
-    const editorDom = editorRef.current?.view.dom ?? null;
-    editorDom?.addEventListener("mousemove", onMouseMove);
-    // ProseMirror's `selectionUpdate` covers the editable mode; this DOM
-    // mirror is only needed for the Reader (`editable: false`) where PM
-    // doesn't dispatch on contenteditable=false selection changes.
+    // DOM listeners (mousemove, mouseleave) attach via `ensureSubscribed`
+    // so they re-attach if the editor instance is created late or swapped.
     const editorForGate = editorRef.current;
     const installSelectionChange =
       editorForGate !== null && !editorForGate.isEditable;
@@ -612,210 +744,115 @@ export function TextObjectGrabHandle({ editorRef }: Props) {
         cancelAnimationFrame(rafRef.current);
         rafRef.current = 0;
       }
+      if (leaveTimerRef.current) {
+        clearTimeout(leaveTimerRef.current);
+        leaveTimerRef.current = 0;
+      }
       subscribedEditorRef.current = null;
       prevEditor = null;
+      prevEditorDom = null;
       window.removeEventListener("scroll", onScroll, true);
       window.removeEventListener("resize", onResize);
-      editorDom?.removeEventListener("mousemove", onMouseMove);
       if (installSelectionChange) {
         document.removeEventListener("selectionchange", onDocSelectionChange);
       }
     };
-    // editorRef is a stable React ref; this effect mounts the listeners
-    // exactly once. The schedule closure reads `cacheRef.current` at call
-    // time, so it always sees the latest cache without a re-attach.
   }, [editorRef]);
 
   // Recompute placement when the viewport cache version bumps (editor
-  // resize, sidebar toggle). Only triggers a schedule — no listener
-  // churn. Before Cut 7 this dep lived on the listener-install effect
-  // and re-attached every DOM listener per cache tick.
+  // resize, sidebar toggle).
   useEffect(() => {
     scheduleRefRef.current();
-    // cacheRef is read inside the schedule closure; we only need to
-    // trigger on version bumps.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [cacheVersion]);
 
-  // ---------------------------------------------------------------------------
-  // Click / lift gesture
-  // ---------------------------------------------------------------------------
-
-  const poppedRef = useRef(popped);
-  useEffect(() => {
-    poppedRef.current = popped;
-  }, [popped]);
-  const dragHandleMenu = useDragHandleMenu();
-  const dragHandleMenuRef = useRef(dragHandleMenu);
-  useEffect(() => {
-    dragHandleMenuRef.current = dragHandleMenu;
-  }, [dragHandleMenu]);
-
-  useEffect(() => {
-    const handleEl = handleElRef.current;
-    if (!handleEl) return;
-    const onMouseDown = (downEv: MouseEvent) => {
-      if (downEv.button !== 0) return;
-      downEv.preventDefault();
-      downEv.stopPropagation();
+  // Per-handle mouseenter/leave so the editor's mouseleave grace knows
+  // whether to defer the clear.
+  const onHandleEnter = useCallback(() => {
+    mouseOverHandleRef.current = true;
+    if (leaveTimerRef.current) {
+      clearTimeout(leaveTimerRef.current);
+      leaveTimerRef.current = 0;
+    }
+  }, []);
+  const onHandleLeave = useCallback(() => {
+    mouseOverHandleRef.current = false;
+    // Treat leaving the handle like leaving the editor — defer the
+    // clear so the user can move back onto a different handle or back
+    // into the editor.
+    if (leaveTimerRef.current) clearTimeout(leaveTimerRef.current);
+    leaveTimerRef.current = window.setTimeout(() => {
+      leaveTimerRef.current = 0;
+      if (mouseOverHandleRef.current) return;
+      // If the mouse is back over the editor DOM, mousemove will have
+      // already restored mousePosRef. If not, clear.
       const editor = editorRef.current;
       if (!editor) return;
-      // Use the last-known ref so the gesture survives a brief focus
-      // loss (clicking the portaled handle outside the contenteditable
-      // can collapse the live selection in some browsers).
-      const startRef = lastRefRef.current;
-      if (!startRef) return;
-      // For TextObjectRefs, derive the tentative popout key up front and
-      // refuse to lift if it's already popped (matches legacy per-NodeView
-      // behavior — the user closes the float via its X button rather than
-      // re-grabbing). SelectionRefs have no key until hydration at lift
-      // time; we can't pre-check them, so the isPopped check happens
-      // after hydration below.
-      if (startRef.kind !== "selection") {
-        const tentativeKey = popoutKeyForLift(startRef);
-        if (tentativeKey && poppedRef.current?.isPopped(tentativeKey)) {
-          // Still allow click-to-open-menu below; just no lift.
-        }
+      const m = mousePosRef.current;
+      if (m) {
+        const overEditor = (() => {
+          const el = document.elementFromPoint(m.clientX, m.clientY);
+          return el ? editor.view.dom.contains(el) : false;
+        })();
+        if (overEditor) return;
       }
-      handleEl.classList.add("is-pressed");
-      const startX = downEv.clientX;
-      const startY = downEv.clientY;
-      let triggered = false;
+      mousePosRef.current = null;
+      scheduleRefRef.current();
+    }, MOUSE_LEAVE_GRACE_MS);
+  }, [editorRef]);
 
-      const onMove = (mv: MouseEvent) => {
-        if (triggered) return;
-        const dx = mv.clientX - startX;
-        const dy = mv.clientY - startY;
-        if (dx * dx + dy * dy < LIFT_THRESHOLD * LIFT_THRESHOLD) return;
-        triggered = true;
-
-        // Selection lifts hydrate at commit (Phase E): stamp the
-        // `linkedAnchor` mark with a fresh `anchorId` (or reuse an
-        // existing one that already covers the range) and convert to a
-        // `linkedRange` TextObjectRef. After this conversion, every
-        // popout shares the unified TextObject path — there's no
-        // session-only float category left.
-        let ref: TextObjectRef = lastRefRef.current as TextObjectRef ?? startRef as TextObjectRef;
-        const rawRef = lastRefRef.current ?? startRef;
-        if (rawRef.kind === "selection") {
-          const docSize = editor.state.doc.content.size;
-          const safeFrom = Math.max(0, Math.min(rawRef.from, docSize));
-          const safeTo = Math.max(0, Math.min(rawRef.to, docSize));
-          if (safeFrom >= safeTo) {
-            cleanup();
-            return;
-          }
-          const hydrated = hydrateSelectionToTextObject(
-            editor.view,
-            safeFrom,
-            safeTo,
-          );
-          if (!hydrated) {
-            cleanup();
-            return;
-          }
-          ref = hydrated;
-        } else {
-          ref = rawRef;
-        }
-
-        const { width, height } = floatSizeFor(ref.kind);
-        const spawn = {
-          x: Math.round(mv.clientX - width / 2),
-          y: Math.round(mv.clientY - SPAWN_CURSOR_OFFSET_Y),
-          width,
-          height,
-        };
-
-        // TextObjectRef path (includes `linkedRange` post-hydration).
-        // Emit `textobject:<kind>:<id>` via `textObjectPopoutKey`; skip
-        // lift for kinds whose float bodies haven't been wired yet.
-        const cardKey = popoutKeyForLift(ref);
-        if (!cardKey) {
-          cleanup();
-          return;
-        }
-        if (poppedRef.current?.isPopped(cardKey)) {
-          cleanup();
-          return;
-        }
-        // Best-effort: highlight the source block's wrapper before the
-        // float spawns. Locate the wrapper via the editor's DOM lookup.
-        const wrapperRect = handleEl.getBoundingClientRect();
-        setCardLiftTarget({
-          cardKey,
-          rect: {
-            left: wrapperRect.left,
-            top: wrapperRect.top,
-            width: wrapperRect.width,
-            height: wrapperRect.height,
-          },
-        });
-        window.setTimeout(() => setCardLiftTarget(null), 150);
-        setCardLiftHandoff({
-          cardKey,
-          clientX: mv.clientX,
-          clientY: mv.clientY,
-          width,
-          height,
-        });
-        poppedRef.current?.popOutAtRect(cardKey, spawn);
-        cleanup();
-      };
-
-      const onUp = () => {
-        // No lift — treat as a click and open the action menu.
-        if (!triggered) {
-          const open = dragHandleMenuRef.current?.open;
-          const ref = lastRefRef.current ?? startRef;
-          if (open && ref) {
-            // Hydrate the source block's uuid lazily for refs whose id
-            // might still be null (e.g. a fresh empty paragraph the user
-            // just typed into). SelectionRefs already carry a hydrated
-            // paragraphId from the resolver.
-            if (ref.kind !== "selection") {
-              const ed = editorRef.current;
-              if (ed && !ref.id) {
-                // No id resolved — skip.
-                cleanup();
-                return;
-              }
-            }
-            const rect = handleEl.getBoundingClientRect();
-            open(ref, rect);
-          }
-        }
-        cleanup();
-      };
-      const cleanup = () => {
-        window.removeEventListener("mousemove", onMove);
-        window.removeEventListener("mouseup", onUp);
-        handleEl.classList.remove("is-pressed");
-      };
-      window.addEventListener("mousemove", onMove);
-      window.addEventListener("mouseup", onUp);
-    };
-    handleEl.addEventListener("mousedown", onMouseDown);
-    return () => {
-      handleEl.removeEventListener("mousedown", onMouseDown);
-    };
-  }, [editorRef, placement.visible]);
-
-  // Click-to-ensure-anchor-uuid fast path: when the user clicks the
-  // handle on a fresh paragraph that has no uuid yet, we need to mint
-  // one before the menu opens. Wire this through the same `useEffect`
-  // above by checking the ref at click time. (Done inline above.)
-  void ensureAnchorUuid;
-
-  if (!placement.visible) return null;
+  if (placements.length === 0) return null;
   if (typeof document === "undefined") return null;
   return createPortal(
+    <>
+      {placements.map((p) => (
+        <GrabHandleRender
+          key={refKey(p.ref)}
+          placement={p}
+          onBeginGesture={beginGesture}
+          onMouseEnter={onHandleEnter}
+          onMouseLeave={onHandleLeave}
+        />
+      ))}
+    </>,
+    document.body,
+  );
+}
+
+interface GrabHandleRenderProps {
+  placement: Placement;
+  onBeginGesture: (ev: MouseEvent, el: HTMLDivElement, ref: TextObjectRef | SelectionRef) => void;
+  onMouseEnter: () => void;
+  onMouseLeave: () => void;
+}
+
+function GrabHandleRender({
+  placement,
+  onBeginGesture,
+  onMouseEnter,
+  onMouseLeave,
+}: GrabHandleRenderProps) {
+  const elRef = useRef<HTMLDivElement | null>(null);
+  useEffect(() => {
+    const el = elRef.current;
+    if (!el) return;
+    const handler = (ev: MouseEvent) => {
+      onBeginGesture(ev, el, placement.ref);
+    };
+    el.addEventListener("mousedown", handler);
+    return () => {
+      el.removeEventListener("mousedown", handler);
+    };
+  }, [placement.ref, onBeginGesture]);
+  return (
     <div
-      ref={handleElRef}
+      ref={elRef}
       className="text-object-grab-handle"
       style={{ position: "fixed", left: placement.left, top: placement.top }}
       title="Drag to pop out, click for actions"
       aria-hidden="true"
+      onMouseEnter={onMouseEnter}
+      onMouseLeave={onMouseLeave}
     >
       <svg width="10" height="14" viewBox="0 0 10 14" fill="currentColor">
         <circle cx="3" cy="2" r="1.2" />
@@ -825,7 +862,6 @@ export function TextObjectGrabHandle({ editorRef }: Props) {
         <circle cx="3" cy="12" r="1.2" />
         <circle cx="7" cy="12" r="1.2" />
       </svg>
-    </div>,
-    document.body,
+    </div>
   );
 }
