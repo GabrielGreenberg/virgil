@@ -303,6 +303,43 @@ Selection-from-card on inline atoms: 2px ring in
 `--link-anchor-color`. On Mode-A paragraph anchors: subtle left-border
 stripe.
 
+## Gutter chrome
+
+The editor's left padding (`--editor-pl`, default 88px) houses two
+shared chrome columns, expressed as CSS variables in `:root` so every
+consumer reads the same source:
+
+- `--gutter-col-chevron` (default `-44px`) — fold chevron column for
+  headings and the texBlock pod. Consumed by `.heading-fold-chevron`
+  and `.tex-block-fold-chevron`.
+- `--gutter-col-handle-inset` (default `22px`) — distance from
+  `contentLeft` to the grab-handle baseline column. Read by JS via
+  `getComputedStyle` in [src/hooks/useEditorViewportCache.ts](src/hooks/useEditorViewportCache.ts)
+  and fed to [src/text-objects/handle-layout.ts](src/text-objects/handle-layout.ts)
+  so JS placement and CSS chrome share one knob.
+
+Grab-handle placement is registry-driven (see
+[src/text-objects/text-object-registry.ts](src/text-objects/text-object-registry.ts)).
+Two policies, branched on `meta.isSubObject`:
+
+- **Top-level** (paragraph, heading, exampleBlock, bulletList,
+  texBlock, latexComment, etc.) — handle parks at
+  `contentLeft − var(--gutter-col-handle-inset)`. Shared baseline
+  column across every kind.
+- **Sub-object** (listItem, exampleItem) — handle indents into the
+  parent's marker zone at `contentLeft − decorationSafety −
+  SUB_OBJECT_GAP`, with breathing room past the bullet / ex-marker.
+
+Adding a new TextObject kind requires no gutter-chrome CSS — drop a
+registry entry, set `isSubObject` and (for sub-objects)
+`decorationSafety`, and the handle places itself. Tune the visual
+globally by editing the CSS variables.
+
+Grab-handle drag is the **only** popout mechanism for text objects —
+the per-kind popout buttons (`.par-popout-btn`, `.expex-popout-btn`,
+etc.) were retired in the Text-Object refactor. Don't reintroduce a
+parallel popout affordance.
+
 ## Marginalia
 
 Two gutters (left wider for the heading-fold chevron, right narrower).

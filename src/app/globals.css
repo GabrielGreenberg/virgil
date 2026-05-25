@@ -81,6 +81,14 @@
   --h2h3-color: var(--editor-text-color);
   --par-title-size: 0.78rem;
   --par-title-color: #c45a5a;
+  /* Gutter coordinate system — distances are CSS-negative px from the
+     content column's left edge. Two columns share this gutter: the
+     fold chevron (leftmost) and the grab-handle baseline (between
+     chevron and content). The handle inset is also read by
+     handle-layout.ts via getComputedStyle so JS placement and CSS
+     chrome stay in lockstep. See STYLE_GUIDE.md "Gutter chrome". */
+  --gutter-col-chevron: -44px;
+  --gutter-col-handle-inset: 22px;
   /* Inter-block vertical rhythm. Owned by each block's margin-top
      (margin-bottom: 0 on every block) so the gap is predictable
      regardless of margin-collapse. The .par-title-annotation overlays
@@ -702,7 +710,7 @@ textarea,
    down; folded state rotates the chevron so it faces into the heading. */
 .heading-fold-chevron {
   position: absolute;
-  left: -36px;
+  left: var(--gutter-col-chevron, -44px);
   top: 0.5em;
   width: 14px;
   height: 14px;
@@ -818,7 +826,7 @@ textarea,
 
 .tex-block-fold-chevron {
   position: absolute;
-  left: -36px;
+  left: var(--gutter-col-chevron, -44px);
   top: 0;
   width: 14px;
   height: 14px;
@@ -849,40 +857,6 @@ textarea,
 .tex-block-fold-chevron.is-folded:hover {
   color: var(--footnote-color, #b45757);
   filter: brightness(0.85);
-}
-
-.tex-block-drag-handle {
-  position: absolute;
-  left: -18px;
-  top: 0;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 14px;
-  height: 14px;
-  opacity: 0;
-  pointer-events: none;
-  transition: opacity 0.15s;
-  cursor: grab;
-  user-select: none;
-  color: var(--muted-light, #b5b0aa);
-}
-.tex-block:hover .tex-block-drag-handle {
-  opacity: 1;
-  pointer-events: auto;
-}
-.tex-block-drag-handle:hover {
-  color: var(--ink, #3a362f);
-  background: rgba(0, 0, 0, 0.06);
-  border-radius: 3px;
-}
-.tex-block-drag-handle:active,
-.tex-block-drag-handle.is-pressed {
-  cursor: grabbing;
-  color: var(--ink, #3a362f);
-  background: rgba(0, 0, 0, 0.08);
-  border-radius: 3px;
-  transform: translateY(1px);
 }
 
 /* Collapsed preview — sits in place of the CodeMirror pod when the
@@ -1212,18 +1186,18 @@ textarea,
   display: inline;
 }
 
-/* Left-margin hover sensor — DOM element (not pseudo) so :has() can react
-   to its hover state. Covers the gutter strip from the text edge out
-   through the popout-button position. Triggers the popout-button
-   reveal and bridges the mouse from text → drag handle without a
-   dead zone. */
+/* DEAD post-popout-cleanup — the :has() selectors this fed were
+   deleted along with .par-popout-btn / .expex-popout-btn. The JSX
+   in Editor.tsx (paragraph + heading wrappers) and expex.ts
+   (exampleBlock wrapper) still emits the div; remove those NodeView
+   emissions in a follow-up sweep, then delete this rule. */
 .par-left-margin-zone {
   position: absolute;
   left: -60px;
   top: 0;
   width: 60px;
   height: 100%;
-  pointer-events: auto;
+  pointer-events: none;
 }
 
 /* Container for paragraph body + drag handle. The handle is positioned
@@ -1308,93 +1282,10 @@ textarea,
   transition: filter 80ms ease-out;
 }
 
-/* Paragraph popout button — sits in the left margin immediately to the
-   left of the grab handle. Revealed when the grab handle, the
-   left-margin hover zone, or the button itself is hovered. */
-.par-popout-btn {
-  position: absolute;
-  /* Grab handle sits at left: -14px with width 12px. Button is 20px
-     wide; -36px puts its right edge ~2px before the handle. */
-  left: -36px;
-  /* Vertically center the 20px button within the first text line
-     (line-height = font-size * line-height-multiplier). */
-  top: calc((var(--editor-font-size, 1.05rem) * var(--editor-line-height, 1.8) - 20px) / 2);
-  opacity: 0;
-  pointer-events: auto;
-  transition: opacity 0.15s;
-  z-index: 2;
-}
-.par-title-wrapper.has-text:has(.par-left-margin-zone:hover) .par-popout-btn,
-.par-title-wrapper.has-text .par-popout-btn:hover {
-  opacity: 1;
-}
-
-/* Heading drag handle and popout button — counterpart of the paragraph
-   chrome, sitting in the same inner-left margin slot for chapters/
-   sections/subsections. Level-specific top adjustments line the chrome
-   up with the heading text baseline (larger headings have more leading
-   and need to drop the chrome a bit). */
+/* heading-wrapper needs `position: relative` so the absolutely-
+   positioned fold chevron anchors here. */
 .heading-wrapper {
-  /* heading-wrapper already has position: relative implicitly via the
-     fold chevron rules, but make it explicit so the absolutely-
-     positioned drag handle / popout button anchor here. */
   position: relative;
-}
-.heading-drag-handle {
-  position: absolute;
-  left: -18px;
-  top: 0;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 14px;
-  height: 14px;
-  opacity: 0;
-  pointer-events: none;
-  transition: opacity 0.15s;
-  cursor: grab;
-  user-select: none;
-  color: var(--muted-light, #b5b0aa);
-}
-.heading-drag-handle:hover {
-  color: var(--ink, #3a362f);
-  background: rgba(0, 0, 0, 0.06);
-  border-radius: 3px;
-}
-.heading-drag-handle:active { cursor: grabbing; }
-.heading-drag-handle:active,
-.heading-drag-handle.is-pressed {
-  color: var(--ink, #3a362f);
-  background: rgba(0, 0, 0, 0.08);
-  border-radius: 3px;
-  transform: translateY(1px);
-}
-.heading-drag-handle.is-menu-open {
-  color: var(--ink, #3a362f);
-  background: rgba(0, 0, 0, 0.10);
-  border-radius: 3px;
-}
-/* Per-level top offsets — match the fold-chevron alignment so all the
-   heading chrome lines up. h0 uses the parent-class selector because
-   `:has(h0)` is unreliable across browsers (h0 is an unknown element). */
-.heading-wrapper-l0 .heading-drag-handle { top: 0.95em; }
-.heading-wrapper:has(h1) .heading-drag-handle { top: 0.85em; }
-.heading-wrapper:has(h2) .heading-drag-handle { top: 0.75em; }
-.heading-wrapper:has(h3) .heading-drag-handle { top: 0.6em; }
-.heading-wrapper:has(h4) .heading-drag-handle { top: 0.5em; }
-.heading-wrapper:has(h5) .heading-drag-handle { top: 0.5em; }
-.heading-wrapper:has(h6) .heading-drag-handle { top: 0.5em; }
-
-.heading-wrapper:hover .heading-drag-handle {
-  opacity: 1;
-  pointer-events: auto;
-}
-
-/* Heading float — drag handle always visible, mirroring the paragraph
-   float behavior. */
-.heading-wrapper.heading-float-heading .heading-drag-handle {
-  opacity: 1;
-  pointer-events: auto;
 }
 
 /* Section-handle anchored to the float body itself (rather than to a
@@ -1517,12 +1408,6 @@ textarea,
   margin-left: -0.3em;
   border-left: 3px solid var(--blockquote-border, #d4cfc8);
   padding-left: 1.3em;
-}
-
-/* Push the popout button further into the gutter inside blockquotes so it
-   has breathing room from the grey quote bar. */
-.tiptap blockquote .par-popout-btn {
-  left: -44px;
 }
 
 .tiptap ul {
@@ -3073,7 +2958,7 @@ body[data-drop-mode-active="true"] [data-floating-panel="true"][data-drop-mode-s
  * and the pod itself carries the 1.2em margin-bottom from
  * .heading-annotation for breathing room before the next content. */
 .expex-label-annotation {
-  margin-left: 2rem; /* matches A-B in the block grid (1.5em + 0.5em at body font) */
+  margin-left: 2.4rem; /* matches A-B in the block grid (1.5em + 0.8em at body font) */
   margin-top: 0;
   /* margin-bottom inherited from .heading-annotation (1.2em) */
   width: max-content;
@@ -3083,71 +2968,16 @@ body[data-drop-mode-active="true"] [data-floating-panel="true"][data-drop-mode-s
 .expex-block {
   position: relative;
   display: grid;
-  /* A-B = 2em: number col + gap. Same total width as B-C in
-   * .expex-item below so (n)/letter/text align in equal increments. */
+  /* A-B = 2.3em: number col + gap. Same total width as B-C in
+   * .expex-item below so (n)/letter/text align in equal increments.
+   * Widened from 2em (was 0.5em column-gap) to give the inner-item
+   * grab handle visual breathing room in the marker zone. */
   grid-template-columns: 1.5em 1fr;
-  column-gap: 0.5em;
+  column-gap: 0.8em;
   row-gap: 0;
   align-items: start;
   margin: 0 0 -0.1em 0; /* pull pod tight under last text line, like h1/h2 do */
   padding: 0;
-}
-
-/* Drag handle on the block's left edge — positioned relative to the
- * block so its top aligns with the first line of text, horizontally
- * matching the regular paragraph drag handle (left: -14px). Hidden
- * until the gutter (left-margin zone, drag handle, or popout button)
- * is hovered — same trigger pattern as paragraph chrome. */
-.expex-drag-handle {
-  position: absolute;
-  left: -14px;
-  top: 0.2em;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 12px;
-  height: calc(var(--editor-font-size, 1.05rem) * var(--editor-line-height, 1.8));
-  cursor: grab;
-  color: var(--muted-light, #b5b0aa);
-  opacity: 0;
-  pointer-events: none;
-  transition: opacity 0.15s;
-  user-select: none;
-}
-
-.expex-par-wrapper:has(.expex-drag-handle:hover) .expex-drag-handle,
-.expex-par-wrapper:has(.par-left-margin-zone:hover) .expex-drag-handle,
-.expex-par-wrapper:has(.expex-popout-btn:hover) .expex-drag-handle {
-  opacity: 1;
-  pointer-events: auto;
-}
-
-.expex-drag-handle:hover {
-  color: var(--muted, #8a8580);
-}
-
-.expex-drag-handle:active {
-  cursor: grabbing;
-  color: var(--ink, #3a362f);
-}
-
-/* Example popout button — sits in the gutter immediately to the left
- * of the drag handle, hover-revealed via the left-margin zone or the
- * handle/button itself. Mirrors .par-popout-btn geometry: -36px puts
- * its right edge ~2px before the handle at -14px. */
-.expex-popout-btn {
-  position: absolute;
-  left: -36px;
-  top: calc(0.2em + (var(--editor-font-size, 1.05rem) * var(--editor-line-height, 1.8) - 20px) / 2);
-  opacity: 0;
-  pointer-events: auto;
-  transition: opacity 0.15s;
-  z-index: 2;
-}
-.expex-par-wrapper:has(.expex-drag-handle:hover) .expex-popout-btn,
-.expex-par-wrapper:has(.par-left-margin-zone:hover) .expex-popout-btn,
-.expex-par-wrapper:has(.expex-popout-btn:hover) .expex-popout-btn {
-  opacity: 1;
 }
 
 .expex-number {
@@ -3182,7 +3012,7 @@ body[data-drop-mode-active="true"] [data-floating-panel="true"][data-drop-mode-s
  * grid, and the label pod sits below as a plain block sibling so
  * block-flow margins (heading pattern) work. The negative bottom
  * margin tucks the pod tight under the last text line.
- * B-C = 2em (marker col + gap), matching A-B in the block grid above. */
+ * B-C = 2.3em (marker col + gap), matching A-B in the block grid above. */
 .expex-item {
   display: block;
   margin: 0.1em 0 -0.1em 0;
@@ -3193,7 +3023,7 @@ body[data-drop-mode-active="true"] [data-floating-panel="true"][data-drop-mode-s
 .expex-item-row {
   display: grid;
   grid-template-columns: 1.5em 1fr;
-  column-gap: 0.5em;
+  column-gap: 0.8em;
   align-items: start;
 }
 
@@ -3201,7 +3031,7 @@ body[data-drop-mode-active="true"] [data-floating-panel="true"][data-drop-mode-s
  * (the left edge of the body column = where the item's text starts).
  * Bottom margin inherits the 1.2em from .heading-annotation. */
 .expex-item-label-annotation {
-  margin-left: 2rem; /* shift by B-C so the pod sits at C, the body column */
+  margin-left: 2.4rem; /* shift by B-C so the pod sits at C, the body column */
   margin-top: 0;
   /* margin-bottom inherited from .heading-annotation (1.2em) */
   width: max-content;
@@ -3229,8 +3059,8 @@ body[data-drop-mode-active="true"] [data-floating-panel="true"][data-drop-mode-s
   margin-bottom: 0;
 }
 
-/* Nested items inherit the 1.5em + 0.5em column structure, so each
- * tier indents by exactly 2em (B-C) — matching A-B in the block grid.
+/* Nested items inherit the 1.5em + 0.8em column structure, so each
+ * tier indents by exactly 2.3em (B-C) — matching A-B in the block grid.
  * No extra margin needed; the grid alone produces a regular cadence. */
 
 /* Gloss — interlinear tiers aligned on a CSS grid. Each aligned row

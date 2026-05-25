@@ -58,11 +58,7 @@ import {
   isTextObjectKind,
   textObjectPopoutKey,
 } from "./text-object-registry";
-import {
-  BULLET_DECORATION_WIDTH,
-  HANDLE_GAP,
-  computeHandleLeftEdge,
-} from "./handle-layout";
+import { computeHandleLeftEdge } from "./handle-layout";
 import type {
   SelectionRef,
   TextObjectKind,
@@ -318,22 +314,22 @@ function computePlacement(
   const kind: TextObjectKind | null =
     ref.kind === "selection" ? null : ref.kind;
   const meta = kind ? TEXT_OBJECT_REGISTRY[kind] : null;
-  // editorColumnLeft is the editor's content-column edge — the gutter
-  // ceiling that top-level handles clamp to. Sub-objects (listItem /
-  // exampleItem) are themselves indented past it, so their handles can
-  // legitimately render further left than the sub-object's own DOM edge
-  // (into the decoration zone). Reading this from `editor.view.dom`
-  // (the .ProseMirror element) gives the right reference for both.
+  // editorColumnLeft is the .ProseMirror element's outside-left edge —
+  // the floor we clamp sub-object handles against on narrow viewports.
+  // baselineInset is read from --gutter-col-handle-inset (via the
+  // cache) so JS placement and CSS chrome share one source.
   const editorColumnLeft = editor.view.dom.getBoundingClientRect().left;
+  const baselineInset = cache.gutterInset;
   const left = meta
     ? computeHandleLeftEdge({
         elDOM: anchorDom,
         kind: kind as TextObjectKind,
         node: editor.state.doc.nodeAt(blockNodePos) ?? undefined,
         editorColumnLeft,
+        baselineInset,
         meta,
       })
-    : editorColumnLeft - HANDLE_GAP - BULLET_DECORATION_WIDTH / 2;
+    : anchorDom.getBoundingClientRect().left - baselineInset;
 
   // Top edge: prefer fromCoords.top (the first-line top), but fall back
   // to the anchor DOM's top when coordsAtPos returns 0 for multi-line

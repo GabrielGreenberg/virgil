@@ -35,7 +35,14 @@ export interface EditorViewportCache {
   scrollParent: HTMLElement | null;
   scrollTop: number;
   scrollBottom: number;
+  /** Pixels read from --gutter-col-handle-inset on the editor element.
+   *  TextObjectGrabHandle parks top-level handles at contentLeft −
+   *  gutterInset (see src/text-objects/handle-layout.ts). Read here
+   *  so JS placement and CSS chrome share one source. */
+  gutterInset: number;
 }
+
+const DEFAULT_GUTTER_INSET = 22;
 
 const EMPTY_CACHE: EditorViewportCache = {
   editorEl: null,
@@ -43,6 +50,7 @@ const EMPTY_CACHE: EditorViewportCache = {
   scrollParent: null,
   scrollTop: 0,
   scrollBottom: 0,
+  gutterInset: DEFAULT_GUTTER_INSET,
 };
 
 export function findScrollParent(el: HTMLElement | null): HTMLElement | null {
@@ -80,8 +88,9 @@ export function useEditorViewportCache(editor: Editor | null): {
 
     const refresh = () => {
       if (!editorEl.isConnected) return;
+      const cs = window.getComputedStyle(editorEl);
       const rect = editorEl.getBoundingClientRect();
-      const padRight = parseFloat(window.getComputedStyle(editorEl).paddingRight) || 0;
+      const padRight = parseFloat(cs.paddingRight) || 0;
       const scrollParent = findScrollParent(editorEl);
       const scrollRect = scrollParent
         ? scrollParent.getBoundingClientRect()
@@ -89,13 +98,19 @@ export function useEditorViewportCache(editor: Editor | null): {
       const editorRight = rect.right - padRight;
       const scrollTop = scrollRect.top;
       const scrollBottom = scrollRect.bottom;
+      const insetRaw = cs.getPropertyValue("--gutter-col-handle-inset").trim();
+      const parsedInset = parseFloat(insetRaw);
+      const gutterInset = Number.isFinite(parsedInset) && parsedInset > 0
+        ? parsedInset
+        : DEFAULT_GUTTER_INSET;
       const prev = cacheRef.current;
       if (
         prev.editorEl === editorEl &&
         prev.editorRight === editorRight &&
         prev.scrollParent === scrollParent &&
         prev.scrollTop === scrollTop &&
-        prev.scrollBottom === scrollBottom
+        prev.scrollBottom === scrollBottom &&
+        prev.gutterInset === gutterInset
       ) {
         return;
       }
@@ -105,6 +120,7 @@ export function useEditorViewportCache(editor: Editor | null): {
         scrollParent,
         scrollTop,
         scrollBottom,
+        gutterInset,
       };
       setVersion((v) => (v + 1) & 0xffff);
     };
