@@ -1278,9 +1278,23 @@ export default function EditorLayout() {
   // setters from useViewPrefs; here we just derive the read shape.
   const omniCategories = prefs.omniCategories;
   const omniHideAllCards = prefs.omniHideAllCards;
+  // Per-side Sets memoized separately so `getOmniEnabled(side)` returns
+  // a reference-stable Set across renders. Previously the getter built
+  // `new Set(omniCategories[side])` on every call — the fresh reference
+  // broke OmniViewPanel's `memo()` and cascaded through useInTextPositions
+  // into a per-keystroke `coordsAtPos` storm. See plan
+  // `ok-lets-do-a-dreamy-thacker.md` (flicker fix).
+  const leftEnabled = useMemo(
+    () => new Set(omniCategories.left),
+    [omniCategories.left],
+  );
+  const rightEnabled = useMemo(
+    () => new Set(omniCategories.right),
+    [omniCategories.right],
+  );
   const getOmniEnabled = useCallback(
-    (side: "left" | "right") => new Set(omniCategories[side]),
-    [omniCategories],
+    (side: "left" | "right") => (side === "left" ? leftEnabled : rightEnabled),
+    [leftEnabled, rightEnabled],
   );
   // Kept as a stable alias for the new useViewPrefs setter so MenuBar's
   // "reset side" wiring doesn't need touching.

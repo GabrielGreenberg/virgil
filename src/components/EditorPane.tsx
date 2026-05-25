@@ -4520,6 +4520,23 @@ function PaneRail({
 }: PaneRailProps) {
   const isLeft = side === "left";
 
+  // Live examples list — matches OmniHost's `examples` prop. Memoized
+  // on docVersion (debounced ~10×/sec) so the doc-descendants walk in
+  // `getExamples()` doesn't run on every parent render, AND the array
+  // reference is stable across renders within the same docVersion
+  // window. Without the memo, a fresh examples array per render
+  // invalidated OmniHost's `items` useMemo every keystroke, cascading
+  // through `useInTextPositions` into a per-keystroke `coordsAtPos`
+  // storm visible as card flicker below the cursor. Matches the
+  // `ExamplesPanelHost` pattern at line 5187. Hook is hoisted above
+  // the early return so Rules of Hooks ordering stays stable across
+  // renders where `viewPrefs` toggles in/out.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const examples = useMemo(
+    () => editorRef.current?.getExamples() ?? [],
+    [editorRef, docVersion],
+  );
+
   // Canonical PanelColumn rendering — both main app and Library Reader
   // pass `viewPrefs` (the latter via `useReaderViewPrefs()`), so this
   // is the only render path. The `viewPrefs?` prop type is kept
@@ -4553,11 +4570,6 @@ function PaneRail({
     const splitRatio = side === "left"
       ? viewPrefs.prefs.splitLeftRatio
       : viewPrefs.prefs.splitRightRatio;
-
-    // Live examples list — matches OmniHost's `examples` prop. Cheap
-    // re-derivation; OmniHost's outer useMemo on its `items` array
-    // shields downstream from identity churn.
-    const examples = editorRef.current?.getExamples() ?? [];
 
     const omniSlot: PanelSlot = {
       omni: (

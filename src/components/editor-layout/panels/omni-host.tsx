@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { getHiddenTopLevelIndices, sectionFoldingPluginKey } from "@/lib/section-folding";
+import { getBus } from "@/lib/tiptap/doc-structure";
 import type { Side } from "@/hooks/useViewPrefs";
 import OmniViewPanel, { type OmniItem, type OmniCategory } from "@/panels/Omni";
 import { buildCitationOmniItems } from "@/panels/Citations";
@@ -150,24 +151,42 @@ export interface OmniHostProps {
 export function OmniHost(p: OmniHostProps) {
   const { editorInstance, editorRef, setOverrideEditor } = useEditorRefContext();
 
-  // Re-render only when the doc actually changed or the section-folding
-  // plugin state was touched — those are the two inputs `hiddenTopLevel`
-  // (the downstream memo) actually reads. Listening to every transaction
-  // (selection moves, decoration recomputes, plugin housekeeping) caused
-  // thousands of idle re-renders, surfacing as a duplicate-key warning
-  // storm whenever the doc happened to contain any colliding inline ids.
+  // Re-derive `hiddenTopLevel` only on events that legitimately invalidate
+  // it: fold-state changes (via the section-folding plugin's meta) and
+  // heading add/remove (via the DocStructureBus — heading positions
+  // changing shifts which top-level child indices are folded).
+  //
+  // Ordinary typing inside any block — including a heading's text —
+  // doesn't change which top-level indices are folded. Pre-fix, this
+  // bumped on every `docChanged` transaction; the resulting OmniHost
+  // re-render cascaded through `useInTextPositions.measure()` into a
+  // per-keystroke `coordsAtPos` storm visible as card flicker below
+  // the cursor. See plan `ok-lets-do-a-dreamy-thacker.md` (flicker fix).
   const [editorTick, setEditorTick] = useState(0);
   useEffect(() => {
     if (!editorInstance) return;
+    const bump = () => setEditorTick((v) => v + 1);
+    const bus = getBus(editorInstance);
+    // (a) Fold-toggle / collapseAll / expandAll: dispatched as a
+    //     transaction carrying `sectionFoldingPluginKey` meta. No bus
+    //     event covers this — the plugin's apply runs synchronously
+    //     inside the same tx.
     const onTr = (props: { transaction: Transaction }) => {
-      const tr = props.transaction;
-      if (tr.docChanged || tr.getMeta(sectionFoldingPluginKey) !== undefined) {
-        setEditorTick((v) => v + 1);
+      if (props.transaction.getMeta(sectionFoldingPluginKey) !== undefined) {
+        bump();
       }
     };
     editorInstance.on("transaction", onTr);
+    // (b) Heading add/remove: shifts the top-level child index map that
+    //     `getHiddenTopLevelIndices` walks. The fold-state plugin
+    //     already prunes dead UUIDs from its set on the same tx
+    //     (section-folding.ts handles that via the same bus events).
+    const u1 = bus?.onHeadingsAdded(bump) ?? (() => {});
+    const u2 = bus?.onHeadingsRemoved(bump) ?? (() => {});
     return () => {
       editorInstance.off("transaction", onTr);
+      u1();
+      u2();
     };
   }, [editorInstance]);
   const {
