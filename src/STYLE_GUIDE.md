@@ -320,7 +320,7 @@ consumer reads the same source:
 
 Grab-handle placement is registry-driven (see
 [src/text-objects/text-object-registry.ts](src/text-objects/text-object-registry.ts)).
-Two policies, branched on `meta.isSubObject`:
+Two horizontal policies, branched on `meta.isSubObject`:
 
 - **Top-level** (paragraph, heading, exampleBlock, bulletList,
   texBlock, latexComment, etc.) — handle parks at
@@ -330,10 +330,23 @@ Two policies, branched on `meta.isSubObject`:
   parent's marker zone at `contentLeft − decorationSafety −
   SUB_OBJECT_GAP`, with breathing room past the bullet / ex-marker.
 
+Two vertical policies, branched on `meta.chromeAnchor`:
+
+- **`text-top`** (paragraphs, headings, titleField, blockquotes,
+  codeBlocks, lists, listItems, exampleBlock, exampleItems,
+  linkedRange) — handle aligns with the first rendered glyph's cap-top,
+  measured via `Range.getBoundingClientRect()`. Works for any font /
+  line-height — a heading at 1.75rem reads the same as a paragraph at
+  1.05rem.
+- **`block-top`** (texBlock, latexComment, displayMath, graphicsBlock,
+  figureBlock) — handle aligns with the wrapper's visual top edge. For
+  framed visual kinds where there's no "first line of prose" to align
+  with.
+
 Adding a new TextObject kind requires no gutter-chrome CSS — drop a
-registry entry, set `isSubObject` and (for sub-objects)
-`decorationSafety`, and the handle places itself. Tune the visual
-globally by editing the CSS variables.
+registry entry, set `isSubObject`, `decorationSafety`, and
+`chromeAnchor`, and the handle places itself on both axes. Tune the
+visual globally by editing the CSS variables.
 
 Grab-handle drag is the **only** popout mechanism for text objects —
 the per-kind popout buttons (`.par-popout-btn`, `.expex-popout-btn`,

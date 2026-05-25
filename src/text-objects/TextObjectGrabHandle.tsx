@@ -331,14 +331,90 @@ function computePlacement(
       })
     : anchorDom.getBoundingClientRect().left - baselineInset;
 
-  // Top edge: prefer fromCoords.top (the first-line top), but fall back
-  // to the anchor DOM's top when coordsAtPos returns 0 for multi-line
-  // block containers. Either way, pin to scrollTop when the source has
-  // scrolled above the viewport so the handle stays in view.
-  const candidateTop = fromCoords.top > 0 ? fromCoords.top : anchorRect.top;
+  // Top edge: every kind declares its vertical anchor via
+  // `meta.chromeAnchor`. "text-top" measures the first glyph via Range
+  // so the handle aligns with rendered text regardless of font /
+  // line-height. "block-top" uses the wrapper's visual top edge — for
+  // framed visual kinds (tex pod, % comment, math, graphic, figure)
+  // where there's no "first line of prose" to align with.
+  const anchor: "text-top" | "block-top" = meta
+    ? meta.chromeAnchor
+    : resolveSelectionChromeAnchor(editor, from);
+  let candidateTop: number;
+  if (anchor === "text-top") {
+    const textTop = getTextGlyphTop(anchorDom);
+    candidateTop =
+      textTop != null
+        ? textTop
+        : fromCoords.top > 0
+          ? fromCoords.top
+          : anchorRect.top;
+  } else {
+    candidateTop = anchorRect.top;
+  }
   const top = Math.max(candidateTop, scrollTop);
 
   return { left, top, ref };
+}
+
+/** Measure the top edge of the first rendered glyph of the block's
+ *  CONTENT (not chrome) inside `anchorDom`. Used by
+ *  chromeAnchor="text-top" so the grab handle aligns with the visible
+ *  text cap-top regardless of font size or line-height.
+ *
+ *  Crucially: text inside a `contenteditable="false"` subtree is
+ *  CHROME (the `+T` affordance, the "Section"/"Title"/"Author" pod
+ *  labels, the `.par-title-add` button, etc.), NOT content. We skip
+ *  those so the handle anchors to the actual paragraph/heading text
+ *  rather than to the absolutely-positioned `+T` floating above the
+ *  wrapper. */
+function getTextGlyphTop(anchorDom: Element): number | null {
+  const tw = document.createTreeWalker(anchorDom, NodeFilter.SHOW_TEXT, {
+    acceptNode: (n) => {
+      if (!n.textContent || n.textContent.length === 0) {
+        return NodeFilter.FILTER_REJECT;
+      }
+      const parent = (n as Text).parentElement;
+      if (parent && parent.closest('[contenteditable="false"]')) {
+        return NodeFilter.FILTER_REJECT;
+      }
+      return NodeFilter.FILTER_ACCEPT;
+    },
+  });
+  const firstText = tw.nextNode() as Text | null;
+  if (!firstText) return null;
+  try {
+    const range = document.createRange();
+    range.setStart(firstText, 0);
+    range.setEnd(firstText, 1);
+    const rect = range.getBoundingClientRect();
+    return rect.top > 0 ? rect.top : null;
+  } catch {
+    return null;
+  }
+}
+
+/** For SelectionRef (kind === null), resolve the containing
+ *  TextObject's chromeAnchor by walking the PM ancestor chain. Selections
+ *  inherently span text, so default to "text-top" when no containing
+ *  TextObject resolves. */
+function resolveSelectionChromeAnchor(
+  editor: Editor,
+  from: number,
+): "text-top" | "block-top" {
+  try {
+    const $from = editor.state.doc.resolve(from);
+    for (let d = $from.depth; d >= 0; d--) {
+      const node = $from.node(d);
+      const name = node.type.name;
+      if (!isTextObjectKind(name) || name === "linkedRange") continue;
+      if (!(node.attrs?.uuid as string | null)) continue;
+      return TEXT_OBJECT_REGISTRY[name].chromeAnchor;
+    }
+  } catch {
+    // fall through to default
+  }
+  return "text-top";
 }
 
 interface Props {

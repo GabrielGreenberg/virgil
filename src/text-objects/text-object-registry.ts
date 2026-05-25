@@ -20,7 +20,7 @@ import {
 } from "./drop-adapters";
 import {
   BULLET_DECORATION_WIDTH,
-  EXAMPLE_ITEM_MAX_MARKER_WIDTH,
+  EXAMPLE_ITEM_HANDLE_INDENT,
 } from "./handle-layout";
 import type {
   DragHandleAction,
@@ -69,6 +69,7 @@ export const TEXT_OBJECT_REGISTRY: Record<TextObjectKind, TextObjectMeta> = {
     isAtomBlock: false,
     isRange: false,
     decorationSafety: 0,
+    chromeAnchor: "text-top",
     floatBodyComponent: PLACEHOLDER_FLOAT_BODY,
     actions: ALL_ACTIONS,
     // %!v: anchor; not a LaTeX command per se. Marker is the suffix
@@ -81,6 +82,7 @@ export const TEXT_OBJECT_REGISTRY: Record<TextObjectKind, TextObjectMeta> = {
     isAtomBlock: false,
     isRange: false,
     decorationSafety: 0,
+    chromeAnchor: "text-top",
     floatBodyComponent: PLACEHOLDER_FLOAT_BODY,
     initialFloatSize: { width: 480, height: 360 },
     actions: ALL_ACTIONS,
@@ -99,6 +101,7 @@ export const TEXT_OBJECT_REGISTRY: Record<TextObjectKind, TextObjectMeta> = {
     isAtomBlock: false,
     isRange: false,
     decorationSafety: 0,
+    chromeAnchor: "text-top",
     floatBodyComponent: PLACEHOLDER_FLOAT_BODY,
     initialFloatSize: { width: 480, height: 360 },
     actions: ALL_ACTIONS,
@@ -110,6 +113,7 @@ export const TEXT_OBJECT_REGISTRY: Record<TextObjectKind, TextObjectMeta> = {
     isAtomBlock: false,
     isRange: false,
     decorationSafety: 0,
+    chromeAnchor: "text-top",
     floatBodyComponent: PLACEHOLDER_FLOAT_BODY,
     initialFloatSize: { width: 480, height: 360 },
     actions: ALL_ACTIONS,
@@ -121,6 +125,7 @@ export const TEXT_OBJECT_REGISTRY: Record<TextObjectKind, TextObjectMeta> = {
     isAtomBlock: false,
     isRange: false,
     decorationSafety: 0,
+    chromeAnchor: "text-top",
     floatBodyComponent: PLACEHOLDER_FLOAT_BODY,
     actions: ALL_ACTIONS,
     dropAdapter: topLevelDropAdapter,
@@ -131,6 +136,7 @@ export const TEXT_OBJECT_REGISTRY: Record<TextObjectKind, TextObjectMeta> = {
     isAtomBlock: false,
     isRange: false,
     decorationSafety: 0,
+    chromeAnchor: "text-top",
     floatBodyComponent: PLACEHOLDER_FLOAT_BODY,
     actions: ALL_ACTIONS,
     dropAdapter: topLevelDropAdapter,
@@ -141,6 +147,7 @@ export const TEXT_OBJECT_REGISTRY: Record<TextObjectKind, TextObjectMeta> = {
     isAtomBlock: true,
     isRange: false,
     decorationSafety: 0,
+    chromeAnchor: "block-top",
     floatBodyComponent: PLACEHOLDER_FLOAT_BODY,
     actions: ALL_ACTIONS,
     dropAdapter: topLevelDropAdapter,
@@ -151,6 +158,7 @@ export const TEXT_OBJECT_REGISTRY: Record<TextObjectKind, TextObjectMeta> = {
     isAtomBlock: false,
     isRange: false,
     decorationSafety: 0,
+    chromeAnchor: "text-top",
     floatBodyComponent: PLACEHOLDER_FLOAT_BODY,
     actions: ALL_ACTIONS,
     dropAdapter: topLevelDropAdapter,
@@ -161,6 +169,7 @@ export const TEXT_OBJECT_REGISTRY: Record<TextObjectKind, TextObjectMeta> = {
     isAtomBlock: true,
     isRange: false,
     decorationSafety: 0,
+    chromeAnchor: "block-top",
     floatBodyComponent: PLACEHOLDER_FLOAT_BODY,
     actions: ALL_ACTIONS,
     dropAdapter: topLevelDropAdapter,
@@ -174,6 +183,7 @@ export const TEXT_OBJECT_REGISTRY: Record<TextObjectKind, TextObjectMeta> = {
     isAtomBlock: true,
     isRange: false,
     decorationSafety: 0,
+    chromeAnchor: "block-top",
     floatBodyComponent: PLACEHOLDER_FLOAT_BODY,
     initialFloatSize: { width: 480, height: 280 },
     actions: ALL_ACTIONS,
@@ -192,6 +202,7 @@ export const TEXT_OBJECT_REGISTRY: Record<TextObjectKind, TextObjectMeta> = {
     isAtomBlock: false,
     isRange: false,
     decorationSafety: 0,
+    chromeAnchor: "block-top",
     floatBodyComponent: PLACEHOLDER_FLOAT_BODY,
     actions: ALL_ACTIONS,
     dropAdapter: topLevelDropAdapter,
@@ -202,6 +213,7 @@ export const TEXT_OBJECT_REGISTRY: Record<TextObjectKind, TextObjectMeta> = {
     isAtomBlock: true,
     isRange: false,
     decorationSafety: 0,
+    chromeAnchor: "block-top",
     floatBodyComponent: PLACEHOLDER_FLOAT_BODY,
     actions: ALL_ACTIONS,
     dropAdapter: topLevelDropAdapter,
@@ -212,6 +224,7 @@ export const TEXT_OBJECT_REGISTRY: Record<TextObjectKind, TextObjectMeta> = {
     isAtomBlock: false,
     isRange: false,
     decorationSafety: 0,
+    chromeAnchor: "text-top",
     floatBodyComponent: PLACEHOLDER_FLOAT_BODY,
     actions: ALL_ACTIONS,
     sourceMarker: { command: "vexid", idLength: 4 },
@@ -227,6 +240,7 @@ export const TEXT_OBJECT_REGISTRY: Record<TextObjectKind, TextObjectMeta> = {
     isAtomBlock: false,
     isRange: false,
     decorationSafety: BULLET_DECORATION_WIDTH,
+    chromeAnchor: "text-top",
     floatBodyComponent: PLACEHOLDER_FLOAT_BODY,
     actions: ALL_ACTIONS,
     dropAdapter: listItemDropAdapter,
@@ -237,9 +251,13 @@ export const TEXT_OBJECT_REGISTRY: Record<TextObjectKind, TextObjectMeta> = {
     parentKind: "exampleBlock",
     isAtomBlock: false,
     isRange: false,
-    // Strategy (a): hardcode the widest of the marker cycle. Promote
-    // to `(node) => number` if shallow-depth gutter gaps look wrong.
-    decorationSafety: EXAMPLE_ITEM_MAX_MARKER_WIDTH,
+    // The inner marker lives INSIDE the exampleItem's grid (unlike
+    // listItem's bullet, which CSS renders outside the li content box),
+    // so `decorationSafety` only needs to indent the handle into the
+    // parent block's column-gap — not clear a full marker width. See
+    // EXAMPLE_ITEM_HANDLE_INDENT docs in handle-layout.ts.
+    decorationSafety: EXAMPLE_ITEM_HANDLE_INDENT,
+    chromeAnchor: "text-top",
     floatBodyComponent: PLACEHOLDER_FLOAT_BODY,
     actions: ALL_ACTIONS,
     sourceMarker: { command: "vxid", idLength: 4 },
@@ -254,6 +272,7 @@ export const TEXT_OBJECT_REGISTRY: Record<TextObjectKind, TextObjectMeta> = {
     isAtomBlock: false,
     isRange: true,
     decorationSafety: 0,
+    chromeAnchor: "text-top",
     floatBodyComponent: PLACEHOLDER_FLOAT_BODY,
     actions: ALL_ACTIONS,
     // Paired markers \vlid{id}…\vlidend{id} — added in Phase E

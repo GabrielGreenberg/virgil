@@ -224,6 +224,23 @@ export interface TextObjectMeta {
    *  breaks at shallow depth). See TEXT-OBJECT-REFACTOR.md §7. */
   decorationSafety: number | ((node: PMNode) => number);
 
+  /** Where the grab handle's vertical anchor lands.
+   *
+   *  `"text-top"` — measure the first rendered glyph's top via a
+   *  `Range` over the first character of the kind's text content.
+   *  Aligns dots with the visible text cap-top regardless of font
+   *  size / line-height, so headings at 1.75rem read the same as
+   *  body at 1.05rem.
+   *
+   *  `"block-top"` — use the wrapper's visual top edge
+   *  (`anchorDom.getBoundingClientRect().top`). For framed visual
+   *  kinds (tex pod, `%` comment, math, graphic, figure) where the
+   *  handle should grip the whole box, not its first text line.
+   *
+   *  Declared per kind so the handle "knows" where to be without
+   *  per-environment patches. */
+  chromeAnchor: "text-top" | "block-top";
+
   /** Float-body component for popouts. Chrome is unified via
    *  `TextObjectFloat`; body owns sync. Typed as `unknown` here to keep
    *  this module React-free; the registry module narrows it. */

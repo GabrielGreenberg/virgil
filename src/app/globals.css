@@ -1100,9 +1100,13 @@ textarea,
 /* When the paragraph has no title (just the hover-revealed +T affordance),
    the annotation overlays the inter-paragraph gap rather than taking its own
    row — so untitled paragraphs collapse to a single 1.1em gap. Suppressed
-   while editing so the input shifts the body down for a clear edit space. */
+   while editing so the input shifts the body down for a clear edit space.
+   Untitled tex blocks get the same treatment so the wrapper's top collapses
+   onto the pod's top — keeps the grab handle aligned with the chevron and
+   the first code line instead of floating above an empty annotation row. */
 .par-title-wrapper.has-add-btn:not(.has-title):not(.is-editing-title) > .par-title-annotation,
-.list-title-wrapper.has-add-btn:not(.has-title):not(.is-editing-title) > .par-title-annotation {
+.list-title-wrapper.has-add-btn:not(.has-title):not(.is-editing-title) > .par-title-annotation,
+.tex-block:not(:has(.par-title-text)) > .par-title-annotation {
   position: absolute;
   bottom: 100%;
   left: 0;
@@ -1215,7 +1219,11 @@ textarea,
 .text-object-grab-handle {
   position: fixed;
   display: flex;
-  align-items: center;
+  /* SVG aligned to the TOP of the handle box so the dots sit at the
+     handle's anchor Y (text-top for text-bearing kinds, block-top for
+     framed visual kinds) — not centered in the line-height-based hit
+     area. Hit area still extends down for an easy grab target. */
+  align-items: flex-start;
   justify-content: center;
   width: 12px;
   height: calc(var(--editor-font-size, 1.05rem) * var(--editor-line-height, 1.8));

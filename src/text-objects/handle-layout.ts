@@ -99,10 +99,24 @@ function resolveDecorationSafety(
 export const BULLET_DECORATION_WIDTH = 18;
 
 /**
- * Widest of the expex marker cycle (`I.`, `II.`, `III.`, etc., plus
- * the lowercase/numeric variants). Used by `exampleItem` as a
- * hardcoded constant (strategy (a)). If shallow-depth gutter gaps
- * become visually annoying, promote `exampleItem`'s `decorationSafety`
- * to a `(node) => number` that live-measures the marker text.
+ * Pixels to subtract from an exampleItem's contentLeft so the grab
+ * handle lands in the parent block's column-gap (between the outer
+ * `(1)` marker and the inner `a.` marker), NOT past the outer marker.
+ *
+ * Differs in semantic from `BULLET_DECORATION_WIDTH`. A listItem's
+ * contentLeft sits PAST the bullet (CSS list-style-position: outside),
+ * so safety = bullet-glyph width clears the bullet zone. An
+ * exampleItem's contentLeft sits AT the inner marker — the marker
+ * `a./b./c.` is inside the exampleItem's grid (column 1 of
+ * `.expex-item-row`), not outside it — so the handle only needs a
+ * small indent into the parent's column-gap. With column-gap = 0.8em
+ * ≈ 13px and handle width 12px, safety + SUB_OBJECT_GAP = 12 lands the
+ * handle's right edge flush at the inner marker with no overlap on
+ * the outer marker.
  */
-export const EXAMPLE_ITEM_MAX_MARKER_WIDTH = 28;
+export const EXAMPLE_ITEM_HANDLE_INDENT = 4;
+
+/** Legacy alias for the pre-followup name. Keep as a re-export so any
+ *  external consumer importing the old symbol keeps building; the value
+ *  is now the indent (4px), not the historical marker-width (28px). */
+export const EXAMPLE_ITEM_MAX_MARKER_WIDTH = EXAMPLE_ITEM_HANDLE_INDENT;
