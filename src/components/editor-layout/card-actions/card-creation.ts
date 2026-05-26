@@ -11,6 +11,7 @@ import type {
   TodoItem,
   QuotationGroup,
   CitationRef,
+  ArchivedSnippet,
 } from "@/lib/types";
 import type { PanelId, ViewPrefs } from "@/hooks/useViewPrefs";
 import type { TextObjectKind } from "@/text-objects/types";
@@ -90,6 +91,17 @@ export interface CardCreationDeps {
     targetKind?: TextObjectKind;
   }) => QuotationGroup;
   addCitation: (command: string, existingId?: string, unanchored?: boolean) => CitationRef;
+  /** Archive — mints a snippet and (optionally) writes a Mode A
+   *  paragraph link. The dispatcher owns the editor mutation (cleanup
+   *  walker + tr.delete) before/around the call. */
+  archiveContent: (content: unknown) => ArchivedSnippet;
+  updateArchiveSnippet: (id: string, content: unknown) => void;
+  addArchiveTextObjectId: (
+    id: string,
+    paragraphId: string,
+    targetKind?: TextObjectKind,
+  ) => void;
+  setSelectedArchiveId: (id: string | null) => void;
   setSelectedNoteId: Dispatch<SetStateAction<string | null>>;
   setSelectedCutterCardId: Dispatch<SetStateAction<string | null>>;
   setSelectedCommentId: Dispatch<SetStateAction<string | null>>;
@@ -210,6 +222,23 @@ export interface CardCreationApi {
     anchorRect?: DOMRect | null;
     mode?: CardCreateMode;
   }) => CitationRef;
+  /** Archive snippet — created post-extraction (the dispatcher slices the
+   *  doc content first, then hands the content + the surviving paragraph
+   *  uuid in here). Mode A link is written when `paragraphId` is given.
+   *  See ACTION-MENU-DIAGNOSIS.md cluster C4 — this peer of `createNote`
+   *  etc. retires the five ad-hoc archive deps that used to live on the
+   *  dispatcher. */
+  createArchiveSnippet: (opts: {
+    /** Initial plain-text content (used when rich `content` isn't given,
+     *  e.g. for empty/blank archives spawned from a button). */
+    text?: string;
+    /** Rich JSON content snapshot. Overrides `text` when present. */
+    content?: unknown;
+    paragraphId?: string | null;
+    targetKind?: TextObjectKind;
+    anchorRect?: DOMRect | null;
+    mode?: CardCreateMode;
+  }) => ArchivedSnippet;
 }
 
 export function useCardCreation(deps: CardCreationDeps): CardCreationApi {
@@ -228,6 +257,10 @@ export function useCardCreation(deps: CardCreationDeps): CardCreationApi {
     addTodoTextObjectId,
     addQuotationGroup,
     addCitation,
+    archiveContent,
+    updateArchiveSnippet,
+    addArchiveTextObjectId,
+    setSelectedArchiveId,
     setSelectedNoteId,
     setSelectedCutterCardId,
     setSelectedCommentId,
@@ -495,6 +528,36 @@ export function useCardCreation(deps: CardCreationDeps): CardCreationApi {
     [addQuotationGroup, setSelectedQuotationGroupId, pin, ensurePanelActive, popCardAtAnchor],
   );
 
+  const createArchiveSnippet = useCallback<
+    CardCreationApi["createArchiveSnippet"]
+  >(
+    (opts) => {
+      const snippet = archiveContent(opts.text ?? "");
+      if (opts.content !== undefined) {
+        updateArchiveSnippet(snippet.id, opts.content);
+      }
+      if (opts.paragraphId) {
+        addArchiveTextObjectId(snippet.id, opts.paragraphId, opts.targetKind);
+      }
+      setSelectedArchiveId(snippet.id);
+      pin("archive", snippet.id);
+      if (opts.mode === "omni") return snippet;
+      if (fromToolbar(opts))
+        popCardAtAnchor("archive", snippet.id, opts.anchorRect!);
+      else ensurePanelActive("archive");
+      return snippet;
+    },
+    [
+      archiveContent,
+      updateArchiveSnippet,
+      addArchiveTextObjectId,
+      setSelectedArchiveId,
+      pin,
+      ensurePanelActive,
+      popCardAtAnchor,
+    ],
+  );
+
   const createCitation = useCallback<CardCreationApi["createCitation"]>(
     (opts) => {
       const ref = addCitation(
@@ -526,6 +589,7 @@ export function useCardCreation(deps: CardCreationDeps): CardCreationApi {
       createFootnote,
       createQuotation,
       createCitation,
+      createArchiveSnippet,
     }),
     [
       createNote,
@@ -540,6 +604,7 @@ export function useCardCreation(deps: CardCreationDeps): CardCreationApi {
       createFootnote,
       createQuotation,
       createCitation,
+      createArchiveSnippet,
     ],
   );
 }

@@ -50,3 +50,36 @@ export function getSectionRangeByUuid(
   if (endPos === null) endPos = doc.content.size;
   return { start: startPos, end: endPos, level: foundLevel, nodes };
 }
+
+/**
+ * Locate just the heading-line range for a given heading uuid — the
+ * inner content range of the heading node itself, NOT the whole section.
+ *
+ * Used by annotation-style actions (highlight, footnote, citation, etc.)
+ * via the registry's `collectAnnotationRange` slot. The lifecycle
+ * counterpart is `getSectionRangeByUuid` (returns the whole section).
+ *
+ * Returns content positions: `{from: pos+1, to: pos + nodeSize - 1}` so
+ * a `setMark` over the range wraps only the heading text and never
+ * crosses the wrapping node's boundaries — critical for the
+ * `\section{...}`/`\vlid{}` interaction that motivated the split. See
+ * ACTION-MENU-DIAGNOSIS.md cluster C11.
+ */
+export function getHeadingLineRangeByUuid(
+  doc: PMNode,
+  headingUuid: string,
+): { from: number; to: number; node: PMNode } | null {
+  let result: { from: number; to: number; node: PMNode } | null = null;
+  doc.descendants((node, pos) => {
+    if (result) return false;
+    if (
+      node.type.name === "heading" &&
+      (node.attrs?.uuid as string | null) === headingUuid
+    ) {
+      result = { from: pos + 1, to: pos + node.nodeSize - 1, node };
+      return false;
+    }
+    return true;
+  });
+  return result;
+}

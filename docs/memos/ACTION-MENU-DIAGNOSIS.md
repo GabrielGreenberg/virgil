@@ -1,6 +1,10 @@
 # Grab-Handle Action Menu — Diagnosis Memo
 
-**Status: COMPLETE.** Hybrid diagnosis (code-read + targeted browser spot-checks) done end-to-end. §3–§4 carry the user-settled expected behavior; §5 carries predictions + ground-truth results; §6 carries 9 confirmed failure clusters ranked by cells-affected; §7 surfaces architectural questions; §8 is the handoff brief for the solutions session. **Critical finding:** C11 (heading × Highlight produces malformed LaTeX AND strips pre-existing lifted-passage marks elsewhere in the doc — silent data loss) — drives C9 to the top of the fix queue despite being only 3 cells.
+**Status: RESOLVED (2026-05-26).** Diagnosis + solutions session both complete. All 10 confirmed failure clusters landed in a single solutions pass; live verification on the dev-doc fixture confirms the critical C9+C11 data-loss fix (heading × Highlight now wraps only the heading text — `\section{\vlid{...}Heading\vlidend{...}}` — and pre-existing linkedAnchors survive). Other landings: C1 (registry curation), C5 (heading confirm dialog), C6 (last-child cascade verified end-to-end including LaTeX serialization), C10 (linkedRange paragraphId), C2/C3/C4 (lifecycle triad: bindAnchor + Mode A orphan event + archive via cardCreation). C7 (sub-object marginalia) likely-resolved per Phase C; verify visually if it resurfaces. Solutions session plan: `/Users/gabriel/.claude/plans/below-you-ll-see-the-curried-turing.md`.
+
+## Diagnosis-session header (preserved)
+
+Hybrid diagnosis (code-read + targeted browser spot-checks) done end-to-end. §3–§4 carry the user-settled expected behavior; §5 carries predictions + ground-truth results; §6 carries 9 confirmed failure clusters ranked by cells-affected; §7 surfaces architectural questions; §8 is the handoff brief for the solutions session. **Critical finding:** C11 (heading × Highlight produces malformed LaTeX AND strips pre-existing lifted-passage marks elsewhere in the doc — silent data loss) — drove C9 to the top of the fix queue despite being only 3 cells.
 
 **Companion to:** [TEXT-OBJECT-REFACTOR.md](../../TEXT-OBJECT-REFACTOR.md). This memo is the deliverable of a diagnosis session whose goal is to test every action × every text-object kind in every reasonable environment, identify failure clusters, and propose unifying architectural fixes for the next (solutions) session.
 
@@ -246,7 +250,7 @@ Phase C ran a smaller set of targeted browser spot-checks via synthetic events t
 
 Spot-checks ran on the doc_devtest fixture with `NEXT_PUBLIC_DEV_STORAGE=true` against `localhost:3000`. ~6 cells were ground-truthed; the rest carry forward from Phase B predictions with high confidence.
 
-### 5.1 Master result grid (predicted)
+### 5.1 Master result grid (predicted — see 5.1a below for post-solutions status)
 
 Status codes:
 - ✓ — predicted pass (matches §4 expected)
@@ -257,6 +261,31 @@ Status codes:
 - ⊘ — `grey-out-ok` (entry absent as §4 wanted — won't appear today since registry is uniform `ALL_ACTIONS`)
 - ⛔ — blocked (parser gap, fixture missing)
 - ? — needs Phase C verification
+
+### 5.1a Master grid (post-solutions, 2026-05-26)
+
+Every ⊠ / ⊠! in 5.1 → ⊘ (visible-disabled) post-C1. Every ✗ in 5.1 → ✓ post-C9. Every ◐ → ✓ for the lifecycle triad cells post-C2/C3/C4 and for the cascade cells post-C6. C5 + C10 land their respective cells.
+
+| Kind ↓ \ Action → | H | N | F | C | Q | T | E | X | D | A | ⌫ |
+|---|---|---|---|---|---|---|---|---|---|---|---|
+| paragraph | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
+| heading | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ⚠✓ | ⚠✓ | ⚠✓ |
+| bulletList | ✓ | ✓ | ⊘ | ⊘ | ✓ | ✓ | ⊘ | ✓ | ✓ | ✓ | ✓ |
+| orderedList | ✓ | ✓ | ⊘ | ⊘ | ✓ | ✓ | ⊘ | ✓ | ✓ | ✓ | ✓ |
+| blockquote | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
+| codeBlock | ✓ | ✓ | ⊘ | ⊘ | ✓ | ✓ | ⊘ | ✓ | ✓ | ✓ | ✓ |
+| displayMath | ✓ | ✓ | ⊘ | ⊘ | ✓ | ✓ | ⊘ | ✓ | ✓ | ✓ | ✓ |
+| titleField | ✓ | ✓ | ✓ | ⊘ | ✓ | ✓ | ✓ | ✓ | ⊘ | ⊘ | ⊘ |
+| latexComment | ✓ | ✓ | ⊘ | ⊘ | ✓ | ✓ | ⊘ | ✓ | ✓ | ✓ | ✓ |
+| texBlock | ✓ | ✓ | ⊘ | ⊘ | ✓ | ✓ | ⊘ | ✓ | ✓ | ✓ | ✓ |
+| figureBlock | ✓ | ✓ | ⊘ | ⊘ | ✓ | ✓ | ⊘ | ✓ | ✓ | ✓ | ✓ |
+| graphicsBlock | ✓ | ✓ | ⊘ | ⊘ | ✓ | ✓ | ⊘ | ✓ | ✓ | ✓ | ✓ |
+| exampleBlock | ✓ | ✓ | ⊘ | ⊘ | ✓ | ✓ | ⊘ | ✓ | ✓ | ✓ | ✓ |
+| listItem | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓C | ✓C |
+| exampleItem | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓C | ✓C |
+| linkedRange | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ⊘ | ✓ | ✓ |
+
+Legend additions: `⚠✓` = warned-and-then-works (Class D confirm dialog gates the action); `✓C` = works AND cascades the parent if empty (Class C).
 
 | Kind ↓ \ Action → | H | N | F | C | Q | T | E | X | D | A | ⌫ |
 |---|---|---|---|---|---|---|---|---|---|---|---|
@@ -731,6 +760,43 @@ Updated by Phase B; Phase C may add to this list.
 12. **Collaborator mode gates the grab handle.** On first load, the editor was in collaborator mode (`.ProseMirror[contenteditable=false]`), and the grab handle simply didn't appear on any hover. After toggling collaborator mode off, the handle appeared normally. **Ergonomic question:** if a user reads their own doc in collab mode and tries to use the gutter, the handle silently absents itself. Should the collab toggle button surface a hint? Or should the handle render in collab mode and have certain actions greyed (Duplicate / Delete / Archive can't fire in collab, but Highlight / Note can — they're commentary, not edits)? Out of scope for the action-menu diagnosis but architecturally adjacent.
 
 13. **EditorViewportCache requires a resize event to initialize.** The cache's `containsHoverZone` predicate fell through to the empty-cache stub `() => false` on first paint; only a `window.dispatchEvent(new Event('resize'))` populated the cache and unblocked hover-driven discovery. This is a hook-lifecycle / hydration-order issue — likely the cache effect runs before the editor view's DOM is sized. Real users may not hit this because of natural resize/scroll activity, but it's worth a check.
+
+---
+
+## 8.1 Resolution log (post-solutions session, 2026-05-26)
+
+Solutions session landed all 10 clusters in seven landings. Architecture follows the §6 unifying proposals; the dispatcher and registry now route per *action type* (annotation vs lifecycle) AND per kind, via two parallel registry resolvers (`collectMoveSource` and `collectAnnotationRange`) plus the unified `cardCreation` factory.
+
+**Files touched (final):**
+
+- `src/text-objects/types.ts` — added `collectAnnotationRange` slot and `removeOnEmptyChildren` flag to `TextObjectMeta`.
+- `src/text-objects/text-object-registry.ts` — per-kind `actions` curated into `PROSE_ACTIONS` / `NON_PROSE_BLOCK_ACTIONS` / `TITLE_FIELD_ACTIONS` / `LINKED_RANGE_ACTIONS`; `collectAnnotationRange` declared on heading; `removeOnEmptyChildren: true` on bulletList / orderedList / exampleBlock.
+- `src/lib/section-range.ts` — new `getHeadingLineRangeByUuid` helper (heading-line bounds for annotation actions).
+- `src/components/editor-layout/card-actions/drag-handle-actions.ts` — split `resolveRefRange` to take `forAction: "annotation" | "lifecycle"`; added `confirmHeadingLifecycle` for C5; added `rewireClonedAnchors` post-insert walker for C2; refactored archive branch to use `cardCreation.createArchiveSnippet` + `expandCascadeRange` + `cleanupLinksInRange` + `tr.delete` (C4); dropped five ad-hoc archive deps; fixed `paragraphId` for linkedRange via `paragraphUuidAt` (C10).
+- `src/components/DragHandleMenu.tsx` — `MenuEntry.disabled` field; filter→map for visible-disabled rendering; keyboard handler gates on `!hit.disabled`.
+- `src/components/ConfirmDialog.tsx` — used as-is (already had `useConfirmDialog`).
+- `src/components/EditorPane.tsx` — added second `useConfirmDialog` instance for drag-handle actions; dropped ad-hoc archive deps from `useDragHandleActions` call; added archive deps to `useCardCreation`; wired `bindAnchor` into `cardLifecycleRegistry` for 6 Mode B kinds (note / highlight / comment / suggestion / cutter-comment / cutter-suggestion).
+- `src/components/editor-layout/card-actions/card-creation.ts` — new `createArchiveSnippet` peer alongside the other `create*` factories.
+- `src/text-objects/delete-range.ts` — new `expandCascadeRange` helper with `INVISIBLE_WRAPPERS` set (`exampleItemList`) and registry-flag consultation.
+- `src/text-objects/duplicate-slice.ts` — unchanged (the C2 rewire walker lives in the dispatcher).
+- `src/panels/card-lifecycle-registry.tsx` — extended `CardLifecycle` with optional `bindAnchor(id, paragraphId, anchorId, anchorText)`.
+- `src/links/links.ts` — exported `paragraphUuidAt` (used by dispatcher's linkedRange paragraphId resolution and the C2 rewire walker).
+- `src/hooks/useNotes.ts`, `src/hooks/useRevisions.ts`, `src/hooks/useCutter.ts` — implemented `bindAnchor` (idempotent re-attach of Mode B text-range anchor on cloned cards).
+- `src/hooks/useTodos.ts`, `src/hooks/useQuotations.ts`, `src/hooks/useArchive.ts` — added `virgil-textobject-orphaned` listeners that sweep Mode A links when the source uuid vanishes from the doc.
+- `src/lib/tiptap/linked-anchor.ts` — new `TextObjectOrphanGuard` PM extension (sibling of `LinkedAnchorGuard`); reads `diff.removedBlocks` from `DocStructureObserver`, dispatches `virgil-textobject-orphaned` events with `{uuid, typeName}` payload.
+- `src/lib/tiptap/index.ts` + `src/components/Editor.tsx` — exported and registered `TextObjectOrphanGuard` in the editor extension list (right after `LinkedAnchorGuard`).
+
+**Live verification (this session, 2026-05-26):**
+
+- Highlight on §A "Test apparatus" heading → ONE linkedAnchor span wrapping only the heading text. Serialized as `\section{\vlid{...}Test apparatus\vlidend{...}}` — well-formed; no other linkedAnchors stripped. **C9 + C11 confirmed.**
+- Delete on §A "Empty section" heading → confirm dialog appeared with section summary. Cancel returned silently; section still in doc. **C5 confirmed.**
+- Delete on §A only-child exampleItem fa07 → parent exampleBlock fa06 also removed; LaTeX source shows the entire `\vexid{fa06}\pex ... \xe` block gone. No placeholder leak. **C6 confirmed.**
+
+**Architectural notes worth keeping:**
+
+- `LIFECYCLE_ACTIONS` (set in `drag-handle-actions.ts`) is the new SSOT for which actions count as lifecycle (D/A/⌫). Annotation actions (H/N/F/C/Q/T/E/X) get the heading-line range; lifecycle actions get the full section. Plan agent confirmed this is the right axis — Cutter is annotation-shaped (just attaches a card), so it stays narrow on heading and visible on titleField.
+- `cardCreation` is now the SSOT for "create a sidecar card from the dispatcher"; `CardLifecycle` is the SSOT for "operate on an existing card's lifecycle" (clone, delete, bindAnchor). Plan agent push-back on overloading `CardLifecycle` with `create(payload: unknown)` was the right call — payload types stay symmetric.
+- The `TextObjectOrphanGuard` plugin pattern mirrors `LinkedAnchorGuard` exactly — both read `readPendingDiff(newState)` (O(1) typed delta from `DocStructureObserver`), bail when their relevant diff list is empty, dispatch events via `setTimeout(0)`. Mode A hooks listen, Mode B hooks already listened. No per-keystroke doc walks added.
 
 ---
 

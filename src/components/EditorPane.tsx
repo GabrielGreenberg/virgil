@@ -1753,6 +1753,10 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
     addTodoTextObjectId: todosHook.addParagraphId,
     addQuotationGroup: quotationsHook.addGroup,
     addCitation: citationsHook.addCitation,
+    archiveContent: archiveHook.archiveContent,
+    updateArchiveSnippet: archiveHook.updateSnippet,
+    addArchiveTextObjectId: archiveHook.addParagraphId,
+    setSelectedArchiveId,
     setSelectedNoteId,
     setSelectedCutterCardId,
     setSelectedCommentId,
@@ -1830,39 +1834,49 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
       note: {
         clone: notesHook.cloneNote,
         delete: notesHook.deleteNote,
+        bindAnchor: notesHook.bindAnchor,
       },
       highlight: {
         clone: notesHook.cloneHighlight,
         delete: notesHook.deleteNote,
+        bindAnchor: notesHook.bindAnchor,
       },
       comment: {
         clone: revisionsHook.cloneComment,
         delete: revisionsHook.deleteCard,
+        bindAnchor: revisionsHook.bindAnchor,
       },
       suggestion: {
         clone: revisionsHook.cloneSuggestion,
         delete: revisionsHook.deleteCard,
+        bindAnchor: revisionsHook.bindAnchor,
       },
       "cutter-comment": {
         clone: cutterHook.cloneComment,
         delete: cutterHook.deleteCard,
+        bindAnchor: cutterHook.bindAnchor,
       },
       "cutter-suggestion": {
         clone: cutterHook.cloneSuggestion,
         delete: cutterHook.deleteCard,
+        bindAnchor: cutterHook.bindAnchor,
       },
     }),
     [footnotesHook, citationsHook, notesHook, revisionsHook, cutterHook],
   );
   const cardLifecycle = useCardLifecycleApi(cardLifecycleRegistry);
+  // Wide-scope warning dialog for heading lifecycle actions (D/A/⌫).
+  // Distinct instance from the heading-lozenge × confirm so each owns
+  // its own pending state. See ACTION-MENU-DIAGNOSIS.md cluster C5.
+  const {
+    confirm: confirmDragHandleAction,
+    dialog: confirmDragHandleActionDialog,
+  } = useConfirmDialog();
   const dragHandleActions = useDragHandleActions({
     editorRef: innerRef,
     cardCreation,
-    archiveContent: archiveHook.archiveContent,
-    updateArchiveSnippet: archiveHook.updateSnippet,
-    addArchiveTextObjectId: archiveHook.addParagraphId,
-    setSelectedArchiveId,
     cardLifecycle,
+    confirm: confirmDragHandleAction,
     prefs: viewPrefs?.prefs ?? readerPrefs,
     expandLeft: viewPrefs?.expandLeft ?? stubSetActive,
     expandRight: viewPrefs?.expandRight ?? stubSetActive,
@@ -4287,6 +4301,7 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
           {confirmHeadingDeleteDialog}
           {confirmFigureDeleteDialog}
           {confirmMarginItemDeleteDialog}
+          {confirmDragHandleActionDialog}
         </PoppedCardsContext.Provider>
         </CollabProvider>
         </SelectionsProvider>

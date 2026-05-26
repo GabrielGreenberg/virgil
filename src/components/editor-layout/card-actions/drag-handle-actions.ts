@@ -27,21 +27,26 @@ import type { Editor } from "@tiptap/react";
 import type { Node as PMNode, MarkType } from "@tiptap/pm/model";
 import { NodeSelection, TextSelection } from "@tiptap/pm/state";
 import { duplicateSlice } from "@/text-objects/duplicate-slice";
-import { cleanupLinksInRange } from "@/text-objects/delete-range";
+import {
+  cleanupLinksInRange,
+  expandCascadeRange,
+} from "@/text-objects/delete-range";
 import type { CardCreationApi } from "./card-creation";
 import type { EditorHandle } from "../../Editor";
 import type { ViewPrefs, PanelId } from "@/hooks/useViewPrefs";
 import {
   createLinkedAnchor,
+  paragraphUuidAt,
   updateLinkedAnchorCard,
   type LinkedAnchorKind,
 } from "@/links/links";
 import { getSectionRangeByUuid } from "@/lib/section-range";
-import type { ArchivedSnippet } from "@/lib/types";
 import { generateShortId } from "@/lib/uuid";
 import { focusNewCard } from "@/lib/focus-new-card";
 import type { DragHandleAction } from "@/components/DragHandleMenu";
 import type { CardLifecycleApi } from "@/panels/card-lifecycle-registry";
+import { parseLinkCardKey } from "@/links/link-registry";
+import type { ConfirmOptions } from "@/components/ConfirmDialog";
 import {
   TEXT_OBJECT_REGISTRY,
   isTextObjectKind,
@@ -62,20 +67,16 @@ export type DragHandleRef = TextObjectRef | SelectionRef;
 export interface DragHandleActionsDeps {
   editorRef: RefObject<EditorHandle | null>;
   cardCreation: CardCreationApi;
-  archiveContent: (content: unknown) => ArchivedSnippet;
-  updateArchiveSnippet: (id: string, content: unknown) => void;
-  addArchiveTextObjectId: (
-    id: string,
-    paragraphId: string,
-    targetKind?: import("@/text-objects/types").TextObjectKind,
-  ) => void;
-  setSelectedArchiveId: (id: string | null) => void;
-  pinRecentlyAddedArchive?: (id: string) => void;
   /** Per-CardKind clone/delete SSOT. Used by the `duplicate` and
    *  `delete` actions to fork or remove sidecar entries for any inline
    *  atoms / linkedAnchor marks living in the captured passage. The
    *  walkers never branch on kind — they look up via this API. */
   cardLifecycle: CardLifecycleApi;
+  /** In-app confirm dialog. Used to surface the Class D wide-scope
+   *  warning before lifecycle actions fire on a heading (whole-section
+   *  duplicate / archive / delete). The promise resolves true on
+   *  confirm, false on cancel. See ACTION-MENU-DIAGNOSIS.md cluster C5. */
+  confirm: (opts: ConfirmOptions) => Promise<boolean>;
   prefs: ViewPrefs;
   expandLeft: () => void;
   expandRight: () => void;
@@ -98,12 +99,8 @@ export function useDragHandleActions(deps: DragHandleActionsDeps) {
   const {
     editorRef,
     cardCreation,
-    archiveContent,
-    updateArchiveSnippet,
-    addArchiveTextObjectId,
-    setSelectedArchiveId,
-    pinRecentlyAddedArchive,
     cardLifecycle,
+    confirm,
     prefs,
     expandLeft,
     expandRight,
@@ -135,12 +132,26 @@ export function useDragHandleActions(deps: DragHandleActionsDeps) {
   );
 
   const dispatch = useCallback(
-    (action: DragHandleAction, ref: DragHandleRef) => {
+    async (action: DragHandleAction, ref: DragHandleRef) => {
       const handle = editorRef.current;
       const ed = handle?.getEditor();
       if (!handle || !ed) return;
 
-      const resolved = resolveRefRange(ed, ref);
+      // Class D wide-scope warning: lifecycle actions on a heading
+      // operate on the whole section. Surface the section summary in
+      // a confirm dialog before firing. Cancel returns silently.
+      if (
+        ref.kind === "heading" &&
+        (action === "duplicate" || action === "archive" || action === "delete")
+      ) {
+        const proceed = await confirmHeadingLifecycle(ed, ref, action, confirm);
+        if (!proceed) return;
+      }
+
+      // Annotation actions (H/N/F/C/Q/T/E/X) work on the heading line for
+      // headings; lifecycle actions (D/A/⌫) work on the whole section.
+      // Non-heading kinds yield the same range either way. See C9/C11.
+      const resolved = resolveRefRange(ed, ref, actionClass(action));
       if (!resolved) return;
 
       // Plant the main editor's selection so anchor / footnote / archive
@@ -164,15 +175,31 @@ export function useDragHandleActions(deps: DragHandleActionsDeps) {
 
       const range = { from: resolved.from, to: resolved.to };
       const text = ed.state.doc.textBetween(range.from, range.to, " ").trim();
-      const paragraphId = ref.kind === "selection" ? ref.paragraphId : ref.id;
+      // paragraphId resolution per ref-kind. Selection refs already carry
+      // a paragraph uuid; block refs use their own uuid; linkedRange refs
+      // hold an `anchorId`, NOT a paragraph uuid, so we walk up from the
+      // mark's start position to find the containing block. See
+      // ACTION-MENU-DIAGNOSIS.md cluster C10.
+      let paragraphId: string;
+      if (ref.kind === "selection") {
+        paragraphId = ref.paragraphId;
+      } else if (ref.kind === "linkedRange") {
+        paragraphId = paragraphUuidAt(ed.state.doc, resolved.from) ?? "";
+      } else {
+        paragraphId = ref.id;
+      }
       // The kind of TextObject the new card's Mode A link should record
       // as `targetKind`. SelectionRefs anchor to the containing paragraph
       // (ref.paragraphId is a paragraph uuid). Block refs (paragraph,
       // heading, listItem, exampleItem, atom blocks, …) anchor at the
       // block level and record their actual kind — D9 sub-object
-      // anchoring depends on this being correct.
+      // anchoring depends on this being correct. linkedRange refs follow
+      // selection semantics (the mark wraps text inside a paragraph),
+      // so we record `paragraph` here too.
       const targetKind: import("@/text-objects/types").TextObjectKind =
-        ref.kind === "selection" ? "paragraph" : ref.kind;
+        ref.kind === "selection" || ref.kind === "linkedRange"
+          ? "paragraph"
+          : ref.kind;
       // Only the selection / linkedRange refs hold a literal text range
       // whose first-line top is meaningful for a range anchor — Mode B
       // cards (note/highlight/cutter/revision) drop a linkedAnchor mark
@@ -349,32 +376,58 @@ export function useDragHandleActions(deps: DragHandleActionsDeps) {
             /* ignore — selection placement is best-effort */
           }
           ed.view.dispatch(tr);
+          // C2: walk the inserted slice and rewire each cloned card's
+          // `links[]` back to its mark via `lifecycle.bindAnchor`. The
+          // duplicate-slice walker already minted fresh anchorIds + new
+          // linkCard keys on the marks; this pass populates the card's
+          // own links so card → editor jump-to lands on the clone, not
+          // the source. Action-time, bounded by the inserted slice's
+          // size — no keystroke-sanctity impact.
+          rewireClonedAnchors(ed, outer.to, cloned.size, cardLifecycle);
           break;
         }
         case "archive": {
-          // TODO(card-lifecycle): fold this path into the lifecycle
-          // registry alongside duplicate/delete. The shape mismatch is
-          // that archive's "create" takes content (not a sourceId), and
-          // it cascades into a panel-selection side effect. Either
-          // extend `CardLifecycle` with `create(content) → id` + a
-          // post-create hook, or split the panel-focus concern into its
-          // own ergonomic API. Deferred from the initial pass.
-
-          // archiveSelection slices the current selection into JSON, so the
-          // ref's selection-kind is sufficient — atom NodeSelections
-          // archive the atom node itself, text selections archive their
-          // range. The `text` guard only protects against zero-content text
-          // ranges; atom refs always have a meaningful slice.
+          // C4: archive is now a peer of Delete via `cardCreation`. The
+          // five ad-hoc deps (`archiveContent` / `updateArchiveSnippet`
+          // / `addArchiveTextObjectId` / `setSelectedArchiveId` /
+          // `pinRecentlyAddedArchive`) all live inside
+          // `cardCreation.createArchiveSnippet` now. Dispatcher's job
+          // here is the editor mutation: snapshot the content, cascade,
+          // cleanup sidecars, delete the range, then mint the snippet.
+          //
+          // `text` guard protects against zero-content text ranges;
+          // atom NodeSelections always have a meaningful slice.
           if (resolved.selectionKind === "text" && !text) break;
-          const snippet = archiveContent(text);
-          const result = handle.archiveSelection(snippet.id);
-          if (result) {
-            if (result.content) updateArchiveSnippet(snippet.id, result.content);
-            if (result.paragraphId)
-              addArchiveTextObjectId(snippet.id, result.paragraphId, targetKind);
-          }
-          setSelectedArchiveId(snippet.id);
-          pinRecentlyAddedArchive?.(snippet.id);
+          const outer = outerRangeFor(ed, ref);
+          if (!outer || outer.to <= outer.from) break;
+          // Same cascade as Delete — if the wrapper would be empty
+          // after the deletion, swallow it too. See C6.
+          const extended = expandCascadeRange(ed.state.doc, outer);
+          // Snapshot the full slice (rich JSON) BEFORE deletion so the
+          // archive snippet preserves paragraph structure, atom blocks,
+          // and any inline atoms it carries.
+          const slice = ed.state.doc.slice(extended.from, extended.to);
+          const richContent = { type: "doc", content: slice.content.toJSON() };
+          cleanupLinksInRange(
+            ed.state.doc,
+            extended.from,
+            extended.to,
+            cardLifecycle,
+          );
+          const tr = ed.state.tr.delete(extended.from, extended.to);
+          ed.view.dispatch(tr);
+          // The pre-delete `paragraphId` is the source block's uuid;
+          // for paragraph/heading/listItem × Archive that block is now
+          // gone. The C3 orphan sweep (Landing 6c) clears stale Mode A
+          // links automatically — appropriate, since archived content
+          // is "moved out of the document" by definition.
+          const snippet = cardCreation.createArchiveSnippet({
+            text,
+            content: richContent,
+            paragraphId,
+            targetKind,
+            mode: "omni",
+          });
           panelId = "archive";
           focusCardKey = `archive:${snippet.id}`;
           break;
@@ -387,13 +440,19 @@ export function useDragHandleActions(deps: DragHandleActionsDeps) {
           // so the deletion doesn't leak orphan sidecar entries.
           const outer = outerRangeFor(ed, ref);
           if (!outer || outer.to <= outer.from) break;
+          // C6: if removing this child empties a structural wrapper
+          // (last listItem in a list, last exampleItem in an
+          // exampleItemList / exampleBlock), extend the range to
+          // include the wrapper so PM's content-rule auto-fill never
+          // gets a chance to inject a placeholder.
+          const extended = expandCascadeRange(ed.state.doc, outer);
           cleanupLinksInRange(
             ed.state.doc,
-            outer.from,
-            outer.to,
+            extended.from,
+            extended.to,
             cardLifecycle,
           );
-          const tr = ed.state.tr.delete(outer.from, outer.to);
+          const tr = ed.state.tr.delete(extended.from, extended.to);
           ed.view.dispatch(tr);
           break;
         }
@@ -416,17 +475,62 @@ export function useDragHandleActions(deps: DragHandleActionsDeps) {
     [
       editorRef,
       cardCreation,
-      archiveContent,
-      updateArchiveSnippet,
-      addArchiveTextObjectId,
-      setSelectedArchiveId,
-      pinRecentlyAddedArchive,
       cardLifecycle,
+      confirm,
       ensureOmniActiveForPanel,
     ],
   );
 
   return { dispatch };
+}
+
+/**
+ * Build a Class D wide-scope summary for heading lifecycle actions and
+ * await the user's confirmation. See ACTION-MENU-DIAGNOSIS.md cluster
+ * C5. The summary reads off the section nodes the registry already
+ * returns from `collectMoveSource`, so the message body never walks the
+ * doc twice.
+ */
+async function confirmHeadingLifecycle(
+  ed: Editor,
+  ref: TextObjectRef,
+  action: "duplicate" | "archive" | "delete",
+  confirm: (opts: ConfirmOptions) => Promise<boolean>,
+): Promise<boolean> {
+  const meta = TEXT_OBJECT_REGISTRY.heading;
+  const source = meta.collectMoveSource?.(ed.state.doc, ref.id);
+  if (!source) return true; // fail-open if the section can't be resolved
+  const headingNode = source.nodes[0];
+  const headingText = headingNode?.textContent?.trim() ?? "";
+  const paragraphCount = source.nodes.filter(
+    (n) => n.type.name === "paragraph",
+  ).length;
+  const subHeadingCount = source.nodes.filter(
+    (n, i) => i > 0 && n.type.name === "heading",
+  ).length;
+  const verbs: Record<typeof action, { verb: string; confirmLabel: string }> = {
+    duplicate: { verb: "duplicate", confirmLabel: "Duplicate section" },
+    archive: { verb: "archive", confirmLabel: "Archive section" },
+    delete: { verb: "delete", confirmLabel: "Delete section" },
+  };
+  const { verb, confirmLabel } = verbs[action];
+  const counts: string[] = [];
+  if (paragraphCount > 0) {
+    counts.push(`${paragraphCount} paragraph${paragraphCount === 1 ? "" : "s"}`);
+  }
+  if (subHeadingCount > 0) {
+    counts.push(
+      `${subHeadingCount} sub-heading${subHeadingCount === 1 ? "" : "s"}`,
+    );
+  }
+  const countsText = counts.length > 0 ? ` — ${counts.join(", ")}` : "";
+  const titleText = headingText ? `"${headingText}"` : "this section";
+  return confirm({
+    title: `${verb[0].toUpperCase() + verb.slice(1)} the entire section?`,
+    message: `This will ${verb} the entire section ${titleText}${countsText}.`,
+    confirmLabel,
+    tone: action === "delete" ? "danger" : "default",
+  });
 }
 
 /**
@@ -489,13 +593,41 @@ function createAnchor(ed: Editor, kind: LinkedAnchorKind) {
 }
 
 /**
+ * Action class — annotation actions attach a card to text in place;
+ * lifecycle actions operate on the structural region (whole section for
+ * heading, etc.). The split exists so that heading × Highlight wraps
+ * only the heading line (annotation) while heading × Delete removes the
+ * whole section (lifecycle). See ACTION-MENU-DIAGNOSIS.md cluster C9.
+ */
+type ResolveAction = "annotation" | "lifecycle";
+
+const LIFECYCLE_ACTIONS: ReadonlySet<DragHandleAction> = new Set([
+  "duplicate",
+  "archive",
+  "delete",
+]);
+
+function actionClass(action: DragHandleAction): ResolveAction {
+  return LIFECYCLE_ACTIONS.has(action) ? "lifecycle" : "annotation";
+}
+
+/**
  * Resolve a `TextObjectRef | SelectionRef` to a doc range plus selection
  * kind. Dispatch is driven by the registry — atom-block kinds get
- * NodeSelection, `heading` gets the section range (heading + body),
- * `linkedRange` is found by walking the linkedAnchor mark across the doc,
- * everything else gets the node's content range.
+ * NodeSelection, `heading` gets the section range or the heading line
+ * (depending on `forAction`), `linkedRange` is found by walking the
+ * linkedAnchor mark across the doc, everything else gets the node's
+ * content range.
+ *
+ * `forAction` selects which range a heading should yield: annotation
+ * actions get the heading line; lifecycle actions get the whole section.
+ * Non-heading kinds ignore this and return the same range either way.
  */
-function resolveRefRange(ed: Editor, ref: DragHandleRef): ResolvedRef | null {
+function resolveRefRange(
+  ed: Editor,
+  ref: DragHandleRef,
+  forAction: ResolveAction,
+): ResolvedRef | null {
   if (ref.kind === "selection") {
     const docSize = ed.state.doc.content.size;
     const from = Math.max(0, Math.min(ref.from, docSize));
@@ -516,7 +648,15 @@ function resolveRefRange(ed: Editor, ref: DragHandleRef): ResolvedRef | null {
     return { selectionKind: "text", from: bounds.from, to: bounds.to };
   }
 
+  // Annotation actions on a heading stay on the heading line; lifecycle
+  // actions on a heading take the whole section. The `forAction` flag
+  // tells us which side we're on. See ACTION-MENU-DIAGNOSIS.md C9/C11.
   if (ref.kind === "heading") {
+    if (forAction === "annotation" && meta.collectAnnotationRange) {
+      const line = meta.collectAnnotationRange(ed.state.doc, ref.id);
+      if (!line) return null;
+      return { selectionKind: "text", from: line.from, to: line.to };
+    }
     const section = getSectionRangeByUuid(ed.state.doc, ref.id);
     if (!section) return null;
     return { selectionKind: "text", from: section.start, to: section.end };
@@ -562,6 +702,81 @@ function findLinkedRangeBounds(
     if (!node.isText) return true;
     const has = node.marks.some(
       (m) => m.type === markType && m.attrs.anchorId === anchorId,
+    );
+    if (has) {
+      if (from < 0) from = pos;
+      to = pos + node.nodeSize;
+    }
+    return true;
+  });
+  if (from < 0) return null;
+  return { from, to };
+}
+
+/**
+ * Post-Duplicate walker — for every freshly-cloned `linkedAnchor` mark
+ * inside the just-inserted slice, look up the card via the new
+ * `linkCard` attr (cardKind:cardId) and call `lifecycle.bindAnchor(...)`
+ * with the new anchorId + the containing paragraph's uuid. This
+ * populates the cloned card's `links[]`, fixing the C2 gap where
+ * card → editor jump-to landed on the SOURCE instead of the clone.
+ *
+ * Bounded by `insertedSize` (the slice length) — does not walk the
+ * whole doc. Runs once per Duplicate, action-time. See
+ * ACTION-MENU-DIAGNOSIS.md cluster C2.
+ */
+function rewireClonedAnchors(
+  ed: Editor,
+  insertedFrom: number,
+  insertedSize: number,
+  lifecycle: CardLifecycleApi,
+): void {
+  if (insertedSize <= 0) return;
+  const doc = ed.state.doc;
+  const docSize = doc.content.size;
+  const from = Math.max(0, Math.min(insertedFrom, docSize));
+  const to = Math.max(from, Math.min(insertedFrom + insertedSize, docSize));
+  if (to <= from) return;
+  const seen = new Set<string>();
+  doc.nodesBetween(from, to, (node, pos) => {
+    if (!node.isText) return true;
+    for (const mark of node.marks) {
+      if (mark.type.name !== "linkedAnchor") continue;
+      const anchorId =
+        typeof mark.attrs.anchorId === "string" ? mark.attrs.anchorId : "";
+      if (!anchorId || seen.has(anchorId)) continue;
+      seen.add(anchorId);
+      const linkCard =
+        typeof mark.attrs.linkCard === "string" ? mark.attrs.linkCard : "";
+      const parsed = parseLinkCardKey(linkCard);
+      if (!parsed) continue;
+      const bind = lifecycle.get(parsed.kind)?.bindAnchor;
+      if (!bind) continue;
+      const paragraphId = paragraphUuidAt(doc, pos);
+      if (!paragraphId) continue;
+      const anchorRange = findAnchorIdRange(doc, anchorId);
+      const anchorText = anchorRange
+        ? doc.textBetween(anchorRange.from, anchorRange.to, " ")
+        : "";
+      bind(parsed.id, paragraphId, anchorId, anchorText);
+    }
+    return true;
+  });
+}
+
+/** Locate the full span of a `linkedAnchor` mark by `anchorId`, scanning
+ *  only inside a region we already know contains it. Cheaper than a
+ *  whole-doc walk for the rewireup post-insert path. */
+function findAnchorIdRange(
+  doc: PMNode,
+  anchorId: string,
+): { from: number; to: number } | null {
+  let from = -1;
+  let to = -1;
+  doc.descendants((node, pos) => {
+    if (!node.isText) return true;
+    const has = node.marks.some(
+      (m) => m.type.name === "linkedAnchor" && m.attrs.anchorId === anchorId,
     );
     if (has) {
       if (from < 0) from = pos;

@@ -412,6 +412,28 @@ export function useNotes(docId: string | null, externalPristine?: PristineKindAp
     [update, cards],
   );
 
+  /** Re-attach a Mode B text-range anchor on a freshly-cloned note or
+   *  highlight. Called by the duplicate dispatcher's post-insert walker
+   *  for every linkedAnchor mark inside the cloned slice. Idempotent:
+   *  if the card already carries this anchorId, no-op. */
+  const bindAnchor = useCallback(
+    (id: string, _paragraphId: string, anchorId: string, anchorText: string) => {
+      update((prev) => {
+        const card = prev.cards.find((c) => c.id === id);
+        if (!card) return prev;
+        const existing = getTextAnchor(card);
+        if (existing?.anchorId === anchorId) return prev;
+        const kind = card.kind === "highlight" ? "highlight" : "note";
+        return {
+          cards: prev.cards.map((c) =>
+            c.id === id ? setTextAnchorLink(c, kind, anchorId, anchorText) : c,
+          ),
+        };
+      });
+    },
+    [update],
+  );
+
   /**
    * Drop any notes that were created via `addNote()` but never edited.
    * Call from panel-close / host-unmount so "press +, do nothing, leave"
@@ -447,6 +469,7 @@ export function useNotes(docId: string | null, externalPristine?: PristineKindAp
     deleteNote,
     cloneNote,
     cloneHighlight,
+    bindAnchor,
     setNoteAnchor,
     clearNoteAnchor: clearCardAnchor,
     discardPristineNotes,

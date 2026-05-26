@@ -1,10 +1,14 @@
 "use client";
 
-import { useCallback } from "react";
+import { useCallback, useEffect } from "react";
 import { generateEntityId } from "@/lib/uuid";
 import type { ArchiveState, ArchivedSnippet } from "@/lib/types";
 import { normalizeRichContent } from "@/lib/footnote-content";
-import { addTextObjectLink, removeTextObjectLink } from "@/links/links";
+import {
+  addTextObjectLink,
+  getLinkedTextObjectIds,
+  removeTextObjectLink,
+} from "@/links/links";
 import { migrateCardLinks } from "@/links/migrate-card";
 import { nextCardTitle } from "@/panels/panel-registry";
 import { usePersistentState } from "./usePersistentState";
@@ -99,6 +103,30 @@ export function useArchive(docId: string | null) {
     },
     [update],
   );
+
+  // Mode A orphan sweep — when a paragraph / heading / list / etc.
+  // vanishes from the doc, drop the dead uuid from any archive
+  // snippet's Mode A links. For paragraph × Archive this is the
+  // common case: the source paragraph is the snippet's anchor, gets
+  // deleted, the link is now stale. See ACTION-MENU-DIAGNOSIS.md C3.
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const uuid = (e as CustomEvent).detail?.uuid;
+      if (typeof uuid !== "string" || !uuid) return;
+      update((prev) => {
+        let changed = false;
+        const next = prev.snippets.map((s) => {
+          if (!getLinkedTextObjectIds(s).includes(uuid)) return s;
+          changed = true;
+          return removeTextObjectLink(s, uuid);
+        });
+        return changed ? { snippets: next } : prev;
+      });
+    };
+    window.addEventListener("virgil-textobject-orphaned", handler);
+    return () =>
+      window.removeEventListener("virgil-textobject-orphaned", handler);
+  }, [update]);
 
   const restoreSnippet = useCallback(
     (id: string): ArchivedSnippet | null => {

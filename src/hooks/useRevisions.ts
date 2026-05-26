@@ -484,6 +484,28 @@ export function useRevisions(
     update((prev) => ({ ...prev, cards: prev.cards.filter((c) => !idSet.has(c.id)) }));
   }, [update, externalPristine, localPristine]);
 
+  /** Re-attach a Mode B text-range anchor on a freshly-cloned revision
+   *  card. Called by the duplicate dispatcher's post-insert walker.
+   *  Idempotent — see CardLifecycle.bindAnchor doc. */
+  const bindAnchor = useCallback(
+    (id: string, _paragraphId: string, anchorId: string, anchorText: string) => {
+      update((prev) => {
+        const card = prev.cards.find((c) => c.id === id);
+        if (!card) return prev;
+        const existing = getTextAnchor(card);
+        if (existing?.anchorId === anchorId) return prev;
+        const kind = card.kind === "suggestion" ? "revision-suggestion" : "comment";
+        return {
+          ...prev,
+          cards: prev.cards.map((c) =>
+            c.id === id ? setTextAnchorLink(c, kind, anchorId, anchorText) : c,
+          ),
+        };
+      });
+    },
+    [update],
+  );
+
   const clearCardAnchor = useCallback(
     (anchorId: string) => {
       update((prev) => {
@@ -542,6 +564,7 @@ export function useRevisions(
     deleteCard,
     cloneComment,
     cloneSuggestion,
+    bindAnchor,
     clearCardAnchor,
     discardPristineCards,
   };

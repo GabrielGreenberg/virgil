@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback } from "react";
+import { useCallback, useEffect } from "react";
 import { generateEntityId } from "@/lib/uuid";
 import type {
   QuotationsState,
@@ -9,7 +9,11 @@ import type {
   Quote,
 } from "@/lib/types";
 import { migrateQuotationsState } from "@/lib/migrate-quotations";
-import { addTextObjectLink, removeTextObjectLink } from "@/links/links";
+import {
+  addTextObjectLink,
+  getLinkedTextObjectIds,
+  removeTextObjectLink,
+} from "@/links/links";
 import { nextCardTitle } from "@/panels/panel-registry";
 import { usePersistentState } from "./usePersistentState";
 import type { PristineKindApi } from "./usePristineCardManager";
@@ -113,6 +117,29 @@ export function useQuotations(docId: string | null, pristine?: PristineKindApi |
     },
     [updateGroup],
   );
+
+  // Mode A orphan sweep — strips dead text-object uuids from quotation
+  // groups' Mode A links when blocks are removed from the doc. Pairs
+  // with the `TextObjectOrphanGuard` PM plugin. See
+  // ACTION-MENU-DIAGNOSIS.md cluster C3.
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const uuid = (e as CustomEvent).detail?.uuid;
+      if (typeof uuid !== "string" || !uuid) return;
+      update((prev) => {
+        let changed = false;
+        const next = prev.groups.map((g) => {
+          if (!getLinkedTextObjectIds(g).includes(uuid)) return g;
+          changed = true;
+          return removeTextObjectLink(g, uuid);
+        });
+        return changed ? { groups: next } : prev;
+      });
+    };
+    window.addEventListener("virgil-textobject-orphaned", handler);
+    return () =>
+      window.removeEventListener("virgil-textobject-orphaned", handler);
+  }, [update]);
 
   // --- Reference ops ---
 

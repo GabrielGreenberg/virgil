@@ -287,6 +287,35 @@ export interface TextObjectMeta {
     doc: PMNode,
     uuid: string,
   ) => MoveSource | null;
+
+  /** Collect the doc range an annotation-style action (highlight, note,
+   *  footnote, citation, quotation, todo, suggest-edit, cutter) should
+   *  operate on. Symmetric counterpart of `collectMoveSource`: that one
+   *  carries lifecycle range (whole section for headings), this carries
+   *  annotation range (heading line only for headings). Default behavior
+   *  (used when omitted) is the node's own content range — same fallback
+   *  as `resolveRefRange`. Only `heading` overrides today; other kinds
+   *  may grow scope asymmetry later (e.g. exampleBlock annotating its
+   *  intro line). Pure; called from the dispatcher at click time.
+   *
+   *  See ACTION-MENU-DIAGNOSIS.md §6 cluster C9 + C11 — the split
+   *  resolves the silent data loss where heading × Highlight wrote
+   *  `\vlidend{}` inside `\section{...}` braces and stripped every
+   *  other linkedAnchor pair on the next save/reload round-trip. */
+  collectAnnotationRange?: (
+    doc: PMNode,
+    uuid: string,
+  ) => MoveSource | null;
+
+  /** When true, this kind is "structural noise" if its content becomes
+   *  empty — Delete and Archive's cascade helper removes it along with
+   *  its last child. True for `bulletList` / `orderedList` /
+   *  `exampleBlock` (an empty list/example reads as broken; users want
+   *  it gone). Not set for `blockquote` (empty blockquote can be
+   *  intentional — "I'm about to type a quote here").
+   *
+   *  See ACTION-MENU-DIAGNOSIS.md §6 cluster C6. */
+  removeOnEmptyChildren?: boolean;
 }
 
 /** Per-kind "what to move" payload. The drop spec deletes

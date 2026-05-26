@@ -12,7 +12,10 @@
  */
 
 import type { Node as PMNode } from "@tiptap/pm/model";
-import { getSectionRangeByUuid } from "@/lib/section-range";
+import {
+  getSectionRangeByUuid,
+  getHeadingLineRangeByUuid,
+} from "@/lib/section-range";
 import {
   topLevelDropAdapter,
   listItemDropAdapter,
@@ -31,13 +34,27 @@ import type {
 } from "./types";
 
 // ---------------------------------------------------------------------------
-// Default action set — every kind exposes the full DragHandleMenu list
-// for now. The DragHandleMenu UI was a flat 9-entry list for every
-// passage type before this refactor; we preserve that. Per-kind
-// filtering is a one-line change here if needed later.
+// Per-kind action sets — see ACTION-MENU-DIAGNOSIS.md cluster C1.
+//
+// The previous default `ALL_ACTIONS` was applied uniformly to every kind,
+// so the dispatcher fired for cells (e.g. `codeBlock × Footnote`,
+// `titleField × Duplicate`) where the resulting insertion / mutation was
+// nonsensical or corrupting. Curating the sets here is the unifying fix:
+// the menu filter at `DragHandleMenu.tsx` already consults this slot, so
+// disabled entries fall out for free.
+//
+// Three classes:
+//   • PROSE_ACTIONS — full vocabulary; for text-bearing kinds.
+//   • NON_PROSE_BLOCK_ACTIONS — drops F/C/E (no place to embed inline
+//     insertions in non-prose blocks / structural containers).
+//   • TITLE_FIELD_ACTIONS — drops C/D/A/⌫ (title is a singleton with no
+//     bibliography; the destructive cells corrupt the doc).
+//   • LINKED_RANGE_ACTIONS — drops D (cloning a mark-backed range with
+//     duplicated text would mint two marks pointing at the same text,
+//     conflicting with the linkedAnchor's id-uniqueness invariant).
 // ---------------------------------------------------------------------------
 
-const ALL_ACTIONS: ReadonlyArray<DragHandleAction> = [
+const PROSE_ACTIONS: ReadonlyArray<DragHandleAction> = [
   "highlight",
   "note",
   "footnote",
@@ -50,6 +67,24 @@ const ALL_ACTIONS: ReadonlyArray<DragHandleAction> = [
   "archive",
   "delete",
 ];
+
+const NON_PROSE_BLOCK_ACTIONS: ReadonlyArray<DragHandleAction> =
+  PROSE_ACTIONS.filter(
+    (a) => a !== "footnote" && a !== "citation" && a !== "suggest-edit",
+  );
+
+const TITLE_FIELD_ACTIONS: ReadonlyArray<DragHandleAction> = [
+  "highlight",
+  "note",
+  "footnote",
+  "quotation",
+  "todo",
+  "suggest-edit",
+  "cutter",
+];
+
+const LINKED_RANGE_ACTIONS: ReadonlyArray<DragHandleAction> =
+  PROSE_ACTIONS.filter((a) => a !== "duplicate");
 
 // ---------------------------------------------------------------------------
 // Float body placeholder — registered concretely in Phase D5 (float
@@ -73,7 +108,7 @@ export const TEXT_OBJECT_REGISTRY: Record<TextObjectKind, TextObjectMeta> = {
     decorationSafety: 0,
     chromeAnchor: "text-top",
     floatBodyComponent: PLACEHOLDER_FLOAT_BODY,
-    actions: ALL_ACTIONS,
+    actions: PROSE_ACTIONS,
     // %!v: anchor; not a LaTeX command per se. Marker is the suffix
     // on the paragraph's last line.
     dropAdapter: topLevelDropAdapter,
@@ -87,7 +122,7 @@ export const TEXT_OBJECT_REGISTRY: Record<TextObjectKind, TextObjectMeta> = {
     chromeAnchor: "text-top",
     floatBodyComponent: PLACEHOLDER_FLOAT_BODY,
     initialFloatSize: { width: 480, height: 360 },
-    actions: ALL_ACTIONS,
+    actions: PROSE_ACTIONS,
     dropAdapter: topLevelDropAdapter,
     // Headings move as a section, not a single node — pick up every
     // block from the heading down to the next equal-or-higher heading.
@@ -95,6 +130,17 @@ export const TEXT_OBJECT_REGISTRY: Record<TextObjectKind, TextObjectMeta> = {
       const range = getSectionRangeByUuid(doc, uuid);
       if (!range) return null;
       return { from: range.start, to: range.end, nodes: range.nodes };
+    },
+    // Annotation actions stay on the heading line — never extend into
+    // the section body. Critical for C9 + C11: without this, highlight
+    // on a heading wraps every paragraph in the section AND writes the
+    // `\vlidend{}` closer inside `\section{...}` braces, corrupting the
+    // LaTeX and stripping every other linkedAnchor in the doc on
+    // reload.
+    collectAnnotationRange: (doc, uuid): MoveSource | null => {
+      const range = getHeadingLineRangeByUuid(doc, uuid);
+      if (!range) return null;
+      return { from: range.from, to: range.to, nodes: [range.node] };
     },
   },
   bulletList: {
@@ -106,7 +152,8 @@ export const TEXT_OBJECT_REGISTRY: Record<TextObjectKind, TextObjectMeta> = {
     chromeAnchor: "text-top",
     floatBodyComponent: PLACEHOLDER_FLOAT_BODY,
     initialFloatSize: { width: 480, height: 360 },
-    actions: ALL_ACTIONS,
+    actions: NON_PROSE_BLOCK_ACTIONS,
+    removeOnEmptyChildren: true,
     dropAdapter: topLevelDropAdapter,
   },
   orderedList: {
@@ -118,7 +165,8 @@ export const TEXT_OBJECT_REGISTRY: Record<TextObjectKind, TextObjectMeta> = {
     chromeAnchor: "text-top",
     floatBodyComponent: PLACEHOLDER_FLOAT_BODY,
     initialFloatSize: { width: 480, height: 360 },
-    actions: ALL_ACTIONS,
+    actions: NON_PROSE_BLOCK_ACTIONS,
+    removeOnEmptyChildren: true,
     dropAdapter: topLevelDropAdapter,
   },
   blockquote: {
@@ -129,7 +177,7 @@ export const TEXT_OBJECT_REGISTRY: Record<TextObjectKind, TextObjectMeta> = {
     decorationSafety: 0,
     chromeAnchor: "text-top",
     floatBodyComponent: PLACEHOLDER_FLOAT_BODY,
-    actions: ALL_ACTIONS,
+    actions: PROSE_ACTIONS,
     dropAdapter: topLevelDropAdapter,
   },
   codeBlock: {
@@ -140,7 +188,7 @@ export const TEXT_OBJECT_REGISTRY: Record<TextObjectKind, TextObjectMeta> = {
     decorationSafety: 0,
     chromeAnchor: "text-top",
     floatBodyComponent: PLACEHOLDER_FLOAT_BODY,
-    actions: ALL_ACTIONS,
+    actions: NON_PROSE_BLOCK_ACTIONS,
     dropAdapter: topLevelDropAdapter,
   },
   displayMath: {
@@ -151,7 +199,7 @@ export const TEXT_OBJECT_REGISTRY: Record<TextObjectKind, TextObjectMeta> = {
     decorationSafety: 0,
     chromeAnchor: "block-top",
     floatBodyComponent: PLACEHOLDER_FLOAT_BODY,
-    actions: ALL_ACTIONS,
+    actions: NON_PROSE_BLOCK_ACTIONS,
     dropAdapter: topLevelDropAdapter,
   },
   titleField: {
@@ -162,7 +210,7 @@ export const TEXT_OBJECT_REGISTRY: Record<TextObjectKind, TextObjectMeta> = {
     decorationSafety: 0,
     chromeAnchor: "text-top",
     floatBodyComponent: PLACEHOLDER_FLOAT_BODY,
-    actions: ALL_ACTIONS,
+    actions: TITLE_FIELD_ACTIONS,
     dropAdapter: topLevelDropAdapter,
   },
   latexComment: {
@@ -173,7 +221,7 @@ export const TEXT_OBJECT_REGISTRY: Record<TextObjectKind, TextObjectMeta> = {
     decorationSafety: 0,
     chromeAnchor: "block-top",
     floatBodyComponent: PLACEHOLDER_FLOAT_BODY,
-    actions: ALL_ACTIONS,
+    actions: NON_PROSE_BLOCK_ACTIONS,
     dropAdapter: topLevelDropAdapter,
   },
   texBlock: {
@@ -188,7 +236,7 @@ export const TEXT_OBJECT_REGISTRY: Record<TextObjectKind, TextObjectMeta> = {
     chromeAnchor: "block-top",
     floatBodyComponent: PLACEHOLDER_FLOAT_BODY,
     initialFloatSize: { width: 480, height: 280 },
-    actions: ALL_ACTIONS,
+    actions: NON_PROSE_BLOCK_ACTIONS,
     // texBlock uses `%!vtex:begin <uuid>` / `%!vtex:end <uuid>` comment
     // sentinels for round-trip, not a \v*id command. Left empty here
     // because the registry's sourceMarker field is the simpler
@@ -206,7 +254,7 @@ export const TEXT_OBJECT_REGISTRY: Record<TextObjectKind, TextObjectMeta> = {
     decorationSafety: 0,
     chromeAnchor: "block-top",
     floatBodyComponent: PLACEHOLDER_FLOAT_BODY,
-    actions: ALL_ACTIONS,
+    actions: NON_PROSE_BLOCK_ACTIONS,
     dropAdapter: topLevelDropAdapter,
   },
   graphicsBlock: {
@@ -217,7 +265,7 @@ export const TEXT_OBJECT_REGISTRY: Record<TextObjectKind, TextObjectMeta> = {
     decorationSafety: 0,
     chromeAnchor: "block-top",
     floatBodyComponent: PLACEHOLDER_FLOAT_BODY,
-    actions: ALL_ACTIONS,
+    actions: NON_PROSE_BLOCK_ACTIONS,
     dropAdapter: topLevelDropAdapter,
   },
   exampleBlock: {
@@ -228,7 +276,8 @@ export const TEXT_OBJECT_REGISTRY: Record<TextObjectKind, TextObjectMeta> = {
     decorationSafety: 0,
     chromeAnchor: "text-top",
     floatBodyComponent: PLACEHOLDER_FLOAT_BODY,
-    actions: ALL_ACTIONS,
+    actions: NON_PROSE_BLOCK_ACTIONS,
+    removeOnEmptyChildren: true,
     sourceMarker: { command: "vexid", idLength: 4 },
     dropAdapter: topLevelDropAdapter,
   },
@@ -244,7 +293,7 @@ export const TEXT_OBJECT_REGISTRY: Record<TextObjectKind, TextObjectMeta> = {
     decorationSafety: BULLET_DECORATION_WIDTH,
     chromeAnchor: "text-top",
     floatBodyComponent: PLACEHOLDER_FLOAT_BODY,
-    actions: ALL_ACTIONS,
+    actions: PROSE_ACTIONS,
     dropAdapter: listItemDropAdapter,
   },
   exampleItem: {
@@ -261,7 +310,7 @@ export const TEXT_OBJECT_REGISTRY: Record<TextObjectKind, TextObjectMeta> = {
     decorationSafety: EXAMPLE_ITEM_HANDLE_INDENT,
     chromeAnchor: "text-top",
     floatBodyComponent: PLACEHOLDER_FLOAT_BODY,
-    actions: ALL_ACTIONS,
+    actions: PROSE_ACTIONS,
     sourceMarker: { command: "vxid", idLength: 4 },
     dropAdapter: exampleItemDropAdapter,
   },
@@ -276,7 +325,7 @@ export const TEXT_OBJECT_REGISTRY: Record<TextObjectKind, TextObjectMeta> = {
     decorationSafety: 0,
     chromeAnchor: "text-top",
     floatBodyComponent: PLACEHOLDER_FLOAT_BODY,
-    actions: ALL_ACTIONS,
+    actions: LINKED_RANGE_ACTIONS,
     // Paired markers \vlid{id}…\vlidend{id} — added in Phase E
     // alongside the multi-paragraph round-trip plumbing. The simple
     // command form below names the opener; the closer is derived

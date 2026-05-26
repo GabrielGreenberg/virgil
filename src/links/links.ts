@@ -79,7 +79,7 @@ function legacyAnchorKindToCardKind(
 // ---------------------------------------------------------------------------
 
 /** Walk ancestors up from `pos` and return the first UUID-bearing node's uuid. */
-function paragraphUuidAt(doc: PMNode, pos: number): string | null {
+export function paragraphUuidAt(doc: PMNode, pos: number): string | null {
   try {
     const $pos = doc.resolve(pos);
     for (let depth = $pos.depth; depth >= 0; depth--) {

@@ -15,7 +15,7 @@ import Highlight from "@tiptap/extension-highlight";
 import { useEffect, useCallback, useRef, useImperativeHandle, forwardRef } from "react";
 import { NodeSelection, Plugin, PluginKey } from "@tiptap/pm/state";
 import { Node as PMNode } from "@tiptap/pm/model";
-import { InlineMath, DisplayMath, Footnote, LatexComment, Citation, LabelRef, LatexCommandMark, SlashPopupExtension, LabelHandler, TitleField, MaketitleMarker, EmptyParagraphTitleCleaner, AiRequestMarker, MarginaliaAnchorGuard, LinkedAnchor, LinkedAnchorGuard, ExampleBlock, ExampleItemList, ExampleItem, ExampleGloss, AlignedGlossRow, ProseGlossRow, GlossCell, ExpexNumbering, SmartQuotes, TabIndent, PgMarkChip, TextColor, TexBlock, FigureBlock, FigureCaption, GraphicsBlock } from "@/lib/tiptap-extensions";
+import { InlineMath, DisplayMath, Footnote, LatexComment, Citation, LabelRef, LatexCommandMark, SlashPopupExtension, LabelHandler, TitleField, MaketitleMarker, EmptyParagraphTitleCleaner, AiRequestMarker, MarginaliaAnchorGuard, LinkedAnchor, LinkedAnchorGuard, TextObjectOrphanGuard, ExampleBlock, ExampleItemList, ExampleItem, ExampleGloss, AlignedGlossRow, ProseGlossRow, GlossCell, ExpexNumbering, SmartQuotes, TabIndent, PgMarkChip, TextColor, TexBlock, FigureBlock, FigureCaption, GraphicsBlock } from "@/lib/tiptap-extensions";
 import {
   collectLinksFromEditor,
   jumpToLink,
@@ -1726,6 +1726,7 @@ const VirgilEditor = forwardRef<EditorHandle, EditorProps>(function VirgilEditor
       SmartQuotes,
       LinkedAnchor,
       LinkedAnchorGuard,
+      TextObjectOrphanGuard,
       TitleField,
       MaketitleMarker,
       LabelHandler,

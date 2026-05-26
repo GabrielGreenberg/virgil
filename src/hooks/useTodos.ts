@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback } from "react";
+import { useCallback, useEffect } from "react";
 import { generateEntityId } from "@/lib/uuid";
 import type { TodoState, TodoItem } from "@/lib/types";
 import {
@@ -139,6 +139,29 @@ export function useTodos(docId: string | null, externalPristine?: PristineKindAp
         i.id === todoId ? removeTextObjectLink(i, paragraphId) : i,
       ),
     }));
+  }, [update]);
+
+  // Mode A orphan sweep — when a text-object block is removed from the
+  // doc (e.g. by Delete or Archive on a paragraph / heading / list / etc.),
+  // strip the dead uuid from any todo's Mode A links. Pairs with the
+  // `TextObjectOrphanGuard` PM plugin. See ACTION-MENU-DIAGNOSIS.md C3.
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const uuid = (e as CustomEvent).detail?.uuid;
+      if (typeof uuid !== "string" || !uuid) return;
+      update((prev) => {
+        let changed = false;
+        const next = prev.items.map((i) => {
+          if (!getLinkedTextObjectIds(i).includes(uuid)) return i;
+          changed = true;
+          return removeTextObjectLink(i, uuid);
+        });
+        return changed ? { items: next } : prev;
+      });
+    };
+    window.addEventListener("virgil-textobject-orphaned", handler);
+    return () =>
+      window.removeEventListener("virgil-textobject-orphaned", handler);
   }, [update]);
 
   /**

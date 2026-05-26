@@ -63,6 +63,16 @@ export interface MenuEntry {
   destructive?: boolean;
   /** When true, draw a divider line above this entry. */
   separator?: boolean;
+  /** Per-kind disabled state — computed from
+   *  `TEXT_OBJECT_REGISTRY[kind].actions` at menu-open time. Disabled
+   *  entries render greyed-out (visible) instead of being filtered
+   *  away, so the menu's shape stays consistent across kinds and the
+   *  user reads "ah, this doesn't apply here" instead of "wait, where's
+   *  the Footnote option?" See ACTION-MENU-DIAGNOSIS.md cluster C1. */
+  disabled?: boolean;
+  /** Optional rationale for the disabled state. Reserved for a future
+   *  tooltip pass; not wired up yet. */
+  reason?: string;
 }
 
 export const MENU_ENTRIES: MenuEntry[] = [
@@ -102,16 +112,18 @@ interface Props {
 }
 
 export function DragHandleMenu({ anchorRect, onSelect, onClose, kind }: Props) {
-  // Filter the global `MENU_ENTRIES` by what the registry advertises for
-  // this kind. Today every kind exposes `ALL_ACTIONS`, so this is a
-  // no-op visually — but the seam means per-kind filtering becomes a
-  // one-line registry change later (e.g. dropping `archive` from
-  // `linkedRange`).
+  // Decorate the global `MENU_ENTRIES` with per-kind disabled state from
+  // the registry. Disabled entries stay in the list (visible-disabled
+  // grey-out) so the menu shape is consistent across kinds. The render
+  // and keyboard handler both gate on `entry.disabled`. See
+  // ACTION-MENU-DIAGNOSIS.md cluster C1 + §7 q3.
   const entries = useMemo(() => {
     if (!kind || kind === "selection") return MENU_ENTRIES;
     if (!isTextObjectKind(kind)) return MENU_ENTRIES;
     const allowed = new Set(TEXT_OBJECT_REGISTRY[kind].actions);
-    return MENU_ENTRIES.filter((m) => allowed.has(m.action));
+    return MENU_ENTRIES.map((m) =>
+      allowed.has(m.action) ? m : { ...m, disabled: true },
+    );
   }, [kind]);
   const menuRef = useRef<HTMLDivElement | null>(null);
   // Left of the handle by default so the menu doesn't cover the grip or
@@ -141,7 +153,7 @@ export function DragHandleMenu({ anchorRect, onSelect, onClose, kind }: Props) {
       // Backspace / Delete map to the destructive delete action when present.
       if (e.key === "Backspace" || e.key === "Delete") {
         const hit = entries.find((m) => m.action === "delete");
-        if (hit) {
+        if (hit && !hit.disabled) {
           e.preventDefault();
           onSelect(hit.action);
         }
@@ -150,7 +162,7 @@ export function DragHandleMenu({ anchorRect, onSelect, onClose, kind }: Props) {
       if (e.key.length !== 1) return;
       const letter = e.key.toUpperCase();
       const hit = entries.find((m) => m.letter === letter);
-      if (hit) {
+      if (hit && !hit.disabled) {
         e.preventDefault();
         onSelect(hit.action);
       }
@@ -208,12 +220,28 @@ export function DragHandleMenu({ anchorRect, onSelect, onClose, kind }: Props) {
           <button
             type="button"
             role="menuitem"
-            onClick={() => onSelect(entry.action)}
-            className="w-full flex items-center gap-2.5 px-3 text-sm text-left hover-on-light"
+            disabled={entry.disabled}
+            aria-disabled={entry.disabled || undefined}
+            title={entry.disabled ? entry.reason : undefined}
+            onClick={() => {
+              if (entry.disabled) return;
+              onSelect(entry.action);
+            }}
+            className={
+              entry.disabled
+                ? "w-full flex items-center gap-2.5 px-3 text-sm text-left"
+                : "w-full flex items-center gap-2.5 px-3 text-sm text-left hover-on-light"
+            }
             style={{
               height: ITEM_H,
-              color: entry.destructive ? "var(--danger, #b45757)" : "var(--ink-strong)",
+              color: entry.disabled
+                ? "var(--ink-subtle)"
+                : entry.destructive
+                  ? "var(--danger, #b45757)"
+                  : "var(--ink-strong)",
               background: "transparent",
+              opacity: entry.disabled ? 0.45 : 1,
+              cursor: entry.disabled ? "not-allowed" : "pointer",
             }}
           >
             <span className="shrink-0 flex items-center justify-center" style={{ width: 16, height: 16 }}>

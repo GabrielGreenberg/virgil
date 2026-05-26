@@ -35,13 +35,33 @@ import {
 } from "react";
 import type { CardKind } from "./_shared/types";
 
-/** Per-kind lifecycle operations. `clone` returns the new id, or null if
- *  the source id was not found (or the kind opts out of clone). `delete`
- *  is fire-and-forget — sidecar hooks already handle missing ids
- *  gracefully (filter is a no-op if nothing matches). */
+/** Per-kind lifecycle operations.
+ *
+ *  `clone(sourceId)` returns the new id, or null if the source id was
+ *  not found (or the kind opts out of clone).
+ *
+ *  `delete(id)` is fire-and-forget — sidecar hooks already handle
+ *  missing ids gracefully (filter is a no-op if nothing matches).
+ *
+ *  `bindAnchor(id, paragraphId, anchorId, anchorText)` re-attaches a
+ *  Mode B text-range anchor to a card. The duplicate dispatcher calls
+ *  this on the freshly-cloned card after the clone slice lands, so the
+ *  clone's `links[]` points at its own `linkedAnchor` mark (which
+ *  carries a freshly-minted anchorId) and card→editor jump-to works.
+ *  Mode B kinds (note / highlight / comment / suggestion /
+ *  cutter-comment / cutter-suggestion) implement it; Mode A kinds may
+ *  leave it unset. Implementations MUST be idempotent — a second call
+ *  with the same `anchorId` is a no-op. See ACTION-MENU-DIAGNOSIS.md
+ *  cluster C2. */
 export interface CardLifecycle {
   clone(sourceId: string): string | null;
   delete(id: string): void;
+  bindAnchor?(
+    id: string,
+    paragraphId: string,
+    anchorId: string,
+    anchorText: string,
+  ): void;
 }
 
 export type CardLifecycleRegistry = Partial<Record<CardKind, CardLifecycle>>;

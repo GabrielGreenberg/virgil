@@ -136,6 +136,61 @@ export const LinkedAnchorGuard = Extension.create({
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
+// TextObjectOrphanGuard — sibling of LinkedAnchorGuard for Mode A links.
+//
+// Mode B (linkedAnchor marks) and Mode A (paragraphId / textObjectIds
+// fields on the card itself) are two different schema mechanisms for
+// anchoring a card to text. LinkedAnchorGuard above sweeps Mode B on
+// mark removal. This plugin sweeps Mode A on BLOCK removal — when a
+// paragraph / heading / listItem / etc. vanishes from the doc, Mode A
+// cards that had recorded its uuid as `paragraphId` / `textObjectIds`
+// are notified so they can drop the stale link.
+//
+// Pattern: read `diff.removedBlocks` from DocStructureObserver (already
+// computed, O(1) per transaction), emit `virgil-textobject-orphaned`
+// CustomEvents in a `setTimeout(0)` so the transaction commits first.
+// Each Mode A hook (useTodos / useQuotations / useExamples / useArchive)
+// listens and sweeps its own `links[]`. The handler MUST be O(removed)
+// per event — pre-build an inverted index inside each hook so the
+// listener doesn't walk every card on every removal.
+//
+// Overlap with MarginaliaAnchorGuard (below): that guard re-inserts a
+// uuid-bearing empty paragraph when an *anchored* block vanishes, so
+// blocks present in `anchoredUuidsRef` never actually become orphans.
+// This guard is the safety net for blocks Mode-A-anchored but NOT
+// gutter-tracked — common for cascade-extended deletions that swallow
+// a wrapper (list / exampleBlock) whose uuid was anchored. See
+// ACTION-MENU-DIAGNOSIS.md cluster C3.
+// ─────────────────────────────────────────────────────────────────────────────
+
+export const TextObjectOrphanGuard = Extension.create({
+  name: "textObjectOrphanGuard",
+
+  addProseMirrorPlugins() {
+    return [
+      new Plugin({
+        key: new PluginKey("textObjectOrphanGuard"),
+        appendTransaction(transactions, _oldState, newState) {
+          if (!transactions.some((tr) => tr.docChanged)) return null;
+          const diff = readPendingDiff(newState);
+          if (!diff || diff.removedBlocks.length === 0) return null;
+          setTimeout(() => {
+            for (const block of diff.removedBlocks) {
+              window.dispatchEvent(
+                new CustomEvent("virgil-textobject-orphaned", {
+                  detail: { uuid: block.uuid, typeName: block.typeName },
+                }),
+              );
+            }
+          }, 0);
+          return null;
+        },
+      }),
+    ];
+  },
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
 // MarginaliaAnchorGuard — prevents paragraph deletion from orphaning the
 // cards attached to it. When a UUID-bearing block vanishes and it had
 // any kind of card anchor — a gutter marginalia marker (tracked via the
