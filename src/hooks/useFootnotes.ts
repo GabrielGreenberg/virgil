@@ -100,6 +100,24 @@ export function useFootnotes(docId: string | null, pristine?: PristineKindApi | 
     });
   }, [persist, pristine]);
 
+  /** Deep-copy a footnote sidecar entry with a fresh id. Returns the new
+   *  id, or null if the source id wasn't found. Used by the drag-handle
+   *  Duplicate action when a duplicated block contains a footnote atom. */
+  const cloneFootnote = useCallback((sourceId: string): string | null => {
+    const source = stateRef.current.footnotes.find((f) => f.id === sourceId);
+    if (!source) return null;
+    const newRef: FootnoteRef = {
+      id: generateShortId(),
+      content: normalizeRichContent(source.content),
+      createdAt: new Date().toISOString(),
+    };
+    const next = { footnotes: [...stateRef.current.footnotes, newRef] };
+    stateRef.current = next;
+    setState(next);
+    persist(next);
+    return newRef.id;
+  }, [persist]);
+
   const syncFromEditor = useCallback(
     (editorFootnotes: Array<{ footnoteId: string; content: JSONContent }>) => {
       const current = stateRef.current;
@@ -129,6 +147,7 @@ export function useFootnotes(docId: string | null, pristine?: PristineKindApi | 
     addFootnote,
     updateFootnoteContent,
     deleteFootnote,
+    cloneFootnote,
     syncFromEditor,
   };
 }

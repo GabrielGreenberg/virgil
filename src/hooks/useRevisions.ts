@@ -426,6 +426,53 @@ export function useRevisions(
     [update, pristine],
   );
 
+  /** Deep-copy a revision-comment sidecar entry with a fresh id. Links
+   *  cleared; walker rewires anchors after slice insertion. */
+  const cloneComment = useCallback(
+    (sourceId: string): string | null => {
+      const source = state.cards.find((c) => c.id === sourceId);
+      if (!source || source.kind !== "comment") return null;
+      const clone: RevisionCommentCard = {
+        kind: "comment",
+        id: generateEntityId(),
+        createdAt: new Date().toISOString(),
+        text: source.text,
+        content: normalizeRichContent(source.content),
+        aiRequest: false,
+        selectedText: source.selectedText,
+        links: [],
+      };
+      update((prev) => ({ ...prev, cards: [...prev.cards, clone] }));
+      return clone.id;
+    },
+    [update, state.cards],
+  );
+
+  /** Deep-copy a revision-suggestion sidecar entry with a fresh id. */
+  const cloneSuggestion = useCallback(
+    (sourceId: string): string | null => {
+      const source = state.cards.find((c) => c.id === sourceId);
+      if (!source || source.kind !== "suggestion") return null;
+      const clone: RevisionSuggestionCard = {
+        kind: "suggestion",
+        id: generateEntityId(),
+        createdAt: new Date().toISOString(),
+        author: source.author,
+        original_text: source.original_text,
+        suggested_text: source.suggested_text,
+        explanation: source.explanation,
+        user_text: source.user_text,
+        instructions: source.instructions,
+        status: "pending",
+        selectedText: source.selectedText,
+        links: [],
+      };
+      update((prev) => ({ ...prev, cards: [...prev.cards, clone] }));
+      return clone.id;
+    },
+    [update, state.cards],
+  );
+
   const discardPristineCards = useCallback(() => {
     if (externalPristine) {
       externalPristine.discardAll();
@@ -493,6 +540,8 @@ export function useRevisions(
     addCardParagraphId,
     removeCardParagraphId,
     deleteCard,
+    cloneComment,
+    cloneSuggestion,
     clearCardAnchor,
     discardPristineCards,
   };

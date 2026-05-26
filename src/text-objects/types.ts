@@ -314,4 +314,6 @@ export type DragHandleAction =
   | "todo"
   | "suggest-edit"
   | "cutter"
-  | "archive";
+  | "duplicate"
+  | "archive"
+  | "delete";

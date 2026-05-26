@@ -25,7 +25,9 @@
 import { useCallback, type RefObject } from "react";
 import type { Editor } from "@tiptap/react";
 import type { Node as PMNode, MarkType } from "@tiptap/pm/model";
-import { NodeSelection } from "@tiptap/pm/state";
+import { NodeSelection, TextSelection } from "@tiptap/pm/state";
+import { duplicateSlice } from "@/text-objects/duplicate-slice";
+import { cleanupLinksInRange } from "@/text-objects/delete-range";
 import type { CardCreationApi } from "./card-creation";
 import type { EditorHandle } from "../../Editor";
 import type { ViewPrefs, PanelId } from "@/hooks/useViewPrefs";
@@ -39,6 +41,7 @@ import type { ArchivedSnippet } from "@/lib/types";
 import { generateShortId } from "@/lib/uuid";
 import { focusNewCard } from "@/lib/focus-new-card";
 import type { DragHandleAction } from "@/components/DragHandleMenu";
+import type { CardLifecycleApi } from "@/panels/card-lifecycle-registry";
 import {
   TEXT_OBJECT_REGISTRY,
   isTextObjectKind,
@@ -68,6 +71,11 @@ export interface DragHandleActionsDeps {
   ) => void;
   setSelectedArchiveId: (id: string | null) => void;
   pinRecentlyAddedArchive?: (id: string) => void;
+  /** Per-CardKind clone/delete SSOT. Used by the `duplicate` and
+   *  `delete` actions to fork or remove sidecar entries for any inline
+   *  atoms / linkedAnchor marks living in the captured passage. The
+   *  walkers never branch on kind — they look up via this API. */
+  cardLifecycle: CardLifecycleApi;
   prefs: ViewPrefs;
   expandLeft: () => void;
   expandRight: () => void;
@@ -95,6 +103,7 @@ export function useDragHandleActions(deps: DragHandleActionsDeps) {
     addArchiveTextObjectId,
     setSelectedArchiveId,
     pinRecentlyAddedArchive,
+    cardLifecycle,
     prefs,
     expandLeft,
     expandRight,
@@ -316,7 +325,41 @@ export function useDragHandleActions(deps: DragHandleActionsDeps) {
           focusCardKey = `cutter-comment:${card.id}`;
           break;
         }
+        case "duplicate": {
+          // Slice the OUTER block bounds (so the wrapper node travels with
+          // its contents), deep-clone it via the registry-driven walker
+          // (which remints every uuid / inline-atom id / linkedAnchor mark
+          // and clones the corresponding sidecar entries), then insert the
+          // clone immediately after the source.
+          const outer = outerRangeFor(ed, ref);
+          if (!outer || outer.to <= outer.from) break;
+          const slice = ed.state.doc.slice(outer.from, outer.to);
+          if (slice.size === 0) break;
+          const cloned = duplicateSlice(slice, cardLifecycle);
+          const tr = ed.state.tr.replace(outer.to, outer.to, cloned);
+          // Drop the caret near the start of the inserted duplicate so the
+          // user can immediately see/move it. `near` snaps to a valid text
+          // position regardless of node type.
+          try {
+            const insertPos = outer.to;
+            if (insertPos <= tr.doc.content.size) {
+              tr.setSelection(TextSelection.near(tr.doc.resolve(insertPos + 1)));
+            }
+          } catch {
+            /* ignore — selection placement is best-effort */
+          }
+          ed.view.dispatch(tr);
+          break;
+        }
         case "archive": {
+          // TODO(card-lifecycle): fold this path into the lifecycle
+          // registry alongside duplicate/delete. The shape mismatch is
+          // that archive's "create" takes content (not a sourceId), and
+          // it cascades into a panel-selection side effect. Either
+          // extend `CardLifecycle` with `create(content) → id` + a
+          // post-create hook, or split the panel-focus concern into its
+          // own ergonomic API. Deferred from the initial pass.
+
           // archiveSelection slices the current selection into JSON, so the
           // ref's selection-kind is sufficient — atom NodeSelections
           // archive the atom node itself, text selections archive their
@@ -334,6 +377,24 @@ export function useDragHandleActions(deps: DragHandleActionsDeps) {
           pinRecentlyAddedArchive?.(snippet.id);
           panelId = "archive";
           focusCardKey = `archive:${snippet.id}`;
+          break;
+        }
+        case "delete": {
+          // Outer block bounds so the wrapper goes with its contents.
+          // The cleanup walker enumerates every sidecar-bearing element
+          // inside the range (inline footnote/citation atoms +
+          // linkedAnchor marks) and calls each kind's lifecycle.delete
+          // so the deletion doesn't leak orphan sidecar entries.
+          const outer = outerRangeFor(ed, ref);
+          if (!outer || outer.to <= outer.from) break;
+          cleanupLinksInRange(
+            ed.state.doc,
+            outer.from,
+            outer.to,
+            cardLifecycle,
+          );
+          const tr = ed.state.tr.delete(outer.from, outer.to);
+          ed.view.dispatch(tr);
           break;
         }
       }
@@ -360,11 +421,65 @@ export function useDragHandleActions(deps: DragHandleActionsDeps) {
       addArchiveTextObjectId,
       setSelectedArchiveId,
       pinRecentlyAddedArchive,
+      cardLifecycle,
       ensureOmniActiveForPanel,
     ],
   );
 
   return { dispatch };
+}
+
+/**
+ * Outer block bounds for a ref — what the Duplicate and Delete actions
+ * operate on. Unlike `resolveRefRange` (which returns the INNER content
+ * range for text-bearing blocks because archive/note/etc. want the text
+ * inside), this returns the full node bounds so the wrapper node travels
+ * with its contents during slice / delete.
+ *
+ *   selection         → the selection's range as-is
+ *   heading           → section bounds (heading + body, via collectMoveSource)
+ *   linkedRange       → mark bounds (the menu never opens for this kind,
+ *                       but kept for completeness)
+ *   block / sub-object → {pos, pos + nodeSize}
+ *   atom block         → {pos, pos + nodeSize}
+ */
+function outerRangeFor(
+  ed: Editor,
+  ref: DragHandleRef,
+): { from: number; to: number } | null {
+  if (ref.kind === "selection") {
+    const docSize = ed.state.doc.content.size;
+    const from = Math.max(0, Math.min(ref.from, docSize));
+    const to = Math.max(0, Math.min(ref.to, docSize));
+    return to > from ? { from, to } : null;
+  }
+  if (!isTextObjectKind(ref.kind)) return null;
+  const meta = TEXT_OBJECT_REGISTRY[ref.kind];
+
+  if (meta.isRange) {
+    const markType = ed.state.schema.marks.linkedAnchor;
+    if (!markType) return null;
+    return findLinkedRangeBounds(ed.state.doc, ref.id, markType);
+  }
+
+  if (ref.kind === "heading") {
+    const section = getSectionRangeByUuid(ed.state.doc, ref.id);
+    return section ? { from: section.start, to: section.end } : null;
+  }
+
+  let result: { from: number; to: number } | null = null;
+  ed.state.doc.descendants((node, pos) => {
+    if (result) return false;
+    if (
+      node.type.name === ref.kind &&
+      (node.attrs?.uuid as string | null) === ref.id
+    ) {
+      result = { from: pos, to: pos + node.nodeSize };
+      return false;
+    }
+    return true;
+  });
+  return result;
 }
 
 function createAnchor(ed: Editor, kind: LinkedAnchorKind) {

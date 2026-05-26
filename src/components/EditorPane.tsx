@@ -211,6 +211,10 @@ import type { OmniCategory } from "@/panels/Omni";
 import type { SectionPathEntry } from "@/panels/Outline";
 import type { PanelKind } from "@/panels/_shared/types";
 import type { AiRequest } from "@/lib/types";
+import {
+  useCardLifecycleApi,
+  type CardLifecycleRegistry,
+} from "@/panels/card-lifecycle-registry";
 
 // Stable no-op for `PaneState` fields that aren't yet wired to a real
 // hook. Keeping the reference module-scope avoids a fresh closure per
@@ -1801,11 +1805,56 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
   // Click on a paragraph / selection / heading drag handle opens a
   // popover menu of all the things you can do to that passage
   // (footnote, citation, quotation, note, todo, review, suggest edit,
-  // cutter, archive). The dispatch hook resolves the passage to a doc
-  // range, plants the selection over it, runs the matching create
-  // path with `mode: "omni"`, and ensures the omni-view is showing
-  // on the new card's panel side. Reader mode (no viewPrefs) still
-  // computes a dispatch — the omni activation steps no-op.
+  // cutter, duplicate, archive, delete). The dispatch hook resolves
+  // the passage to a doc range, plants the selection over it, runs
+  // the matching create path with `mode: "omni"`, and ensures the
+  // omni-view is showing on the new card's panel side. Reader mode
+  // (no viewPrefs) still computes a dispatch — the omni activation
+  // steps no-op.
+  //
+  // Per-CardKind clone/delete is plugged in here from each per-doc
+  // sidecar hook and exposed to the dispatcher via a stable API; the
+  // dispatcher's duplicate/delete walkers iterate the doc range and
+  // call `cardLifecycle.get(kind)?.clone/.delete` without per-kind
+  // branches. See `src/panels/card-lifecycle-registry.tsx`.
+  const cardLifecycleRegistry = useMemo<CardLifecycleRegistry>(
+    () => ({
+      footnote: {
+        clone: footnotesHook.cloneFootnote,
+        delete: footnotesHook.deleteFootnote,
+      },
+      citation: {
+        clone: citationsHook.cloneCitation,
+        delete: citationsHook.deleteCitation,
+      },
+      note: {
+        clone: notesHook.cloneNote,
+        delete: notesHook.deleteNote,
+      },
+      highlight: {
+        clone: notesHook.cloneHighlight,
+        delete: notesHook.deleteNote,
+      },
+      comment: {
+        clone: revisionsHook.cloneComment,
+        delete: revisionsHook.deleteCard,
+      },
+      suggestion: {
+        clone: revisionsHook.cloneSuggestion,
+        delete: revisionsHook.deleteCard,
+      },
+      "cutter-comment": {
+        clone: cutterHook.cloneComment,
+        delete: cutterHook.deleteCard,
+      },
+      "cutter-suggestion": {
+        clone: cutterHook.cloneSuggestion,
+        delete: cutterHook.deleteCard,
+      },
+    }),
+    [footnotesHook, citationsHook, notesHook, revisionsHook, cutterHook],
+  );
+  const cardLifecycle = useCardLifecycleApi(cardLifecycleRegistry);
   const dragHandleActions = useDragHandleActions({
     editorRef: innerRef,
     cardCreation,
@@ -1813,6 +1862,7 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
     updateArchiveSnippet: archiveHook.updateSnippet,
     addArchiveTextObjectId: archiveHook.addParagraphId,
     setSelectedArchiveId,
+    cardLifecycle,
     prefs: viewPrefs?.prefs ?? readerPrefs,
     expandLeft: viewPrefs?.expandLeft ?? stubSetActive,
     expandRight: viewPrefs?.expandRight ?? stubSetActive,

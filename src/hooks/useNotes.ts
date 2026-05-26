@@ -369,6 +369,49 @@ export function useNotes(docId: string | null, externalPristine?: PristineKindAp
     [update, pristine],
   );
 
+  /** Deep-copy a note sidecar entry with a fresh id. Returns the new id,
+   *  or null if the source wasn't a note. Links are cleared so the clone
+   *  starts without stale paragraph or anchor references; the duplicator
+   *  walker rewires anchors after the slice is inserted. */
+  const cloneNote = useCallback(
+    (sourceId: string): string | null => {
+      const source = cards.find((c) => c.id === sourceId);
+      if (!source || source.kind !== "note") return null;
+      const clone: UserNote = {
+        kind: "note",
+        id: generateEntityId(),
+        title: source.title,
+        content: normalizeRichContent(source.content),
+        createdAt: new Date().toISOString(),
+        aiRequest: false,
+        links: [],
+      };
+      update((prev) => ({ cards: [...prev.cards, clone] }));
+      return clone.id;
+    },
+    [update, cards],
+  );
+
+  /** Deep-copy a highlight sidecar entry with a fresh id. Same shape as
+   *  cloneNote — links cleared, walker rewires after insertion. */
+  const cloneHighlight = useCallback(
+    (sourceId: string): string | null => {
+      const source = cards.find((c) => c.id === sourceId);
+      if (!source || source.kind !== "highlight") return null;
+      const clone: HighlightCard = {
+        kind: "highlight",
+        id: generateEntityId(),
+        createdAt: new Date().toISOString(),
+        highlightColor: source.highlightColor,
+        aiRequest: false,
+        links: [],
+      };
+      update((prev) => ({ cards: [...prev.cards, clone] }));
+      return clone.id;
+    },
+    [update, cards],
+  );
+
   /**
    * Drop any notes that were created via `addNote()` but never edited.
    * Call from panel-close / host-unmount so "press +, do nothing, leave"
@@ -402,6 +445,8 @@ export function useNotes(docId: string | null, externalPristine?: PristineKindAp
     removeHighlightTextObjectId,
     preserveModeBAnchor,
     deleteNote,
+    cloneNote,
+    cloneHighlight,
     setNoteAnchor,
     clearNoteAnchor: clearCardAnchor,
     discardPristineNotes,

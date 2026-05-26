@@ -19,12 +19,14 @@ import {
   IconArchive,
   IconCitation,
   IconCutter,
+  IconDuplicate,
   IconFootnote,
   IconHighlight,
   IconNotes,
   IconQuotations,
   IconRevisions,
   IconTodo,
+  IconTrash,
 } from "./editor-layout/panel-icons";
 import {
   useFloatingMenuPosition,
@@ -49,7 +51,9 @@ export type DragHandleAction =
   | "todo"
   | "suggest-edit"
   | "cutter"
-  | "archive";
+  | "duplicate"
+  | "archive"
+  | "delete";
 
 export interface MenuEntry {
   action: DragHandleAction;
@@ -70,7 +74,9 @@ export const MENU_ENTRIES: MenuEntry[] = [
   { action: "todo", label: "Todo", letter: "T", icon: <IconTodo size={16} /> },
   { action: "suggest-edit", label: "Suggest edit", letter: "E", icon: <IconRevisions size={16} /> },
   { action: "cutter", label: "Suggest cut", letter: "X", icon: <IconCutter size={16} /> },
-  { action: "archive", label: "Archive", letter: "A", icon: <IconArchive size={16} />, destructive: true, separator: true },
+  { action: "duplicate", label: "Duplicate", letter: "D", icon: <IconDuplicate size={16} />, separator: true },
+  { action: "archive", label: "Archive", letter: "A", icon: <IconArchive size={16} />, separator: true },
+  { action: "delete", label: "Delete", letter: "⌫", icon: <IconTrash size={16} />, destructive: true },
 ];
 
 const MENU_W = 220;
@@ -130,8 +136,17 @@ export function DragHandleMenu({ anchorRect, onSelect, onClose, kind }: Props) {
         onClose();
         return;
       }
-      // Ignore when modifier keys are held — the menu's shortcuts are bare letters.
+      // Ignore when modifier keys are held — the menu's shortcuts are bare keys.
       if (e.metaKey || e.ctrlKey || e.altKey) return;
+      // Backspace / Delete map to the destructive delete action when present.
+      if (e.key === "Backspace" || e.key === "Delete") {
+        const hit = entries.find((m) => m.action === "delete");
+        if (hit) {
+          e.preventDefault();
+          onSelect(hit.action);
+        }
+        return;
+      }
       if (e.key.length !== 1) return;
       const letter = e.key.toUpperCase();
       const hit = entries.find((m) => m.letter === letter);

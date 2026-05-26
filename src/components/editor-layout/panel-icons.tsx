@@ -113,6 +113,30 @@ export function IconArchive({ active, size = 18 }: { active?: boolean; size?: nu
   );
 }
 
+// Two overlapping rounded rectangles — standard "copy / duplicate" affordance.
+export function IconDuplicate({ active, size = 18 }: { active?: boolean; size?: number }) {
+  const c = active ? "var(--accent)" : "currentColor";
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={c} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+      <rect x="9" y="9" width="11" height="11" rx="2" />
+      <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
+    </svg>
+  );
+}
+
+// Trash can — lid + body with two vertical guides for the destructive Delete action.
+export function IconTrash({ active, size = 18 }: { active?: boolean; size?: number }) {
+  const c = active ? "var(--accent)" : "currentColor";
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={c} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M3 6h18" />
+      <path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+      <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6" />
+      <path d="M10 11v6M14 11v6" />
+    </svg>
+  );
+}
+
 // Footnote icon: "fn" in regular weight, larger
 export function IconFootnote({ active, size = 18 }: { active?: boolean; size?: number }) {
   const c = active ? "var(--accent)" : "currentColor";

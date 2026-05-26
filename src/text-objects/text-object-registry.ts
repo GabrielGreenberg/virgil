@@ -46,7 +46,9 @@ const ALL_ACTIONS: ReadonlyArray<DragHandleAction> = [
   "todo",
   "suggest-edit",
   "cutter",
+  "duplicate",
   "archive",
+  "delete",
 ];
 
 // ---------------------------------------------------------------------------

@@ -50,6 +50,7 @@ export const CITATIONS_INERT: CitationsHook = {
   }),
   updateCitation: () => {},
   deleteCitation: () => {},
+  cloneCitation: () => null,
   setStyle: () => {},
   setBibPackage: () => {},
   addBibEntry: () => {},
@@ -220,6 +221,28 @@ export function useCitations(docId: string | null, pristine?: PristineKindApi | 
     [update, pristine],
   );
 
+  /** Deep-copy a citation sidecar entry with a fresh id. Returns the new
+   *  id, or null if the source id wasn't found. The cite command + keys
+   *  (which reference shared .bib entries) are copied verbatim. */
+  const cloneCitation = useCallback(
+    (sourceId: string): string | null => {
+      const source = stateRef.current.citations.find((c) => c.id === sourceId);
+      if (!source) return null;
+      const newRef: CitationRef = {
+        id: generateShortId(),
+        command: source.command,
+        keys: [...source.keys],
+        createdAt: new Date().toISOString(),
+      };
+      update((prev) => ({
+        ...prev,
+        citations: [...prev.citations, newRef],
+      }));
+      return newRef.id;
+    },
+    [update, stateRef],
+  );
+
   const setStyle = useCallback(
     (style: string) => {
       update((prev) => ({ ...prev, citationStyle: style }));
@@ -368,6 +391,7 @@ export function useCitations(docId: string | null, pristine?: PristineKindApi | 
       addCitation,
       updateCitation,
       deleteCitation,
+      cloneCitation,
       setStyle,
       setBibPackage,
       addBibEntry,
@@ -388,6 +412,7 @@ export function useCitations(docId: string | null, pristine?: PristineKindApi | 
       addCitation,
       updateCitation,
       deleteCitation,
+      cloneCitation,
       setStyle,
       setBibPackage,
       addBibEntry,
