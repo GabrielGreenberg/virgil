@@ -30,7 +30,11 @@ import type { Editor } from "@tiptap/react";
  */
 export interface EditorViewportCache {
   editorEl: HTMLElement | null;
-  /** editorRect.right - paddingRight — the editor's right text edge. */
+  /** editorRect.left + paddingLeft — the editor's left text edge. */
+  contentLeft: number;
+  /** editorRect.right - paddingRight — the editor's right text edge.
+   *  Aliased as `hoverZoneRight`; kept separate for callers that already
+   *  read this name. */
   editorRight: number;
   scrollParent: HTMLElement | null;
   scrollTop: number;
@@ -40,17 +44,42 @@ export interface EditorViewportCache {
    *  gutterInset (see src/text-objects/handle-layout.ts). Read here
    *  so JS placement and CSS chrome share one source. */
   gutterInset: number;
+  /** Left edge of the grab-handle hover zone — the horizontal stripe
+   *  where hovering reveals a TextObject's grab handle. Extends leftward
+   *  from `contentLeft` by `gutterInset` (where the handle lives) plus a
+   *  small cushion. So the user can move the cursor from the prose into
+   *  the gutter toward the handle without the resolver dropping hover. */
+  hoverZoneLeft: number;
+  /** Right edge of the hover zone — equal to `editorRight`. Handle is
+   *  on the left; no widening on the right. */
+  hoverZoneRight: number;
+  /** True iff `(x, y)` falls inside the hover-active rectangle for this
+   *  editor. Y is bounded by the scroll parent's visible region. */
+  containsHoverZone(x: number, y: number): boolean;
+  /** Snap `x` into the content column. The resolver passes this clamped
+   *  x to `editor.view.posAtCoords` when the cursor is in the gutter, so
+   *  PM's coord-to-pos machinery resolves to actual content rather than
+   *  to the wrapper. */
+  clampXToContent(x: number): number;
 }
 
 const DEFAULT_GUTTER_INSET = 22;
+/** Cushion added to the hover zone's leftward extent so the handle
+ *  (~10px wide) sits comfortably inside. */
+const HOVER_GUTTER_PAD = 8;
 
 const EMPTY_CACHE: EditorViewportCache = {
   editorEl: null,
+  contentLeft: 0,
   editorRight: 0,
   scrollParent: null,
   scrollTop: 0,
   scrollBottom: 0,
   gutterInset: DEFAULT_GUTTER_INSET,
+  hoverZoneLeft: 0,
+  hoverZoneRight: 0,
+  containsHoverZone: () => false,
+  clampXToContent: (x) => x,
 };
 
 export function findScrollParent(el: HTMLElement | null): HTMLElement | null {
@@ -90,11 +119,13 @@ export function useEditorViewportCache(editor: Editor | null): {
       if (!editorEl.isConnected) return;
       const cs = window.getComputedStyle(editorEl);
       const rect = editorEl.getBoundingClientRect();
+      const padLeft = parseFloat(cs.paddingLeft) || 0;
       const padRight = parseFloat(cs.paddingRight) || 0;
       const scrollParent = findScrollParent(editorEl);
       const scrollRect = scrollParent
         ? scrollParent.getBoundingClientRect()
         : { top: 0, bottom: window.innerHeight };
+      const contentLeft = rect.left + padLeft;
       const editorRight = rect.right - padRight;
       const scrollTop = scrollRect.top;
       const scrollBottom = scrollRect.bottom;
@@ -103,9 +134,12 @@ export function useEditorViewportCache(editor: Editor | null): {
       const gutterInset = Number.isFinite(parsedInset) && parsedInset > 0
         ? parsedInset
         : DEFAULT_GUTTER_INSET;
+      const hoverZoneLeft = contentLeft - gutterInset - HOVER_GUTTER_PAD;
+      const hoverZoneRight = editorRight;
       const prev = cacheRef.current;
       if (
         prev.editorEl === editorEl &&
+        prev.contentLeft === contentLeft &&
         prev.editorRight === editorRight &&
         prev.scrollParent === scrollParent &&
         prev.scrollTop === scrollTop &&
@@ -114,13 +148,28 @@ export function useEditorViewportCache(editor: Editor | null): {
       ) {
         return;
       }
+      // Capture the latest values in helper closures so callers always
+      // see the current cache — the object identity changes per refresh,
+      // and the closures are regenerated alongside the data fields.
+      const containsHoverZone = (x: number, y: number): boolean =>
+        x >= hoverZoneLeft &&
+        x <= hoverZoneRight &&
+        y >= scrollTop &&
+        y <= scrollBottom;
+      const clampXToContent = (x: number): number =>
+        x < contentLeft ? contentLeft : x > editorRight ? editorRight : x;
       cacheRef.current = {
         editorEl,
+        contentLeft,
         editorRight,
         scrollParent,
         scrollTop,
         scrollBottom,
         gutterInset,
+        hoverZoneLeft,
+        hoverZoneRight,
+        containsHoverZone,
+        clampXToContent,
       };
       setVersion((v) => (v + 1) & 0xffff);
     };

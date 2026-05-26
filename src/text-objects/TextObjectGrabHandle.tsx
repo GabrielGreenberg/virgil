@@ -160,16 +160,21 @@ function refKey(ref: TextObjectRef | SelectionRef): string {
 }
 
 /**
- * Hit-test cache for `resolveTextObjectsAtMouse`. Per-pixel mousemove
- * inside the same DOM element cannot change the resolved ref set —
- * short-circuit by element identity. Invalidate on any doc-change
- * transaction via `invalidateMouseResolverCache`.
+ * Hit-test cache for `resolveTextObjectsAtMouse`. The cache is keyed on
+ * the outermost resolved block's viewport-relative vertical band: if the
+ * next mousemove lands inside the same band (and still inside the hover
+ * zone), the ref set can't change. Invalidate on:
+ *   - Any doc-change transaction (`invalidateMouseResolverCache`)
+ *   - Scroll / resize (the viewport-cache version bumps; the resolver's
+ *     own caller invalidates before re-scheduling)
  */
-let lastHitElement: Element | null = null;
+let lastBoundsTop = 0;
+let lastBoundsBottom = -1; // invalid sentinel: bottom < top means no cache
 let lastHitResult: TextObjectRef[] = [];
 
 function invalidateMouseResolverCache(): void {
-  lastHitElement = null;
+  lastBoundsTop = 0;
+  lastBoundsBottom = -1;
   lastHitResult = [];
 }
 
@@ -177,33 +182,53 @@ function invalidateMouseResolverCache(): void {
  * Hit-test the mouse position against the editor's DOM to find every
  * TextObject containing the mouse, from innermost to outermost.
  *
- * Returned order:
- *   1. Atom block at `pos.inside` (if any) — innermost.
- *   2. Every ancestor along the $pos depth chain that is a TextObject
- *      with a UUID, from deepest to shallowest.
+ * Architecture:
+ *   1. Zone check via the viewport cache (`containsHoverZone`) — this
+ *      gates the resolver to the "visual row" stripe: the editor's
+ *      content column PLUS the gutter to its left where the handle
+ *      lives. Cursors in the gutter still resolve, so the handle stays
+ *      visible while the user travels from text toward the handle.
+ *   2. Clamp X into the content column (`clampXToContent`) before calling
+ *      `view.posAtCoords`. PM's coord-to-pos machinery only resolves
+ *      inside content; in the gutter we feed it the nearest content X
+ *      at the same Y so it returns the row's text-object.
+ *   3. Walk PM's `$pos.depth` ancestor chain to enumerate every
+ *      containing TextObject (innermost-first). Atom blocks at
+ *      `pos.inside` are pushed explicitly because $pos.depth doesn't
+ *      enter them.
+ *   4. Vertical-contain guard: the outermost resolved block's DOM rect
+ *      must vertically contain clientY. This stops hover in the empty
+ *      area below the last paragraph from falsely pinning to it.
  *
- * Dedupe by id so a single atom doesn't appear twice when it's both at
- * `pos.inside` and reachable through `$pos.node(d)`.
+ * No per-kind branching. Adding a new TextObject kind to the registry
+ * picks up correct hover behavior automatically.
  */
 function resolveTextObjectsAtMouse(
   editor: Editor,
+  cache: EditorViewportCache,
   clientX: number,
   clientY: number,
 ): TextObjectRef[] {
-  const hit = document.elementFromPoint(clientX, clientY);
-  if (hit === lastHitElement) {
+  if (!cache.containsHoverZone(clientX, clientY)) {
+    invalidateMouseResolverCache();
+    return EMPTY_REFS;
+  }
+  // Vertical-band cache: same row + same zone → no recompute. We don't
+  // gate by X because the user can move horizontally across the row
+  // (especially gutter ↔ text) without changing which block they're on.
+  if (
+    lastBoundsBottom >= lastBoundsTop &&
+    clientY >= lastBoundsTop &&
+    clientY <= lastBoundsBottom
+  ) {
     return lastHitResult;
   }
-  if (!hit || !editor.view.dom.contains(hit)) {
-    lastHitElement = hit;
-    lastHitResult = [];
-    return lastHitResult;
-  }
-  const pos = editor.view.posAtCoords({ left: clientX, top: clientY });
+
+  const targetX = cache.clampXToContent(clientX);
+  const pos = editor.view.posAtCoords({ left: targetX, top: clientY });
   if (!pos) {
-    lastHitElement = hit;
-    lastHitResult = [];
-    return lastHitResult;
+    invalidateMouseResolverCache();
+    return EMPTY_REFS;
   }
 
   const refs: TextObjectRef[] = [];
@@ -227,6 +252,10 @@ function resolveTextObjectsAtMouse(
 
   // Walk every containing level. ProseMirror's `$pos.depth` gives us the
   // ancestor chain; iterate from innermost (depth) to outermost (0).
+  // Track the OUTERMOST text-object's position as we go so the
+  // vertical-contain guard below can look up its DOM rect without a
+  // second walk.
+  let outerPos = -1;
   const $pos = editor.state.doc.resolve(pos.pos);
   for (let d = $pos.depth; d >= 0; d--) {
     const node = $pos.node(d);
@@ -237,12 +266,40 @@ function resolveTextObjectsAtMouse(
     if (seenIds.has(id)) continue;
     refs.push({ kind: name as TextObjectKind, id });
     seenIds.add(id);
+    if (d > 0) {
+      // Overwritten each iteration; loop runs deepest-first, so the
+      // final value is the shallowest (outermost) text-object's pos.
+      outerPos = $pos.before(d);
+    }
   }
 
-  lastHitElement = hit;
+  if (refs.length === 0) {
+    invalidateMouseResolverCache();
+    return EMPTY_REFS;
+  }
+
+  // Vertical-contain guard. If the cursor sits in editor whitespace
+  // BELOW the last block (or above the title with no margin block to
+  // catch it), `posAtCoords` would still resolve to the nearest block.
+  // Reject unless the cursor's Y is actually inside the outermost
+  // text-object's rendered rect.
+  let outerRect: DOMRect | null = null;
+  if (outerPos >= 0) {
+    const dom = editor.view.nodeDOM(outerPos);
+    if (dom instanceof Element) outerRect = dom.getBoundingClientRect();
+  }
+  if (!outerRect || clientY < outerRect.top || clientY > outerRect.bottom) {
+    invalidateMouseResolverCache();
+    return EMPTY_REFS;
+  }
+
+  lastBoundsTop = outerRect.top;
+  lastBoundsBottom = outerRect.bottom;
   lastHitResult = refs;
   return refs;
 }
+
+const EMPTY_REFS: TextObjectRef[] = [];
 
 /**
  * Compute placement for a single ref. Pins the handle's left edge to
@@ -601,16 +658,15 @@ export function TextObjectGrabHandle({ editorRef }: Props) {
 
   useEffect(() => {
     let prevEditor: Editor | null = null;
-    let prevEditorDom: HTMLElement | null = null;
     const cleanupListeners = () => {
       if (prevEditor) {
         prevEditor.off("selectionUpdate", onSelectionUpdate);
         prevEditor.off("update", onDocUpdate);
       }
-      if (prevEditorDom) {
-        prevEditorDom.removeEventListener("mousemove", onMouseMove);
-        prevEditorDom.removeEventListener("mouseleave", onMouseLeave);
-      }
+      // Mousemove was attached document-wide (not on the editor DOM) so
+      // the hover zone could include the gutter to the left of content.
+      // Detach the global listener whenever the editor instance changes.
+      document.removeEventListener("mousemove", onMouseMove);
     };
 
     /**
@@ -662,7 +718,12 @@ export function TextObjectGrabHandle({ editorRef }: Props) {
       // 3. Mouse hover — every containing TextObject level.
       const mouse = mousePosRef.current;
       if (mouse) {
-        return resolveTextObjectsAtMouse(editor, mouse.clientX, mouse.clientY);
+        return resolveTextObjectsAtMouse(
+          editor,
+          cacheRef.current,
+          mouse.clientX,
+          mouse.clientY,
+        );
       }
       // 4. No fallback (cursor-based discovery removed).
       return [];
@@ -708,14 +769,19 @@ export function TextObjectGrabHandle({ editorRef }: Props) {
       cleanupListeners();
       subscribedEditorRef.current = editor;
       prevEditor = editor;
-      prevEditorDom = editor?.view.dom ?? null;
       if (editor) {
         editor.on("selectionUpdate", onSelectionUpdate);
         editor.on("update", onDocUpdate);
       }
-      if (prevEditorDom) {
-        prevEditorDom.addEventListener("mousemove", onMouseMove);
-        prevEditorDom.addEventListener("mouseleave", onMouseLeave);
+      // Hover zone now extends into the gutter to the left of the
+      // editor content (so the user can travel from text to the
+      // gutter-anchored handle without losing hover). The
+      // viewport-cache `containsHoverZone` predicate gates the actual
+      // hover effect inside `onMouseMove`. A single document listener
+      // is enough — no separate mouseleave handler is needed because
+      // zone exit is detected inside `onMouseMove` itself.
+      if (editor) {
+        document.addEventListener("mousemove", onMouseMove);
       }
     };
 
@@ -730,24 +796,25 @@ export function TextObjectGrabHandle({ editorRef }: Props) {
     };
     poll();
 
-    const onScroll = () => scheduleRaf();
-    const onResize = () => scheduleRaf();
-    const onMouseMove = (e: MouseEvent) => {
-      // Always-on tracking: hover is the primary discovery mechanism, so
-      // the position must update during text selection / node selection
-      // too. (The resolver prioritizes selection/node refs above hover,
-      // so the array won't surprise during an active gesture.)
-      if (leaveTimerRef.current) {
-        clearTimeout(leaveTimerRef.current);
-        leaveTimerRef.current = 0;
-      }
-      mousePosRef.current = { clientX: e.clientX, clientY: e.clientY };
+    const onScroll = () => {
+      // Scroll invalidates the resolver's vertical-band cache because
+      // block rects change in clientY space even when the cursor stays
+      // still. Without this, a scroll while hovering would keep the
+      // stale row's handle pinned to the screen position.
+      invalidateMouseResolverCache();
       scheduleRaf();
     };
-    const onMouseLeave = () => {
-      // Defer the clear: the mouse may be landing on a portal-rendered
-      // handle, which fires the editor's mouseleave. The handle's own
-      // mouseenter cancels this timer.
+    const onResize = () => {
+      invalidateMouseResolverCache();
+      scheduleRaf();
+    };
+    const scheduleZoneLeave = () => {
+      // Defer clearing `mousePosRef`: when the cursor leaves the editor's
+      // hover zone (or the viewport entirely) it may be heading toward
+      // the portal-rendered handle, which sits at `position: fixed`
+      // outside the zone. The handle reports its own enter/leave via
+      // `mouseOverHandleRef`; if the cursor lands on the handle within
+      // the grace window, the deferred clear is suppressed.
       if (leaveTimerRef.current) clearTimeout(leaveTimerRef.current);
       leaveTimerRef.current = window.setTimeout(() => {
         leaveTimerRef.current = 0;
@@ -755,6 +822,25 @@ export function TextObjectGrabHandle({ editorRef }: Props) {
         mousePosRef.current = null;
         scheduleRaf();
       }, MOUSE_LEAVE_GRACE_MS);
+    };
+    const onMouseMove = (e: MouseEvent) => {
+      // Always-on tracking: hover is the primary discovery mechanism, so
+      // the position must update during text selection / node selection
+      // too. (The resolver prioritizes selection/node refs above hover,
+      // so the array won't surprise during an active gesture.)
+      const cache = cacheRef.current;
+      if (!cache.containsHoverZone(e.clientX, e.clientY)) {
+        // Outside the editor's row hover zone — schedule the same grace
+        // dismissal that the old `editor.view.dom` mouseleave used.
+        scheduleZoneLeave();
+        return;
+      }
+      if (leaveTimerRef.current) {
+        clearTimeout(leaveTimerRef.current);
+        leaveTimerRef.current = 0;
+      }
+      mousePosRef.current = { clientX: e.clientX, clientY: e.clientY };
+      scheduleRaf();
     };
     const onDocSelectionChange = () => {
       const editor = editorRef.current;
@@ -822,7 +908,6 @@ export function TextObjectGrabHandle({ editorRef }: Props) {
       }
       subscribedEditorRef.current = null;
       prevEditor = null;
-      prevEditorDom = null;
       window.removeEventListener("scroll", onScroll, true);
       window.removeEventListener("resize", onResize);
       if (installSelectionChange) {
