@@ -63,6 +63,11 @@ import {
   type EditorViewportCache,
 } from "@/hooks/useEditorViewportCache";
 import {
+  capTopOffset,
+  onFontReady,
+  resolveInlineContextElement,
+} from "@/lib/text-metrics";
+import {
   TEXT_OBJECT_REGISTRY,
   isTextObjectKind,
   textObjectPopoutKey,
@@ -346,22 +351,21 @@ function computePlacement(
     : anchorDom.getBoundingClientRect().left - baselineInset;
 
   // Top edge: every kind declares its vertical anchor via
-  // `meta.chromeAnchor`. "text-top" measures via the unified probe +
-  // override pipeline (see measureHandleAnchorTop) so the handle aligns
-  // with rendered glyph cap-top regardless of font / line-height.
-  // "block-top" uses the wrapper's visual top edge — for framed visual
-  // kinds (tex pod, % comment, math, graphic, figure) where there's no
-  // "first line of prose" to align with. For SelectionRef, fall back to
-  // coordsAtPos(from).top which gives the correct text-top for the
-  // selection's start line (selections are mid-prose; the
-  // line-box-vs-cap-top gap doesn't bite for single-line coordsAtPos).
+  // `meta.chromeAnchor`. "text-top" routes through `measureHandleAnchorTop`
+  // for TextObjectRefs (override → resolveInlineContextElement + capTopOffset),
+  // and for SelectionRef we compute the same offset directly on the
+  // resolved inline-context element. "block-top" uses the wrapper's
+  // visual top edge — for framed visual kinds (tex pod, % comment, math,
+  // graphic, figure) where there's no "first line of prose" to align with.
   const anchor: "text-top" | "block-top" = meta
     ? meta.chromeAnchor
     : resolveSelectionChromeAnchor(editor, from);
   let candidateTop: number;
   if (ref.kind === "selection") {
     if (anchor === "text-top") {
-      candidateTop = fromCoords.top > 0 ? fromCoords.top : anchorRect.top;
+      const baseTop = fromCoords.top > 0 ? fromCoords.top : anchorRect.top;
+      const target = resolveInlineContextElement(anchorDom);
+      candidateTop = baseTop + capTopOffset(target);
     } else {
       candidateTop = anchorRect.top;
     }
@@ -385,26 +389,27 @@ function computePlacement(
 
 /**
  *  Measure the top edge that the grab handle should align to for a given
- *  anchorDom + chromeAnchor mode. The unified pipeline (see
- *  TEXT-OBJECT-REFACTOR.md "Cohesive Grab-Handle Mop-Up"):
+ *  anchorDom + chromeAnchor mode.
  *
- *    1. `[data-glyph-anchor]` — NodeView's explicit override. Used by
- *       compound containers (exampleBlock points to `.expex-number`) and
- *       chrome-bearing kinds (texBlock points to `.tex-block-pod`, so
- *       wrapper-top vs pod-top doesn't matter and titled tex blocks
- *       still anchor to the pod).
- *    2. `[data-glyph-probe]` — inline span emitted by GlyphProbeDecorator
- *       around the first text character of every text-bearing TextObject.
- *       Inline-span bounding rects are sized by glyph metrics (not by
- *       line-height), so `.top` is the cap-top — the alignment the
- *       previous TreeWalker + Range.getBoundingClientRect path failed to
- *       produce for headings with line-height > 1.
- *    3. Fallback: `anchorDom.getBoundingClientRect().top`. Block-top
- *       semantic; the only kinds that reach this path declare
- *       chromeAnchor === "block-top" up front.
+ *    - `block-top` (texBlock, latexComment, displayMath, graphicsBlock,
+ *      figureBlock): the wrapper's visual top edge IS the visual anchor —
+ *      no font math needed. Returns `anchorDom.getBoundingClientRect().top`.
  *
- *  Returns the viewport-y coord; null only if anchorDom has no rect (e.g.
- *  destroyed during measurement).
+ *    - `text-top` (paragraph, heading, blockquote, codeBlock, listItem,
+ *      exampleItem, titleField): handle should align with the GLYPH
+ *      cap-top of the first rendered line, not the line-box top.
+ *      Resolution:
+ *        1. `[data-glyph-anchor]` — NodeView's "visual top" override for
+ *           compound containers (exampleBlock points to `.expex-number`,
+ *           a text-bearing chip).
+ *        2. `resolveInlineContextElement(anchorDom)` — descend any wrapper
+ *           NodeView to the actual first-line text-bearing element.
+ *      Then return `target.getBoundingClientRect().top + capTopOffset(target)`,
+ *      where `capTopOffset` is a font-metric-aware helper that recovers
+ *      the half-leading + (ascent − capHeight) offset dynamically from
+ *      the rendered font. No hardcoded per-kind constants.
+ *
+ *  Returns the viewport-y coord.
  */
 function measureHandleAnchorTop(
   anchorDom: HTMLElement,
@@ -413,16 +418,11 @@ function measureHandleAnchorTop(
   if (chromeAnchor === "block-top") {
     return anchorDom.getBoundingClientRect().top;
   }
-  // text-top: prefer override > probe > wrapper.
   const override = anchorDom.querySelector(
     "[data-glyph-anchor]",
   ) as HTMLElement | null;
-  if (override) return override.getBoundingClientRect().top;
-  const probe = anchorDom.querySelector(
-    "[data-glyph-probe]",
-  ) as HTMLElement | null;
-  if (probe) return probe.getBoundingClientRect().top;
-  return anchorDom.getBoundingClientRect().top;
+  const target = override ?? resolveInlineContextElement(anchorDom);
+  return target.getBoundingClientRect().top + capTopOffset(target);
 }
 
 /** For SelectionRef (kind === null), resolve the containing
@@ -764,6 +764,12 @@ export function TextObjectGrabHandle({ editorRef }: Props) {
       }
     };
     poll();
+
+    // FOUT: when web fonts swap in mid-session, the cap-top cache holds
+    // values measured against the fallback font. The metrics module
+    // clears its own cache on `document.fonts.ready`; we also need to
+    // re-run placement so visible handles snap to the corrected cap-top.
+    onFontReady(() => scheduleRaf());
 
     const onScroll = () => {
       // Scroll re-schedules placement (block rects change in clientY

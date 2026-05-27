@@ -49,7 +49,6 @@ import { registerDropTarget } from "@/components/drop-mode/target-registry";
 import "@/text-objects/floats";
 import { generateShortId } from "@/lib/uuid";
 import { UUID_ATTR_SPEC, UuidAttrDecorator } from "@/lib/tiptap/uuid-attr";
-import { GlyphProbeDecorator } from "@/lib/tiptap/glyph-probe";
 import { DocStructureObserver, readPendingDiff } from "@/lib/tiptap/doc-structure";
 import { ensureAnchorUuid } from "@/lib/anchor-uuid";
 import { parseLatex } from "@/lib/latex-parser";
@@ -1722,11 +1721,6 @@ const VirgilEditor = forwardRef<EditorHandle, EditorProps>(function VirgilEditor
       // these attributes being present in the live DOM. See uuid-attr.ts
       // for why this needs to be a decoration and not renderHTML.
       UuidAttrDecorator,
-      // Wraps the first text character of every text-bearing TextObject
-      // in `<span data-glyph-probe>`. The grab-handle's text-top
-      // measurement reads the probe's bounding rect (= rendered glyph
-      // cap-top, independent of line-height). See glyph-probe.ts.
-      GlyphProbeDecorator,
       // Read-only enforcement plugin: rejects any transaction that
       // mutates the document when the React `editable` prop is false.
       // See the `readOnlyRef` comment near the top of this component
