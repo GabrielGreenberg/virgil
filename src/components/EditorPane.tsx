@@ -1865,18 +1865,44 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
     [footnotesHook, citationsHook, notesHook, revisionsHook, cutterHook],
   );
   const cardLifecycle = useCardLifecycleApi(cardLifecycleRegistry);
-  // Wide-scope warning dialog for heading lifecycle actions (D/A/⌫).
-  // Distinct instance from the heading-lozenge × confirm so each owns
-  // its own pending state. See ACTION-MENU-DIAGNOSIS.md cluster C5.
+  // Wide-scope warning dialog for destructive lifecycle actions
+  // (Archive / Delete on any kind; Duplicate on headings). Distinct
+  // instance from the heading-lozenge × confirm so each owns its own
+  // pending state. See ACTION-MENU-DIAGNOSIS.md cluster C5 +
+  // post-refactor followup B3.
   const {
     confirm: confirmDragHandleAction,
     dialog: confirmDragHandleActionDialog,
   } = useConfirmDialog();
+  // Single-button info-modal surface for Duplicate failure paths
+  // (stale ref, schema rejection, empty slice). Same SystemDialog
+  // primitive as `confirmDragHandleAction`, but `notify` always sends
+  // `hideCancel: true` so only "OK" appears — no decision for the user
+  // to make. See post-refactor followup B1.
+  const {
+    confirm: notifyDragHandleAction,
+    dialog: notifyDragHandleActionDialog,
+  } = useConfirmDialog();
+  const dragHandleNotify = useCallback(
+    (opts: { title?: string; message: string; tone?: "default" | "danger" }) => {
+      // Fire-and-forget. The promise resolves true on OK; we don't
+      // care about cancel since `hideCancel: true` removes it.
+      void notifyDragHandleAction({
+        title: opts.title,
+        message: opts.message,
+        tone: opts.tone,
+        confirmLabel: "OK",
+        hideCancel: true,
+      });
+    },
+    [notifyDragHandleAction],
+  );
   const dragHandleActions = useDragHandleActions({
     editorRef: innerRef,
     cardCreation,
     cardLifecycle,
     confirm: confirmDragHandleAction,
+    notify: dragHandleNotify,
     prefs: viewPrefs?.prefs ?? readerPrefs,
     expandLeft: viewPrefs?.expandLeft ?? stubSetActive,
     expandRight: viewPrefs?.expandRight ?? stubSetActive,
@@ -4302,6 +4328,7 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
           {confirmFigureDeleteDialog}
           {confirmMarginItemDeleteDialog}
           {confirmDragHandleActionDialog}
+          {notifyDragHandleActionDialog}
         </PoppedCardsContext.Provider>
         </CollabProvider>
         </SelectionsProvider>

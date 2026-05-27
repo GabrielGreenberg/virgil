@@ -316,6 +316,43 @@ export interface TextObjectMeta {
    *
    *  See ACTION-MENU-DIAGNOSIS.md §6 cluster C6. */
   removeOnEmptyChildren?: boolean;
+
+  /** Optional per-kind confirm copy for destructive lifecycle actions
+   *  (Delete / Archive). Heading uses this for its wide-scope section
+   *  summary. Other kinds return `null` when nothing's at stake
+   *  (empty paragraph with no attached anchors/atoms) and a descriptor
+   *  otherwise. The dispatcher walks the outer range once to compute
+   *  `hasAnchorsOrAtoms` and passes it through so the kind can decide
+   *  cheaply.
+   *
+   *  Duplicate is NOT routed through this slot — it's non-destructive
+   *  and stays heading-only via `confirmHeadingLifecycle`. */
+  confirmDestructive?: (
+    doc: PMNode,
+    uuid: string,
+    action: "archive" | "delete",
+    ctx: ConfirmDestructiveContext,
+  ) => ConfirmDescriptor | null;
+}
+
+/** Context passed to per-kind `confirmDestructive` so it can decide
+ *  cheaply without re-walking the doc. */
+export interface ConfirmDestructiveContext {
+  outerRange: { from: number; to: number };
+  /** True when the outer range contains at least one `linkedAnchor`
+   *  mark or `footnote`/`citation` inline atom. Lets a kind skip the
+   *  confirm dialog when the block is empty AND has no attached cards. */
+  hasAnchorsOrAtoms: boolean;
+}
+
+/** Structural subset of `ConfirmOptions` from `ConfirmDialog.tsx`,
+ *  kept React-free so this module stays import-free of UI. The
+ *  dispatcher widens it to the full `ConfirmOptions` at call time. */
+export interface ConfirmDescriptor {
+  title?: string;
+  message: string;
+  tone?: "default" | "danger";
+  confirmLabel?: string;
 }
 
 /** Per-kind "what to move" payload. The drop spec deletes

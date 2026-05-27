@@ -26,11 +26,15 @@ import { useCallback, type RefObject } from "react";
 import type { Editor } from "@tiptap/react";
 import type { Node as PMNode, MarkType } from "@tiptap/pm/model";
 import { NodeSelection, TextSelection } from "@tiptap/pm/state";
-import { duplicateSlice } from "@/text-objects/duplicate-slice";
+import {
+  createDuplicateDiagnostics,
+  duplicateSlice,
+} from "@/text-objects/duplicate-slice";
 import {
   cleanupLinksInRange,
   expandCascadeRange,
 } from "@/text-objects/delete-range";
+import { findPreviousAnchorableBlock } from "@/text-objects/anchor-resolution";
 import type { CardCreationApi } from "./card-creation";
 import type { EditorHandle } from "../../Editor";
 import type { ViewPrefs, PanelId } from "@/hooks/useViewPrefs";
@@ -52,6 +56,7 @@ import {
   isTextObjectKind,
 } from "@/text-objects/text-object-registry";
 import type {
+  ConfirmDescriptor,
   TextObjectKind,
   TextObjectRef,
   SelectionRef,
@@ -72,11 +77,20 @@ export interface DragHandleActionsDeps {
    *  atoms / linkedAnchor marks living in the captured passage. The
    *  walkers never branch on kind — they look up via this API. */
   cardLifecycle: CardLifecycleApi;
-  /** In-app confirm dialog. Used to surface the Class D wide-scope
-   *  warning before lifecycle actions fire on a heading (whole-section
-   *  duplicate / archive / delete). The promise resolves true on
-   *  confirm, false on cancel. See ACTION-MENU-DIAGNOSIS.md cluster C5. */
+  /** In-app confirm dialog. Used to surface destructive-action warnings:
+   *  • Heading × Duplicate (wide-scope whole-section copy)
+   *  • Any kind × {Archive, Delete} that returns a `confirmDestructive`
+   *    descriptor from its registry meta.
+   *  The promise resolves true on confirm, false on cancel. See
+   *  ACTION-MENU-DIAGNOSIS.md cluster C5 + post-refactor followup B3. */
   confirm: (opts: ConfirmOptions) => Promise<boolean>;
+  /** Single-button "OK" surface for failure paths the user must see
+   *  but can't recover from interactively (stale ref, schema rejection,
+   *  empty slice). Implemented in EditorPane via a second
+   *  `useConfirmDialog` instance with `hideCancel: true`. Replaces the
+   *  silent `break;` in branches that today swallow errors. See
+   *  post-refactor followup B1. */
+  notify: (opts: { title?: string; message: string; tone?: "default" | "danger" }) => void;
   prefs: ViewPrefs;
   expandLeft: () => void;
   expandRight: () => void;
@@ -101,6 +115,7 @@ export function useDragHandleActions(deps: DragHandleActionsDeps) {
     cardCreation,
     cardLifecycle,
     confirm,
+    notify,
     prefs,
     expandLeft,
     expandRight,
@@ -137,14 +152,30 @@ export function useDragHandleActions(deps: DragHandleActionsDeps) {
       const ed = handle?.getEditor();
       if (!handle || !ed) return;
 
-      // Class D wide-scope warning: lifecycle actions on a heading
-      // operate on the whole section. Surface the section summary in
-      // a confirm dialog before firing. Cancel returns silently.
-      if (
-        ref.kind === "heading" &&
-        (action === "duplicate" || action === "archive" || action === "delete")
-      ) {
-        const proceed = await confirmHeadingLifecycle(ed, ref, action, confirm);
+      // Destructive-action warnings:
+      //
+      //   • Archive / Delete → per-kind confirm via
+      //     `meta.confirmDestructive` (registry slot). Each kind owns
+      //     its own copy + can return null to skip the dialog when
+      //     nothing's at stake (empty paragraph w/ no anchors). See
+      //     post-refactor followup B3.
+      //   • Heading × Duplicate → wide-scope section summary via the
+      //     legacy `confirmHeadingLifecycle`. Duplicate is non-
+      //     destructive so it doesn't go through `confirmDestructive`;
+      //     heading × Duplicate still warns because a section copy is
+      //     wide enough to be disorienting.
+      //
+      // Cancel returns silently.
+      if (action === "archive" || action === "delete") {
+        const descriptor = resolveDestructiveConfirm(ed, ref, action);
+        if (descriptor) {
+          const tone =
+            descriptor.tone ?? (action === "delete" ? "danger" : "default");
+          const proceed = await confirm({ ...descriptor, tone });
+          if (!proceed) return;
+        }
+      } else if (action === "duplicate" && ref.kind === "heading") {
+        const proceed = await confirmHeadingLifecycle(ed, ref, "duplicate", confirm);
         if (!proceed) return;
       }
 
@@ -353,24 +384,67 @@ export function useDragHandleActions(deps: DragHandleActionsDeps) {
           break;
         }
         case "duplicate": {
-          // Slice the OUTER block bounds (so the wrapper node travels with
-          // its contents), deep-clone it via the registry-driven walker
-          // (which remints every uuid / inline-atom id / linkedAnchor mark
-          // and clones the corresponding sidecar entries), then insert the
-          // clone immediately after the source.
+          // Fail-loud flow (post-refactor followup B1):
+          //   1. Stale ref     → notify + abort.
+          //   2. Empty slice   → notify + abort.
+          //   3. Walker warns  → console.warn summary (no toast for
+          //      minor recoverable issues; severe codes already surface
+          //      via stripped marks / orphan atoms).
+          //   4. Schema reject → notify + abort BEFORE dispatch (PM
+          //      can't roll back a dispatched transaction). Catches
+          //      titleField-style "you can't have two of these" cases
+          //      even if the action curation slips.
+          //   5. Atom blocks   → post-insert NodeSelection on the clone,
+          //      not TextSelection.near (which doesn't make sense for
+          //      a non-text-bearing wrapper).
           const outer = outerRangeFor(ed, ref);
-          if (!outer || outer.to <= outer.from) break;
+          if (!outer || outer.to <= outer.from) {
+            console.warn("[Duplicate] stale ref — could not resolve outer range", ref);
+            notify({
+              message: "Could not find the source. Close the menu and try again.",
+            });
+            break;
+          }
           const slice = ed.state.doc.slice(outer.from, outer.to);
-          if (slice.size === 0) break;
-          const cloned = duplicateSlice(slice, cardLifecycle);
+          if (slice.size === 0) {
+            console.warn("[Duplicate] empty slice for ref", ref);
+            notify({ message: "Nothing to duplicate." });
+            break;
+          }
+          const diag = createDuplicateDiagnostics();
+          const cloned = duplicateSlice(slice, cardLifecycle, diag);
           const tr = ed.state.tr.replace(outer.to, outer.to, cloned);
-          // Drop the caret near the start of the inserted duplicate so the
-          // user can immediately see/move it. `near` snaps to a valid text
-          // position regardless of node type.
+          // Pre-dispatch schema validation. PM's `Node.check` throws
+          // when the new doc shape violates a content rule (e.g. two
+          // titleFields, an exampleItem outside an exampleBlock, a
+          // figureBlock in a slot that doesn't allow one). Catch here
+          // so we never dispatch a doomed transaction; on throw the
+          // doc is untouched.
+          try {
+            tr.doc.check();
+          } catch (err) {
+            console.warn("[Duplicate] schema violation; aborting", err);
+            notify({
+              tone: "danger",
+              message: "This kind cannot be duplicated here.",
+            });
+            break;
+          }
+          // Atom blocks: select the cloned node as a unit. Text-bearing
+          // kinds: drop the caret near the start of the cloned content.
           try {
             const insertPos = outer.to;
-            if (insertPos <= tr.doc.content.size) {
-              tr.setSelection(TextSelection.near(tr.doc.resolve(insertPos + 1)));
+            const docSize = tr.doc.content.size;
+            const refKind = ref.kind;
+            const atomBlock =
+              refKind !== "selection" &&
+              isTextObjectKind(refKind) &&
+              TEXT_OBJECT_REGISTRY[refKind].isAtomBlock;
+            if (atomBlock && insertPos < docSize) {
+              tr.setSelection(NodeSelection.create(tr.doc, insertPos));
+            } else if (insertPos < docSize) {
+              const caretPos = Math.min(insertPos + 1, docSize - 1);
+              tr.setSelection(TextSelection.near(tr.doc.resolve(caretPos)));
             }
           } catch {
             /* ignore — selection placement is best-effort */
@@ -384,16 +458,21 @@ export function useDragHandleActions(deps: DragHandleActionsDeps) {
           // the source. Action-time, bounded by the inserted slice's
           // size — no keystroke-sanctity impact.
           rewireClonedAnchors(ed, outer.to, cloned.size, cardLifecycle);
+          if (diag.codes.size > 0) {
+            console.warn(
+              "[Duplicate] diagnostics:",
+              [...diag.codes],
+              diag.details,
+            );
+          }
           break;
         }
         case "archive": {
-          // C4: archive is now a peer of Delete via `cardCreation`. The
-          // five ad-hoc deps (`archiveContent` / `updateArchiveSnippet`
-          // / `addArchiveTextObjectId` / `setSelectedArchiveId` /
-          // `pinRecentlyAddedArchive`) all live inside
-          // `cardCreation.createArchiveSnippet` now. Dispatcher's job
-          // here is the editor mutation: snapshot the content, cascade,
-          // cleanup sidecars, delete the range, then mint the snippet.
+          // C4: archive routes through `cardCreation.createArchiveSnippet`
+          // (peer of Delete via the unified card-creation factory).
+          // Dispatcher's job here is the editor mutation: snapshot
+          // content, resolve the reanchor target, cascade, cleanup
+          // sidecars, delete the range, then mint the snippet.
           //
           // `text` guard protects against zero-content text ranges;
           // atom NodeSelections always have a meaningful slice.
@@ -408,6 +487,30 @@ export function useDragHandleActions(deps: DragHandleActionsDeps) {
           // and any inline atoms it carries.
           const slice = ed.state.doc.slice(extended.from, extended.to);
           const richContent = { type: "doc", content: slice.content.toJSON() };
+          // B2 (post-refactor followup): resolve the snippet's anchor
+          // BEFORE deletion. The pre-delete `paragraphId` is the source
+          // block's own uuid — for a whole-paragraph archive that uuid
+          // is about to vanish in the same transaction, and the
+          // TextObjectOrphanGuard would immediately strip the freshly-
+          // created link. Instead, walk to the nearest TextObject above
+          // `extended.from` (cascade-extended, so a collapsing list
+          // looks above the LIST, not the now-orphan items) and
+          // anchor the snippet to THAT survivor.
+          //
+          // For selection-ref Archive (a sub-range inside a paragraph),
+          // the source paragraph survives, so we keep its uuid as the
+          // anchor — `findPreviousAnchorableBlock` is only the right
+          // call when the whole anchoring entity is being deleted.
+          let snippetParagraphId: string = paragraphId;
+          let snippetTargetKind: TextObjectKind = targetKind;
+          if (ref.kind !== "selection") {
+            const reanchor = findPreviousAnchorableBlock(
+              ed.state.doc,
+              extended.from,
+            );
+            snippetParagraphId = reanchor?.uuid ?? "";
+            snippetTargetKind = reanchor?.kind ?? targetKind;
+          }
           cleanupLinksInRange(
             ed.state.doc,
             extended.from,
@@ -416,16 +519,11 @@ export function useDragHandleActions(deps: DragHandleActionsDeps) {
           );
           const tr = ed.state.tr.delete(extended.from, extended.to);
           ed.view.dispatch(tr);
-          // The pre-delete `paragraphId` is the source block's uuid;
-          // for paragraph/heading/listItem × Archive that block is now
-          // gone. The C3 orphan sweep (Landing 6c) clears stale Mode A
-          // links automatically — appropriate, since archived content
-          // is "moved out of the document" by definition.
           const snippet = cardCreation.createArchiveSnippet({
             text,
             content: richContent,
-            paragraphId,
-            targetKind,
+            paragraphId: snippetParagraphId,
+            targetKind: snippetTargetKind,
             mode: "omni",
           });
           panelId = "archive";
@@ -470,13 +568,30 @@ export function useDragHandleActions(deps: DragHandleActionsDeps) {
       // mounts. The card needs a couple of React commits to render
       // (state update → panel re-render → card mount), so we retry a
       // handful of frames before giving up.
-      if (focusCardKey) focusNewCard(focusCardKey);
+      //
+      // No new card to take focus → return focus to the editor so the
+      // user's next keypress (Cmd-Z to undo, arrow keys to navigate)
+      // reaches the doc instead of being eaten by the browser.
+      // Critical for Delete: it routes through a confirm dialog whose
+      // close orphans focus on the body; without this re-focus, Cmd-Z
+      // does nothing until the user clicks back into the editor. See
+      // post-refactor followup B4.
+      if (focusCardKey) {
+        focusNewCard(focusCardKey);
+      } else {
+        try {
+          ed.view.focus();
+        } catch {
+          /* editor torn down — ignore */
+        }
+      }
     },
     [
       editorRef,
       cardCreation,
       cardLifecycle,
       confirm,
+      notify,
       ensureOmniActiveForPanel,
     ],
   );
@@ -485,16 +600,21 @@ export function useDragHandleActions(deps: DragHandleActionsDeps) {
 }
 
 /**
- * Build a Class D wide-scope summary for heading lifecycle actions and
- * await the user's confirmation. See ACTION-MENU-DIAGNOSIS.md cluster
- * C5. The summary reads off the section nodes the registry already
- * returns from `collectMoveSource`, so the message body never walks the
- * doc twice.
+ * Wide-scope summary dialog for `heading × Duplicate` only. The
+ * Archive/Delete variants of this warning now live in the registry slot
+ * `heading.confirmDestructive` so they share the per-kind confirm
+ * routing with every other kind. Duplicate is non-destructive (creates
+ * a copy, no loss of work), so it stays out of `confirmDestructive` —
+ * but heading × Duplicate is still wide enough to be disorienting
+ * without warning, so this helper survives for that single case.
+ *
+ * Reads off `collectMoveSource` for the section nodes, so the message
+ * body never walks the doc twice. See ACTION-MENU-DIAGNOSIS.md C5.
  */
 async function confirmHeadingLifecycle(
   ed: Editor,
   ref: TextObjectRef,
-  action: "duplicate" | "archive" | "delete",
+  action: "duplicate",
   confirm: (opts: ConfirmOptions) => Promise<boolean>,
 ): Promise<boolean> {
   const meta = TEXT_OBJECT_REGISTRY.heading;
@@ -508,12 +628,6 @@ async function confirmHeadingLifecycle(
   const subHeadingCount = source.nodes.filter(
     (n, i) => i > 0 && n.type.name === "heading",
   ).length;
-  const verbs: Record<typeof action, { verb: string; confirmLabel: string }> = {
-    duplicate: { verb: "duplicate", confirmLabel: "Duplicate section" },
-    archive: { verb: "archive", confirmLabel: "Archive section" },
-    delete: { verb: "delete", confirmLabel: "Delete section" },
-  };
-  const { verb, confirmLabel } = verbs[action];
   const counts: string[] = [];
   if (paragraphCount > 0) {
     counts.push(`${paragraphCount} paragraph${paragraphCount === 1 ? "" : "s"}`);
@@ -526,11 +640,98 @@ async function confirmHeadingLifecycle(
   const countsText = counts.length > 0 ? ` — ${counts.join(", ")}` : "";
   const titleText = headingText ? `"${headingText}"` : "this section";
   return confirm({
-    title: `${verb[0].toUpperCase() + verb.slice(1)} the entire section?`,
-    message: `This will ${verb} the entire section ${titleText}${countsText}.`,
-    confirmLabel,
-    tone: action === "delete" ? "danger" : "default",
+    title: `${action[0].toUpperCase() + action.slice(1)} the entire section?`,
+    message: `This will ${action} the entire section ${titleText}${countsText}.`,
+    confirmLabel: "Duplicate section",
+    tone: "default",
   });
+}
+
+/**
+ * Resolve the per-kind confirm descriptor for an Archive/Delete action.
+ * Returns null when no warning is needed (the kind's registry slot
+ * decided the action is silently safe, or the ref is a SelectionRef
+ * with no text at stake). The caller passes the resulting descriptor
+ * to `confirm()` and gates on the user's choice.
+ *
+ * For `SelectionRef`, the lookup is inline (no registry entry); for
+ * `TextObjectRef`, it consults `meta.confirmDestructive` and computes
+ * the `outerRange` + `hasAnchorsOrAtoms` context once.
+ */
+function resolveDestructiveConfirm(
+  ed: Editor,
+  ref: DragHandleRef,
+  action: "archive" | "delete",
+): ConfirmDescriptor | null {
+  if (ref.kind === "selection") {
+    return confirmSelectionDestructive(ed, ref, action);
+  }
+  if (!isTextObjectKind(ref.kind)) return null;
+  const meta = TEXT_OBJECT_REGISTRY[ref.kind];
+  if (!meta.confirmDestructive) return null;
+  const outer = outerRangeFor(ed, ref);
+  if (!outer) return null;
+  const hasAnchorsOrAtoms = rangeHasAnchorsOrAtoms(
+    ed.state.doc,
+    outer.from,
+    outer.to,
+  );
+  return meta.confirmDestructive(ed.state.doc, ref.id, action, {
+    outerRange: outer,
+    hasAnchorsOrAtoms,
+  });
+}
+
+/** Selection-ref destructive confirm. No registry entry — selection is
+ *  gesture-input, not a TextObject. Skip if the range is empty or
+ *  trivially short; warn with a word-count summary otherwise. */
+function confirmSelectionDestructive(
+  ed: Editor,
+  ref: SelectionRef,
+  action: "archive" | "delete",
+): ConfirmDescriptor | null {
+  const docSize = ed.state.doc.content.size;
+  const from = Math.max(0, Math.min(ref.from, docSize));
+  const to = Math.max(0, Math.min(ref.to, docSize));
+  if (to <= from) return null;
+  const text = ed.state.doc.textBetween(from, to, " ").trim();
+  if (!text) return null;
+  const wordCount = text.split(/\s+/).filter(Boolean).length;
+  const verb = action === "delete" ? "Delete" : "Archive";
+  return {
+    title: `${verb} this passage?`,
+    message: `${verb} this ${wordCount}-word passage.`,
+    confirmLabel: `${verb} passage`,
+  };
+}
+
+/** Cheap walk over `[from, to)` looking for any `linkedAnchor` mark or
+ *  `footnote`/`citation` inline atom. Used to drive the
+ *  "empty + nothing-attached → skip the warning" decision in per-kind
+ *  `confirmDestructive` helpers. Bounded by the outer range, which is
+ *  always the single block the action targets. */
+function rangeHasAnchorsOrAtoms(
+  doc: PMNode,
+  from: number,
+  to: number,
+): boolean {
+  if (to <= from) return false;
+  let found = false;
+  doc.nodesBetween(from, to, (node) => {
+    if (found) return false;
+    if (node.type.name === "footnote" || node.type.name === "citation") {
+      found = true;
+      return false;
+    }
+    for (const mark of node.marks) {
+      if (mark.type.name === "linkedAnchor") {
+        found = true;
+        return false;
+      }
+    }
+    return true;
+  });
+  return found;
 }
 
 /**

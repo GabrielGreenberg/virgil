@@ -26,6 +26,8 @@ import {
   EXAMPLE_ITEM_HANDLE_INDENT,
 } from "./handle-layout";
 import type {
+  ConfirmDescriptor,
+  ConfirmDestructiveContext,
   DragHandleAction,
   MoveSource,
   TextObjectKind,
@@ -87,6 +89,144 @@ const LINKED_RANGE_ACTIONS: ReadonlyArray<DragHandleAction> =
   PROSE_ACTIONS.filter((a) => a !== "duplicate");
 
 // ---------------------------------------------------------------------------
+// confirmDestructive helpers
+//
+// Per-kind copy for Delete/Archive warning dialogs. Each helper consults
+// the doc + ctx and returns a `ConfirmDescriptor` (the dispatcher
+// widens it to `ConfirmOptions`), or `null` to indicate "no warning
+// needed for this case." See ACTION-MENU-DIAGNOSIS.md followup B3.
+//
+// Tone convention: delete → "danger" (red affordance); archive →
+// "default" (archived content is recoverable). The dispatcher applies
+// the default tone if the descriptor doesn't set one; helpers only
+// override when the kind warrants a non-default visual (e.g.
+// linkedRange × delete is always danger because the underlying text
+// also vanishes).
+// ---------------------------------------------------------------------------
+
+/** Action-verb word pair for use in confirm copy. */
+function actionVerb(action: "archive" | "delete"): { verb: string; label: string } {
+  return action === "delete"
+    ? { verb: "Delete", label: "Delete" }
+    : { verb: "Archive", label: "Archive" };
+}
+
+/** Truncate a snippet to a short preview suitable for inline display in
+ *  confirm copy. Single-line, trimmed, ellipsis on overflow. */
+function previewText(text: string, max = 60): string {
+  const oneLine = text.replace(/\s+/g, " ").trim();
+  if (!oneLine) return "";
+  return oneLine.length > max ? `${oneLine.slice(0, max - 1)}…` : oneLine;
+}
+
+/** Walk the outer range and return the inner-text content of the first
+ *  matching block. Cheap: short range, single pass. */
+function textInsideOuter(
+  doc: PMNode,
+  outerRange: { from: number; to: number },
+): string {
+  return doc.textBetween(outerRange.from, outerRange.to, " ").trim();
+}
+
+/** Empty-content + no-attachments shortcut. Used by simple prose kinds
+ *  to skip the confirm dialog when there's nothing at stake. */
+function isSilentlyDeletable(
+  doc: PMNode,
+  ctx: ConfirmDestructiveContext,
+): boolean {
+  if (ctx.hasAnchorsOrAtoms) return false;
+  return textInsideOuter(doc, ctx.outerRange).length === 0;
+}
+
+/** Build a descriptor for a "simple block" kind (paragraph, blockquote,
+ *  code, single-line, …). Returns null when content is empty and there
+ *  are no attachments. */
+function descriptorForSimpleBlock(
+  kindLabel: string,
+  doc: PMNode,
+  action: "archive" | "delete",
+  ctx: ConfirmDestructiveContext,
+  opts: { includePreview?: boolean } = {},
+): ConfirmDescriptor | null {
+  if (isSilentlyDeletable(doc, ctx)) return null;
+  const { verb, label } = actionVerb(action);
+  const text = textInsideOuter(doc, ctx.outerRange);
+  const preview = opts.includePreview ? previewText(text) : "";
+  const previewSuffix = preview ? ` “${preview}”` : "";
+  return {
+    title: `${verb} this ${kindLabel}?`,
+    message: `${verb} this ${kindLabel}.${previewSuffix}`,
+    confirmLabel: `${label} ${kindLabel}`,
+  };
+}
+
+/** Confirm descriptor for a structural-container kind (lists, example
+ *  block). Reports the count of child items so the user sees the scope
+ *  before confirming. Never returns null — an empty list is structural
+ *  noise and the user should know they're nuking the wrapper. */
+function descriptorForContainer(
+  kindLabel: string,
+  childTypeName: string,
+  childLabelSingular: string,
+  doc: PMNode,
+  action: "archive" | "delete",
+  ctx: ConfirmDestructiveContext,
+): ConfirmDescriptor {
+  const { verb, label } = actionVerb(action);
+  // Count children of the matching type inside the outer range.
+  let count = 0;
+  doc.nodesBetween(ctx.outerRange.from, ctx.outerRange.to, (node) => {
+    if (node.type.name === childTypeName) count++;
+    return true;
+  });
+  const countText =
+    count > 0 ? ` (${count} ${childLabelSingular}${count === 1 ? "" : "s"})` : "";
+  return {
+    title: `${verb} this ${kindLabel}?`,
+    message: `${verb} this ${kindLabel}${countText}.`,
+    confirmLabel: `${label} ${kindLabel}`,
+  };
+}
+
+/** Heading × Delete/Archive: wide-scope section summary. Mirrors the
+ *  pre-existing `confirmHeadingLifecycle` for these two actions; the
+ *  Duplicate gate still uses that helper directly since this slot only
+ *  covers destructive actions. */
+function descriptorForHeading(
+  doc: PMNode,
+  uuid: string,
+  action: "archive" | "delete",
+): ConfirmDescriptor | null {
+  const section = getSectionRangeByUuid(doc, uuid);
+  if (!section) return null;
+  const headingNode = section.nodes[0];
+  const headingText = headingNode?.textContent?.trim() ?? "";
+  const paragraphCount = section.nodes.filter(
+    (n) => n.type.name === "paragraph",
+  ).length;
+  const subHeadingCount = section.nodes.filter(
+    (n, i) => i > 0 && n.type.name === "heading",
+  ).length;
+  const counts: string[] = [];
+  if (paragraphCount > 0) {
+    counts.push(`${paragraphCount} paragraph${paragraphCount === 1 ? "" : "s"}`);
+  }
+  if (subHeadingCount > 0) {
+    counts.push(
+      `${subHeadingCount} sub-heading${subHeadingCount === 1 ? "" : "s"}`,
+    );
+  }
+  const countsText = counts.length > 0 ? ` — ${counts.join(", ")}` : "";
+  const titleText = headingText ? `"${headingText}"` : "this section";
+  const { verb, label } = actionVerb(action);
+  return {
+    title: `${verb} the entire section?`,
+    message: `This will ${verb.toLowerCase()} the entire section ${titleText}${countsText}.`,
+    confirmLabel: `${label} section`,
+  };
+}
+
+// ---------------------------------------------------------------------------
 // Float body placeholder — registered concretely in Phase D5 (float
 // collapse). Each kind plugs its existing float body in via this slot.
 // Today the slot is `null`; the unified TextObjectFloat will check
@@ -112,6 +252,10 @@ export const TEXT_OBJECT_REGISTRY: Record<TextObjectKind, TextObjectMeta> = {
     // %!v: anchor; not a LaTeX command per se. Marker is the suffix
     // on the paragraph's last line.
     dropAdapter: topLevelDropAdapter,
+    confirmDestructive: (doc, _uuid, action, ctx) =>
+      descriptorForSimpleBlock("paragraph", doc, action, ctx, {
+        includePreview: true,
+      }),
   },
   heading: {
     label: "Heading",
@@ -142,6 +286,8 @@ export const TEXT_OBJECT_REGISTRY: Record<TextObjectKind, TextObjectMeta> = {
       if (!range) return null;
       return { from: range.from, to: range.to, nodes: [range.node] };
     },
+    confirmDestructive: (doc, uuid, action) =>
+      descriptorForHeading(doc, uuid, action),
   },
   bulletList: {
     label: "Bullet list",
@@ -155,6 +301,8 @@ export const TEXT_OBJECT_REGISTRY: Record<TextObjectKind, TextObjectMeta> = {
     actions: NON_PROSE_BLOCK_ACTIONS,
     removeOnEmptyChildren: true,
     dropAdapter: topLevelDropAdapter,
+    confirmDestructive: (doc, _uuid, action, ctx) =>
+      descriptorForContainer("list", "listItem", "item", doc, action, ctx),
   },
   orderedList: {
     label: "Ordered list",
@@ -168,6 +316,15 @@ export const TEXT_OBJECT_REGISTRY: Record<TextObjectKind, TextObjectMeta> = {
     actions: NON_PROSE_BLOCK_ACTIONS,
     removeOnEmptyChildren: true,
     dropAdapter: topLevelDropAdapter,
+    confirmDestructive: (doc, _uuid, action, ctx) =>
+      descriptorForContainer(
+        "numbered list",
+        "listItem",
+        "item",
+        doc,
+        action,
+        ctx,
+      ),
   },
   blockquote: {
     label: "Block quote",
@@ -179,6 +336,8 @@ export const TEXT_OBJECT_REGISTRY: Record<TextObjectKind, TextObjectMeta> = {
     floatBodyComponent: PLACEHOLDER_FLOAT_BODY,
     actions: PROSE_ACTIONS,
     dropAdapter: topLevelDropAdapter,
+    confirmDestructive: (doc, _uuid, action, ctx) =>
+      descriptorForSimpleBlock("block quote", doc, action, ctx),
   },
   codeBlock: {
     label: "Code block",
@@ -190,6 +349,8 @@ export const TEXT_OBJECT_REGISTRY: Record<TextObjectKind, TextObjectMeta> = {
     floatBodyComponent: PLACEHOLDER_FLOAT_BODY,
     actions: NON_PROSE_BLOCK_ACTIONS,
     dropAdapter: topLevelDropAdapter,
+    confirmDestructive: (doc, _uuid, action, ctx) =>
+      descriptorForSimpleBlock("code block", doc, action, ctx),
   },
   displayMath: {
     label: "Display math",
@@ -201,6 +362,17 @@ export const TEXT_OBJECT_REGISTRY: Record<TextObjectKind, TextObjectMeta> = {
     floatBodyComponent: PLACEHOLDER_FLOAT_BODY,
     actions: NON_PROSE_BLOCK_ACTIONS,
     dropAdapter: topLevelDropAdapter,
+    // Atom blocks: always warn (can't preview a meaningful "empty"
+    // state for math/figure/etc.). The hasAnchorsOrAtoms guard is
+    // irrelevant — the block itself is what's at stake.
+    confirmDestructive: (_doc, _uuid, action) => {
+      const { verb, label } = actionVerb(action);
+      return {
+        title: `${verb} this math block?`,
+        message: `${verb} this math block.`,
+        confirmLabel: `${label} block`,
+      };
+    },
   },
   titleField: {
     label: "Title field",
@@ -212,6 +384,8 @@ export const TEXT_OBJECT_REGISTRY: Record<TextObjectKind, TextObjectMeta> = {
     floatBodyComponent: PLACEHOLDER_FLOAT_BODY,
     actions: TITLE_FIELD_ACTIONS,
     dropAdapter: topLevelDropAdapter,
+    // Delete/Archive are filtered out by TITLE_FIELD_ACTIONS, so this
+    // slot is never consulted in practice. Left unset.
   },
   latexComment: {
     label: "LaTeX comment",
@@ -223,6 +397,8 @@ export const TEXT_OBJECT_REGISTRY: Record<TextObjectKind, TextObjectMeta> = {
     floatBodyComponent: PLACEHOLDER_FLOAT_BODY,
     actions: NON_PROSE_BLOCK_ACTIONS,
     dropAdapter: topLevelDropAdapter,
+    // Author noise, cheap to redo — never warn.
+    confirmDestructive: () => null,
   },
   texBlock: {
     label: "TeX block",
@@ -243,6 +419,14 @@ export const TEXT_OBJECT_REGISTRY: Record<TextObjectKind, TextObjectMeta> = {
     // command-form; the sentinel pair is handled directly by the
     // parser/serializer for texBlock.
     dropAdapter: topLevelDropAdapter,
+    confirmDestructive: (_doc, _uuid, action) => {
+      const { verb, label } = actionVerb(action);
+      return {
+        title: `${verb} this TeX block?`,
+        message: `${verb} this raw LaTeX block.`,
+        confirmLabel: `${label} block`,
+      };
+    },
   },
   figureBlock: {
     label: "Figure",
@@ -256,6 +440,14 @@ export const TEXT_OBJECT_REGISTRY: Record<TextObjectKind, TextObjectMeta> = {
     floatBodyComponent: PLACEHOLDER_FLOAT_BODY,
     actions: NON_PROSE_BLOCK_ACTIONS,
     dropAdapter: topLevelDropAdapter,
+    confirmDestructive: (_doc, _uuid, action) => {
+      const { verb, label } = actionVerb(action);
+      return {
+        title: `${verb} this figure?`,
+        message: `${verb} this figure and its caption.`,
+        confirmLabel: `${label} figure`,
+      };
+    },
   },
   graphicsBlock: {
     label: "Graphic",
@@ -267,6 +459,14 @@ export const TEXT_OBJECT_REGISTRY: Record<TextObjectKind, TextObjectMeta> = {
     floatBodyComponent: PLACEHOLDER_FLOAT_BODY,
     actions: NON_PROSE_BLOCK_ACTIONS,
     dropAdapter: topLevelDropAdapter,
+    confirmDestructive: (_doc, _uuid, action) => {
+      const { verb, label } = actionVerb(action);
+      return {
+        title: `${verb} this graphic?`,
+        message: `${verb} this graphic.`,
+        confirmLabel: `${label} graphic`,
+      };
+    },
   },
   exampleBlock: {
     label: "Example",
@@ -280,6 +480,15 @@ export const TEXT_OBJECT_REGISTRY: Record<TextObjectKind, TextObjectMeta> = {
     removeOnEmptyChildren: true,
     sourceMarker: { command: "vexid", idLength: 4 },
     dropAdapter: topLevelDropAdapter,
+    confirmDestructive: (doc, _uuid, action, ctx) =>
+      descriptorForContainer(
+        "example",
+        "exampleItem",
+        "item",
+        doc,
+        action,
+        ctx,
+      ),
   },
 
   // ----- Sub-objects -----
@@ -295,6 +504,10 @@ export const TEXT_OBJECT_REGISTRY: Record<TextObjectKind, TextObjectMeta> = {
     floatBodyComponent: PLACEHOLDER_FLOAT_BODY,
     actions: PROSE_ACTIONS,
     dropAdapter: listItemDropAdapter,
+    confirmDestructive: (doc, _uuid, action, ctx) =>
+      descriptorForSimpleBlock("item", doc, action, ctx, {
+        includePreview: true,
+      }),
   },
   exampleItem: {
     label: "Example item",
@@ -313,6 +526,10 @@ export const TEXT_OBJECT_REGISTRY: Record<TextObjectKind, TextObjectMeta> = {
     actions: PROSE_ACTIONS,
     sourceMarker: { command: "vxid", idLength: 4 },
     dropAdapter: exampleItemDropAdapter,
+    confirmDestructive: (doc, _uuid, action, ctx) =>
+      descriptorForSimpleBlock("example item", doc, action, ctx, {
+        includePreview: true,
+      }),
   },
 
   // ----- Range -----
@@ -332,6 +549,20 @@ export const TEXT_OBJECT_REGISTRY: Record<TextObjectKind, TextObjectMeta> = {
     // (`<command>end`).
     sourceMarker: { command: "vlid", idLength: 4 },
     dropAdapter: topLevelDropAdapter,
+    // Always warn — deleting a linkedRange also removes the underlying
+    // text and any cards anchored on it (cross-abstraction destructive).
+    confirmDestructive: (_doc, _uuid, action) => {
+      const { verb, label } = actionVerb(action);
+      return {
+        title: `${verb} the lifted passage?`,
+        message:
+          action === "delete"
+            ? "Delete the lifted passage. The underlying text and any cards anchored on it will also be removed."
+            : "Archive the lifted passage. The underlying text and any cards anchored on it will move to the archive together.",
+        confirmLabel: `${label} passage`,
+        tone: action === "delete" ? "danger" : "default",
+      };
+    },
   },
 };
 

@@ -4,6 +4,8 @@
  *   1. Remints every TextObject node's `uuid` attr (using `generateShortId`
  *      for kinds with `sourceMarker.idLength === 4`, otherwise
  *      `generateEntityId`). Driven by [TEXT_OBJECT_REGISTRY](./text-object-registry.ts).
+ *      Invariant: every TextObject node leaves the walker with a fresh
+ *      uuid, even if the source node was missing one (emits diagnostic).
  *
  *   2. Remints every inline-atom card's id attr (`footnoteId`,
  *      `citationId`) and clones the matching sidecar entry via
@@ -13,23 +15,20 @@
  *
  *   3. Remints every `linkedAnchor` mark's `anchorId` + clones the
  *      sidecar entry the mark points at (`linkCard` → `cardKind:cardId`).
- *      The CardKind comes from the mark's existing `linkCard` value via
- *      `parseLinkCardKey`; the walker never enumerates linkedAnchor kinds
- *      itself.
+ *      When the source card is missing (unparseable `linkCard` or
+ *      `lifecycle.clone()` returns null), the cloned text is STRIPPED of
+ *      the mark — an orphan mark is worse than no mark. Diagnostic
+ *      emitted so the dispatcher can surface the failure.
  *
  * Zero per-kind switches. Adding a new TextObject kind = one
  * `TEXT_OBJECT_REGISTRY` entry. Adding a new sidecar-bearing card kind =
  * one `registerCardLifecycle` call (registry-side) + (for new inline-atom
  * kinds only) one entry in `INLINE_ATOM_CARDS` here.
  *
- * Limitation: cloned cards arrive with `links: []` (sidecar hooks clear
- * them for cleanliness). The in-doc mark / atom carries the binding via
- * its `linkCard` / `*Id` attrs, so editor → card jump-to works. Card →
- * editor jump-to (which reads the card's `links` array) won't find the
- * cloned mark until the cloned card's links are repopulated. A follow-up
- * pass can rewire by walking the inserted slice and calling each kind's
- * `setTextAnchorLink` / `addTextObjectLink` — deferred to a Phase 2.5
- * once the user validates the core mechanic.
+ * Diagnostics: pass an optional `DuplicateDiagnostics` collector. Each
+ * silent-skip path now emits a tagged warning so the dispatcher can
+ * decide whether to log, toast, or abort. See ACTION-MENU-DIAGNOSIS.md
+ * followup B1.
  */
 
 import { Slice, Fragment, type Node as PMNode } from "@tiptap/pm/model";
@@ -66,52 +65,122 @@ function mintUuidForKind(kind: string): string {
     : generateEntityId();
 }
 
+/** Tagged diagnostic codes emitted by the duplicate walker. */
+export type DuplicateWarnCode =
+  | "missing-source-uuid"
+  | "orphan-inline-atom"
+  | "missing-card-on-mark"
+  | "unparseable-link-card";
+
+/** Diagnostic collector — pass to `duplicateSlice` to capture every
+ *  non-fatal anomaly the walker encounters. The dispatcher decides
+ *  whether to console.warn, toast, or abort. Pure data; no UI deps. */
+export interface DuplicateDiagnostics {
+  warn(code: DuplicateWarnCode, detail?: object): void;
+}
+
+/** Build a fresh diagnostic collector. The `codes` set lets the caller
+ *  decide whether to surface anything to the user after the walk. */
+export interface DuplicateDiagnosticsHandle extends DuplicateDiagnostics {
+  readonly codes: ReadonlySet<DuplicateWarnCode>;
+  readonly details: ReadonlyArray<{ code: DuplicateWarnCode; detail?: object }>;
+}
+
+export function createDuplicateDiagnostics(): DuplicateDiagnosticsHandle {
+  const codes = new Set<DuplicateWarnCode>();
+  const details: { code: DuplicateWarnCode; detail?: object }[] = [];
+  return {
+    codes,
+    details,
+    warn(code, detail) {
+      codes.add(code);
+      details.push({ code, detail });
+    },
+  };
+}
+
 /** Public entry point: produce a deep-cloned slice with every identity
- *  reminted and every sidecar card cloned via the lifecycle registry. */
+ *  reminted and every sidecar card cloned via the lifecycle registry.
+ *  Pass `diag` to capture non-fatal anomalies (missing uuids, orphan
+ *  atoms, unresolvable card links) for the dispatcher to surface. */
 export function duplicateSlice(
   slice: Slice,
   lifecycle: CardLifecycleApi,
+  diag?: DuplicateDiagnostics,
 ): Slice {
-  const content = transformFragment(slice.content, lifecycle);
+  const content = transformFragment(slice.content, lifecycle, diag);
   return new Slice(content, slice.openStart, slice.openEnd);
 }
 
 function transformFragment(
   fragment: Fragment,
   lifecycle: CardLifecycleApi,
+  diag?: DuplicateDiagnostics,
 ): Fragment {
   const out: PMNode[] = [];
-  fragment.forEach((child) => out.push(transformNode(child, lifecycle)));
+  fragment.forEach((child) => out.push(transformNode(child, lifecycle, diag)));
   return Fragment.fromArray(out);
 }
 
-function transformNode(node: PMNode, lifecycle: CardLifecycleApi): PMNode {
-  // Recurse first so the rebuilt node carries rewritten children.
-  const newContent = node.content.size
-    ? transformFragment(node.content, lifecycle)
-    : node.content;
-
-  // Marks: remint linkedAnchor; pass others through unchanged.
+function transformNode(
+  node: PMNode,
+  lifecycle: CardLifecycleApi,
+  diag?: DuplicateDiagnostics,
+): PMNode {
+  // Marks: remint linkedAnchor (or strip on unresolvable card); pass
+  // other marks through unchanged.
   const newMarks = node.marks.length
-    ? node.marks.map((mark) => {
-        if (mark.type.name !== "linkedAnchor") return mark;
-        const linkCard =
-          typeof mark.attrs.linkCard === "string" ? mark.attrs.linkCard : "";
-        const parsed = parseLinkCardKey(linkCard);
-        const clonedId = parsed
-          ? lifecycle.get(parsed.kind)?.clone(parsed.id) ?? null
-          : null;
-        const newAnchorId = generateEntityId();
-        const newLinkCard =
-          parsed && clonedId ? linkCardKey(parsed.kind, clonedId) : "";
-        return mark.type.create({
-          ...mark.attrs,
-          anchorId: newAnchorId,
-          linkId: newAnchorId,
-          linkCard: newLinkCard,
-        });
-      })
+    ? node.marks
+        .map((mark) => {
+          if (mark.type.name !== "linkedAnchor") return mark;
+          const linkCard =
+            typeof mark.attrs.linkCard === "string" ? mark.attrs.linkCard : "";
+          const parsed = parseLinkCardKey(linkCard);
+          if (!parsed) {
+            // Mark with no resolvable card kind — strip rather than
+            // carry forward an orphan. The original mark on the source
+            // is left alone.
+            diag?.warn("unparseable-link-card", { linkCard });
+            return null;
+          }
+          const clonedId = lifecycle.get(parsed.kind)?.clone(parsed.id) ?? null;
+          if (!clonedId) {
+            // Card lookup failed; same rationale — strip the cloned
+            // mark instead of leaving it pointing at the source's card
+            // (which would make two anchors compete for the same card).
+            diag?.warn("missing-card-on-mark", {
+              cardKind: parsed.kind,
+              cardId: parsed.id,
+            });
+            return null;
+          }
+          const newAnchorId = generateEntityId();
+          return mark.type.create({
+            ...mark.attrs,
+            anchorId: newAnchorId,
+            linkId: newAnchorId,
+            linkCard: linkCardKey(parsed.kind, clonedId),
+          });
+        })
+        .filter((m): m is NonNullable<typeof m> => m !== null)
     : node.marks;
+
+  // Text nodes have no attrs or content; their identity is (text,
+  // marks). `node.type.create()` REJECTS text-node construction with
+  // "NodeType.create can't construct text nodes" — so route through
+  // `node.mark()` which produces a new text node with the same text
+  // and the given marks. This branch is what kept the pre-fix
+  // duplicate broken for any text-bearing paragraph — every text child
+  // hit the create-throw below.
+  if (node.isText) {
+    return newMarks === node.marks ? node : node.mark(newMarks);
+  }
+
+  // Recurse for non-text nodes so the rebuilt node carries rewritten
+  // children. (Text nodes have empty content, no need to recurse.)
+  const newContent = node.content.size
+    ? transformFragment(node.content, lifecycle, diag)
+    : node.content;
 
   // Attrs: remint inline-atom id (if applicable) + TextObject uuid.
   const newAttrs: Record<string, unknown> = { ...node.attrs };
@@ -124,17 +193,31 @@ function transformNode(node: PMNode, lifecycle: CardLifecycleApi): PMNode {
         : "";
     if (oldId) {
       const cloned = lifecycle.get(atom.cardKind)?.clone(oldId);
-      // Fall back to a fresh short id so the duplicate is at least
-      // schema-valid; the dispatcher logs a warning when this happens.
+      if (cloned == null) {
+        // Card kind opted out or source id missing. Mint a placeholder
+        // so the schema stays valid; surface via diagnostic. The
+        // resulting atom is orphan (no sidecar) — visible as a
+        // footnote/citation with no card behind it.
+        diag?.warn("orphan-inline-atom", {
+          cardKind: atom.cardKind,
+          sourceId: oldId,
+        });
+      }
       newAttrs[atom.idAttr] = cloned ?? generateShortId();
     }
   }
 
-  if (
-    isTextObjectKind(node.type.name) &&
-    typeof newAttrs.uuid === "string" &&
-    newAttrs.uuid.length > 0
-  ) {
+  // INVARIANT: every TextObject node leaves the walker with a fresh
+  // uuid, full stop. The previous `&& uuid.length > 0` guard let
+  // uuid-less paragraphs propagate the empty string into the clone,
+  // producing duplicate-identity issues that surfaced as silent-broken
+  // paragraph Duplicate. If a source was missing a uuid, emit a
+  // diagnostic but still mint — the clone must have its own identity.
+  if (isTextObjectKind(node.type.name)) {
+    const sourceUuid = typeof newAttrs.uuid === "string" ? newAttrs.uuid : "";
+    if (!sourceUuid) {
+      diag?.warn("missing-source-uuid", { kind: node.type.name });
+    }
     newAttrs.uuid = mintUuidForKind(node.type.name);
   }
 
