@@ -26,14 +26,20 @@
  *      no handles. (Cursor-based discovery is intentionally removed —
  *      the handle is a pure hover affordance, like a tooltip.)
  *
- * Rendering: handles portal into `[data-grab-handle-portal]` inside
- * `paper-render` (post-Phase 6 of the cohesive grab-handle mop-up).
- * Absolute-positioned children of the same containing block as
- * `.ProseMirror`, so they scroll with the paper and clip naturally
- * against the editor pod's sticky chrome. Pointer continuity from prose
- * → gutter → handle is native (no portal-to-body decoupling), so the
+ * Rendering: handles portal into `[data-grab-handle-portal]` mounted
+ * inside `editor-pane-column` as a sibling of the editor pod. The
+ * column placement (rather than inside `paper-render`) is required: the
+ * pod has a `clipPath` that clips lateral descendants beyond ±20px,
+ * which would silently swallow handles in the gutter (handles sit ~22px
+ * left of the content edge). Mounting at the column level: (a) lets
+ * handles scroll with the paper (the column is inside the row scroll
+ * container); (b) clips them behind the sticky pod caps (top z:30,
+ * bottom z:31) which are also column-level siblings sharing the root
+ * stacking context against the handle's z:20; (c) clips them at the
+ * row scroll container's overflow. Pointer continuity from prose →
+ * gutter → handle is native (no portal-to-body decoupling), so the
  * leave-grace timer, `mouseOverHandleRef`, and per-handle enter/leave
- * callbacks that the old portal model required are all retired.
+ * callbacks that the old portal-to-body model required are all retired.
  */
 
 import {
@@ -341,12 +347,14 @@ function computePlacement(
   }
   // Convert from viewport coords (what getBoundingClientRect /
   // coordsAtPos / measureHandleAnchorTop return) to portal-relative
-  // coords. The portal mounts inside `.paper-render` as an absolute-
-  // positioned child, so handles need their `top`/`left` relative to
-  // the paper's content box. CSS overflow on the scroll container
-  // handles clipping — no more Math.max(candidateTop, scrollTop) clamp,
-  // which was a portal-to-body workaround that produced the "sticky to
-  // viewport top" behavior.
+  // coords. The portal mounts inside `editor-pane-column` (column-level
+  // sibling of the pod — escapes the pod's clipPath that would
+  // otherwise clip handles in the gutter) as an absolute-positioned
+  // child, so handles need their `top`/`left` relative to the column's
+  // content box. The sticky pod caps (z:30/31) cover handles when they
+  // overlap on scroll — no more Math.max(candidateTop, scrollTop)
+  // clamp, which was a portal-to-body workaround that produced the
+  // "sticky to viewport top" behavior.
   const portal = cache.toPortalCoords(left, candidateTop);
   return { left: portal.x, top: portal.y, ref };
 }
@@ -850,11 +858,14 @@ export function TextObjectGrabHandle({ editorRef }: Props) {
   // (not document.body) — eliminating the prior race where a state-
   // backed portalRoot lagged the cache by one render and handles
   // briefly portaled to body with portal-relative coords (resulting
-  // in handles rendering far off-screen). Fallback to document.body
-  // covers the pre-mount window where paperEl is null; in that case
-  // toPortalCoords identity-fallbacks too, so coords are viewport,
-  // which is correct against body when body scroll is 0 (Virgil's
-  // doc never scrolls — only the inner [data-virgil-row-scroll] does).
+  // in handles rendering far off-screen). `paperEl` here is the
+  // editor-pane-column (renamed in comment only — see cache
+  // JSDoc); the portal div is a column-level sibling of the pod.
+  // Fallback to document.body covers the pre-mount window where the
+  // column isn't resolved yet; in that case toPortalCoords identity-
+  // fallbacks too, so coords are viewport, which is correct against
+  // body when body scroll is 0 (Virgil's doc never scrolls — only the
+  // inner [data-virgil-row-scroll] does).
   const livePortalRoot =
     cacheRef.current.paperEl?.querySelector(
       "[data-grab-handle-portal]",
@@ -899,9 +910,11 @@ function GrabHandleRender({
       ref={elRef}
       className="text-object-grab-handle"
       // `position: absolute` against the `[data-grab-handle-portal]`
-      // wrapper (which is itself absolute inside `.paper-render`). The
-      // wrapper has `pointer-events: none` to let prose clicks pass
-      // through; each handle re-enables pointer events on itself.
+      // wrapper (which is itself absolute inside the editor-pane-column
+      // — escapes the pod's clipPath that clips lateral descendants of
+      // the pod past ±20px). The wrapper has `pointer-events: none` to
+      // let prose clicks pass through; each handle re-enables pointer
+      // events on itself.
       style={{
         position: "absolute",
         left: placement.left,

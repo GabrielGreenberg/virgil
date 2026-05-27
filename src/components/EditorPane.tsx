@@ -3500,6 +3500,14 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
                 minWidth: 'calc(300px + var(--editor-pl, 88px) + var(--editor-pr, 72px) + 2px + var(--editor-wrapper-inset, 0px))',
                 display: "flex",
                 flexDirection: "column",
+                // Containing block for the grab-handle portal wrapper
+                // (added below as a sibling of the pod). The column
+                // doesn't get a z-index — it intentionally does NOT
+                // become a stacking context, so its sticky chrome
+                // (pod caps at z:30/31, breadcrumb, etc.) and the
+                // portaled handles (z:20) keep resolving in the root
+                // stacking context and the caps win on overlap.
+                position: "relative",
                 // Span the full editor scroll height so the sticky
                 // descendants below (docked MenuBar, top/bottom pod
                 // caps, Section Lozenge, expand-all controls,
@@ -4096,27 +4104,33 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
                     )}
                   />
                 )}
-                {/* Grab-handle portal root — TextObjectGrabHandle portals
-                    its absolute-positioned handles into this div so they
-                    scroll with the paper-render content and clip against
-                    the editor pod's sticky chrome (which sits at higher
-                    z-index inside [data-virgil-row-scroll]). Replaces the
-                    old portal-to-document.body model that produced
-                    handles overlaying the topbar / breadcrumb on scroll.
-                    pointerEvents: none on the wrapper lets prose clicks
-                    pass through; each handle re-enables pointerEvents
-                    on itself. */}
-                <div
-                  data-grab-handle-portal
-                  style={{
-                    position: "absolute",
-                    inset: 0,
-                    pointerEvents: "none",
-                  }}
-                />
               </div>
               {!ready && <LoadingScreen className="absolute inset-0 z-50" />}
             </div>
+            {/* Grab-handle portal root — TextObjectGrabHandle portals
+                its absolute-positioned handles into this div. Lives at
+                the column level (sibling of the pod), so it ESCAPES the
+                pod's clipPath (`inset(0 -20px 0 -20px)`) that clips
+                lateral descendants of the pod past ±20px — handles
+                render ~22px left of the content edge (in the gutter)
+                and would otherwise be clipped. The column-level
+                placement still: (a) scrolls with content (column is
+                inside [data-virgil-row-scroll]); (b) clips behind the
+                sticky pod caps (top z:30, bottom z:31) which sit
+                alongside us in the column and win in the root stacking
+                context against the handle's z:20; (c) clips against
+                the row scroll container's overflow.
+                pointerEvents: none on the wrapper lets clicks pass
+                through; each handle re-enables pointerEvents on
+                itself. */}
+            <div
+              data-grab-handle-portal
+              style={{
+                position: "absolute",
+                inset: 0,
+                pointerEvents: "none",
+              }}
+            />
             {/* Bottom drag gap — 4px grab handle pinned just above the
                 sticky bottom chrome (pod-cap-bottom in main editor;
                 viewport bottom in Reader). z-31 above pod. marginTop:

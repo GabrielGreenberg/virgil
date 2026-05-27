@@ -1,10 +1,23 @@
 # Grab-Handle Visibility Regression — Session 10 Followup
 
-**Status:** OPEN. Grab bars are not visible in the live preview after session 9's cohesive grab-handle mop-up (`f6a9b93`). A hotfix attempt within the same commit (inline portalRoot resolution + z:20) did NOT restore them. Architecture is sound on paper — typecheck clean, 9 new unit tests pass, code review traces the placement math correctly — but something in the actual DOM/browser interaction is wrong.
+**Status: RESOLVED (2026-05-26, session 10).** Root cause was NOT in any of the 7 ranked hypotheses below — it was a clipping bug none of them named: `.editor-pane-pod` has `clipPath: 'inset(0 -20px 0 -20px)'` ([EditorPane.tsx:3764](../../src/components/EditorPane.tsx)). Negative right/left values *extend* the clip 20px laterally beyond the pod, which was intended to let the pod's box-shadow bleed sideways without bleeding vertically. Handles render at viewport `contentLeft − gutterInset = contentLeft − 22`, roughly 10–14 px LEFT of the pod's left edge after accounting for the cap structure — that's 0–4 px BEYOND the 20px clip allowance, so handles were silently clipped to invisible. Pre-session-9 handles portaled to `document.body` (outside the pod's DOM subtree) so the pod's clipPath never reached them. Session 9 moved the portal INTO `paper-render` (descendant of the pod), bringing handles into the clipped region.
 
-**Read first:** This memo. Then [TEXT-OBJECT-REFACTOR.md](../../TEXT-OBJECT-REFACTOR.md) §"Session 9". Then [src/text-objects/TextObjectGrabHandle.tsx](../../src/text-objects/TextObjectGrabHandle.tsx) end-to-end (it's the central component).
+**Fix:** moved the `[data-grab-handle-portal]` div from inside `.paper-render` to a column-level sibling of the pod inside `[data-editor-col="true"]`. The portal is now OUTSIDE the pod's clipPath subtree, but still:
+- scrolls with content (column lives inside `[data-virgil-row-scroll]`);
+- clips behind the sticky pod caps (top z:30, bottom z:31) which sit alongside in the column and win in the root stacking context against the handle's z:20;
+- clips against the row scroll container's overflow.
 
-**Don't** start by reverting — the architecture in session 9 is the right shape and earns its keep on issues 1, 2, 3, 4. The visibility bug is a separable defect on top of a sound foundation. See §"Last resort: temporary revert" at the bottom for the controlled rollback path if a fix proves elusive.
+Three files changed: [EditorPane.tsx](../../src/components/EditorPane.tsx) (column gets `position: relative`; portal mount moved); [useEditorViewportCache.ts](../../src/hooks/useEditorViewportCache.ts) (cache walks to `[data-editor-col="true"]` instead of `[data-editor-page="true"]`); [TextObjectGrabHandle.tsx](../../src/text-objects/TextObjectGrabHandle.tsx) (comments only). Verification: handles render at correct gutter x (left = contentLeft − 22, verified 435 = 457 − 22); handle Y aligns to glyph-probe top with 0px delta for both paragraph and heading; hover out of zone hides handle; typecheck and tests baseline-clean.
+
+**Why the memo's hypothesis ranking missed this:** hypotheses A–G all focused on stacking, coord conversion, or render-path timing. None inspected the pod's CSS for `clipPath`. The Plan agent that validated the fix flagged it specifically when asked to verify clipping behavior — the actual clipPath was sitting two reads of source away (in the pod's inline style block).
+
+The historical investigation plan below is preserved for posterity.
+
+---
+
+## Historical investigation plan (pre-resolution)
+
+The narrative below was the work-in-progress before the actual root cause was found. The clipPath wasn't in the hypothesis list because the visibility-followup memo focused on the portal target / stacking / coord layers and didn't audit the parent's CSS. Keep this as a record of the diagnosis path so future visibility bugs in this area know what to check first.
 
 ---
 
