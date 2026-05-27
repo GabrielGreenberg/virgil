@@ -67,10 +67,6 @@ export const TitleField = Node.create({
       rawPrefix: { default: null },
       isToday: { default: false },
       uuid: UUID_ATTR_SPEC.uuid,
-      // True when this title/author/date originated from the preamble
-      // (i.e. before `\begin{document}`). Serializer uses this flag to
-      // emit the command back into the preamble instead of the body.
-      fromPreamble: { default: false, rendered: false },
     };
   },
 

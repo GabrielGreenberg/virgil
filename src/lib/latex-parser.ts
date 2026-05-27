@@ -95,8 +95,13 @@ function stripTitleFieldsFromText(text: string): string {
  * Parse `\title{…}` / `\author{…}` / `\date{…}` commands from a
  * preamble string into `titleField` nodes. Used so that title commands
  * placed before `\begin{document}` are still visible and editable in
- * the editor. Each returned node is flagged `fromPreamble: true` so
- * the serializer knows to emit it back into the preamble.
+ * the editor.
+ *
+ * Note: titleField nodes are ALWAYS treated as preamble-bound by the
+ * serializer (it walks the whole doc and re-emits them in canonical
+ * order into the preamble). The earlier per-node `fromPreamble` flag
+ * was retired — flag fragility was a bug source (any HTML round-trip
+ * would drop it, and the next save would mis-emit to body).
  */
 function parsePreambleTitleFields(preamble: string): JSONContent[] {
   const nodes: JSONContent[] = [];
@@ -145,7 +150,7 @@ function parsePreambleTitleFields(preamble: string): JSONContent[] {
     }
     nodes.push({
       type: "titleField",
-      attrs: { field, rawPrefix: rawPrefix || null, isToday, uuid, fromPreamble: true },
+      attrs: { field, rawPrefix: rawPrefix || null, isToday, uuid },
       content: parseInlineContent(rawContent),
     });
     i = pos;
@@ -691,6 +696,15 @@ export function parseLatex(latex: string, sidecar?: VirgilSidecar): JSONContent 
   // sees a doc with the boundary sentinels removed.
   applyLinkedAnchorBoundaries(doc);
 
+  // Canonicalize titleField position: any \title / \author / \date that
+  // ended up below other content (e.g. parsed from the body, where the
+  // serializer never puts them but a user might) is hoisted to the top
+  // of the doc tree in title → author → date order. After this pass,
+  // any save will emit them to the preamble (by serializer convention),
+  // so the doc tree shape stays consistent with where the data lives
+  // in the LaTeX source.
+  hoistTitleFieldsToTop(doc);
+
   // Number footnotes sequentially
   numberFootnotes(doc);
 
@@ -715,6 +729,45 @@ export function parseLatex(latex: string, sidecar?: VirgilSidecar): JSONContent 
   }
 
   return doc;
+}
+
+/**
+ * Lift any titleField nodes out of their current positions and re-insert
+ * them at the top of the doc, in canonical title → author → date order.
+ * Idempotent. Safe when zero, one, or several titleFields are present.
+ * Dedups by `field`: the first occurrence wins, later duplicates drop.
+ *
+ * Runs once after `parseBody` so any body-position `\title{}` (which the
+ * body parser does pick up, see the titleField branch around line 1150)
+ * ends up where the serializer expects it. Without this hoist, the
+ * serializer would still emit them to preamble (collector walks the
+ * whole tree), but the editor would show them in the wrong spot.
+ */
+function hoistTitleFieldsToTop(doc: JSONContent): void {
+  if (!doc.content) return;
+  const order: Record<string, number> = { title: 0, author: 1, date: 2 };
+  const titles: JSONContent[] = [];
+  const rest: JSONContent[] = [];
+  const seen = new Set<string>();
+  for (const child of doc.content) {
+    if (child.type === "titleField") {
+      const field = child.attrs?.field as string | undefined;
+      if (field && !seen.has(field)) {
+        seen.add(field);
+        titles.push(child);
+      }
+      // Duplicates and field-less nodes are dropped silently.
+      continue;
+    }
+    rest.push(child);
+  }
+  if (titles.length === 0) return; // No-op when no titleFields present.
+  titles.sort(
+    (a, b) =>
+      (order[a.attrs?.field as string] ?? 99) -
+      (order[b.attrs?.field as string] ?? 99),
+  );
+  doc.content = [...titles, ...rest];
 }
 
 function mergeSidecarTitles(node: JSONContent, sidecar: VirgilSidecar): void {

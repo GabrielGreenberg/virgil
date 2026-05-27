@@ -1,8 +1,9 @@
 "use client";
 
 import { useCallback, useMemo } from "react";
-import { readTex, writeTex } from "@/lib/storage";
+import { drainDoc, readTex, writeTex } from "@/lib/storage";
 import { extractPreambleAndPostamble } from "@/lib/latex-parser";
+import { mergeTitlesIntoStylePreamble } from "@/lib/latex-serializer";
 import { DEFAULT_STYLE_ID } from "@/lib/document-styles";
 import { resolveStyle } from "@/lib/style-library";
 import {
@@ -52,6 +53,12 @@ export function useDocumentStyle(docId: string | null) {
 
       const preset = resolveStyle(next);
       try {
+        // Flush any in-flight autosave before we read from disk —
+        // otherwise the 1500ms debounce window can leave the disk
+        // bytes behind the live in-memory title content, and the
+        // harvest-and-reinject below would carry the OLD title.
+        await drainDoc(docId);
+
         const existingLatex = await readTex(docId);
         const delimiters = extractPreambleAndPostamble(existingLatex);
         if (!delimiters) {
@@ -72,7 +79,17 @@ export function useDocumentStyle(docId: string | null) {
           .replace(/^\n+/, "")
           .replace(/\n+$/, "");
 
-        const newLatex = preset.preamble + body + delimiters.postamble;
+        // Carry the existing `\title{…}` / `\author{…}` / `\date{…}`
+        // lines from the OLD preamble into the NEW style preamble.
+        // Without this, switching styles would silently drop the title
+        // block from disk — the editor's in-memory state still shows
+        // it until the next reload, at which point the lozenges
+        // disappear because the disk has no `\title{}` left to parse.
+        const newPreamble = mergeTitlesIntoStylePreamble(
+          existingLatex,
+          preset.preamble,
+        );
+        const newLatex = newPreamble + body + delimiters.postamble;
         await writeTex(handle, newLatex);
       } catch (err) {
         if (isStalePipelineError(err)) return;

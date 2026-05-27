@@ -160,12 +160,30 @@ function serializeTitleField(node: JSONContent): string {
 }
 
 function collectPreambleTitleFields(doc: JSONContent): JSONContent[] {
+  // Walk the whole doc tree and collect every titleField. Title/author/
+  // date are ALWAYS preamble residents — that's their LaTeX semantics —
+  // so we don't gate on a per-node flag. Dedup by `field` (first
+  // occurrence wins) and emit in canonical title → author → date order,
+  // mirroring `hoistTitleFieldsToTop` in the parser.
+  const order: Record<string, number> = { title: 0, author: 1, date: 2 };
   const out: JSONContent[] = [];
+  const seen = new Set<string>();
   function walk(n: JSONContent) {
-    if (n.type === "titleField" && n.attrs?.fromPreamble) out.push(n);
+    if (n.type === "titleField") {
+      const field = n.attrs?.field as string | undefined;
+      if (field && !seen.has(field)) {
+        seen.add(field);
+        out.push(n);
+      }
+    }
     n.content?.forEach(walk);
   }
   walk(doc);
+  out.sort(
+    (a, b) =>
+      (order[a.attrs?.field as string] ?? 99) -
+      (order[b.attrs?.field as string] ?? 99),
+  );
   return out;
 }
 
@@ -219,11 +237,11 @@ function serializeNode(node: JSONContent, suppressChildUuids = false, listDepth 
     }
 
     case "titleField": {
-      // When the title field came from the preamble, it's re-emitted
-      // by `serializeToLatex` directly into the preamble text — skip
-      // it here so it doesn't also appear in the body.
-      if (node.attrs?.fromPreamble) return "";
-      return serializeTitleField(node) + "\n";
+      // Title/author/date always round-trip via the preamble. The body
+      // walk produces nothing; `serializeToLatex` collects every
+      // titleField in the tree and injects them into the preamble via
+      // `collectPreambleTitleFields` + `injectTitleFieldsIntoPreamble`.
+      return "";
     }
 
     case "maketitleMarker": {
@@ -676,6 +694,94 @@ export function serializeToLatex(
 
 export function serializeBodyOnly(doc: JSONContent): string {
   return serializeNode(doc).replace(/\n{3,}/g, "\n\n").trim();
+}
+
+/**
+ * Carry `\title{…}` / `\author{…}` / `\date{…}` lines from the OLD
+ * LaTeX's preamble into a NEW style preamble. Used by the Style
+ * dropdown switch path ([useDocumentStyle.setStyle]), which previously
+ * dropped these commands wholesale when replacing the preamble.
+ *
+ * `newPreamble` is expected to end with `\begin{document}\n\n` (the
+ * shape of `StyleEntry.preamble`); the harvested title-field block is
+ * inserted just before that marker. The OLD preamble is everything in
+ * `oldLatex` up to its `\begin{document}` — title-field commands are
+ * extracted by string-match (not by parsing the whole doc), so this
+ * function is safe to call on raw bytes without going through the
+ * editor's doc tree.
+ *
+ * Duplicate `\title{}` (or author/date) lines in the source are
+ * collapsed — first occurrence wins, matching `parsePreambleTitleFields`
+ * semantics.
+ */
+export function mergeTitlesIntoStylePreamble(
+  oldLatex: string,
+  newPreamble: string,
+): string {
+  const beginDoc = oldLatex.indexOf("\\begin{document}");
+  const oldPreamble = beginDoc !== -1 ? oldLatex.slice(0, beginDoc) : oldLatex;
+  const harvested = extractTitleFieldLines(oldPreamble);
+  if (harvested.length === 0) return newPreamble;
+  const block = harvested.join("") + "\n";
+  const beginMarker = "\\begin{document}";
+  const idx = newPreamble.indexOf(beginMarker);
+  if (idx === -1) return newPreamble + block;
+  const before = newPreamble.slice(0, idx).replace(/\s*$/, "");
+  const after = newPreamble.slice(idx);
+  return before + "\n\n" + block + after;
+}
+
+/**
+ * Extract the literal `\title{…}\n`, `\author{…}\n`, `\date{…}\n`
+ * lines from a preamble string (including any trailing `%!v:UUID`
+ * anchor). Returns them in source order, deduplicated by field name.
+ * Used by `mergeTitlesIntoStylePreamble`.
+ */
+function extractTitleFieldLines(preamble: string): string[] {
+  const out: string[] = [];
+  const seen = new Set<string>();
+  // Match `\(title|author|date){…}` with brace-balanced extraction,
+  // followed by an optional `%!v:hex` UUID anchor up to the line end.
+  // We re-implement balanced-brace scanning here (small + local) rather
+  // than importing the parser's `extractBraced` (cross-module dep).
+  let i = 0;
+  while (i < preamble.length) {
+    const rest = preamble.slice(i);
+    const m = rest.match(/^\\(title|author|date)\{/);
+    if (!m) {
+      i++;
+      continue;
+    }
+    const field = m[1];
+    const bracedStart = i + m[0].length - 1;
+    let depth = 1;
+    let j = bracedStart + 1;
+    while (j < preamble.length && depth > 0) {
+      if (preamble[j] === "{" && preamble[j - 1] !== "\\") depth++;
+      else if (preamble[j] === "}" && preamble[j - 1] !== "\\") depth--;
+      j++;
+    }
+    if (depth !== 0) {
+      // Unbalanced — bail on this match, advance past `\foo{`.
+      i += m[0].length;
+      continue;
+    }
+    let end = j;
+    // Optional UUID anchor: ` %!v:abcd` immediately after closing brace.
+    const afterMatch = preamble.slice(end).match(/^\s*%!v:[a-f0-9]+/);
+    if (afterMatch) end += afterMatch[0].length;
+    // Swallow one trailing newline so re-injection doesn't accumulate blanks.
+    let lineEnd = end;
+    if (preamble[lineEnd] === "\n") lineEnd++;
+    if (!seen.has(field)) {
+      seen.add(field);
+      // Preserve the raw line (with anchor + newline if present) so the
+      // UUID survives the style switch.
+      out.push(preamble.slice(i, lineEnd));
+    }
+    i = lineEnd;
+  }
+  return out;
 }
 
 
