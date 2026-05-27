@@ -24,7 +24,7 @@
 
 import { useCallback, type RefObject } from "react";
 import type { Editor } from "@tiptap/react";
-import type { Node as PMNode, MarkType } from "@tiptap/pm/model";
+import type { Node as PMNode, MarkType, Slice } from "@tiptap/pm/model";
 import { NodeSelection, TextSelection } from "@tiptap/pm/state";
 import {
   createDuplicateDiagnostics,
@@ -485,8 +485,20 @@ export function useDragHandleActions(deps: DragHandleActionsDeps) {
           // Snapshot the full slice (rich JSON) BEFORE deletion so the
           // archive snippet preserves paragraph structure, atom blocks,
           // and any inline atoms it carries.
+          //
+          // For a SELECTION ref that's a sub-range of a paragraph
+          // (openStart > 0 && openEnd > 0), the fragment's direct
+          // children are TEXT / inline nodes, not a paragraph. The
+          // archive snippet mounts a mini-TipTap whose `doc.content`
+          // schema is `block+`, so bare inline children at doc level
+          // throw `contentMatchAt on a node with invalid content` when
+          // the mini-editor boots. For multi-paragraph selections with
+          // partial first/last paragraphs, the fragment is mixed:
+          // inline at the boundaries, block(s) in the middle. Walk the
+          // fragment and wrap any inline runs in a paragraph so the
+          // resulting doc is schema-valid in all cases.
           const slice = ed.state.doc.slice(extended.from, extended.to);
-          const richContent = { type: "doc", content: slice.content.toJSON() };
+          const richContent = sliceToDocJson(slice);
           // B2 (post-refactor followup): resolve the snippet's anchor
           // BEFORE deletion. The pre-delete `paragraphId` is the source
           // block's own uuid — for a whole-paragraph archive that uuid
@@ -987,6 +999,49 @@ function findAnchorIdRange(
   });
   if (from < 0) return null;
   return { from, to };
+}
+
+/**
+ * Convert a ProseMirror Slice to a schema-valid `{type: "doc", content: ...}`
+ * JSON object suitable for booting a fresh TipTap editor (e.g. the
+ * archive snippet's mini-editor).
+ *
+ * Why this is non-trivial: a slice produced by `doc.slice(from, to)`
+ * carries `openStart` / `openEnd` indicating that the boundaries cut
+ * THROUGH ancestor nodes. For a selection inside a paragraph the
+ * slice's content Fragment holds inline children (text + inline marks),
+ * not a paragraph wrapper. Wrapping that fragment directly under
+ * `{type: "doc", content: [...inline...]}` violates the doc schema's
+ * `block+` content rule and throws `contentMatchAt on a node with
+ * invalid content` when the mini-editor mounts.
+ *
+ * Algorithm: walk the slice's top-level children. Inline runs (children
+ * with `child.isBlock === false`) accumulate into an `openInline`
+ * buffer; each block child flushes the buffer into a paragraph and
+ * emits itself. Final flush at end. Handles every shape:
+ *   - all-inline (single-paragraph sub-range): one paragraph wrapping all.
+ *   - all-block (full-paragraph selection): no wrapping, blocks pass through.
+ *   - mixed (multi-paragraph w/ partial first/last): inline runs at the
+ *     boundaries become paragraphs flanking the middle blocks.
+ */
+function sliceToDocJson(slice: Slice): { type: "doc"; content: unknown[] } {
+  const docContent: unknown[] = [];
+  let openInline: unknown[] = [];
+  const flushInline = () => {
+    if (openInline.length === 0) return;
+    docContent.push({ type: "paragraph", content: openInline });
+    openInline = [];
+  };
+  slice.content.forEach((child) => {
+    if (child.isBlock) {
+      flushInline();
+      docContent.push(child.toJSON());
+    } else {
+      openInline.push(child.toJSON());
+    }
+  });
+  flushInline();
+  return { type: "doc", content: docContent };
 }
 
 // ---------------------------------------------------------------------------

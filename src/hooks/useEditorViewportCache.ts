@@ -71,11 +71,6 @@ export interface EditorViewportCache {
   /** True iff `(x, y)` falls inside the hover-active rectangle for this
    *  editor. Y is bounded by the scroll parent's visible region. */
   containsHoverZone(x: number, y: number): boolean;
-  /** Snap `x` into the content column. The resolver passes this clamped
-   *  x to `editor.view.posAtCoords` when the cursor is in the gutter, so
-   *  PM's coord-to-pos machinery resolves to actual content rather than
-   *  to the wrapper. */
-  clampXToContent(x: number): number;
   /** Convert viewport coords to portal-relative coords (inside the
    *  `editor-pane-column` containing block — the portal lives at column
    *  level, not inside paper-render). Returns the input unchanged if
@@ -102,7 +97,6 @@ const EMPTY_CACHE: EditorViewportCache = {
   paperEl: null,
   paperRect: { top: 0, left: 0 },
   containsHoverZone: () => false,
-  clampXToContent: (x) => x,
   toPortalCoords: (x, y) => ({ x, y }),
 };
 
@@ -195,8 +189,6 @@ export function useEditorViewportCache(editor: Editor | null): {
         x <= hoverZoneRight &&
         y >= scrollTop &&
         y <= scrollBottom;
-      const clampXToContent = (x: number): number =>
-        x < contentLeft ? contentLeft : x > editorRight ? editorRight : x;
       // Read the column rect fresh per call: it changes on scroll
       // (the column moves inside the row scroll container), and the
       // cache only refreshes on resize. Cheap — one
@@ -220,7 +212,6 @@ export function useEditorViewportCache(editor: Editor | null): {
         paperEl,
         paperRect: { top: paperTop, left: paperLeft },
         containsHoverZone,
-        clampXToContent,
         toPortalCoords,
       };
       setVersion((v) => (v + 1) & 0xffff);

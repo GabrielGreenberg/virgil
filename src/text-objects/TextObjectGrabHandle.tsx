@@ -166,54 +166,81 @@ function refKey(ref: TextObjectRef | SelectionRef): string {
 
 /**
  * Hit-test the mouse position against the editor's DOM to find every
- * TextObject containing the mouse, from innermost to outermost.
+ * TextObject whose visual row contains the cursor, ordered innermost
+ * first.
  *
- * Architecture — DOM-truth via `data-uuid` + `data-text-object-kind`
- * decorations (set by UuidAttrDecorator on every text-object's outer
- * element):
+ * Principle — **a text-object's visual row is its bounding rect's Y
+ * range**. The refs for a hover are exactly the text-objects whose Y
+ * range contains `clientY`, with `clientX` already inside the row's X
+ * hover zone (gated upstream by `cache.containsHoverZone`).
  *
- *   1. Zone check via the viewport cache (`containsHoverZone`) — gates
- *      the resolver to the "visual row" stripe (content column + gutter
- *      to its left where the handle lives). Cursors in the gutter still
- *      resolve, so the handle stays visible during text→handle travel.
+ * Why Y-axis containment rather than `elementFromPoint` + closest walk:
+ * the point-hit-test silently misses anchorables nested in a container
+ * whose DOM "owns" the gutter-X column. Two recurring shapes:
  *
- *   2. Clamp X into the content column. `elementFromPoint` over the
- *      gutter would resolve to the page chrome (not the prose row), so
- *      we ask the browser about the same Y at the nearest content X.
+ *   - **listItem under `<ul>`**: with `list-style-position: outside`,
+ *     `::marker` renders in the `<ul>`'s padding zone, the `<li>`'s box
+ *     starts past it. `elementFromPoint(contentLeft, listItemY)` lands
+ *     on the `<ul>`, so `closest('[data-uuid]')` returns the ul and the
+ *     `<li>` is never resolved.
  *
- *   3. `elementFromPoint → closest('[data-uuid]')` ancestor walk.
- *      The browser's hit-test is uniformly truthful across
- *      contenteditable=false subtrees (CodeMirror inside texBlock,
- *      `(1)` chip inside exampleBlock, etc.) — replaces PM's
- *      `posAtCoords` which was unreliable for rich-inner-DOM atoms.
- *      `closest` walking naturally produces innermost-first ordering.
+ *   - **exampleItem inside `.expex-block`**: the block is
+ *     `display: grid; grid-template-columns: 1.5em 1fr`. Column 1
+ *     holds the `(1)` marker top-aligned; below it column 1 is empty.
+ *     `elementFromPoint(contentLeft, exampleItemY)` lands on
+ *     `.expex-block` directly — the exampleItem and any inner
+ *     paragraph are skipped.
  *
- * No band cache: every mousemove re-resolves. `elementFromPoint` is
- * ~µs; the cache cost more bookkeeping than it saved AND pinned to the
- * outermost block, missing sub-object transitions (e.g. listItem A →
- * listItem B inside the same bulletList).
+ * The Y-scan is DOM-quirk-independent, kind-agnostic (any [data-uuid]
+ * element resolves), and atom-block-correct (a texBlock / displayMath /
+ * graphicsBlock wrapper's rect contains clientY just like a paragraph's).
+ * Inline atoms (footnote/citation) have no `UUID_ATTR_SPEC` and never
+ * receive `data-uuid`, so the scan won't false-match them.
  *
- * No per-kind branching. Adding a TextObject kind to the registry +
- * decorating it via UuidAttrDecorator picks up hover behavior
- * automatically.
+ * Performance: visible-region bound via `cache.scrollTop` /
+ * `cache.scrollBottom` — off-screen blocks bail before the
+ * Y-containment check. For typical viewports ~20-50 visible blocks
+ * regardless of doc size; one `getBoundingClientRect` per candidate.
+ *
+ * Sort: `(rect.top desc, rect.bottom asc)` produces innermost-first.
+ * When ranges nest, the narrower-Y range is the inner one. More
+ * robust than parentElement-depth: `.expex-item-list` is
+ * `display: contents` (no rect, no contribution).
  */
 function resolveTextObjectsAtMouse(
+  editor: Editor,
   cache: EditorViewportCache,
   clientX: number,
   clientY: number,
 ): TextObjectRef[] {
   if (!cache.containsHoverZone(clientX, clientY)) return EMPTY_REFS;
+  const editorEl = editor.view.dom;
+  if (!(editorEl instanceof HTMLElement)) return EMPTY_REFS;
 
-  const probeX = cache.clampXToContent(clientX);
-  const hit = document.elementFromPoint(probeX, clientY);
-  if (!(hit instanceof HTMLElement)) return EMPTY_REFS;
+  const candidates = editorEl.querySelectorAll<HTMLElement>("[data-uuid]");
+  const matches: Array<{ el: HTMLElement; top: number; bottom: number }> = [];
+  const scrollTop = cache.scrollTop;
+  const scrollBottom = cache.scrollBottom;
+  for (const el of candidates) {
+    const rect = el.getBoundingClientRect();
+    if (rect.bottom < scrollTop || rect.top > scrollBottom) continue;
+    if (clientY < rect.top || clientY > rect.bottom) continue;
+    matches.push({ el, top: rect.top, bottom: rect.bottom });
+  }
+  // Innermost-first via rect containment. Nested ranges → narrower Y
+  // range is the inner one. Sort by larger top first, then by smaller
+  // bottom on tie, so a child ((top=T1, bottom=B1) with T1>=Touter and
+  // B1<=Bouter) lands before its parent.
+  matches.sort((a, b) => {
+    if (a.top !== b.top) return b.top - a.top;
+    return a.bottom - b.bottom;
+  });
 
   const refs: TextObjectRef[] = [];
   const seen = new Set<string>();
-  let cur: HTMLElement | null = hit.closest("[data-uuid]");
-  while (cur) {
-    const id = cur.getAttribute("data-uuid");
-    const kind = cur.getAttribute("data-text-object-kind");
+  for (const { el } of matches) {
+    const id = el.getAttribute("data-uuid");
+    const kind = el.getAttribute("data-text-object-kind");
     if (
       id &&
       kind &&
@@ -224,9 +251,6 @@ function resolveTextObjectsAtMouse(
       refs.push({ kind, id });
       seen.add(id);
     }
-    // Walk past the current container to find the next outer one.
-    const parent = cur.parentElement;
-    cur = parent ? parent.closest("[data-uuid]") : null;
   }
   return refs;
 }
@@ -660,10 +684,12 @@ export function TextObjectGrabHandle({ editorRef }: Props) {
           return [{ kind: name as TextObjectKind, id: node.attrs.uuid as string }];
         }
       }
-      // 3. Mouse hover — every containing TextObject level via DOM walk.
+      // 3. Mouse hover — every containing TextObject level via Y-axis
+      // containment scan over the editor's [data-uuid] decorations.
       const mouse = mousePosRef.current;
       if (mouse) {
         return resolveTextObjectsAtMouse(
+          editor,
           cacheRef.current,
           mouse.clientX,
           mouse.clientY,
