@@ -49,6 +49,7 @@ import { registerDropTarget } from "@/components/drop-mode/target-registry";
 import "@/text-objects/floats";
 import { generateShortId } from "@/lib/uuid";
 import { UUID_ATTR_SPEC, UuidAttrDecorator } from "@/lib/tiptap/uuid-attr";
+import { GlyphProbeDecorator } from "@/lib/tiptap/glyph-probe";
 import { DocStructureObserver, readPendingDiff } from "@/lib/tiptap/doc-structure";
 import { ensureAnchorUuid } from "@/lib/anchor-uuid";
 import { parseLatex } from "@/lib/latex-parser";
@@ -493,17 +494,6 @@ const VirgilEditor = forwardRef<EditorHandle, EditorProps>(function VirgilEditor
         // Belt-and-suspenders with the schema `draggable: false`: the
         // browser must never see this wrapper as a drag source.
         wrapper.draggable = false;
-
-        // Left-margin hover sensor — covers the gutter strip from the
-        // text edge out to where the popout button sits, so the popout
-        // reveal triggers on grab-handle/left-margin hover but NOT when
-        // hovering the paragraph text itself. Replaces the older
-        // .par-title-wrapper::before hover bridge (pseudo-elements
-        // can't be selected via :has()).
-        const leftZone = document.createElement("div");
-        leftZone.className = "par-left-margin-zone";
-        leftZone.contentEditable = "false";
-        wrapper.appendChild(leftZone);
 
         // Title annotation area (above paragraph — holds +T or title)
         const titleAnnot = document.createElement("div");
@@ -984,15 +974,6 @@ const VirgilEditor = forwardRef<EditorHandle, EditorProps>(function VirgilEditor
 
         const wrapper = document.createElement("div");
         wrapper.className = `heading-wrapper heading-wrapper-l${node.attrs.level}`;
-
-        // Left-margin hover sensor — extends the heading's hover hit area into
-        // the gutter so the drag handle / fold chevron / popout button reveal
-        // when the mouse is anywhere on the heading row, not only over the
-        // text itself. Mirrors the paragraph pattern.
-        const headingLeftZone = document.createElement("div");
-        headingLeftZone.className = "par-left-margin-zone";
-        headingLeftZone.contentEditable = "false";
-        wrapper.appendChild(headingLeftZone);
 
         // Folding chevron — positioned in the left margin gutter at the same
         // horizontal offset as the paragraph drag handles. Clicking toggles
@@ -1741,6 +1722,11 @@ const VirgilEditor = forwardRef<EditorHandle, EditorProps>(function VirgilEditor
       // these attributes being present in the live DOM. See uuid-attr.ts
       // for why this needs to be a decoration and not renderHTML.
       UuidAttrDecorator,
+      // Wraps the first text character of every text-bearing TextObject
+      // in `<span data-glyph-probe>`. The grab-handle's text-top
+      // measurement reads the probe's bounding rect (= rendered glyph
+      // cap-top, independent of line-height). See glyph-probe.ts.
+      GlyphProbeDecorator,
       // Read-only enforcement plugin: rejects any transaction that
       // mutates the document when the React `editable` prop is false.
       // See the `readOnlyRef` comment near the top of this component

@@ -423,16 +423,6 @@ export const ExampleBlock = Node.create<ExampleBlockOptions>({
       const wrapper = document.createElement("div");
       wrapper.className = "par-title-wrapper expex-par-wrapper";
 
-      // Left-margin hover sensor — covers the gutter strip from the text
-      // edge out to where the popout button sits, mirroring the paragraph
-      // node view. Together with `:has()` selectors in the CSS this
-      // reveals the drag handle + popout button on gutter-hover without
-      // triggering on hover of the example body itself.
-      const leftZone = document.createElement("div");
-      leftZone.className = "par-left-margin-zone";
-      leftZone.contentEditable = "false";
-      wrapper.appendChild(leftZone);
-
       // Par-title annotation (above the example). Click to edit.
       const titleAnnot = document.createElement("div");
       titleAnnot.className = "par-title-annotation";
@@ -471,6 +461,12 @@ export const ExampleBlock = Node.create<ExampleBlockOptions>({
       const numberEl = document.createElement("span");
       numberEl.className = "expex-number";
       numberEl.contentEditable = "false";
+      // Hint to TextObjectGrabHandle + atom-block marginalia: this is
+      // the visual top of the example (the `(1)` row), not the wrapper
+      // top (which sits above the title annotation). Skips the chrome
+      // and avoids the Range-walk fall-through that would otherwise
+      // anchor to the first sub-item's first letter.
+      numberEl.setAttribute("data-glyph-anchor", "");
       numberEl.textContent = node.attrs.number ? `(${node.attrs.number})` : "(?)";
       dom.appendChild(numberEl);
 
@@ -715,14 +711,12 @@ export const ExampleBlock = Node.create<ExampleBlockOptions>({
           if (!target) return false;
           if (titleAnnot === target || titleAnnot.contains(target)) return true;
           if (labelAnnot === target || labelAnnot.contains(target)) return true;
-          if (leftZone === target || leftZone.contains(target)) return true;
           return false;
         },
         ignoreMutation(mutation) {
           const t = mutation.target as globalThis.Node;
           if (titleAnnot.contains(t)) return true;
           if (labelAnnot.contains(t)) return true;
-          if (leftZone.contains(t)) return true;
           return false;
         },
         update(updatedNode) {

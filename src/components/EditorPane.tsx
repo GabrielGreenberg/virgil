@@ -4096,6 +4096,24 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
                     )}
                   />
                 )}
+                {/* Grab-handle portal root — TextObjectGrabHandle portals
+                    its absolute-positioned handles into this div so they
+                    scroll with the paper-render content and clip against
+                    the editor pod's sticky chrome (which sits at higher
+                    z-index inside [data-virgil-row-scroll]). Replaces the
+                    old portal-to-document.body model that produced
+                    handles overlaying the topbar / breadcrumb on scroll.
+                    pointerEvents: none on the wrapper lets prose clicks
+                    pass through; each handle re-enables pointerEvents
+                    on itself. */}
+                <div
+                  data-grab-handle-portal
+                  style={{
+                    position: "absolute",
+                    inset: 0,
+                    pointerEvents: "none",
+                  }}
+                />
               </div>
               {!ready && <LoadingScreen className="absolute inset-0 z-50" />}
             </div>

@@ -111,9 +111,22 @@ function measureBlock(
     const domTop = domRect.top - hostRect.top;
     const height = domRect.height;
 
+    // [data-glyph-anchor] override — NodeView's declared "visual top"
+    // for kinds whose wrapper includes title/label chrome above the
+    // visible pod (titled tex-block, exampleBlock with `(1)` chip
+    // alongside `.par-title-annotation`, etc.). When present, this
+    // single line replaces wrapper-top measurement for both atoms and
+    // prose kinds. Same slot consumed by the grab-handle's
+    // measureHandleAnchorTop — one mechanism, two consumers.
+    const anchorOverride = dom.querySelector(
+      "[data-glyph-anchor]",
+    ) as HTMLElement | null;
+
     let measureEl: HTMLElement = dom;
     if (!isAtom) {
-      if (dom.classList.contains("par-title-wrapper")) {
+      if (anchorOverride) {
+        measureEl = anchorOverride;
+      } else if (dom.classList.contains("par-title-wrapper")) {
         measureEl = dom.querySelector(".par-body-container p, p") ?? dom;
       } else if (dom.classList.contains("heading-wrapper")) {
         measureEl = dom.querySelector("h1,h2,h3") ?? dom;
@@ -128,8 +141,15 @@ function measureBlock(
     }
 
     let top: number;
+    let measuredHeight = height;
     if (isAtom) {
-      top = domTop;
+      if (anchorOverride) {
+        const overrideRect = anchorOverride.getBoundingClientRect();
+        top = overrideRect.top - hostRect.top;
+        measuredHeight = overrideRect.height;
+      } else {
+        top = domTop;
+      }
     } else if (measureEl !== dom) {
       const measureRect = measureEl.getBoundingClientRect();
       top = measureRect.top - hostRect.top;
@@ -142,7 +162,7 @@ function measureBlock(
     let lineCount: number;
 
     if (isAtom) {
-      lineHeight = height;
+      lineHeight = measuredHeight;
       lineCount = 1;
     } else {
       const style = window.getComputedStyle(measureEl);

@@ -217,7 +217,7 @@ export default function TexBlockNodeView({ node, updateAttributes, deleteNode, e
         </div>
       )}
 
-      <div className="tex-block-pod">
+      <div className="tex-block-pod" data-glyph-anchor="">
         {/* Row-wide hover sensor — invisible, extends horizontally
             beyond the pod so .tex-block:hover (and thus the grab
             handle reveal) fires anywhere in the pod's Y-band. */}

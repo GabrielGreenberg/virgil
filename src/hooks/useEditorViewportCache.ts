@@ -53,6 +53,16 @@ export interface EditorViewportCache {
   /** Right edge of the hover zone — equal to `editorRight`. Handle is
    *  on the left; no widening on the right. */
   hoverZoneRight: number;
+  /** The `.paper-render` element that serves as the grab-handle portal's
+   *  positioning context. Handles render as absolute-positioned children
+   *  of `[data-grab-handle-portal]` inside this element, so the rect's
+   *  top-left is the origin for converting viewport coords to
+   *  portal-relative coords. Null when the portal isn't mounted yet. */
+  paperEl: HTMLElement | null;
+  /** Top/left of `paperEl` in viewport coords; used by
+   *  `toPortalCoords` so callers don't re-read getBoundingClientRect
+   *  per RAF. Updated on the same refresh path as the other rects. */
+  paperRect: { top: number; left: number };
   /** True iff `(x, y)` falls inside the hover-active rectangle for this
    *  editor. Y is bounded by the scroll parent's visible region. */
   containsHoverZone(x: number, y: number): boolean;
@@ -61,6 +71,11 @@ export interface EditorViewportCache {
    *  PM's coord-to-pos machinery resolves to actual content rather than
    *  to the wrapper. */
   clampXToContent(x: number): number;
+  /** Convert viewport coords to portal-relative coords (inside the
+   *  `.paper-render` containing block). Returns the input unchanged if
+   *  the portal isn't mounted yet — handles render in viewport coords as
+   *  a fallback until paperEl resolves. */
+  toPortalCoords(viewportX: number, viewportY: number): { x: number; y: number };
 }
 
 const DEFAULT_GUTTER_INSET = 22;
@@ -78,8 +93,11 @@ const EMPTY_CACHE: EditorViewportCache = {
   gutterInset: DEFAULT_GUTTER_INSET,
   hoverZoneLeft: 0,
   hoverZoneRight: 0,
+  paperEl: null,
+  paperRect: { top: 0, left: 0 },
   containsHoverZone: () => false,
   clampXToContent: (x) => x,
+  toPortalCoords: (x, y) => ({ x, y }),
 };
 
 export function findScrollParent(el: HTMLElement | null): HTMLElement | null {
@@ -136,6 +154,15 @@ export function useEditorViewportCache(editor: Editor | null): {
         : DEFAULT_GUTTER_INSET;
       const hoverZoneLeft = contentLeft - gutterInset - HOVER_GUTTER_PAD;
       const hoverZoneRight = editorRight;
+      // `.paper-render` is the positioning context for the grab-handle
+      // portal. Walk from the editorEl up — same direction as the scroll
+      // parent walk — to find it.
+      const paperEl = (editorEl.closest(
+        '[data-editor-page="true"]',
+      ) as HTMLElement | null) ?? null;
+      const paperBound = paperEl?.getBoundingClientRect();
+      const paperTop = paperBound?.top ?? 0;
+      const paperLeft = paperBound?.left ?? 0;
       const prev = cacheRef.current;
       if (
         prev.editorEl === editorEl &&
@@ -144,7 +171,10 @@ export function useEditorViewportCache(editor: Editor | null): {
         prev.scrollParent === scrollParent &&
         prev.scrollTop === scrollTop &&
         prev.scrollBottom === scrollBottom &&
-        prev.gutterInset === gutterInset
+        prev.gutterInset === gutterInset &&
+        prev.paperEl === paperEl &&
+        prev.paperRect.top === paperTop &&
+        prev.paperRect.left === paperLeft
       ) {
         return;
       }
@@ -158,6 +188,14 @@ export function useEditorViewportCache(editor: Editor | null): {
         y <= scrollBottom;
       const clampXToContent = (x: number): number =>
         x < contentLeft ? contentLeft : x > editorRight ? editorRight : x;
+      // Read paperRect fresh per call: it changes on scroll, and the
+      // cache only refreshes on resize. Cheap — one getBoundingClientRect
+      // per RAF (called from computePlacement, not from mousemove).
+      const toPortalCoords = (viewportX: number, viewportY: number) => {
+        if (!paperEl) return { x: viewportX, y: viewportY };
+        const live = paperEl.getBoundingClientRect();
+        return { x: viewportX - live.left, y: viewportY - live.top };
+      };
       cacheRef.current = {
         editorEl,
         contentLeft,
@@ -168,8 +206,11 @@ export function useEditorViewportCache(editor: Editor | null): {
         gutterInset,
         hoverZoneLeft,
         hoverZoneRight,
+        paperEl,
+        paperRect: { top: paperTop, left: paperLeft },
         containsHoverZone,
         clampXToContent,
+        toPortalCoords,
       };
       setVersion((v) => (v + 1) & 0xffff);
     };

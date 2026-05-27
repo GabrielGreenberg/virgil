@@ -62,7 +62,10 @@ function buildUuidDecorations(doc: PMNode): DecorationSet {
     const uuid = node.attrs?.uuid as string | null | undefined;
     if (uuid) {
       decos.push(
-        Decoration.node(pos, pos + node.nodeSize, { "data-uuid": uuid }),
+        Decoration.node(pos, pos + node.nodeSize, {
+          "data-uuid": uuid,
+          "data-text-object-kind": node.type.name,
+        }),
       );
     }
     // Walk into anchorable containers: listItem and exampleItem are
@@ -75,8 +78,9 @@ function buildUuidDecorations(doc: PMNode): DecorationSet {
 }
 
 /**
- * TipTap extension that sets `data-uuid` on the outer DOM element of
- * every anchorable block, via a ProseMirror node-attribute decoration.
+ * TipTap extension that sets `data-uuid` and `data-text-object-kind`
+ * on the outer DOM element of every anchorable block, via a single
+ * ProseMirror node-attribute decoration.
  *
  * Why a decoration and not `renderHTML` with `rendered: true`? Because
  * most anchorable nodes have a custom `NodeView`, and `renderHTML` does
@@ -85,10 +89,14 @@ function buildUuidDecorations(doc: PMNode): DecorationSet {
  * NodeView's outer element regardless of whether the node has one, so
  * it works uniformly across all anchorable types.
  *
- * Consumers: `useMarginaliaRegistry` looks up blocks via
- * `document.querySelector('[data-uuid="…"]')` and the gutter drag
- * hit-test uses `closest('[data-uuid]')`. Both depend on this
- * decoration being installed.
+ * Consumers:
+ *   - `useMarginaliaRegistry` looks up blocks via
+ *     `document.querySelector('[data-uuid="…"]')` and the gutter drag
+ *     hit-test uses `closest('[data-uuid]')`.
+ *   - `TextObjectGrabHandle`'s hover resolver walks `closest('[data-uuid]')`
+ *     ancestors and reads `data-text-object-kind` directly from DOM —
+ *     no doc walk needed per mousemove.
+ * Both depend on this decoration being installed.
  */
 export const UuidAttrDecorator = Extension.create({
   name: "uuidAttrDecorator",
@@ -139,7 +147,10 @@ export const UuidAttrDecorator = Extension.create({
                 const node = newState.doc.nodeAt(b.pos);
                 if (!node || !isAnchorableNode(node.type)) continue;
                 adds.push(
-                  Decoration.node(b.pos, b.pos + node.nodeSize, { "data-uuid": b.uuid }),
+                  Decoration.node(b.pos, b.pos + node.nodeSize, {
+                    "data-uuid": b.uuid,
+                    "data-text-object-kind": node.type.name,
+                  }),
                 );
               }
               if (adds.length > 0) set = set.add(newState.doc, adds);

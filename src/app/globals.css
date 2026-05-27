@@ -1190,20 +1190,6 @@ textarea,
   display: inline;
 }
 
-/* DEAD post-popout-cleanup — the :has() selectors this fed were
-   deleted along with .par-popout-btn / .expex-popout-btn. The JSX
-   in Editor.tsx (paragraph + heading wrappers) and expex.ts
-   (exampleBlock wrapper) still emits the div; remove those NodeView
-   emissions in a follow-up sweep, then delete this rule. */
-.par-left-margin-zone {
-  position: absolute;
-  left: -60px;
-  top: 0;
-  width: 60px;
-  height: 100%;
-  pointer-events: none;
-}
-
 /* Container for paragraph body + drag handle. The handle is positioned
    relative to this container so it aligns with the first text line,
    not the title annotation above. */
@@ -1211,13 +1197,17 @@ textarea,
   position: relative;
 }
 
-/* Unified TextObject grab handle — portaled to the document body,
-   pinned in viewport coords, tracks the active TextObject or selection.
-   Replaces the per-NodeView paragraph/heading/list/tex/example grips
-   and the live-selection `SelectionDragHandle` (all deleted in Phase D4).
-   See src/text-objects/TextObjectGrabHandle.tsx. */
+/* Unified TextObject grab handle — portaled into [data-grab-handle-portal]
+   inside `.paper-render`, position:absolute so it scrolls with the paper
+   and clips against the editor pod's sticky chrome. z-index: 20 wins
+   against editor-interior positioned elements (NodeView chrome at z:1,
+   typical decoration z's) but stays under the pod cap (z:30) so the cap
+   correctly covers handles that scroll past. The sticky breadcrumb is
+   also z:20, but it sits in a different DOM subtree from the handle
+   portal (column-level vs. paper-internal), so they don't visually
+   overlap. See src/text-objects/TextObjectGrabHandle.tsx. */
 .text-object-grab-handle {
-  position: fixed;
+  position: absolute;
   display: flex;
   /* SVG aligned to the TOP of the handle box so the dots sit at the
      handle's anchor Y (text-top for text-bearing kinds, block-top for
@@ -1232,7 +1222,7 @@ textarea,
   cursor: grab;
   user-select: none;
   color: var(--muted, #8a8580);
-  z-index: 1000;
+  z-index: 20;
 }
 
 .text-object-grab-handle:hover {

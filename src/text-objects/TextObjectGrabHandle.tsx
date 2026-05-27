@@ -26,11 +26,14 @@
  *      no handles. (Cursor-based discovery is intentionally removed —
  *      the handle is a pure hover affordance, like a tooltip.)
  *
- * Mouse-leave grace: the handles are portal-rendered into document.body,
- * so moving the mouse from the editor onto a handle would fire the
- * editor's mouseleave. Handle DOM elements report their own enter/leave
- * via `mouseOverHandleRef`; the editor's leave handler defers clearing
- * `mousePosRef` until we know the mouse hasn't landed on a handle.
+ * Rendering: handles portal into `[data-grab-handle-portal]` inside
+ * `paper-render` (post-Phase 6 of the cohesive grab-handle mop-up).
+ * Absolute-positioned children of the same containing block as
+ * `.ProseMirror`, so they scroll with the paper and clip naturally
+ * against the editor pod's sticky chrome. Pointer continuity from prose
+ * → gutter → handle is native (no portal-to-body decoupling), so the
+ * leave-grace timer, `mouseOverHandleRef`, and per-handle enter/leave
+ * callbacks that the old portal model required are all retired.
  */
 
 import {
@@ -70,10 +73,6 @@ const LIFT_THRESHOLD = 5;
  *  The grip sits inside the float's header, so the cursor lands on the
  *  header (not on the body) after the lift. */
 const SPAWN_CURSOR_OFFSET_Y = 16;
-
-/** Time after the mouse leaves the editor before handles are hidden.
- *  Long enough for the user to move from the editor onto a handle. */
-const MOUSE_LEAVE_GRACE_MS = 120;
 
 /**
  * Default initial float size at spawn time. Per-kind overrides live on
@@ -160,142 +159,69 @@ function refKey(ref: TextObjectRef | SelectionRef): string {
 }
 
 /**
- * Hit-test cache for `resolveTextObjectsAtMouse`. The cache is keyed on
- * the outermost resolved block's viewport-relative vertical band: if the
- * next mousemove lands inside the same band (and still inside the hover
- * zone), the ref set can't change. Invalidate on:
- *   - Any doc-change transaction (`invalidateMouseResolverCache`)
- *   - Scroll / resize (the viewport-cache version bumps; the resolver's
- *     own caller invalidates before re-scheduling)
- */
-let lastBoundsTop = 0;
-let lastBoundsBottom = -1; // invalid sentinel: bottom < top means no cache
-let lastHitResult: TextObjectRef[] = [];
-
-function invalidateMouseResolverCache(): void {
-  lastBoundsTop = 0;
-  lastBoundsBottom = -1;
-  lastHitResult = [];
-}
-
-/**
  * Hit-test the mouse position against the editor's DOM to find every
  * TextObject containing the mouse, from innermost to outermost.
  *
- * Architecture:
- *   1. Zone check via the viewport cache (`containsHoverZone`) — this
- *      gates the resolver to the "visual row" stripe: the editor's
- *      content column PLUS the gutter to its left where the handle
- *      lives. Cursors in the gutter still resolve, so the handle stays
- *      visible while the user travels from text toward the handle.
- *   2. Clamp X into the content column (`clampXToContent`) before calling
- *      `view.posAtCoords`. PM's coord-to-pos machinery only resolves
- *      inside content; in the gutter we feed it the nearest content X
- *      at the same Y so it returns the row's text-object.
- *   3. Walk PM's `$pos.depth` ancestor chain to enumerate every
- *      containing TextObject (innermost-first). Atom blocks at
- *      `pos.inside` are pushed explicitly because $pos.depth doesn't
- *      enter them.
- *   4. Vertical-contain guard: the outermost resolved block's DOM rect
- *      must vertically contain clientY. This stops hover in the empty
- *      area below the last paragraph from falsely pinning to it.
+ * Architecture — DOM-truth via `data-uuid` + `data-text-object-kind`
+ * decorations (set by UuidAttrDecorator on every text-object's outer
+ * element):
  *
- * No per-kind branching. Adding a new TextObject kind to the registry
- * picks up correct hover behavior automatically.
+ *   1. Zone check via the viewport cache (`containsHoverZone`) — gates
+ *      the resolver to the "visual row" stripe (content column + gutter
+ *      to its left where the handle lives). Cursors in the gutter still
+ *      resolve, so the handle stays visible during text→handle travel.
+ *
+ *   2. Clamp X into the content column. `elementFromPoint` over the
+ *      gutter would resolve to the page chrome (not the prose row), so
+ *      we ask the browser about the same Y at the nearest content X.
+ *
+ *   3. `elementFromPoint → closest('[data-uuid]')` ancestor walk.
+ *      The browser's hit-test is uniformly truthful across
+ *      contenteditable=false subtrees (CodeMirror inside texBlock,
+ *      `(1)` chip inside exampleBlock, etc.) — replaces PM's
+ *      `posAtCoords` which was unreliable for rich-inner-DOM atoms.
+ *      `closest` walking naturally produces innermost-first ordering.
+ *
+ * No band cache: every mousemove re-resolves. `elementFromPoint` is
+ * ~µs; the cache cost more bookkeeping than it saved AND pinned to the
+ * outermost block, missing sub-object transitions (e.g. listItem A →
+ * listItem B inside the same bulletList).
+ *
+ * No per-kind branching. Adding a TextObject kind to the registry +
+ * decorating it via UuidAttrDecorator picks up hover behavior
+ * automatically.
  */
 function resolveTextObjectsAtMouse(
-  editor: Editor,
   cache: EditorViewportCache,
   clientX: number,
   clientY: number,
 ): TextObjectRef[] {
-  if (!cache.containsHoverZone(clientX, clientY)) {
-    invalidateMouseResolverCache();
-    return EMPTY_REFS;
-  }
-  // Vertical-band cache: same row + same zone → no recompute. We don't
-  // gate by X because the user can move horizontally across the row
-  // (especially gutter ↔ text) without changing which block they're on.
-  if (
-    lastBoundsBottom >= lastBoundsTop &&
-    clientY >= lastBoundsTop &&
-    clientY <= lastBoundsBottom
-  ) {
-    return lastHitResult;
-  }
+  if (!cache.containsHoverZone(clientX, clientY)) return EMPTY_REFS;
 
-  const targetX = cache.clampXToContent(clientX);
-  const pos = editor.view.posAtCoords({ left: targetX, top: clientY });
-  if (!pos) {
-    invalidateMouseResolverCache();
-    return EMPTY_REFS;
-  }
+  const probeX = cache.clampXToContent(clientX);
+  const hit = document.elementFromPoint(probeX, clientY);
+  if (!(hit instanceof HTMLElement)) return EMPTY_REFS;
 
   const refs: TextObjectRef[] = [];
-  const seenIds = new Set<string>();
-
-  // Atom block at `pos.inside` — the caret can't enter atoms, so they're
-  // only reachable through hover. Collect explicitly before the depth
-  // walk (which still encounters them but `$pos.depth` for a position
-  // inside an atom returns the atom's PARENT level, not the atom itself).
-  if (pos.inside >= 0) {
-    const node = editor.state.doc.nodeAt(pos.inside);
-    if (node && isTextObjectKind(node.type.name) && node.type.name !== "linkedRange") {
-      const id = node.attrs?.uuid as string | null;
-      const meta = TEXT_OBJECT_REGISTRY[node.type.name];
-      if (id && meta.isAtomBlock) {
-        refs.push({ kind: node.type.name as TextObjectKind, id });
-        seenIds.add(id);
-      }
+  const seen = new Set<string>();
+  let cur: HTMLElement | null = hit.closest("[data-uuid]");
+  while (cur) {
+    const id = cur.getAttribute("data-uuid");
+    const kind = cur.getAttribute("data-text-object-kind");
+    if (
+      id &&
+      kind &&
+      isTextObjectKind(kind) &&
+      kind !== "linkedRange" &&
+      !seen.has(id)
+    ) {
+      refs.push({ kind, id });
+      seen.add(id);
     }
+    // Walk past the current container to find the next outer one.
+    const parent = cur.parentElement;
+    cur = parent ? parent.closest("[data-uuid]") : null;
   }
-
-  // Walk every containing level. ProseMirror's `$pos.depth` gives us the
-  // ancestor chain; iterate from innermost (depth) to outermost (0).
-  // Track the OUTERMOST text-object's position as we go so the
-  // vertical-contain guard below can look up its DOM rect without a
-  // second walk.
-  let outerPos = -1;
-  const $pos = editor.state.doc.resolve(pos.pos);
-  for (let d = $pos.depth; d >= 0; d--) {
-    const node = $pos.node(d);
-    const name = node.type.name;
-    if (!isTextObjectKind(name) || name === "linkedRange") continue;
-    const id = node.attrs?.uuid as string | null;
-    if (!id) continue;
-    if (seenIds.has(id)) continue;
-    refs.push({ kind: name as TextObjectKind, id });
-    seenIds.add(id);
-    if (d > 0) {
-      // Overwritten each iteration; loop runs deepest-first, so the
-      // final value is the shallowest (outermost) text-object's pos.
-      outerPos = $pos.before(d);
-    }
-  }
-
-  if (refs.length === 0) {
-    invalidateMouseResolverCache();
-    return EMPTY_REFS;
-  }
-
-  // Vertical-contain guard. If the cursor sits in editor whitespace
-  // BELOW the last block (or above the title with no margin block to
-  // catch it), `posAtCoords` would still resolve to the nearest block.
-  // Reject unless the cursor's Y is actually inside the outermost
-  // text-object's rendered rect.
-  let outerRect: DOMRect | null = null;
-  if (outerPos >= 0) {
-    const dom = editor.view.nodeDOM(outerPos);
-    if (dom instanceof Element) outerRect = dom.getBoundingClientRect();
-  }
-  if (!outerRect || clientY < outerRect.top || clientY > outerRect.bottom) {
-    invalidateMouseResolverCache();
-    return EMPTY_REFS;
-  }
-
-  lastBoundsTop = outerRect.top;
-  lastBoundsBottom = outerRect.bottom;
-  lastHitResult = refs;
   return refs;
 }
 
@@ -358,15 +284,16 @@ function computePlacement(
   }
   if (!anchorDom) return null;
 
-  const scrollTop = cache.scrollTop;
-  const scrollBottom = cache.scrollBottom;
   // Use the anchor DOM's rect for the visibility check rather than the
   // coordsAtPos values, which return {0, 0} for some multi-line block
   // kinds (exampleBlock with deep content tree). The DOM rect is the
-  // authoritative visible bounds of the block.
+  // authoritative visible bounds of the block. CSS `overflow: hidden`
+  // on the scroll container handles the actual clipping; we still
+  // bail when the source is fully scrolled out so we don't pay
+  // measurement cost.
   const anchorRect = anchorDom.getBoundingClientRect();
-  if (anchorRect.bottom < scrollTop) return null;
-  if (anchorRect.top > scrollBottom) return null;
+  if (anchorRect.bottom < cache.scrollTop) return null;
+  if (anchorRect.top > cache.scrollBottom) return null;
 
   const kind: TextObjectKind | null =
     ref.kind === "selection" ? null : ref.kind;
@@ -389,66 +316,81 @@ function computePlacement(
     : anchorDom.getBoundingClientRect().left - baselineInset;
 
   // Top edge: every kind declares its vertical anchor via
-  // `meta.chromeAnchor`. "text-top" measures the first glyph via Range
-  // so the handle aligns with rendered text regardless of font /
-  // line-height. "block-top" uses the wrapper's visual top edge — for
-  // framed visual kinds (tex pod, % comment, math, graphic, figure)
-  // where there's no "first line of prose" to align with.
+  // `meta.chromeAnchor`. "text-top" measures via the unified probe +
+  // override pipeline (see measureHandleAnchorTop) so the handle aligns
+  // with rendered glyph cap-top regardless of font / line-height.
+  // "block-top" uses the wrapper's visual top edge — for framed visual
+  // kinds (tex pod, % comment, math, graphic, figure) where there's no
+  // "first line of prose" to align with. For SelectionRef, fall back to
+  // coordsAtPos(from).top which gives the correct text-top for the
+  // selection's start line (selections are mid-prose; the
+  // line-box-vs-cap-top gap doesn't bite for single-line coordsAtPos).
   const anchor: "text-top" | "block-top" = meta
     ? meta.chromeAnchor
     : resolveSelectionChromeAnchor(editor, from);
   let candidateTop: number;
-  if (anchor === "text-top") {
-    const textTop = getTextGlyphTop(anchorDom);
-    candidateTop =
-      textTop != null
-        ? textTop
-        : fromCoords.top > 0
-          ? fromCoords.top
-          : anchorRect.top;
+  if (ref.kind === "selection") {
+    if (anchor === "text-top") {
+      candidateTop = fromCoords.top > 0 ? fromCoords.top : anchorRect.top;
+    } else {
+      candidateTop = anchorRect.top;
+    }
   } else {
-    candidateTop = anchorRect.top;
+    const measured = measureHandleAnchorTop(anchorDom, anchor);
+    candidateTop = measured ?? (fromCoords.top > 0 ? fromCoords.top : anchorRect.top);
   }
-  const top = Math.max(candidateTop, scrollTop);
-
-  return { left, top, ref };
+  // Convert from viewport coords (what getBoundingClientRect /
+  // coordsAtPos / measureHandleAnchorTop return) to portal-relative
+  // coords. The portal mounts inside `.paper-render` as an absolute-
+  // positioned child, so handles need their `top`/`left` relative to
+  // the paper's content box. CSS overflow on the scroll container
+  // handles clipping — no more Math.max(candidateTop, scrollTop) clamp,
+  // which was a portal-to-body workaround that produced the "sticky to
+  // viewport top" behavior.
+  const portal = cache.toPortalCoords(left, candidateTop);
+  return { left: portal.x, top: portal.y, ref };
 }
 
-/** Measure the top edge of the first rendered glyph of the block's
- *  CONTENT (not chrome) inside `anchorDom`. Used by
- *  chromeAnchor="text-top" so the grab handle aligns with the visible
- *  text cap-top regardless of font size or line-height.
+/**
+ *  Measure the top edge that the grab handle should align to for a given
+ *  anchorDom + chromeAnchor mode. The unified pipeline (see
+ *  TEXT-OBJECT-REFACTOR.md "Cohesive Grab-Handle Mop-Up"):
  *
- *  Crucially: text inside a `contenteditable="false"` subtree is
- *  CHROME (the `+T` affordance, the "Section"/"Title"/"Author" pod
- *  labels, the `.par-title-add` button, etc.), NOT content. We skip
- *  those so the handle anchors to the actual paragraph/heading text
- *  rather than to the absolutely-positioned `+T` floating above the
- *  wrapper. */
-function getTextGlyphTop(anchorDom: Element): number | null {
-  const tw = document.createTreeWalker(anchorDom, NodeFilter.SHOW_TEXT, {
-    acceptNode: (n) => {
-      if (!n.textContent || n.textContent.length === 0) {
-        return NodeFilter.FILTER_REJECT;
-      }
-      const parent = (n as Text).parentElement;
-      if (parent && parent.closest('[contenteditable="false"]')) {
-        return NodeFilter.FILTER_REJECT;
-      }
-      return NodeFilter.FILTER_ACCEPT;
-    },
-  });
-  const firstText = tw.nextNode() as Text | null;
-  if (!firstText) return null;
-  try {
-    const range = document.createRange();
-    range.setStart(firstText, 0);
-    range.setEnd(firstText, 1);
-    const rect = range.getBoundingClientRect();
-    return rect.top > 0 ? rect.top : null;
-  } catch {
-    return null;
+ *    1. `[data-glyph-anchor]` — NodeView's explicit override. Used by
+ *       compound containers (exampleBlock points to `.expex-number`) and
+ *       chrome-bearing kinds (texBlock points to `.tex-block-pod`, so
+ *       wrapper-top vs pod-top doesn't matter and titled tex blocks
+ *       still anchor to the pod).
+ *    2. `[data-glyph-probe]` — inline span emitted by GlyphProbeDecorator
+ *       around the first text character of every text-bearing TextObject.
+ *       Inline-span bounding rects are sized by glyph metrics (not by
+ *       line-height), so `.top` is the cap-top — the alignment the
+ *       previous TreeWalker + Range.getBoundingClientRect path failed to
+ *       produce for headings with line-height > 1.
+ *    3. Fallback: `anchorDom.getBoundingClientRect().top`. Block-top
+ *       semantic; the only kinds that reach this path declare
+ *       chromeAnchor === "block-top" up front.
+ *
+ *  Returns the viewport-y coord; null only if anchorDom has no rect (e.g.
+ *  destroyed during measurement).
+ */
+function measureHandleAnchorTop(
+  anchorDom: HTMLElement,
+  chromeAnchor: "text-top" | "block-top",
+): number | null {
+  if (chromeAnchor === "block-top") {
+    return anchorDom.getBoundingClientRect().top;
   }
+  // text-top: prefer override > probe > wrapper.
+  const override = anchorDom.querySelector(
+    "[data-glyph-anchor]",
+  ) as HTMLElement | null;
+  if (override) return override.getBoundingClientRect().top;
+  const probe = anchorDom.querySelector(
+    "[data-glyph-probe]",
+  ) as HTMLElement | null;
+  if (probe) return probe.getBoundingClientRect().top;
+  return anchorDom.getBoundingClientRect().top;
 }
 
 /** For SelectionRef (kind === null), resolve the containing
@@ -483,16 +425,11 @@ export function TextObjectGrabHandle({ editorRef }: Props) {
   const [placements, setPlacements] = useState<Placement[]>([]);
 
   // Mouse position drives the hover-based discovery path. null when the
-  // mouse hasn't moved over the editor (or has left and the grace period
-  // elapsed without a handle hover).
+  // mouse hasn't moved over the editor or has left the hover zone.
+  // Since handles render inside the scroll container (post-Phase 6),
+  // pointer continuity from prose → gutter → handle is preserved by the
+  // browser — no leave-grace timer needed.
   const mousePosRef = useRef<{ clientX: number; clientY: number } | null>(null);
-  // True while the pointer is over one of the rendered handle elements.
-  // Read by the editor's mouseleave grace-period closure to decide
-  // whether the leave really should clear the position.
-  const mouseOverHandleRef = useRef(false);
-  // Pending clear-mouse-pos timer from the editor's mouseleave. Cancelled
-  // when the mouse re-enters the editor or arrives on a handle.
-  const leaveTimerRef = useRef<number>(0);
 
   // Track the editor instance currently subscribed-to so we don't double-
   // subscribe across re-renders.
@@ -715,11 +652,10 @@ export function TextObjectGrabHandle({ editorRef }: Props) {
           return [{ kind: name as TextObjectKind, id: node.attrs.uuid as string }];
         }
       }
-      // 3. Mouse hover — every containing TextObject level.
+      // 3. Mouse hover — every containing TextObject level via DOM walk.
       const mouse = mousePosRef.current;
       if (mouse) {
         return resolveTextObjectsAtMouse(
-          editor,
           cacheRef.current,
           mouse.clientX,
           mouse.clientY,
@@ -759,7 +695,6 @@ export function TextObjectGrabHandle({ editorRef }: Props) {
       transaction: import("@tiptap/pm/state").Transaction;
     }) => {
       if (!transaction.docChanged) return;
-      invalidateMouseResolverCache();
       scheduleRaf();
     };
 
@@ -797,47 +732,29 @@ export function TextObjectGrabHandle({ editorRef }: Props) {
     poll();
 
     const onScroll = () => {
-      // Scroll invalidates the resolver's vertical-band cache because
-      // block rects change in clientY space even when the cursor stays
-      // still. Without this, a scroll while hovering would keep the
-      // stale row's handle pinned to the screen position.
-      invalidateMouseResolverCache();
+      // Scroll re-schedules placement (block rects change in clientY
+      // space). The DOM-walk resolver re-runs from scratch each frame;
+      // no separate cache to invalidate.
       scheduleRaf();
     };
     const onResize = () => {
-      invalidateMouseResolverCache();
       scheduleRaf();
-    };
-    const scheduleZoneLeave = () => {
-      // Defer clearing `mousePosRef`: when the cursor leaves the editor's
-      // hover zone (or the viewport entirely) it may be heading toward
-      // the portal-rendered handle, which sits at `position: fixed`
-      // outside the zone. The handle reports its own enter/leave via
-      // `mouseOverHandleRef`; if the cursor lands on the handle within
-      // the grace window, the deferred clear is suppressed.
-      if (leaveTimerRef.current) clearTimeout(leaveTimerRef.current);
-      leaveTimerRef.current = window.setTimeout(() => {
-        leaveTimerRef.current = 0;
-        if (mouseOverHandleRef.current) return;
-        mousePosRef.current = null;
-        scheduleRaf();
-      }, MOUSE_LEAVE_GRACE_MS);
     };
     const onMouseMove = (e: MouseEvent) => {
       // Always-on tracking: hover is the primary discovery mechanism, so
       // the position must update during text selection / node selection
       // too. (The resolver prioritizes selection/node refs above hover,
       // so the array won't surprise during an active gesture.)
+      // Outside the row hover zone → clear immediately. With handles
+      // rendered inside the scroll container, pointer continuity from
+      // prose → gutter → handle is native; no grace timer needed.
       const cache = cacheRef.current;
       if (!cache.containsHoverZone(e.clientX, e.clientY)) {
-        // Outside the editor's row hover zone — schedule the same grace
-        // dismissal that the old `editor.view.dom` mouseleave used.
-        scheduleZoneLeave();
+        if (mousePosRef.current !== null) {
+          mousePosRef.current = null;
+          scheduleRaf();
+        }
         return;
-      }
-      if (leaveTimerRef.current) {
-        clearTimeout(leaveTimerRef.current);
-        leaveTimerRef.current = 0;
       }
       mousePosRef.current = { clientX: e.clientX, clientY: e.clientY };
       scheduleRaf();
@@ -902,10 +819,6 @@ export function TextObjectGrabHandle({ editorRef }: Props) {
         cancelAnimationFrame(rafRef.current);
         rafRef.current = 0;
       }
-      if (leaveTimerRef.current) {
-        clearTimeout(leaveTimerRef.current);
-        leaveTimerRef.current = 0;
-      }
       subscribedEditorRef.current = null;
       prevEditor = null;
       window.removeEventListener("scroll", onScroll, true);
@@ -917,49 +830,35 @@ export function TextObjectGrabHandle({ editorRef }: Props) {
   }, [editorRef]);
 
   // Recompute placement when the viewport cache version bumps (editor
-  // resize, sidebar toggle).
+  // resize, sidebar toggle). The portal target is resolved inline at
+  // render time from `cacheRef.current.paperEl` — both the target and
+  // the coord conversion read from the same cache snapshot in the same
+  // render, eliminating the timing race where the portal pointed at
+  // document.body while placements were already in portal-relative
+  // coords.
   useEffect(() => {
     scheduleRefRef.current();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [cacheVersion]);
 
-  // Per-handle mouseenter/leave so the editor's mouseleave grace knows
-  // whether to defer the clear.
-  const onHandleEnter = useCallback(() => {
-    mouseOverHandleRef.current = true;
-    if (leaveTimerRef.current) {
-      clearTimeout(leaveTimerRef.current);
-      leaveTimerRef.current = 0;
-    }
-  }, []);
-  const onHandleLeave = useCallback(() => {
-    mouseOverHandleRef.current = false;
-    // Treat leaving the handle like leaving the editor — defer the
-    // clear so the user can move back onto a different handle or back
-    // into the editor.
-    if (leaveTimerRef.current) clearTimeout(leaveTimerRef.current);
-    leaveTimerRef.current = window.setTimeout(() => {
-      leaveTimerRef.current = 0;
-      if (mouseOverHandleRef.current) return;
-      // If the mouse is back over the editor DOM, mousemove will have
-      // already restored mousePosRef. If not, clear.
-      const editor = editorRef.current;
-      if (!editor) return;
-      const m = mousePosRef.current;
-      if (m) {
-        const overEditor = (() => {
-          const el = document.elementFromPoint(m.clientX, m.clientY);
-          return el ? editor.view.dom.contains(el) : false;
-        })();
-        if (overEditor) return;
-      }
-      mousePosRef.current = null;
-      scheduleRefRef.current();
-    }, MOUSE_LEAVE_GRACE_MS);
-  }, [editorRef]);
-
   if (placements.length === 0) return null;
   if (typeof document === "undefined") return null;
+  // Resolve the portal target INLINE from the same cacheRef.current
+  // snapshot that computePlacement (called above via schedule) used
+  // for toPortalCoords. This guarantees that whenever placements are
+  // in portal-relative coords, the portal target is the portal div
+  // (not document.body) — eliminating the prior race where a state-
+  // backed portalRoot lagged the cache by one render and handles
+  // briefly portaled to body with portal-relative coords (resulting
+  // in handles rendering far off-screen). Fallback to document.body
+  // covers the pre-mount window where paperEl is null; in that case
+  // toPortalCoords identity-fallbacks too, so coords are viewport,
+  // which is correct against body when body scroll is 0 (Virgil's
+  // doc never scrolls — only the inner [data-virgil-row-scroll] does).
+  const livePortalRoot =
+    cacheRef.current.paperEl?.querySelector(
+      "[data-grab-handle-portal]",
+    ) as HTMLElement | null ?? null;
   return createPortal(
     <>
       {placements.map((p) => (
@@ -967,27 +866,21 @@ export function TextObjectGrabHandle({ editorRef }: Props) {
           key={refKey(p.ref)}
           placement={p}
           onBeginGesture={beginGesture}
-          onMouseEnter={onHandleEnter}
-          onMouseLeave={onHandleLeave}
         />
       ))}
     </>,
-    document.body,
+    livePortalRoot ?? document.body,
   );
 }
 
 interface GrabHandleRenderProps {
   placement: Placement;
   onBeginGesture: (ev: MouseEvent, el: HTMLDivElement, ref: TextObjectRef | SelectionRef) => void;
-  onMouseEnter: () => void;
-  onMouseLeave: () => void;
 }
 
 function GrabHandleRender({
   placement,
   onBeginGesture,
-  onMouseEnter,
-  onMouseLeave,
 }: GrabHandleRenderProps) {
   const elRef = useRef<HTMLDivElement | null>(null);
   useEffect(() => {
@@ -1005,11 +898,18 @@ function GrabHandleRender({
     <div
       ref={elRef}
       className="text-object-grab-handle"
-      style={{ position: "fixed", left: placement.left, top: placement.top }}
+      // `position: absolute` against the `[data-grab-handle-portal]`
+      // wrapper (which is itself absolute inside `.paper-render`). The
+      // wrapper has `pointer-events: none` to let prose clicks pass
+      // through; each handle re-enables pointer events on itself.
+      style={{
+        position: "absolute",
+        left: placement.left,
+        top: placement.top,
+        pointerEvents: "auto",
+      }}
       title="Drag to pop out, click for actions"
       aria-hidden="true"
-      onMouseEnter={onMouseEnter}
-      onMouseLeave={onMouseLeave}
     >
       <svg width="10" height="14" viewBox="0 0 10 14" fill="currentColor">
         <circle cx="3" cy="2" r="1.2" />
