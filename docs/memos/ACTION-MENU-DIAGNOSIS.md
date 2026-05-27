@@ -1,6 +1,6 @@
 # Grab-Handle Action Menu — Diagnosis Memo
 
-**Status: RESOLVED (2026-05-26).** Diagnosis + solutions session both complete. All 10 confirmed failure clusters landed in a single solutions pass; live verification on the dev-doc fixture confirms the critical C9+C11 data-loss fix (heading × Highlight now wraps only the heading text — `\section{\vlid{...}Heading\vlidend{...}}` — and pre-existing linkedAnchors survive). Other landings: C1 (registry curation), C5 (heading confirm dialog), C6 (last-child cascade verified end-to-end including LaTeX serialization), C10 (linkedRange paragraphId), C2/C3/C4 (lifecycle triad: bindAnchor + Mode A orphan event + archive via cardCreation). C7 (sub-object marginalia) likely-resolved per Phase C; verify visually if it resurfaces. Solutions session plan: `/Users/gabriel/.claude/plans/below-you-ll-see-the-curried-turing.md`.
+**Status: RESOLVED + post-resolution followup landed (2026-05-26).** Diagnosis + solutions session both complete; live testing surfaced four post-resolution bugs (B1–B4) that landed in commit `bf8f596`. See §9 below for the followup log. Original resolution: all 10 confirmed failure clusters landed in a single solutions pass; live verification on the dev-doc fixture confirmed the critical C9+C11 data-loss fix (heading × Highlight now wraps only the heading text — `\section{\vlid{...}Heading\vlidend{...}}` — and pre-existing linkedAnchors survive). Other landings: C1 (registry curation), C5 (heading confirm dialog), C6 (last-child cascade verified end-to-end including LaTeX serialization), C10 (linkedRange paragraphId), C2/C3/C4 (lifecycle triad: bindAnchor + Mode A orphan event + archive via cardCreation). C7 (sub-object marginalia) likely-resolved per Phase C; verify visually if it resurfaces. Solutions session plan: `/Users/gabriel/.claude/plans/below-you-ll-see-the-curried-turing.md`. Followup session plan: `/Users/gabriel/.claude/plans/if-you-look-you-ll-synchronous-crystal.md`.
 
 ## Diagnosis-session header (preserved)
 
@@ -837,3 +837,137 @@ Solutions session landed all 10 clusters in seven landings. Architecture follows
 These corrections affect the §4 grid's expected behavior for a handful of cells; the §6 cluster sizes don't change materially.
 
 **Diagnosis session deliverable status: complete.**
+
+---
+
+## 9. Post-resolution followup — B1 / B2 / B3 / B4 (2026-05-26, commit `bf8f596`)
+
+Live testing of the C1–C11 landing surfaced four bugs that the first pass either created or left for follow-up. Plan: `/Users/gabriel/.claude/plans/if-you-look-you-ll-synchronous-crystal.md`.
+
+### B1 — Duplicate threw on text-bearing paragraphs
+
+**Symptom:** Clicking Duplicate on any paragraph with text content threw `NodeType.create can't construct text nodes`. Worked for exampleBlock / exampleItem (where the walker only saw structural nodes), broken everywhere with prose. Latent in the original walker; user-visible because C1's per-kind curation surfaced Duplicate on every prose kind for the first time.
+
+**Root cause:** `transformNode` in [duplicate-slice.ts](../../src/text-objects/duplicate-slice.ts) called `node.type.create(newAttrs, newContent, newMarks)` for every node — including text nodes, whose type rejects construction (use `node.mark()` instead). The bug had existed in some form pre-refactor; the post-revamp action menu just made Duplicate reachable.
+
+**Fix:** Branch on `node.isText` early in the walker; for text nodes, return `newMarks === node.marks ? node : node.mark(newMarks)`. Same change also enforces the invariant that every TextObject node leaves the walker with a fresh uuid (removed the `&& newAttrs.uuid.length > 0` guard — uuid-less source nodes still get fresh ids, just with a `missing-source-uuid` diagnostic). Strip orphan linkedAnchor marks (instead of carrying empty `linkCard` forward) when the source card is missing.
+
+**Loud failure surface:** New `DuplicateDiagnostics` collector tags each silent-skip path with a code (`missing-source-uuid`, `orphan-inline-atom`, `missing-card-on-mark`, `unparseable-link-card`); dispatcher console.warns a single summary after each duplicate. New `notify` dep on `DragHandleActionsDeps` (single-button `ConfirmDialog` with `hideCancel: true` — the established SystemDialog primitive) surfaces serious failures to the user: stale ref ("Could not find the source — close the menu and try again"), empty slice ("Nothing to duplicate"), schema rejection ("This kind cannot be duplicated here"). Pre-dispatch `tr.doc.check()` catches schema violations BEFORE dispatch so the doc is never half-modified. Atom blocks now use `NodeSelection.create` post-insert (text-bearing kinds keep `TextSelection.near`).
+
+### B2 — Archive orphaned its own snippet
+
+**Symptom:** Archiving a whole paragraph/heading/listItem produced an archive snippet with no anchor. The new card was anchored to the source block's uuid, which was deleted in the same transaction; the C3 orphan-sweep listener (Landing 6c) then stripped the freshly-created link.
+
+**Root cause:** `case "archive":` in the dispatcher set `paragraphId = ref.id` (the source block's own uuid) and passed it to `createArchiveSnippet`. The TextObjectOrphanGuard fired `virgil-textobject-orphaned` for the deleted uuid; `useArchive.ts`'s listener removed the stale link.
+
+**Fix:** Resolve a SURVIVING anchor BEFORE deletion. New [src/text-objects/anchor-resolution.ts](../../src/text-objects/anchor-resolution.ts) exports `findPreviousAnchorableBlock(doc, pos)` — walks backward from `pos - 1` looking for the nearest uuid-bearing TextObject. For container kinds (bulletList / orderedList / exampleBlock / exampleItemList), descends into the last child so the result is the user's intuitive "block immediately above" (the last listItem, not the bulletList wrapper). Returns null at doc start (snippet unanchored). Dispatcher calls it with the cascade-extended `from` so a collapsing list anchors above the LIST, not above the now-orphan items. Selection-ref Archive keeps `ref.paragraphId` (the source paragraph survives that case). 9 unit tests in [anchor-resolution.test.ts](../../src/text-objects/__tests__/anchor-resolution.test.ts) cover the position matrix: first-paragraph, mid-paragraph, paragraph-after-heading, mid-listItem, last-listItem cascade, paragraph-after-displayMath, no-anchor-above.
+
+`useArchive.ts`'s orphan-sweep handler stays — it's still correct for cards orphaned by edits OUTSIDE the dispatcher (user types-away a paragraph that was an archive anchor). It's now a safety net rather than a bug-paving stone.
+
+### B3 — Delete/Archive warnings extended beyond headings
+
+**Symptom:** The C5 landing only warned on heading lifecycle. The user asked for the warning to surface on Delete/Archive across all kinds, scope-aware (skip when nothing's at stake).
+
+**Fix:** New `meta.confirmDestructive?(doc, uuid, action, ctx)` slot on `TextObjectMeta` (parallel to `collectMoveSource` and `collectAnnotationRange`). Each kind owns its own copy + can return `null` to skip the dialog. Context is `{outerRange, hasAnchorsOrAtoms}` so the kind can decide cheaply without re-walking. Helpers in [text-object-registry.ts](../../src/text-objects/text-object-registry.ts) (`descriptorForSimpleBlock`, `descriptorForContainer`, `descriptorForHeading`) cover the common shapes — paragraph shows a text preview, lists report item counts, heading uses the existing section summary (moved out of the dispatcher). New `ConfirmDescriptor` type in [types.ts](../../src/text-objects/types.ts) is React-free; dispatcher widens to `ConfirmOptions` at call site. Per-kind copy table:
+
+| Kind | Delete | Archive |
+|---|---|---|
+| paragraph | "Delete this paragraph? '<preview>'" | "Archive this paragraph? '<preview>'" |
+| heading | section summary (moved here) | section summary |
+| bulletList / orderedList | "Delete this (N-item) list?" | "Archive this (N-item) list?" |
+| blockquote | "Delete this block quote?" | "Archive this block quote?" |
+| codeBlock | "Delete this code block?" | "Archive this code block?" |
+| displayMath / texBlock | "Delete this math/TeX block?" | "Archive this math/TeX block?" |
+| figureBlock / graphicsBlock | "Delete this figure/graphic?" | "Archive this figure/graphic?" |
+| latexComment | `null` (silent — author noise) | `null` |
+| exampleBlock | "Delete this example with N items?" | "Archive this example with N items?" |
+| listItem / exampleItem | "Delete this item? '<preview>'" | "Archive this item? '<preview>'" |
+| linkedRange | always-danger: underlying text removed too | always: underlying text moves with snippet |
+| titleField | n/a (action filtered by TITLE_FIELD_ACTIONS) | n/a |
+
+Empty-content + no-attached-anchors → `null` for simple-prose kinds (paragraph, blockquote, codeBlock, listItem, exampleItem). Atom blocks always warn (no meaningful "empty" state). LinkedRange always warns (cross-abstraction destructive).
+
+Dispatcher gate replaced. Was:
+```ts
+if (ref.kind === "heading" && action === "duplicate" | "archive" | "delete")
+  await confirmHeadingLifecycle(...)
+```
+Now:
+```ts
+if (action === "archive" || action === "delete") {
+  const descriptor = resolveDestructiveConfirm(ed, ref, action);
+  if (descriptor) { const proceed = await confirm({...descriptor, tone}); if (!proceed) return; }
+} else if (action === "duplicate" && ref.kind === "heading") {
+  await confirmHeadingLifecycle(ed, ref, "duplicate", confirm);
+}
+```
+
+`resolveDestructiveConfirm` consults `meta.confirmDestructive` for TextObjectRef and inlines a "(N-word passage)" descriptor for SelectionRef. Heading × Duplicate keeps its standalone gate (Duplicate is non-destructive; only headings warn).
+
+### B4 — Cmd-Z after Delete did nothing
+
+**Symptom:** After Delete, pressing Cmd-Z did nothing. Clicking anywhere in the editor first, then Cmd-Z, worked. Specifically a focus issue surfaced by B3's confirm dialog: the dialog moves focus to its "Delete" button; on close, focus is dropped on the body; browser-level Cmd-Z routes to the window (not to the editor's TipTap History extension).
+
+**Root cause:** The dispatcher's post-action focus tail (`if (focusCardKey) focusNewCard(focusCardKey)`) only refocuses something when a card was created. Destructive actions don't create a card — focus stays on body.
+
+**Fix:** One-branch architectural symmetry: every drag-handle action either focuses the new card OR returns focus to the editor.
+
+```ts
+if (focusCardKey) {
+  focusNewCard(focusCardKey);
+} else {
+  try { ed.view.focus(); } catch { /* editor torn down */ }
+}
+```
+
+Verified end-to-end: after Delete + dialog confirm, `document.activeElement === document.querySelector('.ProseMirror')`. Synthetic Cmd-Z keystroke into the editor restored the deleted paragraph (count 54 → 55, ac7b reinserted).
+
+### Architectural additions
+
+| Slot / helper / pattern | File | Purpose |
+|---|---|---|
+| `meta.confirmDestructive` | [text-object-registry.ts](../../src/text-objects/text-object-registry.ts) + [types.ts](../../src/text-objects/types.ts) | Per-kind Delete/Archive confirm copy. Returns `null` to skip. |
+| `ConfirmDescriptor` type | [types.ts](../../src/text-objects/types.ts) | React-free structural subset of `ConfirmOptions`. |
+| `findPreviousAnchorableBlock` | [anchor-resolution.ts](../../src/text-objects/anchor-resolution.ts) NEW | Walk backward for the nearest uuid-bearing TextObject. Descends into container last-children. Pure; safe for action-time. |
+| `DuplicateDiagnostics` | [duplicate-slice.ts](../../src/text-objects/duplicate-slice.ts) | Tagged warning collector passed through the duplicate walker. Codes: `missing-source-uuid`, `orphan-inline-atom`, `missing-card-on-mark`, `unparseable-link-card`. |
+| `notify` dep | [drag-handle-actions.ts](../../src/components/editor-layout/card-actions/drag-handle-actions.ts) + [EditorPane.tsx](../../src/components/EditorPane.tsx) | Single-button SystemDialog surface for serious failure paths. Reuses `useConfirmDialog()` with `hideCancel: true` (no new infra). |
+| Text-node fork in `transformNode` | [duplicate-slice.ts](../../src/text-objects/duplicate-slice.ts) | Routes text nodes through `node.mark()` instead of `node.type.create()`. Fixes B1's headline crash. |
+| Editor refocus at dispatch tail | [drag-handle-actions.ts](../../src/components/editor-layout/card-actions/drag-handle-actions.ts) | If no `focusCardKey` was set, `ed.view.focus()`. Fixes B4. |
+
+**Files touched (final):**
+
+- [src/text-objects/types.ts](../../src/text-objects/types.ts) — `confirmDestructive` slot + `ConfirmDescriptor` + `ConfirmDestructiveContext`.
+- [src/text-objects/duplicate-slice.ts](../../src/text-objects/duplicate-slice.ts) — text-node fork, invariant remint, `DuplicateDiagnostics`, strip-orphan-marks behavior.
+- [src/text-objects/anchor-resolution.ts](../../src/text-objects/anchor-resolution.ts) — NEW; `findPreviousAnchorableBlock`.
+- [src/text-objects/text-object-registry.ts](../../src/text-objects/text-object-registry.ts) — per-kind `confirmDestructive` implementations + 4 helper functions.
+- [src/components/editor-layout/card-actions/drag-handle-actions.ts](../../src/components/editor-layout/card-actions/drag-handle-actions.ts) — confirm gate generalized; duplicate flow with diagnostics + schema check + notify; archive reanchor via `findPreviousAnchorableBlock`; editor refocus tail.
+- [src/components/EditorPane.tsx](../../src/components/EditorPane.tsx) — second `useConfirmDialog` for `notify` dep (uses `hideCancel: true`); plumbed into `useDragHandleActions`.
+- [src/text-objects/__tests__/anchor-resolution.test.ts](../../src/text-objects/__tests__/anchor-resolution.test.ts) — NEW; 9 tests covering the position matrix.
+
+**Commit:** `bf8f596` — *"Action-menu followup: fix Duplicate, archive reanchor, scoped warnings, undo focus"*. 7 files, +996/−106. All 53 tests in `src/text-objects/__tests__/` pass; typecheck adds no new errors.
+
+**Verified live in the dev-doc fixture (this followup session):**
+
+- Paragraph `ac7b` × Duplicate → clone with fresh uuid inserted immediately after, text preserved. (B1 headline regression — now passes.)
+- Heading `dff7` × Duplicate → confirm dialog ("This will duplicate the entire section 'The Marginal Gloss' — 5 paragraphs"), confirm fires, section duplicates (gained 10 blocks: heading + paragraphs + footnote sidecars).
+- LatexComment `067e` × Delete → silent removal, no dialog (registry returned `null`).
+- Paragraph `ac7b` × Delete → "Delete this paragraph? '<preview>'" dialog with `tone: danger`.
+- Paragraph `ac7b` × Archive → confirm with snippet preview; after confirm, snippet `links[0]` anchored to the previous block's uuid (`7b259b2b…`), not the deleted `ac7b`. **B2 confirmed.**
+- BulletList `55a8` × Delete → "Delete this list? Delete this list (3 items)."
+- Heading `dff7` × Delete → "Delete the entire section?" section summary.
+- After Delete + confirm: `document.activeElement === .ProseMirror`; synthetic Cmd-Z restored the paragraph. **B4 confirmed.**
+
+### Followup status
+
+**Closed:**
+- B1 ✓ Duplicate works on prose paragraphs; diagnostics + schema check + notify are wired.
+- B2 ✓ Archive snippet anchors to previous block; verified via `card.links[0]`.
+- B3 ✓ Per-kind Delete/Archive warnings ship via registry slot; empty-content paths silent.
+- B4 ✓ Cmd-Z works after Delete without click-back.
+
+**Out of scope / deferred:**
+- SystemDialog focus restoration as a general hygiene pass (heading-lozenge × delete, figure × delete, label rename, margin-item delete instances). Wouldn't have fixed B4 (the editor was never the "previous focus" at dialog open time), but is good A11y practice for the other dialogs whose trigger element *is* a sensible focus target.
+- Generalizing `findPreviousAnchorableBlock` to the Delete path so deleted blocks' attached cards reanchor instead of orphaning. User's request scoped to Archive's just-created card; existing cards' orphan behavior is a separate design call.
+- Toast infrastructure proper (sonner, etc.). Reusing `ConfirmDialog` with `hideCancel: true` is sufficient for the handful of failure paths Duplicate exposes today.
+- Counting attached cards (notes/todos/quotations) in the warning copy — dispatcher doesn't have direct access to panel state; doc-local `hasAnchorsOrAtoms` flag is sufficient for the empty-vs-not decision.
+- Minor warning: `TextSelection endpoint not pointing into a node with inline content (bulletList)` from PM when the post-insert caret lands inside a list wrapper after a list-containing duplicate. Action succeeds; warning is cosmetic. Single-line fix candidate (`Selection.findFrom` instead of `TextSelection.near`) if it becomes annoying.
