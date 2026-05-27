@@ -92,6 +92,10 @@ export interface ViewPrefs {
   editorSplit: boolean;
   /** 0..1 — top pane ratio when editor is split. */
   editorSplitRatio: number;
+  /** 0..1 — *editor* pane ratio when the Code pane split is engaged
+   *  (split-with-code primitive). 0.55 = editor slightly wider than code.
+   *  Persisted globally so the splitter feels stable across docs. */
+  codePaneRatio: number;
   /** Panels currently displayed as floating windows. */
   poppedOutPanels: PanelId[];
   /** Which split half each popped-out panel came from, so un-popping
@@ -224,6 +228,7 @@ const GLOBAL_PREF_KEYS = [
   "editorBottomMargin",
   "topGutter",
   "bottomGutter",
+  "codePaneRatio",
   "showMarginalia",
   "hiddenMarginaliaTypes",
   "showSectionIndicator",
@@ -269,6 +274,7 @@ function pickGlobal(p: ViewPrefs): Pick<ViewPrefs, GlobalPrefKey> {
     editorBottomMargin: p.editorBottomMargin,
     topGutter: p.topGutter,
     bottomGutter: p.bottomGutter,
+    codePaneRatio: p.codePaneRatio,
     showMarginalia: p.showMarginalia,
     hiddenMarginaliaTypes: p.hiddenMarginaliaTypes,
     showSectionIndicator: p.showSectionIndicator,
@@ -1383,6 +1389,10 @@ export function useViewPrefs() {
     update((p) => ({ ...p, editorSplitRatio: Math.max(0.15, Math.min(0.85, ratio)) }));
   }, [update]);
 
+  const setCodePaneRatio = useCallback((ratio: number) => {
+    update((p) => ({ ...p, codePaneRatio: Math.max(0.05, Math.min(0.95, ratio)) }));
+  }, [update]);
+
   const setPageWidth = useCallback((w: number) => {
     update((p) => ({ ...p, pageWidth: Math.max(400, Math.min(1600, w)) }));
   }, [update]);
@@ -1457,6 +1467,7 @@ export function useViewPrefs() {
     setSplitRatio,
     setEditorSplit,
     setEditorSplitRatio,
+    setCodePaneRatio,
     setPageWidth,
     setTopGutter,
     setBottomGutter,

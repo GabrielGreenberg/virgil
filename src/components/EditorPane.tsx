@@ -72,6 +72,7 @@ import OutlinePanel from "@/panels/Outline/OutlinePanel";
 import ExamplesPanel from "@/panels/Examples";
 import { PANEL_REGISTRY } from "@/panels/panel-registry";
 import { SectionLozenge } from "./editor-layout/section-lozenge";
+import { useCodePaneSplit } from "./editor-layout/CodePaneSplitContext";
 import { EditorScrollbar } from "./editor-layout/editor-scrollbar";
 import { ZenMargin } from "./editor-layout/zen-margin";
 import PrintAppendices from "./PrintAppendices";
@@ -2079,8 +2080,23 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
     cancel: cancelMarginEdit,
     beginDrag: beginMarginDrag,
   } = useMarginEdit({ viewPrefs });
-  const effectiveLeftMargin = effectiveMargins.left;
-  const effectiveRightMargin = effectiveMargins.right;
+  // When the Code pane is open and SplitWithCode signals `compressed`,
+  // tighten the horizontal gutters down to a small floor so the
+  // editor's column hits a smaller hard minimum. Vertical margins are
+  // unaffected — compression only happens because of horizontal
+  // squeeze, and stomping vertical prefs would be gratuitous.
+  // `COMPRESSED_GUTTER_PX` is intentionally a literal: this is a
+  // mechanical layout floor, not a preference, so it doesn't belong
+  // in viewPrefs.
+  const COMPRESSED_GUTTER_PX = 16;
+  const codeSplit = useCodePaneSplit();
+  const compressX = codeSplit.compressed;
+  const effectiveLeftMargin = compressX
+    ? Math.min(effectiveMargins.left, COMPRESSED_GUTTER_PX)
+    : effectiveMargins.left;
+  const effectiveRightMargin = compressX
+    ? Math.min(effectiveMargins.right, COMPRESSED_GUTTER_PX)
+    : effectiveMargins.right;
   const effectiveTopMargin = effectiveMargins.top;
   const effectiveBottomMargin = effectiveMargins.bottom;
 

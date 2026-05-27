@@ -1,16 +1,21 @@
 "use client";
 
-import { useState, useEffect, useCallback, useMemo, useRef } from "react";
+import { useState, useEffect, useMemo, useRef } from "react";
 import CodeMirror, { EditorView } from "@uiw/react-codemirror";
 import { latex } from "codemirror-lang-latex";
 import { search, highlightSelectionMatches } from "@codemirror/search";
 import { EditorState } from "@codemirror/state";
-import { readTex, writeTex } from "@/lib/storage";
+import type { Editor as TipTapEditor } from "@tiptap/react";
+import { readTex } from "@/lib/storage";
 import { findParagraphUuids } from "@/lib/latex-paragraph-map";
 import {
-  getActiveHandle,
-  isStalePipelineError,
-} from "@/lib/multi-window/doc-pipeline";
+  extractPreambleAndPostamble,
+} from "@/lib/latex-parser";
+import { serializeToLatex } from "@/lib/latex-serializer";
+import {
+  createCodePaneBridge,
+  type CodePaneBridge,
+} from "@/lib/code-pane-bridge";
 import CodeEditorLogDrawer from "./CodeEditorLogDrawer";
 
 const virgilTheme = EditorView.theme({
@@ -66,9 +71,15 @@ export interface CodeEditorHandle {
 
 interface CodeEditorProps {
   docId: string;
+  /**
+   * The live TipTap editor instance. Required: in the split-pane code
+   * view, TipTap is the canonical in-memory source and the bridge
+   * keeps CodeMirror reflected against it. There is no longer a
+   * "code-only" mode that writes `.tex` directly.
+   */
+  editor: TipTapEditor;
   initialLine?: number;
   initialParagraphId?: string | null;
-  onDirtyChange?: (dirty: boolean) => void;
   onReady?: (handle: CodeEditorHandle) => void;
   /** Emit the current LaTeX text whenever it changes (and once on load).
    *  Wire this to `useLatexLint`. */
@@ -81,41 +92,59 @@ interface CodeEditorProps {
 
 export default function CodeEditor({
   docId,
+  editor,
   initialLine,
   initialParagraphId,
-  onDirtyChange,
   onReady,
   onTextChange,
   compileLog = null,
   compileStatus = null,
   isCompiling = false,
 }: CodeEditorProps) {
-  const handle = useMemo(
-    () => (docId ? getActiveHandle(docId) : null),
-    [docId],
-  );
   const [value, setValue] = useState<string | null>(null);
-  const [saving, setSaving] = useState(false);
-  const saveTimerRef = useRef<ReturnType<typeof setTimeout>>(undefined);
-  const latestValueRef = useRef<string>("");
-  const savedValueRef = useRef<string>("");
   const editorViewRef = useRef<EditorView | null>(null);
+  const bridgeRef = useRef<CodePaneBridge | null>(null);
+  const preambleRef = useRef<string | undefined>(undefined);
+  const postambleRef = useRef<string | undefined>(undefined);
   const scrolledRef = useRef(false);
+  const [parseError, setParseError] = useState<string | null>(null);
+  // Flipped to true by `onCreateEditor` once CodeMirror hands us its
+  // view. Gates the bridge-construction effect so we don't try to
+  // attach to a not-yet-existent view (React effect-vs-CM-effect
+  // ordering is undefined).
+  const [viewReady, setViewReady] = useState(false);
 
-  // Fetch raw LaTeX on mount
+  // On mount, read `.tex` from disk to grab the user's preamble +
+  // postamble (so we can show the full source, including preamble).
+  // The initial *body* comes from the live TipTap state, not disk —
+  // that way unsaved edits sitting in the autosave debounce are
+  // visible in code view immediately.
   useEffect(() => {
+    let cancelled = false;
     readTex(docId)
-      .then((latexText) => {
-        setValue(latexText);
-        latestValueRef.current = latexText;
-        savedValueRef.current = latexText;
-        onTextChange?.(latexText);
+      .then((diskText) => {
+        if (cancelled) return;
+        const extracted = extractPreambleAndPostamble(diskText);
+        preambleRef.current = extracted?.preamble;
+        postambleRef.current = extracted?.postamble;
+        const initial = serializeToLatex(editor.getJSON(), {
+          preamble: preambleRef.current,
+          postamble: postambleRef.current,
+        });
+        setValue(initial);
+        onTextChange?.(initial);
       })
       .catch(() => {
-        setValue("");
-        onTextChange?.("");
+        if (cancelled) return;
+        // Fall back to a serialize with default preamble.
+        const fallback = serializeToLatex(editor.getJSON());
+        setValue(fallback);
+        onTextChange?.(fallback);
       });
-  }, [docId, onTextChange]);
+    return () => {
+      cancelled = true;
+    };
+  }, [docId, editor, onTextChange]);
 
   // Scroll to initial position once editor + content are ready
   // Prefer paragraph UUID; fall back to line number
@@ -164,43 +193,41 @@ export default function CodeEditor({
     }
   }, [value, initialLine, initialParagraphId]);
 
-  const persist = useCallback(async (latex: string) => {
-    if (!handle) return;
-    setSaving(true);
-    try {
-      await writeTex(handle, latex);
-      savedValueRef.current = latex;
-      onDirtyChange?.(false);
-    } catch (err) {
-      if (isStalePipelineError(err)) return;
-      console.error("Failed to save LaTeX:", err);
-    } finally {
-      setSaving(false);
-    }
-  }, [handle, onDirtyChange]);
+  // CodeMirror updateListener — relays user-driven updates to the
+  // bridge (which short-circuits on its own sync-annotation
+  // dispatches) and forwards the live text to the lint integration on
+  // doc changes. The extension is created once and reads the bridge
+  // via ref so we don't re-mount the editor on bridge swaps. The
+  // bridge handles both doc-change and selection-only updates.
+  const updateListener = useMemo(
+    () =>
+      EditorView.updateListener.of((u) => {
+        bridgeRef.current?.onCodeMirrorUpdate(u);
+        if (u.docChanged) onTextChange?.(u.state.doc.toString());
+      }),
+    [onTextChange],
+  );
 
-  // Save on unmount if dirty
+  // Construct the bridge when the CM view and TipTap editor are both
+  // ready (and tear it down on unmount or editor swap). The bridge
+  // owns its own TipTap-side listener; we install the CM-side listener
+  // via the extensions array above.
   useEffect(() => {
+    const view = editorViewRef.current;
+    if (!view || !viewReady) return;
+    const bridge = createCodePaneBridge({
+      editor,
+      view,
+      initialPreamble: preambleRef.current,
+      initialPostamble: postambleRef.current,
+      onParseError: (err) => setParseError(err ? err.message : null),
+    });
+    bridgeRef.current = bridge;
     return () => {
-      if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
-      if (handle && latestValueRef.current !== savedValueRef.current) {
-        // Fire-and-forget save. If the pipeline ended (e.g. doc
-        // switched), storage rejects with StalePipelineError and the
-        // bytes stay on disk in their pre-edit form — better than
-        // risking a cross-doc overwrite.
-        writeTex(handle, latestValueRef.current).catch(() => {});
-      }
+      bridge.dispose();
+      bridgeRef.current = null;
     };
-  }, [handle]);
-
-  const handleChange = useCallback((val: string) => {
-    setValue(val);
-    latestValueRef.current = val;
-    onDirtyChange?.(val !== savedValueRef.current);
-    onTextChange?.(val);
-    if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
-    saveTimerRef.current = setTimeout(() => persist(val), 1500);
-  }, [persist, onDirtyChange, onTextChange]);
+  }, [docId, editor, viewReady]);
 
   if (value === null) {
     return (
@@ -212,14 +239,21 @@ export default function CodeEditor({
 
   return (
     <div className="flex-1 flex flex-col min-h-0 overflow-hidden relative">
-      {saving && (
-        <div className="absolute top-2 right-4 z-10 text-[10px] text-[var(--muted-light)]">
-          Saving...
+      {parseError && (
+        <div
+          className="absolute top-2 left-4 right-4 z-10 text-[11px] px-3 py-1.5 rounded border"
+          style={{
+            background: "rgba(217, 119, 6, 0.08)",
+            borderColor: "rgba(217, 119, 6, 0.3)",
+            color: "var(--ink-body, #4a3a1f)",
+          }}
+          title={parseError}
+        >
+          Edits paused — LaTeX parse error. Fix the source to resume sync.
         </div>
       )}
       <CodeMirror
         value={value}
-        onChange={handleChange}
         extensions={[
           latex(),
           search(),
@@ -227,6 +261,7 @@ export default function CodeEditor({
           virgilTheme,
           EditorView.lineWrapping,
           EditorState.tabSize.of(2),
+          updateListener,
         ]}
         basicSetup={{
           lineNumbers: true,
@@ -242,6 +277,7 @@ export default function CodeEditor({
         style={{ flex: 1, overflow: "hidden" }}
         onCreateEditor={(view) => {
           editorViewRef.current = view;
+          setViewReady(true);
           onReady?.({
             getCurrentLine() {
               const v = editorViewRef.current;

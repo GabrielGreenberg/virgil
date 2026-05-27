@@ -192,6 +192,7 @@ import { PREF_TO_CSS, DERIVED_CSS } from "@/lib/preferences-tree";
 import PreferencesModal from "./PreferencesModal";
 import EditorPane, { stubAddStyleMergeRequest } from "./EditorPane";
 import type { PaneState, EditorPaneViewPrefs, EditorPaneMenuBarBundle } from "./EditorPane";
+import { SplitWithCode } from "./editor-layout/split-with-code";
 import { FULL_CHROME } from "./editor-layout/chrome-config";
 import { useConfirmDialog } from "./ConfirmDialog";
 import { useDocumentClassMismatchDialog } from "./DocumentClassMismatchDialog";
@@ -733,6 +734,7 @@ export default function EditorLayout() {
     setSplitRatio,
     setEditorSplit,
     setEditorSplitRatio,
+    setCodePaneRatio,
     setShowHighlights,
     toggleHighlightType,
     togglePopout,
@@ -3016,30 +3018,21 @@ export default function EditorLayout() {
       } catch { /* fallback: no line */ }
     }
     setCodeViewLine(line);
-    setEditorInstance(null);
+    // NOTE: do NOT setEditorInstance(null). In the new split-pane
+    // layout, EditorPane (and the live TipTap instance) stay mounted
+    // while CodeEditor opens in the right pane. The code-pane bridge
+    // requires `editorInstance` to be a live TipTap editor so it can
+    // sync edits both directions.
     setPdfView(false);
     setCodeView(true);
   }, [latestDoc]);
 
   const switchToVisualView = useCallback(() => {
-    // Capture text around visible area before destroying code editor
-    const handle = codeEditorHandleRef.current;
-    if (handle) {
-      // Prefer paragraph UUID; fall back to text matching
-      const paraId = handle.getActiveParagraphId();
-      if (paraId) {
-        pendingParagraphId.current = paraId;
-        pendingScrollText.current = null;
-      } else {
-        pendingScrollText.current = handle.getTextAroundCursor();
-        pendingParagraphId.current = null;
-      }
-    }
+    // In the split-pane layout there's no longer a separate "code
+    // editor handle to scrape text from" — TipTap is canonical and
+    // already reflects the latest content via the bridge. We just
+    // close the code pane.
     codeEditorHandleRef.current = null;
-    // No explicit refetch needed: setCodeView(false) re-enters the
-    // visual branch, EditorPane (and its `<DocPipeline>` boundary)
-    // remount, and useDocument's load effect reads the latest .tex
-    // from disk on remount.
     setCodeView(false);
     setPdfView(false);
   }, []);
@@ -4609,28 +4602,16 @@ export default function EditorLayout() {
           <button
             onClick={toggleCodeView}
             className="topbarbtn"
-            title={codeView ? "Visual Editor" : "Code Editor"}
+            title={codeView ? "Close Code pane" : "Open Code pane"}
             aria-pressed={codeView}
-            data-helper={codeView ? "Visual editor" : "Code editor"}
+            data-helper="Code"
           >
-            {codeView ? (
-              <>
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
-                  <circle cx="12" cy="12" r="3" />
-                </svg>
-                Visual
-              </>
-            ) : (
-              <>
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <polyline points="16 18 22 12 16 6" />
-                  <polyline points="8 6 2 12 8 18" />
-                  <line x1="14.5" y1="4" x2="9.5" y2="20" />
-                </svg>
-                Code
-              </>
-            )}
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <polyline points="16 18 22 12 16 6" />
+              <polyline points="8 6 2 12 8 18" />
+              <line x1="14.5" y1="4" x2="9.5" y2="20" />
+            </svg>
+            Code
           </button>
           {/* Compile — runs SwiftLaTeX's pdfTeX over the paper folder and
               saves the resulting PDF to the paper folder. Disabled while a
@@ -4755,79 +4736,7 @@ export default function EditorLayout() {
             focusDoc={focusDoc}
           />
         </div>
-      ) : currentDoc && docPermState !== "granted" ? null : codeView && currentDocId ? (
-        <div
-          className="flex flex-1 overflow-hidden"
-          style={{
-            paddingTop: 4,
-            paddingBottom: zenModeOn ? 4 : 'var(--pod-gap)',
-            paddingLeft: 4,
-            paddingRight: 4,
-          }}
-        >
-        <div
-          className="flex flex-1 min-h-0 overflow-hidden"
-          style={{
-            background: 'var(--pod-editor)',
-            borderRadius: 'var(--pod-radius)',
-            border: 'var(--pod-border)',
-            boxShadow: 'var(--pod-shadow)',
-          }}
-        >
-          <CodeEditor
-            docId={currentDocId!}
-            initialLine={codeViewLine}
-            initialParagraphId={codeViewParagraphId}
-            onReady={(handle) => { codeEditorHandleRef.current = handle; }}
-            onTextChange={handleCodeEditorTextChange}
-            compileLog={compileLog}
-            compileStatus={compileStatus}
-            isCompiling={isCompiling}
-          />
-          {errorsSidebarOpen ? (
-            <div className="w-[260px] shrink-0 border-l border-edge-subtle bg-surface flex flex-col h-full relative">
-              <button
-                type="button"
-                onClick={() => setErrorsSidebarOpen(false)}
-                className="absolute top-2 right-2 z-10 w-5 h-5 flex items-center justify-center rounded text-ink-muted hover:text-ink-body hover-on-light text-sm leading-none"
-                title="Hide errors panel"
-                aria-label="Hide errors panel"
-              >
-                ×
-              </button>
-              <ErrorsHost
-                errors={allLatexErrors}
-                selectedId={selectedErrorId}
-                onSelect={setSelectedErrorId}
-                dismissedIds={dismissedErrorIds}
-                onDismiss={dismissError}
-                onJump={jumpToError}
-                snippets={errorSnippets}
-                paragraphByErrorId={paragraphByErrorId}
-              />
-            </div>
-          ) : (
-            <button
-              type="button"
-              onClick={() => setErrorsSidebarOpen(true)}
-              className="w-7 shrink-0 border-l border-edge-subtle bg-surface flex items-start justify-center pt-3 hover-on-light relative text-ink-muted hover:text-ink-body"
-              title={`Show errors (${allLatexErrors.length})`}
-              aria-label="Show errors panel"
-            >
-              <IconErrors active={false} />
-              {allLatexErrors.length > 0 && (
-                <span
-                  className="absolute top-1 right-1 min-w-[14px] h-[14px] px-1 rounded-full text-[9px] leading-[14px] tabular-nums text-white text-center"
-                  style={{ backgroundColor: "var(--danger)" }}
-                >
-                  {allLatexErrors.length > 99 ? "99+" : allLatexErrors.length}
-                </span>
-              )}
-            </button>
-          )}
-        </div>
-        </div>
-      ) : pdfView && currentDocId ? (
+      ) : currentDoc && docPermState !== "granted" ? null : pdfView && currentDocId ? (
         <div
           className="flex flex-1 overflow-hidden"
           style={{
@@ -4877,29 +4786,110 @@ export default function EditorLayout() {
               stale closure / editor state can carry the prior doc's
               content into the next doc's save. The boundary also opens
               the per-doc write pipeline used by writeDocBundle's
-              assertActive check. */}
+              assertActive check. Toggling code-view does NOT remount
+              this boundary — SplitWithCode handles open/close inline
+              so TipTap stays alive across the toggle (and the code
+              bridge keeps the two views in sync). */}
           <DocPipeline key={currentDocId} docId={currentDocId}>
-            <EditorPane
-              ref={editorRef}
-              docId={currentDocId}
-              editable={collab.canEditMainText}
-              chrome={FULL_CHROME}
-              onUpdate={handleUpdate}
-              onEditorReady={setEditorInstance}
-              onActivate={handleEditorPaneActivate}
-              onPaneStateChange={setPaneState}
-              pdfView={pdfView}
-              onTogglePdfView={togglePdfView}
-              codeView={codeView}
-              onToggleCodeView={toggleCodeView}
-              placements={prefs.placements}
-              viewPrefs={editorPaneViewPrefs}
-              menuBar={editorPaneMenuBar}
-              aiWindowOpen={aiWindowOpen}
-              onAiWindowClose={() => setAiWindowOpen(false)}
-              highlightText={highlightText}
-              highlightRange={effectiveHighlightRange}
-              onDocumentClassMismatch={promptDocClassMismatch}
+            <SplitWithCode
+              open={codeView}
+              ratio={prefs.codePaneRatio}
+              onRatioChange={setCodePaneRatio}
+              left={
+                <EditorPane
+                  ref={editorRef}
+                  docId={currentDocId}
+                  editable={collab.canEditMainText}
+                  chrome={FULL_CHROME}
+                  onUpdate={handleUpdate}
+                  onEditorReady={setEditorInstance}
+                  onActivate={handleEditorPaneActivate}
+                  onPaneStateChange={setPaneState}
+                  pdfView={pdfView}
+                  onTogglePdfView={togglePdfView}
+                  codeView={codeView}
+                  onToggleCodeView={toggleCodeView}
+                  placements={prefs.placements}
+                  viewPrefs={editorPaneViewPrefs}
+                  menuBar={editorPaneMenuBar}
+                  aiWindowOpen={aiWindowOpen}
+                  onAiWindowClose={() => setAiWindowOpen(false)}
+                  highlightText={highlightText}
+                  highlightRange={effectiveHighlightRange}
+                  onDocumentClassMismatch={promptDocClassMismatch}
+                />
+              }
+              right={
+                codeView && editorInstance ? (
+                  <div
+                    className="flex flex-1 min-h-0 overflow-hidden"
+                    style={{
+                      background: "var(--pod-editor)",
+                      borderRadius: "var(--pod-radius)",
+                      border: "var(--pod-border)",
+                      boxShadow: "var(--pod-shadow)",
+                      marginTop: 4,
+                      marginBottom: zenModeOn ? 4 : "var(--pod-gap)",
+                      marginRight: 4,
+                    }}
+                  >
+                    <CodeEditor
+                      docId={currentDocId!}
+                      editor={editorInstance}
+                      initialLine={codeViewLine}
+                      initialParagraphId={codeViewParagraphId}
+                      onReady={(handle) => {
+                        codeEditorHandleRef.current = handle;
+                      }}
+                      onTextChange={handleCodeEditorTextChange}
+                      compileLog={compileLog}
+                      compileStatus={compileStatus}
+                      isCompiling={isCompiling}
+                    />
+                    {errorsSidebarOpen ? (
+                      <div className="w-[260px] shrink-0 border-l border-edge-subtle bg-surface flex flex-col h-full relative">
+                        <button
+                          type="button"
+                          onClick={() => setErrorsSidebarOpen(false)}
+                          className="absolute top-2 right-2 z-10 w-5 h-5 flex items-center justify-center rounded text-ink-muted hover:text-ink-body hover-on-light text-sm leading-none"
+                          title="Hide errors panel"
+                          aria-label="Hide errors panel"
+                        >
+                          ×
+                        </button>
+                        <ErrorsHost
+                          errors={allLatexErrors}
+                          selectedId={selectedErrorId}
+                          onSelect={setSelectedErrorId}
+                          dismissedIds={dismissedErrorIds}
+                          onDismiss={dismissError}
+                          onJump={jumpToError}
+                          snippets={errorSnippets}
+                          paragraphByErrorId={paragraphByErrorId}
+                        />
+                      </div>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={() => setErrorsSidebarOpen(true)}
+                        className="w-7 shrink-0 border-l border-edge-subtle bg-surface flex items-start justify-center pt-3 hover-on-light relative text-ink-muted hover:text-ink-body"
+                        title={`Show errors (${allLatexErrors.length})`}
+                        aria-label="Show errors panel"
+                      >
+                        <IconErrors active={false} />
+                        {allLatexErrors.length > 0 && (
+                          <span
+                            className="absolute top-1 right-1 min-w-[14px] h-[14px] px-1 rounded-full text-[9px] leading-[14px] tabular-nums text-white text-center"
+                            style={{ backgroundColor: "var(--danger)" }}
+                          >
+                            {allLatexErrors.length > 99 ? "99+" : allLatexErrors.length}
+                          </span>
+                        )}
+                      </button>
+                    )}
+                  </div>
+                ) : null
+              }
             />
           </DocPipeline>
         </div>

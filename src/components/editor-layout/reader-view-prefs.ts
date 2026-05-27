@@ -185,6 +185,7 @@ export function useReaderViewPrefs(): EditorPaneViewPrefs {
       panelWidths,
       editorSplit: false,
       editorSplitRatio: 0.5,
+      codePaneRatio: 0.55,
       poppedOutPanels: [],
       poppedOutOrigins: {},
       floatPositions: {},
