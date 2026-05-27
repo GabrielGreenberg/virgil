@@ -3417,7 +3417,13 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
               gap: 2,
             }}
           >
-            {viewPrefs?.zenMode ? (
+            {/* Hide editor panel rails when code view is active: with
+                the editor wrapper narrowed by the split, the rails
+                overflow past the wrapper's clip boundary and would
+                appear as "ghost" card-strip slices beside the pod.
+                Matches the pre-refactor UX where code view replaced
+                the whole pane (no rails at all). */}
+            {!codeSplit.active && (viewPrefs?.zenMode ? (
               <ZenMargin
                 side="left"
                 marginPref={viewPrefs.zenLeftMargin}
@@ -3489,7 +3495,7 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
                 wordCountHook={wordCountHook}
                 tail={leftGutterPrelude}
               />
-            )}
+            ))}
             {/* Column wrapper — sits between the two PaneRails. Holds the
                 docked MenuBar (when `menuBar` is provided) plus the
                 editor pod. Path A 7.6 finish (additive) introduced this
@@ -4261,7 +4267,9 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
               />
             )}
             </div>
-            {viewPrefs?.zenMode ? (
+            {/* Hide right rail when code view is active — see comment
+                above the left rail. Both rails go away together. */}
+            {!codeSplit.active && (viewPrefs?.zenMode ? (
               <ZenMargin
                 side="right"
                 marginPref={viewPrefs.zenRightMargin}
@@ -4332,7 +4340,7 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
                 openItemInPanel={openItemInPanel}
                 wordCountHook={wordCountHook}
               />
-            )}
+            ))}
           </div>
           {/* Custom thin scrollbar pinned to the editor column's
               right edge. Shown only when the row scrolls — the

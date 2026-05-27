@@ -1396,7 +1396,7 @@ export default function EditorLayout() {
     },
     [],
   );
-  const [errorsSidebarOpen, setErrorsSidebarOpen] = useState(true);
+  const [errorsSidebarOpen, setErrorsSidebarOpen] = useState(false);
 
   // Errors panel: selection + session dismissals. Dismissals are keyed
   // by error.id and reset when the error list changes materially (new

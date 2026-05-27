@@ -197,6 +197,18 @@ export function SplitWithCode({
       <div
         ref={containerRef}
         className="flex flex-row min-w-0 min-h-0 flex-1 relative"
+        // Span the full editor scroll height so the sticky right side
+        // (gap + code pane) stays pinned across the whole document.
+        // Without this, splitOuter's height defaults to its parent
+        // flex container's cross-size (= scroller's clientHeight,
+        // ~868px), making it the containing block for the sticky
+        // child — which then falls out of the containing block after
+        // ~viewport-height of scroll and starts scrolling naturally.
+        // `--row-bound-h` is set on `[data-virgil-row-scroll]` by
+        // EditorScrollbar (= max of editor's scrollHeight and row's
+        // clientHeight). Same trick editor-pane-column uses
+        // (EditorPane.tsx:3549) so its own sticky chrome works.
+        style={{ minHeight: 'var(--row-bound-h, 100vh)' }}
       >
         {/* Left: editor pane. When closed, fills the container (the
             wrapper still exists so EditorPane keeps a stable parent
@@ -217,15 +229,32 @@ export function SplitWithCode({
           // without creating either context. CSS Overflow L3,
           // Chrome 90+ / Firefox 81+ / Safari 16+.
           style={
+            // Wrapper is a real flex container so EditorPane's
+            // `flex: 1` at `editor-pane-root` takes effect — restoring
+            // the pre-split-refactor layout context. `display: block`
+            // here previously neutralized EditorPane's flex, breaking
+            // the cross-axis stretch chain that the pod's sticky
+            // chrome (cap, mask) and editor-pane-column's
+            // `minHeight: var(--row-bound-h)` assume.
             open
               ? {
                   width: clipPx,
                   flex: "0 0 auto",
+                  display: "flex",
+                  flexDirection: "row",
+                  alignItems: "stretch",
+                  minWidth: 0,
+                  minHeight: 0,
                   overflowX: "clip",
                   overflowY: "visible",
                 }
               : {
                   flex: "1 1 auto",
+                  display: "flex",
+                  flexDirection: "row",
+                  alignItems: "stretch",
+                  minWidth: 0,
+                  minHeight: 0,
                   overflowX: "clip",
                   overflowY: "visible",
                 }
@@ -247,7 +276,29 @@ export function SplitWithCode({
           )}
         </div>
         {open && (
-          <>
+          /* Sticky-pin the right side (gap + code pane) so the code
+             view stays anchored to the viewport while the editor's
+             outer scroller (`[data-virgil-row-scroll]`) scrolls
+             vertically. `align-self: flex-start` is critical — the
+             outer container defaults to `align-items: stretch`, which
+             would stretch this sticky element to the scroller's
+             content height (≈6000+ px) and defeat the pin. Explicit
+             `height: var(--scroll-viewport-h)` (set on the row
+             scroller by EditorScrollbar) keeps the right side
+             viewport-sized; the 100vh fallback covers cold-render. */
+          <div
+            style={{
+              position: "sticky",
+              top: 0,
+              alignSelf: "flex-start",
+              height: "var(--scroll-viewport-h, 100vh)",
+              display: "flex",
+              flexDirection: "row",
+              flex: "1 1 auto",
+              minWidth: 0,
+              minHeight: 0,
+            }}
+          >
             {/* Drag gap */}
             <div
               className="relative shrink-0 z-10"
@@ -267,7 +318,7 @@ export function SplitWithCode({
             >
               {right}
             </div>
-          </>
+          </div>
         )}
       </div>
     </CodePaneSplitProvider>
