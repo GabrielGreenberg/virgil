@@ -360,6 +360,16 @@ export const TEXT_OBJECT_REGISTRY: Record<TextObjectKind, TextObjectMeta> = {
     initialFloatSize: { width: 480, height: 360 },
     actions: NON_PROSE_BLOCK_ACTIONS,
     removeOnEmptyChildren: true,
+    // L3c of the Lifted-Overlay refactor: orderedList drags through the
+    // same two-mode gesture as bulletList — its twin (same list-body
+    // float). Decimal counters render in the ghost via L3b.1's
+    // `.tiptap ol { list-style-type: decimal }` scope; no re-wrap via
+    // L3b.3's border compensation.
+    liftMode: "lifted-overlay",
+    // Mirror the static label `list-body.tsx` pushes via
+    // `setHeaderLabel("Ordered list")` on the orderedList branch, so the
+    // overlay's popout-mode header matches the real popout at handoff.
+    computeLabel: () => "Ordered list",
     dropAdapter: topLevelDropAdapter,
     confirmDestructive: (doc, _uuid, action, ctx) =>
       descriptorForContainer(
