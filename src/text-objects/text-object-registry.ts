@@ -333,6 +333,18 @@ export const TEXT_OBJECT_REGISTRY: Record<TextObjectKind, TextObjectMeta> = {
     initialFloatSize: { width: 480, height: 360 },
     actions: NON_PROSE_BLOCK_ACTIONS,
     removeOnEmptyChildren: true,
+    // L3b of the Lifted-Overlay refactor: bulletList drags through the
+    // same two-mode gesture as paragraph/heading (ghost in pod, popout
+    // in manila; release-in-pod moves the list, release-in-manila spawns
+    // the popout at the overlay's chrome-inclusive rect).
+    liftMode: "lifted-overlay",
+    // Mirror the static label `list-body.tsx` pushes via
+    // `setHeaderLabel("Bullet list")` on the bulletList branch, so the
+    // overlay's popout-mode header matches the real popout at handoff.
+    // Constant per kind (unlike heading's level-dependent label) — pins
+    // the overlay header to list-body's string regardless of `meta.label`.
+    // orderedList gets its own ("Ordered list") in L3c.
+    computeLabel: () => "Bullet list",
     dropAdapter: topLevelDropAdapter,
     confirmDestructive: (doc, _uuid, action, ctx) =>
       descriptorForContainer("list", "listItem", "item", doc, action, ctx),
