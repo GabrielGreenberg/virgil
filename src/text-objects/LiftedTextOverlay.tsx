@@ -76,6 +76,22 @@ import type { TextObjectRef } from "./types";
 const HEADER_HEIGHT = 24;
 const BODY_PADDING_X = 32;
 const BODY_PADDING_Y = 16;
+/** Popout-mode overlay border, one side, in px (L3b.3). The overlay is
+ *  `box-sizing: border-box` and gains `border: var(--pod-border)` (1px each
+ *  side) in popout mode (globals.css `.lifted-text-overlay[data-lift-mode=
+ *  "popout"]`); ghost mode has `border: none`. Under border-box that 1px
+ *  eats into the overlay's content area where `.lifted-text-overlay__body
+ *  { width: 100% }` lives, so without compensation the popout body content
+ *  (and its text) is 2px narrower than the ghost's — a line one char short
+ *  of wrapping in the ghost re-wraps in the popout. The popout geometry
+ *  below grows the OUTER box by `2 * POPOUT_BORDER` and shifts it by
+ *  `POPOUT_BORDER` so the text content lands at exactly `sourceWidth` (==
+ *  ghost) while staying at the same absolute screen pixel (L1.12). Mirrors
+ *  `--pod-border` width (globals.css ~51) and the released float's card
+ *  border (FloatingPanel surface="card", same `--pod-border`); hardcoded
+ *  like HEADER_HEIGHT / BODY_PADDING_* rather than parsed from the border
+ *  shorthand at runtime. Mirrored in `TextObjectGrabHandle.tsx`. */
+const POPOUT_BORDER = 1;
 
 export interface LiftedTextOverlayProps {
   /** The ref the gesture is lifting. Informational — the overlay
@@ -272,14 +288,25 @@ export function LiftedTextOverlay({
   // back to exactly `textCoords`, so the text stays at the same screen
   // pixel through the mode flip. The user only sees the chrome
   // materialize around the still text.
+  // L3b.3: the popout outer box also grows by the 1px pod-border on each
+  // axis (and shifts by it) so that, after the border + body-padding inset
+  // under box-sizing: border-box, the body's text content lands at exactly
+  // `sourceWidth × sourceHeight` (== ghost) — no ghost↔popout re-wrap. The
+  // text stays at `textCoords` in both modes (L1.12): in popout the border
+  // (POPOUT_BORDER) + padding (BODY_PADDING_*) inset the text back to
+  // textCoords, e.g. left = (textX − 32 − 1) + 1 border + 32 padding = textX.
   const isPopout = mode === "popout";
-  const overlayLeft = isPopout ? textCoords.x - BODY_PADDING_X : textCoords.x;
-  const overlayTop = isPopout ? textCoords.y - BODY_PADDING_Y : textCoords.y;
+  const overlayLeft = isPopout
+    ? textCoords.x - BODY_PADDING_X - POPOUT_BORDER
+    : textCoords.x;
+  const overlayTop = isPopout
+    ? textCoords.y - BODY_PADDING_Y - POPOUT_BORDER
+    : textCoords.y;
   const overlayWidth = isPopout
-    ? sourceWidth + 2 * BODY_PADDING_X
+    ? sourceWidth + 2 * BODY_PADDING_X + 2 * POPOUT_BORDER
     : sourceWidth;
   const overlayHeight = isPopout
-    ? sourceHeight + 2 * BODY_PADDING_Y
+    ? sourceHeight + 2 * BODY_PADDING_Y + 2 * POPOUT_BORDER
     : sourceHeight;
 
   // The header is a SIBLING of the overlay (both inside the same portal),

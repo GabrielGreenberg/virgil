@@ -113,6 +113,16 @@ const SPAWN_CURSOR_OFFSET_Y = 16;
 const POPOUT_HEADER_HEIGHT = 24;
 const POPOUT_BODY_PADDING_X = 32;
 const POPOUT_BODY_PADDING_Y = 16;
+/** Released-popout card border, one side, in px (L3b.3). The real float
+ *  (`FloatingPanel` surface="card") is `box-sizing: border-box` with
+ *  `border: var(--pod-border)` (1px each side), so its body content rect is
+ *  `outerRect − 2*border − 2*padding` per axis — the same 1px-each-side
+ *  deficit the lifted overlay has in popout mode. The `popOutAtRect` spawn
+ *  below compensates so the released float's body text lands at exactly
+ *  `sourceWidth × sourceHeight`, matching the ghost AND the drag-popout
+ *  overlay (no re-wrap across the whole gesture). Mirrors
+ *  `LiftedTextOverlay.tsx`'s `POPOUT_BORDER` and `--pod-border` width. */
+const POPOUT_BORDER = 1;
 
 /**
  * Default initial float size at spawn time. Per-kind overrides live on
@@ -855,13 +865,28 @@ export function TextObjectGrabHandle({ editorRef }: Props) {
           // 24px from the top of the rect, the body padding eats 16/32
           // from each axis, and the body content lands shifted (32, 40)
           // from where the ghost's text was — a visible jump on release.
+          // L3b.3: also compensate the float's 1px card border on each axis
+          // (box-sizing: border-box eats it from the body content area, the
+          // same deficit the overlay had), so the released float's body text
+          // is sourceWidth × sourceHeight — matching the ghost AND the
+          // drag-popout overlay, with no re-wrap on release.
           const overlayRect = {
-            x: Math.round(cursorX - grabOffsetX - POPOUT_BODY_PADDING_X),
-            y: Math.round(
-              cursorY - grabOffsetY - POPOUT_HEADER_HEIGHT - POPOUT_BODY_PADDING_Y,
+            x: Math.round(
+              cursorX - grabOffsetX - POPOUT_BODY_PADDING_X - POPOUT_BORDER,
             ),
-            width: sourceWidth + 2 * POPOUT_BODY_PADDING_X,
-            height: sourceHeight + POPOUT_HEADER_HEIGHT + 2 * POPOUT_BODY_PADDING_Y,
+            y: Math.round(
+              cursorY -
+                grabOffsetY -
+                POPOUT_HEADER_HEIGHT -
+                POPOUT_BODY_PADDING_Y -
+                POPOUT_BORDER,
+            ),
+            width: sourceWidth + 2 * POPOUT_BODY_PADDING_X + 2 * POPOUT_BORDER,
+            height:
+              sourceHeight +
+              POPOUT_HEADER_HEIGHT +
+              2 * POPOUT_BODY_PADDING_Y +
+              2 * POPOUT_BORDER,
           };
           poppedRef.current?.popOutAtRect(cardKey, overlayRect);
         } else {

@@ -1399,6 +1399,13 @@ textarea,
    padding via the registry — see meta.floatBodyPadding follow-up. */
 .lifted-text-overlay__body {
   position: relative;
+  /* Explicit border-box so `width: 100%` + popout-mode `padding: 16px 32px`
+     resolves to (overlay-content-width − padding) predictably, independent
+     of Tailwind preflight (which already applies border-box universally —
+     this is a self-documenting no-op that pins the geometry's assumption so
+     a preflight change can't silently flip the body to content-box). The
+     L3b.3 popout-border compensation in LiftedTextOverlay.tsx assumes this. */
+  box-sizing: border-box;
   width: 100%;
   height: 100%;
   overflow: hidden;
