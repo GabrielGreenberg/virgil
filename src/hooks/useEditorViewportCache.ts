@@ -53,14 +53,29 @@ export interface EditorViewportCache {
   /** Right edge of the hover zone — equal to `editorRight`. Handle is
    *  on the left; no widening on the right. */
   hoverZoneRight: number;
-  /** True iff `(x, y)` falls inside the editor's content rect — i.e.
-   *  between `contentLeft` and `editorRight` on X, and bounded by the
-   *  scroll parent's visible region on Y. Sibling of `containsHoverZone`,
-   *  but without the gutter cushion: the hover zone extends LEFT into
-   *  the gutter (so the cursor can travel from text to the grip without
-   *  losing the handle), whereas the content zone is the *visible text
-   *  column* (used by the lifted-overlay gesture to decide ghost-mode
-   *  vs popout-mode — cursor in the gutter is already "out of content"). */
+  /** Left edge of `.editor-pane-pod` — the pod's OUTER rect, including
+   *  the white padding around the text column. Used by the lifted-overlay
+   *  predicate so "popout mode" activates at the white-pod → manila
+   *  transition, not at the text → white-padding transition inside the
+   *  pod. Falls back to `rect.left` if the pod walk fails (defensive). */
+  podLeft: number;
+  /** Right edge of `.editor-pane-pod`. See `podLeft`. */
+  podRight: number;
+  /** Top edge of `.editor-pane-pod`. See `podLeft`. */
+  podTop: number;
+  /** Bottom edge of `.editor-pane-pod`. See `podLeft`. */
+  podBottom: number;
+  /** True iff `(x, y)` falls inside the editor POD's outer rect — i.e.
+   *  the `.editor-pane-pod` wrapper around the text column, which
+   *  includes the pod's white padding. Sibling of `containsHoverZone`.
+   *  Used by the lifted-overlay gesture to decide ghost-mode vs
+   *  popout-mode: cursor inside the pod (anywhere in the white area,
+   *  including the padding around text) → ghost; cursor crossing the
+   *  pod's outer edge into the manila column → popout. Matches the
+   *  user's mental model of the boundary as the white-pod → manila
+   *  transition, not the text → white-padding transition. Predicate
+   *  name is retained for diff minimisation; semantics widened from
+   *  text content rect → editor pod outer rect (L1.7). */
   containsContentZone(x: number, y: number): boolean;
   /** The `[data-editor-col="true"]` (editor-pane-column) element that
    *  serves as the grab-handle portal's positioning context. The portal
@@ -103,6 +118,10 @@ const EMPTY_CACHE: EditorViewportCache = {
   gutterInset: DEFAULT_GUTTER_INSET,
   hoverZoneLeft: 0,
   hoverZoneRight: 0,
+  podLeft: 0,
+  podRight: 0,
+  podTop: 0,
+  podBottom: 0,
   containsContentZone: () => false,
   paperEl: null,
   paperRect: { top: 0, left: 0 },
@@ -164,6 +183,22 @@ export function useEditorViewportCache(editor: Editor | null): {
         : DEFAULT_GUTTER_INSET;
       const hoverZoneLeft = contentLeft - gutterInset - HOVER_GUTTER_PAD;
       const hoverZoneRight = editorRight;
+      // `.editor-pane-pod` is the outer pod wrapper around the text
+      // column (white surface + chrome). The lifted-overlay gesture's
+      // mode-flip predicate (containsContentZone) reads THIS rect, not
+      // the ProseMirror text content rect, so popout mode engages at
+      // the white-pod → manila transition rather than at the inner
+      // text → white-padding edge inside the pod. Defensive fallback
+      // to the editor's own rect if the pod walk fails (early mount,
+      // unexpected DOM, etc.).
+      const podEl = (editorEl.closest(
+        ".editor-pane-pod",
+      ) as HTMLElement | null) ?? null;
+      const podRect = podEl?.getBoundingClientRect();
+      const podLeft = podRect?.left ?? rect.left;
+      const podRight = podRect?.right ?? rect.right;
+      const podTop = podRect?.top ?? scrollTop;
+      const podBottom = podRect?.bottom ?? scrollBottom;
       // `editor-pane-column` is the positioning context for the grab-
       // handle portal. The portal lives at column level (sibling of the
       // pod) so it escapes the pod's `clipPath` that clips lateral
@@ -185,6 +220,10 @@ export function useEditorViewportCache(editor: Editor | null): {
         prev.scrollTop === scrollTop &&
         prev.scrollBottom === scrollBottom &&
         prev.gutterInset === gutterInset &&
+        prev.podLeft === podLeft &&
+        prev.podRight === podRight &&
+        prev.podTop === podTop &&
+        prev.podBottom === podBottom &&
         prev.paperEl === paperEl &&
         prev.paperRect.top === paperTop &&
         prev.paperRect.left === paperLeft
@@ -200,10 +239,7 @@ export function useEditorViewportCache(editor: Editor | null): {
         y >= scrollTop &&
         y <= scrollBottom;
       const containsContentZone = (x: number, y: number): boolean =>
-        x >= contentLeft &&
-        x <= editorRight &&
-        y >= scrollTop &&
-        y <= scrollBottom;
+        x >= podLeft && x <= podRight && y >= podTop && y <= podBottom;
       // Read the column rect fresh per call: it changes on scroll
       // (the column moves inside the row scroll container), and the
       // cache only refreshes on resize. Cheap — one
@@ -224,6 +260,10 @@ export function useEditorViewportCache(editor: Editor | null): {
         gutterInset,
         hoverZoneLeft,
         hoverZoneRight,
+        podLeft,
+        podRight,
+        podTop,
+        podBottom,
         containsContentZone,
         paperEl,
         paperRect: { top: paperTop, left: paperLeft },

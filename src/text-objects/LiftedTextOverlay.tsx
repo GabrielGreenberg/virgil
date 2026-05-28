@@ -31,6 +31,7 @@
 import { useEffect, useMemo, useRef, type CSSProperties } from "react";
 import { createPortal } from "react-dom";
 import type { EditorViewportCache } from "@/hooks/useEditorViewportCache";
+import { TEXT_OBJECT_REGISTRY } from "./text-object-registry";
 import type { TextObjectRef } from "./types";
 
 export interface LiftedTextOverlayProps {
@@ -170,6 +171,13 @@ export function LiftedTextOverlay({
       "[data-lifted-overlay-portal]",
     ) as HTMLElement | null) ?? null;
 
+  // Kind label for the popout-mode header row. Visually mirrors
+  // TextObjectFloat.tsx:93-125; the overlay has pointer-events: none
+  // so the chevron + X icons here are purely visual mimicry (no
+  // onClick wiring). CSS hides the header in ghost mode and fades it
+  // in over 120ms when popout mode engages.
+  const meta = TEXT_OBJECT_REGISTRY[ref.kind];
+
   // Convert viewport coords to portal-relative. The overlay tracks the
   // cursor (not the source) so scroll-during-gesture moves the source
   // but keeps the overlay glued under the cursor — the model the user
@@ -194,6 +202,39 @@ export function LiftedTextOverlay({
       }}
       aria-hidden="true"
     >
+      <div className="lifted-text-overlay__header">
+        <span className="lifted-text-overlay__label">{meta.label}</span>
+        <span className="lifted-text-overlay__header-spacer" />
+        <span className="lifted-text-overlay__icon">
+          <svg
+            width="10"
+            height="10"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          >
+            <polyline points="9 6 15 12 9 18" />
+          </svg>
+        </span>
+        <span className="lifted-text-overlay__icon">
+          <svg
+            width="10"
+            height="10"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          >
+            <line x1="18" y1="6" x2="6" y2="18" />
+            <line x1="6" y1="6" x2="18" y2="18" />
+          </svg>
+        </span>
+      </div>
       <div ref={bodyRef} className="lifted-text-overlay__body" />
     </div>,
     portal ?? document.body,
