@@ -1374,20 +1374,27 @@ textarea,
    the source block. Typography (font, color, line-height, etc.) is
    captured from the source via getComputedStyle at threshold-cross and
    applied as inline styles on the overlay root, not inherited through
-   the ancestor chain (the portal sits outside .ProseMirror). Padding
-   mirrors paragraph-body's `flex-1 overflow-auto px-8 py-4` wrapper
-   (src/text-objects/floats/paragraph-body.tsx) so the clone text
-   reflows to the same width as the released popout's body and the
-   handoff at release is seamless. The body owns its own overflow clip
-   so the clone is bounded by the captured source rect even if it would
-   otherwise reflow taller (long line at a different font metric, etc.). */
-/* L3: when generalizing liftMode to other kinds, expose body padding
-   via the registry — see registry meta.floatBodyPadding follow-up. */
+   the ancestor chain (the portal sits outside .ProseMirror). The body
+   owns its own overflow clip so the clone is bounded by the captured
+   source rect even if it would otherwise reflow taller (long line at
+   a different font metric, etc.).
+
+   Ghost mode = no padding: the clone fills the body edge-to-edge so
+   the text wraps exactly as it did in the source (body width =
+   sourceWidth, line breaks unchanged, no vertical clipping). Popout
+   mode adds `padding: 16px 32px` to match the real TextObjectFloat
+   body (paragraph-body.tsx's `flex-1 overflow-auto px-8 py-4`) for a
+   seamless visual handoff when the gesture releases into a real
+   popout. L3: when generalizing liftMode to other kinds, expose this
+   padding via the registry — see meta.floatBodyPadding follow-up. */
 .lifted-text-overlay__body {
   position: relative;
   width: 100%;
   height: 100%;
   overflow: hidden;
+}
+
+.lifted-text-overlay[data-lift-mode="popout"] .lifted-text-overlay__body {
   padding: 16px 32px;
 }
 
