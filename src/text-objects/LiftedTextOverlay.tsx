@@ -28,7 +28,7 @@
  * change per frame.
  */
 
-import { useEffect, useMemo, useRef } from "react";
+import { useEffect, useMemo, useRef, type CSSProperties } from "react";
 import { createPortal } from "react-dom";
 import type { EditorViewportCache } from "@/hooks/useEditorViewportCache";
 import type { TextObjectRef } from "./types";
@@ -101,6 +101,34 @@ export function LiftedTextOverlay({
     // the gesture's lifetime; the dep is here for correctness.
   }, [anchorDom]);
 
+  // Capture computed typography from the source once at mount and apply
+  // as inline styles on the overlay root, so the clone inherits via the
+  // normal CSS cascade. cloneNode(true) copies the DOM subtree but the
+  // overlay's portal mount sits outside .ProseMirror's ancestor chain
+  // (it lives at column level, sibling of the pod) — any font / color /
+  // spacing rule defined at or below .ProseMirror would otherwise be
+  // lost, and the clone would reflow at a different width than the
+  // source. Holding the computed values for the gesture's lifetime is
+  // safe because they're stable: the source isn't restyled mid-drag.
+  const typographyStyles = useMemo<CSSProperties>(() => {
+    if (typeof window === "undefined") return {};
+    const computed = window.getComputedStyle(anchorDom);
+    return {
+      fontFamily: computed.fontFamily,
+      fontSize: computed.fontSize,
+      fontWeight: computed.fontWeight,
+      fontStyle: computed.fontStyle,
+      fontVariant: computed.fontVariant,
+      lineHeight: computed.lineHeight,
+      letterSpacing: computed.letterSpacing,
+      color: computed.color,
+      textAlign: computed.textAlign as CSSProperties["textAlign"],
+      textIndent: computed.textIndent,
+      textTransform: computed.textTransform as CSSProperties["textTransform"],
+      fontFeatureSettings: computed.fontFeatureSettings,
+    };
+  }, [anchorDom]);
+
   // The clone is an HTMLElement, not a React tree — attach it directly
   // via ref callback rather than dangerouslySetInnerHTML (which would
   // re-serialize and lose the live computed styles inherited via the
@@ -141,6 +169,7 @@ export function LiftedTextOverlay({
       data-lift-mode={mode}
       data-lift-kind={ref.kind}
       style={{
+        ...typographyStyles,
         position: "absolute",
         left: portalCoords.x,
         top: portalCoords.y,
@@ -149,15 +178,7 @@ export function LiftedTextOverlay({
       }}
       aria-hidden="true"
     >
-      <div
-        ref={bodyRef}
-        className="lifted-text-overlay__body"
-        style={{
-          width: "100%",
-          height: "100%",
-          overflow: "hidden",
-        }}
-      />
+      <div ref={bodyRef} className="lifted-text-overlay__body" />
     </div>,
     portal ?? document.body,
   );

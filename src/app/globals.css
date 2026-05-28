@@ -1258,12 +1258,16 @@ textarea,
    Two chrome states via [data-lift-mode], swapped by CSS — NO React
    re-render of the cloned subtree on mode flip:
 
-   - "ghost"   = cursor in editor content; lighter, dashed frame, ~60%
-                 opacity. Communicates "this is what you're moving; the
-                 move will commit in place when you release."
+   - "ghost"   = cursor in editor content; semi-opaque text only,
+                 no border / background / shadow. Communicates
+                 "this is what you're moving; the move will commit
+                 in place when you release."
    - "popout"  = cursor in gutter or beyond; full frame matching
                  TextObjectFloat's chrome, 100% opacity. Communicates
                  "release here to spawn a floating popout."
+
+   Base rules ARE the ghost state, so mount renders at the correct
+   opacity with no fade-in artifact. Popout is the deviation.
 
    Transitions apply only to chrome-bearing properties (opacity, border,
    background, box-shadow) so position tracking stays instant. z-index
@@ -1275,41 +1279,42 @@ textarea,
   position: absolute;
   pointer-events: none;
   z-index: 25;
-  border-radius: var(--pod-radius, 8px);
-  background: var(--surface, #ffffff);
-  overflow: hidden;
   box-sizing: border-box;
+  /* Base = ghost: no chrome, only semi-opaque text. */
+  opacity: 0.6;
+  background: transparent;
+  border: none;
+  box-shadow: none;
+  border-radius: var(--pod-radius, 8px);
+  overflow: hidden;
   transition:
     opacity 120ms ease,
+    background-color 120ms ease,
     border-color 120ms ease,
-    border-style 120ms ease,
-    box-shadow 120ms ease,
-    background-color 120ms ease;
+    box-shadow 120ms ease;
 }
 
-.lifted-text-overlay[data-lift-mode="ghost"] {
-  opacity: 0.6;
-  border: 1px dashed var(--border-light, #c9c5c5);
-  box-shadow: none;
-  background: var(--surface-muted, #fafaf9);
-}
-
+/* Popout deviation — full chrome matching TextObjectFloat. */
 .lifted-text-overlay[data-lift-mode="popout"] {
   opacity: 1;
+  background: var(--surface, #ffffff);
   border: var(--pod-border, 1px solid #e5e2dd);
   box-shadow: var(--card-shadow-ambient);
-  background: var(--surface, #ffffff);
 }
 
 /* Body wrapper inside the overlay — holds the sanitized cloneNode of
-   the source block. The clone keeps the editor's typography because the
-   .lifted-text-overlay sits inside the editor column, inheriting font
-   tokens from .ProseMirror's ancestor chain. Padding mirrors the
-   editor's content padding so the cloned glyph row aligns visually
-   with where it would land on release. */
+   the source block. Typography (font, color, line-height, etc.) is
+   captured from the source via getComputedStyle at threshold-cross and
+   applied as inline styles on the overlay root, not inherited through
+   the ancestor chain (the portal sits outside .ProseMirror). The clone
+   already carries its own padding from its .ProseMirror p classes — no
+   wrapper padding needed. overflow:hidden clips the clone if it
+   reflows taller than the captured source rect. */
 .lifted-text-overlay__body {
   position: relative;
-  padding: 4px 8px;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
 }
 
 /* Card grip — squeeze pattern. Triggered both by direct :active on the
