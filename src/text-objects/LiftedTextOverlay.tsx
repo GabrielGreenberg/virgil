@@ -95,6 +95,22 @@ export function LiftedTextOverlay({
     // on the overlay root, so the clone's data-uuid never matches.
     c.querySelectorAll("[id]").forEach((el) => el.removeAttribute("id"));
     c.removeAttribute("id");
+    // State-dependent attributes that drive visible chrome from globals.css
+    // (linkedAnchor highlight tints, card-anchor outlines, etc.). These are
+    // meaningful in the LIVE editor but the cloned ghost should be a clean
+    // visual snapshot — the overlay's own chrome (ghost/popout) is the only
+    // chrome the user should see during the gesture.
+    const STATE_ATTRS_TO_STRIP = [
+      "data-link-highlight",
+      "data-tint-color",
+      "data-card-hovered",
+      "data-card-selected",
+      "data-paragraph-kind",
+    ];
+    for (const attr of STATE_ATTRS_TO_STRIP) {
+      if (c.hasAttribute(attr)) c.removeAttribute(attr);
+      c.querySelectorAll(`[${attr}]`).forEach((el) => el.removeAttribute(attr));
+    }
     c.style.pointerEvents = "none";
     return c;
     // anchorDom identity is captured at threshold-cross and stable for
