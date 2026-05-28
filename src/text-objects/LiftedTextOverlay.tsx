@@ -33,7 +33,14 @@
  *  - Body content is a sanitized `cloneNode(true)` of `anchorDom`, with
  *    `contenteditable` stripped recursively and `pointer-events: none`
  *    so the live cursor underneath stays in control of hit-testing
- *    (containsContentZone) during the gesture.
+ *    (containsContentZone) during the gesture. The body wrapper carries
+ *    the `tiptap` class (L3b.1) so the editor's content-scoped rules
+ *    reach the clone even though the portal lives outside `.tiptap`'s
+ *    ancestor chain — list markers (`.tiptap ul/ol`), nested-list
+ *    spacing (`.tiptap li > ul`), blockquote borders, and any future
+ *    content-scoped styling. This is the descendant-rule counterpart to
+ *    L1.5's typography capture, which only carries INHERITED properties
+ *    and so could never restore `list-style` (set on the `<ul>` itself).
  *  - Width/height pinned to the source's rendered rect (captured once
  *    at threshold-cross by the parent — the overlay never reads it
  *    again). Mode flips via `data-lift-mode`, CSS handles the chrome
@@ -182,6 +189,15 @@ export function LiftedTextOverlay({
   // `?? anchorDom` fallback covers unrecognized wrapper shapes — safe
   // since `resolveInlineContextElement` already falls back internally
   // for raw `<p>`/`<blockquote>` etc.
+  //
+  // L3b.1 note (L4 to evaluate): with the body now carrying the `tiptap`
+  // class, the `.tiptap p`/`.tiptap h2`/… rules apply to the cloned
+  // elements directly and the editor sizing vars (`--editor-font-size`
+  // etc.) are `:root`-global, so the scope alone reproduces this
+  // typography. This inline capture may therefore be redundant; it is
+  // retained here because it remains authoritative on conflict (inline
+  // beats the scoped rules) and verifying full equivalence is an L4
+  // cleanup concern, not this commit's.
   const typographyStyles = useMemo<CSSProperties>(() => {
     if (typeof window === "undefined") return {};
     const inlineEl = resolveInlineContextElement(anchorDom) ?? anchorDom;
@@ -300,7 +316,14 @@ export function LiftedTextOverlay({
         }}
         aria-hidden="true"
       >
-        <div ref={bodyRef} className="lifted-text-overlay__body" />
+        {/* L3b.1: `tiptap` re-establishes the editor's content scope on
+            the clone (see JSDoc). Deliberately NO neutralization overrides:
+            the bare `.tiptap {}` rule is only `outline: none` + font/color/
+            tab-size — no padding/min-height/caret — so it can't disturb the
+            overlay geometry, and L1.11's popout body padding (0,3,0) still
+            outweighs `.tiptap` (0,1,0). Add a dedicated inner wrapper only
+            if a future `.tiptap {}` root property starts conflicting. */}
+        <div ref={bodyRef} className="lifted-text-overlay__body tiptap" />
       </div>
       <div
         className="lifted-text-overlay__header"
