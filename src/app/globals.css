@@ -1286,7 +1286,11 @@ textarea,
   border: none;
   box-shadow: none;
   border-radius: var(--pod-radius, 8px);
-  overflow: hidden;
+  /* No overflow clip on the root — the popout header sits at
+     `bottom: 100%` (vertically ABOVE the overlay's own box), so
+     clipping here would render it invisible. Clipping for the
+     clone's potential reflow lives on `.lifted-text-overlay__body`
+     below. */
   transition:
     opacity 120ms ease,
     background-color 120ms ease,
@@ -1376,8 +1380,10 @@ textarea,
    applied as inline styles on the overlay root, not inherited through
    the ancestor chain (the portal sits outside .ProseMirror). The clone
    already carries its own padding from its .ProseMirror p classes — no
-   wrapper padding needed. overflow:hidden clips the clone if it
-   reflows taller than the captured source rect. */
+   wrapper padding needed. The body OWNS the overflow clip (moved here
+   from the root in L1.8 so the popout header at `bottom: 100%` can
+   render outside the overlay's box); it clips the clone if it reflows
+   taller than the captured source rect. */
 .lifted-text-overlay__body {
   position: relative;
   width: 100%;
