@@ -562,6 +562,16 @@ body {
   outline: none;
   font-family: var(--font-serif-override, var(--font-serif)), "Source Serif 4", Georgia, serif;
   color: var(--editor-text-color, #2a2a2a);
+  /* Text-wrapping parity for the lifted-overlay drag clone (L3b.2). The
+     clone carries `.tiptap` (L3b.1) but is NOT a `.ProseMirror`, so it
+     misses prosemirror-view's `.ProseMirror` white-space/word-wrap base
+     rule and falls back to `white-space: normal` — which collapses
+     whitespace runs and wraps a line short on whitespace-heavy
+     paragraphs, so the text re-wraps the instant the gesture releases
+     into the real popout. No-op for real editors (their `.ProseMirror`
+     already resolves break-spaces / break-word to the same values). */
+  white-space: break-spaces;
+  overflow-wrap: break-word;
 }
 
 /* Render literal '\t' (inserted by TabIndent / useTabIndent) as a visible
@@ -2809,8 +2819,23 @@ body[data-drop-mode-active="true"] [data-floating-panel="true"][data-drop-mode-s
   to { opacity: 1; }
 }
 
-/* Unhandled LaTeX commands — grey monospace */
-.ProseMirror .latex-cmd {
+/* Unhandled LaTeX commands — grey monospace.
+ *
+ * Also scoped to `.tiptap` (content scope), not just `.ProseMirror`
+ * (live editor instance): the lifted-overlay drag clone re-establishes
+ * `.tiptap` on its body (L3b.1) but is NOT a `.ProseMirror`. A
+ * `.ProseMirror`-only rule misses the clone, so the cloned `.latex-cmd`
+ * fell back to the inherited serif at full size (~10.5px/char) instead
+ * of the monospace 0.9em (~8.2px/char) it carries in both the source
+ * editor and the real popout — the per-atom width gap accumulated and
+ * re-wrapped the text by a line when the gesture released into the
+ * popout (L3b.2). The `.ProseMirror` selector is retained so any editor
+ * whose element lacks an explicit `tiptap` class keeps its styling;
+ * `.tiptap` additively reaches the clone. Same class of fix as L3b.1's
+ * list markers (a content rule that didn't reach the `.tiptap`-only
+ * clone). */
+.ProseMirror .latex-cmd,
+.tiptap .latex-cmd {
   font-family: var(--font-mono-override, var(--font-mono)), ui-monospace, monospace !important;
   color: var(--latex-cmd-color, #9ca3af) !important;
   font-size: 0.9em;
