@@ -12,6 +12,7 @@
  */
 
 import type { Node as PMNode } from "@tiptap/pm/model";
+import { headingTypeName } from "@/lib/heading-types";
 import {
   getSectionRangeByUuid,
   getHeadingLineRangeByUuid,
@@ -271,6 +272,34 @@ export const TEXT_OBJECT_REGISTRY: Record<TextObjectKind, TextObjectMeta> = {
     floatBodyComponent: PLACEHOLDER_FLOAT_BODY,
     initialFloatSize: { width: 480, height: 360 },
     actions: PROSE_ACTIONS,
+    // L3a of the Lifted-Overlay refactor: heading drags through the
+    // same two-mode gesture as paragraph (ghost in pod, popout in
+    // manila). The per-level label (Chapter/Section/Subsection/…) is
+    // computed below via `computeLabel` so the overlay's popout-mode
+    // header matches the real popout's `setHeaderLabel` at handoff.
+    liftMode: "lifted-overlay",
+    // Mirror the dynamic label that `heading-body.tsx` pushes via
+    // `setHeaderLabel(headingTypeName(level))` — so the overlay's
+    // popout-mode header reads the same string the real popout will
+    // show on release, with no visible discrepancy at handoff. Walks
+    // the doc to find the heading node by uuid (cheap; called once
+    // per gesture at threshold cross). Returns null if the source
+    // disappeared concurrently — caller falls back to the static
+    // `meta.label`.
+    computeLabel: (editor, ref) => {
+      let node: PMNode | null = null;
+      editor.state.doc.descendants((n) => {
+        if (node) return false;
+        if (n.type.name === "heading" && n.attrs?.uuid === ref.id) {
+          node = n;
+          return false;
+        }
+        return true;
+      });
+      if (!node) return null;
+      const level = (node as PMNode).attrs?.level;
+      return typeof level === "number" ? headingTypeName(level) : null;
+    },
     dropAdapter: topLevelDropAdapter,
     // Headings move as a section, not a single node — pick up every
     // block from the heading down to the next equal-or-higher heading.

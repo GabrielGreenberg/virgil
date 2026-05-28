@@ -18,6 +18,7 @@
  * registry module.
  */
 
+import type { Editor } from "@tiptap/core";
 import type { Node as PMNode } from "@tiptap/pm/model";
 
 // ---------------------------------------------------------------------------
@@ -269,6 +270,19 @@ export interface TextObjectMeta {
    *  L2 hands off to the drop-mode placement engine. See
    *  `LIFTED-OVERLAY-REFACTOR.md` at repo root. */
   liftMode?: "instant-popout" | "lifted-overlay";
+
+  /** Override the static `label` per-instance based on the live node's
+   *  attrs. Used by the lifted-overlay's popout-mode header so the chrome
+   *  matches what the real popout will show at handoff: heading maps
+   *  `node.attrs.level` to "Chapter" / "Section" / "Subsection" / …
+   *  (mirroring `heading-body.tsx`'s `setHeaderLabel(headingTypeName(level))`
+   *  callback). Other kinds may grow analogous needs (e.g. lists varying
+   *  by bullet vs ordered). When omitted or when the return is null, the
+   *  static `meta.label` wins. Called once at threshold cross by
+   *  `TextObjectGrabHandle.beginGesture`; the result is passed as the
+   *  overlay's `label` prop for the gesture's lifetime. Kept pure /
+   *  view-free — the editor is only used to resolve the node by uuid. */
+  computeLabel?: (editor: Editor, ref: TextObjectRef) => string | null;
 
   /** DragHandleMenu actions this kind exposes. Subset of the global
    *  `DragHandleAction` union, selected per kind. */

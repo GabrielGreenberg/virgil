@@ -5,8 +5,14 @@
  * during a TextObject lift gesture (L1 of the Lifted-Overlay refactor;
  * see LIFTED-OVERLAY-REFACTOR.md at repo root).
  *
- * Wired only for `paragraph` in L1 (via `meta.liftMode === "lifted-overlay"`);
- * the other 15 kinds stay on instant-popout until L3 generalizes.
+ * Wired for `paragraph` (L1) and `heading` (L3a) via
+ * `meta.liftMode === "lifted-overlay"`; the remaining 14 kinds stay on
+ * instant-popout until subsequent L3 commits flip them. The header
+ * label arrives as the `label` prop — the parent (TextObjectGrabHandle)
+ * resolves it once at threshold cross via
+ * `meta.computeLabel?.(editor, ref) ?? meta.label`, so per-instance
+ * overrides (heading → "Chapter" / "Section" / "Subsection") land on
+ * the overlay's popout-mode chrome with no per-kind logic here.
  *
  * Shape:
  *  - Renders TWO sibling elements inside `[data-lifted-overlay-portal]`
@@ -43,7 +49,6 @@ import { Fragment, useEffect, useMemo, useRef, type CSSProperties } from "react"
 import { createPortal } from "react-dom";
 import type { EditorViewportCache } from "@/hooks/useEditorViewportCache";
 import { resolveInlineContextElement } from "@/lib/text-metrics";
-import { TEXT_OBJECT_REGISTRY } from "./text-object-registry";
 import type { TextObjectRef } from "./types";
 
 /** Popout chrome dimensions. Mirror the real popout's chrome so the
@@ -92,6 +97,15 @@ export interface LiftedTextOverlayProps {
   /** Current chrome mode. Parent flips this based on
    *  `cache.containsContentZone(cursor)` — true → ghost, false → popout. */
   mode: "ghost" | "popout";
+  /** Header label for popout-mode chrome. Parent resolves this once at
+   *  threshold cross via `meta.computeLabel?.(editor, ref) ?? meta.label`
+   *  (L3a) so per-level / per-variant overrides (heading → "Chapter" /
+   *  "Section" / "Subsection") match what the real popout's
+   *  `setHeaderLabel` will push on release. The overlay no longer reads
+   *  `meta.label` directly — keeping the resolution at the parent means
+   *  any kind that grows a `computeLabel` slot gets the correct popout-
+   *  mode header without touching the overlay. */
+  label: string;
   /** Viewport cache used for `toPortalCoords` (viewport → portal-relative)
    *  and for resolving the column-level portal target. */
   cache: EditorViewportCache;
@@ -107,6 +121,7 @@ export function LiftedTextOverlay({
   cursorX,
   cursorY,
   mode,
+  label,
   cache,
 }: LiftedTextOverlayProps) {
   // Sanitize the clone once at mount. cloneNode(true) carries the full
@@ -212,12 +227,14 @@ export function LiftedTextOverlay({
       "[data-lifted-overlay-portal]",
     ) as HTMLElement | null) ?? null;
 
-  // Kind label for the popout-mode header bar. Visually mirrors
-  // TextObjectFloat.tsx:93-125; the overlay has pointer-events: none
-  // so the chevron + X icons here are purely visual mimicry (no
-  // onClick wiring). CSS hides the header in ghost mode and fades it
-  // in when popout mode engages.
-  const meta = TEXT_OBJECT_REGISTRY[ref.kind];
+  // The popout-mode header bar's label arrives as a prop (L3a) — the
+  // parent resolves it once at threshold cross via
+  // `meta.computeLabel?.(editor, ref) ?? meta.label` so per-instance
+  // overrides (heading → Chapter/Section/Subsection) match the real
+  // popout's `setHeaderLabel` at handoff. The chevron + X icons are
+  // visual mimicry of TextObjectFloat.tsx:93-125; the overlay has
+  // pointer-events: none so they aren't interactive. CSS hides the
+  // header in ghost mode and fades it in when popout mode engages.
 
   // Convert viewport coords to portal-relative. The overlay tracks the
   // cursor (not the source) so scroll-during-gesture moves the source
@@ -298,7 +315,7 @@ export function LiftedTextOverlay({
         }}
         aria-hidden="true"
       >
-        <span className="lifted-text-overlay__label">{meta.label}</span>
+        <span className="lifted-text-overlay__label">{label}</span>
         <span className="lifted-text-overlay__header-spacer" />
         <span className="lifted-text-overlay__icon">
           <svg

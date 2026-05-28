@@ -337,6 +337,14 @@ interface OverlayState {
   cursorY: number;
   /** Live chrome mode, flipped by `containsContentZone(cursor)`. */
   mode: "ghost" | "popout";
+  /** Header label for the overlay's popout-mode chrome. Resolved at
+   *  threshold cross via `meta.computeLabel?.(editor, ref) ?? meta.label`
+   *  (L3a) so per-level / per-variant overrides (heading → "Chapter" /
+   *  "Section" / "Subsection") match the real popout's
+   *  `setHeaderLabel` at release handoff. Pinned for the gesture — the
+   *  attrs that drove the computation can't change mid-gesture since
+   *  the user holds the mouse. */
+  label: string;
 }
 
 /**
@@ -682,6 +690,14 @@ export function TextObjectGrabHandle({ editorRef }: Props) {
           )
             ? "ghost"
             : "popout";
+          // L3a: per-instance label override via the registry. Heading
+          // maps node.attrs.level → "Chapter" / "Section" / "Subsection"
+          // so the overlay's popout-mode header matches the real popout
+          // at handoff (rather than the static "Heading"). Other kinds
+          // either don't define computeLabel or return null, in which
+          // case we fall through to `meta.label`.
+          const computed = meta.computeLabel?.(editor, ref) ?? null;
+          const label = computed ?? meta.label;
           liveOverlay = {
             ref,
             cardKey,
@@ -693,6 +709,7 @@ export function TextObjectGrabHandle({ editorRef }: Props) {
             cursorX: mv.clientX,
             cursorY: mv.clientY,
             mode: initialMode,
+            label,
           };
           setOverlay(liveOverlay);
           // Start a drop session ALONGSIDE the overlay. `inPlace: true`
@@ -1190,6 +1207,7 @@ export function TextObjectGrabHandle({ editorRef }: Props) {
           cursorX={overlay.cursorX}
           cursorY={overlay.cursorY}
           mode={overlay.mode}
+          label={overlay.label}
           cache={cacheRef.current}
         />
       )}
