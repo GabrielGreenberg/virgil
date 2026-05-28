@@ -1374,16 +1374,21 @@ textarea,
    the source block. Typography (font, color, line-height, etc.) is
    captured from the source via getComputedStyle at threshold-cross and
    applied as inline styles on the overlay root, not inherited through
-   the ancestor chain (the portal sits outside .ProseMirror). The clone
-   already carries its own padding from its .ProseMirror p classes — no
-   wrapper padding needed. The body owns its own overflow clip so the
-   clone is bounded by the captured source rect even if it would
+   the ancestor chain (the portal sits outside .ProseMirror). Padding
+   mirrors paragraph-body's `flex-1 overflow-auto px-8 py-4` wrapper
+   (src/text-objects/floats/paragraph-body.tsx) so the clone text
+   reflows to the same width as the released popout's body and the
+   handoff at release is seamless. The body owns its own overflow clip
+   so the clone is bounded by the captured source rect even if it would
    otherwise reflow taller (long line at a different font metric, etc.). */
+/* L3: when generalizing liftMode to other kinds, expose body padding
+   via the registry — see registry meta.floatBodyPadding follow-up. */
 .lifted-text-overlay__body {
   position: relative;
   width: 100%;
   height: 100%;
   overflow: hidden;
+  padding: 16px 32px;
 }
 
 /* Card grip — squeeze pattern. Triggered both by direct :active on the
