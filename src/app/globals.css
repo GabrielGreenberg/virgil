@@ -1249,6 +1249,69 @@ textarea,
   border-radius: 3px;
 }
 
+/* Lifted-text overlay — portal-rendered ghost that follows the cursor
+   during a TextObject lift gesture (L1 of the Lifted-Overlay refactor;
+   see LIFTED-OVERLAY-REFACTOR.md at repo root). Mounted inside
+   [data-lifted-overlay-portal] (column-level sibling of the pod, same
+   architectural slot as the grab-handle portal).
+
+   Two chrome states via [data-lift-mode], swapped by CSS — NO React
+   re-render of the cloned subtree on mode flip:
+
+   - "ghost"   = cursor in editor content; lighter, dashed frame, ~60%
+                 opacity. Communicates "this is what you're moving; the
+                 move will commit in place when you release."
+   - "popout"  = cursor in gutter or beyond; full frame matching
+                 TextObjectFloat's chrome, 100% opacity. Communicates
+                 "release here to spawn a floating popout."
+
+   Transitions apply only to chrome-bearing properties (opacity, border,
+   background, box-shadow) so position tracking stays instant. z-index
+   25 puts the overlay above grab handles (z:20) and below the pod caps
+   (z:30+). pointer-events: none lets the cursor pass through to the
+   editor for hit-testing (the mode-flip predicate reads cursor vs
+   content rect, not "what's under the cursor element-wise"). */
+.lifted-text-overlay {
+  position: absolute;
+  pointer-events: none;
+  z-index: 25;
+  border-radius: var(--pod-radius, 8px);
+  background: var(--surface, #ffffff);
+  overflow: hidden;
+  box-sizing: border-box;
+  transition:
+    opacity 120ms ease,
+    border-color 120ms ease,
+    border-style 120ms ease,
+    box-shadow 120ms ease,
+    background-color 120ms ease;
+}
+
+.lifted-text-overlay[data-lift-mode="ghost"] {
+  opacity: 0.6;
+  border: 1px dashed var(--border-light, #c9c5c5);
+  box-shadow: none;
+  background: var(--surface-muted, #fafaf9);
+}
+
+.lifted-text-overlay[data-lift-mode="popout"] {
+  opacity: 1;
+  border: var(--pod-border, 1px solid #e5e2dd);
+  box-shadow: var(--card-shadow-ambient);
+  background: var(--surface, #ffffff);
+}
+
+/* Body wrapper inside the overlay — holds the sanitized cloneNode of
+   the source block. The clone keeps the editor's typography because the
+   .lifted-text-overlay sits inside the editor column, inheriting font
+   tokens from .ProseMirror's ancestor chain. Padding mirrors the
+   editor's content padding so the cloned glyph row aligns visually
+   with where it would land on release. */
+.lifted-text-overlay__body {
+  position: relative;
+  padding: 4px 8px;
+}
+
 /* Card grip — squeeze pattern. Triggered both by direct :active on the
    handle and by `.is-pressed` toggled on the handle from PanelCard's lift
    gesture, so pressing anywhere on the header (including outside the

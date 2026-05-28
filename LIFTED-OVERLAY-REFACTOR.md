@@ -1,0 +1,77 @@
+# Lifted-Overlay Refactor — Working Memo
+
+Working memo for the four-session refactor that evolves Virgil's
+TextObject lift gesture from "instant popout on threshold cross" to a
+Notion-style two-mode drag (in-editor ghost overlay, in-gutter popout,
+same dimensions throughout).
+
+The architectural priors sit in [TEXT-OBJECT-REFACTOR.md](TEXT-OBJECT-REFACTOR.md):
+that refactor unified Virgil's 16 graspable text kinds through one
+registry, one grab handle, one float chrome, and one drop spec. This
+arc evolves the lift gesture itself, building on that foundation.
+
+The multi-session meta-plan lives at
+`/Users/gabriel/.claude/plans/1-fine-2-ok-silly-hinton.md` — read it for
+the full context, the 9 architectural decisions baked in, and the
+per-session spec.
+
+---
+
+## Progress
+
+| # | Stage | Commit | Spirit |
+|---|---|---|---|
+| 1 | L1 — lifted-overlay primitive + paragraph wiring | _this commit_ | New `LiftedTextOverlay` primitive renders a portal-rendered ghost of the source block that follows the cursor at source-rect dimensions during a lift gesture; chrome flips between `ghost` (cursor in editor content) and `popout` (cursor in gutter/beyond) via CSS as the cursor crosses the content rect. Wired only for `paragraph` via the new `meta.liftMode: "lifted-overlay"` registry slot — the 15 other kinds default to the legacy `instant-popout` path. Source rect captured ONCE at threshold cross (against `anchorDom.getBoundingClientRect()`, not the handle); cursor offset preserved so the visual stays "stuck" to the user's grab point. Release in popout mode spawns the real popout at the overlay's current rect with source-derived dimensions. Release in ghost mode falls through to the L1→L2 bridge: the legacy `popOutAtRect(cardKey, legacySpawn)` call with the old cursor-centered `floatSizeFor(kind)` rect. The bridge is the defining staging artifact of this commit — a single conditional in `onUp` plus the legacy spawn computation, gated by `finalMode === "ghost"`. L2 deletes the bridge and routes ghost-mode release into the drop-mode placement engine. New `containsContentZone(x, y)` cache helper sits next to `containsHoverZone` and gates the chrome flip — the hover zone includes the gutter (correct for handle visibility), the content zone does not (correct for ghost-vs-popout). Document-leave forces popout mode (same defensive pattern the drop-mode controller uses). cardLiftHandoff/cardLiftTarget signals NOT emitted on the new path — the popout (if it spawns) lands at the overlay's terminal rect, so there's no in-flight handoff animation to perform; the legacy 15 kinds keep them. |
+
+---
+
+## Current state cheat-sheet (read before L2)
+
+**Where the primitive lives:**
+- New file [src/text-objects/LiftedTextOverlay.tsx](src/text-objects/LiftedTextOverlay.tsx) — portal-rendered overlay. Props: `{ ref, anchorDom, grabOffsetX, grabOffsetY, sourceWidth, sourceHeight, cursorX, cursorY, mode, cache }`. The component is "dumb" — parent owns cursor + mode, the overlay just renders. cloneNode-sanitization happens once in `useMemo` (strips `contenteditable` recursively, removes ids to avoid live-source collision, sets `pointer-events: none`).
+- Portal mount in [src/components/EditorPane.tsx](src/components/EditorPane.tsx) — `[data-lifted-overlay-portal]` div, column-level sibling of `[data-grab-handle-portal]` (both inside `[data-editor-col="true"]` — escapes the pod's clipPath that would otherwise swallow descendants beyond ±20px lateral).
+- Chrome CSS in [src/app/globals.css](src/app/globals.css) — `.lifted-text-overlay` base + `[data-lift-mode="ghost"]` (light dashed frame, ~60% opacity, surface-muted background) and `[data-lift-mode="popout"]` (full frame, ambient shadow, surface background). Transitions on opacity/border/box-shadow/background ONLY — NOT on `top`/`left`/`width`/`height` (those must be instant for cursor tracking).
+
+**Where the dispatch sits:**
+- [src/text-objects/TextObjectGrabHandle.tsx](src/text-objects/TextObjectGrabHandle.tsx) `beginGesture` — at threshold cross, reads `meta.liftMode` for the resolved ref. `"lifted-overlay"` → capture source rect + grab-offset, mount overlay, mousemove drives cursor + mode, mouseup commits per mode. `"instant-popout"` (default for everything except paragraph) → existing path, unchanged.
+- Cache extension at [src/hooks/useEditorViewportCache.ts](src/hooks/useEditorViewportCache.ts) — `containsContentZone(x, y)` sibling of `containsHoverZone`, plus the parallel field in the `EditorViewportCache` type and `EMPTY_CACHE`.
+
+**The L1→L2 bridge (the line L2 deletes):**
+- Inside `TextObjectGrabHandle.beginGesture`'s `onUp`, when `finalMode === "ghost"` and the lifted-overlay path was taken: calls `poppedRef.current?.popOutAtRect(cardKey, legacySpawn)` with the cursor-centered `floatSizeFor(ref.kind)` rect. Comment marker: `// L2: replace with drop-commit via beginDropSession({ ..., inPlace: true })`. Without this, ghost-mode release would silently drop and the user would have no in-editor commit between L1 landing and L2 landing.
+
+**What L2 replaces / extends:**
+- Delete the L1 bridge in `beginGesture.onUp`.
+- Extend `beginDropSession({ cardKey, origin, inPlace? })` in [src/components/drop-mode/controller.ts](src/components/drop-mode/controller.ts) with the `inPlace` flag (skips `markSourceFloat` + the source-dimming `data-drop-mode-source` attribute since the source isn't popped during ghost mode).
+- At threshold cross for `liftMode === "lifted-overlay"`, immediately call `beginDropSession({ ..., inPlace: true })` alongside mounting the overlay. The drop session's hit-test + Indicator run alongside the overlay (overlay handles chrome + visual; drop-mode handles placement indication + commit).
+- On release: popout-mode cancels the drop session AND spawns at the overlay's rect; ghost-mode lets the drop session resolve (it'll call `spec.applyDrop` per the placement, which moves the source).
+
+**What stays untouched in L1:**
+- Drop-mode integration (L2).
+- The 15 non-paragraph kinds (L3 flips them; the registry slot is a string enum so the per-kind list of opt-ins is visible on the registry table).
+- `initialFloatSize` constants (L4 retires them once the source rect drives every popout's initial dimensions).
+- `cardLiftHandoff` / `cardLiftTarget` on the legacy path (the 15 instant-popout kinds keep their lift animation).
+
+**Known L3 caveat:** `texBlock`'s CodeMirror won't cloneNode usefully — the editor's view-side rendering isn't carried by `cloneNode(true)`. L3 will need to choose between a placeholder version, a screenshot, or accepting a degraded visual for that one kind. Not L1's problem.
+
+---
+
+## Open feel-check items (for the L1↔L2 dialogue)
+
+After L1 lands and before L2 starts, the user and the manager session
+dialogue about the visual feel in dev preview. Candidate items:
+
+- Ghost chrome — dashed border weight + color, opacity level, background tone. Currently `1px dashed var(--border-light)` + 60% opacity + `var(--surface-muted)`. Easy to push lighter / heavier.
+- Transition timing between modes — currently 120ms ease on opacity/border/background/box-shadow. May want shorter for snappier feel or longer for smoother.
+- Cursor-offset feel — does the source visual feel "stuck" to the cursor at the grab point? L1 captures the offset from the source's top-left at threshold cross; if it feels off, the alternative is capturing from the handle's top-left (and offsetting the source visual accordingly).
+- Boundary-detection sensitivity — `containsContentZone` is currently `[contentLeft, editorRight] × [scrollTop, scrollBottom]`. Should the user be able to brush the edge without flipping modes? (Tighten by inset? Add hysteresis?)
+- Drag-start threshold — 5px today; might want a tweak for the new gesture's feel.
+
+Adjustments fold into L2's commit or a tiny L1.5 polish commit, manager's call.
+
+---
+
+## Reference
+
+- Multi-session meta-plan: `/Users/gabriel/.claude/plans/1-fine-2-ok-silly-hinton.md`
+- Architectural priors: [TEXT-OBJECT-REFACTOR.md](TEXT-OBJECT-REFACTOR.md)
+- Codebase orientation: [AGENTS.md](AGENTS.md)

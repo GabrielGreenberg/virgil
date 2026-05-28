@@ -252,6 +252,10 @@ export const TEXT_OBJECT_REGISTRY: Record<TextObjectKind, TextObjectMeta> = {
     // %!v: anchor; not a LaTeX command per se. Marker is the suffix
     // on the paragraph's last line.
     dropAdapter: topLevelDropAdapter,
+    // L1 of the Lifted-Overlay refactor: paragraph drags through the
+    // new two-mode gesture (ghost in editor, popout in gutter); every
+    // other kind keeps the legacy instant-popout path until L3.
+    liftMode: "lifted-overlay",
     confirmDestructive: (doc, _uuid, action, ctx) =>
       descriptorForSimpleBlock("paragraph", doc, action, ctx, {
         includePreview: true,

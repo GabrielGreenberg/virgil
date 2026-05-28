@@ -53,6 +53,15 @@ export interface EditorViewportCache {
   /** Right edge of the hover zone — equal to `editorRight`. Handle is
    *  on the left; no widening on the right. */
   hoverZoneRight: number;
+  /** True iff `(x, y)` falls inside the editor's content rect — i.e.
+   *  between `contentLeft` and `editorRight` on X, and bounded by the
+   *  scroll parent's visible region on Y. Sibling of `containsHoverZone`,
+   *  but without the gutter cushion: the hover zone extends LEFT into
+   *  the gutter (so the cursor can travel from text to the grip without
+   *  losing the handle), whereas the content zone is the *visible text
+   *  column* (used by the lifted-overlay gesture to decide ghost-mode
+   *  vs popout-mode — cursor in the gutter is already "out of content"). */
+  containsContentZone(x: number, y: number): boolean;
   /** The `[data-editor-col="true"]` (editor-pane-column) element that
    *  serves as the grab-handle portal's positioning context. The portal
    *  div lives as a column-level sibling of the pod (NOT inside the
@@ -94,6 +103,7 @@ const EMPTY_CACHE: EditorViewportCache = {
   gutterInset: DEFAULT_GUTTER_INSET,
   hoverZoneLeft: 0,
   hoverZoneRight: 0,
+  containsContentZone: () => false,
   paperEl: null,
   paperRect: { top: 0, left: 0 },
   containsHoverZone: () => false,
@@ -189,6 +199,11 @@ export function useEditorViewportCache(editor: Editor | null): {
         x <= hoverZoneRight &&
         y >= scrollTop &&
         y <= scrollBottom;
+      const containsContentZone = (x: number, y: number): boolean =>
+        x >= contentLeft &&
+        x <= editorRight &&
+        y >= scrollTop &&
+        y <= scrollBottom;
       // Read the column rect fresh per call: it changes on scroll
       // (the column moves inside the row scroll container), and the
       // cache only refreshes on resize. Cheap — one
@@ -209,6 +224,7 @@ export function useEditorViewportCache(editor: Editor | null): {
         gutterInset,
         hoverZoneLeft,
         hoverZoneRight,
+        containsContentZone,
         paperEl,
         paperRect: { top: paperTop, left: paperLeft },
         containsHoverZone,

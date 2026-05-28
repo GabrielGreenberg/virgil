@@ -252,6 +252,24 @@ export interface TextObjectMeta {
    *  want more room than a paragraph float. */
   initialFloatSize?: { width: number; height: number };
 
+  /** How the grab-handle drag gesture lifts this kind.
+   *
+   *  `"instant-popout"` (default when omitted) — the legacy gesture:
+   *  past the 5px threshold, the cursor-centered float spawns
+   *  immediately via `popOutAtRect`. The 15 non-paragraph kinds stay
+   *  on this path through L1–L3 of the Lifted-Overlay refactor.
+   *
+   *  `"lifted-overlay"` — the new Notion-style two-mode drag (paragraph
+   *  in L1; all kinds by L4). A portal-rendered `LiftedTextOverlay`
+   *  follows the cursor at source-rect dimensions while the gesture is
+   *  live; chrome flips between ghost (cursor in content) and popout
+   *  (cursor in gutter or beyond) via CSS. Release-in-popout-mode spawns
+   *  the real popout at the overlay's current rect; release-in-ghost-mode
+   *  in L1 falls through to the legacy spawn (the L1→L2 bridge) and in
+   *  L2 hands off to the drop-mode placement engine. See
+   *  `LIFTED-OVERLAY-REFACTOR.md` at repo root. */
+  liftMode?: "instant-popout" | "lifted-overlay";
+
   /** DragHandleMenu actions this kind exposes. Subset of the global
    *  `DragHandleAction` union, selected per kind. */
   actions: ReadonlyArray<DragHandleAction>;

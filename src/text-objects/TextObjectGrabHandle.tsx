@@ -73,6 +73,7 @@ import {
   textObjectPopoutKey,
 } from "./text-object-registry";
 import { computeHandleLeftEdge } from "./handle-layout";
+import { LiftedTextOverlay } from "./LiftedTextOverlay";
 import type {
   SelectionRef,
   TextObjectKind,
@@ -261,6 +262,54 @@ function resolveTextObjectsAtMouse(
 }
 
 const EMPTY_REFS: TextObjectRef[] = [];
+
+/**
+ * Resolve the source block's DOM element for a `TextObjectRef`. Mirrors
+ * the lookup in `computePlacement`: walks `walkAnchorableBlocks` to
+ * find the block by uuid, then asks the view for its NodeView DOM. The
+ * resulting element is what the lifted-overlay clones at threshold
+ * cross. Returns null when the source is missing (concurrent delete) —
+ * the lifted-overlay gesture degrades to a popout-release at the
+ * overlay's current rect in that case.
+ */
+function resolveAnchorDom(
+  editor: Editor,
+  ref: TextObjectRef,
+): HTMLElement | null {
+  const block = walkAnchorableBlocks(editor).find((b) => b.uuid === ref.id);
+  if (!block) return null;
+  const node = editor.state.doc.nodeAt(block.pos);
+  if (!node || node.type.name !== ref.kind) return null;
+  const dom = editor.view.nodeDOM(block.pos);
+  return dom instanceof HTMLElement ? dom : null;
+}
+
+/**
+ * Live state for an in-flight lifted-overlay gesture. The parent
+ * (`TextObjectGrabHandle`) holds one of these as React state while the
+ * gesture is active; mutating it during the gesture is done via
+ * `setOverlay({...})` so React renders the overlay with the new cursor
+ * coords + mode. The `cardKey` is captured at threshold-cross so
+ * `onUp` can spawn the popout without re-resolving.
+ */
+interface OverlayState {
+  ref: TextObjectRef;
+  cardKey: string;
+  anchorDom: HTMLElement;
+  /** Cursor offset within the source's rendered rect — fixed for the
+   *  gesture's lifetime so the source visual stays "stuck" to the user's
+   *  grab point. */
+  grabOffsetX: number;
+  grabOffsetY: number;
+  /** Source rect captured ONCE at threshold-cross. */
+  sourceWidth: number;
+  sourceHeight: number;
+  /** Live cursor coords, updated every mousemove. */
+  cursorX: number;
+  cursorY: number;
+  /** Live chrome mode, flipped by `containsContentZone(cursor)`. */
+  mode: "ghost" | "popout";
+}
 
 /**
  * Compute placement for a single ref. Pins the handle's left edge to
@@ -455,6 +504,11 @@ interface Props {
 export function TextObjectGrabHandle({ editorRef }: Props) {
   const popped = usePoppedCards();
   const [placements, setPlacements] = useState<Placement[]>([]);
+  // Lifted-overlay gesture state (L1 of the Lifted-Overlay refactor;
+  // paragraph only — gated by `meta.liftMode === "lifted-overlay"`).
+  // Non-null while a lifted-overlay drag is in flight; null otherwise.
+  // The 15 instant-popout kinds never touch this state.
+  const [overlay, setOverlay] = useState<OverlayState | null>(null);
 
   // Mouse position drives the hover-based discovery path. null when the
   // mouse hasn't moved over the editor or has left the hover zone.
@@ -519,77 +573,168 @@ export function TextObjectGrabHandle({ editorRef }: Props) {
     const startX = downEv.clientX;
     const startY = downEv.clientY;
     let triggered = false;
+    // Live overlay state mirrored as a local closure variable so the
+    // mousemove handler can mutate cursor / mode without a state-read
+    // through React. We still call `setOverlay({...})` to publish to
+    // the renderer; the local copy is the source of truth between
+    // events. Stays null on the instant-popout path.
+    let liveOverlay: OverlayState | null = null;
 
     const onMove = (mv: MouseEvent) => {
-      if (triggered) return;
-      const dx = mv.clientX - startX;
-      const dy = mv.clientY - startY;
-      if (dx * dx + dy * dy < LIFT_THRESHOLD * LIFT_THRESHOLD) return;
-      triggered = true;
+      if (!triggered) {
+        const dx = mv.clientX - startX;
+        const dy = mv.clientY - startY;
+        if (dx * dx + dy * dy < LIFT_THRESHOLD * LIFT_THRESHOLD) return;
+        triggered = true;
 
-      let ref: TextObjectRef;
-      if (startRef.kind === "selection") {
-        const docSize = editor.state.doc.content.size;
-        const safeFrom = Math.max(0, Math.min(startRef.from, docSize));
-        const safeTo = Math.max(0, Math.min(startRef.to, docSize));
-        if (safeFrom >= safeTo) {
+        let ref: TextObjectRef;
+        if (startRef.kind === "selection") {
+          const docSize = editor.state.doc.content.size;
+          const safeFrom = Math.max(0, Math.min(startRef.from, docSize));
+          const safeTo = Math.max(0, Math.min(startRef.to, docSize));
+          if (safeFrom >= safeTo) {
+            cleanup();
+            return;
+          }
+          const hydrated = hydrateSelectionToTextObject(
+            editor.view,
+            safeFrom,
+            safeTo,
+          );
+          if (!hydrated) {
+            cleanup();
+            return;
+          }
+          ref = hydrated;
+        } else {
+          ref = startRef;
+        }
+
+        const cardKey = popoutKeyForLift(ref);
+        if (!cardKey) {
           cleanup();
           return;
         }
-        const hydrated = hydrateSelectionToTextObject(
-          editor.view,
-          safeFrom,
-          safeTo,
+        if (poppedRef.current?.isPopped(cardKey)) {
+          cleanup();
+          return;
+        }
+
+        // Dispatch on `meta.liftMode`. Paragraph (L1) takes the
+        // lifted-overlay path; the other 15 kinds keep instant-popout.
+        const meta = TEXT_OBJECT_REGISTRY[ref.kind];
+        const liftMode = meta.liftMode ?? "instant-popout";
+
+        if (liftMode === "lifted-overlay") {
+          // L1 — paragraph. Capture source rect ONCE at threshold cross
+          // (never re-read); mount the overlay; mousemove now drives
+          // cursor + mode until release.
+          const anchorDom = resolveAnchorDom(editor, ref);
+          if (!anchorDom) {
+            // Source resolution failed at threshold — fall back to the
+            // legacy cursor-centered spawn so the gesture still produces
+            // a popout instead of silently dropping. This is the same
+            // shape as a concurrent-delete during the gesture (decision
+            // §9).
+            const { width, height } = floatSizeFor(ref.kind);
+            const legacySpawn = {
+              x: Math.round(mv.clientX - width / 2),
+              y: Math.round(mv.clientY - SPAWN_CURSOR_OFFSET_Y),
+              width,
+              height,
+            };
+            poppedRef.current?.popOutAtRect(cardKey, legacySpawn);
+            cleanup();
+            return;
+          }
+          const sourceRect = anchorDom.getBoundingClientRect();
+          const initialMode = cacheRef.current.containsContentZone(
+            mv.clientX,
+            mv.clientY,
+          )
+            ? "ghost"
+            : "popout";
+          liveOverlay = {
+            ref,
+            cardKey,
+            anchorDom,
+            grabOffsetX: mv.clientX - sourceRect.left,
+            grabOffsetY: mv.clientY - sourceRect.top,
+            sourceWidth: sourceRect.width,
+            sourceHeight: sourceRect.height,
+            cursorX: mv.clientX,
+            cursorY: mv.clientY,
+            mode: initialMode,
+          };
+          setOverlay(liveOverlay);
+          // Do NOT cleanup — onMove continues to drive the overlay,
+          // and onUp commits the popout based on terminal mode.
+          // cardLiftHandoff/cardLiftTarget intentionally NOT emitted
+          // on this path: the popout (if it spawns) lands at the
+          // overlay's terminal rect, so there's no in-flight handoff
+          // animation to perform.
+          return;
+        }
+
+        // Instant-popout path (legacy — 15 non-paragraph kinds).
+        const { width, height } = floatSizeFor(ref.kind);
+        const spawn = {
+          x: Math.round(mv.clientX - width / 2),
+          y: Math.round(mv.clientY - SPAWN_CURSOR_OFFSET_Y),
+          width,
+          height,
+        };
+        const wrapperRect = handleEl.getBoundingClientRect();
+        setCardLiftTarget({
+          cardKey,
+          rect: {
+            left: wrapperRect.left,
+            top: wrapperRect.top,
+            width: wrapperRect.width,
+            height: wrapperRect.height,
+          },
+        });
+        window.setTimeout(() => setCardLiftTarget(null), 150);
+        setCardLiftHandoff({
+          cardKey,
+          clientX: mv.clientX,
+          clientY: mv.clientY,
+          width,
+          height,
+        });
+        poppedRef.current?.popOutAtRect(cardKey, spawn);
+        cleanup();
+        return;
+      }
+
+      // Triggered + lifted-overlay path → drive overlay cursor + mode.
+      if (liveOverlay) {
+        const inContent = cacheRef.current.containsContentZone(
+          mv.clientX,
+          mv.clientY,
         );
-        if (!hydrated) {
-          cleanup();
-          return;
-        }
-        ref = hydrated;
-      } else {
-        ref = startRef;
+        liveOverlay = {
+          ...liveOverlay,
+          cursorX: mv.clientX,
+          cursorY: mv.clientY,
+          mode: inContent ? "ghost" : "popout",
+        };
+        setOverlay(liveOverlay);
       }
-
-      const { width, height } = floatSizeFor(ref.kind);
-      const spawn = {
-        x: Math.round(mv.clientX - width / 2),
-        y: Math.round(mv.clientY - SPAWN_CURSOR_OFFSET_Y),
-        width,
-        height,
-      };
-
-      const cardKey = popoutKeyForLift(ref);
-      if (!cardKey) {
-        cleanup();
-        return;
-      }
-      if (poppedRef.current?.isPopped(cardKey)) {
-        cleanup();
-        return;
-      }
-      const wrapperRect = handleEl.getBoundingClientRect();
-      setCardLiftTarget({
-        cardKey,
-        rect: {
-          left: wrapperRect.left,
-          top: wrapperRect.top,
-          width: wrapperRect.width,
-          height: wrapperRect.height,
-        },
-      });
-      window.setTimeout(() => setCardLiftTarget(null), 150);
-      setCardLiftHandoff({
-        cardKey,
-        clientX: mv.clientX,
-        clientY: mv.clientY,
-        width,
-        height,
-      });
-      poppedRef.current?.popOutAtRect(cardKey, spawn);
-      cleanup();
     };
 
-    const onUp = () => {
+    // Document-leave forces popout mode (decision §8) — the same
+    // defensive pattern the drop-mode controller uses. If the user
+    // drags off the document entirely, the gesture lands as a popout
+    // at release (rather than the ambiguous ghost state).
+    const onDocLeave = (ev: MouseEvent) => {
+      if (ev.relatedTarget != null) return;
+      if (!liveOverlay) return;
+      liveOverlay = { ...liveOverlay, mode: "popout" };
+      setOverlay(liveOverlay);
+    };
+
+    const onUp = (upEv: MouseEvent) => {
       // No drag → treat as a click and open the action menu for the
       // captured ref.
       if (!triggered) {
@@ -605,17 +750,83 @@ export function TextObjectGrabHandle({ editorRef }: Props) {
           const rect = handleEl.getBoundingClientRect();
           open(startRef, rect);
         }
+        cleanup();
+        return;
+      }
+
+      // Triggered on lifted-overlay path — commit the popout.
+      if (liveOverlay) {
+        const {
+          ref,
+          cardKey,
+          grabOffsetX,
+          grabOffsetY,
+          sourceWidth,
+          sourceHeight,
+          cursorX,
+          cursorY,
+          mode,
+        } = liveOverlay;
+        // Final mode read uses the up-event coords (slightly more
+        // accurate than the last mousemove if the user released between
+        // frames). Falls back to the live state when the up event
+        // happens to land in the same zone.
+        const finalMode = cacheRef.current.containsContentZone(
+          upEv.clientX,
+          upEv.clientY,
+        )
+          ? "ghost"
+          : mode === "popout"
+            ? "popout"
+            : "ghost";
+        if (finalMode === "popout") {
+          const overlayRect = {
+            x: Math.round(cursorX - grabOffsetX),
+            y: Math.round(cursorY - grabOffsetY),
+            width: sourceWidth,
+            height: sourceHeight,
+          };
+          poppedRef.current?.popOutAtRect(cardKey, overlayRect);
+        } else {
+          // L1→L2 bridge: ghost-mode release falls through to the
+          // LEGACY cursor-centered fixed-size spawn so the gesture
+          // remains usable end-to-end until L2 wires the drop-mode
+          // placement engine. The cardKey + ref are captured so the
+          // bridge has everything it needs without re-resolving.
+          //
+          // L2: replace with drop-commit via beginDropSession({ ..., inPlace: true })
+          const { width, height } = floatSizeFor(ref.kind);
+          const legacySpawn = {
+            x: Math.round(cursorX - width / 2),
+            y: Math.round(cursorY - SPAWN_CURSOR_OFFSET_Y),
+            width,
+            height,
+          };
+          poppedRef.current?.popOutAtRect(cardKey, legacySpawn);
+        }
+        liveOverlay = null;
+        setOverlay(null);
       }
       cleanup();
     };
     const cleanup = () => {
       window.removeEventListener("mousemove", onMove);
       window.removeEventListener("mouseup", onUp);
+      document.documentElement.removeEventListener("mouseleave", onDocLeave);
       handleEl.classList.remove("is-pressed");
+      // Defensive: if the gesture aborted mid-overlay without
+      // committing (e.g. cleanup() called between threshold-cross and
+      // onUp on the lifted-overlay path), clear the overlay state so
+      // it doesn't ghost on screen.
+      if (liveOverlay) {
+        liveOverlay = null;
+        setOverlay(null);
+      }
     };
     window.addEventListener("mousemove", onMove);
     window.addEventListener("mouseup", onUp);
-  }, [editorRef]);
+    document.documentElement.addEventListener("mouseleave", onDocLeave);
+  }, [editorRef, cacheRef]);
 
   // Click-to-ensure-anchor-uuid fast path is wired through `beginGesture`'s
   // !startRef.id check above. Keep the import alive for clarity.
@@ -881,8 +1092,8 @@ export function TextObjectGrabHandle({ editorRef }: Props) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [cacheVersion]);
 
-  if (placements.length === 0) return null;
   if (typeof document === "undefined") return null;
+  if (placements.length === 0 && !overlay) return null;
   // Resolve the portal target INLINE from the same cacheRef.current
   // snapshot that computePlacement (called above via schedule) used
   // for toPortalCoords. This guarantees that whenever placements are
@@ -902,17 +1113,36 @@ export function TextObjectGrabHandle({ editorRef }: Props) {
     cacheRef.current.paperEl?.querySelector(
       "[data-grab-handle-portal]",
     ) as HTMLElement | null ?? null;
-  return createPortal(
+  return (
     <>
-      {placements.map((p) => (
-        <GrabHandleRender
-          key={refKey(p.ref)}
-          placement={p}
-          onBeginGesture={beginGesture}
+      {overlay && (
+        <LiftedTextOverlay
+          ref={overlay.ref}
+          anchorDom={overlay.anchorDom}
+          grabOffsetX={overlay.grabOffsetX}
+          grabOffsetY={overlay.grabOffsetY}
+          sourceWidth={overlay.sourceWidth}
+          sourceHeight={overlay.sourceHeight}
+          cursorX={overlay.cursorX}
+          cursorY={overlay.cursorY}
+          mode={overlay.mode}
+          cache={cacheRef.current}
         />
-      ))}
-    </>,
-    livePortalRoot ?? document.body,
+      )}
+      {placements.length > 0 &&
+        createPortal(
+          <>
+            {placements.map((p) => (
+              <GrabHandleRender
+                key={refKey(p.ref)}
+                placement={p}
+                onBeginGesture={beginGesture}
+              />
+            ))}
+          </>,
+          livePortalRoot ?? document.body,
+        )}
+    </>
   );
 }
 
