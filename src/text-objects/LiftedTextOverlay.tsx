@@ -9,10 +9,21 @@
  * the other 15 kinds stay on instant-popout until L3 generalizes.
  *
  * Shape:
- *  - Renders as `position: absolute` inside `[data-lifted-overlay-portal]`,
- *    which lives at column level (sibling of the pod) inside the editor
- *    column — same architectural slot as the grab-handle portal, so the
- *    overlay escapes the pod's `clipPath` and scrolls with the row.
+ *  - Renders TWO sibling elements inside `[data-lifted-overlay-portal]`
+ *    (column-level inside the editor column — same architectural slot
+ *    as the grab-handle portal, escapes the pod's clipPath, scrolls
+ *    with the row):
+ *      1. `.lifted-text-overlay` — `position: absolute`, sized to the
+ *         source rect, contains the sanitized body clone.
+ *      2. `.lifted-text-overlay__header` — `position: absolute`, sized
+ *         independently by JS to sit flush above the overlay's top edge
+ *         (left, top, width all inline). Both elements carry
+ *         `data-lift-mode`; CSS hides the header in ghost mode.
+ *    The sibling layout (L1.9) replaces L1.7's child-of-overlay header
+ *    with `bottom: 100%` — that version was silently clipped by any
+ *    overflow:hidden on the overlay root, which is exactly what
+ *    Turbopack's stale bundler kept serving after L1.8's source-side
+ *    overflow move.
  *  - Body content is a sanitized `cloneNode(true)` of `anchorDom`, with
  *    `contenteditable` stripped recursively and `pointer-events: none`
  *    so the live cursor underneath stays in control of hit-testing
@@ -28,11 +39,21 @@
  * change per frame.
  */
 
-import { useEffect, useMemo, useRef, type CSSProperties } from "react";
+import { Fragment, useEffect, useMemo, useRef, type CSSProperties } from "react";
 import { createPortal } from "react-dom";
 import type { EditorViewportCache } from "@/hooks/useEditorViewportCache";
 import { TEXT_OBJECT_REGISTRY } from "./text-object-registry";
 import type { TextObjectRef } from "./types";
+
+/** Matches the `.lifted-text-overlay__header` `height` in globals.css.
+ *  The header is rendered as a portal sibling of the overlay (L1.9 — the
+ *  prior bottom:100% positioning silently clipped the header any time
+ *  the overlay root carried overflow:hidden, even briefly via a stale
+ *  Turbopack chunk). Sibling positioning takes the overlay's box out of
+ *  the equation entirely; JS owns the header geometry. Keeping the
+ *  numeric here lets the inline `top`/`height` stay in sync with the
+ *  CSS box without reading getComputedStyle on every frame. */
+const HEADER_HEIGHT = 24;
 
 export interface LiftedTextOverlayProps {
   /** The ref the gesture is lifting. Informational — the overlay
@@ -171,11 +192,11 @@ export function LiftedTextOverlay({
       "[data-lifted-overlay-portal]",
     ) as HTMLElement | null) ?? null;
 
-  // Kind label for the popout-mode header row. Visually mirrors
+  // Kind label for the popout-mode header bar. Visually mirrors
   // TextObjectFloat.tsx:93-125; the overlay has pointer-events: none
   // so the chevron + X icons here are purely visual mimicry (no
   // onClick wiring). CSS hides the header in ghost mode and fades it
-  // in over 120ms when popout mode engages.
+  // in when popout mode engages.
   const meta = TEXT_OBJECT_REGISTRY[ref.kind];
 
   // Convert viewport coords to portal-relative. The overlay tracks the
@@ -187,22 +208,49 @@ export function LiftedTextOverlay({
     cursorY - grabOffsetY,
   );
 
+  // The header is a SIBLING of the overlay (both inside the same portal),
+  // positioned by JS so its bottom edge aligns flush with the overlay's
+  // top edge and its left/right edges align with the overlay's outer
+  // border (the −1 / +2 covers the 1px border on each side in popout
+  // mode, so the chrome reads as one continuous box). Sibling positioning
+  // replaces L1.7's `position: absolute; bottom: 100%` child-of-overlay
+  // approach, which silently clipped against any overflow:hidden on the
+  // overlay root — see LIFTED-OVERLAY-REFACTOR.md L1.9.
+  const headerLeft = portalCoords.x - 1;
+  const headerTop = portalCoords.y - HEADER_HEIGHT;
+  const headerWidth = sourceWidth + 2;
+
   return createPortal(
-    <div
-      className="lifted-text-overlay"
-      data-lift-mode={mode}
-      data-lift-kind={ref.kind}
-      style={{
-        ...typographyStyles,
-        position: "absolute",
-        left: portalCoords.x,
-        top: portalCoords.y,
-        width: sourceWidth,
-        height: sourceHeight,
-      }}
-      aria-hidden="true"
-    >
-      <div className="lifted-text-overlay__header">
+    <Fragment>
+      <div
+        className="lifted-text-overlay"
+        data-lift-mode={mode}
+        data-lift-kind={ref.kind}
+        style={{
+          ...typographyStyles,
+          position: "absolute",
+          left: portalCoords.x,
+          top: portalCoords.y,
+          width: sourceWidth,
+          height: sourceHeight,
+        }}
+        aria-hidden="true"
+      >
+        <div ref={bodyRef} className="lifted-text-overlay__body" />
+      </div>
+      <div
+        className="lifted-text-overlay__header"
+        data-lift-mode={mode}
+        data-lift-kind={ref.kind}
+        style={{
+          position: "absolute",
+          left: headerLeft,
+          top: headerTop,
+          width: headerWidth,
+          height: HEADER_HEIGHT,
+        }}
+        aria-hidden="true"
+      >
         <span className="lifted-text-overlay__label">{meta.label}</span>
         <span className="lifted-text-overlay__header-spacer" />
         <span className="lifted-text-overlay__icon">
@@ -235,8 +283,7 @@ export function LiftedTextOverlay({
           </svg>
         </span>
       </div>
-      <div ref={bodyRef} className="lifted-text-overlay__body" />
-    </div>,
+    </Fragment>,
     portal ?? document.body,
   );
 }
