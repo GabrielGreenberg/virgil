@@ -42,18 +42,28 @@
 import { Fragment, useEffect, useMemo, useRef, type CSSProperties } from "react";
 import { createPortal } from "react-dom";
 import type { EditorViewportCache } from "@/hooks/useEditorViewportCache";
+import { resolveInlineContextElement } from "@/lib/text-metrics";
 import { TEXT_OBJECT_REGISTRY } from "./text-object-registry";
 import type { TextObjectRef } from "./types";
 
-/** Matches the `.lifted-text-overlay__header` `height` in globals.css.
- *  The header is rendered as a portal sibling of the overlay (L1.9 — the
- *  prior bottom:100% positioning silently clipped the header any time
- *  the overlay root carried overflow:hidden, even briefly via a stale
- *  Turbopack chunk). Sibling positioning takes the overlay's box out of
- *  the equation entirely; JS owns the header geometry. Keeping the
- *  numeric here lets the inline `top`/`height` stay in sync with the
- *  CSS box without reading getComputedStyle on every frame. */
+/** Popout chrome dimensions. Mirror the real popout's chrome so the
+ *  overlay's outer rect in popout mode and the `popOutAtRect` spawn rect
+ *  produce a body-content rect that lands at exactly the ghost's text
+ *  rect (L1.12 — text content stays still, chrome grows outward).
+ *  HEADER_HEIGHT matches `.lifted-text-overlay__header` `height` in
+ *  globals.css and `TextObjectFloat.tsx`'s header `h-6`. BODY_PADDING_X/Y
+ *  match `.lifted-text-overlay__body[data-lift-mode="popout"]` padding
+ *  and `paragraph-body.tsx`'s `px-8 py-4`. The header is rendered as a
+ *  portal sibling of the overlay (L1.9 — the prior bottom:100%
+ *  positioning silently clipped the header any time the overlay root
+ *  carried overflow:hidden, even briefly via a stale Turbopack chunk).
+ *  Sibling positioning takes the overlay's box out of the equation
+ *  entirely; JS owns the header geometry. Mirrored in
+ *  `TextObjectGrabHandle.tsx` (release-handoff spawn coords) and CSS
+ *  (body popout-padding rule); L4 may centralize via the registry. */
 const HEADER_HEIGHT = 24;
+const BODY_PADDING_X = 32;
+const BODY_PADDING_Y = 16;
 
 export interface LiftedTextOverlayProps {
   /** The ref the gesture is lifting. Informational — the overlay
@@ -148,9 +158,19 @@ export function LiftedTextOverlay({
   // lost, and the clone would reflow at a different width than the
   // source. Holding the computed values for the gesture's lifetime is
   // safe because they're stable: the source isn't restyled mid-drag.
+  //
+  // L1.12: read computed styles from the resolved inline-context element
+  // (e.g. the inner `<p>` inside `.par-title-wrapper`) rather than the
+  // wrapper itself. The wrapper's font properties don't match the inner
+  // text element's (paragraph styling lives on `.ProseMirror p`), which
+  // produced a subtly larger / wider-spaced ghost in L1.10/L1.11. The
+  // `?? anchorDom` fallback covers unrecognized wrapper shapes — safe
+  // since `resolveInlineContextElement` already falls back internally
+  // for raw `<p>`/`<blockquote>` etc.
   const typographyStyles = useMemo<CSSProperties>(() => {
     if (typeof window === "undefined") return {};
-    const computed = window.getComputedStyle(anchorDom);
+    const inlineEl = resolveInlineContextElement(anchorDom) ?? anchorDom;
+    const computed = window.getComputedStyle(inlineEl);
     return {
       fontFamily: computed.fontFamily,
       fontSize: computed.fontSize,
@@ -203,10 +223,31 @@ export function LiftedTextOverlay({
   // cursor (not the source) so scroll-during-gesture moves the source
   // but keeps the overlay glued under the cursor — the model the user
   // expects (the visual is "in your hand," not "in the doc").
-  const portalCoords = cache.toPortalCoords(
+  //
+  // `textCoords` is the text content's top-left in portal coords. This
+  // is the invariant across both modes (L1.12): the text never moves,
+  // chrome grows outward to accommodate popout padding + header.
+  const textCoords = cache.toPortalCoords(
     cursorX - grabOffsetX,
     cursorY - grabOffsetY,
   );
+
+  // Overlay outer rect, mode-dependent (L1.12). In ghost mode the outer
+  // box hugs the text (no chrome to make room for). In popout mode the
+  // outer box grows OUTWARD by the body-padding on each axis — the
+  // popout-mode body padding (set in globals.css) then insets the text
+  // back to exactly `textCoords`, so the text stays at the same screen
+  // pixel through the mode flip. The user only sees the chrome
+  // materialize around the still text.
+  const isPopout = mode === "popout";
+  const overlayLeft = isPopout ? textCoords.x - BODY_PADDING_X : textCoords.x;
+  const overlayTop = isPopout ? textCoords.y - BODY_PADDING_Y : textCoords.y;
+  const overlayWidth = isPopout
+    ? sourceWidth + 2 * BODY_PADDING_X
+    : sourceWidth;
+  const overlayHeight = isPopout
+    ? sourceHeight + 2 * BODY_PADDING_Y
+    : sourceHeight;
 
   // The header is a SIBLING of the overlay (both inside the same portal),
   // positioned by JS so its bottom edge aligns flush with the overlay's
@@ -216,9 +257,15 @@ export function LiftedTextOverlay({
   // replaces L1.7's `position: absolute; bottom: 100%` child-of-overlay
   // approach, which silently clipped against any overflow:hidden on the
   // overlay root — see LIFTED-OVERLAY-REFACTOR.md L1.9.
-  const headerLeft = portalCoords.x - 1;
-  const headerTop = portalCoords.y - HEADER_HEIGHT;
-  const headerWidth = sourceWidth + 2;
+  //
+  // L1.12: the header tracks the overlay OUTER (not the text rect) so
+  // it sits flush above the grown popout-mode chrome, not above the
+  // smaller invariant text rect. CSS still hides the header in ghost
+  // mode; computing the ghost coords here is cheap and keeps the JSX
+  // symmetric.
+  const headerLeft = overlayLeft - 1;
+  const headerTop = overlayTop - HEADER_HEIGHT;
+  const headerWidth = overlayWidth + 2;
 
   return createPortal(
     <Fragment>
@@ -229,10 +276,10 @@ export function LiftedTextOverlay({
         style={{
           ...typographyStyles,
           position: "absolute",
-          left: portalCoords.x,
-          top: portalCoords.y,
-          width: sourceWidth,
-          height: sourceHeight,
+          left: overlayLeft,
+          top: overlayTop,
+          width: overlayWidth,
+          height: overlayHeight,
         }}
         aria-hidden="true"
       >

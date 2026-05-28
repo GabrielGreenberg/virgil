@@ -86,6 +86,29 @@ const LIFT_THRESHOLD = 5;
  *  header (not on the body) after the lift. */
 const SPAWN_CURSOR_OFFSET_Y = 16;
 
+/** Popout chrome dimensions used by the lifted-overlay path (L1.12).
+ *
+ *  The lifted-overlay model treats the text content's absolute viewport
+ *  position as invariant across ghost → popout overlay → real popout;
+ *  chrome grows OUTWARD when modes change, the text never moves. These
+ *  constants encode the real popout's chrome so the overlay's outer rect
+ *  in popout mode and the `popOutAtRect` spawn rect can both be sized to
+ *  produce a body-content rect that lands at exactly the ghost's text
+ *  rect.
+ *
+ *  These mirror the real popout's chrome and MUST stay in sync with:
+ *   - `TextObjectFloat.tsx` header `h-6` (24px tall) → POPOUT_HEADER_HEIGHT
+ *   - `paragraph-body.tsx`'s `flex-1 overflow-auto px-8 py-4`
+ *     (32px horizontal / 16px vertical padding) → POPOUT_BODY_PADDING_X/Y
+ *   - the matching `.lifted-text-overlay__body` popout-mode padding rule
+ *     in `globals.css` (currently 16px 32px) which mirrors the real body.
+ *
+ *  L4 cleanup may centralize these via the registry (per-kind chrome) once
+ *  the lifted-overlay path generalizes beyond paragraph. */
+const POPOUT_HEADER_HEIGHT = 24;
+const POPOUT_BODY_PADDING_X = 32;
+const POPOUT_BODY_PADDING_Y = 16;
+
 /**
  * Default initial float size at spawn time. Per-kind overrides live on
  * the registry as `meta.initialFloatSize`; wider kinds (headings,
@@ -780,11 +803,20 @@ export function TextObjectGrabHandle({ editorRef }: Props) {
             ? "popout"
             : "ghost";
         if (finalMode === "popout") {
+          // L1.12: spawn the real popout with chrome-inclusive coords so
+          // its body-content rect (after subtracting the header height
+          // and body padding) lands at exactly the text rect the overlay
+          // was holding. Without this offset the popout's header eats
+          // 24px from the top of the rect, the body padding eats 16/32
+          // from each axis, and the body content lands shifted (32, 40)
+          // from where the ghost's text was — a visible jump on release.
           const overlayRect = {
-            x: Math.round(cursorX - grabOffsetX),
-            y: Math.round(cursorY - grabOffsetY),
-            width: sourceWidth,
-            height: sourceHeight,
+            x: Math.round(cursorX - grabOffsetX - POPOUT_BODY_PADDING_X),
+            y: Math.round(
+              cursorY - grabOffsetY - POPOUT_HEADER_HEIGHT - POPOUT_BODY_PADDING_Y,
+            ),
+            width: sourceWidth + 2 * POPOUT_BODY_PADDING_X,
+            height: sourceHeight + POPOUT_HEADER_HEIGHT + 2 * POPOUT_BODY_PADDING_Y,
           };
           poppedRef.current?.popOutAtRect(cardKey, overlayRect);
         } else {
