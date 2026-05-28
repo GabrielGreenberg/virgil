@@ -255,4 +255,9 @@ export interface DropSession {
   /** Current placement under the cursor, or null when not over a valid
    *  target. The Indicator subscribes to this and re-renders. */
   placement: Placement | null;
+  /** True when the gesture sourced from an in-editor lift (lifted-
+   *  overlay) rather than from a popped-out float header. The
+   *  controller skips `markSourceFloat` for in-place sessions — no
+   *  float exists to dim. */
+  inPlace: boolean;
 }

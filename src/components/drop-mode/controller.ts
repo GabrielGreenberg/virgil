@@ -67,12 +67,22 @@ export function useDropSession(): DropSession | null {
  * with no specs, so shift-grab is harmless until paragraphDropSpec
  * lands).
  *
+ * `inPlace` skips the float-dimming branch (`markSourceFloat`) — used
+ * by the lifted-overlay gesture, where no popout exists to dim.
+ * `externalCommit` skips installing the controller's own mouseup
+ * listener; the caller drives commit/cancel via `commitDropSession()`
+ * / `cancelDropSession()`. Used when the gesture owns mouseup and
+ * decides commit-vs-cancel per its own mode (lifted-overlay ghost vs
+ * popout).
+ *
  * Returns true if a session was started, false if rejected (no spec,
  * another session active, or no DropCtx registered).
  */
 export function beginDropSession(opts: {
   cardKey: string;
   origin: { x: number; y: number };
+  inPlace?: boolean;
+  externalCommit?: boolean;
 }): boolean {
   if (session) return false; // first gesture wins
   if (!activeCtx) return false;
@@ -82,19 +92,23 @@ export function beginDropSession(opts: {
   const spec = lookupSpec(kind);
   if (!spec) return false;
 
+  const inPlace = opts.inPlace === true;
   session = {
     cardKey: opts.cardKey,
     kind,
     spec,
     origin: opts.origin,
     placement: null,
+    inPlace,
   };
-  installListeners();
-  // CSS hooks: dim the source float, set crosshair cursor, mark active.
+  installListeners({ attachMouseUp: opts.externalCommit !== true });
+  // CSS hooks: set crosshair cursor + mark active for both modes. Dim
+  // the source float only on the popped-out gesture path — there's no
+  // float to dim during a lifted-overlay (in-place) drag.
   if (typeof document !== "undefined") {
     document.body.setAttribute("data-drop-mode-active", "true");
     document.body.style.cursor = "crosshair";
-    markSourceFloat(opts.cardKey, true);
+    if (!inPlace) markSourceFloat(opts.cardKey, true);
   }
   emitSession();
   return true;
@@ -104,12 +118,13 @@ export function beginDropSession(opts: {
 export function endDropSession() {
   if (!session) return;
   const key = session.cardKey;
+  const inPlace = session.inPlace;
   session = null;
   removeListeners();
   if (typeof document !== "undefined") {
     document.body.removeAttribute("data-drop-mode-active");
     document.body.style.cursor = "";
-    markSourceFloat(key, false);
+    if (!inPlace) markSourceFloat(key, false);
   }
   emitSession();
 }
@@ -129,10 +144,9 @@ let onKey: ((e: KeyboardEvent) => void) | null = null;
 let onLeave: ((e: MouseEvent) => void) | null = null;
 let onEnter: ((e: MouseEvent) => void) | null = null;
 
-function installListeners() {
+function installListeners(opts: { attachMouseUp: boolean }) {
   if (typeof window === "undefined") return;
   onMove = (e: MouseEvent) => handleMove(e.clientX, e.clientY);
-  onUp = (e: MouseEvent) => handleUp(e.clientX, e.clientY);
   onKey = (e: KeyboardEvent) => {
     if (e.key === "Escape") cancelDropSession();
   };
@@ -146,7 +160,12 @@ function installListeners() {
     // No-op; next mousemove re-computes.
   };
   window.addEventListener("mousemove", onMove);
-  window.addEventListener("mouseup", onUp);
+  if (opts.attachMouseUp) {
+    onUp = () => {
+      void commitDropSession();
+    };
+    window.addEventListener("mouseup", onUp);
+  }
   window.addEventListener("keydown", onKey);
   document.documentElement.addEventListener("mouseleave", onLeave);
   document.documentElement.addEventListener("mouseenter", onEnter);
@@ -228,7 +247,18 @@ function placementsEqual(a: Placement | null, b: Placement | null): boolean {
   return false;
 }
 
-async function handleUp(_x: number, _y: number) {
+/**
+ * Commit the current drop session at its current placement. Routes
+ * through the spec's classifyDrop → apply / confirm / no-op decision
+ * tree, ending the session in every case. Safe to call when no
+ * session is active (no-op).
+ *
+ * Default callers leave commit to the controller's own mouseup
+ * listener (`installListeners` attaches `onUp` that delegates here).
+ * Callers that opt out via `externalCommit: true` invoke this
+ * directly from their own gesture handler.
+ */
+export async function commitDropSession(): Promise<void> {
   if (!session || !activeCtx) return;
   const s = session;
   const ctx = activeCtx;

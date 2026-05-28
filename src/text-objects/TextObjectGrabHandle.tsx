@@ -54,6 +54,11 @@ import type { Editor } from "@tiptap/react";
 import { NodeSelection, TextSelection } from "@tiptap/pm/state";
 import { usePoppedCards } from "@/hooks/usePoppedCards";
 import { setCardLiftHandoff, setCardLiftTarget } from "@/components/card-lift";
+import {
+  beginDropSession,
+  cancelDropSession,
+  commitDropSession,
+} from "@/components/drop-mode/controller";
 import { ensureAnchorUuid } from "@/lib/anchor-uuid";
 import { hydrateSelectionToTextObject } from "./hydrate-selection";
 import { walkAnchorableBlocks } from "@/lib/marginalia-blocks";
@@ -690,8 +695,25 @@ export function TextObjectGrabHandle({ editorRef }: Props) {
             mode: initialMode,
           };
           setOverlay(liveOverlay);
+          // Start a drop session ALONGSIDE the overlay. `inPlace: true`
+          // skips markSourceFloat (no popout exists to dim during the
+          // ghost gesture); `externalCommit: true` skips the
+          // controller's own mouseup so this handler's `onUp` can
+          // decide between commit (ghost release) and cancel (popout
+          // release). The controller's hit-test + Indicator render
+          // run for the full gesture lifetime; in popout mode the
+          // hit-test resolves to null and the Indicator hides
+          // automatically.
+          beginDropSession({
+            cardKey,
+            origin: { x: mv.clientX, y: mv.clientY },
+            inPlace: true,
+            externalCommit: true,
+          });
           // Do NOT cleanup — onMove continues to drive the overlay,
-          // and onUp commits the popout based on terminal mode.
+          // and onUp commits via the drop session (ghost) or cancels
+          // the session + spawns the popout (popout) based on terminal
+          // mode.
           // cardLiftHandoff/cardLiftTarget intentionally NOT emitted
           // on this path: the popout (if it spawns) lands at the
           // overlay's terminal rect, so there's no in-flight handoff
@@ -757,7 +779,7 @@ export function TextObjectGrabHandle({ editorRef }: Props) {
       setOverlay(liveOverlay);
     };
 
-    const onUp = (upEv: MouseEvent) => {
+    const onUp = async (upEv: MouseEvent) => {
       // No drag → treat as a click and open the action menu for the
       // captured ref.
       if (!triggered) {
@@ -777,10 +799,10 @@ export function TextObjectGrabHandle({ editorRef }: Props) {
         return;
       }
 
-      // Triggered on lifted-overlay path — commit the popout.
+      // Triggered on lifted-overlay path — commit the popout (popout
+      // mode) or the drop-mode placement (ghost mode).
       if (liveOverlay) {
         const {
-          ref,
           cardKey,
           grabOffsetX,
           grabOffsetY,
@@ -803,6 +825,12 @@ export function TextObjectGrabHandle({ editorRef }: Props) {
             ? "popout"
             : "ghost";
         if (finalMode === "popout") {
+          // Cancel the drop session that was started at threshold
+          // cross — the gesture's terminal action is a popout spawn,
+          // not a doc move, so the controller's listeners and the
+          // Indicator (already hidden in popout mode because no
+          // placement resolves outside the pod) need to tear down.
+          cancelDropSession();
           // L1.12: spawn the real popout with chrome-inclusive coords so
           // its body-content rect (after subtracting the header height
           // and body padding) lands at exactly the text rect the overlay
@@ -820,21 +848,15 @@ export function TextObjectGrabHandle({ editorRef }: Props) {
           };
           poppedRef.current?.popOutAtRect(cardKey, overlayRect);
         } else {
-          // L1→L2 bridge: ghost-mode release falls through to the
-          // LEGACY cursor-centered fixed-size spawn so the gesture
-          // remains usable end-to-end until L2 wires the drop-mode
-          // placement engine. The cardKey + ref are captured so the
-          // bridge has everything it needs without re-resolving.
-          //
-          // L2: replace with drop-commit via beginDropSession({ ..., inPlace: true })
-          const { width, height } = floatSizeFor(ref.kind);
-          const legacySpawn = {
-            x: Math.round(cursorX - width / 2),
-            y: Math.round(cursorY - SPAWN_CURSOR_OFFSET_Y),
-            width,
-            height,
-          };
-          poppedRef.current?.popOutAtRect(cardKey, legacySpawn);
+          // Ghost-mode release: commit the move via the drop-mode
+          // placement engine. The session was started at threshold
+          // cross with `externalCommit: true`, so it didn't install
+          // its own mouseup — this handler drives the commit. If
+          // the placement is null (cursor not over a block) OR the
+          // spec's classifyDrop returns "no-op" (insertPos inside
+          // source), commitDropSession ends the session silently
+          // with no doc change.
+          await commitDropSession();
         }
         liveOverlay = null;
         setOverlay(null);
@@ -854,6 +876,16 @@ export function TextObjectGrabHandle({ editorRef }: Props) {
         liveOverlay = null;
         setOverlay(null);
       }
+      // Defensive: end any drop session this gesture started.
+      // `cancelDropSession` is idempotent — a no-op when no session is
+      // active (committed-path, instant-popout path, or short-circuit
+      // before threshold cross). Catches the Escape-mid-gesture case
+      // (controller cancels itself) where the gesture handler then
+      // races to cleanup with the session already gone, and the
+      // post-threshold short-circuit return paths (e.g. cardKey
+      // null, anchorDom missing) that arrive before the session is
+      // ever started.
+      cancelDropSession();
     };
     window.addEventListener("mousemove", onMove);
     window.addEventListener("mouseup", onUp);
