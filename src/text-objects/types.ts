@@ -20,6 +20,11 @@
 
 import type { Editor } from "@tiptap/core";
 import type { Node as PMNode } from "@tiptap/pm/model";
+// Type-only import (erased at compile time) — keeps the React-free
+// runtime invariant above intact while letting `liftSourceRect` take the
+// real cache type. `useEditorViewportCache` imports nothing from this
+// module, so there's no cycle.
+import type { EditorViewportCache } from "@/hooks/useEditorViewportCache";
 
 // ---------------------------------------------------------------------------
 // Kinds
@@ -283,6 +288,47 @@ export interface TextObjectMeta {
    *  overlay's `label` prop for the gesture's lifetime. Kept pure /
    *  view-free — the editor is only used to resolve the node by uuid. */
   computeLabel?: (editor: Editor, ref: TextObjectRef) => string | null;
+
+  /** Override the lifted-overlay GHOST's content. Default (absent): the
+   *  overlay shows a sanitized `anchorDom.cloneNode(true)`. `heading`
+   *  overrides because its `anchorDom` is just the `<h*>` line, but the
+   *  ghost must show the WHOLE SECTION (heading + body blocks) to match
+   *  what a release-in-pod actually moves (`collectMoveSource`). Returns
+   *  a fresh DETACHED element (the overlay sanitizes it in place — strips
+   *  contenteditable/ids/state attrs); clone the live DOM, never detach
+   *  it. Returns null to fall back to the default clone (heading does so
+   *  for a lone section with no body blocks → byte-identical to today).
+   *  Designed in L3e (texBlock's plain clone didn't need it); heading is
+   *  the first consumer, L3f (linkedRange — a range extraction) the
+   *  second. Resolved at the parent (`TextObjectGrabHandle`) and threaded
+   *  to `LiftedTextOverlay` as a prop, so the overlay stays kind-agnostic
+   *  (no registry import / no editor prop) — same pattern as L3a's
+   *  `computeLabel`/`label`. */
+  renderGhost?: (
+    anchorDom: HTMLElement,
+    editor: Editor,
+    ref: TextObjectRef,
+  ) => HTMLElement | null;
+
+  /** Override the source rect captured once at threshold cross for the
+   *  lifted overlay. Default (absent): `anchorDom.getBoundingClientRect()`.
+   *  The returned width/height size BOTH the ghost AND the released
+   *  popout (one capture site feeds both); left/top set the grab offset.
+   *  `heading` keeps the heading line's left/top/width (the user grabbed
+   *  the heading; the section ghost grows DOWN from it, so the text
+   *  top-left — hence the grab offset and L1.12 text-stays-still — is
+   *  unchanged) but clamps height to the whole section's extent, capped
+   *  at the visible page (`cache.scrollBottom − cache.scrollTop`) so a
+   *  huge section isn't a huge ghost. Returns null to use the default
+   *  (heading does so for a lone section). L3f (linkedRange) will likely
+   *  widen this to a full mark/range bounding box. Resolved at the parent
+   *  and threaded down, like `renderGhost`. */
+  liftSourceRect?: (
+    anchorDom: HTMLElement,
+    editor: Editor,
+    ref: TextObjectRef,
+    cache: EditorViewportCache,
+  ) => { left: number; top: number; width: number; height: number } | null;
 
   /** DragHandleMenu actions this kind exposes. Subset of the global
    *  `DragHandleAction` union, selected per kind. */

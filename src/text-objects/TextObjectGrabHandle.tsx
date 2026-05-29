@@ -334,6 +334,12 @@ interface OverlayState {
   ref: TextObjectRef;
   cardKey: string;
   anchorDom: HTMLElement;
+  /** Overridden ghost content (L3-Headings). Resolved once at threshold
+   *  cross via `meta.renderGhost?.(anchorDom, editor, ref)` — heading's
+   *  whole-section clone. Null for kinds without the hook (or a lone
+   *  heading), in which case the overlay clones `anchorDom`. Threaded to
+   *  `LiftedTextOverlay` as a prop so the overlay stays kind-agnostic. */
+  ghostContent: HTMLElement | null;
   /** Cursor offset within the source's rendered rect — fixed for the
    *  gesture's lifetime so the source visual stays "stuck" to the user's
    *  grab point. */
@@ -693,7 +699,27 @@ export function TextObjectGrabHandle({ editorRef }: Props) {
             cleanup();
             return;
           }
-          const sourceRect = anchorDom.getBoundingClientRect();
+          // L3-Headings: two kind-agnostic registry hooks each replace one
+          // hardcoded assumption about a lifted ghost — that its content is
+          // exactly `anchorDom` and its rect exactly anchorDom's bounding
+          // rect. `liftSourceRect` overrides the captured source rect;
+          // `renderGhost` overrides the cloned content. Heading uses both:
+          // the ghost shows the WHOLE SECTION (matching what a release moves
+          // via collectMoveSource), clamped to the visible page. Resolved
+          // HERE at the parent (editor / meta / ref / cache all in scope)
+          // and threaded down as props, so `LiftedTextOverlay` stays
+          // kind-agnostic — no registry import, no editor prop — exactly as
+          // L3a moved label resolution out of the overlay. Absent on a kind
+          // (or null for a lone heading) → the defaults below stand, so the
+          // 5 prior lifted kinds are byte-identical. ONE capture site: the
+          // (possibly clamped) sourceHeight feeds both the ghost AND the
+          // popOutAtRect spawn, so the released popout opens at the same
+          // height. `liftRect` is a structural {left,top,width,height} OR a
+          // DOMRect — both expose those four; read only those.
+          const liftRect =
+            meta.liftSourceRect?.(anchorDom, editor, ref, cacheRef.current) ??
+            anchorDom.getBoundingClientRect();
+          const ghostContent = meta.renderGhost?.(anchorDom, editor, ref) ?? null;
           const initialMode = cacheRef.current.containsContentZone(
             mv.clientX,
             mv.clientY,
@@ -712,10 +738,11 @@ export function TextObjectGrabHandle({ editorRef }: Props) {
             ref,
             cardKey,
             anchorDom,
-            grabOffsetX: mv.clientX - sourceRect.left,
-            grabOffsetY: mv.clientY - sourceRect.top,
-            sourceWidth: sourceRect.width,
-            sourceHeight: sourceRect.height,
+            ghostContent,
+            grabOffsetX: mv.clientX - liftRect.left,
+            grabOffsetY: mv.clientY - liftRect.top,
+            sourceWidth: liftRect.width,
+            sourceHeight: liftRect.height,
             cursorX: mv.clientX,
             cursorY: mv.clientY,
             mode: initialMode,
@@ -1225,6 +1252,7 @@ export function TextObjectGrabHandle({ editorRef }: Props) {
         <LiftedTextOverlay
           ref={overlay.ref}
           anchorDom={overlay.anchorDom}
+          ghostContent={overlay.ghostContent}
           grabOffsetX={overlay.grabOffsetX}
           grabOffsetY={overlay.grabOffsetY}
           sourceWidth={overlay.sourceWidth}

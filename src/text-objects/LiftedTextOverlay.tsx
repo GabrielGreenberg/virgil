@@ -130,6 +130,14 @@ export interface LiftedTextOverlayProps {
    *  any kind that grows a `computeLabel` slot gets the correct popout-
    *  mode header without touching the overlay. */
   label: string;
+  /** Overridden ghost content (L3-Headings). When present, the clone path
+   *  uses THIS element instead of `anchorDom.cloneNode(true)` — heading
+   *  passes its whole-section clone here (resolved at the parent via
+   *  `meta.renderGhost`, so the overlay stays kind-agnostic, same pattern
+   *  as `label`). The element is sanitized in place by the same clone
+   *  useMemo (contenteditable / ids / state attrs stripped, pointer-events
+   *  none). Absent / null → default single-element clone. */
+  ghostContent?: HTMLElement | null;
   /** Viewport cache used for `toPortalCoords` (viewport → portal-relative)
    *  and for resolving the column-level portal target. */
   cache: EditorViewportCache;
@@ -146,6 +154,7 @@ export function LiftedTextOverlay({
   cursorY,
   mode,
   label,
+  ghostContent,
   cache,
 }: LiftedTextOverlayProps) {
   // Sanitize the clone once at mount. cloneNode(true) carries the full
@@ -163,8 +172,14 @@ export function LiftedTextOverlay({
   // widening it vs source. pointer-events: none lets the cursor pass through
   // to the editor underneath so the mode-flip predicate sees the actual
   // hit-test against the content rect.
+  //
+  // L3-Headings: when the parent supplied `ghostContent` (via the kind's
+  // `meta.renderGhost` — heading's whole-section clone), sanitize THAT
+  // instead of `anchorDom`. It's already a fresh detached element, so the
+  // same in-place sanitization applies to it and its subtree (the section's
+  // blocks get the same contenteditable/id/state-attr stripping — correct).
   const clone = useMemo(() => {
-    const c = anchorDom.cloneNode(true) as HTMLElement;
+    const c = (ghostContent ?? anchorDom.cloneNode(true)) as HTMLElement;
     // Keep `contenteditable="false"`; strip only editable-making values.
     const stripIfEditable = (el: Element) => {
       const v = el.getAttribute("contenteditable");
@@ -196,9 +211,10 @@ export function LiftedTextOverlay({
     }
     c.style.pointerEvents = "none";
     return c;
-    // anchorDom identity is captured at threshold-cross and stable for
-    // the gesture's lifetime; the dep is here for correctness.
-  }, [anchorDom]);
+    // anchorDom + ghostContent identities are captured at threshold-cross
+    // and stable for the gesture's lifetime; the deps are here for
+    // correctness (ghostContent re-clones if the parent ever swaps it).
+  }, [anchorDom, ghostContent]);
 
   // Capture computed typography from the source once at mount and apply
   // as inline styles on the overlay root, so the clone inherits via the

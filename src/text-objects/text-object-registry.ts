@@ -17,6 +17,7 @@ import {
   getSectionRangeByUuid,
   getHeadingLineRangeByUuid,
 } from "@/lib/section-range";
+import { sectionBlockDoms } from "@/lib/section-dom";
 import {
   topLevelDropAdapter,
   listItemDropAdapter,
@@ -299,6 +300,75 @@ export const TEXT_OBJECT_REGISTRY: Record<TextObjectKind, TextObjectMeta> = {
       if (!node) return null;
       const level = (node as PMNode).attrs?.level;
       return typeof level === "number" ? headingTypeName(level) : null;
+    },
+    // L3-Headings: the lifted ghost shows the WHOLE SECTION, not just the
+    // `<h*>` line — so it tells the truth about what a release-in-pod
+    // moves (collectMoveSource = the section). Clone every section block's
+    // live DOM (sectionBlockDoms = view.nodeDOM over getSectionRangeByUuid's
+    // node range) into a detached `.tiptap` container; the overlay
+    // sanitizes it. The container re-establishes the editor's content
+    // scope (like the body's `.tiptap` does for single-block ghosts,
+    // L3b.1) so the cloned blocks get their per-element rules — inter-block
+    // rhythm margins (`:where(.tiptap) > :where(…)`), list markers, expex
+    // grid, font-size — and `:where(.tiptap) > :first-child` zeroes the
+    // heading's leading margin (matching liftSourceRect's headRect.top,
+    // which excludes margin). It also resets the container to the editor
+    // ROOT's base typography: the overlay root imposes the grabbed
+    // heading's typography (weight/size) as the cascade base, which
+    // `.tiptap p` re-sizes but does NOT re-weight, so without the reset
+    // the section's body prose would inherit the heading's weight. Reading
+    // the base from the live editor lets each block's per-element rule
+    // (`.tiptap h2` heading, `.tiptap p` body) resolve exactly as in the
+    // source — generic for any future multi-block ghost (L3f linkedRange).
+    // Returns null for a lone heading (section == just the heading) so the
+    // default anchorDom clone stands — no regression for an empty section.
+    renderGhost: (anchorDom, editor, ref) => {
+      const doms = sectionBlockDoms(editor, ref.id);
+      if (doms.length <= 1) return null; // lone heading → default clone
+      const container = document.createElement("div");
+      container.className = "tiptap";
+      const base = window.getComputedStyle(editor.view.dom);
+      Object.assign(container.style, {
+        fontFamily: base.fontFamily,
+        fontSize: base.fontSize,
+        fontWeight: base.fontWeight,
+        fontStyle: base.fontStyle,
+        fontVariant: base.fontVariant,
+        letterSpacing: base.letterSpacing,
+        color: base.color,
+        textAlign: base.textAlign,
+        textIndent: base.textIndent,
+        textTransform: base.textTransform,
+        fontFeatureSettings: base.fontFeatureSettings,
+      });
+      for (const dom of doms) {
+        container.appendChild(dom.cloneNode(true) as HTMLElement);
+      }
+      return container;
+    },
+    // L3-Headings: clamp the lifted source rect to the visible page so a
+    // tall section isn't a giant ghost. Keep the heading line's
+    // left/top/width (the user grabbed the heading; the section ghost
+    // grows DOWN from it — text top-left, hence grab offset and the
+    // L1.12 text-stays-still invariant, unchanged); clamp height to
+    // min(section extent, visible page). The clamped height flows from
+    // the single capture site into both the ghost and the popOutAtRect
+    // spawn, so the released popout (heading-body, already a full-section
+    // overflow-auto view — untouched) opens at the same height and
+    // scrolls. Null for a lone heading → default getBoundingClientRect.
+    liftSourceRect: (anchorDom, editor, ref, cache) => {
+      const doms = sectionBlockDoms(editor, ref.id);
+      if (doms.length <= 1) return null; // lone heading → default rect
+      const headRect = anchorDom.getBoundingClientRect();
+      const lastBottom = doms[doms.length - 1].getBoundingClientRect().bottom;
+      const sectionExtent = lastBottom - headRect.top; // scroll-invariant
+      const visiblePage = cache.scrollBottom - cache.scrollTop;
+      return {
+        left: headRect.left,
+        top: headRect.top,
+        width: headRect.width,
+        height: Math.min(sectionExtent, visiblePage),
+      };
     },
     dropAdapter: topLevelDropAdapter,
     // Headings move as a section, not a single node — pick up every
