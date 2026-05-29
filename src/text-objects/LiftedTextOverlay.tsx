@@ -205,7 +205,9 @@ export function LiftedTextOverlay({
   // produced a subtly larger / wider-spaced ghost in L1.10/L1.11. The
   // `?? anchorDom` fallback covers unrecognized wrapper shapes — safe
   // since `resolveInlineContextElement` already falls back internally
-  // for raw `<p>`/`<blockquote>` etc.
+  // for raw `<p>`/`<blockquote>` etc. (L3d.2 carves out `font-size`: the
+  // inherited cascade BASE is read from `anchorDom` itself, not the inline
+  // element — see the in-body comment for why.)
   //
   // L3b.1 note (L4 to evaluate): with the body now carrying the `tiptap`
   // class, the `.tiptap p`/`.tiptap h2`/… rules apply to the cloned
@@ -219,9 +221,37 @@ export function LiftedTextOverlay({
     if (typeof window === "undefined") return {};
     const inlineEl = resolveInlineContextElement(anchorDom) ?? anchorDom;
     const computed = window.getComputedStyle(inlineEl);
+    // L3d.2: the cascade BASE — the font-size every relative-unit
+    // descendant of the clone resolves its `em`/`%` against — must come
+    // from `anchorDom` ITSELF (the block being cloned), NOT from the
+    // resolved inline text element. The two diverge for any block whose
+    // grid/markers inherit the editor ROOT size while its prose `<p>`
+    // carries `--editor-font-size` (applied only to `.tiptap p`). For an
+    // `exampleBlock`, `resolveInlineContextElement` descends to the inner
+    // `<p>` (= `--editor-font-size`), but `.expex-number` /
+    // `.expex-item-marker`'s `font-size: 0.95em` resolves in the SOURCE
+    // against `.expex-block`'s own size (the root, e.g. 16px). Putting the
+    // `<p>`'s size on the overlay root made every relative-unit marker
+    // re-resolve against the wrong base — bigger when `--editor-font-size`
+    // > root (an enlarged editor font: marker 0.95×20.8≈19.76px vs source
+    // 15.2px), smaller when < it — then "resettle" the instant the gesture
+    // released into the real popout (a true `.tiptap`/`.ProseMirror` whose
+    // block inherits the root). `anchorDom`'s OWN computed font-size IS the
+    // source block's cascade base, so reading it here makes EVERY
+    // relative-unit descendant (the (1)/a. markers, gloss tiers, any future
+    // em/%-sized label of any kind) resolve identically to the source. The
+    // cloned `<p>` is unaffected: `.tiptap p` (reaching the clone since
+    // L3b.1) sets its font-size explicitly, so prose still renders at
+    // `--editor-font-size` regardless of the root base — and kinds whose
+    // text owns an explicit rule (`.tiptap h2`, `.tiptap li`) are likewise
+    // immune (measured: paragraph/heading/list visible text unchanged). The
+    // remaining inherited typography stays read from the inline element
+    // (L1.12's intent: the ghost's prose family/weight/spacing tracked the
+    // text element, not the wrapper) — only the size BASE moves to the block.
+    const baseFontSize = window.getComputedStyle(anchorDom).fontSize;
     return {
       fontFamily: computed.fontFamily,
-      fontSize: computed.fontSize,
+      fontSize: baseFontSize,
       fontWeight: computed.fontWeight,
       fontStyle: computed.fontStyle,
       fontVariant: computed.fontVariant,
