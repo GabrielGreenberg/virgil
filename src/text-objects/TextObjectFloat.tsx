@@ -34,8 +34,8 @@ import { type RefObject, useState, useCallback } from "react";
 import type { ComponentType } from "react";
 import { FloatCard } from "@/components/FloatingCards";
 import { usePoppedCards } from "@/hooks/usePoppedCards";
-import { PopoutButton } from "@/components/panel-primitives";
 import type { EditorHandle } from "@/components/Editor";
+import { FloatHeaderContent } from "./FloatHeaderContent";
 import { TEXT_OBJECT_REGISTRY } from "./text-object-registry";
 import type { TextObjectFloatBodyProps, TextObjectKind } from "./types";
 
@@ -85,43 +85,15 @@ export function TextObjectFloat({
 
   const onJump = () => editorRef.current?.scrollToParagraphId(id);
   const onClose = () => popped?.close(cardKey);
-  const labelNoun = label.toLowerCase();
 
   return (
     <FloatCard cardKey={cardKey} surface="card">
       <div className="flex-1 min-h-0 flex flex-col bg-surface overflow-hidden">
         <div className="flex items-center gap-1 px-2 h-6 border-b border-edge-subtle bg-[var(--surface-muted-strong)]">
-          <span className="text-[10px] text-[var(--ink-muted)] uppercase tracking-wider font-medium truncate">
-            {label}
-          </span>
-          <span className="flex-1" />
-          <button
-            type="button"
-            onClick={onJump}
-            className="w-4 h-4 flex items-center justify-center rounded text-ink-muted hover:text-ink-body hover-on-light"
-            title={`Jump to ${labelNoun}`}
-            aria-label={`Jump to ${labelNoun}`}
-          >
-            <svg
-              width="10"
-              height="10"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            >
-              <polyline points="9 6 15 12 9 18" />
-            </svg>
-          </button>
-          <PopoutButton
-            isPoppedOut
-            variant="x"
-            labelNoun={labelNoun}
-            className="iconbtn-xs"
-            onClick={onClose}
-          />
+          {/* Inner header content (label + chevron + X) is shared with the
+              lift-gesture overlay via FloatHeaderContent — one source of
+              truth so the label can't drift between the two (L3d.1). */}
+          <FloatHeaderContent label={label} onJump={onJump} onClose={onClose} />
         </div>
         <Body
           cardKey={cardKey}

@@ -1317,18 +1317,27 @@ textarea,
   border-top-right-radius: 0;
 }
 
-/* Popout-mode header bar. Rendered as a portal sibling of the overlay
-   (NOT a descendant) — JS positions it flush against the overlay's top
-   edge via inline `left`/`top`/`width`/`height`. The sibling layout
-   replaces L1.7's `position: absolute; bottom: 100%` child-of-overlay
-   model, which silently clipped against any overflow:hidden on the
-   overlay root; the failure mode survived L1.8's source-side overflow
-   move because Turbopack's incremental CSS bundler retained the stale
-   declaration. Sibling positioning removes the overflow-visible
-   invariant from the design entirely — see LIFTED-OVERLAY-REFACTOR.md
-   L1.9. Visually mirrors TextObjectFloat.tsx:93-125 (label + chevron +
-   X); icons are non-interactive (pointer-events: none) since the
-   overlay's hit-testing happens against the editor below. */
+/* Popout-mode header bar — OUTER container only. Rendered as a portal
+   sibling of the overlay (NOT a descendant); JS positions it flush
+   against the overlay's top edge via inline `left`/`top`/`width`/`height`.
+   The sibling layout replaces L1.7's `position: absolute; bottom: 100%`
+   child-of-overlay model, which silently clipped against any
+   overflow:hidden on the overlay root; the failure mode survived L1.8's
+   source-side overflow move because Turbopack's incremental CSS bundler
+   retained the stale declaration. Sibling positioning removes the
+   overflow-visible invariant from the design entirely — see
+   LIFTED-OVERLAY-REFACTOR.md L1.9.
+
+   The INNER content (label + chevron + X) is rendered by the shared
+   `FloatHeaderContent` React component (L3d.1) — the same content the real
+   popout (TextObjectFloat) mounts — so the label's typography lives there,
+   NOT here. This rule keeps only the overlay-specific chrome: positioning,
+   flex layout, bg/border/radius, and the popout-mode fade transition. The
+   label font-size/weight/letter-spacing/transform/family/color that used
+   to live here (and diverged from the real popout's inherited stack) moved
+   into FloatHeaderContent so there is one source of truth and no drift.
+   Icons are non-interactive (pointer-events: none) since the overlay's
+   hit-testing happens against the editor below. */
 .lifted-text-overlay__header {
   display: none;
   /* position / left / top / width / height set inline by JS */
@@ -1343,12 +1352,6 @@ textarea,
   border-bottom: none;
   border-top-left-radius: var(--pod-radius, 8px);
   border-top-right-radius: var(--pod-radius, 8px);
-  font-size: 10px;
-  font-weight: 500;
-  color: var(--ink-muted);
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-  font-family: var(--font-sans);
   /* Matches the overlay's chrome transition timing so header + body
      border fade in together when popout mode engages. */
   opacity: 0;
@@ -1358,26 +1361,6 @@ textarea,
 .lifted-text-overlay__header[data-lift-mode="popout"] {
   display: flex;
   opacity: 1;
-}
-
-.lifted-text-overlay__label {
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.lifted-text-overlay__header-spacer {
-  flex: 1;
-}
-
-.lifted-text-overlay__icon {
-  width: 16px;
-  height: 16px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  color: var(--ink-muted);
-  border-radius: 2px;
 }
 
 /* Body wrapper inside the overlay — holds the sanitized cloneNode of

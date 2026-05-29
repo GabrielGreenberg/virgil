@@ -56,6 +56,7 @@ import { Fragment, useEffect, useMemo, useRef, type CSSProperties } from "react"
 import { createPortal } from "react-dom";
 import type { EditorViewportCache } from "@/hooks/useEditorViewportCache";
 import { resolveInlineContextElement } from "@/lib/text-metrics";
+import { FloatHeaderContent } from "./FloatHeaderContent";
 import type { TextObjectRef } from "./types";
 
 /** Popout chrome dimensions. Mirror the real popout's chrome so the
@@ -263,10 +264,12 @@ export function LiftedTextOverlay({
   // parent resolves it once at threshold cross via
   // `meta.computeLabel?.(editor, ref) ?? meta.label` so per-instance
   // overrides (heading → Chapter/Section/Subsection) match the real
-  // popout's `setHeaderLabel` at handoff. The chevron + X icons are
-  // visual mimicry of TextObjectFloat.tsx:93-125; the overlay has
-  // pointer-events: none so they aren't interactive. CSS hides the
-  // header in ghost mode and fades it in when popout mode engages.
+  // popout's `setHeaderLabel` at handoff. The label + chevron + X are
+  // rendered by the SHARED `FloatHeaderContent` (L3d.1) — the exact same
+  // inner content the real popout mounts, so the label can't drift between
+  // the overlay and the released popout. Handlers are omitted (visual-only)
+  // and the overlay header is pointer-events:none, so the icons are inert.
+  // CSS hides the header in ghost mode and fades it in when popout engages.
 
   // Convert viewport coords to portal-relative. The overlay tracks the
   // cursor (not the source) so scroll-during-gesture moves the source
@@ -365,37 +368,12 @@ export function LiftedTextOverlay({
         }}
         aria-hidden="true"
       >
-        <span className="lifted-text-overlay__label">{label}</span>
-        <span className="lifted-text-overlay__header-spacer" />
-        <span className="lifted-text-overlay__icon">
-          <svg
-            width="10"
-            height="10"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="2"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-          >
-            <polyline points="9 6 15 12 9 18" />
-          </svg>
-        </span>
-        <span className="lifted-text-overlay__icon">
-          <svg
-            width="10"
-            height="10"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="2"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-          >
-            <line x1="18" y1="6" x2="6" y2="18" />
-            <line x1="6" y1="6" x2="18" y2="18" />
-          </svg>
-        </span>
+        {/* Inner header content (label + chevron + X) is shared with the
+            real popout via FloatHeaderContent — one source of truth so the
+            label renders identically here and after release, with no drift
+            (L3d.1). Handlers are omitted: the overlay header is
+            pointer-events:none, so the icons are visual-only. */}
+        <FloatHeaderContent label={label} />
       </div>
     </Fragment>,
     portal ?? document.body,
