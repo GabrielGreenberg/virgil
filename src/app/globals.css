@@ -925,12 +925,21 @@ textarea,
   pointer-events: none;
 }
 
-/* Titled tex blocks get extra breathing room above so the title isn't
-   crammed against the preceding paragraph. The :has() selector gates
-   on title presence — .par-title-text only renders when parTitle is
-   set. */
-.tex-block:has(.par-title-text) {
-  margin-top: 1.5em;
+/* tex-block top gap + title-slot room. The texBlock renders through a
+   React NodeView, so its editor-level child is a `.react-renderer` wrapper,
+   not `.tex-block` itself — the unified inter-block rhythm rule (scoped to
+   direct `.tiptap > ` children) can't reach across that wrapper. So, like
+   the other React-wrapped blocks (figure/graphics), the tex block owns its
+   own gap — set to the same --editor-block-gap as every paragraph so it
+   stays in lockstep with the unified rhythm, titled or not, normally placed
+   or dropped. (This replaces the old `my-3` + `:has(.par-title-text)` 1.5em
+   pair, which under-shot the standard gap and left dropped/untitled blocks
+   too tight.) The .par-title-annotation overlays that gap (untitled:
+   absolute bottom:100%) or takes an in-flow row below it (titled), exactly
+   like a paragraph. */
+.tex-block {
+  margin-top: var(--editor-block-gap);
+  margin-bottom: 0;
 }
 
 /* +T affordance on a docked, untitled tex block is hidden by default

@@ -37,16 +37,25 @@ import { FLOAT_WRITE_META } from "@/lib/float-sync";
 import type { TextObjectFloatBodyProps } from "../types";
 import { FloatTitleField } from "./float-title-field";
 
-// Theme matches the in-place TexBlockNodeView so the float reads as a
-// chunk of the same pod.
+// Theme matches the in-place TexBlockNodeView's `texBlockTheme` so the
+// released popout reads as the same `.tex-block-pod` as the lifted ghost:
+// same blue pod border + radius, same content padding (the 44px right
+// inset clears the ".tex" chip). The border color is the shared
+// --heading-annotation-border var, so the pod tone stays single-source.
 const texBlockFloatTheme = EditorView.theme({
   "&": {
     fontSize: "13px",
     fontFamily: "var(--font-mono), 'SF Mono', 'Fira Code', monospace",
     backgroundColor: "var(--code-block-bg, rgba(124, 94, 60, 0.04))",
+    borderRadius: "6px",
+    border: "1px solid var(--heading-annotation-border, #a8c4de)",
   },
   "&.cm-focused": { outline: "none" },
-  ".cm-content": { padding: "12px 14px", caretColor: "var(--accent)" },
+  ".cm-content": {
+    padding: "10px 12px",
+    paddingRight: "44px",
+    caretColor: "var(--accent)",
+  },
   ".cm-line": { padding: "0" },
   ".cm-selectionBackground": {
     backgroundColor: "rgba(124, 94, 60, 0.15) !important",
@@ -241,29 +250,49 @@ export function TexBlockBody({
           />
         </div>
       </div>
-      <div className="flex-1 overflow-auto">
-        <CodeMirror
-          value={code}
-          onChange={handleChange}
-          extensions={[
-            latex({ enableLinting: false }),
-            texBlockFloatTheme,
-            EditorView.lineWrapping,
-            EditorView.contentAttributes.of({ spellcheck: "false" }),
-            EditorState.tabSize.of(2),
-          ]}
-          basicSetup={{
-            lineNumbers: false,
-            highlightActiveLineGutter: false,
-            highlightActiveLine: false,
-            bracketMatching: true,
-            foldGutter: false,
-            indentOnInput: true,
-            closeBrackets: true,
-            autocompletion: false,
-          }}
-          height="100%"
-        />
+      {/* Pod framing reused from the in-place TexBlockNodeView (.tex-block-pod
+          → .tex-block-editor) so the released popout wears the same blue
+          border + ".tex" chip as the lifted ghost — no framing jump on
+          release. The float omits the source's chevron / row-sensor / in-place
+          delete (it has its own header close/jump chrome); only the visual
+          frame is replicated. */}
+      <div className="flex-1 min-h-0 px-3 pt-1 pb-3">
+        <div className="tex-block-pod h-full">
+          <div className="tex-block-editor relative h-full">
+            <CodeMirror
+              value={code}
+              onChange={handleChange}
+              extensions={[
+                latex({ enableLinting: false }),
+                texBlockFloatTheme,
+                EditorView.lineWrapping,
+                EditorView.contentAttributes.of({ spellcheck: "false" }),
+                EditorState.tabSize.of(2),
+              ]}
+              basicSetup={{
+                lineNumbers: false,
+                highlightActiveLineGutter: false,
+                highlightActiveLine: false,
+                bracketMatching: true,
+                foldGutter: false,
+                indentOnInput: true,
+                closeBrackets: true,
+                autocompletion: false,
+              }}
+              height="100%"
+              // The `height` prop sizes `.cm-editor`, but @uiw/react-codemirror
+              // wraps it in a `.cm-theme` div that defaults to content height —
+              // so the bordered pod fills the float body (matching the lifted
+              // ghost at any float size) only if the wrapper fills too.
+              style={{ height: "100%" }}
+            />
+            {/* `.tex` chip — inside the pod's top-right corner, identical
+                markup to TexBlockNodeView so the float reads as the same pod. */}
+            <div className="absolute top-1 right-1.5 z-10 px-1 py-px text-[10px] rounded-sm bg-[var(--background)]/85 border border-[var(--heading-annotation-border,#a8c4de)] text-[var(--heading-annotation-color,#6b9ac4)] select-none pointer-events-none font-mono leading-tight">
+              .tex
+            </div>
+          </div>
+        </div>
       </div>
     </>
   );

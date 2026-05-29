@@ -134,7 +134,7 @@ export default function TexBlockNodeView({ node, updateAttributes, deleteNode, e
   return (
     <NodeViewWrapper
       ref={wrapperRef as React.Ref<HTMLDivElement>}
-      className={`tex-block group relative my-3${isPopped ? " is-popped" : ""}`}
+      className={`tex-block group relative${isPopped ? " is-popped" : ""}`}
     >
       {/* +T title affordance — hidden when collapsed and there's no title. */}
       {(!collapsed || title) && (
