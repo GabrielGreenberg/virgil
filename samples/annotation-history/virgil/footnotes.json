@@ -1,0 +1,148 @@
+{
+  "footnotes": [
+    {
+      "id": "f0ac",
+      "content": {
+        "type": "doc",
+        "content": [
+          {
+            "type": "paragraph",
+            "content": [
+              {
+                "type": "text",
+                "text": "Demonstration document, prepared for the Virgil sample suite."
+              }
+            ]
+          }
+        ]
+      },
+      "createdAt": "2026-04-23T12:00:00.000Z"
+    },
+    {
+      "id": "f001",
+      "content": {
+        "type": "doc",
+        "content": [
+          {
+            "type": "paragraph",
+            "content": [
+              {
+                "type": "text",
+                "text": "The cohabitation is rarely peaceful. Compositors, printers, and readers have spent centuries quarreling over how much of the page belongs to the text proper and how much to the apparatus that surrounds it. See Bringhurst (2004) for the typographer's view of this real estate war."
+              }
+            ]
+          }
+        ]
+      },
+      "createdAt": "2026-04-23T12:01:00.000Z"
+    },
+    {
+      "id": "f002",
+      "content": {
+        "type": "doc",
+        "content": [
+          {
+            "type": "paragraph",
+            "content": [
+              {
+                "type": "text",
+                "text": "The standard study is Jackson (2001), which traces the migration of marginalia from manuscript to print to the Romantic notebook. Jackson's central insight is that marginalia are the only reliable evidence we have of what readers actually did with their books."
+              }
+            ]
+          }
+        ]
+      },
+      "createdAt": "2026-04-23T12:02:00.000Z"
+    },
+    {
+      "id": "f003",
+      "content": {
+        "type": "doc",
+        "content": [
+          {
+            "type": "paragraph",
+            "content": [
+              {
+                "type": "text",
+                "text": "The phrase belongs to Grafton (1997), whose monograph of the same year remains the standard treatment. Grafton dates the modern footnote — numbered, set below a horizontal rule, keyed to a superscript marker — to the late seventeenth century, with Pierre Bayle's Dictionnaire historique et critique (1697) as the locus classicus."
+              }
+            ]
+          }
+        ]
+      },
+      "createdAt": "2026-04-23T12:03:00.000Z"
+    },
+    {
+      "id": "f004",
+      "content": {
+        "type": "doc",
+        "content": [
+          {
+            "type": "paragraph",
+            "content": [
+              {
+                "type": "text",
+                "text": "Edward Gibbon is the patron saint of this second tradition. The Decline and Fall carries on a half-secret comedy in its footnotes that the body text would never permit. See Grafton (1997, ch. 3)."
+              }
+            ]
+          }
+        ]
+      },
+      "createdAt": "2026-04-23T12:04:00.000Z"
+    },
+    {
+      "id": "f005",
+      "content": {
+        "type": "doc",
+        "content": [
+          {
+            "type": "paragraph",
+            "content": [
+              {
+                "type": "text",
+                "text": "Empirically, α rises sharply when footnotes are placed on the same page (as in print) and falls when they are pushed to a separate endnotes section. The interface determines the reading."
+              }
+            ]
+          }
+        ]
+      },
+      "createdAt": "2026-04-23T12:05:00.000Z"
+    },
+    {
+      "id": "f006",
+      "content": {
+        "type": "doc",
+        "content": [
+          {
+            "type": "paragraph",
+            "content": [
+              {
+                "type": "text",
+                "text": "Multi-key citations such as Bringhurst (2004); Tschichold (1991) additionally signal a lineage — not just a source but a tradition the author claims to be working within."
+              }
+            ]
+          }
+        ]
+      },
+      "createdAt": "2026-04-23T12:06:00.000Z"
+    },
+    {
+      "id": "f007",
+      "content": {
+        "type": "doc",
+        "content": [
+          {
+            "type": "paragraph",
+            "content": [
+              {
+                "type": "text",
+                "text": "The point is older than the computer. Derrida (1967) argued that writing is not a transcript of speech but a system of traces that precedes it — which is as good a description as any of what a stable annotation id is for."
+              }
+            ]
+          }
+        ]
+      },
+      "createdAt": "2026-04-23T12:07:00.000Z"
+    }
+  ]
+}

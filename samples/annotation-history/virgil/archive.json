@@ -1,7 +1,7 @@
 {
   "snippets": [
     {
-      "id": "a3f7b90a-932b-4051-94c8-491e1d623ff1",
+      "id": "ba034527-6a92-4324-a133-7ba069fb11b4",
       "title": "Original opening (Talmud anecdote)",
       "content": {
         "type": "doc",
@@ -11,7 +11,7 @@
             "content": [
               {
                 "type": "text",
-                "text": "An earlier draft began with the Talmud, in which every page is a small piece of architecture: a central column of Mishnah, a band of Gemara around it, Rashi's commentary on the inner margin, and the Tosafot on the outer. Reading is a vertical act and a lateral act at the same time. The page literally cannot be read in linear order. It is the medieval West's only competitor for genuinely radial annotation, and any history of marginalia that ignores it is missing something important. Cut for length, but worth coming back to."
+                "text": "An earlier draft began with the Talmud, in which every page is a small piece of architecture: a central column of Mishnah, a band of Gemara around it, Rashi's commentary on the inner margin, and the Tosafot on the outer. Reading is a vertical act and a lateral act at the same time. The page literally cannot be read in linear order. Cut for length, but worth coming back to."
               }
             ]
           }
@@ -20,12 +20,13 @@
       "createdAt": "2026-04-23T14:00:00.000Z",
       "links": [
         {
-          "id": "c88a26ae-3c8a-460b-8090-236a330c73db",
+          "id": "c63a27c3-723e-4261-9f15-7bddc1ef1155",
           "kind": "anchor",
           "anchor": {
-            "type": "anchor",
-            "paragraphIds": [
-              "fb8f"
+            "type": "textObject",
+            "targetKind": "paragraph",
+            "textObjectIds": [
+              "1101"
             ],
             "margin": {
               "side": "right"
@@ -35,7 +36,7 @@
             "type": "card",
             "ref": {
               "kind": "archive",
-              "id": "a3f7b90a-932b-4051-94c8-491e1d623ff1"
+              "id": "ba034527-6a92-4324-a133-7ba069fb11b4"
             }
           },
           "createdAt": "2026-04-23T14:00:00.000Z"
@@ -43,7 +44,7 @@
       ]
     },
     {
-      "id": "2c132f03-9c10-4341-949a-35dea58d27b0",
+      "id": "c48fc95b-6a49-4e8b-a9e2-abf086e83f2f",
       "title": "On Bayle's apparatus",
       "content": {
         "type": "doc",
@@ -53,7 +54,7 @@
             "content": [
               {
                 "type": "text",
-                "text": "Bayle's Dictionnaire was, by some counts, the first scholarly work in which the apparatus exceeded the body in word count. The famous footnote on the Manichaeans runs to several pages of dense controversy, with footnotes-on-footnotes and at least one place where the third-level note swallows the second. It is the limit case of the whole footnoting impulse: where does the text end and the apparatus begin? Bayle's answer is that the question is malformed."
+                "text": "Bayle's Dictionnaire was, by some counts, the first scholarly work in which the apparatus exceeded the body in word count. The famous footnote on the Manichaeans runs to several pages of dense controversy, with footnotes-on-footnotes. It is the limit case of the whole footnoting impulse: where does the text end and the apparatus begin?"
               }
             ]
           }
@@ -62,12 +63,13 @@
       "createdAt": "2026-04-23T15:30:00.000Z",
       "links": [
         {
-          "id": "57024614-0682-4641-8a9a-78c8bea63edc",
+          "id": "49dab69f-5f24-4c8b-9831-cfba3eabf80d",
           "kind": "anchor",
           "anchor": {
-            "type": "anchor",
-            "paragraphIds": [
-              "10be"
+            "type": "textObject",
+            "targetKind": "paragraph",
+            "textObjectIds": [
+              "3301"
             ],
             "margin": {
               "side": "right"
@@ -77,7 +79,7 @@
             "type": "card",
             "ref": {
               "kind": "archive",
-              "id": "2c132f03-9c10-4341-949a-35dea58d27b0"
+              "id": "c48fc95b-6a49-4e8b-a9e2-abf086e83f2f"
             }
           },
           "createdAt": "2026-04-23T15:30:00.000Z"
@@ -85,7 +87,7 @@
       ]
     },
     {
-      "id": "ac4cc1c6-4383-43d0-8630-87faad300f13",
+      "id": "ebf861f9-f232-4b50-bf29-5cae5982a6d9",
       "title": "Hypothes.is and Genius",
       "content": {
         "type": "doc",
@@ -95,7 +97,7 @@
             "content": [
               {
                 "type": "text",
-                "text": "Two contemporary attempts to scaffold marginalia at scale: Hypothes.is, which aims for an open, standards-based annotation layer over the web; and Genius (formerly Rap Genius), which built a thriving annotation community around lyrics and political speeches before broadening. Both demonstrate that the appetite for shared marginalia is alive — but neither has solved the underlying social problem of moderation, attribution, and persistence. Worth a footnote."
+                "text": "Two contemporary attempts to scaffold marginalia at scale: Hypothes.is, which aims for an open, standards-based annotation layer over the web; and Genius, which built a thriving annotation community around lyrics and speeches. Both show the appetite for shared marginalia is alive — but neither has solved moderation, attribution, and persistence."
               }
             ]
           }
@@ -104,12 +106,13 @@
       "createdAt": "2026-04-24T09:00:00.000Z",
       "links": [
         {
-          "id": "a46771d8-9af9-498c-a98b-67d8da008778",
+          "id": "ea7cc25e-7f5e-4ebc-b1d4-4c4cada26f50",
           "kind": "anchor",
           "anchor": {
-            "type": "anchor",
-            "paragraphIds": [
-              "aeb6"
+            "type": "textObject",
+            "targetKind": "paragraph",
+            "textObjectIds": [
+              "6602"
             ],
             "margin": {
               "side": "right"
@@ -119,7 +122,7 @@
             "type": "card",
             "ref": {
               "kind": "archive",
-              "id": "ac4cc1c6-4383-43d0-8630-87faad300f13"
+              "id": "ebf861f9-f232-4b50-bf29-5cae5982a6d9"
             }
           },
           "createdAt": "2026-04-24T09:00:00.000Z"

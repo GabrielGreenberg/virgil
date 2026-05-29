@@ -1,15 +1,15 @@
 {
   "groups": [
     {
-      "id": "05f8f5d9-440a-4de9-a0da-4040143cde45",
+      "id": "c690632d-7967-41f0-812e-94ee1093f0a5",
       "title": "Bringhurst on the margin",
       "references": [
         {
-          "id": "a521ec9c-064d-4f50-bfab-40f63be22457",
+          "id": "2fc52e02-cfa6-4b90-a0f6-bdf04173fd86",
           "citeKey": "bringhurst2004",
           "quotes": [
             {
-              "id": "c90e6f57-2801-49b8-94d3-8bb52abe3edd",
+              "id": "7beae199-ec3f-41c4-9e86-1fbc4d9de6f6",
               "text": "The margin is what gives the text room to be a text. A page set without margins reads like a person speaking without breath.",
               "page": "64"
             }
@@ -20,36 +20,44 @@
       "createdAt": "2026-04-24T19:10:00.000Z",
       "links": [
         {
-          "id": "05f8f5d9-440a-4de9-a0da-4040143cde45@f1c5",
+          "id": "c690632d-7967-41f0-812e-94ee1093f0a5@2201",
           "kind": "anchor",
           "anchor": {
-            "type": "anchor",
-            "paragraphIds": ["f1c5"],
-            "margin": { "side": "left" }
+            "type": "textObject",
+            "targetKind": "paragraph",
+            "textObjectIds": [
+              "2201"
+            ],
+            "margin": {
+              "side": "left"
+            }
           },
           "target": {
             "type": "card",
-            "ref": { "kind": "quotation", "id": "05f8f5d9-440a-4de9-a0da-4040143cde45" }
+            "ref": {
+              "kind": "quotation",
+              "id": "c690632d-7967-41f0-812e-94ee1093f0a5"
+            }
           },
           "createdAt": "2026-04-24T19:10:00.000Z"
         }
       ]
     },
     {
-      "id": "80ede889-b77d-407c-9e63-93f5f4c5cf68",
+      "id": "3200db1a-0d75-4765-bbd8-e3bdd62e0e2e",
       "title": "Genette on paratext",
       "references": [
         {
-          "id": "fc5475ee-cbdb-49c1-975f-b8dcaf701ef6",
+          "id": "04b1efa1-100e-46e7-a5d7-d257eeb7bf7a",
           "citeKey": "genette1997",
           "quotes": [
             {
-              "id": "39c862f0-49e5-47d2-a1f9-b52ff027ad70",
+              "id": "99c1de7d-16c5-46b0-a983-43f9578cee99",
               "text": "A paratext is what enables a text to become a book and to be offered as such to its readers and, more generally, to the public.",
               "page": "1"
             },
             {
-              "id": "31984b00-b19e-4a5a-ba14-05928ed6092a",
+              "id": "cf405357-c262-40e9-943c-26b08471b47a",
               "text": "More than a boundary or a sealed border, the paratext is a threshold.",
               "page": "2"
             }
@@ -60,31 +68,39 @@
       "createdAt": "2026-04-24T19:11:00.000Z",
       "links": [
         {
-          "id": "80ede889-b77d-407c-9e63-93f5f4c5cf68@210b",
+          "id": "3200db1a-0d75-4765-bbd8-e3bdd62e0e2e@4402",
           "kind": "anchor",
           "anchor": {
-            "type": "anchor",
-            "paragraphIds": ["210b"],
-            "margin": { "side": "left" }
+            "type": "textObject",
+            "targetKind": "paragraph",
+            "textObjectIds": [
+              "4402"
+            ],
+            "margin": {
+              "side": "left"
+            }
           },
           "target": {
             "type": "card",
-            "ref": { "kind": "quotation", "id": "80ede889-b77d-407c-9e63-93f5f4c5cf68" }
+            "ref": {
+              "kind": "quotation",
+              "id": "3200db1a-0d75-4765-bbd8-e3bdd62e0e2e"
+            }
           },
           "createdAt": "2026-04-24T19:11:00.000Z"
         }
       ]
     },
     {
-      "id": "ef0b7cdc-1c6d-43bc-b848-87c756899609",
+      "id": "1960b087-0d6f-4db9-9a20-204d8d3a9419",
       "title": "Jackson on what marginalia are",
       "references": [
         {
-          "id": "3bdda969-54a2-4ee6-98eb-3ebc2c7a5c8e",
+          "id": "1262d591-ed71-40f6-957d-6c2c81fe6e7a",
           "citeKey": "jackson2001",
           "quotes": [
             {
-              "id": "31984b00-b19e-4a5a-ba14-05928ed6092b",
+              "id": "be70b70b-53c8-4635-a6d4-bd9b959155aa",
               "text": "Marginalia are not the residue of reading. They are reading made visible.",
               "page": "17"
             }
@@ -95,32 +111,40 @@
       "createdAt": "2026-04-24T19:12:00.000Z",
       "links": [
         {
-          "id": "ef0b7cdc-1c6d-43bc-b848-87c756899609@1bdb",
+          "id": "1960b087-0d6f-4db9-9a20-204d8d3a9419@5501",
           "kind": "anchor",
           "anchor": {
-            "type": "anchor",
-            "paragraphIds": ["1bdb"],
-            "margin": { "side": "left" }
+            "type": "textObject",
+            "targetKind": "paragraph",
+            "textObjectIds": [
+              "5501"
+            ],
+            "margin": {
+              "side": "left"
+            }
           },
           "target": {
             "type": "card",
-            "ref": { "kind": "quotation", "id": "ef0b7cdc-1c6d-43bc-b848-87c756899609" }
+            "ref": {
+              "kind": "quotation",
+              "id": "1960b087-0d6f-4db9-9a20-204d8d3a9419"
+            }
           },
           "createdAt": "2026-04-24T19:12:00.000Z"
         }
       ]
     },
     {
-      "id": "44e0b65f-958d-402e-b4f7-06a55c755fc4",
+      "id": "120628c7-1499-46fd-a627-0b4d334a694e",
       "title": "Bush, Memex, association",
       "references": [
         {
-          "id": "a78d54c5-8f58-4984-92a6-536576ff4d5d",
+          "id": "c2147b03-87a8-4484-b171-19bc4ed7b5d0",
           "citeKey": "vannevar1945",
           "quotes": [
             {
-              "id": "31984b00-b19e-4a5a-ba14-05928ed6092c",
-              "text": "The human mind operates by association. With one item in its grasp, it snaps instantly to the next that is suggested by the association of thoughts, in accordance with some intricate web of trails carried by the cells of the brain.",
+              "id": "84c13daa-bd54-4659-8514-eee48d4a4c2a",
+              "text": "The human mind operates by association. With one item in its grasp, it snaps instantly to the next that is suggested by the association of thoughts.",
               "page": "106"
             }
           ]
@@ -130,16 +154,24 @@
       "createdAt": "2026-04-24T19:13:00.000Z",
       "links": [
         {
-          "id": "44e0b65f-958d-402e-b4f7-06a55c755fc4@aa91",
+          "id": "120628c7-1499-46fd-a627-0b4d334a694e@6601",
           "kind": "anchor",
           "anchor": {
-            "type": "anchor",
-            "paragraphIds": ["aa91"],
-            "margin": { "side": "left" }
+            "type": "textObject",
+            "targetKind": "paragraph",
+            "textObjectIds": [
+              "6601"
+            ],
+            "margin": {
+              "side": "left"
+            }
           },
           "target": {
             "type": "card",
-            "ref": { "kind": "quotation", "id": "44e0b65f-958d-402e-b4f7-06a55c755fc4" }
+            "ref": {
+              "kind": "quotation",
+              "id": "120628c7-1499-46fd-a627-0b4d334a694e"
+            }
           },
           "createdAt": "2026-04-24T19:13:00.000Z"
         }

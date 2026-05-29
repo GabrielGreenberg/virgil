@@ -2,7 +2,7 @@
   "cards": [
     {
       "kind": "note",
-      "id": "18ab85f6-d9e8-41b1-86bd-822add6dc4be",
+      "id": "ea4d5253-406d-499e-85b6-8055956c9f95",
       "title": "On Carolingian glossae",
       "content": {
         "type": "doc",
@@ -12,7 +12,7 @@
             "content": [
               {
                 "type": "text",
-                "text": "Worth distinguishing scholia (compiled, named) from glossae proper (anonymous, accreting). The Carolingian apparatus is closer to the latter \u2014 the gloss has no author."
+                "text": "Worth distinguishing scholia (compiled, named) from glossae proper (anonymous, accreting). The Carolingian apparatus is closer to the latter — the gloss has no author."
               }
             ]
           }
@@ -22,12 +22,13 @@
       "aiRequest": false,
       "links": [
         {
-          "id": "d78b52cc-8daf-4ede-920e-28758338c2d6",
+          "id": "531f6f41-833b-4801-b90d-dca782a9fd65",
           "kind": "anchor",
           "anchor": {
-            "type": "anchor",
-            "paragraphIds": [
-              "f1c5"
+            "type": "textObject",
+            "targetKind": "paragraph",
+            "textObjectIds": [
+              "2201"
             ],
             "margin": {
               "side": "right"
@@ -37,7 +38,7 @@
             "type": "card",
             "ref": {
               "kind": "note",
-              "id": "18ab85f6-d9e8-41b1-86bd-822add6dc4be"
+              "id": "ea4d5253-406d-499e-85b6-8055956c9f95"
             }
           },
           "createdAt": "2026-04-24T19:00:00.000Z"
@@ -46,7 +47,7 @@
     },
     {
       "kind": "note",
-      "id": "ed82253f-9002-44e7-8f80-6ed1ce22d7d2",
+      "id": "bbf4cb59-c473-4fdc-870b-98a16a0868d5",
       "title": "Third tradition?",
       "content": {
         "type": "doc",
@@ -66,12 +67,13 @@
       "aiRequest": false,
       "links": [
         {
-          "id": "2aff4024-efb0-4959-88e2-d4787932a65d",
+          "id": "0d465e0d-d196-4789-80d7-26f26c70c521",
           "kind": "anchor",
           "anchor": {
-            "type": "anchor",
-            "paragraphIds": [
-              "6d1e"
+            "type": "textObject",
+            "targetKind": "paragraph",
+            "textObjectIds": [
+              "3302"
             ],
             "margin": {
               "side": "right"
@@ -81,7 +83,7 @@
             "type": "card",
             "ref": {
               "kind": "note",
-              "id": "ed82253f-9002-44e7-8f80-6ed1ce22d7d2"
+              "id": "bbf4cb59-c473-4fdc-870b-98a16a0868d5"
             }
           },
           "createdAt": "2026-04-24T19:01:00.000Z"
@@ -90,7 +92,7 @@
     },
     {
       "kind": "note",
-      "id": "694cfc1f-d966-4c80-8090-1dc9ca1210a3",
+      "id": "6dc64d29-f337-47c7-a10b-50b8c7de84d7",
       "title": "Marshall vs. Genette",
       "content": {
         "type": "doc",
@@ -110,12 +112,13 @@
       "aiRequest": false,
       "links": [
         {
-          "id": "5faaf8bc-9b93-46c8-8014-da78ffa2f325",
+          "id": "f928f124-207d-4efa-9496-762ec239c97f",
           "kind": "anchor",
           "anchor": {
-            "type": "anchor",
-            "paragraphIds": [
-              "aa5b"
+            "type": "textObject",
+            "targetKind": "paragraph",
+            "textObjectIds": [
+              "5503"
             ],
             "margin": {
               "side": "right"
@@ -125,7 +128,7 @@
             "type": "card",
             "ref": {
               "kind": "note",
-              "id": "694cfc1f-d966-4c80-8090-1dc9ca1210a3"
+              "id": "6dc64d29-f337-47c7-a10b-50b8c7de84d7"
             }
           },
           "createdAt": "2026-04-24T19:02:00.000Z"
@@ -134,7 +137,7 @@
     },
     {
       "kind": "note",
-      "id": "b283f751-63b6-4d38-8ee5-6db7e0dc2671",
+      "id": "95eabff2-2181-4745-a81c-edf90a9f5207",
       "title": "Hypothes.is",
       "content": {
         "type": "doc",
@@ -144,7 +147,7 @@
             "content": [
               {
                 "type": "text",
-                "text": "The contemporary case study here is Hypothes.is \u2014 a decade of running a marginalia layer over the open web. Worth a paragraph in \u00a76 if there's room."
+                "text": "The contemporary case study here is Hypothes.is — a decade of running a marginalia layer over the open web. Worth a paragraph in §6 if there's room."
               }
             ]
           }
@@ -154,12 +157,13 @@
       "aiRequest": false,
       "links": [
         {
-          "id": "0b217cfa-d8c5-44a5-8aff-b5e7b77d000f",
+          "id": "5c65d376-5378-4700-a4c6-d86f8baeb7aa",
           "kind": "anchor",
           "anchor": {
-            "type": "anchor",
-            "paragraphIds": [
-              "aeb6"
+            "type": "textObject",
+            "targetKind": "paragraph",
+            "textObjectIds": [
+              "6602"
             ],
             "margin": {
               "side": "right"
@@ -169,7 +173,7 @@
             "type": "card",
             "ref": {
               "kind": "note",
-              "id": "b283f751-63b6-4d38-8ee5-6db7e0dc2671"
+              "id": "95eabff2-2181-4745-a81c-edf90a9f5207"
             }
           },
           "createdAt": "2026-04-24T19:03:00.000Z"
@@ -178,24 +182,25 @@
     },
     {
       "kind": "highlight",
-      "id": "fd32388c-c2e1-43f7-b7ec-366bb0f30188",
+      "id": "2a382717-c99c-4c86-9a61-51c3388c117d",
       "createdAt": "2026-05-16T17:00:00.000Z",
       "highlightColor": null,
       "aiRequest": false,
       "links": [
         {
-          "id": "9c95ba70-f768-490e-b203-2b878fc5cba6",
+          "id": "67198079-6caa-4a9a-bc75-38d0baeead71",
           "kind": "anchor",
           "anchor": {
-            "type": "anchor",
-            "paragraphIds": [
-              "fb8f"
+            "type": "textObject",
+            "targetKind": "linkedRange",
+            "textObjectIds": [
+              "1101"
             ],
             "margin": {
               "side": "right"
             },
             "textRange": {
-              "anchorId": "9c95ba70-f768-490e-b203-2b878fc5cba6",
+              "anchorId": "67198079-6caa-4a9a-bc75-38d0baeead71",
               "textSnapshot": "the second voice that every serious text learns to carry on its back"
             }
           },
@@ -203,7 +208,7 @@
             "type": "card",
             "ref": {
               "kind": "highlight",
-              "id": "fd32388c-c2e1-43f7-b7ec-366bb0f30188"
+              "id": "2a382717-c99c-4c86-9a61-51c3388c117d"
             }
           },
           "createdAt": "2026-05-16T17:00:00.000Z"

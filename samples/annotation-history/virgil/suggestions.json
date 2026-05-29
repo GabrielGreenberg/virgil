@@ -1,7 +1,7 @@
 {
   "suggestions": [
     {
-      "id": "69306840-e81c-45d8-89c4-2face6b4501d",
+      "id": "761d793f-9ac5-4986-bec8-c130d41bf233",
       "explanation": "Tighten the metaphor. \"Second voice\" is good but slightly soft for a lede; \"uninvited interlocutor\" lands the same idea with more friction.",
       "original_text": "second voice that every serious text learns to carry on its back",
       "suggested_text": "uninvited interlocutor every serious text eventually learns to live with",
@@ -10,7 +10,7 @@
       "status": "pending"
     },
     {
-      "id": "f10606f0-b649-430b-9da7-bf2083cb67a8",
+      "id": "1e000f01-cc1f-4009-aa6e-a7a4809da346",
       "explanation": "Conversational is more accurate than intellectual here — the gloss is fundamentally a turn-taking form, not necessarily a high-cognition one.",
       "original_text": "smallest unit of intellectual companionship",
       "suggested_text": "smallest unit of conversational companionship",
@@ -19,7 +19,7 @@
       "status": "pending"
     },
     {
-      "id": "ebeeb509-c4fc-4e9d-ab38-dc93c50ca6e6",
+      "id": "a1d463ab-df65-4c32-ac3f-e309b04c00e2",
       "explanation": "\"Argumentative surface\" is more precise. \"Intellectual\" is doing redundant work alongside \"author has decided\" earlier in the sentence.",
       "original_text": "a paper's intellectual surface",
       "suggested_text": "a paper's argumentative surface",

@@ -1,178 +1,222 @@
 \documentclass{article}
 \usepackage[utf8]{inputenc}
+\usepackage{graphicx}
+\usepackage{xcolor}
 \usepackage{amsmath}
 \usepackage{amssymb}
 \usepackage{natbib}
 \usepackage{expex}
+\usepackage{tikz}
 
-% Virgil entity-id markers — no-op commands that carry stable UUIDs for
-% inline entities (footnotes, citations, examples) across .tex parse cycles.
+% Virgil entity-id markers — no-op commands that carry stable 4-hex IDs for
+% inline entities (footnotes, citations, examples, example items, and
+% linked-anchor ranges) across .tex parse cycles.
 \providecommand{\vfid}[1]{}
 \providecommand{\vcid}[1]{}
 \providecommand{\vexid}[1]{}
+\providecommand{\vxid}[1]{}
+\providecommand{\vlid}[1]{}
+\providecommand{\vlidend}[1]{}
 
 \bibliographystyle{plainnat}
 
-\title{The Margin and the Note: A Brief History of Annotation} %!v:5965
-\author{A Show Paper\vfid{b0ec}\thanks{Demonstration document, prepared for the Virgil sample suite.}} %!v:8311
-\date{\today} %!v:7754
+\title{The Margin and the Note: A Brief History of Annotation} %!v:0a11
+\author{A Show Paper\vfid{f0ac}\thanks{Demonstration document, prepared for the Virgil sample suite.}} %!v:0a22
+\date{\today} %!v:0a33
 
 \begin{document}
 
 \maketitle
 
-% A demonstration document. Every formatting move is intentional. %!v:067e
+% A demonstration document. Every formatting move below is intentional. %!v:0c01
 \section{Introduction}
-\label{sec:intro} %!v:e4a5
+\label{sec:intro} %!v:1100
 
-Annotation is not decoration. It is the second voice that every serious text learns to carry on its back. To read a book is, sooner or later, to mark it; to write a book is, sooner or later, to footnote it. The history of the page is the history of these two impulses learning to share the same surface\vfid{ff01}\footnote{The cohabitation is rarely peaceful. Compositors, printers, and readers have spent centuries quarreling over how much of the page belongs to the \emph{text proper} and how much to the apparatus that surrounds it. See \vcid{cc01}\citet{bringhurst2004} for the typographer's view of this real estate war.}. %!v:fb8f
+Annotation is not decoration. It is the second voice that every serious text learns to carry on its back. To read a book is, sooner or later, to mark it; to write a book is, sooner or later, to footnote it. The history of the page is the history of these two impulses learning to share the same surface\vfid{f001}\footnote{The cohabitation is rarely peaceful. Compositors, printers, and readers have spent centuries quarreling over how much of the page belongs to the \emph{text proper} and how much to the apparatus that surrounds it. See \vcid{cc01}\citet{bringhurst2004} for the typographer's view of this real estate war.}. %!v:1101
 
-This essay sketches a partial history of that cohabitation. It moves from the medieval gloss to the printed marginalia of the Renaissance, then to the eighteenth-century footnote and the nineteenth-century citation, and finally to digital annotation systems --- of which the editor you are reading this in is one descendant. The argument is simple: \emph{annotation has always been the medium through which texts are made social}. Every device we now treat as bibliographic plumbing --- the citation, the footnote, the marginal note, the editorial revision --- began life as an attempt to let one reader speak to another across time. %!v:ac7b
+This essay sketches a partial history of that cohabitation. It moves from the medieval gloss to the printed marginalia of the Renaissance, then to the eighteenth-century footnote and the nineteenth-century citation, and finally to digital annotation systems --- of which the editor you are reading this in is one descendant. The argument is simple: \emph{annotation has always been the medium through which texts are made social}. Every device we now treat as bibliographic plumbing --- the citation, the footnote, the marginal note, the editorial revision --- began life as an attempt to let one reader speak to another across time. %!v:1102
 
-A word on the form of the document itself. This paper exercises every kind of card and inline element the editor knows about; the historical claims double as a tour of the apparatus. When the text below speaks of footnotes, it includes them. When it speaks of citations, it cites. When it speaks of marginal glosses, the gutter to your left and right will fill up with them. The \texttt{form} mirrors the \textbf{content}. %!v:7ab9
+A word on the form of the document itself. This paper exercises every kind of card and inline element the editor knows about; the historical claims double as a tour of the apparatus. When the text below speaks of footnotes, it includes them. When it speaks of citations, it cites. When it speaks of marginal glosses, the gutter to your left and right will fill up with them. The \texttt{form} mirrors the \textbf{content} --- and where it speaks of the corrector's hand, it leaves a mark \textcolor[HTML]{C0392B}{in red ink}. %!v:1103
 
 \section{The Marginal Gloss}
-\label{sec:gloss} %!v:dff7
+\label{sec:gloss} %!v:2200
 
-The earliest scholarly margin was a working space. Carolingian scribes copying the church fathers left wide outer margins precisely so that subsequent readers could supply the apparatus the text required: scriptural cross-references, etymological notes, alternate readings, polemical asides\vfid{ff02}\footnote{The standard study is \vcid{cc02}\citet{jackson2001}, which traces the migration of marginalia from manuscript to print to the Romantic notebook. Jackson's central insight is that marginalia are the \emph{only} reliable evidence we have of what readers actually \underline{did} with their books.}. The gloss was not subordinate to the text; it was a parallel text, often heavier on the page than the words it surrounded. %!v:f1c5
+The earliest scholarly margin was a working space. Carolingian scribes copying the church fathers left wide outer margins precisely so that subsequent readers could supply the apparatus the text required: scriptural cross-references, etymological notes, alternate readings, polemical asides\vfid{f002}\footnote{The standard study is \vcid{cc02}\citet{jackson2001}, which traces the migration of marginalia from manuscript to print to the Romantic notebook. Jackson's central insight is that marginalia are the \emph{only} reliable evidence we have of what readers actually \underline{did} with their books.}. The gloss was not subordinate to the text; it was a parallel text, often heavier on the page than the words it surrounded. %!v:2201
 
 \begin{quote}
-``A marginal note is the smallest unit of intellectual companionship.'' --- adapted from a remark in \vcid{cc03}\citet{slights2001}, on Renaissance printers' habit of selling their books pre-glossed for purchasers who wanted to be \emph{seen} reading a particular school of thought.\end{quote} %!v:c042
+``A marginal note is the smallest unit of intellectual companionship.'' --- adapted from a remark in \vcid{cc03}\citet{slights2001}, on Renaissance printers' habit of selling their books pre-glossed for purchasers who wanted to be \emph{seen} reading a particular school of thought.\end{quote} %!v:2202
 
-By the time print arrived, the gloss had become a recognizable genre. Renaissance editions of classical authors carried apparatus on three sides at once: the original above, philological commentary below, and a stream of textual variants in the outer margin. The reader's eye traveled in a circuit. The medieval principle survived: \emph{a text without margins is a text that cannot be answered.} %!v:2ff0
+By the time print arrived, the gloss had become a recognizable genre. Renaissance editions of classical authors carried apparatus on three sides at once: the original above, philological commentary below, and a stream of textual variants in the outer margin. The reader's eye traveled in a circuit. The medieval principle survived: \emph{a text without margins is a text that cannot be answered.} %!v:2203
 
-A few of the typographic moves we now consider editorial conventions began here: %!v:d138
+A few of the typographic moves we now consider editorial conventions began here: %!v:2204
 
 \begin{itemize}
-  \item the \emph{nota bene} pointer, ancestor of every modern highlight;
-  \item the \emph{manicule} (a hand with a pointing finger) directing the eye to a passage worth attention;
-  \item the \emph{paragraphos} mark (\textsection), which migrated from the margin into the body as the modern paragraph break:
+  \item the \emph{nota bene} pointer, ancestor of every modern highlight; %!v:bb8c
+  \item the \emph{manicule} (a hand with a pointing finger) directing the eye to a passage worth attention; %!v:773f
+  \item the \emph{paragraphos} mark (¶), which migrated from the margin into the body as the modern paragraph break. %!v:b2c4
+\end{itemize} %!v:2205
 
-  \includegraphics[width=0.35\textwidth]{figures/sample-png} %!v:gx01
-\end{itemize} %!v:55a8
+\includegraphics[width=0.16\textwidth]{figures/manicule} %!v:289b
 
-% A small ekphrasis of a manuscript page. %!v:20e1
-Consider what an early reader of Bede would have seen on a page like this: %!v:521a
+% A small ekphrasis of a manuscript page. %!v:2206
+Consider what an early reader of Bede would have seen on a page like this: %!v:2207
 
 \vexid{ee01}\ex\label{ex:gloss-page}
 A central column of Latin scripture, bracketed by an interlinear gloss in Old English; in the outer margin, a chain of quaestiones and the occasional drawing of a bird. The \emph{page} is itself an annotation device.
 \xe
 
-The gloss was a way of \textbf{thinking through} a text in public. Its descendants are everywhere on the contemporary screen. %!v:8943
+The gloss was a way of \textbf{thinking through} a text in public. Its descendants are everywhere on the contemporary screen. %!v:2208
 
 \section{The Birth of the Footnote}
-\label{sec:footnote} %!v:b39c
+\label{sec:footnote} %!v:3300
 
-Footnotes have a curious history\vfid{ff03}\footnote{The phrase belongs to \vcid{cc04}\citet{grafton1997}, whose monograph of the same year remains the standard treatment. Grafton dates the modern footnote --- numbered, set below a horizontal rule, keyed to a superscript marker --- to the late seventeenth century, with Pierre Bayle's \emph{Dictionnaire historique et critique} (1697) as the locus classicus.}. The footnote did not invent the \emph{practice} of annotation; it inherited it. What it added was a typographic discipline: the apparatus would be \emph{below} the text, not beside it; numbered, not floated; consultable, not enforced. %!v:10be
+Footnotes have a curious history\vfid{f003}\footnote{The phrase belongs to \vcid{cc04}\citet{grafton1997}, whose monograph of the same year remains the standard treatment. Grafton dates the modern footnote --- numbered, set below a horizontal rule, keyed to a superscript marker --- to the late seventeenth century, with Pierre Bayle's \emph{Dictionnaire historique et critique} (1697) as the locus classicus.}. The footnote did not invent the \emph{practice} of annotation; it inherited it. What it added was a typographic discipline: the apparatus would be \emph{below} the text, not beside it; numbered, not floated; consultable, not enforced. %!v:3301
 
-Two readings dominate the literature. The first treats the footnote as a tool of \textbf{verification} --- a guarantee that the author has read what they cite, an audit trail an unfriendly reader can follow. The second treats it as a tool of \textbf{tone} --- the place where the author is allowed to be a person rather than a discipline\vfid{ff04}\footnote{Edward Gibbon is the patron saint of this second tradition. The \emph{Decline and Fall} carries on a half-secret comedy in its footnotes that the body text would never permit. See \vcid{cc05}\citet[ch.~3]{grafton1997}.}. %!v:6d1e
+Two readings dominate the literature. The first treats the footnote as a tool of \textbf{verification} --- a guarantee that the author has read what they cite, an audit trail an unfriendly reader can follow. The second treats it as a tool of \textbf{tone} --- the place where the author is allowed to be a person rather than a discipline\vfid{f004}\footnote{Edward Gibbon is the patron saint of this second tradition. The \emph{Decline and Fall} carries on a half-secret comedy in its footnotes that the body text would never permit. See \vcid{cc05}\citet[ch.~3]{grafton1997}.}. %!v:3302
 
-The eighteenth century used footnotes for both purposes at once. The nineteenth narrowed them to verification; the twentieth re-permitted irony; the twenty-first --- in the form of the link, the citation hover-card, and the side-panel note --- dispersed them again into a network of traces. %!v:6151
+The eighteenth century used footnotes for both purposes at once. The nineteenth narrowed them to verification; the twentieth re-permitted irony; the twenty-first --- in the form of the link, the citation hover-card, and the side-panel note --- dispersed them again into a network of traces. %!v:3303
 
 \begin{figure}[ht]
+
   \centering
-  \includegraphics[width=0.6\textwidth]{figures/sample-png}
-  \caption{A schematic of a page with body text (light) and apparatus band (blue).}
+  \includegraphics[width=0.62\textwidth]{figures/page-anatomy}
+  \caption{The anatomy of a glossed page: a central text column flanked by margin glosses, with an interlinear gloss above the main line and a footnote band below the rule.}
   \label{fig:bands}
-\end{figure}
+\end{figure} %!v:48cc
 
 \subsection{What gets pushed down}
-\label{sec:pushdown} %!v:ca04
+\label{sec:pushdown} %!v:3310
 
-A footnote is, structurally, a piece of text the author has decided does not belong in the main flow but cannot be cut. Anything more important would be promoted; anything less would be deleted. The footnote names the residue: a passage that is \emph{relevant but not load-bearing}. The mathematics of this is unflattering. If $T$ is the body text and $A$ the apparatus, then a paper's intellectual surface is roughly
-$$ S \;=\; |T| \;+\; \alpha \cdot |A|, \qquad 0 < \alpha < 1, $$
-where $\alpha$ measures how much of the apparatus a typical reader actually consults. Every author has an opinion about $\alpha$. Most opinions are wrong\vfid{ff05}\footnote{Empirically, $\alpha$ rises sharply when footnotes are placed on the same page (as in print) and falls when they are pushed to a separate endnotes section. The interface determines the reading.}. %!v:a2d8
+A footnote is, structurally, a piece of text the author has decided does not belong in the main flow but cannot be cut. Anything more important would be promoted; anything less would be deleted. The footnote names the residue: a passage that is \emph{relevant but not load-bearing}. The mathematics of this is unflattering. If $T$ is the body text and $A$ the apparatus, then a paper's intellectual surface is roughly %!v:3311
+
+\[
+S \;=\; |T| \;+\; \alpha \cdot |A|, \qquad 0 < \alpha < 1,
+\] %!v:a292
+
+where $\alpha$ measures how much of the apparatus a typical reader actually consults. A cleaner-minded author would footnote only when the expected information gain exceeds the cost of the glance, %!v:3312
+
+\[
+\mathbb{E}[\Delta I] \;>\; c_{\text{glance}},
+\] %!v:0ee9
+
+and would otherwise stay silent. Most footnotes fail this test\vfid{f005}\footnote{Empirically, $\alpha$ rises sharply when footnotes are placed on the same page (as in print) and falls when they are pushed to a separate endnotes section. The interface determines the reading.}. %!v:3313
 
 \section{Citation as Social Fabric}
-\label{sec:citation} %!v:b256
+\label{sec:citation} %!v:4400
 
-A citation is a footnote that has been compressed to a key. The earliest forms wrote out the source in full at every reference; modern academic citation is an act of severe abbreviation, designed for a reader who can be trusted to consult a separate apparatus --- the bibliography --- to recover the full context. %!v:e862
+A citation is a footnote that has been compressed to a key. The earliest forms wrote out the source in full at every reference; modern academic citation is an act of severe abbreviation, designed for a reader who can be trusted to consult a separate apparatus --- the bibliography --- to recover the full context. %!v:4401
 
-\vcid{cc06}\citet{genette1997} called this whole zone of textual machinery \emph{paratext}: the titles, prefaces, footnotes, citations, and indexes that surround the text proper and shape how it is received. \vcid{cc07}\citet{mckenzie1999} pushed the claim further: there is no such thing as a text without its paratext. The bibliography is part of the argument. %!v:210b
+\vcid{cc06}\citet{genette1997} called this whole zone of textual machinery \emph{paratext}: the titles, prefaces, footnotes, citations, and indexes that surround the text proper and shape how it is received. \vcid{cc07}\citet{mckenzie1999} pushed the claim further: there is no such thing as a text without its paratext. The bibliography is part of the argument. %!v:4402
 
-The shorthand has consequences. When we write \vcid{cc08}\citep{bringhurst2004} or \vcid{cc09}\citep[ch.~3]{bringhurst2004}, we are performing several social acts at once: we are pointing, we are crediting, we are positioning ourselves within a tradition, and we are inviting a reader to follow a thread\vfid{ff06}\footnote{Multi-key citations such as \vcid{cc0a}\citep{bringhurst2004,tschichold1991} additionally signal a \emph{lineage} --- not just a source but a tradition the author claims to be working within.}. \vcid{cc0b}\citeauthor{drucker2014} (\vcid{cc0c}\citeyear{drucker2014}) describes this as the production of a \emph{citational graph}, in which every paper is a node and every citation an edge. %!v:e1e7
+The shorthand has consequences. When we write \vcid{cc08}\citep{bringhurst2004} or \vcid{cc09}\citep[ch.~3]{bringhurst2004}, we are performing several social acts at once: we are pointing, we are crediting, we are positioning ourselves within a tradition, and we are inviting a reader to follow a thread\vfid{f006}\footnote{Multi-key citations such as \vcid{cc0a}\citep{bringhurst2004,tschichold1991} additionally signal a \emph{lineage} --- not just a source but a tradition the author claims to be working within.}. \vcid{cc0b}\citeauthor{drucker2014} (\vcid{cc0c}\citeyear{drucker2014}) describes this as the production of a \emph{citational graph}, in which every paper is a node and every citation an edge; compare \vcid{cc0d}\citep[see][p.~3]{mckenzie1999} on the bibliographic code as social act. %!v:4403
 
-The conventions vary by discipline --- author-date in the social sciences, footnote-style in history, numeric in the sciences --- but the underlying gesture is the same. A citation says: \emph{my claim does not float; it is moored, here, to that other claim, written by that other person, whom you can find at this address}. %!v:bc30
+The conventions vary by discipline --- author-date in the social sciences, footnote-style in history, numeric in the sciences --- but the underlying gesture is the same. A citation says: \emph{my claim does not float; it is moored, here, to that other claim, written by that other person, whom you can find at this address}. %!v:4404
 
 \subsection{When the address fails}
-\label{sec:errors} %!v:3c20
+\label{sec:errors} %!v:4410
 
-% This citation is intentional: it points to a key not in the bibliography. %!v:2ada
-% The linter should flag it, populating the Errors panel as part of the demo. %!v:7767
-Sometimes the address fails. A citation like \vcid{cc0d}\cite{nonexistent2026} that points to a key not present in the bibliography is the bibliographic equivalent of a 404. Editors and readers have evolved a sub-genre of marginal annotation devoted entirely to catching these. %!v:1371
+% This citation is intentional: it points to a key not in the bibliography. %!v:4411
+% The linter should flag it, populating the Errors panel as part of the demo. %!v:4412
+Sometimes the address fails. A citation like \vcid{cc0e}\cite{nonexistent2026} that points to a key not present in the bibliography is the bibliographic equivalent of a 404. Editors and readers have evolved a sub-genre of marginal annotation devoted entirely to catching these. %!v:4413
 
-\includegraphics[width=0.45\textwidth]{figures/sample-pdf}
+\includegraphics[width=0.5\textwidth]{figures/citation-graph} %!v:94cf
 
 \section{The Reader as Annotator}
-\label{sec:reader} %!v:a9f4
+\label{sec:reader} %!v:5500
 
-So far the apparatus has been the author's. But the most consistent annotators in the history of the book are not authors; they are readers. \vcid{cc0e}\citet{jackson2001} catalogues the marginalia of Coleridge, Blake, Melville, and a hundred lesser readers, and the picture that emerges is of an active, talkative reading culture in which a copy of a book is incomplete until its owner has added their voice to it. %!v:1bdb
+So far the apparatus has been the author's. But the most consistent annotators in the history of the book are not authors; they are readers. \vcid{cc0f}\citet{jackson2001} catalogues the marginalia of Coleridge, Blake, Melville, and a hundred lesser readers, and the picture that emerges is of an active, talkative reading culture in which a copy of a book is incomplete until its owner has added their voice to it. %!v:5501
 
-Some examples of what this looks like across history: %!v:4cb9
+Some examples of what this looks like across history --- the last of them with a nested taxonomy of its own: %!v:5502
 
 \vexid{ee02}\pex\label{ex:reader-types}
-\vxid{xi01}\a A medieval cleric correcting a copyist's error in a margin: a single inserted word, in a different hand, with a caret showing where it belongs.
-\vxid{xi02}\b A Renaissance humanist marking up a printed edition: dense Latin commentary in a tiny hand, organized around the printed catchwords.
-\vxid{xi03}\c Coleridge writing what amounts to a parallel essay in the margins of a borrowed copy of Kant.
-\vxid{xi04}\d A twenty-first-century reader of a PDF dropping a colored highlight and a sticky note --- and below it, the diagram itself:
-
-\includegraphics[width=0.4\textwidth]{figures/sample-pdf} %!v:gx02
+\vxid{ea01}\a A medieval cleric correcting a copyist's error in a margin: a single inserted word, in a different hand, with a caret showing where it belongs.
+\vxid{ea02}\a A Renaissance humanist marking up a printed edition: dense Latin commentary in a tiny hand, organized around the printed catchwords.
+\vxid{ea03}\a Coleridge writing what amounts to a parallel essay in the margins of a borrowed copy of Kant.
+\vxid{ea04}\a A twenty-first-century reader of a PDF, whose marks now come in distinct kinds:
+\begin{xlist}
+\vxid{eb01}\a a colored highlight dragged across a clause;
+\vxid{eb02}\a a sticky note left hanging in the margin;
+\vxid{eb03}\a a threaded reply to an earlier reader of the same file.
+\end{xlist}
 \xe
 
-The form changes; the gesture does not. \vcid{cc0f}\citet{marshall1997,marshall1998} studied this gesture in libraries and digital reading rooms and identified a small set of recurrent functions: \emph{pointing} (highlight, underline), \emph{questioning} (queries in the margin), \emph{summarizing} (bracket-and-keyword in the gutter), and \emph{conversing} (multi-turn replies between successive readers of the same physical book). %!v:aa5b
+The form changes; the gesture does not. \vcid{cc10}\citet{marshall1997,marshall1998} studied this gesture in libraries and digital reading rooms and identified a small set of recurrent functions: \emph{pointing} (highlight, underline), \emph{questioning} (queries in the margin), \emph{summarizing} (bracket-and-keyword in the gutter), and \emph{conversing} (multi-turn replies between successive readers of the same physical book). %!v:5503
 
-A glossed example, in the philological tradition, makes this concrete. The Old English interlinear gloss in the Lindisfarne Gospels turns a single Latin sentence into a small bilingual scaffold: %!v:0db7
+A glossed example, in the philological tradition, makes this concrete. The Old English interlinear gloss in the Lindisfarne Gospels turns a single Latin sentence into a small bilingual scaffold: %!v:5504
 
 \vexid{ee03}\ex\label{ex:old-english-gloss}
 \begingl
 \gla in principio erat verbum //
-\glb in fruma w{\ae}s word //
+\glb in fruma wæs word //
 \glc PREP beginning was word //
 \glft ``In the beginning was the word.'' //
 \endgl
 \xe
 
-The aligned tiers do exactly what a marginal gloss does, only formalized: every word in the source is given a parallel word in the target, with a free translation underneath. The gloss \emph{is} the annotation, made permanent. %!v:1b32
+The aligned tiers do exactly what a marginal gloss does, only formalized: every word in the source is given a parallel word in the target, with a free translation underneath. The gloss \emph{is} the annotation, made permanent. %!v:5505
 
-Marginalia rarely sit politely within a single paragraph. \vlid{ab12}A reader who underlines a phrase often goes on to bracket the surrounding argument, dragging the line of attention through a paragraph break and into the next thought. %!v:lr01
+Marginalia rarely sit politely within a single paragraph. \vlid{ab12}A reader who underlines a phrase often goes on to bracket the surrounding argument, dragging the line of attention through a paragraph break and into the next thought.\vlidend{ab12} %!v:5506
 
-That second thought is where the gloss usually lives: not in the noun phrase the reader first noticed, but in the explanation that follows it, on the next line.\vlidend{ab12} %!v:lr02
+\vlid{ab12}That second thought is where the gloss usually lives: not in the noun phrase the reader first noticed, but in the explanation that follows it, on the next line.\vlidend{ab12} %!v:5507
 
 \section{Digital Remediation}
-\label{sec:digital} %!v:ebf7
+\label{sec:digital} %!v:6600
 
-\vcid{cc10}\citet{vannevar1945} imagined the Memex --- a desk-sized device on which a reader could thread their way through a personal library, leaving annotated trails for others to follow. \vcid{cc11}\citet{bolter2001} read the Memex as a prefiguration of hypertext. \vcid{cc12}\citet{drucker2014} reads both as continuations of a much older project: the construction of \emph{visual interfaces to thought}. %!v:aa91
+\vcid{cc11}\citet{vannevar1945} imagined the Memex --- a desk-sized device on which a reader could thread their way through a personal library, leaving annotated trails for others to follow. \vcid{cc12}\citet{bolter2001} read the Memex as a prefiguration of hypertext. \vcid{cc13}\citet{drucker2014} reads both as continuations of a much older project: the construction of \emph{visual interfaces to thought} --- what \vcid{cc14}\citet{zielinski2006} would set within the deep time of the media. %!v:6601
 
-The digital page has multiplied the kinds of annotation a reader can leave. A partial taxonomy: %!v:aeb6
+The digital page has multiplied the kinds of annotation a reader can leave. A partial taxonomy: %!v:6602
 
 \begin{enumerate}
-  \item the inline highlight, descendant of the medieval underline;
-  \item the margin note, descendant of the manuscript gloss;
-  \item the threaded comment, descendant of the printed errata;
-  \item the suggestion or proposed edit, descendant of the editorial blue pencil;
-  \item the citation hover-card, descendant of the footnote;
-  \item the cross-reference, descendant of the manicule and the \emph{nota bene}.
-\end{enumerate} %!v:dede
+  \item the inline highlight, descendant of the medieval underline; %!v:d51a
+  \item the margin note, descendant of the manuscript gloss; %!v:af1a
+  \item the threaded comment, descendant of the printed errata; %!v:e56f
+  \item the suggestion or proposed edit, descendant of the editorial blue pencil; %!v:2459
+  \item the citation hover-card, descendant of the footnote; %!v:84dd
+  \item the cross-reference, descendant of the manicule and the \emph{nota bene}. %!v:4038
+\end{enumerate} %!v:6603
 
-What is genuinely new is none of these individually. What is new is that they all coexist on the same surface, addressable by the same reader, with persistent identity. \vcid{cc13}\citet{mcgann1991} predicted exactly this in \emph{The Textual Condition}: that the digital text would not abolish the apparatus of the codex but \emph{generalize} it. %!v:bc7c
+\begin{figure*}[t]
 
-In source form, the way an editor marks an annotation is itself a small artifact. A footnote, for example, is encoded as: %!v:3c56
+  \centering
+  \includegraphics[width=0.9\textwidth]{figures/page-anatomy}
+  \caption{The same page anatomy, set as a full-width float (\texttt{figure*}) of the kind that spans both columns of a two-column layout.}
+  \label{fig:wide}
+\end{figure*} %!v:a7d3
+
+What is genuinely new is none of these individually. What is new is that they all coexist on the same surface, addressable by the same reader, with persistent identity. \vcid{cc15}\citet{mcgann1991} predicted exactly this in \emph{The Textual Condition}: that the digital text would not abolish the apparatus of the codex but \emph{generalize} it. %!v:6604
+
+In source form, the way an editor marks an annotation is itself a small artifact\vfid{f007}\footnote{The point is older than the computer. \vcid{cc16}\citet{derrida1967} argued that writing is not a transcript of speech but a system of traces that precedes it --- which is as good a description as any of what a stable annotation id is for.}. A footnote, for example, is encoded as: %!v:6605
 
 \begin{verbatim}
 \footnote{This is the body of the note,
 which can contain \textbf{formatting},
 \cite{any-key}, and even nested structure.}
-\end{verbatim} %!v:99cd
+\end{verbatim} %!v:6606
 
-The fact that this notation has survived from the late nineteenth century into the present is not an accident of typography. It is a piece of bibliographic infrastructure that proved \emph{good enough} that nobody bothered to replace it. As we saw in section\textasciitilde{}\ref{sec:footnote}, and as the example in (\getref{ex:old-english-gloss}) makes vivid, the apparatus is older than any of the technologies we use to render it. %!v:66d4
+Some annotations are best drawn rather than written. The citational graph of this very section, sketched in raw TikZ and passed through untouched, is itself a kind of marginal figure: %!v:6608
+
+%!vtex:begin 7e10
+\begin{tikzpicture}[every node/.style={font=\small, draw, rounded corners, inner sep=3pt}]
+  \node (a) at (0,0) {Bayle};
+  \node (b) at (2.4,0.9) {Gibbon};
+  \node (c) at (2.4,-0.9) {Grafton};
+  \node (d) at (4.9,0) {This paper};
+  \draw[->] (a) -- (b);
+  \draw[->] (a) -- (c);
+  \draw[->] (b) -- (d);
+  \draw[->] (c) -- (d);
+\end{tikzpicture}
+%!vtex:end 7e10
+
+The fact that this notation has survived from the late nineteenth century into the present is not an accident of typography. It is a piece of bibliographic infrastructure that proved \emph{good enough} that nobody bothered to replace it. As we saw in section \ref{sec:footnote}, as the example in (\getref{ex:old-english-gloss}) makes vivid, and as \getfullref{fig:wide} restates at full width, the apparatus is older than any of the technologies we use to render it. %!v:6607
 
 \subsection{The Coda of Cowork}
-\label{sec:cowork} %!v:6bb9
+\label{sec:cowork} %!v:6610
 
 \subsubsection{What an editor like this is for}
-\label{sec:purpose} %!v:b97c
+\label{sec:purpose} %!v:6611
 
-The editor you are reading this in is, among other things, an attempt to take the full historical apparatus seriously --- footnote, citation, gloss, comment, revision, archive --- and make every one of them a first-class object that an author and an agent can manipulate together. The marginalia gutter, the side panels, the floating cards: each is a contemporary realization of a much older typographic instinct. The hope is that a reader of this paper, looking at the populated panels around the text, will recognize the lineage\textasciitilde{}…\ and feel the same impulse the medieval scribe felt when reaching for the outer margin: \emph{I have something to add}. %!v:ffca
+The editor you are reading this in is, among other things, an attempt to take the full historical apparatus seriously --- footnote, citation, gloss, comment, revision, archive --- and make every one of them a first-class object that an author and an agent can manipulate together. The marginalia gutter, the side panels, the floating cards: each is a contemporary realization of a much older typographic instinct. The hope is that a reader of this paper, looking at the populated panels around the text, will recognize the lineage --- and feel the same impulse the medieval scribe felt when reaching for the outer margin: \emph{I have something to add}. %!v:6612
 
-\bibliography{references} %!v:96ef
+\bibliography{references} %!v:6700
 \end{document}

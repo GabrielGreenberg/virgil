@@ -1,0 +1,51 @@
+%PDF-1.4
+1 0 obj
+<< /Type /Catalog /Pages 2 0 R >>
+endobj
+2 0 obj
+<< /Type /Pages /Kids [3 0 R] /Count 1 >>
+endobj
+3 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 360 220] /Resources << /Font << /F1 5 0 R >> >> /Contents 4 0 R >>
+endobj
+4 0 obj
+<< /Length 877 >>
+stream
+BT /F1 11 Tf 0.17 0.17 0.17 rg 120 198 Td (a citational graph) Tj ET
+0.6 0.6 0.6 RG 1 w
+18 92 76 32 re S
+142 152 76 32 re S
+142 32 76 32 re S
+266 92 84 32 re S
+0.3 0.3 0.3 RG 1 w
+94 108 m 142 168 l S
+0.3 0.3 0.3 rg 142 168 m 135.28452823878996 164.40800347656204 l 139.96974109544811 160.65983319123552 l f
+94 108 m 142 48 l S
+0.3 0.3 0.3 rg 142 48 m 139.96974109544811 55.34016680876449 l 135.28452823878996 51.591996523437935 l f
+218 168 m 266 108 l S
+0.3 0.3 0.3 rg 266 108 m 263.9697410954481 115.3401668087645 l 259.28452823878996 111.59199652343794 l f
+218 48 m 266 108 l S
+0.3 0.3 0.3 rg 266 108 m 259.28452823878996 104.40800347656206 l 263.9697410954481 100.6598331912355 l f
+0.17 0.17 0.17 rg
+BT /F1 10 Tf 42.5 104.5 Td (Bayle) Tj ET
+BT /F1 10 Tf 163.8 164.5 Td (Gibbon) Tj ET
+BT /F1 10 Tf 161.1 44.5 Td (Grafton) Tj ET
+BT /F1 10 Tf 281.0 104.5 Td (This paper) Tj ET
+endstream
+endobj
+5 0 obj
+<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>
+endobj
+xref
+0 6
+0000000000 65535 f 
+0000000009 00000 n 
+0000000058 00000 n 
+0000000115 00000 n 
+0000000241 00000 n 
+0000001168 00000 n 
+trailer
+<< /Size 6 /Root 1 0 R >>
+startxref
+1238
+%%EOF

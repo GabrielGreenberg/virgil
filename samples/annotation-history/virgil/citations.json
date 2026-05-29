@@ -99,6 +99,14 @@
     },
     {
       "id": "cc0d",
+      "command": "\\citep[see][p.~3]{mckenzie1999}",
+      "keys": [
+        "mckenzie1999"
+      ],
+      "createdAt": "2026-05-16T16:00:07.973Z"
+    },
+    {
+      "id": "cc0e",
       "command": "\\cite{nonexistent2026}",
       "keys": [
         "nonexistent2026"
@@ -106,7 +114,7 @@
       "createdAt": "2026-05-16T16:00:07.973Z"
     },
     {
-      "id": "cc0e",
+      "id": "cc0f",
       "command": "\\citet{jackson2001}",
       "keys": [
         "jackson2001"
@@ -114,7 +122,7 @@
       "createdAt": "2026-05-16T16:00:07.973Z"
     },
     {
-      "id": "cc0f",
+      "id": "cc10",
       "command": "\\citet{marshall1997,marshall1998}",
       "keys": [
         "marshall1997",
@@ -123,7 +131,7 @@
       "createdAt": "2026-05-16T16:00:07.973Z"
     },
     {
-      "id": "cc10",
+      "id": "cc11",
       "command": "\\citet{vannevar1945}",
       "keys": [
         "vannevar1945"
@@ -131,7 +139,7 @@
       "createdAt": "2026-05-16T16:00:07.973Z"
     },
     {
-      "id": "cc11",
+      "id": "cc12",
       "command": "\\citet{bolter2001}",
       "keys": [
         "bolter2001"
@@ -139,7 +147,7 @@
       "createdAt": "2026-05-16T16:00:07.973Z"
     },
     {
-      "id": "cc12",
+      "id": "cc13",
       "command": "\\citet{drucker2014}",
       "keys": [
         "drucker2014"
@@ -147,7 +155,15 @@
       "createdAt": "2026-05-16T16:00:07.973Z"
     },
     {
-      "id": "cc13",
+      "id": "cc14",
+      "command": "\\citet{zielinski2006}",
+      "keys": [
+        "zielinski2006"
+      ],
+      "createdAt": "2026-05-16T16:00:07.973Z"
+    },
+    {
+      "id": "cc15",
       "command": "\\citet{mcgann1991}",
       "keys": [
         "mcgann1991"
@@ -155,7 +171,15 @@
       "createdAt": "2026-05-16T16:00:07.973Z"
     },
     {
-      "id": "e9af1cbb-63ca-4575-ad9b-a4e3391caf3a",
+      "id": "cc16",
+      "command": "\\citet{derrida1967}",
+      "keys": [
+        "derrida1967"
+      ],
+      "createdAt": "2026-05-16T16:00:07.973Z"
+    },
+    {
+      "id": "f5cdac2a-141d-4f73-8ba9-d458ac34d838",
       "command": "\\cite{drucker2014}",
       "keys": [
         "drucker2014"
@@ -164,7 +188,7 @@
       "unanchored": true
     },
     {
-      "id": "158b059a-475c-42d9-806d-f284e907e1ab",
+      "id": "c20cac19-618e-4684-83e9-f0b7dc87ceba",
       "command": "\\citep{mcgann1991}",
       "keys": [
         "mcgann1991"

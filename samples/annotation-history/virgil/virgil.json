@@ -1,160 +1,262 @@
 {
   "paragraphs": {
-    "1371": {
-      "fingerprint": "sometimes the address fails. a citation like \\cite{nonexistent2026} that points "
-    },
-    "5965": {
-      "fingerprint": "the margin and the note: a brief history of annotation"
-    },
-    "6151": {
-      "fingerprint": "the eighteenth century used footnotes for both purposes at once. the nineteenth "
-    },
-    "7754": {
-      "fingerprint": "may 16, 2026"
-    },
-    "7767": {
-      "fingerprint": "the linter should flag it, populating the errors panel as part of the demo."
-    },
-    "8311": {
-      "fingerprint": "a show paperdemonstration document, prepared for the virgil sample suite."
-    },
-    "8943": {
-      "fingerprint": "the gloss was a way of thinking through a text in public. its descendants are ev"
-    },
-    "067e": {
-      "fingerprint": "a demonstration document. every formatting move is intentional."
-    },
-    "e4a5": {
+    "1100": {
       "fingerprint": "introduction"
     },
-    "fb8f": {
+    "1101": {
       "fingerprint": "annotation is not decoration. it is the second voice that every serious text lea"
     },
-    "ac7b": {
+    "1102": {
       "fingerprint": "this essay sketches a partial history of that cohabitation. it moves from the me"
     },
-    "7ab9": {
+    "1103": {
       "fingerprint": "a word on the form of the document itself. this paper exercises every kind of ca"
     },
-    "dff7": {
+    "2200": {
       "fingerprint": "the marginal gloss"
     },
-    "f1c5": {
+    "2201": {
       "fingerprint": "the earliest scholarly margin was a working space. carolingian scribes copying t"
     },
-    "c042": {
+    "2202": {
       "fingerprint": "“a marginal note is the smallest unit of intellectual companionship.” --- adapte"
     },
-    "2ff0": {
+    "2203": {
       "fingerprint": "by the time print arrived, the gloss had become a recognizable genre. renaissanc"
     },
-    "d138": {
+    "2204": {
       "fingerprint": "a few of the typographic moves we now consider editorial conventions began here:"
     },
-    "55a8": {
+    "2205": {
       "fingerprint": "the nota bene pointer, ancestor of every modern highlight;; the manicule (a hand"
     },
-    "20e1": {
+    "2206": {
       "fingerprint": "a small ekphrasis of a manuscript page."
     },
-    "521a": {
+    "2207": {
       "fingerprint": "consider what an early reader of bede would have seen on a page like this:"
     },
-    "79b2": {
-      "fingerprint": "a central column of latin scripture, bracketed by an interlinear gloss in old en"
+    "2208": {
+      "fingerprint": "the gloss was a way of thinking through a text in public. its descendants are ev"
     },
-    "b39c": {
+    "2459": {
+      "fingerprint": "the suggestion or proposed edit, descendant of the editorial blue pencil;"
+    },
+    "3300": {
       "fingerprint": "the birth of the footnote"
     },
-    "10be": {
+    "3301": {
       "fingerprint": "footnotes have a curious historythe phrase belongs to \\citet{grafton1997}, whose"
     },
-    "6d1e": {
+    "3302": {
       "fingerprint": "two readings dominate the literature. the first treats the footnote as a tool of"
     },
-    "ca04": {
+    "3303": {
+      "fingerprint": "the eighteenth century used footnotes for both purposes at once. the nineteenth "
+    },
+    "3310": {
       "fingerprint": "what gets pushed down"
     },
-    "a2d8": {
+    "3311": {
       "fingerprint": "a footnote is, structurally, a piece of text the author has decided does not bel"
     },
-    "b256": {
+    "3312": {
+      "fingerprint": "where $\\alpha$ measures how much of the apparatus a typical reader actually cons"
+    },
+    "3313": {
+      "fingerprint": "and would otherwise stay silent. most footnotes fail this testempirically, $\\alp"
+    },
+    "4038": {
+      "fingerprint": "the cross-reference, descendant of the manicule and the nota bene."
+    },
+    "4400": {
       "fingerprint": "citation as social fabric"
     },
-    "e862": {
+    "4401": {
       "fingerprint": "a citation is a footnote that has been compressed to a key. the earliest forms w"
     },
-    "210b": {
+    "4402": {
       "fingerprint": "\\citet{genette1997} called this whole zone of textual machinery paratext: the ti"
     },
-    "e1e7": {
+    "4403": {
       "fingerprint": "the shorthand has consequences. when we write \\citep{bringhurst2004} or \\citep[c"
     },
-    "bc30": {
+    "4404": {
       "fingerprint": "the conventions vary by discipline --- author-date in the social sciences, footn"
     },
-    "3c20": {
+    "4410": {
       "fingerprint": "when the address fails"
     },
-    "2ada": {
+    "4411": {
       "fingerprint": "this citation is intentional: it points to a key not in the bibliography."
     },
-    "a9f4": {
+    "4412": {
+      "fingerprint": "the linter should flag it, populating the errors panel as part of the demo."
+    },
+    "4413": {
+      "fingerprint": "sometimes the address fails. a citation like \\cite{nonexistent2026} that points "
+    },
+    "5500": {
       "fingerprint": "the reader as annotator"
     },
-    "1bdb": {
+    "5501": {
       "fingerprint": "so far the apparatus has been the author's. but the most consistent annotators i"
     },
-    "4cb9": {
-      "fingerprint": "some examples of what this looks like across history:"
+    "5502": {
+      "fingerprint": "some examples of what this looks like across history --- the last of them with a"
     },
-    "2e89": {
-      "fingerprint": "a medieval cleric correcting a copyist's error in a margin: a single inserted wo"
-    },
-    "aa5b": {
+    "5503": {
       "fingerprint": "the form changes; the gesture does not. \\citet{marshall1997,marshall1998} studie"
     },
-    "0db7": {
+    "5504": {
       "fingerprint": "a glossed example, in the philological tradition, makes this concrete. the old e"
     },
-    "1b32": {
+    "5505": {
       "fingerprint": "the aligned tiers do exactly what a marginal gloss does, only formalized: every "
     },
-    "ebf7": {
+    "5506": {
+      "fingerprint": "marginalia rarely sit politely within a single paragraph. a reader who underline"
+    },
+    "5507": {
+      "fingerprint": "that second thought is where the gloss usually lives: not in the noun phrase the"
+    },
+    "6600": {
       "fingerprint": "digital remediation"
     },
-    "aa91": {
+    "6601": {
       "fingerprint": "\\citet{vannevar1945} imagined the memex --- a desk-sized device on which a reade"
     },
-    "aeb6": {
+    "6602": {
       "fingerprint": "the digital page has multiplied the kinds of annotation a reader can leave. a pa"
     },
-    "dede": {
+    "6603": {
       "fingerprint": "the inline highlight, descendant of the medieval underline;; the margin note, de"
     },
-    "bc7c": {
+    "6604": {
       "fingerprint": "what is genuinely new is none of these individually. what is new is that they al"
     },
-    "3c56": {
+    "6605": {
       "fingerprint": "in source form, the way an editor marks an annotation is itself a small artifact"
     },
-    "99cd": {
+    "6606": {
       "fingerprint": "\\footnote{this is the body of the note, which can contain \\textbf{formatting}, \\"
     },
-    "66d4": {
+    "6607": {
       "fingerprint": "the fact that this notation has survived from the late nineteenth century into t"
     },
-    "6bb9": {
+    "6608": {
+      "fingerprint": "some annotations are best drawn rather than written. the citational graph of thi"
+    },
+    "6610": {
       "fingerprint": "the coda of cowork"
     },
-    "b97c": {
+    "6611": {
       "fingerprint": "what an editor like this is for"
     },
-    "ffca": {
+    "6612": {
       "fingerprint": "the editor you are reading this in is, among other things, an attempt to take th"
     },
-    "96ef": {
+    "6700": {
       "fingerprint": "\\bibliography{references}"
+    },
+    "7065": {
+      "fingerprint": "a sticky note left hanging in the margin;"
+    },
+    "9529": {
+      "fingerprint": "a medieval cleric correcting a copyist's error in a margin: a single inserted wo"
+    },
+    "0a11": {
+      "fingerprint": "the margin and the note: a brief history of annotation"
+    },
+    "0a22": {
+      "fingerprint": "a show paperdemonstration document, prepared for the virgil sample suite."
+    },
+    "0a33": {
+      "fingerprint": "may 28, 2026"
+    },
+    "0c01": {
+      "fingerprint": "a demonstration document. every formatting move below is intentional."
+    },
+    "bb8c": {
+      "fingerprint": "the nota bene pointer, ancestor of every modern highlight;"
+    },
+    "773f": {
+      "fingerprint": "the manicule (a hand with a pointing finger) directing the eye to a passage wort"
+    },
+    "b2c4": {
+      "fingerprint": "the paragraphos mark (¶), which migrated from the margin into the body as the mo"
+    },
+    "ee01": {
+      "fingerprint": "a central column of latin scripture, bracketed by an interlinear gloss in old en"
+    },
+    "6f9f": {
+      "fingerprint": "a central column of latin scripture, bracketed by an interlinear gloss in old en"
+    },
+    "48cc": {
+      "fingerprint": "the anatomy of a glossed page: a central text column flanked by margin glosses, "
+    },
+    "a292": {
+      "fingerprint": "s \\;=\\; |t| \\;+\\; \\alpha \\cdot |a|, \\qquad 0 < \\alpha < 1,"
+    },
+    "0ee9": {
+      "fingerprint": "\\mathbb{e}[\\delta i] \\;>\\; c_{\\text{glance}},"
+    },
+    "ee02": {
+      "fingerprint": "a medieval cleric correcting a copyist's error in a margin: a single inserted wo"
+    },
+    "ea01": {
+      "fingerprint": "a medieval cleric correcting a copyist's error in a margin: a single inserted wo"
+    },
+    "ea02": {
+      "fingerprint": "a renaissance humanist marking up a printed edition: dense latin commentary in a"
+    },
+    "9ae1": {
+      "fingerprint": "a renaissance humanist marking up a printed edition: dense latin commentary in a"
+    },
+    "ea03": {
+      "fingerprint": "coleridge writing what amounts to a parallel essay in the margins of a borrowed "
+    },
+    "f52f": {
+      "fingerprint": "coleridge writing what amounts to a parallel essay in the margins of a borrowed "
+    },
+    "ea04": {
+      "fingerprint": "a twenty-first-century reader of a pdf, whose marks now come in distinct kinds:a"
+    },
+    "ff64": {
+      "fingerprint": "a twenty-first-century reader of a pdf, whose marks now come in distinct kinds:"
+    },
+    "eb01": {
+      "fingerprint": "a colored highlight dragged across a clause;"
+    },
+    "58e3": {
+      "fingerprint": "a colored highlight dragged across a clause;"
+    },
+    "eb02": {
+      "fingerprint": "a sticky note left hanging in the margin;"
+    },
+    "eb03": {
+      "fingerprint": "a threaded reply to an earlier reader of the same file."
+    },
+    "b688": {
+      "fingerprint": "a threaded reply to an earlier reader of the same file."
+    },
+    "ee03": {
+      "fingerprint": "inprincipioeratverbuminfrumawæswordprepbeginningwasword“in the beginning was the"
+    },
+    "d51a": {
+      "fingerprint": "the inline highlight, descendant of the medieval underline;"
+    },
+    "af1a": {
+      "fingerprint": "the margin note, descendant of the manuscript gloss;"
+    },
+    "e56f": {
+      "fingerprint": "the threaded comment, descendant of the printed errata;"
+    },
+    "84dd": {
+      "fingerprint": "the citation hover-card, descendant of the footnote;"
+    },
+    "a7d3": {
+      "fingerprint": "the same page anatomy, set as a full-width float (figure*) of the kind that span"
     }
   }
 }

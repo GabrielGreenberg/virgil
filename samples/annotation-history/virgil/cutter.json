@@ -2,9 +2,9 @@
   "cards": [
     {
       "kind": "comment",
-      "id": "627ea79b-c398-4d2c-aee5-ce0706439d3f",
+      "id": "582f061d-311f-4ef0-adcd-bff13a86d71b",
       "createdAt": "2026-04-23T22:15:00.000Z",
-      "text": "Petrarch pull-quote (cut) \u2014 An earlier version of this section also included a long block quote from Petrarch on the experience of reading Cicero in the margins of his own copy. Beautiful but it broke the section's argument, which is about the gloss as a structural feature, not as a personal reading experience. Cut for now; revisit if \u00a75 ever gets short.",
+      "text": "An earlier version of this section also included a long block quote from Petrarch on the experience of reading Cicero in the margins of his own copy. Beautiful but it broke the section's argument, which is about the gloss as a structural feature, not as a personal reading experience. Cut for now; revisit if §5 ever gets short.",
       "content": {
         "type": "doc",
         "content": [
@@ -13,7 +13,7 @@
             "content": [
               {
                 "type": "text",
-                "text": "An earlier version of this section also included a long block quote from Petrarch on the experience of reading Cicero in the margins of his own copy. Beautiful but it broke the section's argument, which is about the gloss as a structural feature, not as a personal reading experience. Cut for now; revisit if \u00a75 ever gets short."
+                "text": "An earlier version of this section also included a long block quote from Petrarch on the experience of reading Cicero in the margins of his own copy. Beautiful but it broke the section's argument, which is about the gloss as a structural feature, not as a personal reading experience. Cut for now; revisit if §5 ever gets short."
               }
             ]
           }
@@ -22,12 +22,13 @@
       "aiRequest": false,
       "links": [
         {
-          "id": "d1991ed3-daae-417d-9651-cb22a9826dc7",
+          "id": "8ec2e729-6e14-4fc4-af70-5a0ade3ed5a6",
           "kind": "anchor",
           "anchor": {
-            "type": "anchor",
-            "paragraphIds": [
-              "c042"
+            "type": "textObject",
+            "targetKind": "paragraph",
+            "textObjectIds": [
+              "2202"
             ],
             "margin": {
               "side": "right"
@@ -37,7 +38,7 @@
             "type": "card",
             "ref": {
               "kind": "cutter-comment",
-              "id": "627ea79b-c398-4d2c-aee5-ce0706439d3f"
+              "id": "582f061d-311f-4ef0-adcd-bff13a86d71b"
             }
           },
           "createdAt": "2026-04-23T22:15:00.000Z"
@@ -46,9 +47,9 @@
     },
     {
       "kind": "comment",
-      "id": "8b086209-b907-4b0a-bc99-d183c6620edc",
+      "id": "d05b4f8f-8e13-44f8-8ee2-d7cf2b2d6295",
       "createdAt": "2026-04-24T01:30:00.000Z",
-      "text": "Bayesian aside \u2014 If a reader's attention is modeled as a Bernoulli draw with parameter alpha for each footnote, and if the cost of a missed footnote is the squared error in the reader's posterior, then a cleanly Bayesian author would footnote only when the expected information gain exceeds the cost of the additional eye movement. Most footnotes fail this test. The math is correct and unhelpful.",
+      "text": "If a reader's attention is modeled as a Bernoulli draw with parameter alpha for each footnote, and if the cost of a missed footnote is the squared error in the reader's posterior, then a cleanly Bayesian author would footnote only when the expected information gain exceeds the cost of the additional eye movement. Most footnotes fail this test. The math is correct and unhelpful.",
       "content": {
         "type": "doc",
         "content": [
@@ -66,12 +67,13 @@
       "aiRequest": false,
       "links": [
         {
-          "id": "3e6cf38f-8b15-4c58-9346-26d07b003faf",
+          "id": "1f5a351f-9a8e-45f3-9b2e-42b3608c7831",
           "kind": "anchor",
           "anchor": {
-            "type": "anchor",
-            "paragraphIds": [
-              "a2d8"
+            "type": "textObject",
+            "targetKind": "paragraph",
+            "textObjectIds": [
+              "3311"
             ],
             "margin": {
               "side": "right"
@@ -81,7 +83,7 @@
             "type": "card",
             "ref": {
               "kind": "cutter-comment",
-              "id": "8b086209-b907-4b0a-bc99-d183c6620edc"
+              "id": "d05b4f8f-8e13-44f8-8ee2-d7cf2b2d6295"
             }
           },
           "createdAt": "2026-04-24T01:30:00.000Z"
@@ -90,9 +92,9 @@
     },
     {
       "kind": "comment",
-      "id": "89bcc810-33ca-49f4-b215-62ffd6b806e5",
+      "id": "4499087b-6809-4234-b49d-01a89a555930",
       "createdAt": "2026-04-24T03:45:00.000Z",
-      "text": "Coleridge as 'work' \u2014 A digression on whether Coleridge's marginalia constitute a 'work' in the editorial sense. The Princeton edition obviously thinks they do \u2014 five fat volumes, fully annotated. But marginalia as a genre resist the volume form. They are constitutively partial, occasional, and dependent on the host text. Coleridge's marginalia in a borrowed Kant are not 'about' Kant in the way that an essay would be; they are a kind of co-presence. Probably belongs in a separate piece.",
+      "text": "A digression on whether Coleridge's marginalia constitute a 'work' in the editorial sense. The Princeton edition obviously thinks they do — five fat volumes, fully annotated. But marginalia as a genre resist the volume form. They are constitutively partial, occasional, and dependent on the host text. Probably belongs in a separate piece.",
       "content": {
         "type": "doc",
         "content": [
@@ -101,7 +103,7 @@
             "content": [
               {
                 "type": "text",
-                "text": "A digression on whether Coleridge's marginalia constitute a 'work' in the editorial sense. The Princeton edition obviously thinks they do \u2014 five fat volumes, fully annotated. But marginalia as a genre resist the volume form. They are constitutively partial, occasional, and dependent on the host text. Coleridge's marginalia in a borrowed Kant are not 'about' Kant in the way that an essay would be; they are a kind of co-presence. Probably belongs in a separate piece."
+                "text": "A digression on whether Coleridge's marginalia constitute a 'work' in the editorial sense. The Princeton edition obviously thinks they do — five fat volumes, fully annotated. But marginalia as a genre resist the volume form. They are constitutively partial, occasional, and dependent on the host text. Probably belongs in a separate piece."
               }
             ]
           }
@@ -110,12 +112,13 @@
       "aiRequest": false,
       "links": [
         {
-          "id": "e743a6d4-3c78-4819-9b7f-6aa33d4af02e",
+          "id": "66a8888f-ec27-49a0-a0a0-66e3c870fca8",
           "kind": "anchor",
           "anchor": {
-            "type": "anchor",
-            "paragraphIds": [
-              "1bdb"
+            "type": "textObject",
+            "targetKind": "paragraph",
+            "textObjectIds": [
+              "5501"
             ],
             "margin": {
               "side": "right"
@@ -125,7 +128,7 @@
             "type": "card",
             "ref": {
               "kind": "cutter-comment",
-              "id": "89bcc810-33ca-49f4-b215-62ffd6b806e5"
+              "id": "4499087b-6809-4234-b49d-01a89a555930"
             }
           },
           "createdAt": "2026-04-24T03:45:00.000Z"
@@ -134,30 +137,31 @@
     },
     {
       "kind": "suggestion",
-      "id": "3450cff1-5923-4408-94d1-5ba83f9a8bbb",
+      "id": "fe55c27a-5c73-42f2-aed6-c81329f2655f",
       "createdAt": "2026-05-16T17:00:00.000Z",
       "author": "ai",
       "original_text": "The aligned tiers do exactly what a marginal gloss does, only formalized: every word in the source is given a parallel word in the target, with a free translation underneath.",
       "suggested_text": "The aligned tiers formalize what a marginal gloss does: every source word gets a parallel target word, with a free translation beneath.",
-      "explanation": "Shorter and more parallel; \"do exactly what \u2026 does, only formalized\" reads as throat-clearing.",
+      "explanation": "Shorter and more parallel; \"do exactly what … does, only formalized\" reads as throat-clearing.",
       "user_text": "",
-      "instructions": "Preserve the gloss/target/translation triad \u2014 that's the load-bearing image.",
+      "instructions": "Preserve the gloss/target/translation triad — that's the load-bearing image.",
       "status": "pending",
       "selectedText": "The aligned tiers do exactly what a marginal gloss does, only formalized: every word in the source is given a parallel word in the target, with a free translation underneath.",
       "links": [
         {
-          "id": "307c6ae7-f305-452a-a3f9-962f21fa76b2",
+          "id": "5645acab-34de-4d35-b349-cebd501a7932",
           "kind": "anchor",
           "anchor": {
-            "type": "anchor",
-            "paragraphIds": [
-              "1b32"
+            "type": "textObject",
+            "targetKind": "linkedRange",
+            "textObjectIds": [
+              "5505"
             ],
             "margin": {
               "side": "right"
             },
             "textRange": {
-              "anchorId": "307c6ae7-f305-452a-a3f9-962f21fa76b2",
+              "anchorId": "5645acab-34de-4d35-b349-cebd501a7932",
               "textSnapshot": "The aligned tiers do exactly what a marginal gloss does, only formalized: every word in the source is given a parallel word in the target, with a free translation underneath."
             }
           },
@@ -165,7 +169,7 @@
             "type": "card",
             "ref": {
               "kind": "cutter-suggestion",
-              "id": "3450cff1-5923-4408-94d1-5ba83f9a8bbb"
+              "id": "fe55c27a-5c73-42f2-aed6-c81329f2655f"
             }
           },
           "createdAt": "2026-05-16T17:00:00.000Z"
@@ -174,8 +178,8 @@
     }
   ],
   "goal": {
-    "target": 1500,
-    "initialWords": 1706,
+    "target": 1650,
+    "initialWords": 1945,
     "setAt": "2026-05-16T17:00:00.000Z"
   }
 }
