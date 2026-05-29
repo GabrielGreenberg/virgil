@@ -533,6 +533,21 @@ export const TEXT_OBJECT_REGISTRY: Record<TextObjectKind, TextObjectMeta> = {
     floatBodyComponent: PLACEHOLDER_FLOAT_BODY,
     actions: NON_PROSE_BLOCK_ACTIONS,
     removeOnEmptyChildren: true,
+    // L3d of the Lifted-Overlay refactor: exampleBlock drags through the
+    // same two-mode gesture as paragraph/heading/lists — the first
+    // grid-layout kind. The expex grid (`.expex-block` columns, the `(n)`
+    // marker, sub-item rows, gloss tiers) renders faithfully in the ghost
+    // clone because every expex layout rule in globals.css is UNSCOPED
+    // (plain `.expex-*`, not `.ProseMirror .expex-*`), so it reaches the
+    // `.tiptap`-but-not-`.ProseMirror` clone for free — no scope extension
+    // needed (contrast L3b.1/L3b.2, where list/whitespace rules WERE
+    // `.ProseMirror`-scoped). No `computeLabel`: `example-block-body.tsx`
+    // never calls `setHeaderLabel`, so the overlay's popout-mode header
+    // reads the static `meta.label` ("Example") — matching the real
+    // popout at handoff. Spawns at authoritative source height and skips
+    // FloatCard's grow burst via L3c.2's `liftMode === "lifted-overlay"`
+    // gate.
+    liftMode: "lifted-overlay",
     sourceMarker: { command: "vexid", idLength: 4 },
     dropAdapter: topLevelDropAdapter,
     confirmDestructive: (doc, _uuid, action, ctx) =>
