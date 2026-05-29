@@ -467,6 +467,23 @@ export const TEXT_OBJECT_REGISTRY: Record<TextObjectKind, TextObjectMeta> = {
     chromeAnchor: "block-top",
     floatBodyComponent: PLACEHOLDER_FLOAT_BODY,
     initialFloatSize: { width: 480, height: 280 },
+    // L3e of the Lifted-Overlay refactor: texBlock drags through the same
+    // two-mode gesture as the prose/list/example kinds — but it's the one
+    // CodeMirror-backed kind, so the clone strategy was the open question
+    // (decision §4 *assumed* CodeMirror won't clone usefully). It does:
+    // CM6 renders each line as real DOM (`.cm-line` text nodes + highlight
+    // spans) and its theme/base CSS is injected as GLOBAL `<style>` tags
+    // (not `.ProseMirror`/`.tiptap`-scoped), so `cloneNode(true)` of the
+    // pod carries both the code text AND the pod framing into the
+    // `.tiptap` ghost — no `renderGhost` fallback needed. The sanitizer
+    // strips `.cm-content`'s `contenteditable="true"` (L3d.3 keeps
+    // `="false"`), making the ghost a faithful static snapshot. No
+    // `computeLabel`: `tex-block-body.tsx` never calls `setHeaderLabel`,
+    // so the overlay's popout-mode header reads the static `meta.label`
+    // ("TeX block") — matching the real popout at handoff. Spawns at the
+    // source pod size and skips FloatCard's grow burst via L3c.2's
+    // `liftMode === "lifted-overlay"` gate.
+    liftMode: "lifted-overlay",
     actions: NON_PROSE_BLOCK_ACTIONS,
     // texBlock uses `%!vtex:begin <uuid>` / `%!vtex:end <uuid>` comment
     // sentinels for round-trip, not a \v*id command. Left empty here
