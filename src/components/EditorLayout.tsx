@@ -14,6 +14,7 @@ import { type MarginaliaType, type DividerLevel, type DividerWidth } from "@/hoo
 import { Editor } from "@tiptap/react";
 import { type SectionPathEntry, buildPerBlockCounts, sumIncludedWords, extractHeadings } from "@/panels/Outline";
 import { useFiles } from "@/hooks/useFiles";
+import { useStructuralRevisions } from "@/hooks/useStructuralRevisions";
 import { useMyPapers } from "@/hooks/useMyPapers";
 import { useUpdateAvailable, applyUpdate } from "@/hooks/useUpdateAvailable";
 import { DocPipeline } from "./editor-layout/DocPipeline";
@@ -1079,6 +1080,13 @@ export default function EditorLayout() {
     toggleZenMode();
   }, [toggleZenMode]);
   const [latestDoc, setLatestDoc] = useState<JSONContent | null>(null);
+  // Per-category structural revisions — the keystroke-safe replacement for
+  // the old per-keystroke `editorDocVersion` counter and the `latestDoc`-keyed
+  // card derivations. Each counter bumps ONLY when its structural entity
+  // changes, so card-source memos don't re-derive on plain typing.
+  // `latestDoc` survives for genuine full-snapshot consumers (outline,
+  // word count, LaTeX serialization). See useStructuralRevisions.
+  const rev = useStructuralRevisions(editorInstance);
   const [commentHighlight, setCommentHighlight] = useState<string | null>(null);
   const [pendingCommentText, setPendingCommentText] = useState<string | null>(null);
   // Anchored selection slots are declared above near useCutter — derived
@@ -1563,7 +1571,7 @@ export default function EditorLayout() {
 
   // Keep the error-highlight range in sync with the current selection.
   // Runs when the selection, the error list, or the editor mount state
-  // changes (editorDocVersion is bumped on editor updates and mounts).
+  // (`editorInstance`) changes.
   useEffect(() => {
     if (!selectedErrorId) {
       setErrorHighlightRange(null);
@@ -1775,27 +1783,26 @@ export default function EditorLayout() {
   const paraNavForwardDisabled =
     paraHistoryRef.current.idx >= paraHistoryRef.current.stack.length - 1;
 
-  // Derive citation order from editor state
-  // Debounced citation order and editor citations (avoid recomputing on every keystroke)
+  // Derive citation order + editor citations from editor state. Recomputes
+  // only when citations actually change (`rev.citations`) — add/remove/edit/
+  // reorder, including citations born inside footnote bodies — never on a
+  // plain keystroke. No debounce needed: structural changes are rare.
   const [citationOrder, setCitationOrder] = useState<string[]>([]);
   const [allEditorCitations, setAllEditorCitations] = useState<Array<{ citationId: string; command: string; keys: string[]; pos: number }>>([]);
 
   useEffect(() => {
-    const timer = setTimeout(() => {
-      setCitationOrder(editorRef.current?.getCitationOrder() ?? []);
-      const cits = editorRef.current?.getCitations() ?? [];
-      setAllEditorCitations(
-        cits.map((c) => {
-          // Match all {key} groups — handles \cites{a}{b}{c} and \citep{a,b,c}
-          const allMatches = [...c.command.matchAll(/\{([^}]+)\}/g)];
-          const keys = allMatches.flatMap((m) => m[1].split(",").map((k: string) => k.trim()));
-          return { citationId: c.citationId, command: c.command, keys, pos: c.pos };
-        })
-      );
-    }, 500);
-    return () => clearTimeout(timer);
+    setCitationOrder(editorRef.current?.getCitationOrder() ?? []);
+    const cits = editorRef.current?.getCitations() ?? [];
+    setAllEditorCitations(
+      cits.map((c) => {
+        // Match all {key} groups — handles \cites{a}{b}{c} and \citep{a,b,c}
+        const allMatches = [...c.command.matchAll(/\{([^}]+)\}/g)];
+        const keys = allMatches.flatMap((m) => m[1].split(",").map((k: string) => k.trim()));
+        return { citationId: c.citationId, command: c.command, keys, pos: c.pos };
+      })
+    );
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [latestDoc, editorInstance]);
+  }, [rev.citations, editorInstance]);
 
   // Highlight citation nodes in editor when a bib key is selected in Bibliography panel
   useEffect(() => {
@@ -2145,13 +2152,14 @@ export default function EditorLayout() {
   }, [editorSplit, mirrorViewGen, editorInstance]);
 
   // Derive footnotes list from editor state (sorted by document position).
-  // Recomputes on `editorInstance` change (initial mount + doc-switch
-  // remount via the DocPipeline boundary) and on `latestDoc` (debounced
-  // post-edit), which together cover hydration and ongoing edits.
+  // Recomputes on `editorInstance` change (initial mount + doc-switch remount)
+  // and when footnotes change (`rev.footnotes` — add/remove/reorder, and
+  // footnote-body edits which surface as a footnote-order change). Plain
+  // typing bumps neither, so this no longer re-walks per keystroke.
   const footnotes = useMemo(() => {
     return editorRef.current?.getFootnotes() ?? [];
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [latestDoc, editorInstance]);
+  }, [rev.footnotes, editorInstance]);
 
   // Snippets sorted: anchored first (by paragraph position in doc), orphaned after
   const sortedArchiveSnippets = useMemo(() => {
@@ -2178,7 +2186,7 @@ export default function EditorLayout() {
       return 0;
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [archiveSnippets, latestDoc, editorInstance]);
+  }, [archiveSnippets, rev.blocks, editorInstance]);
   const [editingTabId, setEditingTabId] = useState<string | null>(null);
   const [nameInput, setNameInput] = useState("");
   // Refs to each rendered outer-tab pair (keyed by entry id — doc id or
@@ -3199,41 +3207,23 @@ export default function EditorLayout() {
     };
   }, [prefs.activeLeft, prefs.activeRight]);
 
-  // Bump a version counter on editor updates so marginalia markers recompute
-  // (quotation/archive/todo markers depend on paragraph visibility metrics).
-  // Mirrors EditorPane's `docVersion` discipline — see the comment
-  // block there. Per-keystroke setEditorDocVersion was triggering the
-  // marginaliaMarkers useMemo (and several others) every character;
-  // debouncing to ~100ms keeps panels visibly fresh while clearing
-  // the keystroke hot path.
-  const [editorDocVersion, setEditorDocVersion] = useState(0);
-  const editorDocVersionTimerRef = useRef<number | null>(null);
+  // Card-source derivations (marginalia markers, footnotes, citations, archive
+  // order) now key off `rev.*` from `useStructuralRevisions` above — they
+  // recompute only on structural change, not per keystroke. The only thing
+  // still riding `editor.on('update')` here is O(1) pdfStale tracking: stamp a
+  // timestamp ref each edit and flip `pdfStale` false→true at most once per
+  // compile cycle. Keystroke-sanctity permitted subscriber — see AGENTS.md.
   useEffect(() => {
     if (!editorInstance) return;
-    const bumpDebounced = () => {
-      if (editorDocVersionTimerRef.current !== null) {
-        window.clearTimeout(editorDocVersionTimerRef.current);
-      }
-      editorDocVersionTimerRef.current = window.setTimeout(() => {
-        editorDocVersionTimerRef.current = null;
-        setEditorDocVersion((v) => v + 1);
-      }, 100);
-    };
-    const bump = () => {
-      bumpDebounced();
-      // Same ref-write + lazy pdfStale flip as EditorPane's onUpdate.
+    const onUpdate = () => {
       lastEditTimeRef.current = Date.now();
       if (lastCompileTimeRef.current != null && !pdfStaleRef.current) {
         setPdfStale(true);
       }
     };
-    editorInstance.on("update", bump);
+    editorInstance.on("update", onUpdate);
     return () => {
-      editorInstance.off("update", bump);
-      if (editorDocVersionTimerRef.current !== null) {
-        window.clearTimeout(editorDocVersionTimerRef.current);
-        editorDocVersionTimerRef.current = null;
-      }
+      editorInstance.off("update", onUpdate);
     };
   }, [editorInstance]);
 
@@ -3319,8 +3309,12 @@ export default function EditorLayout() {
   );
 
   const marginaliaMarkers = useMemo<MarginaliaMarker[]>(() => {
-    // Touch editorDocVersion so this memo recomputes when the doc changes
-    void editorDocVersion;
+    // Recompute when anchors move between paragraphs (`rev.anchors`) or the
+    // paragraph-UUID set changes (`rev.blocks`) — the revision branch resolves
+    // anchorId→paragraph via a live doc walk. Card-store arrays are their own
+    // deps; plain typing bumps neither, so markers don't recompute per keystroke.
+    void rev.anchors;
+    void rev.blocks;
     const result: MarginaliaMarker[] = [];
 
     // Tag every marker with its anchored-card kind. Markers self-subscribe
@@ -3596,7 +3590,8 @@ export default function EditorLayout() {
     selectedArchiveId,
     todoItems,
     selectedTodoId,
-    editorDocVersion,
+    rev.anchors,
+    rev.blocks,
     handleQuotationMarkerClick,
     handleNoteMarkerClick,
     handleTodoMarkerClick,

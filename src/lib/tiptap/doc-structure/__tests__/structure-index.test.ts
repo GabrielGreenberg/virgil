@@ -3,6 +3,7 @@ import { applyDiff, buildInitial } from "../structure-index";
 import { EMPTY_DIFF, type StructureDiff } from "../types";
 import {
   anchoredText,
+  citationNode,
   doc,
   exampleBlock,
   exampleItem,
@@ -43,6 +44,21 @@ describe("buildInitial", () => {
     const s = buildInitial(doc(para));
     expect(s.footnotes.map((f) => f.id)).toEqual(["fn1"]);
     expect([...s.anchors.keys()]).toEqual(["a1"]);
+  });
+
+  it("captures inline citation nodes in document order", () => {
+    const para = testSchema.nodes.paragraph.create(
+      { uuid: "p1" },
+      [
+        testSchema.text("see "),
+        citationNode("c1", "\\cite{a}", "A"),
+        testSchema.text(" and "),
+        citationNode("c2", "\\cite{b}", "B"),
+      ],
+    );
+    const s = buildInitial(doc(para));
+    expect(s.citations.map((c) => c.id)).toEqual(["c1", "c2"]);
+    expect(s.citations[0]?.command).toBe("\\cite{a}");
   });
 
   it("returns EMPTY_STRUCTURE-shaped snapshot for an empty doc", () => {
@@ -124,6 +140,34 @@ describe("applyDiff", () => {
     };
     const next = applyDiff(prev, diff);
     expect(next.footnotes.map((f) => f.id)).toEqual(["fn-early", "fn-late"]);
+  });
+
+  it("citations: add, change-in-place, and remove keep the list correct + ordered", () => {
+    const prev = buildInitial(doc(paragraph("p1", "body")));
+    const add: StructureDiff = {
+      ...EMPTY_DIFF,
+      addedCitations: [
+        { id: "c-late", pos: 50, command: "\\cite{z}", displayText: "Z" },
+        { id: "c-early", pos: 10, command: "\\cite{a}", displayText: "A" },
+      ],
+    };
+    const afterAdd = applyDiff(prev, add);
+    expect(afterAdd.citations.map((c) => c.id)).toEqual(["c-early", "c-late"]);
+
+    const change: StructureDiff = {
+      ...EMPTY_DIFF,
+      changedCitations: [{ id: "c-early", pos: 10, command: "\\cite{a2}", displayText: "A2" }],
+    };
+    const afterChange = applyDiff(afterAdd, change);
+    expect(afterChange.citations.find((c) => c.id === "c-early")?.command).toBe("\\cite{a2}");
+    expect(afterChange.citations).toHaveLength(2);
+
+    const remove: StructureDiff = {
+      ...EMPTY_DIFF,
+      removedCitations: [{ id: "c-late", pos: 50, command: "\\cite{z}", displayText: "Z" }],
+    };
+    const afterRemove = applyDiff(afterChange, remove);
+    expect(afterRemove.citations.map((c) => c.id)).toEqual(["c-early"]);
   });
 
   it("addedAnchors and removedAnchors update the anchors Map", () => {

@@ -45,6 +45,16 @@ export interface FootnoteEntry {
   number: number;
 }
 
+export interface CitationEntry {
+  /** `citationId` attribute of the citation node — the canonical address. */
+  id: string;
+  pos: number;
+  /** The LaTeX command string, e.g. `\cite{smith2020}`. `keys` are parsed from it. */
+  command: string;
+  /** Rendered text shown in place, e.g. "Smith 2020". */
+  displayText: string;
+}
+
 export interface AnchorEntry {
   /** `anchorId` from the linkedAnchor mark. */
   id: string;
@@ -101,6 +111,11 @@ export interface DocStructure {
   headings: readonly HeadingEntry[];
   /** Just the footnote nodes (in document order). */
   footnotes: readonly FootnoteEntry[];
+  /** Every top-level citation node (in document order). Citations nested
+   *  inside footnote `attrs.content` are NOT included — they're opaque to
+   *  step inspection; consumers cover them via `getCitations()` re-walks
+   *  triggered by `footnoteOrderChanged`. */
+  citations: readonly CitationEntry[];
   /** Every distinct `anchorId` from linkedAnchor marks. Maps id → entry. */
   anchors: ReadonlyMap<string, AnchorEntry>;
   /** Every exampleBlock (in document order). */
@@ -116,6 +131,7 @@ export const EMPTY_STRUCTURE: DocStructure = {
   blocks: new Map(),
   headings: [],
   footnotes: [],
+  citations: [],
   anchors: new Map(),
   examples: [],
   figures: [],
@@ -154,6 +170,14 @@ export interface StructureDiff {
   /** True iff the document order of footnote IDs changed (renumber needed). */
   footnoteOrderChanged: boolean;
 
+  addedCitations: readonly CitationEntry[];
+  removedCitations: readonly CitationEntry[];
+  /** Same citationId, changed command/displayText. */
+  changedCitations: readonly CitationEntry[];
+  /** True iff the document order of citation IDs changed (a pure move
+   *  with unchanged attrs produces only this). */
+  citationOrderChanged: boolean;
+
   addedAnchors: readonly AnchorEntry[];
   removedAnchors: readonly AnchorEntry[];
 
@@ -184,6 +208,10 @@ export const EMPTY_DIFF: StructureDiff = {
   addedFootnotes: [],
   removedFootnotes: [],
   footnoteOrderChanged: false,
+  addedCitations: [],
+  removedCitations: [],
+  changedCitations: [],
+  citationOrderChanged: false,
   addedAnchors: [],
   removedAnchors: [],
   addedExamples: [],
@@ -207,6 +235,10 @@ export function isEmptyDiff(diff: StructureDiff): boolean {
     diff.addedFootnotes.length === 0 &&
     diff.removedFootnotes.length === 0 &&
     !diff.footnoteOrderChanged &&
+    diff.addedCitations.length === 0 &&
+    diff.removedCitations.length === 0 &&
+    diff.changedCitations.length === 0 &&
+    !diff.citationOrderChanged &&
     diff.addedAnchors.length === 0 &&
     diff.removedAnchors.length === 0 &&
     diff.addedExamples.length === 0 &&

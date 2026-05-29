@@ -18,6 +18,7 @@ import { isAnchorableNode } from "@/lib/marginalia";
 import {
   type AnchorEntry,
   type BlockEntry,
+  type CitationEntry,
   type DocStructure,
   EMPTY_STRUCTURE,
   type ExampleEntry,
@@ -36,6 +37,7 @@ export function buildInitial(doc: PMNode): DocStructure {
   const blocks = new Map<string, BlockEntry>();
   const headings: HeadingEntry[] = [];
   const footnotes: FootnoteEntry[] = [];
+  const citations: CitationEntry[] = [];
   const anchors = new Map<string, AnchorEntry>();
   const examples: ExampleEntry[] = [];
   const figures: FigureEntry[] = [];
@@ -157,6 +159,22 @@ export function buildInitial(doc: PMNode): DocStructure {
       }
     }
 
+    if (typeName === "citation") {
+      const attrs = node.attrs as {
+        citationId?: string;
+        command?: string;
+        displayText?: string;
+      };
+      if (attrs.citationId) {
+        citations.push({
+          id: attrs.citationId,
+          pos,
+          command: attrs.command ?? "",
+          displayText: attrs.displayText ?? "",
+        });
+      }
+    }
+
     // Inline linked-anchor marks live on text nodes — collect by mark.
     if (node.isText && node.marks.length > 0) {
       for (const mark of node.marks) {
@@ -186,6 +204,7 @@ export function buildInitial(doc: PMNode): DocStructure {
     blocks,
     headings,
     footnotes,
+    citations,
     anchors,
     examples,
     figures,
@@ -248,6 +267,28 @@ export function applyDiff(prev: DocStructure, diff: StructureDiff): DocStructure
     footnotes = next;
   }
 
+  // Citations: added / removed / changed (same-id attr edits). Re-sort by
+  // pos so document order survives moves. A pure reorder (citationOrderChanged
+  // only, no add/remove/change) is already reflected by the per-tx position
+  // mapping in the observer plugin, so it needs no array rebuild here.
+  let citations: readonly CitationEntry[] = prev.citations;
+  if (
+    diff.addedCitations.length > 0 ||
+    diff.removedCitations.length > 0 ||
+    diff.changedCitations.length > 0
+  ) {
+    const removedIds = new Set(diff.removedCitations.map((c) => c.id));
+    const changedById = new Map(diff.changedCitations.map((c) => [c.id, c]));
+    const next: CitationEntry[] = [];
+    for (const c of prev.citations) {
+      if (removedIds.has(c.id)) continue;
+      next.push(changedById.get(c.id) ?? c);
+    }
+    for (const added of diff.addedCitations) next.push(added);
+    next.sort((a, b) => a.pos - b.pos);
+    citations = next;
+  }
+
   // Anchors — keyed Map.
   let anchors: ReadonlyMap<string, AnchorEntry> = prev.anchors;
   if (diff.addedAnchors.length > 0 || diff.removedAnchors.length > 0) {
@@ -307,6 +348,7 @@ export function applyDiff(prev: DocStructure, diff: StructureDiff): DocStructure
     blocks,
     headings,
     footnotes,
+    citations,
     anchors,
     examples,
     figures,

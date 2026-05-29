@@ -201,6 +201,17 @@ export function useInTextPositions(
   enabled: boolean,
   entry: string | ((id: string) => string) = DEFAULT_ENTRY,
   pinned: Pinned | null = null,
+  /**
+   * Optional live-position resolver. `item.pos` is captured when the item
+   * list is (re)built — which, post keystroke-sanctity refactor, happens
+   * only on *structural* change, so it goes stale as plain typing shifts
+   * later content. `measure()` runs on every reflow (editor ResizeObserver),
+   * so resolving the live pos here — from the DocStructureObserver snapshot,
+   * which is re-mapped every transaction — keeps cards from drifting on the
+   * keystroke that wraps a line. Returns `undefined` to fall back to
+   * `item.pos`. See `useStructuralRevisions` + `docs/perf/keystroke-sanctity-findings.md`.
+   */
+  resolvePos?: (id: string) => number | undefined,
 ) {
   const [editorContentHeight, setEditorContentHeight] = useState(0);
   const panelScrollRef = useRef<HTMLDivElement>(null);
@@ -244,7 +255,11 @@ export function useInTextPositions(
 
     const next = new Map<string, NaturalEntry>();
     for (const item of items) {
-      const pos = Math.min(item.pos, editor.state.doc.content.size);
+      // Prefer the live snapshot pos (re-mapped every transaction) so cards
+      // track their anchor as plain typing shifts content; fall back to the
+      // captured pos for kinds the resolver doesn't cover.
+      const livePos = resolvePos?.(item.id);
+      const pos = Math.min(livePos ?? item.pos, editor.state.doc.content.size);
       let naturalTop: number;
       let coordsTop: number;
       try {
@@ -284,7 +299,7 @@ export function useInTextPositions(
     }
     naturalRef.current = next;
     if (changed) setMeasureVersion((v) => v + 1);
-  }, [editor, items, enabled, entry]);
+  }, [editor, items, enabled, entry, resolvePos]);
 
   // Trigger measurement on editor updates, viewport resize, editor
   // content-height changes, and on the next paint after items change.

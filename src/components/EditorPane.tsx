@@ -116,6 +116,7 @@ import { useSuggestions } from "@/hooks/useSuggestions";
 import { useCollab, CollabProvider, type CollabHook } from "@/hooks/useCollab";
 import { useDocumentStyle } from "@/hooks/useDocumentStyle";
 import { useFootnotes } from "@/hooks/useFootnotes";
+import { useStructuralRevisions } from "@/hooks/useStructuralRevisions";
 import { usePristineCardManager } from "@/hooks/usePristineCardManager";
 import { PristineCardsProvider } from "./editor-layout/contexts/pristine-cards";
 import { CitationDisplayProvider } from "./editor-layout/contexts/citation-display";
@@ -666,64 +667,33 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
   useImperativeHandle(ref, () => innerRef.current as EditorHandle);
   const [editor, setEditor] = useState<Editor | null>(null);
   const [overrideEditor, setOverrideEditor] = useState<Editor | null>(null);
-  // Gates the LoadingScreen curtain over `.editor-pane-pod` — React
-  // batches setReady with the docVersion-bump effect below so markers
-  // land in the same commit as the curtain lifts.
+  // Gates the LoadingScreen curtain over `.editor-pane-pod`.
   const [ready, setReady] = useState(false);
 
-  // `docVersion` bumps so memoized panel data (`getExamples`,
-  // `getFootnotes`, `getCitations`) refreshes when the live doc
-  // changes. `create` bumps synchronously so initial mount populates
-  // panels. `update` events are coalesced via a ~100 ms debounce —
-  // every keystroke fanning out to four full doc traversals + a LaTeX
-  // serializer was the dominant editor-lag cause. The visible delay
-  // (panels catching up after the user pauses) is below human
-  // perception in normal interaction.
-  const [docVersion, setDocVersion] = useState(0);
-  const docVersionTimerRef = useRef<number | null>(null);
+  // Per-category structural revisions drive card-source memos (footnotes,
+  // citations, examples, archive order, marginalia). Each counter bumps ONLY
+  // when its structural entity changes — never on a plain keystroke — so
+  // typing inside a paragraph re-derives nothing and no card re-renders or
+  // shifts. This replaces the old per-keystroke `docVersion` counter (a
+  // 100ms-debounced bump that fanned every keystroke out to full doc walks +
+  // a card re-render). See `docs/perf/keystroke-sanctity-findings.md`.
+  const rev = useStructuralRevisions(editor);
 
+  // PDF-stale tracking is the only thing still riding `editor.on('update')`
+  // here, and it's O(1): stamp a timestamp ref each edit and flip `pdfStale`
+  // false→true at most once per compile cycle (later edits skip the setter).
+  // Keystroke-sanctity permitted subscriber — see AGENTS.md.
   useEffect(() => {
     if (!editor) return;
-    const bumpNow = () => {
-      if (docVersionTimerRef.current !== null) {
-        window.clearTimeout(docVersionTimerRef.current);
-        docVersionTimerRef.current = null;
-      }
-      setDocVersion((v) => v + 1);
-    };
-    const bumpDebounced = () => {
-      if (docVersionTimerRef.current !== null) {
-        window.clearTimeout(docVersionTimerRef.current);
-      }
-      docVersionTimerRef.current = window.setTimeout(() => {
-        docVersionTimerRef.current = null;
-        setDocVersion((v) => v + 1);
-      }, 100);
-    };
     const onUpdate = () => {
-      bumpDebounced();
-      // Write the timestamp to a ref (no re-render). Only flip the
-      // `pdfStale` boolean false→true once per compile cycle — i.e.
-      // first keystroke after a compile lands. Subsequent keystrokes
-      // skip the state setter entirely.
       lastEditTimeRef.current = Date.now();
       if (lastCompileTimeRef.current != null && !pdfStaleRef.current) {
         setPdfStale(true);
       }
     };
-    editor.on("create", bumpNow);
     editor.on("update", onUpdate);
-    // Force a bump immediately in case 'create' already fired before
-    // we subscribed (TipTap's lifecycle order varies across React
-    // strict-mode mount/unmount/remount cycles).
-    bumpNow();
     return () => {
-      editor.off("create", bumpNow);
       editor.off("update", onUpdate);
-      if (docVersionTimerRef.current !== null) {
-        window.clearTimeout(docVersionTimerRef.current);
-        docVersionTimerRef.current = null;
-      }
     };
   }, [editor]);
 
@@ -1482,7 +1452,13 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
   // routing (basic select-then-activate is enough until popouts land).
   // eslint-disable-next-line react-hooks/exhaustive-deps
   const marginaliaMarkers = useMemo<MarginaliaMarker[]>(() => {
-    void docVersion;
+    // Re-resolve markers when anchors move between paragraphs (`rev.anchors`)
+    // or the paragraph-UUID set changes (`rev.blocks`) — the revision branch
+    // below does a live anchorId→paragraph walk. Card-store arrays (notes,
+    // quotations, …) and error state are their own deps; plain typing bumps
+    // none of these, so markers don't recompute or shift per keystroke.
+    void rev.anchors;
+    void rev.blocks;
     const result: MarginaliaMarker[] = [];
 
     // Quotations
@@ -1689,7 +1665,8 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
     selectedCutterCardId,
     selectedCommentId,
     selectedErrorId,
-    docVersion,
+    rev.anchors,
+    rev.blocks,
   ]);
 
   // Marginalia uses this to decide which gutter to render each marker
@@ -2410,7 +2387,7 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
       );
       return { citationId: c.citationId, command: c.command, keys, pos: c.pos };
     });
-  }, [editor, docVersion]);
+  }, [editor, rev.citations]);
   const citationPositionMap = useMemo(() => {
     const map = new Map<string, number>();
     for (const c of allEditorCitations) {
@@ -2483,7 +2460,7 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
       if (bPos != null) return 1;
       return 0;
     });
-  }, [archiveHook.snippets, docVersion, editor]);
+  }, [archiveHook.snippets, rev.blocks, editor]);
   // ArchiveHost callbacks — Reader chrome hides this panel, so insert
   // / restore / delete / capture all go through the hook directly with
   // no shell-side coordination. The full "archive selection from
@@ -2534,18 +2511,19 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
   }, []);
 
   // Citation order — left-to-right ids of `\cite{}` commands in the
-  // doc, debounced via `docVersion` (mirrors EditorLayout's pattern).
+  // doc. Recomputes only when citations actually change (`rev.citations`),
+  // not on every keystroke.
   // eslint-disable-next-line react-hooks/exhaustive-deps
   const citationOrder = useMemo<string[]>(
     () => innerRef.current?.getCitationOrder() ?? [],
-    [editor, docVersion],
+    [editor, rev.citations],
   );
 
   // Live FootnoteInfo list, recomputed when the doc version bumps.
   // eslint-disable-next-line react-hooks/exhaustive-deps
   const footnoteInfos = useMemo(
     () => innerRef.current?.getFootnotes() ?? [],
-    [editor, docVersion],
+    [editor, rev.footnotes],
   );
 
   // Live ExampleInfo list — same trigger cadence as footnoteInfos.
@@ -2553,7 +2531,7 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
   // eslint-disable-next-line react-hooks/exhaustive-deps
   const examples = useMemo(
     () => innerRef.current?.getExamples() ?? [],
-    [editor, docVersion],
+    [editor, rev.examples],
   );
 
   // Whitelist of panel kinds, then split between left + right rails by
@@ -3255,7 +3233,7 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
                     editor={editor}
                     editorRef={innerRef}
                     content={editor && !isTier1CDisabled() ? (editor.getJSON() as JSONContent) : null}
-                    docVersion={docVersion}
+                    examples={examples}
                     docId={docId}
                     citationsHook={citationsHook}
                     annotationsHook={annotationsHook}
@@ -3323,7 +3301,7 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
                       editor={editor}
                       editorRef={innerRef}
                       content={editor && !isTier1CDisabled() ? (editor.getJSON() as JSONContent) : null}
-                      docVersion={docVersion}
+                      examples={examples}
                       docId={docId}
                       citationsHook={citationsHook}
                       annotationsHook={annotationsHook}
@@ -3440,7 +3418,7 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
                 onSelectPanel={setActiveLeftPanelKind}
                 editor={editor}
                 editorRef={innerRef}
-                docVersion={docVersion}
+                examples={examples}
                 docId={docId}
                 citationsHook={citationsHook}
                 annotationsHook={annotationsHook}
@@ -4069,7 +4047,7 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
                         editor={editor}
                         editorRef={innerRef}
                         content={(initialContent ?? docHook.content) as JSONContent | null}
-                        docVersion={docVersion}
+                        examples={examples}
                         docId={docId}
                         citationsHook={citationsHook}
                         annotationsHook={annotationsHook}
@@ -4308,7 +4286,7 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
                 onSelectPanel={setActiveRightPanelKind}
                 editor={editor}
                 editorRef={innerRef}
-                docVersion={docVersion}
+                examples={examples}
                 docId={docId}
                 citationsHook={citationsHook}
                 annotationsHook={annotationsHook}
@@ -4443,7 +4421,7 @@ interface PaneRailProps {
   onSelectPanel: (kind: PanelKind | null) => void;
   editor: Editor | null;
   editorRef: RefObject<EditorHandle | null>;
-  docVersion: number;
+  examples: ReturnType<NonNullable<RefObject<EditorHandle | null>["current"]>["getExamples"]>;
   docId: string;
   citationsHook: ReturnType<typeof useCitations>;
   annotationsHook: ReturnType<typeof useAnnotations>;
@@ -4633,7 +4611,7 @@ function PaneRail({
   onSelectPanel,
   editor,
   editorRef,
-  docVersion,
+  examples,
   docId,
   citationsHook,
   annotationsHook,
@@ -4690,22 +4668,10 @@ function PaneRail({
 }: PaneRailProps) {
   const isLeft = side === "left";
 
-  // Live examples list — matches OmniHost's `examples` prop. Memoized
-  // on docVersion (debounced ~10×/sec) so the doc-descendants walk in
-  // `getExamples()` doesn't run on every parent render, AND the array
-  // reference is stable across renders within the same docVersion
-  // window. Without the memo, a fresh examples array per render
-  // invalidated OmniHost's `items` useMemo every keystroke, cascading
-  // through `useInTextPositions` into a per-keystroke `coordsAtPos`
-  // storm visible as card flicker below the cursor. Matches the
-  // `ExamplesPanelHost` pattern at line 5187. Hook is hoisted above
-  // the early return so Rules of Hooks ordering stays stable across
-  // renders where `viewPrefs` toggles in/out.
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  const examples = useMemo(
-    () => editorRef.current?.getExamples() ?? [],
-    [editorRef, docVersion],
-  );
+  // `examples` arrives as a prop — derived reactively in the EditorPane body
+  // (keyed on the `editor` state, not a ref) and threaded down like
+  // `footnoteInfos`. Deriving it here from `editorRef` gated on a structural
+  // counter failed to populate on load (the counter doesn't bump on mount).
 
   // Canonical PanelColumn rendering — both main app and Library Reader
   // pass `viewPrefs` (the latter via `useReaderViewPrefs()`), so this
@@ -4923,7 +4889,7 @@ interface PaneRailBodyProps {
   editor: Editor | null;
   editorRef: RefObject<EditorHandle | null>;
   content: JSONContent | null;
-  docVersion: number;
+  examples: ReturnType<NonNullable<RefObject<EditorHandle | null>["current"]>["getExamples"]>;
   docId: string;
   citationsHook: ReturnType<typeof useCitations>;
   annotationsHook: ReturnType<typeof useAnnotations>;
@@ -4992,7 +4958,7 @@ function PaneRailBody({
   editor,
   editorRef,
   content,
-  docVersion,
+  examples,
   docId,
   citationsHook,
   annotationsHook,
@@ -5099,7 +5065,7 @@ function PaneRailBody({
   }
   if (panelKind === "examples") {
     return (
-      <ExamplesPanelHost editorRef={editorRef} docVersion={docVersion} />
+      <ExamplesPanelHost editorRef={editorRef} examples={examples} />
     );
   }
   if (panelKind === "footnotes") {
@@ -5351,24 +5317,20 @@ function PaneRailBody({
  *
  * Examples and Footnote markers are derived from the editor's live
  * doc (no sidecar storage), so we can wire them in the Reader without
- * any hook context. ExampleInfo / FootnoteInfo are sourced via the
- * EditorHandle's imperative methods, re-derived whenever `docVersion`
- * bumps. Edit callbacks no-op in Reader mode (`editable: false`
+ * any hook context. The `examples` list is derived reactively in the
+ * EditorPane body (keyed on the `editor` state + `rev.examples`) and
+ * passed in as a prop, so it populates on mount and refreshes only when
+ * examples change. Edit callbacks no-op in Reader mode (`editable: false`
  * prevents any user mutation reaching this surface anyway).
  */
 
 interface PanelHostProps {
   editorRef: RefObject<EditorHandle | null>;
-  docVersion: number;
+  examples: ReturnType<NonNullable<RefObject<EditorHandle | null>["current"]>["getExamples"]>;
 }
 
-function ExamplesPanelHost({ editorRef, docVersion }: PanelHostProps) {
+function ExamplesPanelHost({ editorRef, examples }: PanelHostProps) {
   const [selectedId, setSelectedId] = useState<string | null>(null);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  const examples = useMemo(
-    () => editorRef.current?.getExamples() ?? [],
-    [editorRef, docVersion],
-  );
   return (
     <ExamplesPanel
       examples={examples}

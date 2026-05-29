@@ -6,6 +6,7 @@ import { buildInitial } from "../structure-index";
 import { EMPTY_DIFF, type StructureDiff } from "../types";
 import {
   anchoredText,
+  citationNode,
   doc,
   exampleBlock,
   exampleItem,
@@ -166,6 +167,76 @@ describe("inspectSteps — footnotes", () => {
     const tr = s.tr.delete(fnPos, fnPos + 1);
     const d = inspectSteps(tr, s.doc, tr.doc);
     expect(d.removedFootnotes.map((f) => f.id)).toEqual(["fn1"]);
+  });
+});
+
+describe("inspectSteps — citations", () => {
+  it("inserting a citation node emits addedCitations + citationOrderChanged", () => {
+    const s = stateOf(doc(paragraph("p1", "before after")));
+    const cit = citationNode("c1", "\\cite{smith2020}", "Smith 2020");
+    const tr = s.tr.insert(7, cit);
+    const d = inspectSteps(tr, s.doc, tr.doc);
+    expect(d.addedCitations.map((c) => c.id)).toEqual(["c1"]);
+    expect(d.addedCitations[0]?.command).toBe("\\cite{smith2020}");
+    expect(d.citationOrderChanged).toBe(true);
+    expect(d.changedCitations).toHaveLength(0);
+  });
+
+  it("deleting a citation node emits removedCitations", () => {
+    const cit = citationNode("c1", "\\cite{smith2020}", "Smith 2020");
+    const para = testSchema.nodes.paragraph.create(
+      { uuid: "p1" },
+      [testSchema.text("before "), cit, testSchema.text(" after")],
+    );
+    const s = stateOf(doc(para));
+    let citPos = -1;
+    s.doc.descendants((n, p) => {
+      if (n.type.name === "citation") citPos = p;
+    });
+    const tr = s.tr.delete(citPos, citPos + 1);
+    const d = inspectSteps(tr, s.doc, tr.doc);
+    expect(d.removedCitations.map((c) => c.id)).toEqual(["c1"]);
+    expect(d.addedCitations).toHaveLength(0);
+  });
+
+  it("editing a citation's command in place emits changedCitations, not added/removed", () => {
+    const cit = citationNode("c1", "\\cite{old}", "Old");
+    const para = testSchema.nodes.paragraph.create(
+      { uuid: "p1" },
+      [testSchema.text("see "), cit],
+    );
+    const s = stateOf(doc(para));
+    let citPos = -1;
+    s.doc.descendants((n, p) => {
+      if (n.type.name === "citation") citPos = p;
+    });
+    // Leaf atom → setNodeMarkup is a ReplaceStep that swaps the node;
+    // the reconciler must collapse same-id add+remove into changedCitations.
+    const tr = s.tr.setNodeMarkup(citPos, undefined, {
+      ...s.doc.nodeAt(citPos)!.attrs,
+      command: "\\cite{new}",
+      displayText: "New",
+    });
+    const d = inspectSteps(tr, s.doc, tr.doc);
+    expect(d.addedCitations.filter((c) => c.id === "c1")).toHaveLength(0);
+    expect(d.removedCitations.filter((c) => c.id === "c1")).toHaveLength(0);
+    expect(d.changedCitations.find((c) => c.id === "c1")?.command).toBe("\\cite{new}");
+  });
+
+  it("typing next to a citation (no attr change) does NOT emit changedCitations", () => {
+    const cit = citationNode("c1", "\\cite{x}", "X");
+    const para = testSchema.nodes.paragraph.create(
+      { uuid: "p1" },
+      [testSchema.text("see "), cit],
+    );
+    const s = stateOf(doc(para));
+    // Insert text at the very start, well clear of the atom.
+    const tr = s.tr.insertText("a", 1, 1);
+    const d = inspectSteps(tr, s.doc, tr.doc);
+    expect(d.changedCitations).toHaveLength(0);
+    expect(d.addedCitations).toHaveLength(0);
+    expect(d.removedCitations).toHaveLength(0);
+    expect(d.contentChangedUuids.has("p1")).toBe(true);
   });
 });
 

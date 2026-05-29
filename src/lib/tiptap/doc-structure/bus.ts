@@ -19,6 +19,7 @@ import type { Editor } from "@tiptap/react";
 import {
   type AnchorEntry,
   type BlockEntry,
+  type CitationEntry,
   type DocStructure,
   EMPTY_STRUCTURE,
   type ExampleEntry,
@@ -36,6 +37,7 @@ export type DiffHandler = (diff: StructureDiff, structure: DocStructure) => void
 export type BlockHandler = (blocks: readonly BlockEntry[], structure: DocStructure) => void;
 export type HeadingHandler = (headings: readonly HeadingEntry[], structure: DocStructure) => void;
 export type FootnoteHandler = (footnotes: readonly FootnoteEntry[], structure: DocStructure) => void;
+export type CitationHandler = (citations: readonly CitationEntry[], structure: DocStructure) => void;
 export type AnchorHandler = (anchors: readonly AnchorEntry[], structure: DocStructure) => void;
 export type ExampleHandler = (examples: readonly ExampleEntry[], structure: DocStructure) => void;
 export type FigureHandler = (figures: readonly FigureEntry[], structure: DocStructure) => void;
@@ -70,6 +72,13 @@ export interface DocStructureBus {
   onFootnotesRemoved(fn: FootnoteHandler): Unsub;
   /** Fires when the document order of footnote IDs may have changed. */
   onFootnoteOrderChanged(fn: DiffHandler): Unsub;
+
+  onCitationsAdded(fn: CitationHandler): Unsub;
+  onCitationsRemoved(fn: CitationHandler): Unsub;
+  /** Same citationId, command/displayText changed. */
+  onCitationsChanged(fn: CitationHandler): Unsub;
+  /** Fires when the document order of citation IDs may have changed. */
+  onCitationOrderChanged(fn: DiffHandler): Unsub;
 
   onAnchorsAdded(fn: AnchorHandler): Unsub;
   onAnchorsRemoved(fn: AnchorHandler): Unsub;
@@ -143,6 +152,11 @@ export function createDocStructureBus(): DocStructureBus {
   const footnotesRemoved = makeList<FootnoteHandler>();
   const footnoteOrderChanged = makeList<DiffHandler>();
 
+  const citationsAdded = makeList<CitationHandler>();
+  const citationsRemoved = makeList<CitationHandler>();
+  const citationsChanged = makeList<CitationHandler>();
+  const citationOrderChanged = makeList<DiffHandler>();
+
   const anchorsAdded = makeList<AnchorHandler>();
   const anchorsRemoved = makeList<AnchorHandler>();
 
@@ -190,6 +204,10 @@ export function createDocStructureBus(): DocStructureBus {
         diff.addedFootnotes.length > 0 ||
         diff.removedFootnotes.length > 0 ||
         diff.footnoteOrderChanged ||
+        diff.addedCitations.length > 0 ||
+        diff.removedCitations.length > 0 ||
+        diff.changedCitations.length > 0 ||
+        diff.citationOrderChanged ||
         diff.addedAnchors.length > 0 ||
         diff.removedAnchors.length > 0 ||
         diff.addedExamples.length > 0 ||
@@ -223,6 +241,11 @@ export function createDocStructureBus(): DocStructureBus {
       if (diff.addedFootnotes.length > 0) footnotesAdded.emit((fn) => fn(diff.addedFootnotes, s));
       if (diff.removedFootnotes.length > 0) footnotesRemoved.emit((fn) => fn(diff.removedFootnotes, s));
       if (diff.footnoteOrderChanged) footnoteOrderChanged.emit((fn) => fn(diff, s));
+
+      if (diff.addedCitations.length > 0) citationsAdded.emit((fn) => fn(diff.addedCitations, s));
+      if (diff.removedCitations.length > 0) citationsRemoved.emit((fn) => fn(diff.removedCitations, s));
+      if (diff.changedCitations.length > 0) citationsChanged.emit((fn) => fn(diff.changedCitations, s));
+      if (diff.citationOrderChanged) citationOrderChanged.emit((fn) => fn(diff, s));
 
       if (diff.addedAnchors.length > 0) anchorsAdded.emit((fn) => fn(diff.addedAnchors, s));
       if (diff.removedAnchors.length > 0) anchorsRemoved.emit((fn) => fn(diff.removedAnchors, s));
@@ -276,6 +299,10 @@ export function createDocStructureBus(): DocStructureBus {
     onFootnotesAdded: footnotesAdded.add,
     onFootnotesRemoved: footnotesRemoved.add,
     onFootnoteOrderChanged: footnoteOrderChanged.add,
+    onCitationsAdded: citationsAdded.add,
+    onCitationsRemoved: citationsRemoved.add,
+    onCitationsChanged: citationsChanged.add,
+    onCitationOrderChanged: citationOrderChanged.add,
     onAnchorsAdded: anchorsAdded.add,
     onAnchorsRemoved: anchorsRemoved.add,
     onExamplesAdded: examplesAdded.add,

@@ -75,6 +75,10 @@ function mapStructurePositions(
     const mapped = mapping.map(f.pos);
     return mapped === f.pos ? f : { ...f, pos: mapped };
   });
+  const citations = prev.citations.map((c) => {
+    const mapped = mapping.map(c.pos);
+    return mapped === c.pos ? c : { ...c, pos: mapped };
+  });
   const anchors = new Map(prev.anchors);
   for (const [id, entry] of anchors) {
     const newFrom = mapping.map(entry.from);
@@ -101,6 +105,7 @@ function mapStructurePositions(
     blocks,
     headings,
     footnotes,
+    citations,
     anchors,
     examples,
     figures,

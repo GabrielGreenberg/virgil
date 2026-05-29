@@ -71,6 +71,7 @@ export {
   isEmptyDiff,
   type AnchorEntry,
   type BlockEntry,
+  type CitationEntry,
   type DocStructure,
   type ExampleEntry,
   type FigureEntry,

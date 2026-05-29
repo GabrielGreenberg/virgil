@@ -1,9 +1,11 @@
 "use client";
 
-import { useMemo, memo, useState, useRef, useEffect } from "react";
+import { useMemo, memo, useState, useRef, useEffect, useCallback } from "react";
 import type { Editor } from "@tiptap/react";
 import { useInTextPositions } from "@/hooks/useInTextPositions";
+import { getBus, type DocStructure } from "@/lib/tiptap/doc-structure";
 import {
+  CARD_KEY_PREFIXES,
   OMNI_PANELS,
   PANEL_REGISTRY,
   getPanelByCardKind,
@@ -336,8 +338,40 @@ function OmniViewPanel({
     [pinRequest],
   );
 
+  // Live-position resolver for `useInTextPositions`. The entity-anchored omni
+  // kinds (footnote / citation / example) carry a captured `pos` that only
+  // refreshes on structural change post keystroke-sanctity refactor; resolve
+  // their live pos from the DocStructureObserver snapshot (re-mapped every
+  // transaction) keyed to the same `${kind}:${id}` shape as the omni item id.
+  // Paragraph-anchored kinds (note/todo/…) fall through to the captured pos —
+  // their primary visualization is the marginalia gutter, which is already
+  // sourced live from layout observers. The lookup map is rebuilt only when
+  // the snapshot identity changes (once per measure pass), not per item.
+  const livePosCacheRef = useRef<{ s: DocStructure | null; map: Map<string, number> }>({
+    s: null,
+    map: new Map(),
+  });
+  const resolvePos = useCallback(
+    (id: string): number | undefined => {
+      const s = getBus(editor)?.structure ?? null;
+      if (!s) return undefined;
+      if (livePosCacheRef.current.s !== s) {
+        const map = new Map<string, number>();
+        for (const f of s.footnotes) map.set(`${CARD_KEY_PREFIXES.footnote}:${f.id}`, f.pos);
+        for (const c of s.citations) map.set(`${CARD_KEY_PREFIXES.citation}:${c.id}`, c.pos);
+        for (const e of s.examples) {
+          map.set(`${CARD_KEY_PREFIXES.example}:${e.id}`, e.pos);
+          if (e.uuid) map.set(`${CARD_KEY_PREFIXES.example}:${e.uuid}`, e.pos);
+        }
+        livePosCacheRef.current = { s, map };
+      }
+      return livePosCacheRef.current.map.get(id);
+    },
+    [editor],
+  );
+
   const { positions, editorContentHeight, panelScrollRef } =
-    useInTextPositions(editor, inTextItems, true, "data-omni-entry-wrapper", pinned);
+    useInTextPositions(editor, inTextItems, true, "data-omni-entry-wrapper", pinned, resolvePos);
 
   // Pin lifecycle: a pin is a persistent "deck anchor" cleared only when a
   // new pin replaces it (handled by `omniPinStore.requestPin` itself when

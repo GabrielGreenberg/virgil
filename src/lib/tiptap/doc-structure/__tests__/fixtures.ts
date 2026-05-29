@@ -66,6 +66,17 @@ export const testSchema = new Schema({
       },
       toDOM: () => ["span", { class: "footnote" }],
     },
+    citation: {
+      group: "inline",
+      inline: true,
+      atom: true,
+      attrs: {
+        citationId: { default: "" },
+        command: { default: "" },
+        displayText: { default: "" },
+      },
+      toDOM: () => ["span", { class: "citation" }],
+    },
     text: { group: "inline" },
   },
   marks: {
@@ -115,6 +126,14 @@ export function exampleItem(attrs: Record<string, unknown> = {}): PMNode {
 
 export function footnoteNode(footnoteId: string, number = 1, thanks = false): PMNode {
   return testSchema.nodes.footnote.create({ footnoteId, number, thanks });
+}
+
+export function citationNode(
+  citationId: string,
+  command = "",
+  displayText = "",
+): PMNode {
+  return testSchema.nodes.citation.create({ citationId, command, displayText });
 }
 
 export function doc(...blocks: PMNode[]): PMNode {

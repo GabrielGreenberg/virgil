@@ -30,6 +30,7 @@ import { isAnchorableNode } from "@/lib/marginalia";
 import {
   type AnchorEntry,
   type BlockEntry,
+  type CitationEntry,
   type DocStructure,
   EMPTY_DIFF,
   type ExampleEntry,
@@ -48,6 +49,7 @@ interface EntityBundle {
   blocks: Map<string, BlockEntry>;
   headings: Map<string, HeadingEntry>;
   footnotes: Map<string, FootnoteEntry>;
+  citations: Map<string, CitationEntry>;
   anchors: Map<string, AnchorEntry>;
   examples: Map<string, ExampleEntry>;
   figures: Map<string, FigureEntry>;
@@ -59,6 +61,7 @@ function emptyBundle(): EntityBundle {
     blocks: new Map(),
     headings: new Map(),
     footnotes: new Map(),
+    citations: new Map(),
     anchors: new Map(),
     examples: new Map(),
     figures: new Map(),
@@ -165,6 +168,18 @@ function inspectNodeAt(n: PMNode, pos: number, out: EntityBundle): void {
       }
     }
 
+    if (typeName === "citation") {
+      const id = (attrs.citationId as string | undefined) ?? "";
+      if (id) {
+        out.citations.set(id, {
+          id,
+          pos,
+          command: (attrs.command as string | undefined) ?? "",
+          displayText: (attrs.displayText as string | undefined) ?? "",
+        });
+      }
+    }
+
     // Linked-anchor marks ride on text nodes.
     if (n.isText && n.marks.length > 0) {
       for (const mark of n.marks) {
@@ -237,6 +252,14 @@ function figureStructurallyChanged(a: FigureEntry, b: FigureEntry): boolean {
   return a.label !== b.label || a.numbered !== b.numbered;
 }
 
+/**
+ * Returns true iff two citation entries differ in a way the cards show —
+ * the LaTeX command (which `keys` are parsed from) or the rendered text.
+ */
+function citationChanged(a: CitationEntry, b: CitationEntry): boolean {
+  return a.command !== b.command || a.displayText !== b.displayText;
+}
+
 // ---------------------------------------------------------------------------
 // Anchorable-ancestor finder for content-change attribution.
 // ---------------------------------------------------------------------------
@@ -296,6 +319,7 @@ export function inspectSteps(
   const added = emptyBundle();
   const contentChangedUuids = new Set<string>();
   let footnoteOrderChanged = false;
+  let citationOrderChanged = false;
 
   for (let stepIndex = 0; stepIndex < tr.steps.length; stepIndex++) {
     const step = tr.steps[stepIndex] as Step;
@@ -323,6 +347,11 @@ export function inspectSteps(
       // Footnotes whose pos changed need a renumber check too.
       if (removed.footnotes.size > 0 || added.footnotes.size > 0) {
         footnoteOrderChanged = true;
+      }
+      // Citations: any add/remove/move in a touched range may reorder the
+      // citation list (a pure move with unchanged attrs surfaces only here).
+      if (removed.citations.size > 0 || added.citations.size > 0) {
+        citationOrderChanged = true;
       }
       continue;
     }
@@ -546,6 +575,25 @@ export function inspectSteps(
     if (!added.footnotes.has(id)) removedFootnotes.push(entry);
   }
 
+  // Citations: separate added / removed / changed. An in-place
+  // `setNodeMarkup` (citation is a leaf atom) shows up as same-id in both
+  // added + removed — collapse to `changedCitations` when attrs differ,
+  // mirroring the heading reconciler.
+  const addedCitations: CitationEntry[] = [];
+  const removedCitations: CitationEntry[] = [];
+  const changedCitations: CitationEntry[] = [];
+  for (const [id, entry] of added.citations) {
+    const wasRemoved = removed.citations.get(id);
+    if (!wasRemoved) {
+      addedCitations.push(entry);
+    } else if (citationChanged(wasRemoved, entry)) {
+      changedCitations.push(entry);
+    }
+  }
+  for (const [id, entry] of removed.citations) {
+    if (!added.citations.has(id)) removedCitations.push(entry);
+  }
+
   // Anchors.
   const addedAnchors: AnchorEntry[] = [];
   const removedAnchors: AnchorEntry[] = [];
@@ -610,6 +658,10 @@ export function inspectSteps(
     addedFootnotes.length === 0 &&
     removedFootnotes.length === 0 &&
     !footnoteOrderChanged &&
+    addedCitations.length === 0 &&
+    removedCitations.length === 0 &&
+    changedCitations.length === 0 &&
+    !citationOrderChanged &&
     addedAnchors.length === 0 &&
     removedAnchors.length === 0 &&
     addedExamples.length === 0 &&
@@ -634,6 +686,10 @@ export function inspectSteps(
     addedFootnotes,
     removedFootnotes,
     footnoteOrderChanged,
+    addedCitations,
+    removedCitations,
+    changedCitations,
+    citationOrderChanged,
     addedAnchors,
     removedAnchors,
     addedExamples,
