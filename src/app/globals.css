@@ -1440,6 +1440,37 @@ textarea,
   margin-top: 0;
 }
 
+/* Multi-block SECTION ghost (L3-Headings `renderGhost`): the cloned section
+   blocks are nested ONE LEVEL DEEPER — under a fresh `.tiptap` container inside
+   the body — so the L3e.2 direct-child resets above can't reach the first
+   block's top margin. Measured: the container's first block (the
+   `.heading-wrapper`) keeps its OWN `margin-top: 1.8em` (= 28.8px at the 16px
+   editor-root font-size the container inherits) because that rule (globals.css
+   `.heading-wrapper`, 0,1,0) outranks `:where(.tiptap) > :first-child` (0,1,0)
+   on source order; it then collapses up through the zero-margin container and
+   is retained inside the body's `overflow:hidden` BFC, pushing the whole
+   section down 28.8px (the visible "double"). Mirror the L3e.2 arms one level
+   deeper to zero the container's first block (incl. the `.react-renderer`
+   wrapper for a NodeView-backed first block, e.g. a future range ghost that
+   opens on a texBlock/figure), PLUS the first block's leading `<h*>` margin —
+   the `.heading-wrapper`'s inner heading carries its own `0.2em` (4.32px) which,
+   once the wrapper margin is zeroed, becomes the new leading collapse and
+   leaves a 4.32px residual; zeroing it glues the heading line pixel-exact to
+   the body top (== liftSourceRect's margin-excluding headRect.top). The
+   `> :first-child` scoping leaves blocks 2..n untouched, so inter-block rhythm
+   AND the heading's own `margin-bottom` (the gap below it) are preserved.
+   Specificity (0,3,0) beats `.heading-wrapper`'s 1.8em (0,1,0) and the inner
+   `.heading-wrapper h*` 0.2em (0,1,1) — no !important. No-op for single-block
+   ghosts (their clone is a direct child of the body; there is no nested
+   `.tiptap` container to match). Generic over the CLASS — any multi-block ghost
+   nested under the `renderGhost` container — so L3f's range ghost inherits it.
+   (Issue-1: lifted SECTION ghost vertical offset.) */
+.lifted-text-overlay__body .tiptap > :first-child,
+.lifted-text-overlay__body .tiptap > .react-renderer:first-child > *,
+.lifted-text-overlay__body .tiptap > :first-child > :where(h1, h2, h3, h4, h5, h6) {
+  margin-top: 0;
+}
+
 /* Card grip — squeeze pattern. Triggered both by direct :active on the
    handle and by `.is-pressed` toggled on the handle from PanelCard's lift
    gesture, so pressing anywhere on the header (including outside the
