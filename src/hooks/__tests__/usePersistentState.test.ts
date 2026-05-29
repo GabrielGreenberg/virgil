@@ -7,6 +7,7 @@ const mockWrite = vi.fn();
 
 vi.mock("@/lib/storage", () => ({
   readSidecar: (...args: unknown[]) => mockRead(...args),
+  readSidecarIfExists: (...args: unknown[]) => mockRead(...args),
   writeSidecar: (...args: unknown[]) => mockWrite(...args),
 }));
 
@@ -58,7 +59,7 @@ describe("usePersistentState", () => {
       usePersistentState<Shape>("doc-1", "test.json", EMPTY),
     );
     await waitFor(() => expect(result.current.state.items).toEqual(["a", "b"]));
-    expect(mockRead).toHaveBeenCalledWith("doc-1", "test.json", EMPTY);
+    expect(mockRead).toHaveBeenCalledWith("doc-1", "test.json");
     expect(mockWrite).not.toHaveBeenCalled();
   });
 
