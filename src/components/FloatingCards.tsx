@@ -4,6 +4,10 @@ import { useEffect, useRef, type ReactNode } from "react";
 import FloatingPanel, { type FloatingPanelHandle } from "./FloatingPanel";
 import { usePoppedCards } from "@/hooks/usePoppedCards";
 import { consumeCardLiftHandoff } from "./card-lift";
+import {
+  parseTextObjectPopoutKey,
+  TEXT_OBJECT_REGISTRY,
+} from "@/text-objects/text-object-registry";
 
 const DEFAULT_W = 360;
 const DEFAULT_H = 280;
@@ -78,6 +82,21 @@ export function FloatCard({
   // Bounded by 40% of viewport height; if content exceeds the cap, the
   // body's existing overflow:auto handles the scroll.
   useEffect(() => {
+    // Lifted-overlay popouts spawn at the source's authoritative full-content
+    // height (captured at threshold-cross). The grow burst — built for
+    // default-size spawns — would otherwise over-grow them: the float editor's
+    // editable area includes ~43px of trailing cursor space below the content
+    // node that inflates body.scrollHeight beyond the real content. Skip
+    // auto-fit entirely for these; their spawn rect is already correct.
+    // (Default-size kinds still on instant-popout keep the grow burst until
+    // they migrate; after L4 it's vestigial.)
+    const parsed = parseTextObjectPopoutKey(cardKey);
+    if (
+      parsed &&
+      TEXT_OBJECT_REGISTRY[parsed.kind]?.liftMode === "lifted-overlay"
+    ) {
+      return; // honor the authoritative spawn height; no auto-fit
+    }
     if (autoFittedKeys.has(cardKey)) return;
     autoFittedKeys.add(cardKey);
     let attempts = 0;
@@ -132,68 +151,6 @@ export function FloatCard({
     // against the panel/body being detached.
     requestAnimationFrame(tryFit);
 
-    // Shrink-to-fit once web fonts settle. The burst above only ever GROWS
-    // (it bails when content is shorter than the window), so a float spawned
-    // too tall keeps its excess height. Classic case: a list whose
-    // `sourceHeight` was captured at threshold-cross before web fonts loaded
-    // — the fallback font's taller line-height over-measures the source and
-    // the per-item error accumulates across the list, spawning the popout
-    // ~2-3 lines too tall. `document.fonts.ready` is the moment the
-    // line-height corrects; on cold fonts (the bug) it resolves after the
-    // content has rendered at its final shorter height, so we can measure
-    // and hug it. Shrink-only + a >2px threshold makes this a no-op whenever
-    // the spawned height was already right (warm fonts → no jump), so
-    // paragraph/heading popouts and warm retries don't move. We measure the
-    // content children's span, not body.scrollHeight — the latter collapses
-    // to the container height when the window is too tall and can't see the
-    // excess.
-    const fonts =
-      typeof document !== "undefined"
-        ? (document as unknown as { fonts?: { ready?: Promise<unknown> } }).fonts
-        : undefined;
-    if (fonts?.ready && typeof fonts.ready.then === "function") {
-      fonts.ready.then(() => {
-        // Double rAF so the post-swap reflow is committed before we read.
-        requestAnimationFrame(() =>
-          requestAnimationFrame(() => {
-            const wrapper = document.querySelector(
-              `[data-pristine-card-id="${pristineId}"]`,
-            );
-            const panel = wrapper?.closest<HTMLElement>(
-              '[data-floating-panel="true"]',
-            );
-            const body = panel?.querySelector<HTMLElement>(".par-float-body");
-            if (!panel || !body || !panel.isConnected) return;
-            const first = body.firstElementChild as HTMLElement | null;
-            const last = body.lastElementChild as HTMLElement | null;
-            if (!first || !last) return;
-            const cs = window.getComputedStyle(body);
-            const padV =
-              (parseFloat(cs.paddingTop) || 0) +
-              (parseFloat(cs.paddingBottom) || 0);
-            const contentH =
-              last.getBoundingClientRect().bottom -
-              first.getBoundingClientRect().top +
-              padV;
-            if (contentH <= 0) return; // content not yet rendered — skip
-            const natural = contentH + TEXT_FLOAT_HEADER_H + TEXT_FLOAT_BORDERS;
-            const cap = Math.floor(window.innerHeight * TEXT_FLOAT_MAX_VH);
-            const target = Math.min(natural, cap);
-            const panelRect = panel.getBoundingClientRect();
-            // Shrink-only: bail unless the window is meaningfully taller than
-            // its content (settled case → no-op, no visible jump). Keeps x/
-            // width/top so the bottom edge rises to meet the text.
-            if (panelRect.height - target <= 2) return;
-            ctx.setFloatPosition(cardKey, {
-              x: panelRect.left,
-              y: panelRect.top,
-              width: panelRect.width,
-              height: target,
-            });
-          }),
-        );
-      });
-    }
     return () => {
       ro?.disconnect();
       if (stopTimer) clearTimeout(stopTimer);
