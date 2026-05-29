@@ -149,17 +149,29 @@ export function LiftedTextOverlay({
   cache,
 }: LiftedTextOverlayProps) {
   // Sanitize the clone once at mount. cloneNode(true) carries the full
-  // subtree including any nested contenteditable=true (the source block
-  // itself, plus its descendants in the TipTap NodeView tree) — we
-  // strip recursively. pointer-events: none lets the cursor pass through
+  // subtree, whose `contenteditable` values are mixed: the source block is
+  // `="true"`, but the TipTap NodeView tree also marks non-editable chrome
+  // (the expex "Ex." pod, item markers, gloss labels) `="false"`. We strip
+  // only the values that would make the clone EDITABLE (`"true"`/`""`/
+  // `"plaintext-only"`) and KEEP `="false"` (L3d.3): a non-editable element
+  // is no focus/edit risk (the overlay root is `pointer-events: none`), and
+  // the editor's own white-space shield — `.tiptap [contenteditable="false"]
+  // { white-space: normal }` in globals.css, mirroring prosemirror-view's
+  // `.ProseMirror [contenteditable="false"]` — only fires while the
+  // `="false"` marker survives. Stripping it (the pre-L3d.3 behavior) let
+  // `.tiptap { white-space: break-spaces }` (L3b.2) leak into the pod,
+  // widening it vs source. pointer-events: none lets the cursor pass through
   // to the editor underneath so the mode-flip predicate sees the actual
   // hit-test against the content rect.
   const clone = useMemo(() => {
     const c = anchorDom.cloneNode(true) as HTMLElement;
-    c.removeAttribute("contenteditable");
-    c.querySelectorAll("[contenteditable]").forEach((el) =>
-      el.removeAttribute("contenteditable"),
-    );
+    // Keep `contenteditable="false"`; strip only editable-making values.
+    const stripIfEditable = (el: Element) => {
+      const v = el.getAttribute("contenteditable");
+      if (v !== null && v !== "false") el.removeAttribute("contenteditable");
+    };
+    stripIfEditable(c);
+    c.querySelectorAll("[contenteditable]").forEach(stripIfEditable);
     // Strip ids on the clone so they don't collide with the live source
     // (which is still mounted under the editor). data-uuid attrs are
     // harmless — the hover resolver hit-tests through pointer-events:none
@@ -216,7 +228,10 @@ export function LiftedTextOverlay({
   // typography. This inline capture may therefore be redundant; it is
   // retained here because it remains authoritative on conflict (inline
   // beats the scoped rules) and verifying full equivalence is an L4
-  // cleanup concern, not this commit's.
+  // cleanup concern, not this commit's. (L3d.3 resolved this question for
+  // `line-height` specifically: it was not merely redundant but HARMFUL —
+  // a captured LENGTH leaked oversized to non-prose descendants — so it is
+  // no longer captured here; see the in-object note below.)
   const typographyStyles = useMemo<CSSProperties>(() => {
     if (typeof window === "undefined") return {};
     const inlineEl = resolveInlineContextElement(anchorDom) ?? anchorDom;
@@ -255,7 +270,18 @@ export function LiftedTextOverlay({
       fontWeight: computed.fontWeight,
       fontStyle: computed.fontStyle,
       fontVariant: computed.fontVariant,
-      lineHeight: computed.lineHeight,
+      // L3d.3: line-height is deliberately NOT captured. The L1.5 capture
+      // applied the prose `<p>`'s computed line-height as a resolved LENGTH
+      // (e.g. "24.32px"), which inherits VERBATIM to every clone descendant
+      // regardless of its own font-size — so non-prose chrome (the expex
+      // "Ex." pod, gloss labels, etc.) rendered too tall: 24.32px instead of
+      // its natural `1.5 × 10.88 = 16.32px`. Omitting it lets the clone's
+      // prose take its line-height from the `.tiptap p`/`h*`/`li` rules
+      // (reaching the clone since L3b.1, identical to source) while non-prose
+      // chrome inherits the document's unitless `1.5` and multiplies by its
+      // OWN font-size — exactly the source editor's behavior. (Measured
+      // unchanged: prose line-height across paragraph/heading/lists/
+      // exampleBlock; pod height 28.32px → 20.32px, matching source.)
       letterSpacing: computed.letterSpacing,
       color: computed.color,
       textAlign: computed.textAlign as CSSProperties["textAlign"],

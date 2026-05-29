@@ -574,6 +574,20 @@ body {
   overflow-wrap: break-word;
 }
 
+/* Non-editable chrome must NOT inherit the `break-spaces` above (L3d.3).
+   The lifted-overlay drag clone is `.tiptap` but NOT `.ProseMirror` (L3b.1),
+   so it misses prosemirror-view's base shield
+   `.ProseMirror [contenteditable="false"] { white-space: normal }` — and the
+   document `break-spaces` then leaks into whitespace-bearing chrome like the
+   expex "Ex." pod, preserving its double/leading spaces and widening it vs
+   source. Mirror that shield into the `.tiptap` content scope. No-op for live
+   editors: their chrome is `.tiptap.ProseMirror [contenteditable="false"]`,
+   already covered by the prose-view rule. Relies on the clone sanitizer
+   KEEPING `contenteditable="false"` (LiftedTextOverlay.tsx). */
+.tiptap [contenteditable="false"] {
+  white-space: normal;
+}
+
 /* Render literal '\t' (inserted by TabIndent / useTabIndent) as a visible
  * 4-char-wide indent in every prose-editing surface. */
 .tiptap,
@@ -1364,13 +1378,18 @@ textarea,
 }
 
 /* Body wrapper inside the overlay — holds the sanitized cloneNode of
-   the source block. Typography (font, color, line-height, etc.) is
+   the source block. Typography (font, color, letter-spacing, etc.) is
    captured from the source via getComputedStyle at threshold-cross and
    applied as inline styles on the overlay root, not inherited through
-   the ancestor chain (the portal sits outside .ProseMirror). The body
-   owns its own overflow clip so the clone is bounded by the captured
-   source rect even if it would otherwise reflow taller (long line at
-   a different font metric, etc.).
+   the ancestor chain (the portal sits outside .ProseMirror). line-height
+   is deliberately NOT among the captured properties (L3d.3): a resolved
+   LENGTH line-height leaked oversized to non-prose chrome (the expex
+   "Ex." pod) — instead the `.tiptap p`/`h*`/`li` rules give the clone's
+   prose its line-height and non-prose chrome inherits the document's
+   unitless 1.5, exactly as in the live editor. The body owns its own
+   overflow clip so the clone is bounded by the captured source rect even
+   if it would otherwise reflow taller (long line at a different font
+   metric, etc.).
 
    Ghost mode = no padding: the clone fills the body edge-to-edge so
    the text wraps exactly as it did in the source (body width =
