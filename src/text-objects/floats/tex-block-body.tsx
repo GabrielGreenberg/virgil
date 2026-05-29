@@ -236,8 +236,23 @@ export function TexBlockBody({
           </button>
         </div>
       )}
-      <div className="tex-block-float-title-host px-3 pt-2 relative">
-        <div className="par-title-annotation" style={{ display: "block" }}>
+      {/* Body mirrors paragraph-body.tsx's chrome contract so the float
+          honors the lifted-overlay spawn geometry exactly (L3e.2):
+          `px-8 py-4` == POPOUT_BODY_PADDING_X/Y (32 / 16), so the pod width
+          resolves to sourceWidth (502) == the source pod → the CM text-area
+          is 444 == source/ghost → the code does NOT re-wrap on release. (The
+          old `px-3` (12) title host + pod wrapper made the float pod
+          2·(32−12)=40px too wide → released code re-wrapped at a different
+          column.) The `.par-title-wrapper` collapses the untitled title slot
+          to `absolute bottom:100%` (globals.css), matching the source pod +
+          the lifted ghost, so the pod sits at the body's top with no vertical
+          jump on release. */}
+      <div className="par-float-body flex-1 overflow-auto px-8 py-4">
+        <div
+          className={`par-title-wrapper has-text${
+            title ? " has-title" : " has-add-btn"
+          }`}
+        >
           <FloatTitleField
             title={title}
             editing={editingTitle}
@@ -248,48 +263,47 @@ export function TexBlockBody({
             onClear={() => commitTitle(null)}
             placeholder="Block title…"
           />
-        </div>
-      </div>
-      {/* Pod framing reused from the in-place TexBlockNodeView (.tex-block-pod
-          → .tex-block-editor) so the released popout wears the same blue
-          border + ".tex" chip as the lifted ghost — no framing jump on
-          release. The float omits the source's chevron / row-sensor / in-place
-          delete (it has its own header close/jump chrome); only the visual
-          frame is replicated. */}
-      <div className="flex-1 min-h-0 px-3 pt-1 pb-3">
-        <div className="tex-block-pod h-full">
-          <div className="tex-block-editor relative h-full">
-            <CodeMirror
-              value={code}
-              onChange={handleChange}
-              extensions={[
-                latex({ enableLinting: false }),
-                texBlockFloatTheme,
-                EditorView.lineWrapping,
-                EditorView.contentAttributes.of({ spellcheck: "false" }),
-                EditorState.tabSize.of(2),
-              ]}
-              basicSetup={{
-                lineNumbers: false,
-                highlightActiveLineGutter: false,
-                highlightActiveLine: false,
-                bracketMatching: true,
-                foldGutter: false,
-                indentOnInput: true,
-                closeBrackets: true,
-                autocompletion: false,
-              }}
-              height="100%"
-              // The `height` prop sizes `.cm-editor`, but @uiw/react-codemirror
-              // wraps it in a `.cm-theme` div that defaults to content height —
-              // so the bordered pod fills the float body (matching the lifted
-              // ghost at any float size) only if the wrapper fills too.
-              style={{ height: "100%" }}
-            />
-            {/* `.tex` chip — inside the pod's top-right corner, identical
-                markup to TexBlockNodeView so the float reads as the same pod. */}
-            <div className="absolute top-1 right-1.5 z-10 px-1 py-px text-[10px] rounded-sm bg-[var(--background)]/85 border border-[var(--heading-annotation-border,#a8c4de)] text-[var(--heading-annotation-color,#6b9ac4)] select-none pointer-events-none font-mono leading-tight">
-              .tex
+          <div className="par-body-container">
+            {/* Pod framing reused from the in-place TexBlockNodeView
+                (.tex-block-pod → .tex-block-editor) so the released popout
+                wears the same blue border + ".tex" chip as the lifted ghost —
+                no framing jump on release. The float omits the source's
+                chevron / row-sensor / in-place delete (it has its own header
+                close/jump chrome); only the visual frame is replicated.
+                CodeMirror is left at its default content `height:auto` (like
+                the source pod — no `height`/`style` prop) so the pod grows to
+                the full code height and the released float shows EVERY line.
+                `height:100%` clamped the `.cm-scroller` ~10px and clipped the
+                last line (L3e.2). */}
+            <div className="tex-block-pod">
+              <div className="tex-block-editor relative">
+                <CodeMirror
+                  value={code}
+                  onChange={handleChange}
+                  extensions={[
+                    latex({ enableLinting: false }),
+                    texBlockFloatTheme,
+                    EditorView.lineWrapping,
+                    EditorView.contentAttributes.of({ spellcheck: "false" }),
+                    EditorState.tabSize.of(2),
+                  ]}
+                  basicSetup={{
+                    lineNumbers: false,
+                    highlightActiveLineGutter: false,
+                    highlightActiveLine: false,
+                    bracketMatching: true,
+                    foldGutter: false,
+                    indentOnInput: true,
+                    closeBrackets: true,
+                    autocompletion: false,
+                  }}
+                />
+                {/* `.tex` chip — inside the pod's top-right corner, identical
+                    markup to TexBlockNodeView so the float reads as the same pod. */}
+                <div className="absolute top-1 right-1.5 z-10 px-1 py-px text-[10px] rounded-sm bg-[var(--background)]/85 border border-[var(--heading-annotation-border,#a8c4de)] text-[var(--heading-annotation-color,#6b9ac4)] select-none pointer-events-none font-mono leading-tight">
+                  .tex
+                </div>
+              </div>
             </div>
           </div>
         </div>

@@ -1426,6 +1426,20 @@ textarea,
   padding: 16px 32px;
 }
 
+/* The lifted ghost is an isolated single-block snapshot; an inter-block
+   top margin (--editor-block-gap) retained inside the body's overflow:hidden
+   BFC pushes the clone down and clips its bottom. The :first-child zeroing in
+   the rhythm rule handles direct-child clones, but React-NodeView blocks
+   (texBlock/figureBlock/graphicsBlock) self-manage margin on the inner element
+   nested under .react-renderer, which that rule can't reach. Zero it here.
+   Specificity (0,2,0 for the .react-renderer arm) beats `.tex-block`'s own
+   `margin-top: var(--editor-block-gap)` (0,1,0) — no !important needed; a
+   no-op for the direct-child kinds the rhythm rule already zeros. (L3e.2) */
+.lifted-text-overlay__body > *,
+.lifted-text-overlay__body > .react-renderer > * {
+  margin-top: 0;
+}
+
 /* Card grip — squeeze pattern. Triggered both by direct :active on the
    handle and by `.is-pressed` toggled on the handle from PanelCard's lift
    gesture, so pressing anywhere on the header (including outside the
