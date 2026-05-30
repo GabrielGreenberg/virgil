@@ -1465,10 +1465,10 @@ export function buildEditorExtensions(ctx: EditorExtensionsCtx) {
   // (Placeholder, SlashPopupExtension, SmartQuotes, TextObjectOrphanGuard,
   // Title/Maketitle/Label handlers, EmptyParagraphTitleCleaner,
   // MarginaliaAnchorGuard, PgMarkChip, UuidAttrDecorator, readOnlyEnforcer).
-  // TextColor is also main-only this chip (decision 4 → promoted to shared
-  // in Chip C; the heading float's colored-text fidelity closes there).
-  // Block atoms render as compact card previews (`cardContext: true`) and
-  // the heading builder proxies its structural writes to `ctx.host` (= MAIN).
+  // TextColor is now SHARED (FCU Chip C1, decision 4) so colored text renders
+  // faithfully in popouts — the exact Issue-2 fidelity class. Block atoms
+  // render as compact card previews (`cardContext: true`) and the heading
+  // builder proxies its structural writes to `ctx.host` (= MAIN).
   const isFloat = ctx.surface === "float";
   const isMain = !isFloat;
 
@@ -1535,8 +1535,9 @@ export function buildEditorExtensions(ctx: EditorExtensionsCtx) {
     Highlight.configure({
       multicolor: true,
     }),
-    // TextColor: main-only this chip (decision 4 → shared in Chip C).
-    ...(isMain ? [TextColor] : []),
+    // TextColor: SHARED core (FCU Chip C1, decision 4). Colored text now
+    // renders in popouts; main keeps it at the same position (order unchanged).
+    TextColor,
     InlineMath,
     DisplayMath,
     Footnote,

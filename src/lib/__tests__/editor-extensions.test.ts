@@ -110,11 +110,12 @@ function mainCtx(withAnchors = true): EditorExtensionsCtx {
   };
 }
 
-// The ordered `name`s the FLOAT surface (FCU Chip B) must emit: the shared
-// core MINUS the doc-wide example numberer (`expexNumbering`) and every
-// main-only chrome extension (`placeholder`, `textColor`, `slashPopup`,
-// `smartQuotes`, the orphan/title/maketitle/label/cleaner guards,
-// `marginaliaAnchorGuard`, `pgmarkChip`, `uuidAttrDecorator`,
+// The ordered `name`s the FLOAT surface must emit: the shared core
+// (now INCLUDING `textColor` — promoted to shared in FCU Chip C1, decision 4,
+// so colored text renders in popouts) MINUS the doc-wide example numberer
+// (`expexNumbering`) and every main-only chrome extension (`placeholder`,
+// `slashPopup`, `smartQuotes`, the orphan/title/maketitle/label/cleaner
+// guards, `marginaliaAnchorGuard`, `pgmarkChip`, `uuidAttrDecorator`,
 // `readOnlyEnforcer`). The `sectionNumbers` + `sectionFolding` plugins are
 // omitted *inside* the heading builder (a separate test asserts that).
 const EXPECTED_FLOAT_ORDER = [
@@ -132,6 +133,7 @@ const EXPECTED_FLOAT_ORDER = [
   "figureCaption",
   "graphicsBlock",
   "highlight",
+  "textColor",
   "inlineMath",
   "displayMath",
   "footnote",
@@ -153,9 +155,10 @@ const EXPECTED_FLOAT_ORDER = [
 ];
 
 // Extensions present on main but that MUST NOT appear in a float stack.
+// (`textColor` was here pre-Chip-C1; it is now SHARED, so a float INCLUDES
+// it — see the dedicated assertion below.)
 const MAIN_ONLY_NAMES = [
   "placeholder",
-  "textColor",
   "expexNumbering",
   "slashPopup",
   "smartQuotes",
@@ -253,11 +256,16 @@ describe("buildEditorExtensions (FCU factory)", () => {
     expect(exts[1].name).toBe("docStructureObserver");
   });
 
-  it("surface 'float' omits every main-only chrome extension (incl. ExpexNumbering / TextColor)", () => {
+  it("surface 'float' omits every main-only chrome extension (incl. ExpexNumbering)", () => {
     const names = buildEditorExtensions(floatCtx()).map((e) => e.name);
     for (const main of MAIN_ONLY_NAMES) {
       expect(names).not.toContain(main);
     }
+  });
+
+  it("surface 'float' INCLUDES textColor (promoted to the shared core, FCU Chip C1)", () => {
+    const names = buildEditorExtensions(floatCtx()).map((e) => e.name);
+    expect(names).toContain("textColor");
   });
 
   it("float heading omits the sectionNumbers + sectionFolding plugins; main keeps them", () => {
