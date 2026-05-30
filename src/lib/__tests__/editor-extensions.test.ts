@@ -24,8 +24,13 @@ vi.mock("@/lib/storage", () => {
   return mod;
 });
 
+import { Editor } from "@tiptap/core";
+import StarterKit from "@tiptap/starter-kit";
+import { DocStructureObserver } from "@/lib/tiptap/doc-structure";
 import {
   buildEditorExtensions,
+  createHeadingWithLabel,
+  createParagraphWithTitle,
   type EditorExtensionsCtx,
 } from "@/lib/editor-extensions";
 
@@ -105,6 +110,118 @@ function mainCtx(withAnchors = true): EditorExtensionsCtx {
   };
 }
 
+// The ordered `name`s the FLOAT surface (FCU Chip B) must emit: the shared
+// core MINUS the doc-wide example numberer (`expexNumbering`) and every
+// main-only chrome extension (`placeholder`, `textColor`, `slashPopup`,
+// `smartQuotes`, the orphan/title/maketitle/label/cleaner guards,
+// `marginaliaAnchorGuard`, `pgmarkChip`, `uuidAttrDecorator`,
+// `readOnlyEnforcer`). The `sectionNumbers` + `sectionFolding` plugins are
+// omitted *inside* the heading builder (a separate test asserts that).
+const EXPECTED_FLOAT_ORDER = [
+  "starterKit",
+  "docStructureObserver",
+  "paragraph",
+  "heading",
+  "bulletList",
+  "orderedList",
+  "listItem",
+  "blockquote",
+  "codeBlock",
+  "texBlock",
+  "figureBlock",
+  "figureCaption",
+  "graphicsBlock",
+  "highlight",
+  "inlineMath",
+  "displayMath",
+  "footnote",
+  "latexComment",
+  "citation",
+  "labelRef",
+  "exampleBlock",
+  "exampleItemList",
+  "exampleItem",
+  "exampleGloss",
+  "alignedGlossRow",
+  "proseGlossRow",
+  "glossCell",
+  "aiRequestMarker",
+  "latexCommand",
+  "linkedAnchor",
+  "linkedAnchorGuard",
+  "tabIndent",
+];
+
+// Extensions present on main but that MUST NOT appear in a float stack.
+const MAIN_ONLY_NAMES = [
+  "placeholder",
+  "textColor",
+  "expexNumbering",
+  "slashPopup",
+  "smartQuotes",
+  "textObjectOrphanGuard",
+  "titleField",
+  "maketitleMarker",
+  "labelHandler",
+  "emptyParagraphTitleCleaner",
+  "marginaliaAnchorGuard",
+  "pgmarkChip",
+  "uuidAttrDecorator",
+  "readOnlyEnforcer",
+];
+
+function floatCtx(): EditorExtensionsCtx {
+  return {
+    surface: "float",
+    editable: true,
+    cardContext: true,
+    callbacks: {},
+    docIdRef: null,
+    host: { getMainEditor: () => null },
+  };
+}
+
+// Mount a MINIMAL editor whose only block builders are the relocated
+// paragraph + heading, so we can read the ProseMirror plugin keys the
+// heading builder registers per surface (`sectionNumbers` + `sectionFolding`
+// on main, neither on float). Avoids the storage-backed figure/graphics
+// NodeViews entirely. Runs under jsdom (the file's @vitest-environment).
+function headingPluginKeys(surface: "main" | "float"): string[] {
+  const el = document.createElement("div");
+  const editor = new Editor({
+    element: el,
+    extensions: [
+      StarterKit.configure({
+        heading: false,
+        paragraph: false,
+        bulletList: false,
+        orderedList: false,
+        listItem: false,
+        blockquote: false,
+        codeBlock: false,
+        dropcursor: false,
+      }),
+      DocStructureObserver,
+      createParagraphWithTitle(),
+      createHeadingWithLabel(
+        {},
+        surface === "float" ? { surface: "float" } : { surface: "main" },
+      ),
+    ],
+    content: {
+      type: "doc",
+      content: [
+        { type: "heading", attrs: { level: 1 }, content: [{ type: "text", text: "Hi" }] },
+      ],
+    },
+  });
+  const keys = editor.state.plugins.map((p) =>
+    String((p as unknown as { key?: string }).key ?? ""),
+  );
+  editor.destroy();
+  return keys;
+}
+
 describe("buildEditorExtensions (FCU factory)", () => {
   it("surface 'main' emits the exact pre-FCU extension name order", () => {
     const names = buildEditorExtensions(mainCtx()).map((e) => e.name);
@@ -125,9 +242,31 @@ describe("buildEditorExtensions (FCU factory)", () => {
     );
   });
 
-  it("surface 'float' is reserved for FCU Chip B/C (throws for now)", () => {
-    expect(() =>
-      buildEditorExtensions({ ...mainCtx(), surface: "float" }),
-    ).toThrow(/Chip B\/C/);
+  it("surface 'float' emits the shared core minus main-only chrome (FCU Chip B)", () => {
+    const names = buildEditorExtensions(floatCtx()).map((e) => e.name);
+    expect(names).toEqual(EXPECTED_FLOAT_ORDER);
+  });
+
+  it("surface 'float' keeps the observer at index 1 (keystroke-sanctity rule)", () => {
+    const exts = buildEditorExtensions(floatCtx());
+    expect(exts[0].name).toBe("starterKit");
+    expect(exts[1].name).toBe("docStructureObserver");
+  });
+
+  it("surface 'float' omits every main-only chrome extension (incl. ExpexNumbering / TextColor)", () => {
+    const names = buildEditorExtensions(floatCtx()).map((e) => e.name);
+    for (const main of MAIN_ONLY_NAMES) {
+      expect(names).not.toContain(main);
+    }
+  });
+
+  it("float heading omits the sectionNumbers + sectionFolding plugins; main keeps them", () => {
+    const mainKeys = headingPluginKeys("main");
+    expect(mainKeys.some((k) => k.startsWith("sectionNumbers"))).toBe(true);
+    expect(mainKeys.some((k) => k.startsWith("sectionFolding"))).toBe(true);
+
+    const floatKeys = headingPluginKeys("float");
+    expect(floatKeys.some((k) => k.startsWith("sectionNumbers"))).toBe(false);
+    expect(floatKeys.some((k) => k.startsWith("sectionFolding"))).toBe(false);
   });
 });

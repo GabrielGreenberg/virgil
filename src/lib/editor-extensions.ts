@@ -21,6 +21,7 @@ import Blockquote from "@tiptap/extension-blockquote";
 import CodeBlock from "@tiptap/extension-code-block";
 import { Extension, mergeAttributes } from "@tiptap/core";
 import { Plugin, PluginKey } from "@tiptap/pm/state";
+import type { Node as PMNode } from "@tiptap/pm/model";
 import type { MutableRefObject, RefObject } from "react";
 import { generateShortId } from "@/lib/uuid";
 import { UUID_ATTR_SPEC, UuidAttrDecorator } from "@/lib/tiptap/uuid-attr";
@@ -586,7 +587,29 @@ export function createCodeBlockWithUuid() {
   });
 }
 
-export function createHeadingWithLabel(refs: HeadingCallbackRefs) {
+export interface HeadingSurfaceOpts {
+  /** Which surface the heading NodeView is mounted on.
+   *  - "main" (default): adds the doc-wide `sectionNumbers` numberer +
+   *    `sectionFoldingPlugin`, renders the fold chevron, and routes
+   *    structural writes to the host editor it lives in.
+   *  - "float" (FCU Chip B): OMITS the numberer + folding (the float must
+   *    not renumber its lone section — its number rides in via the synced
+   *    node attrs), HIDES the fold chevron, gates off demote-to-paragraph +
+   *    delete (they'd dissolve the float's own subject), and PROXIES the
+   *    label-rename / toggle-numbered / change-level writes to
+   *    `host.getMainEditor()` (= MAIN), resolving the heading there by uuid. */
+  surface: "main" | "float";
+  /** Float only: the main editor a float proxies structural writes to.
+   *  Resolved per-interaction (a re-mounted main editor is picked up). */
+  host?: { getMainEditor: () => Editor | null };
+}
+
+export function createHeadingWithLabel(
+  refs: HeadingCallbackRefs,
+  opts?: HeadingSurfaceOpts,
+) {
+  const isFloat = opts?.surface === "float";
+  const host = opts?.host;
   return Heading.extend({
     group: "block textObject",
     // TipTap's default markdown-style heading input rules (`#`/`##`/… + space)
@@ -641,57 +664,108 @@ export function createHeadingWithLabel(refs: HeadingCallbackRefs) {
       return ({ node, getPos, editor: nodeEditor }) => {
         let currentNode = node;
 
+        // Structural-write target. Main: the editor the NodeView lives in.
+        // Float (FCU Chip B): the MAIN editor, resolved per-interaction via
+        // `host` so the label-rename / numbered / level edits mutate the
+        // source of truth (the float's own onUpdate never fires, so
+        // useFloatMainSync re-reads the result idempotently — no echo loop).
+        // Falls back to the float editor if main isn't resolvable.
+        const getTarget = (): Editor =>
+          isFloat ? (host?.getMainEditor() ?? nodeEditor) : nodeEditor;
+
+        // Locate this heading inside `target`. Main resolves by live
+        // position (`getPos`); float resolves by uuid (its `getPos` points
+        // into the float doc, not main). Returns the live node so callers
+        // spread its current attrs.
+        const resolveHeadingInTarget = (
+          target: Editor,
+        ): { pos: number; node: PMNode } | null => {
+          if (!isFloat) {
+            const p = typeof getPos === "function" ? getPos() : null;
+            if (p == null) return null;
+            const n = target.state.doc.nodeAt(p);
+            if (!n || n.type.name !== "heading") return null;
+            return { pos: p, node: n };
+          }
+          const uuid = (currentNode.attrs.uuid as string | null) || null;
+          if (!uuid) return null;
+          let result: { pos: number; node: PMNode } | null = null;
+          target.state.doc.descendants((nd, pos) => {
+            if (result) return false;
+            if (nd.type.name === "heading" && nd.attrs.uuid === uuid) {
+              result = { pos, node: nd };
+              return false;
+            }
+            return true;
+          });
+          return result;
+        };
+
         const wrapper = document.createElement("div");
         wrapper.className = `heading-wrapper heading-wrapper-l${node.attrs.level}`;
 
         // Folding chevron — positioned in the left margin gutter at the same
         // horizontal offset as the paragraph drag handles. Clicking toggles
-        // the fold state for this heading's section.
-        const foldBtn = document.createElement("button");
-        foldBtn.type = "button";
-        foldBtn.className = "heading-fold-chevron";
-        foldBtn.contentEditable = "false";
-        foldBtn.setAttribute("aria-label", "Toggle section fold");
-        const SVG_NS_FOLD = "http://www.w3.org/2000/svg";
-        const foldSvg = document.createElementNS(SVG_NS_FOLD, "svg");
-        foldSvg.setAttribute("width", "12");
-        foldSvg.setAttribute("height", "12");
-        foldSvg.setAttribute("viewBox", "0 0 12 12");
-        foldSvg.setAttribute("fill", "none");
-        foldSvg.setAttribute("stroke", "currentColor");
-        foldSvg.setAttribute("stroke-width", "1.5");
-        foldSvg.setAttribute("stroke-linecap", "round");
-        foldSvg.setAttribute("stroke-linejoin", "round");
-        const foldPath = document.createElementNS(SVG_NS_FOLD, "path");
-        foldPath.setAttribute("d", "M4.5 2l4 4-4 4");
-        foldSvg.appendChild(foldPath);
-        foldBtn.appendChild(foldSvg);
-        // Prevent PM from focusing the editor / moving the selection.
-        foldBtn.addEventListener("mousedown", (e) => {
-          e.preventDefault();
-          e.stopPropagation();
-        });
-        foldBtn.addEventListener("click", (e) => {
-          e.preventDefault();
-          e.stopPropagation();
-          const p = typeof getPos === "function" ? getPos() : null;
-          if (p == null) return;
-          // Ensure the heading has a UUID we can key the fold state to.
-          let uuid = currentNode.attrs?.uuid as string | null;
-          if (!uuid) {
-            uuid = ensureAnchorUuid(nodeEditor.view, p + 1);
-          }
-          if (!uuid) return;
-          const tr = nodeEditor.view.state.tr.setMeta(sectionFoldingPluginKey, {
-            action: "toggle",
-            uuid,
+        // the fold state for this heading's section. OMITTED in floats: the
+        // section-folding plugin doesn't run there (decision 6), so there's
+        // no fold state to drive a chevron, and folding a float's lone
+        // section is meaningless.
+        let foldBtn: HTMLButtonElement | null = null;
+        let onTransaction: (() => void) | null = null;
+        if (!isFloat) {
+          foldBtn = document.createElement("button");
+          foldBtn.type = "button";
+          foldBtn.className = "heading-fold-chevron";
+          foldBtn.contentEditable = "false";
+          foldBtn.setAttribute("aria-label", "Toggle section fold");
+          const SVG_NS_FOLD = "http://www.w3.org/2000/svg";
+          const foldSvg = document.createElementNS(SVG_NS_FOLD, "svg");
+          foldSvg.setAttribute("width", "12");
+          foldSvg.setAttribute("height", "12");
+          foldSvg.setAttribute("viewBox", "0 0 12 12");
+          foldSvg.setAttribute("fill", "none");
+          foldSvg.setAttribute("stroke", "currentColor");
+          foldSvg.setAttribute("stroke-width", "1.5");
+          foldSvg.setAttribute("stroke-linecap", "round");
+          foldSvg.setAttribute("stroke-linejoin", "round");
+          const foldPath = document.createElementNS(SVG_NS_FOLD, "path");
+          foldPath.setAttribute("d", "M4.5 2l4 4-4 4");
+          foldSvg.appendChild(foldPath);
+          foldBtn.appendChild(foldSvg);
+          // Prevent PM from focusing the editor / moving the selection.
+          foldBtn.addEventListener("mousedown", (e) => {
+            e.preventDefault();
+            e.stopPropagation();
           });
-          tr.setMeta("addToHistory", false);
-          nodeEditor.view.dispatch(tr);
-        });
-        wrapper.appendChild(foldBtn);
+          foldBtn.addEventListener("click", (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            const p = typeof getPos === "function" ? getPos() : null;
+            if (p == null) return;
+            // Ensure the heading has a UUID we can key the fold state to.
+            let uuid = currentNode.attrs?.uuid as string | null;
+            if (!uuid) {
+              uuid = ensureAnchorUuid(nodeEditor.view, p + 1);
+            }
+            if (!uuid) return;
+            const tr = nodeEditor.view.state.tr.setMeta(sectionFoldingPluginKey, {
+              action: "toggle",
+              uuid,
+            });
+            tr.setMeta("addToHistory", false);
+            nodeEditor.view.dispatch(tr);
+          });
+          wrapper.appendChild(foldBtn);
+
+          // Decorations applied to sibling blocks don't trigger this node's
+          // update(), so subscribe to all transactions to keep the chevron in
+          // sync with the folding plugin state.
+          onTransaction = () => refreshFoldBtn();
+          nodeEditor.on("transaction", onTransaction);
+        }
 
         function refreshFoldBtn() {
+          if (!foldBtn) return;
           const uuid = currentNode.attrs?.uuid as string | null;
           const folded = uuid
             ? getSectionFoldingState(nodeEditor.state).folded.has(uuid)
@@ -700,12 +774,6 @@ export function createHeadingWithLabel(refs: HeadingCallbackRefs) {
           foldBtn.title = folded ? "Unfold section" : "Fold section";
         }
         refreshFoldBtn();
-
-        // Decorations applied to sibling blocks don't trigger this node's
-        // update(), so subscribe to all transactions to keep the chevron in
-        // sync with the folding plugin state.
-        const onTransaction = () => refreshFoldBtn();
-        nodeEditor.on("transaction", onTransaction);
 
         const h = document.createElement(`h${node.attrs.level}`) as HTMLHeadingElement;
         if (node.attrs.numbered !== false && node.attrs.sectionNumber) {
@@ -778,8 +846,11 @@ export function createHeadingWithLabel(refs: HeadingCallbackRefs) {
               return;
             }
 
-            const p = typeof getPos === "function" ? getPos() : null;
-            if (p == null) {
+            // Resolve against the write TARGET — MAIN in a float, where the
+            // labelRef rewrite walk must run over the whole doc (the float
+            // only holds this one section) and the heading is found by uuid.
+            const target = getTarget();
+            if (!resolveHeadingInTarget(target)) {
               renderAnnot();
               return;
             }
@@ -793,7 +864,7 @@ export function createHeadingWithLabel(refs: HeadingCallbackRefs) {
             // the refs anywhere meaningful (remove).
             const refPositions: number[] = [];
             if (oldLabel && newLabel) {
-              nodeEditor.state.doc.descendants((nd, pos) => {
+              target.state.doc.descendants((nd, pos) => {
                 if (nd.type.name === "labelRef" && nd.attrs.label === oldLabel) {
                   refPositions.push(pos);
                 }
@@ -809,12 +880,12 @@ export function createHeadingWithLabel(refs: HeadingCallbackRefs) {
             // Re-resolve the heading position after the modal in case
             // the doc shifted (shouldn't happen while modal is open, but
             // cheap insurance).
-            const headingPos = typeof getPos === "function" ? getPos() : p;
-            if (headingPos == null) return;
-            const headingNode = nodeEditor.state.doc.nodeAt(headingPos);
-            if (!headingNode || headingNode.type.name !== "heading") return;
+            const after = resolveHeadingInTarget(target);
+            if (!after) return;
+            const headingPos = after.pos;
+            const headingNode = after.node;
 
-            const tr = nodeEditor.state.tr;
+            const tr = target.state.tr;
             tr.setNodeMarkup(headingPos, undefined, {
               ...headingNode.attrs,
               label: newLabel,
@@ -826,7 +897,7 @@ export function createHeadingWithLabel(refs: HeadingCallbackRefs) {
               // labelRef is an inline atom of fixed size — updating attrs
               // keeps existing positions valid within the same transaction.
               for (const rPos of refPositions) {
-                const rNode = nodeEditor.state.doc.nodeAt(rPos);
+                const rNode = target.state.doc.nodeAt(rPos);
                 if (
                   rNode &&
                   rNode.type.name === "labelRef" &&
@@ -841,7 +912,9 @@ export function createHeadingWithLabel(refs: HeadingCallbackRefs) {
               }
             }
 
-            nodeEditor.view.dispatch(tr);
+            target.view.dispatch(tr);
+            // Focus the editor the NodeView lives in (the float in float
+            // mode, main in main mode) — keeps the user in the popout.
             nodeEditor.commands.focus();
           };
 
@@ -923,44 +996,50 @@ export function createHeadingWithLabel(refs: HeadingCallbackRefs) {
             annot.appendChild(addBtn);
           }
 
-          // 4. Trailing × delete button.
-          const deleteBtn = document.createElement("span");
-          deleteBtn.className = "heading-annotation-delete";
-          deleteBtn.dataset.action = "delete";
-          deleteBtn.setAttribute("role", "button");
-          deleteBtn.title = "Delete heading";
-          deleteBtn.textContent = "×";
-          annot.appendChild(deleteBtn);
+          // 4. Trailing × delete button — OMITTED in floats: deleting the
+          // heading would dissolve the float's own subject (decision 3).
+          if (!isFloat) {
+            const deleteBtn = document.createElement("span");
+            deleteBtn.className = "heading-annotation-delete";
+            deleteBtn.dataset.action = "delete";
+            deleteBtn.setAttribute("role", "button");
+            deleteBtn.title = "Delete heading";
+            deleteBtn.textContent = "×";
+            annot.appendChild(deleteBtn);
+          }
         }
 
         renderAnnot();
 
         function toggleNumbered() {
-          const p = typeof getPos === "function" ? getPos() : null;
-          if (p == null) return;
-          const headingNode = nodeEditor.state.doc.nodeAt(p);
-          if (!headingNode || headingNode.type.name !== "heading") return;
-          const tr = nodeEditor.state.tr.setNodeMarkup(p, undefined, {
-            ...headingNode.attrs,
-            numbered: !(headingNode.attrs.numbered !== false),
+          // Proxies to MAIN in a float (target === host editor).
+          const target = getTarget();
+          const resolved = resolveHeadingInTarget(target);
+          if (!resolved) return;
+          const tr = target.state.tr.setNodeMarkup(resolved.pos, undefined, {
+            ...resolved.node.attrs,
+            numbered: !(resolved.node.attrs.numbered !== false),
           });
-          nodeEditor.view.dispatch(tr);
+          target.view.dispatch(tr);
         }
 
         function applyLevelChange(newLevel: number) {
-          const p = typeof getPos === "function" ? getPos() : null;
-          if (p == null) return;
-          const headingNode = nodeEditor.state.doc.nodeAt(p);
-          if (!headingNode || headingNode.type.name !== "heading") return;
-          if (headingNode.attrs.level === newLevel) return;
-          const tr = nodeEditor.state.tr.setNodeMarkup(p, undefined, {
-            ...headingNode.attrs,
+          // Proxies to MAIN in a float (target === host editor).
+          const target = getTarget();
+          const resolved = resolveHeadingInTarget(target);
+          if (!resolved) return;
+          if (resolved.node.attrs.level === newLevel) return;
+          const tr = target.state.tr.setNodeMarkup(resolved.pos, undefined, {
+            ...resolved.node.attrs,
             level: newLevel,
           });
-          nodeEditor.view.dispatch(tr);
+          target.view.dispatch(tr);
         }
 
         function demoteToParagraph() {
+          // Gated off in floats: demoting the section's own heading to a
+          // paragraph would dissolve the float's subject (decision 3).
+          if (isFloat) return;
           const p = typeof getPos === "function" ? getPos() : null;
           if (p == null) return;
           const headingNode = nodeEditor.state.doc.nodeAt(p);
@@ -972,6 +1051,10 @@ export function createHeadingWithLabel(refs: HeadingCallbackRefs) {
         }
 
         async function requestDelete() {
+          // Gated off in floats: deleting the heading would dissolve the
+          // float's own subject (decision 3). The delete × isn't rendered
+          // in floats either; this is belt-and-suspenders.
+          if (isFloat) return;
           const p = typeof getPos === "function" ? getPos() : null;
           if (p == null) return;
           const headingNode = nodeEditor.state.doc.nodeAt(p);
@@ -1061,19 +1144,19 @@ export function createHeadingWithLabel(refs: HeadingCallbackRefs) {
           // area so it cannot steal focus from our label input.
           stopEvent(event) {
             if (annot === event.target || annot.contains(event.target as Node)) return true;
-            if (foldBtn === event.target || foldBtn.contains(event.target as Node)) return true;
+            if (foldBtn && (foldBtn === event.target || foldBtn.contains(event.target as Node))) return true;
             return false;
           },
           ignoreMutation(mutation) {
             // Ignore all mutations in the annotation area (label editing, etc.)
             if (annot.contains(mutation.target)) return true;
             // Mutations inside the fold chevron (contentEditable=false) should
-            // also be ignored.
-            if (foldBtn.contains(mutation.target)) return true;
+            // also be ignored. (No chevron in floats — foldBtn is null.)
+            if (foldBtn && foldBtn.contains(mutation.target)) return true;
             return false;
           },
           destroy() {
-            nodeEditor.off("transaction", onTransaction);
+            if (onTransaction) nodeEditor.off("transaction", onTransaction);
           },
           update(updatedNode) {
             if (updatedNode.type.name !== "heading") return false;
@@ -1094,6 +1177,15 @@ export function createHeadingWithLabel(refs: HeadingCallbackRefs) {
       };
     },
     addProseMirrorPlugins() {
+      // Float (FCU Chip B): OMIT the doc-wide `sectionNumbers` numberer +
+      // `sectionFoldingPlugin`. The float holds a single section; running
+      // the numberer would renumber it to "1", clobbering the real number
+      // that rides in via the synced node attrs (the whole point of the
+      // crux). Folding a float's lone section is meaningless. The heading
+      // still renders its number/chip/divider from the synced attrs.
+      if (isFloat) {
+        return [...(this.parent?.() || [])];
+      }
       return [
         ...(this.parent?.() || []),
         sectionFoldingPlugin(),
@@ -1360,25 +1452,33 @@ export interface EditorExtensionsCtx {
 }
 
 export function buildEditorExtensions(ctx: EditorExtensionsCtx) {
-  if (ctx.surface === "float") {
-    // FCU Chips B/C wire each TextObject float body to this factory. The
-    // float stack is the shared core (StarterKit + DocStructureObserver-first
-    // + the block builders + atoms + expex + Highlight + LinkedAnchor +
-    // TabIndent) MINUS the doc-wide numberers/folding (sectionNumbers /
-    // sectionFoldingPlugin / ExpexNumbering) and the main-only chrome
-    // (Placeholder, SlashPopupExtension, Title/Maketitle/Label handlers,
-    // MarginaliaAnchorGuard, PgMarkChip, UuidAttrDecorator, readOnlyEnforcer).
-    // Structural writes proxy to `ctx.host`. Not built in Chip A (F0/F1) — no
-    // float body calls this yet. See fcu-plan.md.
-    throw new Error(
-      "buildEditorExtensions: surface 'float' is implemented in FCU Chip B/C",
-    );
-  }
-
-  // surface === "main": the full extension stack, byte-identical to the
-  // former inline array in VirgilEditor (Editor.tsx, pre-FCU). The ORDER is
+  // ONE ordered source of truth for both surfaces. The relative order is
   // load-bearing — DocStructureObserver MUST stay at index 1 (right after
-  // StarterKit) for the keystroke-sanctity first-extension invariant.
+  // StarterKit) for the keystroke-sanctity first-extension invariant — so a
+  // single array (with `...(isMain ? [X] : [])` spreads for the main-only
+  // chrome) keeps the two surfaces from drifting. For surface "main" this
+  // emits the exact pre-FCU stack (Chip A's name-order test is the gate).
+  //
+  // Float (FCU Chip B): the shared core MINUS the doc-wide numberers/folding
+  // (sectionNumbers / sectionFoldingPlugin — omitted inside the heading
+  // builder's float mode — and ExpexNumbering) and the main-only chrome
+  // (Placeholder, SlashPopupExtension, SmartQuotes, TextObjectOrphanGuard,
+  // Title/Maketitle/Label handlers, EmptyParagraphTitleCleaner,
+  // MarginaliaAnchorGuard, PgMarkChip, UuidAttrDecorator, readOnlyEnforcer).
+  // TextColor is also main-only this chip (decision 4 → promoted to shared
+  // in Chip C; the heading float's colored-text fidelity closes there).
+  // Block atoms render as compact card previews (`cardContext: true`) and
+  // the heading builder proxies its structural writes to `ctx.host` (= MAIN).
+  const isFloat = ctx.surface === "float";
+  const isMain = !isFloat;
+
+  const headingRefs: HeadingCallbackRefs = {
+    isLabelTakenRef: ctx.callbacks.isLabelTaken,
+    onConfirmLabelRenameRef: ctx.callbacks.onConfirmLabelRename,
+    onConfirmHeadingDeleteRef: ctx.callbacks.onConfirmHeadingDelete,
+    onOpenHeadingTypeMenuRef: ctx.callbacks.onOpenHeadingTypeMenu,
+  };
+
   return [
     StarterKit.configure({
       heading: false,
@@ -1388,7 +1488,9 @@ export function buildEditorExtensions(ctx: EditorExtensionsCtx) {
       listItem: false,
       blockquote: false,
       codeBlock: false,
-      dropcursor: { color: "var(--drag-highlight)", width: 2 },
+      // Main styles the drop-cursor; floats disable it (they don't host
+      // cross-block drops — matches the bodies' pre-FCU StarterKit config).
+      dropcursor: isFloat ? false : { color: "var(--drag-highlight)", width: 2 },
     }),
     // Position 0 (after StarterKit). The observer must run first so
     // any appendTransaction plugin that wants to read the diff via
@@ -1397,12 +1499,12 @@ export function buildEditorExtensions(ctx: EditorExtensionsCtx) {
     // `src/lib/tiptap/doc-structure/`.
     DocStructureObserver,
     createParagraphWithTitle(),
-    createHeadingWithLabel({
-      isLabelTakenRef: ctx.callbacks.isLabelTaken,
-      onConfirmLabelRenameRef: ctx.callbacks.onConfirmLabelRename,
-      onConfirmHeadingDeleteRef: ctx.callbacks.onConfirmHeadingDelete,
-      onOpenHeadingTypeMenuRef: ctx.callbacks.onOpenHeadingTypeMenu,
-    }),
+    createHeadingWithLabel(
+      headingRefs,
+      isFloat
+        ? { surface: "float", host: ctx.host ?? undefined }
+        : { surface: "main" },
+    ),
     createBulletListWithTitle(),
     createOrderedListWithTitle(),
     createListItemWithUuid(),
@@ -1410,21 +1512,31 @@ export function buildEditorExtensions(ctx: EditorExtensionsCtx) {
     createCodeBlockWithUuid(),
     TexBlock.configure({
       isPoppedRef: ctx.texBlockIsPoppedRef ?? null,
+      cardContext: ctx.cardContext,
     }),
     FigureBlock.configure({
       docIdRef: ctx.docIdRef ?? null,
       onConfirmLabelRenameRef: ctx.callbacks.onConfirmLabelRename ?? null,
       onConfirmFigureDeleteRef: ctx.callbacks.onConfirmFigureDelete ?? null,
+      cardContext: ctx.cardContext,
     }),
     FigureCaption,
-    GraphicsBlock.configure({ docIdRef: ctx.docIdRef ?? null }),
-    Placeholder.configure({
-      placeholder: "Start writing...",
+    GraphicsBlock.configure({
+      docIdRef: ctx.docIdRef ?? null,
+      cardContext: ctx.cardContext,
     }),
+    ...(isMain
+      ? [
+          Placeholder.configure({
+            placeholder: "Start writing...",
+          }),
+        ]
+      : []),
     Highlight.configure({
       multicolor: true,
     }),
-    TextColor,
+    // TextColor: main-only this chip (decision 4 → shared in Chip C).
+    ...(isMain ? [TextColor] : []),
     InlineMath,
     DisplayMath,
     Footnote,
@@ -1438,19 +1550,25 @@ export function buildEditorExtensions(ctx: EditorExtensionsCtx) {
     AlignedGlossRow,
     ProseGlossRow,
     GlossCell,
-    ExpexNumbering,
+    // ExpexNumbering: doc-wide example numberer — symmetric with
+    // sectionNumbers, omitted on floats (example numbers ride in via the
+    // synced node attrs). Decision 8.
+    ...(isMain ? [ExpexNumbering] : []),
     AiRequestMarker,
     LatexCommandMark,
-    SlashPopupExtension,
-    SmartQuotes,
+    ...(isMain ? [SlashPopupExtension, SmartQuotes] : []),
     LinkedAnchor,
     LinkedAnchorGuard,
-    TextObjectOrphanGuard,
-    TitleField,
-    MaketitleMarker,
-    LabelHandler,
-    EmptyParagraphTitleCleaner,
-    ...(ctx.anchoredUuidsRef
+    ...(isMain
+      ? [
+          TextObjectOrphanGuard,
+          TitleField,
+          MaketitleMarker,
+          LabelHandler,
+          EmptyParagraphTitleCleaner,
+        ]
+      : []),
+    ...(isMain && ctx.anchoredUuidsRef
       ? [
           MarginaliaAnchorGuard.configure({
             anchoredUuidsRef: ctx.anchoredUuidsRef,
@@ -1458,40 +1576,45 @@ export function buildEditorExtensions(ctx: EditorExtensionsCtx) {
         ]
       : []),
     TabIndent,
-    PgMarkChip,
-    // Emits `data-uuid` decorations on every anchorable block's outer
-    // DOM element. The marginalia registry + drag hit-test depend on
-    // these attributes being present in the live DOM. See uuid-attr.ts
-    // for why this needs to be a decoration and not renderHTML.
-    UuidAttrDecorator,
-    // Read-only enforcement plugin: rejects any transaction that
-    // mutates the document when the host's `editable` is false. For
-    // surface "main" this reads the `editableRef` mirror of the React
-    // `editable` prop, so it matches the former inline `readOnlyRef`
-    // guard exactly (editableNow === !readOnlyRef.current).
-    Extension.create({
-      name: "readOnlyEnforcer",
-      addProseMirrorPlugins() {
-        return [
-          new Plugin({
-            key: new PluginKey("readOnlyEnforcer"),
-            filterTransaction(tr) {
-              const editableNow = ctx.editableRef
-                ? ctx.editableRef.current
-                : true;
-              if (editableNow) return true;
-              if (!tr.docChanged) return true;
-              // Programmatic citation attribute syncs (panel-driven
-              // type changes refreshing the inline citation's command
-              // / displayText) tag their transactions with this meta
-              // so they pass through even in collaborator read-only
-              // mode. They don't touch document text, just node attrs.
-              if (tr.getMeta("ignoreReadOnly")) return true;
-              return false;
+    ...(isMain
+      ? [
+          PgMarkChip,
+          // Emits `data-uuid` decorations on every anchorable block's outer
+          // DOM element. The marginalia registry + drag hit-test depend on
+          // these attributes being present in the live DOM. See uuid-attr.ts
+          // for why this needs to be a decoration and not renderHTML.
+          UuidAttrDecorator,
+          // Read-only enforcement plugin: rejects any transaction that
+          // mutates the document when the host's `editable` is false. For
+          // surface "main" this reads the `editableRef` mirror of the React
+          // `editable` prop, so it matches the former inline `readOnlyRef`
+          // guard exactly (editableNow === !readOnlyRef.current). Floats
+          // gate editability via TipTap's own `editable` flag instead.
+          Extension.create({
+            name: "readOnlyEnforcer",
+            addProseMirrorPlugins() {
+              return [
+                new Plugin({
+                  key: new PluginKey("readOnlyEnforcer"),
+                  filterTransaction(tr) {
+                    const editableNow = ctx.editableRef
+                      ? ctx.editableRef.current
+                      : true;
+                    if (editableNow) return true;
+                    if (!tr.docChanged) return true;
+                    // Programmatic citation attribute syncs (panel-driven
+                    // type changes refreshing the inline citation's command
+                    // / displayText) tag their transactions with this meta
+                    // so they pass through even in collaborator read-only
+                    // mode. They don't touch document text, just node attrs.
+                    if (tr.getMeta("ignoreReadOnly")) return true;
+                    return false;
+                  },
+                }),
+              ];
             },
           }),
-        ];
-      },
-    }),
+        ]
+      : []),
   ];
 }

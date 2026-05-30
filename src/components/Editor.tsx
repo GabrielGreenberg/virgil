@@ -212,6 +212,25 @@ export interface ExampleInfo {
 export interface EditorHandle {
   replaceText: (oldText: string, newText: string) => boolean;
   getEditor: () => Editor | null;
+  // --- Heading-label callbacks, exposed for float proxying (FCU Chip B) ---
+  // A popped-out heading float runs the SAME `createHeadingWithLabel`
+  // NodeView as main but proxies its structural writes back to the main
+  // editor. These three expose main's own label handlers so the float reads
+  // the identical predicate / confirmations off `editorRef.current` and
+  // threads them into the factory's `callbacks`. Each falls back to the
+  // no-prop default the NodeView assumes (predicate→false, rename→false,
+  // delete→true) when the host didn't supply the corresponding prop.
+  /** True when `candidate` is already claimed by another `\label{…}`. */
+  isLabelTaken: (candidate: string, excludeLabel: string | null) => boolean;
+  /** Confirm rewriting `\ref`s when a heading label is renamed. */
+  onConfirmLabelRename: (
+    oldLabel: string,
+    newLabel: string,
+    refCount: number,
+  ) => Promise<boolean>;
+  /** Confirm deleting a heading (unused from floats — delete is gated off
+   *  there — but exposed for parity with the main NodeView). */
+  onConfirmHeadingDelete: (typeName: string) => Promise<boolean>;
   getSelectedText: () => string;
   scrollToHeading: (blockIndex: number) => void;
   archiveSelection: (archiveId: string) => { content: unknown; paragraphId: string | null } | null;
@@ -965,6 +984,25 @@ const VirgilEditor = forwardRef<EditorHandle, EditorProps>(function VirgilEditor
     },
     getEditor() {
       return editor;
+    },
+    // Heading-label callbacks proxied to a popped-out heading float (FCU
+    // Chip B). They read the live prop mirrors so the float consults the
+    // exact same predicate / confirmations main uses. Defaults match what
+    // the NodeView assumes when the host omitted the prop.
+    isLabelTaken(candidate: string, excludeLabel: string | null): boolean {
+      return isLabelTakenRef.current?.(candidate, excludeLabel) ?? false;
+    },
+    onConfirmLabelRename(
+      oldLabel: string,
+      newLabel: string,
+      refCount: number,
+    ): Promise<boolean> {
+      const fn = onConfirmLabelRenameRef.current;
+      return fn ? fn(oldLabel, newLabel, refCount) : Promise.resolve(false);
+    },
+    onConfirmHeadingDelete(typeName: string): Promise<boolean> {
+      const fn = onConfirmHeadingDeleteRef.current;
+      return fn ? fn(typeName) : Promise.resolve(true);
     },
     getSelectedText(): string {
       if (!editor) return "";

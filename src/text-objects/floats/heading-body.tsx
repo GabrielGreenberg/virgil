@@ -15,42 +15,31 @@
  * ("Chapter" / "Section" / "Subsection" / …). Other bodies don't touch
  * the callback and inherit the static `meta.label`.
  *
- * Block atom extensions (`TexBlock`, `FigureBlock`, `GraphicsBlock`) are
- * configured with `cardContext: true` — atoms inside the popped-out
- * section render as compact static previews. The user edits the atoms
- * in the main doc; the float is a section view, not an atom editor.
+ * Extension stack: built by the shared `buildEditorExtensions` factory
+ * with `surface: "float"` (FCU Chip B) — the SAME chrome NodeViews as the
+ * main editor, so the popped section faithfully renders its real section
+ * number + "Section ▾ / label" chip + divider (they ride in via the
+ * synced node attrs; the float omits the doc-wide numberer so it can't
+ * renumber its lone section to "1"). Block atoms (`TexBlock`,
+ * `FigureBlock`, `GraphicsBlock`) get `cardContext: true` — they render as
+ * compact static previews; the user edits the atoms in the main doc.
+ * Structural heading edits (label rename + `\ref` rewrite, numbered
+ * toggle) proxy to the MAIN editor via `host.getMainEditor()`; the label
+ * predicate / rename confirmation are the same ones main uses, read off
+ * `editorRef.current`.
  */
 
-import { type RefObject, useCallback, useEffect, useMemo } from "react";
-import { useEditor, EditorContent, type JSONContent } from "@tiptap/react";
-import StarterKit from "@tiptap/starter-kit";
-import Highlight from "@tiptap/extension-highlight";
-import type { Node as PMNode } from "@tiptap/pm/model";
 import {
-  InlineMath,
-  DisplayMath,
-  Footnote,
-  LatexComment,
-  Citation,
-  LabelRef,
-  LatexCommandMark,
-  AiRequestMarker,
-  LinkedAnchor,
-  LinkedAnchorGuard,
-  ExampleBlock,
-  ExampleItem,
-  ExampleItemList,
-  ExampleGloss,
-  AlignedGlossRow,
-  ProseGlossRow,
-  GlossCell,
-  TabIndent,
-  TexBlock,
-  FigureBlock,
-  FigureCaption,
-  GraphicsBlock,
-} from "@/lib/tiptap-extensions";
+  type RefObject,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+} from "react";
+import { useEditor, EditorContent, type JSONContent } from "@tiptap/react";
+import type { Node as PMNode } from "@tiptap/pm/model";
 import type { EditorHandle } from "@/components/Editor";
+import { buildEditorExtensions } from "@/lib/editor-extensions";
 import { usePoppedCards } from "@/hooks/usePoppedCards";
 import { useEditorChrome } from "@/components/editor-layout/chrome-context";
 import { getSectionRangeByUuid } from "@/lib/section-range";
@@ -106,33 +95,57 @@ export function HeadingBody({
 
   const floatId = `hd:${uuid}`;
 
+  // Heading-label callbacks proxied to the MAIN editor's handle. The float
+  // runs the same `createHeadingWithLabel` NodeView as main; these refs let
+  // it consult main's own label predicate / rename confirmation (read off
+  // `editorRef.current`) and thread them into the factory's `callbacks`.
+  // `.current` is reassigned each render (the standard ref-mirror pattern)
+  // so the closures always see the live main handle. Defaults match what
+  // the NodeView assumes when main's handle is briefly null.
+  const isLabelTakenRef = useRef<
+    ((candidate: string, excludeLabel: string | null) => boolean) | undefined
+  >(undefined);
+  isLabelTakenRef.current = (candidate, excludeLabel) =>
+    ref.current?.isLabelTaken(candidate, excludeLabel) ?? false;
+
+  const onConfirmLabelRenameRef = useRef<
+    | ((
+        oldLabel: string,
+        newLabel: string,
+        refCount: number,
+      ) => Promise<boolean>)
+    | undefined
+  >(undefined);
+  onConfirmLabelRenameRef.current = (oldLabel, newLabel, refCount) =>
+    ref.current?.onConfirmLabelRename(oldLabel, newLabel, refCount) ??
+    Promise.resolve(false);
+
+  const onConfirmHeadingDeleteRef = useRef<
+    ((typeName: string) => Promise<boolean>) | undefined
+  >(undefined);
+  onConfirmHeadingDeleteRef.current = (typeName) =>
+    ref.current?.onConfirmHeadingDelete(typeName) ?? Promise.resolve(true);
+
   const floatEditor = useEditor({
-    extensions: [
-      StarterKit.configure({ dropcursor: false }),
-      Highlight.configure({ multicolor: true }),
-      InlineMath,
-      DisplayMath,
-      Footnote,
-      LatexComment,
-      Citation,
-      LabelRef,
-      LatexCommandMark,
-      AiRequestMarker,
-      LinkedAnchor,
-      LinkedAnchorGuard,
-      ExampleBlock,
-      ExampleItem,
-      ExampleItemList,
-      ExampleGloss,
-      AlignedGlossRow,
-      ProseGlossRow,
-      GlossCell,
-      TabIndent,
-      TexBlock.configure({ cardContext: true }),
-      FigureBlock.configure({ cardContext: true }),
-      FigureCaption,
-      GraphicsBlock.configure({ cardContext: true }),
-    ],
+    extensions: buildEditorExtensions({
+      surface: "float",
+      editable: chrome.showHeadingFloatLabelEdit,
+      cardContext: true,
+      callbacks: {
+        isLabelTaken: isLabelTakenRef,
+        onConfirmLabelRename: onConfirmLabelRenameRef,
+        onConfirmHeadingDelete: onConfirmHeadingDeleteRef,
+      },
+      // cardContext figure/graphics previews render compact pills and don't
+      // resolve images via docId, so none is needed here (matches the
+      // pre-FCU float, which passed no docIdRef). Chip C can thread the real
+      // id if full in-float figure rendering is ever wanted.
+      docIdRef: null,
+      // Structural writes (label rename + `\ref` rewrite, numbered toggle,
+      // level change) proxy to MAIN through this; the float's own doc is
+      // never mutated by them, so useFloatMainSync re-reads idempotently.
+      host: { getMainEditor: () => ref.current?.getEditor() ?? null },
+    }),
     content: initial.doc,
     editable: chrome.showHeadingFloatLabelEdit,
     immediatelyRender: false,
