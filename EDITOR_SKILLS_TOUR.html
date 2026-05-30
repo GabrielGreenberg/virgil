@@ -1,0 +1,666 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Virgil editor skills — a deep tour</title>
+<style>
+  :root {
+    --ink: #1f1d1a;
+    --paper: #faf8f3;
+    --muted: #6b6356;
+    --rule: #d8d2c4;
+    --accent: #2f4a8b;
+    --accent-soft: #ebf0fb;
+    --accent-deep: #1f3463;
+    --warn: #8b3e2f;
+    --warn-soft: #fdf1ee;
+    --good: #2f5d3a;
+    --good-soft: #ecf3ee;
+    --code-bg: #f1ece0;
+    --card: #ffffff;
+  }
+  html { font: 16px/1.55 -apple-system, BlinkMacSystemFont, "Helvetica Neue", sans-serif; }
+  body { background: var(--paper); color: var(--ink); margin: 0; padding: 2.5rem 1.5rem 6rem; }
+  .wrap { max-width: 980px; margin: 0 auto; }
+  h1 { font-size: 2rem; margin: 0 0 0.25rem; letter-spacing: -0.01em; }
+  h2 { font-size: 1.4rem; margin: 2.5rem 0 0.5rem; padding-bottom: 0.3rem; border-bottom: 2px solid var(--ink); letter-spacing: -0.01em; }
+  h3 { font-size: 1.05rem; margin: 1.5rem 0 0.5rem; letter-spacing: -0.005em; }
+  h4 { font-size: 0.85rem; margin: 1rem 0 0.3rem; color: var(--muted); text-transform: uppercase; letter-spacing: 0.05em; font-weight: 600; }
+  p, ul, ol { margin: 0.4rem 0; }
+  ul, ol { padding-left: 1.4rem; }
+  li { margin: 0.15rem 0; }
+  .lede { color: var(--muted); font-size: 1.05rem; margin-bottom: 1.5rem; }
+  code { background: var(--code-bg); padding: 0.05rem 0.35rem; border-radius: 3px; font-size: 0.88em; font-family: "SF Mono", Menlo, Consolas, monospace; }
+  pre { background: var(--code-bg); padding: 0.75rem 1rem; border-radius: 5px; overflow-x: auto; font-size: 0.85em; line-height: 1.45; }
+  pre code { background: transparent; padding: 0; }
+  a { color: var(--accent); text-decoration: none; border-bottom: 1px solid var(--accent-soft); }
+  a:hover { border-bottom-color: var(--accent); }
+  details { margin: 0.4rem 0; }
+  details > summary { cursor: pointer; padding: 0.45rem 0.6rem; border-radius: 4px; list-style: none; user-select: none; }
+  details > summary::-webkit-details-marker { display: none; }
+  details > summary::before { content: "▸ "; color: var(--muted); display: inline-block; width: 1.1em; }
+  details[open] > summary::before { content: "▾ "; }
+  details > summary:hover { background: var(--code-bg); }
+  .skill {
+    background: var(--card);
+    border: 1px solid var(--rule);
+    border-left: 4px solid var(--accent);
+    border-radius: 5px;
+    margin: 0.6rem 0;
+    padding: 0;
+  }
+  .skill > details > summary { padding: 0.7rem 1rem; font-size: 0.98em; }
+  .skill .body { padding: 0.2rem 1.25rem 1.1rem; border-top: 1px solid var(--rule); margin-top: 0.5rem; }
+  .skill-name { font-family: "SF Mono", Menlo, monospace; font-weight: 600; font-size: 0.95em; color: var(--accent-deep); }
+  .skill-tagline { color: var(--ink); }
+  .skill .row { display: grid; grid-template-columns: 100px 1fr; gap: 0.65rem; padding: 0.4rem 0; border-bottom: 1px dashed var(--rule); }
+  .skill .row:last-child { border-bottom: none; }
+  .skill .row .label { color: var(--muted); font-size: 0.82em; text-transform: uppercase; letter-spacing: 0.04em; font-weight: 600; padding-top: 0.1rem; }
+  .skill .row .content { font-size: 0.92em; }
+  .skill .row .content code { font-size: 0.88em; }
+  .skill .row .content ul { padding-left: 1.1rem; margin: 0.2rem 0; }
+  .skill .row.gotcha { background: var(--warn-soft); border-left: 3px solid var(--warn); padding-left: 0.7rem; margin-left: -0.7rem; border-radius: 0 4px 4px 0; }
+  .skill .row.gotcha .label { color: var(--warn); }
+  .badge { display: inline-block; padding: 0.05rem 0.5rem; border-radius: 10px; font-size: 0.7em; font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase; margin-right: 0.35rem; vertical-align: 0.12em; }
+  .badge.umbrella { background: #fce5d8; color: #8a3712; }
+  .badge.create { background: var(--good-soft); color: var(--good); }
+  .badge.responder { background: var(--accent-soft); color: var(--accent); }
+  .badge.bib { background: #f0e3fc; color: #5a3da8; }
+  .badge.style { background: #fbf4d8; color: #6b4f15; }
+  .badge.meta { background: #efe7ff; color: #5a3da8; }
+  .badge.crosscut { background: var(--warn-soft); color: var(--warn); }
+  .group {
+    background: var(--accent-soft);
+    border-radius: 6px;
+    padding: 0.9rem 1rem;
+    margin: 1.75rem 0 0.4rem;
+  }
+  .group h3 { margin: 0 0 0.15rem; font-size: 1rem; color: var(--accent-deep); }
+  .group .desc { color: var(--muted); font-size: 0.88em; margin: 0; }
+  .toc { background: var(--card); border: 1px solid var(--rule); border-radius: 5px; padding: 1rem 1.25rem; margin: 1.5rem 0; }
+  .toc ul { list-style: none; padding: 0; columns: 2; column-gap: 2rem; }
+  .toc li { break-inside: avoid; margin: 0.15rem 0; }
+  .toc a { color: var(--ink); border: none; }
+  .toc a:hover { color: var(--accent); }
+  .callout { background: var(--card); border-left: 4px solid var(--accent); padding: 0.85rem 1.1rem; margin: 1rem 0; border-radius: 0 5px 5px 0; }
+  .callout strong { color: var(--accent); }
+  .callout.warn { border-left-color: var(--warn); }
+  .callout.warn strong { color: var(--warn); }
+  .arch { background: var(--card); border: 1px solid var(--rule); padding: 1rem 1.25rem; border-radius: 5px; margin: 1rem 0; }
+  .arch pre { background: transparent; padding: 0; font-size: 0.82em; }
+  hr { border: none; border-top: 1px solid var(--rule); margin: 2rem 0; }
+  table { border-collapse: collapse; width: 100%; margin: 0.8rem 0; font-size: 0.9em; }
+  th, td { text-align: left; padding: 0.45rem 0.7rem; border-bottom: 1px solid var(--rule); vertical-align: top; }
+  th { background: var(--accent-soft); font-weight: 600; color: var(--accent-deep); }
+  tr:last-child td { border-bottom: none; }
+  .two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin: 0.8rem 0; }
+  .two-col > div { background: var(--card); border: 1px solid var(--rule); border-radius: 5px; padding: 0.8rem 1rem; }
+  .two-col h4 { margin-top: 0; }
+  .where { font-size: 0.8em; color: var(--muted); font-family: "SF Mono", Menlo, monospace; }
+  .dim { color: var(--muted); }
+  @media (max-width: 700px) {
+    .two-col { grid-template-columns: 1fr; }
+    .toc ul { columns: 1; }
+    .skill .row { grid-template-columns: 1fr; }
+    .skill .row .label { font-size: 0.78em; }
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<h1>Virgil editor skills — a deep tour</h1>
+<p class="lede">The 13 skills that drain a single Virgil paper's AI-request inbox. What each one reads, what it writes, where it forks, and what it refuses to do.</p>
+
+<div class="toc">
+  <strong>Jump to:</strong>
+  <ul>
+    <li><a href="#shape">1. The shape of the inbox</a></li>
+    <li><a href="#loop">2. The cowork loop</a></li>
+    <li><a href="#routing">3. Routing: kind → skill</a></li>
+    <li><a href="#umbrella">4. The umbrella: <code>/editor/review</code></a></li>
+    <li><a href="#creates">5. Direct creates (3 skills)</a></li>
+    <li><a href="#responders">6. Card responders (4 skills)</a></li>
+    <li><a href="#suggestion">7. Always-a-suggestion: <code>draft-suggestion</code></a></li>
+    <li><a href="#biblio">8. Bibliography (2 skills)</a></li>
+    <li><a href="#style">9. Style (1 skill)</a></li>
+    <li><a href="#meta">10. Dev meta (1 skill)</a></li>
+    <li><a href="#plumbing">11. Plumbing</a></li>
+    <li><a href="#conventions">12. House conventions</a></li>
+  </ul>
+</div>
+
+<h2 id="shape">1. The shape of the inbox</h2>
+
+<p>Editor skills consume <strong>three intent surfaces</strong>, each writable by the user from a different part of the Virgil UI:</p>
+
+<table>
+<tr><th>Surface</th><th>Written from</th><th>Shape</th></tr>
+<tr>
+  <td><code>virgil/ai-requests.json</code><br><span class="dim">the unified queue</span></td>
+  <td>Toolbar "Ask Virgil" actions; the AI-request inbox panel</td>
+  <td>Entries with <code>kind ∈ {footnote, citation, quotation, note, todo, suggestion, style-merge}</code> and <code>status: draft | submitted | complete</code></td>
+</tr>
+<tr>
+  <td>Card-level <code>aiRequest: true</code> flags</td>
+  <td>Notes, todos, cutter-comments, revision-comments panels</td>
+  <td>Boolean toggle on the card. Bridged into the unified queue via <code>bridgeCardAiRequestFlag()</code>; legacy cards without a bridge entry appear as <code>virtual:&lt;panel&gt;:&lt;cardId&gt;</code> ids.</td>
+</tr>
+<tr>
+  <td><code>virgil/bib-review-requests.json</code></td>
+  <td>Bibliography panel's "Review this entry" action</td>
+  <td>Per-bib-key entries with <code>type: "fields" | "notes"</code>. Stays separate because it's per-bib-key, not per-paragraph.</td>
+</tr>
+</table>
+
+<p><code>editor/scripts/list_requests.py</code> walks all three and emits a unified JSONL stream with one shape:</p>
+
+<pre><code>{
+  "source": "ai-requests | bib-review | card-flag",
+  "kind":   "footnote | citation | quotation | note | todo | suggestion | style-merge | bib-review",
+  "id":     "&lt;request-id, bibKey, or virtual:panel:cardId&gt;",
+  "text":   "&lt;user instruction&gt;",
+  "paragraphIds": [...],
+  "selectedText": "&lt;optional substring&gt;",
+  "linkedTo": { "panel": "...", "cardId": "..." },
+  "extra":  { "status": "...", "createdAt": "...", "type": "fields|notes|...", ... }
+}</code></pre>
+
+<h2 id="loop">2. The cowork loop</h2>
+
+<div class="arch">
+<pre>
+   Frontend                              Claude (separate session)
+     │                                      │
+     │  user files request ──►              │
+     │   ai-requests.json /                 │
+     │   bib-review-requests.json /         │
+     │   aiRequest flag (→ bridged)         │
+     │                                      ◄ /editor/review reads
+     │                                      │   (via list_requests.py)
+     │                                      │
+     │                                      │   dispatches per-kind
+     │                                      │   subskill subagent
+     │                                      │
+     │  &lt;sidecar&gt;.json (new card)        ◄ subskill writes via
+     │  ai-requests.json (status flip)      apply_response.py:
+     │  notifications.json (append)           • insert card
+     │  version.txt (bumped)                  • flip status
+     │                                        • clear source flag
+     │                                        • append notification
+     │                                        • bump version
+     │                                      │
+     ◄ useDocNotificationStream polls       │
+       version.txt every 6s, refreshes      │
+</pre>
+</div>
+
+<div class="callout">
+<strong>The one rule that organizes everything:</strong> the frontend never invokes Claude directly. It writes intent files; Claude drains them. <code>apply_response.py</code> is the only sanctioned writeback path — it owns the atomic <em>card + status + notification + version-bump</em> transaction.
+</div>
+
+<h2 id="routing">3. Routing: which skill fires for which request?</h2>
+
+<p><code>/editor/review</code> dispatches in this strict order, so dependent work lands before its consumers do:</p>
+
+<table>
+<tr><th>Request kind</th><th>Dispatched to</th><th>Output card type</th></tr>
+<tr><td><code>bib-review</code></td><td><code>/editor/answer-bib-review</code></td><td>bib entry update / annotation note</td></tr>
+<tr><td><code>style-merge</code></td><td><code>/editor/style-merge</code></td><td>preamble rewrite</td></tr>
+<tr><td><code>footnote</code></td><td><code>/editor/draft-footnote</code></td><td>FootnoteRef <em>(direct insert)</em></td></tr>
+<tr><td><code>citation</code></td><td><code>/editor/find-citation</code></td><td>CitationRef <em>(direct insert)</em></td></tr>
+<tr><td><code>quotation</code></td><td><code>/editor/draft-quotation</code></td><td>QuotationGroup <em>(direct insert)</em></td></tr>
+<tr><td><code>note</code></td><td><code>/editor/answer-note-request</code></td><td>sibling note <em>or</em> RevisionSuggestionCard if doc edit</td></tr>
+<tr><td><code>todo</code></td><td><code>/editor/answer-todo-request</code></td><td>RevisionSuggestionCard <em>or</em> sibling note <em>or</em> follow-up request</td></tr>
+<tr><td><code>suggestion</code></td><td><code>/editor/draft-suggestion</code></td><td>RevisionSuggestionCard</td></tr>
+<tr><td><code>virtual:cutter:&lt;id&gt;</code></td><td><code>/editor/answer-cutter-comment</code></td><td>CutterSuggestionCard</td></tr>
+<tr><td><code>virtual:revisions:&lt;id&gt;</code></td><td><code>/editor/answer-revision-comment</code></td><td>sibling RevisionCommentCard <em>or</em> RevisionSuggestionCard if doc edit</td></tr>
+</table>
+
+<h2 id="umbrella">4. The umbrella</h2>
+
+<div class="skill">
+<details open>
+<summary><span class="badge umbrella">umbrella</span><span class="skill-name">/editor/review</span> — <span class="skill-tagline">Walk the unified inbox, dispatch each request to its specialist as a subagent.</span></summary>
+<div class="body">
+  <div class="row"><div class="label">Args</div><div class="content"><code>&lt;docPath&gt;</code> (optional — falls back to <code>cwd</code> if it has a <code>virgil/</code> subdir)</div></div>
+  <div class="row"><div class="label">Reads</div><div class="content"><code>ai-requests.json</code> (<code>status != complete</code>), <code>bib-review-requests.json</code> (<code>status == pending</code>), card-flag panels via <code>list_requests.py</code></div></div>
+  <div class="row"><div class="label">Writes</div><div class="content">Nothing directly. Every write goes through the dispatched subskill.</div></div>
+  <div class="row"><div class="label">Order</div><div class="content">Strict: <code>bib-review → style-merge → footnote → citation → quotation → note → todo → suggestion</code>. Bib reviews and style merges go first so dependent work uses the updated state.</div></div>
+  <div class="row"><div class="label">Subagent model</div><div class="content">Each dispatch runs as a fresh subagent so context stays bounded. The umbrella prints a one-line dispatch log per request and continues on subskill failure.</div></div>
+  <div class="row"><div class="label">Idempotence</div><div class="content">Each subskill no-ops on <code>status: complete</code> — so a re-run after partial completion just picks up the rest.</div></div>
+  <div class="row gotcha"><div class="label">Gotcha</div><div class="content">On subskill failure the umbrella <em>logs and continues</em>. It does not block the queue. Look at <code>notifications.json</code> for any <code>ai-request-failed</code> entries after a drain.</div></div>
+  <p class="where" style="margin-top: 0.6rem;">editor/skills/review.md</p>
+</div>
+</details>
+</div>
+
+<h2 id="creates">5. Direct creates <span class="dim" style="font-weight: 400; font-size: 0.85em;">— insert into the paper without a suggestion wrapper. User can delete.</span></h2>
+
+<div class="group">
+  <h3>The three "insert it" skills</h3>
+  <p class="desc">These create artifacts the user explicitly asked for (a footnote, a citation, a quotation). The result lands in place because the user already opted in by filing the request.</p>
+</div>
+
+<div class="skill">
+<details>
+<summary><span class="badge create">direct</span><span class="skill-name">/editor/draft-footnote</span> — <span class="skill-tagline">Draft a footnote body, insert <code>\vfid{uuid}\footnote{...}</code> at the anchor in .tex, write a FootnoteRef card.</span></summary>
+<div class="body">
+  <div class="row"><div class="label">Args</div><div class="content"><code>&lt;docPath&gt; &lt;requestId&gt;</code></div></div>
+  <div class="row"><div class="label">Reads</div><div class="content"><code>ai-requests.json</code>, <code>document.tex</code> (via <code>get_para_context.py</code>), <code>footnotes.json</code> (tone), <code>references.bib</code> (to detect natbib vs biblatex)</div></div>
+  <div class="row"><div class="label">Writes</div><div class="content">
+    <ul>
+      <li><code>document.tex</code> — inserts the footnote anchor at the paragraph end or matching substring</li>
+      <li><code>footnotes.json</code> — new FootnoteRef card via <code>apply_response.py</code></li>
+      <li><code>ai-requests.json</code>, <code>notifications.json</code>, <code>version.txt</code> — via <code>apply_response.py</code></li>
+    </ul>
+  </div></div>
+  <div class="row"><div class="label">Decision</div><div class="content">If <code>paragraphIds</code> is empty → halt with <code>ai-request-failed</code> notification, do not draft. If the request needs a bibkey not in <code>references.bib</code> → file a follow-up <code>citation</code> request rather than fabricating <code>\citet{key}</code>.</div></div>
+  <div class="row"><div class="label">Idempotence</div><div class="content">Skip if <code>status != submitted</code>.</div></div>
+  <div class="row gotcha"><div class="label">Don't</div><div class="content">
+    <ul>
+      <li>Don't fabricate a <code>\citet{}</code> command for a citekey not in <code>references.bib</code> — file a follow-up <code>citation</code> request.</li>
+      <li>Don't include the trailing <code>%!v:&lt;uuid&gt;</code> paragraph marker in the .tex edit (it's auto-managed).</li>
+      <li>Always prepend a fresh <code>\vcid{uuid}</code> before every cite command in the footnote body.</li>
+      <li>Mode B (<code>selectedText</code>) requires exact substring match — fall back to end-of-paragraph on mismatch.</li>
+    </ul>
+  </div></div>
+  <p class="where" style="margin-top: 0.6rem;">editor/skills/draft-footnote.md</p>
+</div>
+</details>
+</div>
+
+<div class="skill">
+<details>
+<summary><span class="badge create">direct</span><span class="skill-name">/editor/find-citation</span> — <span class="skill-tagline">Search Crossref / OpenAlex / Semantic Scholar / arXiv; add a BibTeX entry; create an unanchored CitationRef card the user drags into place.</span></summary>
+<div class="body">
+  <div class="row"><div class="label">Args</div><div class="content"><code>&lt;docPath&gt; &lt;requestId&gt;</code></div></div>
+  <div class="row"><div class="label">Reads</div><div class="content"><code>ai-requests.json</code>, <code>document.tex</code> (section context), <code>references.bib</code> (collision check + cite-command style detection), external bibliographic sources</div></div>
+  <div class="row"><div class="label">Writes</div><div class="content">
+    <ul>
+      <li><code>references.bib</code> — appends new entry, blank-line separated</li>
+      <li><code>citations.json</code> — new CitationRef via <code>apply_response.py</code></li>
+      <li><code>ai-requests.json</code>, <code>notifications.json</code>, <code>version.txt</code> — via <code>apply_response.py</code></li>
+    </ul>
+  </div></div>
+  <div class="row"><div class="label">Acceptance bar</div><div class="content"><em>DOI-verified</em>, OR <em>≥2 independent authoritative sources agree</em>. Hard bar — soft preferences in the user's request can't override it.</div></div>
+  <div class="row"><div class="label">Decision</div><div class="content">No source meets the bar → mark complete with a note explaining why; do NOT fabricate. Citekey collision → suffix with <code>a</code>, <code>b</code>, … never modify the existing entry.</div></div>
+  <div class="row"><div class="label">Idempotence</div><div class="content">Skip if <code>status != submitted</code>.</div></div>
+  <div class="row gotcha"><div class="label">Don't</div><div class="content">
+    <ul>
+      <li>Don't use ISBN, LCCN, or publisher URLs as DOI field values — those go in their own fields or are omitted.</li>
+      <li>For article-number-only journals, set <code>pages = {&lt;article-number&gt;}</code> and omit <code>number</code>.</li>
+      <li>For disambiguation, read the existing entry's <code>title</code> field as the ground truth — not BibTeX type or journal name.</li>
+    </ul>
+  </div></div>
+  <p class="where" style="margin-top: 0.6rem;">editor/skills/find-citation.md</p>
+</div>
+</details>
+</div>
+
+<div class="skill">
+<details>
+<summary><span class="badge create">direct</span><span class="skill-name">/editor/draft-quotation</span> — <span class="skill-tagline">Assemble a QuotationGroup card nesting references, quotes, and anchor links.</span></summary>
+<div class="body">
+  <div class="row"><div class="label">Args</div><div class="content"><code>&lt;docPath&gt; &lt;requestId&gt;</code></div></div>
+  <div class="row"><div class="label">Reads</div><div class="content"><code>ai-requests.json</code>, <code>document.tex</code>, external sources if the user asked to <em>find</em> a quote (verbatim quotes use the user's text directly)</div></div>
+  <div class="row"><div class="label">Writes</div><div class="content"><code>quotations.json</code> + the usual <code>apply_response.py</code> trio (status flip / notification / version bump)</div></div>
+  <div class="row"><div class="label">Decision</div><div class="content">Empty <code>paragraphIds</code> → halt with <code>ai-request-failed</code>. Asked to find a quote but source isn't reachable → mark complete with a note. Never fabricate.</div></div>
+  <div class="row gotcha"><div class="label">Don't</div><div class="content">
+    <ul>
+      <li>Never fabricate a quote. Verbatim or nothing.</li>
+      <li><code>page</code> field: use the user's value verbatim; leave empty if absent — don't guess from metadata.</li>
+      <li>Quotes stay short (fair-use excerpt) — use the user's request as the upper bound.</li>
+      <li>Set <code>notes: ""</code> (required field), default <code>margin.side: "left"</code>.</li>
+    </ul>
+  </div></div>
+  <p class="where" style="margin-top: 0.6rem;">editor/skills/draft-quotation.md</p>
+</div>
+</details>
+</div>
+
+<h2 id="responders">6. Card responders <span class="dim" style="font-weight: 400; font-size: 0.85em;">— work from a card the user already wrote; emit a sibling or a suggestion</span></h2>
+
+<div class="group">
+  <h3>The four "answer the user's flag" skills</h3>
+  <p class="desc">These all start from a card the user authored (a note, a todo, a comment), interpret the AI flag on it, and emit a <em>new sibling card</em> — never editing the source. Each one has a fork between "you wanted a doc edit" (→ suggestion card) and "you wanted a response" (→ sibling).</p>
+</div>
+
+<div class="skill">
+<details>
+<summary><span class="badge responder">responder</span><span class="skill-name">/editor/answer-note-request</span> — <span class="skill-tagline">Answer a user note flagged for AI. Drafts a sibling note, or a suggestion card if the user asked for a doc edit.</span></summary>
+<div class="body">
+  <div class="row"><div class="label">Args</div><div class="content"><code>&lt;docPath&gt; &lt;requestId&gt;</code> — may be <code>virtual:notes:&lt;cardId&gt;</code> for legacy un-bridged flags</div></div>
+  <div class="row"><div class="label">Reads</div><div class="content"><code>notes.json</code>, <code>document.tex</code> (paragraph context), adjacent cards via <code>cards_for_paragraph.py</code></div></div>
+  <div class="row"><div class="label">Fork</div><div class="content">
+    <ol>
+      <li>Does the request ask to change document prose? → <code>RevisionSuggestionCard</code> in <code>revisions.json</code>.</li>
+      <li>Else, is there a source note? → sibling note titled <code>Re: &lt;source-title&gt;</code>.</li>
+      <li>Else → standalone note with a descriptive subject phrase.</li>
+    </ol>
+  </div></div>
+  <div class="row"><div class="label">Memo</div><div class="content">Drops <code>.virgil/memos/&lt;YYYY-MM-DD&gt;-answer-note-&lt;requestId&gt;.md</code> only if it hit a real ambiguity worth surfacing.</div></div>
+  <div class="row gotcha"><div class="label">Don't</div><div class="content">
+    <ul>
+      <li>Never edit the source note in place.</li>
+      <li>Never mutate <code>document.tex</code> from this skill (route through suggestion card).</li>
+      <li><code>aiOriginRequestId</code>: only include it if <code>&lt;requestId&gt;</code> doesn't start with <code>virtual:</code>.</li>
+    </ul>
+  </div></div>
+  <p class="where" style="margin-top: 0.6rem;">editor/skills/answer-note-request.md</p>
+</div>
+</details>
+</div>
+
+<div class="skill">
+<details>
+<summary><span class="badge responder">responder</span><span class="skill-name">/editor/answer-todo-request</span> — <span class="skill-tagline">Classify a heterogeneous AI-todo as a text-edit (→ suggestion), missing artifact (→ follow-up request), analysis (→ sibling note), or limit (mark complete).</span></summary>
+<div class="body">
+  <div class="row"><div class="label">Args</div><div class="content"><code>&lt;docPath&gt; &lt;requestId&gt;</code> — may be <code>virtual:todos:&lt;cardId&gt;</code></div></div>
+  <div class="row"><div class="label">Reads</div><div class="content"><code>todos.json</code>, <code>document.tex</code></div></div>
+  <div class="row"><div class="label">Four-way fork</div><div class="content">
+    <ol>
+      <li><strong>Text-edit:</strong> emit <code>RevisionSuggestionCard</code> with <code>status: pending</code>. Leave the todo's <code>done: false</code> — the user accepts via the suggestion card.</li>
+      <li><strong>Missing artifact</strong> (footnote / citation / quotation): file a follow-up <code>ai-request</code> entry of the right kind; mark the todo's request complete.</li>
+      <li><strong>Analysis / answer:</strong> emit a sibling note; flip <code>done: true</code> on the source todo.</li>
+      <li><strong>Limit / impossible ask:</strong> mark complete with a note. Flip <code>done: true</code>.</li>
+    </ol>
+  </div></div>
+  <div class="row gotcha"><div class="label">Don't</div><div class="content">
+    <ul>
+      <li>Don't guess at the todo's intent — when ambiguous, mark complete with a clarification note.</li>
+      <li>Exclude the trailing <code>%!v:&lt;uuid&gt;</code> from <code>original_text</code> on suggestions — accept-time replacement must not delete the marker.</li>
+    </ul>
+  </div></div>
+  <p class="where" style="margin-top: 0.6rem;">editor/skills/answer-todo-request.md</p>
+</div>
+</details>
+</div>
+
+<div class="skill">
+<details>
+<summary><span class="badge responder">responder</span><span class="skill-name">/editor/answer-cutter-comment</span> — <span class="skill-tagline">Respond to a flagged comment on a cut/excerpt in the Cutter panel. Always emits a CutterSuggestionCard.</span></summary>
+<div class="body">
+  <div class="row"><div class="label">Args</div><div class="content"><code>&lt;docPath&gt; &lt;requestId&gt;</code> — typically <code>virtual:cutter:&lt;cardId&gt;</code></div></div>
+  <div class="row"><div class="label">Reads</div><div class="content"><code>cutter.json</code>, <code>document.tex</code>, adjacent cards</div></div>
+  <div class="row"><div class="label">Writes</div><div class="content">New CutterSuggestionCard in <code>cutter.json</code> + standard <code>apply_response.py</code> writeback</div></div>
+  <div class="row"><div class="label">Fork</div><div class="content">None. Always emits a suggestion with <code>status: pending</code>.</div></div>
+  <div class="row gotcha"><div class="label">Don't</div><div class="content">
+    <ul>
+      <li><code>original_text</code> must be <strong>verbatim</strong> from .tex — the editor uses it as the accept-time search key.</li>
+      <li>Copy <code>anchor.paragraphIds</code> and <code>anchor.margin</code> from the source comment's first link.</li>
+      <li><code>target.ref</code> is self-referential: <code>kind: "suggestion"</code>, <code>id: &lt;new-card-id&gt;</code>.</li>
+      <li><code>instructions</code> carries the source comment's <code>text</code> for replay-on-redo.</li>
+      <li>Empty <code>suggested_text</code> means "cut entirely" — appropriate if the comment asks for a cut, otherwise propose a replacement.</li>
+    </ul>
+  </div></div>
+  <p class="where" style="margin-top: 0.6rem;">editor/skills/answer-cutter-comment.md</p>
+</div>
+</details>
+</div>
+
+<div class="skill">
+<details>
+<summary><span class="badge responder">responder</span><span class="skill-name">/editor/answer-revision-comment</span> — <span class="skill-tagline">Respond to a flagged comment in the Revisions panel. Sibling comment, or a suggestion card if the user asked for a doc edit.</span></summary>
+<div class="body">
+  <div class="row"><div class="label">Args</div><div class="content"><code>&lt;docPath&gt; &lt;requestId&gt;</code> — typically <code>virtual:revisions:&lt;cardId&gt;</code></div></div>
+  <div class="row"><div class="label">Reads</div><div class="content"><code>revisions.json</code>, <code>document.tex</code>, adjacent revision cards</div></div>
+  <div class="row"><div class="label">Fork</div><div class="content">Doc edit? → <code>RevisionSuggestionCard</code>. Else → sibling <code>RevisionCommentCard</code>.</div></div>
+  <div class="row"><div class="label">Idempotence</div><div class="content">Skip if a sibling reply with matching <code>aiOriginRequestId</code> already exists.</div></div>
+  <div class="row gotcha"><div class="label">Don't</div><div class="content">
+    <ul>
+      <li>Never edit the source comment.</li>
+      <li>Never mutate <code>document.tex</code> — even on the suggestion path, the card carries the proposed replacement.</li>
+      <li><code>original_text</code> must be verbatim, and must exclude the <code>%!v:&lt;uuid&gt;</code> marker.</li>
+    </ul>
+  </div></div>
+  <p class="where" style="margin-top: 0.6rem;">editor/skills/answer-revision-comment.md</p>
+</div>
+</details>
+</div>
+
+<h2 id="suggestion">7. The "always a suggestion card" case</h2>
+
+<div class="callout">
+This one is interesting: it's invoked directly (not via a card flag), but unlike the other direct-creates it <em>always</em> wraps output in a suggestion card. That's because the user is asking for a rewrite, and rewrites need approval.
+</div>
+
+<div class="skill">
+<details>
+<summary><span class="badge create">direct</span><span class="badge responder">suggestion-only</span><span class="skill-name">/editor/draft-suggestion</span> — <span class="skill-tagline">Propose a revision to a paragraph. Always emits a RevisionSuggestionCard with <code>author: "ai"</code>, <code>status: "pending"</code>.</span></summary>
+<div class="body">
+  <div class="row"><div class="label">Args</div><div class="content"><code>&lt;docPath&gt; &lt;requestId&gt;</code></div></div>
+  <div class="row"><div class="label">Reads</div><div class="content"><code>ai-requests.json</code>, <code>document.tex</code></div></div>
+  <div class="row"><div class="label">Writes</div><div class="content">New RevisionSuggestionCard in <code>revisions.json</code> + standard writeback</div></div>
+  <div class="row"><div class="label">Hard rule</div><div class="content">Does NOT edit <code>document.tex</code>. Always goes through a suggestion card the user accepts or rejects.</div></div>
+  <div class="row gotcha"><div class="label">Don't</div><div class="content">
+    <ul>
+      <li><code>original_text</code> MUST match the .tex byte-for-byte; accept-time uses it as the search key.</li>
+      <li>Include <code>\vcid{...}</code> and inline LaTeX verbatim — don't invent fresh UUIDs.</li>
+      <li>Exclude the trailing <code>%!v:&lt;uuid&gt;</code> marker comment.</li>
+      <li>Treat negative constraints in the user's request ("too many em-dashes when there are none") as <em>instructions not to introduce</em>, not blockers to the rewrite they actually wanted.</li>
+    </ul>
+  </div></div>
+  <p class="where" style="margin-top: 0.6rem;">editor/skills/draft-suggestion.md</p>
+</div>
+</details>
+</div>
+
+<h2 id="biblio">8. Bibliography</h2>
+
+<div class="group">
+  <h3>Two skills, very different scopes</h3>
+  <p class="desc"><code>answer-bib-review</code> works on a single entry (three modes). <code>sync-bib-to-library</code> reconciles the whole paper against the user's Virgil Library and cross-cuts into library writes — the only editor skill that does so.</p>
+</div>
+
+<div class="skill">
+<details>
+<summary><span class="badge bib">bib</span><span class="skill-name">/editor/answer-bib-review</span> — <span class="skill-tagline">Three-mode skill: verify/fill fields, draft an annotation, or swap a library entry in.</span></summary>
+<div class="body">
+  <div class="row"><div class="label">Args</div><div class="content"><code>&lt;docPath&gt; &lt;bibKey&gt; [--library-sync &lt;libraryCitekey&gt; --library &lt;path&gt;]</code></div></div>
+  <div class="row"><div class="label">Three modes</div><div class="content">
+    <ol>
+      <li><strong><code>type: "fields"</code></strong> — verify the entry's fields against Crossref / OpenAlex / Semantic Scholar / arXiv; replace verified, leave unverified as-is with a status note. If lookup contradicts the entry's BibTeX type, fix the type and reshape the field set.</li>
+      <li><strong><code>type: "notes"</code></strong> — draft an annotation note (in <code>annotations.json</code>) summarizing the source.</li>
+      <li><strong><code>--library-sync</code></strong> — short-circuit modes 1-2 and swap in the library's authoritative entry. Uses <code>rename_citekey.py</code> to rewrite every <code>\cite*{...}</code> command if the library citekey differs from the paper's.</li>
+    </ol>
+  </div></div>
+  <div class="row"><div class="label">Writes</div><div class="content"><code>references.bib</code>, <code>annotations.json</code> (notes mode), <code>document.tex</code> + <code>citations.json</code> (rename), <code>bib-review-requests.json</code> (status flip)</div></div>
+  <div class="row"><div class="label">Idempotence</div><div class="content">Re-running on an already-synced entry is a no-op (entry bytes don't change).</div></div>
+  <div class="row gotcha"><div class="label">Don't</div><div class="content">
+    <ul>
+      <li>Don't fabricate fields. Unverified fields stay as-is with a status note.</li>
+      <li>If a DOI can't be added (common for pre-2000 works), declare that explicitly instead of fishing.</li>
+      <li>Script-path resolution: walk <code>.virgil/scripts/editor/</code> and <code>editor/scripts/</code> to find helpers; don't hardcode.</li>
+    </ul>
+  </div></div>
+  <p class="where" style="margin-top: 0.6rem;">editor/skills/answer-bib-review.md</p>
+</div>
+</details>
+</div>
+
+<div class="skill">
+<details>
+<summary><span class="badge bib">bib</span><span class="badge crosscut">cross-cut</span><span class="skill-name">/editor/sync-bib-to-library</span> — <span class="skill-tagline">Reconcile a paper's whole bibliography against the user's Virgil Library: matched → swap to library form (+ rename citekeys throughout doc); missing → triage into library; ambiguous → review note.</span></summary>
+<div class="body">
+  <div class="row"><div class="label">Args</div><div class="content"><code>&lt;docPath&gt; [--dry-run] [--library &lt;path&gt;]</code></div></div>
+  <div class="row"><div class="label">Reads</div><div class="content"><code>references.bib</code>, <code>document.tex</code>, <code>citations.json</code>, library's <code>master.bib</code>, library's <code>.virgil/catalog.json</code></div></div>
+  <div class="row"><div class="label">Match phases</div><div class="content">
+    <ol>
+      <li><strong>Matched</strong> (by citekey, DOI, or title+author signature) → swap entry via <code>answer-bib-review --library-sync</code></li>
+      <li><strong>Missing</strong> → bundle, triage into library's <code>unsorted/</code> via <code>triage_apply.py</code>, authenticate per citekey, re-match, swap</li>
+      <li><strong>Ambiguous</strong> (signature hits multiple library candidates) → write a review note listing candidates; do NOT auto-swap</li>
+    </ol>
+  </div></div>
+  <div class="row"><div class="label">Cross-cut safety</div><div class="content">All library writes go through <code>flock</code>-protected CLI shims (<code>update_master_bib_entry.py</code>, <code>triage_apply.py</code>) — safe to interleave with a parallel <code>/loop /library/index-pending</code> in another session.</div></div>
+  <div class="row"><div class="label">Idempotence</div><div class="content">Re-running on a fully-matched bibliography is a no-op: pass 1 hits 100% matched, pass 2 has nothing to triage, no ambiguous note.</div></div>
+  <div class="row gotcha"><div class="label">Don't</div><div class="content">
+    <ul>
+      <li><strong>Don't auto-swap on ambiguous matches.</strong> Write the review note and leave the paper's entry alone.</li>
+      <li><strong>Trust library terminal states.</strong> <code>bib.state ∈ {failed, unverified, manuscript, canonical}</code> are authoritative — don't try to "fix" them from the paper's side.</li>
+      <li><strong>Don't delete entries from <code>references.bib</code> that aren't in <code>document.tex</code>.</strong> Some users keep an extended bibliography.</li>
+      <li>If a bib-system swap (natbib ↔ biblatex) is detected, flag it loudly — user must manually swap the body markers (<code>\bibliography{}</code> vs <code>\printbibliography</code>).</li>
+    </ul>
+  </div></div>
+  <p class="where" style="margin-top: 0.6rem;">editor/skills/sync-bib-to-library.md</p>
+</div>
+</details>
+</div>
+
+<h2 id="style">9. Style</h2>
+
+<div class="skill">
+<details>
+<summary><span class="badge style">style</span><span class="skill-name">/editor/style-merge</span> — <span class="skill-tagline">Merge the user's preamble customizations onto a new target style's preamble. Rewrites .tex; body untouched.</span></summary>
+<div class="body">
+  <div class="row"><div class="label">Args</div><div class="content"><code>&lt;docPath&gt;</code> (optional — prompts if omitted)</div></div>
+  <div class="row"><div class="label">Reads</div><div class="content"><code>ai-requests.json</code> (kind=<code>style-merge</code>, status=<code>submitted</code>), <code>document-settings.json</code> (current styleId), <code>document.tex</code> (preamble + body split)</div></div>
+  <div class="row"><div class="label">Writes</div><div class="content"><code>document.tex</code> (preamble rewrite), <code>document-settings.json</code> (styleId update), <code>ai-requests.json</code> (status flip), <code>notifications.json</code>, <code>version.txt</code></div></div>
+  <div class="row"><div class="label">Carries forward</div><div class="content">
+    <ul>
+      <li><code>\usepackage{...}</code> (with options)</li>
+      <li><code>\newcommand</code> / <code>\providecommand</code> / <code>\renewcommand</code> / <code>\DeclareRobustCommand</code></li>
+      <li><code>\setlength</code> / <code>\setcounter</code></li>
+      <li>font-config directives</li>
+    </ul>
+  </div></div>
+  <div class="row"><div class="label">Drops</div><div class="content">
+    <ul>
+      <li><code>\providecommand{\vfid}</code> / <code>\vcid</code> / <code>\vexid</code> (auto-injected at serialize time)</li>
+      <li><code>\title</code> / <code>\author</code> / <code>\date</code> (re-injected at serialize time)</li>
+      <li><code>\documentclass</code> (target owns it)</li>
+      <li>Shadowed bib packages (natbib vs biblatex)</li>
+    </ul>
+  </div></div>
+  <div class="row"><div class="label">Validation</div><div class="content">Exactly one <code>\begin{document}</code>, no <code>\end{document}</code>, matched braces. On validation failure → mark request complete with a <code>resultId</code> describing the failure; do NOT write the .tex.</div></div>
+  <div class="row gotcha"><div class="label">Don't</div><div class="content">
+    <ul>
+      <li><strong>Never write if body extraction returns empty.</strong> Signals a corrupted source file.</li>
+      <li>Merged preamble must end with <code>\begin{document}\n\n</code> exactly.</li>
+      <li>On bib-system swap, flag loudly — user must fix the body markers manually.</li>
+    </ul>
+  </div></div>
+  <p class="where" style="margin-top: 0.6rem;">editor/skills/style-merge.md</p>
+</div>
+</details>
+</div>
+
+<h2 id="meta">10. Dev meta</h2>
+
+<div class="skill">
+<details>
+<summary><span class="badge meta">dev-only</span><span class="skill-name">/editor/iterate-virgil-editor</span> — <span class="skill-tagline">Stress-test and refine the editor skill set in sandboxed copies of the sample paper. Synthesizes requests, runs target skill via subagents, reads critique memos, edits skill markdown, loops.</span></summary>
+<div class="body">
+  <div class="row"><div class="label">Args</div><div class="content"><code>[&lt;skill-name&gt;] [&lt;max-attempts&gt;]</code> — defaults: all skills in dependency order, 12 attempts (max 20)</div></div>
+  <div class="row"><div class="label">Reads</div><div class="content"><code>editor/skills/&lt;skill&gt;.md</code>, <code>samples/annotation-history/</code> (never mutated — cloned per attempt)</div></div>
+  <div class="row"><div class="label">Writes</div><div class="content">
+    <ul>
+      <li><code>editor/dev/sandboxes/&lt;date&gt;-&lt;skill&gt;-&lt;case&gt;-attempt&lt;k&gt;/</code> — per-attempt clones (gitignored)</li>
+      <li><code>editor/dev/iterations/&lt;date&gt;-&lt;skill&gt;/&lt;case&gt;-attempt&lt;k&gt;.md</code> — critique memos from runners (gitignored)</li>
+      <li><code>editor/skills/&lt;skill&gt;.md</code> — edits applied by loop driver between attempts</li>
+    </ul>
+  </div></div>
+  <div class="row"><div class="label">Per-skill loop</div><div class="content">3-5 test cases (happy path, missing context, Mode B, underspecified ask, cross-skill edge) × 4 attempts per case. Runner subagent executes the target skill against a fresh sandbox; loop driver reads the critique memo, applies <code>[block]</code> edits, re-runs.</div></div>
+  <div class="row"><div class="label">Survey pass</div><div class="content">Every 3 skills stabilize → a cross-skill drift check.</div></div>
+  <div class="row gotcha"><div class="label">Don't</div><div class="content">
+    <ul>
+      <li><strong>Never mutate <code>samples/annotation-history/</code> directly.</strong> Sandbox-only.</li>
+      <li><strong>Never commit.</strong> Loop ends with diffs in the working tree for user inspection.</li>
+      <li><strong>Runner subagents never edit <code>editor/skills/</code>.</strong> Only the loop driver does.</li>
+      <li>Rebuild the bundle after all edits: <code>npm run build:editor-bundle</code>.</li>
+    </ul>
+  </div></div>
+  <p class="where" style="margin-top: 0.6rem;">editor/skills/iterate-virgil-editor.md</p>
+</div>
+</details>
+</div>
+
+<h2 id="plumbing">11. Plumbing</h2>
+
+<p>Every skill writes through the same atomic writeback path. Understanding these three files explains why the skills are so terse:</p>
+
+<div class="two-col">
+<div>
+<h4><code>editor/scripts/apply_response.py</code></h4>
+<p>The single sanctioned writeback. Owns the atomic <em>card + status flip + source-flag clear + notification + version-bump</em> transaction.</p>
+<p><strong>Op shape:</strong></p>
+<pre><code>{
+  "requestId": "&lt;real id or virtual:p:id&gt;",
+  "panel": "notes|todos|cutter|revisions|
+            footnotes|citations|quotations",
+  "card": { ...full card... },
+  "summary": "&lt;one-liner&gt;",
+  "clearSourceFlag": true/false
+}</code></pre>
+<p><strong>Modes:</strong></p>
+<ul>
+  <li><strong>Apply</strong> — insert card, flip request, clear flag, notify, bump.</li>
+  <li><strong>Complete-only</strong> (<code>--complete-only &lt;id&gt;</code>) — flip status without a card. For bib reviews and failures.</li>
+  <li><strong>Revert</strong> (<code>--revert &lt;id&gt;</code>) — remove card, reopen request.</li>
+</ul>
+</div>
+<div>
+<h4><code>editor/scripts/list_requests.py</code></h4>
+<p>Emits the unified JSONL inbox. Three sources fan into one shape (see <a href="#shape">§1</a>).</p>
+<p>Virtual ids are the key trick: legacy un-bridged card flags appear as <code>virtual:&lt;panel&gt;:&lt;cardId&gt;</code>, so <code>/editor/review</code> can dispatch them through the same routing table as real ai-requests. <code>apply_response.py</code> recognizes the prefix and clears the source flag instead of touching <code>ai-requests.json</code>.</p>
+
+<h4 style="margin-top: 0.8rem;"><code>editor/scripts/_common.py</code></h4>
+<p>Stdlib-only helpers: <code>resolve_doc</code>, <code>find_tex_file</code>, <code>find_bib_file</code>, <code>read_json</code> / <code>write_json</code>, <code>find_paragraph_uuids</code>, <code>card_paragraph_ids</code>, <code>append_notification</code>, <code>bump_version</code>, <code>now_iso</code>, <code>die</code>.</p>
+</div>
+</div>
+
+<h4>Bridge: <code>bridgeCardAiRequestFlag()</code></h4>
+<p>Lives in <a href="src/lib/ai-request-bridge.ts">src/lib/ai-request-bridge.ts</a>. When a user toggles <code>aiRequest: true</code> on a note/todo/cutter-comment/revision-comment, this hook adds an entry to <code>ai-requests.json</code> with <code>linkedTo: { panel, cardId }</code>. Toggling off removes the entry; toggling back on re-adds with fresh paragraph context. Collapses three discovery paths into two so <code>/editor/review</code> only needs to walk two files.</p>
+
+<h4>Library-path resolution</h4>
+<p>For the one cross-cutting skill (<code>sync-bib-to-library</code>) and the <code>--library-sync</code> mode of <code>answer-bib-review</code>:</p>
+<ol>
+  <li><code>--library &lt;path&gt;</code> flag</li>
+  <li><code>VIRGIL_LIBRARY_ROOT</code> env var</li>
+  <li><code>~/.config/virgil/library-path.json</code></li>
+  <li><code>~/Virgil-Library/</code> (legacy default)</li>
+</ol>
+<p>Each candidate is validated against the <code>master.bib + .virgil/catalog.json + .virgil/scripts/</code> triple — stale records fail loudly. Set centrally with:</p>
+<pre><code>python3 editor/scripts/library_path.py --set /absolute/path/to/library</code></pre>
+
+<h2 id="conventions">12. House conventions</h2>
+
+<ul>
+  <li><strong>Reply format:</strong> one-line <code>Done: &lt;action&gt; for &lt;id&gt;. Output: &lt;files&gt;.</code></li>
+  <li><strong>Idempotence:</strong> re-running on <code>status: "complete"</code> is always a no-op.</li>
+  <li><strong>Suggestion-card default:</strong> ambiguous responders emit suggestion cards with <code>author: "ai"</code>, <code>status: "pending"</code> — never edit in place.</li>
+  <li><strong>Direct-create kinds</strong> (footnote, citation, quotation) insert without a wrapper. The user opted in by filing the request; they can delete if unwanted.</li>
+  <li><strong>Memo discipline:</strong>
+    <ul>
+      <li>Dev memos under <code>&lt;docPath&gt;/.virgil/memos/&lt;YYYY-MM-DD&gt;-&lt;slug&gt;.md</code> — only when an ambiguity is worth surfacing.</li>
+      <li>Paper-specific reports under <code>&lt;docPath&gt;/notes/&lt;slug&gt;.md</code>.</li>
+      <li>Never drop a markdown file at the doc root.</li>
+    </ul>
+  </li>
+  <li><strong>Path resolution</strong> for all skills:
+    <ol>
+      <li>Explicit <code>&lt;docPath&gt;</code> arg.</li>
+      <li><code>cwd</code> if it has a <code>virgil/</code> subdir.</li>
+      <li>Error.</li>
+    </ol>
+  </li>
+</ul>
+
+<div class="callout warn">
+<strong>Three don'ts the editor AGENTS.md calls out:</strong>
+<ol>
+  <li>Don't write to <code>document.tex</code> from a Python helper. Skills do .tex edits with the Edit tool so they go through the same write-queue surface as user edits.</li>
+  <li>Don't bypass <code>apply_response.py</code> for the writeback. Even when the op shape isn't a perfect fit, route through it (or extend it).</li>
+  <li>Don't add a backend. The cowork pattern is load-bearing.</li>
+</ol>
+</div>
+
+<hr>
+
+<p style="color: var(--muted); font-size: 0.9em; margin-top: 2rem;">
+  Source: <a href="editor/AGENTS.md">editor/AGENTS.md</a> + every skill markdown under <a href="editor/skills/">editor/skills/</a>. To amend this doc, edit <code>EDITOR_SKILLS_TOUR.html</code> — plain HTML/CSS, no build step. Skill-level facts are derived from each skill's prompt body, not just its YAML description field.
+</p>
+
+</div>
+</body>
+</html>

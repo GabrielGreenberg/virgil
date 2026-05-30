@@ -1,0 +1,578 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Virgil skill base — a hierarchical tour</title>
+<style>
+  :root {
+    --ink: #1f1d1a;
+    --paper: #faf8f3;
+    --muted: #6b6356;
+    --rule: #d8d2c4;
+    --accent: #8b3e2f;
+    --accent-soft: #fdf1ee;
+    --library: #2f5d3a;
+    --library-soft: #ecf3ee;
+    --editor: #2f4a8b;
+    --editor-soft: #ebf0fb;
+    --repo: #6b5b2f;
+    --repo-soft: #faf5e6;
+    --code-bg: #f1ece0;
+  }
+  html { font: 16px/1.55 -apple-system, BlinkMacSystemFont, "Helvetica Neue", sans-serif; }
+  body { background: var(--paper); color: var(--ink); margin: 0; padding: 2.5rem 1.5rem 6rem; }
+  .wrap { max-width: 920px; margin: 0 auto; }
+  h1 { font-size: 2rem; margin: 0 0 0.25rem; letter-spacing: -0.01em; }
+  h2 { font-size: 1.4rem; margin: 2.5rem 0 0.5rem; padding-bottom: 0.3rem; border-bottom: 2px solid var(--ink); letter-spacing: -0.01em; }
+  h3 { font-size: 1.05rem; margin: 1.5rem 0 0.5rem; letter-spacing: -0.005em; }
+  h4 { font-size: 0.95rem; margin: 1rem 0 0.3rem; color: var(--muted); text-transform: uppercase; letter-spacing: 0.05em; font-weight: 600; }
+  p, ul, ol { margin: 0.4rem 0; }
+  ul, ol { padding-left: 1.4rem; }
+  li { margin: 0.15rem 0; }
+  .lede { color: var(--muted); font-size: 1.05rem; margin-bottom: 1.5rem; }
+  code { background: var(--code-bg); padding: 0.05rem 0.35rem; border-radius: 3px; font-size: 0.88em; font-family: "SF Mono", Menlo, Consolas, monospace; }
+  pre { background: var(--code-bg); padding: 0.75rem 1rem; border-radius: 5px; overflow-x: auto; font-size: 0.85em; line-height: 1.45; }
+  pre code { background: transparent; padding: 0; }
+  a { color: var(--accent); text-decoration: none; border-bottom: 1px solid var(--accent-soft); }
+  a:hover { border-bottom-color: var(--accent); }
+  details { margin: 0.25rem 0; }
+  details > summary { cursor: pointer; padding: 0.35rem 0.5rem; border-radius: 4px; list-style: none; user-select: none; }
+  details > summary::-webkit-details-marker { display: none; }
+  details > summary::before { content: "▸ "; color: var(--muted); display: inline-block; width: 1.1em; transition: transform 0.15s; }
+  details[open] > summary::before { content: "▾ "; }
+  details > summary:hover { background: var(--code-bg); }
+  .skill-block { border-left: 3px solid var(--rule); padding-left: 0.85rem; margin: 0.15rem 0; }
+  .skill-block.library { border-left-color: var(--library); }
+  .skill-block.editor { border-left-color: var(--editor); }
+  .skill-block.repo { border-left-color: var(--repo); }
+  .skill-name { font-family: "SF Mono", Menlo, monospace; font-weight: 600; font-size: 0.95em; }
+  .skill-summary { color: var(--ink); }
+  .skill-block .meta { color: var(--muted); font-size: 0.86em; margin: 0.35rem 0 0.5rem; }
+  .skill-block .meta strong { color: var(--ink); font-weight: 600; }
+  .badge { display: inline-block; padding: 0.05rem 0.45rem; border-radius: 10px; font-size: 0.72em; font-weight: 600; letter-spacing: 0.03em; text-transform: uppercase; margin-right: 0.4rem; vertical-align: 0.1em; }
+  .badge.umbrella { background: var(--accent-soft); color: var(--accent); }
+  .badge.subskill { background: var(--code-bg); color: var(--muted); }
+  .badge.meta { background: #efe7ff; color: #5a3da8; }
+  .badge.heavy { background: #fbe7d8; color: #8a4f1c; }
+  .badge.light { background: #e6f1e8; color: #2f5d3a; }
+  .badge.draft { background: #f3f0e6; color: #6b6356; }
+  .group-header { background: var(--library-soft); padding: 0.6rem 0.9rem; margin: 1.25rem 0 0.5rem; border-radius: 5px; font-weight: 600; font-size: 0.92rem; }
+  .group-header.editor { background: var(--editor-soft); }
+  .group-header.repo { background: var(--repo-soft); }
+  .group-header .count { color: var(--muted); font-weight: 400; font-size: 0.88em; }
+  .toc { background: white; border: 1px solid var(--rule); border-radius: 5px; padding: 1rem 1.25rem; margin: 1.5rem 0; }
+  .toc ul { list-style: none; padding: 0; columns: 2; column-gap: 2rem; }
+  .toc li { break-inside: avoid; margin: 0.15rem 0; }
+  .toc a { color: var(--ink); border: none; }
+  .toc a:hover { color: var(--accent); }
+  .callout { background: white; border-left: 4px solid var(--accent); padding: 0.85rem 1.1rem; margin: 1rem 0; border-radius: 0 5px 5px 0; }
+  .callout strong { color: var(--accent); }
+  .arch-diagram { background: white; border: 1px solid var(--rule); padding: 1rem 1.25rem; border-radius: 5px; margin: 1rem 0; }
+  .legend { display: flex; gap: 1.2rem; flex-wrap: wrap; margin: 0.5rem 0 1.5rem; font-size: 0.88em; color: var(--muted); }
+  .legend span::before { content: ""; display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 0.4rem; vertical-align: -1px; }
+  .legend .lib::before { background: var(--library); }
+  .legend .edt::before { background: var(--editor); }
+  .legend .rp::before { background: var(--repo); }
+  hr { border: none; border-top: 1px solid var(--rule); margin: 2rem 0; }
+  .where { font-size: 0.82em; color: var(--muted); font-family: "SF Mono", Menlo, monospace; }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<h1>Virgil skill base — a hierarchical tour</h1>
+<p class="lede">A guided map of every slash command Virgil ships, organized by which half of the system they belong to. Click any row to expand its full description, args, and when-not-to-use rules.</p>
+
+<div class="legend">
+  <span class="lib">Library skills (catalog/source ops)</span>
+  <span class="edt">Editor skills (in-paper AI requests)</span>
+  <span class="rp">Repo-level (dev/release)</span>
+</div>
+
+<div class="toc">
+  <strong>Jump to:</strong>
+  <ul>
+    <li><a href="#big-picture">1. Big picture</a></li>
+    <li><a href="#pattern">2. The shared cowork pattern</a></li>
+    <li><a href="#library">3. Library skills (19)</a></li>
+    <li><a href="#editor">4. Editor skills (13)</a></li>
+    <li><a href="#repo">5. Repo-level skills</a></li>
+    <li><a href="#how-built">6. How the skills are built &amp; shipped</a></li>
+  </ul>
+</div>
+
+<h2 id="big-picture">1. Big picture</h2>
+
+<p>Virgil's skill base divides cleanly in two, mirroring the app's own architecture:</p>
+
+<div class="arch-diagram">
+<pre>
+              ┌───────────────────────────────────────────┐
+              │              VIRGIL (the app)             │
+              │                                           │
+              │   ┌──────────────┐    ┌──────────────┐    │
+              │   │  Library tab │    │  Editor tab  │    │
+              │   │  (a folder   │    │  (a paper    │    │
+              │   │  of sources) │    │   you write) │    │
+              │   └──────┬───────┘    └──────┬───────┘    │
+              └──────────┼───────────────────┼────────────┘
+                         │                   │
+                         ▼                   ▼
+              ┌──────────────────┐  ┌──────────────────┐
+              │ /library/* (19)  │  │  /editor/* (13)  │
+              │                  │  │                  │
+              │ catalog &amp; source │  │ in-paper cowork  │
+              │ ingestion +      │  │ (footnotes,      │
+              │ structural       │  │  citations, bib  │
+              │ cleanup of PDFs  │  │  reviews, todos, │
+              │ &amp; .docx into     │  │  suggestions,    │
+              │ Virgil paper     │  │  style merges)   │
+              │ folders          │  │                  │
+              └──────────────────┘  └──────────────────┘
+                         │                   │
+                         └────────┬──────────┘
+                                  ▼
+                         ┌─────────────────┐
+                         │ /editor/        │ ← cross-cuts the two,
+                         │  sync-bib-to-   │   safe under flock
+                         │  library        │
+                         └─────────────────┘
+</pre>
+</div>
+
+<ul>
+  <li><strong>Library</strong> — your <code>~/Virgil-Library/</code> folder. Skills take raw sources (PDFs, .docx, .bib) and turn them into indexed, structurally-clean Virgil paper folders with authenticated bibliography entries.</li>
+  <li><strong>Editor</strong> — a single paper you're writing. Skills drain an inbox of AI requests the user files from the UI (footnote here, find me a citation for X, draft a revision of this paragraph).</li>
+  <li><strong>Repo-level</strong> — a small set of dev/release skills (<code>cleanup-virgil</code>, <code>cleanup-worktrees</code>, <code>virgil:start</code>).</li>
+</ul>
+
+<p>Both halves share <em>the same architectural pattern</em>: the frontend writes intent files to disk; a Claude session reads them, does work, writes results back, bumps a version stamp, and the frontend polls for the bump and refreshes. <a href="#pattern">More on that ↓</a></p>
+
+<h2 id="pattern">2. The shared cowork pattern</h2>
+
+<p>Every Virgil skill is a participant in one of two near-identical loops. Understanding this one diagram is most of what it takes to grok the whole skill base.</p>
+
+<div class="arch-diagram">
+<pre>
+   Frontend                              Claude (separate session)
+     │                                      │
+     │  user clicks "AI: add a footnote" ─► │
+     │  writes intent to                    │
+     │  ai-requests.json                    │
+     │                                      ◄ /editor/review reads
+     │                                      │
+     │                                      │   ┌─────────────────┐
+     │                                      │   │ work happens    │
+     │                                      │   │ (read .tex,     │
+     │                                      │   │  search bib,    │
+     │                                      │   │  Crossref, etc) │
+     │                                      │   └─────────────────┘
+     │                                      │
+     │  notes.json / footnotes.json      ◄ Claude writes back via
+     │  ai-requests.json (status=done)      apply_response.py:
+     │  notifications.json                    • new card
+     │  version.txt (bumped)                  • status flip
+     │                                        • notification append
+     │                                        • version bump
+     │                                      │
+     ◄ polls version.txt every 6s,          │
+       reloads sidecars on bump             │
+</pre>
+</div>
+
+<div class="callout">
+<strong>The load-bearing constraint:</strong> the frontend <em>never invokes Claude directly</em>. It writes intent files; Claude drains them. This decoupling is why you can run <code>/loop /library/index-pending</code> in one terminal and keep clicking around the Library UI in your browser without anything synchronizing.
+</div>
+
+<h4>Concurrency &amp; locks (library only)</h4>
+<p>Three shared files — <code>master.bib</code>, <code>.virgil/catalog.json</code>, <code>.virgil/notifications/inbox.json</code> — are protected by POSIX <code>fcntl.flock</code> sidecar locks. Skills mutate these <em>only</em> through CLI shims (<code>update_master_bib_entry.py</code>, <code>update_catalog_entry.py</code>, <code>append_inbox_item.py</code>). That's what makes it safe to run <code>/library/deep-index</code>, <code>/library/index-paper</code>, and <code>/library/authenticate-bib</code> in parallel on different citekeys.</p>
+
+<h4>Two write conventions for skill output</h4>
+<ul>
+  <li><strong>Direct creates</strong> (<code>draft-footnote</code>, <code>find-citation</code>, <code>draft-quotation</code>) — insert the result into the paper. User can delete if unwanted.</li>
+  <li><strong>Suggestion cards</strong> (everything in the <code>answer-*</code> family + <code>draft-suggestion</code>) — emit an <code>author: "ai"</code> card with <code>status: "pending"</code>. User accepts or rejects.</li>
+</ul>
+
+<h2 id="library">3. Library skills <span style="color: var(--muted); font-weight: 400;">— 19 callable + 2 shared includes</span></h2>
+
+<p>The Library subsystem lives at <a href="library/">library/</a>. Skill source is in <a href="library/skills/">library/skills/</a>; build mirrors to <code>.claude/commands/library/</code>. Read <a href="library/AGENTS.md">library/AGENTS.md</a> for the full spec.</p>
+
+<div class="group-header">⚙ Setup &amp; meta <span class="count">— get the pipeline working / develop the skills themselves</span></div>
+
+<div class="skill-block library">
+  <details>
+    <summary><span class="badge heavy">heavy</span><span class="skill-name">/library/setup</span> — <span class="skill-summary">Install the ML extraction toolchain (marker, PyMuPDF, ocrmypdf, tesseract, poppler) and pre-cache marker's ~1 GB of model weights into the library itself.</span></summary>
+    <div class="meta">
+      <strong>Why library-local models:</strong> shared across index-paper + deep-index re-reads, no global cache pollution.<br>
+      <strong>Idempotent:</strong> only installs what's missing. Pass <code>--force</code> to redo.<br>
+      <strong>Args:</strong> none. <span class="where">library/skills/setup.md</span>
+    </div>
+  </details>
+</div>
+
+<div class="skill-block library">
+  <details>
+    <summary><span class="badge meta">dev-only</span><span class="skill-name">/library/iterate-skill</span> — <span class="skill-summary">Stress-test a library skill against a corpus of citekeys, read the subagent's critique memo, edit the skill markdown, loop.</span></summary>
+    <div class="meta">
+      <strong>For:</strong> Virgil maintainers iterating on the skill files themselves.<br>
+      <strong>Args:</strong> <code>&lt;skill-name&gt; &lt;citekey1&gt; [citekey2] ...</code> <span class="where">library/skills/iterate-skill.md</span>
+    </div>
+  </details>
+</div>
+
+<div class="group-header">📥 Inbox drains <span class="count">— run these in a /loop for steady-state processing</span></div>
+
+<div class="skill-block library">
+  <details>
+    <summary><span class="badge umbrella">drain</span><span class="skill-name">/library/index-pending</span> — <span class="skill-summary">One-pass drain of every queue file: triage, index, authenticate, deep-index, bib-edit, paper-review.</span></summary>
+    <div class="meta">
+      <strong>Pair with:</strong> <code>/loop /library/index-pending</code> for steady-state polling.<br>
+      <strong>Args:</strong> none. <span class="where">library/skills/index-pending.md</span>
+    </div>
+  </details>
+</div>
+
+<div class="skill-block library">
+  <details>
+    <summary><span class="badge umbrella">drain</span><span class="skill-name">/library/ai-requests</span> — <span class="skill-summary">Take a pass on user-authored AI requests on library papers (notes attached to queue entries + paper-review requests).</span></summary>
+    <div class="meta">
+      Distinct from <code>index-pending</code>: that drains the indexing queue; this drains <em>review</em> requests the user filed on already-indexed papers. <span class="where">library/skills/ai-requests.md</span>
+    </div>
+  </details>
+</div>
+
+<div class="group-header">📑 Per-source ingestion <span class="count">— raw file → Virgil paper folder</span></div>
+
+<div class="skill-block library">
+  <details>
+    <summary><span class="badge light">light</span><span class="skill-name">/library/triage-pdf</span> — <span class="skill-summary">Triage one newly-dropped file in <code>unsorted/</code>: propose a citekey, move into <code>papers/&lt;citekey&gt;/</code>, queue for indexing (or auth for .bib drops).</span></summary>
+    <div class="meta">
+      <strong>Accepts:</strong> PDF, DOCX, .tex, .bib.<br>
+      <strong>.bib drops:</strong> multi-entry fan-out — each entry becomes a bib-only catalog row.<br>
+      <strong>Args:</strong> <code>&lt;filename&gt;</code> (relative to <code>unsorted/</code>). <span class="where">library/skills/triage-pdf.md</span>
+    </div>
+  </details>
+</div>
+
+<div class="skill-block library">
+  <details>
+    <summary><span class="badge heavy">heavy</span><span class="skill-name">/library/triage-pending</span> — <span class="skill-summary">Batch-triage every file in <code>unsorted/</code>: propose citekeys for the whole inbox, surface them for review, apply in one transaction.</span></summary>
+    <div class="meta">
+      <strong>Args:</strong> optional <code>auto</code> to skip the review step. <span class="where">library/skills/triage-pending.md</span>
+    </div>
+  </details>
+</div>
+
+<div class="skill-block library">
+  <details>
+    <summary><span class="badge light">light</span><span class="skill-name">/library/index-paper</span> — <span class="skill-summary">Extract LaTeX from a PDF/DOCX/.tex source. Produces <code>papers/&lt;citekey&gt;/main.tex</code> (with <code>\pgmark{N}</code> anchors for PDFs), a single-entry <code>references.bib</code>, empty sidecars, and an authenticated catalog row.</span></summary>
+    <div class="meta">
+      Uses marker for PDFs (layout-aware, equation-aware, footnote-zone-aware).<br>
+      <strong>Args:</strong> <code>&lt;citekey&gt;</code>. <span class="where">library/skills/index-paper.md</span>
+    </div>
+  </details>
+</div>
+
+<div class="skill-block library">
+  <details>
+    <summary><span class="badge light">light</span><span class="skill-name">/library/fuse-alternate</span> — <span class="skill-summary">Add printed-page <code>\pgmark{N}</code> anchors from a PDF source to a paper that was originally indexed from a DOCX or TEX (which carry no pagination).</span></summary>
+    <div class="meta">
+      Reads from <code>papers/&lt;citekey&gt;/variants/</code>.<br>
+      <strong>Args:</strong> <code>&lt;citekey&gt;</code>. <span class="where">library/skills/fuse-alternate.md</span>
+    </div>
+  </details>
+</div>
+
+<div class="group-header">🔖 Bibliography <span class="count">— authenticate entries, apply edits, merge across the library</span></div>
+
+<div class="skill-block library">
+  <details>
+    <summary><span class="badge light">light</span><span class="skill-name">/library/authenticate-bib</span> — <span class="skill-summary">Verify and look up a single bib entry against Crossref / OpenAlex / Semantic Scholar / arXiv. Updates <code>master.bib</code> + sets <code>bib.state</code>.</span></summary>
+    <div class="meta">
+      <strong>Five terminal states:</strong> <code>authenticated</code> (DOI verified or ≥2 sources agree), <code>unverified</code>, <code>failed</code>, <code>manuscript</code>, <code>canonical</code>.<br>
+      <strong>Args:</strong> <code>&lt;citekey&gt;</code>. <span class="where">library/skills/authenticate-bib.md</span>
+    </div>
+  </details>
+</div>
+
+<div class="skill-block library">
+  <details>
+    <summary><span class="badge light">light</span><span class="skill-name">/library/apply-bib-edit</span> — <span class="skill-summary">Save a manual bib edit the user made through the library UI's "Edit" button. Reads from the queue, rewrites the <code>master.bib</code> block, re-emits <code>references.bib</code>.</span></summary>
+    <div class="meta">
+      <strong>Args:</strong> <code>&lt;citekey&gt;</code>. <span class="where">library/skills/apply-bib-edit.md</span>
+    </div>
+  </details>
+</div>
+
+<div class="skill-block library">
+  <details>
+    <summary><span class="badge heavy">heavy</span><span class="skill-name">/library/merge-bibs</span> — <span class="skill-summary">Walk every deep-indexed paper's <code>references.bib</code> and fold each entry into <code>master.bib</code> — authenticate, dedupe, or split as needed.</span></summary>
+    <div class="meta">
+      Self-defending: pre-run snapshot to <code>~/Library/Application Support/Virgil/backups/</code>, refuses to start if another writer is active, forces <code>--batch 1</code> in cloud-synced libraries unless <code>--allow-parallel-sync</code>.<br>
+      Skips transient entries (manuscript / forthcoming / in press / draft) — authenticating them is doomed for non-content reasons. <span class="where">library/skills/merge-bibs.md</span>
+    </div>
+  </details>
+</div>
+
+<div class="group-header">🔬 Deep-index family <span class="count">— polish an already-indexed paper (single ✓ → ✓✓)</span></div>
+
+<p style="margin-left: 0.5rem; color: var(--muted); font-size: 0.9em;">An umbrella skill plus six subskills that handle different polish phases. The subskills are also callable directly when only one phase needs work.</p>
+
+<div class="skill-block library">
+  <details>
+    <summary><span class="badge umbrella">umbrella</span><span class="badge heavy">heavy</span><span class="skill-name">/library/deep-index</span> — <span class="skill-summary">Polish an already-indexed paper: structure, headings, footnotes, pagination, bibliography. Runs a convergence loop (no cap) until two passes find nothing new.</span></summary>
+    <div class="meta">
+      Orchestrates the six subskills below. Two-phase: deterministic preprocess (<code>deep_preprocess.py</code>) then AI structural pass.<br>
+      <strong>Status produced:</strong> <code>deepIndexed</code> (✓✓ idx).<br>
+      <strong>Args:</strong> <code>&lt;citekey&gt; [--fresh]</code>. <span class="where">library/skills/deep-index.md</span>
+    </div>
+  </details>
+</div>
+
+<div class="skill-block library">
+  <details>
+    <summary><span class="badge subskill">subskill</span><span class="skill-name">/library/di-preflight</span> — <span class="skill-summary">Detect metadata mismatches, strip lending-slip / JSTOR boilerplate, identify multi-article scans, dispatch OCR recovery, route by genre.</span></summary>
+    <div class="meta">Step 0 / 0.5 of deep-index. <span class="where">library/skills/di-preflight.md</span></div>
+  </details>
+</div>
+
+<div class="skill-block library">
+  <details>
+    <summary><span class="badge subskill">subskill</span><span class="skill-name">/library/di-clean-prose</span> — <span class="skill-summary">Fix the title, headings, heading hierarchy, drop caps, and align pagination anchors.</span></summary>
+    <div class="meta">Step 3a / 3b / 3c of deep-index. <span class="where">library/skills/di-clean-prose.md</span></div>
+  </details>
+</div>
+
+<div class="skill-block library">
+  <details>
+    <summary><span class="badge subskill">subskill</span><span class="skill-name">/library/recover-footnotes</span> — <span class="skill-summary">Re-attach orphan footnotes to their callouts, handle endnote-style sources, fix truncated/leaked footnote text. Walks the full Tier 0 → Tier 4 ladder.</span></summary>
+    <div class="meta">Step 3d of deep-index. <span class="where">library/skills/recover-footnotes.md</span></div>
+  </details>
+</div>
+
+<div class="skill-block library">
+  <details>
+    <summary><span class="badge subskill">subskill</span><span class="skill-name">/library/clean-bibliography</span> — <span class="skill-summary">Itemize the References section, emit a clean <code>references.bib</code>, rewrite inline citations to a uniform style.</span></summary>
+    <div class="meta">Step 3e / 3f / 3g of deep-index. <span class="where">library/skills/clean-bibliography.md</span></div>
+  </details>
+</div>
+
+<div class="skill-block library">
+  <details>
+    <summary><span class="badge subskill">subskill</span><span class="skill-name">/library/di-examples</span> — <span class="skill-summary">Convert numbered examples to the <code>expex</code> package; format formal-semantics math in linguistics/philosophy papers.</span></summary>
+    <div class="meta">Step 3h₁ / 3h₂ of deep-index. <span class="where">library/skills/di-examples.md</span></div>
+  </details>
+</div>
+
+<div class="skill-block library">
+  <details>
+    <summary><span class="badge subskill">subskill</span><span class="skill-name">/library/di-validate</span> — <span class="skill-summary">Validate pagination anchors, produce an audit punch-list, classify outstanding work by category.</span></summary>
+    <div class="meta">
+      Step 3i + 9.5 of deep-index. Also callable directly for a status check on an already-deep-indexed paper.<br>
+      <span class="where">library/skills/di-validate.md</span>
+    </div>
+  </details>
+</div>
+
+<div class="group-header">📜 Shared doctrine <span class="count">— transcluded by the deep-index family, not callable as commands</span></div>
+
+<div class="skill-block library">
+  <details>
+    <summary><span class="badge draft">include</span><span class="skill-name">_doctrine.md</span> — <span class="skill-summary">§0.5 Scope doctrine, §Persistence convergence, §9 outstanding-work categories, anti-patterns, self-check. The load-bearing rules every subskill inherits.</span></summary>
+    <div class="meta">Build script filters leading-underscore files out of the command mirror. <span class="where">library/skills/_doctrine.md</span></div>
+  </details>
+</div>
+
+<div class="skill-block library">
+  <details>
+    <summary><span class="badge draft">include</span><span class="skill-name">_latex-output.md</span> — <span class="skill-summary">The allowed LaTeX command vocabulary for deep-index output — what <code>parseLatex()</code> in Virgil can handle.</span></summary>
+    <div class="meta"><span class="where">library/skills/_latex-output.md</span></div>
+  </details>
+</div>
+
+<h2 id="editor">4. Editor skills <span style="color: var(--muted); font-weight: 400;">— 13 skills</span></h2>
+
+<p>The editor-side skill set lives at <a href="editor/">editor/</a>. Skill source is in <a href="editor/skills/">editor/skills/</a>. Read <a href="editor/AGENTS.md">editor/AGENTS.md</a> for the full spec.</p>
+
+<p>All editor skills act on a single Virgil paper folder. They consume three intent surfaces:</p>
+<ol>
+  <li><code>virgil/ai-requests.json</code> — the unified queue (kinds: <code>footnote</code>, <code>note</code>, <code>quotation</code>, <code>citation</code>, <code>todo</code>, <code>suggestion</code>, <code>style-merge</code>).</li>
+  <li>Card-level <code>aiRequest: boolean</code> flags on notes, todos, cutter-comments, revision-comments — <em>bridged</em> into the unified queue on toggle.</li>
+  <li><code>virgil/bib-review-requests.json</code> — per-bib-key reviews (kept separate because it's per-bib-key, not per-paragraph).</li>
+</ol>
+
+<div class="group-header editor">📋 Umbrella <span class="count">— the one skill that handles everything</span></div>
+
+<div class="skill-block editor">
+  <details>
+    <summary><span class="badge umbrella">umbrella</span><span class="skill-name">/editor/review</span> — <span class="skill-summary">Take a pass on a Virgil paper: walk the unified request inbox, dispatch each request to the matching specialist as a subagent.</span></summary>
+    <div class="meta">
+      The skill the user invokes 95% of the time. Calls every other editor skill as a subagent when there's something to do.<br>
+      <strong>Args:</strong> <code>&lt;docPath&gt;</code> (optional — falls back to <code>cwd</code> if it has a <code>virgil/</code> subdir). <span class="where">editor/skills/review.md</span>
+    </div>
+  </details>
+</div>
+
+<div class="group-header editor">✏️ Direct creates <span class="count">— insert into the paper without a suggestion wrapper</span></div>
+
+<div class="skill-block editor">
+  <details>
+    <summary><span class="skill-name">/editor/draft-footnote</span> — <span class="skill-summary">Write a footnote into <code>footnotes.json</code> and insert the LaTeX command at the anchor paragraph.</span></summary>
+    <div class="meta">
+      <strong>Triggered by:</strong> <code>aiRequest</code> on a footnote-shaped request, or user explicitly says "Virgil, footnote this claim."<br>
+      <strong>Args:</strong> <code>&lt;docPath&gt; &lt;requestId&gt;</code>. <span class="where">editor/skills/draft-footnote.md</span>
+    </div>
+  </details>
+</div>
+
+<div class="skill-block editor">
+  <details>
+    <summary><span class="skill-name">/editor/find-citation</span> — <span class="skill-summary">Search Crossref / OpenAlex / Semantic Scholar / arXiv for a citation matching the user's description; add to <code>references.bib</code> and create a citation card.</span></summary>
+    <div class="meta">
+      Distinct from <code>/editor/answer-bib-review</code> (which <em>verifies</em> an existing entry).<br>
+      <strong>Args:</strong> <code>&lt;docPath&gt; &lt;requestId&gt;</code>. <span class="where">editor/skills/find-citation.md</span>
+    </div>
+  </details>
+</div>
+
+<div class="skill-block editor">
+  <details>
+    <summary><span class="skill-name">/editor/draft-quotation</span> — <span class="skill-summary">Pull a quotation (or several) from a source into a paragraph. Assembles a QuotationGroup anchored to the paragraph.</span></summary>
+    <div class="meta">
+      <strong>Args:</strong> <code>&lt;docPath&gt; &lt;requestId&gt;</code>. <span class="where">editor/skills/draft-quotation.md</span>
+    </div>
+  </details>
+</div>
+
+<div class="group-header editor">💬 Responders <span class="count">— emit suggestion cards instead of editing in place</span></div>
+
+<div class="skill-block editor">
+  <details>
+    <summary><span class="skill-name">/editor/answer-note-request</span> — <span class="skill-summary">Answer a note the user left in Virgil's Notes panel asking for AI help. Drafts a sibling note anchored to the same paragraph (or a suggestion card if the user wanted a doc edit).</span></summary>
+    <div class="meta"><span class="where">editor/skills/answer-note-request.md</span></div>
+  </details>
+</div>
+
+<div class="skill-block editor">
+  <details>
+    <summary><span class="skill-name">/editor/answer-todo-request</span> — <span class="skill-summary">Take care of a todo the user marked for AI in the Todos panel. Decides whether it asks for a doc edit, a footnote/citation, or analysis, and delegates accordingly.</span></summary>
+    <div class="meta"><span class="where">editor/skills/answer-todo-request.md</span></div>
+  </details>
+</div>
+
+<div class="skill-block editor">
+  <details>
+    <summary><span class="skill-name">/editor/answer-cutter-comment</span> — <span class="skill-summary">Respond to a comment the user flagged on a cut/excerpt in the Cutter panel. Drafts a suggestion card responding to the comment.</span></summary>
+    <div class="meta"><span class="where">editor/skills/answer-cutter-comment.md</span></div>
+  </details>
+</div>
+
+<div class="skill-block editor">
+  <details>
+    <summary><span class="skill-name">/editor/answer-revision-comment</span> — <span class="skill-summary">Respond to a comment in the Revisions panel. Drafts a sibling revision-comment (or a revision-suggestion if the user asked for an actual edit).</span></summary>
+    <div class="meta"><span class="where">editor/skills/answer-revision-comment.md</span></div>
+  </details>
+</div>
+
+<div class="skill-block editor">
+  <details>
+    <summary><span class="skill-name">/editor/draft-suggestion</span> — <span class="skill-summary">Propose a revision to a paragraph. Creates a revision-suggestion card with <code>author: "ai"</code> for the user to accept or reject.</span></summary>
+    <div class="meta">
+      <strong>Important:</strong> does NOT edit the document directly — it always goes through a suggestion card.<br>
+      <span class="where">editor/skills/draft-suggestion.md</span>
+    </div>
+  </details>
+</div>
+
+<div class="group-header editor">📚 Bibliography <span class="count">— per-entry verification and whole-paper library sync</span></div>
+
+<div class="skill-block editor">
+  <details>
+    <summary><span class="skill-name">/editor/answer-bib-review</span> — <span class="skill-summary">Fill in or verify a single bib entry that's been flagged for review. Three modes: <code>type=fields</code> (verify/fill), <code>type=notes</code> (draft annotation), <code>--library-sync</code> (swap in a library entry).</span></summary>
+    <div class="meta">
+      <strong>Args:</strong> <code>&lt;docPath&gt; &lt;bibKey&gt; [--library-sync &lt;libraryCitekey&gt; --library &lt;path&gt;]</code>. <span class="where">editor/skills/answer-bib-review.md</span>
+    </div>
+  </details>
+</div>
+
+<div class="skill-block editor">
+  <details>
+    <summary><span class="badge heavy">cross-cut</span><span class="skill-name">/editor/sync-bib-to-library</span> — <span class="skill-summary">Tidy a paper's whole bibliography against the user's Virgil Library: swap matched entries to the library's authoritative version, rename citekeys throughout the doc, add missing entries to the library.</span></summary>
+    <div class="meta">
+      The only editor skill that writes to the library. Single-session cross-cutting via the library's <code>flock</code>-protected Python shims — safe to interleave with a parallel <code>/loop /library/index-pending</code>.<br>
+      <strong>Args:</strong> <code>&lt;docPath&gt; [--dry-run] [--library &lt;path&gt;]</code>. <span class="where">editor/skills/sync-bib-to-library.md</span>
+    </div>
+  </details>
+</div>
+
+<div class="group-header editor">🎨 Style <span class="count">— preamble merges</span></div>
+
+<div class="skill-block editor">
+  <details>
+    <summary><span class="skill-name">/editor/style-merge</span> — <span class="skill-summary">Apply the user's preamble customizations to a document's current style. Intelligently merges user's local LaTeX preamble tweaks onto the target style and rewrites the .tex.</span></summary>
+    <div class="meta">
+      Doesn't trigger for general formatting changes ("make headers bigger") — those need a manual preamble edit by the user first.<br>
+      <strong>Args:</strong> <code>&lt;docPath&gt;</code>. <span class="where">editor/skills/style-merge.md</span>
+    </div>
+  </details>
+</div>
+
+<div class="group-header editor">🛠 Meta <span class="count">— dev-only</span></div>
+
+<div class="skill-block editor">
+  <details>
+    <summary><span class="badge meta">dev-only</span><span class="skill-name">/editor/iterate-virgil-editor</span> — <span class="skill-summary">Stress-test &amp; refine the editor skill set in a sandboxed sample paper. Synthesizes representative AI requests, sandboxes <code>samples/annotation-history</code>, runs the target skill via subagents, reads critique memos, edits skill markdown, loops.</span></summary>
+    <div class="meta">
+      <strong>Args:</strong> <code>[&lt;skill-name&gt;] [&lt;max-attempts&gt;]</code>. <span class="where">editor/skills/iterate-virgil-editor.md</span>
+    </div>
+  </details>
+</div>
+
+<h2 id="repo">5. Repo-level skills</h2>
+
+<p>These don't live under <code>editor/</code> or <code>library/</code> — they're top-level workflows tied to maintaining or releasing Virgil itself, or to running it.</p>
+
+<div class="skill-block repo">
+  <details>
+    <summary><span class="badge heavy">release</span><span class="skill-name">/cleanup-virgil</span> — <span class="skill-summary">Full Virgil release cleanup: merge worktrees, bump version, push and deploy both the app and the library bundle.</span></summary>
+    <div class="meta">End-to-end release workflow.</div>
+  </details>
+</div>
+
+<div class="skill-block repo">
+  <details>
+    <summary><span class="skill-name">/cleanup-worktrees</span> — <span class="skill-summary">Clean up all git worktrees and merge them back into main.</span></summary>
+    <div class="meta">Subset of <code>/cleanup-virgil</code> — just the worktree merge step.</div>
+  </details>
+</div>
+
+<div class="skill-block repo">
+  <details>
+    <summary><span class="skill-name">/virgil:start</span> — <span class="skill-summary">Front-door for Virgil — orients the user, resolves their paper and library context, dispatches to the right specialist (editor or library skill).</span></summary>
+    <div class="meta">
+      The skill that fires when someone says "hey Virgil" or "Virgil, &lt;anything&gt;" without naming a specific skill. Also handles first-time onboarding.<br>
+      <span class="where">Lives in the user's global Claude config, not in the repo.</span>
+    </div>
+  </details>
+</div>
+
+<h2 id="how-built">6. How the skills are built &amp; shipped</h2>
+
+<p>Skills are markdown files in <code>library/skills/*.md</code> and <code>editor/skills/*.md</code>. Two destinations:</p>
+
+<ol>
+  <li><strong>Repo-local</strong>: <code>npm run build:library-bundle</code> and <code>npm run build:editor-bundle</code> mirror skills to <code>.claude/commands/library/</code> and <code>.claude/commands/editor/</code> respectively. Both auto-run via <code>predev</code> / <code>prebuild</code> hooks. Files starting with <code>_</code> are excluded — they're transclusion includes.</li>
+  <li><strong>End-user folder sync</strong>: the library build also emits to <code>public/skill-bundle/</code>. When a user opens a Virgil paper or library folder, a per-folder sync gated by a version stamp copies the latest skills into <code>.claude/commands/</code> and <code>.virgil/scripts/</code> inside their folder. Updates appear as a "click to refresh" toast (not <code>skipWaiting</code>).</li>
+</ol>
+
+<p>The editor-side end-user folder sync isn't built yet — see "Future work" in <a href="editor/AGENTS.md">editor/AGENTS.md</a>.</p>
+
+<hr>
+
+<p style="color: var(--muted); font-size: 0.9em; margin-top: 2rem;">
+  <strong>How to amend this doc:</strong> it's plain HTML/CSS in <a href="SKILLS_TOUR.html">SKILLS_TOUR.html</a>. Edit any section, no build step. To regenerate the descriptions, source-of-truth is the YAML-frontmatter <code>description:</code> field in each skill markdown file.
+</p>
+
+</div>
+</body>
+</html>
