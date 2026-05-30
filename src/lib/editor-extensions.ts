@@ -19,12 +19,12 @@ import OrderedList from "@tiptap/extension-ordered-list";
 import ListItem from "@tiptap/extension-list-item";
 import Blockquote from "@tiptap/extension-blockquote";
 import CodeBlock from "@tiptap/extension-code-block";
-import { mergeAttributes } from "@tiptap/core";
+import { Extension, mergeAttributes } from "@tiptap/core";
 import { Plugin, PluginKey } from "@tiptap/pm/state";
-import type { MutableRefObject } from "react";
+import type { MutableRefObject, RefObject } from "react";
 import { generateShortId } from "@/lib/uuid";
-import { UUID_ATTR_SPEC } from "@/lib/tiptap/uuid-attr";
-import { readPendingDiff } from "@/lib/tiptap/doc-structure";
+import { UUID_ATTR_SPEC, UuidAttrDecorator } from "@/lib/tiptap/uuid-attr";
+import { DocStructureObserver, readPendingDiff } from "@/lib/tiptap/doc-structure";
 import { ensureAnchorUuid } from "@/lib/anchor-uuid";
 import { autoSizeInput } from "@/lib/autoSizeInput";
 import {
@@ -34,6 +34,45 @@ import {
 } from "@/lib/section-folding";
 import { headingTypeName } from "@/lib/heading-types";
 import type { HeadingTypePick } from "@/components/HeadingTypeMenu";
+import StarterKit from "@tiptap/starter-kit";
+import Placeholder from "@tiptap/extension-placeholder";
+import Highlight from "@tiptap/extension-highlight";
+import type { Editor } from "@tiptap/react";
+import {
+  InlineMath,
+  DisplayMath,
+  Footnote,
+  LatexComment,
+  Citation,
+  LabelRef,
+  LatexCommandMark,
+  SlashPopupExtension,
+  LabelHandler,
+  TitleField,
+  MaketitleMarker,
+  EmptyParagraphTitleCleaner,
+  AiRequestMarker,
+  MarginaliaAnchorGuard,
+  LinkedAnchor,
+  LinkedAnchorGuard,
+  TextObjectOrphanGuard,
+  ExampleBlock,
+  ExampleItemList,
+  ExampleItem,
+  ExampleGloss,
+  AlignedGlossRow,
+  ProseGlossRow,
+  GlossCell,
+  ExpexNumbering,
+  SmartQuotes,
+  TabIndent,
+  PgMarkChip,
+  TextColor,
+  TexBlock,
+  FigureBlock,
+  FigureCaption,
+  GraphicsBlock,
+} from "@/lib/tiptap-extensions";
 
 // --- Heading callback refs (threaded from the host component) ----------
 // Formerly lexical closures inside VirgilEditor; the heading NodeView reads
@@ -1273,4 +1312,186 @@ export function createHeadingWithLabel(refs: HeadingCallbackRefs) {
     // integer; configure() only uses `levels` for input rules and
     // keyboard shortcuts, both of which tolerate the wider range.
   }).configure({ levels: [0, 1, 2, 3, 4, 5, 6] as unknown as import("@tiptap/extension-heading").Level[] });
+}
+
+
+// --- buildEditorExtensions(ctx) — the FCU factory ----------------------
+//
+// The single source of the editor's TipTap extension stack. Consumed by the
+// main editor today (surface: "main") and — from FCU Chips B/C — by every
+// popped-out TextObject float (surface: "float"), so editor-appearance
+// changes port to popouts automatically with no per-kind keying. See
+// /Users/gabriel/.claude/plans/fcu-plan.md.
+
+type FigureDeleteHandler = () => Promise<boolean>;
+
+export interface EditorExtensionsCallbackRefs {
+  isLabelTaken?: MutableRefObject<LabelTakenPredicate | undefined>;
+  onConfirmLabelRename?: MutableRefObject<LabelRenameHandler | undefined>;
+  onConfirmHeadingDelete?: MutableRefObject<HeadingDeleteHandler | undefined>;
+  onOpenHeadingTypeMenu?: MutableRefObject<HeadingTypeMenuOpener | undefined>;
+  onConfirmFigureDelete?: MutableRefObject<FigureDeleteHandler | undefined>;
+}
+
+export interface EditorExtensionsCtx {
+  /** Which surface this stack is for. "main" emits the full stack; "float"
+   *  (FCU Chips B/C) emits the shared core minus the doc-wide numberers /
+   *  folding and the main-only chrome. */
+  surface: "main" | "float";
+  /** Main: ref mirroring the host's `editable` prop; drives readOnlyEnforcer. */
+  editableRef?: RefObject<boolean>;
+  /** Float: static editability (FCU Chips B/C). */
+  editable?: boolean;
+  /** When true, atoms render as compact card previews (floats). main: false. */
+  cardContext: boolean;
+  /** Heading / figure callback refs, read by the relocated NodeViews. */
+  callbacks: EditorExtensionsCallbackRefs;
+  /** docId mirror for FigureBlock / GraphicsBlock NodeViews. */
+  docIdRef?: RefObject<string | null> | null;
+  /** texBlock is-popped predicate (double-ref shape; see TexBlockOptions). */
+  texBlockIsPoppedRef?: RefObject<
+    RefObject<(uuid: string) => boolean> | undefined
+  > | null;
+  /** Paragraph UUIDs carrying marginalia — gates MarginaliaAnchorGuard. */
+  anchoredUuidsRef?: RefObject<Set<string>>;
+  /** Float: the main editor a float reads numbering from / proxies structural
+   *  writes to. `null` for the main surface. (Exercised in FCU Chips B/C.) */
+  host?: { getMainEditor: () => Editor | null } | null;
+}
+
+export function buildEditorExtensions(ctx: EditorExtensionsCtx) {
+  if (ctx.surface === "float") {
+    // FCU Chips B/C wire each TextObject float body to this factory. The
+    // float stack is the shared core (StarterKit + DocStructureObserver-first
+    // + the block builders + atoms + expex + Highlight + LinkedAnchor +
+    // TabIndent) MINUS the doc-wide numberers/folding (sectionNumbers /
+    // sectionFoldingPlugin / ExpexNumbering) and the main-only chrome
+    // (Placeholder, SlashPopupExtension, Title/Maketitle/Label handlers,
+    // MarginaliaAnchorGuard, PgMarkChip, UuidAttrDecorator, readOnlyEnforcer).
+    // Structural writes proxy to `ctx.host`. Not built in Chip A (F0/F1) — no
+    // float body calls this yet. See fcu-plan.md.
+    throw new Error(
+      "buildEditorExtensions: surface 'float' is implemented in FCU Chip B/C",
+    );
+  }
+
+  // surface === "main": the full extension stack, byte-identical to the
+  // former inline array in VirgilEditor (Editor.tsx, pre-FCU). The ORDER is
+  // load-bearing — DocStructureObserver MUST stay at index 1 (right after
+  // StarterKit) for the keystroke-sanctity first-extension invariant.
+  return [
+    StarterKit.configure({
+      heading: false,
+      paragraph: false,
+      bulletList: false,
+      orderedList: false,
+      listItem: false,
+      blockquote: false,
+      codeBlock: false,
+      dropcursor: { color: "var(--drag-highlight)", width: 2 },
+    }),
+    // Position 0 (after StarterKit). The observer must run first so
+    // any appendTransaction plugin that wants to read the diff via
+    // `readPendingDiff(state)` can do so. See
+    // `docs/perf/keystroke-sanctity-findings.md` and
+    // `src/lib/tiptap/doc-structure/`.
+    DocStructureObserver,
+    createParagraphWithTitle(),
+    createHeadingWithLabel({
+      isLabelTakenRef: ctx.callbacks.isLabelTaken,
+      onConfirmLabelRenameRef: ctx.callbacks.onConfirmLabelRename,
+      onConfirmHeadingDeleteRef: ctx.callbacks.onConfirmHeadingDelete,
+      onOpenHeadingTypeMenuRef: ctx.callbacks.onOpenHeadingTypeMenu,
+    }),
+    createBulletListWithTitle(),
+    createOrderedListWithTitle(),
+    createListItemWithUuid(),
+    createBlockquoteWithUuid(),
+    createCodeBlockWithUuid(),
+    TexBlock.configure({
+      isPoppedRef: ctx.texBlockIsPoppedRef ?? null,
+    }),
+    FigureBlock.configure({
+      docIdRef: ctx.docIdRef ?? null,
+      onConfirmLabelRenameRef: ctx.callbacks.onConfirmLabelRename ?? null,
+      onConfirmFigureDeleteRef: ctx.callbacks.onConfirmFigureDelete ?? null,
+    }),
+    FigureCaption,
+    GraphicsBlock.configure({ docIdRef: ctx.docIdRef ?? null }),
+    Placeholder.configure({
+      placeholder: "Start writing...",
+    }),
+    Highlight.configure({
+      multicolor: true,
+    }),
+    TextColor,
+    InlineMath,
+    DisplayMath,
+    Footnote,
+    LatexComment,
+    Citation,
+    LabelRef,
+    ExampleBlock,
+    ExampleItemList,
+    ExampleItem,
+    ExampleGloss,
+    AlignedGlossRow,
+    ProseGlossRow,
+    GlossCell,
+    ExpexNumbering,
+    AiRequestMarker,
+    LatexCommandMark,
+    SlashPopupExtension,
+    SmartQuotes,
+    LinkedAnchor,
+    LinkedAnchorGuard,
+    TextObjectOrphanGuard,
+    TitleField,
+    MaketitleMarker,
+    LabelHandler,
+    EmptyParagraphTitleCleaner,
+    ...(ctx.anchoredUuidsRef
+      ? [
+          MarginaliaAnchorGuard.configure({
+            anchoredUuidsRef: ctx.anchoredUuidsRef,
+          }),
+        ]
+      : []),
+    TabIndent,
+    PgMarkChip,
+    // Emits `data-uuid` decorations on every anchorable block's outer
+    // DOM element. The marginalia registry + drag hit-test depend on
+    // these attributes being present in the live DOM. See uuid-attr.ts
+    // for why this needs to be a decoration and not renderHTML.
+    UuidAttrDecorator,
+    // Read-only enforcement plugin: rejects any transaction that
+    // mutates the document when the host's `editable` is false. For
+    // surface "main" this reads the `editableRef` mirror of the React
+    // `editable` prop, so it matches the former inline `readOnlyRef`
+    // guard exactly (editableNow === !readOnlyRef.current).
+    Extension.create({
+      name: "readOnlyEnforcer",
+      addProseMirrorPlugins() {
+        return [
+          new Plugin({
+            key: new PluginKey("readOnlyEnforcer"),
+            filterTransaction(tr) {
+              const editableNow = ctx.editableRef
+                ? ctx.editableRef.current
+                : true;
+              if (editableNow) return true;
+              if (!tr.docChanged) return true;
+              // Programmatic citation attribute syncs (panel-driven
+              // type changes refreshing the inline citation's command
+              // / displayText) tag their transactions with this meta
+              // so they pass through even in collaborator read-only
+              // mode. They don't touch document text, just node attrs.
+              if (tr.getMeta("ignoreReadOnly")) return true;
+              return false;
+            },
+          }),
+        ];
+      },
+    }),
+  ];
 }

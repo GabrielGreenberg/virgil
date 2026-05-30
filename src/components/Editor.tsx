@@ -1,21 +1,9 @@
 "use client";
 
 import { useEditor, EditorContent, JSONContent, Editor } from "@tiptap/react";
-import StarterKit from "@tiptap/starter-kit";
-import { Heading } from "@tiptap/extension-heading";
-import { Paragraph } from "@tiptap/extension-paragraph";
-import BulletList from "@tiptap/extension-bullet-list";
-import OrderedList from "@tiptap/extension-ordered-list";
-import ListItem from "@tiptap/extension-list-item";
-import Blockquote from "@tiptap/extension-blockquote";
-import CodeBlock from "@tiptap/extension-code-block";
-import { Extension } from "@tiptap/core";
-import Placeholder from "@tiptap/extension-placeholder";
-import Highlight from "@tiptap/extension-highlight";
 import { useEffect, useCallback, useRef, useImperativeHandle, forwardRef } from "react";
-import { NodeSelection, Plugin, PluginKey } from "@tiptap/pm/state";
+import { NodeSelection } from "@tiptap/pm/state";
 import { Node as PMNode } from "@tiptap/pm/model";
-import { InlineMath, DisplayMath, Footnote, LatexComment, Citation, LabelRef, LatexCommandMark, SlashPopupExtension, LabelHandler, TitleField, MaketitleMarker, EmptyParagraphTitleCleaner, AiRequestMarker, MarginaliaAnchorGuard, LinkedAnchor, LinkedAnchorGuard, TextObjectOrphanGuard, ExampleBlock, ExampleItemList, ExampleItem, ExampleGloss, AlignedGlossRow, ProseGlossRow, GlossCell, ExpexNumbering, SmartQuotes, TabIndent, PgMarkChip, TextColor, TexBlock, FigureBlock, FigureCaption, GraphicsBlock } from "@/lib/tiptap-extensions";
 import {
   collectLinksFromEditor,
   jumpToLink,
@@ -48,8 +36,6 @@ import { registerDropTarget } from "@/components/drop-mode/target-registry";
 // registry via `registerFloatBody`. Must run before any popout renders.
 import "@/text-objects/floats";
 import { generateShortId } from "@/lib/uuid";
-import { UuidAttrDecorator } from "@/lib/tiptap/uuid-attr";
-import { DocStructureObserver } from "@/lib/tiptap/doc-structure";
 import { ensureAnchorUuid } from "@/lib/anchor-uuid";
 import { parseLatex } from "@/lib/latex-parser";
 import { serializeBodyOnly } from "@/lib/latex-serializer";
@@ -63,15 +49,7 @@ import { SelectionActionsMenu } from "./SelectionActionsMenu";
 import { SlashCommandPopup } from "./SlashCommandPopup";
 import { sectionFoldingPluginKey } from "@/lib/section-folding";
 import type { HeadingTypePick } from "./HeadingTypeMenu";
-import {
-  createParagraphWithTitle,
-  createHeadingWithLabel,
-  createBulletListWithTitle,
-  createOrderedListWithTitle,
-  createListItemWithUuid,
-  createBlockquoteWithUuid,
-  createCodeBlockWithUuid,
-} from "@/lib/editor-extensions";
+import { buildEditorExtensions } from "@/lib/editor-extensions";
 
 /**
  * Per-node LaTeX serialization cache for `\ex…\xe` example blocks.
@@ -405,6 +383,12 @@ const VirgilEditor = forwardRef<EditorHandle, EditorProps>(function VirgilEditor
   // never appear even though the wiring was correct end-to-end.
   const readOnlyRef = useRef(!editable);
   readOnlyRef.current = !editable;
+  // Mirror of the user-facing `editable` prop in the positive sense,
+  // threaded into buildEditorExtensions so the factory's readOnlyEnforcer
+  // reads the same live value the former inline plugin read via
+  // `readOnlyRef` (editableRef.current === !readOnlyRef.current).
+  const editableRef = useRef(editable);
+  editableRef.current = editable;
   // Stable ref to the live TipTap editor instance — used by the
   // TextObjectGrabHandle to subscribe to selectionUpdate / coords without
   // re-renders. Populated below via useEffect once `useEditor` returns
@@ -448,122 +432,23 @@ const VirgilEditor = forwardRef<EditorHandle, EditorProps>(function VirgilEditor
   const documentClassRef = useRef<string | null>(documentClass ?? null);
   documentClassRef.current = documentClass ?? null;
 
-  const ParagraphWithTitle = createParagraphWithTitle();
-  const HeadingWithLabel = createHeadingWithLabel({
-    isLabelTakenRef,
-    onConfirmLabelRenameRef,
-    onConfirmHeadingDeleteRef,
-    onOpenHeadingTypeMenuRef,
-  });
-  const BulletListWithTitle = createBulletListWithTitle();
-  const OrderedListWithTitle = createOrderedListWithTitle();
-  const ListItemWithUuid = createListItemWithUuid();
-  const BlockquoteWithUuid = createBlockquoteWithUuid();
-  const CodeBlockWithUuid = createCodeBlockWithUuid();
-
   const editor = useEditor({
-    extensions: [
-      StarterKit.configure({
-        heading: false,
-        paragraph: false,
-        bulletList: false,
-        orderedList: false,
-        listItem: false,
-        blockquote: false,
-        codeBlock: false,
-        dropcursor: { color: "var(--drag-highlight)", width: 2 },
-      }),
-      // Position 0 (after StarterKit). The observer must run first so
-      // any appendTransaction plugin that wants to read the diff via
-      // `readPendingDiff(state)` can do so. See
-      // `docs/perf/keystroke-sanctity-findings.md` and
-      // `src/lib/tiptap/doc-structure/`.
-      DocStructureObserver,
-      ParagraphWithTitle,
-      HeadingWithLabel,
-      BulletListWithTitle,
-      OrderedListWithTitle,
-      ListItemWithUuid,
-      BlockquoteWithUuid,
-      CodeBlockWithUuid,
-      TexBlock.configure({
-        isPoppedRef: texBlockIsPoppedPredicateRef,
-      }),
-      FigureBlock.configure({
-        docIdRef,
-        onConfirmLabelRenameRef,
-        onConfirmFigureDeleteRef,
-      }),
-      FigureCaption,
-      GraphicsBlock.configure({ docIdRef }),
-      Placeholder.configure({
-        placeholder: "Start writing...",
-      }),
-      Highlight.configure({
-        multicolor: true,
-      }),
-      TextColor,
-      InlineMath,
-      DisplayMath,
-      Footnote,
-      LatexComment,
-      Citation,
-      LabelRef,
-      ExampleBlock,
-      ExampleItemList,
-      ExampleItem,
-      ExampleGloss,
-      AlignedGlossRow,
-      ProseGlossRow,
-      GlossCell,
-      ExpexNumbering,
-      AiRequestMarker,
-      LatexCommandMark,
-      SlashPopupExtension,
-      SmartQuotes,
-      LinkedAnchor,
-      LinkedAnchorGuard,
-      TextObjectOrphanGuard,
-      TitleField,
-      MaketitleMarker,
-      LabelHandler,
-      EmptyParagraphTitleCleaner,
-      ...(anchoredUuidsRef
-        ? [MarginaliaAnchorGuard.configure({ anchoredUuidsRef })]
-        : []),
-      TabIndent,
-      PgMarkChip,
-      // Emits `data-uuid` decorations on every anchorable block's outer
-      // DOM element. The marginalia registry + drag hit-test depend on
-      // these attributes being present in the live DOM. See uuid-attr.ts
-      // for why this needs to be a decoration and not renderHTML.
-      UuidAttrDecorator,
-      // Read-only enforcement plugin: rejects any transaction that
-      // mutates the document when the React `editable` prop is false.
-      // See the `readOnlyRef` comment near the top of this component
-      // for why we keep `view.editable = true` instead of toggling it.
-      Extension.create({
-        name: "readOnlyEnforcer",
-        addProseMirrorPlugins() {
-          return [
-            new Plugin({
-              key: new PluginKey("readOnlyEnforcer"),
-              filterTransaction(tr) {
-                if (!readOnlyRef.current) return true;
-                if (!tr.docChanged) return true;
-                // Programmatic citation attribute syncs (panel-driven
-                // type changes refreshing the inline citation's command
-                // / displayText) tag their transactions with this meta
-                // so they pass through even in collaborator read-only
-                // mode. They don't touch document text, just node attrs.
-                if (tr.getMeta("ignoreReadOnly")) return true;
-                return false;
-              },
-            }),
-          ];
-        },
-      }),
-    ],
+    extensions: buildEditorExtensions({
+      surface: "main",
+      editableRef,
+      cardContext: false,
+      callbacks: {
+        isLabelTaken: isLabelTakenRef,
+        onConfirmLabelRename: onConfirmLabelRenameRef,
+        onConfirmHeadingDelete: onConfirmHeadingDeleteRef,
+        onOpenHeadingTypeMenu: onOpenHeadingTypeMenuRef,
+        onConfirmFigureDelete: onConfirmFigureDeleteRef,
+      },
+      docIdRef,
+      texBlockIsPoppedRef: texBlockIsPoppedPredicateRef,
+      anchoredUuidsRef,
+      host: null,
+    }),
     content: initialContent,
     // Always mount PM with `editable: true` so the DOM stays
     // `contenteditable="true"` and the browser/PM duo continues to sync
