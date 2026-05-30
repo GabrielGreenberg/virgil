@@ -46,12 +46,10 @@ async function sha1Hex12(input: string): Promise<string> {
 // (Issue-7: the lifted ghost already shows the image; the released float
 // should match it on first paint).
 //
-// We cache the decoded Blob, NOT an object URL: each consumer mints + revokes
-// its own URL from the shared Blob, so there's no cross-instance revocation
-// hazard, and the Blob outlives any single URL. The Map is bounded in
-// practice by the figure count of the docs opened this session (a handful of
-// modest webp rasters); entries for a closed doc are inert (the Blob is freed
-// once nothing references it — GC reclaims the Map value when overwritten).
+// We keep the decoded Blob here so the synchronous adopt path can recover the
+// raster's `cacheKey` — and thus the shared-URL key below — BEFORE the async
+// fingerprint check runs. The Map is bounded in practice by the figure count
+// of the docs opened this session (a handful of modest webp rasters).
 interface CachedRaster {
   blob: Blob;
   /** The `sha1(source:fingerprint)` the blob was resolved at — lets a
@@ -61,20 +59,82 @@ interface CachedRaster {
 const rasterCache = new Map<string, CachedRaster>();
 const rasterCacheKey = (docId: string, source: string) => `${docId}\u0000${source}`;
 
+// Module-level shared, REFCOUNTED object URLs, keyed by
+// `docId\0source\0cacheKey`. Every consumer of a given raster (the main-editor
+// FigurePanel, the popped float's read-only FigurePanel, and — transitively,
+// via cloneNode — the lifted ghost) references the SAME object-URL string, so
+// a later-mounting consumer's <img> hits the browser's decoded-image cache and
+// paints on its first frame WITHOUT re-decoding.
+//
+// Issue-7b: Issue-7 cached only the Blob and had each consumer mint its OWN
+// `createObjectURL`. A fresh object URL is a NEW resource → a decode-cache MISS
+// → the browser re-decodes the bytes before it can paint (measured ~2ms for a
+// 1000×720 webp, ~5ms for 2160×1320, vs ~0.1ms to reuse a warm URL), i.e. 1+
+// unpainted frame across the ghost→float release handoff — the residual
+// flicker that Issue-7's DOM-state probe (MutationObserver + img.complete)
+// could not see because it measured DOM presence, not paint/decode. Sharing
+// the URL string puts the float on the ghost's fast path: the ghost already
+// reuses the main editor's URL (cloneNode copies the `src`), so the released
+// float now matches it and paints on frame 1.
+//
+// We REFCOUNT because the URL must outlive ANY single consumer yet be revoked
+// once the LAST one drops it — solving the cross-instance revocation hazard
+// Issue-7 sidestepped by never sharing a URL. The main-editor figure holds a
+// ref for the life of the open doc, so a float adopting then closing only
+// moves the count 1↔2 and never revokes a URL out from under a live consumer.
+// Keying by `cacheKey` (not just docId+source) means a genuine source change
+// (new fingerprint → new cacheKey) mints a distinct URL rather than reusing a
+// stale one.
+interface SharedFigureUrl {
+  url: string;
+  refs: number;
+}
+const urlCache = new Map<string, SharedFigureUrl>();
+// Self-delimiting composite key — docId/source may contain spaces or slashes
+// and cacheKey is fixed-length hex, so JSON-array encoding is collision-proof
+// without a separator sentinel (and keeps the source free of the NUL control
+// byte a `\0` join would embed, which makes git treat the file as binary).
+const urlCacheKey = (docId: string, source: string, cacheKey: string) =>
+  JSON.stringify([docId, source, cacheKey]);
+
+/** Acquire (or first mint) the shared object URL for a resolved raster,
+ *  bumping its refcount. Pair every call with `releaseSharedFigureUrl(key)`. */
+function acquireSharedFigureUrl(key: string, blob: Blob): string {
+  let entry = urlCache.get(key);
+  if (!entry) {
+    entry = { url: URL.createObjectURL(blob), refs: 0 };
+    urlCache.set(key, entry);
+  }
+  entry.refs += 1;
+  return entry.url;
+}
+
+/** Drop one reference to a shared object URL; revoke + evict at refcount 0. */
+function releaseSharedFigureUrl(key: string): void {
+  const entry = urlCache.get(key);
+  if (!entry) return;
+  entry.refs -= 1;
+  if (entry.refs <= 0) {
+    URL.revokeObjectURL(entry.url);
+    urlCache.delete(key);
+  }
+}
+
 // Resolve a figure source path to a displayable blob URL, caching the
-// screen-resolution raster in `<paper>/virgil/figures-cache/` AND sharing the
-// decoded Blob in-memory (rasterCache) across editor instances. The hook owns
-// each instance's blob URL lifecycle (revokes on unmount / source change).
+// screen-resolution raster in `<paper>/virgil/figures-cache/`, sharing the
+// decoded Blob in-memory (rasterCache), AND sharing a single refcounted object
+// URL (urlCache) across editor instances. The hook acquires/releases its
+// instance's reference to the shared URL (release on unmount / source change).
 //
 // Flow per mount:
-//   0. Synchronously adopt a shared cached raster if present (pre-paint), so
-//      the first frame already shows the image.
+//   0. Synchronously adopt a shared cached raster if present (pre-paint),
+//      acquiring its shared URL, so the first frame already shows the image.
 //   1. readFigureSource → bytes + ext + fingerprint
 //   2. computeCacheKey from source + fingerprint
 //   3. If the adopted raster's key still matches → keep it (no re-decode)
 //   4. Else try the on-disk raster cache; if a matching raster exists, hand
 //      back that blob; otherwise rasterize → write to cache → hand back
-//   5. Publish the resolved Blob to the shared rasterCache.
+//   5. Publish the resolved Blob to rasterCache and acquire its shared URL.
 //
 // `refresh()` deletes the cache entry (in-memory + on-disk) and re-runs the
 // pipeline; used by the per-figure reload button.
@@ -96,19 +156,25 @@ export function useResolvedFigureUrl(
       return;
     }
     let cancelled = false;
-    let createdUrl: string | null = null;
+    // The urlCache key this effect currently holds a reference to (null until
+    // it acquires one). We release exactly this key on unmount / re-resolve.
+    let heldUrlKey: string | null = null;
 
     // (0) Synchronous shared-cache adopt. If another instance already resolved
     // this figure (main editor on doc load → the popped float mounting later),
-    // paint the image on THIS frame. The async re-validation below confirms
-    // the source's fingerprint is unchanged and only re-resolves if it isn't.
+    // paint the image on THIS frame by ACQUIRING the shared, refcounted URL —
+    // the same string the main editor (and its cloneNode ghost) already use, so
+    // the <img> hits the warm decode cache and paints with no re-decode flash
+    // (Issue-7b). The async re-validation below confirms the source's
+    // fingerprint is unchanged and only re-resolves if it isn't.
     const ckey = rasterCacheKey(docId, source);
     const hit = rasterCache.get(ckey);
     let adoptedKey: string | null = null;
     if (hit) {
-      createdUrl = URL.createObjectURL(hit.blob);
+      heldUrlKey = urlCacheKey(docId, source, hit.cacheKey);
+      const url = acquireSharedFigureUrl(heldUrlKey, hit.blob);
       adoptedKey = hit.cacheKey;
-      setUrl(createdUrl);
+      setUrl(url);
       setStatus("ready");
       setError(null);
     } else {
@@ -130,7 +196,7 @@ export function useResolvedFigureUrl(
         // (3) The adopted blob is still current (same fingerprint) → keep the
         // already-painted image; skip the raster read + a redundant object-URL
         // swap that would needlessly re-decode the same bytes.
-        if (adoptedKey && adoptedKey === cacheKey && createdUrl) {
+        if (adoptedKey && adoptedKey === cacheKey && heldUrlKey) {
           setStatus("ready");
           return;
         }
@@ -165,10 +231,16 @@ export function useResolvedFigureUrl(
         // consumer can adopt it synchronously (Issue-7).
         rasterCache.set(ckey, { blob, cacheKey });
 
-        // Swap in the freshly-resolved URL, revoking any adopted-but-stale one.
-        if (createdUrl) URL.revokeObjectURL(createdUrl);
-        createdUrl = URL.createObjectURL(blob);
-        setUrl(createdUrl);
+        // Acquire the shared, refcounted URL for the freshly-resolved raster
+        // (Issue-7b: consumers reuse the same string → warm decode cache → no
+        // re-decode flash on a later mount), then release any adopted-but-stale
+        // URL we held. `heldUrlKey !== nextKey` here because the matched-adopt
+        // case already returned at (3).
+        const nextKey = urlCacheKey(docId, source, cacheKey);
+        const nextUrl = acquireSharedFigureUrl(nextKey, blob);
+        if (heldUrlKey && heldUrlKey !== nextKey) releaseSharedFigureUrl(heldUrlKey);
+        heldUrlKey = nextKey;
+        setUrl(nextUrl);
         setStatus("ready");
       } catch (e) {
         if (cancelled) return;
@@ -181,7 +253,7 @@ export function useResolvedFigureUrl(
 
     return () => {
       cancelled = true;
-      if (createdUrl) URL.revokeObjectURL(createdUrl);
+      if (heldUrlKey) releaseSharedFigureUrl(heldUrlKey);
     };
   }, [docId, source, bust]);
 
