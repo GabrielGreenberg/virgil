@@ -103,7 +103,26 @@ export interface HeadingCallbackRefs {
   onOpenHeadingTypeMenuRef?: MutableRefObject<HeadingTypeMenuOpener | undefined>;
 }
 
-export function createParagraphWithTitle() {
+export interface ParagraphSurfaceOpts {
+  /** Which surface the paragraph NodeView is mounted on.
+   *  - "main" (default): the `parTitle` write targets the editor the
+   *    NodeView lives in, resolved by live position (`getPos`). Byte-identical
+   *    to the pre-FCU behaviour.
+   *  - "float" (FCU Chip C1): the inline `+T` title write PROXIES to
+   *    `host.getMainEditor()` (= MAIN), resolving the paragraph there by uuid
+   *    (the float's paragraph carries the synced uuid). The float's own
+   *    onUpdate never fires from this write, so useFloatMainSync re-reads the
+   *    result idempotently — no echo loop. Mirrors the heading builder's
+   *    host-proxy structural writes (Chip B). */
+  surface: "main" | "float";
+  /** Float only: the main editor a float proxies the title write to.
+   *  Resolved per-interaction (a re-mounted main editor is picked up). */
+  host?: { getMainEditor: () => Editor | null };
+}
+
+export function createParagraphWithTitle(opts?: ParagraphSurfaceOpts) {
+  const isFloat = opts?.surface === "float";
+  const host = opts?.host;
   return Paragraph.extend({
     // Paragraphs never participate in HTML5 drag. Pop-out (custom mousedown
     // lift on the 6-dot grip) and drop-mode (shift-drag on a float header)
@@ -169,6 +188,36 @@ export function createParagraphWithTitle() {
         wrapper.appendChild(pContainer);
 
         function setTitle(newTitle: string | null) {
+          if (isFloat) {
+            // FCU Chip C1: proxy the title write to MAIN, resolving the
+            // paragraph there by uuid (the float's paragraph carries the
+            // synced uuid). The float's own onUpdate never fires from this,
+            // so useFloatMainSync re-reads the result idempotently — no echo.
+            // Falls back to the float editor if main isn't resolvable.
+            const target = host?.getMainEditor() ?? nodeEditor;
+            const uuid = (currentNode.attrs.uuid as string | null) || null;
+            if (!uuid) return;
+            let foundPos: number | null = null;
+            let foundAttrs: Record<string, unknown> | null = null;
+            target.state.doc.descendants((nd, pos) => {
+              if (foundPos != null) return false;
+              if (nd.type.name === "paragraph" && nd.attrs.uuid === uuid) {
+                foundPos = pos;
+                foundAttrs = { ...nd.attrs };
+                return false;
+              }
+              return true;
+            });
+            if (foundPos == null || foundAttrs == null) return;
+            const tr = target.state.tr.setNodeMarkup(foundPos, undefined, {
+              ...(foundAttrs as Record<string, unknown>),
+              parTitle: newTitle,
+            });
+            target.view.dispatch(tr);
+            return;
+          }
+          // Main (default): UNCHANGED — write to the editor the NodeView
+          // lives in, resolved by live position.
           const pos = typeof getPos === "function" ? getPos() : null;
           if (pos != null) {
             const n = nodeEditor.state.doc.nodeAt(pos);
@@ -1498,7 +1547,11 @@ export function buildEditorExtensions(ctx: EditorExtensionsCtx) {
     // `docs/perf/keystroke-sanctity-findings.md` and
     // `src/lib/tiptap/doc-structure/`.
     DocStructureObserver,
-    createParagraphWithTitle(),
+    createParagraphWithTitle(
+      isFloat
+        ? { surface: "float", host: ctx.host ?? undefined }
+        : { surface: "main" },
+    ),
     createHeadingWithLabel(
       headingRefs,
       isFloat

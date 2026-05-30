@@ -9,39 +9,33 @@
  * outer FloatCard wrapper and header chrome now live in the unified
  * `TextObjectFloat` — this module is body-only.
  *
- * Schema is StarterKit minus block kinds: a paragraph is one node, so
- * Doc > Paragraph is the whole tree. All inline atoms (citation,
- * footnote, math, …) come through the same extension list the main
- * editor uses, so content round-trips losslessly.
+ * Extension stack: built by the shared `buildEditorExtensions` factory
+ * with `surface: "float"` (FCU Chip C1) — the SAME chrome NodeViews as the
+ * main editor, so the popped paragraph's title is rendered by the very
+ * same inline `+T` `ParagraphWithTitle` NodeView that main uses (no per-body
+ * title UI; the retired `FloatTitleField` is gone for paragraphs). The
+ * paragraph's `parTitle` rides in via the synced node attrs; the inline
+ * `+T` write PROXIES to the MAIN editor via `host.getMainEditor()` (resolved
+ * by uuid), so editing the title in the popout updates the source paragraph.
+ * Colored text renders too (TextColor is now in the shared core).
  *
- * The editable `parTitle` field lives above the embedded editor; the
- * shared `FloatTitleField` carries the input chrome.
+ * The float syncs the FULL paragraph node (attrs incl. `parTitle` + `uuid`),
+ * not content-only, so the inline NodeView can read the title. Body-content
+ * writes back to main rebuild the paragraph from main's own attrs, so a body
+ * edit never clobbers the title (and vice-versa — the title write goes
+ * straight to main and syncs back).
  */
 
 import {
   type RefObject,
   useCallback,
-  useEffect,
   useMemo,
-  useState,
+  useRef,
 } from "react";
 import { useEditor, EditorContent, type JSONContent } from "@tiptap/react";
-import StarterKit from "@tiptap/starter-kit";
-import Highlight from "@tiptap/extension-highlight";
 import type { Node as PMNode } from "@tiptap/pm/model";
-import {
-  InlineMath,
-  Footnote,
-  LatexComment,
-  Citation,
-  LabelRef,
-  LatexCommandMark,
-  AiRequestMarker,
-  LinkedAnchor,
-  LinkedAnchorGuard,
-  TabIndent,
-} from "@/lib/tiptap-extensions";
 import type { EditorHandle } from "@/components/Editor";
+import { buildEditorExtensions } from "@/lib/editor-extensions";
 import { usePoppedCards } from "@/hooks/usePoppedCards";
 import { useEditorChrome } from "@/components/editor-layout/chrome-context";
 import {
@@ -50,7 +44,6 @@ import {
   useFloatMainSync,
 } from "@/lib/float-sync";
 import type { TextObjectFloatBodyProps } from "../types";
-import { FloatTitleField } from "./float-title-field";
 
 export function ParagraphBody({
   cardKey,
@@ -61,20 +54,17 @@ export function ParagraphBody({
   const popped = usePoppedCards();
   const chrome = useEditorChrome();
   const mainEditor = ref.current?.getEditor() ?? null;
-  const [title, setTitle] = useState<string | null>(null);
-  const [editingTitle, setEditingTitle] = useState(false);
 
-  // Seed once from main on mount; thereafter useFloatMainSync drives
-  // main→float and our onUpdate drives float→main.
+  // Seed once from main on mount: the FULL paragraph node (attrs incl.
+  // `parTitle` + `uuid`), so the inline `+T` NodeView renders the title and
+  // the title write can resolve the source paragraph by uuid. Thereafter
+  // useFloatMainSync drives main→float and our onUpdate drives float→main.
   const initial = useMemo(() => {
-    let paragraphContent: JSONContent[] = [];
-    let initTitle: string | null = null;
+    let paragraphNode: JSONContent | null = null;
     if (mainEditor) {
       mainEditor.state.doc.descendants((node) => {
         if (node.type.name === "paragraph" && node.attrs?.uuid === uuid) {
-          const json = node.toJSON() as JSONContent;
-          paragraphContent = json.content ?? [];
-          initTitle = (node.attrs?.parTitle as string | null) ?? null;
+          paragraphNode = node.toJSON() as JSONContent;
           return false;
         }
         return true;
@@ -83,43 +73,64 @@ export function ParagraphBody({
     return {
       doc: {
         type: "doc",
-        content: [{ type: "paragraph", content: paragraphContent }],
+        content: [paragraphNode ?? { type: "paragraph", content: [] }],
       } as JSONContent,
-      title: initTitle,
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [uuid]);
 
-  useEffect(() => {
-    setTitle(initial.title);
-  }, [initial.title]);
-
   const floatId = `par:${uuid}`;
 
+  // Heading/figure callbacks proxied to the MAIN editor's handle, threaded
+  // into the factory's `callbacks` exactly as the heading float (Chip B).
+  // A paragraph float's doc holds only a paragraph, so the heading/figure
+  // NodeViews never instantiate and these are inert — they're threaded for
+  // parity with the factory contract and to stay structurally identical to
+  // heading-body. `.current` is reassigned each render so the closures see
+  // the live main handle.
+  const isLabelTakenRef = useRef<
+    ((candidate: string, excludeLabel: string | null) => boolean) | undefined
+  >(undefined);
+  isLabelTakenRef.current = (candidate, excludeLabel) =>
+    ref.current?.isLabelTaken(candidate, excludeLabel) ?? false;
+
+  const onConfirmLabelRenameRef = useRef<
+    | ((
+        oldLabel: string,
+        newLabel: string,
+        refCount: number,
+      ) => Promise<boolean>)
+    | undefined
+  >(undefined);
+  onConfirmLabelRenameRef.current = (oldLabel, newLabel, refCount) =>
+    ref.current?.onConfirmLabelRename(oldLabel, newLabel, refCount) ??
+    Promise.resolve(false);
+
+  const onConfirmHeadingDeleteRef = useRef<
+    ((typeName: string) => Promise<boolean>) | undefined
+  >(undefined);
+  onConfirmHeadingDeleteRef.current = (typeName) =>
+    ref.current?.onConfirmHeadingDelete(typeName) ?? Promise.resolve(true);
+
   const floatEditor = useEditor({
-    extensions: [
-      StarterKit.configure({
-        heading: false,
-        blockquote: false,
-        codeBlock: false,
-        bulletList: false,
-        orderedList: false,
-        horizontalRule: false,
-        listItem: false,
-        dropcursor: false,
-      }),
-      Highlight.configure({ multicolor: true }),
-      InlineMath,
-      Footnote,
-      LatexComment,
-      Citation,
-      LabelRef,
-      LatexCommandMark,
-      AiRequestMarker,
-      LinkedAnchor,
-      LinkedAnchorGuard,
-      TabIndent,
-    ],
+    extensions: buildEditorExtensions({
+      surface: "float",
+      editable: chrome.showParagraphFloatTitleEdit,
+      cardContext: true,
+      callbacks: {
+        isLabelTaken: isLabelTakenRef,
+        onConfirmLabelRename: onConfirmLabelRenameRef,
+        onConfirmHeadingDelete: onConfirmHeadingDeleteRef,
+      },
+      // cardContext figure/graphics previews render compact pills and don't
+      // resolve images via docId; a paragraph float has none anyway (matches
+      // the pre-FCU float, which passed no docId).
+      docIdRef: null,
+      // The inline `+T` title write proxies to MAIN through this; the float's
+      // own doc is never mutated by it, so useFloatMainSync re-reads
+      // idempotently.
+      host: { getMainEditor: () => ref.current?.getEditor() ?? null },
+    }),
     content: initial.doc,
     editable: chrome.showParagraphFloatTitleEdit,
     immediatelyRender: false,
@@ -155,6 +166,10 @@ export function ParagraphBody({
       const fragment = (firstPar.content ?? []).map((c) =>
         ed.state.schema.nodeFromJSON(c),
       );
+      // Rebuild from main's OWN attrs (which include `parTitle`), so a
+      // body-content write never clobbers the title — the title is owned by
+      // the inline `+T` write that targets main directly (see the NodeView's
+      // float-mode setTitle in editor-extensions.ts).
       const newPar = ed.state.schema.nodes.paragraph.create(
         found.attrs,
         fragment,
@@ -169,37 +184,12 @@ export function ParagraphBody({
     }
   }
 
-  function commitTitle(newTitle: string | null) {
-    setTitle(newTitle);
-    setEditingTitle(false);
-    const ed = ref.current?.getEditor();
-    if (!ed) return;
-    let foundPos: number | null = null;
-    let foundAttrs: Record<string, unknown> | null = null;
-    ed.state.doc.descendants((n, p) => {
-      if (n.type.name === "paragraph" && n.attrs?.uuid === uuid) {
-        foundPos = p;
-        foundAttrs = { ...n.attrs };
-        return false;
-      }
-      return true;
-    });
-    if (foundPos == null || foundAttrs == null) return;
-    const tr = ed.state.tr.setNodeMarkup(foundPos, undefined, {
-      ...(foundAttrs as Record<string, unknown>),
-      parTitle: newTitle,
-    });
-    ed.view.dispatch(tr);
-  }
-
   const readSource = useCallback(
     (doc: PMNode) => {
       let found: PMNode | null = null;
-      let nextTitle: string | null = null;
       doc.descendants((node) => {
         if (node.type.name === "paragraph" && node.attrs?.uuid === uuid) {
           found = node;
-          nextTitle = (node.attrs?.parTitle as string | null) ?? null;
           return false;
         }
         return true;
@@ -210,13 +200,13 @@ export function ParagraphBody({
           missing: true,
         };
       }
-      setTitle((prev) => (prev === nextTitle ? prev : nextTitle));
+      // Sync the FULL node (attrs incl. parTitle + uuid), so the inline `+T`
+      // NodeView renders the current title.
       const node = found as PMNode;
-      const json = node.toJSON() as JSONContent;
       return {
         doc: {
           type: "doc",
-          content: [{ type: "paragraph", content: json.content ?? [] }],
+          content: [node.toJSON() as JSONContent],
         } as JSONContent,
         missing: false,
       };
@@ -240,25 +230,7 @@ export function ParagraphBody({
         />
       ) : null}
       <div className="par-float-body flex-1 overflow-auto px-8 py-4">
-        <div
-          className={`par-title-wrapper has-text par-float-paragraph${
-            title ? " has-title" : " has-add-btn"
-          }`}
-        >
-          <FloatTitleField
-            title={title}
-            editing={chrome.showParagraphFloatTitleEdit && editingTitle}
-            canEdit={chrome.showParagraphFloatTitleEdit}
-            onStartEdit={() => setEditingTitle(true)}
-            onCommit={commitTitle}
-            onCancel={() => setEditingTitle(false)}
-            onClear={() => commitTitle(null)}
-            placeholder="Paragraph title…"
-          />
-          <div className="par-body-container">
-            <EditorContent editor={floatEditor} />
-          </div>
-        </div>
+        <EditorContent editor={floatEditor} />
       </div>
     </>
   );
