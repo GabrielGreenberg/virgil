@@ -37,6 +37,7 @@ import { useEditor, EditorContent, type JSONContent } from "@tiptap/react";
 import type { Node as PMNode } from "@tiptap/pm/model";
 import type { EditorHandle } from "@/components/Editor";
 import { buildEditorExtensions } from "@/lib/editor-extensions";
+import { useDocWriteHandleOrNull } from "@/components/editor-layout/DocPipeline";
 import { usePoppedCards } from "@/hooks/usePoppedCards";
 import {
   FLOAT_WRITE_META,
@@ -154,6 +155,10 @@ export function ListBody({
   onConfirmHeadingDeleteRef.current = (typeName) =>
     ref.current?.onConfirmHeadingDelete(typeName) ?? Promise.resolve(true);
 
+  const docId = useDocWriteHandleOrNull()?.docId ?? null;
+  const docIdRef = useRef<string | null>(docId);
+  docIdRef.current = docId;
+
   const floatEditor = useEditor({
     extensions: buildEditorExtensions({
       surface: "float",
@@ -164,10 +169,10 @@ export function ListBody({
         onConfirmLabelRename: onConfirmLabelRenameRef,
         onConfirmHeadingDelete: onConfirmHeadingDeleteRef,
       },
-      // cardContext figure/graphics previews render compact pills and don't
-      // resolve images via docId; a list float passes none (matches the
-      // pre-FCU float, which configured those atoms with cardContext only).
-      docIdRef: null,
+      // Issue-4: thread the real docId so figure/graphics atoms resolve and
+      // render their actual image (read-only) in the popped list instead of a
+      // compact pill. Read by FigureBlockNodeView via extension.options.docIdRef.
+      docIdRef,
       // The inline `+T` list-title write proxies to MAIN through this; the
       // float's own doc is never mutated by it, so useFloatMainSync re-reads
       // idempotently (FCU Chip C2).

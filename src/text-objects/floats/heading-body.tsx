@@ -41,6 +41,7 @@ import type { Node as PMNode } from "@tiptap/pm/model";
 import type { EditorHandle } from "@/components/Editor";
 import { buildEditorExtensions } from "@/lib/editor-extensions";
 import { usePoppedCards } from "@/hooks/usePoppedCards";
+import { useDocWriteHandleOrNull } from "@/components/editor-layout/DocPipeline";
 import { useEditorChrome } from "@/components/editor-layout/chrome-context";
 import { getSectionRangeByUuid } from "@/lib/section-range";
 import { headingTypeName } from "@/lib/heading-types";
@@ -126,6 +127,10 @@ export function HeadingBody({
   onConfirmHeadingDeleteRef.current = (typeName) =>
     ref.current?.onConfirmHeadingDelete(typeName) ?? Promise.resolve(true);
 
+  const docId = useDocWriteHandleOrNull()?.docId ?? null;
+  const docIdRef = useRef<string | null>(docId);
+  docIdRef.current = docId;
+
   const floatEditor = useEditor({
     extensions: buildEditorExtensions({
       surface: "float",
@@ -136,11 +141,10 @@ export function HeadingBody({
         onConfirmLabelRename: onConfirmLabelRenameRef,
         onConfirmHeadingDelete: onConfirmHeadingDeleteRef,
       },
-      // cardContext figure/graphics previews render compact pills and don't
-      // resolve images via docId, so none is needed here (matches the
-      // pre-FCU float, which passed no docIdRef). Chip C can thread the real
-      // id if full in-float figure rendering is ever wanted.
-      docIdRef: null,
+      // Issue-4: thread the real docId so figure/graphics atoms resolve and
+      // render their actual image (read-only) in the popped section instead of
+      // a compact pill. Read by FigureBlockNodeView via extension.options.docIdRef.
+      docIdRef,
       // Structural writes (label rename + `\ref` rewrite, numbered toggle,
       // level change) proxy to MAIN through this; the float's own doc is
       // never mutated by them, so useFloatMainSync re-reads idempotently.

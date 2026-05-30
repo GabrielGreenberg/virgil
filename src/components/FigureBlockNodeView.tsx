@@ -25,6 +25,12 @@ const MIN_PERCENT = 10;
 const MAX_PERCENT = 100;
 const STEP_PERCENT = 10;
 
+// Stable no-op refresh registrar for the read-only card-preview figure panels
+// (Issue-4): they reuse FigurePanel for faithful image resolution but never
+// expose the chrome refresh button, so they register nothing. Module-level so
+// the identity is stable across renders (FigurePanel's effect depends on it).
+const noopRegisterRefresh = (): (() => void) => () => {};
+
 // Shared node view for both `figureBlock` and `graphicsBlock`. The node
 // type drives whether caption/label chrome is shown. For figureBlock the
 // caption is a `figureCaption` child sub-node (`content: "inline*"`) so
@@ -33,46 +39,112 @@ const STEP_PERCENT = 10;
 // picker mutators. For graphicsBlock the source-of-truth is the `command`
 // attr (a single `\includegraphics[...]{...}` string).
 //
-// The outer component is a thin dispatcher: in `cardContext` we render a
-// compact pill (no hooks needed); otherwise the full view with chrome,
-// caption sub-node, and label lozenge. Splitting like this keeps each
-// branch's hooks unconditional (rules-of-hooks).
+// The outer component is a thin dispatcher: in `cardContext` (popped-out
+// floats) we render a READ-ONLY image preview — Issue-4: a popped section
+// should SHOW its figures, not a `Figure: …` pill; otherwise the full view
+// with chrome, caption sub-node, and label lozenge.
 export default function FigureBlockNodeView(props: NodeViewProps) {
   const opts = props.extension.options as FigureBlockOptions;
   if (opts.cardContext === true) {
-    return <FigureCardPreview node={props.node} />;
+    return (
+      <FigureCardPreview
+        node={props.node}
+        docId={opts.docIdRef?.current ?? null}
+      />
+    );
   }
   return <FigureFullView {...props} />;
 }
 
+// Card-context render (popped-out floats). Issue-4: show the figure/graphic's
+// REAL image, read-only, so a popped section mirrors the source instead of a
+// `Figure: …` pill. Read-only by design — no width/picker/delete chrome and no
+// click-to-edit; atom editing stays in the main editor (the float is editable
+// for prose but figures are atoms whose source lives in main, and the float
+// never sets `data-editable`, so FigureFullView's chrome would NOT self-hide
+// here — hence we render a chrome-less preview rather than flipping cardContext).
+// The float must forward `docIdRef` (the *-body.tsx float builders) for the
+// same resolver the main editor uses (FigurePanel) to find the image. Falls
+// back to a compact pill when the figure has no image yet (stub) or no docId to
+// resolve against, so the float never shows a broken-image / "not found" box.
 function FigureCardPreview({
   node,
+  docId,
 }: {
   node: NodeViewProps["node"];
+  docId: string | null;
 }) {
   const isFigure = node.type.name === "figureBlock";
   const captionText = isFigure ? (node.firstChild?.textContent ?? "") : "";
-  const singleSource =
-    (node.attrs.source as string | null | undefined) ||
-    (((node.attrs.sources as FigureSource[] | undefined) || [])[0]?.path ?? "");
-  const labelText = isFigure
-    ? captionText || singleSource || "[figure]"
-    : singleSource || "[graphic]";
+
+  // Same source derivation as FigureFullView, so the preview is faithful.
+  const sources = useMemo<FigureSource[]>(() => {
+    const raw = node.attrs.sources as FigureSource[] | undefined;
+    if (raw && raw.length > 0) return raw;
+    const single = node.attrs.source as string | null;
+    return single
+      ? [
+          {
+            path: single,
+            options: "",
+            widthPercent: node.attrs.widthPercent as number | null,
+          },
+        ]
+      : [];
+  }, [node.attrs.sources, node.attrs.source, node.attrs.widthPercent]);
+
+  const firstSource = sources[0];
+
+  // No resolvable image (un-filled stub, or no docId) → compact pill, matching
+  // the pre-Issue-4 behaviour so the float never shows a broken-image box.
+  if (!firstSource?.path || !docId) {
+    const labelText = isFigure
+      ? captionText || firstSource?.path || "[figure]"
+      : firstSource?.path || "[graphic]";
+    return (
+      <NodeViewWrapper className="figure-block-card-preview my-2" contentEditable={false}>
+        <div
+          className="inline-flex items-center gap-1.5 rounded border px-2 py-0.5 text-[11px] font-mono"
+          style={{
+            backgroundColor: "var(--surface-muted, rgba(124, 94, 60, 0.04))",
+            borderColor: "var(--edge-subtle)",
+            color: "var(--ink-strong)",
+          }}
+        >
+          <span className="text-[var(--ink-muted)]">
+            {isFigure ? "Figure" : "Graphic"}:
+          </span>
+          <span className="truncate max-w-[28ch]">{labelText}</span>
+        </div>
+      </NodeViewWrapper>
+    );
+  }
+
+  // Real image, read-only. Reuses FigurePanel (the same resolver / loading /
+  // error rendering as the main editor) under the same container classes, minus
+  // the interactive chrome, click-to-edit, and annotation lozenge.
   return (
-    <NodeViewWrapper className="figure-block-card-preview my-2" contentEditable={false}>
-      <div
-        className="inline-flex items-center gap-1.5 rounded border px-2 py-0.5 text-[11px] font-mono"
-        style={{
-          backgroundColor: "var(--surface-muted, rgba(124, 94, 60, 0.04))",
-          borderColor: "var(--edge-subtle)",
-          color: "var(--ink-strong)",
-        }}
-      >
-        <span className="text-[var(--ink-muted)]">
-          {isFigure ? "Figure" : "Graphic"}:
-        </span>
-        <span className="truncate max-w-[28ch]">{labelText}</span>
+    <NodeViewWrapper
+      className={`figure-block figure-block-card-image ${
+        isFigure ? "figure-block-wrapped" : "figure-block-bare"
+      }`}
+      contentEditable={false}
+    >
+      <div className="figure-row">
+        {sources.map((src, i) => (
+          <FigurePanel
+            key={`${src.path}:${i}`}
+            docId={docId}
+            source={src}
+            registerRefresh={noopRegisterRefresh}
+          />
+        ))}
       </div>
+      {isFigure && captionText ? (
+        <div className="figure-caption">
+          <span className="figure-caption-text">{captionText}</span>
+        </div>
+      ) : null}
     </NodeViewWrapper>
   );
 }

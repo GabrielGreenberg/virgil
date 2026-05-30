@@ -33,6 +33,7 @@ import { useEditor, EditorContent, type JSONContent } from "@tiptap/react";
 import type { Node as PMNode } from "@tiptap/pm/model";
 import type { EditorHandle } from "@/components/Editor";
 import { buildEditorExtensions } from "@/lib/editor-extensions";
+import { useDocWriteHandleOrNull } from "@/components/editor-layout/DocPipeline";
 import { usePoppedCards } from "@/hooks/usePoppedCards";
 import {
   FLOAT_WRITE_META,
@@ -132,6 +133,10 @@ export function ExampleBlockBody({
   onConfirmHeadingDeleteRef.current = (typeName) =>
     ref.current?.onConfirmHeadingDelete(typeName) ?? Promise.resolve(true);
 
+  const docId = useDocWriteHandleOrNull()?.docId ?? null;
+  const docIdRef = useRef<string | null>(docId);
+  docIdRef.current = docId;
+
   const floatEditor = useEditor({
     extensions: buildEditorExtensions({
       surface: "float",
@@ -142,10 +147,10 @@ export function ExampleBlockBody({
         onConfirmLabelRename: onConfirmLabelRenameRef,
         onConfirmHeadingDelete: onConfirmHeadingDeleteRef,
       },
-      // cardContext figure/graphics previews render compact pills and don't
-      // resolve images via docId; an example float passes none (matches the
-      // pre-FCU float, which configured those atoms with cardContext only).
-      docIdRef: null,
+      // Issue-4: thread the real docId so figure/graphics atoms resolve and
+      // render their actual image (read-only) in the popped example instead of a
+      // compact pill. Read by FigureBlockNodeView via extension.options.docIdRef.
+      docIdRef,
       // No structural write proxies here (examples carry no title), but the
       // host is threaded for parity with the other prose bodies; the float
       // omits ExpexNumbering, so the example number + sub-item letters ride
