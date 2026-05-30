@@ -19,7 +19,7 @@ import OrderedList from "@tiptap/extension-ordered-list";
 import ListItem from "@tiptap/extension-list-item";
 import Blockquote from "@tiptap/extension-blockquote";
 import CodeBlock from "@tiptap/extension-code-block";
-import { Extension, mergeAttributes } from "@tiptap/core";
+import { Extension, mergeAttributes, type NodeViewRenderer } from "@tiptap/core";
 import { Plugin, PluginKey } from "@tiptap/pm/state";
 import type { Node as PMNode } from "@tiptap/pm/model";
 import type { MutableRefObject, RefObject } from "react";
@@ -376,6 +376,24 @@ export function createParagraphWithTitle(opts?: ParagraphSurfaceOpts) {
   });
 }
 
+export interface ListSurfaceOpts {
+  /** Which surface the list NodeView is mounted on.
+   *  - "main" (default): the `parTitle` write targets the editor the
+   *    NodeView lives in, resolved by live position (`getPos`). Byte-identical
+   *    to the pre-FCU behaviour.
+   *  - "float" (FCU Chip C2): the inline `+T` list-title write PROXIES to
+   *    `host.getMainEditor()` (= MAIN), resolving the list there by uuid (the
+   *    float's list carries the synced uuid). The float's own onUpdate never
+   *    fires from this write, so useFloatMainSync re-reads the result
+   *    idempotently — no echo loop. Mirrors the paragraph builder's
+   *    float-mode setTitle (Chip C1) and the heading builder's host-proxied
+   *    structural writes (Chip B). */
+  surface: "main" | "float";
+  /** Float only: the main editor a float proxies the title write to.
+   *  Resolved per-interaction (a re-mounted main editor is picked up). */
+  host?: { getMainEditor: () => Editor | null };
+}
+
 // --- List title node view factory (shared by bullet + ordered lists) ---
 //
 // List-level chrome (drag handle + +T title) is added for top-level
@@ -388,8 +406,14 @@ export function createParagraphWithTitle(opts?: ParagraphSurfaceOpts) {
 // `listItem` nodes have no `uuid` attr in the schema, and giving them
 // one requires synchronized changes to the LaTeX parser + serializer
 // so `\item` round-trips an identity. Deferred until a clear need.
-function createListTitleNodeView(tagName: "ul" | "ol", typeName: string) {
-  return ({ node, getPos, editor: nodeEditor }: { node: any; getPos: (() => number | undefined) | boolean; editor: any }) => {
+function createListTitleNodeView(
+  tagName: "ul" | "ol",
+  typeName: string,
+  opts?: ListSurfaceOpts,
+): NodeViewRenderer {
+  const isFloat = opts?.surface === "float";
+  const host = opts?.host;
+  return ({ node, getPos, editor: nodeEditor }) => {
     let currentNode = node;
 
     // Detect nesting — return a bare list element with no chrome.
@@ -431,6 +455,37 @@ function createListTitleNodeView(tagName: "ul" | "ol", typeName: string) {
     // editor-level handle can pin to its gutter via DOM-rect math.
 
     function setTitle(newTitle: string | null) {
+      if (isFloat) {
+        // FCU Chip C2: proxy the title write to MAIN, resolving the list
+        // there by uuid (the float's list carries the synced uuid). The
+        // float's own onUpdate never fires from this write, so
+        // useFloatMainSync re-reads the result idempotently — no echo loop.
+        // Falls back to the float editor if main isn't resolvable. Mirrors
+        // the paragraph builder's float-mode setTitle (Chip C1).
+        const target = host?.getMainEditor() ?? nodeEditor;
+        const uuid = (currentNode.attrs.uuid as string | null) || null;
+        if (!uuid) return;
+        let foundPos: number | null = null;
+        let foundAttrs: Record<string, unknown> | null = null;
+        target.state.doc.descendants((nd, pos) => {
+          if (foundPos != null) return false;
+          if (nd.type.name === typeName && nd.attrs.uuid === uuid) {
+            foundPos = pos;
+            foundAttrs = { ...nd.attrs };
+            return false;
+          }
+          return true;
+        });
+        if (foundPos == null || foundAttrs == null) return;
+        const tr = target.state.tr.setNodeMarkup(foundPos, undefined, {
+          ...(foundAttrs as Record<string, unknown>),
+          parTitle: newTitle,
+        });
+        target.view.dispatch(tr);
+        return;
+      }
+      // Main (default): UNCHANGED — write to the editor the NodeView lives
+      // in, resolved by live position.
       const pos = typeof getPos === "function" ? getPos() : null;
       if (pos != null) {
         const n = nodeEditor.state.doc.nodeAt(pos);
@@ -539,17 +594,17 @@ function createListTitleNodeView(tagName: "ul" | "ol", typeName: string) {
     return {
       dom: wrapper,
       contentDOM: listEl,
-      stopEvent(event: any) {
+      stopEvent(event) {
         return (
           titleAnnot === event.target || titleAnnot.contains(event.target as Node)
         );
       },
-      ignoreMutation(mutation: any) {
+      ignoreMutation(mutation) {
         if (mutation.target && titleAnnot.contains(mutation.target)) return true;
         if (mutation.target === wrapper) return true;
         return false;
       },
-      update(updatedNode: any) {
+      update(updatedNode) {
         if (updatedNode.type.name !== typeName) return false;
         currentNode = updatedNode;
         if (!titleAnnot.querySelector("input")) renderAnnot();
@@ -559,7 +614,7 @@ function createListTitleNodeView(tagName: "ul" | "ol", typeName: string) {
   };
 }
 
-export function createBulletListWithTitle() {
+export function createBulletListWithTitle(opts?: ListSurfaceOpts) {
   return BulletList.extend({
     group: "block list textObject",
     addAttributes() {
@@ -571,12 +626,12 @@ export function createBulletListWithTitle() {
       };
     },
     addNodeView() {
-      return createListTitleNodeView("ul", "bulletList");
+      return createListTitleNodeView("ul", "bulletList", opts);
     },
   });
 }
 
-export function createOrderedListWithTitle() {
+export function createOrderedListWithTitle(opts?: ListSurfaceOpts) {
   return OrderedList.extend({
     group: "block list textObject",
     addAttributes() {
@@ -588,7 +643,7 @@ export function createOrderedListWithTitle() {
       };
     },
     addNodeView() {
-      return createListTitleNodeView("ol", "orderedList");
+      return createListTitleNodeView("ol", "orderedList", opts);
     },
   });
 }
@@ -1558,8 +1613,16 @@ export function buildEditorExtensions(ctx: EditorExtensionsCtx) {
         ? { surface: "float", host: ctx.host ?? undefined }
         : { surface: "main" },
     ),
-    createBulletListWithTitle(),
-    createOrderedListWithTitle(),
+    createBulletListWithTitle(
+      isFloat
+        ? { surface: "float", host: ctx.host ?? undefined }
+        : { surface: "main" },
+    ),
+    createOrderedListWithTitle(
+      isFloat
+        ? { surface: "float", host: ctx.host ?? undefined }
+        : { surface: "main" },
+    ),
     createListItemWithUuid(),
     createBlockquoteWithUuid(),
     createCodeBlockWithUuid(),
