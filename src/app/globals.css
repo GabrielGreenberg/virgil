@@ -1512,6 +1512,41 @@ textarea,
   display: none;
 }
 
+/* Released popout (persistent float) first-block reset — the float-surface
+   analog of the lifted-ghost reset above (1468-1472 / 1498). Issue-3.
+   MEASURED on the real popped "Section" float ("The Marginal Gloss", l2) at
+   show-dividers-2: the float is portaled to a top-level `position: fixed`
+   layer — a SIBLING of the editor-pane column that carries `.show-dividers-N`
+   — so, unlike the ghost (which renders INSIDE that context), NO divider rule
+   reaches it (verified: no `.show-dividers` ancestor; the wrapper never gets
+   the 4.2em/67.2px divider margin and the divider `::before` never generates,
+   `content: none`). So the user-reported "space as if a divider were there,
+   but no line" was NOT divider space — it was two un-zeroed leading margins
+   that the body's `overflow: auto` BFC retains rather than collapsing away:
+     (1) the first block's BASE `.heading-wrapper { margin-top: 1.8em }`
+         (28.8px) — it ties `:where(.tiptap) > :first-child { margin-top: 0 }`
+         (both 0,1,0) and wins on source order; and
+     (2) once (1) is zeroed, the inner heading's own `.heading-wrapper h*`
+         `margin-top: 0.2em` (4.32px at the h2's 21.6px) collapses up through
+         the now margin/padding/border-less wrapper and becomes the leading
+         residual — the same 4.32px the ghost's arm-3 zeroes (1456-1459).
+   Zero BOTH so the heading sits pixel-flush at the body top, matching the drag
+   ghost so there is no 4.32px jump on release. `> :first-child` leaves blocks
+   2..n alone (inter-block rhythm + the heading's own margin-bottom preserved);
+   the h1..h6 arm mirrors the ghost and is generic across heading levels. Arm 1
+   is also a benign no-op for non-heading float kinds (their direct-child first
+   block is already zeroed by `:where(.tiptap) > :first-child`). `!important`
+   mirrors the ghost (1488): beats the base margins now and the 4.2em divider
+   margin too, were the float layer ever re-parented under `.show-dividers-N`.
+   No phantom `::before` line to suppress (float is outside `.show-dividers-N`);
+   a blanket `::before { display: none }` is deliberately NOT added — it would
+   hide the empty-paragraph placeholder `::before` in editable float kinds.
+   Float-scoped (`.par-float-body`) → cannot touch the main editor. */
+.par-float-body .tiptap > :first-child,
+.par-float-body .tiptap > :first-child > :where(h1, h2, h3, h4, h5, h6) {
+  margin-top: 0 !important;
+}
+
 /* Card grip — squeeze pattern. Triggered both by direct :active on the
    handle and by `.is-pressed` toggled on the handle from PanelCard's lift
    gesture, so pressing anywhere on the header (including outside the
