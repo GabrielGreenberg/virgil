@@ -386,21 +386,37 @@ export function LiftedTextOverlay({
 
   // The header is a SIBLING of the overlay (both inside the same portal),
   // positioned by JS so its bottom edge aligns flush with the overlay's
-  // top edge and its left/right edges align with the overlay's outer
-  // border (the −1 / +2 covers the 1px border on each side in popout
-  // mode, so the chrome reads as one continuous box). Sibling positioning
-  // replaces L1.7's `position: absolute; bottom: 100%` child-of-overlay
-  // approach, which silently clipped against any overflow:hidden on the
-  // overlay root — see LIFTED-OVERLAY-REFACTOR.md L1.9.
+  // top edge and its left/right OUTER edges coincide EXACTLY with the
+  // overlay's (same left, same width). Both are box-sizing:border-box with
+  // a 1px pod-border, so their left/right borders are collinear and the
+  // chrome reads as one continuous box.
+  //
+  // Crucially this also makes the header's CONTENT box (the border+padding
+  // inset where the shared `FloatHeaderContent` label sits) line up with the
+  // released float's header content box, so the label does NOT shift on
+  // release (Issue-6). The released `TextObjectFloat` header is a flex row
+  // INSIDE the FloatCard's 1px border, so its label lands at
+  // cardLeft + 1(border) + 8(padding); here the label lands at
+  // overlayLeft + 1(border) + 8(padding), and overlayLeft == the released
+  // card's left (both = textX − BODY_PADDING_X − POPOUT_BORDER). Equal x ⇒
+  // no jump. A prior `overlayLeft − 1` / `overlayWidth + 2` (mis-described as
+  // border-overlap) made the header 1px wider on each side, pushing its
+  // content origin 1px left of the float's — a measured +1px label jump
+  // right on release (overlay label .left 1133 vs released 1134, driven on a
+  // real section/paragraph gesture); corrected here to delta 0.
+  //
+  // Sibling positioning replaces L1.7's `position: absolute; bottom: 100%`
+  // child-of-overlay approach, which silently clipped against any
+  // overflow:hidden on the overlay root — see LIFTED-OVERLAY-REFACTOR.md L1.9.
   //
   // L1.12: the header tracks the overlay OUTER (not the text rect) so
   // it sits flush above the grown popout-mode chrome, not above the
   // smaller invariant text rect. CSS still hides the header in ghost
   // mode; computing the ghost coords here is cheap and keeps the JSX
   // symmetric.
-  const headerLeft = overlayLeft - 1;
+  const headerLeft = overlayLeft;
   const headerTop = overlayTop - HEADER_HEIGHT;
-  const headerWidth = overlayWidth + 2;
+  const headerWidth = overlayWidth;
 
   return createPortal(
     <Fragment>
