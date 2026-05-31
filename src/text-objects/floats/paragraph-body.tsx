@@ -38,6 +38,7 @@ import type { EditorHandle } from "@/components/Editor";
 import { buildEditorExtensions } from "@/lib/editor-extensions";
 import { usePoppedCards } from "@/hooks/usePoppedCards";
 import { useEditorChrome } from "@/components/editor-layout/chrome-context";
+import { viewToggleClasses } from "@/components/editor-layout/chrome-config";
 import {
   FLOAT_WRITE_META,
   SourceMissingBanner,
@@ -229,7 +230,9 @@ export function ParagraphBody({
           onClose={() => popped?.close(cardKey)}
         />
       ) : null}
-      <div className="par-float-body flex-1 overflow-auto px-8 py-4">
+      <div
+        className={`par-float-body flex-1 overflow-auto px-8 py-4 ${viewToggleClasses(chrome.menuBar)}`}
+      >
         <EditorContent editor={floatEditor} />
       </div>
     </>

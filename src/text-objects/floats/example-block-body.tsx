@@ -35,6 +35,8 @@ import type { EditorHandle } from "@/components/Editor";
 import { buildEditorExtensions } from "@/lib/editor-extensions";
 import { useDocWriteHandleOrNull } from "@/components/editor-layout/DocPipeline";
 import { usePoppedCards } from "@/hooks/usePoppedCards";
+import { useEditorChrome } from "@/components/editor-layout/chrome-context";
+import { viewToggleClasses } from "@/components/editor-layout/chrome-config";
 import {
   FLOAT_WRITE_META,
   SourceMissingBanner,
@@ -71,6 +73,7 @@ export function ExampleBlockBody({
 }: TextObjectFloatBodyProps) {
   const ref = editorRef as RefObject<EditorHandle | null>;
   const popped = usePoppedCards();
+  const chrome = useEditorChrome();
   const mainEditor = ref.current?.getEditor() ?? null;
 
   const initial = useMemo(() => {
@@ -251,7 +254,9 @@ export function ExampleBlockBody({
           onClose={() => popped?.close(cardKey)}
         />
       ) : null}
-      <div className="par-float-body heading-float-body flex-1 overflow-auto px-8 py-4 relative">
+      <div
+        className={`par-float-body heading-float-body flex-1 overflow-auto px-8 py-4 relative ${viewToggleClasses(chrome.menuBar)}`}
+      >
         <EditorContent editor={floatEditor} />
       </div>
     </>

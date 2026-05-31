@@ -68,6 +68,39 @@ export interface EditorChromeConfig {
    * cards without enabling the rest.
    */
   editableCardKinds?: CardKind[];
+  /**
+   * The active EditorPane's MenuBar view-toggle bundle, threaded through
+   * so DOM-portaled float popouts (which live outside `.editor-pane-column`)
+   * can re-derive the same view-toggle ancestor classes the column carries
+   * (dividers, hide-par-titles, etc.) via `viewToggleClasses`. `undefined`
+   * for hosts without a MenuBar (e.g. the Library Reader) → no classes.
+   * Type-only inline import keeps this tiny config module out of any
+   * runtime import cycle with the (large) EditorPane module.
+   */
+  menuBar?: import("../EditorPane").EditorPaneMenuBarBundle;
+}
+
+/**
+ * Build the view-toggle class tokens that gate divider / hide-* / width
+ * CSS. Mirrors the `editor-pane-column` className expression in
+ * `EditorPane.tsx` (search "editor-pane-column") so DOM-portaled float
+ * popouts get an ancestor carrying the same `.show-dividers-N`,
+ * `.hide-par-titles`, `.hide-latex-comments`, `.hide-heading-labels`,
+ * and `.dividers-width-*` classes the main column has. Returns `""` when
+ * there's no MenuBar (Reader / no view toggles). Single source so the
+ * float and the column can't drift.
+ */
+export function viewToggleClasses(
+  menuBar: import("../EditorPane").EditorPaneMenuBarBundle | undefined,
+): string {
+  if (!menuBar) return "";
+  const tokens: string[] = [];
+  if (menuBar.showParTitles === false) tokens.push("hide-par-titles");
+  if (menuBar.showLatexComments === false) tokens.push("hide-latex-comments");
+  if (menuBar.showHeadingLabels === false) tokens.push("hide-heading-labels");
+  for (const lvl of menuBar.activeDividerLevels) tokens.push(`show-dividers-${lvl}`);
+  tokens.push(`dividers-width-${menuBar.dividerWidth}`);
+  return tokens.join(" ");
 }
 
 export const FULL_CHROME: EditorChromeConfig = {

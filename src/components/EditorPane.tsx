@@ -2932,7 +2932,7 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
   });
 
   return (
-    <EditorChromeProvider value={chrome}>
+    <EditorChromeProvider value={{ ...chrome, menuBar }}>
       <EditorRefProvider
         value={{ editorInstance: editor, editorRef: innerRef, setOverrideEditor }}
       >

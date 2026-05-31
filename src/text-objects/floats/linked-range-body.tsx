@@ -39,6 +39,8 @@ import {
 } from "@/lib/tiptap-extensions";
 import type { EditorHandle } from "@/components/Editor";
 import { usePoppedCards } from "@/hooks/usePoppedCards";
+import { useEditorChrome } from "@/components/editor-layout/chrome-context";
+import { viewToggleClasses } from "@/components/editor-layout/chrome-config";
 import {
   FLOAT_WRITE_META,
   SourceMissingBanner,
@@ -85,6 +87,7 @@ export function LinkedRangeBody({
 }: TextObjectFloatBodyProps) {
   const ref = editorRef as RefObject<EditorHandle | null>;
   const popped = usePoppedCards();
+  const chrome = useEditorChrome();
   const mainEditor = ref.current?.getEditor() ?? null;
   const floatId = `lrange:${anchorId}`;
 
@@ -216,7 +219,9 @@ export function LinkedRangeBody({
           onClose={() => popped?.close(cardKey)}
         />
       ) : null}
-      <div className="par-float-body flex-1 overflow-auto px-8 py-4">
+      <div
+        className={`par-float-body flex-1 overflow-auto px-8 py-4 ${viewToggleClasses(chrome.menuBar)}`}
+      >
         <div className="par-title-wrapper has-text par-float-paragraph">
           <div className="par-body-container">
             <EditorContent editor={floatEditor} />

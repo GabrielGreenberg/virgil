@@ -33,6 +33,8 @@ import { EditorState } from "@codemirror/state";
 import type { Node as PMNode } from "@tiptap/pm/model";
 import type { EditorHandle } from "@/components/Editor";
 import { usePoppedCards } from "@/hooks/usePoppedCards";
+import { useEditorChrome } from "@/components/editor-layout/chrome-context";
+import { viewToggleClasses } from "@/components/editor-layout/chrome-config";
 import { FLOAT_WRITE_META } from "@/lib/float-sync";
 import type { TextObjectFloatBodyProps } from "../types";
 import { FloatTitleField } from "./float-title-field";
@@ -77,6 +79,7 @@ export function TexBlockBody({
 }: TextObjectFloatBodyProps) {
   const ref = editorRef as RefObject<EditorHandle | null>;
   const popped = usePoppedCards();
+  const chrome = useEditorChrome();
   const mainEditor = ref.current?.getEditor() ?? null;
 
   const initial = useMemo(() => {
@@ -247,7 +250,9 @@ export function TexBlockBody({
           to `absolute bottom:100%` (globals.css), matching the source pod +
           the lifted ghost, so the pod sits at the body's top with no vertical
           jump on release. */}
-      <div className="par-float-body flex-1 overflow-auto px-8 py-4">
+      <div
+        className={`par-float-body flex-1 overflow-auto px-8 py-4 ${viewToggleClasses(chrome.menuBar)}`}
+      >
         <div
           className={`par-title-wrapper has-text${
             title ? " has-title" : " has-add-btn"
