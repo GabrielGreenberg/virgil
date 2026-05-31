@@ -203,3 +203,58 @@ float, and render the synced numbers.
   serverId + the wrong `code` param "succeeding"), plus severe delivery-lag.
   Defended by trusting only multi-source-agreeing greps over the real tree, real
   Python tracebacks, git blobs, and `tsc`/eslint/vitest as oracles.
+
+### Issue-10 — released popout dropped the figure label lozenge (the blue `\label` chip)
+- **The accretion smell (why this kept happening).** `FigureCardPreview`
+  (`FigureBlockNodeView.tsx`) is a *parallel, hand-built* read-only render of a figure,
+  taught the page's chrome one piece at a time: Issue-4 gave it the image
+  (`FigurePanel`), Issue-9 the "Figure N:" caption prefix — and the blue `\label`
+  lozenge was still missing, so a popped section showed the figure but not its label
+  chip (present and correct in the lifted ghost, which clones the live page DOM). Each
+  fix patched the same divergent render. The lozenge was the third such gap; the bug
+  *is* the accretion.
+- **Measured first — and corrected the brief.** The blue chip is **not** a
+  `LabelInlineChip` (no such file exists; that name was a fabricated read in the
+  planning session). The real lozenge is **`FigureAnnotation`** (`FigureAnnotation.tsx`),
+  which `FigureFullView` renders interactively (`<FigureAnnotation editor … label
+  onConfirmRename onConfirmDelete/>`), drawing the chip from `node.attrs.label`. `label`
+  is a declared `figureBlock` attr (`figure-block.ts:71`, default `""`), so it **rides
+  into the float via `node.toJSON()`** exactly like `figureNumber` did for Issue-9 — a
+  render-only gap, not a sync gap. CSS `.figure-block .figure-annotation` is
+  always-visible (no hover/opacity gate; *not* hidden by `data-editable="false"`) and
+  scoped under `.figure-block`, which the float wrapper already carries — so no CSS
+  change was needed.
+- **Fix — share the real component, not a third copy.** Taught `FigureAnnotation` a
+  `readOnly` mode (`editor`/`getFigurePos`/`onConfirm*` now optional; every interactive
+  callback guarded; rename / delete / numbered-toggle / click-to-edit gated off in the
+  render). `FigureCardPreview` now renders the **same** `<FigureAnnotation readOnly
+  label numbered/>` the page uses, gated on `isFigure && label`. The float's lozenge is
+  the page's lozenge minus interaction, so any future change *inside* the lozenge ports
+  to the float automatically. Opt-in by construction: `FigureFullView` passes no
+  `readOnly` → `readOnly=false` makes every `readOnly ? undefined : X` resolve to `X`,
+  so the page render is byte-for-byte unchanged (and `tsc`/eslint/vitest confirm).
+- **Honest scope — this is the lozenge-reuse form, not a full render-path unification.**
+  `FigureCardPreview` is *still* a parallel hand-built render of the figure-row +
+  caption. The image (`FigurePanel`) and now the lozenge (`FigureAnnotation`) are shared
+  components, but the **caption** stays divergent by necessity: `FigureFullView` renders
+  it as an editable `NodeViewContent` child (load-bearing for ProseMirror), while the
+  read-only preview renders static `node.firstChild.textContent`. The accretion risk
+  therefore survives on the caption/row surface. **Recommended follow-up:** factor a
+  shared `FigureVisual` presentational component (figure-row + figure-caption wrapper +
+  "Figure N:" prefix + lozenge placement) used by both views, with the caption passed as
+  a slot (`<NodeViewContent/>` for the page, `<span>{text}</span>` for the preview) and
+  interactivity gated — closing the remaining gap so no figure affordance can silently
+  go missing again.
+- **Verification (real released popout, cross-checked).** `rm -rf .next-preview` + fresh
+  dev server; popped "The Birth of the Footnote" (heading id `3300`, which contains
+  `fig:bands`) headlessly via a fresh-DFS'd `PoppedCardsContext.popOutAtRect`
+  (`isPopped` confirmed true after re-render). The released float's
+  `.figure-block-card-image` shows: the image; `figure-caption-label` "Figure 1:" + full
+  caption text; **and** a `.figure-annotation` reading "Figure # · label: fig:bands" (no
+  `×` — delete gated off), `.figure-label-text` = "fig:bands", computed `color`
+  `rgb(107,154,196)`/`#6b9ac4` + border `rgb(168,196,222)`/`#a8c4de` — identical blue to
+  the page lozenge. Page baseline unchanged (both `fig:bands`/`fig:wide` keep their
+  lozenges); ghost untouched (`renderGhost` not modified); no console errors (read-only
+  render needs no editor); float closed afterward (doc restored). `tsc --noEmit` 0
+  errors; eslint 0 errors (only the pre-existing `<img>` warning on the touched file);
+  vitest 286/286.
