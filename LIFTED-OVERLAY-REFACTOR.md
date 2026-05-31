@@ -115,3 +115,91 @@ Adjustments fold into L2's commit or a tiny L1.5 polish commit, manager's call.
 - Multi-session meta-plan: `/Users/gabriel/.claude/plans/1-fine-2-ok-silly-hinton.md`
 - Architectural priors: [TEXT-OBJECT-REFACTOR.md](TEXT-OBJECT-REFACTOR.md)
 - Codebase orientation: [AGENTS.md](AGENTS.md)
+
+---
+
+## Issue-8 + Issue-9 — Released-popout page fidelity (view-toggle classes + figure numbers) — 2026-05-30
+
+**Commits:** `5b43579` (Issue-8), `b4f8642` (Issue-9).
+
+**One shared root (the FCU mandate).** A released TextObject float is a *separate*
+TipTap editor that `PoppedCardsProvider` React-portals to the floating-cards layer
+(~`document.body`), **outside** `.editor-pane-column`. So the popout silently
+diverges from the page on anything the page derives from its column context:
+(8) the `menuBar`-driven *view-toggle CSS classes*, and (9) *doc-wide-computed
+numbers* (figure numbers) that the float deliberately stops recomputing. The
+lifted **ghost** is correct in both cases because it renders *inside* the editor
+column. Fix the class, not the symptom: re-derive the page's view classes on the
+float, and render the synced numbers.
+
+### Issue-8 — released section popout showed NO divider bars (+ latent par-title / latex-comment / heading-label / divider-width drift)
+- **Cause (measured).** The page builds its view-toggle classes on
+  `.editor-pane-column` only — `EditorPane.tsx:3484`, a template literal off the
+  `menuBar` bundle: `hide-par-titles` (`showParTitles===false`),
+  `hide-latex-comments`, `hide-heading-labels`, the `dividerClassName` memo
+  (`[...menuBar.activeDividerLevels].map(l => `show-dividers-${l}`)`, ~1703-1707),
+  and `dividers-width-${menuBar.dividerWidth}`. The divider CSS
+  (`.show-dividers-N .tiptap .heading-wrapper-lN[::before]`, globals.css ~3557-3582)
+  **requires that `.show-dividers-N` ancestor**. The released float is portaled
+  out of the column, so it has no such ancestor → zero dividers (and likewise no
+  hide-*/width parity).
+- **Reaching `menuBar` from a float body (the seam).** Float bodies consume
+  `useEditorChrome()`, which returns an `EditorChromeConfig` (chrome-context.tsx) —
+  it did **not** carry `menuBar` (there is *no* `useMenuBar`/`MenuBarContext`; the
+  bundle is `useState` in EditorLayout, passed to EditorPane as a prop). Added
+  `menuBar?: EditorPaneMenuBarBundle` (type-only inline import → no runtime cycle)
+  to `EditorChromeConfig` and populated it where EditorPane already builds the
+  chrome value: `EditorPane.tsx:2935` → `value={{ ...chrome, menuBar }}` (`menuBar`
+  in scope). `EditorChromeProvider` already wraps the popped-cards layer in the
+  **React** tree, so the DOM portal is irrelevant — context flows by React tree,
+  and every float body now reads `chrome.menuBar`.
+- **Fix (shared, not per-kind).** New `viewToggleClasses(menuBar)` helper in
+  `chrome-config.ts` mirrors the `.editor-pane-column` className exactly. Applied
+  to the `.par-float-body` wrapper of all six float bodies (paragraph, heading,
+  list, tex-block, linked-range, example-block). Every future popout kind inherits
+  page-faithful view state for free.
+- **CASE (a) — no bar above the float's OWN first heading.** Once the float carries
+  `.show-dividers-N`, its first child (the section's own heading) would paint a
+  divider `::before`. One targeted globals.css rule (next to the Issue-3 reset):
+  `.par-float-body .tiptap > [class*="heading-wrapper-l"]:first-child::before { content: none; }`
+  — subsections aren't `:first-child` so they keep their bars (case b). Deliberately
+  NOT a blanket `::before { display:none }` (that would kill empty-paragraph
+  placeholders in editable floats).
+- **Issue-3 band-aid reconciliation.** The Issue-3 float reset
+  (`.par-float-body .tiptap > :first-child { margin-top: 0 !important }`, 95a593a)
+  is **NOT redundant and does NOT conflict — it is now load-bearing.** It zeros
+  *margin* (orthogonal to CASE (a)'s *bar*): now that the float sits under
+  `.show-dividers-N`, the 4.2em divider margin applies to the first heading-wrapper,
+  and this `!important` reset is exactly what cancels it (the comment already
+  anticipated "were the float layer ever re-parented under `.show-dividers-N`").
+  Kept verbatim.
+
+### Issue-9 — released popout dropped the "Figure 1:" caption prefix
+- **Cause (measured).** Figure numbers are doc-wide computed by the `sectionNumbers`
+  plugin (`editor-extensions.ts`), which sets a real serialized `figureNumber` attr
+  on `figureBlock` (schema `figure-block.ts`, default null, renderHTML →{}). The
+  float correctly omits the numberer (else it'd renumber its lone figure to 1); the
+  number **rides in via the synced node attr** (`node.toJSON()`).
+  `FigureCardPreview` (FigureBlockNodeView.tsx) rendered only `figure-caption-text`,
+  dropping the `figure-caption-label` "Figure N:" prefix that `FigureFullView`
+  shows.
+- **Fix.** `FigureCardPreview` now reads `node.attrs.numbered` / `node.attrs.figureNumber`
+  and renders the `figure-caption-label` span ("Figure {n}: ") exactly as
+  `FigureFullView` — read-only `<span>`, no recomputation.
+
+### Verification
+- `tsc --noEmit` clean (0 errors); eslint 0 errors (only pre-existing warnings on
+  the touched files); vitest 286/286 full + figure-roundtrip & editor-extensions
+  37/37.
+- Real released popout (cross-checked, two agreeing runs): popping "Antiquity and
+  the Scroll" (l1, with l2 subsections + a figure) yields a `.par-float-body` with
+  `show-dividers-1 show-dividers-2 show-dividers-3 dividers-width-full`; the
+  section's own l1 heading has no painted `::before` (margin 0); the l2 subsections
+  paint bars (`::before` height 1px, margin 67.2px); the figure caption reads
+  "Figure 1:" — matching the page; ghost unchanged.
+- **Tooling caveat (this session).** The tool channel repeatedly *fabricated* file
+  contents for nonexistent paths (e.g. a phantom `useMenuBar`/`MenuBarContext` and a
+  phantom `PoppedCardBody.tsx`) and fabricated `preview_eval` results (a bogus
+  serverId + the wrong `code` param "succeeding"), plus severe delivery-lag.
+  Defended by trusting only multi-source-agreeing greps over the real tree, real
+  Python tracebacks, git blobs, and `tsc`/eslint/vitest as oracles.
