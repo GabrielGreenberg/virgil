@@ -76,6 +76,11 @@ function FigureCardPreview({
 }) {
   const isFigure = node.type.name === "figureBlock";
   const captionText = isFigure ? (node.firstChild?.textContent ?? "") : "";
+  // The doc-wide numberer doesn't run in the float, but `figureNumber` /
+  // `numbered` ride in via node.toJSON() sync, so mirror FigureFullView's
+  // "Figure N:" label (read-only) instead of recomputing the number.
+  const numbered = node.attrs.numbered !== false;
+  const figureNumber = node.attrs.figureNumber as string | number | null;
 
   // Same source derivation as FigureFullView, so the preview is faithful.
   const sources = useMemo<FigureSource[]>(() => {
@@ -140,9 +145,16 @@ function FigureCardPreview({
           />
         ))}
       </div>
-      {isFigure && captionText ? (
+      {isFigure && (captionText || (numbered && figureNumber != null)) ? (
         <div className="figure-caption">
-          <span className="figure-caption-text">{captionText}</span>
+          {numbered && figureNumber != null && (
+            <span className="figure-caption-label" contentEditable={false}>
+              Figure {figureNumber}:{" "}
+            </span>
+          )}
+          {captionText && (
+            <span className="figure-caption-text">{captionText}</span>
+          )}
         </div>
       ) : null}
     </NodeViewWrapper>
