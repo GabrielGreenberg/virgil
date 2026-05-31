@@ -81,6 +81,10 @@ function FigureCardPreview({
   // "Figure N:" label (read-only) instead of recomputing the number.
   const numbered = node.attrs.numbered !== false;
   const figureNumber = node.attrs.figureNumber as string | number | null;
+  // The `\label{fig:…}` chip rides in via node.toJSON() sync (a declared attr,
+  // like figureNumber). Render it read-only through the SAME FigureAnnotation
+  // the page uses, so the lozenge can't drift out of the float again (Issue-10).
+  const label = (node.attrs.label as string | undefined) || "";
 
   // Same source derivation as FigureFullView, so the preview is faithful.
   const sources = useMemo<FigureSource[]>(() => {
@@ -126,8 +130,9 @@ function FigureCardPreview({
   }
 
   // Real image, read-only. Reuses FigurePanel (the same resolver / loading /
-  // error rendering as the main editor) under the same container classes, minus
-  // the interactive chrome, click-to-edit, and annotation lozenge.
+  // error rendering as the main editor) under the same container classes, and
+  // the same read-only FigureAnnotation lozenge below — minus the interactive
+  // chrome (width/picker/refresh/delete) and click-to-edit.
   return (
     <NodeViewWrapper
       className={`figure-block figure-block-card-image ${
@@ -156,6 +161,14 @@ function FigureCardPreview({
             <span className="figure-caption-text">{captionText}</span>
           )}
         </div>
+      ) : null}
+      {/* The blue `\label` lozenge — same component as the page (FigureFullView),
+       *  rendered read-only so a popped section mirrors the source's labels
+       *  without exposing rename/delete/edit. Gated on a present label: an
+       *  unlabeled figure has no `\label` source to mirror (its number is
+       *  already shown by the caption above), so it stays chrome-free. */}
+      {isFigure && label ? (
+        <FigureAnnotation readOnly label={label} numbered={numbered} />
       ) : null}
     </NodeViewWrapper>
   );

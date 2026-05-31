@@ -10,14 +10,22 @@ import { isLabelTaken } from "@/lib/labels";
 // (`--heading-annotation-*` tokens), distinct selector (`.figure-annotation`)
 // so we can tweak placement without dragging headings along.
 interface Props {
-  editor: Editor;
+  // `editor` / `getFigurePos` / `onConfirm*` drive the interactive (page)
+  // lozenge. In `readOnly` mode — the popped-out section float, which has no
+  // editor and must not mutate the source — they're omitted and every
+  // affordance (rename, delete, numbered toggle) is gated off, leaving a
+  // static chip that is byte-for-byte the same markup/style as the page's
+  // (Issue-10). Sharing this component, rather than hand-rebuilding the chip
+  // in the float, keeps the two renders from drifting again.
+  editor?: Editor;
   label: string;
   numbered: boolean;
-  getFigurePos: () => number | null;
-  onConfirmRename:
+  getFigurePos?: () => number | null;
+  onConfirmRename?:
     | ((oldLabel: string, newLabel: string, refCount: number) => Promise<boolean>)
     | null;
-  onConfirmDelete: (() => Promise<boolean>) | null;
+  onConfirmDelete?: (() => Promise<boolean>) | null;
+  readOnly?: boolean;
 }
 
 export default function FigureAnnotation({
@@ -27,6 +35,7 @@ export default function FigureAnnotation({
   getFigurePos,
   onConfirmRename,
   onConfirmDelete,
+  readOnly = false,
 }: Props) {
   const [editing, setEditing] = useState(false);
   const inputRef = useRef<HTMLInputElement | null>(null);
@@ -47,7 +56,8 @@ export default function FigureAnnotation({
 
   const checkConflict = useCallback(
     (candidate: string) => {
-      const taken = candidate ? isLabelTaken(editor, candidate, label || null) : false;
+      const taken =
+        candidate && editor ? isLabelTaken(editor, candidate, label || null) : false;
       setConflict(taken);
     },
     [editor, label],
@@ -61,6 +71,7 @@ export default function FigureAnnotation({
 
   const commit = useCallback(async () => {
     if (!editing) return;
+    if (!editor || !getFigurePos) return;
     setEditing(false);
     const newLabel = draft.trim() || null;
     const oldLabel = label || null;
@@ -128,6 +139,7 @@ export default function FigureAnnotation({
   }, [label]);
 
   const toggleNumbered = useCallback(() => {
+    if (!editor || !getFigurePos) return;
     const pos = getFigurePos();
     if (pos == null) return;
     const figNode = editor.state.doc.nodeAt(pos);
@@ -140,6 +152,7 @@ export default function FigureAnnotation({
   }, [editor, numbered, getFigurePos]);
 
   const requestDelete = useCallback(async () => {
+    if (!editor || !getFigurePos) return;
     const ok = onConfirmDelete ? await onConfirmDelete() : true;
     if (!ok) return;
     const pos = getFigurePos();
@@ -159,25 +172,35 @@ export default function FigureAnnotation({
     <div
       className="figure-annotation"
       contentEditable={false}
-      onMouseDown={onMouseDown}
-      onClick={(e) => e.stopPropagation()}
+      onMouseDown={readOnly ? undefined : onMouseDown}
+      onClick={readOnly ? undefined : (e) => e.stopPropagation()}
     >
       <span className="figure-annotation-type-chip" title="Figure">
         Figure
       </span>
       <span
         className={`figure-annotation-numbered-toggle${numbered ? "" : " is-off"}`}
-        role="button"
-        aria-pressed={numbered}
-        title={numbered ? "Hide figure number" : "Show figure number"}
-        onClick={(e) => {
-          e.stopPropagation();
-          toggleNumbered();
-        }}
+        role={readOnly ? undefined : "button"}
+        aria-pressed={readOnly ? undefined : numbered}
+        title={
+          readOnly
+            ? undefined
+            : numbered
+              ? "Hide figure number"
+              : "Show figure number"
+        }
+        onClick={
+          readOnly
+            ? undefined
+            : (e) => {
+                e.stopPropagation();
+                toggleNumbered();
+              }
+        }
       >
         #
       </span>
-      {editing ? (
+      {!readOnly && editing ? (
         <>
           <span className="figure-annotation-sep">  ·  label: </span>
           <input
@@ -211,15 +234,19 @@ export default function FigureAnnotation({
           <span className="figure-annotation-sep">  ·  label: </span>
           <span
             className="figure-label-text"
-            onClick={(e) => {
-              e.stopPropagation();
-              enterEdit();
-            }}
+            onClick={
+              readOnly
+                ? undefined
+                : (e) => {
+                    e.stopPropagation();
+                    enterEdit();
+                  }
+            }
           >
             {label}
           </span>
         </>
-      ) : (
+      ) : readOnly ? null : (
         <span
           className="figure-label-add"
           onClick={(e) => {
@@ -230,17 +257,19 @@ export default function FigureAnnotation({
           Label +
         </span>
       )}
-      <span
-        className="figure-annotation-delete"
-        role="button"
-        title="Delete figure"
-        onClick={(e) => {
-          e.stopPropagation();
-          void requestDelete();
-        }}
-      >
-        ×
-      </span>
+      {!readOnly && (
+        <span
+          className="figure-annotation-delete"
+          role="button"
+          title="Delete figure"
+          onClick={(e) => {
+            e.stopPropagation();
+            void requestDelete();
+          }}
+        >
+          ×
+        </span>
+      )}
     </div>
   );
 }
