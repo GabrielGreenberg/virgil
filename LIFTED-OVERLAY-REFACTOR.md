@@ -428,3 +428,135 @@ is unfaithful, so the headless check is class-presence on the rendered overlay
 root; the in-drag visual is a USER-VERIFY step: with dividers ON, drag a section
 and confirm the divider bars show in the ghost DURING the drag, matching the
 page and the released popout, first heading glued (no vertical "double").
+
+## Issue-13 — Cap lifted-section popout height to a viewport fraction so the popped window fits on screen — 2026-06-01
+
+**Commit:** `b8ab56d` (this memo is the separate follow-up, per the arc's code+memo pairing).
+
+**Symptom.** Popping out a multi-page section spawned a popout window ~the
+section's full visible height that ran off the bottom of the screen — and it
+started with the drag GHOST (same height). The user is fine with the ghost
+surfacing material beyond the editor's bottom margin (a general UX feature) but
+wanted a MAXIMUM height so the popped window always fits on screen, scrolling
+internally for the overflow.
+
+**Single-capture-site cause (measured on the REAL released popout, cross-checked
+— arithmetic == empirical).** The lift gesture has ONE capture site
+(`TextObjectGrabHandle.tsx`, where `sourceHeight = liftRect.height` is
+resolved); that one value feeds BOTH the ghost (`LiftedTextOverlay` renders the
+ghost body at exactly `sourceHeight`) AND the released-popout spawn
+(`popOutAtRect` height = `sourceHeight + 58` chrome). The post-spawn
+auto-fit/grow-burst is gated OFF for lifted-overlay kinds
+(`FloatingCards.tsx:96`), so the spawn height STICKS. Heading's `liftSourceRect`
+clamped height to `min(sectionExtent, visiblePage)` where `visiblePage =
+cache.scrollBottom − cache.scrollTop` ≈ the scroll-container's full visible
+height — which was both (a) **heading-only** (paragraph/list/example/texBlock
+have NO `liftSourceRect`, so a long one was uncapped) and (b) **chrome- and
+position-blind**: it capped to ~full viewport while the spawn ADDS 58px of
+chrome and positions the window at the grab point with no bottom-fit clamp →
+window taller than the viewport, positioned mid-screen → overflow.
+
+**Measured BEFORE** (dev-doc "Digital Remediation" section, real released popout
+via the popped-cards `popOutAtRect` path; cross-checked across two window widths
+— `sectionExtent` 2673 / 2997, both > `visiblePage`): at `innerHeight 900`,
+`visiblePage 868`, captured `sourceHeight = min(extent, 868) = 868` → spawn
+height `868 + 58 = 926` > `innerHeight 900` — **taller than the viewport
+regardless of position**; rendered float `height 926, top 100, bottom 1026 →
++126px off the bottom`, body `clientHeight 900 / scrollHeight 2633` (it scrolled,
+but the WINDOW overflowed the screen).
+
+**The fix — a GENERAL viewport-fraction cap at the single capture site (the
+CLASS, not a heading patch).**
+1. **Cap `sourceHeight` at capture** (`TextObjectGrabHandle.tsx`):
+   `cappedSourceHeight = capPopoutHeight(liftRect.height, window.innerHeight)`.
+   One site → caps the ghost (= `sourceHeight`) AND the released popout
+   (= `sourceHeight + chrome`) for EVERY lifted kind, so the two stay identical
+   — **no size jump on release** (the L1.12 text-stays-still /
+   chrome-grows-outward invariant holds). A MAX, not a floor: short content
+   (`liftRect.height < cap`) is unchanged; left/top/width untouched, so the grab
+   offset is unchanged.
+2. **Clamp the spawn Y** (`TextObjectGrabHandle.tsx`): compute the window height
+   first, then `spawnY = Math.max(SPAWN_FIT_MARGIN, Math.min(intendedY,
+   innerHeight − SPAWN_FIT_MARGIN − overlayHeight))` (`SPAWN_FIT_MARGIN = 20`,
+   mirroring FloatingCards' auto-fit `adjustedY` margin + FloatingPanel's
+   `innerHeight − 40` fit convention). With height ≤ ~55% viewport + 58 chrome a
+   valid Y always exists; `Math.max` keeps the top on screen for a grab near the
+   viewport bottom. (Computed before the `overlayRect` literal — no mutation of
+   the const, so no `react-hooks/immutability` lint.)
+3. **Simplify heading's `liftSourceRect`** (`text-object-registry.ts`): dropped
+   the `min(sectionExtent, visiblePage)` clamp (and the now-unused `cache`
+   param — a 3-arg impl is assignable to the 4-arg type) → returns the full
+   `sectionExtent`. The general cap (#1) now fits it for every kind, subsuming
+   the redundant, chrome/position-blind heading-only clamp. `heading-body`
+   (full-section overflow-auto view) untouched; the type comment updated.
+4. **One source for the policy** (`text-object-registry.ts`): new exported
+   `POPOUT_MAX_VH = 0.55` (user-chosen 2026-06-01, the 50–60% range) + a shared
+   `capPopoutHeight(naturalHeight, viewportHeight)` helper consumed by BOTH the
+   new lift cap AND the existing instant-popout auto-fit grow cap
+   (`FloatingCards.tsx`, was a separate local `0.4`). ONE "how tall can a popout
+   be" policy → no parallel un-shared copies. (Deliberate, prompt-sanctioned
+   side effect — "don't change the grow-burst mechanism *beyond the shared
+   constant*": the instant-popout auto-fit cap moves 0.40 → 0.55. It is reached
+   only by instant-popout floats that auto-grow past the cap — practically
+   ≈linkedRange (lifted-overlay kinds early-return at `:96`) — making their
+   interim max consistent with the lifted kinds' and the user's comfort range;
+   benign, content scrolls.)
+
+**Measured AFTER** (same real popout, fresh `.next-preview`, cross-checked):
+captured `sourceHeight = capPopoutHeight(extent, 900) = min(extent, floor(900 ×
+0.55) = 495) = 495` → spawn height `495 + 58 = 553`; rendered float `height 553,
+top 79, bottom 632` — **fully on-screen (268px clearance below; top + height 632
+≤ innerHeight − 20 = 880)**, body `clientHeight 527 / scrollHeight 2942,
+overflow: auto` → scrolls the ~2415px overflow internally. The capped content
+area (495) is exactly `floor(0.55 × 900)`; the float did NOT auto-grow (the
+lifted-overlay auto-fit gate held → no regression). Screenshot: the "Digital
+Remediation" section popout in the upper viewport with clear space below, real
+section chrome (number "6" + "Section ▾ · label: sec:digital" chip), scrollable.
+**BEFORE 926 (+126 off) → AFTER 553 (fits, scrolls).**
+
+**Verify.** `tsc` clean; `eslint` no NEW problems (per-file on the 4 touched
+source files + the new test: identical to baseline — the 3 pre-existing
+`FloatingCards` `rules-of-hooks` errors from `if(!ctx) return null` and the
+grab-handle warnings are untouched; the `react-hooks/immutability` error in the
+clone path is pre-existing / out of scope); `vitest` **312/312** (308 baseline
+unchanged + 4 new). New headless test
+`src/text-objects/__tests__/popout-height-cap.test.ts` pins `POPOUT_MAX_VH ===
+0.55` (∈ [0.5, 0.6]), proves `capPopoutHeight` is a MAX not a floor (short
+content unchanged; tall content → `floor(vh × 0.55)`, incl. the measured 2673 →
+495 case), and proves the fit invariant — a capped popout + 58 chrome + 2×20
+margins ≤ viewport for vh ∈ [600..2000] — so a valid on-screen spawn-Y always
+exists.
+
+**Ghost = popout height, no release jump — USER-VERIFY via a real trusted-hover
+drag.** The live drag GHOST cannot be driven headlessly (the grab handle needs a
+trusted hover; a clone-harness is unfaithful — the L3-Headings.1-REAL lesson),
+so this is the one user-verify step. Verified in CODE that the ghost height IS
+the capped `sourceHeight` (`LiftedTextOverlay.tsx` overlayHeight = `sourceHeight`
+in ghost mode / `sourceHeight + chrome` in popout) and the spawn uses the same
+`sourceHeight + chrome`, so capping the one value bounds the ghost AND the popout
+identically; the headless unit test asserts the cap math. **USER step:** in a
+writable session, with a long multi-page section, drag its heading slowly —
+confirm (a) the GHOST is bounded to ~55% of the viewport (not the full section
+height), (b) on release into the gutter the popped window matches the ghost's
+height (no size jump), and (c) the window fits fully on screen and its body
+scrolls to reveal the rest. Repeat on a long paragraph/list/example/texBlock
+(the cap is general, not heading-only) and on a SHORT paragraph (must open at its
+natural, uncapped height).
+
+**No regressions.** Short sections/paragraphs and other kinds open at their
+natural (uncapped) height (the cap is a max, not a floor); no width change (only
+height is capped; `sourceWidth` / `overlayRect.width` untouched); the
+lifted-overlay auto-fit gate still holds (the capped popout is not re-grown);
+Issue-8/9/10/12 popout-fidelity paths untouched. Diff scoped to 4 source files +
+1 new test (`b8ab56d`); the pre-existing working-tree changes
+(`useRecentlyAddedTracker.ts`, `EditorPane.tsx`, `useMarginEdit.ts`,
+`EDITOR_SKILLS_BRAINSTORM.html`) left untouched and out of the commit.
+
+**Preview-op note (for future sessions).** A freshly-restarted `.next-preview`
+booted the page at **`innerHeight 0` (0×0 window)** — the documented "0×0
+default kills hover-zone math" gotcha — which silently zeroed the cap math in the
+first measurement eval (`cap 0`, `extent 2997` reflowed at the degenerate size);
+`preview_resize(1280×900)` restored it. Cross-check `window.innerHeight` is
+non-zero before trusting any viewport-fraction measurement. Every measurement
+eval carried a `6*7` sentinel to catch fabricated tool output (the arc's known
+hazard); all returned 42.
