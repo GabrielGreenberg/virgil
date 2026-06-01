@@ -258,3 +258,63 @@ float, and render the synced numbers.
   render needs no editor); float closed afterward (doc restored). `tsc --noEmit` 0
   errors; eslint 0 errors (only the pre-existing `<img>` warning on the touched file);
   vitest 286/286.
+
+## Issue-11 — Drag overlay (ghost + popout chrome) stacked behind the Virgil bar; should be fully forward like a released float — 2026-05-31
+
+**Commit:** `bf80d47`.
+
+**Symptom.** During a drag, the lifted overlay (the ghost AND popout-mode
+chrome) rendered above the editor text but BEHIND the Virgil bar (the sticky
+top chrome strip). A released popout sits above everything incl. the bar, so
+the drag overlay should match it — the drag popout is the released popout
+that hasn't landed yet; drag and release must share one stacking model.
+
+**Cause (measured live, cross-checked) — NOT a trapped stacking context.**
+Walking from the overlay portal up to `<html>` finds ZERO stacking-context
+ancestors: `editor-pane-column` is deliberately `position:relative` with no
+z-index (its own comment says so), and every wrapper up to `body` is
+static/auto, so the overlay's z resolves directly in the ROOT context, same
+as the bar. Two real causes stacked:
+
+1. a raw z-gap — overlay `z:25` < the bar's sticky `z:30` (both in root); and
+2. the DECISIVE one — geometric CLIPPING. The overlay portaled into the
+   column-level `[data-lifted-overlay-portal]`, which lives inside the editor
+   scroll container (`div.flex.flex-1`, `overflow-y:auto`) whose top edge
+   sits flush under the bar; the bar lives OUTSIDE that container. An
+   absolutely-positioned child of the column portal is clipped at the
+   container's top edge regardless of z. Proven: a probe child at `z:99999`
+   is still clipped at the bar's bottom (y=32) — `elementFromPoint` at y<32
+   returns the bar, the probe only appears at y>=32. So z-index ALONE could
+   never lift the overlay over the bar.
+
+**Fix.** Re-portal the overlay + sibling header from the column portal to
+`document.body` with `position:fixed` and viewport coords — the SAME layer +
+coordinate model released floats (`FloatingPanel`) and the drop indicator
+(`drop-mode/Indicator.tsx`) already use — at `z:1200`, the released-float
+layer (`FloatCard`'s `1200 + indexHint` in FloatingCards.tsx), not a magic
+number. A body-level box escapes the scroll-container clip; the z then orders
+it above the bar (`z:30`) and the pod caps (`z:30/31`) and below the drop
+indicator (`z:9999`, body-fixed, still composing on top). Cursor tracking is
+PRESERVED: the column portal only ever placed the overlay at the cursor's
+VIEWPORT position (`toPortalCoords` subtracted the live column rect each
+frame), so `position:fixed` at the raw viewport coords (`cursor − grabOffset`)
+lands at the identical pixel — and stays glued through scroll without a
+per-frame rect read. The now-unused `cache` prop (LiftedTextOverlay + its
+call site in TextObjectGrabHandle) and the dead `[data-lifted-overlay-portal]`
+div (EditorPane.tsx) were removed; the `.lifted-text-overlay` CSS base
+position was set to `fixed` to match the inline value.
+
+**Verify.** tsc clean; vitest 286/286; eslint no NEW errors (the lone error —
+`react-hooks/immutability` on `c.style.pointerEvents` in the `ghostContent`
+clone path — is pre-existing at HEAD and out of scope). Live on the dev
+server, cross-checked across two agreeing runs: `.lifted-text-overlay` +
+`__header` compute `z:1200`, overlay CSS `position:fixed`; the dead column
+portal is gone (`querySelectorAll` length 0); a body-level `position:fixed
+z:1200` box (== the new overlay) at a point INSIDE the bar (y=8) is NOT
+clipped and paints over the bar (`elementFromPoint` returns it), where the
+old column-portal `z:99999` child was clipped at y=32. Ghost↔popout chrome
+flip is driven by the parent's `mode` prop (untouched); the drop indicator
+(z:9999) still composes on top; released floats / grab-handle portal
+unchanged. Real-drag visual is user-driven (the grab handle needs a TRUSTED
+hover): drag a paragraph/section up near the Virgil bar and confirm the
+floating block passes OVER the bar.
