@@ -63,6 +63,8 @@ import { ensureAnchorUuid } from "@/lib/anchor-uuid";
 import { hydrateSelectionToTextObject } from "./hydrate-selection";
 import { walkAnchorableBlocks } from "@/lib/marginalia-blocks";
 import { useDragHandleMenu } from "@/components/editor-layout/card-actions/drag-handle-menu-context";
+import { useEditorChrome } from "@/components/editor-layout/chrome-context";
+import { viewToggleClasses } from "@/components/editor-layout/chrome-config";
 import {
   useEditorViewportCache,
   type EditorViewportCache,
@@ -361,6 +363,13 @@ interface OverlayState {
    *  attrs that drove the computation can't change mid-gesture since
    *  the user holds the mouse. */
   label: string;
+  /** View-toggle class tokens (dividers / hide-* / divider-width) for the
+   *  overlay ROOT, so the drag ghost honors the same show/hide state the
+   *  page shows. Built from `viewToggleClasses(menuBar)` — the ONE source
+   *  the page column and every float body also consume (Issue-12) — and
+   *  pinned at threshold cross (toggle state can't change mid-gesture since
+   *  the user holds the mouse, same rationale as `label`). */
+  viewToggleCls: string;
 }
 
 /**
@@ -603,6 +612,19 @@ export function TextObjectGrabHandle({ editorRef }: Props) {
     dragHandleMenuRef.current = dragHandleMenu;
   }, [dragHandleMenu]);
 
+  // View-toggle classes (dividers / hide-* / divider-width) for the drag
+  // ghost overlay. Built from the SAME `viewToggleClasses(menuBar)` source
+  // the page column and every float body consume (Issue-12); `menuBar`
+  // reaches here via `useEditorChrome()` because the grab handle renders
+  // inside EditorPane's `EditorChromeProvider`. Mirrored into a ref (same
+  // idiom as `poppedRef` / `dragHandleMenuRef`) so the imperative lift
+  // gesture can pin the live value on the overlay at threshold-cross.
+  const chrome = useEditorChrome();
+  const viewToggleClsRef = useRef(viewToggleClasses(chrome.menuBar));
+  useEffect(() => {
+    viewToggleClsRef.current = viewToggleClasses(chrome.menuBar);
+  }, [chrome.menuBar]);
+
   const beginGesture = useCallback((
     downEv: MouseEvent,
     handleEl: HTMLDivElement,
@@ -747,6 +769,7 @@ export function TextObjectGrabHandle({ editorRef }: Props) {
             cursorY: mv.clientY,
             mode: initialMode,
             label,
+            viewToggleCls: viewToggleClsRef.current,
           };
           setOverlay(liveOverlay);
           // Start a drop session ALONGSIDE the overlay. `inPlace: true`
@@ -1261,6 +1284,7 @@ export function TextObjectGrabHandle({ editorRef }: Props) {
           cursorY={overlay.cursorY}
           mode={overlay.mode}
           label={overlay.label}
+          viewToggleCls={overlay.viewToggleCls}
         />
       )}
       {placements.length > 0 &&

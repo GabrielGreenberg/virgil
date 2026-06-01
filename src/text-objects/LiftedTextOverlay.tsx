@@ -135,6 +135,17 @@ export interface LiftedTextOverlayProps {
    *  any kind that grows a `computeLabel` slot gets the correct popout-
    *  mode header without touching the overlay. */
   label: string;
+  /** View-toggle class tokens (dividers / hide-* / divider-width) applied
+   *  to the overlay ROOT (`.lifted-text-overlay`), the ancestor of the
+   *  `.tiptap` body. Lets the drag ghost honor the same show/hide state as
+   *  the page and the released float: the toggle CSS rules are
+   *  ancestor-agnostic (`.show-dividers-N .tiptap …`, `.hide-* …`, and the
+   *  `.dividers-width-*` cascading vars), so carrying them on the root is
+   *  all that's needed. Parent resolves them via `viewToggleClasses(menuBar)`
+   *  — the ONE source the column and floats also use (Issue-12) — and pins
+   *  them at threshold cross, same pattern as `label`. Empty string when
+   *  there's no MenuBar (Reader / no view toggles). */
+  viewToggleCls: string;
   /** Overridden ghost content (L3-Headings). When present, the clone path
    *  uses THIS element instead of `anchorDom.cloneNode(true)` — heading
    *  passes its whole-section clone here (resolved at the parent via
@@ -156,6 +167,7 @@ export function LiftedTextOverlay({
   cursorY,
   mode,
   label,
+  viewToggleCls,
   ghostContent,
 }: LiftedTextOverlayProps) {
   // Sanitize the clone once at mount. cloneNode(true) carries the full
@@ -432,7 +444,7 @@ export function LiftedTextOverlay({
   return createPortal(
     <Fragment>
       <div
-        className="lifted-text-overlay"
+        className={`lifted-text-overlay${viewToggleCls ? ` ${viewToggleCls}` : ""}`}
         data-lift-mode={mode}
         data-lift-kind={ref.kind}
         style={{

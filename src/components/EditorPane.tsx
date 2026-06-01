@@ -66,6 +66,7 @@ import { EditorChromeProvider } from "./editor-layout/chrome-context";
 import {
   FULL_CHROME,
   filterPanelKinds,
+  viewToggleClasses,
   type EditorChromeConfig,
 } from "./editor-layout/chrome-config";
 import OutlinePanel from "@/panels/Outline/OutlinePanel";
@@ -1698,13 +1699,14 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
     anchoredUuidsRef.current = set;
   }, [marginaliaMarkers]);
 
-  // Divider class derived from active divider levels — composes with the
-  // editor-pane-column className below. Empty when no menuBar (Reader).
-  const dividerClassName = useMemo(() => {
-    const levels = menuBar?.activeDividerLevels;
-    if (!levels) return "";
-    return [...levels].map((lvl) => `show-dividers-${lvl}`).join(" ");
-  }, [menuBar?.activeDividerLevels]);
+  // View-toggle class tokens (dividers / hide-* / divider-width) for the
+  // editor-pane-column className below — the ONE shared source
+  // (`viewToggleClasses`) consumed by all three content surfaces: this page
+  // column, every released float body (`.par-float-body`), and the drag
+  // ghost overlay (`.lifted-text-overlay`). A new view toggle therefore
+  // ports to all three by editing `viewToggleClasses` alone (Issue-12).
+  // Empty string when no menuBar (Reader).
+  const viewToggleCls = viewToggleClasses(menuBar);
 
   // Filter marginalia markers by the master toggle and per-type hide set
   // from the menu bundle. Reader (no menuBar) defaults to showing all
@@ -3481,7 +3483,7 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
                 pod; Reader (no menuBar) renders only the pod inside. */}
             <div
               ref={editorColRef}
-              className={`editor-pane-column${menuBar?.showParTitles === false ? " hide-par-titles" : ""}${menuBar?.showLatexComments === false ? " hide-latex-comments" : ""}${menuBar?.showHeadingLabels === false ? " hide-heading-labels" : ""}${dividerClassName ? ` ${dividerClassName}` : ""}${menuBar ? ` dividers-width-${menuBar.dividerWidth}` : ""}`}
+              className={`editor-pane-column${viewToggleCls ? ` ${viewToggleCls}` : ""}`}
               data-editor-col="true"
               style={{
                 // Vastly higher flex-grow than the PaneRails (each

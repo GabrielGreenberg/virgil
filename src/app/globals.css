@@ -1504,10 +1504,16 @@ textarea,
 /* Issue-1 (REAL cause, verified on the live mousedown→threshold gesture):
    when section dividers are on, the cloned first block (a `.heading-wrapper-lN`)
    inherits the divider rule's OUTER margin — `.show-dividers-N .tiptap
-   .heading-wrapper-lN { margin-top: 4.2em }` (globals.css ~3482; 8.2em / 6.6em
-   for l0 / l1), e.g. 67.2px for an l2 heading at `show-dividers-2`. The overlay
-   renders INSIDE the editor's `.show-dividers-N` context, so that rule reaches
-   the ghost; it ties 58d8596's first-block reset above (both 0,3,0) but wins on
+   .heading-wrapper-lN { margin-top: 4.2em }` (globals.css ~3600; 8.2em / 6.6em
+   for l0 / l1), e.g. 67.2px for an l2 heading at `show-dividers-2`. Since
+   Issue-12 the overlay ROOT (`.lifted-text-overlay`) carries `.show-dividers-N`
+   EXPLICITLY — threaded in via `viewToggleClasses`, the same single source the
+   page column and every float body consume — so that ancestor-agnostic rule
+   reaches the ghost body's `.tiptap`. (Pre-Issue-11 the overlay portaled INSIDE
+   the editor column and inherited the context by ancestry; Issue-11 re-portaled
+   it to document.body, dropping that ancestor — exactly why the bars vanished in
+   the ghost until Issue-12 re-supplied the class on the root.) It ties 58d8596's
+   first-block reset above (both 0,3,0) but wins on
    SOURCE ORDER (it sits far later in this file), so the reset can't zero it and
    the heading is pushed down by the full divider margin — the live "double".
    58d8596 only ever beat the dividers-OFF base `.heading-wrapper` 1.8em (which it
@@ -1546,11 +1552,15 @@ textarea,
    analog of the lifted-ghost reset above (1468-1472 / 1498). Issue-3.
    MEASURED on the real popped "Section" float ("The Marginal Gloss", l2) at
    show-dividers-2: the float is portaled to a top-level `position: fixed`
-   layer — a SIBLING of the editor-pane column that carries `.show-dividers-N`
-   — so, unlike the ghost (which renders INSIDE that context), NO divider rule
-   reaches it (verified: no `.show-dividers` ancestor; the wrapper never gets
-   the 4.2em/67.2px divider margin and the divider `::before` never generates,
-   `content: none`). So the user-reported "space as if a divider were there,
+   layer — a SIBLING of the editor-pane column that carries `.show-dividers-N`.
+   By ancestry, then, NO divider rule reaches it (verified: no `.show-dividers`
+   ancestor; the wrapper never gets the 4.2em/67.2px divider margin and the
+   divider `::before` never generates, `content: none`). (NB: the lift ghost is
+   ALSO body-portaled since Issue-11, so it too is outside the column by
+   ancestry; both this float [Issue-8] and the ghost [Issue-12] re-supply
+   `.show-dividers-N` EXPLICITLY via `viewToggleClasses` on their own root — see
+   the Issue-8 first-heading `::before` rule below.) So the user-reported "space
+   as if a divider were there,
    but no line" was NOT divider space — it was two un-zeroed leading margins
    that the body's `overflow: auto` BFC retains rather than collapsing away:
      (1) the first block's BASE `.heading-wrapper { margin-top: 1.8em }`
