@@ -5,6 +5,7 @@ import FloatingPanel, { type FloatingPanelHandle } from "./FloatingPanel";
 import { usePoppedCards } from "@/hooks/usePoppedCards";
 import { consumeCardLiftHandoff } from "./card-lift";
 import {
+  capPopoutHeight,
   parseTextObjectPopoutKey,
   TEXT_OBJECT_REGISTRY,
 } from "@/text-objects/text-object-registry";
@@ -13,13 +14,14 @@ const DEFAULT_W = 360;
 const DEFAULT_H = 280;
 
 // Text floats (paragraph/heading/selection) auto-fit their height to content
-// on first mount per session, capped at 40% of viewport height. Tracked here
-// so user resizes after the initial fit aren't overwritten when the float
-// closes and reopens.
+// on first mount per session, capped via the shared `capPopoutHeight`
+// (POPOUT_MAX_VH fraction of viewport) — Issue-13 unified this with the
+// lifted-overlay capture cap into one "how tall can a popout be" policy (was a
+// separate local 0.4 here). Tracked here so user resizes after the initial fit
+// aren't overwritten when the float closes and reopens.
 const autoFittedKeys = new Set<string>();
 const TEXT_FLOAT_HEADER_H = 24;
 const TEXT_FLOAT_BORDERS = 2;
-const TEXT_FLOAT_MAX_VH = 0.4;
 
 /**
  * Wraps a popped-out card's JSX in a draggable/resizable `FloatingPanel`,
@@ -124,8 +126,7 @@ export function FloatCard({
         const currentH = panelRect.height;
         const natural =
           body.scrollHeight + TEXT_FLOAT_HEADER_H + TEXT_FLOAT_BORDERS;
-        const cap = Math.floor(window.innerHeight * TEXT_FLOAT_MAX_VH);
-        const target = Math.min(natural, cap);
+        const target = capPopoutHeight(natural, window.innerHeight);
         if (target <= currentH + 1) return;
         if (target === lastTarget) return;
         lastTarget = target;

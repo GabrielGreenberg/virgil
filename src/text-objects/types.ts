@@ -317,12 +317,15 @@ export interface TextObjectMeta {
    *  `heading` keeps the heading line's left/top/width (the user grabbed
    *  the heading; the section ghost grows DOWN from it, so the text
    *  top-left — hence the grab offset and L1.12 text-stays-still — is
-   *  unchanged) but clamps height to the whole section's extent, capped
-   *  at the visible page (`cache.scrollBottom − cache.scrollTop`) so a
-   *  huge section isn't a huge ghost. Returns null to use the default
-   *  (heading does so for a lone section). L3f (linkedRange) will likely
-   *  widen this to a full mark/range bounding box. Resolved at the parent
-   *  and threaded down, like `renderGhost`. */
+   *  unchanged) and returns the whole section's FULL extent as the height.
+   *  The general viewport-fraction cap (`POPOUT_MAX_VH`) at the single
+   *  capture site in `TextObjectGrabHandle` then fits it on screen for
+   *  every kind (Issue-13), so this hook no longer clamps to the visible
+   *  page itself (`heading` leaves the `cache` arg unused now; it stays on
+   *  the signature for L3f). Returns null to use the default (heading does
+   *  so for a lone section). L3f (linkedRange) will likely widen this to a
+   *  full mark/range bounding box. Resolved at the parent and threaded
+   *  down, like `renderGhost`. */
   liftSourceRect?: (
     anchorDom: HTMLElement,
     editor: Editor,

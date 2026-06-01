@@ -78,6 +78,7 @@ import {
   TEXT_OBJECT_REGISTRY,
   isTextObjectKind,
   textObjectPopoutKey,
+  capPopoutHeight,
 } from "./text-object-registry";
 import { computeHandleLeftEdge } from "./handle-layout";
 import { LiftedTextOverlay } from "./LiftedTextOverlay";
@@ -92,6 +93,12 @@ const LIFT_THRESHOLD = 5;
  *  The grip sits inside the float's header, so the cursor lands on the
  *  header (not on the body) after the lift. */
 const SPAWN_CURSOR_OFFSET_Y = 16;
+/** Issue-13: viewport inset for the released popout's bottom-fit clamp, so a
+ *  height-capped lifted popout always lands fully on screen. Mirrors
+ *  FloatingCards' auto-fit `adjustedY` margin (20) and the `innerHeight - 40`
+ *  fit convention in FloatingPanel — the popout's top and bottom stay at
+ *  least this far inside the viewport. */
+const SPAWN_FIT_MARGIN = 20;
 
 /** Popout chrome dimensions used by the lifted-overlay path (L1.12).
  *
@@ -741,6 +748,20 @@ export function TextObjectGrabHandle({ editorRef }: Props) {
           const liftRect =
             meta.liftSourceRect?.(anchorDom, editor, ref, cacheRef.current) ??
             anchorDom.getBoundingClientRect();
+          // Issue-13: cap the captured source height to a viewport fraction
+          // (POPOUT_MAX_VH) at this SINGLE capture site, so EVERY lifted kind's
+          // ghost AND released popout fit on screen (the float body scrolls the
+          // overflow). A MAX, not a floor: short content (liftRect.height <
+          // cap) is unchanged. Because this one capped height feeds both the
+          // ghost (overlay sized to sourceHeight) and the popOutAtRect spawn
+          // (height = sourceHeight + chrome), the two stay identical — no size
+          // jump on release (the L1.12 text-stays-still / chrome-grows-outward
+          // invariant holds). Left/top/width untouched, so the grab offset is
+          // unchanged.
+          const cappedSourceHeight = capPopoutHeight(
+            liftRect.height,
+            window.innerHeight,
+          );
           const ghostContent = meta.renderGhost?.(anchorDom, editor, ref) ?? null;
           const initialMode = cacheRef.current.containsContentZone(
             mv.clientX,
@@ -764,7 +785,7 @@ export function TextObjectGrabHandle({ editorRef }: Props) {
             grabOffsetX: mv.clientX - liftRect.left,
             grabOffsetY: mv.clientY - liftRect.top,
             sourceWidth: liftRect.width,
-            sourceHeight: liftRect.height,
+            sourceHeight: cappedSourceHeight,
             cursorX: mv.clientX,
             cursorY: mv.clientY,
             mode: initialMode,
@@ -920,23 +941,38 @@ export function TextObjectGrabHandle({ editorRef }: Props) {
           // same deficit the overlay had), so the released float's body text
           // is sourceWidth × sourceHeight — matching the ghost AND the
           // drag-popout overlay, with no re-wrap on release.
+          const overlayHeight =
+            sourceHeight +
+            POPOUT_HEADER_HEIGHT +
+            2 * POPOUT_BODY_PADDING_Y +
+            2 * POPOUT_BORDER;
+          // Issue-13: clamp the spawn Y so the (now height-capped) window's
+          // bottom stays on screen. Mirrors FloatingCards' auto-fit
+          // `adjustedY` clamp (Math.max(20, Math.min(top, innerHeight −
+          // height − 20))) and the `innerHeight - 40` fit convention in
+          // FloatingPanel. With sourceHeight ≤ ~55% viewport (the capture cap)
+          // plus 58px chrome, a valid Y always exists; Math.max keeps the top
+          // on screen if the grab point sat near the viewport bottom.
+          const spawnY = Math.max(
+            SPAWN_FIT_MARGIN,
+            Math.min(
+              Math.round(
+                cursorY -
+                  grabOffsetY -
+                  POPOUT_HEADER_HEIGHT -
+                  POPOUT_BODY_PADDING_Y -
+                  POPOUT_BORDER,
+              ),
+              window.innerHeight - SPAWN_FIT_MARGIN - overlayHeight,
+            ),
+          );
           const overlayRect = {
             x: Math.round(
               cursorX - grabOffsetX - POPOUT_BODY_PADDING_X - POPOUT_BORDER,
             ),
-            y: Math.round(
-              cursorY -
-                grabOffsetY -
-                POPOUT_HEADER_HEIGHT -
-                POPOUT_BODY_PADDING_Y -
-                POPOUT_BORDER,
-            ),
+            y: spawnY,
             width: sourceWidth + 2 * POPOUT_BODY_PADDING_X + 2 * POPOUT_BORDER,
-            height:
-              sourceHeight +
-              POPOUT_HEADER_HEIGHT +
-              2 * POPOUT_BODY_PADDING_Y +
-              2 * POPOUT_BORDER,
+            height: overlayHeight,
           };
           poppedRef.current?.popOutAtRect(cardKey, overlayRect);
         } else {

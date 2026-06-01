@@ -37,6 +37,32 @@ import type {
   TextObjectRef,
 } from "./types";
 
+/**
+ * Shared "how tall can a popout be" policy — the maximum height of any
+ * popped-out card as a fraction of the viewport, applied as a MAX (never a
+ * floor; short content opens at its natural height). Consumed by BOTH the
+ * lifted-overlay capture cap in `TextObjectGrabHandle` (caps the captured
+ * `sourceHeight` that feeds the ghost AND the released popout for every
+ * lifted kind) and the instant-popout auto-fit grow cap in `FloatingCards`
+ * — one policy, so a popped section always fits on screen and scrolls
+ * internally for the overflow. User-chosen 2026-06-01 (the 50–60% range);
+ * supersedes the old per-site 0.4 auto-fit cap (Issue-13).
+ */
+export const POPOUT_MAX_VH = 0.55;
+
+/**
+ * Apply the shared {@link POPOUT_MAX_VH} cap to a popout-related height.
+ * A MAX, not a floor — short content (`naturalHeight < cap`) is returned
+ * unchanged. One function for BOTH cap sites (the lifted-overlay capture cap
+ * and the instant-popout auto-fit grow cap) so they can never drift.
+ */
+export function capPopoutHeight(
+  naturalHeight: number,
+  viewportHeight: number,
+): number {
+  return Math.min(naturalHeight, Math.floor(viewportHeight * POPOUT_MAX_VH));
+}
+
 // ---------------------------------------------------------------------------
 // Per-kind action sets — see ACTION-MENU-DIAGNOSIS.md cluster C1.
 //
@@ -346,28 +372,32 @@ export const TEXT_OBJECT_REGISTRY: Record<TextObjectKind, TextObjectMeta> = {
       }
       return container;
     },
-    // L3-Headings: clamp the lifted source rect to the visible page so a
-    // tall section isn't a giant ghost. Keep the heading line's
-    // left/top/width (the user grabbed the heading; the section ghost
-    // grows DOWN from it — text top-left, hence grab offset and the
-    // L1.12 text-stays-still invariant, unchanged); clamp height to
-    // min(section extent, visible page). The clamped height flows from
-    // the single capture site into both the ghost and the popOutAtRect
-    // spawn, so the released popout (heading-body, already a full-section
-    // overflow-auto view — untouched) opens at the same height and
-    // scrolls. Null for a lone heading → default getBoundingClientRect.
-    liftSourceRect: (anchorDom, editor, ref, cache) => {
+    // L3-Headings + Issue-13: return the WHOLE section's rect. Keep the
+    // heading line's left/top/width (the user grabbed the heading; the
+    // section ghost grows DOWN from it — text top-left, hence the grab
+    // offset and the L1.12 text-stays-still invariant, unchanged) and
+    // report the section's FULL extent as the height. The general
+    // viewport-fraction cap (POPOUT_MAX_VH) now lives at the SINGLE capture
+    // site in `TextObjectGrabHandle`, where it caps the captured
+    // sourceHeight for EVERY lifted kind — so the ghost AND the released
+    // popout fit on screen and scroll internally. That subsumes the old
+    // heading-only `min(extent, visiblePage)` clamp, which was both
+    // heading-scoped and chrome/position-blind (it capped to ~full viewport
+    // while the spawn adds 58px of chrome and positions at the grab point →
+    // overflow). heading-body is already a full-section overflow-auto view
+    // (untouched). Null for a lone heading → default getBoundingClientRect.
+    // (`cache` is no longer needed here; the general cap handles fitting.)
+    liftSourceRect: (anchorDom, editor, ref) => {
       const doms = sectionBlockDoms(editor, ref.id);
       if (doms.length <= 1) return null; // lone heading → default rect
       const headRect = anchorDom.getBoundingClientRect();
       const lastBottom = doms[doms.length - 1].getBoundingClientRect().bottom;
       const sectionExtent = lastBottom - headRect.top; // scroll-invariant
-      const visiblePage = cache.scrollBottom - cache.scrollTop;
       return {
         left: headRect.left,
         top: headRect.top,
         width: headRect.width,
-        height: Math.min(sectionExtent, visiblePage),
+        height: sectionExtent,
       };
     },
     dropAdapter: topLevelDropAdapter,
