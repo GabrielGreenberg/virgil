@@ -560,3 +560,94 @@ first measurement eval (`cap 0`, `extent 2997` reflowed at the degenerate size);
 non-zero before trusting any viewport-fraction measurement. Every measurement
 eval carried a `6*7` sentinel to catch fabricated tool output (the arc's known
 hazard); all returned 42.
+
+## L3f-1 — Decouple the plain selection-grab from annotation: a cardless, invisible anchor (kills the green highlight) — 2026-06-01
+
+**Commit:** `5820e92` (this memo is the paired follow-up).
+
+**Reframe.** The last body-having kind was framed as "linkedRange," but the
+real target is: **a plain text SELECTION grab is a transient action — it must
+leave NO side-panel card and NO visible highlight** (an under-the-hood id to
+track the range is fine). The `linkedAnchor` annotation kinds (note /
+highlight / cut / revision) are a SEPARATE, legitimate thing that keeps its
+colour + card. This is **piece 1 of 3** of the reframed L3f; pieces 2
+(selection as a first-class lifted-overlay grab) and 3 (within-text caret
+drop) follow.
+
+**The bug + cause.** A plain selection grab routes through
+`hydrateSelectionToTextObject` (`src/text-objects/hydrate-selection.ts`),
+which stamped a `linkedAnchor` mark with ONLY `anchorId`. But the mark's
+`kind` attr DEFAULTS to `"note"` (`linked-anchor.ts:25`), so `renderHTML`
+derived `data-link-card="note:"` and CSS painted the grabbed text green
+(`globals.css` `.linked-anchor[data-link-card^="note:"] → #15803d`, surfaced
+via the note highlight-toggle / hover / selected). A transient grab was being
+dressed as a note annotation.
+
+**The fix (class-level) — a transient, cardless, INVISIBLE anchor for the
+plain grab.**
+1. **Sentinel.** `hydrateSelectionToTextObject` gains an opt-in `{ transient }`
+   param; when set it stamps `kind:"transient"` on the minted mark. Passed
+   `true` ONLY by the plain grab (`TextObjectGrabHandle.tsx:680`).
+2. **renderHTML.** The DOM-attr policy moved to a pure, unit-tested helper
+   `linkedAnchorRenderAttrs` (`src/lib/tiptap/linked-anchor-attrs.ts`): a
+   transient mark (`kind:"transient"`, no `linkCard`) OMITS `data-link-card`
+   entirely; every other anchor is byte-identical to before; an explicit
+   `linkCard` always wins (so a real card attached later overwrites the
+   sentinel and the anchor colours up the moment it becomes an annotation).
+3. **CSS.** `.linked-anchor:not([data-link-card]) { --link-anchor-color:
+   transparent; background: none; }` — because the hover / selected / show-hl
+   backgrounds are all `color-mix(... var(--link-anchor-color) ...)`, the
+   transparent var neutralises them too. No green, no amber fallback, no tint,
+   regardless of the highlight toggles or hover.
+4. **Lifecycle (no litter).** New guarded `removeTransientAnchor` (`links.ts`)
+   strips the handle — but ONLY if the mark is actually transient, so a grab
+   that REUSED a real annotation's range (full-coverage reuse) never deletes
+   that note/highlight/cut/revision on close. Driven by
+   `useTransientAnchorCleanup` (`src/text-objects/`), a `poppedOutCards`
+   watcher mounted in `EditorLayout` (editor-aware; catches every close path —
+   float X, Cmd-W, Escape, programmatic).
+
+**Scoped to the plain grab only.** Card-anchor commits (note/highlight/cut/
+revision from a selection) do NOT route through
+`hydrateSelectionToTextObject` — they use `createLinkedAnchor` /
+`updateLinkedAnchorCard` (`links.ts:751/809`), which set `kind`/`linkCard`/
+`tintColor` directly. They keep their colour + card, untouched.
+
+**Re-grounding (the arc's read-corruption defence paid off).** The brief
+claimed `hydrateSelectionToTextObject` was shared by multiple call sites
+(plain grab + card commits + drop commits, per its header doc); a
+cross-checked `grep` (Read + `git grep`) proved only ONE real caller today —
+the plain grab. The header doc's "Phase E call sites" were aspirational/stale
+(corrected in the doc). `linkedRange` has no `liftMode`, so the selection grab
+is INSTANT-POPOUT, not lifted-overlay — the brief's cancel/move-commit cleanup
+sites (`~985/~1015`) belong to the lifted-overlay path a selection won't reach
+until piece 2, so they're not wired here; the real lifecycle is close-driven.
+`closeCardPopout` (`useViewPrefs:1352`) has no editor, and the editor-aware
+close handlers live in the off-limits `EditorPane`, so cleanup was hung off
+the `poppedOutCards` source-of-truth in `EditorLayout` instead. The existing
+`useLinkedAnchorReconciler` (single owner of "every linkedAnchor must back a
+live card") remains a backstop — it already sweeps cardless marks on
+collection change — and the linkedAnchor mark is app-state (stripped on `.tex`
+export, re-applied only from a card's `links[]`), so a transient mark does not
+survive reload.
+
+**Verify.** `tsc` clean; `eslint` 0 errors (117 = baseline, no new); `vitest`
+**319/319** (312 baseline + 7 new in `linked-anchor-attrs.test.ts`: transient
+→ no `data-link-card`; note/highlight/cut/revision→comment fallbacks +
+explicit `linkCard` unchanged). Live on the dev doc (fresh `.next-preview`,
+every eval `6*7`-sentinelled, two agreeing runs): injecting a `kind:"transient"`
+mark + a `note:`/`highlight:` mark and reading the rendered spans — transient =
+no `data-link-card`, computed `background rgba(0,0,0,0)` WITH
+`data-show-hl-note="true"`; note = `data-link-card="note:…"`, green
+`oklab(…/0.18)`; highlight = `data-link-card="highlight:…"` + `data-tint-color`,
+amber `lab(…/0.35)`. The guard classified the transient as removable and the
+note as protected; applying guarded removal to both dropped the transient and
+left the note. The transparent rule was confirmed present in
+`document.styleSheets`.
+
+**No regressions.** Note/highlight/cut/revision creation + rendering untouched
+(non-transient `renderHTML` output byte-identical); the `linked-range-body`
+float (still `PLACEHOLDER_FLOAT_BODY`) and the annotation kinds unchanged; the
+4 pre-existing working-tree files (`EDITOR_SKILLS_BRAINSTORM.html`,
+`EditorPane.tsx`, `useMarginEdit.ts`, `useRecentlyAddedTracker.ts`) left
+untouched and out of the commit (`5820e92`).
