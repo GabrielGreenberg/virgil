@@ -3748,13 +3748,14 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
                     marginLeft: 'calc(4px + var(--pod-gap))',
                     marginRight: 'calc(4px + var(--pod-gap))',
                     background: 'var(--pod-editor)',
-                    borderTop: 'var(--pod-border)',
-                    borderLeft: 'var(--pod-border)',
-                    borderRight: 'var(--pod-border)',
+                    // Mask-only: NO border/shadow here. The single
+                    // `[data-pod-frame]` ring draws the edge. This white
+                    // inner just masks content scrolling past and, with
+                    // the manila container's rounded corner, fills the
+                    // corner notch so the borderless content's white
+                    // doesn't show past the frame's rounded corner.
                     borderTopLeftRadius: 'var(--pod-radius)',
                     borderTopRightRadius: 'var(--pod-radius)',
-                    boxShadow: '0 -1px 6px rgba(0,0,0,0.12), 0 0 2px rgba(0,0,0,0.06)',
-                    clipPath: 'inset(-20px 0 0 0)',
                   }}
                 />
               </div>
@@ -3800,26 +3801,74 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
                 onMouseDown={onTopGutterDown}
               />
             )}
+            {/* ── Single-border pod frame ring ──────────────────────
+                The SOLE element that draws the pod's visible card edge:
+                border + rounded corners + drop shadow. Sticky over the
+                visible reading rectangle (viewport minus chrome), full
+                pod width, transparent interior, pointer-events none.
+                Because exactly one element draws the border — and it is
+                sticky — there is no second border in a different paint
+                layer to mis-composite against, so the edge is a single
+                crisp line at any scroll position and device-pixel ratio
+                (the old pod-border + sticky-cap-border doubling, which
+                showed as a 1–2px displaced edge on retina, is gone).
+                The pod content is borderless; the caps mask scrolling
+                content and fill the manila corner notches behind this
+                ring's rounded corners. chromeTop = 32 (menu band 24 +
+                cap 8) / 8 (Reader); chromeBottom = 8. z-31 sits above
+                the caps (z-30), below the MenuBar band (z-40). */}
+            {ready && (overrideEditor ?? editor) && (
+              <div
+                data-pod-frame
+                aria-hidden
+                className="pointer-events-none shrink-0"
+                style={{
+                  position: "sticky",
+                  top: menuBar ? 32 : 8,
+                  height: menuBar
+                    ? "calc(var(--scroll-viewport-h, 100vh) - 40px)"
+                    : "calc(var(--scroll-viewport-h, 100vh) - 16px)",
+                  marginBottom: menuBar
+                    ? "calc(-1 * (var(--scroll-viewport-h, 100vh) - 40px))"
+                    : "calc(-1 * (var(--scroll-viewport-h, 100vh) - 16px))",
+                  zIndex: 31,
+                  border: "var(--pod-border)",
+                  borderRadius: "var(--pod-radius)",
+                  // Two stacked box-shadows: (1) a manila "matte" that
+                  // fills OUTSIDE the ring's rounded shape — this covers
+                  // the corner notches (the borderless content's white
+                  // that would otherwise show past the rounded corner)
+                  // and the gutter, following the border-radius so the
+                  // corner reads as a clean white-on-manila arc; (2) the
+                  // card's drop shadow, listed FIRST so it paints in
+                  // front of the matte and darkens the manila near the
+                  // edge (the shadow shows on the manila, not hidden
+                  // under it). The matte spread (pod-gap) covers the
+                  // notch + gutter without reaching the panel rails.
+                  boxShadow:
+                    "var(--pod-shadow), 0 0 0 var(--pod-gap) var(--background)",
+                }}
+              />
+            )}
             <div
               className="editor-pane-pod"
               data-marginalia-host
               style={{
                 flex: viewPrefs ? "1000 1 0" : "1 1 0",
                 minWidth: 0,
-                // While !ready, drop the pod's visible chrome so the
-                // LoadingScreen curtain reads as a single uninterrupted
-                // manilla field — no border / shadow / rounded corners
-                // peeking out around it.
+                // ── Borderless content (single-border frame model) ──
+                // The pod is now a PLAIN white rectangle that scrolls.
+                // It draws NO edge of its own — no border, radius,
+                // shadow, or clip. The entire visible card edge (border
+                // + rounded corners + shadow) is drawn ONCE by the
+                // sticky `[data-pod-frame]` ring below, so the edge is a
+                // single source of truth and can't double against a
+                // separate sticky layer (the retina mis-composite that
+                // produced the displaced edge). The caps degrade to
+                // mask-only (manila corner-fill + content masking).
+                // While !ready the whole thing reads as the manilla
+                // LoadingScreen field.
                 background: ready ? "var(--surface)" : "var(--background)",
-                border: ready ? "var(--pod-border)" : "none",
-                borderRadius: ready ? "var(--pod-radius)" : 0,
-                boxShadow: ready ? "var(--pod-shadow)" : "none",
-                // Clip the box-shadow at top and bottom so it doesn't
-                // bleed into the manilla band (top) or past the bottom
-                // cap into the column padding region. The caps carry
-                // their own ambient shadows; the pod's shadow extends
-                // laterally only.
-                clipPath: menuBar ? 'inset(0 -20px 0 -20px)' : undefined,
                 // Marginalia portals markers as `position: absolute`
                 // children of the closest `[data-marginalia-host]`. The
                 // pod must therefore be a positioning context.
@@ -4348,13 +4397,10 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
                     marginLeft: 'calc(4px + var(--pod-gap))',
                     marginRight: 'calc(4px + var(--pod-gap))',
                     background: 'var(--pod-editor)',
-                    borderBottom: 'var(--pod-border)',
-                    borderLeft: 'var(--pod-border)',
-                    borderRight: 'var(--pod-border)',
+                    // Mask-only (see top cap): no border/shadow; the
+                    // single `[data-pod-frame]` ring draws the edge.
                     borderBottomLeftRadius: 'var(--pod-radius)',
                     borderBottomRightRadius: 'var(--pod-radius)',
-                    boxShadow: 'var(--pod-shadow)',
-                    clipPath: 'inset(0 0 -20px 0)',
                   }}
                 />
               </div>
