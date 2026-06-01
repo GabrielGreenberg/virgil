@@ -4131,28 +4131,12 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
                 pointerEvents: "none",
               }}
             />
-            {/* Lifted-overlay portal root — sibling of the grab-handle
-                portal. The `LiftedTextOverlay` primitive (L1 of the
-                Lifted-Overlay refactor; see LIFTED-OVERLAY-REFACTOR.md)
-                portals an absolute-positioned ghost of the dragged
-                source block into this div during a paragraph drag (and
-                eventually every TextObject kind by L4). Same column-
-                level placement as the grab-handle portal for the same
-                reasons (escapes the pod's clipPath, scrolls with the
-                column, clips behind sticky caps). z-index ordering
-                handled in CSS — overlay sits above the grab handles
-                (z:25 vs z:20) and below the pod caps (z:30+).
-                pointer-events: none lets the cursor pass through to
-                the editor underneath so the ghost-vs-popout mode flip
-                tracks the actual hit-test against content. */}
-            <div
-              data-lifted-overlay-portal
-              style={{
-                position: "absolute",
-                inset: 0,
-                pointerEvents: "none",
-              }}
-            />
+            {/* (The lifted-overlay ghost is no longer portaled here — it
+                portals to document.body with position:fixed so it escapes
+                the editor scroll container's overflow clip and can stack
+                above the Virgil bar like a released float; see
+                LiftedTextOverlay.tsx and Issue-11. The grab-handle portal
+                above stays column-level.) */}
             {/* Bottom drag gap — 4px grab handle pinned just above the
                 sticky bottom chrome (pod-cap-bottom in main editor;
                 viewport bottom in Reader). z-31 above pod. marginTop:

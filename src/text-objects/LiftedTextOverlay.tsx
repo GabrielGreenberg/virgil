@@ -15,13 +15,19 @@
  * the overlay's popout-mode chrome with no per-kind logic here.
  *
  * Shape:
- *  - Renders TWO sibling elements inside `[data-lifted-overlay-portal]`
- *    (column-level inside the editor column — same architectural slot
- *    as the grab-handle portal, escapes the pod's clipPath, scrolls
- *    with the row):
- *      1. `.lifted-text-overlay` — `position: absolute`, sized to the
+ *  - Renders TWO sibling elements portaled to `document.body`
+ *    (`position: fixed`, viewport coords) — the SAME top layer released
+ *    floats (FloatingPanel) and the drop indicator use. NOT the editor
+ *    column: the editor scrolls inside an `overflow-y:auto` container
+ *    whose top edge sits flush under the Virgil bar (which lives OUTSIDE
+ *    that container), so an overlay inside the column is geometrically
+ *    clipped at that edge and can never paint over the bar at any z-index
+ *    (Issue-11). A body-level fixed box escapes the clip while tracking
+ *    the cursor identically (the column portal also only ever placed it at
+ *    the cursor's viewport position):
+ *      1. `.lifted-text-overlay` — `position: fixed`, sized to the
  *         source rect, contains the sanitized body clone.
- *      2. `.lifted-text-overlay__header` — `position: absolute`, sized
+ *      2. `.lifted-text-overlay__header` — `position: fixed`, sized
  *         independently by JS to sit flush above the overlay's top edge
  *         (left, top, width all inline). Both elements carry
  *         `data-lift-mode`; CSS hides the header in ghost mode.
@@ -54,7 +60,6 @@
 
 import { Fragment, useEffect, useMemo, useRef, type CSSProperties } from "react";
 import { createPortal } from "react-dom";
-import type { EditorViewportCache } from "@/hooks/useEditorViewportCache";
 import { resolveInlineContextElement } from "@/lib/text-metrics";
 import { FloatHeaderContent } from "./FloatHeaderContent";
 import type { TextObjectRef } from "./types";
@@ -138,9 +143,6 @@ export interface LiftedTextOverlayProps {
    *  useMemo (contenteditable / ids / state attrs stripped, pointer-events
    *  none). Absent / null → default single-element clone. */
   ghostContent?: HTMLElement | null;
-  /** Viewport cache used for `toPortalCoords` (viewport → portal-relative)
-   *  and for resolving the column-level portal target. */
-  cache: EditorViewportCache;
 }
 
 export function LiftedTextOverlay({
@@ -155,7 +157,6 @@ export function LiftedTextOverlay({
   mode,
   label,
   ghostContent,
-  cache,
 }: LiftedTextOverlayProps) {
   // Sanitize the clone once at mount. cloneNode(true) carries the full
   // subtree, whose `contenteditable` values are mixed: the source block is
@@ -220,7 +221,7 @@ export function LiftedTextOverlay({
   // as inline styles on the overlay root, so the clone inherits via the
   // normal CSS cascade. cloneNode(true) copies the DOM subtree but the
   // overlay's portal mount sits outside .ProseMirror's ancestor chain
-  // (it lives at column level, sibling of the pod) — any font / color /
+  // (it portals to document.body) — any font / color /
   // spacing rule defined at or below .ProseMirror would otherwise be
   // lost, and the clone would reflow at a different width than the
   // source. Holding the computed values for the gesture's lifetime is
@@ -323,14 +324,22 @@ export function LiftedTextOverlay({
     }
   }, [clone]);
 
-  // Resolve the portal target from the cache's column element. Falls
-  // back to document.body if the column / portal div haven't mounted
-  // yet — same defensive pattern as the grab handle.
+  // The overlay portals to document.body and positions with viewport-
+  // fixed coords — the SAME layer + coordinate model released floats
+  // (FloatingPanel) and the drop indicator use. This is NOT the L1 column
+  // portal: the editor scrolls inside an `overflow-y:auto` container whose
+  // top edge sits flush under the Virgil bar (the bar lives OUTSIDE that
+  // container), so an overlay rendered inside the column is geometrically
+  // CLIPPED at the container's top and can never paint over the bar at any
+  // z-index (Issue-11 — measured: an absolute child of the column portal
+  // at z:99999 is still clipped at the bar's bottom edge). A body-level box
+  // escapes the clip. Cursor tracking is preserved: the column portal only
+  // ever placed the overlay at the cursor's viewport position anyway (via
+  // toPortalCoords reading the live column rect each frame), so position:
+  // fixed at the raw viewport coords below lands at the identical pixel —
+  // and stays glued to the cursor through scroll without a per-frame rect
+  // read. See LIFTED-OVERLAY-REFACTOR.md (Issue-11).
   if (typeof document === "undefined") return null;
-  const portal =
-    (cache.paperEl?.querySelector(
-      "[data-lifted-overlay-portal]",
-    ) as HTMLElement | null) ?? null;
 
   // The popout-mode header bar's label arrives as a prop (L3a) — the
   // parent resolves it once at threshold cross via
@@ -343,18 +352,20 @@ export function LiftedTextOverlay({
   // and the overlay header is pointer-events:none, so the icons are inert.
   // CSS hides the header in ghost mode and fades it in when popout engages.
 
-  // Convert viewport coords to portal-relative. The overlay tracks the
-  // cursor (not the source) so scroll-during-gesture moves the source
-  // but keeps the overlay glued under the cursor — the model the user
-  // expects (the visual is "in your hand," not "in the doc").
+  // The overlay tracks the cursor (not the source) so scroll-during-
+  // gesture moves the source but keeps the overlay glued under the cursor
+  // — the model the user expects (the visual is "in your hand," not "in
+  // the doc"). With the body-level portal + position: fixed, that's just
+  // the raw viewport coords: the grab offset is already in viewport px, so
+  // `cursor − grabOffset` is the text content's top-left in the viewport.
   //
-  // `textCoords` is the text content's top-left in portal coords. This
-  // is the invariant across both modes (L1.12): the text never moves,
-  // chrome grows outward to accommodate popout padding + header.
-  const textCoords = cache.toPortalCoords(
-    cursorX - grabOffsetX,
-    cursorY - grabOffsetY,
-  );
+  // `textCoords` is the text content's top-left (viewport coords). This is
+  // the invariant across both modes (L1.12): the text never moves, chrome
+  // grows outward to accommodate popout padding + header.
+  const textCoords = {
+    x: cursorX - grabOffsetX,
+    y: cursorY - grabOffsetY,
+  };
 
   // Overlay outer rect, mode-dependent (L1.12). In ghost mode the outer
   // box hugs the text (no chrome to make room for). In popout mode the
@@ -426,7 +437,7 @@ export function LiftedTextOverlay({
         data-lift-kind={ref.kind}
         style={{
           ...typographyStyles,
-          position: "absolute",
+          position: "fixed",
           left: overlayLeft,
           top: overlayTop,
           width: overlayWidth,
@@ -448,7 +459,7 @@ export function LiftedTextOverlay({
         data-lift-mode={mode}
         data-lift-kind={ref.kind}
         style={{
-          position: "absolute",
+          position: "fixed",
           left: headerLeft,
           top: headerTop,
           width: headerWidth,
@@ -464,6 +475,6 @@ export function LiftedTextOverlay({
         <FloatHeaderContent label={label} />
       </div>
     </Fragment>,
-    portal ?? document.body,
+    document.body,
   );
 }

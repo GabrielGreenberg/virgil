@@ -1261,7 +1261,6 @@ export function TextObjectGrabHandle({ editorRef }: Props) {
           cursorY={overlay.cursorY}
           mode={overlay.mode}
           label={overlay.label}
-          cache={cacheRef.current}
         />
       )}
       {placements.length > 0 &&

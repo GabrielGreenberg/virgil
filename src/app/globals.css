@@ -1284,9 +1284,9 @@ textarea,
 
 /* Lifted-text overlay — portal-rendered ghost that follows the cursor
    during a TextObject lift gesture (L1 of the Lifted-Overlay refactor;
-   see LIFTED-OVERLAY-REFACTOR.md at repo root). Mounted inside
-   [data-lifted-overlay-portal] (column-level sibling of the pod, same
-   architectural slot as the grab-handle portal).
+   see LIFTED-OVERLAY-REFACTOR.md at repo root). Portaled to document.body
+   (position: fixed) — the same top layer released floats and the drop
+   indicator use (Issue-11; see the z-index note below).
 
    Two chrome states via [data-lift-mode], swapped by CSS — NO React
    re-render of the cloned subtree on mode flip:
@@ -1303,15 +1303,41 @@ textarea,
    opacity with no fade-in artifact. Popout is the deviation.
 
    Transitions apply only to chrome-bearing properties (opacity, border,
-   background, box-shadow) so position tracking stays instant. z-index
-   25 puts the overlay above grab handles (z:20) and below the pod caps
-   (z:30+). pointer-events: none lets the cursor pass through to the
-   editor for hit-testing (the mode-flip predicate reads cursor vs
-   content rect, not "what's under the cursor element-wise"). */
+   background, box-shadow) so position tracking stays instant.
+
+   The overlay + header portal to document.body (`position: fixed`, set in
+   LiftedTextOverlay.tsx) — the SAME layer released floats (FloatingPanel)
+   and the drop indicator use — and this z-index puts them at the RELEASED
+   float layer (FloatCard's `1200 + indexHint` in FloatingCards.tsx), not a
+   magic number. The drag popout IS the released popout that hasn't landed
+   yet, so it stacks in that same top layer: above the Virgil bar (sticky
+   z:30 in EditorLayout.tsx), the pod caps (z:30/31), and the rest of the
+   app chrome — exactly where it lands the instant it releases into a
+   FloatCard, so drag and release are stacking-identical. It stays BELOW
+   the drop-mode indicator (z:9999, body-fixed, see drop-mode/Indicator.tsx)
+   so the blue insertion bar still composes on top during a ghost-mode move,
+   same as over a released float (Issue-11).
+
+   The body-level portal is load-bearing, NOT just the z: the editor
+   scrolls inside an `overflow-y:auto` container whose top edge sits flush
+   under the Virgil bar (the bar lives OUTSIDE that container), so an
+   overlay rendered inside the editor column is geometrically CLIPPED at
+   that edge and can never paint over the bar at ANY z-index (measured: an
+   absolute child of the old column portal at z:99999 is still clipped at
+   the bar's bottom). Only a body-level box escapes the clip; the z then
+   orders it above the bar within the root context. Cursor tracking is
+   unaffected — viewport-fixed coords land at the same pixel the column
+   portal did. pointer-events: none lets the cursor pass through to the
+   editor for hit-testing (the mode-flip predicate reads cursor vs content
+   rect, not "what's under the cursor element-wise"). */
 .lifted-text-overlay {
-  position: absolute;
+  /* fixed (also set inline in LiftedTextOverlay.tsx, which owns left/top/
+     width/height) — the overlay portals to document.body and tracks the
+     cursor in viewport coords, escaping the editor scroll container's clip
+     (see note above). */
+  position: fixed;
   pointer-events: none;
-  z-index: 25;
+  z-index: 1200;
   box-sizing: border-box;
   /* Base = ghost: no chrome, only semi-opaque text. */
   opacity: 0.6;
@@ -1365,7 +1391,11 @@ textarea,
   display: none;
   /* position / left / top / width / height set inline by JS */
   pointer-events: none;
-  z-index: 25;
+  /* Match `.lifted-text-overlay` (the released-float layer, z:1200) so
+     the header + body stack as one unit above the Virgil bar — they're
+     portal siblings in the root context, so equal z + DOM order keeps the
+     header (rendered last) flush atop the body's top edge (Issue-11). */
+  z-index: 1200;
   box-sizing: border-box;
   padding: 0 8px;
   align-items: center;
