@@ -801,6 +801,32 @@ export function removeLinkedAnchor(editor: Editor, anchorId: string): void {
 }
 
 /**
+ * Remove a TRANSIENT (cardless) `linkedAnchor` — the invisible range handle
+ * the plain selection grab stamps (`kind:"transient"`, no `linkCard`). Used
+ * to clean the handle up when its popout closes so it never litters the doc.
+ *
+ * GUARDED: a no-op unless the mark at `anchorId` is actually transient, so a
+ * grab that REUSED a real annotation's range (full-coverage reuse in
+ * `hydrateSelectionToTextObject`) never deletes that note / highlight / cut /
+ * revision on close. Reuses `removeLinkedAnchorMark`.
+ */
+export function removeTransientAnchor(editor: Editor, anchorId: string): void {
+  const range = resolveTextRangeByAnchorId(editor, anchorId);
+  if (!range) return;
+  let isTransient = false;
+  editor.state.doc.nodesBetween(range.from, range.to, (node) => {
+    if (!node.isText) return true;
+    for (const m of node.marks) {
+      if (m.type.name !== "linkedAnchor") continue;
+      if (m.attrs.anchorId !== anchorId) continue;
+      if (m.attrs.kind === "transient" && !m.attrs.linkCard) isTransient = true;
+    }
+    return true;
+  });
+  if (isTransient) removeLinkedAnchorMark(editor, anchorId);
+}
+
+/**
  * Update a `linkedAnchor` mark's `linkCard` attr to point at the final
  * card. Call this after the card is persisted, so the mark becomes
  * self-describing (CSS can pick the per-kind highlight color, Cowork

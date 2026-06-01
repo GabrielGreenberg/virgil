@@ -10,6 +10,7 @@ import { isDevStorage } from "@/lib/storage-mode";
 import { isTier1BDisabled } from "@/lib/perf-flags";
 import { readPdf } from "@/lib/storage";
 import { migrateLegacyPopoutKeys } from "@/text-objects/post-load-migrations";
+import { useTransientAnchorCleanup } from "@/text-objects/useTransientAnchorCleanup";
 import { type MarginaliaType, type DividerLevel, type DividerWidth } from "@/hooks/useViewPrefs";
 import { Editor } from "@tiptap/react";
 import { type SectionPathEntry, buildPerBlockCounts, sumIncludedWords, extractHeadings } from "@/panels/Outline";
@@ -935,6 +936,11 @@ export default function EditorLayout() {
   // TextObjectGrabHandle subscribes to viewPrefs directly via
   // `usePoppedCards()` — no manual refresh ping needed.
   const [editorInstance, setEditorInstance] = useState<Editor | null>(null);
+  // A plain selection grab pops out a cardless `linkedRange` whose invisible
+  // transient anchor must be stripped from the doc when the popout closes
+  // (it's a gesture handle, not an annotation). Watches poppedOutCards so it
+  // catches every close path.
+  useTransientAnchorCleanup(editorInstance, prefs.poppedOutCards);
   // When a panel mini-editor (e.g. footnote RichTextField) is focused,
   // the main toolbar should route commands to it instead of the main editor.
   const [overrideEditor, setOverrideEditor] = useState<Editor | null>(null);

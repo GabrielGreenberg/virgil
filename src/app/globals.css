@@ -2413,6 +2413,18 @@ textarea,
 .linked-anchor[data-link-card^="quotation:"] { --link-anchor-color: #a16207; }
 .linked-anchor[data-link-card^="todo:"]      { --link-anchor-color: #44403c; }
 
+/* Transient (cardless) anchor — the plain selection grab's invisible range
+ * handle (`kind:"transient"`). renderHTML emits NO data-link-card, so none of
+ * the per-kind colour rules above match; force the colour var transparent so
+ * the hover / selected / show-hl backgrounds (all `color-mix(... var(
+ * --link-anchor-color) ...)`) resolve to transparent too. A plain grab leaves
+ * the text unpainted regardless of the highlight toggles or hover. The moment
+ * a real card attaches, data-link-card reappears and the per-kind colour wins. */
+.linked-anchor:not([data-link-card]) {
+  --link-anchor-color: transparent;
+  background: none;
+}
+
 /* Persistent highlight tint — set by the linkedAnchor mark's `tintColor`
  * attribute (Adobe-style: stays visible without hover/selection gating
  * and independent of the `data-show-hl-*` toggles below). Carries through

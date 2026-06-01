@@ -677,10 +677,15 @@ export function TextObjectGrabHandle({ editorRef }: Props) {
             cleanup();
             return;
           }
+          // Plain selection grab → a TRANSIENT (cardless, invisible) range
+          // handle: this is gesture input, not an annotation, so it must
+          // leave no side-panel card and no highlight. The transient mark is
+          // stripped when its popout closes (useTransientAnchorCleanup).
           const hydrated = hydrateSelectionToTextObject(
             editor.view,
             safeFrom,
             safeTo,
+            { transient: true },
           );
           if (!hydrated) {
             cleanup();

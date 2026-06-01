@@ -3,6 +3,7 @@ import { Plugin, PluginKey } from "@tiptap/pm/state";
 import { Fragment as PMFragmentCtor, Slice as PMSliceCtor, type Node as PMNode2, type Fragment as PMFragment } from "@tiptap/pm/model";
 import type { MutableRefObject } from "react";
 import { readPendingDiff } from "@/lib/tiptap/doc-structure";
+import { linkedAnchorRenderAttrs } from "@/lib/tiptap/linked-anchor-attrs";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // LinkedAnchor — invisible mark placed on a text range. Used by Notes,
@@ -22,6 +23,10 @@ export const LinkedAnchor = Mark.create({
       // Legacy attrs kept in JSON for persistence but not emitted to HTML —
       // data-link-* carry the same information for parsers.
       anchorId: { default: "", renderHTML: () => ({}) },
+      // `kind` drives the per-kind colour fallback in renderHTML. The
+      // sentinel value "transient" marks the plain selection grab's
+      // cardless range handle — renderHTML then omits data-link-card so the
+      // anchor is invisible (see linked-anchor-attrs.ts).
       kind: { default: "note", renderHTML: () => ({}) },
       linkId: { default: "", renderHTML: () => ({}) },
       linkKind: { default: "anchor", renderHTML: () => ({}) },
@@ -50,32 +55,14 @@ export const LinkedAnchor = Mark.create({
   },
 
   renderHTML({ mark, HTMLAttributes }) {
-    const anchorId =
-      (mark.attrs.linkId as string) ||
-      (mark.attrs.anchorId as string) ||
-      "";
-    // Prefer the explicit linkCard attr; fall back to a prefix derived
-    // from the legacy `kind` attr so older anchors still get a per-kind
-    // CSS color and the per-kind highlight toggle reaches them.
-    let linkCard = (mark.attrs.linkCard as string) || "";
-    if (!linkCard) {
-      const legacyKind = (mark.attrs.kind as string) || "";
-      const cardKind =
-        legacyKind === "revision" ? "comment"
-          : legacyKind === "note" ? "note"
-          : legacyKind === "highlight" ? "highlight"
-          : legacyKind === "cut" ? "cut"
-          : "";
-      if (cardKind) linkCard = `${cardKind}:`;
-    }
+    // Attribute policy (incl. the transient/cardless rule) lives in the
+    // pure, unit-tested `linkedAnchorRenderAttrs`. A transient anchor (the
+    // plain selection grab's invisible range handle) omits data-link-card
+    // so no per-kind colour rule paints it; every other anchor is
+    // byte-identical to before.
     return [
       "span",
-      mergeAttributes(HTMLAttributes, {
-        class: "linked-anchor",
-        "data-link-id": anchorId,
-        "data-link-kind": "anchor",
-        "data-link-card": linkCard,
-      }),
+      mergeAttributes(HTMLAttributes, linkedAnchorRenderAttrs(mark.attrs)),
       0,
     ];
   },

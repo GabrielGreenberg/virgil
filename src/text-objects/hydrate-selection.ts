@@ -7,11 +7,14 @@
  * gesture hydrates the selection into a `linkedRange` text-object by
  * stamping a `linkedAnchor` mark with a fresh `anchorId` over the range.
  *
- * Call sites (Phase E):
- *   - TextObjectGrabHandle lift commit on a SelectionRef
- *   - Card-anchor commit (DragHandleMenu / ActionsMenuPanel) for any
- *     Mode B card kind
- *   - Drop-mode commit on a selection source
+ * Call sites:
+ *   - TextObjectGrabHandle lift commit on a SelectionRef (the plain grab —
+ *     passes `{ transient: true }`; this is the ONLY caller today).
+ * Planned (Phase E — not yet wired): card-anchor commit (DragHandleMenu /
+ * ActionsMenuPanel) and drop-mode commit on a selection source. Those must
+ * leave `transient` unset so they mint a real, colourable annotation;
+ * card-anchor commits currently use `createLinkedAnchor` (src/links/links.ts)
+ * instead, which sets `kind`/`linkCard`/`tintColor` directly.
  *
  * Paste policy: `LinkedAnchorGuard.transformPasted` strips the mark on
  * paste to prevent id collisions. AnchorIds are minted exactly once at
@@ -35,6 +38,16 @@ import type { TextObjectRef } from "./types";
  * already-hydrated selection. Other cards anchored to that range
  * continue to point at the same id.
  *
+ * `opts.transient` (the plain selection grab — see TextObjectGrabHandle):
+ * stamp the freshly-minted mark with `kind:"transient"` so it renders as a
+ * cardless, invisible range handle (no card, no highlight; renderHTML omits
+ * data-link-card). It is opt-in and OFF by default: a card-anchor commit
+ * (note / highlight / cut / revision) that hydrates a selection must still
+ * produce a real, coloured annotation, so it leaves `transient` unset. When
+ * an existing anchor already covers the range, the mode is irrelevant — the
+ * existing kind is preserved (so re-grabbing over a real note never demotes
+ * it to transient, and its cleanup never deletes the note).
+ *
  * Returns null if the range is empty or the schema doesn't have the
  * `linkedAnchor` mark (defensive — shouldn't happen in practice).
  */
@@ -42,6 +55,7 @@ export function hydrateSelectionToTextObject(
   view: EditorView,
   from: number,
   to: number,
+  opts?: { transient?: boolean },
 ): TextObjectRef | null {
   if (from >= to) return null;
   const markType = view.state.schema.marks.linkedAnchor;
@@ -87,7 +101,11 @@ export function hydrateSelectionToTextObject(
   });
 
   const anchorId = generateShortId(existing);
-  const mark = markType.create({ anchorId });
+  // Plain grab → cardless `kind:"transient"` handle (invisible, no card);
+  // any other commit → a default anchor that a card path later colours.
+  const mark = markType.create(
+    opts?.transient ? { anchorId, kind: "transient" } : { anchorId },
+  );
   view.dispatch(view.state.tr.addMark(from, to, mark));
 
   return { kind: "linkedRange", id: anchorId };
