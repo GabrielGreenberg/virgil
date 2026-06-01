@@ -318,3 +318,113 @@ flip is driven by the parent's `mode` prop (untouched); the drop indicator
 unchanged. Real-drag visual is user-driven (the grab handle needs a TRUSTED
 hover): drag a paragraph/section up near the Virgil bar and confirm the
 floating block passes OVER the bar.
+
+## Issue-12 — ONE source for view-toggle classes across all three content surfaces (page column + released float + drag ghost); fixes the missing ghost dividers — 2026-05-31
+
+**Commit:** `2d32a62` (this memo is the separate follow-up, per the arc's code+memo pairing).
+
+**User mandate.** "There are other things subject to show/hide — section
+dividers, % comments, perhaps stuff I make in the future. Will this all be
+automated, or do I have to come back for each one? I'd STRONGLY prefer a
+unified architectural solution, so all of that just percolates into pop-outs
+automatically." Motivating bug: "when I pop-out a section, the divider bars are
+missing in the GHOST, but show up on release." Same architectural gap — closed
+once.
+
+**The 3-layer architecture.** A view toggle (dividers, % comments, par-titles,
+heading-labels, divider-width, any future hide-labels / labels-on-hover) flows
+through three layers; full automation needs all three unified:
+1. **Toggle state → class tokens** — `viewToggleClasses(menuBar)`
+   (`chrome-config.ts`), the single producer of `hide-par-titles` /
+   `hide-latex-comments` / `hide-heading-labels` / `show-dividers-<lvl>` /
+   `dividers-width-<n>` (returns `""` for no menuBar / Reader).
+2. **The CSS those classes gate** — ALL ancestor-agnostic:
+   `.hide-heading-labels .heading-annotation`, `.hide-par-titles
+   .par-title-annotation`, `.hide-latex-comments .latex-comment`,
+   `.show-dividers-N .tiptap .heading-wrapper-lN(::before)`, and
+   `.dividers-width-*` (sets cascading `--divider-inset-*` vars the `::before`
+   reads). They key on the toggle class as an ANCESTOR (or self), NEVER on
+   `.editor-pane-column` — so any surface whose ROOT carries the class gets
+   the behavior for free, no per-surface CSS.
+3. **The surfaces that carry the classes** — THREE: the page column
+   (`.editor-pane-column`), the released float body (`.par-float-body`), and
+   the drag-ghost overlay (`.lifted-text-overlay`).
+
+**The finding (correcting a fabricated mis-read).** Before Issue-12: column ✓
+(hand-built inline className), float ✓ (consumes `viewToggleClasses` since
+Issue-8), **drag ghost ✗ — the un-migrated third surface.** The column did NOT
+"sort divider levels while the float doesn't" — that "they already drift" claim
+was a tool-channel FABRICATION. The column's deleted `dividerClassName` useMemo
+did `[...levels].map(...)` and `viewToggleClasses` does `for (const lvl of
+levels)` — both iterate the SAME `Set` in insertion order, token-for-token
+identical in every state. NO sort was introduced; the column refactor is
+byte-identical.
+
+**Why the ghost lost its dividers.** Issue-11 (`bf80d47`) re-portaled the
+overlay to `document.body` to clear the Virgil bar. That dropped the
+`.show-dividers-N` ancestor the ghost had inherited while it portaled INSIDE
+`.editor-pane-column`, so the `.show-dividers-N .tiptap .heading-wrapper-lN`
+rule no longer reached the ghost body and the bars vanished mid-drag (they
+reappeared on release because the float carries the class explicitly via
+Issue-8). The ghost was simply never migrated to consume the one source.
+
+**The three-part fix (one commit).**
+- **(A) Page column consumes the one source.** `EditorPane.tsx` now computes
+  `const viewToggleCls = viewToggleClasses(menuBar)` (replacing the redundant
+  `dividerClassName` useMemo, deleted) and the column className is
+  `` `editor-pane-column${viewToggleCls ? ` ${viewToggleCls}` : ""}` `` —
+  byte-identical output to the old hand-built expression in every state.
+- **(B) Drag ghost becomes the third consumer (THE BUG FIX).**
+  `TextObjectGrabHandle` reads `menuBar` via `useEditorChrome()` (it renders
+  inside EditorPane's `EditorChromeProvider` — the same seam the floats use),
+  builds `viewToggleClasses(menuBar)`, mirrors it into a ref (idiom of
+  `poppedRef` / `dragHandleMenuRef`), pins it on `OverlayState` at
+  threshold-cross (toggle state can't change mid-gesture — same rationale as
+  the `label` prop), and threads it as a new `viewToggleCls` prop to
+  `LiftedTextOverlay`, which appends it to the `.lifted-text-overlay` ROOT
+  className (ancestor of the `.tiptap` body). The ghost now honors EVERY
+  toggle, restoring correct pre-Issue-11 behavior.
+- **(C) Stale comments corrected.** The Issue-1 (globals.css ~1504) and Issue-3
+  (~1545) comments no longer claim the ghost "renders INSIDE `.show-dividers-N`
+  via ancestry" — post-Issue-11 the ghost is body-portaled, and Issue-12
+  supplies `.show-dividers-N` EXPLICITLY on the overlay root, the same
+  mechanism the float uses on `.par-float-body`. Load-bearing rationale kept;
+  also fixed the stale `~3482` line-ref (the divider rule sits at ~3600).
+
+**Issue-1's first-block reset is load-bearing AGAIN.** With `.show-dividers-N`
+back on the ghost root, the first heading's 4.2em divider margin returns, and
+`.lifted-text-overlay__body .tiptap > :first-child { margin-top: 0 !important }`
+(globals.css ~1528) re-becomes the rule that glues the first heading flush (its
+`::before` clipped by the body BFC) while subsequent headings render their bars
+— mirroring the float reset at ~1575. Kept; verified untouched.
+
+**Future cleanup (noted, NOT done — scope creep).** The first-block `!important`
+reset is duplicated across the ghost (~1528) and float (~1575) surfaces; a
+shared rule could unify them. Deferred.
+
+**The headline (the user's requirement, structurally guaranteed).** All three
+surfaces now embed the ONE `viewToggleClasses(menuBar)` output. A NEW view
+toggle (e.g. the user-named hide-labels / labels-on-hover) = ONE line in
+`viewToggleClasses` + ONE ancestor-agnostic CSS rule → it reaches the page,
+every popout, AND the drag ghost automatically. Same principle as FCU's shared
+`buildEditorExtensions`.
+
+**Verify.** Working tree: vitest **308/308** (286 baseline + 22 new).
+`editor-layout/__tests__/view-toggle-classes.test.ts` proves the column
+className is byte-identical to the pre-Issue-12 expression over a fixture table
+AND that column / float / overlay carry exactly `viewToggleClasses`' tokens in
+the same order (single-source proof). `text-objects/__tests__/lifted-overlay-view-toggle.test.tsx`
+mounts the real `LiftedTextOverlay` (jsdom) and asserts the handed toggle
+tokens land on the `.lifted-text-overlay` root (and an empty string leaves it
+exactly `lifted-text-overlay`). tsc clean on the working tree; eslint no NEW
+problems (the lone error — `react-hooks/immutability` on `c.style.pointerEvents`
+in the clone path — is pre-existing at HEAD, out of scope). NOTE: HEAD carries
+a SEPARATE pre-existing tsc error (`card-creation.ts` passes `"archive"` to
+`RecentlyAddedKind`) that the user's in-flight `useRecentlyAddedTracker.ts`
+change fixes; left untouched per scope, so the Issue-12 code commit inherits it
+in isolation while the working tree stays green. The LIVE in-drag ghost cannot
+be driven headlessly (the grab handle needs a TRUSTED hover) and a clone-harness
+is unfaithful, so the headless check is class-presence on the rendered overlay
+root; the in-drag visual is a USER-VERIFY step: with dividers ON, drag a section
+and confirm the divider bars show in the ghost DURING the drag, matching the
+page and the released popout, first heading glued (no vertical "double").
