@@ -17,6 +17,16 @@
  * (`sliceAsDoc`) and the `text-range-move` between-paragraphs drop (L3f-3):
  * an inline run becomes one paragraph, a multi-block range keeps its blocks.
  * One transform, no parallel logic.
+ *
+ * `blocksToRangeSlice` — the named INVERSE of `rangeSliceToBlocks` (L3f-7):
+ * given the live doc, a tracked text-bounded range, and the (edited) block
+ * nodes from a float, it builds the `Slice` for `tr.replace(from, to, slice)`
+ * so write-back is the faithful inverse of the seed extraction (reusing the
+ * cut's open depths) instead of forcing a closed-block `replaceWith` that
+ * splits the boundary paragraphs / wraps an extra list. `text-range-move.ts`
+ * already follows this open-slice discipline (its inline-cursor move inserts
+ * the open `doc.slice(from,to)` via `tr.replace`); `blocksToRangeSlice`
+ * codifies it for the same-range write-back, which was the lone outlier.
  */
 
 import { Fragment, Slice } from "@tiptap/pm/model";
@@ -97,4 +107,63 @@ export function rangeSliceToBlocks(slice: Slice, schema: Schema): PMNode[] {
     return [schema.nodes.paragraph.create(null, slice.content)];
   }
   return children.length > 0 ? children : [schema.nodes.paragraph.create()];
+}
+
+/**
+ * Inverse of `rangeSliceToBlocks` (L3f-7): given the live main `doc`, the
+ * tracked text-bounded `range`, and the (possibly edited) block nodes read
+ * back from a float, build the `Slice` to hand to `tr.replace(from, to, slice)`
+ * so a float write-back is the FAITHFUL INVERSE of the seed extraction.
+ *
+ * Why this is needed. `findLinkedAnchorRange` returns TEXT-bounded positions,
+ * so `[from,to)` is usually mid-paragraph and `doc.slice(from,to)` is an OPEN
+ * cut (openStart/openEnd > 0). The forward seed kept a multi-block range's
+ * blocks and WRAPPED a within-one-textblock run in a single paragraph. To
+ * invert, the replacement must re-open with the SAME depths (block range) or
+ * unwrap that single paragraph (inline range). Replacing with FULLY-CLOSED
+ * blocks instead (`tr.replaceWith`, which builds a Slice with
+ * openStart=openEnd=0) forces ProseMirror's fitter to split the boundary
+ * paragraphs and, when the range touches a list, wrap an extra list — the
+ * L3f-7 artifact. Reusing the cut's open depths makes an UNEDITED round-trip
+ * byte-identical (`tr.doc.eq(doc)`) and an EDITED one land exactly the edit
+ * with the boundary paragraphs preserved.
+ *
+ * `text-range-move.ts` already follows this discipline (its inline-cursor move
+ * inserts the open `doc.slice(from,to)` via `tr.replace`); write-back was the
+ * lone outlier. O(range-size): `doc.slice(from,to)` is O(range), never a doc
+ * walk.
+ */
+export function blocksToRangeSlice(
+  doc: PMNode,
+  range: { from: number; to: number },
+  blocks: PMNode[],
+): Slice {
+  const cut = doc.slice(range.from, range.to);
+  // Mirror `rangeSliceToBlocks`' inline branch: a cut WITHIN one text block
+  // arrives as bare inline content, which the forward wrapped in ONE paragraph.
+  // Unwrap that single paragraph so the replacement re-opens as bare inline
+  // (openStart = openEnd = 0) exactly as the cut produced — no boundary split.
+  const cutInline =
+    cut.content.childCount > 0 && cut.content.child(0).isInline;
+  if (cutInline && blocks.length === 1 && blocks[0].type.name === "paragraph") {
+    return new Slice(blocks[0].content, 0, 0);
+  }
+  // Block range (multi-block, including lists, or a boundary-aligned whole-block
+  // cut): re-apply the cut's open depths so the boundary paragraphs MERGE back
+  // into the surrounding text instead of splitting, and a touched list isn't
+  // re-wrapped. CLAMP each depth to what the edited blocks can actually support
+  // (`Slice.maxOpen`): a float edit may restructure the leading/trailing block
+  // (e.g. add a paragraph after a list whose tail the cut opened 3 deep) so it
+  // no longer opens as deep as the original cut — an unclamped `Slice` would be
+  // malformed and `tr.replace` would throw, silently dropping the write-back
+  // (losing the edit). For an unedited or structure-preserving edit the blocks
+  // open at least as deep as the cut, so the clamp is a no-op and the
+  // round-trip stays byte-identical.
+  const content = Fragment.from(blocks);
+  const maxOpen = Slice.maxOpen(content);
+  return new Slice(
+    content,
+    Math.min(cut.openStart, maxOpen.openStart),
+    Math.min(cut.openEnd, maxOpen.openEnd),
+  );
 }

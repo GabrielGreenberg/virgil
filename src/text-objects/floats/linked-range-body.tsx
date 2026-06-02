@@ -63,6 +63,7 @@ import {
 // this float, the linkedRange lift-overlay hooks, and the text-range-move
 // drop spec — see src/lib/linked-anchor-range.ts.
 import {
+  blocksToRangeSlice,
   findLinkedAnchorRange,
   rangeSliceToBlocks,
 } from "@/lib/linked-anchor-range";
@@ -185,10 +186,9 @@ export function LinkedRangeBody({
     const r = rangeRef.current;
     if (!r) return;
     try {
-      // Build a fragment from the float doc's paragraphs. For a
-      // multi-paragraph range, the float's doc carries multiple
-      // paragraph nodes; concatenating them into a flat replacement
-      // preserves the inter-paragraph breaks in the main doc.
+      // Reconstruct the edited block nodes from the float doc — the same blocks
+      // `rangeSliceToBlocks` produced for the seed, now carrying the user's
+      // edit.
       const blocks: PMNode[] = [];
       for (const c of floatDoc.content ?? []) {
         try {
@@ -198,14 +198,22 @@ export function LinkedRangeBody({
         }
       }
       if (blocks.length === 0) return;
-      const tr = ed.state.tr.replaceWith(r.from, r.to, blocks);
+      // Write back as the faithful INVERSE of the seed extraction: a Slice that
+      // reuses the current cut's open depths (or unwraps a single inline
+      // paragraph), so an unedited round-trip is byte-identical and an edited
+      // one preserves the boundary paragraphs — no split, no extra wrapping
+      // list. (`r.from`/`r.to` are TEXT-bounded, usually mid-paragraph;
+      // replacing with fully-closed blocks via `replaceWith` was the L3f-7 bug.)
+      const slice = blocksToRangeSlice(ed.state.doc, r, blocks);
+      const tr = ed.state.tr.replace(r.from, r.to, slice);
       tr.setMeta("addToHistory", false);
       tr.setMeta(FLOAT_WRITE_META, floatId);
       if (!tr.docChanged) return;
       ed.view.dispatch(tr);
-      // Update the tracked range to span the newly inserted content.
-      const newSize = blocks.reduce((acc, n) => acc + n.nodeSize, 0);
-      rangeRef.current = { from: r.from, to: r.from + newSize };
+      // Re-track the range to span the newly written content. `tr.replace`
+      // grows the doc by `slice.size`, so the new content occupies
+      // [from, from + slice.size) (the open ends merged into the boundaries).
+      rangeRef.current = { from: r.from, to: r.from + slice.size };
     } catch {
       /* schema mismatch / stale range — swallow */
     }
