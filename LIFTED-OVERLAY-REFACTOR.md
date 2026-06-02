@@ -1212,3 +1212,85 @@ left untouched. The pre-existing working-tree files (`EDITOR_SKILLS_BRAINSTORM.h
 `useRecentlyAddedTracker.ts`) and untracked scratch (`CARD-SYSTEM-REFACTOR.md`,
 `EDITOR_SKILLS_V1.html`, `MEMO_V1_AND_ROT_PREVENTION.md`, `SKILL_PIPELINE.*`,
 `docs/card-refactor/`) left out of the commit.
+
+## L3g — Bodyless kinds Chip 1: PROSE lift floats (blockquote + codeBlock) via a shared SingleBlockBody — 2026-06-02
+
+**Commit:** `637c019`.
+
+**What.** First of the 9 bodyless-kind migrations. Built ONE generic
+`SingleBlockBody` (editable single-whole-block float, modeled on paragraph-body:
+seed-by-uuid → `buildEditorExtensions({surface:"float"})` → whole-node
+`replaceWith` write-back rebuilt from MAIN's own attrs → `useFloatMainSync`) and
+migrated **blockquote** + **codeBlock** onto it — the FCU endgame (one shared
+body, many kinds, like `ListBody`), NOT two hand-rolled bodies. Kind is resolved
+from the cardKey via `parseTextObjectPopoutKey` (no `kind` prop, no
+prop-contract change) and drives a tiny per-kind config
+`{schemaType, floatIdPrefix, sourceKind}`. `editable:true` (like list/example,
+not paragraph's chrome-gated flag); threads the 3 proxied callback refs + `host`
+like paragraph-body (meaningful for blockquote's nested `+T` paragraphs);
+`docIdRef:null` (neither kind holds a figure). Each kind = 3 touch-points:
+register the body (floats/index.ts), a `popoutKeyForLift` case
+(TextObjectGrabHandle.tsx — also `export`ed for the test), `liftMode:"lifted-overlay"`
+(registry). Added blockquote/codeBlock to `FloatSourceKind` + `KIND_LABEL`. Both
+were already in the float schema (no factory change). No
+`renderGhost`/`liftSourceRect`/`computeLabel` needed (single text-top block;
+static `meta.label` "Block quote"/"Code block").
+
+**Observe-first.** Confirmed the baseline gap live: forcing the popped-cards path
+for `textobject:blockquote:<uuid>` rendered NO working body (placeholder, no
+`.par-float-body`) while a paragraph control through the same path rendered one —
+and `popoutKeyForLift` returns null for both kinds (read firsthand), so the lift
+gesture never even reaches the popout path. After (real released popouts on the
+dev doc via the popped-cards path, NOT a clone harness): both render faithfully —
+blockquote as a `<blockquote>` whose computed style is byte-identical to the
+page's (this sample styles blockquote with no left border / no indent; the float
+MATCHES exactly — fidelity is float===main, not a hardcoded "border"), with its
+paragraph's inline `+T` title affordance; codeBlock as a monospace `<pre>`
+(`Geist Mono`, `white-space:pre-wrap`). Edits round-trip to the source node:
+typed markers into each float and cross-checked the MAIN editor's node text
+(blockquote tail `…school of thought.ZZBQ`, codeBlock tail
+`…nested structure.}ZZCODE`). Source-missing banner (delete the source from
+main): shows the right per-kind label — "Source quote deleted" /
+"Source code block deleted". No blank popout. The lifted drag GHOST needs a
+trusted hover (synthetic mousemove won't reveal the grab handle) → handed to the
+user as a USER-VERIFY probe (below).
+
+**Verify.** New deterministic wiring test
+(`src/text-objects/__tests__/single-block-lift-wiring.test.ts`): `popoutKeyForLift`
+non-null + `=== textObjectPopoutKey` for both kinds (was null), still-null for a
+not-yet-migrated control (`displayMath`), `liftMode === "lifted-overlay"` for
+both, and ONE shared `SingleBlockBody` registered for both (the body barrel is
+imported for the side-effect registration, with `@/lib/storage` stubbed — the
+linked-range-popout-fidelity precedent). `vitest` **367/367** (363 + 4 new); `tsc`
+1 error (pre-existing `block-uuid-backfill.test.ts(27,7)` only — counted with
+`grep -c`); `eslint` 0 new (0/0 on the changed files; grab handle keeps its 3
+pre-existing warnings). Keystroke sanctity: typing 25 plain chars in MAIN left
+`__virgilBusStats().emitCount` flat (Δ0, version +25) — float-only bodies on the
+established `useFloatMainSync` seam, no main-editor per-transaction work.
+
+**Gotcha (eslint `react-hooks/refs`).** The new react-hooks v6 compiler rule
+flags the established float-body pattern (reading `ref.current` and reassigning
+the proxied callback refs during render) — BUT it BAILS the whole component when
+it sees any `react-hooks` eslint-disable directive inside it. Every sibling body
+carries the `// eslint-disable-next-line react-hooks/exhaustive-deps` on its seed
+`useMemo`, which is why they show 0 refs errors; a fresh copy of paragraph-body
+with the comment also lints clean, but stripping the comment surfaces 8 refs
+errors. So the comment must STAY and be genuinely *used* (incomplete deps — omit
+`mainEditor`, like paragraph-body) to avoid an "unused directive" warning. The
+next bodyless-kind bodies will hit the same thing.
+
+**USER-VERIFY (drag ghost).** In the dev doc, hover the left gutter beside the
+blockquote (and the code block) to reveal the grab handle; drag it. With the
+cursor in the content zone the overlay shows the GHOST (a faithful clone of the
+block); move into the gutter/beyond and it flips to popout-mode chrome
+("BLOCK QUOTE" / "CODE BLOCK" header). Release in the gutter → the real float
+spawns at the overlay's rect. Confirm the ghost renders faithfully and the
+released float matches the headless popout above.
+
+**Non-goals respected.** The other 7 bodyless kinds (displayMath, titleField,
+latexComment, figureBlock, graphicsBlock, listItem, exampleItem), titleField's
+schema promotion, the FCU factory, and L4 untouched. `popoutKeyForLift`'s existing
+cases and the done kinds' bodies/metas unchanged. Pre-existing working-tree files
+(`EDITOR_SKILLS_BRAINSTORM.html`, `useRecentlyAddedTracker.ts`) + untracked scratch
+(`CARD-SYSTEM-REFACTOR.md`, `EDITOR_SKILLS_V1.html`, `MEMO_V1_AND_ROT_PREVENTION.md`,
+`SKILL_PIPELINE.*`, `docs/card-refactor/`) left out of the commit.
