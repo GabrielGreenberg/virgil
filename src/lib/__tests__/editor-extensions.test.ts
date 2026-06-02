@@ -49,6 +49,7 @@ import {
 const EXPECTED_MAIN_ORDER = [
   "starterKit",
   "docStructureObserver",
+  "blockUuidBackfill",
   "paragraph",
   "heading",
   "bulletList",
@@ -121,6 +122,7 @@ function mainCtx(withAnchors = true): EditorExtensionsCtx {
 const EXPECTED_FLOAT_ORDER = [
   "starterKit",
   "docStructureObserver",
+  "blockUuidBackfill",
   "paragraph",
   "heading",
   "bulletList",

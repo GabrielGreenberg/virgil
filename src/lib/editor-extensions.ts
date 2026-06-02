@@ -26,6 +26,7 @@ import type { MutableRefObject, RefObject } from "react";
 import { generateShortId } from "@/lib/uuid";
 import { UUID_ATTR_SPEC, UuidAttrDecorator } from "@/lib/tiptap/uuid-attr";
 import { DocStructureObserver, readPendingDiff } from "@/lib/tiptap/doc-structure";
+import { BlockUuidBackfill } from "@/lib/tiptap/block-uuid-backfill";
 import { ensureAnchorUuid } from "@/lib/anchor-uuid";
 import { autoSizeInput } from "@/lib/autoSizeInput";
 import {
@@ -1602,6 +1603,14 @@ export function buildEditorExtensions(ctx: EditorExtensionsCtx) {
     // `docs/perf/keystroke-sanctity-findings.md` and
     // `src/lib/tiptap/doc-structure/`.
     DocStructureObserver,
+    // Position 2 (right after the observer). Backfills a unique non-null uuid
+    // onto every anchorable block by the end of its insertion transaction, so
+    // dropped / pasted / split blocks are immediately graspable (the grab
+    // handle + UuidAttrDecorator key off a non-null uuid). Reads the observer's
+    // typed diff machinery, so it must run after it. Shared by both surfaces:
+    // floats sync uuid-bearing content from main, and the move/re-sync identity
+    // guard keeps those uuids stable (see block-uuid-backfill.ts).
+    BlockUuidBackfill,
     createParagraphWithTitle(
       isFloat
         ? { surface: "float", host: ctx.host ?? undefined }
