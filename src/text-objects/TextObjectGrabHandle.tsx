@@ -61,6 +61,7 @@ import {
 } from "@/components/drop-mode/controller";
 import { ensureAnchorUuid } from "@/lib/anchor-uuid";
 import { hydrateSelectionToTextObject } from "./hydrate-selection";
+import { removeTransientAnchor } from "@/links/links";
 import { walkAnchorableBlocks } from "@/lib/marginalia-blocks";
 import { useDragHandleMenu } from "@/components/editor-layout/card-actions/drag-handle-menu-context";
 import { useEditorChrome } from "@/components/editor-layout/chrome-context";
@@ -342,7 +343,10 @@ function resolveAnchorDom(
 interface OverlayState {
   ref: TextObjectRef;
   cardKey: string;
-  anchorDom: HTMLElement;
+  /** Null for a mark-backed range kind (`linkedRange`, L3f-2) — the overlay
+   *  renders `ghostContent` (the extracted range) instead of cloning an
+   *  anchor element. Non-null for every element kind. */
+  anchorDom: HTMLElement | null;
   /** Overridden ghost content (L3-Headings). Resolved once at threshold
    *  cross via `meta.renderGhost?.(anchorDom, editor, ref)` — heading's
    *  whole-section clone. Null for kinds without the hook (or a lone
@@ -712,16 +716,51 @@ export function TextObjectGrabHandle({ editorRef }: Props) {
         const liftMode = meta.liftMode ?? "instant-popout";
 
         if (liftMode === "lifted-overlay") {
-          // L1 — paragraph. Capture source rect ONCE at threshold cross
-          // (never re-read); mount the overlay; mousemove now drives
-          // cursor + mode until release.
+          // Capture source rect ONCE at threshold cross (never re-read);
+          // mount the overlay; mousemove now drives cursor + mode until
+          // release. Paragraph/heading/list/example/texBlock are element
+          // kinds (anchorDom present); linkedRange is a mark-backed RANGE.
           const anchorDom = resolveAnchorDom(editor, ref);
-          if (!anchorDom) {
-            // Source resolution failed at threshold — fall back to the
-            // legacy cursor-centered spawn so the gesture still produces
-            // a popout instead of silently dropping. This is the same
-            // shape as a concurrent-delete during the gesture (decision
-            // §9).
+          // L3f-2: a mark-backed RANGE kind (`linkedRange`) has no single
+          // anchor element — `resolveAnchorDom` is null BY DESIGN. Instead of
+          // bailing, drive the overlay from the registry hooks with
+          // `anchorDom=null`: `renderGhost` extracts the marked range's DOM,
+          // `liftSourceRect` unions its client rects. The element path
+          // (anchorDom present) is byte-for-byte unchanged: `liftRect` still
+          // defaults to `anchorDom.getBoundingClientRect()`, `ghostContent` is
+          // null unless the kind defines `renderGhost`, and it never takes the
+          // range-only bail clause below (isRange === false).
+          const isRange = meta.isRange === true;
+          // L3-Headings: two kind-agnostic registry hooks each replace one
+          // hardcoded assumption about a lifted ghost — that its content is
+          // exactly `anchorDom` and its rect exactly anchorDom's bounding
+          // rect. `liftSourceRect` overrides the captured source rect;
+          // `renderGhost` overrides the cloned content. Heading uses both
+          // (the WHOLE SECTION); linkedRange uses both (the marked RANGE).
+          // Resolved HERE at the parent (editor / meta / ref / cache all in
+          // scope) and threaded down as props, so `LiftedTextOverlay` stays
+          // kind-agnostic — no registry import, no editor prop — exactly as
+          // L3a moved label resolution out of the overlay. Absent on a kind
+          // (or null for a lone heading) → the defaults stand, so the prior
+          // lifted kinds are byte-identical. ONE capture site: the (possibly
+          // capped) sourceHeight feeds both the ghost AND the popOutAtRect
+          // spawn, so the released popout opens at the same height. `liftRect`
+          // is a structural {left,top,width,height} OR a DOMRect — both expose
+          // those four; read only those. For a range there is no anchorDom
+          // default, so the hook must resolve (null → the bail below).
+          const liftRect =
+            meta.liftSourceRect?.(anchorDom, editor, ref, cacheRef.current) ??
+            anchorDom?.getBoundingClientRect() ??
+            null;
+          const ghostContent = meta.renderGhost?.(anchorDom, editor, ref) ?? null;
+          if (!liftRect || (isRange && !ghostContent)) {
+            // Fall back to the legacy cursor-centered spawn so the gesture
+            // still produces a popout instead of silently dropping: an element
+            // whose DOM vanished at threshold (decision §9 — no rect), or a
+            // range whose mark/DOM couldn't be resolved (no rect, or a null
+            // ghost that would mount empty). Element kinds always have a rect
+            // here, so for them this is IDENTICAL to the prior `!anchorDom`
+            // bail — it only fires on a concurrent delete.
             const { width, height } = floatSizeFor(ref.kind);
             const legacySpawn = {
               x: Math.round(mv.clientX - width / 2),
@@ -733,26 +772,6 @@ export function TextObjectGrabHandle({ editorRef }: Props) {
             cleanup();
             return;
           }
-          // L3-Headings: two kind-agnostic registry hooks each replace one
-          // hardcoded assumption about a lifted ghost — that its content is
-          // exactly `anchorDom` and its rect exactly anchorDom's bounding
-          // rect. `liftSourceRect` overrides the captured source rect;
-          // `renderGhost` overrides the cloned content. Heading uses both:
-          // the ghost shows the WHOLE SECTION (matching what a release moves
-          // via collectMoveSource), clamped to the visible page. Resolved
-          // HERE at the parent (editor / meta / ref / cache all in scope)
-          // and threaded down as props, so `LiftedTextOverlay` stays
-          // kind-agnostic — no registry import, no editor prop — exactly as
-          // L3a moved label resolution out of the overlay. Absent on a kind
-          // (or null for a lone heading) → the defaults below stand, so the
-          // 5 prior lifted kinds are byte-identical. ONE capture site: the
-          // (possibly clamped) sourceHeight feeds both the ghost AND the
-          // popOutAtRect spawn, so the released popout opens at the same
-          // height. `liftRect` is a structural {left,top,width,height} OR a
-          // DOMRect — both expose those four; read only those.
-          const liftRect =
-            meta.liftSourceRect?.(anchorDom, editor, ref, cacheRef.current) ??
-            anchorDom.getBoundingClientRect();
           // Issue-13: cap the captured source height to a viewport fraction
           // (POPOUT_MAX_VH) at this SINGLE capture site, so EVERY lifted kind's
           // ghost AND released popout fit on screen (the float body scrolls the
@@ -767,7 +786,6 @@ export function TextObjectGrabHandle({ editorRef }: Props) {
             liftRect.height,
             window.innerHeight,
           );
-          const ghostContent = meta.renderGhost?.(anchorDom, editor, ref) ?? null;
           const initialMode = cacheRef.current.containsContentZone(
             mv.clientX,
             mv.clientY,
@@ -906,6 +924,7 @@ export function TextObjectGrabHandle({ editorRef }: Props) {
       // mode) or the drop-mode placement (ghost mode).
       if (liveOverlay) {
         const {
+          ref,
           cardKey,
           grabOffsetX,
           grabOffsetY,
@@ -990,6 +1009,19 @@ export function TextObjectGrabHandle({ editorRef }: Props) {
           // source), commitDropSession ends the session silently
           // with no doc change.
           await commitDropSession();
+          // L3f-2: strip the transient (cardless, invisible) anchor minted
+          // for a plain selection grab now that its move committed. On an
+          // actual move the marked text was deleted (the mark went with it)
+          // and the inserted copy was already stripped (text-range-move);
+          // on a no-op drop (self-drop / no placement) the mark still sits
+          // on the source range, so this removes it. GUARDED: a no-op unless
+          // the mark is truly transient, so a grab that reused a REAL
+          // annotation's range never deletes that note/highlight/cut/revision.
+          // (L3f-1 deferred this move/cancel cleanup; popout-close is handled
+          // by the `useTransientAnchorCleanup` poppedOutCards watcher.)
+          if (ref.kind === "linkedRange") {
+            removeTransientAnchor(editor, ref.id);
+          }
         }
         liveOverlay = null;
         setOverlay(null);
@@ -1006,6 +1038,16 @@ export function TextObjectGrabHandle({ editorRef }: Props) {
       // onUp on the lifted-overlay path), clear the overlay state so
       // it doesn't ghost on screen.
       if (liveOverlay) {
+        // L3f-2: cancel/abort path (Escape mid-gesture, programmatic abort)
+        // for a plain selection grab — strip its transient anchor so it
+        // doesn't litter. GUARDED (no-op unless truly transient), so a grab
+        // that reused a real annotation never deletes it. The committed
+        // (move) and popout paths already nulled `liveOverlay` before
+        // calling cleanup, so they don't double-handle here: move strips via
+        // the onUp branch above, popout-close via the watcher.
+        if (liveOverlay.ref.kind === "linkedRange") {
+          removeTransientAnchor(editor, liveOverlay.ref.id);
+        }
         liveOverlay = null;
         setOverlay(null);
       }

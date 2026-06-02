@@ -651,3 +651,122 @@ float (still `PLACEHOLDER_FLOAT_BODY`) and the annotation kinds unchanged; the
 4 pre-existing working-tree files (`EDITOR_SKILLS_BRAINSTORM.html`,
 `EditorPane.tsx`, `useMarginEdit.ts`, `useRecentlyAddedTracker.ts`) left
 untouched and out of the commit (`5820e92`).
+
+## L3f-2 — The plain selection as a first-class lifted-overlay grab: range ghost + pop-out + within-text move — 2026-06-01
+
+**What it does.** A plain text SELECTION now grabs like every other kind: a
+lifted-overlay **ghost** of the marked range follows the cursor (no green —
+it rides L3f-1's transient, cardless, invisible anchor), **release in the
+gutter** pops the existing bidirectional `linked-range-body` float (text stays
+in the doc, syncs), **release in the page over text** MOVES the run to the
+inline caret. `linkedRange` is the hardest kind — a MARK over a RANGE, not an
+element — so it proves the `renderGhost` / `liftSourceRect` abstraction (built
+for heading) generalizes: heading was the first multi-block ELEMENT consumer;
+linkedRange is the first mark-backed RANGE consumer. SCOPE: within-text only
+(inline-cursor placement); the between-paragraphs (block-gap) drop + wrapping
+policy is **L3f-3, out of scope** (block gaps stay inert).
+
+**The pieces.**
+1. **`liftMode: "lifted-overlay"`** on the `linkedRange` registry entry — the
+   selection grab flips from instant-popout to the two-mode drag.
+2. **Range-aware lift gate** (`TextObjectGrabHandle.tsx`). Today the gate bails
+   to a legacy cursor-spawn when `resolveAnchorDom` is null — which is ALWAYS
+   true for a range (it's mark-backed, no anchor element). Restructured: resolve
+   `anchorDom`, compute `isRange = meta.isRange`, then `liftRect =
+   meta.liftSourceRect?.(anchorDom, …) ?? anchorDom?.getBoundingClientRect() ??
+   null` and `ghostContent = meta.renderGhost?.(anchorDom, …) ?? null`. A SINGLE
+   bail `if (!liftRect || (isRange && !ghostContent))` covers both an element
+   whose DOM vanished (no rect → legacy, IDENTICAL to the prior `!anchorDom`
+   path) and a range whose mark couldn't be resolved. The element path
+   (anchorDom present) is behaviorally byte-for-byte unchanged: `liftRect`
+   still defaults to the bounding rect, `ghostContent` stays null unless the
+   kind defines `renderGhost`, and the `isRange && …` clause never fires
+   (`isRange === false` for every non-linkedRange kind). `OverlayState.anchorDom`
+   + the overlay's `anchorDom` prop widen to `HTMLElement | null`; the overlay's
+   clone path uses `ghostContent` in place (already does for heading) and its
+   typography capture early-returns `{}` when `anchorDom` is null (the range
+   ghost carries its own typography). The shared `renderGhost`/`liftSourceRect`
+   meta signatures widen `anchorDom` to `HTMLElement | null`; heading's
+   `liftSourceRect` gains an inert `if (!anchorDom) return null` guard.
+3. **`renderGhost` on `linkedRange`** — resolve the marked range
+   (`findLinkedAnchorRange`), build a live DOM `Range` over
+   `view.domAtPos(from)…domAtPos(to)`, `cloneContents()` into a `.tiptap`
+   container. `cloneContents` over an inline range yields bare text/spans
+   WITHOUT the `<p>`/`<h*>` wrapper, so `.tiptap p`/`.tiptap h*` can't size it —
+   the container copies the SOURCE block's resolved typography (the range is
+   homogeneous inline content of one block; heading copies the editor ROOT
+   because its clone holds whole blocks that re-apply per-element rules).
+4. **`liftSourceRect` on `linkedRange`** — same range → DOM `Range` →
+   `getClientRects()` → union, anchored at the FIRST rect's top-left (the
+   selection START, so the grab offset + L1.12 text-stays-still hold) with
+   **width = the union's full span (`unionRight − unionLeft`)**, NOT measured
+   from the start rect's left (a multi-line selection beginning mid-line has a
+   short first rect; `unionRight − first.left` under-sizes the ghost — measured
+   live: 91px vs the correct 302px column width). The general `POPOUT_MAX_VH`
+   cap downstream fits a tall multi-line range on screen (subsumes any per-hook
+   clamp, like heading post-Issue-13).
+5. **Pop-out (gutter release)** reuses the existing `popOutAtRect` → bidirectional
+   `linked-range-body` float. Untouched (the same spawn every kind uses; only the
+   gesture that reaches it changed).
+6. **Within-text move (page release over text)** — new DropSpec
+   `src/components/drop-mode/specs/text-range-move.ts`, `allowedPlacements:
+   ["inline-cursor"]` ONLY. The vertical-caret placement + indicator already
+   exist (`hit-test.ts` `makeInlineCursorPlacement`); over text → a caret, in a
+   block gap → no placement (inert — the L3f-3 boundary). `classifyDrop`:
+   self-drop (caret within `[from,to]`) → `no-op`, else `apply`. `applyDrop`:
+   `slice = doc.slice(from,to)` with **every `linkedAnchor` mark STRIPPED**
+   (`stripLinkedAnchorMarks`, mirroring `LinkedAnchorGuard.transformPasted` — the
+   moved text sheds anchor identity, consistent with paste), then same-editor
+   `delete(from,to)` + `replace(adjustedInsert, slice)` (the `insertPos > to ?
+   −(to−from)` offset from block-move; the `tr.replace(pos,pos,slice)` + select
+   from stack-pull) / cross-editor insert-then-delete. Wired via `lookupSpec`,
+   which now takes the FULL cardKey: `textobject:linkedRange:<id>` shares the
+   `textobject:` prefix with every block lift but routes to this spec (a
+   selection moves as a SLICE, not a block) — the one carve-out, kept in
+   `registry.ts`; the controller passes `opts.cardKey` instead of the prefix.
+7. **Transient cleanup (L3f-1's deferred sites, now closed).**
+   `removeTransientAnchor(editor, ref.id)` (guarded) is called AFTER
+   `commitDropSession()` in the ghost-mode move branch AND in `cleanup()` for the
+   cancel/abort path, both gated on `ref.kind === "linkedRange"`. On an actual
+   move the marked text was deleted (the mark went with it) and the inserted copy
+   was already stripped, so the call no-ops; on a no-op drop or a cancel the mark
+   still sits on the source, so it's removed. The committed + popout paths null
+   `liveOverlay` before `cleanup()`, so cleanup doesn't double-handle (move strips
+   in `onUp`, popout-close via the L3f-1 `useTransientAnchorCleanup` watcher). The
+   guard means a grab that REUSED a real annotation's full-coverage range never
+   deletes that note/highlight/cut/revision.
+8. **DRY — one resolver.** `findLinkedAnchorRange` extracted from
+   `linked-range-body.tsx` to a shared `src/lib/linked-anchor-range.ts`, consumed
+   by the float, the two registry hooks (via `linkedAnchorDomRange`), and the move
+   spec. `stripLinkedAnchorMarks` co-located there (mirrors `transformPasted`).
+
+**Verify.** `tsc` 0; `eslint` no NEW errors (the one pre-existing
+`react-hooks/immutability` error on `LiftedTextOverlay.tsx`'s clone predates
+this work — confirmed by linting HEAD; my files add 0 errors / 0 warnings);
+`vitest` **332/332** (319 + 13 new: `linked-anchor-range.test.ts` —
+findLinkedAnchorRange over single/gap/multi-paragraph ranges + stripLinkedAnchorMarks
+surgical strip & open-depth preservation; `text-range-move.test.ts` — the
+inline-cursor-only scope guard + no-op paths). **Live (real dev doc, fresh
+`.next-preview`, every eval `6*7`-sentinelled, editor reached via the
+ProseMirror fiber):** the DOM primitives the hooks rely on behave on real marked
+content — `cloneContents` → non-empty ghost text (176 / 68 chars), `getClientRects`
+→ a sensible column-width `liftSourceRect` (302 / 261 px after the width fix), no
+throws; the move logic on a real range, built into a transaction and inspected
+WITHOUT dispatching (live doc untouched) — the run lands at the caret exactly, the
+moved copy carries no `linkedAnchor`, the anchor id is gone from the doc; the
+guard classifies a real `note` as NON-removable (protected) and a transient mark
+as removable. The LIVE GHOST/DRAG can't be driven headlessly (synthetic mousemove
+won't reveal the handle; a clone-harness is unfaithful) → handed to the user for
+a trusted-hover eyeball: select → drag → an invisible-anchored ghost follows (no
+green) → gutter pops the synced float (text stays) → page-over-text moves the run
+to the caret.
+
+**No regressions.** The element path is gated tightly (`isRange === false` for
+every non-linkedRange kind; only `textobject:linkedRange:` routes off
+`textObjectDropSpec`) and is behaviorally identical — paragraph/heading/list/
+example/texBlock still ghost + pop-out + move exactly as before. L3f-1's transient
+machinery, the annotation kinds, and the `linked-range-body` float content/sync are
+unchanged. The pre-existing working-tree files (`EDITOR_SKILLS_BRAINSTORM.html`,
+`src/hooks/useRecentlyAddedTracker.ts`, scratch `SKILL_PIPELINE.*`, and the foreign
+untracked `CARD-SYSTEM-REFACTOR.md` / `EDITOR_SKILLS_V1.html` / `MEMO_V1_AND_ROT_PREVENTION.md`)
+were left untouched and out of the commit.

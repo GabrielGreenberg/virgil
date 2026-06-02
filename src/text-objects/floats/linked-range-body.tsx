@@ -46,39 +46,12 @@ import {
   SourceMissingBanner,
   useFloatMainSync,
 } from "@/lib/float-sync";
+// L3f-2: the marked-range resolver now lives in one shared util consumed by
+// this float, the linkedRange lift-overlay hooks, and the text-range-move
+// drop spec — see src/lib/linked-anchor-range.ts.
+import { findLinkedAnchorRange } from "@/lib/linked-anchor-range";
 import type { Node as PMNode } from "@tiptap/pm/model";
 import type { TextObjectFloatBodyProps } from "../types";
-
-/**
- * Walk the doc for text nodes whose marks include a `linkedAnchor` with
- * the matching `anchorId`. Returns the bounding range
- * `[firstMarkedStart, lastMarkedEnd)`, which may include unmarked gaps
- * inside (e.g. a paragraph break between two marked spans).
- *
- * Returns null when no text carries the mark — typically because the
- * range was deleted or the doc was reloaded before sidecar reanchoring
- * restored it.
- */
-function findLinkedAnchorRange(
-  doc: PMNode,
-  anchorId: string,
-): { from: number; to: number } | null {
-  let from = -1;
-  let to = -1;
-  doc.descendants((node, pos) => {
-    if (!node.isText) return true;
-    const hasMark = node.marks.some(
-      (m) => m.type.name === "linkedAnchor" && m.attrs.anchorId === anchorId,
-    );
-    if (hasMark) {
-      if (from === -1) from = pos;
-      to = pos + node.nodeSize;
-    }
-    return true;
-  });
-  if (from === -1) return null;
-  return { from, to };
-}
 
 export function LinkedRangeBody({
   cardKey,

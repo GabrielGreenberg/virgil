@@ -14,6 +14,7 @@
 
 import type { DropSpec } from "./types";
 import { textObjectDropSpec } from "./specs/textobject";
+import { textRangeMoveDropSpec } from "./specs/text-range-move";
 import { aiRequestDropSpec } from "./specs/ai-request";
 import { noteDropSpec, highlightDropSpec } from "@/panels/Notes/drop-spec";
 import { todoDropSpec } from "@/panels/Todo/drop-spec";
@@ -60,6 +61,21 @@ const SPECS: Record<string, DropSpec | undefined> = {
   [STACK_PULL_PREFIX]: stackPullDropSpec,
 };
 
-export function lookupSpec(kind: string): DropSpec | undefined {
+/**
+ * Resolve the drop spec for a full cardKey. Most kinds dispatch on the prefix
+ * (`cardKey.split(":")[0]`). The one exception is `linkedRange`: a plain text
+ * selection lifts as `textobject:linkedRange:<id>` — it shares the
+ * `textobject:` prefix with every block lift but moves as a text SLICE at an
+ * inline caret, NOT a block between blocks, so it routes to its own
+ * `text-range-move` spec rather than `textObjectDropSpec` (L3f-2). The full
+ * cardKey is passed so this one carve-out can be made here, keeping the
+ * routing in the registry.
+ */
+export function lookupSpec(cardKey: string): DropSpec | undefined {
+  if (cardKey.startsWith("textobject:linkedRange:")) {
+    return textRangeMoveDropSpec;
+  }
+  const sep = cardKey.indexOf(":");
+  const kind = sep === -1 ? cardKey : cardKey.slice(0, sep);
   return SPECS[kind];
 }

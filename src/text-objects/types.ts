@@ -303,9 +303,11 @@ export interface TextObjectMeta {
    *  second. Resolved at the parent (`TextObjectGrabHandle`) and threaded
    *  to `LiftedTextOverlay` as a prop, so the overlay stays kind-agnostic
    *  (no registry import / no editor prop) — same pattern as L3a's
-   *  `computeLabel`/`label`. */
+   *  `computeLabel`/`label`. `anchorDom` is `null` for a mark-backed range
+   *  kind (`linkedRange`, L3f-2): it has no single anchor element, so its
+   *  hook resolves the marked DOM from the editor instead. */
   renderGhost?: (
-    anchorDom: HTMLElement,
+    anchorDom: HTMLElement | null,
     editor: Editor,
     ref: TextObjectRef,
   ) => HTMLElement | null;
@@ -323,11 +325,14 @@ export interface TextObjectMeta {
    *  every kind (Issue-13), so this hook no longer clamps to the visible
    *  page itself (`heading` leaves the `cache` arg unused now; it stays on
    *  the signature for L3f). Returns null to use the default (heading does
-   *  so for a lone section). L3f (linkedRange) will likely widen this to a
-   *  full mark/range bounding box. Resolved at the parent and threaded
-   *  down, like `renderGhost`. */
+   *  so for a lone section). `linkedRange` (L3f-2) is the second consumer:
+   *  it unions the marked range's client rects into a multi-line bounding
+   *  box, anchored at the selection start. `anchorDom` is `null` for that
+   *  mark-backed kind (no anchor element) — the hook resolves the range from
+   *  the editor instead. Resolved at the parent and threaded down, like
+   *  `renderGhost`. */
   liftSourceRect?: (
-    anchorDom: HTMLElement,
+    anchorDom: HTMLElement | null,
     editor: Editor,
     ref: TextObjectRef,
     cache: EditorViewportCache,

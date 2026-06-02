@@ -106,8 +106,11 @@ export interface LiftedTextOverlayProps {
   ref: TextObjectRef;
   /** The source block element whose visual the overlay clones. Captured
    *  once at threshold-cross; the overlay re-clones if this prop
-   *  identity changes (it normally won't during a gesture). */
-  anchorDom: HTMLElement;
+   *  identity changes (it normally won't during a gesture). `null` for a
+   *  mark-backed range kind (`linkedRange`, L3f-2): there's no single anchor
+   *  element, so the parent supplies the ghost via `ghostContent` (the
+   *  extracted range) and the overlay reads no typography off `anchorDom`. */
+  anchorDom: HTMLElement | null;
   /** User's grab point as an offset from the source rect's top-left,
    *  in viewport pixels. The overlay positions itself such that the
    *  cursor lands at exactly this offset within the clone — preserving
@@ -192,7 +195,16 @@ export function LiftedTextOverlay({
   // same in-place sanitization applies to it and its subtree (the section's
   // blocks get the same contenteditable/id/state-attr stripping — correct).
   const clone = useMemo(() => {
-    const c = (ghostContent ?? anchorDom.cloneNode(true)) as HTMLElement;
+    // `ghostContent` (when present) is used in place — it's already a fresh
+    // detached element (heading's section clone, linkedRange's extracted
+    // range). Otherwise clone the live `anchorDom`. For a range kind
+    // `anchorDom` is null but `ghostContent` is always supplied (the parent
+    // bails to the legacy spawn if it couldn't build one), so the empty-div
+    // fallback is defensive only — it never mounts an empty ghost in practice.
+    const c = (ghostContent ??
+      (anchorDom
+        ? anchorDom.cloneNode(true)
+        : document.createElement("div"))) as HTMLElement;
     // Keep `contenteditable="false"`; strip only editable-making values.
     const stripIfEditable = (el: Element) => {
       const v = el.getAttribute("contenteditable");
@@ -262,7 +274,11 @@ export function LiftedTextOverlay({
   // a captured LENGTH leaked oversized to non-prose descendants — so it is
   // no longer captured here; see the in-object note below.)
   const typographyStyles = useMemo<CSSProperties>(() => {
-    if (typeof window === "undefined") return {};
+    // Range kinds (`linkedRange`) have no `anchorDom` — their `ghostContent`
+    // is a `.tiptap` container that already carries the source block's
+    // typography (set in the kind's `renderGhost`), so the overlay root needs
+    // no inline capture. Element kinds keep the L1.5/L1.12 capture below.
+    if (typeof window === "undefined" || !anchorDom) return {};
     const inlineEl = resolveInlineContextElement(anchorDom) ?? anchorDom;
     const computed = window.getComputedStyle(inlineEl);
     // L3d.2: the cascade BASE — the font-size every relative-unit

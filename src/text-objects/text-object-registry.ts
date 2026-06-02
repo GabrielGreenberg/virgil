@@ -12,12 +12,15 @@
  */
 
 import type { Node as PMNode } from "@tiptap/pm/model";
+import type { Editor } from "@tiptap/core";
 import { headingTypeName } from "@/lib/heading-types";
 import {
   getSectionRangeByUuid,
   getHeadingLineRangeByUuid,
 } from "@/lib/section-range";
 import { sectionBlockDoms } from "@/lib/section-dom";
+import { findLinkedAnchorRange } from "@/lib/linked-anchor-range";
+import { resolveInlineContextElement } from "@/lib/text-metrics";
 import {
   topLevelDropAdapter,
   listItemDropAdapter,
@@ -388,6 +391,10 @@ export const TEXT_OBJECT_REGISTRY: Record<TextObjectKind, TextObjectMeta> = {
     // (untouched). Null for a lone heading → default getBoundingClientRect.
     // (`cache` is no longer needed here; the general cap handles fitting.)
     liftSourceRect: (anchorDom, editor, ref) => {
+      // `anchorDom` is non-null for element kinds; the guard satisfies the
+      // now-nullable shared signature (range kinds pass null) and is inert
+      // for heading, which always resolves a heading-line element.
+      if (!anchorDom) return null;
       const doms = sectionBlockDoms(editor, ref.id);
       if (doms.length <= 1) return null; // lone heading → default rect
       const headRect = anchorDom.getBoundingClientRect();
@@ -730,6 +737,93 @@ export const TEXT_OBJECT_REGISTRY: Record<TextObjectKind, TextObjectMeta> = {
     chromeAnchor: "text-top",
     floatBodyComponent: PLACEHOLDER_FLOAT_BODY,
     actions: LINKED_RANGE_ACTIONS,
+    // L3f-2: a plain text SELECTION is a first-class lifted-overlay grab —
+    // ghost that follows the cursor, gutter-release pops the bidirectional
+    // linked-range float, page-release moves the text to the caret. This is
+    // the FIRST mark-over-a-RANGE consumer of the two lift-overlay hooks
+    // (heading was the first multi-block ELEMENT consumer). A plain grab
+    // hydrates a transient, invisible `linkedAnchor` over the range
+    // (hydrate-selection.ts, L3f-1); these hooks drive the ghost + source
+    // rect from that mark with NO anchor element — the grab gate passes
+    // `anchorDom=null` and gates the no-anchorDom overlay path tightly on
+    // `isRange`. Both resolve the live DOM Range via `linkedAnchorDomRange`
+    // and return null when the mark can't be mapped (concurrent edit), so
+    // the gate falls back to the legacy spawn rather than mount an empty
+    // ghost. (Within-text move = the `text-range-move` drop spec; the
+    // between-paragraphs drop is L3f-3, out of scope.)
+    liftMode: "lifted-overlay",
+    // The ghost = the marked range EXTRACTED via `Range.cloneContents`.
+    // cloneContents over an inline range yields bare text / inline spans
+    // WITHOUT the enclosing <p>/<h*>, so `.tiptap p` / `.tiptap h*` can't
+    // size it — copy the source block's resolved typography onto a `.tiptap`
+    // container so the run renders at the doc's size / weight / family /
+    // line-height. (Heading's renderGhost copies the editor ROOT base because
+    // its clone holds whole blocks that re-apply their own per-element rules;
+    // a range clone is homogeneous inline content of ONE block, so that
+    // block's own style is the faithful base.) The overlay sanitizes the
+    // returned element in place (strips contenteditable / ids / state attrs).
+    renderGhost: (anchorDom, editor, ref) => {
+      const resolved = linkedAnchorDomRange(editor, ref.id);
+      if (!resolved) return null;
+      const frag = resolved.range.cloneContents();
+      const container = document.createElement("div");
+      container.className = "tiptap";
+      const base = window.getComputedStyle(
+        blockStyleElement(editor, resolved.doc.from),
+      );
+      Object.assign(container.style, {
+        fontFamily: base.fontFamily,
+        fontSize: base.fontSize,
+        fontWeight: base.fontWeight,
+        fontStyle: base.fontStyle,
+        fontVariant: base.fontVariant,
+        letterSpacing: base.letterSpacing,
+        lineHeight: base.lineHeight,
+        color: base.color,
+        textAlign: base.textAlign,
+        textIndent: base.textIndent,
+        textTransform: base.textTransform,
+        fontFeatureSettings: base.fontFeatureSettings,
+      });
+      container.appendChild(frag);
+      return container;
+    },
+    // The source rect = the UNION of the marked range's client rects (one
+    // rect per wrapped line), anchored at the FIRST rect's top-left (the
+    // selection START, so the grab offset + the L1.12 text-stays-still
+    // invariant hold). No per-hook height clamp: the general POPOUT_MAX_VH
+    // cap at the single capture site in `TextObjectGrabHandle` fits a tall
+    // multi-line range on screen (the float scrolls the overflow), the same
+    // way it handles a tall section (Issue-13). Null when unresolved → the
+    // gate falls back to the legacy spawn.
+    liftSourceRect: (anchorDom, editor, ref) => {
+      const resolved = linkedAnchorDomRange(editor, ref.id);
+      if (!resolved) return null;
+      const rects = resolved.range.getClientRects();
+      if (!rects || rects.length === 0) return null;
+      // Anchor the ghost at the FIRST rect's top-left (the selection START)
+      // but size it to the UNION's full horizontal/vertical extent. The width
+      // must be the union span (`unionRight − unionLeft`), NOT measured from
+      // the start rect's left: a multi-line selection that begins mid-line has
+      // a short first rect, and `unionRight − first.left` would under-size the
+      // ghost so the extracted text re-wraps far narrower than the column.
+      const first = rects[0];
+      let unionLeft = Infinity;
+      let unionRight = -Infinity;
+      let unionBottom = -Infinity;
+      for (let i = 0; i < rects.length; i++) {
+        const r = rects[i];
+        unionLeft = Math.min(unionLeft, r.left);
+        unionRight = Math.max(unionRight, r.right);
+        unionBottom = Math.max(unionBottom, r.bottom);
+      }
+      return {
+        left: first.left,
+        top: first.top,
+        width: Math.max(0, unionRight - unionLeft),
+        height: Math.max(0, unionBottom - first.top),
+      };
+    },
     // Paired markers \vlid{id}…\vlidend{id} — added in Phase E
     // alongside the multi-paragraph round-trip plumbing. The simple
     // command form below names the opener; the closer is derived
@@ -756,6 +850,57 @@ export const TEXT_OBJECT_REGISTRY: Record<TextObjectKind, TextObjectMeta> = {
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
+
+/**
+ * The live DOM `Range` over a `linkedAnchor`'s marked text (L3f-2). Both the
+ * `linkedRange` `renderGhost` (cloneContents) and `liftSourceRect`
+ * (getClientRects) resolve it the same way: doc range (`findLinkedAnchorRange`)
+ * → `view.domAtPos` endpoints → a DOM `Range`. Returns the doc range too so
+ * the caller can read the source block's typography. Null when the mark is
+ * unresolved or the DOM positions can't be mapped (concurrent edit) — callers
+ * return null and the lift gate falls back to the legacy spawn.
+ */
+function linkedAnchorDomRange(
+  editor: Editor,
+  anchorId: string,
+): { range: Range; doc: { from: number; to: number } } | null {
+  const doc = findLinkedAnchorRange(editor.state.doc, anchorId);
+  if (!doc) return null;
+  try {
+    const view = editor.view;
+    const start = view.domAtPos(doc.from);
+    const end = view.domAtPos(doc.to);
+    const range = document.createRange();
+    range.setStart(start.node, start.offset);
+    range.setEnd(end.node, end.offset);
+    return { range, doc };
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * The element whose computed typography a `linkedRange` ghost inherits — the
+ * block containing the selection start, descended to its inline-context
+ * element (mirrors the overlay's L1.12 capture). cloneContents drops the
+ * block wrapper, so the extracted run needs this style applied to its
+ * container to render at the source's size/weight. Falls back to the editor
+ * root if the position can't be resolved.
+ */
+function blockStyleElement(editor: Editor, pos: number): HTMLElement {
+  try {
+    const $pos = editor.state.doc.resolve(pos);
+    for (let d = $pos.depth; d >= 1; d--) {
+      const dom = editor.view.nodeDOM($pos.before(d));
+      if (dom instanceof HTMLElement) {
+        return (resolveInlineContextElement(dom) as HTMLElement | null) ?? dom;
+      }
+    }
+  } catch {
+    /* fall through to the editor root */
+  }
+  return editor.view.dom as HTMLElement;
+}
 
 const KIND_SET = new Set<TextObjectKind>(
   Object.keys(TEXT_OBJECT_REGISTRY) as TextObjectKind[],

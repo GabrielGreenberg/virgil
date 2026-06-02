@@ -89,7 +89,10 @@ export function beginDropSession(opts: {
   const sep = opts.cardKey.indexOf(":");
   if (sep <= 0) return false;
   const kind = opts.cardKey.slice(0, sep);
-  const spec = lookupSpec(kind);
+  // `lookupSpec` takes the FULL cardKey: most kinds dispatch on the prefix,
+  // but `textobject:linkedRange:<id>` routes to the text-range-move spec
+  // (a plain selection moves as a slice, not a block) — L3f-2.
+  const spec = lookupSpec(opts.cardKey);
   if (!spec) return false;
 
   const inPlace = opts.inPlace === true;
