@@ -1035,3 +1035,85 @@ the commit.
 (the backfill is universal, not a per-call-site fix); `ensureAnchorUuid` kept;
 the popout/label (selection-bug A) and inline-commit (C) untouched; no marks
 changed.
+
+## L3f-6 — Selection-bug D: multi-paragraph popout spacing drift on release — the ghost's em cascade base — 2026-06-02
+
+**Commit:** `b011ea3`.
+
+**Bug (live, user-observed).** Popping out a plain text SELECTION: on RELEASE
+(drag ghost → released popout) the spacing visibly EXPANDS — between-paragraph,
+between-line, AND between-letter (noticeable in math) — but ONLY for
+MULTI-paragraph selections; a single paragraph is seamless.
+
+**Cause — PROVEN by measurement (the brief's theory was wrong on both counts).**
+The brief floated "the ghost copies line-height as a pixel value / the popout
+drifts looser." Measured on the live dev doc (fresh `.next-preview`, two agreeing
+runs) at the shipped `--editor-font-size: 0.95rem` (15.2px) default:
+- **PAGE ≡ POPOUT, exactly** — `.par-title-wrapper` 16px, inter-block gap 19.2px,
+  `<p>` 15.2px / line-height 24.32px, display-math KaTeX 19.36px. The released
+  popout (selection-bug A's FCU-factory float) does NOT drift; "popout looser" is
+  disproven.
+- **The GHOST drifts TIGHTER.** `linkedRange.renderGhost` copied the source
+  block's inner `<p>` (PROSE) computed font-size (`--editor-font-size` = 15.2px)
+  onto the bare `.tiptap` container. A MULTI-block `cloneContents` keeps the
+  source blocks' WRAPPERS (`.par-title-wrapper`, `.display-math`, …) as direct
+  children of that container, and they resolve their `margin-top:
+  var(--editor-block-gap)` (1.2em) — and a `displayMath`'s em-sized KaTeX —
+  against the container's font-size. The page resolves those `em`s against the
+  editor ROOT (`.ProseMirror` = 1rem/16px), NOT the prose 15.2px, so every
+  em-relative inter-block measure shrank by 15.2/16:
+
+  | property            | PAGE / POPOUT | GHOST (pre-fix) |
+  | ---                 | ---           | ---             |
+  | paragraph gap       | 19.2px        | 18.24px         |
+  | display-math gap    | 12px          | 11.4px          |
+  | display-math KaTeX  | 19.36px       | 18.392px        |
+
+  On release to the popout (root base) they all GROW ~5% → the reported
+  letter+line+paragraph expansion. The prose `<p>` font-size / line-height /
+  letter-spacing NEVER drift (they come from `.tiptap p`, identical on every
+  surface), and inline math — inside a 15.2px `<p>` on both surfaces — doesn't
+  either: the symptom is purely the em cascade base of the cloned WRAPPERS.
+
+**Why multi-paragraph only.** A single-block range's `cloneContents` yields a
+bare inline run with NO wrapper or `<p>`, so there is no em-relative inter-block
+margin to mis-resolve and the run correctly inherits the container's prose size.
+The bug needs cloned block wrappers, i.e. ≥2 top-level blocks. It also needs
+`--editor-font-size ≠ 1rem`; the `510888b` prefs promotion shipped 0.95rem as the
+default, which is why it surfaced now. It traces to selection-bug A: before A the
+popout was a hand-rolled subset, but the ghost↔popout fidelity contract (L1.12)
+only became measurable once A made the popout a faithful root-base `.tiptap`.
+
+**Fix — align the em base, not each property (mirrors the heading ghost +
+L3d.2).** For a range spanning multiple top-level blocks
+(`$from.index(0) !== $to.index(0)`), the container's font-size is the editor ROOT
+(`getComputedStyle(editor.view.dom).fontSize`) instead of the inline prose size.
+The cloned `<p>`/`<h*>` still take their prose size from `.tiptap p` / `.tiptap
+h*` (those rules reach the clone via the `.tiptap` scope), so ONLY the wrappers'
+em base moves — every inter-block gap and display-math glyph now resolves like
+the page. A SINGLE-block range keeps the inline element's size (a heading run
+must stay heading-sized) — byte-identical to the pre-D path. This is the same
+insight the heading-kind `renderGhost` already encodes ("editor ROOT base because
+its clone holds whole blocks") and that L3d.2 applied to the overlay root.
+
+**Verify (measured, two agreeing runs, non-destructive — replicated
+`renderGhost`'s exact construction off-DOM and removed it; the dev doc was
+refreshed from `samples/annotation-history` first).** NEW logic on the
+multi-block math range: paragraph gap 18.24→**19.2**, display-math gap
+11.4→**12**, display-math KaTeX 18.392→**19.36** — all == the page (sub-pixel).
+SINGLE-block range: container/run font-size 15.2px under BOTH old and new logic —
+byte-identical, no regression. POPOUT re-measured on a real multi-paragraph
+linked range == page. `tsc` 0 new (one PRE-EXISTING error in
+`block-uuid-backfill.test.ts` predates this change — confirmed by stashing the
+fix and re-running); `eslint` 0 new; `vitest` **353/353**. The live drag ghost
+can't be driven headlessly (RAF-gated gesture) → handed to the user as the
+real-gesture check (release a multi-paragraph selection with math: no spacing
+jump on release).
+
+**Non-goals respected.** Only `linkedRange.renderGhost` changed; the FCU-factory
+popout (selection-bug A), `writeBackToMain` (queued follow-up),
+`blockStyleElement`, and the element-kind ghosts / overlay capture are untouched.
+The pre-existing working-tree files (`EDITOR_SKILLS_BRAINSTORM.html`,
+`useRecentlyAddedTracker.ts`, the TEMP-SELC instrumentation in `controller.ts` /
+`text-range-move.ts` / `TextObjectGrabHandle.tsx` for selection-bug C) and the
+untracked scratch files left untouched and out of the commit.
