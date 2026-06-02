@@ -946,3 +946,92 @@ colour, card, rendering — unchanged; (1) renames only the transient case. The
 move/drop (selection-bugs B+C), the transient-mark logic (L3f-1), and the
 lifted-overlay grab untouched. The other floats already consume the factory
 (unchanged); the `editor-extensions.test.ts` float-order gate still passes.
+
+## L3f-5 — Selection-bug B: universal block-uuid backfill — every inserted block is immediately graspable — 2026-06-02
+
+**Commit:** `f80939a`.
+
+**Bug (2).** A lifted text range dropped into a block gap (the between-paragraphs
+drop, L3f-3) lands as a paragraph with NO grab handle — it has lost its
+text-object identity.
+
+**Cause (proven live + by code).** `rangeSliceToBlocks`' inline branch builds
+`schema.nodes.paragraph.create(null, …)` → `uuid` defaults to null (so do paste
+and any slice insertion). The grab handle finds graspable blocks via
+`querySelectorAll("[data-uuid]")` (`resolveTextObjectsAtMouse`), and
+`UuidAttrDecorator` emits `data-uuid` ONLY for a non-null uuid; uuids are
+otherwise minted LAZILY on interaction (`ensureAnchorUuid`) — but a handle-less
+block can't be interacted with to trigger that mint (chicken-and-egg). Live
+non-destructive proof (build-tr-then-inspect, no dispatch): the dropped node's
+`attrs.uuid` was `null` while the 89 existing blocks all rendered `[data-uuid]`.
+
+**Fix — ONE transaction-time backfill (NOT a per-call-site patch).** New
+`BlockUuidBackfill` (`src/lib/tiptap/block-uuid-backfill.ts`), an
+`appendTransaction` plugin registered right AFTER `DocStructureObserver` in
+`buildEditorExtensions` (index 2, shared by both surfaces). It guarantees every
+anchorable block carries a unique non-null uuid by the end of its insertion
+transaction, so drops/pastes/splits are immediately graspable. `ensureAnchorUuid`
+stays as the lazy belt-and-suspenders; `assignUuids` (latex-serializer) is the
+load-time sibling — this is its live-insertion complement. Block identity is now
+centralized for ALL insertions (drop, paste, split, programmatic).
+
+**Observe-first correction (the arc's measure-first rule caught the brief's
+mechanism).** The brief said to key on `diff.addedBlocks`. But the step-inspector
+records a block in `added.blocks` ONLY when it already has a non-null,
+non-duplicate uuid (`inspectNodeAt`: `if (uuid && isAnchorableNode)`, plus the
+`prevStructure` filter routing duplicate-uuid adds to `contentChangedUuids`). So
+a freshly-inserted null/duplicate-uuid block — exactly the case we fix — is
+INVISIBLE to `diff.addedBlocks`; keying on it would catch NEITHER target case
+(confirmed by code + the live repro: a top-level null-uuid insert yields
+`EMPTY_DIFF`). The plugin instead reads the INSERTED STEP RANGES
+(`ReplaceStep`/`ReplaceAroundStep`, mapped to the final doc the same way the
+observer's own `collectRange` does) — O(edit-size), never a full-doc walk.
+
+**Keystroke safety (binding).** O(1) bail on `!tr.docChanged`; work proportional
+to the inserted ranges only; the single O(live-block-count) read (the observer's
+known-uuid set via `readDocStructure(oldState)`, for collision-free minting +
+dedup) happens ONLY once a candidate actually needs an id — never on a
+structurally-null keystroke (inline insert → no block-start in range → zero
+candidates → early return before any doc-sized read). Loop-safe: one size-stable
+`setNodeMarkup` per fix, `addToHistory:false`, tagged with a meta the plugin
+skips, returns null when nothing needs fixing (mirrors `MarginaliaAnchorGuard`) —
+after the backfill every touched block is unique, so a re-walk finds nothing.
+
+**Identity preservation (moves + float sync).** A uuid is re-minted only when it
+is a GENUINE duplicate: still live from before the batch AND not the subject of a
+removal in the same batch (and not already kept earlier this pass). So a block
+MOVE (lifted-overlay's own gesture: delete-here + insert-there) keeps its uuid —
+the source removal exempts it — and a float↔main `setContent` re-sync (every
+synced block is both removed and re-inserted with its main uuid) keeps every uuid
+too. Only real copies (an Enter-split's cloned half, a block copy) get a fresh
+id. Without this, every move/sync would churn uuids and orphan the block's cards.
+
+**Observe-first verification (live, fresh server, sentinel-cross-checked,
+non-destructive — build/dispatch then restore; dev doc left at 89 blocks).**
+KEYSTROKE: typing 30 plain chars left `__virgilBusStats().emitCount` FLAT (Δ0)
+while `version` advanced 30 and the full block-uuid set was identical (zero
+churn) — proof the plugin did no backfill on structurally-null edits (a backfill
+= a `setNodeMarkup` → `addedBlocks` → `emitCount++`). DROP: a null-uuid paragraph
+dropped into a gap came out with a unique 4-hex uuid, rendered
+`[data-uuid="bcc1"]` (`data-text-object-kind="paragraph"`) in the live DOM →
+graspable, and `emitCount` bumped exactly 1 (the backfill made it a real block;
+pre-fix it would be 0). PASTE: three null-uuid blocks each got a unique 4-hex
+uuid, all three rendered `[data-uuid]`.
+
+**Verify.** `tsc` 0; `eslint` 0 new; `vitest` **353/353** (348 + 5 new in
+`src/lib/tiptap/__tests__/block-uuid-backfill.test.ts`: null+duplicate dedup
+keeping the first occurrence, single-drop graspability, the keystroke no-op
+proven via `applyTransaction` returning a SINGLE transaction, move-preserves-uuid
+also a single transaction, and multi-block paste). The `editor-extensions.test.ts`
+order gate updated (`blockUuidBackfill` at index 2 on BOTH surfaces). Diff
+isolated to the new plugin + its registration + the two tests; the pre-existing
+working-tree files (`EDITOR_SKILLS_BRAINSTORM.html`,
+`src/hooks/useRecentlyAddedTracker.ts`) and the untracked scratch files
+(`SKILL_PIPELINE.*`, `CARD-SYSTEM-REFACTOR.md`, `EDITOR_SKILLS_V1.html`,
+`MEMO_V1_AND_ROT_PREVENTION.md`, `docs/card-refactor/`) left untouched and out of
+the commit.
+
+**Non-goals respected.** `rangeSliceToBlocks` and the drop spec were NOT patched
+(the backfill is universal, not a per-call-site fix); `ensureAnchorUuid` kept;
+the popout/label (selection-bug A) and inline-commit (C) untouched; no marks
+changed.
