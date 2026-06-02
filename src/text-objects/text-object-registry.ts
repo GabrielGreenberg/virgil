@@ -781,14 +781,16 @@ export const TEXT_OBJECT_REGISTRY: Record<TextObjectKind, TextObjectMeta> = {
       return label;
     },
     // The ghost = the marked range EXTRACTED via `Range.cloneContents`.
-    // cloneContents over an inline range yields bare text / inline spans
-    // WITHOUT the enclosing <p>/<h*>, so `.tiptap p` / `.tiptap h*` can't
+    // cloneContents over a SINGLE-block inline range yields bare text / inline
+    // spans WITHOUT the enclosing <p>/<h*>, so `.tiptap p` / `.tiptap h*` can't
     // size it — copy the source block's resolved typography onto a `.tiptap`
     // container so the run renders at the doc's size / weight / family /
-    // line-height. (Heading's renderGhost copies the editor ROOT base because
-    // its clone holds whole blocks that re-apply their own per-element rules;
-    // a range clone is homogeneous inline content of ONE block, so that
-    // block's own style is the faithful base.) The overlay sanitizes the
+    // line-height. A MULTI-block range is different: cloneContents keeps the
+    // source blocks' WRAPPERS (`.par-title-wrapper` / `.heading-wrapper` /
+    // `.display-math` …), so — exactly like the heading ghost (whose clone also
+    // holds whole blocks) — the container's font-size must be the editor ROOT
+    // base, NOT the prose `<p>`'s `--editor-font-size`. See the `fontSize`
+    // computation below for why (selection-bug D). The overlay sanitizes the
     // returned element in place (strips contenteditable / ids / state attrs).
     renderGhost: (anchorDom, editor, ref) => {
       const resolved = linkedAnchorDomRange(editor, ref.id);
@@ -799,9 +801,37 @@ export const TEXT_OBJECT_REGISTRY: Record<TextObjectKind, TextObjectMeta> = {
       const base = window.getComputedStyle(
         blockStyleElement(editor, resolved.doc.from),
       );
+      // selection-bug D: a multi-block range's cloned wrappers resolve their
+      // inter-block `margin-top: var(--editor-block-gap)` (1.2em) — and any
+      // em-sized inner chrome, e.g. a `displayMath`'s KaTeX — against the
+      // container's font-size. The page resolves those `em`s against the editor
+      // ROOT (`editor.view.dom`, = 1rem/16px), NOT the prose `<p>`'s
+      // `--editor-font-size` (the shipped default is 0.95rem/15.2px). Copying
+      // the inline text element's PROSE size onto the container shrank every
+      // gap + display-math glyph by the prose/root ratio (MEASURED at 0.95rem:
+      // paragraph gap 18.24px vs the page's 19.2px; display-math KaTeX 18.392px
+      // vs 19.36px), so the drag ghost rendered tighter than the released
+      // popout — a real `.tiptap` at the root base (FCU, selection-bug A) — and
+      // the whole passage visibly EXPANDED on release, multi-paragraph only.
+      // Mirror L3d.2 (LiftedTextOverlay): the em cascade BASE must be the editor
+      // root, not the inline element. The cloned `<p>`/`<h*>` still take their
+      // own prose size from `.tiptap p`/`.tiptap h*` (those rules reach the
+      // clone via the `.tiptap` scope), so this fixes the wrappers' em-base
+      // WITHOUT touching prose size. A SINGLE-block range clones a bare inline
+      // run with no wrapper to carry those rules, so it KEEPS the inline
+      // element's size (a heading run must stay heading-sized) — byte-identical
+      // to the pre-D path.
+      const $from = editor.state.doc.resolve(resolved.doc.from);
+      const $to = editor.state.doc.resolve(
+        Math.max(resolved.doc.from, resolved.doc.to - 1),
+      );
+      const spansMultipleBlocks = $from.index(0) !== $to.index(0);
+      const fontSize = spansMultipleBlocks
+        ? window.getComputedStyle(editor.view.dom).fontSize
+        : base.fontSize;
       Object.assign(container.style, {
         fontFamily: base.fontFamily,
-        fontSize: base.fontSize,
+        fontSize,
         fontWeight: base.fontWeight,
         fontStyle: base.fontStyle,
         fontVariant: base.fontVariant,
