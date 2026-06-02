@@ -752,6 +752,34 @@ export const TEXT_OBJECT_REGISTRY: Record<TextObjectKind, TextObjectMeta> = {
     // ghost. (Within-text move = the `text-range-move` drop spec; the
     // between-paragraphs drop is L3f-3, out of scope.)
     liftMode: "lifted-overlay",
+    // Double duty: `linkedRange` backs BOTH the transient plain-selection grab
+    // (a cardless `kind:"transient"` linkedAnchor, L3f-1) AND the real
+    // annotation kinds (note/highlight/cut/revision, which carry a `linkCard`).
+    // The float header + the lift-overlay's popout-mode header BOTH read this
+    // ONE source so a popout's label reflects the mark's TRUE nature: a plain
+    // selection grab → "Text selection"; a real annotation's range → null, so
+    // the chrome keeps the static `meta.label` "Linked range" (the non-goal:
+    // annotations are untouched). Walks the doc for the FIRST text carrying the
+    // mark (cheap; once per gesture at threshold cross, once per float mount) —
+    // mirrors heading's `computeLabel` shape; `linked-range-body.tsx` pushes
+    // the same value to the released float via `setHeaderLabel`.
+    computeLabel: (editor, ref) => {
+      let found = false;
+      let label: string | null = null;
+      editor.state.doc.descendants((node) => {
+        if (found) return false;
+        if (!node.isText) return true;
+        const mark = node.marks.find(
+          (m) => m.type.name === "linkedAnchor" && m.attrs.anchorId === ref.id,
+        );
+        if (mark) {
+          found = true;
+          label = mark.attrs.kind === "transient" ? "Text selection" : null;
+        }
+        return true;
+      });
+      return label;
+    },
     // The ghost = the marked range EXTRACTED via `Range.cloneContents`.
     // cloneContents over an inline range yields bare text / inline spans
     // WITHOUT the enclosing <p>/<h*>, so `.tiptap p` / `.tiptap h*` can't

@@ -5,6 +5,25 @@
  * `linkedAnchor` mark with a given `anchorId`. Edits in the float
  * round-trip into the same range in the main doc.
  *
+ * Schema (FCU mandate — this was the LAST float not on the shared factory):
+ * the embed is built by `buildEditorExtensions({ surface: "float", … })`, the
+ * SAME stack every other prose float uses, so a selection spanning lists /
+ * display math / figures / examples / colored text renders faithfully. The
+ * pre-FCU hand-rolled StarterKit subset OMITTED those node types, so any
+ * unsupported node in the seed was silently dropped (TipTap's
+ * `errorOnInvalidContent: false`) and a rich range popped out BLANK.
+ * `surface: "float"` omits the doc-wide numberers + folding so a popped range
+ * never renumbers; the bidirectional sync below is unchanged — the factory
+ * only WIDENS the schema.
+ *
+ * Header label: a plain selection grab rides a `kind: "transient"`
+ * `linkedAnchor` (L3f-1), so its float reads "Text selection", not the static
+ * "Linked range". Both the released-float header (`setHeaderLabel` below) and
+ * the lift-overlay's popout-mode header (`TextObjectGrabHandle`) resolve it
+ * through the ONE `linkedRange.computeLabel` in the registry — a real
+ * annotation's range (note/highlight/cut/revision) returns null and falls
+ * back to "Linked range", untouched.
+ *
  * Replaces the deleted session-only `SelectionFloat` + `selection-floats.ts`
  * registry. The source range is read from the live `linkedAnchor` mark
  * each time, so reload and undo cleanly recover.
@@ -21,23 +40,17 @@
  * drops the mark cleanly.
  */
 
-import { type RefObject, useCallback, useMemo, useRef } from "react";
-import { useEditor, EditorContent, type JSONContent } from "@tiptap/react";
-import StarterKit from "@tiptap/starter-kit";
-import Highlight from "@tiptap/extension-highlight";
 import {
-  InlineMath,
-  Footnote,
-  LatexComment,
-  Citation,
-  LabelRef,
-  LatexCommandMark,
-  AiRequestMarker,
-  LinkedAnchor,
-  LinkedAnchorGuard,
-  TabIndent,
-} from "@/lib/tiptap-extensions";
+  type RefObject,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+} from "react";
+import { useEditor, EditorContent, type JSONContent } from "@tiptap/react";
+import { buildEditorExtensions } from "@/lib/editor-extensions";
 import type { EditorHandle } from "@/components/Editor";
+import { useDocWriteHandleOrNull } from "@/components/editor-layout/DocPipeline";
 import { usePoppedCards } from "@/hooks/usePoppedCards";
 import { useEditorChrome } from "@/components/editor-layout/chrome-context";
 import { viewToggleClasses } from "@/components/editor-layout/chrome-config";
@@ -54,12 +67,14 @@ import {
   rangeSliceToBlocks,
 } from "@/lib/linked-anchor-range";
 import type { Node as PMNode } from "@tiptap/pm/model";
+import { TEXT_OBJECT_REGISTRY } from "../text-object-registry";
 import type { TextObjectFloatBodyProps } from "../types";
 
 export function LinkedRangeBody({
   cardKey,
   id: anchorId,
   editorRef,
+  setHeaderLabel,
 }: TextObjectFloatBodyProps) {
   const ref = editorRef as RefObject<EditorHandle | null>;
   const popped = usePoppedCards();
@@ -91,30 +106,65 @@ export function LinkedRangeBody({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [anchorId]);
 
+  // Heading/figure callback refs proxied to the MAIN editor's handle, threaded
+  // into the factory's `callbacks` exactly as the paragraph/list floats. Unlike
+  // the paragraph float (whose doc holds only a paragraph), a text range can
+  // hold a heading, list, or figure, so these are not purely inert — they let
+  // an embedded heading's label-rename / heading-delete confirm resolve against
+  // MAIN. `.current` is reassigned each render so the closures see the live
+  // main handle.
+  const isLabelTakenRef = useRef<
+    ((candidate: string, excludeLabel: string | null) => boolean) | undefined
+  >(undefined);
+  isLabelTakenRef.current = (candidate, excludeLabel) =>
+    ref.current?.isLabelTaken(candidate, excludeLabel) ?? false;
+
+  const onConfirmLabelRenameRef = useRef<
+    | ((
+        oldLabel: string,
+        newLabel: string,
+        refCount: number,
+      ) => Promise<boolean>)
+    | undefined
+  >(undefined);
+  onConfirmLabelRenameRef.current = (oldLabel, newLabel, refCount) =>
+    ref.current?.onConfirmLabelRename(oldLabel, newLabel, refCount) ??
+    Promise.resolve(false);
+
+  const onConfirmHeadingDeleteRef = useRef<
+    ((typeName: string) => Promise<boolean>) | undefined
+  >(undefined);
+  onConfirmHeadingDeleteRef.current = (typeName) =>
+    ref.current?.onConfirmHeadingDelete(typeName) ?? Promise.resolve(true);
+
+  // Thread the real docId so figure/graphics atoms inside the range resolve and
+  // render their actual image (read-only), like the list float (Issue-4) — the
+  // paragraph float passes null because it can hold no figure.
+  const docId = useDocWriteHandleOrNull()?.docId ?? null;
+  const docIdRef = useRef<string | null>(docId);
+  docIdRef.current = docId;
+
   const floatEditor = useEditor({
-    extensions: [
-      StarterKit.configure({
-        heading: false,
-        blockquote: false,
-        codeBlock: false,
-        bulletList: false,
-        orderedList: false,
-        horizontalRule: false,
-        listItem: false,
-        dropcursor: false,
-      }),
-      Highlight.configure({ multicolor: true }),
-      InlineMath,
-      Footnote,
-      LatexComment,
-      Citation,
-      LabelRef,
-      LatexCommandMark,
-      AiRequestMarker,
-      LinkedAnchor,
-      LinkedAnchorGuard,
-      TabIndent,
-    ],
+    // FCU factory — the SAME stack as the main editor + every other prose float
+    // (`surface: "float"` drops the doc-wide numberers / folding / main-only
+    // chrome). This WIDENS the schema so a selection spanning lists / display
+    // math / figures / examples round-trips faithfully; the prior hand-rolled
+    // StarterKit subset dropped those node types → blank popout.
+    extensions: buildEditorExtensions({
+      surface: "float",
+      editable: true,
+      cardContext: true,
+      callbacks: {
+        isLabelTaken: isLabelTakenRef,
+        onConfirmLabelRename: onConfirmLabelRenameRef,
+        onConfirmHeadingDelete: onConfirmHeadingDeleteRef,
+      },
+      docIdRef,
+      // Heading/list title + heading structural writes inside the range proxy
+      // to MAIN through this; the float's own onUpdate never fires from them,
+      // so useFloatMainSync re-reads idempotently (no echo).
+      host: { getMainEditor: () => ref.current?.getEditor() ?? null },
+    }),
     content: seed.doc,
     editable: true,
     immediatelyRender: false,
@@ -187,6 +237,23 @@ export function LinkedRangeBody({
     readSource,
   });
 
+  // Released-float header label. Reflects the mark's TRUE nature via the ONE
+  // `linkedRange.computeLabel` in the registry (the same source the
+  // lift-overlay's popout-mode header reads, so the two can't drift): a
+  // transient selection grab → "Text selection"; a real annotation's range →
+  // null, so the chrome keeps the static "Linked range". Re-runs when the main
+  // editor resolves.
+  useEffect(() => {
+    const label = mainEditor
+      ? (TEXT_OBJECT_REGISTRY.linkedRange.computeLabel?.(mainEditor, {
+          kind: "linkedRange",
+          id: anchorId,
+        }) ?? null)
+      : null;
+    setHeaderLabel(label);
+    return () => setHeaderLabel(null);
+  }, [mainEditor, anchorId, setHeaderLabel]);
+
   return (
     <>
       {sourceMissing ? (
@@ -198,11 +265,10 @@ export function LinkedRangeBody({
       <div
         className={`par-float-body flex-1 overflow-auto px-8 py-4 ${viewToggleClasses(chrome.menuBar)}`}
       >
-        <div className="par-title-wrapper has-text par-float-paragraph">
-          <div className="par-body-container">
-            <EditorContent editor={floatEditor} />
-          </div>
-        </div>
+        {/* No manual `.par-title-wrapper` here: the factory's paragraph
+            NodeView now wraps each block itself (FCU), exactly like
+            paragraph-body / list-body — a manual wrapper would double-nest. */}
+        <EditorContent editor={floatEditor} />
       </div>
     </>
   );
