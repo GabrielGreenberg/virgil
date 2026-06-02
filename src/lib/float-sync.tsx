@@ -36,9 +36,10 @@ import type { Editor, JSONContent } from "@tiptap/react";
  * `TextObjectKind` but intentionally collapses the persistent-node
  * variants into a small label set — "Source paragraph deleted",
  * "Source list deleted", etc. — since the banner is for the user and
- * doesn't need to distinguish bulletList vs orderedList or
- * codeBlock vs blockquote. Add a new entry here when a new TextObject
- * kind ships a float body that this banner could surface.
+ * doesn't need to distinguish bulletList vs orderedList (both →
+ * "Source list deleted"). Block kinds that read distinctly to the user
+ * (blockquote, codeBlock) get their own label. Add a new entry here when
+ * a new TextObject kind ships a float body that this banner could surface.
  */
 export type FloatSourceKind =
   | "paragraph"
@@ -46,7 +47,9 @@ export type FloatSourceKind =
   | "list"
   | "example"
   | "linkedRange"
-  | "texBlock";
+  | "texBlock"
+  | "blockquote"
+  | "codeBlock";
 
 const KIND_LABEL: Record<FloatSourceKind, string> = {
   paragraph: "Source paragraph deleted",
@@ -55,6 +58,8 @@ const KIND_LABEL: Record<FloatSourceKind, string> = {
   example: "Source example deleted",
   linkedRange: "Linked range deleted",
   texBlock: "Source TeX block deleted",
+  blockquote: "Source quote deleted",
+  codeBlock: "Source code block deleted",
 };
 
 /**

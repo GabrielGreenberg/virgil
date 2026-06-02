@@ -498,6 +498,9 @@ export const TEXT_OBJECT_REGISTRY: Record<TextObjectKind, TextObjectMeta> = {
     floatBodyComponent: PLACEHOLDER_FLOAT_BODY,
     actions: PROSE_ACTIONS,
     dropAdapter: topLevelDropAdapter,
+    // L3g (bodyless kinds, Chip 1): blockquote lifts through the two-mode
+    // gesture into a shared SingleBlockBody float (like paragraph/heading).
+    liftMode: "lifted-overlay",
     confirmDestructive: (doc, _uuid, action, ctx) =>
       descriptorForSimpleBlock("block quote", doc, action, ctx),
   },
@@ -511,6 +514,9 @@ export const TEXT_OBJECT_REGISTRY: Record<TextObjectKind, TextObjectMeta> = {
     floatBodyComponent: PLACEHOLDER_FLOAT_BODY,
     actions: NON_PROSE_BLOCK_ACTIONS,
     dropAdapter: topLevelDropAdapter,
+    // L3g (bodyless kinds, Chip 1): codeBlock lifts through the two-mode
+    // gesture into the same shared SingleBlockBody float.
+    liftMode: "lifted-overlay",
     confirmDestructive: (doc, _uuid, action, ctx) =>
       descriptorForSimpleBlock("code block", doc, action, ctx),
   },

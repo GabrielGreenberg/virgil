@@ -157,12 +157,14 @@ function floatSizeFor(kind: TextObjectKind) {
  * lift commit (Phase E); after hydration they pass through this
  * function as a normal TextObjectRef.
  */
-function popoutKeyForLift(ref: TextObjectRef): string | null {
+export function popoutKeyForLift(ref: TextObjectRef): string | null {
   switch (ref.kind) {
     case "paragraph":
     case "heading":
     case "bulletList":
     case "orderedList":
+    case "blockquote":
+    case "codeBlock":
     case "texBlock":
     case "exampleBlock":
     case "linkedRange":

@@ -23,6 +23,7 @@ import { ListBody } from "./list-body";
 import { TexBlockBody } from "./tex-block-body";
 import { ExampleBlockBody } from "./example-block-body";
 import { LinkedRangeBody } from "./linked-range-body";
+import { SingleBlockBody } from "./single-block-body";
 
 registerFloatBody("paragraph", ParagraphBody);
 registerFloatBody("heading", HeadingBody);
@@ -31,3 +32,7 @@ registerFloatBody("orderedList", ListBody);
 registerFloatBody("texBlock", TexBlockBody);
 registerFloatBody("exampleBlock", ExampleBlockBody);
 registerFloatBody("linkedRange", LinkedRangeBody);
+// One generic body serves both prose-shaped bodyless kinds (the ListBody
+// precedent — one component, many kinds; kind resolved from the cardKey).
+registerFloatBody("blockquote", SingleBlockBody);
+registerFloatBody("codeBlock", SingleBlockBody);
