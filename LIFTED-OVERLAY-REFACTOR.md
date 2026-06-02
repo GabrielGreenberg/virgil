@@ -858,3 +858,91 @@ were left untouched and out of the commit.
 `liftMode` flip each — `listItem`, `exampleItem`, `figureBlock`, `graphicsBlock`,
 `blockquote`, `codeBlock`, `displayMath`, `titleField`, `latexComment`), then **L4**
 (retire `liftMode` / `initialFloatSize` / the vestigial grow burst).
+
+## L3f-4 — Selection-bug A: popout fidelity for the plain-selection float ("Text selection" label + full-schema body via the FCU factory) — 2026-06-01
+
+**Commit:** `c02e8bf`.
+
+**Framing — `linkedRange` does DOUBLE DUTY.** One registry kind backs BOTH the
+transient plain-selection grab (a cardless `kind:"transient"` linkedAnchor,
+L3f-1) AND the real annotation kinds (note/highlight/cut/revision, which carry a
+`linkCard`). Two popout bugs both stemmed from the `linked-range-body` float not
+faithfully representing a *plain selection*. Scope was label + body ONLY
+(selection-bug A of three; B = uuid backfill, C = inline-commit; file-disjoint —
+touched only `linked-range-body.tsx` + the `linkedRange` registry entry + a new
+test).
+
+**Bug (1) — header read "Linked range" for a plain selection; should read "Text
+selection".** Fix: add `linkedRange.computeLabel(editor, ref)` (mirrors
+heading's) — walk to the linkedAnchor mark at `ref.id`; `kind==="transient"` →
+`"Text selection"`, else `null` so a real annotation falls back to `meta.label`
+"Linked range" (untouched). **Observe-first caught an INCOMPLETE cause:** the
+brief implied `computeLabel` alone fixes the popout, but the RELEASED float
+header is `TextObjectFloat`'s `labelOverride ?? meta.label` — it does NOT read
+`computeLabel`; only the lift-overlay's popout-mode header does (via
+`TextObjectGrabHandle`'s `meta.computeLabel ?? meta.label`). So the body must
+ALSO push the label: a new `setHeaderLabel` effect in `linked-range-body` calls
+the SAME `linkedRange.computeLabel` (the ONE source), so both surfaces reflect
+the mark's true nature and can't drift. A `computeLabel`-only fix + a
+`computeLabel` unit test would have PASSED while the real popout stayed "Linked
+range" — the exact observe-first trap this arc keeps warning about.
+
+**Bug (4) — popout went BLANK when the range held lists / display math /
+figures / examples.** Cause (proven live): the body built its editor from a
+NARROW hand-rolled StarterKit subset missing `DisplayMath` / `FigureBlock` /
+lists / `ExampleBlock` / `heading` / etc.; TipTap's `errorOnInvalidContent:
+false` SILENTLY DROPPED those nodes on seed → the float's doc collapsed to one
+empty paragraph (the float editor's schema literally lacked the node types).
+**Fix (FCU mandate — this was the LAST float not on the factory):** rewire to
+`buildEditorExtensions({ surface:"float", editable, cardContext, callbacks,
+docIdRef, host })` — the shared stack every other prose float uses.
+`surface:"float"` omits the doc-wide numberers/folding (a popped range never
+renumbers); `docIdRef` threaded from `useDocWriteHandleOrNull` (like list-body)
+so figures render their real image; the heading/figure callback refs threaded (a
+range CAN hold a heading/figure, unlike a paragraph float). The JSX drops its
+manual `.par-title-wrapper` — the factory's paragraph NodeView now wraps each
+block itself (matching paragraph-body/list-body). The bidirectional sync
+(`readSource`/`writeBackToMain` via `rangeSliceToBlocks`) is UNCHANGED — the
+factory only WIDENS the schema.
+
+**Observe-first verification (the arc's measure-first rule; fresh
+`.next-preview`, popped-cards `popOutAtRect` path, sentinel-cross-checked, two
+agreeing runs each).** PRE-FIX, on the real released float: a transient grab's
+header read "Linked range"; a range spanning a list + figure + 2 display-math +
+example + headings popped BLANK (`floatBodyTextLen` 1, doc `["paragraph"]`, and
+the float schema had `displayMath` / `figureBlock` / `bulletList` /
+`exampleBlock` / `heading` ALL absent — the smoking gun, independent of any
+catch-logging). POST-FIX, the same range: header "Text selection"; the body
+renders the list (3 `<li>`), display math (12 KaTeX), figure (2 `<img>`) +
+examples + headings (`floatBodyTextLen` 2916); a real note's range still reads
+"Linked range" (non-goal preserved); an edit in the float writes back to main (a
+sentinel inserted in the float reached the main doc). Screenshot confirms.
+
+**Write-back observation (PRE-EXISTING, OUT OF SCOPE — `writeBackToMain`
+unchanged).** Newly REACHABLE now that multi-block ranges render: editing a float
+over a MULTI-block range writes content back faithfully at the node level (every
+type survives `nodeFromJSON`/`toJSON`), but `replaceWith(r.from, r.to, blocks)`
+over a text-bounded range that spans blocks can leave a structural artifact
+(observed: an extra wrapping `bulletList`). `findLinkedAnchorRange` always returns
+text-node bounds, so write-back endpoints are always mid-block. This is
+`writeBackToMain`'s `replaceWith` behavior (untouched here) — before this fix the
+multi-block float was blank/uneditable, so it was never exercised; the fix is a
+strict improvement (content preserved vs. dropped). Flagged for a follow-up
+(possibly folded into selection-bug B/C); not addressed here per scope.
+
+**Verify.** `tsc` 0; `eslint` 0 new; `vitest` **348/348** (341 + 7 new in
+`src/text-objects/__tests__/linked-range-popout-fidelity.test.ts`: `computeLabel`
+transient→"Text selection" / note·highlight·cut·revision→null / missing→null,
+and the `surface:"float"` schema including the rich node types + round-tripping a
+multi-block heading+list+paragraph doc). Diff isolated to `linked-range-body.tsx`
++ the `linkedRange` registry entry + the new test; the pre-existing working-tree
+files (`EDITOR_SKILLS_BRAINSTORM.html`, `src/hooks/useRecentlyAddedTracker.ts`)
+and the untracked scratch files (`SKILL_PIPELINE.*`, `CARD-SYSTEM-REFACTOR.md`,
+`EDITOR_SKILLS_V1.html`, `MEMO_V1_AND_ROT_PREVENTION.md`, `docs/card-refactor/`)
+left untouched and out of the commit.
+
+**Non-goals respected.** The annotation kinds (note/highlight/cut/revision) —
+colour, card, rendering — unchanged; (1) renames only the transient case. The
+move/drop (selection-bugs B+C), the transient-mark logic (L3f-1), and the
+lifted-overlay grab untouched. The other floats already consume the factory
+(unchanged); the `editor-extensions.test.ts` float-order gate still passes.
