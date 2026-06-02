@@ -1117,3 +1117,98 @@ The pre-existing working-tree files (`EDITOR_SKILLS_BRAINSTORM.html`,
 `useRecentlyAddedTracker.ts`, the TEMP-SELC instrumentation in `controller.ts` /
 `text-range-move.ts` / `TextObjectGrabHandle.tsx` for selection-bug C) and the
 untracked scratch files left untouched and out of the commit.
+
+## L3f-7 — Selection follow-up: writeBackToMain multi-block artifact — text-bounded range replaced with closed blocks — 2026-06-02
+
+**Commit:** `16fb943`.
+
+**Bug (reachable since selection-bug A made the multi-block popout editable).**
+Editing a popped-out plain-selection / linked-range float that spans ≥2 top-level
+blocks (esp. one touching a list) and writing back left a structural artifact in
+the main doc — an extra wrapping list / split boundary paragraphs. Single-block
+ranges were unaffected. (This was the write-back observation flagged out-of-scope
+in L3f-4, now addressed.)
+
+**Cause — PROVEN (deterministic unit repro on the REAL float schema + a
+non-destructive real-doc confirm).** `writeBackToMain` replaced the TEXT-bounded
+mark range `[from,to)` (from `findLinkedAnchorRange`, often mid-paragraph) with
+FULLY-CLOSED block nodes via `tr.replaceWith` (a Slice with openStart=openEnd=0).
+Inserting closed blocks across an open, mid-text boundary forces PM's fitter to
+split the boundary paragraphs and, when the range touches a list, wrap an extra
+list. The seed extraction (`doc.slice(from,to)`, openStart/openEnd > 0 for a
+mid-block cut) and the write-back were not inverses. Numbers:
+- Canonical `paragraph · bulletList · paragraph`, mark spanning mid-p1 → mid-p3:
+  `doc.slice` openStart/openEnd = **1/1**; `replaceWith` → childCount **3 → 5**
+  (`[paragraph, paragraph, bulletList, paragraph, paragraph]` — both boundary
+  paragraphs split), `tr.doc.eq(doc)` = false.
+- `paragraph · bulletList`, mark spanning mid-p1 → inside the first list item:
+  `doc.slice` openStart/openEnd = **1/3**; `replaceWith` → bulletLists **1 → 2**
+  (the extra wrapping list, L3f-4's observed artifact).
+- Real live dev doc (non-destructive build-tr-then-inspect, never dispatched):
+  `replaceWith` → childCount **66 → 68**, an extra list; the open-slice replace →
+  **byte-identical** (`tr.doc.eq(doc)` true). `text-range-move.ts` already avoided
+  this by inserting the OPEN `doc.slice` via `tr.replace` — write-back was the lone
+  outlier.
+
+**Two observe-first corrections of the brief (measure-first caught both).**
+(1) `tr.docChanged` (steps.length>0) is NOT a reliable structural-no-op oracle: a
+`tr.replace` over a non-empty range ALWAYS records a step even when the result is
+byte-identical. The acceptance oracle is `tr.doc.eq(doc)`, not `!docChanged` (the
+`if (!tr.docChanged) return` guard is kept, but it no longer fires on an unedited
+round-trip — harmless: in production the float→main sync uses `setContent(...,
+{emitUpdate:false})`, so `writeBackToMain` only fires on a genuine edit, tagged
+`FLOAT_WRITE_META`). (2) Reusing the cut's open depths UNCLAMPED can build a
+malformed Slice when a float edit restructures the leading/trailing block (e.g.
+appends a paragraph after a list whose tail the cut opened 3 deep → last block is
+a depth-1 paragraph but openEnd=3) → `tr.replace` THROWS, which the try/catch
+swallows, SILENTLY DROPPING the edit. The closed `replaceWith` never threw (it
+always mangled instead). The fix clamps via `Slice.maxOpen`.
+
+**Fix — make write-back the named inverse of `rangeSliceToBlocks` (open-slice
+discipline).** Added `blocksToRangeSlice` to `src/lib/linked-anchor-range.ts`, the
+inverse of `rangeSliceToBlocks`: it replaces `[from,to)` reusing the current
+`doc.slice(from,to)` open depths (block range) or unwrapping the single wrapping
+paragraph (inline range), each depth CLAMPED to what the edited blocks support
+(`Slice.maxOpen`) so a restructured edit can never throw / drop the write-back.
+An unedited round-trip is byte-identical; an edited one lands exactly the edit
+with the boundary paragraphs preserved (no split, no extra list). `writeBackToMain`
+now calls it via `tr.replace` (guards / `addToHistory:false` / `FLOAT_WRITE_META`
+/ `docChanged` short-circuit / range re-track / try-catch preserved; range
+re-track is now `from + slice.size`). O(range-size); no per-keystroke doc walk.
+Left the move untouched — it already follows the open-slice discipline (a one-line
+note in `linked-anchor-range.ts` records this). Scanned the class: the other
+floats' `writeBackToMain` (paragraph/heading/list/example) replace WHOLE-NODE
+ranges (`src.start`/`src.end`/`pos`+`nodeSize`, where a closed Slice fits
+trivially), not text-bounded ranges — out of scope; tex-block uses `setNodeMarkup`.
+
+**Verify.** New `src/lib/__tests__/linked-range-writeback.test.ts` (10 tests,
+real float schema via `getSchema(buildEditorExtensions({surface:"float"}))`):
+closed-block `replaceWith` mangles a multi-block range (3→5) / wraps an extra list
+at a list boundary (1→2); `blocksToRangeSlice` LAW (`slice.eq(cut)`, open depths
+reused); unedited multi-block round-trip byte-identical (the acceptance oracle —
+pre-fix the `replaceWith` form of this assertion FAILED, captured); edited
+multi-block lands exactly the edit, childTypes unchanged, no extra list; boundary
+edit merges into the host paragraph; list-boundary byte-identical; inline range
+unwraps (no-op + edited); robustness — a restructured edit (trailing paragraph
+after a list) never throws / drops the write-back. `linked-range-popout-fidelity`
+still green. `tsc` 0 new (the pre-existing `block-uuid-backfill.test.ts(27,7)`
+error predates this — confirmed by reverting the three changed files and
+re-running: the identical lone error remains); `eslint` 0 new; `vitest`
+**363/363** (353 + 10 new). Real released popout (headless popped-cards path on
+the live dev doc): the multi-block range pops and renders faithfully (childCount
+2, `[paragraph, bulletList]`), and the live transform confirms the artifact +
+fix non-destructively (above). The FULL float-edit → `writeBackToMain` → dispatch
+round-trip could not be driven headlessly — `popOutAtRect` does not thread the
+main `editorRef` into the popped float the way the real grab gesture does, so
+`writeBackToMain` early-returns (`!ed`); handed to the user as a USER-VERIFY probe
+(pop a multi-block selection incl. a list, edit it, confirm no extra wrapping list
+/ split in the main doc). The production write-back wiring is unchanged and the
+single-block write-back already works, so only the transform construction changed.
+
+**Non-goals respected.** Float schema (A), `findLinkedAnchorRange` semantics,
+`useFloatMainSync`, label logic (L3f-1), the drag ghost (D), the other floats'
+whole-node write-backs, the move spec's behavior, the 9 bodyless kinds, and L4
+left untouched. The pre-existing working-tree files (`EDITOR_SKILLS_BRAINSTORM.html`,
+`useRecentlyAddedTracker.ts`) and untracked scratch (`CARD-SYSTEM-REFACTOR.md`,
+`EDITOR_SKILLS_V1.html`, `MEMO_V1_AND_ROT_PREVENTION.md`, `SKILL_PIPELINE.*`,
+`docs/card-refactor/`) left out of the commit.
