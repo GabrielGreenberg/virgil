@@ -12,10 +12,15 @@
  * (src/lib/tiptap/linked-anchor.ts): a moved (or pasted) run must not carry
  * the transient — or any — anchor identity. AnchorIds mint exactly once at
  * hydration; copies do not propagate identity.
+ *
+ * `rangeSliceToBlocks` — the range→block-nodes form shared by the float
+ * (`sliceAsDoc`) and the `text-range-move` between-paragraphs drop (L3f-3):
+ * an inline run becomes one paragraph, a multi-block range keeps its blocks.
+ * One transform, no parallel logic.
  */
 
 import { Fragment, Slice } from "@tiptap/pm/model";
-import type { Node as PMNode } from "@tiptap/pm/model";
+import type { Node as PMNode, Schema } from "@tiptap/pm/model";
 
 /**
  * Walk the doc for text nodes whose marks include a `linkedAnchor` with the
@@ -67,4 +72,29 @@ export function stripLinkedAnchorMarks(slice: Slice): Slice {
     return Fragment.fromArray(out);
   };
   return new Slice(rebuild(slice.content), slice.openStart, slice.openEnd);
+}
+
+/**
+ * Convert a marked range's slice into block-level PM nodes — the shared
+ * range→blocks form behind BOTH the `linked-range-body` float (`sliceAsDoc`)
+ * and the `text-range-move` between-paragraphs drop (L3f-3). One transform,
+ * no parallel logic (the same DRY move as `findLinkedAnchorRange` /
+ * `stripLinkedAnchorMarks`).
+ *
+ * Policy: a slice cut INSIDE one text block comes through as bare inline
+ * content → wrap it in a single `paragraph` so the run becomes its own
+ * block; a slice that already spans whole blocks comes through as block
+ * children → keep them as siblings; an empty slice → one empty paragraph.
+ * New paragraphs carry default attrs (uuid null, minted lazily like any
+ * freshly-created block). Shedding the `linkedAnchor` handle is the caller's
+ * concern — `stripLinkedAnchorMarks` the slice first when the moved run must
+ * not carry it (the float keeps it; the move strips it).
+ */
+export function rangeSliceToBlocks(slice: Slice, schema: Schema): PMNode[] {
+  const children: PMNode[] = [];
+  slice.content.forEach((n) => children.push(n));
+  if (children.some((c) => c.isInline)) {
+    return [schema.nodes.paragraph.create(null, slice.content)];
+  }
+  return children.length > 0 ? children : [schema.nodes.paragraph.create()];
 }

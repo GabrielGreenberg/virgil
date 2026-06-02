@@ -49,7 +49,10 @@ import {
 // L3f-2: the marked-range resolver now lives in one shared util consumed by
 // this float, the linkedRange lift-overlay hooks, and the text-range-move
 // drop spec — see src/lib/linked-anchor-range.ts.
-import { findLinkedAnchorRange } from "@/lib/linked-anchor-range";
+import {
+  findLinkedAnchorRange,
+  rangeSliceToBlocks,
+} from "@/lib/linked-anchor-range";
 import type { Node as PMNode } from "@tiptap/pm/model";
 import type { TextObjectFloatBodyProps } from "../types";
 
@@ -207,29 +210,22 @@ export function LinkedRangeBody({
 
 /**
  * Build a TipTap doc that wraps the main-doc slice at `[from, to)`. The
- * slice may carry partial-paragraph open depths; we unwrap them so the
- * float's flat paragraph schema accepts the content.
+ * slice may carry partial-paragraph open depths; the shared
+ * `rangeSliceToBlocks` unwraps an inline run into one paragraph and keeps a
+ * multi-block range's blocks — the SAME transform the `text-range-move`
+ * between-paragraphs drop uses (L3f-3), so the float and the move never
+ * drift.
  */
 function sliceAsDoc(
   doc: PMNode,
   range: { from: number; to: number },
 ): JSONContent {
   try {
-    const slice = doc.slice(range.from, range.to);
-    const fragJson = slice.content.toJSON();
-    const children = Array.isArray(fragJson) ? fragJson : [];
-    // If the slice starts inside a paragraph and ends inside one, the
-    // top-level children are the inline runs — wrap them in a paragraph.
-    // Otherwise they're already block-level (paragraph / etc.).
-    const hasInlineLeaves = children.some(
-      (c: JSONContent) => c.type === "text" || c.type === "inlineMath",
+    const blocks = rangeSliceToBlocks(
+      doc.slice(range.from, range.to),
+      doc.type.schema,
     );
-    const docContent: JSONContent[] = hasInlineLeaves
-      ? [{ type: "paragraph", content: children }]
-      : children.length > 0
-        ? children
-        : [{ type: "paragraph" }];
-    return { type: "doc", content: docContent };
+    return { type: "doc", content: blocks.map((n) => n.toJSON() as JSONContent) };
   } catch {
     return { type: "doc", content: [{ type: "paragraph" }] };
   }

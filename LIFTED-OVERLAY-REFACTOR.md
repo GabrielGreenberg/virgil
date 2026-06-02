@@ -770,3 +770,91 @@ unchanged. The pre-existing working-tree files (`EDITOR_SKILLS_BRAINSTORM.html`,
 `src/hooks/useRecentlyAddedTracker.ts`, scratch `SKILL_PIPELINE.*`, and the foreign
 untracked `CARD-SYSTEM-REFACTOR.md` / `EDITOR_SKILLS_V1.html` / `MEMO_V1_AND_ROT_PREVENTION.md`)
 were left untouched and out of the commit.
+
+## L3f-3 — Between-paragraphs (horizontal-line) drop for a lifted text range: context-aware wrapping — 2026-06-01
+
+**What it does.** The second drop target the user described for a lifted plain
+selection — the **between-paragraphs (horizontal-line)** drop, alongside L3f-2's
+within-text (vertical-caret) move. Releasing the range ghost in a BLOCK GAP now
+drops the run as BLOCK content, fit to the gap's context: a top-level gap → a new
+paragraph, a list gap → a **list item** (joining the list, not splitting it), a
+blockquote → a paragraph inside the quote. Block gaps were inert in L3f-2
+(`text-range-move` was `inline-cursor` only); they're live now. **This completes
+the reframed L3f** (selection as a transient grab): decouple (L3f-1) →
+grab/pop-out/within-text-move (L3f-2) → between-paragraphs move (L3f-3, here).
+
+**The pieces — all in the EXISTING `text-range-move` spec (no new spec).**
+1. **`allowedPlacements: ["inline-cursor", "between-blocks"]`.** The hit-test's
+   `inText`/`inGap` are mutually exclusive (`hit-test.ts:56-57`), so inline-cursor
+   still wins over text (L3f-2 unregressed) and between-blocks fires only in gaps
+   — the dual target with one array changed.
+2. **`classifyDrop` self-drop.** Both placements carry a doc position (inline
+   `pos` / block-gap `insertPos`); a release inside `[from, to]` → no-op.
+3. **`applyDrop` between-blocks branch (the wrapping policy).** Kept in a sibling
+   `applyRangeBetweenBlocks` so the L3f-2 inline body stays BYTE-FOR-BYTE
+   unchanged (dispatched before it). It mirrors `textobject.ts`'s element
+   block-move structure: `classifyParentAt(targetEditor, insertPos)` → a list gap
+   wraps each block in a `listItem` (a bare paragraph would SPLIT the list —
+   MEASURED, both in a unit harness and live), a blockquote / top-level gap takes
+   the paragraph(s) directly (PM places a paragraph inside the quote at a
+   quote-internal position). Then delete-source + adjusted-insert in one
+   transaction (same-editor: `tr.delete(from,to)` then `tr.insert(cursor, n);
+   cursor += n.nodeSize`) / insert-then-delete (cross-editor). The payload is the
+   range's slice converted to blocks (NOT a whole node), with `linkedAnchor`
+   stripped so the moved run sheds the transient handle (consistent with the
+   inline move + paste).
+
+**Range → blocks (the shared transform).** New `rangeSliceToBlocks(slice, schema)`
+in `linked-anchor-range.ts`: an inline run (slice cut within one text block) → one
+`paragraph`; a multi-block range → its blocks; empty → one empty paragraph. The
+float's `sliceAsDoc` (`linked-range-body.tsx`) was refactored to delegate to it, so
+the float and the move share ONE range→blocks transform (the DRY move from L3f-2's
+`findLinkedAnchorRange` / `stripLinkedAnchorMarks`). A within-one-paragraph fragment
+becomes its OWN new paragraph (NOT merged — that's the inline move's job); a range
+covering whole paragraphs' entire CONTENT leaves one empty shell where it was (the
+same cut semantics `delete(from,to)` gives the inline move — the common phrase-
+within-a-paragraph case leaves no shell).
+
+**DRY — `classifyParentAt` extracted.** Lifted into a shared
+`src/components/drop-mode/specs/drop-context.ts` (the canonical home), consumed by
+this spec via `buildWrap`'s context-fit pattern. `textobject.ts` keeps a private
+twin (left UNTOUCHED this session per the "don't modify the element-move spec"
+constraint) — flagged in `drop-context.ts` to unify the next time that file is
+edited.
+
+**Routing / cleanup — already wired (confirmed, no new site).** `lookupSpec`
+already carves `textobject:linkedRange:` to this spec (L3f-2, `registry.ts`) — no
+registry change. Transient cleanup is the grab handle's
+`removeTransientAnchor`-after-commit (guarded to `kind:"transient"`, so a grab that
+reused a real note/highlight/cut/revision never deletes it); a between-blocks move
+goes through the same `commitDropSession`, so it is already covered.
+
+**Verify.** `tsc` 0; `eslint` 0 new (clean on all six touched/new files); `vitest`
+**341/341** (332 baseline + 6 between-blocks in `text-range-move.test.ts` —
+top-level / list / blockquote wrap, multi-block preserve, between-blocks self-drop
+no-op, each asserted by building the `tr` and inspecting `tr.doc` WITHOUT dispatch —
++ 3 `rangeSliceToBlocks` in `linked-anchor-range.test.ts`). **Live (real dev doc,
+fresh `.next-preview`, every eval `6*7`/`7*8`-sentinelled, two agreeing runs, editor
+via `.ProseMirror.editor`):** replicated the move on a real phrase for all three
+contexts, built the `tr`, ran `tr.doc.check()` (valid) WITHOUT dispatching (the live
+doc stayed untouched — confirmed) → top-level → a `paragraph` in `doc`, list → a
+`listItem` in `bulletList`, blockquote → a `paragraph` in `blockquote`; real
+`ParagraphWithTitle` / `listItem` NodeView construction works; no `linkedAnchor`
+mark in the moved copy. The LIVE GHOST/DRAG can't be driven headlessly → handed to
+the user for a trusted-hover eyeball: select a phrase → drag → drop in a top-level
+gap (new paragraph) / a list gap (list item) / a blockquote (paragraph in quote),
+and confirm the within-text caret move (L3f-2) still works over text.
+
+**No regressions.** The inline-cursor (within-text) move is byte-for-byte unchanged
+(the between-blocks branch is a sibling function dispatched before it);
+`textobject.ts` (element-kind moves), the lifted-overlay grab/ghost, and the
+`linked-range-body` float's sync are untouched. The pre-existing working-tree files
+(`EDITOR_SKILLS_BRAINSTORM.html`, `src/hooks/useRecentlyAddedTracker.ts`) and the
+untracked scratch files (`SKILL_PIPELINE.*`, `CARD-SYSTEM-REFACTOR.md`,
+`EDITOR_SKILLS_V1.html`, `MEMO_V1_AND_ROT_PREVENTION.md`, `docs/card-refactor/`)
+were left untouched and out of the commit.
+
+**Next.** The remaining arc: the **9 bodyless kinds** (build a float body +
+`liftMode` flip each — `listItem`, `exampleItem`, `figureBlock`, `graphicsBlock`,
+`blockquote`, `codeBlock`, `displayMath`, `titleField`, `latexComment`), then **L4**
+(retire `liftMode` / `initialFloatSize` / the vestigial grow burst).

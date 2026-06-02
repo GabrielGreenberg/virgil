@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { Schema } from "@tiptap/pm/model";
 import {
   findLinkedAnchorRange,
+  rangeSliceToBlocks,
   stripLinkedAnchorMarks,
 } from "@/lib/linked-anchor-range";
 
@@ -124,5 +125,30 @@ describe("stripLinkedAnchorMarks", () => {
     expect(stripped.openStart).toBe(slice.openStart);
     expect(stripped.openEnd).toBe(slice.openEnd);
     expect(stripped.content.textBetween(0, stripped.content.size)).toBe("world");
+  });
+});
+
+describe("rangeSliceToBlocks", () => {
+  it("wraps an inline run (a slice cut within one paragraph) in a single paragraph", () => {
+    const d = doc(para(schema.text("Hello "), schema.text("world"), schema.text("!")));
+    const blocks = rangeSliceToBlocks(d.slice(7, 12), schema); // "world"
+    expect(blocks).toHaveLength(1);
+    expect(blocks[0].type.name).toBe("paragraph");
+    expect(blocks[0].textContent).toBe("world");
+  });
+
+  it("keeps whole blocks for a multi-paragraph range", () => {
+    const d = doc(para(schema.text("aaa")), para(schema.text("bbb")));
+    const blocks = rangeSliceToBlocks(d.slice(2, 8), schema); // tail of p1 + head of p2
+    expect(blocks.map((b) => b.type.name)).toEqual(["paragraph", "paragraph"]);
+    expect(blocks.map((b) => b.textContent)).toEqual(["aa", "bb"]);
+  });
+
+  it("returns one empty paragraph for an empty slice", () => {
+    const d = doc(para(schema.text("x")));
+    const blocks = rangeSliceToBlocks(d.slice(2, 2), schema);
+    expect(blocks).toHaveLength(1);
+    expect(blocks[0].type.name).toBe("paragraph");
+    expect(blocks[0].textContent).toBe("");
   });
 });
