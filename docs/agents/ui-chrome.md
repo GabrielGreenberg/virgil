@@ -1,4 +1,6 @@
 <!-- last-verified: 7c45771 2026-05-21 -->
+<!-- derives-from: docs/architecture/VIRGIL.md#code-organization, docs/architecture/VIRGIL.md#card-kind-taxonomy -->
+<!-- covers-code: src/panels/panel-registry.ts, src/components/MenuBar.tsx, src/components/EditorLayout.tsx, src/components/panel-primitives.tsx, src/components/editor-layout -->
 
 # UI Chrome
 

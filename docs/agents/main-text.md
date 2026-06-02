@@ -1,4 +1,6 @@
 <!-- last-verified: e86a264 2026-05-22 -->
+<!-- derives-from: docs/architecture/VIRGIL.md#ontology, docs/architecture/VIRGIL.md#latex-round-trip-vocabulary, docs/architecture/VIRGIL.md#uuid-marker-emission -->
+<!-- covers-code: src/lib/tiptap, src/links, src/lib/marginalia.ts, src/lib/latex-parser.ts, src/lib/latex-serializer.ts, src/text-objects -->
 
 # Main Text: Editor, Content Model, Links, Marginalia
 

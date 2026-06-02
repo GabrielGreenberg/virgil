@@ -1,3 +1,6 @@
+<!-- derives-from: docs/architecture/VIRGIL.md#code-organization -->
+<!-- covers-code: src/lib/tiptap/doc-structure, src/hooks/useStructuralRevisions.ts, src/hooks/useInTextPositions.ts -->
+
 # Agent guide to Virgil
 
 Virgil is a browser-based visual LaTeX editor for academic writing, designed to cowork with AI agents. It runs fully client-side (File System Access API for disk, IndexedDB for prefs), doesn't compile LaTeX, and renders `.tex` meaningfully while preserving the source. Agents interact with the user's paper by reading the same `.tex`/`.bib` files and writing JSON sidecars into the paper's `virgil/` folder.
