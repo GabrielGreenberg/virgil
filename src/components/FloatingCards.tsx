@@ -7,7 +7,6 @@ import { consumeCardLiftHandoff } from "./card-lift";
 import {
   capPopoutHeight,
   parseTextObjectPopoutKey,
-  TEXT_OBJECT_REGISTRY,
 } from "@/text-objects/text-object-registry";
 
 const DEFAULT_W = 360;
@@ -84,20 +83,18 @@ export function FloatCard({
   // Bounded by 40% of viewport height; if content exceeds the cap, the
   // body's existing overflow:auto handles the scroll.
   useEffect(() => {
-    // Lifted-overlay popouts spawn at the source's authoritative full-content
-    // height (captured at threshold-cross). The grow burst — built for
-    // default-size spawns — would otherwise over-grow them: the float editor's
-    // editable area includes ~43px of trailing cursor space below the content
-    // node that inflates body.scrollHeight beyond the real content. Skip
-    // auto-fit entirely for these; their spawn rect is already correct.
-    // (Default-size kinds still on instant-popout keep the grow burst until
-    // they migrate; after L4 it's vestigial.)
+    // Textobject lift popouts spawn at the source's authoritative full-content
+    // height (captured at threshold-cross), so they skip this auto-fit "grow
+    // burst" — it was built for default-size spawns and would over-grow them
+    // (the float editor's editable area includes ~43px of trailing cursor space
+    // below the content node that inflates body.scrollHeight beyond the real
+    // content). Every textobject float lifts (L4a retired the per-kind
+    // staging), so the gate is simply "is this a textobject key." The burst now
+    // only ever runs for NON-textobject floats — which carry no
+    // `.par-float-body`, so in practice it's inert there too.
     const parsed = parseTextObjectPopoutKey(cardKey);
-    if (
-      parsed &&
-      TEXT_OBJECT_REGISTRY[parsed.kind]?.liftMode === "lifted-overlay"
-    ) {
-      return; // honor the authoritative spawn height; no auto-fit
+    if (parsed) {
+      return; // textobject float: honor the authoritative spawn height; no auto-fit
     }
     if (autoFittedKeys.has(cardKey)) return;
     autoFittedKeys.add(cardKey);

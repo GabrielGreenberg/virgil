@@ -283,10 +283,6 @@ export const TEXT_OBJECT_REGISTRY: Record<TextObjectKind, TextObjectMeta> = {
     // %!v: anchor; not a LaTeX command per se. Marker is the suffix
     // on the paragraph's last line.
     dropAdapter: topLevelDropAdapter,
-    // L1 of the Lifted-Overlay refactor: paragraph drags through the
-    // new two-mode gesture (ghost in editor, popout in gutter); every
-    // other kind keeps the legacy instant-popout path until L3.
-    liftMode: "lifted-overlay",
     confirmDestructive: (doc, _uuid, action, ctx) =>
       descriptorForSimpleBlock("paragraph", doc, action, ctx, {
         includePreview: true,
@@ -307,7 +303,6 @@ export const TEXT_OBJECT_REGISTRY: Record<TextObjectKind, TextObjectMeta> = {
     // manila). The per-level label (Chapter/Section/Subsection/…) is
     // computed below via `computeLabel` so the overlay's popout-mode
     // header matches the real popout's `setHeaderLabel` at handoff.
-    liftMode: "lifted-overlay",
     // Mirror the dynamic label that `heading-body.tsx` pushes via
     // `setHeaderLabel(headingTypeName(level))` — so the overlay's
     // popout-mode header reads the same string the real popout will
@@ -444,7 +439,6 @@ export const TEXT_OBJECT_REGISTRY: Record<TextObjectKind, TextObjectMeta> = {
     // same two-mode gesture as paragraph/heading (ghost in pod, popout
     // in manila; release-in-pod moves the list, release-in-manila spawns
     // the popout at the overlay's chrome-inclusive rect).
-    liftMode: "lifted-overlay",
     // Mirror the static label `list-body.tsx` pushes via
     // `setHeaderLabel("Bullet list")` on the bulletList branch, so the
     // overlay's popout-mode header matches the real popout at handoff.
@@ -472,7 +466,6 @@ export const TEXT_OBJECT_REGISTRY: Record<TextObjectKind, TextObjectMeta> = {
     // float). Decimal counters render in the ghost via L3b.1's
     // `.tiptap ol { list-style-type: decimal }` scope; no re-wrap via
     // L3b.3's border compensation.
-    liftMode: "lifted-overlay",
     // Mirror the static label `list-body.tsx` pushes via
     // `setHeaderLabel("Ordered list")` on the orderedList branch, so the
     // overlay's popout-mode header matches the real popout at handoff.
@@ -500,7 +493,6 @@ export const TEXT_OBJECT_REGISTRY: Record<TextObjectKind, TextObjectMeta> = {
     dropAdapter: topLevelDropAdapter,
     // L3g (bodyless kinds, Chip 1): blockquote lifts through the two-mode
     // gesture into a shared SingleBlockBody float (like paragraph/heading).
-    liftMode: "lifted-overlay",
     confirmDestructive: (doc, _uuid, action, ctx) =>
       descriptorForSimpleBlock("block quote", doc, action, ctx),
   },
@@ -516,7 +508,6 @@ export const TEXT_OBJECT_REGISTRY: Record<TextObjectKind, TextObjectMeta> = {
     dropAdapter: topLevelDropAdapter,
     // L3g (bodyless kinds, Chip 1): codeBlock lifts through the two-mode
     // gesture into the same shared SingleBlockBody float.
-    liftMode: "lifted-overlay",
     confirmDestructive: (doc, _uuid, action, ctx) =>
       descriptorForSimpleBlock("code block", doc, action, ctx),
   },
@@ -533,7 +524,6 @@ export const TEXT_OBJECT_REGISTRY: Record<TextObjectKind, TextObjectMeta> = {
     // L3h (bodyless kinds, Chip 2): displayMath lifts through the two-mode
     // gesture into a READ-ONLY SingleBlockBody float ("view & move only" —
     // decision D; the equation is edited on the page via the KaTeX popover).
-    liftMode: "lifted-overlay",
     // Atom blocks: always warn (can't preview a meaningful "empty"
     // state for math/figure/etc.). The hasAnchorsOrAtoms guard is
     // irrelevant — the block itself is what's at stake.
@@ -561,7 +551,6 @@ export const TEXT_OBJECT_REGISTRY: Record<TextObjectKind, TextObjectMeta> = {
     // like blockquote — the LAST prose-shaped bodyless kind). Its node was
     // promoted into the float schema (editor-extensions.ts) since it was the
     // only bodyless kind that was main-only.
-    liftMode: "lifted-overlay",
     // Delete/Archive are filtered out by TITLE_FIELD_ACTIONS, so the
     // confirmDestructive slot is never consulted in practice. Left unset.
   },
@@ -578,7 +567,6 @@ export const TEXT_OBJECT_REGISTRY: Record<TextObjectKind, TextObjectMeta> = {
     // L3i (bodyless kinds, Chip 3): latexComment lifts through the two-mode
     // gesture into an EDITABLE SingleBlockBody float (decision A, "fully
     // editable, first-class"; the `%comment` round-trips on edit).
-    liftMode: "lifted-overlay",
     // Author noise, cheap to redo — never warn.
     confirmDestructive: () => null,
   },
@@ -608,9 +596,8 @@ export const TEXT_OBJECT_REGISTRY: Record<TextObjectKind, TextObjectMeta> = {
     // `computeLabel`: `tex-block-body.tsx` never calls `setHeaderLabel`,
     // so the overlay's popout-mode header reads the static `meta.label`
     // ("TeX block") — matching the real popout at handoff. Spawns at the
-    // source pod size and skips FloatCard's grow burst via L3c.2's
-    // `liftMode === "lifted-overlay"` gate.
-    liftMode: "lifted-overlay",
+    // source pod size; like every textobject float it skips FloatCard's
+    // auto-fit grow burst (FloatingCards gates that on a non-textobject key).
     actions: NON_PROSE_BLOCK_ACTIONS,
     // texBlock uses `%!vtex:begin <uuid>` / `%!vtex:end <uuid>` comment
     // sentinels for round-trip, not a \v*id command. Left empty here
@@ -647,7 +634,6 @@ export const TEXT_OBJECT_REGISTRY: Record<TextObjectKind, TextObjectMeta> = {
     // the L3e.2 React-NodeView margin reset (`.lifted-text-overlay__body >
     // .react-renderer > *`) already zeros `.node-figureBlock`'s retained top
     // margin. No `computeLabel`/`liftSourceRect` — static `label: "Figure"`.
-    liftMode: "lifted-overlay",
     actions: NON_PROSE_BLOCK_ACTIONS,
     dropAdapter: topLevelDropAdapter,
     confirmDestructive: (_doc, _uuid, action) => {
@@ -671,7 +657,6 @@ export const TEXT_OBJECT_REGISTRY: Record<TextObjectKind, TextObjectMeta> = {
     // a read-only image (≈ displayMath "view & move"). Same NO-`renderGhost`
     // reasoning as figureBlock (warm `<img src>` clone + class-scoped CSS +
     // L3e.2 `.node-graphicsBlock` margin reset). Static `label: "Graphic"`.
-    liftMode: "lifted-overlay",
     actions: NON_PROSE_BLOCK_ACTIONS,
     dropAdapter: topLevelDropAdapter,
     confirmDestructive: (_doc, _uuid, action) => {
@@ -704,10 +689,9 @@ export const TEXT_OBJECT_REGISTRY: Record<TextObjectKind, TextObjectMeta> = {
     // `.ProseMirror`-scoped). No `computeLabel`: `example-block-body.tsx`
     // never calls `setHeaderLabel`, so the overlay's popout-mode header
     // reads the static `meta.label` ("Example") — matching the real
-    // popout at handoff. Spawns at authoritative source height and skips
-    // FloatCard's grow burst via L3c.2's `liftMode === "lifted-overlay"`
-    // gate.
-    liftMode: "lifted-overlay",
+    // popout at handoff. Spawns at authoritative source height; like every
+    // textobject float it skips FloatCard's auto-fit grow burst (FloatingCards
+    // gates that on a non-textobject key).
     sourceMarker: { command: "vexid", idLength: 4 },
     dropAdapter: topLevelDropAdapter,
     confirmDestructive: (doc, _uuid, action, ctx) =>
@@ -738,7 +722,6 @@ export const TEXT_OBJECT_REGISTRY: Record<TextObjectKind, TextObjectMeta> = {
     // item wrap-seeded in its parent list, inner-targeted write-back. No
     // `computeLabel` (the body never sets a header label, so the overlay's
     // popout-mode header reads the static `meta.label` "List item").
-    liftMode: "lifted-overlay",
     // Marker-rescue ghost (modeled on the heading section ghost above). The
     // default overlay clone is a BARE `<li>` — its bullet/number renders via
     // the list-style of an enclosing `<ul>`/`<ol>` (the `::marker` sits in the
@@ -819,7 +802,6 @@ export const TEXT_OBJECT_REGISTRY: Record<TextObjectKind, TextObjectMeta> = {
     // default clone lays out faithfully, exactly like exampleBlock (which also
     // carries no ghost). (Wrapping in `.expex-block` without an `.expex-number`
     // sibling would squash the item into the 1.5em number column.)
-    liftMode: "lifted-overlay",
     sourceMarker: { command: "vxid", idLength: 4 },
     dropAdapter: exampleItemDropAdapter,
     confirmDestructive: (doc, _uuid, action, ctx) =>
@@ -853,7 +835,6 @@ export const TEXT_OBJECT_REGISTRY: Record<TextObjectKind, TextObjectMeta> = {
     // the gate falls back to the legacy spawn rather than mount an empty
     // ghost. (Within-text move = the `text-range-move` drop spec; the
     // between-paragraphs drop is L3f-3, out of scope.)
-    liftMode: "lifted-overlay",
     // Double duty: `linkedRange` backs BOTH the transient plain-selection grab
     // (a cardless `kind:"transient"` linkedAnchor, L3f-1) AND the real
     // annotation kinds (note/highlight/cut/revision, which carry a `linkCard`).

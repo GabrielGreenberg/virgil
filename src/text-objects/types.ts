@@ -252,29 +252,15 @@ export interface TextObjectMeta {
    *  this module React-free; the registry module narrows it. */
   floatBodyComponent: unknown;
 
-  /** Initial size for a freshly popped-out float, in viewport pixels.
-   *  Omitted → use the DEFAULT_FLOAT_SIZE in TextObjectGrabHandle.
-   *  Mostly used by wider kinds (headings, lists, tex-blocks) that
-   *  want more room than a paragraph float. */
+  /** Fallback spawn size, in viewport pixels, for the legacy cursor-centered
+   *  popout in `TextObjectGrabHandle` — used ONLY when the lift can't capture a
+   *  source rect (the source DOM vanished concurrently, or a range's mark can't
+   *  be mapped). The normal lifted-overlay popout spawns at the captured source
+   *  rect, not this fixed size, so this is consulted on that degenerate path
+   *  alone. Omitted → use the DEFAULT_FLOAT_SIZE in TextObjectGrabHandle. Set by
+   *  the wider kinds (headings, lists, tex-blocks) that want more room than a
+   *  paragraph float in that fallback. */
   initialFloatSize?: { width: number; height: number };
-
-  /** How the grab-handle drag gesture lifts this kind.
-   *
-   *  `"instant-popout"` (default when omitted) — the legacy gesture:
-   *  past the 5px threshold, the cursor-centered float spawns
-   *  immediately via `popOutAtRect`. The 15 non-paragraph kinds stay
-   *  on this path through L1–L3 of the Lifted-Overlay refactor.
-   *
-   *  `"lifted-overlay"` — the new Notion-style two-mode drag (paragraph
-   *  in L1; all kinds by L4). A portal-rendered `LiftedTextOverlay`
-   *  follows the cursor at source-rect dimensions while the gesture is
-   *  live; chrome flips between ghost (cursor in content) and popout
-   *  (cursor in gutter or beyond) via CSS. Release-in-popout-mode spawns
-   *  the real popout at the overlay's current rect; release-in-ghost-mode
-   *  in L1 falls through to the legacy spawn (the L1→L2 bridge) and in
-   *  L2 hands off to the drop-mode placement engine. See
-   *  `LIFTED-OVERLAY-REFACTOR.md` at repo root. */
-  liftMode?: "instant-popout" | "lifted-overlay";
 
   /** Override the static `label` per-instance based on the live node's
    *  attrs. Used by the lifted-overlay's popout-mode header so the chrome

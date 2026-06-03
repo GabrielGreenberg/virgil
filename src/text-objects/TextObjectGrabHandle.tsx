@@ -53,7 +53,6 @@ import { createPortal } from "react-dom";
 import type { Editor } from "@tiptap/react";
 import { NodeSelection, TextSelection } from "@tiptap/pm/state";
 import { usePoppedCards } from "@/hooks/usePoppedCards";
-import { setCardLiftHandoff, setCardLiftTarget } from "@/components/card-lift";
 import {
   beginDropSession,
   cancelDropSession,
@@ -147,53 +146,18 @@ function floatSizeFor(kind: TextObjectKind) {
 
 /**
  * Map a `TextObjectRef` to the popout key used by
- * `viewPrefs.poppedOutCards`. Every block-popout key collapses to
- * `textobject:<kind>:<id>` emitted by `textObjectPopoutKey` (Phase D10).
- * Returns null for TextObject kinds whose float body isn't registered
- * yet — the handle still opens the action menu on click, it just
- * doesn't lift.
+ * `viewPrefs.poppedOutCards` — the canonical `textobject:<kind>:<id>`
+ * emitted by `textObjectPopoutKey` (Phase D10). All 16 graspable kinds
+ * lift (L4a retired the per-kind staging switch that used to gate this),
+ * so every ref resolves to a key. The `| null` return is kept as a
+ * defensive contract for callers — it is never produced here.
  *
  * SelectionRef lifts hydrate into `linkedRange` TextObjects at the
  * lift commit (Phase E); after hydration they pass through this
  * function as a normal TextObjectRef.
  */
 export function popoutKeyForLift(ref: TextObjectRef): string | null {
-  switch (ref.kind) {
-    case "paragraph":
-    case "heading":
-    case "bulletList":
-    case "orderedList":
-    case "blockquote":
-    case "codeBlock":
-    // displayMath (L3h, Chip 2): read-only "view & move" lift float.
-    case "displayMath":
-    // latexComment (L3i, Chip 3): editable atom lift float (decision A).
-    case "latexComment":
-    // titleField (L3j, Chip 4): editable prose lift float (decision C); its
-    // node was promoted into the float schema (the last prose-shaped kind).
-    case "titleField":
-    // listItem (L3k, Chip 5): the FIRST sub-object lift float — a bespoke
-    // list-item-body that wrap-seeds the item in its parent list and writes
-    // back only the inner item's range (siblings intact).
-    case "listItem":
-    // exampleItem (L3l, Chip 6): the LAST sub-object lift float — a bespoke
-    // example-item-body, the listItem mirror one wrap level deeper (the full
-    // exampleBlock > exampleItemList envelope; inner write-back unwraps two
-    // levels, siblings + the parent example intact).
-    case "exampleItem":
-    // figureBlock + graphicsBlock (L3n, the FINAL kind migration): the figure's
-    // OWN lifted-overlay float (shared FigureBody). figureBlock = editable
-    // caption + read-only image; graphicsBlock (atom) = read-only image. With
-    // these two, ALL 16 graspable kinds lift.
-    case "figureBlock":
-    case "graphicsBlock":
-    case "texBlock":
-    case "exampleBlock":
-    case "linkedRange":
-      return textObjectPopoutKey(ref);
-    default:
-      return null;
-  }
+  return textObjectPopoutKey(ref);
 }
 
 interface Placement {
@@ -600,10 +564,9 @@ interface Props {
 export function TextObjectGrabHandle({ editorRef }: Props) {
   const popped = usePoppedCards();
   const [placements, setPlacements] = useState<Placement[]>([]);
-  // Lifted-overlay gesture state (L1 of the Lifted-Overlay refactor;
-  // paragraph only — gated by `meta.liftMode === "lifted-overlay"`).
-  // Non-null while a lifted-overlay drag is in flight; null otherwise.
-  // The 15 instant-popout kinds never touch this state.
+  // Lifted-overlay gesture state. Non-null while a lift drag is in
+  // flight; null otherwise. All 16 graspable kinds drive this — L4a
+  // made the lift gesture unconditional (no more per-kind staging).
   const [overlay, setOverlay] = useState<OverlayState | null>(null);
 
   // Mouse position drives the hover-based discovery path. null when the
@@ -686,7 +649,8 @@ export function TextObjectGrabHandle({ editorRef }: Props) {
     // mousemove handler can mutate cursor / mode without a state-read
     // through React. We still call `setOverlay({...})` to publish to
     // the renderer; the local copy is the source of truth between
-    // events. Stays null on the instant-popout path.
+    // events. Stays null until the overlay mounts at threshold cross
+    // (and on the concurrent-delete fallback, which spawns directly).
     let liveOverlay: OverlayState | null = null;
 
     const onMove = (mv: MouseEvent) => {
@@ -734,166 +698,133 @@ export function TextObjectGrabHandle({ editorRef }: Props) {
           return;
         }
 
-        // Dispatch on `meta.liftMode`. Paragraph (L1) takes the
-        // lifted-overlay path; the other 15 kinds keep instant-popout.
+        // All 16 graspable kinds lift via the lifted-overlay gesture; L4a
+        // retired the per-kind `liftMode` staging that once gated this to
+        // paragraph alone. Capture the source rect ONCE at threshold cross
+        // (never re-read); mount the overlay; mousemove now drives cursor +
+        // mode until release. Paragraph/heading/list/example/texBlock are
+        // element kinds (anchorDom present); linkedRange is a mark-backed
+        // RANGE.
         const meta = TEXT_OBJECT_REGISTRY[ref.kind];
-        const liftMode = meta.liftMode ?? "instant-popout";
-
-        if (liftMode === "lifted-overlay") {
-          // Capture source rect ONCE at threshold cross (never re-read);
-          // mount the overlay; mousemove now drives cursor + mode until
-          // release. Paragraph/heading/list/example/texBlock are element
-          // kinds (anchorDom present); linkedRange is a mark-backed RANGE.
-          const anchorDom = resolveAnchorDom(editor, ref);
-          // L3f-2: a mark-backed RANGE kind (`linkedRange`) has no single
-          // anchor element — `resolveAnchorDom` is null BY DESIGN. Instead of
-          // bailing, drive the overlay from the registry hooks with
-          // `anchorDom=null`: `renderGhost` extracts the marked range's DOM,
-          // `liftSourceRect` unions its client rects. The element path
-          // (anchorDom present) is byte-for-byte unchanged: `liftRect` still
-          // defaults to `anchorDom.getBoundingClientRect()`, `ghostContent` is
-          // null unless the kind defines `renderGhost`, and it never takes the
-          // range-only bail clause below (isRange === false).
-          const isRange = meta.isRange === true;
-          // L3-Headings: two kind-agnostic registry hooks each replace one
-          // hardcoded assumption about a lifted ghost — that its content is
-          // exactly `anchorDom` and its rect exactly anchorDom's bounding
-          // rect. `liftSourceRect` overrides the captured source rect;
-          // `renderGhost` overrides the cloned content. Heading uses both
-          // (the WHOLE SECTION); linkedRange uses both (the marked RANGE).
-          // Resolved HERE at the parent (editor / meta / ref / cache all in
-          // scope) and threaded down as props, so `LiftedTextOverlay` stays
-          // kind-agnostic — no registry import, no editor prop — exactly as
-          // L3a moved label resolution out of the overlay. Absent on a kind
-          // (or null for a lone heading) → the defaults stand, so the prior
-          // lifted kinds are byte-identical. ONE capture site: the (possibly
-          // capped) sourceHeight feeds both the ghost AND the popOutAtRect
-          // spawn, so the released popout opens at the same height. `liftRect`
-          // is a structural {left,top,width,height} OR a DOMRect — both expose
-          // those four; read only those. For a range there is no anchorDom
-          // default, so the hook must resolve (null → the bail below).
-          const liftRect =
-            meta.liftSourceRect?.(anchorDom, editor, ref, cacheRef.current) ??
-            anchorDom?.getBoundingClientRect() ??
-            null;
-          const ghostContent = meta.renderGhost?.(anchorDom, editor, ref) ?? null;
-          if (!liftRect || (isRange && !ghostContent)) {
-            // Fall back to the legacy cursor-centered spawn so the gesture
-            // still produces a popout instead of silently dropping: an element
-            // whose DOM vanished at threshold (decision §9 — no rect), or a
-            // range whose mark/DOM couldn't be resolved (no rect, or a null
-            // ghost that would mount empty). Element kinds always have a rect
-            // here, so for them this is IDENTICAL to the prior `!anchorDom`
-            // bail — it only fires on a concurrent delete.
-            const { width, height } = floatSizeFor(ref.kind);
-            const legacySpawn = {
-              x: Math.round(mv.clientX - width / 2),
-              y: Math.round(mv.clientY - SPAWN_CURSOR_OFFSET_Y),
-              width,
-              height,
-            };
-            poppedRef.current?.popOutAtRect(cardKey, legacySpawn);
-            cleanup();
-            return;
-          }
-          // Issue-13: cap the captured source height to a viewport fraction
-          // (POPOUT_MAX_VH) at this SINGLE capture site, so EVERY lifted kind's
-          // ghost AND released popout fit on screen (the float body scrolls the
-          // overflow). A MAX, not a floor: short content (liftRect.height <
-          // cap) is unchanged. Because this one capped height feeds both the
-          // ghost (overlay sized to sourceHeight) and the popOutAtRect spawn
-          // (height = sourceHeight + chrome), the two stay identical — no size
-          // jump on release (the L1.12 text-stays-still / chrome-grows-outward
-          // invariant holds). Left/top/width untouched, so the grab offset is
-          // unchanged.
-          const cappedSourceHeight = capPopoutHeight(
-            liftRect.height,
-            window.innerHeight,
-          );
-          const initialMode = cacheRef.current.containsContentZone(
-            mv.clientX,
-            mv.clientY,
-          )
-            ? "ghost"
-            : "popout";
-          // L3a: per-instance label override via the registry. Heading
-          // maps node.attrs.level → "Chapter" / "Section" / "Subsection"
-          // so the overlay's popout-mode header matches the real popout
-          // at handoff (rather than the static "Heading"). Other kinds
-          // either don't define computeLabel or return null, in which
-          // case we fall through to `meta.label`.
-          const computed = meta.computeLabel?.(editor, ref) ?? null;
-          const label = computed ?? meta.label;
-          liveOverlay = {
-            ref,
-            cardKey,
-            anchorDom,
-            ghostContent,
-            grabOffsetX: mv.clientX - liftRect.left,
-            grabOffsetY: mv.clientY - liftRect.top,
-            sourceWidth: liftRect.width,
-            sourceHeight: cappedSourceHeight,
-            cursorX: mv.clientX,
-            cursorY: mv.clientY,
-            mode: initialMode,
-            label,
-            viewToggleCls: viewToggleClsRef.current,
+        const anchorDom = resolveAnchorDom(editor, ref);
+        // L3f-2: a mark-backed RANGE kind (`linkedRange`) has no single
+        // anchor element — `resolveAnchorDom` is null BY DESIGN. Instead of
+        // bailing, drive the overlay from the registry hooks with
+        // `anchorDom=null`: `renderGhost` extracts the marked range's DOM,
+        // `liftSourceRect` unions its client rects. The element path
+        // (anchorDom present) is byte-for-byte unchanged: `liftRect` still
+        // defaults to `anchorDom.getBoundingClientRect()`, `ghostContent` is
+        // null unless the kind defines `renderGhost`, and it never takes the
+        // range-only bail clause below (isRange === false).
+        const isRange = meta.isRange === true;
+        // L3-Headings: two kind-agnostic registry hooks each replace one
+        // hardcoded assumption about a lifted ghost — that its content is
+        // exactly `anchorDom` and its rect exactly anchorDom's bounding
+        // rect. `liftSourceRect` overrides the captured source rect;
+        // `renderGhost` overrides the cloned content. Heading uses both
+        // (the WHOLE SECTION); linkedRange uses both (the marked RANGE).
+        // Resolved HERE at the parent (editor / meta / ref / cache all in
+        // scope) and threaded down as props, so `LiftedTextOverlay` stays
+        // kind-agnostic — no registry import, no editor prop — exactly as
+        // L3a moved label resolution out of the overlay. Absent on a kind
+        // (or null for a lone heading) → the defaults stand, so the prior
+        // lifted kinds are byte-identical. ONE capture site: the (possibly
+        // capped) sourceHeight feeds both the ghost AND the popOutAtRect
+        // spawn, so the released popout opens at the same height. `liftRect`
+        // is a structural {left,top,width,height} OR a DOMRect — both expose
+        // those four; read only those. For a range there is no anchorDom
+        // default, so the hook must resolve (null → the bail below).
+        const liftRect =
+          meta.liftSourceRect?.(anchorDom, editor, ref, cacheRef.current) ??
+          anchorDom?.getBoundingClientRect() ??
+          null;
+        const ghostContent = meta.renderGhost?.(anchorDom, editor, ref) ?? null;
+        if (!liftRect || (isRange && !ghostContent)) {
+          // Fall back to the legacy cursor-centered spawn so the gesture
+          // still produces a popout instead of silently dropping: an element
+          // whose DOM vanished at threshold (decision §9 — no rect), or a
+          // range whose mark/DOM couldn't be resolved (no rect, or a null
+          // ghost that would mount empty). Element kinds always have a rect
+          // here, so for them this is IDENTICAL to the prior `!anchorDom`
+          // bail — it only fires on a concurrent delete.
+          const { width, height } = floatSizeFor(ref.kind);
+          const legacySpawn = {
+            x: Math.round(mv.clientX - width / 2),
+            y: Math.round(mv.clientY - SPAWN_CURSOR_OFFSET_Y),
+            width,
+            height,
           };
-          setOverlay(liveOverlay);
-          // Start a drop session ALONGSIDE the overlay. `inPlace: true`
-          // skips markSourceFloat (no popout exists to dim during the
-          // ghost gesture); `externalCommit: true` skips the
-          // controller's own mouseup so this handler's `onUp` can
-          // decide between commit (ghost release) and cancel (popout
-          // release). The controller's hit-test + Indicator render
-          // run for the full gesture lifetime; in popout mode the
-          // hit-test resolves to null and the Indicator hides
-          // automatically.
-          beginDropSession({
-            cardKey,
-            origin: { x: mv.clientX, y: mv.clientY },
-            inPlace: true,
-            externalCommit: true,
-          });
-          // Do NOT cleanup — onMove continues to drive the overlay,
-          // and onUp commits via the drop session (ghost) or cancels
-          // the session + spawns the popout (popout) based on terminal
-          // mode.
-          // cardLiftHandoff/cardLiftTarget intentionally NOT emitted
-          // on this path: the popout (if it spawns) lands at the
-          // overlay's terminal rect, so there's no in-flight handoff
-          // animation to perform.
+          poppedRef.current?.popOutAtRect(cardKey, legacySpawn);
+          cleanup();
           return;
         }
-
-        // Instant-popout path (legacy — 15 non-paragraph kinds).
-        const { width, height } = floatSizeFor(ref.kind);
-        const spawn = {
-          x: Math.round(mv.clientX - width / 2),
-          y: Math.round(mv.clientY - SPAWN_CURSOR_OFFSET_Y),
-          width,
-          height,
+        // Issue-13: cap the captured source height to a viewport fraction
+        // (POPOUT_MAX_VH) at this SINGLE capture site, so EVERY lifted kind's
+        // ghost AND released popout fit on screen (the float body scrolls the
+        // overflow). A MAX, not a floor: short content (liftRect.height <
+        // cap) is unchanged. Because this one capped height feeds both the
+        // ghost (overlay sized to sourceHeight) and the popOutAtRect spawn
+        // (height = sourceHeight + chrome), the two stay identical — no size
+        // jump on release (the L1.12 text-stays-still / chrome-grows-outward
+        // invariant holds). Left/top/width untouched, so the grab offset is
+        // unchanged.
+        const cappedSourceHeight = capPopoutHeight(
+          liftRect.height,
+          window.innerHeight,
+        );
+        const initialMode = cacheRef.current.containsContentZone(
+          mv.clientX,
+          mv.clientY,
+        )
+          ? "ghost"
+          : "popout";
+        // L3a: per-instance label override via the registry. Heading
+        // maps node.attrs.level → "Chapter" / "Section" / "Subsection"
+        // so the overlay's popout-mode header matches the real popout
+        // at handoff (rather than the static "Heading"). Other kinds
+        // either don't define computeLabel or return null, in which
+        // case we fall through to `meta.label`.
+        const computed = meta.computeLabel?.(editor, ref) ?? null;
+        const label = computed ?? meta.label;
+        liveOverlay = {
+          ref,
+          cardKey,
+          anchorDom,
+          ghostContent,
+          grabOffsetX: mv.clientX - liftRect.left,
+          grabOffsetY: mv.clientY - liftRect.top,
+          sourceWidth: liftRect.width,
+          sourceHeight: cappedSourceHeight,
+          cursorX: mv.clientX,
+          cursorY: mv.clientY,
+          mode: initialMode,
+          label,
+          viewToggleCls: viewToggleClsRef.current,
         };
-        const wrapperRect = handleEl.getBoundingClientRect();
-        setCardLiftTarget({
+        setOverlay(liveOverlay);
+        // Start a drop session ALONGSIDE the overlay. `inPlace: true`
+        // skips markSourceFloat (no popout exists to dim during the
+        // ghost gesture); `externalCommit: true` skips the
+        // controller's own mouseup so this handler's `onUp` can
+        // decide between commit (ghost release) and cancel (popout
+        // release). The controller's hit-test + Indicator render
+        // run for the full gesture lifetime; in popout mode the
+        // hit-test resolves to null and the Indicator hides
+        // automatically.
+        beginDropSession({
           cardKey,
-          rect: {
-            left: wrapperRect.left,
-            top: wrapperRect.top,
-            width: wrapperRect.width,
-            height: wrapperRect.height,
-          },
+          origin: { x: mv.clientX, y: mv.clientY },
+          inPlace: true,
+          externalCommit: true,
         });
-        window.setTimeout(() => setCardLiftTarget(null), 150);
-        setCardLiftHandoff({
-          cardKey,
-          clientX: mv.clientX,
-          clientY: mv.clientY,
-          width,
-          height,
-        });
-        poppedRef.current?.popOutAtRect(cardKey, spawn);
-        cleanup();
+        // Do NOT cleanup — onMove continues to drive the overlay,
+        // and onUp commits via the drop session (ghost) or cancels
+        // the session + spawns the popout (popout) based on terminal
+        // mode.
+        // cardLiftHandoff/cardLiftTarget intentionally NOT emitted
+        // on this path: the popout (if it spawns) lands at the
+        // overlay's terminal rect, so there's no in-flight handoff
+        // animation to perform.
         return;
       }
 

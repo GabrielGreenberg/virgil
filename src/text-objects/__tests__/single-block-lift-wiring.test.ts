@@ -34,11 +34,12 @@
  * block at the bottom (every kind lifts; the switch stays specific via an
  * invalid-kind guard).
  *
- * Before a kind is migrated it falls to `popoutKeyForLift`'s
- * `default: return null` (lift is a no-op) and carries no `liftMode`
- * (instant-popout default) with a null float body. This pins all three
- * touch-points per kind so a regression that drops a `popoutKeyForLift` case,
- * un-flips `liftMode`, or loses the body registration fails loudly.
+ * Each kind lifts: `popoutKeyForLift` returns its canonical
+ * `textobject:<kind>:<id>` key, and its float body is registered. This pins
+ * those two touch-points per kind so a regression that loses a kind's lift or
+ * its body registration fails loudly. (L4a retired the per-kind `liftMode`
+ * staging flag the earlier chips also asserted — the lift is unconditional
+ * now.)
  * Float-schema membership for these kinds is already covered by
  * `src/lib/__tests__/editor-extensions.test.ts` (`EXPECTED_FLOAT_ORDER`) —
  * not re-asserted here.
@@ -92,24 +93,6 @@ describe("bodyless-kinds Chip 1 — blockquote + codeBlock lift wiring (L3g)", (
     }
   });
 
-  it("default branch returns null for a non-graspable kind (specificity guard)", () => {
-    // figureBlock WAS the still-null control through Chips 1-6, but L3n migrated
-    // it (and graphicsBlock) — the last two — so every real TextObjectKind now
-    // lifts. The switch must still be provably specific (a blanket `return
-    // textObjectPopoutKey(ref)` default would be a regression), so an invalid
-    // kind still hits `default: return null`. Full-set exhaustiveness is locked
-    // in the L3n "all 16 kinds lift" block below.
-    expect(
-      popoutKeyForLift({ kind: "notAKind" as TextObjectKind, id: "ab12" }),
-    ).toBeNull();
-  });
-
-  it("flips liftMode to lifted-overlay for both kinds (was undefined)", () => {
-    for (const kind of MIGRATED) {
-      expect(TEXT_OBJECT_REGISTRY[kind].liftMode).toBe("lifted-overlay");
-    }
-  });
-
   it("registers ONE shared float body for both kinds (the ListBody precedent)", () => {
     const bqBody = TEXT_OBJECT_REGISTRY.blockquote.floatBodyComponent;
     const codeBody = TEXT_OBJECT_REGISTRY.codeBlock.floatBodyComponent;
@@ -133,10 +116,6 @@ describe("bodyless-kinds Chip 2 — displayMath READ-ONLY atom lift wiring (L3h)
     const key = popoutKeyForLift({ kind: "displayMath", id: "ab12" });
     expect(key).toBe(textObjectPopoutKey({ kind: "displayMath", id: "ab12" }));
     expect(key).toBe("textobject:displayMath:ab12");
-  });
-
-  it("flips liftMode to lifted-overlay (was undefined)", () => {
-    expect(TEXT_OBJECT_REGISTRY.displayMath.liftMode).toBe("lifted-overlay");
   });
 
   it("reuses the SAME shared SingleBlockBody as the prose kinds (one body, many kinds)", () => {
@@ -166,10 +145,6 @@ describe("bodyless-kinds Chip 3 — latexComment EDITABLE atom lift wiring (L3i)
     expect(key).toBe("textobject:latexComment:ab12");
   });
 
-  it("flips liftMode to lifted-overlay (was undefined)", () => {
-    expect(TEXT_OBJECT_REGISTRY.latexComment.liftMode).toBe("lifted-overlay");
-  });
-
   it("reuses the SAME shared SingleBlockBody as the prose + math kinds (one body, many kinds)", () => {
     const cmtBody = TEXT_OBJECT_REGISTRY.latexComment.floatBodyComponent;
     expect(typeof cmtBody).toBe("function");
@@ -194,10 +169,6 @@ describe("bodyless-kinds Chip 4 — titleField lift wiring (L3j)", () => {
     const key = popoutKeyForLift({ kind: "titleField", id: "ab12" });
     expect(key).toBe(textObjectPopoutKey({ kind: "titleField", id: "ab12" }));
     expect(key).toBe("textobject:titleField:ab12");
-  });
-
-  it("flips liftMode to lifted-overlay (was undefined)", () => {
-    expect(TEXT_OBJECT_REGISTRY.titleField.liftMode).toBe("lifted-overlay");
   });
 
   it("reuses the SAME shared SingleBlockBody as the prose + atom kinds (one body, many kinds)", () => {
@@ -239,10 +210,6 @@ describe("bodyless-kinds Chip 6 — exampleItem sub-object lift wiring (L3l)", (
     expect(key).toBe("textobject:exampleItem:ab12");
   });
 
-  it("flips liftMode to lifted-overlay (was undefined)", () => {
-    expect(TEXT_OBJECT_REGISTRY.exampleItem.liftMode).toBe("lifted-overlay");
-  });
-
   it("registers its OWN bespoke ExampleItemBody — NOT the shared SingleBlockBody, NOT ListItemBody", () => {
     // A sub-object is a distinct shape (wrap-seed + inner-targeted write-back),
     // so it gets its own body — and exampleItem's envelope is one level deeper
@@ -272,10 +239,6 @@ describe("bodyless-kinds Chip 5 — listItem sub-object lift wiring (L3k)", () =
     const key = popoutKeyForLift({ kind: "listItem", id: "ab12" });
     expect(key).toBe(textObjectPopoutKey({ kind: "listItem", id: "ab12" }));
     expect(key).toBe("textobject:listItem:ab12");
-  });
-
-  it("flips liftMode to lifted-overlay (was undefined)", () => {
-    expect(TEXT_OBJECT_REGISTRY.listItem.liftMode).toBe("lifted-overlay");
   });
 
   it("registers its OWN bespoke ListItemBody — NOT the shared SingleBlockBody", () => {
@@ -320,12 +283,6 @@ describe("bodyless-kinds Chip 7 — figureBlock + graphicsBlock figure lift wiri
     }
   });
 
-  it("flips liftMode to lifted-overlay for both (was undefined)", () => {
-    for (const kind of FIGURE_KINDS) {
-      expect(TEXT_OBJECT_REGISTRY[kind].liftMode).toBe("lifted-overlay");
-    }
-  });
-
   it("registers ONE shared FigureBody for both kinds — NOT SingleBlockBody, NOT a sub-object body", () => {
     const figBody = TEXT_OBJECT_REGISTRY.figureBlock.floatBodyComponent;
     const gfxBody = TEXT_OBJECT_REGISTRY.graphicsBlock.floatBodyComponent;
@@ -357,10 +314,10 @@ describe("bodyless-kinds Chip 7 — figureBlock + graphicsBlock figure lift wiri
 describe("bodyless-kinds — ALL 16 graspable kinds now lift (L3n completes the set)", () => {
   // After L3n there is no still-null graspable kind left, so the per-chip
   // "figureBlock is the control" assertions are retired in favor of this
-  // exhaustiveness lock: EVERY TextObjectKind lifts (non-null popoutKey +
-  // lifted-overlay) AND the switch stays provably specific (an invalid kind
-  // still hits `default: return null`, so a regression to a blanket non-null
-  // default fails here). L4 retires the now-unconditional liftMode staging.
+  // exhaustiveness lock: EVERY TextObjectKind lifts (popoutKeyForLift returns
+  // the canonical `textobject:<kind>:<id>` key). L4a retired the per-kind
+  // `liftMode` staging — the lift is unconditional now, so the old
+  // "switch stays specific / invalid kind → null" guard is gone with it.
   const ALL_KINDS: TextObjectKind[] = [
     "paragraph",
     "heading",
@@ -385,18 +342,11 @@ describe("bodyless-kinds — ALL 16 graspable kinds now lift (L3n completes the 
     expect(new Set(ALL_KINDS).size).toBe(16);
   });
 
-  it("every kind returns a non-null popoutKeyForLift AND carries liftMode lifted-overlay", () => {
+  it("every kind returns the canonical popoutKeyForLift (the lift is unconditional)", () => {
     for (const kind of ALL_KINDS) {
       expect(popoutKeyForLift({ kind, id: "ab12" })).toBe(
         `textobject:${kind}:ab12`,
       );
-      expect(TEXT_OBJECT_REGISTRY[kind].liftMode).toBe("lifted-overlay");
     }
-  });
-
-  it("keeps the switch provably specific — an invalid kind still hits default: null", () => {
-    expect(
-      popoutKeyForLift({ kind: "notAKind" as TextObjectKind, id: "ab12" }),
-    ).toBeNull();
   });
 });

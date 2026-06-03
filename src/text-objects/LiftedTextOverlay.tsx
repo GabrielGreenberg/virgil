@@ -5,9 +5,8 @@
  * during a TextObject lift gesture (L1 of the Lifted-Overlay refactor;
  * see LIFTED-OVERLAY-REFACTOR.md at repo root).
  *
- * Wired for `paragraph` (L1) and `heading` (L3a) via
- * `meta.liftMode === "lifted-overlay"`; the remaining 14 kinds stay on
- * instant-popout until subsequent L3 commits flip them. The header
+ * Drives the lift gesture for all 16 graspable kinds — L4a retired the
+ * per-kind `liftMode` staging, so the lift is unconditional now. The header
  * label arrives as the `label` prop — the parent (TextObjectGrabHandle)
  * resolves it once at threshold cross via
  * `meta.computeLabel?.(editor, ref) ?? meta.label`, so per-instance
