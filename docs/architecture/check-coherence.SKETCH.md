@@ -1,4 +1,4 @@
-<!-- last-verified: 486a462 2026-06-01 -->
+<!-- last-verified: 54ced55 2026-06-03 -->
 <!-- derives-from: docs/architecture/VIRGIL.md#document-discipline -->
 
 # `check-coherence` — design sketch
@@ -21,6 +21,7 @@ The script does **not** carry a hardcoded list of docs. It **discovers** every g
 | 2 | **Type accounting** | warn → error | Every exported type in `src/lib/types.ts` is accounted for in VIRGIL.md's [Public-type registry](VIRGIL.md#public-type-registry) section, or explicitly delegated to a named manifest doc. |
 | 3 | **Concept → code** | warn → error | Every code-identifier-shaped named concept in VIRGIL.md (e.g. `PANEL_REGISTRY`, `\vfid`, `apply_response.py`) appears at least once in the codebase. |
 | 4 | **Drift candidates** | warn (always) | For each doc, commits touching its `covers-code` paths newer than its `last-verified` sha → flag as a drift candidate for the next `/cleanup-virgil` pass. |
+| 5 | **Python shadow ↔ TS registry** | warn → error | The Python card/panel vocabulary in `editor/scripts/` (`apply_response.PANEL_TO_SIDECAR` keys, `create_card.ALL_KINDS`) reconciles with the TS SSOTs (`PANEL_REGISTRY`, `CardKind`, the `…State` types) — no shadow lists a removed/renamed/never-real member. |
 
 ### Check 1 — edges resolve (the load-bearing one)
 
@@ -44,6 +45,27 @@ Parse `src/lib/types.ts` with the **TypeScript compiler API** (`ts.createSourceF
 ### Check 4 — drift candidates
 
 For each doc with a `last-verified: <sha>`, run `git log --oneline <sha>..HEAD -- <covers-code paths>`. Any commits → the doc is a drift candidate. For multi-topic docs, run per-section using the section's own `covers-code` so the report says *which* section drifted. Sections marked `<!-- STUB: pending Phase 0 -->` are skipped (their freshness claim is void until filled). **Always a warning, never an error:** drift is expected between releases and is *resolved* by `/cleanup-virgil`, not by blocking a PR. This check's value is feeding the cleanup pass a precise punch-list.
+
+### Check 5 — Python shadow ↔ TS registry
+
+The `editor/scripts/` Python helpers run outside the app and can't import the TS registries, so they **hand-duplicate** two slices of the card/panel vocabulary. These are **shadows** of TS SSOTs and rot independently — the Quotations → Reports merge had to hand-reconcile one (`PANEL_TO_SIDECAR`) and left the other (`create_card.ALL_KINDS`) stale (it still lists the removed `quotation` + the never-real `annotation` and omits `report`/`report-request`). This check is the guard that would have caught both. See [phase0-card-current-state.md §4](phase0-card-current-state.md#4-the-python-shadow-registries-the-rot-vector) for the full account of the two shadows.
+
+**Inputs.** Two plain Python literals, extracted by **regex over the `.py` source** (both are flat dict/set literals — no Python runtime needed):
+
+- `PANEL_TO_SIDECAR = { "<panel>": ("<file>.json", "<list-key>"), … }` in `editor/scripts/apply_response.py`.
+- `ALL_KINDS = { "<kind>", … }` in `editor/scripts/create_card.py`.
+
+The TS side reuses check 2's TypeScript-compiler parse of `src/lib/types.ts` (for `AiRequestLink["panel"]` and the `…State` interfaces) plus a parse of `src/panels/panel-registry.ts` (`PANEL_REGISTRY` keys) and `src/panels/_shared/types.ts` (`CardKind`).
+
+**Assertions:**
+
+1. **`ALL_KINDS` ⊆ `CardKind`** — every member is a real `CardKind`. (`ALL_KINDS` is the *create-able* subset, so it need not equal `CardKind`; but a member outside the union is a removed/never-real kind.) This is the assertion that catches the current `quotation` + `annotation` staleness.
+2. **`PANEL_TO_SIDECAR` keys are valid card-writeback panels** — each key, after de-aliasing `todos`→`todo` (the documented `AiRequestLink.panel` vs `PanelKind` naming gap, [phase0-card-current-state.md §3.2](phase0-card-current-state.md#32-the-panel-inventory-ssot-panel_registry)), resolves to a `PANEL_REGISTRY` panel that hosts a card. Conversely, a card panel a skill can write to that is **missing** from `PANEL_TO_SIDECAR` is a warning (a new card panel the writeback forgot — the inverse of the `quotations`→`reports` slip).
+3. **`PANEL_TO_SIDECAR` list-keys match the `…State` shape** — for each entry, the list-key is a real array field on the panel's `…State` interface (e.g. `reports → ReportsState.cards`, `footnotes → FootnotesState.footnotes`). This is the check that would have caught the historical `notes → "notes"` dead-key bug (the browser reads `NotesState.cards`). Filenames are cross-checked against the panel hook's `usePersistentState(…, "<file>.json", …)` call (v1 lighter form: assert the filename is referenced somewhere under `src/hooks`).
+
+**The deep fix (north star).** The (panel → filename, list-key) triple has **no single TS SSOT** today — it's spread across `PANEL_REGISTRY` (panel names) and each panel's hook (filename + list-key). The durable cure is to lift that triple into one TS registry the manifest can emit, so the Python shadow is **generated/validated against one source** rather than hand-kept. Until then, this check is the interim guard; assertion 3 stays heuristic.
+
+**Staging:** warn-only now (`ALL_KINDS` is known-stale and is reconciled by the create-card fan-out chip, not this one; assertion 3 is heuristic). Flip assertion 1 to **error** once the create-card chip sets `ALL_KINDS` to the kinds it actually implements; assertions 2 & 3 harden as the (filename, list-key) triple is centralized.
 
 ---
 
@@ -114,7 +136,7 @@ Also add an npm script: `"check:coherence": "node tools/check-coherence.mjs"`, a
 2. **Check 2 wants the TypeScript compiler API.** Robustly enumerating the exported types of `src/lib/types.ts` means parsing TypeScript, not regex-scraping it (the file has re-exports, unions, and `@deprecated` members that a regex mishandles). `typescript` is already a dependency of this Next.js/TS repo, and `ts.createSourceFile` is a JS-native API — trivial from Node, awkward from Python.
 3. **CI is Node-based.** `deploy.yml` already runs `npm` on `actions/setup-node`; a Node script needs no new toolchain in CI.
 
-Checks 1, 3, 4 are fs + regex + `git log` (via `node:child_process`) — all comfortable in Node. The only non-trivial dependency is `typescript`, already present.
+Checks 1, 3, 4 are fs + regex + `git log` (via `node:child_process`) — all comfortable in Node. Check 5 adds a regex scrape of two flat Python literals (`PANEL_TO_SIDECAR`, `ALL_KINDS`) — no Python runtime — and reuses check 2's `typescript` parse for the TS side. The only non-trivial dependency is `typescript`, already present.
 
 ---
 
@@ -124,4 +146,5 @@ Pre-Phase-0, checks **2 and 3 will mostly be unmet** — the type registry is a 
 
 - **Check 1 (edges):** error from day one. The graph's edges must resolve — that is the invariant the whole discipline rests on.
 - **Check 4 (drift):** warn forever. Drift is informational; `/cleanup-virgil` resolves it at the release boundary.
-- **Checks 2 & 3:** warn-only now; flip to error (turn on `--strict` in CI, or remove their per-check warn-override) **as each stub section is filled and its `<!-- STUB -->` marker removed**. The script keys off the marker, so the transition is automatic per-section: a filled registry section makes check 2 start erroring on genuinely-unaccounted types, with no script edit.
+- **Checks 2 & 3:** warn-only now; flip to error (turn on `--strict` in CI, or remove their per-check warn-override) **as each stub section is filled and its `<!-- STUB -->` marker removed**. The script keys off the marker, so the transition is automatic per-section: a filled registry section makes check 2 start erroring on genuinely-unaccounted types, with no script edit. (As of Phase 0 completion all six current-state sections are filled, so check 2 can graduate to per-type error.)
+- **Check 5 (Python shadow):** warn-only now — `create_card.ALL_KINDS` is known-stale until the create-card fan-out chip reconciles it, and assertion 3 (list-key/filename) is heuristic. Flip the `ALL_KINDS ⊆ CardKind` assertion to error once that chip lands; the panel-map assertions harden as the (panel → filename, list-key) triple is centralized into a single TS SSOT.

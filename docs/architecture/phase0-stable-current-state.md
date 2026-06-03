@@ -12,15 +12,18 @@ Each section names the future manifest doc it seeds (the mapping is fixed by VIR
 
 ## Scope — and what is deliberately deferred
 
-This report covers the **stable** subsystems only. A card-system refactor is in flight that will churn the card / panel / sidecar / public-type surface, so extracting those now would extract a moving target. **Intentionally NOT covered here** (a later chip, after the refactor settles):
+This report covers the **stable** subsystems only. At the time of writing a card-system refactor was in flight that would churn the card / panel / sidecar / public-type surface, so extracting those here would have extracted a moving target. The refactor has **since landed** (Quotations → Reports), and the three card-layer slices below are now extracted in the sibling report **[phase0-card-current-state.md](phase0-card-current-state.md)**:
 
-- **Card-kind taxonomy** — the `CardKind` union, per-kind anchor/atom-link/lifecycle/theme. (VIRGIL.md stub left intact.)
-- **Public-type registry** — the ~50 exported types in `src/lib/types.ts`. (VIRGIL.md stub left intact, *whole*-deferred — `types.ts` is in the refactor blast radius.)
-- **Sidecar & panel inventory** — exhaustive per-sidecar schemas and the `PANEL_REGISTRY` panel surface. (VIRGIL.md stub left intact.)
+- **Card-kind taxonomy** — the `CardKind` union, per-kind anchor/atom-link/lifecycle/theme. → now in [phase0-card-current-state.md §1](phase0-card-current-state.md#1-card-kind-taxonomy).
+- **Public-type registry** — the exported types in `src/lib/types.ts`. → now in [phase0-card-current-state.md §2](phase0-card-current-state.md#2-public-type-registry).
+- **Sidecar & panel inventory** — per-sidecar purpose and the `PANEL_REGISTRY` panel surface. → now in [phase0-card-current-state.md §3](phase0-card-current-state.md#3-sidecar--panel-inventory).
+
+Still deferred (separate domains, later chips):
+
 - **User-actions surface** — keyboard shortcuts, toolbar buttons, drag/drop affordances, context menus (card-coupled).
 - **Existing-skill behavior audit** — what each editor skill *actually does* vs. its prompt (covered partially for the cowork plumbing below, but the per-skill audit is deferred).
 
-Where this report touches sidecar JSON keys, the **infrastructure** sidecars (`virgil.json`, `editor-state.json`, `ai-requests.json`, `notifications.json`, `collab.json`, `doc-settings.json`, the figures cache) are treated as stable; the **card** sidecars are marked **provisional** (the refactor may rename or reshape them).
+Where this report touches sidecar JSON keys, the **infrastructure** sidecars (`virgil.json`, `editor-state.json`, `ai-requests.json`, `notifications.json`, `collab.json`, `doc-settings.json`, the figures cache) are treated as stable; the **card** sidecars were marked **provisional** here and are now **certified** in [phase0-card-current-state.md §3.1](phase0-card-current-state.md#31-the-virgil-sidecar-inventory) (post-refactor: `quotations.json` → `reports.json`).
 
 ---
 
@@ -329,7 +332,7 @@ All app styling is one file ([src/app/globals.css](../../src/app/globals.css), ~
 **Sidecar JSON filenames under `virgil/`:**
 
 - **Stable infrastructure** (well-grounded in non-card code): `virgil.json` (paragraph titles + fingerprints), `editor-state.json` (last paragraph + folds), `ai-requests.json`, `notifications.json`, `collab.json` (`COLLAB_SIDECAR_FILE`), `document-settings.json` (preamble style id), `bib-review-requests.json`, `bib-settings.json`.
-- **Provisional (card-coupled — may shift with the card refactor):** `notes.json`, `todos.json`, `cutter.json`, `revisions.json`, `suggestions.json`, `citations.json`, `footnotes.json`, `quotations.json`, `examples.json`, `archive.json`, `comments.json`, `annotations.json`, `focus.json`, `library-overlay.json`. These are extracted here for completeness but **not certified** — the exhaustive sidecar schema inventory is a deferred (post-refactor) chip.
+- **Card-coupled (now certified post-refactor in [phase0-card-current-state.md §3.1](phase0-card-current-state.md#31-the-virgil-sidecar-inventory)):** `notes.json`, `todos.json`, `cutter.json`, `revisions.json`, `reports.json` (← renamed from `quotations.json`), `citations.json`, `footnotes.json`, `examples.json`, `archive.json`, `annotations.json`; legacy `suggestions.json`, `comments.json`; non-card `focus.json`, `library-overlay.json`. (Originally listed here provisionally; the card report is now the doc-of-record.)
 
 ### 5.5 v2-reserved overlay paths (design-only, NOT in code)
 
