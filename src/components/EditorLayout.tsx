@@ -611,6 +611,7 @@ export default function EditorLayout() {
   // this feeds the shell-side margin-item delete handler bundle below).
   const {
     cards: reportCards,
+    addCardParagraphId: addReportCardParagraphId,
     removeCardParagraphId: removeReportCardParagraphId,
     deleteCard: deleteReportCard,
   } = useReports(docIdForHooks);
@@ -2538,6 +2539,8 @@ export default function EditorLayout() {
     setSelectedNoteId,
     addCardParagraphId,
     setSelectedCutterCardId,
+    addReportCardParagraphId,
+    setSelectedReportCardId,
   });
 
   // Highlight the active \ref node with yellow while the popover is open

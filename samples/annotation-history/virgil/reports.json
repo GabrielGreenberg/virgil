@@ -1,0 +1,110 @@
+{
+  "cards": [
+    {
+      "kind": "report",
+      "id": "7b3e9a14-2c5d-4f80-9a16-3d8e1f0a2b01",
+      "createdAt": "2026-04-25T15:30:00.000Z",
+      "author": "ai",
+      "title": "The two voices, quantified",
+      "text": "A quick read of the opening claim: across the manuscripts cited here, the apparatus genuinely competes with the text for space. In the Carolingian copies the gloss is frequently heavier than the words it surrounds; by the print era the margin contracts and the footnote inherits the second voice.",
+      "content": {
+        "type": "doc",
+        "content": [
+          {
+            "type": "paragraph",
+            "content": [
+              {
+                "type": "text",
+                "text": "A quick read of the opening claim: across the manuscripts cited here, the apparatus genuinely competes with the text for space."
+              }
+            ]
+          },
+          {
+            "type": "bulletList",
+            "content": [
+              {
+                "type": "listItem",
+                "content": [
+                  {
+                    "type": "paragraph",
+                    "content": [
+                      { "type": "text", "text": "Carolingian copies: the gloss is frequently heavier than the base text." }
+                    ]
+                  }
+                ]
+              },
+              {
+                "type": "listItem",
+                "content": [
+                  {
+                    "type": "paragraph",
+                    "content": [
+                      { "type": "text", "text": "Print era: the margin contracts; the footnote inherits the second voice." }
+                    ]
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "selectedText": "",
+      "links": [
+        {
+          "id": "7b3e9a14-2c5d-4f80-9a16-3d8e1f0a2b02",
+          "kind": "anchor",
+          "anchor": {
+            "type": "textObject",
+            "targetKind": "paragraph",
+            "textObjectIds": ["1101"],
+            "margin": { "side": "left" }
+          },
+          "target": {
+            "type": "card",
+            "ref": { "kind": "report", "id": "7b3e9a14-2c5d-4f80-9a16-3d8e1f0a2b01" }
+          },
+          "createdAt": "2026-04-25T15:30:00.000Z"
+        }
+      ]
+    },
+    {
+      "kind": "report-request",
+      "id": "8c4f0b25-3d6e-4091-8b27-4e9f2a1b3c01",
+      "createdAt": "2026-04-25T16:05:00.000Z",
+      "text": "Claude — can you pull together a short report on how the gloss-vs-text \"real-estate war\" actually played out across the manuscripts cited in this section, with rough proportions of the page given over to apparatus?",
+      "content": {
+        "type": "doc",
+        "content": [
+          {
+            "type": "paragraph",
+            "content": [
+              {
+                "type": "text",
+                "text": "Claude — can you pull together a short report on how the gloss-vs-text \"real-estate war\" actually played out across the manuscripts cited in this section, with rough proportions of the page given over to apparatus?"
+              }
+            ]
+          }
+        ]
+      },
+      "aiRequest": false,
+      "selectedText": "",
+      "links": [
+        {
+          "id": "8c4f0b25-3d6e-4091-8b27-4e9f2a1b3c02",
+          "kind": "anchor",
+          "anchor": {
+            "type": "textObject",
+            "targetKind": "paragraph",
+            "textObjectIds": ["2201"],
+            "margin": { "side": "left" }
+          },
+          "target": {
+            "type": "card",
+            "ref": { "kind": "report-request", "id": "8c4f0b25-3d6e-4091-8b27-4e9f2a1b3c01" }
+          },
+          "createdAt": "2026-04-25T16:05:00.000Z"
+        }
+      ]
+    }
+  ]
+}

@@ -17,6 +17,7 @@ import {
   MIME_TODO,
   MIME_ARCHIVE_ANCHOR,
   MIME_CUT,
+  MIME_REPORT,
   isAnchorDrag,
   type MarginaliaMarker,
   type PositionedMarker,
@@ -320,6 +321,23 @@ export default function Marginalia({ editor, markers, panelSides }: MarginaliaPr
           if (cardId) {
             window.dispatchEvent(
               new CustomEvent("virgil-cut-drop", {
+                detail: { cardId, paragraphId },
+              })
+            );
+          }
+        } catch { /* ignore */ }
+        return;
+      }
+
+      // --- Report card drop (report or report-request, from ReportsPanel) ---
+      const reportData = e.dataTransfer?.getData(MIME_REPORT);
+      if (reportData) {
+        try {
+          const parsed = JSON.parse(reportData);
+          const cardId: string | undefined = parsed.cardId;
+          if (cardId) {
+            window.dispatchEvent(
+              new CustomEvent("virgil-report-drop", {
                 detail: { cardId, paragraphId },
               })
             );

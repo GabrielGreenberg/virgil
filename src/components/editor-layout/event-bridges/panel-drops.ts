@@ -18,6 +18,8 @@ export function usePanelDropBridges(deps: {
   setSelectedNoteId: Dispatch<SetStateAction<string | null>>;
   addCardParagraphId: (cutId: string, paragraphId: string) => void;
   setSelectedCutterCardId: Dispatch<SetStateAction<string | null>>;
+  addReportCardParagraphId: (cardId: string, paragraphId: string) => void;
+  setSelectedReportCardId: Dispatch<SetStateAction<string | null>>;
 }) {
   const {
     addTodoTextObjectId,
@@ -26,6 +28,8 @@ export function usePanelDropBridges(deps: {
     setSelectedNoteId,
     addCardParagraphId,
     setSelectedCutterCardId,
+    addReportCardParagraphId,
+    setSelectedReportCardId,
   } = deps;
 
   useEffect(() => {
@@ -64,4 +68,16 @@ export function usePanelDropBridges(deps: {
     window.addEventListener("virgil-cut-drop", handler);
     return () => window.removeEventListener("virgil-cut-drop", handler);
   }, [addCardParagraphId, setSelectedCutterCardId]);
+
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const detail = (e as CustomEvent).detail;
+      if (detail?.cardId && detail?.paragraphId) {
+        addReportCardParagraphId(detail.cardId, detail.paragraphId);
+        setSelectedReportCardId(detail.cardId);
+      }
+    };
+    window.addEventListener("virgil-report-drop", handler);
+    return () => window.removeEventListener("virgil-report-drop", handler);
+  }, [addReportCardParagraphId, setSelectedReportCardId]);
 }

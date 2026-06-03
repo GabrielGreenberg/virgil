@@ -26,6 +26,7 @@ import {
   MIME_AI_REQUEST,
   MIME_TEXT_INSERT,
   MIME_CUT,
+  MIME_REPORT,
   isAnchorDrag,
 } from "@/lib/marginalia";
 import { getAtomText } from "@/lib/atom-text";
@@ -686,6 +687,29 @@ const VirgilEditor = forwardRef<EditorHandle, EditorProps>(function VirgilEditor
             if (paragraphId) {
               window.dispatchEvent(
                 new CustomEvent("virgil-cut-drop", {
+                  detail: { cardId, paragraphId },
+                })
+              );
+            }
+          } catch { /* ignore bad data */ }
+          return true;
+        }
+
+        // --- Report card drop (report or report-request, from ReportsPanel) ---
+        const reportData = event.dataTransfer?.getData(MIME_REPORT);
+        if (reportData) {
+          try {
+            const parsed = JSON.parse(reportData);
+            const cardId: string | undefined = parsed.cardId;
+            if (!cardId) return true;
+            const coords = { left: event.clientX, top: event.clientY };
+            const posResult = view.posAtCoords(coords);
+            if (!posResult) return true; // no preventDefault → Marginalia handles
+            event.preventDefault();
+            const paragraphId = ensureAnchorUuid(view, posResult.pos);
+            if (paragraphId) {
+              window.dispatchEvent(
+                new CustomEvent("virgil-report-drop", {
                   detail: { cardId, paragraphId },
                 })
               );
