@@ -3,7 +3,7 @@
 
 # `check-coherence` — design sketch
 
-**Status: design only. Not implemented.** This document specifies the coherence script; a follow-up chip builds it. It is the CI guard that validates the [rooted dependency graph](VIRGIL.md#the-rooted-dag) — it owns the **edge-validation** job in the [three-mechanism division of labor](VIRGIL.md#document-discipline) (`/cleanup-virgil` synchronizes code→docs; this script validates the graph's edges; the future dream phase ripples docs→skills).
+**Status: implemented** as [`tools/check-coherence.mjs`](../../tools/check-coherence.mjs) (chip 5; smoke tests in `tools/check-coherence.smoke.mjs`, npm script `check:coherence`, wired into `/cleanup-virgil` step 2). This document remains the design of record; the **Staging** notes below track the as-built severities. It is the CI guard that validates the [rooted dependency graph](VIRGIL.md#the-rooted-dag) — it owns the **edge-validation** job in the [three-mechanism division of labor](VIRGIL.md#document-discipline) (`/cleanup-virgil` synchronizes code→docs; this script validates the graph's edges; the future dream phase ripples docs→skills).
 
 This is a `.SKETCH.md` design doc, not a graph node: it carries `derives-from` (to model the convention) but no `covers-code`, and the script excludes `*.SKETCH.md` from the `covers-code`/drift checks (it describes a future tool, not current code).
 
@@ -15,13 +15,13 @@ The script does **not** carry a hardcoded list of docs. It **discovers** every g
 
 **Parse precisely, not by loose grep.** Header fields are recognized only in two structural positions: the **top-of-file header block** (the leading run of `<!--…-->` lines before the first heading) and the **first comment(s) directly under a `##`/`###` heading** (per-section `covers-code`). A naïve repo-wide grep for `covers-code:` also matches the convention's own *prose examples* and fenced code samples (e.g. `<!-- covers-code: ... -->` written inline to document the format, or `<!-- covers-code: <repo-root-relative-path> -->` in a code fence) — those are not headers and must be ignored. The parser therefore skips fenced code blocks and only reads comments in the two sanctioned positions. (This bit the bootstrap's hand-validation, which used loose grep and produced a spurious `...` path from a prose sentence — a concrete reason to parse structurally.)
 
-| # | Check | Severity (pre-Phase-0) | What it asserts |
+| # | Check | Severity (as built) | What it asserts |
 |---|---|---|---|
-| 1 | **Edges resolve** | **error** | Every `derives-from` `path#anchor` resolves to an existing file and a heading whose GitHub slug matches the anchor; every `covers-code` path (doc-level and per-section) resolves to an existing file or directory. |
-| 2 | **Type accounting** | warn → error | Every exported type in `src/lib/types.ts` is accounted for in VIRGIL.md's [Public-type registry](VIRGIL.md#public-type-registry) section, or explicitly delegated to a named manifest doc. |
-| 3 | **Concept → code** | warn → error | Every code-identifier-shaped named concept in VIRGIL.md (e.g. `PANEL_REGISTRY`, `\vfid`, `apply_response.py`) appears at least once in the codebase. |
+| 1 | **Edges resolve** | **error** | Every `derives-from` `path#anchor` resolves to an existing file and a heading whose GitHub slug matches the anchor; every `covers-code` path (doc-level and per-section) resolves to an existing file or directory. (The union invariant — doc-level ⊇ per-section — is a **warn**.) |
+| 2 | **Type accounting** | **error** | Every exported type in `src/lib/types.ts` is accounted for in VIRGIL.md's [Public-type registry](VIRGIL.md#public-type-registry) section, or explicitly delegated to a named manifest doc. (Graduated to error: Phase 0 filled the registry.) |
+| 3 | **Concept → code** | warn | Every code-identifier-shaped named concept in VIRGIL.md (e.g. `PANEL_REGISTRY`, `\vfid`, `apply_response.py`) appears at least once in the codebase. |
 | 4 | **Drift candidates** | warn (always) | For each doc, commits touching its `covers-code` paths newer than its `last-verified` sha → flag as a drift candidate for the next `/cleanup-virgil` pass. |
-| 5 | **Python shadow ↔ TS registry** | warn → error | The Python card/panel vocabulary in `editor/scripts/` (`apply_response.PANEL_TO_SIDECAR` keys, `create_card.ALL_KINDS`) reconciles with the TS SSOTs (`PANEL_REGISTRY`, `CardKind`, the `…State` types) — no shadow lists a removed/renamed/never-real member. |
+| 5 | **Python shadow ↔ TS registry** | warn | The Python card/panel vocabulary in `editor/scripts/` (`apply_response.PANEL_TO_SIDECAR` keys, `create_card.ALL_KINDS`) reconciles with the TS SSOTs (`PANEL_REGISTRY`, `CardKind`, the `…State` types) — no shadow lists a removed/renamed/never-real member. |
 
 ### Check 1 — edges resolve (the load-bearing one)
 
@@ -36,11 +36,13 @@ This is an **error** from day one: unresolved edges defeat the entire purpose of
 
 Parse `src/lib/types.ts` with the **TypeScript compiler API** (`ts.createSourceFile`, walk for `isInterfaceDeclaration`/`isTypeAliasDeclaration`/`isEnumDeclaration` with an `export` modifier) → the set of exported type names. Parse VIRGIL.md's Public-type registry section for backtick-quoted type names, plus an allowlist of names annotated as delegated (e.g. a `delegated-to: docs/workspace/sidecars.md` line). A type in neither set is unaccounted.
 
-**Staging:** the registry section is currently `<!-- STUB: pending Phase 0 -->`. While stubbed, the check emits **one** summary warning (`registry stubbed; N/M types unaccounted — warn-only until Phase 0`) instead of N individual warnings, so it doesn't drown the report. When the stub is filled and the marker removed, the check graduates to **error** (per-type).
+**Staging (as built):** Phase 0 (chip 4) filled the registry section and removed its stub marker, so the check runs as designed: **per-type error** on any genuinely-unaccounted type. The graduation trigger has fired. One implementation note: VIRGIL.md's registry section names ~25 types directly but **delegates the full 58-type enumeration** to `phase0-card-current-state.md §2` via a prose link (*"The full enumeration … is in phase0-card-current-state.md §2"*). The script follows any `.md#anchor` link inside the registry section and harvests backtick type-names from the linked section too — so the delegation resolves mechanically and all 58 exported types are accounted (the check currently passes clean).
 
 ### Check 3 — concept → code
 
-"Named concept" is defined narrowly to stay tractable and low-noise: **code-identifier-shaped tokens in backticks** — `CONSTANT_CASE`, `camelCase`/`PascalCase` identifiers, `*.py`/`*.ts` filenames, and LaTeX macros (`\v…`). For each, search the repo (ripgrep, scoped: macros under `src/lib`, identifiers under `src/`/`library/`/`editor/`). Zero hits → finding. High-confidence code identifiers (a registry/const name with no match) lean error; ambiguous prose-y tokens stay warning. This check is **advisory by design** — it catches the obvious "doc names a symbol that was renamed/deleted" case, not all conceptual drift. Warn-only until the stub sections (which name many not-yet-built v1 symbols) are reconciled with shipped code.
+"Named concept" is defined narrowly to stay tractable and low-noise: **code-identifier-shaped tokens in backticks** — `CONSTANT_CASE`, `camelCase`/`PascalCase` identifiers, `*.py`/`*.ts` filenames, and LaTeX macros (`\v…`). For each, search the repo (ripgrep, scoped: macros under `src/lib`, identifiers under `src/`/`library/`/`editor/`). Zero hits → finding. This check is **advisory by design** — it catches the obvious "doc names a symbol that was renamed/deleted" case, not all conceptual drift.
+
+**Staging (as built):** warn-only (every token is emitted as a warning; the "lean error" idea was dropped — even a high-confidence miss should nudge, not block CI). Phase 0 reconciled the stub sections with shipped code, so the check currently passes clean — every `\v…` macro, `CONST_CASE`/`camelCase` symbol, and `*.ts`/`*.py` filename named in VIRGIL.md resolves. Two scope decisions held in the build: only `\v`-prefixed macros are checked (per the spec), and **data-file names (`*.json`/`*.css`) are out of scope** — they're string-referenced runtime artifacts, not source identifiers, so checking them as files produced only noise (`quotations.json`, `notifications.json`, …). Warn-only is retained as the right default for the day a future doc names a not-yet-built symbol.
 
 ### Check 4 — drift candidates
 
@@ -65,7 +67,7 @@ The TS side reuses check 2's TypeScript-compiler parse of `src/lib/types.ts` (fo
 
 **The deep fix (north star).** The (panel → filename, list-key) triple has **no single TS SSOT** today — it's spread across `PANEL_REGISTRY` (panel names) and each panel's hook (filename + list-key). The durable cure is to lift that triple into one TS registry the manifest can emit, so the Python shadow is **generated/validated against one source** rather than hand-kept. Until then, this check is the interim guard; assertion 3 stays heuristic.
 
-**Staging:** warn-only now (`ALL_KINDS` is known-stale and is reconciled by the create-card fan-out chip, not this one; assertion 3 is heuristic). Flip assertion 1 to **error** once the create-card chip sets `ALL_KINDS` to the kinds it actually implements; assertions 2 & 3 harden as the (filename, list-key) triple is centralized.
+**Staging (as built):** warn-only. `ALL_KINDS` is known-stale — the check correctly flags `quotation` (removed) and `annotation` (never-real) as members outside `CardKind` — and is reconciled by the create-card fan-out chip, not this one; assertion 3 is heuristic. Two build notes: assertion 2's **inverse** (card-hosting panels absent from `PANEL_TO_SIDECAR`) is emitted as a single compact warning rather than one-per-panel, because "hosts a card" over-approximates "is a skill-writeback target" (it surfaces `archive`/`bibliography`/`examples`/`errors`, which are intentional non-targets) — so it's framed as *"verify intentionally not writeback targets,"* not a hard finding. Flip assertion 1 to **error** once the create-card chip sets `ALL_KINDS` to the kinds it actually implements; assertions 2 & 3 harden as the (panel → filename, list-key) triple is centralized into one TS SSOT (the north-star above).
 
 ---
 
@@ -107,24 +109,29 @@ The human format is the same findings, rendered grouped by check with a one-line
 
 ## CI hook
 
-A new workflow `.github/workflows/coherence.yml`, triggered on `pull_request` (the existing `.github/workflows/deploy.yml` runs on *push to main* — coherence belongs on the PR, before merge, so a sibling workflow is cleaner than a step inside deploy):
+A sibling workflow `.github/workflows/coherence.yml` (as built). **Trigger reality:** this repo merges via git **worktrees, not pull requests**, and publishes on *push to main* (see `deploy.yml`). A `pull_request`-only trigger — the original sketch — would **never fire here**. So the live path is **`push: [main]`** (the check runs post-merge, the same model as the deploy); `pull_request` is kept too so the guard fires before merge if a PR flow is ever adopted, and `workflow_dispatch` allows a manual run. The actions/node versions match `deploy.yml` (`checkout@v6`, `setup-node@v6`, node 24):
 
 ```yaml
-on: pull_request
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
 jobs:
   coherence:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
         with: { fetch-depth: 0 }   # check 4 needs history for `git log <sha>..HEAD`
-      - uses: actions/setup-node@v4
-        with: { node-version: 20, cache: npm }
+      - uses: actions/setup-node@v6
+        with: { node-version: 24, cache: npm }
       - run: npm ci
-      - run: node tools/check-coherence.mjs            # warn-only phase
+      - run: node tools/check-coherence.smoke.mjs      # the checker's own smoke tests
+      - run: node tools/check-coherence.mjs            # checks 1+2 gate; 3/4/5 warn
       # - run: node tools/check-coherence.mjs --strict  # post-Phase-0 hardening
 ```
 
-Also add an npm script: `"check:coherence": "node tools/check-coherence.mjs"`, and a mention in `/cleanup-virgil` so a maintainer can run it before a release.
+The npm scripts (`check:coherence`, `test:coherence`) and the `/cleanup-virgil` step-2 wiring are the **live local path** — a maintainer runs `npm run check:coherence` before a release and acts on the check-4 drift candidates.
 
 ---
 
@@ -142,9 +149,10 @@ Checks 1, 3, 4 are fs + regex + `git log` (via `node:child_process`) — all com
 
 ## Staging: warn-first, harden as content lands
 
-Pre-Phase-0, checks **2 and 3 will mostly be unmet** — the type registry is a stub, and the stub sections name v1 symbols that aren't built yet. Describing them as *target state* and running them **warn-only** keeps CI green and the signal honest (a wall of red on day one trains people to ignore the check). The hardening path:
+Phase 0 (chip 4) is **complete** — the type registry is filled and all six current-state sections are reconciled with shipped code, with no `<!-- STUB -->` markers left — and the script is built (chip 5). The original warn-first rationale (a wall of red on day one trains people to ignore the check) still governs the checks that remain warn-only. The as-built severities:
 
-- **Check 1 (edges):** error from day one. The graph's edges must resolve — that is the invariant the whole discipline rests on.
+- **Check 1 (edges):** error from day one. The graph's edges must resolve — that is the invariant the whole discipline rests on. (The softer union invariant — doc-level `covers-code` ⊇ per-section — is a warn; VIRGIL.md currently trips it, since its coarse doc-level list isn't a strict superset of its sections.)
 - **Check 4 (drift):** warn forever. Drift is informational; `/cleanup-virgil` resolves it at the release boundary.
-- **Checks 2 & 3:** warn-only now; flip to error (turn on `--strict` in CI, or remove their per-check warn-override) **as each stub section is filled and its `<!-- STUB -->` marker removed**. The script keys off the marker, so the transition is automatic per-section: a filled registry section makes check 2 start erroring on genuinely-unaccounted types, with no script edit. (As of Phase 0 completion all six current-state sections are filled, so check 2 can graduate to per-type error.)
-- **Check 5 (Python shadow):** warn-only now — `create_card.ALL_KINDS` is known-stale until the create-card fan-out chip reconciles it, and assertion 3 (list-key/filename) is heuristic. Flip the `ALL_KINDS ⊆ CardKind` assertion to error once that chip lands; the panel-map assertions harden as the (panel → filename, list-key) triple is centralized into a single TS SSOT.
+- **Check 2 (types):** **error** (graduated). Phase 0 filled the registry and removed the `<!-- STUB -->` marker, so per-type erroring on genuinely-unaccounted types is live. The script no longer keys off the marker (there are none); check 2 is wired as a per-type error directly, and currently passes clean (58/58 accounted via the §2 delegation).
+- **Check 3 (concepts):** **warn**. Passes clean today (Phase 0 reconciled the named symbols); warn-only retained as the right default for forward-looking symbols a future doc may name.
+- **Check 5 (Python shadow):** warn-only — `create_card.ALL_KINDS` is known-stale until the create-card fan-out chip reconciles it (the check flags `quotation` + `annotation` today), and assertion 3 (list-key/filename) is heuristic. Flip the `ALL_KINDS ⊆ CardKind` assertion to error once that chip lands; the panel-map assertions harden as the (panel → filename, list-key) triple is centralized into a single TS SSOT.
