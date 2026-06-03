@@ -129,10 +129,15 @@ function FigureCardPreview({
     );
   }
 
-  // Real image, read-only. Reuses FigurePanel (the same resolver / loading /
-  // error rendering as the main editor) under the same container classes, and
-  // the same read-only FigureAnnotation lozenge below — minus the interactive
-  // chrome (width/picker/refresh/delete) and click-to-edit.
+  // Real image, read-only. Renders through the SHARED `FigureVisual` (the same
+  // row/caption/lozenge structure the page uses), so a future figure affordance
+  // ports here automatically — closing the Issue-4/9/10 accretion. This surface
+  // passes: the `noopRegisterRefresh` (no chrome refresh button to wire), no
+  // `rowContentEditable` (the wrapper's `contentEditable={false}` covers the
+  // row), a STATIC caption span (only when there's text — vs the page's editable
+  // NodeViewContent), no chrome slot, and the lozenge in `readOnly` mode, gated
+  // on a present label: an unlabeled figure has no `\label` source to mirror (its
+  // number is already shown by the caption), so it stays chrome-free.
   return (
     <NodeViewWrapper
       className={`figure-block figure-block-card-image ${
@@ -140,36 +145,24 @@ function FigureCardPreview({
       }`}
       contentEditable={false}
     >
-      <div className="figure-row">
-        {sources.map((src, i) => (
-          <FigurePanel
-            key={`${src.path}:${i}`}
-            docId={docId}
-            source={src}
-            registerRefresh={noopRegisterRefresh}
-          />
-        ))}
-      </div>
-      {isFigure && (captionText || (numbered && figureNumber != null)) ? (
-        <div className="figure-caption">
-          {numbered && figureNumber != null && (
-            <span className="figure-caption-label" contentEditable={false}>
-              Figure {figureNumber}:{" "}
-            </span>
-          )}
-          {captionText && (
+      <FigureVisual
+        isFigure={isFigure}
+        sources={sources}
+        docId={docId}
+        registerRefresh={noopRegisterRefresh}
+        numbered={numbered}
+        figureNumber={figureNumber}
+        captionSlot={
+          captionText && (
             <span className="figure-caption-text">{captionText}</span>
-          )}
-        </div>
-      ) : null}
-      {/* The blue `\label` lozenge — same component as the page (FigureFullView),
-       *  rendered read-only so a popped section mirrors the source's labels
-       *  without exposing rename/delete/edit. Gated on a present label: an
-       *  unlabeled figure has no `\label` source to mirror (its number is
-       *  already shown by the caption above), so it stays chrome-free. */}
-      {isFigure && label ? (
-        <FigureAnnotation readOnly label={label} numbered={numbered} />
-      ) : null}
+          )
+        }
+        lozenge={
+          isFigure && label ? (
+            <FigureAnnotation readOnly label={label} numbered={numbered} />
+          ) : null
+        }
+      />
     </NodeViewWrapper>
   );
 }
@@ -487,7 +480,106 @@ function FigureFullView({ node, getPos, editor, extension }: NodeViewProps) {
       onClick={handleBodyClick}
       data-label={label || undefined}
     >
-      <div className="figure-row" contentEditable={false}>
+      <FigureVisual
+        isFigure={isFigure}
+        sources={sources}
+        docId={docId}
+        registerRefresh={registerRefresh}
+        rowContentEditable={false}
+        numbered={numbered}
+        figureNumber={figureNumber}
+        captionSlot={
+          isFigure ? (
+            <NodeViewContent<"span"> as="span" className="figure-caption-text" />
+          ) : null
+        }
+        chrome={
+          <FigureChrome
+            currentPercent={currentPercent}
+            canScale={canScale}
+            onScale={applyScale}
+            onPickFile={handlePickFile}
+            onRefresh={handleRefreshAll}
+            onDelete={handleDelete}
+          />
+        }
+        lozenge={
+          isFigure ? (
+            <FigureAnnotation
+              editor={editor}
+              label={label}
+              numbered={numbered}
+              getFigurePos={getFigurePos}
+              onConfirmRename={opts.onConfirmLabelRenameRef?.current ?? null}
+              onConfirmDelete={opts.onConfirmFigureDeleteRef?.current ?? null}
+            />
+          ) : null
+        }
+      />
+    </NodeViewWrapper>
+  );
+}
+
+interface FigureVisualProps {
+  isFigure: boolean;
+  sources: FigureSource[];
+  docId: string | null;
+  registerRefresh: (fn: () => void) => () => void;
+  // The page marks the source row `contentEditable={false}` (its NodeViewWrapper
+  // stays editable so the caption's NodeViewContent works); the read-only
+  // preview omits this and lets the row inherit `contentEditable=false` from its
+  // wrapper. `undefined` → React drops the attribute, so the preview row stays
+  // attribute-free (byte-identical to the hand-built render).
+  rowContentEditable?: boolean;
+  numbered: boolean;
+  figureNumber: string | number | null;
+  // The caption text element: editable `<NodeViewContent>` on the page, a static
+  // `<span>` (only when there's text) in the preview. Passed as a slot so the
+  // shared shell needn't know which surface it's on.
+  captionSlot?: React.ReactNode;
+  // Page-only interactive chrome (width scaler / picker / refresh / delete);
+  // the read-only preview passes nothing.
+  chrome?: React.ReactNode;
+  // The `\label` lozenge — editable `<FigureAnnotation editor>` on the page, a
+  // `readOnly` one in the preview; null when there's no lozenge to show.
+  lozenge?: React.ReactNode;
+}
+
+// Shared presentational shell for a non-empty figure/graphic, rendered by BOTH
+// the editable page view (`FigureFullView`) and the read-only card preview
+// (`FigureCardPreview`). It owns the structure those two used to hand-build
+// twice — the `.figure-row` of `FigurePanel`s, the `.figure-caption` ("Figure
+// N:" prefix + a caption slot), and the chrome + lozenge slots — so a future
+// figure affordance is added ONCE and ports to every surface, ending the
+// Issue-4/9/10 accretion (each of which had to re-teach the read-only copy a
+// piece the page already had). The DOM order each surface emits is preserved by
+// what it passes: page → row, caption, chrome, lozenge; preview → row, caption,
+// lozenge (no chrome slot). The empty states (page picker CTA, preview pill)
+// genuinely differ and stay per-view — they return before this shell.
+export function FigureVisual({
+  isFigure,
+  sources,
+  docId,
+  registerRefresh,
+  rowContentEditable,
+  numbered,
+  figureNumber,
+  captionSlot,
+  chrome,
+  lozenge,
+}: FigureVisualProps) {
+  // Render the caption block when this is a figure AND either a caption text
+  // element was supplied OR the "Figure N:" prefix will show. Truthiness (not
+  // `!= null`) is load-bearing for byte-identical parity: the preview's slot is
+  // `captionText && <span/>`, i.e. "" (falsy) for an empty caption — matching
+  // the old `{captionText && …}` gate — while the page always supplies a
+  // (truthy) `NodeViewContent`, so its caption block always renders for a
+  // figureBlock, exactly as `FigureFullView` did before.
+  const showCaption =
+    isFigure && (!!captionSlot || (numbered && figureNumber != null));
+  return (
+    <>
+      <div className="figure-row" contentEditable={rowContentEditable}>
         {sources.map((src, i) => (
           <FigurePanel
             key={`${src.path}:${i}`}
@@ -497,35 +589,19 @@ function FigureFullView({ node, getPos, editor, extension }: NodeViewProps) {
           />
         ))}
       </div>
-      {isFigure && (
+      {showCaption && (
         <div className="figure-caption">
           {numbered && figureNumber != null && (
             <span className="figure-caption-label" contentEditable={false}>
               Figure {figureNumber}:{" "}
             </span>
           )}
-          <NodeViewContent<"span"> as="span" className="figure-caption-text" />
+          {captionSlot}
         </div>
       )}
-      <FigureChrome
-        currentPercent={currentPercent}
-        canScale={canScale}
-        onScale={applyScale}
-        onPickFile={handlePickFile}
-        onRefresh={handleRefreshAll}
-        onDelete={handleDelete}
-      />
-      {isFigure && (
-        <FigureAnnotation
-          editor={editor}
-          label={label}
-          numbered={numbered}
-          getFigurePos={getFigurePos}
-          onConfirmRename={opts.onConfirmLabelRenameRef?.current ?? null}
-          onConfirmDelete={opts.onConfirmFigureDeleteRef?.current ?? null}
-        />
-      )}
-    </NodeViewWrapper>
+      {chrome}
+      {lozenge}
+    </>
   );
 }
 
