@@ -14,12 +14,17 @@
  * Covers (today): `blockquote`, `codeBlock` (editable, content-bearing),
  * `displayMath` (READ-ONLY atom — decision D, "view & move only": pop out to
  * see the rendered KaTeX large + drag it; the formula is edited on the PAGE
- * via the existing math popover, never in the float) and `latexComment`
+ * via the existing math popover, never in the float), `latexComment`
  * (EDITABLE atom — decision A, "fully editable, first-class": pop out the
- * `%comment`, edit it in the float, it round-trips to the source). All are
- * already in the float schema (`EXPECTED_FLOAT_ORDER`); the synced node renders
- * itself (blockquote/codeBlock as plain nodes, displayMath via its KaTeX
- * NodeView, latexComment via its `editableAtomView`).
+ * `%comment`, edit it in the float, it round-trips to the source) and
+ * `titleField` (EDITABLE, content-bearing like blockquote — the title/author/
+ * date fields; decision C). All but `titleField` were already in the float
+ * schema; `titleField` was the lone bodyless kind that was main-only, so its
+ * node was PROMOTED into the float stack (L3j — see editor-extensions.ts).
+ * The synced node renders itself (blockquote/codeBlock as plain nodes,
+ * displayMath via its KaTeX NodeView, latexComment via its `editableAtomView`,
+ * titleField via its `.title-field-wrapper` NodeView with the
+ * "Title"/"Author"/"Date" annotation).
  *
  * Per-kind config carries `editable` (read-only kinds skip `onUpdate` /
  * write-back and sync main→float only) and `emptyAttrs` (atom kinds seed an
@@ -140,6 +145,23 @@ export const SINGLE_BLOCK_CONFIG: Partial<
     sourceKind: "latexComment",
     editable: true,
     emptyAttrs: { text: "" },
+  },
+  // L3j (bodyless kinds, Chip 4): titleField — the paper's title/author/date
+  // fields; the LAST prose-shaped bodyless kind (decision C: include). One more
+  // config row, content-bearing + editable like blockquote — NO `emptyAttrs`,
+  // because its `content:"inline*"` makes `emptyBlockFor`'s
+  // `{type:"titleField", content:[]}` schema-valid. The one new wrinkle lives
+  // OUTSIDE this body: titleField was the only bodyless kind NOT in the float
+  // schema, so its node was PROMOTED into the float stack (editor-extensions.ts);
+  // here it's just another kind. The seed carries the full node (attrs incl.
+  // `field`) so the NodeView renders the right "Title"/"Author"/"Date"
+  // annotation; the whole-node write-back preserves main's attrs
+  // (field/rawPrefix/isToday/uuid).
+  titleField: {
+    schemaType: "titleField",
+    floatIdPrefix: "title",
+    sourceKind: "titleField",
+    editable: true,
   },
 };
 

@@ -39,7 +39,11 @@ registerFloatBody("linkedRange", LinkedRangeBody);
 // write-back (the equation is edited on the page via the KaTeX popover);
 // latexComment (L3i, Chip 3) is the first EDITABLE ATOM kind (decision A) —
 // pops out editable, edits round-trip via the float's own setNodeMarkup.
+// titleField (L3j, Chip 4) is the LAST prose-shaped kind — editable +
+// content-bearing like blockquote; its node was promoted into the float schema
+// (editor-extensions.ts) since it was the only bodyless kind that was main-only.
 registerFloatBody("blockquote", SingleBlockBody);
 registerFloatBody("codeBlock", SingleBlockBody);
 registerFloatBody("displayMath", SingleBlockBody);
 registerFloatBody("latexComment", SingleBlockBody);
+registerFloatBody("titleField", SingleBlockBody);

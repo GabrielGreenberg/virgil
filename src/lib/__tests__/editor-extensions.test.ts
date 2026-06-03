@@ -113,10 +113,12 @@ function mainCtx(withAnchors = true): EditorExtensionsCtx {
 
 // The ordered `name`s the FLOAT surface must emit: the shared core
 // (now INCLUDING `textColor` — promoted to shared in FCU Chip C1, decision 4,
-// so colored text renders in popouts) MINUS the doc-wide example numberer
+// so colored text renders in popouts — AND `titleField` — promoted to the
+// shared stack in L3j so the title/author/date fields pop out; it was the lone
+// bodyless kind that was main-only) MINUS the doc-wide example numberer
 // (`expexNumbering`) and every main-only chrome extension (`placeholder`,
-// `slashPopup`, `smartQuotes`, the orphan/title/maketitle/label/cleaner
-// guards, `marginaliaAnchorGuard`, `pgmarkChip`, `uuidAttrDecorator`,
+// `slashPopup`, `smartQuotes`, the orphan/maketitle/label/cleaner guards,
+// `marginaliaAnchorGuard`, `pgmarkChip`, `uuidAttrDecorator`,
 // `readOnlyEnforcer`). The `sectionNumbers` + `sectionFolding` plugins are
 // omitted *inside* the heading builder (a separate test asserts that).
 const EXPECTED_FLOAT_ORDER = [
@@ -153,19 +155,24 @@ const EXPECTED_FLOAT_ORDER = [
   "latexCommand",
   "linkedAnchor",
   "linkedAnchorGuard",
+  // titleField: promoted into the shared float stack (L3j) — it was the lone
+  // bodyless kind that was main-only. Sits exactly where it does on main:
+  // right after the orphan guard (which is main-only and omitted here), before
+  // tabIndent. Its MAIN position is unchanged (EXPECTED_MAIN_ORDER untouched).
+  "titleField",
   "tabIndent",
 ];
 
 // Extensions present on main but that MUST NOT appear in a float stack.
-// (`textColor` was here pre-Chip-C1; it is now SHARED, so a float INCLUDES
-// it — see the dedicated assertion below.)
+// (`textColor` was here pre-Chip-C1, and `titleField` was here pre-L3j; both
+// are now SHARED, so a float INCLUDES them — see the dedicated textColor
+// assertion below / `titleField` in EXPECTED_FLOAT_ORDER.)
 const MAIN_ONLY_NAMES = [
   "placeholder",
   "expexNumbering",
   "slashPopup",
   "smartQuotes",
   "textObjectOrphanGuard",
-  "titleField",
   "maketitleMarker",
   "labelHandler",
   "emptyParagraphTitleCleaner",

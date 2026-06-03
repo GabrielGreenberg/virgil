@@ -169,6 +169,9 @@ export function popoutKeyForLift(ref: TextObjectRef): string | null {
     case "displayMath":
     // latexComment (L3i, Chip 3): editable atom lift float (decision A).
     case "latexComment":
+    // titleField (L3j, Chip 4): editable prose lift float (decision C); its
+    // node was promoted into the float schema (the last prose-shaped kind).
+    case "titleField":
     case "texBlock":
     case "exampleBlock":
     case "linkedRange":

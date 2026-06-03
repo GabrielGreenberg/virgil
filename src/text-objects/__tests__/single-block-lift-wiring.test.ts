@@ -11,6 +11,13 @@
  * `SingleBlockBody` (decision A, "fully editable, first-class": pop out the
  * `%comment`, edit it, it round-trips to the source via the float's own
  * `editableAtomView` → onUpdate → write-back). The atom×editable cross-product.
+ * Chip 4 (memo L3j): titleField — the LAST prose-shaped kind on the SAME
+ * `SingleBlockBody` (decision C: include; editable + content-bearing like
+ * blockquote, so NO emptyAttrs). The one wrinkle was the float schema:
+ * titleField was the lone bodyless kind that was main-only, so its node was
+ * promoted into the float stack (editor-extensions.ts) — that promotion is
+ * locked by editor-extensions.test.ts (EXPECTED_FLOAT_ORDER / MAIN_ONLY_NAMES),
+ * not re-asserted here.
  *
  * Before a kind is migrated it falls to `popoutKeyForLift`'s
  * `default: return null` (lift is a no-op) and carries no `liftMode`
@@ -166,6 +173,43 @@ describe("bodyless-kinds Chip 3 — latexComment EDITABLE atom lift wiring (L3i)
     // figureBlock is still on `popoutKeyForLift`'s `default: return null` and
     // carries no liftMode — so a future regression that blanket-returns non-null
     // (or blanket-flips liftMode) still fails loudly here.
+    expect(popoutKeyForLift({ kind: "figureBlock", id: "ab12" })).toBeNull();
+    expect(TEXT_OBJECT_REGISTRY.figureBlock.liftMode).toBeUndefined();
+  });
+});
+
+describe("bodyless-kinds Chip 4 — titleField lift wiring (L3j)", () => {
+  it("popoutKeyForLift now returns the canonical key (was the default null)", () => {
+    const key = popoutKeyForLift({ kind: "titleField", id: "ab12" });
+    expect(key).toBe(textObjectPopoutKey({ kind: "titleField", id: "ab12" }));
+    expect(key).toBe("textobject:titleField:ab12");
+  });
+
+  it("flips liftMode to lifted-overlay (was undefined)", () => {
+    expect(TEXT_OBJECT_REGISTRY.titleField.liftMode).toBe("lifted-overlay");
+  });
+
+  it("reuses the SAME shared SingleBlockBody as the prose + atom kinds (one body, many kinds)", () => {
+    const titleBody = TEXT_OBJECT_REGISTRY.titleField.floatBodyComponent;
+    expect(typeof titleBody).toBe("function");
+    // The same component instance every other migrated kind uses — kind is
+    // resolved from the cardKey inside the body, not a bespoke title body.
+    expect(titleBody).toBe(TEXT_OBJECT_REGISTRY.blockquote.floatBodyComponent);
+    expect(titleBody).toBe(TEXT_OBJECT_REGISTRY.latexComment.floatBodyComponent);
+    expect((titleBody as { name?: string }).name).toBe("SingleBlockBody");
+  });
+
+  it("is EDITABLE + content-bearing — editable:true, NO emptyAttrs (the last prose-shaped kind, like blockquote)", () => {
+    // titleField is editable like the prose kinds, but — unlike the atom kinds
+    // (displayMath/latexComment) — it is content-bearing (`content:"inline*"`),
+    // so it carries NO emptyAttrs: `emptyBlockFor` builds `{type, content:[]}`,
+    // valid for `inline*`. This pins that the body treats it as a content block,
+    // not an attr-based atom.
+    expect(SINGLE_BLOCK_CONFIG.titleField?.editable).toBe(true);
+    expect(SINGLE_BLOCK_CONFIG.titleField?.emptyAttrs).toBeUndefined();
+  });
+
+  it("keeps figureBlock as the still-null control (the switch stays provably specific)", () => {
     expect(popoutKeyForLift({ kind: "figureBlock", id: "ab12" })).toBeNull();
     expect(TEXT_OBJECT_REGISTRY.figureBlock.liftMode).toBeUndefined();
   });

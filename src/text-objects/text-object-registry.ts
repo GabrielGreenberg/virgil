@@ -556,8 +556,14 @@ export const TEXT_OBJECT_REGISTRY: Record<TextObjectKind, TextObjectMeta> = {
     floatBodyComponent: PLACEHOLDER_FLOAT_BODY,
     actions: TITLE_FIELD_ACTIONS,
     dropAdapter: topLevelDropAdapter,
-    // Delete/Archive are filtered out by TITLE_FIELD_ACTIONS, so this
-    // slot is never consulted in practice. Left unset.
+    // L3j (bodyless kinds, Chip 4): titleField lifts through the two-mode
+    // gesture into the shared SingleBlockBody float (editable, content-bearing
+    // like blockquote — the LAST prose-shaped bodyless kind). Its node was
+    // promoted into the float schema (editor-extensions.ts) since it was the
+    // only bodyless kind that was main-only.
+    liftMode: "lifted-overlay",
+    // Delete/Archive are filtered out by TITLE_FIELD_ACTIONS, so the
+    // confirmDestructive slot is never consulted in practice. Left unset.
   },
   latexComment: {
     label: "LaTeX comment",

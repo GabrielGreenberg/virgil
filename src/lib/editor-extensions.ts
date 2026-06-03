@@ -1689,10 +1689,18 @@ export function buildEditorExtensions(ctx: EditorExtensionsCtx) {
     ...(isMain ? [SlashPopupExtension, SmartQuotes] : []),
     LinkedAnchor,
     LinkedAnchorGuard,
+    ...(isMain ? [TextObjectOrphanGuard] : []),
+    // titleField (L3j, bodyless kinds Chip 4): PROMOTED out of the main-only
+    // spread to an always-included entry, so the FLOAT schema gains exactly
+    // `titleField` — it was the lone bodyless kind that was main-only, which
+    // blanked its popout. Its MAIN position is unchanged (the orphan guard
+    // still precedes it, the maketitle/label/cleaner guards still follow it,
+    // all still main-only), so EXPECTED_MAIN_ORDER stays byte-identical. The
+    // siblings are doc-wide main-only guards; the float needs only the node
+    // spec (like it already omits sectionNumbers / ExpexNumbering).
+    TitleField,
     ...(isMain
       ? [
-          TextObjectOrphanGuard,
-          TitleField,
           MaketitleMarker,
           LabelHandler,
           EmptyParagraphTitleCleaner,
