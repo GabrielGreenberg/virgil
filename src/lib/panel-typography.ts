@@ -5,7 +5,7 @@
  * inside each panel's cards — font family, size, and color.
  *
  * Registered panels: footnote, note, archive, cut, revision, citation,
- * bib, quote, todo, example. Some flow through RichTextField; others
+ * bib, todo, example. Some flow through RichTextField; others
  * apply the override inline on a bespoke body element.
  */
 
@@ -17,8 +17,8 @@ export type PanelBodyKey =
   | "revision"
   | "citation"
   | "bib"
-  | "quote"
   | "todo"
+  | "report"
   | "example";
 
 export interface PanelTypography {
@@ -36,9 +36,9 @@ export interface PanelTypography {
  *  step-for-step and the per-panel size stepper stays monotonic.
  *
  *  Two visual tiers:
- *  - 12px Inter (sans, compact) — Notes, Todos, Revisions, Cuts.
+ *  - 12px Inter (sans, compact) — Notes, Todos, Revisions, Cuts, Reports.
  *    Modeled on Cut Comments, which historically used `text-xs` directly.
- *  - 15px Source Serif 4 — Footnotes, Quotations, Archive. Same family
+ *  - 15px Source Serif 4 — Footnotes, Archive. Same family
  *    as main text (17px) but one size smaller for visual hierarchy. */
 export const DEFAULT_PANEL_TYPOGRAPHY: Record<PanelBodyKey, PanelTypography> = {
   footnote: { fontFamily: "Source Serif 4", fontSize: 15, color: "#44403c" },
@@ -48,8 +48,8 @@ export const DEFAULT_PANEL_TYPOGRAPHY: Record<PanelBodyKey, PanelTypography> = {
   revision: { fontFamily: "Inter",          fontSize: 12, color: "#44403c" },
   citation: { fontFamily: "Inter",          fontSize: 12, color: "#44403c" },
   bib:      { fontFamily: "Inter",          fontSize: 12, color: "#44403c" },
-  quote:    { fontFamily: "Source Serif 4", fontSize: 15, color: "#44403c" },
   todo:     { fontFamily: "Inter",          fontSize: 12, color: "#44403c" },
+  report:   { fontFamily: "Inter",          fontSize: 12, color: "#44403c" },
   example:  { fontFamily: "Source Serif 4", fontSize: 12, color: "#44403c" },
 };
 
@@ -62,8 +62,8 @@ export const PANEL_BODY_LABELS: Record<PanelBodyKey, string> = {
   revision: "Revisions",
   citation: "Citations",
   bib:      "Bibliography",
-  quote:    "Quotations",
   todo:     "To-dos",
+  report:   "Reports",
   example:  "Examples",
 };
 

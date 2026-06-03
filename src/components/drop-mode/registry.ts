@@ -18,13 +18,13 @@ import { textRangeMoveDropSpec } from "./specs/text-range-move";
 import { aiRequestDropSpec } from "./specs/ai-request";
 import { noteDropSpec, highlightDropSpec } from "@/panels/Notes/drop-spec";
 import { todoDropSpec } from "@/panels/Todo/drop-spec";
-import { quotationDropSpec } from "@/panels/Quotations/drop-spec";
 import { archiveDropSpec } from "@/panels/Archive/drop-spec";
 import {
   cutterCommentDropSpec,
   cutterSuggestionDropSpec,
 } from "@/panels/Cutter/drop-spec";
 import { revisionDropSpec } from "@/panels/Revisions/drop-spec";
+import { reportDropSpec, reportRequestDropSpec } from "@/panels/Reports/drop-spec";
 import { footnoteDropSpec } from "@/panels/Footnotes/drop-spec";
 import { citationDropSpec } from "@/panels/Citations/drop-spec";
 import { exampleDropSpec } from "@/panels/Examples/drop-spec";
@@ -50,11 +50,12 @@ const SPECS: Record<string, DropSpec | undefined> = {
   note: noteDropSpec,
   highlight: highlightDropSpec,
   todo: todoDropSpec,
-  quotation: quotationDropSpec,
   archive: archiveDropSpec,
   "cutter-comment": cutterCommentDropSpec,
   "cutter-suggestion": cutterSuggestionDropSpec,
   revision: revisionDropSpec,
+  report: reportDropSpec,
+  "report-request": reportRequestDropSpec,
   footnote: footnoteDropSpec,
   citation: citationDropSpec,
   ai: aiRequestDropSpec,

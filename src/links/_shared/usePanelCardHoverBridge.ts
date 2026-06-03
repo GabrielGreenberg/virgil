@@ -24,7 +24,6 @@ const PREFIX_TO_KIND: Record<string, EntityKind> = {
   note: "note",
   todo: "todo",
   archive: "archive",
-  quotation: "quotation",
   example: "example",
   revision: "comment",
   "revision-suggestion": "revision-suggestion",

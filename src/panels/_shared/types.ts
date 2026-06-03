@@ -7,9 +7,7 @@
  * `PanelKind` and is the single source of truth for panel↔card
  * metadata.
  *
- * `CardKind` matches the keys of `CARD_THEMES` in `panel-primitives.tsx`,
- * with `"quotation"` added for the one card kind that has no themed
- * variant.
+ * `CardKind` matches the keys of `CARD_THEMES` in `panel-primitives.tsx`.
  */
 
 import type { ReactNode } from "react";
@@ -24,7 +22,7 @@ export type PanelKind =
   | "citations"
   | "bibliography"
   | "cutter"
-  | "quotations"
+  | "reports"
   | "examples"
   | "search"
   | "wordcount"
@@ -44,7 +42,8 @@ export type CardKind =
   | "cutter-comment"
   | "cutter-suggestion"
   | "revision-suggestion"
-  | "quotation"
+  | "report"
+  | "report-request"
   | "example"
   | "ai"
   | "error";

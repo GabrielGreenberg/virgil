@@ -13,7 +13,7 @@ import { createContext, useContext } from "react";
  *
  * Card keys are shaped `${kind}:${id}` where `kind` discriminates the card
  * variant (e.g. `note`, `footnote`, `archive`, `cut`, `todo`, `bib`,
- * `citation`, `revision`, `quotation`, `ai`).
+ * `citation`, `revision`, `report`, `ai`).
  */
 export interface CardRect {
   x: number;

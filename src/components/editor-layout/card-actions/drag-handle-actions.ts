@@ -290,17 +290,6 @@ export function useDragHandleActions(deps: DragHandleActionsDeps) {
           focusCardKey = `citation:${ref.id}`;
           break;
         }
-        case "quotation": {
-          const group = cardCreation.createQuotation({
-            text: text || undefined,
-            paragraphId,
-            targetKind,
-            mode: "omni",
-          });
-          panelId = "quotations";
-          focusCardKey = `quotation:${group.id}`;
-          break;
-        }
         case "note": {
           const anchor = wantRangeAnchor ? createAnchor(ed, "note") : undefined;
           const note = cardCreation.createNote({
@@ -381,6 +370,30 @@ export function useDragHandleActions(deps: DragHandleActionsDeps) {
           }
           panelId = "cutter";
           focusCardKey = `cutter-comment:${card.id}`;
+          break;
+        }
+        case "report": {
+          // The quick gesture files a Report REQUEST (the ask), not an
+          // authored Report.
+          const anchor = wantRangeAnchor
+            ? createAnchor(ed, "report-request")
+            : undefined;
+          const card = cardCreation.createReportRequest({
+            paragraphId,
+            anchor,
+            targetKind,
+            mode: "omni",
+          });
+          if (anchor) {
+            updateLinkedAnchorCard(
+              ed,
+              anchor.anchorId,
+              "report-request",
+              card.id,
+            );
+          }
+          panelId = "reports";
+          focusCardKey = `report-request:${card.id}`;
           break;
         }
         case "duplicate": {

@@ -22,8 +22,7 @@ export interface CardLink {
   /** Popout-key prefix. `${prefix}:${id}` is the persisted card key. */
   keyPrefix: string;
   /** `CARD_THEMES` key, or null when the card doesn't render through the
-   *  shared `themedCard` machinery (e.g. quotation cards style themselves
-   *  inline). */
+   *  shared `themedCard` machinery. */
   themeKey: ThemeKey | null;
 }
 
@@ -81,11 +80,13 @@ export const PANEL_REGISTRY: Record<PanelKind, PanelRegistryEntry> = {
     omniSide: null,
     defaultStripSide: "left",
   },
-  quotations: {
-    kind: "quotations",
-    label: "Quotations",
-    folder: "src/panels/Quotations",
-    card: { kind: "quotation", keyPrefix: "quotation", themeKey: null },
+  reports: {
+    kind: "reports",
+    label: "Reports",
+    folder: "src/panels/Reports",
+    // Polymorphic — hosts both `report` and `report-request` card kinds.
+    // See POLYMORPHIC_CARD_PANEL below.
+    card: null,
     omniEligible: true,
     omniSide: "left",
     defaultStripSide: "left",
@@ -202,7 +203,8 @@ export const CARD_KEY_PREFIXES: Record<CardKind, string> = {
   "cutter-comment": "cutter-comment",
   "cutter-suggestion": "cutter-suggestion",
   "revision-suggestion": "revision-suggestion",
-  quotation: "quotation",
+  report: "report",
+  "report-request": "report-request",
   example: "example",
   ai: "ai",
   error: "error",
@@ -230,7 +232,8 @@ export const CARD_TYPE_LABELS: Record<CardKind, string> = {
   "cutter-comment": "Comment",
   "cutter-suggestion": "Suggestion",
   "revision-suggestion": "Revision",
-  quotation: "Quotation",
+  report: "Report",
+  "report-request": "Report Request",
   example: "Example",
   ai: "AI Request",
   error: "Error",
@@ -249,7 +252,8 @@ export const CARD_TITLE_LABELS: Record<CardKind, string | null> = {
   note: "Note",
   highlight: null,
   archive: "Archive Text",
-  quotation: "Quotation",
+  report: "Report",
+  "report-request": null,
   todo: "Task",
   example: "Example",
   footnote: "Footnote",
@@ -296,6 +300,8 @@ const POLYMORPHIC_CARD_PANEL: Partial<Record<CardKind, PanelKind>> = {
   "cutter-comment": "cutter",
   "cutter-suggestion": "cutter",
   "revision-suggestion": "revisions",
+  report: "reports",
+  "report-request": "reports",
   note: "notes",
   highlight: "notes",
 };

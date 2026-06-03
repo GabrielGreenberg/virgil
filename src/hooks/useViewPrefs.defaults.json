@@ -49,7 +49,7 @@
       "side": "left"
     },
     {
-      "id": "quotations",
+      "id": "reports",
       "side": "left"
     },
     {
@@ -108,7 +108,7 @@
   "omniCategories": {
     "left": [
       "footnotes",
-      "quotations",
+      "reports",
       "examples",
       "citations"
     ],

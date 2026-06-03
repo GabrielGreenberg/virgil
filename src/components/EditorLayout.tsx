@@ -41,7 +41,7 @@ import { CITATIONS_INERT } from "@/hooks/useCitations";
 import ManageStylesModal from "./ManageStylesModal";
 import { useNotes } from "@/hooks/useNotes";
 import { useCutter } from "@/hooks/useCutter";
-import { useQuotations } from "@/hooks/useQuotations";
+import { useReports } from "@/hooks/useReports";
 import {
   isAnchorableNode,
   MIME_ARCHIVE,
@@ -83,6 +83,8 @@ const MARKER_KIND_TO_THEME_KEY: Partial<Record<string, PanelThemeKey>> = {
   // Both cutter card kinds share the panel marker palette ("cut" key).
   "cutter-comment": "cut",
   "cutter-suggestion": "cut",
+  // Both report card kinds share the panel marker palette ("report" key).
+  report: "report",
 };
 import {
   reanchorByText,
@@ -173,7 +175,6 @@ import { OutlineHost } from "./editor-layout/panels/outline-host";
 import { CutterHost } from "./editor-layout/panels/cutter-host";
 import { TodoHost } from "./editor-layout/panels/todo-host";
 import { ArchiveHost } from "./editor-layout/panels/archive-host";
-import { QuotationsHost } from "./editor-layout/panels/quotations-host";
 import { BibliographyHost } from "./editor-layout/panels/bibliography-host";
 import { NotesHost } from "./editor-layout/panels/notes-host";
 import { FootnotesHost } from "./editor-layout/panels/footnotes-host";
@@ -582,7 +583,6 @@ export default function EditorLayout() {
   const notePristine = useMemo(() => pristineManager.forKind("note"), [pristineManager]);
   const cutPristine = useMemo(() => pristineManager.forKind("cut"), [pristineManager]);
   const todoPristine = useMemo(() => pristineManager.forKind("todo"), [pristineManager]);
-  const quotationPristine = useMemo(() => pristineManager.forKind("quotation"), [pristineManager]);
   const footnotePristine = useMemo(() => pristineManager.forKind("footnote"), [pristineManager]);
   const {
     notes,
@@ -607,7 +607,14 @@ export default function EditorLayout() {
     deleteCard: deleteCutterCard,
     discardPristineCards,
   } = useCutter(docIdForHooks, cutPristine);
-  // Anchored selection slots (note, footnote, citation, quotation, example,
+  // Vestigial parity mount (panel rendering moved to EditorPane post-7.8;
+  // this feeds the shell-side margin-item delete handler bundle below).
+  const {
+    cards: reportCards,
+    removeCardParagraphId: removeReportCardParagraphId,
+    deleteCard: deleteReportCard,
+  } = useReports(docIdForHooks);
+  // Anchored selection slots (note, footnote, citation, example,
   // todo, archive, comment, cutter-comment) are now derived from the global
   // cardStore via this hook — single source of truth, shared with EditorPane
   // and any other surface. The legacy useState declarations they replaced
@@ -619,17 +626,10 @@ export default function EditorLayout() {
     selectedTodoId, setSelectedTodoId,
     selectedArchiveId, setSelectedArchiveId,
     selectedCutterCardId, setSelectedCutterCardId,
-    selectedQuotationGroupId, setSelectedQuotationGroupId,
+    selectedReportCardId, setSelectedReportCardId,
     selectedCommentId, setSelectedCommentId,
     selectedExampleId, setSelectedExampleId,
   } = useAnchoredSelectionSlots();
-  const {
-    groups: quotationGroups,
-    addGroup: addQuotationGroup,
-    deleteGroup: deleteQuotationGroup,
-    addParagraphId: addQuotationTextObjectId,
-    removeParagraphId: removeQuotationTextObjectId,
-  } = useQuotations(docIdForHooks, quotationPristine);
   const {
     items: todoItems,
     addItem: addTodo,
@@ -1180,7 +1180,7 @@ export default function EditorLayout() {
   //     of any of the three surfaces, generic across all card kinds
   // Effective anchor for the in-text highlight = hover ?? active.
   const [activeAnchorId, setActiveAnchorId] = useState<string | null>(null);
-  const [activeAnchorKind, setActiveAnchorKind] = useState<"note" | "highlight" | "revision" | "cutter-comment" | "cutter-suggestion" | null>(null);
+  const [activeAnchorKind, setActiveAnchorKind] = useState<"note" | "highlight" | "revision" | "cutter-comment" | "cutter-suggestion" | "report" | "report-request" | null>(null);
   // Hover state for legacy EditorLayout-side consumers (color-theming for
   // active anchors, MARKER_KIND_TO_THEME_KEY lookup). Kept synced from the
   // canonical cardStore.hover via useSyncExternalStore-style subscription
@@ -1204,7 +1204,7 @@ export default function EditorLayout() {
     [prefs.hiddenHighlightTypes],
   );
   const visibleHighlightKinds = useMemo(() => {
-    const out = new Set<"quotation" | "note" | "todo" | "comment" | "cut" | "archive">();
+    const out = new Set<"note" | "todo" | "comment" | "cut" | "archive" | "report">();
     if (!prefs.showHighlights) return out;
     for (const t of ALL_HIGHLIGHT_TYPES) {
       if (!hiddenHighlightTypes.has(t)) out.add(t);
@@ -1220,9 +1220,9 @@ export default function EditorLayout() {
     if (!hoveredEntityId || !hoveredEntityKind) return null;
     return entityToAnchorId(
       { id: hoveredEntityId, kind: hoveredEntityKind },
-      { notes, cutterCards, comments, todos: todoItems, archiveSnippets, quotationGroups, examples: [] },
+      { notes, cutterCards, comments, todos: todoItems, archiveSnippets, examples: [] },
     );
-  }, [hoveredEntityId, hoveredEntityKind, notes, cutterCards, comments, todoItems, archiveSnippets, quotationGroups]);
+  }, [hoveredEntityId, hoveredEntityKind, notes, cutterCards, comments, todoItems, archiveSnippets]);
 
   useLinkHighlight({
     editor: editorInstance,
@@ -1271,7 +1271,6 @@ export default function EditorLayout() {
       case "todo": setSelectedTodoId(itemId); break;
       case "archive": setSelectedArchiveId(itemId); break;
       case "cutter": setSelectedCutterCardId(itemId); break;
-      case "quotations": setSelectedQuotationGroupId(itemId); break;
       case "revisions": setSelectedCommentId(itemId); break;
       case "bibliography": setSelectedBibKey(itemId); break;
       default: break;
@@ -2315,19 +2314,16 @@ export default function EditorLayout() {
   const {
     handleAct,
     handleCreateFootnote,
-    handleQuoteSelection,
     handleAddNoteFromSelection,
     handleCutSelection,
   } = useSelectionToCardActions({
     editorRef,
     addNote,
     addCutterComment,
-    addQuotationGroup,
     actOnSuggestion,
     currentSuggestion,
     setSelectedNoteId,
     setSelectedCutterCardId,
-    setSelectedQuotationGroupId,
     setSelectedFootnoteId,
     prefs,
     setActiveLeft,
@@ -2403,7 +2399,6 @@ export default function EditorLayout() {
   );
 
   const {
-    handleQuotationMarkerClick,
     handleNoteMarkerClick,
     handleCutMarkerClick,
     handleTodoMarkerClick,
@@ -2424,8 +2419,6 @@ export default function EditorLayout() {
     setSelectedCutterCardId,
     selectedTodoId,
     setSelectedTodoId,
-    setSelectedQuotationGroupId,
-    quotationGroups,
     alignOmniCardWithClick,
   });
 
@@ -2539,8 +2532,6 @@ export default function EditorLayout() {
   useFootnoteSyncBridges({ suppressOrphanRef, setOrphanedFootnotes, deleteSnippet });
 
   usePanelDropBridges({
-    addQuotationTextObjectId,
-    setSelectedQuotationGroupId,
     addTodoTextObjectId,
     setSelectedTodoId,
     addNoteTextObjectId,
@@ -2760,10 +2751,6 @@ export default function EditorLayout() {
   useEffect(() => notePristine.registerDiscard((id) => deleteNote(id)), [notePristine, deleteNote]);
   useEffect(() => cutPristine.registerDiscard((id) => deleteCutterCard(id)), [cutPristine, deleteCutterCard]);
   useEffect(() => todoPristine.registerDiscard((id) => deleteTodo(id)), [todoPristine, deleteTodo]);
-  useEffect(
-    () => quotationPristine.registerDiscard((id) => deleteQuotationGroup(id)),
-    [quotationPristine, deleteQuotationGroup],
-  );
   // Citation discard is registered inside EditorPane against its own
   // pristineManager + citationsHook (see EditorPane.tsx). Removed from
   // here when EditorLayout's duplicate `useCitations` mount was hoisted
@@ -3100,7 +3087,7 @@ export default function EditorLayout() {
       selectedTodoId, setSelectedTodoId,
       selectedArchiveId, setSelectedArchiveId,
       selectedCutterCardId, setSelectedCutterCardId,
-      selectedQuotationGroupId, setSelectedQuotationGroupId,
+      selectedReportCardId, setSelectedReportCardId,
       selectedCommentId, setSelectedCommentId,
       selectedBibKey, setSelectedBibKey,
       selectedExampleId, setSelectedExampleId,
@@ -3112,7 +3099,7 @@ export default function EditorLayout() {
       selectedTodoId, setSelectedTodoId,
       selectedArchiveId, setSelectedArchiveId,
       selectedCutterCardId, setSelectedCutterCardId,
-      selectedQuotationGroupId, setSelectedQuotationGroupId,
+      selectedReportCardId, setSelectedReportCardId,
       selectedCommentId, setSelectedCommentId,
       selectedBibKey, setSelectedBibKey,
       selectedExampleId, setSelectedExampleId,
@@ -3131,7 +3118,6 @@ export default function EditorLayout() {
     if (selectedTodoId) cards.push({ panelKind: "todo", cardId: selectedTodoId });
     if (selectedArchiveId) cards.push({ panelKind: "archive", cardId: selectedArchiveId });
     if (selectedCutterCardId) cards.push({ panelKind: "cut", cardId: selectedCutterCardId });
-    if (selectedQuotationGroupId) cards.push({ panelKind: "quote", cardId: selectedQuotationGroupId });
     if (selectedCommentId) cards.push({ panelKind: "comment", cardId: selectedCommentId });
     if (selectedBibKey) cards.push({ panelKind: "bib", cardId: selectedBibKey });
     if (selectedExampleId) cards.push({ panelKind: "example", cardId: selectedExampleId });
@@ -3140,7 +3126,7 @@ export default function EditorLayout() {
     collab.enabled,
     collab.updateSelection,
     selectedNoteId, selectedFootnoteId, selectedCitationId, selectedTodoId,
-    selectedArchiveId, selectedCutterCardId, selectedQuotationGroupId,
+    selectedArchiveId, selectedCutterCardId,
     selectedCommentId, selectedBibKey, selectedExampleId,
   ]);
 
@@ -3165,13 +3151,7 @@ export default function EditorLayout() {
   const marginaliaPanelSides = useMemo(() => {
     const omniLeft = prefs.activeLeft === "omni";
     const omniRight = prefs.activeRight === "omni";
-    // Quotations is a left-side child of OmniView
-    const quotationsSide: "left" | "right" | null =
-      prefs.activeLeft === "quotations" || omniLeft
-        ? "left"
-        : prefs.activeRight === "quotations"
-          ? "right"
-          : null;
+    void omniLeft;
     // Notes, archive, revisions, cutter are right-side children of OmniView
     const notesSide: "left" | "right" | null =
       prefs.activeLeft === "notes"
@@ -3204,7 +3184,6 @@ export default function EditorLayout() {
           ? "right"
           : null;
     return {
-      quotations: quotationsSide,
       notes: notesSide,
       archive: archiveSide,
       revisions: revisionsSide,
@@ -3259,11 +3238,6 @@ export default function EditorLayout() {
   const marginItemHandlers = useMemo<Record<MarginItemKind, MarginItemHandlers>>(
     () =>
       buildMarginItemHandlers({
-        quotations: {
-          groups: quotationGroups,
-          removeParagraphId: removeQuotationTextObjectId,
-          deleteGroup: deleteQuotationGroup,
-        },
         notes: {
           notes,
           removeNoteTextObjectId,
@@ -3289,14 +3263,19 @@ export default function EditorLayout() {
           removeCardParagraphId: removeRevisionTextObjectId,
           deleteCard: deleteRevisionCard,
         },
+        reports: {
+          cards: reportCards,
+          removeCardParagraphId: removeReportCardParagraphId,
+          deleteCard: deleteReportCard,
+        },
       }),
     [
-      quotationGroups, removeQuotationTextObjectId, deleteQuotationGroup,
       notes, removeNoteTextObjectId, deleteNote,
       archiveSnippets, removeArchiveTextObjectId, deleteSnippet,
       cutterCards, removeCardParagraphId, deleteCutterCard,
       todoItems, removeTodoTextObjectId, deleteTodo,
       comments, removeRevisionTextObjectId, deleteRevisionCard,
+      reportCards, removeReportCardParagraphId, deleteReportCard,
     ],
   );
 
@@ -3331,25 +3310,7 @@ export default function EditorLayout() {
       entityKind: kind,
     });
 
-    // Quotation markers — one marker per paragraphId
-    for (const g of quotationGroups) {
-      const pids = getLinkedTextObjectIds(g);
-      if (pids.length === 0) continue;
-      for (const pid of pids) {
-        result.push({
-          id: `${g.id}:${pid}`,
-          entityId: g.id,
-          type: "quote",
-          textObjectId: pid,
-          title: g.title || g.references[0]?.citeKey || "Quotation",
-          onClick: (clickY?: number) => handleQuotationMarkerClick(g.id, clickY),
-          onDelete: () => { void handleMarginItemDelete("quote", g.id, pid); },
-          ...hoverPropsFor(g.id, "quotation"),
-        });
-      }
-    }
-
-    // Note markers — one marker per paragraphId (same pattern as quotations)
+    // Note markers — one marker per paragraphId
     for (const n of notes) {
       const pids = getLinkedTextObjectIds(n);
       if (pids.length === 0) continue;
@@ -3588,8 +3549,6 @@ export default function EditorLayout() {
 
     return result;
   }, [
-    quotationGroups,
-    selectedQuotationGroupId,
     notes,
     selectedNoteId,
     archiveSnippets,
@@ -3598,7 +3557,6 @@ export default function EditorLayout() {
     selectedTodoId,
     rev.anchors,
     rev.blocks,
-    handleQuotationMarkerClick,
     handleNoteMarkerClick,
     handleTodoMarkerClick,
     handleMarginItemDelete,
@@ -3637,9 +3595,9 @@ export default function EditorLayout() {
         hoveredEntityId && hoveredEntityKind
           ? { id: hoveredEntityId, kind: hoveredEntityKind }
           : null,
-        { notes, cutterCards, comments, todos: todoItems, archiveSnippets, quotationGroups, examples: [] },
+        { notes, cutterCards, comments, todos: todoItems, archiveSnippets, examples: [] },
       ),
-    [hoveredEntityId, hoveredEntityKind, notes, cutterCards, comments, todoItems, archiveSnippets, quotationGroups],
+    [hoveredEntityId, hoveredEntityKind, notes, cutterCards, comments, todoItems, archiveSnippets],
   );
   const effectiveAnchorKind = hoveredAnchorKind ?? activeAnchorKind;
   const effectiveAnchorColor = (() => {
@@ -3653,6 +3611,8 @@ export default function EditorLayout() {
       activeAnchorKind === "cutter-comment" ||
       activeAnchorKind === "cutter-suggestion"
         ? "cut"
+        : activeAnchorKind === "report-request"
+        ? "report"
         : activeAnchorKind === "highlight"
         ? "note"
         : activeAnchorKind;
@@ -3765,7 +3725,7 @@ export default function EditorLayout() {
   // OmniView aggregates several child panels on one side; when omni is
   // active, the side-of-panel lookups must include its children so
   // connector lines render from the correct side.
-  //   Left omni children:  footnotes, citations, quotations
+  //   Left omni children:  footnotes, citations
   //   Right omni children: notes, revisions, cutter, archive
   const omniLeftActive = activeLeft === "omni";
   const omniRightActive = activeRight === "omni";

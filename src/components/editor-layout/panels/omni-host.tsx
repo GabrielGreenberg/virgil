@@ -7,7 +7,6 @@ import type { Side } from "@/hooks/useViewPrefs";
 import OmniViewPanel, { type OmniItem, type OmniCategory } from "@/panels/Omni";
 import { buildCitationOmniItems } from "@/panels/Citations";
 import { buildFootnoteOmniItems } from "@/panels/Footnotes";
-import { buildQuotationOmniItems } from "@/panels/Quotations";
 import { buildNoteOmniItems } from "@/panels/Notes";
 import { buildArchiveOmniItems } from "@/panels/Archive";
 import { buildTodoOmniItems } from "@/panels/Todo";
@@ -15,14 +14,15 @@ import { buildExampleOmniItems } from "@/panels/Examples";
 import { buildRevisionOmniItems } from "@/panels/Revisions";
 import { buildErrorOmniItems } from "@/panels/Errors";
 import { buildCutterOmniItems } from "@/panels/Cutter";
+import { buildReportsOmniItems } from "@/panels/Reports";
 import type { useNotes } from "@/hooks/useNotes";
 import type { useTodos } from "@/hooks/useTodos";
-import type { useQuotations } from "@/hooks/useQuotations";
 import type { useCitations } from "@/hooks/useCitations";
 import type { useAnnotations } from "@/hooks/useAnnotations";
 import type { useBibReview } from "@/hooks/useBibReview";
 import type { useRevisions } from "@/hooks/useRevisions";
 import type { useCutter } from "@/hooks/useCutter";
+import type { useReports } from "@/hooks/useReports";
 import type { JSONContent } from "@tiptap/react";
 import type { Transaction } from "@tiptap/pm/state";
 import type {
@@ -45,12 +45,12 @@ const EMPTY_HIDDEN: ReadonlySet<number> = new Set<number>();
 
 type NotesHook = ReturnType<typeof useNotes>;
 type TodosHook = ReturnType<typeof useTodos>;
-type QuotationsHook = ReturnType<typeof useQuotations>;
 type CitationsHook = ReturnType<typeof useCitations>;
 type AnnotationsHook = ReturnType<typeof useAnnotations>;
 type BibReviewHook = ReturnType<typeof useBibReview>;
 type RevisionsHook = ReturnType<typeof useRevisions>;
 type CutterHook = ReturnType<typeof useCutter>;
+type ReportsHook = ReturnType<typeof useReports>;
 
 export interface OmniHostProps {
   side: Side;
@@ -78,17 +78,6 @@ export interface OmniHostProps {
   requestBibReview: BibReviewHook["requestReview"];
   cancelBibReview: BibReviewHook["cancelRequest"];
   getBibReviewStatus: BibReviewHook["getRequestStatus"];
-  // Quotations
-  quotationGroups: QuotationsHook["groups"];
-  deleteQuotationGroup: QuotationsHook["deleteGroup"];
-  updateQuotationGroupTitle: QuotationsHook["updateGroupTitle"];
-  addQuotationReference: QuotationsHook["addReference"];
-  deleteQuotationReference: QuotationsHook["deleteReference"];
-  updateQuotationReferenceCiteKey: QuotationsHook["updateReferenceCiteKey"];
-  addQuotationQuote: QuotationsHook["addQuote"];
-  updateQuotationQuote: QuotationsHook["updateQuote"];
-  deleteQuotationQuote: QuotationsHook["deleteQuote"];
-  updateQuotationNotes: QuotationsHook["updateNotes"];
   // Notes (polymorphic: hosts both `note` and `highlight` cards)
   notesCards: NotesHook["cards"];
   updateNote: NotesHook["updateNote"];
@@ -139,6 +128,13 @@ export interface OmniHostProps {
   updateCutterSuggestionField: CutterHook["updateSuggestionField"];
   setCutterSuggestionStatus: CutterHook["setSuggestionStatus"];
   deleteCutterCard: CutterHook["deleteCard"];
+  // Reports
+  reportCards: ReportsHook["cards"];
+  updateReportContent: ReportsHook["updateReportContent"];
+  updateReportTitle: ReportsHook["updateReportTitle"];
+  updateRequestContent: ReportsHook["updateRequestContent"];
+  setRequestAiRequest: ReportsHook["setRequestAiRequest"];
+  deleteReportCard: ReportsHook["deleteCard"];
   // Shell
   getOmniEnabled: (side: Side) => Set<OmniCategory>;
   getOmniHideAll: (side: Side) => boolean;
@@ -192,13 +188,13 @@ export function OmniHost(p: OmniHostProps) {
   const {
     selectedFootnoteId, setSelectedFootnoteId,
     selectedCitationId, setSelectedCitationId,
-    selectedQuotationGroupId, setSelectedQuotationGroupId,
     selectedNoteId, setSelectedNoteId,
     selectedArchiveId, setSelectedArchiveId,
     selectedTodoId, setSelectedTodoId,
     selectedExampleId, setSelectedExampleId,
     selectedCommentId, setSelectedCommentId,
     selectedCutterCardId, setSelectedCutterCardId,
+    selectedReportCardId, setSelectedReportCardId,
   } = useSelectionsContext();
   const { getCitationDisplayText, onCitationCreated } = useCitationDisplayContext();
 
@@ -217,7 +213,6 @@ export function OmniHost(p: OmniHostProps) {
     setSelectedFootnoteId(id);
     if (id !== null) {
       setSelectedCitationId(null);
-      setSelectedQuotationGroupId(null);
       setSelectedNoteId(null);
       setSelectedArchiveId(null);
       setSelectedTodoId(null);
@@ -225,7 +220,6 @@ export function OmniHost(p: OmniHostProps) {
   }, [
     setSelectedFootnoteId,
     setSelectedCitationId,
-    setSelectedQuotationGroupId,
     setSelectedNoteId,
     setSelectedArchiveId,
     setSelectedTodoId,
@@ -234,7 +228,6 @@ export function OmniHost(p: OmniHostProps) {
     setSelectedCitationId(id);
     if (id !== null) {
       setSelectedFootnoteId(null);
-      setSelectedQuotationGroupId(null);
       setSelectedNoteId(null);
       setSelectedArchiveId(null);
       setSelectedTodoId(null);
@@ -242,24 +235,6 @@ export function OmniHost(p: OmniHostProps) {
   }, [
     setSelectedCitationId,
     setSelectedFootnoteId,
-    setSelectedQuotationGroupId,
-    setSelectedNoteId,
-    setSelectedArchiveId,
-    setSelectedTodoId,
-  ]);
-  const setQuotationGroupInOmni = useCallback((id: string | null) => {
-    setSelectedQuotationGroupId(id);
-    if (id !== null) {
-      setSelectedFootnoteId(null);
-      setSelectedCitationId(null);
-      setSelectedNoteId(null);
-      setSelectedArchiveId(null);
-      setSelectedTodoId(null);
-    }
-  }, [
-    setSelectedQuotationGroupId,
-    setSelectedFootnoteId,
-    setSelectedCitationId,
     setSelectedNoteId,
     setSelectedArchiveId,
     setSelectedTodoId,
@@ -269,7 +244,6 @@ export function OmniHost(p: OmniHostProps) {
     if (id !== null) {
       setSelectedFootnoteId(null);
       setSelectedCitationId(null);
-      setSelectedQuotationGroupId(null);
       setSelectedArchiveId(null);
       setSelectedTodoId(null);
     }
@@ -277,7 +251,6 @@ export function OmniHost(p: OmniHostProps) {
     setSelectedNoteId,
     setSelectedFootnoteId,
     setSelectedCitationId,
-    setSelectedQuotationGroupId,
     setSelectedArchiveId,
     setSelectedTodoId,
   ]);
@@ -286,7 +259,6 @@ export function OmniHost(p: OmniHostProps) {
     if (id !== null) {
       setSelectedFootnoteId(null);
       setSelectedCitationId(null);
-      setSelectedQuotationGroupId(null);
       setSelectedNoteId(null);
       setSelectedTodoId(null);
     }
@@ -294,7 +266,6 @@ export function OmniHost(p: OmniHostProps) {
     setSelectedArchiveId,
     setSelectedFootnoteId,
     setSelectedCitationId,
-    setSelectedQuotationGroupId,
     setSelectedNoteId,
     setSelectedTodoId,
   ]);
@@ -303,7 +274,6 @@ export function OmniHost(p: OmniHostProps) {
     if (id !== null) {
       setSelectedFootnoteId(null);
       setSelectedCitationId(null);
-      setSelectedQuotationGroupId(null);
       setSelectedNoteId(null);
       setSelectedArchiveId(null);
     }
@@ -311,7 +281,6 @@ export function OmniHost(p: OmniHostProps) {
     setSelectedTodoId,
     setSelectedFootnoteId,
     setSelectedCitationId,
-    setSelectedQuotationGroupId,
     setSelectedNoteId,
     setSelectedArchiveId,
   ]);
@@ -363,8 +332,7 @@ export function OmniHost(p: OmniHostProps) {
       if (id !== null) {
         setSelectedFootnoteId(null);
         setSelectedCitationId(null);
-        setSelectedQuotationGroupId(null);
-        setSelectedNoteId(null);
+          setSelectedNoteId(null);
         setSelectedArchiveId(null);
         setSelectedTodoId(null);
       }
@@ -373,8 +341,7 @@ export function OmniHost(p: OmniHostProps) {
       setSelectedExampleId,
       setSelectedFootnoteId,
       setSelectedCitationId,
-      setSelectedQuotationGroupId,
-      setSelectedNoteId,
+        setSelectedNoteId,
       setSelectedArchiveId,
       setSelectedTodoId,
     ],
@@ -389,6 +356,9 @@ export function OmniHost(p: OmniHostProps) {
   const setCutterInOmni = useCallback((id: string | null) => {
     setSelectedCutterCardId(id);
   }, [setSelectedCutterCardId]);
+  const setReportInOmni = useCallback((id: string | null) => {
+    setSelectedReportCardId(id);
+  }, [setSelectedReportCardId]);
 
   // Suggestion accept/reject — call setSuggestionStatus directly. The
   // native panel hosts also fire follow-up AI requests on accept; keeping
@@ -451,24 +421,6 @@ export function OmniHost(p: OmniHostProps) {
       getBibReviewStatus: p.getBibReviewStatus,
       updateBibEntry: p.updateBibEntry,
       updateBibKeyAndType: p.updateBibKeyAndType,
-    }),
-    ...buildQuotationOmniItems({
-      quotationGroups: p.quotationGroups,
-      selectedQuotationGroupId,
-      setSelectedQuotationGroupId: setQuotationGroupInOmni,
-      jumpToCard,
-      findParagraphPos,
-      bibEntries: p.bibEntries,
-      bibPackage: p.bibPackage,
-      deleteQuotationGroup: p.deleteQuotationGroup,
-      updateQuotationGroupTitle: p.updateQuotationGroupTitle,
-      addQuotationReference: p.addQuotationReference,
-      deleteQuotationReference: p.deleteQuotationReference,
-      updateQuotationReferenceCiteKey: p.updateQuotationReferenceCiteKey,
-      addQuotationQuote: p.addQuotationQuote,
-      updateQuotationQuote: p.updateQuotationQuote,
-      deleteQuotationQuote: p.deleteQuotationQuote,
-      updateQuotationNotes: p.updateQuotationNotes,
     }),
     ...buildNoteOmniItems({
       cards: p.notesCards,
@@ -560,11 +512,22 @@ export function OmniHost(p: OmniHostProps) {
       rejectSuggestion: rejectCutterInOmni,
       deleteCard: p.deleteCutterCard,
     }),
+    ...buildReportsOmniItems({
+      cards: p.reportCards,
+      selectedId: selectedReportCardId,
+      setSelectedId: setReportInOmni,
+      jumpToCard,
+      findParagraphPos,
+      updateReportContent: p.updateReportContent,
+      updateReportTitle: p.updateReportTitle,
+      updateRequestContent: p.updateRequestContent,
+      setRequestAiRequest: p.setRequestAiRequest,
+      deleteCard: p.deleteReportCard,
+    }),
   ], [
     // Data arrays
     p.footnotes, p.orphanedFootnotes,
     p.citations, p.citationPositionMap, p.bibEntries, p.bibPackage,
-    p.quotationGroups,
     p.notesCards,
     p.sortedArchiveSnippets, p.anchoredIds,
     p.todoItems,
@@ -572,14 +535,15 @@ export function OmniHost(p: OmniHostProps) {
     p.revisionCards,
     p.latexErrors, p.paragraphByErrorId, p.errorSnippets, p.dismissedErrorIds,
     p.cutterCards,
+    p.reportCards,
     // Selection ids
-    selectedFootnoteId, selectedCitationId, selectedQuotationGroupId,
+    selectedFootnoteId, selectedCitationId,
     selectedNoteId, selectedArchiveId, selectedTodoId, selectedExampleId,
-    selectedCommentId, selectedCutterCardId, p.selectedErrorId,
+    selectedCommentId, selectedCutterCardId, selectedReportCardId, p.selectedErrorId,
     // Stable callbacks from this component
-    setFootnoteInOmni, setCitationInOmni, setQuotationGroupInOmni,
+    setFootnoteInOmni, setCitationInOmni,
     setNoteInOmni, setArchiveInOmni, setTodoInOmni, setExampleInOmni,
-    setRevisionInOmni, setCutterInOmni, p.setSelectedErrorId,
+    setRevisionInOmni, setCutterInOmni, setReportInOmni, p.setSelectedErrorId,
     acceptRevisionInOmni, rejectRevisionInOmni, acceptCutterInOmni, rejectCutterInOmni,
     scrollToFootnote, scrollToCitation, scrollToExample, replaceExampleLatex, jumpToCard, findParagraphPos,
     editorInstance,
@@ -592,11 +556,6 @@ export function OmniHost(p: OmniHostProps) {
     p.updateCitation, p.getFormattedBib, p.updateBibEntry, p.updateBibKeyAndType,
     p.getAnnotation, p.setAnnotation,
     p.requestBibReview, p.cancelBibReview, p.getBibReviewStatus,
-    // Quotation handlers
-    p.deleteQuotationGroup, p.updateQuotationGroupTitle,
-    p.addQuotationReference, p.deleteQuotationReference, p.updateQuotationReferenceCiteKey,
-    p.addQuotationQuote, p.updateQuotationQuote, p.deleteQuotationQuote,
-    p.updateQuotationNotes,
     // Note handlers
     p.updateNote, p.updateNoteTitle, p.deleteNote,
     // Archive handlers

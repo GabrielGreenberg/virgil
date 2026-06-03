@@ -27,6 +27,7 @@ export interface UseLinkedAnchorReconcilerArgs {
   highlights:  ReadonlyArray<CardWithLinks>;
   cutterCards: ReadonlyArray<CardWithLinks>;
   comments:    ReadonlyArray<CardWithLinks>;
+  reportCards: ReadonlyArray<CardWithLinks>;
 }
 
 export function useLinkedAnchorReconciler({
@@ -35,6 +36,7 @@ export function useLinkedAnchorReconciler({
   highlights,
   cutterCards,
   comments,
+  reportCards,
 }: UseLinkedAnchorReconcilerArgs): void {
   // Memoize on the four array identities. EditorPane rebuilds collection
   // wrappers on every render — depending on a wrapper object literal
@@ -52,8 +54,9 @@ export function useLinkedAnchorReconciler({
     add(highlights);
     add(cutterCards);
     add(comments);
+    add(reportCards);
     return ids;
-  }, [notes, highlights, cutterCards, comments]);
+  }, [notes, highlights, cutterCards, comments, reportCards]);
 
   useLayoutEffect(() => {
     if (!editor) return;

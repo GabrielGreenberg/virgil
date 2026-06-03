@@ -23,9 +23,9 @@ import { useRef, useCallback, useEffect, useMemo } from "react";
 export type CardKind =
   | "note"
   | "cut"
+  | "report"
   | "todo"
   | "footnote"
-  | "quotation"
   | "citation";
 
 export interface PristineKindApi {

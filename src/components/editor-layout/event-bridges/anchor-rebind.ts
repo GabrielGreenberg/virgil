@@ -14,8 +14,6 @@ type AddRemove = {
  * an if/else ladder.
  */
 export function useAnchorRebindBridge(deps: {
-  addQuotationTextObjectId: AddRemove["add"];
-  removeQuotationTextObjectId: AddRemove["remove"];
   addTodoTextObjectId: AddRemove["add"];
   removeTodoTextObjectId: AddRemove["remove"];
   addNoteTextObjectId: AddRemove["add"];
@@ -26,7 +24,6 @@ export function useAnchorRebindBridge(deps: {
   removeCardParagraphId: AddRemove["remove"];
 }) {
   const {
-    addQuotationTextObjectId, removeQuotationTextObjectId,
     addTodoTextObjectId, removeTodoTextObjectId,
     addNoteTextObjectId, removeNoteTextObjectId,
     addArchiveTextObjectId, removeArchiveTextObjectId,
@@ -35,7 +32,6 @@ export function useAnchorRebindBridge(deps: {
 
   useEffect(() => {
     const mutators: Record<string, AddRemove | undefined> = {
-      quote: { remove: removeQuotationTextObjectId, add: addQuotationTextObjectId },
       todo: { remove: removeTodoTextObjectId, add: addTodoTextObjectId },
       note: { remove: removeNoteTextObjectId, add: addNoteTextObjectId },
       archive: { remove: removeArchiveTextObjectId, add: addArchiveTextObjectId },
@@ -51,5 +47,5 @@ export function useAnchorRebindBridge(deps: {
     };
     window.addEventListener("virgil-marginalia-reanchor", handler);
     return () => window.removeEventListener("virgil-marginalia-reanchor", handler);
-  }, [addQuotationTextObjectId, removeQuotationTextObjectId, addNoteTextObjectId, removeNoteTextObjectId, addTodoTextObjectId, removeTodoTextObjectId, addArchiveTextObjectId, removeArchiveTextObjectId, addCardParagraphId, removeCardParagraphId]);
+  }, [addNoteTextObjectId, removeNoteTextObjectId, addTodoTextObjectId, removeTodoTextObjectId, addArchiveTextObjectId, removeArchiveTextObjectId, addCardParagraphId, removeCardParagraphId]);
 }

@@ -8,8 +8,9 @@ import type {
   CutterSuggestionCard,
   RevisionCommentCard,
   RevisionSuggestionCard,
+  ReportCard,
+  ReportRequestCard,
   TodoItem,
-  QuotationGroup,
   CitationRef,
   ArchivedSnippet,
 } from "@/lib/types";
@@ -82,14 +83,22 @@ export interface CardCreationDeps {
     originalText?: string,
     anchor?: AnchorRef,
   ) => RevisionSuggestionCard;
+  addReport: (
+    paragraphId: string | null,
+    content?: JSONContent,
+    anchor?: AnchorRef,
+    targetKind?: TextObjectKind,
+    author?: "human" | "ai",
+  ) => ReportCard;
+  addReportRequest: (
+    paragraphId: string | null,
+    content?: JSONContent,
+    anchor?: AnchorRef,
+    targetKind?: TextObjectKind,
+  ) => ReportRequestCard;
   addTodo: () => TodoItem;
   updateTodo: (id: string, text: string) => void;
   addTodoTextObjectId: (id: string, paragraphId: string, targetKind?: TextObjectKind) => void;
-  addQuotationGroup: (init?: {
-    text?: string;
-    paragraphId?: string | null;
-    targetKind?: TextObjectKind;
-  }) => QuotationGroup;
   addCitation: (command: string, existingId?: string, unanchored?: boolean) => CitationRef;
   /** Archive — mints a snippet and (optionally) writes a Mode A
    *  paragraph link. The dispatcher owns the editor mutation (cleanup
@@ -104,10 +113,10 @@ export interface CardCreationDeps {
   setSelectedArchiveId: (id: string | null) => void;
   setSelectedNoteId: Dispatch<SetStateAction<string | null>>;
   setSelectedCutterCardId: Dispatch<SetStateAction<string | null>>;
+  setSelectedReportCardId: Dispatch<SetStateAction<string | null>>;
   setSelectedCommentId: Dispatch<SetStateAction<string | null>>;
   setSelectedTodoId: Dispatch<SetStateAction<string | null>>;
   setSelectedFootnoteId: Dispatch<SetStateAction<string | null>>;
-  setSelectedQuotationGroupId: Dispatch<SetStateAction<string | null>>;
   setSelectedCitationId: Dispatch<SetStateAction<string | null>>;
   prefs: ViewPrefs;
   setActiveLeft: (id: PanelId) => void;
@@ -177,6 +186,22 @@ export interface CardCreationApi {
     anchorRect?: DOMRect | null;
     mode?: CardCreateMode;
   }) => CutterSuggestionCard;
+  createReport: (opts: {
+    paragraphId?: string | null;
+    content?: JSONContent;
+    anchor?: AnchorRef;
+    anchorRect?: DOMRect | null;
+    mode?: CardCreateMode;
+    targetKind?: TextObjectKind;
+  }) => ReportCard;
+  createReportRequest: (opts: {
+    paragraphId?: string | null;
+    content?: JSONContent;
+    anchor?: AnchorRef;
+    anchorRect?: DOMRect | null;
+    mode?: CardCreateMode;
+    targetKind?: TextObjectKind;
+  }) => ReportRequestCard;
   createRevisionComment: (opts: {
     paragraphId?: string | null;
     content?: JSONContent;
@@ -204,13 +229,6 @@ export interface CardCreationApi {
     anchorRect?: DOMRect | null;
     mode?: CardCreateMode;
   }) => { footnoteId: string } | null;
-  createQuotation: (opts: {
-    text?: string;
-    paragraphId?: string | null;
-    anchorRect?: DOMRect | null;
-    mode?: CardCreateMode;
-    targetKind?: TextObjectKind;
-  }) => QuotationGroup;
   createCitation: (opts: {
     command?: string;
     /** Pre-allocated id for the panel ref. Use when the caller has
@@ -252,10 +270,11 @@ export function useCardCreation(deps: CardCreationDeps): CardCreationApi {
     addCutterSuggestion,
     addRevisionComment,
     addRevisionSuggestion,
+    addReport,
+    addReportRequest,
     addTodo,
     updateTodo,
     addTodoTextObjectId,
-    addQuotationGroup,
     addCitation,
     archiveContent,
     updateArchiveSnippet,
@@ -263,10 +282,10 @@ export function useCardCreation(deps: CardCreationDeps): CardCreationApi {
     setSelectedArchiveId,
     setSelectedNoteId,
     setSelectedCutterCardId,
+    setSelectedReportCardId,
     setSelectedCommentId,
     setSelectedTodoId,
     setSelectedFootnoteId,
-    setSelectedQuotationGroupId,
     setSelectedCitationId,
     prefs,
     setActiveLeft,
@@ -419,6 +438,49 @@ export function useCardCreation(deps: CardCreationDeps): CardCreationApi {
     ],
   );
 
+  const createReport = useCallback<CardCreationApi["createReport"]>(
+    (opts) => {
+      const card = addReport(
+        opts.paragraphId ?? null,
+        opts.content,
+        opts.anchor,
+        opts.targetKind,
+      );
+      setSelectedReportCardId(card.id);
+      pin("reports", card.id);
+      if (opts.mode === "omni") return card;
+      if (fromToolbar(opts)) popCardAtAnchor("report", card.id, opts.anchorRect!);
+      else ensurePanelActive("reports");
+      return card;
+    },
+    [addReport, setSelectedReportCardId, pin, ensurePanelActive, popCardAtAnchor],
+  );
+
+  const createReportRequest = useCallback<CardCreationApi["createReportRequest"]>(
+    (opts) => {
+      const card = addReportRequest(
+        opts.paragraphId ?? null,
+        opts.content,
+        opts.anchor,
+        opts.targetKind,
+      );
+      setSelectedReportCardId(card.id);
+      pin("reports", card.id);
+      if (opts.mode === "omni") return card;
+      if (fromToolbar(opts))
+        popCardAtAnchor("report-request", card.id, opts.anchorRect!);
+      else ensurePanelActive("reports");
+      return card;
+    },
+    [
+      addReportRequest,
+      setSelectedReportCardId,
+      pin,
+      ensurePanelActive,
+      popCardAtAnchor,
+    ],
+  );
+
   const createRevisionComment = useCallback<
     CardCreationApi["createRevisionComment"]
   >(
@@ -508,26 +570,6 @@ export function useCardCreation(deps: CardCreationDeps): CardCreationApi {
     [editorRef, markFootnotePristine, setSelectedFootnoteId, pin, ensurePanelActive, popCardAtAnchor, getFootnoteCount],
   );
 
-  const createQuotation = useCallback<CardCreationApi["createQuotation"]>(
-    (opts) => {
-      const group =
-        opts.text || opts.paragraphId
-          ? addQuotationGroup({
-              text: opts.text,
-              paragraphId: opts.paragraphId,
-              targetKind: opts.targetKind,
-            })
-          : addQuotationGroup();
-      setSelectedQuotationGroupId(group.id);
-      pin("quotation", group.id);
-      if (opts.mode === "omni") return group;
-      if (fromToolbar(opts)) popCardAtAnchor("quotation", group.id, opts.anchorRect!);
-      else ensurePanelActive("quotations");
-      return group;
-    },
-    [addQuotationGroup, setSelectedQuotationGroupId, pin, ensurePanelActive, popCardAtAnchor],
-  );
-
   const createArchiveSnippet = useCallback<
     CardCreationApi["createArchiveSnippet"]
   >(
@@ -583,11 +625,12 @@ export function useCardCreation(deps: CardCreationDeps): CardCreationApi {
       deleteHighlightOrNote,
       createCutterComment,
       createCutterSuggestion,
+      createReport,
+      createReportRequest,
       createRevisionComment,
       createRevisionSuggestion,
       createTodo,
       createFootnote,
-      createQuotation,
       createCitation,
       createArchiveSnippet,
     }),
@@ -598,11 +641,12 @@ export function useCardCreation(deps: CardCreationDeps): CardCreationApi {
       deleteHighlightOrNote,
       createCutterComment,
       createCutterSuggestion,
+      createReport,
+      createReportRequest,
       createRevisionComment,
       createRevisionSuggestion,
       createTodo,
       createFootnote,
-      createQuotation,
       createCitation,
       createArchiveSnippet,
     ],

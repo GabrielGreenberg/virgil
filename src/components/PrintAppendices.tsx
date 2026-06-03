@@ -18,7 +18,6 @@ const PANEL_ORDER: PrintPanelKey[] = [
   "bibliography",
   "citations",
   "notes",
-  "quotations",
   "examples",
   "todo",
   "archive",

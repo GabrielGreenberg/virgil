@@ -59,7 +59,7 @@ with `/loop /editor/review`.
       all pending style-merges in one call; skip after the first one)*
    3. `kind: "footnote"` → `/editor/draft-footnote <docPath> <id>`
    4. `kind: "citation"` → `/editor/find-citation <docPath> <id>`
-   5. `kind: "quotation"` → `/editor/draft-quotation <docPath> <id>`
+   5. `kind: "report"` → `/editor/answer-report-request <docPath> <id>`
    6. `kind: "note"` → `/editor/answer-note-request <docPath> <id>`
    7. `kind: "todo"` → `/editor/answer-todo-request <docPath> <id>`
    8. `kind: "suggestion"` → `/editor/draft-suggestion <docPath> <id>`

@@ -13,7 +13,6 @@ import {
   MARGINALIA_GUTTER_WIDTH_RIGHT,
   MARGINALIA_ICON_SIZE,
   MIME_MARGINALIA_MOVE,
-  MIME_QUOTATION,
   MIME_NOTE,
   MIME_TODO,
   MIME_ARCHIVE_ANCHOR,
@@ -42,7 +41,6 @@ import {
 
 /** Marker type → panel theme key for color overrides. */
 const MARKER_TO_THEME_KEY: Partial<Record<keyof typeof MARKER_META, PanelThemeKey>> = {
-  quote: "quote",
   note: "note",
   archive: "archive",
   revision: "revision",
@@ -129,7 +127,7 @@ export default function Marginalia({ editor, markers, panelSides }: MarginaliaPr
   );
 
   // Imperative vertical drop indicator for paragraph-linking drags
-  // (marginalia gutter icons, quotation panel, note panel).
+  // (marginalia gutter icons, reports panel, note panel).
   useEffect(() => {
     if (!scrollEl || !editor) return;
     let indicator: HTMLDivElement | null = null;
@@ -274,22 +272,6 @@ export default function Marginalia({ editor, markers, panelSides }: MarginaliaPr
             window.dispatchEvent(
               new CustomEvent("virgil-marginalia-reanchor", {
                 detail: { type, entityId, oldParagraphId: currentParagraphId, newParagraphId: paragraphId },
-              })
-            );
-          }
-        } catch { /* ignore */ }
-        return;
-      }
-
-      // --- Quotation drop (from QuotationsPanel) ---
-      const quotData = e.dataTransfer?.getData(MIME_QUOTATION);
-      if (quotData) {
-        try {
-          const { groupId } = JSON.parse(quotData);
-          if (groupId) {
-            window.dispatchEvent(
-              new CustomEvent("virgil-quotation-drop", {
-                detail: { groupId, paragraphId },
               })
             );
           }

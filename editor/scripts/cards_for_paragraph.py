@@ -10,7 +10,7 @@ Usage:  python3 cards_for_paragraph.py <docPath> <uuid>
 
 Emits one JSON line per matched card:
   { "panel": "notes" | "todos" | "cutter" | "revisions" | "citations" |
-             "quotations" | "footnotes" | "examples",
+             "reports" | "footnotes" | "examples",
     "cardId": "...",
     "kind":  <card kind>,
     "summary": <short text of the card body>,
@@ -117,19 +117,20 @@ def walk(doc, uuid: str) -> int:
                 emit(row)
                 matched += 1
 
-    # Quotations (group cards with their own links)
-    quotes = read_json(sidecar(doc, "quotations.json"), default={"groups": []})
-    if isinstance(quotes, dict):
-        for q in quotes.get("groups", []) or []:
-            if matches(q, uuid):
-                emit(
-                    {
-                        "panel": "quotations",
-                        "cardId": q.get("id"),
-                        "kind": "quotation",
-                        "summary": summarize(q, ["title", "text"]),
-                    }
-                )
+    # Reports (reports + report-requests)
+    reports = read_json(sidecar(doc, "reports.json"), default={"cards": []})
+    if isinstance(reports, dict):
+        for c in reports.get("cards", []) or []:
+            if matches(c, uuid):
+                row = {
+                    "panel": "reports",
+                    "cardId": c.get("id"),
+                    "kind": c.get("kind"),
+                    "summary": summarize(c, ["title", "text"]),
+                }
+                if c.get("kind") == "report-request":
+                    row["aiRequest"] = bool(c.get("aiRequest"))
+                emit(row)
                 matched += 1
 
     # Citations (atoms — pos-anchored, but some carry links via migrations)

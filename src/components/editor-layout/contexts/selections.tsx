@@ -32,8 +32,8 @@ export interface SelectionsContextValue {
   setSelectedArchiveId: Dispatch<SetStateAction<string | null>>;
   selectedCutterCardId: string | null;
   setSelectedCutterCardId: Dispatch<SetStateAction<string | null>>;
-  selectedQuotationGroupId: string | null;
-  setSelectedQuotationGroupId: Dispatch<SetStateAction<string | null>>;
+  selectedReportCardId: string | null;
+  setSelectedReportCardId: Dispatch<SetStateAction<string | null>>;
   selectedCommentId: string | null;
   setSelectedCommentId: Dispatch<SetStateAction<string | null>>;
   selectedBibKey: string | null;
@@ -138,7 +138,6 @@ function useSelectionsValue(inputs: SelectionsProviderInputs): SelectionsContext
   const setSelectedCitationId = useCallback(makeKindSetter("citation"), []);
   const setSelectedTodoId = useCallback(makeKindSetter("todo"), []);
   const setSelectedArchiveId = useCallback(makeKindSetter("archive"), []);
-  const setSelectedQuotationGroupId = useCallback(makeKindSetter("quotation"), []);
   const setSelectedExampleId = useCallback(makeKindSetter("example"), []);
   // Cutter and Revisions still share one slot per panel until U7 splits
   // their polymorphic kinds. Both slots accept any of the panel's two
@@ -165,6 +164,26 @@ function useSelectionsValue(inputs: SelectionsProviderInputs): SelectionsContext
     },
     [],
   );
+  // Reports shares one slot for its two polymorphic kinds (report +
+  // report-request), mirroring the Cutter slot above.
+  const setSelectedReportCardId = useCallback<Dispatch<SetStateAction<string | null>>>(
+    (action) => {
+      const focused = polymorphicFocusFor(["report", "report-request"]);
+      const curId = focused ? focused.id : null;
+      const nextId = typeof action === "function" ? action(curId) : action;
+      if (nextId == null) {
+        const t = cardStore.getState().transient;
+        if (t && (t.kind === "report" || t.kind === "report-request")) {
+          cardStore.setTransient(null);
+        }
+        return;
+      }
+      const kind: EntityKind =
+        focused && focused.kind === "report-request" ? "report-request" : "report";
+      cardStore.setTransient({ kind, id: nextId });
+    },
+    [],
+  );
   const setSelectedCommentId = useCallback<Dispatch<SetStateAction<string | null>>>(
     (action) => {
       const focused = polymorphicFocusFor(["comment", "revision-suggestion"]);
@@ -185,6 +204,7 @@ function useSelectionsValue(inputs: SelectionsProviderInputs): SelectionsContext
   );
 
   const cutterId = sel && (sel.kind === "cutter-comment" || sel.kind === "cutter-suggestion") ? sel.id : null;
+  const reportId = sel && (sel.kind === "report" || sel.kind === "report-request") ? sel.id : null;
   const commentId = sel && (sel.kind === "comment" || sel.kind === "revision-suggestion") ? sel.id : null;
 
   return useMemo<SelectionsContextValue>(
@@ -201,8 +221,8 @@ function useSelectionsValue(inputs: SelectionsProviderInputs): SelectionsContext
       setSelectedArchiveId,
       selectedCutterCardId: cutterId,
       setSelectedCutterCardId,
-      selectedQuotationGroupId: idFor("quotation"),
-      setSelectedQuotationGroupId,
+      selectedReportCardId: reportId,
+      setSelectedReportCardId,
       selectedCommentId: commentId,
       setSelectedCommentId,
       selectedExampleId: idFor("example"),
@@ -211,10 +231,11 @@ function useSelectionsValue(inputs: SelectionsProviderInputs): SelectionsContext
       setSelectedBibKey: inputs.setSelectedBibKey,
     }),
     // sel changing covers all per-kind id changes; setters are stable.
-    [sel, cutterId, commentId, inputs.selectedBibKey, inputs.setSelectedBibKey,
+    [sel, cutterId, reportId, commentId, inputs.selectedBibKey, inputs.setSelectedBibKey,
       setSelectedNoteId, setSelectedFootnoteId, setSelectedCitationId,
       setSelectedTodoId, setSelectedArchiveId, setSelectedCutterCardId,
-      setSelectedQuotationGroupId, setSelectedCommentId, setSelectedExampleId],
+      setSelectedReportCardId,
+      setSelectedCommentId, setSelectedExampleId],
   );
 }
 

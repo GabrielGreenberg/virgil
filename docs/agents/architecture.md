@@ -11,7 +11,7 @@ Cross-cutting systems that most features touch.
 | Panel/card taxonomy | [src/panels/panel-registry.ts](../../src/panels/panel-registry.ts) (`PANEL_REGISTRY`) | Display labels, card kinds, key prefixes, view-mode defaults, omni eligibility, default strip side |
 | Link kinds | [src/links/link-registry.ts](../../src/links/link-registry.ts) (`LINK_REGISTRY`) | Multiplicity, connector style, highlight behavior per link kind |
 | TextObject kinds | [src/text-objects/text-object-registry.ts](../../src/text-objects/text-object-registry.ts) (`TEXT_OBJECT_REGISTRY`) | Closed kind union (paragraph, heading, list, list item, example item, atom blocks, linkedRange — 16 kinds total); per-kind meta drives grab-handle layout, float body component, drop adapter (wrap vs direct), move-source collector, source-marker round-trip. Adding a new TextObject kind = one entry here + `groups: "textObject"` on its node spec. See [TEXT-OBJECT-REFACTOR.md](../../TEXT-OBJECT-REFACTOR.md) |
-| Card themes | `CARD_THEMES` in [src/components/panel-primitives.tsx](../../src/components/panel-primitives.tsx) | footnote, note, archive, todo, bib, citation, comment, aiRequest, cut, error, highlight (yellow tint; defined in `panel-theme.defaults.json` under the `highlight` key, no dedicated `CARD_THEMES` entry — highlights paint via the `tintColor` mark attr, not the card-body theme); quotation falls back to default |
+| Card themes | `CARD_THEMES` in [src/components/panel-primitives.tsx](../../src/components/panel-primitives.tsx) | footnote, note, archive, todo, bib, citation, comment, aiRequest, cut, error, report, highlight (yellow tint; defined in `panel-theme.defaults.json` under the `highlight` key, no dedicated `CARD_THEMES` entry — highlights paint via the `tintColor` mark attr, not the card-body theme) |
 | Auto-title labels | `CARD_TITLE_LABELS` + `nextCardTitle(kind, count)` in [src/panels/panel-registry.ts](../../src/panels/panel-registry.ts) | Per-CardKind label string (or `null` to opt out — comments / suggestions / citations / ai / bib / error don't auto-title). Used at card creation: `nextCardTitle("note", existingCount)` → `"Note 4"` |
 | Design tokens | [src/app/globals.css](../../src/app/globals.css) + [src/STYLE_GUIDE.md](../../src/STYLE_GUIDE.md) | Semantic CSS variables (`--surface`, `--ink-body`, `--accent`, etc.) |
 | Type definitions | [src/lib/types.ts](../../src/lib/types.ts) | `VirgilSidecar`, `EditorStateData`, `Suggestion`, `ReviewRequest`, `Link`, etc. |
@@ -31,7 +31,7 @@ All in `src/hooks/`. Full list (~50 files) is large; these are the ones most oft
 | `useSuggestions` | AI line-edit suggestion state |
 | `useArchive` | Archived snippets |
 | `useTodos` | Todo items |
-| `useQuotations` | Quotation groups |
+| `useReports` | Reports (report + report-request cards) |
 | `useExamples` | Expex example blocks (harvests `exampleBlock` nodes from editor doc) |
 | `useCutter` | Cut items |
 | `useWordCount` | Live word counts by section |
@@ -96,7 +96,7 @@ All are JSON files. Schemas in [src/lib/types.ts](../../src/lib/types.ts).
 | `virgil.json` | Per-paragraph metadata: titles, fingerprints | Omni view, search breadcrumbs |
 | `suggestions.json` | AI line-edit proposals | **Revisions panel** (suggestion cards beside comments; `y`/`n`/`s` keyboard controls); progress bar lives in the Revisions panel header |
 | `revisions.json` | Comment threads (anchored or paper-wide); legacy `GeneralRevision`/`TextRevision` shapes fold forward to one `Comment` type on read | Revisions panel |
-| `ai-requests.json` | Queued requests for an agent to resolve | Per-panel "ask" affordances (Footnotes, Notes, Quotations, Citations, Todo). Also fed by the **AI request bridge** ([src/lib/ai-request-bridge.ts](../../src/lib/ai-request-bridge.ts)), which collapses per-card sticky `aiRequest:true` flags on notes/todos/cutter-comments/revision-comments into a single drainable queue with `linkedTo`. Editor-side skills under `editor/` (see [editor/AGENTS.md](../../editor/AGENTS.md)) drain it |
+| `ai-requests.json` | Queued requests for an agent to resolve | Per-panel "ask" affordances (Footnotes, Notes, Reports, Citations, Todo). Also fed by the **AI request bridge** ([src/lib/ai-request-bridge.ts](../../src/lib/ai-request-bridge.ts)), which collapses per-card sticky `aiRequest:true` flags on notes/todos/cutter-comments/revision-comments into a single drainable queue with `linkedTo`. Editor-side skills under `editor/` (see [editor/AGENTS.md](../../editor/AGENTS.md)) drain it |
 | `notifications.json` | Per-doc inbox of completion entries written by editor-side skills | [src/hooks/useDocNotificationStream.ts](../../src/hooks/useDocNotificationStream.ts) polls and toasts unseen items |
 | `bib-review-requests.json` | Per-entry bibliography field/note reviews | Bibliography cards |
 | `editor-state.json` | Last-edited paragraph + collapsed section folds + misc editor state. Schema moved from PM positions to paragraph UUIDs in 7d702de so structural edits between sessions don't lose the target | Restored on reopen — scrolls back to the last paragraph and reapplies folds |
@@ -133,7 +133,7 @@ Cards inside a `CardListPanel`:
 The popouts mount lives inside [EditorPane.tsx](../../src/components/EditorPane.tsx) at the editor root, gated on `viewPrefs && !viewPrefs.zenMode`, with a memoized `popoutsDeps: PoppedCardDeps` bag wired from EditorPane's per-doc hooks. The Reader passes no `viewPrefs` so the mount stays dormant. Zen mode hides the floats but retains their state.
 
 Popout key prefixes for cards (DO NOT rename without migration — they're persisted; SSOT in `CARD_KEY_PREFIXES`):
-`note`, `highlight`, `footnote`, `archive`, `todo`, `bib`, `citation`, `revision` (for `comment` cards), `suggestion`, `cutter-comment`, `cutter-suggestion`, `revision-suggestion`, `quotation`, `example`, `ai`, `error`. (The legacy `cut` prefix was retired with the Cutter rebuild.)
+`note`, `highlight`, `footnote`, `archive`, `todo`, `bib`, `citation`, `revision` (for `comment` cards), `suggestion`, `cutter-comment`, `cutter-suggestion`, `revision-suggestion`, `report`, `report-request`, `example`, `ai`, `error`. (The legacy `cut` prefix was retired with the Cutter rebuild.)
 
 **Block popouts** also live in `prefs.poppedOutCards` but use one unified prefix shape: `textobject:<kind>:<uuid>` (or `textobject:linkedRange:<anchorId>` for mark-backed range popouts). Emitted by `textObjectPopoutKey` in [src/text-objects/text-object-registry.ts](../../src/text-objects/text-object-registry.ts); parsed by `parseTextObjectPopoutKey`. The dispatcher in [floating-cards.tsx](../../src/components/editor-layout/floating-cards.tsx) reads `meta.floatBodyComponent` from `TEXT_OBJECT_REGISTRY` and renders the body inside the unified `TextObjectFloat` chrome. Body components live in [src/text-objects/floats/](../../src/text-objects/floats/) — `ParagraphBody`, `HeadingBody`, `ListBody`, `TexBlockBody`, `ExampleBlockBody`, `LinkedRangeBody` (registered via `registerFloatBody` from `floats/index.ts`).
 
@@ -155,8 +155,8 @@ Floats spawn near their trigger element via `popCardAtAnchor` in EditorPane (whi
 
 Two related abstractions, both now mounted inside EditorPane:
 
-- **`cardCreation` context** ([contexts/card-creation.tsx](../../src/components/editor-layout/contexts/card-creation.tsx) + [card-actions/card-creation.ts](../../src/components/editor-layout/card-actions/card-creation.ts)) — collapses the historical "create + select + pop-at-anchor" dance into single `cardCreation.createNote/createCut/createTodo/createFootnote/createCitation/createQuotation` calls. Each handler on the Actions toolbar and the Margin toolbar routes through it, so creation behavior stays consistent across entry points. The pop-at-anchor side now flows through `popCardAtAnchor` inside EditorPane (gated on `viewPrefs`).
-- **`pristine-cards` context** + `usePristineCardManager` — tracks cards that were just created but never edited by the user; auto-discards them if the user closes/blurs without typing. Every card-bearing hook (`useNotes`, `useCutter`, `useTodos`, `useQuotations`, `useCitations`, `useFootnotes`) plugs into this. EditorPane owns the manager; EditorLayout still constructs a parallel manager because AIWindow + the click-away mutex effect read selection state on the shell side.
+- **`cardCreation` context** ([contexts/card-creation.tsx](../../src/components/editor-layout/contexts/card-creation.tsx) + [card-actions/card-creation.ts](../../src/components/editor-layout/card-actions/card-creation.ts)) — collapses the historical "create + select + pop-at-anchor" dance into single `cardCreation.createNote/createCut/createTodo/createFootnote/createCitation/createReport/createReportRequest` calls. Each handler on the Actions toolbar and the Margin toolbar routes through it, so creation behavior stays consistent across entry points. The pop-at-anchor side now flows through `popCardAtAnchor` inside EditorPane (gated on `viewPrefs`).
+- **`pristine-cards` context** + `usePristineCardManager` — tracks cards that were just created but never edited by the user; auto-discards them if the user closes/blurs without typing. Every card-bearing hook (`useNotes`, `useCutter`, `useTodos`, `useReports`, `useCitations`, `useFootnotes`) plugs into this. EditorPane owns the manager; EditorLayout still constructs a parallel manager because AIWindow + the click-away mutex effect read selection state on the shell side.
 
 ## System dialog primitive
 
@@ -164,7 +164,7 @@ Two related abstractions, both now mounted inside EditorPane:
 
 ## Unanchored-card safety (21933e0)
 
-Anchored cards (notes, todos, cuts, archives, revisions, quotations) no longer disappear silently when their host paragraph is deleted or their last anchor is dropped. Two coordinated pieces:
+Anchored cards (notes, todos, cuts, archives, revisions, reports) no longer disappear silently when their host paragraph is deleted or their last anchor is dropped. Two coordinated pieces:
 
 - **Unified delete path** — [src/lib/cards/delete-margin-item.ts](../../src/lib/cards/delete-margin-item.ts) (`deleteMarginItem`) is the single entry point every gutter-marker delete and panel-trash delete routes through. If the gesture removes the card's last anchor, it prompts to delete the whole card (using the existing "This item has text" confirm via `hasCardContent` in [src/lib/cards/has-content.ts](../../src/lib/cards/has-content.ts)); if other anchors remain, it just drops this link.
 - **Paragraph-deletion guard** — `MarginaliaAnchorGuard` (TipTap extension in [src/lib/tiptap/linked-anchor.ts](../../src/lib/tiptap/linked-anchor.ts)) reads a ref of currently-anchored UUIDs from EditorPane (populated in `EditorPane.tsx` ~line 1781) and, when a transaction would delete a paragraph carrying an anchor or a `linkedAnchor` mark, re-inserts an empty placeholder at the mapped original position with the same UUID. Covers both gutter-marked paragraphs and Mode-B text-range paragraphs. Configured at [src/components/Editor.tsx](../../src/components/Editor.tsx) ~line 2213.
@@ -179,8 +179,8 @@ Users can recolor any panel via the header color picker. The override routes thr
 
 Paragraph-level anchor drops trigger the vertical drop indicator. Inline-insert drops don't. Both sets live in [src/lib/marginalia.ts](../../src/lib/marginalia.ts):
 
-- **`ANCHOR_DRAG_TYPES`** (vertical indicator): marginalia-move, quotation, note, todo, archive-anchor, cut.
-- **Inline-insert**: quote, citation, archive (restore), footnote, ai-request, text-insert.
+- **`ANCHOR_DRAG_TYPES`** (vertical indicator): marginalia-move, note, todo, archive-anchor, cut, report.
+- **Inline-insert**: citation, archive (restore), footnote, ai-request, text-insert.
 
 When wiring a new draggable type, pick a category and register it — the drop indicator behaves correctly for free.
 

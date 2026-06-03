@@ -28,7 +28,6 @@ import {
   searchTodos,
   searchArchive,
   searchCutter,
-  searchQuotations,
   searchComments,
   searchBibliography,
 } from "@/lib/search-sources";
@@ -39,7 +38,6 @@ import type {
   RevisionCard,
   CutterCard,
   OrphanedFootnote,
-  QuotationGroup,
   TodoItem,
   UserNote,
 } from "@/lib/types";
@@ -82,7 +80,6 @@ interface SearchPanelProps {
   todos: TodoItem[];
   archiveSnippets: ArchivedSnippet[];
   cutterCards: CutterCard[];
-  quotationGroups: QuotationGroup[];
   comments: RevisionCard[];
   bibEntries: BibEntry[];
   onOpenItem: (panel: PanelId, itemId: string) => void;
@@ -238,7 +235,6 @@ function SearchPanel({
   todos,
   archiveSnippets,
   cutterCards,
-  quotationGroups,
   comments,
   bibEntries,
   onOpenItem,
@@ -321,8 +317,7 @@ function SearchPanel({
       enabledScopes.has("notes") ||
       enabledScopes.has("todos") ||
       enabledScopes.has("archive") ||
-      enabledScopes.has("cuts") ||
-      enabledScopes.has("quotations");
+      enabledScopes.has("cuts");
     const uuidPos = needsUuidMap
       ? buildUuidPosMap(editor)
       : new Map<string, number>();
@@ -352,9 +347,6 @@ function SearchPanel({
     if (enabledScopes.has("cuts")) {
       hits.push(...searchCutter(cutterCards, editor, uuidPos, re));
     }
-    if (enabledScopes.has("quotations")) {
-      hits.push(...searchQuotations(quotationGroups, uuidPos, re));
-    }
     if (enabledScopes.has("revisions")) {
       hits.push(...searchComments(comments, editor, re));
     }
@@ -383,7 +375,6 @@ function SearchPanel({
     todos,
     archiveSnippets,
     cutterCards,
-    quotationGroups,
     comments,
     bibEntries,
   ]);
@@ -713,9 +704,9 @@ const SCOPE_TO_CARD_THEME: Record<SearchScope, keyof typeof CARD_THEMES> = {
   todos:        "todo",
   archive:      "archive",
   cuts:         "cut",
-  quotations:   "citation",  // QuotationsPanel uses the citation theme
   revisions:    "comment",   // revisions = comments (same theme)
   bibliography: "bib",
+  reports:      "report",
 };
 
 function ResultCard({

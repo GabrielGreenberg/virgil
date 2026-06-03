@@ -28,8 +28,7 @@ export type ActionKind =
   | "cut"
   | "archive"
   | "footnote"
-  | "citation"
-  | "quotation";
+  | "citation";
 
 export interface EditorChromeConfig {
   /** Whether the action toolbar (Note/Cut/Comment/etc.) renders at all. */
@@ -171,7 +170,6 @@ export const CALLBACK_TO_ACTION_KIND: Record<string, ActionKind | undefined> = {
   onArchive: "archive",
   onCreateFootnote: "footnote",
   onInsertCitation: "citation",
-  onQuoteSelection: "quotation",
   // onCreateBibEntry → no ActionKind; treated as always-visible when callback is provided.
 };
 

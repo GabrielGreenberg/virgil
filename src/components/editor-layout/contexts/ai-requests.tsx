@@ -5,7 +5,7 @@ import type { AiRequest, AiRequestKind } from "@/lib/types";
 
 /**
  * AI request list + mutators. Consumed by the five panels that host AI
- * request cards (notes, footnotes, todo, quotations, citations). The
+ * request cards (notes, footnotes, todo, reports, citations). The
  * shell owns the hook call; panels read through this context rather
  * than taking four props each.
  */

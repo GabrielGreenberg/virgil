@@ -68,7 +68,6 @@ const LEGACY_PREFIX_TO_PANEL: Record<string, PanelKind> = {
   // Earliest build — 2-char prefixes
   fn: "footnotes",
   ci: "citations",
-  qu: "quotations",
   nt: "notes",
   ar: "archive",
   td: "todo",

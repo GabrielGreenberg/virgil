@@ -16,8 +16,8 @@ import type {
   CitationRef,
   RevisionCard,
   CutterCard,
+  ReportItem,
   OrphanedFootnote,
-  QuotationGroup,
   TodoItem,
   UserNote,
   BibEntry,
@@ -31,7 +31,7 @@ export type SearchScope =
   | "todos"
   | "archive"
   | "cuts"
-  | "quotations"
+  | "reports"
   | "revisions"
   | "bibliography";
 
@@ -78,7 +78,7 @@ export const SCOPE_LABEL: Record<SearchScope, string> = {
   todos: "Todos",
   archive: "Archive",
   cuts: "Cuts",
-  quotations: "Quotations",
+  reports: "Reports",
   revisions: "Revisions",
   bibliography: "Bibliography",
 };
@@ -91,7 +91,7 @@ export const SCOPE_PANEL: Partial<Record<SearchScope, string>> = {
   todos: "todo",
   archive: "archive",
   cuts: "cutter",
-  quotations: "quotations",
+  reports: "reports",
   revisions: "revisions",
   bibliography: "bibliography",
 };
@@ -105,7 +105,7 @@ export const SCOPE_COLOR: Record<SearchScope, string> = {
   todos: "#a8a29e",
   archive: "#7191b0",
   cuts: "#b45757",
-  quotations: "#6b6245",
+  reports: "#6366f1",
   revisions: "#78716c",
   bibliography: "#6b6245",
 };
@@ -119,7 +119,7 @@ export const SCOPE_ORDER: SearchScope[] = [
   "todos",
   "archive",
   "cuts",
-  "quotations",
+  "reports",
   "revisions",
   "bibliography",
 ];
@@ -412,35 +412,25 @@ export function searchCutter(
   return out;
 }
 
-/* ── Quotations ──────────────────────────────────────────────────────── */
+/* ── Reports (reports + report-requests) ─────────────────────────────── */
 
-export function searchQuotations(
-  groups: QuotationGroup[],
+export function searchReports(
+  cards: ReportItem[],
+  editor: Editor,
   uuidPos: Map<string, number>,
   re: RegExp,
 ): SearchHit[] {
   const out: SearchHit[] = [];
-  for (const g of groups) {
-    const pos = lowestPos(uuidPos, getLinkedTextObjectIds(g));
-    if (g.title) {
-      for (const m of scanText(g.title, re)) {
-        out.push(hitFromMatch("quotations", g.id, pos, "title", m));
+  for (const c of cards) {
+    const pos = resolveItemPos(editor, uuidPos, c);
+    if (c.kind === "report" && c.title) {
+      for (const m of scanText(c.title, re)) {
+        out.push(hitFromMatch("reports", c.id, pos, "title", m));
       }
     }
-    if (g.notes) {
-      for (const m of scanText(g.notes, re)) {
-        out.push(hitFromMatch("quotations", g.id, pos, "notes", m));
-      }
-    }
-    for (const ref of g.references) {
-      for (const m of scanText(ref.citeKey, re)) {
-        out.push(hitFromMatch("quotations", g.id, pos, "key", m));
-      }
-      for (const q of ref.quotes) {
-        for (const m of scanText(q.text, re)) {
-          out.push(hitFromMatch("quotations", g.id, pos, "text", m));
-        }
-      }
+    const body = c.text || richJsonToPlainText(c.content);
+    for (const m of scanText(body, re)) {
+      out.push(hitFromMatch("reports", c.id, pos, "body", m));
     }
   }
   return out;

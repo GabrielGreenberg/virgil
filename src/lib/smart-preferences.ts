@@ -124,7 +124,6 @@ export const SMART_PREFERENCES: SmartSection[] = [
       panel("footnote", "Footnotes", "Footnote cards, superscript markers, and anchor highlights."),
       panel("note",     "Margin notes", "Note cards and gutter markers."),
       panel("archive",  "Archive", "Archived-snippet cards and anchors."),
-      panel("quote",    "Quotations", "Quotation cards and their anchors."),
       panel("todo",     "To-dos", "Task cards and checklist markers."),
       panel("cut",      "Cuts", "Deleted-text cards and strikethrough markers."),
       panel("revision", "Revisions", "Revision cards and change markers."),

@@ -4,7 +4,6 @@ import type { PanelId, ViewPrefs } from "@/hooks/useViewPrefs";
 import type {
   UserNote,
   CutterCommentCard,
-  QuotationGroup,
   Suggestion,
 } from "@/lib/types";
 import { createLinkedAnchor, updateLinkedAnchorCard } from "@/links/links";
@@ -20,7 +19,6 @@ type AddCutterComment = (
   content?: JSONContent,
   anchor?: { anchorId: string; anchorText: string },
 ) => CutterCommentCard;
-type AddQuotationGroup = (init?: { text?: string; paragraphId?: string | null }) => QuotationGroup;
 
 /**
  * Toolbar / shortcut actions that turn the live editor selection into a
@@ -39,12 +37,10 @@ export function useSelectionToCardActions(deps: {
   editorRef: RefObject<EditorHandle | null>;
   addNote: AddNote;
   addCutterComment: AddCutterComment;
-  addQuotationGroup: AddQuotationGroup;
   actOnSuggestion: (id: string, action: "accepted" | "rejected" | "skipped") => void;
   currentSuggestion: Suggestion | null;
   setSelectedNoteId: Dispatch<SetStateAction<string | null>>;
   setSelectedCutterCardId: Dispatch<SetStateAction<string | null>>;
-  setSelectedQuotationGroupId: Dispatch<SetStateAction<string | null>>;
   setSelectedFootnoteId: Dispatch<SetStateAction<string | null>>;
   prefs: ViewPrefs;
   setActiveLeft: (id: PanelId) => void;
@@ -54,12 +50,10 @@ export function useSelectionToCardActions(deps: {
     editorRef,
     addNote,
     addCutterComment,
-    addQuotationGroup,
     actOnSuggestion,
     currentSuggestion,
     setSelectedNoteId,
     setSelectedCutterCardId,
-    setSelectedQuotationGroupId,
     setSelectedFootnoteId,
     prefs,
     setActiveLeft,
@@ -90,25 +84,6 @@ export function useSelectionToCardActions(deps: {
     }
     setSelectedFootnoteId(result.footnoteId);
   }, [editorRef, prefs.placements, prefs.activeLeft, prefs.activeRight, setActiveLeft, setActiveRight, setSelectedFootnoteId]);
-
-  const handleQuoteSelection = useCallback(() => {
-    if (!editorRef.current) return;
-    const ed = editorRef.current.getEditor();
-    if (!ed) return;
-    const { from, to } = ed.state.selection;
-    if (from === to) return;
-    const text = ed.state.doc.textBetween(from, to, " ").trim();
-    if (!text) return;
-    const paragraphId = editorRef.current.ensureParagraphUuid(from);
-    const group = addQuotationGroup({ text, paragraphId });
-    const placement = prefs.placements.find((p) => p.id === "quotations");
-    if (placement?.side === "left") {
-      if (prefs.activeLeft !== "quotations") setActiveLeft("quotations");
-    } else {
-      if (prefs.activeRight !== "quotations") setActiveRight("quotations");
-    }
-    setSelectedQuotationGroupId(group.id);
-  }, [editorRef, addQuotationGroup, prefs.placements, prefs.activeLeft, prefs.activeRight, setActiveLeft, setActiveRight, setSelectedQuotationGroupId]);
 
   const handleAddNoteFromSelection = useCallback(() => {
     const ed = editorRef.current?.getEditor();
@@ -161,7 +136,6 @@ export function useSelectionToCardActions(deps: {
   return {
     handleAct,
     handleCreateFootnote,
-    handleQuoteSelection,
     handleAddNoteFromSelection,
     handleCutSelection,
   };

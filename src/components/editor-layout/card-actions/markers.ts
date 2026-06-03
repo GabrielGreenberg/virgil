@@ -1,16 +1,16 @@
 import { useCallback, type Dispatch, type MutableRefObject, type SetStateAction } from "react";
 import type { PanelId, Side, Half, ViewPrefs } from "@/hooks/useViewPrefs";
-import type { UserNote, CutterCard, QuotationGroup } from "@/lib/types";
+import type { UserNote, CutterCard } from "@/lib/types";
 import type { OmniCategory } from "@/panels/Omni";
 import { getTextAnchor } from "@/links/links";
 import { suppressNextPlacement } from "@/links/_shared/usePlacement";
 import { openForCard } from "../event-bridges/open-for-card";
 
-type AnchorKind = "note" | "highlight" | "revision" | "cutter-comment" | "cutter-suggestion" | null;
+type AnchorKind = "note" | "highlight" | "revision" | "cutter-comment" | "cutter-suggestion" | "report" | "report-request" | null;
 
 /**
- * Gutter-marker click handlers for the four panel kinds that anchor into
- * the text (notes, cuts, todos, quotations).
+ * Gutter-marker click handlers for the panel kinds that anchor into
+ * the text (notes, cuts, todos).
  *
  * Click semantics (Omni-first): toggle selection (second click deselects).
  * Selecting drives the linked-anchor highlight (for kinds that carry a
@@ -37,11 +37,9 @@ export function useMarkerActions(deps: {
   setSelectedCutterCardId: Dispatch<SetStateAction<string | null>>;
   selectedTodoId: string | null;
   setSelectedTodoId: Dispatch<SetStateAction<string | null>>;
-  setSelectedQuotationGroupId: Dispatch<SetStateAction<string | null>>;
-  quotationGroups: QuotationGroup[];
   /** Pulls the omni card to align with the click instead of scrolling
    *  the document. The marker → omni-key prefixes differ for some kinds
-   *  (quote → quotation, cut → cutter-comment); each handler resolves the
+   *  (cut → cutter-comment); each handler resolves the
    *  marker DOM via `[data-marginalia-marker="${markerKind}:${id}"]`. */
   alignOmniCardWithClick: (cardId: string, clickY: number, sourceEl: HTMLElement | null) => void;
 }) {
@@ -62,46 +60,8 @@ export function useMarkerActions(deps: {
     setSelectedCutterCardId,
     selectedTodoId,
     setSelectedTodoId,
-    setSelectedQuotationGroupId,
     alignOmniCardWithClick,
   } = deps;
-
-  const handleQuotationMarkerClick = useCallback(
-    (groupId: string, clickY?: number) => {
-      // Gutter click → card alignment goes through alignOmniCardWithClick
-      // below, NOT through usePlacement (which would scroll the row).
-      suppressNextPlacement();
-      setSelectedQuotationGroupId(groupId);
-      openForCard(
-        {
-          omniKey: `quotation:${groupId}`,
-          entrySelector: `[data-quotation-group-id="${groupId}"]`,
-          panelId: "quotations",
-          cardKind: "quotation",
-          skipScroll: true,
-        },
-        {
-          prefs: prefsRef.current,
-          setActiveLeft,
-          setActiveRight,
-          setActiveHalf,
-          tryScrollOmniEntry,
-          getOmniEnabled,
-        },
-      );
-      if (typeof clickY === "number") {
-        // Marker DOM id is composite (`type:entityId:paragraphId`); match by prefix.
-        const sourceEl = document.querySelector(
-          `[data-marginalia-marker^="quote:${groupId}:"]`,
-        ) as HTMLElement | null;
-        // alignOmniCardWithClick converts clickY → pod-relative and
-        // publishes a pin request. Retries one rAF if the panel column
-        // hasn't rendered yet (cold-mount case).
-        alignOmniCardWithClick(`quotation:${groupId}`, clickY, sourceEl);
-      }
-    },
-    [prefsRef, setActiveLeft, setActiveRight, setActiveHalf, tryScrollOmniEntry, getOmniEnabled, setSelectedQuotationGroupId, alignOmniCardWithClick],
-  );
 
   const handleNoteMarkerClick = useCallback(
     (noteId: string, clickY?: number) => {
@@ -245,7 +205,6 @@ export function useMarkerActions(deps: {
   );
 
   return {
-    handleQuotationMarkerClick,
     handleNoteMarkerClick,
     handleCutMarkerClick,
     handleTodoMarkerClick,

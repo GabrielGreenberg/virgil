@@ -25,7 +25,7 @@
 
 import { useEffect, useMemo, useRef } from "react";
 import type { Editor } from "@tiptap/react";
-import type { UserNote, CutterCard, RevisionCard } from "@/lib/types";
+import type { UserNote, CutterCard, RevisionCard, ReportItem } from "@/lib/types";
 import { getTextAnchor } from "../links";
 import type { EntityKind } from "./entity-hover";
 
@@ -39,6 +39,7 @@ export interface UseTextHoverBridgeArgs {
   notes: ReadonlyArray<UserNote>;
   cutterCards: ReadonlyArray<CutterCard>;
   comments: ReadonlyArray<RevisionCard>;
+  reportCards: ReadonlyArray<ReportItem>;
   setHoveredEntity: (id: string | null, kind: EntityKind | null) => void;
 }
 
@@ -47,6 +48,7 @@ export function useTextHoverBridge({
   notes,
   cutterCards,
   comments,
+  reportCards,
   setHoveredEntity,
 }: UseTextHoverBridgeArgs): void {
   // Map: anchorId -> { entityId, kind }. Built once per entity-collection
@@ -70,8 +72,14 @@ export function useTextHoverBridge({
       const kind: EntityKind = r.kind === "suggestion" ? "revision-suggestion" : "comment";
       m.set(a.anchorId, { entityId: r.id, kind });
     }
+    for (const rep of reportCards) {
+      const a = getTextAnchor(rep);
+      if (!a) continue;
+      const kind: EntityKind = rep.kind === "report-request" ? "report-request" : "report";
+      m.set(a.anchorId, { entityId: rep.id, kind });
+    }
     return m;
-  }, [notes, cutterCards, comments]);
+  }, [notes, cutterCards, comments, reportCards]);
 
   const mapRef = useRef(anchorIdMap);
   mapRef.current = anchorIdMap;

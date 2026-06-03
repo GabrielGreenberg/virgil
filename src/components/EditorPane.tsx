@@ -26,7 +26,7 @@
  * Planned (post-extraction) responsibilities — see
  * `/Users/gabriel/.claude/plans/next-session-extract-editorpane-virtual-raven.md`:
  *   - Owns ALL per-doc hooks (`useDocument`, `useNotes`, `useFootnotes`,
- *     `useCitations`, `useArchive`, `useTodos`, `useQuotations`,
+ *     `useCitations`, `useArchive`, `useTodos`,
  *     `useExamples`, `useCutter`, `useRevisions`, `useAiRequests`,
  *     `useSuggestions`, `useAnnotations`, `useCollab`,
  *     `useDocumentStyle`, `useLatexCompile`, `useWordCount`,
@@ -109,9 +109,9 @@ import { useEditorUIState } from "@/hooks/useEditorUIState";
 import { useLatexCompile, type DocumentClassMismatchHandler } from "@/hooks/useLatexCompile";
 import { useWordCount } from "@/hooks/useWordCount";
 import { useTodos } from "@/hooks/useTodos";
-import { useQuotations } from "@/hooks/useQuotations";
 import { useArchive } from "@/hooks/useArchive";
 import { useCutter } from "@/hooks/useCutter";
+import { useReports } from "@/hooks/useReports";
 import { useRevisions } from "@/hooks/useRevisions";
 import { useSuggestions } from "@/hooks/useSuggestions";
 import { useCollab, CollabProvider, type CollabHook } from "@/hooks/useCollab";
@@ -171,8 +171,8 @@ import { CitationsHost } from "./editor-layout/panels/citations-host";
 import { TodoHost } from "./editor-layout/panels/todo-host";
 import { ArchiveHost } from "./editor-layout/panels/archive-host";
 import { CutterHost } from "./editor-layout/panels/cutter-host";
+import { ReportsHost } from "./editor-layout/panels/reports-host";
 import { RevisionsHost } from "./editor-layout/panels/revisions-host";
-import { QuotationsHost } from "./editor-layout/panels/quotations-host";
 import { ErrorsHost } from "./editor-layout/panels/errors-host";
 import { SearchHost } from "./editor-layout/panels/search-host";
 import WordCountPanel from "@/panels/WordCount";
@@ -719,7 +719,7 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
     selectedTodoId, setSelectedTodoId,
     selectedArchiveId, setSelectedArchiveId,
     selectedCutterCardId, setSelectedCutterCardId,
-    selectedQuotationGroupId, setSelectedQuotationGroupId,
+    selectedReportCardId, setSelectedReportCardId,
     selectedCommentId, setSelectedCommentId,
     selectedExampleId, setSelectedExampleId,
   } = useAnchoredSelectionSlots();
@@ -736,8 +736,8 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
   const pristineManager = usePristineCardManager();
   const notePristine = useMemo(() => pristineManager.forKind("note"), [pristineManager]);
   const cutPristine = useMemo(() => pristineManager.forKind("cut"), [pristineManager]);
+  const reportPristine = useMemo(() => pristineManager.forKind("report"), [pristineManager]);
   const todoPristine = useMemo(() => pristineManager.forKind("todo"), [pristineManager]);
-  const quotationPristine = useMemo(() => pristineManager.forKind("quotation"), [pristineManager]);
   const citationPristine = useMemo(() => pristineManager.forKind("citation"), [pristineManager]);
   const footnotePristine = useMemo(() => pristineManager.forKind("footnote"), [pristineManager]);
 
@@ -771,9 +771,9 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
   const notesHook = useNotes(docId, notePristine);
   const aiRequestsHook = useAiRequests(docId);
   const cutterHook = useCutter(docId, cutPristine);
+  const reportsHook = useReports(docId, reportPristine);
   const revisionsHook = useRevisions(docId);
   const todosHook = useTodos(docId, todoPristine);
-  const quotationsHook = useQuotations(docId, quotationPristine);
   const archiveHook = useArchive(docId);
   const footnotesHook = useFootnotes(docId, footnotePristine);
   const suggestionsHook = useSuggestions(docId);
@@ -850,7 +850,6 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
             notesHook,
             todosHook,
             archiveHook,
-            quotationsHook,
             revisionsHook,
             cutterHook,
             footnotesHook,
@@ -880,7 +879,6 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
     notesHook,
     todosHook,
     archiveHook,
-    quotationsHook,
     revisionsHook,
     cutterHook,
     footnotesHook,
@@ -1175,18 +1173,6 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
     }),
     [todosHook.items, todosHook.addParagraphId, todosHook.removeParagraphId],
   );
-  const dropQuotationsApi = useMemo(
-    () => ({
-      exists: (id: string) => quotationsHook.groups.some((g) => g.id === id),
-      getAnchorTextObjectIds: (id: string) => {
-        const g = quotationsHook.groups.find((gg) => gg.id === id);
-        return g ? getLinkedTextObjectIds(g) : [];
-      },
-      addTextObjectLink: quotationsHook.addParagraphId,
-      removeTextObjectLink: quotationsHook.removeParagraphId,
-    }),
-    [quotationsHook.groups, quotationsHook.addParagraphId, quotationsHook.removeParagraphId],
-  );
   const dropArchiveApi = useMemo(
     () => ({
       exists: (id: string) => archiveHook.snippets.some((s) => s.id === id),
@@ -1223,6 +1209,18 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
     }),
     [revisionsHook.cards, revisionsHook.addCardParagraphId, revisionsHook.removeCardParagraphId],
   );
+  const dropReportsApi = useMemo(
+    () => ({
+      exists: (id: string) => reportsHook.cards.some((c) => c.id === id),
+      getAnchorTextObjectIds: (id: string) => {
+        const c = reportsHook.cards.find((cc) => cc.id === id);
+        return c ? getLinkedTextObjectIds(c) : [];
+      },
+      addTextObjectLink: reportsHook.addCardParagraphId,
+      removeTextObjectLink: reportsHook.removeCardParagraphId,
+    }),
+    [reportsHook.cards, reportsHook.addCardParagraphId, reportsHook.removeCardParagraphId],
+  );
 
   // Wire the marginalia gutter drag → reanchor bridge to THIS pane's hook
   // instances. EditorLayout owns a duplicate copy of these hooks, but only
@@ -1230,8 +1228,6 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
   // reanchor events into EditorLayout's mutators would update the wrong
   // state and leave the on-screen marker frozen.
   useAnchorRebindBridge({
-    addQuotationTextObjectId: quotationsHook.addParagraphId,
-    removeQuotationTextObjectId: quotationsHook.removeParagraphId,
     addTodoTextObjectId: todosHook.addParagraphId,
     removeTodoTextObjectId: todosHook.removeParagraphId,
     addNoteTextObjectId: notesHook.addNoteTextObjectId,
@@ -1267,12 +1263,6 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
         if (seed.title) archiveHook.updateSnippetTitle(s.id, seed.title);
         if (paragraphId) archiveHook.addParagraphId(s.id, paragraphId);
         return s;
-      },
-      addQuotation: (paragraphId, seed) => {
-        const g = quotationsHook.addGroup({ paragraphId });
-        if (seed.title) quotationsHook.updateGroupTitle(g.id, seed.title);
-        if (seed.notes) quotationsHook.updateNotes(g.id, seed.notes);
-        return g;
       },
       addRevisionComment: (paragraphId, seed) => {
         const c = revisionsHook.addComment(
@@ -1335,7 +1325,6 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
     notesHook,
     todosHook,
     archiveHook,
-    quotationsHook,
     revisionsHook,
     cutterHook,
     footnotesHook,
@@ -1409,20 +1398,20 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
   const marginItemHandlers = useMemo<Record<MarginItemKind, MarginItemHandlers>>(
     () =>
       buildMarginItemHandlers({
-        quotations: quotationsHook,
         notes: notesHook,
         archive: archiveHook,
         cutter: cutterHook,
         todos: todosHook,
         revisions: revisionsHook,
+        reports: reportsHook,
       }),
     [
-      quotationsHook.groups, quotationsHook.removeParagraphId, quotationsHook.deleteGroup,
       notesHook.notes, notesHook.removeNoteTextObjectId, notesHook.deleteNote,
       archiveHook.snippets, archiveHook.removeParagraphId, archiveHook.deleteSnippet,
       cutterHook.cards, cutterHook.removeCardParagraphId, cutterHook.deleteCard,
       todosHook.items, todosHook.removeParagraphId, todosHook.deleteItem,
       revisionsHook.cards, revisionsHook.removeCardParagraphId, revisionsHook.deleteCard,
+      reportsHook.cards, reportsHook.removeCardParagraphId, reportsHook.deleteCard,
       // The hook objects themselves change identity on every render; using
       // their individual fields above keeps this memo stable across renders
       // that don't actually change card state.
@@ -1445,7 +1434,7 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
   );
 
   // ── Marginalia markers ───────────────────────────────────────────
-  // Walks every card hook (notes, quotations, archive, todos, cutter,
+  // Walks every card hook (notes, reports, archive, todos, cutter,
   // revisions) plus the live latex-error list and emits one
   // `MarginaliaMarker` per linked paragraph. Mirrors EditorLayout's
   // pre-extraction shape but skips the cross-card hover linkage (no
@@ -1456,32 +1445,11 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
     // Re-resolve markers when anchors move between paragraphs (`rev.anchors`)
     // or the paragraph-UUID set changes (`rev.blocks`) — the revision branch
     // below does a live anchorId→paragraph walk. Card-store arrays (notes,
-    // quotations, …) and error state are their own deps; plain typing bumps
+    // reports, …) and error state are their own deps; plain typing bumps
     // none of these, so markers don't recompute or shift per keystroke.
     void rev.anchors;
     void rev.blocks;
     const result: MarginaliaMarker[] = [];
-
-    // Quotations
-    for (const g of quotationsHook.groups) {
-      const pids = getLinkedTextObjectIds(g);
-      if (pids.length === 0) continue;
-      for (const pid of pids) {
-        result.push({
-          id: `${g.id}:${pid}`,
-          entityId: g.id,
-          entityKind: "quotation",
-          type: "quote",
-          textObjectId: pid,
-          title: g.title || g.references[0]?.citeKey || "Quotation",
-          onClick: () => {
-            setSelectedQuotationGroupId(g.id);
-            setActivePanelKindBySide("quotations");
-          },
-          onDelete: () => { void handleMarginItemDelete("quote", g.id, pid); },
-        });
-      }
-    }
 
     // Notes
     for (const n of notesHook.notes) {
@@ -1605,6 +1573,34 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
       }
     }
 
+    // Reports (report + report-request) — both kinds share the "report" marker
+    for (const c of reportsHook.cards) {
+      const pids = getLinkedTextObjectIds(c);
+      if (pids.length === 0) continue;
+      const cardAnchor = getTextAnchor(c);
+      const title = c.kind === "report"
+        ? (c.title || c.text || "Report")
+        : (c.text || "Report request");
+      for (const pid of pids) {
+        result.push({
+          id: `${c.id}:${pid}`,
+          entityId: c.id,
+          entityKind: c.kind,
+          type: "report",
+          textObjectId: pid,
+          title,
+          onClick: () => {
+            setSelectedReportCardId(c.id);
+            setActivePanelKindBySide("reports");
+          },
+          onDelete: () => {
+            void handleMarginItemDelete("report", c.id, pid, cardAnchor?.anchorId);
+          },
+          anchorId: cardAnchor?.anchorId,
+        });
+      }
+    }
+
     // Todo
     for (const item of todosHook.items) {
       const pids = getLinkedTextObjectIds(item);
@@ -1650,20 +1646,20 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
     return result;
   }, [
     notesHook.notes,
-    quotationsHook.groups,
     archiveHook.snippets,
     todosHook.items,
     cutterHook.cards,
     revisionsHook.cards,
+    reportsHook.cards,
     handleMarginItemDelete,
     allLatexErrors,
     dismissedErrorIds,
     paragraphByErrorId,
     selectedNoteId,
-    selectedQuotationGroupId,
     selectedArchiveId,
     selectedTodoId,
     selectedCutterCardId,
+    selectedReportCardId,
     selectedCommentId,
     selectedErrorId,
     rev.anchors,
@@ -1728,10 +1724,11 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
     addCutterSuggestion: cutterHook.addSuggestion,
     addRevisionComment: revisionsHook.addComment,
     addRevisionSuggestion: revisionsHook.addSuggestion,
+    addReport: reportsHook.addReport,
+    addReportRequest: reportsHook.addReportRequest,
     addTodo: todosHook.addItem,
     updateTodo: todosHook.updateItem,
     addTodoTextObjectId: todosHook.addParagraphId,
-    addQuotationGroup: quotationsHook.addGroup,
     addCitation: citationsHook.addCitation,
     archiveContent: archiveHook.archiveContent,
     updateArchiveSnippet: archiveHook.updateSnippet,
@@ -1739,10 +1736,10 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
     setSelectedArchiveId,
     setSelectedNoteId,
     setSelectedCutterCardId,
+    setSelectedReportCardId,
     setSelectedCommentId,
     setSelectedTodoId,
     setSelectedFootnoteId,
-    setSelectedQuotationGroupId,
     setSelectedCitationId,
     prefs: readerPrefs,
     setActiveLeft: stubSetActive,
@@ -1766,12 +1763,12 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
     [cutPristine, cutterHook.deleteCard],
   );
   useEffect(
-    () => todoPristine.registerDiscard((id) => todosHook.deleteItem(id)),
-    [todoPristine, todosHook.deleteItem],
+    () => reportPristine.registerDiscard((id) => reportsHook.deleteCard(id)),
+    [reportPristine, reportsHook.deleteCard],
   );
   useEffect(
-    () => quotationPristine.registerDiscard((id) => quotationsHook.deleteGroup(id)),
-    [quotationPristine, quotationsHook.deleteGroup],
+    () => todoPristine.registerDiscard((id) => todosHook.deleteItem(id)),
+    [todoPristine, todosHook.deleteItem],
   );
   useEffect(
     () => citationPristine.registerDiscard((id) => citationsHook.deleteCitation(id)),
@@ -1788,7 +1785,7 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
   // ─── Drag-handle action menu ────────────────────────────────────
   // Click on a paragraph / selection / heading drag handle opens a
   // popover menu of all the things you can do to that passage
-  // (footnote, citation, quotation, note, todo, review, suggest edit,
+  // (footnote, citation, note, todo, review, suggest edit,
   // cutter, duplicate, archive, delete). The dispatch hook resolves
   // the passage to a doc range, plants the selection over it, runs
   // the matching create path with `mode: "omni"`, and ensures the
@@ -2335,18 +2332,6 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
     cardCreation.createCitation({ anchorRect });
   }, [cardCreation]);
 
-  const handleToolbarQuoteSelection = useCallback((anchorRect: DOMRect | null) => {
-    const sel = readSelection();
-    cardCreation.createQuotation({
-      text: sel?.text,
-      paragraphId: sel ? sel.editorHandle.ensureParagraphUuid(sel.from) : null,
-      anchorRect,
-    });
-    if (sel) {
-      try { window.getSelection()?.removeAllRanges(); } catch { /* ignore */ }
-    }
-  }, [readSelection, cardCreation]);
-
   const actionsBundle = useMemo<ActionToolbarCallbacks>(() => ({
     onAddComment: handleToolbarAddComment,
     onAddNote: handleToolbarAddNote,
@@ -2356,7 +2341,6 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
     onArchive: handleToolbarArchive,
     onCreateFootnote: handleToolbarCreateFootnote,
     onInsertCitation: handleToolbarInsertCitation,
-    onQuoteSelection: handleToolbarQuoteSelection,
   }), [
     handleToolbarAddComment,
     handleToolbarAddNote,
@@ -2366,7 +2350,6 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
     handleToolbarArchive,
     handleToolbarCreateFootnote,
     handleToolbarInsertCitation,
-    handleToolbarQuoteSelection,
   ]);
 
   // Editor-derived citations: BibliographyHost wants `keys` (parsed
@@ -2652,7 +2635,6 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
       else if (panel === "todo") { setSelectedTodoId(itemId); setActivePanelKindBySide("todo"); }
       else if (panel === "archive") { setSelectedArchiveId(itemId); setActivePanelKindBySide("archive"); }
       else if (panel === "cutter") { setSelectedCutterCardId(itemId); setActivePanelKindBySide("cutter"); }
-      else if (panel === "quotations") { setSelectedQuotationGroupId(itemId); setActivePanelKindBySide("quotations"); }
       else if (panel === "revisions") { setSelectedCommentId(itemId); setActivePanelKindBySide("revisions"); }
       else if (panel === "bibliography") { setSelectedBibKey(itemId); setActivePanelKindBySide("bibliography"); }
       else if (panel === "examples") { setSelectedExampleId(itemId); setActivePanelKindBySide("examples"); }
@@ -2671,6 +2653,8 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
     activeLeftPanelKind === "todo" ? "left" : activeRightPanelKind === "todo" ? "right" : null;
   const cutterPanelSide: "left" | "right" | null =
     activeLeftPanelKind === "cutter" ? "left" : activeRightPanelKind === "cutter" ? "right" : null;
+  const reportsPanelSide: "left" | "right" | null =
+    activeLeftPanelKind === "reports" ? "left" : activeRightPanelKind === "reports" ? "right" : null;
   const revisionsPanelSide: "left" | "right" | null =
     activeLeftPanelKind === "revisions" ? "left" : activeRightPanelKind === "revisions" ? "right" : null;
 
@@ -2694,7 +2678,7 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
       citationPositionMap,
       allEditorCitations,
       comments: revisionsHook.cards,
-      quotationGroups: quotationsHook.groups,
+      reportCards: reportsHook.cards,
       aiRequests: aiRequestsHook.requests,
       examples,
       anchoredIds: anchoredArchiveIds,
@@ -2704,21 +2688,21 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
       selectedFootnoteId,
       selectedArchiveId,
       selectedCutterCardId,
+      selectedReportCardId,
       selectedTodoId,
       selectedBibKey,
       selectedCitationId,
       selectedCommentId,
-      selectedQuotationGroupId,
       selectedExampleId,
       setSelectedNoteId,
       setSelectedFootnoteId,
       setSelectedArchiveId,
       setSelectedCutterCardId,
+      setSelectedReportCardId,
       setSelectedTodoId,
       setSelectedBibKey,
       setSelectedCitationId,
       setSelectedCommentId,
-      setSelectedQuotationGroupId,
       setSelectedExampleId,
 
       // Editor + shared actions
@@ -2756,6 +2740,13 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
       setCutterSuggestionStatus: cutterHook.setSuggestionStatus,
       deleteCutterCard: cutterHook.deleteCard,
 
+      // Reports
+      updateReportContent: reportsHook.updateReportContent,
+      updateReportTitle: reportsHook.updateReportTitle,
+      updateRequestContent: reportsHook.updateRequestContent,
+      setRequestAiRequest: reportsHook.setRequestAiRequest,
+      deleteReportCard: reportsHook.deleteCard,
+
       // Todos
       toggleTodo: todosHook.toggleItem,
       updateTodo: todosHook.updateItem,
@@ -2787,17 +2778,6 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
       convertRevisionCard: revisionsHook.convertCard,
       deleteRevisionCard: revisionsHook.deleteCard,
 
-      // Quotations
-      deleteQuotationGroup: quotationsHook.deleteGroup,
-      updateQuotationGroupTitle: quotationsHook.updateGroupTitle,
-      addQuotationReference: quotationsHook.addReference,
-      deleteQuotationReference: quotationsHook.deleteReference,
-      updateQuotationReferenceCiteKey: quotationsHook.updateReferenceCiteKey,
-      addQuotationQuote: quotationsHook.addQuote,
-      updateQuotationQuote: quotationsHook.updateQuote,
-      deleteQuotationQuote: quotationsHook.deleteQuote,
-      updateQuotationNotes: quotationsHook.updateNotes,
-
       // AI Requests
       updateAiRequestText: aiRequestsHook.updateRequestText,
       deleteAiRequest: aiRequestsHook.deleteRequest,
@@ -2805,11 +2785,12 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
     [
       notesHook, footnoteInfos, archiveHook, cutterHook, todosHook,
       citationsHook, annotationsHook, bibReviewHook, revisionsHook,
-      quotationsHook, aiRequestsHook,
+      reportsHook,
+      aiRequestsHook,
       citationPositionMap, allEditorCitations, examples, anchoredArchiveIds,
       selectedNoteId, selectedFootnoteId, selectedArchiveId,
-      selectedCutterCardId, selectedTodoId, selectedBibKey,
-      selectedCitationId, selectedCommentId, selectedQuotationGroupId,
+      selectedCutterCardId, selectedReportCardId, selectedTodoId, selectedBibKey,
+      selectedCitationId, selectedCommentId,
       selectedExampleId,
       handleCitationCreated, handleEditFootnote, handleDeleteFootnote,
       handleEditFootnoteTitle, handleArchiveDelete,
@@ -2892,9 +2873,9 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
       notes: notesHook.notes,
       cutterCards: cutterHook.cards,
       archiveSnippets: archiveHook.snippets,
-      quotationGroups: quotationsHook.groups,
       todos: todosHook.items,
       comments: revisionsHook.cards,
+      reports: reportsHook.cards,
       examples: _examplesAsEntities,
     },
   });
@@ -2905,6 +2886,7 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
     highlights:  notesHook.highlights,
     cutterCards: cutterHook.cards,
     comments:    revisionsHook.cards,
+    reportCards: reportsHook.cards,
   });
 
   useTextHoverBridge({
@@ -2912,6 +2894,7 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
     notes: notesHook.notes,
     cutterCards: cutterHook.cards,
     comments: revisionsHook.cards,
+    reportCards: reportsHook.cards,
     setHoveredEntity: _setHoveredEntity,
   });
   usePanelCardHoverBridge(_setHoveredEntity);
@@ -2926,9 +2909,9 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
       notes: notesHook.notes,
       cutterCards: cutterHook.cards,
       comments: revisionsHook.cards,
+      reports: reportsHook.cards,
       todos: todosHook.items,
       archiveSnippets: archiveHook.snippets,
-      quotationGroups: quotationsHook.groups,
       examples: _examplesAsEntities,
     },
   });
@@ -2982,10 +2965,10 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
               notes={dropNotesApi}
               highlights={dropHighlightsApi}
               todos={dropTodosApi}
-              quotations={dropQuotationsApi}
               archive={dropArchiveApi}
               cutterCards={dropCutterApi}
               revisions={dropRevisionsApi}
+              reports={dropReportsApi}
               stack={dropStackApi}
             />
           )}
@@ -3074,7 +3057,6 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
                   onArchive: handleToolbarArchive,
                   onCreateFootnote: handleToolbarCreateFootnote,
                   onInsertCitation: handleToolbarInsertCitation,
-                  onQuoteSelection: handleToolbarQuoteSelection,
                 }}
                 onGrabStart={(e) => {
                   e.preventDefault();
@@ -3132,7 +3114,6 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
                   onAddComment: handleToolbarAddComment,
                   onArchive: handleToolbarArchive,
                   onCreateFootnote: handleToolbarCreateFootnote,
-                  onQuoteSelection: handleToolbarQuoteSelection,
                   onAddNote: handleToolbarAddNote,
                   onAddTodo: handleToolbarAddTodo,
                   onCutSelection: handleToolbarAddCut,
@@ -3256,13 +3237,14 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
                     bibliographyPanelSide={bibliographyPanelSide}
                     todoPanelSide={todoPanelSide}
                     cutterPanelSide={cutterPanelSide}
+                    reportsPanelSide={reportsPanelSide}
                     revisionsPanelSide={revisionsPanelSide}
                     discardPristineNotes={notesHook.discardPristineNotes}
                     todosHook={todosHook}
                     archiveHook={archiveHook}
                     cutterHook={cutterHook}
+                    reportsHook={reportsHook}
                     revisionsHook={revisionsHook}
-                    quotationsHook={quotationsHook}
                     sortedArchiveSnippets={sortedArchiveSnippets}
                     anchoredArchiveIds={anchoredArchiveIds}
                     onArchiveInsert={handleArchiveInsert}
@@ -3324,13 +3306,14 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
                       bibliographyPanelSide={bibliographyPanelSide}
                       todoPanelSide={todoPanelSide}
                       cutterPanelSide={cutterPanelSide}
+                      reportsPanelSide={reportsPanelSide}
                       revisionsPanelSide={revisionsPanelSide}
                       discardPristineNotes={notesHook.discardPristineNotes}
                       todosHook={todosHook}
                       archiveHook={archiveHook}
                       cutterHook={cutterHook}
+                      reportsHook={reportsHook}
                       revisionsHook={revisionsHook}
-                      quotationsHook={quotationsHook}
                       sortedArchiveSnippets={sortedArchiveSnippets}
                       anchoredArchiveIds={anchoredArchiveIds}
                       onArchiveInsert={handleArchiveInsert}
@@ -3441,13 +3424,14 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
                 bibliographyPanelSide={bibliographyPanelSide}
                 todoPanelSide={todoPanelSide}
                 cutterPanelSide={cutterPanelSide}
+                reportsPanelSide={reportsPanelSide}
                 revisionsPanelSide={revisionsPanelSide}
                 discardPristineNotes={notesHook.discardPristineNotes}
                 todosHook={todosHook}
                 archiveHook={archiveHook}
                 cutterHook={cutterHook}
+                reportsHook={reportsHook}
                 revisionsHook={revisionsHook}
-                quotationsHook={quotationsHook}
                 sortedArchiveSnippets={sortedArchiveSnippets}
                 anchoredArchiveIds={anchoredArchiveIds}
                 onArchiveInsert={handleArchiveInsert}
@@ -3643,7 +3627,6 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
                     onAddComment={handleToolbarAddComment}
                     onArchive={handleToolbarArchive}
                     onCreateFootnote={handleToolbarCreateFootnote}
-                    onQuoteSelection={handleToolbarQuoteSelection}
                     onAddNote={handleToolbarAddNote}
                     onAddHighlight={handleToolbarAddHighlight}
                     onAddTodo={handleToolbarAddTodo}
@@ -4247,13 +4230,14 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
                         bibliographyPanelSide={bibliographyPanelSide}
                         todoPanelSide={todoPanelSide}
                         cutterPanelSide={cutterPanelSide}
+                        reportsPanelSide={reportsPanelSide}
                         revisionsPanelSide={revisionsPanelSide}
                         discardPristineNotes={notesHook.discardPristineNotes}
                         todosHook={todosHook}
                         archiveHook={archiveHook}
                         cutterHook={cutterHook}
+                        reportsHook={reportsHook}
                         revisionsHook={revisionsHook}
-                        quotationsHook={quotationsHook}
                         sortedArchiveSnippets={sortedArchiveSnippets}
                         anchoredArchiveIds={anchoredArchiveIds}
                         onArchiveInsert={handleArchiveInsert}
@@ -4492,13 +4476,14 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
                 bibliographyPanelSide={bibliographyPanelSide}
                 todoPanelSide={todoPanelSide}
                 cutterPanelSide={cutterPanelSide}
+                reportsPanelSide={reportsPanelSide}
                 revisionsPanelSide={revisionsPanelSide}
                 discardPristineNotes={notesHook.discardPristineNotes}
                 todosHook={todosHook}
                 archiveHook={archiveHook}
                 cutterHook={cutterHook}
+                reportsHook={reportsHook}
                 revisionsHook={revisionsHook}
-                quotationsHook={quotationsHook}
                 sortedArchiveSnippets={sortedArchiveSnippets}
                 anchoredArchiveIds={anchoredArchiveIds}
                 onArchiveInsert={handleArchiveInsert}
@@ -4632,13 +4617,14 @@ interface PaneRailProps {
   bibliographyPanelSide: "left" | "right" | null;
   todoPanelSide: "left" | "right" | null;
   cutterPanelSide: "left" | "right" | null;
+  reportsPanelSide: "left" | "right" | null;
   revisionsPanelSide: "left" | "right" | null;
   discardPristineNotes: () => void;
   todosHook: ReturnType<typeof useTodos>;
   archiveHook: ReturnType<typeof useArchive>;
   cutterHook: ReturnType<typeof useCutter>;
+  reportsHook: ReturnType<typeof useReports>;
   revisionsHook: ReturnType<typeof useRevisions>;
-  quotationsHook: ReturnType<typeof useQuotations>;
   sortedArchiveSnippets: ReturnType<typeof useArchive>["snippets"];
   anchoredArchiveIds: Set<string>;
   onArchiveInsert: (id: string) => void;
@@ -4817,13 +4803,14 @@ function PaneRail({
   bibliographyPanelSide,
   todoPanelSide,
   cutterPanelSide,
+  reportsPanelSide,
   revisionsPanelSide,
   discardPristineNotes,
   todosHook,
   archiveHook,
   cutterHook,
+  reportsHook,
   revisionsHook,
-  quotationsHook,
   sortedArchiveSnippets,
   anchoredArchiveIds,
   onArchiveInsert,
@@ -4918,16 +4905,6 @@ function PaneRail({
           requestBibReview={bibReviewHook.requestReview}
           cancelBibReview={bibReviewHook.cancelRequest}
           getBibReviewStatus={bibReviewHook.getRequestStatus}
-          quotationGroups={quotationsHook.groups}
-          deleteQuotationGroup={quotationsHook.deleteGroup}
-          updateQuotationGroupTitle={quotationsHook.updateGroupTitle}
-          addQuotationReference={quotationsHook.addReference}
-          deleteQuotationReference={quotationsHook.deleteReference}
-          updateQuotationReferenceCiteKey={quotationsHook.updateReferenceCiteKey}
-          addQuotationQuote={quotationsHook.addQuote}
-          updateQuotationQuote={quotationsHook.updateQuote}
-          deleteQuotationQuote={quotationsHook.deleteQuote}
-          updateQuotationNotes={quotationsHook.updateNotes}
           notesCards={notesHook.cards}
           updateNote={notesHook.updateNote}
           updateNoteTitle={notesHook.updateNoteTitle}
@@ -4968,6 +4945,12 @@ function PaneRail({
           updateCutterSuggestionField={cutterHook.updateSuggestionField}
           setCutterSuggestionStatus={cutterHook.setSuggestionStatus}
           deleteCutterCard={cutterHook.deleteCard}
+          reportCards={reportsHook.cards}
+          updateReportContent={reportsHook.updateReportContent}
+          updateReportTitle={reportsHook.updateReportTitle}
+          updateRequestContent={reportsHook.updateRequestContent}
+          setRequestAiRequest={reportsHook.setRequestAiRequest}
+          deleteReportCard={reportsHook.deleteCard}
           getOmniEnabled={viewPrefs.getOmniEnabled}
           getOmniHideAll={viewPrefs.getOmniHideAll}
           focusState={viewPrefs.focusState}
@@ -5100,13 +5083,14 @@ interface PaneRailBodyProps {
   bibliographyPanelSide: "left" | "right" | null;
   todoPanelSide: "left" | "right" | null;
   cutterPanelSide: "left" | "right" | null;
+  reportsPanelSide: "left" | "right" | null;
   revisionsPanelSide: "left" | "right" | null;
   discardPristineNotes: () => void;
   todosHook: ReturnType<typeof useTodos>;
   archiveHook: ReturnType<typeof useArchive>;
   cutterHook: ReturnType<typeof useCutter>;
+  reportsHook: ReturnType<typeof useReports>;
   revisionsHook: ReturnType<typeof useRevisions>;
-  quotationsHook: ReturnType<typeof useQuotations>;
   sortedArchiveSnippets: ReturnType<typeof useArchive>["snippets"];
   anchoredArchiveIds: Set<string>;
   onArchiveInsert: (id: string) => void;
@@ -5164,13 +5148,14 @@ function PaneRailBody({
   bibliographyPanelSide,
   todoPanelSide,
   cutterPanelSide,
+  reportsPanelSide,
   revisionsPanelSide,
   discardPristineNotes,
   todosHook,
   archiveHook,
   cutterHook,
+  reportsHook,
   revisionsHook,
-  quotationsHook,
   sortedArchiveSnippets,
   anchoredArchiveIds,
   onArchiveInsert,
@@ -5369,6 +5354,21 @@ function PaneRailBody({
       />
     );
   }
+  if (panelKind === "reports") {
+    return (
+      <ReportsHost
+        side={side}
+        panelSide={reportsPanelSide}
+        cards={reportsHook.cards}
+        updateReportContent={reportsHook.updateReportContent}
+        updateReportTitle={reportsHook.updateReportTitle}
+        updateRequestContent={reportsHook.updateRequestContent}
+        setRequestAiRequest={reportsHook.setRequestAiRequest}
+        deleteCard={reportsHook.deleteCard}
+        discardPristine={reportsHook.discardPristineCards}
+      />
+    );
+  }
   if (panelKind === "revisions") {
     return (
       <RevisionsHost
@@ -5384,27 +5384,6 @@ function PaneRailBody({
         convertCard={revisionsHook.convertCard}
         deleteCard={revisionsHook.deleteCard}
         discardPristine={revisionsHook.discardPristineCards}
-      />
-    );
-  }
-  if (panelKind === "quotations") {
-    return (
-      <QuotationsHost
-        side={side}
-        quotationGroups={quotationsHook.groups}
-        bibEntries={citationsHook.bibEntries}
-        bibPackage={citationsHook.bibPackage}
-        citationStyle={citationsHook.citationStyle}
-        addQuotationGroup={quotationsHook.addGroup}
-        deleteQuotationGroup={quotationsHook.deleteGroup}
-        updateQuotationGroupTitle={quotationsHook.updateGroupTitle}
-        addQuotationReference={quotationsHook.addReference}
-        deleteQuotationReference={quotationsHook.deleteReference}
-        updateQuotationReferenceCiteKey={quotationsHook.updateReferenceCiteKey}
-        addQuotationQuote={quotationsHook.addQuote}
-        updateQuotationQuote={quotationsHook.updateQuote}
-        deleteQuotationQuote={quotationsHook.deleteQuote}
-        updateQuotationNotes={quotationsHook.updateNotes}
       />
     );
   }
@@ -5433,7 +5412,6 @@ function PaneRailBody({
         todoItems={todosHook.items}
         archiveSnippets={archiveHook.snippets}
         cutterCards={cutterHook.cards}
-        quotationGroups={quotationsHook.groups}
         comments={revisionsHook.cards}
         bibEntries={citationsHook.bibEntries}
         openItemInPanel={openItemInPanel}

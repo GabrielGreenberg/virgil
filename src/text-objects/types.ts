@@ -375,7 +375,7 @@ export interface TextObjectMeta {
   ) => MoveSource | null;
 
   /** Collect the doc range an annotation-style action (highlight, note,
-   *  footnote, citation, quotation, todo, suggest-edit, cutter) should
+   *  footnote, citation, todo, suggest-edit, cutter) should
    *  operate on. Symmetric counterpart of `collectMoveSource`: that one
    *  carries lifecycle range (whole section for headings), this carries
    *  annotation range (heading line only for headings). Default behavior
@@ -460,12 +460,12 @@ export interface MoveSource {
 export type DragHandleAction =
   | "footnote"
   | "citation"
-  | "quotation"
   | "note"
   | "highlight"
   | "todo"
   | "suggest-edit"
   | "cutter"
+  | "report"
   | "duplicate"
   | "archive"
   | "delete";

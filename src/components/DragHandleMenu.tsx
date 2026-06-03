@@ -23,7 +23,7 @@ import {
   IconFootnote,
   IconHighlight,
   IconNotes,
-  IconQuotations,
+  IconReports,
   IconRevisions,
   IconTodo,
   IconTrash,
@@ -45,12 +45,12 @@ import type { TextObjectKind } from "@/text-objects/types";
 export type DragHandleAction =
   | "footnote"
   | "citation"
-  | "quotation"
   | "note"
   | "highlight"
   | "todo"
   | "suggest-edit"
   | "cutter"
+  | "report"
   | "duplicate"
   | "archive"
   | "delete";
@@ -80,10 +80,10 @@ export const MENU_ENTRIES: MenuEntry[] = [
   { action: "note", label: "Note", letter: "N", icon: <IconNotes size={16} /> },
   { action: "footnote", label: "Footnote", letter: "F", icon: <IconFootnote size={16} /> },
   { action: "citation", label: "Citation", letter: "C", icon: <IconCitation size={16} /> },
-  { action: "quotation", label: "Quotation", letter: "Q", icon: <IconQuotations size={16} /> },
   { action: "todo", label: "Todo", letter: "T", icon: <IconTodo size={16} /> },
   { action: "suggest-edit", label: "Suggest edit", letter: "E", icon: <IconRevisions size={16} /> },
   { action: "cutter", label: "Suggest cut", letter: "X", icon: <IconCutter size={16} /> },
+  { action: "report", label: "Report", letter: "R", icon: <IconReports size={16} /> },
   { action: "duplicate", label: "Duplicate", letter: "D", icon: <IconDuplicate size={16} />, separator: true },
   { action: "archive", label: "Archive", letter: "A", icon: <IconArchive size={16} />, separator: true },
   { action: "delete", label: "Delete", letter: "⌫", icon: <IconTrash size={16} />, destructive: true },

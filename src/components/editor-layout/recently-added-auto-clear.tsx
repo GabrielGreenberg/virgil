@@ -32,14 +32,10 @@ function Effects({
 }) {
   useClearOnSelectionDrift(tracker, "note", selections.selectedNoteId);
   useClearOnSelectionDrift(tracker, "cutter", selections.selectedCutterCardId);
+  useClearOnSelectionDrift(tracker, "reports", selections.selectedReportCardId);
   useClearOnSelectionDrift(tracker, "revision", selections.selectedCommentId);
   useClearOnSelectionDrift(tracker, "todo", selections.selectedTodoId);
   useClearOnSelectionDrift(tracker, "footnote", selections.selectedFootnoteId);
-  useClearOnSelectionDrift(
-    tracker,
-    "quotation",
-    selections.selectedQuotationGroupId,
-  );
   useClearOnSelectionDrift(tracker, "citation", selections.selectedCitationId);
   return null;
 }

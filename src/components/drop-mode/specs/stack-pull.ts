@@ -230,9 +230,9 @@ function applyCardDrop(
   const paragraphId =
     placement.kind === "paragraph-side" ? placement.paragraphId : null;
 
-  // Citation / quotation — upsert bib sidecars first so the destination
-  // doc can resolve cite keys.
-  if (card.cardKind === "citation" || card.cardKind === "quotation") {
+  // Citation — upsert bib sidecars first so the destination doc can
+  // resolve cite keys.
+  if (card.cardKind === "citation") {
     const entries = "bibEntries" in card ? card.bibEntries : undefined;
     if (entries) {
       for (const e of entries) stack.upsertBibEntry(e);
@@ -262,9 +262,6 @@ function applyCardDrop(
       return;
     case "bibliography":
       stack.upsertBibEntry(card.data);
-      return;
-    case "quotation":
-      stack.addQuotation(paragraphId, card.data);
       return;
     case "todo":
       stack.addTodo(paragraphId, { text: card.data.text });

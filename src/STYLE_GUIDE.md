@@ -260,10 +260,10 @@ Don't nest modals. Use a popover for transients over a modal.
 Three categories.
 
 1. **Anchor drag** (paragraph-level reanchor). MIMEs:
-   `MIME_QUOTATION`, `MIME_NOTE`, `MIME_TODO`, `MIME_ARCHIVE_ANCHOR`,
+   `MIME_REPORT`, `MIME_NOTE`, `MIME_TODO`, `MIME_ARCHIVE_ANCHOR`,
    `MIME_CUT`, `MIME_MARGINALIA_MOVE`. Ghost: full card snapshot.
    Drop indicator: 2px solid blue line.
-2. **Inline insert drag** (text-only). MIMEs: `MIME_QUOTE`,
+2. **Inline insert drag** (text-only). MIMEs:
    `MIME_CITATION`, `MIME_ARCHIVE`, `MIME_FOOTNOTE`,
    `MIME_AI_REQUEST`, `MIME_TEXT_INSERT`. Ghost: white pill with
    ellipsis text. Drop indicator: ProseMirror native cursor.

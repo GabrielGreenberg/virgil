@@ -12,7 +12,6 @@ import {
   IconFootnote,
   IconCitation,
   IconBibliography,
-  IconQuotations,
   IconExample,
 } from "./editor-layout/panel-icons";
 import { generateShortId } from "@/lib/uuid";
@@ -320,7 +319,6 @@ export interface ActionToolbarCallbacks {
   onCreateFootnote?: ActionToolbarCallback;
   onInsertCitation?: ActionToolbarCallback;
   onCreateBibEntry?: ActionToolbarCallback;
-  onQuoteSelection?: ActionToolbarCallback;
 }
 
 interface MenuBarProps extends ActionToolbarCallbacks {
@@ -850,7 +848,7 @@ export function ActionButton({
  *  hooks that some callers rely on. */
 export interface ActionButtonDef {
   callbackKey: keyof ActionToolbarCallbacks;
-  panelId: "revisions" | "notes" | "todo" | "cutter" | "archive" | "footnotes" | "citations" | "bibliography" | "quotations" | "examples";
+  panelId: "revisions" | "notes" | "todo" | "cutter" | "archive" | "footnotes" | "citations" | "bibliography" | "reports" | "examples";
   /** Panel-theme accent key — drives the marginalia-style chip palette
    *  (color/bg/border) used by the floating action toolbar, and honors
    *  user color overrides via `usePanelMarkerPalette`. */
@@ -873,7 +871,6 @@ export const ACTION_BUTTON_DEFS: ActionButtonDef[] = [
   { callbackKey: "onCreateFootnote", panelId: "footnotes", themeKey: "footnote", title: "Add footnote", color: "#b45757", hoverBg: "#fef2f2", hoverColor: "#993d3d", icon: <IconFootnote size={16} /> },
   { callbackKey: "onInsertCitation", panelId: "citations", themeKey: "citation", title: "Add citation", color: "#d4a843", hoverBg: "#fdf8e1", hoverColor: "#a07d26", icon: <IconCitation size={16} />, dataAttr: "data-insert-citation-button" },
   { callbackKey: "onCreateBibEntry", panelId: "bibliography", themeKey: "bib", title: "Add bibliography entry", color: "#b8a968", hoverBg: "#faf6e8", hoverColor: "#8a7c4a", icon: <IconBibliography size={16} /> },
-  { callbackKey: "onQuoteSelection", panelId: "quotations", themeKey: "quote", title: "Add quotation", color: "#a16207", hoverBg: "#fffbeb", hoverColor: "#854d0e", icon: <IconQuotations size={16} /> },
 ];
 
 /** Renders the full row of Actions buttons shared by the attached
@@ -1233,13 +1230,13 @@ function ViewMenu({
                 <span>Show marginalia</span>
                 <span className="text-[var(--accent)]">{showMarginalia ? "\u2713" : ""}</span>
               </button>
-              {showMarginalia && (["quote", "note", "archive", "todo"] as const).map((type) => (
+              {showMarginalia && (["note", "archive", "todo"] as const).map((type) => (
                 <button
                   key={type}
                   onClick={() => onToggleMarginaliaType(type)}
                   className="w-full text-left pl-6 pr-3 py-1.5 text-xs text-ink-body hover-on-light flex items-center justify-between gap-3"
                 >
-                  <span>{type === "quote" ? "Quotations" : type === "note" ? "Notes" : type === "archive" ? "Archive" : "Todo"}</span>
+                  <span>{type === "note" ? "Notes" : type === "archive" ? "Archive" : "Todo"}</span>
                   <span className="text-[var(--accent)]">{!hiddenMarginaliaTypes.has(type) ? "\u2713" : ""}</span>
                 </button>
               ))}
@@ -1263,15 +1260,14 @@ function ViewMenu({
                 <span>Show highlights</span>
                 <span className="text-[var(--accent)]">{showHighlights ? "\u2713" : ""}</span>
               </button>
-              {showHighlights && (["quotation", "note", "todo", "comment", "cut"] as const).map((type) => (
+              {showHighlights && (["note", "todo", "comment", "cut"] as const).map((type) => (
                 <button
                   key={type}
                   onClick={() => onToggleHighlightType(type)}
                   className="w-full text-left pl-6 pr-3 py-1.5 text-xs text-ink-body hover-on-light flex items-center justify-between gap-3"
                 >
                   <span>{
-                    type === "quotation" ? "Quotations"
-                      : type === "note" ? "Notes"
+                    type === "note" ? "Notes"
                       : type === "todo" ? "Todo"
                       : type === "comment" ? "Revisions"
                       : "Cuts"
@@ -1378,7 +1374,7 @@ function ViewMenu({
 function MenuBarContent({
   editor,
   orientation,
-  onAddComment, onArchive, onCreateFootnote, onQuoteSelection, onAddNote, onAddHighlight, onAddTodo, onCutSelection, onInsertCitation,
+  onAddComment, onArchive, onCreateFootnote, onAddNote, onAddHighlight, onAddTodo, onCutSelection, onInsertCitation,
   showParTitles, onToggleParTitles,
   showLatexComments, onToggleLatexComments,
   showSectionIndicator, onToggleSectionIndicator,
