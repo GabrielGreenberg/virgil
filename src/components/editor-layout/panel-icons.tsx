@@ -215,15 +215,21 @@ export function IconCutter({ active, size = 18 }: { active?: boolean; size?: num
   );
 }
 
-export function IconQuotations({ active, size = 18, hideFrame }: { active?: boolean; size?: number; hideFrame?: boolean }) {
+// Reports icon — a clipboard with a clip and ruled lines. In gutter mode
+// (hideFrame) the clipboard body is dropped so the clip + lines read at 16px.
+export function IconReports({ active, size = 18, hideFrame }: { active?: boolean; size?: number; hideFrame?: boolean }) {
   const c = active ? "var(--accent)" : "currentColor";
   return (
     <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={c} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-      {/* Rounded box */}
-      {!hideFrame && <rect x="2" y="2" width="20" height="20" rx="3" />}
-      {/* Quote marks — toolbar style, centered in box */}
-      <path d="M8 9.5C8 11.5 9 13 10.5 13.5L9.5 15C8 14.5 6.5 12.8 6.5 10.2c0-2 1.2-3.2 2.8-3.2 1.3 0 2.2.9 2.2 2.1S10.5 11.2 9.2 11.2c-.4 0-.8-.1-1.2-.3v-1.4z" fill={c} stroke="none" />
-      <path d="M15 9.5C15 11.5 16 13 17.5 13.5L16.5 15C15 14.5 13.5 12.8 13.5 10.2c0-2 1.2-3.2 2.8-3.2 1.3 0 2.2.9 2.2 2.1s-1 2.1-2.3 2.1c-.4 0-.8-.1-1.2-.3v-1.4z" fill={c} stroke="none" />
+      {!hideFrame && (
+        <path d="M9 4H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V6a2 2 0 0 0-2-2h-3" />
+      )}
+      {/* Clip */}
+      <rect x="9" y="2.5" width="6" height="4" rx="1.2" />
+      {/* Ruled lines */}
+      <line x1="8" y1="11" x2="16" y2="11" />
+      <line x1="8" y1="14.5" x2="16" y2="14.5" />
+      <line x1="8" y1="18" x2="13" y2="18" />
     </svg>
   );
 }
@@ -375,7 +381,7 @@ export const PANEL_ICONS: Record<PanelId, (active: boolean) => React.ReactNode> 
   citations: (a) => <IconCitation active={a} />,
   bibliography: (a) => <IconBibliography active={a} />,
   cutter: (a) => <IconCutter active={a} />,
-  quotations: (a) => <IconQuotations active={a} />,
+  reports: (a) => <IconReports active={a} />,
   examples: (a) => <IconExample active={a} />,
   search: (a) => <IconSearch active={a} />,
   wordcount: (a) => <IconWordCount active={a} />,

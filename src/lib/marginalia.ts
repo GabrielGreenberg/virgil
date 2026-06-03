@@ -2,7 +2,7 @@
  * Marginalia system — shared types, MIME constants, and metadata for the
  * gutter icons that sit to the left and right of paragraphs in the editor.
  *
- * Each consumer panel (quotations, notes, archive, revisions, cut, todo)
+ * Each consumer panel (notes, archive, revisions, cut, todo)
  * registers markers via the <Marginalia> gutter component. Markers are
  * anchored to any node that carries a UUID attr and packed into rows next
  * to the node's first line.
@@ -47,8 +47,6 @@ export function isAnchorableAtom(nodeType: NodeType): boolean {
 
 /** Drag a gutter icon to re-anchor it to a different paragraph. */
 export const MIME_MARGINALIA_MOVE = "application/x-virgil-marginalia-move";
-/** Drag a quotation group card to anchor it to a paragraph. */
-export const MIME_QUOTATION = "application/x-virgil-quotation";
 /** Drag a note badge to anchor/insert a note. */
 export const MIME_NOTE = "application/x-virgil-note";
 /** Drag a todo item to anchor it to a paragraph. */
@@ -56,8 +54,6 @@ export const MIME_TODO = "application/x-virgil-todo";
 /** Drag an archive anchor badge to re-anchor an orphaned snippet. */
 export const MIME_ARCHIVE_ANCHOR = "application/x-virgil-archive-anchor-id";
 
-/** Drag an individual quote pod to insert quoted text + citation. */
-export const MIME_QUOTE = "application/x-virgil-quote";
 /** Drag a citation to insert it inline. */
 export const MIME_CITATION = "application/x-virgil-citation";
 /** Drag an archive card to restore its text into the document. */
@@ -70,6 +66,8 @@ export const MIME_AI_REQUEST = "application/x-virgil-ai-request";
 export const MIME_TEXT_INSERT = "application/x-virgil-text-insert";
 /** Drag a cut card (Cutter tool) to anchor it to a paragraph. */
 export const MIME_CUT = "application/x-virgil-cut";
+/** Drag a report card (report or report-request) to anchor it to a paragraph. */
+export const MIME_REPORT = "application/x-virgil-report";
 /**
  * Drag the floating "selection chip" into a side panel (Notes / Revisions /
  * Cutter) to create a linked-margin item anchored to the selected range.
@@ -84,11 +82,11 @@ export const MIME_SELECTION_ANCHOR = "application/x-virgil-selection-anchor";
  */
 export const ANCHOR_DRAG_TYPES: readonly string[] = [
   MIME_MARGINALIA_MOVE,
-  MIME_QUOTATION,
   MIME_NOTE,
   MIME_TODO,
   MIME_ARCHIVE_ANCHOR,
   MIME_CUT,
+  MIME_REPORT,
 ];
 
 /** Returns true if the DataTransfer contains a paragraph-level anchor drag. */
@@ -96,12 +94,12 @@ export function isAnchorDrag(dt: DataTransfer | null): boolean {
   return dt != null && ANCHOR_DRAG_TYPES.some((t) => dt.types.includes(t));
 }
 
-export type MarkerType = "quote" | "note" | "archive" | "revision" | "cut" | "todo" | "error";
+export type MarkerType = "note" | "archive" | "revision" | "cut" | "todo" | "report" | "error";
 
 export interface MarginaliaMarker {
   /** Stable per-marker id — unique per marker instance (may be composite for multi-anchor) */
   id: string;
-  /** Original entity id (e.g. quotation group id, note id) when id is a composite key */
+  /** Original entity id (e.g. note id) when id is a composite key */
   entityId: string;
   /**
    * Anchored-card kind this marker belongs to. Markers self-subscribe to
@@ -111,9 +109,9 @@ export interface MarginaliaMarker {
    * anchored cards) don't carry it.
    */
   entityKind?:
-    | "note" | "highlight" | "footnote" | "citation" | "quotation" | "example"
+    | "note" | "highlight" | "footnote" | "citation" | "example"
     | "todo" | "archive" | "comment" | "revision-suggestion"
-    | "cutter-comment" | "cutter-suggestion";
+    | "cutter-comment" | "cutter-suggestion" | "report" | "report-request";
   /** Marker category — drives icon/color */
   type: MarkerType;
   /** TextObject UUID this marker is anchored to. May be any kind in
@@ -205,24 +203,24 @@ export interface PositionedMarker extends MarginaliaMarker {
 
 import * as React from "react";
 import {
-  IconQuotations,
   IconNotes,
   IconArchive,
   IconRevisions,
   IconCutter,
   IconTodo,
+  IconReports,
   IconErrors,
 } from "@/components/editor-layout/panel-icons";
 import { DEFAULT_PANEL_COLORS, markerPaletteFromAccent } from "@/lib/panel-theme";
 
 const MARGIN_ICON_SIZE = 16;
 
-const QuoteIcon = React.createElement(IconQuotations, { size: MARGIN_ICON_SIZE, hideFrame: true });
 const NoteIcon = React.createElement(IconNotes, { size: MARGIN_ICON_SIZE });
 const ArchiveIcon = React.createElement(IconArchive, { size: MARGIN_ICON_SIZE });
 const RevisionIcon = React.createElement(IconRevisions, { size: MARGIN_ICON_SIZE });
 const CutIcon = React.createElement(IconCutter, { size: MARGIN_ICON_SIZE });
 const TodoIcon = React.createElement(IconTodo, { size: MARGIN_ICON_SIZE });
+const ReportIcon = React.createElement(IconReports, { size: MARGIN_ICON_SIZE, hideFrame: true });
 const ErrorIcon = React.createElement(IconErrors, { size: MARGIN_ICON_SIZE });
 
 /** Build a MARKER_META row by deriving the color quartet from a panel-theme accent.
@@ -237,12 +235,12 @@ function meta(
 }
 
 export const MARKER_META: Record<MarkerType, MarkerMeta> = {
-  quote:    meta("quote",    { label: "Quotation", panelId: "quotations", defaultSide: "left",  icon: QuoteIcon }),
   note:     meta("note",     { label: "Note",      panelId: "notes",      defaultSide: "right", icon: NoteIcon }),
   archive:  meta("archive",  { label: "Archived",  panelId: "archive",    defaultSide: "right", icon: ArchiveIcon }),
   revision: meta("revision", { label: "Revision",  panelId: "revisions",  defaultSide: "right", icon: RevisionIcon }),
   cut:      meta("cut",      { label: "Cut",       panelId: "cutter",     defaultSide: "right", icon: CutIcon }),
   todo:     meta("todo",     { label: "Todo",      panelId: "todo",       defaultSide: "right", icon: TodoIcon }),
+  report:   meta("report",   { label: "Report",    panelId: "reports",    defaultSide: "left",  icon: ReportIcon }),
   // error reuses the footnote rust accent intentionally — same color family,
   // distinguished by the icon glyph.
   error:    meta("footnote", { label: "Error",     panelId: "errors",     defaultSide: "right", icon: ErrorIcon }),

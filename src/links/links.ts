@@ -212,10 +212,11 @@ function inferMarginSide(cardKind: CardKind): "left" | "right" {
   // `MARKER_META` in `src/lib/marginalia.ts` already encodes the default
   // side per marker type; we just need the CardKind → side mapping here
   // for `collectLinksFromEditor`'s synthetic Link output. Revisions/cut
-  // are on the right; quotations on the left. This defaults to "right"
+  // are on the right; reports on the left. This defaults to "right"
   // and is only a hint — Phase 2's real data source is the card record.
   switch (cardKind) {
-    case "quotation":
+    case "report":
+    case "report-request":
       return "left";
     default:
       return "right";
@@ -719,7 +720,9 @@ export type LinkedAnchorKind =
   | "highlight"
   | "revision"
   | "cutter-comment"
-  | "cutter-suggestion";
+  | "cutter-suggestion"
+  | "report"
+  | "report-request";
 
 export interface LinkedAnchorRecord {
   anchorId: string;
@@ -740,6 +743,10 @@ function legacyKindToCardKindString(kind: LinkedAnchorKind): string {
       return "cutter-suggestion";
     case "revision":
       return "comment";
+    case "report":
+      return "report";
+    case "report-request":
+      return "report-request";
   }
 }
 

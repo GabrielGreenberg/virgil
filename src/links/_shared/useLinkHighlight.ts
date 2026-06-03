@@ -22,12 +22,12 @@ import { DATA_LINK_ID } from "../link-registry";
 const DATA_HIGHLIGHT = "data-link-highlight";
 
 const ALL_KINDS = [
-  "quotation",
   "note",
   "todo",
   "comment",
   "cut",
   "archive",
+  "report",
 ] as const;
 type LinkAnchorKind = (typeof ALL_KINDS)[number];
 

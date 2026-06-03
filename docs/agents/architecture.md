@@ -31,7 +31,7 @@ All in `src/hooks/`. Full list (~50 files) is large; these are the ones most oft
 | `useSuggestions` | AI line-edit suggestion state |
 | `useArchive` | Archived snippets |
 | `useTodos` | Todo items |
-| `useQuotations` | Quotation groups |
+| `useReports` | Reports (report + report-request cards) |
 | `useExamples` | Expex example blocks (harvests `exampleBlock` nodes from editor doc) |
 | `useCutter` | Cut items |
 | `useWordCount` | Live word counts by section |
@@ -133,7 +133,7 @@ Cards inside a `CardListPanel`:
 The popouts mount lives inside [EditorPane.tsx](../../src/components/EditorPane.tsx) at the editor root, gated on `viewPrefs && !viewPrefs.zenMode`, with a memoized `popoutsDeps: PoppedCardDeps` bag wired from EditorPane's per-doc hooks. The Reader passes no `viewPrefs` so the mount stays dormant. Zen mode hides the floats but retains their state.
 
 Popout key prefixes for cards (DO NOT rename without migration — they're persisted; SSOT in `CARD_KEY_PREFIXES`):
-`note`, `highlight`, `footnote`, `archive`, `todo`, `bib`, `citation`, `revision` (for `comment` cards), `suggestion`, `cutter-comment`, `cutter-suggestion`, `revision-suggestion`, `quotation`, `example`, `ai`, `error`. (The legacy `cut` prefix was retired with the Cutter rebuild.)
+`note`, `highlight`, `footnote`, `archive`, `todo`, `bib`, `citation`, `revision` (for `comment` cards), `suggestion`, `cutter-comment`, `cutter-suggestion`, `revision-suggestion`, `report`, `report-request`, `example`, `ai`, `error`. (The legacy `cut` prefix was retired with the Cutter rebuild.)
 
 **Block popouts** also live in `prefs.poppedOutCards` but use one unified prefix shape: `textobject:<kind>:<uuid>` (or `textobject:linkedRange:<anchorId>` for mark-backed range popouts). Emitted by `textObjectPopoutKey` in [src/text-objects/text-object-registry.ts](../../src/text-objects/text-object-registry.ts); parsed by `parseTextObjectPopoutKey`. The dispatcher in [floating-cards.tsx](../../src/components/editor-layout/floating-cards.tsx) reads `meta.floatBodyComponent` from `TEXT_OBJECT_REGISTRY` and renders the body inside the unified `TextObjectFloat` chrome. Body components live in [src/text-objects/floats/](../../src/text-objects/floats/) — `ParagraphBody`, `HeadingBody`, `ListBody`, `TexBlockBody`, `ExampleBlockBody`, `LinkedRangeBody` (registered via `registerFloatBody` from `floats/index.ts`).
 

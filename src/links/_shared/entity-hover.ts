@@ -9,7 +9,7 @@
  * helpers that all three call sites use, so we never write per-kind hover
  * handlers.
  *
- * EntityKind enumerates the 11 *anchored* card kinds — the ones whose
+ * EntityKind enumerates the *anchored* card kinds — the ones whose
  * three-surface hover/selection rule applies. It is *not* the same as
  * `CardKind` from `panels/_shared/types.ts`, which has additional
  * non-anchored variants (bib, error, ai) used only for rendering.
@@ -23,7 +23,8 @@ export const ANCHORED_CARD_KINDS = [
   "highlight",
   "footnote",
   "citation",
-  "quotation",
+  "report",
+  "report-request",
   "example",
   "todo",
   "archive",
@@ -51,7 +52,10 @@ export interface EntityCollections {
   comments: ReadonlyArray<{ id: string; kind?: string; links?: Link[] }>;
   todos: ReadonlyArray<{ id: string; links?: Link[] }>;
   archiveSnippets: ReadonlyArray<{ id: string; links?: Link[] }>;
-  quotationGroups: ReadonlyArray<{ id: string; links?: Link[] }>;
+  /** Reports panel hosts both `report` and `report-request` kinds; threaded
+   *  here so `findEntity` can resolve either by splitting on `kind`. Optional
+   *  so legacy callers without a reports hook still compile. */
+  reports?: ReadonlyArray<{ id: string; kind?: string; links?: Link[] }>;
   examples: ReadonlyArray<{ id: string }>;
 }
 
@@ -64,7 +68,14 @@ export function findEntity(
     case "highlight": return c.highlights?.find((e) => e.id === ref.id);
     case "todo":      return c.todos.find((e) => e.id === ref.id);
     case "archive":   return c.archiveSnippets.find((e) => e.id === ref.id);
-    case "quotation": return c.quotationGroups.find((e) => e.id === ref.id);
+    case "report": {
+      const card = c.reports?.find((e) => e.id === ref.id);
+      return card && card.kind !== "report-request" ? card : undefined;
+    }
+    case "report-request": {
+      const card = c.reports?.find((e) => e.id === ref.id);
+      return card && card.kind === "report-request" ? card : undefined;
+    }
     case "example":   return c.examples.find((e) => e.id === ref.id);
     case "cutter-comment": {
       const card = c.cutterCards.find((e) => e.id === ref.id);
@@ -101,7 +112,8 @@ export function cardKeyForEntity(
     case "highlight":           return `highlight:${ref.id}`;
     case "todo":                return `todo:${ref.id}`;
     case "archive":             return `archive:${ref.id}`;
-    case "quotation":           return `quotation:${ref.id}`;
+    case "report":              return `report:${ref.id}`;
+    case "report-request":      return `report-request:${ref.id}`;
     case "example":             return `example:${ref.id}`;
     case "comment":             return `revision:${ref.id}`;
     case "revision-suggestion": return `revision-suggestion:${ref.id}`;

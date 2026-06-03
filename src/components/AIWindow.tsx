@@ -57,9 +57,9 @@ export type AIRequestKind =
   | "panel-footnote"
   | "panel-note"
   | "panel-citation"
-  | "panel-quotation"
   | "panel-todo"
-  | "panel-suggestion";
+  | "panel-suggestion"
+  | "panel-report";
 
 type AIRequestStatus = "open" | "responded" | "resolved";
 
@@ -139,12 +139,6 @@ const KIND_META: Record<
     chipFg: "#a16207",
     description: "AI request for a citation",
   },
-  "panel-quotation": {
-    label: "Quotation",
-    chipBg: "#faf5ff",
-    chipFg: "#7e22ce",
-    description: "AI request for a quotation",
-  },
   "panel-todo": {
     label: "Todo",
     chipBg: "#f0fdf4",
@@ -156,6 +150,12 @@ const KIND_META: Record<
     chipBg: "#f3edfb",
     chipFg: "#7c3aed",
     description: "Apply an accepted Cutter suggestion to the document",
+  },
+  "panel-report": {
+    label: "Report",
+    chipBg: "#eef2ff",
+    chipFg: "#4338ca",
+    description: "AI request for a report",
   },
 };
 
@@ -270,7 +270,7 @@ function buildRequests(args: BuildArgs): AIRequestVM[] {
     // Notes-panel home, same composer affordances.
     highlight: "panel-note",
     citation: "panel-citation",
-    quotation: "panel-quotation",
+    report: "panel-report",
     todo: "panel-todo",
     suggestion: "panel-suggestion",
     // style-merge requests are filed by the Style dropdown, not panels,
@@ -449,7 +449,6 @@ export default function AIWindow({
     "panel-footnote": "footnote",
     "panel-note": "note",
     "panel-citation": "citation",
-    "panel-quotation": "quotation",
     "panel-todo": "todo",
   };
 
@@ -625,7 +624,6 @@ export default function AIWindow({
                             <option value="panel-footnote">Footnote request</option>
                             <option value="panel-note">Note request</option>
                             <option value="panel-citation">Citation request</option>
-                            <option value="panel-quotation">Quotation request</option>
                             <option value="panel-todo">Todo request</option>
                           </optgroup>
                         </select>
@@ -896,7 +894,7 @@ function SkillsPanel() {
     },
     {
       name: "Footnotes & annotations",
-      description: "Draft footnotes, margin notes, quotations, and todos.",
+      description: "Draft footnotes, margin notes, and todos.",
       enabled: true,
     },
     {

@@ -13,7 +13,6 @@ import type {
   CutterCard,
   FootnoteRef,
   HighlightCard,
-  QuotationGroup,
   RevisionCard,
   TodoItem,
   UserNote,
@@ -36,8 +35,6 @@ export function cardKeyPrefixToStackKind(prefix: string): StackCardKind | null {
       return "citation";
     case "bib":
       return "bibliography";
-    case "quotation":
-      return "quotation";
     case "example":
       return "example";
     case "todo":
@@ -64,7 +61,6 @@ export interface CardLookupHooks {
   };
   todosHook: { items: TodoItem[] };
   archiveHook: { snippets: ArchivedSnippet[] };
-  quotationsHook: { groups: QuotationGroup[] };
   revisionsHook: { cards: RevisionCard[] };
   cutterHook: { cards: CutterCard[] };
   footnotesHook: { footnoteRefs: FootnoteRef[] };
@@ -85,7 +81,6 @@ export function resolveCardData(
   | FootnoteRef
   | CitationRef
   | BibEntry
-  | QuotationGroup
   | TodoItem
   | ArchivedSnippet
   | Extract<RevisionCard, { kind: "comment" }>
@@ -106,8 +101,6 @@ export function resolveCardData(
       // Bibliography popout key uses `bib:<bibKey>` — id IS the bib key.
       return hooks.citationsHook.getBibEntry(id) ?? null;
     }
-    case "quotation":
-      return hooks.quotationsHook.groups.find((g) => g.id === id) ?? null;
     case "example":
       // Examples don't have a useful standalone snapshot payload in v1.
       return null;

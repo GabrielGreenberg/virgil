@@ -31,7 +31,6 @@ function panelSelectedId(panelId: PanelId, s: SelectionsContextValue): string | 
     case "archive": return s.selectedArchiveId;
     case "notes": return s.selectedNoteId;
     case "todo": return s.selectedTodoId;
-    case "quotations": return s.selectedQuotationGroupId;
     default: return null;
   }
 }
@@ -52,8 +51,6 @@ function panelSelector(panelId: PanelId, id: string): string | null {
       return `[data-note-entry="${id}"]`;
     case "todo":
       return `[data-todo-entry="${id}"]`;
-    case "quotations":
-      return `[data-quotation-group-id="${id}"]`;
     default:
       return null;
   }

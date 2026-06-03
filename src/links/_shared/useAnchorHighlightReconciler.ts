@@ -67,8 +67,9 @@ function paragraphKindFor(kind: CardKind): string | null {
     case "cutter-suggestion":  return "cut";
     case "comment":
     case "revision-suggestion": return "comment";
+    case "report":
+    case "report-request":     return "report";
     case "archive":            return "archive";
-    case "quotation":          return "quotation";
     case "todo":               return "todo";
     default:                   return null;
   }
@@ -132,9 +133,9 @@ export function useAnchorHighlightReconciler({
     notes,
     cutterCards,
     archiveSnippets,
-    quotationGroups,
     todos,
     comments,
+    reports,
     examples,
     highlights,
   } = collections;
@@ -143,9 +144,9 @@ export function useAnchorHighlightReconciler({
       notes,
       cutterCards,
       archiveSnippets,
-      quotationGroups,
       todos,
       comments,
+      reports,
       examples,
       highlights,
     }),
@@ -153,9 +154,9 @@ export function useAnchorHighlightReconciler({
       notes,
       cutterCards,
       archiveSnippets,
-      quotationGroups,
       todos,
       comments,
+      reports,
       examples,
       highlights,
     ],

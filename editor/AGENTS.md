@@ -13,7 +13,7 @@ The editor (the main Virgil app) lets users file three kinds of "I want
 Claude to do something" signals while they write:
 
 1. **`virgil/ai-requests.json`** — unified queue. Kinds: `footnote`,
-   `note`, `quotation`, `citation`, `todo`, `suggestion`,
+   `note`, `report`, `citation`, `todo`, `suggestion`,
    `style-merge`. Status `draft | submitted | complete`.
 2. **Card-level `aiRequest: boolean` flags** on notes, todos,
    cutter-comments, revision-comments. Bridged into the unified queue
@@ -26,12 +26,11 @@ The skill set turns those signals into responses:
 
 - `/editor/review [<docPath>]` — umbrella drain, dispatches per-kind
   subskills.
-- `/editor/draft-footnote`, `/editor/find-citation`,
-  `/editor/draft-quotation` — direct creates.
+- `/editor/draft-footnote`, `/editor/find-citation` — direct creates.
 - `/editor/answer-note-request`, `/editor/answer-todo-request`,
   `/editor/answer-cutter-comment`, `/editor/answer-revision-comment`,
-  `/editor/draft-suggestion` — responders that emit suggestion cards
-  by default.
+  `/editor/answer-report-request`, `/editor/draft-suggestion` —
+  responders that emit cards by default.
 - `/editor/answer-bib-review` — verifies/fills bibliography fields,
   drafts annotations, or (via `--library-sync`) swaps a single entry
   in from the Virgil Library.
@@ -51,11 +50,11 @@ editor/
 │   ├── review.md
 │   ├── draft-footnote.md
 │   ├── find-citation.md
-│   ├── draft-quotation.md
 │   ├── answer-note-request.md
 │   ├── answer-todo-request.md
 │   ├── answer-cutter-comment.md
 │   ├── answer-revision-comment.md
+│   ├── answer-report-request.md
 │   ├── draft-suggestion.md
 │   ├── answer-bib-review.md
 │   └── style-merge.md
@@ -156,7 +155,7 @@ absolute, both work.
 - Suggestion-card default: ambiguous responders emit a
   `RevisionSuggestionCard` (or `CutterSuggestionCard`) with `author:
   "ai"`, `status: "pending"` instead of editing in place.
-- Direct-create kinds (footnote, citation, quotation) insert without
+- Direct-create kinds (footnote, citation) insert without
   a suggestion wrapper — the user can delete if unwanted.
 - Memo discipline: dev memos under `<docPath>/.virgil/memos/<YYYY-MM-DD>-<slug>.md`,
   paper-specific reports under `<docPath>/notes/<slug>.md`. Only

@@ -18,7 +18,6 @@ import type {
   CutterCard,
   FootnoteRef,
   HighlightCard,
-  QuotationGroup,
   RevisionCard,
   TodoItem,
   UserNote,
@@ -82,7 +81,7 @@ export type DropDecision =
 
 /**
  * Generic per-kind paragraph-anchor API. Every attachment-card kind
- * (note, todo, quotation, archive, cutter, revision) exposes the same
+ * (note, todo, archive, cutter, revision) exposes the same
  * shape: lookup the entity, read its current paragraph anchor(s),
  * add or remove a link. The spec factory `textObjectSideReanchorSpec`
  * consumes any API matching this contract.
@@ -135,13 +134,15 @@ export interface DropCtx {
    *  `useNotes` hook. */
   highlights?: ParagraphAnchorApi;
   todos?: ParagraphAnchorApi;
-  quotations?: ParagraphAnchorApi;
   archive?: ParagraphAnchorApi;
   /** Both cutter-comment and cutter-suggestion share this API — they
    *  live in the same `useCutter` hook with one ID space. */
   cutterCards?: ParagraphAnchorApi;
   /** Both revision (comment) and revision-suggestion share this API. */
   revisions?: ParagraphAnchorApi;
+  /** Both report and report-request share this API — they live in the
+   *  same `useReports` hook with one ID space. */
+  reports?: ParagraphAnchorApi;
   /** Sub-bag for the stack-pull spec. Carries the per-doc card-creation
    *  factories plus a bib upsert so a pulled snapshot can materialize a
    *  fresh entity in the destination doc with a new id. Absent means
@@ -174,10 +175,6 @@ export interface StackPullApi {
     paragraphId: string | null,
     seed: { title?: string; content?: unknown },
   ) => ArchivedSnippet;
-  addQuotation: (
-    paragraphId: string | null,
-    seed: QuotationGroup,
-  ) => QuotationGroup;
   addRevisionComment: (
     paragraphId: string | null,
     seed: Extract<RevisionCard, { kind: "comment" }>,

@@ -18,7 +18,7 @@ const KIND_TO_BODY_KEY: Partial<Record<PanelKind, PanelBodyKey>> = {
   cutter: "cut",
   revisions: "revision",
   todo: "todo",
-  quotations: "quote",
+  reports: "report",
   citations: "citation",
   bibliography: "bib",
   examples: "example",

@@ -21,7 +21,7 @@ reference. Schema:
 
   { "requestId": "...",        // ai-requests.json id, or "virtual:<panel>:<cardId>"
     "panel":     "notes" | "todos" | "cutter" | "revisions" |
-                 "footnotes" | "citations" | "quotations",
+                 "footnotes" | "citations" | "reports",
     "card":      { ...full card object to insert },
     "summary":   "<one-line description for the toast>",
     "clearSourceFlag": true   // if requestId is virtual or has linkedTo,
@@ -61,7 +61,7 @@ PANEL_TO_SIDECAR = {
     "revisions": ("revisions.json", "cards"),
     "footnotes": ("footnotes.json", "footnotes"),
     "citations": ("citations.json", "citations"),
-    "quotations": ("quotations.json", "groups"),
+    "reports": ("reports.json", "cards"),
 }
 
 

@@ -5,7 +5,6 @@ import SearchPanel, { type SearchPanelState } from "@/panels/Search";
 import type { PanelId } from "@/hooks/useViewPrefs";
 import type { useNotes } from "@/hooks/useNotes";
 import type { useCutter } from "@/hooks/useCutter";
-import type { useQuotations } from "@/hooks/useQuotations";
 import type { useCitations } from "@/hooks/useCitations";
 import type { useTodos } from "@/hooks/useTodos";
 import type { useRevisions } from "@/hooks/useRevisions";
@@ -16,7 +15,6 @@ import { useCitationDisplayContext } from "../contexts/citation-display";
 
 type NotesHook = ReturnType<typeof useNotes>;
 type CutterHook = ReturnType<typeof useCutter>;
-type QuotationsHook = ReturnType<typeof useQuotations>;
 type CitationsHook = ReturnType<typeof useCitations>;
 type TodosHook = ReturnType<typeof useTodos>;
 type RevisionsHook = ReturnType<typeof useRevisions>;
@@ -30,7 +28,6 @@ export interface SearchHostProps {
   todoItems: TodosHook["items"];
   archiveSnippets: ArchivedSnippet[];
   cutterCards: CutterHook["cards"];
-  quotationGroups: QuotationsHook["groups"];
   comments: RevisionsHook["cards"];
   bibEntries: CitationsHook["bibEntries"];
   openItemInPanel: (panel: PanelId, itemId: string) => void;
@@ -55,7 +52,6 @@ export function SearchHost(p: SearchHostProps) {
       todos={p.todoItems}
       archiveSnippets={p.archiveSnippets}
       cutterCards={p.cutterCards}
-      quotationGroups={p.quotationGroups}
       comments={p.comments}
       bibEntries={p.bibEntries}
       onOpenItem={p.openItemInPanel}

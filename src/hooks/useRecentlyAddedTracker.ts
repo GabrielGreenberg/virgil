@@ -14,7 +14,8 @@ export type RecentlyAddedKind =
   | "revision"
   | "todo"
   | "footnote"
-  | "quotation"
+  | "archive"
+  | "reports"
   | "citation";
 
 export interface RecentlyAddedTracker {

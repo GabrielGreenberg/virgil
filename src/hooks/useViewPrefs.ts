@@ -10,29 +10,29 @@ import { DEFAULT_OMNI_CATEGORIES, migrateOmniCategories, type OmniCategory } fro
 import defaultPrefsJson from "./useViewPrefs.defaults.json";
 
 /** Marginalia card kinds whose visibility is toggled from the View menu. */
-export type MarginaliaType = "quote" | "note" | "archive" | "todo";
+export type MarginaliaType = "note" | "archive" | "todo" | "report";
 /** Heading depths 0–6, matching LaTeX (part…subparagraph). */
 export type DividerLevel = 0 | 1 | 2 | 3 | 4 | 5 | 6;
 /** Heading-divider drawing width. */
 export type DividerWidth = "full" | "mid" | "text";
 
-export type PanelId = "notes" | "revisions" | "archive" | "footnotes" | "citations" | "bibliography" | "outline" | "todo" | "cutter" | "quotations" | "examples" | "search" | "wordcount" | "errors" | "blank" | "omni";
+export type PanelId = "notes" | "revisions" | "archive" | "footnotes" | "citations" | "bibliography" | "outline" | "todo" | "cutter" | "reports" | "examples" | "search" | "wordcount" | "errors" | "blank" | "omni";
 
 /** Card kinds whose linked-anchor highlights are togglable from the
  *  Highlights menu. Values match the prefix of `data-link-card`. */
 export type HighlightType =
-  | "quotation"
   | "note"
   | "todo"
   | "comment"
-  | "cut";
+  | "cut"
+  | "report";
 
 export const ALL_HIGHLIGHT_TYPES: HighlightType[] = [
-  "quotation",
   "note",
   "todo",
   "comment",
   "cut",
+  "report",
 ];
 export type Side = "left" | "right";
 
@@ -126,7 +126,7 @@ export interface ViewPrefs {
   /** Per-kind suppression — each entry hides one card-kind's highlight.
    *  Stored as an array (rather than a Set) so it round-trips through
    *  JSON. Values use the CardKind names that appear in the
-   *  `data-link-card` prefix: "quotation", "note", "todo", "comment"
+   *  `data-link-card` prefix: "note", "todo", "comment"
    *  (= revisions panel), "cut". */
   hiddenHighlightTypes: HighlightType[];
   /** Location of the floating MenuBar. Defaults to "home" (docked in the

@@ -136,7 +136,7 @@ export const LinkedAnchorGuard = Extension.create({
 // Pattern: read `diff.removedBlocks` from DocStructureObserver (already
 // computed, O(1) per transaction), emit `virgil-textobject-orphaned`
 // CustomEvents in a `setTimeout(0)` so the transaction commits first.
-// Each Mode A hook (useTodos / useQuotations / useExamples / useArchive)
+// Each Mode A hook (useTodos / useReports / useExamples / useArchive)
 // listens and sweeps its own `links[]`. The handler MUST be O(removed)
 // per event — pre-build an inverted index inside each hook so the
 // listener doesn't walk every card on every removal.

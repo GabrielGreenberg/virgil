@@ -48,8 +48,8 @@ Editor-side skill bundle (companion to `library/`): the `/editor/review` umbrell
 - **Main text editor** — central prose area with visual rendering of LaTeX commands
 - **TextObjects** — the single canonical abstraction for every graspable text unit (paragraph, heading, list, list item, example item, atom block, linkedRange). Adding a new graspable kind = one entry in `TEXT_OBJECT_REGISTRY` + one schema-group annotation; grab handle, float chrome, drop adapter, and marginalia positioning route through that one registry. See `src/text-objects/` and [TEXT-OBJECT-REFACTOR.md](../../TEXT-OBJECT-REFACTOR.md)
 - **Paragraph UUIDs** — every TextObject node carries a `uuid` attr so margins and panels can anchor to specific locations (linkedRange uses the `linkedAnchor` mark's `anchorId` instead)
-- **Marginalia gutter** — left/right strips of icon markers anchored to paragraphs (or any TextObject), representing linked cards (notes, quotations, todos, cuts, archives, revisions)
-- **Side panels** — configurable stack per side: notes, footnotes, citations, bibliography, quotations, examples, todo, archive, revisions (comments + suggestions), cutter, outline, search, wordcount, errors, omni
+- **Marginalia gutter** — left/right strips of icon markers anchored to paragraphs (or any TextObject), representing linked cards (notes, reports, todos, cuts, archives, revisions)
+- **Side panels** — configurable stack per side: notes, footnotes, citations, bibliography, reports, examples, todo, archive, revisions (comments + suggestions), cutter, outline, search, wordcount, errors, omni
 - **Cards** — every panel displays items as themed cards; cards can be popped out as floating windows
 - **Links** — unified model connecting editor content to panel cards (three kinds: footnote, citation, anchor). The anchor side parameterizes on `targetKind: TextObjectKind`, so cards can anchor to any TextObject
 - **AI exchange** — sidecar JSON files (`suggestions.json`, `revisions.json`, `ai-requests.json`, `bib-review-requests.json`) in `virgil/` folder drive structured UI affordances

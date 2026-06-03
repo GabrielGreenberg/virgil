@@ -18,10 +18,10 @@ export type PanelThemeKey =
   | "note"
   | "highlight"
   | "archive"
-  | "quote"
   | "todo"
   | "cut"
   | "revision"
+  | "report"
   | "example";
 
 // Shipped defaults are loaded from a JSON sidecar so the personal-prefs

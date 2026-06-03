@@ -70,9 +70,9 @@ describe("migrateCardLinks", () => {
     expect(migrateCardLinks("note", "garbage")).toEqual([]);
   });
 
-  it("works across card kinds (cutter-comment, archive, todo, quotation)", () => {
+  it("works across card kinds (cutter-comment, archive, todo, report)", () => {
     const legacy = { id: "x1", paragraphIds: ["p1"] };
-    for (const kind of ["cutter-comment", "archive", "todo", "quotation"] as const) {
+    for (const kind of ["cutter-comment", "archive", "todo", "report"] as const) {
       const links = migrateCardLinks(kind, legacy);
       expect(links).toHaveLength(1);
       expect(links[0].target).toEqual({ type: "card", ref: { kind, id: "x1" } });
@@ -116,11 +116,11 @@ describe("migrateCardLinks", () => {
             margin: { side: "left" },
             textRange: { anchorId: "a-xyz", textSnapshot: "hello world" },
           },
-          target: { type: "card", ref: { kind: "quotation", id: "q1" } },
+          target: { type: "card", ref: { kind: "report", id: "q1" } },
           createdAt: "2026-01-01T00:00:00Z",
         },
       ];
-      const result = migrateCardLinks("quotation", { id: "q1", links: legacyLinks });
+      const result = migrateCardLinks("report", { id: "q1", links: legacyLinks });
       expect(result).toHaveLength(1);
       expect(result[0].anchor.type).toBe("textObject");
       if (result[0].anchor.type === "textObject") {

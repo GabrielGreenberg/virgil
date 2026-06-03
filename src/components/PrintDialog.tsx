@@ -61,7 +61,6 @@ const PANEL_ROWS: { key: PrintPanelKey; label: string }[] = [
   { key: "bibliography", label: "Bibliography" },
   { key: "citations", label: "Citations" },
   { key: "notes", label: "Notes" },
-  { key: "quotations", label: "Quotations" },
   { key: "examples", label: "Examples" },
   { key: "todo", label: "Todo" },
   { key: "archive", label: "Archive" },

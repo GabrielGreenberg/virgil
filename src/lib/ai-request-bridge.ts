@@ -39,6 +39,7 @@ const PANEL_TO_KIND: Record<AiRequestLink["panel"], AiRequestKind> = {
   todos: "todo",
   cutter: "suggestion",
   revisions: "suggestion",
+  reports: "report",
 };
 
 export interface BridgeContext {

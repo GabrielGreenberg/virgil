@@ -16,7 +16,7 @@
  *     `CardKind:cardId`; we delegate to `getCardLifecycle(kind).delete(id)`
  *     uniformly. No per-kind branching in the walker.
  *
- * Limitation: Mode A paragraph-anchor links on todos/quotations/examples/
+ * Limitation: Mode A paragraph-anchor links on todos/examples/
  * archive cards that pointed at deleted paragraphs are NOT proactively
  * cleaned up — those are visible-but-stale "remembered" anchors. The
  * existing orphan listener (`virgil-anchor-orphaned`) handles Mode B

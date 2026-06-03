@@ -19,10 +19,8 @@ import {
   isAnchorableNode,
   isAnchorableAtom,
   MIME_MARGINALIA_MOVE,
-  MIME_QUOTATION,
   MIME_NOTE,
   MIME_TODO,
-  MIME_QUOTE,
   MIME_CITATION,
   MIME_FOOTNOTE,
   MIME_AI_REQUEST,
@@ -561,7 +559,7 @@ const VirgilEditor = forwardRef<EditorHandle, EditorProps>(function VirgilEditor
           return true;
         }
 
-        // All paragraph-level anchor drags (notes, quotations, todos,
+        // All paragraph-level anchor drags (notes, todos,
         // marginalia moves) are handled exclusively by Marginalia.tsx,
         // which uses the visible drop indicator to determine the target.
         // Returning false tells ProseMirror to ignore the drop, letting
@@ -589,28 +587,6 @@ const VirgilEditor = forwardRef<EditorHandle, EditorProps>(function VirgilEditor
           return true;
         }
 
-        // --- Quotation drop (from QuotationsPanel) ---
-        const quotData = event.dataTransfer?.getData(MIME_QUOTATION);
-        if (quotData) {
-          try {
-            const { groupId } = JSON.parse(quotData);
-            if (!groupId) return true;
-            const coords = { left: event.clientX, top: event.clientY };
-            const posResult = view.posAtCoords(coords);
-            if (!posResult) return true; // no preventDefault → Marginalia handles
-            event.preventDefault();
-            const paragraphId = ensureAnchorUuid(view, posResult.pos);
-            if (paragraphId) {
-              window.dispatchEvent(
-                new CustomEvent("virgil-quotation-drop", {
-                  detail: { groupId, paragraphId },
-                })
-              );
-            }
-          } catch { /* ignore bad data */ }
-          return true;
-        }
-
         // --- Citation drop ---
         const citData = event.dataTransfer?.getData(MIME_CITATION);
         if (citData && onCitationDropRef.current) {
@@ -628,61 +604,6 @@ const VirgilEditor = forwardRef<EditorHandle, EditorProps>(function VirgilEditor
               displayText: result.displayText,
             });
             const tr = view.state.tr.insert(pos.pos, node);
-            view.dispatch(tr);
-          } catch { /* ignore bad data */ }
-          return true;
-        }
-
-        // --- Quote drop (from QuotationsPanel — individual quote pod) ---
-        // Inserts the quoted text wrapped in curly quotes followed by a
-        // citation node for the quote's cite key + page number. Uses the
-        // same onCitationDrop callback to register the citation in the
-        // side panel store.
-        const quoteData = event.dataTransfer?.getData(MIME_QUOTE);
-        if (quoteData) {
-          event.preventDefault();
-          try {
-            const { quoteText, command } = JSON.parse(quoteData) as {
-              quoteText?: string;
-              command?: string;
-            };
-            const text = (quoteText ?? "").trim();
-            if (!text) return true;
-            const coords = { left: event.clientX, top: event.clientY };
-            const pos = view.posAtCoords(coords);
-            if (!pos) return true;
-
-            const schema = view.state.schema;
-            const opening = `\u201C${text}`;
-            const closing = `\u201D`;
-
-            // Build the nodes array in insertion order so a single
-            // tr.insert call can place everything atomically — avoids
-            // position-tracking bugs when combining text + atoms.
-            const nodes: PMNode[] = [];
-            nodes.push(schema.text(opening));
-
-            if (command && onCitationDropRef.current) {
-              const result = onCitationDropRef.current(command);
-              if (result) {
-                // Text up through the closing quote, followed by a
-                // space, then the citation atom.
-                nodes.push(schema.text(`${closing} `));
-                nodes.push(
-                  schema.nodes.citation.create({
-                    citationId: result.id,
-                    command,
-                    displayText: result.displayText,
-                  }),
-                );
-              } else {
-                nodes.push(schema.text(closing));
-              }
-            } else {
-              nodes.push(schema.text(closing));
-            }
-
-            const tr = view.state.tr.insert(pos.pos, nodes);
             view.dispatch(tr);
           } catch { /* ignore bad data */ }
           return true;

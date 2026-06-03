@@ -28,10 +28,10 @@ export interface DropModeProviderProps {
   notes?: ParagraphAnchorApi;
   highlights?: ParagraphAnchorApi;
   todos?: ParagraphAnchorApi;
-  quotations?: ParagraphAnchorApi;
   archive?: ParagraphAnchorApi;
   cutterCards?: ParagraphAnchorApi;
   revisions?: ParagraphAnchorApi;
+  reports?: ParagraphAnchorApi;
   stack?: StackPullApi;
 }
 
@@ -41,10 +41,10 @@ export function DropModeProvider({
   notes,
   highlights,
   todos,
-  quotations,
   archive,
   cutterCards,
   revisions,
+  reports,
   stack,
 }: DropModeProviderProps) {
   const { confirm, dialog } = useConfirmDialog();
@@ -61,16 +61,16 @@ export function DropModeProvider({
       notes,
       highlights,
       todos,
-      quotations,
       archive,
       cutterCards,
       revisions,
+      reports,
       stack,
     });
     return () => {
       setDropCtx(null);
     };
-  }, [mainEditor, closePopout, notes, highlights, todos, quotations, archive, cutterCards, revisions, stack]);
+  }, [mainEditor, closePopout, notes, highlights, todos, archive, cutterCards, revisions, reports, stack]);
 
   return (
     <>

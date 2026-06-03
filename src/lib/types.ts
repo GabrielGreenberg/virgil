@@ -126,6 +126,52 @@ export interface RevisionsState {
   tracker?: RevisionsTracker | null;
 }
 
+// --- Reports ---
+//
+// The Reports panel hosts two polymorphic card kinds — reports and report
+// requests — sharing the free-form rich-text body of Notes. A Report is an
+// authored content card (carries an `author` + a name/timestamp byline); a
+// Report Request is the user's "ask": a titleless card with an `aiRequest`
+// flag. A Report is normally produced by the answer-report-request skill
+// answering a Request, but a human can also author one directly.
+
+export interface ReportCard {
+  kind: "report";
+  id: string;
+  createdAt: string;
+  /** Display author. "ai" renders as "AI"; "human" renders the user's name. */
+  author: "human" | "ai";
+  title: string;
+  /** Plain-text mirror of `content`, kept in sync on every write. */
+  text: string;
+  /** Tiptap JSONContent — canonical editable body. */
+  content: unknown;
+  /** Mode B captured text (undefined for paragraph-only / unanchored). */
+  selectedText?: string;
+  links: Link[];
+}
+
+export interface ReportRequestCard {
+  kind: "report-request";
+  id: string;
+  createdAt: string;
+  /** Plain-text mirror of `content`, kept in sync on every write. */
+  text: string;
+  /** Tiptap JSONContent — canonical editable body. */
+  content: unknown;
+  /** Flags this request as something the user wants Claude to act on. */
+  aiRequest: boolean;
+  /** Mode B captured text (undefined for paragraph-only / unanchored). */
+  selectedText?: string;
+  links: Link[];
+}
+
+export type ReportItem = ReportCard | ReportRequestCard;
+
+export interface ReportsState {
+  cards: ReportItem[];
+}
+
 export interface ArchivedSnippet {
   id: string;
   /** Optional display title (empty string if untitled). */
@@ -163,10 +209,10 @@ export type AiRequestKind =
   | "footnote"
   | "note"
   | "highlight"
-  | "quotation"
   | "citation"
   | "todo"
   | "suggestion"
+  | "report"
   | "style-merge";
 
 /**
@@ -187,7 +233,7 @@ export type AiRequestPayload =
  *  `aiRequest: true` flag (notes / todos / cutter-comments / revision-comments).
  *  Lets a fulfillment skill load the source card and update it on completion. */
 export interface AiRequestLink {
-  panel: "notes" | "todos" | "cutter" | "revisions";
+  panel: "notes" | "todos" | "cutter" | "revisions" | "reports";
   cardId: string;
 }
 
@@ -488,43 +534,6 @@ export interface BibSettings {
    *  read so old sidecars round-trip, but never written from the UI. */
   generalBibPath: string | null;
   entryRequests: BibEntryRequest[];
-}
-
-/**
- * Quotation hierarchy:
- *   QuotationGroup
- *     ├─ title (one big title for the whole group)
- *     ├─ references: Reference[]
- *     │     ├─ citeKey (each reference has its own citation)
- *     │     └─ quotes: Quote[]
- *     │           ├─ text
- *     │           └─ page
- *     └─ notes / paragraphId
- */
-
-export interface Quote {
-  id: string;
-  text: string;
-  page: string;
-}
-
-export interface Reference {
-  id: string;
-  citeKey: string;
-  quotes: Quote[];
-}
-
-export interface QuotationGroup {
-  id: string;
-  title: string;
-  references: Reference[];
-  notes: string;
-  createdAt: string;
-  links: Link[];
-}
-
-export interface QuotationsState {
-  groups: QuotationGroup[];
 }
 
 // --- Orphaned Footnotes ---

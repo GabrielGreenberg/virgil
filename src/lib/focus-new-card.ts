@@ -77,6 +77,8 @@ function pickFocusTarget(card: HTMLElement, kind: string): HTMLElement | null {
     case "note":
     case "footnote":
     case "archive":
+    case "report":
+    case "report-request":
       // Rich-text body lives in a contenteditable ProseMirror element.
       return findEditable() ?? findTextarea() ?? findTextInput();
     case "todo":
@@ -107,9 +109,6 @@ function pickFocusTarget(card: HTMLElement, kind: string): HTMLElement | null {
         }
         return findEditable();
       }
-    case "quotation":
-      // Quotation groups: first textarea (cite key / notes) or input.
-      return findTextarea() ?? findTextInput() ?? findEditable();
     default:
       return findEditable() ?? findTextarea() ?? findTextInput();
   }

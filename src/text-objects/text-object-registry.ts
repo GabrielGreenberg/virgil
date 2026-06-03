@@ -92,10 +92,10 @@ const PROSE_ACTIONS: ReadonlyArray<DragHandleAction> = [
   "note",
   "footnote",
   "citation",
-  "quotation",
   "todo",
   "suggest-edit",
   "cutter",
+  "report",
   "duplicate",
   "archive",
   "delete",
@@ -110,10 +110,10 @@ const TITLE_FIELD_ACTIONS: ReadonlyArray<DragHandleAction> = [
   "highlight",
   "note",
   "footnote",
-  "quotation",
   "todo",
   "suggest-edit",
   "cutter",
+  "report",
 ];
 
 const LINKED_RANGE_ACTIONS: ReadonlyArray<DragHandleAction> =

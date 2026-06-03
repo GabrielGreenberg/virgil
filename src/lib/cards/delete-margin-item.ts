@@ -44,12 +44,12 @@ import {
 /** Gutter marker kinds that map to deletable cards. Mirrors `MarkerType`
  *  in `src/lib/marginalia.ts` minus `"error"` (errors aren't cards). */
 export type MarginItemKind =
-  | "quote"
   | "note"
   | "archive"
   | "cut"
   | "todo"
-  | "revision";
+  | "revision"
+  | "report";
 
 /** Per-kind handler bundle. `buildMarginItemHandlers` produces one of
  *  these maps from a set of hook returns. */
@@ -131,12 +131,6 @@ export async function deleteMarginItem(args: DeleteMarginItemArgs): Promise<void
 // map into `deleteMarginItem({ handlers: handlers[kind], ... })`.
 // ---------------------------------------------------------------------------
 
-/** Minimal slice of `useQuotations`'s return that this util consumes. */
-interface QuotationsDep {
-  groups: ReadonlyArray<CardWithLinks>;
-  removeParagraphId: (groupId: string, paragraphId: string) => void;
-  deleteGroup: (groupId: string) => void;
-}
 interface NotesDep {
   notes: ReadonlyArray<CardWithLinks>;
   removeNoteTextObjectId: (id: string, paragraphId: string) => void;
@@ -162,26 +156,25 @@ interface RevisionsDep {
   removeCardParagraphId: (id: string, paragraphId: string) => void;
   deleteCard: (id: string) => void;
 }
+interface ReportsDep {
+  cards: ReadonlyArray<CardWithLinks & { kind: "report" | "report-request" }>;
+  removeCardParagraphId: (id: string, paragraphId: string) => void;
+  deleteCard: (id: string) => void;
+}
 
 export interface BuildMarginItemHandlersDeps {
-  quotations: QuotationsDep;
   notes: NotesDep;
   archive: ArchiveDep;
   cutter: CutterDep;
   todos: TodosDep;
   revisions: RevisionsDep;
+  reports: ReportsDep;
 }
 
 export function buildMarginItemHandlers(
   deps: BuildMarginItemHandlersDeps,
 ): Record<MarginItemKind, MarginItemHandlers> {
   return {
-    quote: {
-      findCard: (id) => deps.quotations.groups.find((g) => g.id === id),
-      contentKind: "quotation",
-      unanchor: deps.quotations.removeParagraphId,
-      delete: deps.quotations.deleteGroup,
-    },
     note: {
       findCard: (id) => deps.notes.notes.find((n) => n.id === id),
       contentKind: "note",
@@ -217,6 +210,15 @@ export function buildMarginItemHandlers(
           : "revision-comment",
       unanchor: deps.revisions.removeCardParagraphId,
       delete: deps.revisions.deleteCard,
+    },
+    report: {
+      findCard: (id) => deps.reports.cards.find((r) => r.id === id),
+      contentKind: (card) =>
+        (card as { kind?: string }).kind === "report-request"
+          ? "report-request"
+          : "report",
+      unanchor: deps.reports.removeCardParagraphId,
+      delete: deps.reports.deleteCard,
     },
   };
 }

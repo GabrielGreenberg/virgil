@@ -7,7 +7,7 @@ import { CutterCommentCard, CutterSuggestionCard } from "@/panels/Cutter";
 import { TodoRow } from "@/panels/Todo";
 import { CitationCard } from "@/panels/Citations";
 import { RevisionCommentCard, RevisionSuggestionCard } from "@/panels/Revisions";
-import { QuotationGroupCard } from "@/panels/Quotations";
+import { ReportCard, ReportRequestCard } from "@/panels/Reports";
 import { ExampleCard } from "@/panels/Examples/ExampleCard";
 import BibEntryCard from "../BibEntryCard";
 import { AiRequestCard } from "../panel-primitives";
@@ -26,11 +26,12 @@ import type {
   CutterSuggestionCard as CutterSuggestionCardData,
   RevisionCard,
   RevisionSuggestionCard as RevisionSuggestionCardData,
+  ReportItem,
+  ReportCard as ReportCardData,
+  ReportRequestCard as ReportRequestCardData,
   TodoItem,
   BibEntry,
   CitationRef,
-  QuotationGroup,
-  Quote,
   AiRequest,
 } from "@/lib/types";
 
@@ -54,7 +55,7 @@ export interface PoppedCardDeps {
   citationPositionMap: Map<string, number>;
   allEditorCitations: Array<{ citationId: string; command: string; keys: string[]; pos: number }>;
   comments: RevisionCard[];
-  quotationGroups: QuotationGroup[];
+  reportCards: ReportItem[];
   aiRequests: AiRequest[];
   examples: ExampleInfo[];
   anchoredIds?: Set<string>;
@@ -64,21 +65,21 @@ export interface PoppedCardDeps {
   selectedFootnoteId: string | null;
   selectedArchiveId: string | null;
   selectedCutterCardId: string | null;
+  selectedReportCardId: string | null;
   selectedTodoId: string | null;
   selectedBibKey: string | null;
   selectedCitationId: string | null;
   selectedCommentId: string | null;
-  selectedQuotationGroupId: string | null;
   selectedExampleId: string | null;
   setSelectedNoteId: Dispatch<SetStateAction<string | null>>;
   setSelectedFootnoteId: Dispatch<SetStateAction<string | null>>;
   setSelectedArchiveId: Dispatch<SetStateAction<string | null>>;
   setSelectedCutterCardId: Dispatch<SetStateAction<string | null>>;
+  setSelectedReportCardId: Dispatch<SetStateAction<string | null>>;
   setSelectedTodoId: Dispatch<SetStateAction<string | null>>;
   setSelectedBibKey: Dispatch<SetStateAction<string | null>>;
   setSelectedCitationId: Dispatch<SetStateAction<string | null>>;
   setSelectedCommentId: Dispatch<SetStateAction<string | null>>;
-  setSelectedQuotationGroupId: Dispatch<SetStateAction<string | null>>;
   setSelectedExampleId: Dispatch<SetStateAction<string | null>>;
 
   // Editor handle (for scroll-to-X navigation)
@@ -128,6 +129,13 @@ export interface PoppedCardDeps {
   ) => void;
   deleteCutterCard: (id: string) => void;
 
+  // Reports (polymorphic: report + report-request)
+  updateReportContent: (id: string, content: JSONContent) => void;
+  updateReportTitle: (id: string, title: string) => void;
+  updateRequestContent: (id: string, content: JSONContent) => void;
+  setRequestAiRequest: (id: string, value: boolean) => void;
+  deleteReportCard: (id: string) => void;
+
   // Todos
   toggleTodo: (id: string) => void;
   updateTodo: (id: string, text: string) => void;
@@ -170,22 +178,6 @@ export interface PoppedCardDeps {
   ) => void;
   convertRevisionCard: (id: string, toKind: "comment" | "suggestion") => void;
   deleteRevisionCard: (id: string) => void;
-
-  // Quotations
-  deleteQuotationGroup: (id: string) => void;
-  updateQuotationGroupTitle: (id: string, title: string) => void;
-  addQuotationReference: (groupId: string) => string;
-  deleteQuotationReference: (groupId: string, referenceId: string) => void;
-  updateQuotationReferenceCiteKey: (groupId: string, referenceId: string, citeKey: string) => void;
-  addQuotationQuote: (groupId: string, referenceId: string) => string;
-  updateQuotationQuote: (
-    groupId: string,
-    referenceId: string,
-    quoteId: string,
-    fields: Partial<Pick<Quote, "text" | "page">>,
-  ) => void;
-  deleteQuotationQuote: (groupId: string, referenceId: string, quoteId: string) => void;
-  updateQuotationNotes: (groupId: string, notes: string) => void;
 
   // AI Requests
   updateAiRequestText: (id: string, text: string) => void;
@@ -335,6 +327,46 @@ export function renderPoppedCard(key: string, d: PoppedCardDeps): ReactNode {
         />
       );
     }
+    case "report": {
+      const card = d.reportCards.find(
+        (c): c is ReportCardData => c.id === id && c.kind === "report",
+      );
+      if (!card) return null;
+      const canJump = getLinkedTextObjectIds(card).length > 0;
+      return (
+        <ReportCard
+          key={key}
+          report={card}
+          selected={d.selectedReportCardId === card.id}
+          onUpdate={d.updateReportContent}
+          onUpdateTitle={d.updateReportTitle}
+          onDelete={d.deleteReportCard}
+          onSelect={d.setSelectedReportCardId}
+          onJump={canJump ? (sourceEl) => d.editorRef.current?.jumpToCard(card, sourceEl) : undefined}
+          isPoppedOut
+        />
+      );
+    }
+    case "report-request": {
+      const card = d.reportCards.find(
+        (c): c is ReportRequestCardData => c.id === id && c.kind === "report-request",
+      );
+      if (!card) return null;
+      const canJump = getLinkedTextObjectIds(card).length > 0;
+      return (
+        <ReportRequestCard
+          key={key}
+          request={card}
+          selected={d.selectedReportCardId === card.id}
+          onUpdate={d.updateRequestContent}
+          onSetAiRequest={d.setRequestAiRequest}
+          onDelete={d.deleteReportCard}
+          onSelect={d.setSelectedReportCardId}
+          onJump={canJump ? (sourceEl) => d.editorRef.current?.jumpToCard(card, sourceEl) : undefined}
+          isPoppedOut
+        />
+      );
+    }
     case "todo": {
       const item = d.todoItems.find((t) => t.id === id);
       if (!item) return null;
@@ -444,36 +476,6 @@ export function renderPoppedCard(key: string, d: PoppedCardDeps): ReactNode {
           onConvert={d.convertRevisionCard}
           onDelete={d.deleteRevisionCard}
           onSelect={d.setSelectedCommentId}
-          isPoppedOut
-        />
-      );
-    }
-    case "quotation": {
-      const group = d.quotationGroups.find((g) => g.id === id);
-      if (!group) return null;
-      const canJump = getLinkedTextObjectIds(group).length > 0;
-      return (
-        <QuotationGroupCard
-          key={key}
-          group={group}
-          bibEntries={d.bibEntries}
-          bibPackage={d.bibPackage}
-          selected={d.selectedQuotationGroupId === group.id}
-          onSelect={() =>
-            d.setSelectedQuotationGroupId(
-              d.selectedQuotationGroupId === group.id ? null : group.id,
-            )
-          }
-          onDelete={() => d.deleteQuotationGroup(group.id)}
-          onJump={canJump ? (sourceEl) => d.editorRef.current?.jumpToCard(group, sourceEl) : undefined}
-          onUpdateGroupTitle={d.updateQuotationGroupTitle}
-          onAddReference={d.addQuotationReference}
-          onDeleteReference={d.deleteQuotationReference}
-          onUpdateReferenceCiteKey={d.updateQuotationReferenceCiteKey}
-          onAddQuote={d.addQuotationQuote}
-          onUpdateQuote={d.updateQuotationQuote}
-          onDeleteQuote={d.deleteQuotationQuote}
-          onUpdateNotes={d.updateQuotationNotes}
           isPoppedOut
         />
       );

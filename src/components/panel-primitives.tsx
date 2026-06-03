@@ -196,6 +196,9 @@ export const CARD_THEMES = {
   // the panel's cut accent so the panel reads as a single themed surface.
   cut:              themeFromAccent(DEFAULT_PANEL_COLORS.cut),
   example:          themeFromAccent(DEFAULT_PANEL_COLORS.example),
+  // Reports panel hosts both reports and report-requests; both share the
+  // panel's report accent so the surface reads as one themed identity.
+  report:           themeFromAccent(DEFAULT_PANEL_COLORS.report),
 } satisfies Record<string, CardTheme>;
 
 /* ── Shared badge classes ────────────────────────────────────────── */
@@ -1893,10 +1896,10 @@ const AI_REQUEST_KIND_LABEL: Record<AiRequestKind, string> = {
   footnote: "footnote",
   note: "note",
   highlight: "highlight",
-  quotation: "quotation",
   citation: "citation",
   todo: "todo",
   suggestion: "suggestion",
+  report: "report",
   // style-merge requests are filed by the Style dropdown and never
   // surface as panel cards; this entry exists only to keep the Record
   // type exhaustive.

@@ -21,7 +21,6 @@ import type {
   ExampleRef,
   FootnoteRef,
   HighlightCard,
-  QuotationGroup,
   RevisionCard,
   TodoItem,
   UserNote,
@@ -35,7 +34,6 @@ export type StackCardKind =
   | "footnote"
   | "citation"
   | "bibliography"
-  | "quotation"
   | "example"
   | "todo"
   | "archive"
@@ -47,14 +45,13 @@ export type StackCardKind =
 /** Per-card-kind snapshot payload. The `data` field carries the source
  *  card's serialized record verbatim; consumers re-serialize on pull,
  *  swapping in a fresh id. Sidecars carry data the destination doc may
- *  not have (bib entries for citations / quotations). */
+ *  not have (bib entries for citations). */
 export type StackCardSnapshot =
   | { cardKind: "note"; data: UserNote }
   | { cardKind: "highlight"; data: HighlightCard }
   | { cardKind: "footnote"; data: FootnoteRef }
   | { cardKind: "citation"; data: CitationRef; bibEntries?: BibEntry[] }
   | { cardKind: "bibliography"; data: BibEntry }
-  | { cardKind: "quotation"; data: QuotationGroup; bibEntries?: BibEntry[] }
   | { cardKind: "example"; data: ExampleRef }
   | { cardKind: "todo"; data: TodoItem }
   | { cardKind: "archive"; data: ArchivedSnippet }

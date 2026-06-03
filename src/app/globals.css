@@ -2410,7 +2410,8 @@ textarea,
 .linked-anchor[data-link-card^="cut:"]       { --link-anchor-color: #b45757; }
 .linked-anchor[data-link-card^="comment:"]   { --link-anchor-color: #9333ea; }
 .linked-anchor[data-link-card^="archive:"]   { --link-anchor-color: #5a7a99; }
-.linked-anchor[data-link-card^="quotation:"] { --link-anchor-color: #a16207; }
+.linked-anchor[data-link-card^="report:"]         { --link-anchor-color: #6366f1; }
+.linked-anchor[data-link-card^="report-request:"] { --link-anchor-color: #6366f1; }
 .linked-anchor[data-link-card^="todo:"]      { --link-anchor-color: #44403c; }
 
 /* Transient (cardless) anchor — the plain selection grab's invisible range
@@ -2458,7 +2459,8 @@ textarea,
 [data-card-key^="revision-suggestion:"],
 [data-card-key^="suggestion:"]          { --link-anchor-color: #9333ea; }
 [data-card-key^="archive:"]             { --link-anchor-color: #5a7a99; }
-[data-card-key^="quotation:"]           { --link-anchor-color: #a16207; }
+[data-card-key^="report:"],
+[data-card-key^="report-request:"]      { --link-anchor-color: #6366f1; }
 [data-card-key^="todo:"]                { --link-anchor-color: #44403c; }
 [data-card-key^="footnote:"]            { --link-anchor-color: #b45757; }
 [data-card-key^="citation:"]            { --link-anchor-color: #d4a843; }
@@ -2473,10 +2475,12 @@ textarea,
 [data-paragraph-kind="cut"]       { --link-anchor-color: #b45757; }
 [data-paragraph-kind="comment"]   { --link-anchor-color: #9333ea; }
 [data-paragraph-kind="archive"]   { --link-anchor-color: #5a7a99; }
-[data-paragraph-kind="quotation"] { --link-anchor-color: #a16207; }
+[data-paragraph-kind="report"]         { --link-anchor-color: #6366f1; }
+[data-paragraph-kind="report-request"] { --link-anchor-color: #6366f1; }
 [data-paragraph-kind="todo"]      { --link-anchor-color: #44403c; }
 
-[data-show-hl-quotation="true"] .linked-anchor[data-link-card^="quotation:"],
+[data-show-hl-report="true"]    .linked-anchor[data-link-card^="report:"],
+[data-show-hl-report="true"]    .linked-anchor[data-link-card^="report-request:"],
 [data-show-hl-note="true"]      .linked-anchor[data-link-card^="note:"],
 [data-show-hl-todo="true"]      .linked-anchor[data-link-card^="todo:"],
 [data-show-hl-comment="true"]   .linked-anchor[data-link-card^="comment:"],
@@ -4036,7 +4040,6 @@ body[data-helper-mode="on"] [data-helper-pos="above"]:hover::after {
   html[data-print-p-footnotes="true"]    [data-print-appendix="footnotes"],
   html[data-print-p-citations="true"]    [data-print-appendix="citations"],
   html[data-print-p-bibliography="true"] [data-print-appendix="bibliography"],
-  html[data-print-p-quotations="true"]   [data-print-appendix="quotations"],
   html[data-print-p-examples="true"]     [data-print-appendix="examples"],
   html[data-print-p-todo="true"]         [data-print-appendix="todo"],
   html[data-print-p-archive="true"]      [data-print-appendix="archive"],

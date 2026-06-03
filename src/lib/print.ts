@@ -22,7 +22,6 @@ export type PrintPanelKey =
   | "footnotes"
   | "citations"
   | "bibliography"
-  | "quotations"
   | "examples"
   | "todo"
   | "archive"

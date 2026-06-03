@@ -21,7 +21,6 @@ import type {
   ExampleRef,
   FootnoteRef,
   HighlightCard,
-  QuotationGroup,
   RevisionCard,
   TodoItem,
   UserNote,
@@ -179,12 +178,11 @@ export function snapshotHeadingSection(
 }
 
 // ── Card snapshot ─────────────────────────────────────────────────────
-/** Side-channel data the snapshot helper needs to attach citation /
- *  quotation bib sidecars. Optional — when absent, citation snapshots
+/** Side-channel data the snapshot helper needs to attach citation
+ *  bib sidecars. Optional — when absent, citation snapshots
  *  carry only the citation ref itself. */
 export interface CardSnapshotCtx {
-  /** Resolve a bib citekey to its full entry (for citations and
-   *  quotation references). */
+  /** Resolve a bib citekey to its full entry (for citations). */
   getBibEntry?: (key: string) => BibEntry | undefined;
 }
 
@@ -231,23 +229,6 @@ export function snapshotCard(
     case "bibliography":
       card = { cardKind, data: cloned as unknown as BibEntry };
       break;
-    case "quotation": {
-      const q = cloned as unknown as QuotationGroup;
-      const bibEntries: BibEntry[] = [];
-      if (ctx?.getBibEntry && Array.isArray(q.references)) {
-        for (const r of q.references) {
-          if (!r.citeKey) continue;
-          const e = ctx.getBibEntry(r.citeKey);
-          if (e) bibEntries.push(deepClone(e));
-        }
-      }
-      card = {
-        cardKind,
-        data: q,
-        ...(bibEntries.length > 0 ? { bibEntries } : {}),
-      };
-      break;
-    }
     case "example":
       card = { cardKind, data: cloned as unknown as ExampleRef };
       break;
@@ -325,9 +306,6 @@ export function summarizeStackItem(item: StackItem, maxChars = 220): string {
         break;
       case "bibliography":
         text = `${c.data.key}${c.data.fields?.title ? ": " + c.data.fields.title : ""}`;
-        break;
-      case "quotation":
-        text = c.data.title || (c.data.references[0]?.quotes[0]?.text ?? "");
         break;
       case "example":
         text = c.data.title || c.data.label || c.data.tag || "(example)";
