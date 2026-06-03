@@ -221,6 +221,57 @@ describe("bodyless-kinds Chip 4 — titleField lift wiring (L3j)", () => {
   });
 });
 
+/*
+ * Chip 6 (memo L3l): exampleItem — the LAST SUB-OBJECT, a mirror of listItem
+ * one wrap level deeper. NOT a `SingleBlockBody` kind AND not the same body as
+ * listItem: it gets its OWN `ExampleItemBody` that wrap-seeds the item in the
+ * full `exampleBlock > exampleItemList` envelope and writes back ONLY the inner
+ * item's range (unwrapping two levels). Unlike listItem it carries NO
+ * `renderGhost` — its marker is a real `.expex-item-marker` DOM child kept by
+ * the default clone (the sub-object analog of exampleBlock). The wrap-seed →
+ * inner-write round-trip itself is locked in
+ * `example-item-inner-writeback.test.ts`.
+ */
+describe("bodyless-kinds Chip 6 — exampleItem sub-object lift wiring (L3l)", () => {
+  it("popoutKeyForLift now returns the canonical key (was the default null)", () => {
+    const key = popoutKeyForLift({ kind: "exampleItem", id: "ab12" });
+    expect(key).toBe(textObjectPopoutKey({ kind: "exampleItem", id: "ab12" }));
+    expect(key).toBe("textobject:exampleItem:ab12");
+  });
+
+  it("flips liftMode to lifted-overlay (was undefined)", () => {
+    expect(TEXT_OBJECT_REGISTRY.exampleItem.liftMode).toBe("lifted-overlay");
+  });
+
+  it("registers its OWN bespoke ExampleItemBody — NOT the shared SingleBlockBody, NOT ListItemBody", () => {
+    // A sub-object is a distinct shape (wrap-seed + inner-targeted write-back),
+    // so it gets its own body — and exampleItem's envelope is one level deeper
+    // than listItem's, so it is ALSO distinct from ListItemBody (not a shared
+    // sub-object body).
+    const body = TEXT_OBJECT_REGISTRY.exampleItem.floatBodyComponent;
+    expect(typeof body).toBe("function");
+    expect((body as { name?: string }).name).toBe("ExampleItemBody");
+    expect(body).not.toBe(TEXT_OBJECT_REGISTRY.blockquote.floatBodyComponent);
+    expect(body).not.toBe(TEXT_OBJECT_REGISTRY.listItem.floatBodyComponent);
+  });
+
+  it("defines NO renderGhost — the default clone lays out faithfully (unlike listItem's bullet rescue)", () => {
+    // exampleItem's marker is a real `.expex-item-marker` DOM child kept by the
+    // default clone, and its marker+body grid is self-contained on
+    // `.expex-item-row` — so it needs no marker-rescue ghost (the sub-object
+    // analog of exampleBlock, which also carries none). listItem DOES define one
+    // (a bare `<li>` loses its CSS `::marker`); pin the contrast so a future
+    // regression that blanket-adds/removes ghosts fails loudly.
+    expect(TEXT_OBJECT_REGISTRY.exampleItem.renderGhost).toBeUndefined();
+    expect(typeof TEXT_OBJECT_REGISTRY.listItem.renderGhost).toBe("function");
+  });
+
+  it("keeps figureBlock as the still-null control (the switch stays provably specific)", () => {
+    expect(popoutKeyForLift({ kind: "figureBlock", id: "ab12" })).toBeNull();
+    expect(TEXT_OBJECT_REGISTRY.figureBlock.liftMode).toBeUndefined();
+  });
+});
+
 describe("bodyless-kinds Chip 5 — listItem sub-object lift wiring (L3k)", () => {
   it("popoutKeyForLift now returns the canonical key (was the default null)", () => {
     const key = popoutKeyForLift({ kind: "listItem", id: "ab12" });

@@ -53,7 +53,8 @@ export type FloatSourceKind =
   | "displayMath"
   | "latexComment"
   | "titleField"
-  | "listItem";
+  | "listItem"
+  | "exampleItem";
 
 const KIND_LABEL: Record<FloatSourceKind, string> = {
   paragraph: "Source paragraph deleted",
@@ -68,6 +69,7 @@ const KIND_LABEL: Record<FloatSourceKind, string> = {
   latexComment: "Source comment deleted",
   titleField: "Source title field deleted",
   listItem: "Source list item deleted",
+  exampleItem: "Source example item deleted",
 };
 
 /**

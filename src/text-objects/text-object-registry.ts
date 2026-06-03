@@ -786,6 +786,24 @@ export const TEXT_OBJECT_REGISTRY: Record<TextObjectKind, TextObjectMeta> = {
     chromeAnchor: "text-top",
     floatBodyComponent: PLACEHOLDER_FLOAT_BODY,
     actions: PROSE_ACTIONS,
+    // L3l (bodyless kinds, Chip 6): exampleItem is the LAST sub-object to lift,
+    // through the two-mode gesture into a bespoke `example-item-body` float —
+    // the mirror of listItem one wrap level deeper (the item wrap-seeded in the
+    // full `exampleBlock > exampleItemList` envelope, inner-targeted write-back
+    // unwrapping two levels). No `computeLabel` (the body never sets a header
+    // label, so the overlay's popout-mode header reads the static `meta.label`
+    // "Example item"). NO `renderGhost`: unlike listItem (whose bare `<li>`
+    // loses its CSS `::marker`), exampleItem's marker is a real
+    // `.expex-item-marker` DOM child kept by the default clone, its marker+body
+    // grid is self-contained on `.expex-item-row` (`.expex-item-list` is
+    // `display:contents`; the `.expex-block` grid only positions the `(N)`
+    // number), every expex rule is unscoped, and the overlay already supplies
+    // `.tiptap` scope + reads the em-base from `getComputedStyle(anchorDom)`
+    // — the L3d.2 fix written FOR `.expex-item-marker`'s `0.95em`. So the
+    // default clone lays out faithfully, exactly like exampleBlock (which also
+    // carries no ghost). (Wrapping in `.expex-block` without an `.expex-number`
+    // sibling would squash the item into the 1.5em number column.)
+    liftMode: "lifted-overlay",
     sourceMarker: { command: "vxid", idLength: 4 },
     dropAdapter: exampleItemDropAdapter,
     confirmDestructive: (doc, _uuid, action, ctx) =>

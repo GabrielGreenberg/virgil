@@ -176,6 +176,11 @@ export function popoutKeyForLift(ref: TextObjectRef): string | null {
     // list-item-body that wrap-seeds the item in its parent list and writes
     // back only the inner item's range (siblings intact).
     case "listItem":
+    // exampleItem (L3l, Chip 6): the LAST sub-object lift float — a bespoke
+    // example-item-body, the listItem mirror one wrap level deeper (the full
+    // exampleBlock > exampleItemList envelope; inner write-back unwraps two
+    // levels, siblings + the parent example intact).
+    case "exampleItem":
     case "texBlock":
     case "exampleBlock":
     case "linkedRange":

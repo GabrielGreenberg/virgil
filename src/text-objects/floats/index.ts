@@ -25,6 +25,7 @@ import { ExampleBlockBody } from "./example-block-body";
 import { LinkedRangeBody } from "./linked-range-body";
 import { SingleBlockBody } from "./single-block-body";
 import { ListItemBody } from "./list-item-body";
+import { ExampleItemBody } from "./example-item-body";
 
 registerFloatBody("paragraph", ParagraphBody);
 registerFloatBody("heading", HeadingBody);
@@ -54,3 +55,9 @@ registerFloatBody("titleField", SingleBlockBody);
 // inner item's range. exampleItem (next chip) gets a mirror body with one more
 // wrap level.
 registerFloatBody("listItem", ListItemBody);
+// exampleItem (L3l, Chip 6) is the LAST SUB-OBJECT — a mirror of ListItemBody
+// one wrap level deeper: it seeds the item in the full expex envelope
+// (exampleBlock > exampleItemList > exampleItem, via buildWrap) and writes back
+// ONLY the inner item's range, unwrapping TWO levels (siblings + the parent
+// exampleBlock intact).
+registerFloatBody("exampleItem", ExampleItemBody);
