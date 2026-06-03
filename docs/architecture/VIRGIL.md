@@ -1,6 +1,6 @@
-<!-- last-verified: 54ced55 2026-06-03 -->
+<!-- last-verified: 4398fb0 2026-06-03 -->
 <!-- derives-from: (root — verified against code) -->
-<!-- covers-code: src/panels/_shared/types.ts, src/lib/types.ts, src/text-objects/text-object-registry.ts, src/links/link-registry.ts, src/links/_shared/types.ts, src/panels/panel-registry.ts, src/panels, src/components/panel-primitives.tsx, src/lib/storage-fsa.ts, src/lib/ai-request-bridge.ts, editor/scripts/apply_response.py, editor/scripts/_common.py, editor/scripts/create_card.py, src/lib/latex-parser.ts, src/lib/latex-serializer.ts -->
+<!-- covers-code: src/app, src/components, src/hooks, src/lib, src/links, src/panels, src/text-objects, src/types, library, editor -->
 
 # Virgil — Canonical Architecture
 
@@ -217,7 +217,7 @@ The agent writes `<sidecar>.json` (the new/changed card) + `ai-requests.json` (T
 ## Code organization
 <!-- covers-code: src/app, src/components, src/hooks, src/lib, src/links, src/panels, src/text-objects, src/types, library, editor -->
 
-*An orienting map. The authoritative how-to-work-on-it detail lives in the `docs/agents/*` derivatives — this section is the conceptual index those docs specialize. Verified against `docs/agents/overview.md` + `architecture.md` (both `last-verified: e86a264`).*
+*An orienting map. The authoritative how-to-work-on-it detail lives in the `docs/agents/*` derivatives — this section is the conceptual index those docs specialize. Verified against `docs/agents/overview.md` + `architecture.md` (both `last-verified: 4398fb0`).*
 
 ### `src/` top-level map
 

@@ -1,4 +1,4 @@
-<!-- last-verified: 7c45771 2026-05-21 -->
+<!-- last-verified: 4398fb0 2026-06-03 -->
 <!-- derives-from: docs/architecture/VIRGIL.md#code-organization, docs/architecture/VIRGIL.md#card-kind-taxonomy -->
 <!-- covers-code: src/panels/panel-registry.ts, src/components/MenuBar.tsx, src/components/EditorLayout.tsx, src/components/panel-primitives.tsx, src/components/editor-layout -->
 
@@ -12,8 +12,8 @@ See `glossary.md` for user-term ↔ code-name mapping.
 
 The orchestrator role is now split across two files:
 
-- **[src/components/EditorLayout.tsx](../../src/components/EditorLayout.tsx)** (~5140 lines, shrank in 2309137 when the strip-icon drops, panel-body drops, and main-editor selection HTML5 drag plumbing were all removed in favor of pop-out + drop-mode) — the **shell wrapper**. Owns tab/file management (`useFiles`), `useViewPrefs` ownership (handed to EditorPane via `viewPrefs` prop), the Virgil bar (~line 4013) and its DocTab/LibraryTab strip, the `activePane` switch (paper / library-outer / doc routing), top-bar dialogs (Preferences, Fonts, Margins, NewDoc, TexFilePicker, DocumentClassMismatch, ManageStyles), the PDF view branch, and the Code view branch. CodeMirror still lives in EditorLayout per Path A D1 (deferred). EditorLayout also still constructs the `detachedActions[]` / `detachedFormatting[]` / `detachedMenus[]` arrays (vestigial tear-off state — see MenuBar section below).
-- **[src/components/EditorPane.tsx](../../src/components/EditorPane.tsx)** (~5160 lines) — the **canonical editor surface** mounted by both the main app's doc branch (from EditorLayout) and the Library Reader (from `library/components/PaperRender.tsx`). EditorPane owns per-doc hooks (`useDocument`, `useLatexCompile`, `useNotes`, `useTodos`, `useCitations`, `useCollab`, `usePristineCardManager`, …), the docked `MenuBar` (~line 3602), the panel rail (`PaneRail` left + right), the floating-panel block, and the canonical `DockOutline` (~line 2965) / `CardLiftOutline`.
+- **[src/components/EditorLayout.tsx](../../src/components/EditorLayout.tsx)** (~5080 lines, shrank in 2309137 when the strip-icon drops, panel-body drops, and main-editor selection HTML5 drag plumbing were all removed in favor of pop-out + drop-mode) — the **shell wrapper**. Owns tab/file management (`useFiles`), `useViewPrefs` ownership (handed to EditorPane via `viewPrefs` prop), the Virgil bar (~line 3818) and its DocTab/LibraryTab strip, the `activePane` switch (paper / library-outer / doc routing), top-bar dialogs (Preferences, Fonts, Margins, NewDoc, TexFilePicker, DocumentClassMismatch, ManageStyles), the PDF view branch, and the Code view. Per 8b9659c, Code view is now a draggable **split-pane alongside EditorPane** ([split-with-code.tsx](../../src/components/editor-layout/split-with-code.tsx) + `CodePaneSplitContext`), not a full-screen replacement; the `CodeEditor` (CodeMirror) state still lives in EditorLayout and code↔TipTap edits sync through [code-pane-bridge.ts](../../src/lib/code-pane-bridge.ts) (TipTap stays canonical). The vestigial `detachedActions[]` / `detachedFormatting[]` / `detachedMenus[]` tear-off arrays + their body-portal renders now live in **EditorPane**, not here (see MenuBar section below).
+- **[src/components/EditorPane.tsx](../../src/components/EditorPane.tsx)** (~5510 lines) — the **canonical editor surface** mounted by both the main app's doc branch (from EditorLayout) and the Library Reader (from `library/components/PaperRender.tsx`). EditorPane owns per-doc hooks (`useDocument`, `useLatexCompile`, `useNotes`, `useTodos`, `useCitations`, `useCollab`, `usePristineCardManager`, …), the docked `MenuBar` (~line 3602), the panel rail (`PaneRail` left + right), the floating-panel block, and the canonical `DockOutline` (~line 2965) / `CardLiftOutline`.
 
 When anything touches UI layout, chrome, or panel placement: if it's a tab/dialog/Virgil-bar concern → EditorLayout; if it's a per-document chrome / panel / popout / MenuBar concern → EditorPane. The full split is documented in `architecture.md` → "EditorPane vs EditorLayout".
 
@@ -27,28 +27,27 @@ The `chrome` prop ([chrome-config.ts](../../src/components/editor-layout/chrome-
 
 ```
 EditorLayout (shell)
-├─ Virgil bar (DocTab + LibraryTab pairs, menu pod, etc.) — EditorLayout.tsx:4013
+├─ Virgil bar (DocTab + LibraryTab pairs, menu pod, etc.) — EditorLayout.tsx:3818
 ├─ Top-bar dialogs (Preferences, Fonts, Margins, NewDoc, TexFilePicker, ManageStyles, …)
 ├─ activePane switch
 │   ├─ doc branch → <EditorPane> (see below)
 │   ├─ paper branch → <PaperRender> → <EditorPane editable={false}>
 │   ├─ library-outer branch → <LibraryOuterView> → <LibraryApp>
 │   ├─ pdf branch → <PdfView>
-│   └─ code branch → CodeMirror (still in EditorLayout per Path A D1)
+│   └─ code split-pane → split-with-code.tsx (CodeEditor state in EditorLayout; code↔TipTap bridge)
 └─ DetachedActionsToolbar / DetachedFormattingToolbar / DetachedMenuToolbar (portal × N each)
 
 EditorPane (canonical editor surface)
 ├─ PaneRail side="left" (icon strip, OmniFilterMenu)
-├─ PanelColumn side="left" (active panel(s); top/bottom split; MarginActionToolbar overlay)
+├─ PanelColumn side="left" (active panel(s); top/bottom split)
 ├─ Editor column
 │   ├─ MenuBar — docked inline at sticky [data-tool-strip="text"]   — EditorPane.tsx:3602
-│   ├─ MarginActionToolbar (left + right action segments)            — ~line 3467
 │   ├─ VirgilEditor (the TipTap editor itself)
 │   ├─ SelectionActionsMenu (gutter lightning-bolt; click to expand ActionsMenuPanel)
 │   ├─ Marginalia gutters (left + right of text)
 │   ├─ FloatCard portals (popped-out cards)
 │   ├─ FloatingPanel portals (popped-out panels)
-│   ├─ ParagraphFloat / HeadingFloat / example-block / texBlock portals (popped-out blocks)
+│   ├─ TextObjectFloat portals (popped-out TextObjects — all 16 block/selection kinds)
 │   └─ DockOutline (body-portaled drag-target outline, suppressed in zen) — EditorPane.tsx:2965
 ├─ PanelColumn side="right"
 └─ PaneRail side="right" (icon strip, OmniFilterMenu)
@@ -109,9 +108,9 @@ Helper functions: `popKey(panelKind, id)`, `cardPopKey(cardKind, id)`, `getPanel
 
 ### Panel list
 
-See `glossary.md` for the full table. Quick reference: 11 card panels (`notes`, `footnotes`, `citations`, `bibliography`, `quotations`, `examples`, `todo`, `archive`, `revisions`, `cutter`, `errors`) and 4 non-card panels (`outline`, `search`, `wordcount`, `omni`). **Notes, Revisions, and Cutter are all polymorphic.** Notes: `note` + `highlight` (both in `POLYMORPHIC_CARD_PANEL`; registry `card: null`); Revisions: `comment` + `revision-suggestion` (registry `card.kind` is `comment`; `revision-suggestion` in `CARD_KEY_PREFIXES`); Cutter: `cutter-comment` + `cutter-suggestion` (`card: null`; both in `POLYMORPHIC_CARD_PANEL`). The Revisions panel additionally tracks a per-document "revisions accepted" counter (`RevisionsTracker`); the Cutter panel tracks a word-count goal (`CutterGoal`).
+See `glossary.md` for the full table. Quick reference: 11 card panels (`notes`, `footnotes`, `citations`, `bibliography`, `reports`, `examples`, `todo`, `archive`, `revisions`, `cutter`, `errors`) and 4 non-card panels (`outline`, `search`, `wordcount`, `omni`). **Notes, Revisions, and Cutter are all polymorphic.** Notes: `note` + `highlight` (both in `POLYMORPHIC_CARD_PANEL`; registry `card: null`); Revisions: `comment` + `revision-suggestion` (registry `card.kind` is `comment`; `revision-suggestion` in `CARD_KEY_PREFIXES`); Cutter: `cutter-comment` + `cutter-suggestion` (`card: null`; both in `POLYMORPHIC_CARD_PANEL`). The Revisions panel additionally tracks a per-document "revisions accepted" counter (`RevisionsTracker`); the Cutter panel tracks a word-count goal (`CutterGoal`).
 
-Omni-eligible panels (shown in Omni view): notes, footnotes, citations, quotations, examples, todo, archive, **revisions**, **cutter**, **errors**. Bibliography is the only card panel that's *not* omni-eligible.
+Omni-eligible panels (shown in Omni view): notes, footnotes, citations, reports, examples, todo, archive, **revisions**, **cutter**, **errors**. Bibliography is the only card panel that's *not* omni-eligible.
 
 Each omni-eligible panel owns its own `omni.tsx` next to the panel (e.g. [src/panels/Cutter/omni.tsx](../../src/panels/Cutter/omni.tsx), [src/panels/Errors/omni.tsx](../../src/panels/Errors/omni.tsx), [src/panels/Revisions/omni.tsx](../../src/panels/Revisions/omni.tsx)) exporting a `buildXOmniItems(args): OmniItem[]` builder. The orchestrator-side host [src/components/editor-layout/panels/omni-host.tsx](../../src/components/editor-layout/panels/omni-host.tsx) imports each builder and concatenates the results into the per-side omni columns. New omni-eligible panels add their builder there.
 
@@ -121,7 +120,7 @@ Each omni-eligible panel owns its own `omni.tsx` next to the panel (e.g. [src/pa
 
 Mounted **inline** at the top of the editor column inside `EditorPane.tsx` (~line 3602). No portal. 24px tall, right-aligned (slimmed from 32px and re-aligned in ae15791). Bare icons sit on the canvas — no enclosing pod, no grab handle, no rotation knob.
 
-ae15791 dropped the home Format and Actions popovers from the docked bar. The actions/formatting vocabulary now lives in `SelectionActionsMenu` (auto-popping right-of-selection, see below) and `DragHandleMenu` (click-the-handle popover on the left of each paragraph). `AttachedPopover` in [MenuBar.tsx:677](../../src/components/MenuBar.tsx) is unused; `DetachedMenuToolbar` / `DetachedFormattingToolbar` / `DetachedActionsToolbar` still render via portals from the EditorLayout state arrays (`detachedMenus[]`, `detachedFormatting[]`, `detachedActions[]`), but no UI path currently spawns new entries. Reader passes no `menuBar` bundle, so docked MenuBar and detached toolbars stay dormant for paper renders.
+ae15791 dropped the home Format and Actions popovers from the docked bar. The actions/formatting vocabulary now lives in `SelectionActionsMenu` (auto-popping right-of-selection, see below) and `DragHandleMenu` (click-the-handle popover on the left of each paragraph). `AttachedPopover` in [MenuBar.tsx:677](../../src/components/MenuBar.tsx) is unused; `DetachedMenuToolbar` / `DetachedFormattingToolbar` / `DetachedActionsToolbar` still render via portals from the EditorPane state arrays (`detachedMenus[]`, `detachedFormatting[]`, `detachedActions[]`), but no UI path currently spawns new entries. Reader passes no `menuBar` bundle, so docked MenuBar and detached toolbars stay dormant for paper renders.
 
 `prefs.menuLocation` still exists in `useViewPrefs` (default `{kind:"home"}`) but the "free" branch is now effectively unreachable.
 
@@ -133,7 +132,7 @@ A **Style** mode toggle button sits in the right cluster of the Virgil bar (alon
 
 A **Print** button (printer icon) lives in the same right cluster. It opens `PrintDialog` ([src/components/PrintDialog.tsx](../../src/components/PrintDialog.tsx)) — a show/hide controls modal for marginalia, footnotes, citations, comments, paragraph titles, etc. — then triggers `window.print()`. Print orchestration + appendix collection in [src/lib/print.ts](../../src/lib/print.ts) and [src/components/PrintAppendices.tsx](../../src/components/PrintAppendices.tsx).
 
-The **View menu** (three-dot kebab) gained a **Highlights** sub-menu of per-kind toggles. Each toggle hides linked-anchor highlights for one card kind (`quotation`, `note`, `todo`, `comment`, `cut`); the active set lives in `prefs.hiddenHighlightTypes` via `useViewPrefs` and is read by `useLinkHighlight`.
+The **View menu** (three-dot kebab) gained a **Highlights** sub-menu of per-kind toggles. Each toggle hides linked-anchor highlights for one card kind (`note`, `todo`, `comment`, `cut`, `report`); the active set lives in `prefs.hiddenHighlightTypes` via `useViewPrefs` and is read by `useLinkHighlight`.
 
 Paragraph back/forward chevrons (now stemmed arrows after ae15791) sit between collab status and split toggle; disabled at history bounds. The View menu's orientation toggle was dropped in c40d8d2.
 
@@ -149,7 +148,7 @@ Dispatch goes through `DragHandleMenuApi.dispatch`, the same pipeline as the lef
 
 ## Action buttons (the "action toolbar")
 
-`ActionButtonsRow` (at `MenuBar.tsx:960`) renders 10 color-coded buttons. Each uses `ActionButton` which resolves the nearest `[data-action-pod]` ancestor so its popup can be positioned below the toolbar regardless of whether it's attached, detached, or rendered inside a `MarginActionToolbar`. Buttons are declared in `ACTION_BUTTON_DEFS` (`MenuBar.tsx:930`) — add/remove/reorder there.
+`ActionButtonsRow` (at `MenuBar.tsx:889`) renders 9 color-coded buttons. Each uses `ActionButton` which resolves the nearest `[data-action-pod]` ancestor so its popup can be positioned below the toolbar regardless of whether it's attached or detached. Buttons are declared in `ACTION_BUTTON_DEFS` (`MenuBar.tsx:864`) — add/remove/reorder there.
 
 | Button | Color | Opens/creates |
 |---|---|---|
@@ -162,7 +161,6 @@ Dispatch goes through `DragHandleMenuApi.dispatch`, the same pipeline as the lef
 | Footnote | red | Footnote atom |
 | Citation | amber | Citation atom |
 | Bibliography | warm tan | Bibliography entry |
-| Quotation | orange | Quotation card |
 
 Colors are coordinated with each panel's `CARD_THEME`.
 
@@ -191,13 +189,13 @@ Behavior: click anchor toggles; fixed-positioned below-right by default; flips a
 
 [src/components/editor-layout/floating-toolbar-shell.tsx](../../src/components/editor-layout/floating-toolbar-shell.tsx) exports `FloatingToolbarShell`, `DetachedToolbar`, and `PodGrabHandle`. All three floating toolbars (home-docked `MenuBar`, `DetachedActionsToolbar`, `DetachedFormattingToolbar`) share this shell — it draws the pod + tab + rotation knob so tear-off behavior stays consistent. `atHome` mode suppresses the tab/knob/shadow for the Virgil-bar docked case.
 
-## MarginActionToolbar
+## MarginActionToolbar (removed)
 
-[src/components/MarginActionToolbar.tsx](../../src/components/MarginActionToolbar.tsx) — a per-column action toolbar rendered above a PanelColumn when it is showing Omni-view. Mounted inside `EditorPane.tsx` (~line 3010) via the `marginToolbarActions` callback bag and passed as the column's `topOverlay` prop. Renders each button via `ActionChipButton` (the marginalia-style chip variant of `ActionButton`, defined in `MenuBar.tsx` ~line 853) so the toolbar visually matches the gutter markers it produces — chip palette comes from `usePanelMarkerPalette(themeKey)` and honors per-panel color overrides. The bare `ActionButton` continues to render the legacy icon-only style for the MenuBar's Actions popover and the detached floating toolbar. The Reader chrome (`READER_CHROME.actionToolbarKinds = ["note"]`) limits which buttons appear in the paper-rendering surface.
+The per-column "+" action-chip row (chips above each omni gutter) was suppressed in 652572a and **deleted in bcc583a** — the file, its call sites, `PaneRailProps.topOverlay`, the `panel-column.tsx` `topOverlay` mechanism, and `ActionChipButton` are all gone. The action vocabulary now lives only in `SelectionActionsMenu`, `ActionsStripButton`, `DragHandleMenu`, and the vestigial `DetachedActionsToolbar`. The `chrome.actionToolbarKinds` whitelist survives (Reader sets `["note"]`) and still filters which `ActionButtonsRow` buttons render in the paper surface.
 
 ## Panel icons
 
-[src/components/editor-layout/panel-icons.tsx](../../src/components/editor-layout/panel-icons.tsx) — `IconNotes`, `IconHighlight` (highlighter-pen marker, used by the new Highlight action button — there is no Highlight panel since highlights live inside the Notes panel), `IconRevisions`, `IconArchive`, `IconFootnote`, `IconCitation`, `IconBibliography`, `IconTodo`, `IconCutter`, `IconQuotations`, `IconOutline`, `IconSearch`, `IconWordCount`, `IconOmni`, `IconBlank`, `IconErrors`, `IconExample`, `IconSplit`, `IconFolder`, `IconPlus`, `IconX`, `IconLibrary`. All use `currentColor`. (`IconSuggestions` was removed when the Suggestions panel folded into Revisions.)
+[src/components/editor-layout/panel-icons.tsx](../../src/components/editor-layout/panel-icons.tsx) — `IconNotes`, `IconHighlight` (highlighter-pen marker, used by the new Highlight action button — there is no Highlight panel since highlights live inside the Notes panel), `IconRevisions`, `IconArchive`, `IconFootnote`, `IconCitation`, `IconBibliography`, `IconTodo`, `IconCutter`, `IconReports`, `IconOutline`, `IconSearch`, `IconWordCount`, `IconOmni`, `IconBlank`, `IconErrors`, `IconExample`, `IconSplit`, `IconFolder`, `IconPlus`, `IconX`, `IconLibrary`, `IconDuplicate`, `IconTrash`, `IconZap`. All use `currentColor`. (`IconSuggestions` was removed when the Suggestions panel folded into Revisions; `IconQuotations` → `IconReports` in the card-system refactor.)
 
 **Topbar icon size: 16px** (`.topbarbtn` is 24px, leaving 4px of padding). Don't ship 14px or 20px topbar icons — see `STYLE_GUIDE.md`.
 
@@ -210,9 +208,9 @@ Behavior: click anchor toggles; fixed-positioned below-right by default; flips a
 - [src/components/FloatingPanel.tsx](../../src/components/FloatingPanel.tsx) — `FloatingPanel` low-level draggable + resizable window via portal. Min 240×200, max 900×window-40. Drag on header, resize via bottom-right grip.
 - [src/components/FloatingCards.tsx](../../src/components/FloatingCards.tsx) — `FloatCard` wraps a card in a `FloatingPanel` and reads saved position from `cardFloatPositions` pref.
 - Popped-out card state centralized in `usePoppedCards()` hook reading `prefs.poppedOutCards`. EditorLayout iterates and renders each.
-- **Block popouts** (paragraph, heading, example) ride the same machinery but for editor blocks instead of card kinds. Keys are `paragraph:${uuid}`, `heading:${uuid}`, and `example:${uuid}`. `ParagraphFloat` (a single paragraph in its own editor with editable title + drag handle), `HeadingFloat` (a heading + the section body it dominates), and example floats (popped via the gutter button on the `exampleBlock` node-view) live in `src/components/`; the body-range extraction is in [src/lib/section-range.ts](../../src/lib/section-range.ts). The example-block popout is wired through `ExampleBlockOptions` on the expex extension ([src/lib/tiptap/expex.ts](../../src/lib/tiptap/expex.ts)).
+- **Block & selection popouts** ride the same `FloatingPanel` machinery but for editor TextObjects instead of card kinds. After the lifted-overlay refactor **all 16 TextObject kinds lift** (paragraph, heading, bullet/ordered list, list item, example block + item, blockquote, code block, display math, LaTeX comment, title field, tex block, figure, graphics, and persisted `linkedRange` selections), keyed uniformly as `textobject:<kind>:<uuid>` (`textObjectPopoutKey` in [text-object-registry.ts](../../src/text-objects/text-object-registry.ts)). Each released float renders via [editor-layout/floating-cards.tsx](../../src/components/editor-layout/floating-cards.tsx) under the shared `TextObjectFloat` chrome, which looks up a per-kind body in [src/text-objects/floats/](../../src/text-objects/floats/); section-body extraction stays in [section-range.ts](../../src/lib/section-range.ts). The drag ghost is `LiftedTextOverlay`. See `main-text.md` → TextObjects and `architecture.md` for the registry pathway.
 - **Spawn position**: when a card or block is popped out for the first time the floating window opens near the trigger element rather than at a fixed anchor. Logic in [src/components/editor-layout/spawn-position.ts](../../src/components/editor-layout/spawn-position.ts); position is forgotten on close so the next pop-out re-spawns near the (possibly new) trigger.
-- **No interior drag grip**: 5f2d357 dropped the 6-dot grip inside `ParagraphFloat` / `HeadingFloat` / `ListFloat` / `SelectionFloat`. The float header is the only drag/redock affordance now (shift-drag → drop-mode). Companion to ec38210, which removed the analogous `onTextDragStart` grip beside each `RichTextField` in `EditableCard`. Surviving text-move paths after 2309137: drag-to-pop-out (6-dot lift in the main-editor margin via `SelectionDragHandle`) and drop-mode (shift-drag on a float header).
+- **No interior drag grip**: 5f2d357 dropped the 6-dot grip inside the paragraph / heading / list / selection float bodies. The float header is the only drag/redock affordance now (shift-drag → drop-mode). Companion to ec38210, which removed the analogous `onTextDragStart` grip beside each `RichTextField` in `EditableCard`. Surviving text-move paths after 2309137: drag-to-pop-out (6-dot lift in the main-editor margin via `SelectionDragHandle`) and drop-mode (shift-drag on a float header).
 
 ## Per-panel text-size stepper
 
@@ -245,7 +243,7 @@ Pull-from-stack flow (thumbnail → editor):
 3. On release at a valid placement, the spec dispatches by payload kind. Cards materialize via the `ctx.stack: StackPullApi` bag (see `DropCtx` in [src/components/drop-mode/types.ts](../../src/components/drop-mode/types.ts)) — each method creates a fresh entity with a new id (paste-as-new).
 4. The stack item is **kept** (`postDrop: "keep"`); pulls are copy, not pop.
 
-Snapshot stripping: `snapshotSelection` / `snapshotParagraph` / `snapshotHeadingSection` recursively strip `linkedAnchor`, `footnoteRef`, `citationRef` marks (cross-doc-bound), and replace `attrs.uuid` so a fresh uuid is regenerated on pull. Citation / quotation snapshots additionally carry sidecar bib entries (`StackCardSnapshot.bibEntries`) so the destination doc can upsert any missing keys.
+Snapshot stripping: `snapshotSelection` / `snapshotParagraph` / `snapshotHeadingSection` recursively strip `linkedAnchor`, `footnoteRef`, `citationRef` marks (cross-doc-bound), and replace `attrs.uuid` so a fresh uuid is regenerated on pull. Citation snapshots additionally carry sidecar bib entries (`StackCardSnapshot.bibEntries`) so the destination doc can upsert any missing keys.
 
 Hidden in zen mode (`viewPrefs.zenMode`).
 
@@ -265,7 +263,7 @@ This is iteration 3 on focus mode: 1d9ed09 made it presentation-only (dimming, n
 
 ## Dock-target outline
 
-[src/components/editor-layout/DockOutline.tsx](../../src/components/editor-layout/DockOutline.tsx) renders a body-portaled clear-blue outline at fixed viewport coordinates to mark the active dock target during a panel drag. The signal driving it lives in [src/components/editor-layout/dock-drag.ts](../../src/components/editor-layout/dock-drag.ts) — a module-level `{slotKey, rect}` store with `setDockDragTarget` / `getDockDragTarget` / `useDockDragTarget`. Two flows write to it: undock (rect captured at mousedown so the outline survives the panel undocking and the slot DOM reshaping) and redock (mousemove hit-test against gutter columns; release reads the target and decides whether to redock). The store is module-level (not React Context) because producer (panel shell) and consumer (the body-portaled `DockOutline` plus EditorPane's mouseup handler) sit in different parts of the React tree. WAAPI-driven crossfade (not React state + CSS transitions) avoids races with React's batched commits and Strict Mode's effect double-invoke. Mounted from `EditorPane.tsx` ~line 2247, suppressed in zen mode.
+[src/components/editor-layout/DockOutline.tsx](../../src/components/editor-layout/DockOutline.tsx) renders a body-portaled clear-blue outline at fixed viewport coordinates to mark the active dock target during a panel drag. The signal driving it lives in [src/components/editor-layout/dock-drag.ts](../../src/components/editor-layout/dock-drag.ts) — a module-level `{slotKey, rect}` store with `setDockDragTarget` / `getDockDragTarget` / `useDockDragTarget`. Two flows write to it: undock (rect captured at mousedown so the outline survives the panel undocking and the slot DOM reshaping) and redock (mousemove hit-test against gutter columns; release reads the target and decides whether to redock). The store is module-level (not React Context) because producer (panel shell) and consumer (the body-portaled `DockOutline` plus EditorPane's mouseup handler) sit in different parts of the React tree. WAAPI-driven crossfade (not React state + CSS transitions) avoids races with React's batched commits and Strict Mode's effect double-invoke. Mounted from `EditorPane.tsx` ~line 2953, suppressed in zen mode.
 
 ## Helper mode overlay
 

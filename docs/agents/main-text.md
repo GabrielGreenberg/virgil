@@ -1,4 +1,4 @@
-<!-- last-verified: e86a264 2026-05-22 -->
+<!-- last-verified: 4398fb0 2026-06-03 -->
 <!-- derives-from: docs/architecture/VIRGIL.md#ontology, docs/architecture/VIRGIL.md#latex-round-trip-vocabulary, docs/architecture/VIRGIL.md#uuid-marker-emission -->
 <!-- covers-code: src/lib/tiptap, src/links, src/lib/marginalia.ts, src/lib/latex-parser.ts, src/lib/latex-serializer.ts, src/text-objects -->
 
@@ -8,7 +8,7 @@ The main text is a TipTap/ProseMirror editor rendering LaTeX source meaningfully
 
 ## Editor
 
-**[src/components/Editor.tsx](../../src/components/Editor.tsx)** (~3760 lines) wraps TipTap's `useEditor`. It registers all custom extensions, keyboard shortcuts, selection handling, custom plugins, and wires up `onUpdate` → parent. Also mounts the gutter `SelectionActionsMenu` (lightning-bolt button → `ActionsMenuPanel`) at the editor root.
+**[src/components/Editor.tsx](../../src/components/Editor.tsx)** (~2010 lines) wraps TipTap's `useEditor`. Since the FCU refactor it builds its extension list from the shared `buildEditorExtensions(ctx)` factory in [src/lib/editor-extensions.ts](../../src/lib/editor-extensions.ts) (the same factory every float editor consumes), then layers on keyboard shortcuts, selection handling, custom plugins, and wires up `onUpdate` → parent. Also mounts the gutter `SelectionActionsMenu` (lightning-bolt button → `ActionsMenuPanel`) at the editor root.
 
 After 2309137 the paragraph schema's `draggable` was flipped to `false` so PM no longer registers root-level paragraph DnD scaffolding; `handleDOMEvents.dragstart` is simplified to swallow residual native browser drags from `contenteditable`. The only surviving text-move paths are drag-to-pop-out (6-dot lift via `SelectionDragHandle` in the main editor margin) and drop-mode (shift-drag on a float header). Strip-icon drops, panel-body drops, and main-editor selection HTML5 drag plumbing are all gone.
 
@@ -31,7 +31,7 @@ The `textObject` schema group is the single canonical answer to "is this graspab
 | `codeBlock` | `\begin{verbatim}…\end{verbatim}` | |
 | `displayMath` | `$$…$$` | Atom node |
 | `texBlock` | `%!vtex:begin <uuid>` … `%!vtex:end <uuid>` (block-level raw LaTeX passthrough, edited inside a CodeMirror pod; popoutable like `exampleBlock`) | Atom block; `selectable:false`; node-view in `TexBlockNodeView.tsx` |
-| `titleField` | hoisted `\title{}` / `\author{}` / `\date{}` | Has `fromPreamble` flag |
+| `titleField` | hoisted `\title{}` / `\author{}` / `\date{}` | Round-trips via `\title`/`\author`/`\date` commands; the `fromPreamble` flag was dropped in 35824df |
 | `maketitleMarker` | `\maketitle` | |
 | `latexComment` | `%…` | Atom node |
 
@@ -90,7 +90,7 @@ Round-trip files: [src/lib/latex-parser.ts](../../src/lib/latex-parser.ts) (`.te
 |---|---|---|---|---|
 | `footnote` | inline atom (footnote node) | superscript number | 1:1 | footnote |
 | `citation` | inline atom (citation node) | styled pill | 1:1 | citation |
-| `anchor` | any TextObject (`targetKind`) — paragraph, heading, list item, example item, atom block, or linkedRange | gutter icon (+ optional text highlight for `linkedRange`) | many | note, highlight, revision, cut, archive, todo, quotation |
+| `anchor` | any TextObject (`targetKind`) — paragraph, heading, list item, example item, atom block, or linkedRange | gutter icon (+ optional text highlight for `linkedRange`) | many | note, highlight, revision, cut, archive, todo, report |
 
 ### Anchor shape (Mode A / Mode B unified)
 
@@ -146,7 +146,7 @@ Per-card integration is one line: `const ac = useAnchoredCard({ kind, id }); ret
 - [src/links/_shared/anchored-card-store.ts](../../src/links/_shared/anchored-card-store.ts) — `cardStore` module + `useIsSelected` / `useIsHovered` / `useSelection`.
 - [src/links/_shared/useAnchoredCard.ts](../../src/links/_shared/useAnchoredCard.ts) — the single hook every anchored panel card calls.
 - [src/links/_shared/usePlacement.ts](../../src/links/_shared/usePlacement.ts) — card → text alignment: when `cardStore.selection` changes via a user gesture, scroll the editor so the closest anchor aligns with the selected card's vertical position. (Text/marginalia → card alignment is the inverse and still flows through `openForCard`.)
-- [src/links/_shared/entity-hover.ts](../../src/links/_shared/entity-hover.ts) — `EntityKind` union (`note`/`cut`/`revision`/`todo`/`archive`/`quotation`/`footnote`/`citation`) and generic resolvers (`findEntity`, `cardKeyForEntity`, `entityToAnchorId`).
+- [src/links/_shared/entity-hover.ts](../../src/links/_shared/entity-hover.ts) — `EntityKind` union (the anchored kinds `note`/`highlight`/`footnote`/`citation`/`report`/`report-request`/`example`/`todo`/`archive`/`comment`/`revision-suggestion`/`cutter-comment`/`cutter-suggestion`, i.e. `ANCHORED_CARD_KINDS`) and generic resolvers (`findEntity`, `cardKeyForEntity`, `entityToAnchorId`).
 - [src/links/_shared/useLinkHighlight.ts](../../src/links/_shared/useLinkHighlight.ts) — paints `data-link-highlight="hover" | "active"` on `.linked-anchor` spans (Mode B text ranges).
 - [src/links/_shared/useAnchorHighlightReconciler.ts](../../src/links/_shared/useAnchorHighlightReconciler.ts) — single idempotent reconciler that paints both `data-card-hovered` and `data-card-selected` on resolved anchor elements (gutter markers) *and* on matching panel cards (via `data-card-key`) in one pass. 930b9f6 unified the two previously-separate hover/selection hooks here so the two states share lookup and never desync.
 - [src/links/_shared/useLinkedAnchorReconciler.ts](../../src/links/_shared/useLinkedAnchorReconciler.ts) — thin sibling reconciler for Mode B text ranges (the `.linked-anchor` spans inside the editor).
@@ -161,7 +161,7 @@ Shift-grabbing a popped float's grab bar puts the app into **drop mode** — the
 
 - Entry: `beginDropSession({ cardKey })` in [src/components/drop-mode/controller.ts](../../src/components/drop-mode/controller.ts) — called by `FloatingPanel`'s shift-drag and by `StackThumbnail` (with cardKey `stack-pull:<id>`).
 - Provider: [src/components/drop-mode/DropModeProvider.tsx](../../src/components/drop-mode/DropModeProvider.tsx). Indicator: [Indicator.tsx](../../src/components/drop-mode/Indicator.tsx). Hit-testing: [hit-test.ts](../../src/components/drop-mode/hit-test.ts).
-- Per-payload behavior is a `DropSpec` keyed by card-key prefix in [registry.ts](../../src/components/drop-mode/registry.ts). The block-source specs collapsed into one [specs/textobject.ts](../../src/components/drop-mode/specs/textobject.ts) (D5+D6) — it parses the `textobject:<kind>:<id>` cardKey, walks the doc for source + parent, classifies the target context (top-level / inside-compatible / inside-incompatible), and routes through `meta.dropAdapter` (wrap vs drop-direct) and `meta.collectMoveSource` (single node vs section range). Adding a new TextObject kind = one registry entry; no edit to the spec. Other specs in [specs/](../../src/components/drop-mode/specs/) (`ai-request`, `stack-pull`) carry different payloads. Each panel that participates also re-exports its spec via a panel-local `drop-spec.ts` (Archive, Citations, Cutter, Examples, Footnotes, Notes, Quotations, Revisions, Todo).
+- Per-payload behavior is a `DropSpec` keyed by card-key prefix in [registry.ts](../../src/components/drop-mode/registry.ts). The block-source specs collapsed into one [specs/textobject.ts](../../src/components/drop-mode/specs/textobject.ts) (D5+D6) — it parses the `textobject:<kind>:<id>` cardKey, walks the doc for source + parent, classifies the target context (top-level / inside-compatible / inside-incompatible), and routes through `meta.dropAdapter` (wrap vs drop-direct) and `meta.collectMoveSource` (single node vs section range). Adding a new TextObject kind = one registry entry; no edit to the spec. Other specs in [specs/](../../src/components/drop-mode/specs/) (`ai-request`, `stack-pull`) carry different payloads. Each panel that participates also re-exports its spec via a panel-local `drop-spec.ts` (Archive, Citations, Cutter, Examples, Footnotes, Notes, Reports, Revisions, Todo).
 - CSS for the placement bars lives in [src/app/globals.css](../../src/app/globals.css) (`.dropmode-bar-*`).
 
 ## Marginalia
@@ -175,11 +175,11 @@ Shift-grabbing a popped float's grab bar puts the app into **drop mode** — the
 
 ### Marker types (`MARKER_META`)
 
-`quote`, `note`, `archive`, `revision`, `cut`, `todo`, `error`. Each has a color palette (primary, background, border) customizable per-panel via the header color picker (`deriveCardPalette` in [src/lib/panel-theme.ts](../../src/lib/panel-theme.ts)). Note that **Highlight cards do not appear in the marginalia** — they're a pure text-tint feature (`tintColor` attr on the `linkedAnchor` mark), so there is no `highlight` MarkerType.
+`note`, `archive`, `revision`, `cut`, `todo`, `report`, `error`. Each has a color palette (primary, background, border) customizable per-panel via the header color picker (`deriveCardPalette` in [src/lib/panel-theme.ts](../../src/lib/panel-theme.ts)). Note that **Highlight cards do not appear in the marginalia** — they're a pure text-tint feature (`tintColor` attr on the `linkedAnchor` mark), so there is no `highlight` MarkerType.
 
 ### Per-paragraph MIME drop types
 
-`MIME_QUOTATION`, `MIME_NOTE`, `MIME_TODO`, `MIME_ARCHIVE_ANCHOR`, `MIME_CUT`, `MIME_SELECTION_ANCHOR` — see [src/lib/marginalia.ts](../../src/lib/marginalia.ts) for the full list and which are `ANCHOR_DRAG_TYPES` (trigger the vertical drop indicator).
+`MIME_REPORT`, `MIME_NOTE`, `MIME_TODO`, `MIME_ARCHIVE_ANCHOR`, `MIME_CUT`, `MIME_SELECTION_ANCHOR` — see [src/lib/marginalia.ts](../../src/lib/marginalia.ts) for the full list and which are `ANCHOR_DRAG_TYPES` (trigger the vertical drop indicator).
 
 ### Adding a new marginalia type
 

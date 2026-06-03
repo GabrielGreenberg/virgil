@@ -1,4 +1,4 @@
-<!-- last-verified: c315113 2026-06-02 -->
+<!-- last-verified: 4398fb0 2026-06-03 -->
 <!-- derives-from: docs/architecture/VIRGIL.md#uuid-marker-emission, docs/architecture/VIRGIL.md#latex-round-trip-vocabulary, docs/architecture/VIRGIL.md#reserved-name-inventory, docs/architecture/VIRGIL.md#cowork-pattern -->
 <!-- covers-code: src/lib/latex-parser.ts, src/lib/latex-serializer.ts, src/lib/uuid.ts, src/lib/latex-paragraph-map.ts, src/lib/cite-commands.ts, src/lib/heading-types.ts, src/lib/document-styles.ts, src/lib/tiptap, src/text-objects/text-object-registry.ts, src/text-objects/types.ts, src/lib/storage-fsa.ts, src/app/globals.css, src/lib/collab.ts, src/lib/ai-request-bridge.ts, src/hooks/useDocNotificationStream.ts, editor/scripts/apply_response.py, editor/scripts/list_requests.py -->
 
@@ -224,9 +224,11 @@ The `textObject` schema group is the single answer to "is this graspable?" Membe
 ---
 
 ## 4. As-shipped cowork plumbing
-*Seeds the manifest's `structure.md` / `actions.md` and the as-shipped clarifications to VIRGIL.md's [Cowork pattern](VIRGIL.md#cowork-pattern). **This subsystem diverges sharply from the v1 design in VIRGIL.md's confident section — see §4.6.***
+*Seeds the manifest's `structure.md` / `actions.md` and the as-shipped clarifications to VIRGIL.md's [Cowork pattern](VIRGIL.md#cowork-pattern).*
 
-Virgil calls no model. An external agent (Claude) reads the same `.tex`/`.bib` and writes JSON sidecars; the app polls and surfaces them. Here is what the shipped code actually does — verified by repo-wide grep (the v1 vocabulary returns **zero** source hits; see §4.6).
+> **⚠ Superseded — apply_response v1 landed (merge `0c27422`, after this report's `c315113` baseline).** When written, §4 documented a cowork substrate that diverged from VIRGIL.md's v1 target (no named subcommands, no pen, non-atomic writes, single-field status — §4.6). **apply_response v1 has since shipped all of it:** named subcommands (`write-silent` / `write-with-comment` / `complete-task` / `complete-only` / `revert`), `--synthesize-task`, the pen (`commit_under_pen` → `.virgil/pen-context.json`), atomic N-file writes with rollback, and the two-field `status` + `result` vocabulary with per-Task `SAFETY_LEVEL_SUBCOMMAND`. Doc-of-record for the built contract is now VIRGIL.md's [Cowork pattern](VIRGIL.md#cowork-pattern) (re-verified current) + [docs/workspace/footnotes.md](../workspace/footnotes.md). §4.1–4.6 below are retained as the **pre-v1 archaeology baseline** (state at `c315113`, also pre-Reports — `PANEL_TO_SIDECAR`'s `quotations` is now `reports`); read them as history, not current behavior.
+
+Virgil calls no model. An external agent (Claude) reads the same `.tex`/`.bib` and writes JSON sidecars; the app polls and surfaces them. The pre-v1 snapshot below records what the cowork code did at `c315113` (when a repo-wide grep for the v1 vocabulary returned zero source hits; that gap is now closed — see the banner above).
 
 ### 4.1 `editor/scripts/apply_response.py` — the writeback
 
@@ -266,7 +268,7 @@ A fully separate, browser-side subsystem; the Python writeback has **no** knowle
 
 ### 4.6 Divergences from the v1 design (VIRGIL.md's confident Cowork section)
 
-VIRGIL.md's [Cowork pattern](VIRGIL.md#cowork-pattern) describes a **v1 target**, much of which is **not built**. Verified by repo-wide grep across `src/`, `editor/`, `library/` (zero hits for `pen-context|--synthesize-task|write-with-comment|write-silent|complete-task|safetyLevel|safety_level`):
+**Now resolved — apply_response v1 shipped every row's "v1 target."** This table recorded the gap as of `c315113`, when VIRGIL.md's [Cowork pattern](VIRGIL.md#cowork-pattern) described a **v1 target** that was **not yet built** (a repo-wide grep then returned zero hits for `pen-context|--synthesize-task|write-with-comment|write-silent|complete-task|safetyLevel|safety_level`). The right-hand "as-shipped" column is now historical:
 
 | VIRGIL.md (v1 target) | As-shipped |
 |---|---|
@@ -327,7 +329,7 @@ All app styling is one file ([src/app/globals.css](../../src/app/globals.css), ~
 - **`virgil/`** (`VIRGIL_SUBDIR`) — the sidecar folder.
 - **`virgil/figures-cache/`** (`FIGURES_CACHE_DIR`) — rasterized figures `<sha>.webp` + `index.json` (`FIGURE_INDEX_FILE`), keyed by source-content sha.
 - **`virgil/.history/`** (`HISTORY_DIR`) — shadow snapshots `<ISO-timestamp>/` of `virgil.json` + `editor-state.json`.
-- **`.virgil/`** (distinct from `virgil/`) — the agent/library plumbing sibling: `.virgil/queue/`, `.virgil/models/`, `.virgil/catalog.json`, `.virgil/notifications/inbox.json`, `.virgil/libraries/<slug>.json`, `.virgil/library-path.json`, and (design-only — written by the library `apply_response.py`, not `src/` TS) `.virgil/pen-context.json`. See [library/AGENTS.md](../../library/AGENTS.md) for the full `.virgil/` layout.
+- **`.virgil/`** (distinct from `virgil/`) — the agent/library plumbing sibling: `.virgil/queue/`, `.virgil/models/`, `.virgil/catalog.json`, `.virgil/notifications/inbox.json`, `.virgil/libraries/<slug>.json`, `.virgil/library-path.json`, and `.virgil/pen-context.json` (the editing pen, written by `editor/scripts/apply_response.py` since apply_response v1 — see §4). See [library/AGENTS.md](../../library/AGENTS.md) for the full `.virgil/` layout.
 
 **Sidecar JSON filenames under `virgil/`:**
 
@@ -368,7 +370,7 @@ Surfaced honestly per the doc-graph discipline. Items marked **[fixed]** were co
 
 1. **[fixed] VIRGIL.md's UUID/Ontology marker list was incomplete.** Its Ontology bullet and the UUID-marker stub named only `%!v:`, `\vcid`, `\vfid`, `\vexid` and claimed *"linkedRange uses the linkedAnchor mark's `anchorId` instead [of a marker]."* The shipped family also includes **`\vxid`** (example items) and **`\vlid`/`\vlidend`** (linkedRange, persisted to `.tex` since Phase E). VIRGIL.md's UUID section and Ontology bullet were updated.
 
-2. **VIRGIL.md's confident Cowork section describes a largely-unbuilt v1 target** (the pen dance in `apply_response.py`, the two-field status/result vocabulary, safety levels 1/2/3, the named subcommands, `--synthesize-task`, atomic-with-rollback writes). Verified absent by repo-wide grep (§4.6). **[partially fixed]** brief as-shipped notes were added to the Cowork section (Deliverable 3); the section is intentionally **not** rewritten (it remains the v1 design target).
+2. **[resolved — apply_response v1] VIRGIL.md's Cowork section described a v1 target that was unbuilt at `c315113`** (the pen dance in `apply_response.py`, the two-field status/result vocabulary, safety levels 1/2/3, the named subcommands, `--synthesize-task`, atomic-with-rollback writes). apply_response v1 (merge `0c27422`) has since **built all of it**; VIRGIL.md's Cowork section now documents it as shipped, and §4's banner records the supersession.
 
 3. **VIRGIL.md references two design docs that are not in the committed repo.** Its Status callout and Related-documents list cite `EDITOR_SKILLS_V1.html` and `MEMO_V1_AND_ROT_PREVENTION.md`. In this worktree (based on `chip-1-rot-prevention` @ `c315113`) those files **do not exist and were never committed on any branch** (`git log --all` is empty for both) — they exist only as untracked working-tree files in the *shared* tree (the concurrent card-refactor session's snapshot). Only `EDITOR_SKILLS_BRAINSTORM.html` is tracked. **Not fixed** (these are chip-1's design-source references; the user may intend to commit the files during chip integration — flagged here for that decision). The coherence script's check 1 is unaffected because these are prose/Related-documents references, not `derives-from`/`covers-code` header edges.
 
