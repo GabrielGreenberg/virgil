@@ -1564,3 +1564,74 @@ L4 untouched; MAIN order unchanged. Pre-existing working-tree files
 (`EDITOR_SKILLS_BRAINSTORM.html`, `useRecentlyAddedTracker.ts`) + untracked scratch
 (`CARD-SYSTEM-REFACTOR.md`, `EDITOR_SKILLS_V1.html`, `MEMO_V1_AND_ROT_PREVENTION.md`,
 `SKILL_PIPELINE.*`, `docs/card-refactor/`) out of the commit.
+
+## L3k — Bodyless kinds Chip 5: listItem lift float (first sub-object) — 2026-06-03
+
+**Commit:** `dec9523`.
+
+**What.** Fifth bodyless-kind migration — the first SUB-OBJECT. listItem is
+`group:"textObject"` not `block`, so a bare item can't be a top-level float-doc
+child: new `list-item-body.tsx` (modeled on list-body) SEEDS the item WRAPPED in
+its real parent list via `buildWrap` (`doc > bulletList|orderedList > listItem`;
+parent type detected by resolving the item's position in main → the enclosing
+list), and the write-back is INNER-TARGETED — unwraps the float's `list > item(s)`
+and `replaceWith`es over ONLY the source item's range (preserving its uuid), never
+the whole list (siblings + the parent list uuid intact); an in-float Enter-split
+lands as siblings (main's block-uuid backfill re-mints a clone that copied the
+uuid). The float renders the marker for free (the wrapper list provides list
+context); the drag GHOST gets a marker-rescue `renderGhost` (clone the `<li>` into
+`.tiptap > ul/ol > li`, editor-root typography — modeled on the heading ghost; a
+bare `<li>`'s `::marker` renders via the enclosing list's padding). Seed + every
+`readSource` re-wrap share an explicit-uuid wrapper builder (`wrapItemForFloat`) so
+they serialize byte-identically (no `useFloatMainSync` `sameDoc` thrash on a
+foreign main edit). 3 touch-points + listItem in FloatSourceKind/KIND_LABEL
+("Source list item deleted"). Already in the float schema. Fixed the stale
+editor-extensions.ts:406-409 comment (listItem now has a round-tripping uuid —
+`\item …%!v:<uuid>` via the serializer/parser + the block-uuid-backfill
+DEFERRING_PARENTS set).
+
+**Observe-first.** Baseline: listItem didn't pop out (popoutKeyForLift `default`
+→ null, PLACEHOLDER_FLOAT_BODY). After (REAL released popout via the popped-cards
+path — DFS for the PoppedCardsContext → `popOutAtRect('textobject:listItem:<uuid>',
+rect)`; live editor via the `.ProseMirror` React fiber; the dev doc has a 3-item
+bulletList [bb8c/773f/b2c4] + a 6-item orderedList): the float renders the item
+INSIDE its list with the correct marker — bulletList item `bb8c` → `<ul>`
+`list-style-type:disc`; orderedList item `d51a` → `<ol>` `list-style-type:decimal`
+— editable (`isEditable:true`), float doc `doc > bulletList|orderedList > listItem`
+with the source uuid preserved, NOT blank. INNER-TARGETED write-back proven: edited
+bb8c in the float ("…highlight; [L3k-PROBE]") → in MAIN only bb8c changed; siblings
+773f/b2c4 byte-unchanged, parent bulletList uuid `2205` unchanged, item count still
+3, still a single bulletList node (no clobber/duplication). Source-missing banner
+"Source list item deleted — float is disconnected." on deleting the source item in
+main; no blank popout. Ghost → user-verify probe (the marker-rescue renderGhost
+can't be driven headlessly): grab a list item's handle, drag — the ghost should
+show the item WITH its marker (bullet/number); gutter-release → the float.
+
+**Verify.** Wiring test extended (Chip 5: non-null popoutKeyForLift + liftMode + a
+bespoke ListItemBody distinct from the shared SingleBlockBody + a marker-rescue
+renderGhost; figureBlock stays the still-null control; the 5 done kinds green) + a
+new wrap-seed→inner-write round-trip unit test (`list-item-inner-writeback.test.ts`,
+against the real `getSchema(buildEditorExtensions)`: 3-item list, edit item 2 →
+only item 2 changed + siblings/list uuid intact; the Enter-split case;
+source-missing; and the seed/sync byte-identity anti-thrash invariant). vitest
+400/400 (Δ+10 from 390, +1 file); tsc 0 new — **2 pre-existing on clean
+main@eb3a541** [`card-creation.ts(543,11)` RecentlyAddedKind + the known
+`block-uuid-backfill.test.ts(27,7)`], proven by stashing the change; the spec's /
+L3j's "tsc 1" was measured in the reports-panel checkout, where the uncommitted
+`useRecentlyAddedTracker.ts` fix removes the card-creation.ts error. eslint 0 new
+(3 pre-existing warnings in `TextObjectGrabHandle.tsx`, identical on the baseline
+copy — my 4-line `case` add shifted them +4 lines). emitCount flat (Δ0 typing 10
+plain chars in MAIN, version +10). Built + verified in a dedicated `main` worktree
+(`virgil-chip5-listitem`) since the main checkout was mid-feature on
+`reports-panel`; Turbopack rejects a symlinked node_modules in a worktree (the
+"worktree symlink gotcha") → real `npm ci`; dev doc seeded from
+`samples/annotation-history` + a worktree `virgil-data/index.json`.
+
+**Non-goals respected.** exampleItem (next — `list-item-body` is the template; its
+seed/write-back helpers are exported/pure so the 3-level-wrap example-item-body can
+mirror them), figures, L4, the math gate, the `\item` serializer round-trip (only
+the stale COMMENT fixed), and the grab-handle resolution / drop adapters untouched.
+The 5 done SingleBlockBody/other floats unweakened. Built in a pristine worktree
+(no reports-panel pollution present); commit scoped to the new `list-item-body.tsx`
++ `floats/index.ts` + `TextObjectGrabHandle.tsx` + `text-object-registry.ts` +
+`float-sync.tsx` + `editor-extensions.ts` (stale-comment only) + the two test files.
