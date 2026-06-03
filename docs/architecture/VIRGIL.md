@@ -1,15 +1,15 @@
-<!-- last-verified: 8ed5779 2026-06-03 -->
+<!-- last-verified: 54ced55 2026-06-03 -->
 <!-- derives-from: (root — verified against code) -->
-<!-- covers-code: src/panels/_shared/types.ts, src/lib/types.ts, src/text-objects/text-object-registry.ts, src/links/link-registry.ts, src/panels/panel-registry.ts, src/lib/ai-request-bridge.ts, editor/scripts/apply_response.py, editor/scripts/_common.py, editor/scripts/create_card.py, src/lib/latex-parser.ts, src/lib/latex-serializer.ts -->
+<!-- covers-code: src/panels/_shared/types.ts, src/lib/types.ts, src/text-objects/text-object-registry.ts, src/links/link-registry.ts, src/links/_shared/types.ts, src/panels/panel-registry.ts, src/panels, src/components/panel-primitives.tsx, src/lib/storage-fsa.ts, src/lib/ai-request-bridge.ts, editor/scripts/apply_response.py, editor/scripts/_common.py, editor/scripts/create_card.py, src/lib/latex-parser.ts, src/lib/latex-serializer.ts -->
 
 # Virgil — Canonical Architecture
 
 **This is the single rooted source of truth for "what Virgil is."** When anyone — a person, a future Claude session, a generated doc — needs the canonical conceptual account of Virgil, this is the answer. It exists once and only once.
 
-> **Status: bootstrapped skeleton (2026-06-01).**
-> This document was created frame-first. Its **confident sections** ([Document discipline](#document-discipline), [Ontology](#ontology), [Cowork pattern](#cowork-pattern), [Code organization](#code-organization)) are written from the frozen v1 design (`EDITOR_SKILLS_V1.html`, `EDITOR_SKILLS_BRAINSTORM.html`) and the verified agent docs, and are good now. Its remaining **stub sections** are the exhaustive current-state extractions. The Phase 0 archaeology chip filled the **stable** three — [UUID marker emission](#uuid-marker-emission), [LaTeX round-trip vocabulary](#latex-round-trip-vocabulary), [Reserved-name inventory](#reserved-name-inventory) — whose field-level detail lives in [phase0-stable-current-state.md](phase0-stable-current-state.md). The other three — card-kind taxonomy, public-type registry, sidecar/panel inventory — still carry `<!-- STUB: pending Phase 0 -->` and their `covers-code` pointers, **deferred** until the in-flight card-system refactor settles (extracting them now would extract a moving target). **An honest stub beats confident-wrong content** — see [Document discipline → Stubs](#stubs-and-the-bootstrap-state).
+> **Status: Phase 0 complete (2026-06-03).**
+> This document was created frame-first. Its **confident sections** ([Document discipline](#document-discipline), [Ontology](#ontology), [Cowork pattern](#cowork-pattern), [Code organization](#code-organization)) are written from the frozen v1 design (`EDITOR_SKILLS_V1.html`, `EDITOR_SKILLS_BRAINSTORM.html`) and the verified agent docs. Its six **current-state sections** are now **all filled** from the Phase 0 code-archaeology pass: the **stable** three — [UUID marker emission](#uuid-marker-emission), [LaTeX round-trip vocabulary](#latex-round-trip-vocabulary), [Reserved-name inventory](#reserved-name-inventory) — whose field-level detail lives in [phase0-stable-current-state.md](phase0-stable-current-state.md); and the **card-layer** three — [Card-kind taxonomy](#card-kind-taxonomy), [Public-type registry](#public-type-registry), [Sidecar and panel inventory](#sidecar-and-panel-inventory) — extracted after the card-system refactor (Quotations → Reports) settled, with field-level detail in [phase0-card-current-state.md](phase0-card-current-state.md). **No `<!-- STUB: pending Phase 0 -->` section markers remain.**
 >
-> **How to read this doc:** start with [Document discipline](#document-discipline) — it explains the headers at the top of this file, the `<!-- STUB -->` marker, and how this doc relates to `docs/agents/*`, the future manifest, and the skill set. Then read the section you came for.
+> **How to read this doc:** start with [Document discipline](#document-discipline) — it explains the headers at the top of this file, the (now-retired) `<!-- STUB -->` convention, and how this doc relates to `docs/agents/*`, the future manifest, and the skill set. Then read the section you came for.
 
 ---
 
@@ -134,7 +134,7 @@ The container and the scope. It is composed entirely of TextObjects. Cards, Atom
 |---|---|---|
 | **TextObjects** | The structural atoms of text — paragraphs, headings, lists, list items, example items, atom blocks, and selection-backed linked ranges. Each is discrete and addressable. The single canonical abstraction for every graspable text unit; see [Code organization](#code-organization) and `TEXT_OBJECT_REGISTRY`. | Move, pop, drop freely. |
 | **Atoms** | Inline elements *within* TextObjects, finer-grained than a TextObject but not themselves TextObjects — in-text citations (`\cite{}`), footnote markers (`\footnote{}`), refs (`\ref{}`), inline math (`$…$`). Often bidirectionally linked to a Card. | Text-bound: move with the surrounding characters; do not pop into Panels independently. |
-| **Cards** | Almost everything else: notes, highlights, todos, footnotes, citations, quotations, bibliography entries, comments, suggestions, examples, **Tasks**. Not a sub-type of TextObject — a parallel structure that connects to text via anchors and/or Atom links. | Move, pop, drop freely. |
+| **Cards** | Almost everything else: notes, highlights, todos, footnotes, citations, reports, bibliography entries, comments, suggestions, examples, **Tasks**. Not a sub-type of TextObject — a parallel structure that connects to text via anchors and/or Atom links. | Move, pop, drop freely. |
 | **Omni-View gutters** | The in-context rendering of Cards alongside the text they anchor to. The primary surface for seeing Cards in place. | — |
 | **Panels** | Sidebar collections that list Cards of a given kind (Notes, Footnotes, Bibliography, the Inbox for Tasks). The secondary surface — browse, filter, bulk ops. | — |
 
@@ -262,31 +262,48 @@ A load-bearing performance contract (stated in `AGENTS.md`): **no plugin, hook, 
 
 ## Card-kind taxonomy
 <!-- covers-code: src/panels/_shared/types.ts, src/panels/panel-registry.ts, src/components/panel-primitives.tsx, src/lib/types.ts -->
-<!-- STUB: pending Phase 0 -->
 
-The exhaustive, per-kind current-state account of every card kind: which Panel hosts it, which sidecar persists it, its anchor/Atom-link relationships, its lifecycle (if any), and its themed presentation.
+Cards are the primitive that covers almost everything that isn't text (see [Ontology](#ontology)). The canonical card vocabulary is the **`CardKind` union** ([src/panels/_shared/types.ts](../../src/panels/_shared/types.ts)) — **17 kinds** as shipped:
 
-Phase 0 extracts this from the `CardKind` union ([src/panels/_shared/types.ts](../../src/panels/_shared/types.ts) — currently 16 kinds: `note`, `highlight`, `footnote`, `archive`, `todo`, `bib`, `citation`, `comment`, `suggestion`, `cutter-comment`, `cutter-suggestion`, `revision-suggestion`, `quotation`, `example`, `ai`, `error`), cross-referenced with `PANEL_REGISTRY`, the polymorphic-panel map, `CARD_KEY_PREFIXES`, and `CARD_THEMES`. This section holds the **conceptual taxonomy** (what kinds exist, how they group, how they relate to the [Ontology](#ontology) primitives). Exhaustive per-field schemas belong to the future manifest's `cards.md` / `sidecars.md` (`docs/workspace/` → `.claude/virgil/`), not here.
+`note` · `highlight` · `footnote` · `archive` · `todo` · `bib` · `citation` · `comment` · `suggestion` · `cutter-comment` · `cutter-suggestion` · `revision-suggestion` · `report` · `report-request` · `example` · `ai` · `error`.
+
+`CardKind` is the **theming / keying / labeling** vocabulary — the shared key space of five parallel registries, each its own SSOT: `PANEL_REGISTRY` + `POLYMORPHIC_CARD_PANEL` (which Panel hosts the kind), `CARD_KEY_PREFIXES` (the popout key), `CARD_TYPE_LABELS` / `CARD_TITLE_LABELS` (display labels), and `CARD_THEMES` (the accent). Before adding a kind, extend these registries — never a parallel table (see [Code organization → registries](#the-single-sources-of-truth-registries)).
+
+How the kinds group:
+
+- **Single-card panels** are registered with one card kind: Footnotes (`footnote`), Citations (`citation`), Bibliography (`bib`), Examples (`example`), Todo (`todo`), Archive (`archive`), Errors (`error`), Revisions (`comment`). (Revisions additionally hosts `revision-suggestion`, mapped to it via `POLYMORPHIC_CARD_PANEL`.)
+- **Polymorphic panels** host two kinds each (registered `card: null`, resolved through `POLYMORPHIC_CARD_PANEL`): **Notes** (`note` + `highlight`), **Cutter** (`cutter-comment` + `cutter-suggestion`), **Reports** (`report` + `report-request`). The Reports panel is the newest — it replaced the Quotations panel in the card-system refactor (`quotation` removed; `report` / `report-request` added).
+- **Homeless kinds** have no parent Panel: `suggestion` (the generic "respond with a doc edit" kind, stored on disk as the Cutter/Revisions suggestion variants) and `ai` (the **Task** — cross-cutting across every panel's inbox, surfaced by the Inbox).
+
+How they relate to the [Ontology](#ontology) primitives: every Card connects to text by an **anchor** (paragraph-level, Mode A; or a text-range `linkedRange`, Mode B) and/or an **Atom link** (`footnote`→`\footnote{}`, `citation`/`bib`→`\cite{}`). A `footnote`/`citation` is Atom-linked; a `note`/`comment`/`report` is anchored; `example` *is* a TextObject (its card is a sidecar shadow of an `exampleBlock`); `ai` (a Task) may have anchor, Atom links, both, or neither. Two kinds carry a real lifecycle — `ai` (the `status`/`result`/`safetyLevel` machine, see [Cowork pattern](#cowork-pattern)) and the suggestion kinds (`status` + `author`; Accept enqueues an out-of-band edit).
+
+**One nuance worth stating at this altitude:** the registry `CardKind` is *not* the same as the `kind` discriminator stored on disk. The persisted `kind` exists only on the polymorphic panels' cards and uses a coarser set (`note`/`highlight`, `comment`/`suggestion`, `report`/`report-request`); the Cutter and Revisions `comment`/`suggestion` records are re-qualified to `cutter-comment`/`cutter-suggestion`/`revision-suggestion` by panel context at the render/key/theme layer.
+
+The exhaustive per-kind account — every kind's panel, sidecar + list-key, persisted discriminator, anchor/Atom-link relationship, lifecycle, and theme, plus the full Reports-panel and polymorphic-panel detail and the registry-shadow rot-vector — is in **[phase0-card-current-state.md §1](phase0-card-current-state.md#1-card-kind-taxonomy)**. Maps to the manifest's `cards.md`.
 
 ---
 
 ## Public-type registry
 <!-- covers-code: src/lib/types.ts, src/panels/_shared/types.ts, src/links/_shared/types.ts -->
-<!-- STUB: pending Phase 0 -->
 
-An accounting of the public type surface in [src/lib/types.ts](../../src/lib/types.ts) (~50 exported interfaces/types — `VirgilSidecar`, `EditorStateData`, `Suggestion`, `RevisionCard`, `AiRequest`, `CitationRef`, `FootnoteRef`, `ExampleRef`, `NoteCardItem`, `CutterCard`, `QuotationGroup`, … ), mapping each to the concept it represents and the section here that is doc-of-record for it.
+[src/lib/types.ts](../../src/lib/types.ts) is the type SSOT for the card / sidecar surface — **58** exported interfaces and type aliases as shipped. They fall into a few families: the **card interfaces** (`UserNote`, `HighlightCard`, `FootnoteRef`, `CitationRef`, `RevisionCard`, `ReportItem`, `CutterCard`, `ArchivedSnippet`, `TodoItem`, `ExampleRef`, …) and a `…State` wrapper per sidecar; the **Task surface** (`AiRequest`, `AiRequestKind`, `AiRequestStatus`, `AiRequestResult`, `AiRequestLink`, `AiRequestPayload`); the **notification** types (`DocNotification…`); the **bibliography** support types (`BibEntry`, `BibReviewRequest`, `BibSettings`, `AnnotationsState`); and a residue of **legacy** types from the pre-card review pipeline (`Suggestion`, `SessionState`, `ReviewRequest`, `ClaudeSuggestion`, `UserComment`), four of which have no live consumer.
 
-This is the target state for **coherence check (2)**: every public type in `types.ts` must be accounted for here *or* explicitly delegated to a named manifest doc. Pre-Phase-0 the check runs warn-only (the registry is stubbed). The conceptual mapping lives here; the exhaustive field-level schemas are the generated manifest's `sidecars.md`.
+This is the target state for **coherence check (2)** ([check-coherence.SKETCH.md](check-coherence.SKETCH.md#check-2--type-accounting)): every exported type in `types.ts` must be accounted for — mapped to its concept and a doc-of-record — or explicitly delegated to a named manifest doc. With this section filled, that check graduates from warn-only to per-type error.
+
+The full enumeration (all 58 types → concept → doc-of-record, with the dead types flagged) is in **[phase0-card-current-state.md §2](phase0-card-current-state.md#2-public-type-registry)**. The conceptual mapping lives there; exhaustive field-level schemas are the generated manifest's `sidecars.md`.
 
 ---
 
 ## Sidecar and panel inventory
 <!-- covers-code: src/lib/storage-fsa.ts, src/lib/types.ts, src/panels/panel-registry.ts, src/panels -->
-<!-- STUB: pending Phase 0 -->
 
-The exhaustive inventory of (a) every JSON sidecar written into a paper's `virgil/` folder (`virgil.json`, `suggestions.json`, `revisions.json`, `ai-requests.json`, `notifications.json`, `bib-review-requests.json`, `editor-state.json`, `cutter.json`, `collab.json`, `doc-settings.json`, plus the per-panel state files), with its purpose and the UI surface that consumes it; and (b) every Panel in `PANEL_REGISTRY` (currently 15 `PanelKind`s), with the card kinds it hosts and the actions it offers.
+Two related inventories.
 
-Conceptual account here; exhaustive schemas in the manifest's `sidecars.md` / `structure.md`.
+**Sidecars.** Every paper carries a `virgil/` folder (the single disk boundary is [src/lib/storage-fsa.ts](../../src/lib/storage-fsa.ts), `VIRGIL_SUBDIR`). It holds a handful of **infrastructure** sidecars shared across the app — `virgil.json` (paragraph titles + fingerprints), `editor-state.json`, `ai-requests.json` (the Task store), `notifications.json`, `collab.json`, `document-settings.json`, `version.txt` — and one **card sidecar per card-bearing panel** (`notes.json`, `todos.json`, `footnotes.json`, `citations.json`, `cutter.json`, `revisions.json`, `reports.json`, `examples.json`, `archive.json`, plus the bibliography support files `bib-settings.json` / `bib-review-requests.json` / `annotations.json`). A few legacy sidecars (`suggestions.json`, `comments.json`) survive from the pre-card era. Errors are *not* persisted — they re-derive from the live LaTeX lint. (The Reports refactor renamed `quotations.json` → `reports.json`.)
+
+**Panels.** `PANEL_REGISTRY` ([src/panels/panel-registry.ts](../../src/panels/panel-registry.ts)) is the SSOT for the panel surface — **15** `PanelKind`s. Eleven host cards (eight registered with a single card kind, three polymorphic — see [Card-kind taxonomy](#card-kind-taxonomy)); the remaining four are tool surfaces (`outline`, `search`, `wordcount`, `omni`). Each registry entry declares the panel's label, folder, hosted card link, OmniView eligibility/side, and default strip side.
+
+The exhaustive inventory — every sidecar with its purpose, list-key, and consuming hook (infrastructure / card / legacy / excluded non-sidecars); and every Panel with its hosted kinds — is in **[phase0-card-current-state.md §3](phase0-card-current-state.md#3-sidecar--panel-inventory)**. Maps to the manifest's `sidecars.md` (sidecar schemas) and `structure.md` (the panel surface). The per-card **user-actions** (keyboard, toolbar, drag/drop, context menus) remain deferred to the manifest's `actions.md`.
 
 ---
 
@@ -342,6 +359,7 @@ The exhaustive inventory — every injected string, comment regex, the full CSS/
 ## Related documents
 
 - **[phase0-stable-current-state.md](phase0-stable-current-state.md)** — the Phase 0 archaeology seed for the **stable** subsystems (UUID/markers, LaTeX vocabulary, TipTap extensions, reserved names, as-shipped cowork plumbing). The exhaustive field-level substrate that the three stable sections above forward-point to; seeds the future manifest. Retired once the manifest absorbs it.
+- **[phase0-card-current-state.md](phase0-card-current-state.md)** — the Phase 0 archaeology seed for the **card layer** (the `CardKind` taxonomy, the 58-type public surface, the sidecar + panel inventory, and the Python registry shadows). The exhaustive substrate the three card-layer sections above forward-point to; extracted once the Quotations → Reports refactor landed. Seeds the manifest's `cards.md` / `sidecars.md` / `structure.md`; retired once absorbed.
 - **`docs/agents/*`** — the how-to-work-on-the-codebase derivatives (`overview.md`, `glossary.md`, `ui-chrome.md`, `main-text.md`, `architecture.md`), indexed by top-level `AGENTS.md`. They carry `derives-from` headers pointing back here.
 - **`EDITOR_SKILLS_V1.html`** — the frozen v1 build target (the source for the confident [Ontology](#ontology) and [Cowork pattern](#cowork-pattern) content).
 - **`EDITOR_SKILLS_BRAINSTORM.html`** — the design-intent record (the decisions log, §20; the method plan, §19).

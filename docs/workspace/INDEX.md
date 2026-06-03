@@ -1,51 +1,92 @@
-<!-- last-verified: 8ed5779 2026-06-03 -->
-<!-- derives-from: docs/architecture/VIRGIL.md#cowork-pattern -->
-<!-- covers-code: editor/skills, editor/scripts -->
+<!-- last-verified: 71c5f42 2026-06-03 -->
+<!-- derives-from: docs/architecture/VIRGIL.md#ontology -->
+<!-- covers-code: editor/scripts -->
 
-# Virgil operational manifest
+# Virgil operational manifest — reading protocol
 
-The operational manifest is the **per-kind knowledge** Virgil's mechanical
-skills load on demand: each card kind's reading protocol, the `.tex` atom
-mechanics, and the current on-disk sidecar shape. It is the Layer-3 companion
-to the conceptual spine in [VIRGIL.md](../architecture/VIRGIL.md) — where the
-spine states the *concept* and forward-points here, the manifest holds the
-*operational detail* (shapes, anchors, the exact write path).
+This is the **dispatcher** for the manifest: the per-task knowledge Virgil's
+mechanical skills load on demand. It is a *reading protocol*, not a table of
+contents — for each kind of task it names exactly which docs to load. Skills
+don't need to know what they need; they consult this INDEX. Loading is
+index-directed: neither eager (load everything) nor lazy (each skill
+self-discovers).
 
-Source lives in `docs/workspace/`; it ships to each paper's `.claude/virgil/`
-via the skill-sync engine (the sync wiring is a later chip — see
-[VIRGIL.md → Document discipline](../architecture/VIRGIL.md)). Each manifest doc
-is a single-topic Layer-3 doc and carries the doc-graph header block
-(`last-verified` / `derives-from` / `covers-code`) at its top.
+The manifest is the Layer-3 operational companion to the conceptual spine in
+[VIRGIL.md](../architecture/VIRGIL.md): where the spine states the *concept* and
+forward-points here, the manifest holds the *operational detail* (recognition
+patterns, constraints, recipes). Source lives in `docs/workspace/`; it is *meant*
+to ship to each paper's `.claude/virgil/` at runtime — that shipping leg is **not
+yet wired** (see [structure.md → how the manifest reaches `.claude/virgil/`](structure.md#how-the-manifest-reaches-claudevirgil)).
 
-> **Vertical-slice status.** This is the manifest's first sliver — **footnotes
-> only**, extracted while building the `apply_response.py` v1 contract and
-> validating it through the footnote kind. The full manifest (all card kinds,
-> partly machine-generated from `src/lib/types.ts`) is a later chip. Entries
-> here are written against the *current* shapes; revisit any entry whose
-> `covers-code` the card-system refactor touches.
+> **Build status.** The **foundational** docs are written — `ontology.md`,
+> `identity.md`, `structure.md`, `atoms.md`, `latex.md`. The **card-coupled** docs
+> (`cards.md`, `sidecars.md`, `anchoring.md`, `actions.md`, `gardening.md`) are a
+> later chip; `footnotes.md` is the first per-kind sliver. Lines below that name a
+> forthcoming doc are marked _(forthcoming)_.
 
-## Reading protocols (read before acting on a kind)
+## Reading protocol — what to load for a task
 
-| Kind | Read first | When |
+```
+Modifying the document body (prose, structure, blocks)
+  load: ontology.md, latex.md, identity.md#block-and-paragraph-ids,
+        structure.md#the-write-path
+        (+ gardening.md — forthcoming)
+
+Inserting or editing an inline element (footnote, citation, ref, math)
+  load: atoms.md, identity.md#footnote-and-citation-ids, latex.md
+        (+ anchoring.md, cards.md — forthcoming)
+
+Working with footnotes specifically
+  load: footnotes.md, atoms.md#footnote,
+        identity.md#footnote-and-citation-ids, structure.md#the-write-path
+
+Working with citations or the bibliography
+  load: atoms.md#citation, latex.md#citation-vocabulary,
+        identity.md#footnote-and-citation-ids, structure.md
+        (+ cards.md, sidecars.md — forthcoming)
+
+Creating or modifying any Card (note, todo, report, suggestion, …)
+  load: ontology.md, structure.md#the-write-path
+        (+ cards.md, sidecars.md, anchoring.md — forthcoming)
+
+Resolving where a Card attaches to text (anchors, Atom links)
+  load: ontology.md, identity.md
+        (+ anchoring.md — forthcoming)
+
+Judging what LaTeX Virgil will accept or preserve
+  load: latex.md
+
+A "how do I…" / "what is…" UX question from the user
+  load: nothing here; consult the UX library (.claude/virgil-ux/) — forthcoming
+```
+
+## The docs
+
+| Doc | Covers | Status |
 |---|---|---|
-| `footnote` | [footnotes.md](footnotes.md) | Handling a `kind: footnote` Task, or running `create-card --kind=footnote` / `draft-footnote`. |
-| `note` · `todo` · `citation` · `quotation` · `example` · `annotation` | _(TODO — later chips)_ | Each adds its own manifest entry + `create-card` `--kind` implementation on the same contract. |
+| [ontology.md](ontology.md) | The Document + five primitives; Card-vs-text; linkage & UUIDs at a glance. Read first. | ✅ |
+| [identity.md](identity.md) | Every UUID flavor + marker; who generates each; the id-equality link rule. | ✅ |
+| [structure.md](structure.md) | Paper folder layout (`.tex` / `virgil/` / `.virgil/` / `.claude/`); the write path. | ✅ |
+| [atoms.md](atoms.md) | Inline Atom kinds (footnote, citation, ref, math); Card linkage; mobility. | ✅ |
+| [latex.md](latex.md) | What `parseLatex()` accepts/emits; the two opaque fallbacks; escaping; the curated output subset. | ✅ |
+| [footnotes.md](footnotes.md) | Footnote-specific: the splice recipe, the `FootnoteRef` shape, the create flow. | ✅ (sliver) |
+| `cards.md` | Card-kind taxonomy; per-kind shape; Task Card detail. | _forthcoming_ |
+| `sidecars.md` | Per-sidecar JSON schemas (generated from `src/lib/types.ts`). | _forthcoming_ |
+| `anchoring.md` | Card→text linkage in full (Anchors AND Atom links); what invalidates each. | _forthcoming_ |
+| `actions.md` | The editing surface: decorations, structural ops, card actions, keyboard. | _forthcoming_ |
+| `gardening.md` | Cleanup conventions; orphan handling; the never-touch deny-list. | _forthcoming_ |
 
-## The write path every kind shares
+## The write path (every kind shares it)
 
-All card writes flow through one contract — the mechanical skills never write
-files directly:
+All Card writes flow through one contract — skills never write paper files
+directly. The diagram, the `safetyLevel` → subcommand mapping, and the pen /
+atomic-write detail are in
+[structure.md → the write path](structure.md#the-write-path). The conceptual model
+is [VIRGIL.md → Cowork pattern](../architecture/VIRGIL.md#cowork-pattern).
 
-```
-create-card --kind=<k>  →  create_card.py  →  apply_response.py <subcommand>
-                                               ├─ acquire the editing pen
-                                               ├─ atomic N-file write (card +
-                                               │  .tex + ai-requests + notif +
-                                               │  version), all-or-nothing
-                                               └─ release the pen
-```
+## How this INDEX grows
 
-Subcommand by the Task's `safetyLevel`: `1 → write-silent`,
-`2 → write-with-comment`, `3 → complete-task --propose`; none → `complete-task`
-(direct create). See [VIRGIL.md → Cowork pattern](../architecture/VIRGIL.md#cowork-pattern)
-for the conceptual model and `apply_response.py`'s module docstring for the CLI.
+This file is self-describing: it grows with the manifest. When a new manifest doc
+lands, add it to **The docs** table and add (or extend) the reading-protocol
+entries that should load it. Keep `load:` targets pointing at real section
+anchors — a skill follows them literally.

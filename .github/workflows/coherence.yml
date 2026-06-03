@@ -1,0 +1,53 @@
+name: Doc-graph coherence
+
+# Validates the edges of the rooted documentation graph
+# (docs/architecture/VIRGIL.md "Document discipline") with
+# tools/check-coherence.mjs — the CI guard designed in
+# docs/architecture/check-coherence.SKETCH.md.
+#
+# Trigger note: this repo merges via git worktrees, not pull requests, and
+# publishes on *push to main* (see deploy.yml). A pull_request-only trigger
+# would never fire here, so the LIVE path is `push: [main]` — the check runs
+# post-merge, the same model as the deploy. `pull_request` is kept too so the
+# guard fires before merge if a PR-based flow is ever adopted; neither is dead.
+#
+# Checks 1 (edges) and 2 (type accounting) are errors → a violation fails the
+# job. Checks 3/4/5 are warnings (drift, concept→code, python-shadow) and do
+# not gate. `--strict` (commented) promotes warnings to errors — the post-Phase
+# hardening switch.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  coherence:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          # check 4 (drift) walks `git log <last-verified>..HEAD` — needs history.
+          fetch-depth: 0
+
+      - name: Set up Node
+        uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Smoke-test the checker
+        run: node tools/check-coherence.smoke.mjs
+
+      - name: Check doc-graph coherence
+        run: node tools/check-coherence.mjs
+        # - name: Check doc-graph coherence (strict)
+        #   run: node tools/check-coherence.mjs --strict   # post-Phase-0 hardening
