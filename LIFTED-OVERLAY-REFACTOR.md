@@ -1371,3 +1371,62 @@ untouched. Pre-existing working-tree files (`EDITOR_SKILLS_BRAINSTORM.html`,
 `useRecentlyAddedTracker.ts`) + untracked scratch (`CARD-SYSTEM-REFACTOR.md`,
 `EDITOR_SKILLS_V1.html`, `MEMO_V1_AND_ROT_PREVENTION.md`, `SKILL_PIPELINE.*`,
 `docs/card-refactor/`) left out of the commit.
+
+## L3h.1 — Math click→edit bridge gated on the MAIN surface (generalize L3h's isEditable gate) — 2026-06-02
+
+**Commit:** `c204c13`.
+
+**Bug (pre-existing, exposed verifying L3h; data-corruption risk).** The math
+NodeView's click→edit bridge (`virgil-math-click` → `MathPopover` →
+`handleMathSave`) edits the MAIN editor by absolute `pos`, so it's only correct
+from the main surface. L3h gated it on `editor.isEditable` (fixing READ-ONLY
+floats), but an EDITABLE float containing math (popped paragraph w/ inline math;
+linkedRange float spanning a display equation — reachable since selection-bug A)
+is `isEditable:true`, so its math click slipped through, firing with the FLOAT's
+`getPos()` → `handleMathSave` mis-targeted MAIN at that wrong pos (opened the
+popover on / could corrupt the WRONG node). Latent since paragraph floats
+shipped.
+
+**Cause — PROVEN.** Reproduced on a real editable float (popped-cards path, not a
+clone harness; UNFIXED build via a stashed source revert + clean `.next-preview`
+rebuild): popped paragraph `3311` (a `par-float-body`, `contenteditable=true`
+EDITABLE float) carrying inline math; clicking the in-float inline math `T`
+dispatched `virgil-math-click` with `pos 321` — the FLOAT-LOCAL pos (float doc
+size 408; float maths `T@321`, `A@344`) — and opened the MAIN `MathPopover`
+mis-targeted: main `nodeAt(321)` is a DIFFERENT text node ("book is, sooner or
+later, to mark it…"), while that equation's TRUE main pos is `4758`. `isEditable`
+is true for editable floats, so L3h's gate didn't catch them.
+
+**Fix — gate on the MAIN surface (the true class).** Added a `surface` option to
+`InlineMath` + `DisplayMath` (`addOptions`, default `"main"`), threaded
+`this.options.surface` into the shared `mathNodeView`, and gated the click to
+fire only when `surface === "main"` (kept `editor.isEditable` too — read-only
+MAIN docs). The factory configures both math nodes
+`.configure({surface: isFloat?"float":"main"})` like its sibling NodeViews. Now
+math-click-to-edit fires from MAIN only and is inert in EVERY float (editable AND
+read-only). Page math editing (inline + display) byte-identically unchanged. No
+new `any` (surface is a string union; math.ts stays at its 3 pre-existing
+node/getPos/update `any`).
+
+**Verify.** Real walkthrough on the rebuilt FIXED build (clean `rm -rf
+.next-preview` between the unfixed-repro and fixed-confirm rebuilds — the gate is
+a mount-time NodeView): the SAME editable-float inline math `T` now fires 0
+events / no popover (INERT); the read-only displayMath lift float (uuid `0ee9`,
+`contenteditable=false`) stays inert (L3h preserved); PAGE inline math (`pos
+4758`) AND display math (`pos 4845`) still open the popover at the correct pos,
+and a real save persisted to the correct node (displayMath `a292` latex updated +
+KaTeX re-rendered, popover closed). New gate test (`math-surface-gate.test.ts`:
+`surface:"float"` click dispatches nothing; `surface:"main"`+editable fires;
+read-only main inert; unconfigured defaults to main) + factory-wiring assertions
+in `editor-extensions.test.ts`. vitest 380/380 (372 + 8 new); tsc 1 pre-existing
+(`block-uuid-backfill.test.ts(27,7)`); eslint 0 new (math.ts stays at its 3
+pre-existing `no-explicit-any`); `emitCount` flat (Δ0, version +12) typing 12
+plain chars in MAIN.
+
+**Non-goals respected.** `handleMathSave`/`MathPopover`/`marker-clicks` (page
+editing) untouched; no float-aware math editing (decision D = read-only math
+floats); bodyless sequence + L4 untouched. Pre-existing working-tree files
+(`EDITOR_SKILLS_BRAINSTORM.html`, `useRecentlyAddedTracker.ts`) + untracked
+scratch (`CARD-SYSTEM-REFACTOR.md`, `EDITOR_SKILLS_V1.html`,
+`MEMO_V1_AND_ROT_PREVENTION.md`, `SKILL_PIPELINE.*`, `docs/card-refactor/`) out
+of the commit.
