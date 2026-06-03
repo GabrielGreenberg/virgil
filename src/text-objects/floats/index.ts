@@ -26,6 +26,7 @@ import { LinkedRangeBody } from "./linked-range-body";
 import { SingleBlockBody } from "./single-block-body";
 import { ListItemBody } from "./list-item-body";
 import { ExampleItemBody } from "./example-item-body";
+import { FigureBody } from "./figure-body";
 
 registerFloatBody("paragraph", ParagraphBody);
 registerFloatBody("heading", HeadingBody);
@@ -61,3 +62,12 @@ registerFloatBody("listItem", ListItemBody);
 // ONLY the inner item's range, unwrapping TWO levels (siblings + the parent
 // exampleBlock intact).
 registerFloatBody("exampleItem", ExampleItemBody);
+// figureBlock + graphicsBlock (L3n, the FINAL kind migration) — ONE shared
+// FigureBody serves both (kind resolved from the cardKey, the ListBody
+// precedent). The figure NodeView's `figureFloat` mode renders the shared
+// FigureVisual with an EDITABLE caption (decision B) but a read-only image /
+// no chrome / no click-to-edit, so the virgil-figure-click→MAIN popover can't
+// misfire from the float (the L3h.1 class). graphicsBlock (atom, no caption) =
+// read-only image (≈ displayMath). With these, ALL 16 graspable kinds lift.
+registerFloatBody("figureBlock", FigureBody);
+registerFloatBody("graphicsBlock", FigureBody);

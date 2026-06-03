@@ -21,12 +21,20 @@ type DeleteHandler = () => Promise<boolean>;
 // card-bearing rich-text surface so figureBlock/graphicsBlock round-trip
 // without losing content and without needing docIdRef forwarded.
 //
+// `figureFloat`: when true, the NodeView renders the figure's OWN
+// lifted-overlay float (L3n) — the shared `FigureVisual` with an EDITABLE
+// caption (decision B) but a read-only image, NO chrome, and NO
+// click-to-edit (so the `virgil-figure-click`→MAIN-pos popover can't misfire
+// from a float; the L3h.1 class). Set ONLY by `figure-body.tsx`; takes
+// precedence over `cardContext` in the NodeView dispatch.
+//
 // The label-rename and delete confirmation refs are mirrored down from
 // EditorPane via Editor.tsx so the figure annotation lozenge can prompt
 // with the same modal surface as headings.
 export interface FigureBlockOptions {
   docIdRef: RefObject<string | null> | null;
   cardContext: boolean;
+  figureFloat: boolean;
   onConfirmLabelRenameRef: MutableRefObject<LabelRenameHandler | undefined> | null;
   onConfirmFigureDeleteRef: MutableRefObject<DeleteHandler | undefined> | null;
 }
@@ -54,6 +62,7 @@ export const FigureBlock = Node.create<FigureBlockOptions>({
     return {
       docIdRef: null,
       cardContext: false,
+      figureFloat: false,
       onConfirmLabelRenameRef: null,
       onConfirmFigureDeleteRef: null,
     };

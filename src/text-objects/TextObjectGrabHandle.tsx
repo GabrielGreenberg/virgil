@@ -181,6 +181,12 @@ export function popoutKeyForLift(ref: TextObjectRef): string | null {
     // exampleBlock > exampleItemList envelope; inner write-back unwraps two
     // levels, siblings + the parent example intact).
     case "exampleItem":
+    // figureBlock + graphicsBlock (L3n, the FINAL kind migration): the figure's
+    // OWN lifted-overlay float (shared FigureBody). figureBlock = editable
+    // caption + read-only image; graphicsBlock (atom) = read-only image. With
+    // these two, ALL 16 graspable kinds lift.
+    case "figureBlock":
+    case "graphicsBlock":
     case "texBlock":
     case "exampleBlock":
     case "linkedRange":

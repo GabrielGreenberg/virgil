@@ -637,6 +637,17 @@ export const TEXT_OBJECT_REGISTRY: Record<TextObjectKind, TextObjectMeta> = {
     decorationSafety: 0,
     chromeAnchor: "block-top",
     floatBodyComponent: PLACEHOLDER_FLOAT_BODY,
+    // L3n (the FINAL kind migration): figureBlock drags through the same
+    // two-mode gesture as the other kinds; its FigureBody float renders the
+    // shared FigureVisual with an EDITABLE caption + read-only image (decision
+    // B). NO `renderGhost`: a figure's DOM cloneNodes faithfully — the `<img
+    // src>` is a string attr, so the clone reuses the warm object-URL (Issue-7b,
+    // no re-decode), and every figure CSS rule is class-scoped (`.figure-*`,
+    // not `.ProseMirror .figure-*`) so it reaches the `.tiptap` ghost for free;
+    // the L3e.2 React-NodeView margin reset (`.lifted-text-overlay__body >
+    // .react-renderer > *`) already zeros `.node-figureBlock`'s retained top
+    // margin. No `computeLabel`/`liftSourceRect` — static `label: "Figure"`.
+    liftMode: "lifted-overlay",
     actions: NON_PROSE_BLOCK_ACTIONS,
     dropAdapter: topLevelDropAdapter,
     confirmDestructive: (_doc, _uuid, action) => {
@@ -656,6 +667,11 @@ export const TEXT_OBJECT_REGISTRY: Record<TextObjectKind, TextObjectMeta> = {
     decorationSafety: 0,
     chromeAnchor: "block-top",
     floatBodyComponent: PLACEHOLDER_FLOAT_BODY,
+    // L3n: graphicsBlock (an atom, no caption) shares FigureBody — its float is
+    // a read-only image (≈ displayMath "view & move"). Same NO-`renderGhost`
+    // reasoning as figureBlock (warm `<img src>` clone + class-scoped CSS +
+    // L3e.2 `.node-graphicsBlock` margin reset). Static `label: "Graphic"`.
+    liftMode: "lifted-overlay",
     actions: NON_PROSE_BLOCK_ACTIONS,
     dropAdapter: topLevelDropAdapter,
     confirmDestructive: (_doc, _uuid, action) => {

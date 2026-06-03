@@ -54,7 +54,9 @@ export type FloatSourceKind =
   | "latexComment"
   | "titleField"
   | "listItem"
-  | "exampleItem";
+  | "exampleItem"
+  | "figureBlock"
+  | "graphicsBlock";
 
 const KIND_LABEL: Record<FloatSourceKind, string> = {
   paragraph: "Source paragraph deleted",
@@ -70,6 +72,8 @@ const KIND_LABEL: Record<FloatSourceKind, string> = {
   titleField: "Source title field deleted",
   listItem: "Source list item deleted",
   exampleItem: "Source example item deleted",
+  figureBlock: "Source figure deleted",
+  graphicsBlock: "Source graphic deleted",
 };
 
 /**

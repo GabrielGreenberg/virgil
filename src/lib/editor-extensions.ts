@@ -1545,6 +1545,11 @@ export interface EditorExtensionsCtx {
   editable?: boolean;
   /** When true, atoms render as compact card previews (floats). main: false. */
   cardContext: boolean;
+  /** When true, FigureBlock / GraphicsBlock render their OWN lifted-overlay
+   *  float (L3n) — editable caption + read-only image, no chrome, no
+   *  click-to-edit. Set only by `figure-body.tsx`; the figure NodeView
+   *  prefers it over `cardContext`. main / other floats: false. */
+  figureFloat?: boolean;
   /** Heading / figure callback refs, read by the relocated NodeViews. */
   callbacks: EditorExtensionsCallbackRefs;
   /** docId mirror for FigureBlock / GraphicsBlock NodeViews. */
@@ -1648,11 +1653,13 @@ export function buildEditorExtensions(ctx: EditorExtensionsCtx) {
       onConfirmLabelRenameRef: ctx.callbacks.onConfirmLabelRename ?? null,
       onConfirmFigureDeleteRef: ctx.callbacks.onConfirmFigureDelete ?? null,
       cardContext: ctx.cardContext,
+      figureFloat: ctx.figureFloat ?? false,
     }),
     FigureCaption,
     GraphicsBlock.configure({
       docIdRef: ctx.docIdRef ?? null,
       cardContext: ctx.cardContext,
+      figureFloat: ctx.figureFloat ?? false,
     }),
     ...(isMain
       ? [

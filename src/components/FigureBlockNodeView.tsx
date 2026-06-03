@@ -39,12 +39,21 @@ const noopRegisterRefresh = (): (() => void) => () => {};
 // picker mutators. For graphicsBlock the source-of-truth is the `command`
 // attr (a single `\includegraphics[...]{...}` string).
 //
-// The outer component is a thin dispatcher: in `cardContext` (popped-out
-// floats) we render a READ-ONLY image preview — Issue-4: a popped section
-// should SHOW its figures, not a `Figure: …` pill; otherwise the full view
-// with chrome, caption sub-node, and label lozenge.
+// The outer component is a thin dispatcher across three modes:
+//   1. `figureFloat` (L3n) — the figure's OWN lifted-overlay float: the shared
+//      FigureVisual with an EDITABLE caption (decision B) but a read-only image,
+//      NO chrome, and NO click-to-edit (so the `virgil-figure-click`→MAIN-pos
+//      popover can't misfire from a float — the L3h.1 class). Checked FIRST.
+//   2. `cardContext` (popped-out section/list/example floats) — a READ-ONLY
+//      image preview (Issue-4: a popped section should SHOW its nested figures,
+//      not a `Figure: …` pill). UNCHANGED by L3n.
+//   3. otherwise — the full editable page view (chrome, caption sub-node,
+//      editable label lozenge, click-to-edit popover). UNCHANGED by L3n.
 export default function FigureBlockNodeView(props: NodeViewProps) {
   const opts = props.extension.options as FigureBlockOptions;
+  if (opts.figureFloat === true) {
+    return <FigureFloatView {...props} />;
+  }
   if (opts.cardContext === true) {
     return (
       <FigureCardPreview
@@ -156,6 +165,88 @@ function FigureCardPreview({
           captionText && (
             <span className="figure-caption-text">{captionText}</span>
           )
+        }
+        lozenge={
+          isFigure && label ? (
+            <FigureAnnotation readOnly label={label} numbered={numbered} />
+          ) : null
+        }
+      />
+    </NodeViewWrapper>
+  );
+}
+
+// Figure-float render (L3n) — the figure's OWN lifted-overlay float, the third
+// mode beside FigureCardPreview (read-only, for figures NESTED in other floats)
+// and FigureFullView (the editable page). Renders the SAME shared `FigureVisual`
+// as the page, combining slots no other surface does: an EDITABLE caption
+// (decision B — `NodeViewContent`, round-tripping via figure-body's
+// `writeBackToMain`) + a read-only image (`FigurePanel`, reusing the Issue-7b
+// object-URL so the popped image is flicker-free) + a readOnly `\label` lozenge,
+// but NO chrome and — critically — NO wrapper `onClick`. The page view's
+// `handleBodyClick` dispatches `virgil-figure-click` with the node's pos, which
+// `EditorLayout.handleFigureSave` applies to MAIN by absolute pos; from a float
+// that pos is meaningless (the exact L3h.1 math-click misfire class). We avoid
+// it the cleanest way the figure affords — by simply not wiring the click here
+// (the figure click lives in this per-view wrapper, not a shared handler, so
+// there's nothing to gate). The image's source/width are edited on the page,
+// like displayMath's "edit-in-main". graphicsBlock (atom, no caption) renders a
+// read-only image only (≈ displayMath "view & move").
+function FigureFloatView({ node, extension }: NodeViewProps) {
+  const opts = extension.options as FigureBlockOptions;
+  const docId = opts.docIdRef?.current ?? null;
+  const isFigure = node.type.name === "figureBlock";
+
+  // Same source derivation as FigureCardPreview (serves both kinds): explicit
+  // `sources` first, else the single `source` attr. graphicsBlock has no
+  // `sources` attr, so it falls through to its `source` string.
+  const sources = useMemo<FigureSource[]>(() => {
+    const raw = node.attrs.sources as FigureSource[] | undefined;
+    if (raw && raw.length > 0) return raw;
+    const single = node.attrs.source as string | null;
+    return single
+      ? [
+          {
+            path: single,
+            options: "",
+            widthPercent: node.attrs.widthPercent as number | null,
+          },
+        ]
+      : [];
+  }, [node.attrs.sources, node.attrs.source, node.attrs.widthPercent]);
+
+  const label = (node.attrs.label as string | undefined) || "";
+  const numbered = node.attrs.numbered !== false;
+  const figureNumber = node.attrs.figureNumber as string | number | null;
+
+  // An un-sourced figure in its own float is an edge case (the dev doc has
+  // none): FigureVisual then renders an empty `.figure-row` (no FigurePanel)
+  // plus the editable caption — NOT the page's picker CTA, since the source is
+  // edited on the page (like displayMath). The caption `NodeViewContent` stays
+  // mounted regardless so PM keeps the figureCaption child for write-back.
+  //
+  // The wrapper inherits the float's editability (no `contentEditable` prop) so
+  // the caption is editable; `rowContentEditable={false}` keeps the image row
+  // read-only — exactly FigureFullView's slot wiring minus chrome / onClick, and
+  // with a readOnly (vs editable) lozenge.
+  return (
+    <NodeViewWrapper
+      className={`figure-block figure-block-float ${
+        isFigure ? "figure-block-wrapped" : "figure-block-bare"
+      }`}
+    >
+      <FigureVisual
+        isFigure={isFigure}
+        sources={sources}
+        docId={docId}
+        registerRefresh={noopRegisterRefresh}
+        rowContentEditable={false}
+        numbered={numbered}
+        figureNumber={figureNumber}
+        captionSlot={
+          isFigure ? (
+            <NodeViewContent<"span"> as="span" className="figure-caption-text" />
+          ) : null
         }
         lozenge={
           isFigure && label ? (
