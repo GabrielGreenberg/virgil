@@ -4,7 +4,9 @@
 Walks three sources and emits a single JSONL stream — one line per open
 request — that the `/editor/review` umbrella consumes:
 
-  1. `virgil/ai-requests.json` — entries with status != "complete".
+  1. `virgil/ai-requests.json` — entries with an open status (anything that
+     is not a terminal `complete` / `failed`; legacy `draft` / `submitted` and
+     v1 `pending` / `in-progress` are all open).
   2. `virgil/bib-review-requests.json` — entries with status == "pending".
   3. The four card-flag panels (notes / todos / cutter / revisions).
      Cards whose `aiRequest: true` flag has no matching `linkedTo` entry
@@ -53,7 +55,10 @@ def list_ai_requests(doc) -> tuple[list[dict], set[tuple[str, str]]]:
     rows: list[dict] = []
     bridged: set[tuple[str, str]] = set()
     for r in state.get("requests", []) or []:
-        if r.get("status") == "complete":
+        # Open == not terminal. `complete` and `failed` are the v1 terminal
+        # statuses; legacy `draft`/`submitted` and v1 `pending`/`in-progress`
+        # (and a status-absent row) all stay open.
+        if r.get("status") in ("complete", "failed"):
             continue
         linked = r.get("linkedTo")
         if isinstance(linked, dict) and linked.get("panel") and linked.get("cardId"):
@@ -88,7 +93,7 @@ def list_bib_reviews(doc) -> list[dict]:
     # Tolerate either { requests: [] } or { reviews: [] } on disk.
     items = state.get("requests") or state.get("reviews") or []
     for r in items:
-        if r.get("status") == "complete":
+        if r.get("status") in ("complete", "failed"):
             continue
         bibkey = r.get("bibKey") or r.get("citekey")
         if not bibkey:

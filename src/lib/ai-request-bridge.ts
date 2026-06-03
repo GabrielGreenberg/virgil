@@ -57,7 +57,7 @@ export interface BridgeContext {
 /**
  * Sync a card-level `aiRequest` flag toggle into `ai-requests.json`.
  *
- * - `value=true` and no existing linked request → add one (`status: "submitted"`).
+ * - `value=true` and no existing linked request → add one (`status: "pending"`).
  * - `value=true` and an existing linked request → leave it (idempotent).
  * - `value=false` and an existing linked request → drop it.
  *
@@ -88,7 +88,10 @@ export async function bridgeCardAiRequestFlag(
       r.linkedTo &&
       r.linkedTo.panel === link.panel &&
       r.linkedTo.cardId === link.cardId &&
-      r.status !== "complete",
+      // Open == not terminal. Both v1 terminal statuses count as "done" so a
+      // re-toggle after completion/failure files a fresh request.
+      r.status !== "complete" &&
+      r.status !== "failed",
   );
 
   let nextRequests: AiRequest[];
@@ -111,7 +114,7 @@ export async function bridgeCardAiRequestFlag(
         kind: ctx.kind ?? PANEL_TO_KIND[link.panel],
         text: ctx.text,
         createdAt: new Date().toISOString(),
-        status: "submitted",
+        status: "pending",
         linkedTo: link,
         paragraphIds: ctx.paragraphIds,
         selectedText: ctx.selectedText,
