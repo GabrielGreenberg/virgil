@@ -1294,3 +1294,80 @@ cases and the done kinds' bodies/metas unchanged. Pre-existing working-tree file
 (`EDITOR_SKILLS_BRAINSTORM.html`, `useRecentlyAddedTracker.ts`) + untracked scratch
 (`CARD-SYSTEM-REFACTOR.md`, `EDITOR_SKILLS_V1.html`, `MEMO_V1_AND_ROT_PREVENTION.md`,
 `SKILL_PIPELINE.*`, `docs/card-refactor/`) left out of the commit.
+
+## L3h — Bodyless kinds Chip 2: displayMath READ-ONLY lift float — 2026-06-02
+
+**Commit:** `78ecf71`.
+
+**What.** Second bodyless-kind migration + the first READ-ONLY / first ATOM
+lift float. Decision D (user): displayMath is "view & move only" — pop out to
+see the rendered equation large + drag it; the formula is edited on the PAGE
+via the existing KaTeX popover, never in the float. EXTENDED the L3g
+`SingleBlockBody` (chose this over a sibling `AtomPreviewBody`): added an
+`editable` flag + an attr-based atom empty fallback (`emptyAttrs:{latex:""}`)
+to its per-kind config, so ONE body now serves blockquote/codeBlock (editable
+prose) AND displayMath (read-only atom) with NO duplication of the seed/sync
+scaffold — seed the displayMath atom by uuid → `buildEditorExtensions(
+{surface:"float", editable:false})` → `useFloatMainSync` (main→float;
+`onUpdate`/`writeBackToMain` wired only for editable kinds). The next chip's
+EDITABLE latexComment atom is now one config row (`editable:true` +
+`emptyAttrs`) — the whole-node write-back is already atom-compatible. 3
+touch-points (register body, popoutKeyForLift case, liftMode) + displayMath in
+`FloatSourceKind`/`KIND_LABEL` ("Source equation deleted"). Already in the
+float schema (no factory change). No `renderGhost`/`liftSourceRect` (single
+atom; em-base correct).
+
+**Observe-first + the key risk.** Baseline: displayMath didn't pop out
+(`popoutKeyForLift` null — also L3g's wiring control; updated that test). KEY
+RISK proven + fixed on the REAL released popout (popped-cards path, NOT a clone
+harness): the math NodeView's click fires `virgil-math-click` carrying
+`getPos()` → the MAIN-targeted `MathPopover`/`handleMathSave`. In the read-only
+float the atom sits at the float doc's pos 0, so a click DISPATCHED the event
+with `pos:0` and OPENED the popover (`math-popover-display`, latex loaded) —
+main `nodeAt(0)` was the titleField, so `handleMathSave` would mis-target (in a
+doc with a displayMath at pos 0 it would corrupt the WRONG equation). Fix: gate
+the NodeView click on `editor.isEditable` (threaded into `mathNodeView`, typed
+`{isEditable:boolean}` — no new `any`). After: in-float click fires 0 events /
+no popover (INERT); a PAGE click still fires with the CORRECT main pos (4845,
+a292) — page editing of inline + display math UNCHANGED (main always mounts
+TipTap-editable; read-only is the `readOnlyEnforcer` plugin). One gate covers
+the whole read-only-embed class (both math NodeViews). Real popout also:
+equation renders faithfully, KaTeX font-size == the page (em-base check:
+**19.36px == 19.36px**), live-syncs when the page latex changes (appended
+`+\gamma_{SYNCTEST}` on the page → popout updated, then reverted), source-missing
+banner "Source equation deleted" on delete, no blank popout. Stale-build trap
+hit + cleared (`rm -rf .next-preview` + restart; turbopack served the OLD
+ungated NodeView on a plain reload — the gate lives in a mount-time NodeView).
+Drag ghost → user-verify probe (below).
+
+**Verify.** Wiring test extended (`single-block-lift-wiring.test.ts`):
+displayMath now non-null `popoutKeyForLift` + `liftMode==="lifted-overlay"` +
+the same shared `SingleBlockBody` + read-only
+(`SINGLE_BLOCK_CONFIG.displayMath.editable===false`, `emptyAttrs:{latex:""}`);
+the L3g "still null" control moved to `figureBlock`; blockquote/codeBlock still
+pass + stay `editable:true`. `vitest` **372/372** (367 + 5 new); `tsc` 1
+pre-existing only (`block-uuid-backfill.test.ts(27,7)`, `grep -c`); `eslint` 0
+new (math.ts keeps its 3 pre-existing `no-explicit-any` on node/getPos/updated
+— the new `editor` param is typed, not `any`; grab handle keeps its 3
+pre-existing warnings); `emitCount` flat (Δ0, version +25) typing 25 plain
+chars in MAIN — a float-only body + a click-handler guard add no main
+per-transaction work.
+
+**USER-VERIFY (drag ghost).** In the dev doc, hover the left gutter beside a
+display-math equation to reveal the grab handle; drag it. With the cursor in
+the content zone the overlay shows the GHOST (a faithful KaTeX clone); move
+into the gutter and it flips to popout chrome ("DISPLAY MATH" header). Release
+in the gutter → the real read-only float spawns at the overlay's rect. Confirm
+the ghost's KaTeX matches the page size and the released float matches the
+headless popout above (faithful render, inert in-float click, live-sync on
+page edits).
+
+**Non-goals respected.** The other bodyless kinds (latexComment, titleField,
+figureBlock, graphicsBlock, listItem, exampleItem), the page math
+popover/`handleMathSave` (PAGE editing unchanged — only the read-only float is
+made inert), the FCU factory/schema (displayMath already in it), L3g behavior
+(blockquote/codeBlock byte-identical — editable, write-back intact), and L4
+untouched. Pre-existing working-tree files (`EDITOR_SKILLS_BRAINSTORM.html`,
+`useRecentlyAddedTracker.ts`) + untracked scratch (`CARD-SYSTEM-REFACTOR.md`,
+`EDITOR_SKILLS_V1.html`, `MEMO_V1_AND_ROT_PREVENTION.md`, `SKILL_PIPELINE.*`,
+`docs/card-refactor/`) left out of the commit.
