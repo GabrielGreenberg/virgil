@@ -31,6 +31,40 @@ export interface DockOccupancy {
   bottom?: PanelId;
 }
 
+/** Column-edge fade — the manilla→transparent gradient strip pinned to the
+ *  top or bottom of a gutter so omni cards scrolling past the scrollport edge
+ *  dissolve into the background instead of clipping. Adds ZERO net flow height
+ *  (a negative leading-margin equal to its height overlaps the adjacent
+ *  content). z-20; docked pods lift to z-30 (single-slot pod / split stack) so
+ *  they ride above it. The -4 horizontal bleed cancels the column's
+ *  paddingLeft/Right: 4. `top: 0` / `bottom: 0` latch to the same row scrollport
+ *  (`[data-virgil-row-scroll]`, which starts just below the 32px Virgil bar), so
+ *  the two edges are exact mirrors. `data-tool-strip` is read existence-only by
+ *  dock-drag.ts. */
+function ColumnEdgeFade({ side, edge }: {
+  side: "left" | "right";
+  edge: "top" | "bottom";
+}) {
+  const isTop = edge === "top";
+  return (
+    <div
+      aria-hidden="true"
+      data-tool-strip={`${side}-action-${edge}`}
+      className="sticky z-20"
+      style={{
+        ...(isTop ? { top: 0 } : { bottom: 0 }),
+        alignSelf: 'stretch',
+        background: `linear-gradient(${isTop ? 'to bottom' : 'to top'}, var(--background) 0, var(--background) var(--pod-gap), transparent calc(var(--pod-gap) + 32px))`,
+        height: 64,
+        ...(isTop ? { marginBottom: -64 } : { marginTop: -64 }),
+        marginLeft: -4,
+        marginRight: -4,
+        pointerEvents: 'none',
+      }}
+    />
+  );
+}
+
 /**
  * Width-resizable column wrapper for sidebar panels. Accepts either a
  * single slot (`{omni, overlay}`) or a split of two slots plus ratio.
@@ -291,6 +325,7 @@ export function PanelColumn({
         paddingRight: collapsed ? 0 : 4,
       }}
     >
+      <ColumnEdgeFade side={side} edge="top" />
       <div className="flex flex-1 min-h-0 w-full">
       {collapsed ? (
         <div className={`flex-1 min-w-0 ${side === "left" ? "order-1" : "order-3"}`} />
@@ -519,21 +554,7 @@ export function PanelColumn({
         onMouseDown={onMouseDown}
       />
       </div>
-      <div
-        data-tool-strip={side === "left" ? "left-action-bottom" : "right-action-bottom"}
-        className="sticky z-20"
-        style={{
-          bottom: 0,
-          alignSelf: 'stretch',
-          background:
-            'linear-gradient(to top, var(--background) 0, var(--background) var(--pod-gap), transparent calc(var(--pod-gap) + 32px))',
-          height: 64,
-          marginTop: -64,
-          marginLeft: -4,
-          marginRight: -4,
-          pointerEvents: 'none',
-        }}
-      />
+      <ColumnEdgeFade side={side} edge="bottom" />
     </div>
   );
 }
