@@ -1488,3 +1488,79 @@ files (`EDITOR_SKILLS_BRAINSTORM.html`, `useRecentlyAddedTracker.ts`) + untracke
 scratch (`CARD-SYSTEM-REFACTOR.md`, `EDITOR_SKILLS_V1.html`,
 `MEMO_V1_AND_ROT_PREVENTION.md`, `SKILL_PIPELINE.*`, `docs/card-refactor/`) out
 of the commit.
+
+## L3j — Bodyless kinds Chip 4: titleField lift float (+ float-schema promotion) — 2026-06-02
+
+**Commit:** `500ddf3`.
+
+**What.** Fourth bodyless-kind migration — the title/author/date fields (decision
+C: include); the LAST prose-shaped `SingleBlockBody` kind. One config row
+(`titleField: {schemaType:"titleField", floatIdPrefix:"title",
+sourceKind:"titleField", editable:true}` — content-bearing like blockquote, NO
+`emptyAttrs`; `emptyBlockFor`'s `{type:"titleField", content:[]}` is valid for
+`inline*`) PLUS the one new wrinkle: titleField was the lone bodyless kind NOT in
+the float schema (MAIN_ONLY), so PROMOTED `TitleField` into the FCU factory's
+float stack — pulled it OUT of the main-only spread (`editor-extensions.ts`) as an
+always-included entry, leaving its doc-wide siblings (TextObjectOrphanGuard /
+MaketitleMarker / LabelHandler / EmptyParagraphTitleCleaner) main-only. MAIN
+extension order byte-identical (EXPECTED_MAIN_ORDER unchanged + green — the orphan
+guard still precedes TitleField, the maketitle/label/cleaner guards still follow,
+all still main-only); float gains exactly `titleField` after `linkedAnchorGuard`.
+3 touch-points (register `SingleBlockBody`, `popoutKeyForLift` case,
+`liftMode:"lifted-overlay"`) + titleField in `FloatSourceKind`/`KIND_LABEL`
+("Source title field deleted"). No renderGhost/liftSourceRect/computeLabel (single
+text-top block; static label "Title field"; `TITLE_FIELD_ACTIONS` already filters
+Delete/Archive, so the float chrome shows no action menu).
+
+**Observe-first.** Baseline gap: titleField didn't pop out (`popoutKeyForLift` →
+default null + titleField in MAIN_ONLY_NAMES → not in the float schema → seeding
+`{type:"titleField",…}` would drop/blank — confirmed by static read of the switch
++ the test arrays before the edits). After (real released popout, popped-cards
+path — DFS for `PoppedCardsContext` → `popOutAtRect('textobject:titleField:0a11',
+rect)`, NOT a clone harness): renders the field + "Title" annotation, EDITABLE
+(`.title-field-wrapper` in a `contenteditable=true` float editor,
+`floatEditable:"true"`, NOT blank — proving the schema promotion worked; a
+still-main-only node would have blanked). Edit round-trip: inserted " [L3j-EDIT]"
+in the float → the source titleField in main (uuid 0a11) updated ("The Margin and
+the Note: A Brief History of Annotation" → "…Annotation [L3j-EDIT]"; main's attrs
+field/uuid/isToday/rawPrefix preserved by the whole-node `replaceWith`).
+titleField-specific RISK (preamble canonicalizer) CLEARED: after the write-back
+the autosaver serialized through the real path → on-disk `document.tex` shows
+exactly ONE `\title{… [L3j-EDIT]} %!v:0a11` at the canonical preamble position,
+author/date intact (`%!v:0a22` / `%!v:0a33`), zero duplication / displacement /
+lost field (the canonicalizer collects the single tree titleField + injects into
+the preamble; the in-place write-back doesn't fight it). Deleting the source
+surfaced the banner "Source title field deleted — float is disconnected."; no
+blank popout. Drag GHOST needs a trusted hover → user-verify probe (below).
+
+**User-verify ghost probe.** The released popout is headless-OK and confirmed
+above; the drag GHOST needs a trusted cursor hover the harness can't fake. In the
+page, grab the title field's handle (left of the title) and drag — the lifted
+ghost should clone the `.title-field-wrapper` (title text + "Title" annotation),
+and on release become the editable title float (identical to the popped-cards
+render verified here).
+
+**Verify.** editor-extensions.test.ts: EXPECTED_MAIN_ORDER UNCHANGED + green (the
+byte-identical-main guard — the point of the careful spread split),
+EXPECTED_FLOAT_ORDER gains titleField (after linkedAnchorGuard), MAIN_ONLY_NAMES
+drops it. Wiring test extended (single-block-lift-wiring.test.ts, Chip 4 block:
+titleField non-null `popoutKeyForLift` + `liftMode==="lifted-overlay"` + shared
+`SingleBlockBody` [same instance as blockquote/latexComment] + `editable:true`
+with NO `emptyAttrs` [content-bearing, not an atom]; figureBlock stays the
+still-null control; the other 4 kinds green). vitest 390/390 (385 + 5 new Chip 4
+asserts); tsc 1 pre-existing (`block-uuid-backfill.test.ts(27,7)`); eslint 0 new
+(3 pre-existing warnings in `TextObjectGrabHandle.tsx`, unrelated to the one-line
+`case` add); `emitCount` flat (Δ0, version +12 typing 12 plain chars in MAIN).
+Stale-build pre-empted: schema/registration is mount-time, so cleared
+`.next-preview` + restarted before observing (the preview server also dropped once
+mid-verification → restarted, doc reloaded clean); reset the dev doc from
+`samples/annotation-history` after the destructive edit/delete probes.
+
+**Non-goals respected.** TitleField's siblings (MaketitleMarker / LabelHandler /
+EmptyParagraphTitleCleaner / TextObjectOrphanGuard) stay main-only; the
+serializer's title canonicalization untouched (only verified the round-trip is
+clean); the math gate (L3h.1), the other bodyless kinds (figures/sub-objects), and
+L4 untouched; MAIN order unchanged. Pre-existing working-tree files
+(`EDITOR_SKILLS_BRAINSTORM.html`, `useRecentlyAddedTracker.ts`) + untracked scratch
+(`CARD-SYSTEM-REFACTOR.md`, `EDITOR_SKILLS_V1.html`, `MEMO_V1_AND_ROT_PREVENTION.md`,
+`SKILL_PIPELINE.*`, `docs/card-refactor/`) out of the commit.
