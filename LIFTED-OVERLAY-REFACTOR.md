@@ -1635,3 +1635,89 @@ The 5 done SingleBlockBody/other floats unweakened. Built in a pristine worktree
 (no reports-panel pollution present); commit scoped to the new `list-item-body.tsx`
 + `floats/index.ts` + `TextObjectGrabHandle.tsx` + `text-object-registry.ts` +
 `float-sync.tsx` + `editor-extensions.ts` (stale-comment only) + the two test files.
+
+## L3l — Bodyless kinds Chip 6: exampleItem lift float (last sub-object) — 2026-06-03
+
+**Commit:** `b749221`.
+
+**What.** Sixth bodyless-kind migration — the LAST sub-object; a direct mirror of
+L3k's listItem one wrap level deeper. `exampleItem` is `group:"textObject"` not
+`block`, so new `example-item-body.tsx` (modeled wholesale on `list-item-body.tsx`)
+SEEDS the item WRAPPED in its real envelope via `buildWrap(schema, item,
+"exampleBlock")` (`doc > exampleBlock > exampleItemList > exampleItem` — 3 levels
+vs listItem's list>item 2), and the write-back is INNER-TARGETED, unwrapping TWO
+levels (`incoming[0]`=exampleBlock, `incoming[0].content[0]`=exampleItemList,
+`…content`=the edited item(s)) and `replaceWith`-ing over ONLY the source item's
+own range (uuid preserved), never the block/list (siblings + the parent
+exampleBlock and its uuid intact); an in-float Enter-split lands as siblings.
+Reused L3k's exported pure helpers' shapes (`findExampleItemByUuid`, the
+explicit-uuid anti-thrash `wrapItemForFloat`, the pure `resolveInnerWriteback`,
+the seed `useMemo`, `writeBackToMain`, `readSource`) so seed + every re-wrap
+serialize byte-identically (no `useFloatMainSync` `sameDoc` thrash).
+
+**renderGhost: NONE** (the deviation from listItem, reasoned from CSS + the
+overlay, NOT the "safe envelope" the prompt leaned toward — that would be HARMFUL
+here). listItem needs a ghost because a bare `<li>`'s `::marker` renders via the
+enclosing list's padding (gone when detached); exampleItem's marker is a real
+`.expex-item-marker` DOM child kept by the default clone, its marker+body grid is
+self-contained on `.expex-item-row` (`.expex-item-list` is `display:contents`;
+the `.expex-block` grid only positions the `(N)` number; no ancestor-combinator
+rules), every expex rule is unscoped, and the overlay already supplies `.tiptap`
+scope + reads the em-base from `getComputedStyle(anchorDom).fontSize` — the L3d.2
+fix written FOR `.expex-item-marker`'s `0.95em`. So the default clone lays out
+faithfully — the sub-object analog of exampleBlock, which also carries none.
+(Wrapping in `.expex-block` without an `.expex-number` sibling would squash the
+item into the 1.5em number column; a `.tiptap`-wrap with editor-root type would
+regress the marker em-base.) Matches the plan doc's own assessment. 3 touch-points
++ exampleItem in FloatSourceKind/KIND_LABEL ("Source example item deleted").
+Already in the float schema — no schema change, no editor-extensions.ts change.
+
+**Observe-first.** Baseline gap: exampleItem didn't pop out (`popoutKeyForLift`
+default null; figureBlock the still-null control). After (real released popout,
+popped-cards path `popOutAtRect('textobject:exampleItem:ea02')`, NOT a clone
+harness): the float renders item ea02 INSIDE its example with the `b.` subLabel
+marker + grid, editable, ONLY the grabbed item (1 item, not its siblings), no
+banner, not blank. Inner write-back proven — appended `[L3l-EDIT]` to ea02 in the
+float → only ea02 changed in main (cross-checked getJSON: siblings ea01/ea03/ea04
+byte-unchanged; exampleBlock ee02 uuid + number 2 + 4-item count intact; 3 total
+example blocks). `\vxid` SAVE round-trip clean: on-disk document.tex line 133 has
+exactly one `\vxid{ea02}` at the item head + the edit text at the tail (all 7
+`\vxid` markers once each; the nested `\begin{xlist}` sub-items eb01–eb03 + the
+`\pex` env + numbering ee02/ee03 intact). Source-missing banner shown on ea02
+delete ("Source example item deleted — float is disconnected"); float stays
+mounted. No console errors. Ghost → user probe (can't drive headlessly).
+
+**Verify.** Wiring test extended (Chip 6 — exampleItem non-null `popoutKeyForLift`
++ `liftMode` + bespoke `ExampleItemBody` != SingleBlockBody != ListItemBody + NO
+`renderGhost`; figureBlock stays the still-null control; the prior 13 done kinds
+green) + a new inner-write round-trip unit test against the real float schema
+(`example-item-inner-writeback.test.ts`: 3-level wrap-seed, edit item 2 → only
+item 2; 2-level unwrap; siblings + exampleBlock uuid intact; Enter-split →
+siblings; two-level-unwrap guards; anti-thrash byte-identity buildWrap ==
+wrapItemForFloat). vitest **411/411** (38→39 files, Δ+11), tsc **0** (0 new),
+eslint **0** new, emitCount flat (Δ0 over 25 plain chars in main; version
+advanced 18→43).
+
+**⚠️ Baseline + topology corrections (re-measured, not the prompt's stale
+values).** The prompt's "tsc baseline = 2" and "fresh worktree on a
+reports-panel-isolated main" were BOTH stale. ACTUAL: `main` had advanced to
+**`054f237`** — the reports-panel + apply_response + card-system + skill-pipeline
+work was already COMMITTED and MERGED on top of L3k (`e5e873b`), the working tree
+was clean, and there was no separate worktree. The merged **card-system refactor
+removed `src/lib/card-creation.ts`**, eliminating BOTH prior pre-existing tsc
+errors → the true clean-`main` tsc baseline at `054f237` is **0**, not 2 (a chip
+is clean iff it stays 0). Per the user's explicit choice, this chip was built +
+verified + committed **in place on the primary checkout
+`/Users/gabriel/Programming/virgil`** (now the sole worktree on `main`), not a
+fresh side worktree; `node_modules` was already real (no `npm ci` needed).
+Stale-build pre-empted (`rm -rf .next-preview` + fresh `preview_start`). Dev doc
+mutated during the live walkthrough, then reset to the pristine sample
+(`samples/annotation-history`); gitignored regardless.
+
+**Non-goals respected.** The `\vxid` serializer/parser round-trip (only verified
+clean through the write-back, untouched), the figure work + FigureVisual, L4, the
+math gate, and the prior 13 done kinds all untouched; the grab-handle resolution /
+`exampleItemDropAdapter` (already reach exampleItem) untouched. Commit scoped to
+ONLY the new `example-item-body.tsx` + `floats/index.ts` + `TextObjectGrabHandle.tsx`
++ `text-object-registry.ts` + `float-sync.tsx` + the two test files (no
+editor-extensions.ts change this time). §9 pre-existing files + scratch untouched.
