@@ -30,15 +30,19 @@ function renderMath(target: HTMLElement, latex: string, displayMode: boolean) {
 function mathNodeView(opts: {
   node: any;
   getPos: any;
-  // Only `isEditable` is read (the read-only-surface gate below); typed
+  // Only `isEditable` is read (the read-only-MAIN gate below); typed
   // structurally so the new param adds no `any` (tighter than node/getPos).
   editor: { isEditable: boolean };
+  // Which editor surface this NodeView is mounted on; the click→edit bridge
+  // fires from "main" only (see the click gate below). Threaded from the
+  // node's `surface` option by the factory.
+  surface: "main" | "float";
   tag: "span" | "div";
   className: string;
   kind: "inline" | "display";
   displayMode: boolean;
 }) {
-  const { node, getPos, editor, tag, className, kind, displayMode } = opts;
+  const { node, getPos, editor, surface, tag, className, kind, displayMode } = opts;
   const dom = document.createElement(tag);
   dom.className = className;
   dom.contentEditable = "false";
@@ -50,16 +54,22 @@ function mathNodeView(opts: {
     e.preventDefault();
     e.stopPropagation();
     // The click→edit bridge (`virgil-math-click` → MathPopover →
-    // handleMathSave) edits the MAIN editor by absolute `pos`, so it only
-    // makes sense from an editable main surface. A read-only embed — e.g. the
-    // displayMath "view & move only" lift float (surface:"float",
-    // editable:false; decision D) — carries a `getPos()` that's meaningless in
-    // main (the atom is at the float doc's pos 0, which maps to whatever block
-    // happens to sit at main pos 0), so it must NOT open the popover. Gate on
-    // this NodeView's own editor being editable: the main surface always
-    // mounts TipTap-editable (read-only is enforced by the readOnlyEnforcer
-    // plugin), while read-only floats are not — so page editing is unchanged
-    // and every read-only embed is inert. Covers inline + display math alike.
+    // handleMathSave) edits the MAIN editor by absolute `pos`, so it is only
+    // correct when the click originates from the main editor surface. Every
+    // float carries a `getPos()` that indexes the FLOAT doc, not the page, so
+    // firing from a float mis-targets MAIN at that pos (opens the popover on /
+    // can corrupt the WRONG node). This holds for editable floats (a popped
+    // paragraph with inline math; a linkedRange float spanning a display
+    // equation — reachable since selection-bug A) AND read-only ones (the
+    // displayMath "view & move only" lift, decision D). So gate on the MAIN
+    // surface: fire from "main" only — inert in EVERY float. This generalizes
+    // L3h's `editor.isEditable` gate, which only caught read-only floats; an
+    // editable float is `isEditable:true` and slipped through. Keep the
+    // `editor.isEditable` check too: the main surface always mounts
+    // TipTap-editable (read-only is enforced by the readOnlyEnforcer plugin),
+    // so a read-only MAIN doc shouldn't open the editor either. Net: fire iff
+    // `surface === "main" && editor.isEditable`. Covers inline + display alike.
+    if (surface !== "main") return;
     if (editor && !editor.isEditable) return;
     const pos = typeof getPos === "function" ? getPos() : undefined;
     if (pos == null) return;
@@ -94,11 +104,28 @@ function mathNodeView(opts: {
   };
 }
 
-export const InlineMath = Node.create({
+// `surface`: which editor surface the math node is mounted on. The
+// click→edit bridge edits the MAIN editor by absolute `pos`, so the NodeView
+// click fires from "main" only (see `mathNodeView`'s click gate). The
+// `buildEditorExtensions` factory configures this per-surface
+// (`.configure({ surface: isFloat ? "float" : "main" })`), exactly like its
+// sibling NodeViews. Default "main" so any stray / non-factory usage behaves
+// like the editable main surface.
+export interface MathOptions {
+  surface: "main" | "float";
+}
+
+export const InlineMath = Node.create<MathOptions>({
   name: "inlineMath",
   group: "inline",
   inline: true,
   atom: true,
+
+  addOptions() {
+    return {
+      surface: "main",
+    };
+  },
 
   addAttributes() {
     return {
@@ -156,11 +183,13 @@ export const InlineMath = Node.create({
   },
 
   addNodeView() {
+    const surface = this.options.surface;
     return ({ node, getPos, editor }) =>
       mathNodeView({
         node,
         getPos,
         editor,
+        surface,
         tag: "span",
         className: "inline-math",
         kind: "inline",
@@ -169,10 +198,16 @@ export const InlineMath = Node.create({
   },
 });
 
-export const DisplayMath = Node.create({
+export const DisplayMath = Node.create<MathOptions>({
   name: "displayMath",
   group: "block textObject",
   atom: true,
+
+  addOptions() {
+    return {
+      surface: "main",
+    };
+  },
 
   addAttributes() {
     return {
@@ -244,11 +279,13 @@ export const DisplayMath = Node.create({
   },
 
   addNodeView() {
+    const surface = this.options.surface;
     return ({ node, getPos, editor }) =>
       mathNodeView({
         node,
         getPos,
         editor,
+        surface,
         tag: "div",
         className: "display-math",
         kind: "display",

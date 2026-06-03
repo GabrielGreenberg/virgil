@@ -1663,8 +1663,12 @@ export function buildEditorExtensions(ctx: EditorExtensionsCtx) {
     // TextColor: SHARED core (FCU Chip C1, decision 4). Colored text now
     // renders in popouts; main keeps it at the same position (order unchanged).
     TextColor,
-    InlineMath,
-    DisplayMath,
+    // Per-surface so the click→edit bridge fires from MAIN only: the bridge
+    // (`virgil-math-click` → MathPopover → handleMathSave) edits MAIN by
+    // absolute `pos`, meaningless from a float's getPos. Mirrors the sibling
+    // NodeViews' surface threading above (memo L3h.1).
+    InlineMath.configure({ surface: isFloat ? "float" : "main" }),
+    DisplayMath.configure({ surface: isFloat ? "float" : "main" }),
     Footnote,
     LatexComment,
     Citation,

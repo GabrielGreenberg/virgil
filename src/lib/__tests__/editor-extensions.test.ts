@@ -279,4 +279,23 @@ describe("buildEditorExtensions (FCU factory)", () => {
     expect(floatKeys.some((k) => k.startsWith("sectionNumbers"))).toBe(false);
     expect(floatKeys.some((k) => k.startsWith("sectionFolding"))).toBe(false);
   });
+
+  // L3h.1 — the factory threads `surface` to the math nodes (like its sibling
+  // NodeViews) so the click→edit bridge fires from MAIN only. The behavioral
+  // gate itself is locked in tiptap/__tests__/math-surface-gate.test.ts; this
+  // proves the wiring: `.configure({surface})` set the right per-surface value.
+  const mathSurface = (ctx: EditorExtensionsCtx, name: "inlineMath" | "displayMath") => {
+    const ext = buildEditorExtensions(ctx).find((e) => e.name === name);
+    return (ext?.options as { surface?: string } | undefined)?.surface;
+  };
+
+  it("configures the math nodes with surface 'main' on the main stack (L3h.1)", () => {
+    expect(mathSurface(mainCtx(), "inlineMath")).toBe("main");
+    expect(mathSurface(mainCtx(), "displayMath")).toBe("main");
+  });
+
+  it("configures the math nodes with surface 'float' on the float stack (L3h.1)", () => {
+    expect(mathSurface(floatCtx(), "inlineMath")).toBe("float");
+    expect(mathSurface(floatCtx(), "displayMath")).toBe("float");
+  });
 });
