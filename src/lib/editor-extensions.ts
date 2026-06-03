@@ -403,10 +403,14 @@ export interface ListSurfaceOpts {
 // inside a `listItem` skip chrome (see ~line 572 above) so the inner
 // structure reads as part of its parent's prose.
 //
-// Per-listItem affordances are intentionally NOT implemented here:
-// `listItem` nodes have no `uuid` attr in the schema, and giving them
-// one requires synchronized changes to the LaTeX parser + serializer
-// so `\item` round-trips an identity. Deferred until a clear need.
+// Per-listItem affordances are intentionally NOT implemented in THIS
+// list-level NodeView. `listItem` is a first-class TextObject sub-object
+// with its own `uuid` attr (`createListItemWithUuid`) that round-trips —
+// the serializer emits `\item …%!v:<uuid>` and the parser reads it back
+// (block-uuid-backfill mints/dedupes item ids). Its per-item affordances
+// (grab handle, and the L3k lift float) live in the TextObject layer
+// (`TextObjectGrabHandle` + the registry), so this NodeView stays scoped
+// to list-LEVEL chrome only.
 function createListTitleNodeView(
   tagName: "ul" | "ol",
   typeName: string,

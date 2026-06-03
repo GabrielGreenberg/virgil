@@ -172,6 +172,10 @@ export function popoutKeyForLift(ref: TextObjectRef): string | null {
     // titleField (L3j, Chip 4): editable prose lift float (decision C); its
     // node was promoted into the float schema (the last prose-shaped kind).
     case "titleField":
+    // listItem (L3k, Chip 5): the FIRST sub-object lift float — a bespoke
+    // list-item-body that wrap-seeds the item in its parent list and writes
+    // back only the inner item's range (siblings intact).
+    case "listItem":
     case "texBlock":
     case "exampleBlock":
     case "linkedRange":

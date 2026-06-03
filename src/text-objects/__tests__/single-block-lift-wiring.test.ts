@@ -18,6 +18,12 @@
  * promoted into the float stack (editor-extensions.ts) — that promotion is
  * locked by editor-extensions.test.ts (EXPECTED_FLOAT_ORDER / MAIN_ONLY_NAMES),
  * not re-asserted here.
+ * Chip 5 (memo L3k): listItem — the FIRST SUB-OBJECT. NOT a `SingleBlockBody`
+ * kind: a bare item is `group:"textObject"` (not block), so it gets its OWN
+ * `ListItemBody` (wrap-seed + inner-targeted write-back) plus a marker-rescue
+ * `renderGhost`. This block pins the three touch-points AND that the body is
+ * distinct from the shared `SingleBlockBody`. The wrap-seed→inner-write
+ * round-trip itself is locked in `list-item-inner-writeback.test.ts`.
  *
  * Before a kind is migrated it falls to `popoutKeyForLift`'s
  * `default: return null` (lift is a no-op) and carries no `liftMode`
@@ -207,6 +213,42 @@ describe("bodyless-kinds Chip 4 — titleField lift wiring (L3j)", () => {
     // not an attr-based atom.
     expect(SINGLE_BLOCK_CONFIG.titleField?.editable).toBe(true);
     expect(SINGLE_BLOCK_CONFIG.titleField?.emptyAttrs).toBeUndefined();
+  });
+
+  it("keeps figureBlock as the still-null control (the switch stays provably specific)", () => {
+    expect(popoutKeyForLift({ kind: "figureBlock", id: "ab12" })).toBeNull();
+    expect(TEXT_OBJECT_REGISTRY.figureBlock.liftMode).toBeUndefined();
+  });
+});
+
+describe("bodyless-kinds Chip 5 — listItem sub-object lift wiring (L3k)", () => {
+  it("popoutKeyForLift now returns the canonical key (was the default null)", () => {
+    const key = popoutKeyForLift({ kind: "listItem", id: "ab12" });
+    expect(key).toBe(textObjectPopoutKey({ kind: "listItem", id: "ab12" }));
+    expect(key).toBe("textobject:listItem:ab12");
+  });
+
+  it("flips liftMode to lifted-overlay (was undefined)", () => {
+    expect(TEXT_OBJECT_REGISTRY.listItem.liftMode).toBe("lifted-overlay");
+  });
+
+  it("registers its OWN bespoke ListItemBody — NOT the shared SingleBlockBody", () => {
+    // The load-bearing fact of this chip: a sub-object is a distinct shape
+    // (wrap-seed + inner-targeted write-back), so it gets its own body — not
+    // folded into the shared SingleBlockBody the way the prose/atom kinds were.
+    const body = TEXT_OBJECT_REGISTRY.listItem.floatBodyComponent;
+    expect(typeof body).toBe("function");
+    expect((body as { name?: string }).name).toBe("ListItemBody");
+    expect(body).not.toBe(TEXT_OBJECT_REGISTRY.blockquote.floatBodyComponent);
+  });
+
+  it("defines a marker-rescue renderGhost (the bare-<li> loses its bullet)", () => {
+    // A sub-object's default clone is a detached `<li>` whose `::marker`
+    // renders via the enclosing list's padding — gone when detached. The hook
+    // re-wraps it in `.tiptap > ul/ol > li`; pin that it exists (the prose
+    // kinds carry none).
+    expect(typeof TEXT_OBJECT_REGISTRY.listItem.renderGhost).toBe("function");
+    expect(TEXT_OBJECT_REGISTRY.blockquote.renderGhost).toBeUndefined();
   });
 
   it("keeps figureBlock as the still-null control (the switch stays provably specific)", () => {

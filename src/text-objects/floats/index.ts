@@ -24,6 +24,7 @@ import { TexBlockBody } from "./tex-block-body";
 import { ExampleBlockBody } from "./example-block-body";
 import { LinkedRangeBody } from "./linked-range-body";
 import { SingleBlockBody } from "./single-block-body";
+import { ListItemBody } from "./list-item-body";
 
 registerFloatBody("paragraph", ParagraphBody);
 registerFloatBody("heading", HeadingBody);
@@ -47,3 +48,9 @@ registerFloatBody("codeBlock", SingleBlockBody);
 registerFloatBody("displayMath", SingleBlockBody);
 registerFloatBody("latexComment", SingleBlockBody);
 registerFloatBody("titleField", SingleBlockBody);
+// listItem (L3k, Chip 5) is the FIRST SUB-OBJECT — not a SingleBlockBody kind.
+// A bare item is group:"textObject" (not block), so its bespoke body seeds the
+// item WRAPPED in its real parent list (via buildWrap) and writes back ONLY the
+// inner item's range. exampleItem (next chip) gets a mirror body with one more
+// wrap level.
+registerFloatBody("listItem", ListItemBody);

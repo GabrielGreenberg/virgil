@@ -717,6 +717,54 @@ export const TEXT_OBJECT_REGISTRY: Record<TextObjectKind, TextObjectMeta> = {
     chromeAnchor: "text-top",
     floatBodyComponent: PLACEHOLDER_FLOAT_BODY,
     actions: PROSE_ACTIONS,
+    // L3k (bodyless kinds, Chip 5): listItem is the FIRST sub-object to lift,
+    // through the two-mode gesture into a bespoke `list-item-body` float — the
+    // item wrap-seeded in its parent list, inner-targeted write-back. No
+    // `computeLabel` (the body never sets a header label, so the overlay's
+    // popout-mode header reads the static `meta.label` "List item").
+    liftMode: "lifted-overlay",
+    // Marker-rescue ghost (modeled on the heading section ghost above). The
+    // default overlay clone is a BARE `<li>` — its bullet/number renders via
+    // the list-style of an enclosing `<ul>`/`<ol>` (the `::marker` sits in the
+    // list's left padding), so a detached `<li>` loses the marker. Clone the
+    // `<li>` into a `.tiptap > ul|ol > li` container (matching the source list
+    // type) so the `.tiptap ul`/`.tiptap ol` rules supply the marker + padding,
+    // and reset the container to the editor ROOT's typography (like the heading
+    // ghost) so the cloned prose resolves its per-element rules. Walks the doc
+    // once at threshold cross (cheap; not per transaction — keystroke-sanctity
+    // safe) to detect the parent list kind. The float itself renders the marker
+    // for free (its `buildWrap` wrapper list provides the same context).
+    renderGhost: (anchorDom, editor, ref) => {
+      if (!anchorDom) return null; // sub-objects always resolve a <li> element
+      let listTag: "ul" | "ol" = "ul";
+      editor.state.doc.descendants((node, _pos, parent) => {
+        if (node.type.name === "listItem" && node.attrs?.uuid === ref.id) {
+          if (parent?.type.name === "orderedList") listTag = "ol";
+          return false;
+        }
+        return true;
+      });
+      const container = document.createElement("div");
+      container.className = "tiptap";
+      const base = window.getComputedStyle(editor.view.dom);
+      Object.assign(container.style, {
+        fontFamily: base.fontFamily,
+        fontSize: base.fontSize,
+        fontWeight: base.fontWeight,
+        fontStyle: base.fontStyle,
+        fontVariant: base.fontVariant,
+        letterSpacing: base.letterSpacing,
+        color: base.color,
+        textAlign: base.textAlign,
+        textIndent: base.textIndent,
+        textTransform: base.textTransform,
+        fontFeatureSettings: base.fontFeatureSettings,
+      });
+      const list = document.createElement(listTag);
+      list.appendChild(anchorDom.cloneNode(true) as HTMLElement);
+      container.appendChild(list);
+      return container;
+    },
     dropAdapter: listItemDropAdapter,
     confirmDestructive: (doc, _uuid, action, ctx) =>
       descriptorForSimpleBlock("item", doc, action, ctx, {
