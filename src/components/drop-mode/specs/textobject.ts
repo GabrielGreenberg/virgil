@@ -35,6 +35,7 @@ import type {
   TextObjectKind,
   TextObjectSourceContext,
 } from "@/text-objects/types";
+import { classifyParentAt } from "./drop-context";
 import type { DropSpec, Placement } from "../types";
 
 export const textObjectDropSpec: DropSpec = {
@@ -194,22 +195,6 @@ function collectSourceContext(
 // ---------------------------------------------------------------------------
 // Drop-target classification
 // ---------------------------------------------------------------------------
-
-function classifyParentAt(
-  editor: import("@tiptap/react").Editor,
-  insertPos: number,
-): TextObjectKind | null {
-  const $pos = editor.state.doc.resolve(insertPos);
-  // Walk depths from innermost outward; first TextObjectKind wins.
-  for (let d = $pos.depth; d > 0; d--) {
-    const node = $pos.node(d);
-    const name = node.type.name;
-    if (name in TEXT_OBJECT_REGISTRY) {
-      return name as TextObjectKind;
-    }
-  }
-  return null;
-}
 
 function classifyDropTarget(
   sourceKind: TextObjectKind,
