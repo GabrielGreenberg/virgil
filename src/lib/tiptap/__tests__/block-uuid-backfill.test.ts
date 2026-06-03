@@ -9,8 +9,19 @@ import {
   docStructureKey,
   EMPTY_DIFF,
   inspectSteps,
+  type DocStructure,
+  type StructureDiff,
 } from "@/lib/tiptap/doc-structure";
 import { doc, paragraph, testSchema } from "../doc-structure/__tests__/fixtures";
+
+// Mirrors the real observer's plugin-state shape (observer-plugin.ts). The
+// explicit `Plugin<PluginState>` generic is load-bearing: without it the state
+// type is inferred from `init`'s return, narrowing `pendingDiff` to the literal
+// `null` so `apply` can't return a `StructureDiff`.
+interface PluginState {
+  structure: DocStructure;
+  pendingDiff: StructureDiff | null;
+}
 
 // A faithful stand-in for DocStructureObserver's PM plugin, built from the same
 // exported primitives the real observer uses (`buildInitial` / `inspectSteps` /
@@ -19,8 +30,8 @@ import { doc, paragraph, testSchema } from "../doc-structure/__tests__/fixtures"
 // needing a full TipTap Editor + view. Position-mapping is the only omission;
 // the backfill never reads structure positions (only uuid keys), so it's
 // irrelevant here.
-function observerPlugin(): Plugin {
-  return new Plugin({
+function observerPlugin(): Plugin<PluginState> {
+  return new Plugin<PluginState>({
     key: docStructureKey,
     state: {
       init: (_c, state) => ({ structure: buildInitial(state.doc), pendingDiff: null }),
