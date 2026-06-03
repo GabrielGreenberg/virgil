@@ -1,4 +1,4 @@
-<!-- last-verified: 486a462 2026-06-01 -->
+<!-- last-verified: c315113 2026-06-02 -->
 <!-- derives-from: (root — verified against code) -->
 <!-- covers-code: src/panels/_shared/types.ts, src/lib/types.ts, src/text-objects/text-object-registry.ts, src/links/link-registry.ts, src/panels/panel-registry.ts, src/lib/ai-request-bridge.ts, editor/scripts/apply_response.py, src/lib/latex-parser.ts, src/lib/latex-serializer.ts -->
 
@@ -7,7 +7,7 @@
 **This is the single rooted source of truth for "what Virgil is."** When anyone — a person, a future Claude session, a generated doc — needs the canonical conceptual account of Virgil, this is the answer. It exists once and only once.
 
 > **Status: bootstrapped skeleton (2026-06-01).**
-> This document was created frame-first. Its **confident sections** ([Document discipline](#document-discipline), [Ontology](#ontology), [Cowork pattern](#cowork-pattern), [Code organization](#code-organization)) are written from the frozen v1 design (`EDITOR_SKILLS_V1.html`, `EDITOR_SKILLS_BRAINSTORM.html`) and the verified agent docs, and are good now. Its **stub sections** — the exhaustive current-state extractions (card-kind taxonomy, type registry, sidecar/panel inventory, UUID emission points, LaTeX vocabulary, reserved names) — carry `<!-- STUB: pending Phase 0 -->` and their `covers-code` pointers, but no body yet. They are filled by the Phase 0 code-archaeology chip. **An honest stub beats confident-wrong content** — see [Document discipline → Stubs](#stubs-and-the-bootstrap-state).
+> This document was created frame-first. Its **confident sections** ([Document discipline](#document-discipline), [Ontology](#ontology), [Cowork pattern](#cowork-pattern), [Code organization](#code-organization)) are written from the frozen v1 design (`EDITOR_SKILLS_V1.html`, `EDITOR_SKILLS_BRAINSTORM.html`) and the verified agent docs, and are good now. Its remaining **stub sections** are the exhaustive current-state extractions. The Phase 0 archaeology chip filled the **stable** three — [UUID marker emission](#uuid-marker-emission), [LaTeX round-trip vocabulary](#latex-round-trip-vocabulary), [Reserved-name inventory](#reserved-name-inventory) — whose field-level detail lives in [phase0-stable-current-state.md](phase0-stable-current-state.md). The other three — card-kind taxonomy, public-type registry, sidecar/panel inventory — still carry `<!-- STUB: pending Phase 0 -->` and their `covers-code` pointers, **deferred** until the in-flight card-system refactor settles (extracting them now would extract a moving target). **An honest stub beats confident-wrong content** — see [Document discipline → Stubs](#stubs-and-the-bootstrap-state).
 >
 > **How to read this doc:** start with [Document discipline](#document-discipline) — it explains the headers at the top of this file, the `<!-- STUB -->` marker, and how this doc relates to `docs/agents/*`, the future manifest, and the skill set. Then read the section you came for.
 
@@ -120,7 +120,7 @@ Rule of thumb: if a section would reproduce a JSON schema field-by-field, it ins
 ## Ontology
 <!-- covers-code: src/text-objects/text-object-registry.ts, src/panels/_shared/types.ts, src/links/link-registry.ts, src/lib/tiptap, src/lib/latex-serializer.ts -->
 
-*Conceptual; frozen in `EDITOR_SKILLS_V1.html` §2 and the brainstorm §20 decisions log. The exhaustive per-kind and per-marker current-state lives in the stub sections below.*
+*Conceptual; frozen in `EDITOR_SKILLS_V1.html` §2 and the brainstorm §20 decisions log. The exhaustive per-marker current-state lives in [UUID marker emission](#uuid-marker-emission) below; the per-kind card taxonomy remains stubbed pending the card refactor.*
 
 Virgil's world is **the Document** and five primitives within it.
 
@@ -151,12 +151,12 @@ A Card may have only an anchor (a note), only Atom links (a bibliography Card wi
 
 ### UUIDs — the identity layer
 
-Every TextObject, Atom, and Card carries a UUID for stable reference across edits, linkage resolution, and the move/pop/drop affordance. The user never sees them. The flavors (exhaustive emission points are stubbed in [UUID marker emission](#uuid-marker-emission)):
+Every TextObject, Atom, and Card carries a UUID for stable reference across edits, linkage resolution, and the move/pop/drop affordance. The user never sees them. The flavors (exhaustive emission points are enumerated in [UUID marker emission](#uuid-marker-emission)):
 
-- `%!v:` at a paragraph's line-end in the `.tex` → a **TextObject UUID** (linkedRange uses the `linkedAnchor` mark's `anchorId` instead).
-- `\vcid{}` → a **citation Atom UUID**.
-- `\vfid{}` → a **footnote Atom UUID**.
-- `\vexid{}` → an **example-reference Atom UUID**.
+- `%!v:` at a block's line-end in the `.tex` → a **TextObject UUID** (paragraph, heading, list, list item, blockquote, code/atom block).
+- `\vcid{}` → a **citation Atom UUID**; `\vfid{}` → a **footnote Atom UUID**.
+- `\vexid{}` → an **example-block UUID**; `\vxid{}` → an **example-item UUID**.
+- `\vlid{}…\vlidend{}` → a **linkedRange**'s paired boundary markers — its identity is the `linkedAnchor` mark's `anchorId`, also persisted to the `.tex` since Phase E.
 - Cards carry their UUIDs in their sidecar JSON (`"id": "…"`).
 
 ### Tasks as a Card kind
@@ -198,15 +198,15 @@ Every Task carries a safety level describing how aggressively the user wants the
 | **2 — change + comment** | Change applied; sibling comment explains it. (`result: auto-applied`) | `write-with-comment` |
 | **3 — propose** | Drafted as a suggestion; doc unchanged until the user accepts. (`result: accepted \| rejected`) | `complete-task` |
 
-Workflow A: the user picks the level on the AI-flagged note. Workflow B: Claude asks (no implicit default). **The catastrophic-operation exception:** preamble rewrites (`style-merge`) and document-wide citekey renames (`sync-bib-to-library`) always surface a one-time confirmation regardless of the requested level.
+Workflow A: the user picks the level on the AI-flagged note. Workflow B: Claude asks (no implicit default). **The catastrophic-operation exception:** preamble rewrites (`style-merge`) and document-wide citekey renames (`sync-bib-to-library`) always surface a one-time confirmation regardless of the requested level. *Current-state note: safety levels are a v1 target — the shipped `AiRequest` carries no safety-level field, and `apply_response.py` has no `write-silent` / `write-with-comment` / `complete-task` subcommands. See [phase0-stable-current-state.md §4](phase0-stable-current-state.md#4-as-shipped-cowork-plumbing).*
 
 ### The editing lock (the pen)
 
-When the agent is about to write files, it briefly takes the editing pen so the user can't be typing simultaneously and lose work. Fully scripted inside `apply_response.py` (no LLM, zero token cost): acquire = write `.virgil/pen-context.json` (`holder`, `acquired_at`, `expires_at` ≈ +30s, prior collab state) and enable collab if it was off; do the atomic write; release = restore prior collab state and delete the pen file. The TTL gives crash recovery without a heartbeat. Doc-level granularity; lock window is the sub-second commit phase only, not the thinking phase. State + constants in [src/lib/collab.ts](../../src/lib/collab.ts); UI via `useCollab`.
+When the agent is about to write files, it briefly takes the editing pen so the user can't be typing simultaneously and lose work. Fully scripted inside `apply_response.py` (no LLM, zero token cost): acquire = write `.virgil/pen-context.json` (`holder`, `acquired_at`, `expires_at` ≈ +30s, prior collab state) and enable collab if it was off; do the atomic write; release = restore prior collab state and delete the pen file. The TTL gives crash recovery without a heartbeat. Doc-level granularity; lock window is the sub-second commit phase only, not the thinking phase. State + constants in [src/lib/collab.ts](../../src/lib/collab.ts); UI via `useCollab`. *Current-state note: the pen described here is the v1 target. As shipped, turn-taking is a browser-side subsystem only (`collab.ts` + `useCollab`); `apply_response.py` does **not** acquire a pen, write `.virgil/pen-context.json`, or touch `collab.json` — the writeback is decoupled from it. See [phase0-stable-current-state.md §4.5–4.6](phase0-stable-current-state.md#4-as-shipped-cowork-plumbing).*
 
 ### `apply_response.py` — the single sanctioned writeback
 
-Skills never write files directly. They call `apply_response.py`, which owns the atomic *card-write + status-flip + notification + version-bump + pen-acquire/release* transaction. Subcommands: `complete-task` (Level 3 + direct-creates), `write-with-comment` (Level 2), `write-silent` (Level 1), `complete-only` (status flip, no card), `revert` (undo). The `--synthesize-task` flag creates the Task on the fly for chat-initiated (Workflow B) calls. Every subcommand shares one "write these N files atomically, roll back on failure" primitive wrapped by the pen dance: all the files land or none do.
+Skills never write files directly. They call `apply_response.py`, which owns the atomic *card-write + status-flip + notification + version-bump + pen-acquire/release* transaction. Subcommands: `complete-task` (Level 3 + direct-creates), `write-with-comment` (Level 2), `write-silent` (Level 1), `complete-only` (status flip, no card), `revert` (undo). The `--synthesize-task` flag creates the Task on the fly for chat-initiated (Workflow B) calls. Every subcommand shares one "write these N files atomically, roll back on failure" primitive wrapped by the pen dance: all the files land or none do. *Current-state note: this describes the v1 target. As shipped, `apply_response.py` exposes only a default apply op, `--revert`, and `--complete-only` (no named subcommands, no `--synthesize-task`), and the multi-file write is non-atomic — crash-safety is idempotent re-run, not rollback. See [phase0-stable-current-state.md §4.1](phase0-stable-current-state.md#4-as-shipped-cowork-plumbing).*
 
 ### The loop, end to end
 
@@ -252,7 +252,7 @@ Before adding a new panel, link kind, theme, or text-object kind, **extend the r
 
 ### LaTeX round-trip
 
-Virgil does not compile LaTeX. It parses `.tex` into the editor model ([src/lib/latex-parser.ts](../../src/lib/latex-parser.ts)) and serializes back ([src/lib/latex-serializer.ts](../../src/lib/latex-serializer.ts)) while preserving the raw source. The accepted command vocabulary and the UUID-marker emission points are exhaustively enumerated in the stub sections below.
+Virgil does not compile LaTeX. It parses `.tex` into the editor model ([src/lib/latex-parser.ts](../../src/lib/latex-parser.ts)) and serializes back ([src/lib/latex-serializer.ts](../../src/lib/latex-serializer.ts)) while preserving the raw source. The accepted command vocabulary and the UUID-marker emission points are enumerated in [LaTeX round-trip vocabulary](#latex-round-trip-vocabulary) and [UUID marker emission](#uuid-marker-emission) below (and the [Phase 0 report](phase0-stable-current-state.md) they point to).
 
 ### The keystroke-sanctity invariant
 
@@ -292,30 +292,56 @@ Conceptual account here; exhaustive schemas in the manifest's `sidecars.md` / `s
 
 ## UUID marker emission
 <!-- covers-code: src/lib/tiptap, src/lib/latex-serializer.ts, src/lib/latex-parser.ts, src/text-objects/text-object-registry.ts -->
-<!-- STUB: pending Phase 0 -->
 
-The exact points in code where each UUID marker is emitted, parsed, and round-tripped — `%!v:` (TextObject, line-end), `\vcid{}` (citation Atom), `\vfid{}` (footnote Atom), `\vexid{}` (example Atom), and the `linkedAnchor` mark's `anchorId` (linkedRange) — and which are auto-managed by Virgil vs. authored. The honest spec of who generates each marker and when. Maps to the manifest's `identity.md`.
+Virgil keeps a stable identity for every block and inline entity across `.tex` parse cycles by writing **invisible id markers** into the source. There are two id namespaces (minted in [src/lib/uuid.ts](../../src/lib/uuid.ts)): **short ids** — 4-char hex — for anything that appears in the `.tex`, and full **v4 entity ids** for sidecar-only data that never does. Every marker below is **Virgil-auto-managed** (generated by `assignUuids` and the serializer, stripped from the rendered display) — the user authors only the underlying content command (`\footnote{}`, `\citep{}`, `\section{}`, `\ex…\xe`) and never types or sees a marker.
+
+The marker family:
+
+- **`%!v:<hex>`** — a **TextObject** (block) id, a trailing line-end *comment* on every uuid-bearing block (paragraph, heading, list, list item, blockquote, code/atom block). `%!v:blank` marks an empty unidentified paragraph.
+- **`\vfid{}`** / **`\vcid{}`** — a **footnote** / **citation** Atom id, emitted just before the `\footnote{}`/`\thanks{}` or cite command.
+- **`\vexid{}`** / **`\vxid{}`** — an **example-block** / **example-item** id, emitted before `\ex`/`\pex` and `\a`.
+- **`\vlid{}…\vlidend{}`** — paired boundary markers around a **linkedRange** (a `linkedAnchor` mark's span). The identity is the mark's `anchorId`; since Phase E the span is also persisted to the `.tex` via these markers (reassembled on parse by `applyLinkedAnchorBoundaries`).
+- **`%!vtex:begin <id>` / `%!vtex:end <id>`** — sentinels bracketing a **texBlock**'s raw-LaTeX passthrough.
+
+The conceptual single source for *which TextObject kind carries which marker* is the `sourceMarker` field on `TEXT_OBJECT_REGISTRY` ([src/text-objects/text-object-registry.ts](../../src/text-objects/text-object-registry.ts)); the `%!v:` regexes live in [src/lib/uuid.ts](../../src/lib/uuid.ts); id assignment + dedup (`assignUuids`) and macro injection (`ensureVirgilCommands`) both live in [src/lib/latex-serializer.ts](../../src/lib/latex-serializer.ts) — the six `\v*` macros get `\providecommand` no-ops injected so the `.tex` compiles outside Virgil.
+
+The exhaustive per-marker emit/parse points and the auto-vs-authored table are in **[phase0-stable-current-state.md §1](phase0-stable-current-state.md#1-uuid--marker-semantics)**. Maps to the manifest's `identity.md`.
 
 ---
 
 ## LaTeX round-trip vocabulary
 <!-- covers-code: src/lib/latex-parser.ts, src/lib/latex-serializer.ts, src/lib/tiptap -->
-<!-- STUB: pending Phase 0 -->
 
-What `parseLatex()` actually accepts, with examples — the honest current-state spec, not the wishful one. The command families, environments, and inline constructs Virgil renders and preserves, and what it passes through opaquely. Cross-checked against `library/skills/_latex-output.md`. Maps to the manifest's `latex.md`.
+Virgil does not compile LaTeX. `parseLatex()` ([src/lib/latex-parser.ts](../../src/lib/latex-parser.ts)) reads `.tex` → editor model; `serializeToLatex()` ([src/lib/latex-serializer.ts](../../src/lib/latex-serializer.ts)) writes it back, preserving the raw source. The honest current-state vocabulary:
+
+- **Block constructs modeled:** the sectioning commands (`\part`…`\subparagraph`, levels 0–6, SSOT [src/lib/heading-types.ts](../../src/lib/heading-types.ts)), `\title`/`\author`/`\date`/`\maketitle`, display math `\[…\]`, the expex example family (`\ex`/`\pex`/`\a`/`\xlist`/`\begingl…\endgl`), `\includegraphics`, `\hrulefill`, and the environments `verbatim`, `quote`, `itemize`, `enumerate`, `figure`/`figure*`.
+- **Inline constructs modeled:** `$…$` math; the marks `\textbf`/`\emph`/`\textit`/`\underline`/`\texttt`/`\textcolor[HTML]{…}`; `\footnote`/`\thanks`; the natbib + biblatex citation family (SSOT [src/lib/cite-commands.ts](../../src/lib/cite-commands.ts)); `\ref`/`\getref`/`\getfullref`; `\ldots`/`\LaTeX`/`\TeX`; escaped specials; `\\`.
+- **Everything else passes through opaquely, byte-faithfully:** an unknown inline `\command{…}` is kept verbatim under the `latexCommand` mark (grey monospace), and an unknown `\begin{env}…\end{env}` (tables, `align`, `tikzpicture`, custom envs) is kept verbatim as a single grey-monospace block. This is how "render meaningfully while preserving the source" holds for *arbitrary* LaTeX.
+
+Two honesty notes: `escapeLatex` escapes only `& % # _ ~ ^` and smart quotes — it deliberately leaves `\ { } $` as live syntax; and display math's *source* form is `\[…\]` (the `$$…$$` seen in the editor is a DOM/input-rule register, normalized on save). The library skills' [_latex-output.md](../../library/skills/_latex-output.md) constrains skill *output* to a curated subset — narrower than what the parser accepts.
+
+The exhaustive parse/serialize tables (every block, inline, mark, and both opaque fallbacks) are in **[phase0-stable-current-state.md §2](phase0-stable-current-state.md#2-latex-round-trip-vocabulary)**. Maps to the manifest's `latex.md`.
 
 ---
 
 ## Reserved-name inventory
 <!-- covers-code: src/lib/latex-serializer.ts, src/lib/tiptap, src/app/globals.css, src/lib/storage-fsa.ts -->
-<!-- STUB: pending Phase 0 -->
 
-Every name Virgil reserves and a user therefore can't override: injected macros (`\vfid`, `\vcid`, `\vexid`, …), the `%!v:` comment convention, Virgil CSS classes, reserved sidecar JSON keys, and reserved file/folder paths (`virgil/`, `.virgil/`, and the v2-reserved overlay paths `~/.virgil-user/` and `<docpath>/.virgil/user-overrides/`). Repo-wide grep + curation. Maps to the manifest's `gardening.md` (including the user-overlay deny-list).
+Every name Virgil reserves, so a user authoring their own `.tex` / preamble / files can't safely override it:
+
+- **Injected macros** — Virgil injects `\providecommand` no-ops for **six** entity-id macros (`\vfid`, `\vcid`, `\vexid`, `\vxid`, `\vlid`, `\vlidend`) plus `\usepackage{xcolor}`, so the `.tex` compiles outside Virgil. SSOT: `ensureVirgilCommands` ([src/lib/latex-serializer.ts](../../src/lib/latex-serializer.ts)) + `CLASSIC_PREAMBLE` ([src/lib/document-styles.ts](../../src/lib/document-styles.ts)). (`\pgmark` is reserved too, but injected by the library indexer, not the editor.)
+- **Comment conventions** — the `%!v:` block-anchor family and the `%!vtex:begin`/`%!vtex:end` texBlock sentinels (all `%!v`-prefixed).
+- **CSS classes & `data-*` attributes** — the structural editor/card/panel hook namespace in [src/app/globals.css](../../src/app/globals.css) (`.tiptap`, `.linked-anchor`, `.expex-*`, `.dropmode-bar-*`, `.virgil-bar`, and the `data-card-*` / `data-link-*` / `data-print-*` families).
+- **File/folder paths** — `virgil/` (the sidecar folder, SSOT [src/lib/storage-fsa.ts](../../src/lib/storage-fsa.ts)) with `figures-cache/` and `.history/`; the sibling `.virgil/` agent/library plumbing folder; and the infrastructure sidecars (`virgil.json`, `editor-state.json`, `ai-requests.json`, `notifications.json`, `collab.json`, `doc-settings.json`). *Card-sidecar filenames are deferred with the card refactor.*
+- **v2-reserved overlay paths** — `~/.virgil-user/` and `<docpath>/.virgil/user-overrides/` are reserved **by design only** (present in the brainstorm + this doc, absent from all of `src/`); the deny-list enforcement is future work.
+
+The exhaustive inventory — every injected string, comment regex, the full CSS/`data-*` families, and every reserved path and sidecar (stable vs. provisional) — is in **[phase0-stable-current-state.md §5](phase0-stable-current-state.md#5-reserved-name-inventory)**. Maps to the manifest's `gardening.md` (including the user-overlay deny-list).
 
 ---
 
 ## Related documents
 
+- **[phase0-stable-current-state.md](phase0-stable-current-state.md)** — the Phase 0 archaeology seed for the **stable** subsystems (UUID/markers, LaTeX vocabulary, TipTap extensions, reserved names, as-shipped cowork plumbing). The exhaustive field-level substrate that the three stable sections above forward-point to; seeds the future manifest. Retired once the manifest absorbs it.
 - **`docs/agents/*`** — the how-to-work-on-the-codebase derivatives (`overview.md`, `glossary.md`, `ui-chrome.md`, `main-text.md`, `architecture.md`), indexed by top-level `AGENTS.md`. They carry `derives-from` headers pointing back here.
 - **`EDITOR_SKILLS_V1.html`** — the frozen v1 build target (the source for the confident [Ontology](#ontology) and [Cowork pattern](#cowork-pattern) content).
 - **`EDITOR_SKILLS_BRAINSTORM.html`** — the design-intent record (the decisions log, §20; the method plan, §19).
