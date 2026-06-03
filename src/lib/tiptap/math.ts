@@ -30,12 +30,15 @@ function renderMath(target: HTMLElement, latex: string, displayMode: boolean) {
 function mathNodeView(opts: {
   node: any;
   getPos: any;
+  // Only `isEditable` is read (the read-only-surface gate below); typed
+  // structurally so the new param adds no `any` (tighter than node/getPos).
+  editor: { isEditable: boolean };
   tag: "span" | "div";
   className: string;
   kind: "inline" | "display";
   displayMode: boolean;
 }) {
-  const { node, getPos, tag, className, kind, displayMode } = opts;
+  const { node, getPos, editor, tag, className, kind, displayMode } = opts;
   const dom = document.createElement(tag);
   dom.className = className;
   dom.contentEditable = "false";
@@ -46,6 +49,18 @@ function mathNodeView(opts: {
   dom.addEventListener("click", (e: Event) => {
     e.preventDefault();
     e.stopPropagation();
+    // The click→edit bridge (`virgil-math-click` → MathPopover →
+    // handleMathSave) edits the MAIN editor by absolute `pos`, so it only
+    // makes sense from an editable main surface. A read-only embed — e.g. the
+    // displayMath "view & move only" lift float (surface:"float",
+    // editable:false; decision D) — carries a `getPos()` that's meaningless in
+    // main (the atom is at the float doc's pos 0, which maps to whatever block
+    // happens to sit at main pos 0), so it must NOT open the popover. Gate on
+    // this NodeView's own editor being editable: the main surface always
+    // mounts TipTap-editable (read-only is enforced by the readOnlyEnforcer
+    // plugin), while read-only floats are not — so page editing is unchanged
+    // and every read-only embed is inert. Covers inline + display math alike.
+    if (editor && !editor.isEditable) return;
     const pos = typeof getPos === "function" ? getPos() : undefined;
     if (pos == null) return;
     window.dispatchEvent(
@@ -141,10 +156,11 @@ export const InlineMath = Node.create({
   },
 
   addNodeView() {
-    return ({ node, getPos }) =>
+    return ({ node, getPos, editor }) =>
       mathNodeView({
         node,
         getPos,
+        editor,
         tag: "span",
         className: "inline-math",
         kind: "inline",
@@ -228,10 +244,11 @@ export const DisplayMath = Node.create({
   },
 
   addNodeView() {
-    return ({ node, getPos }) =>
+    return ({ node, getPos, editor }) =>
       mathNodeView({
         node,
         getPos,
+        editor,
         tag: "div",
         className: "display-math",
         kind: "display",

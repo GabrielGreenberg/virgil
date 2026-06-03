@@ -11,9 +11,19 @@
  * through the shared `buildEditorExtensions({surface:"float"})` factory,
  * instead of hand-rolling one near-identical body per kind.
  *
- * Covers (today): `blockquote`, `codeBlock`. Both are plain TipTap block
- * nodes already in the float schema (`EXPECTED_FLOAT_ORDER`) with no
- * NodeView and no doc-wide numbering, so the synced node renders itself.
+ * Covers (today): `blockquote`, `codeBlock` (editable, content-bearing) and
+ * `displayMath` (READ-ONLY atom — decision D, "view & move only": pop out to
+ * see the rendered KaTeX large + drag it; the formula is edited on the PAGE
+ * via the existing math popover, never in the float). All are already in the
+ * float schema (`EXPECTED_FLOAT_ORDER`); the synced node renders itself
+ * (blockquote/codeBlock as plain nodes, displayMath via its KaTeX NodeView).
+ *
+ * Per-kind config carries `editable` (read-only kinds skip `onUpdate` /
+ * write-back and sync main→float only) and `emptyAttrs` (atom kinds seed an
+ * attr-based empty fallback, not a content-bearing placeholder). The next
+ * chip's EDITABLE `latexComment` atom slots in as one more config row
+ * (`editable:true` + `emptyAttrs`) — the whole-node write-back below is
+ * already atom-compatible.
  *
  * Modeled on `paragraph-body.tsx` (the single-block template) and
  * `list-body.tsx` (the one-body-many-kinds precedent):
@@ -69,20 +79,47 @@ interface SingleBlockKindConfig {
   schemaType: string;
   floatIdPrefix: string;
   sourceKind: FloatSourceKind;
+  /** Editable kinds (blockquote/codeBlock, and the next chip's latexComment
+   *  atom) seed → sync → write back on `onUpdate`. Read-only kinds
+   *  (displayMath: "view & move only" — decision D; the equation is edited on
+   *  the PAGE via the KaTeX popover, never in the float) seed + sync
+   *  main→float only, with NO `onUpdate` / write-back. */
+  editable: boolean;
+  /** Atom kinds (displayMath, latexComment) carry no child content, so their
+   *  empty seed / missing fallback is attr-based (`{type, attrs}`) — a
+   *  content-bearing placeholder would be schema-invalid. Absent → the kind is
+   *  a content block whose empty fallback `emptyBlockFor` builds with children. */
+  emptyAttrs?: Record<string, unknown>;
 }
 
-const SINGLE_BLOCK_CONFIG: Partial<
+// Exported for the deterministic wiring lock (single-block-lift-wiring.test.ts):
+// the read-only contract (displayMath `editable:false`, blockquote/codeBlock
+// `editable:true`) is pinned without rendering the body.
+export const SINGLE_BLOCK_CONFIG: Partial<
   Record<TextObjectKind, SingleBlockKindConfig>
 > = {
   blockquote: {
     schemaType: "blockquote",
     floatIdPrefix: "bq",
     sourceKind: "blockquote",
+    editable: true,
   },
   codeBlock: {
     schemaType: "codeBlock",
     floatIdPrefix: "code",
     sourceKind: "codeBlock",
+    editable: true,
+  },
+  // L3h (bodyless kinds, Chip 2): displayMath is the first READ-ONLY / first
+  // ATOM kind on this shared body. Same seed-by-uuid + useFloatMainSync
+  // scaffold as the prose kinds, minus write-back (editable:false → no
+  // onUpdate); the empty fallback is the attr-based atom `{displayMath,{latex}}`.
+  displayMath: {
+    schemaType: "displayMath",
+    floatIdPrefix: "math",
+    sourceKind: "displayMath",
+    editable: false,
+    emptyAttrs: { latex: "" },
   },
 };
 
@@ -90,6 +127,7 @@ const DEFAULT_CONFIG: SingleBlockKindConfig = {
   schemaType: "blockquote",
   floatIdPrefix: "bq",
   sourceKind: "blockquote",
+  editable: true,
 };
 
 interface BlockSource {
@@ -117,13 +155,17 @@ function findBlockByUuid(
 
 /** Valid empty placeholder for a kind — used as the seed/missing fallback
  *  (the sync ignores content while `missing`, but the seed wants a node the
- *  schema accepts). A blockquote needs at least one child block; a codeBlock
- *  is `text*`, so empty is valid. */
-function emptyBlockFor(schemaType: string): JSONContent {
-  if (schemaType === "blockquote") {
+ *  schema accepts). An atom kind (`emptyAttrs` set) has no children, so its
+ *  fallback is attr-based (`{displayMath, {latex:""}}`). A blockquote needs at
+ *  least one child block; a codeBlock is `text*`, so empty is valid. */
+function emptyBlockFor(config: SingleBlockKindConfig): JSONContent {
+  if (config.emptyAttrs) {
+    return { type: config.schemaType, attrs: config.emptyAttrs };
+  }
+  if (config.schemaType === "blockquote") {
     return { type: "blockquote", content: [{ type: "paragraph", content: [] }] };
   }
-  return { type: schemaType, content: [] };
+  return { type: config.schemaType, content: [] };
 }
 
 export function SingleBlockBody({
@@ -159,7 +201,7 @@ export function SingleBlockBody({
     return {
       doc: {
         type: "doc",
-        content: [blockJson ?? emptyBlockFor(config.schemaType)],
+        content: [blockJson ?? emptyBlockFor(config)],
       } as JSONContent,
     };
     // `mainEditor` (a `ref.current` read) is intentionally omitted, like
@@ -169,7 +211,7 @@ export function SingleBlockBody({
     // callback refs during render — that the react-hooks compiler otherwise
     // flags, same as every sibling body.)
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [config.schemaType, uuid]);
+  }, [config, uuid]);
 
   const floatId = `${config.floatIdPrefix}:${uuid}`;
 
@@ -207,23 +249,27 @@ export function SingleBlockBody({
   const floatEditor = useEditor({
     extensions: buildEditorExtensions({
       surface: "float",
-      editable: true,
+      // Read-only kinds (displayMath) build the float editor non-editable;
+      // floats gate editability via TipTap's own `editable` flag (the main
+      // surface uses the readOnlyEnforcer plugin instead — see editor-extensions).
+      editable: config.editable,
       cardContext: true,
       callbacks: {
         isLabelTaken: isLabelTakenRef,
         onConfirmLabelRename: onConfirmLabelRenameRef,
         onConfirmHeadingDelete: onConfirmHeadingDeleteRef,
       },
-      // Neither kind holds a figure (a blockquote's content is prose, a
-      // codeBlock is text), so — like paragraph-body — pass no docId.
+      // None of these kinds holds a figure (blockquote content is prose,
+      // codeBlock is text, displayMath is an atom), so — like paragraph-body —
+      // pass no docId.
       docIdRef: null,
       // A blockquote paragraph's inline `+T` title write proxies to MAIN
       // through this; the float's own doc is never mutated by it, so
-      // useFloatMainSync re-reads idempotently. Inert for codeBlock.
+      // useFloatMainSync re-reads idempotently. Inert for codeBlock/displayMath.
       host: { getMainEditor: () => ref.current?.getEditor() ?? null },
     }),
     content: initial.doc,
-    editable: true,
+    editable: config.editable,
     immediatelyRender: false,
     editorProps: {
       attributes: {
@@ -231,9 +277,14 @@ export function SingleBlockBody({
           "tiptap ProseMirror prose prose-stone max-w-none focus:outline-none",
       },
     },
-    onUpdate({ editor }) {
-      writeBackToMain(editor.getJSON());
-    },
+    // Read-only kinds (displayMath, decision D) have no write-back — the
+    // equation is edited on the page, not in the float — so wire `onUpdate`
+    // (and thus `writeBackToMain`) only for editable kinds.
+    onUpdate: config.editable
+      ? ({ editor }) => {
+          writeBackToMain(editor.getJSON());
+        }
+      : undefined,
   });
 
   function writeBackToMain(doc: JSONContent) {
@@ -274,7 +325,7 @@ export function SingleBlockBody({
         return {
           doc: {
             type: "doc",
-            content: [emptyBlockFor(config.schemaType)],
+            content: [emptyBlockFor(config)],
           } as JSONContent,
           missing: true,
         };
@@ -287,7 +338,7 @@ export function SingleBlockBody({
         missing: false,
       };
     },
-    [config.schemaType, uuid],
+    [config, uuid],
   );
 
   const { sourceMissing } = useFloatMainSync({

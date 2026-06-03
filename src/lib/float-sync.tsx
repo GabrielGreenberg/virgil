@@ -49,7 +49,8 @@ export type FloatSourceKind =
   | "linkedRange"
   | "texBlock"
   | "blockquote"
-  | "codeBlock";
+  | "codeBlock"
+  | "displayMath";
 
 const KIND_LABEL: Record<FloatSourceKind, string> = {
   paragraph: "Source paragraph deleted",
@@ -60,6 +61,7 @@ const KIND_LABEL: Record<FloatSourceKind, string> = {
   texBlock: "Source TeX block deleted",
   blockquote: "Source quote deleted",
   codeBlock: "Source code block deleted",
+  displayMath: "Source equation deleted",
 };
 
 /**

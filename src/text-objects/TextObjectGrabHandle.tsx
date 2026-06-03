@@ -165,6 +165,8 @@ export function popoutKeyForLift(ref: TextObjectRef): string | null {
     case "orderedList":
     case "blockquote":
     case "codeBlock":
+    // displayMath (L3h, Chip 2): read-only "view & move" lift float.
+    case "displayMath":
     case "texBlock":
     case "exampleBlock":
     case "linkedRange":

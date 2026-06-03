@@ -32,7 +32,11 @@ registerFloatBody("orderedList", ListBody);
 registerFloatBody("texBlock", TexBlockBody);
 registerFloatBody("exampleBlock", ExampleBlockBody);
 registerFloatBody("linkedRange", LinkedRangeBody);
-// One generic body serves both prose-shaped bodyless kinds (the ListBody
-// precedent — one component, many kinds; kind resolved from the cardKey).
+// One generic body serves every single-top-level-block bodyless kind (the
+// ListBody precedent — one component, many kinds; kind resolved from the
+// cardKey). blockquote/codeBlock are editable prose; displayMath (L3h, Chip 2)
+// is the first READ-ONLY / first ATOM kind — same seed/sync scaffold, no
+// write-back (the equation is edited on the page via the KaTeX popover).
 registerFloatBody("blockquote", SingleBlockBody);
 registerFloatBody("codeBlock", SingleBlockBody);
+registerFloatBody("displayMath", SingleBlockBody);

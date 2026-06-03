@@ -530,6 +530,10 @@ export const TEXT_OBJECT_REGISTRY: Record<TextObjectKind, TextObjectMeta> = {
     floatBodyComponent: PLACEHOLDER_FLOAT_BODY,
     actions: NON_PROSE_BLOCK_ACTIONS,
     dropAdapter: topLevelDropAdapter,
+    // L3h (bodyless kinds, Chip 2): displayMath lifts through the two-mode
+    // gesture into a READ-ONLY SingleBlockBody float ("view & move only" —
+    // decision D; the equation is edited on the page via the KaTeX popover).
+    liftMode: "lifted-overlay",
     // Atom blocks: always warn (can't preview a meaningful "empty"
     // state for math/figure/etc.). The hasAnchorsOrAtoms guard is
     // irrelevant — the block itself is what's at stake.
