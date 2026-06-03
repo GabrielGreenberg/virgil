@@ -7,6 +7,10 @@
  * the SAME `SingleBlockBody` ("view & move only", decision D: pop out to see
  * the rendered KaTeX + drag it; the formula is edited on the page via the
  * KaTeX popover, so the float has no write-back).
+ * Chip 3 (memo L3i): latexComment — the FIRST EDITABLE atom kind on the SAME
+ * `SingleBlockBody` (decision A, "fully editable, first-class": pop out the
+ * `%comment`, edit it, it round-trips to the source via the float's own
+ * `editableAtomView` → onUpdate → write-back). The atom×editable cross-product.
  *
  * Before a kind is migrated it falls to `popoutKeyForLift`'s
  * `default: return null` (lift is a no-op) and carries no `liftMode`
@@ -126,5 +130,43 @@ describe("bodyless-kinds Chip 2 — displayMath READ-ONLY atom lift wiring (L3h)
     expect(SINGLE_BLOCK_CONFIG.displayMath?.editable).toBe(false);
     // Atom kinds seed an attr-based empty fallback, not a content-bearing one.
     expect(SINGLE_BLOCK_CONFIG.displayMath?.emptyAttrs).toEqual({ latex: "" });
+  });
+});
+
+describe("bodyless-kinds Chip 3 — latexComment EDITABLE atom lift wiring (L3i)", () => {
+  it("popoutKeyForLift now returns the canonical key (was the default null)", () => {
+    const key = popoutKeyForLift({ kind: "latexComment", id: "ab12" });
+    expect(key).toBe(textObjectPopoutKey({ kind: "latexComment", id: "ab12" }));
+    expect(key).toBe("textobject:latexComment:ab12");
+  });
+
+  it("flips liftMode to lifted-overlay (was undefined)", () => {
+    expect(TEXT_OBJECT_REGISTRY.latexComment.liftMode).toBe("lifted-overlay");
+  });
+
+  it("reuses the SAME shared SingleBlockBody as the prose + math kinds (one body, many kinds)", () => {
+    const cmtBody = TEXT_OBJECT_REGISTRY.latexComment.floatBodyComponent;
+    expect(typeof cmtBody).toBe("function");
+    // Not a bespoke atom body — the same component instance every other kind uses.
+    expect(cmtBody).toBe(TEXT_OBJECT_REGISTRY.blockquote.floatBodyComponent);
+    expect(cmtBody).toBe(TEXT_OBJECT_REGISTRY.displayMath.floatBodyComponent);
+    expect((cmtBody as { name?: string }).name).toBe("SingleBlockBody");
+  });
+
+  it("is EDITABLE — editable:true + attr-based emptyAttrs (decision A, the atom×editable cross-product)", () => {
+    // The load-bearing decision of this chip: latexComment is "fully editable,
+    // first-class" — pop out the `%comment`, edit it, it round-trips. editable:true
+    // wires onUpdate / write-back (unlike displayMath's read-only mode); emptyAttrs
+    // makes it an atom (attr-based empty seed/fallback, unlike the prose kinds).
+    expect(SINGLE_BLOCK_CONFIG.latexComment?.editable).toBe(true);
+    expect(SINGLE_BLOCK_CONFIG.latexComment?.emptyAttrs).toEqual({ text: "" });
+  });
+
+  it("keeps figureBlock as the still-null control (the switch stays provably specific)", () => {
+    // figureBlock is still on `popoutKeyForLift`'s `default: return null` and
+    // carries no liftMode — so a future regression that blanket-returns non-null
+    // (or blanket-flips liftMode) still fails loudly here.
+    expect(popoutKeyForLift({ kind: "figureBlock", id: "ab12" })).toBeNull();
+    expect(TEXT_OBJECT_REGISTRY.figureBlock.liftMode).toBeUndefined();
   });
 });

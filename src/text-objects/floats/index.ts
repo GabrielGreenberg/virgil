@@ -36,7 +36,10 @@ registerFloatBody("linkedRange", LinkedRangeBody);
 // ListBody precedent — one component, many kinds; kind resolved from the
 // cardKey). blockquote/codeBlock are editable prose; displayMath (L3h, Chip 2)
 // is the first READ-ONLY / first ATOM kind — same seed/sync scaffold, no
-// write-back (the equation is edited on the page via the KaTeX popover).
+// write-back (the equation is edited on the page via the KaTeX popover);
+// latexComment (L3i, Chip 3) is the first EDITABLE ATOM kind (decision A) —
+// pops out editable, edits round-trip via the float's own setNodeMarkup.
 registerFloatBody("blockquote", SingleBlockBody);
 registerFloatBody("codeBlock", SingleBlockBody);
 registerFloatBody("displayMath", SingleBlockBody);
+registerFloatBody("latexComment", SingleBlockBody);

@@ -50,7 +50,8 @@ export type FloatSourceKind =
   | "texBlock"
   | "blockquote"
   | "codeBlock"
-  | "displayMath";
+  | "displayMath"
+  | "latexComment";
 
 const KIND_LABEL: Record<FloatSourceKind, string> = {
   paragraph: "Source paragraph deleted",
@@ -62,6 +63,7 @@ const KIND_LABEL: Record<FloatSourceKind, string> = {
   blockquote: "Source quote deleted",
   codeBlock: "Source code block deleted",
   displayMath: "Source equation deleted",
+  latexComment: "Source comment deleted",
 };
 
 /**

@@ -569,6 +569,10 @@ export const TEXT_OBJECT_REGISTRY: Record<TextObjectKind, TextObjectMeta> = {
     floatBodyComponent: PLACEHOLDER_FLOAT_BODY,
     actions: NON_PROSE_BLOCK_ACTIONS,
     dropAdapter: topLevelDropAdapter,
+    // L3i (bodyless kinds, Chip 3): latexComment lifts through the two-mode
+    // gesture into an EDITABLE SingleBlockBody float (decision A, "fully
+    // editable, first-class"; the `%comment` round-trips on edit).
+    liftMode: "lifted-overlay",
     // Author noise, cheap to redo — never warn.
     confirmDestructive: () => null,
   },

@@ -167,6 +167,8 @@ export function popoutKeyForLift(ref: TextObjectRef): string | null {
     case "codeBlock":
     // displayMath (L3h, Chip 2): read-only "view & move" lift float.
     case "displayMath":
+    // latexComment (L3i, Chip 3): editable atom lift float (decision A).
+    case "latexComment":
     case "texBlock":
     case "exampleBlock":
     case "linkedRange":
