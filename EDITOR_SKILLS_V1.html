@@ -1,0 +1,1011 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Virgil editor skill set — v1 spec</title>
+<style>
+  :root {
+    --ink: #1f1d1a;
+    --paper: #faf8f3;
+    --muted: #6b6356;
+    --rule: #d8d2c4;
+    --accent: #2f4a8b;
+    --accent-soft: #ebf0fb;
+    --accent-deep: #1f3463;
+    --warn: #8b3e2f;
+    --warn-soft: #fdf1ee;
+    --good: #2f5d3a;
+    --good-soft: #ecf3ee;
+    --code-bg: #f1ece0;
+    --card: #ffffff;
+    --spec: #2f5d3a;
+    --spec-soft: #ecf3ee;
+  }
+  html { font: 16px/1.55 -apple-system, BlinkMacSystemFont, "Helvetica Neue", sans-serif; }
+  body { background: var(--paper); color: var(--ink); margin: 0; padding: 0 1.5rem 6rem; }
+  .spec-banner {
+    background: linear-gradient(135deg, #1f3463 0%, #2f4a8b 100%);
+    color: white;
+    padding: 1.2rem 1.5rem;
+    margin: 0 -1.5rem 2rem;
+    border-bottom: 3px solid #1f3463;
+  }
+  .spec-banner h1 { color: white; margin: 0 0 0.3rem; font-size: 1.6rem; letter-spacing: -0.01em; }
+  .spec-banner .tagline { color: #c4d4f2; font-size: 0.95em; margin: 0; }
+  .spec-banner .badge { display: inline-block; background: rgba(255,255,255,0.15); padding: 0.15rem 0.6rem; border-radius: 3px; font-size: 0.75em; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; margin-bottom: 0.4rem; }
+  .wrap { max-width: 980px; margin: 0 auto; padding-top: 1.5rem; }
+  h1 { font-size: 2rem; margin: 0 0 0.25rem; letter-spacing: -0.01em; }
+  h2 { font-size: 1.4rem; margin: 2.5rem 0 0.5rem; padding-bottom: 0.3rem; border-bottom: 2px solid var(--ink); letter-spacing: -0.01em; }
+  h3 { font-size: 1.05rem; margin: 1.5rem 0 0.5rem; letter-spacing: -0.005em; }
+  h4 { font-size: 0.85rem; margin: 1rem 0 0.3rem; color: var(--muted); text-transform: uppercase; letter-spacing: 0.05em; font-weight: 600; }
+  p, ul, ol { margin: 0.4rem 0; }
+  ul, ol { padding-left: 1.4rem; }
+  li { margin: 0.15rem 0; }
+  .lede { color: var(--muted); font-size: 1.05rem; margin-bottom: 1.5rem; }
+  code { background: var(--code-bg); padding: 0.05rem 0.35rem; border-radius: 3px; font-size: 0.88em; font-family: "SF Mono", Menlo, Consolas, monospace; }
+  pre { background: var(--code-bg); padding: 0.75rem 1rem; border-radius: 5px; overflow-x: auto; font-size: 0.85em; line-height: 1.45; }
+  pre code { background: transparent; padding: 0; }
+  a { color: var(--accent); text-decoration: none; border-bottom: 1px solid var(--accent-soft); }
+  a:hover { border-bottom-color: var(--accent); }
+  details { margin: 0.4rem 0; }
+  details > summary { cursor: pointer; padding: 0.45rem 0.6rem; border-radius: 4px; list-style: none; user-select: none; }
+  details > summary::-webkit-details-marker { display: none; }
+  details > summary::before { content: "▸ "; color: var(--muted); display: inline-block; width: 1.1em; }
+  details[open] > summary::before { content: "▾ "; }
+  details > summary:hover { background: var(--code-bg); }
+  .skill {
+    background: var(--card);
+    border: 1px solid var(--rule);
+    border-left: 4px solid var(--accent);
+    border-radius: 5px;
+    margin: 0.5rem 0;
+    padding: 0;
+  }
+  .skill > details > summary { padding: 0.6rem 1rem; font-size: 0.95em; }
+  .skill .body { padding: 0.2rem 1.25rem 1rem; border-top: 1px solid var(--rule); margin-top: 0.4rem; }
+  .skill-name { font-family: "SF Mono", Menlo, monospace; font-weight: 600; font-size: 0.95em; color: var(--accent-deep); }
+  .skill-tagline { color: var(--ink); }
+  .skill .row { display: grid; grid-template-columns: 100px 1fr; gap: 0.65rem; padding: 0.35rem 0; border-bottom: 1px dashed var(--rule); }
+  .skill .row:last-child { border-bottom: none; }
+  .skill .row .label { color: var(--muted); font-size: 0.82em; text-transform: uppercase; letter-spacing: 0.04em; font-weight: 600; padding-top: 0.1rem; }
+  .skill .row .content { font-size: 0.92em; }
+  .badge {
+    display: inline-block; padding: 0.05rem 0.5rem; border-radius: 10px;
+    font-size: 0.7em; font-weight: 600; letter-spacing: 0.04em;
+    text-transform: uppercase; margin-right: 0.35rem; vertical-align: 0.12em;
+  }
+  .badge.umbrella { background: #fce5d8; color: #8a3712; }
+  .badge.cardops { background: var(--good-soft); color: var(--good); }
+  .badge.responder { background: var(--accent-soft); color: var(--accent); }
+  .badge.bib { background: #f0e3fc; color: #5a3da8; }
+  .badge.style { background: #fbf4d8; color: #6b4f15; }
+  .badge.meta { background: #efe7ff; color: #5a3da8; }
+  .badge.cat { background: var(--warn-soft); color: var(--warn); }
+  .group {
+    background: var(--accent-soft);
+    border-radius: 6px;
+    padding: 0.8rem 1rem;
+    margin: 1.5rem 0 0.4rem;
+  }
+  .group h3 { margin: 0 0 0.15rem; font-size: 1rem; color: var(--accent-deep); }
+  .group .desc { color: var(--muted); font-size: 0.88em; margin: 0; }
+  .toc { background: var(--card); border: 1px solid var(--rule); border-radius: 5px; padding: 1rem 1.25rem; margin: 1.5rem 0; }
+  .toc ul { list-style: none; padding: 0; columns: 2; column-gap: 2rem; }
+  .toc li { break-inside: avoid; margin: 0.15rem 0; }
+  .toc a { color: var(--ink); border: none; }
+  .toc a:hover { color: var(--accent); }
+  .callout { background: var(--card); border-left: 4px solid var(--accent); padding: 0.85rem 1.1rem; margin: 1rem 0; border-radius: 0 5px 5px 0; }
+  .callout strong { color: var(--accent); }
+  .callout.warn { border-left-color: var(--warn); background: var(--warn-soft); }
+  .callout.warn strong { color: var(--warn); }
+  .callout.spec { border-left-color: var(--spec); background: var(--spec-soft); }
+  .callout.spec strong { color: var(--spec); }
+  .arch { background: var(--card); border: 1px solid var(--rule); padding: 1rem 1.25rem; border-radius: 5px; margin: 1rem 0; }
+  .arch pre { background: transparent; padding: 0; font-size: 0.82em; }
+  hr { border: none; border-top: 1px solid var(--rule); margin: 2rem 0; }
+  table { border-collapse: collapse; width: 100%; margin: 0.8rem 0; font-size: 0.9em; }
+  th, td { text-align: left; padding: 0.45rem 0.7rem; border-bottom: 1px solid var(--rule); vertical-align: top; }
+  th { background: var(--accent-soft); font-weight: 600; color: var(--accent-deep); }
+  tr:last-child td { border-bottom: none; }
+  .two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin: 0.8rem 0; }
+  .two-col > div { background: var(--card); border: 1px solid var(--rule); border-radius: 5px; padding: 0.8rem 1rem; }
+  .two-col h4 { margin-top: 0; }
+  .where { font-size: 0.8em; color: var(--muted); font-family: "SF Mono", Menlo, monospace; }
+  .dim { color: var(--muted); }
+  @media (max-width: 700px) {
+    .two-col { grid-template-columns: 1fr; }
+    .toc ul { columns: 1; }
+    .skill .row { grid-template-columns: 1fr; }
+  }
+</style>
+</head>
+<body>
+
+<div class="spec-banner">
+  <span class="badge">v1 spec</span>
+  <h1>Virgil editor skill set — v1</h1>
+  <p class="tagline">The mechanical foundation: Claude knows Virgil thoroughly and can manipulate its structures cleanly. Generative work happens in chat, on demand, using these primitives.</p>
+</div>
+
+<div class="wrap">
+
+<div class="toc">
+  <strong>Sections:</strong>
+  <ul>
+    <li><a href="#what-v1-is">1. What v1 is</a></li>
+    <li><a href="#ontology">2. Virgil's ontology</a></li>
+    <li><a href="#claude-knows">3. What Claude knows</a></li>
+    <li><a href="#voice">4. Voice &amp; persona</a></li>
+    <li><a href="#workflows">5. The two workflows</a></li>
+    <li><a href="#tasks-skills">6. Tasks vs Skills</a></li>
+    <li><a href="#status">7. Task status &amp; result</a></li>
+    <li><a href="#safety">8. Safety levels</a></li>
+    <li><a href="#lock">9. The editing lock</a></li>
+    <li><a href="#skills">10. The v1 skill set</a></li>
+    <li><a href="#not-v1">11. What's not in v1</a></li>
+    <li><a href="#apply-response">12. apply_response.py contract</a></li>
+    <li><a href="#helpers">13. Helper scripts</a></li>
+    <li><a href="#dev-dream">14. DEV mode + dev-dream</a></li>
+    <li><a href="#forward-compat">15. Forward-compatibility</a></li>
+  </ul>
+</div>
+
+<h2 id="what-v1-is">1. What v1 is</h2>
+
+<p>v1 ships the Virgil editor plus a Claude session that knows Virgil thoroughly and can mechanically manipulate its structures: cards, paragraphs, atoms, tasks, the bibliography, the preamble. The skill set is small and focused — about fifteen skills, all of them <em>mechanical</em>. They route, dispatch, edit cards, manage tasks, manage the bibliography, swap styles. They don't draft footnotes, write quotations, search for citations, restructure paragraphs, or compress prose. <strong>All generative work happens in chat with Claude on demand, using v1's mechanical primitives as building blocks.</strong></p>
+
+<div class="callout spec">
+<strong>The design principle.</strong> Build the mechanics solidly first. Once Claude understands Virgil completely and can manipulate cards/atoms/paragraphs reliably, every smart operation a user could want — drafting a footnote, finding a citation, tightening a paragraph — can be composed on the fly in chat. No need to pre-design every smart skill; the mechanical layer is the substrate that supports all of them.
+</div>
+
+<h2 id="ontology">2. Virgil's ontology</h2>
+
+<p>Virgil's world is made of <strong>the Document</strong> and five primitives within it.</p>
+
+<h3>The Document</h3>
+<p>The Document is the container. It is composed entirely of TextObjects. Cards, Atoms, and the other primitives exist within the Document but are not themselves the Document. The Document is the world.</p>
+
+<h3>The five primitives</h3>
+
+<table>
+<tr><th>Primitive</th><th>What it is</th><th>Mobility</th></tr>
+<tr>
+  <td><strong>TextObjects</strong></td>
+  <td>The structural atoms of text — paragraphs, headings, examples, quotation groups, blockquotes. Each is discrete and addressable.</td>
+  <td>Move, pop, drop freely.</td>
+</tr>
+<tr>
+  <td><strong>Atoms</strong></td>
+  <td>Inline elements within TextObjects, finer-grained than TextObjects but not themselves TextObjects. Examples: in-text citations (<code>\cite{}</code>), footnote markers (<code>\footnote{}</code>), refs (<code>\ref{}</code>), inline math (<code>$...$</code>). Atoms are often bidirectionally linked to Cards.</td>
+  <td>Text-bound — move with the surrounding text when cut/copied/dragged. Don't pop into Panels independently.</td>
+</tr>
+<tr>
+  <td><strong>Cards</strong></td>
+  <td>Almost everything else: notes, todos, footnotes, citations, quotations, bibliography entries, suggestions, comments, annotations, <strong>Tasks</strong>. Cards are not a sub-type of TextObject — they're a parallel structure that connects to text via anchors and/or Atom links.</td>
+  <td>Move, pop, drop freely.</td>
+</tr>
+<tr>
+  <td><strong>Omni-View gutters</strong></td>
+  <td>The in-line rendering of Cards alongside the text they're anchored to. The primary surface for seeing Cards in context.</td>
+  <td>—</td>
+</tr>
+<tr>
+  <td><strong>Panels</strong></td>
+  <td>Sidebar collections that list Cards of a given kind (Notes panel, Footnotes panel, Bibliography panel, Inbox panel for Tasks). The secondary surface — used for browsing, filtering, and bulk operations.</td>
+  <td>—</td>
+</tr>
+</table>
+
+<h3>Linkage: how Cards connect to text</h3>
+
+<p>Cards connect to text in two distinct ways — both are <em>properties</em> of the Card, not separate primitives:</p>
+
+<ul>
+  <li><strong>Anchor</strong> — a Card's positional pointer to a TextObject. One-way: the Card knows its anchor; the TextObject doesn't directly know what's anchored to it. Coarse-grained (paragraph-level). Notes and todos typically have only an anchor.</li>
+  <li><strong>Atom link</strong> — a Card's bidirectional relationship with an inline Atom. The Card and the Atom both know about each other. Fine-grained. Footnote Cards have an Atom link to their <code>\footnote{}</code> marker; citation Cards have Atom links to every <code>\cite{}</code> instance.</li>
+</ul>
+
+<p>Some Cards have only an anchor (notes). Some have only Atom links (a bibliography Card with many <code>\cite{}</code> Atom links and no paragraph anchor of its own). Some have both (a footnote Card is anchored to a paragraph AND atom-linked to a <code>\footnote{}</code> marker within that paragraph).</p>
+
+<h3>UUIDs — the identity layer</h3>
+
+<p>Every TextObject, Atom, and Card carries a UUID. The user never sees a UUID directly; Virgil uses them for stable reference across edits, linkage resolution, and the move/pop/drop affordance.</p>
+
+<ul>
+  <li><code>%!v:</code> at line-end of a paragraph in .tex marks a <strong>TextObject UUID</strong>.</li>
+  <li><code>\vcid{}</code> marks a <strong>citation Atom UUID</strong>.</li>
+  <li><code>\vfid{}</code> marks a <strong>footnote Atom UUID</strong>.</li>
+  <li><code>\vexid{}</code> marks an <strong>example reference Atom UUID</strong>.</li>
+  <li>Cards carry their UUIDs in their sidecar JSON entries (<code>"id": "..."</code>).</li>
+</ul>
+
+<h3>Tasks as a Card kind</h3>
+
+<p>A Task is a Card with lifecycle states (see §7). The Inbox is the Panel that surfaces them. <code>ai-requests.json</code> is their sidecar. Tasks can have anchors, Atom links, both, or neither (a Task: "review the whole doc" has no anchor).</p>
+
+<h2 id="claude-knows">3. What Claude knows about Virgil</h2>
+
+<p>When Claude opens a paper folder, it has access to two parallel knowledge bases:</p>
+
+<h3>The operational manifest — <code>.claude/virgil/</code></h3>
+
+<p>How Virgil-the-system works. Read by Claude to execute mechanical operations.</p>
+
+<div class="arch">
+<pre>
+.claude/virgil/
+├── INDEX.md          ← reading protocol; dispatches by task kind
+├── ontology.md       ← Document + 5 primitives; linkage; UUIDs
+├── structure.md      ← paper folder layout; .tex / sidecars / .claude / .virgil
+├── identity.md       ← every UUID flavor; when each is required; who generates them
+├── atoms.md          ← inline Atom kinds; their bidirectional Card linkage
+├── cards.md          ← card-kind taxonomy; per-kind shape; Task Card details
+├── sidecars.md       ← per-sidecar JSON schemas (auto-generated from types.ts)
+├── anchoring.md      ← Card→text linkage (Anchors AND Atom links)
+├── latex.md          ← allowed LaTeX vocabulary (what parseLatex() accepts)
+├── actions.md        ← editing surface: text decorations, structural ops,
+│                       card actions, keyboard equivalents
+└── gardening.md      ← cleanup conventions; orphan handling; what NOT to touch
+                       (includes the user-overlay deny-list — see §15)
+</pre>
+</div>
+
+<p><code>INDEX.md</code> is a <em>reading protocol</em>, not just a table of contents. It tells Claude exactly which docs each kind of task needs:</p>
+
+<pre><code>For any skill working with footnotes:
+  load: cards.md#footnotes, identity.md#vfid, anchoring.md, atoms.md#footnote
+
+For any skill modifying the document body:
+  load: ontology.md, latex.md, identity.md#paragraph-uuids, gardening.md
+
+For a UX question from the user:
+  load: nothing from here; consult .claude/virgil-ux/INDEX.md instead.
+...</code></pre>
+
+<p>Skills don't need to know what they need; they consult the INDEX. Loading is index-directed — neither eager (load everything) nor lazy (each skill self-discovers).</p>
+
+<h3>The UX library — <code>.claude/virgil-ux/</code></h3>
+
+<p>How Virgil-the-app works for the user. Read by Claude to answer "how do I…" / "what is…" / "where do I…" questions.</p>
+
+<div class="arch">
+<pre>
+.claude/virgil-ux/
+├── INDEX.md                 ← dispatcher for UX questions
+├── app/                     ← app-level orientation
+│   ├── what-is-virgil.md
+│   ├── paper-folder.md
+│   └── panels-overview.md
+├── panels/                  ← per-panel guides
+│   ├── notes.md
+│   ├── todos.md
+│   ├── bibliography.md
+│   ├── footnotes.md
+│   ├── citations.md
+│   ├── cutter.md
+│   ├── revisions.md
+│   └── inbox.md
+├── operations/              ← how-to guides
+│   ├── insert-footnote.md
+│   ├── edit-bibliography.md
+│   ├── ai-flag-a-card.md
+│   ├── archive-restore.md
+│   └── ...
+├── concepts/                ← glossary + explainers
+│   ├── anchor.md
+│   ├── atom-link.md
+│   ├── suggestion.md
+│   ├── task.md
+│   └── ai-request-lifecycle.md
+└── workflows/               ← end-to-end walkthroughs
+    ├── import-paper.md
+    ├── research-claim.md    (chat-Claude composes this from primitives)
+    └── ...
+</pre>
+</div>
+
+<p>The handoff between "answering" and "doing" is seamless: <em>"Here's how footnotes work in Virgil. Want me to add one to this paragraph?"</em> The UX library answers; the v1 skill set acts.</p>
+
+<h3>The central dispatcher — <code>.claude/CLAUDE.md</code></h3>
+
+<p>The first file Claude reads. Routes by question type:</p>
+
+<ul>
+  <li>Operational task → <code>virgil/INDEX.md</code> → relevant manifest docs</li>
+  <li>UX question from user → <code>virgil-ux/INDEX.md</code> → relevant UX doc</li>
+  <li>Skill invocation → <code>commands/editor/*</code></li>
+</ul>
+
+<h2 id="voice">4. Voice &amp; persona</h2>
+
+<p>Claude speaks as <strong>Virgil</strong> for first-order users. First-person where natural ("I added a footnote here"); notes left in sidecars carry <code>author: "virgil"</code>; user-facing copy never names "Claude" or "the model."</p>
+
+<p>For meta / dev work (running from the repo, iterating on the skill set, debugging the cowork plumbing), the persona shifts: Claude is Claude doing engineering work. The boundary is detectable at runtime — a meta-skill never runs in a paper or library workspace.</p>
+
+<h3>The standard user</h3>
+
+<p>A writer — academic, essayist, researcher. They care about sections, paragraphs, sentences, citations, footnotes, quotations, the shape of the argument, register, tone, sources. They <em>do not</em> care about TipTap extensions, paragraph UUIDs, the <code>%!v:</code> marker convention, sidecar JSON schemas, <code>apply_response.py</code>'s writeback transaction, what dispatch order the umbrella uses, version-bump etiquette.</p>
+
+<h3>Detail calibration</h3>
+
+<div class="two-col">
+<div style="border-left: 4px solid var(--good); background: var(--good-soft);">
+<h4 style="color: var(--good);">Detailed</h4>
+<ul>
+  <li>The text itself: what changed, why a footnote works, what the new citation says.</li>
+  <li>Substantive editorial reasoning: argument structure, tone, register, claim/warrant relationships.</li>
+  <li>Sources: who said what, where, when — when verifiable.</li>
+  <li>Judgment calls: "I left this hedge because it's load-bearing for your argument."</li>
+</ul>
+</div>
+<div style="border-left: 4px solid var(--warn); background: var(--warn-soft);">
+<h4 style="color: var(--warn);">Gestural (or silent)</h4>
+<ul>
+  <li>Plumbing: "I wrote to footnotes.json and bumped version.txt" → "footnote added."</li>
+  <li>Schema vocabulary: "I created a RevisionSuggestionCard" → "I drafted a revision."</li>
+  <li>File paths, UUIDs, helper script names, JSON keys.</li>
+  <li>Internal dispatch: "I called sub-skill X via apply_response.py" → just do the work.</li>
+</ul>
+</div>
+</div>
+
+<h3>Core principles (mechanics-focused subset)</h3>
+
+<ol>
+  <li><strong>Read before editing.</strong> Look at the surrounding paragraph, the adjacent cards, the bib state. Work that skips this rarely fits.</li>
+  <li><strong>Locate before acting.</strong> If the anchor is ambiguous, ask — don't guess. (See §5 on anchor resolution.)</li>
+  <li><strong>Trust the user's framing.</strong> "This is a manuscript citation, leave it alone" means leave it alone.</li>
+  <li><strong>Never fabricate.</strong> Sources, quotations, page numbers, DOIs — verifiable or absent.</li>
+  <li><strong>Garden as you go.</strong> Notice stale anchors, orphan footnotes, mismatched bibkeys while doing other work; mention them, offer to clean up.</li>
+  <li><strong>Stay in your lane.</strong> A skill doing card creation doesn't simultaneously refactor the bibliography. One ask, one action.</li>
+  <li><strong>Atomic by default.</strong> Each change lands fully or not at all. No half-written sidecars, no dangling references.</li>
+  <li><strong>Leave a trail.</strong> Every change leaves a trail. Default is explicit (the Inbox entry + the change itself); the user's chosen safety level controls visibility (§8).</li>
+  <li><strong>Surface uncertainty.</strong> Better to flag ambiguity than to ship a confident-sounding wrong answer.</li>
+</ol>
+
+<h2 id="workflows">5. The two workflows</h2>
+
+<p>Virgil supports two ways for a user to bring work to Claude.</p>
+
+<h3>Workflow A: UI-initiated (note-card-based)</h3>
+
+<p>The user creates a note card and AI-flags it. The existing card-flag bridge (<code>bridgeCardAiRequestFlag()</code>) converts the flagged note into a Task in <code>ai-requests.json</code>. Claude drains via <code>/editor/review</code>. There is no separate "Virgil form" widget — the note IS the input.</p>
+
+<p>Two note variants, differing only by anchor type:</p>
+
+<ul>
+  <li><strong>General note card</strong> — anchored to a paragraph (TextObject). For "Virgil, do this thing somewhere around this paragraph."</li>
+  <li><strong>Selection note card</strong> — anchored to a text span within a paragraph (possibly to specific Atoms). For "Virgil, act on this specific text."</li>
+</ul>
+
+<p>Both flow through the same data path. Skills receive a <code>&lt;requestId&gt;</code> and don't need to know which variant was the source.</p>
+
+<p>The existing card-flag bridge also covers <strong>todos / cutter-comments / revision-comments</strong> for responder Tasks (a different semantic class — <em>respond to this card</em> rather than <em>do this thing</em> — same data path).</p>
+
+<h3>Workflow B: Claude chat</h3>
+
+<p>The user addresses Virgil directly in a conversational session. Virgil reads the conversation, resolves any ambiguity by asking, and acts.</p>
+
+<h3>Anchor resolution — the load-bearing rule for Workflow B</h3>
+
+<div class="callout spec">
+<strong>The burden is on whoever has the most context.</strong>
+<br><br>
+<strong>Workflow A</strong> queries arrive with maximal context. The UI captured the paragraph UUID, selected text, and surrounding state at the moment the user filed the request. Skills consume that and proceed.
+<br><br>
+<strong>Workflow B</strong> queries place the burden on <em>the user</em> to supply disambiguating context — quoted text, section name, paragraph reference, "the part where I talk about X." If Virgil can't resolve the anchor unambiguously from the chat, <strong>Virgil asks rather than guesses</strong>. There is no fallback precedence chain that lets Virgil silently lock onto its best-guess paragraph.
+</div>
+
+<p>The proposed <code>find_anchor.py</code> helper (§13) is a <em>resolver</em>, not a guesser. It either finds an unambiguous match or returns a list of candidates for Virgil to surface back to the user. No skill ever proceeds with an anchor it isn't confident in.</p>
+
+<h3>The cowork loop</h3>
+
+<div class="arch">
+<pre>
+   Frontend                              Claude session
+     │                                      │
+  A. │  user files request via note ──►     │
+     │  card-flag bridge writes             │
+     │  ai-requests.json                    │
+     │                                      ◄ /editor/review reads
+     │                                      │
+  B. │  user asks Claude directly ─────────►│
+     │  (no disk surface filled)            │
+     │                                      │   Resolves anchor via chat
+     │                                      │   (asks if ambiguous)
+     │                                      │
+     │                                      │   dispatches per-kind
+     │                                      │   subskill subagent
+     │                                      │
+     │  &lt;sidecar&gt;.json (new card)        ◄ subskill writes via
+     │  ai-requests.json (Task created      apply_response.py
+     │   or status flipped)                   subcommand
+     │  version.txt (bumped)                │
+     │                                      │
+     ◄ useDocNotificationStream polls       │
+       version.txt every 6s, refreshes      │
+</pre>
+</div>
+
+<h2 id="tasks-skills">6. Tasks vs Skills</h2>
+
+<div class="callout spec">
+<strong>Task</strong> is the user-facing unit of work. <strong>Skill</strong> is an internal unit. One Task may invoke many Skills; the user doesn't see or care which.
+</div>
+
+<p>When a user files <em>"add a footnote here about Smith"</em>, that's <strong>one Task</strong>. Behind the scenes, the umbrella might invoke <code>create-card --kind=footnote</code>, helper scripts to resolve the anchor, the apply_response.py writeback — but those are Skills, internal. The user sees one Task in the Inbox; one outcome.</p>
+
+<p>Tasks are Cards (per the ontology in §2), with lifecycle states that other Card kinds don't share. They live in <code>ai-requests.json</code> and surface in the Inbox Panel.</p>
+
+<h3>Reporting is per-Task, not per-Skill</h3>
+
+<table>
+<tr><th>Level</th><th>What gets written</th><th>Where it goes</th></tr>
+<tr>
+  <td><strong>Per-Skill</strong></td>
+  <td>Terse dev one-liner: <code>Done: footnote/&lt;id&gt;. Output: footnotes.json, document.tex.</code></td>
+  <td>stdout — for the umbrella, logs, dev-dream memos. Never user-visible.</td>
+</tr>
+<tr>
+  <td rowspan="4"><strong>Per-Task</strong></td>
+  <td>User-facing Task summary (Virgil voice). e.g. <em>"Added a footnote tracing Smith's claim back to Habermas."</em></td>
+  <td>Written onto the Task Card as the resolution.</td>
+</tr>
+<tr>
+  <td>Inbox transition (status flip).</td>
+  <td>The Task Card flips <code>submitted</code> → <code>complete</code>. The Inbox view IS the notification surface.</td>
+</tr>
+<tr>
+  <td>Chat reply (if Task was chat-initiated).</td>
+  <td>Virgil's reply in the next conversational turn. Short or substantive depending on context.</td>
+</tr>
+<tr>
+  <td>Dev-dream memo (DEV mode only).</td>
+  <td><code>editor/dev/memos/&lt;date&gt;/&lt;skill&gt;-&lt;task-id&gt;.md</code> — captures the Task outcome for §14 learning.</td>
+</tr>
+</table>
+
+<p>The mechanism: the umbrella (or the chat-initiated entry skill) aggregates per-Skill dev one-liners into Task completion. <code>apply_response.py</code> has a Task-completion mode that writes the four surfaces atomically (§12).</p>
+
+<h2 id="status">7. Task status &amp; result</h2>
+
+<p>Tasks carry two lifecycle fields. Clean separation of "where" from "how it ended."</p>
+
+<table>
+<tr><th>Field</th><th>Value</th><th>Meaning</th></tr>
+<tr><td rowspan="4"><code>status</code><br>(lifecycle)</td><td><code>pending</code></td><td>Task just created, not yet picked up.</td></tr>
+<tr><td><code>in-progress</code></td><td>Virgil is working on it.</td></tr>
+<tr><td><code>complete</code></td><td>Done (one way or another — see <code>result</code>).</td></tr>
+<tr><td><code>failed</code></td><td>Couldn't be done.</td></tr>
+<tr><td rowspan="8"><code>result</code><br>(outcome; set only when <code>status</code> ∈ {complete, failed})</td><td><code>accepted</code></td><td>Level 3: proposal was accepted by the user.</td></tr>
+<tr><td><code>rejected</code></td><td>Level 3: proposal was rejected by the user.</td></tr>
+<tr><td><code>auto-applied</code></td><td>Level 2: direct apply with surfaced comment.</td></tr>
+<tr><td><code>silent-applied</code></td><td>Level 1: direct apply, no surfaced comment.</td></tr>
+<tr><td><code>direct-created</code></td><td>Mechanical create skill landed its artifact — no review (the user opted in by asking).</td></tr>
+<tr><td><code>refused</code></td><td>Virgil declined to act (ambiguous anchor, can't find source, hit a Don't-rule).</td></tr>
+<tr><td><code>impossible</code></td><td>Virgil tried but was blocked by external factors (API down, library missing).</td></tr>
+<tr><td><code>errored</code></td><td>Internal failure during execution.</td></tr>
+</table>
+
+<p>The Inbox filters on <code>status</code> for "what's open vs done"; groups by <code>result</code> for outcome breakdown. Querying is trivial: <em>"show me every silent change today"</em> → <code>result: silent-applied</code>; <em>"show me what Virgil refused"</em> → <code>result: refused</code>.</p>
+
+<h2 id="safety">8. Safety levels</h2>
+
+<p>Every Task carries a <strong>safety level</strong> describing how aggressively the user wants Virgil's work landed. The policy is <em>per-Task</em>, not per-skill — the user thinks in Tasks, so the policy lives there.</p>
+
+<h3>The three levels</h3>
+
+<table>
+<tr><th>Level</th><th>Behavior</th><th>What the user sees</th><th>Maps to <code>apply_response.py</code></th></tr>
+<tr>
+  <td><strong>Level 1 — Silently insert/change</strong></td>
+  <td>Skill performs the change directly. No surfaced card, no comment.</td>
+  <td>The change is just there. Audit trail in the Inbox (Task with <code>result: silent-applied</code>) for retroactive checking.</td>
+  <td><code>write-silent</code></td>
+</tr>
+<tr>
+  <td><strong>Level 2 — Change, and leave a comment</strong></td>
+  <td>Skill performs the change directly. Leaves a sibling comment describing what was done.</td>
+  <td>The change is live; an adjacent comment marks what happened. (<code>result: auto-applied</code>.)</td>
+  <td><code>write-with-comment</code></td>
+</tr>
+<tr>
+  <td><strong>Level 3 — Propose a change</strong></td>
+  <td>Skill drafts the change as a suggestion. Document is unchanged; user reviews and accepts or rejects.</td>
+  <td>A suggestion card to act on. (<code>result: accepted | rejected</code>.)</td>
+  <td><code>complete-task</code> (with suggestion-card payload)</td>
+</tr>
+</table>
+
+<h3>How the level is set</h3>
+
+<p>Per-Task field in <code>ai-requests.json</code>: <code>safety_level: 1 | 2 | 3</code>. Skills read it and dispatch to the matching <code>apply_response.py</code> subcommand.</p>
+
+<ul>
+  <li><strong>Workflow A:</strong> the user picks the level explicitly when creating the AI-flagged note. The note's safety-level field becomes the Task's safety-level field at bridge time.</li>
+  <li><strong>Workflow B:</strong> Claude asks the user for the level when not specified. If the user has standardized within the conversation (<em>"from now on use level 2"</em>), Claude carries that across subsequent Tasks in the conversation until told otherwise. No implicit default; no assumption.</li>
+</ul>
+
+<h3>The catastrophic-operation exception</h3>
+
+<div class="callout warn">
+<strong>Always warn before potentially catastrophic actions, regardless of the Task's safety level.</strong> If the work crosses a "catastrophic" threshold, the skill surfaces a one-time confirmation even when the Task says Level 1.
+</div>
+
+<p><strong>Catastrophic operations in v1:</strong></p>
+
+<ul>
+  <li><code>style-merge</code> — rewrites the preamble; affects rendering throughout the document.</li>
+  <li><code>sync-bib-to-library</code> — renames citekeys throughout the doc; rewrites the bibliography.</li>
+</ul>
+
+<p><strong>The confirmation:</strong> <em>"You asked for [Level 1]; this operation is a preamble rewrite that affects rendering throughout the document. Confirm silent, or downgrade to Level 2 / 3?"</em> One confirmation per Task; if the user confirms, Virgil proceeds at the requested level for that Task.</p>
+
+<h2 id="lock">9. The editing lock</h2>
+
+<p>When Claude is about to write files, it briefly takes the editing pen so the user can't be typing simultaneously and lose work. This is fully scripted inside <code>apply_response.py</code>'s subcommands — no LLM in the loop, no token cost.</p>
+
+<h3>The mechanism</h3>
+
+<div class="arch">
+<pre>
+apply_response.py &lt;subcommand&gt; ...
+  │
+  ├─ acquire pen (one file write):
+  │    write .virgil/pen-context.json:
+  │      { "holder": "claude",
+  │        "acquired_at": &lt;ts&gt;,
+  │        "expires_at": &lt;ts + 30s&gt;,
+  │        "prior_collab_enabled": &lt;was-it-on?&gt; }
+  │    if collab was off, flip virgil/collab.json to enabled
+  │    (pen.holder set to "claude" in same write)
+  │
+  ├─ do the atomic write (the subcommand's actual work)
+  │
+  └─ release pen (one file write):
+       restore virgil/collab.json to prior state (off if it was off)
+       delete .virgil/pen-context.json
+</pre>
+</div>
+
+<h3>Properties</h3>
+
+<ul>
+  <li><strong>Zero token cost.</strong> Dance happens inside Python, no LLM. Skills call <code>apply_response.py &lt;subcommand&gt; ...</code> as they would anyway.</li>
+  <li><strong>Lock window: sub-second to a few seconds.</strong> Only the <em>commit phase</em> holds the pen — not the thinking phase. The user might wait 30 seconds for Claude to think; the actual lock window is the brief moment when files are being written.</li>
+  <li><strong>TTL-based crash recovery.</strong> The <code>expires_at</code> field gives Virgil's poller an auto-release path. No background heartbeat process needed.</li>
+  <li><strong>Transparent over collab state.</strong> If the user wasn't in collab mode, Virgil turns it on, does the write, and turns it off again. Prior state captured in <code>pen-context.json</code> at acquire time.</li>
+  <li><strong>UI surface.</strong> When Claude has the pen, the Virgil UI shows the existing collab-locked rendering with adjusted copy: <em>"Virgil is editing — please wait."</em> A "Force release" button sits behind a confirmation for the case where Claude died and TTL hasn't fired yet.</li>
+  <li><strong>Doc-level granularity.</strong> Lock the whole document, not individual paragraphs.</li>
+</ul>
+
+<h2 id="skills">10. The v1 skill set</h2>
+
+<p>Fifteen skills total. All mechanical or routing — no content generation.</p>
+
+<p><strong>Naming convention:</strong> uniform <code>&lt;verb&gt;-&lt;noun&gt;</code>. Some existing skills get renamed (with the old names kept as aliases for one release cycle).</p>
+
+<div class="group">
+  <h3>Umbrella</h3>
+  <p class="desc">The dispatcher every drain runs through.</p>
+</div>
+
+<div class="skill">
+<details>
+<summary><span class="badge umbrella">umbrella</span><span class="skill-name">/editor/review</span> — <span class="skill-tagline">Walk the unified Task inbox; dispatch each Task to its specialist skill as a subagent.</span></summary>
+<div class="body">
+  <div class="row"><div class="label">Args</div><div class="content"><code>&lt;docPath&gt;</code> (optional — falls back to <code>cwd</code> if it has a <code>virgil/</code> subdir)</div></div>
+  <div class="row"><div class="label">Reads</div><div class="content"><code>ai-requests.json</code> (pending Tasks), card-flag panels via <code>list_requests.py</code></div></div>
+  <div class="row"><div class="label">Writes</div><div class="content">Nothing directly. Every write goes through a dispatched subskill.</div></div>
+  <div class="row"><div class="label">Dispatch order</div><div class="content">Bib-review → style-merge → card-creation → card-ops → responders. Dependent work goes first.</div></div>
+</div>
+</details>
+</div>
+
+<div class="group">
+  <h3>Card mechanics (new)</h3>
+  <p class="desc">The core mechanical surface. Create, edit, move, archive, restore, link — uniform across card kinds where the ontology allows; split where the kind has its own concerns.</p>
+</div>
+
+<div class="skill">
+<details>
+<summary><span class="badge cardops">card-ops</span><span class="skill-name">/editor/create-card</span> — <span class="skill-tagline">Create a new card of the specified kind at the given anchor.</span></summary>
+<div class="body">
+  <div class="row"><div class="label">Args</div><div class="content"><code>&lt;docPath&gt; &lt;requestId&gt; --kind=&lt;note|todo|footnote|citation|quotation|example|annotation&gt; [--body &lt;text&gt;]</code></div></div>
+  <div class="row"><div class="label">Mechanics</div><div class="content">User-supplied body (chat-Claude composes content for "smart" cases). Skill mechanically inserts: writes sidecar entry; if the kind has an Atom (footnote / citation / example), inserts the corresponding <code>\v*id{}</code> marker in .tex at the anchor.</div></div>
+  <div class="row"><div class="label">Writes</div><div class="content"><code>&lt;panel&gt;.json</code>, <code>document.tex</code> (for atom-bearing kinds), <code>ai-requests.json</code></div></div>
+  <div class="row"><div class="label">Parameterized</div><div class="content">Per Decision C: same commandments across kinds; only body shape differs. One skill, many <code>--kind</code> values.</div></div>
+</div>
+</details>
+</div>
+
+<div class="skill">
+<details>
+<summary><span class="badge cardops">card-ops</span><span class="skill-name">/editor/edit-card</span> — <span class="skill-tagline">Modify an existing card's body or fields.</span></summary>
+<div class="body">
+  <div class="row"><div class="label">Args</div><div class="content"><code>&lt;docPath&gt; &lt;cardId&gt; [--body &lt;new-body&gt; | --field &lt;key&gt;=&lt;value&gt;]</code></div></div>
+  <div class="row"><div class="label">Mechanics</div><div class="content">Reads the card via <code>card_by_id.py</code>; applies the user-specified change to body or named field; writes back through apply_response.</div></div>
+  <div class="row"><div class="label">Writes</div><div class="content"><code>&lt;panel&gt;.json</code> (the card's home sidecar)</div></div>
+</div>
+</details>
+</div>
+
+<div class="skill">
+<details>
+<summary><span class="badge cardops">card-ops</span><span class="skill-name">/editor/archive-card</span> — <span class="skill-tagline">Move a card to the archive panel.</span></summary>
+<div class="body">
+  <div class="row"><div class="label">Args</div><div class="content"><code>&lt;docPath&gt; &lt;cardId&gt;</code></div></div>
+  <div class="row"><div class="label">Writes</div><div class="content">Removes from current <code>&lt;panel&gt;.json</code>, adds to <code>archive.json</code> with original-panel preserved</div></div>
+  <div class="row"><div class="label">Reversible by</div><div class="content"><code>/editor/restore-card</code></div></div>
+</div>
+</details>
+</div>
+
+<div class="skill">
+<details>
+<summary><span class="badge cardops">card-ops</span><span class="skill-name">/editor/restore-card</span> — <span class="skill-tagline">Restore a card from the archive to its prior panel.</span></summary>
+<div class="body">
+  <div class="row"><div class="label">Args</div><div class="content"><code>&lt;docPath&gt; &lt;cardId&gt;</code></div></div>
+  <div class="row"><div class="label">Writes</div><div class="content">Removes from <code>archive.json</code>, restores to original panel sidecar</div></div>
+</div>
+</details>
+</div>
+
+<div class="skill">
+<details>
+<summary><span class="badge cardops">card-ops</span><span class="skill-name">/editor/move-card</span> — <span class="skill-tagline">Re-anchor a card to a different paragraph or atom.</span></summary>
+<div class="body">
+  <div class="row"><div class="label">Args</div><div class="content"><code>&lt;docPath&gt; &lt;cardId&gt; &lt;newAnchor&gt;</code> (anchor = paragraph UUID, selected text, or atom ID)</div></div>
+  <div class="row"><div class="label">Mechanics</div><div class="content">Resolves the new anchor via <code>find_anchor.py</code> (asks if ambiguous, never guesses); updates the card's anchor/atom-link property; writes back.</div></div>
+  <div class="row"><div class="label">Writes</div><div class="content">The card's <code>&lt;panel&gt;.json</code></div></div>
+</div>
+</details>
+</div>
+
+<div class="skill">
+<details>
+<summary><span class="badge cardops">card-ops</span><span class="skill-name">/editor/link-cards</span> — <span class="skill-tagline">Create a relationship link between two cards.</span></summary>
+<div class="body">
+  <div class="row"><div class="label">Args</div><div class="content"><code>&lt;docPath&gt; &lt;cardAId&gt; &lt;cardBId&gt; [--kind=&lt;rel&gt;]</code></div></div>
+  <div class="row"><div class="label">Mechanics</div><div class="content">Adds a relationship record to both cards' sidecar entries. Bidirectional link.</div></div>
+</div>
+</details>
+</div>
+
+<div class="group">
+  <h3>Responders (routing only)</h3>
+  <p class="desc">When a user AI-flags a note / todo / cutter-comment / revision-comment, the responder classifies the request and surfaces the work to chat-Claude. v1 responders do NOT draft response content — they route.</p>
+</div>
+
+<div class="skill">
+<details>
+<summary><span class="badge responder">router</span><span class="skill-name">/editor/answer-note-request</span> — <span class="skill-tagline">Classify a flagged note's request and surface to chat-Claude for handling.</span></summary>
+<div class="body">
+  <div class="row"><div class="label">Args</div><div class="content"><code>&lt;docPath&gt; &lt;requestId&gt;</code> — may be <code>virtual:notes:&lt;cardId&gt;</code> for legacy un-bridged flags</div></div>
+  <div class="row"><div class="label">Mechanics</div><div class="content">Reads the source note; classifies the request kind (text-edit / new-card / question / analysis); writes a Task entry with the classification + source-note context; surfaces to chat-Claude via the Task's <code>handoff: chat</code> field. Does not draft a response.</div></div>
+  <div class="row"><div class="label">Writes</div><div class="content"><code>ai-requests.json</code> (Task entry with classification)</div></div>
+</div>
+</details>
+</div>
+
+<div class="skill">
+<details>
+<summary><span class="badge responder">router</span><span class="skill-name">/editor/answer-todo-request</span> — <span class="skill-tagline">Classify a flagged todo and surface to chat-Claude.</span></summary>
+<div class="body">
+  <div class="row"><div class="label">Args</div><div class="content"><code>&lt;docPath&gt; &lt;requestId&gt;</code></div></div>
+  <div class="row"><div class="label">Mechanics</div><div class="content">Same routing pattern as <code>answer-note-request</code>. Classifies the todo (text-edit / new-card / question / done-marker); creates the handoff Task.</div></div>
+</div>
+</details>
+</div>
+
+<div class="skill">
+<details>
+<summary><span class="badge responder">router</span><span class="skill-name">/editor/answer-cutter-comment</span> — <span class="skill-tagline">Classify a flagged Cutter-panel comment and surface to chat-Claude.</span></summary>
+<div class="body">
+  <div class="row"><div class="label">Args</div><div class="content"><code>&lt;docPath&gt; &lt;requestId&gt;</code></div></div>
+</div>
+</details>
+</div>
+
+<div class="skill">
+<details>
+<summary><span class="badge responder">router</span><span class="skill-name">/editor/answer-revision-comment</span> — <span class="skill-tagline">Classify a flagged Revisions-panel comment and surface to chat-Claude.</span></summary>
+<div class="body">
+  <div class="row"><div class="label">Args</div><div class="content"><code>&lt;docPath&gt; &lt;requestId&gt;</code></div></div>
+</div>
+</details>
+</div>
+
+<div class="group">
+  <h3>Bibliography</h3>
+  <p class="desc">Mechanical operations on bibliography entries and library cross-cutting.</p>
+</div>
+
+<div class="skill">
+<details>
+<summary><span class="badge bib">bib</span><span class="skill-name">/editor/answer-bib-review</span> — <span class="skill-tagline">Verify and fill bibliography fields against external sources, or sync from the library.</span></summary>
+<div class="body">
+  <div class="row"><div class="label">Args</div><div class="content"><code>&lt;docPath&gt; &lt;bibKey&gt; [--library-sync &lt;libraryCitekey&gt; --library &lt;path&gt;]</code></div></div>
+  <div class="row"><div class="label">Two modes</div><div class="content">
+    <ol>
+      <li><strong>Field verification</strong> — checks the entry against Crossref / OpenAlex / Semantic Scholar / arXiv; replaces verified fields; leaves unverified as-is with a status note.</li>
+      <li><strong>Library sync</strong> (<code>--library-sync</code>) — swaps in the library's authoritative entry; renames the citekey throughout the doc via <code>rename_citekey.py</code>.</li>
+    </ol>
+  </div></div>
+  <div class="row"><div class="label">Writes</div><div class="content"><code>references.bib</code>; <code>document.tex</code> + <code>citations.json</code> if renaming; <code>bib-review-requests.json</code></div></div>
+  <div class="row"><div class="label">Note</div><div class="content">Annotation drafting is deferred to chat-Claude. v1's <code>answer-bib-review</code> handles only the verification/sync mechanics.</div></div>
+</div>
+</details>
+</div>
+
+<div class="skill">
+<details>
+<summary><span class="badge bib">bib</span><span class="badge cat">catastrophic</span><span class="skill-name">/editor/sync-bib-to-library</span> — <span class="skill-tagline">Reconcile the paper's bibliography against the user's Virgil Library: swap matched, triage missing, flag ambiguous.</span></summary>
+<div class="body">
+  <div class="row"><div class="label">Args</div><div class="content"><code>&lt;docPath&gt; [--dry-run] [--library &lt;path&gt;]</code></div></div>
+  <div class="row"><div class="label">Match phases</div><div class="content">
+    <ol>
+      <li><strong>Matched</strong> (by citekey, DOI, or title+author signature) → swap entry via <code>answer-bib-review --library-sync</code>.</li>
+      <li><strong>Missing</strong> → bundle, triage into library's <code>unsorted/</code>; authenticate; re-match; swap.</li>
+      <li><strong>Ambiguous</strong> → write a review note listing candidates; do not auto-swap.</li>
+    </ol>
+  </div></div>
+  <div class="row"><div class="label">Catastrophic</div><div class="content">Renames citekeys document-wide; writes to the library. Triggers the §8 confirmation if requested at Level 1 or 2.</div></div>
+  <div class="row"><div class="label">Writes</div><div class="content"><code>references.bib</code>, <code>document.tex</code>, <code>citations.json</code>; library <code>master.bib</code> via <code>flock</code>-protected shims</div></div>
+</div>
+</details>
+</div>
+
+<div class="group">
+  <h3>Style</h3>
+</div>
+
+<div class="skill">
+<details>
+<summary><span class="badge style">style</span><span class="badge cat">catastrophic</span><span class="skill-name">/editor/style-merge</span> — <span class="skill-tagline">Merge the user's preamble customizations onto a target style's preamble.</span></summary>
+<div class="body">
+  <div class="row"><div class="label">Args</div><div class="content"><code>&lt;docPath&gt;</code></div></div>
+  <div class="row"><div class="label">Carries forward</div><div class="content"><code>\usepackage{...}</code>, <code>\newcommand</code> family, <code>\setlength</code> / <code>\setcounter</code>, font-config directives</div></div>
+  <div class="row"><div class="label">Drops</div><div class="content">Virgil-auto-injected commands (<code>\vfid</code>, <code>\vcid</code>, <code>\vexid</code>); <code>\title</code> / <code>\author</code> / <code>\date</code>; <code>\documentclass</code>; shadowed bib packages</div></div>
+  <div class="row"><div class="label">Validation</div><div class="content">Exactly one <code>\begin{document}</code>; no <code>\end{document}</code>; matched braces. On failure, mark Task complete with a <code>result: errored</code>; do NOT write the .tex.</div></div>
+  <div class="row"><div class="label">Catastrophic</div><div class="content">Preamble affects rendering throughout the document. Triggers the §8 confirmation if requested at Level 1 or 2.</div></div>
+</div>
+</details>
+</div>
+
+<div class="group">
+  <h3>Dev meta</h3>
+  <p class="desc">Skills for iterating on the skill set itself. Run from the repo by a developer, not by end users.</p>
+</div>
+
+<div class="skill">
+<details>
+<summary><span class="badge meta">dev-only</span><span class="skill-name">/editor/iterate-virgil-editor</span> — <span class="skill-tagline">Stress-test the editor skill set in sandboxed sample papers. Synthesizes test cases; runs target skill via subagents; reads critique memos; edits skill markdown; loops.</span></summary>
+<div class="body">
+  <div class="row"><div class="label">Args</div><div class="content"><code>[&lt;skill-name&gt;] [&lt;max-attempts&gt;]</code></div></div>
+  <div class="row"><div class="label">Reads</div><div class="content"><code>editor/skills/&lt;skill&gt;.md</code>, <code>samples/annotation-history/</code> (never mutated — cloned per attempt)</div></div>
+  <div class="row"><div class="label">Writes</div><div class="content"><code>editor/dev/sandboxes/*</code>, <code>editor/dev/iterations/*</code>, <code>editor/skills/&lt;skill&gt;.md</code> (between attempts)</div></div>
+</div>
+</details>
+</div>
+
+<div class="skill">
+<details>
+<summary><span class="badge meta">dev-only</span><span class="skill-name">/editor/dream</span> — <span class="skill-tagline">Overnight autonomous pass: reads DEV-mode memos; refactors / edits skills, scripts, manifest. Acts-directly for small in-place edits; proposes-via-worktree for cross-skill or contract-changing edits.</span></summary>
+<div class="body">
+  <div class="row"><div class="label">Args</div><div class="content"><code>[--fast-path &lt;memo-id&gt;]</code></div></div>
+  <div class="row"><div class="label">Inputs</div><div class="content">All DEV-mode memos since last run; previous dream-digests; current skill markdown; script library; brainstorm/architecture docs.</div></div>
+  <div class="row"><div class="label">Writes</div><div class="content">In acts-mode: <code>editor/skills/&lt;skill&gt;.md</code> directly. In proposes-mode: a git worktree with a "PROPOSED" diff for review. Always writes <code>editor/dev/dream-digests/&lt;YYYY-MM-DD&gt;.md</code>.</div></div>
+  <div class="row"><div class="label">See</div><div class="content">§14 for the full DEV mode + dev-dream architecture.</div></div>
+</div>
+</details>
+</div>
+
+<h2 id="not-v1">11. What's not in v1</h2>
+
+<p>Deferred to a future version. These are designed on the fly with chat-Claude using v1's mechanical primitives, OR deferred to v2 entirely (the user-dream layer).</p>
+
+<h4>Generative skills (designed ad-hoc in chat using v1 mechanics)</h4>
+
+<ul>
+  <li><strong><code>draft-footnote</code> / <code>find-citation</code> / <code>draft-quotation</code> / <code>draft-suggestion</code></strong> — content-generation skills. Replaced by chat-Claude composing the content + calling <code>create-card</code> mechanically.</li>
+  <li><strong>The revision family</strong> — <code>revise-compress</code>, <code>revise-cut-hedges</code>, <code>revise-flow</code>, <code>revise-make-explicit</code>, etc. (~25 skills sketched). Chat-Claude does revision work directly on selected text.</li>
+  <li><strong>The research family</strong> — <code>research-paragraph</code>, <code>find-source</code>, <code>extract-quote</code>, <code>summarize-source</code>, <code>check-citation-fit</code>, <code>related-from-library</code>, <code>triangulate</code>. Chat-Claude does research work using <code>library_query.py</code>-style direct access when needed.</li>
+  <li><strong>The file-prep family</strong> — <code>preflight</code>, <code>prep-file</code>, <code>convert-examples</code>, <code>expand-macros</code>, <code>migrate-preamble</code>, <code>migrate-bib</code>, <code>quarantine-tikz</code>. File ingestion is a chat workflow in v1.</li>
+</ul>
+
+<h4>User-dream layer (deferred to v2)</h4>
+
+<ul>
+  <li>The user-dream skill itself (per-user voice/preference learning).</li>
+  <li><code>~/.virgil-user/</code> overlay storage (voice profile, commandment overrides, skill preferences).</li>
+  <li><code>&lt;docpath&gt;/.virgil/user-overrides/</code> per-doc layer.</li>
+  <li>Runtime layering (app &lt; user-global &lt; per-doc).</li>
+  <li>The <code>revise-with-feedback</code> meta-skill.</li>
+  <li>Aggregate signal upward (opt-in telemetry).</li>
+</ul>
+
+<p>v1 preserves architectural optionality for the user-dream layer — see §15.</p>
+
+<h2 id="apply-response">12. <code>apply_response.py</code> contract</h2>
+
+<p>The single sanctioned writeback path. Owns the atomic <em>card-write + status-flip + notification + version-bump + pen-acquire/release</em> transaction. Skills do not write files directly; they call <code>apply_response.py</code> with a payload describing what should land.</p>
+
+<h3>Subcommand architecture</h3>
+
+<table>
+<tr><th>Subcommand</th><th>Used by</th><th>Writes atomically</th></tr>
+<tr>
+  <td><code>complete-task</code></td>
+  <td>Level 3 Tasks (propose a change), and direct-create skills like <code>create-card</code> for atom-bearing kinds (the artifact itself is the deliverable; user opted in by asking)</td>
+  <td>Card (suggestion or direct-create artifact); Task with <code>status: complete</code> and <code>result: review-pending | direct-created</code>; user-facing summary on Task card; chat reply (if chat-initiated); inbox notification; version bump</td>
+</tr>
+<tr>
+  <td><code>write-with-comment</code></td>
+  <td>Level 2 Tasks (change + comment)</td>
+  <td>The change to .tex / sidecar; sibling comment card explaining the change; Task with <code>result: auto-applied</code>; inbox notification; version bump</td>
+</tr>
+<tr>
+  <td><code>write-silent</code></td>
+  <td>Level 1 Tasks (silent insert/change)</td>
+  <td>The change to .tex / sidecar; Task with <code>result: silent-applied</code>; inbox notification; version bump (no surfaced comment card)</td>
+</tr>
+<tr>
+  <td><code>complete-only</code></td>
+  <td>Bib reviews and failure cases (no card produced)</td>
+  <td>Status flip only, no card</td>
+</tr>
+<tr>
+  <td><code>revert</code></td>
+  <td>Undo</td>
+  <td>Remove card, reopen Task</td>
+</tr>
+</table>
+
+<h3>Composable flag</h3>
+
+<ul>
+  <li><code>--synthesize-task</code> — creates the Task entry on the fly (for Workflow B / chat-initiated calls where the Task didn't pre-exist). Composable across all subcommands. Without this flag, the subcommand expects an existing <code>requestId</code>.</li>
+</ul>
+
+<h3>The atomic-write primitive</h3>
+
+<p>Every subcommand uses the same internal "write these N files atomically with rollback on failure" function. The pen-acquire/release from §9 wraps the atomic write. Atomicity guarantee: either all the files land or none of them do — the system never ends up in a half-state.</p>
+
+<h2 id="helpers">13. Helper scripts</h2>
+
+<p>Python utilities under <code>editor/scripts/</code>. Each is a stable contract a skill can rely on, factored out from inline operations that would otherwise be re-implemented across skills.</p>
+
+<h3>Existing helpers</h3>
+
+<table>
+<tr><th>Script</th><th>Purpose</th></tr>
+<tr><td><code>_common.py</code></td><td>Shared utilities — path resolution, JSON I/O, paragraph UUID regex, notification append, version bump.</td></tr>
+<tr><td><code>apply_response.py</code></td><td>The single sanctioned writeback. Subcommand architecture per §12.</td></tr>
+<tr><td><code>list_requests.py</code></td><td>Unified JSONL inbox across <code>ai-requests.json</code> + <code>bib-review-requests.json</code> + card flags.</td></tr>
+<tr><td><code>get_para_context.py</code></td><td>Paragraph by UUID + neighbors.</td></tr>
+<tr><td><code>cards_for_paragraph.py</code></td><td>Every card anchored to a given paragraph UUID, across all panels.</td></tr>
+<tr><td><code>bib_resolve.py</code></td><td>Parse a <code>references.bib</code> entry and its annotation.</td></tr>
+<tr><td><code>bib_match_library.py</code></td><td>Classify paper bib entries vs the library (matched / missing / ambiguous).</td></tr>
+<tr><td><code>rename_citekey.py</code></td><td>Rewrite <code>\cite*{}</code> commands in .tex + <code>citations.json</code> when a citekey changes.</td></tr>
+<tr><td><code>library_path.py</code></td><td>Library-path resolution chain.</td></tr>
+</table>
+
+<h3>New helpers for v1</h3>
+
+<table>
+<tr><th>Script</th><th>Purpose</th><th>Consumer in v1</th></tr>
+<tr><td><code>card_by_id.py</code></td><td>Fetch any card by UUID across panels.</td><td><code>edit-card</code>, <code>archive-card</code>, <code>restore-card</code>, <code>move-card</code>, <code>link-cards</code></td></tr>
+<tr><td><code>paragraph_by_uuid.py</code></td><td>Get a paragraph's text + line range + neighbor UUIDs given just the UUID.</td><td><code>create-card</code> (anchor resolution), <code>move-card</code></td></tr>
+<tr><td><code>find_anchor.py</code></td><td>Reverse lookup: which paragraph/atom contains this text? <strong>Resolver, not guesser</strong> — returns candidates if ambiguous. Skills surface candidates to the user; never proceed on a low-confidence match.</td><td><code>create-card</code>, <code>move-card</code>, all chat-initiated skills (Workflow B)</td></tr>
+<tr><td><code>walk_doc.py</code></td><td>Emit the document as a structured tree (sections → paragraphs with UUIDs → anchored cards by panel).</td><td>The umbrella for overview; <code>orphan_check.py</code></td></tr>
+<tr><td><code>card_history.py</code></td><td>Walk a card's edit + accept/reject history by joining its sidecar with <code>ai-requests.json</code> rows whose <code>resultId</code> points to it.</td><td>Inbox display; chat-Claude when asked "what happened with this card?"</td></tr>
+<tr><td><code>orphan_check.py</code></td><td>Find cards with stale anchors, footnotes without anchor commands, suggestion cards still pending after the .tex changed. The gardening primitive.</td><td>The umbrella as a periodic pass; chat-Claude on demand</td></tr>
+<tr><td><code>citations_used.py</code></td><td>List citekeys actually used in the doc body.</td><td><code>sync-bib-to-library</code>; chat-Claude when reviewing the bibliography</td></tr>
+<tr><td><code>panel_summary.py</code></td><td>Quick count + recent-activity per panel.</td><td>Inbox; chat-Claude on overview requests</td></tr>
+<tr><td><code>inbox_history.py</code></td><td>Drains <code>ai-requests.json</code> history into a human-readable "what landed" view; filterable by safety level.</td><td>Inbox display; chat-Claude on "what did Virgil do today?" questions</td></tr>
+<tr><td><code>card_search.py</code></td><td>Full-text search across all sidecars + inbox history. Returns ranked hits with panel + cardId + snippet.</td><td>Chat-Claude on cross-panel lookup requests</td></tr>
+</table>
+
+<h2 id="dev-dream">14. DEV mode + dev-dream</h2>
+
+<p>v1 ships a self-improving loop for the developer (not the end user). Every skill invocation under DEV mode is followed by a reflection memo. Overnight, the dream phase reads accumulated memos and refines the skill set.</p>
+
+<h3>DEV mode</h3>
+
+<p>A per-session toggle — probably <code>VIRGIL_DEV=1</code> env var or a flag in <code>document-settings.json</code>. When on, every skill invocation gets a follow-up reflection pass that writes a memo at <code>editor/dev/memos/&lt;YYYY-MM-DD&gt;/&lt;HH-MM-SS&gt;-&lt;skill-name&gt;.md</code>. Never enabled in end-user sessions.</p>
+
+<h3>What the memo captures</h3>
+
+<table>
+<tr><th>Bucket</th><th>Examples</th></tr>
+<tr>
+  <td><strong>Issues / ambiguities / errors</strong></td>
+  <td>What was unclear in the skill prompt. Where Virgil had to ask the user for help. Where the user corrected Virgil mid-task. Where Virgil chose option A over B and isn't confident it was right.</td>
+</tr>
+<tr>
+  <td><strong>Streamlining / repetition</strong></td>
+  <td>Multi-step inline operations that should be a helper. Skills that re-discovered the same fact inline. Awkward call sequences. Cross-skill duplication.</td>
+</tr>
+<tr>
+  <td><strong>Alignment / fit</strong></td>
+  <td>Friction points where Virgil's default didn't match what the user actually wanted. Cases where the principles felt wrong or under-specified.</td>
+</tr>
+<tr>
+  <td><strong>User-tagged</strong></td>
+  <td>The DEV user says <em>"put this in the memo"</em> mid-session. Virgil appends with full context.</td>
+</tr>
+</table>
+
+<h3>Memo classes — three tiers</h3>
+
+<table>
+<tr><th>Tier</th><th>When written</th><th>Dream-phase treatment</th></tr>
+<tr><td><code>unremarkable</code></td><td>Skill ran cleanly. No friction. Default for routine invocations.</td><td>Counted for statistics; not individually read.</td></tr>
+<tr><td><code>noted</code></td><td>Virgil hit a friction point, made a non-obvious choice, asked for help.</td><td>Read individually; grouped by skill + bucket.</td></tr>
+<tr><td><code>flagged</code></td><td>User-tagged, or Virgil-confidence-low, or a Don't-rule almost got broken.</td><td>Read first; may trigger fast-path if marked <code>fix-now</code>.</td></tr>
+</table>
+
+<h3>The dream phase</h3>
+
+<p>An overnight autonomous pass — triggered by a scheduled job or <code>/loop /editor/dream</code> on a long interval. Reads every memo since the last dream, synthesizes patterns, acts.</p>
+
+<h4>Two landing modes</h4>
+
+<table>
+<tr><th>Landing mode</th><th>What qualifies</th><th>How it ships</th></tr>
+<tr>
+  <td><strong>Acts directly</strong></td>
+  <td>Changes inside a single skill prompt that don't change behavior contracts: tighten a Don't-rule, add a clarifying example, fix a typo, expand guidance.</td>
+  <td>Edits land in place on the main branch. Diff appears in the dream-digest with an "ACTED" tag.</td>
+</tr>
+<tr>
+  <td><strong>Proposes via worktree</strong></td>
+  <td>Anything cross-skill, anything that changes a script, anything that touches the §3 manifest, any skill rename/merge/split, anything that changes a behavior contract.</td>
+  <td>Dream runs in a git worktree. Proposed diff lives there with a "PROPOSED" entry in the dream-digest. User reviews before landing.</td>
+</tr>
+</table>
+
+<h4>Fast-path memos</h4>
+
+<p>A memo marked <code>flagged</code> AND <code>fix-now</code> triggers an immediate single-memo dream pass — acts-directly only, narrow scope (single skill markdown file or single Don't-rule tightening). Anything more ambitious queues for the overnight run.</p>
+
+<h3>The bootstrap property</h3>
+
+<p>The dream phase is itself a Virgil skill, and the first dream phases will be the worst. So dream runs in DEV mode itself — it produces memos about its own performance just like every other skill. The next dream's input includes the previous dream's digest. Recursive but tractable; dream improves at dreaming over time.</p>
+
+<p><strong>Boundaries:</strong> dream cannot edit the architectural Don't-rules in <code>editor/AGENTS.md</code>, cannot modify the <code>apply_response.py</code> contract shape, cannot disable DEV mode itself. These are the load-bearing invariants that bound the self-improvement loop.</p>
+
+<h2 id="forward-compat">15. Forward-compatibility</h2>
+
+<p>v1 ships dev-dream only. A future version will add user-dream — per-user voice and preference learning that lives in an overlay outside the skill bundle's reach. v1 must preserve architectural optionality so that future version can land cleanly without rework. Five rules:</p>
+
+<div class="callout spec">
+<strong>v1 forward-compat rules.</strong>
+<ol style="margin-top: 0.4rem;">
+  <li><strong>Reserve overlay paths.</strong> <code>~/.virgil-user/</code> and <code>&lt;docpath&gt;/.virgil/user-overrides/</code> are reserved namespaces from day one. The skill-bundle sync mechanism's deny-list excludes them in v1 — even though v1 never writes to either path, the sync code knows not to touch.</li>
+  <li><strong>Inbox preserves rejection-fidelity data.</strong> Every Task with <code>result: rejected</code> carries enough context (original text + proposed change) for a future learning loop to consume retroactively. v1 keeps completed Task rows indefinitely; no aggressive pruning.</li>
+  <li><strong>Skill prompts written for overlay-readiness.</strong> Base commandments stay as static rules in v1, phrased generally enough that future overlay-reading is a single-line addition: <em>"these are the base rules unless your overlay specifies otherwise"</em> — with the overlay clause being a no-op in v1 because the file is always absent.</li>
+  <li><strong><code>apply_response.py</code> subcommands stay overlay-agnostic.</strong> No field in the subcommand contracts depends on a user-overlay existing. Adding overlay-write capabilities later doesn't break the contract.</li>
+  <li><strong>No <code>revise-with-feedback</code> skill in v1.</strong> Rejection signal flows through the natural Inbox path (<code>result: rejected</code>). When the user-dream layer lands, <code>revise-with-feedback</code> becomes the explicit "tell Virgil why you rejected" surface — but it's not in v1.</li>
+</ol>
+</div>
+
+<p>Concretely for v1 implementation:</p>
+
+<ul>
+  <li>The skill-bundle sync code has the deny-list (a few lines: <em>"never touch paths starting with <code>~/.virgil-user/</code> or matching <code>**/.virgil/user-overrides/**</code>"</em>) — purely defensive against accidental future use.</li>
+  <li>Base revision commandments (when revision skills eventually land) are phrased as static text generally enough that adding <em>"unless your overlay says otherwise"</em> later is a single-line addition, not a rewrite.</li>
+  <li>v1 inbox retention is indefinite by default; archival mechanism is a separate future concern, not a default in v1.</li>
+  <li>v1 doesn't introduce <code>revise-with-feedback</code> in the skill set; users reject through the existing suggestion-card surface and the rejection lands as <code>result: rejected</code> on the Task.</li>
+</ul>
+
+<hr>
+
+<p style="color: var(--muted); font-size: 0.9em; margin-top: 2rem;">
+  v1 specification. Self-contained — does not require the broader brainstorm doc to interpret. For the v2 design intent (user-dream, voice profile, revision skill family, research family, file-prep family), see <a href="EDITOR_SKILLS_BRAINSTORM.html">EDITOR_SKILLS_BRAINSTORM.html</a>.
+</p>
+
+</div>
+</body>
+</html>

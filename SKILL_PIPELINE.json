@@ -1,0 +1,612 @@
+{
+  "meta": {
+    "generated_from": "EDITOR_SKILLS_BRAINSTORM.html",
+    "generated_date": "2026-06-01",
+    "scope_default": "v1 unless explicitly marked v2",
+    "purpose": "Aerial view of the entire proposed Virgil editor skill set, organized for visualization and cross-cutting analysis.",
+    "naming_convention": "Uniform <verb>-<noun> per Decision A; existing skills renamed with old names kept as aliases for one release cycle.",
+    "granularity_principle": "Decision C: split when commandments/preservation rules differ; parameterize when only output shape differs.",
+    "invocation_surfaces": ["A: UI-initiated (note-card-based — general note or selection note)", "B: Claude chat"],
+    "safety_levels": ["1: silently insert/change", "2: change + leave a comment", "3: propose for review"],
+    "totals": {
+      "skills": 67,
+      "existing_skills_being_renamed_or_kept": 13,
+      "proposed_new_skills_v1": 51,
+      "deferred_v2_skills": 3,
+      "helper_scripts_existing": 9,
+      "helper_scripts_proposed": 13
+    }
+  },
+  "families": [
+    {
+      "id": "umbrella",
+      "name": "Umbrella",
+      "description": "Cross-cutting orchestrators that dispatch to other skills.",
+      "color_hint": "#8a3712"
+    },
+    {
+      "id": "creation",
+      "name": "Card creation (create-X namespace)",
+      "description": "Creating new cards across panels. Per Decision C: split for kinds with substantive differences, parameterize uniform ones.",
+      "color_hint": "#2f5d3a"
+    },
+    {
+      "id": "card-ops",
+      "name": "Card-agnostic operations",
+      "description": "Move, archive, restore, link — parameterized by ontology (apply uniformly to all card kinds).",
+      "color_hint": "#2f5d3a"
+    },
+    {
+      "id": "responder",
+      "name": "Responders",
+      "description": "Answer existing user-authored cards (notes, todos, cutter-comments, revision-comments) flagged for AI.",
+      "color_hint": "#2f4a8b"
+    },
+    {
+      "id": "bibliography",
+      "name": "Bibliography",
+      "description": "Bib verification, annotation, library sync.",
+      "color_hint": "#5a3da8"
+    },
+    {
+      "id": "style",
+      "name": "Style",
+      "description": "Preamble merges, style transitions.",
+      "color_hint": "#6b4f15"
+    },
+    {
+      "id": "research",
+      "name": "Library-facing research",
+      "description": "Skills that pull library content INTO the writing process (research, verify claims, surface related sources).",
+      "color_hint": "#1f3463"
+    },
+    {
+      "id": "prep",
+      "name": "File prep / ingestion",
+      "description": "Translate externally-authored .tex losslessly into Virgil-compatible form (gb4e → expex, custom macros, bib system swaps, etc.).",
+      "color_hint": "#8b3e2f"
+    },
+    {
+      "id": "revision",
+      "name": "Revision (revise-* namespace)",
+      "description": "Structured revision skills organized by intervention level. Inherits 12 revision commandments.",
+      "color_hint": "#b87800"
+    },
+    {
+      "id": "dev-meta",
+      "name": "Dev meta",
+      "description": "Skills for iterating on the skill set itself, plus the dev-dream phase.",
+      "color_hint": "#5a3da8"
+    }
+  ],
+  "intervention_levels": {
+    "surface": "Mechanical fixes; lossless (dictation, typos, completion)",
+    "mid": "Tighten without restructuring (cut hedges, compress, cut filler)",
+    "structural": "Reorganize but preserve sentences (flow, paragraphs, transitions)",
+    "clarity": "Make implicit explicit (claims, premises, disambiguation)",
+    "voice": "Match register (voice-match, formal/conversational, de-AI)",
+    "generative": "Add new material (from notes, expand, add example, add counter)",
+    "free": "Any of the above as needed; first move is propose-what-it-would-do",
+    "reduction": "Extract / convert format (thesis, bullets, summary)",
+    "meta": "Diff-compare surface (alternatives, explain, with-feedback)"
+  },
+  "skills": [
+    {
+      "name": "review",
+      "family": "umbrella",
+      "status": "existing-keep",
+      "workflows": ["A", "B"],
+      "v1_or_v2": "v1",
+      "description": "Walk the unified AI-request inbox; dispatch each Task to its specialist skill as a subagent.",
+      "args": "<docPath>",
+      "writes": ["nothing directly; delegates"],
+      "notes": "The skill the user invokes 95% of the time. Calls every other skill as a subagent."
+    },
+
+    {
+      "name": "create-footnote",
+      "family": "creation",
+      "status": "renamed",
+      "previous_name": "draft-footnote",
+      "workflows": ["A", "B"],
+      "v1_or_v2": "v1",
+      "scope": "paragraph",
+      "card_kinds": ["FootnoteRef"],
+      "atom_kinds": ["\\footnote{}"],
+      "granularity": "split",
+      "split_reason": "LaTeX Atom handling + cite-system detection",
+      "description": "Draft a footnote body, insert \\footnote{} Atom at the anchor in .tex, write a FootnoteRef card.",
+      "args": "<docPath> <requestId>",
+      "writes": ["document.tex", "footnotes.json", "ai-requests.json"]
+    },
+    {
+      "name": "create-citation",
+      "family": "creation",
+      "status": "renamed",
+      "previous_name": "find-citation",
+      "workflows": ["A", "B"],
+      "v1_or_v2": "v1",
+      "scope": "paragraph",
+      "card_kinds": ["CitationRef"],
+      "atom_kinds": ["\\cite{}"],
+      "granularity": "split",
+      "split_reason": "External source search (Crossref/OpenAlex/Semantic Scholar/arXiv) + bib entry creation",
+      "description": "Search external sources for a paper matching the user's description; add to references.bib; create CitationRef card.",
+      "args": "<docPath> <requestId>",
+      "writes": ["references.bib", "citations.json", "ai-requests.json"]
+    },
+    {
+      "name": "create-quotation",
+      "family": "creation",
+      "status": "renamed",
+      "previous_name": "draft-quotation",
+      "workflows": ["A", "B"],
+      "v1_or_v2": "v1",
+      "scope": "paragraph",
+      "card_kinds": ["QuotationGroup"],
+      "granularity": "split",
+      "split_reason": "Quote extraction / verification; fair-use brevity constraints",
+      "description": "Assemble a QuotationGroup nesting references + quotes + anchor links.",
+      "args": "<docPath> <requestId>",
+      "writes": ["quotations.json", "ai-requests.json"]
+    },
+    {
+      "name": "create-card",
+      "family": "creation",
+      "status": "proposed",
+      "workflows": ["A", "B"],
+      "v1_or_v2": "v1",
+      "scope": "paragraph",
+      "card_kinds": ["Note", "Todo", "Example", "Annotation"],
+      "granularity": "parameterized",
+      "parameterize_reason": "Same commandments + writeback shape; only body shape differs by kind",
+      "description": "Create a new card of the specified kind at the given anchor.",
+      "args": "<docPath> <requestId> --kind=<note|todo|example|annotation>",
+      "writes": ["<panel>.json", "ai-requests.json"]
+    },
+    {
+      "name": "create-revision-suggestion",
+      "family": "creation",
+      "status": "renamed",
+      "previous_name": "draft-suggestion",
+      "workflows": ["A", "B"],
+      "v1_or_v2": "v1",
+      "scope": "paragraph",
+      "card_kinds": ["RevisionSuggestionCard"],
+      "granularity": "split",
+      "split_reason": "Carries prominent 'Virgil as author' UI mark; behavioral fork in apply_response",
+      "description": "Propose a revision to a paragraph. Always emits a RevisionSuggestionCard with author='virgil'.",
+      "args": "<docPath> <requestId>",
+      "writes": ["revisions.json", "ai-requests.json"],
+      "notes": "v2: largely subsumed by revise-free (which handles 'improve this' chat asks). Kept distinct in v1."
+    },
+    {
+      "name": "create-cut-suggestion",
+      "family": "creation",
+      "status": "proposed",
+      "workflows": ["A", "B"],
+      "v1_or_v2": "v1",
+      "scope": "paragraph",
+      "card_kinds": ["CutterSuggestionCard"],
+      "granularity": "split",
+      "split_reason": "Carries prominent 'Virgil as author' UI mark",
+      "description": "Propose a cut or rewrite of an existing excerpt in the Cutter panel.",
+      "args": "<docPath> <requestId>",
+      "writes": ["cutter.json", "ai-requests.json"]
+    },
+    {
+      "name": "edit-card",
+      "family": "card-ops",
+      "status": "proposed",
+      "workflows": ["A", "B"],
+      "v1_or_v2": "v1",
+      "scope": "card-specific",
+      "card_kinds": ["any"],
+      "granularity": "parameterized",
+      "parameterize_reason": "Same commandments across kinds; only target card body shape differs",
+      "description": "Modify an existing card's body or fields.",
+      "args": "<docPath> <cardId> [--body <new-body> | --field <key>=<value>]",
+      "writes": ["<panel>.json"]
+    },
+    {
+      "name": "archive-card",
+      "family": "card-ops",
+      "status": "proposed",
+      "workflows": ["A", "B"],
+      "v1_or_v2": "v1",
+      "scope": "card-specific",
+      "card_kinds": ["any"],
+      "granularity": "parameterized",
+      "parameterize_reason": "Mobility affordance is uniform across ontology",
+      "description": "Move a card to the archive panel.",
+      "args": "<docPath> <cardId>",
+      "writes": ["<panel>.json", "archive.json"]
+    },
+    {
+      "name": "restore-card",
+      "family": "card-ops",
+      "status": "proposed",
+      "workflows": ["A", "B"],
+      "v1_or_v2": "v1",
+      "scope": "card-specific",
+      "card_kinds": ["any"],
+      "granularity": "parameterized",
+      "description": "Restore a card from the archive to its prior panel.",
+      "args": "<docPath> <cardId>",
+      "writes": ["<panel>.json", "archive.json"]
+    },
+    {
+      "name": "move-card",
+      "family": "card-ops",
+      "status": "proposed",
+      "workflows": ["A", "B"],
+      "v1_or_v2": "v1",
+      "scope": "card-specific",
+      "card_kinds": ["any"],
+      "granularity": "parameterized",
+      "description": "Re-anchor a card to a different paragraph (TextObject) or atom.",
+      "args": "<docPath> <cardId> <newAnchor>",
+      "writes": ["<panel>.json"]
+    },
+    {
+      "name": "link-cards",
+      "family": "card-ops",
+      "status": "proposed",
+      "workflows": ["A", "B"],
+      "v1_or_v2": "v1",
+      "scope": "card-specific",
+      "card_kinds": ["any"],
+      "granularity": "parameterized",
+      "description": "Create a relationship link between two cards.",
+      "args": "<docPath> <cardAId> <cardBId> [--kind=<rel>]",
+      "writes": ["<panel>.json"]
+    },
+
+    {
+      "name": "answer-note-request",
+      "family": "responder",
+      "status": "existing-keep",
+      "workflows": ["A"],
+      "v1_or_v2": "v1",
+      "scope": "card-specific",
+      "card_kinds": ["Note"],
+      "description": "Answer a flagged note. Drafts a sibling note OR a revision-suggestion if the user asked for a doc edit.",
+      "args": "<docPath> <requestId>",
+      "writes": ["notes.json or revisions.json", "ai-requests.json"]
+    },
+    {
+      "name": "answer-todo-request",
+      "family": "responder",
+      "status": "existing-keep",
+      "workflows": ["A"],
+      "v1_or_v2": "v1",
+      "scope": "card-specific",
+      "card_kinds": ["Todo"],
+      "description": "Classify a flagged todo as a text-edit, missing-artifact, analysis, or limit; dispatch accordingly.",
+      "args": "<docPath> <requestId>",
+      "writes": ["revisions.json or notes.json or ai-requests.json (follow-up)", "todos.json"]
+    },
+    {
+      "name": "answer-cutter-comment",
+      "family": "responder",
+      "status": "existing-keep",
+      "workflows": ["A"],
+      "v1_or_v2": "v1",
+      "scope": "card-specific",
+      "card_kinds": ["CutterComment"],
+      "description": "Respond to a flagged Cutter-panel comment by drafting a CutterSuggestionCard.",
+      "args": "<docPath> <requestId>",
+      "writes": ["cutter.json", "ai-requests.json"]
+    },
+    {
+      "name": "answer-revision-comment",
+      "family": "responder",
+      "status": "existing-keep",
+      "workflows": ["A"],
+      "v1_or_v2": "v1",
+      "scope": "card-specific",
+      "card_kinds": ["RevisionComment"],
+      "description": "Respond to a flagged Revisions-panel comment. Sibling comment OR revision-suggestion if doc edit asked.",
+      "args": "<docPath> <requestId>",
+      "writes": ["revisions.json", "ai-requests.json"]
+    },
+
+    {
+      "name": "answer-bib-review",
+      "family": "bibliography",
+      "status": "existing-keep",
+      "workflows": ["A", "B"],
+      "v1_or_v2": "v1",
+      "scope": "bib-entry",
+      "card_kinds": ["BibEntry", "Annotation"],
+      "description": "Three-mode: verify/fill fields against external sources, draft an annotation, or swap a library entry (--library-sync).",
+      "args": "<docPath> <bibKey> [--library-sync <libraryCitekey> --library <path>]",
+      "writes": ["references.bib", "annotations.json", "document.tex (rename)", "citations.json", "bib-review-requests.json"]
+    },
+    {
+      "name": "sync-bib-to-library",
+      "family": "bibliography",
+      "status": "existing-keep",
+      "workflows": ["A", "B"],
+      "v1_or_v2": "v1",
+      "scope": "document",
+      "card_kinds": ["BibEntry"],
+      "catastrophic": true,
+      "catastrophic_reason": "Document-wide citekey renames; library writes",
+      "description": "Reconcile the paper's bibliography against the user's Virgil Library: swap matched entries, triage missing, flag ambiguous.",
+      "args": "<docPath> [--dry-run] [--library <path>]",
+      "writes": ["references.bib", "document.tex (renames)", "citations.json", "library master.bib (via flock)"]
+    },
+
+    {
+      "name": "style-merge",
+      "family": "style",
+      "status": "existing-keep",
+      "workflows": ["A", "B"],
+      "v1_or_v2": "v1",
+      "scope": "document",
+      "catastrophic": true,
+      "catastrophic_reason": "Preamble rewrite affects document-wide rendering",
+      "description": "Merge user preamble customizations onto a target style. Rewrites .tex; body untouched.",
+      "args": "<docPath>",
+      "writes": ["document.tex (preamble only)", "document-settings.json", "ai-requests.json"]
+    },
+
+    {
+      "name": "research-paragraph",
+      "family": "research",
+      "status": "proposed",
+      "workflows": ["A", "B"],
+      "v1_or_v2": "v1",
+      "scope": "paragraph",
+      "description": "Walk the paragraph's anchored citations; check whether assertions match what cited sources actually say. Surface tension as a note.",
+      "args": "<docPath> <paragraphId>",
+      "writes": ["notes.json", "ai-requests.json"]
+    },
+    {
+      "name": "find-source",
+      "family": "research",
+      "status": "proposed",
+      "workflows": ["A", "B"],
+      "v1_or_v2": "v1",
+      "scope": "claim",
+      "description": "Given a stated claim, search the user's library for supporting or contradicting papers. Returns ranked candidates.",
+      "args": "<docPath> \"<claim>\"",
+      "writes": ["notes.json"]
+    },
+    {
+      "name": "extract-quote",
+      "family": "research",
+      "status": "proposed",
+      "workflows": ["A", "B"],
+      "v1_or_v2": "v1",
+      "scope": "library-paper",
+      "description": "Pull quotable passages from a named library paper on a given topic. Differs from create-quotation: user names the source, Virgil finds the quote.",
+      "args": "<docPath> <citekey> \"<topic>\""
+    },
+    {
+      "name": "summarize-source",
+      "family": "research",
+      "status": "proposed",
+      "workflows": ["A", "B"],
+      "v1_or_v2": "v1",
+      "scope": "library-paper",
+      "card_kinds": ["Annotation"],
+      "description": "Surface the library's annotation for a cited source, or generate one from the source text.",
+      "args": "<docPath> <bibkey>",
+      "writes": ["annotations.json"]
+    },
+    {
+      "name": "check-citation-fit",
+      "family": "research",
+      "status": "proposed",
+      "workflows": ["A", "B"],
+      "v1_or_v2": "v1",
+      "scope": "paragraph",
+      "description": "For each anchored citation in the paragraph: does the source actually support the claim it's anchored to? Surfaces mismatches.",
+      "args": "<docPath> <paragraphId>"
+    },
+    {
+      "name": "related-from-library",
+      "family": "research",
+      "status": "proposed",
+      "workflows": ["A", "B"],
+      "v1_or_v2": "v1",
+      "scope": "paragraph",
+      "description": "Suggest related library papers that aren't yet cited in the paragraph.",
+      "args": "<docPath> <paragraphId>"
+    },
+    {
+      "name": "triangulate",
+      "family": "research",
+      "status": "proposed",
+      "workflows": ["A", "B"],
+      "v1_or_v2": "v1",
+      "scope": "claim",
+      "description": "For a given claim, find library papers that agree, disagree, or qualify. Useful for building footnotes or strengthening arguments.",
+      "args": "<docPath> \"<claim>\""
+    },
+
+    {
+      "name": "preflight",
+      "family": "prep",
+      "status": "proposed",
+      "workflows": ["B"],
+      "v1_or_v2": "v1",
+      "scope": "external-file",
+      "description": "Non-destructive scan of an externally-authored .tex file. Reports every construct needing conversion (auto / requires-decision / refuses).",
+      "args": "<texPath>"
+    },
+    {
+      "name": "prep-file",
+      "family": "prep",
+      "status": "proposed",
+      "workflows": ["B"],
+      "v1_or_v2": "v1",
+      "scope": "external-file",
+      "catastrophic": true,
+      "catastrophic_reason": "Major transformation; new folder created",
+      "description": "Umbrella: runs preflight, then dispatches to per-construct converters. Produces a Virgil-compatible paper folder.",
+      "args": "<texPath> [--target <newDocPath>] [--style <id>]"
+    },
+    {
+      "name": "convert-examples",
+      "family": "prep",
+      "status": "proposed",
+      "workflows": ["B"],
+      "v1_or_v2": "v1",
+      "scope": "document",
+      "description": "Convert gb4e / linguex / \\enumsentence-style examples to expex. Shared with library di-examples.",
+      "args": "<docPath> [--from gb4e|linguex|enumsentence|auto]"
+    },
+    {
+      "name": "expand-macros",
+      "family": "prep",
+      "status": "proposed",
+      "workflows": ["B"],
+      "v1_or_v2": "v1",
+      "scope": "document",
+      "description": "Inline-expand unsafe \\newcommand definitions; preserve safe ones. Reports which.",
+      "args": "<docPath>"
+    },
+    {
+      "name": "migrate-preamble",
+      "family": "prep",
+      "status": "proposed",
+      "workflows": ["B"],
+      "v1_or_v2": "v1",
+      "scope": "document",
+      "catastrophic": true,
+      "catastrophic_reason": "Preamble rewrite cascades through rendering",
+      "description": "Move externally-authored preamble onto a Virgil style. Sits upstream of style-merge.",
+      "args": "<docPath> [--target-style <id>]"
+    },
+    {
+      "name": "migrate-bib",
+      "family": "prep",
+      "status": "proposed",
+      "workflows": ["B"],
+      "v1_or_v2": "v1",
+      "scope": "document",
+      "catastrophic": true,
+      "catastrophic_reason": "Bib-system swap affects all citations",
+      "description": "Handle natbib ↔ biblatex swaps, \\bibliography{} ↔ \\printbibliography, bibstyle differences.",
+      "args": "<docPath>"
+    },
+    {
+      "name": "quarantine-tikz",
+      "family": "prep",
+      "status": "proposed",
+      "workflows": ["B"],
+      "v1_or_v2": "v1",
+      "scope": "document",
+      "description": "Move inline TikZ / pgfplots / drawing code to external files; insert \\input{}. Body stays parseLatex-friendly.",
+      "args": "<docPath>"
+    },
+
+    { "name": "revise-dictation", "family": "revision", "status": "proposed", "workflows": ["A", "B"], "v1_or_v2": "v1", "intervention_level": "surface", "scope": "paragraph", "granularity": "split", "description": "Fix dictation errors, complete sentence boundaries, resolve homophones." },
+    { "name": "revise-typos", "family": "revision", "status": "proposed", "workflows": ["A", "B"], "v1_or_v2": "v1", "intervention_level": "surface", "scope": "paragraph", "granularity": "split", "description": "Typos + punctuation + capitalization only. Nothing else moves." },
+    { "name": "revise-incomplete", "family": "revision", "status": "proposed", "workflows": ["A", "B"], "v1_or_v2": "v1", "intervention_level": "surface", "scope": "paragraph", "granularity": "split", "description": "Find unfinished sentences; complete or flag." },
+
+    { "name": "revise-cut-hedges", "family": "revision", "status": "proposed", "workflows": ["A", "B"], "v1_or_v2": "v1", "intervention_level": "mid", "scope": "paragraph", "granularity": "split", "split_reason": "Distinct preservation rule: hedges that do epistemic work stay", "description": "Remove 'perhaps,' 'arguably,' etc. unless doing real epistemic work." },
+    { "name": "revise-cut-throat-clearing", "family": "revision", "status": "proposed", "workflows": ["A", "B"], "v1_or_v2": "v1", "intervention_level": "mid", "scope": "paragraph", "granularity": "split", "split_reason": "AI-tell signature; specific blacklist", "description": "Strip 'Importantly,' 'In this paper, I will argue,' etc." },
+    { "name": "revise-cut-redundancy", "family": "revision", "status": "proposed", "workflows": ["A", "B"], "v1_or_v2": "v1", "intervention_level": "mid", "scope": "paragraph", "granularity": "split", "description": "Same point made twice → kept once; surfaces which." },
+    { "name": "revise-compress", "family": "revision", "status": "proposed", "workflows": ["A", "B"], "v1_or_v2": "v1", "intervention_level": "mid", "scope": "paragraph", "granularity": "split", "split_reason": "Measurable target (word count / %)", "description": "Compress to a target word count or percentage. Reports what was sacrificed." },
+    { "name": "revise-cut-filler", "family": "revision", "status": "proposed", "workflows": ["A", "B"], "v1_or_v2": "v1", "intervention_level": "mid", "scope": "paragraph", "granularity": "split", "description": "Adverbs that don't earn it ('very', 'really', 'actually')." },
+
+    { "name": "revise-flow", "family": "revision", "status": "proposed", "workflows": ["A", "B"], "v1_or_v2": "v1", "intervention_level": "structural", "scope": "section", "granularity": "split", "catastrophic": false, "description": "Reorder sentences/paragraphs for argument flow. Sentence content unchanged." },
+    { "name": "revise-paragraphs", "family": "revision", "status": "proposed", "workflows": ["A", "B"], "v1_or_v2": "v1", "intervention_level": "structural", "scope": "section", "granularity": "split", "description": "Split overlong paragraphs; merge fragmented ones. Sentence content unchanged." },
+    { "name": "revise-transitions", "family": "revision", "status": "proposed", "workflows": ["A", "B"], "v1_or_v2": "v1", "intervention_level": "structural", "scope": "section", "granularity": "split", "description": "Add/strengthen transitions only. Existing prose untouched." },
+    { "name": "revise-topic-sentences", "family": "revision", "status": "proposed", "workflows": ["A", "B"], "v1_or_v2": "v1", "intervention_level": "structural", "scope": "paragraph", "granularity": "split", "description": "Extract or compose topic sentences for paragraphs that bury them." },
+
+    { "name": "revise-make-explicit", "family": "revision", "status": "proposed", "workflows": ["A", "B"], "v1_or_v2": "v1", "intervention_level": "clarity", "scope": "paragraph", "granularity": "split", "description": "Flag and (optionally) make explicit unstated premises, jumps, assumptions." },
+    { "name": "revise-clarify-claims", "family": "revision", "status": "proposed", "workflows": ["A", "B"], "v1_or_v2": "v1", "intervention_level": "clarity", "scope": "paragraph", "granularity": "split", "description": "Find vague claims; tighten or flag for citation." },
+    { "name": "revise-disambiguate", "family": "revision", "status": "proposed", "workflows": ["A", "B"], "v1_or_v2": "v1", "intervention_level": "clarity", "scope": "paragraph", "granularity": "split", "description": "Find pronouns + references the reader might trip over." },
+    { "name": "revise-strengthen-weak-points", "family": "revision", "status": "proposed", "workflows": ["A", "B"], "v1_or_v2": "v1", "intervention_level": "clarity", "scope": "section", "granularity": "split", "description": "Find load-bearing argument moves; surface where under-supported." },
+
+    { "name": "revise-voice-match", "family": "revision", "status": "proposed", "workflows": ["A", "B"], "v1_or_v2": "v1", "intervention_level": "voice", "scope": "paragraph", "granularity": "split", "description": "Match surrounding text's voice when a paragraph reads off-key." },
+    { "name": "revise-register", "family": "revision", "status": "proposed", "workflows": ["A", "B"], "v1_or_v2": "v1", "intervention_level": "voice", "scope": "section", "granularity": "split", "description": "Formal ↔ conversational on user request." },
+    { "name": "revise-de-AI", "family": "revision", "status": "proposed", "workflows": ["A", "B"], "v1_or_v2": "v1", "intervention_level": "voice", "scope": "paragraph", "granularity": "split", "description": "Remove AI tells if Virgil-authored or external AI content slipped in." },
+
+    { "name": "revise-from-notes", "family": "revision", "status": "proposed", "workflows": ["A", "B"], "v1_or_v2": "v1", "intervention_level": "generative", "scope": "paragraph", "granularity": "split", "description": "Turn dictated/scribbled notes into prose. More aggressive than revise-dictation; allowed to reorganize." },
+    { "name": "revise-expand", "family": "revision", "status": "proposed", "workflows": ["A", "B"], "v1_or_v2": "v1", "intervention_level": "generative", "scope": "paragraph", "granularity": "split", "description": "Thin paragraph → full. User flags direction (more evidence / example / counter)." },
+    { "name": "revise-add-example", "family": "revision", "status": "proposed", "workflows": ["A", "B"], "v1_or_v2": "v1", "intervention_level": "generative", "scope": "paragraph", "granularity": "split", "description": "Find abstract claims; propose concrete examples (as proposals; user accepts)." },
+    { "name": "revise-add-counter", "family": "revision", "status": "proposed", "workflows": ["A", "B"], "v1_or_v2": "v1", "intervention_level": "generative", "scope": "paragraph", "granularity": "split", "description": "Propose a counter-consideration the argument should address." },
+
+    { "name": "revise-free", "family": "revision", "status": "proposed", "workflows": ["A", "B"], "v1_or_v2": "v1", "intervention_level": "free", "scope": "paragraph", "granularity": "split", "description": "Any of the above. First move: propose what it would do; ask for confirmation before doing it. Replaces generic 'improve this'.", "notes": "The discovery surface — when in doubt, this is what the user invokes." },
+
+    { "name": "revise-to-thesis", "family": "revision", "status": "proposed", "workflows": ["A", "B"], "v1_or_v2": "v1", "intervention_level": "reduction", "scope": "section", "granularity": "split", "description": "Extract a one-sentence thesis." },
+    { "name": "revise-to-bullets", "family": "revision", "status": "proposed", "workflows": ["A", "B"], "v1_or_v2": "v1", "intervention_level": "reduction", "scope": "section", "granularity": "split", "description": "Prose → bullets for outline/reorg." },
+    { "name": "revise-to-summary", "family": "revision", "status": "proposed", "workflows": ["A", "B"], "v1_or_v2": "v1", "intervention_level": "reduction", "scope": "document", "granularity": "split", "description": "Target word count summary." },
+
+    { "name": "revise-compare", "family": "revision", "status": "proposed", "workflows": ["A", "B"], "v1_or_v2": "v1", "intervention_level": "meta", "scope": "paragraph", "granularity": "split", "description": "Propose 2-3 alternative revisions side-by-side; user picks or hybridizes." },
+    { "name": "revise-explain", "family": "revision", "status": "proposed", "workflows": ["A", "B"], "v1_or_v2": "v1", "intervention_level": "meta", "scope": "card-specific", "granularity": "split", "description": "For an existing revision, articulate why each change was made." },
+    { "name": "revise-with-feedback", "family": "revision", "status": "deferred-v2", "workflows": ["A", "B"], "v1_or_v2": "v2", "intervention_level": "meta", "scope": "paragraph", "granularity": "split", "deferred_reason": "Requires user-dream consumer (deferred to v2)", "description": "User rejects with reason; feedback becomes a flagged user-dream memo." },
+
+    {
+      "name": "iterate-virgil-editor",
+      "family": "dev-meta",
+      "status": "existing-keep",
+      "workflows": ["dev-only"],
+      "v1_or_v2": "v1",
+      "scope": "skill-set",
+      "description": "Stress-test the editor skill set in a sandboxed sample paper. Synthesizes test cases, runs target skill via subagents, reads critique memos, edits skill markdown, loops.",
+      "args": "[<skill-name>] [<max-attempts>]",
+      "writes": ["editor/dev/sandboxes/*", "editor/dev/iterations/*", "editor/skills/<skill>.md"]
+    },
+    {
+      "name": "dream",
+      "family": "dev-meta",
+      "status": "proposed",
+      "workflows": ["dev-only"],
+      "v1_or_v2": "v1",
+      "scope": "skill-set",
+      "description": "Overnight autonomous pass. Reads DEV-mode memos; refactors/edits skills, scripts, manifest. Acts-directly for small changes; proposes-via-worktree for substantive ones.",
+      "args": "[--fast-path <memo-id>]",
+      "writes": ["editor/dev/memos/*", "editor/dev/dream-digests/*", "editor/skills/<*>.md (acts-mode)", "git worktrees (proposes-mode)"]
+    }
+  ],
+  "helper_scripts": [
+    { "name": "_common.py", "status": "existing", "purpose": "Shared utilities (path resolution, JSON I/O, paragraph UUID regex, notification append, version bump)." },
+    { "name": "apply_response.py", "status": "existing-extended", "purpose": "The single sanctioned writeback. New subcommands (complete-task / write-with-comment / write-silent) + --synthesize-task flag + pen-acquire/release wrapping." },
+    { "name": "list_requests.py", "status": "existing", "purpose": "Unified JSONL inbox across ai-requests.json + bib-review-requests.json + card flags." },
+    { "name": "get_para_context.py", "status": "existing", "purpose": "Paragraph by UUID + neighbors." },
+    { "name": "cards_for_paragraph.py", "status": "existing", "purpose": "Every card anchored to a given paragraph UUID, across all panels." },
+    { "name": "bib_resolve.py", "status": "existing", "purpose": "Parse a references.bib entry and its annotation." },
+    { "name": "bib_match_library.py", "status": "existing", "purpose": "Classify paper bib entries vs the library (matched / missing / ambiguous)." },
+    { "name": "rename_citekey.py", "status": "existing", "purpose": "Rewrite \\cite*{} commands in tex + citations.json when a citekey changes." },
+    { "name": "library_path.py", "status": "existing", "purpose": "Library-path resolution chain." },
+    { "name": "card_by_id.py", "status": "proposed", "purpose": "Fetch any card by UUID across panels." },
+    { "name": "paragraph_by_uuid.py", "status": "proposed", "purpose": "Get paragraph by UUID without full context load." },
+    { "name": "find_anchor.py", "status": "proposed", "purpose": "Reverse lookup: which paragraph contains this text? Resolver, not guesser — returns candidates if ambiguous." },
+    { "name": "walk_doc.py", "status": "proposed", "purpose": "Emit the whole document as a structured tree: sections → paragraphs (with UUIDs) → anchored cards." },
+    { "name": "card_history.py", "status": "proposed", "purpose": "Walk a card's edit + accept/reject history by joining sidecar with ai-requests rows by resultId." },
+    { "name": "orphan_check.py", "status": "proposed", "purpose": "Find cards with stale anchors, footnotes without anchor commands, stale suggestion cards. The gardening primitive." },
+    { "name": "citations_used.py", "status": "proposed", "purpose": "List citekeys actually used in the doc body." },
+    { "name": "panel_summary.py", "status": "proposed", "purpose": "Quick count + recent activity per panel." },
+    { "name": "inbox_history.py", "status": "proposed", "purpose": "Drains ai-requests.json history into a 'what landed' view. Filterable by safety level. The audit-log surface." },
+    { "name": "card_search.py", "status": "proposed", "purpose": "Full-text search across all sidecars + inbox history." },
+    { "name": "latex_normalize.py", "status": "proposed-shared", "purpose": "Shared with library: gb4e→expex, custom-macro inlining, bib-system swaps. Imported by both prep family (editor) and di-examples (library)." },
+    { "name": "library_query.py", "status": "proposed-shared", "purpose": "Read-only library access for the research family: fetch_paper, fetch_annotation, search_master_bib, search_library_text." },
+    { "name": "pen.py", "status": "implicit-in-apply-response", "purpose": "Pen acquire/release for the editing lock. Implemented inside apply_response.py's atomic-write primitive; not a separately-callable script." }
+  ],
+  "coverage_matrix_summary": {
+    "description": "Card-kinds × operations coverage after the full proposed set lands. Rows are Card kinds; cells indicate which skill (if any) covers that operation.",
+    "card_kinds": ["Footnote", "Citation", "Quotation", "Note", "Todo", "Example", "Annotation", "CutterComment", "CutterSuggestion", "RevisionComment", "RevisionSuggestion", "BibEntry", "Task"],
+    "operations": ["Create-typed", "Create-chat", "Edit", "Archive", "Restore", "Move", "Respond", "Link"],
+    "fully_covered_after_v1": true,
+    "notes": "All card kinds get create + edit + archive + restore + move + link coverage. Responders (answer-*) cover the 4 user-flagged kinds. BibEntry has its own specialized skills (answer-bib-review, sync-bib-to-library)."
+  },
+  "deferred_v2_artifacts": {
+    "description": "Functionality deferred to v2 with user-dream.",
+    "items": [
+      "User-dream skill (per-user voice/preference learning)",
+      "~/.virgil-user/ overlay storage (voice profile, commandment overrides, skill preferences)",
+      "<docpath>/.virgil/user-overrides/ per-doc layer",
+      "Runtime layering (app < user-global < per-doc)",
+      "Voice profile shape (Blocker #4)",
+      "revise-with-feedback meta-skill",
+      "Aggregate signal upward (opt-in telemetry)"
+    ]
+  }
+}

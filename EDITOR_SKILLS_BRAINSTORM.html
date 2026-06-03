@@ -152,7 +152,7 @@
     <li><a href="#coverage">4. Coverage: editing surface, skills, helpers</a><span class="new-marker">NEW</span></li>
     <li><a href="#shape">5. The shape of the inbox</a><span class="rethink-marker">RETHINK</span></li>
     <li><a href="#loop">6. The cowork loop</a><span class="rethink-marker">RETHINK</span></li>
-    <li><a href="#review-mode">7. Review modes</a><span class="new-marker">NEW</span></li>
+    <li><a href="#review-mode">7. Safety levels — per-Task</a><span class="new-marker">NEW</span></li>
     <li><a href="#routing">8. Routing: kind → skill</a></li>
     <li><a href="#umbrella">9. The umbrella: <code>/editor/review</code></a></li>
     <li><a href="#creates">10. Direct creates (3 skills)</a></li>
@@ -464,9 +464,31 @@ The uniform "all X can be moved/popped/dropped" affordance translates directly i
 <div class="resolved">
 <strong>The Inbox = a Panel of Task Cards.</strong> Tasks are a Card kind (alongside notes, todos, footnotes, citations, …). The Inbox Panel surfaces them. <code>ai-requests.json</code> is their sidecar. No new primitive needed.
 <br><br>
-<strong>Task is the user-facing unit of work</strong> — distinct from Skill, which is an internal unit. One Task may invoke many Skills; the user doesn't see or care which. Task Cards have lifecycle states (<code>draft</code> / <code>submitted</code> / <code>complete</code> / <code>rejected</code>) that other Card kinds don't share, but they're still Cards — they have UUIDs, can be moved/popped/dropped, can have anchors (Task: "footnote this paragraph") or Atom links (Task: "verify this citation") or both or neither (Task: "review the whole doc").
+<strong>Task is the user-facing unit of work</strong> — distinct from Skill, which is an internal unit. One Task may invoke many Skills; the user doesn't see or care which. Task Cards carry two lifecycle fields (see status vocabulary below) that other Card kinds don't share, but they're still Cards — they have UUIDs, can be moved/popped/dropped, can have anchors (Task: "footnote this paragraph") or Atom links (Task: "verify this citation") or both or neither (Task: "review the whole doc").
 <br><br>
 This distinction is load-bearing: <strong>reports, accept/reject signals, and the user-facing surface are all per-Task, not per-Skill.</strong> Skills emit dev-only logs. The chat reply, the inbox transition, and the user-dream's signal all live at the Task level. (See §3 reporting protocols.)
+</div>
+
+<div class="resolved">
+<strong>Task status vocabulary (Blocker #2 resolved): two fields, <code>status</code> (lifecycle) + <code>result</code> (outcome).</strong> Cleanly separates "where is this Task" from "how did it end." Querying is simple: filter on <code>status</code> for what's open vs done; group/filter by <code>result</code> for outcome breakdown.
+
+<table style="margin-top: 0.4rem; font-size: 0.92em;">
+<tr><th>Field</th><th>Value</th><th>Meaning</th></tr>
+<tr><td rowspan="4"><code>status</code> (lifecycle)</td><td><code>pending</code></td><td>Task just created, not yet picked up</td></tr>
+<tr><td><code>in-progress</code></td><td>Virgil is working on it</td></tr>
+<tr><td><code>complete</code></td><td>Done (one way or another — see <code>result</code>)</td></tr>
+<tr><td><code>failed</code></td><td>Couldn't be done</td></tr>
+<tr><td rowspan="8"><code>result</code> (outcome; set only when <code>status</code> ∈ {complete, failed})</td><td><code>accepted</code></td><td>Level 3: proposal was accepted by the user</td></tr>
+<tr><td><code>rejected</code></td><td>Level 3: proposal was rejected by the user</td></tr>
+<tr><td><code>auto-applied</code></td><td>Level 2: direct apply with surfaced comment</td></tr>
+<tr><td><code>silent-applied</code></td><td>Level 1: direct apply, no surfaced comment</td></tr>
+<tr><td><code>direct-created</code></td><td>Direct-create skill (footnote, citation, quotation) landed its artifact — no review needed because the user opted in by asking</td></tr>
+<tr><td><code>refused</code></td><td>Virgil declined to act (ambiguous anchor, can't find source, hit a Don't-rule, etc.)</td></tr>
+<tr><td><code>impossible</code></td><td>Virgil tried but was blocked by external factors (API down, library missing, etc.)</td></tr>
+<tr><td><code>errored</code></td><td>Internal failure during execution</td></tr>
+</table>
+
+<p style="margin-top: 0.5rem;">The dream phase's signal classification falls out cleanly: rejection corpus = <code>result: rejected</code>; silent-edit audit = <code>result: silent-applied</code>; refusal patterns = <code>result: refused</code>. Each subcommand of <code>apply_response.py</code> (per Blocker #1) sets the appropriate <code>result</code> as part of its atomic write.</p>
 </div>
 
 <h3>Sketch of each manifest doc</h3>
@@ -942,7 +964,7 @@ What happens if a paper cited in the doc isn't in the library? Triage it on the 
 <tr><td><code>orphan_check.py &lt;docPath&gt;</code></td><td>Find cards with stale anchors (paragraph UUID no longer in .tex), footnotes without anchor commands, suggestion cards still pending after the .tex changed, etc. The gardening primitive.</td></tr>
 <tr><td><code>citations_used.py &lt;docPath&gt;</code></td><td>List citekeys actually used in the document body. Sub-second answer to "which bib entries does this doc actually cite."</td></tr>
 <tr><td><code>panel_summary.py &lt;docPath&gt;</code></td><td>Quick count + recent activity per panel. Drives the "what should I look at first" overview.</td></tr>
-<tr><td><code>inbox_history.py &lt;docPath&gt; [--since &lt;ISO&gt;] [--mode &lt;1|2|3&gt;]</code></td><td>Drains the <code>ai-requests.json</code> history into a human-readable "what landed" view: time, kind, summary, card link. Supports filtering by review mode (e.g. "show me everything mode-3 silent did today"). The audit-log surface per §7.</td></tr>
+<tr><td><code>inbox_history.py &lt;docPath&gt; [--since &lt;ISO&gt;] [--level &lt;1|2|3&gt;]</code></td><td>Drains the <code>ai-requests.json</code> history into a human-readable "what landed" view: time, kind, summary, card link. Supports filtering by safety level (e.g. "show me everything Level 1 silent did today"). The audit-log surface per §7.</td></tr>
 <tr><td><code>card_search.py &lt;docPath&gt; "&lt;query&gt;"</code></td><td>Full-text search across all sidecars + the inbox history. Returns ranked hits with panel + cardId + snippet.</td></tr>
 </table>
 
@@ -1161,7 +1183,7 @@ The diagnosis: generic AI "improve this" fails along two dimensions: (1) the use
     <ul style="margin: 0;">
       <li><code>revise-compare</code> — propose 2-3 alternative revisions side-by-side; user picks or hybridizes</li>
       <li><code>revise-explain</code> — for an existing revision, articulate why each change was made</li>
-      <li><code>revise-with-feedback</code> — user rejects + says why; feedback becomes a <code>flagged</code> dream-phase memo</li>
+      <li><code>revise-with-feedback</code> <span style="background: var(--brainstorm-soft); color: var(--brainstorm-deep); border: 1px solid var(--brainstorm); padding: 0.05rem 0.4rem; border-radius: 3px; font-size: 0.7em; font-weight: 600;">v2 — needs user-dream</span> — user rejects + says why; feedback would become a <code>flagged</code> user-dream-phase memo</li>
     </ul>
   </td>
 </tr>
@@ -1183,14 +1205,18 @@ The diagnosis: generic AI "improve this" fails along two dimensions: (1) the use
   <li><strong>No expansion or compression unless asked.</strong> If the ask was "cut hedges," don't also rewrite for length.</li>
   <li><strong>When uncertain, don't change.</strong> Default to preservation. "I could see this either way" → leave it.</li>
   <li><strong>Surface anything major.</strong> Even in direct-apply mode, structural changes (paragraph reorder, split, anything beyond a sentence) get a comment alongside — not a silent edit. (§3 commandment 9.)</li>
-  <li><strong>Diff with rationale, not just diff.</strong> Every revision skill's output is <em>change + why</em>, so the user can evaluate and the dream phase can learn from rejections.</li>
+  <li><strong>Diff with rationale, not just diff.</strong> Every revision skill's output is <em>change + why</em>, so the user can evaluate (and, in v2, the user-dream phase can learn from rejections).</li>
   <li><strong>Show your math on rewrites.</strong> If a sentence had to move from passive to active because the subject was unclear, say so — don't just do it.</li>
 </ol>
 </div>
 
-<h4>The diff-compare-dream-improve loop</h4>
+<h4>The diff-compare-dream-improve loop <span class="tag" style="background: var(--brainstorm-soft); color: var(--brainstorm-deep); border-color: var(--brainstorm);">v2 — needs user-dream</span></h4>
 
-<p>Revision is exactly the domain where the §18 self-improving loop pays off: <em>whose voice is this?</em> is the central question, and the answer differs per user. Every revision skill produces a structured output:</p>
+<div class="resolved">
+<strong>This loop is v2 scope, not v1.</strong> v1 ships base revision commandments as static rules; the user-overlay layer that would drive per-user learning is deferred. The structured-output shape below stays in skill prompts from v1 onward (it's good practice even without the loop consumer), but the dream-side learning doesn't kick in until v2. v1's signal capture is the natural Inbox path — every rejected suggestion lands as <code>result: rejected</code> on its Task, preserving the data for v2 retro-learning.
+</div>
+
+<p>The full v2 vision: revision is exactly the domain where a per-user dream loop pays off — <em>whose voice is this?</em> is the central question, and the answer differs per user. Every revision skill produces a structured output (this part lands in v1, even though the loop doesn't):</p>
 
 <pre><code>{
   proposed_change: &lt;the diff&gt;,
@@ -1306,80 +1332,118 @@ A fourth surface implicit in workflow B: <strong>the chat conversation itself.</
 <strong>The one rule that still organizes everything:</strong> the frontend never invokes Claude directly. It writes intent files (workflow A) or it doesn't (workflow B); either way Claude is the one driving writes through <code>apply_response.py</code>, and the frontend's poll-and-refresh loop is what makes results appear.
 </div>
 
-<h2 id="review-mode">7. Review modes <span class="tag new">new section</span></h2>
-
-<p>Today's skill set has a hard convention: <em>ambiguous responders emit suggestion cards with <code>author: "ai"</code>, <code>status: "pending"</code>; direct-creates insert in place.</em> The user can accept or reject each suggestion individually.</p>
-
-<p>But a user can opt out. They can explicitly say "skip human review — just apply your changes directly." We need to model this as a first-class option.</p>
+<h3>Editing lock semantics — preventing overwrite clobbers</h3>
 
 <div class="resolved">
-<strong>Three review modes, two layers of override.</strong> The user controls how much approval and how much surfacing they want; the inbox entry is always preserved (see §1) so the user always has a "what landed" list.
+<strong>Pen-lock during the commit phase, baked into <code>apply_response.py</code> subcommands.</strong> When Claude is about to write files, it briefly takes the editing pen so the user can't be typing simultaneously and lose work. Reuses Virgil's existing collab/pen mechanism (extended to recognize "claude" as a pen-holder kind alongside humans).
 </div>
 
-<table>
-<tr><th>Mode</th><th>Trigger</th><th>Behavior</th><th>What the user sees</th></tr>
+<h4>The dance, fully scripted inside each subcommand</h4>
+
+<div class="arch">
+<pre>
+apply_response.py &lt;subcommand&gt; ...
+  │
+  ├─ acquire pen (one file write):
+  │    write .virgil/pen-context.json:
+  │      { "holder": "claude",
+  │        "acquired_at": &lt;ts&gt;,
+  │        "expires_at": &lt;ts + 30s&gt;,
+  │        "prior_collab_enabled": &lt;was-it-on?&gt; }
+  │    if collab was off, flip virgil/collab.json to enabled
+  │    (pen.holder set to "claude" in same write)
+  │
+  ├─ do the atomic write (the subcommand's actual work)
+  │
+  └─ release pen (one file write):
+       restore virgil/collab.json to prior state (off if it was off)
+       delete .virgil/pen-context.json
+</pre>
+</div>
+
+<h4>Properties</h4>
+
+<ul>
+  <li><strong>Token cost: zero.</strong> The dance happens inside the Python subcommand, no LLM in the loop. Skills call <code>apply_response.py &lt;subcommand&gt; ...</code> as they would anyway; the pen acquire/release is a free side-effect.</li>
+  <li><strong>Lock window: sub-second to a few seconds.</strong> Only the <em>commit phase</em> holds the pen — not the thinking phase. The user might wait 30 seconds for Claude to think; the actual lock window is the brief moment when files are being written.</li>
+  <li><strong>TTL-based crash recovery.</strong> The <code>expires_at</code> field gives Virgil's poller an auto-release path: if Claude has the pen but the lease expired, release. No background heartbeat process needed; the lease encodes its own timeout. Long commits can re-extend by rewriting the file with a fresh <code>expires_at</code>.</li>
+  <li><strong>Transparent over collab state.</strong> If the user wasn't in collab mode, Virgil turns it on, does the write, and turns it off again — restoring the prior state on release. State is captured in <code>pen-context.json</code> at acquire-time so Claude doesn't have to remember it across calls.</li>
+  <li><strong>UI surface.</strong> When Claude has the pen, the Virgil UI shows the existing collab-locked rendering with adjusted copy: <em>"Virgil is editing — please wait."</em> Optional "Force release" behind a confirmation for the case where Claude actually died and TTL hasn't fired yet.</li>
+  <li><strong>Granularity: doc-level.</strong> Lock the whole document, not individual paragraphs. Paragraph-level locking adds complexity that doesn't pay off; the "wait a moment" mental model matches what the user already knows from collab.</li>
+</ul>
+
+<p>Implementation lives in the atomic-write primitive shared across <code>apply_response.py</code> subcommands (from Blocker #1). Roughly ~30 lines of Python added once; every subcommand inherits the discipline.</p>
+
+<h2 id="review-mode">7. Safety levels — per-Task policy <span class="tag new">new section</span></h2>
+
+<p>Every Task carries a <strong>safety level</strong> describing how aggressively the user wants Virgil's work landed. Three levels — from most aggressive to most cautious. The policy is <em>per-Task</em>, not per-skill: the user thinks in Tasks, so the policy lives there.</p>
+
+<div class="resolved">
+<strong>The three safety levels (Blocker #3 resolved).</strong>
+
+<table style="margin-top: 0.4rem;">
+<tr><th>Level</th><th>Behavior</th><th>What the user sees</th><th>Maps to <code>apply_response.py</code> subcommand</th></tr>
 <tr>
-  <td><strong>1. Default — review required</strong></td>
-  <td>The standard mode unless overridden.</td>
-  <td>Responder skills emit suggestion cards with <code>status: pending</code>. User accepts or rejects each one. Direct-create skills (footnote / citation / quotation) still insert in place — the typed request <em>is</em> the opt-in.</td>
-  <td>Suggestion cards in the appropriate panel; one inbox entry per request.</td>
+  <td><strong>Level 1 — Silently insert/change</strong></td>
+  <td>Skill performs the change directly. No surfaced card, no comment.</td>
+  <td>The change is just there. Audit trail in the Inbox (Task with <code>result: silent-applied</code>) for retroactive checking, but nothing pops up.</td>
+  <td><code>write-silent</code></td>
 </tr>
 <tr>
-  <td><strong>2. Skip approval — direct-apply with a comment</strong></td>
-  <td>User says "skip review" / "just apply" / "do it directly."</td>
-  <td>Skill applies the change directly to the .tex / bibliography. <strong>Leaves a per-change comment</strong> next to the change describing what was done.</td>
-  <td>The change is live; a sibling comment marks it. One inbox entry per change.</td>
+  <td><strong>Level 2 — Change, and leave a comment</strong></td>
+  <td>Skill performs the change directly. <strong>Leaves a sibling comment</strong> describing what was done and what was preserved.</td>
+  <td>The change is live; an adjacent comment marks what happened. (Task <code>result: auto-applied</code>.)</td>
+  <td><code>write-with-comment</code></td>
 </tr>
 <tr>
-  <td><strong>3. Skip the comment too — silent direct-apply</strong></td>
-  <td>User <em>further</em> overrides for bulk operations ("just spellcheck the whole thing," "fix all the dashes silently").</td>
-  <td>Skill applies the change directly. No comment, no surfaced card.</td>
-  <td>Nothing visible at the change site. But: still one inbox entry per change, so the user can audit after the fact.</td>
+  <td><strong>Level 3 — Propose a change</strong></td>
+  <td>Skill drafts the change as a suggestion. Document is unchanged; user reviews and accepts or rejects.</td>
+  <td>A suggestion card to act on. (Task <code>result: accepted | rejected</code> on user action.)</td>
+  <td><code>complete-task</code> (with a suggestion-card payload)</td>
 </tr>
 </table>
-
-<div class="callout brainstorm">
-The override staircase matters: <strong>each level is a deliberate user opt-in</strong>, not a global default. Mode 2 is "I trust you on this kind of change." Mode 3 is "I trust you AND I don't want the noise." Virgil should not silently escalate — the user always explicitly grants each level.
 </div>
 
-<div class="callout brainstorm">
-<strong>The inbox is the universal audit trail.</strong> Per §1's resolution, every change registers a <code>completed</code> entry in <code>ai-requests.json</code> — including mode 3's silent changes. The inbox view becomes Virgil's "history of what I did." No separate <code>audit.json</code> sidecar is needed; <code>ai-requests.json</code> with retention is the audit log.
-<br><br>
-Implication for <code>apply_response.py</code>: when called from a chat-initiated skill (no incoming requestId), synthesize a completed entry on the fly. When called from a typed-request skill, flip the existing entry to complete. Either way the inbox row gets created or updated atomically with the card.
-</div>
-
-<div class="open-q">
-For mode 2's per-change comment: which panel does it land in? A note on the affected paragraph? A revision-comment alongside the implicit suggestion-card-with-status-accepted? Probably a note for substantive changes and a revision-comment for prose rewrites — kind-aware. Worth pinning down per card kind.
-</div>
+<h3>How the level gets specified</h3>
 
 <div class="resolved">
-<strong>Mode storage: per-session.</strong> When the user says "skip review" (or "skip the comment too"), Virgil carries that override for the rest of the session — every subsequent change in the conversation respects it. The user changes the mode by saying so; Virgil remembers until told otherwise.
-<br><br>
-Per-session beats doc-default because mode 3 is too aggressive as a sticky preference: a user who set "silent apply" once and forgot would be surprised by overnight changes. It beats per-request because explicit-every-time is friction during iterative work. Session-scoped is the right granularity: the user is committing for a stretch of work but not forever.
-<br><br>
-<strong>Implementation:</strong> Virgil carries the mode in working memory (no on-disk state), since "session" is a chat-conversation concept. The mode is conveyed downstream to <code>apply_response.py</code> as a per-call flag; the writeback machinery doesn't need to know about session state. Session boundaries are the natural conversation boundaries — a fresh Claude session starts in mode 1 (review required).
+<strong>Per-Task field, set at Task creation.</strong> Every Task in <code>ai-requests.json</code> carries a <code>safety_level: 1 | 2 | 3</code> field. Skills read it and dispatch to the matching <code>apply_response.py</code> subcommand. No skill-side default; no per-skill negotiation.
 </div>
+
+<h4>Workflow A (note-card-based)</h4>
+
+<p>The user picks the safety level explicitly when creating the AI-flagged note. The note's safety-level field becomes the Task's safety-level field at bridge time. No ambiguity; the level is part of the request.</p>
+
+<h4>Workflow B (Claude chat)</h4>
 
 <div class="resolved">
-<strong>Per-skill mode matrix is the default; user override always wins.</strong> Every skill declares a default safety stance (e.g. <code>style-merge</code> defaults to mode-1-only; <code>create-note</code> allows 1/2/3). But if the user explicitly says "rewrite my preamble silently without asking," they get it. The matrix encodes Virgil's conservatism on the user's behalf — it never refuses an explicit instruction.
-<br><br>
-<strong>The default exists to prevent the user being caught off-guard</strong> by an aggressive mode applying to something high-stakes (e.g. they were in "skip review" mode for footnotes and then asked for a style merge — without the default, that would silently rewrite the preamble too). Each skill's default declares "for THIS kind of change, here's the floor unless you tell me otherwise."
-<br><br>
-<strong>Practical shape:</strong> when a user-said-skip-review session hits a skill whose default is mode-1-only, Virgil pauses and asks: "this is a style-merge; my default is to surface this for review. Want me to apply directly anyway?" If yes, proceed. If no, surface for review. The user gets one chance to confirm; subsequent calls to the same skill in the same session honor the explicit override.
+<strong>Claude asks the user for the level, unless the conversation has standardized one.</strong> Default is <em>no assumption</em> — Claude does not silently pick a level. If the user says <em>"from now on use level 2,"</em> Claude carries that across subsequent Tasks in the conversation until told otherwise. The standardization is per-conversation, not persistent across sessions.
 </div>
 
-<div class="open-q">
-Which skills can <em>safely</em> support direct-apply? Doc edits to body prose — sure. But how about <code>style-merge</code> (whole preamble rewrite), <code>sync-bib-to-library</code> (renames citekeys throughout the doc), <code>draft-suggestion</code> (which exists precisely because rewrites need approval)? Probably each skill needs its own per-mode safety analysis.
-</div>
+<p>This supersedes the earlier "per-session" framing: rather than Virgil tracking a session-scoped mode that the user might forget about, the standardization has to be explicitly conversational. Fresh conversations start with Claude asking.</p>
 
-<div class="open-q">
-What does "direct-apply" mean for the four card-responder skills? They currently emit sibling cards or suggestion cards — they never edited the source card. In direct-apply mode, do they:
-<ul>
-  <li>Edit the source card directly (replacing user content)?</li>
-  <li>Apply the doc edit directly and just close the source card as done?</li>
-  <li>Behave the same as today (response is the artifact, no further action needed)?</li>
+<h3>The catastrophic-operation exception</h3>
+
+<div class="resolved">
+<strong>Always warn before potentially catastrophic actions, regardless of the Task's safety level.</strong> If the work crosses a "catastrophic" threshold — irreversible-without-git-revert, document-wide rendering impact, or other large-blast-radius effects — the skill surfaces a one-time confirmation even when the Task says Level 1.
+
+<ul style="margin-top: 0.4rem;">
+  <li><strong>Catastrophic = </strong>any of: rewrites the preamble (<code>style-merge</code>); renames a citekey throughout the doc (<code>sync-bib-to-library</code>); reorders/restructures the doc at section level (<code>revise-flow</code> on document scope); package conversions during file prep (<code>convert-examples</code>, <code>migrate-bib</code>).</li>
+  <li><strong>The confirmation</strong>: <em>"You asked for [level 1]; this operation is a preamble rewrite that affects rendering throughout the document. Confirm silent, or downgrade to Level 2 / 3?"</em> One confirmation per Task; if the user confirms, Virgil proceeds at the requested level for that Task.</li>
+  <li><strong>This is not a per-skill matrix</strong> — it's a narrow runtime check by the small set of skills whose work crosses the threshold. The skill prompt says "if asked to operate at Level 1, surface confirmation first." Narrow exception, not policy.</li>
 </ul>
-Maybe the responders are the wrong place for direct-apply, and the mode really only affects skills that produce a <code>RevisionSuggestionCard</code> or modify external state.
+</div>
+
+<h3>What this dissolves</h3>
+
+<p>Earlier framings of this problem proposed a per-skill safety matrix with conservative / standard / permissive defaults. That dissolves. There is no centralized matrix. Each Task carries its level; skills honor it; catastrophic operations warn. The user's specification IS the policy.</p>
+
+<div class="callout brainstorm">
+<strong>The inbox is still the universal audit trail.</strong> Per §1's resolution, every change registers a <code>completed</code> Task entry in <code>ai-requests.json</code> regardless of safety level — including Level 1 silent changes. The inbox view becomes Virgil's "history of what I did." The Task's <code>result</code> field (<code>silent-applied</code> / <code>auto-applied</code> / <code>accepted</code> / <code>rejected</code>) records which level was honored. The user can always retroactively find a silent change by filtering on <code>result: silent-applied</code>.
+</div>
+
+<div class="open-q">
+For Level 2's per-change comment: which panel does it land in? A note on the affected paragraph? A revision-comment alongside the change? Probably kind-aware — a note for substantive doc changes, a revision-comment for prose rewrites. Worth pinning down per skill in the prompts.
 </div>
 
 <div class="open-q">
@@ -1430,7 +1494,7 @@ Maybe the responders are the wrong place for direct-apply, and the mode really o
 </div>
 
 <div class="callout brainstorm">
-These skills already behave like §7's "direct-apply" mode. The distinction the user is drawing isn't really new for footnote/citation/quotation — it's new for the responders and for <code>draft-suggestion</code>. But the framework should still cover these three uniformly so the model is clean.
+These skills already behave like §7's Level 1 / 2 "direct apply" pattern by default — the user opted in by asking. The distinction the per-Task safety-level framing draws isn't really new for footnote / citation / quotation; it's new for the responders and for <code>draft-suggestion</code>.
 </div>
 
 <div class="skill">
@@ -1519,7 +1583,7 @@ These skills already behave like §7's "direct-apply" mode. The distinction the 
 </div>
 
 <div class="callout brainstorm">
-The "doc edit → suggestion card" branch is the one most affected by §7. In direct-apply mode, that branch should bypass the suggestion card and just edit the .tex directly (optionally leaving a note). Open question: does that conflict with the "never edit the source card in place" rule? Probably not — that rule is about <em>the source card</em>, not the document.
+The "doc edit → suggestion card" branch is the one most affected by §7. In Level 1 or 2 Tasks, that branch should bypass the suggestion card and just edit the .tex directly (with a comment if Level 2). This doesn't conflict with the "never edit the source card in place" rule — that rule is about <em>the source card</em>, not the document.
 </div>
 
 <div class="skill">
@@ -1535,7 +1599,7 @@ The "doc edit → suggestion card" branch is the one most affected by §7. In di
       <li>Else → standalone note with a descriptive subject phrase.</li>
     </ol>
   </div></div>
-  <div class="row brainstorm"><div class="label">Mode-aware fork</div><div class="content">Under §7: in branch 1 (doc edit), direct-apply mode skips the suggestion card and edits the .tex. Branches 2 and 3 are unaffected — they always emit responses, not doc changes.</div></div>
+  <div class="row brainstorm"><div class="label">Level-aware fork</div><div class="content">Under §7: in branch 1 (doc edit), Level 1 or 2 Tasks skip the suggestion card and edit the .tex (with a comment if Level 2). Branches 2 and 3 are unaffected — they always emit responses, not doc changes.</div></div>
   <div class="row"><div class="label">Memo</div><div class="content">Drops <code>.virgil/memos/&lt;YYYY-MM-DD&gt;-answer-note-&lt;requestId&gt;.md</code> only if it hit a real ambiguity worth surfacing.</div></div>
   <div class="row gotcha"><div class="label">Don't</div><div class="content">
     <ul>
@@ -1563,7 +1627,7 @@ The "doc edit → suggestion card" branch is the one most affected by §7. In di
       <li><strong>Limit / impossible ask:</strong> mark complete with a note. Flip <code>done: true</code>.</li>
     </ol>
   </div></div>
-  <div class="row brainstorm"><div class="label">Mode-aware</div><div class="content">Branch 1 (text-edit) is the §7 case: direct-apply mode would write the edit and flip <code>done: true</code>. Branch 2 (follow-up artifact request) raises a question: does direct-apply <em>cascade</em>? If yes, the follow-up footnote request also gets direct-applied. Probably yes — but worth pinning down.</div></div>
+  <div class="row brainstorm"><div class="label">Level-aware</div><div class="content">Branch 1 (text-edit) is the §7 case: Level 1 or 2 Tasks would write the edit and flip <code>done: true</code>. Branch 2 (follow-up artifact request) raises a question: does the Task's safety level <em>cascade</em> to the follow-up Task? If yes, the follow-up footnote Task inherits the level. Probably yes — but worth pinning down.</div></div>
   <div class="row gotcha"><div class="label">Don't</div><div class="content">
     <ul>
       <li>Don't guess at the todo's intent — when ambiguous, mark complete with a clarification note.</li>
@@ -1583,7 +1647,7 @@ The "doc edit → suggestion card" branch is the one most affected by §7. In di
   <div class="row"><div class="label">Reads</div><div class="content"><code>cutter.json</code>, <code>document.tex</code>, adjacent cards</div></div>
   <div class="row"><div class="label">Writes</div><div class="content">New CutterSuggestionCard in <code>cutter.json</code> + standard <code>apply_response.py</code> writeback</div></div>
   <div class="row"><div class="label">Fork</div><div class="content">None. Always emits a suggestion with <code>status: pending</code>.</div></div>
-  <div class="row brainstorm"><div class="label">Mode-aware</div><div class="content">Direct-apply: presumably applies the suggested cut/rewrite directly to the cut's stored text. Worth thinking about whether the Cutter panel's UX still makes sense when changes land silently — the panel was designed to be a holding area for proposed edits.</div></div>
+  <div class="row brainstorm"><div class="label">Level-aware</div><div class="content">Level 1 or 2 Tasks: presumably apply the suggested cut/rewrite directly to the cut's stored text (Level 2 with a comment). Worth thinking about whether the Cutter panel's UX still makes sense when changes land at Level 1 — the panel was designed to be a holding area for proposed edits.</div></div>
   <div class="row gotcha"><div class="label">Don't</div><div class="content">
     <ul>
       <li><code>original_text</code> must be <strong>verbatim</strong> from .tex — the editor uses it as the accept-time search key.</li>
@@ -1606,11 +1670,11 @@ The "doc edit → suggestion card" branch is the one most affected by §7. In di
   <div class="row"><div class="label">Reads</div><div class="content"><code>revisions.json</code>, <code>document.tex</code>, adjacent revision cards</div></div>
   <div class="row"><div class="label">Fork</div><div class="content">Doc edit? → <code>RevisionSuggestionCard</code>. Else → sibling <code>RevisionCommentCard</code>.</div></div>
   <div class="row"><div class="label">Idempotence</div><div class="content">Skip if a sibling reply with matching <code>aiOriginRequestId</code> already exists.</div></div>
-  <div class="row brainstorm"><div class="label">Mode-aware</div><div class="content">Same as <code>answer-note-request</code> — direct-apply affects only the doc-edit branch. The sibling-comment branch is conversation, not change.</div></div>
+  <div class="row brainstorm"><div class="label">Level-aware</div><div class="content">Same as <code>answer-note-request</code> — Levels 1 / 2 affect only the doc-edit branch. The sibling-comment branch is conversation, not change.</div></div>
   <div class="row gotcha"><div class="label">Don't</div><div class="content">
     <ul>
       <li>Never edit the source comment.</li>
-      <li>Never mutate <code>document.tex</code> — even on the suggestion path, the card carries the proposed replacement. <em>← §7 wants to relax for direct-apply.</em></li>
+      <li>Never mutate <code>document.tex</code> — even on the suggestion path, the card carries the proposed replacement. <em>← §7 wants to relax for Level 1 / 2 Tasks.</em></li>
       <li><code>original_text</code> must be verbatim, and must exclude the <code>%!v:&lt;uuid&gt;</code> marker.</li>
     </ul>
   </div></div>
@@ -1629,7 +1693,7 @@ This one is interesting: it's invoked directly (not via a card flag), but unlike
 …<em>and that's exactly the assumption §7 wants to relax.</em> If the user says "skip review, just apply," then <code>draft-suggestion</code>'s entire premise inverts. Either:
 <ul>
   <li>The skill stays as-is (always suggestion card), and a new sibling skill <code>/editor/apply-revision</code> does the direct edit.</li>
-  <li>The skill gains a <code>--apply</code> mode (or reads the doc/session review-mode preference) and edits in place.</li>
+  <li>The skill reads the Task's <code>safety_level</code> and edits in place when Level 1 or 2; falls back to proposing when Level 3.</li>
   <li>Direct-apply <em>also</em> creates the card, just with <code>status: "accepted"</code> pre-marked. This preserves the audit trail.</li>
 </ul>
 The third option is appealing — preserves the card history while skipping the human-review step. Same for the responder doc-edit branches.
@@ -1793,21 +1857,26 @@ The third option is appealing — preserves the card history while skipping the 
 <div>
 <h4><code>editor/scripts/apply_response.py</code></h4>
 <p>The single sanctioned writeback. Owns the atomic <em>card + status flip + source-flag clear + notification + version-bump</em> transaction.</p>
-<p><strong>Op shape:</strong></p>
-<pre><code>{
-  "requestId": "&lt;real id or virtual:p:id&gt;",
-  "panel": "notes|todos|cutter|revisions|
-            footnotes|citations|quotations",
-  "card": { ...full card... },
-  "summary": "&lt;one-liner&gt;",
-  "clearSourceFlag": true/false
-}</code></pre>
-<p><strong>Modes:</strong></p>
+
+<div class="resolved" style="font-size: 0.88em;">
+<strong>Subcommand architecture (Blocker #1 resolved).</strong> apply_response.py grows by adding subcommands (like <code>git commit</code> / <code>git push</code>), each with its own narrow input contract and the same atomic-write primitive underneath.
+
+<table style="margin-top: 0.4rem; font-size: 0.95em;">
+<tr><th>Subcommand</th><th>Used by</th><th>Writes atomically</th></tr>
+<tr><td><code>complete-task</code></td><td>Level 3 Tasks (propose a change), and direct-create skills like <code>create-footnote</code> (artifact IS the deliverable; user opted in by asking)</td><td>Card (suggestion or direct-create artifact); Task with <code>status: complete</code> and <code>result: review-pending | direct-created</code>; user-facing summary on Task card; chat reply (if chat-initiated); inbox notification; version bump</td></tr>
+<tr><td><code>write-with-comment</code></td><td>Level 2 Tasks (change + comment)</td><td>The change to .tex / sidecar; sibling comment card explaining the change; Task with <code>result: auto-applied</code>; inbox notification; version bump</td></tr>
+<tr><td><code>write-silent</code></td><td>Level 1 Tasks (silent insert/change)</td><td>The change to .tex / sidecar; Task with <code>result: silent-applied</code>; inbox notification; version bump (no surfaced comment card)</td></tr>
+<tr><td><code>complete-only</code> (existing)</td><td>Bib reviews, failures</td><td>Status flip only, no card</td></tr>
+<tr><td><code>revert</code> (existing)</td><td>Undo</td><td>Remove card, reopen Task</td></tr>
+</table>
+
+<p style="margin-top: 0.5rem;"><strong>Flag composable across all subcommands:</strong></p>
 <ul>
-  <li><strong>Apply</strong> — insert card, flip request, clear flag, notify, bump.</li>
-  <li><strong>Complete-only</strong> (<code>--complete-only &lt;id&gt;</code>) — flip status without a card. For bib reviews and failures.</li>
-  <li><strong>Revert</strong> (<code>--revert &lt;id&gt;</code>) — remove card, reopen request.</li>
+  <li><code>--synthesize-task</code> — creates the Task on the fly (for chat-initiated Workflow B calls). Without this flag, the subcommand expects an existing <code>requestId</code>.</li>
 </ul>
+
+<p style="margin-top: 0.4rem;"><strong>Why subcommands:</strong> each writeback shape has a different file set; subcommands make the contract explicit per shape; the atomic-write primitive is one shared piece of safety infrastructure underneath, so duplication stays internal. Skills declare their mode (via the per-skill safety matrix, blocker #3) and call the matching subcommand. Today's default op stays as a deprecation-window alias for the existing 13 skills until they migrate to <code>complete-task</code>.</p>
+</div>
 </div>
 <div>
 <h4><code>editor/scripts/list_requests.py</code></h4>
@@ -1820,7 +1889,7 @@ The third option is appealing — preserves the card history while skipping the 
 </div>
 
 <div class="callout brainstorm">
-<code>apply_response.py</code> probably needs a new op (or extended <code>Apply</code> mode) for §7 direct-apply: insert card with <code>status: "accepted"</code>, edit the .tex/bib at the same moment, append a note if "with-note" submode. Or split it: <code>apply_response.py --auto-accept</code>. The atomicity guarantee should hold either way.
+Resolved per Blocker #1 (subcommand architecture above) + Blocker #3 (per-Task safety level): apply_response.py grows the <code>write-with-comment</code> and <code>write-silent</code> subcommands for Level 2 and Level 1 Tasks respectively. The atomicity guarantee holds across all subcommands via the shared atomic-write primitive.
 </div>
 
 <h4>Bridge: <code>bridgeCardAiRequestFlag()</code></h4>
@@ -1871,7 +1940,13 @@ The third option is appealing — preserves the card history while skipping the 
 
 <h2 id="self-improving">18. Self-improving skill base — DEV mode + two dreams <span class="tag new">new section</span></h2>
 
-<p>The vision: turn the skill set into something that <em>improves itself</em>, by capturing every skill invocation through a reflective lens, then acting on the accumulated reflections overnight. <strong>Two parallel dreams</strong>: a <em>dev-oriented</em> dream that improves the shipped product (covered first, below), and a <em>user-oriented</em> dream that learns per-user voice and preferences without ever being clobbered by app updates (covered at the end of this section). The dev-dream is the closer analogue to today's <code>iterate-virgil-editor</code>; the user-dream is the architectural piece that makes the §4.6 revision skill family converge on the user's voice over time.</p>
+<p>The vision: turn the skill set into something that <em>improves itself</em>, by capturing every skill invocation through a reflective lens, then acting on the accumulated reflections overnight.</p>
+
+<div class="resolved">
+<strong>v1 scope: dev-dream only. User-dream deferred to a future version.</strong> The architecture envisions two parallel dreams — a <em>dev-oriented</em> dream that improves the shipped product (covered first, below), and a <em>user-oriented</em> dream that learns per-user voice and preferences (covered later, marked deferred). Only the dev-dream ships in v1. The user-dream sections stay in the doc as design intent — v1 is built with forward-compatibility so user-dream can land cleanly later without rework. See "Forward-compatibility for user-dream" subsection below.
+</div>
+
+<p>The dev-dream is the closer analogue to today's <code>iterate-virgil-editor</code>; the user-dream (when it lands) is the architectural piece that would make the §4.6 revision skill family converge on the user's voice over time.</p>
 
 <div class="arch">
 <pre>
@@ -2115,11 +2190,15 @@ That's the genre. The value isn't per-memo action; it's <strong>cross-memo patte
 </ol>
 </div>
 
-<h3>The two dreams — dev-oriented and user-oriented</h3>
+<h3>The two dreams — dev-oriented and user-oriented <span class="tag" style="background: var(--brainstorm-soft); color: var(--brainstorm-deep); border-color: var(--brainstorm);">v2 scope below — design intent only for v1</span></h3>
+
+<div class="resolved">
+<strong>The content in this subsection through "When the user-dream runs" describes the v2 user-dream design.</strong> It is NOT v1 scope. It stays in the doc as architectural intent so a future implementer has the design ready. v1 ships the dev-dream above; the user-dream sections are deferred. Skip to "Forward-compatibility for user-dream" below for the v1 design points.
+</div>
 
 <p>Everything above describes the <strong>dev-oriented dream</strong>: a developer (Gabriel) runs DEV mode, accumulates memos about skill quality, and the dream phase improves the <em>general</em> shipped skill set. Outputs land in the repo, version-controlled, and ship to all users via <code>/cleanup-virgil</code>'s release flow.</p>
 
-<p>But the revision skills (§4.6) — and other voice/preference-sensitive skills — need something else: a <strong>user-oriented dream</strong> that tracks per-user voice, diffs, rejections, and learned preferences. The user-dream improves <em>this user's experience</em>; the dev-dream improves <em>the shipped product</em>. Different audiences, different inputs, different outputs, different persistence.</p>
+<p>But the revision skills (§4.6) — and other voice/preference-sensitive skills — would benefit from something else: a <strong>user-oriented dream</strong> that tracks per-user voice, diffs, rejections, and learned preferences. The user-dream would improve <em>this user's experience</em>; the dev-dream improves <em>the shipped product</em>. Different audiences, different inputs, different outputs, different persistence. <strong>v2 work.</strong></p>
 
 <div class="resolved">
 <strong>Two parallel dreams, sharply separated by where they write.</strong>
@@ -2286,6 +2365,35 @@ The two-dream architecture is what makes the revision skill family actually work
 <strong>Library-side analogue: out of scope for this brainstorm.</strong> The library has its own DEV-mode iterative learning (<code>/library/iterate-skill</code>), and turning it into a dream-shaped loop is interesting future work — but it's a separate piece deferred for another session. The two-dream architecture above is editor-side only.
 </div>
 
+<h3>Forward-compatibility for user-dream (v1 design points)</h3>
+
+<p>Even though the user-dream is deferred to v2, the v1 build needs to preserve architectural optionality so v2 can land cleanly without rework. These design points are <strong>v1 scope</strong>:</p>
+
+<div class="resolved">
+<strong>Five forward-compat rules v1 must honor.</strong>
+
+<ol style="margin-top: 0.4rem;">
+  <li><strong>Reserve the overlay paths.</strong> <code>~/.virgil-user/</code> and <code>&lt;docpath&gt;/.virgil/user-overrides/</code> are reserved namespaces from day one. The skill-bundle sync mechanism's deny-list excludes them in v1 — even though v1 never writes to either path, the sync code knows not to touch. When v2 starts populating them, the sync already respects the boundary.</li>
+  <li><strong>Inbox preserves rejection-fidelity data already.</strong> Every Task with <code>result: rejected</code> carries enough context (original text + proposed change) for a future user-dream to learn retroactively. v2's user-dream can read backwards into v1-era inbox data — no signal lost during the deferral window.</li>
+  <li><strong>Skill prompts written for overlay-readiness.</strong> The §4.6 revision commandments stay as static base rules in v1. But the prompt language doesn't bake in "these are universal." Instead: <em>"these are the base preservation rules, applied unless a user-overlay specifies otherwise"</em> — with the user-overlay clause being a no-op in v1 because the file is always absent. v2 implements the file-reading; v1 prompts already accommodate it.</li>
+  <li><strong><code>apply_response.py</code> subcommands stay user-overlay-agnostic.</strong> No field in the subcommand contracts depends on the user-overlay existing. v2 adds overlay-write capabilities as new fields; the v1 contracts don't break.</li>
+  <li><strong>The <code>revise-with-feedback</code> meta-skill stays as v2 work.</strong> v1 ships without it; rejection signal flows through the natural Inbox path (<code>result: rejected</code>). When v2 lands, <code>revise-with-feedback</code> becomes the explicit "tell Virgil why you rejected" surface, feeding the user-dream's rejection corpus more richly.</li>
+</ol>
+</div>
+
+<p><strong>What this means concretely for v1 implementation:</strong></p>
+
+<ul>
+  <li>v1 skill bundle sync code has the deny-list (a few lines: <em>"never touch paths starting with <code>~/.virgil-user/</code> or matching <code>**/.virgil/user-overrides/**</code>"</em>) — purely defensive against accidental future use.</li>
+  <li>v1 base revision commandments are static text in skill prompts — phrased generally enough that adding <em>"unless your overlay says otherwise"</em> later is a single-line addition, not a rewrite.</li>
+  <li>v1 inbox retention policy needs enough fidelity for v2 retro-learning. The current decision (the inbox IS the audit log) already provides this, but worth being explicit: v1 should NOT aggressively prune Task rows by default; v2 user-dream wants the historical signal.</li>
+  <li>v1 doesn't introduce <code>revise-with-feedback</code> in the skill set; users reject through the existing suggestion-card surface and the rejection lands as <code>result: rejected</code> on the Task.</li>
+</ul>
+
+<div class="open-q">
+<strong>Inbox retention.</strong> v1 needs to NOT prune historical Tasks (so v2 user-dream has a corpus to learn from). But unbounded growth is its own problem. Probably: keep all completed Tasks in <code>ai-requests.json</code> indefinitely in v1, with a future v2 sweep that archives older rows into a separate <code>ai-requests-archive.json</code>. Worth pinning down when v1 implementation starts.
+</div>
+
 <h2 id="method-plan">19. Method plan: how this gets filled out <span class="tag new">new section</span></h2>
 
 <p>The brainstorm above maps the destination. This section maps <em>the path</em>: in what order, with what dependencies, with what discovery work has to happen first. The plan is a plan; it is not the build. We're sequencing and dependency-mapping so the build itself can start coherent.</p>
@@ -2341,10 +2449,10 @@ The two-dream architecture is what makes the revision skill family actually work
   <td>M — each script is small, but the set is broad. Some are blocking for specific skills.</td>
 </tr>
 <tr>
-  <td><strong>7. DEV mode + dream phase</strong> (§18)</td>
-  <td>The self-improving infrastructure: DEV-mode toggle, memo-writing hook, memo schema, dream skill, cross-session index.</td>
+  <td><strong>7. DEV mode + dev-dream</strong> (§18) <span style="background: var(--brainstorm-soft); color: var(--brainstorm-deep); border: 1px solid var(--brainstorm); padding: 0.05rem 0.4rem; border-radius: 3px; font-size: 0.7em; font-weight: 600; vertical-align: 0.15em;">v1: dev-dream only</span></td>
+  <td>The dev-side self-improving infrastructure: DEV-mode toggle, memo-writing hook, memo schema, dream skill, cross-session index. <strong>User-dream deferred to v2</strong> — v1 must honor the five forward-compat rules (§18) so v2 lands cleanly: reserve overlay paths, preserve inbox rejection-fidelity, write skill prompts for overlay-readiness, keep apply_response.py overlay-agnostic, defer <code>revise-with-feedback</code>.</td>
   <td>Phases 4 + 5 (skills exist to capture memos about).</td>
-  <td>L — substantial new system, but well-scoped after §18 decisions.</td>
+  <td>M — narrower scope than originally planned without user-dream; still substantial.</td>
 </tr>
 <tr>
   <td><strong>8. UI affordances</strong> (src-side)</td>
@@ -2591,7 +2699,7 @@ Currently scoped to <code>AGENTS.md</code> + <code>docs/agents/overview.md</code
   <li>Leaf direct-creates (<code>draft-footnote</code>, <code>find-citation</code>, <code>draft-quotation</code>) — simplest, lowest risk, establish patterns.</li>
   <li>Leaf responders (<code>answer-note-request</code>, etc.) — same shape as direct-creates plus a fork.</li>
   <li>Bibliography skills (<code>answer-bib-review</code>) — multi-mode, more complex.</li>
-  <li>Style-merge — preamble work; high-stakes default-mode-1.</li>
+  <li>Style-merge — preamble work; catastrophic-confirmation triggers for non-Level-3 Tasks per §7.</li>
   <li>Sync-bib-to-library — cross-cutting; most complex.</li>
   <li>Umbrella (<code>/editor/review</code>) — depends on everything else being done.</li>
   <li>Dev meta (<code>iterate-virgil-editor</code>) — stays as is, doesn't change voice.</li>
@@ -2633,7 +2741,7 @@ Currently scoped to <code>AGENTS.md</code> + <code>docs/agents/overview.md</code
 </div>
 
 <div class="open-q">
-<strong>The "Virgil as author" UI mark is a src-side dependency for shipping silent direct-apply mode.</strong> If Phase 8 lags, we either ship without the UI affordance (risky — users could mistake Virgil edits for their own) or ship without silent mode (acceptable — modes 1 and 2 work without it). Probably the latter; sequence Phase 8's mark work before any production rollout of mode 3.
+<strong>The "Virgil as author" UI mark is a src-side dependency for shipping Level 1 (silent direct-apply).</strong> If Phase 8 lags, we either ship without the UI affordance (risky — users could mistake Virgil edits for their own) or ship without Level 1 (acceptable — Levels 2 and 3 work without it). Probably the latter; sequence Phase 8's mark work before any production rollout of Level 1.
 </div>
 
 <div class="open-q">
@@ -2659,25 +2767,27 @@ Currently scoped to <code>AGENTS.md</code> + <code>docs/agents/overview.md</code
   <li><strong>Self-reference</strong> (§3): first-person Virgil; cards carry <code>author: "virgil"</code> (rename pending); never name "Claude" or "the model" in user-facing copy.</li>
   <li><strong>Workflow B invocation</strong> (§1, option 3): chat-initiated skills are a separate top-level family (<code>/editor/footnote-here</code>, <code>/editor/cite-here</code>, etc.) that skip the request-id ceremony at input. Same Python helpers as typed-request skills.</li>
   <li><strong>Inbox is universal</strong> (§1, §7): every Virgil change registers a <code>completed</code> entry in <code>ai-requests.json</code> regardless of how it was invoked, so the user has one place to see "what landed." <code>apply_response.py</code> gains a synthesize-entry mode for chat-initiated calls.</li>
-  <li><strong>Three review modes</strong> (§7): (1) review required; (2) direct-apply with per-change comment; (3) silent direct-apply. Each level requires deliberate user opt-in. The inbox row is preserved in all three.</li>
-  <li><strong>Trail principle</strong> (§3 commandment #9, §7): the trail always exists; the user controls visibility. The inbox is the audit log; no separate <code>audit.json</code> needed.</li>
+  <li><strong>Three safety levels — per-Task policy</strong> (§7, Blocker #3): Level 1 (silently insert/change), Level 2 (change + comment), Level 3 (propose for review). Specified <em>per-Task</em> — every Task carries a <code>safety_level</code> field. Workflow A: user picks the level on the AI-flagged note explicitly. Workflow B: Claude asks the user (no implicit default); standardization within a conversation possible if user says so. <strong>Catastrophic operations always surface a confirmation regardless of the requested level</strong> (preamble rewrite, doc-wide citekey rename, document-level restructure). Per-skill safety matrix dissolves — there is no centralized matrix; skill identity doesn't determine policy.</li>
+  <li><strong>Trail principle</strong> (§3 commandment #9, §7): the trail always exists; the user controls visibility via safety level. The inbox is the audit log; no separate <code>audit.json</code> needed.</li>
   <li><strong>Memo classification</strong> (§18): three tiers — <code>unremarkable</code> / <code>noted</code> / <code>flagged</code>. Dream phase prioritizes by tier; most invocations are unremarkable.</li>
   <li><strong>Dream landing modes</strong> (§18): acts-directly for single-skill polish that doesn't change behavior contracts; proposes-via-worktree for anything cross-skill, script-touching, manifest-touching, or contract-changing.</li>
   <li><strong>Fast-path</strong> (§18): <code>flagged</code> + <code>fix-now</code> memos trigger an immediate single-memo dream-pass, acts-directly only, narrowly scoped. Anything more ambitious queues for overnight.</li>
   <li><strong>Bootstrap</strong> (§18): dream phase runs in DEV mode itself; its digests + memos feed the next dream. Self-modification is proposes-via-worktree only. Architectural invariants (<code>Don't</code> rules, <code>apply_response.py</code> contract, DEV-mode toggle) are off-limits.</li>
   <li><strong>Manifest shape</strong> (§2): focused folder <code>.claude/virgil/</code> with separate docs (<code>structure.md</code>, <code>identity.md</code>, <code>cards.md</code>, <code>latex.md</code>, <code>anchoring.md</code>, <code>gardening.md</code>, <code>actions.md</code>), plus a central <code>INDEX.md</code> that gives Virgil explicit reading-protocol instructions. Loading is index-directed (not eager, not lazy).</li>
-  <li><strong>Review-mode storage</strong> (§7): per-session. Virgil carries the override in working memory until the user changes it. Fresh sessions start in mode 1 (review required).</li>
   <li><strong>Chat-initiated coverage scope</strong> (§4.2): Virgil can create any card kind from chat. Revision-suggestion and cut-suggestion (the kinds touching authorial space) carry a UI-prominent "Virgil as author" mark, so the user always distinguishes Virgil's voice from their own.</li>
   <li><strong>Anchor resolution</strong> (§1): editor-initiated requests arrive context-rich (UUID + selected text captured by UI). Chat-initiated requests place the burden on the user to supply disambiguating context. When Virgil can't resolve unambiguously, it asks — never guesses. <code>find_anchor.py</code> is a resolver, not a guesser.</li>
-  <li><strong>Per-skill mode matrix + override</strong> (§7): each skill declares a default safety stance (e.g. <code>style-merge</code> defaults to mode-1-only); explicit user override always wins. The default protects the user from being caught off-guard by an aggressive mode applying to high-stakes work, but never refuses an explicit instruction.</li>
   <li><strong>Documentation sync via <code>/cleanup-virgil</code></strong> (§19): existing release-time mechanism (sha-diff per doc with <code>last-verified</code> headers) extends to cover the manifest, UX library, and any new doc class. Cleanup-virgil is the deterministic synchronizer (code → docs); the dream phase is the smart consumer that ripples doc changes into skill prompts. The proposed <code>/dev/audit-virgil</code> isn't needed; folds into cleanup-virgil's existing step 2.</li>
   <li><strong>Virgil's ontology — the Document + five primitives</strong> (§2): The Document is the container/scope, composed entirely of TextObjects. Within it: TextObjects (structural atoms of text), Atoms (inline elements within TextObjects, bidirectionally linked to Cards — citations, footnote markers, refs, inline math), Cards (almost everything else, parallel structure connecting to text via anchors and/or Atom links), Omni-View gutters (in-context viewing), Panels (organized collections). Uniform affordance: <em>all TextObjects and Cards can be moved, popped, and dropped</em> freely; Atoms have text-bound mobility (move with surrounding characters). Cards connect to text in two ways: Anchor (Card → TextObject, one-way, coarse) and Atom link (Card ↔ Atom, bidirectional, fine). <code>\vcid</code> / <code>\vfid</code> / <code>\vexid</code> are Atom UUIDs; <code>%!v:</code> is a TextObject UUID. The Bibliography is a normal Panel of Cards.</li>
   <li><strong>Revision skill family</strong> (§4.6): structured <code>/editor/revise-*</code> namespace with ~25 candidate skills organized by intervention level (surface / mid / structural / clarity / voice / generative / free / reduction / meta). Twelve revision commandments inherited by every skill (preserve voice, never paraphrase / invent unless asked, no new hedges or signposting, preserve rhythm / distinctive phrasings, when uncertain don't change, surface major changes, diff-with-rationale). Diff-compare-dream loop: every revision emits proposed_change + rationale + preserved + alternatives; rejection-with-reason becomes a <code>flagged</code> dream-phase memo; over time the dream loop refines each skill toward the user's voice.</li>
-  <li><strong>Two dreams, two persistence layers</strong> (§18): dev-oriented dream improves the shipped skill set (lands in repo, ships via <code>/cleanup-virgil</code>); user-oriented dream learns per-user voice + preferences (lands in <code>~/.virgil-user/</code> + <code>&lt;docpath&gt;/.virgil/user-overrides/</code>, never touched by app updates). Runtime layering: app skill bundle &lt; user-global overlay &lt; per-doc overlay. The skill-bundle sync's deny-list is enforced at the code level — losing voice-profile learning to a careless update is architecturally impossible. Dreams are read-only into each other's territory.</li>
+  <li><strong>v1: dev-dream only; user-dream deferred to v2</strong> (§18): only the dev-oriented dream ships in v1 — improves the shipped skill set, lands in repo, ships via <code>/cleanup-virgil</code>. The user-oriented dream (per-user voice + preferences, <code>~/.virgil-user/</code> overlay, runtime layering, <code>revise-with-feedback</code> meta-skill) is deferred. Five forward-compat rules in v1: reserve overlay paths in sync deny-list; preserve inbox rejection-fidelity (no aggressive pruning); write skill prompts for overlay-readiness; keep apply_response.py overlay-agnostic; defer the <code>revise-with-feedback</code> skill. v2 user-dream design intent is kept in §18 as architectural reference.</li>
   <li><strong>Skill naming + migration</strong> (Decision A): uniform <code>&lt;verb&gt;-&lt;noun&gt;</code> namespace. Existing skills get renamed (<code>draft-footnote</code> → <code>create-footnote</code>, etc.), with old names kept as aliases for one release cycle so cached <code>.claude/commands/editor/</code> entries don't break. Clean end state; bounded migration cost.</li>
   <li><strong>Task vs Skill — and per-Task reporting</strong> (Decision B + §2): A <strong>Task</strong> is the user-facing unit of work; a <strong>Skill</strong> is an internal unit. One Task may invoke many Skills. Tasks are a Card kind (added to the ontology), with lifecycle states (<code>draft</code> / <code>submitted</code> / <code>complete</code> / <code>rejected</code>); the Inbox is the Panel that surfaces them; <code>ai-requests.json</code> is their sidecar. <strong>Reporting is per-Task, not per-Skill:</strong> Skills emit terse dev one-liners on stdout; Tasks get user-facing summaries (on the Task Card), inbox transitions, chat replies, and dream-phase memos. <code>apply_response.py</code> gains a Task-completion mode that writes the four surfaces atomically.</li>
   <li><strong>Skill granularity — contextual split-vs-parameterize</strong> (Decision C): the principle is "split when the intervention's <em>commandments / preservation rules</em> differ; parameterize when only the <em>output shape</em> differs." So <code>revise-cut-hedges</code> ≠ <code>revise-cut-filler</code> stay separate (different preservation rules); <code>create-note</code> vs <code>create-todo</code> fuse into <code>create-card --kind=...</code> (same commandments, different body shape); <code>move-card</code> / <code>archive-card</code> already correctly parameterized by ontology. Lands the skill set at ~50, not 80 or 25.</li>
   <li><strong>Invocation surfaces</strong> (Decision D): Workflow A is <strong>note-card-based</strong> — the user creates a note (general, paragraph-anchored OR selection, text-span-anchored), AI-flags it, the existing card-flag bridge produces a Task. No separate "Virgil form" widget; the note IS the input. The card-flag bridge also covers todos / cutter-comments / revision-comments for responder Tasks (different semantic class, same data path). Workflow B is Claude chat. <strong>No keyboard shortcuts.</strong></li>
+  <li><strong><code>apply_response.py</code> contract — subcommands</strong> (Blocker #1): apply_response grows by adding subcommands (<code>complete-task</code>, <code>write-with-comment</code>, <code>write-silent</code>, plus the existing <code>complete-only</code> and <code>revert</code>). Each has its own narrow input contract; the atomic-write primitive is shared infrastructure underneath. <code>--synthesize-task</code> flag composes across subcommands for chat-initiated calls. Today's default op stays as a deprecation-window alias.</li>
+  <li><strong>Task status vocabulary — two fields</strong> (Blocker #2): <code>status</code> (lifecycle: <code>pending / in-progress / complete / failed</code>) + <code>result</code> (outcome: <code>accepted / rejected / auto-applied / silent-applied / direct-created / refused / impossible / errored</code>; set only on terminal status). Clean separation of "where" from "how it ended." Dream-phase classification, inbox filters, and audit queries all become trivial groupings on these two fields.</li>
+  <li><strong>Editing lock — pen-acquire in <code>apply_response.py</code></strong> (§6): every apply_response subcommand wraps its atomic write with pen-acquire (record prior collab state, enable collab if off, take pen) and pen-release (restore prior state, release pen). TTL on the lease (~30s) auto-recovers from crashes. Pure file ops; zero token cost; lock window is sub-second to a few seconds (commit phase only, not thinking phase). UI shows the existing collab-locked rendering with adjusted copy.</li>
+  <li><strong>Blocker #4 (voice profile shape) — deferred with user-dream</strong>: the voice profile is a user-dream artifact; deferring user-dream to v2 defers Blocker #4 with it. v1 has no decision to make on voice profile shape; v2 will revisit when user-dream lands.</li>
 </ul>
 
 <h4>From §1 (two workflows)</h4>
@@ -2688,10 +2798,8 @@ Currently scoped to <code>AGENTS.md</code> + <code>docs/agents/overview.md</code
 
 <h4>From §7 (review modes)</h4>
 <ul>
-  <li>Per-skill safety: which skills can safely direct-apply, and which should always require review (e.g. <code>style-merge</code>, large rewrites)?</li>
-  <li>Mode 2's per-change comment placement (per card kind: note vs revision-comment vs other).</li>
-  <li>Responder behaviour under direct-apply: do the responders gain a doc-edit path, or do they always emit conversation-cards while a separate skill handles the edit?</li>
-  <li><code>apply_response.py</code> extensions: synthesize-entry mode for chat-initiated calls, plus a write-comment mode for mode 2. Probably one extended op rather than two.</li>
+  <li>Level 2's per-change comment placement (per card kind: note vs revision-comment vs other).</li>
+  <li>Catastrophic-operation list: pin down the exact set of operations that trigger confirmation regardless of Task level (preamble rewrite, doc-wide citekey rename, document-level restructure, others?).</li>
 </ul>
 
 <h4>From §18 (self-improving skill base)</h4>
@@ -2713,7 +2821,6 @@ Currently scoped to <code>AGENTS.md</code> + <code>docs/agents/overview.md</code
 
 <h4>Cross-cutting</h4>
 <ul>
-  <li>Status terminology: <code>pending</code>, <code>accepted</code>, <code>rejected</code>, <code>auto-applied</code> — do we need a new status, or does pre-marked <code>accepted</code> suffice for modes 2 and 3?</li>
   <li>Mode visibility in the UI: how does the user see whether a change was reviewed or auto-applied? (And revert if they don't like an auto-applied change.) The unified inbox helps here but the per-change UI affordance is still open.</li>
   <li>Inbox retention: ai-requests.json now serves double duty as the audit log. How long do completed entries stick around? Ring buffer? Per-doc archive?</li>
 </ul>
