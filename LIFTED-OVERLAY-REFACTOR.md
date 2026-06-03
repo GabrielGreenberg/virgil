@@ -1430,3 +1430,61 @@ floats); bodyless sequence + L4 untouched. Pre-existing working-tree files
 scratch (`CARD-SYSTEM-REFACTOR.md`, `EDITOR_SKILLS_V1.html`,
 `MEMO_V1_AND_ROT_PREVENTION.md`, `SKILL_PIPELINE.*`, `docs/card-refactor/`) out
 of the commit.
+
+## L3i — Bodyless kinds Chip 3: latexComment EDITABLE atom lift float — 2026-06-02
+
+**Commit:** `cdc7eac`.
+
+**What.** Third bodyless-kind migration — the editable `%comment` atom (decision
+A: fully editable, first-class). One more config row on the shared
+`SingleBlockBody` (`editable:true` + `emptyAttrs:{text:""}`) — 3 kinds now on one
+body (blockquote/codeBlock editable prose, displayMath read-only atom,
+latexComment editable atom; the atom×editable cross-product). Renders editable
+with NO cardContext flag: the factory adds `LatexComment` BARE
+(`editor-extensions.ts`, unlike `FigureBlock`/`GraphicsBlock`/`TexBlock` which
+thread `.configure({cardContext})`) → default `cardContext:false` → the
+`editableAtomView` in main AND float. Edits round-trip with no new mechanism + no
+surface-gate risk: `editableAtomView` commits (on blur) via `setNodeMarkup` on
+the FLOAT editor → the float's `onUpdate` → `writeBackToMain` (whole-atom replace
+by uuid). 3 touch-points (register `SingleBlockBody` for latexComment,
+`popoutKeyForLift` case, `liftMode:"lifted-overlay"`) + latexComment in
+`FloatSourceKind`/`KIND_LABEL` ("Source comment deleted"). Already in the float
+schema — no factory change. No renderGhost/liftSourceRect.
+
+**Observe-first.** Baseline: latexComment didn't pop out (`popoutKeyForLift`
+null; no `liftMode` — confirmed by static read of the switch + the registry
+meta). After (real released popout, popped-cards path — DFS for
+`PoppedCardsContext` → `popOutAtRect('textobject:latexComment:0c01', rect)` —
+NOT a clone harness): renders the EDITABLE `% …` view (`.latex-comment-editable`
++ `.latex-comment-prefix` present, `.latex-comment-card` absent, wrapped in a
+`contenteditable=true` float editor — confirmed the factory's bare LatexComment
+gives the editable view in floats, so NO cardContext flag was needed). Editing
+the text + blur round-trips to the source `%comment` in main (cross-checked the
+main node `text` attr by uuid: `"A demonstration document. Every formatting move
+below is intentional."` → `"ROUNDTRIP_PROBE_L3i edited in the float"`). Deleting
+the source surfaced the banner "Source comment deleted — float is disconnected.";
+no blank popout. Drag GHOST needs a trusted hover → user-verify probe: in the
+page, grab the `%comment`'s handle and drag — the lifted ghost should show the
+`% …` row (clone of the main editor's editable `.latex-comment` DOM, which
+matches the float's editable view) and on release become the editable float.
+
+**Verify.** Wiring test extended (`single-block-lift-wiring.test.ts`, Chip 3
+block): latexComment non-null `popoutKeyForLift` + `liftMode==="lifted-overlay"`
++ shared `SingleBlockBody` (same component instance as blockquote/displayMath) +
+`editable:true`/`emptyAttrs:{text:""}`; figureBlock stays the still-null control
+(now also asserting `liftMode` undefined); blockquote/codeBlock/displayMath stay
+green. vitest 385/385 (380 + 5 new Chip 3 asserts); tsc 1 pre-existing
+(`block-uuid-backfill.test.ts(27,7)`); eslint 0 new (3 pre-existing warnings in
+`TextObjectGrabHandle.tsx` confirmed on the stashed baseline); `emitCount` flat
+(Δ0, version +12) typing 12 plain chars in MAIN. Stale-build trap pre-empted: the
+registration is mount-time, so cleared `.next-preview` + restarted before
+observing (and reset the dev doc from `samples/annotation-history` after the
+destructive banner/edit probes).
+
+**Non-goals respected.** The math gate (L3h.1), `editableAtomView` dispatch
+logic, page latexComment rendering/editing, the other bodyless kinds
+(figures/sub-objects/titleField), and L4 untouched. Pre-existing working-tree
+files (`EDITOR_SKILLS_BRAINSTORM.html`, `useRecentlyAddedTracker.ts`) + untracked
+scratch (`CARD-SYSTEM-REFACTOR.md`, `EDITOR_SKILLS_V1.html`,
+`MEMO_V1_AND_ROT_PREVENTION.md`, `SKILL_PIPELINE.*`, `docs/card-refactor/`) out
+of the commit.
