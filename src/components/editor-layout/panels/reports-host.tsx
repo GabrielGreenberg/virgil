@@ -29,7 +29,9 @@ export function ReportsHost(p: ReportsHostProps) {
   const { createReport, createReportRequest } = useCardCreationContext();
   const recentlyAddedId = useRecentlyAddedId("reports");
   const discardRef = useRef(p.discardPristine);
-  discardRef.current = p.discardPristine;
+  useEffect(() => {
+    discardRef.current = p.discardPristine;
+  });
   useEffect(() => () => discardRef.current(), []);
 
   const onAddReport = useCallback(

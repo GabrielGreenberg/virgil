@@ -15,7 +15,7 @@ interface BuildArgs {
 
 /** Build OmniItems for each example so they surface in the unified
  *  Omni view (sorted by document position alongside notes, footnotes,
- *  citations, quotations, etc). */
+ *  citations, reports, etc). */
 export function buildExampleOmniItems(a: BuildArgs): OmniItem[] {
   const items: OmniItem[] = [];
   for (const ex of a.examples) {

@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback } from "react";
-import type { JSONContent } from "@tiptap/react";
+import type { JSONContent, Editor } from "@tiptap/react";
 import type { ReportRequestCard as ReportRequestCardData } from "@/lib/types";
 import {
   EditableCard,
@@ -10,7 +10,6 @@ import {
 } from "@/components/panel-primitives";
 import { useCompressedLines } from "@/components/editor-layout/contexts/card-display";
 import { useCardTheme } from "@/hooks/usePanelTheme";
-import { getLinkedTextObjectIds } from "@/links/links";
 import { usePoppedCards } from "@/hooks/usePoppedCards";
 import { FloatCard } from "@/components/FloatingCards";
 import { normalizeRichContent } from "@/lib/footnote-content";
@@ -51,7 +50,7 @@ export function ReportRequestCard({
   onDelete: (id: string) => void;
   onSelect: (id: string | null) => void;
   onJump?: (sourceEl: HTMLElement | null) => void;
-  onEditorFocus?: (editor: any) => void;
+  onEditorFocus?: (editor: Editor) => void;
   getCitationDisplayText?: (command: string) => string;
   onCitationCreated?: (command: string) => { id: string; displayText: string } | null;
   extraDataAttrs?: Record<string, string>;

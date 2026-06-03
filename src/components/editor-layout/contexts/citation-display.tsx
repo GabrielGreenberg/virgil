@@ -4,7 +4,7 @@ import { createContext, useContext, type ReactNode } from "react";
 
 /**
  * Citation helpers shared by panels that host rich-text mini-editors
- * (notes, footnotes, archive, quotations) and need to render citation
+ * (notes, footnotes, archive, reports) and need to render citation
  * nodes or accept dropped citation commands.
  *
  * - `getCitationDisplayText(command)` resolves a `\cite{key}` to the

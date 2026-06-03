@@ -36,9 +36,9 @@ export interface PanelTypography {
  *  step-for-step and the per-panel size stepper stays monotonic.
  *
  *  Two visual tiers:
- *  - 12px Inter (sans, compact) — Notes, Todos, Revisions, Cuts.
+ *  - 12px Inter (sans, compact) — Notes, Todos, Revisions, Cuts, Reports.
  *    Modeled on Cut Comments, which historically used `text-xs` directly.
- *  - 15px Source Serif 4 — Footnotes, Quotations, Archive. Same family
+ *  - 15px Source Serif 4 — Footnotes, Archive. Same family
  *    as main text (17px) but one size smaller for visual hierarchy. */
 export const DEFAULT_PANEL_TYPOGRAPHY: Record<PanelBodyKey, PanelTypography> = {
   footnote: { fontFamily: "Source Serif 4", fontSize: 15, color: "#44403c" },

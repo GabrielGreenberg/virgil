@@ -1,7 +1,7 @@
 /**
  * Generic factory for paragraph-side re-anchor specs.
  *
- * All attachment-card kinds (note, todo, quotation, archive, cutter
+ * All attachment-card kinds (note, todo, report, archive, cutter
  * comment, cutter suggestion, revision, revision suggestion) share the
  * same drop-mode shape: a vertical gutter bar alongside the target
  * paragraph; on release, re-anchor the card to that paragraph; if it

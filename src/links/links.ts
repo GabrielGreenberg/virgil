@@ -1055,7 +1055,7 @@ export function getAnchorSummary(
  * Single predicate for "this card has no anchor in the document."
  *
  * Two card shapes feed into this:
- *   - Link-bearing cards (notes, cuts, archives, quotations, revisions, todos)
+ *   - Link-bearing cards (notes, cuts, archives, reports, revisions, todos)
  *     — unanchored iff `links[]` is empty.
  *   - Citations — carry an explicit `unanchored?: true` flag because anchoring
  *     is tracked by the editor's inline atoms, not by card-resident links.

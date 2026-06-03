@@ -50,7 +50,7 @@ export interface StructuralRevisions {
   citations: number;
   /** exampleBlock added / removed / structurally changed. */
   examples: number;
-  /** linkedAnchor mark (note·cut·revision·quotation·…) added / removed. */
+  /** linkedAnchor mark (note·cut·revision·report·…) added / removed. */
   anchors: number;
   /** Anchorable block added / removed (drives doc-order-dependent derivations). */
   blocks: number;

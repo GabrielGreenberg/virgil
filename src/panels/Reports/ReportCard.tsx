@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback } from "react";
-import type { JSONContent } from "@tiptap/react";
+import type { JSONContent, Editor } from "@tiptap/react";
 import type { ReportCard as ReportCardData } from "@/lib/types";
 import { EditableCard, makeCompressedSummary } from "@/components/panel-primitives";
 import { useCompressedLines } from "@/components/editor-layout/contexts/card-display";
@@ -48,7 +48,7 @@ export function ReportCard({
   onDelete: (id: string) => void;
   onSelect: (id: string | null) => void;
   onJump?: (sourceEl: HTMLElement | null) => void;
-  onEditorFocus?: (editor: any) => void;
+  onEditorFocus?: (editor: Editor) => void;
   getCitationDisplayText?: (command: string) => string;
   onCitationCreated?: (command: string) => { id: string; displayText: string } | null;
   extraDataAttrs?: Record<string, string>;
