@@ -1,4 +1,6 @@
 <!-- last-verified: e86a264 2026-05-22 -->
+<!-- derives-from: docs/architecture/VIRGIL.md#ontology, docs/architecture/VIRGIL.md#code-organization -->
+<!-- covers-code: src/panels/panel-registry.ts, src/components/MenuBar.tsx, src/components/EditorLayout.tsx, src/components/panel-primitives.tsx -->
 
 # Glossary
 

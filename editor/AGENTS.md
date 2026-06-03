@@ -14,7 +14,10 @@ Claude to do something" signals while they write:
 
 1. **`virgil/ai-requests.json`** — unified queue. Kinds: `footnote`,
    `note`, `report`, `citation`, `todo`, `suggestion`,
-   `style-merge`. Status `draft | submitted | complete`.
+   `style-merge`. Two-field vocabulary (`EDITOR_SKILLS_V1` §7): `status`
+   (`pending | in-progress | complete | failed`) + `result` (outcome, set on a
+   terminal status) + optional `safetyLevel` (1/2/3). Legacy
+   `status: draft | submitted` still parse and read as open.
 2. **Card-level `aiRequest: boolean` flags** on notes, todos,
    cutter-comments, revision-comments. Bridged into the unified queue
    on toggle (see *Bridge* below).
@@ -64,7 +67,9 @@ editor/
 │   ├── list_requests.py        emits unified open-request JSONL
 │   ├── get_para_context.py     paragraph at %!v:<uuid> + neighbors
 │   ├── cards_for_paragraph.py  every card anchored to <uuid> across panels
-│   ├── apply_response.py       atomic writeback (card + ai-requests + notif)
+│   ├── apply_response.py       atomic pen-wrapped writeback (card + .tex +
+│   │                           ai-requests + notif + version), v1 subcommands
+│   ├── create_card.py          mechanical create-card (v1: footnote); → contract
 │   ├── bib_resolve.py          parse references.bib entry + annotation
 │   ├── bib_match_library.py    classify paper bib entries vs the library
 │   └── rename_citekey.py       rewrite \cite*{} in tex + citations.json
@@ -290,9 +295,15 @@ Both dev dirs are gitignored. See
 
 ## Don't
 
-- Don't write to `document.tex` from a Python helper. Skills do .tex
-  edits with the Edit tool so they go through the same write-queue
-  surface as user edits.
+- Don't write to `document.tex` from a Python helper **except** through the
+  `apply_response.py` contract's pen-protected atomic write — the v1 path,
+  where the `.tex` edit rides in the op-json `texEdit` (e.g. the footnote
+  `\vfid{}\footnote{}` splice) and lands in the *same* atomic transaction as
+  the sidecars. The older rule ("skills do .tex edits with the Edit tool so
+  they share the user's write-queue surface") was a stopgap for when there was
+  no editing lock; the pen (`EDITOR_SKILLS_V1` §9 / `_common.acquire_pen`) now
+  makes a direct atomic `.tex` write safe. Still don't hand-edit `.tex` outside
+  that contract.
 - Don't bypass `apply_response.py` for the writeback — even when the
   op shape isn't a perfect fit, route through it (or extend it). It
   centralizes the notification/version-bump path.

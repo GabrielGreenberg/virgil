@@ -237,12 +237,47 @@ export interface AiRequestLink {
   cardId: string;
 }
 
+/** Lifecycle of a Task — *where it is* (EDITOR_SKILLS_V1 §7). The legacy
+ *  `draft` / `submitted` values still appear on disk in papers created before
+ *  v1; they parse fine and are treated as open (≈ `pending`) by readers
+ *  (`list_requests.py`, the card-flag bridge). New writes use the v1 values. */
+export type AiRequestStatus =
+  | "pending"
+  | "in-progress"
+  | "complete"
+  | "failed"
+  | "draft"
+  | "submitted";
+
+/** Outcome of a Task — *how it ended* (EDITOR_SKILLS_V1 §7). Set only on a
+ *  terminal status (`complete` / `failed`); absent while `pending` /
+ *  `in-progress`. Distinct from `resultId`, which points at the produced card. */
+export type AiRequestResult =
+  | "accepted"
+  | "rejected"
+  | "auto-applied"
+  | "silent-applied"
+  | "direct-created"
+  | "refused"
+  | "impossible"
+  | "errored";
+
 export interface AiRequest {
   id: string;
   kind: AiRequestKind;
   text: string;
   createdAt: string;
-  status: "draft" | "submitted" | "complete";
+  /** Lifecycle (where it is). See {@link AiRequestStatus}. */
+  status: AiRequestStatus;
+  /** Outcome (how it ended) — set only on a terminal status. */
+  result?: AiRequestResult;
+  /** How aggressively the user wants the change landed (per-Task). Drives the
+   *  `apply_response.py` subcommand: 1→write-silent, 2→write-with-comment,
+   *  3→complete-task (propose). Absent ⇒ the skill asks, or treats it as a
+   *  direct create the user opted into. */
+  safetyLevel?: 1 | 2 | 3;
+  /** Pointer to the result card this request produced. Distinct from `result`
+   *  (the outcome enum). */
   resultId?: string;
   /** Kind-specific structured payload. Set for `style-merge` (and any
    *  future kind that needs more than free-form `text`). */

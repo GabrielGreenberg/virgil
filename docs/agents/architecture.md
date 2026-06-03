@@ -1,4 +1,6 @@
 <!-- last-verified: e86a264 2026-05-22 -->
+<!-- derives-from: docs/architecture/VIRGIL.md#code-organization, docs/architecture/VIRGIL.md#sidecar-and-panel-inventory -->
+<!-- covers-code: src/hooks, src/lib/storage-fsa.ts, src/lib/types.ts, src/panels/panel-registry.ts, src/links/link-registry.ts, src/text-objects/text-object-registry.ts, src/lib/marginalia.ts -->
 
 # Architecture: Registries, Hooks, Persistence, Sidecars
 
