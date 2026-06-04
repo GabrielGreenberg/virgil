@@ -1581,8 +1581,30 @@ textarea,
    No phantom `::before` line to suppress (float is outside `.show-dividers-N`);
    a blanket `::before { display: none }` is deliberately NOT added — it would
    hide the empty-paragraph placeholder `::before` in editable float kinds.
-   Float-scoped (`.par-float-body`) → cannot touch the main editor. */
+   Float-scoped (`.par-float-body`) → cannot touch the main editor.
+
+   R4 — React-NodeView arm (`.react-renderer:first-child > *`). The Issue-3 arms
+   above zero the DIRECT first-child (the `.react-renderer` WRAPPER, which carries
+   no margin of its own) and its inner `<h*>` — but a single-block figure/graphics
+   float renders its block as `.figure-block` (`margin: 1.25em 0`, ~20px; ~1942)
+   nested ONE LEVEL under the `.react-renderer` wrapper, where it self-manages its
+   inter-block rhythm because the unified `:where(.tiptap) > :where(…)` rule can't
+   reach through that wrapper (same reason `.tex-block` owns its gap, ~941). Arm 1's
+   `> :first-child` stops AT the wrapper, so that ~20px (= --editor-block-gap)
+   survived and the figure sat ~20px lower in the RELEASED float than the drag ghost
+   showed — a visible drop on release. This arm is the float-side counterpart of the
+   ghost's two-arm L3e.2 reset (globals.css:1468 / its `.tiptap`-scoped twin at the
+   `.react-renderer:first-child > *` line above ~1499): it reaches the inner block
+   and zeros its leading margin so the popout lands exactly where the ghost promised.
+   `:first-child`-scoped → a NON-leading figure inside a multi-block float keeps its
+   rhythm margin. Generic over the CLASS — every single-block React-NodeView float
+   (figureBlock/graphicsBlock today; texBlock's float renders its SOURCE in CodeMirror,
+   so there is no `.react-renderer` first-child to match and the arm is a correct
+   no-op — but it would catch any future NodeView-backed tex/other float). MEASURED
+   headless (popped-cards path): figure `48cc` + graphics `289b` inner `.figure-block`
+   margin-top 20px→0; the `.react-renderer` wrapper was already 0. (Residual bug R4.) */
 .par-float-body .tiptap > :first-child,
+.par-float-body .tiptap > .react-renderer:first-child > *,
 .par-float-body .tiptap > :first-child > :where(h1, h2, h3, h4, h5, h6) {
   margin-top: 0 !important;
 }
