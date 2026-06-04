@@ -1,4 +1,4 @@
-<!-- last-verified: 71c5f42 2026-06-03 -->
+<!-- last-verified: 694f789 2026-06-04 -->
 <!-- derives-from: docs/architecture/VIRGIL.md#ontology -->
 <!-- covers-code: src/lib/tiptap/footnote.ts, src/lib/tiptap/citation.ts, src/lib/tiptap/math.ts, src/lib/tiptap/label.ts, src/lib/tiptap/linked-anchor.ts, src/lib/cite-commands.ts, src/lib/latex-parser.ts -->
 

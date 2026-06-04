@@ -1,4 +1,4 @@
-<!-- last-verified: 52e890f 2026-06-03 -->
+<!-- last-verified: 694f789 2026-06-04 -->
 <!-- derives-from: docs/architecture/VIRGIL.md#ontology -->
 <!-- covers-code: src/links/_shared/types.ts, src/links/links.ts, src/lib/tiptap/linked-anchor.ts, src/lib/latex-serializer.ts -->
 

@@ -1,4 +1,4 @@
-<!-- last-verified: 52e890f 2026-06-03 -->
+<!-- last-verified: 694f789 2026-06-04 -->
 <!-- derives-from: docs/architecture/VIRGIL.md#reserved-name-inventory -->
 <!-- covers-code: src/lib/storage-fsa.ts, src/lib/latex-serializer.ts, src/lib/document-styles.ts, src/app/globals.css, editor/scripts/create_card.py -->
 
@@ -113,16 +113,16 @@ hand-maintained copies rot. Two shadows exist:
 
 - `apply_response.PANEL_TO_SIDECAR` — the panel → `(file, list-key)` map. The
   refactor had to hand-edit it (`quotations` → `reports`).
-- `create_card.ALL_KINDS` — the create-able kinds. **Currently stale**: it lists
-  the removed `quotation` and the never-real `annotation`, and omits `report` /
-  `report-request`. **Don't trust it as the authoritative create-able set** — the
-  SSOT is `CardKind` ([cards.md](cards.md)); `IMPLEMENTED_KINDS` (today `{footnote}`)
-  is what `create-card` actually wires.
+- `create_card.ALL_KINDS` — the create-able kinds. **Reconciled** by the create-card
+  fan-out to the real set (`footnote` `citation` `note` `todo` `report`
+  `report-request` `example`; `quotation`/`annotation` dropped) and **pinned** by a
+  module-level assert that every member is a real `CardKind` ([cards.md](cards.md), the SSOT).
 
-`check:coherence` **check 5** reconciles both shadows against the TS SSOTs and warns
-on drift — those `ALL_KINDS` warnings are *expected* until the create-card fan-out
-chip fixes the set. When you touch either shadow, re-run the check and keep it
-reconciled.
+`check:coherence` **check 5** reconciles both shadows against the TS SSOTs (`CardKind`,
+`PANEL_REGISTRY`) — it is **error-grade and currently clean**. The
+`WRITEBACK_EXEMPT_PANELS` allowlist (`archive`/`bibliography`/`errors`/`examples`) records
+the card-hosting panels intentionally *not* create-card writeback targets. When you touch
+either shadow, re-run the check and keep it reconciled.
 
 ## Rules for skills
 
@@ -134,5 +134,5 @@ reconciled.
    `notifications.json`, `collab.json`, `ai-requests.json`, `document-settings.json`).
 4. **Clean up both halves of a link** you break, and **re-anchor deliberately** —
    the guards prevent silent loss, not wrong intent.
-5. **Treat the v2 overlay paths as not-yet-real**, and **don't trust `ALL_KINDS`** —
-   verify create-ability against `CardKind` + `IMPLEMENTED_KINDS`.
+5. **Treat the v2 overlay paths as not-yet-real.** Create-ability is the reconciled,
+   assert-pinned `create_card.ALL_KINDS` (SSOT `CardKind`).
