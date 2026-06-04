@@ -66,7 +66,7 @@ export function RevisionCommentCard({
     onTogglePopout ??
     (popped ? (anchor: DOMRect) => popped.toggleAtAnchor(cardKey, anchor) : undefined);
 
-  const ac = useAnchoredCard({ kind: "comment", id: card.id });
+  const ac = useAnchoredCard({ kind: "revision-comment", id: card.id });
   const isExpanded = ac.expanded || selected;
   const isSelected = ac.selected || selected;
   const compressed = !isExpanded && !isPoppedOut;
@@ -100,11 +100,11 @@ export function RevisionCommentCard({
   const cardEl = (
     <EditableCard
       id={card.id}
-      cardKind="comment"
-      kind="comment"
-      kindOptions={["comment", "suggestion"]}
+      cardKind="revision-comment"
+      kind="revision-comment"
+      kindOptions={["revision-comment", "revision-suggestion"]}
       onKindChange={(k) => {
-        if (k !== "comment") onConvert(card.id, k as "suggestion");
+        if (k !== "revision-comment") onConvert(card.id, "suggestion");
       }}
       selected={isSelected}
       theme={theme}

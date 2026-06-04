@@ -49,7 +49,7 @@ export function buildRevisionOmniItems(a: BuildArgs): OmniItem[] {
     const baseId =
       card.kind === "suggestion"
         ? cardPopKey("revision-suggestion", card.id)
-        : cardPopKey("comment", card.id);
+        : cardPopKey("revision-comment", card.id);
 
     const renderCard = (omniId: string) =>
       card.kind === "suggestion" ? (

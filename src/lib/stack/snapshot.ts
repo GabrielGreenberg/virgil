@@ -238,7 +238,7 @@ export function snapshotCard(
     case "archive":
       card = { cardKind, data: cloned as unknown as ArchivedSnippet };
       break;
-    case "comment":
+    case "revision-comment":
       card = {
         cardKind,
         data: cloned as unknown as Extract<RevisionCard, { kind: "comment" }>,
@@ -316,7 +316,7 @@ export function summarizeStackItem(item: StackItem, maxChars = 220): string {
       case "archive":
         text = c.data.title || richJsonToPlainText(c.data.content);
         break;
-      case "comment":
+      case "revision-comment":
       case "cutter-comment":
         text = c.data.text || richJsonToPlainText(c.data.content);
         break;

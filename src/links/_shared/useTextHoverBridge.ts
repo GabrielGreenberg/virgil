@@ -69,7 +69,7 @@ export function useTextHoverBridge({
     for (const r of comments) {
       const a = getTextAnchor(r);
       if (!a) continue;
-      const kind: EntityKind = r.kind === "suggestion" ? "revision-suggestion" : "comment";
+      const kind: EntityKind = r.kind === "suggestion" ? "revision-suggestion" : "revision-comment";
       m.set(a.anchorId, { entityId: r.id, kind });
     }
     for (const rep of reportCards) {

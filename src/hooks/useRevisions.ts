@@ -54,7 +54,7 @@ function migrateCommentRecord(raw: unknown): RevisionCommentCard | null {
     typeof r.text === "string" && r.text.length > 0
       ? r.text
       : richJsonToPlainText(content) || "";
-  const links = migrateCardLinks("comment", raw);
+  const links = migrateCardLinks("revision-comment", raw);
   const ta = links.find((l) => l.anchor.type === "textObject" && l.anchor.targetKind === "linkedRange" && l.anchor.textRange);
   return {
     kind: "comment",
@@ -174,11 +174,11 @@ export function useRevisions(
         selectedText: anchor?.anchorText,
         links: [],
       };
-      if (paragraphId) card = addTextObjectLink(card, "comment", paragraphId, targetKind);
+      if (paragraphId) card = addTextObjectLink(card, "revision-comment", paragraphId, targetKind);
       if (anchor)
         card = setTextAnchorLink(
           card,
-          "comment",
+          "revision-comment",
           anchor.anchorId,
           anchor.anchorText,
         );
@@ -396,7 +396,7 @@ export function useRevisions(
           c.id === id
             ? addTextObjectLink(
                 c,
-                c.kind === "suggestion" ? "revision-suggestion" : "comment",
+                c.kind === "suggestion" ? "revision-suggestion" : "revision-comment",
                 paragraphId,
               )
             : c,
@@ -494,7 +494,7 @@ export function useRevisions(
         if (!card) return prev;
         const existing = getTextAnchor(card);
         if (existing?.anchorId === anchorId) return prev;
-        const kind = card.kind === "suggestion" ? "revision-suggestion" : "comment";
+        const kind = card.kind === "suggestion" ? "revision-suggestion" : "revision-comment";
         return {
           ...prev,
           cards: prev.cards.map((c) =>
@@ -520,7 +520,7 @@ export function useRevisions(
             getTextAnchor(c)?.anchorId === anchorId
               ? clearTextAnchorLink(
                   c,
-                  c.kind === "suggestion" ? "revision-suggestion" : "comment",
+                  c.kind === "suggestion" ? "revision-suggestion" : "revision-comment",
                 )
               : c,
           ),

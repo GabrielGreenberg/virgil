@@ -28,7 +28,7 @@ export const ANCHORED_CARD_KINDS = [
   "example",
   "todo",
   "archive",
-  "comment",
+  "revision-comment",
   "revision-suggestion",
   "cutter-comment",
   "cutter-suggestion",
@@ -85,7 +85,7 @@ export function findEntity(
       const card = c.cutterCards.find((e) => e.id === ref.id);
       return card && card.kind === "suggestion" ? card : undefined;
     }
-    case "comment": {
+    case "revision-comment": {
       const card = c.comments.find((e) => e.id === ref.id);
       return card && card.kind !== "suggestion" ? card : undefined;
     }
@@ -115,7 +115,7 @@ export function cardKeyForEntity(
     case "report":              return `report:${ref.id}`;
     case "report-request":      return `report-request:${ref.id}`;
     case "example":             return `example:${ref.id}`;
-    case "comment":             return `revision:${ref.id}`;
+    case "revision-comment":    return `revision:${ref.id}`;
     case "revision-suggestion": return `revision-suggestion:${ref.id}`;
     case "cutter-comment":      return `cutter-comment:${ref.id}`;
     case "cutter-suggestion":   return `cutter-suggestion:${ref.id}`;
@@ -146,7 +146,7 @@ export function entityKindToAnchorKind(
   switch (ref.kind) {
     case "note":                return "note";
     case "highlight":           return "highlight";
-    case "comment":
+    case "revision-comment":
     case "revision-suggestion": return "revision";
     case "cutter-comment":      return "cutter-comment";
     case "cutter-suggestion":   return "cutter-suggestion";

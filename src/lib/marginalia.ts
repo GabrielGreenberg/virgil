@@ -19,6 +19,7 @@
 
 import type { PanelId } from "@/hooks/useViewPrefs";
 import type { NodeType } from "@tiptap/pm/model";
+import type { EntityKind } from "@/links/_shared/entity-hover";
 
 // ---------------------------------------------------------------------------
 // Anchor-target detection (schema-based)
@@ -108,10 +109,9 @@ export interface MarginaliaMarker {
    * loop. Optional only because legacy "error" markers (which aren't
    * anchored cards) don't carry it.
    */
-  entityKind?:
-    | "note" | "highlight" | "footnote" | "citation" | "example"
-    | "todo" | "archive" | "comment" | "revision-suggestion"
-    | "cutter-comment" | "cutter-suggestion" | "report" | "report-request";
+  /** Anchored-card kind for the three-surface hover. Was a hand-kept inline
+   *  union duplicating `ANCHORED_CARD_KINDS`; now reuses `EntityKind`. */
+  entityKind?: EntityKind;
   /** Marker category — drives icon/color */
   type: MarkerType;
   /** TextObject UUID this marker is anchored to. May be any kind in

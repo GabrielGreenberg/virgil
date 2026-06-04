@@ -42,7 +42,7 @@ export function cardKeyPrefixToStackKind(prefix: string): StackCardKind | null {
     case "archive":
       return "archive";
     case "revision":
-      return "comment";
+      return "revision-comment";
     case "revision-suggestion":
       return "revision-suggestion";
     case "cutter-comment":
@@ -108,7 +108,7 @@ export function resolveCardData(
       return hooks.todosHook.items.find((t) => t.id === id) ?? null;
     case "archive":
       return hooks.archiveHook.snippets.find((s) => s.id === id) ?? null;
-    case "comment": {
+    case "revision-comment": {
       const c = hooks.revisionsHook.cards.find((cc) => cc.id === id);
       return c && c.kind === "comment" ? c : null;
     }

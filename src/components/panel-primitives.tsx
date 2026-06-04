@@ -28,7 +28,7 @@ import { useDragGap } from "@/hooks/useDragGap";
 import { useTabIndent } from "@/hooks/useTabIndent";
 import { autoSizeInput } from "@/lib/autoSizeInput";
 import ConfirmDialog from "./ConfirmDialog";
-import { hasJsonContent } from "@/lib/cards/has-content";
+import { hasJsonContent } from "@/cards/has-content";
 import RichTextField from "./RichTextField";
 import { useEditorChrome } from "./editor-layout/chrome-context";
 import PanelTextSizeRow from "./PanelTextSizeRow";

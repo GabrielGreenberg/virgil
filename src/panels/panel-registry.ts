@@ -14,6 +14,7 @@
 
 import type { CARD_THEMES } from "@/components/panel-primitives";
 import type { PanelKind, CardKind } from "./_shared/types";
+import { CARD_REGISTRY } from "@/cards/card-registry";
 
 type ThemeKey = keyof typeof CARD_THEMES;
 
@@ -122,7 +123,7 @@ export const PANEL_REGISTRY: Record<PanelKind, PanelRegistryEntry> = {
     kind: "revisions",
     label: "Revisions",
     folder: "src/panels/Revisions",
-    card: { kind: "comment", keyPrefix: "revision", themeKey: "comment" },
+    card: { kind: "revision-comment", keyPrefix: "revision", themeKey: "comment" },
     omniEligible: true,
     omniSide: "right",
     defaultStripSide: "right",
@@ -187,28 +188,12 @@ export const PANEL_REGISTRY: Record<PanelKind, PanelRegistryEntry> = {
   },
 };
 
-/** Canonical key-prefix per card kind. Source of truth for popout keys
- *  and OmniView prefix taxonomy. AI requests appear in multiple panels
- *  so they don't have a parent panel — listed here directly. */
-export const CARD_KEY_PREFIXES: Record<CardKind, string> = {
-  note: "note",
-  highlight: "highlight",
-  footnote: "footnote",
-  archive: "archive",
-  todo: "todo",
-  bib: "bib",
-  citation: "citation",
-  comment: "revision",
-  suggestion: "suggestion",
-  "cutter-comment": "cutter-comment",
-  "cutter-suggestion": "cutter-suggestion",
-  "revision-suggestion": "revision-suggestion",
-  report: "report",
-  "report-request": "report-request",
-  example: "example",
-  ai: "ai",
-  error: "error",
-};
+/** Canonical key-prefix per card kind. **DERIVED from `CARD_REGISTRY`**
+ *  (`src/cards/card-registry`) — the single source of truth for popout keys
+ *  and OmniView prefix taxonomy. Don't hand-edit; add a registry entry. */
+export const CARD_KEY_PREFIXES: Record<CardKind, string> = Object.fromEntries(
+  (Object.keys(CARD_REGISTRY) as CardKind[]).map((k) => [k, CARD_REGISTRY[k].keyPrefix]),
+) as Record<CardKind, string>;
 
 /** Display label for a card type, shown as a small uppercase overline
  *  in OmniView (and always shown for Comment / Suggestion families). The
@@ -219,25 +204,9 @@ export const CARD_KEY_PREFIXES: Record<CardKind, string> = {
  *  Distinct from `CARD_TITLE_LABELS` (auto-titling prefix) — that map has
  *  nulls for kinds that don't auto-title. Type labels are required for
  *  every kind since they're rendered as a static overline. */
-export const CARD_TYPE_LABELS: Record<CardKind, string> = {
-  note: "Note",
-  highlight: "Highlight",
-  footnote: "Footnote",
-  archive: "Archive",
-  todo: "Task",
-  bib: "Bibliography",
-  citation: "Citation",
-  comment: "Comment",
-  suggestion: "Revision",
-  "cutter-comment": "Comment",
-  "cutter-suggestion": "Suggestion",
-  "revision-suggestion": "Revision",
-  report: "Report",
-  "report-request": "Report Request",
-  example: "Example",
-  ai: "AI Request",
-  error: "Error",
-};
+export const CARD_TYPE_LABELS: Record<CardKind, string> = Object.fromEntries(
+  (Object.keys(CARD_REGISTRY) as CardKind[]).map((k) => [k, CARD_REGISTRY[k].label]),
+) as Record<CardKind, string>;
 
 export function cardTypeLabel(kind: CardKind): string {
   return CARD_TYPE_LABELS[kind];
@@ -248,25 +217,9 @@ export function cardTypeLabel(kind: CardKind): string {
  *  kind opts out of auto-titling because it has no user-editable title
  *  field (citations are LaTeX-keyed, comments are threaded, suggestions /
  *  ai-requests / bib entries / errors are externally generated). */
-export const CARD_TITLE_LABELS: Record<CardKind, string | null> = {
-  note: "Note",
-  highlight: null,
-  archive: "Archive Text",
-  report: "Report",
-  "report-request": null,
-  todo: "Task",
-  example: "Example",
-  footnote: "Footnote",
-  citation: null,
-  comment: null,
-  suggestion: null,
-  "cutter-comment": null,
-  "cutter-suggestion": null,
-  "revision-suggestion": null,
-  ai: null,
-  bib: null,
-  error: null,
-};
+export const CARD_TITLE_LABELS: Record<CardKind, string | null> = Object.fromEntries(
+  (Object.keys(CARD_REGISTRY) as CardKind[]).map((k) => [k, CARD_REGISTRY[k].titleLabel]),
+) as Record<CardKind, string | null>;
 
 /** Default title for a freshly created card: `${label} ${currentCount + 1}`.
  *  Returns "" for kinds that opt out (label is null). */
@@ -293,26 +246,12 @@ export function cardPopKey(cardKind: CardKind, id: string): string {
   return `${CARD_KEY_PREFIXES[cardKind]}:${id}`;
 }
 
-/** Cards that don't sit on a single-kind panel (Cutter hosts two kinds,
- *  registered with `card: null`). Mapped explicitly so link-resolution
- *  helpers can find the owning panel for these polymorphic kinds. */
-const POLYMORPHIC_CARD_PANEL: Partial<Record<CardKind, PanelKind>> = {
-  "cutter-comment": "cutter",
-  "cutter-suggestion": "cutter",
-  "revision-suggestion": "revisions",
-  report: "reports",
-  "report-request": "reports",
-  note: "notes",
-  highlight: "notes",
-};
-
 export function getPanelByCardKind(cardKind: CardKind): PanelRegistryEntry | null {
-  for (const entry of Object.values(PANEL_REGISTRY)) {
-    if (entry.card?.kind === cardKind) return entry;
-  }
-  const fallback = POLYMORPHIC_CARD_PANEL[cardKind];
-  if (fallback) return PANEL_REGISTRY[fallback];
-  return null;
+  // Inverted polymorphic model: each kind declares its owning panel in
+  // CARD_REGISTRY (`src/cards/card-registry`); membership derives. Replaces the
+  // old PANEL_REGISTRY.card scan + the hand-kept POLYMORPHIC_CARD_PANEL map.
+  const panel = CARD_REGISTRY[cardKind].panel;
+  return panel ? PANEL_REGISTRY[panel] : null;
 }
 
 /** All panels that contribute items to the Omni view, in registry order. */

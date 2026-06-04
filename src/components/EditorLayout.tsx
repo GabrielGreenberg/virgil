@@ -96,7 +96,7 @@ import {
   deleteMarginItem,
   type MarginItemHandlers,
   type MarginItemKind,
-} from "@/lib/cards/delete-margin-item";
+} from "@/cards/delete-margin-item";
 import dynamic from "next/dynamic";
 import type { CodeEditorHandle } from "./CodeEditor";
 const CodeEditor = dynamic(() => import("./CodeEditor"), { ssr: false });
@@ -3441,7 +3441,7 @@ export default function EditorLayout() {
                 omniKey: `revision:${r.id}`,
                 entrySelector: `[data-card-key="revision:${r.id}"]`,
                 panelId: "revisions",
-                cardKind: "comment",
+                cardKind: "revision-comment",
                 skipScroll: true,
               },
               {
@@ -3465,7 +3465,7 @@ export default function EditorLayout() {
           onDelete: () => {
             void handleMarginItemDelete("revision", r.id, pid, anchorId);
           },
-          ...hoverPropsFor(r.id, r.kind === "suggestion" ? "revision-suggestion" : "comment"),
+          ...hoverPropsFor(r.id, r.kind === "suggestion" ? "revision-suggestion" : "revision-comment"),
         });
       }
     }

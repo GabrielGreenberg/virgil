@@ -65,7 +65,7 @@ function paragraphKindFor(kind: CardKind): string | null {
     case "note":               return "note";
     case "cutter-comment":
     case "cutter-suggestion":  return "cut";
-    case "comment":
+    case "revision-comment":
     case "revision-suggestion": return "comment";
     case "report":
     case "report-request":     return "report";

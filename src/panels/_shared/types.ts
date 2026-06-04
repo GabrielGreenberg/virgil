@@ -29,24 +29,10 @@ export type PanelKind =
   | "errors"
   | "omni";
 
-export type CardKind =
-  | "note"
-  | "highlight"
-  | "footnote"
-  | "archive"
-  | "todo"
-  | "bib"
-  | "citation"
-  | "comment"
-  | "suggestion"
-  | "cutter-comment"
-  | "cutter-suggestion"
-  | "revision-suggestion"
-  | "report"
-  | "report-request"
-  | "example"
-  | "ai"
-  | "error";
+// `CardKind` canonical home moved to `src/cards/types.ts` (beside CARD_REGISTRY).
+// Re-exported here for ripple-minimization — existing `@/panels/_shared/types`
+// importers are unchanged.
+export type { CardKind } from "@/cards/types";
 
 /** A single item to render inside the Omni view. */
 export interface OmniItem {
