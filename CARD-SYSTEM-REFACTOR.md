@@ -10,6 +10,14 @@ A deep overhaul of Virgil's card system, run as a **management session**: this d
 
 ## Progress
 
+### Session 3 — both foundations landed; decisions ratified; new issues folded (2026-06-04)
+- **Both Wave-1 foundations landed** (`docs/card-refactor/A0-spine-audit.md`, `AF-floatable-audit.md`). Resolved an audit↔audit conflict: **Quotations is deleted** (A0 correct; AF stale — the tree moved `486a462`→`d1b3ee3`); `report`/`report-request` are real. Corrected taxonomy: **17 declared / 16 real kinds, 4 polymorphic panels, ~14 sync sites + 6 parallel kind-enums + a duplicate `entityKind` union**; `error` is **not** poppable.
+- **Ratified all recs + reconciliations** — see the new **Decisions** section (kind-in-key for all polymorphic panels, `comment`→`revision-comment`, error-not-poppable, raise-on-click, keep per-domain surface, lifecycle gaps declared-intentional/deferred to A3, registry at `src/cards/`, AF owns the popped header before A9, stackability via `Floatable.snapshotForStack()`).
+- **Process rule:** the tree moves under the refactor → every chip re-pins to current HEAD + re-verifies `file:line` on start; AF-impl gets an explicit re-pin pass (its inline float sites 15→14, `quotation:` mooted).
+- **Folded in Gabriel's issue list:** card-modes matrix + expand/pop-out-without-select + unanchored reflow (→ A4/A5); borrows-from-main-text display + two-class typography (→ A9); stackability (→ AF, already covered); and the **polymorphic morph chevron** (→ A0 + A9).
+- **N1 (modes matrix) + N2 (typography) ratified** — all decisions now settled.
+- **Entering foundation implementation.** Next: **A0-impl** (card registry SSOT — the keystone), then **AF-impl** (`src/floats/`). **Wave-2 dependent-arena audits (A1–A10) deferred until the foundations land** — auditing them now (against pre-refactor code) would re-stale them the moment the registry/floats restructure lands (the same drift that hit AF in 3 days). A0-impl and AF-impl run **serial, not parallel** — they share `panel-primitives.tsx` + the key grammar + `toFloatable`.
+
 ### Session 2 — ontology refined; two foundations; A0 re-spun + AF spun off (2026-06-01)
 - Established the governing ontology: two distinct kinds (`TextObject`, `Card`) + a shared **`Floatable` role** for the popped-out presence — **composition, not a shared base class.** A Card *has* a floating presence; a TextObject *has* a floating presence; the float subsystem hosts anything satisfying the contract and knows nothing about which kind it holds.
 - Ratified the three seams: **(1)** each domain keeps its own *birth* gesture; the subsystem owns the float + the commit-to-float handoff. **(2)** fixed chrome skeleton (drag · title · jump · redock · close) + 1–2 domain-contributed slots. **(3)** one popout-key grammar `float:<domain>:<kind>:<id>` with a prefs migration.
@@ -24,9 +32,9 @@ A deep overhaul of Virgil's card system, run as a **management session**: this d
 
 ## Current state cheat-sheet (read before touching code)
 
-> ⚠️ **Seeded from the kickoff discussion's read of the architecture — file paths/line numbers are best-effort and may have drift. The A0-audit chip verifies & corrects this section with exact `file:line`.**
+> ✅ **Verified by the A0/AF audits against HEAD `d1b3ee3` (2026-06-04).** Authoritative detail lives in `docs/card-refactor/A0-spine-audit.md` (taxonomy, per-kind matrix, exact `file:line`) and `AF-floatable-audit.md` (float layer).
 
-**The ~11 hand-synced card-kind definition sites (the core problem).** Adding/changing a card kind today touches all of these:
+**~14 hand-synced card-kind definition sites across 10 files** (≈2× the original "~11" estimate), **plus 6 parallel kind-enums** with drifting tokens (canonical `CardKind` 17 · pristine 6 · `StackCardKind` 12 · `ANCHORED_CARD_KINDS` 13 · `MarkerType` 7 · `PanelThemeKey` 11 · `HighlightType` 5) **and a duplicate inline `entityKind` union** (`marginalia.ts:111`). Core sites:
 
 | Sync point | File (verify) |
 |---|---|
@@ -38,15 +46,15 @@ A deep overhaul of Virgil's card system, run as a **management session**: this d
 | `MARKER_META` / `MarkerType` + `MIME_*` card constants | [src/lib/marginalia.ts](src/lib/marginalia.ts) |
 | Drop-spec registry | [src/components/drop-mode/registry.ts](src/components/drop-mode/registry.ts) |
 
-**The 16 card kinds:** `note`, `highlight`, `footnote`, `citation`, `quotation`, `example`, `todo`, `archive`, `comment`, `suggestion`, `cutter-comment`, `cutter-suggestion`, `revision-suggestion`, `bib`, `ai`, `error`. (13 anchored; `bib`/`ai`/`error` not.)
+**17 declared kinds** (`src/panels/_shared/types.ts:32-49`): `note`, `highlight`, `footnote`, `citation`, `comment`, `suggestion`, `cutter-comment`, `cutter-suggestion`, `revision-suggestion`, `report`, `report-request`, `example`, `todo`, `archive`, `bib`, `ai`, `error`. **`quotation` is gone** (panel deleted; zero `src/` refs). After cleanup → **16 real** (drop bare `suggestion` — an on-disk data discriminator, not a registry kind; rename `comment`→`revision-comment`). **13 anchored**; `bib`/`ai`/`error` system; **15 poppable** (`error` is not — dead capability, A0 §3.5).
 
-**3 polymorphic panels** (registry `card: null`, via `POLYMORPHIC_CARD_PANEL`): Notes (`note`+`highlight`), Revisions (`comment`+`revision-suggestion`), Cutter (`cutter-comment`+`cutter-suggestion`).
+**4 polymorphic panels** (registry `card: null`, via `POLYMORPHIC_CARD_PANEL`): Notes (`note`+`highlight`), Revisions (`comment`+`revision-suggestion`), Cutter (`cutter-comment`+`cutter-suggestion`), **Reports** (`report`+`report-request`).
 
 **Surfaces a card appears on:** docked side panel · omni-view · **popped-out float** · marginalia gutter (nav only) · stack (thumbnail) · print · reader/library (read-only).
 
-**Known naming/keying warts (resolve in the card SSOT):** `suggestion` vs `revision-suggestion` (both labeled "Revision"); `cut` theme vs `cutter-*` kinds; `quote` theme vs `quotation` kind (opts out of `CARD_THEMES`, styles inline); example-block popout carries **two** keys (`textobject:exampleBlock:<uuid>` + legacy `example:<uuid>`); polymorphic panels are a special-case branch in every consumer.
+**Known naming/keying warts (dispositions ratified — see Decisions):** `suggestion` is one concept under **five names** → kind-in-key + `comment`→`revision-comment`, drop bare `suggestion`; `cut` theme/marker vs `cutter-*` kinds; the `quote`/`quotation` mismatch is **resolved by deletion**; the dual example key (`example:` vs `textobject:exampleBlock:`) left for A1; polymorphic special-casing → inverted to registry-derived (`cardKindsForPanel`).
 
-**Lifecycle coverage gaps:** clone/delete/bindAnchor exist for `footnote`, `citation`, `note`, `highlight`, `comment`, `suggestion`, `cutter-comment`, `cutter-suggestion` — **none for `todo`, `archive`, `quotation`, `example`** (and `bib`/`ai`/`error` by design). Intentional or drift?
+**Lifecycle coverage gaps (corrected):** the 8 with clone/delete/bindAnchor are `footnote`, `citation`, `note`, `highlight`, `comment`, `suggestion`, `cutter-comment`, `cutter-suggestion`; the **real gaps are `todo`, `archive`, `example`, `report`, `report-request`** (the cheat-sheet missed `report`/`report-request` and wrongly listed the deleted `quotation`). Ratified: **declared intentional in the registry now; fills deferred to A3.**
 
 **Float-presence current reality (recon; the `AF`-audit verifies):** `FloatingPanel` ([src/components/FloatingPanel.tsx](src/components/FloatingPanel.tsx)) is the low-level window, already shared. `FloatCard` ([src/components/FloatingCards.tsx](src/components/FloatingCards.tsx)) wraps it; `TextObjectFloat` ([src/text-objects/TextObjectFloat.tsx](src/text-objects/TextObjectFloat.tsx)) appears to wrap `FloatCard` (so `FloatCard` is **misnamed** — it already hosts text-objects). Popped state via `usePoppedCards`/`prefs.poppedOutCards` keyed by string. Stack-drop dispatch shared ([src/lib/stack/](src/lib/stack/)); snapshot per-kind. So the shared substrate **already exists implicitly** — the work is largely formalizing, renaming, unifying chrome + key grammar.
 
@@ -119,29 +127,29 @@ Both `CARD_REGISTRY[kind].toFloatable(id)` and `TEXT_OBJECT_REGISTRY[kind].toFlo
 
 ## 4. The Card Taxonomy
 
-The 16 kinds, the 3 polymorphic panels, and the anchored/non-anchored split (cheat-sheet). The `A0`-audit produces the authoritative, code-verified taxonomy: creatable vs system-generated (`bib`/`ai`/`error`), anchored vs not, and the canonical home of `CardKind`.
+**Landed — authoritative per-kind matrix in `docs/card-refactor/A0-spine-audit.md` §2** (origin · anchored · poppable · stackable · lifecycle · drop · panel · keyPrefix · themeKey · markerType). Headline: 17 declared / 16 real kinds; 13 anchored; 3 system (`bib`/`ai`/`error`); 15 poppable; `CardKind`'s canonical home is `src/panels/_shared/types.ts:32` (moves into `src/cards/types.ts`).
 
 ## 5. Target Card Registry Shape (the new SSOT) — card-only
 
-> **Placeholder — filled in from the `A0`-audit.** A `CARD_REGISTRY: Record<CardKind, CardMeta>` mirroring `TEXT_OBJECT_REGISTRY`: one descriptor per kind driving `label` / `titleLabel` / `keyPrefix` / `themeKey` / `anchored` / `lifecycle` (clone/delete/bindAnchor) / in-doc `dropSpec` / `markerMeta` / `panel`. **Float handling is NOT defined here** — the descriptor exposes `toFloatable(id): Floatable` plugging into §3's shared contract; the card registry never defines float-window internals. Define the canonical predicate(s) replacing `ANCHORED_CARD_KINDS` and the polymorphic-panel branches.
+**Designed — see `A0-spine-audit.md` §4:** `CARD_REGISTRY: Record<CardKind, CardMeta>` at new top-level `src/cards/`, one descriptor driving `label`/`titleLabel`/`keyPrefix`/`themeKey`/`panel`/`origin`/`anchored`/`markerType`/`lifecycle`/`dropSpec`/`toFloatable(id, ctx): Floatable | null`. Six parallel kind-enums + the polymorphic-panel branches collapse to one union + derived predicates (`isAnchoredCardKind`, `panelForCardKind`, `cardKindsForPanel`, `resolveCardKind`). **Float handling is NOT defined here** — `toFloatable` plugs into §3's shared contract. Ratified dispositions in **Decisions**.
 
 ## 6. Current Fragmentation to Retire
 
-> **Placeholder — filled in from the `A0`-audit** as a `Surface | File(s) (file:line) | Disposition` table (one row per sync point + per wart). The `AF`-audit adds the float-presence fragmentation (duplicated chrome, key prefixes, per-kind float logic).
+**Landed — two tables:** card-spine fragmentation in `A0-spine-audit.md` §6 (`Surface | File(s) (file:line) | Disposition`); float-presence fragmentation in `AF-floatable-audit.md` §7 (duplicated chrome, two key grammars, the 15→14 inline float sites, per-kind float logic).
 
 ## 7. The Arenas
 
 Two foundations (`A0`, `AF`), then the dependent arenas. Each becomes a read-only **audit chip** then **implementation chip(s)**. Your original five review zones map on as noted.
 
-### A0 — Spine: card SSOT consolidation *(FOUNDATION · card-only)*
-- **Scope:** the ~11 sync points → one `CARD_REGISTRY`; resolve naming/keying warts; define canonical predicates. **Float presence is out of scope here** — expose `toFloatable()` (§3), don't design it.
-- **Key files:** the cheat-sheet's sync-point table.
-- **DoD:** adding a card kind = one registry entry (+ predicate/anchor membership). No edits to the other ~10 sync points.
+### A0 — Spine: card SSOT consolidation *(FOUNDATION · card-only · ✅ audit landed)*
+- **Scope:** the ~14 sync points + 6 parallel enums → one `CARD_REGISTRY`; resolve naming/keying warts; define canonical predicates. **Float presence is out of scope here** — expose `toFloatable()` (§3), don't design it.
+- **Also exposes** the per-panel polymorphic-morph set (`cardKindsForPanel`) that powers the new **morph chevron** (A9) and generalizes the existing revisions `convertCard`.
+- **DoD:** adding a card kind = one registry entry (+ predicate/anchor membership). No edits to the other sync points.
 
-### AF — `Floatable` presence abstraction *(FOUNDATION · the ONE sanctioned cross-domain arena, window layer only)*
-- **Scope:** formalize the implicitly-shared float machinery into `src/floats/` + the `Floatable` contract; unify chrome; unify the key grammar (+ migration); enforce one float policy. Both `Card` and `TextObject` produce `Floatable`. **Do NOT touch either ontology/registry or in-doc behavior; do NOT merge the kinds.**
+### AF — `Floatable` presence abstraction *(FOUNDATION · the ONE sanctioned cross-domain arena, window layer only · ✅ audit landed)*
+- **Scope:** formalize the implicitly-shared float machinery into `src/floats/` + the `Floatable` contract; unify chrome; unify the key grammar (+ lockstep `poppedOutCards`/`cardFloatPositions` migration); enforce one float policy. Both `Card` and `TextObject` produce `Floatable`. **Do NOT touch either ontology/registry or in-doc behavior; do NOT merge the kinds.**
 - **Key files:** [FloatingPanel.tsx](src/components/FloatingPanel.tsx), [FloatingCards.tsx](src/components/FloatingCards.tsx), [TextObjectFloat.tsx](src/text-objects/TextObjectFloat.tsx), [usePoppedCards.ts](src/hooks/usePoppedCards.ts), [spawn-position.ts](src/components/editor-layout/spawn-position.ts), [stack/](src/components/stack/) + [src/lib/stack/](src/lib/stack/), [dock-drag.ts](src/components/editor-layout/dock-drag.ts).
-- **Covers your zones 2 & 3** (pop-out behavior, drop-onto-stack). Absorbs the old A7.
+- **Covers your zones 2 & 3 + Part D (stackability):** drop-onto-stack is the **shared** `Floatable.snapshotForStack()` — one mechanism for cards **and** text-objects (this answers Part D's "shared vs wire-twice": shared); AF caught that text-object floats don't stack today (bug, fixed by construction). Ratified: **raise-on-click** (z from MRU); **AF owns the popped header** (out of `PanelCard`, lands before A9). Absorbs the old A7.
 
 ### A1 — Gardening *(your zone 4)*
 Dead/vestigial removal: grip-redesign disabled drags (TodoRow/QuotationGroupCard/ErrorCard); vestigial `DetachedActionsToolbar`/`Formatting`/`Menu`; unused `AttachedPopover`; unreachable `menuLocation:"free"`; legacy `comments.json`/`useComments`; `legacySpawn`; the dual example-block key. Mostly leaf-file deletions → can land early.
@@ -152,11 +160,14 @@ Mode A/B, `linkedAnchor`, three-surface hover, orphans, re-anchor-by-drag. Files
 ### A3 — Creation & lifecycle
 3 creation entry points → one pipeline; pristine-card auto-discard; clone/delete/bindAnchor coverage gaps. Files: [card-creation.ts](src/components/editor-layout/card-actions/card-creation.ts), [usePristineCardManager.ts](src/hooks/usePristineCardManager.ts), [card-lifecycle-registry.tsx](src/panels/card-lifecycle-registry.tsx).
 
-### A4 — Selection, focus & keyboard *(part of your zone 1)*
-Sticky/transient model, multi-expand vs focus-halo, keyboard nav, a11y. Files: [anchored-card-store.ts](src/links/_shared/anchored-card-store.ts), [CardListPanel.tsx](src/panels/_shared/CardListPanel.tsx).
+### A4 — Selection, focus & keyboard *(part of your zone 1 · folds Gabriel's Part A/B)*
+Sticky/transient model, multi-expand vs focus-halo, keyboard nav, a11y. Files: [anchored-card-store.ts](src/links/_shared/anchored-card-store.ts), [CardListPanel.tsx](src/panels/_shared/CardListPanel.tsx). **Folded in:**
+- **Card-modes matrix (your A1) — DECIDE, gates the rest** (Decisions N1: proposal = selection ⟂ expansion, full 2×2).
+- **Expand/collapse without selecting (your B1)** — the action fires directly, no select step.
+- **Pop-out without selecting + pop-out from a *compressed* card (your B2)** — birth gesture decoupled from selection; coordinate with AF (the float result) per Seam 1.
 
-### A5 — Surface: omni-view *(your zone 1)*
-Card appearance/selection/filter/pin; cross-surface consistency with the docked panel. Files: [src/panels/Omni/](src/panels/Omni/), [omni-host.tsx](src/components/editor-layout/panels/omni-host.tsx).
+### A5 — Surface: omni-view *(your zone 1 · folds Gabriel's B3)*
+Card appearance/selection/filter/pin; cross-surface consistency with the docked panel. Files: [src/panels/Omni/](src/panels/Omni/), [omni-host.tsx](src/components/editor-layout/panels/omni-host.tsx). **Folded in — unanchored-card collision/reflow (your B3):** expanding unanchored notes must reflow / avoid collisions, not overwrite each other or a nearby anchored card (e.g. one on the title). Comes after expansion behavior (A4) settles.
 
 ### A6 — Surface: marginalia gutter
 Markers, the deferred overflow design, click/drag/hover. Files: [Marginalia.tsx](src/components/Marginalia.tsx), [marginalia.ts](src/lib/marginalia.ts), [marginalia-grid.ts](src/lib/marginalia-grid.ts).
@@ -164,8 +175,12 @@ Markers, the deferred overflow design, click/drag/hover. Files: [Marginalia.tsx]
 ### A8 — Surface: print + reader/library
 Per-kind rendering in print & the read-only reader. Files: [PrintAppendices.tsx](src/components/PrintAppendices.tsx), [print.ts](src/lib/print.ts), [chrome-config.ts](src/components/editor-layout/chrome-config.ts), [PaperRender.tsx](library/components/PaperRender.tsx).
 
-### A9 — Internal appearance & typography *(your zone 5)*
-Per-kind fonts/layout/typography, compressed-body, empty states. Files: per-panel `*Card.tsx` in [src/panels/](src/panels/), [panel-typography.ts](src/lib/panel-typography.ts), [panel-theme.ts](src/lib/panel-theme.ts), [STYLE_GUIDE.md](src/STYLE_GUIDE.md).
+### A9 — Internal appearance & typography *(your zone 5 · folds Gabriel's Part C + the morph chevron)*
+Per-kind fonts/layout/typography, compressed-body, empty states. Files: per-panel `*Card.tsx` in [src/panels/](src/panels/), [panel-typography.ts](src/lib/panel-typography.ts), [panel-theme.ts](src/lib/panel-theme.ts), [STYLE_GUIDE.md](src/STYLE_GUIDE.md). **Folded in:**
+- **Borrows-from-main-text display class (your C1):** examples, archives, **footnotes**, and any others the audit enumerates (likely cutter excerpts + revision-suggestion) must faithfully render links / atoms / text-objects / nested footnote phenomena (citation-in-footnote, math-in-footnote) — **display-only, nothing grabbable or actionable.**
+- **Two typography classes (your C2):** main-text-derived notes → main-text font one step down on the panel size scale; everything else → standard sans. (Exact step: Decisions N2.)
+- **Consistency pass (your C3):** enumerate the full card-type set; make all styling consistent against C1/C2.
+- **Polymorphic morph chevron (your top-line ask):** a down-chevron beside the card-type label that switches a panel's morphs (note↔highlight, comment↔revision-suggestion, cutter-comment↔cutter-suggestion, report↔report-request), driven by A0's `cardKindsForPanel`; generalizes the existing revisions `convertCard` + `PanelCard.kindOptions`. Rendered in the unified header — docked here, popped via AF's `FloatChrome` title slot. Per-pair morph compatibility (note↔highlight is lossy) declared in `CARD_REGISTRY`.
 
 ### A10 — Cross-cutting integrations
 AI requests (bridge; ephemeral cards), collab focus-claims, theming/color overrides (`aiRequest`/`error` hardcoded — inconsistency), persistence integrity. Files: [ai-request-bridge.ts](src/lib/ai-request-bridge.ts), [useCollab.ts](src/hooks/useCollab.ts), [panel-theme.ts](src/lib/panel-theme.ts), [usePersistentState.ts](src/hooks/usePersistentState.ts).
@@ -184,16 +199,40 @@ grip-redesign disabled drags (TodoRow/QuotationGroupCard/ErrorCard) · vestigial
 
 ---
 
+## Decisions
+
+### Settled (ratified session 3)
+- **Polymorphic key + naming.** Kind-in-key for all 4 polymorphic panels (`float:<domain>:<kind>:<id>` carries the real kind); retire the shared `revision` prefix special-case; `comment`→`revision-comment`; drop bare `suggestion` (only an on-disk data discriminator). One rule for revisions/cutter/reports/notes — resolves the "five names" wart and the cutter/revision asymmetry. *(Reconciles A0's shared-prefix lean with AF's kind-in-key grammar toward the deeper, uniform fix.)*
+- **`error` not poppable.** `CARD_REGISTRY.error.toFloatable` returns `null`; A1 deletes the dead popout wiring (ErrorCard's `<FloatCard>` early-return that never had a dispatch case). `ai` stays poppable.
+- **Raise-on-click.** Float z-index derives from the MRU stack so clicking a buried float raises it (today z is insertion-order).
+- **Per-domain `surface` kept** (cards = beige "panel", text-objects = white "card") as a legible, centrally-controlled `Floatable.surface` field — the header chrome is unified regardless.
+- **Lifecycle gaps declared intentional now** (`todo`/`archive`/`example`/`report`/`report-request`); actual clone/delete fills deferred to **A3**.
+- **Card registry at top-level `src/cards/`** (sibling to `text-objects/`/`links/`/`floats/`), absorbing the existing `src/lib/cards/`.
+- **AF owns the popped header** (moved out of `PanelCard` into `FloatChrome`); A0/A9 keep the docked header; **AF-impl ordered before A9**.
+- **Dual example key left intact** → A1 (gardening) decides any collapse.
+- **AF consumes-not-relocates** `FloatingPanel`/dock/MRU (they also serve panels + dialogs).
+- **Stackability = one shared mechanism** via `Floatable.snapshotForStack()` (answers Part D); fixes the text-object-floats-don't-stack bug by construction.
+- **`cardFloatPositions` migrates in lockstep** with `poppedOutCards` (AF caught the prior D10 migration only did the latter → no saved-position loss).
+
+### Ratified (was Open — settled session 3)
+- **N1 — Card-modes matrix:** **selection ⟂ expansion (full 2×2).** *Expansion* = how much content shows (compressed ↔ full body), a display property. *Selection* = the focus/link relationship — three-surface highlight (text + margin + card), scroll-on-select, keyboard target, multi-select operand. Post-B1/B2, **selection no longer gates expand or pop-out**, and selecting does **not** auto-expand. Gates A4/B1/B2/B3.
+- **N2 — Typography:** borrowed-content notes → main-text font **one step down on the panel-typography size scale** ([panel-typography.ts](src/lib/panel-typography.ts)); everything else → standard sans. The C-pass chip pins the exact px.
+
+### Resolved by audit (no decision)
+- **Borrowed-content full list (your C1/C3).** An audit output of the C consistency pass — beyond examples/archives/footnotes, candidates are **cutter cards** (main-text excerpts) and **revision-suggestion** (proposed text). The pass enumerates definitively.
+
+---
+
 ## Chip Ledger
 
 The management control surface. **Audit chips write to `docs/card-refactor/<ID>-audit.md` and return a summary; the management session consolidates into this doc and flips the rows below.** Implementation chips (Wave 3) appended once their audit lands.
 
 | Chip ID | Arena | Wave | Type | Status | Audit file / worktree | Depends on |
 |---|---|---|---|---|---|---|
-| **A0-audit** | Card spine / SSOT *(card-only)* | 1 | audit | **spun-off** | `docs/card-refactor/A0-spine-audit.md` | — |
-| **AF-audit** | `Floatable` presence *(cross-domain, window layer)* | 1 | audit | **spun-off** | `docs/card-refactor/AF-floatable-audit.md` | — |
-| A0-impl | Card spine consolidation | 3 | impl | planned | — | A0+AF audits ratified |
-| AF-impl | `Floatable` subsystem | 3 | impl | planned | — | A0+AF audits ratified |
+| **A0-audit** | Card spine / SSOT *(card-only)* | 1 | audit | ✅ **landed** | `docs/card-refactor/A0-spine-audit.md` | — |
+| **AF-audit** | `Floatable` presence *(cross-domain, window layer)* | 1 | audit | ✅ **landed** | `docs/card-refactor/AF-floatable-audit.md` | — |
+| A0-impl | Card spine consolidation | 3 | impl | **ready** (next) | — | foundations ratified ✓ |
+| AF-impl | `Floatable` subsystem *(re-pin to HEAD first)* | 3 | impl | **ready** (next) | — | foundations ratified ✓ |
 | A1-audit | Gardening | 2 | audit | planned | — | A0 |
 | A2-audit | Anchoring & link model | 2 | audit | planned | — | A0 |
 | A3-audit | Creation & lifecycle | 2 | audit | planned | — | A0 |
@@ -217,6 +256,7 @@ This doc is the refactor's SSOT, **owned by the management session.** Audit chip
 3. **Keystroke sanctity:** card-source memos stay event-driven on `useStructuralRevisions`; verify `window.__virgilBusStats().emitCount` flat on plain typing.
 4. **Two kinds, one presence:** never merge `TextObject` and `Card`; touch the text-object side only at the `Floatable` window layer (and only in `AF`).
 5. **Verify (impl)** in the dev preview against `virgil-data/doc_devtest` (reload from `samples/annotation-history/` if choppy); walk the card kind across every surface it touches.
+6. **Re-pin on start.** The tree moves under the refactor — re-verify every `file:line` against current HEAD before relying on it or editing. AF-impl gets an explicit re-pin pass (its inline float sites 15→14 after Quotations' deletion; `quotation:` prefix mooted).
 
 ## Definition of Done (whole refactor)
 
