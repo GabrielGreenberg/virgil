@@ -132,14 +132,6 @@ Each inline element has a stroke / fill / border triple.
 --note-marker-border:   #86efac
 ```
 
-## AI markers
-
-```
---ai-marker-text:    #92400e
---ai-marker-bg:      #fef3c7
---ai-marker-border:  #fcd34d
-```
-
 ## Interaction
 
 ```

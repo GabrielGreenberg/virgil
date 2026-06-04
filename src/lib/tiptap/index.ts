@@ -21,7 +21,7 @@ export {
   ExpexNumbering,
 } from "./expex";
 export { EmptyParagraphTitleCleaner, TitleField, MaketitleMarker } from "./title";
-export { AiRequestMarker } from "./ai-request";
+export { InlineAtomGrab } from "./inline-atom-grab";
 export {
   LinkedAnchor,
   LinkedAnchorGuard,

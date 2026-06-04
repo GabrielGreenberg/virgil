@@ -140,11 +140,6 @@
   --note-bg: #f0fdf4;
   --note-marker-border: #86efac;
 
-  /* AI markers */
-  --ai-marker-text: #92400e;
-  --ai-marker-bg: #fef3c7;
-  --ai-marker-border: #fcd34d;
-
   /* Suggestions */
   --mark-bg: #fbbf24;
   --mark-border: #c8960e;
@@ -256,9 +251,6 @@
   --citation-border-color: #e0d5a8;
   --note-color: #15803d;
   --note-marker-border: #86efac;
-  --ai-marker-text: #92400e;
-  --ai-marker-bg: #fef3c7;
-  --ai-marker-border: #fcd34d;
   --mark-bg: #fbbf24;
   --mark-border: #c8960e;
   --latex-cmd-color: #9ca3af;
@@ -2702,42 +2694,6 @@ textarea,
   outline-offset: -2px;
 }
 
-/* AI request marker — placeholder chip dropped from a draft AI request card */
-.ai-request-marker {
-  display: inline-flex;
-  align-items: center;
-  gap: 3px;
-  font-size: 0.78em;
-  line-height: 1.2;
-  color: var(--ai-marker-text, #0c4a6e);
-  background: rgba(224, 242, 254, 0.6);
-  border: 1px solid var(--ai-marker-border, #7dd3fc);
-  border-radius: 4px;
-  padding: 1px 5px 1px 4px;
-  margin: 0 1px;
-  cursor: pointer;
-  font-family: var(--font-sans-override, var(--font-sans)), system-ui, sans-serif;
-  vertical-align: baseline;
-  white-space: nowrap;
-  user-select: none;
-}
-
-.ai-request-marker:hover {
-  background: rgba(224, 242, 254, 0.95);
-  border-color: #38bdf8;
-}
-
-.ai-request-marker-star {
-  font-size: 0.85em;
-  color: #0ea5e9;
-  line-height: 1;
-}
-
-.ai-request-marker-label {
-  font-style: italic;
-  font-size: 0.95em;
-}
-
 /* In-text connector lines are now drawn via InTextConnectors SVG component */
 
 /* Note markers (green N in editor gutter) */
@@ -3017,6 +2973,17 @@ body[data-drop-mode-active="true"] [data-floating-panel="true"][data-drop-mode-s
   opacity: 0.6;
   transition: opacity 0.1s ease;
 }
+/* Suppress native text-selection for the whole drop gesture. The inline-atom
+ * grab starts ON editable content (the atom is its own handle), so without
+ * this the browser draws a text-selection highlight competing with the blue
+ * drop bar. Keyed on the session attr the controller already stamps, so it
+ * also covers the block/float grabs (harmless — those don't start on text).
+ * Prevents only NEW selection; the grab plugin clears any in-progress one via
+ * getSelection().removeAllRanges() at the threshold-cross. */
+body[data-drop-mode-active="true"],
+body[data-drop-mode-active="true"] * {
+  user-select: none;
+}
 /* Indicator transitions:
  * - Fade in on first mount (under 100ms — feels responsive, not flashy).
  * - Smooth position/size between snaps so the bar glides paragraph-to-
@@ -3047,6 +3014,23 @@ body[data-drop-mode-active="true"] [data-floating-panel="true"][data-drop-mode-s
 @keyframes dropmode-bar-fadein {
   from { opacity: 0; }
   to { opacity: 1; }
+}
+
+/* Inline-atom drag ghost — the translucent copy of the grabbed Atom that
+ * floats with the cursor (the inline cousin of `.lifted-text-overlay`).
+ * Rendered by <InlineAtomGhost>, portaled to document.body. z-index 1200
+ * MATCHES `.lifted-text-overlay` and stays BELOW the blue drop bar (z:9999,
+ * Indicator.tsx) so the insertion bar still composes on top — the same
+ * invariant the block lift relies on (see the `.lifted-text-overlay` z note
+ * above). pointer-events:none lets the live cursor drive posAtCoords
+ * underneath. Sized to the atom (no width/height); the inner clone carries
+ * the atom's own class-based look via the `.tiptap` wrapper. */
+.inline-atom-ghost {
+  position: fixed;
+  z-index: 1200;
+  pointer-events: none;
+  opacity: 0.85;
+  filter: drop-shadow(0 2px 6px rgba(0, 0, 0, 0.25));
 }
 
 /* Unhandled LaTeX commands — grey monospace.
@@ -3146,6 +3130,25 @@ body[data-drop-mode-active="true"] [data-floating-panel="true"][data-drop-mode-s
   border-color: #d4a843;
   box-shadow: 0 0 0 2px #d4a843;
   color: #4a3f20;
+}
+
+/* Atoms are graspable — drag to reposition (InlineAtomGrab). The base
+   `pointer` (click → Card / edit popover) is upgraded to `grab`; the
+   press shows `grabbing` until the drop-mode crosshair takes over. Same
+   (0,1,0) specificity as each atom's base rule but declared later, so it
+   wins. The grab gesture itself is read-only-gated in the plugin; this is
+   just the affordance. */
+.footnote-marker,
+.citation-node,
+.label-ref-node,
+.inline-math {
+  cursor: grab;
+}
+.footnote-marker:active,
+.citation-node:active,
+.label-ref-node:active,
+.inline-math:active {
+  cursor: grabbing;
 }
 
 /* ── LabelRef Popover ── */

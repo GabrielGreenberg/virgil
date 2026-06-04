@@ -61,8 +61,6 @@ export const MIME_CITATION = "application/x-virgil-citation";
 export const MIME_ARCHIVE = "application/x-virgil-archive-id";
 /** Drag a footnote to move it to a new position. */
 export const MIME_FOOTNOTE = "application/x-virgil-footnote";
-/** Drag an AI request marker into the editor. */
-export const MIME_AI_REQUEST = "application/x-virgil-ai-request";
 /** Drag raw text content for inline insertion (no entity identity). */
 export const MIME_TEXT_INSERT = "application/x-virgil-text-insert";
 /** Drag a cut card (Cutter tool) to anchor it to a paragraph. */

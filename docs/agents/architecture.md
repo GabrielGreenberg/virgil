@@ -182,14 +182,15 @@ Users can recolor any panel via the header color picker. The override routes thr
 Paragraph-level anchor drops trigger the vertical drop indicator. Inline-insert drops don't. Both sets live in [src/lib/marginalia.ts](../../src/lib/marginalia.ts):
 
 - **`ANCHOR_DRAG_TYPES`** (vertical indicator): marginalia-move, note, todo, archive-anchor, cut, report.
-- **Inline-insert**: citation, archive (restore), footnote, ai-request, text-insert.
+- **Inline-insert**: citation, archive (restore), footnote, text-insert.
 
 When wiring a new draggable type, pick a category and register it — the drop indicator behaves correctly for free.
 
-**Text moves** are deliberately narrow. The only two canonical text-move gestures are:
+**Text moves** are deliberately narrow. The canonical text-move gestures are:
 
 1. **Drag-to-pop-out** — the lift gesture on any TextObject via the unified [TextObjectGrabHandle](../../src/text-objects/TextObjectGrabHandle.tsx) (the single grab-handle component for paragraph / heading / list / list item / example item / atom block / selection-as-linkedRange). Selection lifts hydrate into `linkedRange` TextObjects at lift commit via `hydrateSelectionToTextObject` ([src/text-objects/hydrate-selection.ts](../../src/text-objects/hydrate-selection.ts)). Custom mousedown protocol, NOT HTML5 drag.
 2. **Drop-mode** — shift-drag on a float's header re-drops the block back into the doc at a visible placement bar. One drop spec in [src/components/drop-mode/specs/textobject.ts](../../src/components/drop-mode/specs/textobject.ts) routes through `meta.dropAdapter` (wrap vs drop-direct) and `meta.collectMoveSource` (single node vs section range).
+3. **Inline-Atom grab** — the inline cousin of (1): grab an **Atom** (footnote / citation / `\ref` / inline math) directly in the prose and drag it to a new inline cursor. The atom *is* its own handle. A ProseMirror plugin ([src/lib/tiptap/inline-atom-grab.ts](../../src/lib/tiptap/inline-atom-grab.ts), in `buildEditorExtensions`) runs a mousedown→threshold→`beginDropSession` gesture (same drop-mode pipeline, inline-cursor placement); a no-drag press still fires the atom's click (open Card / edit popover). The single drop spec ([specs/in-text-atom-grab.ts](../../src/components/drop-mode/specs/in-text-atom-grab.ts), `atom-grab` prefix) resolves the source captured at grab and moves it same-editor, preserving the node. The 4-kind SSOT is `ATOM_REGISTRY` ([src/lib/tiptap/atom-registry.ts](../../src/lib/tiptap/atom-registry.ts)) — the inline sibling of `TEXT_OBJECT_REGISTRY`. No atom uses native HTML5 drag anymore.
 
 `MIME_TEXTOBJECT = "application/x-virgil-textobject"` ([src/text-objects/types.ts](../../src/text-objects/types.ts)) is defined for future HTML5 drag-out producers (e.g. cross-app drag-to-Stack). Today no producer emits it — the grab handle is mouse-driven and the float-header drop-mode stays in-app via the `virgil-stack-drop` event. The legacy `MIME_PAR_CAPTURE` / `MIME_TEXT_CAPTURE` MIMEs were retired in D5+D6.
 

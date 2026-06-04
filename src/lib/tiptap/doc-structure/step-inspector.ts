@@ -260,6 +260,14 @@ function citationChanged(a: CitationEntry, b: CitationEntry): boolean {
   return a.command !== b.command || a.displayText !== b.displayText;
 }
 
+/** A footnote that survived (same id) but whose position or attrs changed
+ *  — the signature of an atom MOVE (delete+insert). `pos` is the load-
+ *  bearing field for the structure index + renumber; thanks/number folded
+ *  in so the snapshot stays exact. */
+function footnoteChanged(a: FootnoteEntry, b: FootnoteEntry): boolean {
+  return a.pos !== b.pos || a.thanks !== b.thanks || a.number !== b.number;
+}
+
 // ---------------------------------------------------------------------------
 // Anchorable-ancestor finder for content-change attribution.
 // ---------------------------------------------------------------------------
@@ -334,10 +342,21 @@ export function inspectSteps(
       //   fromInNew uses bias=-1 (stay left of the inserted content)
       //   toInNew uses bias=+1 (stay right of the inserted content)
       // so the resulting range covers everything that landed in newDoc.
-      const fromInNew = tr.mapping.map(step.from, -1);
-      const toInNew = tr.mapping.map(step.to, 1);
+      // `step.from`/`step.to` are in the coordinate space of the doc
+      // BEFORE this step (`tr.docs[stepIndex]`) — which equals `oldDoc`
+      // only for the first step. Walk `removed` against that before-step
+      // doc, and map the range forward to `newDoc` through the steps AFTER
+      // this one (`tr.mapping.slice(stepIndex)`). Using the FULL mapping
+      // here mis-mapped every step past the first, so a multi-step tx such
+      // as an atom MOVE (delete + re-insert) left the re-inserted node
+      // undetected in `added` — the structure then dropped the moved
+      // footnote/citation and the renumber walked a stale snapshot.
+      const beforeStepDoc = tr.docs[stepIndex] ?? oldDoc;
+      const mappingAfter = tr.mapping.slice(stepIndex);
+      const fromInNew = mappingAfter.map(step.from, -1);
+      const toInNew = mappingAfter.map(step.to, 1);
 
-      collectRange(oldDoc, step.from, step.to, removed);
+      collectRange(beforeStepDoc, step.from, step.to, removed);
       collectRange(newDoc, fromInNew, toInNew, added);
 
       // Attribute content-change to nearest anchorable ancestor in newDoc.
@@ -565,11 +584,17 @@ export function inspectSteps(
     if (removed.headings.has(uuid)) contentChangedUuids.add(uuid);
   }
 
-  // Footnotes.
+  // Footnotes: separate added / removed / changed, mirroring citations.
+  // A same-id in both added+removed is a MOVE (delete+insert) — emit it as
+  // `changedFootnotes` (carrying the NEW pos) so the structure index folds
+  // the new position in. It is NOT in added/removed, so no spurious orphan.
   const addedFootnotes: FootnoteEntry[] = [];
   const removedFootnotes: FootnoteEntry[] = [];
+  const changedFootnotes: FootnoteEntry[] = [];
   for (const [id, entry] of added.footnotes) {
-    if (!removed.footnotes.has(id)) addedFootnotes.push(entry);
+    const wasRemoved = removed.footnotes.get(id);
+    if (!wasRemoved) addedFootnotes.push(entry);
+    else if (footnoteChanged(wasRemoved, entry)) changedFootnotes.push(entry);
   }
   for (const [id, entry] of removed.footnotes) {
     if (!added.footnotes.has(id)) removedFootnotes.push(entry);
@@ -586,7 +611,10 @@ export function inspectSteps(
     const wasRemoved = removed.citations.get(id);
     if (!wasRemoved) {
       addedCitations.push(entry);
-    } else if (citationChanged(wasRemoved, entry)) {
+    } else if (citationChanged(wasRemoved, entry) || wasRemoved.pos !== entry.pos) {
+      // attr edit in place OR an atom MOVE (delete+insert) — both must
+      // refresh the structure entry's pos/attrs (an atom move's mapped
+      // old position is stale; only the NEW entry carries the right pos).
       changedCitations.push(entry);
     }
   }
@@ -685,6 +713,7 @@ export function inspectSteps(
     changedHeadings,
     addedFootnotes,
     removedFootnotes,
+    changedFootnotes,
     footnoteOrderChanged,
     addedCitations,
     removedCitations,

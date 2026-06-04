@@ -14,7 +14,6 @@ Eight kinds of inline atom or mark:
 | LaTeX comment | steel-blue chip with `%` glyph | `--latex-comment-*` |
 | Comment (Mode B) | sky-blue underline | `--comment-*` |
 | Inline math | mono purple chip | `--math-*` |
-| AI request marker | sky chip with star | `--ai-marker-*` |
 | Mark / suggestion | amber highlight | `--mark-*` |
 | Linked anchor | invisible until hover | per-kind via `data-link-card` attr |
 

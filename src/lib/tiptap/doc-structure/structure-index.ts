@@ -256,11 +256,19 @@ export function applyDiff(prev: DocStructure, diff: StructureDiff): DocStructure
   // order is now wrong relative to current numbers — the consumer of
   // `footnoteOrderChanged` is responsible for the renumber tx.
   let footnotes: readonly FootnoteEntry[] = prev.footnotes;
-  if (diff.addedFootnotes.length > 0 || diff.removedFootnotes.length > 0) {
+  if (
+    diff.addedFootnotes.length > 0 ||
+    diff.removedFootnotes.length > 0 ||
+    diff.changedFootnotes.length > 0
+  ) {
     const removedIds = new Set(diff.removedFootnotes.map((f) => f.id));
+    const changedById = new Map(diff.changedFootnotes.map((f) => [f.id, f]));
     const next: FootnoteEntry[] = [];
     for (const f of prev.footnotes) {
-      if (!removedIds.has(f.id)) next.push(f);
+      if (removedIds.has(f.id)) continue;
+      // A moved footnote's mapped position is stale (its old pos was
+      // deleted); the changed entry carries the correct new position.
+      next.push(changedById.get(f.id) ?? f);
     }
     for (const added of diff.addedFootnotes) next.push(added);
     next.sort((a, b) => a.pos - b.pos);

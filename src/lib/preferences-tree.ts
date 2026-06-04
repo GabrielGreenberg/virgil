@@ -180,14 +180,6 @@ export const PREFERENCES_TREE: PrefNode[] = [
         ],
       },
       {
-        label: "AI Markers",
-        children: [
-          { type: "color", key: "aiMarkerText", label: "Text color", description: "Text inside AI-generated spans" },
-          { type: "color", key: "aiMarkerBg", label: "Background", description: "Fill behind AI-generated content" },
-          { type: "color", key: "aiMarkerBorder", label: "Border", description: "Outline around AI-generated regions" },
-        ],
-      },
-      {
         label: "Suggestions",
         children: [
           { type: "color", key: "markBackground", label: "Mark background", description: "Highlight fill behind suggestion text" },
@@ -305,11 +297,6 @@ export const PREF_TO_CSS: CssMapping[] = [
   { key: "footnoteColor", cssVar: "--footnote-color", isColor: true },
   { key: "noteColor", cssVar: "--note-color", isColor: true },
   { key: "noteMarkerBorder", cssVar: "--note-marker-border", isColor: true },
-
-  // AI markers
-  { key: "aiMarkerText", cssVar: "--ai-marker-text", isColor: true },
-  { key: "aiMarkerBg", cssVar: "--ai-marker-bg", isColor: true },
-  { key: "aiMarkerBorder", cssVar: "--ai-marker-border", isColor: true },
 
   // Suggestions
   { key: "markBackground", cssVar: "--mark-bg", isColor: true },

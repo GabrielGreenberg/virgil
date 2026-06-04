@@ -33,7 +33,6 @@ import RichTextField from "./RichTextField";
 import { useEditorChrome } from "./editor-layout/chrome-context";
 import PanelTextSizeRow from "./PanelTextSizeRow";
 import { useEnclosingPanelBodyKey } from "./panel-kind-context";
-import { MIME_AI_REQUEST } from "@/lib/marginalia";
 import { normalizeRichContent, richJsonToPlainText } from "@/lib/footnote-content";
 import { usePoppedCards } from "@/hooks/usePoppedCards";
 import { FloatCard } from "./FloatingCards";
@@ -1908,8 +1907,8 @@ const AI_REQUEST_KIND_LABEL: Record<AiRequestKind, string> = {
 
 /**
  * Draft card holding a free-text AI request the user can later have
- * fulfilled. The card is draggable into the editor — drop produces an
- * `aiRequestMarker` placeholder node.
+ * fulfilled. It pops out as a float (header lift), but is not dragged
+ * into the editor — AI requests live in cards, not as in-text markers.
  *
  * Local behavior: the textarea is uncontrolled and only fires
  * `onChangeText` on blur to keep typing snappy without re-rendering the
@@ -1952,31 +1951,6 @@ export function AiRequestCard({
     if (draft !== request.text) onChangeText(draft);
   }, [draft, request.text, onChangeText]);
 
-  const handleDragStart = useCallback(
-    (e: React.DragEvent) => {
-      const payload = JSON.stringify({
-        requestId: request.id,
-        kind: request.kind,
-        text: draft,
-      });
-      e.dataTransfer.setData(MIME_AI_REQUEST, payload);
-      const truncated = draft.length > 80 ? draft.slice(0, 80) + "\u2026" : draft;
-      e.dataTransfer.setData(
-        "text/plain",
-        `[AI ${request.kind} request: ${truncated || "(empty)"}]`,
-      );
-      e.dataTransfer.effectAllowed = "copy";
-      const ghost = document.createElement("div");
-      ghost.textContent = `★ ${truncated || "AI " + request.kind + " request"}`;
-      ghost.style.cssText =
-        "position:absolute;top:-9999px;left:-9999px;max-width:260px;padding:6px 10px;background:#e0f2fe;border:1px solid #7dd3fc;border-radius:4px;font-size:12px;color:#0c4a6e;font-family:var(--font-sans),system-ui,sans-serif;line-height:1.4;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;";
-      document.body.appendChild(ghost);
-      e.dataTransfer.setDragImage(ghost, 10, 14);
-      requestAnimationFrame(() => document.body.removeChild(ghost));
-    },
-    [request.id, request.kind, draft],
-  );
-
   const kindLabel = AI_REQUEST_KIND_LABEL[request.kind] ?? request.kind;
   const theme = CARD_THEMES.aiRequest;
 
@@ -1991,9 +1965,6 @@ export function AiRequestCard({
       selected={false}
       isPoppedOut={isPoppedOut}
       onTogglePopout={onToggleFromCtx}
-      extraCardClass="cursor-grab active:cursor-grabbing"
-      draggable
-      onDragStart={handleDragStart}
     >
       {/* Header — pr-7 reserves space for the absolute top-right popout overlay */}
       <div

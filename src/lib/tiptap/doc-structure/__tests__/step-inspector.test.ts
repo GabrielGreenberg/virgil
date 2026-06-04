@@ -168,6 +168,35 @@ describe("inspectSteps — footnotes", () => {
     const d = inspectSteps(tr, s.doc, tr.doc);
     expect(d.removedFootnotes.map((f) => f.id)).toEqual(["fn1"]);
   });
+
+  it("MOVING a footnote (delete+insert, one tx) emits changedFootnotes at the new pos, not added/removed", () => {
+    // Mirrors the inline-atom move spec: delete the atom, re-insert the
+    // SAME node later. The same-id cancels in added/removed (so no orphan),
+    // but the new position must surface as changedFootnotes so the
+    // structure index / renumber don't read a stale snapshot.
+    const fn = footnoteNode("fn1");
+    const para = testSchema.nodes.paragraph.create(
+      { uuid: "p1" },
+      [testSchema.text("alpha "), fn, testSchema.text(" beta gamma delta")],
+    );
+    const s = stateOf(doc(para));
+    let fnPos = -1;
+    s.doc.descendants((n, p) => {
+      if (n.type.name === "footnote") fnPos = p;
+    });
+    const node = s.doc.nodeAt(fnPos)!;
+    const insertPos = fnPos + 6; // later in the same paragraph
+    const adjustedInsert = insertPos > fnPos + 1 ? insertPos - 1 : insertPos;
+    const tr = s.tr.delete(fnPos, fnPos + 1);
+    tr.insert(adjustedInsert, node);
+    const d = inspectSteps(tr, s.doc, tr.doc);
+    expect(d.addedFootnotes.filter((f) => f.id === "fn1")).toHaveLength(0);
+    expect(d.removedFootnotes.filter((f) => f.id === "fn1")).toHaveLength(0);
+    const changed = d.changedFootnotes.find((f) => f.id === "fn1");
+    expect(changed).toBeDefined();
+    expect(changed!.pos).toBe(adjustedInsert);
+    expect(d.footnoteOrderChanged).toBe(true);
+  });
 });
 
 describe("inspectSteps — citations", () => {

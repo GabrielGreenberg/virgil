@@ -119,10 +119,6 @@ annotations, etc.) is unchanged. Don't touch it in this pass.
   --note-bg: #f0fdf4;
   --note-marker-border: #86efac;
 
-  /* AI markers */
-  --ai-marker-text: #92400e;
-  --ai-marker-bg: #fef3c7;
-  --ai-marker-border: #fcd34d;
 
   /* Suggestions */
   --mark-bg: #fbbf24;

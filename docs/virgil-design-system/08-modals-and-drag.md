@@ -92,7 +92,7 @@ the editor without binding identity.
 
 ```
 MIMEs: MIME_QUOTE, MIME_CITATION, MIME_ARCHIVE, MIME_FOOTNOTE,
-       MIME_AI_REQUEST, MIME_TEXT_INSERT
+       MIME_TEXT_INSERT
 Ghost: white pill, 1px edge-hover border, 11px ink-subtle text,
        max-width 220px, ellipsis
 Drop indicator: ProseMirror's native horizontal cursor
