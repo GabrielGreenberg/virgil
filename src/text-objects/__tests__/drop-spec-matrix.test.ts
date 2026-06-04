@@ -97,7 +97,34 @@ describe("drop-spec matrix (via TEXT_OBJECT_REGISTRY.dropAdapter)", () => {
     });
   });
 
+  describe("graphicsBlock (Feature A0 — picture into expex)", () => {
+    it("inside an exampleItem drops directly (case b)", () => {
+      const r = adapt(
+        "graphicsBlock",
+        {},
+        { kind: "inside-compatible-parent", parentKind: "exampleItem" },
+      );
+      expect(r).toEqual({ kind: "drop-direct" });
+    });
+
+    it("between items (incompatible at exampleBlock) wraps in a fresh exampleItem (case a)", () => {
+      const r = adapt(
+        "graphicsBlock",
+        {},
+        { kind: "inside-incompatible-parent", parentKind: "exampleBlock" },
+      );
+      expect(r).toEqual({ kind: "wrap", parentKind: "exampleItem" });
+    });
+
+    it("at top-level drops directly (today's placement, unchanged)", () => {
+      const r = adapt("graphicsBlock", {}, { kind: "top-level" });
+      expect(r).toEqual({ kind: "drop-direct" });
+    });
+  });
+
   describe("top-level kinds (drop-direct everywhere)", () => {
+    // graphicsBlock is intentionally absent — it now has expex-aware behavior
+    // (covered above); it stays drop-direct only at top level.
     const topLevel: TextObjectKind[] = [
       "paragraph",
       "heading",
@@ -110,7 +137,6 @@ describe("drop-spec matrix (via TEXT_OBJECT_REGISTRY.dropAdapter)", () => {
       "latexComment",
       "texBlock",
       "figureBlock",
-      "graphicsBlock",
       "exampleBlock",
       "linkedRange",
     ];

@@ -28,7 +28,7 @@ import {
   parseTextObjectPopoutKey,
   TEXT_OBJECT_REGISTRY,
 } from "@/text-objects/text-object-registry";
-import { buildWrap } from "@/text-objects/drop-adapters";
+import { buildWrap, isCompatibleParent } from "@/text-objects/drop-adapters";
 import type {
   DropTarget,
   MoveSource,
@@ -201,13 +201,11 @@ function classifyDropTarget(
   parentKind: TextObjectKind | null,
 ): DropTarget {
   if (!parentKind) return { kind: "top-level" };
-  // Compatibility checks mirror `isCompatibleParent` in drop-adapters.ts
-  // — kept thin here so the spec stays self-contained.
-  const compatible =
-    (sourceKind === "listItem" &&
-      (parentKind === "bulletList" || parentKind === "orderedList")) ||
-    (sourceKind === "exampleItem" && parentKind === "exampleBlock");
-  if (compatible) {
+  // Single source of truth for child→parent compatibility: `isCompatibleParent`
+  // in drop-adapters.ts. Previously this inline-duplicated that logic, which
+  // risked drift — the new graphicsBlock→exampleItem rule would have needed
+  // editing in two places. One call now covers every kind.
+  if (isCompatibleParent(sourceKind, parentKind)) {
     return { kind: "inside-compatible-parent", parentKind };
   }
   return { kind: "inside-incompatible-parent", parentKind };

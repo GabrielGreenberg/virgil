@@ -25,6 +25,7 @@ import {
   topLevelDropAdapter,
   listItemDropAdapter,
   exampleItemDropAdapter,
+  graphicsBlockDropAdapter,
 } from "./drop-adapters";
 import {
   BULLET_DECORATION_WIDTH,
@@ -658,7 +659,11 @@ export const TEXT_OBJECT_REGISTRY: Record<TextObjectKind, TextObjectMeta> = {
     // reasoning as figureBlock (warm `<img src>` clone + class-scoped CSS +
     // L3e.2 `.node-graphicsBlock` margin reset). Static `label: "Graphic"`.
     actions: NON_PROSE_BLOCK_ACTIONS,
-    dropAdapter: topLevelDropAdapter,
+    // Feature A0: a lifted picture can land inside an expex example — directly
+    // into an exampleItem's content (over an item) or wrapped in a fresh
+    // exampleItem (between items). Everywhere else → drop-direct (today's
+    // top-level placement, unchanged). figureBlock stays on topLevelDropAdapter.
+    dropAdapter: graphicsBlockDropAdapter,
     confirmDestructive: (_doc, _uuid, action) => {
       const { verb, label } = actionVerb(action);
       return {

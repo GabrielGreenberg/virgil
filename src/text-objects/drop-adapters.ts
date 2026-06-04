@@ -84,6 +84,46 @@ export function exampleItemDropAdapter(
 }
 
 // ---------------------------------------------------------------------------
+// graphicsBlock — a "picture" (an `\includegraphics` atom outside a figure
+// env). NOT a sub-object: at top level (and inside any incompatible parent
+// that isn't an exampleBlock) it drops directly, preserving its original
+// top-level placement byte-for-byte. The expex schema already accepts a
+// graphicsBlock inside an exampleItem (`(paragraph | graphicsBlock)+`,
+// expex.ts), so two expex-aware paths open up:
+//   • inside-compatible-parent (an exampleItem) → drop the graphic directly
+//     into that item's content, beside its paragraph [case b].
+//   • inside-incompatible-parent whose parent is the exampleBlock itself
+//     (a between-items boundary) → wrap the graphic in a fresh exampleItem so
+//     it becomes its own new example item [case a]. `buildWrap`'s exampleItem
+//     case builds the single sibling; the enclosing exampleItemList already
+//     exists at the insert site.
+// Generalizes R3's source-kind-aware resolution: a block lands wherever the
+// schema allows it — directly, or with a single wrap. figureBlock stays on
+// `topLevelDropAdapter` (user decision: graphics only).
+// ---------------------------------------------------------------------------
+
+export function graphicsBlockDropAdapter(
+  _sourceRef: TextObjectRef & { sourceContext: TextObjectSourceContext },
+  target: DropTarget,
+): DropAction {
+  if (target.kind === "inside-compatible-parent") {
+    // The only compatible parent for a graphicsBlock is an exampleItem.
+    return { kind: "drop-direct" };
+  }
+  if (
+    target.kind === "inside-incompatible-parent" &&
+    target.parentKind === "exampleBlock"
+  ) {
+    // Between example items (the exampleBlock doesn't accept a graphic as a
+    // direct child) → wrap into a fresh single-graphic exampleItem.
+    return { kind: "wrap", parentKind: "exampleItem" };
+  }
+  // Top-level, or any other incompatible parent → drop the picture directly
+  // (preserves today's top-level graphics drop, byte-for-byte).
+  return { kind: "drop-direct" };
+}
+
+// ---------------------------------------------------------------------------
 // Compatibility check — does this parent kind accept this sub-object?
 // Used by drop hit-testing to classify the target context before calling
 // the adapter.
@@ -101,6 +141,13 @@ export function isCompatibleParent(
     // `exampleBlock`. Drop sites typically classify by the visible
     // enclosing block, so report `exampleBlock` as compatible too.
     return parentKind === "exampleBlock";
+  }
+  if (childKind === "graphicsBlock") {
+    // A picture is schema-valid inside an exampleItem (expex.ts:787,
+    // `(paragraph | graphicsBlock)+`). It is NOT a valid direct child of the
+    // exampleBlock (which holds items via exampleItemList) — that
+    // between-items case routes to a wrap in `graphicsBlockDropAdapter`.
+    return parentKind === "exampleItem";
   }
   return false;
 }
@@ -137,6 +184,17 @@ export function buildWrap(
       }
       const inner = itemList.create({}, [sourceNode]);
       return block.create({ uuid: newUuid }, [inner]);
+    }
+    case "exampleItem": {
+      const item = schema.nodes.exampleItem;
+      if (!item) {
+        throw new Error('buildWrap: schema has no node "exampleItem"');
+      }
+      // A single sibling item — the enclosing exampleBlock + exampleItemList
+      // already exist at the case-a insert site (we insert one item into the
+      // list), so unlike the exampleBlock case we build only the item, not the
+      // whole envelope. Fresh uuid (block-uuid backfill compatible).
+      return item.create({ uuid: newUuid }, [sourceNode]);
     }
     default:
       throw new Error(
