@@ -14,8 +14,8 @@
 Operational cut of [VIRGIL.md → Public-type registry](../architecture/VIRGIL.md#public-type-registry).
 The SSOT is [src/lib/types.ts](../../src/lib/types.ts) — **58** exported
 interfaces/aliases. Shapes below mirror it field-for-field (it is the authority;
-if they ever disagree, the code wins). The exhaustive type→concept→doc-of-record
-mapping is [phase0-card-current-state.md §2](../architecture/phase0-card-current-state.md#2-public-type-registry).
+if they ever disagree, the code wins). The full type index — every exported type,
+grouped by family — is the [Coverage](#coverage) section at the foot of this doc.
 
 ## Conventions across the card schemas (read once)
 
@@ -226,9 +226,11 @@ DocNotification       { kind: "ai-request-complete"|"ai-request-failed";
 ```
 
 `collab.json` (the pen / turn-taking sidecar) and `document-settings.json`
-(preamble style id) are typed outside `types.ts`; `version.txt` is a bare counter,
-not JSON. Their shapes + the pen subsystem are in
-[phase0-stable-current-state.md](../architecture/phase0-stable-current-state.md) §4.5.
+(preamble style id) are typed outside `types.ts` — in their defining modules
+[src/lib/collab.ts](../../src/lib/collab.ts) and
+[src/lib/document-settings.ts](../../src/lib/document-settings.ts); `version.txt`
+is a bare counter, not JSON. The pen / turn-taking subsystem is
+[VIRGIL.md → The editing lock (the pen)](../architecture/VIRGIL.md#the-editing-lock-the-pen).
 
 ## Legacy / dead types
 
@@ -246,11 +248,33 @@ path** — don't write them; flagged as pruning candidates:
 
 ## Coverage
 
-All **58** exported types are accounted for above (the card schemas, the Task
-surface, the notification + bibliography types, the infrastructure types, and the
-legacy/dead residue) **except** `OriginalAnchor` and the `Link` family, whose
-doc-of-record is [anchoring.md](anchoring.md). This is the field-level home the
-[Public-type registry](../architecture/VIRGIL.md#public-type-registry) forward-points to.
+This is the manifest's **type-accounting index** for `src/lib/types.ts` — the
+field-level home the [Public-type registry](../architecture/VIRGIL.md#public-type-registry)
+forward-points to. All **58** exported types are named below (schema above, or
+doc-of-record noted), grouped by family:
+
+- **Card interfaces + their `…State` wrappers** — Notes: `UserNote`,
+  `HighlightCard`, `NoteCardItem`, `NotesState`. Todos: `TodoItem`, `TodoState`.
+  Footnotes: `FootnoteRef`, `FootnotesState`, `OrphanedFootnote`. Citations:
+  `CitationRef`, `CitationsState`, `CitationInfo`. Cutter: `CutterCommentCard`,
+  `CutterSuggestionCard`, `CutterCard`, `CutterGoal`, `CutterState`,
+  `CutItemLegacy`. Revisions: `RevisionCommentCard`, `RevisionSuggestionCard`,
+  `RevisionCard`, `RevisionsTracker`, `RevisionsState`. Reports: `ReportCard`,
+  `ReportRequestCard`, `ReportItem`, `ReportsState`. Examples: `ExampleRef`,
+  `ExamplesState`. Archive: `ArchivedSnippet`, `ArchiveState`.
+- **The Task surface** — `AiRequest`, `AiRequestKind`, `AiRequestStatus`,
+  `AiRequestResult`, `AiRequestLink`, `AiRequestPayload`, `AiRequestsState`.
+- **Notifications** — `DocNotification`, `DocNotificationsInbox`.
+- **Bibliography support** — `BibEntry`, `BibReviewRequest`, `BibReviewState`,
+  `BibSettings`, `BibEntryRequest`, `AnnotationsState`.
+- **Infrastructure** — `VirgilSidecar`, `ParagraphMeta`, `EditorStateData`.
+- **Legacy / dead residue** — `Suggestion`, `SuggestionsState`, `UserComment`,
+  `CommentsState`, `SessionState`, `DocumentPayload`, `ReviewRequest`,
+  `ClaudeSuggestion`.
+
+Two of the 58 have their **doc-of-record elsewhere**: `OriginalAnchor` (the
+Mode-B→A re-anchor record) and the `Link` family are owned by
+[anchoring.md](anchoring.md) — their shapes live there, not duplicated above.
 
 ## Rules for skills
 

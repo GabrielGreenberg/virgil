@@ -15,7 +15,7 @@
 > and [structure.md](structure.md#what-a-skill-may-read-and-write).
 
 Operational cut of [VIRGIL.md → Reserved-name inventory](../architecture/VIRGIL.md#reserved-name-inventory).
-The exhaustive field-level substrate is [phase0-stable §5](../architecture/phase0-stable-current-state.md#5-reserved-name-inventory).
+This doc is the operational home for the deny-list; the authoritative substrate is the code SSOTs cited inline below.
 
 ## The deny-list
 
@@ -49,8 +49,8 @@ A skill rarely emits CSS, but **content a skill pastes or authors must not colli
 with the structural hook namespace: `.tiptap` / `.ProseMirror` / `.react-renderer`
 / `.node-<name>`, the `.expex-*` family, `.linked-anchor`, `.dropmode-bar-*`,
 `.virgil-bar` / `.panel-*`, and the `data-card-*` / `data-link-*` / `data-print-*`
-families. (Full list:
-[phase0-stable-current-state.md](../architecture/phase0-stable-current-state.md) §5.3.)
+families. (The full namespace is the SSOT file itself,
+[src/app/globals.css](../../src/app/globals.css).)
 
 **Reserved file / folder paths** (SSOT [src/lib/storage-fsa.ts](../../src/lib/storage-fsa.ts)):
 
@@ -67,7 +67,7 @@ families. (Full list:
 are reserved **by design only**. There is **zero code** that reads, writes, or
 deny-lists them today (a repo-wide grep is empty under `src/`); the enforcement is
 aspirational. Don't write into them expecting Virgil to honor them yet, and don't
-treat their absence as a bug ([phase0-stable §5.5](../architecture/phase0-stable-current-state.md#55-v2-reserved-overlay-paths-design-only-not-in-code)).
+treat their absence as a bug ([VIRGIL.md → Reserved-name inventory](../architecture/VIRGIL.md#reserved-name-inventory) records the same).
 
 ## What a skill may write (by reference, not restated)
 
@@ -122,7 +122,7 @@ hand-maintained copies rot. Two shadows exist:
 `check:coherence` **check 5** reconciles both shadows against the TS SSOTs and warns
 on drift — those `ALL_KINDS` warnings are *expected* until the create-card fan-out
 chip fixes the set. When you touch either shadow, re-run the check and keep it
-reconciled. (Background: [phase0-card §4](../architecture/phase0-card-current-state.md#4-the-python-shadow-registries-the-rot-vector).)
+reconciled.
 
 ## Rules for skills
 

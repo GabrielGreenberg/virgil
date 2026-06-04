@@ -14,9 +14,9 @@ self-discovers).
 The manifest is the Layer-3 operational companion to the conceptual spine in
 [VIRGIL.md](../architecture/VIRGIL.md): where the spine states the *concept* and
 forward-points here, the manifest holds the *operational detail* (recognition
-patterns, constraints, recipes). Source lives in `docs/workspace/`; it is *meant*
-to ship to each paper's `.claude/virgil/` at runtime — that shipping leg is **not
-yet wired** (see [structure.md → how the manifest reaches `.claude/virgil/`](structure.md#how-the-manifest-reaches-claudevirgil)).
+patterns, constraints, recipes). Source lives in `docs/workspace/`; it ships to
+each paper's `.claude/virgil/` at runtime on the per-folder skill-bundle sync (see
+[structure.md → how the manifest reaches `.claude/virgil/`](structure.md#how-the-manifest-reaches-claudevirgil)).
 
 > **Build status.** The **foundational** docs (`ontology.md`, `identity.md`,
 > `structure.md`, `atoms.md`, `latex.md`) and the **card-coupled** docs

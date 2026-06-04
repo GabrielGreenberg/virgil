@@ -32,10 +32,16 @@
 //   library/scripts/X.py               → .virgil/scripts/library/X.py
 //   editor/claude-commands/X.md        → .claude/commands/editor/X.md
 //   editor/scripts/X.py                → .virgil/scripts/editor/X.py
+//   manifest/X.md                      → .claude/virgil/X.md
 //
 // We use `claude-commands/` (no leading dot) inside the bundle because
 // some static hosts skip hidden directories under public/. The disk
 // rewrite restores the canonical `.claude/commands/...` location.
+//
+// The `manifest` subsystem is the operational manifest (docs/workspace/*.md,
+// emitted by scripts/build-meta-bundle.mjs). Unlike commands/scripts it is
+// Virgil-global, not subsystem-scoped, so it lands in a single per-folder
+// `.claude/virgil/` rather than under a `<subsystem>/` segment.
 
 import { readJsonFile, writeBinaryFile, writeJsonFile, writeTextFile, VIRGIL_DIR, CLAUDE_DIR } from "./library-storage";
 
@@ -71,11 +77,17 @@ const LIBRARY_PATH_PATH = `${VIRGIL_DIR}/library-path.json`;
 
 /** Map `<subsystem>/<bundle-relative path>` to its on-disk destination.
  *  Returns undefined for paths whose subsystem we don't recognise — the
- *  caller skips them (defence against malformed manifests). */
-function diskPathFor(subsystem: string, bundlePath: string): string | undefined {
+ *  caller skips them (defence against malformed manifests). Exported for
+ *  unit testing of the routing table. */
+export function diskPathFor(subsystem: string, bundlePath: string): string | undefined {
   // The workspace CLAUDE.md only ships from the library subsystem.
   if (subsystem === "library" && bundlePath === "CLAUDE.md") {
     return `${CLAUDE_DIR}/CLAUDE.md`;
+  }
+  // The operational manifest is Virgil-global: it lands in one shared
+  // `.claude/virgil/`, not under a per-subsystem segment.
+  if (subsystem === "manifest") {
+    return `${CLAUDE_DIR}/virgil/${bundlePath}`;
   }
   if (bundlePath.startsWith("claude-commands/")) {
     const rest = bundlePath.slice("claude-commands/".length);

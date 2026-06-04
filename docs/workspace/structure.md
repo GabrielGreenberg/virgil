@@ -93,9 +93,8 @@ The Claude Code surface in the user's paper folder:
 └── virgil/                 ← THE OPERATIONAL MANIFEST (these docs, at runtime)
 ```
 
-`.claude/virgil/` is where this manifest is *meant* to live at runtime — the docs
-in `docs/workspace/` ship here. **That leg is not yet wired** (see the last
-section).
+`.claude/virgil/` is where this manifest lives at runtime — the docs in
+`docs/workspace/` ship here via the skill-bundle sync (see the last section).
 
 ## The write path
 
@@ -142,28 +141,32 @@ the same contract (`editor/scripts/create_card.py`), **no contract change**.
 
 ## How the manifest reaches .claude/virgil/
 
-**Finding (investigated, not built here):** the manifest source in
-`docs/workspace/` is **not yet wired** to reach a paper's `.claude/virgil/`. Two
-gaps in the existing skill-bundle pipeline:
+The manifest source in `docs/workspace/` ships to each paper's `.claude/virgil/`
+on the **same per-folder skill-bundle sync** that delivers the editor/library
+skills and scripts — one extra bundle source, one extra route, no parallel
+mechanism. Two pieces:
 
-1. **No builder emits it.** The three sub-builders
-   (`editor/build/build-editor-bundle.mjs`, `library/build/build-skill-bundle.mjs`,
-   `virgil/build/build-virgil-bundle.mjs`), stitched by
-   `scripts/build-meta-bundle.mjs`, each source only their subsystem's
-   `skills/*.md` and `scripts/*.py`. None reads `docs/workspace/`, so the manifest
-   never enters `public/skill-bundle/`.
-2. **The sync engine has no `.claude/virgil/` destination.**
-   `library/lib/skill-sync.ts`'s `diskPathFor()` recognizes exactly two
-   bundle-relative prefixes — `claude-commands/` → `.claude/commands/<subsystem>/`
-   and `scripts/` → `.virgil/scripts/<subsystem>/` (plus the special
-   `library/CLAUDE.md` → `.claude/CLAUDE.md`). Nothing routes to `.claude/virgil/`.
+1. **The builder emits it.** `scripts/build-meta-bundle.mjs` — which stitches the
+   three subsystem sub-bundles (`editor/build`, `library/build`, `virgil/build`)
+   into the top-level meta-manifest — *also* sources the manifest itself: it copies
+   `docs/workspace/*.md` into `public/skill-bundle/manifest/` and appends a
+   `{ name: "manifest", version, files }` source. The manifest is Virgil-global
+   (owned by no subsystem), so the meta-builder emits this one leg directly rather
+   than reading a sub-builder's output. Its version is content-addressed (sha256
+   over the docs) and folds into the meta-version hash.
+2. **The sync engine routes it.** `library/lib/skill-sync.ts`'s `diskPathFor()`
+   maps the `manifest` prefix to a single shared `.claude/virgil/<file>.md`.
+   Unlike `claude-commands/` → `.claude/commands/<subsystem>/` and `scripts/` →
+   `.virgil/scripts/<subsystem>/`, the manifest is **not** subsystem-scoped — there
+   is one manifest per paper, not one per subsystem.
 
-So shipping the manifest needs **new wiring** (a later chip — out of scope here):
-a builder leg that copies `docs/workspace/*.md` into the bundle under a new prefix,
-plus a `diskPathFor` branch mapping that prefix to `.claude/virgil/`. The
-content-addressed version stamp + refresh-toast mechanism
-(`.virgil/.skill-bundle-version.json`) would then cover the manifest automatically
-— no change needed there. (This matches the design intent in
-`EDITOR_SKILLS_BRAINSTORM.html` §2 "Where the manifest lives" and the
-editor `AGENTS.md` "Future work → End-user folder sync" note, the latter now
-partly done for skills+scripts.)
+The content-addressed version stamp + refresh-toast mechanism
+(`.virgil/.skill-bundle-version.json`) covers the manifest automatically: edit a
+`docs/workspace/*.md`, rebuild, and the meta-version changes, so the next
+doc-open re-syncs and toasts the refresh — no separate signal. (This realizes the
+design intent in `EDITOR_SKILLS_BRAINSTORM.html` §2 "Where the manifest lives" and
+the editor `AGENTS.md` "Future work → End-user folder sync" note.) The builder
+output and the `diskPathFor` routing are unit-tested
+(`library/lib/__tests__/skill-sync.test.ts`); the live browser doc-open →
+`.claude/virgil/` round-trip is the one piece still to be exercised against a real
+paper folder.

@@ -687,7 +687,8 @@ const CREATE_PY = "editor/scripts/create_card.py";
 const CARDKIND_TS = "src/panels/_shared/types.ts";
 const PANELREG_TS = "src/panels/panel-registry.ts";
 
-// AiRequestLink.panel → PanelKind alias gap (documented in phase0-card §3.2).
+// AiRequestLink.panel → PanelKind alias gap (the panel value "todos" vs the
+// PanelKind "todo"; see docs/workspace/sidecars.md → the Task store).
 const PANEL_ALIAS = { todos: "todo" };
 
 // Card-hosting panels intentionally NOT apply_response writeback targets.

@@ -1,4 +1,4 @@
-<!-- last-verified: 4398fb0 2026-06-03 -->
+<!-- last-verified: edbcf6e 2026-06-04 -->
 <!-- derives-from: (root — verified against code) -->
 <!-- covers-code: src/app, src/components, src/hooks, src/lib, src/links, src/panels, src/text-objects, src/types, library, editor -->
 
@@ -7,9 +7,9 @@
 **This is the single rooted source of truth for "what Virgil is."** When anyone — a person, a future Claude session, a generated doc — needs the canonical conceptual account of Virgil, this is the answer. It exists once and only once.
 
 > **Status: Phase 0 complete (2026-06-03).**
-> This document was created frame-first. Its **confident sections** ([Document discipline](#document-discipline), [Ontology](#ontology), [Cowork pattern](#cowork-pattern), [Code organization](#code-organization)) are written from the frozen v1 design (`EDITOR_SKILLS_V1.html`, `EDITOR_SKILLS_BRAINSTORM.html`) and the verified agent docs. Its six **current-state sections** are now **all filled** from the Phase 0 code-archaeology pass: the **stable** three — [UUID marker emission](#uuid-marker-emission), [LaTeX round-trip vocabulary](#latex-round-trip-vocabulary), [Reserved-name inventory](#reserved-name-inventory) — whose field-level detail lives in [phase0-stable-current-state.md](phase0-stable-current-state.md); and the **card-layer** three — [Card-kind taxonomy](#card-kind-taxonomy), [Public-type registry](#public-type-registry), [Sidecar and panel inventory](#sidecar-and-panel-inventory) — extracted after the card-system refactor (Quotations → Reports) settled, with field-level detail in [phase0-card-current-state.md](phase0-card-current-state.md). **No `<!-- STUB: pending Phase 0 -->` section markers remain.**
+> This document was created frame-first. Its **confident sections** ([Document discipline](#document-discipline), [Ontology](#ontology), [Cowork pattern](#cowork-pattern), [Code organization](#code-organization)) are written from the frozen v1 design (`EDITOR_SKILLS_V1.html`, `EDITOR_SKILLS_BRAINSTORM.html`) and the verified agent docs. Its six **current-state sections** are now **all filled** from the Phase 0 code-archaeology pass: the **stable** three — [UUID marker emission](#uuid-marker-emission), [LaTeX round-trip vocabulary](#latex-round-trip-vocabulary), [Reserved-name inventory](#reserved-name-inventory); and the **card-layer** three — [Card-kind taxonomy](#card-kind-taxonomy), [Public-type registry](#public-type-registry), [Sidecar and panel inventory](#sidecar-and-panel-inventory) — extracted after the card-system refactor (Quotations → Reports) settled. Each forward-points to the **operational manifest** ([docs/workspace/](../workspace/INDEX.md)), which now holds the field-level detail (the two Phase 0 seed reports that first carried it have been retired into git history). **No `<!-- STUB: pending Phase 0 -->` section markers remain.**
 >
-> **How to read this doc:** start with [Document discipline](#document-discipline) — it explains the headers at the top of this file, the (now-retired) `<!-- STUB -->` convention, and how this doc relates to `docs/agents/*`, the future manifest, and the skill set. Then read the section you came for.
+> **How to read this doc:** start with [Document discipline](#document-discipline) — it explains the headers at the top of this file, the (now-retired) `<!-- STUB -->` convention, and how this doc relates to `docs/agents/*`, the operational manifest, and the skill set. Then read the section you came for.
 
 ---
 
@@ -36,7 +36,7 @@ Layer 2 — CANONICAL ARCHITECTURE (this document)
       ↑ derives from (the doc→doc edge: `derives-from`)
 Layer 3 — DERIVATIVE DOCS (each has a clear upstream)
    docs/agents/*.md + AGENTS.md   (how to work on the codebase)
-   docs/workspace/ → .claude/virgil/      (operational manifest — future)
+   docs/workspace/ → .claude/virgil/      (operational manifest — ships at runtime)
    docs/ux/        → .claude/virgil-ux/    (UX library — future)
    editor/skills/* → .claude/commands/editor/  (skill prompts — future)
    README.md
@@ -81,7 +81,7 @@ The three fields are the edges of the dependency graph, plus the freshness stamp
             ▼                ▼           ▼            ▼               ▼
       AGENTS.md +      docs/workspace/  docs/ux/   editor/skills/*  README.md
       docs/agents/*    (manifest)       (UX lib)   (skill prompts)
-      (how-to-work)    [future]         [future]   [future]
+      (how-to-work)    [shipped]        [future]   [future]
 ```
 
 Once it is a rooted DAG, the maintenance mechanisms compose without redundancy:
@@ -111,7 +111,7 @@ A stub section carries, directly under its heading:
 
 ### Conceptual doc vs. operational manifest — the scope boundary
 
-This document holds the **conceptual** account: *what* card kinds exist and how they relate; *what* the type surface is, in the large. It deliberately does **not** hold exhaustive per-field schemas. Those belong to the future **operational manifest** (`docs/workspace/` → `.claude/virgil/`, a later chip), which is partly machine-generated from `src/lib/types.ts`.
+This document holds the **conceptual** account: *what* card kinds exist and how they relate; *what* the type surface is, in the large. It deliberately does **not** hold exhaustive per-field schemas. Those belong to the **operational manifest** (`docs/workspace/` → `.claude/virgil/`), which is partly machine-generated from `src/lib/types.ts`.
 
 Rule of thumb: if a section would reproduce a JSON schema field-by-field, it instead states the concept, forward-points to the manifest, and (pre-Phase-0) carries the stub marker. This keeps the spine readable and keeps the single source of exhaustive schema truth in one place (the types + the generated manifest), not duplicated here.
 
@@ -252,7 +252,7 @@ Before adding a new panel, link kind, theme, or text-object kind, **extend the r
 
 ### LaTeX round-trip
 
-Virgil does not compile LaTeX. It parses `.tex` into the editor model ([src/lib/latex-parser.ts](../../src/lib/latex-parser.ts)) and serializes back ([src/lib/latex-serializer.ts](../../src/lib/latex-serializer.ts)) while preserving the raw source. The accepted command vocabulary and the UUID-marker emission points are enumerated in [LaTeX round-trip vocabulary](#latex-round-trip-vocabulary) and [UUID marker emission](#uuid-marker-emission) below (and the [Phase 0 report](phase0-stable-current-state.md) they point to).
+Virgil does not compile LaTeX. It parses `.tex` into the editor model ([src/lib/latex-parser.ts](../../src/lib/latex-parser.ts)) and serializes back ([src/lib/latex-serializer.ts](../../src/lib/latex-serializer.ts)) while preserving the raw source. The accepted command vocabulary and the UUID-marker emission points are enumerated in [LaTeX round-trip vocabulary](#latex-round-trip-vocabulary) and [UUID marker emission](#uuid-marker-emission) below (and the manifest docs they forward-point to).
 
 ### The keystroke-sanctity invariant
 
@@ -279,7 +279,7 @@ How they relate to the [Ontology](#ontology) primitives: every Card connects to 
 
 **One nuance worth stating at this altitude:** the registry `CardKind` is *not* the same as the `kind` discriminator stored on disk. The persisted `kind` exists only on the polymorphic panels' cards and uses a coarser set (`note`/`highlight`, `comment`/`suggestion`, `report`/`report-request`); the Cutter and Revisions `comment`/`suggestion` records are re-qualified to `cutter-comment`/`cutter-suggestion`/`revision-suggestion` by panel context at the render/key/theme layer.
 
-The exhaustive per-kind account — every kind's panel, sidecar + list-key, persisted discriminator, anchor/Atom-link relationship, lifecycle, and theme, plus the full Reports-panel and polymorphic-panel detail and the registry-shadow rot-vector — is in **[phase0-card-current-state.md §1](phase0-card-current-state.md#1-card-kind-taxonomy)**. Maps to the manifest's `cards.md`.
+The exhaustive per-kind account — every kind's panel, sidecar + list-key, persisted discriminator, anchor/Atom-link relationship, lifecycle, and theme, plus the full Reports-panel and polymorphic-panel detail — is in the manifest's **[cards.md](../workspace/cards.md)** (the registry-shadow rot-vector lives in [gardening.md → the Python shadow-rot discipline](../workspace/gardening.md#the-python-shadow-rot-discipline)).
 
 ---
 
@@ -290,7 +290,7 @@ The exhaustive per-kind account — every kind's panel, sidecar + list-key, pers
 
 This is the target state for **coherence check (2)** ([check-coherence.SKETCH.md](check-coherence.SKETCH.md#check-2--type-accounting)): every exported type in `types.ts` must be accounted for — mapped to its concept and a doc-of-record — or explicitly delegated to a named manifest doc. With this section filled, that check graduates from warn-only to per-type error.
 
-The full enumeration (all 58 types → concept → doc-of-record, with the dead types flagged) is in **[phase0-card-current-state.md §2](phase0-card-current-state.md#2-public-type-registry)**. The conceptual mapping lives there; exhaustive field-level schemas are the generated manifest's `sidecars.md`.
+The full enumeration (all 58 exported types, with the dead types flagged) and the exhaustive field-level schemas are in the manifest's **[sidecars.md](../workspace/sidecars.md)** — its [Coverage index](../workspace/sidecars.md#coverage) names every type, grouped by family.
 
 ---
 
@@ -303,7 +303,7 @@ Two related inventories.
 
 **Panels.** `PANEL_REGISTRY` ([src/panels/panel-registry.ts](../../src/panels/panel-registry.ts)) is the SSOT for the panel surface — **15** `PanelKind`s. Eleven host cards (eight registered with a single card kind, three polymorphic — see [Card-kind taxonomy](#card-kind-taxonomy)); the remaining four are tool surfaces (`outline`, `search`, `wordcount`, `omni`). Each registry entry declares the panel's label, folder, hosted card link, OmniView eligibility/side, and default strip side.
 
-The exhaustive inventory — every sidecar with its purpose, list-key, and consuming hook (infrastructure / card / legacy / excluded non-sidecars); and every Panel with its hosted kinds — is in **[phase0-card-current-state.md §3](phase0-card-current-state.md#3-sidecar--panel-inventory)**. Maps to the manifest's `sidecars.md` (sidecar schemas) and `structure.md` (the panel surface). The per-card **user-actions** (keyboard, toolbar, drag/drop, context menus) remain deferred to the manifest's `actions.md`.
+The exhaustive inventory — every sidecar with its purpose, list-key, and consuming hook (infrastructure / card / legacy / excluded non-sidecars); and every Panel with its hosted kinds — is in the manifest's **[sidecars.md](../workspace/sidecars.md)** (sidecar schemas) and **[structure.md](../workspace/structure.md)** (the paper-folder layout + panel surface). The per-card **user-actions** (keyboard, toolbar, drag/drop, context menus) remain deferred to the manifest's `actions.md` (forthcoming).
 
 ---
 
@@ -322,7 +322,7 @@ The marker family:
 
 The conceptual single source for *which TextObject kind carries which marker* is the `sourceMarker` field on `TEXT_OBJECT_REGISTRY` ([src/text-objects/text-object-registry.ts](../../src/text-objects/text-object-registry.ts)); the `%!v:` regexes live in [src/lib/uuid.ts](../../src/lib/uuid.ts); id assignment + dedup (`assignUuids`) and macro injection (`ensureVirgilCommands`) both live in [src/lib/latex-serializer.ts](../../src/lib/latex-serializer.ts) — the six `\v*` macros get `\providecommand` no-ops injected so the `.tex` compiles outside Virgil.
 
-The exhaustive per-marker emit/parse points and the auto-vs-authored table are in **[phase0-stable-current-state.md §1](phase0-stable-current-state.md#1-uuid--marker-semantics)**. Maps to the manifest's `identity.md`.
+The exhaustive per-marker emit/parse points and the auto-vs-authored table are in the manifest's **[identity.md](../workspace/identity.md)**.
 
 ---
 
@@ -337,7 +337,7 @@ Virgil does not compile LaTeX. `parseLatex()` ([src/lib/latex-parser.ts](../../s
 
 Two honesty notes: `escapeLatex` escapes only `& % # _ ~ ^` and smart quotes — it deliberately leaves `\ { } $` as live syntax; and display math's *source* form is `\[…\]` (the `$$…$$` seen in the editor is a DOM/input-rule register, normalized on save). The library skills' [_latex-output.md](../../library/skills/_latex-output.md) constrains skill *output* to a curated subset — narrower than what the parser accepts.
 
-The exhaustive parse/serialize tables (every block, inline, mark, and both opaque fallbacks) are in **[phase0-stable-current-state.md §2](phase0-stable-current-state.md#2-latex-round-trip-vocabulary)**. Maps to the manifest's `latex.md`.
+The exhaustive parse/serialize tables (every block, inline, mark, and both opaque fallbacks) are in the manifest's **[latex.md](../workspace/latex.md)**.
 
 ---
 
@@ -352,14 +352,13 @@ Every name Virgil reserves, so a user authoring their own `.tex` / preamble / fi
 - **File/folder paths** — `virgil/` (the sidecar folder, SSOT [src/lib/storage-fsa.ts](../../src/lib/storage-fsa.ts)) with `figures-cache/` and `.history/`; the sibling `.virgil/` agent/library plumbing folder; and the infrastructure sidecars (`virgil.json`, `editor-state.json`, `ai-requests.json`, `notifications.json`, `collab.json`, `doc-settings.json`). *Card-sidecar filenames are deferred with the card refactor.*
 - **v2-reserved overlay paths** — `~/.virgil-user/` and `<docpath>/.virgil/user-overrides/` are reserved **by design only** (present in the brainstorm + this doc, absent from all of `src/`); the deny-list enforcement is future work.
 
-The exhaustive inventory — every injected string, comment regex, the full CSS/`data-*` families, and every reserved path and sidecar (stable vs. provisional) — is in **[phase0-stable-current-state.md §5](phase0-stable-current-state.md#5-reserved-name-inventory)**. Maps to the manifest's `gardening.md` (including the user-overlay deny-list).
+The exhaustive inventory — every injected string, comment regex, the full CSS/`data-*` families, and every reserved path and sidecar (stable vs. provisional) — is in the manifest's **[gardening.md](../workspace/gardening.md)** (including the user-overlay deny-list).
 
 ---
 
 ## Related documents
 
-- **[phase0-stable-current-state.md](phase0-stable-current-state.md)** — the Phase 0 archaeology seed for the **stable** subsystems (UUID/markers, LaTeX vocabulary, TipTap extensions, reserved names, as-shipped cowork plumbing). The exhaustive field-level substrate that the three stable sections above forward-point to; seeds the future manifest. Retired once the manifest absorbs it.
-- **[phase0-card-current-state.md](phase0-card-current-state.md)** — the Phase 0 archaeology seed for the **card layer** (the `CardKind` taxonomy, the 58-type public surface, the sidecar + panel inventory, and the Python registry shadows). The exhaustive substrate the three card-layer sections above forward-point to; extracted once the Quotations → Reports refactor landed. Seeds the manifest's `cards.md` / `sidecars.md` / `structure.md`; retired once absorbed.
+- **[docs/workspace/ (the operational manifest)](../workspace/INDEX.md)** — the Layer-3 field-level companion the six current-state sections above forward-point to (`identity.md`, `latex.md`, `gardening.md`, `cards.md`, `sidecars.md`, `structure.md`, …); each manifest doc carries a `derives-from` header pointing back at the matching section here. Its [INDEX](../workspace/INDEX.md) is the per-task reading protocol and the home for the field-level detail. It **absorbed and retired the two Phase 0 archaeology seed reports** (the stable-subsystem and card-layer current-state memos), which now live only in git history.
 - **`docs/agents/*`** — the how-to-work-on-the-codebase derivatives (`overview.md`, `glossary.md`, `ui-chrome.md`, `main-text.md`, `architecture.md`), indexed by top-level `AGENTS.md`. They carry `derives-from` headers pointing back here.
 - **`EDITOR_SKILLS_V1.html`** — the frozen v1 build target (the source for the confident [Ontology](#ontology) and [Cowork pattern](#cowork-pattern) content).
 - **`EDITOR_SKILLS_BRAINSTORM.html`** — the design-intent record (the decisions log, §20; the method plan, §19).
