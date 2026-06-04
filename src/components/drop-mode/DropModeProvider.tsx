@@ -20,6 +20,7 @@ import type { Editor } from "@tiptap/react";
 import { useConfirmDialog } from "../ConfirmDialog";
 import { setDropCtx } from "./controller";
 import { DropModeIndicator } from "./Indicator";
+import { InlineAtomGhost } from "./InlineAtomGhost";
 import type { ParagraphAnchorApi, StackPullApi } from "./types";
 
 export interface DropModeProviderProps {
@@ -75,6 +76,7 @@ export function DropModeProvider({
   return (
     <>
       <DropModeIndicator />
+      <InlineAtomGhost />
       {dialog}
     </>
   );

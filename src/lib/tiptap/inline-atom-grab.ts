@@ -18,8 +18,10 @@
  * Gesture: mousedown on an atom (read-only-gated) → return `true` so PM
  * skips its own NodeSelection (killing the ~100px scroll-jump uniformly)
  * → on movement past an 8px threshold, capture the source and
- * `beginDropSession({inPlace, externalCommit})` + arm a one-shot
- * capture-phase click suppressor → on mouseup, `commitDropSession()`. A
+ * `beginDropSession({inPlace, externalCommit})`, arm a one-shot
+ * capture-phase click suppressor, and lift a cursor-following ghost
+ * (`inline-atom-ghost.ts` → `<InlineAtomGhost>`) while clearing the native
+ * text-selection → on mouseup, `commitDropSession()`. A
  * no-drag press arms no suppressor, so the atom's own click handler fires
  * (opens the Card / edit popover). The shared drop-mode controller drives
  * the inline-cursor hit-test, the indicator, and Esc-to-cancel.
@@ -43,6 +45,11 @@ import {
   stashInlineAtomSource,
   clearInlineAtomSource,
 } from "@/components/drop-mode/util/inline-atom-source";
+import {
+  setGhost,
+  updateGhostCursor,
+  clearGhost,
+} from "@/components/drop-mode/inline-atom-ghost";
 
 export interface InlineAtomGrabOptions {
   /** Read-only mirror (library reader keeps `view.editable=true`, gates
@@ -79,6 +86,7 @@ export const InlineAtomGrab = Extension.create<InlineAtomGrabOptions>({
       | {
           meta: AtomMeta;
           pos: number;
+          atomEl: HTMLElement;
           startX: number;
           startY: number;
           token: string;
@@ -89,6 +97,7 @@ export const InlineAtomGrab = Extension.create<InlineAtomGrabOptions>({
     const cleanup = () => {
       window.removeEventListener("mousemove", onMove);
       window.removeEventListener("mouseup", onUp);
+      clearGhost();
       pending = null;
     };
 
@@ -114,7 +123,14 @@ export const InlineAtomGrab = Extension.create<InlineAtomGrabOptions>({
     };
 
     const onMove = (e: MouseEvent) => {
-      if (!pending || pending.triggered) return;
+      if (!pending) return;
+      if (pending.triggered) {
+        // Post-threshold: the controller's own mousemove drives the hit-test
+        // + indicator; here we only keep the floating ghost glued to the
+        // cursor (cheap — coords only, no doc work).
+        updateGhostCursor(e.clientX, e.clientY);
+        return;
+      }
       const dx = e.clientX - pending.startX;
       const dy = e.clientY - pending.startY;
       if (dx * dx + dy * dy < DRAG_THRESHOLD * DRAG_THRESHOLD) return;
@@ -138,6 +154,29 @@ export const InlineAtomGrab = Extension.create<InlineAtomGrabOptions>({
         return;
       }
       armClickSuppressor();
+      // Lift a translucent ghost of the atom that floats with the cursor (the
+      // inline cousin of the block lift's <LiftedTextOverlay>). The grab
+      // offset uses the MOUSEDOWN point (startX/startY), not this threshold-
+      // event point, so the cursor pins exactly where the user pressed — the
+      // atom is tiny relative to the 8px threshold, so the block path's
+      // threshold-event offset would sit a full threshold-radius off the
+      // glyph. The rect is read HERE (not at mousedown) so a no-drag press
+      // pays no forced layout; the gesture is synchronous (no transaction
+      // between mousedown and now), so it equals the mousedown-time rect.
+      const rect = pending.atomEl.getBoundingClientRect();
+      setGhost({
+        el: pending.atomEl,
+        grabOffsetX: pending.startX - rect.left,
+        grabOffsetY: pending.startY - rect.top,
+        cursorX: e.clientX,
+        cursorY: e.clientY,
+      });
+      // Clear any native text-selection that formed in the sub-threshold drag.
+      // The `user-select:none` keyed on body[data-drop-mode-active] (set by
+      // beginDropSession above) prevents NEW selection but can't retract an
+      // in-progress one. Cosmetic only — ProseMirror's own selection is left
+      // untouched (clearing it would be a transaction = keystroke-sanctity).
+      window.getSelection()?.removeAllRanges();
       // From here the controller's own mousemove drives the hit-test +
       // indicator; suppress the native default for the rest of the drag.
       e.preventDefault();
@@ -183,6 +222,7 @@ export const InlineAtomGrab = Extension.create<InlineAtomGrabOptions>({
               pending = {
                 meta,
                 pos,
+                atomEl,
                 startX: event.clientX,
                 startY: event.clientY,
                 token: `g${++tokenCounter}`,

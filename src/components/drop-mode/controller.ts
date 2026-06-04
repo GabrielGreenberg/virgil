@@ -26,6 +26,14 @@ import { lookupSpec } from "./registry";
 
 let activeCtx: DropCtx | null = null;
 export function setDropCtx(ctx: DropCtx | null) {
+  // If the editor unmounts mid-drag (route change, or a card-body float
+  // closing mid-gesture), end any live session first. InlineAtomGrab starts
+  // sessions with `externalCommit`, so the controller has no mouseup of its
+  // own to fall back on — without this the body CSS hooks
+  // (`data-drop-mode-active`, the crosshair cursor, and the global
+  // `user-select:none` keyed on that attr) would stay stuck with nothing left
+  // to clear them, turning the whole document unselectable.
+  if (ctx === null && session) cancelDropSession();
   activeCtx = ctx;
 }
 export function getDropCtx(): DropCtx | null {

@@ -35,6 +35,12 @@ function resolveCapturedSource(cardKey: string): AtomLocation | null {
   return { editor: src.editor, node, from: src.pos, to: src.pos + node.nodeSize };
 }
 
+// Invariant: this spec's `classifyDrop` (via inlineAtomMoveSpec) must only
+// ever return `no-op` / `apply`, never `confirm`. The inline-atom drag ghost
+// (<InlineAtomGhost>) and the drag's `user-select:none` suppression are gated
+// on the drop session being live; a `confirm` decision keeps the session open
+// across an async modal (controller.commitDropSession), which would freeze the
+// ghost and strand the selection-suppression until the user answered.
 export const inTextAtomGrabSpec = inlineAtomMoveSpec({
   resolveSource: (cardKey) => resolveCapturedSource(cardKey),
   sameEditorOnly: true,
