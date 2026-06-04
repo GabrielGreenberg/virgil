@@ -18,6 +18,12 @@ import type { Editor } from "@tiptap/react";
 import type { Node as PMNode } from "@tiptap/pm/model";
 import { isAnchorableNode } from "@/lib/marginalia";
 import { generateShortId } from "@/lib/uuid";
+import { isCompatibleParent } from "@/text-objects/drop-adapters";
+import {
+  parseTextObjectPopoutKey,
+  TEXT_OBJECT_REGISTRY,
+} from "@/text-objects/text-object-registry";
+import type { TextObjectKind } from "@/text-objects/types";
 import { findEditorAtPoint } from "./target-registry";
 import type { DropSpec, Placement, ViewportRect } from "./types";
 
@@ -48,6 +54,23 @@ export function hitTest(
     return null;
   }
   if (!posResult) return null;
+
+  // R3 — source-kind-aware resolution for lifted SUB-ITEMS. A lifted
+  // sub-item (listItem / exampleItem) is a first-class movable object: it
+  // should drop AMONG its peers, not only inside one of them. When the
+  // dragged source is a sub-object and the cursor sits inside a peer item in
+  // a container that accepts it, resolve the between-blocks placement at the
+  // nearest PEER ITEM boundary — surfacing the inter-item insert positions
+  // the commit path (classifyDropTarget → inside-compatible → drop-direct)
+  // already honors, within a list AND across same-kind lists. Gated on
+  // isSubObject + isCompatibleParent, so a non-sub-object drag, or a sub-item
+  // over a top-level gap (not inside a compatible container), falls through
+  // to the existing resolution below — preserving the top-level pull-out
+  // (wrap) behavior byte-for-byte.
+  if (spec.allowedPlacements.includes("between-blocks")) {
+    const peer = resolveSubItemPeerBlock(editor, posResult.pos, sourceCardKey);
+    if (peer) return makeBetweenBlocksPlacement(editor, peer, y, true);
+  }
 
   const block = resolveAnchorableBlock(editor, posResult.pos);
   if (!block) return null;
@@ -162,18 +185,87 @@ function resolveAnchorableBlock(
   return { blockPos: bestPos, depth: 0, uuid, dom: domAt };
 }
 
+/**
+ * Source-kind-aware block resolution for lifted SUB-ITEMS (R3).
+ *
+ * `resolveAnchorableBlock` resolves the innermost anchorable node, which
+ * inside a list/expex item is the item's inner paragraph — so a dragged
+ * sub-item only ever gets drop positions INSIDE one item, never at the
+ * boundary BETWEEN peer items. This resolver instead targets the nearest
+ * ancestor that is a PEER ITEM of the dragged kind (`type.name ===
+ * sourceKind`), provided that item sits inside a container that accepts the
+ * kind (`isCompatibleParent`). The resulting `blockPos` is the item's own
+ * position, so `makeBetweenBlocksPlacement` yields an inter-item insert
+ * position (a sibling boundary) that the commit path already honors.
+ *
+ * Returns null — so the caller falls through to `resolveAnchorableBlock` and
+ * the existing behavior is preserved byte-for-byte — for every other case:
+ *   - the source isn't a sub-object (registry `isSubObject` false),
+ *   - the cursor isn't inside a peer item of the same kind (e.g. a listItem
+ *     dragged over an expex item, or over a top-level gap → still pulls out),
+ *   - the peer item isn't inside a compatible container.
+ *
+ * O(depth): a single `$pos` ancestor walk + an `isCompatibleParent` scan of
+ * the enclosing ancestors. No doc walk — safe on every throttled mousemove.
+ */
+export function resolveSubItemPeerBlock(
+  editor: Editor,
+  pos: number,
+  sourceCardKey: string,
+): AnchorableBlockInfo | null {
+  const ref = parseTextObjectPopoutKey(sourceCardKey);
+  if (!ref) return null;
+  const sourceKind = ref.kind;
+  if (!TEXT_OBJECT_REGISTRY[sourceKind]?.isSubObject) return null;
+
+  const doc = editor.state.doc;
+  if (pos < 0 || pos > doc.content.size) return null;
+  const $pos = doc.resolve(pos);
+
+  // Walk innermost→outermost for the nearest ancestor that is a peer item of
+  // the dragged kind, then confirm a compatible container encloses it.
+  for (let d = $pos.depth; d >= 1; d--) {
+    const node = $pos.node(d);
+    if (node.type.name !== sourceKind) continue;
+    let inCompatibleContainer = false;
+    for (let p = d - 1; p >= 0; p--) {
+      const ancestorKind = $pos.node(p).type.name as TextObjectKind;
+      if (isCompatibleParent(sourceKind, ancestorKind)) {
+        inCompatibleContainer = true;
+        break;
+      }
+    }
+    if (!inCompatibleContainer) return null;
+    const blockPos = $pos.before(d);
+    const domAt = editor.view.nodeDOM(blockPos);
+    if (!(domAt instanceof HTMLElement)) return null;
+    const uuid = (node.attrs?.uuid as string | undefined) ?? "";
+    return { blockPos, depth: d, uuid, dom: domAt };
+  }
+  return null;
+}
+
 // ─────────────────────────────────────────────────────────────────────
 // Placement constructors
 // ─────────────────────────────────────────────────────────────────────
 
-function makeBetweenBlocksPlacement(
+export function makeBetweenBlocksPlacement(
   editor: Editor,
   block: AnchorableBlockInfo,
   cursorY: number,
+  snapToMidpoint = false,
 ): Placement {
   const blockRect = block.dom.getBoundingClientRect();
-  // Cursor is above the block's top → insert before; below → insert after.
-  const insertBefore = cursorY < blockRect.top;
+  // Cursor above the threshold → insert before; below → insert after. For
+  // sub-item peer drops (R3) the threshold is the block's vertical MIDPOINT
+  // (Notion-style), so the line snaps to the nearest item boundary as the
+  // cursor moves over the list rather than firing only in the hairline gap.
+  // Top-level block drops keep the top-edge threshold (snapToMidpoint
+  // defaults false → byte-identical to before).
+  const threshold = snapToMidpoint
+    ? blockRect.top + blockRect.height / 2
+    : blockRect.top;
+  const insertBefore = cursorY < threshold;
   const node = editor.state.doc.nodeAt(block.blockPos);
   const insertPos = insertBefore
     ? block.blockPos
