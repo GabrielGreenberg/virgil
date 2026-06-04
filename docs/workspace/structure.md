@@ -123,8 +123,10 @@ Also: `complete-only` (status flip, no card — for skills that mutate the `.tex
 directly, like `style-merge`), `revert` (undo), and `--synthesize-task` (create
 the Task on the fly for chat-initiated, Workflow-B calls). The conceptual model is
 [VIRGIL.md → Cowork pattern](../architecture/VIRGIL.md#cowork-pattern); this
-contract is **built and validated end-to-end through the footnote kind** — the
-other card kinds are a small addition on the same contract, wiring pending.
+contract is **built and validated end-to-end through the footnote kind**, then
+fanned out to the full create-able set — `note` / `todo` / `citation` / `report` /
+`report-request` (and the tex-only `example`) — each a small, uniform addition on
+the same contract (`editor/scripts/create_card.py`), **no contract change**.
 
 ## What a skill may read and write
 
