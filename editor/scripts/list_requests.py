@@ -74,6 +74,14 @@ def list_ai_requests(doc) -> tuple[list[dict], set[tuple[str, str]]]:
                 "linkedTo": linked,
                 "extra": {
                     "status": r.get("status"),
+                    # Two-field vocab (§7) + the safety level the responder routes
+                    # on: the umbrella surfaces these and the dispatched subskill
+                    # reads safetyLevel off the Task (create_card.py picks the
+                    # subcommand from it: 1→silent, 2→+comment, 3→propose, none→
+                    # direct). `result` is set only on a terminal row (so it's
+                    # null for an open one) — carried for symmetry.
+                    "result": r.get("result"),
+                    "safetyLevel": r.get("safetyLevel"),
                     "createdAt": r.get("createdAt"),
                     "resultId": r.get("resultId"),
                     "payload": r.get("payload"),

@@ -43,69 +43,45 @@ Report Request by appending a **Report card authored by AI** to
 
 2. **Compose the report.** A Report is free-form prose (sans-serif, like
    a margin Note) — an analysis, summary, or write-up that answers the
-   request. Do the research/thinking the request asks for. Keep it
-   focused; short paragraphs, and bullet lists where they help (the body
-   is Tiptap rich text — `bulletList` / `orderedList` + `bold` / `italic`
-   are supported). Substance over length.
+   request. Do the research/thinking the request asks for, then write it as
+   focused plain text (short paragraphs; substance over length).
+   `create_card.py` wraps the body as the report's rich-text `content` plus a
+   plain-text `text` mirror — you no longer hand-build the card JSON. (Rich
+   structure beyond paragraphs — `bulletList` / `bold` — isn't carried by
+   `--body` yet; a richer-body flag is future work, not this chip.)
 
-3. **Build the Report card** (see `ReportCard` in `src/lib/types.ts`):
-   ```json
-   { "kind": "report",
-     "id": "<new-uuid>",
-     "createdAt": "<ISO now>",
-     "author": "ai",
-     "title": "<short title for the report>",
-     "text": "<plain-text mirror of content>",
-     "content": {
-        "type": "doc",
-        "content": [
-           { "type": "paragraph",
-             "content": [{ "type": "text", "text": "<paragraph 1>" }] }
-        ]
-     },
-     "links": [{
-        "id": "<new-link-uuid>",
-        "kind": "anchor",
-        "anchor": {
-           "type": "anchor",
-           "paragraphIds": ["...copy from the request's anchor..."],
-           "margin": {"side": "left"}
-        },
-        "target": {
-           "type": "card",
-           "ref": {"kind": "report", "id": "<new-uuid>"}
-        },
-        "createdAt": "<ISO now>"
-     }]
-   }
-   ```
-   - `author: "ai"` → renders as the "AI" byline (never "Claude"). A
-     human-authored report would carry `"human"`; this skill always emits
-     `"ai"`.
-   - Copy `paragraphIds` from the source request's anchor link so the
-     report lands on the same paragraph. Reports sit on the **left**
-     margin (`"side": "left"`).
-   - `content` is the rich-text body; `text` is its plain-text flattening
-     (used for search + the compressed card preview).
+3. **Land it via the contract.** The research + composition above is this
+   skill's job; the mechanical write is not. Hand the report to
+   `create_card.py --kind=report` — it builds the `ReportCard`
+   (`author: "ai"` → the "AI" byline, never "Claude"), anchors it on the
+   **left** margin, flips the Task's `status`/`result`, clears the source flag,
+   stamps the `aiOriginRequestId` back-pointer, and bumps the version,
+   atomically under the pen. A Report Request with no `safetyLevel` is a direct
+   create; if it carries one, `create_card.py` honors it (1 → silent,
+   2 → +comment, 3 → propose).
 
-4. **Apply.**
-   ```bash
-   python3 editor/scripts/apply_response.py <docPath> '<op-json>'
-   ```
-   ```json
-   { "requestId": "<requestId>",
-     "panel": "reports",
-     "card": { ...the new report card... },
-     "summary": "Drafted report for request <cardId>",
-     "clearSourceFlag": true
-   }
-   ```
-   `clearSourceFlag: true` flips the source Report Request's `aiRequest`
-   back to `false` (the request stays in the panel as a record of the ask).
+   - Real `requestId` (`kind: report`, `linkedTo.panel == "reports"`): anchor
+     is read from the Task —
+     ```bash
+     python3 editor/scripts/create_card.py <docPath> <requestId> --kind=report \
+         --author ai --title "<short title>" --body "<report body>" --margin left
+     ```
+   - Virtual id (`virtual:reports:<cardId>`): pass the source Report Request's
+     paragraph as `--anchor` —
+     ```bash
+     python3 editor/scripts/create_card.py <docPath> virtual:reports:<cardId> \
+         --kind=report --author ai --title "<short title>" \
+         --body "<report body>" --anchor <uuid> --margin left
+     ```
 
-5. **Reply.** On success:
+   The source Report Request is never overwritten — `create_card.py` appends a
+   **new** `report` card and clears the request's `aiRequest` flag. This
+   replaces the old "hand-build the ReportCard JSON, then call
+   `apply_response.py`" dance — one call now owns the build + apply.
+
+4. **Reply.** On success:
    ```
-   Done: drafted report <id> for request <requestId>. Output: reports.json (+ ai-requests.json, notifications, version).
+   Done: drafted report <id> for request <requestId>. Output: reports.json (+ ai-requests.json status/result, notifications, version).
    ```
 
 ## Idempotency
@@ -117,8 +93,12 @@ Skipped <requestId> (already complete).
 
 ## Safety
 
-- Never edit the source Report Request in place — always create a new
-  Report card. The bridge clears `aiRequest` via `clearSourceFlag`.
+- Don't hand-build the ReportCard JSON or call `apply_response.py` directly —
+  route the write through `create_card.py` so the anchor, byline, status/result,
+  and version bump stay centralized (the same contract `draft-footnote` /
+  `create-card` use).
+- Never edit the source Report Request in place — always create a new Report
+  card; `create_card.py` clears the request's `aiRequest` flag for you.
 - Never mutate `document.tex` — a Report is apparatus anchored beside the
   paragraph, not a change to the prose. If the user actually wanted a
   prose edit, draft a revision suggestion instead

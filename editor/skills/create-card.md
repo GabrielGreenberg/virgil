@@ -60,12 +60,18 @@ full reasoning.
 
 - `<docPath>` — the paper folder.
 - `<requestId>` — the Task id (Workflow A). Omit it for a chat-initiated create
-  (Workflow B), and pass `--anchor` instead.
+  (Workflow B), and pass `--anchor` instead. A `virtual:<panel>:<cardId>` id (a
+  pre-bridge card flag with no Task row) is also accepted — pass `--anchor`; no
+  Task is read, and the source card's `aiRequest` flag is cleared.
 - `--kind=<kind>` — one of the rows above.
 - `--anchor <uuid>` — the paragraph `%!v:` UUID to anchor at (required for the
   chat path; for a Task it's read from `paragraphIds`).
 - `--safety-level 1|2|3` — overrides the Task's `safetyLevel` for this run
   (carded kinds only; see Safety). Omit for a direct create.
+- `--accept-task-kind <kind>` — extra Task kind(s) a Workflow-A create may drain
+  (a **cross-kind answer** — e.g. a `note` answering a `todo` Task, as
+  `/editor/answer-todo-request` does). Repeatable. Without it, the Task's kind
+  must match the card kind.
 - `--body "<text>"` — the card body, **already composed** by you/chat.
 - `--title "<t>"` — title for `note` / `report`.
 - `--notes "<t>"` — secondary notes field for `todo`.
@@ -147,6 +153,12 @@ just decides the inputs and invokes it.
 
 ## Per-kind notes
 
+- **`aiOriginRequestId`** — a sidecar-only carded card (`note` / `todo` /
+  `report` / `report-request`) created from a **real** Task is stamped with an
+  `aiOriginRequestId` back-pointer to that Task (the editor's Accept / Reject /
+  Redo affordance). The atom-bearing kinds (`footnote` / `citation`) carry no
+  such field (they're id-equality atoms with no `links` array), and a `virtual:`
+  card-flag id isn't stamped either (no Task to point at). You never hand-set it.
 - **`citation`** is mechanical: it splices `\vcid{}\<cmd>{key}` and writes the
   `CitationRef`, but it does **not** add the bib entry. The citekey(s) must
   already be in `references.bib` — `create_card.py` refuses otherwise. Adding a

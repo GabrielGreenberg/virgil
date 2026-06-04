@@ -45,39 +45,74 @@ matters" (write a note). Read the todo and dispatch.
      "check the dataset"): mark complete with a note explaining the
      limit; don't pretend.
 
-3. **Build the result card** per the chosen shape:
-   - Suggestion card → see `/editor/draft-suggestion`. Required:
-     `kind`, `id`, `createdAt`, `author: "ai"`, `original_text`,
+3. **Land the result** per the chosen shape:
+
+   - **Analysis / explanation → sibling note** *(migrated to the contract)*.
+     Compose the note in chat, then land it via `create_card.py --kind=note`.
+     A `note` answering a `todo` Task is a cross-kind answer, so declare it with
+     `--accept-task-kind todo`. The one call builds the note, anchors it
+     (Mode A), stamps `aiOriginRequestId`, sets the todo Task's two-field
+     `status`/`result`, clears the todo's `aiRequest` flag, and bumps the version
+     — atomically under the pen:
+     ```bash
+     # real todo requestId (bridged flag, kind=todo):
+     python3 editor/scripts/create_card.py <docPath> <requestId> --kind=note \
+         --accept-task-kind todo --body "<your note>" --title "<subject>" --margin right
+     # virtual:todos:<cardId> (pre-bridge flag — anchor from the source todo):
+     python3 editor/scripts/create_card.py <docPath> virtual:todos:<cardId> \
+         --kind=note --body "<your note>" --title "<subject>" --anchor <uuid> --margin right
+     ```
+     `create_card.py` picks the subcommand from the Task's `safetyLevel` — none →
+     direct create, 1 → silent, 2 → +comment, 3 → **propose** — you don't pick it.
+     At level 3 the note still lands (it's sidecar-only — there's no `.tex` to
+     withhold), but the Task is left `in-progress`, awaiting review. **Read the
+     returned JSON `status`** to finalize (step 4): `complete` is terminal;
+     `in-progress` means the answer is a proposal, *not done yet*.
+
+   <!-- TODO(chip-13): propose branch migrates with L3 accept→splice -->
+   - **Text edit → suggestion card** *(stays on legacy)*. Build the
+     `RevisionSuggestionCard` (`kind`, `id`, `createdAt`, `author: "ai"`,
+     `original_text` — from the anchored paragraph, **excluding** its trailing
+     `%!v:<uuid>` marker so the accept-time replacement keeps it —
      `suggested_text`, `explanation`, `user_text: ""`,
-     `instructions: "<request.text>"`,
-     `status: "pending"`, `links[]`, plus `aiOriginRequestId: <requestId>`
-     when `<requestId>` doesn't start with `virtual:`. Exclude the
-     trailing `%!v:<uuid>` paragraph anchor from `original_text` —
-     the accept-time replacement must not delete the marker.
-   - Sibling note → see `/editor/answer-note-request`.
+     `instructions: "<request.text>"`, `status: "pending"`, `links[]`, plus
+     `aiOriginRequestId: <requestId>` when not `virtual:`-prefixed; see
+     `/editor/draft-suggestion`), then apply it via the legacy
+     `apply_response.py <docPath> '<op-json>'` with `clearSourceFlag: true`.
+     This propose-flow branch migrates onto the contract in a later chip.
 
-4. **Apply.**
-   ```bash
-   python3 editor/scripts/apply_response.py <docPath> '<op-json>'
-   ```
-   `clearSourceFlag: true` so the todo's `aiRequest` flag flips off.
+   - **Footnote / citation / quotation → follow-up** and **action you can't
+     take → complete-with-note**: unchanged (step 2) — file the follow-up
+     request, or `apply_response.py <docPath> complete-only <id> --note "<limit>"`;
+     neither creates a card here.
 
-   **Whether to flip the source todo's `done: true`:**
-   - **Suggestion card** path: leave `done: false`. The user reviews
-     the suggestion before accepting; the accept flow flips `done`.
-   - **Sibling note** / **complete-only with limit-explanation** path:
-     flip `done: true` directly — Edit `<docPath>/virgil/todos.json`
-     after `apply_response.py` returns (the script doesn't yet
-     support a `flipDone` op).
+4. **Finalize the source todo by the returned outcome** — don't mark a proposal
+   done:
+   - **Sibling note with `status: complete`** (a direct / silent / auto-applied
+     create) **or complete-with-limit**: set `done: true` on the source todo in
+     `<docPath>/virgil/todos.json` after the create returns. `aiRequest` is
+     already cleared by the contract; the contract has no `flipDone` op yet, so
+     this stays a small post-step Edit (a future chip routes it through the
+     `update` op).
+   - **Sibling note with `status: in-progress`** (a level-3 **proposal**): leave
+     the todo `done: false` and open — the note is drafted for review, and a
+     later `/editor/review` re-lists the Task until the user accepts. Don't flip
+     `done` on an answer the user hasn't accepted.
+   - **Suggestion card** path: no — leave `done: false`; the accept flow flips
+     it when the user accepts the suggestion.
 
 5. **Reply.** Use the path-specific template:
    - Suggestion card path:
      ```
      Done: drafted suggestion <newId> for todo <cardId>, request <requestId>. Output: revisions.json (+ ai-requests.json, todos.json aiRequest cleared, notifications, version).
      ```
-   - Sibling note path:
+   - Sibling note path (`status: complete`):
      ```
      Done: drafted note <newId> for todo <cardId>, request <requestId>. Output: notes.json (+ ai-requests.json, todos.json done+aiRequest, notifications, version).
+     ```
+   - Sibling note path (`status: in-progress`, a level-3 proposal):
+     ```
+     Drafted note <newId> as a proposal for todo <cardId>, request <requestId> — awaiting review (todo left open). Output: notes.json (+ ai-requests.json status, todos.json aiRequest cleared, notifications, version).
      ```
    - Follow-up filed (footnote/citation/quotation):
      ```
@@ -90,6 +125,10 @@ matters" (write a note). Read the todo and dispatch.
 
 ## Safety
 
+- The note branch routes through `create_card.py` (the same contract
+  `draft-footnote` / `create-card` use) — don't hand-build the note JSON or call
+  `apply_response.py` directly for it. `--accept-task-kind todo` is what lets a
+  `note` answer a `todo` Task.
 - Don't fabricate completed todos. If the todo's intent is unclear,
   mark complete with a note rather than guessing.
 - Suggestion cards default to `status: "pending"` — the user always

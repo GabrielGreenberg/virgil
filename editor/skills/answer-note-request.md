@@ -66,71 +66,61 @@ two paths:
    - **(c)** Else (standalone, no `linkedTo`) → emit a **new note**
      card.
 
-3. **Compose.** Draft the note body as Tiptap JSONContent. The
-   simplest valid shape is:
-   ```json
-   { "type": "doc",
-     "content": [{
-       "type": "paragraph",
-       "content": [{ "type": "text", "text": "<your reply>" }]
-     }]
-   }
-   ```
-   Keep it tight: one to three short paragraphs. Match the user's tone
-   (academic, conversational — read the source note first to gauge).
+3. **Compose.** Draft the note body as plain text — `create_card.py` wraps it
+   as Tiptap JSONContent (you no longer hand-build the doc node). Keep it tight:
+   one to three short paragraphs. Match the user's tone (academic,
+   conversational — read the source note first to gauge).
 
-4. **Build the result card.** Generate a UUID for the new card. Mode A
-   anchor — link to the same paragraphIds as the request.
+4. **Land it via the contract** *(paths (b)/(c))*. The composition above is this
+   skill's job; the mechanical write is not. Hand the body to
+   `create_card.py --kind=note` — it builds the `UserNote`, anchors it (Mode A),
+   stamps the `aiOriginRequestId` back-pointer, flips the Task's `status`/`result`,
+   clears the source flag, and bumps the version, all atomically under the pen.
+   The subcommand is chosen from the Task's `safetyLevel` (none → direct create;
+   1 → silent; 2 → +comment; 3 → propose) — you don't pick it. Carry the title via
+   `--title`, the margin via `--margin` (notes sit on the **right**).
 
-   Title:
-   - Path (b) (sibling): `Re: <source-note-title>`.
-   - Path (c) (standalone): a short descriptive subject phrase, no
-     `Re:` prefix. Match the convention of existing notes in
-     `notes.json`.
+   - **Path (c) — standalone** (a real `ai-requests.json` id, no `linkedTo`):
+     anchor is read from the Task. Title is a short descriptive subject phrase
+     (no `Re:`), matching the convention of existing notes in `notes.json`:
+     ```bash
+     python3 editor/scripts/create_card.py <docPath> <requestId> --kind=note \
+         --body "<your reply>" --title "<subject phrase>" --margin right
+     ```
+   - **Path (b) — sibling note** answering a source note (title `Re: <source title>`):
+     - Real `requestId` (bridged flag, `linkedTo.panel == "notes"`): anchor read
+       from the Task —
+       ```bash
+       python3 editor/scripts/create_card.py <docPath> <requestId> --kind=note \
+           --body "<your reply>" --title "Re: <source title>" --margin right
+       ```
+     - Virtual id (`virtual:notes:<cardId>`, a pre-bridge flag with no Task row):
+       pass the source note's paragraph as `--anchor` (from the request's
+       `paragraphIds`, or the source note's anchor link) —
+       ```bash
+       python3 editor/scripts/create_card.py <docPath> virtual:notes:<cardId> \
+           --kind=note --body "<your reply>" --title "Re: <source title>" \
+           --anchor <uuid> --margin right
+       ```
 
-   Schema (see `src/lib/types.ts` UserNote):
-   ```jsonc
-   { "id": "<new-uuid>",
-     // Path (b): "Re: <source title>". Path (c): subject phrase, no "Re:".
-     "title": "Re: <source-note-title-if-any>",
-     "content": { ...tiptap JSON above },
-     "createdAt": "<ISO now>",
-     "aiRequest": false,
-     "links": [{
-       "id": "<link-uuid>",
-       "kind": "anchor",
-       "anchor": { "type": "anchor",
-                   "paragraphIds": ["<uuid>"],
-                   "margin": { "side": "right" } },
-       "target": { "type": "card",
-                   "ref": { "kind": "note", "id": "<new-uuid>" } },
-       "createdAt": "<ISO now>"
-     }]
-   }
-   ```
-   Add `aiOriginRequestId: "<requestId>"` if `<requestId>` does NOT
-   start with `virtual:` (i.e., a real `ai-requests.json` entry,
-   including bridged-from-card-flag entries that have a real UUID
-   plus `linkedTo`). The editor uses this to surface Accept / Reject /
-   Redo buttons.
+   `create_card.py` re-validates the anchor against the `.tex` and refuses if it
+   isn't found (no partial write); it is idempotent — re-running on a terminal
+   Task is a no-op. The `aiOriginRequestId` the editor reads for Accept / Reject /
+   Redo is stamped **automatically** for a real `requestId` (never for a
+   `virtual:` id — there's no Task to point at), so don't hand-build it. This
+   replaces the old "hand-build the note JSON, then call `apply_response.py`"
+   dance — one `create_card.py` call now owns the build + apply.
 
-5. **Apply atomically.**
-   ```bash
-   python3 editor/scripts/apply_response.py <docPath> '<op-json>'
-   ```
-   where `<op-json>` is:
-   ```json
-   { "requestId": "<requestId>",
-     "panel": "notes",
-     "card": { ...the new note... },
-     "summary": "Drafted a note in reply to '<title>'",
-     "clearSourceFlag": true
-   }
-   ```
+   <!-- TODO(chip-13): propose branch migrates with L3 accept→splice -->
+   **Path (a) — doc-edit → suggestion** stays on the legacy path for now: emit a
+   **suggestion card** in `revisions.json` via
+   `apply_response.py <docPath> '<op-json>'` (see `/editor/draft-suggestion` for
+   the card shape). This propose-flow branch migrates onto the contract in a
+   later chip alongside the L3 accept→splice flow; leave it on legacy.
 
-6. **Reply.** One line:
+5. **Reply.** One line:
    ```
-   Done: drafted note <newId> for request <requestId>. Output: notes.json (+ ai-requests.json status, notifications, version).
+   Done: drafted note <newId> for request <requestId>. Output: notes.json (+ ai-requests.json status/result, notifications, version).
    ```
 
 ## Idempotency
@@ -142,6 +132,11 @@ Skipped <requestId> (already complete).
 
 ## Safety
 
+- For paths (b)/(c), don't hand-build the note JSON or call `apply_response.py`
+  directly — route the write through `create_card.py` so the anchor,
+  `aiOriginRequestId`, status/result, and version bump stay centralized (the
+  same contract `draft-footnote` / `create-card` use). One future change to the
+  contract then reaches this skill for free.
 - Never edit the source note in place. Always create a new card.
 - Never mutate `document.tex` from this skill.
 - If you can't decide between sibling-note and suggestion-card, prefer

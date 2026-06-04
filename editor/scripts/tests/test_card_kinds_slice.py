@@ -305,5 +305,100 @@ check(ok, "all five carded kinds created in one doc")
 check(synth_kinds <= AI_REQUEST_KINDS, f"all synthesized kinds ⊆ AiRequestKind (got {sorted(synth_kinds)})")
 
 
+# ---------------------------------------------------------------- aiOriginRequestId back-pointer (chip 11)
+print("\n=== aiOriginRequestId: stamped on a Workflow-A note, absent on an atom-bearing footnote ===")
+sb = sandbox()
+r = run(CREATE, str(sb), NOTE_REQ, "--kind=note", "--body", "A reply note.", "--title", "Re: McKenzie")
+check(r.returncode == 0, f"note create exited 0 (stderr={r.stderr.strip()[:120]})")
+nid = out_of(r).get("cardId")
+note = next((c for c in load(sb, "notes.json")["cards"] if c["id"] == nid), {})
+check(note.get("aiOriginRequestId") == NOTE_REQ, "note carries aiOriginRequestId → its Task (Accept/Reject/Redo affordance)")
+fn_req = req_by_kind(sb, "footnote")["id"]
+r = run(CREATE, str(sb), fn_req, "--kind=footnote", "--body", "A footnote body.")
+check(r.returncode == 0, f"footnote create exited 0 (stderr={r.stderr.strip()[:120]})")
+fid = out_of(r).get("footnoteId")
+fn = next((f for f in load(sb, "footnotes.json")["footnotes"] if f["id"] == fid), {})
+check("aiOriginRequestId" not in fn, "footnote (id-equality atom) does NOT carry aiOriginRequestId")
+# L2 on a sidecar-only kind: the PRIMARY note is stamped; the L2 sibling comment is NOT.
+sb = sandbox()
+set_safety(sb, NOTE_REQ, 2)
+r = run(CREATE, str(sb), NOTE_REQ, "--kind=note", "--body", "Bodied.", "--title", "T")
+check(r.returncode == 0, f"L2 note create exited 0 (stderr={r.stderr.strip()[:120]})")
+pid = out_of(r).get("cardId")
+cards = load(sb, "notes.json")["cards"]
+check(len(cards) == ORIG_NOTES + 2, "L2 note: primary + sibling comment both appended")
+primary = next((c for c in cards if c["id"] == pid), {})
+sibling = next((c for c in cards if c.get("title") == "Virgil added a note"), {})
+check(primary.get("aiOriginRequestId") == NOTE_REQ, "L2 primary note carries aiOriginRequestId")
+check("aiOriginRequestId" not in sibling, "L2 sibling 'Virgil added a note' comment is NOT stamped")
+
+
+# ---------------------------------------------------------------- virtual card-flag id (chip 11)
+print("\n=== virtual card-flag id: note create clears the source flag, mutates no Task row ===")
+sb = sandbox()
+# Simulate a pre-bridge card flag: an existing note with aiRequest=true and NO
+# matching ai-requests.json entry (what list_requests emits as virtual:notes:<id>).
+notes_path = sb / "virgil" / "notes.json"
+ns = json.loads(notes_path.read_text())
+src_id = ns["cards"][0]["id"]
+ns["cards"][0]["aiRequest"] = True
+notes_path.write_text(json.dumps(ns, indent=2) + "\n")
+n_reqs_before = len(load(sb, "ai-requests.json")["requests"])
+r = run(CREATE, str(sb), f"virtual:notes:{src_id}", "--kind=note", "--body", "Re: the flagged note.",
+        "--title", "Re: flagged", "--anchor", "4402")
+check(r.returncode == 0, f"virtual note create exited 0 (stderr={r.stderr.strip()[:140]})")
+vid = out_of(r).get("cardId")
+cards = load(sb, "notes.json")["cards"]
+check(any(c["id"] == vid for c in cards), "sibling note landed for the virtual id")
+src = next((c for c in cards if c["id"] == src_id), {})
+check(src.get("aiRequest") is False, "source note's aiRequest flag cleared (virtual id split to {panel,cardId})")
+new = next((c for c in cards if c["id"] == vid), {})
+check("aiOriginRequestId" not in new, "virtual-id note carries NO aiOriginRequestId (no real Task to point at)")
+check(len(load(sb, "ai-requests.json")["requests"]) == n_reqs_before, "ai-requests.json untouched (no Task row for a virtual id)")
+check(out_of(r).get("requestId") == f"virtual:notes:{src_id}", "result echoes the virtual requestId")
+check((sb / "virgil/version.txt").read_text().strip() == "1", "version bumped on the virtual create")
+check(run(CREATE, str(sb), f"virtual:notes:{src_id}", "--kind=note", "--body", "x").returncode != 0,
+      "virtual id with no --anchor is refused (anchor comes from the source card)")
+
+
+# ---------------------------------------------------------------- cross-kind answer: todo Task → note (chip 11)
+print("\n=== --accept-task-kind: a note answers a todo Task (cross-kind, answer-todo-request) ===")
+sb = sandbox()
+ar_path = sb / "virgil" / "ai-requests.json"
+ar = json.loads(ar_path.read_text())
+ar["requests"].append({"id": "todo-xk-1", "kind": "todo", "text": "Explain why this matters.",
+                       "paragraphIds": ["4402"], "status": "pending"})
+ar_path.write_text(json.dumps(ar, indent=2) + "\n")
+# Without --accept-task-kind: refused (Task kind=todo ≠ requested note).
+r = run(CREATE, str(sb), "todo-xk-1", "--kind=note", "--body", "Because …")
+check(r.returncode != 0 and "todo" in r.stderr, "refuses a todo Task for --kind=note without --accept-task-kind")
+check(len(load(sb, "notes.json")["cards"]) == ORIG_NOTES, "no note landed on the refusal")
+# With --accept-task-kind todo: the note lands and the todo Task completes.
+r = run(CREATE, str(sb), "todo-xk-1", "--kind=note", "--accept-task-kind", "todo",
+        "--body", "Because it anchors the apparatus claim.", "--title", "Why it matters")
+check(r.returncode == 0, f"cross-kind note create exited 0 (stderr={r.stderr.strip()[:140]})")
+nid = out_of(r).get("cardId")
+check(len(load(sb, "notes.json")["cards"]) == ORIG_NOTES + 1, "note landed for the cross-kind answer")
+note = next((c for c in load(sb, "notes.json")["cards"] if c["id"] == nid), {})
+check(note.get("aiOriginRequestId") == "todo-xk-1", "cross-kind note back-points at the todo Task")
+req = next((r for r in load(sb, "ai-requests.json")["requests"] if r["id"] == "todo-xk-1"), {})
+check(req.get("status") == "complete" and req.get("result") == "direct-created", "todo Task completed / direct-created")
+check(req.get("resultId") == nid, "todo Task resultId → the answering note")
+# A level-3 todo → note is a PROPOSE: the note still lands (sidecar-only, no .tex to
+# withhold) but the Task is left in-progress / no terminal result — so answer-todo
+# must read the returned status and NOT mark the todo done (the major review finding).
+sb = sandbox()
+ar = json.loads((sb / "virgil/ai-requests.json").read_text())
+ar["requests"].append({"id": "todo-xk-l3", "kind": "todo", "text": "Analyze.",
+                       "paragraphIds": ["4402"], "status": "pending", "safetyLevel": 3})
+(sb / "virgil/ai-requests.json").write_text(json.dumps(ar, indent=2) + "\n")
+o = out_of(run(CREATE, str(sb), "todo-xk-l3", "--kind=note", "--accept-task-kind", "todo",
+               "--body", "Because.", "--title", "Why"))
+check(o.get("status") == "in-progress" and o.get("result") is None, "L3 todo→note is a proposal (status=in-progress, no terminal result)")
+check(any(c["id"] == o.get("cardId") for c in load(sb, "notes.json")["cards"]), "L3 proposal note still lands (sidecar-only)")
+l3 = next(r for r in load(sb, "ai-requests.json")["requests"] if r["id"] == "todo-xk-l3")
+check(l3["status"] == "in-progress", "L3 todo Task left in-progress — answer-todo must NOT flip done here")
+
+
 print(f"\n===== {PASS} passed, {FAIL} failed =====")
 sys.exit(1 if FAIL else 0)

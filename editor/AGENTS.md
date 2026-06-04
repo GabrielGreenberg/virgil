@@ -29,11 +29,20 @@ The skill set turns those signals into responses:
 
 - `/editor/review [<docPath>]` — umbrella drain, dispatches per-kind
   subskills.
-- `/editor/draft-footnote`, `/editor/find-citation` — direct creates.
-- `/editor/answer-note-request`, `/editor/answer-todo-request`,
-  `/editor/answer-cutter-comment`, `/editor/answer-revision-comment`,
-  `/editor/answer-report-request`, `/editor/draft-suggestion` —
-  responders that emit cards by default.
+- `/editor/draft-footnote` — direct-create footnote; routes the writeback
+  through `create_card.py` → `apply_response.py` (the v1 contract).
+- `/editor/answer-note-request`, `/editor/answer-report-request`,
+  `/editor/answer-todo-request` — card-create responders; their
+  **terminal-complete** branches route the writeback through
+  `create_card.py` → `apply_response.py` too (chip 11), so no skill hand-builds
+  card JSON for these. Their propose-flow branches (a suggestion / doc-edit)
+  stay on the legacy default-apply for now (chip 13).
+- `/editor/find-citation` — adds a `.bib` entry + a citation card; still on the
+  legacy path (its `references.bib` coupling migrates in chip 12).
+- `/editor/answer-cutter-comment`, `/editor/answer-revision-comment`,
+  `/editor/draft-suggestion` — responder-kind emitters (comment / the
+  suggestion family); still legacy default-apply, migrate with the L3 propose
+  flow (chip 13).
 - `/editor/answer-bib-review` — verifies/fills bibliography fields,
   drafts annotations, or (via `--library-sync`) swaps a single entry
   in from the Virgil Library.
@@ -258,18 +267,29 @@ skill — call `get_para_context.py`.
 - **Workspace template `<docPath>/.claude/CLAUDE.md`.** Per-doc
   workspace guide so a fresh Claude Code session opened in a paper
   folder loads the right context.
-- **Suggestion card with `aiOriginRequestId` UI affordances.** Result
-  cards can carry `aiOriginRequestId` so the editor surfaces Accept /
-  Reject / Redo buttons; today the field is set but the UI doesn't
-  yet read it.
-- **Migrate the responders onto the `update` op.** The `apply_response.py`
-  `update` op now exists (chip 9 — alongside `archive` / `restore` / `move` /
-  `link`, surfaced as `/editor/edit-card` + the four sibling card-ops). An
-  existing-card mutation no longer falls back to a direct sidecar Edit — it
-  routes through `apply_response.py` (atomic, pen-protected). The remaining
-  follow-up is migrating the responders that still hand-edit a sidecar —
-  notably `/editor/answer-revision-comment`, which appends a turn — to call
-  `/editor/edit-card` (the `update` op) so every mutation stays centralized.
+- **`aiOriginRequestId` UI affordances.** `create_card.py` now stamps
+  `aiOriginRequestId` on every sidecar-only carded card created from a real Task
+  (chip 11), so a result card points back at the Task that spawned it. The editor
+  doesn't yet *read* the field to surface Accept / Reject / Redo — that UI wiring
+  remains.
+- **Finish migrating the card-create writeback.** The terminal-complete branches
+  of the card-create responders (`answer-note-request` / `answer-report-request`
+  / `answer-todo-request`) now route through `create_card.py` →
+  `apply_response.py` (chip 11), alongside `draft-footnote` / `create-card` — no
+  skill hand-builds card JSON for them. What remains: the **propose-flow**
+  branches still on legacy default-apply (`answer-note-request` path (a),
+  `answer-todo-request`'s doc-edit branch, and `draft-suggestion` /
+  `answer-cutter-comment` / `answer-revision-comment`), which migrate with the L3
+  accept→splice flow (chip 13); and the **`.bib` / preamble** skills
+  (`find-citation`, `answer-bib-review`, `style-merge`), which need the contract
+  extended for whole-`.tex` / `references.bib` writes (chip 12).
+- **Migrate sidecar hand-edits onto the `update` op.** The `apply_response.py`
+  `update` op exists (chip 9 — alongside `archive` / `restore` / `move` / `link`,
+  surfaced as `/editor/edit-card` + the four sibling card-ops). The remaining
+  follow-up is the responders that still hand-edit a sidecar to *mutate* an
+  existing card — notably `/editor/answer-revision-comment` (appends a turn) and
+  `answer-todo-request`'s `done: true` flip — calling `/editor/edit-card` (the
+  `update` op) so every mutation stays centralized.
 
 ## Verification path
 

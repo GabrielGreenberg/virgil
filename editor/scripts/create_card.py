@@ -30,7 +30,14 @@ check-coherence.SKETCH.md Check 5 for the absent-panel allowlist.
 
 Workflow A (a Task already exists — the UI-initiated path):
   create_card.py <docPath> <requestId> --kind=<k> [--body "<text>" | …]
-    Anchor + safetyLevel are read from the request.
+    Anchor + safetyLevel are read from the request. A sidecar-only carded card
+    (note/todo/report/report-request) is stamped with an `aiOriginRequestId`
+    back-pointer to the Task (the editor's Accept/Reject/Redo affordance —
+    AGENTS.md "Future work"). To answer a Task whose kind differs from the card
+    kind (a `note` answering a `todo`), pass --accept-task-kind <taskKind>. A
+    `virtual:<panel>:<cardId>` requestId (a pre-bridge card flag with no Task
+    row) is a direct create against --anchor; the id flows through to clear the
+    source card's aiRequest flag (no Task row is read or mutated).
 
 Workflow B (chat-initiated — no pre-existing Task):
   create_card.py <docPath> --kind=<k> [--body "<text>" | …] --anchor <uuid> \
@@ -395,6 +402,7 @@ class Ctx:
     safety: int | None
     selected_text: str | None
     synthesize: bool
+    is_virtual: bool = False
 
 
 def _resolve_context(doc: Path, a: argparse.Namespace, *, accept_task_kinds: set[str]) -> "Ctx | dict":
@@ -409,6 +417,21 @@ def _resolve_context(doc: Path, a: argparse.Namespace, *, accept_task_kinds: set
     safety = a.safety_level
     selected_text = None
     synthesize = bool(a.synthesize)
+
+    # A virtual card-flag id (virtual:<panel>:<cardId>) — a pre-bridge flag with
+    # no ai-requests.json Task to read (list_requests.py emits these for papers
+    # created before the bridge landed). It's a direct create against the source
+    # card's own paragraph: the anchor comes from --anchor (the responder
+    # resolves it from the source card), and the virtual id still flows to
+    # apply_response, which splits it into {panel, cardId} to clear the source
+    # card's aiRequest flag (no Task row is mutated, so a safety level / result
+    # isn't persisted — a card-flag reply lands directly).
+    if request_id and request_id.startswith("virtual:") and not synthesize:
+        if not anchor:
+            die("--anchor <uuid> is required for a virtual (card-flag) request id "
+                "(resolve it from the source card)")
+        return Ctx(request_id=request_id, anchor=anchor, safety=safety,
+                   selected_text=None, synthesize=False, is_virtual=True)
 
     if request_id and not synthesize:
         ar = read_json(sidecar(doc, "ai-requests.json"), default={"requests": []})
@@ -467,12 +490,31 @@ def _require_bib_keys(doc: Path, keys: list[str]) -> None:
 
 
 def _create_carded(doc: Path, a: argparse.Namespace) -> dict:
-    ctx = _resolve_context(doc, a, accept_task_kinds=WORKFLOW_A_KINDS.get(a.kind, set()))
+    # A cross-kind answer: a responder draining one Task kind by emitting a
+    # *different* card kind (answer-todo-request answers a `todo` Task with a
+    # `note`). The responder declares the extra Task kind(s) it may drain via
+    # --accept-task-kind; the default 1:1 set (WORKFLOW_A_KINDS) still applies to
+    # plain create-card. No effect on a virtual or synthesized Task (neither
+    # reads the kind off an existing ai-requests.json row).
+    accept = set(WORKFLOW_A_KINDS.get(a.kind, set()))
+    accept |= {k for k in (a.accept_task_kind or [])}
+    ctx = _resolve_context(doc, a, accept_task_kinds=accept)
     if isinstance(ctx, dict):  # already-terminal Task → idempotent no-op
         return ctx
     _require_anchor(doc, ctx.anchor)
 
     build = CARDED_BUILDERS[a.kind](doc, a, ctx)
+
+    # Tie a result card back to the Task it answers, so the editor can surface
+    # Accept / Reject / Redo (the aiOriginRequestId affordance — editor/AGENTS.md
+    # "Future work"). Stamped uniformly here rather than per-skill: every
+    # sidecar-only carded kind (note / todo / report / report-request —
+    # build.insert is None) created from a *real* Task carries the back-pointer.
+    # Atom-bearing kinds (footnote / citation) are id-equality atoms whose refs
+    # carry no such field, so they're excluded; a virtual card-flag id has no
+    # ai-requests.json Task to point back at, so it's excluded too.
+    if ctx.request_id and not ctx.is_virtual and build.insert is None:
+        build.card["aiOriginRequestId"] = ctx.request_id
 
     op: dict = {
         "panel": build.panel,
@@ -600,6 +642,9 @@ def main(argv: list[str]) -> int:
     p.add_argument("--safety-level", type=int, choices=[1, 2, 3], dest="safety_level")
     p.add_argument("--synthesize", action="store_true", help="synthesize the Task (chat path)")
     p.add_argument("--task-text", dest="task_text", help="the user's ask, recorded on a synthesized Task")
+    p.add_argument("--accept-task-kind", action="append", dest="accept_task_kind",
+                   help="extra Task kind(s) a Workflow-A create may drain (cross-kind answer, "
+                        "e.g. a `note` answering a `todo` Task). Repeatable.")
     p.add_argument("--margin", choices=["left", "right"], default="right", help="anchored-card gutter side")
     # note / report
     p.add_argument("--title", help="card title (note, report)")

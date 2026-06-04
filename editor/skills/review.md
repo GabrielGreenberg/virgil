@@ -41,13 +41,21 @@ with `/loop /editor/review`.
    ```bash
    python3 editor/scripts/list_requests.py <docPath>
    ```
-   Stdout is JSONL, one row per open request:
+   Stdout is JSONL, one row per **open** request:
    ```json
    {"source":"ai-requests","kind":"footnote","id":"...","text":"...",
-    "paragraphIds":[...], "selectedText":"...", "linkedTo":{...}}
+    "paragraphIds":[...], "selectedText":"...", "linkedTo":{...},
+    "extra":{"status":"pending","result":null,"safetyLevel":2,"resultId":null}}
    {"source":"bib-review","kind":"bib-review","id":"<bibKey>","text":"...","extra":{"type":"fields"}}
    {"source":"card-flag","kind":"todo","id":"virtual:todos:<cardId>",...}
    ```
+   "Open" is **not-terminal**: `pending` | `in-progress` (and the legacy
+   `draft` | `submitted`, and a status-absent row) are open; `complete` |
+   `failed` are terminal and already filtered out, so the umbrella never
+   re-dispatches a drained request. Each `ai-requests` row carries the
+   two-field outcome vocabulary (`extra.status` + `extra.result`) and the
+   `extra.safetyLevel` the responder routes on (1/2/3 or null).
+
    Stderr ends with `# <N> open: …` — surface this count up front so
    the user sees how much you're about to do.
 
@@ -72,10 +80,22 @@ with `/loop /editor/review`.
    bounded. Pass through the request's full row from the JSONL as
    context to the subagent prompt.
 
+   **Safety level + outcome.** A Task may carry a `safetyLevel` (1/2/3). The
+   umbrella doesn't build cards or pick subcommands — the dispatched subskill
+   reads the level off the Task and routes its card-create through
+   `create_card.py` → `apply_response.py`: **1** → silent apply, **2** → apply +
+   a sibling comment, **3** → propose (drafted; `.tex` untouched; Task left
+   `in-progress`, awaiting review), **no level** → direct create. The subskill
+   stamps the two-field `status`/`result` (`complete` + `silent-applied` /
+   `auto-applied` / `direct-created`, or `in-progress` for a level-3 proposal).
+   Surface the level in the banner (below) and echo the subskill's stamped
+   outcome. A level-3 proposal stays open, so a later `/editor/review` re-lists
+   it until the user accepts or rejects.
+
 4. **Surface progress as you go.** Before each dispatch, print:
    ```
    ════════════════════════════════════════════════════════════
-   AI REQUEST · <kind> · <id>
+   AI REQUEST · <kind> · <id> · safety <N|direct>
    ────────────────────────────────────────────────────────────
    <verbatim text from the request>
    ════════════════════════════════════════════════════════════
@@ -105,8 +125,8 @@ No further work.
 
 - Does **not** invoke subskills directly without a subagent — that's
   what bounds the context.
-- Does **not** mutate sidecars on its own; subskills delegate to
-  `editor/scripts/apply_response.py` for the writeback.
+- Does **not** mutate sidecars on its own; subskills delegate the writeback to
+  `editor/scripts/create_card.py` → `apply_response.py` (atomic, pen-protected).
 - Does **not** retry failed subskills; the user re-runs `/editor/review`
   to pick them up again.
 
