@@ -8,8 +8,9 @@
  * `content:"block+"` — so a bare item CANNOT be a top-level float-doc child.
  * Where listItem seeds `doc > bulletList|orderedList > listItem` (2 levels),
  * exampleItem seeds the FULL expex envelope `doc > exampleBlock >
- * exampleItemList > exampleItem` (3 levels) via the same canonical `buildWrap`
- * (`drop-adapters.ts`, the `"exampleBlock"` branch). The wrapper provides the
+ * exampleItemList > exampleItem` (3 levels) via `wrapItemForFloat` (the
+ * float-side wrapper builder that inherits the source block's numbering, so
+ * the float renders the real `(N)` not `(?)`). The wrapper provides the
  * example context, so the float renders the item's `subLabel` marker (a./i./…,
  * a real `.expex-item-marker` DOM element inside the item's grid) and the
  * `.expex-item-row` marker+body grid for free through the same
@@ -60,18 +61,36 @@ import {
   SourceMissingBanner,
   useFloatMainSync,
 } from "@/lib/float-sync";
-import { buildWrap } from "../drop-adapters";
+import { generateShortId } from "@/lib/uuid";
 import type { TextObjectFloatBodyProps } from "../types";
+
+/** The enclosing exampleBlock's render attrs — the numbering context the
+ *  float wrapper inherits so it renders the real `(N)` (and the right
+ *  single/multi styling + any custom tag/override), not the default `(?)`.
+ *  Everything EXCEPT the synthetic wrapper `uuid`, which is minted per-float
+ *  (the anti-thrash invariant — see `wrapItemForFloat`). */
+export interface ExampleBlockNumbering {
+  number: number;
+  kind: string;
+  exnoOverride: string | number | null;
+  tag: string;
+}
 
 export interface ExampleItemSource {
   start: number;
   end: number;
   node: PMNode;
+  /** Render attrs of the enclosing exampleBlock, copied onto the synthetic
+   *  wrapper. null only if the item somehow isn't inside an exampleBlock
+   *  (schema-impossible; defensive → wrapper falls back to defaults). */
+  numbering: ExampleBlockNumbering | null;
 }
 
-/** Find an exampleItem by uuid. No parent-kind report needed (unlike
- *  listItem): the wrapper is always the fixed `exampleBlock >
- *  exampleItemList` envelope. */
+/** Find an exampleItem by uuid AND capture its enclosing exampleBlock's
+ *  numbering (so the synthetic float wrapper can render the real `(N)`). The
+ *  wrapper is always the fixed `exampleBlock > exampleItemList` envelope; the
+ *  numbering rides in as copied block attrs (no parent-KIND report needed,
+ *  unlike listItem — the parent kind is always exampleBlock). */
 export function findExampleItemByUuid(
   doc: PMNode,
   uuid: string,
@@ -80,7 +99,12 @@ export function findExampleItemByUuid(
   doc.descendants((node, pos) => {
     if (result) return false;
     if (node.type.name === "exampleItem" && node.attrs?.uuid === uuid) {
-      result = { start: pos, end: pos + node.nodeSize, node };
+      result = {
+        start: pos,
+        end: pos + node.nodeSize,
+        node,
+        numbering: enclosingBlockNumbering(doc, pos),
+      };
       return false;
     }
     return true;
@@ -88,25 +112,58 @@ export function findExampleItemByUuid(
   return result;
 }
 
-/** Build the float-doc wrapper for an item — the SAME `exampleBlock >
- *  exampleItemList > exampleItem` envelope `buildWrap(…, "exampleBlock")`
- *  produces, but with an EXPLICIT wrapper uuid so the seed and every
- *  `readSource` re-wrap serialize byte-identically. (Without a fixed uuid the
- *  seed's `buildWrap`-minted exampleBlock id would differ from readSource's, so
- *  `useFloatMainSync`'s `sameDoc` check would fire a spurious `setContent` —
- *  resetting the float — on every foreign main transaction.) The construction
- *  matches `buildWrap`'s `"exampleBlock"` branch exactly (`exampleItemList` has
- *  no uuid attr → `{}`; exampleBlock's non-uuid attrs take their defaults in
- *  both paths). Returns the exampleBlock node JSON; callers nest it in a `doc`. */
+/** Walk up from the item position to its enclosing exampleBlock and read the
+ *  render attrs the float wrapper inherits. The block is always an ancestor by
+ *  schema (`exampleBlock > exampleItemList > exampleItem`); we resolve rather
+ *  than use `descendants`' immediate-parent arg, which is the exampleItemList —
+ *  one level too shallow. */
+function enclosingBlockNumbering(
+  doc: PMNode,
+  itemPos: number,
+): ExampleBlockNumbering | null {
+  const $pos = doc.resolve(itemPos);
+  for (let d = $pos.depth; d >= 0; d--) {
+    const anc = $pos.node(d);
+    if (anc.type.name === "exampleBlock") {
+      return {
+        number: anc.attrs.number,
+        kind: anc.attrs.kind,
+        exnoOverride: anc.attrs.exnoOverride,
+        tag: anc.attrs.tag,
+      };
+    }
+  }
+  return null;
+}
+
+/** Build the float-doc wrapper for an item — the `exampleBlock >
+ *  exampleItemList > exampleItem` envelope, and the SOLE builder for both the
+ *  seed AND every `readSource` re-wrap so they serialize byte-identically. Two
+ *  things keep that byte-identity (and so keep `useFloatMainSync`'s `sameDoc`
+ *  check from firing a spurious, float-resetting `setContent` on every foreign
+ *  main transaction):
+ *    - an EXPLICIT wrapper `uuid`, minted once at seed and threaded back here;
+ *    - the `numbering` inherited from the source's enclosing exampleBlock,
+ *      applied IDENTICALLY in both paths — so the float renders the real `(N)`
+ *      (and single/multi styling + custom tag/override) instead of the default
+ *      `(?)`. The synthetic `uuid` always overrides any in `numbering`.
+ *  The DROP path keeps using `buildWrap` (drop-adapters), which DEFAULTS the
+ *  numbering on purpose — a dropped item must renumber to its new context.
+ *  `exampleItemList` carries no uuid attr → `{}`. Returns the exampleBlock node
+ *  JSON; callers nest it in a `doc`. */
 export function wrapItemForFloat(
   schema: Schema,
   itemNode: PMNode,
   wrapperUuid: string | null,
+  numbering: ExampleBlockNumbering | null,
 ): JSONContent {
   const block = schema.nodes.exampleBlock;
   const itemList = schema.nodes.exampleItemList;
   const inner = itemList.create({}, [itemNode]);
-  return block.create({ uuid: wrapperUuid }, [inner]).toJSON() as JSONContent;
+  const blockAttrs = numbering
+    ? { ...numbering, uuid: wrapperUuid }
+    : { uuid: wrapperUuid };
+  return block.create(blockAttrs, [inner]).toJSON() as JSONContent;
 }
 
 export interface InnerWriteback {
@@ -181,30 +238,40 @@ export function ExampleItemBody({
   const chrome = useEditorChrome();
   const mainEditor = ref.current?.getEditor() ?? null;
 
-  // Stable wrapper uuid captured from the seed's `buildWrap`, reused by every
-  // `readSource` re-wrap so the synced wrapper JSON stays byte-identical to
-  // the seed (anti-thrash — see `wrapItemForFloat`).
+  // Stable wrapper uuid, minted EXACTLY once (lazy-init here, NOT inside the
+  // seed memo). The seed memo re-runs on foreign re-renders; minting there would
+  // hand `readSource` a fresh id each time, so its re-wrap would differ from the
+  // float's current content and `useFloatMainSync` would fire a spurious,
+  // float-resetting `setContent` on every foreign main edit. Minting once and
+  // reusing it in the seed AND every `readSource` re-wrap keeps the synced
+  // wrapper JSON byte-identical (anti-thrash — see `wrapItemForFloat`).
   const wrapperUuidRef = useRef<string | null>(null);
+  if (wrapperUuidRef.current === null) wrapperUuidRef.current = generateShortId();
 
   // Seed once from main on mount: find the source item by uuid and seed the
-  // float doc WRAPPED in the full expex envelope via the canonical `buildWrap`.
-  // A bare exampleItem (group:"textObject") can't be a top-level doc child; the
-  // `exampleBlock > exampleItemList` wrapper provides the example context that
-  // renders the marker + grid. Thereafter `useFloatMainSync` drives main→float
-  // and `onUpdate` drives the inner-targeted (2-level unwrap) float→main
-  // write-back.
+  // float doc WRAPPED in the full expex envelope via `wrapItemForFloat`, which
+  // inherits the enclosing exampleBlock's numbering (so the float renders the
+  // real `(N)`). A bare exampleItem (group:"textObject") can't be a top-level
+  // doc child; the `exampleBlock > exampleItemList` wrapper provides the example
+  // context that renders the marker + grid. Thereafter `useFloatMainSync` drives
+  // main→float and `onUpdate` drives the inner-targeted (2-level unwrap)
+  // float→main write-back.
   const initial = useMemo(() => {
     let wrapperJson: JSONContent | null = null;
     if (mainEditor) {
       const src = findExampleItemByUuid(mainEditor.state.doc, uuid);
       if (src) {
-        const wrapped = buildWrap(
+        // Build via `wrapItemForFloat` (NOT `buildWrap`) so the seed inherits the
+        // source block's numbering identically to the `readSource` sync path —
+        // byte-identical JSON, no `sameDoc` thrash. The wrapper uuid is the
+        // stable, mint-once `wrapperUuidRef` (above), so re-running this memo
+        // never changes it.
+        wrapperJson = wrapItemForFloat(
           mainEditor.state.schema,
           src.node,
-          "exampleBlock",
+          wrapperUuidRef.current,
+          src.numbering,
         );
-        wrapperUuidRef.current = (wrapped.attrs?.uuid as string | null) ?? null;
-        wrapperJson = wrapped.toJSON() as JSONContent;
       }
     }
     return {
@@ -315,8 +382,10 @@ export function ExampleItemBody({
           missing: true,
         };
       }
-      // Re-wrap the live item, reusing the seed's wrapper uuid so the synced
-      // JSON matches the seed byte-for-byte (no spurious setContent).
+      // Re-wrap the live item, reusing the seed's wrapper uuid AND re-reading
+      // the source block's numbering so the synced JSON matches the seed
+      // byte-for-byte (no spurious setContent). If main renumbers the block,
+      // the new number flows in here and the float updates to match.
       return {
         doc: {
           type: "doc",
@@ -325,6 +394,7 @@ export function ExampleItemBody({
               src.node.type.schema,
               src.node,
               wrapperUuidRef.current,
+              src.numbering,
             ),
           ],
         } as JSONContent,

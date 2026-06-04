@@ -7,7 +7,9 @@
  * `content:"block+"` — so a bare item CANNOT be a top-level float-doc child.
  * The float therefore seeds the item WRAPPED in a minimal parent list
  * (`doc > bulletList|orderedList > listItem`, matching the item's REAL parent
- * type in main) via the canonical `buildWrap` envelope. The wrapper list
+ * type in main) via `wrapItemForFloat`, the float-side builder that — for an
+ * orderedList parent — sets the wrapper's `start` to the item's ordinal in its
+ * source list (so a popped 2nd item renders "2.", not "1."). The wrapper list
  * provides the list context, so the float renders the item's marker (disc /
  * number) for free through the same `buildEditorExtensions({surface:"float"})`
  * factory the other prose bodies use — no marker plumbing here.
@@ -43,10 +45,24 @@ import {
   SourceMissingBanner,
   useFloatMainSync,
 } from "@/lib/float-sync";
-import { buildWrap } from "../drop-adapters";
+import { generateShortId } from "@/lib/uuid";
 import type { TextObjectFloatBodyProps } from "../types";
 
 type ListKind = "bulletList" | "orderedList";
+
+/** The numbering context an orderedList wrapper inherits so the float marker
+ *  matches the page. `bulletList` items are unnumbered (disc), so this rides
+ *  along as `{ ordinal: 1, listType: null }` and `wrapItemForFloat` ignores it
+ *  for the bullet branch. */
+export interface ListNumbering {
+  /** The item's 1-based ordinal in its source list = `(sourceList.start ?? 1)`
+   *  + count of preceding siblings. Becomes the wrapper orderedList's `start`
+   *  so a popped 2nd item renders "2.", not "1.". */
+  ordinal: number;
+  /** The source orderedList's `type` (a/A/i/I; null = decimal), copied onto
+   *  the wrapper so the marker STYLE matches too. */
+  listType: string | null;
+}
 
 export interface ListItemSource {
   start: number;
@@ -56,25 +72,37 @@ export interface ListItemSource {
    *  resolved from the `parent` arg of `descendants`. Drives the wrapper
    *  the float seeds so the rendered marker matches the page. */
   parentKind: ListKind;
+  /** Numbering inherited by the wrapper (orderedList only; inert for bullet). */
+  numbering: ListNumbering;
 }
 
-/** Find a listItem by uuid AND report its immediate parent list kind. The
- *  parent comes from `descendants`' 3rd callback arg — the enclosing
- *  bulletList/orderedList (listItem is always a child of one by schema). */
+/** Find a listItem by uuid AND report its immediate parent list kind + the
+ *  numbering the float wrapper inherits. The parent comes from `descendants`'
+ *  3rd callback arg (the enclosing bulletList/orderedList — a listItem is
+ *  always a child of one by schema); the 4th arg is the item's index in that
+ *  parent, which (offset by the list's `start`) gives the 1-based ordinal. */
 export function findListItemByUuid(
   doc: PMNode,
   uuid: string,
 ): ListItemSource | null {
   let result: ListItemSource | null = null;
-  doc.descendants((node, pos, parent) => {
+  doc.descendants((node, pos, parent, index) => {
     if (result) return false;
     if (node.type.name === "listItem" && node.attrs?.uuid === uuid) {
+      const isOrdered = parent?.type.name === "orderedList";
       result = {
         start: pos,
         end: pos + node.nodeSize,
         node,
-        parentKind:
-          parent?.type.name === "orderedList" ? "orderedList" : "bulletList",
+        parentKind: isOrdered ? "orderedList" : "bulletList",
+        numbering: {
+          ordinal: isOrdered
+            ? ((parent?.attrs.start ?? 1) as number) + index
+            : 1,
+          listType: isOrdered
+            ? ((parent?.attrs.type ?? null) as string | null)
+            : null,
+        },
       };
       return false;
     }
@@ -83,21 +111,33 @@ export function findListItemByUuid(
   return result;
 }
 
-/** Build the float-doc wrapper for an item — the SAME `doc > list > item`
- *  envelope `buildWrap` produces, but with an EXPLICIT wrapper uuid so the
- *  seed and every `readSource` re-wrap serialize byte-identically. (Without a
- *  fixed uuid the seed's `buildWrap`-minted wrapper id would differ from
- *  readSource's, so `useFloatMainSync`'s `sameDoc` check would fire a
- *  spurious `setContent` — resetting the float — on every foreign main
- *  transaction.) Returns the wrapper node JSON; callers nest it in a `doc`. */
+/** Build the float-doc wrapper for an item — the `list > item` envelope, and
+ *  the SOLE builder for both the seed AND every `readSource` re-wrap so they
+ *  serialize byte-identically. Two things keep that byte-identity (and so keep
+ *  `useFloatMainSync`'s `sameDoc` check from firing a spurious, float-resetting
+ *  `setContent` on every foreign main transaction):
+ *    - an EXPLICIT wrapper `uuid`, minted once at seed and threaded back here;
+ *    - the `numbering` inherited from the source list, applied IDENTICALLY in
+ *      both paths. For an orderedList parent the wrapper's `start` = the item's
+ *      ordinal (so a popped 2nd item renders "2.", not "1.") and `type` copies
+ *      the source's a/A/i/I style; bulletList items are unnumbered, so the
+ *      numbering is inert there.
+ *  The DROP path keeps using `buildWrap` (drop-adapters), which DEFAULTS the
+ *  `start` on purpose — a dropped item must renumber to its new context.
+ *  Returns the wrapper node JSON; callers nest it in a `doc`. */
 export function wrapItemForFloat(
   schema: Schema,
   itemNode: PMNode,
   parentKind: ListKind,
   wrapperUuid: string | null,
+  numbering: ListNumbering,
 ): JSONContent {
   const parent = schema.nodes[parentKind];
-  return parent.create({ uuid: wrapperUuid }, [itemNode]).toJSON() as JSONContent;
+  const attrs =
+    parentKind === "orderedList"
+      ? { uuid: wrapperUuid, start: numbering.ordinal, type: numbering.listType }
+      : { uuid: wrapperUuid };
+  return parent.create(attrs, [itemNode]).toJSON() as JSONContent;
 }
 
 export interface InnerWriteback {
@@ -169,17 +209,24 @@ export function ListItemBody({
   const chrome = useEditorChrome();
   const mainEditor = ref.current?.getEditor() ?? null;
 
-  // Stable wrapper uuid captured from the seed's `buildWrap`, reused by every
-  // `readSource` re-wrap so the synced wrapper JSON stays byte-identical to
-  // the seed (anti-thrash — see `wrapItemForFloat`).
+  // Stable wrapper uuid, minted EXACTLY once (lazy-init here, NOT inside the
+  // seed memo). The seed memo re-runs on foreign re-renders; minting there would
+  // hand `readSource` a fresh id each time, so its re-wrap would differ from the
+  // float's current content and `useFloatMainSync` would fire a spurious,
+  // float-resetting `setContent` on every foreign main edit. Minting once and
+  // reusing it in the seed AND every `readSource` re-wrap keeps the synced
+  // wrapper JSON byte-identical (anti-thrash — see `wrapItemForFloat`).
   const wrapperUuidRef = useRef<string | null>(null);
+  if (wrapperUuidRef.current === null) wrapperUuidRef.current = generateShortId();
 
   // Seed once from main on mount: find the source item by uuid, detect its
   // REAL parent list kind, and seed the float doc WRAPPED in that parent via
-  // the canonical `buildWrap`. A bare listItem (group:"textObject") can't be a
-  // top-level doc child; the wrapper provides the list context that renders
-  // the marker. Thereafter `useFloatMainSync` drives main→float and `onUpdate`
-  // drives the inner-targeted float→main write-back.
+  // `wrapItemForFloat`, which inherits the source list's numbering (so a popped
+  // orderedList item renders its real ordinal). A bare listItem
+  // (group:"textObject") can't be a top-level doc child; the wrapper provides
+  // the list context that renders the marker. Thereafter `useFloatMainSync`
+  // drives main→float and `onUpdate` drives the inner-targeted float→main
+  // write-back.
   const initial = useMemo(() => {
     let parentKind: ListKind = "bulletList";
     let wrapperJson: JSONContent | null = null;
@@ -187,9 +234,18 @@ export function ListItemBody({
       const src = findListItemByUuid(mainEditor.state.doc, uuid);
       if (src) {
         parentKind = src.parentKind;
-        const wrapped = buildWrap(mainEditor.state.schema, src.node, parentKind);
-        wrapperUuidRef.current = (wrapped.attrs?.uuid as string | null) ?? null;
-        wrapperJson = wrapped.toJSON() as JSONContent;
+        // Build via `wrapItemForFloat` (NOT `buildWrap`) so the seed inherits the
+        // source list's numbering identically to the `readSource` sync path —
+        // byte-identical JSON, no `sameDoc` thrash. The wrapper uuid is the
+        // stable, mint-once `wrapperUuidRef` (above), so re-running this memo
+        // never changes it.
+        wrapperJson = wrapItemForFloat(
+          mainEditor.state.schema,
+          src.node,
+          parentKind,
+          wrapperUuidRef.current,
+          src.numbering,
+        );
       }
     }
     const fallback: JSONContent = { type: parentKind, content: [EMPTY_ITEM] };
@@ -300,8 +356,10 @@ export function ListItemBody({
           missing: true,
         };
       }
-      // Re-wrap the live item, reusing the seed's wrapper uuid so the synced
-      // JSON matches the seed byte-for-byte (no spurious setContent).
+      // Re-wrap the live item, reusing the seed's wrapper uuid AND re-reading
+      // the source list's numbering so the synced JSON matches the seed
+      // byte-for-byte (no spurious setContent). If main reorders the list, the
+      // new ordinal flows in here and the float marker updates to match.
       return {
         doc: {
           type: "doc",
@@ -311,6 +369,7 @@ export function ListItemBody({
               src.node,
               src.parentKind,
               wrapperUuidRef.current,
+              src.numbering,
             ),
           ],
         } as JSONContent,

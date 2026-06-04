@@ -183,19 +183,68 @@ describe("listItem inner-targeted write-back (L3k)", () => {
     expect(resolveInnerWriteback(doc, "gone", floatDoc)).toBeNull();
   });
 
-  it("seed (buildWrap) and sync (wrapItemForFloat) serialize identically — anti-thrash", () => {
+  it("seed and sync wrap identically for a bulletList source (anti-thrash)", () => {
     // useFloatMainSync's `sameDoc` fires a spurious setContent if the seed and
     // every readSource re-wrap differ. They must be byte-identical given the
-    // SAME wrapper uuid — so the float never resets on a foreign main edit.
+    // SAME wrapper uuid + numbering — so the float never resets on a foreign
+    // main edit. For a bulletList the numbering is inert, so the float wrapper
+    // also equals the DROP wrapper buildWrap produces (ordered diverges — next).
     const doc = makeDoc(ul("list", li("it2", "two")));
-    const item = findListItemByUuid(doc, "it2")!.node;
-    const wrapped = buildWrap(schema, item, "bulletList");
-    const viaHelper = wrapItemForFloat(
+    const src = findListItemByUuid(doc, "it2")!;
+    const wrapped = buildWrap(schema, src.node, "bulletList");
+    const seed = wrapItemForFloat(
       schema,
-      item,
+      src.node,
       "bulletList",
       wrapped.attrs.uuid as string,
+      src.numbering,
     );
-    expect(viaHelper).toEqual(wrapped.toJSON());
+    const resync = wrapItemForFloat(
+      schema,
+      src.node,
+      "bulletList",
+      wrapped.attrs.uuid as string,
+      src.numbering,
+    );
+    expect(seed).toEqual(resync);
+    expect(seed).toEqual(wrapped.toJSON());
+  });
+
+  it("orderedList wrapper start = source ordinal — the 1.→2. fix; bullet untouched; drop stays default", () => {
+    // The live af1a shape: af1a is the 2nd item of an orderedList → start:2.
+    const odoc = makeDoc(
+      ol("olist", li("d51a", "one"), li("af1a", "two"), li("e56f", "three")),
+    );
+    const oSrc = findListItemByUuid(odoc, "af1a")!;
+    expect(oSrc.parentKind).toBe("orderedList");
+    expect(oSrc.numbering).toEqual({ ordinal: 2, listType: null });
+
+    // Seed and every readSource re-wrap → byte-identical (anti-thrash).
+    const seed = wrapItemForFloat(schema, oSrc.node, "orderedList", "WUID", oSrc.numbering);
+    const resync = wrapItemForFloat(schema, oSrc.node, "orderedList", "WUID", oSrc.numbering);
+    expect(seed).toEqual(resync);
+    // The wrapper orderedList carries start:2 → renders "2.", not "1.".
+    expect(seed.attrs).toMatchObject({ start: 2, type: null, uuid: "WUID" });
+
+    // The DROP path stays default (start:1) — a dropped item renumbers to context.
+    expect(buildWrap(schema, oSrc.node, "orderedList").toJSON().attrs.start).toBe(1);
+
+    // A custom list `start` offsets the ordinal: start:5, 2nd item → 6, type copied.
+    const sdoc = makeDoc({
+      type: "orderedList",
+      attrs: { uuid: "s", start: 5, type: "a" },
+      content: [li("s1", "one"), li("s2", "two")],
+    });
+    expect(findListItemByUuid(sdoc, "s2")!.numbering).toEqual({
+      ordinal: 6,
+      listType: "a",
+    });
+
+    // bulletList items are unnumbered — the wrapper carries no `start` attr.
+    const bdoc = makeDoc(ul("blist", li("b1", "one"), li("b2", "two")));
+    const bSrc = findListItemByUuid(bdoc, "b2")!;
+    const bWrap = wrapItemForFloat(schema, bSrc.node, "bulletList", "WUID", bSrc.numbering);
+    expect(bWrap.type).toBe("bulletList");
+    expect(bWrap.attrs?.start).toBeUndefined();
   });
 });

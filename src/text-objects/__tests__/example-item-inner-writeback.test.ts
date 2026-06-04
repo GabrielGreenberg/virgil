@@ -212,20 +212,65 @@ describe("exampleItem inner-targeted write-back (L3l)", () => {
     expect(resolveInnerWriteback(doc, "it1", emptyList)).toBeNull();
   });
 
-  it("seed (buildWrap) and sync (wrapItemForFloat) serialize identically — anti-thrash", () => {
+  it("seed and sync wrap identically for a default-numbered source (anti-thrash)", () => {
     // useFloatMainSync's `sameDoc` fires a spurious setContent if the seed and
     // every readSource re-wrap differ. They must be byte-identical given the
-    // SAME wrapper uuid — so the float never resets on a foreign main edit. The
-    // wrapper here is the 3-level exampleBlock envelope (exampleItemList carries
-    // no uuid; exampleBlock's non-uuid attrs default identically in both paths).
+    // SAME wrapper uuid + numbering — so the float never resets on a foreign
+    // main edit. For a DEFAULT-numbered source block (number:0) the float
+    // wrapper also equals the DROP wrapper buildWrap produces (they diverge only
+    // for a non-default block — see the next test).
     const doc = makeDoc(exBlock("ex", exItem("it2", "two")));
-    const item = findExampleItemByUuid(doc, "it2")!.node;
-    const wrapped = buildWrap(schema, item, "exampleBlock");
-    const viaHelper = wrapItemForFloat(
+    const src = findExampleItemByUuid(doc, "it2")!;
+    const wrapped = buildWrap(schema, src.node, "exampleBlock");
+    const seed = wrapItemForFloat(
       schema,
-      item,
+      src.node,
       wrapped.attrs.uuid as string,
+      src.numbering,
     );
-    expect(viaHelper).toEqual(wrapped.toJSON());
+    const resync = wrapItemForFloat(
+      schema,
+      src.node,
+      wrapped.attrs.uuid as string,
+      src.numbering,
+    );
+    expect(seed).toEqual(resync);
+    expect(seed).toEqual(wrapped.toJSON());
+  });
+
+  it("wrapper inherits the source block's number/kind — the (?)→(2) fix; drop path stays default", () => {
+    // The live ee02 shape: a multi-kind block numbered (2); ea02 is its 2nd item.
+    const doc = makeDoc({
+      type: "exampleBlock",
+      attrs: { uuid: "ee02", number: 2, kind: "multi", tag: "T1" },
+      content: [exItemList(exItem("ea01", "one"), exItem("ea02", "two"))],
+    });
+    const src = findExampleItemByUuid(doc, "ea02")!;
+    // The numbering is captured from the ENCLOSING block, not the item.
+    expect(src.numbering).toEqual({
+      number: 2,
+      kind: "multi",
+      exnoOverride: null,
+      tag: "T1",
+    });
+
+    // Seed and every readSource re-wrap call wrapItemForFloat with the SAME
+    // (uuid, numbering) → byte-identical JSON, so useFloatMainSync never thrashes.
+    const seed = wrapItemForFloat(schema, src.node, "WUID", src.numbering);
+    const resync = wrapItemForFloat(schema, src.node, "WUID", src.numbering);
+    expect(seed).toEqual(resync);
+
+    // The wrapper exampleBlock renders the REAL number (2) + kind, not the
+    // default (number:0 → "(?)"). The synthetic uuid is KEPT (not the source's).
+    expect(seed.attrs).toMatchObject({
+      number: 2,
+      kind: "multi",
+      tag: "T1",
+      uuid: "WUID",
+    });
+
+    // The DROP path (buildWrap) is untouched: it still DEFAULTS the numbering,
+    // so a dropped item renumbers to its new context — the float-vs-drop split.
+    expect(buildWrap(schema, src.node, "exampleBlock").toJSON().attrs.number).toBe(0);
   });
 });

@@ -435,6 +435,14 @@ function createListTitleNodeView(
     }
     if (isNested) {
       const bare = document.createElement(tagName);
+      // A nested ordered list renders its number from the node attrs too.
+      if (tagName === "ol") {
+        const start = node.attrs.start as number | null;
+        if (typeof start === "number" && start !== 1) {
+          bare.setAttribute("start", String(start));
+        }
+        if (node.attrs.type) bare.setAttribute("type", String(node.attrs.type));
+      }
       return { dom: bare, contentDOM: bare };
     }
 
@@ -452,6 +460,27 @@ function createListTitleNodeView(
 
     const listEl = document.createElement(tagName);
     wrapper.appendChild(listEl);
+
+    // Paint the ordered-list numbering attrs onto the <ol> so the marker
+    // renders from the SYNCED node attrs, not from DOM position alone. In main
+    // this is invisible for the usual `start:1` list (a 2nd <li> counts to "2."
+    // by position), but a sub-object lift float hosts a SINGLE item, so the
+    // wrapper's `start` (= the item's source ordinal) must reach the DOM for the
+    // marker to read its real number. Mirrors how the exampleBlock NodeView
+    // renders `(N)` from `node.attrs.number`. O(1), no doc walk.
+    const applyOrderedListAttrs = () => {
+      if (tagName !== "ol") return;
+      const start = currentNode.attrs.start as number | null;
+      const listType = currentNode.attrs.type as string | null;
+      if (typeof start === "number" && start !== 1) {
+        listEl.setAttribute("start", String(start));
+      } else {
+        listEl.removeAttribute("start");
+      }
+      if (listType) listEl.setAttribute("type", String(listType));
+      else listEl.removeAttribute("type");
+    };
+    applyOrderedListAttrs();
 
     // The grip is gone — the editor-mounted TextObjectGrabHandle
     // (src/text-objects/TextObjectGrabHandle.tsx) handles bulletList /
@@ -607,11 +636,17 @@ function createListTitleNodeView(
       ignoreMutation(mutation) {
         if (mutation.target && titleAnnot.contains(mutation.target)) return true;
         if (mutation.target === wrapper) return true;
+        // The `start`/`type` attrs we paint on the <ol> are driven FROM the doc
+        // (never read back), so ignore those own-writes on the contentDOM.
+        if (mutation.type === "attributes" && mutation.target === listEl) {
+          return true;
+        }
         return false;
       },
       update(updatedNode) {
         if (updatedNode.type.name !== typeName) return false;
         currentNode = updatedNode;
+        applyOrderedListAttrs();
         if (!titleAnnot.querySelector("input")) renderAnnot();
         return true;
       },
