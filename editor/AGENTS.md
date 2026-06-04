@@ -43,6 +43,13 @@ The skill set turns those signals into responses:
   entries are added via the library's bib-only triage + authenticate
   pipeline. Pair with `--dry-run` for a first pass.
 - `/editor/style-merge` — preamble-merge rewrite (existing behavior).
+- **Card mechanics** — `/editor/create-card` (create a card of any
+  createable kind) plus the five existing-card mutation ops
+  `/editor/edit-card`, `/editor/archive-card`, `/editor/restore-card`,
+  `/editor/move-card`, `/editor/link-cards`. Thin wrappers: each resolves
+  the card with `card_by_id.py` and routes a create / `update` / `archive` /
+  `restore` / `move` / `link` op through `apply_response.py` (atomic,
+  pen-protected, one audit notification + version bump per op).
 
 ## Folder layout
 
@@ -60,16 +67,26 @@ editor/
 │   ├── answer-report-request.md
 │   ├── draft-suggestion.md
 │   ├── answer-bib-review.md
-│   └── style-merge.md
+│   ├── style-merge.md
+│   ├── create-card.md          mechanical create primitive (chip 8)
+│   ├── edit-card.md            ┐ the five existing-card mutation ops (chip 9):
+│   ├── archive-card.md         │ resolve via card_by_id, then route
+│   ├── restore-card.md         │ update/archive/restore/move/link through
+│   ├── move-card.md            │ apply_response (atomic, pen-wrapped)
+│   └── link-cards.md           ┘
 ├── scripts/                    Python helpers (stdlib-only, py3.10+)
 │   ├── _common.py              shared paths/JSON/regex/notification helpers
 │   ├── library_path.py         canonical resolver for the library folder
 │   ├── list_requests.py        emits unified open-request JSONL
 │   ├── get_para_context.py     paragraph at %!v:<uuid> + neighbors
 │   ├── cards_for_paragraph.py  every card anchored to <uuid> across panels
+│   ├── card_by_id.py           fetch any card by id across panel sidecars +
+│   │                           archive (the shared lookup for the §10 ops)
 │   ├── apply_response.py       atomic pen-wrapped writeback (card + .tex +
-│   │                           ai-requests + notif + version), v1 subcommands
-│   ├── create_card.py          mechanical create-card (v1: footnote); → contract
+│   │                           ai-requests + notif + version); v1 write
+│   │                           subcommands + the §10 existing-card mutation
+│   │                           ops (update/archive/restore/move/link)
+│   ├── create_card.py          mechanical create-card (all createable kinds); → contract
 │   ├── bib_resolve.py          parse references.bib entry + annotation
 │   ├── bib_match_library.py    classify paper bib entries vs the library
 │   └── rename_citekey.py       rewrite \cite*{} in tex + citations.json
@@ -245,10 +262,14 @@ skill — call `get_para_context.py`.
   cards can carry `aiOriginRequestId` so the editor surfaces Accept /
   Reject / Redo buttons; today the field is set but the UI doesn't
   yet read it.
-- **`apply_response.py` `update` op.** Skills that update an existing
-  card (notably `/editor/answer-revision-comment`, which appends a
-  turn) currently fall back to direct-Edit on the sidecar. Add an
-  `update` op so the writeback stays centralized.
+- **Migrate the responders onto the `update` op.** The `apply_response.py`
+  `update` op now exists (chip 9 — alongside `archive` / `restore` / `move` /
+  `link`, surfaced as `/editor/edit-card` + the four sibling card-ops). An
+  existing-card mutation no longer falls back to a direct sidecar Edit — it
+  routes through `apply_response.py` (atomic, pen-protected). The remaining
+  follow-up is migrating the responders that still hand-edit a sidecar —
+  notably `/editor/answer-revision-comment`, which appends a turn — to call
+  `/editor/edit-card` (the `update` op) so every mutation stays centralized.
 
 ## Verification path
 
