@@ -1,0 +1,138 @@
+<!-- last-verified: 52e890f 2026-06-03 -->
+<!-- derives-from: docs/architecture/VIRGIL.md#reserved-name-inventory -->
+<!-- covers-code: src/lib/storage-fsa.ts, src/lib/latex-serializer.ts, src/lib/document-styles.ts, src/app/globals.css, editor/scripts/create_card.py -->
+
+# Gardening (deny-list & cleanup) — operational manifest
+
+> **When to load.** Before a skill writes anything it didn't author, deletes
+> text a Card depends on, or composes a preamble/LaTeX that might collide with
+> Virgil's reserved names. This is the skill-facing **"what not to touch"** plus
+> the cleanup conventions. It **aligns with [editor/AGENTS.md](../../editor/AGENTS.md)**
+> (the skill-bundle "Don't" rules) and the [structure.md write path](structure.md#the-write-path)
+> rather than restating them — the unique content here is the reserved-name
+> deny-list, orphan handling, and the registry-shadow discipline. It fulfills the
+> forward-pointers in [ontology.md](ontology.md), [atoms.md](atoms.md#mobility-and-editing-rules),
+> and [structure.md](structure.md#what-a-skill-may-read-and-write).
+
+Operational cut of [VIRGIL.md → Reserved-name inventory](../architecture/VIRGIL.md#reserved-name-inventory).
+The exhaustive field-level substrate is [phase0-stable §5](../architecture/phase0-stable-current-state.md#5-reserved-name-inventory).
+
+## The deny-list
+
+Every name Virgil reserves, such that authoring over it corrupts the round-trip.
+**Never define, override, or hand-author any of these.**
+
+**Injected LaTeX macros** — six no-op entity-id macros plus one package, owned by
+the serializer (`ensureVirgilCommands` + `CLASSIC_PREAMBLE`), topped up on **every
+save** even against a user preamble:
+
+```
+\vfid  \vcid  \vexid  \vxid  \vlid  \vlidend      \usepackage{xcolor}
+```
+
+`\pgmark` is reserved too but injected by the **library** indexer, not the editor.
+You never write these — the serializer manages them; you author only the content
+command they wrap ([identity.md → injected macros](identity.md#the-injected-macros)).
+The expex control words (`\ex \pex \xe \a \begingl \endgl \gla …`) are package
+commands the parser depends on — don't redefine them either.
+
+**Comment conventions** (all `%!v`-prefixed) — the invisible id surface:
+
+```
+%!v:<4hex>   %!v:blank   %!vtex:begin <id> … %!vtex:end <id>   %!v tex:end (escape)
+```
+
+Never type, move, or delete one by hand ([identity.md](identity.md#the-marker-family)).
+
+**Reserved CSS classes & `data-*` attributes** (SSOT [src/app/globals.css](../../src/app/globals.css)).
+A skill rarely emits CSS, but **content a skill pastes or authors must not collide**
+with the structural hook namespace: `.tiptap` / `.ProseMirror` / `.react-renderer`
+/ `.node-<name>`, the `.expex-*` family, `.linked-anchor`, `.dropmode-bar-*`,
+`.virgil-bar` / `.panel-*`, and the `data-card-*` / `data-link-*` / `data-print-*`
+families. (Full list:
+[phase0-stable-current-state.md](../architecture/phase0-stable-current-state.md) §5.3.)
+
+**Reserved file / folder paths** (SSOT [src/lib/storage-fsa.ts](../../src/lib/storage-fsa.ts)):
+
+- `virgil/` (the sidecar folder), `virgil/figures-cache/`, `virgil/.history/`.
+- the sibling **`.virgil/`** (agent/library plumbing — distinct from `virgil/`),
+  including `.virgil/pen-context.json` (the editing pen) and `.virgil/scripts/`.
+- the **writeback-owned** infrastructure sidecars a skill must **never hand-edit**:
+  `version.txt`, `notifications.json`, `collab.json`, `ai-requests.json`,
+  `document-settings.json`. (This is the full set the [structure.md write
+  path](structure.md#what-a-skill-may-read-and-write) forward-points to — it lists
+  the same names as the contract's; this doc is the superset deny-list.)
+
+**v2-reserved overlay paths** — `~/.virgil-user/` and `<docpath>/.virgil/user-overrides/`
+are reserved **by design only**. There is **zero code** that reads, writes, or
+deny-lists them today (a repo-wide grep is empty under `src/`); the enforcement is
+aspirational. Don't write into them expecting Virgil to honor them yet, and don't
+treat their absence as a bug ([phase0-stable §5.5](../architecture/phase0-stable-current-state.md#55-v2-reserved-overlay-paths-design-only-not-in-code)).
+
+## What a skill may write (by reference, not restated)
+
+The write rules live in two places — follow them, don't duplicate them:
+
+- **The contract** — read any `.tex`/`.bib`/`virgil/*.json` freely; write Cards
+  (and their `.tex` splice) **only through `apply_response.py`**
+  ([structure.md → the write path](structure.md#the-write-path)).
+- **The skill-bundle "Don't"** — don't hand-edit `.tex` outside the pen-protected
+  atomic write; don't bypass `apply_response.py`; don't add a backend
+  ([editor/AGENTS.md → Don't](../../editor/AGENTS.md)).
+
+Gardening adds no new write rule — only the deny-list above and the orphan duty below.
+
+## Orphan handling
+
+When a skill deletes or moves text a Card depends on, it inherits a cleanup duty.
+The editor's guards keep cards from *silently* orphaning (the mechanism — guards,
+events, `reanchorByText`, `recoverOrphanedUuids` — is
+[anchoring.md → what invalidates a link](anchoring.md#what-invalidates-a-link)); a
+skill's job is to make the *intent* right, because recovery is best-effort:
+
+- **Deleting an Atom is deleting half a link.** Removing a `\footnote{}`/`\cite{}`
+  leaves its `footnotes.json`/`citations.json` Card orphaned. Insert and delete the
+  Atom **and** its Card together — never one without the other
+  ([atoms.md](atoms.md#mobility-and-editing-rules)).
+- **Deleting an anchored block** leaves a same-uuid **placeholder paragraph**
+  (`MarginaliaAnchorGuard`). Decide deliberately: re-anchor the Card to a real
+  block, or remove the Card — don't leave it pinned to an empty placeholder.
+- **Don't lean on recovery for duplicated text.** `recoverOrphanedUuids` and
+  `reanchorByText` skip ambiguous matches, so re-anchor explicitly rather than
+  trusting a fingerprint/snapshot match to find the right home.
+- **Surface only real ambiguity.** When cleanup hits a genuine judgment call, the
+  memo discipline (a dated memo under `<docPath>/.virgil/memos/`) is in
+  [editor/AGENTS.md](../../editor/AGENTS.md) — write one only when something
+  flagged a real ambiguity, not routinely.
+
+## The Python shadow-rot discipline
+
+The `editor/scripts/` helpers run **outside** the app and can't import the TS
+registries, so they **hand-duplicate** two slices of the card vocabulary — and
+hand-maintained copies rot. Two shadows exist:
+
+- `apply_response.PANEL_TO_SIDECAR` — the panel → `(file, list-key)` map. The
+  refactor had to hand-edit it (`quotations` → `reports`).
+- `create_card.ALL_KINDS` — the create-able kinds. **Currently stale**: it lists
+  the removed `quotation` and the never-real `annotation`, and omits `report` /
+  `report-request`. **Don't trust it as the authoritative create-able set** — the
+  SSOT is `CardKind` ([cards.md](cards.md)); `IMPLEMENTED_KINDS` (today `{footnote}`)
+  is what `create-card` actually wires.
+
+`check:coherence` **check 5** reconciles both shadows against the TS SSOTs and warns
+on drift — those `ALL_KINDS` warnings are *expected* until the create-card fan-out
+chip fixes the set. When you touch either shadow, re-run the check and keep it
+reconciled. (Background: [phase0-card §4](../architecture/phase0-card-current-state.md#4-the-python-shadow-registries-the-rot-vector).)
+
+## Rules for skills
+
+1. **Author content commands, never markers.** The `\v*` macros and `%!v` comments
+   are Virgil's; you write `\footnote{}` / `\section{}` / `\ex…\xe`, not their ids.
+2. **Don't collide with reserved names** — macros, comment conventions, CSS/`data-*`
+   hooks, and the `virgil/` / `.virgil/` paths.
+3. **Never hand-edit the writeback-owned sidecars** (`version.txt`,
+   `notifications.json`, `collab.json`, `ai-requests.json`, `document-settings.json`).
+4. **Clean up both halves of a link** you break, and **re-anchor deliberately** —
+   the guards prevent silent loss, not wrong intent.
+5. **Treat the v2 overlay paths as not-yet-real**, and **don't trust `ALL_KINDS`** —
+   verify create-ability against `CardKind` + `IMPLEMENTED_KINDS`.
