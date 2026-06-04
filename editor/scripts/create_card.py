@@ -1,29 +1,39 @@
 #!/usr/bin/env python3
-"""Mechanically create a card of a given kind at an anchor, through the
+r"""Mechanically create a card of a given kind at an anchor, through the
 apply_response.py contract (EDITOR_SKILLS_V1 §10).
 
-This is the v1 `create-card` mechanical primitive. The body is user/chat
-supplied — this script composes no content; it builds the sidecar entry, the
-.tex atom marker (for atom-bearing kinds), and routes the write to the right
-apply_response subcommand based on the Task's safety level.
+This is the `create-card` mechanical primitive. The body/key is user/chat
+supplied — this script composes no content; per kind it builds the sidecar
+entry, the .tex atom marker (for atom-bearing kinds), and routes the write to
+the right apply_response subcommand based on the Task's safety level.
 
-  Safety level → subcommand (spec §8):
-    1 → write-silent          (footnote lands silently; result: silent-applied)
-    2 → write-with-comment    (footnote lands + a sibling note; result: auto-applied)
-    3 → complete-task --propose (footnote proposed, .tex untouched; awaiting review)
-    none → complete-task      (direct create the user opted into; result: direct-created)
+  Safety level → subcommand (spec §8, owned by apply_response):
+    1 → write-silent            (lands silently; result: silent-applied)
+    2 → write-with-comment      (lands + a sibling note; result: auto-applied)
+    3 → complete-task --propose (proposed, .tex untouched; awaiting review)
+    none → complete-task        (direct create the user opted into; direct-created)
 
-Kinds: the --kind dispatch is generic; v1 implements ONLY `footnote`. The other
-kinds (note / todo / citation / quotation / example / annotation) are explicit
-TODOs — each is a small addition (build its sidecar entry + any atom marker)
-on top of this same contract, not a re-think.
+Kinds — the create-able CardKind set (SSOT: docs/workspace/cards.md, the
+createable-kind taxonomy). Each is a small, uniform addition on the *same*
+apply_response contract; the only per-kind variation is the card shape and
+whether a `.tex` marker rides along:
+
+  - sidecar-append, anchored (no .tex marker):  note · todo · report · report-request
+  - sidecar-append, atom-bearing (.tex marker): footnote (\vfid) · citation (\vcid)
+  - tex-only (sidecar is an app-derived shadow): example (\vexid + expex \ex…\xe)
+
+The responder kinds (comment, the cutter-/revision-suggestion family) are
+*responder-skill* outputs, not create-card; the system/derived kinds
+(ai, error, archive, bib, highlight) are not create-card targets either — see
+docs/workspace/cards.md for the full reasoning and docs/architecture/
+check-coherence.SKETCH.md Check 5 for the absent-panel allowlist.
 
 Workflow A (a Task already exists — the UI-initiated path):
-  create_card.py <docPath> <requestId> --kind=footnote --body "<text>"
+  create_card.py <docPath> <requestId> --kind=<k> [--body "<text>" | …]
     Anchor + safetyLevel are read from the request.
 
 Workflow B (chat-initiated — no pre-existing Task):
-  create_card.py <docPath> --kind=footnote --body "<text>" --anchor <uuid> \
+  create_card.py <docPath> --kind=<k> [--body "<text>" | …] --anchor <uuid> \
       [--safety-level N] [--task-text "<the user's ask>"]
     The Task is synthesized on the fly (apply_response --synthesize-task).
 """
@@ -36,11 +46,13 @@ import re
 import secrets
 import sys
 import uuid
+from dataclasses import dataclass
 from pathlib import Path
 
 import apply_response as AR
 from _common import (
     die,
+    find_bib_file,
     find_paragraph_uuids,
     find_tex_file,
     now_iso,
@@ -49,8 +61,21 @@ from _common import (
     sidecar,
 )
 
-ALL_KINDS = {"footnote", "note", "todo", "citation", "quotation", "example", "annotation"}
-IMPLEMENTED_KINDS = {"footnote"}
+# ---------------------------------------------------------------------------
+# The create-able CardKind set.
+#
+# SSOT: docs/workspace/cards.md (the createable-kind taxonomy). MUST stay a
+# flat literal set — tools/check-coherence.mjs Check 5 regex-parses this exact
+# `ALL_KINDS = { … }` literal and asserts every member is a real `CardKind`
+# (src/panels/_shared/types.ts). The module-level assert below pins it to what
+# this script actually implements, so the two can't drift.
+# ---------------------------------------------------------------------------
+ALL_KINDS = {"footnote", "citation", "note", "todo", "report", "report-request", "example"}
+
+# example is tex-only (no card append); every other create-able kind appends a
+# card to a PANEL_TO_SIDECAR panel. (Kept here so ALL_KINDS can't silently drift
+# from the implemented dispatch.)
+TEX_ONLY_KINDS = {"example"}
 
 
 def _jsoncontent(body: str) -> dict:
@@ -61,112 +86,324 @@ def _jsoncontent(body: str) -> dict:
     }
 
 
-def _gen_footnote_id(doc: Path) -> str:
-    """A fresh 4-hex footnote id (the `\\vfid{<4hex>}` namespace), not colliding
-    with any existing footnotes.json id or `\\vfid{}` marker already in the .tex."""
-    used: set[str] = set()
-    fn = read_json(sidecar(doc, "footnotes.json"), default={"footnotes": []})
-    if isinstance(fn, dict):
-        for f in fn.get("footnotes", []) or []:
-            if f.get("id"):
-                used.add(f["id"])
+def _snippet(s: str | None, n: int = 60) -> str:
+    s = s or ""
+    return s if len(s) <= n else s[:n] + "…"
+
+
+# ---------------------------------------------------------------------------
+# Id allocation
+#
+# .tex markers (\vfid \vcid \vexid \vxid) are 4-hex short ids; a sidecar card
+# for an atom-bearing kind carries that same id (id equality *is* the Atom link
+# — docs/workspace/identity.md). Anchored kinds (note/todo/report/…) carry a v4
+# entity id with no .tex presence. Mint short ids collision-free against BOTH
+# the sidecar ids and the markers already in the .tex.
+# ---------------------------------------------------------------------------
+
+
+def _sidecar_ids(doc: Path, filename: str, list_key: str) -> set[str]:
+    st = read_json(sidecar(doc, filename), default={list_key: []})
+    out: set[str] = set()
+    if isinstance(st, dict):
+        for c in st.get(list_key, []) or []:
+            if isinstance(c, dict) and c.get("id"):
+                out.add(c["id"])
+    return out
+
+
+def _gen_marker_id(doc: Path, macro: str, used: set[str]) -> str:
+    r"""A fresh 4-hex id in the `\<macro>{<4hex>}` namespace, colliding with
+    neither `used` (existing sidecar ids + any ids allocated earlier this run)
+    nor a `\<macro>{}` marker already in the .tex."""
+    seen = set(used)
     try:
         tex = find_tex_file(doc).read_text(encoding="utf-8")
-        for m in re.finditer(r"\\vfid\{([0-9a-fA-F]{2,8})\}", tex):
-            used.add(m.group(1))
+        for m in re.finditer(r"\\" + macro + r"\{([0-9a-fA-F]{2,8})\}", tex):
+            seen.add(m.group(1))
     except SystemExit:
         pass
     for _ in range(100000):
-        cand = secrets.token_hex(2)  # 4 hex chars, matching the doc's f0ac/f003 style
-        if cand not in used:
+        cand = secrets.token_hex(2)  # 4 hex chars, matching the doc's f0ac/cc01 style
+        if cand not in seen:
             return cand
-    die("could not allocate a free footnote id")
+    die(f"could not allocate a free {macro} id")
     return ""  # unreachable
 
 
-def _comment_note_card(anchor_uuid: str, body: str) -> dict:
-    r"""A Level-2 sibling comment: a Virgil-authored note anchored to the same
-    paragraph as the footnote. Built against the current card/link schema
-    (UserNote + a kind:"anchor" textObject Link, src/links/_shared/types.ts);
-    a vertical-slice extraction — revisit if the card-system refactor changes
-    UserNote or Link."""
+# ---------------------------------------------------------------------------
+# Shared anchor-link + sibling-comment builders (the anchored-card spine —
+# docs/workspace/anchoring.md, Mode A textObject Link).
+# ---------------------------------------------------------------------------
+
+
+def _anchor_link(card_kind: str, card_id: str, anchor_uuid: str, side: str) -> dict:
+    """A Mode-A paragraph anchor: a `kind:"anchor"` textObject Link from the
+    card to the anchor paragraph (src/links/_shared/types.ts)."""
+    return {
+        "id": str(uuid.uuid4()),
+        "kind": "anchor",
+        "anchor": {
+            "type": "textObject",
+            "targetKind": "paragraph",
+            "textObjectIds": [anchor_uuid],
+            "margin": {"side": side or "right"},
+        },
+        "target": {"type": "card", "ref": {"kind": card_kind, "id": card_id}},
+        "createdAt": now_iso(),
+    }
+
+
+def _comment_note_card(anchor_uuid: str, detail: str, label: str) -> dict:
+    """A Level-2 sibling comment: a Virgil-authored note anchored to the same
+    paragraph as the card just written, explaining what landed."""
     note_id = str(uuid.uuid4())
-    summary = body if len(body) <= 80 else body[:80] + "…"
     return {
         "kind": "note",
         "id": note_id,
-        "title": "Virgil added a footnote",
-        "content": _jsoncontent(f"Added a footnote here: {summary}"),
+        "title": f"Virgil added a {label}",
+        "content": _jsoncontent(f"Added a {label} here: {_snippet(detail, 80)}"),
         "createdAt": now_iso(),
         "aiRequest": False,
-        "links": [
-            {
-                "id": str(uuid.uuid4()),
-                "kind": "anchor",
-                "anchor": {
-                    "type": "textObject",
-                    "targetKind": "paragraph",
-                    "textObjectIds": [anchor_uuid],
-                    "margin": {"side": "right"},
-                },
-                "target": {"type": "card", "ref": {"kind": "note", "id": note_id}},
-                "createdAt": now_iso(),
-            }
-        ],
+        "links": [_anchor_link("note", note_id, anchor_uuid, "right")],
     }
 
 
-def _build_footnote_op(
-    doc: Path,
-    *,
-    request_id: str | None,
-    anchor: str,
-    body: str,
-    safety_level: int | None,
-    synthesize: bool,
-    task_text: str | None,
-    selected_text: str | None,
-) -> tuple[str, dict]:
-    """Build the apply_response op-json for a footnote create. Returns
-    (footnoteId, op)."""
-    fid = _gen_footnote_id(doc)
-    insert = "\\vfid{" + fid + "}\\footnote{" + body + "}"
-    snippet = body if len(body) <= 60 else body[:60] + "…"
+def _require_body(a: argparse.Namespace, kind: str) -> str:
+    if not a.body:
+        die(f"--body <text> is required for --kind={kind} (content is composed upstream, not here)")
+    return a.body  # type: ignore[return-value]
 
-    op: dict = {
-        "panel": "footnotes",
-        "card": {"id": fid, "content": _jsoncontent(body), "createdAt": now_iso()},
-        "texEdit": {
-            "anchorUuid": anchor,
-            "insert": insert,
-            "mode": "after-selected" if selected_text else "end-of-paragraph",
+
+# ---------------------------------------------------------------------------
+# Per-kind card/insert builders. Each returns a KindBuild; the generic carded
+# flow (below) assembles the op and dispatches by safety level. The card shapes
+# mirror src/lib/types.ts field-for-field (docs/workspace/sidecars.md).
+# ---------------------------------------------------------------------------
+
+
+@dataclass
+class KindBuild:
+    panel: str           # PANEL_TO_SIDECAR key the card is appended to
+    card: dict           # the full card object to insert
+    insert: str | None   # the .tex splice (atom marker), or None for sidecar-only
+    result_id: str       # the card id to surface + use as the Task resultId
+    id_key: str          # result-json alias for result_id (back-compat: footnoteId)
+    summary: str         # one-line toast / synthesized-Task text
+    comment_label: str   # noun used in the L2 sibling comment
+    detail: str          # body snippet shown in the L2 sibling comment
+
+
+def _build_footnote(doc: Path, a: argparse.Namespace, ctx: "Ctx") -> KindBuild:
+    r"""footnote — atom-bearing. id == \vfid marker (footnotes.json · footnotes,
+    FootnoteRef {id, content, createdAt}; no links — the tie is id equality)."""
+    body = _require_body(a, "footnote")
+    fid = _gen_marker_id(doc, "vfid", _sidecar_ids(doc, "footnotes.json", "footnotes"))
+    return KindBuild(
+        panel="footnotes",
+        card={"id": fid, "content": _jsoncontent(body), "createdAt": now_iso()},
+        insert="\\vfid{" + fid + "}\\footnote{" + body + "}",
+        result_id=fid,
+        id_key="footnoteId",
+        summary=f"Drafted footnote: {_snippet(body)}",
+        comment_label="footnote",
+        detail=body,
+    )
+
+
+def _build_citation(doc: Path, a: argparse.Namespace, ctx: "Ctx") -> KindBuild:
+    r"""citation — atom-bearing. id == \vcid marker (citations.json · citations,
+    CitationRef {id, command, keys, createdAt}). The citekey(s) must already be
+    in references.bib (adding a source is /editor/find-citation's job, not this
+    mechanical primitive)."""
+    keys = [k.strip() for k in (a.citekey or "").split(",") if k.strip()]
+    if not keys:
+        die("--citekey <key[,key2…]> is required for --kind=citation")
+    _require_bib_keys(doc, keys)
+    cmd = (a.cite_command or "citet").lstrip("\\")
+    command = "\\" + cmd + "{" + ",".join(keys) + "}"
+    cid = _gen_marker_id(doc, "vcid", _sidecar_ids(doc, "citations.json", "citations"))
+    return KindBuild(
+        panel="citations",
+        card={"id": cid, "command": command, "keys": keys, "createdAt": now_iso()},
+        insert="\\vcid{" + cid + "}" + command,
+        result_id=cid,
+        id_key="citationId",
+        summary=f"Added citation {command}",
+        comment_label="citation",
+        detail=command,
+    )
+
+
+def _build_note(doc: Path, a: argparse.Namespace, ctx: "Ctx") -> KindBuild:
+    """note — anchored, sidecar-only. notes.json · cards, UserNote
+    {kind:"note", id, title, content, createdAt, aiRequest, links}."""
+    body = _require_body(a, "note")
+    nid = str(uuid.uuid4())
+    return KindBuild(
+        panel="notes",
+        card={
+            "kind": "note",
+            "id": nid,
+            "title": a.title or "",
+            "content": _jsoncontent(body),
+            "createdAt": now_iso(),
+            "aiRequest": False,
+            "links": [_anchor_link("note", nid, ctx.anchor, a.margin)],
         },
-        "summary": f"Drafted footnote: {snippet}",
-        # A footnote request carries no card-flag source to clear.
-        "clearSourceFlag": False,
-    }
-    if selected_text:
-        op["texEdit"]["selectedText"] = selected_text
-    if request_id:
-        op["requestId"] = request_id
-    if synthesize:
-        op["kind"] = "footnote"
-        op["text"] = task_text or f"Add a footnote: {snippet}"
-        op["paragraphIds"] = [anchor]
-        if selected_text:
-            op["selectedText"] = selected_text
-        if safety_level is not None:
-            op["safetyLevel"] = safety_level
-    if safety_level == 2:
-        op["comment"] = {"panel": "notes", "card": _comment_note_card(anchor, body)}
-    return fid, op
+        insert=None,
+        result_id=nid,
+        id_key="cardId",
+        summary=f"Added note: {_snippet(body)}",
+        comment_label="note",
+        detail=body,
+    )
 
 
-def _footnote(doc: Path, a: argparse.Namespace) -> dict:
-    body = a.body
-    if not body:
-        die("--body is required for --kind=footnote (chat composes the content)")
+def _build_todo(doc: Path, a: argparse.Namespace, ctx: "Ctx") -> KindBuild:
+    """todo — anchored, sidecar-only. todos.json · items, TodoItem
+    {id, text, notes, done, aiRequest, createdAt, links} (no `kind` field)."""
+    body = _require_body(a, "todo")
+    tid = str(uuid.uuid4())
+    return KindBuild(
+        panel="todos",
+        card={
+            "id": tid,
+            "text": body,
+            "notes": a.notes or "",
+            "done": False,
+            "aiRequest": False,
+            "createdAt": now_iso(),
+            "links": [_anchor_link("todo", tid, ctx.anchor, a.margin)],
+        },
+        insert=None,
+        result_id=tid,
+        id_key="cardId",
+        summary=f"Added todo: {_snippet(body)}",
+        comment_label="todo",
+        detail=body,
+    )
 
+
+def _build_report(doc: Path, a: argparse.Namespace, ctx: "Ctx") -> KindBuild:
+    """report — anchored, sidecar-only, polymorphic (on-disk kind:"report").
+    reports.json · cards, ReportCard {kind, id, createdAt, author, title, text,
+    content, selectedText?, links}. A skill-authored report is author="ai"."""
+    body = _require_body(a, "report")
+    author = a.author or "ai"
+    if author not in ("human", "ai"):
+        die("--author must be 'human' or 'ai'")
+    rid = str(uuid.uuid4())
+    return KindBuild(
+        panel="reports",
+        card={
+            "kind": "report",
+            "id": rid,
+            "createdAt": now_iso(),
+            "author": author,
+            "title": a.title or "",
+            "text": body,
+            "content": _jsoncontent(body),
+            "selectedText": ctx.selected_text or "",
+            "links": [_anchor_link("report", rid, ctx.anchor, a.margin)],
+        },
+        insert=None,
+        result_id=rid,
+        id_key="cardId",
+        summary=f"Drafted report: {_snippet(a.title or body)}",
+        comment_label="report",
+        detail=a.title or body,
+    )
+
+
+def _build_report_request(doc: Path, a: argparse.Namespace, ctx: "Ctx") -> KindBuild:
+    """report-request — anchored, sidecar-only, polymorphic (on-disk
+    kind:"report-request"). Same reports.json · cards file as `report`, told
+    apart only by the on-disk `kind` discriminator (the two-taxonomy rule,
+    docs/workspace/cards.md). ReportRequestCard {kind, id, createdAt, text,
+    content, aiRequest, selectedText?, links}."""
+    body = _require_body(a, "report-request")
+    rid = str(uuid.uuid4())
+    return KindBuild(
+        panel="reports",
+        card={
+            "kind": "report-request",
+            "id": rid,
+            "createdAt": now_iso(),
+            "text": body,
+            "content": _jsoncontent(body),
+            "aiRequest": bool(a.ai_request),
+            "selectedText": ctx.selected_text or "",
+            "links": [_anchor_link("report-request", rid, ctx.anchor, a.margin)],
+        },
+        insert=None,
+        result_id=rid,
+        id_key="cardId",
+        summary=f"Filed report request: {_snippet(body)}",
+        comment_label="report request",
+        detail=body,
+    )
+
+
+CARDED_BUILDERS = {
+    "footnote": _build_footnote,
+    "citation": _build_citation,
+    "note": _build_note,
+    "todo": _build_todo,
+    "report": _build_report,
+    "report-request": _build_report_request,
+}
+
+# AiRequestKind (src/lib/types.ts) to stamp on a synthesized Task / assert on a
+# Workflow-A Task. report-request has no native AiRequestKind — it bridges to a
+# `report` Task (docs/workspace/cards.md → the Reports panel), so it remaps.
+TASK_KIND = {
+    "footnote": "footnote",
+    "citation": "citation",
+    "note": "note",
+    "todo": "todo",
+    "report": "report",
+    "report-request": "report",
+}
+
+# Workflow-A: the Task `kind`(s) this create-card kind may drain. A 1:1 native
+# AiRequestKind asserts strictly; report-request has none of its own (it is
+# chiefly a Workflow-B / direct kind), so it skips the assertion.
+WORKFLOW_A_KINDS = {
+    "footnote": {"footnote"},
+    "citation": {"citation"},
+    "note": {"note"},
+    "todo": {"todo"},
+    "report": {"report"},
+    "report-request": set(),
+}
+
+# Pin ALL_KINDS to what this script actually dispatches (carded + tex-only), so
+# the coherence-checked literal can't drift from the implementation.
+assert ALL_KINDS == set(CARDED_BUILDERS) | TEX_ONLY_KINDS, "ALL_KINDS drifted from the implemented dispatch"
+
+
+# ---------------------------------------------------------------------------
+# Shared Workflow A/B context resolution + anchor validation.
+# ---------------------------------------------------------------------------
+
+
+@dataclass
+class Ctx:
+    request_id: str | None
+    anchor: str
+    safety: int | None
+    selected_text: str | None
+    synthesize: bool
+
+
+def _resolve_context(doc: Path, a: argparse.Namespace, *, accept_task_kinds: set[str]) -> "Ctx | dict":
+    """Resolve the anchor / safety level / selection for a carded create.
+
+    Workflow A (a requestId, no --synthesize): read them off the existing Task.
+    Workflow B (no requestId, or --synthesize): synthesize the Task; --anchor
+    is required. Returns a Ctx, or — for an already-terminal Task — the
+    idempotent no-op result dict (re-running a completed create is a no-op)."""
     request_id = a.request
     anchor = a.anchor
     safety = a.safety_level
@@ -174,59 +411,183 @@ def _footnote(doc: Path, a: argparse.Namespace) -> dict:
     synthesize = bool(a.synthesize)
 
     if request_id and not synthesize:
-        # Workflow A: an existing Task. Read its anchor + safety level.
         ar = read_json(sidecar(doc, "ai-requests.json"), default={"requests": []})
         reqs = ar.get("requests", []) if isinstance(ar, dict) else []
         req = next((r for r in reqs if r.get("id") == request_id), None)
         if req is None:
             die(f"request id not found: {request_id}")
-        if req.get("kind") != "footnote":
-            die(f"request {request_id} is kind={req.get('kind')!r}, not footnote")
+        if accept_task_kinds and req.get("kind") not in accept_task_kinds:
+            die(f"request {request_id} is kind={req.get('kind')!r}, not {a.kind} "
+                f"(expected one of {sorted(accept_task_kinds)})")
         if req.get("status") in ("complete", "failed"):
-            # Idempotent: re-running on a terminal Task is a no-op.
             return {"ok": True, "noop": True, "reason": "request already terminal", "requestId": request_id}
         if not anchor:
             pids = req.get("paragraphIds") or []
             if not pids:
-                die("request has no paragraphIds; cannot anchor the footnote (pass --anchor)")
+                die("request has no paragraphIds; cannot anchor the card (pass --anchor)")
             anchor = pids[0]
         if safety is None and req.get("safetyLevel") is not None:
             safety = req.get("safetyLevel")
         selected_text = req.get("selectedText")
     else:
-        # Workflow B: chat-initiated. Synthesize the Task; anchor must be given.
         synthesize = True
         if not anchor:
             die("--anchor <uuid> is required when there is no existing request")
 
-    # Minimal anchor lookup: the paragraph UUID must exist in the .tex.
+    return Ctx(request_id=request_id, anchor=anchor, safety=safety,
+               selected_text=selected_text, synthesize=synthesize)
+
+
+def _require_anchor(doc: Path, anchor: str) -> None:
+    """The paragraph UUID must exist in the .tex (refuse rather than guess)."""
     tex = find_tex_file(doc).read_text(encoding="utf-8")
     known = {u["uuid"] for u in find_paragraph_uuids(tex)}
     if anchor not in known:
         die(f"anchor paragraph not found in .tex: %!v:{anchor}")
 
-    fid, op = _build_footnote_op(
-        doc,
-        request_id=request_id,
-        anchor=anchor,
-        body=body,
-        safety_level=safety,
-        synthesize=synthesize,
-        task_text=a.task_text,
-        selected_text=selected_text,
-    )
 
-    # Safety level → subcommand. No level ⇒ footnote is a direct-create kind.
-    if safety is None:
+def _require_bib_keys(doc: Path, keys: list[str]) -> None:
+    """A citation's key(s) must already be in references.bib — don't fabricate a
+    cite for a missing entry (that's /editor/find-citation's job)."""
+    bib = find_bib_file(doc)
+    if bib is None:
+        die("no references.bib found — add the entry first (see /editor/find-citation)")
+    text = bib.read_text(encoding="utf-8", errors="replace")
+    present = set(re.findall(r"@\w+\s*\{\s*([^,\s]+)", text))
+    missing = [k for k in keys if k not in present]
+    if missing:
+        die(f"citekey(s) not in {bib.name}: {', '.join(missing)} — add them first "
+            f"(don't fabricate a cite for a missing entry; see /editor/find-citation)")
+
+
+# ---------------------------------------------------------------------------
+# The generic carded create (footnote / citation / note / todo / report /
+# report-request) — one flow, the card shape is the only per-kind variation.
+# ---------------------------------------------------------------------------
+
+
+def _create_carded(doc: Path, a: argparse.Namespace) -> dict:
+    ctx = _resolve_context(doc, a, accept_task_kinds=WORKFLOW_A_KINDS.get(a.kind, set()))
+    if isinstance(ctx, dict):  # already-terminal Task → idempotent no-op
+        return ctx
+    _require_anchor(doc, ctx.anchor)
+
+    build = CARDED_BUILDERS[a.kind](doc, a, ctx)
+
+    op: dict = {
+        "panel": build.panel,
+        "card": build.card,
+        "summary": build.summary,
+    }
+    if build.insert:
+        op["texEdit"] = {
+            "anchorUuid": ctx.anchor,
+            "insert": build.insert,
+            "mode": "after-selected" if ctx.selected_text else "end-of-paragraph",
+        }
+        if ctx.selected_text:
+            op["texEdit"]["selectedText"] = ctx.selected_text
+    if ctx.request_id:
+        op["requestId"] = ctx.request_id
+    if ctx.synthesize:
+        op["kind"] = TASK_KIND[a.kind]
+        op["text"] = a.task_text or build.summary
+        op["paragraphIds"] = [ctx.anchor]
+        if ctx.selected_text:
+            op["selectedText"] = ctx.selected_text
+        if ctx.safety is not None:
+            op["safetyLevel"] = ctx.safety
+    if ctx.safety == 2:
+        op["comment"] = {
+            "panel": "notes",
+            "card": _comment_note_card(ctx.anchor, build.detail, build.comment_label),
+        }
+
+    # Safety level → subcommand. No level ⇒ a direct create the user opted into.
+    if ctx.safety is None:
         sub, propose = "complete-task", False
     else:
-        sub = AR.SAFETY_LEVEL_SUBCOMMAND[safety]
-        propose = safety == 3
+        sub = AR.SAFETY_LEVEL_SUBCOMMAND[ctx.safety]
+        propose = ctx.safety == 3
 
-    result = AR.run_write_subcommand(doc, sub, op, propose=propose, synthesize=synthesize)
-    result["footnoteId"] = fid
+    result = AR.run_write_subcommand(doc, sub, op, propose=propose, synthesize=ctx.synthesize)
+    result["cardId"] = build.result_id
+    result[build.id_key] = build.result_id
     result["subcommand"] = sub
     return result
+
+
+# ---------------------------------------------------------------------------
+# example — the one tex-only kind.
+#
+# An example *is* a TextObject in the .tex (expex `\vexid{}\ex…\xe`, or `\pex`
+# with `\vxid{}\a` rows); examples.json is an app-derived metadata *shadow*
+# (useExamples.syncFromEditor regenerates it on every parse), so the skill
+# writes ONLY the .tex — no card append, and `examples` is intentionally absent
+# from apply_response.PANEL_TO_SIDECAR. example has no Task lifecycle
+# (docs/workspace/cards.md → lifecycle "none"), so the splice rides the
+# contract's virtual-requestId path and synthesizes no Task.
+#
+# Abstraction note (flagged, not fixed here — the contract is reused as-is): a
+# block-level TextObject wants to land *after* the anchor paragraph, but the
+# contract's texEdit splices inline. We place it via `after-selected` on the
+# paragraph's own `%!v:` marker (a placement landmark — not a hand-authored
+# marker). A dedicated `block-after-paragraph` texEdit mode, and a Task-less
+# tex-only subcommand, would be the cleaner long-term shape.
+# ---------------------------------------------------------------------------
+
+
+def _create_example(doc: Path, a: argparse.Namespace) -> dict:
+    body = a.body
+    items = a.item or []
+    if not body and not items:
+        die("--body <text> (or one or more --item <row>) is required for --kind=example")
+    if a.request:
+        die("--kind=example is created directly (Task-less — cards.md lifecycle 'none'); "
+            "pass --anchor, not a requestId")
+    if a.safety_level is not None:
+        die("--kind=example is a direct tex-only create; safety levels (which gate card "
+            "lifecycle) don't apply — omit --safety-level")
+    anchor = a.anchor
+    if not anchor:
+        die("--anchor <uuid> is required for --kind=example")
+    _require_anchor(doc, anchor)
+
+    exid = _gen_marker_id(doc, "vexid", _sidecar_ids(doc, "examples.json", "examples"))
+    label = ("\\label{" + a.label + "}") if a.label else ""
+    if items:
+        allocated: set[str] = set()
+        rows = []
+        for row in items:
+            xid = _gen_marker_id(doc, "vxid", allocated)
+            allocated.add(xid)
+            rows.append("\\vxid{" + xid + "}\\a " + row)
+        block = "\\vexid{" + exid + "}\\pex" + label + "\n" + "\n".join(rows) + "\n\\xe"
+    else:
+        block = "\\vexid{" + exid + "}\\ex" + label + "\n" + body + "\n\\xe"
+    insert = "\n\n" + block
+
+    op = {
+        "requestId": f"virtual:examples:{exid}",  # virtual → no Task synthesized
+        "texEdit": {
+            "anchorUuid": anchor,
+            "insert": insert,
+            "mode": "after-selected",
+            "selectedText": f"%!v:{anchor}",  # land the block AFTER the paragraph marker
+        },
+        "summary": f"Inserted example {a.label or exid}",
+        "clearSourceFlag": False,
+    }
+    result = AR.run_write_subcommand(doc, "complete-task", op, propose=False, synthesize=False)
+    result["cardId"] = exid
+    result["exampleId"] = exid
+    result["subcommand"] = "complete-task"
+    return result
+
+
+# ---------------------------------------------------------------------------
+# CLI
+# ---------------------------------------------------------------------------
 
 
 def main(argv: list[str]) -> int:
@@ -234,27 +595,38 @@ def main(argv: list[str]) -> int:
     p.add_argument("doc")
     p.add_argument("request", nargs="?", help="requestId (Workflow A); omit for chat-initiated")
     p.add_argument("--kind", required=True)
-    p.add_argument("--body", help="card body (user/chat supplied)")
+    p.add_argument("--body", help="card body / example text (user/chat supplied)")
     p.add_argument("--anchor", help="paragraph UUID to anchor at (required for the chat path)")
     p.add_argument("--safety-level", type=int, choices=[1, 2, 3], dest="safety_level")
     p.add_argument("--synthesize", action="store_true", help="synthesize the Task (chat path)")
     p.add_argument("--task-text", dest="task_text", help="the user's ask, recorded on a synthesized Task")
+    p.add_argument("--margin", choices=["left", "right"], default="right", help="anchored-card gutter side")
+    # note / report
+    p.add_argument("--title", help="card title (note, report)")
+    # todo
+    p.add_argument("--notes", help="secondary notes field (todo)")
+    # report
+    p.add_argument("--author", help="report author: human | ai (default ai)")
+    # report-request
+    p.add_argument("--ai-request", action="store_true", dest="ai_request",
+                   help="set the report-request's aiRequest flag (default off)")
+    # citation
+    p.add_argument("--citekey", help="bib key(s), comma-separated (citation)")
+    p.add_argument("--cite-command", dest="cite_command", help="cite command name, e.g. citet/citep (default citet)")
+    # example
+    p.add_argument("--label", help="\\label{} for an example block")
+    p.add_argument("--item", action="append", help="an example row (repeatable → \\pex/\\a list)")
     a = p.parse_args(argv[1:])
 
     doc = resolve_doc(a.doc)
     if a.kind not in ALL_KINDS:
         die(f"unknown --kind: {a.kind} (one of {sorted(ALL_KINDS)})")
-    if a.kind not in IMPLEMENTED_KINDS:
-        die(f"--kind={a.kind} is not implemented in this chip — footnote is the v1 slice; "
-            f"{sorted(ALL_KINDS - IMPLEMENTED_KINDS)} are TODO (each builds its sidecar entry "
-            f"+ any atom marker on the same apply_response contract).")
 
     try:
-        if a.kind == "footnote":
-            result = _footnote(doc, a)
-        else:  # unreachable given the guard above
-            die(f"--kind={a.kind} not implemented")
-            result = {}
+        if a.kind in TEX_ONLY_KINDS:
+            result = _create_example(doc, a)
+        else:
+            result = _create_carded(doc, a)
     except SystemExit:
         raise
     except Exception as e:  # noqa: BLE001

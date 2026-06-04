@@ -690,6 +690,21 @@ const PANELREG_TS = "src/panels/panel-registry.ts";
 // AiRequestLink.panel → PanelKind alias gap (documented in phase0-card §3.2).
 const PANEL_ALIAS = { todos: "todo" };
 
+// Card-hosting panels intentionally NOT apply_response writeback targets.
+// "Hosts a card" (PANEL_REGISTRY) over-approximates "is a skill-writeback
+// target", so these four are correctly absent from PANEL_TO_SIDECAR — absence
+// is by design, not a forgotten wiring. Rationale (mirrored in
+// docs/architecture/check-coherence.SKETCH.md → Check 5):
+//   archive       — snippets are user-cut text; no skill mechanically authors them.
+//   bibliography  — backed by the .bib file, not a virgil/ sidecar (find-citation
+//                   + the bib skills own it), so it has no PANEL_TO_SIDECAR row.
+//   errors        — not persisted; re-derived from the LaTeX lint each pass.
+//   examples      — examples.json is an app-derived SHADOW of the .tex
+//                   (useExamples.syncFromEditor); create-card writes the .tex
+//                   \vexid…\ex…\xe block, not the sidecar (create_card.py
+//                   _create_example), so examples is correctly absent.
+const WRITEBACK_EXEMPT_PANELS = new Set(["archive", "bibliography", "errors", "examples"]);
+
 function checkShadow() {
   // ── TS SSOTs ──
   const cardKinds = stringUnionMembers(CARDKIND_TS, "CardKind");
@@ -703,9 +718,12 @@ function checkShadow() {
   if (allKinds && cardKinds) {
     for (const k of [...allKinds].sort()) {
       if (!cardKinds.has(k))
+        // Error (graduated): the create-card fan-out reconciled ALL_KINDS to the
+        // kinds it actually implements, so a member outside CardKind is now a
+        // hard re-drift, not an advisory. (Sketch Check 5 staging.)
         add(
           "shadow",
-          "warn",
+          "error",
           CREATE_PY,
           null,
           `ALL_KINDS member '${k}' is not a real CardKind (removed/never-real) — src/panels/_shared/types.ts`,
@@ -751,19 +769,32 @@ function checkShadow() {
     if (!repoHasToken(filename, ["src/hooks"]))
       add("shadow", "warn", APPLY_PY, null, `PANEL_TO_SIDECAR['${panel}'] file '${filename}' not referenced under src/hooks (heuristic)`);
   }
-  // (2 inverse) card panels absent from PANEL_TO_SIDECAR — one compact warn.
+  // (2 inverse) card panels absent from PANEL_TO_SIDECAR. Only a panel absent
+  // AND not on the writeback-exempt allowlist is a real finding (a new card
+  // writeback target the shadow forgot — the inverse of the quotations→reports
+  // slip). The allowlist itself is kept honest: an exempt panel that is no
+  // longer absent (now mapped, or not a card panel) is flagged as stale.
   if (panelRegistry) {
     const missing = Object.entries(panelRegistry)
       .filter(([pk, e]) => e.hostsCard && !mapped.has(pk))
-      .map(([pk]) => pk)
-      .sort();
-    if (missing.length)
+      .map(([pk]) => pk);
+    const unexpected = missing.filter((pk) => !WRITEBACK_EXEMPT_PANELS.has(pk)).sort();
+    if (unexpected.length)
       add(
         "shadow",
         "warn",
         APPLY_PY,
         null,
-        `card-hosting panel(s) absent from PANEL_TO_SIDECAR (verify intentionally not skill-writeback targets): ${missing.join(", ")}`,
+        `card-hosting panel(s) absent from PANEL_TO_SIDECAR and not on the writeback-exempt allowlist: ${unexpected.join(", ")}`,
+      );
+    const staleExempt = [...WRITEBACK_EXEMPT_PANELS].filter((pk) => !missing.includes(pk)).sort();
+    if (staleExempt.length)
+      add(
+        "shadow",
+        "warn",
+        APPLY_PY,
+        null,
+        `writeback-exempt allowlist is stale (no longer a card-hosting panel absent from PANEL_TO_SIDECAR): ${staleExempt.join(", ")}`,
       );
   }
 }
