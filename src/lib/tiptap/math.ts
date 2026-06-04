@@ -96,7 +96,15 @@ function mathNodeView(opts: {
       return true;
     },
     selectNode() {
-      dom.classList.add("selected");
+      // A float is a single-node surface: an atom-only float doc has no
+      // interior text position, so ProseMirror rests a NodeSelection on the
+      // lone atom (NodeSelection{0,1}, unfocused) — firing selectNode() at
+      // rest. That would paint `.selected` chrome (a tinted background; an
+      // outline for some atoms) the page never shows. Gate it the same way as
+      // the click→edit bridge above: suppress on the float surface only (memo
+      // L3h.1, generalized from the click bridge to the selection chrome). The
+      // MAIN surface keeps its selection chrome unchanged.
+      if (surface !== "float") dom.classList.add("selected");
     },
     deselectNode() {
       dom.classList.remove("selected");

@@ -305,4 +305,22 @@ describe("buildEditorExtensions (FCU factory)", () => {
     expect(mathSurface(floatCtx(), "inlineMath")).toBe("float");
     expect(mathSurface(floatCtx(), "displayMath")).toBe("float");
   });
+
+  // R2 — the factory also threads `surface` to LatexComment (was added bare), so
+  // the shared editable-atom NodeView suppresses its `.selected` chrome on
+  // floats. The behavioral gate is locked in
+  // tiptap/__tests__/editable-atom-view-surface-gate.test.ts; this proves the
+  // wiring: `.configure({surface})` set the right per-surface value.
+  const latexCommentSurface = (ctx: EditorExtensionsCtx) => {
+    const ext = buildEditorExtensions(ctx).find((e) => e.name === "latexComment");
+    return (ext?.options as { surface?: string } | undefined)?.surface;
+  };
+
+  it("configures latexComment with surface 'main' on the main stack (R2)", () => {
+    expect(latexCommentSurface(mainCtx())).toBe("main");
+  });
+
+  it("configures latexComment with surface 'float' on the float stack (R2)", () => {
+    expect(latexCommentSurface(floatCtx())).toBe("float");
+  });
 });

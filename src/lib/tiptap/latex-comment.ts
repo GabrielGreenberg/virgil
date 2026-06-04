@@ -12,8 +12,17 @@ let _pendingAutoFocusComment = false;
 // rich-text surface (RichTextField) so latexComment atoms round-trip
 // without being silently dropped, and so typing `% ` in a note body
 // doesn't get auto-transformed into a latexComment atom.
+// `surface`: which editor surface the comment atom is mounted on. A float is a
+// single-node surface, so its atom-only doc rests a NodeSelection on the lone
+// atom and the shared `editableAtomView` would paint `.selected` chrome the
+// page never shows; the view suppresses that chrome on "float" (memo L3h.1's
+// surface gate, generalized to the selection chrome). The
+// `buildEditorExtensions` factory configures this per-surface
+// (`.configure({ surface: isFloat ? "float" : "main" })`), like the math nodes.
+// Default "main" so any stray / non-factory usage behaves like the main surface.
 export interface LatexCommentOptions {
   cardContext: boolean;
+  surface: "main" | "float";
 }
 
 export const LatexComment = Node.create<LatexCommentOptions>({
@@ -24,6 +33,7 @@ export const LatexComment = Node.create<LatexCommentOptions>({
   addOptions() {
     return {
       cardContext: false,
+      surface: "main",
     };
   },
 
@@ -151,6 +161,7 @@ export const LatexComment = Node.create<LatexCommentOptions>({
 
   addNodeView() {
     const cardContext = this.options.cardContext;
+    const surface = this.options.surface;
     return ({ node, getPos, editor }) => {
       // Card-context: static `% text` row in muted gray, no click-to-
       // edit affordance. The node spec is identical to the main-doc
@@ -170,6 +181,7 @@ export const LatexComment = Node.create<LatexCommentOptions>({
         node,
         getPos,
         editor,
+        surface,
         tag: "div",
         className: "latex-comment",
         attrName: "text",

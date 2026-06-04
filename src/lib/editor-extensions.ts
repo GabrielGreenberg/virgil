@@ -1716,7 +1716,11 @@ export function buildEditorExtensions(ctx: EditorExtensionsCtx) {
     InlineMath.configure({ surface: isFloat ? "float" : "main" }),
     DisplayMath.configure({ surface: isFloat ? "float" : "main" }),
     Footnote,
-    LatexComment,
+    // Per-surface so the atom's selection chrome stays MAIN-only: a float is a
+    // single-node surface, so its atom-only doc rests a NodeSelection on the
+    // lone comment and the NodeView would paint `.selected` chrome the page
+    // never shows. Mirrors the math surface threading above (memo L3h.1).
+    LatexComment.configure({ surface: isFloat ? "float" : "main" }),
     Citation,
     LabelRef,
     ExampleBlock,

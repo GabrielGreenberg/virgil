@@ -79,6 +79,66 @@ function mountAndClick(
   return { fired, detail };
 }
 
+// Mount a real editor with one math node configured for `surface`, drop a
+// NodeSelection on the math node, and report whether the rendered NodeView
+// carries the `.selected` chrome class. Exercises the same end-to-end path as
+// mountAndClick (addOptions default → `.configure({surface})` →
+// `this.options.surface` → `mathNodeView`), but for the selectNode() gate.
+function mountAndSelect(
+  kind: Kind,
+  surface: "main" | "float",
+  opts: { configure?: boolean } = {},
+): boolean {
+  const configure = opts.configure ?? true;
+  const base = kind === "inline" ? InlineMath : DisplayMath;
+  const mathNode = configure ? base.configure({ surface }) : base;
+
+  const element = document.createElement("div");
+  document.body.appendChild(element);
+  const editor = new Editor({
+    element,
+    editable: true,
+    extensions: [StarterKit, mathNode],
+    content: contentFor(kind),
+  });
+  try {
+    const typeName = kind === "inline" ? "inlineMath" : "displayMath";
+    let pos: number | null = null;
+    editor.state.doc.descendants((node, p) => {
+      if (pos == null && node.type.name === typeName) pos = p;
+      return pos == null;
+    });
+    if (pos == null) throw new Error(`${typeName} node not found`);
+    editor.commands.setNodeSelection(pos);
+    const sel = kind === "inline" ? ".inline-math" : ".display-math";
+    const el = editor.view.dom.querySelector(sel) as HTMLElement | null;
+    if (!el) throw new Error(`math NodeView (${sel}) did not mount`);
+    return el.classList.contains("selected");
+  } finally {
+    editor.destroy();
+    element.remove();
+  }
+}
+
+describe("atom selection chrome gated on the MAIN surface (R2)", () => {
+  it("MAIN-surface math paints `.selected` on a resting NodeSelection", () => {
+    expect(mountAndSelect("inline", "main")).toBe(true);
+    expect(mountAndSelect("display", "main")).toBe(true);
+  });
+
+  it("FLOAT-surface math suppresses `.selected` (the R2 gate)", () => {
+    // A float is a single-node surface, so ProseMirror rests a NodeSelection on
+    // the lone atom at mount — the chrome must not paint there.
+    expect(mountAndSelect("inline", "float")).toBe(false);
+    expect(mountAndSelect("display", "float")).toBe(false);
+  });
+
+  it("defaults to the MAIN chrome when unconfigured (safe addOptions default)", () => {
+    expect(mountAndSelect("inline", "main", { configure: false })).toBe(true);
+    expect(mountAndSelect("display", "main", { configure: false })).toBe(true);
+  });
+});
+
 describe("math click→edit bridge gated on the MAIN surface (L3h.1)", () => {
   it("inline math on the MAIN surface fires virgil-math-click at a numeric pos", () => {
     const { fired, detail } = mountAndClick("inline", "main");

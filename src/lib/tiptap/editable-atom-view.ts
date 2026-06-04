@@ -15,6 +15,7 @@ export function editableAtomView({
   prefix,
   suffix,
   handleBar,
+  surface = "main",
 }: {
   node: any;
   getPos: any;
@@ -25,6 +26,13 @@ export function editableAtomView({
   prefix?: string;
   suffix?: string;
   handleBar?: boolean;
+  // Which editor surface this atom NodeView is mounted on. A float is a
+  // single-node surface, so ProseMirror rests a NodeSelection on the lone atom
+  // and fires selectNode() at rest — which would paint `.selected` chrome the
+  // page never shows. Threaded from the node's `surface` option by the factory
+  // (`.configure({ surface })`), mirroring math.ts. Default "main" so any stray
+  // / non-factory usage behaves like the editable main surface.
+  surface?: "main" | "float";
 }) {
   const dom = document.createElement(tag);
   dom.className = className;
@@ -166,7 +174,12 @@ export function editableAtomView({
   textSpan.addEventListener("input", stopPropagation);
   textSpan.addEventListener("beforeinput", stopPropagation);
 
-  const selectNode = () => { dom.classList.add("selected"); };
+  // Suppress the `.selected` chrome on the float surface only: an atom-only
+  // float doc rests a NodeSelection on this lone atom, firing selectNode() at
+  // rest, so the float embed would otherwise show a selection the page never
+  // does (the L3h.1 surface gate, generalized to the selection chrome). The
+  // MAIN surface keeps its selection chrome.
+  const selectNode = () => { if (surface !== "float") dom.classList.add("selected"); };
   const deselectNode = () => { dom.classList.remove("selected"); };
 
   return { dom, enterEditMode, selectNode, deselectNode };
