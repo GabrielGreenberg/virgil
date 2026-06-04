@@ -85,7 +85,7 @@ function pickFocusTarget(card: HTMLElement, kind: string): HTMLElement | null {
       // Todo text lives in the title input.
       return findTextInput() ?? findTextarea() ?? findEditable();
     case "revision":
-    case "comment":
+    case "revision-comment":
     case "cutter-comment":
     case "revision-suggestion":
     case "cutter-suggestion":

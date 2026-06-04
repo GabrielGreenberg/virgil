@@ -344,7 +344,7 @@ export function useDragHandleActions(deps: DragHandleActionsDeps) {
             mode: "omni",
           });
           if (anchor) {
-            updateLinkedAnchorCard(ed, anchor.anchorId, "comment", card.id);
+            updateLinkedAnchorCard(ed, anchor.anchorId, "revision-comment", card.id);
           }
           panelId = "revisions";
           focusCardKey = `revision:${card.id}`;

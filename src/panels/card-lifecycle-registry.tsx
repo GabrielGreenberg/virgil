@@ -34,6 +34,7 @@ import {
   type ReactNode,
 } from "react";
 import type { CardKind } from "./_shared/types";
+import { CARD_REGISTRY } from "@/cards/card-registry";
 
 /** Per-kind lifecycle operations.
  *
@@ -116,4 +117,29 @@ export function useCardLifecycleApi(
     () => ({ get: (kind) => ref.current[kind] ?? null }),
     [],
   );
+}
+
+/** Dev-only: verify a per-doc lifecycle registry provides EXACTLY the ops the
+ *  card registry declares (`CardMeta.lifecycle` — clone / delete / bindAnchor).
+ *  A declared-but-unwired op — or a wired-but-undeclared one — is silent
+ *  capability drift; this makes it loud. The five intentional gaps
+ *  (todo / archive / example / report / report-request) declare all-false and
+ *  must stay unwired; filling them is A3's job. Call from the provider site. */
+export function assertLifecycleCoverage(registry: CardLifecycleRegistry): void {
+  if (process.env.NODE_ENV === "production") return;
+  for (const k of Object.keys(CARD_REGISTRY) as CardKind[]) {
+    const declared = CARD_REGISTRY[k].lifecycle;
+    const e = registry[k];
+    const has = { clone: !!e?.clone, delete: !!e?.delete, bindAnchor: !!e?.bindAnchor };
+    if (
+      declared.clone !== has.clone ||
+      declared.delete !== has.delete ||
+      declared.bindAnchor !== has.bindAnchor
+    ) {
+      console.error(
+        `[CardLifecycle] "${k}": registry declares ${JSON.stringify(declared)} ` +
+          `but the provider has ${JSON.stringify(has)}`,
+      );
+    }
+  }
 }

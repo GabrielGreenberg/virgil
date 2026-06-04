@@ -12,7 +12,7 @@ import { openForCard } from "./open-for-card";
 const ANCHOR_CLICK_ROUTES: Record<
   Extract<
     EntityKind,
-    "note" | "cutter-comment" | "cutter-suggestion" | "comment" | "revision-suggestion"
+    "note" | "cutter-comment" | "cutter-suggestion" | "revision-comment" | "revision-suggestion"
   >,
   { panelId: PanelId; cardKind: CardKind; omniPrefix: string; entrySelectorBase: string }
 > = {
@@ -34,9 +34,9 @@ const ANCHOR_CLICK_ROUTES: Record<
     omniPrefix: "cutter-suggestion",
     entrySelectorBase: "data-card-key",
   },
-  comment: {
+  "revision-comment": {
     panelId: "revisions",
-    cardKind: "comment",
+    cardKind: "revision-comment",
     omniPrefix: "revision",
     entrySelectorBase: "data-card-key",
   },
@@ -297,7 +297,7 @@ export function useMarkerClickBridges(deps: {
         case "note": setSelectedNoteId(id); break;
         case "cutter-comment":
         case "cutter-suggestion": setSelectedCutterCardId(id); break;
-        case "comment":
+        case "revision-comment":
         case "revision-suggestion": setSelectedCommentId(id); break;
       }
 

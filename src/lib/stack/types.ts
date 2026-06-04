@@ -37,7 +37,7 @@ export type StackCardKind =
   | "example"
   | "todo"
   | "archive"
-  | "comment"            // RevisionCommentCard
+  | "revision-comment"   // RevisionCommentCard (disk kind: "comment")
   | "revision-suggestion"
   | "cutter-comment"
   | "cutter-suggestion";
@@ -55,7 +55,7 @@ export type StackCardSnapshot =
   | { cardKind: "example"; data: ExampleRef }
   | { cardKind: "todo"; data: TodoItem }
   | { cardKind: "archive"; data: ArchivedSnippet }
-  | { cardKind: "comment"; data: Extract<RevisionCard, { kind: "comment" }> }
+  | { cardKind: "revision-comment"; data: Extract<RevisionCard, { kind: "comment" }> }
   | {
       cardKind: "revision-suggestion";
       data: Extract<RevisionCard, { kind: "suggestion" }>;

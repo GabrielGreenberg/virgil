@@ -277,10 +277,10 @@ export function RevisionSuggestionCard({
         }
       }}
       className="focus:outline-none mb-2"
-      kind="suggestion"
-      kindOptions={["comment", "suggestion"]}
+      kind="revision-suggestion"
+      kindOptions={["revision-comment", "revision-suggestion"]}
       onKindChange={(k) => {
-        if (k !== "suggestion") onConvert(card.id, k as "comment");
+        if (k !== "revision-suggestion") onConvert(card.id, "comment");
       }}
       canJump={isAnchored && !!onJump}
       onJump={(e) => {

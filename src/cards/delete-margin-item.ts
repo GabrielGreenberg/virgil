@@ -39,7 +39,7 @@ import type { ConfirmOptions } from "@/components/ConfirmDialog";
 import {
   cardHasContent,
   type CardContentKind,
-} from "@/lib/cards/has-content";
+} from "@/cards/has-content";
 
 /** Gutter marker kinds that map to deletable cards. Mirrors `MarkerType`
  *  in `src/lib/marginalia.ts` minus `"error"` (errors aren't cards). */

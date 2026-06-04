@@ -186,18 +186,18 @@ function useSelectionsValue(inputs: SelectionsProviderInputs): SelectionsContext
   );
   const setSelectedCommentId = useCallback<Dispatch<SetStateAction<string | null>>>(
     (action) => {
-      const focused = polymorphicFocusFor(["comment", "revision-suggestion"]);
+      const focused = polymorphicFocusFor(["revision-comment", "revision-suggestion"]);
       const curId = focused ? focused.id : null;
       const nextId = typeof action === "function" ? action(curId) : action;
       if (nextId == null) {
         const t = cardStore.getState().transient;
-        if (t && (t.kind === "comment" || t.kind === "revision-suggestion")) {
+        if (t && (t.kind === "revision-comment" || t.kind === "revision-suggestion")) {
           cardStore.setTransient(null);
         }
         return;
       }
       const kind: EntityKind =
-        focused && focused.kind === "revision-suggestion" ? "revision-suggestion" : "comment";
+        focused && focused.kind === "revision-suggestion" ? "revision-suggestion" : "revision-comment";
       cardStore.setTransient({ kind, id: nextId });
     },
     [],
@@ -205,7 +205,7 @@ function useSelectionsValue(inputs: SelectionsProviderInputs): SelectionsContext
 
   const cutterId = sel && (sel.kind === "cutter-comment" || sel.kind === "cutter-suggestion") ? sel.id : null;
   const reportId = sel && (sel.kind === "report" || sel.kind === "report-request") ? sel.id : null;
-  const commentId = sel && (sel.kind === "comment" || sel.kind === "revision-suggestion") ? sel.id : null;
+  const commentId = sel && (sel.kind === "revision-comment" || sel.kind === "revision-suggestion") ? sel.id : null;
 
   return useMemo<SelectionsContextValue>(
     () => ({

@@ -148,7 +148,7 @@ import {
   deleteMarginItem,
   type MarginItemHandlers,
   type MarginItemKind,
-} from "@/lib/cards/delete-margin-item";
+} from "@/cards/delete-margin-item";
 import { resolveStyle } from "@/lib/style-library";
 import { extractDocumentClass } from "@/lib/document-class";
 import { PanelColumn, type PanelSlot } from "./editor-layout/panel-column";
@@ -216,6 +216,7 @@ import type { PanelKind } from "@/panels/_shared/types";
 import type { AiRequest } from "@/lib/types";
 import {
   useCardLifecycleApi,
+  assertLifecycleCoverage,
   type CardLifecycleRegistry,
 } from "@/panels/card-lifecycle-registry";
 
@@ -1529,7 +1530,7 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
         result.push({
           id: `${r.id}:${pid}`,
           entityId: r.id,
-          entityKind: r.kind === "suggestion" ? "revision-suggestion" : "comment",
+          entityKind: r.kind === "suggestion" ? "revision-suggestion" : "revision-comment",
           type: "revision",
           textObjectId: pid,
           title: r.selectedText || "Revision",
@@ -1818,12 +1819,12 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
         delete: notesHook.deleteNote,
         bindAnchor: notesHook.bindAnchor,
       },
-      comment: {
+      "revision-comment": {
         clone: revisionsHook.cloneComment,
         delete: revisionsHook.deleteCard,
         bindAnchor: revisionsHook.bindAnchor,
       },
-      suggestion: {
+      "revision-suggestion": {
         clone: revisionsHook.cloneSuggestion,
         delete: revisionsHook.deleteCard,
         bindAnchor: revisionsHook.bindAnchor,
@@ -1842,6 +1843,9 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
     [footnotesHook, citationsHook, notesHook, revisionsHook, cutterHook],
   );
   const cardLifecycle = useCardLifecycleApi(cardLifecycleRegistry);
+  // Dev-only: assert the provider satisfies exactly CARD_REGISTRY's declared
+  // lifecycle (the 5 intentional gaps stay unwired; capability drift is loud).
+  assertLifecycleCoverage(cardLifecycleRegistry);
   // Wide-scope warning dialog for destructive lifecycle actions
   // (Archive / Delete on any kind; Duplicate on headings). Distinct
   // instance from the heading-lozenge × confirm so each owns its own
@@ -2238,7 +2242,7 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
     const created = revisionsHook.addComment(null, undefined, anchor);
     if (anchorId) {
       const ed = innerRef.current?.getEditor();
-      if (ed) updateLinkedAnchorCard(ed, anchorId, "comment", created.id);
+      if (ed) updateLinkedAnchorCard(ed, anchorId, "revision-comment", created.id);
     }
     popCardAtAnchor("revision", created.id, anchorRect);
   }, [readSelection, revisionsHook, popCardAtAnchor]);

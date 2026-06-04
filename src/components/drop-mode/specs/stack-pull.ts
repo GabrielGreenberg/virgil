@@ -272,7 +272,7 @@ function applyCardDrop(
         content: card.data.content,
       });
       return;
-    case "comment":
+    case "revision-comment":
       stack.addRevisionComment(paragraphId, card.data);
       return;
     case "revision-suggestion":

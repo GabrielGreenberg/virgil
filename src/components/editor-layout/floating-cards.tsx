@@ -1,23 +1,23 @@
-import { type ReactNode, type Dispatch, type SetStateAction, type RefObject } from "react";
+import {
+  cloneElement,
+  isValidElement,
+  type ReactNode,
+  type Dispatch,
+  type SetStateAction,
+  type RefObject,
+} from "react";
 import type { JSONContent, Editor } from "@tiptap/react";
-import { NoteCard, HighlightCard } from "@/panels/Notes";
-import { FootnoteCard } from "@/panels/Footnotes";
-import { ArchiveCard } from "@/panels/Archive";
-import { CutterCommentCard, CutterSuggestionCard } from "@/panels/Cutter";
-import { TodoRow } from "@/panels/Todo";
-import { CitationCard } from "@/panels/Citations";
-import { RevisionCommentCard, RevisionSuggestionCard } from "@/panels/Revisions";
-import { ReportCard, ReportRequestCard } from "@/panels/Reports";
-import { ExampleCard } from "@/panels/Examples/ExampleCard";
-import BibEntryCard from "../BibEntryCard";
-import { AiRequestCard } from "../panel-primitives";
 import { TextObjectFloat } from "@/text-objects/TextObjectFloat";
 import {
   parseTextObjectPopoutKey,
   TEXT_OBJECT_REGISTRY,
 } from "@/text-objects/text-object-registry";
 import type { EditorHandle, FootnoteInfo, ExampleInfo } from "../Editor";
-import { getLinkedTextObjectIds } from "@/links/links";
+// Card popout bodies register onto CARD_REGISTRY via this side-effect import;
+// renderPoppedCard delegates to CARD_REGISTRY[kind].toFloatable below.
+import "@/cards/floats";
+import { CARD_REGISTRY } from "@/cards/card-registry";
+import type { CardKind } from "@/cards/types";
 import type {
   UserNote,
   HighlightCard as HighlightCardData,
@@ -27,8 +27,6 @@ import type {
   RevisionCard,
   RevisionSuggestionCard as RevisionSuggestionCardData,
   ReportItem,
-  ReportCard as ReportCardData,
-  ReportRequestCard as ReportRequestCardData,
   TodoItem,
   BibEntry,
   CitationRef,
@@ -41,6 +39,9 @@ import type {
  * dominates the call site. Treat this as the public surface of "what
  * a popped-out card needs" — new card kinds extend this, not the
  * EditorLayout signature.
+ *
+ * Re-exported to the card spine as `CardFloatCtx` (`src/cards/card-float-ctx`);
+ * the registry's per-kind `toFloatable(id, ctx)` builders receive this bag.
  */
 export interface PoppedCardDeps {
   // Entity collections
@@ -184,360 +185,82 @@ export interface PoppedCardDeps {
   deleteAiRequest: (id: string) => void;
 }
 
+/** Legacy popout-key prefixes that map 1:1 to a CardKind. The shared
+ *  `revision` prefix is handled separately (resolved from the record's kind);
+ *  `suggestion` / `revision-suggestion` / `error` are intentionally absent
+ *  (they never dispatched in the old switch). */
+const POPOUT_PREFIX_KINDS = new Set<string>([
+  "note",
+  "highlight",
+  "footnote",
+  "archive",
+  "cutter-comment",
+  "cutter-suggestion",
+  "report",
+  "report-request",
+  "todo",
+  "bib",
+  "citation",
+  "ai",
+  "example",
+]);
+
+/** Resolve a legacy popout-key prefix to a concrete CardKind. The shared
+ *  `revision` prefix resolves comment-vs-suggestion from the record's kind,
+ *  exactly as the old switch did — preserving the `revision:s:<id>` quirk: the
+ *  id parses to `"s:<id>"`, the `comments.find` misses, and the float renders
+ *  nothing (the suggestion float was served by the panel's own self-wrap path,
+ *  not this dispatcher). AF replaces this legacy prefix dispatch with the
+ *  `float:<domain>:<kind>:<id>` grammar. */
+function cardKindForPopoutKey(
+  prefix: string,
+  id: string,
+  d: PoppedCardDeps,
+): CardKind | null {
+  if (prefix === "revision") {
+    const card = d.comments.find((c) => c.id === id);
+    if (!card) return null;
+    // card.kind is the on-disk data discriminator ("comment"/"suggestion");
+    // map it to the spine CardKind.
+    return card.kind === "suggestion" ? "revision-suggestion" : "revision-comment";
+  }
+  return POPOUT_PREFIX_KINDS.has(prefix) ? (prefix as CardKind) : null;
+}
+
 /**
- * Render a popped-out card matching `key` (shaped `${kind}:${id}`).
- * Returns null if the card kind is unknown or the backing entity is
- * missing (e.g. the note was deleted while a float of it was open).
+ * Render a popped-out card matching `key` (shaped `${prefix}:${id}`). Card
+ * bodies live in the card registry now: this dispatcher resolves the prefix to
+ * a `CardKind` and delegates to `CARD_REGISTRY[kind].toFloatable(id, d)`,
+ * rendering its `renderBody()`. Returns null if the prefix is unknown / not
+ * poppable (`error`) or the backing entity is missing (e.g. the note was
+ * deleted while a float of it was open). `textobject:` keys are a separate
+ * ontology, dispatched inline to `TextObjectFloat`.
  */
 export function renderPoppedCard(key: string, d: PoppedCardDeps): ReactNode {
   const sep = key.indexOf(":");
   if (sep <= 0) return null;
-  const kind = key.slice(0, sep);
+  const prefix = key.slice(0, sep);
   const id = key.slice(sep + 1);
-  switch (kind) {
-    case "note": {
-      const note = d.notes.find((n) => n.id === id);
-      if (!note) return null;
-      const canJump = getLinkedTextObjectIds(note).length > 0;
-      return (
-        <NoteCard
-          key={key}
-          note={note}
-          selected={d.selectedNoteId === note.id}
-          onUpdate={d.updateNote}
-          onUpdateTitle={d.updateNoteTitle}
-          onSetAiRequest={d.setNoteAiRequest}
-          onDelete={d.deleteNote}
-          onSelect={d.setSelectedNoteId}
-          onJump={canJump ? (sourceEl) => d.editorRef.current?.jumpToCard(note, sourceEl) : undefined}
-          onEditorFocus={d.setOverrideEditor}
-          getCitationDisplayText={d.getCitationDisplayText}
-          onCitationCreated={d.handleCitationCreated}
-          isPoppedOut
-        />
-      );
-    }
-    case "highlight": {
-      const hl = d.highlights.find((h) => h.id === id);
-      if (!hl) return null;
-      const canJump = getLinkedTextObjectIds(hl).length > 0;
-      return (
-        <HighlightCard
-          key={key}
-          card={hl}
-          selected={d.selectedNoteId === hl.id}
-          onAddNote={(hid) => d.addNoteForHighlight(hid)}
-          onSetAiRequest={d.setHighlightAiRequest}
-          onDelete={d.deleteNote}
-          onSelect={d.setSelectedNoteId}
-          onJump={canJump ? (sourceEl) => d.editorRef.current?.jumpToCard(hl, sourceEl) : undefined}
-          isPoppedOut
-        />
-      );
-    }
-    case "footnote": {
-      // Read directly from the editor so the float renders on first paint
-      // even before the `footnotes` memo has recomputed (its deps only
-      // update on content edits, not on initial hydration).
-      const liveFootnotes = d.editorRef.current?.getFootnotes() ?? d.footnotes;
-      const fn = liveFootnotes.find((f) => f.footnoteId === id);
-      if (!fn) return null;
-      const isSelected = d.selectedFootnoteId === fn.footnoteId;
-      return (
-        <FootnoteCard
-          key={key}
-          footnote={fn}
-          isSelected={isSelected}
-          onSelect={() => d.setSelectedFootnoteId(isSelected ? null : fn.footnoteId)}
-          onJump={(sourceEl) => d.editorRef.current?.scrollToFootnote(fn.footnoteId, sourceEl)}
-          onEdit={(json) => d.handleEditFootnote(fn.footnoteId, json)}
-          onDelete={() => d.handleDeleteFootnote(fn.footnoteId)}
-          onEditTitle={(title) => d.handleEditFootnoteTitle(fn.footnoteId, title)}
-          onEditorFocus={d.setOverrideEditor}
-          getCitationDisplayText={d.getCitationDisplayText}
-          onCitationCreated={d.handleCitationCreated}
-          isPoppedOut
-        />
-      );
-    }
-    case "archive": {
-      const snippet = d.archiveSnippets.find((s) => s.id === id);
-      if (!snippet) return null;
-      const orphaned = d.anchoredIds && !d.anchoredIds.has(snippet.id);
-      return (
-        <ArchiveCard
-          key={key}
-          snippet={snippet}
-          selected={d.selectedArchiveId === snippet.id}
-          orphaned={orphaned}
-          onSelect={d.setSelectedArchiveId}
-          onEdit={d.updateArchiveSnippet}
-          onUpdateTitle={d.updateArchiveSnippetTitle}
-          onDelete={d.handleDeleteArchive}
-          onJump={(sourceEl) => d.editorRef.current?.jumpToCard(snippet, sourceEl)}
-          onEditorFocus={d.setOverrideEditor}
-          getCitationDisplayText={d.getCitationDisplayText}
-          onCitationCreated={d.handleCitationCreated}
-          isPoppedOut
-        />
-      );
-    }
-    case "cutter-comment": {
-      const card = d.cutterCards.find(
-        (c) => c.id === id && c.kind === "comment",
-      );
-      if (!card || card.kind !== "comment") return null;
-      const canJump = getLinkedTextObjectIds(card).length > 0;
-      return (
-        <CutterCommentCard
-          key={key}
-          card={card}
-          selected={d.selectedCutterCardId === card.id}
-          onUpdateText={d.updateCutterCommentText}
-          onSetAiRequest={d.setCutterCommentAiRequest}
-          onDelete={d.deleteCutterCard}
-          onSelect={d.setSelectedCutterCardId}
-          onJump={canJump ? (sourceEl) => d.editorRef.current?.jumpToCard(card, sourceEl) : undefined}
-          isPoppedOut
-        />
-      );
-    }
-    case "cutter-suggestion": {
-      const card = d.cutterCards.find(
-        (c) => c.id === id && c.kind === "suggestion",
-      );
-      if (!card || card.kind !== "suggestion") return null;
-      const canJump = getLinkedTextObjectIds(card).length > 0;
-      // Popped suggestions mirror status changes locally; the panel-host
-      // owns the AiRequest enqueue path. Both buttons in popped mode just
-      // flip status — the user can re-open the panel to trigger enqueue
-      // there (out-of-scope for v1).
-      return (
-        <CutterSuggestionCard
-          key={key}
-          card={card}
-          selected={d.selectedCutterCardId === card.id}
-          onUpdateField={d.updateCutterSuggestionField}
-          onAccept={(cid) => d.setCutterSuggestionStatus(cid, "accepted")}
-          onReject={(cid) => d.setCutterSuggestionStatus(cid, "rejected")}
-          onDelete={d.deleteCutterCard}
-          onSelect={d.setSelectedCutterCardId}
-          onJump={canJump ? (sourceEl) => d.editorRef.current?.jumpToCard(card, sourceEl) : undefined}
-          isPoppedOut
-        />
-      );
-    }
-    case "report": {
-      const card = d.reportCards.find(
-        (c): c is ReportCardData => c.id === id && c.kind === "report",
-      );
-      if (!card) return null;
-      const canJump = getLinkedTextObjectIds(card).length > 0;
-      return (
-        <ReportCard
-          key={key}
-          report={card}
-          selected={d.selectedReportCardId === card.id}
-          onUpdate={d.updateReportContent}
-          onUpdateTitle={d.updateReportTitle}
-          onDelete={d.deleteReportCard}
-          onSelect={d.setSelectedReportCardId}
-          onJump={canJump ? (sourceEl) => d.editorRef.current?.jumpToCard(card, sourceEl) : undefined}
-          isPoppedOut
-        />
-      );
-    }
-    case "report-request": {
-      const card = d.reportCards.find(
-        (c): c is ReportRequestCardData => c.id === id && c.kind === "report-request",
-      );
-      if (!card) return null;
-      const canJump = getLinkedTextObjectIds(card).length > 0;
-      return (
-        <ReportRequestCard
-          key={key}
-          request={card}
-          selected={d.selectedReportCardId === card.id}
-          onUpdate={d.updateRequestContent}
-          onSetAiRequest={d.setRequestAiRequest}
-          onDelete={d.deleteReportCard}
-          onSelect={d.setSelectedReportCardId}
-          onJump={canJump ? (sourceEl) => d.editorRef.current?.jumpToCard(card, sourceEl) : undefined}
-          isPoppedOut
-        />
-      );
-    }
-    case "todo": {
-      const item = d.todoItems.find((t) => t.id === id);
-      if (!item) return null;
-      const canJump = getLinkedTextObjectIds(item).length > 0;
-      return (
-        <TodoRow
-          key={key}
-          item={item}
-          selected={d.selectedTodoId === item.id}
-          onToggle={d.toggleTodo}
-          onUpdate={d.updateTodo}
-          onUpdateNotes={d.updateTodoNotes}
-          onSetAiRequest={d.setTodoAiRequest}
-          onDelete={d.deleteTodo}
-          onSelect={d.setSelectedTodoId}
-          isAnchored={canJump}
-          onJump={canJump ? (sourceEl) => d.editorRef.current?.jumpToCard(item, sourceEl) : undefined}
-          isPoppedOut
-        />
-      );
-    }
-    case "bib": {
-      const entry = d.bibEntries.find((e) => e.key === id);
-      if (!entry) return null;
-      const isCited = d.allEditorCitations.some((c) => c.keys.includes(entry.key));
-      return (
-        <BibEntryCard
-          key={key}
-          entry={entry}
-          isSelected={d.selectedBibKey === entry.key}
-          onClick={() => d.setSelectedBibKey(d.selectedBibKey === entry.key ? null : entry.key)}
-          getFormattedBib={d.getFormattedBib}
-          getAnnotation={d.getAnnotation}
-          setAnnotation={d.setAnnotation}
-          onRequestReview={d.requestBibReview}
-          onCancelReview={d.cancelBibReview}
-          getReviewStatus={d.getBibReviewStatus}
-          onUpdateBibEntry={d.updateBibEntry}
-          onUpdateBibKeyAndType={d.updateBibKeyAndType}
-          bibPackage={d.bibPackage}
-          bibEntries={d.bibEntries}
-          isCited={isCited}
-          isPoppedOut
-        />
-      );
-    }
-    case "citation": {
-      const cit = d.citations.find((c) => c.id === id);
-      if (!cit) return null;
-      const pos = d.citationPositionMap.get(cit.id) ?? null;
-      const isSelected = d.selectedCitationId === cit.id;
-      return (
-        <CitationCard
-          key={key}
-          citation={cit}
-          isSelected={isSelected}
-          isAnchored={pos !== null}
-          bibEntries={d.bibEntries}
-          bibPackage={d.bibPackage}
-          getDisplayText={d.getCitationDisplayText}
-          onSelect={() => d.setSelectedCitationId(isSelected ? null : cit.id)}
-          onJump={(sourceEl) => {
-            d.setSelectedCitationId(cit.id);
-            d.editorRef.current?.scrollToCitation(cit.id, sourceEl);
-          }}
-          onUpdateCitation={d.updateCitation}
-          onDelete={d.deleteCitation}
-          getFormattedBib={d.getFormattedBib}
-          getAnnotation={d.getAnnotation}
-          setAnnotation={d.setAnnotation}
-          onRequestReview={d.requestBibReview}
-          onCancelReview={d.cancelBibReview}
-          getReviewStatus={d.getBibReviewStatus}
-          onUpdateBibEntry={d.updateBibEntry}
-          onUpdateBibKeyAndType={d.updateBibKeyAndType}
-          onAddBibEntry={d.addBibEntry}
-          isPoppedOut
-        />
-      );
-    }
-    case "revision": {
-      const card = d.comments.find((c) => c.id === id);
-      if (!card) return null;
-      if (card.kind === "suggestion") {
-        return (
-          <RevisionSuggestionCard
-            key={key}
-            card={card}
-            selected={d.selectedCommentId === card.id}
-            onUpdateField={d.updateRevisionSuggestionField}
-            onAccept={(cid) => d.setRevisionSuggestionStatus(cid, "accepted")}
-            onReject={(cid) => d.setRevisionSuggestionStatus(cid, "rejected")}
-            onConvert={d.convertRevisionCard}
-            onDelete={d.deleteRevisionCard}
-            onSelect={d.setSelectedCommentId}
-            isPoppedOut
-          />
-        );
-      }
-      return (
-        <RevisionCommentCard
-          key={key}
-          card={card}
-          selected={d.selectedCommentId === card.id}
-          onUpdateContent={d.updateRevisionCommentContent}
-          onSetAiRequest={d.setRevisionCommentAiRequest}
-          onConvert={d.convertRevisionCard}
-          onDelete={d.deleteRevisionCard}
-          onSelect={d.setSelectedCommentId}
-          isPoppedOut
-        />
-      );
-    }
-    case "ai": {
-      const req = d.aiRequests.find((r) => r.id === id);
-      if (!req) return null;
-      return (
-        <AiRequestCard
-          key={key}
-          request={req}
-          onChangeText={(text) => d.updateAiRequestText(req.id, text)}
-          onDelete={() => d.deleteAiRequest(req.id)}
-          isPoppedOut
-        />
-      );
-    }
-    case "textobject": {
-      // Unified block-popout dispatcher (Phase D10 + D5). The legacy
-      // `paragraph:` / `heading:` / `list:` / `texBlock:` prefixes are
-      // gone — every block lift goes through `textobject:<kind>:<id>`
-      // emitted by `textObjectPopoutKey` (registry helper). The body
-      // component for each kind is registered in
-      // `src/text-objects/floats/index.ts` via `registerFloatBody`. If
-      // a kind has no body wired yet (sub-objects, atom blocks,
-      // linkedRange before Phase E), the chrome renders null.
-      const ref = parseTextObjectPopoutKey(key);
-      if (!ref) return null;
-      const meta = TEXT_OBJECT_REGISTRY[ref.kind];
-      if (!meta.floatBodyComponent) return null;
-      return (
-        <TextObjectFloat
-          key={key}
-          cardKey={key}
-          kind={ref.kind}
-          id={ref.id}
-          editorRef={d.editorRef}
-        />
-      );
-    }
-    case "example": {
-      // The `example:` prefix is the Examples panel-card popout key (a
-      // stable card-prefix in the same family as `note:`, `todo:`,
-      // `bib:`, etc., per the plan's "DO NOT rename" list). The
-      // exampleBlock block-popout path now goes through
-      // `textobject:exampleBlock:<id>` above.
-      const ex = d.examples.find((e) => e.exampleId === id);
-      if (!ex) return null;
-      return (
-        <ExampleCard
-          key={key}
-          example={ex}
-          isSelected={d.selectedExampleId === ex.exampleId}
-          onSelect={() =>
-            d.setSelectedExampleId(d.selectedExampleId === ex.exampleId ? null : ex.exampleId)
-          }
-          onJump={() => d.editorRef.current?.scrollToExample(ex.exampleId)}
-          isPoppedOut
-        />
-      );
-    }
-    default:
-      return null;
+
+  if (prefix === "textobject") {
+    const ref = parseTextObjectPopoutKey(key);
+    if (!ref) return null;
+    const meta = TEXT_OBJECT_REGISTRY[ref.kind];
+    if (!meta.floatBodyComponent) return null;
+    return (
+      <TextObjectFloat
+        key={key}
+        cardKey={key}
+        kind={ref.kind}
+        id={ref.id}
+        editorRef={d.editorRef}
+      />
+    );
   }
+
+  const cardKind = cardKindForPopoutKey(prefix, id, d);
+  if (!cardKind) return null;
+  const node = CARD_REGISTRY[cardKind].toFloatable(id, d)?.renderBody() ?? null;
+  // Preserve the popout key as the React list key (was `key={key}` per card).
+  return isValidElement(node) ? cloneElement(node, { key }) : node;
 }

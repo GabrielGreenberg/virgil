@@ -68,7 +68,7 @@ function legacyAnchorKindToCardKind(
     case "cutter-suggestion":
       return "cutter-suggestion";
     case "revision":
-      return "comment";
+      return "revision-comment";
     default:
       return null;
   }
@@ -379,7 +379,7 @@ function cardKindToLegacyAnchorKind(cardKind: CardKind): string {
       return "cutter-comment";
     case "cutter-suggestion":
       return "cutter-suggestion";
-    case "comment":
+    case "revision-comment":
       return "revision";
     default:
       return "note";
