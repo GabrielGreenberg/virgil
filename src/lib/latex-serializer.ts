@@ -427,14 +427,6 @@ function serializeNode(node: JSONContent, suppressChildUuids = false, listDepth 
       // These only appear inside exampleGloss and are consumed there.
       return "";
 
-    case "aiRequestMarker": {
-      const kind = String(node.attrs?.kind || "footnote");
-      const text = String(node.attrs?.text || "")
-        .replace(/\r?\n/g, " ")
-        .trim();
-      return `% AI request (${kind}): ${text}\n`;
-    }
-
     case "hardBreak":
       return "\\\\\n";
 
@@ -656,18 +648,6 @@ function serializeInline(node: JSONContent): string {
   }
   if (node.type === "labelRef") {
     return serializeLabelRef(node);
-  }
-  if (node.type === "aiRequestMarker") {
-    // AI request markers are placeholders. Emit them as a LaTeX comment
-    // so they round-trip through the .tex file without breaking the
-    // surrounding inline text. LaTeX comments swallow the newline that
-    // follows them, so we add a space prefix to keep adjacent words from
-    // concatenating in the rendered output.
-    const kind = String(node.attrs?.kind || "footnote");
-    const text = String(node.attrs?.text || "")
-      .replace(/\r?\n/g, " ")
-      .trim();
-    return ` % AI request (${kind}): ${text}\n`;
   }
   if (node.type === "hardBreak") {
     return "\\\\\n";
@@ -944,7 +924,6 @@ function extractPlainText(node: JSONContent): string {
   if (node.type === "hardBreak") return " ";
   if (node.type === "displayMath") return node.attrs?.latex || "";
   if (node.type === "latexComment") return node.attrs?.text || "";
-  if (node.type === "aiRequestMarker") return "";
   if (!node.content) return "";
   const sep = node.type === "bulletList" || node.type === "orderedList" ? "; " : "";
   return node.content.map(extractPlainText).join(sep);

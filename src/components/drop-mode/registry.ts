@@ -15,7 +15,7 @@
 import type { DropSpec } from "./types";
 import { textObjectDropSpec } from "./specs/textobject";
 import { textRangeMoveDropSpec } from "./specs/text-range-move";
-import { aiRequestDropSpec } from "./specs/ai-request";
+import { inTextAtomGrabSpec } from "./specs/in-text-atom-grab";
 import { noteDropSpec, highlightDropSpec } from "@/panels/Notes/drop-spec";
 import { todoDropSpec } from "@/panels/Todo/drop-spec";
 import { archiveDropSpec } from "@/panels/Archive/drop-spec";
@@ -58,7 +58,11 @@ const SPECS: Record<string, DropSpec | undefined> = {
   "report-request": reportRequestDropSpec,
   footnote: footnoteDropSpec,
   citation: citationDropSpec,
-  ai: aiRequestDropSpec,
+  // The direct in-text Atom grab (footnote / citation / ref / inline
+  // math). Source captured at mousedown; same-editor move to an inline
+  // cursor. The `footnote:`/`citation:` specs above stay for the Card
+  // float-header (by-id) path. See specs/in-text-atom-grab.ts.
+  "atom-grab": inTextAtomGrabSpec,
   [STACK_PULL_PREFIX]: stackPullDropSpec,
 };
 

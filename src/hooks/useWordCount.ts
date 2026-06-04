@@ -113,8 +113,6 @@ function walkDoc(doc: PmNode): WordCounts {
       bucket.push(node.attrs.latex || "");
     } else if (node.type.name === "citation") {
       // citations are reference markers, not prose — skip
-    } else if (node.type.name === "aiRequestMarker") {
-      // AI request placeholders are not prose — skip
     } else if (node.type.name === "footnote") {
       // footnote content goes to footnotes category
       const content = node.attrs.content || "";
@@ -221,7 +219,6 @@ function getSelectionCounts(editor: Editor): SelectionCounts | null {
     }
     switch (node.type.name) {
       case "citation":
-      case "aiRequestMarker":
         return false;
       case "inlineMath":
       case "displayMath": {

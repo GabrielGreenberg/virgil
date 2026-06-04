@@ -118,7 +118,7 @@ Rule of thumb: if a section would reproduce a JSON schema field-by-field, it ins
 ---
 
 ## Ontology
-<!-- covers-code: src/text-objects/text-object-registry.ts, src/panels/_shared/types.ts, src/links/link-registry.ts, src/lib/tiptap, src/lib/latex-serializer.ts -->
+<!-- covers-code: src/text-objects/text-object-registry.ts, src/lib/tiptap/atom-registry.ts, src/panels/_shared/types.ts, src/links/link-registry.ts, src/lib/tiptap, src/lib/latex-serializer.ts -->
 
 *Conceptual; frozen in `EDITOR_SKILLS_V1.html` §2 and the brainstorm §20 decisions log. The exhaustive per-marker current-state lives in [UUID marker emission](#uuid-marker-emission) below; the per-kind card taxonomy remains stubbed pending the card refactor.*
 
@@ -133,7 +133,7 @@ The container and the scope. It is composed entirely of TextObjects. Cards, Atom
 | Primitive | What it is | Mobility |
 |---|---|---|
 | **TextObjects** | The structural atoms of text — paragraphs, headings, lists, list items, example items, atom blocks, and selection-backed linked ranges. Each is discrete and addressable. The single canonical abstraction for every graspable text unit; see [Code organization](#code-organization) and `TEXT_OBJECT_REGISTRY`. | Move, pop, drop freely. |
-| **Atoms** | Inline elements *within* TextObjects, finer-grained than a TextObject but not themselves TextObjects — in-text citations (`\cite{}`), footnote markers (`\footnote{}`), refs (`\ref{}`), inline math (`$…$`). Often bidirectionally linked to a Card. | Text-bound: move with the surrounding characters; do not pop into Panels independently. |
+| **Atoms** | Inline elements *within* TextObjects, finer-grained than a TextObject but not themselves TextObjects — in-text citations (`\cite{}`), footnote markers (`\footnote{}`), refs (`\ref{}`), inline math (`$…$`). Often bidirectionally linked to a Card. | Text-bound: move with the surrounding characters; do not pop into Panels independently. **Realized** as the direct in-text *Atom grab* — drag the atom to a new inline cursor (`ATOM_REGISTRY` + `InlineAtomGrab`; see `docs/agents/architecture.md` → text-move gestures). |
 | **Cards** | Almost everything else: notes, highlights, todos, footnotes, citations, reports, bibliography entries, comments, suggestions, examples, **Tasks**. Not a sub-type of TextObject — a parallel structure that connects to text via anchors and/or Atom links. | Move, pop, drop freely. |
 | **Omni-View gutters** | The in-context rendering of Cards alongside the text they anchor to. The primary surface for seeing Cards in place. | — |
 | **Panels** | Sidebar collections that list Cards of a given kind (Notes, Footnotes, Bibliography, the Inbox for Tasks). The secondary surface — browse, filter, bulk ops. | — |

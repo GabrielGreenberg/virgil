@@ -167,6 +167,12 @@ export interface StructureDiff {
 
   addedFootnotes: readonly FootnoteEntry[];
   removedFootnotes: readonly FootnoteEntry[];
+  /** Same footnoteId, changed pos/thanks/number — e.g. an atom MOVE
+   *  (delete+insert in one tx), whose add/remove cancel in reconciliation
+   *  but whose NEW position the structure index must still fold in (else
+   *  the moved footnote is left at a stale/dropped position and the
+   *  renumber walks a corrupt snapshot). Mirrors `changedCitations`. */
+  changedFootnotes: readonly FootnoteEntry[];
   /** True iff the document order of footnote IDs changed (renumber needed). */
   footnoteOrderChanged: boolean;
 
@@ -207,6 +213,7 @@ export const EMPTY_DIFF: StructureDiff = {
   changedHeadings: [],
   addedFootnotes: [],
   removedFootnotes: [],
+  changedFootnotes: [],
   footnoteOrderChanged: false,
   addedCitations: [],
   removedCitations: [],
@@ -234,6 +241,7 @@ export function isEmptyDiff(diff: StructureDiff): boolean {
     diff.changedHeadings.length === 0 &&
     diff.addedFootnotes.length === 0 &&
     diff.removedFootnotes.length === 0 &&
+    diff.changedFootnotes.length === 0 &&
     !diff.footnoteOrderChanged &&
     diff.addedCitations.length === 0 &&
     diff.removedCitations.length === 0 &&

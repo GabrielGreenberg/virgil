@@ -53,7 +53,7 @@ import {
   TitleField,
   MaketitleMarker,
   EmptyParagraphTitleCleaner,
-  AiRequestMarker,
+  InlineAtomGrab,
   MarginaliaAnchorGuard,
   LinkedAnchor,
   LinkedAnchorGuard,
@@ -1734,8 +1734,13 @@ export function buildEditorExtensions(ctx: EditorExtensionsCtx) {
     // sectionNumbers, omitted on floats (example numbers ride in via the
     // synced node attrs). Decision 8.
     ...(isMain ? [ExpexNumbering] : []),
-    AiRequestMarker,
     LatexCommandMark,
+    // Direct in-text Atom grab (footnote/citation/ref/inline math →
+    // drag to a new inline cursor). Ungated: present on every surface
+    // (main + card bodies) so any editor's atoms are graspable. Reads the
+    // same `editableRef` the readOnlyEnforcer uses to stay inert in
+    // read-only / no-pen state.
+    InlineAtomGrab.configure({ editableRef: ctx.editableRef ?? null }),
     ...(isMain ? [SlashPopupExtension, SmartQuotes] : []),
     LinkedAnchor,
     LinkedAnchorGuard,

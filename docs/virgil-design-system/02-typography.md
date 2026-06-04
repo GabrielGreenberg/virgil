@@ -60,7 +60,7 @@ metadata about the section. Sans-serif, smaller, colored.
    to the page width, not the viewport.
 4. **Body text is never below 13px.** Marginalia and badge labels are
    the only places where smaller is permitted.
-5. **No italic except blockquote and "AI marker label".** Italics in
+5. **No italic except blockquote.** Italics in
    panels read as "I forgot what to use here."
 6. **Numerals are tabular** for any list of numbers (counts, page
    numbers, footnote numbers). Add `font-variant-numeric: tabular-nums`.

@@ -39,11 +39,6 @@ export interface EditorPreferences {
   noteColor: string;
   noteMarkerBorder: string;
 
-  // Editor > AI Markers
-  aiMarkerText: string;
-  aiMarkerBg: string;
-  aiMarkerBorder: string;
-
   // Editor > Suggestions
   markBackground: string;
   markBorder: string;

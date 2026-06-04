@@ -72,8 +72,7 @@ Editor scale: H1 1.75rem/700, H2 1.35rem/600, H3 1.15rem/600, body
 1.05rem/400 with line-height 1.6. Panel scale: header 14px/600, body
 13px/400, card title 12.5px/500, badge 10px/600.
 
-Numerals tabular for any list of numbers. Italic only in blockquote and
-the AI-marker label. No letter-spacing on body text.
+Numerals tabular for any list of numbers. Italic only in blockquote. No letter-spacing on body text.
 
 ## Spacing & icons
 
@@ -215,7 +214,7 @@ Three categories.
    Drop indicator: 2px solid blue line.
 2. **Inline insert drag** (text-only). MIMEs: `MIME_QUOTE`,
    `MIME_CITATION`, `MIME_ARCHIVE`, `MIME_FOOTNOTE`,
-   `MIME_AI_REQUEST`, `MIME_TEXT_INSERT`. Ghost: white pill with
+   `MIME_TEXT_INSERT`. Ghost: white pill with
    ellipsis text. Drop indicator: ProseMirror native cursor.
 3. **Selection drag** (selection chip → panel). MIME:
    `MIME_SELECTION_ANCHOR`. Ghost: small chip with selection excerpt.
@@ -230,7 +229,7 @@ Eight kinds, each with its own token group:
 
 - Footnote marker (superscript red), citation (warm-yellow brackets),
   LaTeX comment (steel-blue %), comment Mode B (sky underline), inline
-  math (mono purple), AI request marker (sky star), suggestion mark
+  math (mono purple), suggestion mark
   (amber highlight), linked anchor (invisible until hover).
 
 Selection-from-card on inline atoms: 2px ring in

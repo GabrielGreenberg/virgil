@@ -47,7 +47,6 @@ marker** except as a side effect of the content it wraps.
 | `\vxid{<4hex>}` | an **exampleItem** (`\a` row) | block no-op macro | emitted before `\a`; a stray `\vxid` at body scope is discarded so it can't accrete. |
 | `\vlid{<4hex>}…\vlidend{<4hex>}` | a **linkedRange** (the `linkedAnchor` mark's span) | paired inline no-op macros | opened where the mark starts, closed where it ends; ranges open at a block boundary are closed and reopened. Reassembled on parse by `applyLinkedAnchorBoundaries`. |
 | `%!vtex:begin <id>` … `%!vtex:end <id>` | a **texBlock** (raw-LaTeX passthrough) | block comment sentinels | bracket a verbatim body slurped without recursive parse; a literal `%!vtex:end` inside the body is escaped to `%!v tex:end`. |
-| `% AI request (<kind>): <text>` | an **aiRequestMarker** placeholder | LaTeX comment, **no stable id** | ephemeral; round-trips as a comment. |
 
 SSOTs: which TextObject kind carries which marker → the `sourceMarker` field on
 `TEXT_OBJECT_REGISTRY` (`src/text-objects/text-object-registry.ts`); the `%!v:`

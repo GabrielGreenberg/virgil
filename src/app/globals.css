@@ -140,11 +140,6 @@
   --note-bg: #f0fdf4;
   --note-marker-border: #86efac;
 
-  /* AI markers */
-  --ai-marker-text: #92400e;
-  --ai-marker-bg: #fef3c7;
-  --ai-marker-border: #fcd34d;
-
   /* Suggestions */
   --mark-bg: #fbbf24;
   --mark-border: #c8960e;
@@ -256,9 +251,6 @@
   --citation-border-color: #e0d5a8;
   --note-color: #15803d;
   --note-marker-border: #86efac;
-  --ai-marker-text: #92400e;
-  --ai-marker-bg: #fef3c7;
-  --ai-marker-border: #fcd34d;
   --mark-bg: #fbbf24;
   --mark-border: #c8960e;
   --latex-cmd-color: #9ca3af;
@@ -2702,42 +2694,6 @@ textarea,
   outline-offset: -2px;
 }
 
-/* AI request marker — placeholder chip dropped from a draft AI request card */
-.ai-request-marker {
-  display: inline-flex;
-  align-items: center;
-  gap: 3px;
-  font-size: 0.78em;
-  line-height: 1.2;
-  color: var(--ai-marker-text, #0c4a6e);
-  background: rgba(224, 242, 254, 0.6);
-  border: 1px solid var(--ai-marker-border, #7dd3fc);
-  border-radius: 4px;
-  padding: 1px 5px 1px 4px;
-  margin: 0 1px;
-  cursor: pointer;
-  font-family: var(--font-sans-override, var(--font-sans)), system-ui, sans-serif;
-  vertical-align: baseline;
-  white-space: nowrap;
-  user-select: none;
-}
-
-.ai-request-marker:hover {
-  background: rgba(224, 242, 254, 0.95);
-  border-color: #38bdf8;
-}
-
-.ai-request-marker-star {
-  font-size: 0.85em;
-  color: #0ea5e9;
-  line-height: 1;
-}
-
-.ai-request-marker-label {
-  font-style: italic;
-  font-size: 0.95em;
-}
-
 /* In-text connector lines are now drawn via InTextConnectors SVG component */
 
 /* Note markers (green N in editor gutter) */
@@ -3146,6 +3102,25 @@ body[data-drop-mode-active="true"] [data-floating-panel="true"][data-drop-mode-s
   border-color: #d4a843;
   box-shadow: 0 0 0 2px #d4a843;
   color: #4a3f20;
+}
+
+/* Atoms are graspable — drag to reposition (InlineAtomGrab). The base
+   `pointer` (click → Card / edit popover) is upgraded to `grab`; the
+   press shows `grabbing` until the drop-mode crosshair takes over. Same
+   (0,1,0) specificity as each atom's base rule but declared later, so it
+   wins. The grab gesture itself is read-only-gated in the plugin; this is
+   just the affordance. */
+.footnote-marker,
+.citation-node,
+.label-ref-node,
+.inline-math {
+  cursor: grab;
+}
+.footnote-marker:active,
+.citation-node:active,
+.label-ref-node:active,
+.inline-math:active {
+  cursor: grabbing;
 }
 
 /* ── LabelRef Popover ── */

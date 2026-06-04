@@ -265,7 +265,7 @@ Three categories.
    Drop indicator: 2px solid blue line.
 2. **Inline insert drag** (text-only). MIMEs:
    `MIME_CITATION`, `MIME_ARCHIVE`, `MIME_FOOTNOTE`,
-   `MIME_AI_REQUEST`, `MIME_TEXT_INSERT`. Ghost: white pill with
+   `MIME_TEXT_INSERT`. Ghost: white pill with
    ellipsis text. Drop indicator: ProseMirror native cursor.
 3. **Selection drag** (selection chip → panel). MIME:
    `MIME_SELECTION_ANCHOR`. Ghost: small chip with selection excerpt.

@@ -23,7 +23,6 @@ import {
   MIME_TODO,
   MIME_CITATION,
   MIME_FOOTNOTE,
-  MIME_AI_REQUEST,
   MIME_TEXT_INSERT,
   MIME_CUT,
   MIME_REPORT,
@@ -506,13 +505,14 @@ const VirgilEditor = forwardRef<EditorHandle, EditorProps>(function VirgilEditor
         ...(editable ? {} : { spellcheck: "false" }),
       },
       handleDOMEvents: {
-        // The only two canonical text moves are drag-to-pop-out (custom
-        // mousedown lift on the 6-dot grip) and drop-mode (shift-drag on a
-        // float header). Both bypass HTML5 drag. Anything else — browser-
-        // native text-selection drag from contenteditable, an accidental
-        // node drag — is suppressed here. The surviving inline-atom native
-        // drags (footnote and aiRequestMarker) opt in via `draggable="true"`
-        // on their own NodeView DOM and are allowed through.
+        // Every canonical text move is mousedown-driven, not HTML5 drag:
+        // block drag-to-pop-out (the 6-dot lift), the inline-Atom grab
+        // (footnote/citation/ref/inline math → InlineAtomGrab), and
+        // drop-mode (float-header shift-drag). So native browser drags —
+        // text-selection from contenteditable, an accidental node drag —
+        // are suppressed here. No inline atom opts into native drag anymore;
+        // the `[data-drag-handle]` / `[draggable="true"]` escape hatch is
+        // kept as a general guard for any element that explicitly opts in.
         dragstart(view, event) {
           const rawTarget = event.target as Node | null;
           const target =
@@ -535,30 +535,6 @@ const VirgilEditor = forwardRef<EditorHandle, EditorProps>(function VirgilEditor
         // (UUID assignment, capture-stash bookkeeping, etc.) that those
         // branches perform alongside the dispatch.
         if (readOnlyRef.current) return false;
-        // --- AI request marker drop (from any panel's AiRequestCard) ---
-        const aiReqData = event.dataTransfer?.getData(MIME_AI_REQUEST);
-        if (aiReqData) {
-          event.preventDefault();
-          try {
-            const { requestId, kind, text } = JSON.parse(aiReqData) as {
-              requestId?: string;
-              kind?: string;
-              text?: string;
-            };
-            if (!requestId) return true;
-            const coords = { left: event.clientX, top: event.clientY };
-            const pos = view.posAtCoords(coords);
-            if (!pos) return true;
-            const node = view.state.schema.nodes.aiRequestMarker.create({
-              requestId,
-              kind: kind || "footnote",
-              text: text || "",
-            });
-            const tr = view.state.tr.insert(pos.pos, node);
-            view.dispatch(tr);
-          } catch { /* ignore bad data */ }
-          return true;
-        }
 
         // All paragraph-level anchor drags (notes, todos,
         // marginalia moves) are handled exclusively by Marginalia.tsx,

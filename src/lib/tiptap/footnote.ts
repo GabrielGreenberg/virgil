@@ -22,11 +22,11 @@ export const Footnote = Node.create<FootnoteOptions>({
   // and that selection transaction defaults to `scrollIntoView: true` —
   // which scrolls the row by ~100px before our click handler can route
   // to alignOmniCardWithClick. `atom: true` still keeps Backspace
-  // deletion working (single-unit deletion), and `draggable: true` is
-  // officially compatible with `selectable: false` as long as the node
-  // is an atom (PM docs).
+  // deletion working (single-unit deletion). Repositioning is the
+  // `InlineAtomGrab` gesture (mousedown → drop-mode), NOT native HTML5
+  // drag — so no `draggable` here (it would be a second, unowned
+  // text-move surface).
   selectable: false,
-  draggable: true,
 
   addOptions() {
     return {
@@ -230,8 +230,6 @@ export const Footnote = Node.create<FootnoteOptions>({
       dom.dataset.type = "footnote";
       dom.dataset.footnoteId = node.attrs.footnoteId || "";
       dom.contentEditable = "false";
-      dom.draggable = true;
-      dom.style.cursor = "grab";
       if (node.attrs.thanks) dom.dataset.thanks = "true";
       dom.textContent = node.attrs.thanks ? "A" : String(node.attrs.number || "1");
       dom.title = richJsonToPlainText(node.attrs.content);
@@ -253,7 +251,6 @@ export const Footnote = Node.create<FootnoteOptions>({
 
       return {
         dom,
-        draggable: true,
         update(updatedNode) {
           if (updatedNode.type.name !== "footnote") return false;
           dom.dataset.footnoteId = updatedNode.attrs.footnoteId || "";
