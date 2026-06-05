@@ -1,4 +1,4 @@
-<!-- last-verified: 694f789 2026-06-04 -->
+<!-- last-verified: 5a58165 2026-06-05 -->
 <!-- derives-from: docs/architecture/VIRGIL.md#ontology -->
 <!-- covers-code: src/lib/tiptap/footnote.ts, src/lib/tiptap/citation.ts, src/lib/tiptap/math.ts, src/lib/tiptap/label.ts, src/lib/tiptap/linked-anchor.ts, src/lib/cite-commands.ts, src/lib/latex-parser.ts -->
 
@@ -7,7 +7,7 @@
 > **When to load.** Any task that inserts, recognizes, or moves an inline
 > element — a footnote marker, a citation, a cross-reference, inline math. For
 > the *prose* of a footnote or the *fields* of a citation Card, you also need
-> the forthcoming `cards.md`; for the id mechanics, [identity.md](identity.md).
+> [cards.md](cards.md); for the id mechanics, [identity.md](identity.md).
 
 Operational cut of the **Atom** primitive from
 [VIRGIL.md → Ontology](../architecture/VIRGIL.md#ontology). An Atom is an inline
@@ -49,7 +49,7 @@ The Atom carries `citationId` ← `\vcid` and the cite **key(s)**.
 - **Card linkage:** a citation Atom ties to a `citation` Card (the in-text
   instance) and, through its key, to the `bib` Card (the bibliography entry in the
   `.bib` / `citations.json`). One bib key may be cited many times → many `\vcid`
-  Atoms, one bib Card. Per-kind Card shapes are the forthcoming `cards.md`; adding
+  Atoms, one bib Card. Per-kind Card shapes are [cards.md](cards.md); adding
   a citation by description is the `/editor/find-citation` skill.
 
 ## labelRef
@@ -79,21 +79,22 @@ not Atoms, but a skill editing inline content meets them:
 - **`label`** — `\label{}` carried as a mark (the target of a `labelRef`).
 - **`linkedAnchor`** — the mark that backs a **linkedRange** TextObject; persists
   via `\vlid`/`\vlidend` ([identity.md](identity.md)) and links a Card to a text
-  *span* (Mode B anchoring). Its Card-linkage rules are the forthcoming
-  `anchoring.md`.
+  *span* (Mode B anchoring). Its Card-linkage rules are [anchoring.md](anchoring.md).
 
 ## Mobility and editing rules
 
-1. **Atoms are text-bound.** They move with the surrounding characters and
-   **never pop into a Panel** independently — only Cards and TextObjects move /
-   pop / drop freely ([ontology.md](ontology.md)).
+1. **Atoms are text-bound.** They move with the surrounding characters. An atom
+   is now drag-droppable (the `InlineAtomGrab` gesture; SSOT for the kinds is
+   `src/lib/tiptap/atom-registry.ts`), but the drop only **relocates it in the
+   text** — an atom **never pops into a Panel** as a free object the way Cards and
+   TextObjects do ([ontology.md](ontology.md)).
 2. **Insert the Atom and its Card together.** For footnotes/citations, the `.tex`
    marker and the sidecar Card are written in one atomic operation through
    `apply_response.py` ([structure.md](structure.md#the-write-path)). A marker
    without a Card (or vice versa) is an orphan.
 3. **Deleting an Atom affects its Card.** Removing a `\footnote{}` from the text
-   leaves its `footnotes.json` Card orphaned; cleanup is the forthcoming
-   `gardening.md`. The editor's anchor guards catch some cases, but a skill should
+   leaves its `footnotes.json` Card orphaned; cleanup is
+   [gardening.md](gardening.md). The editor's anchor guards catch some cases, but a skill should
    handle the Card deliberately.
 4. **Don't hand-write the id markers** (`\vfid` / `\vcid`) — compose the
    content command and let the create path allocate and place the marker

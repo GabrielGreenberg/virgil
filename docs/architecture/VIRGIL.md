@@ -1,6 +1,6 @@
-<!-- last-verified: 694f789 2026-06-04 -->
+<!-- last-verified: 5a58165 2026-06-05 -->
 <!-- derives-from: (root — verified against code) -->
-<!-- covers-code: src/app, src/components, src/hooks, src/lib, src/links, src/panels, src/text-objects, src/types, library, editor -->
+<!-- covers-code: src/app, src/cards, src/components, src/hooks, src/lib, src/links, src/panels, src/text-objects, src/types, library, editor -->
 
 # Virgil — Canonical Architecture
 
@@ -215,14 +215,16 @@ The agent writes `<sidecar>.json` (the new/changed card) + `ai-requests.json` (T
 ---
 
 ## Code organization
-<!-- covers-code: src/app, src/components, src/hooks, src/lib, src/links, src/panels, src/text-objects, src/types, library, editor -->
+<!-- covers-code: src/app, src/cards, src/components, src/hooks, src/lib, src/links, src/panels, src/text-objects, src/types, library, editor -->
 
 *An orienting map. The authoritative how-to-work-on-it detail lives in the `docs/agents/*` derivatives — this section is the conceptual index those docs specialize. Verified against `docs/agents/overview.md` + `architecture.md` (both `last-verified: 4398fb0`).*
 
 ### `src/` top-level map
 
 - `src/app/` — Next.js 16 App Router root (static export): `globals.css`, manifest, layout, dev-only API routes. Almost pure scaffolding; real work is elsewhere.
+- `src/cards/` — the card spine: `CARD_REGISTRY` (`card-registry.tsx`), the `CardKind`/`CardMeta` types (`types.ts`), the registry-derived predicates (`predicates.ts`), and `floats/` (the per-kind `toFloatable` builders). The card-system refactor's SSOT, mirroring `src/text-objects/`; absorbed the former `src/lib/cards/`.
 - `src/components/` — React components. The canonical editor surface is `EditorPane.tsx` (used by both the main app and the Library Reader); `EditorLayout.tsx` is the shell wrapper (tabs, view-prefs, dialogs, the Virgil bar, the PDF/Code branches); `Editor.tsx` is the TipTap wrapper; `panel-primitives.tsx` holds `CARD_THEMES`; `MenuBar.tsx` is the docked menu pod.
+- `src/floats/` — the `Floatable` contract (the float-subsystem presence that `CardMeta.toFloatable` returns).
 - `src/hooks/` — ~50 state hooks (`useDocument`, `useCitations`, `useFootnotes`, `useViewPrefs`, `useCollab`, `usePoppedCards`, …).
 - `src/lib/` — core logic: LaTeX parse/serialize, TipTap extensions, storage, types.
 - `src/links/` — the unified link architecture (registry, resolvers, three-surface highlight reconcilers).
@@ -238,7 +240,8 @@ Before adding a new panel, link kind, theme, or text-object kind, **extend the r
 
 | Concern | SSOT |
 |---|---|
-| Panel/card taxonomy | `PANEL_REGISTRY` in [src/panels/panel-registry.ts](../../src/panels/panel-registry.ts); `PanelKind` / `CardKind` unions in [src/panels/_shared/types.ts](../../src/panels/_shared/types.ts) |
+| Panel taxonomy | `PANEL_REGISTRY` in [src/panels/panel-registry.ts](../../src/panels/panel-registry.ts); `PanelKind` union in [src/panels/_shared/types.ts](../../src/panels/_shared/types.ts) |
+| Card taxonomy | `CARD_REGISTRY` in [src/cards/card-registry.tsx](../../src/cards/card-registry.tsx); `CardKind` / `CardMeta` in [src/cards/types.ts](../../src/cards/types.ts) (`src/panels/_shared/types.ts` re-exports `CardKind`). The satellite tables (`CARD_KEY_PREFIXES`, labels, panel membership, `StackCardKind`) are registry-derived — never hand-kept. |
 | Link kinds | `LINK_REGISTRY` in [src/links/link-registry.ts](../../src/links/link-registry.ts) |
 | TextObject kinds | `TEXT_OBJECT_REGISTRY` in [src/text-objects/text-object-registry.ts](../../src/text-objects/text-object-registry.ts) |
 | Card themes | `CARD_THEMES` in [src/components/panel-primitives.tsx](../../src/components/panel-primitives.tsx) |
@@ -261,23 +264,23 @@ A load-bearing performance contract (stated in `AGENTS.md`): **no plugin, hook, 
 ---
 
 ## Card-kind taxonomy
-<!-- covers-code: src/panels/_shared/types.ts, src/panels/panel-registry.ts, src/components/panel-primitives.tsx, src/lib/types.ts -->
+<!-- covers-code: src/cards/types.ts, src/cards/card-registry.tsx, src/cards/predicates.ts, src/panels/_shared/types.ts, src/panels/panel-registry.ts, src/components/panel-primitives.tsx, src/lib/types.ts -->
 
-Cards are the primitive that covers almost everything that isn't text (see [Ontology](#ontology)). The canonical card vocabulary is the **`CardKind` union** ([src/panels/_shared/types.ts](../../src/panels/_shared/types.ts)) — **17 kinds** as shipped:
+Cards are the primitive that covers almost everything that isn't text (see [Ontology](#ontology)). The canonical card vocabulary is the **`CardKind` union**, whose home moved to [src/cards/types.ts](../../src/cards/types.ts) beside `CARD_REGISTRY` ([src/panels/_shared/types.ts](../../src/panels/_shared/types.ts) re-exports it for ripple-minimization, mirroring `TextObjectKind` living beside `TEXT_OBJECT_REGISTRY`) — **16 symmetric kinds** as shipped:
 
-`note` · `highlight` · `footnote` · `archive` · `todo` · `bib` · `citation` · `comment` · `suggestion` · `cutter-comment` · `cutter-suggestion` · `revision-suggestion` · `report` · `report-request` · `example` · `ai` · `error`.
+`note` · `highlight` · `footnote` · `citation` · `example` · `todo` · `archive` · `report` · `report-request` · `revision-comment` · `revision-suggestion` · `cutter-comment` · `cutter-suggestion` · `bib` · `ai` · `error`.
 
-`CardKind` is the **theming / keying / labeling** vocabulary — the shared key space of five parallel registries, each its own SSOT: `PANEL_REGISTRY` + `POLYMORPHIC_CARD_PANEL` (which Panel hosts the kind), `CARD_KEY_PREFIXES` (the popout key), `CARD_TYPE_LABELS` / `CARD_TITLE_LABELS` (display labels), and `CARD_THEMES` (the accent). Before adding a kind, extend these registries — never a parallel table (see [Code organization → registries](#the-single-sources-of-truth-registries)).
+`CardKind` is the **theming / keying / labeling** vocabulary, now rooted in a single SSOT: `CARD_REGISTRY` ([src/cards/card-registry.tsx](../../src/cards/card-registry.tsx)), a `Record<CardKind, CardMeta>` mirroring `TEXT_OBJECT_REGISTRY`. One `CardMeta` entry per kind carries `panel` / `keyPrefix` / `label` / `titleLabel` / `themeKey` / `anchored` / `markerType` / `lifecycle` / `stackable` / `toFloatable`. The formerly-parallel tables are now **registry-derived**, not separate SSOTs: `CARD_KEY_PREFIXES`, `CARD_TYPE_LABELS`, `CARD_TITLE_LABELS` are `Object.fromEntries` over `CARD_REGISTRY` ([src/panels/panel-registry.ts](../../src/panels/panel-registry.ts)); panel membership derives via `getPanelByCardKind` / `panelForCardKind` ([src/cards/predicates.ts](../../src/cards/predicates.ts)) from `CardMeta.panel` (the hand-kept `POLYMORPHIC_CARD_PANEL` map is **retired**); the `StackCardKind` union and `ANCHORED_CARD_KINDS` are likewise derived (`stackableCardKinds()` / `isAnchoredCardKind`). `CARD_THEMES` ([src/components/panel-primitives.tsx](../../src/components/panel-primitives.tsx)) remains the accent table, keyed by `CardMeta.themeKey`. Before adding a kind, add one `CARD_REGISTRY` entry — never a parallel table (see [Code organization → registries](#the-single-sources-of-truth-registries)).
 
 How the kinds group:
 
-- **Single-card panels** are registered with one card kind: Footnotes (`footnote`), Citations (`citation`), Bibliography (`bib`), Examples (`example`), Todo (`todo`), Archive (`archive`), Errors (`error`), Revisions (`comment`). (Revisions additionally hosts `revision-suggestion`, mapped to it via `POLYMORPHIC_CARD_PANEL`.)
-- **Polymorphic panels** host two kinds each (registered `card: null`, resolved through `POLYMORPHIC_CARD_PANEL`): **Notes** (`note` + `highlight`), **Cutter** (`cutter-comment` + `cutter-suggestion`), **Reports** (`report` + `report-request`). The Reports panel is the newest — it replaced the Quotations panel in the card-system refactor (`quotation` removed; `report` / `report-request` added).
-- **Homeless kinds** have no parent Panel: `suggestion` (the generic "respond with a doc edit" kind, stored on disk as the Cutter/Revisions suggestion variants) and `ai` (the **Task** — cross-cutting across every panel's inbox, surfaced by the Inbox).
+- **Single-card panels** are registered with one card kind: Footnotes (`footnote`), Citations (`citation`), Bibliography (`bib`), Examples (`example`), Todo (`todo`), Archive (`archive`), Errors (`error`), Revisions (`revision-comment`). (Revisions additionally hosts `revision-suggestion`, which declares the same `revisions` panel via its `CardMeta.panel`.)
+- **Polymorphic panels** host two kinds each (registered `card: null`; membership derived from each kind's `CardMeta.panel` via `cardKindsForPanel`): **Notes** (`note` + `highlight`), **Cutter** (`cutter-comment` + `cutter-suggestion`), **Reports** (`report` + `report-request`). The Reports panel is the newest — it replaced the Quotations panel in the card-system refactor (`quotation` removed; `report` / `report-request` added).
+- **Homeless kind:** only `ai` (the **Task** — cross-cutting across every panel's inbox, surfaced by the Inbox) declares `panel: null`. Bare `suggestion` is **no longer a spine kind** — it survives only as the on-disk `RevisionCard`/`CutterCard.kind` data discriminator (see the nuance below).
 
-How they relate to the [Ontology](#ontology) primitives: every Card connects to text by an **anchor** (paragraph-level, Mode A; or a text-range `linkedRange`, Mode B) and/or an **Atom link** (`footnote`→`\footnote{}`, `citation`/`bib`→`\cite{}`). A `footnote`/`citation` is Atom-linked; a `note`/`comment`/`report` is anchored; `example` *is* a TextObject (its card is a sidecar shadow of an `exampleBlock`); `ai` (a Task) may have anchor, Atom links, both, or neither. Two kinds carry a real lifecycle — `ai` (the `status`/`result`/`safetyLevel` machine, see [Cowork pattern](#cowork-pattern)) and the suggestion kinds (`status` + `author`; Accept enqueues an out-of-band edit).
+How they relate to the [Ontology](#ontology) primitives: every Card connects to text by an **anchor** (paragraph-level, Mode A; or a text-range `linkedRange`, Mode B) and/or an **Atom link** (`footnote`→`\footnote{}`, `citation`/`bib`→`\cite{}`). A `footnote`/`citation` is Atom-linked; a `note`/`revision-comment`/`report` is anchored; `example` *is* a TextObject (its card is a sidecar shadow of an `exampleBlock`); `ai` (a Task) may have anchor, Atom links, both, or neither. Two kinds carry a real lifecycle — `ai` (the `status`/`result`/`safetyLevel` machine, see [Cowork pattern](#cowork-pattern)) and the suggestion kinds (`status` + `author`; Accept enqueues an out-of-band edit).
 
-**One nuance worth stating at this altitude:** the registry `CardKind` is *not* the same as the `kind` discriminator stored on disk. The persisted `kind` exists only on the polymorphic panels' cards and uses a coarser set (`note`/`highlight`, `comment`/`suggestion`, `report`/`report-request`); the Cutter and Revisions `comment`/`suggestion` records are re-qualified to `cutter-comment`/`cutter-suggestion`/`revision-suggestion` by panel context at the render/key/theme layer.
+**One nuance worth stating at this altitude:** the spine `CardKind` is *not* the same as the `kind` discriminator stored on disk. The persisted `kind` uses a coarser set (`note`/`highlight`, `comment`/`suggestion`, `report`/`report-request`); the data layer was left **untouched** by the registry refactor (`RevisionCard`/`CutterCard.kind`, `revisions.json`/`cutter.json`, and the Python skill layer still say `comment`/`suggestion`). The spine's synthetic kinds (`revision-comment`/`cutter-comment`/`revision-suggestion`/`cutter-suggestion`) are bridged from the on-disk discriminator at the render/key/theme layer (`resolveCardKind`).
 
 The exhaustive per-kind account — every kind's panel, sidecar + list-key, persisted discriminator, anchor/Atom-link relationship, lifecycle, and theme, plus the full Reports-panel and polymorphic-panel detail — is in the manifest's **[cards.md](../workspace/cards.md)** (the registry-shadow rot-vector lives in [gardening.md → the Python shadow-rot discipline](../workspace/gardening.md#the-python-shadow-rot-discipline)).
 

@@ -1,6 +1,6 @@
-<!-- last-verified: 694f789 2026-06-04 -->
+<!-- last-verified: 5a58165 2026-06-05 -->
 <!-- derives-from: docs/architecture/VIRGIL.md#ontology -->
-<!-- covers-code: src/text-objects/text-object-registry.ts, src/panels/_shared/types.ts, src/links/link-registry.ts, src/lib/tiptap, src/lib/latex-serializer.ts -->
+<!-- covers-code: src/text-objects/text-object-registry.ts, src/cards/card-registry.tsx, src/panels/_shared/types.ts, src/links/link-registry.ts, src/lib/tiptap, src/lib/latex-serializer.ts -->
 
 # Ontology — operational manifest
 
@@ -9,7 +9,7 @@
 > [identity.md](identity.md) is the UUIDs, [atoms.md](atoms.md) is the Atoms,
 > [latex.md](latex.md) is how TextObjects round-trip through `.tex`,
 > [structure.md](structure.md) is where Cards live on disk. The card-kind
-> shapes and the anchor mechanics are the forthcoming `cards.md` / `anchoring.md`.
+> shapes and the anchor mechanics are [cards.md](cards.md) / [anchoring.md](anchoring.md).
 
 This is the operational cut of [VIRGIL.md → Ontology](../architecture/VIRGIL.md#ontology):
 the same five primitives, pitched as *what a mechanical skill must recognize and
@@ -25,8 +25,8 @@ the other four primitives exist *within* or *alongside* it.
 | Primitive | What it is | A skill's handle on it |
 |---|---|---|
 | **TextObject** | The structural unit of text — paragraph, heading, list, listItem, exampleItem, blockquote, atom blocks (math/code/figure/texBlock), and selection-backed linked ranges. The one canonical "graspable" abstraction. | A `%!v:<4hex>` block marker in the `.tex` ([identity.md](identity.md)); the `TEXT_OBJECT_REGISTRY` is the SSOT for what counts. |
-| **Atom** | Inline element *within* a TextObject, finer than a TextObject but not one itself — `\cite{}`, `\footnote{}`, `\ref{}`, `$…$`. Often bidirectionally linked to a Card. | An inline marker (`\vfid{}` / `\vcid{}` / …) just before the command ([atoms.md](atoms.md), [identity.md](identity.md)). |
-| **Card** | Almost everything that isn't text: notes, footnotes, citations, bib entries, todos, reports, comments, suggestions, examples, **Tasks**. A parallel structure, *not* a TextObject sub-type. | A JSON entry in a `virgil/*.json` sidecar ([structure.md](structure.md)), carrying `"id"`; written only through `apply_response.py`. |
+| **Atom** | Inline element *within* a TextObject, finer than a TextObject but not one itself — `\cite{}`, `\footnote{}`, `\ref{}`, `$…$`. Often bidirectionally linked to a Card. | An inline marker (`\vfid{}` / `\vcid{}` / …) just before the command ([atoms.md](atoms.md), [identity.md](identity.md)); `ATOM_REGISTRY` is the SSOT for the kinds. |
+| **Card** | Almost everything that isn't text: notes, footnotes, citations, bib entries, todos, reports, comments, suggestions, examples, **Tasks**. A parallel structure, *not* a TextObject sub-type. | A JSON entry in a `virgil/*.json` sidecar ([structure.md](structure.md)), carrying `"id"`; written only through `apply_response.py`. The card spine SSOT is `CARD_REGISTRY` (`src/cards/`), mirroring `TEXT_OBJECT_REGISTRY`. |
 | **Omni-View gutter** | The in-context rendering of Cards beside the text they anchor to. | Read-only surface; skills don't write it. |
 | **Panel** | Sidebar collection listing Cards of one kind (Notes, Footnotes, Bibliography, the Inbox for Tasks). | `PANEL_REGISTRY` is the SSOT; a skill targets a panel's sidecar, not the Panel UI. |
 
@@ -67,8 +67,8 @@ are detailed in [atoms.md](atoms.md). The ontological facts a skill needs:
 A Card is "almost everything else." Operationally:
 
 - It lives in a **sidecar** (`virgil/<panel>.json`), not the `.tex`. See
-  [structure.md](structure.md) for the inventory; per-kind shapes are the
-  forthcoming `cards.md` / `sidecars.md`.
+  [structure.md](structure.md) for the inventory; per-kind shapes are
+  [cards.md](cards.md) / [sidecars.md](sidecars.md).
 - It connects to text by an **anchor** and/or an **Atom link** (next section).
 - It is **written only through `apply_response.py`** — never by hand-editing the
   JSON. The write path is in [structure.md → the write path](structure.md#the-write-path);
@@ -76,13 +76,13 @@ A Card is "almost everything else." Operationally:
 - **Tasks are a Card kind** (`ai`, stored in `ai-requests.json`) with a lifecycle
   the others lack (`status` / `result` / `safetyLevel`). The Inbox surfaces them.
   A Task may have an anchor, Atom links, both, or neither (a "review the whole
-  doc" Task has none). Full Task detail is the forthcoming `cards.md`.
+  doc" Task has none). Full Task detail is [cards.md](cards.md).
 
 ## Linkage — anchor vs. Atom link
 
 Two flavors, **both properties of the Card** (not separate primitives). The full
-mechanics — what invalidates each, precedence when a Card has both — are the
-forthcoming `anchoring.md`; the altitude a skill needs now:
+mechanics — what invalidates each, precedence when a Card has both — are in
+[anchoring.md](anchoring.md); the altitude a skill needs now:
 
 - **Anchor** — a Card's *one-way*, coarse (paragraph-level) pointer to a
   TextObject. The Card knows its anchor; the TextObject does not know what points
@@ -115,4 +115,4 @@ dropped back** freely. Atoms have only **text-bound** mobility (they ride the
 characters). Omni-View gutters and Panels are surfaces, not movable objects. A
 skill performing a structural operation must preserve this: never strand a Card
 whose anchor you deleted (the editor's anchor guards re-insert a placeholder, but
-a skill should re-anchor deliberately — see the forthcoming `gardening.md`).
+a skill should re-anchor deliberately — see [gardening.md](gardening.md)).

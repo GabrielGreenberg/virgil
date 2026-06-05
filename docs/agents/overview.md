@@ -1,6 +1,6 @@
-<!-- last-verified: 694f789 2026-06-04 -->
+<!-- last-verified: 5a58165 2026-06-05 -->
 <!-- derives-from: docs/architecture/VIRGIL.md#code-organization, docs/architecture/VIRGIL.md#ontology -->
-<!-- covers-code: src/app, src/components, src/hooks, src/lib, src/links, src/panels, src/text-objects, src/types, library, editor, package.json -->
+<!-- covers-code: src/app, src/components, src/hooks, src/lib, src/links, src/cards, src/floats, src/panels, src/text-objects, src/types, library, editor, package.json -->
 
 # Virgil Overview
 
@@ -33,6 +33,9 @@ Academic writers working in LaTeX who want to cowork with Claude or another agen
 - `src/hooks/` — React hooks for state management (~50 files)
 - `src/lib/` — Core business logic: LaTeX parse/serialize, TipTap extensions, storage, types (~50 files)
 - `src/links/` — Unified link architecture (link registry, resolvers, types) for cross-references between editor and panel cards
+- `src/cards/` — Card-system SSOT (27458d8): `CARD_REGISTRY` (mirrors `TEXT_OBJECT_REGISTRY`), `CardKind`/`CardMeta` types, derived predicates, card floats, the unified `deleteMarginItem` path (moved here from `src/lib/cards/`)
+- `src/text-objects/` — TextObject SSOT (`TEXT_OBJECT_REGISTRY`), grab handle, float chrome + per-kind bodies, drop adapters, selection-hydration
+- `src/floats/` — The `Floatable` contract (the shared shape cards and TextObjects both satisfy)
 - `src/panels/` — Sidebar panel implementations, one folder per panel + `_shared/` + `panel-registry.ts`
 - `src/types/` — Shared type definitions
 - `src/STYLE_GUIDE.md` — Design tokens, panel architecture, UI conventions

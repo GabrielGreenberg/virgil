@@ -1,4 +1,4 @@
-<!-- last-verified: 694f789 2026-06-05 -->
+<!-- last-verified: 5a58165 2026-06-05 -->
 <!-- derives-from: docs/architecture/VIRGIL.md#code-organization, docs/architecture/VIRGIL.md#sidecar-and-panel-inventory, docs/architecture/VIRGIL.md#cowork-pattern -->
 <!-- covers-code: src/lib/storage-fsa.ts, src/panels/panel-registry.ts, editor/scripts, library/lib/skill-sync.ts -->
 
@@ -6,8 +6,8 @@
 
 > **When to load.** Any task that reads or writes files in a paper folder, or
 > needs to know *where* a Card lives and *how* a change is committed. Per-sidecar
-> JSON schemas are the forthcoming `sidecars.md`; the never-touch deny-list is the
-> forthcoming `gardening.md`.
+> JSON schemas are [sidecars.md](sidecars.md); the never-touch deny-list is
+> [gardening.md](gardening.md).
 
 Operational cut of [VIRGIL.md → Code organization](../architecture/VIRGIL.md#code-organization),
 [Sidecar and panel inventory](../architecture/VIRGIL.md#sidecar-and-panel-inventory),
@@ -42,7 +42,7 @@ tab state, folder handles, the doc index — **never paper content**.
 ## The virgil/ sidecar folder
 
 `virgil/` (`VIRGIL_SUBDIR`) holds the Cards and the app's per-paper infrastructure.
-Two classes of file (schemas → forthcoming `sidecars.md`):
+Two classes of file (schemas → [sidecars.md](sidecars.md)):
 
 - **Infrastructure** (shared app state): `virgil.json` (paragraph titles +
   fingerprints), `editor-state.json` (last paragraph + folds),
@@ -63,8 +63,8 @@ keyed by source-content sha) and `.history/` (timestamped shadow snapshots of
 
 The panel surface itself is `PANEL_REGISTRY` (`src/panels/panel-registry.ts`) —
 15 panels, 11 hosting cards (8 single-kind, 3 polymorphic), 4 tool surfaces. A
-skill targets a **sidecar**, not the Panel UI; per-kind Card detail is the
-forthcoming `cards.md`.
+skill targets a **sidecar**, not the Panel UI; per-kind Card detail is
+[cards.md](cards.md).
 
 ## The .virgil/ plumbing folder
 
@@ -141,8 +141,8 @@ the same contract (`editor/scripts/create_card.py`), **no contract change**.
   change atomic, pen-protected, and audit-logged.
 - **Never hand-edit:** `version.txt`, `notifications.json`, `collab.json`,
   `ai-requests.json` (the writeback owns these), or the invisible `.tex` markers
-  ([identity.md](identity.md)). The full never-touch deny-list is the forthcoming
-  `gardening.md`.
+  ([identity.md](identity.md)). The full never-touch deny-list is
+  [gardening.md](gardening.md).
 
 ## How the manifest reaches .claude/virgil/
 

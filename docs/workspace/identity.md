@@ -1,4 +1,4 @@
-<!-- last-verified: 694f789 2026-06-04 -->
+<!-- last-verified: 5a58165 2026-06-05 -->
 <!-- derives-from: docs/architecture/VIRGIL.md#uuid-marker-emission -->
 <!-- covers-code: src/lib/uuid.ts, src/lib/latex-serializer.ts, src/lib/latex-parser.ts, src/text-objects/text-object-registry.ts, src/lib/latex-paragraph-map.ts, src/lib/document-styles.ts -->
 
@@ -97,8 +97,8 @@ footnote splice recipe.
   *identity* is the `linkedAnchor` mark's `anchorId` (attrs: `anchorId` / `kind`
   default `"note"` / `linkId` / `tintColor`); the paired markers persist the span
   so it survives a round-trip, and the card link's `textSnapshot` is the recovery
-  path (`reanchorByText`) if the mark is lost. Card-side linkage detail is the
-  forthcoming `anchoring.md`.
+  path (`reanchorByText`) if the mark is lost. Card-side linkage detail is
+  [anchoring.md](anchoring.md).
 
 ## How ids are assigned and recovered
 
@@ -127,7 +127,7 @@ for `\vfid` / `\vcid` / `\vexid` (+ `\usepackage{xcolor}`); `ensureVirgilCommand
 (`src/lib/latex-serializer.ts`) tops up **all six** (`\vfid` `\vcid` `\vexid`
 `\vxid` `\vlid` `\vlidend`) on every save, even against a user-authored preamble.
 These names are **reserved** — the full never-override deny-list (macros, comment
-conventions, CSS, paths) is the forthcoming `gardening.md`.
+conventions, CSS, paths) is [gardening.md](gardening.md).
 
 ## Rules for skills
 
