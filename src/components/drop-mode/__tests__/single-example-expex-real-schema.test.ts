@@ -147,7 +147,7 @@ describe("Feature A2 — applyDrop on the REAL schema (non-destructive tr.doc)",
       const d = singleDoc([{ type: "paragraph", content: [{ type: "text", text: "original" }] }]);
       const { editor, dispatched, ctx } = mockEditor(d);
       const block = findByType(d, "exampleBlock")[0];
-      const insertPos = block.pos + block.size - 1; // single example body slot
+      const insertPos = block.pos + 1; // single example body content START (A3 — push down)
       expect(classifyParentAt(editor, insertPos)).toBe("exampleBlock");
       expect(canDropDirectAt(editor, insertPos, schema.nodes[kind])).toBe(true);
 
@@ -158,8 +158,9 @@ describe("Feature A2 — applyDrop on the REAL schema (non-destructive tr.doc)",
       const ex = result.child(result.childCount - 1);
       expect(ex.type.name).toBe("exampleBlock");
       expect(ex.attrs.kind).toBe("single"); // NOT converted to multi
-      expect(ex.child(ex.childCount - 1).type.name).toBe(kind); // joined the body
-      expect(ex.child(ex.childCount - 1).attrs.uuid).toBe(uuid);
+      expect(ex.child(0).type.name).toBe(kind); // dropped block is the new FIRST child
+      expect(ex.child(0).attrs.uuid).toBe(uuid);
+      expect(ex.child(1).textContent).toBe("original"); // existing body pushed down
       expect(findByType(result, "exampleItem")).toHaveLength(0); // no item machinery
     });
   }

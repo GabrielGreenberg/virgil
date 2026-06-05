@@ -274,61 +274,103 @@ const EXPEX_DROP_KINDS: ReadonlySet<TextObjectKind> = new Set<TextObjectKind>([
   "displayMath",
 ]);
 
-/** Width (px) of the expex left-edge vertical bar. Tunable. */
+/** Thickness (px) of the expex drop bar — the WIDTH of the vertical into-item
+ *  bar AND the HEIGHT of the horizontal new-item bar. Tunable. */
 const EXPEX_BAR_WIDTH = 3;
-/** Height (px) of the short "insert a new item here" tick drawn for a
- *  new-item (item-gap) slot — distinct from the full-item-height bar an
- *  into-content slot draws. Tunable. */
-const EXPEX_NEW_ITEM_BAR_HEIGHT = 22;
+/** Fraction of an item's height, at its TOP and BOTTOM, that selects a
+ *  HORIZONTAL new-item bar (a new sibling item above / below). The middle band
+ *  (the remaining 1 − 2·frac) selects the VERTICAL into-item bar (a new block
+ *  inside the item). Tunable — into-item owns the middle, new-item the edges. */
+const EXPEX_EDGE_BAND_FRAC = 0.3;
 
 /**
- * One candidate insertion slot along an exampleBlock's left edge.
- *   • `new-item`     — a gap before/between/after items → wrap the dropped block
- *                      in a fresh exampleItem (insertPos in the exampleItemList,
- *                      between items; `classifyParentAt` → exampleBlock).
- *   • `into-content` — joins an existing item's content (insertPos inside the
- *                      item; `classifyParentAt` → exampleItem → drop-direct).
- * `pickY` is the viewport Y the nearest-slot snap compares against the cursor;
- * `barTop`/`barHeight` are the vertical segment the indicator paints if this
- * slot wins.
+ * Geometry of one top-tier exampleItem, gathered for the thirds hit model.
+ * `top`/`bottom`/`height` come from the item's own DOM box; `contentLeft` /
+ * `contentWidth` from its first content child's box — the item's TEXT-left
+ * (where the prose sits), NOT the far-left where expex draws the "(2)" / "a."
+ * label. Both bars hang off the text-left so they read as "a line in the prose
+ * column," never under the label.
  */
-interface ExpexSlot {
-  insertPos: number;
-  pickY: number;
-  barTop: number;
-  barHeight: number;
-  mode: "new-item" | "into-content";
+interface ExpexItemGeom {
+  /** The item's own position (before its open token) — the new-item wrap anchor. */
+  pos: number;
+  nodeSize: number;
+  top: number;
+  bottom: number;
+  height: number;
+  contentLeft: number;
+  contentWidth: number;
+}
+
+/**
+ * The TEXT-left x (and content width) of an expex container — its first content
+ * child's DOM box, where the prose sits. Falls back to the container's own box
+ * when it has no resolvable content child (e.g. an empty body, or a child whose
+ * DOM isn't an element). Used for BOTH an exampleItem (the multi case) and the
+ * exampleBlock body (the single case).
+ */
+function contentLeftWidth(
+  editor: Editor,
+  containerPos: number,
+  container: PMNode,
+  fallbackLeft: number,
+  fallbackWidth: number,
+): { left: number; width: number } {
+  if (container.childCount > 0) {
+    const dom = editor.view.nodeDOM(containerPos + 1);
+    if (dom instanceof HTMLElement) {
+      const r = dom.getBoundingClientRect();
+      return { left: r.left, width: r.width };
+    }
+  }
+  return { left: fallbackLeft, width: fallbackWidth };
 }
 
 /**
  * Source-kind-aware resolution for a lifted text/picture/equation block over an
- * expex example (Feature A1 — the unifying generalization of A0's graphics-only
- * path and R3's `resolveSubItemPeerBlock`). A0 proved the COMMIT (drop-direct
- * into an item / wrap into a fresh item); the user proved its affordance wrong —
- * the densely-tiled items leave ~0 inter-item gap, so A0's per-cursor horizontal
- * bars were "very hard to get to show up." A1 replaces that with ONE forgiving
- * left-edge VERTICAL bar: anywhere along the example's left side is a valid
- * hover, and the insertion point SNAPS to the nearest slot as the cursor moves
- * up/down.
+ * expex example. Feature A3 redesigns the affordance so ORIENTATION carries
+ * meaning (A1/A2 drew the new-item AND the into-item bars both as vertical
+ * left-edge bars — a short tick vs a tall bar — which the user found
+ * ambiguous):
  *
- * Fired only when the source kind ∈ {paragraph, graphicsBlock, displayMath} AND
- * the cursor sits inside an `exampleBlock`, it enumerates that block's slots —
- * for a MULTI example, an item-gap before/between/after each item (→ new
- * exampleItem) plus one into-content slot per item (→ that item's content); for
- * a SINGLE example (no items), one into-content slot for the block body (→ the
- * body, drop-direct). It returns the vertical-bar `Placement` for the slot whose
- * `pickY` is nearest the cursor Y. The placement keeps `kind: "between-blocks"`
- * (so the existing commit handles it) — only the rect is vertical.
+ *   • a HORIZONTAL full-width bar = a new sibling ITEM (wrap; push the others
+ *                                   down) — drawn at an item's top / bottom gap.
+ *   • a VERTICAL left-edge bar    = a new block WITHIN that item (drop-direct,
+ *                                   pushed to the item's top) — drawn down the
+ *                                   item's text-left, spanning its height.
  *
- * Returns null — so the caller falls through to `resolveAnchorableBlock` and
- * each kind's top-level drop is preserved byte-for-byte — for every other case:
- * a non-{three-kind} source, or one NOT inside an exampleBlock. (Feature A2: a
- * single `\ex` example now yields a body slot rather than 0, so the same bar
- * appears there too.)
+ * Hit model = vertical-position thirds (Notion-style). For the top-tier item the
+ * cursor's Y is within (above all → first item; below all → last item), let
+ * `frac = clamp((cursorY − item.top) / item.height, 0, 1)`:
+ *   • `frac < EXPEX_EDGE_BAND_FRAC`     → new-item ABOVE: a horizontal bar at the
+ *                                         item's top; insertPos = the item's own
+ *                                         pos (in the exampleItemList) → wrap.
+ *   • `frac > 1 − EXPEX_EDGE_BAND_FRAC` → new-item BELOW: a horizontal bar at the
+ *                                         item's bottom; insertPos = after the
+ *                                         item → wrap. (Adjacent items SHARE a
+ *                                         gap: new-below-I == new-above-(I+1).)
+ *   • else (the middle band)            → into-item: a vertical bar at the item's
+ *                                         text-left; insertPos = the item's
+ *                                         content START (pos + 1) → drop-direct,
+ *                                         the dropped block becomes the item's
+ *                                         new FIRST child.
  *
- * O(items) — the only scan (`collectExpexSlots`) is bounded to ONE exampleBlock's
- * top-tier items + their direct children. No doc walk — safe on every throttled
- * mousemove (the gesture-sanctity constraint).
+ * A SINGLE example (no items) has no "new item" concept (it is NOT converted to
+ * a multi `\pex`): it gets ONE vertical into-body bar down the body's text-left,
+ * full body height; insertPos = the block body's content START
+ * (`exampleBlockPos + 1`) → drop-direct, pushed to the top.
+ *
+ * Returns the finished `Placement` directly (kind `between-blocks`, so the
+ * existing wrap-vs-direct commit handles it — only the rect is reshaped). Gated
+ * on the source kind ∈ {paragraph, graphicsBlock, displayMath} AND the cursor
+ * being inside an exampleBlock; returns null for every other case — a
+ * non-{three-kind} source, or a cursor OUTSIDE any exampleBlock (above / below
+ * the example → the normal top-level between-blocks drop) — preserving those
+ * drags byte-for-byte.
+ *
+ * O(items) — the only scan (`collectExpexItems`) is bounded to ONE exampleBlock's
+ * top-tier items + one content child each. No doc walk — safe on every throttled
+ * mousemove (the gesture-sanctity constraint, AGENTS.md).
  */
 export function resolveBlockIntoExpex(
   editor: Editor,
@@ -357,175 +399,157 @@ export function resolveBlockIntoExpex(
   const exampleBlock = $pos.node(exampleBlockDepth);
   const blockDom = editor.view.nodeDOM(exampleBlockPos);
   if (!(blockDom instanceof HTMLElement)) return null;
-  const blockLeft = blockDom.getBoundingClientRect().left;
+  const blockRect = blockDom.getBoundingClientRect();
 
-  const slots = collectExpexSlots(editor, exampleBlockPos, exampleBlock);
-  if (slots.length === 0) return null; // no resolvable slot (DOM gone) → fall through
+  const { items, structuralCount } = collectExpexItems(
+    editor,
+    exampleBlockPos,
+    exampleBlock,
+  );
 
-  // Generous left-zone snap: the whole left band qualifies — pick the slot
-  // whose pickY is nearest the cursor Y (first slot wins ties, keeping the
-  // result stable as the cursor drifts).
-  let best = slots[0];
-  let bestDist = Math.abs(best.pickY - cursorY);
-  for (let i = 1; i < slots.length; i++) {
-    const dist = Math.abs(slots[i].pickY - cursorY);
-    if (dist < bestDist) {
-      bestDist = dist;
-      best = slots[i];
-    }
+  // SINGLE example (no items) — ONE vertical into-body bar down the body's
+  // text-left, full body height; insert at the body content START (push down).
+  if (structuralCount === 0) {
+    const { left } = contentLeftWidth(
+      editor,
+      exampleBlockPos,
+      exampleBlock,
+      blockRect.left,
+      blockRect.width,
+    );
+    const rect: ViewportRect = {
+      x: left,
+      y: blockRect.top,
+      width: EXPEX_BAR_WIDTH,
+      height: Math.max(blockRect.height, EXPEX_BAR_WIDTH * 2),
+    };
+    return {
+      kind: "between-blocks",
+      editor,
+      insertPos: exampleBlockPos + 1,
+      rect,
+    };
   }
-  return makeExpexLeftBarPlacement(editor, blockLeft, best);
+
+  // MULTI example whose item DOM is gone → fall through (preserve A1/A2's
+  // null-when-unresolvable behavior; the top-level drop still fires).
+  if (items.length === 0) return null;
+
+  // Thirds: pick the item the cursor's Y is within (above all → first; below
+  // all → last), compute its band, build the one bar.
+  let active = items[0];
+  for (let i = 1; i < items.length; i++) {
+    if (cursorY >= items[i].top) active = items[i];
+  }
+  const frac = Math.min(
+    1,
+    Math.max(0, (cursorY - active.top) / (active.height || 1)),
+  );
+
+  if (frac < EXPEX_EDGE_BAND_FRAC) {
+    return makeExpexNewItemPlacement(editor, active, "above");
+  }
+  if (frac > 1 - EXPEX_EDGE_BAND_FRAC) {
+    return makeExpexNewItemPlacement(editor, active, "below");
+  }
+  return makeExpexIntoItemPlacement(editor, active);
 }
 
 /**
- * Enumerate the insertion slots along an exampleBlock's left edge — for EVERY
- * expex shape, multi OR single (Feature A2 unifies them under one affordance).
+ * Gather the geometry of an exampleBlock's TOP-TIER exampleItems for the thirds
+ * hit model — bounded to ONE block (no doc walk; gesture sanctity, AGENTS.md).
+ * `nodesBetween` returns false at each exampleItem so nested item lists are
+ * skipped (a new-item wrap stays schema-valid at the top tier).
  *
- * MULTI (the block has exampleItems): bounded to its TOP-TIER items
- * (`nodesBetween` returns false at each so nested item lists are skipped —
- * keeping a new-item wrap schema-valid). Per item: a `new-item` slot at its top
- * edge (a gap → fresh sibling item) and one `into-content` slot spanning its
- * body (→ join the item). A trailing `new-item` slot sits below the last item.
- *
- * SINGLE (no exampleItem — a single `\ex` with direct content, or a gloss-only
- * example): one `into-content` slot for the BLOCK BODY (insertPos =
- * `leadingContentEnd` of the exampleBlock itself, before any gloss). A single
- * example has no "new item" concept, so just the one body bar — the dropped
- * block joins the body directly (schema-driven drop-direct at commit time,
- * see `blockIntoExpexDropAdapter`), keeping it one numbered example.
- *
- * Bounded to ONE exampleBlock (no doc walk) — it runs on every throttled
- * mousemove (gesture sanctity, AGENTS.md).
+ * Returns the per-item geometry (only for items whose DOM resolves) AND the
+ * STRUCTURAL item count (every exampleItem node, DOM or not) so the caller can
+ * tell a genuine SINGLE example (count 0 → one body bar) from a MULTI whose DOM
+ * is transiently gone (count > 0 but no geometry → fall through to null).
  */
-function collectExpexSlots(
+function collectExpexItems(
   editor: Editor,
   exampleBlockPos: number,
   exampleBlock: PMNode,
-): ExpexSlot[] {
-  const slots: ExpexSlot[] = [];
-  let lastItemBottom: number | null = null;
-  let lastItemEnd: number | null = null;
-  let itemCount = 0;
+): { items: ExpexItemGeom[]; structuralCount: number } {
+  const items: ExpexItemGeom[] = [];
+  let structuralCount = 0;
 
   editor.state.doc.nodesBetween(
     exampleBlockPos,
     exampleBlockPos + exampleBlock.nodeSize,
     (node, nodePos) => {
       if (node.type.name !== "exampleItem") return true; // descend to the items
-      itemCount++;
+      structuralCount++;
       const dom = editor.view.nodeDOM(nodePos);
-      if (!(dom instanceof HTMLElement)) return false;
-      const rect = dom.getBoundingClientRect();
-
-      // new-item slot — the gap BEFORE this item (a between-items / above-first
-      // boundary). insertPos at the item's own position sits in the
-      // exampleItemList between items → classifyParentAt → exampleBlock → wrap.
-      slots.push({
-        insertPos: nodePos,
-        pickY: rect.top,
-        barTop: rect.top - EXPEX_NEW_ITEM_BAR_HEIGHT / 2,
-        barHeight: EXPEX_NEW_ITEM_BAR_HEIGHT,
-        mode: "new-item",
-      });
-
-      // into-content slot — append after the item's leading content run; the
-      // bar spans the whole item so the affordance reads "lands in this item".
-      slots.push({
-        insertPos: leadingContentEnd(node, nodePos),
-        pickY: rect.top + rect.height / 2,
-        barTop: rect.top,
-        barHeight: rect.height,
-        mode: "into-content",
-      });
-
-      lastItemBottom = rect.bottom;
-      lastItemEnd = nodePos + node.nodeSize;
+      if (dom instanceof HTMLElement) {
+        const rect = dom.getBoundingClientRect();
+        const { left, width } = contentLeftWidth(
+          editor,
+          nodePos,
+          node,
+          rect.left,
+          rect.width,
+        );
+        items.push({
+          pos: nodePos,
+          nodeSize: node.nodeSize,
+          top: rect.top,
+          bottom: rect.bottom,
+          height: rect.height,
+          contentLeft: left,
+          contentWidth: width,
+        });
+      }
       return false; // top-tier only — don't descend into the item
     },
   );
 
-  // new-item slot — the gap BELOW the last item.
-  if (lastItemBottom !== null && lastItemEnd !== null) {
-    slots.push({
-      insertPos: lastItemEnd,
-      pickY: lastItemBottom,
-      barTop: lastItemBottom - EXPEX_NEW_ITEM_BAR_HEIGHT / 2,
-      barHeight: EXPEX_NEW_ITEM_BAR_HEIGHT,
-      mode: "new-item",
-    });
-  }
-
-  // SINGLE example (no items) — one into-content slot for the block body. The
-  // bar spans the whole block; the insert lands after the leading content run
-  // and before any gloss. (A1 enumerated only exampleItems, so a single example
-  // yielded 0 slots → no bar; this is the gap A2 closes.)
-  if (itemCount === 0) {
-    const blockDom = editor.view.nodeDOM(exampleBlockPos);
-    if (blockDom instanceof HTMLElement) {
-      const rect = blockDom.getBoundingClientRect();
-      slots.push({
-        insertPos: leadingContentEnd(exampleBlock, exampleBlockPos),
-        pickY: rect.top + rect.height / 2,
-        barTop: rect.top,
-        barHeight: rect.height,
-        mode: "into-content",
-      });
-    }
-  }
-  return slots;
+  return { items, structuralCount };
 }
 
 /**
- * Position just after a container's leading content run — the run of
- * paragraph / graphicsBlock / displayMath children before any nested
- * exampleItemList / exampleGloss. A block inserted here joins the container as
- * its last content sibling, keeping the schema's `(content)+ list? gloss?`
- * order intact.
- *
- * Generic over BOTH an `exampleItem` (the A1 multi-item case) and an
- * `exampleBlock` body (the A2 single-example case) — their leading content
- * runs share the same three kinds. For a gloss-only single example
- * (exampleBlock → [exampleGloss], no leading paragraph) the loop breaks
- * immediately, returning the position just inside the block, BEFORE the gloss,
- * so a drop lands above it (schema-valid; reads naturally).
+ * A HORIZONTAL new-item bar at an item boundary — spans the item's content
+ * width, `EXPEX_BAR_WIDTH` thick, centered on the gap line (the item's top for
+ * "above", its bottom for "below"). insertPos sits in the exampleItemList (the
+ * item's own pos / just after it) → the commit's wrap-vs-direct path WRAPS the
+ * dropped block in a fresh sibling exampleItem, pushing the others down. Keeps
+ * `kind:"between-blocks"` (the commit reads insertPos, not the rect); the
+ * wide-short rect renders horizontal via the Indicator's aspect test.
  */
-function leadingContentEnd(parent: PMNode, parentPos: number): number {
-  let pos = parentPos + 1; // just inside the container, before its first child
-  for (let i = 0; i < parent.childCount; i++) {
-    const child = parent.child(i);
-    const name = child.type.name;
-    if (
-      name === "paragraph" ||
-      name === "graphicsBlock" ||
-      name === "displayMath"
-    ) {
-      pos += child.nodeSize;
-    } else {
-      break; // first non-content child (exampleItemList / exampleGloss)
-    }
-  }
-  return pos;
-}
-
-/**
- * Build the vertical-left-bar `Placement` for a snapped expex slot. Keeps
- * `kind: "between-blocks"` (the commit reads `insertPos`, not the rect, so A0's
- * wrap/into-content machinery is reused unchanged) — only the rect is vertical:
- * a thin bar (`height > width`) at the exampleBlock's left edge. The x-offset
- * and bar heights (`EXPEX_BAR_WIDTH` / `EXPEX_NEW_ITEM_BAR_HEIGHT`) are tunable.
- */
-export function makeExpexLeftBarPlacement(
+function makeExpexNewItemPlacement(
   editor: Editor,
-  blockLeft: number,
-  slot: ExpexSlot,
+  item: ExpexItemGeom,
+  side: "above" | "below",
+): Placement {
+  const gapY = side === "above" ? item.top : item.bottom;
+  const rect: ViewportRect = {
+    x: item.contentLeft,
+    y: gapY - EXPEX_BAR_WIDTH / 2,
+    width: Math.max(item.contentWidth, EXPEX_BAR_WIDTH * 2),
+    height: EXPEX_BAR_WIDTH,
+  };
+  const insertPos = side === "above" ? item.pos : item.pos + item.nodeSize;
+  return { kind: "between-blocks", editor, insertPos, rect };
+}
+
+/**
+ * A VERTICAL into-item bar down an item's text-left, spanning its height,
+ * `EXPEX_BAR_WIDTH` thick. insertPos = the item's content START (`pos + 1`,
+ * before its first child) → the commit drops the block DIRECTLY into the item as
+ * its new FIRST child, pushing the item's existing content down. The tall-thin
+ * rect renders vertical via the Indicator's aspect test.
+ */
+function makeExpexIntoItemPlacement(
+  editor: Editor,
+  item: ExpexItemGeom,
 ): Placement {
   const rect: ViewportRect = {
-    x: blockLeft,
-    y: slot.barTop,
+    x: item.contentLeft,
+    y: item.top,
     width: EXPEX_BAR_WIDTH,
-    height: Math.max(slot.barHeight, EXPEX_BAR_WIDTH * 2),
+    height: Math.max(item.height, EXPEX_BAR_WIDTH * 2),
   };
-  return { kind: "between-blocks", editor, insertPos: slot.insertPos, rect };
+  return { kind: "between-blocks", editor, insertPos: item.pos + 1, rect };
 }
 
 // ─────────────────────────────────────────────────────────────────────
