@@ -25,6 +25,12 @@ const MIN_PERCENT = 10;
 const MAX_PERCENT = 100;
 const STEP_PERCENT = 10;
 
+// Gap (px) between a hugged block's right edge and the chrome row when the row
+// sits beside the image. MUST match `.figure-chrome-beside { left: calc(100% +
+// 8px) }` in globals.css — the fit test below subtracts this same gap, so the
+// row only goes beside when it provably clears the text-column right edge.
+const CHROME_BESIDE_GAP = 8;
+
 // Stable no-op refresh registrar for the read-only card-preview figure panels
 // (Issue-4): they reuse FigurePanel for faithful image resolution but never
 // expose the chrome refresh button, so they register nothing. Module-level so
@@ -311,6 +317,13 @@ function FigureFullView({ node, getPos, editor, extension }: NodeViewProps) {
 
   const wrapperRef = useRef<HTMLDivElement | null>(null);
 
+  // Chrome placement. When the control row fits in the space to the RIGHT of
+  // the hugged (fit-content) block within the text column, it sits BESIDE the
+  // image (`.figure-chrome-beside`) instead of overlaying its top-right corner.
+  // false → the absolute top-right overlay (the fallback for a wide image with
+  // no room). Computed by the ResizeObserver effect below.
+  const [chromeBeside, setChromeBeside] = useState(false);
+
   // FigurePanel children register their refresh() callbacks here so the
   // single chrome-row refresh button can re-rasterize all panels at once
   // (matters mostly for subfigure blocks). Each panel deregisters on
@@ -514,6 +527,60 @@ function FigureFullView({ node, getPos, editor, extension }: NodeViewProps) {
     );
   };
 
+  // Decide whether the hover chrome fits BESIDE the image (to its right) within
+  // the text column, and toggle `.figure-chrome-beside` accordingly. Per-figure
+  // and on-demand: observes only THIS block and its containing column, RAF-
+  // coalesced — it never walks the doc, so keystroke-sanctity is not implicated.
+  // Recomputes on mount, image load, and scale change (each resizes this block)
+  // and on column/editor resize (the parent), via one ResizeObserver on both.
+  // The chrome is laid out even while hover-hidden (opacity:0), so its width is
+  // measurable any time; being position:absolute, toggling the class never
+  // resizes the block or column, so there is no ResizeObserver feedback loop.
+  useEffect(() => {
+    const block = wrapperRef.current;
+    // The block's parent is the `.react-renderer` NodeView wrapper, a full-width
+    // block in the doc flow — so its content-right edge IS the text-column right
+    // (the same edge a sibling paragraph wraps at). That's our fit boundary.
+    const column = block?.parentElement ?? null;
+    if (!block || !column) return;
+
+    let raf = 0;
+    const recompute = () => {
+      raf = 0;
+      // Only a populated chrome can go beside; the empty-state row stays put.
+      const chrome = block.querySelector<HTMLElement>(
+        ".figure-chrome:not(.figure-chrome-empty)",
+      );
+      if (!chrome) {
+        setChromeBeside(false);
+        return;
+      }
+      const colStyle = getComputedStyle(column);
+      const columnRight =
+        column.getBoundingClientRect().right -
+        (parseFloat(colStyle.paddingRight) || 0) -
+        (parseFloat(colStyle.borderRightWidth) || 0);
+      const blockRight = block.getBoundingClientRect().right;
+      const chromeWidth = chrome.getBoundingClientRect().width;
+      const available = columnRight - blockRight - CHROME_BESIDE_GAP;
+      setChromeBeside(chromeWidth > 0 && available >= chromeWidth);
+    };
+    const schedule = () => {
+      if (raf) return;
+      raf = requestAnimationFrame(recompute);
+    };
+
+    const ro = new ResizeObserver(schedule);
+    ro.observe(block);
+    ro.observe(column);
+    schedule(); // initial measure (covers mount)
+
+    return () => {
+      ro.disconnect();
+      if (raf) cancelAnimationFrame(raf);
+    };
+  }, []);
+
   // ---- render ----
 
   if (isEmpty) {
@@ -564,16 +631,36 @@ function FigureFullView({ node, getPos, editor, extension }: NodeViewProps) {
     );
   }
 
+  // A single picture/figure (the common case) hugs its content instead of
+  // sitting in a text-column-wide box. The block shrinks to fit-content
+  // (globals.css `.figure-block-hug`) and carries the scale itself as a
+  // max-width — a percentage of the text column, its containing block — so
+  // the image keeps the EXACT rendered size it had before. The per-panel
+  // widthPercent is stripped (below) so the panel fills the block; otherwise
+  // its `% of block` would re-shrink against the now-narrow block and the
+  // empty box would reappear. Subfigures (multi-source) keep the column-width
+  // layout — their per-panel widths can't collapse to one box-free measure
+  // without column-relative units, so they're left unchanged.
+  const hugSource = sources.length === 1 ? sources[0] : null;
+  const hugStyle =
+    hugSource?.widthPercent != null
+      ? ({ maxWidth: `${hugSource.widthPercent}%` } as React.CSSProperties)
+      : undefined;
+  const visualSources = hugSource
+    ? sources.map((s) => ({ ...s, widthPercent: null }))
+    : sources;
+
   return (
     <NodeViewWrapper
       ref={wrapperRef as React.Ref<HTMLDivElement>}
-      className={`figure-block ${isFigure ? "figure-block-wrapped" : "figure-block-bare"}`}
+      className={`figure-block ${hugSource ? "figure-block-hug " : ""}${isFigure ? "figure-block-wrapped" : "figure-block-bare"}`}
       onClick={handleBodyClick}
       data-label={label || undefined}
+      style={hugStyle}
     >
       <FigureVisual
         isFigure={isFigure}
-        sources={sources}
+        sources={visualSources}
         docId={docId}
         registerRefresh={registerRefresh}
         rowContentEditable={false}
@@ -591,7 +678,7 @@ function FigureFullView({ node, getPos, editor, extension }: NodeViewProps) {
             onScale={applyScale}
             onPickFile={handlePickFile}
             onRefresh={handleRefreshAll}
-            onDelete={handleDelete}
+            beside={chromeBeside}
           />
         }
         lozenge={
@@ -736,7 +823,11 @@ interface FigureChromeProps {
   onScale: (percent: number) => void;
   onPickFile: (e: React.MouseEvent) => void;
   onRefresh: (e: React.MouseEvent) => void;
-  onDelete: (e: React.MouseEvent) => void;
+  // When true the row sits beside the image's right edge (`.figure-chrome-beside`)
+  // instead of overlaying its top-right corner; decided by FigureFullView's fit
+  // measurement. Kept as a prop (not an imperative class toggle) so React owns
+  // the className and a scale-driven re-render can't clobber the placement.
+  beside?: boolean;
 }
 
 function FigureChrome({
@@ -745,7 +836,7 @@ function FigureChrome({
   onScale,
   onPickFile,
   onRefresh,
-  onDelete,
+  beside,
 }: FigureChromeProps) {
   const [draft, setDraft] = useState<string>(String(currentPercent));
   useEffect(() => {
@@ -779,7 +870,10 @@ function FigureChrome({
   const plusDisabled = !canScale || currentPercent >= MAX_PERCENT;
 
   return (
-    <div className="figure-chrome" contentEditable={false}>
+    <div
+      className={`figure-chrome${beside ? " figure-chrome-beside" : ""}`}
+      contentEditable={false}
+    >
       <ChromeIconButton title="Pick image file" onClick={onPickFile}>
         <FolderIcon />
       </ChromeIconButton>
@@ -837,9 +931,6 @@ function FigureChrome({
       </div>
       <ChromeIconButton title="Re-render from source" onClick={onRefresh}>
         <RefreshIcon />
-      </ChromeIconButton>
-      <ChromeIconButton title="Remove figure" onClick={onDelete} kind="danger">
-        <CloseIcon />
       </ChromeIconButton>
     </div>
   );

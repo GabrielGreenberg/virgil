@@ -353,6 +353,47 @@ the per-kind popout buttons (`.par-popout-btn`, `.expex-popout-btn`,
 etc.) were retired in the Text-Object refactor. Don't reintroduce a
 parallel popout affordance.
 
+## Block images (figures & pictures)
+
+`graphicsBlock` (a bare `\includegraphics`) and `figureBlock` (a captioned
+`figure` env) share one NodeView and one `.figure-block` CSS family
+(`isFigure` branches them). Four rules:
+
+- **Hug the content.** A populated single image takes exactly the room it
+  needs — the picture, plus the caption/lozenge for a figure — not a
+  column-wide frame of empty space. `.figure-block-hug` shrinks the block
+  to `width: fit-content`; the scale rides on the block as an inline
+  `max-width: <widthPercent>%` of the text column while the panel fills it,
+  so the image keeps its exact rendered size and the box collapses onto it.
+  Subfigures (multi-source) and the empty-state CTA keep the full-width
+  layout.
+- **Pictures left, figures centered.** Justification splits by KIND on the
+  hug class. A bare picture (`.figure-block-bare`) left-justifies at the
+  text-column edge (`margin-inline: 0`, `text-align: left`) so an
+  image-sized block shares a paragraph's left geometry — its left edge is
+  the paragraph text-left, and the block affordances (grab handle, drop
+  bar, expex-drop bar) line up with prose for free. A captioned figure
+  (`.figure-block-wrapped`) stays centered (`margin-inline: auto`): a figure
+  announces itself with a caption, so it reads as a centered block. ("If I
+  want a picture centered, I put it in a figure.")
+- **Chrome beside the image, overlay as fallback.** The hover chrome
+  normally overlays the image's top-right corner. When the row fits in the
+  space to the RIGHT of the (fit-content) block within the text column,
+  FigureBlockNodeView measures it — a per-figure `ResizeObserver`, RAF-
+  coalesced, recomputed on mount / image-load / scale / column-resize, no
+  doc walk — and adds `.figure-chrome-beside`, so the controls sit just
+  outside the image instead of on top of it. A wide image with no room to
+  its right keeps the overlay. (A left picture has the whole column − image
+  to its right; a centered figure has the right half-gap.) Not CSS
+  container queries — they force `contain: layout` on the React-NodeView
+  wrapper and break inter-block rhythm.
+- **Delete lives in the grab-handle menu, not on the image.** The
+  hover chrome carries only non-destructive controls — pick / scale /
+  refresh — and no per-figure X, for the same reason the per-kind popout
+  buttons were retired (above): the grab handle owns destructive and
+  move operations. (The empty-state placeholder keeps its own X — a
+  half-made block's quick bail before it has any content to grab.)
+
 ## Marginalia
 
 Two gutters (left wider for the heading-fold chevron, right narrower).
