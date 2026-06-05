@@ -46,8 +46,8 @@ this skill.
    - `explanation`: one or two sentences on what changed and why.
    - `user_text`: empty (the user fills this when refining).
 
-3. **Build the RevisionSuggestionCard** (see
-   `src/lib/types.ts:314` analog for revisions):
+3. **Build the RevisionSuggestionCard** (`RevisionSuggestionCard`,
+   `src/lib/types.ts`):
    ```json
    { "kind": "suggestion",
      "id": "<new-uuid>",
@@ -60,18 +60,43 @@ this skill.
      "instructions": "<the request's `text` field>",
      "status": "pending",
      "selectedText": "<from request, if Mode B>",
-     "links": [{ ...anchor matching the request's paragraphIds... }],
+     "links": [{
+        "id": "<new-link-uuid>",
+        "kind": "anchor",
+        "anchor": {
+           "type": "textObject",
+           "targetKind": "paragraph",
+           "textObjectIds": ["<the anchored paragraph uuid>"],
+           "margin": { "side": "right" }
+        },
+        "target": { "type": "card", "ref": { "kind": "suggestion", "id": "<new-uuid>" } },
+        "createdAt": "<ISO now>"
+     }],
      "aiOriginRequestId": "<requestId, if not virtual:-prefixed>"
    }
    ```
-   `aiOriginRequestId` is forward-looking (see editor/AGENTS.md
-   "Future work") — emit it on real `ai-requests.json` entries so the
-   field is in place when the editor's Accept/Reject/Redo UI lands.
-   Omit it when the requestId is `virtual:`-prefixed.
+   The anchor is the **canonical on-disk `LinkAnchor`** shape —
+   `type: "textObject"` + `textObjectIds` (SSOT
+   `src/links/_shared/types.ts`, [anchoring.md](../../docs/workspace/anchoring.md))
+   — *not* the retired `type: "anchor"`/`paragraphIds` form. Set
+   `textObjectIds` to the request's anchored paragraph uuid
+   (`paragraphIds[0]`), `target.ref.id` to this card's own id (self-target,
+   how the editor matches the card to its anchor), and `margin.side` to
+   `right`.
 
-4. **Apply.**
+   `aiOriginRequestId` is **load-bearing**: `/editor/accept-suggestion` reads
+   it to complete the originating Task when the user accepts. Emit it for a
+   real `ai-requests.json` id; omit it for a `virtual:`-prefixed one (there's
+   no Task to point back at).
+
+4. **Land the proposal** via the contract's **L3 propose** path. A suggestion
+   is a *proposal*, not an applied edit — `complete-task --propose` lands the
+   card and leaves the Task **awaiting review** (`status: in-progress`), the
+   `.tex` untouched until the user accepts. (Legacy default-apply marked the
+   Task `complete` at once and gave the proposal no L3 lifecycle; the propose
+   path is what makes it consumable by `/editor/accept-suggestion`.)
    ```bash
-   python3 editor/scripts/apply_response.py <docPath> '<op-json>'
+   python3 editor/scripts/apply_response.py <docPath> complete-task --propose '<op-json>'
    ```
    ```json
    { "requestId": "<requestId>",
@@ -81,16 +106,25 @@ this skill.
      "clearSourceFlag": false
    }
    ```
+   The op shape is identical to a direct create — only the subcommand differs.
+   The contract appends the card, points the Task's `resultId` at it, and
+   leaves the Task `in-progress`; it splices **nothing** into the `.tex`.
 
 5. **Reply.**
    ```
-   Done: drafted suggestion <newId> for request <requestId>. Output: revisions.json (+ ai-requests.json, notifications, version).
+   Done: drafted suggestion <newId> for request <requestId> — awaiting review (accept/reject in the editor). Output: revisions.json (+ ai-requests.json status=in-progress, notifications, version).
    ```
 
 ## Safety
 
-- `original_text` MUST match the .tex byte-for-byte — accept-time
-  replacement uses it as the search key.
+- `original_text` MUST match the .tex byte-for-byte — it is the **stale-guard
+  search key** at accept time. `/editor/accept-suggestion` splices
+  `original_text` → `suggested_text` only if `original_text` still appears
+  verbatim in the anchored paragraph; a drifted span is refused, never blindly
+  overwritten. Copy it from the live `.tex` (excluding the `%!v:` marker).
 - Don't propose `suggested_text` that's just a paraphrase of the
   request — the user wrote the request to ask for change, not to read
   it back.
+- This skill **never** edits the `.tex`. The proposal lands awaiting review;
+  the document changes only when the user accepts (`/editor/accept-suggestion`)
+  — or is dismissed by `/editor/reject-suggestion`.

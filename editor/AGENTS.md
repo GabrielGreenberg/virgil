@@ -34,18 +34,21 @@ The skill set turns those signals into responses:
 - `/editor/answer-note-request`, `/editor/answer-report-request`,
   `/editor/answer-todo-request` — card-create responders; their
   **terminal-complete** branches route the writeback through
-  `create_card.py` → `apply_response.py` too (chip 11), so no skill hand-builds
-  card JSON for these. Their propose-flow branches (a suggestion / doc-edit)
-  stay on the legacy default-apply for now (chip 13).
+  `create_card.py` → `apply_response.py` (chip 11), and their **propose-flow**
+  branches (the answer-note path-(a) / answer-todo text-edit → suggestion) now
+  draft via `apply_response.py complete-task --propose` (chip 14). No skill
+  hand-builds card JSON for these any more.
 - `/editor/find-citation` — adds a `.bib` entry + a citation card as **one
   atomic op** through the contract (chip 12): the card rides `panel`/`card` and
   the `references.bib` append rides `bibEdit`, so a crash can't orphan one
   against the other.
 - `/editor/answer-cutter-comment`, `/editor/answer-revision-comment`,
   `/editor/draft-suggestion` — responder-kind emitters (comment / the
-  suggestion family); still legacy default-apply, migrate onto the contract in
-  chip 14 (unblocked now that chip 13 gives the suggestion family an
-  accept→splice path).
+  suggestion family). On the contract as of **chip 14**: a suggestion proposal
+  drafts via `apply_response.py complete-task --propose` (the card lands, the
+  Task is left awaiting review, the `.tex` untouched) — directly consumable by
+  chip 13's `accept`; `answer-revision-comment`'s path-(b) sibling comment is a
+  terminal `complete-task` create. No more legacy default-apply.
 - `/editor/accept-suggestion`, `/editor/reject-suggestion` — the **L3
   consummation** (chip 13). A drafted suggestion proposal (revision- or
   cutter-) is reviewed, then either **accepted** — spliced into the `.tex`
@@ -53,8 +56,12 @@ The skill set turns those signals into responses:
   stale-guarded) + status→accepted + Task done — or **rejected** (status→rejected
   + Task done, `.tex` untouched). Both resolve via `card_by_id.py` and route an
   `accept` / `reject` op through `apply_response.py` (one atomic, pen-protected
-  commit). This closes the loop: **all three safety levels now ride the contract
-  — L1 silent, L2 auto+comment, L3 propose→accept→splice.**
+  commit). This closes the L3 *apply* loop: **all three safety levels ride the
+  contract — L1 silent, L2 auto+comment, L3 propose→accept→splice.** With
+  **chip 14** the L3 *draft* side joins it (the propose responders above), so
+  **every editor skill now writes through `apply_response.py` — the legacy
+  default-apply path is fully retired and the legacy/v1 split is dissolved
+  (Phase 4 complete).**
 - `/editor/answer-bib-review` — verifies/fills bibliography fields
   (`bibEdit` set-fields/replace), drafts annotations (`annotationEdit`), or
   (via `--library-sync`) swaps a single entry in from the Virgil Library
@@ -295,33 +302,39 @@ skill — call `get_para_context.py`.
   (chip 11), so a result card points back at the Task that spawned it. The editor
   doesn't yet *read* the field to surface Accept / Reject / Redo — that UI wiring
   remains.
-- **Finish migrating the card-create writeback.** The terminal-complete branches
-  of the card-create responders (`answer-note-request` / `answer-report-request`
-  / `answer-todo-request`) now route through `create_card.py` →
-  `apply_response.py` (chip 11), alongside `draft-footnote` / `create-card` — no
-  skill hand-builds card JSON for them. The **`.bib` / preamble** skills
-  (`find-citation`, `answer-bib-review`, `style-merge`) are now on the contract
-  too (chip 12 — the `bibEdit` / `settingsEdit` / `annotationEdit` capabilities
-  and `texEdit` `region-replace`). Chip 13 closed the L3 loop on the *apply* side:
-  `/editor/accept-suggestion` + `/editor/reject-suggestion` consummate a drafted
-  proposal through the contract (the generic `replace-span` texEdit + the
-  `accept`/`reject` ops). What remains: the **propose-flow** branches that still
-  *draft* via legacy default-apply (`answer-note-request` path (a),
-  `answer-todo-request`'s doc-edit branch, and `draft-suggestion` /
-  `answer-cutter-comment` / `answer-revision-comment`) — migrate them onto the
-  contract's `complete-task --propose` in **chip 14** (now unblocked, since the
-  drafted proposals have an accept→splice path); and **`sync-bib-to-library`**, whose cross-library
-  `master.bib` orchestration + citekey-rename across the `.tex` + `citations.json`
-  is a third write shape — its paper-side writes should route through the contract
-  in a follow-up (the `rename_citekey.py` step still writes `document.tex` +
-  `citations.json` directly).
-- **Migrate sidecar hand-edits onto the `update` op.** The `apply_response.py`
-  `update` op exists (chip 9 — alongside `archive` / `restore` / `move` / `link`,
-  surfaced as `/editor/edit-card` + the four sibling card-ops). The remaining
-  follow-up is the responders that still hand-edit a sidecar to *mutate* an
-  existing card — notably `/editor/answer-revision-comment` (appends a turn) and
-  `answer-todo-request`'s `done: true` flip — calling `/editor/edit-card` (the
-  `update` op) so every mutation stays centralized.
+- **The skill-writeback migration is complete (Phase 4 done).** Every editor
+  skill now writes through `apply_response.py` — the legacy default-apply path
+  is retired and the legacy/v1 split is dissolved. The path there, chip by chip:
+  the card-create terminal branches via `create_card.py` → `apply_response.py`
+  (chip 11, alongside `draft-footnote` / `create-card`); the **`.bib` / preamble**
+  skills `find-citation` / `answer-bib-review` / `style-merge` via the `bibEdit`
+  / `settingsEdit` / `annotationEdit` capabilities + `texEdit` `region-replace`
+  (chip 12); the L3 *apply* side — `/editor/accept-suggestion` +
+  `/editor/reject-suggestion` consummating a drafted proposal via the generic
+  `replace-span` texEdit + the `accept`/`reject` ops (chip 13); and finally the
+  L3 *draft* side — the **propose responders** (`draft-suggestion`,
+  `answer-cutter-comment`, `answer-revision-comment` path (a), and
+  `answer-note-request` / `answer-todo-request`'s doc-edit branch) drafting via
+  `complete-task --propose` so a proposal lands *awaiting review*, consumable by
+  chip 13's `accept` (chip 14; `answer-revision-comment`'s path-(b) sibling
+  comment lands as a terminal `complete-task` create). Chip 14 also fixed the
+  responder anchor-shape drift at its root — `_common.card_paragraph_ids` now
+  reads the canonical `textObject`/`textObjectIds` anchor shape (it had read the
+  retired `anchor`/`paragraphIds` shape, returning `[]` for every real card),
+  and the skill markdown documents copying the source card's canonical anchor
+  verbatim rather than hand-building the retired form.
+- **`sync-bib-to-library`'s paper-side writes** are the one remaining
+  non-contract write shape: its cross-library `master.bib` orchestration +
+  citekey-rename across the `.tex` + `citations.json` (the `rename_citekey.py`
+  step still writes `document.tex` + `citations.json` directly). Route these
+  through the contract in a follow-up chip.
+- **Migrate the last sidecar hand-edit onto the `update` op.** The
+  `apply_response.py` `update` op exists (chip 9 — alongside `archive` /
+  `restore` / `move` / `link`, surfaced as `/editor/edit-card` + the four sibling
+  card-ops). The one remaining responder hand-edit is `answer-todo-request`'s
+  `done: true` flip on the source todo (the contract has no `flipDone` op yet) —
+  route it through `/editor/edit-card` (the `update` op) so every card mutation
+  stays centralized.
 
 ## Verification path
 

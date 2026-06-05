@@ -254,15 +254,29 @@ def write_json(path: Path, data: Any) -> None:
 
 
 def card_paragraph_ids(card: dict) -> list[str]:
-    """Pull paragraphIds from a card's links array. Mirrors
-    `getLinkedParagraphIds()` in src/links/links.ts."""
+    """Pull the TextObject UUID(s) a card's anchor links cover. Mirrors
+    `getLinkedTextObjectIds()` in src/links/links.ts.
+
+    The canonical on-disk anchor shape (SSOT: src/links/_shared/types.ts
+    `LinkAnchor`, docs/workspace/anchoring.md) is
+    `{ type: "textObject", textObjectIds: [...] }` — a card's paragraph UUIDs
+    live in `textObjectIds` on a `type == "textObject"` anchor (Mode A *and*
+    Mode B; for Mode B `textObjectIds` still names the containing block(s)).
+
+    A legacy `{ type: "anchor", paragraphIds: [...] }` shape is *tolerated* — a
+    handful of old sidecars / pre-v1 skill-doc examples used it — so both
+    round-trip, matching `apply_response._suggestion_anchor_uuid`'s tolerance.
+    (chip 14: this read ONLY the legacy shape, so it returned `[]` for every
+    real card on disk, silently breaking cards_for_paragraph.py and the virtual
+    request `paragraphIds` in list_requests.py.)"""
     out: list[str] = []
     for link in card.get("links", []) or []:
         anchor = link.get("anchor") or {}
-        if anchor.get("type") == "anchor":
-            for pid in anchor.get("paragraphIds", []) or []:
-                if pid not in out:
-                    out.append(pid)
+        if anchor.get("type") not in ("textObject", "anchor"):
+            continue
+        for pid in anchor.get("textObjectIds") or anchor.get("paragraphIds") or []:
+            if pid not in out:
+                out.append(pid)
     return out
 
 

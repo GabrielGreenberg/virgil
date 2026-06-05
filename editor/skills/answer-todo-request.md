@@ -69,17 +69,24 @@ matters" (write a note). Read the todo and dispatch.
      returned JSON `status`** to finalize (step 4): `complete` is terminal;
      `in-progress` means the answer is a proposal, *not done yet*.
 
-   <!-- TODO(chip-13): propose branch migrates with L3 accept→splice -->
-   - **Text edit → suggestion card** *(stays on legacy)*. Build the
+   - **Text edit → suggestion card (L3 propose).** Build the
      `RevisionSuggestionCard` (`kind`, `id`, `createdAt`, `author: "ai"`,
-     `original_text` — from the anchored paragraph, **excluding** its trailing
-     `%!v:<uuid>` marker so the accept-time replacement keeps it —
+     `original_text` — verbatim from the anchored paragraph, **excluding** its
+     trailing `%!v:<uuid>` marker (it is the accept-time stale-guard key) —
      `suggested_text`, `explanation`, `user_text: ""`,
-     `instructions: "<request.text>"`, `status: "pending"`, `links[]`, plus
+     `instructions: "<request.text>"`, `status: "pending"`, the canonical
+     `links[]` anchor (`type: "textObject"` + `textObjectIds`), plus
      `aiOriginRequestId: <requestId>` when not `virtual:`-prefixed; see
-     `/editor/draft-suggestion`), then apply it via the legacy
-     `apply_response.py <docPath> '<op-json>'` with `clearSourceFlag: true`.
-     This propose-flow branch migrates onto the contract in a later chip.
+     [`/editor/draft-suggestion`](draft-suggestion.md)), then land it via the
+     contract's **propose** path:
+     ```bash
+     python3 editor/scripts/apply_response.py <docPath> complete-task --propose '<op-json>'
+     # op: { requestId, panel:"revisions", card:{…}, summary, clearSourceFlag:true }
+     ```
+     The card lands and the todo's Task is left **awaiting review** (`status:
+     in-progress`), the `.tex` untouched until the user accepts via
+     `/editor/accept-suggestion`. This is the L3 propose path, *not* legacy
+     default-apply.
 
    - **Footnote / citation / quotation → follow-up** and **action you can't
      take → complete-with-note**: unchanged (step 2) — file the follow-up
@@ -102,9 +109,9 @@ matters" (write a note). Read the todo and dispatch.
      it when the user accepts the suggestion.
 
 5. **Reply.** Use the path-specific template:
-   - Suggestion card path:
+   - Suggestion card path (awaiting review):
      ```
-     Done: drafted suggestion <newId> for todo <cardId>, request <requestId>. Output: revisions.json (+ ai-requests.json, todos.json aiRequest cleared, notifications, version).
+     Done: drafted suggestion <newId> for todo <cardId>, request <requestId> — awaiting review (accept/reject in the editor). Output: revisions.json (+ ai-requests.json status=in-progress, todos.json aiRequest cleared, notifications, version).
      ```
    - Sibling note path (`status: complete`):
      ```
@@ -131,5 +138,6 @@ matters" (write a note). Read the todo and dispatch.
   `note` answer a `todo` Task.
 - Don't fabricate completed todos. If the todo's intent is unclear,
   mark complete with a note rather than guessing.
-- Suggestion cards default to `status: "pending"` — the user always
-  reviews before the suggestion changes the .tex.
+- Suggestion cards land via the contract's `complete-task --propose` path with
+  `status: "pending"`, the Task left awaiting review — the user always reviews,
+  and the `.tex` changes only when they accept (`/editor/accept-suggestion`).

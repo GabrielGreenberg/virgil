@@ -111,17 +111,38 @@ two paths:
    replaces the old "hand-build the note JSON, then call `apply_response.py`"
    dance — one `create_card.py` call now owns the build + apply.
 
-   <!-- TODO(chip-13): propose branch migrates with L3 accept→splice -->
-   **Path (a) — doc-edit → suggestion** stays on the legacy path for now: emit a
-   **suggestion card** in `revisions.json` via
-   `apply_response.py <docPath> '<op-json>'` (see `/editor/draft-suggestion` for
-   the card shape). This propose-flow branch migrates onto the contract in a
-   later chip alongside the L3 accept→splice flow; leave it on legacy.
+   **Path (a) — doc-edit → suggestion (L3 propose).** Emit a **suggestion card**
+   in `revisions.json` and land it via the contract's propose path. See
+   [`/editor/draft-suggestion`](draft-suggestion.md) for the full card shape:
+   `author: "ai"`, `status: "pending"`, `original_text` verbatim from the
+   anchored paragraph (the accept-time stale-guard key — exclude the `%!v:`
+   marker), `suggested_text`, the canonical `links[]` anchor
+   (`type: "textObject"` + `textObjectIds`), and `aiOriginRequestId:
+   <requestId>` when the id isn't `virtual:`-prefixed.
+   ```bash
+   python3 editor/scripts/apply_response.py <docPath> complete-task --propose '<op-json>'
+   ```
+   ```json
+   { "requestId": "<requestId>", "panel": "revisions",
+     "card": { ...the suggestion... },
+     "summary": "Drafted a suggestion: <first 60 chars>", "clearSourceFlag": true }
+   ```
+   The card lands and the Task is left **awaiting review** (`status:
+   in-progress`), the `.tex` untouched until the user accepts via
+   `/editor/accept-suggestion`. Leave the source note intact (the user's
+   prompt); `clearSourceFlag: true` clears the note's `aiRequest` flag when the
+   request was bridged from one. This is the L3 propose path — *not* legacy
+   default-apply; it never edits the `.tex`.
 
-5. **Reply.** One line:
-   ```
-   Done: drafted note <newId> for request <requestId>. Output: notes.json (+ ai-requests.json status/result, notifications, version).
-   ```
+5. **Reply.** One line, per path:
+   - Path (b)/(c) — note created:
+     ```
+     Done: drafted note <newId> for request <requestId>. Output: notes.json (+ ai-requests.json status/result, notifications, version).
+     ```
+   - Path (a) — suggestion proposal (awaiting review):
+     ```
+     Done: drafted suggestion <newId> for request <requestId> — awaiting review (accept/reject in the editor). Output: revisions.json (+ ai-requests.json status=in-progress, notifications, version).
+     ```
 
 ## Idempotency
 

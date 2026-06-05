@@ -36,7 +36,8 @@ the user can accept (which queues the textual replacement).
    that's already the target span. Mode A: pick a coherent subspan
    from the paragraph to address the comment.
 
-3. **Build the CutterSuggestionCard** (see `src/lib/types.ts:345`):
+3. **Build the CutterSuggestionCard** (`CutterSuggestionCard`,
+   `src/lib/types.ts`):
    ```json
    { "kind": "suggestion",
      "id": "<new-uuid>",
@@ -52,11 +53,7 @@ the user can accept (which queues the textual replacement).
      "links": [{
         "id": "<new-link-uuid>",
         "kind": "anchor",
-        "anchor": {
-           "type": "anchor",
-           "paragraphIds": ["...copy from source comment's anchor..."],
-           "margin": {"side": "...copy from source comment..."}
-        },
+        "anchor": { ...COPIED VERBATIM from the source comment's first-link anchor... },
         "target": {
            "type": "card",
            "ref": {"kind": "suggestion", "id": "<new-uuid>"}
@@ -66,25 +63,35 @@ the user can accept (which queues the textual replacement).
      "aiOriginRequestId": "<requestId, if not virtual:-prefixed>"
    }
    ```
-   `aiOriginRequestId` is forward-looking — the type doesn't yet
-   declare it (see editor/AGENTS.md "Future work"), but emit it so
-   the field is in place when the editor's Accept/Reject/Redo UI
-   lands.
+   For the link anchor: **copy the source comment's first-link
+   `anchor` object verbatim**. It is already in the canonical on-disk
+   `LinkAnchor` shape — `type: "textObject"` + `textObjectIds` +
+   `margin` (plus `textRange` when the comment is Mode B; SSOT
+   `src/links/_shared/types.ts`,
+   [anchoring.md](../../docs/workspace/anchoring.md)). Copying carries the
+   mode, the paragraph id(s), and the margin in one move; do **not**
+   hand-rebuild it into the retired `type: "anchor"`/`paragraphIds` form.
+   Then generate a fresh link `id`, set `target.ref.kind` to
+   `"suggestion"`, and set `target.ref.id` to the new card's own id
+   (self-target — how the editor matches the card to its anchor at
+   render time).
 
-   For the link: copy `anchor.paragraphIds` and `anchor.margin` from
-   the source comment's first link, generate a fresh link id, set
-   `target.ref.kind` to `"suggestion"`, and set `target.ref.id` to
-   the new card's own id (self-target — this is how the editor
-   matches the card to its anchor at render time).
+   `aiOriginRequestId` is **load-bearing**: `/editor/accept-suggestion`
+   reads it to complete the originating Task on accept. Emit it for a real
+   `ai-requests.json` id; omit it for a `virtual:`-prefixed one.
 
    `instructions` carries the source comment's `text` (the prompt
    that generated this AI draft) — gives the user a Redo-style replay
-   handle. The type comment in `src/lib/types.ts:363` makes this its
-   intended use.
+   handle.
 
-4. **Apply.**
+4. **Land the proposal** via the contract's **L3 propose** path. A cut
+   suggestion is a *proposal* — `complete-task --propose` lands the card and
+   leaves the Task **awaiting review** (`status: in-progress`), the `.tex`
+   untouched until the user accepts via `/editor/accept-suggestion`. (Legacy
+   default-apply completed the Task at once and gave the proposal no L3
+   lifecycle; the propose path is what makes it accept-consumable.)
    ```bash
-   python3 editor/scripts/apply_response.py <docPath> '<op-json>'
+   python3 editor/scripts/apply_response.py <docPath> complete-task --propose '<op-json>'
    ```
    ```json
    { "requestId": "<requestId>",
@@ -94,16 +101,22 @@ the user can accept (which queues the textual replacement).
      "clearSourceFlag": true
    }
    ```
+   `clearSourceFlag: true` flips the source comment's `aiRequest` to `false`;
+   the textual replacement rides `/editor/accept-suggestion`, not this draft.
 
 5. **Reply.**
    ```
-   Done: drafted cutter suggestion <newId> for request <requestId>. Output: cutter.json (+ ai-requests.json, notifications, version).
+   Done: drafted cutter suggestion <newId> for request <requestId> — awaiting review (accept/reject in the editor). Output: cutter.json (+ ai-requests.json status=in-progress, notifications, version).
    ```
 
 ## Safety
 
-- `original_text` must be **verbatim** from the .tex — the editor
-  uses it for accept-time matching. Don't paraphrase.
+- `original_text` must be **verbatim** from the .tex — it is the
+  **stale-guard search key** at accept time (`/editor/accept-suggestion`
+  splices `original_text` → `suggested_text` only if it still matches the
+  anchored paragraph; a drifted span is refused, never blindly applied). Don't
+  paraphrase.
 - Empty `suggested_text` means "cut entirely" — fine if the comment
-  asks for a cut, otherwise propose a replacement.
-- Never edit the source comment in place.
+  asks for a cut, otherwise propose a replacement (accept deletes the span).
+- Never edit the source comment in place, and never edit the `.tex` here — the
+  document changes only when the user accepts the proposal.

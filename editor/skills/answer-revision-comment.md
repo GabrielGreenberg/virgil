@@ -62,7 +62,7 @@ source comment in place.
 4. **Build the result card.**
 
    For path (b) — sibling RevisionCommentCard
-   (see `src/lib/types.ts:76`):
+   (`RevisionCommentCard`, `src/lib/types.ts`):
    ```json
    { "kind": "comment",
      "id": "<new-uuid>",
@@ -79,11 +79,7 @@ source comment in place.
      "links": [{
         "id": "<new-link-uuid>",
         "kind": "anchor",
-        "anchor": {
-           "type": "anchor",
-           "paragraphIds": ["...copy from source comment's anchor..."],
-           "margin": {"side": "...copy from source comment..."}
-        },
+        "anchor": { ...COPIED VERBATIM from the source comment's first-link anchor... },
         "target": {
            "type": "card",
            "ref": {"kind": "comment", "id": "<new-uuid>"}
@@ -92,24 +88,49 @@ source comment in place.
      }]
    }
    ```
+   **The link anchor (both paths):** copy the source comment's first-link
+   `anchor` object **verbatim** — it is already in the canonical on-disk
+   `LinkAnchor` shape (`type: "textObject"` + `textObjectIds` + `margin`,
+   plus `textRange` if the comment is Mode B; SSOT
+   `src/links/_shared/types.ts`,
+   [anchoring.md](../../docs/workspace/anchoring.md)). Copying preserves the
+   mode, paragraph id(s), and margin in one move; do **not** hand-rebuild it
+   into the retired `type: "anchor"`/`paragraphIds` form. Then mint a fresh
+   link `id`, and set `target.ref.id` to the new card's own id (self-target).
 
    For path (a) — RevisionSuggestionCard: see `/editor/draft-suggestion`
    for the full schema. Required: `kind: "suggestion"`, `id`,
    `createdAt`, `author: "ai"`, `original_text` (verbatim from .tex,
-   excluding the `%!v:<uuid>` marker), `suggested_text`,
-   `explanation`, `user_text: ""`, `instructions: "<request.text>"`,
-   `status: "pending"`, `links[]` (same anchor copy rule),
-   `aiOriginRequestId: <requestId>` if the id doesn't start with
-   `virtual:`.
+   excluding the `%!v:<uuid>` marker — it is the accept-time stale-guard
+   key), `suggested_text`, `explanation`, `user_text: ""`,
+   `instructions: "<request.text>"`, `status: "pending"`, `links[]` (the
+   verbatim-copy anchor rule above, `target.ref.kind: "suggestion"`), and
+   `aiOriginRequestId: <requestId>` (load-bearing — `accept-suggestion`
+   reads it) if the id doesn't start with `virtual:`.
 
    Don't mutate the source comment's top-level `text` / `content`
    fields — those are the originating framing. The bridge clears
    `aiRequest` via `clearSourceFlag: true`.
 
-5. **Apply.**
-   ```bash
-   python3 editor/scripts/apply_response.py <docPath> '<op-json>'
-   ```
+5. **Land it via the contract** — the subcommand depends on the path:
+
+   - **Path (a) — suggestion → L3 propose.** A suggestion is a *proposal*:
+     `complete-task --propose` lands the card and leaves the Task **awaiting
+     review** (`status: in-progress`), the `.tex` untouched until the user
+     accepts via `/editor/accept-suggestion`.
+     ```bash
+     python3 editor/scripts/apply_response.py <docPath> complete-task --propose '<op-json>'
+     ```
+   - **Path (b) — sibling comment → terminal create.** A comment is not a
+     proposal (nothing to accept), so it lands as a **direct create**:
+     `complete-task` completes the Task now (`status: complete`,
+     `result: direct-created`).
+     ```bash
+     python3 editor/scripts/apply_response.py <docPath> complete-task '<op-json>'
+     ```
+
+   Both take the same op shape (only the subcommand differs); both move off the
+   legacy default-apply path:
    ```json
    { "requestId": "<requestId>",
      "panel": "revisions",
@@ -118,23 +139,30 @@ source comment in place.
      "clearSourceFlag": true
    }
    ```
-   `clearSourceFlag: true` flips the source comment's `aiRequest`
-   to `false`.
+   `clearSourceFlag: true` flips the source comment's `aiRequest` to `false`.
 
 6. **Reply.** On success:
-   ```
-   Done: replied to revision <cardId> for request <requestId>. Output: revisions.json (+ ai-requests.json, notifications, version).
-   ```
+   - Path (a) — suggestion (awaiting review):
+     ```
+     Done: drafted revision suggestion <newId> for request <requestId> — awaiting review (accept/reject in the editor). Output: revisions.json (+ ai-requests.json status=in-progress, notifications, version).
+     ```
+   - Path (b) — sibling comment (created):
+     ```
+     Done: replied to revision <cardId> for request <requestId>. Output: revisions.json (+ ai-requests.json status=complete, notifications, version).
+     ```
 
 ## Idempotency
 
-If the request is already `status: "complete"`, skip with:
+If a sibling reply card with `aiOriginRequestId == <requestId>` already exists
+(path a — the proposal carries that back-pointer) **or** the request is already
+`status: "complete"` (path b — the comment completed the Task), skip with:
 ```
-Skipped <requestId> (already complete).
+Skipped <requestId> (already answered).
 ```
-
-If a sibling reply card with `aiOriginRequestId == <requestId>`
-already exists, skip with the same message — don't re-reply.
+A path-(a) proposal leaves the Task `in-progress` (awaiting review), **not**
+`complete` — so the *card-existence* check, not the status check, is what
+prevents a double-draft. Don't re-draft a proposal just because its Task isn't
+terminal yet.
 
 ## Safety
 
@@ -142,4 +170,6 @@ already exists, skip with the same message — don't re-reply.
   card.
 - Never mutate `document.tex` from this skill — even on path (a),
   the suggestion card carries the proposed replacement and the user
-  reviews before the .tex changes.
+  reviews before the `.tex` changes (the splice rides
+  `/editor/accept-suggestion`; the proposal is dismissable via
+  `/editor/reject-suggestion`).
