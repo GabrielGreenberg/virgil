@@ -49,11 +49,15 @@
       "side": "left"
     },
     {
-      "id": "reports",
+      "id": "quotations",
       "side": "left"
     },
     {
       "id": "examples",
+      "side": "left"
+    },
+    {
+      "id": "reports",
       "side": "left"
     }
   ],
@@ -82,7 +86,7 @@
     "kind": "home"
   },
   "pageWidth": 880,
-  "topGutter": 198,
+  "topGutter": 345,
   "bottomGutter": 0,
   "editorLeftMargin": 155,
   "editorRightMargin": 155,
@@ -108,7 +112,7 @@
   "omniCategories": {
     "left": [
       "footnotes",
-      "reports",
+      "quotations",
       "examples",
       "citations"
     ],

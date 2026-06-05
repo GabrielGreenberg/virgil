@@ -20,7 +20,8 @@
     "archive": false,
     "revisions": false,
     "cutter": false,
-    "errors": false
+    "errors": false,
+    "quotations": false
   },
   "fontSizeRem": 1.05
 }

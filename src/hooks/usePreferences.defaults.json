@@ -65,5 +65,8 @@
   "fontHeadersH3Size": 1.15,
   "fontHeadersH3Weight": 600,
   "fontParTitleFamily": null,
-  "fontParTitleWeight": 500
+  "fontParTitleWeight": 500,
+  "aiMarkerText": "#92400e",
+  "aiMarkerBg": "#fef3c7",
+  "aiMarkerBorder": "#fcd34d"
 }
