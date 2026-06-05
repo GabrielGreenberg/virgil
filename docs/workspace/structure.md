@@ -1,4 +1,4 @@
-<!-- last-verified: 694f789 2026-06-04 -->
+<!-- last-verified: 694f789 2026-06-05 -->
 <!-- derives-from: docs/architecture/VIRGIL.md#code-organization, docs/architecture/VIRGIL.md#sidecar-and-panel-inventory, docs/architecture/VIRGIL.md#cowork-pattern -->
 <!-- covers-code: src/lib/storage-fsa.ts, src/panels/panel-registry.ts, editor/scripts, library/lib/skill-sync.ts -->
 
@@ -105,7 +105,7 @@ notification + version-bump* transaction under the editing pen:
 ```
 create-card --kind=<k>  →  create_card.py  →  apply_response.py <subcommand>
                                                ├─ acquire the editing pen (collab.json + pen-context.json, TTL ≈ +30s)
-                                               ├─ atomic N-file write (card + .tex splice + ai-requests + notification + version.txt) — all-or-nothing
+                                               ├─ atomic N-file write (card + .tex splice + .bib/settings/annotation + ai-requests + notification + version.txt) — all-or-nothing
                                                └─ release the pen (restore prior collab state)
 ```
 
@@ -118,9 +118,12 @@ Subcommand by the Task's `safetyLevel`:
 | `2` — change + comment | `write-with-comment` | lands + a sibling comment; `result: auto-applied` |
 | `3` — propose | `complete-task --propose` | drafted only; `.tex` untouched; Task left awaiting review (`accepted`/`rejected`) |
 
-Also: `complete-only` (status flip, no card — for skills that mutate the `.tex`
-directly, like `style-merge`), `revert` (undo), and `--synthesize-task` (create
-the Task on the fly for chat-initiated, Workflow-B calls). The conceptual model is
+Also: `complete-only` (status flip, no card — and, when the op carries paper-file
+`*Edit`s, it lands those in the same atomic commit: `style-merge`'s preamble
+rewrite + style-id flip, `answer-bib-review`'s `.bib` field edit / annotation,
+`library-sync`'s `.bib` swap — none of these mutate a paper file directly any
+more), `revert` (undo), and `--synthesize-task` (create the Task on the fly for
+chat-initiated, Workflow-B calls). The conceptual model is
 [VIRGIL.md → Cowork pattern](../architecture/VIRGIL.md#cowork-pattern); this
 contract is **built and validated end-to-end through the footnote kind**, then
 fanned out to the full create-able set — `note` / `todo` / `citation` / `report` /
@@ -131,9 +134,11 @@ the same contract (`editor/scripts/create_card.py`), **no contract change**.
 
 - **Read freely:** `<name>.tex`, `<name>.bib`, any `virgil/*.json`, the synced
   `.virgil/scripts/`. Reading is how a skill orients.
-- **Write only through the contract:** Card sidecars + the `.tex` splice + the
-  Task store go through `apply_response.py`, never a raw write — that is what
-  makes the change atomic, pen-protected, and audit-logged.
+- **Write only through the contract:** Card sidecars, the `.tex` splice/rewrite,
+  `references.bib`, `document-settings.json`, `annotations.json`, and the Task
+  store all go through `apply_response.py` (the op-json `texEdit` / `bibEdit` /
+  `settingsEdit` / `annotationEdit`), never a raw write — that is what makes the
+  change atomic, pen-protected, and audit-logged.
 - **Never hand-edit:** `version.txt`, `notifications.json`, `collab.json`,
   `ai-requests.json` (the writeback owns these), or the invisible `.tex` markers
   ([identity.md](identity.md)). The full never-touch deny-list is the forthcoming

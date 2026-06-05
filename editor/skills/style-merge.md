@@ -45,11 +45,12 @@ Skip everything else.
 ## Procedure
 
 1. **Load.** Read `<docPath>/virgil/ai-requests.json`. Read
-   `<docPath>/document-settings.json`. List the `.tex` files in
-   `<docPath>/` — there should be exactly one; that's the doc's main
-   tex file (note: the Virgil app stores the filename inside its index;
-   without that hint, pick the unique `.tex` at the top level of the
-   folder).
+   `<docPath>/virgil/document-settings.json` (the per-doc
+   `DocumentSettings` = `{ styleId }` — note it lives under `virgil/`,
+   *not* the doc root). List the `.tex` files in `<docPath>/` — there
+   should be exactly one; that's the doc's main tex file (note: the
+   Virgil app stores the filename inside its index; without that hint,
+   pick the unique `.tex` at the top level of the folder).
 
 2. **Find candidates.** Filter `requests[]` to qualifying entries.
    If none, print "No pending style-merge requests" and exit.
@@ -137,25 +138,51 @@ Skip everything else.
    - Be syntactically plausible LaTeX (matched braces, no truncated
      commands).
 
-   If validation fails, **do not write the .tex.** Mark the request
-   `status: "complete"` with a `resultId` describing the failure, and
-   move on. (Failure path: emit a `notes` field on the request, keep
-   the .tex untouched.)
+   The validation is yours (composition); the atomic *write* is the
+   contract's. If validation fails, **do not write the .tex** — take the
+   failure path through the contract (two-field: status `failed`, result
+   `impossible`; no `.tex` / settings write happens):
+   ```bash
+   python3 editor/scripts/apply_response.py <docPath> complete-only <requestId> --result impossible --note "Style merge validation failed: <reason>; .tex left untouched."
+   ```
+   and move on to the next request.
 
-7. **Rewrite the .tex.** Read the current bytes. Find the
-   `\begin{document}` and `\end{document}` markers. Replace
-   `[start..\begin{document}]` (inclusive of the marker plus its
-   trailing two `\n`s) with the merged preamble. Body and postamble
-   bytes are preserved verbatim.
-
-8. **Update sidecars.**
-   - `<docPath>/document-settings.json` — set
+7. **Apply — one atomic, pen-protected commit.** The preamble rewrite,
+   the style-id flip, and the request completion all ride a single
+   `apply_response.py` op. **No hand-edits** — `apply_response.py` is the
+   only writeback path (the old pen-less `.tex` / `document-settings.json`
+   / `ai-requests.json` edits are gone).
+   - `texEdit` `region-replace` rewrites the preamble: it replaces
+     `[start..\begin{document}]` (the marker plus its trailing newlines)
+     with your merged blob. Because the blob ends with
+     `\begin{document}\n\n`, the marker is re-supplied and the body +
+     postamble bytes are preserved verbatim (`endMarker` defaults to
+     `\begin{document}`).
+   - `settingsEdit` flips `virgil/document-settings.json` to
      `{ "styleId": "<payload.targetStyleId>" }`.
-   - `<docPath>/virgil/ai-requests.json` — flip the request's
-     `status` to `"complete"`. Don't delete it; the frontend uses the
-     `complete` status to clear the "merging…" label.
+   - Completing the request flips its `status` → `complete`, result
+     `auto-applied`. (Don't delete it; the frontend clears its
+     "merging…" banner on any terminal status.)
 
-9. **Print a summary** for each request: counts of carried-over
+   The merged preamble has braces + backslashes, so write the op to a
+   file and pass it with `@` (`mkdir -p` the `.virgil/` dir first — a fresh
+   paper folder may not have it yet):
+   ```bash
+   mkdir -p "<docPath>/.virgil"
+   cat > "<docPath>/.virgil/style-merge-op.json" <<'JSON'
+   { "requestId": "<requestId>",
+     "texEdit": { "mode": "region-replace",
+                  "replacement": "<merged preamble, ending in \\begin{document}\\n\\n>" },
+     "settingsEdit": { "set": { "styleId": "<payload.targetStyleId>" } },
+     "summary": "Style merge: <payload.targetStyleName> (carried <N> pkgs, <M> macros)" }
+   JSON
+   python3 editor/scripts/apply_response.py <docPath> complete-only "@<docPath>/.virgil/style-merge-op.json" --result auto-applied
+   ```
+   (`replacement` is the merged blob from step 5, as a JSON string —
+   escape `\` as `\\`, newlines as `\n`. The contract finds the `.tex`
+   itself.)
+
+8. **Print a summary** for each request: counts of carried-over
    packages / macros / settings, and a one-line diff of the resulting
    preamble's package list vs. the target's.
 
@@ -163,10 +190,17 @@ Skip everything else.
 
 - Never merge if `payload.currentPreamble` is empty (sentinel for "no
   drift detected" — the request shouldn't have been filed in that
-  case). Mark the request `complete` and skip.
+  case). Complete + skip through the contract (a benign no-op — no
+  writes; omit `--result` so the status is `complete`, not `failed`):
+  ```bash
+  python3 editor/scripts/apply_response.py <docPath> complete-only <requestId> --note "No preamble drift detected; nothing to merge."
+  ```
 - Never write the .tex if the body extraction returns an empty body —
-  that's a corrupted source file. Skip and mark complete.
+  that's a corrupted source file. Take the failure path:
+  `complete-only <requestId> --result impossible --note "Empty body; source looks corrupted; .tex left untouched."`.
 - This skill is doc-local. Don't touch anything outside `<docPath>/`.
+  Every write goes through `apply_response.py` — no Edit-tool edits of
+  the `.tex`, `document-settings.json`, or `ai-requests.json`.
 
 ## Examples
 
