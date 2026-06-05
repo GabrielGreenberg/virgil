@@ -312,17 +312,19 @@ interface ExpexSlot {
  * up/down.
  *
  * Fired only when the source kind ∈ {paragraph, graphicsBlock, displayMath} AND
- * the cursor sits inside an `exampleBlock`, it enumerates that block's slots
- * (an item-gap before/between/after each item → new exampleItem; one
- * into-content slot per item → that item's content) and returns the
- * vertical-bar `Placement` for the slot whose `pickY` is nearest the cursor Y.
- * The placement keeps `kind: "between-blocks"` (so the existing commit handles
- * it) — only the rect is vertical.
+ * the cursor sits inside an `exampleBlock`, it enumerates that block's slots —
+ * for a MULTI example, an item-gap before/between/after each item (→ new
+ * exampleItem) plus one into-content slot per item (→ that item's content); for
+ * a SINGLE example (no items), one into-content slot for the block body (→ the
+ * body, drop-direct). It returns the vertical-bar `Placement` for the slot whose
+ * `pickY` is nearest the cursor Y. The placement keeps `kind: "between-blocks"`
+ * (so the existing commit handles it) — only the rect is vertical.
  *
  * Returns null — so the caller falls through to `resolveAnchorableBlock` and
  * each kind's top-level drop is preserved byte-for-byte — for every other case:
- * a non-{three-kind} source, or one NOT inside an exampleBlock (including a
- * single `\ex` with no items, which yields no slots).
+ * a non-{three-kind} source, or one NOT inside an exampleBlock. (Feature A2: a
+ * single `\ex` example now yields a body slot rather than 0, so the same bar
+ * appears there too.)
  *
  * O(items) — the only scan (`collectExpexSlots`) is bounded to ONE exampleBlock's
  * top-tier items + their direct children. No doc walk — safe on every throttled
@@ -358,7 +360,7 @@ export function resolveBlockIntoExpex(
   const blockLeft = blockDom.getBoundingClientRect().left;
 
   const slots = collectExpexSlots(editor, exampleBlockPos, exampleBlock);
-  if (slots.length === 0) return null; // an example with no items → fall through
+  if (slots.length === 0) return null; // no resolvable slot (DOM gone) → fall through
 
   // Generous left-zone snap: the whole left band qualifies — pick the slot
   // whose pickY is nearest the cursor Y (first slot wins ties, keeping the
@@ -376,12 +378,24 @@ export function resolveBlockIntoExpex(
 }
 
 /**
- * Enumerate the insertion slots along an exampleBlock's left edge. Bounded to
- * the block's TOP-TIER exampleItems (`nodesBetween` returns false at each item
- * so nested item lists are skipped — keeping a new-item wrap schema-valid). Per
- * item: a `new-item` slot at its top edge (a gap → fresh sibling item) and one
- * `into-content` slot spanning its body (→ join the item). A trailing
- * `new-item` slot sits below the last item.
+ * Enumerate the insertion slots along an exampleBlock's left edge — for EVERY
+ * expex shape, multi OR single (Feature A2 unifies them under one affordance).
+ *
+ * MULTI (the block has exampleItems): bounded to its TOP-TIER items
+ * (`nodesBetween` returns false at each so nested item lists are skipped —
+ * keeping a new-item wrap schema-valid). Per item: a `new-item` slot at its top
+ * edge (a gap → fresh sibling item) and one `into-content` slot spanning its
+ * body (→ join the item). A trailing `new-item` slot sits below the last item.
+ *
+ * SINGLE (no exampleItem — a single `\ex` with direct content, or a gloss-only
+ * example): one `into-content` slot for the BLOCK BODY (insertPos =
+ * `leadingContentEnd` of the exampleBlock itself, before any gloss). A single
+ * example has no "new item" concept, so just the one body bar — the dropped
+ * block joins the body directly (schema-driven drop-direct at commit time,
+ * see `blockIntoExpexDropAdapter`), keeping it one numbered example.
+ *
+ * Bounded to ONE exampleBlock (no doc walk) — it runs on every throttled
+ * mousemove (gesture sanctity, AGENTS.md).
  */
 function collectExpexSlots(
   editor: Editor,
@@ -391,12 +405,14 @@ function collectExpexSlots(
   const slots: ExpexSlot[] = [];
   let lastItemBottom: number | null = null;
   let lastItemEnd: number | null = null;
+  let itemCount = 0;
 
   editor.state.doc.nodesBetween(
     exampleBlockPos,
     exampleBlockPos + exampleBlock.nodeSize,
     (node, nodePos) => {
       if (node.type.name !== "exampleItem") return true; // descend to the items
+      itemCount++;
       const dom = editor.view.nodeDOM(nodePos);
       if (!(dom instanceof HTMLElement)) return false;
       const rect = dom.getBoundingClientRect();
@@ -438,20 +454,45 @@ function collectExpexSlots(
       mode: "new-item",
     });
   }
+
+  // SINGLE example (no items) — one into-content slot for the block body. The
+  // bar spans the whole block; the insert lands after the leading content run
+  // and before any gloss. (A1 enumerated only exampleItems, so a single example
+  // yielded 0 slots → no bar; this is the gap A2 closes.)
+  if (itemCount === 0) {
+    const blockDom = editor.view.nodeDOM(exampleBlockPos);
+    if (blockDom instanceof HTMLElement) {
+      const rect = blockDom.getBoundingClientRect();
+      slots.push({
+        insertPos: leadingContentEnd(exampleBlock, exampleBlockPos),
+        pickY: rect.top + rect.height / 2,
+        barTop: rect.top,
+        barHeight: rect.height,
+        mode: "into-content",
+      });
+    }
+  }
   return slots;
 }
 
 /**
- * Position just after an exampleItem's leading content run — the run of
+ * Position just after a container's leading content run — the run of
  * paragraph / graphicsBlock / displayMath children before any nested
- * exampleItemList / exampleGloss. A block inserted here joins the item as its
- * last content sibling, keeping the schema's `(content)+ list? gloss?` order
- * intact.
+ * exampleItemList / exampleGloss. A block inserted here joins the container as
+ * its last content sibling, keeping the schema's `(content)+ list? gloss?`
+ * order intact.
+ *
+ * Generic over BOTH an `exampleItem` (the A1 multi-item case) and an
+ * `exampleBlock` body (the A2 single-example case) — their leading content
+ * runs share the same three kinds. For a gloss-only single example
+ * (exampleBlock → [exampleGloss], no leading paragraph) the loop breaks
+ * immediately, returning the position just inside the block, BEFORE the gloss,
+ * so a drop lands above it (schema-valid; reads naturally).
  */
-function leadingContentEnd(item: PMNode, itemPos: number): number {
-  let pos = itemPos + 1; // just inside the item, before its first child
-  for (let i = 0; i < item.childCount; i++) {
-    const child = item.child(i);
+function leadingContentEnd(parent: PMNode, parentPos: number): number {
+  let pos = parentPos + 1; // just inside the container, before its first child
+  for (let i = 0; i < parent.childCount; i++) {
+    const child = parent.child(i);
     const name = child.type.name;
     if (
       name === "paragraph" ||

@@ -97,21 +97,29 @@ describe("drop-spec matrix (via TEXT_OBJECT_REGISTRY.dropAdapter)", () => {
     });
   });
 
-  describe("graphicsBlock (Feature A0 — picture into expex)", () => {
-    it("inside an exampleItem drops directly (case b)", () => {
+  describe("graphicsBlock (Feature A0/A1/A2 — picture into expex, schema-driven)", () => {
+    it("drops directly when the parent accepts it (canDropDirect true — case b / single body)", () => {
       const r = adapt(
         "graphicsBlock",
         {},
-        { kind: "inside-compatible-parent", parentKind: "exampleItem" },
+        {
+          kind: "inside-compatible-parent",
+          parentKind: "exampleItem",
+          canDropDirect: true,
+        },
       );
       expect(r).toEqual({ kind: "drop-direct" });
     });
 
-    it("between items (incompatible at exampleBlock) wraps in a fresh exampleItem (case a)", () => {
+    it("between items (parent rejects the bare block, canDropDirect false) wraps in a fresh exampleItem (case a)", () => {
       const r = adapt(
         "graphicsBlock",
         {},
-        { kind: "inside-incompatible-parent", parentKind: "exampleBlock" },
+        {
+          kind: "inside-incompatible-parent",
+          parentKind: "exampleBlock",
+          canDropDirect: false,
+        },
       );
       expect(r).toEqual({ kind: "wrap", parentKind: "exampleItem" });
     });

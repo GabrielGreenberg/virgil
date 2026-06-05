@@ -113,13 +113,24 @@ export interface TextObjectSourceContext {
  * would land in. The drop adapter decides whether to drop directly or
  * wrap into a fresh single-item parent of `parentKind`.
  */
-export type DropTarget =
+export type DropTarget = (
   /** Inside a parent that accepts the sub-object directly. */
   | { kind: "inside-compatible-parent"; parentKind: TextObjectKind }
   /** Inside a parent that does not accept the sub-object — must wrap. */
   | { kind: "inside-incompatible-parent"; parentKind: TextObjectKind }
   /** Top-level slot in the doc (sibling of paragraphs). */
-  | { kind: "top-level" };
+  | { kind: "top-level" }
+) & {
+  /** Feature A2 — schema validity of a bare drop-direct at the IMMEDIATE insert
+   *  parent (`canDropDirectAt` = `$pos.parent.canReplaceWith` at insertPos),
+   *  computed in `textObjectDropSpec.applyDrop`. Only `blockIntoExpexDropAdapter`
+   *  reads it, to choose drop-direct vs. wrap: it separates a single example's
+   *  widened body (`true` → drop-direct) from the multi between-items gap
+   *  (`false` → wrap) — two positions that both classify as `parentKind:
+   *  "exampleBlock"`. Optional + read by that one adapter, so every other
+   *  adapter (and the `parentKind` discriminant they use) is byte-unchanged. */
+  canDropDirect?: boolean;
+};
 
 /**
  * The action a drop adapter resolves to. Drop machinery consumes this

@@ -35,7 +35,7 @@ import type {
   TextObjectKind,
   TextObjectSourceContext,
 } from "@/text-objects/types";
-import { classifyParentAt } from "./drop-context";
+import { canDropDirectAt, classifyParentAt } from "./drop-context";
 import type { DropSpec, Placement } from "../types";
 
 export const textObjectDropSpec: DropSpec = {
@@ -61,7 +61,20 @@ export const textObjectDropSpec: DropSpec = {
     if (!src) return;
     const targetEditor = placement.editor;
     const targetParentKind = classifyParentAt(targetEditor, placement.insertPos);
-    const target: DropTarget = classifyDropTarget(src.kind, targetParentKind);
+    // Feature A2 — schema-driven wrap-vs-direct. Compute whether the source node
+    // can drop DIRECTLY at the immediate insert parent (the expex kinds are
+    // always single-node moves, so the first node's type is the right test).
+    // `blockIntoExpexDropAdapter` keys on this to separate a single example's
+    // widened body (drop-direct) from the multi between-items gap (wrap); every
+    // other adapter ignores it, so they're byte-unchanged.
+    const sourceType = src.move.nodes[0]?.type;
+    const canDropDirect = sourceType
+      ? canDropDirectAt(targetEditor, placement.insertPos, sourceType)
+      : undefined;
+    const target: DropTarget = {
+      ...classifyDropTarget(src.kind, targetParentKind),
+      canDropDirect,
+    };
     const action = TEXT_OBJECT_REGISTRY[src.kind].dropAdapter(
       { kind: src.kind, id: src.id, sourceContext: src.sourceContext },
       target,

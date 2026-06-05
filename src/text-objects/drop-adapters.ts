@@ -85,44 +85,39 @@ export function exampleItemDropAdapter(
 
 // ---------------------------------------------------------------------------
 // blockIntoExpex — the unified "land a block inside an expex example" adapter
-// (Feature A1, generalizing A0's graphics-only `graphicsBlockDropAdapter`).
-// Shared by the three block kinds the expex drop welcomes — paragraph (text),
-// graphicsBlock (picture), displayMath (equation) — each schema-valid inside an
-// exampleItem (`(paragraph | graphicsBlock | displayMath)+`, expex.ts). The body
-// is kind-agnostic: it decides drop-direct vs. wrap purely from the TARGET
-// context, so one function serves all three.
-//   • inside-compatible-parent (an exampleItem) → drop the block directly into
-//     that item's content, joining its existing children [case b].
-//   • inside-incompatible-parent whose parent is the exampleBlock itself
-//     (a between-items boundary) → wrap the block in a fresh exampleItem so it
-//     becomes its own new example item [case a]. `buildWrap`'s exampleItem case
-//     builds the single sibling; the enclosing exampleItemList already exists
-//     at the insert site.
-//   • top-level, or any OTHER incompatible parent → drop the block directly,
-//     preserving each kind's original (non-expex) placement byte-for-byte.
-// Generalizes R3's source-kind-aware resolution: a block lands wherever the
-// schema allows it — directly, or with a single wrap. figureBlock / texBlock
-// stay on `topLevelDropAdapter` (user decision: text/picture/equation only).
+// (Feature A1, generalizing A0's graphics-only `graphicsBlockDropAdapter`;
+// Feature A2 makes the decision schema-driven). Shared by the three block kinds
+// the expex drop welcomes — paragraph (text), graphicsBlock (picture),
+// displayMath (equation) — each schema-valid inside an exampleItem AND (A2) a
+// single example's widened body (expex.ts). The body is kind-agnostic.
+//
+// The decision is now SCHEMA-DRIVEN via `target.canDropDirect` (the spec's
+// `canDropDirectAt` = whether the IMMEDIATE insert parent accepts a bare block
+// of this kind). This replaces A1's brittle `parentKind === "exampleBlock"`
+// magic string, which collapsed two structurally different positions:
+//   • the multi between-items gap — immediate parent `exampleItemList`
+//     (content `exampleItem+`), which REJECTS a bare block → must WRAP it in a
+//     fresh single-block exampleItem [case a]; and
+//   • a single example's direct body — immediate parent `exampleBlock`
+//     (post-widen), which ACCEPTS the bare block → drop-direct [A2].
+// `classifyParentAt` reports BOTH as `exampleBlock` (it skips the unregistered
+// exampleItemList), so only the schema at the true immediate parent tells them
+// apart. `canDropDirect === false` (a known schema rejection) is the sole
+// trigger to wrap; everything else — an exampleItem body [case b], a single
+// example body [A2], top level, or a missing signal — drops directly,
+// preserving each kind's non-expex placement byte-for-byte. `buildWrap`'s
+// exampleItem case builds the single sibling; the enclosing exampleItemList
+// already exists at the insert site. figureBlock / texBlock stay on
+// `topLevelDropAdapter` (user decision: text/picture/equation only).
 // ---------------------------------------------------------------------------
 
 export function blockIntoExpexDropAdapter(
   _sourceRef: TextObjectRef & { sourceContext: TextObjectSourceContext },
   target: DropTarget,
 ): DropAction {
-  if (target.kind === "inside-compatible-parent") {
-    // The only compatible parent for these kinds is an exampleItem.
-    return { kind: "drop-direct" };
-  }
-  if (
-    target.kind === "inside-incompatible-parent" &&
-    target.parentKind === "exampleBlock"
-  ) {
-    // Between example items (the exampleBlock doesn't accept a bare block as a
-    // direct child) → wrap into a fresh single-block exampleItem.
+  if (target.canDropDirect === false) {
     return { kind: "wrap", parentKind: "exampleItem" };
   }
-  // Top-level, or any other incompatible parent → drop the block directly
-  // (preserves today's top-level placement for this kind, byte-for-byte).
   return { kind: "drop-direct" };
 }
 
