@@ -1871,7 +1871,12 @@ function readParagraph(ctx: ParseContext): string {
         // Feature A1 relies on this so a paragraph + equation in one
         // exampleItem round-trips with the equation as its own displayMath.
         rest.startsWith("\\[") ||
-        /^\\(part|chapter|section|subsection|subsubsection|paragraph|subparagraph|begin|end|\[|hrulefill|title|author|date|maketitle|noindent|vspace|hspace|newcounter|setcounter|renewcommand|newcommand|usepackage|bibliographystyle|bibliography|tableofcontents|appendix|clearpage|newpage|par|ex|pex|xe|vexid|vxid|begingl|endgl)\b/.test(
+        // `\includegraphics` is a block boundary too — the picture-side twin of
+        // the `\[` case above (Feature A2). Without it a serialized
+        // `paragraph\n\includegraphics{…}` re-merges, absorbing the picture into
+        // the paragraph as literal text and losing the graphicsBlock on reload.
+        // (`\b` fires fine here — the word ends before the `[`/`{` argument.)
+        /^\\(part|chapter|section|subsection|subsubsection|paragraph|subparagraph|begin|end|\[|hrulefill|title|author|date|maketitle|includegraphics|noindent|vspace|hspace|newcounter|setcounter|renewcommand|newcommand|usepackage|bibliographystyle|bibliography|tableofcontents|appendix|clearpage|newpage|par|ex|pex|xe|vexid|vxid|begingl|endgl)\b/.test(
           rest
         )
       ) {
@@ -2121,8 +2126,13 @@ function buildExampleBlockFromBody(
 
   const content: JSONContent[] = [];
   if (opts.kind === "single") {
-    // Parse the body as a sequence of paragraphs + glosses.
-    const inner = parseExampleBodyAsBlocks(body);
+    // Parse the body as a sequence of paragraphs / glosses / pictures /
+    // equations. Feature A2 widens `exampleBlock` to accept graphicsBlock +
+    // displayMath directly, so a dropped picture / equation joins a single
+    // `\ex` body — pass `allowDisplayMath` so a serialized `\[…\]` survives the
+    // reload (graphicsBlock already parses unconditionally). The `\pex`
+    // preamble path below stays un-widened (Non-goals §5).
+    const inner = parseExampleBodyAsBlocks(body, { allowDisplayMath: true });
     content.push(...inner);
     if (content.length === 0) content.push({ type: "paragraph" });
   } else {

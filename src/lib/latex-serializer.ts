@@ -482,27 +482,69 @@ function serializeExampleBlock(node: JSONContent): string {
   const labelStr = label ? `\\label{${label}}` : "";
 
   // Walk children in document order — paragraphs, gloss blocks,
-  // exampleItemLists, and regular itemize/enumerate lists can interleave
-  // freely. Schema:
-  // `(paragraph | exampleGloss | exampleItemList | bulletList | orderedList)*`.
+  // exampleItemLists, regular itemize/enumerate lists, and (Feature A2)
+  // pictures (graphicsBlock) + equations (displayMath) dropped into a single
+  // example's body can interleave freely. Schema:
+  // `(paragraph | exampleGloss | exampleItemList | bulletList | orderedList |
+  //   graphicsBlock | displayMath)*`.
   const children = node.content || [];
-  const bodyPieces: string[] = [];
+  const pieces: Array<{ type: string; text: string }> = [];
   for (const child of children) {
     if (child.type === "paragraph") {
-      bodyPieces.push(serializeExampleInlineChildren(child.content));
+      pieces.push({
+        type: "paragraph",
+        text: serializeExampleInlineChildren(child.content),
+      });
+    } else if (child.type === "graphicsBlock") {
+      // Feature A2 — a picture dropped into a single example's body. Emit the
+      // verbatim command (mirrors serializeExampleItem's graphicsBlock branch;
+      // the generic graphicsBlock serializer adds a trailing blank line we
+      // don't want inside the example).
+      pieces.push({
+        type: "graphicsBlock",
+        text: (child.attrs?.command as string) ?? "",
+      });
+    } else if (child.type === "displayMath") {
+      // Feature A2 — an equation dropped into a single example's body. Same
+      // `\[…\]` envelope as serializeExampleItem (with the trailing %!v: anchor
+      // when the equation carries a uuid); `readParagraph` breaks at `\[` so a
+      // preceding paragraph stays its own block on re-parse.
+      const mUuid = child.attrs?.uuid as string | null;
+      const mAnchor = mUuid ? ` %!v:${mUuid}` : "";
+      const latex = (child.attrs?.latex as string) || "";
+      pieces.push({ type: "displayMath", text: `\\[\n${latex}\n\\]${mAnchor}` });
     } else if (child.type === "exampleGloss") {
-      bodyPieces.push(serializeExampleGloss(child).trimEnd());
+      pieces.push({
+        type: "exampleGloss",
+        text: serializeExampleGloss(child).trimEnd(),
+      });
     } else if (child.type === "exampleItemList") {
       const items = (child.content || []).filter(
         (c) => c.type === "exampleItem",
       );
       const itemsStr = items.map((it) => serializeExampleItem(it)).join("");
-      if (itemsStr) bodyPieces.push(itemsStr.trimEnd());
+      if (itemsStr)
+        pieces.push({ type: "exampleItemList", text: itemsStr.trimEnd() });
     } else if (child.type === "bulletList" || child.type === "orderedList") {
-      bodyPieces.push(serializeNode(child).trimEnd());
+      pieces.push({ type: child.type, text: serializeNode(child).trimEnd() });
     }
   }
-  const body = bodyPieces.join("\n");
+  // Join with a soft "\n", EXCEPT two consecutive paragraphs need a blank line
+  // so they re-parse as separate paragraphs (a lone "\n" is a soft break the
+  // parser merges). `\[…\]` / `\includegraphics` are self-delimiting (the parser
+  // breaks at them), so every other adjacency keeps the single "\n" — which
+  // preserves the byte output of every pre-A2 block (≤ 1 body paragraph, so no
+  // consecutive-paragraph adjacency ever arose).
+  let body = "";
+  for (let i = 0; i < pieces.length; i++) {
+    if (i > 0) {
+      body +=
+        pieces[i - 1].type === "paragraph" && pieces[i].type === "paragraph"
+          ? "\n\n"
+          : "\n";
+    }
+    body += pieces[i].text;
+  }
 
   return (
     `${idMarker}\\${kind}${suppress}${optStr}${tagStr}${labelStr}\n` +

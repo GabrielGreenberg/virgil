@@ -118,7 +118,13 @@ export const ExampleBlock = Node.create<ExampleBlockOptions>({
   // demote a middle item out of its list (which splits the list into
   // two). The serializer walks children in document order so the .tex
   // round-trip preserves the layout.
-  content: "(paragraph | exampleGloss | exampleItemList | bulletList | orderedList)*",
+  //
+  // Feature A2 adds `graphicsBlock | displayMath` to the union so a dropped
+  // picture / equation can join a SINGLE example's body directly (paragraph
+  // was already valid) — the example stays one numbered example. Additive +
+  // free-order `*`, so every existing example loads byte-identically.
+  content:
+    "(paragraph | exampleGloss | exampleItemList | bulletList | orderedList | graphicsBlock | displayMath)*",
   defining: true,
   isolating: true,
 

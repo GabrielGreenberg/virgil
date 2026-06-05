@@ -84,37 +84,73 @@ describe("exampleItemDropAdapter", () => {
 });
 
 describe("blockIntoExpexDropAdapter", () => {
-  // Feature A1 — the adapter body is kind-agnostic: the same drop-direct /
-  // wrap / drop-direct decisions hold for all three block kinds that can land
-  // in an expex example (text/picture/equation). Parametrize to lock that.
+  // Feature A1/A2 — the adapter is kind-agnostic AND now schema-driven: it keys
+  // ONLY on `target.canDropDirect` (the immediate insert parent's
+  // canReplaceWith, computed by the spec), not the collapsed parentKind. The
+  // same decisions hold for all three block kinds (text/picture/equation).
   const KINDS: TextObjectKind[] = ["graphicsBlock", "paragraph", "displayMath"];
   for (const kind of KINDS) {
     describe(`${kind}`, () => {
-      it("drops directly inside a compatible parent (an exampleItem) — case b", () => {
+      it("wraps in a fresh exampleItem when the parent REJECTS a bare block but ACCEPTS an exampleItem (canDropDirect false + canWrapHere) — case a", () => {
+        // The multi between-items gap: immediate parent exampleItemList (content
+        // `exampleItem+`) rejects a bare block (canDropDirect=false) but ACCEPTS an
+        // exampleItem (canWrapHere=true) → wrap. REGRESSION TRAP — this case and the
+        // single-body case below BOTH classify as parentKind "exampleBlock";
+        // canDropDirect separates those two, and canWrapHere (A2 edge-fix) keeps the
+        // wrap from firing at a non-expex rejected position where an exampleItem is
+        // ALSO invalid (that drops-direct — covered by the real-schema lock).
         const result = blockIntoExpexDropAdapter(
           { kind, id: "s1", sourceContext: {} },
-          { kind: "inside-compatible-parent", parentKind: "exampleItem" },
-        );
-        expect(result).toEqual({ kind: "drop-direct" });
-      });
-
-      it("wraps into a fresh exampleItem when incompatible at the exampleBlock level — case a", () => {
-        const result = blockIntoExpexDropAdapter(
-          { kind, id: "s1", sourceContext: {} },
-          { kind: "inside-incompatible-parent", parentKind: "exampleBlock" },
+          {
+            kind: "inside-incompatible-parent",
+            parentKind: "exampleBlock",
+            canDropDirect: false,
+            canWrapHere: true,
+          },
         );
         expect(result).toEqual({ kind: "wrap", parentKind: "exampleItem" });
       });
 
-      it("drops directly at top level (its normal placement, unchanged)", () => {
+      it("drops directly into a single example's BODY (canDropDirect true, same parentKind exampleBlock) — A2", () => {
+        // Feature A2 — a single example's widened body classifies as
+        // parentKind "exampleBlock" too, but the parent ACCEPTS the bare block
+        // → drop-direct (NOT wrapped into a new item). The naive A1 fix
+        // (parentKind==="exampleBlock" → wrap) would wrongly wrap this.
         const result = blockIntoExpexDropAdapter(
           { kind, id: "s1", sourceContext: {} },
-          { kind: "top-level" },
+          {
+            kind: "inside-incompatible-parent",
+            parentKind: "exampleBlock",
+            canDropDirect: true,
+          },
         );
         expect(result).toEqual({ kind: "drop-direct" });
       });
 
-      it("drops directly inside any OTHER incompatible parent (not exampleBlock)", () => {
+      it("drops directly inside a compatible exampleItem (canDropDirect true) — case b", () => {
+        const result = blockIntoExpexDropAdapter(
+          { kind, id: "s1", sourceContext: {} },
+          {
+            kind: "inside-compatible-parent",
+            parentKind: "exampleItem",
+            canDropDirect: true,
+          },
+        );
+        expect(result).toEqual({ kind: "drop-direct" });
+      });
+
+      it("drops directly at top level (canDropDirect true — its normal placement, unchanged)", () => {
+        const result = blockIntoExpexDropAdapter(
+          { kind, id: "s1", sourceContext: {} },
+          { kind: "top-level", canDropDirect: true },
+        );
+        expect(result).toEqual({ kind: "drop-direct" });
+      });
+
+      it("drops directly when NO schema signal is supplied (safe default — never a spurious wrap)", () => {
+        // A direct caller that omits canDropDirect → drop-direct. In production
+        // applyDrop always supplies it; only `=== false` (a known rejection)
+        // triggers the wrap.
         const result = blockIntoExpexDropAdapter(
           { kind, id: "s1", sourceContext: {} },
           { kind: "inside-incompatible-parent", parentKind: "blockquote" },

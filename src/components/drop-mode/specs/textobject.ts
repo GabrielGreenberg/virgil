@@ -35,7 +35,7 @@ import type {
   TextObjectKind,
   TextObjectSourceContext,
 } from "@/text-objects/types";
-import { classifyParentAt } from "./drop-context";
+import { canDropDirectAt, classifyParentAt } from "./drop-context";
 import type { DropSpec, Placement } from "../types";
 
 export const textObjectDropSpec: DropSpec = {
@@ -61,7 +61,33 @@ export const textObjectDropSpec: DropSpec = {
     if (!src) return;
     const targetEditor = placement.editor;
     const targetParentKind = classifyParentAt(targetEditor, placement.insertPos);
-    const target: DropTarget = classifyDropTarget(src.kind, targetParentKind);
+    // Feature A2 — schema-driven wrap-vs-direct. Compute whether the source node
+    // can drop DIRECTLY at the immediate insert parent (the expex kinds are
+    // always single-node moves, so the first node's type is the right test).
+    // `blockIntoExpexDropAdapter` keys on this to separate a single example's
+    // widened body (drop-direct) from the multi between-items gap (wrap); every
+    // other adapter ignores it, so they're byte-unchanged.
+    const sourceType = src.move.nodes[0]?.type;
+    const canDropDirect = sourceType
+      ? canDropDirectAt(targetEditor, placement.insertPos, sourceType)
+      : undefined;
+    // Feature A2 edge-fix — schema validity of the exampleItem WRAP target at the
+    // SAME insert point (the generic `canDropDirectAt`, now over `exampleItem`).
+    // `blockIntoExpexDropAdapter` wraps only when a bare block is rejected here
+    // (`canDropDirect === false`) AND an exampleItem is accepted here
+    // (`canWrapHere`) — true exactly at the multi between-items gap (immediate
+    // parent `exampleItemList`). Outside expex, a rejected bare block whose
+    // exampleItem wrap is ALSO invalid (e.g. a `displayMath` at a `listItem`'s
+    // index 0) drops-direct, matching A1, instead of fabricating an invalid wrap.
+    const exampleItemType = targetEditor.state.schema.nodes.exampleItem;
+    const canWrapHere = exampleItemType
+      ? canDropDirectAt(targetEditor, placement.insertPos, exampleItemType)
+      : undefined;
+    const target: DropTarget = {
+      ...classifyDropTarget(src.kind, targetParentKind),
+      canDropDirect,
+      canWrapHere,
+    };
     const action = TEXT_OBJECT_REGISTRY[src.kind].dropAdapter(
       { kind: src.kind, id: src.id, sourceContext: src.sourceContext },
       target,

@@ -115,21 +115,24 @@ z = 0
     expect(math[0].attrs?.latex).toBe("z = 0");
   });
 
-  it("does NOT leak a displayMath into a single \\ex body (exampleBlock stays un-widened)", () => {
-    // `exampleBlock` content does not accept displayMath directly; a single
-    // `\ex` body parses through `parseExampleBodyAsBlocks` WITHOUT the
-    // allowDisplayMath flag, so a stray equation there is dropped (unchanged
-    // pre-A1 behavior) rather than producing a schema-invalid block child.
+  it("a single \\ex body now KEEPS a displayMath (Feature A2 widened exampleBlock)", () => {
+    // A1 left the `exampleBlock` itself un-widened — a single `\ex` body dropped
+    // a stray equation. Feature A2 widens `exampleBlock` content to accept
+    // displayMath directly and passes `allowDisplayMath` on the single path, so
+    // the equation now survives as a direct block child. (Full block-level
+    // round-trip coverage lives in single-example-body-roundtrip.test.ts; this
+    // lock just pins the behavior FLIP at the A1 site.) The `\pex` preamble
+    // stays un-widened — see that file's negative test.
     const tex = `\\ex A one-liner. \\[
 q = 9
 \\]
 \\xe`;
     const json = parseBody(tex);
     const block = findAll(json, "exampleBlock")[0];
-    // No exampleItemList (single \ex) and no displayMath child at block level.
     const blockMath = (block.content ?? []).filter(
       (c) => c.type === "displayMath",
     );
-    expect(blockMath).toHaveLength(0);
+    expect(blockMath).toHaveLength(1);
+    expect(blockMath[0].attrs?.latex).toBe("q = 9");
   });
 });

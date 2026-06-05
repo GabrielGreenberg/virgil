@@ -17,6 +17,7 @@
  */
 
 import type { Editor } from "@tiptap/react";
+import type { NodeType } from "@tiptap/pm/model";
 import { TEXT_OBJECT_REGISTRY } from "@/text-objects/text-object-registry";
 import type { TextObjectKind } from "@/text-objects/types";
 
@@ -33,4 +34,31 @@ export function classifyParentAt(
     }
   }
   return null;
+}
+
+/**
+ * Schema-driven test: would inserting a bare node of `nodeType` at `insertPos`
+ * leave the IMMEDIATE insert parent's content valid? (`$pos.parent.canReplaceWith`
+ * at the resolved index.) This is the SSOT for the drop spec's wrap-vs-direct
+ * decision — distinct from `classifyParentAt`, which collapses two structurally
+ * different positions onto the same enclosing TextObjectKind.
+ *
+ * Concretely (Feature A2): a single example's widened body (parent
+ * `exampleBlock`) and the multi between-items gap (parent `exampleItemList`)
+ * BOTH classify as `exampleBlock` via `classifyParentAt` (which skips the
+ * unregistered `exampleItemList`), yet the first must drop-direct and the second
+ * must wrap. The immediate parent's schema separates them: `exampleBlock`
+ * (post-widen) / `exampleItem` accept the bare block → true; `exampleItemList`
+ * (content `exampleItem+`) rejects it → false. No magic parent-kind string.
+ */
+export function canDropDirectAt(
+  editor: Editor,
+  insertPos: number,
+  nodeType: NodeType,
+): boolean {
+  const doc = editor.state.doc;
+  if (insertPos < 0 || insertPos > doc.content.size) return false;
+  const $pos = doc.resolve(insertPos);
+  const index = $pos.index();
+  return $pos.parent.canReplaceWith(index, index, nodeType);
 }
