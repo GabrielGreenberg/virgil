@@ -29,6 +29,19 @@ bump, committed all-or-nothing under the pen):
   apply_response.py <doc> restore  <op-json>   # { cardId } archive.json → original panel
   apply_response.py <doc> move     <op-json>   # { cardId, newAnchor } re-anchor (Mode-A only)
   apply_response.py <doc> link     <op-json>   # { cardAId, cardBId, kind? } bidirectional
+  apply_response.py <doc> accept   <op-json>   # { cardId } L3: splice proposal + status→accepted + Task done
+  apply_response.py <doc> reject   <op-json>   # { cardId } L3: status→rejected + Task done (.tex untouched)
+
+accept/reject (chip 13) consummate a Level-3 *proposal* — a suggestion card
+(revision- or cutter-) that draft-suggestion drafted with the .tex untouched and
+the Task left awaiting review. accept splices original_text → suggested_text into
+the .tex (the generic `replace-span` texEdit, stale-guarded), flips the card
+status → accepted, and completes the originating Task (result=accepted) — all in
+ONE commit; it is the one mutation op that also carries a paper write. reject
+flips the card status → rejected + completes the Task (result=rejected), .tex
+untouched. Both take the originating Task from op.requestId or the card's
+`aiOriginRequestId`; both are idempotent (re-accepting an accepted card is a
+no-op) and refuse the opposite terminal state (accept on a rejected card).
 
 The mutation ops register **no synthesized Task**: a mechanical card-op has no
 `AiRequestKind`, and a fabricated kind leaks `undefined` into the AI window's
@@ -63,9 +76,10 @@ Schema (v1 superset — every field optional unless noted):
     "card":      { ...full card object to insert into <panel>.json },
     "texEdit":   { "anchorUuid": "3301",                 // paragraph %!v: marker
                    "insert": "\\vfid{f8}\\footnote{…}",  // text to splice
-                   "mode": "end-of-paragraph" | "after-selected" | "region-replace",
+                   "mode": "end-of-paragraph" | "after-selected" | "region-replace" | "replace-span",
                    "selectedText": "…",                  // for after-selected
-                   "replacement": "…\\begin{document}\n\n", // for region-replace
+                   "replacement": "…\\begin{document}\n\n", // region-replace / replace-span substitute
+                   "match": "<verbatim span>",            // replace-span: swap this span at anchorUuid (stale-guarded)
                    "endMarker": "\\begin{document}" },   // region-replace boundary
     "bibEdit":   { "mode": "append" | "set-fields" | "replace",
                    "entry":   "@article{key, …}",         // append / replace
@@ -84,8 +98,10 @@ The paper-file edits are kind-agnostic capabilities, all spliced under the pen i
 the SAME atomic commit (gated by `apply_writes` — applied on a real write, held
 back on a Level-3 proposal):
   - `texEdit`     — the consumer composes the exact splice (e.g.
-                    `\\vfid{<id>}\\footnote{<body>}`) or, in `region-replace` mode,
-                    the whole preamble; this script just places it.
+                    `\\vfid{<id>}\\footnote{<body>}`), or, in `region-replace` mode,
+                    the whole preamble, or, in `replace-span` mode (chip 13), a
+                    verbatim span to swap at an anchor (the L3 accept splice);
+                    this script just places it.
   - `bibEdit`     — append a new entry, set fields on an existing citekey, or
                     replace an entry block, in `references.bib` (find_bib_file).
   - `settingsEdit`/`annotationEdit` — set keys in the two non-panel JSON sidecars
@@ -120,6 +136,7 @@ import uuid
 from pathlib import Path
 
 from _common import (
+    NODE_UUID_REGEX,
     commit_under_pen,
     die,
     find_bib_file,
@@ -172,7 +189,8 @@ ALL_RESULTS = {
 SUBCOMMANDS = {
     "complete-task", "write-with-comment", "write-silent", "complete-only", "revert",
     # Existing-card mutation ops (§10) — each routes through _mutation_commit.
-    "update", "archive", "restore", "move", "link",
+    # accept/reject (chip 13) consummate an L3 proposal (accept also splices the .tex).
+    "update", "archive", "restore", "move", "link", "accept", "reject",
 }
 
 # Panels whose cards are atom-bearing (the card id *equals* a `.tex` \v*id marker;
@@ -374,6 +392,12 @@ def _tex_splice(doc: Path, te: dict) -> tuple[Path, str]:
         `replacement`. The whole-preamble rewrite (style-merge): the consumer's
         `replacement` re-supplies the marker + spacing it wants to keep, so the
         body bytes after the old marker are preserved verbatim.
+      replace-span (chip 13) — at the `%!v:<anchorUuid>` paragraph, replace the
+        verbatim `match` span with `replacement`. The generic "apply a reviewed
+        proposal" primitive (a suggestion's original_text → suggested_text),
+        carrying ZERO suggestion knowledge — it just swaps a span. Stale-guarded:
+        if the anchor is gone or `match` no longer appears in that paragraph, it
+        dies and nothing is spliced (see _replace_span_in_tex).
     """
     tex_path = find_tex_file(doc)
     text = tex_path.read_text(encoding="utf-8")
@@ -391,6 +415,9 @@ def _tex_splice(doc: Path, te: dict) -> tuple[Path, str]:
         while end < len(text) and text[end] == "\n":
             end += 1
         return tex_path, replacement + text[end:]
+
+    if mode == "replace-span":
+        return tex_path, _replace_span_in_tex(text, te)
 
     insert = te.get("insert")
     if not insert:
@@ -417,6 +444,53 @@ def _tex_splice(doc: Path, te: dict) -> tuple[Path, str]:
     while j > 0 and text[j - 1] in " \t":
         j -= 1
     return tex_path, text[:j] + insert + text[j:]
+
+
+def _replace_span_in_tex(text: str, te: dict) -> str:
+    r"""mode=replace-span: at the anchor paragraph's `%!v:<anchorUuid>` marker,
+    replace the verbatim `match` span with `replacement`. Returns the new text.
+
+    The L3 "consummate a reviewed proposal" splice, but kind-agnostic — it knows
+    nothing about suggestions; it swaps one verbatim span for another at an
+    anchor (original_text → suggested_text is just the caller's choice of args).
+
+    Stale-proposal guard (the L3 trust property): `match` must still be present
+    in the *anchored paragraph*. The search is scoped to that paragraph — from
+    just past the previous `%!v:` marker up to this one — so (a) an identically
+    worded span in a *different* paragraph can't be hit by accident, and (b) if
+    the paragraph changed since the proposal was drafted (so `match` no longer
+    appears there), we die rather than blindly splice a stale edit. Because this
+    runs before commit_under_pen, a die() leaves the .tex — and the whole
+    transaction — untouched.
+    """
+    anchor = te.get("anchorUuid")
+    if not anchor:
+        die("texEdit.anchorUuid is required for mode=replace-span")
+    match = te.get("match")
+    if not match:
+        die("texEdit.match is required for mode=replace-span (the verbatim span to replace)")
+    replacement = te.get("replacement")
+    if replacement is None:
+        die("texEdit.replacement is required for mode=replace-span (may be empty to delete the span)")
+
+    marker = f"%!v:{anchor}"
+    mi = text.find(marker)
+    if mi == -1:
+        die(f"replace-span: anchor marker {marker} not found in .tex — the anchored paragraph "
+            f"was removed since the proposal was drafted (stale proposal); refusing to splice")
+    # Scope the search to the anchor paragraph: [end of the previous %!v: marker,
+    # this marker). Keeps an identically worded span elsewhere out of range.
+    region_start = 0
+    for m in NODE_UUID_REGEX.finditer(text):
+        if m.start() >= mi:
+            break
+        region_start = m.end()
+    idx = text.find(match, region_start, mi)
+    if idx == -1:
+        die(f"replace-span: the proposal's original_text no longer matches the .tex at anchor "
+            f"{marker} — the paragraph changed since the proposal was drafted (stale proposal); "
+            f"refusing to splice. Re-draft the suggestion against the current text.")
+    return text[:idx] + replacement + text[idx + len(match):]
 
 
 def _strip_footnote_from_tex(text: str, fid: str) -> str | None:
@@ -1184,14 +1258,170 @@ def cmd_link(doc: Path, op: dict) -> dict:
     )
 
 
-# Op name → handler. One uniform spine (_mutation_commit), five op-specific
-# handlers — the family is "existing-card mutations through one contract".
+# --- accept / reject (chip 13) — consummate an L3 proposal ------------------
+#
+# L3 ("propose a change for review") is the one safety level that DRAFTS but
+# can't consummate: draft-suggestion lands a suggestion card (revision- or
+# cutter-) with the .tex untouched and the Task left awaiting review. These two
+# ops close that loop, on the SAME atomic + pen + audit spine as the other
+# mutations (_mutation_commit):
+#
+#   accept — splice the proposal into the .tex (original_text → suggested_text
+#            via the generic replace-span texEdit), flip the card status →
+#            accepted, and complete the originating Task (result=accepted). The
+#            single mutation op that also carries a paper write (the splice), and
+#            the only one gated by the stale-proposal guard (in replace-span).
+#   reject — flip the card status → rejected and complete the Task
+#            (result=rejected). The .tex is UNTOUCHED.
+#
+# Both treat revision-suggestion and cutter-suggestion uniformly: the only
+# per-kind knowledge is "this card carries original_text / suggested_text / an
+# anchor", which is identical across the two. A future proposal kind that
+# carries the same triad inherits accept/reject for free — "apply a reviewed
+# proposal" is now a generic contract capability, not per-kind splice code.
+
+SUGGESTION_KINDS = {"revision-suggestion", "cutter-suggestion"}
+
+
+def _suggestion_anchor_uuid(card: dict) -> str | None:
+    """The anchor paragraph uuid for a suggestion card, from its first textObject
+    Link. Tolerates both the live `textObjectIds` shape and the legacy
+    `paragraphIds` one (the responder-skill markdown still documents the latter;
+    on-disk suggestion cards use textObjectIds)."""
+    for link in card.get("links") or []:
+        anchor = link.get("anchor") if isinstance(link, dict) else None
+        if not isinstance(anchor, dict):
+            continue
+        ids = anchor.get("textObjectIds") or anchor.get("paragraphIds")
+        if isinstance(ids, list) and ids:
+            return ids[0]
+    return None
+
+
+def _resolve_proposal(doc: Path, op: dict, verb: str):
+    """Shared accept/reject front half: resolve the card, assert it's a suggestion
+    proposal, and classify its terminal state. Returns either `(hit, kind)` to
+    proceed, or a dict — the idempotent no-op result the caller returns as-is
+    (re-accepting an accepted card / re-rejecting a rejected one is a no-op).
+    die()s on a hard refusal: not a suggestion, or already in the *opposite*
+    terminal state (accept on a rejected card, or vice-versa)."""
+    from card_by_id import find_card, card_kind
+
+    card_id = op.get("cardId")
+    if not card_id:
+        die(f"{verb} requires op.cardId")
+    hit = find_card(doc, card_id)
+    if hit is None:
+        die(f"card not found: {card_id}")
+    kind = card_kind(hit)
+    if kind not in SUGGESTION_KINDS:
+        die(f"{verb}-suggestion applies only to a suggestion proposal "
+            f"(revision-suggestion / cutter-suggestion); {card_id} is a {kind}")
+    status = hit.card.get("status") or "pending"
+    target = "accepted" if verb == "accept" else "rejected"
+    opposite = "rejected" if verb == "accept" else "accepted"
+    if status == target:
+        return {"ok": True, "noop": True, "reason": f"already {target}",
+                "op": verb, "cardId": card_id, "cardKind": kind, "status": status}
+    if status == opposite:
+        die(f"cannot {verb} {card_id}: it is already {opposite} (a terminal state)")
+    return hit, kind
+
+
+def cmd_accept(doc: Path, op: dict) -> dict:
+    """Consummate an L3 proposal: splice original_text → suggested_text into the
+    .tex (generic replace-span, stale-guarded), flip the suggestion card →
+    accepted, and complete the originating Task (result=accepted). One atomic,
+    pen-wrapped commit. Idempotent (accepting an accepted card is a no-op)."""
+    res = _resolve_proposal(doc, op, "accept")
+    if isinstance(res, dict):
+        return res
+    hit, kind = res
+    card = hit.card
+    card_id = card["id"]
+
+    original = card.get("original_text")
+    if not original:
+        die(f"cannot accept {card_id}: the suggestion carries no original_text "
+            f"(nothing to match in the .tex)")
+    if card.get("suggested_text") is None:
+        die(f"cannot accept {card_id}: the suggestion carries no suggested_text")
+    anchor = _suggestion_anchor_uuid(card)
+    if not anchor:
+        die(f"cannot accept {card_id}: the suggestion has no anchor paragraph "
+            f"(links[*].anchor.textObjectIds) to splice at")
+    # The replacement mirrors the browser's accept: a revision suggestion honors
+    # a user refinement (user_text) over the AI draft (suggested_text); an empty
+    # value is a deletion (a Cutter "cut entirely"). The .tex write itself is the
+    # generic replace-span — no suggestion-specific splice code.
+    replacement = card.get("user_text") or card.get("suggested_text") or ""
+
+    txn = _Txn(doc)
+    live = txn.card_ref(hit.filename, hit.list_key, card_id)
+    if live is None:
+        die(f"card vanished while opening the transaction: {card_id}")
+    live["status"] = "accepted"
+    txn.mark(sidecar(doc, hit.filename))
+
+    # The splice rides chip 12's apply_writes path (always-on here — accept IS
+    # the apply). The stale-proposal guard lives in replace-span: if original_text
+    # no longer matches at the anchor, _apply_paper_writes → _tex_splice die()s
+    # before commit_under_pen, so the .tex, the card, AND the Task all stay put.
+    _apply_paper_writes(doc, txn, {"texEdit": {
+        "mode": "replace-span", "anchorUuid": anchor,
+        "match": original, "replacement": replacement,
+    }})
+
+    request_id = op.get("requestId") or card.get("aiOriginRequestId")
+    return _mutation_commit(
+        doc, txn,
+        summary=op.get("summary") or f"Accepted {kind} {card_id}",
+        request_id=request_id,
+        result=RESULT_ACCEPTED,
+        extra={"op": "accept", "cardId": card_id, "cardKind": kind,
+               "anchorUuid": anchor, "result": RESULT_ACCEPTED},
+    )
+
+
+def cmd_reject(doc: Path, op: dict) -> dict:
+    """Dismiss an L3 proposal: flip the suggestion card → rejected and complete
+    the originating Task (result=rejected). The .tex is UNTOUCHED. One atomic,
+    pen-wrapped commit. Idempotent (rejecting a rejected card is a no-op)."""
+    res = _resolve_proposal(doc, op, "reject")
+    if isinstance(res, dict):
+        return res
+    hit, kind = res
+    card_id = hit.card["id"]
+
+    txn = _Txn(doc)
+    live = txn.card_ref(hit.filename, hit.list_key, card_id)
+    if live is None:
+        die(f"card vanished while opening the transaction: {card_id}")
+    live["status"] = "rejected"
+    txn.mark(sidecar(doc, hit.filename))
+
+    request_id = op.get("requestId") or hit.card.get("aiOriginRequestId")
+    return _mutation_commit(
+        doc, txn,
+        summary=op.get("summary") or f"Rejected {kind} {card_id}",
+        request_id=request_id,
+        result=RESULT_REJECTED,
+        extra={"op": "reject", "cardId": card_id, "cardKind": kind, "result": RESULT_REJECTED},
+    )
+
+
+# Op name → handler. One uniform spine (_mutation_commit), op-specific handlers —
+# the family is "existing-card mutations through one contract". accept/reject
+# (chip 13) join it to consummate an L3 proposal; accept is the one member that
+# also carries a paper write (the .tex splice).
 MUTATION_OPS = {
     "update": cmd_update,
     "archive": cmd_archive,
     "restore": cmd_restore,
     "move": cmd_move,
     "link": cmd_link,
+    "accept": cmd_accept,
+    "reject": cmd_reject,
 }
 
 

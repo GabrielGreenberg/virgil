@@ -43,8 +43,18 @@ The skill set turns those signals into responses:
   against the other.
 - `/editor/answer-cutter-comment`, `/editor/answer-revision-comment`,
   `/editor/draft-suggestion` — responder-kind emitters (comment / the
-  suggestion family); still legacy default-apply, migrate with the L3 propose
-  flow (chip 13).
+  suggestion family); still legacy default-apply, migrate onto the contract in
+  chip 14 (unblocked now that chip 13 gives the suggestion family an
+  accept→splice path).
+- `/editor/accept-suggestion`, `/editor/reject-suggestion` — the **L3
+  consummation** (chip 13). A drafted suggestion proposal (revision- or
+  cutter-) is reviewed, then either **accepted** — spliced into the `.tex`
+  (`original_text` → `suggested_text` via the generic `replace-span` texEdit,
+  stale-guarded) + status→accepted + Task done — or **rejected** (status→rejected
+  + Task done, `.tex` untouched). Both resolve via `card_by_id.py` and route an
+  `accept` / `reject` op through `apply_response.py` (one atomic, pen-protected
+  commit). This closes the loop: **all three safety levels now ride the contract
+  — L1 silent, L2 auto+comment, L3 propose→accept→splice.**
 - `/editor/answer-bib-review` — verifies/fills bibliography fields
   (`bibEdit` set-fields/replace), drafts annotations (`annotationEdit`), or
   (via `--library-sync`) swaps a single entry in from the Virgil Library
@@ -82,6 +92,8 @@ editor/
 │   ├── answer-revision-comment.md
 │   ├── answer-report-request.md
 │   ├── draft-suggestion.md
+│   ├── accept-suggestion.md    ┐ L3 consummation (chip 13): accept = splice +
+│   ├── reject-suggestion.md    ┘ status; reject = status only. → accept/reject ops
 │   ├── answer-bib-review.md
 │   ├── style-merge.md
 │   ├── create-card.md          mechanical create primitive (chip 8)
@@ -101,9 +113,10 @@ editor/
 │   ├── apply_response.py       atomic pen-wrapped writeback (card + .tex +
 │   │                           .bib + settings + annotation + ai-requests +
 │   │                           notif + version); v1 write subcommands + the §10
-│   │                           existing-card mutation ops + the chip-12 paper-
-│   │                           file edits (bibEdit/settingsEdit/annotationEdit,
-│   │                           texEdit region-replace)
+│   │                           existing-card mutation ops (+ chip-13 accept/reject
+│   │                           — the L3 consummation) + the chip-12 paper-file
+│   │                           edits (bibEdit/settingsEdit/annotationEdit, texEdit
+│   │                           region-replace / replace-span)
 │   ├── create_card.py          mechanical create-card (all createable kinds); → contract
 │   ├── bib_resolve.py          parse + surgically edit references.bib entries
 │   │                           (append/set-fields/replace) + annotation
@@ -289,11 +302,15 @@ skill — call `get_para_context.py`.
   skill hand-builds card JSON for them. The **`.bib` / preamble** skills
   (`find-citation`, `answer-bib-review`, `style-merge`) are now on the contract
   too (chip 12 — the `bibEdit` / `settingsEdit` / `annotationEdit` capabilities
-  and `texEdit` `region-replace`). What remains: the **propose-flow** branches
-  still on legacy default-apply (`answer-note-request` path (a),
+  and `texEdit` `region-replace`). Chip 13 closed the L3 loop on the *apply* side:
+  `/editor/accept-suggestion` + `/editor/reject-suggestion` consummate a drafted
+  proposal through the contract (the generic `replace-span` texEdit + the
+  `accept`/`reject` ops). What remains: the **propose-flow** branches that still
+  *draft* via legacy default-apply (`answer-note-request` path (a),
   `answer-todo-request`'s doc-edit branch, and `draft-suggestion` /
-  `answer-cutter-comment` / `answer-revision-comment`), which migrate with the L3
-  accept→splice flow (chip 13); and **`sync-bib-to-library`**, whose cross-library
+  `answer-cutter-comment` / `answer-revision-comment`) — migrate them onto the
+  contract's `complete-task --propose` in **chip 14** (now unblocked, since the
+  drafted proposals have an accept→splice path); and **`sync-bib-to-library`**, whose cross-library
   `master.bib` orchestration + citekey-rename across the `.tex` + `citations.json`
   is a third write shape — its paper-side writes should route through the contract
   in a follow-up (the `rename_citekey.py` step still writes `document.tex` +

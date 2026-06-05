@@ -187,7 +187,16 @@ What makes it special:
 A subtlety worth recognizing: **accepting a `cutter-suggestion`/`revision-
 suggestion` enqueues a Task** rather than editing the `.tex` — the editor never
 mutates the document on accept, so the textual replacement rides the same cowork
-write path as everything else.
+write path as everything else. That replacement is consummated skill-side by
+[`/editor/accept-suggestion`](../../editor/skills/accept-suggestion.md) (chip 13):
+it splices `original_text` → `suggested_text` through `apply_response.py`'s generic
+`replace-span` texEdit — stale-guarded (a proposal whose `original_text` no longer
+matches the anchored paragraph is refused, never blindly spliced) — flips the card
+`status` → `accepted`, and completes the originating Task in one atomic commit;
+`/editor/reject-suggestion` flips `status` → `rejected` with the `.tex` untouched.
+This closes the **L3 (propose→review→apply) loop** — the last of the three safety
+levels to ride the contract end to end (L1 silent · L2 auto+comment · L3
+propose→accept→splice).
 
 ## Theme resolution and the key aliases — a renaming hazard
 
