@@ -232,9 +232,17 @@ export const InlineAtomGrab = Extension.create<InlineAtomGrabOptions>({
               window.addEventListener("mouseup", onUp);
               // Return true → PM skips its own mousedown, so it never rests
               // a NodeSelection on the atom (the scrollIntoView jump that
-              // selectable:false avoids — now uniform across all four
-              // kinds). NO preventDefault: a no-drag press still emits a
-              // click, which opens the atom's Card / edit popover.
+              // selectable:false avoids — uniform across all four kinds).
+              //
+              // preventDefault is REQUIRED: an atom is a contenteditable=false
+              // island, which the browser treats as natively draggable. Without
+              // it, a real-mouse press starts a native HTML5 drag whose
+              // drag-detection swallows the mousemove/mouseup stream this
+              // gesture needs — the Editor.tsx dragstart guard fires too late,
+              // and `draggable=false` on the NodeView proved insufficient alone.
+              // preventDefault on *mousedown* does NOT suppress the subsequent
+              // *click*, so a no-drag press still opens the atom's Card.
+              event.preventDefault();
               return true;
             },
           },
