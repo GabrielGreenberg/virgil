@@ -1877,7 +1877,7 @@ A2's adapter wrapped whenever `canDropDirect === false`, which over-fired outsid
 
 ## Feature A3 — expex drop-bar redesign: orientation carries meaning — 2026-06-05
 
-**Commit:** `<pending — branch feature-A3-bar-redesign; stamp to the landed sha on merge, as A2 was>`.
+**Commit:** `fcce5fd` (landed on main via merge `3869eca`).
 
 **What.** Reshaped the expex drop affordance (A1/A2 drew new-item + into-item both as vertical bars → the user found the short-tick-vs-tall-bar ambiguous): now ORIENTATION carries meaning — a HORIZONTAL full-width bar = a new sibling item (wrap, push the others down); a VERTICAL left-edge bar spanning an item = a new block WITHIN that item (drop-direct, pushed to the item's top). Hit model = vertical-position thirds, Notion-style (the item the cursor's Y is within: top edge band → horizontal new-item ABOVE, bottom edge band → horizontal new-item BELOW, middle band → vertical into-item; above all items → first, below all → last). Adjacent items SHARE a gap (new-below-I == new-above-(I+1) → one insertPos). A single example = ONE vertical into-body bar, full body height, no thirds (NOT converted to multi). into-item / into-body now inserts at the content START — the dropped block becomes the new FIRST child, pushing the existing down — replacing A2's `leadingContentEnd` (append-after-leading-run). Both bars hang off the item's TEXT-left (inner content DOM), not the exampleBlock far-left where the "(2)"/"a." labels sit. Commit (wrap-vs-direct: `canDropDirect`/`canWrapHere`/`buildWrap`/`blockIntoExpexDropAdapter`) REUSED byte-unchanged; above/below the whole example stays the existing top-level between-blocks drop (resolver still returns null when the cursor is outside the exampleBlock).
 
