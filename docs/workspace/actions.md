@@ -1,0 +1,371 @@
+<!-- last-verified: a119ef7 2026-06-05 -->
+<!-- derives-from: docs/architecture/VIRGIL.md#ontology, docs/architecture/VIRGIL.md#code-organization -->
+<!-- covers-code: src/components/DragHandleMenu.tsx, src/components/ActionsMenuPanel.tsx, src/components/SelectionActionsMenu.tsx, src/components/ActionsStripButton.tsx, src/components/editor-layout/card-actions, src/lib/editor-extensions.ts, src/lib/tiptap/tab-indent.ts, src/lib/tiptap/expex.ts, src/lib/tiptap/latex-comment.ts, src/lib/section-folding.ts, src/lib/tiptap/uuid-attr.ts, src/lib/tiptap/pgmark.ts, src/lib/tiptap/latex-command.ts, src/text-objects/text-object-registry.ts, src/text-objects/TextObjectGrabHandle.tsx, src/text-objects/drop-adapters.ts, src/components/drop-mode, src/lib/tiptap/atom-registry.ts -->
+
+# Actions (the editing surface) — operational manifest
+
+> **When to load.** Any task that needs to know *what a user can DO* in the
+> editor — which button/key/gesture creates a Card, formats text, moves a
+> block, or drags an Atom — and *where each action is defined*. This is the
+> editing-surface **vocabulary**, not a per-Card schema ([cards.md](cards.md))
+> nor the write path a skill takes ([structure.md → the write path](structure.md#the-write-path)).
+> A skill rarely drives the UI; load this to recognize what the *user* did
+> (what produced the Task you're draining) or to mirror a UI action's effect on
+> the `.tex` / sidecars.
+
+Operational cut of two [VIRGIL.md](../architecture/VIRGIL.md) sections: the
+[Ontology](../architecture/VIRGIL.md#ontology) (the five primitives and their
+**mobility** — "all TextObjects and Cards can be moved, popped out, and dropped
+back freely; Atoms have only text-bound mobility") and
+[Code organization](../architecture/VIRGIL.md#code-organization) (the
+**single-source-of-truth registries**). The editing surface is the *operational
+realization* of those primitives' affordances — so this doc stays in the
+manifest (per the [conceptual-doc-vs-manifest scope boundary](../architecture/VIRGIL.md#conceptual-doc-vs-operational-manifest--the-scope-boundary))
+and roots every action in the registry / keymap / decoration plugin that
+**defines** it, rather than enumerating the rendered UI.
+
+## The four families at a glance
+
+| Family | What it is | SSOT that defines it |
+|---|---|---|
+| **Card actions** | The action + formatting vocabulary reached from the gutter button, the strip button, and the block grab handle | `MENU_ENTRIES` ([DragHandleMenu.tsx](../../src/components/DragHandleMenu.tsx)) + the formatting grid ([ActionsMenuPanel.tsx](../../src/components/ActionsMenuPanel.tsx)) |
+| **Structural ops** | Block move / duplicate / delete / convert; the grab-handle lift; the three drag-drop flavors | `TEXT_OBJECT_REGISTRY` ([text-object-registry.ts](../../src/text-objects/text-object-registry.ts)) + the drop-spec registry ([drop-mode/registry.ts](../../src/components/drop-mode/registry.ts)) + `ATOM_REGISTRY` ([atom-registry.ts](../../src/lib/tiptap/atom-registry.ts)) |
+| **Keyboard** | Custom keymaps + the inherited TipTap defaults that survive | `addKeyboardShortcuts` in [tab-indent.ts](../../src/lib/tiptap/tab-indent.ts) / [expex.ts](../../src/lib/tiptap/expex.ts) / [latex-comment.ts](../../src/lib/tiptap/latex-comment.ts) + the assembled set in [editor-extensions.ts](../../src/lib/editor-extensions.ts) |
+| **Decorations** | The visual overlays that style/annotate without mutating the doc | The four `DecorationSet` plugins (table below) |
+
+The deep structure to keep in mind: **one action vocabulary behind three
+triggers, one dispatch path** (Family 1), and **one drop-spec registry behind
+three drag flavors** (Family 2). Where surfaces share machinery, it's documented
+once below and the variants point at it.
+
+---
+
+## Family 1 — Card actions
+
+### The action vocabulary: `MENU_ENTRIES`
+
+The SSOT for the action vocabulary is **`MENU_ENTRIES`** in
+[DragHandleMenu.tsx:78](../../src/components/DragHandleMenu.tsx) — an array of
+**11** entries; the `DragHandleAction` union ([DragHandleMenu.tsx:45](../../src/components/DragHandleMenu.tsx))
+is the type-level mirror. Each entry carries an `action`, a `label`, a
+single-`letter` shortcut, an `icon`, and optional `separator` / `destructive`
+flags.
+
+| # | `action` | Label | Letter | Class | Dispatch endpoint |
+|---|---|---|---|---|---|
+| 1 | `highlight` | Highlight | `H` | annotation | `cardCreation.createHighlight` |
+| 2 | `note` | Note | `N` | annotation | `cardCreation.createNote` |
+| 3 | `footnote` | Footnote | `F` | atom + card | `cardCreation.createFootnote` |
+| 4 | `citation` | Citation | `C` | atom + card | `cardCreation.createCitation` |
+| 5 | `todo` | Todo | `T` | annotation | `cardCreation.createTodo` |
+| 6 | `suggest-edit` | Suggest edit | `E` | annotation | `cardCreation.createRevisionComment` |
+| 7 | `cutter` | Suggest cut | `X` | annotation | `cardCreation.createCutterComment` |
+| 8 | `report` | Report | `R` | annotation | `cardCreation.createReportRequest` (files the *ask*) |
+| 9 | `duplicate` | Duplicate | `D` | lifecycle | `cardLifecycle` clone + slice insert |
+| 10 | `archive` | Archive | `A` | lifecycle | `cardCreation.createArchiveSnippet` |
+| 11 | `delete` | Delete | `⌫` | lifecycle | `cardLifecycle` delete + range cut |
+
+The `CardCreationApi` ([card-creation.ts:145](../../src/components/editor-layout/card-actions/card-creation.ts))
+is the SSOT for the create endpoints; the `cardLifecycle`
+(`CardLifecycleApi`, the per-`CardKind` clone/delete registry) drives Duplicate
+and Delete. Three actions deliberately create the *request/comment* end of a
+pair, not the authored kind: `suggest-edit` → a `revision-comment`, `cutter` →
+a `cutter-comment`, and `report` → a `report-request` (the quick gesture files
+the ask). The authored `revision-suggestion` / `cutter-suggestion` / `report`
+kinds are AI/responder outputs (see [cards.md](cards.md)). Footnote and Citation
+collapse the selection to the passage end before inserting their atom
+([drag-handle-actions.ts:256](../../src/components/editor-layout/card-actions/drag-handle-actions.ts),
+[:276](../../src/components/editor-layout/card-actions/drag-handle-actions.ts)) —
+the audit's CITE behavior, below.
+
+**Per-kind subset.** `MENU_ENTRIES` is the *global* vocabulary; the per-kind
+allowed subset is `TEXT_OBJECT_REGISTRY[kind].actions`
+([text-object-registry.ts](../../src/text-objects/text-object-registry.ts)).
+When the menu opens for a given TextObject kind, the entries outside that set
+render **greyed-out** (visible-disabled), not filtered away, so the menu shape
+is stable across kinds ([DragHandleMenu.tsx:120](../../src/components/DragHandleMenu.tsx)).
+The four action sets are `PROSE_ACTIONS` / `NON_PROSE_BLOCK_ACTIONS` /
+`TITLE_FIELD_ACTIONS` / `LINKED_RANGE_ACTIONS`.
+
+### The formatting vocabulary: the 4×4 grid
+
+The SSOT for formatting is the grid in
+[ActionsMenuPanel.tsx](../../src/components/ActionsMenuPanel.tsx) — **15 used
+cells** (16th is a spacer). Unlike the action row, formatting dispatches *in
+band* via `editor.chain()` or a dedicated insert/wrap helper, not through the
+card dispatcher.
+
+| Cell | Effect | Dispatch |
+|---|---|---|
+| Bold / Italic / Strike / Code | toggle inline mark | `editor.chain().toggleBold()` … (`runFormat`) |
+| BlockType | set paragraph/heading level | `<BlockTypeDropdown>` (`setBlockType`) |
+| Bullet list / Numbered list / Blockquote | toggle block wrapper | `editor.chain().toggleBulletList()` … |
+| Example (`ex`) | wrap selection in an `exampleBlock` | `wrapSelectionInExample` (local; `buildExampleTemplate`) |
+| Inline math (`$x$`) / Display math (`$$`) | wrap selection in math | `wrapSelectionInMath` (local) |
+| Text color (`A`) | apply/clear text color | `SelectionColorPopover` → `setTextColor` / `unsetTextColor` |
+| `\tex` | insert a raw-LaTeX block | `insertTexBlock` ([tex-block.ts](../../src/lib/tiptap/tex-block.ts)) |
+| Figure (`fig.`) | insert a figure block | `insertFigureBlock` ([figure-block.ts](../../src/lib/tiptap/figure-block.ts)) |
+| Image | insert a graphics block | `insertGraphicsBlock` ([graphics-block.ts](../../src/lib/tiptap/graphics-block.ts)) |
+
+### Three triggers, one dispatch
+
+The action vocabulary is reached from **three** surfaces. Two mount the full
+`ActionsMenuPanel` (grid + action list); the third mounts the leaner
+`DragHandleMenu` (action list only):
+
+| Trigger | Component | Mounts | Visibility |
+|---|---|---|---|
+| **Gutter button** | [SelectionActionsMenu.tsx](../../src/components/SelectionActionsMenu.tsx) | `ActionsMenuPanel` | A lightning bolt in the far-right gutter at the selection-head line; appears when the cursor is in the editor |
+| **Strip button** | [ActionsStripButton.tsx](../../src/components/ActionsStripButton.tsx) | `ActionsMenuPanel` | Always present in the MenuBar para-nav strip; disabled until the editor is first focused |
+| **Block grab handle** | [TextObjectGrabHandle.tsx](../../src/text-objects/TextObjectGrabHandle.tsx) | `DragHandleMenu` (per-kind filtered) | The left-gutter grip on hover / selection; a *no-drag click* opens the menu (a drag lifts the block — Family 2) |
+
+All three route through one context, **`useDragHandleMenu()`**
+([drag-handle-menu-context.tsx](../../src/components/editor-layout/card-actions/drag-handle-menu-context.tsx)),
+whose value is wired in `EditorPane` as
+`{ open: openDragHandleMenu, dispatch: dragHandleActions.dispatch }`:
+
+- `open(ref, anchorRect)` mounts the `DragHandleMenu` popover (the grab-handle path).
+- `dispatch(action, ref)` runs an action with no popover step (the toolbar path; both `ActionsMenuPanel` triggers call it directly).
+
+`dispatch` is owned by **`useDragHandleActions`**
+([drag-handle-actions.ts:112](../../src/components/editor-layout/card-actions/drag-handle-actions.ts)) —
+the single `switch (action)` over all 11 actions
+([drag-handle-actions.ts:249](../../src/components/editor-layout/card-actions/drag-handle-actions.ts)).
+It receives `DragHandleActionsDeps` (`cardCreation`, `cardLifecycle`, `confirm`,
+`notify`, view-prefs) and resolves the ref before acting:
+
+- **Mode** is computed by the trigger from the live selection: `selection.empty`
+  → `cursor` mode (ref `{ kind: "paragraph", id }`); else `selection` mode (ref
+  `{ kind: "selection", from, to }`). In cursor mode the Highlight action is
+  greyed out (it needs a range).
+- **Ref class** — a `DragHandleRef` is a `TextObjectRef | SelectionRef`. The
+  dispatcher plants a `TextSelection` over text-bearing refs and a
+  `NodeSelection` on atom-blocks before the create helper runs.
+- **Scope by action class** (`resolveRefRange` + `actionClass`): annotation
+  actions (`H N F C T E X R`) act on the heading *line* for headings; lifecycle
+  actions (`D A ⌫`) act on the whole *section*. Non-heading kinds yield the same
+  range either way.
+- **Destructive confirm** — Archive / Delete consult the kind's
+  `confirmDestructive` registry slot; Heading × Duplicate warns via
+  `confirmHeadingLifecycle` (a whole-section copy is wide enough to disorient).
+
+The lower-level action hooks the dispatcher / `useCardCreation` compose live
+beside it in [editor-layout/card-actions/](../../src/components/editor-layout/card-actions):
+`useCitationActions`, `useFootnoteActions`, `useCommentActions` (cutter/revision),
+`useMarkerActions` (highlight/note marks), `useRefActions` (`\ref`),
+`useSelectionToCardActions`, `useFocusActions`, `useFileActions`,
+`useOrphanActions`, and the block-level `useEditorOps` (Family 2).
+
+### Reconciliation with the action-button audit
+
+[docs/agents/audit-action-button.md](../agents/audit-action-button.md) (the
+414-probe archaeology, dated **2026-05-21**) is the prior art for this family,
+but it predates two changes — verified against the current code:
+
+- **`Quotation` is gone.** The audit's action row listed a 9th item,
+  "Quotation"; it was removed in the card-system refactor. The current
+  `MENU_ENTRIES` has **no `quotation`** (and no `Q` letter). Its conceptual
+  successor is **`report`** (`R`), tracking the Quotations→Reports panel rename.
+  **`duplicate`** (`D`) and **`delete`** (`⌫`) were also added. Net: the action
+  row is now 11 entries, not 9.
+- **"Three triggers → one panel" split.** The audit said all three triggers
+  mount `ActionsMenuPanel`. Now only the **gutter** and **strip** triggers do;
+  the **block grab handle** mounts its own `DragHandleMenu` (action-list-only,
+  per-kind filtered). The shared root is still `MENU_ENTRIES` + the
+  `useDragHandleMenu` dispatch.
+
+The audit's 18-context × 23-item **behavior matrix** (the ✅/⚠️/❌/💥/🪦 table)
+is a *known-issues* catalog (clusters EX / ATOM / CITE / CONT / MODE / MARK,
+with spin-off fixes DA-1…DA-5). Those inconsistencies are **not yet fixed** and
+are out of scope here — treat the matrix as a follow-up list, not current
+guaranteed behavior.
+
+---
+
+## Family 2 — Structural ops & drop-mode
+
+### Block-level ops
+
+Whole-block (TextObject) operations come from two places:
+
+- **`useEditorOps`** ([editor-ops.ts](../../src/components/editor-layout/card-actions/editor-ops.ts))
+  — the structured block edits: `handleReorderBlocks` (move a contiguous block
+  range), `handleRenameHeading`, `handleUpdateLabel`, `handleRenameParTitle`,
+  plus the outline/scroll plumbing (`handleScrollToHeading`, debounced
+  `handleUpdate`).
+- **The `DragHandleMenu` lifecycle actions** — `duplicate` (clone the captured
+  passage, forking any contained atoms' sidecars via `cardLifecycle`),
+  `archive`, and `delete` (Family 1).
+
+### The grab handle (lift / pop / drop)
+
+**`TextObjectGrabHandle`** ([TextObjectGrabHandle.tsx](../../src/text-objects/TextObjectGrabHandle.tsx))
+is the single canonical grip for every persistent TextObject *and* live text
+selections. It realizes the [Ontology](../architecture/VIRGIL.md#ontology)
+"move / pop / drop freely" affordance:
+
+- **Hover / selection** → a handle appears in the left gutter (innermost-to-outermost per nesting level).
+- **No-drag click** → opens the `DragHandleMenu` (Family 1).
+- **Drag past the lift threshold** → mounts a lifted-overlay ghost and begins a drop session. Two modes by cursor location: **ghost mode** (cursor in the content zone → release commits a placement via drop-mode) and **popout mode** (cursor outside → spawns a real floating window).
+
+### `TEXT_OBJECT_REGISTRY` — what is graspable
+
+[text-object-registry.ts](../../src/text-objects/text-object-registry.ts) is the
+SSOT for *which* blocks are graspable/movable and how each behaves. **16 kinds**:
+14 top-level (`paragraph`, `heading`, `bulletList`, `orderedList`, `blockquote`,
+`codeBlock`, `displayMath`, `titleField`, `latexComment`, `texBlock`,
+`figureBlock`, `graphicsBlock`, `exampleBlock`, `linkedRange`) and 2 sub-objects
+(`listItem`, `exampleItem`). Per-kind slots the gesture reads: `actions` (the
+menu subset, Family 1), `dropAdapter`, `chromeAnchor`, `collectMoveSource`
+(heading widens to the whole section), `confirmDestructive`, and the lift-overlay
+hooks (`renderGhost` / `liftSourceRect` / `computeLabel`, overridden only by
+`heading` and `linkedRange`).
+
+### Drop-mode — three drag flavors, one registry
+
+"Drop-mode" ([drop-mode/](../../src/components/drop-mode)) is the drag-drop
+engine. `DropModeProvider` holds the session (the lifted payload + the live drop
+indicator) and mounts the `DropModeIndicator` + `InlineAtomGhost`. Every drag is
+dispatched by **`cardKey` prefix** through `lookupSpec`
+([drop-mode/registry.ts](../../src/components/drop-mode/registry.ts)) — there is
+**no DOM MIME map**; the `cardKey` (`"<prefix>:<id>"`) *is* the routing key.
+Three flavors:
+
+| Flavor | Lifted from | `cardKey` prefix → spec | Placement | Effect |
+|---|---|---|---|---|
+| **Block / TextObject** | grab handle | `textobject:` → `textObjectDropSpec` (`textobject:linkedRange:` → `textRangeMoveDropSpec`) | between-blocks | Move the block; `dropAdapter` decides drop-direct vs. wrap (e.g. into a fresh list / `exampleItem`) |
+| **Inline Atom** | the atom itself, or a card-float header | `atom-grab:` → `inTextAtomGrabSpec`; `footnote:` / `citation:` → `inlineAtomMoveSpec` | inline-cursor | Move the marker to a new inline caret (same editor only) |
+| **Panel card** | a card in a panel / OmniView | `note:` `highlight:` `todo:` `archive:` `cutter-*:` `revision:` `report:` `report-request:` → `textObjectSideReanchorSpec`; `example:` → `blockMoveSpec` | paragraph-side / between-blocks | Re-anchor the card to the dropped-on paragraph (Mode-B preserved); move the example block |
+
+(A fourth registry prefix, `stack-pull` → `stackPullDropSpec`, materializes a
+Library stack entry into the doc — a cross-document feature outside the
+single-doc editing surface, noted here only so the registry reads complete.)
+
+**Inline-Atom drag** is rooted in **`ATOM_REGISTRY`**
+([atom-registry.ts](../../src/lib/tiptap/atom-registry.ts)) — the four drag-able
+inline atoms: `footnote`, `citation`, `ref` (`labelRef`), `inline-math`. The
+direct in-text gesture is the `InlineAtomGrab` extension
+([inline-atom-grab.ts](../../src/lib/tiptap/inline-atom-grab.ts)): mousedown on an
+atom + drag past threshold lifts a ghost; release moves the atom; a press
+without drag falls through to the atom's own click (open/edit its Card). This is
+the operational form of the Atom's "text-bound mobility"
+([atoms.md → mobility](atoms.md#mobility-and-editing-rules)).
+
+**Block drop adapters** ([drop-adapters.ts](../../src/text-objects/drop-adapters.ts))
+— `topLevelDropAdapter`, `listItemDropAdapter`, `exampleItemDropAdapter`,
+`blockIntoExpexDropAdapter` — decide, per source kind and target, whether a
+dropped block lands directly or is wrapped. The expex case lets `paragraph` /
+`displayMath` / `graphicsBlock` land inside an `exampleItem` (schema-driven via
+the drop target's `canDropDirect` / `canWrapHere`).
+
+---
+
+## Family 3 — Keyboard
+
+Two classes: **custom** keymaps Virgil defines, and **inherited** TipTap
+defaults that survive the StarterKit configuration. The whole extension set is
+assembled in [editor-extensions.ts](../../src/lib/editor-extensions.ts).
+
+### Custom keymaps (Virgil-defined)
+
+| Key | Action | Context | SSOT |
+|---|---|---|---|
+| `Tab` | insert a literal tab | plain prose (priority 50 — defers to list/expex `Tab`) | [tab-indent.ts](../../src/lib/tiptap/tab-indent.ts) |
+| `Escape` | blur the editor | any | [tab-indent.ts](../../src/lib/tiptap/tab-indent.ts) |
+| `Enter` | escape / create the next sibling `exampleBlock` | trailing/empty para in an example | [expex.ts](../../src/lib/tiptap/expex.ts) |
+| `Tab` / `Shift-Tab` | nest a para into a sub-item / dissolve an empty example | inside an `exampleBlock` | [expex.ts](../../src/lib/tiptap/expex.ts) |
+| `Enter` / `Tab` / `Shift-Tab` | split / sink / lift (lift promotes the outermost tier to a new block) | inside an `exampleItem` | [expex.ts](../../src/lib/tiptap/expex.ts) |
+| `Tab` / `Shift-Tab` | move to the next / previous gloss cell (append a cell at the end) | inside a gloss row (`ExpexNumbering`) | [expex.ts](../../src/lib/tiptap/expex.ts) |
+| `Delete` / `Backspace` | delete the whole `latexComment` atom | a node-selected `latexComment` | [latex-comment.ts](../../src/lib/tiptap/latex-comment.ts) |
+
+### Inherited TipTap defaults (enabled in StarterKit)
+
+`StarterKit.configure({…})` ([editor-extensions.ts:1632](../../src/lib/editor-extensions.ts))
+**disables** the block nodes (`heading`, `paragraph`, `bulletList`,
+`orderedList`, `listItem`, `blockquote`, `codeBlock`) and replaces each with a
+Virgil builder that `.extend()`s the base — so they keep the inherited keymaps
+while adding UUID attrs / labels. The marks and history are **not** disabled, so
+their default bindings survive:
+
+| Key | Action | Source |
+|---|---|---|
+| `Mod-B` / `Mod-I` / `Mod-Shift-S` / `Mod-E` / `Mod-U` | Bold / Italic / Strike / Code / Underline | StarterKit marks |
+| `Mod-Z` / `Mod-Shift-Z`, `Mod-Y` | Undo / Redo | StarterKit history |
+| `Shift-Enter`, `Mod-Enter` | hard line break | StarterKit `HardBreak` |
+| `Mod-Alt-1…6` | set heading level | `createHeadingWithLabel` (extends `Heading`) |
+| `Mod-Shift-8` / `Mod-Shift-7` / `Mod-Shift-B` | toggle Bullet / Numbered list / Blockquote | the list/blockquote builders (extend the base) |
+| `Mod-Shift-H` | toggle the highlight **mark** (multicolor text tint) | `Highlight` ([editor-extensions.ts:1706](../../src/lib/editor-extensions.ts)) |
+
+> The `Mod-Shift-H` **mark** (a text-background tint) is distinct from the
+> Family-1 **Highlight card** action (`H`), which creates a `HighlightCard`
+> annotation. They share a name, not a mechanism.
+
+### Keyboard-adjacent input rules
+
+Not keymaps, but typed triggers that transform text (cite where relevant):
+
+- **Smart quotes** — typing `"` becomes a curly quote ([smart-quotes.ts](../../src/lib/tiptap/smart-quotes.ts)).
+- **`% ` → latexComment** — a line-leading `% ` converts to a comment atom; suppressed on card surfaces ([latex-comment.ts](../../src/lib/tiptap/latex-comment.ts)).
+- **Slash popup** — typing `/` opens the command popup (`SlashPopupExtension`; see [SlashCommandPopup.tsx](../../src/components/SlashCommandPopup.tsx)).
+- **Markdown heading rules are deliberately OFF** — `createHeadingWithLabel` returns `addInputRules() { return [] }`, killing the `#`/`##`+space shortcut (the slash popup + BlockType menu own heading creation, and the level-0 rule had a real bug).
+
+---
+
+## Family 4 — Decorations
+
+Decorations are ProseMirror overlays that render styling/widgets **without**
+changing the document. There are exactly **four** `DecorationSet` plugins (an
+exhaustive sweep of `Decoration.*` / `DecorationSet` across `src/` finds no
+others — marginalia markers and highlight/`linkedAnchor` tints are *not*
+decorations; see below):
+
+| Decoration | Renders | Kind | SSOT | Keystroke-sanctity |
+|---|---|---|---|---|
+| **UUID attrs** | `data-uuid` + `data-text-object-kind` on each anchorable block's DOM | node | [uuid-attr.ts](../../src/lib/tiptap/uuid-attr.ts) | Compliant — forward-maps, then adds/removes only for the `DocStructureBus` diff's added/removed blocks |
+| **LaTeX command** | grey-monospace `.latex-cmd` on in-progress `\command{…}` spans | inline | [latex-command.ts](../../src/lib/tiptap/latex-command.ts) | Compliant — `map(tr.mapping)` then rebuild only when a changed region holds a `\` |
+| **Pagination chip** | the `\pgmark{N}` label + page-break rule | inline + widget | [pgmark.ts](../../src/lib/tiptap/pgmark.ts) | Compliant — `map` + changed-region `\pgmark` scan |
+| **Section fold** | `.section-folded` (hides blocks under a collapsed heading) | node | [section-folding.ts](../../src/lib/section-folding.ts) | Rebuilds from a **top-level** `doc.forEach()` when a fold is active; gated to `DecorationSet.empty` when nothing is folded (see note) |
+
+**Decoration vs. mark — a load-bearing nuance.** `latexCommand` is *both*: the
+`LatexCommandMark` ([latex-command.ts](../../src/lib/tiptap/latex-command.ts))
+round-trips committed `\commands` to the `.tex` and styles them via its
+`renderHTML` class, while the *decoration* in the same extension styles
+*live-typed* commands that don't yet carry the mark. VIRGIL.md's "kept verbatim
+under the `latexCommand` mark" and this decoration are two halves of one
+feature.
+
+**Not decorations** (so they're not in the table, despite looking like overlays):
+
+- **Marginalia markers** ([Marginalia.tsx](../../src/components/Marginalia.tsx)) — React gutter icons positioned by CSS, driven by the card stores.
+- **Highlight / `linkedAnchor` tints** — CSS on the `Highlight` mark and the `[data-link-card]` attribute, reconciled by the link layer ([src/links/](../../src/links)); no ProseMirror decoration.
+- **Drop-mode indicators** ([drop-mode/Indicator.tsx](../../src/components/drop-mode/Indicator.tsx)) — React, not PM decorations (Family 2).
+
+> **Note (follow-up).** Section fold is the one decoration that doesn't follow
+> the canonical `DecorationSet.map(tr.mapping)` forward-map pattern — its
+> `decorations(state)` re-derives from a top-level `doc.forEach()` on each
+> recompute while a fold is held. The walk is top-level-only (not full-depth)
+> and short-circuits to `DecorationSet.empty` when nothing is folded, so the
+> per-keystroke cost is bounded by the top-level block count, but it's a soft
+> deviation from the [keystroke-sanctity](../architecture/VIRGIL.md#code-organization)
+> rule worth tightening.
+
+---
+
+## Rules for skills
+
+- **You almost never drive these actions.** A skill writes through the
+  [apply_response contract](structure.md#the-write-path), not by simulating a
+  keystroke or a menu click. This doc is for *recognizing* what the user did and
+  *mirroring* its effect on the `.tex` / sidecars.
+- **The action → Card mapping is the bridge.** A user's `F` / `C` / `N` / `T` /
+  `R` (and the AI-flag on a note/todo/comment) is what becomes a **Task** in
+  `ai-requests.json` ([VIRGIL.md → Cowork pattern](../architecture/VIRGIL.md#cowork-pattern)).
+  When you drain a Task, the originating action tells you the kind to produce —
+  route via [cards.md](cards.md).
+- **Atoms move with text.** An inline atom dragged via `InlineAtomGrab` changes
+  its `.tex` position but not its identity (the `\vfid`/`\vcid` marker travels
+  with it — [identity.md](identity.md)); a footnote/citation Card's Atom link
+  survives the move.
+- **Don't hand-fold or hand-decorate.** Folds, UUID attrs, and lint state are
+  app-managed view state, never paper content — leave them to the editor
+  ([gardening.md](gardening.md)).

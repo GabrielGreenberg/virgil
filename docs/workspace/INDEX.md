@@ -1,4 +1,4 @@
-<!-- last-verified: 5a58165 2026-06-05 -->
+<!-- last-verified: a119ef7 2026-06-05 -->
 <!-- derives-from: docs/architecture/VIRGIL.md#ontology -->
 <!-- covers-code: editor/scripts -->
 
@@ -18,12 +18,13 @@ patterns, constraints, recipes). Source lives in `docs/workspace/`; it ships to
 each paper's `.claude/virgil/` at runtime on the per-folder skill-bundle sync (see
 [structure.md → how the manifest reaches `.claude/virgil/`](structure.md#how-the-manifest-reaches-claudevirgil)).
 
-> **Build status.** The **foundational** docs (`ontology.md`, `identity.md`,
-> `structure.md`, `atoms.md`, `latex.md`) and the **card-coupled** docs
-> (`cards.md`, `sidecars.md`, `anchoring.md`, `gardening.md`) are written;
-> `footnotes.md` is the first per-kind sliver. Only **`actions.md`** (the editing
-> surface) is still forthcoming — it needs its own user-actions Phase 0 pass. The
-> one line below that still names it is marked _(forthcoming)_.
+> **Build status.** The manifest is **content-complete**. The **foundational**
+> docs (`ontology.md`, `identity.md`, `structure.md`, `atoms.md`, `latex.md`),
+> the **card-coupled** docs (`cards.md`, `sidecars.md`, `anchoring.md`,
+> `gardening.md`), `footnotes.md` (the first per-kind sliver), and
+> **`actions.md`** (the editing surface — its own user-actions Phase 0 pass, now
+> landed) are all written. Per-kind slivers beyond `footnotes.md` are the natural
+> growth edge from here.
 
 ## Reading protocol — what to load for a task
 
@@ -55,6 +56,9 @@ Resolving where a Card attaches to text (anchors, Atom links)
 Judging what LaTeX Virgil will accept or preserve
   load: latex.md
 
+Recognizing or mirroring a user editing action (a button, key, drag, or decoration)
+  load: actions.md, cards.md
+
 A "how do I…" / "what is…" UX question from the user
   load: nothing here; consult the UX library (.claude/virgil-ux/) — forthcoming
 ```
@@ -72,7 +76,7 @@ A "how do I…" / "what is…" UX question from the user
 | [cards.md](cards.md) | Card-kind taxonomy; per-kind shape + linkage class; the Task Card. | ✅ |
 | [sidecars.md](sidecars.md) | Per-sidecar JSON schemas — the `src/lib/types.ts` surface, field by field. | ✅ |
 | [anchoring.md](anchoring.md) | Card→text linkage in full (Anchors AND Atom links); what invalidates each. | ✅ |
-| `actions.md` | The editing surface: decorations, structural ops, card actions, keyboard. | _forthcoming_ |
+| [actions.md](actions.md) | The editing surface: decorations, structural ops, card actions, keyboard. | ✅ |
 | [gardening.md](gardening.md) | Cleanup conventions; orphan handling; the never-touch deny-list. | ✅ |
 
 ## The write path (every kind shares it)
