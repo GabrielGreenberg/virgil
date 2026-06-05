@@ -134,9 +134,11 @@ card so the user can drag it into the document.
    hygiene is the `answer-bib-review` skill's responsibility, not
    find-citation.
 
-4. **Add to `references.bib`.** Append a complete BibTeX entry. Use
-   `@article` / `@book` / `@inproceedings` as appropriate. Field
-   policy:
+4. **Compose the BibTeX entry.** Build a complete entry — it rides the
+   writeback in step 6 as `bibEdit` (the contract appends it to
+   `references.bib`, atomically, in the *same* commit as the citation
+   card). Do **not** hand-append the file. Use `@article` / `@book` /
+   `@inproceedings` as appropriate. Field policy:
    - **Always**: `year`, `author`, `title`. `doi` only if the work
      has one — omit it for pre-DOI works rather than fabricating from
      ISBN, LCCN, or a publisher landing-page URL (downstream tools
@@ -156,9 +158,11 @@ card so the user can drag it into the document.
    - **`@inproceedings`**: `booktitle`, `year`; `pages`, `editor`,
      `address`, `publisher` if available.
 
-   Append with a blank line separating the new entry from the
-   previous one; the file should end with `}\n` (single trailing
-   newline, no trailing blank line).
+   Just compose the entry block itself (`@type{citekey, …}`) — the
+   contract's `bibEdit` append inserts the blank-line separator and the
+   single trailing `}\n` for you, and **refuses a citekey that already
+   exists** (so if step 3's collision check missed one, the write fails
+   loudly rather than duplicating).
 
 5. **Build the CitationRef** (see `src/lib/types.ts:202`):
    ```json
@@ -183,32 +187,44 @@ card so the user can drag it into the document.
      match the dominant style in that section's prose. The user can
      re-style on drag.
 
-6. **Apply.**
+6. **Apply — the citation card and the `.bib` entry land together, atomically.**
+   One `complete-task` op carries *both* the `CitationRef` card and the
+   `bibEdit` append, so they commit all-or-nothing under the pen — a crash
+   can no longer leave one without the other. Status flips to
+   `complete` / result `direct-created` (the two-field vocabulary).
+
+   Because the entry carries LaTeX braces/backslashes, write the op to a
+   temp file and pass it with `@` (robust JSON quoting). `mkdir -p` the
+   `.virgil/` dir first — a fresh paper folder may not have it yet:
    ```bash
-   python3 editor/scripts/apply_response.py <docPath> '<op-json>'
-   ```
-   ```json
+   mkdir -p "<docPath>/.virgil"
+   cat > "<docPath>/.virgil/find-citation-op.json" <<'JSON'
    { "requestId": "<requestId>",
      "panel": "citations",
-     "card": { ...the CitationRef... },
+     "card": { ...the CitationRef (unanchored: true)... },
+     "bibEdit": { "mode": "append", "entry": "@article{<citekey>, ... }" },
      "summary": "Added <citekey> to bibliography",
-     "clearSourceFlag": false
-   }
+     "clearSourceFlag": false }
+   JSON
+   python3 editor/scripts/apply_response.py <docPath> complete-task "@<docPath>/.virgil/find-citation-op.json"
    ```
-   The `references.bib` write is separate — use the Edit tool to
-   append the entry.
+   (`entry` is the BibTeX block from step 4, as a JSON string — escape `\`
+   as `\\` and newlines as `\n`. Inline `'<op-json>'` works too if you
+   quote carefully.) Do **not** touch `references.bib` with the Edit tool;
+   `apply_response.py` is the only writeback path.
 
 7. **Reply.**
    ```
-   Done: added <citekey> to references.bib and citations.json for request <requestId>. Output: references.bib + citations.json (+ ai-requests.json, notifications, version).
+   Done: added <citekey> to references.bib and citations.json for request <requestId>. Output: references.bib + citations.json (+ ai-requests.json, notifications, version) — one atomic commit.
    ```
 
 ## Failure mode
 
 If you can't confidently find a real source for the description, do
-**not** fabricate. Run:
+**not** fabricate. Take the failure path (two-field: status `failed`,
+result `impossible` — no `.bib` / card write happens):
 ```bash
-python3 editor/scripts/apply_response.py <docPath> --complete-only <requestId> --note "Could not locate a paper matching <criteria>; user should refine the request."
+python3 editor/scripts/apply_response.py <docPath> complete-only <requestId> --result impossible --note "Could not locate a paper matching <criteria>; user should refine the request."
 ```
 And reply:
 ```

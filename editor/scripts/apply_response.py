@@ -53,32 +53,57 @@ the answer-* family, draft-quotation, style-merge, …):
 `op-json` is an inline JSON string or a `@/path/to/file.json` reference.
 Schema (v1 superset — every field optional unless noted):
 
-  { "requestId": "...",        // ai-requests.json id, or "virtual:<panel>:<cardId>".
-                               //   optional when --synthesize-task is passed.
+  { "requestId": "...",        // ai-requests.json id, a bib-review-requests.json
+                               //   bibKey, or "virtual:<panel>:<cardId>". Optional
+                               //   when --synthesize-task is passed, or when the op
+                               //   is a writes-only paper edit (carries a *Edit but
+                               //   completes no Task — library-sync's .bib swap).
     "panel":     "notes" | "todos" | "cutter" | "revisions" |
                  "footnotes" | "citations" | "reports",
     "card":      { ...full card object to insert into <panel>.json },
     "texEdit":   { "anchorUuid": "3301",                 // paragraph %!v: marker
                    "insert": "\\vfid{f8}\\footnote{…}",  // text to splice
-                   "mode": "end-of-paragraph" | "after-selected",
-                   "selectedText": "…" },                // for after-selected
+                   "mode": "end-of-paragraph" | "after-selected" | "region-replace",
+                   "selectedText": "…",                  // for after-selected
+                   "replacement": "…\\begin{document}\n\n", // for region-replace
+                   "endMarker": "\\begin{document}" },   // region-replace boundary
+    "bibEdit":   { "mode": "append" | "set-fields" | "replace",
+                   "entry":   "@article{key, …}",         // append / replace
+                   "citekey": "key",                      // set-fields / replace
+                   "fields":  { "doi": "…", "pages": "…" } }, // set-fields
+    "settingsEdit":   { "set": { "styleId": "…" } },      // → virgil/document-settings.json
+    "annotationEdit": { "bibKey": "key", "text": "…" },   // → virgil/annotations.json
+    "bibReviewType":  "fields" | "notes",                 // disambiguate the row to flip
     "comment":   { "panel": "notes", "card": {…} },      // sibling comment (L2)
     "summary":   "<one-line description for the toast>",
     "clearSourceFlag": true,   // clear aiRequest on the linkedTo/virtual source
     // --synthesize-task only (build the Task on the fly):
     "kind": "footnote", "text": "…", "paragraphIds": ["3301"], "safetyLevel": 1 }
 
-`texEdit` is kind-agnostic: the consumer composes the exact insert string (e.g.
-`\\vfid{<id>}\\footnote{<body>}` for a footnote); this script just splices it at
-the paragraph anchor. That keeps the writeback contract free of any per-kind
-knowledge — the next card kind is a new consumer, not a change here.
+The paper-file edits are kind-agnostic capabilities, all spliced under the pen in
+the SAME atomic commit (gated by `apply_writes` — applied on a real write, held
+back on a Level-3 proposal):
+  - `texEdit`     — the consumer composes the exact splice (e.g.
+                    `\\vfid{<id>}\\footnote{<body>}`) or, in `region-replace` mode,
+                    the whole preamble; this script just places it.
+  - `bibEdit`     — append a new entry, set fields on an existing citekey, or
+                    replace an entry block, in `references.bib` (find_bib_file).
+  - `settingsEdit`/`annotationEdit` — set keys in the two non-panel JSON sidecars
+                    (document settings; per-bibKey annotations).
+The contract carries no per-kind knowledge — the next skill that touches the .tex
+or .bib is a new *consumer*, not a new write path.
 
 A write subcommand commits, atomically and under the pen:
   - virgil/<panel>.json        (new card appended; duplicate id rejected)
-  - the root .tex              (texEdit spliced — only for write/complete-task)
+  - the root .tex              (texEdit spliced/region-replaced — apply_writes only)
+  - references.bib             (bibEdit append/set-fields/replace — apply_writes only)
+  - virgil/document-settings.json (settingsEdit — apply_writes only)
+  - virgil/annotations.json    (annotationEdit — apply_writes only)
   - virgil/<comment-panel>.json (sibling comment — write-with-comment only)
   - virgil/ai-requests.json    (status + result set, resultId pointer; or a
-                                synthesized Task appended)
+                                synthesized Task appended) OR
+    virgil/bib-review-requests.json (the matching row's status → complete, when the
+                                requestId is a bibKey rather than an ai-request id)
   - the linkedTo/virtual source sidecar (aiRequest flag cleared, if asked)
   - virgil/notifications.json  (new entry)
   - virgil/version.txt         (bumped — committed last so it trails a
@@ -97,6 +122,7 @@ from pathlib import Path
 from _common import (
     commit_under_pen,
     die,
+    find_bib_file,
     find_tex_file,
     json_dumps,
     notification_appended,
@@ -335,14 +361,40 @@ class _Txn:
 
 
 def _tex_splice(doc: Path, te: dict) -> tuple[Path, str]:
-    """Compute the new .tex content with `te.insert` spliced at the anchor.
-    Returns (tex_path, new_text); dies if the anchor can't be located."""
-    insert = te.get("insert")
-    if not insert:
-        die("texEdit.insert is required")
+    """Compute the new .tex content for `te`. Returns (tex_path, new_text); dies
+    if the anchor / marker can't be located.
+
+    Modes:
+      end-of-paragraph (default) — splice `insert` just before the paragraph's
+        `%!v:<anchorUuid>` marker.
+      after-selected — splice `insert` immediately after `selectedText` (falls
+        back to end-of-paragraph if the selection isn't found verbatim).
+      region-replace — replace everything from the file start up to and including
+        `endMarker` (default `\\begin{document}`) and its trailing newlines with
+        `replacement`. The whole-preamble rewrite (style-merge): the consumer's
+        `replacement` re-supplies the marker + spacing it wants to keep, so the
+        body bytes after the old marker are preserved verbatim.
+    """
     tex_path = find_tex_file(doc)
     text = tex_path.read_text(encoding="utf-8")
     mode = te.get("mode") or "end-of-paragraph"
+
+    if mode == "region-replace":
+        replacement = te.get("replacement")
+        if replacement is None:
+            die("texEdit.replacement is required for mode=region-replace")
+        marker = te.get("endMarker") or "\\begin{document}"
+        i = text.find(marker)
+        if i == -1:
+            die(f"region-replace end marker not found in .tex: {marker}")
+        end = i + len(marker)
+        while end < len(text) and text[end] == "\n":
+            end += 1
+        return tex_path, replacement + text[end:]
+
+    insert = te.get("insert")
+    if not insert:
+        die("texEdit.insert is required")
 
     if mode == "after-selected" and te.get("selectedText"):
         sel = te["selectedText"]
@@ -426,6 +478,151 @@ def _replace_footnote_body_in_tex(text: str, fid: str, new_body: str) -> str | N
 
 
 # ---------------------------------------------------------------------------
+# Bibliography / settings / annotation writes (kind-agnostic, mirroring texEdit)
+#
+# Three more paper-file capabilities the op-json can carry, each applied in the
+# SAME atomic pen commit as the card + .tex. Like texEdit they're declarative:
+# the consumer says *what* should land; this owns *how* it lands atomically.
+# ---------------------------------------------------------------------------
+
+
+def _bib_path_for_write(doc: Path) -> Path:
+    """The references.bib to write to: the resolved one, or a sensible default
+    (so a first citation in a paper that has no .bib yet still lands)."""
+    existing = find_bib_file(doc)
+    if existing is not None:
+        return existing
+    try:
+        tex = find_tex_file(doc).read_text(encoding="utf-8", errors="replace")
+        m = re.search(r"\\(?:bibliography|addbibresource)\{([^}]+)\}", tex)
+        if m:
+            name = m.group(1).strip()
+            if not name.endswith(".bib"):
+                name += ".bib"
+            return doc / name
+    except SystemExit:
+        pass
+    return doc / "references.bib"
+
+
+def _bib_apply(doc: Path, be: dict) -> tuple[Path, str]:
+    """Compute the new references.bib content for a `bibEdit`. Returns
+    (bib_path, new_text). append / set-fields / replace are one parameterized
+    capability; the serialization lives in bib_resolve (imported lazily so the
+    contract stays import-light)."""
+    import bib_resolve as BR
+
+    mode = be.get("mode")
+    if not mode:
+        mode = "append" if (be.get("entry") and not be.get("citekey")) else "set-fields"
+    if mode == "append":
+        entry = be.get("entry")
+        if not entry:
+            die("bibEdit append requires op.bibEdit.entry")
+        bib_path = _bib_path_for_write(doc)
+        old = bib_path.read_text(encoding="utf-8") if bib_path.exists() else ""
+        return bib_path, BR.append_entry(old, entry)
+    bib_path = find_bib_file(doc)
+    if bib_path is None:
+        die(f"bibEdit {mode}: no references.bib found in the paper")
+    citekey = be.get("citekey")
+    if not citekey:
+        die(f"bibEdit {mode} requires op.bibEdit.citekey")
+    old = bib_path.read_text(encoding="utf-8")
+    if mode == "set-fields":
+        fields = be.get("fields")
+        if not isinstance(fields, dict) or not fields:
+            die("bibEdit set-fields requires a non-empty op.bibEdit.fields object")
+        return bib_path, BR.set_fields(old, citekey, fields)
+    if mode == "replace":
+        entry = be.get("entry")
+        if not entry:
+            die("bibEdit replace requires op.bibEdit.entry")
+        return bib_path, BR.replace_entry(old, citekey, entry)
+    die(f"unknown bibEdit mode: {mode!r} (append | set-fields | replace)")
+    return bib_path, old  # unreachable
+
+
+def _settings_apply(doc: Path, txn: "_Txn", se: dict) -> None:
+    """Merge `se.set` into virgil/document-settings.json (DocumentSettings —
+    e.g. styleId). Loaded once via the txn so it composes + lands in the commit."""
+    sets = se.get("set")
+    if not isinstance(sets, dict) or not sets:
+        die("settingsEdit requires a non-empty op.settingsEdit.set object")
+    path = sidecar(doc, "document-settings.json")
+    state = txn.jget(path, {})
+    if not isinstance(state, dict):
+        die("document-settings.json malformed (expected an object)")
+    for k, v in sets.items():
+        state[k] = v
+    txn.mark(path)
+
+
+def _annotation_apply(doc: Path, txn: "_Txn", ae: dict) -> None:
+    """Set the per-bibKey annotation in virgil/annotations.json (AnnotationsState
+    = { [bibKey]: string } — flat strings). Tolerates a legacy
+    { annotations: {…} } wrapper if a paper happens to carry one."""
+    bibkey = ae.get("bibKey")
+    text = ae.get("text")
+    if not bibkey or text is None:
+        die("annotationEdit requires op.annotationEdit.bibKey and .text")
+    path = sidecar(doc, "annotations.json")
+    state = txn.jget(path, {})
+    if not isinstance(state, dict):
+        die("annotations.json malformed (expected an object)")
+    target = state["annotations"] if isinstance(state.get("annotations"), dict) else state
+    target[bibkey] = text
+    txn.mark(path)
+
+
+def _apply_paper_writes(doc: Path, txn: "_Txn", op: dict) -> None:
+    """Splice every paper-file edit the op carries into the txn — the .tex, the
+    .bib, and the two non-panel JSON sidecars. Gated by `apply_writes` at the
+    call site (held back on a Level-3 proposal). The headline of chip 12: every
+    paper-file write rides one atomic, pen-wrapped commit, no parallel path."""
+    if op.get("texEdit"):
+        tex_path, new_tex = _tex_splice(doc, op["texEdit"])
+        txn.add_raw(tex_path, new_tex)
+    if op.get("bibEdit"):
+        bib_path, new_bib = _bib_apply(doc, op["bibEdit"])
+        txn.add_raw(bib_path, new_bib)
+    if op.get("settingsEdit"):
+        _settings_apply(doc, txn, op["settingsEdit"])
+    if op.get("annotationEdit"):
+        _annotation_apply(doc, txn, op["annotationEdit"])
+
+
+def _has_paper_writes(op: dict) -> bool:
+    return any(op.get(k) for k in ("texEdit", "bibEdit", "settingsEdit", "annotationEdit"))
+
+
+def _complete_bib_review(doc: Path, txn: "_Txn", bibkey: str, *, rtype: str | None = None) -> bool:
+    """Flip the matching bib-review-requests.json row(s) pending → complete (the
+    BibReviewRequest lifecycle is status-only — the type carries no result field).
+    Matched by bibKey, narrowed to `type == rtype` when given so answering a
+    `fields` review doesn't also close a pending `notes` review on the same key.
+    Returns whether a row was flipped (so the caller can fall through to a clean
+    'request id not found' when neither queue holds the id)."""
+    path = sidecar(doc, "bib-review-requests.json")
+    state = txn.jget(path, None)
+    if not isinstance(state, dict) or not isinstance(state.get("requests"), list):
+        return False
+    flipped = False
+    for row in state["requests"]:
+        if not isinstance(row, dict):
+            continue
+        if row.get("bibKey") != bibkey and row.get("id") != bibkey:
+            continue
+        if rtype is not None and row.get("type") != rtype:
+            continue
+        row["status"] = STATUS_COMPLETE
+        flipped = True
+    if flipped:
+        txn.mark(path)
+    return flipped
+
+
+# ---------------------------------------------------------------------------
 # The unified write transaction
 # ---------------------------------------------------------------------------
 
@@ -436,17 +633,22 @@ def cmd_write(
     *,
     status: str,
     result: str | None,
-    apply_tex: bool,
+    apply_writes: bool,
     comment: bool,
     synthesize: bool,
 ) -> dict:
-    """The one card-write transaction behind every write path.
+    """The one write transaction behind every write path.
 
     write-silent / write-with-comment / complete-task(direct) all land the card
-    and the .tex edit, differing only in `result` and whether a sibling comment
-    rides along. complete-task --propose passes apply_tex=False (the .tex change
-    is the *proposal*, not yet applied) and a non-terminal status. The legacy
-    default-apply op is just this with result=None (no outcome stamped).
+    and the paper-file edits (the .tex, and now the .bib / settings / annotation —
+    every `*Edit` the op carries), differing only in `result` and whether a
+    sibling comment rides along. complete-task --propose passes apply_writes=False
+    (the change is the *proposal*, not yet applied) and a non-terminal status. The
+    legacy default-apply op is just this with result=None (no outcome stamped).
+
+    The Task it completes lives in ai-requests.json (by id), bib-review-requests
+    .json (by bibKey — a bib review), or nowhere (a writes-only paper edit that
+    carries a `*Edit` but no requestId — library-sync's .bib swap).
     """
     summary = op.get("summary") or "AI request complete"
     panel = op.get("panel")
@@ -496,39 +698,48 @@ def cmd_write(
         ar["requests"].append(req)
         txn.mark(ar_path)
         request_id = new_id
-    elif not is_virtual:
-        if not request_id:
-            die("op missing requestId (or pass --synthesize-task to create the Task)")
-        ar = txn.jget(ar_path, None)
-        if not isinstance(ar, dict) or "requests" not in ar:
-            die("ai-requests.json missing or malformed")
-        idx, req = find_request(ar, request_id)
-        if req is None:
-            die(f"request id not found: {request_id}")
-        req["status"] = status
-        if result is not None:
-            req["result"] = result
-        else:
-            req.pop("result", None)
-        if card is not None and card.get("id"):
-            req["resultId"] = card["id"]
-        ar["requests"][idx] = req
-        txn.mark(ar_path)
-        linked = req.get("linkedTo")
-    else:
+    elif is_virtual:
         parts = request_id.split(":", 2)
         if len(parts) != 3:
             die(f"malformed virtual request id: {request_id}")
         linked = {"panel": parts[1], "cardId": parts[2]}
+    elif request_id:
+        ar = txn.jget(ar_path, None)
+        idx, req = (
+            find_request(ar, request_id)
+            if isinstance(ar, dict) and isinstance(ar.get("requests"), list)
+            else (None, None)
+        )
+        if req is not None:
+            req["status"] = status
+            if result is not None:
+                req["result"] = result
+            else:
+                req.pop("result", None)
+            if card is not None and card.get("id"):
+                req["resultId"] = card["id"]
+            ar["requests"][idx] = req
+            txn.mark(ar_path)
+            linked = req.get("linkedTo")
+        elif _complete_bib_review(doc, txn, request_id, rtype=op.get("bibReviewType")):
+            pass  # a bib-review row (keyed by bibKey), not an ai-request id
+        else:
+            if not isinstance(ar, dict) or "requests" not in ar:
+                die("ai-requests.json missing or malformed")
+            die(f"request id not found: {request_id}")
+    elif _has_paper_writes(op):
+        pass  # writes-only: a deliberate paper edit that completes no Task
+    else:
+        die("op missing requestId (or pass --synthesize-task to create the Task)")
 
     # 4. Clear the source card's aiRequest flag if asked.
     if op.get("clearSourceFlag", True) and isinstance(linked, dict):
         txn.clear_source_flag(linked)
 
-    # 5. The .tex edit (only when applying — not for a proposal).
-    if apply_tex and op.get("texEdit"):
-        tex_path, new_tex = _tex_splice(doc, op["texEdit"])
-        txn.add_raw(tex_path, new_tex)
+    # 5. The paper-file edits — .tex / .bib / settings / annotation (only when
+    #    applying, not for a Level-3 proposal). All ride the same atomic commit.
+    if apply_writes:
+        _apply_paper_writes(doc, txn, op)
 
     # 6. Notification + version (version last → trails a consistent state).
     notif_path, notif_content = notification_appended(
@@ -551,8 +762,15 @@ def cmd_complete_only(
     result: str | None,
     synthesize: bool,
 ) -> dict:
-    """Flip a Task's status (and optional result) without creating a card.
-    Used by bib reviews, .tex-only skills (style-merge), and failure cases."""
+    """Complete a Task without creating a card — flip its status (+ optional
+    result) and land any paper-file edits the op carries. Used by bib reviews
+    (the .bib field edit / annotation), style-merge (the preamble rewrite +
+    settings flip), library-sync (the .bib swap), and the failure cases.
+
+    `target` is a bare request-id / bibKey, OR an op-json (inline `{…}` or
+    `@file`) carrying paper-file `*Edit`s — which then ride this same atomic,
+    pen-wrapped commit (apply_writes=True). A bare id with no writes stays the
+    pure status flip it always was."""
     if result is not None and result not in ALL_RESULTS:
         die(f"unknown result: {result}")
     status = STATUS_FAILED if result in FAIL_RESULTS else STATUS_COMPLETE
@@ -561,12 +779,16 @@ def cmd_complete_only(
         op.setdefault("summary", note or "AI request complete")
         return cmd_write(
             doc, op, status=status, result=result,
-            apply_tex=False, comment=False, synthesize=True,
+            apply_writes=True, comment=False, synthesize=True,
         )
-    op = {"requestId": target, "summary": note or "AI request complete"}
+    if target.startswith("@") or target.lstrip().startswith("{"):
+        op = parse_op_json(target)
+        op.setdefault("summary", note or "AI request complete")
+    else:
+        op = {"requestId": target, "summary": note or "AI request complete"}
     return cmd_write(
         doc, op, status=status, result=result,
-        apply_tex=False, comment=False, synthesize=False,
+        apply_writes=True, comment=False, synthesize=False,
     )
 
 
@@ -981,25 +1203,26 @@ MUTATION_OPS = {
 def run_write_subcommand(
     doc: Path, sub: str, op: dict, *, propose: bool = False, synthesize: bool = False
 ) -> dict:
-    """Map a write subcommand name → its (status, result, apply_tex, comment)
+    """Map a write subcommand name → its (status, result, apply_writes, comment)
     semantics and run it. One place owns the mapping, so the CLI dispatcher and
     create_card.py (which picks the subcommand from a Task's safetyLevel) can't
     drift apart."""
     if sub == "write-silent":
         return cmd_write(doc, op, status=STATUS_COMPLETE, result=RESULT_SILENT_APPLIED,
-                         apply_tex=True, comment=False, synthesize=synthesize)
+                         apply_writes=True, comment=False, synthesize=synthesize)
     if sub == "write-with-comment":
         return cmd_write(doc, op, status=STATUS_COMPLETE, result=RESULT_AUTO_APPLIED,
-                         apply_tex=True, comment=True, synthesize=synthesize)
+                         apply_writes=True, comment=True, synthesize=synthesize)
     if sub == "complete-task":
         if propose:
-            # Level 3: the change is the *proposal* — draft the card, don't
-            # touch the .tex, leave the Task open (in-progress) awaiting review.
+            # Level 3: the change is the *proposal* — draft the card, don't apply
+            # the paper writes (.tex/.bib/…), leave the Task open (in-progress)
+            # awaiting review.
             return cmd_write(doc, op, status=STATUS_IN_PROGRESS, result=None,
-                             apply_tex=False, comment=False, synthesize=synthesize)
+                             apply_writes=False, comment=False, synthesize=synthesize)
         # Direct create the user opted into: land the artifact now.
         return cmd_write(doc, op, status=STATUS_COMPLETE, result=RESULT_DIRECT_CREATED,
-                         apply_tex=True, comment=False, synthesize=synthesize)
+                         apply_writes=True, comment=False, synthesize=synthesize)
     die(f"not a write subcommand: {sub}")
     return {}  # unreachable
 
@@ -1075,10 +1298,11 @@ def main(argv: list[str]) -> int:
                     die("usage: apply_response.py <docPath> <op-json>  (or a subcommand / --revert / --complete-only)")
                 op = parse_op_json(a.op)
                 # Legacy default-apply == the general write path with no outcome
-                # stamped (result=None) and no .tex edit unless the op carries one.
+                # stamped (result=None), applying whatever paper edits the op
+                # carries (a texEdit, and now a bibEdit/settingsEdit/annotationEdit).
                 result = cmd_write(
                     doc, op, status=STATUS_COMPLETE, result=None,
-                    apply_tex=True, comment=False, synthesize=False,
+                    apply_writes=True, comment=False, synthesize=False,
                 )
     except SystemExit:
         raise  # die() already reported + set the exit code

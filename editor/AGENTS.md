@@ -37,21 +37,28 @@ The skill set turns those signals into responses:
   `create_card.py` → `apply_response.py` too (chip 11), so no skill hand-builds
   card JSON for these. Their propose-flow branches (a suggestion / doc-edit)
   stay on the legacy default-apply for now (chip 13).
-- `/editor/find-citation` — adds a `.bib` entry + a citation card; still on the
-  legacy path (its `references.bib` coupling migrates in chip 12).
+- `/editor/find-citation` — adds a `.bib` entry + a citation card as **one
+  atomic op** through the contract (chip 12): the card rides `panel`/`card` and
+  the `references.bib` append rides `bibEdit`, so a crash can't orphan one
+  against the other.
 - `/editor/answer-cutter-comment`, `/editor/answer-revision-comment`,
   `/editor/draft-suggestion` — responder-kind emitters (comment / the
   suggestion family); still legacy default-apply, migrate with the L3 propose
   flow (chip 13).
-- `/editor/answer-bib-review` — verifies/fills bibliography fields,
-  drafts annotations, or (via `--library-sync`) swaps a single entry
-  in from the Virgil Library.
+- `/editor/answer-bib-review` — verifies/fills bibliography fields
+  (`bibEdit` set-fields/replace), drafts annotations (`annotationEdit`), or
+  (via `--library-sync`) swaps a single entry in from the Virgil Library
+  (`bibEdit` replace, writes-only). All through the contract (chip 12) —
+  the bib-review row flip rides the same atomic commit.
 - `/editor/sync-bib-to-library` — tidy a paper's whole bibliography
   against the library: matched entries are swapped to the library's
   authoritative form (renaming citekeys throughout the doc); missing
   entries are added via the library's bib-only triage + authenticate
   pipeline. Pair with `--dry-run` for a first pass.
-- `/editor/style-merge` — preamble-merge rewrite (existing behavior).
+- `/editor/style-merge` — preamble-merge rewrite through the contract (chip 12):
+  the whole-preamble rewrite rides `texEdit` `region-replace`, the style-id flip
+  rides `settingsEdit`, and the request completes — all in one pen-wrapped commit
+  (no more pen-less hand-edits of the `.tex` / `document-settings.json`).
 - **Card mechanics** — `/editor/create-card` (create a card of any
   createable kind) plus the five existing-card mutation ops
   `/editor/edit-card`, `/editor/archive-card`, `/editor/restore-card`,
@@ -92,11 +99,14 @@ editor/
 │   ├── card_by_id.py           fetch any card by id across panel sidecars +
 │   │                           archive (the shared lookup for the §10 ops)
 │   ├── apply_response.py       atomic pen-wrapped writeback (card + .tex +
-│   │                           ai-requests + notif + version); v1 write
-│   │                           subcommands + the §10 existing-card mutation
-│   │                           ops (update/archive/restore/move/link)
+│   │                           .bib + settings + annotation + ai-requests +
+│   │                           notif + version); v1 write subcommands + the §10
+│   │                           existing-card mutation ops + the chip-12 paper-
+│   │                           file edits (bibEdit/settingsEdit/annotationEdit,
+│   │                           texEdit region-replace)
 │   ├── create_card.py          mechanical create-card (all createable kinds); → contract
-│   ├── bib_resolve.py          parse references.bib entry + annotation
+│   ├── bib_resolve.py          parse + surgically edit references.bib entries
+│   │                           (append/set-fields/replace) + annotation
 │   ├── bib_match_library.py    classify paper bib entries vs the library
 │   └── rename_citekey.py       rewrite \cite*{} in tex + citations.json
 ├── build/
@@ -276,13 +286,18 @@ skill — call `get_para_context.py`.
   of the card-create responders (`answer-note-request` / `answer-report-request`
   / `answer-todo-request`) now route through `create_card.py` →
   `apply_response.py` (chip 11), alongside `draft-footnote` / `create-card` — no
-  skill hand-builds card JSON for them. What remains: the **propose-flow**
-  branches still on legacy default-apply (`answer-note-request` path (a),
+  skill hand-builds card JSON for them. The **`.bib` / preamble** skills
+  (`find-citation`, `answer-bib-review`, `style-merge`) are now on the contract
+  too (chip 12 — the `bibEdit` / `settingsEdit` / `annotationEdit` capabilities
+  and `texEdit` `region-replace`). What remains: the **propose-flow** branches
+  still on legacy default-apply (`answer-note-request` path (a),
   `answer-todo-request`'s doc-edit branch, and `draft-suggestion` /
   `answer-cutter-comment` / `answer-revision-comment`), which migrate with the L3
-  accept→splice flow (chip 13); and the **`.bib` / preamble** skills
-  (`find-citation`, `answer-bib-review`, `style-merge`), which need the contract
-  extended for whole-`.tex` / `references.bib` writes (chip 12).
+  accept→splice flow (chip 13); and **`sync-bib-to-library`**, whose cross-library
+  `master.bib` orchestration + citekey-rename across the `.tex` + `citations.json`
+  is a third write shape — its paper-side writes should route through the contract
+  in a follow-up (the `rename_citekey.py` step still writes `document.tex` +
+  `citations.json` directly).
 - **Migrate sidecar hand-edits onto the `update` op.** The `apply_response.py`
   `update` op exists (chip 9 — alongside `archive` / `restore` / `move` / `link`,
   surfaced as `/editor/edit-card` + the four sibling card-ops). The remaining
@@ -336,17 +351,26 @@ Both dev dirs are gitignored. See
 
 ## Don't
 
-- Don't write to `document.tex` from a Python helper **except** through the
-  `apply_response.py` contract's pen-protected atomic write — the v1 path,
-  where the `.tex` edit rides in the op-json `texEdit` (e.g. the footnote
-  `\vfid{}\footnote{}` splice) and lands in the *same* atomic transaction as
-  the sidecars. The older rule ("skills do .tex edits with the Edit tool so
-  they share the user's write-queue surface") was a stopgap for when there was
-  no editing lock; the pen (`EDITOR_SKILLS_V1` §9 / `_common.acquire_pen`) now
-  makes a direct atomic `.tex` write safe. Still don't hand-edit `.tex` outside
-  that contract.
-- Don't bypass `apply_response.py` for the writeback — even when the
-  op shape isn't a perfect fit, route through it (or extend it). It
-  centralizes the notification/version-bump path.
+- Don't hand-edit a **paper file** — `document.tex`, `references.bib`,
+  `virgil/document-settings.json`, `virgil/annotations.json`,
+  `virgil/bib-review-requests.json`, or any sidecar — from a skill or a Python
+  helper. The `apply_response.py` contract is the **only** writeback path, and
+  as of chip 12 it owns every paper-file write, each riding the op-json in the
+  *same* pen-protected atomic transaction:
+  - `texEdit` — a `.tex` splice (the footnote `\vfid{}\footnote{}`) or, in
+    `region-replace` mode, a whole-preamble rewrite (style-merge).
+  - `bibEdit` — append / set-fields / replace in `references.bib`
+    (find-citation, answer-bib-review, library-sync).
+  - `settingsEdit` / `annotationEdit` — the two non-panel JSON sidecars
+    (style-merge's styleId flip; answer-bib-review's annotation).
+  A `requestId` that names a `bib-review-requests.json` bibKey completes that
+  row in the same commit; a writes-only op (a `*Edit` with no `requestId`)
+  lands a paper edit + audit with no Task flip (library-sync's `.bib` swap).
+  The older rule ("skills do .tex edits with the Edit tool so they share the
+  user's write-queue surface") was a stopgap for when there was no editing
+  lock; the pen (`EDITOR_SKILLS_V1` §9 / `_common.acquire_pen`) makes a direct
+  atomic write safe. If the op shape isn't a perfect fit, **extend the
+  contract** (a new generic capability mirroring `texEdit`) — never add a
+  parallel write path. It centralizes the notification/version-bump path.
 - Don't add a backend. The cowork pattern is load-bearing, just like
   in the library.

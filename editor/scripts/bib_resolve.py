@@ -39,19 +39,20 @@ ENTRY_HEAD = re.compile(r"@(\w+)\s*\{\s*([^,\s]+)\s*,", re.MULTILINE)
 FIELD_LINE = re.compile(r",\s*([a-zA-Z][\w\-]*)\s*=\s*")
 
 
-def find_entry_block(text: str, key: str) -> tuple[str | None, str | None]:
-    """Return (entry_text, entry_type) for `key`, or (None, None)."""
+def find_entry_span(text: str, key: str) -> tuple[int, int] | None:
+    """Return the `(start, end)` byte offsets of the `@type{key, …}` entry block
+    in `text`, or None. Brace-matched (string-aware), so a `{…}` group inside a
+    field value doesn't end the entry early. The single source of truth for
+    locating an entry; `find_entry_block` (verbatim text) and the surgical
+    editors (`set_fields` / `replace_entry`) all splice by these offsets."""
     for m in ENTRY_HEAD.finditer(text):
-        etype, ekey = m.group(1), m.group(2)
-        if ekey != key:
+        if m.group(2) != key:
             continue
-        # Brace-match from the opening `{` to find the entry's closing `}`.
         start = m.start()
         i = text.find("{", start)
         if i < 0:
             continue
         depth = 0
-        end = -1
         in_string = False
         for j in range(i, len(text)):
             ch = text[j]
@@ -65,11 +66,122 @@ def find_entry_block(text: str, key: str) -> tuple[str | None, str | None]:
             elif ch == "}":
                 depth -= 1
                 if depth == 0:
-                    end = j + 1
-                    break
-        if end > start:
-            return text[start:end], etype
-    return None, None
+                    return start, j + 1
+    return None
+
+
+def find_entry_block(text: str, key: str) -> tuple[str | None, str | None]:
+    """Return (entry_text, entry_type) for `key`, or (None, None)."""
+    span = find_entry_span(text, key)
+    if span is None:
+        return None, None
+    start, end = span
+    head = ENTRY_HEAD.search(text, start)
+    etype = head.group(1) if head and head.start() == start else None
+    return text[start:end], etype
+
+
+def all_citekeys(text: str) -> set[str]:
+    """Every `@type{citekey,` key defined in a .bib's text."""
+    return {m.group(2) for m in ENTRY_HEAD.finditer(text)}
+
+
+def citekey_of(entry_text: str) -> str | None:
+    """The citekey of a single `@type{citekey, …}` entry, or None."""
+    m = ENTRY_HEAD.search(entry_text)
+    return m.group(2) if m else None
+
+
+def _value_span(text: str, start: int) -> int:
+    """Given `start` at a field value's first char, return the index just past
+    the value. Handles `{braced}` (brace-matched), `"quoted"` (escape-aware),
+    and bare values up to the next comma/newline. Mirrors the value scan in
+    `parse_fields`, factored out so the surgical field editor reuses it."""
+    i = start
+    while i < len(text) and text[i] in " \t":
+        i += 1
+    if i >= len(text):
+        return start
+    ch = text[i]
+    if ch == "{":
+        depth = 0
+        for j in range(i, len(text)):
+            if text[j] == "{":
+                depth += 1
+            elif text[j] == "}":
+                depth -= 1
+                if depth == 0:
+                    return j + 1
+        return len(text)
+    if ch == '"':
+        j = i + 1
+        while j < len(text) and (text[j] != '"' or text[j - 1] == "\\"):
+            j += 1
+        return min(j + 1, len(text))
+    j = i
+    while j < len(text) and text[j] not in ",\n":
+        j += 1
+    return j
+
+
+def _set_field_in_entry(entry: str, name: str, value: str) -> str:
+    """Set field `name` to `{value}` in a single entry block — replacing the
+    existing value in place (preserving the rest of the entry verbatim, the
+    BibTeX-intent rule) if the field exists, else inserting it before the
+    entry's closing brace. Field-name match is case-insensitive."""
+    new_val = "{" + value + "}"
+    m = re.search(r",(\s*)" + re.escape(name) + r"(\s*=\s*)", entry, re.IGNORECASE)
+    if m:
+        vstart = m.end()
+        vend = _value_span(entry, vstart)
+        return entry[:vstart] + new_val + entry[vend:]
+    close = entry.rstrip().rfind("}")
+    if close < 0:
+        return entry  # malformed; leave untouched
+    head = entry[:close].rstrip()
+    sep = "" if head.endswith(",") else ","
+    return head + sep + "\n  " + name + " = " + new_val + ",\n" + entry[close:]
+
+
+def set_fields(bib_text: str, citekey: str, fields: dict) -> str:
+    """Return `bib_text` with `fields` set/added on the entry for `citekey`.
+    Surgical — every other byte of the entry (and the rest of the file) is
+    preserved. Dies if the entry isn't present."""
+    span = find_entry_span(bib_text, citekey)
+    if span is None:
+        die(f"bibEdit set-fields: no entry for citekey {citekey!r} in the .bib")
+    start, end = span
+    entry = bib_text[start:end]
+    for name, value in fields.items():
+        entry = _set_field_in_entry(entry, str(name), str(value))
+    return bib_text[:start] + entry + bib_text[end:]
+
+
+def replace_entry(bib_text: str, citekey: str, entry_text: str) -> str:
+    """Return `bib_text` with the entry block for `citekey` swapped for
+    `entry_text` (a full `@type{…}` block). Splices by offset so it's robust to
+    the new entry carrying a different `@type` or citekey (the type-reshape and
+    library-sync cases). Dies if the old entry isn't present."""
+    span = find_entry_span(bib_text, citekey)
+    if span is None:
+        die(f"bibEdit replace: no entry for citekey {citekey!r} in the .bib")
+    start, end = span
+    return bib_text[:start] + entry_text.strip() + bib_text[end:]
+
+
+def append_entry(bib_text: str, entry_text: str) -> str:
+    """Return `bib_text` with `entry_text` appended — one blank line separating
+    it from the prior entry, a single trailing newline (find-citation's
+    house style). Dies if the new entry's citekey already exists (append never
+    silently duplicates; use replace/set-fields to edit an existing entry)."""
+    entry_text = entry_text.strip()
+    key = citekey_of(entry_text)
+    if key is None:
+        die("bibEdit append: entry has no parseable @type{citekey, header")
+    if key in all_citekeys(bib_text):
+        die(f"bibEdit append: citekey {key!r} already present — use replace/set-fields to edit it")
+    base = bib_text.rstrip()
+    return (base + "\n\n" + entry_text + "\n") if base else (entry_text + "\n")
 
 
 def parse_fields(entry: str) -> dict:

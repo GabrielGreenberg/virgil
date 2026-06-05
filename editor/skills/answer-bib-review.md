@@ -40,8 +40,9 @@ Three modes:
 
 > **Library-sync mode short-circuits.** If `--library-sync
 > <libraryCitekey>` is set, jump straight to step 3a — skip steps 1
-> (bib-review-requests load), 2 (fields), 3 (notes), and 4 (request
-> flip). Library-sync writes its own notification and exits.
+> (bib-review-requests load), 2 (fields), 3 (notes), and 4 (a no-op now).
+> Library-sync's writes-only `bibEdit` writes the notification + version
+> bump through the contract, then exits.
 
 > **Path resolution.** Every step below uses `$scripts_editor` and
 > `$scripts_library` to invoke Python helpers. Resolve them once at the
@@ -86,28 +87,63 @@ Three modes:
    - Apply the user's `requestNotes` as additional guidance ("Add
      DOI; double-check the page range" → focus DOI lookup, then
      verify the page-range field).
-   - **If the lookup proves the entry's `@type` is wrong** (e.g.
-     `@article` masking a book, as can happen when the title and
-     metadata diverge): change the type and reshape the field set
-     to match the actual work. Preserve only the citekey verbatim
-     and any field the lookup confirms. Drop fields that don't
-     belong on the new type (e.g. drop `journal`/`volume`/`number`
-     when changing `@article` → `@book`).
-   - Otherwise edit `<docPath>/<bibFilename>` to replace the entry
-     block with the corrected version. Preserve the citekey verbatim.
+   - **Land the edit through the contract — never hand-edit the `.bib`.**
+     `bibEdit` is the only writeback path; it finds `references.bib` for
+     you (no filename needed), lands the edit atomically under the pen,
+     **and flips this bib-review row to `complete`** in the *same* commit
+     (narrowed by `bibReviewType` so a `fields` answer doesn't also close a
+     pending `notes` review on the same key). Two shapes:
+     - *Add or correct specific fields* — the common case (add a DOI, fix a
+       page range). `bibEdit` **set-fields** edits only those fields and
+       preserves the rest of the entry verbatim (the user's BibTeX intent):
+       ```bash
+       python3 "$scripts_editor/apply_response.py" <docPath> complete-only '{
+         "requestId": "<bibKey>", "bibReviewType": "fields",
+         "bibEdit": { "mode": "set-fields", "citekey": "<bibKey>",
+                      "fields": { "doi": "10.…", "pages": "215--232" } },
+         "summary": "Verified <bibKey>; added DOI" }' --result auto-applied
+       ```
+     - *The `@type` itself is wrong* (e.g. `@article` masking a book, when
+       title and metadata diverge) — compose the corrected full entry:
+       change the type, reshape the field set, drop fields that don't
+       belong (e.g. `journal`/`volume`/`number` when moving
+       `@article` → `@book`), preserve the citekey verbatim — and use
+       `bibEdit` **replace**:
+       ```bash
+       python3 "$scripts_editor/apply_response.py" <docPath> complete-only '{
+         "requestId": "<bibKey>", "bibReviewType": "fields",
+         "bibEdit": { "mode": "replace", "citekey": "<bibKey>",
+                      "entry": "@book{<bibKey>, … }" },
+         "summary": "Reshaped <bibKey> @article → @book" }' --result auto-applied
+       ```
+     Escape the entry's `\` as `\\` / newlines as `\n` in the JSON string,
+     or write the op to a file and pass `@<file>`.
    - If the user asked to "Add DOI" but no DOI is registered for the
      work (common for pre-2000 trade books, many humanities titles):
      declare this explicitly in the reply rather than leaving the
-     omission silent.
+     omission silent. If you verified nothing and make **no** `.bib`
+     change, still complete the review through the contract (no `bibEdit`,
+     no `--result` → a benign `complete`):
+     ```bash
+     python3 "$scripts_editor/apply_response.py" <docPath> complete-only '{
+       "requestId": "<bibKey>", "bibReviewType": "fields" }' \
+       --note "No authoritative DOI found; fields left unchanged."
+     ```
 
 3. **For `type: "notes"`:**
    - Read the entry + the user's `requestNotes`.
    - Draft a 60–150 word annotation summarizing what the entry argues
      and (when the request asks) why it matters for *this* paper.
-   - Edit `<docPath>/virgil/annotations.json` to set
-     `annotations.<bibKey> = { "text": "<your note>" }` (or whatever
-     shape `bib_resolve.py` reports — tolerate either flat or nested
-     forms).
+   - Land it through the contract — `annotationEdit` sets
+     `annotations.<bibKey>` (the `AnnotationsState` = `{ [bibKey]: string }`
+     the Bibliography panel renders) and flips the `notes` bib-review row,
+     atomically. Never hand-edit `annotations.json`:
+     ```bash
+     python3 "$scripts_editor/apply_response.py" <docPath> complete-only '{
+       "requestId": "<bibKey>", "bibReviewType": "notes",
+       "annotationEdit": { "bibKey": "<bibKey>", "text": "<your annotation>" },
+       "summary": "Annotated <bibKey>" }' --result auto-applied
+     ```
 
 3a. **For `--library-sync <libraryCitekey>`:**
    - Resolve the library root. The script directories were already
@@ -138,11 +174,21 @@ Three modes:
      '
      ```
      If the entry isn't found, fail with `library missing <libraryCitekey>`.
-   - Replace the paper's bib entry block: locate `@<type>{<bibKey>,` in
-     `<docPath>/references.bib` (use the same `find_entry_span` helper
-     to determine the byte range), and Edit the file to replace the
-     entire span with the library entry text. Preserve a trailing
-     newline so subsequent entries stay separated.
+   - Replace the paper's bib entry block **through the contract** —
+     `bibEdit` **replace** finds the `<bibKey>` block and swaps in the
+     library entry text (keyed `<libraryCitekey>`), atomically. This is a
+     *writes-only* op (no `requestId` — library-sync isn't bib-review-
+     driven), so the contract also writes the notification + version bump.
+     Never hand-edit the `.bib`:
+     ```bash
+     python3 "$scripts_editor/apply_response.py" <docPath> complete-only '{
+       "bibEdit": { "mode": "replace", "citekey": "<bibKey>",
+                    "entry": "<library entry text>" },
+       "summary": "library-sync <bibKey> -> <libraryCitekey>",
+       "clearSourceFlag": false }'
+     ```
+     (Use a `@<file>` op — the entry has braces. The contract resolves
+     `references.bib` itself.)
    - If `<bibKey> != <libraryCitekey>`, rewrite every `\cite*{...}`
      command and update `virgil/citations.json`:
      ```bash
@@ -151,37 +197,18 @@ Three modes:
    - Skip the bib-review-requests.json flip — library-sync isn't driven
      by that file. Skip external Crossref/OpenAlex lookups — the
      library entry is already authoritative.
-   - Append a single notification + bump version (same pattern as the
-     fallback in step 4 below):
-     ```bash
-     python3 -c "from editor.scripts._common import append_notification, bump_version, now_iso, resolve_doc; \
-                 doc = resolve_doc('<docPath>'); \
-                 append_notification(doc, {'kind': 'ai-request-complete', 'at': now_iso(), 'summary': 'library-sync <bibKey> -> <libraryCitekey>'}); \
-                 bump_version(doc)"
-     ```
+   - The notification + version bump are **already done** by the
+     `bibEdit` writes-only op above — there is no separate one-liner.
    - Reply: `Done: library-sync <bibKey> -> <libraryCitekey>. Output: references.bib, document.tex, virgil/citations.json.` (Omit any file that wasn't actually changed.)
 
-4. **Mark complete.** Edit
-   `<docPath>/virgil/bib-review-requests.json` to flip the matching
-   entry's `status` from `"pending"` to `"complete"`. Then notify +
-   bump version:
-   ```bash
-   python3 "$scripts_editor/apply_response.py" <docPath> --complete-only <bibKey> --note "Updated bib entry <bibKey> (<type>)"
-   ```
-   *(`--complete-only` here is repurposed to write the notification +
-   version-bump path; the request-id resolution falls through harmlessly
-   for bib reviews since they don't live in `ai-requests.json`.)*
-
-   **Expected:** `apply_response.py --complete-only <bibKey>` will
-   typically error with `request id not found: <bibKey>` because
-   bib-review keys aren't in `ai-requests.json`. The fallback below
-   is the normal path, not a recovery path:
-   ```bash
-   python3 -c "from editor.scripts._common import append_notification, bump_version, now_iso, resolve_doc; \
-               doc = resolve_doc('<docPath>'); \
-               append_notification(doc, {'kind': 'ai-request-complete', 'at': now_iso(), 'summary': 'Updated bib entry <bibKey>'}); \
-               bump_version(doc)"
-   ```
+4. **Completion is part of the contract call — nothing to do here.** The
+   `complete-only` op in step 2 / 3 already flipped the matching
+   `bib-review-requests.json` row to `complete` (the contract resolves a
+   `requestId` that isn't an `ai-requests.json` id as a bib-review
+   `bibKey`, narrowed by `bibReviewType`), and wrote the notification +
+   version bump — one atomic, pen-protected commit. There is **no** hand-
+   edit of `bib-review-requests.json`, and no `--complete-only <bibKey>`
+   error-then-fallback dance any more.
 
 5. **Reply.**
    ```
