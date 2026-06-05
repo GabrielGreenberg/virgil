@@ -12,8 +12,9 @@
  *      shape) now yields a VERTICAL body bar; the snap stays on the body slot as
  *      the cursor sweeps up/down (a single example has no new-item ticks).
  *   2. `textObjectDropSpec.applyDrop` — each of the 3 kinds drops DIRECTLY into
- *      the single example's body (joins as a direct child; the example stays
- *      `kind:"single"`, NOT converted to a multi `\pex` with items).
+ *      the single example's body as its new FIRST child, pushing the existing
+ *      body content down (A3 — insert at the content START, not the end; the
+ *      example stays `kind:"single"`, NOT converted to a multi `\pex` with items).
  *      Non-destructive: build the dispatched tr and inspect its doc + run
  *      `doc.check()` on the real PM model.
  *
@@ -187,18 +188,23 @@ const THREE_KINDS = [
 
 describe("resolveBlockIntoExpex — single example body bar", () => {
   for (const { kind, key } of THREE_KINDS) {
-    it(`${kind}: a single example yields a VERTICAL body bar at the block's left edge`, () => {
+    it(`${kind}: a single example yields a VERTICAL body bar at the body text-left`, () => {
       const d = doc(THREE_KINDS[0].make(), gfx("gsrc"), dm("dsrc", "a = b"), singleBlock("S", para("the example sentence")));
       const block = findByType(d, "exampleBlock")[0];
       const { editor } = mockEditor(d, {
         [block.pos]: { left: 70, top: 200, bottom: 260, height: 60, width: 300 },
+        // the body's first content child (the paragraph) — its TEXT-left is inset
+        // from the block's far-left, where expex draws the "(1)" label.
+        [block.pos + 1]: { left: 92, top: 206, bottom: 254, height: 48, width: 270 },
       });
       const caret = block.pos + 2; // inside the single example's paragraph
       const p = asBetween(resolveBlockIntoExpex(editor, caret, 230, key));
       expect(p.rect.height).toBeGreaterThan(p.rect.width); // vertical bar
-      expect(p.rect.x).toBe(70); // the exampleBlock's left edge
+      expect(p.rect.x).toBe(92); // the BODY text-left, not the block far-left (70)
       expect(p.rect.width).toBeLessThanOrEqual(4); // thin
-      // The insert lands in the block's DIRECT content (classifies exampleBlock).
+      // The bar inserts at the body content START (push the existing down) and
+      // classifies exampleBlock → drop-direct at commit.
+      expect(p.insertPos).toBe(block.pos + 1);
       expect(classifyParentAt(editor, p.insertPos)).toBe("exampleBlock");
     });
 
@@ -225,14 +231,17 @@ describe("resolveBlockIntoExpex — single example body bar", () => {
     const glossInfo = findByType(d, "exampleGloss")[0];
     const { editor } = mockEditor(d, {
       [block.pos]: { left: 80, top: 300, bottom: 360, height: 60, width: 300 },
+      // the body's first content child here is the gloss itself — its box is the
+      // body's text-left.
+      [block.pos + 1]: { left: 104, top: 306, bottom: 354, height: 48, width: 260 },
     });
     const caret = block.pos + 2; // inside the gloss
     const p = asBetween(resolveBlockIntoExpex(editor, caret, 330, "textobject:paragraph:psrc"));
     expect(p.rect.height).toBeGreaterThan(p.rect.width);
-    expect(p.rect.x).toBe(80);
-    // leadingContentEnd breaks at the gloss → insertPos sits just inside the
-    // block at the gloss's own position (index 0), so a drop lands ABOVE the
-    // gloss (the commit test below confirms the resulting child order).
+    expect(p.rect.x).toBe(104); // the body text-left (the gloss box)
+    // The body content START is just inside the block at the gloss's own
+    // position (index 0), so a drop lands ABOVE the gloss (the commit test below
+    // confirms the resulting child order).
     expect(p.insertPos).toBe(glossInfo.pos);
     expect(classifyParentAt(editor, p.insertPos)).toBe("exampleBlock");
   });
@@ -242,12 +251,12 @@ describe("resolveBlockIntoExpex — single example body bar", () => {
 
 describe("textObjectDropSpec commit — block into a SINGLE example (drop-direct)", () => {
   for (const { kind, key, uuid, make } of THREE_KINDS) {
-    it(`a ${kind} dropped into a single example joins the body directly and stays kind:"single"`, () => {
+    it(`a ${kind} dropped into a single example joins the body as its new FIRST child and stays kind:"single"`, () => {
       const d = doc(make(), singleBlock("S", para("original sentence")));
       const { editor, dispatched, ctx } = mockEditor(d);
       const block = findByType(d, "exampleBlock")[0];
-      // The body slot: just inside the block, after its leading paragraph.
-      const insertPos = block.pos + block.size - 1;
+      // The body slot: the body content START (A3 — push the existing down).
+      const insertPos = block.pos + 1;
       expect(classifyParentAt(editor, insertPos)).toBe("exampleBlock");
 
       expect(
@@ -260,10 +269,10 @@ describe("textObjectDropSpec commit — block into a SINGLE example (drop-direct
       const ex = result.child(result.childCount - 1); // the exampleBlock (last block)
       expect(ex.type.name).toBe("exampleBlock");
       expect(ex.attrs.kind).toBe("single"); // NOT converted to multi
-      expect(ex.childCount).toBe(2); // original paragraph + the dropped block
-      expect(ex.child(0).textContent).toBe("original sentence");
-      expect(ex.child(1).type.name).toBe(kind);
-      expect(ex.child(1).attrs.uuid).toBe(uuid);
+      expect(ex.childCount).toBe(2); // the dropped block + original paragraph
+      expect(ex.child(0).type.name).toBe(kind); // dropped block is the new FIRST child
+      expect(ex.child(0).attrs.uuid).toBe(uuid);
+      expect(ex.child(1).textContent).toBe("original sentence"); // pushed down
       // No item machinery was created — it stays a single example.
       expect(findByType(result, "exampleItemList")).toHaveLength(0);
       expect(findByType(result, "exampleItem")).toHaveLength(0);
@@ -276,7 +285,7 @@ describe("textObjectDropSpec commit — block into a SINGLE example (drop-direct
     const d = doc(dm("dsrc", "E = mc^2"), singleBlock("S", para("the claim")));
     const { editor, dispatched, ctx } = mockEditor(d);
     const block = findByType(d, "exampleBlock")[0];
-    const insertPos = block.pos + block.size - 1;
+    const insertPos = block.pos + 1; // body content START
     textObjectDropSpec.applyDrop(
       betweenBlocks(editor, insertPos),
       "textobject:displayMath:dsrc",
@@ -287,15 +296,15 @@ describe("textObjectDropSpec commit — block into a SINGLE example (drop-direct
     const math = findByType(result, "displayMath");
     expect(math).toHaveLength(1);
     const ex = result.child(result.childCount - 1);
-    expect(ex.child(1).type.name).toBe("displayMath");
-    expect(ex.child(1).attrs.latex).toBe("E = mc^2");
+    expect(ex.child(0).type.name).toBe("displayMath"); // new FIRST child
+    expect(ex.child(0).attrs.latex).toBe("E = mc^2");
   });
 
   it("a drop into a gloss-only single example lands ABOVE the gloss (still single, valid)", () => {
     const d = doc(para("dragged", "psrc"), singleBlock("G", gloss("the gloss")));
     const { editor, dispatched, ctx } = mockEditor(d);
     const block = findByType(d, "exampleBlock")[0];
-    // leadingContentEnd for a gloss-only block = just inside the block (index 0).
+    // The body content START for a gloss-only block = just inside it (index 0).
     const insertPos = block.pos + 1;
     textObjectDropSpec.applyDrop(
       betweenBlocks(editor, insertPos),
