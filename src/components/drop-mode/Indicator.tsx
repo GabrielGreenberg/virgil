@@ -16,9 +16,16 @@ export function DropModeIndicator() {
   if (typeof document === "undefined") return null;
   if (!session?.placement) return null;
   const p = session.placement;
+  // A "between-blocks" placement is normally a thin HORIZONTAL gap line, but
+  // Feature A1's unified expex drop reuses the same kind for a VERTICAL
+  // left-edge bar (taller than wide). Tag the vertical case so its height
+  // transitions smoothly as it snaps between a full-item bar and a new-item
+  // tick (the horizontal gap line only eases `top`).
   const cls =
     p.kind === "between-blocks"
-      ? "dropmode-bar-gap"
+      ? p.rect.height > p.rect.width
+        ? "dropmode-bar-gap dropmode-bar-vertical"
+        : "dropmode-bar-gap"
       : p.kind === "paragraph-side"
         ? "dropmode-bar-side"
         : "dropmode-bar-inline";

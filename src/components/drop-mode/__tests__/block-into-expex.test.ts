@@ -1,49 +1,47 @@
 // @vitest-environment jsdom
 /**
- * Feature A0 — drop a picture (graphicsBlock) into an expex example.
+ * Feature A1 — the unified expex drop: any of three block kinds (paragraph =
+ * text, graphicsBlock = picture, displayMath = equation) lands in an example
+ * behind ONE forgiving left-edge VERTICAL bar that snaps to the nearest slot.
  *
- * The schema already accepts a `graphicsBlock` inside an `exampleItem`
- * (`(paragraph | graphicsBlock)+`, expex.ts:787). This feature surfaces and
- * commits two expex-aware drops for a lifted graphicsBlock, the drop bar's
- * position choosing which:
- *   (b) OVER an item's content  → the picture is inserted directly into that
- *       exampleItem's content (drop-direct, classifyParentAt → exampleItem);
- *   (a) BETWEEN items / below the last item → the picture is wrapped in a fresh
- *       exampleItem inserted as a sibling (wrap, classifyParentAt → exampleBlock).
+ * A1 evolves A0 (graphics-only, hard-to-hit horizontal item-bars). The COMMIT
+ * half is reused unchanged — drop-direct into an item [case b] or wrap into a
+ * fresh sibling exampleItem [case a], chosen by which slot the bar snapped to.
+ * The AFFORDANCE half is new: `resolveBlockIntoExpex` now returns a vertical-bar
+ * `Placement` (height > width, x at the exampleBlock's left edge) whose insertPos
+ * is the nearest of the block's enumerated slots to the cursor Y.
  *
- * Everything is gated on the source being a `graphicsBlock`, so every other
- * drag — and the picture's own TOP-LEVEL drop — is byte-unchanged.
+ * Everything is gated on the source kind ∈ the three kinds AND the cursor being
+ * inside an exampleBlock, so every other drag — and each kind's own TOP-LEVEL
+ * drop — is byte-unchanged.
  *
  * Both halves are locked here, headless (the live drop BAR is a trusted-hover
  * gesture verified by the user, not in vitest):
- *   1. `resolveBlockIntoExpex` — the new hit-test resolution (into-item content
- *      boundary vs. item boundary vs. fall-through-null), exercised against the
- *      over-content-vs-gap threshold via controllable DOM rects.
+ *   1. `resolveBlockIntoExpex` — the vertical-bar resolution + nearest-slot snap
+ *      (new-item gap vs into-item content) across controllable DOM rects, for all
+ *      three kinds; null for every other source / outside an expex.
  *   2. `textObjectDropSpec.applyDrop` — fed each resolved insertPos, the commit
- *      lands the picture inside the item (case b) or as a fresh sibling item
- *      (case a); a top-level drop still drops-direct; a non-graphics source over
- *      the same expex is unaffected. Non-destructive: build the dispatched tr
- *      and inspect its doc (the technique from `sub-item-drop-resolution.test`).
+ *      lands the block inside the item (case b) or as a fresh sibling item
+ *      (case a); a top-level drop still drops-direct; a non-{three-kind} source
+ *      over the same expex is unaffected. Non-destructive: build the dispatched
+ *      tr and inspect its doc.
  */
 
 import { describe, expect, it } from "vitest";
 import { Schema, type Node as PMNode } from "@tiptap/pm/model";
 import { EditorState, type Transaction } from "@tiptap/pm/state";
 import type { Editor } from "@tiptap/react";
-import {
-  makeBetweenBlocksPlacement,
-  resolveBlockIntoExpex,
-} from "../hit-test";
+import { resolveBlockIntoExpex } from "../hit-test";
 import { classifyParentAt } from "../specs/drop-context";
 import { textObjectDropSpec } from "../specs/textobject";
 import type { DropCtx, Placement } from "../types";
 
 // Hand-rolled schema — node names match TEXT_OBJECT_REGISTRY keys so the real
 // `classifyParentAt` recognizes each context. `exampleItem` mirrors the real
-// `(paragraph | graphicsBlock)+` content (expex.ts:787); `exampleItemList` is
-// deliberately NOT a registry kind, so a between-items insert classifies as
-// `exampleBlock` (incompatible → wrap) and an into-item insert as `exampleItem`
-// (compatible → drop-direct).
+// A1 `(paragraph | graphicsBlock | displayMath)+` content (expex.ts);
+// `exampleItemList` is deliberately NOT a registry kind, so a between-items
+// insert classifies as `exampleBlock` (incompatible → wrap) and an into-item
+// insert as `exampleItem` (compatible → drop-direct).
 const schema = new Schema({
   nodes: {
     doc: { content: "block+" },
@@ -59,6 +57,12 @@ const schema = new Schema({
       attrs: { uuid: { default: null } },
       toDOM: () => ["div", { class: "graphic" }],
     },
+    displayMath: {
+      group: "block",
+      atom: true,
+      attrs: { uuid: { default: null }, latex: { default: "" } },
+      toDOM: () => ["div", { class: "math" }],
+    },
     exampleBlock: {
       group: "block",
       content: "exampleItemList+",
@@ -70,7 +74,7 @@ const schema = new Schema({
       toDOM: () => ["div", 0],
     },
     exampleItem: {
-      content: "(paragraph | graphicsBlock)+",
+      content: "(paragraph | graphicsBlock | displayMath)+",
       attrs: { uuid: { default: null } },
       toDOM: () => ["div", 0],
     },
@@ -82,6 +86,8 @@ const t = (text: string) => schema.text(text);
 const para = (text: string, uuid?: string) =>
   schema.nodes.paragraph.create(uuid ? { uuid } : null, text ? t(text) : undefined);
 const gfx = (uuid: string) => schema.nodes.graphicsBlock.create({ uuid });
+const dm = (uuid: string, latex = "x = 1") =>
+  schema.nodes.displayMath.create({ uuid, latex });
 const exItem = (uuid: string, ...content: PMNode[]) =>
   schema.nodes.exampleItem.create({ uuid }, content);
 const exList = (...items: PMNode[]) =>
@@ -115,13 +121,10 @@ function findByType(d: PMNode, typeName: string): NodeInfo[] {
   return out;
 }
 
-/**
- * `rects` maps a node's start position (the `pos` from `findByType`) to a
- * partial DOMRect. `nodeDOM(pos)` returns an element carrying that rect; the
- * resolver stores the element it gets and `makeBetweenBlocksPlacement` reuses
- * it, so a single map entry drives both the over-content-vs-gap decision and
- * the midpoint snap.
- */
+/** `rects` maps a node's start position to a partial DOMRect; `nodeDOM(pos)`
+ *  returns an element carrying that rect. The resolver reads the exampleBlock
+ *  rect (for the bar's left edge) and each top-tier item's rect (for the slot
+ *  Y values), so one map drives the whole snap. */
 function mockEditor(d: PMNode, rects: Record<number, Partial<DOMRect>> = {}) {
   const dispatched: Transaction[] = [];
   const state = EditorState.create({ schema, doc: d });
@@ -159,9 +162,18 @@ function betweenBlocks(editor: Editor, insertPos: number): Placement {
   return { kind: "between-blocks", editor, insertPos, rect: ZERO };
 }
 
-// A canonical doc: a top-level picture followed by a packed 3-item example.
+function asBetween(p: Placement | null) {
+  expect(p).not.toBeNull();
+  expect(p!.kind).toBe("between-blocks");
+  return p as Extract<Placement, { kind: "between-blocks" }>;
+}
+
+// A canonical doc: a draggable block of each kind at the top, then a packed
+// 3-item example. Block left edge = 50; items tile [100,140] [140,180] [180,220].
 function packedDoc() {
   return doc(
+    para("dragP", "psrc"),
+    dm("dsrc", "a = b"),
     gfx("g1"),
     exBlock(
       "E",
@@ -172,158 +184,215 @@ function packedDoc() {
   );
 }
 
-// ── 1. resolveBlockIntoExpex — source-kind-aware resolution + threshold ──────
+function packedRects(d: PMNode): Record<number, Partial<DOMRect>> {
+  const block = findByType(d, "exampleBlock")[0];
+  const items = findByType(d, "exampleItem");
+  return {
+    [block.pos]: { left: 50, top: 100, bottom: 220, height: 120, width: 300 },
+    [items[0].pos]: { left: 50, top: 100, bottom: 140, height: 40, width: 300 },
+    [items[1].pos]: { left: 50, top: 140, bottom: 180, height: 40, width: 300 },
+    [items[2].pos]: { left: 50, top: 180, bottom: 220, height: 40, width: 300 },
+  };
+}
 
-describe("resolveBlockIntoExpex — into-item vs between-item resolution", () => {
-  it("graphicsBlock OVER an item's content resolves the content-block boundary INSIDE the item (case b)", () => {
-    const d = packedDoc();
-    const para1 = findByType(d, "paragraph")[0]; // "alpha", inside item i1
-    // Paragraph rect spans y∈[100,140]; cursor at 120 sits over the content.
-    const { editor } = mockEditor(d, {
-      [para1.pos]: { top: 100, bottom: 140, height: 40 },
+const THREE_KINDS = [
+  { kind: "paragraph", key: "textobject:paragraph:psrc", uuid: "psrc" },
+  { kind: "graphicsBlock", key: "textobject:graphicsBlock:g1", uuid: "g1" },
+  { kind: "displayMath", key: "textobject:displayMath:dsrc", uuid: "dsrc" },
+] as const;
+
+// ── 1. resolveBlockIntoExpex — vertical bar + nearest-slot snap ──────────────
+
+describe("resolveBlockIntoExpex — vertical-bar affordance + snap", () => {
+  for (const { kind, key } of THREE_KINDS) {
+    it(`${kind}: returns a VERTICAL bar (height > width) at the block's left edge`, () => {
+      const d = packedDoc();
+      const { editor } = mockEditor(d, packedRects(d));
+      // A caret inside item i1's content; cursor anywhere on the left band.
+      const caret = findByType(d, "exampleItem")[0].pos + 1;
+      const p = asBetween(resolveBlockIntoExpex(editor, caret, 120, key));
+      expect(p.rect.height).toBeGreaterThan(p.rect.width);
+      expect(p.rect.x).toBe(50); // the exampleBlock's left edge
+      expect(p.rect.width).toBeLessThanOrEqual(4); // a thin bar
     });
-    const block = resolveBlockIntoExpex(
-      editor,
-      para1.pos + 1, // a caret inside the paragraph's text
-      120,
-      "textobject:graphicsBlock:g1",
+
+    it(`${kind}: snaps to the nearest slot as the cursor moves up/down`, () => {
+      const d = packedDoc();
+      const { editor } = mockEditor(d, packedRects(d));
+      const caret = findByType(d, "exampleItem")[0].pos + 1;
+
+      // Near the TOP edge of item i1 → a new-item gap (classify → exampleBlock).
+      const top = asBetween(resolveBlockIntoExpex(editor, caret, 101, key));
+      expect(classifyParentAt(editor, top.insertPos)).toBe("exampleBlock");
+
+      // Over the MIDDLE of item i1's body → into-content (classify → exampleItem).
+      const mid = asBetween(resolveBlockIntoExpex(editor, caret, 120, key));
+      expect(classifyParentAt(editor, mid.insertPos)).toBe("exampleItem");
+
+      // BELOW the last item → the trailing new-item gap at the list end.
+      const below = asBetween(resolveBlockIntoExpex(editor, caret, 219, key));
+      expect(classifyParentAt(editor, below.insertPos)).toBe("exampleBlock");
+
+      // The snap genuinely moves the insert point as Y changes.
+      expect(mid.insertPos).not.toBe(top.insertPos);
+      expect(below.insertPos).not.toBe(mid.insertPos);
+    });
+  }
+
+  it("the trailing new-item slot inserts AFTER the last item (end of the list)", () => {
+    const d = packedDoc();
+    const { editor } = mockEditor(d, packedRects(d));
+    const items = findByType(d, "exampleItem");
+    const caret = items[0].pos + 1;
+    const below = asBetween(
+      resolveBlockIntoExpex(editor, caret, 219, "textobject:paragraph:psrc"),
     );
-    expect(block).not.toBeNull();
-    // The resolved block is the CONTENT paragraph (depth 4), not the item.
-    expect(block!.blockPos).toBe(para1.pos);
-    // Top half of the content rect → insert before the paragraph, inside the
-    // item → classifyParentAt sees the enclosing exampleItem (case b).
-    const placement = makeBetweenBlocksPlacement(editor, block!, 110, true);
-    expect(placement.kind).toBe("between-blocks");
-    const insertPos = (placement as Extract<Placement, { kind: "between-blocks" }>).insertPos;
-    expect(insertPos).toBe(para1.pos);
-    expect(classifyParentAt(editor, insertPos)).toBe("exampleItem");
+    expect(below.insertPos).toBe(items[2].pos + items[2].size);
   });
 
-  it("graphicsBlock inside an item but BELOW its content resolves the item boundary (case a)", () => {
+  it("a non-{three-kind} source over the same expex returns null (no expex bar)", () => {
     const d = packedDoc();
-    const para1 = findByType(d, "paragraph")[0]; // "alpha"
-    const item1 = findByType(d, "exampleItem")[0];
-    // Content rect ends at y=140; item rect spans [100,200]. Cursor at 190 is
-    // below the content but still inside the item → fall to the item boundary.
-    const { editor } = mockEditor(d, {
-      [para1.pos]: { top: 100, bottom: 140, height: 40 },
-      [item1.pos]: { top: 100, bottom: 200, height: 100 },
-    });
-    const block = resolveBlockIntoExpex(
-      editor,
-      para1.pos + 1,
-      190,
-      "textobject:graphicsBlock:g1",
-    );
-    expect(block).not.toBeNull();
-    expect(block!.blockPos).toBe(item1.pos); // the ITEM boundary, not the paragraph
-    // Cursor below the item's midpoint (150) → insert AFTER the item.
-    const placement = makeBetweenBlocksPlacement(editor, block!, 190, true);
-    const insertPos = (placement as Extract<Placement, { kind: "between-blocks" }>).insertPos;
-    expect(insertPos).toBe(item1.pos + item1.size);
-    // A between-items insert classifies as the enclosing exampleBlock (case a).
-    expect(classifyParentAt(editor, insertPos)).toBe("exampleBlock");
+    const { editor } = mockEditor(d, packedRects(d));
+    const caret = findByType(d, "exampleItem")[0].pos + 1;
+    for (const key of [
+      "textobject:exampleItem:i9",
+      "textobject:heading:h1",
+      "textobject:listItem:l1",
+      "textobject:figureBlock:f1",
+    ]) {
+      expect(resolveBlockIntoExpex(editor, caret, 120, key)).toBeNull();
+    }
   });
 
-  it("a NON-graphics source over the same expex returns null (resolution unchanged → falls through)", () => {
-    const d = packedDoc();
-    const para1 = findByType(d, "paragraph")[0];
+  it("a three-kind source NOT inside an exampleBlock returns null (top-level drop preserved)", () => {
+    const d = doc(para("plain", "pp"), gfx("g1"), dm("dd", "z"));
     const { editor } = mockEditor(d, {
-      [para1.pos]: { top: 100, bottom: 140, height: 40 },
+      [findByType(d, "paragraph")[0].pos]: { top: 100, bottom: 140 },
     });
-    // A paragraph / exampleItem / heading source is unaffected by A0.
-    expect(
-      resolveBlockIntoExpex(editor, para1.pos + 1, 120, "textobject:paragraph:x"),
-    ).toBeNull();
-    expect(
-      resolveBlockIntoExpex(editor, para1.pos + 1, 120, "textobject:exampleItem:i9"),
-    ).toBeNull();
-  });
-
-  it("a graphicsBlock NOT inside an exampleBlock returns null (top-level drop preserved)", () => {
-    const d = doc(gfx("g1"), para("plain", "pp"));
-    const plain = findByType(d, "paragraph")[0];
-    const { editor } = mockEditor(d, {
-      [plain.pos]: { top: 100, bottom: 140, height: 40 },
-    });
-    expect(
-      resolveBlockIntoExpex(editor, plain.pos + 1, 120, "textobject:graphicsBlock:g1"),
-    ).toBeNull();
+    const caret = findByType(d, "paragraph")[0].pos + 1;
+    for (const { key } of THREE_KINDS) {
+      expect(resolveBlockIntoExpex(editor, caret, 120, key)).toBeNull();
+    }
   });
 });
 
-// ── 2. applyDrop commit — non-destructive tr.doc inspection ──────────────────
+// ── 2. applyDrop commit — non-destructive tr.doc inspection, all 3 kinds ─────
 
-describe("textObjectDropSpec commit — picture into expex", () => {
-  it("CASE b: a graphicsBlock dropped INTO an item lands in that item's content (drop-direct)", () => {
+describe("textObjectDropSpec commit — block into expex (3 kinds × 2 modes)", () => {
+  for (const { kind, key, uuid } of THREE_KINDS) {
+    it(`CASE b: a ${kind} dropped INTO an item joins that item's content (drop-direct)`, () => {
+      const d = packedDoc();
+      const { editor, dispatched, ctx } = mockEditor(d);
+      const item1 = findByType(d, "exampleItem")[0];
+      // A position inside item i1, after its paragraph (into-content boundary).
+      const insertPos = item1.pos + item1.size - 1;
+      expect(classifyParentAt(editor, insertPos)).toBe("exampleItem");
+
+      expect(
+        textObjectDropSpec.classifyDrop(betweenBlocks(editor, insertPos), key, ctx),
+      ).toEqual({ kind: "apply" });
+      textObjectDropSpec.applyDrop(betweenBlocks(editor, insertPos), key, ctx);
+
+      const result = dispatched[0].doc;
+      const list = result.child(result.childCount - 1).child(0); // exampleItemList
+      expect(list.childCount).toBe(3); // still 3 items — joined, not added
+      const item0 = list.child(0);
+      expect(item0.childCount).toBe(2); // its paragraph + the dropped block
+      // The dropped block joined item i1 as its new last content sibling.
+      expect(item0.child(1).type.name).toBe(kind);
+      expect(item0.child(1).attrs.uuid).toBe(uuid);
+      // The same node moved — it appears exactly once (no clone, left top level).
+      expect(findByType(result, kind).filter((n) => n.uuid === uuid)).toHaveLength(1);
+    });
+
+    it(`CASE a: a ${kind} dropped BETWEEN items becomes a fresh sibling exampleItem (wrap)`, () => {
+      const d = packedDoc();
+      const { editor, dispatched, ctx } = mockEditor(d);
+      const items = findByType(d, "exampleItem");
+      const insertPos = items[1].pos; // boundary between i1 and i2
+      expect(classifyParentAt(editor, insertPos)).toBe("exampleBlock");
+      textObjectDropSpec.applyDrop(betweenBlocks(editor, insertPos), key, ctx);
+
+      const result = dispatched[0].doc;
+      const list = result.child(result.childCount - 1).child(0);
+      expect(list.childCount).toBe(4); // one new item inserted
+      expect(list.child(0).textContent).toBe("alpha"); // i1 unchanged
+      const newItem = list.child(1);
+      expect(newItem.type.name).toBe("exampleItem");
+      expect(newItem.childCount).toBe(1);
+      expect(newItem.child(0).type.name).toBe(kind); // wraps the dropped block
+      expect(typeof newItem.attrs.uuid).toBe("string"); // fresh, backfill-compatible
+      expect(list.child(2).textContent).toBe("beta"); // i2 shifted down
+      expect(list.child(3).textContent).toBe("gamma");
+    });
+  }
+
+  it("CASE b detail: a graphicsBlock keeps its uuid when it joins an item", () => {
     const d = packedDoc();
     const { editor, dispatched, ctx } = mockEditor(d);
-    const para1 = findByType(d, "paragraph")[0]; // "alpha" in item i1
-    const insertPos = para1.pos; // before the paragraph, inside item i1
-    const KEY = "textobject:graphicsBlock:g1";
-
-    expect(textObjectDropSpec.classifyDrop(betweenBlocks(editor, insertPos), KEY, ctx)).toEqual({
-      kind: "apply",
-    });
-    textObjectDropSpec.applyDrop(betweenBlocks(editor, insertPos), KEY, ctx);
-
+    const item1 = findByType(d, "exampleItem")[0];
+    const insertPos = item1.pos + item1.size - 1;
+    textObjectDropSpec.applyDrop(
+      betweenBlocks(editor, insertPos),
+      "textobject:graphicsBlock:g1",
+      ctx,
+    );
     const result = dispatched[0].doc;
-    // The picture left the top level — only the exampleBlock remains there.
-    expect(result.childCount).toBe(1);
-    expect(result.child(0).type.name).toBe("exampleBlock");
-    const list = result.child(0).child(0); // exampleItemList
-    expect(list.childCount).toBe(3); // still 3 items
-    const item0 = list.child(0);
-    expect(item0.type.name).toBe("exampleItem");
-    expect(item0.childCount).toBe(2); // graphicsBlock + paragraph
-    expect(item0.child(0).type.name).toBe("graphicsBlock");
-    expect(item0.child(0).attrs.uuid).toBe("g1"); // same node, moved
-    expect(item0.child(1).textContent).toBe("alpha");
-    // No stray graphicsBlock anywhere else.
-    expect(findByType(result, "graphicsBlock")).toHaveLength(1);
+    const gfxs = findByType(result, "graphicsBlock");
+    expect(gfxs).toHaveLength(1);
+    expect(gfxs[0].uuid).toBe("g1"); // same node, moved (not cloned)
   });
 
-  it("CASE a: a graphicsBlock dropped BETWEEN items becomes a fresh sibling exampleItem (wrap)", () => {
+  it("CASE a detail: a displayMath wrapped into a new item keeps its latex", () => {
     const d = packedDoc();
     const { editor, dispatched, ctx } = mockEditor(d);
     const items = findByType(d, "exampleItem");
-    const insertPos = items[1].pos; // boundary between i1 and i2
-    textObjectDropSpec.applyDrop(betweenBlocks(editor, insertPos), "textobject:graphicsBlock:g1", ctx);
-
+    textObjectDropSpec.applyDrop(
+      betweenBlocks(editor, items[1].pos),
+      "textobject:displayMath:dsrc",
+      ctx,
+    );
     const result = dispatched[0].doc;
-    expect(result.childCount).toBe(1); // picture left top level
-    const list = result.child(0).child(0); // exampleItemList
-    expect(list.childCount).toBe(4); // one new item inserted
-    expect(list.child(0).textContent).toBe("alpha"); // i1
-    const newItem = list.child(1);
-    expect(newItem.type.name).toBe("exampleItem");
-    expect(newItem.childCount).toBe(1);
-    expect(newItem.child(0).type.name).toBe("graphicsBlock");
-    expect(newItem.child(0).attrs.uuid).toBe("g1");
-    expect(typeof newItem.attrs.uuid).toBe("string"); // fresh, backfill-compatible uuid
-    expect(newItem.attrs.uuid).not.toBe("i1");
-    expect(list.child(2).textContent).toBe("beta"); // i2
-    expect(list.child(3).textContent).toBe("gamma"); // i3
-    expect(findByType(result, "graphicsBlock")).toHaveLength(1);
+    const list = result.child(result.childCount - 1).child(0);
+    const newMath = list.child(1).child(0);
+    expect(newMath.type.name).toBe("displayMath");
+    expect(newMath.attrs.latex).toBe("a = b");
+    expect(newMath.attrs.uuid).toBe("dsrc");
   });
+});
 
-  it("NON-REGRESSION: a graphicsBlock at a TOP-LEVEL gap still drops directly (unchanged)", () => {
-    const d = doc(gfx("g1"), para("a", "pa"), para("b", "pb"));
-    const { editor, dispatched, ctx } = mockEditor(d);
-    const paras = findByType(d, "paragraph");
-    const insertPos = paras[0].pos + paras[0].size; // between "a" and "b" at top level
-    textObjectDropSpec.applyDrop(betweenBlocks(editor, insertPos), "textobject:graphicsBlock:g1", ctx);
+// ── 3. Non-regression — top-level drops + non-{three-kind} source ────────────
 
-    const result = dispatched[0].doc;
-    expect(result.childCount).toBe(3);
-    expect(result.child(0).textContent).toBe("a");
-    expect(result.child(1).type.name).toBe("graphicsBlock"); // dropped direct, NOT wrapped
-    expect(result.child(1).attrs.uuid).toBe("g1");
-    expect(result.child(2).textContent).toBe("b");
-  });
+describe("non-regression — gated strictly to expex", () => {
+  for (const { kind, key, uuid, make } of [
+    { kind: "paragraph", key: "textobject:paragraph:psrc", uuid: "psrc", make: () => para("dragP", "psrc") },
+    { kind: "displayMath", key: "textobject:displayMath:dsrc", uuid: "dsrc", make: () => dm("dsrc", "q") },
+    { kind: "graphicsBlock", key: "textobject:graphicsBlock:g1", uuid: "g1", make: () => gfx("g1") },
+  ] as const) {
+    it(`a ${kind} at a TOP-LEVEL gap still drops directly (NOT wrapped)`, () => {
+      // Source at index 0, then two plain paragraphs; drop into the real gap
+      // between them — a genuine top-level move away from the source.
+      const d = doc(make(), para("a", "pa"), para("b", "pb"));
+      const { editor, dispatched, ctx } = mockEditor(d);
+      const pa = findByType(d, "paragraph").find((n) => n.uuid === "pa")!;
+      const insertPos = pa.pos + pa.size; // between "a" and "b"
+      expect(classifyParentAt(editor, insertPos)).toBeNull(); // top level
 
-  it("NON-REGRESSION: a non-graphics (exampleItem) source over the expex still reorders as a sibling", () => {
+      expect(
+        textObjectDropSpec.classifyDrop(betweenBlocks(editor, insertPos), key, ctx),
+      ).toEqual({ kind: "apply" });
+      textObjectDropSpec.applyDrop(betweenBlocks(editor, insertPos), key, ctx);
+
+      const result = dispatched[0].doc;
+      // The dropped node lands as a bare top-level sibling, not inside any item.
+      const moved = findByType(result, kind).filter((n) => n.uuid === uuid);
+      expect(moved).toHaveLength(1);
+      expect(findByType(result, "exampleBlock")).toHaveLength(0); // none created
+      expect(findByType(result, "exampleItem")).toHaveLength(0); // not wrapped
+    });
+  }
+
+  it("a non-{three-kind} (exampleItem) source over the expex still reorders as a sibling (R3)", () => {
     const d = doc(
       exBlock(
         "E",
@@ -334,13 +403,13 @@ describe("textObjectDropSpec commit — picture into expex", () => {
     );
     const { editor, dispatched, ctx } = mockEditor(d);
     const items = findByType(d, "exampleItem");
-    // Move "gamma" (i3) to the boundary between i1 and i2 — pure R3 behavior,
-    // unaffected by the A0 adapter/classify changes.
-    const insertPos = items[1].pos;
-    textObjectDropSpec.applyDrop(betweenBlocks(editor, insertPos), "textobject:exampleItem:i3", ctx);
-
+    const insertPos = items[1].pos; // move i3 to the boundary between i1 and i2
+    textObjectDropSpec.applyDrop(
+      betweenBlocks(editor, insertPos),
+      "textobject:exampleItem:i3",
+      ctx,
+    );
     const list = dispatched[0].doc.firstChild!.firstChild!;
-    expect(list.type.name).toBe("exampleItemList");
     expect(list.childCount).toBe(3); // reordered, not added
     expect([
       list.child(0).textContent,

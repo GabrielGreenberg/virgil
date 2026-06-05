@@ -529,6 +529,17 @@ function serializeExampleItem(node: JSONContent): string {
       // the command).
       const command = (child.attrs?.command as string) ?? "";
       pieces.push(command);
+    } else if (child.type === "displayMath") {
+      // Display math `\[…\]` inside the item body (Feature A1). Emit the
+      // same `\[…\]` envelope as the top-level serializer (with the trailing
+      // %!v: anchor when the equation carries a uuid), but without the
+      // top-level's blank-line tail — pieces are `\n`-joined inside the item.
+      // `readParagraph` breaks at `\[` so a preceding paragraph stays its own
+      // block on re-parse (round-trip verified in displaymath-in-item-roundtrip).
+      const mUuid = child.attrs?.uuid as string | null;
+      const mAnchor = mUuid ? ` %!v:${mUuid}` : "";
+      const latex = (child.attrs?.latex as string) || "";
+      pieces.push(`\\[\n${latex}\n\\]${mAnchor}`);
     } else if (child.type === "exampleGloss") {
       pieces.push(serializeExampleGloss(child).trimEnd());
     } else if (child.type === "exampleItemList") {

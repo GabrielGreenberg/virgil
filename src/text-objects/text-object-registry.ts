@@ -25,7 +25,7 @@ import {
   topLevelDropAdapter,
   listItemDropAdapter,
   exampleItemDropAdapter,
-  graphicsBlockDropAdapter,
+  blockIntoExpexDropAdapter,
 } from "./drop-adapters";
 import {
   BULLET_DECORATION_WIDTH,
@@ -283,7 +283,11 @@ export const TEXT_OBJECT_REGISTRY: Record<TextObjectKind, TextObjectMeta> = {
     actions: PROSE_ACTIONS,
     // %!v: anchor; not a LaTeX command per se. Marker is the suffix
     // on the paragraph's last line.
-    dropAdapter: topLevelDropAdapter,
+    // Feature A1: a lifted paragraph (text) can land inside an expex example —
+    // directly into an exampleItem (over an item) or wrapped in a fresh
+    // exampleItem (between items). Everywhere else → drop-direct (its normal
+    // top-level placement, unchanged). Shared with graphicsBlock + displayMath.
+    dropAdapter: blockIntoExpexDropAdapter,
     confirmDestructive: (doc, _uuid, action, ctx) =>
       descriptorForSimpleBlock("paragraph", doc, action, ctx, {
         includePreview: true,
@@ -521,7 +525,13 @@ export const TEXT_OBJECT_REGISTRY: Record<TextObjectKind, TextObjectMeta> = {
     chromeAnchor: "block-top",
     floatBodyComponent: PLACEHOLDER_FLOAT_BODY,
     actions: NON_PROSE_BLOCK_ACTIONS,
-    dropAdapter: topLevelDropAdapter,
+    // Feature A1: a lifted equation (displayMath) can land inside an expex
+    // example — directly into an exampleItem (over an item) or wrapped in a
+    // fresh exampleItem (between items). Everywhere else → drop-direct (its
+    // normal top-level placement, unchanged). Shared with paragraph +
+    // graphicsBlock; the schema widen (expex.ts) routes equations through the
+    // `\a` item path on the LaTeX round-trip.
+    dropAdapter: blockIntoExpexDropAdapter,
     // L3h (bodyless kinds, Chip 2): displayMath lifts through the two-mode
     // gesture into a READ-ONLY SingleBlockBody float ("view & move only" —
     // decision D; the equation is edited on the page via the KaTeX popover).
@@ -659,11 +669,12 @@ export const TEXT_OBJECT_REGISTRY: Record<TextObjectKind, TextObjectMeta> = {
     // reasoning as figureBlock (warm `<img src>` clone + class-scoped CSS +
     // L3e.2 `.node-graphicsBlock` margin reset). Static `label: "Graphic"`.
     actions: NON_PROSE_BLOCK_ACTIONS,
-    // Feature A0: a lifted picture can land inside an expex example — directly
-    // into an exampleItem's content (over an item) or wrapped in a fresh
-    // exampleItem (between items). Everywhere else → drop-direct (today's
+    // Feature A0/A1: a lifted picture can land inside an expex example —
+    // directly into an exampleItem's content (over an item) or wrapped in a
+    // fresh exampleItem (between items). Everywhere else → drop-direct (today's
     // top-level placement, unchanged). figureBlock stays on topLevelDropAdapter.
-    dropAdapter: graphicsBlockDropAdapter,
+    // Shares the unified blockIntoExpex adapter with paragraph + displayMath.
+    dropAdapter: blockIntoExpexDropAdapter,
     confirmDestructive: (_doc, _uuid, action) => {
       const { verb, label } = actionVerb(action);
       return {

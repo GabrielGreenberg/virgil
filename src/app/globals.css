@@ -3003,6 +3003,14 @@ body[data-drop-mode-active="true"] * {
 .dropmode-bar-gap {
   transition: top 0.08s ease;
 }
+/* Feature A1 — the expex unified-drop bar reuses `.dropmode-bar-gap` but is
+ * VERTICAL (a tall left-edge bar). It snaps between a full-item-height bar and a
+ * short new-item tick, so ease `height` too (the horizontal gap line only moves
+ * on `top`). Slightly rounded so the tall bar reads as a clean rule. */
+.dropmode-bar-vertical {
+  transition: top 0.08s ease, height 0.08s ease;
+  border-radius: 2px;
+}
 /* The marginalia gutter-drag indicator shares `.dropmode-bar-side` but
  * fires from native HTML5 `dragover` events that update many times per
  * second — the 80ms ease above is a visible trail. Snap directly. The

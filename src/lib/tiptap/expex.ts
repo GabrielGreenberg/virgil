@@ -780,11 +780,16 @@ export const ExampleItemList = Node.create({
 export const ExampleItem = Node.create({
   name: "exampleItem",
   // Widened from `paragraph+ exampleItemList? exampleGloss?` to allow
-  // `graphicsBlock` (an `\includegraphics` outside a figure env) inside an
-  // item. The shape is built so adding another inner kind (tables, etc.)
-  // is a one-token edit to the leading union. texBlock / figureBlock are
-  // intentionally NOT widened — see TEXT-OBJECT-REFACTOR.md §6.
-  content: "(paragraph | graphicsBlock)+ exampleItemList? exampleGloss?",
+  // `graphicsBlock` (an `\includegraphics` outside a figure env) and
+  // `displayMath` (an `\[…\]` equation) inside an item — the three block kinds
+  // (text/picture/equation) the unified expex drop welcomes (Feature A1).
+  // exampleBlock itself stays UN-widened (it can't hold displayMath directly),
+  // so the round-trip only routes equations through the `\a` item path. The
+  // shape is built so adding another inner kind (tables, etc.) is a one-token
+  // edit to the leading union. texBlock / figureBlock are intentionally NOT
+  // widened — see TEXT-OBJECT-REFACTOR.md §6.
+  content:
+    "(paragraph | graphicsBlock | displayMath)+ exampleItemList? exampleGloss?",
   group: "textObject",
   defining: true,
   // NOTE: not isolating — prosemirror-schema-list's liftTarget breaks at

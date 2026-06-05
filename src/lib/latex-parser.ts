@@ -1864,6 +1864,13 @@ function readParagraph(ctx: ParseContext): string {
     if (ctx.src[ctx.pos] === "\\" && result.trim()) {
       const rest = ctx.src.slice(ctx.pos);
       if (
+        // `\[` opens display math — always a block boundary. Checked
+        // separately because the trailing `\b` below never fires after the
+        // non-word `[` (so `\[` followed by whitespace/newline, e.g. a
+        // serialized `\[\n…`, would otherwise be absorbed into the paragraph).
+        // Feature A1 relies on this so a paragraph + equation in one
+        // exampleItem round-trips with the equation as its own displayMath.
+        rest.startsWith("\\[") ||
         /^\\(part|chapter|section|subsection|subsubsection|paragraph|subparagraph|begin|end|\[|hrulefill|title|author|date|maketitle|noindent|vspace|hspace|newcounter|setcounter|renewcommand|newcommand|usepackage|bibliographystyle|bibliography|tableofcontents|appendix|clearpage|newpage|par|ex|pex|xe|vexid|vxid|begingl|endgl)\b/.test(
           rest
         )
@@ -2148,7 +2155,7 @@ function buildExampleBlockFromBody(
  *  body may contain inline paragraphs, an optional gloss, and optional
  *  nested `\begin{xlist}…\end{xlist}` environments which become a child
  *  exampleItemList. The schema requires content order
- *  `paragraph+ exampleItemList? exampleGloss?`. */
+ *  `(paragraph | graphicsBlock | displayMath)+ exampleItemList? exampleGloss?`. */
 function buildExampleItemFromText(
   tag: string,
   label: string,
@@ -2174,12 +2181,18 @@ function buildExampleItemFromText(
     }
   }
 
-  const itemContent = parseExampleBodyAsBlocks(stripped);
+  const itemContent = parseExampleBodyAsBlocks(stripped, {
+    allowDisplayMath: true,
+  });
   const normalized: JSONContent[] = [];
-  // Head section: (paragraph | graphicsBlock)+. Preserve document order
-  // so `\includegraphics` between two paragraphs round-trips faithfully.
+  // Head section: (paragraph | graphicsBlock | displayMath)+. Preserve document
+  // order so an `\includegraphics` or `\[…\]` between two paragraphs round-trips
+  // faithfully (Feature A1 adds displayMath alongside A0's graphicsBlock).
   const head = itemContent.filter(
-    (n) => n.type === "paragraph" || n.type === "graphicsBlock",
+    (n) =>
+      n.type === "paragraph" ||
+      n.type === "graphicsBlock" ||
+      n.type === "displayMath",
   );
   const glosses = itemContent.filter((n) => n.type === "exampleGloss");
   if (head.length === 0) normalized.push({ type: "paragraph" });
@@ -2221,8 +2234,16 @@ function buildExampleItemListFromBody(body: string): JSONContent {
 }
 
 /** Parse an example body fragment (between `\ex`/`\pex` and `\xe`, or between
- *  consecutive `\a` markers) as a sequence of paragraph + gloss blocks. */
-function parseExampleBodyAsBlocks(body: string): JSONContent[] {
+ *  consecutive `\a` markers) as a sequence of paragraph + gloss blocks.
+ *
+ *  `opts.allowDisplayMath` lets a `\[…\]` equation survive as a `displayMath`
+ *  block — passed ONLY from the `\a` item path (Feature A1), since `exampleItem`
+ *  accepts displayMath but the `exampleBlock` itself (single `\ex` bodies, `\pex`
+ *  preambles) does NOT. Default false keeps those contexts byte-unchanged. */
+function parseExampleBodyAsBlocks(
+  body: string,
+  opts?: { allowDisplayMath?: boolean },
+): JSONContent[] {
   const sub: JSONContent = { type: "__scratch", content: [] };
   const subCtx: ParseContext = { pos: 0, src: body };
   parseBody(subCtx, sub);
@@ -2233,7 +2254,8 @@ function parseExampleBodyAsBlocks(body: string): JSONContent[] {
       child.type === "exampleGloss" ||
       child.type === "bulletList" ||
       child.type === "orderedList" ||
-      child.type === "graphicsBlock"
+      child.type === "graphicsBlock" ||
+      (opts?.allowDisplayMath && child.type === "displayMath")
     ) {
       out.push(child);
     }

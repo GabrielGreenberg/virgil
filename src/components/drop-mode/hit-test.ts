@@ -70,19 +70,22 @@ export function hitTest(
   if (spec.allowedPlacements.includes("between-blocks")) {
     const peer = resolveSubItemPeerBlock(editor, posResult.pos, sourceCardKey);
     if (peer) return makeBetweenBlocksPlacement(editor, peer, y, true);
-    // Feature A0 — a lifted graphicsBlock (a "picture") over an expex example
-    // surfaces into-item / between-item insert positions with midpoint snap
-    // (the "inline drop bar"). The resolver gates on source kind ===
-    // "graphicsBlock" AND cursor-inside-an-exampleBlock, returning null (falls
-    // through to resolveAnchorableBlock + the existing top-level drop) for
-    // every other source — so all other drags are byte-unchanged.
+    // Feature A1 — a lifted text/picture/equation block (paragraph /
+    // graphicsBlock / displayMath) over an expex example surfaces ONE forgiving
+    // left-edge VERTICAL bar that snaps to the nearest slot (item-gap → a new
+    // exampleItem; into an item → its content). The resolver gates on source
+    // kind ∈ the three kinds AND cursor-inside-an-exampleBlock, returning null
+    // (falls through to resolveAnchorableBlock + the existing top-level drop)
+    // for every other source — so all other drags are byte-unchanged. It
+    // returns the finished vertical-bar Placement directly (NOT fed through
+    // makeBetweenBlocksPlacement, whose horizontal rect is the wrong shape).
     const intoExpex = resolveBlockIntoExpex(
       editor,
       posResult.pos,
       y,
       sourceCardKey,
     );
-    if (intoExpex) return makeBetweenBlocksPlacement(editor, intoExpex, y, true);
+    if (intoExpex) return intoExpex;
   }
 
   const block = resolveAnchorableBlock(editor, posResult.pos);
@@ -259,152 +262,229 @@ export function resolveSubItemPeerBlock(
 }
 
 /**
- * Source-kind-aware block resolution for a lifted GRAPHICS BLOCK (a "picture")
- * over an expex example (Feature A0). The generalization of R3's
- * `resolveSubItemPeerBlock`: a block lands wherever the schema allows it —
- * directly, or with a single wrap.
+ * Feature A1 — the three block kinds the unified expex drop welcomes into an
+ * example: paragraph (text), graphicsBlock (picture), displayMath (equation).
+ * Each is schema-valid inside an `exampleItem`
+ * (`(paragraph | graphicsBlock | displayMath)+`, expex.ts). Every other source
+ * kind makes `resolveBlockIntoExpex` return null → its drag is byte-unchanged.
+ */
+const EXPEX_DROP_KINDS: ReadonlySet<TextObjectKind> = new Set<TextObjectKind>([
+  "paragraph",
+  "graphicsBlock",
+  "displayMath",
+]);
+
+/** Width (px) of the expex left-edge vertical bar. Tunable. */
+const EXPEX_BAR_WIDTH = 3;
+/** Height (px) of the short "insert a new item here" tick drawn for a
+ *  new-item (item-gap) slot — distinct from the full-item-height bar an
+ *  into-content slot draws. Tunable. */
+const EXPEX_NEW_ITEM_BAR_HEIGHT = 22;
+
+/**
+ * One candidate insertion slot along an exampleBlock's left edge.
+ *   • `new-item`     — a gap before/between/after items → wrap the dropped block
+ *                      in a fresh exampleItem (insertPos in the exampleItemList,
+ *                      between items; `classifyParentAt` → exampleBlock).
+ *   • `into-content` — joins an existing item's content (insertPos inside the
+ *                      item; `classifyParentAt` → exampleItem → drop-direct).
+ * `pickY` is the viewport Y the nearest-slot snap compares against the cursor;
+ * `barTop`/`barHeight` are the vertical segment the indicator paints if this
+ * slot wins.
+ */
+interface ExpexSlot {
+  insertPos: number;
+  pickY: number;
+  barTop: number;
+  barHeight: number;
+  mode: "new-item" | "into-content";
+}
+
+/**
+ * Source-kind-aware resolution for a lifted text/picture/equation block over an
+ * expex example (Feature A1 — the unifying generalization of A0's graphics-only
+ * path and R3's `resolveSubItemPeerBlock`). A0 proved the COMMIT (drop-direct
+ * into an item / wrap into a fresh item); the user proved its affordance wrong —
+ * the densely-tiled items leave ~0 inter-item gap, so A0's per-cursor horizontal
+ * bars were "very hard to get to show up." A1 replaces that with ONE forgiving
+ * left-edge VERTICAL bar: anywhere along the example's left side is a valid
+ * hover, and the insertion point SNAPS to the nearest slot as the cursor moves
+ * up/down.
  *
- * The schema already accepts a `graphicsBlock` inside an `exampleItem`
- * (`(paragraph | graphicsBlock)+`, expex.ts:787), but the default resolution
- * surfaces NO usable bar over a densely-packed exampleBlock: the items tile
- * with no inter-item gap, and `resolveAnchorableBlock` lands on an item's inner
- * paragraph whose rect makes the cursor `inText` — so the `inGap`-gated
- * between-blocks placement never fires. Fired only when the source is a
- * `graphicsBlock` and the cursor sits inside an `exampleBlock`, this resolver
- * surfaces two insert positions the commit path already honors:
- *
- *   • OVER an exampleItem's content rect → the nearest CONTENT-block boundary
- *     INSIDE that item (depth = item + 1). `classifyParentAt` then resolves the
- *     enclosing `exampleItem` → inside-compatible → drop-direct [case b].
- *   • NOT over any item's content (an inter-item gap, or below the last item
- *     but inside the exampleBlock) → the nearest `exampleItem` BOUNDARY (the
- *     item's own position). `classifyParentAt` resolves the enclosing
- *     `exampleBlock` (exampleItemList isn't a registry kind) →
- *     inside-incompatible → wrap into a fresh exampleItem [case a].
- *
- * Both returns feed `makeBetweenBlocksPlacement(…, true)` (midpoint snap), so
- * the bar tracks the nearest boundary as the cursor moves over the example
- * instead of firing only in a hairline gap.
+ * Fired only when the source kind ∈ {paragraph, graphicsBlock, displayMath} AND
+ * the cursor sits inside an `exampleBlock`, it enumerates that block's slots
+ * (an item-gap before/between/after each item → new exampleItem; one
+ * into-content slot per item → that item's content) and returns the
+ * vertical-bar `Placement` for the slot whose `pickY` is nearest the cursor Y.
+ * The placement keeps `kind: "between-blocks"` (so the existing commit handles
+ * it) — only the rect is vertical.
  *
  * Returns null — so the caller falls through to `resolveAnchorableBlock` and
- * today's top-level graphics drop is preserved byte-for-byte — for every other
- * case: a non-graphics source, or a graphics source NOT inside an exampleBlock.
+ * each kind's top-level drop is preserved byte-for-byte — for every other case:
+ * a non-{three-kind} source, or one NOT inside an exampleBlock (including a
+ * single `\ex` with no items, which yields no slots).
  *
- * O(depth) `$pos` walk; the only scan (`resolveNearestExampleItem`) is bounded
- * to ONE exampleBlock's items and runs only when the cursor isn't already
- * resolved inside an item. No doc walk — safe on every throttled mousemove.
+ * O(items) — the only scan (`collectExpexSlots`) is bounded to ONE exampleBlock's
+ * top-tier items + their direct children. No doc walk — safe on every throttled
+ * mousemove (the gesture-sanctity constraint).
  */
 export function resolveBlockIntoExpex(
   editor: Editor,
   pos: number,
   cursorY: number,
   sourceCardKey: string,
-): AnchorableBlockInfo | null {
+): Placement | null {
   const ref = parseTextObjectPopoutKey(sourceCardKey);
-  if (!ref || ref.kind !== "graphicsBlock") return null;
+  if (!ref || !EXPEX_DROP_KINDS.has(ref.kind)) return null;
 
   const doc = editor.state.doc;
   if (pos < 0 || pos > doc.content.size) return null;
   const $pos = doc.resolve(pos);
 
-  // Find the enclosing exampleBlock + the innermost enclosing exampleItem.
+  // Find the enclosing exampleBlock.
   let exampleBlockDepth = -1;
-  let exampleItemDepth = -1;
   for (let d = $pos.depth; d >= 1; d--) {
-    const name = $pos.node(d).type.name;
-    if (name === "exampleItem" && exampleItemDepth < 0) exampleItemDepth = d;
-    if (name === "exampleBlock") {
+    if ($pos.node(d).type.name === "exampleBlock") {
       exampleBlockDepth = d;
       break;
     }
   }
   if (exampleBlockDepth < 0) return null; // not inside an expex → fall through
 
-  if (exampleItemDepth >= 0) {
-    // CASE b — cursor inside an exampleItem. If it sits vertically OVER one of
-    // the item's content blocks (the child at item-depth + 1), target that
-    // content-block boundary → drop-direct into the item.
-    const contentDepth = exampleItemDepth + 1;
-    if (contentDepth <= $pos.depth) {
-      const blockPos = $pos.before(contentDepth);
-      const dom = editor.view.nodeDOM(blockPos);
-      if (dom instanceof HTMLElement) {
-        const rect = dom.getBoundingClientRect();
-        if (cursorY >= rect.top && cursorY <= rect.bottom) {
-          const node = $pos.node(contentDepth);
-          const uuid = (node.attrs?.uuid as string | undefined) ?? "";
-          return { blockPos, depth: contentDepth, uuid, dom };
-        }
-      }
-    }
-    // CASE a — inside the item but NOT over its content (the inter-item gap /
-    // below the text): target the item's OWN boundary → wrap into a fresh
-    // sibling exampleItem.
-    const itemPos = $pos.before(exampleItemDepth);
-    const itemDom = editor.view.nodeDOM(itemPos);
-    if (itemDom instanceof HTMLElement) {
-      const node = $pos.node(exampleItemDepth);
-      const uuid = (node.attrs?.uuid as string | undefined) ?? "";
-      return { blockPos: itemPos, depth: exampleItemDepth, uuid, dom: itemDom };
-    }
-    return null;
-  }
+  const exampleBlockPos = $pos.before(exampleBlockDepth);
+  const exampleBlock = $pos.node(exampleBlockDepth);
+  const blockDom = editor.view.nodeDOM(exampleBlockPos);
+  if (!(blockDom instanceof HTMLElement)) return null;
+  const blockLeft = blockDom.getBoundingClientRect().left;
 
-  // CASE a (fallback) — cursor inside the exampleBlock but not resolved into
-  // any item (over the marker gutter / block padding). Scan THIS block's
-  // top-tier items for the nearest by vertical distance.
-  return resolveNearestExampleItem(
-    editor,
-    $pos.before(exampleBlockDepth),
-    $pos.node(exampleBlockDepth),
-    cursorY,
-  );
+  const slots = collectExpexSlots(editor, exampleBlockPos, exampleBlock);
+  if (slots.length === 0) return null; // an example with no items → fall through
+
+  // Generous left-zone snap: the whole left band qualifies — pick the slot
+  // whose pickY is nearest the cursor Y (first slot wins ties, keeping the
+  // result stable as the cursor drifts).
+  let best = slots[0];
+  let bestDist = Math.abs(best.pickY - cursorY);
+  for (let i = 1; i < slots.length; i++) {
+    const dist = Math.abs(slots[i].pickY - cursorY);
+    if (dist < bestDist) {
+      bestDist = dist;
+      best = slots[i];
+    }
+  }
+  return makeExpexLeftBarPlacement(editor, blockLeft, best);
 }
 
 /**
- * Scan a single exampleBlock's TOP-TIER exampleItems (direct children of an
- * exampleItemList directly under the block — `nodesBetween` returns false at
- * each item so nested items are skipped, keeping the case-a wrap schema-valid)
- * and return the one nearest the cursor's Y. Bounded to ONE block's items.
+ * Enumerate the insertion slots along an exampleBlock's left edge. Bounded to
+ * the block's TOP-TIER exampleItems (`nodesBetween` returns false at each item
+ * so nested item lists are skipped — keeping a new-item wrap schema-valid). Per
+ * item: a `new-item` slot at its top edge (a gap → fresh sibling item) and one
+ * `into-content` slot spanning its body (→ join the item). A trailing
+ * `new-item` slot sits below the last item.
  */
-function resolveNearestExampleItem(
+function collectExpexSlots(
   editor: Editor,
   exampleBlockPos: number,
   exampleBlock: PMNode,
-  cursorY: number,
-): AnchorableBlockInfo | null {
-  const doc = editor.state.doc;
-  let best: AnchorableBlockInfo | null = null;
-  let bestDist = Number.POSITIVE_INFINITY;
-  doc.nodesBetween(
+): ExpexSlot[] {
+  const slots: ExpexSlot[] = [];
+  let lastItemBottom: number | null = null;
+  let lastItemEnd: number | null = null;
+
+  editor.state.doc.nodesBetween(
     exampleBlockPos,
     exampleBlockPos + exampleBlock.nodeSize,
     (node, nodePos) => {
-      if (node.type.name !== "exampleItem") return true;
+      if (node.type.name !== "exampleItem") return true; // descend to the items
       const dom = editor.view.nodeDOM(nodePos);
-      if (dom instanceof HTMLElement) {
-        const rect = dom.getBoundingClientRect();
-        const dist =
-          cursorY < rect.top
-            ? rect.top - cursorY
-            : cursorY > rect.bottom
-              ? cursorY - rect.bottom
-              : 0;
-        if (dist < bestDist) {
-          bestDist = dist;
-          const uuid = (node.attrs?.uuid as string | undefined) ?? "";
-          best = {
-            blockPos: nodePos,
-            depth: doc.resolve(nodePos).depth + 1,
-            uuid,
-            dom,
-          };
-        }
-      }
-      return false; // don't descend into the item — top-tier only
+      if (!(dom instanceof HTMLElement)) return false;
+      const rect = dom.getBoundingClientRect();
+
+      // new-item slot — the gap BEFORE this item (a between-items / above-first
+      // boundary). insertPos at the item's own position sits in the
+      // exampleItemList between items → classifyParentAt → exampleBlock → wrap.
+      slots.push({
+        insertPos: nodePos,
+        pickY: rect.top,
+        barTop: rect.top - EXPEX_NEW_ITEM_BAR_HEIGHT / 2,
+        barHeight: EXPEX_NEW_ITEM_BAR_HEIGHT,
+        mode: "new-item",
+      });
+
+      // into-content slot — append after the item's leading content run; the
+      // bar spans the whole item so the affordance reads "lands in this item".
+      slots.push({
+        insertPos: leadingContentEnd(node, nodePos),
+        pickY: rect.top + rect.height / 2,
+        barTop: rect.top,
+        barHeight: rect.height,
+        mode: "into-content",
+      });
+
+      lastItemBottom = rect.bottom;
+      lastItemEnd = nodePos + node.nodeSize;
+      return false; // top-tier only — don't descend into the item
     },
   );
-  return best;
+
+  // new-item slot — the gap BELOW the last item.
+  if (lastItemBottom !== null && lastItemEnd !== null) {
+    slots.push({
+      insertPos: lastItemEnd,
+      pickY: lastItemBottom,
+      barTop: lastItemBottom - EXPEX_NEW_ITEM_BAR_HEIGHT / 2,
+      barHeight: EXPEX_NEW_ITEM_BAR_HEIGHT,
+      mode: "new-item",
+    });
+  }
+  return slots;
+}
+
+/**
+ * Position just after an exampleItem's leading content run — the run of
+ * paragraph / graphicsBlock / displayMath children before any nested
+ * exampleItemList / exampleGloss. A block inserted here joins the item as its
+ * last content sibling, keeping the schema's `(content)+ list? gloss?` order
+ * intact.
+ */
+function leadingContentEnd(item: PMNode, itemPos: number): number {
+  let pos = itemPos + 1; // just inside the item, before its first child
+  for (let i = 0; i < item.childCount; i++) {
+    const child = item.child(i);
+    const name = child.type.name;
+    if (
+      name === "paragraph" ||
+      name === "graphicsBlock" ||
+      name === "displayMath"
+    ) {
+      pos += child.nodeSize;
+    } else {
+      break; // first non-content child (exampleItemList / exampleGloss)
+    }
+  }
+  return pos;
+}
+
+/**
+ * Build the vertical-left-bar `Placement` for a snapped expex slot. Keeps
+ * `kind: "between-blocks"` (the commit reads `insertPos`, not the rect, so A0's
+ * wrap/into-content machinery is reused unchanged) — only the rect is vertical:
+ * a thin bar (`height > width`) at the exampleBlock's left edge. The x-offset
+ * and bar heights (`EXPEX_BAR_WIDTH` / `EXPEX_NEW_ITEM_BAR_HEIGHT`) are tunable.
+ */
+export function makeExpexLeftBarPlacement(
+  editor: Editor,
+  blockLeft: number,
+  slot: ExpexSlot,
+): Placement {
+  const rect: ViewportRect = {
+    x: blockLeft,
+    y: slot.barTop,
+    width: EXPEX_BAR_WIDTH,
+    height: Math.max(slot.barHeight, EXPEX_BAR_WIDTH * 2),
+  };
+  return { kind: "between-blocks", editor, insertPos: slot.insertPos, rect };
 }
 
 // ─────────────────────────────────────────────────────────────────────
