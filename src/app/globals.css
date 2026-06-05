@@ -1965,12 +1965,31 @@ textarea,
  * `width: fit-content` shrinks the block to the image; FigureBlockNodeView
  * moves the scale onto the block as an inline `max-width: <widthPercent>%` (a
  * % of the text column) and fills the panel, so the image keeps its exact
- * rendered size while the box collapses to it. Centered with auto inline
- * margins; the 1.25em block margin (inter-block rhythm) is untouched. Only the
- * main render carries `.figure-block-hug` — the empty-state CTA, subfigures,
- * the card-preview and the popped float do not, so they're unaffected. */
+ * rendered size while the box collapses to it. The 1.25em block margin
+ * (inter-block rhythm) is untouched. Only the main render carries
+ * `.figure-block-hug` — the empty-state CTA, subfigures, the card-preview and
+ * the popped float do not, so they're unaffected. Justification splits by KIND
+ * (the two rules below): bare pictures left, captioned figures centered. */
 .figure-block.figure-block-hug {
   width: fit-content;
+}
+
+/* Pictures (a bare `\includegraphics`, `.figure-block-bare`) left-justify at
+ * the text-column LEFT edge, so an image-sized block shares a paragraph's left
+ * geometry — its left edge == the text-column left == a paragraph's text-left —
+ * and the block affordances (grab handle, drop bar, expex-drop bar) line up
+ * with prose automatically. `margin-inline: 0` drops the centering; `text-align:
+ * left` guards against the inherited `.figure-block { text-align: center }`
+ * re-offsetting inline content for the bare case. */
+.figure-block.figure-block-hug.figure-block-bare {
+  margin-inline: 0;
+  text-align: left;
+}
+
+/* Figures (captioned, `.figure-block-wrapped`) stay centered — a figure
+ * announces itself with a caption, so it reads as a centered block; "if I want
+ * a picture centered, I put it in a figure." */
+.figure-block.figure-block-hug.figure-block-wrapped {
   margin-inline: auto;
 }
 
@@ -2257,6 +2276,20 @@ textarea,
 .figure-block .figure-chrome.figure-chrome-empty {
   opacity: 1;
   pointer-events: auto;
+}
+
+/* Chrome beside the image (the base rule above overlays the image's top-right
+ * corner). When FigureBlockNodeView measures that the control row FITS in the
+ * space to the RIGHT of the (fit-content) block within the text column, it adds
+ * `.figure-chrome-beside` and the row sits just outside the image's right edge
+ * instead of on top of the picture. The 8px gap here MUST match
+ * CHROME_BESIDE_GAP in FigureBlockNodeView.tsx (the JS fit test subtracts the
+ * same gap). When it doesn't fit (a wide image), the class is absent and the
+ * top/right:4px overlay stands. */
+.figure-block .figure-chrome.figure-chrome-beside {
+  top: 0;
+  left: calc(100% + 8px);
+  right: auto;
 }
 
 /* Read-only gating. The editor mirrors its `editable` prop onto its
