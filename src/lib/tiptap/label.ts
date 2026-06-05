@@ -47,6 +47,7 @@ export const LabelRef = Node.create({
       dom.dataset.refCommand = node.attrs.refCommand || "ref";
       if (node.attrs.targetKind) dom.dataset.targetKind = node.attrs.targetKind;
       dom.contentEditable = "false";
+      dom.draggable = false; // see footnote.ts: keep the grab gesture's mousemove stream
       dom.textContent = node.attrs.displayText || "??";
 
       dom.addEventListener("click", (e: Event) => {

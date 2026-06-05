@@ -237,6 +237,7 @@ export const Citation = Node.create<CitationOptions>({
       dom.dataset.type = "citation";
       dom.dataset.citationId = node.attrs.citationId || "";
       dom.contentEditable = "false";
+      dom.draggable = false; // see footnote.ts: keep the grab gesture's mousemove stream
       applyCitationContent(dom, node.attrs.displayText, node.attrs.command);
 
       dom.addEventListener("click", (e: Event) => {

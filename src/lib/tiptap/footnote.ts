@@ -24,8 +24,10 @@ export const Footnote = Node.create<FootnoteOptions>({
   // to alignOmniCardWithClick. `atom: true` still keeps Backspace
   // deletion working (single-unit deletion). Repositioning is the
   // `InlineAtomGrab` gesture (mousedown → drop-mode), NOT native HTML5
-  // drag — so no `draggable` here (it would be a second, unowned
-  // text-move surface).
+  // drag. A `contenteditable="false"` island is natively draggable by
+  // default, though — so each NodeView sets `dom.draggable = false`
+  // (below); otherwise a real-mouse press starts a native drag whose
+  // drag-detection swallows the mousemove stream the grab gesture needs.
   selectable: false,
 
   addOptions() {
@@ -230,6 +232,11 @@ export const Footnote = Node.create<FootnoteOptions>({
       dom.dataset.type = "footnote";
       dom.dataset.footnoteId = node.attrs.footnoteId || "";
       dom.contentEditable = "false";
+      // contenteditable=false islands are natively draggable inside a
+      // contenteditable root; disable it so the InlineAtomGrab mousedown
+      // gesture keeps its mousemove/mouseup stream (a native drag would
+      // hijack it, and the Editor.tsx dragstart guard fires too late).
+      dom.draggable = false;
       if (node.attrs.thanks) dom.dataset.thanks = "true";
       dom.textContent = node.attrs.thanks ? "A" : String(node.attrs.number || "1");
       dom.title = richJsonToPlainText(node.attrs.content);

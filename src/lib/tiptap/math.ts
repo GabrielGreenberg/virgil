@@ -46,6 +46,7 @@ function mathNodeView(opts: {
   const dom = document.createElement(tag);
   dom.className = className;
   dom.contentEditable = "false";
+  dom.draggable = false; // see footnote.ts: keep the grab gesture's mousemove stream
   dom.setAttribute("data-type", kind === "inline" ? "inline-math" : "display-math");
 
   renderMath(dom, node.attrs.latex || "", displayMode);
