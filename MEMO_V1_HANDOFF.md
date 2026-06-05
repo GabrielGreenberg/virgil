@@ -1,6 +1,6 @@
 # Virgil v1 skill-base build — session handoff
 
-_Last updated: 2026-06-05 — **Released v0.1.50** (banks chips 11–14 + the concurrent atoms-drag / expex-drop / figure-display / `CARD_REGISTRY` work). **Phase 4 shipped**: every editor skill writes through the v1 `apply_response` contract; all three safety levels close the loop. Next: the remaining roadmap (#3 `actions.md`, #4 DEV-mode, #5 Phase-8 UI). Standing auto-dispatch authority active._
+_Last updated: 2026-06-05 — **Released v0.1.50**; since then **chip 15 merged** (`actions.md` → the operational manifest is now COMPLETE) and **chip 16 dispatched** (route `sync-bib-to-library`'s paper-side writes through the contract — the last writeback bypass). Local `main` is a few commits ahead of origin (memo + chip 15, unpushed — ride the next release). Standing auto-dispatch authority active._
 
 ## How to use this doc
 You are the **manager** of Virgil's v1 AI-cowork skill-base build. Work proceeds as **chips** — self-contained implementation tasks, each dispatched via the `spawn_task` tool, each run by a fresh agent in its own git worktree off `main`. Your job is to **scope each chip's prompt, dispatch it, verify its output, and merge it** — *not* to implement directly. The user spins the chip off (one click), pastes back its report; you review, merge, and recommend the next chip.
@@ -15,9 +15,9 @@ You are the **manager** of Virgil's v1 AI-cowork skill-base build. Work proceeds
 Prefer **unified, deep, architectural solutions that capture a range of related phenomena** — avoid superficial, surgical patches. Whenever reasonable, take the deepest solution that *also improves the app*. This is why the writeback contract is kind-agnostic, the manifest is one knowledge base, and the doc-graph has a single rooted source. Bake this framing into every chip prompt.
 
 ## Where we are
-**Released v0.1.49** (first release shipping the v1 cowork stack). Since then `main` (now `7c320ad`) has taken **chips 11 & 12** plus the concurrent atoms/lifted-overlay session's **Feature A1** (unified expex drop). `npm run check:coherence` → **0 errors** (29 drift *warnings* — mostly the atoms `src/` merges under docs that cover them, plus the editor/ changes; the release doc-refresh re-stamps them — not a gate).
+**Released v0.1.50** (chips 11–14 + the concurrent atoms-drag / expex-drop / figure-display / `CARD_REGISTRY` work). Local `main` (now `0b00945`) carries **chip 15** (`actions.md`) on top, unpushed. `npm run check:coherence` → **0 errors** (drift *warnings* accrue between releases as `src/` merges land under the manifest docs; the release doc-refresh re-stamps them — not a gate).
 
-Fourteen chips landed (each verified — tests + coherence — then merged):
+Fifteen chips landed (each verified — tests + coherence — then merged):
 
 | Chip | Delivered |
 |---|---|
@@ -35,8 +35,9 @@ Fourteen chips landed (each verified — tests + coherence — then merged):
 | 12 | **Phase 4 — writeback unification COMPLETE.** Every paper-file write now rides the contract under the pen: `apply_tex`→`apply_writes` gates `texEdit` (+`region-replace`), `bibEdit` (append/set-fields/replace → `references.bib`), `settingsEdit` (`document-settings.json`), `annotationEdit` (`annotations.json`). Migrated `find-citation`/`answer-bib-review`/`style-merge` off their Edit-tool/pen-less writes; +`test_bib_tex_slice` (62) proving fault-injection rollback (card + `.bib` revert together). |
 | 13 | **Phase 4 — L3 accept→splice.** `/editor/accept-suggestion` + `/editor/reject-suggestion`: a generic `replace-span` texEdit + `accept`/`reject` mutation ops apply (or dismiss) a reviewed L3 proposal in one atomic pen commit (card→accepted/rejected + Task result + `.tex` splice). **Contract-level stale-proposal guard** (refuses to splice if `original_text` no longer matches at the anchor). +`test_accept_reject_slice` (48). All three safety levels now close the loop. Skill-side only; UI accept-button deferred to Phase 8. |
 | 14 | **Phase 4 COMPLETE — propose-family migration.** Migrated the propose responders (`draft-suggestion`, `answer-cutter-comment`, `answer-revision-comment` path-a, + the chip-11 `TODO` branches in `answer-note`/`answer-todo`) onto `complete-task --propose` (proposals land *awaiting-review*, consumable by chip 13's accept); path-b comment → terminal `complete-task`. **Root-fix:** `_common.card_paragraph_ids` read the retired `{anchor,paragraphIds}` shape → returned `[]` for every real card (silently breaking `cards_for_paragraph.py` + `list_requests.py` virtual ids); now reads canonical `{textObject,textObjectIds}`, tolerating legacy. +`test_common_anchor` (10), +`test_propose_accept_slice` (27). Legacy default-apply retired. |
+| 15 | **Operational manifest COMPLETE — `actions.md`.** The editing-surface inventory (4 families: decorations · structural ops · card actions · keyboard), SSOT-rooted, via the deferred user-actions Phase 0; reconciled the stale action-button audit (Quotation gone, action row now 11, `createReportRequest` corrected). Auto-ships to `.claude/virgil/` via the manifest glob. Derived from existing VIRGIL.md sections (no new section → no card-refactor collision). Pillar 4 now fully content-complete. |
 
-**The four pillars are built:** (1) rot-prevention discipline (built, enforced, demonstrated clearing real drift); (2) Phase 0 (VIRGIL.md is the canonical filled doc); (3) the kind-agnostic writeback contract; (4) the operational manifest (content-complete except `actions.md`, *and shipping*). Plus the full card-mechanics skill set (create + edit/move/archive/restore/link).
+**The four pillars are built:** (1) rot-prevention discipline (built, enforced, demonstrated clearing real drift); (2) Phase 0 (VIRGIL.md is the canonical filled doc); (3) the kind-agnostic writeback contract; (4) the operational manifest (now **content-complete** — `actions.md` landed in chip 15 — *and shipping*). Plus the full card-mechanics skill set (create + edit/move/archive/restore/link) and the full responder/propose/accept set.
 
 ## The doc graph (the rot-prevention spine — how Virgil's knowledge stays honest)
 - **`docs/architecture/VIRGIL.md`** = the single canonical "what Virgil is" (Layer-2 root). `AGENTS.md`'s codebase-guide index points to it.
@@ -46,7 +47,7 @@ Fourteen chips landed (each verified — tests + coherence — then merged):
 
 ## What's next (ranked)
 
-**Phase 4 (#1) and L3 (#2) are ✅ DONE and SHIPPED in v0.1.50.** Remaining roadmap below: #3 `actions.md`, #4 DEV-mode, #5 Phase-8 UI (which also carries L3's only leftover — the accept-button + "Virgil as author" mark).
+**Phase 4 (#1), L3 (#2), and the manifest (#3 `actions.md`) are all ✅ DONE** (1–2 shipped in v0.1.50; #3 / chip 15 on local `main`). **Chip 16 (in flight):** route `sync-bib-to-library`'s paper-side writes through the contract — the last skill still hand-editing a paper file (chip 12's flagged follow-up); finishes the writeback unification. Remaining roadmap: **#4 DEV-mode** (Phase 7 self-improvement loop), **#5 Phase-8 UI** (`src/`-side → needs coordination with the concurrent sessions; carries L3's accept-button + "Virgil as author" mark).
 
 1. **Existing-skill migration (Phase 4) — ✅ COMPLETE (chips 11–14).** Decomposed along code-grounded boundaries: `create_card.py`'s `ALL_KINDS` vs. the responder kinds it excludes (`comment`/`suggestion`) vs. `.bib`/`.tex` aux-writes vs. the L3 propose→accept loop. Every editor skill now writes through `apply_response.py`; the legacy default-apply path is retired.
    - **Chip 11 — card-only re-routes** ✅ **MERGED.** `answer-note`/`-report`/`-todo` (terminal branches) + `/editor/review` plumbing → `create_card.py`, like `draft-footnote`. No contract change.
