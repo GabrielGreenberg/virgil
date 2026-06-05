@@ -21,7 +21,7 @@ import { useConfirmDialog } from "../ConfirmDialog";
 import { setDropCtx } from "./controller";
 import { DropModeIndicator } from "./Indicator";
 import { InlineAtomGhost } from "./InlineAtomGhost";
-import type { ParagraphAnchorApi, StackPullApi } from "./types";
+import type { DropCtx, ParagraphAnchorApi, StackPullApi } from "./types";
 
 export interface DropModeProviderProps {
   mainEditor: Editor | null;
@@ -49,29 +49,88 @@ export function DropModeProvider({
   stack,
 }: DropModeProviderProps) {
   const { confirm, dialog } = useConfirmDialog();
-  // Keep `confirm` accessible to the controller via a ref so the
-  // module-level signal doesn't capture a stale closure.
-  const confirmRef = useRef(confirm);
-  confirmRef.current = confirm;
+
+  // Snapshot the live ctx fields every render into a ref. The controller reads
+  // them back through `ctxRef.current` (via the getters below), so the
+  // registration effect runs exactly ONCE — its deps are `[]`.
+  //
+  // Why "once" matters: `setDropCtx(null)` CANCELS a live drop session — the
+  // atoms-draggable guard that stops the global `user-select:none`, the
+  // crosshair cursor, and `data-drop-mode-active` from sticking when the
+  // editor unmounts mid-gesture (InlineAtomGrab has no controller mouseup to
+  // fall back on). But this provider's props churn on ordinary re-renders:
+  // `stack` (`dropStackApi`) is a 7-hook `useMemo` in EditorPane that recreates
+  // every render, and a marginalia hover re-renders the whole pane. The old
+  // 10-dep effect re-registered on every such churn, firing its cleanup
+  // `setDropCtx(null)` mid-drag and killing the gesture for EVERY draggable
+  // kind (R5). Running once — values read live through the ref — makes the drag
+  // immune to ALL render/memo/hook churn, while a true unmount still cancels.
+  const snapshot: DropCtx = {
+    mainEditor,
+    closePopout,
+    confirm,
+    notes,
+    highlights,
+    todos,
+    archive,
+    cutterCards,
+    revisions,
+    reports,
+    stack,
+  };
+  const ctxRef = useRef(snapshot);
+  ctxRef.current = snapshot;
 
   useEffect(() => {
-    setDropCtx({
-      mainEditor,
-      closePopout,
-      confirm: (opts) => confirmRef.current(opts),
-      notes,
-      highlights,
-      todos,
-      archive,
-      cutterCards,
-      revisions,
-      reports,
-      stack,
-    });
+    // A stable ctx object whose getters always resolve to the latest snapshot,
+    // so the controller's use-time reads stay fresh — hitTest reads
+    // `mainEditor` on every mousemove; commit / applyDrop read the hook bag +
+    // `confirm` + `closePopout` at mouseup. This is the freshness the
+    // `confirmRef` indirection used to give `confirm` alone, now generalized to
+    // every field. `[]` deps ⇒ the cleanup's `setDropCtx(null)` fires only on a
+    // real unmount.
+    const liveCtx: DropCtx = {
+      get mainEditor() {
+        return ctxRef.current.mainEditor;
+      },
+      get closePopout() {
+        return ctxRef.current.closePopout;
+      },
+      get confirm() {
+        return ctxRef.current.confirm;
+      },
+      get notes() {
+        return ctxRef.current.notes;
+      },
+      get highlights() {
+        return ctxRef.current.highlights;
+      },
+      get todos() {
+        return ctxRef.current.todos;
+      },
+      get archive() {
+        return ctxRef.current.archive;
+      },
+      get cutterCards() {
+        return ctxRef.current.cutterCards;
+      },
+      get revisions() {
+        return ctxRef.current.revisions;
+      },
+      get reports() {
+        return ctxRef.current.reports;
+      },
+      get stack() {
+        return ctxRef.current.stack;
+      },
+    };
+    setDropCtx(liveCtx);
     return () => {
       setDropCtx(null);
     };
-  }, [mainEditor, closePopout, notes, highlights, todos, archive, cutterCards, revisions, reports, stack]);
+    // Register once; live values flow through `ctxRef`. (No reactive deps — the
+    // effect references only the ref and a module import.)
+  }, []);
 
   return (
     <>
