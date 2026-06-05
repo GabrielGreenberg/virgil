@@ -91,17 +91,21 @@ describe("blockIntoExpexDropAdapter", () => {
   const KINDS: TextObjectKind[] = ["graphicsBlock", "paragraph", "displayMath"];
   for (const kind of KINDS) {
     describe(`${kind}`, () => {
-      it("wraps in a fresh exampleItem when the parent REJECTS a bare block (canDropDirect false) — case a", () => {
+      it("wraps in a fresh exampleItem when the parent REJECTS a bare block but ACCEPTS an exampleItem (canDropDirect false + canWrapHere) — case a", () => {
         // The multi between-items gap: immediate parent exampleItemList (content
-        // `exampleItem+`) rejects a bare block → wrap. This is the REGRESSION
-        // TRAP — this case and the single-body case below BOTH classify as
-        // parentKind "exampleBlock"; only canDropDirect tells them apart.
+        // `exampleItem+`) rejects a bare block (canDropDirect=false) but ACCEPTS an
+        // exampleItem (canWrapHere=true) → wrap. REGRESSION TRAP — this case and the
+        // single-body case below BOTH classify as parentKind "exampleBlock";
+        // canDropDirect separates those two, and canWrapHere (A2 edge-fix) keeps the
+        // wrap from firing at a non-expex rejected position where an exampleItem is
+        // ALSO invalid (that drops-direct — covered by the real-schema lock).
         const result = blockIntoExpexDropAdapter(
           { kind, id: "s1", sourceContext: {} },
           {
             kind: "inside-incompatible-parent",
             parentKind: "exampleBlock",
             canDropDirect: false,
+            canWrapHere: true,
           },
         );
         expect(result).toEqual({ kind: "wrap", parentKind: "exampleItem" });

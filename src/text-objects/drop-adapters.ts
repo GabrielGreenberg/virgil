@@ -102,10 +102,17 @@ export function exampleItemDropAdapter(
 //     (post-widen), which ACCEPTS the bare block → drop-direct [A2].
 // `classifyParentAt` reports BOTH as `exampleBlock` (it skips the unregistered
 // exampleItemList), so only the schema at the true immediate parent tells them
-// apart. `canDropDirect === false` (a known schema rejection) is the sole
-// trigger to wrap; everything else — an exampleItem body [case b], a single
-// example body [A2], top level, or a missing signal — drops directly,
-// preserving each kind's non-expex placement byte-for-byte. `buildWrap`'s
+// apart. The wrap fires iff the bare block is REJECTED here
+// (`canDropDirect === false`) AND an `exampleItem` is ACCEPTED here (`canWrapHere`,
+// the A2 edge-fix: `canDropDirectAt(insertPos, exampleItem)`, threaded via
+// `DropTarget`). `exampleItem` is valid only inside an `exampleItemList`, so
+// `canWrapHere` is true exactly at the multi between-items gap [case a] — the
+// precise wrap site. Everything else — an exampleItem body [case b], a single
+// example body [A2], top level, a missing signal, OR a non-expex position where
+// the bare block is rejected but an `exampleItem` is ALSO invalid (e.g. a
+// `displayMath` at a `listItem`'s index 0) — drops directly, preserving each
+// kind's non-expex placement byte-for-byte (that last case restores A1's
+// drop-direct instead of fabricating a here-invalid exampleItem). `buildWrap`'s
 // exampleItem case builds the single sibling; the enclosing exampleItemList
 // already exists at the insert site. figureBlock / texBlock stay on
 // `topLevelDropAdapter` (user decision: text/picture/equation only).
@@ -115,7 +122,7 @@ export function blockIntoExpexDropAdapter(
   _sourceRef: TextObjectRef & { sourceContext: TextObjectSourceContext },
   target: DropTarget,
 ): DropAction {
-  if (target.canDropDirect === false) {
+  if (target.canDropDirect === false && target.canWrapHere) {
     return { kind: "wrap", parentKind: "exampleItem" };
   }
   return { kind: "drop-direct" };

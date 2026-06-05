@@ -111,7 +111,7 @@ describe("drop-spec matrix (via TEXT_OBJECT_REGISTRY.dropAdapter)", () => {
       expect(r).toEqual({ kind: "drop-direct" });
     });
 
-    it("between items (parent rejects the bare block, canDropDirect false) wraps in a fresh exampleItem (case a)", () => {
+    it("between items (parent rejects the bare block but accepts an exampleItem — canDropDirect false + canWrapHere) wraps in a fresh exampleItem (case a)", () => {
       const r = adapt(
         "graphicsBlock",
         {},
@@ -119,6 +119,7 @@ describe("drop-spec matrix (via TEXT_OBJECT_REGISTRY.dropAdapter)", () => {
           kind: "inside-incompatible-parent",
           parentKind: "exampleBlock",
           canDropDirect: false,
+          canWrapHere: true,
         },
       );
       expect(r).toEqual({ kind: "wrap", parentKind: "exampleItem" });

@@ -130,6 +130,16 @@ export type DropTarget = (
    *  "exampleBlock"`. Optional + read by that one adapter, so every other
    *  adapter (and the `parentKind` discriminant they use) is byte-unchanged. */
   canDropDirect?: boolean;
+  /** Feature A2 edge-fix — schema validity of the `exampleItem` WRAP target at the
+   *  SAME insert point (`canDropDirectAt(insertPos, exampleItem)`), computed in
+   *  `textObjectDropSpec.applyDrop`. Only `blockIntoExpexDropAdapter` reads it: the
+   *  exampleItem wrap fires iff the bare block is rejected here (`canDropDirect ===
+   *  false`) AND the wrap itself is valid here (`canWrapHere`). `exampleItem` is
+   *  valid only inside an `exampleItemList`, so this is true exactly at the multi
+   *  between-items gap; elsewhere a rejected bare block drops-direct (matching A1)
+   *  rather than wrapping into a here-invalid exampleItem. Optional + read by that
+   *  one adapter, so every other adapter is byte-unchanged. */
+  canWrapHere?: boolean;
 };
 
 /**

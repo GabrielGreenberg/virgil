@@ -202,4 +202,49 @@ describe("Feature A2 — applyDrop on the REAL schema (non-destructive tr.doc)",
     expect(list.child(1).child(0).type.name).toBe("paragraph"); // the dropped block, wrapped
     expect(list.child(1).child(0).textContent).toBe("dragP");
   });
+
+  it("EDGE-FIX LOCK (real schema): a displayMath dropped at a listItem's index 0 drops-DIRECT — NOT wrapped into a here-invalid exampleItem", () => {
+    // OUTSIDE any expex. `listItem` content is `(paragraph | graphicsBlock) block*`,
+    // so a bare `displayMath` is rejected at index 0 (canDropDirect=false) — yet an
+    // `exampleItem` is ALSO invalid there (it's valid only inside an
+    // `exampleItemList`), so the A2 wrap must NOT fire. Pre-fix the adapter wrapped
+    // on `canDropDirect === false` alone: the fitter then promoted the equation into
+    // a freestanding `exampleBlock` and split the list — the bug. The `canWrapHere`
+    // gate restores A1's drop-direct here.
+    const d = schema.nodeFromJSON({
+      type: "doc",
+      content: [
+        { type: "displayMath", attrs: { uuid: "dsrc", latex: "a = b" } },
+        {
+          type: "bulletList",
+          attrs: { uuid: "L" },
+          content: [
+            {
+              type: "listItem",
+              attrs: { uuid: "li1" },
+              content: [{ type: "paragraph", content: [{ type: "text", text: "list text" }] }],
+            },
+          ],
+        },
+      ],
+    });
+    const { editor, dispatched, ctx } = mockEditor(d);
+    const li = findByType(d, "listItem")[0];
+    const insertPos = li.pos + 1; // just inside the listItem, before its paragraph (index 0)
+
+    // The wrap trigger fires (bare block rejected here) — but the wrap target is
+    // ALSO invalid here, so `canWrapHere` is false and the wrap must be suppressed.
+    expect(canDropDirectAt(editor, insertPos, schema.nodes.displayMath)).toBe(false); // canDropDirect=false
+    expect(canDropDirectAt(editor, insertPos, schema.nodes.exampleItem)).toBe(false); // canWrapHere=false ⇒ no wrap
+
+    textObjectDropSpec.applyDrop(betweenBlocks(editor, insertPos), "textobject:displayMath:dsrc", ctx);
+    const result = dispatched[0].doc;
+    expect(() => result.check()).not.toThrow();
+
+    // FIXED: drop-direct ⇒ no exampleItem machinery is fabricated here…
+    expect(findByType(result, "exampleItem")).toHaveLength(0);
+    // …and the dragged equation survives the drop (the fitter places the bare
+    // displayMath validly — A1's behavior — instead of burying it in an example).
+    expect(findByType(result, "displayMath").map((n) => n.uuid)).toContain("dsrc");
+  });
 });
