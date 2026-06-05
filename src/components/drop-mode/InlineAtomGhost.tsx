@@ -48,6 +48,18 @@ export function InlineAtomGhost() {
   if (typeof document === "undefined") return null;
   if (!ghost || !session) return null;
 
+  // Displace the ghost off the cursor so it never covers the insert point (the
+  // cursor and the blue inline bar share the same spot). Default above the
+  // cursor; flip below when the cursor is near the viewport top so the ghost
+  // can't clip off-screen. translateY's % resolves against the ghost's own
+  // content-sized height, so no measurement is needed. (grabOffsetX still pins
+  // it horizontally near where the atom was grabbed.)
+  const GHOST_GAP = 14;
+  const ghostTransform =
+    ghost.cursorY < 60
+      ? `translateY(${GHOST_GAP}px)`
+      : `translateY(calc(-100% - ${GHOST_GAP}px))`;
+
   return createPortal(
     <div
       ref={bodyRef}
@@ -60,7 +72,8 @@ export function InlineAtomGhost() {
       style={{
         position: "fixed",
         left: ghost.cursorX - ghost.grabOffsetX,
-        top: ghost.cursorY - ghost.grabOffsetY,
+        top: ghost.cursorY,
+        transform: ghostTransform,
       }}
     />,
     document.body,

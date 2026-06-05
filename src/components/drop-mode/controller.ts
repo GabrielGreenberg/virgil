@@ -238,6 +238,11 @@ function updatePlacement(placement: Placement | null) {
   if (!session) return;
   if (placementsEqual(session.placement, placement)) return;
   session = { ...session, placement };
+  if (typeof document !== "undefined") {
+    // Crosshair signals "no valid drop here"; once a placement (the blue
+    // insert bar) is showing, drop the crosshair so it can't obscure the bar.
+    document.body.style.cursor = placement ? "none" : "crosshair";
+  }
   emitSession();
 }
 
