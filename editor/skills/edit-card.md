@@ -64,8 +64,10 @@ is **mechanical**: the new body/value is supplied by you/chat, not composed here
   (`highlightColor`), the suggestion family (`cutter-suggestion` /
   `revision-suggestion` — edit `suggested_text` / `user_text` / `status`).
 - **Refused** — `citation` (its `command`/`keys` are coupled to the `.tex` cite
-  **and** `references.bib`; change a cite via [`find-citation`](find-citation.md)
-  / `rename_citekey.py`), `example` (lives in the `.tex`, not a card),
+  **and** `references.bib`; change a cite via [`find-citation`](find-citation.md),
+  or rename its citekey via the `renameCitekey` contract op —
+  [`sync-bib-to-library`](sync-bib-to-library.md)), `example` (lives in the
+  `.tex`, not a card),
   `bib`/`ai`/`error` (system/derived). The op refuses these rather than desync.
 
 ## Reply

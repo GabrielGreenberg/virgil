@@ -1,7 +1,9 @@
 #!/usr/bin/env python3
-r"""End-to-end test of the chip-12 paper-file capabilities through the
-apply_response v1 contract: the bibEdit (append / set-fields / replace), the
-texEdit region-replace + settingsEdit (style-merge), and the annotationEdit —
+r"""End-to-end test of the paper-file capabilities through the apply_response v1
+contract: the bibEdit (append / set-fields / replace), the texEdit region-replace
++ settingsEdit (style-merge), the annotationEdit (chip 12), and the renameCitekey
+— the citekey rewrite across the .tex \cite*{} commands + virgil/citations.json,
+bundled with a bibEdit replace into ONE atomic per-entry library swap (chip 16) —
 all under the pen, in one atomic commit.
 
 Runs the real CLIs against fresh copies of samples/annotation-history (never
@@ -333,6 +335,107 @@ check(r.returncode == 0, f"writes-only complete-only exited 0 (stderr={r.stderr.
 check("edition" in BR.parse_fields(BR.find_entry_block(bib_of(sb), "jackson2001")[0]), "jackson2001 swapped (gained edition)")
 check((sb / "virgil/version.txt").read_text().strip() == "1", "version bumped (writes-only still audits)")
 check(len(load(sb, "notifications.json")["items"]) == n_before + 1, "one notification appended")
+
+# ============================================ renameCitekey + bibEdit: ONE atomic swap
+# sync-bib-to-library (via answer-bib-review --library-sync): a matched entry is
+# swapped to the library's authoritative version AND its citekey is renamed
+# throughout the doc — the .bib body, every \cite*{} in the .tex, and every
+# citations.json card, all in ONE writes-only atomic op (no requestId). This is
+# the chip-16 endpoint: the citekey rename rides the SAME commit as the .bib swap,
+# not a separate os.replace outside the pen.
+print("\n=== renameCitekey + bibEdit replace: the per-entry library swap is ONE atomic op ===")
+sb = sandbox()
+LIB_GRAFTON = (
+    "@article{graftonAnthony1997,\n"
+    "  author    = {Anthony Grafton},\n"
+    "  title     = {The Footnote: A Curious History},\n"
+    "  journal   = {The American Historical Review},\n"
+    "  volume    = {102},\n"
+    "  pages     = {215--232},\n"
+    "  year      = {1997},\n"
+    "  doi       = {10.1111/0018-2656.00033},\n"
+    "}"
+)
+# Preconditions: grafton1997 is in the .bib (1×), the .tex cites (2×, incl. a
+# [ch.~3] bracket-arg form), and citations.json (cc04, cc05).
+check(tex_of(sb).count("grafton1997") == 2, "precondition: 2 grafton1997 cites in .tex")
+check(sum("grafton1997" in (c.get("keys") or []) for c in load(sb, "citations.json")["citations"]) == 2,
+      "precondition: 2 grafton1997 citation cards")
+swap = {
+    "bibEdit": {"mode": "replace", "citekey": "grafton1997", "entry": LIB_GRAFTON},
+    "renameCitekey": {"oldKey": "grafton1997", "newKey": "graftonAnthony1997"},
+    "summary": "library-sync grafton1997 -> graftonAnthony1997", "clearSourceFlag": False,
+}
+r = run(APPLY, str(sb), "complete-only", json.dumps(swap))
+check(r.returncode == 0, f"bundled swap exited 0 (stderr={r.stderr.strip()[:160]})")
+# --- the .bib swapped (old key gone, library entry in) ---
+bib = bib_of(sb)
+check("grafton1997" not in bib, ".bib: no leftover old citekey (grafton1997)")
+check(BR.find_entry_block(bib, "graftonAnthony1997")[0] is not None, ".bib: library entry (graftonAnthony1997) present")
+check("10.1111/0018-2656.00033" in bib, ".bib: library entry body landed (DOI)")
+# --- every .tex \cite*{} retargeted (incl. the [ch.~3] bracket-arg form) ---
+tex = tex_of(sb)
+check(tex.count("grafton1997") == 0, ".tex: no \\cite*{grafton1997} left")
+check("\\citet{graftonAnthony1997}" in tex, ".tex: \\citet{} retargeted")
+check("\\citet[ch.~3]{graftonAnthony1997}" in tex, ".tex: bracket-arg \\citet[ch.~3]{} retargeted (args preserved)")
+# --- every citation card retargeted (keys + command) ---
+cits = load(sb, "citations.json")["citations"]
+check(not any("grafton1997" in (c.get("keys") or []) for c in cits), "citations.json: no card keyed grafton1997")
+check(sum("graftonAnthony1997" in (c.get("keys") or []) for c in cits) == 2, "citations.json: 2 cards retargeted")
+cc05 = next(c for c in cits if c["id"] == "cc05")
+check(cc05["command"] == "\\citet[ch.~3]{graftonAnthony1997}", "citations.json: bracket-arg command retargeted")
+check(not any("grafton1997" in (c.get("command") or "") and "graftonAnthony1997" not in (c.get("command") or "")
+              for c in cits), "citations.json: no command still references the old key")
+# --- audited (writes-only still bumps version + notifies) ---
+check((sb / "virgil/version.txt").read_text().strip() == "1", "version bumped (writes-only swap audits)")
+check(pen_gone(sb), "pen released")
+
+# ----- ATOMICITY: a fault mid-write rolls back .bib + .tex + citations.json TOGETHER
+# Commit order is [citations.json, references.bib, document.tex, notifications, version].
+# A fault BETWEEN the .bib and the .tex (K=2) must leave all three byte-identical;
+# a fault AFTER all three paper files commit (K=3) must still restore all three.
+print("\n=== renameCitekey + bibEdit ATOMICITY: a fault leaves .bib + .tex + citations ALL untouched ===")
+for K in (2, 3):
+    sb = sandbox()
+    before = snapshot(sb)
+    r = run(APPLY, str(sb), "complete-only", json.dumps(swap),
+            env={"VIRGIL_TEST_FAIL_AFTER_WRITES": str(K)})
+    check(r.returncode != 0, f"K={K}: exited non-zero on injected mid-commit fault")
+    check(before == snapshot(sb), f"K={K}: every file byte-identical (full rollback — .bib AND .tex AND citations)")
+    check("@article{grafton1997" in bib_of(sb), f"K={K}: .bib still has the ORIGINAL @article{{grafton1997}}")
+    check(tex_of(sb).count("grafton1997") == 2 and "graftonAnthony1997" not in tex_of(sb),
+          f"K={K}: .tex cites unchanged (no half-applied rename)")
+    check(any("grafton1997" in (c.get("keys") or []) for c in load(sb, "citations.json")["citations"]),
+          f"K={K}: citations.json cards unchanged")
+    check(pen_gone(sb), f"K={K}: pen released even though the write failed")
+
+# ----- IDEMPOTENCY: a renameCitekey for a key absent from the doc is a no-op
+# (sync mustn't fail the whole run when an entry's old key the doc never used).
+print("\n=== renameCitekey IDEMPOTENCY: oldKey absent from the doc → no-op, doesn't fail ===")
+sb = sandbox()
+tex_h0 = hashlib.sha256(next(sb.glob("*.tex")).read_bytes()).hexdigest()
+bib_h0 = hashlib.sha256((sb / "references.bib").read_bytes()).hexdigest()
+cit_h0 = hashlib.sha256((sb / "virgil/citations.json").read_bytes()).hexdigest()
+op = {"renameCitekey": {"oldKey": "ghost1900", "newKey": "ghost1999"},
+      "summary": "library-sync ghost1900 (absent)", "clearSourceFlag": False}
+r = run(APPLY, str(sb), "complete-only", json.dumps(op))
+check(r.returncode == 0, f"absent-key rename exited 0 — a no-op, not a failure (stderr={r.stderr.strip()[:160]})")
+check(hashlib.sha256(next(sb.glob("*.tex")).read_bytes()).hexdigest() == tex_h0, ".tex byte-identical (no-op)")
+check(hashlib.sha256((sb / "references.bib").read_bytes()).hexdigest() == bib_h0, "references.bib byte-identical (no-op)")
+check(hashlib.sha256((sb / "virgil/citations.json").read_bytes()).hexdigest() == cit_h0, "citations.json byte-identical (no-op)")
+check((sb / "virgil/version.txt").read_text().strip() == "1", "writes-only op still ran (version bumped), it just changed no paper text")
+
+# ----- GUARD: texEdit + renameCitekey in one op is refused (can't queue two .tex writes)
+print("\n=== guard: texEdit + renameCitekey in one op is refused (same-path write) ===")
+sb = sandbox()
+op = {
+    "texEdit": {"mode": "replace-span", "anchorUuid": "0c01", "match": "x", "replacement": "y"},
+    "renameCitekey": {"oldKey": "grafton1997", "newKey": "graftonAnthony1997"},
+}
+r = run(APPLY, str(sb), "complete-only", json.dumps(op))
+check(r.returncode != 0, "an op carrying BOTH texEdit and renameCitekey is rejected, not silently last-write-wins")
+check("graftonAnthony1997" not in tex_of(sb) and tex_of(sb).count("grafton1997") == 2,
+      ".tex untouched by the refused op")
 
 # ===================================================== guard: malformed op
 # An op with neither a requestId nor any paper write is still rejected (the

@@ -116,8 +116,13 @@ top of step 1.
          --library "$library_root"
      ```
    - On rename (paper citekey ≠ library citekey), the per-entry skill
-     calls `rename_citekey.py`, which atomically rewrites
-     `document.tex` and `virgil/citations.json`.
+     bundles the citekey rename **into the same atomic contract op as the
+     `.bib` swap** — `bibEdit` `replace` + `renameCitekey` in one
+     pen-protected `apply_response` commit, so `document.tex`'s `\cite*{}`
+     commands and `virgil/citations.json` are retargeted together with the
+     `references.bib` body: the entry's bib, cites, and cards land
+     together-or-not-at-all. (No standalone `rename_citekey.py` write path
+     any more — its pure rewriters ride the contract.)
    - Collect a short status line per entry (`Done: library-sync …`)
      for the final summary.
 

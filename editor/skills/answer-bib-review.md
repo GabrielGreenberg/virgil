@@ -41,7 +41,8 @@ Three modes:
 > **Library-sync mode short-circuits.** If `--library-sync
 > <libraryCitekey>` is set, jump straight to step 3a — skip steps 1
 > (bib-review-requests load), 2 (fields), 3 (notes), and 4 (a no-op now).
-> Library-sync's writes-only `bibEdit` writes the notification + version
+> Library-sync's writes-only op — `bibEdit` `replace` + (on a citekey change)
+> `renameCitekey`, in one atomic commit — writes the notification + version
 > bump through the contract, then exits.
 
 > **Path resolution.** Every step below uses `$scripts_editor` and
@@ -174,31 +175,40 @@ Three modes:
      '
      ```
      If the entry isn't found, fail with `library missing <libraryCitekey>`.
-   - Replace the paper's bib entry block **through the contract** —
-     `bibEdit` **replace** finds the `<bibKey>` block and swaps in the
-     library entry text (keyed `<libraryCitekey>`), atomically. This is a
-     *writes-only* op (no `requestId` — library-sync isn't bib-review-
-     driven), so the contract also writes the notification + version bump.
-     Never hand-edit the `.bib`:
+   - Swap the paper's entry to the library's version **through the contract,
+     in ONE atomic op.** `bibEdit` **replace** finds the `<bibKey>` block and
+     swaps in the library entry text (keyed `<libraryCitekey>`); and — when the
+     library uses a different citekey — `renameCitekey` retargets every
+     `\cite*{...}` in `document.tex` AND every `virgil/citations.json` card in
+     the **same commit**, so the entry's `.bib` body, its in-text cites, and its
+     citation cards land together-or-not-at-all (a crash can't leave the bib
+     swapped but the cites dangling). This is a *writes-only* op (no `requestId`
+     — library-sync isn't bib-review-driven), so the contract also writes the
+     notification + version bump. Never hand-edit the `.bib`, the `.tex`, or
+     `citations.json`:
      ```bash
      python3 "$scripts_editor/apply_response.py" <docPath> complete-only '{
        "bibEdit": { "mode": "replace", "citekey": "<bibKey>",
                     "entry": "<library entry text>" },
+       "renameCitekey": { "oldKey": "<bibKey>", "newKey": "<libraryCitekey>" },
        "summary": "library-sync <bibKey> -> <libraryCitekey>",
        "clearSourceFlag": false }'
      ```
      (Use a `@<file>` op — the entry has braces. The contract resolves
-     `references.bib` itself.)
-   - If `<bibKey> != <libraryCitekey>`, rewrite every `\cite*{...}`
-     command and update `virgil/citations.json`:
-     ```bash
-     python3 "$scripts_editor/rename_citekey.py" <docPath> <bibKey> <libraryCitekey>
-     ```
+     `references.bib`, `document.tex`, and `citations.json` itself.)
+     - **If `<bibKey> == <libraryCitekey>`** (same key, just refreshing the
+       entry body), OMIT `renameCitekey` entirely — there is nothing to rename;
+       the `bibEdit` replace alone is the whole op.
+     - `renameCitekey` is idempotent: if `<bibKey>` doesn't appear in the doc
+       body, the rename is a no-op (0 cites, 0 cards) and the op still succeeds
+       — it won't fail the entry.
    - Skip the bib-review-requests.json flip — library-sync isn't driven
      by that file. Skip external Crossref/OpenAlex lookups — the
      library entry is already authoritative.
-   - The notification + version bump are **already done** by the
-     `bibEdit` writes-only op above — there is no separate one-liner.
+   - The notification + version bump are **already done** by the writes-only op
+     above — there is no separate one-liner, and **no separate
+     `rename_citekey.py` step**: its pure rewriters now ride the contract inside
+     the same atomic commit as the `.bib` swap.
    - Reply: `Done: library-sync <bibKey> -> <libraryCitekey>. Output: references.bib, document.tex, virgil/citations.json.` (Omit any file that wasn't actually changed.)
 
 4. **Completion is part of the contract call — nothing to do here.** The

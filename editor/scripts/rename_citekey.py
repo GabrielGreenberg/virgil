@@ -1,36 +1,38 @@
 #!/usr/bin/env python3
-r"""Rename a citekey across a paper's .tex body and citation sidecar.
+r"""Pure citekey-rename rewriters, shared with the apply_response contract.
 
-The bib entry body itself (in `references.bib`) is handled by the
-library-sync mode of `/editor/answer-bib-review` — this helper only
-touches:
+Two side-effect-free transforms that rewrite a citekey across a paper's editable
+surfaces:
 
-  * `<docPath>/<doc>.tex`       — every natbib `\cite*{...}` command
-  * `<docPath>/virgil/citations.json`  — `keys` arrays + `command` text
+  * `rewrite_tex(text, old, new)`            — every natbib `\cite*{...}` command
+  * `rewrite_citations_json(data, old, new)` — `citations.json` cards (the `keys`
+                                               arrays + the `command` text)
 
-Atomic: writes to a temp sibling and `os.replace`s into place so
-partial failures never leave a half-rewritten file.
+These carry NO I/O. The single sanctioned writer is `apply_response.py`'s
+`renameCitekey` capability (op-json `{ "renameCitekey": { "oldKey", "newKey" } }`),
+which imports these rewriters and folds their output into ONE atomic, pen-protected
+commit — alongside the `references.bib` swap, so a library-sync of an entry (new
+bib body + every `\cite*{}` retargeted + every citation card retargeted) lands
+all-or-nothing. A crash can't leave the bib swapped but the cites dangling, or
+vice-versa.
 
-Idempotent: if `<old>` no longer appears in the document, exits 0 with
-zero changes reported.
+This module USED to carry its own standalone `os.replace` write path
+(`rename_in_doc` + private atomic writers) that rewrote `document.tex` and
+`virgil/citations.json` directly — outside the editing pen and not atomic with the
+`references.bib` swap. That was the last skill hand-edit of a paper file outside
+the contract; it was retired (chip 16) once `answer-bib-review --library-sync`
+moved its paper-side writes onto the `renameCitekey` op. The rewriters stayed
+(shared, pure); the private write path is gone, so the contract is now the only
+writer. (`_common.atomic_write` — the contract's atomic N-file primitive — was
+itself generalized from this module's original single-file `os.replace` writer.)
 
-CLI:
-
-  python3 rename_citekey.py <docPath> <oldKey> <newKey>
+Idempotent by construction: if `<old>` doesn't appear, the rewriters return the
+input unchanged with a 0 count, so the contract treats an absent key as a no-op.
 """
 
 from __future__ import annotations
 
-import argparse
-import json
-import os
 import re
-import sys
-from pathlib import Path
-
-sys.path.insert(0, str(Path(__file__).resolve().parent))
-
-from _common import die, find_tex_file, resolve_doc, sidecar  # noqa: E402
 
 
 # Every natbib citation command we expect to encounter, lowercase and
@@ -139,75 +141,3 @@ def _sub_command(m: re.Match[str], old: str, new: str) -> str:
     if not changed:
         return m.group(0)
     return f"\\{cmd}{brackets}{{{rewritten}}}"
-
-
-def _atomic_write_text(path: Path, content: str) -> None:
-    tmp = path.with_suffix(path.suffix + ".tmp")
-    tmp.write_text(content, encoding="utf-8")
-    os.replace(tmp, path)
-
-
-def _atomic_write_json(path: Path, data: object) -> None:
-    tmp = path.with_suffix(path.suffix + ".tmp")
-    tmp.write_text(
-        json.dumps(data, indent=2, ensure_ascii=False) + "\n",
-        encoding="utf-8",
-    )
-    os.replace(tmp, path)
-
-
-def rename_in_doc(doc: Path, old: str, new: str) -> dict:
-    """Apply the rename across the document. Returns a summary dict."""
-    if old == new:
-        return {
-            "tex_commands_changed": 0,
-            "citation_cards_changed": 0,
-            "noop": True,
-        }
-
-    summary: dict = {
-        "tex_commands_changed": 0,
-        "citation_cards_changed": 0,
-        "noop": False,
-    }
-
-    # 1) document .tex
-    tex_path = find_tex_file(doc)
-    tex_text = tex_path.read_text(encoding="utf-8")
-    new_tex, n_tex = rewrite_tex(tex_text, old, new)
-    if n_tex:
-        _atomic_write_text(tex_path, new_tex)
-    summary["tex_commands_changed"] = n_tex
-    summary["tex_file"] = str(tex_path)
-
-    # 2) virgil/citations.json (optional sidecar — may not exist)
-    cites = sidecar(doc, "citations.json")
-    if cites.exists():
-        try:
-            data = json.loads(cites.read_text(encoding="utf-8"))
-        except json.JSONDecodeError as e:
-            die(f"invalid JSON in {cites}: {e}")
-        data, n_cards = rewrite_citations_json(data, old, new)
-        if n_cards:
-            _atomic_write_json(cites, data)
-        summary["citation_cards_changed"] = n_cards
-        summary["citations_file"] = str(cites)
-
-    return summary
-
-
-def _main(argv: list[str]) -> int:
-    ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    ap.add_argument("docPath")
-    ap.add_argument("oldKey")
-    ap.add_argument("newKey")
-    args = ap.parse_args(argv)
-
-    doc = resolve_doc(args.docPath)
-    summary = rename_in_doc(doc, args.oldKey, args.newKey)
-    print(json.dumps(summary, indent=2))
-    return 0
-
-
-if __name__ == "__main__":
-    sys.exit(_main(sys.argv[1:]))

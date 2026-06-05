@@ -85,6 +85,7 @@ Schema (v1 superset — every field optional unless noted):
                    "entry":   "@article{key, …}",         // append / replace
                    "citekey": "key",                      // set-fields / replace
                    "fields":  { "doi": "…", "pages": "…" } }, // set-fields
+    "renameCitekey":  { "oldKey": "smith99", "newKey": "smith1999" }, // rewrite \\cite*{} in .tex + citations.json
     "settingsEdit":   { "set": { "styleId": "…" } },      // → virgil/document-settings.json
     "annotationEdit": { "bibKey": "key", "text": "…" },   // → virgil/annotations.json
     "bibReviewType":  "fields" | "notes",                 // disambiguate the row to flip
@@ -104,6 +105,14 @@ back on a Level-3 proposal):
                     this script just places it.
   - `bibEdit`     — append a new entry, set fields on an existing citekey, or
                     replace an entry block, in `references.bib` (find_bib_file).
+  - `renameCitekey` — rewrite every natbib `\\cite*{}` in the .tex AND every
+                    `citations.json` card (its `keys` + `command`) from `oldKey` →
+                    `newKey`, reusing rename_citekey.py's pure rewriters (no regex
+                    duplicated here). Bundles with a `bibEdit` `replace` so a
+                    library-swap of one entry — new .bib body + retargeted cites +
+                    retargeted cards — is ONE all-or-nothing op (sync-bib-to-library
+                    via answer-bib-review --library-sync). Idempotent: oldKey absent
+                    → 0 changes, nothing queued.
   - `settingsEdit`/`annotationEdit` — set keys in the two non-panel JSON sidecars
                     (document settings; per-bibKey annotations).
 The contract carries no per-kind knowledge — the next skill that touches the .tex
@@ -111,8 +120,12 @@ or .bib is a new *consumer*, not a new write path.
 
 A write subcommand commits, atomically and under the pen:
   - virgil/<panel>.json        (new card appended; duplicate id rejected)
-  - the root .tex              (texEdit spliced/region-replaced — apply_writes only)
+  - the root .tex              (texEdit spliced/region-replaced, or renameCitekey's
+                                \\cite*{} retargeted — apply_writes only)
   - references.bib             (bibEdit append/set-fields/replace — apply_writes only)
+  - virgil/citations.json      (renameCitekey: cards' keys + command retargeted —
+                                apply_writes only; composes if a citation card also
+                                lands in the same op)
   - virgil/document-settings.json (settingsEdit — apply_writes only)
   - virgil/annotations.json    (annotationEdit — apply_writes only)
   - virgil/<comment-panel>.json (sibling comment — write-with-comment only)
@@ -649,17 +662,78 @@ def _annotation_apply(doc: Path, txn: "_Txn", ae: dict) -> None:
     txn.mark(path)
 
 
+def _rename_citekey_apply(doc: Path, txn: "_Txn", rc: dict) -> dict:
+    r"""Rewrite a citekey across the `.tex` `\cite*{}` commands and the
+    virgil/citations.json cards, folding BOTH into the txn so the rename rides the
+    SAME atomic pen commit as any bibEdit in the op. A library-swap of one entry
+    becomes one all-or-nothing op: its new `.bib` body + every retargeted
+    `\cite*{}` + every retargeted citation card land together-or-not-at-all — a
+    crash can't leave the bib swapped but the cites dangling, or vice-versa.
+
+    REUSES rename_citekey's pure rewriters (imported lazily so apply_response stays
+    import-light) — the contract owns the atomic write, not a second copy of the
+    natbib regex. Idempotent: `oldKey` absent from the doc → 0 changes, nothing
+    queued, so a sync entry whose key the doc never used doesn't fail the run."""
+    import rename_citekey as RC
+
+    old = rc.get("oldKey")
+    new = rc.get("newKey")
+    if not old or not new:
+        die("renameCitekey requires op.renameCitekey.oldKey and .newKey")
+    summary = {"oldKey": old, "newKey": new,
+               "texCommandsChanged": 0, "citationCardsChanged": 0}
+    if old == new:
+        summary["noop"] = True
+        return summary
+
+    # 1) the .tex \cite*{} commands (a raw write — not JSON).
+    tex_path = find_tex_file(doc)
+    tex_text = tex_path.read_text(encoding="utf-8")
+    new_tex, n_tex = RC.rewrite_tex(tex_text, old, new)
+    if n_tex:
+        txn.add_raw(tex_path, new_tex)
+    summary["texCommandsChanged"] = n_tex
+
+    # 2) virgil/citations.json cards (keys + command) — loaded THROUGH the txn
+    #    (jget/mark) so that if a citation card ALSO lands in this op (panel:
+    #    citations), both edits compose on the one loaded dict instead of racing
+    #    two writes to the same file. Optional sidecar: absent / no match → no-op
+    #    (jget caches the default but writes() only emits it once marked dirty).
+    cites_path = sidecar(doc, "citations.json")
+    data = txn.jget(cites_path, {"citations": []})
+    if isinstance(data, dict):
+        _, n_cards = RC.rewrite_citations_json(data, old, new)
+        if n_cards:
+            txn.mark(cites_path)
+        summary["citationCardsChanged"] = n_cards
+    return summary
+
+
 def _apply_paper_writes(doc: Path, txn: "_Txn", op: dict) -> None:
     """Splice every paper-file edit the op carries into the txn — the .tex, the
-    .bib, and the two non-panel JSON sidecars. Gated by `apply_writes` at the
-    call site (held back on a Level-3 proposal). The headline of chip 12: every
-    paper-file write rides one atomic, pen-wrapped commit, no parallel path."""
+    .bib, the citekey rename, and the two non-panel JSON sidecars. Gated by
+    `apply_writes` at the call site (held back on a Level-3 proposal). The headline
+    of chip 12 (and 16): every paper-file write rides one atomic, pen-wrapped
+    commit, no parallel path."""
+    # texEdit and renameCitekey both rewrite the .tex from an independent read;
+    # the atomic writer crashes on two queued writes to the same path (the second
+    # os.replace finds its temp already consumed). They never co-occur in v1
+    # (renameCitekey rides with bibEdit for the library-sync swap; texEdit with the
+    # L3 accept splice), so refuse the combination loudly rather than silently lose
+    # one edit. A future need to compose them is a contract extension, not a quiet
+    # last-write-wins.
+    if op.get("texEdit") and op.get("renameCitekey"):
+        die("an op cannot carry both texEdit and renameCitekey — both rewrite the "
+            ".tex via independent reads and can't be queued as two writes to the "
+            "same file. Split them into two ops.")
     if op.get("texEdit"):
         tex_path, new_tex = _tex_splice(doc, op["texEdit"])
         txn.add_raw(tex_path, new_tex)
     if op.get("bibEdit"):
         bib_path, new_bib = _bib_apply(doc, op["bibEdit"])
         txn.add_raw(bib_path, new_bib)
+    if op.get("renameCitekey"):
+        _rename_citekey_apply(doc, txn, op["renameCitekey"])
     if op.get("settingsEdit"):
         _settings_apply(doc, txn, op["settingsEdit"])
     if op.get("annotationEdit"):
@@ -667,7 +741,8 @@ def _apply_paper_writes(doc: Path, txn: "_Txn", op: dict) -> None:
 
 
 def _has_paper_writes(op: dict) -> bool:
-    return any(op.get(k) for k in ("texEdit", "bibEdit", "settingsEdit", "annotationEdit"))
+    return any(op.get(k) for k in
+               ("texEdit", "bibEdit", "renameCitekey", "settingsEdit", "annotationEdit"))
 
 
 def _complete_bib_review(doc: Path, txn: "_Txn", bibkey: str, *, rtype: str | None = None) -> bool:
@@ -722,7 +797,7 @@ def cmd_write(
 
     The Task it completes lives in ai-requests.json (by id), bib-review-requests
     .json (by bibKey — a bib review), or nowhere (a writes-only paper edit that
-    carries a `*Edit` but no requestId — library-sync's .bib swap).
+    carries a `*Edit` but no requestId — library-sync's .bib swap + citekey rename).
     """
     summary = op.get("summary") or "AI request complete"
     panel = op.get("panel")
@@ -839,7 +914,8 @@ def cmd_complete_only(
     """Complete a Task without creating a card — flip its status (+ optional
     result) and land any paper-file edits the op carries. Used by bib reviews
     (the .bib field edit / annotation), style-merge (the preamble rewrite +
-    settings flip), library-sync (the .bib swap), and the failure cases.
+    settings flip), library-sync (the .bib swap + the citekey rename), and the
+    failure cases.
 
     `target` is a bare request-id / bibKey, OR an op-json (inline `{…}` or
     `@file`) carrying paper-file `*Edit`s — which then ride this same atomic,

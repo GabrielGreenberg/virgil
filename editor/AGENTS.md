@@ -65,8 +65,10 @@ The skill set turns those signals into responses:
 - `/editor/answer-bib-review` — verifies/fills bibliography fields
   (`bibEdit` set-fields/replace), drafts annotations (`annotationEdit`), or
   (via `--library-sync`) swaps a single entry in from the Virgil Library
-  (`bibEdit` replace, writes-only). All through the contract (chip 12) —
-  the bib-review row flip rides the same atomic commit.
+  (`bibEdit` replace **+ `renameCitekey`** — the entry body, its `\cite*{}`
+  commands, and its citation cards retargeted in one atomic op; chip 16),
+  writes-only. All through the contract — the bib-review row flip (or, for
+  library-sync, the citekey rename) rides the same atomic commit.
 - `/editor/sync-bib-to-library` — tidy a paper's whole bibliography
   against the library: matched entries are swapped to the library's
   authoritative form (renaming citekeys throughout the doc); missing
@@ -123,12 +125,14 @@ editor/
 │   │                           existing-card mutation ops (+ chip-13 accept/reject
 │   │                           — the L3 consummation) + the chip-12 paper-file
 │   │                           edits (bibEdit/settingsEdit/annotationEdit, texEdit
-│   │                           region-replace / replace-span)
+│   │                           region-replace / replace-span) + chip-16 renameCitekey
 │   ├── create_card.py          mechanical create-card (all createable kinds); → contract
 │   ├── bib_resolve.py          parse + surgically edit references.bib entries
 │   │                           (append/set-fields/replace) + annotation
 │   ├── bib_match_library.py    classify paper bib entries vs the library
-│   └── rename_citekey.py       rewrite \cite*{} in tex + citations.json
+│   └── rename_citekey.py       pure citekey-rename rewriters (rewrite_tex /
+│                               rewrite_citations_json) — shared with the
+│                               apply_response renameCitekey op; no standalone write
 ├── build/
 │   └── build-editor-bundle.mjs mirrors skills/ → .claude/commands/editor/
 └── AGENTS.md                   ← this file
@@ -322,12 +326,25 @@ skill — call `get_para_context.py`.
   reads the canonical `textObject`/`textObjectIds` anchor shape (it had read the
   retired `anchor`/`paragraphIds` shape, returning `[]` for every real card),
   and the skill markdown documents copying the source card's canonical anchor
-  verbatim rather than hand-building the retired form.
-- **`sync-bib-to-library`'s paper-side writes** are the one remaining
-  non-contract write shape: its cross-library `master.bib` orchestration +
-  citekey-rename across the `.tex` + `citations.json` (the `rename_citekey.py`
-  step still writes `document.tex` + `citations.json` directly). Route these
-  through the contract in a follow-up chip.
+  verbatim rather than hand-building the retired form. Finally, chip 16 closed the
+  last paper-side bypass: `sync-bib-to-library`'s citekey rename (via
+  `answer-bib-review --library-sync`) now rides the `renameCitekey` contract op
+  **bundled with the `.bib` swap** (reusing `rename_citekey.py`'s pure rewriters;
+  its standalone `os.replace` write path is retired), so a library-swap of an
+  entry — new bib body + every retargeted `\cite*{}` + every retargeted citation
+  card — is ONE atomic commit. **No editor skill hand-edits a paper file outside
+  the contract any more — the endpoint is fully true.**
+- **`sync-bib-to-library`'s paper-side writes are now on the contract (chip 16
+  — done).** Its citekey rename across `document.tex` + `virgil/citations.json`
+  rides the `renameCitekey` op, bundled with the `references.bib` swap (`bibEdit`
+  `replace`) into ONE atomic, pen-protected `apply_response` commit per entry (in
+  `answer-bib-review --library-sync`). `renameCitekey` reuses `rename_citekey.py`'s
+  pure rewriters (`rewrite_tex` / `rewrite_citations_json`); that module's
+  standalone `os.replace` write path is retired, so the contract is the only
+  writer. The cross-library `master.bib` / catalog orchestration stays — **by
+  design** — on the library's own `flock`-protected shims (`triage_apply.py` et
+  al.): a separate protected write path, not a contract bypass (see *Cross-cutting
+  with the Library*).
 - **Migrate the last sidecar hand-edit onto the `update` op.** The
   `apply_response.py` `update` op exists (chip 9 — alongside `archive` /
   `restore` / `move` / `link`, surfaced as `/editor/edit-card` + the four sibling
@@ -385,17 +402,23 @@ Both dev dirs are gitignored. See
   `virgil/document-settings.json`, `virgil/annotations.json`,
   `virgil/bib-review-requests.json`, or any sidecar — from a skill or a Python
   helper. The `apply_response.py` contract is the **only** writeback path, and
-  as of chip 12 it owns every paper-file write, each riding the op-json in the
-  *same* pen-protected atomic transaction:
+  as of chip 12 (closed by chip 16's `renameCitekey`) it owns **every**
+  paper-file write — there is no remaining skill hand-edit of a paper file —
+  each riding the op-json in the *same* pen-protected atomic transaction:
   - `texEdit` — a `.tex` splice (the footnote `\vfid{}\footnote{}`) or, in
-    `region-replace` mode, a whole-preamble rewrite (style-merge).
+    `region-replace` mode, a whole-preamble rewrite (style-merge), or, in
+    `replace-span` mode, the L3 accept splice.
   - `bibEdit` — append / set-fields / replace in `references.bib`
     (find-citation, answer-bib-review, library-sync).
+  - `renameCitekey` — rewrite a citekey across the `.tex` `\cite*{}` commands +
+    `virgil/citations.json` cards (reusing `rename_citekey.py`'s pure rewriters);
+    bundles with a `bibEdit` `replace` for the one-atomic-op library-sync swap.
   - `settingsEdit` / `annotationEdit` — the two non-panel JSON sidecars
     (style-merge's styleId flip; answer-bib-review's annotation).
   A `requestId` that names a `bib-review-requests.json` bibKey completes that
   row in the same commit; a writes-only op (a `*Edit` with no `requestId`)
-  lands a paper edit + audit with no Task flip (library-sync's `.bib` swap).
+  lands a paper edit + audit with no Task flip (library-sync's `.bib` swap +
+  citekey rename).
   The older rule ("skills do .tex edits with the Edit tool so they share the
   user's write-queue surface") was a stopgap for when there was no editing
   lock; the pen (`EDITOR_SKILLS_V1` §9 / `_common.acquire_pen`) makes a direct
