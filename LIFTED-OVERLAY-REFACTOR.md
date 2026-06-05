@@ -1861,7 +1861,7 @@ editor-extensions.ts change this time). §9 pre-existing files + scratch untouch
 
 ## Feature A2 — single-example expex drop: unify single + multi under one left bar (closes A1 gap B) — 2026-06-05
 
-**Commit:** `942cb7d`.
+**Commit:** `c165bef` (landed on main via merge `69fe7de`).
 
 **What.** A1's left-edge vertical bar now also welcomes text/picture/equation into a SINGLE `\ex` example (an exampleBlock with direct content, zero items) — it did nothing there before (collectExpexSlots enumerated only exampleItems → 0 slots → no bar). The dropped block JOINS the single example's body (stays one numbered example; NOT converted to \pex). Schema: exampleBlock content widened to graphicsBlock|displayMath (paragraph already valid). Gated to expex + the 3 kinds, so all other drags + A1's multi behavior are byte-unchanged.
 
@@ -1871,6 +1871,6 @@ editor-extensions.ts change this time). §9 pre-existing files + scratch untouch
 
 ### A2 edge-fix — wrap only where the exampleItem wrap is schema-valid — 2026-06-05
 
-**Commit:** `8cf9fc3` (pre-amend; re-stamps on squash-merge).
+**Commit:** `8624494` (landed on main via merge `69fe7de`).
 
 A2's adapter wrapped whenever `canDropDirect === false`, which over-fired outside expex: a `displayMath` dropped at a `listItem`'s index 0 (listItem content `(paragraph | graphicsBlock) block*` rejects a displayMath there) wrapped into an `exampleItem` — itself invalid at that position, so the fitter promoted it into a freestanding `exampleBlock` and split the list. Tightened: wrap iff `canDropDirect === false && canWrapHere`, where `canWrapHere` = `canDropDirectAt(insertPos, exampleItem)` — the SAME generic helper reused over the wrap target's node type, computed in `textObjectDropSpec.applyDrop` and threaded via `DropTarget.canWrapHere`. `exampleItem` is valid only inside an `exampleItemList`, so the wrap now fires EXACTLY at the multi between-items gap; every other rejected-bare-block position drops-direct (restoring A1's behavior — the fitter then places the bare block validly). Real-schema lock added (displayMath @ listItem@0 → drop-direct: no exampleItem fabricated, and `canDropDirectAt(…, exampleItem)` there is `false`; the multi between-items lock still wraps; single-body still drops-direct). tsc 0; eslint 0 new; vitest 529 (was 528: +1 real-schema edge lock; the two adapter unit-test files' case-a fixtures threaded `canWrapHere: true` to match the tightened contract). Files: textobject.ts + types.ts (`DropTarget.canWrapHere`) + drop-adapters.ts + single-example-expex-real-schema.test.ts + drop-adapters/drop-spec-matrix case-a fixtures.
