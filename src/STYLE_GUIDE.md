@@ -353,6 +353,27 @@ the per-kind popout buttons (`.par-popout-btn`, `.expex-popout-btn`,
 etc.) were retired in the Text-Object refactor. Don't reintroduce a
 parallel popout affordance.
 
+## Block images (figures & pictures)
+
+`graphicsBlock` (a bare `\includegraphics`) and `figureBlock` (a captioned
+`figure` env) share one NodeView and one `.figure-block` CSS family
+(`isFigure` branches them). Two rules:
+
+- **Hug the content.** A populated single image takes exactly the room it
+  needs — the picture, plus the caption/lozenge for a figure — not a
+  column-wide frame of empty space. `.figure-block-hug` shrinks the block
+  to `width: fit-content` (centered with `margin-inline: auto`); the scale
+  rides on the block as an inline `max-width: <widthPercent>%` of the text
+  column while the panel fills it, so the image keeps its exact rendered
+  size and the box collapses onto it. Subfigures (multi-source) and the
+  empty-state CTA keep the full-width layout.
+- **Delete lives in the grab-handle menu, not on the image.** The
+  hover chrome carries only non-destructive controls — pick / scale /
+  refresh — and no per-figure X, for the same reason the per-kind popout
+  buttons were retired (above): the grab handle owns destructive and
+  move operations. (The empty-state placeholder keeps its own X — a
+  half-made block's quick bail before it has any content to grab.)
+
 ## Marginalia
 
 Two gutters (left wider for the heading-fold chevron, right narrower).

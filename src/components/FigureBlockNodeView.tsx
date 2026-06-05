@@ -564,16 +564,36 @@ function FigureFullView({ node, getPos, editor, extension }: NodeViewProps) {
     );
   }
 
+  // A single picture/figure (the common case) hugs its content instead of
+  // sitting in a text-column-wide box. The block shrinks to fit-content
+  // (globals.css `.figure-block-hug`) and carries the scale itself as a
+  // max-width — a percentage of the text column, its containing block — so
+  // the image keeps the EXACT rendered size it had before. The per-panel
+  // widthPercent is stripped (below) so the panel fills the block; otherwise
+  // its `% of block` would re-shrink against the now-narrow block and the
+  // empty box would reappear. Subfigures (multi-source) keep the column-width
+  // layout — their per-panel widths can't collapse to one box-free measure
+  // without column-relative units, so they're left unchanged.
+  const hugSource = sources.length === 1 ? sources[0] : null;
+  const hugStyle =
+    hugSource?.widthPercent != null
+      ? ({ maxWidth: `${hugSource.widthPercent}%` } as React.CSSProperties)
+      : undefined;
+  const visualSources = hugSource
+    ? sources.map((s) => ({ ...s, widthPercent: null }))
+    : sources;
+
   return (
     <NodeViewWrapper
       ref={wrapperRef as React.Ref<HTMLDivElement>}
-      className={`figure-block ${isFigure ? "figure-block-wrapped" : "figure-block-bare"}`}
+      className={`figure-block ${hugSource ? "figure-block-hug " : ""}${isFigure ? "figure-block-wrapped" : "figure-block-bare"}`}
       onClick={handleBodyClick}
       data-label={label || undefined}
+      style={hugStyle}
     >
       <FigureVisual
         isFigure={isFigure}
-        sources={sources}
+        sources={visualSources}
         docId={docId}
         registerRefresh={registerRefresh}
         rowContentEditable={false}
@@ -591,7 +611,6 @@ function FigureFullView({ node, getPos, editor, extension }: NodeViewProps) {
             onScale={applyScale}
             onPickFile={handlePickFile}
             onRefresh={handleRefreshAll}
-            onDelete={handleDelete}
           />
         }
         lozenge={
@@ -736,7 +755,6 @@ interface FigureChromeProps {
   onScale: (percent: number) => void;
   onPickFile: (e: React.MouseEvent) => void;
   onRefresh: (e: React.MouseEvent) => void;
-  onDelete: (e: React.MouseEvent) => void;
 }
 
 function FigureChrome({
@@ -745,7 +763,6 @@ function FigureChrome({
   onScale,
   onPickFile,
   onRefresh,
-  onDelete,
 }: FigureChromeProps) {
   const [draft, setDraft] = useState<string>(String(currentPercent));
   useEffect(() => {
@@ -837,9 +854,6 @@ function FigureChrome({
       </div>
       <ChromeIconButton title="Re-render from source" onClick={onRefresh}>
         <RefreshIcon />
-      </ChromeIconButton>
-      <ChromeIconButton title="Remove figure" onClick={onDelete} kind="danger">
-        <CloseIcon />
       </ChromeIconButton>
     </div>
   );

@@ -1959,6 +1959,28 @@ textarea,
   position: relative;
 }
 
+/* A populated single picture/figure in the main editor hugs its content
+ * instead of filling a text-column-wide box (a small image used to float in a
+ * column of empty space, with the hover chrome stranded at the far edge).
+ * `width: fit-content` shrinks the block to the image; FigureBlockNodeView
+ * moves the scale onto the block as an inline `max-width: <widthPercent>%` (a
+ * % of the text column) and fills the panel, so the image keeps its exact
+ * rendered size while the box collapses to it. Centered with auto inline
+ * margins; the 1.25em block margin (inter-block rhythm) is untouched. Only the
+ * main render carries `.figure-block-hug` — the empty-state CTA, subfigures,
+ * the card-preview and the popped float do not, so they're unaffected. */
+.figure-block.figure-block-hug {
+  width: fit-content;
+  margin-inline: auto;
+}
+
+/* Under a hugged figure the block is image-width, so let the caption use the
+ * full width (the base 80% cap would needlessly narrow a caption that already
+ * wraps to the image). */
+.figure-block.figure-block-hug .figure-caption {
+  max-width: 100%;
+}
+
 .figure-block.figure-block-empty {
   cursor: pointer;
   background: var(--code-bg, #f0eeeb);
