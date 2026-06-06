@@ -11,9 +11,16 @@
  * `markerLeft` (the block's leftmost marker glyph: bullet band / `(n)` /
  * `a.` / plain text), and `gapPx` (the em handle-gap resolved against THIS
  * block's font). Every gutter affordance now hugs `markerLeft − gapPx − <its
- * own width>`, so a container and its first item — and the future drop
- * indicator (chip 4) — align BY CONSTRUCTION. All fields are viewport-space
- * and resolvable from `el` + ancestry alone.
+ * own width>`, so a container and its first item align BY CONSTRUCTION. All
+ * fields are viewport-space and resolvable from `el` + ancestry alone.
+ *
+ * Chip 4a wires the DRAG DROP-INDICATOR onto the same frame: the between-blocks
+ * bar and the expex drop bars now take their x from this `contentLeft` and
+ * their span from `contentWidth`, so the drop bar lines up with the grab
+ * handles (and the block content) by construction rather than via an
+ * independent `getBoundingClientRect().left` measurement (the §4 bug). The drop
+ * path reads only `contentLeft` / `contentWidth` (never `depth`), so it calls
+ * the resolver without a viewport cache (see {@link resolveBlockFrame}).
  *
  * KEYSTROKE SANCTITY (AGENTS.md): resolution is pure DOM + ancestry —
  * O(1)/O(depth), NEVER O(doc). The resolver runs on the hover/scroll/RAF
@@ -69,9 +76,17 @@ export interface BlockFrame {
    * For a markerless block (paragraph / heading / blockquote / codeBlock /
    * titleField / framed atom) this IS the marker reference; exposed separately
    * from {@link markerLeft} so a selection handle (which labels text, not a
-   * marker) and the future drop indicator can anchor to text-start.
+   * marker) and the drop indicator (chip 4a) can anchor to text-start.
    */
   contentLeft: number;
+  /**
+   * The block's content-box WIDTH in viewport coords (= `firstLineRect.width`,
+   * i.e. `contentRight − contentLeft`). The HORIZONTAL drop indicator (chip 4a)
+   * spans this — the between-blocks bar and the expex new-item bar derive their
+   * width from the frame's content extent, the same source as {@link contentLeft},
+   * so the bar hugs the text column rather than an independently-measured box.
+   */
+  contentWidth: number;
   /**
    * The MEASURED left edge of the block's leftmost rendered marker — the
    * single horizontal anchor every gutter affordance hugs. Per kind:
@@ -281,13 +296,19 @@ function resolveMarkerLeft(
  * Resolve the canonical {@link BlockFrame} for a block's DOM element. Pure
  * DOM + ancestry; safe on the hover/scroll/RAF placement path.
  *
- * `editor` / `cache` bound the depth walk to the editor root. The horizontal
- * fields resolve from `el` + ancestry + the `target`'s computed style alone.
+ * `editor` / `cache` bound the depth walk to the editor root. `cache` is
+ * OPTIONAL: it supplies `editorEl` only as the depth-walk root, and
+ * `cache.editorEl` IS `editor.view.dom` (useEditorViewportCache.ts), so
+ * omitting it changes nothing but `depth`'s root fallback (identical element).
+ * The drop indicator (chip 4a) reads only `contentLeft` / `contentWidth` — not
+ * `depth` — and the drop hit-test holds no viewport cache, so it calls this
+ * without one. The horizontal fields resolve from `el` + ancestry + the
+ * `target`'s computed style alone.
  */
 export function resolveBlockFrame(
   el: HTMLElement,
   editor: Editor,
-  cache: EditorViewportCache,
+  cache?: EditorViewportCache | null,
 ): BlockFrame {
   const target = resolveFirstLineTarget(el);
   const firstLineRect = firstLineRectOf(target);
@@ -299,6 +320,9 @@ export function resolveBlockFrame(
 
   // ---- Horizontal axis (chip 2) ----
   const contentLeft = firstLineRect.left;
+  // Content-box width (chip 4a) — the span the horizontal drop bar covers,
+  // from the SAME resolved text element as `contentLeft`, so x and width agree.
+  const contentWidth = firstLineRect.width;
   // Resolve the em gutter tokens against the LABELED TEXT's font, so the gap
   // scales with the prose the user reads and every prose block shares ONE
   // value. `resolveInlineContextElement` descends wrappers to the inline text
@@ -338,6 +362,7 @@ export function resolveBlockFrame(
     opticalCenterY,
     depth,
     contentLeft,
+    contentWidth,
     markerLeft,
     gapPx,
   };

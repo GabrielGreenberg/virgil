@@ -18,6 +18,7 @@ import type { Editor } from "@tiptap/react";
 import type { Node as PMNode } from "@tiptap/pm/model";
 import { isAnchorableNode } from "@/lib/marginalia";
 import { generateShortId } from "@/lib/uuid";
+import { resolveBlockFrame } from "@/text-objects/block-frame";
 import { isCompatibleParent } from "@/text-objects/drop-adapters";
 import {
   parseTextObjectPopoutKey,
@@ -286,10 +287,10 @@ const EXPEX_EDGE_BAND_FRAC = 0.3;
 /**
  * Geometry of one top-tier exampleItem, gathered for the thirds hit model.
  * `top`/`bottom`/`height` come from the item's own DOM box; `contentLeft` /
- * `contentWidth` from its first content child's box — the item's TEXT-left
- * (where the prose sits), NOT the far-left where expex draws the "(2)" / "a."
- * label. Both bars hang off the text-left so they read as "a line in the prose
- * column," never under the label.
+ * `contentWidth` from the canonical block frame of its first content child (see
+ * {@link contentFrameEdges}) — the item's TEXT-left (where the prose sits), NOT
+ * the far-left where expex draws the "(2)" / "a." label. Both bars hang off the
+ * text-left so they read as "a line in the prose column," never under the label.
  */
 interface ExpexItemGeom {
   /** The item's own position (before its open token) — the new-item wrap anchor. */
@@ -303,13 +304,29 @@ interface ExpexItemGeom {
 }
 
 /**
- * The TEXT-left x (and content width) of an expex container — its first content
- * child's DOM box, where the prose sits. Falls back to the container's own box
- * when it has no resolvable content child (e.g. an empty body, or a child whose
- * DOM isn't an element). Used for BOTH an exampleItem (the multi case) and the
- * exampleBlock body (the single case).
+ * The TEXT-left x (and content width) of an expex container's insertion site,
+ * read from the CANONICAL block frame (chip 4a) — the SAME
+ * `resolveBlockFrame(…).contentLeft` the grab handles use — so the expex drop
+ * bars and the between-blocks bar share ONE content-left source and line up by
+ * construction (the §4 fix), instead of each measuring `getBoundingClientRect()
+ * .left` independently.
+ *
+ * Resolves the frame of the container's FIRST CONTENT CHILD (`containerPos + 1`)
+ * — where the dropped block's text will land. Resolving the child (not the
+ * container) is deliberate and robust: `resolveBlockFrame` on the container
+ * would container-descend via `data-uuid` grabbable children, but those
+ * decorations are lazily hydrated (uuid-attr.ts) and may be absent on a body
+ * the user hasn't touched yet mid-drag; the child's own frame needs no uuid. For
+ * a paragraph-first item the child IS the same `<p>` the container would descend
+ * to, so the number matches the grab handle by construction. Falls back to the
+ * passed container-box edges when there's no resolvable content child (empty
+ * body / non-element DOM). Used for BOTH an exampleItem (multi) and the
+ * exampleBlock body (single).
+ *
+ * O(1) — bounded DOM reads + cached font metrics; safe on the throttled-
+ * mousemove drop path (AGENTS.md gesture sanctity), no doc walk.
  */
-function contentLeftWidth(
+function contentFrameEdges(
   editor: Editor,
   containerPos: number,
   container: PMNode,
@@ -319,8 +336,8 @@ function contentLeftWidth(
   if (container.childCount > 0) {
     const dom = editor.view.nodeDOM(containerPos + 1);
     if (dom instanceof HTMLElement) {
-      const r = dom.getBoundingClientRect();
-      return { left: r.left, width: r.width };
+      const frame = resolveBlockFrame(dom, editor);
+      return { left: frame.contentLeft, width: frame.contentWidth };
     }
   }
   return { left: fallbackLeft, width: fallbackWidth };
@@ -410,7 +427,7 @@ export function resolveBlockIntoExpex(
   // SINGLE example (no items) — ONE vertical into-body bar down the body's
   // text-left, full body height; insert at the body content START (push down).
   if (structuralCount === 0) {
-    const { left } = contentLeftWidth(
+    const { left } = contentFrameEdges(
       editor,
       exampleBlockPos,
       exampleBlock,
@@ -483,7 +500,7 @@ function collectExpexItems(
       const dom = editor.view.nodeDOM(nodePos);
       if (dom instanceof HTMLElement) {
         const rect = dom.getBoundingClientRect();
-        const { left, width } = contentLeftWidth(
+        const { left, width } = contentFrameEdges(
           editor,
           nodePos,
           node,
@@ -578,13 +595,21 @@ export function makeBetweenBlocksPlacement(
     ? block.blockPos
     : block.blockPos + (node ? node.nodeSize : 0);
 
-  // Bar spans the editor's text column width. Use the block's own width
-  // as a stand-in (paragraphs all share the same column width).
+  // Horizontal extent from the CANONICAL block frame (chip 4a) — the SAME
+  // `resolveBlockFrame(…).contentLeft` / `contentWidth` the grab handles and
+  // the expex drop bars read, so this bar lines up with the block's content-
+  // left (and with the expex bars over the same block) by construction, not via
+  // an independent `block.dom` box measurement (the §4 fix). `contentLeft`
+  // descends wrappers to the text element (titled paragraph / blockquote / list
+  // item / expex item), matching where the dropped block's text will land.
+  // `cache` is omitted — the bar needs only contentLeft/contentWidth, never
+  // `depth`. Y still comes from the block's own box (the gap line above/below).
+  const frame = resolveBlockFrame(block.dom, editor);
   const barY = insertBefore ? blockRect.top : blockRect.bottom;
   const rect: ViewportRect = {
-    x: blockRect.left,
+    x: frame.contentLeft,
     y: barY - 1,
-    width: blockRect.width,
+    width: frame.contentWidth,
     height: 2,
   };
   return { kind: "between-blocks", editor, insertPos, rect };
