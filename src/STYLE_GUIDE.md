@@ -334,19 +334,37 @@ Two vertical policies, branched on `meta.chromeAnchor`:
 
 - **`text-top`** (paragraphs, headings, titleField, blockquotes,
   codeBlocks, lists, listItems, exampleBlock, exampleItems,
-  linkedRange) — handle aligns with the first rendered glyph's cap-top,
-  measured via `Range.getBoundingClientRect()`. Works for any font /
-  line-height — a heading at 1.75rem reads the same as a paragraph at
-  1.05rem.
+  linkedRange) — the handle glyph's vertical center is pinned to the
+  **optical (cap-band) center** of the block's first visual text line:
+  `firstLineRect.top + capTopOffset + capHeight / 2` (see
+  [src/lib/text-metrics.ts](src/lib/text-metrics.ts)). Resolved through the
+  canonical [src/text-objects/block-frame.ts](src/text-objects/block-frame.ts)
+  `resolveBlockFrame()` so every affordance on a row reads the same numbers.
+  A **container** (`bulletList` / `orderedList` / `exampleBlock`) resolves
+  THROUGH to its first grabbable child's first line — the row the user sees
+  — so a container handle and its first item's handle land on the same Y by
+  construction. (Never anchor a container to its own `(n)` chip / wrapper
+  metrics.) Works for any font / line-height — a heading at 1.75rem reads
+  the same as a paragraph at 1.05rem.
 - **`block-top`** (texBlock, latexComment, displayMath, graphicsBlock,
-  figureBlock) — handle aligns with the wrapper's visual top edge. For
-  framed visual kinds where there's no "first line of prose" to align
-  with.
+  figureBlock) — handle sits a half-glyph below the wrapper's visual top
+  edge. For framed visual kinds where there's no "first line of prose" to
+  align with.
 
 Adding a new TextObject kind requires no gutter-chrome CSS — drop a
 registry entry, set `isSubObject`, `decorationSafety`, and
 `chromeAnchor`, and the handle places itself on both axes. Tune the
 visual globally by editing the CSS variables.
+
+**Optical-center anchoring (generalizable chrome rule).** Any gutter or
+marginal affordance that labels a line of text — a grab handle, a marker, a
+future drop indicator — centers its glyph on the text's *optical center*
+(`capTopOffset + capHeight / 2` below the line-box top), NOT on the line-box
+top or the glyph cap-top. Anchoring to the line-box top (or `flex-start`
+from it) leaves the affordance sitting low by ~half a cap-height, and the
+error grows with font size. Read the Y from
+`resolveBlockFrame(el, …).opticalCenterY` and center the glyph on it (an
+absolute `top` plus `transform: translateY(-50%)`).
 
 Grab-handle drag is the **only** popout mechanism for text objects —
 the per-kind popout buttons (`.par-popout-btn`, `.expex-popout-btn`,

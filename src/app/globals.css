@@ -1234,14 +1234,17 @@ textarea,
 .text-object-grab-handle {
   position: absolute;
   display: flex;
-  /* SVG aligned to the TOP of the handle box so the dots sit at the
-     handle's anchor Y (text-top for text-bearing kinds, block-top for
-     framed visual kinds) — not centered in the line-height-based hit
-     area. Hit area still extends down for an easy grab target. */
-  align-items: flex-start;
+  /* The handle's `top` is the block's optical (cap-band) center Y
+     (placement.top, derived from block-frame.ts). Center the box on that Y
+     (translateY(-50%)) AND center the SVG within the box, so the six-dot
+     glyph's visual center lands exactly on the optical center of the text it
+     labels — font-size-independently. The box keeps a line-height-tall hit
+     area for an easy grab target (chip 3 owns the hover-zone size). */
+  align-items: center;
   justify-content: center;
   width: 12px;
   height: calc(var(--editor-font-size, 1.05rem) * var(--editor-line-height, 1.8));
+  transform: translateY(-50%);
   opacity: 1;
   pointer-events: auto;
   cursor: grab;
@@ -1265,7 +1268,9 @@ textarea,
   color: var(--ink, #3a362f);
   background: rgba(0, 0, 0, 0.08);
   border-radius: 3px;
-  transform: translateY(1px);
+  /* Keep the translateY(-50%) centering (the box is centered on the optical
+     Y) and add the 1px press nudge on top. */
+  transform: translateY(calc(-50% + 1px));
 }
 
 .text-object-grab-handle.is-menu-open {

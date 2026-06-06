@@ -61,7 +61,7 @@ import {
 import { ensureAnchorUuid } from "@/lib/anchor-uuid";
 import { hydrateSelectionToTextObject } from "./hydrate-selection";
 import { removeTransientAnchor } from "@/links/links";
-import { walkAnchorableBlocks } from "@/lib/marginalia-blocks";
+import { resolveDomForUuid } from "@/lib/marginalia-blocks";
 import { useDragHandleMenu } from "@/components/editor-layout/card-actions/drag-handle-menu-context";
 import { useEditorChrome } from "@/components/editor-layout/chrome-context";
 import { viewToggleClasses } from "@/components/editor-layout/chrome-config";
@@ -70,6 +70,7 @@ import {
   type EditorViewportCache,
 } from "@/hooks/useEditorViewportCache";
 import {
+  capHeight,
   capTopOffset,
   onFontReady,
   resolveInlineContextElement,
@@ -80,6 +81,7 @@ import {
   textObjectPopoutKey,
   capPopoutHeight,
 } from "./text-object-registry";
+import { resolveBlockFrame } from "./block-frame";
 import { computeHandleLeftEdge } from "./handle-layout";
 import { LiftedTextOverlay } from "./LiftedTextOverlay";
 import type {
@@ -89,6 +91,14 @@ import type {
 } from "./types";
 
 const LIFT_THRESHOLD = 5;
+/** Half the grab-handle glyph's height. The six-dot SVG is 14px tall with
+ *  its dot-cluster centered at the SVG midpoint, and the CSS now centers
+ *  that glyph on `placement.top` (see `.text-object-grab-handle` in
+ *  globals.css). For `block-top` kinds — framed visual blocks with no first
+ *  text line — pinning the glyph a half-glyph below the block's top edge
+ *  reproduces the pre-unification flex-start visual under the new centered
+ *  box. (chip 4 owns figure chrome; this keeps block-top byte-for-byte.) */
+const HANDLE_GLYPH_HALF = 7;
 /** Vertical offset between the cursor and the spawned float's top edge.
  *  The grip sits inside the float's header, so the cursor lands on the
  *  header (not on the body) after the lift. */
@@ -168,6 +178,19 @@ interface Placement {
   top: number;
   /** The resolved ref the handle represents. */
   ref: TextObjectRef | SelectionRef;
+}
+
+/**
+ * A ref paired with its pre-resolved block DOM element, threaded from the
+ * discovery path into `computePlacement` so placement never re-resolves the
+ * block by walking the doc. `el` is populated for TextObjectRefs (the hover
+ * scan already holds the element; a NodeSelection resolves it via
+ * `nodeDOM`); it's null for a text SelectionRef, whose block `computePlacement`
+ * resolves via the PM ancestor chain (O(depth)).
+ */
+interface ResolvedRef {
+  ref: TextObjectRef | SelectionRef;
+  el: HTMLElement | null;
 }
 
 function placementsEqual(a: Placement, b: Placement): boolean {
@@ -254,10 +277,10 @@ function resolveTextObjectsAtMouse(
   cache: EditorViewportCache,
   clientX: number,
   clientY: number,
-): TextObjectRef[] {
-  if (!cache.containsHoverZone(clientX, clientY)) return EMPTY_REFS;
+): ResolvedRef[] {
+  if (!cache.containsHoverZone(clientX, clientY)) return EMPTY_RESOLVED;
   const editorEl = editor.view.dom;
-  if (!(editorEl instanceof HTMLElement)) return EMPTY_REFS;
+  if (!(editorEl instanceof HTMLElement)) return EMPTY_RESOLVED;
 
   const candidates = editorEl.querySelectorAll<HTMLElement>("[data-uuid]");
   const matches: Array<{ el: HTMLElement; top: number; bottom: number }> = [];
@@ -278,7 +301,7 @@ function resolveTextObjectsAtMouse(
     return a.bottom - b.bottom;
   });
 
-  const refs: TextObjectRef[] = [];
+  const refs: ResolvedRef[] = [];
   const seen = new Set<string>();
   for (const { el } of matches) {
     const id = el.getAttribute("data-uuid");
@@ -290,34 +313,39 @@ function resolveTextObjectsAtMouse(
       kind !== "linkedRange" &&
       !seen.has(id)
     ) {
-      refs.push({ kind, id });
+      // Carry the resolved element through to placement — no doc walk to
+      // re-find it. This IS the block's node DOM (the `data-uuid`/
+      // `data-text-object-kind` decoration sits on the node's outer DOM,
+      // == `editor.view.nodeDOM(pos)`).
+      refs.push({ ref: { kind, id }, el });
       seen.add(id);
     }
   }
   return refs;
 }
 
-const EMPTY_REFS: TextObjectRef[] = [];
+const EMPTY_RESOLVED: ResolvedRef[] = [];
 
 /**
- * Resolve the source block's DOM element for a `TextObjectRef`. Mirrors
- * the lookup in `computePlacement`: walks `walkAnchorableBlocks` to
- * find the block by uuid, then asks the view for its NodeView DOM. The
- * resulting element is what the lifted-overlay clones at threshold
- * cross. Returns null when the source is missing (concurrent delete) —
- * the lifted-overlay gesture degrades to a popout-release at the
- * overlay's current rect in that case.
+ * Resolve the source block's DOM element for a `TextObjectRef` — O(1) via
+ * the `data-uuid` decoration (`resolveDomForUuid`), the SAME element the
+ * placement path uses. The resulting element is what the lifted-overlay
+ * clones at threshold cross. Returns null when the source is missing
+ * (concurrent delete) or its kind no longer matches the ref — the
+ * lifted-overlay gesture degrades to a popout-release at the overlay's
+ * current rect in that case.
  */
 function resolveAnchorDom(
   editor: Editor,
   ref: TextObjectRef,
 ): HTMLElement | null {
-  const block = walkAnchorableBlocks(editor).find((b) => b.uuid === ref.id);
-  if (!block) return null;
-  const node = editor.state.doc.nodeAt(block.pos);
-  if (!node || node.type.name !== ref.kind) return null;
-  const dom = editor.view.nodeDOM(block.pos);
-  return dom instanceof HTMLElement ? dom : null;
+  const dom = resolveDomForUuid(editor, ref.id);
+  if (!dom) return null;
+  // Validate kind via the decoration attr (defends against a concurrent
+  // delete + uuid reuse) — equivalent to the old `node.type.name !== ref.kind`
+  // guard, without a doc walk.
+  if (dom.getAttribute("data-text-object-kind") !== ref.kind) return null;
+  return dom;
 }
 
 /**
@@ -372,27 +400,38 @@ interface OverlayState {
 }
 
 /**
- * Compute placement for a single ref. Pins the handle's left edge to
- * the source block's gutter via `computeHandleLeftEdge`; pins the top
- * edge to the range's first-line top (clamped to the editor scroll
- * container's top when scrolled above the viewport).
+ * Compute placement for a single ref. Pins the handle's LEFT edge to the
+ * source block's gutter via `computeHandleLeftEdge` (X is unchanged by the
+ * chrome-geometry unification — chip 2 owns the horizontal axis). Pins the
+ * handle glyph's VERTICAL center to the block's optical (cap-band) center
+ * via the canonical block frame, so every affordance on a row — a container
+ * and its first item, the future drop indicator — aligns by construction.
  *
- * Returns null when the ref isn't visible (off-screen, source missing,
- * or coords lookup fails).
+ * `preEl` is the block's DOM element pre-resolved by the discovery path
+ * (hover scan / node selection); when present, placement uses it directly
+ * and NEVER walks the doc. For a text selection (`preEl` null) the block is
+ * resolved via the PM ancestor chain (O(depth)).
+ *
+ * Returns null when the ref isn't visible (off-screen, source missing, or
+ * coords lookup fails).
  */
 function computePlacement(
   editor: Editor,
   cache: EditorViewportCache,
   ref: TextObjectRef | SelectionRef,
+  preEl: HTMLElement | null,
 ): Placement | null {
-  let from = -1;
-  let to = -1;
-  let blockNodePos = -1;
+  let anchorDom: HTMLElement | null = null;
+  // For a selection, the handle aligns to the SELECTION's first line, not
+  // the containing block's — captured here as a viewport-y, null otherwise.
+  let selectionFirstLineTop: number | null = null;
 
   if (ref.kind === "selection") {
-    from = ref.from;
-    to = ref.to;
-    const $from = editor.state.doc.resolve(from);
+    // Resolve the containing TextObject via the PM ancestor chain
+    // (O(depth)), then its DOM via `nodeDOM`; read the selection start's
+    // coords for the first-line anchor.
+    const $from = editor.state.doc.resolve(ref.from);
+    let blockNodePos = -1;
     for (let d = $from.depth; d >= 0; d--) {
       const node = $from.node(d);
       if (!isTextObjectKind(node.type.name) || node.type.name === "linkedRange") continue;
@@ -400,41 +439,27 @@ function computePlacement(
       blockNodePos = d === 0 ? 0 : $from.before(d);
       break;
     }
-  } else {
-    const block = walkAnchorableBlocks(editor).find(
-      (b) => b.uuid === ref.id,
-    );
-    if (block) {
-      const node = editor.state.doc.nodeAt(block.pos);
-      if (node && node.type.name === ref.kind) {
-        from = block.pos + (block.isAtom ? 0 : 1);
-        to = block.pos + node.nodeSize - (block.isAtom ? 0 : 1);
-        blockNodePos = block.pos;
-      }
+    if (blockNodePos < 0) return null;
+    try {
+      const fromCoords = editor.view.coordsAtPos(ref.from);
+      if (fromCoords.top > 0) selectionFirstLineTop = fromCoords.top;
+      const dom = editor.view.nodeDOM(blockNodePos);
+      if (dom instanceof HTMLElement) anchorDom = dom;
+    } catch {
+      return null;
     }
-  }
-  if (from < 0 || blockNodePos < 0) return null;
-
-  let fromCoords: { left: number; top: number; bottom: number };
-  let toCoords: { top: number; bottom: number };
-  let anchorDom: HTMLElement | null = null;
-  try {
-    fromCoords = editor.view.coordsAtPos(from);
-    toCoords = editor.view.coordsAtPos(to);
-    const dom = editor.view.nodeDOM(blockNodePos);
-    if (dom instanceof HTMLElement) anchorDom = dom;
-  } catch {
-    return null;
+  } else {
+    // TextObjectRef: the hover scan / node selection already resolved the
+    // element. The O(1) uuid lookup is a defensive fallback (it resolves the
+    // SAME `[data-uuid]` node DOM the decoration sits on).
+    anchorDom = preEl ?? resolveDomForUuid(editor, ref.id);
   }
   if (!anchorDom) return null;
 
-  // Use the anchor DOM's rect for the visibility check rather than the
-  // coordsAtPos values, which return {0, 0} for some multi-line block
-  // kinds (exampleBlock with deep content tree). The DOM rect is the
-  // authoritative visible bounds of the block. CSS `overflow: hidden`
-  // on the scroll container handles the actual clipping; we still
-  // bail when the source is fully scrolled out so we don't pay
-  // measurement cost.
+  // The anchor DOM's rect is the authoritative visible bounds of the block
+  // (coordsAtPos returns {0,0} for some multi-line block kinds). Bail when
+  // the source is fully scrolled out so we don't pay measurement cost; CSS
+  // `overflow: hidden` on the scroll container handles real clipping.
   const anchorRect = anchorDom.getBoundingClientRect();
   if (anchorRect.bottom < cache.scrollTop) return null;
   if (anchorRect.top > cache.scrollBottom) return null;
@@ -442,96 +467,62 @@ function computePlacement(
   const kind: TextObjectKind | null =
     ref.kind === "selection" ? null : ref.kind;
   const meta = kind ? TEXT_OBJECT_REGISTRY[kind] : null;
-  // editorColumnLeft is the .ProseMirror element's outside-left edge —
-  // the floor we clamp sub-object handles against on narrow viewports.
-  // baselineInset is read from --gutter-col-handle-inset (via the
-  // cache) so JS placement and CSS chrome share one source.
+
+  // ---- Horizontal (byte-for-byte unchanged from the pre-unification path;
+  // chip 2 will move this onto the block frame too) ----
+  // editorColumnLeft is the .ProseMirror element's outside-left edge — the
+  // floor we clamp sub-object handles against on narrow viewports.
+  // baselineInset is read from --gutter-col-handle-inset (via the cache) so
+  // JS placement and CSS chrome share one source.
   const editorColumnLeft = editor.view.dom.getBoundingClientRect().left;
   const baselineInset = cache.gutterInset;
   const left = meta
     ? computeHandleLeftEdge({
         elDOM: anchorDom,
         kind: kind as TextObjectKind,
-        node: editor.state.doc.nodeAt(blockNodePos) ?? undefined,
+        // No registry kind uses function-form `decorationSafety` today, so
+        // the PM node is never consulted — omit it to keep placement off the
+        // doc. (Promote to a uuid→pos lookup if a kind ever needs it.)
+        node: undefined,
         editorColumnLeft,
         baselineInset,
         meta,
       })
-    : anchorDom.getBoundingClientRect().left - baselineInset;
+    : anchorRect.left - baselineInset;
 
-  // Top edge: every kind declares its vertical anchor via
-  // `meta.chromeAnchor`. "text-top" routes through `measureHandleAnchorTop`
-  // for TextObjectRefs (override → resolveInlineContextElement + capTopOffset),
-  // and for SelectionRef we compute the same offset directly on the
-  // resolved inline-context element. "block-top" uses the wrapper's
-  // visual top edge — for framed visual kinds (tex pod, % comment, math,
-  // graphic, figure) where there's no "first line of prose" to align with.
-  const anchor: "text-top" | "block-top" = meta
-    ? meta.chromeAnchor
-    : resolveSelectionChromeAnchor(editor, from);
-  let candidateTop: number;
-  if (ref.kind === "selection") {
-    if (anchor === "text-top") {
-      const baseTop = fromCoords.top > 0 ? fromCoords.top : anchorRect.top;
-      const target = resolveInlineContextElement(anchorDom);
-      candidateTop = baseTop + capTopOffset(target);
-    } else {
-      candidateTop = anchorRect.top;
-    }
+  // ---- Vertical: the Y the handle glyph's CENTER lands on ----
+  // The CSS centers the dots on `placement.top` (see `.text-object-grab-handle`
+  // in globals.css). Each kind declares its anchor via `meta.chromeAnchor`:
+  //   • text-top → the optical (cap-band) center of the first VISUAL line,
+  //     from the canonical block frame. A container (`bulletList` /
+  //     `orderedList` / `exampleBlock`) resolves THROUGH to its first item's
+  //     first line, so the container handle and the item handle land on the
+  //     SAME Y by construction.
+  //   • block-top → framed visual kinds (tex pod, % comment, math, graphic,
+  //     figure) have no first text line; pin the glyph a half-glyph below the
+  //     block's top edge (pre-unification visual; chip 4 owns figure chrome).
+  const anchor: "text-top" | "block-top" =
+    ref.kind === "selection"
+      ? resolveSelectionChromeAnchor(editor, ref.from)
+      : TEXT_OBJECT_REGISTRY[ref.kind].chromeAnchor;
+  let dotsCenterY: number;
+  if (anchor === "block-top") {
+    dotsCenterY = anchorRect.top + HANDLE_GLYPH_HALF;
+  } else if (ref.kind === "selection") {
+    const baseTop = selectionFirstLineTop ?? anchorRect.top;
+    const target = resolveInlineContextElement(anchorDom);
+    dotsCenterY = baseTop + capTopOffset(target) + capHeight(target) / 2;
   } else {
-    const measured = measureHandleAnchorTop(anchorDom, anchor);
-    candidateTop = measured ?? (fromCoords.top > 0 ? fromCoords.top : anchorRect.top);
+    dotsCenterY = resolveBlockFrame(anchorDom, editor, cache).opticalCenterY;
   }
-  // Convert from viewport coords (what getBoundingClientRect /
-  // coordsAtPos / measureHandleAnchorTop return) to portal-relative
-  // coords. The portal mounts inside `editor-pane-column` (column-level
-  // sibling of the pod — escapes the pod's clipPath that would
-  // otherwise clip handles in the gutter) as an absolute-positioned
-  // child, so handles need their `top`/`left` relative to the column's
-  // content box. The sticky pod caps (z:30/31) cover handles when they
-  // overlap on scroll — no more Math.max(candidateTop, scrollTop)
-  // clamp, which was a portal-to-body workaround that produced the
-  // "sticky to viewport top" behavior.
-  const portal = cache.toPortalCoords(left, candidateTop);
-  return { left: portal.x, top: portal.y, ref };
-}
 
-/**
- *  Measure the top edge that the grab handle should align to for a given
- *  anchorDom + chromeAnchor mode.
- *
- *    - `block-top` (texBlock, latexComment, displayMath, graphicsBlock,
- *      figureBlock): the wrapper's visual top edge IS the visual anchor —
- *      no font math needed. Returns `anchorDom.getBoundingClientRect().top`.
- *
- *    - `text-top` (paragraph, heading, blockquote, codeBlock, listItem,
- *      exampleItem, titleField): handle should align with the GLYPH
- *      cap-top of the first rendered line, not the line-box top.
- *      Resolution:
- *        1. `[data-glyph-anchor]` — NodeView's "visual top" override for
- *           compound containers (exampleBlock points to `.expex-number`,
- *           a text-bearing chip).
- *        2. `resolveInlineContextElement(anchorDom)` — descend any wrapper
- *           NodeView to the actual first-line text-bearing element.
- *      Then return `target.getBoundingClientRect().top + capTopOffset(target)`,
- *      where `capTopOffset` is a font-metric-aware helper that recovers
- *      the half-leading + (ascent − capHeight) offset dynamically from
- *      the rendered font. No hardcoded per-kind constants.
- *
- *  Returns the viewport-y coord.
- */
-function measureHandleAnchorTop(
-  anchorDom: HTMLElement,
-  chromeAnchor: "text-top" | "block-top",
-): number | null {
-  if (chromeAnchor === "block-top") {
-    return anchorDom.getBoundingClientRect().top;
-  }
-  const override = anchorDom.querySelector(
-    "[data-glyph-anchor]",
-  ) as HTMLElement | null;
-  const target = override ?? resolveInlineContextElement(anchorDom);
-  return target.getBoundingClientRect().top + capTopOffset(target);
+  // Convert viewport coords → portal-relative coords. The portal mounts
+  // inside `editor-pane-column` (column-level sibling of the pod — escapes
+  // the pod's clipPath that would otherwise clip handles in the gutter) as
+  // an absolute-positioned child. The sticky pod caps (z:30/31) cover
+  // handles when they overlap on scroll.
+  const portal = cache.toPortalCoords(left, dotsCenterY);
+  return { left: portal.x, top: portal.y, ref };
 }
 
 /** For SelectionRef (kind === null), resolve the containing
@@ -1044,16 +1035,16 @@ export function TextObjectGrabHandle({ editorRef }: Props) {
     };
 
     /**
-     * Resolve the array of refs the schedule should render handles for.
+     * Resolve the refs (each paired with its pre-resolved block DOM, so
+     * placement never walks the doc) the schedule should render handles for.
      * Order (first match wins, except for hover which returns multiple):
-     *   1. Non-empty TextSelection → [SelectionRef]
-     *   2. NodeSelection on TextObject → [TextObjectRef]
-     *   3. Mouse hover over editor → [innermost..outermost TextObjectRefs]
+     *   1. Non-empty TextSelection → [SelectionRef] (el null — resolved by
+     *      the PM ancestor walk in computePlacement)
+     *   2. NodeSelection on TextObject → [TextObjectRef + nodeDOM]
+     *   3. Mouse hover over editor → [innermost..outermost + scanned el]
      *   4. Nothing → []
      */
-    const resolveActiveRefs = (
-      editor: Editor,
-    ): Array<TextObjectRef | SelectionRef> => {
+    const resolveActiveRefs = (editor: Editor): ResolvedRef[] => {
       const sel = editor.state.selection;
       // 1. Non-empty TextSelection — text-lift gesture.
       if (sel.from !== sel.to && !(sel instanceof NodeSelection)) {
@@ -1070,10 +1061,13 @@ export function TextObjectGrabHandle({ editorRef }: Props) {
         }
         if (paragraphId) {
           return [{
-            kind: "selection",
-            from: sel.from,
-            to: sel.to,
-            paragraphId,
+            ref: {
+              kind: "selection",
+              from: sel.from,
+              to: sel.to,
+              paragraphId,
+            },
+            el: null,
           }];
         }
       }
@@ -1086,7 +1080,12 @@ export function TextObjectGrabHandle({ editorRef }: Props) {
           name !== "linkedRange" &&
           (node.attrs?.uuid as string | null)
         ) {
-          return [{ kind: name as TextObjectKind, id: node.attrs.uuid as string }];
+          // O(1) DOM resolve: sel.from is the position right before the node.
+          const nodeDom = editor.view.nodeDOM(sel.from);
+          return [{
+            ref: { kind: name as TextObjectKind, id: node.attrs.uuid as string },
+            el: nodeDom instanceof HTMLElement ? nodeDom : null,
+          }];
         }
       }
       // 3. Mouse hover — every containing TextObject level via Y-axis
@@ -1110,10 +1109,10 @@ export function TextObjectGrabHandle({ editorRef }: Props) {
         setPlacements((p) => (p.length === 0 ? p : []));
         return;
       }
-      const refs = resolveActiveRefs(editor);
+      const resolved = resolveActiveRefs(editor);
       const next: Placement[] = [];
-      for (const r of refs) {
-        const p = computePlacement(editor, cacheRef.current, r);
+      for (const { ref, el } of resolved) {
+        const p = computePlacement(editor, cacheRef.current, ref, el);
         if (p) next.push(p);
       }
       setPlacements((prev) => (placementArrayEqual(prev, next) ? prev : next));
