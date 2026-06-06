@@ -110,7 +110,9 @@ editor/
 │   ├── archive-card.md         │ resolve via card_by_id, then route
 │   ├── restore-card.md         │ update/archive/restore/move/link through
 │   ├── move-card.md            │ apply_response (atomic, pen-wrapped)
-│   └── link-cards.md           ┘
+│   ├── link-cards.md           ┘
+│   └── reflect.md              dev-loop capture (chip 17, DEV mode only): write
+│                               a tiered memo after a skill → reflect.py
 ├── scripts/                    Python helpers (stdlib-only, py3.10+)
 │   ├── _common.py              shared paths/JSON/regex/notification helpers
 │   ├── library_path.py         canonical resolver for the library folder
@@ -130,9 +132,12 @@ editor/
 │   ├── bib_resolve.py          parse + surgically edit references.bib entries
 │   │                           (append/set-fields/replace) + annotation
 │   ├── bib_match_library.py    classify paper bib entries vs the library
-│   └── rename_citekey.py       pure citekey-rename rewriters (rewrite_tex /
-│                               rewrite_citations_json) — shared with the
-│                               apply_response renameCitekey op; no standalone write
+│   ├── rename_citekey.py       pure citekey-rename rewriters (rewrite_tex /
+│   │                           rewrite_citations_json) — shared with the
+│   │                           apply_response renameCitekey op; no standalone write
+│   └── reflect.py              dev-loop memo writer (chip 17): gated on
+│                               VIRGIL_DEV; reads the Task result, derives the
+│                               tier, writes editor/dev/memos/ (no paper write)
 ├── build/
 │   └── build-editor-bundle.mjs mirrors skills/ → .claude/commands/editor/
 └── AGENTS.md                   ← this file
@@ -222,6 +227,22 @@ absolute, both work.
   "ai"`, `status: "pending"` instead of editing in place.
 - Direct-create kinds (footnote, citation) insert without
   a suggestion wrapper — the user can delete if unwanted.
+- **Reflection (DEV mode) — the one shared seam.** When `VIRGIL_DEV=1`, reflect
+  after completing **any** skill: invoke `/editor/reflect <docPath> <skill>
+  <taskId>` to write a tiered dev-dream memo (the "day" capture layer of the
+  self-improvement loop — EDITOR_SKILLS_V1 §14; subsystem SSOT
+  [editor/dev/README.md](dev/README.md)). This is **one convention, not a
+  per-skill step** — every current and future skill inherits reflection from
+  this single rule; do not copy a "now write a memo" step into individual skill
+  files. The umbrella [`/editor/review`](skills/review.md) **enforces** it for
+  each subskill it dispatches; a directly-invoked skill reflects under this
+  convention. Reflection consumes the Task's already-stamped two-field `result`
+  (it does not re-derive the outcome), is read-only on the paper, and writes
+  only to the gitignored `editor/dev/memos/`. Outside DEV mode it is a no-op
+  (the script gates on `_common.dev_mode_enabled`), so it never runs — and
+  cannot be turned on — in an end-user session. This is **distinct** from the
+  per-paper "Memo discipline" below: that channel is cowork memos *about a
+  paper*; this one is memos *about the skill set itself*.
 - Memo discipline: dev memos under `<docPath>/.virgil/memos/<YYYY-MM-DD>-<slug>.md`,
   paper-specific reports under `<docPath>/notes/<slug>.md`. Only
   write a memo when something flagged a real ambiguity worth surfacing.
@@ -395,6 +416,16 @@ memo from `editor/dev/iterations/`, edits the skill markdown, and
 re-runs the same test case until it produces zero `[block]` items.
 Both dev dirs are gitignored. See
 [skills/iterate-virgil-editor.md](skills/iterate-virgil-editor.md).
+
+The **dev-dream self-improvement loop** generalizes this from synthesized
+single-skill stress-tests to ambient capture over *real* invocations. Its **day
+half** (chip 17) is the capture layer: in DEV mode (`VIRGIL_DEV=1`) every skill
+reflects via [`/editor/reflect`](skills/reflect.md) (the one convention above),
+writing tiered memos to `editor/dev/memos/` (gitignored, the sibling of
+`iterations/`). The **night half** — `/editor/dream`, which reads those memos
+and ripples improvements back into the skill set — is chip 18. The subsystem's
+single source of truth, including the memo schema and the relationship between
+`iterations/` and `memos/`, is **[editor/dev/README.md](dev/README.md)**.
 
 ## Don't
 

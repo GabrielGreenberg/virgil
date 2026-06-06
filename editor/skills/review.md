@@ -80,6 +80,22 @@ with `/loop /editor/review`.
    bounded. Pass through the request's full row from the JSONL as
    context to the subagent prompt.
 
+   **Reflection (DEV mode) — enforced here.** If `VIRGIL_DEV=1`, then after
+   each dispatched subskill returns (success *or* failure), reflect on it:
+
+   ```bash
+   python3 editor/scripts/reflect.py <docPath> <subskill> <taskId>
+   ```
+
+   This is the umbrella **enforcing** the one editor/AGENTS.md reflection
+   convention for every subskill it dispatches — it makes "every skill reflects"
+   true by construction rather than relying on each subagent to remember. When
+   the subagent surfaced concrete friction or a `Done:` line, pass it through
+   `--memo-json` (see [/editor/reflect](reflect.md)); a bare call still writes a
+   correctly-classified memo from the Task's `result`. The script no-ops when
+   `VIRGIL_DEV` is unset, so this line is inert in a normal or end-user session
+   — leave it in unconditionally.
+
    **Safety level + outcome.** A Task may carry a `safetyLevel` (1/2/3). The
    umbrella doesn't build cards or pick subcommands — the dispatched subskill
    reads the level off the Task and routes its card-create through

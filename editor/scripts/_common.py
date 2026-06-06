@@ -368,6 +368,37 @@ def now_iso() -> str:
 
 
 # ---------------------------------------------------------------------------
+# DEV mode — the dev-dream capture-layer toggle (EDITOR_SKILLS_V1 §14)
+#
+# DEV mode is a per-session *developer* affordance: when on, every editor-skill
+# invocation is followed by a reflection that writes a tiered memo (the "day"
+# half of the dev-dream self-improvement loop — see editor/dev/README.md). The
+# toggle is the `VIRGIL_DEV` env var, deliberately NOT a sidecar flag: it has no
+# UI surface and no on-disk presence, so it is truly per-session and **cannot
+# ship to an end user**. An end-user folder may carry the (inert) reflect skill,
+# but the gate stays off, so no memo is ever written outside a dev session.
+#
+# This is the single source of truth for "is the capture layer live" — both
+# reflect.py's gate and the /editor/review enforcement read it. Keep the read
+# here so no caller re-implements the truthiness rule.
+# ---------------------------------------------------------------------------
+
+DEV_MODE_ENV = "VIRGIL_DEV"
+_DEV_TRUE_TOKENS = {"1", "true", "yes", "on"}
+
+
+def dev_mode_enabled() -> bool:
+    """True iff `VIRGIL_DEV` is set to a truthy token.
+
+    Truthy == one of {1, true, yes, on} (case-insensitive, surrounding
+    whitespace ignored). Everything else — unset, empty, `0`, `false`, `no`,
+    `off`, or any unrecognized value — is OFF. OFF is the safe default, so a
+    typo'd or forgotten export never silently turns capture on (or, worse, on
+    in a context that ships to a user)."""
+    return os.environ.get(DEV_MODE_ENV, "").strip().lower() in _DEV_TRUE_TOKENS
+
+
+# ---------------------------------------------------------------------------
 # The editing pen (EDITOR_SKILLS_V1 §9)
 #
 # Before Claude writes any files, it briefly takes the editing pen so the user
