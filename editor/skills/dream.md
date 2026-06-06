@@ -251,14 +251,21 @@ precursor: it injects test cases, runs a skill in a sandbox, reads a `[block]`/
 is its **ambient, real-input, cross-skill, batch** generalization — same
 read-a-critique → edit-skill spine, but over passively-captured real memos.
 
-Chip 18 deliberately shares only the **genuinely-common, low-risk seams**: the
-memo reader (`reflect._parse_memo`) and this skill's landing-mode helper +
-boundary guard (`dream_land.py`, which `iterate` could later route its skill
-edits through — it currently only acts-directly and never proposes/refuses). The
-**full engine unification** — one shared read→edit loop and one memo shape
-folding `iterations/` into `memos/` — is the named **chip-19** follow-up, taken
-on only now that two real consumers exist and the true shared shape is visible
-(rule of three). **Do not refactor `iterate` here.**
+As of **chip 19** the two are **one engine**, sharing exactly the
+**genuinely-common** seams: the memo reader (`reflect._parse_memo`), the
+critique-memo shape, and this skill's landing-mode helper + boundary guard
+(`dream_land.py`). `iterate` routes its skill edits through `dream_land` via
+[`dev_loop.py`](../scripts/dev_loop.py) (the shared read→derive→route spine) and
+writes its critique in the same unified memo shape — `iterations/` and `memos/`
+are now two *labeled* streams of one shape, not two shapes.
+
+**The one thing that stays `dream`-specific is this skill's autonomy layer.**
+`dream` runs unattended, so its `proposes` verdict stages a change in a
+`dream/<date>` worktree. `iterate` runs synchronously, so it adopts `dream_land`
+as a **boundary guard only** — honoring `refused`, surfacing `proposes` for
+scrutiny, and landing non-refused edits inline. iterate did **not** inherit
+acts-on-branch / propose-via-worktree; that machinery is `dream`'s alone. See
+[editor/dev/README.md](../dev/README.md).
 
 ## Hard rules
 

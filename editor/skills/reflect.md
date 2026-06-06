@@ -155,9 +155,12 @@ single-memo dream pass rather than waiting for the overnight batch.
 
 `iterate` is the **manual, synthesized-input, single-skill** precursor; its
 memos live in `editor/dev/iterations/`. `reflect` is the **ambient, real-input,
-every-skill** sibling; its memos live in `editor/dev/memos/`. They are kept
-separate on purpose — **chip 18 unifies the two memo shapes under one engine.**
-Do **not** refactor `iterate` here.
+every-skill** sibling; its memos live in `editor/dev/memos/`. As of **chip 19**
+the two are **one engine**: both memo streams share this **one shape** and are
+read by the **one** reader (`reflect._parse_memo`); both route skill edits
+through the **one** boundary guard (`dream_land`). They stay two *labeled*
+streams (different input class — synthesized stress tests vs real ambient
+captures), not two shapes. See [editor/dev/README.md](../dev/README.md).
 
 ## Hard rules
 

@@ -144,9 +144,16 @@ editor/
 │   ├── dream.py                dev-loop night engine (chip 18): gated on
 │   │                           VIRGIL_DEV; select (memos since last dream, via
 │   │                           reflect._parse_memo) + digest (→ dream-digests/)
-│   └── dream_land.py           landing-mode classifier + the 3-boundary guard
-│                               (chip 18): acts / proposes / refused. Pure,
-│                               importable — iterate can adopt it (chip 19)
+│   ├── dream_land.py           landing-mode classifier + the 3-boundary guard
+│   │                           (chip 18): acts / proposes / refused. Pure,
+│   │                           importable — shared by dream + iterate (chip 19)
+│   └── dev_loop.py             the shared dev-loop engine (chip 19): composes
+│                               reflect._parse_memo (reader) + dream_land
+│                               (guard) into the read→derive→route spine.
+│                               write_iteration_memo (iterate's unified-shape
+│                               writer → editor/dev/iterations/) + route_edits
+│                               (iterate's boundary-guard adoption). NOT a second
+│                               parser/guard — the named door onto the shared ones
 ├── build/
 │   └── build-editor-bundle.mjs mirrors skills/ → .claude/commands/editor/
 └── AGENTS.md                   ← this file
@@ -420,11 +427,14 @@ dev meta-skill for stress-testing and refining the editor skills. It
 synthesizes representative AI requests, clones
 `samples/annotation-history` into a per-attempt sandbox under
 `editor/dev/sandboxes/`, spawns a fresh runner subagent that executes
-the target skill against the sandbox, reads a structured critique
-memo from `editor/dev/iterations/`, edits the skill markdown, and
-re-runs the same test case until it produces zero `[block]` items.
-Both dev dirs are gitignored. See
-[skills/iterate-virgil-editor.md](skills/iterate-virgil-editor.md).
+the target skill against the sandbox, reads the runner's critique
+memo from `editor/dev/iterations/` (written by `dev_loop.py` in the
+**unified memo shape**, chip 19), **routes each proposed skill edit
+through the boundary guard** (`dev_loop.py route-edits` →
+`dream_land.classify_change`), edits the skill markdown inline, and
+re-runs the same test case until the memo is no longer `flagged`. It
+stays synchronous + inline (no commit, no worktree). Both dev dirs are
+gitignored. See [skills/iterate-virgil-editor.md](skills/iterate-virgil-editor.md).
 
 The **dev-dream self-improvement loop** generalizes this from synthesized
 single-skill stress-tests to ambient capture over *real* invocations. Its **day
@@ -438,11 +448,16 @@ script / manifest / contract changes propose via a worktree) through the
 `dream_land.py` landing-mode helper, which **is** the three-boundary guard (the
 dream cannot edit the Don't-rules below, change the `apply_response.py` contract
 shape, or disable DEV mode), and writes a morning digest to
-`editor/dev/dream-digests/`. The full `iterate`↔`dream` engine unification is
-the **chip-19** follow-up (the two share only the memo reader + `dream_land`
-today). The subsystem's single source of truth, including the memo schema, the
-dream's landing modes + boundaries, and the relationship between `iterations/`
-and `memos/`, is **[editor/dev/README.md](dev/README.md)**.
+`editor/dev/dream-digests/`. **Chip 19 put `iterate` and `dream` on one engine**
+— one critique-memo shape, one reader (`reflect._parse_memo`), one boundary
+guard (`dream_land`), composed by [`dev_loop.py`](scripts/dev_loop.py). `iterate`
+adopts `dream_land` as a **boundary guard only**: it honors `refused`, surfaces
+`proposes` for scrutiny, and lands non-refused edits **inline** — it does NOT
+take on `dream`'s propose-via-worktree autonomy (that stays `dream`-specific).
+`iterations/` and `memos/` are two labeled streams of the **one** shape. The
+subsystem's single source of truth, including the memo schema, the dream's
+landing modes + boundaries, and the unified engine, is
+**[editor/dev/README.md](dev/README.md)**.
 
 ## Don't
 
