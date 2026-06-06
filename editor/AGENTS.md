@@ -111,8 +111,11 @@ editor/
 │   ├── restore-card.md         │ update/archive/restore/move/link through
 │   ├── move-card.md            │ apply_response (atomic, pen-wrapped)
 │   ├── link-cards.md           ┘
-│   └── reflect.md              dev-loop capture (chip 17, DEV mode only): write
-│                               a tiered memo after a skill → reflect.py
+│   ├── reflect.md              dev-loop capture (chip 17, DEV mode only): write
+│   │                           a tiered memo after a skill → reflect.py
+│   └── dream.md                dev-loop night (chip 18, DEV mode only): read the
+│                               memos since the last dream → route → digest →
+│                               reflect on itself; dream.py + dream_land.py
 ├── scripts/                    Python helpers (stdlib-only, py3.10+)
 │   ├── _common.py              shared paths/JSON/regex/notification helpers
 │   ├── library_path.py         canonical resolver for the library folder
@@ -135,9 +138,15 @@ editor/
 │   ├── rename_citekey.py       pure citekey-rename rewriters (rewrite_tex /
 │   │                           rewrite_citations_json) — shared with the
 │   │                           apply_response renameCitekey op; no standalone write
-│   └── reflect.py              dev-loop memo writer (chip 17): gated on
-│                               VIRGIL_DEV; reads the Task result, derives the
-│                               tier, writes editor/dev/memos/ (no paper write)
+│   ├── reflect.py              dev-loop memo writer (chip 17): gated on
+│   │                           VIRGIL_DEV; reads the Task result, derives the
+│   │                           tier, writes editor/dev/memos/ (no paper write)
+│   ├── dream.py                dev-loop night engine (chip 18): gated on
+│   │                           VIRGIL_DEV; select (memos since last dream, via
+│   │                           reflect._parse_memo) + digest (→ dream-digests/)
+│   └── dream_land.py           landing-mode classifier + the 3-boundary guard
+│                               (chip 18): acts / proposes / refused. Pure,
+│                               importable — iterate can adopt it (chip 19)
 ├── build/
 │   └── build-editor-bundle.mjs mirrors skills/ → .claude/commands/editor/
 └── AGENTS.md                   ← this file
@@ -422,10 +431,18 @@ single-skill stress-tests to ambient capture over *real* invocations. Its **day
 half** (chip 17) is the capture layer: in DEV mode (`VIRGIL_DEV=1`) every skill
 reflects via [`/editor/reflect`](skills/reflect.md) (the one convention above),
 writing tiered memos to `editor/dev/memos/` (gitignored, the sibling of
-`iterations/`). The **night half** — `/editor/dream`, which reads those memos
-and ripples improvements back into the skill set — is chip 18. The subsystem's
-single source of truth, including the memo schema and the relationship between
-`iterations/` and `memos/`, is **[editor/dev/README.md](dev/README.md)**.
+`iterations/`). The **night half** — [`/editor/dream`](skills/dream.md), chip 18
+— reads those memos and ripples improvements back into the skill set: it routes
+each change by scope (single-skill-prompt polish lands directly; cross-skill /
+script / manifest / contract changes propose via a worktree) through the
+`dream_land.py` landing-mode helper, which **is** the three-boundary guard (the
+dream cannot edit the Don't-rules below, change the `apply_response.py` contract
+shape, or disable DEV mode), and writes a morning digest to
+`editor/dev/dream-digests/`. The full `iterate`↔`dream` engine unification is
+the **chip-19** follow-up (the two share only the memo reader + `dream_land`
+today). The subsystem's single source of truth, including the memo schema, the
+dream's landing modes + boundaries, and the relationship between `iterations/`
+and `memos/`, is **[editor/dev/README.md](dev/README.md)**.
 
 ## Don't
 

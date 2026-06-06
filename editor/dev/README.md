@@ -8,20 +8,22 @@ Design source: [MEMO_DEV_DREAM_DESIGN.md](../../MEMO_DEV_DREAM_DESIGN.md) ·
 frozen spec: `EDITOR_SKILLS_V1.html` §14 · conceptual home:
 [docs/architecture/VIRGIL.md → Cowork pattern](../../docs/architecture/VIRGIL.md).
 
-> **Status.** The **day half** (the capture layer — this doc's main subject) is
-> built (chip 17). The **night half** (`/editor/dream`) is chip 18 — described
-> here only as the consumer the capture layer feeds.
+> **Status.** Both halves are built. The **day half** (the capture layer — this
+> doc's main subject) is chip 17; the **night half** (`/editor/dream`) is chip
+> 18 (see [The dream phase](#the-dream-phase-night-half)). The remaining work is
+> the chip-19 `iterate`↔`dream` engine unification (noted below) and the
+> Phase-8 UI.
 
 ## The loop, in one picture
 
 ```
-   Day (DEV mode ON)                        Night (dream phase — chip 18)
+   Day (DEV mode ON)                        Night (dream phase)
    skill runs ─► /editor/reflect                 /editor/dream
                  writes a tiered memo to    ├─ read all memos since last dream
                  editor/dev/memos/          ├─ detect cross-memo patterns
-                 <date>/<time>-<skill>.md   ├─ edit skill markdown / helpers /
-   you: "put this in the memo" ──┘             refactor / update the manifest
-                                              └─ write a morning dream-digest
+                 <date>/<time>-<skill>.md   ├─ route each → acts / proposes / refused
+   you: "put this in the memo" ──┘          ├─ apply acts; stage proposes; refuse boundaries
+                                            └─ write a morning dream-digest
 ```
 
 The day half is the **ambient, always-on** generalization of the manual
@@ -147,7 +149,89 @@ yields one memo per skill, so the draft's reflection is never clobbered by the
 accept/reject one. A Task-less op (`taskId = -`) is never deduped — each gets a
 fresh file.
 
-## `iterations/` vs `memos/` — and chip 18
+## The dream phase (night half)
+
+[`/editor/dream`](../skills/dream.md) is the overnight pass that **consumes**
+the memos. Like reflect, it splits an agent-facing skill from deterministic
+scripts; unlike reflect, it also *acts* — so the riskier landing decisions are
+made by a guard, not by feel.
+
+- **[`dream.py`](../scripts/dream.py)** — `select` (find + group the memos since
+  the last dream) and `digest` (write the morning summary + the next marker).
+  Gated on `VIRGIL_DEV`; reuses `reflect._parse_memo` (no second parser).
+- **[`dream_land.py`](../scripts/dream_land.py)** — `classify_change` →
+  `acts` / `proposes` / `refused`. The shared landing-mode helper **and** the
+  three-boundary guard, in one pure, dry-run-safe module.
+
+**The flow:** `select` → detect cross-memo patterns → route each change through
+`dream_land` → apply the `acts`, stage the `proposes`, record the `refused` →
+`digest` → reflect on the run itself (bootstrap).
+
+### Since-last-dream selection
+
+Each digest records a high-water `marker` (the greatest memo timestamp it
+processed, with the memo path as the tie-break). The next `select` reads only
+memos **strictly after** it, so an already-digested memo is never re-processed.
+No prior digest → the bootstrap dream reads every memo. (A re-`--tag`'d old memo
+keeps its original `reflectedAt`, so it is not re-selected — matching "don't
+re-process"; a future `updatedAt` channel is a chip-19 forward item.)
+
+### The two landing modes (scope-determined)
+
+| Mode | When | Where it lands |
+|---|---|---|
+| **acts** | a single skill-prompt `.md`, prose-polish intent (`tighten-wording` / `add-example` / `fix-typo` / `expand-guidance` / `clarify`), no contract token | committed directly on the dream branch — the user merges/reverts via git |
+| **proposes** | cross-skill · any `.py` script · the manifest (`docs/workspace/`) · rename/merge/split · any contract-adjacent change | staged in a `dream/<date>` worktree; the digest carries a `git merge dream/<date>` hint for review |
+| **refused** | crosses a boundary (below) | recorded only — never applied, never proposed |
+
+Precedence is **refused > proposes > acts**: the boundary guard runs first, and
+an unspecified intent on a lone skill prompt defaults to *propose* (acts is the
+privileged fast lane, asked for explicitly). The **fast-path** — a memo that is
+`flagged` **and** `fixNow` — gets an immediate narrow single-memo pass, but
+acts-directly only; if its change classifies as `proposes`/`refused` it drops
+back to the batch.
+
+### The three enforced boundaries (the guard, not convention)
+
+`classify_change` returns `refused` — by construction, derived from the change's
+content — for any change that would:
+
+1. **(B1)** edit the architectural Don't-rules in `editor/AGENTS.md` (also the
+   DEV-reflection convention living there — touching it unwires capture).
+2. **(B2)** change the `apply_response.py` contract shape — subcommands,
+   `RESULT_*`/`STATUS_*` vocab, or the op-json schema.
+3. **(B3)** disable DEV mode itself — the `VIRGIL_DEV` gate /
+   `dev_mode_enabled` or its enforcement in `reflect.py`/`dream.py`.
+
+A boundary-sensitive file edited with no content to adjudicate is refused (a
+blind edit can't be proven safe). These are the load-bearing invariants the
+loop runs *inside*.
+
+### The digest
+
+`editor/dev/dream-digests/<YYYY-MM-DD>.md` — **gitignored**, the sibling of
+`memos/` and `iterations/` (with a checked-in `.gitkeep`). Written **every**
+run, even a no-op night. Frontmatter carries `dreamedAt` / `since` / `marker` /
+`markerMemo` / the acted/proposed/refused counts / `dreamSha`; the body lists
+the ACTED, PROPOSED (each with its merge hint), and REFUSED (each with its
+boundary) entries, the counts by tier/skill/lens, and a bootstrap note. The
+clock is pinnable via `VIRGIL_DREAM_NOW` (mirroring reflect's `VIRGIL_REFLECT_NOW`).
+
+### Bootstrap / recursion
+
+The dream is itself a Virgil skill, so it reflects on its **own** run via
+`/editor/reflect <docPath> dream -` **after** the digest — that `skill=dream`
+memo lands past this run's marker, so the next dream reads it first (it's the
+dream's own track record). "The first dreams will be the worst."
+
+### Scheduling (both documented; neither wired)
+
+`/loop /editor/dream` on a long interval (simplest to start) **or** a scheduled
+task / cron (the steady state). Same skill, same since-last-dream selection —
+only the trigger differs. The dream skill documents both; this subsystem stands
+up no scheduler.
+
+## `iterations/` vs `memos/` — and the chip-19 unification
 
 | Dir | Written by | Input | Shape |
 |---|---|---|---|
@@ -155,35 +239,48 @@ fresh file.
 | `editor/dev/memos/` | `/editor/reflect` (this loop) | **real** invocations, every skill, ambient | 4 buckets / 3 tiers |
 | `editor/dev/sandboxes/` | `/editor/iterate-virgil-editor` | per-attempt sample clones | (scratch) |
 
-These are two memo shapes for one purpose. **Chip 18 unifies them under one
-engine** — `iterate` becomes the "synthesized-input, single-skill, synchronous"
-special case of the same reflect→read→edit loop the `dream` phase runs
-ambiently. **Do not refactor `iterate` to chase that here** (chip 17 only notes
-the relationship).
+These are two memo shapes for one purpose. They are **not yet unified** — chip
+18 (`dream`) and chip 17 (`reflect`) are two *standalone* consumers of the
+dev-loop, sharing only the genuinely-common seams (the `_parse_memo` reader and
+`dream_land`). The **full engine unification** — one shared read→edit loop, with
+`iterate` becoming the "synthesized-input, single-skill, synchronous" special
+case and `iterations/` folding into `memos/` — is the deliberate **chip-19**
+follow-up, taken on now that two real consumers exist and the true shared shape
+is visible (rule of three). **`iterate` is untouched by chip 18.**
 
-### What chip 18 (`/editor/dream`) will consume
+The seams chip 18 already factored, so chip 19 inherits them: `iterate` could
+route its skill-markdown edits through `dream_land.classify_change` (it
+currently only acts-directly and never proposes/refuses), and both consumers
+read memos through `reflect._parse_memo`.
+
+### What the dream consumes (chip 18 — built)
 
 The dream reads the chip-17 memos since the last dream, keying on the
 frontmatter: `flagged` first (and any `fixNow: true` on the fast-path),
 `noted` grouped by skill + bucket, `unremarkable` only counted. It filters by
 `result` for its audits (rejection corpus / silent-edit audit / refusal
-patterns). It then acts (single-skill-prompt polish lands directly; cross-skill
-/ script / manifest / contract changes propose via a worktree) and writes a
-morning digest to `editor/dev/dream-digests/`.
-
-**Flagged for chip 18** (not built here): the dream's two landing modes, the
-`fix-now` fast-path execution, the digest, and the three enforced boundaries
-(the dream cannot edit the `editor/AGENTS.md` Don't-rules, change the
-`apply_response.py` contract shape, or disable DEV mode itself). Forward-compat:
-the §15 rules still hold — reserved overlay paths stay in the sync deny-list,
+patterns). It then routes each change (`acts` lands single-skill-prompt polish
+directly; `proposes` stages cross-skill / script / manifest / contract changes
+in a worktree; `refused` blocks a boundary crossing) and writes a morning
+digest to `editor/dev/dream-digests/` — all detailed under
+[The dream phase](#the-dream-phase-night-half) above. Forward-compat: the §15
+rules still hold — reserved overlay paths stay in the sync deny-list,
 `result: rejected` rows are kept indefinitely (rejection-fidelity for future
-retro-learning).
+retro-learning), and there is no user-dream (v2).
 
 ## Tests
 
-`editor/scripts/tests/test_reflect_capture_slice.py` — the capture slice: each
-`result` value → the right tier/bucket; DEV-off → no memo; the user-tag tier
-promotion; idempotent re-run. Run the whole editor suite with:
+`editor/scripts/tests/test_reflect_capture_slice.py` — the **capture** slice:
+each `result` value → the right tier/bucket; DEV-off → no memo; the user-tag
+tier promotion; idempotent re-run.
+
+`editor/scripts/tests/test_dream_slice.py` — the **dream** slice: acts-vs-
+proposes routing by scope; boundary-refusal for each of the three; the
+flagged+fix-now fast-path; the since-last-dream selector (already-digested memos
+skipped); the digest with ACTED+PROPOSED+REFUSED entries; and the bootstrap
+(a `skill=dream` memo the next dream reads).
+
+Run the whole editor suite with:
 
 ```bash
 for t in editor/scripts/tests/test_*.py; do python3 "$t"; done
