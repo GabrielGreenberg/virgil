@@ -8,11 +8,13 @@ Design source: [MEMO_DEV_DREAM_DESIGN.md](../../MEMO_DEV_DREAM_DESIGN.md) ·
 frozen spec: `EDITOR_SKILLS_V1.html` §14 · conceptual home:
 [docs/architecture/VIRGIL.md → Cowork pattern](../../docs/architecture/VIRGIL.md).
 
-> **Status.** Both halves are built. The **day half** (the capture layer — this
-> doc's main subject) is chip 17; the **night half** (`/editor/dream`) is chip
-> 18 (see [The dream phase](#the-dream-phase-night-half)). The remaining work is
-> the chip-19 `iterate`↔`dream` engine unification (noted below) and the
-> Phase-8 UI.
+> **Status.** Both halves are built, and the two entry points are **unified**.
+> The **day half** (the capture layer — this doc's main subject) is chip 17; the
+> **night half** (`/editor/dream`) is chip 18 (see
+> [The dream phase](#the-dream-phase-night-half)). Chip 19 put `/editor/iterate-virgil-editor`
+> on the **same engine** — one critique-memo shape, one reader, one boundary
+> guard — see [The unified engine](#the-unified-engine-iterations-and-memos-chip-19).
+> The remaining work is the Phase-8 UI.
 
 ## The loop, in one picture
 
@@ -174,7 +176,8 @@ processed, with the memo path as the tie-break). The next `select` reads only
 memos **strictly after** it, so an already-digested memo is never re-processed.
 No prior digest → the bootstrap dream reads every memo. (A re-`--tag`'d old memo
 keeps its original `reflectedAt`, so it is not re-selected — matching "don't
-re-process"; a future `updatedAt` channel is a chip-19 forward item.)
+re-process"; re-selecting a re-tagged memo via a future `updatedAt` channel
+remains a forward item, deferred past the chip-19 unification.)
 
 ### The two landing modes (scope-determined)
 
@@ -231,27 +234,71 @@ task / cron (the steady state). Same skill, same since-last-dream selection —
 only the trigger differs. The dream skill documents both; this subsystem stands
 up no scheduler.
 
-## `iterations/` vs `memos/` — and the chip-19 unification
+## The unified engine: `iterations/` and `memos/` (chip 19)
+
+There is **one** dev-loop engine — { read a structured critique memo → derive
+proposed skill-markdown changes → route each through the boundary guard → land
+it → record } — with **two entry points** into it:
+
+| Entry point | Input | Skills | Cadence | Lands edits |
+|---|---|---|---|---|
+| [`/editor/iterate-virgil-editor`](../skills/iterate-virgil-editor.md) | **synthesized** + sandboxed | single skill | **synchronous** (you watch) | **inline** in the working tree (no commit) |
+| [`/editor/reflect`](../skills/reflect.md) + [`/editor/dream`](../skills/dream.md) | **real** invocations (chip-17 memos) | cross-skill | **ambient** overnight batch | acts-on-branch / **proposes-via-worktree** / digest |
+
+What the two **genuinely share** — and now use by construction, not convention:
+
+1. **One critique-memo shape + one reader.** Both streams' memos carry reflect's
+   frontmatter + the four buckets + a tier, and **both are read by the one
+   reader** [`reflect._parse_memo`](../scripts/reflect.py) — there is no second
+   parser. iterate's old `[block]`/`[nice-to-have]` critique maps onto it:
+   `[block]` → `flagged` + the `issues` bucket; `[nice-to-have]` → `noted` +
+   `streamlining`; ambiguities → `issues`; judgment calls → `alignment`.
+2. **One boundary guard.** Both route every proposed change through
+   [`dream_land.classify_change`](../scripts/dream_land.py) → `acts` / `proposes`
+   / `refused` — the same three boundaries (B1/B2/B3) the loop cannot cross.
+3. **The read→derive→route spine**, [`dev_loop.py`](../scripts/dev_loop.py),
+   composes the reader + the vocabulary + the guard. `dream` consumes the reader
+   + guard directly (`dream.py`/`dream_land.py`); `iterate` consumes them through
+   `dev_loop`'s two iterate-facing seams — `write_iteration_memo` (the unified
+   writer for the `iterations/` stream) and `route_edits` (the guard-adoption
+   partition: `acts` → land inline · `proposes` → land inline **and flag for a
+   separate pass** · `refused` → block + log). No second reader, no second guard.
+
+What stays **specialized** (and is deliberately *not* merged):
+
+- **Input acquisition + cadence.** iterate synthesizes its own requests, clones a
+  sandbox, and spawns a runner subagent per attempt; reflect/dream select real
+  memos since the last dream and batch them. iterate converges per-case; dream
+  digests once a night.
+- **⚠ The autonomy layer is `dream`-only.** Because `dream` runs **unattended**,
+  its `proposes` verdict means *stage it in a `dream/<date>` worktree for review*.
+  `iterate` runs **synchronously with the maintainer watching the diff**, so it
+  adopts `dream_land` purely as a **boundary guard**: it honors `refused` (the
+  safety net it previously lacked), **surfaces** a `proposes`-class verdict as
+  "extra scrutiny / consider a separate pass," and lands every non-refused edit
+  **inline** — it never stands up a worktree and never commits. iterate did **not**
+  inherit dream's acts-on-branch / propose-via-worktree machinery.
+
+So `iterations/` and `memos/` are **two labeled streams, one shape** — kept
+separate on purpose (the dream consumes only `memos/`; iterate consumes only
+`iterations/`, inline) because their *input class* differs (synthesized stress
+tests vs real ambient captures), while sharing the one memo shape, the one
+reader, and the one guard. The iterate memo is stream-labeled `stream: iterations`
+and carries iterate-only frontmatter (`case`, `attempt`, `sandbox`, `blockCount`,
+`niceCount`) + the per-attempt actions log as body sections the shared reader
+tolerates.
 
 | Dir | Written by | Input | Shape |
 |---|---|---|---|
-| `editor/dev/iterations/` | `/editor/iterate-virgil-editor` | **synthesized** requests, single skill, synchronous | `[block]`/`[nice-to-have]` critique |
-| `editor/dev/memos/` | `/editor/reflect` (this loop) | **real** invocations, every skill, ambient | 4 buckets / 3 tiers |
+| `editor/dev/iterations/` | `/editor/iterate-virgil-editor` (via `dev_loop.py`) | **synthesized** requests, single skill, synchronous | unified: frontmatter + 4 buckets + 3 tiers |
+| `editor/dev/memos/` | `/editor/reflect` (via `reflect.py`) | **real** invocations, every skill, ambient | unified: frontmatter + 4 buckets + 3 tiers |
 | `editor/dev/sandboxes/` | `/editor/iterate-virgil-editor` | per-attempt sample clones | (scratch) |
 
-These are two memo shapes for one purpose. They are **not yet unified** — chip
-18 (`dream`) and chip 17 (`reflect`) are two *standalone* consumers of the
-dev-loop, sharing only the genuinely-common seams (the `_parse_memo` reader and
-`dream_land`). The **full engine unification** — one shared read→edit loop, with
-`iterate` becoming the "synthesized-input, single-skill, synchronous" special
-case and `iterations/` folding into `memos/` — is the deliberate **chip-19**
-follow-up, taken on now that two real consumers exist and the true shared shape
-is visible (rule of three). **`iterate` is untouched by chip 18.**
-
-The seams chip 18 already factored, so chip 19 inherits them: `iterate` could
-route its skill-markdown edits through `dream_land.classify_change` (it
-currently only acts-directly and never proposes/refuses), and both consumers
-read memos through `reflect._parse_memo`.
+One nuance on gating: the **`memos/` stream is DEV-gated** (ambient capture must
+never run for an end user), but the **`iterations/` stream is not** — iterate is
+an explicit, synchronous test a maintainer invoked, so `dev_loop.write_iteration_memo`
+writes regardless of `VIRGIL_DEV` (it never runs in an end-user session anyway —
+it requires the repo + the sample fixture).
 
 ### What the dream consumes (chip 18 — built)
 
@@ -279,6 +326,16 @@ proposes routing by scope; boundary-refusal for each of the three; the
 flagged+fix-now fast-path; the since-last-dream selector (already-digested memos
 skipped); the digest with ACTED+PROPOSED+REFUSED entries; and the bootstrap
 (a `skill=dream` memo the next dream reads).
+
+`editor/scripts/tests/test_unify_slice.py` — the **unification** slice (chip 19):
+the one engine has no forks (`dev_loop` reuses `reflect._parse_memo` +
+`dream_land.classify_change` + `reflect._render_buckets` by identity); a reflect
+memo and an iterate memo parse via the **one** reader into the same structure;
+the `[block]`→`flagged`/`[nice-to-have]`→`noted` + bucket mapping; iterate's
+boundary-refusal (the three boundaries → blocked + not landed); a normal
+single-skill prose edit lands inline; a cross-skill survey edit is surfaced
+(`proposes`, landed inline + flagged) and **not** auto-worktree'd; the
+iterations stream is DEV-ungated.
 
 Run the whole editor suite with:
 

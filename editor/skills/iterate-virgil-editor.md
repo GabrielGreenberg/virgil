@@ -19,13 +19,26 @@ agent invoking this) act as the **loop driver**: brainstorm test cases,
 clone `samples/annotation-history` into a scratch sandbox per attempt,
 inject a synthetic AI request, spawn a fresh runner subagent that reads
 the target skill markdown and executes it against the sandbox, read
-the runner's critique memo, edit the skill markdown, and re-run the
-same test case until it produces zero `[block]` items.
+the runner's critique memo, **route each proposed skill edit through the
+boundary guard**, edit the skill markdown inline, and re-run the same
+test case until the memo is no longer `flagged`.
 
 Unlike `/library/iterate-skill`, which iterates against the user's
 real `~/Virgil-Library/`, this skill iterates against **synthesized**
 requests in a sandbox copy. The user's real paper folders are never
 touched.
+
+**This is one of two entry points to a single dev-loop engine** (chip 19;
+[editor/dev/README.md](../dev/README.md)). `iterate` is the *synthesized-input,
+single-skill, synchronous* entry; [`/editor/dream`](dream.md) is the
+*real-input, cross-skill, ambient* entry. They share the same critique-memo
+shape, the same reader, and the same boundary guard — built from two real
+consumers, not duplicated. What stays **specialized to `iterate`**: it
+synthesizes its own input + sandboxes it, and it lands every non-refused edit
+**inline in the working tree** (synchronous, no commit — the maintainer watches
+`git diff editor/skills/`). It does **not** take on `dream`'s autonomous
+acts-on-branch / propose-via-worktree machinery — see
+[The boundary guard](#the-boundary-guard-chip-19) below.
 
 ## Args
 
@@ -189,7 +202,15 @@ PY
 Use the `Agent` tool with `subagent_type: "general-purpose"`. The
 prompt is fully self-contained — the runner has zero context from this
 session. Substitute `<skill>`, `<sandbox-abs-path>`, `<case-slug>`,
-`<attempt-k>`, `<request-json>`, `<date>`:
+`<attempt-k>`, `<request-json>`, `<kind>`, `<paragraph-uuid>`.
+
+The runner no longer hand-writes the memo markdown. It composes a structured
+**critique JSON** and hands it to `dev_loop.py write-iteration-memo`, which
+renders it in the **unified memo shape** (the same frontmatter + four buckets +
+tiers as `/editor/reflect`'s memos) and writes it to the canonical iterations
+path. This is the chip-19 unification: one memo shape, one writer, read by the
+one shared reader. The script does the `[block]`→`flagged`/`[nice-to-have]`→`noted`
++ bucket mapping; the runner just supplies the qualitative critique.
 
 > **You are running the Virgil editor skill `<skill>` against a sandboxed paper folder. You are NOT iterating the skill; you are executing it as a fresh agent would.**
 >
@@ -202,70 +223,88 @@ session. Substitute `<skill>`, `<sandbox-abs-path>`, `<case-slug>`,
 > Steps:
 > 1. Read `editor/skills/<skill>.md` (relative to cwd) IN FULL. Treat it as your instructions for what follows.
 > 2. Execute the skill on the sandbox path. Run python helpers from `editor/scripts/`, edit `.tex`, invoke `apply_response.py` — exactly as a real user invocation would. The sandbox is yours to mutate; **do not touch `samples/annotation-history` or any other path**. When the markdown leaves a choice underspecified, log it as an ambiguity rather than guessing silently.
-> 3. After the run completes (success, partial, or failure), write a memo to `editor/dev/iterations/<date>-<skill>/<case-slug>-attempt<attempt-k>.md` (relative to cwd; create parent dirs) using EXACTLY this template:
+> 3. After the run completes, write your critique as JSON to `<sandbox-abs-path>/.iterate-critique.json` using EXACTLY this schema (omit a field that's empty):
 >
-> ```markdown
-> # <skill> on <case-slug> — attempt <attempt-k>
->
-> **Skill SHA**: <output of: git rev-parse HEAD:editor/skills/<skill>.md>
-> **Run started**: <ISO timestamp>
-> **Result**: success | partial | failure
-> **Synthetic request**: <one-line summary of what you were asked to resolve>
-> **Sandbox**: <sandbox-abs-path>
->
-> ## Actions taken
-> <bulleted log of concrete operations: scripts invoked with their args, sidecars written, .tex edits with line ranges, HTTP fetches. One bullet per discrete action.>
->
-> ## Ambiguities encountered
-> <each entry: quote the line of editor/skills/<skill>.md that was ambiguous, then state what the markdown should have said to remove the ambiguity. If none, write "None.">
->
-> ## Judgment calls made
-> <discretionary choices you made and why. If none, write "None.">
->
-> ## Final sandbox state
-> - ai-requests.json status flips: <id → status>
-> - result cards created: <panel/id>
-> - .tex edits: <line ranges or "none">
-> - notifications appended: <count>
-> - version.txt: <new value>
->
-> ## Suggested skill edits
-> <each entry prefixed with [block] or [nice-to-have], referencing a line number in editor/skills/<skill>.md, with a concrete proposed change. [block] = the skill cannot be reliably executed without this fix. [nice-to-have] = quality improvement. If none, write "None.">
+> ```json
+> {
+>   "skill": "<skill>",
+>   "case": "<case-slug>",
+>   "attempt": <attempt-k>,
+>   "taskId": "<the synthetic request id, or '-'>",
+>   "kind": "<kind>",
+>   "paragraphIds": ["<paragraph-uuid>"],
+>   "sandbox": "<sandbox-abs-path>",
+>   "result": "success | partial | failure",
+>   "summary": "<one-line summary of what you were asked to resolve / your Done: line>",
+>   "actions": ["<one bullet per discrete op: scripts + args, sidecars written, .tex edits with line ranges, HTTP fetches>"],
+>   "ambiguities": [{"quote": "<the ambiguous line of editor/skills/<skill>.md>", "fix": "<what it should have said to remove the ambiguity>"}],
+>   "judgmentCalls": ["<a discretionary choice you made and why>"],
+>   "edits": [{"severity": "block | nice-to-have", "line": <line number in editor/skills/<skill>.md>, "change": "<the concrete proposed change>"}],
+>   "finalState": {"ai-requests": "<id → status>", "cards": "<panel/id>", "tex": "<line ranges or none>", "notifications": <count>, "version": "<new value>"}
+> }
 > ```
 >
-> 4. Reply with ONLY the absolute path to the memo file you wrote, plus a one-line summary in the form `BLOCK=<n> NICE=<m>`. Do not edit `editor/skills/<skill>.md`. Do not write any other files outside the sandbox or the memo path.
+>    `severity: "block"` = the skill cannot be reliably executed without this fix (→ the memo is `flagged`). `severity: "nice-to-have"` = a quality improvement (→ `noted`). Ambiguities go to the `issues` bucket; judgment calls to `alignment`; `block` edits to `issues`; `nice-to-have` edits to `streamlining`.
+> 4. Hand the critique to the writer (it computes the tier + the memo path and writes the unified-shape memo to `editor/dev/iterations/<date>-<skill>/<case-slug>-attempt<attempt-k>.md`):
+>
+>    ```bash
+>    python3 editor/scripts/dev_loop.py write-iteration-memo --json @<sandbox-abs-path>/.iterate-critique.json
+>    ```
+> 5. Reply with ONLY the script's `Done:` line (it carries the memo path + `tier=<t>, block=<n>, nice=<m>`). Do not edit `editor/skills/<skill>.md`. Do not write any file outside the sandbox (the writer owns the memo path).
 >
 > Hard rules:
-> - All mutations confined to `<sandbox-abs-path>`. No edits anywhere else in the repo except your memo file.
-> - You may not edit any file under `editor/skills/`. Only the memo file you write is allowed.
+> - All mutations confined to `<sandbox-abs-path>` (your critique JSON included). The writer script is the ONLY thing that writes outside the sandbox, and only to the iterations memo path.
+> - You may not edit any file under `editor/skills/`.
 > - If the skill markdown contradicts itself, follow your best interpretation and log the contradiction as an ambiguity.
 > - The point is to surface friction. Be exact and unsparing about ambiguities — vague memos waste the iteration.
 
-#### 2d. Read the memo + apply edits
+#### 2d. Read the memo, route each edit through the guard, apply inline
 
-Read the memo file the runner wrote. Extract:
-- Result (success / partial / failure)
-- Count of `[block]` items
-- Count of `[nice-to-have]` items
-- The full text of every `Suggested skill edits` entry
+Read the memo file the runner wrote. It is now in the **unified shape** — the
+same frontmatter + four buckets the dream reads. Extract via the one shared
+reader (no second parser):
 
-For each `[block]` item: edit `editor/skills/<skill>.md` directly to
-apply the suggested change (or a better version of it — the suggestion
-is advisory, the goal is to make the skill unambiguous to a fresh
-agent).
+```bash
+# the frontmatter (tier, blockCount, niceCount, result) + the buckets:
+python3 -c "import sys; sys.path.insert(0,'editor/scripts'); from reflect import _parse_memo; \
+fm,sec=_parse_memo(open('<memo-path>').read()); print(fm['tier'], fm['blockCount'], fm['niceCount']); print(sec['issues'])"
+```
 
-For `[nice-to-have]` items: judgment call. Apply if it's a clear win
-(typo, missing example, broken link). Skip if it'd bloat the skill or
-add scope.
+- `tier: flagged` (≥1 `[block]`) → fixes are needed; build a change per block item.
+- `tier: noted` (`[nice-to-have]` only, or logged friction) → advisory; apply only the clear wins (typo, missing example, broken link). Skip anything that would bloat the skill.
+- `tier: unremarkable` → clean. Nothing to apply.
 
-If the memo flags only sandbox/environmental issues (e.g. "fixture
-missing X") and zero ambiguity items: do not edit the skill. Re-clone
-the sandbox if the issue was a sandbox quirk; otherwise advance.
+The `issues` bucket holds the ambiguities + `[block]` items; `streamlining` the
+`[nice-to-have]` items; `alignment` the judgment calls. If the memo flags only a
+sandbox/environmental issue (e.g. "fixture missing X") and no real skill
+ambiguity: do not edit the skill — re-clone if it was a sandbox quirk, else advance.
+
+**Then route every proposed edit through the boundary guard before applying it**
+— this is iterate's chip-19 safety net. For each edit you intend to make, build a
+change object and classify it:
+
+```bash
+# edits.json: a list of change objects you're about to make to skill markdown
+# [{ "summary": "...", "paths": ["editor/skills/<skill>.md"],
+#    "intent": "tighten-wording|add-example|fix-typo|expand-guidance|clarify",
+#    "oldText": "<exact text to replace>", "newText": "<replacement>" }]
+python3 editor/scripts/dev_loop.py route-edits --edits @edits.json
+# → { "acts": [...], "surface": [...], "blocked": [...], "counts": {...} }
+```
+
+Then act on the partition (you stay **synchronous + inline** — no worktree, no commit):
+
+- **`acts`** (single-skill prose polish) → apply the edit to `editor/skills/<skill>.md` directly. The suggestion is advisory; the goal is to make the skill unambiguous to a fresh agent.
+- **`surface`** (`proposes`-class: cross-skill / `.py` / manifest / contract-adjacent / structural) → still apply it inline (the maintainer is watching the diff), **but flag it** in your scratch log + the final summary as *"needs extra scrutiny — consider a separate pass."* Do **not** spin up a worktree; that is `dream`'s job, not iterate's.
+- **`blocked`** (`refused`: an `editor/AGENTS.md` Don't-rule, the `apply_response.py` contract shape, or the `VIRGIL_DEV` gate) → **do NOT apply it.** Record the refusal (its `boundary` + `reason`) in scratch + the final summary. A `[block]` whose only fix is a refused edit cannot be resolved here — surface it to the maintainer instead of working around the boundary.
 
 #### 2e. Re-run or advance
 
-- **Zero `[block]` items**: this test case is clean. Advance to the next test case.
-- **≥1 `[block]` item AND attempts < 4 AND total attempts for this skill < cap**: re-run the same test case with `attempt<k+1>` against a fresh sandbox to verify the edit actually fixed the friction (and didn't introduce new ambiguity). The synthetic request body is reused verbatim.
+The clean criterion is now the memo **tier**, and the guard gates the re-run:
+
+- **`tier: noted` or `unremarkable`**: this test case is clean (no `[block]`). Advance to the next test case.
+- **`tier: flagged` AND you applied ≥1 inline edit (acts/surface) this attempt AND attempts < 4 AND total attempts for this skill < cap**: re-run the same test case with `attempt<k+1>` against a fresh sandbox to verify the edit actually fixed the friction (and didn't introduce new ambiguity). The synthetic request body is reused verbatim.
+- **`tier: flagged` but every proposed edit was `blocked` (refused)**: do NOT re-run — re-running can't converge on a boundary you won't cross. Log the refused block(s) for the maintainer and advance.
 - **Per-case cap (4 attempts) hit OR skill cap hit**: log the unresolved blocks in scratch state, advance to the next test case anyway.
 
 #### 2f. Skill-stable check
@@ -287,9 +326,18 @@ itself, no subagent:
    - All Python helper invocations use the same path (`editor/scripts/<x>.py` from repo root).
    - All `apply_response.py` op-json shapes match the schema.
    - No skill duplicates logic that lives in `editor/scripts/_common.py`.
-3. Edit any drift inline. If the survey edits a skill that has
-   already been marked stable, re-run one happy-path iteration on
-   that skill to confirm it still passes.
+3. **Route every drift edit through the same guard** (`dev_loop.py route-edits`)
+   before applying it — the survey is exactly where boundary crossings hide,
+   because it reads/edits `editor/AGENTS.md` and touches several skills at once:
+   - A genuinely-cross-skill edit (≥2 skill prompts, e.g. unifying the `Done:`
+     line everywhere) classifies as **`surface`** (proposes). Apply it inline but
+     flag it as a cross-skill change for extra scrutiny — these are the edits most
+     worth a deliberate, separate pass.
+   - An edit to an `editor/AGENTS.md` Don't-rule, the contract shape, or the DEV
+     gate classifies as **`blocked`** (refused) — do NOT apply it; surface it.
+   - Single-skill drift fixes classify as **`acts`** — apply inline as usual.
+   If the survey edits a skill that has already been marked stable, re-run one
+   happy-path iteration on that skill to confirm it still passes.
 
 ## End-of-loop
 
@@ -304,24 +352,70 @@ complete):
    skill so the user's next invocation picks up the edits.
 
 2. **Print a summary** in your reply, ≤15 lines:
-   - Skills iterated, total test cases run, total attempts, total `[block]` items raised vs. addressed.
+   - Skills iterated, total test cases run, total attempts, total `flagged` (`[block]`) memos raised vs. addressed.
    - Per-skill stability verdict (✓ stable / ✗ unresolved blocks).
+   - **Surfaced (`proposes`-class) edits** that landed inline but want a deliberate separate pass (cross-skill / script / manifest / contract-adjacent).
+   - **Refused (boundary) edits** the guard blocked — one line each with its boundary, so the maintainer can decide deliberately (the loop never crosses them).
    - Path to iterations dir for this run: `editor/dev/iterations/<date>-*/`.
    - Sandbox dir for inspection: `editor/dev/sandboxes/<date>-*/`.
-   - One-line note per unresolved `[block]` item, if any.
    - Reminder: `git diff editor/skills/` to review edits, `rm -rf editor/dev/sandboxes/` to clean up.
+
+## The boundary guard (chip 19)
+
+iterate and [`/editor/dream`](dream.md) share one boundary guard
+([`dream_land.classify_change`](../scripts/dream_land.py)), routed for iterate
+through [`dev_loop.route_edits`](../scripts/dev_loop.py). Every skill edit — at
+the per-case apply step (2d) **and** the cross-skill survey (3) — is classified
+into one of three modes, and iterate honors each:
+
+| Mode | What it is | What iterate does |
+|---|---|---|
+| **acts** | single-skill prose polish, no contract token | apply inline (the normal case) |
+| **surface** | `proposes`-class: cross-skill / `.py` / manifest / contract-adjacent / structural | apply inline **and flag** for a deliberate separate pass — **no worktree** |
+| **blocked** | `refused`: an `editor/AGENTS.md` Don't-rule, the `apply_response.py` contract shape, or the `VIRGIL_DEV` gate | **do NOT apply** — record the boundary + surface it |
+
+**The autonomy layer is `dream`-only.** `dream` runs unattended overnight, so its
+`proposes` verdict means *stage it in a `dream/<date>` worktree for review*.
+iterate runs **synchronously with the maintainer watching the diff**, so it lands
+every non-refused edit **inline in the working tree** and uses `surface` only to
+*flag* — it never stands up a worktree and never commits. iterate adopts
+`dream_land` purely as a **boundary guard** (the `refused` safety net it
+previously lacked) plus a scrutiny signal — not as an autonomy model.
+
+## The unified memo shape (chip 19)
+
+The runner's critique memo and `/editor/reflect`'s memos are now **one shape**,
+read by **one reader** ([`reflect._parse_memo`](../scripts/reflect.py)):
+frontmatter (`skill` · `tier` · `result` · the shared keys) + the four buckets
+(`issues` · `streamlining` · `alignment` · `userTagged`) + a tier
+(`flagged`/`noted`/`unremarkable`). [`dev_loop.write_iteration_memo`](../scripts/dev_loop.py)
+does the mapping: a `[block]` edit → `flagged` + the `issues` bucket; a
+`[nice-to-have]` → `noted` + `streamlining`; ambiguities → `issues`; judgment
+calls → `alignment`. iterate-specific facts (the synthetic `result`, `case`,
+`attempt`, `sandbox`, the per-attempt actions log) ride extra frontmatter +
+trailing body sections the shared reader tolerates.
+
+`editor/dev/iterations/` and `editor/dev/memos/` are **two labeled streams, one
+shape**: iterate's synthesized stress-test runs vs reflect's real ambient
+captures. The dream consumes only `memos/`; iterate consumes only `iterations/`
+(inline, this loop) — but both read through the one reader, and both route edits
+through the one guard. See [editor/dev/README.md](../dev/README.md).
 
 ## Hard rules
 
 - Never mutate `samples/annotation-history/` or `virgil-data/doc_devtest/` — only sandbox copies.
 - Never commit. Loop ends with diffs in the working tree for the user to inspect.
 - Never run a skill against the real fixture; sandboxes are mandatory.
-- Memos live at `editor/dev/iterations/<date>-<skill>/<case-slug>-attempt<k>.md`. They are gitignored dev scratch — do NOT route them to `<docPath>/.virgil/memos/` (that channel is for cowork dev memos *about a paper*, not about Virgil's skill markdown).
-- Loop driver edits skill markdown directly. Runner subagents never edit `editor/skills/`.
+- Memos live at `editor/dev/iterations/<date>-<skill>/<case-slug>-attempt<k>.md`, written by `dev_loop.py write-iteration-memo` in the **unified shape**. They are gitignored dev scratch — do NOT route them to `<docPath>/.virgil/memos/` (that channel is for cowork dev memos *about a paper*, not about Virgil's skill markdown).
+- **Route every skill edit through `dev_loop.py route-edits` (the guard) before applying it.** Honor `blocked` (refused — never apply, never work around the boundary); flag `surface` (proposes — apply inline but surface for scrutiny); apply `acts` inline. The three boundaries are law.
+- **No worktree, no commit.** iterate is synchronous + inline; the propose-via-worktree autonomy is `dream`'s, not iterate's.
+- Loop driver edits skill markdown directly. Runner subagents never edit `editor/skills/`; they only write their critique JSON (in the sandbox) and call the writer script.
+- One seam, no fork: reuse `reflect._parse_memo` (the reader) and `dream_land` (the guard) via `dev_loop` — never write a second parser or a parallel routing rule.
 
 ## What this skill does NOT do
 
-- It does not commit. The user inspects `git diff editor/skills/` and commits when satisfied.
+- It does not commit, and it does not stage edits in a worktree. The user inspects `git diff editor/skills/` and commits when satisfied. (Worktree-staging of `proposes`-class changes is `dream`'s autonomy model — not iterate's.)
+- It does not cross the three boundaries. A `refused` edit is recorded and surfaced, never applied.
 - It does not run against the user's real paper folders. The fixture is always `samples/annotation-history`.
 - It does not retry skills that hit the per-skill cap. Re-invoke `/editor/iterate-virgil-editor <skill-name>` to take another pass.
 - It does not delete sandboxes. They're left for inspection; `rm -rf editor/dev/sandboxes/` cleans up.

@@ -295,6 +295,25 @@ def _find_existing(memos_root: Path, skill: str, task_id: str) -> Path | None:
     return None
 
 
+def _render_buckets(buckets: dict) -> list[str]:
+    """The four canonical bucket sections, in BUCKET_ORDER, each headed by its
+    BUCKET_TITLES title with `None.` for an empty body.
+
+    The qualitative core of a dev-loop memo — shared verbatim between this
+    module's `memos/` writer (reflect, the ambient capture stream) and
+    `dev_loop`'s `iterations/` writer (iterate's synthesized stress-test
+    stream), so the two streams render ONE bucket vocabulary by construction and
+    `_parse_memo` reads both identically. The frontmatter differs per stream;
+    the buckets do not."""
+    out: list[str] = []
+    for key in BUCKET_ORDER:
+        out.append(f"## {BUCKET_TITLES[key]}")
+        body = (buckets.get(key) or "").strip()
+        out.append(body if body else "None.")
+        out.append("")
+    return out
+
+
 def _render(fm: dict, buckets: dict) -> str:
     out = ["---"]
     for k in FM_KEYS:
@@ -317,11 +336,7 @@ def _render(fm: dict, buckets: dict) -> str:
     out.append(f"**Outcome:** status={fm.get('status') or '—'}, "
                f"result={fm.get('result') or '—'} · source={fm.get('_source') or '—'}")
     out.append("")
-    for key in BUCKET_ORDER:
-        out.append(f"## {BUCKET_TITLES[key]}")
-        body = (buckets.get(key) or "").strip()
-        out.append(body if body else "None.")
-        out.append("")
+    out.extend(_render_buckets(buckets))
     return "\n".join(out).rstrip() + "\n"
 
 
