@@ -6,12 +6,14 @@
  * coincidence (the bug this replaces: each handle measured its own block,
  * so a container and its first item only happened to land within ~2px).
  *
- * Chip 1 builds this module and uses it for the VERTICAL axis only
- * (`opticalCenterY`). The interface is designed to GROW: chip 2 adds
- * `contentLeft` (the block's text-start X) and a measured `markerLeft`
- * (bullet / `(n)` marker X) so the handle's horizontal column derives from
- * the same source; keep new fields viewport-space and resolvable from `el`
- * + ancestry alone.
+ * Chip 1 built the VERTICAL axis (`opticalCenterY`); chip 2 adds the
+ * HORIZONTAL axis — `contentLeft` (the block's text-start X), a MEASURED
+ * `markerLeft` (the block's leftmost marker glyph: bullet band / `(n)` /
+ * `a.` / plain text), and `gapPx` (the em handle-gap resolved against THIS
+ * block's font). Every gutter affordance now hugs `markerLeft − gapPx − <its
+ * own width>`, so a container and its first item — and the future drop
+ * indicator (chip 4) — align BY CONSTRUCTION. All fields are viewport-space
+ * and resolvable from `el` + ancestry alone.
  *
  * KEYSTROKE SANCTITY (AGENTS.md): resolution is pure DOM + ancestry —
  * O(1)/O(depth), NEVER O(doc). The resolver runs on the hover/scroll/RAF
@@ -29,8 +31,8 @@ import {
 } from "@/lib/text-metrics";
 
 /**
- * Per-block geometry, all in VIEWPORT coordinates. Designed to GROW (chip 2
- * adds `contentLeft` + a measured `markerLeft`).
+ * Per-block geometry, all in VIEWPORT coordinates — the ONE source every
+ * gutter affordance reads, so they align by construction.
  */
 export interface BlockFrame {
   /** The block's outer DOM element (the `[data-uuid]` node DOM — the same
@@ -57,10 +59,44 @@ export interface BlockFrame {
   opticalCenterY: number;
   /**
    * Nesting depth = count of ancestor elements carrying `data-uuid`,
-   * bounded by the editor root. O(depth). Chip 2 reads this for the gutter
-   * column indent.
+   * bounded by the editor root. O(depth). Exposed for future gutter chrome
+   * (the chip-2 horizontal axis steps via the markerless-container
+   * track-width below, not via depth).
    */
   depth: number;
+  /**
+   * The block's text content-left in viewport coords (= `firstLineRect.left`).
+   * For a markerless block (paragraph / heading / blockquote / codeBlock /
+   * titleField / framed atom) this IS the marker reference; exposed separately
+   * from {@link markerLeft} so a selection handle (which labels text, not a
+   * marker) and the future drop indicator can anchor to text-start.
+   */
+  contentLeft: number;
+  /**
+   * The MEASURED left edge of the block's leftmost rendered marker — the
+   * single horizontal anchor every gutter affordance hugs. Per kind:
+   *   • exampleBlock → its `(n)` number (`.expex-number`) left.
+   *   • exampleItem  → its `a./b.` marker (`.expex-item-marker`) left.
+   *   • listItem     → the bullet band: the parent list's marker indent,
+   *     anchored at the MIDDLE of the measured `padding-left` band
+   *     (`li.left − padding-left / 2`). The `::marker` pseudo isn't
+   *     rect-able, so we never read a hardcoded glyph width — the band is
+   *     em-scaling and reliably between its left edge and the `<li>` content.
+   *   • bulletList / orderedList (markerless container) → one TRACK-WIDTH
+   *     left of the first grabbable child's markerLeft, so a container handle
+   *     stacks a uniform step left of its first item's handle (`⠿⠿ • text`).
+   *   • everything else (no marker) → `contentLeft`.
+   * An affordance's left edge = `markerLeft − gapPx − <its own width>`, so its
+   * RIGHT edge sits one uniform {@link gapPx} left of the marker.
+   */
+  markerLeft: number;
+  /**
+   * `--gutter-handle-gap` resolved (em → px) against THIS block's font, so the
+   * gap scales with the labeled text — every prose block shares one value (a
+   * uniform gap), a larger heading font widens it proportionally. The shared
+   * horizontal gap for every affordance on this row.
+   */
+  gapPx: number;
 }
 
 /**
@@ -145,13 +181,108 @@ function countUuidAncestors(el: HTMLElement, root: HTMLElement | null): number {
   return depth;
 }
 
+/** Fallback px for the em gutter tokens when the custom property is missing
+ *  / unreadable — the resolved values at the editor's nominal 16px font
+ *  (`--gutter-handle-gap: 0.625em` → 10px, `--gutter-track-width: 1.25em` →
+ *  20px). */
+const DEFAULT_HANDLE_GAP_PX = 10;
+const DEFAULT_TRACK_WIDTH_PX = 20;
+
+/**
+ * Resolve a gutter length custom property to px against a font size. The
+ * tokens are authored in `em` (`--gutter-handle-gap` / `--gutter-track-width`)
+ * so they scale with the labeled text; `getComputedStyle` does NOT resolve a
+ * custom property's `em` to px (it returns the literal "0.625em"), so we
+ * resolve it here against the block's own `font-size`. A px value passes
+ * through (forward-compat). O(1) — reads an already-fetched computed style.
+ */
+function resolveGutterEm(
+  cs: CSSStyleDeclaration,
+  fontSizePx: number,
+  varName: string,
+  fallbackPx: number,
+): number {
+  const raw = cs.getPropertyValue(varName).trim();
+  if (raw.endsWith("em")) {
+    const factor = parseFloat(raw);
+    return Number.isFinite(factor) ? factor * fontSizePx : fallbackPx;
+  }
+  const px = parseFloat(raw);
+  return Number.isFinite(px) && px > 0 ? px : fallbackPx;
+}
+
+/**
+ * MEASURED left edge of a block's own marker element matched by `selector`
+ * within `el`. `querySelector` returns the first match in document order —
+ * the block's OWN row marker, which always precedes any nested descendant's
+ * marker — so a `\pex` with sub-items reads its `(n)`, not a sub-item's `a.`.
+ * Falls back to `contentLeft` if the marker isn't present.
+ */
+function markerElementLeft(
+  el: HTMLElement,
+  selector: string,
+  contentLeft: number,
+): number {
+  const m = el.querySelector(selector);
+  return m instanceof HTMLElement ? m.getBoundingClientRect().left : contentLeft;
+}
+
+/**
+ * The marker-band anchor for a list `<li>`. The bullet / number renders in the
+ * parent `<ul>`/`<ol>`'s `padding-left` band (`list-style-position: outside`),
+ * which the `::marker` pseudo doesn't expose to `getBoundingClientRect`.
+ * Anchor to the MIDDLE of that measured band (`li.left − paddingLeft / 2`):
+ * em-scaling (the padding is `1.5em`), never a hardcoded glyph width, and
+ * reliably between the band's left edge and the `<li>` content — so the handle
+ * clears the glyph without diving toward the chevron column, and a wide `10.`
+ * marker can't break it. Falls back to `contentLeft` if no list ancestor.
+ */
+function bulletBandAnchor(li: HTMLElement, contentLeft: number): number {
+  const list = li.closest("ul, ol");
+  if (!(list instanceof HTMLElement)) return contentLeft;
+  const padLeft = parseFloat(getComputedStyle(list).paddingLeft) || 0;
+  return li.getBoundingClientRect().left - padLeft / 2;
+}
+
+/**
+ * MEASURED leftmost-marker left edge for a block, per kind (see
+ * {@link BlockFrame.markerLeft}). `trackWidthPx` is this block's resolved
+ * track-width, consumed only by the markerless-container branch.
+ */
+function resolveMarkerLeft(
+  el: HTMLElement,
+  kind: string | null,
+  contentLeft: number,
+  trackWidthPx: number,
+): number {
+  switch (kind) {
+    case "exampleBlock":
+      return markerElementLeft(el, ".expex-number", contentLeft);
+    case "exampleItem":
+      return markerElementLeft(el, ".expex-item-marker", contentLeft);
+    case "listItem":
+      return bulletBandAnchor(el, contentLeft);
+    case "bulletList":
+    case "orderedList": {
+      // Markerless container — no own marker glyph. Step one track-width left
+      // of the first grabbable child's marker so the container handle stacks a
+      // uniform gap left of its first item's handle (`⠿⠿ • text`).
+      const child = el.querySelector<HTMLElement>(GRABBABLE_CHILD_SELECTOR);
+      if (!child) return contentLeft - trackWidthPx;
+      const childLeft = child.getBoundingClientRect().left;
+      return bulletBandAnchor(child, childLeft) - trackWidthPx;
+    }
+    default:
+      return contentLeft;
+  }
+}
+
 /**
  * Resolve the canonical {@link BlockFrame} for a block's DOM element. Pure
  * DOM + ancestry; safe on the hover/scroll/RAF placement path.
  *
- * `editor` / `cache` are accepted so the frame can grow (chip 2 reads the
- * editor-column geometry from `cache` for the horizontal columns); this
- * chip uses them only to bound the depth walk to the editor root.
+ * `editor` / `cache` bound the depth walk to the editor root. The horizontal
+ * fields resolve from `el` + ancestry + the `target`'s computed style alone.
  */
 export function resolveBlockFrame(
   el: HTMLElement,
@@ -165,5 +296,49 @@ export function resolveBlockFrame(
   const root: HTMLElement | null =
     cache?.editorEl ?? (editor?.view?.dom as HTMLElement | null) ?? null;
   const depth = countUuidAncestors(el, root);
-  return { el, firstLineRect, opticalCenterY, depth };
+
+  // ---- Horizontal axis (chip 2) ----
+  const contentLeft = firstLineRect.left;
+  // Resolve the em gutter tokens against the LABELED TEXT's font, so the gap
+  // scales with the prose the user reads and every prose block shares ONE
+  // value. `resolveInlineContextElement` descends wrappers to the inline text
+  // for paragraphs / example items / headings, but leaves a bare `<li>` at its
+  // own (root 16px) size rather than its inner `<p>`'s prose (15.2px) size —
+  // so descend that one case here, keeping `target` (and thus the chip-1
+  // optical center) untouched. One getComputedStyle on an element already on
+  // the placement path.
+  const fontEl =
+    target.tagName === "LI"
+      ? (target.querySelector<HTMLElement>(":scope > p") ?? target)
+      : target;
+  const cs = getComputedStyle(fontEl);
+  const fontSizePx = parseFloat(cs.fontSize) || DEFAULT_HANDLE_GAP_PX * 1.6;
+  const gapPx = resolveGutterEm(
+    cs,
+    fontSizePx,
+    "--gutter-handle-gap",
+    DEFAULT_HANDLE_GAP_PX,
+  );
+  const trackWidthPx = resolveGutterEm(
+    cs,
+    fontSizePx,
+    "--gutter-track-width",
+    DEFAULT_TRACK_WIDTH_PX,
+  );
+  const markerLeft = resolveMarkerLeft(
+    el,
+    el.getAttribute("data-text-object-kind"),
+    contentLeft,
+    trackWidthPx,
+  );
+
+  return {
+    el,
+    firstLineRect,
+    opticalCenterY,
+    depth,
+    contentLeft,
+    markerLeft,
+    gapPx,
+  };
 }

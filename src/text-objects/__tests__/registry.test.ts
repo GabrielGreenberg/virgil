@@ -65,12 +65,18 @@ describe("TEXT_OBJECT_REGISTRY", () => {
     }
   });
 
-  it("sets non-zero decorationSafety for sub-objects only", () => {
-    expect(TEXT_OBJECT_REGISTRY.listItem.decorationSafety).toBeGreaterThan(0);
-    expect(TEXT_OBJECT_REGISTRY.exampleItem.decorationSafety).toBeGreaterThan(0);
-    // Top-level kinds: zero (handle goes in the gutter).
-    expect(TEXT_OBJECT_REGISTRY.paragraph.decorationSafety).toBe(0);
-    expect(TEXT_OBJECT_REGISTRY.heading.decorationSafety).toBe(0);
+  it("flags sub-objects with their parent kind (chip-2 retired decorationSafety)", () => {
+    // Horizontal placement no longer carries a per-kind constant — the handle
+    // hugs the block's MEASURED markerLeft from block-frame.ts. What remains is
+    // the sub-object identity (used for the markerless-container step-out).
+    expect(TEXT_OBJECT_REGISTRY.listItem.isSubObject).toBe(true);
+    expect(TEXT_OBJECT_REGISTRY.listItem.parentKind).toBe("bulletList");
+    expect(TEXT_OBJECT_REGISTRY.exampleItem.isSubObject).toBe(true);
+    expect(TEXT_OBJECT_REGISTRY.exampleItem.parentKind).toBe("exampleBlock");
+    expect(TEXT_OBJECT_REGISTRY.paragraph.isSubObject).toBe(false);
+    expect(TEXT_OBJECT_REGISTRY.heading.isSubObject).toBe(false);
+    // The retired field is gone from every entry.
+    expect("decorationSafety" in TEXT_OBJECT_REGISTRY.listItem).toBe(false);
   });
 });
 

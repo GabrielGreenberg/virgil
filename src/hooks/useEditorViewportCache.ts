@@ -39,10 +39,11 @@ export interface EditorViewportCache {
   scrollParent: HTMLElement | null;
   scrollTop: number;
   scrollBottom: number;
-  /** Pixels read from --gutter-col-handle-inset on the editor element.
-   *  TextObjectGrabHandle parks top-level handles at contentLeft −
-   *  gutterInset (see src/text-objects/handle-layout.ts). Read here
-   *  so JS placement and CSS chrome share one source. */
+  /** Pixels read from --gutter-col-handle-inset on the editor element — the
+   *  narrow-viewport FLOOR for handle placement (`editorColumnLeft −
+   *  gutterInset`), applied in src/text-objects/handle-layout.ts. (Handles
+   *  otherwise hug each block's measured marker via block-frame.ts; this is
+   *  just the off-screen-left clamp.) Read here so JS and CSS share one knob. */
   gutterInset: number;
   /** Left edge of the grab-handle hover zone — the horizontal stripe
    *  where hovering reveals a TextObject's grab handle. Extends leftward
