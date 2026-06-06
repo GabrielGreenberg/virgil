@@ -326,6 +326,13 @@ consumer reads the same source:
 - `--gutter-track-width` (default `1.25em`) — the step a **markerless
   container** (`bulletList` / `orderedList`) takes left of its first item's
   handle, so container + item stack with uniform spacing.
+- `--gutter-handle-hit-pad` (default `calc(var(--editor-font-size) * 1.8)`,
+  ≈ 1.8em) — the width of a grab handle's **hit/hover halo** (the
+  `.text-object-grab-handle::before`): a wide, centered pad around the 12px
+  dots so the target is grabbable even when the cursor occludes the dots.
+  Scales with the editor font; clamped per-handle by `--gutter-handle-hit-cap`
+  (an inline override, half the distance to the nearest same-row handle) so
+  close nested handles don't overlap. See "Grab hit/hover halo" below.
 
 **Horizontal — measured marker-left + one uniform em gap.** There is NO
 per-kind placement constant. Every gutter affordance hugs the block's
@@ -391,6 +398,41 @@ from it) leaves the affordance sitting low by ~half a cap-height, and the
 error grows with font size. Read the Y from
 `resolveBlockFrame(el, …).opticalCenterY` and center the glyph on it (an
 absolute `top` plus `transform: translateY(-50%)`).
+
+**Grab hit/hover halo.** The six dots stay a thin 12px box (the placement
+math above pins it precisely on both axes — do NOT resize the box, the X
+formula depends on its width). The *target*, though, is a wider transparent
+`.text-object-grab-handle::before` halo CENTERED on the dots —
+`--gutter-handle-hit-pad` wide (≈ 1.8em, scaling with the editor font) × one
+line tall — so the user can grab it even with the cursor occluding the dots.
+Three rules:
+
+- **It enlarges the target, never the dots.** The halo is a `::before` (part
+  of the element for hit-testing), so the existing mousedown→lift gesture
+  fires from anywhere in the halo with NO JS wiring. `z-index:-1` paints it
+  behind the dots; the host's integer `z-index` forms a stacking context that
+  contains the negative layer, so it can't fall behind the paper.
+- **Hover/press feedback covers the whole halo.** The `:hover` / `:active` /
+  `.is-pressed` / `.is-menu-open` background renders on the `::before` (the
+  full ≈1.8em halo, centered on the dots), not the 12px box — so the enlarged
+  target is visible the moment it's engaged. Keep the dots themselves visually
+  unchanged.
+- **Closely-spaced siblings clamp, don't overlap.** A nested block shows two
+  handles on one row a short distance apart (measured on the dev doc: bullet
+  container↔item ≈ 19px; example container↔item ≈ 37px). A full ≈1.8em (~27px)
+  halo would overlap the 19px-apart pair, so each halo's half-width is clamped
+  to half the distance to its nearest same-row handle. The component derives
+  that distance from the already-resolved on-screen placements (NOT a doc walk;
+  [TextObjectGrabHandle.tsx](src/text-objects/TextObjectGrabHandle.tsx)
+  `applyHitCaps`, gated on the per-hover handle set so it stays O(1) per
+  keystroke) and writes it to the handle as an inline `--gutter-handle-hit-cap`
+  (half the gap, px); the `::before` width is then
+  `max(12px, min(var(--gutter-handle-hit-pad), calc(var(--gutter-handle-hit-cap) * 2)))`.
+  Result: the 19px bullet handles shrink to 19px halos that meet at the
+  midpoint with no overlap (each dots-cluster fully owned, the midpoint
+  resolving to the inner/item handle — the more specific grab), while the 37px
+  example handles keep full halos with a gap between them. Isolated handles and
+  far-enough siblings are never clamped (the `min` picks the full pad).
 
 Grab-handle drag is the **only** popout mechanism for text objects —
 the per-kind popout buttons (`.par-popout-btn`, `.expex-popout-btn`,
