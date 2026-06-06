@@ -84,11 +84,24 @@
   /* Gutter coordinate system — distances are CSS-negative px from the
      content column's left edge. Two columns share this gutter: the
      fold chevron (leftmost) and the grab-handle baseline (between
-     chevron and content). The handle inset is also read by
-     handle-layout.ts via getComputedStyle so JS placement and CSS
-     chrome stay in lockstep. See STYLE_GUIDE.md "Gutter chrome". */
+     chevron and content). The handle inset (used as the narrow-viewport
+     FLOOR) is read by block-frame.ts via getComputedStyle so JS placement
+     and CSS chrome stay in lockstep. See STYLE_GUIDE.md "Gutter chrome". */
   --gutter-col-chevron: -44px;
   --gutter-col-handle-inset: 22px;
+  /* Chip-2 chrome geometry: a gutter affordance's RIGHT edge sits one
+     uniform GAP left of its block's MEASURED marker (text content-left for
+     prose/headings; the (n)/a. chip for examples; the bullet band for list
+     items). em-based so it scales with the labeled text's font — resolved
+     PER BLOCK in block-frame.ts against that block's font-size (a heading's
+     larger font widens the gap proportionally; every prose block shares one
+     value). 0.625em ≈ 9.5px at the 15.2px prose font, so the handle's left
+     edge (= markerLeft − gap − 12px box) lands at the pre-chip-2
+     contentLeft − ~22px baseline. A markerless container (bulletList /
+     orderedList) steps its handle one TRACK-WIDTH left of its first item's
+     handle (⠿⠿ • text). See STYLE_GUIDE.md "Gutter chrome". */
+  --gutter-handle-gap: 0.625em;
+  --gutter-track-width: 1.25em;
   /* Inter-block vertical rhythm. Owned by each block's margin-top
      (margin-bottom: 0 on every block) so the gap is predictable
      regardless of margin-collapse. The .par-title-annotation overlays

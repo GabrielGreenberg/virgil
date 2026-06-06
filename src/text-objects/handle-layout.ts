@@ -1,122 +1,52 @@
 /**
- * Grab-handle placement — single shared utility consumed by every grab
- * handle. Replaces the scattered per-component placement math that
- * accumulated in ParagraphFloat, HeadingFloat, ListFloat (and the
- * SelectionFloat that Phase E retired), the per-node-view grips on
- * tex/figure/graphics/example blocks, and the main-editor
- * SelectionDragHandle.
+ * Grab-handle HORIZONTAL placement — the single shared utility every grab
+ * handle uses to find its left edge. Reads the canonical per-block geometry
+ * from `block-frame.ts` (the MEASURED `markerLeft` + the resolved em `gapPx`),
+ * so the handle, the future drop indicator, and figure chrome all hug the
+ * SAME measured marker by construction.
  *
- * Two policies, branched on the registry's `meta.isSubObject` flag —
- * the gutter the handle parks in is a different thing in each case:
+ * ONE uniform rule for every kind (replacing the pre-chip-2 per-kind
+ * `decorationSafety` / `SUB_OBJECT_GAP` / `baselineInset` constants):
  *
- *   TOP-LEVEL (isSubObject = false):
- *     The gutter is the editor's left padding. Every top-level handle
- *     parks in a SHARED baseline column at `contentLeft − baselineInset`.
- *     `baselineInset` is read from --gutter-col-handle-inset by the
- *     caller (TextObjectGrabHandle) so JS placement and CSS chrome
- *     (chevron column, etc.) share one source of truth.
+ *     handle.left = markerLeft − gapPx − HANDLE_WIDTH
  *
- *   SUB-OBJECT (isSubObject = true):
- *     The gutter is the parent's marker zone (bullet glyph, ex-marker).
- *     Handle parks at `contentLeft − decorationSafety − SUB_OBJECT_GAP`,
- *     indenting into the marker column with breathing room. Clamped
- *     to the editor's baseline column so narrow viewports don't push
- *     the handle off-screen.
+ * i.e. the handle's RIGHT edge sits one `gapPx` (an em token resolved per
+ * block in block-frame.ts) left of the block's measured marker. The result is
+ * floored at `editorColumnLeft − baselineInset` so a deeply-indented block on
+ * a narrow viewport never pushes the handle off-screen-left.
  *
- * `decorationSafety` is a constant in the simple case and a
- * `(node) => number` for kinds that want live-measure (strategy (b)
- * in memo §7). Start with the constant — promote per-kind to a
- * function if visual breakage emerges.
+ * The VERTICAL axis lives in block-frame.ts (`opticalCenterY`, chip 1).
  */
 
-import type { Node as PMNode } from "@tiptap/pm/model";
-import type { TextObjectKind, TextObjectMeta } from "./types";
+/** Grab-handle box width in px. Mirrors `.text-object-grab-handle { width:
+ *  12px }` in globals.css: the handle's right edge sits `gapPx` left of the
+ *  marker, so its left edge is `markerLeft − gapPx − HANDLE_WIDTH`. */
+export const HANDLE_WIDTH = 12;
 
-/** Pixels of breathing space between a sub-object handle's right edge
- *  and the parent marker's right edge. */
-export const SUB_OBJECT_GAP = 8;
-
-/** Legacy alias. Retained for any external consumer that imports the
- *  pre-baseline-refactor name; new code should reference
- *  `SUB_OBJECT_GAP` for sub-objects or `--gutter-col-handle-inset`
- *  for the top-level baseline column. */
-export const HANDLE_GAP = SUB_OBJECT_GAP;
-
-/** Compute the left edge (in CSS pixels) where the grab handle's
- *  left edge should sit for a given TextObject. */
+/** Inputs to {@link computeHandleLeftEdge} — the block's measured marker and
+ *  resolved gap (from `block-frame.ts`) plus the narrow-viewport floor. */
 export interface HandleLayoutInput {
-  /** The TextObject's rendered DOM element. */
-  elDOM: Element;
-  /** The kind. Used to look up `decorationSafety` from the registry. */
-  kind: TextObjectKind;
-  /** The PM node (used only by kinds with function-form
-   *  `decorationSafety`). Omit for `linkedRange` / non-node kinds. */
-  node?: PMNode;
-  /** Left edge of the editor column in viewport coords. Used as the
-   *  floor for the sub-object branch so narrow viewports don't push
-   *  the handle off-screen. */
+  /** The block's MEASURED marker-left from `block-frame.ts` (a selection,
+   *  which labels text not a marker, passes its `contentLeft` instead). */
+  markerLeft: number;
+  /** The block's `--gutter-handle-gap` resolved (em → px) against its font,
+   *  from `block-frame.ts`. */
+  gapPx: number;
+  /** Left edge of the editor column (the `.ProseMirror` DOM rect.left) — the
+   *  floor reference so narrow viewports don't push the handle off-screen. */
   editorColumnLeft: number;
-  /** Pixels from contentLeft to the top-level baseline column. Read
-   *  from --gutter-col-handle-inset by the caller so CSS chrome and
-   *  JS placement share one source. */
+  /** Narrow-viewport floor inset, read from `--gutter-col-handle-inset` via
+   *  the EditorViewportCache (`cache.gutterInset`). */
   baselineInset: number;
-  /** Registry meta for the kind — caller hands this in so we don't
-   *  import the registry from a layout utility (avoid the circular). */
-  meta: TextObjectMeta;
 }
-
-export function computeHandleLeftEdge(input: HandleLayoutInput): number {
-  const contentLeft = input.elDOM.getBoundingClientRect().left;
-  if (input.meta.isSubObject) {
-    const safety = resolveDecorationSafety(input.meta, input.node);
-    const proposed = contentLeft - safety - SUB_OBJECT_GAP;
-    // Floor at the editor's top-level baseline column so a deeply
-    // indented sub-object on a narrow viewport doesn't run past the
-    // gutter where its parent's handle lives.
-    const floor = input.editorColumnLeft - input.baselineInset;
-    return Math.max(proposed, floor);
-  }
-  return contentLeft - input.baselineInset;
-}
-
-function resolveDecorationSafety(
-  meta: TextObjectMeta,
-  node: PMNode | undefined,
-): number {
-  if (typeof meta.decorationSafety === "function") {
-    if (!node) return 0;
-    return meta.decorationSafety(node);
-  }
-  return meta.decorationSafety;
-}
-
-// ---------------------------------------------------------------------------
-// Default decoration-safety constants (memo §7)
-// ---------------------------------------------------------------------------
-
-/** A bullet glyph (`•`) plus a hair of breathing space. Calibrated to
- *  the editor's default font/size; tweak if list typography changes. */
-export const BULLET_DECORATION_WIDTH = 18;
 
 /**
- * Pixels to subtract from an exampleItem's contentLeft so the grab
- * handle lands in the parent block's column-gap (between the outer
- * `(1)` marker and the inner `a.` marker), NOT past the outer marker.
- *
- * Differs in semantic from `BULLET_DECORATION_WIDTH`. A listItem's
- * contentLeft sits PAST the bullet (CSS list-style-position: outside),
- * so safety = bullet-glyph width clears the bullet zone. An
- * exampleItem's contentLeft sits AT the inner marker — the marker
- * `a./b./c.` is inside the exampleItem's grid (column 1 of
- * `.expex-item-row`), not outside it — so the handle only needs a
- * small indent into the parent's column-gap. With column-gap = 0.8em
- * ≈ 13px and handle width 12px, safety + SUB_OBJECT_GAP = 12 lands the
- * handle's right edge flush at the inner marker with no overlap on
- * the outer marker.
+ * Compute a grab handle's left edge (CSS px). Uniform across every kind: the
+ * handle's right edge hugs one `gapPx` left of the block's marker, floored at
+ * the editor's baseline column.
  */
-export const EXAMPLE_ITEM_HANDLE_INDENT = 4;
-
-/** Legacy alias for the pre-followup name. Keep as a re-export so any
- *  external consumer importing the old symbol keeps building; the value
- *  is now the indent (4px), not the historical marker-width (28px). */
-export const EXAMPLE_ITEM_MAX_MARKER_WIDTH = EXAMPLE_ITEM_HANDLE_INDENT;
+export function computeHandleLeftEdge(input: HandleLayoutInput): number {
+  const proposed = input.markerLeft - input.gapPx - HANDLE_WIDTH;
+  const floor = input.editorColumnLeft - input.baselineInset;
+  return Math.max(proposed, floor);
+}

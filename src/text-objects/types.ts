@@ -244,12 +244,9 @@ export interface TextObjectMeta {
   /** Whether this kind is a mark-backed range (only `linkedRange`). */
   isRange: boolean;
 
-  /** Pixels reserved to the right of the grab handle for bullet/marker
-   *  decoration. Most kinds: 0. `listItem`: bullet width. `exampleItem`:
-   *  widest of the marker cycle (start with strategy (a); promote to
-   *  `(node) => number` for live-measure strategy (b) if the visual
-   *  breaks at shallow depth). See TEXT-OBJECT-REFACTOR.md §7. */
-  decorationSafety: number | ((node: PMNode) => number);
+  // Horizontal handle placement carries NO per-kind constant: the handle hugs
+  // the block's MEASURED `markerLeft` from `block-frame.ts` one uniform em gap
+  // left of it (chip-2 chrome geometry retired the old `decorationSafety`).
 
   /** Where the grab handle's vertical anchor lands.
    *

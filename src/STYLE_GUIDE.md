@@ -312,23 +312,47 @@ consumer reads the same source:
 - `--gutter-col-chevron` (default `-44px`) — fold chevron column for
   headings and the texBlock pod. Consumed by `.heading-fold-chevron`
   and `.tex-block-fold-chevron`.
-- `--gutter-col-handle-inset` (default `22px`) — distance from
-  `contentLeft` to the grab-handle baseline column. Read by JS via
-  `getComputedStyle` in [src/hooks/useEditorViewportCache.ts](src/hooks/useEditorViewportCache.ts)
-  and fed to [src/text-objects/handle-layout.ts](src/text-objects/handle-layout.ts)
-  so JS placement and CSS chrome share one knob.
+- `--gutter-col-handle-inset` (default `22px`) — the narrow-viewport
+  **floor** for handle placement (`editorColumnLeft − this`), below which a
+  deeply-indented block's handle won't be pushed off-screen-left. Read by JS
+  via `getComputedStyle` in [src/hooks/useEditorViewportCache.ts](src/hooks/useEditorViewportCache.ts)
+  (`cache.gutterInset`) and applied in [src/text-objects/handle-layout.ts](src/text-objects/handle-layout.ts).
+- `--gutter-handle-gap` (default `0.625em`) — the **one uniform GAP** every
+  gutter affordance leaves between its RIGHT edge and its block's marker.
+  em-based so it scales with the labeled text; resolved PER BLOCK in
+  [src/text-objects/block-frame.ts](src/text-objects/block-frame.ts) against
+  that block's font (`gapPx`), so every prose block shares one value and a
+  larger heading font widens it proportionally.
+- `--gutter-track-width` (default `1.25em`) — the step a **markerless
+  container** (`bulletList` / `orderedList`) takes left of its first item's
+  handle, so container + item stack with uniform spacing.
 
-Grab-handle placement is registry-driven (see
-[src/text-objects/text-object-registry.ts](src/text-objects/text-object-registry.ts)).
-Two horizontal policies, branched on `meta.isSubObject`:
+**Horizontal — measured marker-left + one uniform em gap.** There is NO
+per-kind placement constant. Every gutter affordance hugs the block's
+MEASURED marker (`block-frame.ts` `markerLeft`):
 
-- **Top-level** (paragraph, heading, exampleBlock, bulletList,
-  texBlock, latexComment, etc.) — handle parks at
-  `contentLeft − var(--gutter-col-handle-inset)`. Shared baseline
-  column across every kind.
-- **Sub-object** (listItem, exampleItem) — handle indents into the
-  parent's marker zone at `contentLeft − decorationSafety −
-  SUB_OBJECT_GAP`, with breathing room past the bullet / ex-marker.
+> `affordance.left = markerLeft − gapPx − <its own width>`
+
+so its RIGHT edge sits one `gapPx` left of the marker. `markerLeft` is
+measured, never a guessed glyph width, per kind:
+
+- **exampleBlock** → its `(n)` number (`.expex-number`) left edge.
+- **exampleItem** → its `a./b.` marker (`.expex-item-marker`) left edge.
+- **listItem** → the bullet band: the middle of the parent list's measured
+  `padding-left` indent (`li.left − padding-left / 2`). The `::marker`
+  pseudo isn't rect-able, so we anchor to the measured band (em-scaling),
+  never a hardcoded bullet width.
+- **bulletList / orderedList** (markerless container) → one
+  `--gutter-track-width` left of the first grabbable child's `markerLeft`.
+- **paragraph / heading / blockquote / codeBlock / titleField / framed
+  atoms** (no marker) → the text `contentLeft`. (A text **selection** also
+  anchors to `contentLeft` — it labels text, not a marker.)
+
+The result: `⠿ (2) ⠿ a.` (example container left of the number, item left of
+its marker) and `⠿⠿ • text` (both list handles left of the bullet, uniform
+spacing) — same gap everywhere, and because markers are MEASURED + the gap is
+em-based, a wide `(100)` marker or a font-size change can't break it. Floored
+at `editorColumnLeft − var(--gutter-col-handle-inset)` for narrow viewports.
 
 Two vertical policies, branched on `meta.chromeAnchor`:
 
@@ -351,10 +375,12 @@ Two vertical policies, branched on `meta.chromeAnchor`:
   edge. For framed visual kinds where there's no "first line of prose" to
   align with.
 
-Adding a new TextObject kind requires no gutter-chrome CSS — drop a
-registry entry, set `isSubObject`, `decorationSafety`, and
-`chromeAnchor`, and the handle places itself on both axes. Tune the
-visual globally by editing the CSS variables.
+Adding a new TextObject kind requires no gutter-chrome CSS and no placement
+constant — drop a registry entry, set `chromeAnchor` (and `isSubObject` /
+`parentKind` if it nests), teach `block-frame.ts` `resolveMarkerLeft` how to
+measure the new kind's marker if it has one, and the handle places itself on
+both axes. Tune the visual globally by editing the `--gutter-handle-gap` /
+`--gutter-track-width` / `--gutter-col-handle-inset` CSS variables.
 
 **Optical-center anchoring (generalizable chrome rule).** Any gutter or
 marginal affordance that labels a line of text — a grab handle, a marker, a

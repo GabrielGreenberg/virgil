@@ -8,10 +8,10 @@
  * per-NodeView grips that lived inside `ParagraphWithTitle` /
  * `HeadingWithLabel` / `createListTitleNodeView` / `TexBlockNodeView` /
  * `ExampleBlock`). Resolves the active TextObject (or selection) on every
- * selectionUpdate / docUpdate / scroll / mousemove, computes its
- * placement via the registry's `decorationSafety`, and dispatches the
- * click + lift gestures through the unified
- * `useDragHandleMenu` + `usePoppedCards` contexts.
+ * selectionUpdate / docUpdate / scroll / mousemove, computes its placement
+ * from the canonical `block-frame.ts` geometry (the MEASURED `markerLeft` it
+ * hugs + the optical center it sits on), and dispatches the click + lift
+ * gestures through the unified `useDragHandleMenu` + `usePoppedCards` contexts.
  *
  * Discovery model (hover-driven, multi-level):
  *   1. Non-empty TextSelection   → one handle for the SelectionRef
@@ -21,7 +21,7 @@
  *      TextObject from innermost to outermost. Hovering text inside a
  *      `listItem` shows handles for both the listItem AND its parent
  *      `bulletList`. For deeper nesting (graphicsBlock inside listItem),
- *      every level gets a handle, each at its own decorationSafety indent.
+ *      every level gets a handle, each hugging its own block's marker.
  *   4. No mouse position / mouse outside editor + no handle hovered →
  *      no handles. (Cursor-based discovery is intentionally removed —
  *      the handle is a pure hover affordance, like a tooltip.)
@@ -464,31 +464,27 @@ function computePlacement(
   if (anchorRect.bottom < cache.scrollTop) return null;
   if (anchorRect.top > cache.scrollBottom) return null;
 
-  const kind: TextObjectKind | null =
-    ref.kind === "selection" ? null : ref.kind;
-  const meta = kind ? TEXT_OBJECT_REGISTRY[kind] : null;
+  // Canonical per-block geometry — ONE resolve feeds BOTH axes (markerLeft +
+  // gapPx for X, opticalCenterY for Y), so the handle, a container + its first
+  // item, and the future drop indicator align to the SAME numbers by
+  // construction.
+  const frame = resolveBlockFrame(anchorDom, editor, cache);
 
-  // ---- Horizontal (byte-for-byte unchanged from the pre-unification path;
-  // chip 2 will move this onto the block frame too) ----
-  // editorColumnLeft is the .ProseMirror element's outside-left edge — the
-  // floor we clamp sub-object handles against on narrow viewports.
-  // baselineInset is read from --gutter-col-handle-inset (via the cache) so
-  // JS placement and CSS chrome share one source.
+  // ---- Horizontal: hug the block's MEASURED marker one uniform gap left ----
+  // A TextObject hugs its `markerLeft` (text / bullet band / `(n)` / `a.`); a
+  // SELECTION labels its text (not the block's marker), so it anchors to the
+  // block's `contentLeft`. computeHandleLeftEdge applies the shared em gap +
+  // handle width and floors at the editor column so a deeply-indented block on
+  // a narrow viewport never pushes the handle off-screen-left.
+  // (editorColumnLeft is the .ProseMirror outside-left edge; the floor inset is
+  // --gutter-col-handle-inset via cache.gutterInset.)
   const editorColumnLeft = editor.view.dom.getBoundingClientRect().left;
-  const baselineInset = cache.gutterInset;
-  const left = meta
-    ? computeHandleLeftEdge({
-        elDOM: anchorDom,
-        kind: kind as TextObjectKind,
-        // No registry kind uses function-form `decorationSafety` today, so
-        // the PM node is never consulted — omit it to keep placement off the
-        // doc. (Promote to a uuid→pos lookup if a kind ever needs it.)
-        node: undefined,
-        editorColumnLeft,
-        baselineInset,
-        meta,
-      })
-    : anchorRect.left - baselineInset;
+  const left = computeHandleLeftEdge({
+    markerLeft: ref.kind === "selection" ? frame.contentLeft : frame.markerLeft,
+    gapPx: frame.gapPx,
+    editorColumnLeft,
+    baselineInset: cache.gutterInset,
+  });
 
   // ---- Vertical: the Y the handle glyph's CENTER lands on ----
   // The CSS centers the dots on `placement.top` (see `.text-object-grab-handle`
@@ -513,7 +509,7 @@ function computePlacement(
     const target = resolveInlineContextElement(anchorDom);
     dotsCenterY = baseTop + capTopOffset(target) + capHeight(target) / 2;
   } else {
-    dotsCenterY = resolveBlockFrame(anchorDom, editor, cache).opticalCenterY;
+    dotsCenterY = frame.opticalCenterY;
   }
 
   // Convert viewport coords → portal-relative coords. The portal mounts

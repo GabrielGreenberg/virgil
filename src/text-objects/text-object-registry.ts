@@ -27,10 +27,6 @@ import {
   exampleItemDropAdapter,
   blockIntoExpexDropAdapter,
 } from "./drop-adapters";
-import {
-  BULLET_DECORATION_WIDTH,
-  EXAMPLE_ITEM_HANDLE_INDENT,
-} from "./handle-layout";
 import type {
   ConfirmDescriptor,
   ConfirmDestructiveContext,
@@ -276,9 +272,7 @@ export const TEXT_OBJECT_REGISTRY: Record<TextObjectKind, TextObjectMeta> = {
     label: "Paragraph",
     isSubObject: false,
     isAtomBlock: false,
-    isRange: false,
-    decorationSafety: 0,
-    chromeAnchor: "text-top",
+    isRange: false,    chromeAnchor: "text-top",
     floatBodyComponent: PLACEHOLDER_FLOAT_BODY,
     actions: PROSE_ACTIONS,
     // %!v: anchor; not a LaTeX command per se. Marker is the suffix
@@ -297,9 +291,7 @@ export const TEXT_OBJECT_REGISTRY: Record<TextObjectKind, TextObjectMeta> = {
     label: "Heading",
     isSubObject: false,
     isAtomBlock: false,
-    isRange: false,
-    decorationSafety: 0,
-    chromeAnchor: "text-top",
+    isRange: false,    chromeAnchor: "text-top",
     floatBodyComponent: PLACEHOLDER_FLOAT_BODY,
     initialFloatSize: { width: 480, height: 360 },
     actions: PROSE_ACTIONS,
@@ -433,9 +425,7 @@ export const TEXT_OBJECT_REGISTRY: Record<TextObjectKind, TextObjectMeta> = {
     label: "Bullet list",
     isSubObject: false,
     isAtomBlock: false,
-    isRange: false,
-    decorationSafety: 0,
-    chromeAnchor: "text-top",
+    isRange: false,    chromeAnchor: "text-top",
     floatBodyComponent: PLACEHOLDER_FLOAT_BODY,
     initialFloatSize: { width: 480, height: 360 },
     actions: NON_PROSE_BLOCK_ACTIONS,
@@ -459,9 +449,7 @@ export const TEXT_OBJECT_REGISTRY: Record<TextObjectKind, TextObjectMeta> = {
     label: "Ordered list",
     isSubObject: false,
     isAtomBlock: false,
-    isRange: false,
-    decorationSafety: 0,
-    chromeAnchor: "text-top",
+    isRange: false,    chromeAnchor: "text-top",
     floatBodyComponent: PLACEHOLDER_FLOAT_BODY,
     initialFloatSize: { width: 480, height: 360 },
     actions: NON_PROSE_BLOCK_ACTIONS,
@@ -490,9 +478,7 @@ export const TEXT_OBJECT_REGISTRY: Record<TextObjectKind, TextObjectMeta> = {
     label: "Block quote",
     isSubObject: false,
     isAtomBlock: false,
-    isRange: false,
-    decorationSafety: 0,
-    chromeAnchor: "text-top",
+    isRange: false,    chromeAnchor: "text-top",
     floatBodyComponent: PLACEHOLDER_FLOAT_BODY,
     actions: PROSE_ACTIONS,
     dropAdapter: topLevelDropAdapter,
@@ -505,9 +491,7 @@ export const TEXT_OBJECT_REGISTRY: Record<TextObjectKind, TextObjectMeta> = {
     label: "Code block",
     isSubObject: false,
     isAtomBlock: false,
-    isRange: false,
-    decorationSafety: 0,
-    chromeAnchor: "text-top",
+    isRange: false,    chromeAnchor: "text-top",
     floatBodyComponent: PLACEHOLDER_FLOAT_BODY,
     actions: NON_PROSE_BLOCK_ACTIONS,
     dropAdapter: topLevelDropAdapter,
@@ -520,9 +504,7 @@ export const TEXT_OBJECT_REGISTRY: Record<TextObjectKind, TextObjectMeta> = {
     label: "Display math",
     isSubObject: false,
     isAtomBlock: true,
-    isRange: false,
-    decorationSafety: 0,
-    chromeAnchor: "block-top",
+    isRange: false,    chromeAnchor: "block-top",
     floatBodyComponent: PLACEHOLDER_FLOAT_BODY,
     actions: NON_PROSE_BLOCK_ACTIONS,
     // Feature A1: a lifted equation (displayMath) can land inside an expex
@@ -551,9 +533,7 @@ export const TEXT_OBJECT_REGISTRY: Record<TextObjectKind, TextObjectMeta> = {
     label: "Title field",
     isSubObject: false,
     isAtomBlock: false,
-    isRange: false,
-    decorationSafety: 0,
-    chromeAnchor: "text-top",
+    isRange: false,    chromeAnchor: "text-top",
     floatBodyComponent: PLACEHOLDER_FLOAT_BODY,
     actions: TITLE_FIELD_ACTIONS,
     dropAdapter: topLevelDropAdapter,
@@ -569,9 +549,7 @@ export const TEXT_OBJECT_REGISTRY: Record<TextObjectKind, TextObjectMeta> = {
     label: "LaTeX comment",
     isSubObject: false,
     isAtomBlock: true,
-    isRange: false,
-    decorationSafety: 0,
-    chromeAnchor: "block-top",
+    isRange: false,    chromeAnchor: "block-top",
     floatBodyComponent: PLACEHOLDER_FLOAT_BODY,
     actions: NON_PROSE_BLOCK_ACTIONS,
     dropAdapter: topLevelDropAdapter,
@@ -588,9 +566,7 @@ export const TEXT_OBJECT_REGISTRY: Record<TextObjectKind, TextObjectMeta> = {
     // route around it. Still classified as atom-block for grab-handle
     // positioning math.
     isAtomBlock: true,
-    isRange: false,
-    decorationSafety: 0,
-    chromeAnchor: "block-top",
+    isRange: false,    chromeAnchor: "block-top",
     floatBodyComponent: PLACEHOLDER_FLOAT_BODY,
     initialFloatSize: { width: 480, height: 280 },
     // L3e of the Lifted-Overlay refactor: texBlock drags through the same
@@ -631,9 +607,7 @@ export const TEXT_OBJECT_REGISTRY: Record<TextObjectKind, TextObjectMeta> = {
     // NOT an atom — `content: "figureCaption?"` (figure-block.ts).
     // Drag-handle uses TextSelection rather than NodeSelection here.
     isAtomBlock: false,
-    isRange: false,
-    decorationSafety: 0,
-    chromeAnchor: "block-top",
+    isRange: false,    chromeAnchor: "block-top",
     floatBodyComponent: PLACEHOLDER_FLOAT_BODY,
     // L3n (the FINAL kind migration): figureBlock drags through the same
     // two-mode gesture as the other kinds; its FigureBody float renders the
@@ -660,9 +634,7 @@ export const TEXT_OBJECT_REGISTRY: Record<TextObjectKind, TextObjectMeta> = {
     label: "Graphic",
     isSubObject: false,
     isAtomBlock: true,
-    isRange: false,
-    decorationSafety: 0,
-    chromeAnchor: "block-top",
+    isRange: false,    chromeAnchor: "block-top",
     floatBodyComponent: PLACEHOLDER_FLOAT_BODY,
     // L3n: graphicsBlock (an atom, no caption) shares FigureBody — its float is
     // a read-only image (≈ displayMath "view & move"). Same NO-`renderGhost`
@@ -688,9 +660,7 @@ export const TEXT_OBJECT_REGISTRY: Record<TextObjectKind, TextObjectMeta> = {
     label: "Example",
     isSubObject: false,
     isAtomBlock: false,
-    isRange: false,
-    decorationSafety: 0,
-    chromeAnchor: "text-top",
+    isRange: false,    chromeAnchor: "text-top",
     floatBodyComponent: PLACEHOLDER_FLOAT_BODY,
     actions: NON_PROSE_BLOCK_ACTIONS,
     removeOnEmptyChildren: true,
@@ -729,7 +699,6 @@ export const TEXT_OBJECT_REGISTRY: Record<TextObjectKind, TextObjectMeta> = {
     parentKind: "bulletList",
     isAtomBlock: false,
     isRange: false,
-    decorationSafety: BULLET_DECORATION_WIDTH,
     chromeAnchor: "text-top",
     floatBodyComponent: PLACEHOLDER_FLOAT_BODY,
     actions: PROSE_ACTIONS,
@@ -792,12 +761,9 @@ export const TEXT_OBJECT_REGISTRY: Record<TextObjectKind, TextObjectMeta> = {
     parentKind: "exampleBlock",
     isAtomBlock: false,
     isRange: false,
-    // The inner marker lives INSIDE the exampleItem's grid (unlike
-    // listItem's bullet, which CSS renders outside the li content box),
-    // so `decorationSafety` only needs to indent the handle into the
-    // parent block's column-gap — not clear a full marker width. See
-    // EXAMPLE_ITEM_HANDLE_INDENT docs in handle-layout.ts.
-    decorationSafety: EXAMPLE_ITEM_HANDLE_INDENT,
+    // Chip-2 chrome geometry: the handle hugs this item's MEASURED
+    // `.expex-item-marker` (`a./b.`) left edge — `block-frame.ts`
+    // `markerLeft` — one uniform gap left of it, no per-kind constant.
     chromeAnchor: "text-top",
     floatBodyComponent: PLACEHOLDER_FLOAT_BODY,
     actions: PROSE_ACTIONS,
@@ -832,9 +798,7 @@ export const TEXT_OBJECT_REGISTRY: Record<TextObjectKind, TextObjectMeta> = {
     label: "Linked range",
     isSubObject: false,
     isAtomBlock: false,
-    isRange: true,
-    decorationSafety: 0,
-    chromeAnchor: "text-top",
+    isRange: true,    chromeAnchor: "text-top",
     floatBodyComponent: PLACEHOLDER_FLOAT_BODY,
     actions: LINKED_RANGE_ACTIONS,
     // L3f-2: a plain text SELECTION is a first-class lifted-overlay grab —
