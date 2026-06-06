@@ -39,7 +39,7 @@ export interface CapTopMetrics {
   lineHeightPx: number;
 }
 
-const CAP_TOP_CACHE = new Map<string, number>();
+const FONT_METRICS_CACHE = new Map<string, CapTopMetrics>();
 
 function getCtx(): CanvasRenderingContext2D | null {
   if (typeof document === "undefined") return null;
@@ -82,46 +82,75 @@ function resolveLineHeightPx(cs: CSSStyleDeclaration, fontSizePx: number): numbe
 }
 
 /**
- * Cap-top offset for a DOM element's first rendered line. The element
- * MUST be attached to the document (so computed style is meaningful) and
- * SHOULD be the inline-context element governing the first line — for
- * wrappers, descend first via `resolveInlineContextElement`.
+ * Measure-and-cache a DOM element's first-line font metrics
+ * ({@link CapTopMetrics}). The element MUST be attached to the document
+ * (so computed style is meaningful) and SHOULD be the inline-context
+ * element governing the first line — for wrappers, descend first via
+ * `resolveInlineContextElement`.
  *
- * Cached by `(fontFamily | fontSize | fontWeight | lineHeight)`. Returns
- * 0 if no document/canvas is available (SSR safety) or if the canvas
- * stub doesn't report the metrics we need.
+ * Cached by `(fontFamily | fontSize | fontWeight | lineHeight)`. The SINGLE
+ * source for both {@link capTopOffset} and {@link capHeight}, so the two
+ * can never drift and a consumer that needs both pays one measurement.
+ * Returns null if no document/canvas is available (SSR safety) or if the
+ * canvas stub doesn't report the metrics we need.
  */
-export function capTopOffset(el: HTMLElement): number {
-  if (typeof window === "undefined") return 0;
+function measureFontMetrics(el: HTMLElement): CapTopMetrics | null {
+  if (typeof window === "undefined") return null;
   const cs = window.getComputedStyle(el);
   const fontSizePx = parseFloat(cs.fontSize);
-  if (!Number.isFinite(fontSizePx) || fontSizePx <= 0) return 0;
+  if (!Number.isFinite(fontSizePx) || fontSizePx <= 0) return null;
   const lineHeightPx = resolveLineHeightPx(cs, fontSizePx);
   const key = `${cs.fontFamily}|${fontSizePx}|${cs.fontWeight}|${lineHeightPx}`;
-  const cached = CAP_TOP_CACHE.get(key);
+  const cached = FONT_METRICS_CACHE.get(key);
   if (cached !== undefined) return cached;
 
   const ctx = getCtx();
-  if (!ctx) return 0;
-  // Multi-character probe forces full glyph envelope reporting on
-  // browsers that lazy-compute `actualBoundingBox*`. `H` dominates the
-  // ascent reading (capital height), `g` ensures the descender bounds
-  // are populated for the font.
+  if (!ctx) return null;
+  // `H` dominates the ascent reading (capital height); the probe forces
+  // full glyph-envelope reporting on browsers that lazy-compute
+  // `actualBoundingBox*`.
   ctx.font = `${cs.fontStyle === "italic" ? "italic " : ""}${cs.fontWeight} ${fontSizePx}px ${cs.fontFamily}`;
   const m = ctx.measureText("H");
-  const capHeight = m.actualBoundingBoxAscent;
+  const capHeightPx = m.actualBoundingBoxAscent;
   const ascent = m.fontBoundingBoxAscent;
   const descent = m.fontBoundingBoxDescent;
   if (
-    !Number.isFinite(capHeight) ||
+    !Number.isFinite(capHeightPx) ||
     !Number.isFinite(ascent) ||
     !Number.isFinite(descent)
   ) {
-    return 0;
+    return null;
   }
-  const offset = computeCapTopOffset({ capHeight, ascent, descent, lineHeightPx });
-  CAP_TOP_CACHE.set(key, offset);
-  return offset;
+  const metrics: CapTopMetrics = {
+    capHeight: capHeightPx,
+    ascent,
+    descent,
+    lineHeightPx,
+  };
+  FONT_METRICS_CACHE.set(key, metrics);
+  return metrics;
+}
+
+/**
+ * Cap-top offset for a DOM element's first rendered line — the distance
+ * from the line-box top to the glyph cap-top. Returns 0 when metrics are
+ * unavailable (SSR / canvas stub).
+ */
+export function capTopOffset(el: HTMLElement): number {
+  const m = measureFontMetrics(el);
+  return m ? computeCapTopOffset(m) : 0;
+}
+
+/**
+ * Cap-height (the rendered height of a capital glyph) for a DOM element's
+ * first line, in CSS px. Paired with {@link capTopOffset} to find the
+ * optical (cap-band) CENTER of a line:
+ * `lineTop + capTopOffset(el) + capHeight(el) / 2`. THE canonical vertical
+ * anchor for gutter chrome (see `src/text-objects/block-frame.ts`).
+ * Returns 0 when metrics are unavailable (SSR / canvas stub).
+ */
+export function capHeight(el: HTMLElement): number {
+  return measureFontMetrics(el)?.capHeight ?? 0;
 }
 
 /**
@@ -207,7 +236,7 @@ export function onFontReady(cb: () => void): void {
   if (!fonts || !fonts.ready || typeof fonts.ready.then !== "function") return;
   fontReadyArmed = true;
   fonts.ready.then(() => {
-    CAP_TOP_CACHE.clear();
+    FONT_METRICS_CACHE.clear();
     for (const fn of fontReadyCallbacks) {
       try {
         fn();
@@ -220,5 +249,5 @@ export function onFontReady(cb: () => void): void {
 
 /** Test-only: drop the cap-top cache. */
 export function clearCapTopCache(): void {
-  CAP_TOP_CACHE.clear();
+  FONT_METRICS_CACHE.clear();
 }
