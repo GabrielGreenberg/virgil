@@ -47,6 +47,7 @@ import {
   useRef,
   useState,
   useCallback,
+  type CSSProperties,
   type RefObject,
 } from "react";
 import { createPortal } from "react-dom";
@@ -178,6 +179,14 @@ interface Placement {
   top: number;
   /** The resolved ref the handle represents. */
   ref: TextObjectRef | SelectionRef;
+  /** Chip 3: half-width cap (px) for the hit/hover halo — half the distance to
+   *  the nearest handle on the SAME visual row, or null when no near sibling
+   *  shares the row. Threaded to the handle as the inline
+   *  `--gutter-handle-hit-cap` so two close nested handles (e.g. a bullet
+   *  container + its first item, ~19px apart) get halos that meet at the
+   *  midpoint and stay independently grabbable. Derived from the resolved
+   *  placements ({@link applyHitCaps}), never from a doc walk. */
+  hitCapPx: number | null;
 }
 
 /**
@@ -194,8 +203,55 @@ interface ResolvedRef {
 }
 
 function placementsEqual(a: Placement, b: Placement): boolean {
-  if (a.left !== b.left || a.top !== b.top) return false;
+  if (a.left !== b.left || a.top !== b.top || a.hitCapPx !== b.hitCapPx) {
+    return false;
+  }
   return refsEqual(a.ref, b.ref);
+}
+
+/**
+ * Same-row epsilon (px) for the chip-3 hit-halo sibling clamp. Two handles
+ * share a visual row when their optical-center tops match within this band.
+ * Nested container + item handles on the same row are computed from ONE block
+ * frame (the container resolves through to its first item), so their tops are
+ * equal by construction — the band only absorbs the small mismatch between a
+ * text-top and a block-top anchor on the same line. It stays well below a full
+ * line height, so handles on DIFFERENT rows (a container resolving to item 1
+ * while the cursor hovers item 3, ≥1 line apart) are never treated as
+ * same-row, and the {@link applyHitCaps} `min` only ever clamps a genuinely
+ * overlapping pair.
+ */
+const SAME_ROW_EPS = 16;
+
+/**
+ * Chip 3: set each placement's hit-halo cap from the resolved sibling
+ * geometry — half the horizontal distance to the nearest handle on the same
+ * visual row (or null when none shares the row). Both the halo and the dots
+ * are centered on `left + 6` (every handle box is 12px wide), so the
+ * left-edge distance IS the dots-center distance; capping each halo's
+ * half-width at half of it makes two close nested handles meet at the
+ * midpoint with no overlap, so neither swallows the other.
+ *
+ * KEYSTROKE SANCTITY: operates only on the freshly-built per-hover
+ * `placements` array (≤ a handful of entries — one per containing TextObject
+ * level), so it's O(handles²) ≈ O(1), never a doc walk. It runs on the same
+ * hover/scroll/RAF placement schedule as the rest of this component (the
+ * docChanged-gated `update` subscriber is a sanctioned cheap subscriber in
+ * AGENTS.md), adding no doc-proportional work.
+ */
+function applyHitCaps(placements: Placement[]): void {
+  for (let i = 0; i < placements.length; i++) {
+    let nearest = Infinity;
+    for (let j = 0; j < placements.length; j++) {
+      if (i === j) continue;
+      if (Math.abs(placements[i].top - placements[j].top) > SAME_ROW_EPS) {
+        continue;
+      }
+      const d = Math.abs(placements[i].left - placements[j].left);
+      if (d < nearest) nearest = d;
+    }
+    placements[i].hitCapPx = Number.isFinite(nearest) ? nearest / 2 : null;
+  }
 }
 
 function placementArrayEqual(a: Placement[], b: Placement[]): boolean {
@@ -518,7 +574,9 @@ function computePlacement(
   // an absolute-positioned child. The sticky pod caps (z:30/31) cover
   // handles when they overlap on scroll.
   const portal = cache.toPortalCoords(left, dotsCenterY);
-  return { left: portal.x, top: portal.y, ref };
+  // hitCapPx is filled by applyHitCaps once the full placement set is built —
+  // it needs every sibling's position, which a single-ref compute can't see.
+  return { left: portal.x, top: portal.y, ref, hitCapPx: null };
 }
 
 /** For SelectionRef (kind === null), resolve the containing
@@ -1111,6 +1169,10 @@ export function TextObjectGrabHandle({ editorRef }: Props) {
         const p = computePlacement(editor, cacheRef.current, ref, el);
         if (p) next.push(p);
       }
+      // Chip 3: resolve each handle's hit-halo cap from the full set's sibling
+      // geometry (so close nested handles don't overlap) — must run after every
+      // placement is computed, since a single compute can't see its siblings.
+      applyHitCaps(next);
       setPlacements((prev) => (placementArrayEqual(prev, next) ? prev : next));
     };
     const scheduleRaf = () => {
@@ -1358,22 +1420,30 @@ function GrabHandleRender({
       el.removeEventListener("mousedown", handler);
     };
   }, [placement.ref, onBeginGesture]);
+  // `position: absolute` against the `[data-grab-handle-portal]` wrapper
+  // (which is itself absolute inside the editor-pane-column — escapes the
+  // pod's clipPath that clips lateral descendants of the pod past ±20px). The
+  // wrapper has `pointer-events: none` to let prose clicks pass through; each
+  // handle re-enables pointer events on itself.
+  const style: CSSProperties = {
+    position: "absolute",
+    left: placement.left,
+    top: placement.top,
+    pointerEvents: "auto",
+  };
+  // Chip 3: when a near same-row sibling exists, clamp the hit-halo's
+  // half-width (see `.text-object-grab-handle::before` in globals.css) to half
+  // the gap so two close nested handles don't overlap. Absent → the CSS
+  // default (effectively unbounded) keeps the full em-scaled pad.
+  if (placement.hitCapPx != null) {
+    (style as Record<string, string | number>)["--gutter-handle-hit-cap"] =
+      `${placement.hitCapPx}px`;
+  }
   return (
     <div
       ref={elRef}
       className="text-object-grab-handle"
-      // `position: absolute` against the `[data-grab-handle-portal]`
-      // wrapper (which is itself absolute inside the editor-pane-column
-      // — escapes the pod's clipPath that clips lateral descendants of
-      // the pod past ±20px). The wrapper has `pointer-events: none` to
-      // let prose clicks pass through; each handle re-enables pointer
-      // events on itself.
-      style={{
-        position: "absolute",
-        left: placement.left,
-        top: placement.top,
-        pointerEvents: "auto",
-      }}
+      style={style}
       title="Drag to pop out, click for actions"
       aria-hidden="true"
     >

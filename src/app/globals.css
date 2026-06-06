@@ -1251,12 +1251,26 @@ textarea,
      (placement.top, derived from block-frame.ts). Center the box on that Y
      (translateY(-50%)) AND center the SVG within the box, so the six-dot
      glyph's visual center lands exactly on the optical center of the text it
-     labels — font-size-independently. The box keeps a line-height-tall hit
-     area for an easy grab target (chip 3 owns the hover-zone size). */
+     labels — font-size-independently. The 12px box stays put: chip 2's X
+     placement (`markerLeft − gap − 12`) and chip 1's optical center depend on
+     this size, so the WIDE hit/hover halo is a separate ::before centered on
+     this box (below) — it enlarges the target WITHOUT moving the dots. */
   align-items: center;
   justify-content: center;
   width: 12px;
   height: calc(var(--editor-font-size, 1.05rem) * var(--editor-line-height, 1.8));
+  /* Chip 3: width of the centered grab hit/hover halo (the ::before below).
+     Scales with the editor font like the handle height (~1.8× font ≈ 1.8em),
+     so the target grows with larger prose rather than staying a fixed px. */
+  --gutter-handle-hit-pad: calc(var(--editor-font-size, 1.05rem) * 1.8);
+  /* Chip 3: sibling-overlap cap — the MAX half-width (px) the halo may take.
+     Default is effectively unbounded (full pad); the grab-handle component
+     sets this inline to half the distance to the nearest same-row handle when
+     that's closer than the pad, so two nested handles (a bullet container +
+     its first item, measured ~19px apart) get halos that meet at the midpoint
+     and stay independently grabbable instead of the wider swallowing the
+     narrower. See TextObjectGrabHandle.tsx `applyHitCaps`. */
+  --gutter-handle-hit-cap: 999px;
   transform: translateY(-50%);
   opacity: 1;
   pointer-events: auto;
@@ -1266,10 +1280,41 @@ textarea,
   z-index: 20;
 }
 
+/* Chip 3: the grab hit/hover halo. A wide, transparent pad CENTERED on the
+   12px dots, giving a comfortably grabbable target even when the cursor
+   occludes the thin dots themselves. As a ::before it is part of the handle
+   element for hit-testing, so the existing mousedown→lift handler (bound on
+   `.text-object-grab-handle` in TextObjectGrabHandle.tsx) initiates from
+   ANYWHERE in the halo with no JS change. Centered via top/left:50% +
+   translate(-50%,-50%) on the host box (whose center IS the dots' center), so
+   it never shifts the dots. z-index:-1 paints it BEHIND the dots; the host's
+   integer z-index:20 forms a stacking context that contains the negative
+   layer, so it can't fall behind the paper. Width is the em pad, clamped to
+   2× the sibling cap (and floored at the 12px dot box) so close nested
+   handles don't overlap. */
+.text-object-grab-handle::before {
+  content: "";
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: max(
+    12px,
+    min(var(--gutter-handle-hit-pad), calc(var(--gutter-handle-hit-cap) * 2))
+  );
+  height: 100%;
+  transform: translate(-50%, -50%);
+  border-radius: 4px;
+  z-index: -1;
+}
+
 .text-object-grab-handle:hover {
   color: var(--ink, #3a362f);
+}
+/* Hover background renders across the whole HALO (centered on the dots), so
+   the user SEES the enlarged target is engaged even with the cursor over the
+   dots — not just the 12px box. Same for the press / menu-open states. */
+.text-object-grab-handle:hover::before {
   background: rgba(0, 0, 0, 0.06);
-  border-radius: 3px;
 }
 
 .text-object-grab-handle:active {
@@ -1279,17 +1324,20 @@ textarea,
 .text-object-grab-handle:active,
 .text-object-grab-handle.is-pressed {
   color: var(--ink, #3a362f);
-  background: rgba(0, 0, 0, 0.08);
-  border-radius: 3px;
   /* Keep the translateY(-50%) centering (the box is centered on the optical
      Y) and add the 1px press nudge on top. */
   transform: translateY(calc(-50% + 1px));
 }
+.text-object-grab-handle:active::before,
+.text-object-grab-handle.is-pressed::before {
+  background: rgba(0, 0, 0, 0.08);
+}
 
 .text-object-grab-handle.is-menu-open {
   color: var(--ink, #3a362f);
+}
+.text-object-grab-handle.is-menu-open::before {
   background: rgba(0, 0, 0, 0.10);
-  border-radius: 3px;
 }
 
 /* Lifted-text overlay — portal-rendered ghost that follows the cursor
