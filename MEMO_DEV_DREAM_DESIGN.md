@@ -112,3 +112,120 @@ v1 ships **dev-dream**; **user-dream** (per-user voice/preference learning) is v
 - `EDITOR_SKILLS_BRAINSTORM.html` — §18 (Self-improving skill base — DEV mode + two dreams; the day/night diagram, the memo buckets/tiers, the landing-mode rationale).
 - `editor/skills/iterate-virgil-editor.md` — the built precursor (the manual special case dream generalizes).
 - `editor/AGENTS.md` — the skill-conventions section (where the shared reflect convention lands) + the Don't-rules (a dream boundary).
+
+---
+
+## Appendix A — Chip 17: ready-to-dispatch prompt
+_The next session's first dispatch (spawn_task). The deep framing (§6) is baked in. Chip 18 (the dream phase) firms up after 17 lands — its iterate↔dream unification depth depends on 17's shape._
+
+```
+MISSION
+Build the DEV-mode CAPTURE LAYER — the "day" half of the dev-dream self-improvement
+loop (MEMO_DEV_DREAM_DESIGN.md; EDITOR_SKILLS_V1.html §14). When DEV mode is on, every
+editor-skill invocation is followed by a reflection that writes a tiered memo. Build it
+as ONE shared mechanism, not a per-skill bolt-on. This chip is the capture layer ONLY —
+NOT the dream phase (that's chip 18).
+
+This is part of the management-run "v1 skill-base build". You are chip 17. The v1 spine
+(Phase 4 + L3 + manifest + writeback unification, chips 11–16) is complete. Implement on
+your own branch, commit, and report back; do NOT push or merge.
+
+WHERE TO BASE
+Fresh worktree off `main` (includes chips 11–16 + the DEV design memo). `main` may not be
+checked out (concurrent atoms / card-refactor / chrome-geometry sessions hold the main
+worktree on their own branches) and/or may have advanced — verify your base includes chip
+16 (`git merge-base --is-ancestor 0600625 HEAD`) and self-heal (`git merge --ff-only main`)
+if cut from an older base. No npm install — symlink node_modules read-only to run
+`npm run check:coherence`, then remove it. Commit to your branch; do NOT push/merge.
+
+REQUIRED READING (in order)
+- MEMO_DEV_DREAM_DESIGN.md — the whole design; esp. §3 (what's logged: 4 buckets, 3 tiers,
+  the memo location), §6.1 (the deep capture framing: ONE shared /editor/reflect + ONE
+  editor/AGENTS.md convention, riding the contract's `result` field), §8 (open Qs: toggle,
+  trigger).
+- EDITOR_SKILLS_V1.html §14 (frozen spec for DEV mode + the memo) + the §13 I/O table.
+- editor/skills/iterate-virgil-editor.md — the existing dev meta-skill; its memos live in
+  editor/dev/iterations/ (gitignored). Your memos (editor/dev/memos/) are the sibling —
+  note the relationship; chip 18 unifies them. Do NOT refactor iterate here.
+- editor/scripts/apply_response.py — the two-field status/result vocab (RESULT_* constants);
+  editor/scripts/list_requests.py — how a Task's status/result is read. Reflection CONSUMES
+  `result` (the outcome is already classified by the contract); it does not re-derive it.
+- editor/AGENTS.md — the skill-conventions section (where the ONE reflect convention lands)
+  + the "Done:" one-line reply convention.
+- editor/scripts/_common.py — paths/json helpers; the editor/dev/ gitignore.
+
+FRAMING (the deep / unifying angle)
+The shallow version bolts a "now write a memo" step onto each of the ~20 skill files →
+drift, and the exact superficial-patch anti-pattern. The deep version is ONE shared seam:
+a single /editor/reflect skill (the memo-writer) + ONE convention in editor/AGENTS.md
+("in DEV mode, reflect after completing any skill"), so the whole skill set inherits
+reflection from one edit and any future skill inherits it free. Reflection reads the Task's
+two-field `result` (silent-applied / auto-applied / accepted / rejected / refused / … —
+ALREADY classified by the contract chips 3–16 built) + the skill's `Done:` line + the
+paragraph-context helpers. The capture layer is a thin unified seam on top of the contract,
+not new per-skill machinery.
+
+LOCKED DECISIONS (do not relitigate)
+- Scope = the CAPTURE LAYER only (toggle + reflect mechanism + memo schema/tiers/location).
+  The DREAM phase (/editor/dream, landing modes, digest, boundaries) is chip 18 — do NOT build it.
+- ONE shared mechanism: /editor/reflect + ONE editor/AGENTS.md convention. NO per-skill
+  memo-writing steps added to individual skill files.
+- Reflection reads the Task's two-field status/result (don't re-derive the outcome) + the
+  `Done:` stdout + para-context.
+- Memos → editor/dev/memos/<YYYY-MM-DD>/<HH-MM-SS>-<skill>.md, GITIGNORED (mirror
+  editor/dev/iterations/). Distinct from the library memo stream — never mix.
+- Memo schema: 4 buckets (issues/ambiguities/errors · streamlining/repetition · alignment/fit
+  · user-tagged) + 3 tiers (unremarkable / noted / flagged) + the `fix-now` flag. Class set
+  at write time; the DEV user can promote a tier by appending a tag.
+- Toggle = `VIRGIL_DEV=1` env var (simpler, truly per-session, can't ship to users) UNLESS
+  you find a strong reason for a document-settings.json flag — justify in the report if you
+  deviate. NEVER enabled in end-user sessions.
+- Don't violate the §15 forward-compat rules (reserved overlay paths stay in the sync
+  deny-list; result:rejected rows kept; etc.) — natural here; just don't break them.
+
+DELIVERABLES (scope IN)
+1. editor/skills/reflect.md — the dev-only /editor/reflect <skill> <taskId>: reads the Task's
+   status/result + outcome + para-context, classifies the tier, writes the memo (4 buckets)
+   to editor/dev/memos/<date>/. Idempotent; no-ops/refuses outside DEV mode.
+2. The DEV-mode toggle: VIRGIL_DEV detection (a small _common.py helper) + the gate (reflect
+   runs only when DEV is on).
+3. The ONE editor/AGENTS.md convention ("in DEV mode, reflect after completing any skill via
+   /editor/reflect") — the single seam; have the umbrella /editor/review enforce it for
+   dispatched subskills so it's robust, not just hope-the-model-remembers.
+4. The memo schema documented in reflect.md + a short editor/dev/README.md (the one SSOT for
+   the dev-loop subsystem, per §6.3).
+5. editor/dev/ gitignore for memos/ (mirror iterations/).
+6. Tests (editor/scripts/tests/): a reflect-capture slice — a completed Task with each
+   `result` value → assert the memo lands with the right tier/bucket; DEV-off → no memo;
+   user-tag tier-promotion.
+
+SCOPE OUT (hands off)
+- The DREAM phase (chip 18). Refactoring iterate-virgil-editor / unifying iterations↔memos
+  (chip 18 — the engine extraction; here, just NOTE the relationship). No src/ changes (the
+  toggle is read-only env/sidecar detection). No version bump, no release.
+
+DESIGN PRINCIPLE
+The unified, deep solution: one shared reflect seam riding the contract's `result` field,
+not ~20 per-skill memo steps. Make "every skill reflects" true by construction (one
+convention) — a future skill inherits reflection for free.
+
+DOC-GRAPH DISCIPLINE
+If editor/dev/README.md (or any docs/workspace doc) becomes a maintained doc, give it the
+born-enforced header + keep `npm run check:coherence` at 0 errors. Re-stamp any maintained
+doc you edit. Run the full Python suite (editor/scripts/tests/*.py) — all pass; add the
+reflect-capture slice.
+
+REPORT BACK (structured)
+- The /editor/reflect mechanism + the ONE convention (show the editor/AGENTS.md seam) —
+  confirm NO per-skill bolt-ons.
+- The toggle (env var vs settings flag + why) + how reflect is gated to DEV-only.
+- The memo schema (buckets/tiers/fix-now) + the `result`→signal mapping (how it consumes the
+  contract's result).
+- editor/dev/README.md (the subsystem SSOT) + the gitignore.
+- Coherence (0 errors) + the full Python suite + the new reflect-capture slice.
+- The branch name; how chip 18 (dream) will consume these memos; anything flagged for chip 18
+  (esp. the iterate↔dream unification).
+```
+
+### Chip 18 (sketch — finalize after 17)
+`/editor/dream` built as the **generalization of `iterate-virgil-editor`** (shared engine — §6.2): reads the chip-17 memos since the last dream → cross-memo pattern detection → the **two landing modes** (acts-directly on `main` for single-skill-prompt polish · proposes-via-worktree for cross-skill / script / manifest / contract changes) → the `fix-now` fast-path → the dream-digest → the **three enforced boundaries** (can't touch `editor/AGENTS.md` Don't-rules, the `apply_response.py` contract shape, or DEV mode itself). Tests: acts-vs-proposes routing by scope; boundary-refusal; the bootstrap memo-on-itself. (If the iterate↔dream engine extraction proves large, split it into a chip 17.5 first.)
