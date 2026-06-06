@@ -58,16 +58,19 @@ next-env.d.ts
 /library/dev/iterations/*
 !/library/dev/iterations/.gitkeep
 
-# editor/dev — scratch memos and sandbox clones from the dev-loop:
-#   iterations/  /editor/iterate-virgil-editor critique memos
-#   memos/       /editor/reflect dev-dream capture memos (chip 17, DEV mode)
-#   sandboxes/   per-attempt sample clones
+# editor/dev — scratch memos, digests, and sandbox clones from the dev-loop:
+#   iterations/     /editor/iterate-virgil-editor critique memos
+#   memos/          /editor/reflect dev-dream capture memos (chip 17, DEV mode)
+#   dream-digests/  /editor/dream morning digests (chip 18, DEV mode)
+#   sandboxes/      per-attempt sample clones
 # editor/dev/README.md (the subsystem SSOT) stays tracked — only the run output
 # is ignored.
 /editor/dev/iterations/*
 !/editor/dev/iterations/.gitkeep
 /editor/dev/memos/*
 !/editor/dev/memos/.gitkeep
+/editor/dev/dream-digests/*
+!/editor/dev/dream-digests/.gitkeep
 /editor/dev/sandboxes/*
 !/editor/dev/sandboxes/.gitkeep
 
