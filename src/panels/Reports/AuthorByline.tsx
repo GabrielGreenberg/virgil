@@ -23,7 +23,7 @@ export function AuthorByline({
             ? "bg-[var(--accent)]/10 text-[var(--accent)]"
             : "bg-surface-muted-strong text-ink-body"
         }`}
-        title={isAi ? "AI-authored" : "Human-authored"}
+        data-hint={isAi ? "AI-authored" : "Human-authored"} aria-label={isAi ? "AI-authored" : "Human-authored"}
       >
         {isAi ? "AI" : "Human"}
       </span>

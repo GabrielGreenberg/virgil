@@ -111,7 +111,7 @@ function AuthorChip({ author }: { author: CutterSuggestionCardData["author"] }) 
           ? "bg-[var(--accent)]/10 text-[var(--accent)]"
           : "bg-surface-muted-strong text-ink-body"
       }`}
-      title={isAi ? "AI-authored" : "Human-authored"}
+      data-hint={isAi ? "AI-authored" : "Human-authored"} aria-label={isAi ? "AI-authored" : "Human-authored"}
     >
       {isAi ? "AI" : "Human"}
     </span>
@@ -137,7 +137,6 @@ export function CopyButton({ text }: { text: string }) {
       onClick={handle}
       onMouseDown={(e) => e.stopPropagation()}
       disabled={!text}
-      title={copied ? "Copied" : "Copy to clipboard"}
       data-hint="Copy"
       data-hint-pos="above"
       aria-label="Copy"
@@ -187,7 +186,6 @@ export function FieldTitleRow({
             }}
             onMouseDown={(e) => e.stopPropagation()}
             className="text-[var(--muted)] hover:text-ink-strong cursor-pointer flex items-center"
-            title={folded ? "Expand" : "Collapse"}
             data-hint="Toggle fold"
             data-hint-pos="above"
             aria-label={folded ? "Expand" : "Collapse"}
@@ -325,7 +323,7 @@ export function CutterSuggestionCard({
   const dot = (
     <span
       className={`inline-block w-2 h-2 rounded-full shrink-0 ${STATUS_DOT[card.status]}`}
-      title={STATUS_LABEL[card.status]}
+      data-hint={STATUS_LABEL[card.status]} aria-label={STATUS_LABEL[card.status]}
     />
   );
 

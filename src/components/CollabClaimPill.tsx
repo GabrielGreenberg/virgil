@@ -36,7 +36,7 @@ export default function CollabClaimPill({ holder, color, focusedAt }: CollabClai
         color,
         border: `1px solid ${color}55`,
       }}
-      title="Co-author is editing this card"
+      data-hint="Co-author is editing this card" aria-label="Co-author is editing this card"
     >
       <span
         aria-hidden

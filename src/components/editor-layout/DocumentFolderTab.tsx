@@ -84,7 +84,7 @@ export function DocumentFolderTab({
         marginBottom: -1,
       }}
       onClick={onClick}
-      title={title}
+      data-hint={title} aria-label={title}
     >
       <svg
         className="absolute inset-0 pointer-events-none"

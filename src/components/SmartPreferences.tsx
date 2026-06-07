@@ -242,7 +242,7 @@ function LinkEdgeRow({
       <button
         onClick={handleLockToggle}
         className={`shrink-0 p-0.5 rounded transition-colors ${locked ? "text-[var(--accent)]" : "text-ink-faint hover:text-ink-muted"}`}
-        title={locked ? "Unlock: child stays independent" : "Lock: child tracks parent + delta"}
+        data-hint={locked ? "Unlock: child stays independent" : "Lock: child tracks parent + delta"} aria-label={locked ? "Unlock: child stays independent" : "Lock: child tracks parent + delta"}
       >
         {locked ? (
           <svg width="10" height="10" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.8">

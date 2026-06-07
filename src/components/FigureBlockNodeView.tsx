@@ -880,7 +880,7 @@ function FigureChrome({
       <div
         className="figure-scale"
         data-disabled={canScale ? undefined : "true"}
-        title={canScale ? undefined : "Width uses absolute units — edit in code to adjust"}
+        data-hint={canScale ? undefined : "Width uses absolute units — edit in code to adjust"} aria-label={canScale ? undefined : "Width uses absolute units — edit in code to adjust"}
       >
         <button
           type="button"
@@ -951,9 +951,9 @@ function ChromeIconButton({
     <button
       type="button"
       className={`figure-chrome-btn${kind === "danger" ? " figure-chrome-btn-danger" : ""}`}
-      title={title}
+      data-hint={title}
       onMouseDown={(e) => e.stopPropagation()}
-      onClick={onClick}
+      onClick={onClick} aria-label={title}
     >
       {children}
     </button>

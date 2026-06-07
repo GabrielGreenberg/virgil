@@ -573,7 +573,6 @@ function BibliographyPanel({
             : "text-ink-faint cursor-not-allowed"
         }`}
         onClick={citedKeys.size > 0 ? handleExportCited : undefined}
-        title={citedKeys.size > 0 ? undefined : "No cited entries to export"}
         data-hint="Export cited"
       >
         <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -596,7 +595,6 @@ function BibliographyPanel({
             ? "text-ink-body bg-surface-muted"
             : "text-ink-muted hover:text-ink-body hover-on-light"
         }`}
-        title={showSearch ? "Close search" : "Search bibliography"}
         data-hint={showSearch ? "Close search" : "Search"}
         aria-pressed={showSearch}
       >
@@ -624,11 +622,6 @@ function BibliographyPanel({
                         handleAddFromCentralLibrary(rect);
                       }
                     : undefined
-                }
-                title={
-                  isLibraryConnected
-                    ? undefined
-                    : "Connect the central library first…"
                 }
                 data-hint="Search library"
               >
@@ -699,7 +692,6 @@ function BibliographyPanel({
                     ? "bg-surface-muted text-ink-body"
                     : "text-ink-muted hover:text-ink-body"
                 }`}
-                title="Search this paper's bibliography"
                 data-hint="Search local"
               >
                 Local
@@ -717,11 +709,6 @@ function BibliographyPanel({
                       ? "text-ink-muted hover:text-ink-body"
                       : "text-ink-faint cursor-not-allowed"
                 }`}
-                title={
-                  isLibraryConnected
-                    ? "Search the central Virgil Library (the global bib)"
-                    : "Connect the central library first…"
-                }
                 data-hint="Search library"
               >
                 Library
@@ -730,7 +717,6 @@ function BibliographyPanel({
             <button
               onClick={closeSearch}
               className="text-ink-muted hover:text-ink-body p-0.5 shrink-0"
-              title="Close search"
               data-hint="Close search"
             >
               <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
@@ -767,28 +753,28 @@ function BibliographyPanel({
             <button
               onClick={handleConflictReplace}
               className="text-[10px] text-white bg-amber-600 hover:bg-amber-700 px-2 py-1 rounded"
-              title="Overwrite local fields with the library version (citekey unchanged)"
+              data-hint="Overwrite local fields with the library version (citekey unchanged)"
             >
               Replace with library
             </button>
             <button
               onClick={dismissConflict}
               className="text-[10px] text-ink-body bg-surface border border-edge-subtle hover-on-light px-2 py-1 rounded"
-              title="Keep your existing local entry as-is"
+              data-hint="Keep your existing local entry as-is"
             >
               Keep yours
             </button>
             <button
               onClick={handleConflictNewCitekey}
               className="text-[10px] text-ink-body bg-surface border border-edge-subtle hover-on-light px-2 py-1 rounded"
-              title="Add the library entry alongside under an auto-suffixed citekey"
+              data-hint="Add the library entry alongside under an auto-suffixed citekey"
             >
               Save under new citekey
             </button>
             <button
               onClick={handleConflictRequestMerge}
               className="text-[10px] text-emerald-700 bg-emerald-50 border border-emerald-200 hover:bg-emerald-100 px-2 py-1 rounded"
-              title="File an AI bib-review request to merge both versions and authenticate"
+              data-hint="File an AI bib-review request to merge both versions and authenticate"
             >
               Request AI merge &amp; authentication
             </button>
@@ -808,7 +794,6 @@ function BibliographyPanel({
                 setRequestText("");
               }}
               className="ml-auto text-ink-muted hover:text-ink-body p-0.5"
-              title="Cancel"
               data-hint="Cancel"
             >
               <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
@@ -867,7 +852,6 @@ function BibliographyPanel({
               <button
                 onClick={() => onRemoveEntryRequest(req.id)}
                 className="text-ink-muted hover:text-ink-body shrink-0 p-0.5"
-                title="Dismiss"
                 data-hint="Dismiss"
                 data-hint-pos="above"
               >

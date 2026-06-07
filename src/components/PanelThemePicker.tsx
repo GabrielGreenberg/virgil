@@ -63,9 +63,9 @@ export default function PanelThemePicker({
         type="button"
         onClick={(e) => { e.stopPropagation(); setOpen((o) => !o); }}
         onMouseDown={(e) => e.stopPropagation()}
-        title={label ?? "Panel color"}
+        data-hint={label ?? "Panel color"}
         className="w-5 h-5 rounded border border-edge-hover shadow-inner shrink-0 hover:ring-2 hover:ring-edge-subtle transition-shadow"
-        style={{ background: current }}
+        style={{ background: current }} aria-label={label ?? "Panel color"}
       />
       {open && (
         <div
@@ -81,9 +81,9 @@ export default function PanelThemePicker({
                   key={c.hex}
                   type="button"
                   onClick={() => pick(c.hex)}
-                  title={c.name}
+                  data-hint={c.name}
                   className={`w-5 h-5 rounded border transition-transform hover:scale-110 ${active ? "ring-2 ring-offset-1 ring-stone-500" : "border-edge-hover"}`}
-                  style={{ background: c.hex }}
+                  style={{ background: c.hex }} aria-label={c.name}
                 />
               );
             })}

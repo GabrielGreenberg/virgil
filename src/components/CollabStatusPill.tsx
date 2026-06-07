@@ -89,7 +89,6 @@ export default function CollabStatusPill({
     return (
       <button
         onClick={handleClick}
-        title={collab.enabled ? "Turn off collaborator mode" : "Turn on collaborator mode"}
         className="topbarbtn"
         data-hint="Collaborator mode"
         aria-pressed={!!collab.enabled}
@@ -149,7 +148,7 @@ export default function CollabStatusPill({
       <div
         className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[11px] text-ink-body bg-surface border border-edge-subtle max-w-[260px] truncate"
         style={partnerColor && !iHavePen ? { borderColor: partnerColor } : undefined}
-        title="Collaborator pen status"
+        data-hint="Collaborator pen status" aria-label="Collaborator pen status"
       >
         <span
           aria-hidden
@@ -176,7 +175,7 @@ export default function CollabStatusPill({
           context doesn't clip it. */}
       <button
         onClick={() => setMenuOpen((v) => !v)}
-        title="Collaborator options"
+        data-hint="Collaborator options"
         aria-label="Collaborator options"
         aria-haspopup="menu"
         aria-expanded={menuOpen}

@@ -242,7 +242,7 @@ export function BadgeOrphaned({ theme }: { theme: CardTheme }) {
     <span
       className={`relative ${BADGE_BASE} opacity-60`}
       style={{ background: theme.badgeBg, border: `1.5px solid ${theme.badgeBorder}` }}
-      title="No anchor in document"
+      data-hint="No anchor in document" aria-label="No anchor in document"
     >
       <svg className="absolute inset-0" width="100%" height="100%" viewBox="0 0 20 20" fill="none" preserveAspectRatio="none">
         <line x1="4" y1="16" x2="16" y2="4" stroke={theme.badgeColor} strokeWidth="2" />
@@ -339,7 +339,7 @@ function CardKindDropdown({
         draggable={false}
         onDragStart={(e) => { e.stopPropagation(); e.preventDefault(); }}
         className="inline-flex items-center gap-0.5 text-[10px] text-[var(--muted)] uppercase tracking-wider font-medium hover:text-ink-body transition-colors cursor-pointer bg-transparent p-0"
-        title="Change card type"
+        data-hint="Change card type" aria-label="Change card type"
       >
         {labelOverride ?? cardTypeLabel(kind)}
         <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
@@ -390,7 +390,7 @@ export function CardJumpChevron({
       draggable={false}
       onDragStart={(e) => { e.stopPropagation(); e.preventDefault(); }}
       className="w-4 h-4 flex items-center justify-center rounded text-ink-muted hover:text-ink-body transition-colors bg-transparent p-0 shrink-0"
-      title={title}
+      data-hint={title}
       aria-label={title}
     >
       <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
@@ -475,7 +475,7 @@ export function CardBodyTitle({
         onDragStart={(e) => { e.stopPropagation(); e.preventDefault(); }}
         className="card-title-add"
         style={theme ? { color: theme.titleColor } : undefined}
-        title="Add title"
+        data-hint="Add title"
       >
         +T
       </button>
@@ -888,7 +888,7 @@ export function EditableCard({
             ? { opacity: 0.55, pointerEvents: "none", filter: "saturate(0.7)" }
             : null),
         }}
-        title={partnerClaim ? `${partnerClaim.holder} is editing this card` : undefined}
+        data-hint={partnerClaim ? `${partnerClaim.holder} is editing this card` : undefined} aria-label={partnerClaim ? `${partnerClaim.holder} is editing this card` : undefined}
       >
         {onBodyTitleChange && (
           <CardBodyTitle
@@ -1189,7 +1189,6 @@ export function PopoutButton({
         e.preventDefault();
       }}
       className={className ?? POPOUT_BUTTON_CLASS}
-      title={title}
       aria-label={title}
       data-hint={isPoppedOut ? "Dock" : "Pop out"}
       dangerouslySetInnerHTML={{
@@ -1267,7 +1266,6 @@ export function PanelClose() {
       type="button"
       onClick={chrome.onClose}
       className="iconbtn-sm -mr-1"
-      title="Close panel"
       aria-label="Close panel"
       data-hint="Close panel"
     >
@@ -1300,7 +1298,6 @@ export function CardDragHandle() {
   return (
     <div
       className="card-drag-handle cursor-grab active:cursor-grabbing p-0.5 -ml-1 rounded text-ink-faint group-hover:text-ink-subtle transition-colors shrink-0"
-      title="Drag to pop out"
       data-hint="Drag to pop out"
       data-hint-pos="above"
       aria-hidden="true"
@@ -1361,7 +1358,6 @@ export function CardTrashButton({
       draggable={false}
       onDragStart={(e) => { e.stopPropagation(); e.preventDefault(); }}
       className="iconbtn-sm iconbtn-danger absolute bottom-1.5 right-1.5 opacity-0 group-hover:opacity-70 hover:!opacity-100 focus:opacity-100 transition-opacity"
-      title={title}
       aria-label={title}
       data-hint="Delete"
       data-hint-pos="above"
@@ -1766,7 +1762,6 @@ export function PanelHeader({
         <button
           onClick={(e) => onAdd(e.currentTarget.getBoundingClientRect())}
           className="iconbtn-sm"
-          title="Add"
           data-hint="Add"
         >
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
@@ -1845,7 +1840,6 @@ function HeaderAddDropdown({
         ref={btnRef}
         onClick={handleToggle}
         className="iconbtn-sm"
-        title="Add"
         data-hint="Add"
         aria-haspopup="menu"
         aria-expanded={open}
@@ -1974,7 +1968,7 @@ export function AiRequestCard({
         <CardDragHandle />
         <span
           className="inline-flex items-center justify-center w-5 h-5 shrink-0 text-sky-500"
-          title={`AI ${kindLabel} request`}
+          data-hint={`AI ${kindLabel} request`} aria-label={`AI ${kindLabel} request`}
         >
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
             <g transform="rotate(15 12 12)">
@@ -2004,7 +1998,6 @@ export function AiRequestCard({
           }}
           onMouseDown={(e) => e.stopPropagation()}
           className="text-ink-muted hover:text-ink-body shrink-0 p-0.5 opacity-0 group-hover:opacity-100 transition-opacity"
-          title="Delete request"
           data-hint="Delete request"
           data-hint-pos="above"
         >
@@ -2197,7 +2190,6 @@ export function ItemMenu({
         ref={btnRef}
         onClick={(e) => { e.stopPropagation(); setOpen((o) => !o); }}
         className={isPanelHeader ? "iconbtn-sm" : "iconbtn-md"}
-        title="Options"
         data-hint="Options"
       >
         <svg width={isPanelHeader ? 14 : 16} height={isPanelHeader ? 14 : 16} viewBox="0 0 24 24" fill="currentColor" stroke="none">
@@ -2325,7 +2317,6 @@ export function TargetFileIcon({
       draggable={false}
       onDragStart={(e) => { e.stopPropagation(); e.preventDefault(); }}
       className={`iconbtn-md iconbtn-on-dark ${className ?? ""}`}
-      title={title}
       data-hint="Jump to text"
       data-hint-pos="above"
     >
@@ -2358,7 +2349,6 @@ export function TargetIcon({
       draggable={false}
       onDragStart={(e) => { e.stopPropagation(); e.preventDefault(); }}
       className={`iconbtn-md iconbtn-on-dark ${className ?? ""}`}
-      title={title}
       data-hint="Jump to text"
       data-hint-pos="above"
     >

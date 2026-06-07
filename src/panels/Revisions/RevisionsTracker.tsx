@@ -86,7 +86,6 @@ export function RevisionsTrackerStrip({
           type="button"
           onClick={startEditing}
           className="ml-auto text-[var(--muted)] hover:text-ink-strong cursor-pointer rounded px-1.5 py-0.5 hover-on-light"
-          title="Set a target number of revisions to accept"
           data-hint="Set goal"
         >
           + goal
@@ -112,7 +111,6 @@ export function RevisionsTrackerStrip({
           type="button"
           onClick={startEditing}
           className="ml-auto text-[var(--muted-light)] hover:text-ink-strong cursor-pointer text-[10px] rounded px-1 py-0.5 hover-on-light"
-          title="Edit goal"
           data-hint="Edit goal"
         >
           edit
@@ -121,7 +119,6 @@ export function RevisionsTrackerStrip({
           type="button"
           onClick={() => onSetTarget(null)}
           className="text-[var(--muted-light)] hover:text-ink-strong cursor-pointer text-[10px] rounded px-1 py-0.5 hover-on-light"
-          title="Clear goal"
           data-hint="Clear goal"
           aria-label="Clear goal"
         >

@@ -453,7 +453,7 @@ function MarkerButton({ m, dragEnabled }: { m: PositionedMarker; dragEnabled: bo
         padding: 0,
         lineHeight: 1,
       }}
-      title={m.title || meta.label}
+      data-hint={m.title || meta.label}
       onClick={(e) => {
         e.preventDefault();
         e.stopPropagation();
@@ -487,7 +487,7 @@ function MarkerButton({ m, dragEnabled }: { m: PositionedMarker; dragEnabled: bo
       } : undefined}
       onDragEnd={dragEnabled ? (e) => {
         (e.target as HTMLElement).style.opacity = "";
-      } : undefined}
+      } : undefined} aria-label={m.title || meta.label}
     >
       {meta.icon}
     </button>

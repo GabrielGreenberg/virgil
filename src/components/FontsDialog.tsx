@@ -50,7 +50,7 @@ function CategoryCard({
           onClick={onReset}
           disabled={resetDisabled}
           className="text-[11px] text-ink-muted hover:text-ink-body disabled:opacity-30 disabled:cursor-default"
-          title="Reset to default"
+          data-hint="Reset to default"
         >
           Reset
         </button>
@@ -191,7 +191,7 @@ export default function FontsDialog({ open, onClose, prefs, onUpdate }: FontsDia
           type="button"
           onClick={onClose}
           className="w-6 h-6 rounded hover:bg-edge-subtle text-ink-muted hover:text-ink-body flex items-center justify-center"
-          title="Close"
+          data-hint="Close"
           aria-label="Close"
         >
           <svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round">

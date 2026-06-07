@@ -210,10 +210,10 @@ function PrintCheckbox({
       type="button"
       onClick={() => !disabled && onChange(!checked)}
       disabled={disabled}
-      title={title}
+      data-hint={title}
       className={`flex items-center gap-2 text-xs text-left w-full px-1 py-0.5 rounded ${
         disabled ? "opacity-40 cursor-not-allowed" : "hover:bg-surface-muted-strong"
-      }`}
+      }`} aria-label={title}
     >
       <span
         className={`flex items-center justify-center w-4 h-4 rounded border ${

@@ -133,7 +133,6 @@ export function TodoRow({
           }}
           onMouseDown={(e) => e.stopPropagation()}
           className="shrink-0 bg-transparent p-0"
-          title={item.done ? "Mark as not done" : "Mark as done"}
           data-hint={item.done ? "Undo done" : "Mark done"}
           data-hint-pos="above"
         >

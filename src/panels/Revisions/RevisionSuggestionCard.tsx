@@ -112,7 +112,7 @@ function AuthorChip({ author }: { author: RevisionSuggestionCardData["author"] }
           ? "bg-[var(--accent)]/10 text-[var(--accent)]"
           : "bg-surface-muted-strong text-ink-body"
       }`}
-      title={isAi ? "AI-authored" : "Human-authored"}
+      data-hint={isAi ? "AI-authored" : "Human-authored"} aria-label={isAi ? "AI-authored" : "Human-authored"}
     >
       {isAi ? "AI" : "Human"}
     </span>
@@ -234,7 +234,7 @@ export function RevisionSuggestionCard({
   const dot = (
     <span
       className={`inline-block w-2 h-2 rounded-full shrink-0 ${STATUS_DOT[card.status]}`}
-      title={STATUS_LABEL[card.status]}
+      data-hint={STATUS_LABEL[card.status]} aria-label={STATUS_LABEL[card.status]}
     />
   );
 

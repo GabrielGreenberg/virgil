@@ -414,7 +414,6 @@ function IconBtn({
     <button
       onClick={onClick}
       disabled={disabled}
-      title={title}
       data-hint={title.replace(/\s*\(.*\)$/, "")}
       className={`p-1 rounded transition-colors disabled:opacity-25 disabled:cursor-default ${
         active
@@ -444,7 +443,6 @@ function TextBtn({
   return (
     <button
       onClick={onClick}
-      title={title}
       data-hint={title.replace(/\s*\(.*\)$/, "")}
       className={`px-1.5 py-0.5 rounded text-sm transition-colors ${
         active
@@ -518,7 +516,6 @@ export function BlockTypeDropdown({ editor }: { editor: Editor }) {
     <div ref={ref} className="relative">
       <button
         onClick={handleToggle}
-        title="Block type"
         data-hint="Block type"
         className="px-1.5 py-0.5 rounded text-sm transition-colors text-[var(--muted)] hover:bg-edge-subtle hover:text-ink-body flex items-center gap-1"
       >
@@ -610,7 +607,6 @@ function ExampleDropdown({ editor }: { editor: Editor }) {
     <div ref={ref} className="relative">
       <button
         onClick={handleToggle}
-        title="Insert expex example"
         data-hint="Example"
         className={`px-1 py-0.5 rounded transition-colors flex items-center gap-0.5 ${
           active
@@ -744,7 +740,6 @@ function AttachedPopover({
     <div ref={wrapRef} className="relative flex items-center">
       <button
         onClick={toggle}
-        title={title}
         data-hint={title}
         className={`p-1 rounded transition-colors ${
           open || active
@@ -817,7 +812,6 @@ export function ActionButton({
         const pod = (e.currentTarget as HTMLElement).closest<HTMLElement>("[data-action-pod]");
         onClick(pod?.getBoundingClientRect() ?? null);
       }}
-      title={title}
       data-hint={title}
       className="p-1 rounded transition-colors"
       style={{ color }}
@@ -1165,7 +1159,6 @@ function ViewMenu({
       <button
         onClick={() => setOpen(!open)}
         className={`p-1 rounded transition-colors ${open ? "bg-[var(--accent-light)] text-[var(--accent)]" : "text-[var(--ink-muted)] hover:bg-edge-subtle hover:text-ink-body"}`}
-        title="View options"
         data-hint="View options"
       >
         <svg
@@ -1454,7 +1447,6 @@ function MenuBarContent({
             <button
               onClick={onParaNavBack}
               disabled={paraNavBackDisabled}
-              title="Go back"
               data-hint="Go back"
               className="flex items-center justify-center rounded transition-colors disabled:opacity-25 disabled:cursor-default text-[var(--ink-muted)] hover:bg-edge-subtle hover:text-ink-body"
               style={isVert ? { width: 20, height: 16 } : { width: 16, height: 20 }}
@@ -1468,7 +1460,6 @@ function MenuBarContent({
             <button
               onClick={onParaNavForward}
               disabled={paraNavForwardDisabled}
-              title="Go forward"
               data-hint="Go forward"
               className="flex items-center justify-center rounded transition-colors disabled:opacity-25 disabled:cursor-default text-[var(--ink-muted)] hover:bg-edge-subtle hover:text-ink-body"
               style={isVert ? { width: 20, height: 16 } : { width: 16, height: 20 }}
@@ -1486,7 +1477,6 @@ function MenuBarContent({
         <button
           onClick={onToggleEditorSplit}
           className={`p-1 rounded transition-colors ${editorSplit ? "text-[var(--accent)] bg-[var(--accent-light)]" : "text-[var(--ink-muted)] hover:bg-edge-subtle hover:text-ink-body"}`}
-          title={editorSplit ? "Close split editor" : "Split editor"}
           data-hint="Split editor"
         >
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">

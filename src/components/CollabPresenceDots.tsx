@@ -23,7 +23,7 @@ export default function CollabPresenceDots({ presences, withTooltip = true }: Pr
   return (
     <span
       className="inline-flex items-center gap-[1px] shrink-0"
-      title={title}
+      data-hint={title}
       aria-label={title}
     >
       {presences.slice(0, 4).map((p) => (

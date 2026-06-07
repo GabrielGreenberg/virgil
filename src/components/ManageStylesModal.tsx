@@ -239,8 +239,8 @@ export default function ManageStylesModal({
               className="grid items-center gap-2 px-3 py-2 text-[10px] font-medium uppercase tracking-wide text-ink-subtle border-b border-edge-subtle bg-surface-muted/40"
               style={{ gridTemplateColumns: gridTemplate }}
             >
-              <span title="Default style for new docs">Default</span>
-              {showActiveColumn && <span title="Active style for the current doc">Active</span>}
+              <span data-hint="Default style for new docs">Default</span>
+              {showActiveColumn && <span data-hint="Active style for the current doc">Active</span>}
               <span>Name</span>
               <span>Actions</span>
             </div>
@@ -261,7 +261,7 @@ export default function ManageStylesModal({
                       name="default-style"
                       checked={isDefault}
                       onChange={() => setDefaultStyleId(s.id)}
-                      title="Set as default for new docs"
+                      data-hint="Set as default for new docs"
                       className="cursor-pointer"
                     />
                     {showActiveColumn && (
@@ -269,7 +269,7 @@ export default function ManageStylesModal({
                         {isActive ? (
                           <span
                             className="inline-flex items-center gap-1 text-[var(--accent)]"
-                            title={drifted ? "Active — preamble has drifted from this style" : "Active style for this doc"}
+                            data-hint={drifted ? "Active — preamble has drifted from this style" : "Active style for this doc"} aria-label={drifted ? "Active — preamble has drifted from this style" : "Active style for this doc"}
                           >
                             <span aria-hidden>✓</span>
                             {drifted && (
@@ -285,7 +285,7 @@ export default function ManageStylesModal({
                             onClick={() => void apply(s.id)}
                             disabled={!!pendingMerge}
                             className="text-[11px] px-2 py-1 hover:bg-surface-muted rounded disabled:opacity-40 disabled:cursor-not-allowed"
-                            title={pendingMerge ? "AI merge in progress…" : "Apply this style to the current doc"}
+                            data-hint={pendingMerge ? "AI merge in progress…" : "Apply this style to the current doc"}
                           >
                             Apply
                           </button>
@@ -313,7 +313,7 @@ export default function ManageStylesModal({
                           </span>
                           {s.origin === "seed" && (
                             <span
-                              title="Seeded on first launch — fully editable like any other style."
+                              data-hint="Seeded on first launch — fully editable like any other style."
                               className="text-[9px] uppercase tracking-wide px-1.5 py-0.5 rounded bg-surface-muted text-ink-subtle border border-edge-subtle/60"
                             >
                               seeded
@@ -348,7 +348,7 @@ export default function ManageStylesModal({
                         type="button"
                         onClick={() => setConfirmDeleteId(s.id)}
                         disabled={isOnlyOne}
-                        title={
+                        data-hint={
                           isOnlyOne
                             ? "Library must contain at least one style"
                             : undefined

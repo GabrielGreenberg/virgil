@@ -1939,15 +1939,7 @@ textarea,
   font-size: 0.72rem;
   color: var(--text-muted, #9a8f80);
 }
-
-.math-popover-hint kbd {
-  font-family: var(--font-mono-override, var(--font-mono)), monospace;
-  font-size: 0.9em;
-  padding: 0 0.3em;
-  border-radius: 0.2em;
-  background: var(--code-bg, #f0eeeb);
-  border: 1px solid var(--border, #d9d3c8);
-}
+/* kbd inside these hints now uses the global .kbd (see Kbd.tsx). */
 
 /* Figure rendering — `\begin{figure}` envs and bare `\includegraphics`.
  * Block-level with column-width max; reload button hidden until hover. */
@@ -2448,15 +2440,6 @@ textarea,
 .figure-popover-hint {
   font-size: 0.72rem;
   color: var(--text-muted, #9a8f80);
-}
-
-.figure-popover-hint kbd {
-  font-family: var(--font-mono-override, var(--font-mono)), monospace;
-  font-size: 0.9em;
-  padding: 0 0.3em;
-  border-radius: 0.2em;
-  background: var(--code-bg, #f0eeeb);
-  border: 1px solid var(--border, #d9d3c8);
 }
 
 /* Linked-anchor spans (Mode B anchor links).

@@ -247,7 +247,7 @@ export default function CodeEditor({
             borderColor: "rgba(217, 119, 6, 0.3)",
             color: "var(--ink-body, #4a3a1f)",
           }}
-          title={parseError}
+          data-hint={parseError}
         >
           Edits paused — LaTeX parse error. Fix the source to resume sync.
         </div>

@@ -468,7 +468,6 @@ function SearchPanel({
               ? "border-[var(--accent)] text-[var(--accent)] bg-amber-50/60"
               : "border-edge-hover text-ink-muted hover:text-ink-body"
           }`}
-          title="Match case"
           data-hint="Match case"
         >
           Aa
@@ -480,7 +479,6 @@ function SearchPanel({
               ? "border-[var(--accent)] text-[var(--accent)] bg-amber-50/60"
               : "border-edge-hover text-ink-muted hover:text-ink-body"
           }`}
-          title="Whole word"
           data-hint="Whole word"
         >
           W
@@ -586,7 +584,6 @@ function MoreScopesDropdown({
             ? "border-edge-hover bg-white/70 text-ink-body"
             : "border-edge-subtle bg-transparent text-ink-muted hover:text-ink-subtle"
         }`}
-        title="More search scopes"
         data-hint="More scopes"
       >
         <span>More</span>
@@ -673,7 +670,6 @@ function ScopeChip({
           ? "border-edge-hover bg-white/70 text-ink-body"
           : "border-edge-subtle bg-transparent text-ink-muted hover:text-ink-subtle"
       }`}
-      title={`${enabled ? "Hide" : "Show"} ${SCOPE_LABEL[scope]}`}
       data-hint={`${enabled ? "Hide" : "Show"} scope`}
     >
       <span

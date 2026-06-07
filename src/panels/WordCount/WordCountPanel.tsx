@@ -114,11 +114,6 @@ export default function WordCountPanel({
                     ? "border-b border-edge-subtle"
                     : ""
                 }`}
-                title={
-                  included
-                    ? `Exclude ${CATEGORY_LABELS[cat]} from total`
-                    : `Include ${CATEGORY_LABELS[cat]} in total`
-                }
                 data-hint="Toggle category"
               >
                 <span className="w-4 text-center text-xs text-[var(--accent)]">

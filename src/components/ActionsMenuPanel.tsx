@@ -412,7 +412,7 @@ export function ActionsMenuPanel({
         </FmtBtn>
         <button
           type="button"
-          title="Text color"
+          data-hint="Text color"
           onClick={openColorPopover}
           className="flex flex-col items-center justify-center rounded transition-colors hover-on-light"
           style={{
@@ -423,7 +423,7 @@ export function ActionsMenuPanel({
             cursor: "pointer",
             padding: 0,
             lineHeight: 1,
-          }}
+          }} aria-label="Text color"
         >
           <span style={{ fontFamily: "var(--font-serif, serif)", fontWeight: 600, fontSize: 14 }}>
             A
@@ -566,7 +566,7 @@ function FmtBtn({
   return (
     <button
       type="button"
-      title={title}
+      data-hint={title}
       onClick={onClick}
       className="flex items-center justify-center rounded transition-colors hover-on-light"
       style={{
@@ -575,7 +575,7 @@ function FmtBtn({
         color: active ? "var(--ink-strong)" : "var(--ink-muted)",
         border: "none",
         cursor: "pointer",
-      }}
+      }} aria-label={title}
     >
       {children}
     </button>

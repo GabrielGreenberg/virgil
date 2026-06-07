@@ -183,7 +183,7 @@ export default function TexBlockNodeView({ node, updateAttributes, deleteNode, e
                 <button
                   type="button"
                   className="par-title-delete"
-                  title="Remove title"
+                  data-hint="Remove title"
                   onMouseDown={(e) => {
                     e.preventDefault();
                     e.stopPropagation();
@@ -237,7 +237,7 @@ export default function TexBlockNodeView({ node, updateAttributes, deleteNode, e
             e.preventDefault();
             e.stopPropagation();
           }}
-          title={collapsed ? "Expand LaTeX block" : "Collapse LaTeX block"}
+          data-hint={collapsed ? "Expand LaTeX block" : "Collapse LaTeX block"}
           aria-label={collapsed ? "Expand LaTeX block" : "Collapse LaTeX block"}
           contentEditable={false}
         >
@@ -261,7 +261,7 @@ export default function TexBlockNodeView({ node, updateAttributes, deleteNode, e
             e.stopPropagation();
             toggleCollapsed();
           }}
-          title="Click to expand"
+          data-hint="Click to expand" aria-label="Click to expand"
         >
           {previewLines.length > 0 ? (
             previewLines.map((line, i) => (
@@ -322,7 +322,7 @@ export default function TexBlockNodeView({ node, updateAttributes, deleteNode, e
             e.stopPropagation();
             e.preventDefault();
           }}
-          title="Delete LaTeX block"
+          data-hint="Delete LaTeX block"
           aria-label="Delete LaTeX block"
           className="absolute bottom-1.5 right-1.5 p-1 rounded text-[var(--ink-muted)] hover:text-[var(--danger)] hover:bg-edge-subtle focus:text-[var(--danger)] opacity-0 group-hover:opacity-60 hover:!opacity-100 focus:opacity-100 transition-opacity"
           contentEditable={false}

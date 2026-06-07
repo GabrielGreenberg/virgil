@@ -221,7 +221,7 @@ export default function PreferencesModal({
           onClick={onClose}
           onMouseDown={(e) => e.stopPropagation()}
           className="iconbtn-md"
-          title="Close"
+          data-hint="Close" aria-label="Close"
         >
           <svg width="16" height="16" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.5">
             <path d="M3 3l8 8M11 3l-8 8" />

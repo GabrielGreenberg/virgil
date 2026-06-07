@@ -1379,8 +1379,8 @@ function GrabHandleRender({
         top: placement.top,
         pointerEvents: "auto",
       }}
-      title="Drag to pop out, click for actions"
-      aria-hidden="true"
+      data-hint="Drag to pop out, click for actions"
+      aria-hidden="true" aria-label="Drag to pop out, click for actions"
     >
       <svg width="10" height="14" viewBox="0 0 10 14" fill="currentColor">
         <circle cx="3" cy="2" r="1.2" />

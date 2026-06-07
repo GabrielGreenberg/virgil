@@ -91,13 +91,13 @@ export default function CollaboratorIdentityDialog({
                     key={c.hex}
                     type="button"
                     onClick={() => setColor(c.hex)}
-                    title={c.name}
+                    data-hint={c.name}
                     className="w-6 h-6 rounded-full border-2 transition-transform"
                     style={{
                       background: c.hex,
                       borderColor: selected ? "#1a1a1a" : "transparent",
                       transform: selected ? "scale(1.1)" : undefined,
-                    }}
+                    }} aria-label={c.name}
                   />
                 );
               })}

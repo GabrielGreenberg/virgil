@@ -175,14 +175,14 @@ export default function FigureAnnotation({
       onMouseDown={readOnly ? undefined : onMouseDown}
       onClick={readOnly ? undefined : (e) => e.stopPropagation()}
     >
-      <span className="figure-annotation-type-chip" title="Figure">
+      <span className="figure-annotation-type-chip" data-hint="Figure">
         Figure
       </span>
       <span
         className={`figure-annotation-numbered-toggle${numbered ? "" : " is-off"}`}
         role={readOnly ? undefined : "button"}
         aria-pressed={readOnly ? undefined : numbered}
-        title={
+        data-hint={
           readOnly
             ? undefined
             : numbered
@@ -261,7 +261,7 @@ export default function FigureAnnotation({
         <span
           className="figure-annotation-delete"
           role="button"
-          title="Delete figure"
+          data-hint="Delete figure"
           onClick={(e) => {
             e.stopPropagation();
             void requestDelete();

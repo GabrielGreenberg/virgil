@@ -608,7 +608,7 @@ export function CitationCard({
         ...headerStyle,
         overflowWrap: "anywhere",
       }}
-      title={
+      data-hint={
         hasAnyHeaderKey
           ? headerRowData
               .map((r) =>
@@ -618,7 +618,17 @@ export function CitationCard({
               )
               .join("\n")
           : "Citation"
-      }
+      } aria-label={
+                  hasAnyHeaderKey
+                    ? headerRowData
+                        .map((r) =>
+                          [r.author || r.key, r.year, r.title]
+                            .filter(Boolean)
+                            .join(" · "),
+                        )
+                        .join("\n")
+                    : "Citation"
+                }
     >
       {hasAnyHeaderKey ? (
         headerRowData.map((r) => (
@@ -765,7 +775,7 @@ export function CitationCard({
                 type="button"
                 onClick={addRow}
                 className="mt-2 inline-flex items-center gap-1 text-xs text-ink-subtle hover:text-ink-body transition-colors"
-                title="Add another reference"
+                data-hint="Add another reference"
               >
                 <svg
                   width="12"
@@ -825,7 +835,7 @@ export function CitationCard({
                   type="button"
                   onClick={() => setOverflowOpen((v) => !v)}
                   className="iconbtn-sm text-ink-body"
-                  title="More options"
+                  data-hint="More options" aria-label="More options"
                 >
                   <svg
                     width="12"
@@ -902,7 +912,7 @@ export function CitationCard({
                     setCodeDraft(cit.command);
                   }}
                   className="text-[11px] font-mono text-ink-body truncate flex-1 min-w-0 text-left bg-transparent border border-transparent rounded px-1 py-0 cursor-text hover:border-edge-hover hover:bg-surface transition-colors"
-                  title="Edit raw LaTeX"
+                  data-hint="Edit raw LaTeX" aria-label="Edit raw LaTeX"
                 >
                   {cit.command || (
                     <span className="text-ink-body italic">
@@ -1160,7 +1170,7 @@ function CitationKeyRow({
                 onRemove();
               }}
               className="shrink-0 w-5 h-5 flex items-center justify-center rounded text-ink-body hover:text-danger hover:bg-edge-subtle opacity-0 group-hover/row:opacity-100 transition-opacity"
-              title="Remove this row"
+              data-hint="Remove this row" aria-label="Remove this row"
             >
               <svg
                 width="11"
@@ -1191,7 +1201,7 @@ function CitationKeyRow({
               onOpenPicker();
             }}
             className="font-mono text-ink-muted hover:text-ink-body underline decoration-dotted decoration-edge-hover underline-offset-2"
-            title="Click to change"
+            data-hint="Click to change" aria-label="Click to change"
           >
             {trimmed}
           </button>
@@ -1199,7 +1209,7 @@ function CitationKeyRow({
             type="button"
             onClick={copyCitekey}
             className="iconbtn-sm text-ink-muted hover:text-ink-body"
-            title={copied ? "Copied" : "Copy citekey"}
+            data-hint={copied ? "Copied" : "Copy citekey"} aria-label={copied ? "Copied" : "Copy citekey"}
           >
             {copied ? (
               <svg
@@ -1243,7 +1253,7 @@ function CitationKeyRow({
                   ? "text-ink-body bg-edge-subtle"
                   : "text-ink-muted hover:text-ink-body hover:bg-edge-subtle"
               }`}
-              title={bibExpanded ? "Hide bib entry" : "Show bib entry"}
+              data-hint={bibExpanded ? "Hide bib entry" : "Show bib entry"}
             >
               Bib
             </button>
@@ -1279,7 +1289,7 @@ function CitationKeyRow({
                     setPgOpen(false);
                   }}
                   className="text-ink-muted hover:text-ink-body p-0.5"
-                  title="Close"
+                  data-hint="Close" aria-label="Close"
                 >
                   <svg
                     width="9"
@@ -1304,7 +1314,7 @@ function CitationKeyRow({
                 setPgOpen(true);
               }}
               className="text-[10px] tracking-wide text-ink-muted hover:text-ink-body px-1 py-0 rounded hover:bg-edge-subtle"
-              title="Add a page range or locator"
+              data-hint="Add a page range or locator"
             >
               +range
             </button>
@@ -1319,7 +1329,7 @@ function CitationKeyRow({
             className={`shrink-0 w-5 h-5 flex items-center justify-center rounded text-ink-muted hover:text-danger hover:bg-edge-subtle opacity-0 group-hover/row:opacity-100 transition-opacity ${
               !canRemove ? "pointer-events-none" : ""
             }`}
-            title="Remove this key"
+            data-hint="Remove this key" aria-label="Remove this key"
           >
             <svg
               width="11"

@@ -526,7 +526,6 @@ export default function AIWindow({
             <button
               onClick={() => refreshAll()}
               className="iconbtn-md"
-              title="Refresh"
               data-hint="Refresh"
             >
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -539,7 +538,6 @@ export default function AIWindow({
           <button
             onClick={onClose}
             className="iconbtn-md"
-            title="Close (Esc)"
             data-hint="Close"
           >
             <svg width="16" height="16" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.5">
@@ -774,7 +772,7 @@ function RequestCard({ req }: { req: AIRequestVM }) {
       <span
         className="shrink-0 text-[10px] px-1.5 py-0.5 rounded font-medium"
         style={{ background: meta.chipBg, color: meta.chipFg }}
-        title={meta.description}
+        data-hint={meta.description} aria-label={meta.description}
       >
         {meta.label}
       </span>
@@ -791,7 +789,7 @@ function RequestCard({ req }: { req: AIRequestVM }) {
           {req.turnCount > 1 && (
             <span
               className="shrink-0 text-[9px] text-ink-subtle bg-surface-muted-strong px-1 rounded"
-              title={`${req.turnCount} turns in this thread`}
+              data-hint={`${req.turnCount} turns in this thread`}
             >
               {req.turnCount} turns
             </span>
@@ -808,7 +806,6 @@ function RequestCard({ req }: { req: AIRequestVM }) {
         <button
           onClick={handleCancel}
           className="shrink-0 text-[10px] text-ink-muted hover:text-[#b45757] transition-colors px-1"
-          title="Cancel this request"
           data-hint="Cancel"
         >
           ×
@@ -847,7 +844,6 @@ function ConnectWithClaude() {
             <button
               disabled
               className="px-3 py-1.5 text-xs font-medium rounded-md border border-edge-subtle text-ink-muted bg-surface-muted cursor-not-allowed"
-              title="Coming soon"
               data-hint="Coming soon"
             >
               Sign in

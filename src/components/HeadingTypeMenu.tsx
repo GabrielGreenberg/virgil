@@ -113,7 +113,7 @@ export function HeadingTypeMenu({ anchorRect, currentLevel, documentClass, onPic
             type="button"
             role="menuitem"
             disabled={disabled}
-            title={title}
+            data-hint={title}
             onClick={() => {
               if (disabled) return;
               onPick({ kind: "level", level: entry.level });
@@ -125,7 +125,7 @@ export function HeadingTypeMenu({ anchorRect, currentLevel, documentClass, onPic
               background: "transparent",
               cursor: disabled ? "not-allowed" : "pointer",
               opacity: disabled ? 0.55 : 1,
-            }}
+            }} aria-label={title}
           >
             <span style={{ width: 14, display: "inline-block", color: "var(--accent)" }}>
               {isCurrent ? "✓" : ""}
