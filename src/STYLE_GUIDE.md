@@ -390,14 +390,29 @@ both axes. Tune the visual globally by editing the `--gutter-handle-gap` /
 `--gutter-track-width` / `--gutter-col-handle-inset` CSS variables.
 
 **Optical-center anchoring (generalizable chrome rule).** Any gutter or
-marginal affordance that labels a line of text — a grab handle, a marker, a
-future drop indicator — centers its glyph on the text's *optical center*
+marginal affordance that labels a line of text — a grab handle, a marker, the
+drag drop indicator — centers its glyph on the text's *optical center*
 (`capTopOffset + capHeight / 2` below the line-box top), NOT on the line-box
 top or the glyph cap-top. Anchoring to the line-box top (or `flex-start`
 from it) leaves the affordance sitting low by ~half a cap-height, and the
 error grows with font size. Read the Y from
 `resolveBlockFrame(el, …).opticalCenterY` and center the glyph on it (an
 absolute `top` plus `transform: translateY(-50%)`).
+
+**Content-left sharing (the horizontal analog, chip 4a).** The drag DROP
+INDICATOR — the between-blocks insert bar and the expex new-item / into-item /
+single-body bars — takes its x (and a horizontal bar's width) from the SAME
+`resolveBlockFrame(el, …).contentLeft` / `contentWidth` the grab handles read,
+never from an independent `getBoundingClientRect().left`. So the drop bar hugs
+the block's text-left and lines up with the grab handles and the block content
+by construction — it cannot drift from them. The distinction bites for an
+INDENTED block whose box-left and text-left differ — an `exampleItem`, whose
+box opens at the `a.` / `(n)` label column but whose prose is inset: the
+canonical frame puts the bar in the PROSE column (where the dropped text lands),
+not under the label. (The expex bars resolve the frame of the insertion site's
+first content CHILD, robust to a body whose `data-uuid` isn't yet hydrated
+mid-drag; a plain paragraph's box-left already equals its content-left, so
+ordinary paragraph text is byte-unchanged.)
 
 **Grab hit/hover halo.** The six dots stay a thin 12px box (the placement
 math above pins it precisely on both axes — do NOT resize the box, the X
