@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { Kbd } from "./Kbd";
 
 interface Props {
   /** "figureBlock" or "graphicsBlock" — drives label + how we wrap text. */
@@ -126,7 +127,7 @@ export default function FigurePopover({ kind, raw, anchorRect, onSave, onClose }
         placeholder={placeholder}
       />
       <div className="figure-popover-hint">
-        <kbd>{isFigure ? "⌘+Enter" : "Enter"}</kbd> to save · <kbd>Esc</kbd> to cancel
+        <Kbd keys={isFigure ? "Mod+Enter" : "Enter"} /> to save · <Kbd keys="Esc" /> to cancel
       </div>
     </div>
   );

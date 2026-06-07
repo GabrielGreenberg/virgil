@@ -265,8 +265,7 @@ export function StripButton({
       }}
       className="iconbtn-md iconbtn-toggle relative select-none"
       aria-pressed={active}
-      title={label}
-      data-helper={label}
+      data-hint={label}
     >
       {renderIcon(active)}
     </button>

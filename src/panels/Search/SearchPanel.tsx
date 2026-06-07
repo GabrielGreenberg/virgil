@@ -468,8 +468,7 @@ function SearchPanel({
               ? "border-[var(--accent)] text-[var(--accent)] bg-amber-50/60"
               : "border-edge-hover text-ink-muted hover:text-ink-body"
           }`}
-          title="Match case"
-          data-helper="Match case"
+          data-hint="Match case"
         >
           Aa
         </button>
@@ -480,8 +479,7 @@ function SearchPanel({
               ? "border-[var(--accent)] text-[var(--accent)] bg-amber-50/60"
               : "border-edge-hover text-ink-muted hover:text-ink-body"
           }`}
-          title="Whole word"
-          data-helper="Whole word"
+          data-hint="Whole word"
         >
           W
         </button>
@@ -586,8 +584,7 @@ function MoreScopesDropdown({
             ? "border-edge-hover bg-white/70 text-ink-body"
             : "border-edge-subtle bg-transparent text-ink-muted hover:text-ink-subtle"
         }`}
-        title="More search scopes"
-        data-helper="More scopes"
+        data-hint="More scopes"
       >
         <span>More</span>
         {active && (
@@ -673,8 +670,7 @@ function ScopeChip({
           ? "border-edge-hover bg-white/70 text-ink-body"
           : "border-edge-subtle bg-transparent text-ink-muted hover:text-ink-subtle"
       }`}
-      title={`${enabled ? "Hide" : "Show"} ${SCOPE_LABEL[scope]}`}
-      data-helper={`${enabled ? "Hide" : "Show"} scope`}
+      data-hint={`${enabled ? "Hide" : "Show"} scope`}
     >
       <span
         aria-hidden

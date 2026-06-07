@@ -1444,7 +1444,7 @@ function GrabHandleRender({
       ref={elRef}
       className="text-object-grab-handle"
       style={style}
-      title="Drag to pop out, click for actions"
+      data-hint="Drag to pop out, click for actions"
       aria-hidden="true"
     >
       <svg width="10" height="14" viewBox="0 0 10 14" fill="currentColor">

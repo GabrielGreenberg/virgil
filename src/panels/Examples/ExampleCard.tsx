@@ -228,9 +228,8 @@ export function ExampleCard({
             else openEditor();
           }}
           className="text-[10px] uppercase tracking-wide px-1.5 py-0.5 rounded border border-edge-subtle text-ink-muted hover:text-ink-body hover-on-light hover:border-edge-hover flex-shrink-0"
-          title={isEditing ? "Close source editor" : "Edit example source"}
-          data-helper={isEditing ? "Close" : "Edit"}
-          data-helper-pos="above"
+          data-hint={isEditing ? "Close" : "Edit"}
+          data-hint-pos="above"
           disabled={!onUpdateLatex && !isEditing}
         >
           {isEditing ? "Close" : "Edit"}
@@ -241,9 +240,8 @@ export function ExampleCard({
             setShowHelp((v) => !v);
           }}
           className="text-[10px] px-1.5 py-0.5 rounded border border-edge-subtle text-ink-muted hover:text-ink-body hover-on-light hover:border-edge-hover flex-shrink-0 font-semibold"
-          title="What is \\expex?"
-          data-helper={showHelp ? "Hide help" : "Help"}
-          data-helper-pos="above"
+          data-hint={showHelp ? "Hide help" : "Help"}
+          data-hint-pos="above"
         >
           ?
         </button>
@@ -286,7 +284,7 @@ export function ExampleCard({
               <button
                 onClick={(e) => { e.stopPropagation(); applyEdit(); }}
                 className="text-[10px] uppercase tracking-wide px-1.5 py-0.5 rounded border border-edge-strong text-ink-body hover-on-light hover:border-edge-hover"
-                title="Apply (⌘⏎)"
+                data-hint="Apply (⌘⏎)"
               >
                 Apply
               </button>

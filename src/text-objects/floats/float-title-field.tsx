@@ -106,7 +106,7 @@ export function FloatTitleField({
           <button
             type="button"
             className="par-title-delete"
-            title="Remove title"
+            data-hint="Remove title"
             onMouseDown={(e) => {
               e.preventDefault();
               e.stopPropagation();

@@ -170,7 +170,7 @@ export function CutterCommentCard({
             ? { opacity: 0.55, pointerEvents: "none", filter: "saturate(0.7)" }
             : undefined
         }
-        title={partnerClaim ? `${partnerClaim.holder} is editing this card` : undefined}
+        data-hint={partnerClaim ? `${partnerClaim.holder} is editing this card` : undefined} aria-label={partnerClaim ? `${partnerClaim.holder} is editing this card` : undefined}
       >
         {card.selectedText && (
           <div>

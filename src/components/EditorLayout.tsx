@@ -320,8 +320,8 @@ function InlineTabLabel({
           onClick();
         }
       }}
-      title={title}
-      className={`group relative flex items-center gap-1.5 ${padding} h-[24px] cursor-default shrink-0`}
+      data-hint={title}
+      className={`group relative flex items-center gap-1.5 ${padding} h-[24px] cursor-default shrink-0`} aria-label={title}
     >
       <div
         aria-hidden
@@ -341,8 +341,7 @@ function InlineTabLabel({
             onClose();
           }}
           className="relative topbarbtn topbarbtn-icon opacity-40 group-hover:opacity-100 hover:!opacity-100 transition-opacity"
-          title="Close tab"
-          data-helper="Close tab"
+          data-hint="Close tab"
         >
           <IconX />
         </button>
@@ -4016,8 +4015,7 @@ export default function EditorLayout() {
                             closePaperTab(citekey);
                           }}
                           className="topbarbtn topbarbtn-icon"
-                          title="Close tab"
-                          data-helper="Close tab"
+                          data-hint="Close tab"
                         >
                           <IconX />
                         </button>
@@ -4136,8 +4134,7 @@ export default function EditorLayout() {
                             closeLibraryOuterTab(libId);
                           }}
                           className="topbarbtn topbarbtn-icon"
-                          title="Close tab"
-                          data-helper="Close tab"
+                          data-hint="Close tab"
                         >
                           <IconX />
                         </button>
@@ -4245,8 +4242,7 @@ export default function EditorLayout() {
                       <button
                         onClick={(e) => { e.stopPropagation(); closeTab(doc.id); }}
                         className="topbarbtn topbarbtn-icon"
-                        title="Close tab"
-                        data-helper="Close tab"
+                        data-hint="Close tab"
                       >
                         <IconX />
                       </button>
@@ -4306,8 +4302,7 @@ export default function EditorLayout() {
             <button
               onClick={applyUpdate}
               className="topbarbtn"
-              title="Refresh to apply the Virgil update"
-              data-helper="Virgil update"
+              data-hint="Virgil update"
             >
               <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
                 <path d="M2.5 8a5.5 5.5 0 0 1 9.4-3.9L13.5 5.5" />
@@ -4332,8 +4327,7 @@ export default function EditorLayout() {
                   onClick={focusMode.deactivate}
                   className="topbarbtn"
                   aria-pressed="true"
-                  title="Exit focus view"
-                  data-helper="Focus view"
+                  data-hint="Focus view"
                 >
                   <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
                     <circle cx="8" cy="8" r="2.25" />
@@ -4347,7 +4341,7 @@ export default function EditorLayout() {
                   onClick={helperMode.toggle}
                   className="topbarbtn"
                   aria-pressed="true"
-                  title="Exit helper mode"
+                  data-hint="Exit helper mode"
                 >
                   <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
                     <circle cx="8" cy="8" r="6" />
@@ -4383,9 +4377,8 @@ export default function EditorLayout() {
           <button
             onClick={handleToggleZen}
             className="topbarbtn"
-            title={zenModeOn ? "Zen mode: on" : "Zen mode: off"}
             aria-pressed={zenModeOn}
-            data-helper="Zen mode"
+            data-hint="Zen mode"
           >
             Zen
           </button>
@@ -4411,9 +4404,8 @@ export default function EditorLayout() {
           <button
             onClick={() => setPreferencesOpen((v) => !v)}
             className="topbarbtn"
-            title="Preferences"
             aria-pressed={preferencesOpen}
-            data-helper="Preferences"
+            data-hint="Preferences"
           >
             {/* Painter's palette icon — solid silhouette with the classic
                 thumb-hole cutout on the right and four color wells punched
@@ -4426,8 +4418,7 @@ export default function EditorLayout() {
             <button
               onClick={(e) => { e.stopPropagation(); setHelperMenuOpen((v) => !v); }}
               className="topbarbtn"
-              title="Help"
-              data-helper="Help"
+              data-hint="Help"
             >
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                 <circle cx="12" cy="12" r="10" />
@@ -4500,9 +4491,8 @@ export default function EditorLayout() {
             onClick={() => setPrintOpen((v) => !v)}
             disabled={!currentDocId || codeView || pdfView}
             className="topbarbtn"
-            title="Print…"
             aria-pressed={printOpen}
-            data-helper="Print"
+            data-hint="Print"
           >
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
               <polyline points="6 9 6 2 18 2 18 9" />
@@ -4518,8 +4508,7 @@ export default function EditorLayout() {
             onClick={() => setAiWindowOpen((v) => !v)}
             className="topbarbtn relative"
             aria-pressed={aiWindowOpen}
-            title="AI requests"
-            data-helper="AI requests"
+            data-hint="AI requests"
           >
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
               <g transform="rotate(15 12 12)">
@@ -4553,9 +4542,8 @@ export default function EditorLayout() {
             onClick={() => setManageStylesOpen((v) => !v)}
             disabled={!currentDocId}
             className="topbarbtn"
-            title="Document style"
             aria-pressed={manageStylesOpen}
-            data-helper="Document style"
+            data-hint="Document style"
           >
             Style
           </button>
@@ -4566,9 +4554,8 @@ export default function EditorLayout() {
           <button
             onClick={toggleCodeView}
             className="topbarbtn"
-            title={codeView ? "Close Code pane" : "Open Code pane"}
             aria-pressed={codeView}
-            data-helper="Code"
+            data-hint="Code"
           >
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
               <polyline points="16 18 22 12 16 6" />
@@ -4584,8 +4571,7 @@ export default function EditorLayout() {
             onClick={vbar.compilePdf}
             disabled={!currentDocId || vbar.isCompiling}
             className="topbarbtn"
-            title={vbar.isCompiling ? "Compiling…" : "Compile to PDF"}
-            data-helper="Compile"
+            data-hint="Compile"
           >
             {vbar.isCompiling ? (
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="animate-spin">
@@ -4605,9 +4591,8 @@ export default function EditorLayout() {
             onClick={togglePdfView}
             disabled={!currentDocId}
             className="topbarbtn"
-            title={pdfView ? "Back to editor" : "View PDF"}
             aria-pressed={pdfView}
-            data-helper={pdfView ? "Back to editor" : "View PDF"}
+            data-hint={pdfView ? "Back to editor" : "View PDF"}
           >
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
               <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
@@ -4615,7 +4600,7 @@ export default function EditorLayout() {
             </svg>
             PDF
             {vbar.pdfStale && pdfView && (
-              <span className="w-1.5 h-1.5 rounded-full bg-yellow-500 ml-1" title="PDF is out of date" />
+              <span className="w-1.5 h-1.5 rounded-full bg-yellow-500 ml-1" data-hint="PDF is out of date" aria-label="PDF is out of date" />
             )}
           </button>
           </>)}
@@ -4629,10 +4614,9 @@ export default function EditorLayout() {
           <button
             onClick={() => setTopbarRightCollapsed((v) => !v)}
             className="topbarbtn"
-            title={prefs.topbarRightCollapsed ? "Expand toolbar" : "Collapse toolbar"}
             aria-pressed={prefs.topbarRightCollapsed}
             aria-label={prefs.topbarRightCollapsed ? "Expand toolbar" : "Collapse toolbar"}
-            data-helper="Collapse toolbar"
+            data-hint="Collapse toolbar"
           >
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
               {prefs.topbarRightCollapsed ? (
@@ -4816,7 +4800,7 @@ export default function EditorLayout() {
                           type="button"
                           onClick={() => setErrorsSidebarOpen(false)}
                           className="absolute top-2 right-2 z-10 w-5 h-5 flex items-center justify-center rounded text-ink-muted hover:text-ink-body hover-on-light text-sm leading-none"
-                          title="Hide errors panel"
+                          data-hint="Hide errors panel"
                           aria-label="Hide errors panel"
                         >
                           ×
@@ -4837,7 +4821,7 @@ export default function EditorLayout() {
                         type="button"
                         onClick={() => setErrorsSidebarOpen(true)}
                         className="w-7 shrink-0 border-l border-edge-subtle bg-surface flex items-start justify-center pt-3 hover-on-light relative text-ink-muted hover:text-ink-body"
-                        title={`Show errors (${allLatexErrors.length})`}
+                        data-hint={`Show errors (${allLatexErrors.length})`}
                         aria-label="Show errors panel"
                       >
                         <IconErrors active={false} />

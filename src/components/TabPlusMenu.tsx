@@ -20,6 +20,7 @@ import { getDocHandle } from "@/lib/doc-index";
 import { multiWindowSupported } from "@/lib/multi-window/bus";
 import { IconPlus } from "./editor-layout/panel-icons";
 import { RecentPaperRow } from "./RecentPapersList";
+import { Kbd } from "./Kbd";
 
 interface Props {
   docs: FsaDocMeta[];
@@ -108,8 +109,7 @@ export function TabPlusMenu({
         onClick={() => setOpen((o) => !o)}
         className="topbarbtn topbarbtn-icon"
         style={{ padding: "0 4px" }}
-        title="Open paper or create new"
-        data-helper="Open paper or create new"
+        data-hint="Open paper or create new"
         aria-haspopup="menu"
         aria-expanded={open}
       >
@@ -175,7 +175,7 @@ export function TabPlusMenu({
               />
               <MenuItem
                 label="New Virgil window"
-                shortcut="⌘⇧N"
+                shortcut="Mod+Shift+N"
                 onClick={() => {
                   onOpenNewWindow();
                   close();
@@ -211,11 +211,7 @@ function MenuItem({
     >
       {children}
       <span className="flex-1">{label}</span>
-      {shortcut && (
-        <span className="text-[11px] text-ink-subtle tabular-nums">
-          {shortcut}
-        </span>
-      )}
+      {shortcut && <Kbd keys={shortcut} />}
     </button>
   );
 }

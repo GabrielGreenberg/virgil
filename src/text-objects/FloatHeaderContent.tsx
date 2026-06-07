@@ -81,7 +81,7 @@ export function FloatHeaderContent({
         onClick={onJump}
         tabIndex={onJump ? undefined : -1}
         className="w-4 h-4 flex items-center justify-center rounded text-ink-muted hover:text-ink-body hover-on-light"
-        title={`Jump to ${labelNoun}`}
+        data-hint={`Jump to ${labelNoun}`}
         aria-label={`Jump to ${labelNoun}`}
       >
         <svg

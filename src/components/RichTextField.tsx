@@ -119,23 +119,23 @@ function FormatToolbar({
       <button
         onMouseDown={(e) => { e.preventDefault(); editor.chain().focus().toggleBold().run(); }}
         className={`${btnClass} font-bold`}
-        title="Bold"
+        data-hint="Bold"
       >B</button>
       <button
         onMouseDown={(e) => { e.preventDefault(); editor.chain().focus().toggleItalic().run(); }}
         className={`${btnClass} italic`}
-        title="Italic"
+        data-hint="Italic"
       >I</button>
       <button
         onMouseDown={(e) => { e.preventDefault(); editor.chain().focus().toggleUnderline().run(); }}
         className={`${btnClass} underline`}
-        title="Underline"
+        data-hint="Underline"
       >U</button>
       <div className={dividerClass} />
       <button
         onMouseDown={(e) => { e.preventDefault(); editor.chain().focus().toggleBulletList().run(); }}
         className={btnClass}
-        title="Bullet list"
+        data-hint="Bullet list" aria-label="Bullet list"
       >
         <svg width="12" height="12" viewBox="0 0 16 16" fill="currentColor">
           <circle cx="2" cy="4" r="1.5" />
@@ -149,7 +149,7 @@ function FormatToolbar({
       <button
         onMouseDown={(e) => { e.preventDefault(); editor.chain().focus().toggleOrderedList().run(); }}
         className={btnClass}
-        title="Numbered list"
+        data-hint="Numbered list" aria-label="Numbered list"
       >
         <svg width="12" height="12" viewBox="0 0 16 16" fill="currentColor">
           <text x="0" y="5.5" fontSize="5" fontWeight="600">1</text>

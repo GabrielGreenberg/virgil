@@ -44,7 +44,7 @@ export function StackThumbnail({ item, onRemove }: StackThumbnailProps) {
       data-stack-thumb-id={item.id}
       data-stack-thumb-kind={kindLabel}
       onMouseDown={onMouseDown}
-      title={`${kindLabel} · ${time}`}
+      data-hint={`${kindLabel} · ${time}`}
       style={{
         position: "relative",
         flex: "0 0 auto",
@@ -59,7 +59,7 @@ export function StackThumbnail({ item, onRemove }: StackThumbnailProps) {
         cursor: "grab",
         color: "var(--ink-body, #1c1917)",
         userSelect: "none",
-      }}
+      }} aria-label={`${kindLabel} · ${time}`}
     >
       <div
         style={{

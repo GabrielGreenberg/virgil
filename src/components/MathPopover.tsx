@@ -2,6 +2,7 @@
 
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import katex from "katex";
+import { Kbd } from "./Kbd";
 
 interface Props {
   kind: "inline" | "display";
@@ -144,10 +145,10 @@ export default function MathPopover({
         placeholder={kind === "display" ? "LaTeX (display math)" : "LaTeX"}
       />
       <div className="math-popover-hint">
-        <kbd>Enter</kbd> to save · <kbd>Esc</kbd> to cancel
+        <Kbd keys="Enter" /> to save · <Kbd keys="Esc" /> to cancel
         {kind === "display" && (
           <>
-            {" "}· <kbd>Shift</kbd>+<kbd>Enter</kbd> for newline
+            {" "}· <Kbd keys="Shift+Enter" /> for newline
           </>
         )}
       </div>

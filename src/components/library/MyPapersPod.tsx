@@ -330,7 +330,7 @@ function PaperRow({
           overflow: "hidden",
           textOverflow: "ellipsis",
         }}
-        title={label}
+        data-hint={label} aria-label={label}
       >
         {label}
       </span>
@@ -338,7 +338,7 @@ function PaperRow({
         <button
           type="button"
           aria-label={`Remove ${label} from My Papers`}
-          title="Remove from My Papers"
+          data-hint="Remove from My Papers"
           onClick={(e) => {
             e.stopPropagation();
             onRemove();

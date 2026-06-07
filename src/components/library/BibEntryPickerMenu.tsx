@@ -340,7 +340,7 @@ function BibEntryPickerMenuInner({
           type="button"
           onClick={onClose}
           className="text-ink-muted hover:text-ink-body p-0.5 shrink-0"
-          title="Close (Esc)"
+          data-hint="Close (Esc)" aria-label="Close (Esc)"
         >
           <svg
             width="11"
@@ -482,7 +482,7 @@ function BibEntryPickerRow({
           </div>
           <div
             className="text-[11.5px] text-ink-body italic leading-tight mt-0.5 overflow-hidden text-ellipsis whitespace-nowrap"
-            title={title}
+            data-hint={title} aria-label={title}
           >
             {title}
           </div>
@@ -501,7 +501,7 @@ function BibEntryPickerRow({
               onToggleExpand();
             }}
             className="w-5 h-5 flex items-center justify-center rounded text-ink-muted hover:text-ink-body hover:bg-edge-subtle"
-            title={expanded ? "Hide details" : "Show details"}
+            data-hint={expanded ? "Hide details" : "Show details"} aria-label={expanded ? "Hide details" : "Show details"}
           >
             <svg
               width="11"
@@ -558,7 +558,7 @@ function VerifiedPill({
   return (
     <span
       className={`text-[9px] uppercase tracking-wide px-1 py-0.5 rounded whitespace-nowrap ${cls}`}
-      title={tooltip}
+      data-hint={tooltip} aria-label={tooltip}
     >
       {verified ? "verified" : "unverified"}
     </span>
@@ -576,7 +576,7 @@ function AddButton({
     return (
       <span
         className="w-5 h-5 flex items-center justify-center rounded-full text-emerald-600"
-        title="Already available here"
+        data-hint="Already available here" aria-label="Already available here"
       >
         <svg
           width="11"
@@ -602,7 +602,7 @@ function AddButton({
         onClick();
       }}
       className="w-5 h-5 flex items-center justify-center rounded-full text-blue-600 bg-blue-50 hover:bg-blue-100"
-      title={title}
+      data-hint={title} aria-label={title}
     >
       <svg
         width="12"
@@ -698,7 +698,7 @@ function CitekeyRow({ citekey }: { citekey: string }) {
           onCopy();
         }}
         className="text-ink-muted hover:text-ink-body p-0.5 rounded hover:bg-edge-subtle"
-        title={copied ? "Copied" : "Copy citekey"}
+        data-hint={copied ? "Copied" : "Copy citekey"} aria-label={copied ? "Copied" : "Copy citekey"}
       >
         {copied ? (
           <svg

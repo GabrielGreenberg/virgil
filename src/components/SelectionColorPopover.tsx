@@ -117,7 +117,7 @@ export function SelectionColorPopover({
           <button
             key={`${color}-${i}`}
             type="button"
-            title={color}
+            data-hint={color}
             onClick={() => onApply(color)}
             style={{
               width: SWATCH_SIZE,
@@ -127,12 +127,12 @@ export function SelectionColorPopover({
               border: "1px solid var(--edge-hover)",
               cursor: "pointer",
               padding: 0,
-            }}
+            }} aria-label={color}
           />
         ))}
         <button
           type="button"
-          title="Pick a custom color"
+          data-hint="Pick a custom color"
           onClick={() => fileInputRef.current?.click()}
           style={{
             width: SWATCH_SIZE,
@@ -167,7 +167,7 @@ export function SelectionColorPopover({
         />
         <button
           type="button"
-          title="Clear color"
+          data-hint="Clear color"
           onClick={onClear}
           style={{
             width: SWATCH_SIZE,

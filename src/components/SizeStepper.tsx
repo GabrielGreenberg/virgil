@@ -66,7 +66,7 @@ export default function SizeStepper({
         onClick={() => bump(-step)}
         disabled={value <= min}
         className="w-7 h-7 rounded border border-edge-subtle bg-surface text-ink-muted hover:bg-edge-subtle hover:text-ink-body disabled:opacity-30 disabled:cursor-default flex items-center justify-center text-base leading-none"
-        title="Smaller"
+        data-hint="Smaller"
         aria-label="Smaller"
       >
         −
@@ -76,7 +76,7 @@ export default function SizeStepper({
         onClick={() => bump(step)}
         disabled={value >= max}
         className="w-7 h-7 rounded border border-edge-subtle bg-surface text-ink-muted hover:bg-edge-subtle hover:text-ink-body disabled:opacity-30 disabled:cursor-default flex items-center justify-center text-base leading-none"
-        title="Larger"
+        data-hint="Larger"
         aria-label="Larger"
       >
         +

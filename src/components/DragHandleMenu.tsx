@@ -222,7 +222,7 @@ export function DragHandleMenu({ anchorRect, onSelect, onClose, kind }: Props) {
             role="menuitem"
             disabled={entry.disabled}
             aria-disabled={entry.disabled || undefined}
-            title={entry.disabled ? entry.reason : undefined}
+            data-hint={entry.disabled ? entry.reason : undefined}
             onClick={() => {
               if (entry.disabled) return;
               onSelect(entry.action);
@@ -242,7 +242,7 @@ export function DragHandleMenu({ anchorRect, onSelect, onClose, kind }: Props) {
               background: "transparent",
               opacity: entry.disabled ? 0.45 : 1,
               cursor: entry.disabled ? "not-allowed" : "pointer",
-            }}
+            }} aria-label={entry.disabled ? entry.reason : undefined}
           >
             <span className="shrink-0 flex items-center justify-center" style={{ width: 16, height: 16 }}>
               {entry.icon}

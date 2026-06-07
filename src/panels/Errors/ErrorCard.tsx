@@ -52,7 +52,7 @@ function ErrorBadge({ severity }: { severity: LatexErrorSeverity }) {
   return (
     <span
       className="inline-flex items-center justify-center w-5 h-5 shrink-0"
-      title={severity}
+      data-hint={severity} aria-label={severity}
     >
       <svg
         width="16"
@@ -199,7 +199,7 @@ export function ErrorCard({
         <div
           className="text-[0.78rem] font-medium mb-1"
           style={{ color: theme.titleColor, letterSpacing: "0.02em" }}
-          title={title}
+          data-hint={title} aria-label={title}
         >
           {title}
         </div>

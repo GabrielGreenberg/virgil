@@ -199,47 +199,78 @@ Don't reuse this style.
 Toggle: 22×14 pill, off `bg-edge-hover`, on `bg-accent`.
 Checkbox: 16×16 box, off `border-edge-strong`, on `bg-accent`.
 
-## Helper mode
+## Hints, tooltips & keyboard shortcuts
 
-Toggle via the "?" button on the Virgil bar → dropdown → "Helper mode".
-When active, `document.body` gets `data-helper-mode="on"` and hovering any
-element with a `data-helper` attribute shows a black callout with white text.
+Virgil has **one** hover/focus affordance, rendered app-wide by `HintLayer`
+(mounted once in `src/app/page.tsx`). It is the production replacement for
+native `title=""` tooltips and the engine behind Helper mode. **Don't** use
+`title=""` for tooltips and **don't** hand-roll hover popovers — add hint
+attributes and let the single controller do the rest (delay, positioning,
+keyboard a11y, dismissal).
 
-### Annotating a button
+### Adding a hint
 
-Add `data-helper="Label"` to the interactive element. Keep labels 1–3 words,
-≤25 characters. Don't duplicate keyboard shortcuts (those belong in `title`).
+Spread `useHint(...)` onto an element, or wrap it with `<Hint>`:
 
-```html
-<button title="Bold (Cmd+B)" data-helper="Bold">…</button>
+```tsx
+const hint = useHint({ label: "Open actions menu", keys: "Mod+/" });
+<button {...hint} aria-label="Open actions menu">⚡</button>
+
+// …or without touching the child's props:
+<Hint label="Delete" keys="Backspace"><IconButton …/></Hint>
 ```
+
+Both just stamp the attribute protocol that `HintLayer` reads:
+
+| Attribute | Meaning |
+|---|---|
+| `data-hint="Label"` | The tooltip text. 1–4 words; the label *is* the hint. |
+| `data-hint-keys="Mod+/"` | Optional shortcut, rendered as a `<Kbd>` chip. |
+| `data-hint-pos="above\|below\|left\|right"` | Optional placement nudge (flips/clamps to fit). |
+
+The bubble appears after a ~550 ms hover (the Notion-style beat), instantly on
+keyboard `:focus-visible`, and instantly for every hinted element while Helper
+mode is on. It dismisses on Escape / scroll / pointer-down / pointer-leave and
+positions via `useFloatingMenuPosition`.
+
+**Accessibility:** `data-hint` is *not* an accessible name. Icon-only controls
+still need `aria-label` (the `title`→hint migration adds one automatically).
+Where the element already has visible text, that text is the name — don't add a
+redundant `aria-label`.
+
+### Keyboard shortcuts — `<Kbd>`
+
+`<Kbd keys="Mod+Shift+N" />` renders a platform-aware keycap (`Mod` → ⌘ on Mac,
+`Ctrl` elsewhere; `Enter`→⏎, `Esc`, `/`, letters…). This is the **only** way to
+render a shortcut — no hardcoded `⌘…` strings. Used inside hint bubbles
+(`data-hint-keys`), menus, and popover hints. `useIsMac()` / `formatShortcut()`
+back it (`src/components/Kbd.tsx`).
 
 ### Positioning
 
-The callout appears **below center** by default. Override with zone selectors
-or an explicit attribute:
+Below-center by default. Override with a zone ancestor or explicit attribute:
 
-| Zone | Callout position | Mechanism |
+| Zone | Bubble position | Mechanism |
 |---|---|---|
 | Virgil bar / MenuBar / panel header | Below | Default |
-| Left icon strip | Right of button | `[data-strip-side="left"]` ancestor |
-| Right icon strip | Left of button | `[data-strip-side="right"]` ancestor |
-| Card-level buttons (inside scroll) | Above | `data-helper-pos="above"` on element |
+| Left icon strip | Right of element | `[data-strip-side="left"]` ancestor |
+| Right icon strip | Left of element | `[data-strip-side="right"]` ancestor |
+| Card-level buttons (inside scroll) | Above | `data-hint-pos="above"` on element |
 
 Card-level buttons (`CardTrashButton`, `TargetIcon`, drag handles) should use
-`data-helper-pos="above"` to avoid clipping by the panel's scroll boundary.
+`data-hint-pos="above"` to avoid clipping by the panel's scroll boundary.
 
-### CSS rules
+### Helper mode
 
-All rules live in `globals.css` under the "Helper mode" comment block. They
-use `body[data-helper-mode="on"]` as the gate and `:hover` as the trigger,
-so only one callout is visible at a time.
+Helper mode is just the **instant, always-on** rendering of the same hints.
+Toggle via the "?" button on the Virgil bar → "Helper mode"; `document.body`
+gets `data-helper-mode="on"` and `HintLayer` drops the hover delay to 0 so every
+`data-hint` is discoverable at a glance. `useHelperMode()`
+(`src/hooks/useHelperMode.ts`, module-scoped `useSyncExternalStore`, persisted to
+`localStorage:virgil-helper-mode`) exposes `{ on, toggle, set }`.
 
-### State hook
-
-`useHelperMode()` in `src/hooks/useHelperMode.ts` — same module-scoped
-`useSyncExternalStore` pattern as `usePreferenceMode`. Exports `{ on, toggle, set }`.
-Persists to `localStorage` key `virgil-helper-mode`.
+> Legacy `data-helper` is still read as an alias by `HintLayer`; new code uses
+> `data-hint`. The old CSS `::after` callout has been removed — the bubble is JS.
 
 ## Modals
 
