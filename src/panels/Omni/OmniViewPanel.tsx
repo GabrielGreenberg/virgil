@@ -235,7 +235,7 @@ export function OmniFilterMenu({
         onClick={(e) => { e.stopPropagation(); setOpen((o) => !o); }}
         className="p-1.5 rounded text-[var(--muted)] hover:text-ink-body hover-on-light flex items-center justify-center"
         title="Filter items"
-        data-helper="Filter"
+        data-hint="Filter"
       >
         <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor">
           <circle cx="3" cy="8" r="1.5" />

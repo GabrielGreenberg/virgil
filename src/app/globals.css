@@ -3855,68 +3855,65 @@ body[data-pref-mode="on"] [data-panel-theme]:hover {
 }
 
 /* ══════════════════════════════════════════════════════════════════════
-   Helper mode — hover callouts for every interactive button
+   Hint / tooltip — the unified hover & focus affordance
    ──────────────────────────────────────────────────────────────────────
-   Activated by `data-helper-mode="on"` on <body> (set by useHelperMode).
-   Every element with `data-helper="<label>"` shows a small black callout
-   with white text on hover. Position varies by zone:
-     - Default: below the element
-     - [data-strip-side="left"] children: to the right
-     - [data-strip-side="right"] children: to the left
-     - [data-helper-pos="above"]: above the element
+   Rendered by HintLayer.tsx (one delegated controller + one portal bubble),
+   NOT by CSS pseudo-elements. Any element carrying `data-hint="<label>"`
+   (or legacy `data-helper`) gets a delayed dark bubble on hover / keyboard
+   focus; `data-hint-keys` adds a <Kbd> shortcut chip. Helper Mode
+   (`body[data-helper-mode="on"]`, still set by useHelperMode) makes the same
+   bubbles appear instantly. Placement derives from `data-hint-pos` and the
+   nearest `[data-strip-side]` ancestor. See Hint.tsx for the React API.
    ══════════════════════════════════════════════════════════════════════ */
 
-body[data-helper-mode="on"] [data-helper]:hover {
-  position: relative;
-}
-
-body[data-helper-mode="on"] [data-helper]:hover::after {
-  content: attr(data-helper);
-  position: absolute;
-  z-index: 9999;
-  top: 100%;
-  left: 50%;
-  transform: translateX(-50%);
-  margin-top: 4px;
+.hint-bubble {
+  position: fixed;
+  z-index: 10010; /* above modals (10000) so hints on modal controls show */
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 280px;
+  padding: 4px 8px;
   background: var(--ink-strong, #292524);
   color: #fff;
-  font-size: 10px;
+  font-size: 11px;
   font-weight: 500;
   font-family: var(--font-sans), system-ui, sans-serif;
-  line-height: 1.2;
-  padding: 3px 6px;
-  border-radius: 3px;
-  white-space: nowrap;
+  line-height: 1.3;
+  border-radius: 4px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.18);
   pointer-events: none;
-  box-shadow: 0 1px 3px rgba(0,0,0,0.15);
+  white-space: nowrap;
+  animation: hint-fade-in 120ms ease-out;
 }
 
-/* Left strip: callouts to the right */
-body[data-helper-mode="on"] [data-strip-side="left"] [data-helper]:hover::after {
-  top: 50%;
-  left: 100%;
-  right: auto;
-  transform: translateY(-50%);
-  margin-top: 0;
-  margin-left: 4px;
+.hint-bubble__label {
+  white-space: nowrap;
 }
 
-/* Right strip: callouts to the left */
-body[data-helper-mode="on"] [data-strip-side="right"] [data-helper]:hover::after {
-  top: 50%;
-  left: auto;
-  right: 100%;
-  transform: translateY(-50%);
-  margin-top: 0;
-  margin-right: 4px;
+@keyframes hint-fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
 }
 
-/* Explicit above positioning (card-level buttons) */
-body[data-helper-mode="on"] [data-helper-pos="above"]:hover::after {
-  top: auto;
-  bottom: 100%;
-  margin-top: 0;
-  margin-bottom: 4px;
+/* Keycap chip — the single shortcut rendering (see Kbd.tsx). */
+.kbd {
+  font-family: var(--font-mono-override, var(--font-mono)), monospace;
+  font-size: 0.85em;
+  line-height: 1.4;
+  padding: 0 0.35em;
+  border-radius: 3px;
+  background: var(--code-bg, #f0eeeb);
+  border: 1px solid var(--border, #d9d3c8);
+  color: var(--ink-strong, #292524);
+  white-space: nowrap;
+}
+
+/* Kbd reads light-on-dark inside the hint bubble. */
+.hint-bubble .kbd {
+  background: rgba(255, 255, 255, 0.16);
+  border-color: rgba(255, 255, 255, 0.28);
+  color: #fff;
 }
 
 /* ── Drag gap — invisible split handle with blue hover highlight ── */

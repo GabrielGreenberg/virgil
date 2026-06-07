@@ -4718,7 +4718,7 @@ function IconStrip({
           className="iconbtn-md iconbtn-toggle"
           aria-pressed={!!activeOnSide}
           title={activeOnSide ? "Collapse panel" : "Expand panel"}
-          data-helper="Toggle sidebar"
+          data-hint="Toggle sidebar"
         >
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
             <rect x="4" y="4" width="16" height="16" rx="1.5" />
@@ -4735,7 +4735,7 @@ function IconStrip({
           className="iconbtn-md iconbtn-toggle"
           aria-pressed={viewPrefs.getOmniHideAll(side)}
           title={viewPrefs.getOmniHideAll(side) ? "Show cards in omni-view" : "Hide all cards in omni-view"}
-          data-helper="Omni view"
+          data-hint="Omni view"
         >
           <IconBlank active={viewPrefs.getOmniHideAll(side)} />
         </button>
@@ -4744,7 +4744,7 @@ function IconStrip({
           className="iconbtn-md iconbtn-toggle"
           aria-pressed={activeBottomOnSide != null}
           title={activeBottomOnSide != null ? "Unsplit panel" : "Split panel horizontally"}
-          data-helper="Split panel"
+          data-hint="Split panel"
         >
           <IconSplit
             active={activeBottomOnSide != null}

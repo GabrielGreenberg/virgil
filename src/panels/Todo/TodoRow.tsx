@@ -134,8 +134,8 @@ export function TodoRow({
           onMouseDown={(e) => e.stopPropagation()}
           className="shrink-0 bg-transparent p-0"
           title={item.done ? "Mark as not done" : "Mark as done"}
-          data-helper={item.done ? "Undo done" : "Mark done"}
-          data-helper-pos="above"
+          data-hint={item.done ? "Undo done" : "Mark done"}
+          data-hint-pos="above"
         >
           {item.done ? (
             <svg width="14" height="14" viewBox="0 0 16 16" fill="none">

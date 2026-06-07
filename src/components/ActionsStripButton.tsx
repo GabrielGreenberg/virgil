@@ -18,6 +18,7 @@ import { NodeSelection } from "@tiptap/pm/state";
 import { resolveAnchorableNode, ensureAnchorUuid } from "@/lib/anchor-uuid";
 import { IconZap } from "./editor-layout/panel-icons";
 import { ActionsMenuPanel } from "./ActionsMenuPanel";
+import { useHint } from "./Hint";
 
 interface Target {
   /** Position of the anchorable container — used as the enabled-state
@@ -85,6 +86,8 @@ export function ActionsStripButton({ editor }: { editor: Editor | null }) {
   const target = editor ? resolveTarget(editor) : null;
   const disabled = !target;
 
+  const hint = useHint({ label: "Open actions menu", keys: "Mod+/" });
+
   const onClick = () => {
     if (!editor || !target || !btnRef.current) return;
     const uuid = ensureAnchorUuid(editor.view, editor.state.selection.head);
@@ -105,9 +108,8 @@ export function ActionsStripButton({ editor }: { editor: Editor | null }) {
         onClick={onClick}
         onMouseDown={(e) => e.preventDefault()}
         disabled={disabled}
-        title="Actions"
         aria-label="Open actions menu"
-        data-helper="Actions"
+        {...hint}
         className="flex items-center justify-center rounded transition-colors disabled:opacity-25 disabled:cursor-default text-[var(--ink-muted)] hover:bg-edge-subtle hover:text-ink-body"
         style={{ width: 16, height: 20 }}
       >

@@ -138,8 +138,8 @@ export function CopyButton({ text }: { text: string }) {
       onMouseDown={(e) => e.stopPropagation()}
       disabled={!text}
       title={copied ? "Copied" : "Copy to clipboard"}
-      data-helper="Copy"
-      data-helper-pos="above"
+      data-hint="Copy"
+      data-hint-pos="above"
       aria-label="Copy"
       className="text-[var(--muted-light)] hover:text-ink-strong cursor-pointer disabled:opacity-40 disabled:cursor-default"
     >
@@ -188,8 +188,8 @@ export function FieldTitleRow({
             onMouseDown={(e) => e.stopPropagation()}
             className="text-[var(--muted)] hover:text-ink-strong cursor-pointer flex items-center"
             title={folded ? "Expand" : "Collapse"}
-            data-helper="Toggle fold"
-            data-helper-pos="above"
+            data-hint="Toggle fold"
+            data-hint-pos="above"
             aria-label={folded ? "Expand" : "Collapse"}
             aria-expanded={!folded}
           >

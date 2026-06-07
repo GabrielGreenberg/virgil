@@ -1191,7 +1191,7 @@ export function PopoutButton({
       className={className ?? POPOUT_BUTTON_CLASS}
       title={title}
       aria-label={title}
-      data-helper={isPoppedOut ? "Dock" : "Pop out"}
+      data-hint={isPoppedOut ? "Dock" : "Pop out"}
       dangerouslySetInnerHTML={{
         __html: popoutSvgOuter(popoutSvgInner(isPoppedOut, variant)),
       }}
@@ -1269,7 +1269,7 @@ export function PanelClose() {
       className="iconbtn-sm -mr-1"
       title="Close panel"
       aria-label="Close panel"
-      data-helper="Close panel"
+      data-hint="Close panel"
     >
       <svg
         width="14"
@@ -1301,8 +1301,8 @@ export function CardDragHandle() {
     <div
       className="card-drag-handle cursor-grab active:cursor-grabbing p-0.5 -ml-1 rounded text-ink-faint group-hover:text-ink-subtle transition-colors shrink-0"
       title="Drag to pop out"
-      data-helper="Drag to pop out"
-      data-helper-pos="above"
+      data-hint="Drag to pop out"
+      data-hint-pos="above"
       aria-hidden="true"
     >
       <svg width="10" height="14" viewBox="0 0 10 14" fill="currentColor">
@@ -1363,8 +1363,8 @@ export function CardTrashButton({
       className="iconbtn-sm iconbtn-danger absolute bottom-1.5 right-1.5 opacity-0 group-hover:opacity-70 hover:!opacity-100 focus:opacity-100 transition-opacity"
       title={title}
       aria-label={title}
-      data-helper="Delete"
-      data-helper-pos="above"
+      data-hint="Delete"
+      data-hint-pos="above"
     >
       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
         <polyline points="3 6 5 6 21 6" />
@@ -1767,7 +1767,7 @@ export function PanelHeader({
           onClick={(e) => onAdd(e.currentTarget.getBoundingClientRect())}
           className="iconbtn-sm"
           title="Add"
-          data-helper="Add"
+          data-hint="Add"
         >
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
             <path d="M12 5v14M5 12h14" />
@@ -1846,7 +1846,7 @@ function HeaderAddDropdown({
         onClick={handleToggle}
         className="iconbtn-sm"
         title="Add"
-        data-helper="Add"
+        data-hint="Add"
         aria-haspopup="menu"
         aria-expanded={open}
       >
@@ -2005,8 +2005,8 @@ export function AiRequestCard({
           onMouseDown={(e) => e.stopPropagation()}
           className="text-ink-muted hover:text-ink-body shrink-0 p-0.5 opacity-0 group-hover:opacity-100 transition-opacity"
           title="Delete request"
-          data-helper="Delete request"
-          data-helper-pos="above"
+          data-hint="Delete request"
+          data-hint-pos="above"
         >
           <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
             <line x1="18" y1="6" x2="6" y2="18" />
@@ -2198,7 +2198,7 @@ export function ItemMenu({
         onClick={(e) => { e.stopPropagation(); setOpen((o) => !o); }}
         className={isPanelHeader ? "iconbtn-sm" : "iconbtn-md"}
         title="Options"
-        data-helper="Options"
+        data-hint="Options"
       >
         <svg width={isPanelHeader ? 14 : 16} height={isPanelHeader ? 14 : 16} viewBox="0 0 24 24" fill="currentColor" stroke="none">
           <circle cx="12" cy="5" r="2" />
@@ -2326,8 +2326,8 @@ export function TargetFileIcon({
       onDragStart={(e) => { e.stopPropagation(); e.preventDefault(); }}
       className={`iconbtn-md iconbtn-on-dark ${className ?? ""}`}
       title={title}
-      data-helper="Jump to text"
-      data-helper-pos="above"
+      data-hint="Jump to text"
+      data-hint-pos="above"
     >
       <svg width="16" height="16" viewBox="-2 0 26 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
         {/* Page outline (shifted right so arrow stem is visible) */}
@@ -2359,8 +2359,8 @@ export function TargetIcon({
       onDragStart={(e) => { e.stopPropagation(); e.preventDefault(); }}
       className={`iconbtn-md iconbtn-on-dark ${className ?? ""}`}
       title={title}
-      data-helper="Jump to text"
-      data-helper-pos="above"
+      data-hint="Jump to text"
+      data-hint-pos="above"
     >
       <svg width="16" height="16" viewBox="-2 0 26 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
         {/* Rounded pod/card outline (same bounding box as the file icon) */}

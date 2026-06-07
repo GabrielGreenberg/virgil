@@ -187,7 +187,7 @@ export default function PreferencesModal({
         // closes the modal and the same gesture's click flips
         // `preferencesOpen` back to true via the button's toggle —
         // the modal stays open and the user sees a flicker.
-        if (target && target.closest?.('[data-helper="Preferences"]')) return;
+        if (target && target.closest?.('[data-hint="Preferences"]')) return;
         if (panelRef.current && !panelRef.current.contains(target as Node)) {
           onClose();
         }

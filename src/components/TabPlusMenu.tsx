@@ -109,7 +109,7 @@ export function TabPlusMenu({
         className="topbarbtn topbarbtn-icon"
         style={{ padding: "0 4px" }}
         title="Open paper or create new"
-        data-helper="Open paper or create new"
+        data-hint="Open paper or create new"
         aria-haspopup="menu"
         aria-expanded={open}
       >

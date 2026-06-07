@@ -415,7 +415,7 @@ function IconBtn({
       onClick={onClick}
       disabled={disabled}
       title={title}
-      data-helper={title.replace(/\s*\(.*\)$/, "")}
+      data-hint={title.replace(/\s*\(.*\)$/, "")}
       className={`p-1 rounded transition-colors disabled:opacity-25 disabled:cursor-default ${
         active
           ? "bg-[var(--accent-light)] text-[var(--accent)]"
@@ -445,7 +445,7 @@ function TextBtn({
     <button
       onClick={onClick}
       title={title}
-      data-helper={title.replace(/\s*\(.*\)$/, "")}
+      data-hint={title.replace(/\s*\(.*\)$/, "")}
       className={`px-1.5 py-0.5 rounded text-sm transition-colors ${
         active
           ? "bg-[var(--accent-light)] text-[var(--accent)] font-medium"
@@ -519,7 +519,7 @@ export function BlockTypeDropdown({ editor }: { editor: Editor }) {
       <button
         onClick={handleToggle}
         title="Block type"
-        data-helper="Block type"
+        data-hint="Block type"
         className="px-1.5 py-0.5 rounded text-sm transition-colors text-[var(--muted)] hover:bg-edge-subtle hover:text-ink-body flex items-center gap-1"
       >
         <span style={{ fontSize: "15px", lineHeight: 1 }}>&#182;</span>
@@ -611,7 +611,7 @@ function ExampleDropdown({ editor }: { editor: Editor }) {
       <button
         onClick={handleToggle}
         title="Insert expex example"
-        data-helper="Example"
+        data-hint="Example"
         className={`px-1 py-0.5 rounded transition-colors flex items-center gap-0.5 ${
           active
             ? "bg-[var(--accent-light)] text-[var(--accent)]"
@@ -745,7 +745,7 @@ function AttachedPopover({
       <button
         onClick={toggle}
         title={title}
-        data-helper={title}
+        data-hint={title}
         className={`p-1 rounded transition-colors ${
           open || active
             ? "bg-[var(--accent-light)] text-[var(--accent)]"
@@ -818,7 +818,7 @@ export function ActionButton({
         onClick(pod?.getBoundingClientRect() ?? null);
       }}
       title={title}
-      data-helper={title}
+      data-hint={title}
       className="p-1 rounded transition-colors"
       style={{ color }}
       onMouseEnter={(e) => {
@@ -1166,7 +1166,7 @@ function ViewMenu({
         onClick={() => setOpen(!open)}
         className={`p-1 rounded transition-colors ${open ? "bg-[var(--accent-light)] text-[var(--accent)]" : "text-[var(--ink-muted)] hover:bg-edge-subtle hover:text-ink-body"}`}
         title="View options"
-        data-helper="View options"
+        data-hint="View options"
       >
         <svg
           width="3.69"
@@ -1455,7 +1455,7 @@ function MenuBarContent({
               onClick={onParaNavBack}
               disabled={paraNavBackDisabled}
               title="Go back"
-              data-helper="Go back"
+              data-hint="Go back"
               className="flex items-center justify-center rounded transition-colors disabled:opacity-25 disabled:cursor-default text-[var(--ink-muted)] hover:bg-edge-subtle hover:text-ink-body"
               style={isVert ? { width: 20, height: 16 } : { width: 16, height: 20 }}
             >
@@ -1469,7 +1469,7 @@ function MenuBarContent({
               onClick={onParaNavForward}
               disabled={paraNavForwardDisabled}
               title="Go forward"
-              data-helper="Go forward"
+              data-hint="Go forward"
               className="flex items-center justify-center rounded transition-colors disabled:opacity-25 disabled:cursor-default text-[var(--ink-muted)] hover:bg-edge-subtle hover:text-ink-body"
               style={isVert ? { width: 20, height: 16 } : { width: 16, height: 20 }}
             >
@@ -1487,7 +1487,7 @@ function MenuBarContent({
           onClick={onToggleEditorSplit}
           className={`p-1 rounded transition-colors ${editorSplit ? "text-[var(--accent)] bg-[var(--accent-light)]" : "text-[var(--ink-muted)] hover:bg-edge-subtle hover:text-ink-body"}`}
           title={editorSplit ? "Close split editor" : "Split editor"}
-          data-helper="Split editor"
+          data-hint="Split editor"
         >
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
             {editorSplit && activeSplitPane === "top" && (

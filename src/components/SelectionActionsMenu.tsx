@@ -23,6 +23,7 @@ import { NodeSelection } from "@tiptap/pm/state";
 import { resolveAnchorableNode, ensureAnchorUuid } from "@/lib/anchor-uuid";
 import { IconZap } from "./editor-layout/panel-icons";
 import { ActionsMenuPanel } from "./ActionsMenuPanel";
+import { useHint } from "./Hint";
 import {
   useEditorViewportCache,
   type EditorViewportCache,
@@ -299,6 +300,40 @@ export function SelectionActionsMenu({
     placement.visible,
   ]);
 
+  // Keep the latest open-state reachable from the mount-once Cmd+/ handler
+  // without re-subscribing the listener on every selection change.
+  const menuOpenRef = useRef(false);
+  useEffect(() => {
+    menuOpenRef.current = menuTarget !== null;
+  }, [menuTarget]);
+
+  // Cmd+/ opens the menu at the live cursor/selection — the keyboard twin of
+  // clicking the gutter ⚡. O(1) bail; window-level (not an editor.on
+  // subscriber), so it costs nothing per keystroke.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== "/" || !e.metaKey || e.ctrlKey || e.altKey || e.shiftKey)
+        return;
+      const ed = editorRef.current;
+      if (!ed || ed.isDestroyed || !ed.isFocused) return;
+      if (menuOpenRef.current) return;
+      const sel = ed.state.selection;
+      if (sel instanceof NodeSelection) return;
+      const uuid = ensureAnchorUuid(ed.view, sel.head);
+      if (!uuid) return;
+      e.preventDefault();
+      setMenuTarget({
+        uuid,
+        range: { from: sel.from, to: sel.to },
+        mode: sel.empty ? "cursor" : "selection",
+      });
+    };
+    window.addEventListener("keydown", onKey, true);
+    return () => window.removeEventListener("keydown", onKey, true);
+  }, [editorRef]);
+
+  const hint = useHint({ label: "Open actions menu", keys: "Mod+/" });
+
   if (!placement.visible) return null;
   if (typeof document === "undefined") return null;
 
@@ -324,7 +359,7 @@ export function SelectionActionsMenu({
       ref={buttonRef}
       type="button"
       aria-label="Open actions menu"
-      title="Actions"
+      {...hint}
       // Prevent the mousedown from blurring the editor / clearing the
       // selection before the click registers.
       onMouseDown={(e) => e.preventDefault()}

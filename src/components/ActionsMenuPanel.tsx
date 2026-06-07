@@ -228,6 +228,10 @@ export function ActionsMenuPanel({
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape") {
         e.preventDefault();
+        // Keep Esc from also reaching tab-indent.ts's Escape→blur handler, so
+        // closing the menu doesn't drop the editor's cursor/selection. This
+        // capture-phase listener runs before the editor's PM keydown handler.
+        e.stopPropagation();
         onClose();
         return;
       }
