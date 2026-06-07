@@ -317,6 +317,44 @@ function resolveMarkerLeft(
 }
 
 /**
+ * The block's horizontal content edges — the span its first text line occupies,
+ * resolved from the SAME `resolveFirstLineTarget` → first-line rect that
+ * {@link resolveBlockFrame} uses. This is the ONE content-edge primitive:
+ * `resolveBlockFrame` COMPOSES it (so a full frame and a direct
+ * `resolveContentEdges` call can never diverge), and affordances that need only
+ * the horizontal extent — the drag drop indicator (between-blocks + expex bars)
+ * and the figure chrome — call it directly to skip the marker / optical-center /
+ * depth work they'd otherwise compute and discard. Pure DOM, O(1)/O(wrapper-
+ * descent), no doc walk; safe on the throttled-mousemove drop path.
+ */
+export interface ContentEdges {
+  /** The resolved text element whose first-line box defines the edges. */
+  target: HTMLElement;
+  /** That element's border box (`getBoundingClientRect()`). */
+  firstLineRect: DOMRect;
+  /** Viewport x of the content-left edge (`firstLineRect.left`). */
+  contentLeft: number;
+  /** Content-box width (`firstLineRect.width`). */
+  contentWidth: number;
+  /** Viewport x of the content-right edge (`contentLeft + contentWidth`). */
+  contentRight: number;
+}
+
+export function resolveContentEdges(el: HTMLElement): ContentEdges {
+  const target = resolveFirstLineTarget(el);
+  const firstLineRect = firstLineRectOf(target);
+  const contentLeft = firstLineRect.left;
+  const contentWidth = firstLineRect.width;
+  return {
+    target,
+    firstLineRect,
+    contentLeft,
+    contentWidth,
+    contentRight: contentLeft + contentWidth,
+  };
+}
+
+/**
  * Resolve the canonical {@link BlockFrame} for a block's DOM element. Pure
  * DOM + ancestry; safe on the hover/scroll/RAF placement path.
  *
@@ -334,23 +372,19 @@ export function resolveBlockFrame(
   editor: Editor,
   cache?: EditorViewportCache | null,
 ): BlockFrame {
-  const target = resolveFirstLineTarget(el);
-  const firstLineRect = firstLineRectOf(target);
+  // ---- Horizontal content edges (chips 2 / 4a / 4b) ----
+  // Composed from the shared `resolveContentEdges` primitive so a full frame
+  // and a lean direct `resolveContentEdges` call (drop indicator / figure
+  // chrome) read ONE measurement and can never drift.
+  const { target, firstLineRect, contentLeft, contentWidth, contentRight } =
+    resolveContentEdges(el);
+
+  // ---- Vertical axis (chip 1) ----
   const opticalCenterY =
     firstLineRect.top + capTopOffset(target) + capHeight(target) / 2;
   const root: HTMLElement | null =
     cache?.editorEl ?? (editor?.view?.dom as HTMLElement | null) ?? null;
   const depth = countUuidAncestors(el, root);
-
-  // ---- Horizontal axis (chip 2) ----
-  const contentLeft = firstLineRect.left;
-  // Content-box width (chip 4a) — the span the horizontal drop bar covers,
-  // from the SAME resolved text element as `contentLeft`, so x and width agree.
-  const contentWidth = firstLineRect.width;
-  // Content-right edge (chip 4b) — the figure chrome anchors its "beside"
-  // control row here (`.figure-chrome-beside` at `contentRight + gap`). One add,
-  // exposed so consumers needn't recompute `contentLeft + contentWidth`.
-  const contentRight = contentLeft + contentWidth;
   // Resolve the em gutter tokens against the LABELED TEXT's font, so the gap
   // scales with the prose the user reads and every prose block shares ONE
   // value. `resolveInlineContextElement` descends wrappers to the inline text
