@@ -390,14 +390,17 @@ both axes. Tune the visual globally by editing the `--gutter-handle-gap` /
 `--gutter-track-width` / `--gutter-col-handle-inset` CSS variables.
 
 **Optical-center anchoring (generalizable chrome rule).** Any gutter or
-marginal affordance that labels a line of text — a grab handle, a marker, the
-drag drop indicator — centers its glyph on the text's *optical center*
+marginal affordance that labels a line of text — a grab handle or a marker —
+centers its glyph on the text's *optical center*
 (`capTopOffset + capHeight / 2` below the line-box top), NOT on the line-box
 top or the glyph cap-top. Anchoring to the line-box top (or `flex-start`
 from it) leaves the affordance sitting low by ~half a cap-height, and the
 error grows with font size. Read the Y from
 `resolveBlockFrame(el, …).opticalCenterY` and center the glyph on it (an
-absolute `top` plus `transform: translateY(-50%)`).
+absolute `top` plus `transform: translateY(-50%)`). (The drag DROP INDICATOR
+does NOT optical-center: it takes its Y from the block box's top/bottom gap —
+where a block boundary sits, not where a line of text sits — and shares only
+the *horizontal* axis with the handles, per the next rule.)
 
 **Content-left sharing (the horizontal analog, chip 4a).** The drag DROP
 INDICATOR — the between-blocks insert bar and the expex new-item / into-item /
@@ -413,6 +416,21 @@ not under the label. (The expex bars resolve the frame of the insertion site's
 first content CHILD, robust to a body whose `data-uuid` isn't yet hydrated
 mid-drag; a plain paragraph's box-left already equals its content-left, so
 ordinary paragraph text is byte-unchanged.)
+
+**Content-right sharing (the figure chrome, chip 4b).** The FIGURE CHROME — the
+pick / scale / refresh row that tucks BESIDE a hugged figure/graphics block —
+anchors its "beside" left to `resolveBlockFrame(el, …).contentRight`
+(`contentLeft + contentWidth`, the rendered figure box's right edge), so it hugs
+the image the way the grab handle hugs the marker on the LEFT: one frame on both
+sides, no parallel `getBoundingClientRect().right` to drift. The beside↔overlay
+responsive toggle (a per-figure RAF-coalesced `ResizeObserver`) is unchanged —
+only the geometry SOURCE of the figure's right edge moved onto the frame. One
+call-site subtlety: a figure's `[data-uuid]` node DOM is the full-COLUMN-width
+`.react-renderer` host (the box the drop indicator correctly spans for a
+full-width insert bar), so the chrome resolves the frame on the INNER
+`.figure-block` hug box — whose right edge IS the image — not on the host. Leave
+`resolveFirstLineTarget` untouched: descending it to the hug box would shrink the
+drop indicator's figure-adjacent bar to image width (a chip-4a regression).
 
 **Grab hit/hover halo.** The six dots stay a thin 12px box (the placement
 math above pins it precisely on both axes — do NOT resize the box, the X

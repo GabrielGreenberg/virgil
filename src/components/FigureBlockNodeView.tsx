@@ -19,6 +19,7 @@ import { pickFigureFile } from "@/lib/figures/pick-file";
 import { parseInlineContent } from "@/lib/latex-parser";
 import type { FigureBlockOptions } from "@/lib/tiptap/figure-block";
 import { synthesizeFigureRaw } from "@/lib/tiptap/figure-block";
+import { resolveBlockFrame } from "@/text-objects/block-frame";
 import FigureAnnotation from "./FigureAnnotation";
 
 const MIN_PERCENT = 10;
@@ -317,6 +318,15 @@ function FigureFullView({ node, getPos, editor, extension }: NodeViewProps) {
 
   const wrapperRef = useRef<HTMLDivElement | null>(null);
 
+  // `editor` is stable for a mounted NodeView; mirror it into a ref so the
+  // chrome-placement effect (deps: []) can resolve the canonical block frame
+  // (chip 4b) without taking `editor` as a dep — which would re-subscribe the
+  // ResizeObserver — preserving the empty-deps layout-sanctity contract.
+  const editorRef = useRef(editor);
+  useEffect(() => {
+    editorRef.current = editor;
+  }, [editor]);
+
   // Chrome placement. When the control row fits in the space to the RIGHT of
   // the hugged (fit-content) block within the text column, it sits BESIDE the
   // image (`.figure-chrome-beside`) instead of overlaying its top-right corner.
@@ -536,6 +546,10 @@ function FigureFullView({ node, getPos, editor, extension }: NodeViewProps) {
   // The chrome is laid out even while hover-hidden (opacity:0), so its width is
   // measurable any time; being position:absolute, toggling the class never
   // resizes the block or column, so there is no ResizeObserver feedback loop.
+  // Chip 4b: the block's content-right edge (the chrome's beside anchor) is read
+  // from the canonical `resolveBlockFrame`, so it shares ONE geometry source with
+  // the grab handle (which hugs the same frame on the left); the column edge
+  // stays a direct measure — it's the fit boundary, not a figure affordance.
   useEffect(() => {
     const block = wrapperRef.current;
     // The block's parent is the `.react-renderer` NodeView wrapper, a full-width
@@ -560,7 +574,16 @@ function FigureFullView({ node, getPos, editor, extension }: NodeViewProps) {
         column.getBoundingClientRect().right -
         (parseFloat(colStyle.paddingRight) || 0) -
         (parseFloat(colStyle.borderRightWidth) || 0);
-      const blockRight = block.getBoundingClientRect().right;
+      // The figure's content-right edge from the CANONICAL block frame, not an
+      // independent box measure. `resolveBlockFrame(block)` resolves `block` (the
+      // `.figure-block` hug box) to itself, so `contentRight` IS the rendered
+      // image's right edge — the same number `.figure-chrome-beside`'s CSS anchor
+      // (`left: calc(100% + 8px)`) lands on, and the mirror of the grab handle
+      // hugging the marker on the LEFT: one frame on both sides. We pass the hug
+      // box, NOT the full-width `.react-renderer` [data-uuid] host — the host
+      // resolves to the column extent (which the drop indicator correctly wants),
+      // so leaving `resolveFirstLineTarget` untouched keeps that bar intact.
+      const blockRight = resolveBlockFrame(block, editorRef.current).contentRight;
       const chromeWidth = chrome.getBoundingClientRect().width;
       const available = columnRight - blockRight - CHROME_BESIDE_GAP;
       setChromeBeside(chromeWidth > 0 && available >= chromeWidth);
