@@ -1,7 +1,7 @@
 /**
  * block-frame.ts — the ONE canonical per-block geometry source for every
- * gutter affordance (grab handle today; the drop indicator and figure
- * chrome in later chips). Resolve a block's frame once and every affordance
+ * gutter affordance (grab handle, drop indicator, and figure chrome).
+ * Resolve a block's frame once and every affordance
  * reads the SAME numbers, so they align BY CONSTRUCTION rather than by
  * coincidence (the bug this replaces: each handle measured its own block,
  * so a container and its first item only happened to land within ~2px).
@@ -21,6 +21,20 @@
  * independent `getBoundingClientRect().left` measurement (the §4 bug). The drop
  * path reads only `contentLeft` / `contentWidth` (never `depth`), so it calls
  * the resolver without a viewport cache (see {@link resolveBlockFrame}).
+ *
+ * Chip 4b wires the FIGURE CHROME onto the same frame: the controls that sit
+ * BESIDE a figure/graphics block anchor their "beside" left to the figure box's
+ * content-RIGHT edge ({@link BlockFrame.contentRight} = `contentLeft +
+ * contentWidth`), so the chrome hugs the rendered image's right edge the way the
+ * grab handle hugs the marker on the LEFT — both from one resolve, no parallel
+ * measurement to drift. One subtlety the chrome handles at its call site: a
+ * figure's canonical `[data-uuid]` node DOM is the full-COLUMN-width
+ * `.react-renderer` host (the box the drop indicator correctly spans for a
+ * full-width insert bar), so the chrome resolves the frame on the INNER
+ * `.figure-block` hug box — whose right edge IS the image — rather than on the
+ * host. `resolveFirstLineTarget` is therefore left untouched (descending it to
+ * the hug box would shrink the drop indicator's figure-adjacent bar to image
+ * width — a chip-4a regression).
  *
  * KEYSTROKE SANCTITY (AGENTS.md): resolution is pure DOM + ancestry —
  * O(1)/O(depth), NEVER O(doc). The resolver runs on the hover/scroll/RAF
@@ -87,6 +101,16 @@ export interface BlockFrame {
    * so the bar hugs the text column rather than an independently-measured box.
    */
   contentWidth: number;
+  /**
+   * The block's content-RIGHT edge in viewport coords (= `contentLeft +
+   * contentWidth` = `firstLineRect.right`). The figure chrome (chip 4b) anchors
+   * its "beside" control row here — `.figure-chrome-beside` sits at
+   * `contentRight + gap`, hugging the rendered figure box's right edge, the
+   * mirror of the grab handle hugging {@link markerLeft} on the LEFT, both from
+   * one frame. Exposed so the chrome (and any future right-hugging affordance)
+   * needn't recompute `contentLeft + contentWidth`.
+   */
+  contentRight: number;
   /**
    * The MEASURED left edge of the block's leftmost rendered marker — the
    * single horizontal anchor every gutter affordance hugs. Per kind:
@@ -323,6 +347,10 @@ export function resolveBlockFrame(
   // Content-box width (chip 4a) — the span the horizontal drop bar covers,
   // from the SAME resolved text element as `contentLeft`, so x and width agree.
   const contentWidth = firstLineRect.width;
+  // Content-right edge (chip 4b) — the figure chrome anchors its "beside"
+  // control row here (`.figure-chrome-beside` at `contentRight + gap`). One add,
+  // exposed so consumers needn't recompute `contentLeft + contentWidth`.
+  const contentRight = contentLeft + contentWidth;
   // Resolve the em gutter tokens against the LABELED TEXT's font, so the gap
   // scales with the prose the user reads and every prose block shares ONE
   // value. `resolveInlineContextElement` descends wrappers to the inline text
@@ -363,6 +391,7 @@ export function resolveBlockFrame(
     depth,
     contentLeft,
     contentWidth,
+    contentRight,
     markerLeft,
     gapPx,
   };
