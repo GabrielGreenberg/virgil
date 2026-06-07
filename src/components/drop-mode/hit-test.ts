@@ -18,7 +18,7 @@ import type { Editor } from "@tiptap/react";
 import type { Node as PMNode } from "@tiptap/pm/model";
 import { isAnchorableNode } from "@/lib/marginalia";
 import { generateShortId } from "@/lib/uuid";
-import { resolveBlockFrame } from "@/text-objects/block-frame";
+import { resolveContentEdges } from "@/text-objects/block-frame";
 import { isCompatibleParent } from "@/text-objects/drop-adapters";
 import {
   parseTextObjectPopoutKey,
@@ -305,15 +305,15 @@ interface ExpexItemGeom {
 
 /**
  * The TEXT-left x (and content width) of an expex container's insertion site,
- * read from the CANONICAL block frame (chip 4a) — the SAME
- * `resolveBlockFrame(…).contentLeft` the grab handles use — so the expex drop
- * bars and the between-blocks bar share ONE content-left source and line up by
- * construction (the §4 fix), instead of each measuring `getBoundingClientRect()
- * .left` independently.
+ * read from the canonical content-edge primitive `resolveContentEdges` (which
+ * `resolveBlockFrame` composes) — the SAME content-left the grab handles get
+ * from the frame — so the expex drop bars and the between-blocks bar share ONE
+ * content-left source and line up by construction (the §4 fix), instead of each
+ * measuring `getBoundingClientRect().left` independently.
  *
  * Resolves the frame of the container's FIRST CONTENT CHILD (`containerPos + 1`)
  * — where the dropped block's text will land. Resolving the child (not the
- * container) is deliberate and robust: `resolveBlockFrame` on the container
+ * container) is deliberate and robust: `resolveContentEdges` on the container
  * would container-descend via `data-uuid` grabbable children, but those
  * decorations are lazily hydrated (uuid-attr.ts) and may be absent on a body
  * the user hasn't touched yet mid-drag; the child's own frame needs no uuid. For
@@ -336,7 +336,7 @@ function contentFrameEdges(
   if (container.childCount > 0) {
     const dom = editor.view.nodeDOM(containerPos + 1);
     if (dom instanceof HTMLElement) {
-      const frame = resolveBlockFrame(dom, editor);
+      const frame = resolveContentEdges(dom);
       return { left: frame.contentLeft, width: frame.contentWidth };
     }
   }
@@ -595,21 +595,24 @@ export function makeBetweenBlocksPlacement(
     ? block.blockPos
     : block.blockPos + (node ? node.nodeSize : 0);
 
-  // Horizontal extent from the CANONICAL block frame (chip 4a) — the SAME
-  // `resolveBlockFrame(…).contentLeft` / `contentWidth` the grab handles and
-  // the expex drop bars read, so this bar lines up with the block's content-
-  // left (and with the expex bars over the same block) by construction, not via
-  // an independent `block.dom` box measurement (the §4 fix). `contentLeft`
-  // descends wrappers to the text element (titled paragraph / blockquote / list
-  // item / expex item), matching where the dropped block's text will land.
-  // `cache` is omitted — the bar needs only contentLeft/contentWidth, never
-  // `depth`. Y still comes from the block's own box (the gap line above/below).
-  const frame = resolveBlockFrame(block.dom, editor);
+  // Horizontal extent from the shared content-edge primitive `resolveContentEdges`
+  // (which `resolveBlockFrame` composes) — the SAME content-left / width the grab
+  // handles and the expex drop bars read, so this bar lines up with the block's
+  // content-left (and the expex bars over the same block) by construction, not via
+  // an independent `block.dom` box measurement (the §4 fix). It descends wrappers
+  // to the text element (titled paragraph / blockquote / list item / expex item),
+  // matching where the dropped block's text will land. The lean primitive skips
+  // the marker / optical-center / depth work this bar doesn't use. Y still comes
+  // from the block's own box (the gap line above/below).
+  const frame = resolveContentEdges(block.dom);
   const barY = insertBefore ? blockRect.top : blockRect.bottom;
   const rect: ViewportRect = {
     x: frame.contentLeft,
     y: barY - 1,
-    width: frame.contentWidth,
+    // Floor the span above the 2px bar height so a (theoretical) zero-width
+    // content box can't flip the indicator vertical (Indicator: height>width ⇒
+    // vertical); real laid-out blocks are hundreds of px, so it never bites.
+    width: Math.max(frame.contentWidth, 3),
     height: 2,
   };
   return { kind: "between-blocks", editor, insertPos, rect };
