@@ -3959,13 +3959,17 @@ body[data-pref-mode="on"] [data-panel-theme]:hover {
 }
 
 /* Inside the hint bubble the shortcut reads as plain light text (Notion
-   style), not a boxed chip. */
+   style), not a boxed chip. Use the system sans (NOT mono) so the ⌘ glyph
+   renders at the same visual size as the rest of the shortcut — coding fonts
+   draw ⌘ small/fallback next to a full-size "/". */
 .hint-bubble .kbd {
   background: transparent;
   border: none;
   padding: 0;
   color: rgba(255, 255, 255, 0.92);
-  font-size: 0.95em;
+  font-family: -apple-system, system-ui, sans-serif;
+  font-size: 1em;
+  letter-spacing: 0.04em;
 }
 
 /* ── Drag gap — invisible split handle with blue hover highlight ── */
