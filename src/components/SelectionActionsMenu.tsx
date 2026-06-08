@@ -315,8 +315,14 @@ export function SelectionActionsMenu({
       if (e.key !== "/" || !e.metaKey || e.ctrlKey || e.altKey || e.shiftKey)
         return;
       const ed = editorRef.current;
-      if (!ed || ed.isDestroyed || !ed.isFocused) return;
-      if (menuOpenRef.current) return;
+      if (!ed || ed.isDestroyed) return;
+      // Already open → toggle it closed (cursor stays; editor kept focus).
+      if (menuOpenRef.current) {
+        e.preventDefault();
+        setMenuTarget(null);
+        return;
+      }
+      if (!ed.isFocused) return;
       const sel = ed.state.selection;
       if (sel instanceof NodeSelection) return;
       const uuid = ensureAnchorUuid(ed.view, sel.head);
@@ -332,7 +338,7 @@ export function SelectionActionsMenu({
     return () => window.removeEventListener("keydown", onKey, true);
   }, [editorRef]);
 
-  const hint = useHint({ label: "Open actions menu", keys: "Mod+/" });
+  const hint = useHint({ keys: "Mod+/" });
 
   if (!placement.visible) return null;
   if (typeof document === "undefined") return null;

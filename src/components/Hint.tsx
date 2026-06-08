@@ -22,8 +22,9 @@ import { cloneElement, useMemo, type ReactElement } from "react";
 export type HintPos = "above" | "below" | "left" | "right";
 
 export interface HintOptions {
-  /** The tooltip text. */
-  label: string;
+  /** The tooltip text. Optional — omit for a shortcut-only hint (just the
+   *  keycap), e.g. the ⚡ button showing only "⌘/". */
+  label?: string;
   /** Optional portable shortcut, e.g. "Mod+/" — rendered as a keycap. */
   keys?: string;
   /** Preferred placement; flips/clamps to stay on-screen. */
@@ -31,15 +32,17 @@ export interface HintOptions {
 }
 
 export interface HintAttributes {
-  "data-hint": string;
+  "data-hint"?: string;
   "data-hint-keys"?: string;
   "data-hint-pos"?: HintPos;
 }
 
-/** Returns spreadable `data-hint*` attributes for any element. */
+/** Returns spreadable `data-hint*` attributes for any element. Provide a
+ *  `label`, `keys`, or both. */
 export function useHint({ label, keys, pos }: HintOptions): HintAttributes {
   return useMemo(() => {
-    const attrs: HintAttributes = { "data-hint": label };
+    const attrs: HintAttributes = {};
+    if (label) attrs["data-hint"] = label;
     if (keys) attrs["data-hint-keys"] = keys;
     if (pos) attrs["data-hint-pos"] = pos;
     return attrs;

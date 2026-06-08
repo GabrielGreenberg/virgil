@@ -86,7 +86,7 @@ export function ActionsStripButton({ editor }: { editor: Editor | null }) {
   const target = editor ? resolveTarget(editor) : null;
   const disabled = !target;
 
-  const hint = useHint({ label: "Open actions menu", keys: "Mod+/" });
+  const hint = useHint({ keys: "Mod+/" });
 
   const onClick = () => {
     if (!editor || !target || !btnRef.current) return;

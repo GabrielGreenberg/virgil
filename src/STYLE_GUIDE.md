@@ -224,8 +224,8 @@ Both just stamp the attribute protocol that `HintLayer` reads:
 
 | Attribute | Meaning |
 |---|---|
-| `data-hint="Label"` | The tooltip text. 1–4 words; the label *is* the hint. |
-| `data-hint-keys="Mod+/"` | Optional shortcut, rendered as a `<Kbd>` chip. |
+| `data-hint="Label"` | The tooltip text. 1–4 words. Optional — omit for a shortcut-only hint (just the keycap, e.g. the ⚡ button's "⌘/"). |
+| `data-hint-keys="Mod+/"` | Optional shortcut, rendered via `<Kbd>` (plain light text inside the bubble). At least one of label / keys is required. |
 | `data-hint-pos="above\|below\|left\|right"` | Optional placement nudge (flips/clamps to fit). |
 
 The bubble appears after a ~550 ms hover (the Notion-style beat), instantly on

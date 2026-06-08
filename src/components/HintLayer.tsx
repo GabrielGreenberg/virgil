@@ -107,17 +107,17 @@ function readHint(
   el: Element,
 ): { label: string; keys: string | null; placements: FloatingMenuPlacement[] } | null {
   const label = el.getAttribute("data-hint") ?? el.getAttribute("data-helper");
-  if (!label) return null;
   const keys = el.getAttribute("data-hint-keys");
+  if (!label && !keys) return null; // need at least a label or a shortcut
   const pos = el.getAttribute("data-hint-pos") ?? el.getAttribute("data-helper-pos");
   const stripSide =
     el.closest("[data-strip-side]")?.getAttribute("data-strip-side") ?? null;
-  return { label, keys, placements: placementsFor(pos, stripSide) };
+  return { label: label ?? "", keys, placements: placementsFor(pos, stripSide) };
 }
 
 function closestHinted(node: EventTarget | null): HTMLElement | null {
   if (!(node instanceof Element)) return null;
-  const el = node.closest("[data-hint],[data-helper]");
+  const el = node.closest("[data-hint],[data-hint-keys],[data-helper]");
   return el instanceof HTMLElement ? el : null;
 }
 
@@ -267,7 +267,7 @@ function HintBubble({ rect, label, keys, placements }: ActiveHint) {
   });
   return createPortal(
     <div ref={ref} id={BUBBLE_ID} role="tooltip" className="hint-bubble" style={style}>
-      <span className="hint-bubble__label">{label}</span>
+      {label ? <span className="hint-bubble__label">{label}</span> : null}
       {keys ? <Kbd keys={keys} /> : null}
     </div>,
     document.body,

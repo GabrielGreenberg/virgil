@@ -3923,13 +3923,13 @@ body[data-pref-mode="on"] [data-panel-theme]:hover {
   gap: 6px;
   max-width: 280px;
   padding: 4px 8px;
-  background: var(--ink-strong, #292524);
+  background: #1f1f1f;
   color: #fff;
   font-size: 11px;
   font-weight: 500;
   font-family: var(--font-sans), system-ui, sans-serif;
   line-height: 1.3;
-  border-radius: 4px;
+  border-radius: 6px;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.18);
   pointer-events: none;
   white-space: nowrap;
@@ -3958,11 +3958,14 @@ body[data-pref-mode="on"] [data-panel-theme]:hover {
   white-space: nowrap;
 }
 
-/* Kbd reads light-on-dark inside the hint bubble. */
+/* Inside the hint bubble the shortcut reads as plain light text (Notion
+   style), not a boxed chip. */
 .hint-bubble .kbd {
-  background: rgba(255, 255, 255, 0.16);
-  border-color: rgba(255, 255, 255, 0.28);
-  color: #fff;
+  background: transparent;
+  border: none;
+  padding: 0;
+  color: rgba(255, 255, 255, 0.92);
+  font-size: 0.95em;
 }
 
 /* ── Drag gap — invisible split handle with blue hover highlight ── */
