@@ -3945,12 +3945,14 @@ body[data-pref-mode="on"] [data-panel-theme]:hover {
   to { opacity: 1; }
 }
 
-/* Keycap chip — the single shortcut rendering (see Kbd.tsx). */
+/* Keycap chip — the single shortcut rendering (see Kbd.tsx). System sans
+   (not mono) so the ⌘/⇧/⌥ symbols render at the same visual size as the
+   letters; coding fonts draw them small/fallback. */
 .kbd {
-  font-family: var(--font-mono-override, var(--font-mono)), monospace;
+  font-family: -apple-system, system-ui, sans-serif;
   font-size: 0.85em;
   line-height: 1.4;
-  padding: 0 0.35em;
+  padding: 0 0.4em;
   border-radius: 3px;
   background: var(--code-bg, #f0eeeb);
   border: 1px solid var(--border, #d9d3c8);
