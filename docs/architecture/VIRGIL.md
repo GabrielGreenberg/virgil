@@ -1,4 +1,4 @@
-<!-- last-verified: 5a58165 2026-06-05 -->
+<!-- last-verified: 3a54711 2026-06-08 -->
 <!-- derives-from: (root — verified against code) -->
 <!-- covers-code: src/app, src/cards, src/components, src/hooks, src/lib, src/links, src/panels, src/text-objects, src/types, library, editor -->
 

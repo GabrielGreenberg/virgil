@@ -1,4 +1,4 @@
-<!-- last-verified: 7767413 2026-06-05 -->
+<!-- last-verified: 3a54711 2026-06-08 -->
 <!-- derives-from: docs/architecture/VIRGIL.md#card-kind-taxonomy -->
 <!-- covers-code: src/panels/_shared/types.ts, src/panels/panel-registry.ts, src/components/panel-primitives.tsx, src/lib/types.ts, src/hooks/useReports.ts, src/lib/ai-request-bridge.ts -->
 

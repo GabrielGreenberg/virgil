@@ -1,4 +1,4 @@
-<!-- last-verified: a119ef7 2026-06-05 -->
+<!-- last-verified: 3a54711 2026-06-08 -->
 <!-- derives-from: docs/architecture/VIRGIL.md#ontology, docs/architecture/VIRGIL.md#code-organization -->
 <!-- covers-code: src/components/DragHandleMenu.tsx, src/components/ActionsMenuPanel.tsx, src/components/SelectionActionsMenu.tsx, src/components/ActionsStripButton.tsx, src/components/editor-layout/card-actions, src/lib/editor-extensions.ts, src/lib/tiptap/tab-indent.ts, src/lib/tiptap/expex.ts, src/lib/tiptap/latex-comment.ts, src/lib/section-folding.ts, src/lib/tiptap/uuid-attr.ts, src/lib/tiptap/pgmark.ts, src/lib/tiptap/latex-command.ts, src/text-objects/text-object-registry.ts, src/text-objects/TextObjectGrabHandle.tsx, src/text-objects/drop-adapters.ts, src/components/drop-mode, src/lib/tiptap/atom-registry.ts -->
 
@@ -115,7 +115,7 @@ The action vocabulary is reached from **three** surfaces. Two mount the full
 
 | Trigger | Component | Mounts | Visibility |
 |---|---|---|---|
-| **Gutter button** | [SelectionActionsMenu.tsx](../../src/components/SelectionActionsMenu.tsx) | `ActionsMenuPanel` | A lightning bolt in the far-right gutter at the selection-head line; appears when the cursor is in the editor |
+| **Gutter button** | [SelectionActionsMenu.tsx](../../src/components/SelectionActionsMenu.tsx) | `ActionsMenuPanel` | A lightning bolt in the far-right gutter at the selection-head line; appears when the cursor is in the editor. `Mod-/` is the keyboard twin (opens / toggles the menu — Family 3) |
 | **Strip button** | [ActionsStripButton.tsx](../../src/components/ActionsStripButton.tsx) | `ActionsMenuPanel` | Always present in the MenuBar para-nav strip; disabled until the editor is first focused |
 | **Block grab handle** | [TextObjectGrabHandle.tsx](../../src/text-objects/TextObjectGrabHandle.tsx) | `DragHandleMenu` (per-kind filtered) | The left-gutter grip on hover / selection; a *no-drag click* opens the menu (a drag lifts the block — Family 2) |
 
@@ -270,6 +270,7 @@ assembled in [editor-extensions.ts](../../src/lib/editor-extensions.ts).
 
 | Key | Action | Context | SSOT |
 |---|---|---|---|
+| `Mod-/` | open / toggle the actions menu at the live cursor or selection (the keyboard twin of clicking the gutter ⚡) | editor focused, no `NodeSelection` | window-level handler in [SelectionActionsMenu.tsx](../../src/components/SelectionActionsMenu.tsx) (also wired in [ActionsStripButton.tsx](../../src/components/ActionsStripButton.tsx)) |
 | `Tab` | insert a literal tab | plain prose (priority 50 — defers to list/expex `Tab`) | [tab-indent.ts](../../src/lib/tiptap/tab-indent.ts) |
 | `Escape` | blur the editor | any | [tab-indent.ts](../../src/lib/tiptap/tab-indent.ts) |
 | `Enter` | escape / create the next sibling `exampleBlock` | trailing/empty para in an example | [expex.ts](../../src/lib/tiptap/expex.ts) |

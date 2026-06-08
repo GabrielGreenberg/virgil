@@ -1,4 +1,4 @@
-<!-- last-verified: 5a58165 2026-06-05 -->
+<!-- last-verified: 3a54711 2026-06-08 -->
 <!-- derives-from: docs/architecture/VIRGIL.md#code-organization, docs/architecture/VIRGIL.md#card-kind-taxonomy -->
 <!-- covers-code: src/panels/panel-registry.ts, src/components/MenuBar.tsx, src/components/EditorLayout.tsx, src/components/panel-primitives.tsx, src/components/editor-layout -->
 
@@ -265,17 +265,28 @@ This is iteration 3 on focus mode: 1d9ed09 made it presentation-only (dimming, n
 
 [src/components/editor-layout/DockOutline.tsx](../../src/components/editor-layout/DockOutline.tsx) renders a body-portaled clear-blue outline at fixed viewport coordinates to mark the active dock target during a panel drag. The signal driving it lives in [src/components/editor-layout/dock-drag.ts](../../src/components/editor-layout/dock-drag.ts) — a module-level `{slotKey, rect}` store with `setDockDragTarget` / `getDockDragTarget` / `useDockDragTarget`. Two flows write to it: undock (rect captured at mousedown so the outline survives the panel undocking and the slot DOM reshaping) and redock (mousemove hit-test against gutter columns; release reads the target and decides whether to redock). The store is module-level (not React Context) because producer (panel shell) and consumer (the body-portaled `DockOutline` plus EditorPane's mouseup handler) sit in different parts of the React tree. WAAPI-driven crossfade (not React state + CSS transitions) avoids races with React's batched commits and Strict Mode's effect double-invoke. Mounted from `EditorPane.tsx` ~line 2953, suppressed in zen mode.
 
-## Helper mode overlay
+## Gutter chrome geometry (block-frame)
 
-Toggled from the "?" button on the Virgil bar (circle-question-mark icon, next to the info "i" button). When active, `document.body` gets `data-helper-mode="on"` and a "Helper mode" indicator appears in the Virgil bar (styled like the Focus View indicator — clicking it deactivates the mode).
+[src/text-objects/block-frame.ts](../../src/text-objects/block-frame.ts) is the **one canonical per-block geometry source** for every gutter affordance. `resolveBlockFrame(el, editor, cache?)` returns a `BlockFrame` (viewport coords): `opticalCenterY` (cap-band center of the first visual text line — the vertical anchor), the horizontal `contentLeft` / `contentWidth` / `contentRight` content edges, a MEASURED `markerLeft` (the block's leftmost marker glyph — bullet band / `(n)` / `a.` / plain text), and an em `gapPx` resolved against the block's font. `resolveContentEdges(el)` is the lean horizontal-only primitive that `resolveBlockFrame` composes, so a full frame and a direct edges call can never diverge. Resolution is pure DOM + ancestry — O(1)/O(depth), never a doc walk (keystroke sanctity), safe on the hover/scroll/RAF placement and throttled-mousemove drop paths.
 
-Every interactive button carrying a `data-helper="Label"` attribute shows a black callout with white text **on hover** via a CSS `::after` pseudo-element reading `content: attr(data-helper)`. Only one callout is visible at a time (whichever element the cursor is over). The callout has `pointer-events: none` so it doesn't interfere with clicks.
+Three affordances now read these canonical edges, so they align **by construction** rather than by coincidence:
+- **Grab handle** — [src/text-objects/TextObjectGrabHandle.tsx](../../src/text-objects/TextObjectGrabHandle.tsx) resolves one frame per block and hugs `markerLeft − gapPx − HANDLE_WIDTH`; the slimmed [handle-layout.ts](../../src/text-objects/handle-layout.ts) is now just that arithmetic (`computeHandleLeft`) over the frame's `markerLeft` / `gapPx`.
+- **Drop indicator** — [src/components/drop-mode/hit-test.ts](../../src/components/drop-mode/hit-test.ts) takes the between-blocks + expex drop bars' x/width from `resolveContentEdges`, the same content extent the grab handles get.
+- **Figure chrome** — [src/components/FigureBlockNodeView.tsx](../../src/components/FigureBlockNodeView.tsx) anchors its "beside" control row at the frame's `contentRight` (resolved on the inner `.figure-block` hug box, whose right edge is the rendered image).
 
-Positioning is zone-based — below by default, right for left-strip buttons, left for right-strip buttons, above for card-level buttons (`data-helper-pos="above"`). All CSS rules are in `globals.css` under the "Helper mode" comment block.
+## Hint system (tooltips + Helper mode)
 
-State: `useHelperMode()` in [src/hooks/useHelperMode.ts](../../src/hooks/useHelperMode.ts) — module-scoped `useSyncExternalStore` pattern (same as `usePreferenceMode`). Exports `{ on, toggle, set }`. Persists to localStorage key `virgil-helper-mode`.
+Virgil has **one** app-wide hover/focus-hint primitive: [src/components/HintLayer.tsx](../../src/components/HintLayer.tsx) — the single delegated controller + portal bubble, mounted once near the root in [src/app/page.tsx](../../src/app/page.tsx). It is the production replacement for native `title=""` tooltips and the engine behind Helper mode. One set of capture-phase `document` listeners resolves the hinted element under the pointer/focus via `closest('[data-hint],[data-hint-keys],[data-helper]')` (O(ancestor-depth), never doc-size, not an `editor.on` subscriber), positions a single `.hint-bubble` portal via `useFloatingMenuPosition`, and dismisses on Escape / scroll / pointer-down / pointer-leave / focus-out.
 
-See [src/STYLE_GUIDE.md](../../src/STYLE_GUIDE.md) for annotation guidelines (label length, positioning rules, CSS structure).
+Authoring is via [src/components/Hint.tsx](../../src/components/Hint.tsx): `useHint({ label, keys, pos })` returns spreadable `data-hint*` attributes, or `<Hint label keys pos>` wraps a child element. The attribute protocol: `data-hint` (text, optional), `data-hint-keys` (a portable shortcut string), `data-hint-pos` (`above|below|left|right` nudge; defaults below, flipping to a `[data-strip-side]` ancestor's side). A **shortcut-only** hint omits the label so the bubble shows just the keycap. Legacy `data-helper` / `data-helper-pos` are read as aliases for incremental migration off `title=`; the old CSS `::after` callout is gone (the bubble is JS).
+
+[src/components/Kbd.tsx](../../src/components/Kbd.tsx) renders a portable shortcut string (`"Mod+/"`, `"Mod+Shift+N"`, …) as a platform-aware keycap chip in system sans — `Mod` → ⌘ on Mac, `Ctrl` elsewhere — via `isMac()` in [src/lib/platform.ts](../../src/lib/platform.ts) (the single Mac probe; SSR-safe `useIsMac()` external-store read). It's the only way to render a shortcut — no hardcoded `⌘…` strings.
+
+**Cmd+/ (`Mod+/`)** toggles the actions menu: a window-level keydown handler in [SelectionActionsMenu.tsx](../../src/components/SelectionActionsMenu.tsx) (~line 313) opens the `ActionsMenuPanel` at the live cursor/selection (the keyboard twin of clicking the gutter ⚡), and toggles it closed if already open. Both the gutter `SelectionActionsMenu` button and the strip `ActionsStripButton` carry a shortcut-only `useHint({ keys: "Mod+/" })` hint (the ⚡ glyph + ⌘/ keycap).
+
+**Helper mode** is just the instant, always-on rendering of the same hints: toggled from the "?" button on the Virgil bar (circle-question-mark icon, next to the info "i" button); when active `document.body` gets `data-helper-mode="on"`, `HintLayer` drops the hover delay to 0, and a "Helper mode" indicator appears in the Virgil bar (styled like the Focus View indicator — click to deactivate). State: `useHelperMode()` in [src/hooks/useHelperMode.ts](../../src/hooks/useHelperMode.ts) — module-scoped `useSyncExternalStore` (same as `usePreferenceMode`), exports `{ on, toggle, set }`, persists to localStorage key `virgil-helper-mode`.
+
+See [src/STYLE_GUIDE.md](../../src/STYLE_GUIDE.md) → "Hints, tooltips & keyboard shortcuts" for authoring guidelines (label length, positioning zones, accessibility).
 
 ## Collaborator mode UI
 
