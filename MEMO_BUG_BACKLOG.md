@@ -335,3 +335,47 @@ editor; the reported case is the common **same-editor** in-text grab.
 **Note:** distinct bug from the atom-drag observer-renumber issue in memory
 ([[atom-drag-and-observer-move-bug]]) — same subsystem, different fault (that was
 the `DocStructureObserver` mis-mapping multi-step txns; this is undo selection).
+
+---
+
+## 9. Virgil-bar "+" menu paints under floating panels (z-index / stacking trap)
+
+**Reported:** 2026-06-05 · **Status:** open · **Area:** ui-chrome / Virgil bar
+
+**Reported behavior** — the "+" menu in the Virgil bar (Recent papers / Open folder
+/ Create new document / New Virgil window) is at the wrong z-position; floating
+panels and other windows layer over it instead of it sitting on top.
+
+**Root cause — a child z-index trapped in a low parent stacking context.**
+- The dropdown is rendered `position: absolute z-50` **inline** inside the
+  component, not portaled — [TabPlusMenu.tsx:121](src/components/TabPlusMenu.tsx:121).
+- Its parent, the Virgil bar, is `sticky top-0 z-30`
+  ([EditorLayout.tsx:3817](src/components/EditorLayout.tsx:3817)). `sticky` +
+  `z-index` **establishes a stacking context**, so the menu's `z-50` only orders it
+  *within* the bar — relative to the page the whole menu is pinned at the bar's
+  **z-30** level. A child can never paint above a layer that out-stacks its
+  ancestor, no matter how high its own z-index.
+- The things covering it escape that trap: floating panels / popped cards are
+  **portaled to `document.body`** at **z-1200+** (`FloatingPanel` takes a dynamic
+  `zIndex`; see the "cards use zIndex 1200+" note in
+  [CardLiftOutline.tsx:80](src/components/CardLiftOutline.tsx:80)), and the other
+  popovers sit at 1000–2000 (Slash/Math/LabelRef popovers **1000**;
+  DragHandle/ActionsMenu/Heading menus **2000**; assorted dropdowns **z-[9999]**).
+
+**Fix — match the established floating-overlay pattern.** Every other floating
+popover (`MathPopover`, `LabelRefPopover`, `SlashCommandPopup`) `createPortal`s to
+`document.body` and uses `zIndex: 1000`. Do the same here:
+1. **Portal the dropdown to `document.body`** instead of `position: absolute`
+   inside the bar — this is the load-bearing change; it escapes the z-30 context.
+   Position it from the "+" button's `getBoundingClientRect()` (the wrapper
+   `wrapRef` already exists at [TabPlusMenu.tsx:106](src/components/TabPlusMenu.tsx:106));
+   keep the existing outside-click / Escape close handlers.
+2. **Give it a chrome-menu-tier z-index** so it clears floating panels/cards
+   (1200+) — e.g. **2000**, matching `DragHandleMenu` / `ActionsMenuPanel`. (z-50
+   becomes irrelevant once portaled, but set it to the right tier anyway.)
+
+**Adjacent audit (same trap):** any other `position: absolute` dropdown rendered
+inside the `z-30` virgil-bar has this exact bug — e.g. the `absolute … z-20`
+dropdown at [EditorLayout.tsx:4431](src/components/EditorLayout.tsx:4431), and
+`MyPapersPod` (glossary notes it "mirrors the Virgil-bar `TabPlusMenu`"). Sweep
+for `absolute z-[0-9]` menus inside low-z sticky bars and portal them uniformly.
