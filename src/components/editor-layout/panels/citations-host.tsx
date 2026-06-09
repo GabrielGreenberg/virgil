@@ -13,6 +13,7 @@ import { useCitationDisplayContext } from "../contexts/citation-display";
 import { useCardCreationContext } from "../contexts/card-creation";
 import { useRecentlyAddedId } from "../contexts/recently-added";
 import { focusNewCard } from "@/lib/focus-new-card";
+import { cardPopKey } from "@/panels/panel-registry";
 
 type CitationsHook = ReturnType<typeof useCitations>;
 type AnnotationsHook = ReturnType<typeof useAnnotations>;
@@ -76,7 +77,7 @@ export function CitationsHost(p: CitationsHostProps) {
         unanchored: false,
         mode: "omni",
       });
-      focusNewCard(`citation:${detail.citationId}`);
+      focusNewCard(cardPopKey("citation", detail.citationId));
     };
     window.addEventListener("virgil-citation-create", handler);
     return () => window.removeEventListener("virgil-citation-create", handler);

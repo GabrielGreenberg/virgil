@@ -184,6 +184,7 @@ import { CitationsHost } from "./editor-layout/panels/citations-host";
 import { OmniHost } from "./editor-layout/panels/omni-host";
 import { SearchHost } from "./editor-layout/panels/search-host";
 import ExamplesPanel from "@/panels/Examples";
+import { cardPopKey, cardDomSelector } from "@/panels/panel-registry";
 import { usePreferences } from "@/hooks/usePreferences";
 // Preference mode — ctrl+click picker for live token editing. See
 // usePreferenceMode.ts for the full architecture / extension guide.
@@ -921,6 +922,18 @@ export default function EditorLayout() {
       return FLOAT_Z_BASE + (idx >= 0 ? idx : cards.length);
     },
     [focusStack],
+  );
+
+  // Lockstep popout-key remap (one card morphs kind while popped → its stored
+  // `float:card:<kind>:<id>` key must follow, or `FloatHost` re-derives the old
+  // kind and the float vanishes). Routes through `migratePoppedOutCards` so the
+  // saved rect in `cardFloatPositions` moves with the key (never orphans).
+  const remapCardPopKey = useCallback(
+    (oldKey: string, newKey: string) => {
+      if (oldKey === newKey) return;
+      migratePoppedOutCards((k) => (k === oldKey ? newKey : k));
+    },
+    [migratePoppedOutCards],
   );
 
   // (menuWrapStyle is declared below, after the zen
@@ -2820,6 +2833,7 @@ export default function EditorLayout() {
     toggleCardPopout,
     closeCardPopout,
     setCardFloatPosition,
+    remapCardPopKey,
     getOmniEnabled,
     getOmniHideAll,
     toggleOmniHideAllCards,
@@ -2896,6 +2910,7 @@ export default function EditorLayout() {
     toggleCardPopout,
     closeCardPopout,
     setCardFloatPosition,
+    remapCardPopKey,
     getOmniEnabled,
     getOmniHideAll,
     toggleOmniHideAllCards,
@@ -3367,7 +3382,7 @@ export default function EditorLayout() {
             setSelectedArchiveId(snippet.id);
             openForCard(
               {
-                omniKey: `archive:${snippet.id}`,
+                omniKey: cardPopKey("archive", snippet.id),
                 entrySelector: `[data-archive-entry="${snippet.id}"]`,
                 panelId: "archive",
                 cardKind: "archive",
@@ -3387,7 +3402,7 @@ export default function EditorLayout() {
                 `[data-marginalia-marker^="archive:${snippet.id}:"]`,
               ) as HTMLElement | null;
               requestAnimationFrame(() => {
-                alignOmniCardWithClick(`archive:${snippet.id}`, clickY, sourceEl);
+                alignOmniCardWithClick(cardPopKey("archive", snippet.id), clickY, sourceEl);
               });
             }
           },
@@ -3452,12 +3467,17 @@ export default function EditorLayout() {
             // this falls through to the native panel; alignOmniCardWithClick
             // no-ops when the omni wrapper isn't present, leaving the
             // native panel's own scrolling intact.
+            // Derive the real kind from the card's data discriminator — a
+            // pending suggestion still gets a marker and must route to its own
+            // `revision-suggestion` key/selector, not the comment's.
+            const revKind =
+              r.kind === "suggestion" ? "revision-suggestion" : "revision-comment";
             openForCard(
               {
-                omniKey: `revision:${r.id}`,
-                entrySelector: `[data-card-key="revision:${r.id}"]`,
+                omniKey: cardPopKey(revKind, r.id),
+                entrySelector: cardDomSelector(revKind, r.id),
                 panelId: "revisions",
-                cardKind: "revision-comment",
+                cardKind: revKind,
                 skipScroll: true,
               },
               {
@@ -3474,7 +3494,7 @@ export default function EditorLayout() {
                 `[data-marginalia-marker^="revision:${r.id}:"]`,
               ) as HTMLElement | null;
               requestAnimationFrame(() => {
-                alignOmniCardWithClick(`revision:${r.id}`, clickY, sourceEl);
+                alignOmniCardWithClick(cardPopKey(revKind, r.id), clickY, sourceEl);
               });
             }
           },

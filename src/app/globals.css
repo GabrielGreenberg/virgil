@@ -2560,28 +2560,29 @@ textarea,
 
 /* Per-kind --link-anchor-color on panel cards. Mirrors the linked-anchor
  * map above so the card, the margin icon, and the linked text all paint
- * in one kind color across resting/hover/selected. The card's own
- * data-card-key carries the kind prefix; values are loosely aligned with
- * DEFAULT_PANEL_COLORS in src/lib/panel-theme.ts. Cards without a hover
- * relationship (bib, ai, error, example) fall through to the
+ * in one kind color across resting/hover/selected. Values are loosely
+ * aligned with DEFAULT_PANEL_COLORS in src/lib/panel-theme.ts. Cards without
+ * a hover relationship (bib, ai, error, example) fall through to the
  * `.linked-anchor`-default amber and don't matter here.
  *
- * Note: data-card-key prefixes do not always equal the CardKind name
- * (CARD_KEY_PREFIXES in src/panels/panel-registry.ts is authoritative).
- * In particular, the "comment" CardKind uses prefix "revision:". */
-[data-card-key^="note:"]                { --link-anchor-color: #15803d; }
-[data-card-key^="highlight:"]           { --link-anchor-color: #fbbf24; }
-[data-card-key^="cutter-comment:"],
-[data-card-key^="cutter-suggestion:"]   { --link-anchor-color: #b45757; }
-[data-card-key^="revision:"],
-[data-card-key^="revision-suggestion:"],
-[data-card-key^="suggestion:"]          { --link-anchor-color: #9333ea; }
-[data-card-key^="archive:"]             { --link-anchor-color: #5a7a99; }
-[data-card-key^="report:"],
-[data-card-key^="report-request:"]      { --link-anchor-color: #6366f1; }
-[data-card-key^="todo:"]                { --link-anchor-color: #44403c; }
-[data-card-key^="footnote:"]            { --link-anchor-color: #b45757; }
-[data-card-key^="citation:"]            { --link-anchor-color: #d4a843; }
+ * The selectors MUST track `cardPopKey(kind,id)` in src/panels/panel-registry.ts,
+ * which stamps `data-card-key="float:card:<kind>:<id>"` (the AF unified grammar).
+ * The `<kind>` segment IS the CardKind verbatim — note in particular the revision
+ * pair is `revision-comment` / `revision-suggestion` (NOT the legacy `revision:`
+ * prefix). If `cardPopKey`'s format ever changes, these prefixes must change with
+ * it (the entity-key contract test pins the grammar). */
+[data-card-key^="float:card:note:"]                { --link-anchor-color: #15803d; }
+[data-card-key^="float:card:highlight:"]           { --link-anchor-color: #fbbf24; }
+[data-card-key^="float:card:cutter-comment:"],
+[data-card-key^="float:card:cutter-suggestion:"]   { --link-anchor-color: #b45757; }
+[data-card-key^="float:card:revision-comment:"],
+[data-card-key^="float:card:revision-suggestion:"] { --link-anchor-color: #9333ea; }
+[data-card-key^="float:card:archive:"]             { --link-anchor-color: #5a7a99; }
+[data-card-key^="float:card:report:"],
+[data-card-key^="float:card:report-request:"]      { --link-anchor-color: #6366f1; }
+[data-card-key^="float:card:todo:"]                { --link-anchor-color: #44403c; }
+[data-card-key^="float:card:footnote:"]            { --link-anchor-color: #b45757; }
+[data-card-key^="float:card:citation:"]            { --link-anchor-color: #d4a843; }
 
 /* Per-kind --link-anchor-color on Mode A paragraph anchors. The
  * useCardSelectionHighlight / useCardHoverHighlight hooks write
@@ -2777,7 +2778,10 @@ textarea,
 /* PANEL CARDS ─────────────────────────────────────────────────────── */
 
 /* Resting accent — small kind-colored stripe so cards are identifiable
- * without their margin icon. Inset so it doesn't shift layout. */
+ * without their margin icon. Inset so it doesn't shift layout. These rules
+ * are grammar-agnostic (bare `[data-card-key]`); the per-kind COLOR comes
+ * from the `[data-card-key^="float:card:<kind>:"]` block above, so a card's
+ * ring is only correctly tinted when that block tracks `cardPopKey`. */
 [data-card-key] {
   outline-color: color-mix(in oklab, var(--link-anchor-color) 50%, transparent);
 }

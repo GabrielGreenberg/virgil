@@ -5,7 +5,7 @@ import type { CardKind } from "@/panels/_shared/types";
 import type { EntityKind } from "@/links/_shared/entity-hover";
 import { suppressNextPlacement } from "@/links/_shared/usePlacement";
 import { openForCard } from "./open-for-card";
-import { cardPopKey } from "@/panels/panel-registry";
+import { cardPopKey, cardDomSelector } from "@/panels/panel-registry";
 
 /** EntityKind → routing config for `virgil-linked-anchor-click`. Mode B
  *  text-range clicks fall into one of these; inline atoms (footnote,
@@ -15,36 +15,31 @@ const ANCHOR_CLICK_ROUTES: Record<
     EntityKind,
     "note" | "cutter-comment" | "cutter-suggestion" | "revision-comment" | "revision-suggestion"
   >,
-  { panelId: PanelId; cardKind: CardKind; omniPrefix: string; entrySelectorBase: string }
+  { panelId: PanelId; cardKind: CardKind; entrySelectorBase: string }
 > = {
   note: {
     panelId: "notes",
     cardKind: "note",
-    omniPrefix: "note",
     entrySelectorBase: "data-note-entry",
   },
   "cutter-comment": {
     panelId: "cutter",
     cardKind: "cutter-comment",
-    omniPrefix: "cutter-comment",
     entrySelectorBase: "data-card-key",
   },
   "cutter-suggestion": {
     panelId: "cutter",
     cardKind: "cutter-suggestion",
-    omniPrefix: "cutter-suggestion",
     entrySelectorBase: "data-card-key",
   },
   "revision-comment": {
     panelId: "revisions",
     cardKind: "revision-comment",
-    omniPrefix: "revision",
     entrySelectorBase: "data-card-key",
   },
   "revision-suggestion": {
     panelId: "revisions",
     cardKind: "revision-suggestion",
-    omniPrefix: "revision-suggestion",
     entrySelectorBase: "data-card-key",
   },
 };
@@ -135,7 +130,7 @@ export function useMarkerClickBridges(deps: {
         typeof detail.clickY === "number" ? detail.clickY : undefined;
       openForCard(
         {
-          omniKey: `footnote:${detail.footnoteId}`,
+          omniKey: cardPopKey("footnote", detail.footnoteId),
           entrySelector: `[data-footnote-entry="${detail.footnoteId}"], [data-link-card="footnote:${detail.footnoteId}"]`,
           panelId: "footnotes",
           cardKind: "footnote",
@@ -159,7 +154,7 @@ export function useMarkerClickBridges(deps: {
         // alignOmniCardWithClick converts clickY → pod-relative and
         // publishes a pin request. Retries one rAF later if the panel
         // column hasn't rendered yet (cold-mount case).
-        alignOmniCardWithClick(`footnote:${detail.footnoteId}`, clickY, sourceEl);
+        alignOmniCardWithClick(cardPopKey("footnote", detail.footnoteId), clickY, sourceEl);
       }
     };
     window.addEventListener("virgil-footnote-click", handler);
@@ -182,7 +177,7 @@ export function useMarkerClickBridges(deps: {
       const sourceHalf = detail.sourceHalf as Half | undefined;
       openForCard(
         {
-          omniKey: `citation:${detail.citationId}`,
+          omniKey: cardPopKey("citation", detail.citationId),
           entrySelector: `[data-link-card="citation:${detail.citationId}"]`,
           panelId: "citations",
           cardKind: "citation",
@@ -212,7 +207,7 @@ export function useMarkerClickBridges(deps: {
         const sourceEl = document.querySelector(
           `.citation-node[data-citation-id="${detail.citationId}"]`,
         ) as HTMLElement | null;
-        alignOmniCardWithClick(`citation:${detail.citationId}`, clickY, sourceEl);
+        alignOmniCardWithClick(cardPopKey("citation", detail.citationId), clickY, sourceEl);
       }
     };
     window.addEventListener("virgil-citation-click", handler);
@@ -304,12 +299,14 @@ export function useMarkerClickBridges(deps: {
 
       const entrySelector =
         route.entrySelectorBase === "data-card-key"
-          ? `[data-card-key="${cardPopKey(detail.kind as CardKind, id)}"]`
+          ? cardDomSelector(route.cardKind, id)
           : `[${route.entrySelectorBase}="${id}"]`;
 
       const clickY: number | undefined =
         typeof detail.clickY === "number" ? detail.clickY : undefined;
-      const omniKey = `${route.omniPrefix}:${id}`;
+      // The omni id a panel stamps IS `cardPopKey(kind,id)` — no separate omni
+      // grammar — so the marker→omni scroll/pin matches `data-omni-entry`.
+      const omniKey = cardPopKey(route.cardKind, id);
       openForCard(
         {
           omniKey,

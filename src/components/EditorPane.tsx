@@ -71,7 +71,7 @@ import {
 } from "./editor-layout/chrome-config";
 import OutlinePanel from "@/panels/Outline/OutlinePanel";
 import ExamplesPanel from "@/panels/Examples";
-import { PANEL_REGISTRY } from "@/panels/panel-registry";
+import { PANEL_REGISTRY, cardPopKey } from "@/panels/panel-registry";
 import { SectionLozenge } from "./editor-layout/section-lozenge";
 import { useCodePaneSplit } from "./editor-layout/CodePaneSplitContext";
 import { EditorScrollbar } from "./editor-layout/editor-scrollbar";
@@ -217,7 +217,7 @@ import { useMarginEdit, MARGIN_AXIS } from "@/hooks/useMarginEdit";
 import type { FocusState } from "@/hooks/useFocusMode";
 import type { OmniCategory } from "@/panels/Omni";
 import type { SectionPathEntry } from "@/panels/Outline";
-import type { PanelKind } from "@/panels/_shared/types";
+import type { PanelKind, CardKind } from "@/panels/_shared/types";
 import type { AiRequest } from "@/lib/types";
 import {
   useCardLifecycleApi,
@@ -328,13 +328,13 @@ export interface EditorPaneViewPrefs {
   redockPanel: (id: PanelId, slotKey: DockSlotKey) => void;
 
   // ── Card popout ─────────────────────────────────────────────────
-  /** Toggle a card's popped-out state. Key shape: panel cards use
-   *  `${kind}:${id}` (`note:`, `todo:`, `example:`, etc.); block-level
-   *  TextObject popouts use the unified `textobject:${kind}:${id}`
-   *  shape introduced in Phase D10. After Phase E, selection lifts
-   *  hydrate into `linkedRange` TextObjects so they take the same
-   *  unified path — there is no session-only float category left.
-   *  See `floating-cards.tsx`'s `renderPoppedCard` dispatcher. */
+  /** Toggle a card's popped-out state. Key shape: every float uses the
+   *  unified AF grammar `float:<domain>:<kind>:<id>` — card popouts via
+   *  `cardPopKey(kind,id)` (`float:card:note:…`), block-level TextObject
+   *  popouts via `textObjectPopoutKey` (`float:textobject:texBlock:…`).
+   *  Selection lifts hydrate into `linkedRange` TextObjects so they take
+   *  the same unified path — there is no session-only float category left.
+   *  See `FloatHost`'s `resolveFloatable` dispatcher. */
   toggleCardPopout: (key: string) => void;
   /** Pop the card *off* without re-docking. Used by float X buttons
    *  and by the PoppedCardsContext's `close` callback. */
@@ -343,6 +343,13 @@ export interface EditorPaneViewPrefs {
     key: string,
     rect: { x: number; y: number; width: number; height: number },
   ) => void;
+  /** Lockstep-remap a card's popout key across BOTH `poppedOutCards` AND
+   *  `cardFloatPositions`, so a card that morphs to another kind while popped
+   *  out (revision comment↔suggestion today; the A9 chevron generalizes this)
+   *  keeps its float alive at the same rect instead of vanishing — the stored
+   *  key bakes the kind, and `FloatHost.resolveFloatable` re-derives kind from
+   *  the key. No-op when `oldKey` isn't currently popped. */
+  remapCardPopKey: (oldKey: string, newKey: string) => void;
 
   // ── OmniHost helpers ────────────────────────────────────────────
   getOmniEnabled: (side: Side) => Set<OmniCategory>;
@@ -781,7 +788,33 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
   const aiRequestsHook = useAiRequests(docId);
   const cutterHook = useCutter(docId, cutPristine);
   const reportsHook = useReports(docId, reportPristine);
-  const revisionsHook = useRevisions(docId);
+  const revisionsHookRaw = useRevisions(docId);
+  // Morph a revision card's kind (comment↔suggestion) AND, in lockstep, remap
+  // its popout key if it's currently floated — `convertCard` only flips
+  // `card.kind`, but the stored `float:card:<kind>:<id>` key bakes the kind and
+  // `FloatHost.resolveFloatable` re-derives kind from the key, so without the
+  // remap a popped-then-morphed card silently vanishes. `remapCardPopKey`
+  // no-ops when the card isn't floated, so this is safe from every trigger
+  // (docked dropdown, omni, or the FloatChrome title control). Generalizes to
+  // the A9 morph chevron.
+  const convertRevisionCard = useCallback(
+    (id: string, toKind: "comment" | "suggestion") => {
+      const fromCardKind: CardKind =
+        toKind === "suggestion" ? "revision-comment" : "revision-suggestion";
+      const toCardKind: CardKind =
+        toKind === "suggestion" ? "revision-suggestion" : "revision-comment";
+      revisionsHookRaw.convertCard(id, toKind);
+      viewPrefs?.remapCardPopKey(cardPopKey(fromCardKind, id), cardPopKey(toCardKind, id));
+    },
+    [revisionsHookRaw, viewPrefs],
+  );
+  // The hook threaded to every revision consumer (cardCtx, PaneRail/PaneRailBody,
+  // omni-host) with `convertCard` swapped for the popout-key-remapping wrapper —
+  // one chokepoint, so the morph survives regardless of which surface triggers it.
+  const revisionsHook = useMemo(
+    () => ({ ...revisionsHookRaw, convertCard: convertRevisionCard }),
+    [revisionsHookRaw, convertRevisionCard],
+  );
   const todosHook = useTodos(docId, todoPristine);
   const archiveHook = useArchive(docId);
   const footnotesHook = useFootnotes(docId, footnotePristine);

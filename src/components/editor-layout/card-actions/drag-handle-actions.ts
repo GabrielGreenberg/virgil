@@ -47,6 +47,7 @@ import {
 import { getSectionRangeByUuid } from "@/lib/section-range";
 import { generateShortId } from "@/lib/uuid";
 import { focusNewCard } from "@/lib/focus-new-card";
+import { cardPopKey } from "@/panels/panel-registry";
 import type { DragHandleAction } from "@/components/DragHandleMenu";
 import type { CardLifecycleApi } from "@/panels/card-lifecycle-registry";
 import { parseLinkCardKey } from "@/links/link-registry";
@@ -263,7 +264,7 @@ export function useDragHandleActions(deps: DragHandleActionsDeps) {
           });
           if (result) {
             panelId = "footnotes";
-            focusCardKey = `footnote:${result.footnoteId}`;
+            focusCardKey = cardPopKey("footnote", result.footnoteId);
           }
           break;
         }
@@ -287,7 +288,7 @@ export function useDragHandleActions(deps: DragHandleActionsDeps) {
             mode: "omni",
           });
           panelId = "citations";
-          focusCardKey = `citation:${ref.id}`;
+          focusCardKey = cardPopKey("citation", ref.id);
           break;
         }
         case "note": {
@@ -302,7 +303,7 @@ export function useDragHandleActions(deps: DragHandleActionsDeps) {
             updateLinkedAnchorCard(ed, anchor.anchorId, "note", note.id);
           }
           panelId = "notes";
-          focusCardKey = `note:${note.id}`;
+          focusCardKey = cardPopKey("note", note.id);
           break;
         }
         case "highlight": {
@@ -321,7 +322,7 @@ export function useDragHandleActions(deps: DragHandleActionsDeps) {
           });
           updateLinkedAnchorCard(ed, record.anchorId, "highlight", card.id);
           panelId = "notes";
-          focusCardKey = `highlight:${card.id}`;
+          focusCardKey = cardPopKey("highlight", card.id);
           break;
         }
         case "todo": {
@@ -332,7 +333,7 @@ export function useDragHandleActions(deps: DragHandleActionsDeps) {
             mode: "omni",
           });
           panelId = "todo";
-          focusCardKey = `todo:${todo.id}`;
+          focusCardKey = cardPopKey("todo", todo.id);
           break;
         }
         case "suggest-edit": {
@@ -347,7 +348,7 @@ export function useDragHandleActions(deps: DragHandleActionsDeps) {
             updateLinkedAnchorCard(ed, anchor.anchorId, "revision-comment", card.id);
           }
           panelId = "revisions";
-          focusCardKey = `revision:${card.id}`;
+          focusCardKey = cardPopKey("revision-comment", card.id);
           break;
         }
         case "cutter": {
@@ -369,7 +370,7 @@ export function useDragHandleActions(deps: DragHandleActionsDeps) {
             );
           }
           panelId = "cutter";
-          focusCardKey = `cutter-comment:${card.id}`;
+          focusCardKey = cardPopKey("cutter-comment", card.id);
           break;
         }
         case "report": {
@@ -393,7 +394,7 @@ export function useDragHandleActions(deps: DragHandleActionsDeps) {
             );
           }
           panelId = "reports";
-          focusCardKey = `report-request:${card.id}`;
+          focusCardKey = cardPopKey("report-request", card.id);
           break;
         }
         case "duplicate": {
@@ -552,7 +553,7 @@ export function useDragHandleActions(deps: DragHandleActionsDeps) {
             mode: "omni",
           });
           panelId = "archive";
-          focusCardKey = `archive:${snippet.id}`;
+          focusCardKey = cardPopKey("archive", snippet.id);
           break;
         }
         case "delete": {

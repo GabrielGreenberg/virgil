@@ -5,7 +5,7 @@ import type { OmniCategory } from "@/panels/Omni";
 import { getTextAnchor } from "@/links/links";
 import { suppressNextPlacement } from "@/links/_shared/usePlacement";
 import { openForCard } from "../event-bridges/open-for-card";
-import { cardPopKey } from "@/panels/panel-registry";
+import { cardPopKey, cardDomSelector } from "@/panels/panel-registry";
 
 type AnchorKind = "note" | "highlight" | "revision" | "cutter-comment" | "cutter-suggestion" | "report" | "report-request" | null;
 
@@ -85,7 +85,7 @@ export function useMarkerActions(deps: {
       if (!nextSelected) return;
       openForCard(
         {
-          omniKey: `note:${noteId}`,
+          omniKey: cardPopKey("note", noteId),
           entrySelector: `[data-note-entry="${noteId}"]`,
           panelId: "notes",
           cardKind: "note",
@@ -107,7 +107,7 @@ export function useMarkerActions(deps: {
         // alignOmniCardWithClick converts clickY → pod-relative and
         // publishes a pin request. Retries one rAF if the panel column
         // hasn't rendered yet (cold-mount case).
-        alignOmniCardWithClick(`note:${noteId}`, clickY, sourceEl);
+        alignOmniCardWithClick(cardPopKey("note", noteId), clickY, sourceEl);
       }
     },
     [prefsRef, setActiveLeft, setActiveRight, setActiveHalf, selectedNoteId, setSelectedNoteId, notes, tryScrollOmniEntry, getOmniEnabled, setActiveAnchorId, setActiveAnchorKind, alignOmniCardWithClick],
@@ -139,8 +139,8 @@ export function useMarkerActions(deps: {
       // doesn't exist, so the native panel handles its own scrolling.
       openForCard(
         {
-          omniKey: `${kind}:${cardId}`,
-          entrySelector: `[data-card-key="${cardPopKey(kind, cardId)}"]`,
+          omniKey: cardPopKey(kind, cardId),
+          entrySelector: cardDomSelector(kind, cardId),
           panelId: "cutter",
           cardKind: kind,
           skipScroll: true,
@@ -161,7 +161,7 @@ export function useMarkerActions(deps: {
         // alignOmniCardWithClick converts clickY → pod-relative and
         // publishes a pin request. Retries one rAF if the panel column
         // hasn't rendered yet (cold-mount case).
-        alignOmniCardWithClick(`${kind}:${cardId}`, clickY, sourceEl);
+        alignOmniCardWithClick(cardPopKey(kind, cardId), clickY, sourceEl);
       }
     },
     [prefsRef, setActiveLeft, setActiveRight, setActiveHalf, cutterCards, selectedCutterCardId, setSelectedCutterCardId, tryScrollOmniEntry, getOmniEnabled, setActiveAnchorId, setActiveAnchorKind, alignOmniCardWithClick],
@@ -177,7 +177,7 @@ export function useMarkerActions(deps: {
       if (!nextSelected) return;
       openForCard(
         {
-          omniKey: `todo:${todoId}`,
+          omniKey: cardPopKey("todo", todoId),
           entrySelector: `[data-todo-entry="${todoId}"]`,
           panelId: "todo",
           cardKind: "todo",
@@ -199,7 +199,7 @@ export function useMarkerActions(deps: {
         // alignOmniCardWithClick converts clickY → pod-relative and
         // publishes a pin request. Retries one rAF if the panel column
         // hasn't rendered yet (cold-mount case).
-        alignOmniCardWithClick(`todo:${todoId}`, clickY, sourceEl);
+        alignOmniCardWithClick(cardPopKey("todo", todoId), clickY, sourceEl);
       }
     },
     [prefsRef, setActiveLeft, setActiveRight, setActiveHalf, selectedTodoId, setSelectedTodoId, tryScrollOmniEntry, getOmniEnabled, alignOmniCardWithClick],

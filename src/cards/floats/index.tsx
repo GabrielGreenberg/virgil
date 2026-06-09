@@ -45,6 +45,7 @@ import type {
   ReportRequestCard as ReportRequestCardData,
 } from "@/lib/types";
 import type { Floatable, FloatChromeSlots } from "@/floats/types";
+import { buildFloatKey } from "@/floats/float-key";
 import type { CardFloatCtx } from "../card-float-ctx";
 import type { CardKind } from "../types";
 import { CARD_REGISTRY, registerCardFloatable } from "../card-registry";
@@ -69,7 +70,9 @@ function cardFloatable(
   },
 ): Floatable {
   return {
-    key: `float:card:${kind}:${id}`,
+    // The canonical float key via the runtime-leaf SSOT builder — same string
+    // `cardPopKey(kind,id)` emits, never a hand-built `float:card:…` literal.
+    key: buildFloatKey({ domain: "card", kind, id }),
     domain: "card",
     kind,
     id,

@@ -5,7 +5,7 @@ import type { Editor } from "@tiptap/react";
 import { useInTextPositions } from "@/hooks/useInTextPositions";
 import { getBus, type DocStructure } from "@/lib/tiptap/doc-structure";
 import {
-  CARD_KEY_PREFIXES,
+  cardPopKey,
   OMNI_PANELS,
   getPanelByCardKind,
 } from "@/panels/panel-registry";
@@ -313,11 +313,13 @@ function OmniViewPanel({
   // kinds (footnote / citation / example) carry a captured `pos` that only
   // refreshes on structural change post keystroke-sanctity refactor; resolve
   // their live pos from the DocStructureObserver snapshot (re-mapped every
-  // transaction) keyed to the same `${kind}:${id}` shape as the omni item id.
+  // transaction) keyed to the SAME `cardPopKey(kind,id)` (= `float:card:<kind>:<id>`)
+  // string the omni item id uses — which is what `useInTextPositions` passes here.
   // Paragraph-anchored kinds (note/todo/…) fall through to the captured pos —
   // their primary visualization is the marginalia gutter, which is already
   // sourced live from layout observers. The lookup map is rebuilt only when
-  // the snapshot identity changes (once per measure pass), not per item.
+  // the snapshot identity changes (once per measure pass), not per item — so
+  // plain typing (no structural change) re-derives nothing here.
   const livePosCacheRef = useRef<{ s: DocStructure | null; map: Map<string, number> }>({
     s: null,
     map: new Map(),
@@ -328,11 +330,11 @@ function OmniViewPanel({
       if (!s) return undefined;
       if (livePosCacheRef.current.s !== s) {
         const map = new Map<string, number>();
-        for (const f of s.footnotes) map.set(`${CARD_KEY_PREFIXES.footnote}:${f.id}`, f.pos);
-        for (const c of s.citations) map.set(`${CARD_KEY_PREFIXES.citation}:${c.id}`, c.pos);
+        for (const f of s.footnotes) map.set(cardPopKey("footnote", f.id), f.pos);
+        for (const c of s.citations) map.set(cardPopKey("citation", c.id), c.pos);
         for (const e of s.examples) {
-          map.set(`${CARD_KEY_PREFIXES.example}:${e.id}`, e.pos);
-          if (e.uuid) map.set(`${CARD_KEY_PREFIXES.example}:${e.uuid}`, e.pos);
+          map.set(cardPopKey("example", e.id), e.pos);
+          if (e.uuid) map.set(cardPopKey("example", e.uuid), e.pos);
         }
         livePosCacheRef.current = { s, map };
       }

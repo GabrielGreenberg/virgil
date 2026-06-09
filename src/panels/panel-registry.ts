@@ -249,6 +249,15 @@ export function cardPopKey(cardKind: CardKind, id: string): string {
   return buildFloatKey({ domain: "card", kind: cardKind, id });
 }
 
+/** `[data-card-key="float:card:<kind>:<id>"]` — the DOM selector that matches the
+ *  `data-card-key` a panel card stamps. The ONE helper every consumer that hunts
+ *  a card in the DOM by (kind,id) must use; hand-building `[data-card-key="…"]`
+ *  re-introduces the legacy-grammar drift the AF flip exposed (the card stamps
+ *  `cardPopKey`, not `<prefix>:<id>`). Keep the grammar in `cardPopKey` only. */
+export function cardDomSelector(cardKind: CardKind, id: string): string {
+  return `[data-card-key="${cardPopKey(cardKind, id)}"]`;
+}
+
 export function getPanelByCardKind(cardKind: CardKind): PanelRegistryEntry | null {
   // Inverted polymorphic model: each kind declares its owning panel in
   // CARD_REGISTRY (`src/cards/card-registry`); membership derives. Replaces the
