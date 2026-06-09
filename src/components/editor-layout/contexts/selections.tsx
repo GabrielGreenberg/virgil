@@ -53,36 +53,28 @@ export interface SelectionsProviderInputs {
  *  setter accepts a value or an updater, matching React's setState shape
  *  so existing callers keep compiling unchanged.
  *
- *  Writes target the `transient` slot only — sticky cards are managed
- *  separately via `cardStore.toggleSelection` (direct card click) and
- *  `markSticky` (focus promotion). The slot setter's read side derives
- *  from the primary focus (transient || newest sticky), so per-kind
- *  callers still see the currently-focused id for their kind. */
+ *  Writes target the SELECTION axis only (`select`/`clearSelection`): a
+ *  per-kind "selected id" is the selection slot when it holds this kind. It
+ *  does NOT expand the card (N1: selecting ≠ expanding) — a marker click that
+ *  routes here selects + scrolls without unfurling the body. */
 function makeKindSetter(kind: EntityKind): Dispatch<SetStateAction<string | null>> {
   return (action) => {
     const sel = primarySelectionFor(kind);
     const curId = sel ? sel.id : null;
     const nextId = typeof action === "function" ? action(curId) : action;
     if (nextId == null) {
-      // Clear the transient if it currently refers to this kind. Sticky
-      // entries of this kind are not cleared — close them by clicking the
-      // card again, which goes through toggleSelection.
-      const t = cardStore.getState().transient;
-      if (t && t.kind === kind) cardStore.setTransient(null);
+      // Clear the selection if it currently refers to this kind.
+      const s = cardStore.getState().selected;
+      if (s && s.kind === kind) cardStore.clearSelection();
       return;
     }
-    cardStore.setTransient({ kind, id: nextId });
+    cardStore.select({ kind, id: nextId });
   };
 }
 
 function primarySelectionFor(kind: EntityKind): { kind: EntityKind; id: string } | null {
-  const s = cardStore.getState();
-  if (s.transient && s.transient.kind === kind) return s.transient;
-  for (let i = s.stickySet.length - 1; i >= 0; i--) {
-    const ref = s.stickySet[i];
-    if (ref.kind === kind) return ref;
-  }
-  return null;
+  const s = cardStore.getState().selected;
+  return s && s.kind === kind ? s : null;
 }
 
 /** Like `primarySelectionFor` but matches any of a set of kinds — for the
@@ -90,13 +82,8 @@ function primarySelectionFor(kind: EntityKind): { kind: EntityKind; id: string }
 function polymorphicFocusFor(
   kinds: ReadonlyArray<EntityKind>,
 ): { kind: EntityKind; id: string } | null {
-  const s = cardStore.getState();
-  if (s.transient && kinds.includes(s.transient.kind)) return s.transient;
-  for (let i = s.stickySet.length - 1; i >= 0; i--) {
-    const ref = s.stickySet[i];
-    if (kinds.includes(ref.kind)) return ref;
-  }
-  return null;
+  const s = cardStore.getState().selected;
+  return s && kinds.includes(s.kind) ? s : null;
 }
 
 /** Public hook for components that own per-kind selection slots in their
@@ -149,9 +136,9 @@ function useSelectionsValue(inputs: SelectionsProviderInputs): SelectionsContext
       const curId = focused ? focused.id : null;
       const nextId = typeof action === "function" ? action(curId) : action;
       if (nextId == null) {
-        const t = cardStore.getState().transient;
-        if (t && (t.kind === "cutter-comment" || t.kind === "cutter-suggestion")) {
-          cardStore.setTransient(null);
+        const s = cardStore.getState().selected;
+        if (s && (s.kind === "cutter-comment" || s.kind === "cutter-suggestion")) {
+          cardStore.clearSelection();
         }
         return;
       }
@@ -160,7 +147,7 @@ function useSelectionsValue(inputs: SelectionsProviderInputs): SelectionsContext
       //-aware callers should set the store directly with the right kind.)
       const kind: EntityKind =
         focused && focused.kind === "cutter-suggestion" ? "cutter-suggestion" : "cutter-comment";
-      cardStore.setTransient({ kind, id: nextId });
+      cardStore.select({ kind, id: nextId });
     },
     [],
   );
@@ -172,15 +159,15 @@ function useSelectionsValue(inputs: SelectionsProviderInputs): SelectionsContext
       const curId = focused ? focused.id : null;
       const nextId = typeof action === "function" ? action(curId) : action;
       if (nextId == null) {
-        const t = cardStore.getState().transient;
-        if (t && (t.kind === "report" || t.kind === "report-request")) {
-          cardStore.setTransient(null);
+        const s = cardStore.getState().selected;
+        if (s && (s.kind === "report" || s.kind === "report-request")) {
+          cardStore.clearSelection();
         }
         return;
       }
       const kind: EntityKind =
         focused && focused.kind === "report-request" ? "report-request" : "report";
-      cardStore.setTransient({ kind, id: nextId });
+      cardStore.select({ kind, id: nextId });
     },
     [],
   );
@@ -190,15 +177,15 @@ function useSelectionsValue(inputs: SelectionsProviderInputs): SelectionsContext
       const curId = focused ? focused.id : null;
       const nextId = typeof action === "function" ? action(curId) : action;
       if (nextId == null) {
-        const t = cardStore.getState().transient;
-        if (t && (t.kind === "revision-comment" || t.kind === "revision-suggestion")) {
-          cardStore.setTransient(null);
+        const s = cardStore.getState().selected;
+        if (s && (s.kind === "revision-comment" || s.kind === "revision-suggestion")) {
+          cardStore.clearSelection();
         }
         return;
       }
       const kind: EntityKind =
         focused && focused.kind === "revision-suggestion" ? "revision-suggestion" : "revision-comment";
-      cardStore.setTransient({ kind, id: nextId });
+      cardStore.select({ kind, id: nextId });
     },
     [],
   );

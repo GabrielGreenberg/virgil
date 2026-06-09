@@ -21,8 +21,9 @@
  *
  * The reconciler is idempotent. Every effect run sweeps the editor root
  * for any element bearing any of the four attrs, clears all four, then
- * re-applies based on the current `cardStore` selection (transient ∪
- * stickySet) and hover ref. No captured DOM references, no conditional
+ * re-applies based on the current `cardStore` `selected` card (the single
+ * halo — N1: selection ⟂ expansion, so expanded-but-unselected cards do NOT
+ * paint) and hover ref. No captured DOM references, no conditional
  * preservation, no inter-effect coordination.
  *
  * A sibling `useDanglingRefPruner` (same module, exported as part of the
@@ -37,8 +38,7 @@ import type { Editor } from "@tiptap/react";
 import {
   cardStore,
   useHover,
-  useStickySet,
-  useTransient,
+  useSelection,
   type AnchoredCardRef,
 } from "./anchored-card-store";
 import type { CardKind } from "@/panels/_shared/types";
@@ -120,8 +120,7 @@ export function useAnchorHighlightReconciler({
   editor,
   collections,
 }: UseAnchorHighlightReconcilerArgs): void {
-  const transient = useTransient();
-  const stickySet = useStickySet();
+  const selected = useSelection();
   const hover = useHover();
 
   // The caller (EditorPane) rebuilds `collections` every render as a fresh
@@ -169,14 +168,14 @@ export function useAnchorHighlightReconciler({
   // separately above.
   useEffect(() => {
     const s = cardStore.getState();
-    if (s.transient && !entityExists(s.transient, stableCollections)) {
-      cardStore.setTransient(null);
+    if (s.selected && !entityExists(s.selected, stableCollections)) {
+      cardStore.clearSelection();
     }
     if (s.hover && !entityExists(s.hover, stableCollections)) {
       cardStore.setHover(null);
     }
-    for (const ref of s.stickySet) {
-      if (!entityExists(ref, stableCollections)) cardStore.removeSticky(ref);
+    for (const ref of s.expandedSet) {
+      if (!entityExists(ref, stableCollections)) cardStore.collapse(ref);
     }
   }, [stableCollections]);
 
@@ -190,9 +189,8 @@ export function useAnchorHighlightReconciler({
       valueAttr: "paragraph" | "true";
     };
 
-    // First write wins for a given element. We collect transient before
-    // stickySet so the primary's color/side takes precedence when multiple
-    // refs share a paragraph.
+    // First write wins for a given element. Selection is single-card, so
+    // there is no precedence to resolve among multiple selected refs.
     const selectedEls = new Map<HTMLElement, PaintEntry>();
     const hoveredEls = new Map<HTMLElement, PaintEntry>();
     const selectedCardKeys = new Set<string>();
@@ -230,13 +228,12 @@ export function useAnchorHighlightReconciler({
       if (key) into.add(key);
     };
 
-    if (transient) {
-      collectAnchorEls(transient, selectedEls);
-      collectCardKey(transient, selectedCardKeys);
-    }
-    for (const ref of stickySet) {
-      collectAnchorEls(ref, selectedEls);
-      collectCardKey(ref, selectedCardKeys);
+    // The halo (`data-card-selected`) paints from the SELECTION slot only —
+    // a single card (N1). Expansion (multi/sticky) no longer drives the
+    // text/margin/card highlight; a distinct expanded marker is an A6 follow-up.
+    if (selected) {
+      collectAnchorEls(selected, selectedEls);
+      collectCardKey(selected, selectedCardKeys);
     }
     if (hover) {
       collectAnchorEls(hover, hoveredEls);
@@ -292,5 +289,5 @@ export function useAnchorHighlightReconciler({
       );
       for (const el of matches) el.setAttribute(DATA_CARD_HOVERED, "true");
     }
-  }, [editor, transient, stickySet, hover, stableCollections]);
+  }, [editor, selected, hover, stableCollections]);
 }

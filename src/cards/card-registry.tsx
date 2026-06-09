@@ -52,7 +52,9 @@ export function registerCardFloatable(
   kind: CardKind,
   build: CardFloatableBuilder,
 ): void {
-  if (kind === "error") return; // ratified not-poppable; ignore stray registration
+  // Poppability is the registry's declarative SSOT (`CardMeta.poppable`); a
+  // non-poppable kind (`error`) silently ignores a stray registration.
+  if (!CARD_REGISTRY[kind].poppable) return;
   CARD_REGISTRY[kind].toFloatable = build;
 }
 
@@ -83,6 +85,7 @@ export const CARD_REGISTRY: Record<CardKind, CardMeta> = {
     lifecycle: { clone: true, delete: true, bindAnchor: true },
     dropSpec: null,
     stackable: true,
+    poppable: true,
     toFloatable: PLACEHOLDER_TO_FLOATABLE,
   },
   highlight: {
@@ -97,6 +100,7 @@ export const CARD_REGISTRY: Record<CardKind, CardMeta> = {
     lifecycle: { clone: true, delete: true, bindAnchor: true },
     dropSpec: null,
     stackable: true,
+    poppable: true,
     toFloatable: PLACEHOLDER_TO_FLOATABLE,
   },
   footnote: {
@@ -111,6 +115,7 @@ export const CARD_REGISTRY: Record<CardKind, CardMeta> = {
     lifecycle: { clone: true, delete: true, bindAnchor: false },
     dropSpec: null,
     stackable: true,
+    poppable: true,
     toFloatable: PLACEHOLDER_TO_FLOATABLE,
   },
   archive: {
@@ -125,6 +130,7 @@ export const CARD_REGISTRY: Record<CardKind, CardMeta> = {
     lifecycle: { clone: false, delete: false, bindAnchor: false }, // gap → A3
     dropSpec: null,
     stackable: true,
+    poppable: true,
     toFloatable: PLACEHOLDER_TO_FLOATABLE,
   },
   todo: {
@@ -139,6 +145,7 @@ export const CARD_REGISTRY: Record<CardKind, CardMeta> = {
     lifecycle: { clone: false, delete: false, bindAnchor: false }, // gap → A3
     dropSpec: null,
     stackable: true,
+    poppable: true,
     toFloatable: PLACEHOLDER_TO_FLOATABLE,
   },
   bib: {
@@ -153,6 +160,7 @@ export const CARD_REGISTRY: Record<CardKind, CardMeta> = {
     lifecycle: { clone: false, delete: false, bindAnchor: false },
     dropSpec: null, // intentional: bib entries don't anchor to text
     stackable: true, // StackCardKind: "bibliography"
+    poppable: true,
     toFloatable: PLACEHOLDER_TO_FLOATABLE,
   },
   citation: {
@@ -167,6 +175,7 @@ export const CARD_REGISTRY: Record<CardKind, CardMeta> = {
     lifecycle: { clone: true, delete: true, bindAnchor: false },
     dropSpec: null,
     stackable: true,
+    poppable: true,
     toFloatable: PLACEHOLDER_TO_FLOATABLE,
   },
   "revision-comment": {
@@ -185,6 +194,7 @@ export const CARD_REGISTRY: Record<CardKind, CardMeta> = {
     lifecycle: { clone: true, delete: true, bindAnchor: true },
     dropSpec: null,
     stackable: true,
+    poppable: true,
     toFloatable: PLACEHOLDER_TO_FLOATABLE,
   },
   "cutter-comment": {
@@ -199,6 +209,7 @@ export const CARD_REGISTRY: Record<CardKind, CardMeta> = {
     lifecycle: { clone: true, delete: true, bindAnchor: true },
     dropSpec: null,
     stackable: true,
+    poppable: true,
     toFloatable: PLACEHOLDER_TO_FLOATABLE,
   },
   "cutter-suggestion": {
@@ -213,6 +224,7 @@ export const CARD_REGISTRY: Record<CardKind, CardMeta> = {
     lifecycle: { clone: true, delete: true, bindAnchor: true },
     dropSpec: null,
     stackable: true,
+    poppable: true,
     toFloatable: PLACEHOLDER_TO_FLOATABLE,
   },
   "revision-suggestion": {
@@ -227,6 +239,7 @@ export const CARD_REGISTRY: Record<CardKind, CardMeta> = {
     lifecycle: { clone: true, delete: true, bindAnchor: true }, // provider re-keyed suggestion→here at the flip
     dropSpec: null,
     stackable: true,
+    poppable: true,
     toFloatable: PLACEHOLDER_TO_FLOATABLE,
   },
   report: {
@@ -241,6 +254,7 @@ export const CARD_REGISTRY: Record<CardKind, CardMeta> = {
     lifecycle: { clone: false, delete: false, bindAnchor: false }, // gap → A3
     dropSpec: null,
     stackable: false, // not in StackCardKind
+    poppable: true,
     toFloatable: PLACEHOLDER_TO_FLOATABLE,
   },
   "report-request": {
@@ -255,6 +269,7 @@ export const CARD_REGISTRY: Record<CardKind, CardMeta> = {
     lifecycle: { clone: false, delete: false, bindAnchor: false }, // gap → A3
     dropSpec: null,
     stackable: false,
+    poppable: true,
     toFloatable: PLACEHOLDER_TO_FLOATABLE,
   },
   example: {
@@ -269,6 +284,7 @@ export const CARD_REGISTRY: Record<CardKind, CardMeta> = {
     lifecycle: { clone: false, delete: false, bindAnchor: false }, // gap → A3
     dropSpec: null,
     stackable: true, // declared in StackCardKind (resolveCardData returns null today)
+    poppable: true,
     toFloatable: PLACEHOLDER_TO_FLOATABLE,
   },
   ai: {
@@ -283,6 +299,7 @@ export const CARD_REGISTRY: Record<CardKind, CardMeta> = {
     lifecycle: { clone: false, delete: false, bindAnchor: false },
     dropSpec: null,
     stackable: false,
+    poppable: true,
     toFloatable: PLACEHOLDER_TO_FLOATABLE,
   },
   error: {
@@ -297,6 +314,7 @@ export const CARD_REGISTRY: Record<CardKind, CardMeta> = {
     lifecycle: { clone: false, delete: false, bindAnchor: false },
     dropSpec: null,
     stackable: false,
-    toFloatable: PLACEHOLDER_TO_FLOATABLE, // RATIFIED not poppable (§3.5): never registered → stays null
+    poppable: false, // RATIFIED not poppable (§3.5) — the sole non-poppable kind
+    toFloatable: PLACEHOLDER_TO_FLOATABLE, // never registered → stays null
   },
 };

@@ -58,7 +58,7 @@ export function HighlightCard({
     (popped ? (anchor: DOMRect) => popped.toggleAtAnchor(cardKey, anchor) : undefined);
 
   const ac = useAnchoredCard({ kind: "highlight", id: card.id });
-  const isExpanded = ac.expanded || selected;
+  const isExpanded = ac.expanded;
   const isSelected = ac.selected || selected;
   const compressed = !isExpanded && !isPoppedOut;
   const compressedLines = useCompressedLines();
@@ -92,6 +92,7 @@ export function HighlightCard({
       onTogglePopout={onToggleFromCtx}
       cardKey={cardKey}
       isCollapsed={compressed}
+      onToggleExpanded={ac.onToggleExpanded}
       onTrashClick={() => onDelete(card.id)}
       kind="highlight"
       canJump={isAnchored && !isOrphaned && !!onJump}
@@ -102,8 +103,7 @@ export function HighlightCard({
       tabIndex={isSelected ? 0 : -1}
       onClick={(e) => {
         e.stopPropagation();
-        cardStore.toggleSelection(ac.ref);
-        if (!cardStore.isExpanded(ac.ref)) return;
+        ac.onActivate();
         onSelect(card.id);
         if (isAnchored && !isOrphaned && onJump) {
           onJump((e.currentTarget as HTMLElement).closest('[data-card]') as HTMLElement | null);

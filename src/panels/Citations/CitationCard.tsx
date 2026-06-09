@@ -243,7 +243,7 @@ export function CitationCard({
   const popped = usePoppedCards();
   const cardKey = popKey("citations", cit.id);
   const ac = useAnchoredCard({ kind: "citation", id: cit.id });
-  const isExpanded = isDraft || ac.expanded || isSelected;
+  const isExpanded = isDraft || ac.expanded;
   const isHaloed = ac.selected || isSelected;
   const compressed = !isExpanded && !isPoppedOut;
 
@@ -692,6 +692,7 @@ export function CitationCard({
       onTrashClick={!compressed && onDelete ? () => onDelete(cit.id) : undefined}
       cardKey={cardKey}
       isCollapsed={compressed}
+      onToggleExpanded={ac.onToggleExpanded}
       extraCardClass={`cursor-pointer cursor-grab active:cursor-grabbing ${stateClass}`}
       draggable={!isDraft && pickerRowId === null && codeDraft === null}
       onDragStart={handleDragStart}
@@ -702,8 +703,7 @@ export function CitationCard({
       style={wrapperStyle}
       onClick={(e) => {
         if (isDraft) return;
-        cardStore.toggleSelection(ac.ref);
-        if (!cardStore.isExpanded(ac.ref)) return;
+        ac.onActivate();
         onSelect();
         if (isAnchored) {
           onJump(

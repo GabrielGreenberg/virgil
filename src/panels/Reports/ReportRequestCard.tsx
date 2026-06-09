@@ -65,7 +65,7 @@ export function ReportRequestCard({
   );
 
   const ac = useAnchoredCard({ kind: "report-request", id: request.id });
-  const isExpanded = ac.expanded || selected;
+  const isExpanded = ac.expanded;
   const isSelected = ac.selected || selected;
   const theme = useCardTheme("report");
   const compressedLines = useCompressedLines();
@@ -93,8 +93,7 @@ export function ReportRequestCard({
       canJump={!!onJump}
       onJump={onJump ? (e) => onJump((e.currentTarget as HTMLElement).closest('[data-card]') as HTMLElement | null) : undefined}
       onClick={(e) => {
-        cardStore.toggleSelection(ac.ref);
-        if (!cardStore.isExpanded(ac.ref)) return;
+        ac.onActivate();
         onSelect(request.id);
         if (onJump) {
           onJump((e?.currentTarget as HTMLElement | undefined)?.closest('[data-card]') as HTMLElement | null);
@@ -127,6 +126,7 @@ export function ReportRequestCard({
       cardKey={cardKey}
       compressed={compressed}
       compressedSummary={compressedSummary}
+      onToggleExpanded={ac.onToggleExpanded}
     />
   );
   return card;

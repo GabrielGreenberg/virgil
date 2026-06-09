@@ -2,24 +2,25 @@
 
 /**
  * The single hook every anchored panel card calls. It returns the
- * `data-card-key`, hover/click handlers, and the selected/hovered booleans
- * a card needs to participate in the all-for-one model — without ever
- * branching on card kind in the shared code.
+ * `data-card-key`, hover/click handlers, the `selected`/`expanded`/`hovered`
+ * booleans, and the `onActivate` body-click composition a card needs to
+ * participate in the all-for-one model — without ever branching on card kind
+ * in the shared code.
  *
  * Usage in a card component:
  *
  *     const ac = useAnchoredCard({ kind: "note", id: note.id });
- *     return <PanelCard {...ac.props} selected={ac.selected} ... />;
+ *     return <PanelCard {...ac.props} selected={ac.selected} expanded={ac.expanded} ... />;
  *
- * Per-card overrides compose by wrapping the returned handlers; the
- * shared hook stays branch-free. Adding the next anchored card kind is
- * one line in `ANCHORED_CARD_KINDS` plus this 3-line pattern in the
- * card component — no edits anywhere else.
+ * N1 (selection ⟂ expansion): `selected` (the halo) and `expanded` (the body)
+ * are independent. A body click runs `onActivate` (the ratified select+expand
+ * composition); the header's expand chevron toggles expansion *only*; the
+ * popout button pops *without* selecting or expanding. Per-card overrides
+ * compose by wrapping the returned handlers; the shared hook stays branch-free.
  */
 
-import { useMemo, type MouseEvent } from "react";
+import { useCallback, useMemo, type MouseEvent } from "react";
 import { cardPopKey } from "@/panels/panel-registry";
-import type { CardKind } from "@/panels/_shared/types";
 import {
   cardStore,
   useIsExpanded,
@@ -35,15 +36,28 @@ export interface UseAnchoredCardResult {
     onMouseEnter: () => void;
     onMouseLeave: () => void;
     onClick: (e: MouseEvent) => void;
+    "aria-expanded": boolean;
     "aria-selected"?: true;
   };
-  /** Primary focus: true only for the single haloed card. */
+  /** Single-card halo / scroll-on-select / keyboard target. */
   selected: boolean;
-  /** Open/expanded: true for any card in stickySet ∪ {transient}. Multi-card. */
+  /** Body open/expanded — multi-card, independent of selection. */
   expanded: boolean;
   hovered: boolean;
-  /** Imperative ref builder for callers that need to set/toggle this
-   *  exact card programmatically (e.g. from a keyboard shortcut). */
+  /**
+   * The R1 body-click composition: SELECT + EXPAND together (the two axis-pure
+   * primitives). Cards call this from their body `onClick`, then run their own
+   * side effects (`onSelect`/`onJump`). Collapse is the header chevron
+   * (`toggleExpanded`), NOT a body re-click — the axes are independent.
+   */
+  onActivate: () => void;
+  /**
+   * The axis-pure expand override (the header chevron's handler): toggles ONLY
+   * `expandedSet` membership — never selection. Threaded to `PanelCard` as
+   * `onToggleExpanded` so the docked one-click expand control flips the body
+   * without moving the halo. Stable across renders.
+   */
+  onToggleExpanded: () => void;
   ref: AnchoredCardRef;
 }
 
@@ -52,11 +66,20 @@ export function useAnchoredCard(ref: AnchoredCardRef): UseAnchoredCardResult {
   const expanded = useIsExpanded(ref);
   const hovered = useIsHovered(ref);
 
-  // The CardKind union is a superset of EntityKind; every EntityKind value
-  // is a valid CardKind so this widening cast is sound. Build via the SSOT
-  // (`cardPopKey` → `float:card:<kind>:<id>`) so a caller that follows the
-  // `{...ac.props}` docstring pattern stamps the canonical key, never a legacy one.
-  const cardKey = cardPopKey(ref.kind as CardKind, ref.id);
+  // `EntityKind = CardKind` (A2-B1), so no cast is needed. Build via the SSOT
+  // (`cardPopKey` → `float:card:<kind>:<id>`) so the documented `{...ac.props}`
+  // pattern stamps the canonical key, never a legacy one.
+  const cardKey = cardPopKey(ref.kind, ref.id);
+
+  const onActivate = useCallback(() => {
+    cardStore.select(ref);
+    cardStore.expand(ref);
+  }, [ref.kind, ref.id]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Axis-pure: the header expand chevron toggles ONLY the body, never the halo.
+  const onToggleExpanded = useCallback(() => {
+    cardStore.toggleExpanded(ref);
+  }, [ref.kind, ref.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const props = useMemo(
     () => ({
@@ -68,13 +91,14 @@ export function useAnchoredCard(ref: AnchoredCardRef): UseAnchoredCardResult {
           cardStore.setHover(null);
         }
       },
-      onClick: (_e: MouseEvent) => cardStore.toggleSelection(ref),
+      onClick: (_e: MouseEvent) => onActivate(),
+      "aria-expanded": expanded,
       ...(selected ? { "aria-selected": true as const } : {}),
     }),
     // ref.kind/ref.id are the only inputs that matter; cardKey is derived.
-    // selected is in the deps so aria-selected updates correctly.
-    [cardKey, ref.kind, ref.id, selected],
+    // selected/expanded gate the aria-* attrs; onActivate is stable.
+    [cardKey, ref.kind, ref.id, selected, expanded, onActivate],
   );
 
-  return { props, selected, expanded, hovered, ref };
+  return { props, selected, expanded, hovered, onActivate, onToggleExpanded, ref };
 }

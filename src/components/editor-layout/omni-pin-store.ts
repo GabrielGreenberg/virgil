@@ -19,10 +19,10 @@
  * the unified row scroll (the pod moves with the row, so pod-relative
  * stays valid as the user scrolls naturally).
  *
- * Single pin per side: marker clicks track the transient selection, and
- * there's at most one transient at a time. When the transient changes,
+ * Single pin per side: marker clicks track the selection, and there's at
+ * most one selected card at a time. When the selection changes,
  * `OmniViewPanel` clears the stale pin via its subscription to
- * `useTransient()`. When a different marker is clicked, `requestPin`
+ * `useSelection()`. When a different marker is clicked, `requestPin`
  * replaces the prior pin atomically.
  */
 

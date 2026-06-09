@@ -161,11 +161,12 @@ export function usePlacement({ editor, collections }: UsePlacementArgs): void {
 let _suppressNextPlacement = false;
 export function setSelectionWithoutPlacement(ref: AnchoredCardRef | null): void {
   _suppressNextPlacement = true;
-  cardStore.setSelection(ref);
+  if (ref) cardStore.select(ref);
+  else cardStore.clearSelection();
 }
 
 /** Imperative escape hatch for callers that change selection via the
- *  legacy slot setters (which route through cardStore.setTransient) and
+ *  legacy slot setters (which route through cardStore.select) and
  *  don't want placement to fire. The usual case is a marker click in the
  *  editor or a gutter icon click in the panel column: alignment is
  *  handled by `alignOmniCardWithClick` (offset-based card shift), not by

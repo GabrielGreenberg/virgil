@@ -38,6 +38,23 @@ function ErrorsPanel({
 }: ErrorsPanelProps) {
   const [filter, setFilter] = useState("");
 
+  // Panel-local expansion (R5): `error` is non-anchored, so it has no slot in
+  // the shared cardStore — its expand axis lives here, fully independent of
+  // selection (the A4 N1 2×2, panel-locally). `expandError` is the idempotent
+  // body-click set-true; `toggleError` is the header chevron.
+  const [expandedIds, setExpandedIds] = useState<Set<string>>(() => new Set());
+  const expandError = useCallback((id: string) => {
+    setExpandedIds((prev) => (prev.has(id) ? prev : new Set(prev).add(id)));
+  }, []);
+  const toggleError = useCallback((id: string) => {
+    setExpandedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }, []);
+
   const visible = useMemo(
     () => errors.filter((e) => !dismissedIds.has(e.id)),
     [errors, dismissedIds],
@@ -145,6 +162,9 @@ function ErrorsPanel({
           title={errorTitle(err)}
           snippet={snippets?.get(err.id)}
           selected={selected}
+          expanded={expandedIds.has(err.id)}
+          onExpand={() => expandError(err.id)}
+          onToggleExpanded={() => toggleError(err.id)}
           hasAnchor={anchoredIds?.has(err.id) ?? false}
           onSelect={onSelect}
           onJump={() => onJump(err)}

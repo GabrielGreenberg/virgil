@@ -159,6 +159,22 @@ export function OmniHost(p: OmniHostProps) {
   // per-keystroke `coordsAtPos` storm visible as card flicker below
   // the cursor. See plan `ok-lets-do-a-dreamy-thacker.md` (flicker fix).
   const [editorTick, setEditorTick] = useState(0);
+  // Panel-local expansion for `error` cards in omni (R5): non-anchored, so no
+  // shared-cardStore slot — this surface owns its own expand set (independent
+  // of selection). Cross-surface coherence with the docked ErrorsPanel is a
+  // scoped follow-up; here the omni surface manages its own.
+  const [expandedErrorIds, setExpandedErrorIds] = useState<Set<string>>(() => new Set());
+  const expandErrorInOmni = useCallback((id: string) => {
+    setExpandedErrorIds((prev) => (prev.has(id) ? prev : new Set(prev).add(id)));
+  }, []);
+  const toggleErrorInOmni = useCallback((id: string) => {
+    setExpandedErrorIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }, []);
   useEffect(() => {
     if (!editorInstance) return;
     const bump = () => setEditorTick((v) => v + 1);
@@ -198,17 +214,17 @@ export function OmniHost(p: OmniHostProps) {
   } = useSelectionsContext();
   const { getCitationDisplayText, onCitationCreated } = useCitationDisplayContext();
 
-  // Click-away in the omni panel clears the transient selection only.
-  // Sticky cards (hand-clicked or focus-promoted) survive — they stay
-  // expanded until the user clicks the card again to close.
+  // Click-away in the omni panel clears the selection (halo) only.
+  // Expanded cards survive — expansion is sticky and independent of
+  // selection (N1), so they stay open until collapsed via the chevron.
   const handleBackgroundClick = useCallback(() => {
-    cardStore.setTransient(null);
+    cardStore.clearSelection();
   }, []);
-  // Focus moving into a card body promotes a transient selection into
-  // the sticky set. Wired from OmniViewPanel's focusin listener.
-  const handleCardFocus = useCallback(() => {
-    cardStore.markSticky();
-  }, []);
+  // Focus moving into a card body used to promote a transient selection
+  // into the sticky set; obsolete now that expansion is sticky by
+  // construction (nothing to promote). Kept as a no-op so OmniViewPanel's
+  // focusin wiring stays intact (expand-on-focus, if wanted, is an A5 follow-up).
+  const handleCardFocus = useCallback(() => {}, []);
   const setFootnoteInOmni = useCallback((id: string | null) => {
     setSelectedFootnoteId(id);
     if (id !== null) {
@@ -497,6 +513,9 @@ export function OmniHost(p: OmniHostProps) {
       onDismiss: p.dismissError,
       onJump: p.jumpToError,
       findParagraphPos,
+      expandedIds: expandedErrorIds,
+      onExpand: expandErrorInOmni,
+      onToggleExpanded: toggleErrorInOmni,
     }),
     ...buildCutterOmniItems({
       cards: p.cutterCards,
@@ -567,6 +586,7 @@ export function OmniHost(p: OmniHostProps) {
     p.updateRevisionSuggestionField, p.convertRevisionCard, p.deleteRevisionCard,
     // Error handlers
     p.dismissError, p.jumpToError,
+    expandedErrorIds, expandErrorInOmni, toggleErrorInOmni,
     // Cutter handlers
     p.updateCutterCommentText, p.setCutterCommentAiRequest,
     p.updateCutterSuggestionField, p.deleteCutterCard,

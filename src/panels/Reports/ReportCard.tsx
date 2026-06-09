@@ -63,7 +63,7 @@ export function ReportCard({
   );
 
   const ac = useAnchoredCard({ kind: "report", id: report.id });
-  const isExpanded = ac.expanded || selected;
+  const isExpanded = ac.expanded;
   const isSelected = ac.selected || selected;
   const _isOrphaned = getLinkedTextObjectIds(report).length === 0;
   void _isOrphaned;
@@ -95,8 +95,7 @@ export function ReportCard({
       canJump={!!onJump}
       onJump={onJump ? (e) => onJump((e.currentTarget as HTMLElement).closest('[data-card]') as HTMLElement | null) : undefined}
       onClick={(e) => {
-        cardStore.toggleSelection(ac.ref);
-        if (!cardStore.isExpanded(ac.ref)) return;
+        ac.onActivate();
         onSelect(report.id);
         if (onJump) {
           onJump((e?.currentTarget as HTMLElement | undefined)?.closest('[data-card]') as HTMLElement | null);
@@ -120,6 +119,7 @@ export function ReportCard({
       cardKey={cardKey}
       compressed={compressed}
       compressedSummary={compressedSummary}
+      onToggleExpanded={ac.onToggleExpanded}
     />
   );
   return card;

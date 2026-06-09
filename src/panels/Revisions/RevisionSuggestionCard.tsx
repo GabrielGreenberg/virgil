@@ -246,7 +246,7 @@ export function RevisionSuggestionCard({
     onTogglePopout ??
     (popped ? (anchor: DOMRect) => popped.toggleAtAnchor(cardKey, anchor) : undefined);
   const ac = useAnchoredCard({ kind: "revision-suggestion", id: card.id });
-  const isExpanded = ac.expanded || selected;
+  const isExpanded = ac.expanded;
   const isSelected = ac.selected || selected;
   const compressed = !isExpanded && !isPoppedOut;
   const compressedLines = useCompressedLines();
@@ -266,14 +266,14 @@ export function RevisionSuggestionCard({
       onTogglePopout={onToggleFromCtx}
       cardKey={cardKey}
       isCollapsed={compressed}
+      onToggleExpanded={ac.onToggleExpanded}
       onTrashClick={() => onDelete(card.id)}
       draggable={!isSelected}
       onDragStart={(e) => startRevisionSuggestionDrag(e, card.id)}
       tabIndex={isSelected ? 0 : -1}
       onClick={(e) => {
         e.stopPropagation();
-        cardStore.toggleSelection(ac.ref);
-        if (!cardStore.isExpanded(ac.ref)) return;
+        ac.onActivate();
         onSelect(card.id);
         if (isAnchored && onJump) {
           onJump((e.currentTarget as HTMLElement).closest('[data-card]') as HTMLElement | null);

@@ -80,7 +80,7 @@ export function CutterCommentCard({
   const [originalFolded, setOriginalFolded] = useState(false);
   const [commentFolded, setCommentFolded] = useState(false);
   const ac = useAnchoredCard({ kind: "cutter-comment", id: card.id });
-  const isExpanded = ac.expanded || selected;
+  const isExpanded = ac.expanded;
   const isSelected = ac.selected || selected;
   const compressed = !isExpanded && !isPoppedOut;
   const compressedLines = useCompressedLines();
@@ -105,14 +105,14 @@ export function CutterCommentCard({
       onTogglePopout={onToggleFromCtx}
       cardKey={cardKey}
       isCollapsed={compressed}
+      onToggleExpanded={ac.onToggleExpanded}
       onTrashClick={() => onDelete(card.id)}
       draggable={!isSelected}
       onDragStart={(e) => startCutterCommentDrag(e, card.id)}
       tabIndex={isSelected ? 0 : -1}
       onClick={(e) => {
         e.stopPropagation();
-        cardStore.toggleSelection(ac.ref);
-        if (!cardStore.isExpanded(ac.ref)) return;
+        ac.onActivate();
         onSelect(card.id);
         if (isAnchored && !isOrphaned && onJump) {
           onJump((e.currentTarget as HTMLElement).closest('[data-card]') as HTMLElement | null);

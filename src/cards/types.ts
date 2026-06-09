@@ -101,6 +101,14 @@ export interface CardMeta {
    *  cannot be derived from `origin`. `example` is declared stackable to mirror
    *  `StackCardKind` even though `resolveCardData` returns null for it today. */
   stackable: boolean;
+  /** Whether this kind can pop out into a `Floatable` window. The single
+   *  DECLARATIVE source of truth for poppability: `registerCardFloatable`
+   *  refuses to install a builder for a non-poppable kind, and the
+   *  `isPoppable` predicate (the docked one-click pop-out control) reads this.
+   *  Only `error` is `false` (ratified not-poppable, §3.5). Decoupled from
+   *  `toFloatable` so poppability is statically inspectable without depending
+   *  on boot-time registration order. */
+  poppable: boolean;
   /** AF integration point. Returns the shared `Floatable` presence, or `null`
    *  when this kind is not poppable (`error`). MUST be a pure per-id resolver —
    *  resolve one entity by id from `ctx`; NO full-doc descent (keystroke

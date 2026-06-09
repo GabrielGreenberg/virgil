@@ -19,6 +19,12 @@ interface BuildArgs {
   onDismiss: (id: string) => void;
   onJump: (err: LatexError) => void;
   findParagraphPos: (uuid: string | null) => number | null;
+  /** Panel-local expansion for errors (R5: `error` is non-anchored, so it has
+   *  no shared-cardStore slot — the omni host owns this surface's expand set,
+   *  independent of selection). */
+  expandedIds: Set<string>;
+  onExpand: (id: string) => void;
+  onToggleExpanded: (id: string) => void;
 }
 
 /** Build OmniItems for LaTeX errors. Anchors errors whose source line
@@ -44,6 +50,9 @@ export function buildErrorOmniItems(a: BuildArgs): OmniItem[] {
           title={errorTitle(err)}
           snippet={a.snippets.get(err.id)}
           selected={isSelected}
+          expanded={a.expandedIds.has(err.id)}
+          onExpand={() => a.onExpand(err.id)}
+          onToggleExpanded={() => a.onToggleExpanded(err.id)}
           hasAnchor={a.anchoredIds.has(err.id)}
           onSelect={a.setSelectedId}
           onJump={() => a.onJump(err)}

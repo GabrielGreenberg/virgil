@@ -113,7 +113,7 @@ export function TodoRow({
       ? (anchor: DOMRect) => popped.toggleAtAnchor(cardKey, anchor)
       : undefined);
   const ac = useAnchoredCard({ kind: "todo", id: item.id });
-  const isExpanded = ac.expanded || selected;
+  const isExpanded = ac.expanded;
   const isSelected = ac.selected || selected;
   const compressed = !isExpanded && !isPoppedOut;
 
@@ -131,14 +131,14 @@ export function TodoRow({
       onTogglePopout={onToggleFromCtx}
       cardKey={cardKey}
       isCollapsed={compressed}
+      onToggleExpanded={ac.onToggleExpanded}
       onTrashClick={() => onDelete(item.id)}
       extraCardClass=""
       className="focus:outline-none"
       tabIndex={isSelected ? 0 : -1}
       onClick={(e) => {
         e.stopPropagation();
-        cardStore.toggleSelection(ac.ref);
-        if (!cardStore.isExpanded(ac.ref)) return;
+        ac.onActivate();
         onSelect(item.id);
         if (isAnchored && onJump) {
           onJump((e.currentTarget as HTMLElement).closest('[data-card]') as HTMLElement | null);
