@@ -2409,8 +2409,9 @@ export default function EditorLayout() {
   // callers needing to know about panel placement.
   const tryScrollOmniEntry = useCallback(
     (key: string, targetY?: number): boolean => {
-      // Use starts-with selector so multi-paragraph instances (e.g. "nt:id@0")
-      // are found when searching for the base key ("nt:id").
+      // Use starts-with selector so multi-paragraph instances (e.g.
+      // "float:card:note:id@0") are found when searching for the base key
+      // ("float:card:note:id").
       const entry = document.querySelector(
         `[data-omni-entry="${key}"], [data-omni-entry^="${key}@"]`,
       ) as HTMLElement | null;
