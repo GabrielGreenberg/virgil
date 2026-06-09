@@ -10,6 +10,15 @@ A deep overhaul of Virgil's card system, run as a **management session**: this d
 
 ## Progress
 
+### Session 10 — re-review #3 GO; AF merged to main; both foundations landed (2026-06-08)
+- **Re-review #3 (5-agent final gate): GO.** The structural fix converged the entire DOM-key seam class onto one SSOT (`cardPopKey`/`cardDomSelector`): an independent completeness sweep found **zero live stragglers**; all 6 seams fixed structurally; the revision morph-remap correct (once · both directions · rect-follows · no new regression); `tsc` clean, **570 tests** green; keystroke sanctity intact.
+- **Merged `chip-AF-floatable` → `main`** (`--no-ff`, merge `e279864`; 65 files, +2087/−914; `FloatingCards.tsx` + `TextObjectFloat.tsx` deleted, `src/floats/` added). Re-verified on `main`: tsc clean, 570 tests green. **Not pushed** (local only; ahead of origin).
+- **Landed the one flagged cleanup immediately:** canonicalized the dead legacy key in `useAnchoredCard.ts` to `cardPopKey`, so the documented `{...ac.props}` pattern can't silently revive the seam class.
+- ✅ **Both foundations (A0 spine + AF presence) are now in `main`** — the two-foundation phase of the refactor is complete.
+- **The gate earned its keep:** AF self-verified green, yet reviews #1/#2 returned NO-GO, catching a consumer-fanout regression class (incl. one the fix itself introduced) in waves — none reached `main`. The structural "one shared key helper" fix is what converged it.
+- **Non-blocking backlog (→ A1 gardening):** tighten `popCardAtAnchor` / `card-creation.ts` `kind: string`→`CardKind`; refresh 3 stale doc-comments (`EditorLayout.tsx:2412`, `OmniViewPanel.tsx:32`, `text-object-registry.ts:1035`).
+- **Next: Wave 2** — the dependent arenas (the user-facing reforms: one-click expand/pop-out, unanchored reflow, typography, the morph chevron, gardening), now auditable against the completed foundations.
+
 ### Session 9 — AF-fix landed: the whole DOM-key seam class converged on ONE canonical helper (2026-06-08)
 - **The structural fix, not more patching.** The card DOM key has a single SSOT — `cardPopKey(kind,id)` → `float:card:<kind>:<id>` ([panel-registry.ts](src/panels/panel-registry.ts), delegating to `buildFloatKey`, the runtime leaf). The fix made **every** producer AND consumer use it. Added one named wrapper **`cardDomSelector(kind,id)`** = `[data-card-key="${cardPopKey(kind,id)}"]` for DOM-lookup sites, and established the invariant **`omniKey === data-omni-entry === cardPopKey(kind,id)`** (no separate omni grammar). All 6 Session-8 seams migrated:
   1. **Revision morph-vanish** — fixed by a lockstep popout-key remap. New `remapCardPopKey(oldKey,newKey)` on `EditorPaneViewPrefs` (impl via the existing `migratePoppedOutCards` → moves the `cardFloatPositions` rect with the key; reader shim mirrors it). `convertCard` is wrapped once in `EditorPane` (`convertRevisionCard` → flips `card.kind` AND remaps the key) and threaded via an **augmented `revisionsHook`** (`{...raw, convertCard}`) so the remap fires from every trigger (FloatChrome title control, docked dropdown, omni) without per-site wiring. No-ops when the card isn't floated. Generalizes to the A9 morph chevron.
@@ -293,8 +302,8 @@ The management control surface. **Audit chips write to `docs/card-refactor/<ID>-
 | **A0-audit** | Card spine / SSOT *(card-only)* | 1 | audit | ✅ **landed** | `docs/card-refactor/A0-spine-audit.md` | — |
 | **AF-audit** | `Floatable` presence *(cross-domain, window layer)* | 1 | audit | ✅ **landed** | `docs/card-refactor/AF-floatable-audit.md` | — |
 | A0-impl | Card spine consolidation | 3 | impl | ✅ **landed** | `chip-A0-card-spine` | foundations ratified ✓ |
-| AF-impl | `Floatable` subsystem *(`src/floats/`)* | 3 | impl | 🟢 **built — fix landed, ready for re-review** | `chip-AF-floatable` | A0 ✓ · Q1 unify-phased ✓ |
-| AF-fix | Unify ALL DOM-key seams via one shared helper (`cardDomSelector` + `cardPopKey` SSOT) + `remapCardPopKey` morph remap + contract tests; class swept to zero | 3 | impl | ✅ **landed** | `chip-AF-floatable` | AF review NO-GO |
+| AF-impl | `Floatable` subsystem *(`src/floats/`)* | 3 | impl | ✅ **landed + merged** (`e279864`) | `main` | A0 ✓ · Q1 unify-phased ✓ |
+| AF-fix | Unify ALL DOM-key seams via one shared helper (`cardDomSelector` + `cardPopKey` SSOT) + `remapCardPopKey` morph remap + contract tests; class swept to zero | 3 | impl | ✅ **landed + merged** (`e279864`) | `main` | AF review NO-GO |
 | A1-audit | Gardening | 2 | audit | planned | — | A0 |
 | A2-audit | Anchoring & link model | 2 | audit | planned | — | A0 |
 | A3-audit | Creation & lifecycle | 2 | audit | planned | — | A0 |

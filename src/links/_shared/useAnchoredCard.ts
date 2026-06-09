@@ -18,7 +18,7 @@
  */
 
 import { useMemo, type MouseEvent } from "react";
-import { CARD_KEY_PREFIXES } from "@/panels/panel-registry";
+import { cardPopKey } from "@/panels/panel-registry";
 import type { CardKind } from "@/panels/_shared/types";
 import {
   cardStore,
@@ -53,8 +53,10 @@ export function useAnchoredCard(ref: AnchoredCardRef): UseAnchoredCardResult {
   const hovered = useIsHovered(ref);
 
   // The CardKind union is a superset of EntityKind; every EntityKind value
-  // is a valid CardKind so this widening cast is sound.
-  const cardKey = `${CARD_KEY_PREFIXES[ref.kind as CardKind]}:${ref.id}`;
+  // is a valid CardKind so this widening cast is sound. Build via the SSOT
+  // (`cardPopKey` → `float:card:<kind>:<id>`) so a caller that follows the
+  // `{...ac.props}` docstring pattern stamps the canonical key, never a legacy one.
+  const cardKey = cardPopKey(ref.kind as CardKind, ref.id);
 
   const props = useMemo(
     () => ({
