@@ -131,6 +131,7 @@ export function TodoRow({
       onTogglePopout={onToggleFromCtx}
       cardKey={cardKey}
       isCollapsed={compressed}
+      onToggleExpanded={ac.onToggleExpanded}
       onTrashClick={() => onDelete(item.id)}
       extraCardClass=""
       className="focus:outline-none"

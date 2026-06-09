@@ -692,6 +692,7 @@ export function CitationCard({
       onTrashClick={!compressed && onDelete ? () => onDelete(cit.id) : undefined}
       cardKey={cardKey}
       isCollapsed={compressed}
+      onToggleExpanded={ac.onToggleExpanded}
       extraCardClass={`cursor-pointer cursor-grab active:cursor-grabbing ${stateClass}`}
       draggable={!isDraft && pickerRowId === null && codeDraft === null}
       onDragStart={handleDragStart}

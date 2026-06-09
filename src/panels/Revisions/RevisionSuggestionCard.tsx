@@ -266,6 +266,7 @@ export function RevisionSuggestionCard({
       onTogglePopout={onToggleFromCtx}
       cardKey={cardKey}
       isCollapsed={compressed}
+      onToggleExpanded={ac.onToggleExpanded}
       onTrashClick={() => onDelete(card.id)}
       draggable={!isSelected}
       onDragStart={(e) => startRevisionSuggestionDrag(e, card.id)}

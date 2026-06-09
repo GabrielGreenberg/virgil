@@ -129,6 +129,7 @@ export function ExampleCard({
       chromeless={isPoppedOut}
       cardKey={cardKey}
       isCollapsed={compressed}
+      onToggleExpanded={ac.onToggleExpanded}
       data-link-card={`example:${example.exampleId}`}
       {...(extraDataAttrs ?? {})}
       kind="example"

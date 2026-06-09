@@ -92,6 +92,7 @@ export function HighlightCard({
       onTogglePopout={onToggleFromCtx}
       cardKey={cardKey}
       isCollapsed={compressed}
+      onToggleExpanded={ac.onToggleExpanded}
       onTrashClick={() => onDelete(card.id)}
       kind="highlight"
       canJump={isAnchored && !isOrphaned && !!onJump}

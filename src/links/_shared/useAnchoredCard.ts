@@ -51,6 +51,13 @@ export interface UseAnchoredCardResult {
    * (`toggleExpanded`), NOT a body re-click — the axes are independent.
    */
   onActivate: () => void;
+  /**
+   * The axis-pure expand override (the header chevron's handler): toggles ONLY
+   * `expandedSet` membership — never selection. Threaded to `PanelCard` as
+   * `onToggleExpanded` so the docked one-click expand control flips the body
+   * without moving the halo. Stable across renders.
+   */
+  onToggleExpanded: () => void;
   ref: AnchoredCardRef;
 }
 
@@ -67,6 +74,11 @@ export function useAnchoredCard(ref: AnchoredCardRef): UseAnchoredCardResult {
   const onActivate = useCallback(() => {
     cardStore.select(ref);
     cardStore.expand(ref);
+  }, [ref.kind, ref.id]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Axis-pure: the header expand chevron toggles ONLY the body, never the halo.
+  const onToggleExpanded = useCallback(() => {
+    cardStore.toggleExpanded(ref);
   }, [ref.kind, ref.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const props = useMemo(
@@ -88,5 +100,5 @@ export function useAnchoredCard(ref: AnchoredCardRef): UseAnchoredCardResult {
     [cardKey, ref.kind, ref.id, selected, expanded, onActivate],
   );
 
-  return { props, selected, expanded, hovered, onActivate, ref };
+  return { props, selected, expanded, hovered, onActivate, onToggleExpanded, ref };
 }

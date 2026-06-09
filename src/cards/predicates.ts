@@ -44,3 +44,8 @@ export const cardKindsForPanel = (p: PanelKind): CardKind[] =>
  *  `StackCardKind` union. */
 export const stackableCardKinds = (): CardKind[] =>
   CARD_KINDS.filter((k) => CARD_REGISTRY[k].stackable);
+
+/** Whether a kind can pop out into a `Floatable` window. Registry-derived SSOT
+ *  for the docked one-click pop-out control (and `registerCardFloatable`'s
+ *  registration guard). Only `error` is false (ratified not-poppable, §3.5). */
+export const isPoppable = (k: CardKind): boolean => CARD_REGISTRY[k].poppable;

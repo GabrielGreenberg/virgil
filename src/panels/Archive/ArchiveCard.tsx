@@ -111,6 +111,7 @@ export function ArchiveCard({
       cardKey={cardKey}
       compressed={compressed}
       compressedSummary={compressedSummary}
+      onToggleExpanded={ac.onToggleExpanded}
     />
   );
   return card;

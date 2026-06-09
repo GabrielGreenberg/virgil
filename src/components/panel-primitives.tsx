@@ -21,7 +21,7 @@
  *  </div>
  */
 
-import { type ReactNode, type HTMLAttributes, type ButtonHTMLAttributes, forwardRef, useState, useRef, useEffect, useLayoutEffect, useCallback, createContext, useContext, Children, cloneElement, isValidElement, useMemo } from "react";
+import { type ReactNode, type HTMLAttributes, type ButtonHTMLAttributes, forwardRef, useState, useRef, useEffect, useLayoutEffect, useCallback, useId, createContext, useContext, Children, cloneElement, isValidElement, useMemo } from "react";
 import type { JSONContent } from "@tiptap/react";
 import type { AiRequest, AiRequestKind } from "@/lib/types";
 import { useDragGap } from "@/hooks/useDragGap";
@@ -29,6 +29,7 @@ import { useTabIndent } from "@/hooks/useTabIndent";
 import { autoSizeInput } from "@/lib/autoSizeInput";
 import ConfirmDialog from "./ConfirmDialog";
 import { hasJsonContent } from "@/cards/has-content";
+import { isPoppable } from "@/cards/predicates";
 import RichTextField from "./RichTextField";
 import { useEditorChrome } from "./editor-layout/chrome-context";
 import PanelTextSizeRow from "./PanelTextSizeRow";
@@ -440,6 +441,40 @@ export function CardJumpChevron({
   );
 }
 
+/** One-click expand/collapse control for the docked card header — the
+ *  axis-pure override that flips the body (`expandedSet`) WITHOUT touching
+ *  selection (the halo). The canonical WAI-ARIA disclosure trigger: it carries
+ *  `aria-expanded` + `aria-controls` (→ the body region) + a stateful label.
+ *  `stopPropagation` on both click and mousedown so the press never bubbles to
+ *  the card body's `onActivate` (select+expand) or the header lift gesture. */
+export function CardExpandChevron({
+  expanded,
+  onToggle,
+  controlsId,
+}: {
+  expanded: boolean;
+  onToggle: () => void;
+  controlsId?: string;
+}) {
+  const title = expanded ? "Collapse card" : "Expand card";
+  return (
+    <button
+      type="button"
+      onClick={(e) => { e.stopPropagation(); onToggle(); }}
+      onMouseDown={(e) => e.stopPropagation()}
+      draggable={false}
+      onDragStart={(e) => { e.stopPropagation(); e.preventDefault(); }}
+      className="w-4 h-4 flex items-center justify-center rounded text-ink-muted hover:text-ink-body transition-colors bg-transparent p-0 shrink-0 -ml-0.5"
+      aria-label={title}
+      aria-expanded={expanded}
+      aria-controls={controlsId}
+      data-hint={expanded ? "Collapse" : "Expand"}
+    >
+      <Chevron expanded={expanded} />
+    </button>
+  );
+}
+
 /** In-body title field, modeled after the paragraph +T affordance.
  *  When no title is set, shows a hover-revealed "+T" button.
  *  When a title is set (or being edited), renders an inline editable
@@ -691,12 +726,18 @@ export interface EditableCardProps {
   cardKey?: string;
 
   /** When true, replace the rich-text body with the `compressedSummary`
-   *  one-liner. Driven by `!selected && !isPoppedOut` at the consumer.
-   *  Selection is the expansion mechanism — see plan in i-want-to-introduce-iridescent-spark. */
+   *  one-liner. Driven by `!expanded && !isPoppedOut` at the consumer (N1:
+   *  expansion is its own axis — `useAnchoredCard().expanded` — independent of
+   *  selection). The header expand chevron toggles it; a body click composes
+   *  select+expand via `onActivate`. */
   compressed?: boolean;
   /** One-line summary rendered in place of the rich body when compressed.
    *  Required if compressed is ever true. */
   compressedSummary?: ReactNode;
+  /** Axis-pure expand toggle, forwarded straight to `PanelCard.onToggleExpanded`
+   *  so the docked header renders the one-click expand chevron. Pass
+   *  `useAnchoredCard().onToggleExpanded`. */
+  onToggleExpanded?: () => void;
   /** Card kind for the unified header kind-label. Required for the new
    *  card chrome — every card declares its kind so the header renders a
    *  consistent label. Cards with multi-kind panels can also pass
@@ -735,7 +776,7 @@ export function EditableCard({
   dataAttr, extraDataAttrs, wrapperClassName, wrapperStyle,
   hideToolbar, inlineDelete, onBodyFocus, onEditorFocus, onHoverChange,
   onTogglePopout, isPoppedOut, cardKey,
-  compressed, compressedSummary,
+  compressed, compressedSummary, onToggleExpanded,
   kind, kindLabelOverride, kindOptions, onKindChange,
   canJump, onJump, chromeless,
 }: EditableCardProps) {
@@ -874,6 +915,7 @@ export function EditableCard({
       onTogglePopout={onTogglePopout}
       cardKey={cardKey}
       isCollapsed={!!compressed}
+      onToggleExpanded={onToggleExpanded}
       onTrashClick={inlineDelete && onDelete ? tryDelete : undefined}
       extraCardClass={cursorClass}
       draggable={cardDraggable}
@@ -1445,9 +1487,17 @@ interface PanelCardProps extends Omit<HTMLAttributes<HTMLDivElement>, "onClick">
    *  with `onTogglePopout`, mousedown on the card's header element
    *  becomes a drag-to-popout gesture. */
   cardKey?: string;
-  /** When true, the card is in its collapsed/minimized form and the
-   *  lift-off drag is disabled (cards are only liftable when expanded). */
+  /** When true, the card is in its collapsed/minimized (compressed) form. Docked,
+   *  this equals `!expanded`. It no longer gates the lift-off drag — lift works
+   *  in both states now (`onWrapperMouseDown`) — it only suppresses the
+   *  bottom-right trash button and drives the docked expand chevron's rotation. */
   isCollapsed?: boolean;
+  /** Axis-pure expand toggle (from `useAnchoredCard.onToggleExpanded`). When
+   *  provided AND docked, PanelCard renders a one-click expand chevron left of
+   *  the kind label that flips the body without touching selection. Omit to
+   *  suppress the chevron (e.g. cards with no compressed form). PanelCard stays
+   *  store-agnostic: it never reads the card store, only invokes this. */
+  onToggleExpanded?: () => void;
 
   /* ── Unified header chrome ───────────────────────────────────────
    * When `kind` is provided, PanelCard renders its own unified header
@@ -1515,6 +1565,7 @@ export const PanelCard = forwardRef<HTMLDivElement, PanelCardProps>(function Pan
     onClick,
     cardKey,
     isCollapsed,
+    onToggleExpanded,
     onMouseDown: callerMouseDown,
     kind,
     kindLabelOverride,
@@ -1536,6 +1587,9 @@ export const PanelCard = forwardRef<HTMLDivElement, PanelCardProps>(function Pan
    *  via `children`. When `chromeless` (a popped card whose header has moved
    *  into `FloatChrome`), PanelCard renders no header at all. */
   const renderUnifiedHeader = kind != null && !chromeless;
+  // Stable id for the collapsible body region, referenced by the expand
+  // chevron's `aria-controls` (the WAI-ARIA disclosure pattern).
+  const bodyId = useId();
   // Measure the header (first child) so the absolute popout overlay centers
   // on whatever the header's actual height turns out to be — header content
   // varies per panel (inputs, avatars, chips, …) so a fixed `top` value
@@ -1573,6 +1627,13 @@ export const PanelCard = forwardRef<HTMLDivElement, PanelCardProps>(function Pan
   // rendering (e.g. BibEntryCard) still get the lift gesture even when
   // they don't pass onTogglePopout up to PanelCard.
   const popped = usePoppedCards();
+  // The one-click pop-out action — the SAME AF Seam-1 result path the lift
+  // gesture uses (`toggleAtAnchor`), so the docked button and the drag-lift
+  // converge. Prefer the caller's `onTogglePopout`; else build it from the
+  // popped-cards context + `cardKey`. Works on a collapsed card by construction.
+  const popoutAction: ((anchor: DOMRect) => void) | undefined =
+    onTogglePopout ??
+    (popped && cardKey ? (anchor: DOMRect) => popped.toggleAtAnchor(cardKey, anchor) : undefined);
   const onWrapperMouseDown = (e: React.MouseEvent) => {
     // Lift-to-popout is allowed in both expanded and collapsed states —
     // the drag handle is the only popout affordance now. Only a popped
@@ -1722,6 +1783,18 @@ export const PanelCard = forwardRef<HTMLDivElement, PanelCardProps>(function Pan
           >
             <CardDragHandle />
             {footnoteBadge}
+            {/* One-click expand chevron — docked only (popped cards are full
+                body). Placed LEFT of the kind label / A9 morph slot so the two
+                affordances never collide. Axis-pure: flips the body, not the
+                halo. Rotation tracks `!isCollapsed` (docked ⇒ isCollapsed ===
+                !expanded). */}
+            {!isPoppedOut && onToggleExpanded && (
+              <CardExpandChevron
+                expanded={!isCollapsed}
+                onToggle={onToggleExpanded}
+                controlsId={bodyId}
+              />
+            )}
             <CardKindHeader
               kind={kind!}
               labelOverride={kindLabelOverride}
@@ -1733,8 +1806,12 @@ export const PanelCard = forwardRef<HTMLDivElement, PanelCardProps>(function Pan
             {isPoppedOut && canJump && onJump && (
               <CardJumpChevron onClick={onJump} />
             )}
-            {/* Docked cards use lift-to-popout via the drag handle; only
-                popped cards render an X (close/dock) button in the header. */}
+            {/* Docked: one-click pop-out (poppable kinds only — `error` shows
+                none). Popped: the X that docks it back. The lift-to-popout drag
+                gesture stays available in both states. */}
+            {!isPoppedOut && kind && isPoppable(kind) && popoutAction && (
+              <CardPopoutButton isPoppedOut={false} onClick={popoutAction} />
+            )}
             {onTogglePopout && isPoppedOut && (
               <CardPopoutButton isPoppedOut onClick={onTogglePopout} />
             )}
@@ -1745,7 +1822,9 @@ export const PanelCard = forwardRef<HTMLDivElement, PanelCardProps>(function Pan
               style={selected ? { borderTopColor: theme.separatorSelected } : undefined}
             />
           )}
-          {children}
+          {/* `display:contents` keeps the body id resolvable for the chevron's
+              `aria-controls` without inserting a layout box. */}
+          <div id={bodyId} style={{ display: "contents" }}>{children}</div>
         </>
       ) : (
         <>

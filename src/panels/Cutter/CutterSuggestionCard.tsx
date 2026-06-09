@@ -353,6 +353,7 @@ export function CutterSuggestionCard({
       onTogglePopout={onToggleFromCtx}
       cardKey={cardKey}
       isCollapsed={compressed}
+      onToggleExpanded={ac.onToggleExpanded}
       onTrashClick={() => onDelete(card.id)}
       draggable={!isSelected}
       onDragStart={(e) => startCutterSuggestionDrag(e, card.id)}

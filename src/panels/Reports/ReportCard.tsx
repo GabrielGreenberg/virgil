@@ -119,6 +119,7 @@ export function ReportCard({
       cardKey={cardKey}
       compressed={compressed}
       compressedSummary={compressedSummary}
+      onToggleExpanded={ac.onToggleExpanded}
     />
   );
   return card;
