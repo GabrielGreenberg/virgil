@@ -137,12 +137,10 @@ import { StackIcon } from "./stack/StackIcon";
 import { StackStrip } from "./stack/StackStrip";
 import { useStack, addStackItem } from "@/hooks/useStack";
 import {
-  snapshotCard,
   snapshotHeadingSection,
   snapshotParagraph,
 } from "@/lib/stack/snapshot";
 import type { StackItem as StackItemType } from "@/lib/stack/types";
-import { resolveCardData, cardKeyPrefixToStackKind } from "@/lib/stack/resolve-card";
 import { useDragHandleActions, type DragHandleRef } from "./editor-layout/card-actions/drag-handle-actions";
 import { DragHandleMenuProvider, type DragHandleMenuApi } from "./editor-layout/card-actions/drag-handle-menu-context";
 import { DragHandleMenu } from "./DragHandleMenu";
@@ -858,78 +856,10 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
       document.removeEventListener("mousedown", onMouseDown);
     };
   }, [stackOpen]);
-  // FloatingPanel fires `virgil-stack-drop` with { cardKey, clientX,
-  // clientY } when a popped-out float is released over the StackIcon.
-  // Snapshot via the appropriate path (paragraph / heading / card),
-  // then close the float. Card kinds outside the v1 set (example,
-  // unknown) are silently skipped.
-  useEffect(() => {
-    const onDrop = (raw: Event) => {
-      const detail = (raw as CustomEvent<{
-        cardKey: string;
-        clientX: number;
-        clientY: number;
-      }>).detail;
-      if (!detail || typeof detail.cardKey !== "string") return;
-      const cardKey = detail.cardKey;
-      // Dual-read the dropped float's key (AF `float:` grammar + legacy).
-      // (Stage 5 retires this prefix path in favor of `Floatable.snapshotForStack`.)
-      const parsed = parseAnyKey(cardKey);
-      if (!parsed) return;
-      const id = parsed.id;
-      const source = { docId: stackSourceRef.current.docId };
-      let item: StackItemType | null = null;
-      const mainEd = innerRef.current?.getEditor() ?? null;
-      if (parsed.domain === "textobject" && parsed.kind === "paragraph") {
-        if (mainEd) item = snapshotParagraph(mainEd, id, source);
-      } else if (parsed.domain === "textobject" && parsed.kind === "heading") {
-        if (mainEd) item = snapshotHeadingSection(mainEd, id, source);
-      } else if (parsed.domain === "card" && isCardKind(parsed.kind)) {
-        // Translate the canonical kind → its legacy keyPrefix → StackCardKind
-        // (e.g. `revision-comment` → `revision` → `comment`; `bib` →
-        // `bibliography`). `cardKeyPrefixToStackKind` keys on the legacy prefix.
-        const stackKind = cardKeyPrefixToStackKind(
-          CARD_REGISTRY[parsed.kind].keyPrefix,
-        );
-        if (stackKind && stackKind !== "example") {
-          const cardData = resolveCardData(stackKind, id, {
-            notesHook,
-            todosHook,
-            archiveHook,
-            revisionsHook,
-            cutterHook,
-            footnotesHook,
-            citationsHook,
-          });
-          if (cardData) {
-            item = snapshotCard(stackKind, cardData, source, {
-              getBibEntry: citationsHook.getBibEntry,
-            });
-          }
-        }
-      }
-      if (item) addStackItem(item);
-      // Close the source float regardless of snapshot success — the
-      // user's intent is clear.
-      viewPrefs?.closeCardPopout(cardKey);
-      // Open the strip so the new item is visible.
-      if (item) setStackOpen(true);
-    };
-    window.addEventListener("virgil-stack-drop", onDrop as EventListener);
-    return () => {
-      window.removeEventListener("virgil-stack-drop", onDrop as EventListener);
-    };
-  }, [
-    innerRef,
-    viewPrefs,
-    notesHook,
-    todosHook,
-    archiveHook,
-    revisionsHook,
-    cutterHook,
-    footnotesHook,
-    citationsHook,
-  ]);
+  // The `virgil-stack-drop` handler lives below, right after `popoutsDeps`
+  // is declared — its CARD branch resolves the dropped float's
+  // `Floatable.snapshotForStack` via `CARD_REGISTRY[kind].toFloatable(id,
+  // popoutsDeps)`, so it must be declared after that memo (no TDZ on the dep).
 
   // ── Document load + compile state ─────────────────────────────────
   // `useDocument` reads its docId+pipeline from the surrounding
@@ -2850,6 +2780,54 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
       handleEditFootnoteTitle, handleArchiveDelete,
     ],
   );
+
+  // FloatingPanel fires `virgil-stack-drop` with { cardKey, clientX,
+  // clientY } when a popped-out float is released over the StackIcon.
+  // Snapshot via the appropriate path (paragraph / heading via the
+  // text-object helpers; card via the Floatable's own snapshotForStack),
+  // then close the float. Non-stackable kinds return null and are skipped.
+  // Declared here (after `popoutsDeps`) so the CARD branch can hand that bag
+  // to `toFloatable` without a TDZ on the dep array.
+  useEffect(() => {
+    const onDrop = (raw: Event) => {
+      const detail = (raw as CustomEvent<{
+        cardKey: string;
+        clientX: number;
+        clientY: number;
+      }>).detail;
+      if (!detail || typeof detail.cardKey !== "string") return;
+      const cardKey = detail.cardKey;
+      // Dual-read the dropped float's key (AF `float:` grammar + legacy).
+      const parsed = parseAnyKey(cardKey);
+      if (!parsed) return;
+      const id = parsed.id;
+      const source = { docId: stackSourceRef.current.docId };
+      let item: StackItemType | null = null;
+      const mainEd = innerRef.current?.getEditor() ?? null;
+      if (parsed.domain === "textobject" && parsed.kind === "paragraph") {
+        if (mainEd) item = snapshotParagraph(mainEd, id, source);
+      } else if (parsed.domain === "textobject" && parsed.kind === "heading") {
+        if (mainEd) item = snapshotHeadingSection(mainEd, id, source);
+      } else if (parsed.domain === "card" && isCardKind(parsed.kind)) {
+        // Mirror `FloatHost.resolveFloatable`: build the same `Floatable` the
+        // popout renders from and ask it to serialize itself. `toFloatable`
+        // is a pure per-id resolver (no doc walk); `snapshotForStack` returns
+        // null for non-stackable kinds (report / ai / example).
+        const f = CARD_REGISTRY[parsed.kind].toFloatable(id, popoutsDeps);
+        item = f?.snapshotForStack(source) ?? null;
+      }
+      if (item) addStackItem(item);
+      // Close the source float regardless of snapshot success — the
+      // user's intent is clear.
+      viewPrefs?.closeCardPopout(cardKey);
+      // Open the strip so the new item is visible.
+      if (item) setStackOpen(true);
+    };
+    window.addEventListener("virgil-stack-drop", onDrop as EventListener);
+    return () => {
+      window.removeEventListener("virgil-stack-drop", onDrop as EventListener);
+    };
+  }, [innerRef, viewPrefs, popoutsDeps]);
 
   // ── Bubble per-doc state up to the shell ────────────────────────
   // Step 7.1 (Path A): emit a synthesized `PaneState` so EditorLayout's
