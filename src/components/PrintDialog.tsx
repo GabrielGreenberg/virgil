@@ -9,11 +9,13 @@ import SystemDialog, {
 import {
   PRINT_FONT_LABELS,
   PRINT_FONT_SIZES,
+  PRINT_PANEL_ORDER,
   runPrint,
   type PrintElementKey,
   type PrintOptions,
   type PrintPanelKey,
 } from "@/lib/print";
+import { PANEL_REGISTRY } from "@/panels/panel-registry";
 
 interface PrintDialogProps {
   open: boolean;
@@ -56,18 +58,12 @@ const ELEMENT_GROUPS: {
   },
 ];
 
-const PANEL_ROWS: { key: PrintPanelKey; label: string }[] = [
-  { key: "footnotes", label: "Footnotes" },
-  { key: "bibliography", label: "Bibliography" },
-  { key: "citations", label: "Citations" },
-  { key: "notes", label: "Notes" },
-  { key: "examples", label: "Examples" },
-  { key: "todo", label: "Todo" },
-  { key: "archive", label: "Archive" },
-  { key: "revisions", label: "Revisions" },
-  { key: "cutter", label: "Cutter" },
-  { key: "errors", label: "Errors" },
-];
+// Derived from the printable-panel SSOT (PRINT_PANEL_ORDER); labels come from
+// PANEL_REGISTRY[k].label — no hand-written duplication. `reports` (and any
+// future printable panel) appears here by construction.
+const PANEL_ROWS: { key: PrintPanelKey; label: string }[] = PRINT_PANEL_ORDER.map(
+  (key) => ({ key, label: PANEL_REGISTRY[key].label }),
+);
 
 export default function PrintDialog({
   open,

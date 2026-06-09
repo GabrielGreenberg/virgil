@@ -4140,7 +4140,7 @@ body[data-pref-mode="on"] [data-panel-theme]:hover {
   /* Page-break hygiene — defaults split mid-block. */
   .expex-block, .display-math, .latex-comment, blockquote,
   [data-print-appendix] > article,
-  [data-print-appendix] [data-card-id] {
+  [data-print-appendix] [data-card] {
     break-inside: avoid; page-break-inside: avoid;
   }
   h1, h2, h3, h4 { break-after: avoid; }
@@ -4179,29 +4179,24 @@ body[data-pref-mode="on"] [data-panel-theme]:hover {
     text-decoration: none; background: transparent; color: inherit;
   }
 
-  /* Panel appendices: hidden by default; each shown only when its
-     panel toggle is on. break-before: page so each appendix starts a
-     fresh page. */
-  [data-print-appendix] { display: none; break-before: page; padding-top: 1rem; }
-  html[data-print-p-notes="true"]        [data-print-appendix="notes"],
-  html[data-print-p-footnotes="true"]    [data-print-appendix="footnotes"],
-  html[data-print-p-citations="true"]    [data-print-appendix="citations"],
-  html[data-print-p-bibliography="true"] [data-print-appendix="bibliography"],
-  html[data-print-p-examples="true"]     [data-print-appendix="examples"],
-  html[data-print-p-todo="true"]         [data-print-appendix="todo"],
-  html[data-print-p-archive="true"]      [data-print-appendix="archive"],
-  html[data-print-p-revisions="true"]    [data-print-appendix="revisions"],
-  html[data-print-p-cutter="true"]       [data-print-appendix="cutter"],
-  html[data-print-p-errors="true"]       [data-print-appendix="errors"] {
-    display: block;
-  }
+  /* Panel appendices: PrintAppendices renders ONLY the enabled panels (the
+     render-time filter is the single gate), so each appendix present in the DOM
+     prints unconditionally. break-before: page starts each on a fresh page.
+     Replaces the former per-panel `data-print-p-*` CSS allowlist (the 5th
+     hand-synced printable list) — membership/order now derive from PRINT_PANELS
+     in print.ts, and the matching `data-print-p-*` stamping is gone. */
+  [data-print-appendix] { display: block; break-before: page; padding-top: 1rem; }
 
   /* Reveal the appendix container itself when printing. */
   .print-only { display: block; }
 
-  /* Strip panel chrome inside appendices — close/popout buttons and
-     view-mode toggles aren't meaningful in print. */
-  [data-print-appendix] [data-pop-button],
-  [data-print-appendix] [data-close-button],
-  [data-print-appendix] .panel-header-controls { display: none; }
+  /* Strip non-content card chrome (grip, collab pills, popout/close, jump)
+     inside appendices via ONE marker. The former selectors
+     ([data-pop-button] / [data-close-button] / .panel-header-controls) were
+     DEAD — no such DOM hooks exist post-AF — so appendix cards currently print
+     WITH their chrome. The real fix is a single `data-card-chrome` marker on the
+     shared header controls; that marker lands with A9 (it owns the card header)
+     per the A8↔A9↔AF seam (WAVE2 E-3). This rule is in place now so the strip
+     works the moment A9 stamps the marker (no-op until then). */
+  [data-print-appendix] [data-card-chrome] { display: none; }
 }

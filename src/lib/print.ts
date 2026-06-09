@@ -6,6 +6,8 @@
  * handler — Safari and some Chromium builds skip the former.
  */
 
+import type { PanelKind } from "@/panels/_shared/types";
+
 export type PrintElementKey =
   | "title"
   | "sectionNumbers"
@@ -17,17 +19,42 @@ export type PrintElementKey =
   | "marginalia"
   | "linkedAnchorUnderlines";
 
-export type PrintPanelKey =
-  | "notes"
-  | "footnotes"
-  | "citations"
-  | "bibliography"
-  | "examples"
-  | "todo"
-  | "archive"
-  | "revisions"
-  | "cutter"
-  | "errors";
+/** The printable-panel set + appendix order — the SINGLE source for which
+ *  panels can print. `PrintPanelKey`, the appendix order, the PrintDialog rows,
+ *  and the JSON-defaults validation all derive from this (replacing five
+ *  hand-synced lists). Membership = the keys; order = `printOrder`. The default
+ *  on/off lives in the promotable `print.defaults.json` sidecar (validated
+ *  against these keys by the dev canary below) — NOT duplicated here.
+ *  `satisfies Partial<Record<PanelKind, …>>` enforces every key is a real panel
+ *  — a typo or renamed `PanelKind` errors here — AND keeps `PrintPanelKey` a
+ *  provable subset of `PanelKind`. Adding a printable panel = one entry here
+ *  (+ its default in the JSON); the heading/label comes from
+ *  `PANEL_REGISTRY[k].label`. */
+export const PRINT_PANELS = {
+  footnotes:    { printOrder: 0 },
+  bibliography: { printOrder: 1 },
+  citations:    { printOrder: 2 },
+  notes:        { printOrder: 3 },
+  examples:     { printOrder: 4 },
+  todo:         { printOrder: 5 },
+  archive:      { printOrder: 6 },
+  revisions:    { printOrder: 7 },
+  cutter:       { printOrder: 8 },
+  // reports was the headline A8 wart — a real card panel forgotten in all five
+  // printable lists, so report cards literally could not be printed. Registry-
+  // derivation makes it printable by construction.
+  reports:      { printOrder: 9 },
+  errors:       { printOrder: 10 },
+} satisfies Partial<Record<PanelKind, { printOrder: number }>>;
+
+/** A panel that can be printed as an appendix — a provable subset of `PanelKind`. */
+export type PrintPanelKey = keyof typeof PRINT_PANELS;
+
+/** Printable panels in appendix order. Derived (replaces the hand-kept
+ *  `PANEL_ORDER` literal in PrintAppendices). */
+export const PRINT_PANEL_ORDER = (Object.keys(PRINT_PANELS) as PrintPanelKey[]).sort(
+  (a, b) => PRINT_PANELS[a].printOrder - PRINT_PANELS[b].printOrder,
+);
 
 export interface PrintOptions {
   elements: Record<PrintElementKey, boolean>;
@@ -44,6 +71,23 @@ import defaultPrintOptionsJson from "./print.defaults.json";
 
 export const DEFAULT_PRINT_OPTIONS: PrintOptions = defaultPrintOptionsJson as PrintOptions;
 
+// Dev canary: the JSON sidecar's `panels` keys must match the printable set
+// (PRINT_PANELS) exactly. The `as PrintOptions` cast above cannot catch a stale
+// key (e.g. the removed `quotations` panel) or a missing one — make it loud.
+if (process.env.NODE_ENV !== "production") {
+  const declared = new Set<string>(Object.keys(PRINT_PANELS));
+  for (const k of Object.keys(DEFAULT_PRINT_OPTIONS.panels)) {
+    if (!declared.has(k)) {
+      console.error(`[print] print.defaults.json "panels" has unknown key "${k}" — not a printable panel.`);
+    }
+  }
+  for (const k of declared) {
+    if (!(k in DEFAULT_PRINT_OPTIONS.panels)) {
+      console.error(`[print] print.defaults.json "panels" is missing printable panel "${k}".`);
+    }
+  }
+}
+
 const kebab = (s: string) => s.replace(/[A-Z]/g, (c) => `-${c.toLowerCase()}`);
 
 function applyPrintAttrs(options: PrintOptions): () => void {
@@ -52,9 +96,9 @@ function applyPrintAttrs(options: PrintOptions): () => void {
   for (const [k, v] of Object.entries(options.elements)) {
     html.setAttribute(`data-print-e-${kebab(k)}`, v ? "true" : "false");
   }
-  for (const [k, v] of Object.entries(options.panels)) {
-    html.setAttribute(`data-print-p-${kebab(k)}`, v ? "true" : "false");
-  }
+  // Panel appendices gate purely by RENDER — PrintAppendices renders only the
+  // enabled panels — so no per-panel `data-print-p-*` attr / CSS allowlist is
+  // needed (the former 5th hand-synced printable list; see globals.css).
   html.style.setProperty("--print-font-size", `${options.fontSizeRem}rem`);
 
   // Walk from the editor page up to <body>, tagging each ancestor as
@@ -83,9 +127,6 @@ function applyPrintAttrs(options: PrintOptions): () => void {
     delete html.dataset.printing;
     for (const k of Object.keys(options.elements)) {
       html.removeAttribute(`data-print-e-${kebab(k)}`);
-    }
-    for (const k of Object.keys(options.panels)) {
-      html.removeAttribute(`data-print-p-${kebab(k)}`);
     }
     html.style.removeProperty("--print-font-size");
     for (const a of ancestors) delete a.dataset.printAncestor;
