@@ -7,8 +7,6 @@ import {
   compressedBodyStyle,
 } from "@/components/panel-primitives";
 import { useCompressedLines } from "@/components/editor-layout/contexts/card-display";
-import { usePoppedCards } from "@/hooks/usePoppedCards";
-import { popKey } from "@/panels/panel-registry";
 import type { LatexError, LatexErrorSeverity } from "@/lib/latex-errors";
 
 const theme = CARD_THEMES.error;
@@ -90,8 +88,6 @@ export interface ErrorCardProps {
   onJump?: (sourceEl: HTMLElement | null) => void;
   onDismiss: (id: string) => void;
   onHoverChange?: (hovering: boolean) => void;
-  onTogglePopout?: (anchor: DOMRect) => void;
-  isPoppedOut?: boolean;
   extraDataAttrs?: Record<string, string>;
 }
 
@@ -108,30 +104,18 @@ export function ErrorCard({
   onJump,
   onDismiss,
   onHoverChange,
-  onTogglePopout,
-  isPoppedOut,
   extraDataAttrs,
 }: ErrorCardProps) {
   const cardRef = useRef<HTMLDivElement>(null);
-  const popped = usePoppedCards();
-  const cardKey = popKey("errors", err.id);
-  const onToggleFromCtx = onTogglePopout
-    ?? (popped
-      ? (anchor: DOMRect) => popped.toggleAtAnchor(cardKey, anchor)
-      : undefined);
-  const compressed = !expanded && !isPoppedOut;
+  const compressed = !expanded;
   const compressedLines = useCompressedLines();
 
   const card = (
     <PanelCard
       ref={cardRef}
-      data-card-key={cardKey}
       {...(extraDataAttrs || {})}
       theme={theme}
       selected={selected}
-      isPoppedOut={isPoppedOut}
-      onTogglePopout={onToggleFromCtx}
-      cardKey={cardKey}
       isCollapsed={compressed}
       onToggleExpanded={onToggleExpanded}
       onTrashClick={() => onDismiss(err.id)}
@@ -177,9 +161,7 @@ export function ErrorCard({
           </div>
         </div>
       ) : (
-      <div
-        className={`px-3 pt-1.5 pb-2${isPoppedOut ? " flex-1 min-h-0 overflow-auto" : ""}`}
-      >
+      <div className="px-3 pt-1.5 pb-2">
         <div
           className="text-[0.78rem] font-medium mb-1"
           style={{ color: theme.titleColor, letterSpacing: "0.02em" }}
@@ -231,7 +213,7 @@ export function ErrorCard({
   );
 
   // `error` is ratified NOT poppable (audit §3.5): it has no `toFloatable`
-  // registration, so the float dispatcher never renders one. The dead popout
-  // path is fully gardened in Stage 6.
+  // registration, so the float dispatcher never renders one. The dead popout/
+  // lift wiring was removed in the A1 gardening pass.
   return card;
 }
