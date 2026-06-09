@@ -1,36 +1,37 @@
 "use client";
 
 /**
- * Module-scope store for the global "anchored card" hover and selection
- * state. The three surfaces of every anchored card (linked text in the
- * editor, marginalia icon in the gutter, panel card in the rail) all
- * subscribe here; whatever the user touches paints all three.
+ * Module-scope store for the global "anchored card" interaction state. The
+ * three surfaces of every anchored card (linked text in the editor, marginalia
+ * icon in the gutter, panel card in the rail) all subscribe here; whatever the
+ * user touches paints all three.
  *
- * Why module scope and not Context: the same selection must be visible
- * to `EditorLayout` (host shell), to `EditorPane` (the canonical paper
- * surface, which also mounts in the Library reader), to popped-out
- * floating cards rendered in portals, and to anything else that wants to
- * react. A Provider tree would force a single common ancestor and would
- * break every popped-out card. `useSyncExternalStore` (React 18+) gives
- * the same observability with zero new dependencies.
+ * Module scope (not Context) so `EditorLayout` (host shell), `EditorPane` (the
+ * canonical paper surface, also mounted in the Library reader), and popped-out
+ * floating cards rendered in portals all observe the same state without a
+ * common ancestor. `useSyncExternalStore` (React 18+) gives the observability
+ * with zero new dependencies.
  *
- * Two selection slots:
- *  - `stickySet`: cards the user hand-clicked (or whose transient was
- *    promoted by focus). Multiple coexist. Survive click-away and any
- *    subsequent selection. Cleared one at a time by clicking the card
- *    again.
- *  - `transient`: at most one ephemeral selection, set by marker clicks
- *    in the main text. Cleared by click-away, by another marker click,
- *    or by being promoted into `stickySet`.
+ * TWO INDEPENDENT AXES — N1: selection ⟂ expansion (a full 2×2):
+ *  - `expandedSet` — multi; "how much body shows" (compressed ↔ full body).
+ *    Sticky: survives click-away; toggled only by the expand control or the
+ *    body-click composition. A card being expanded says NOTHING about selection.
+ *  - `selected` — ≤1; the halo / scroll-on-select / keyboard target / operand.
+ *    Cleared by click-away. A card being selected says NOTHING about expansion.
  *
- * "Selected" vs "expanded" are distinct:
- *  - `useIsExpanded(ref)` — true for *any* card in stickySet ∪ {transient};
- *    drives the card's compressed/open state. Many cards can be expanded.
- *  - `useIsSelected(ref)` — true only for the *primary* (transient ?? newest
- *    sticky); drives the halo / focus styling. At most one card per UI.
+ * The axes are mutated by axis-pure primitives (each touches exactly ONE axis),
+ * so "select without expanding" (a marker click) and "expand without selecting"
+ * (the expand chevron) are both first-class. The combined "open + focus" is an
+ * explicit *composition* the body-click handler chooses (`select` + `expand`),
+ * not something the store forces.
+ *
+ * NOTE: a handful of deprecated shims (`setTransient`/`toggleSelection`/
+ * `markSticky`/`setSelection`/`addSticky`/`removeSticky`, `useTransient`/
+ * `useStickySet`) write/read the new axes so un-migrated callers keep working;
+ * they are removed once every consumer migrates.
  */
 
-import { useCallback, useSyncExternalStore } from "react";
+import { useSyncExternalStore } from "react";
 import type { EntityKind } from "./entity-hover";
 
 export interface AnchoredCardRef {
@@ -39,12 +40,12 @@ export interface AnchoredCardRef {
 }
 
 interface CardInteractionState {
-  stickySet: AnchoredCardRef[];
-  transient: AnchoredCardRef | null;
+  expandedSet: AnchoredCardRef[];
+  selected: AnchoredCardRef | null;
   hover: AnchoredCardRef | null;
 }
 
-let _state: CardInteractionState = { stickySet: [], transient: null, hover: null };
+let _state: CardInteractionState = { expandedSet: [], selected: null, hover: null };
 const _listeners = new Set<() => void>();
 
 function subscribe(fn: () => void): () => void {
@@ -62,214 +63,175 @@ function refsEqual(a: AnchoredCardRef | null, b: AnchoredCardRef | null): boolea
   return a.kind === b.kind && a.id === b.id;
 }
 
-function stickyIndex(ref: AnchoredCardRef): number {
-  for (let i = 0; i < _state.stickySet.length; i++) {
-    const s = _state.stickySet[i];
+function expandedIndex(ref: AnchoredCardRef): number {
+  for (let i = 0; i < _state.expandedSet.length; i++) {
+    const s = _state.expandedSet[i];
     if (s.kind === ref.kind && s.id === ref.id) return i;
   }
   return -1;
 }
 
-function isExpandedRef(ref: AnchoredCardRef): boolean {
-  if (refsEqual(_state.transient, ref)) return true;
-  return stickyIndex(ref) !== -1;
-}
-
-function primaryRef(): AnchoredCardRef | null {
-  return _state.transient ?? _state.stickySet[_state.stickySet.length - 1] ?? null;
-}
+/**
+ * @deprecated Transitional compat shape: the two-axis state plus `transient`/
+ * `stickySet` aliases (transient's selection role is now `selected`; the sticky
+ * expansion set is now `expandedSet`). Lets un-migrated imperative readers keep
+ * compiling; removed once every reader migrates.
+ */
+type CompatState = CardInteractionState & {
+  readonly transient: AnchoredCardRef | null;
+  readonly stickySet: AnchoredCardRef[];
+};
 
 export const cardStore = {
-  getState: (): CardInteractionState => _state,
+  /** The two-axis state, plus deprecated `transient`/`stickySet` aliases for
+   *  un-migrated imperative readers. */
+  getState: (): CompatState => ({
+    expandedSet: _state.expandedSet,
+    selected: _state.selected,
+    hover: _state.hover,
+    transient: _state.selected,
+    stickySet: _state.expandedSet,
+  }),
 
-  /** Replace the transient selection. No-op if same ref. */
-  setTransient(next: AnchoredCardRef | null): void {
-    if (refsEqual(_state.transient, next)) return;
-    _state = { ..._state, transient: next ? { ...next } : null };
+  // ── EXPANSION axis — `expandedSet` only, never touches `selected` ────────
+  /** Add `ref` to the expansion set (open its body). No-op if already open. */
+  expand(ref: AnchoredCardRef): void {
+    if (expandedIndex(ref) !== -1) return;
+    _state = { ..._state, expandedSet: [..._state.expandedSet, { ...ref }] };
     emit();
   },
-
-  /** Add a ref to the sticky set if not already there. */
-  addSticky(ref: AnchoredCardRef): void {
-    if (stickyIndex(ref) !== -1) return;
-    _state = { ..._state, stickySet: [..._state.stickySet, { ...ref }] };
-    emit();
-  },
-
-  /** Remove a ref from the sticky set if present. */
-  removeSticky(ref: AnchoredCardRef): void {
-    const idx = stickyIndex(ref);
+  /** Remove `ref` from the expansion set (collapse its body). */
+  collapse(ref: AnchoredCardRef): void {
+    const idx = expandedIndex(ref);
     if (idx === -1) return;
-    const next = _state.stickySet.slice();
+    const next = _state.expandedSet.slice();
     next.splice(idx, 1);
-    _state = { ..._state, stickySet: next };
+    _state = { ..._state, expandedSet: next };
     emit();
   },
+  /** Toggle the expansion of `ref`. Selection is untouched. */
+  toggleExpanded(ref: AnchoredCardRef): void {
+    if (expandedIndex(ref) !== -1) cardStore.collapse(ref);
+    else cardStore.expand(ref);
+  },
+  /** True iff `ref`'s body is expanded. Many cards can be expanded at once. */
+  isExpanded(ref: AnchoredCardRef): boolean {
+    return expandedIndex(ref) !== -1;
+  },
 
+  // ── SELECTION axis — `selected` slot only, never touches `expandedSet` ───
+  /** Make `ref` the selected card (halo / scroll / keyboard target). ≤1. */
+  select(ref: AnchoredCardRef): void {
+    if (refsEqual(_state.selected, ref)) return;
+    _state = { ..._state, selected: { ...ref } };
+    emit();
+  },
+  /** Clear the selection (halo). Expansion is untouched. */
+  clearSelection(): void {
+    if (!_state.selected) return;
+    _state = { ..._state, selected: null };
+    emit();
+  },
+  /** True iff `ref` is the selected card. At most one per UI. */
+  isSelected(ref: AnchoredCardRef): boolean {
+    return refsEqual(_state.selected, ref);
+  },
+
+  // ── HOVER ────────────────────────────────────────────────────────────────
   setHover(next: AnchoredCardRef | null): void {
     if (refsEqual(_state.hover, next)) return;
     _state = { ..._state, hover: next ? { ...next } : null };
     emit();
   },
 
+  // ── Deprecated shims (write the new axes; removed once callers migrate) ───
+  /** @deprecated → `select` / `clearSelection`. */
+  setTransient(next: AnchoredCardRef | null): void {
+    if (next) cardStore.select(next);
+    else cardStore.clearSelection();
+  },
+  /** @deprecated → `expand`. */
+  addSticky(ref: AnchoredCardRef): void {
+    cardStore.expand(ref);
+  },
+  /** @deprecated → `collapse`. */
+  removeSticky(ref: AnchoredCardRef): void {
+    cardStore.collapse(ref);
+  },
   /**
-   * Click-to-toggle from a user card click. Two cases:
-   *  - Primary AND in sticky → close (remove from sticky, clear
-   *    transient if equal). This is the "click again to close" path.
-   *  - Otherwise → refocus / promote / add: ensure ref is in sticky
-   *    AND set transient = ref. Handles three flows in one branch:
-   *    - Clicking a brand-new card (not in either slot) → adds to
-   *      sticky and sets it as the primary.
-   *    - Clicking a non-primary sticky card → keeps it in sticky and
-   *      moves the halo to it (transient = ref).
-   *    - Clicking a transient-only card (which IS primary because
-   *      transient defines primary, but NOT in sticky) → falls here
-   *      via the !inSticky guard: addSticky pins it open.
+   * @deprecated The conflated body-click. The R1 default (select + expand, and
+   * "click again" closes when both are set) is centralized in `useAnchoredCard`
+   * (`onActivate`); this shim preserves behavior for un-migrated callers.
    */
   toggleSelection(ref: AnchoredCardRef): void {
-    const inSticky = stickyIndex(ref) !== -1;
-    const isPrimary = refsEqual(primaryRef(), ref);
-
-    if (isPrimary && inSticky) {
-      const next = _state.stickySet.filter(
-        (s) => !(s.kind === ref.kind && s.id === ref.id),
-      );
-      const clearTransient = refsEqual(_state.transient, ref);
-      _state = {
-        ..._state,
-        stickySet: next,
-        transient: clearTransient ? null : _state.transient,
-      };
-      emit();
-      return;
+    if (cardStore.isSelected(ref) && cardStore.isExpanded(ref)) {
+      cardStore.clearSelection();
+      cardStore.collapse(ref);
+    } else {
+      cardStore.select(ref);
+      cardStore.expand(ref);
     }
-    _state = {
-      ..._state,
-      stickySet: inSticky ? _state.stickySet : [..._state.stickySet, { ...ref }],
-      transient: { ...ref },
-    };
-    emit();
   },
-
-  /** Promote the current transient into sticky. No-op if no transient
-   *  or transient ref is already sticky. Called when focus moves into
-   *  a card body. */
-  markSticky(): void {
-    const t = _state.transient;
-    if (!t) return;
-    const alreadySticky = stickyIndex(t) !== -1;
-    if (alreadySticky) {
-      // Just drop transient; it's redundant with the sticky entry.
-      _state = { ..._state, transient: null };
-      emit();
-      return;
-    }
-    _state = {
-      ..._state,
-      stickySet: [..._state.stickySet, { ...t }],
-      transient: null,
-    };
-    emit();
-  },
-
-  /** True iff ref is the primary focus (transient ?? newest sticky).
-   *  At most one card is selected at any time. */
-  isSelected(ref: AnchoredCardRef): boolean {
-    return refsEqual(primaryRef(), ref);
-  },
-
-  /** True iff ref is in sticky set OR equals transient. Many cards can
-   *  be expanded simultaneously. */
-  isExpanded(ref: AnchoredCardRef): boolean {
-    return isExpandedRef(ref);
-  },
-
-  /**
-   * Back-compat shim for callers that haven't migrated. `opts.sticky`
-   * routes to addSticky; otherwise we treat it as setTransient. Passing
-   * `null` clears transient only (sticky is unaffected — call removeSticky
-   * for that).
-   */
+  /** @deprecated Focus-promotion is obsolete — expansion is now sticky by
+   *  construction, so there is nothing to promote. No-op. */
+  markSticky(): void {},
+  /** @deprecated → `select` / `clearSelection` (the `sticky` opt → `expand`). */
   setSelection(next: AnchoredCardRef | null, opts?: { sticky?: boolean }): void {
     if (next === null) {
-      cardStore.setTransient(null);
+      cardStore.clearSelection();
       return;
     }
     if (opts?.sticky) {
-      cardStore.addSticky(next);
+      cardStore.expand(next);
       return;
     }
-    cardStore.setTransient(next);
+    cardStore.select(next);
   },
 
   subscribe,
 };
 
-// React hooks ─────────────────────────────────────────────────────────────
+// React hooks ───────────────────────────────────────────────────────────────
 
 const getServerSnapshot = () => null;
 
-/** Primary focus ref: the transient if any, else the most-recently-added
- *  sticky. Used by callers that want a single "what's the current focus"
- *  value (e.g. legacy slot setters derived from this). */
+/** The selection slot (≤1): halo / scroll-on-select / keyboard target. */
+let _lastSelected: AnchoredCardRef | null = null;
+function selectedSnapshot(): AnchoredCardRef | null {
+  const next = _state.selected;
+  // Stable identity when unchanged — useSyncExternalStore requires it.
+  if (refsEqual(_lastSelected, next)) return _lastSelected;
+  _lastSelected = next ? { ...next } : null;
+  return _lastSelected;
+}
+
 export function useSelection(): AnchoredCardRef | null {
-  return useSyncExternalStore(
-    subscribe,
-    primarySelectionSnapshot,
-    getServerSnapshot,
+  return useSyncExternalStore(subscribe, selectedSnapshot, getServerSnapshot);
+}
+
+/** The expansion set (multi-card). */
+export function useExpandedSet(): AnchoredCardRef[] {
+  return (
+    useSyncExternalStore(subscribe, () => _state.expandedSet, getServerSnapshot) ?? []
   );
-}
-
-let _lastPrimary: AnchoredCardRef | null = null;
-function primarySelectionSnapshot(): AnchoredCardRef | null {
-  const s = _state;
-  const next = s.transient ?? s.stickySet[s.stickySet.length - 1] ?? null;
-  // Stable identity when value is unchanged — useSyncExternalStore requires it.
-  if (refsEqual(_lastPrimary, next)) return _lastPrimary;
-  _lastPrimary = next ? { ...next } : null;
-  return _lastPrimary;
-}
-
-export function useTransient(): AnchoredCardRef | null {
-  return useSyncExternalStore(
-    subscribe,
-    () => cardStore.getState().transient,
-    getServerSnapshot,
-  );
-}
-
-export function useStickySet(): AnchoredCardRef[] {
-  return useSyncExternalStore(
-    subscribe,
-    () => cardStore.getState().stickySet,
-    getServerSnapshot,
-  ) ?? [];
 }
 
 export function useHover(): AnchoredCardRef | null {
-  return useSyncExternalStore(
-    subscribe,
-    () => cardStore.getState().hover,
-    getServerSnapshot,
-  );
+  return useSyncExternalStore(subscribe, () => _state.hover, getServerSnapshot);
 }
 
-/** True iff ref is the primary (transient ?? newest sticky). Subscribes
- *  to both slots so cards re-render when the primary changes. */
+/** True iff `ref` is the selected card. Single-card halo. */
 export function useIsSelected(ref: AnchoredCardRef | null | undefined): boolean {
-  const primary = useSelection();
-  if (!ref || !primary) return false;
-  return primary.kind === ref.kind && primary.id === ref.id;
+  const selected = useSelection();
+  if (!ref || !selected) return false;
+  return selected.kind === ref.kind && selected.id === ref.id;
 }
 
-/** True iff ref is in stickySet OR equals transient. Multi-card. Subscribes
- *  to both slots. */
+/** True iff `ref`'s body is expanded. Multi-card. */
 export function useIsExpanded(ref: AnchoredCardRef | null | undefined): boolean {
-  const transient = useTransient();
-  const sticky = useStickySet();
+  const expanded = useExpandedSet();
   if (!ref) return false;
-  if (transient && transient.kind === ref.kind && transient.id === ref.id) return true;
-  for (const s of sticky) {
+  for (const s of expanded) {
     if (s.kind === ref.kind && s.id === ref.id) return true;
   }
   return false;
@@ -281,22 +243,14 @@ export function useIsHovered(ref: AnchoredCardRef | null | undefined): boolean {
   return h.kind === ref.kind && h.id === ref.id;
 }
 
-// Stable imperative setters returned as a hook for ergonomic call sites
-// that want to set selection/hover without subscribing to it. The setters
-// don't change between renders.
-const _setSelection = cardStore.setSelection;
-const _setHover = cardStore.setHover;
-const _toggleSelection = cardStore.toggleSelection;
+// ── Deprecated shim hooks (removed once consumers migrate) ───────────────────
 
-export function useCardStoreActions(): {
-  setSelection: (ref: AnchoredCardRef | null) => void;
-  setHover: (ref: AnchoredCardRef | null) => void;
-  toggleSelection: (ref: AnchoredCardRef) => void;
-} {
-  // Stable identity — `cardStore.*` are static module-level functions.
-  return {
-    setSelection: useCallback(_setSelection, []),
-    setHover: useCallback(_setHover, []),
-    toggleSelection: useCallback(_toggleSelection, []),
-  };
+/** @deprecated → `useSelection` (transient's selection role is now `selected`). */
+export function useTransient(): AnchoredCardRef | null {
+  return useSelection();
+}
+
+/** @deprecated → `useExpandedSet`. */
+export function useStickySet(): AnchoredCardRef[] {
+  return useExpandedSet();
 }
