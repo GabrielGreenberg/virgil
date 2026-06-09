@@ -9,5 +9,7 @@
   "cut": "#b45757",
   "revision": "#9333ea",
   "report": "#6366f1",
-  "example": "#0d9488"
+  "example": "#0d9488",
+  "aiRequest": "#0ea5e9",
+  "error": "#b45757"
 }

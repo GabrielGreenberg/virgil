@@ -22,7 +22,12 @@ export type PanelThemeKey =
   | "cut"
   | "revision"
   | "report"
-  | "example";
+  | "example"
+  // System sub-namespace — non-overridable (see SYSTEM_THEME_KEYS). Folded into
+  // the same DEFAULT_PANEL_COLORS path so ai/error accents derive from one
+  // source like every other kind, instead of string-literal hexes.
+  | "aiRequest"
+  | "error";
 
 // Shipped defaults are loaded from a JSON sidecar so the personal-prefs
 // promotion pipeline can rewrite them without touching TS source.
@@ -31,6 +36,15 @@ import defaultPanelColorsJson from "./panel-theme.defaults.json";
 /** Base hex used to seed each panel's palette by default. */
 export const DEFAULT_PANEL_COLORS: Record<PanelThemeKey, string> =
   defaultPanelColorsJson as Record<PanelThemeKey, string>;
+
+/** System accents that are NOT user-customizable. They live in
+ *  DEFAULT_PANEL_COLORS so they ride the one accent→palette path like every
+ *  other kind, but the color picker skips them and `setPanelColor`/
+ *  `loadPanelColors` refuse them — so a user override on another panel can
+ *  never re-tint error / AI-request cards (the invariant that used to be
+ *  protected by escaping the path with hardcoded literals). */
+export const SYSTEM_THEME_KEYS: ReadonlySet<PanelThemeKey> =
+  new Set<PanelThemeKey>(["aiRequest", "error"]);
 
 /** Curated palette for the color picker. */
 export const PRESET_COLORS: { name: string; hex: string }[] = [
@@ -254,6 +268,7 @@ export function loadPanelColors(): void {
     if (parsed && typeof parsed === "object") {
       overrides = {};
       for (const k of Object.keys(parsed) as PanelThemeKey[]) {
+        if (SYSTEM_THEME_KEYS.has(k)) continue; // never honor a persisted system-accent override
         const v = parsed[k];
         if (typeof v === "string" && /^#[0-9a-f]{6}$/i.test(v)) {
           overrides[k] = v;
@@ -276,6 +291,7 @@ export function isPanelColorOverridden(key: PanelThemeKey): boolean {
 
 /** Set an override and persist. */
 export function setPanelColor(key: PanelThemeKey, hex: string): void {
+  if (SYSTEM_THEME_KEYS.has(key)) return; // system accents are non-overridable
   if (!/^#[0-9a-f]{6}$/i.test(hex)) return;
   overrides[key] = hex.toLowerCase();
   persist();
@@ -284,6 +300,7 @@ export function setPanelColor(key: PanelThemeKey, hex: string): void {
 
 /** Clear an override (falls back to default) and persist. */
 export function clearPanelColor(key: PanelThemeKey): void {
+  if (SYSTEM_THEME_KEYS.has(key)) return; // system accents have no override to clear (chokepoint-trio uniform)
   delete overrides[key];
   persist();
   notify();

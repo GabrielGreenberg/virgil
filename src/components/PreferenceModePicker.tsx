@@ -89,6 +89,7 @@ import {
   setPanelColor,
   subscribePanelColors,
   DEFAULT_PANEL_COLORS,
+  SYSTEM_THEME_KEYS,
 } from "@/lib/panel-theme";
 import { usePreferenceMode } from "@/hooks/usePreferenceMode";
 import PreferenceTree from "./PreferenceTree";
@@ -110,7 +111,9 @@ interface Selection {
 // ── DOM walker ────────────────────────────────────────────────────────────
 
 const KNOWN_PANEL_KEYS = new Set<PanelThemeKey>(
-  Object.keys(DEFAULT_PANEL_COLORS) as PanelThemeKey[],
+  (Object.keys(DEFAULT_PANEL_COLORS) as PanelThemeKey[]).filter(
+    (k) => !SYSTEM_THEME_KEYS.has(k), // system accents are non-overridable
+  ),
 );
 
 function collect(startEl: Element | null): {
