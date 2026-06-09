@@ -300,6 +300,7 @@ export function setPanelColor(key: PanelThemeKey, hex: string): void {
 
 /** Clear an override (falls back to default) and persist. */
 export function clearPanelColor(key: PanelThemeKey): void {
+  if (SYSTEM_THEME_KEYS.has(key)) return; // system accents have no override to clear (chokepoint-trio uniform)
   delete overrides[key];
   persist();
   notify();
