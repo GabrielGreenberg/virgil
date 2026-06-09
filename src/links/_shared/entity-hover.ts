@@ -9,33 +9,48 @@
  * helpers that all three call sites use, so we never write per-kind hover
  * handlers.
  *
- * EntityKind enumerates the *anchored* card kinds — the ones whose
- * three-surface hover/selection rule applies. It is *not* the same as
- * `CardKind` from `panels/_shared/types.ts`, which has additional
- * non-anchored variants (bib, error, ai) used only for rendering.
+ * `EntityKind` is `CardKind`: the *anchored-membership* constraint — the kinds
+ * whose three-surface hover/selection rule applies — is enforced at the use
+ * sites by `isAnchoredCardKind` (the `CARD_REGISTRY` predicate) and the
+ * `ANCHORED_CARD_KINDS` set, NOT by a separate hand-kept union. Adding an
+ * anchored kind is one `anchored: true` registry edit; this list and the type
+ * follow automatically (the parallel-list drift A0 set out to kill).
  */
 
 import type { Link } from "./types";
 import { getTextAnchor } from "../links";
 import { buildFloatKey } from "@/floats/float-key";
+import { CARD_KINDS, isAnchoredCardKind } from "@/cards/predicates";
+import type { CardKind } from "@/cards/types";
 
-export const ANCHORED_CARD_KINDS = [
-  "note",
-  "highlight",
-  "footnote",
-  "citation",
-  "report",
-  "report-request",
-  "example",
-  "todo",
-  "archive",
-  "revision-comment",
-  "revision-suggestion",
-  "cutter-comment",
-  "cutter-suggestion",
-] as const;
+/** The anchored card kinds — derived from the registry's `anchored` flag (the
+ *  single membership source), replacing the former hand-kept literal array. */
+export const ANCHORED_CARD_KINDS: readonly CardKind[] =
+  CARD_KINDS.filter(isAnchoredCardKind);
 
-export type EntityKind = (typeof ANCHORED_CARD_KINDS)[number];
+/** A card kind eligible for the three-surface (text · margin · card) hover /
+ *  selection rule. `= CardKind`; anchored membership is the registry `anchored`
+ *  flag, checked at use sites via `isAnchoredCardKind` / `ANCHORED_CARD_KINDS`
+ *  — not a narrow union (which would re-introduce the drift A0 killed). */
+export type EntityKind = CardKind;
+
+// Dev canary: the in-text hover system structurally depends on footnote +
+// citation being anchored (their inline atoms drive three-surface hover). If a
+// registry `anchored` flag is ever flipped off for them — or the set comes back
+// empty from a mis-load — make that loud in dev rather than silently breaking.
+if (process.env.NODE_ENV !== "production") {
+  for (const k of ["footnote", "citation"] as const) {
+    if (!isAnchoredCardKind(k)) {
+      console.error(
+        `[entity-hover] "${k}" must be anchored (the three-surface hover system ` +
+          `depends on its inline atom) but CARD_REGISTRY marks it non-anchored.`,
+      );
+    }
+  }
+  if (ANCHORED_CARD_KINDS.length === 0) {
+    console.error("[entity-hover] ANCHORED_CARD_KINDS derived empty — registry mis-load?");
+  }
+}
 
 export interface EntityRef {
   id: string;
@@ -96,6 +111,12 @@ export function findEntity(
     }
     case "footnote":
     case "citation":
+      return undefined;
+    default:
+      // `EntityKind` is now `CardKind`; the non-anchored kinds (bib / ai /
+      // error) have no panel-card entity. Anchored membership is guarded
+      // upstream (`ANCHORED_KINDS.has(...)` in usePanelCardHoverBridge), so
+      // this arm is reached only for a defensively-passed non-anchored kind.
       return undefined;
   }
 }
