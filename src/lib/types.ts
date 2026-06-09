@@ -62,18 +62,6 @@ export interface ClaudeSuggestion {
   suggested_text: string;
 }
 
-export interface UserComment {
-  id: string;
-  selectedText: string;
-  comment: string;
-  createdAt: string;
-  resolved: boolean;
-}
-
-export interface CommentsState {
-  comments: UserComment[];
-}
-
 // --- Revisions ---
 //
 // The Revisions panel hosts two polymorphic card kinds — comments and
