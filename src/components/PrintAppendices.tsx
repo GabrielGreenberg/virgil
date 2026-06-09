@@ -2,7 +2,7 @@
 
 import type { ReactNode } from "react";
 import { PANEL_REGISTRY } from "@/panels/panel-registry";
-import type { PrintOptions, PrintPanelKey } from "@/lib/print";
+import { PRINT_PANEL_ORDER, type PrintOptions, type PrintPanelKey } from "@/lib/print";
 
 interface PrintAppendicesProps {
   options: PrintOptions;
@@ -13,26 +13,13 @@ interface PrintAppendicesProps {
   renderPanel: (kind: PrintPanelKey) => ReactNode;
 }
 
-const PANEL_ORDER: PrintPanelKey[] = [
-  "footnotes",
-  "bibliography",
-  "citations",
-  "notes",
-  "examples",
-  "todo",
-  "archive",
-  "revisions",
-  "cutter",
-  "errors",
-];
-
 export default function PrintAppendices({
   options,
   renderPanel,
 }: PrintAppendicesProps) {
   return (
     <div className="print-only" aria-hidden="true">
-      {PANEL_ORDER.filter((kind) => options.panels[kind]).map((kind) => (
+      {PRINT_PANEL_ORDER.filter((kind) => options.panels[kind]).map((kind) => (
         <section
           key={kind}
           data-print-appendix={kind}
