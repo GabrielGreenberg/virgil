@@ -6,18 +6,9 @@ import FloatingPanel, {
 } from "@/components/FloatingPanel";
 import { usePoppedCards } from "@/hooks/usePoppedCards";
 import { consumeCardLiftHandoff } from "@/components/card-lift";
-import { capPopoutHeight, FLOAT_DEFAULT_SIZE, FLOAT_Z_BASE } from "./float-policy";
+import { FLOAT_DEFAULT_SIZE, FLOAT_Z_BASE } from "./float-policy";
 import { FloatChrome } from "./FloatChrome";
 import type { Floatable } from "./types";
-
-// Text floats auto-fit their height to content on first mount per session,
-// capped via the shared `capPopoutHeight` (POPOUT_MAX_VH fraction of viewport).
-// Tracked here so user resizes after the initial fit aren't overwritten when
-// the float closes and reopens. Only floats that opt in via
-// `Floatable.autoFitBody` run the burst.
-const autoFittedKeys = new Set<string>();
-const TEXT_FLOAT_HEADER_H = 24;
-const TEXT_FLOAT_BORDERS = 2;
 
 /**
  * The window-layer presence shared by BOTH `Card` and `TextObject` floats.
@@ -58,64 +49,6 @@ export function FloatWindow({
     const handoff = consumeCardLiftHandoff(key);
     if (!handoff) return;
     panelHandleRef.current?.beginDragAt(handoff.clientX, handoff.clientY);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  // Auto-fit opt-in floats (text) to content on first mount. Tiptap's deferred
-  // mount means body.scrollHeight is wrong if measured too early, so we observe
-  // the body's natural size during the first ~800ms and re-measure off the
-  // panel's *current* DOM rect. Bounded by POPOUT_MAX_VH; overflow scrolls.
-  useEffect(() => {
-    if (!floatable.autoFitBody) return;
-    if (!ctx) return;
-    if (autoFittedKeys.has(key)) return;
-    autoFittedKeys.add(key);
-    let attempts = 0;
-    let lastTarget = 0;
-    let ro: ResizeObserver | null = null;
-    let stopTimer: number | null = null;
-    const tryFit = () => {
-      const wrapper = document.querySelector(`[data-pristine-card-id="${floatable.id}"]`);
-      const panel = wrapper?.closest<HTMLElement>('[data-floating-panel="true"]');
-      const body = panel?.querySelector<HTMLElement>(".par-float-body");
-      if (!panel || !body) {
-        if (attempts++ < 30) requestAnimationFrame(tryFit);
-        return;
-      }
-      const measure = () => {
-        if (!panel.isConnected || !body.isConnected) {
-          ro?.disconnect();
-          return;
-        }
-        const panelRect = panel.getBoundingClientRect();
-        const currentH = panelRect.height;
-        const natural = body.scrollHeight + TEXT_FLOAT_HEADER_H + TEXT_FLOAT_BORDERS;
-        const target = capPopoutHeight(natural, window.innerHeight);
-        if (target <= currentH + 1) return;
-        if (target === lastTarget) return;
-        lastTarget = target;
-        const maxY = window.innerHeight - target - 20;
-        const adjustedY = Math.max(20, Math.min(panelRect.top, maxY));
-        ctx.setFloatPosition(key, {
-          x: panelRect.left,
-          y: adjustedY,
-          width: panelRect.width,
-          height: target,
-        });
-      };
-      measure();
-      ro = new ResizeObserver(measure);
-      ro.observe(body);
-      stopTimer = window.setTimeout(() => ro?.disconnect(), 800);
-    };
-    // Don't cancel on cleanup — Strict Mode's mount→cleanup→mount would abort
-    // the work, and autoFittedKeys prevents a re-schedule; measure() guards
-    // against detachment.
-    requestAnimationFrame(tryFit);
-    return () => {
-      ro?.disconnect();
-      if (stopTimer) clearTimeout(stopTimer);
-    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
