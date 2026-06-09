@@ -33,8 +33,32 @@ export type FloatRenderCtx = unknown;
 export interface FloatChromeSlots {
   /** Narrow region between title and jump/close: status dot, claim pill, AI
    *  checkbox, source-missing indicator. The ONLY domain-contributed header
-   *  region (Seam 2 budget: 1 slot + a title override). */
+   *  region (Seam 2 budget: 1 slot + a title override). For cards this is a
+   *  `CardChromeTrailing` element (collab pill/dots + three-dot menu +
+   *  per-card slot) the factory constructs; React runs its hooks when
+   *  `FloatChrome` renders it, and it hosts its own `CardClaimContext`. */
   trailing?: ReactNode;
+  /** Replaces the plain title text in the label position (e.g. the revision
+   *  morph dropdown). When set, `FloatChrome` renders this instead of the
+   *  `title` string. The narrow second domain contribution (the morph
+   *  control belongs at the label, not in `trailing`). */
+  title?: ReactNode;
+}
+
+/** Handed to `renderBody()` at mount/refresh time so a domain body can drive
+ *  the chrome it can't reach directly. */
+export interface FloatBodyContext {
+  /** Override the chrome title for this float instance during its life (e.g. a
+   *  heading level → "Chapter"/"Section"/"Subsection"). Pass `null` to clear
+   *  back to the static `title`. Generalizes the text-object `setHeaderLabel`.
+   *  Card bodies ignore this (their title is static or a `chromeSlots.title`
+   *  morph control). */
+  setTitle(title: string | null): void;
+  /** The stored popout key (the dispatcher's iteration key into
+   *  `prefs.poppedOutCards`). Text-object bodies need it to close their own
+   *  float (`popped.close(cardKey)`); card bodies ignore it. Until the Stage-4
+   *  grammar flip this is the legacy key, not `floatable.key`. */
+  windowKey: string;
 }
 
 export interface Floatable {
@@ -52,13 +76,28 @@ export interface Floatable {
   /** Visual shell treatment. */
   surface: FloatSurface;
 
-  /** The specialized content. Per AF §2 this is headerless once AF moves the
-   *  header into `FloatChrome`; until then A0's card bodies render their own
-   *  (existing) header and self-wrap in `<FloatCard>`. */
-  renderBody(): ReactNode;
+  /** The specialized content — **headerless**: `FloatChrome` (owned by
+   *  `FloatWindow`) renders the grip/title/trailing/jump/close skeleton above
+   *  it. The `ctx` lets the body retitle the chrome (text headings). */
+  renderBody(ctx: FloatBodyContext): ReactNode;
 
   /** Optional header slots the domain contributes (Seam 2). */
   chromeSlots?: FloatChromeSlots;
+
+  /** When true, `FloatWindow` renders NO `FloatChrome` — the body supplies its
+   *  own full layout including a bespoke header (today: `bib` / `ai`, pending
+   *  their Stage-6 migration to the unified chrome). The window degrades to a
+   *  thin draggable frame. */
+  bareWindow?: boolean;
+
+  /** Opt in to the auto-fit grow-burst (a text float spawned at default size
+   *  grows to fit its content, capped by `POPOUT_MAX_VH`). Replaces the old
+   *  `.par-float-body` DOM sniff; cards never set it. */
+  autoFitBody?: boolean;
+
+  /** Whether the window participates in the panel dock flow (redock proximity
+   *  + dock outline). Cards/text-objects: false (panels only). Defaults false. */
+  canRedock?: boolean;
 
   /** Reveal where this thing actually lives (scroll-to + select). */
   jumpToSource(): void;

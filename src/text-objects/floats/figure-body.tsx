@@ -38,6 +38,7 @@ import type { EditorHandle } from "@/components/Editor";
 import { buildEditorExtensions } from "@/lib/editor-extensions";
 import { useDocWriteHandleOrNull } from "@/components/editor-layout/DocPipeline";
 import { usePoppedCards } from "@/hooks/usePoppedCards";
+import { parseAnyKey } from "@/floats/float-key";
 import { useEditorChrome } from "@/components/editor-layout/chrome-context";
 import { viewToggleClasses } from "@/components/editor-layout/chrome-config";
 import {
@@ -92,10 +93,13 @@ export function FigureBody({
   const mainEditor = ref.current?.getEditor() ?? null;
 
   // One body, two kinds: the kind is fixed for this float's lifetime, parsed
-  // from the cardKey (`textobject:<kind>:<uuid>`). Resolving the source node by
-  // (kind, uuid) — not uuid alone — is collision-proof, since figureBlock and
-  // graphicsBlock uuids are minted from separate id sets.
-  const kind = cardKey.split(":")[1] as FigureKind;
+  // from the cardKey via `parseAnyKey` (handles both the AF `float:textobject:
+  // <kind>:<uuid>` grammar and the legacy `textobject:<kind>:<uuid>` shape).
+  // Resolving the source node by (kind, uuid) — not uuid alone — is collision-
+  // proof, since figureBlock and graphicsBlock uuids are minted from separate
+  // id sets. No colon-slice fallback (slicing a `float:` key gives the wrong
+  // segment); an unparseable key → "" → no source node matched.
+  const kind = (parseAnyKey(cardKey)?.kind ?? "") as FigureKind;
 
   const initial = useMemo(() => {
     let blockJson: JSONContent | null = null;

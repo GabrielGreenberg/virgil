@@ -1,86 +1,63 @@
 /**
- * Drop-spec registry. Each card kind (note, todo, paragraph, footnote,
- * ...) contributes one `DropSpec` here. The controller calls
- * `lookupSpec(kind)` when a drop session begins.
+ * Drop-spec dispatch. `lookupSpec(cardKey)` resolves the `DropSpec` for a drag
+ * session. Card kinds are now folded onto `CARD_REGISTRY[kind].dropSpec` (the
+ * SSOT) via the `@/cards/drop-specs` side-effect registration — this module
+ * keeps only the NON-card, transient drag specs (in-text atom grab, stack pull)
+ * plus the two text-object specs.
  *
- * Specs are co-located with their panel under
- * src/panels/<panel>/drop-spec.ts for attachment cards, and under
- * src/components/drop-mode/specs/ for document-level kinds. Each spec
- * is imported here and added to the SPECS record below.
- *
- * Phase 0 ships with no specs registered — shift-grab is a no-op. Each
- * subsequent phase wires its specs in by editing this file.
+ * Specs are co-located with their panel under `src/panels/<panel>/drop-spec.ts`
+ * (folded into the card registry) and under `src/components/drop-mode/specs/`
+ * (document-level kinds, referenced here directly).
  */
 
 import type { DropSpec } from "./types";
 import { textObjectDropSpec } from "./specs/textobject";
 import { textRangeMoveDropSpec } from "./specs/text-range-move";
 import { inTextAtomGrabSpec } from "./specs/in-text-atom-grab";
-import { noteDropSpec, highlightDropSpec } from "@/panels/Notes/drop-spec";
-import { todoDropSpec } from "@/panels/Todo/drop-spec";
-import { archiveDropSpec } from "@/panels/Archive/drop-spec";
-import {
-  cutterCommentDropSpec,
-  cutterSuggestionDropSpec,
-} from "@/panels/Cutter/drop-spec";
-import { revisionDropSpec } from "@/panels/Revisions/drop-spec";
-import { reportDropSpec, reportRequestDropSpec } from "@/panels/Reports/drop-spec";
-import { footnoteDropSpec } from "@/panels/Footnotes/drop-spec";
-import { citationDropSpec } from "@/panels/Citations/drop-spec";
-import { exampleDropSpec } from "@/panels/Examples/drop-spec";
 import { stackPullDropSpec } from "./specs/stack-pull";
 import { STACK_PULL_PREFIX } from "@/lib/stack/types";
+import { parseAnyKey } from "@/floats/float-key";
+import { CARD_REGISTRY } from "@/cards/card-registry";
+import { isCardKind } from "@/cards/predicates";
+// Fold every card kind's DropSpec onto CARD_REGISTRY[kind].dropSpec.
+import "@/cards/drop-specs";
 
 /**
- * Spec by card-key prefix. The prefix is what `cardKey.split(":")[0]`
- * yields — e.g. "note", "paragraph", "footnote".
- *
- * `bib` is intentionally absent — bib entries don't anchor to text.
+ * Transient drag-session keys that are NOT popout keys (never flipped to the
+ * `float:` grammar): the direct in-text Atom grab (footnote / citation / ref /
+ * inline math — source captured at mousedown) and the stack-pull (dragging an
+ * item OUT of the Stack). Dispatched on the raw key prefix.
  */
-const SPECS: Record<string, DropSpec | undefined> = {
-  // Unified spec for every block lift — paragraph, heading, list,
-  // texBlock, exampleBlock, linkedRange, sub-objects. Resolves via
-  // the TextObject registry's `dropAdapter` (wrap vs. drop-direct)
-  // and `collectMoveSource` (single node vs. section range).
-  textobject: textObjectDropSpec,
-  // The Examples *panel-card* popout (a sibling of `note:` / `todo:` /
-  // `bib:`). The in-editor exampleBlock popout goes through
-  // `textobject:exampleBlock:<id>` instead.
-  example: exampleDropSpec,
-  note: noteDropSpec,
-  highlight: highlightDropSpec,
-  todo: todoDropSpec,
-  archive: archiveDropSpec,
-  "cutter-comment": cutterCommentDropSpec,
-  "cutter-suggestion": cutterSuggestionDropSpec,
-  revision: revisionDropSpec,
-  report: reportDropSpec,
-  "report-request": reportRequestDropSpec,
-  footnote: footnoteDropSpec,
-  citation: citationDropSpec,
-  // The direct in-text Atom grab (footnote / citation / ref / inline
-  // math). Source captured at mousedown; same-editor move to an inline
-  // cursor. The `footnote:`/`citation:` specs above stay for the Card
-  // float-header (by-id) path. See specs/in-text-atom-grab.ts.
+const TRANSIENT_SPECS: Record<string, DropSpec | undefined> = {
   "atom-grab": inTextAtomGrabSpec,
   [STACK_PULL_PREFIX]: stackPullDropSpec,
 };
 
 /**
- * Resolve the drop spec for a full cardKey. Most kinds dispatch on the prefix
- * (`cardKey.split(":")[0]`). The one exception is `linkedRange`: a plain text
- * selection lifts as `textobject:linkedRange:<id>` — it shares the
- * `textobject:` prefix with every block lift but moves as a text SLICE at an
- * inline caret, NOT a block between blocks, so it routes to its own
- * `text-range-move` spec rather than `textObjectDropSpec` (L3f-2). The full
- * cardKey is passed so this one carve-out can be made here, keeping the
- * routing in the registry.
+ * Resolve the drop spec for a full cardKey. **Dual-read** (AF phased flip):
+ * `parseAnyKey` reads the `float:<domain>:<kind>:<id>` grammar AND the legacy
+ * `<prefix>:<id>` / `textobject:<kind>:<id>` shapes.
+ *
+ *  - text-object → `textObjectDropSpec`, except a plain text selection
+ *    (`linkedRange`) which moves as a SLICE at an inline caret → the
+ *    `text-range-move` spec (L3f-2).
+ *  - card kind → the folded `CARD_REGISTRY[kind].dropSpec` (both revision kinds
+ *    share `revisionDropSpec`; `bib`/`ai`/`error` have none → `undefined`).
+ *  - `atom-grab` / `stack-pull` (transient, parsed as a card "kind") → the
+ *    `TRANSIENT_SPECS` table.
  */
 export function lookupSpec(cardKey: string): DropSpec | undefined {
-  if (cardKey.startsWith("textobject:linkedRange:")) {
-    return textRangeMoveDropSpec;
+  const parsed = parseAnyKey(cardKey);
+  if (!parsed) {
+    const sep = cardKey.indexOf(":");
+    return TRANSIENT_SPECS[sep === -1 ? cardKey : cardKey.slice(0, sep)];
   }
-  const sep = cardKey.indexOf(":");
-  const kind = sep === -1 ? cardKey : cardKey.slice(0, sep);
-  return SPECS[kind];
+  if (parsed.domain === "textobject") {
+    if (parsed.kind === "linkedRange") return textRangeMoveDropSpec;
+    return textObjectDropSpec;
+  }
+  if (isCardKind(parsed.kind)) {
+    return CARD_REGISTRY[parsed.kind].dropSpec ?? undefined;
+  }
+  return TRANSIENT_SPECS[parsed.kind];
 }

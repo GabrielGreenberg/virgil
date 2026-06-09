@@ -3,7 +3,7 @@
 /**
  * Single document-level mouseover/mouseout listener that turns hovering
  * any panel card into an entity-level hover event. Reads the card's
- * `data-card-key` (format: `${prefix}:${id}`) and maps the prefix to an
+ * `data-card-key` (format: `float:card:<kind>:<id>`) and maps the kind to an
  * EntityKind. Replaces the per-panel `onHoverNote` / `onHoverCard` props
  * that previously had to be threaded through Notes / Revisions / Cutter.
  *
@@ -13,25 +13,13 @@
  */
 
 import { useEffect } from "react";
-import type { EntityKind } from "./entity-hover";
+import { ANCHORED_CARD_KINDS, type EntityKind } from "./entity-hover";
+import { parseAnyKey } from "@/floats/float-key";
 
-/** `data-card-key` prefix → EntityKind. One-to-one mapping; the registry's
- *  `revision` prefix maps to the `comment` EntityKind because the card
- *  kind is named `comment` even though its data-card-key is `revision:…`.
- *  Non-anchored kinds (bib, error, ai) are absent so hovering those cards
- *  is a no-op. */
-const PREFIX_TO_KIND: Record<string, EntityKind> = {
-  note: "note",
-  todo: "todo",
-  archive: "archive",
-  example: "example",
-  revision: "revision-comment",
-  "revision-suggestion": "revision-suggestion",
-  footnote: "footnote",
-  citation: "citation",
-  "cutter-comment": "cutter-comment",
-  "cutter-suggestion": "cutter-suggestion",
-};
+/** The anchored card kinds eligible for three-surface hover. A parsed
+ *  `float:card:<kind>:<id>` whose kind is in this set is an entity; everything
+ *  else (text-object floats, non-anchored bib/error/ai) is a no-op. */
+const ANCHORED_KINDS: ReadonlySet<string> = new Set<string>(ANCHORED_CARD_KINDS);
 
 export function usePanelCardHoverBridge(
   setHoveredEntity: (id: string | null, kind: EntityKind | null) => void,
@@ -56,13 +44,11 @@ export function usePanelCardHoverBridge(
       // checking the hovered element would falsely bail on body hover.
       if (cardEl.closest(".ProseMirror")) return null;
       const key = cardEl.getAttribute("data-card-key") || "";
-      const idx = key.indexOf(":");
-      if (idx <= 0) return null;
-      const prefix = key.slice(0, idx);
-      const id = key.slice(idx + 1);
-      const kind = PREFIX_TO_KIND[prefix];
-      if (!kind || !id) return null;
-      return { id, kind };
+      const parsed = parseAnyKey(key);
+      // Card-domain floats only; text-object floats aren't hover entities.
+      if (!parsed || parsed.domain !== "card") return null;
+      if (!ANCHORED_KINDS.has(parsed.kind)) return null;
+      return { id: parsed.id, kind: parsed.kind as EntityKind };
     };
 
     const onOver = (e: MouseEvent) => {

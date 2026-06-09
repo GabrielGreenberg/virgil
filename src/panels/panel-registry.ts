@@ -15,6 +15,7 @@
 import type { CARD_THEMES } from "@/components/panel-primitives";
 import type { PanelKind, CardKind } from "./_shared/types";
 import { CARD_REGISTRY } from "@/cards/card-registry";
+import { buildFloatKey } from "@/floats/float-key";
 
 type ThemeKey = keyof typeof CARD_THEMES;
 
@@ -229,21 +230,32 @@ export function nextCardTitle(kind: CardKind, currentCount: number): string {
   return `${label} ${currentCount + 1}`;
 }
 
-/** `${keyPrefix}:${id}` — canonical popout key for this card. Throws if
- *  the panel has no card kind. */
+/** `float:card:<kind>:<id>` — the unified popout key for this panel's primary
+ *  card kind (AF grammar). Throws if the panel has no card kind. Delegates to
+ *  `cardPopKey` via the panel's declared `card.kind` (so the revisions panel
+ *  yields `revision-comment`; the suggestion card builds its own key directly). */
 export function popKey(panelKind: PanelKind, id: string): string {
   const entry = PANEL_REGISTRY[panelKind];
   if (!entry.card) {
     throw new Error(`Panel "${panelKind}" has no card kind`);
   }
-  return `${entry.card.keyPrefix}:${id}`;
+  return cardPopKey(entry.card.kind, id);
 }
 
-/** `${keyPrefix}:${id}` — canonical popout key by card kind. Use for
- *  cross-cutting card kinds (e.g. AI requests) that aren't owned by a
- *  single panel. */
+/** `float:card:<kind>:<id>` — the unified popout key by card kind (AF grammar,
+ *  via `buildFloatKey`). The single chokepoint that flips the card side from the
+ *  legacy `<prefix>:<id>` shape to `float:card:<kind>:<id>`. */
 export function cardPopKey(cardKind: CardKind, id: string): string {
-  return `${CARD_KEY_PREFIXES[cardKind]}:${id}`;
+  return buildFloatKey({ domain: "card", kind: cardKind, id });
+}
+
+/** `[data-card-key="float:card:<kind>:<id>"]` — the DOM selector that matches the
+ *  `data-card-key` a panel card stamps. The ONE helper every consumer that hunts
+ *  a card in the DOM by (kind,id) must use; hand-building `[data-card-key="…"]`
+ *  re-introduces the legacy-grammar drift the AF flip exposed (the card stamps
+ *  `cardPopKey`, not `<prefix>:<id>`). Keep the grammar in `cardPopKey` only. */
+export function cardDomSelector(cardKind: CardKind, id: string): string {
+  return `[data-card-key="${cardPopKey(cardKind, id)}"]`;
 }
 
 export function getPanelByCardKind(cardKind: CardKind): PanelRegistryEntry | null {

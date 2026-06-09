@@ -10,13 +10,23 @@
  * `\cite` lands the caret on the new card's merged search input, just
  * like the drag-handle path does).
  */
+import { parseAnyKey, migrateLegacyKeyToFloat } from "@/floats/float-key";
+
 export function focusNewCard(cardKey: string): void {
-  const kind = cardKey.split(":")[0] ?? "";
+  // Normalize to the canonical `float:card:<kind>:<id>` grammar the card stamps
+  // on `data-card-key`, so a caller that still passes a legacy `<prefix>:<id>`
+  // key (or already-canonical key — idempotent) resolves the DOM either way.
+  const domKey = migrateLegacyKeyToFloat(cardKey);
+  // The canonical card kind (drives `pickFocusTarget`), via the dual-read parser.
+  // `parseAnyKey` resolves both legacy and `float:` grammars, so no colon-slice
+  // fallback is needed (slicing a `float:card:<kind>:<id>` key would yield the
+  // "float" domain, not the kind); an unparseable key → "" → the default target.
+  const kind = parseAnyKey(domKey)?.kind ?? "";
   let attempts = 0;
   const MAX_ATTEMPTS = 12;
   const tryFocus = () => {
     const card = document.querySelector<HTMLElement>(
-      `[data-card-key="${CSS.escape(cardKey)}"]`,
+      `[data-card-key="${CSS.escape(domKey)}"]`,
     );
     if (!card) {
       if (++attempts < MAX_ATTEMPTS) requestAnimationFrame(tryFocus);

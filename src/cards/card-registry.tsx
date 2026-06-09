@@ -27,6 +27,7 @@
 import type { CardKind, CardMeta } from "./types";
 import type { CardFloatCtx } from "./card-float-ctx";
 import type { Floatable } from "@/floats/types";
+import type { DropSpec } from "@/components/drop-mode/types";
 
 /**
  * `toFloatable` registration — mirrors the text-object registry's
@@ -53,6 +54,20 @@ export function registerCardFloatable(
 ): void {
   if (kind === "error") return; // ratified not-poppable; ignore stray registration
   CARD_REGISTRY[kind].toFloatable = build;
+}
+
+/**
+ * Install a kind's in-document `dropSpec` (called from `cards/drop-specs`, the
+ * same registration indirection as `registerCardFloatable`). Keeps this module
+ * a runtime LEAF — the spec objects (which transitively reach the drop-mode
+ * machinery + panel hooks) are imported only by the registration module, never
+ * here, so `predicates.ts` and the low-level modules that consume it never
+ * cycle. `lookupSpec` (`drop-mode/registry.ts`) then reads
+ * `CARD_REGISTRY[kind].dropSpec`. The two revision kinds register the SAME
+ * shared `revisionDropSpec`.
+ */
+export function registerCardDropSpec(kind: CardKind, spec: DropSpec): void {
+  CARD_REGISTRY[kind].dropSpec = spec;
 }
 
 export const CARD_REGISTRY: Record<CardKind, CardMeta> = {

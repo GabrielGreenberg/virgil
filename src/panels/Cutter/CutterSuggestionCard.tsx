@@ -14,7 +14,6 @@ import { getLinkedTextObjectIds, hasTextAnchor } from "@/links/links";
 import { usePoppedCards } from "@/hooks/usePoppedCards";
 import { usePanelBodyStyle } from "@/hooks/usePanelTypography";
 import { useTabIndent } from "@/hooks/useTabIndent";
-import { FloatCard } from "@/components/FloatingCards";
 import { cardPopKey } from "@/panels/panel-registry";
 import { useAnchoredCard } from "@/links/_shared/useAnchoredCard";
 import { cardStore } from "@/links/_shared/anchored-card-store";
@@ -115,6 +114,26 @@ function AuthorChip({ author }: { author: CutterSuggestionCardData["author"] }) 
     >
       {isAi ? "AI" : "Human"}
     </span>
+  );
+}
+
+/** Status dot + author chip + status label — the cutter-suggestion header
+ *  trailing, shown docked and (via the `toFloatable` factory) in `FloatChrome`. */
+export function CutterSuggestionTrailing({
+  card,
+}: {
+  card: CutterSuggestionCardData;
+}) {
+  return (
+    <>
+      <span
+        className={`inline-block w-2 h-2 rounded-full shrink-0 ${STATUS_DOT[card.status]}`}
+        data-hint={STATUS_LABEL[card.status]}
+        aria-label={STATUS_LABEL[card.status]}
+      />
+      <AuthorChip author={card.author} />
+      <span className="text-[10px] text-ink-muted">{STATUS_LABEL[card.status]}</span>
+    </>
   );
 }
 
@@ -320,13 +339,6 @@ export function CutterSuggestionCard({
   const compressedLines = useCompressedLines();
   const cardBodyStyle = usePanelBodyStyle("cut");
 
-  const dot = (
-    <span
-      className={`inline-block w-2 h-2 rounded-full shrink-0 ${STATUS_DOT[card.status]}`}
-      data-hint={STATUS_LABEL[card.status]} aria-label={STATUS_LABEL[card.status]}
-    />
-  );
-
   const cardEl = (
     <PanelCard
       ref={cardRef}
@@ -337,6 +349,7 @@ export function CutterSuggestionCard({
       theme={theme}
       selected={isSelected}
       isPoppedOut={isPoppedOut}
+      chromeless={isPoppedOut}
       onTogglePopout={onToggleFromCtx}
       cardKey={cardKey}
       isCollapsed={compressed}
@@ -372,15 +385,7 @@ export function CutterSuggestionCard({
         if (onJump && isAnchored)
           onJump((e.currentTarget as HTMLElement).closest('[data-card]') as HTMLElement | null);
       }}
-      headerTrailing={
-        <>
-          {dot}
-          <AuthorChip author={card.author} />
-          <span className="text-[10px] text-ink-muted">
-            {STATUS_LABEL[card.status]}
-          </span>
-        </>
-      }
+      headerTrailing={<CutterSuggestionTrailing card={card} />}
     >
       {compressed ? (
         <div className="px-3 pt-1.5 pb-1.5">
@@ -450,6 +455,5 @@ export function CutterSuggestionCard({
     </PanelCard>
   );
 
-  if (isPoppedOut) return <FloatCard cardKey={cardKey}>{cardEl}</FloatCard>;
   return cardEl;
 }

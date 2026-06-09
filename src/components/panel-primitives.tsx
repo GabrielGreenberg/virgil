@@ -35,7 +35,6 @@ import PanelTextSizeRow from "./PanelTextSizeRow";
 import { useEnclosingPanelBodyKey } from "./panel-kind-context";
 import { normalizeRichContent, richJsonToPlainText } from "@/lib/footnote-content";
 import { usePoppedCards } from "@/hooks/usePoppedCards";
-import { FloatCard } from "./FloatingCards";
 import { setCardLiftTarget, setCardLiftHandoff } from "./card-lift";
 import { cardPopKey, cardTypeLabel } from "@/panels/panel-registry";
 import type { CardKind } from "@/panels/_shared/types";
@@ -63,6 +62,45 @@ export interface CardClaimSlot {
 const CardClaimContext = createContext<CardClaimSlot | null>(null);
 function useCardClaimSlot(): CardClaimSlot | null {
   return useContext(CardClaimContext);
+}
+
+/**
+ * The card-domain trailing node for a popped-out card's `FloatChrome` slot.
+ * Built by each card's `toFloatable` factory and handed to `FloatChrome` as
+ * `chromeSlots.trailing`; since it's a React element (not a hook call in the
+ * factory), React runs its hooks when FloatChrome renders it. Hosts its own
+ * `CardClaimContext.Provider` so the collab claim survives the relocated mount
+ * (FloatChrome stays domain-neutral and renders it blindly).
+ *
+ * Renders the per-card slot first (status dot / checkbox), then the collab
+ * claim pill / presence dots — mirroring `EditableCard`'s docked trailing.
+ */
+export function CardChromeTrailing({
+  panelKey,
+  cardId,
+  headerTrailing,
+}: {
+  panelKey?: string;
+  cardId: string;
+  headerTrailing?: ReactNode;
+}) {
+  const { partnerClaim } = useCardClaim(panelKey, cardId);
+  const collabCtx = useCollabContext();
+  const partnerSelections = panelKey
+    ? collabCtx.getCardSelections(panelKey, cardId)
+    : [];
+  return (
+    <CardClaimContext.Provider
+      value={{ panelKind: panelKey, cardId, partnerClaimed: !!partnerClaim }}
+    >
+      {headerTrailing}
+      {partnerClaim ? (
+        <CollabClaimPill holder={partnerClaim.holder} color={partnerClaim.color} />
+      ) : (
+        <CollabPresenceDots presences={partnerSelections} />
+      )}
+    </CardClaimContext.Provider>
+  );
 }
 
 /* ── Compressed-body helpers ──────────────────────────────────────
@@ -672,6 +710,10 @@ export interface EditableCardProps {
    *  the jump button (matches the popped-text UX). */
   canJump?: boolean;
   onJump?: (e: React.MouseEvent) => void;
+  /** Forwarded to PanelCard: when popped, suppress the in-card header so the
+   *  AF `FloatChrome` window header owns it. Only set true together with
+   *  `isPoppedOut`. */
+  chromeless?: boolean;
 }
 
 /**
@@ -693,7 +735,7 @@ export function EditableCard({
   onTogglePopout, isPoppedOut, cardKey,
   compressed, compressedSummary,
   kind, kindLabelOverride, kindOptions, onKindChange,
-  canJump, onJump,
+  canJump, onJump, chromeless,
 }: EditableCardProps) {
   // Chrome-driven read-only mode: when the host has set
   // `editableCardKinds` and this card's kind isn't on the list, the
@@ -844,6 +886,7 @@ export function EditableCard({
       headerTrailing={trailing}
       canJump={canJump}
       onJump={onJump}
+      chromeless={chromeless}
       onMouseDown={() => {
         isPointerInteractingRef.current = true;
         requestAnimationFrame(() => {
@@ -1439,6 +1482,11 @@ interface PanelCardProps extends Omit<HTMLAttributes<HTMLDivElement>, "onClick">
    *  Defaults to true so the existing visual is preserved; set false to
    *  suppress (e.g. a card that paints its own divider). */
   showSeparator?: boolean;
+  /** When true, PanelCard renders NO header (and no popout-X) — the body only.
+   *  Set by a popped card so the unified header moves up into `FloatChrome`
+   *  (the AF window chrome). Only ever true together with `isPoppedOut`; the
+   *  DOCKED path never sets it, so the docked header is untouched. */
+  chromeless?: boolean;
 }
 
 /** Cursor distance (px) the user must drag from a card's header before
@@ -1475,6 +1523,7 @@ export const PanelCard = forwardRef<HTMLDivElement, PanelCardProps>(function Pan
     canJump,
     onJump,
     showSeparator = true,
+    chromeless,
     ...rest
   },
   ref,
@@ -1482,8 +1531,9 @@ export const PanelCard = forwardRef<HTMLDivElement, PanelCardProps>(function Pan
   /** Unified header rendering: when `kind` is provided, PanelCard owns the
    *  header. Single source of truth for header layout, height, slots, and
    *  popped-out chrome. Cards pass kind + slots and supply only the body
-   *  via `children`. */
-  const renderUnifiedHeader = kind != null;
+   *  via `children`. When `chromeless` (a popped card whose header has moved
+   *  into `FloatChrome`), PanelCard renders no header at all. */
+  const renderUnifiedHeader = kind != null && !chromeless;
   // Measure the header (first child) so the absolute popout overlay centers
   // on whatever the header's actual height turns out to be — header content
   // varies per panel (inputs, avatars, chips, …) so a fixed `top` value
@@ -1589,7 +1639,7 @@ export const PanelCard = forwardRef<HTMLDivElement, PanelCardProps>(function Pan
         width: LIFT_FLOAT_W,
         height: LIFT_FLOAT_H,
       };
-      // Set the handoff BEFORE flipping to popped so the FloatCard's
+      // Set the handoff BEFORE flipping to popped so the FloatWindow's
       // mount-time `consumeCardLiftHandoff` sees it and picks up the
       // in-flight drag without a frame gap.
       setCardLiftHandoff({
@@ -1646,7 +1696,7 @@ export const PanelCard = forwardRef<HTMLDivElement, PanelCardProps>(function Pan
       ref={setRefs}
       data-card="1"
       data-card-key={cardKey}
-      className={`group relative ${themedCard(theme, selected, extraCardClass)}${isPoppedOut ? " h-full flex flex-col" : ""}${className ? ` ${className}` : ""}`}
+      className={`group relative ${themedCard(theme, selected, extraCardClass)}${isPoppedOut ? (chromeless ? " flex-1 min-h-0 flex flex-col" : " h-full flex flex-col") : ""}${className ? ` ${className}` : ""}`}
       style={{
         ...themedCardStyle(theme, selected, { isPoppedOut }),
         ...style,
@@ -1698,7 +1748,8 @@ export const PanelCard = forwardRef<HTMLDivElement, PanelCardProps>(function Pan
       ) : (
         <>
           {children}
-          {onTogglePopout && isPoppedOut && (
+          {/* `chromeless` popped cards delegate the X to FloatChrome. */}
+          {onTogglePopout && isPoppedOut && !chromeless && (
             <div
               className="absolute right-1.5 z-10"
               style={{ top: "calc(var(--pc-header-h, 32px) / 2 - 10px)" }}
@@ -2040,7 +2091,8 @@ export function AiRequestCard({
       </div>
     </PanelCard>
   );
-  if (isPoppedOut) return <FloatCard cardKey={popKey}>{card}</FloatCard>;
+  // Popped: AF's FloatHost wraps this in a (bare) FloatWindow — the AiRequest
+  // body keeps its bespoke header until Stage 6. Docked: render inline.
   return card;
 }
 

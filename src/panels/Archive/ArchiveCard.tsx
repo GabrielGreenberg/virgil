@@ -9,7 +9,6 @@ import {
 import { useCompressedLines } from "@/components/editor-layout/contexts/card-display";
 import { useCardTheme } from "@/hooks/usePanelTheme";
 import { usePoppedCards } from "@/hooks/usePoppedCards";
-import { FloatCard } from "@/components/FloatingCards";
 import { normalizeRichContent } from "@/lib/footnote-content";
 import { MIME_ARCHIVE_ANCHOR } from "@/lib/marginalia";
 import { popKey } from "@/panels/panel-registry";
@@ -109,11 +108,11 @@ export function ArchiveCard({
       extraDataAttrs={{ "data-card-key": cardKey, ...(extraDataAttrs || {}) }}
       onTogglePopout={onToggleFromCtx}
       isPoppedOut={isPoppedOut}
+      chromeless={isPoppedOut}
       cardKey={cardKey}
       compressed={compressed}
       compressedSummary={compressedSummary}
     />
   );
-  if (isPoppedOut) return <FloatCard cardKey={cardKey}>{card}</FloatCard>;
   return card;
 }

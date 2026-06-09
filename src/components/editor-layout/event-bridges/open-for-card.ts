@@ -37,7 +37,8 @@ export interface SplitSource {
 }
 
 export interface OpenForCardArgs {
-  /** `data-omni-entry` key, e.g. "footnote:abc". */
+  /** `data-omni-entry` key — the omni item id, which IS `cardPopKey(kind,id)`,
+   *  e.g. "float:card:footnote:abc". */
   omniKey: string;
   /** Selector for the native-panel card, e.g. `[data-link-card="footnote:abc"]`. */
   entrySelector: string;

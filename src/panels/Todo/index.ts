@@ -1,3 +1,3 @@
 export { default } from "./TodoPanel";
-export { TodoRow } from "./TodoRow";
+export { TodoRow, TodoDoneToggle } from "./TodoRow";
 export { buildTodoOmniItems } from "./omni";

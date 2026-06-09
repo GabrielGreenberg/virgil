@@ -8,7 +8,6 @@ import { useCardTheme } from "@/hooks/usePanelTheme";
 import { usePanelBodyStyle } from "@/hooks/usePanelTypography";
 import { useTabIndent } from "@/hooks/useTabIndent";
 import { usePoppedCards } from "@/hooks/usePoppedCards";
-import { FloatCard } from "./FloatingCards";
 import { MIME_CITATION } from "@/lib/marginalia";
 import { attachClampedDragGhost } from "@/lib/drag-ghost";
 import { popKey as buildPopKey } from "@/panels/panel-registry";
@@ -584,6 +583,5 @@ export default function BibEntryCard({
       )}
     </PanelCard>
   );
-  if (isPoppedOut) return <FloatCard cardKey={popKey}>{card}</FloatCard>;
   return card;
 }

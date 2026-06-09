@@ -15,7 +15,6 @@ import {
   hasTextAnchor,
 } from "@/links/links";
 import { usePoppedCards } from "@/hooks/usePoppedCards";
-import { FloatCard } from "@/components/FloatingCards";
 import { cardPopKey } from "@/panels/panel-registry";
 import { useAnchoredCard } from "@/links/_shared/useAnchoredCard";
 import { cardStore } from "@/links/_shared/anchored-card-store";
@@ -89,6 +88,7 @@ export function HighlightCard({
       theme={theme}
       selected={isSelected}
       isPoppedOut={isPoppedOut}
+      chromeless={isPoppedOut}
       onTogglePopout={onToggleFromCtx}
       cardKey={cardKey}
       isCollapsed={compressed}
@@ -166,6 +166,5 @@ export function HighlightCard({
     </PanelCard>
   );
 
-  if (isPoppedOut) return <FloatCard cardKey={cardKey}>{cardEl}</FloatCard>;
   return cardEl;
 }

@@ -21,6 +21,7 @@ import { useEffect, useState } from "react";
 import type { DropCtx, DropSession, DropSpec, Placement } from "./types";
 import { hitTest } from "./hit-test";
 import { lookupSpec } from "./registry";
+import { parseAnyKey } from "@/floats/float-key";
 
 // ── Per-doc context ──────────────────────────────────────────────────
 
@@ -94,12 +95,13 @@ export function beginDropSession(opts: {
 }): boolean {
   if (session) return false; // first gesture wins
   if (!activeCtx) return false;
-  const sep = opts.cardKey.indexOf(":");
-  if (sep <= 0) return false;
-  const kind = opts.cardKey.slice(0, sep);
-  // `lookupSpec` takes the FULL cardKey: most kinds dispatch on the prefix,
-  // but `textobject:linkedRange:<id>` routes to the text-range-move spec
-  // (a plain selection moves as a slice, not a block) — L3f-2.
+  // `parseAnyKey` reads both the `float:` grammar and legacy/transient keys.
+  const parsed = parseAnyKey(opts.cardKey);
+  if (!parsed) return false;
+  const kind = parsed.kind;
+  // `lookupSpec` takes the FULL cardKey: most kinds dispatch on the kind, but
+  // `linkedRange` routes to the text-range-move spec (a plain selection moves
+  // as a slice, not a block) — L3f-2.
   const spec = lookupSpec(opts.cardKey);
   if (!spec) return false;
 
@@ -334,12 +336,13 @@ function finishApply(
 // ── Source-float CSS toggle ──────────────────────────────────────────
 
 function markSourceFloat(cardKey: string, active: boolean) {
-  const sep = cardKey.indexOf(":");
-  if (sep <= 0) return;
-  const id = cardKey.slice(sep + 1);
-  // Look for the FloatingPanel containing this card and toggle the
-  // dimming attr. The selector targets the pristine card wrapper inside
-  // FloatCard; from there, ascend to the floating panel root.
+  // Colon-safe id (the entity id = `data-pristine-card-id`), via the dual-read
+  // parser — a float: key's id is everything after the 3rd colon.
+  const id = parseAnyKey(cardKey)?.id;
+  if (!id) return;
+  // Look for the FloatingPanel containing this card and toggle the dimming
+  // attr. The selector targets the pristine card wrapper inside FloatWindow;
+  // from there, ascend to the floating panel root.
   const wrappers = document.querySelectorAll<HTMLElement>(
     `[data-pristine-card-id="${cssEscapeAttr(id)}"]`,
   );

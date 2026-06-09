@@ -14,6 +14,7 @@
  */
 
 import { removeLinkedAnchor } from "@/links/links";
+import { parseAnyKey } from "@/floats/float-key";
 import type { DropCtx, DropSpec, ParagraphAnchorApi } from "../types";
 
 export interface ParagraphSideSpecOptions {
@@ -87,6 +88,7 @@ export function textObjectSideReanchorSpec(
 }
 
 function extractId(cardKey: string): string | null {
-  const sep = cardKey.indexOf(":");
-  return sep > 0 ? cardKey.slice(sep + 1) : null;
+  // Colon-safe via the dual-read parser (handles `float:card:<kind>:<id>` and
+  // the legacy `<prefix>:<id>` shape).
+  return parseAnyKey(cardKey)?.id ?? null;
 }

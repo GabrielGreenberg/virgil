@@ -99,7 +99,7 @@ describe("textObjectPopoutKey / parseTextObjectPopoutKey", () => {
     ];
     for (const ref of refs) {
       const key = textObjectPopoutKey(ref);
-      expect(key).toBe(`textobject:${ref.kind}:${ref.id}`);
+      expect(key).toBe(`float:textobject:${ref.kind}:${ref.id}`);
       const parsed = parseTextObjectPopoutKey(key);
       expect(parsed).toEqual(ref);
     }

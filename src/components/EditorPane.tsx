@@ -71,7 +71,7 @@ import {
 } from "./editor-layout/chrome-config";
 import OutlinePanel from "@/panels/Outline/OutlinePanel";
 import ExamplesPanel from "@/panels/Examples";
-import { PANEL_REGISTRY } from "@/panels/panel-registry";
+import { PANEL_REGISTRY, cardPopKey } from "@/panels/panel-registry";
 import { SectionLozenge } from "./editor-layout/section-lozenge";
 import { useCodePaneSplit } from "./editor-layout/CodePaneSplitContext";
 import { EditorScrollbar } from "./editor-layout/editor-scrollbar";
@@ -123,7 +123,12 @@ import { PristineCardsProvider } from "./editor-layout/contexts/pristine-cards";
 import { CitationDisplayProvider } from "./editor-layout/contexts/citation-display";
 import { DockOutline } from "./editor-layout/DockOutline";
 import { CardLiftOutline } from "./CardLiftOutline";
-import { renderPoppedCard, type PoppedCardDeps } from "./editor-layout/floating-cards";
+import { type PoppedCardDeps } from "./editor-layout/floating-cards";
+import { FloatHost } from "@/floats/FloatHost";
+import { parseAnyKey, migrateLegacyKeyToFloat } from "@/floats/float-key";
+import { textObjectPopoutKey } from "@/text-objects/text-object-registry";
+import { CARD_REGISTRY } from "@/cards/card-registry";
+import { isCardKind } from "@/cards/predicates";
 import { PoppedCardsContext, type PoppedCardsValue } from "@/hooks/usePoppedCards";
 import { DropModeProvider } from "./drop-mode/DropModeProvider";
 import { useAnchorRebindBridge } from "./editor-layout/event-bridges/anchor-rebind";
@@ -212,7 +217,7 @@ import { useMarginEdit, MARGIN_AXIS } from "@/hooks/useMarginEdit";
 import type { FocusState } from "@/hooks/useFocusMode";
 import type { OmniCategory } from "@/panels/Omni";
 import type { SectionPathEntry } from "@/panels/Outline";
-import type { PanelKind } from "@/panels/_shared/types";
+import type { PanelKind, CardKind } from "@/panels/_shared/types";
 import type { AiRequest } from "@/lib/types";
 import {
   useCardLifecycleApi,
@@ -323,13 +328,13 @@ export interface EditorPaneViewPrefs {
   redockPanel: (id: PanelId, slotKey: DockSlotKey) => void;
 
   // ── Card popout ─────────────────────────────────────────────────
-  /** Toggle a card's popped-out state. Key shape: panel cards use
-   *  `${kind}:${id}` (`note:`, `todo:`, `example:`, etc.); block-level
-   *  TextObject popouts use the unified `textobject:${kind}:${id}`
-   *  shape introduced in Phase D10. After Phase E, selection lifts
-   *  hydrate into `linkedRange` TextObjects so they take the same
-   *  unified path — there is no session-only float category left.
-   *  See `floating-cards.tsx`'s `renderPoppedCard` dispatcher. */
+  /** Toggle a card's popped-out state. Key shape: every float uses the
+   *  unified AF grammar `float:<domain>:<kind>:<id>` — card popouts via
+   *  `cardPopKey(kind,id)` (`float:card:note:…`), block-level TextObject
+   *  popouts via `textObjectPopoutKey` (`float:textobject:texBlock:…`).
+   *  Selection lifts hydrate into `linkedRange` TextObjects so they take
+   *  the same unified path — there is no session-only float category left.
+   *  See `FloatHost`'s `resolveFloatable` dispatcher. */
   toggleCardPopout: (key: string) => void;
   /** Pop the card *off* without re-docking. Used by float X buttons
    *  and by the PoppedCardsContext's `close` callback. */
@@ -338,6 +343,13 @@ export interface EditorPaneViewPrefs {
     key: string,
     rect: { x: number; y: number; width: number; height: number },
   ) => void;
+  /** Lockstep-remap a card's popout key across BOTH `poppedOutCards` AND
+   *  `cardFloatPositions`, so a card that morphs to another kind while popped
+   *  out (revision comment↔suggestion today; the A9 chevron generalizes this)
+   *  keeps its float alive at the same rect instead of vanishing — the stored
+   *  key bakes the kind, and `FloatHost.resolveFloatable` re-derives kind from
+   *  the key. No-op when `oldKey` isn't currently popped. */
+  remapCardPopKey: (oldKey: string, newKey: string) => void;
 
   // ── OmniHost helpers ────────────────────────────────────────────
   getOmniEnabled: (side: Side) => Set<OmniCategory>;
@@ -375,6 +387,9 @@ export interface EditorPaneViewPrefs {
       | { kind: "toolbar"; bucket: "actions" | "formatting" | "menus"; id: string }
       | { kind: "card"; key: string },
   ) => void;
+  /** Paint z-index for a popped float, derived from the MRU focus stack
+   *  (raise-on-click). Optional — the Reader shim omits it. */
+  cardFloatZIndex?: (key: string) => number;
 
   // ── Icon strip (view-controls pod + StripButton + OmniFilterMenu) ──
   /** Sidebar collapse / expand. Used by the view-controls pod's
@@ -773,7 +788,33 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
   const aiRequestsHook = useAiRequests(docId);
   const cutterHook = useCutter(docId, cutPristine);
   const reportsHook = useReports(docId, reportPristine);
-  const revisionsHook = useRevisions(docId);
+  const revisionsHookRaw = useRevisions(docId);
+  // Morph a revision card's kind (comment↔suggestion) AND, in lockstep, remap
+  // its popout key if it's currently floated — `convertCard` only flips
+  // `card.kind`, but the stored `float:card:<kind>:<id>` key bakes the kind and
+  // `FloatHost.resolveFloatable` re-derives kind from the key, so without the
+  // remap a popped-then-morphed card silently vanishes. `remapCardPopKey`
+  // no-ops when the card isn't floated, so this is safe from every trigger
+  // (docked dropdown, omni, or the FloatChrome title control). Generalizes to
+  // the A9 morph chevron.
+  const convertRevisionCard = useCallback(
+    (id: string, toKind: "comment" | "suggestion") => {
+      const fromCardKind: CardKind =
+        toKind === "suggestion" ? "revision-comment" : "revision-suggestion";
+      const toCardKind: CardKind =
+        toKind === "suggestion" ? "revision-suggestion" : "revision-comment";
+      revisionsHookRaw.convertCard(id, toKind);
+      viewPrefs?.remapCardPopKey(cardPopKey(fromCardKind, id), cardPopKey(toCardKind, id));
+    },
+    [revisionsHookRaw, viewPrefs],
+  );
+  // The hook threaded to every revision consumer (cardCtx, PaneRail/PaneRailBody,
+  // omni-host) with `convertCard` swapped for the popout-key-remapping wrapper —
+  // one chokepoint, so the morph survives regardless of which surface triggers it.
+  const revisionsHook = useMemo(
+    () => ({ ...revisionsHookRaw, convertCard: convertRevisionCard }),
+    [revisionsHookRaw, convertRevisionCard],
+  );
   const todosHook = useTodos(docId, todoPristine);
   const archiveHook = useArchive(docId);
   const footnotesHook = useFootnotes(docId, footnotePristine);
@@ -831,21 +872,25 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
       }>).detail;
       if (!detail || typeof detail.cardKey !== "string") return;
       const cardKey = detail.cardKey;
-      const sep = cardKey.indexOf(":");
-      if (sep <= 0) return;
-      const prefix = cardKey.slice(0, sep);
-      const id = cardKey.slice(sep + 1);
+      // Dual-read the dropped float's key (AF `float:` grammar + legacy).
+      // (Stage 5 retires this prefix path in favor of `Floatable.snapshotForStack`.)
+      const parsed = parseAnyKey(cardKey);
+      if (!parsed) return;
+      const id = parsed.id;
       const source = { docId: stackSourceRef.current.docId };
       let item: StackItemType | null = null;
       const mainEd = innerRef.current?.getEditor() ?? null;
-      if (prefix === "paragraph") {
+      if (parsed.domain === "textobject" && parsed.kind === "paragraph") {
         if (mainEd) item = snapshotParagraph(mainEd, id, source);
-      } else if (prefix === "heading") {
+      } else if (parsed.domain === "textobject" && parsed.kind === "heading") {
         if (mainEd) item = snapshotHeadingSection(mainEd, id, source);
-      } else {
-        // Card kinds — translate the cardKey prefix to a StackCardKind
-        // (e.g. `revision` → `comment`, `bib` → `bibliography`).
-        const stackKind = cardKeyPrefixToStackKind(prefix);
+      } else if (parsed.domain === "card" && isCardKind(parsed.kind)) {
+        // Translate the canonical kind → its legacy keyPrefix → StackCardKind
+        // (e.g. `revision-comment` → `revision` → `comment`; `bib` →
+        // `bibliography`). `cardKeyPrefixToStackKind` keys on the legacy prefix.
+        const stackKind = cardKeyPrefixToStackKind(
+          CARD_REGISTRY[parsed.kind].keyPrefix,
+        );
         if (stackKind && stackKind !== "example") {
           const cardData = resolveCardData(stackKind, id, {
             notesHook,
@@ -1071,7 +1116,10 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
   const popCardAtAnchor = useCallback(
     (cardKind: string, cardId: string, anchorRect: DOMRect | null) => {
       if (!viewPrefs) return;
-      const key = `${cardKind}:${cardId}`;
+      // Build the unified `float:card:<kind>:<id>` key. `cardKind` is the legacy
+      // popout prefix (e.g. `revision` → `revision-comment`); the canonicalizing
+      // helper maps it and matches the card's own `cardKey` (via cardPopKey).
+      const key = migrateLegacyKeyToFloat(`${cardKind}:${cardId}`);
       const pos = computeSpawnPosition(anchorRect, {
         width: POPUP_W,
         height: POPUP_H,
@@ -1094,10 +1142,11 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
   );
   if (viewPrefs) {
     const popped = viewPrefs.prefs.poppedOutCards;
-    // Phase D10 unified the key shape to `textobject:texBlock:<uuid>`;
-    // a `texBlock:<uuid>` fallback covers any pre-D10 keys still in
-    // prefs that the read-side migration hasn't rewritten yet.
+    // AF unified the key to `float:textobject:texBlock:<uuid>`; the
+    // `textobject:` (pre-flip) and bare `texBlock:` (pre-D10) fallbacks cover
+    // any keys the migration legs haven't rewritten yet.
     texBlockIsPoppedRef.current = (uuid) =>
+      popped.includes(textObjectPopoutKey({ kind: "texBlock", id: uuid })) ||
       popped.includes(`textobject:texBlock:${uuid}`) ||
       popped.includes(`texBlock:${uuid}`);
   }
@@ -1130,6 +1179,7 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
       getFloatPosition: (key) => viewPrefs.prefs.cardFloatPositions[key],
       setFloatPosition: viewPrefs.setCardFloatPosition,
       recordFocus: (key) => viewPrefs.focusFloating({ kind: "card", key }),
+      floatZIndex: viewPrefs.cardFloatZIndex,
     };
   }, [viewPrefs]);
 
@@ -2995,18 +3045,18 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
               />
             </>
           )}
-          {/* Per-doc card popouts — paragraph / heading / example floats
-              and individual card popouts (notes, footnotes, citations,
-              etc.). Each entry in `prefs.poppedOutCards` keys a
-              `${kind}:${id}` to a card kind handled by `renderPoppedCard`,
-              which wraps the card in a `<FloatCard>` (portal to body).
-              Reader passes no `viewPrefs` → block stays dormant; main
-              app gates on `!zenMode` so Zen retains popout state but
-              hides the floats. */}
-          {viewPrefs && !viewPrefs.zenMode &&
-            viewPrefs.prefs.poppedOutCards.map((key) =>
-              renderPoppedCard(key, popoutsDeps),
-            )}
+          {/* Per-doc popouts — card floats (notes, footnotes, citations, …)
+              AND text-object floats (paragraph / heading / example blocks),
+              dispatched through AF's unified `FloatHost`. Each entry in
+              `prefs.poppedOutCards` keys a `Floatable` mounted in a
+              `FloatWindow`. Reader passes no `viewPrefs` → dormant; main app
+              gates on `!zenMode` so Zen retains popout state but hides floats. */}
+          {viewPrefs && !viewPrefs.zenMode && (
+            <FloatHost
+              keys={viewPrefs.prefs.poppedOutCards}
+              cardCtx={popoutsDeps}
+            />
+          )}
           {/* AI Window — modal opened from the shell's Virgil bar; mounted
               here so it reads this doc's per-doc hooks directly. Reader
               passes no `onAiWindowClose` so even if `aiWindowOpen` is

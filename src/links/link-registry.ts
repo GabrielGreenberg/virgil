@@ -117,8 +117,11 @@ export const DATA_LINK_CARD = "data-link-card";
 /** On panel cards with multiple incoming links. Space-separated link ids. */
 export const DATA_LINK_IDS = "data-link-ids";
 
-/** `${cardKind}:${cardId}` — the canonical value for `data-link-card`.
- *  Matches the format used by `popKey()` in `panel-registry.ts`. */
+/** `${cardKind}:${cardId}` — the canonical value for `data-link-card`. This is
+ *  a SEPARATE grammar from the popout `data-card-key` (`cardPopKey` →
+ *  `float:card:<kind>:<id>`): the link-atom layer keeps the flat `<kind>:<id>`
+ *  shape and is intentionally NOT migrated to the `float:` grammar. Do not
+ *  conflate the two. */
 export function linkCardKey(kind: CardKind, id: string): string {
   return `${kind}:${id}`;
 }

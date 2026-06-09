@@ -16,6 +16,7 @@
 import { Node as PMNode } from "@tiptap/pm/model";
 import { TextSelection } from "@tiptap/pm/state";
 import type { DropSpec, Placement } from "../types";
+import { parseAnyKey } from "@/floats/float-key";
 
 export interface BlockMoveOptions {
   /** Schema node name (e.g. "paragraph", "exampleBlock"). */
@@ -96,9 +97,9 @@ function locateSource(
   placement: Placement,
   cardKey: string,
 ): SourceInfo | null {
-  const sep = cardKey.indexOf(":");
-  if (sep <= 0) return null;
-  const uuid = cardKey.slice(sep + 1);
+  // Colon-safe id (e.g. `float:card:example:<uuid>` → `<uuid>`).
+  const uuid = parseAnyKey(cardKey)?.id;
+  if (!uuid) return null;
   const editor = placement.editor;
   let found: SourceInfo | null = null;
   editor.state.doc.descendants((node, pos) => {

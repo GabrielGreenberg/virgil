@@ -153,6 +153,21 @@ export function useReaderViewPrefs(): EditorPaneViewPrefs {
     },
     [],
   );
+  // Lockstep popout-key remap (a card morphing kind while popped). Mirrors the
+  // editor's `migratePoppedOutCards` over the shim's local state so the saved
+  // rect follows the key. Inert in practice (the Reader is read-only), but kept
+  // honest so `EditorPaneViewPrefs` is satisfiable without a cast.
+  const remapCardPopKey = useCallback((oldKey: string, newKey: string) => {
+    if (oldKey === newKey) return;
+    setPoppedOutCards((prev) =>
+      prev.includes(oldKey) ? prev.map((k) => (k === oldKey ? newKey : k)) : prev,
+    );
+    setCardFloatPositions((prev) => {
+      if (!(oldKey in prev)) return prev;
+      const { [oldKey]: rect, ...rest } = prev;
+      return { ...rest, [newKey]: rect };
+    });
+  }, []);
 
   // Build a `ViewPrefs` snapshot. dockSlots reflect the active panels
   // so OmniHost / PanelColumn render their content.
@@ -317,6 +332,7 @@ export function useReaderViewPrefs(): EditorPaneViewPrefs {
       toggleCardPopout,
       closeCardPopout,
       setCardFloatPosition,
+      remapCardPopKey,
       getOmniEnabled,
       getOmniHideAll: () => false,
       toggleOmniHideAllCards: () => {},
@@ -373,6 +389,7 @@ export function useReaderViewPrefs(): EditorPaneViewPrefs {
       toggleCardPopout,
       closeCardPopout,
       setCardFloatPosition,
+      remapCardPopKey,
     ],
   );
 }

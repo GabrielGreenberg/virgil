@@ -8,7 +8,6 @@ import {
 } from "@/components/panel-primitives";
 import { useCompressedLines } from "@/components/editor-layout/contexts/card-display";
 import { usePoppedCards } from "@/hooks/usePoppedCards";
-import { FloatCard } from "@/components/FloatingCards";
 import { popKey } from "@/panels/panel-registry";
 import type { LatexError, LatexErrorSeverity } from "@/lib/latex-errors";
 import { MIME_TEXT_INSERT } from "@/lib/marginalia";
@@ -246,6 +245,8 @@ export function ErrorCard({
     </PanelCard>
   );
 
-  if (isPoppedOut) return <FloatCard cardKey={cardKey}>{card}</FloatCard>;
+  // `error` is ratified NOT poppable (audit §3.5): it has no `toFloatable`
+  // registration, so the float dispatcher never renders one. The dead popout
+  // path is fully gardened in Stage 6.
   return card;
 }

@@ -7,7 +7,6 @@ import {
   compressedBodyStyle,
 } from "@/components/panel-primitives";
 import { useCompressedLines } from "@/components/editor-layout/contexts/card-display";
-import { FloatCard } from "@/components/FloatingCards";
 import { useCardTheme } from "@/hooks/usePanelTheme";
 import { usePanelBodyStyle } from "@/hooks/usePanelTypography";
 import { useTabIndent } from "@/hooks/useTabIndent";
@@ -128,6 +127,7 @@ export function ExampleCard({
       }}
       onTogglePopout={onToggleFromCtx}
       isPoppedOut={isPoppedOut}
+      chromeless={isPoppedOut}
       cardKey={cardKey}
       isCollapsed={compressed}
       data-link-card={`example:${example.exampleId}`}
@@ -342,10 +342,9 @@ export function ExampleCard({
       )}
     </PanelCard>
   );
-  // When popped: wrap in FloatCard (portals to body, draggable/resizable).
+  // When popped: wrap in FloatWindow (portals to body, draggable/resizable).
   // The panel-side render checks isPopped and skips itself so the card
   // mounts only once, in the float.
-  if (isPoppedOut) return <FloatCard cardKey={cardKey}>{card}</FloatCard>;
   if (popped?.isPopped(cardKey) && !isPoppedOut) return null;
   return card;
 }

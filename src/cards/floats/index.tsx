@@ -27,26 +27,36 @@ import type { ReactNode } from "react";
 import { NoteCard, HighlightCard } from "@/panels/Notes";
 import { FootnoteCard } from "@/panels/Footnotes";
 import { ArchiveCard } from "@/panels/Archive";
-import { CutterCommentCard, CutterSuggestionCard } from "@/panels/Cutter";
-import { TodoRow } from "@/panels/Todo";
+import { CutterCommentCard, CutterSuggestionCard, CutterSuggestionTrailing } from "@/panels/Cutter";
+import { TodoRow, TodoDoneToggle } from "@/panels/Todo";
 import { CitationCard } from "@/panels/Citations";
-import { RevisionCommentCard, RevisionSuggestionCard } from "@/panels/Revisions";
+import {
+  RevisionCommentCard,
+  RevisionSuggestionCard,
+  RevisionSuggestionTrailing,
+} from "@/panels/Revisions";
 import { ReportCard, ReportRequestCard } from "@/panels/Reports";
 import { ExampleCard } from "@/panels/Examples/ExampleCard";
 import BibEntryCard from "@/components/BibEntryCard";
-import { AiRequestCard } from "@/components/panel-primitives";
+import { AiRequestCard, CardChromeTrailing } from "@/components/panel-primitives";
 import { getLinkedTextObjectIds } from "@/links/links";
 import type {
   ReportCard as ReportCardData,
   ReportRequestCard as ReportRequestCardData,
 } from "@/lib/types";
-import type { Floatable } from "@/floats/types";
+import type { Floatable, FloatChromeSlots } from "@/floats/types";
+import { buildFloatKey } from "@/floats/float-key";
 import type { CardFloatCtx } from "../card-float-ctx";
 import type { CardKind } from "../types";
 import { CARD_REGISTRY, registerCardFloatable } from "../card-registry";
+import { CardKindHeader } from "@/components/panel-primitives";
 
 /** Shared shell for a card `Floatable`. `key`/`domain`/`surface` are uniform;
- *  `title` defaults to the kind label (AF refines via the card header). */
+ *  `title` defaults to the kind label. `renderBody()` is **headerless** — the
+ *  card passes `chromeless` so its in-card header is suppressed and AF's
+ *  `FloatChrome` (in `FloatWindow`) owns it; `chromeSlots.trailing` carries the
+ *  collab pill / per-card slot up into that chrome. `bareWindow` cards (bib/ai)
+ *  keep a bespoke in-body header for now (Stage 6 migrates them). */
 function cardFloatable(
   kind: CardKind,
   id: string,
@@ -55,10 +65,14 @@ function cardFloatable(
     jumpToSource: () => void;
     renderBody: () => ReactNode;
     title?: string;
+    chromeSlots?: Floatable["chromeSlots"];
+    bareWindow?: boolean;
   },
 ): Floatable {
   return {
-    key: `float:card:${kind}:${id}`,
+    // The canonical float key via the runtime-leaf SSOT builder — same string
+    // `cardPopKey(kind,id)` emits, never a hand-built `float:card:…` literal.
+    key: buildFloatKey({ domain: "card", kind, id }),
     domain: "card",
     kind,
     id,
@@ -66,9 +80,17 @@ function cardFloatable(
     title: opts.title ?? CARD_REGISTRY[kind].label,
     canJump: opts.canJump,
     jumpToSource: opts.jumpToSource,
-    snapshotForStack: () => null, // TODO(A0.7): wire resolveCardData + snapshotCard
+    chromeSlots: opts.chromeSlots,
+    bareWindow: opts.bareWindow,
+    snapshotForStack: () => null, // TODO(Stage 5): wire snapshotCard
     renderBody: opts.renderBody,
   };
+}
+
+/** Collab trailing for a card float — the claim pill / presence dots that the
+ *  card's docked header shows, hoisted into `FloatChrome`'s trailing slot. */
+function collabTrailing(panelKey: string, id: string): FloatChromeSlots {
+  return { trailing: <CardChromeTrailing panelKey={panelKey} cardId={id} /> };
 }
 
 registerCardFloatable("note", (id, ctx: CardFloatCtx) => {
@@ -76,6 +98,7 @@ registerCardFloatable("note", (id, ctx: CardFloatCtx) => {
   if (!note) return null;
   const canJump = getLinkedTextObjectIds(note).length > 0;
   return cardFloatable("note", id, {
+    chromeSlots: collabTrailing("note", id),
     canJump,
     jumpToSource: () => ctx.editorRef.current?.jumpToCard(note, null),
     renderBody: () => (
@@ -128,6 +151,7 @@ registerCardFloatable("footnote", (id, ctx: CardFloatCtx) => {
   if (!fn) return null;
   const isSelected = ctx.selectedFootnoteId === fn.footnoteId;
   return cardFloatable("footnote", id, {
+    chromeSlots: collabTrailing("footnote", id),
     canJump: true,
     jumpToSource: () => ctx.editorRef.current?.scrollToFootnote(fn.footnoteId, null),
     renderBody: () => (
@@ -153,6 +177,7 @@ registerCardFloatable("archive", (id, ctx: CardFloatCtx) => {
   if (!snippet) return null;
   const orphaned = ctx.anchoredIds && !ctx.anchoredIds.has(snippet.id);
   return cardFloatable("archive", id, {
+    chromeSlots: collabTrailing("archive", id),
     canJump: true,
     jumpToSource: () => ctx.editorRef.current?.jumpToCard(snippet, null),
     renderBody: () => (
@@ -179,6 +204,7 @@ registerCardFloatable("cutter-comment", (id, ctx: CardFloatCtx) => {
   if (!card || card.kind !== "comment") return null;
   const canJump = getLinkedTextObjectIds(card).length > 0;
   return cardFloatable("cutter-comment", id, {
+    chromeSlots: collabTrailing("cut", id),
     canJump,
     jumpToSource: () => ctx.editorRef.current?.jumpToCard(card, null),
     renderBody: () => (
@@ -201,6 +227,7 @@ registerCardFloatable("cutter-suggestion", (id, ctx: CardFloatCtx) => {
   if (!card || card.kind !== "suggestion") return null;
   const canJump = getLinkedTextObjectIds(card).length > 0;
   return cardFloatable("cutter-suggestion", id, {
+    chromeSlots: { trailing: <CutterSuggestionTrailing card={card} /> },
     canJump,
     jumpToSource: () => ctx.editorRef.current?.jumpToCard(card, null),
     renderBody: () => (
@@ -226,6 +253,7 @@ registerCardFloatable("report", (id, ctx: CardFloatCtx) => {
   if (!card) return null;
   const canJump = getLinkedTextObjectIds(card).length > 0;
   return cardFloatable("report", id, {
+    chromeSlots: collabTrailing("report", id),
     canJump,
     jumpToSource: () => ctx.editorRef.current?.jumpToCard(card, null),
     renderBody: () => (
@@ -250,6 +278,7 @@ registerCardFloatable("report-request", (id, ctx: CardFloatCtx) => {
   if (!card) return null;
   const canJump = getLinkedTextObjectIds(card).length > 0;
   return cardFloatable("report-request", id, {
+    chromeSlots: collabTrailing("report", id),
     canJump,
     jumpToSource: () => ctx.editorRef.current?.jumpToCard(card, null),
     renderBody: () => (
@@ -272,6 +301,7 @@ registerCardFloatable("todo", (id, ctx: CardFloatCtx) => {
   if (!item) return null;
   const canJump = getLinkedTextObjectIds(item).length > 0;
   return cardFloatable("todo", id, {
+    chromeSlots: { trailing: <TodoDoneToggle item={item} onToggle={ctx.toggleTodo} /> },
     canJump,
     jumpToSource: () => ctx.editorRef.current?.jumpToCard(item, null),
     renderBody: () => (
@@ -297,6 +327,7 @@ registerCardFloatable("bib", (id, ctx: CardFloatCtx) => {
   if (!entry) return null;
   const isCited = ctx.allEditorCitations.some((c) => c.keys.includes(entry.key));
   return cardFloatable("bib", id, {
+    bareWindow: true, // bespoke in-body header until Stage 6
     canJump: false,
     jumpToSource: () => {},
     renderBody: () => (
@@ -368,6 +399,20 @@ registerCardFloatable("revision-comment", (id, ctx: CardFloatCtx) => {
   if (!card || card.kind !== "comment") return null; // data discriminator stays
   const canJump = getLinkedTextObjectIds(card).length > 0;
   return cardFloatable("revision-comment", id, {
+    chromeSlots: {
+      ...collabTrailing("revision", id),
+      // Restore the comment↔suggestion morph control on popout (the docked
+      // CardKindDropdown is suppressed when the card renders chromeless).
+      title: (
+        <CardKindHeader
+          kind="revision-comment"
+          options={["revision-comment", "revision-suggestion"]}
+          onChange={(k) => {
+            if (k !== "revision-comment") ctx.convertRevisionCard(id, "suggestion");
+          }}
+        />
+      ),
+    },
     canJump,
     jumpToSource: () => ctx.editorRef.current?.jumpToCard(card, null),
     renderBody: () => (
@@ -390,6 +435,19 @@ registerCardFloatable("revision-suggestion", (id, ctx: CardFloatCtx) => {
   if (!card || card.kind !== "suggestion") return null;
   const canJump = getLinkedTextObjectIds(card).length > 0;
   return cardFloatable("revision-suggestion", id, {
+    chromeSlots: {
+      trailing: <RevisionSuggestionTrailing card={card} />,
+      // Restore the comment↔suggestion morph control on popout.
+      title: (
+        <CardKindHeader
+          kind="revision-suggestion"
+          options={["revision-comment", "revision-suggestion"]}
+          onChange={(k) => {
+            if (k !== "revision-suggestion") ctx.convertRevisionCard(id, "comment");
+          }}
+        />
+      ),
+    },
     canJump,
     jumpToSource: () => ctx.editorRef.current?.jumpToCard(card, null),
     renderBody: () => (
@@ -412,6 +470,7 @@ registerCardFloatable("ai", (id, ctx: CardFloatCtx) => {
   const req = ctx.aiRequests.find((r) => r.id === id);
   if (!req) return null;
   return cardFloatable("ai", id, {
+    bareWindow: true, // bespoke in-body header until Stage 6
     canJump: false,
     jumpToSource: () => {},
     renderBody: () => (

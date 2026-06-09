@@ -12,7 +12,6 @@ import { useCompressedLines } from "@/components/editor-layout/contexts/card-dis
 import { useCardTheme } from "@/hooks/usePanelTheme";
 import { getLinkedTextObjectIds } from "@/links/links";
 import { usePoppedCards } from "@/hooks/usePoppedCards";
-import { FloatCard } from "@/components/FloatingCards";
 import { normalizeRichContent } from "@/lib/footnote-content";
 import { cardPopKey } from "@/panels/panel-registry";
 import { useAnchoredCard } from "@/links/_shared/useAnchoredCard";
@@ -140,11 +139,13 @@ export function NoteCard({
       onHoverChange={(h) => { cardStore.setHover(h ? ac.ref : null); onHoverChange?.(h); }}
       onTogglePopout={onToggleFromCtx}
       isPoppedOut={isPoppedOut}
+      chromeless={isPoppedOut}
       cardKey={cardKey}
       compressed={compressed}
       compressedSummary={compressedSummary}
     />
   );
-  if (isPoppedOut) return <FloatCard cardKey={cardKey}>{card}</FloatCard>;
+  // Popped: AF's FloatHost wraps this body in a FloatWindow + FloatChrome; the
+  // card renders headerless (chromeless). Docked: render inline.
   return card;
 }

@@ -16,10 +16,8 @@
  */
 
 import type { Editor } from "@tiptap/react";
-import {
-  isTextObjectKind,
-  textObjectPopoutKey,
-} from "./text-object-registry";
+import { isTextObjectKind } from "./text-object-registry";
+import { buildFloatKey, migrateLegacyKeyToFloat } from "@/floats/float-key";
 import type { TextObjectKind } from "./types";
 
 /**
@@ -48,58 +46,44 @@ function resolveUuidToKind(
 }
 
 /**
- * Migrate legacy `list:<uuid>` / `example:<uuid>` popout keys to the
- * unified `textobject:<kind>:<id>` shape, walking the doc to infer the
- * actual kind. Returns the new array if anything changed (allowing
- * `prev !== next` change detection), else the original reference.
+ * Doc-aware popout-key migration (the post-load leg of the AF flip). Resolves
+ * ONE legacy `list:<uuid>` / `example:<uuid>` key to the unified
+ * `float:<domain>:<kind>:<id>` grammar by walking the doc to infer the kind.
+ * Returns the new key, or `null` to DROP it (an orphan). Applied in lockstep to
+ * both `poppedOutCards` and `cardFloatPositions` via `migratePoppedOutCards`.
  *
  * Disambiguation:
- *  - `list:<uuid>` — kind is `bulletList` or `orderedList`. Missing
- *    node → orphan, dropped with `console.warn`.
- *  - `example:<uuid>` — if a matching `exampleBlock` node exists, it's
- *    the in-editor popout; migrate. Otherwise it's the Examples
- *    *panel-card* prefix (a sibling of `note:`, `todo:`, `bib:`);
- *    pass through unchanged.
+ *  - `list:<uuid>` — `bulletList` or `orderedList` → `float:textobject:…`;
+ *    missing node → orphan, dropped (`null`) with a warn.
+ *  - `example:<uuid>` — a matching `exampleBlock` node → the in-editor block
+ *    (`float:textobject:exampleBlock:…`); otherwise the Examples *panel card*
+ *    (`float:card:example:…`).
+ *  - anything else — already `float:` (read-time leg) or a straggler legacy key
+ *    → normalized defensively (idempotent).
  */
-export function migrateLegacyPopoutKeys(
+export function migrateDocAwarePopoutKey(
   editor: Editor,
-  poppedOutCards: readonly string[],
-): readonly string[] {
-  const next: string[] = [];
-  let changed = false;
-  const orphans: string[] = [];
-  for (const key of poppedOutCards) {
-    if (key.startsWith("list:")) {
-      const uuid = key.slice("list:".length);
-      const kind = resolveUuidToKind(editor, uuid);
-      if (kind === "bulletList" || kind === "orderedList") {
-        next.push(textObjectPopoutKey({ kind, id: uuid }));
-        changed = true;
-        continue;
-      }
-      orphans.push(key);
-      changed = true;
-      continue;
+  key: string,
+): string | null {
+  if (key.startsWith("list:")) {
+    const uuid = key.slice("list:".length);
+    const kind = resolveUuidToKind(editor, uuid);
+    if (kind === "bulletList" || kind === "orderedList") {
+      return buildFloatKey({ domain: "textobject", kind, id: uuid });
     }
-    if (key.startsWith("example:")) {
-      const uuid = key.slice("example:".length);
-      const kind = resolveUuidToKind(editor, uuid);
-      if (kind === "exampleBlock") {
-        next.push(textObjectPopoutKey({ kind: "exampleBlock", id: uuid }));
-        changed = true;
-        continue;
-      }
-      // Not an in-editor exampleBlock — pass through as the Examples
-      // panel-card prefix.
-      next.push(key);
-      continue;
-    }
-    next.push(key);
-  }
-  if (orphans.length > 0) {
     console.warn(
-      `[postLoadMigrations] dropped ${orphans.length} orphan popout key(s) with no matching doc node: ${orphans.slice(0, 5).join(", ")}${orphans.length > 5 ? ", …" : ""}`,
+      `[postLoadMigrations] dropped orphan list popout key with no matching doc node: ${key}`,
     );
+    return null;
   }
-  return changed ? next : poppedOutCards;
+  if (key.startsWith("example:")) {
+    const uuid = key.slice("example:".length);
+    const kind = resolveUuidToKind(editor, uuid);
+    if (kind === "exampleBlock") {
+      return buildFloatKey({ domain: "textobject", kind: "exampleBlock", id: uuid });
+    }
+    // Not an in-editor exampleBlock — the Examples panel card.
+    return buildFloatKey({ domain: "card", kind: "example", id: uuid });
+  }
+  return migrateLegacyKeyToFloat(key);
 }

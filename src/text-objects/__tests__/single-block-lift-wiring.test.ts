@@ -89,7 +89,7 @@ describe("bodyless-kinds Chip 1 — blockquote + codeBlock lift wiring (L3g)", (
     for (const kind of MIGRATED) {
       const key = popoutKeyForLift({ kind, id: "ab12" });
       expect(key).toBe(textObjectPopoutKey({ kind, id: "ab12" }));
-      expect(key).toBe(`textobject:${kind}:ab12`);
+      expect(key).toBe(`float:textobject:${kind}:ab12`);
     }
   });
 
@@ -115,7 +115,7 @@ describe("bodyless-kinds Chip 2 — displayMath READ-ONLY atom lift wiring (L3h)
   it("popoutKeyForLift now returns the canonical key (was the L3g 'still null' control)", () => {
     const key = popoutKeyForLift({ kind: "displayMath", id: "ab12" });
     expect(key).toBe(textObjectPopoutKey({ kind: "displayMath", id: "ab12" }));
-    expect(key).toBe("textobject:displayMath:ab12");
+    expect(key).toBe("float:textobject:displayMath:ab12");
   });
 
   it("reuses the SAME shared SingleBlockBody as the prose kinds (one body, many kinds)", () => {
@@ -142,7 +142,7 @@ describe("bodyless-kinds Chip 3 — latexComment EDITABLE atom lift wiring (L3i)
   it("popoutKeyForLift now returns the canonical key (was the default null)", () => {
     const key = popoutKeyForLift({ kind: "latexComment", id: "ab12" });
     expect(key).toBe(textObjectPopoutKey({ kind: "latexComment", id: "ab12" }));
-    expect(key).toBe("textobject:latexComment:ab12");
+    expect(key).toBe("float:textobject:latexComment:ab12");
   });
 
   it("reuses the SAME shared SingleBlockBody as the prose + math kinds (one body, many kinds)", () => {
@@ -168,7 +168,7 @@ describe("bodyless-kinds Chip 4 — titleField lift wiring (L3j)", () => {
   it("popoutKeyForLift now returns the canonical key (was the default null)", () => {
     const key = popoutKeyForLift({ kind: "titleField", id: "ab12" });
     expect(key).toBe(textObjectPopoutKey({ kind: "titleField", id: "ab12" }));
-    expect(key).toBe("textobject:titleField:ab12");
+    expect(key).toBe("float:textobject:titleField:ab12");
   });
 
   it("reuses the SAME shared SingleBlockBody as the prose + atom kinds (one body, many kinds)", () => {
@@ -207,7 +207,7 @@ describe("bodyless-kinds Chip 6 — exampleItem sub-object lift wiring (L3l)", (
   it("popoutKeyForLift now returns the canonical key (was the default null)", () => {
     const key = popoutKeyForLift({ kind: "exampleItem", id: "ab12" });
     expect(key).toBe(textObjectPopoutKey({ kind: "exampleItem", id: "ab12" }));
-    expect(key).toBe("textobject:exampleItem:ab12");
+    expect(key).toBe("float:textobject:exampleItem:ab12");
   });
 
   it("registers its OWN bespoke ExampleItemBody — NOT the shared SingleBlockBody, NOT ListItemBody", () => {
@@ -238,7 +238,7 @@ describe("bodyless-kinds Chip 5 — listItem sub-object lift wiring (L3k)", () =
   it("popoutKeyForLift now returns the canonical key (was the default null)", () => {
     const key = popoutKeyForLift({ kind: "listItem", id: "ab12" });
     expect(key).toBe(textObjectPopoutKey({ kind: "listItem", id: "ab12" }));
-    expect(key).toBe("textobject:listItem:ab12");
+    expect(key).toBe("float:textobject:listItem:ab12");
   });
 
   it("registers its OWN bespoke ListItemBody — NOT the shared SingleBlockBody", () => {
@@ -279,7 +279,7 @@ describe("bodyless-kinds Chip 7 — figureBlock + graphicsBlock figure lift wiri
     for (const kind of FIGURE_KINDS) {
       const key = popoutKeyForLift({ kind, id: "ab12" });
       expect(key).toBe(textObjectPopoutKey({ kind, id: "ab12" }));
-      expect(key).toBe(`textobject:${kind}:ab12`);
+      expect(key).toBe(`float:textobject:${kind}:ab12`);
     }
   });
 
@@ -345,7 +345,7 @@ describe("bodyless-kinds — ALL 16 graspable kinds now lift (L3n completes the 
   it("every kind returns the canonical popoutKeyForLift (the lift is unconditional)", () => {
     for (const kind of ALL_KINDS) {
       expect(popoutKeyForLift({ kind, id: "ab12" })).toBe(
-        `textobject:${kind}:ab12`,
+        `float:textobject:${kind}:ab12`,
       );
     }
   });
