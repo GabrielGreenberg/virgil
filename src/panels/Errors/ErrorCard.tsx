@@ -78,6 +78,14 @@ export interface ErrorCardProps {
    *  document). Shown as a quoted header fragment, like revision cards. */
   snippet?: string;
   selected: boolean;
+  /** Panel-local expansion (R5: `error` is non-anchored — not in the shared
+   *  cardStore — so its expand axis lives in `ErrorsPanel`, independent of
+   *  selection like every other card post-A4). Drives the body compression. */
+  expanded: boolean;
+  /** Body-click composition (R1): select + expand. Idempotent set-true. */
+  onExpand: () => void;
+  /** The header expand chevron: toggle expansion only (never selection). */
+  onToggleExpanded: () => void;
   hasAnchor: boolean;
   onSelect: (id: string | null) => void;
   onJump?: (sourceEl: HTMLElement | null) => void;
@@ -93,6 +101,9 @@ export function ErrorCard({
   title,
   snippet,
   selected,
+  expanded,
+  onExpand,
+  onToggleExpanded,
   hasAnchor,
   onSelect,
   onJump,
@@ -109,7 +120,7 @@ export function ErrorCard({
     ?? (popped
       ? (anchor: DOMRect) => popped.toggleAtAnchor(cardKey, anchor)
       : undefined);
-  const compressed = !selected && !isPoppedOut;
+  const compressed = !expanded && !isPoppedOut;
   const compressedLines = useCompressedLines();
 
   // TODO(grip-redesign): drop-into-document via the grip is disabled
@@ -150,6 +161,7 @@ export function ErrorCard({
       onTogglePopout={onToggleFromCtx}
       cardKey={cardKey}
       isCollapsed={compressed}
+      onToggleExpanded={onToggleExpanded}
       onTrashClick={() => onDismiss(err.id)}
       extraCardClass=""
       className="focus:outline-none"
@@ -157,6 +169,7 @@ export function ErrorCard({
       onClick={(e) => {
         e.stopPropagation();
         onSelect(err.id);
+        onExpand();
         onJump?.((e.currentTarget as HTMLElement).closest('[data-card]') as HTMLElement | null);
       }}
       onKeyDown={(e) => {
