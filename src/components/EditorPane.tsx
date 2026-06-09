@@ -123,7 +123,12 @@ import { PristineCardsProvider } from "./editor-layout/contexts/pristine-cards";
 import { CitationDisplayProvider } from "./editor-layout/contexts/citation-display";
 import { DockOutline } from "./editor-layout/DockOutline";
 import { CardLiftOutline } from "./CardLiftOutline";
-import { renderPoppedCard, type PoppedCardDeps } from "./editor-layout/floating-cards";
+import { type PoppedCardDeps } from "./editor-layout/floating-cards";
+import { FloatHost } from "@/floats/FloatHost";
+import { parseAnyKey, migrateLegacyKeyToFloat } from "@/floats/float-key";
+import { textObjectPopoutKey } from "@/text-objects/text-object-registry";
+import { CARD_REGISTRY } from "@/cards/card-registry";
+import { isCardKind } from "@/cards/predicates";
 import { PoppedCardsContext, type PoppedCardsValue } from "@/hooks/usePoppedCards";
 import { DropModeProvider } from "./drop-mode/DropModeProvider";
 import { useAnchorRebindBridge } from "./editor-layout/event-bridges/anchor-rebind";
@@ -375,6 +380,9 @@ export interface EditorPaneViewPrefs {
       | { kind: "toolbar"; bucket: "actions" | "formatting" | "menus"; id: string }
       | { kind: "card"; key: string },
   ) => void;
+  /** Paint z-index for a popped float, derived from the MRU focus stack
+   *  (raise-on-click). Optional — the Reader shim omits it. */
+  cardFloatZIndex?: (key: string) => number;
 
   // ── Icon strip (view-controls pod + StripButton + OmniFilterMenu) ──
   /** Sidebar collapse / expand. Used by the view-controls pod's
@@ -831,21 +839,25 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
       }>).detail;
       if (!detail || typeof detail.cardKey !== "string") return;
       const cardKey = detail.cardKey;
-      const sep = cardKey.indexOf(":");
-      if (sep <= 0) return;
-      const prefix = cardKey.slice(0, sep);
-      const id = cardKey.slice(sep + 1);
+      // Dual-read the dropped float's key (AF `float:` grammar + legacy).
+      // (Stage 5 retires this prefix path in favor of `Floatable.snapshotForStack`.)
+      const parsed = parseAnyKey(cardKey);
+      if (!parsed) return;
+      const id = parsed.id;
       const source = { docId: stackSourceRef.current.docId };
       let item: StackItemType | null = null;
       const mainEd = innerRef.current?.getEditor() ?? null;
-      if (prefix === "paragraph") {
+      if (parsed.domain === "textobject" && parsed.kind === "paragraph") {
         if (mainEd) item = snapshotParagraph(mainEd, id, source);
-      } else if (prefix === "heading") {
+      } else if (parsed.domain === "textobject" && parsed.kind === "heading") {
         if (mainEd) item = snapshotHeadingSection(mainEd, id, source);
-      } else {
-        // Card kinds — translate the cardKey prefix to a StackCardKind
-        // (e.g. `revision` → `comment`, `bib` → `bibliography`).
-        const stackKind = cardKeyPrefixToStackKind(prefix);
+      } else if (parsed.domain === "card" && isCardKind(parsed.kind)) {
+        // Translate the canonical kind → its legacy keyPrefix → StackCardKind
+        // (e.g. `revision-comment` → `revision` → `comment`; `bib` →
+        // `bibliography`). `cardKeyPrefixToStackKind` keys on the legacy prefix.
+        const stackKind = cardKeyPrefixToStackKind(
+          CARD_REGISTRY[parsed.kind].keyPrefix,
+        );
         if (stackKind && stackKind !== "example") {
           const cardData = resolveCardData(stackKind, id, {
             notesHook,
@@ -1071,7 +1083,10 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
   const popCardAtAnchor = useCallback(
     (cardKind: string, cardId: string, anchorRect: DOMRect | null) => {
       if (!viewPrefs) return;
-      const key = `${cardKind}:${cardId}`;
+      // Build the unified `float:card:<kind>:<id>` key. `cardKind` is the legacy
+      // popout prefix (e.g. `revision` → `revision-comment`); the canonicalizing
+      // helper maps it and matches the card's own `cardKey` (via cardPopKey).
+      const key = migrateLegacyKeyToFloat(`${cardKind}:${cardId}`);
       const pos = computeSpawnPosition(anchorRect, {
         width: POPUP_W,
         height: POPUP_H,
@@ -1094,10 +1109,11 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
   );
   if (viewPrefs) {
     const popped = viewPrefs.prefs.poppedOutCards;
-    // Phase D10 unified the key shape to `textobject:texBlock:<uuid>`;
-    // a `texBlock:<uuid>` fallback covers any pre-D10 keys still in
-    // prefs that the read-side migration hasn't rewritten yet.
+    // AF unified the key to `float:textobject:texBlock:<uuid>`; the
+    // `textobject:` (pre-flip) and bare `texBlock:` (pre-D10) fallbacks cover
+    // any keys the migration legs haven't rewritten yet.
     texBlockIsPoppedRef.current = (uuid) =>
+      popped.includes(textObjectPopoutKey({ kind: "texBlock", id: uuid })) ||
       popped.includes(`textobject:texBlock:${uuid}`) ||
       popped.includes(`texBlock:${uuid}`);
   }
@@ -1130,6 +1146,7 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
       getFloatPosition: (key) => viewPrefs.prefs.cardFloatPositions[key],
       setFloatPosition: viewPrefs.setCardFloatPosition,
       recordFocus: (key) => viewPrefs.focusFloating({ kind: "card", key }),
+      floatZIndex: viewPrefs.cardFloatZIndex,
     };
   }, [viewPrefs]);
 
@@ -2995,18 +3012,18 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
               />
             </>
           )}
-          {/* Per-doc card popouts — paragraph / heading / example floats
-              and individual card popouts (notes, footnotes, citations,
-              etc.). Each entry in `prefs.poppedOutCards` keys a
-              `${kind}:${id}` to a card kind handled by `renderPoppedCard`,
-              which wraps the card in a `<FloatCard>` (portal to body).
-              Reader passes no `viewPrefs` → block stays dormant; main
-              app gates on `!zenMode` so Zen retains popout state but
-              hides the floats. */}
-          {viewPrefs && !viewPrefs.zenMode &&
-            viewPrefs.prefs.poppedOutCards.map((key) =>
-              renderPoppedCard(key, popoutsDeps),
-            )}
+          {/* Per-doc popouts — card floats (notes, footnotes, citations, …)
+              AND text-object floats (paragraph / heading / example blocks),
+              dispatched through AF's unified `FloatHost`. Each entry in
+              `prefs.poppedOutCards` keys a `Floatable` mounted in a
+              `FloatWindow`. Reader passes no `viewPrefs` → dormant; main app
+              gates on `!zenMode` so Zen retains popout state but hides floats. */}
+          {viewPrefs && !viewPrefs.zenMode && (
+            <FloatHost
+              keys={viewPrefs.prefs.poppedOutCards}
+              cardCtx={popoutsDeps}
+            />
+          )}
           {/* AI Window — modal opened from the shell's Virgil bar; mounted
               here so it reads this doc's per-doc hooks directly. Reader
               passes no `onAiWindowClose` so even if `aiWindowOpen` is

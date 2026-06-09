@@ -38,6 +38,7 @@ import type { EditorHandle } from "@/components/Editor";
 import { buildEditorExtensions } from "@/lib/editor-extensions";
 import { useDocWriteHandleOrNull } from "@/components/editor-layout/DocPipeline";
 import { usePoppedCards } from "@/hooks/usePoppedCards";
+import { parseAnyKey } from "@/floats/float-key";
 import { useEditorChrome } from "@/components/editor-layout/chrome-context";
 import { viewToggleClasses } from "@/components/editor-layout/chrome-config";
 import {
@@ -95,7 +96,7 @@ export function FigureBody({
   // from the cardKey (`textobject:<kind>:<uuid>`). Resolving the source node by
   // (kind, uuid) — not uuid alone — is collision-proof, since figureBlock and
   // graphicsBlock uuids are minted from separate id sets.
-  const kind = cardKey.split(":")[1] as FigureKind;
+  const kind = (parseAnyKey(cardKey)?.kind ?? cardKey.split(":")[1]) as FigureKind;
 
   const initial = useMemo(() => {
     let blockJson: JSONContent | null = null;

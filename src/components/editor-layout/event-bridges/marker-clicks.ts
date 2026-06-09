@@ -5,6 +5,7 @@ import type { CardKind } from "@/panels/_shared/types";
 import type { EntityKind } from "@/links/_shared/entity-hover";
 import { suppressNextPlacement } from "@/links/_shared/usePlacement";
 import { openForCard } from "./open-for-card";
+import { cardPopKey } from "@/panels/panel-registry";
 
 /** EntityKind → routing config for `virgil-linked-anchor-click`. Mode B
  *  text-range clicks fall into one of these; inline atoms (footnote,
@@ -303,7 +304,7 @@ export function useMarkerClickBridges(deps: {
 
       const entrySelector =
         route.entrySelectorBase === "data-card-key"
-          ? `[data-card-key="${route.omniPrefix}:${id}"]`
+          ? `[data-card-key="${cardPopKey(detail.kind as CardKind, id)}"]`
           : `[${route.entrySelectorBase}="${id}"]`;
 
       const clickY: number | undefined =

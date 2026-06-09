@@ -12,12 +12,46 @@ import {
 import { usePoppedCards } from "@/hooks/usePoppedCards";
 import { usePanelBodyStyle } from "@/hooks/usePanelTypography";
 import { useTabIndent } from "@/hooks/useTabIndent";
-import { FloatCard } from "@/components/FloatingCards";
 import { popKey } from "@/panels/panel-registry";
 import { useAnchoredCard } from "@/links/_shared/useAnchoredCard";
 import { cardStore } from "@/links/_shared/anchored-card-store";
 
 const theme = CARD_THEMES.todo;
+
+/** The done/undone checkbox shown in a Todo's header (docked) and its float
+ *  chrome trailing slot. Exported so the `toFloatable` factory can place the
+ *  same control in `FloatChrome` without duplicating the SVG. */
+export function TodoDoneToggle({
+  item,
+  onToggle,
+}: {
+  item: TodoItem;
+  onToggle: (id: string) => void;
+}) {
+  return (
+    <button
+      onClick={(e) => {
+        e.stopPropagation();
+        onToggle(item.id);
+      }}
+      onMouseDown={(e) => e.stopPropagation()}
+      className="shrink-0 bg-transparent p-0"
+      data-hint={item.done ? "Undo done" : "Mark done"}
+      data-hint-pos="above"
+    >
+      {item.done ? (
+        <svg width="14" height="14" viewBox="0 0 16 16" fill="none">
+          <rect x="1" y="1" width="14" height="14" rx="3" fill="#ece9e4" stroke="#b5b0aa" strokeWidth="1.5" />
+          <path d="M4.5 8l2.5 2.5 4.5-5" stroke="#1c1917" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" />
+        </svg>
+      ) : (
+        <svg width="14" height="14" viewBox="0 0 16 16" fill="none">
+          <rect x="1" y="1" width="14" height="14" rx="3" stroke="#b5b0aa" strokeWidth="1.5" />
+        </svg>
+      )}
+    </button>
+  );
+}
 
 export function TodoRow({
   item,
@@ -93,6 +127,7 @@ export function TodoRow({
       theme={theme}
       selected={selected}
       isPoppedOut={isPoppedOut}
+      chromeless={isPoppedOut}
       onTogglePopout={onToggleFromCtx}
       cardKey={cardKey}
       isCollapsed={compressed}
@@ -125,29 +160,7 @@ export function TodoRow({
       kind="todo"
       canJump={isAnchored && !!onJump}
       onJump={(e) => onJump?.((e.currentTarget as HTMLElement).closest('[data-card]') as HTMLElement | null)}
-      headerTrailing={
-        <button
-          onClick={(e) => {
-            e.stopPropagation();
-            onToggle(item.id);
-          }}
-          onMouseDown={(e) => e.stopPropagation()}
-          className="shrink-0 bg-transparent p-0"
-          data-hint={item.done ? "Undo done" : "Mark done"}
-          data-hint-pos="above"
-        >
-          {item.done ? (
-            <svg width="14" height="14" viewBox="0 0 16 16" fill="none">
-              <rect x="1" y="1" width="14" height="14" rx="3" fill="#ece9e4" stroke="#b5b0aa" strokeWidth="1.5" />
-              <path d="M4.5 8l2.5 2.5 4.5-5" stroke="#1c1917" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" />
-            </svg>
-          ) : (
-            <svg width="14" height="14" viewBox="0 0 16 16" fill="none">
-              <rect x="1" y="1" width="14" height="14" rx="3" stroke="#b5b0aa" strokeWidth="1.5" />
-            </svg>
-          )}
-        </button>
-      }
+      headerTrailing={<TodoDoneToggle item={item} onToggle={onToggle} />}
     >
       <div className={`px-3 pt-1.5 pb-2${isPoppedOut ? " flex-1 min-h-0 overflow-auto flex flex-col" : ""}`}>
         <CardTitleInput
@@ -185,6 +198,5 @@ export function TodoRow({
       </div>
     </PanelCard>
   );
-  if (isPoppedOut) return <FloatCard cardKey={cardKey}>{card}</FloatCard>;
   return card;
 }

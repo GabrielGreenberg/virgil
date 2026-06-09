@@ -21,6 +21,7 @@ import {
 import { sectionBlockDoms } from "@/lib/section-dom";
 import { findLinkedAnchorRange } from "@/lib/linked-anchor-range";
 import { resolveInlineContextElement } from "@/lib/text-metrics";
+import { buildFloatKey, parseAnyKey } from "@/floats/float-key";
 import {
   topLevelDropAdapter,
   listItemDropAdapter,
@@ -38,30 +39,13 @@ import type {
 } from "./types";
 
 /**
- * Shared "how tall can a popout be" policy — the maximum height of any
- * popped-out card as a fraction of the viewport, applied as a MAX (never a
- * floor; short content opens at its natural height). Consumed by BOTH the
- * lifted-overlay capture cap in `TextObjectGrabHandle` (caps the captured
- * `sourceHeight` that feeds the ghost AND the released popout for every
- * lifted kind) and the instant-popout auto-fit grow cap in `FloatingCards`
- * — one policy, so a popped section always fits on screen and scrolls
- * internally for the overflow. User-chosen 2026-06-01 (the 50–60% range);
- * supersedes the old per-site 0.4 auto-fit cap (Issue-13).
+ * Shared "how tall can a popout be" policy. **Relocated to the AF float
+ * subsystem** (`@/floats/float-policy`) — it is a *float* policy (Issue-13),
+ * consumed by both the lifted-overlay capture cap in `TextObjectGrabHandle`
+ * and the instant-popout auto-fit grow cap in the float window. Re-exported
+ * here so existing `text-object-registry` importers keep resolving.
  */
-export const POPOUT_MAX_VH = 0.55;
-
-/**
- * Apply the shared {@link POPOUT_MAX_VH} cap to a popout-related height.
- * A MAX, not a floor — short content (`naturalHeight < cap`) is returned
- * unchanged. One function for BOTH cap sites (the lifted-overlay capture cap
- * and the instant-popout auto-fit grow cap) so they can never drift.
- */
-export function capPopoutHeight(
-  naturalHeight: number,
-  viewportHeight: number,
-): number {
-  return Math.min(naturalHeight, Math.floor(viewportHeight * POPOUT_MAX_VH));
-}
+export { POPOUT_MAX_VH, capPopoutHeight } from "@/floats/float-policy";
 
 // ---------------------------------------------------------------------------
 // Per-kind action sets — see ACTION-MENU-DIAGNOSIS.md cluster C1.
@@ -1054,22 +1038,20 @@ export function textObjectForNode(node: PMNode): TextObjectRef | null {
  * `texBlock:<id>` / `example:<id>` / `selection:<id>` keys to this shape.
  */
 export function textObjectPopoutKey(ref: TextObjectRef): string {
-  return `textobject:${ref.kind}:${ref.id}`;
+  return buildFloatKey({ domain: "textobject", kind: ref.kind, id: ref.id });
 }
 
 /**
- * Parse a `textobject:<kind>:<id>` popout key back into a TextObjectRef.
- * Returns null if the key doesn't match the shape or the kind is unknown.
+ * Parse a text-object popout key back into a TextObjectRef. **Dual-read** (the
+ * phased AF flip): handles BOTH the new `float:textobject:<kind>:<id>` grammar
+ * AND the legacy `textobject:<kind>:<id>` shape (pre-flip persisted keys + drags
+ * still in flight). Returns null for any non-textobject / unknown-kind key.
  */
 export function parseTextObjectPopoutKey(key: string): TextObjectRef | null {
-  if (!key.startsWith("textobject:")) return null;
-  const rest = key.slice("textobject:".length);
-  const sep = rest.indexOf(":");
-  if (sep <= 0) return null;
-  const kind = rest.slice(0, sep);
-  const id = rest.slice(sep + 1);
-  if (!isTextObjectKind(kind) || !id) return null;
-  return { kind: kind, id };
+  const parsed = parseAnyKey(key);
+  if (!parsed || parsed.domain !== "textobject") return null;
+  if (!isTextObjectKind(parsed.kind) || !parsed.id) return null;
+  return { kind: parsed.kind, id: parsed.id };
 }
 
 /**

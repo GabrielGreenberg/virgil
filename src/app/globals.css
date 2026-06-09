@@ -1366,12 +1366,12 @@ textarea,
    The overlay + header portal to document.body (`position: fixed`, set in
    LiftedTextOverlay.tsx) — the SAME layer released floats (FloatingPanel)
    and the drop indicator use — and this z-index puts them at the RELEASED
-   float layer (FloatCard's `1200 + indexHint` in FloatingCards.tsx), not a
+   float layer (FloatWindow's `FLOAT_Z_BASE + …` in src/floats/), not a
    magic number. The drag popout IS the released popout that hasn't landed
    yet, so it stacks in that same top layer: above the Virgil bar (sticky
    z:30 in EditorLayout.tsx), the pod caps (z:30/31), and the rest of the
    app chrome — exactly where it lands the instant it releases into a
-   FloatCard, so drag and release are stacking-identical. It stays BELOW
+   FloatWindow, so drag and release are stacking-identical. It stays BELOW
    the drop-mode indicator (z:9999, body-fixed, see drop-mode/Indicator.tsx)
    so the blue insertion bar still composes on top during a ghost-mode move,
    same as over a released float (Issue-11).

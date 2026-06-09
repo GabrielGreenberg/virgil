@@ -21,7 +21,6 @@ import {
 import { useCardTheme } from "@/hooks/usePanelTheme";
 import { usePanelBodyStyle } from "@/hooks/usePanelTypography";
 import { usePoppedCards } from "@/hooks/usePoppedCards";
-import { FloatCard } from "@/components/FloatingCards";
 import BibEntryCard from "@/components/BibEntryCard";
 import { MIME_CITATION } from "@/lib/marginalia";
 import { popKey } from "@/panels/panel-registry";
@@ -688,6 +687,7 @@ export function CitationCard({
       theme={theme}
       selected={isHaloed}
       isPoppedOut={isPoppedOut}
+      chromeless={isPoppedOut}
       onTogglePopout={onToggleFromCtx}
       onTrashClick={!compressed && onDelete ? () => onDelete(cit.id) : undefined}
       cardKey={cardKey}
@@ -1022,7 +1022,6 @@ export function CitationCard({
     </>
   );
 
-  if (isPoppedOut) return <FloatCard cardKey={cardKey}>{cardEl}</FloatCard>;
   return cardEl;
 }
 

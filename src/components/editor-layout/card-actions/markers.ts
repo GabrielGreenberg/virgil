@@ -5,6 +5,7 @@ import type { OmniCategory } from "@/panels/Omni";
 import { getTextAnchor } from "@/links/links";
 import { suppressNextPlacement } from "@/links/_shared/usePlacement";
 import { openForCard } from "../event-bridges/open-for-card";
+import { cardPopKey } from "@/panels/panel-registry";
 
 type AnchorKind = "note" | "highlight" | "revision" | "cutter-comment" | "cutter-suggestion" | "report" | "report-request" | null;
 
@@ -139,7 +140,7 @@ export function useMarkerActions(deps: {
       openForCard(
         {
           omniKey: `${kind}:${cardId}`,
-          entrySelector: `[data-card-key="${kind}:${cardId}"]`,
+          entrySelector: `[data-card-key="${cardPopKey(kind, cardId)}"]`,
           panelId: "cutter",
           cardKind: kind,
           skipScroll: true,

@@ -10,8 +10,13 @@
  * `\cite` lands the caret on the new card's merged search input, just
  * like the drag-handle path does).
  */
+import { parseAnyKey } from "@/floats/float-key";
+
 export function focusNewCard(cardKey: string): void {
-  const kind = cardKey.split(":")[0] ?? "";
+  // The canonical card kind (drives `pickFocusTarget`), via the dual-read
+  // parser — a `float:card:<kind>:<id>` key yields `<kind>`, legacy `<kind>:<id>`
+  // yields the same. The DOM lookup below still uses the full `cardKey`.
+  const kind = parseAnyKey(cardKey)?.kind ?? cardKey.split(":")[0] ?? "";
   let attempts = 0;
   const MAX_ATTEMPTS = 12;
   const tryFocus = () => {

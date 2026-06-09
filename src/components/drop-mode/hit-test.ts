@@ -25,6 +25,7 @@ import {
   TEXT_OBJECT_REGISTRY,
 } from "@/text-objects/text-object-registry";
 import type { TextObjectKind } from "@/text-objects/types";
+import { parseAnyKey } from "@/floats/float-key";
 import { findEditorAtPoint } from "./target-registry";
 import type { DropSpec, Placement, ViewportRect } from "./types";
 
@@ -675,9 +676,12 @@ function makeInlineCursorPlacement(editor: Editor, pos: number): Placement | nul
  * carries a `data-pristine-card-id` matching the cardKey's id.
  */
 function isSelfDrop(targetEditor: Editor, sourceCardKey: string): boolean {
-  const sep = sourceCardKey.indexOf(":");
-  if (sep <= 0) return false;
-  const sourceId = sourceCardKey.slice(sep + 1);
+  // Colon-safe: extract the bare id via the shared parser. The float grammar
+  // (`float:<domain>:<kind>:<id>`) and the legacy grammars all carry interior
+  // colons — hand-slicing the first colon yields `card:<kind>:<id>` and never
+  // matches the `data-pristine-card-id`.
+  const sourceId = parseAnyKey(sourceCardKey)?.id;
+  if (!sourceId) return false;
   const dom = targetEditor.view.dom;
   const wrapper = (dom as HTMLElement).closest?.(
     `[data-pristine-card-id="${cssEscape(sourceId)}"]`,

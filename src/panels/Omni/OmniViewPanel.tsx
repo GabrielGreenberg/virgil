@@ -7,10 +7,10 @@ import { getBus, type DocStructure } from "@/lib/tiptap/doc-structure";
 import {
   CARD_KEY_PREFIXES,
   OMNI_PANELS,
-  PANEL_REGISTRY,
   getPanelByCardKind,
 } from "@/panels/panel-registry";
 import type { CardKind, OmniItem, PanelKind } from "@/panels/_shared/types";
+import { parseAnyKey } from "@/floats/float-key";
 import { OmniProvider } from "@/components/editor-layout/contexts/omni";
 import { CardDisplayProvider } from "@/components/editor-layout/contexts/card-display";
 import {
@@ -116,45 +116,18 @@ interface OmniViewPanelProps {
   // and `cardsSilent` props. See `@/components/editor-layout/omni-pin-store`.
 }
 
-/** Reverse map from card-key prefix → owning PanelKind, built from the
- *  registry. Key prefixes don't always match card kinds — e.g. revisions'
- *  comment cards use prefix "revision" while their CardKind is "comment".
- *  Polymorphic kinds (cutter-comment, cutter-suggestion) collapse to
- *  the single cutter panel via `getPanelByCardKind`'s POLYMORPHIC map. */
-const PREFIX_TO_PANEL: Record<string, PanelKind> = (() => {
-  const out: Record<string, PanelKind> = {};
-  for (const entry of Object.values(PANEL_REGISTRY)) {
-    if (entry.card) out[entry.card.keyPrefix] = entry.kind;
-  }
-  // Polymorphic kinds: resolve to their owning panel via the registry's
-  // POLYMORPHIC_CARD_PANEL table. Notes panel hosts both `note` and
-  // `highlight`; Cutter hosts the two cutter kinds; Revisions surfaces
-  // `revision-suggestion` for completeness.
-  for (const kind of [
-    "cutter-comment",
-    "cutter-suggestion",
-    "revision-suggestion",
-    "note",
-    "highlight",
-  ] as const) {
-    const panel = getPanelByCardKind(kind);
-    if (panel) out[kind] = panel.kind;
-  }
-  return out;
-})();
-
-/** Resolve the owning panel (filter category) from an OmniItem id.
- *  Item ids are `${keyPrefix}:${id}` — e.g. `note:abc`, `revision:xyz`,
- *  `cutter-comment:abc`. */
+/** Resolve the owning panel (filter category) from an OmniItem id. Item ids are
+ *  the canonical `float:card:<kind>:<id>` grammar (AF). Parse the kind, then map
+ *  kind → owning panel via the registry — which collapses the polymorphic kinds
+ *  (revision-comment/-suggestion → revisions, the cutter pair → cutter) for
+ *  free. Replaces the old first-colon slice, which yielded `"float"` → null →
+ *  every card always visible regardless of the category toggles. */
 function categoryOf(id: string): OmniCategory | null {
-  const colon = id.indexOf(":");
-  if (colon === -1) return null;
-  const prefix = id.slice(0, colon);
-  const panelKind = PREFIX_TO_PANEL[prefix];
-  if (!panelKind) return null;
-  const entry = PANEL_REGISTRY[panelKind];
+  const parsed = parseAnyKey(id);
+  if (!parsed || parsed.domain !== "card") return null;
+  const entry = getPanelByCardKind(parsed.kind as CardKind);
   if (!entry?.omniEligible) return null;
-  return panelKind;
+  return entry.kind;
 }
 
 /**

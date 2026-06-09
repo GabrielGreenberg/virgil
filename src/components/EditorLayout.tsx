@@ -9,7 +9,7 @@ import { isLabelTaken as isLabelTakenIn } from "@/lib/labels";
 import { isDevStorage } from "@/lib/storage-mode";
 import { isTier1BDisabled } from "@/lib/perf-flags";
 import { readPdf } from "@/lib/storage";
-import { migrateLegacyPopoutKeys } from "@/text-objects/post-load-migrations";
+import { migrateDocAwarePopoutKey } from "@/text-objects/post-load-migrations";
 import { useTransientAnchorCleanup } from "@/text-objects/useTransientAnchorCleanup";
 import { type MarginaliaType, type DividerLevel, type DividerWidth } from "@/hooks/useViewPrefs";
 import { Editor } from "@tiptap/react";
@@ -132,6 +132,7 @@ import {
   FLOATING_PANEL_STACK_OFFSET,
   FLOATING_PANEL_Z_BASE,
 } from "./editor-layout/constants";
+import { FLOAT_Z_BASE } from "@/floats/float-policy";
 import {
   alignEntryToY,
   scrollEntryIntoView,
@@ -906,6 +907,21 @@ export default function EditorLayout() {
     document.addEventListener("keydown", onKey);
     return () => document.removeEventListener("keydown", onKey);
   }, [focusStack, closePopout, closeCardPopout]);
+
+  // Raise-on-click: paint z-index for a card/text-object float, derived from the
+  // MRU focus stack so clicking a buried float brings it forward (was insertion
+  // order). Cards focused most recently sit at the end of the stack → highest z.
+  // A just-opened float not yet in the stack falls to the top of the band.
+  const cardFloatZIndex = useCallback(
+    (key: string): number => {
+      const cards = focusStack.filter(
+        (r): r is { kind: "card"; key: string } => r.kind === "card",
+      );
+      const idx = cards.findIndex((r) => r.key === key);
+      return FLOAT_Z_BASE + (idx >= 0 ? idx : cards.length);
+    },
+    [focusStack],
+  );
 
   // (menuWrapStyle is declared below, after the zen
   // mode hook is available — zen force-pins the toolbar at home regardless
@@ -2824,6 +2840,7 @@ export default function EditorLayout() {
     onFocusExpandTo: handleFocusExpandTo,
     onFocusSnapBoundary: handleFocusSnapBoundary,
     focusFloating,
+    cardFloatZIndex,
     // ── Icon strip ─────────────────────────────────────────────────
     collapseLeft,
     collapseRight,
@@ -3689,7 +3706,7 @@ export default function EditorLayout() {
     if (!editorInstance || !docIdForHooks) return;
     if (popoutKeysSweptDocRef.current === docIdForHooks) return;
     popoutKeysSweptDocRef.current = docIdForHooks;
-    migratePoppedOutCards((prev) => migrateLegacyPopoutKeys(editorInstance, prev));
+    migratePoppedOutCards((key) => migrateDocAwarePopoutKey(editorInstance, key));
   }, [editorInstance, docIdForHooks, migratePoppedOutCards]);
 
   // Filter marginalia by visibility settings

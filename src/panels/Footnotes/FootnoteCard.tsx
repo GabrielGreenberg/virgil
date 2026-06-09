@@ -13,7 +13,6 @@ import {
 import { useCompressedLines } from "@/components/editor-layout/contexts/card-display";
 import { useCardTheme } from "@/hooks/usePanelTheme";
 import { usePoppedCards } from "@/hooks/usePoppedCards";
-import { FloatCard } from "@/components/FloatingCards";
 import {
   normalizeRichContent,
   richJsonToPlainText,
@@ -149,12 +148,12 @@ export function FootnoteCard({
       wrapperStyle={wrapperStyle}
       onTogglePopout={onToggleFromCtx}
       isPoppedOut={isPoppedOut}
+      chromeless={isPoppedOut}
       cardKey={cardKey}
       compressed={compressed}
       compressedSummary={compressedSummary}
     />
   );
-  if (isPoppedOut) return <FloatCard cardKey={cardKey}>{card}</FloatCard>;
   return card;
 }
 

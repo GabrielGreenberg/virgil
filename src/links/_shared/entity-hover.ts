@@ -17,6 +17,7 @@
 
 import type { Link } from "./types";
 import { getTextAnchor } from "../links";
+import { buildFloatKey } from "@/floats/float-key";
 
 export const ANCHORED_CARD_KINDS = [
   "note",
@@ -99,29 +100,17 @@ export function findEntity(
   }
 }
 
-/** `data-card-key` prefix for an entity. One-to-one with EntityKind — no
- *  polymorphism. The prefixes themselves are owned by `CARD_KEY_PREFIXES`
- *  in panel-registry; this function exists so callers don't need to import
- *  the registry just to build a card key. */
+/** The `data-card-key` an entity's panel card stamps — the canonical
+ *  `float:card:<kind>:<id>` grammar (AF). EntityKind is a subset of CardKind,
+ *  so we build the key exactly the way every card does (`cardPopKey` →
+ *  `buildFloatKey`), which guarantees this matches the DOM byte-for-byte.
+ *  Built via the runtime-leaf `float-key` (not the panel registry) to avoid an
+ *  import cycle. */
 export function cardKeyForEntity(
   ref: EntityRef,
   _c: EntityCollections,
 ): string | null {
-  switch (ref.kind) {
-    case "note":                return `note:${ref.id}`;
-    case "highlight":           return `highlight:${ref.id}`;
-    case "todo":                return `todo:${ref.id}`;
-    case "archive":             return `archive:${ref.id}`;
-    case "report":              return `report:${ref.id}`;
-    case "report-request":      return `report-request:${ref.id}`;
-    case "example":             return `example:${ref.id}`;
-    case "revision-comment":    return `revision:${ref.id}`;
-    case "revision-suggestion": return `revision-suggestion:${ref.id}`;
-    case "cutter-comment":      return `cutter-comment:${ref.id}`;
-    case "cutter-suggestion":   return `cutter-suggestion:${ref.id}`;
-    case "footnote":            return `footnote:${ref.id}`;
-    case "citation":            return `citation:${ref.id}`;
-  }
+  return buildFloatKey({ domain: "card", kind: ref.kind, id: ref.id });
 }
 
 /** Resolve a hovered/selected entity to its Mode B text-range anchor id, or null. */

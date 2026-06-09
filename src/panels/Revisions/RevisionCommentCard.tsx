@@ -12,7 +12,6 @@ import { useCompressedLines } from "@/components/editor-layout/contexts/card-dis
 import { useCardTheme } from "@/hooks/usePanelTheme";
 import { getLinkedTextObjectIds, hasTextAnchor } from "@/links/links";
 import { usePoppedCards } from "@/hooks/usePoppedCards";
-import { FloatCard } from "@/components/FloatingCards";
 import { popKey } from "@/panels/panel-registry";
 import { useAnchoredCard } from "@/links/_shared/useAnchoredCard";
 import { cardStore } from "@/links/_shared/anchored-card-store";
@@ -161,11 +160,11 @@ export function RevisionCommentCard({
       }}
       onTogglePopout={onToggleFromCtx}
       isPoppedOut={isPoppedOut}
+      chromeless={isPoppedOut}
       cardKey={cardKey}
       compressed={compressed}
       compressedSummary={compressedSummary}
     />
   );
-  if (isPoppedOut) return <FloatCard cardKey={cardKey}>{cardEl}</FloatCard>;
   return cardEl;
 }

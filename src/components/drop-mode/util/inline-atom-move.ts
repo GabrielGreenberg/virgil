@@ -25,6 +25,7 @@ import type { Editor } from "@tiptap/react";
 import type { Node as PMNode } from "@tiptap/pm/model";
 import { NodeSelection, TextSelection } from "@tiptap/pm/state";
 import { getRegisteredEditors } from "../target-registry";
+import { parseAnyKey } from "@/floats/float-key";
 import type { DropCtx, DropSpec, PlacementKind } from "../types";
 
 export interface AtomLocation {
@@ -179,6 +180,7 @@ function locateAtom(
 }
 
 function extractId(cardKey: string): string | null {
-  const sep = cardKey.indexOf(":");
-  return sep > 0 ? cardKey.slice(sep + 1) : null;
+  // Colon-safe via the dual-read parser (footnote/citation card floats key on
+  // `float:card:<kind>:<id>` post-flip; legacy `<prefix>:<id>` still parses).
+  return parseAnyKey(cardKey)?.id ?? null;
 }

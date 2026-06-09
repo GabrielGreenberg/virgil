@@ -8,6 +8,7 @@ import { getWindowId } from "@/lib/multi-window/window-id";
 import { publish, subscribe, type BusEvent } from "@/lib/multi-window/bus";
 import { DEFAULT_OMNI_CATEGORIES, migrateOmniCategories, type OmniCategory } from "@/panels/Omni/OmniViewPanel";
 import defaultPrefsJson from "./useViewPrefs.defaults.json";
+import { migrateFloatKeys, migrateLegacyKeyToFloat } from "@/floats/float-key";
 
 /** Marginalia card kinds whose visibility is toggled from the View menu. */
 export type MarginaliaType = "note" | "archive" | "todo" | "report";
@@ -286,6 +287,27 @@ function pickGlobal(p: ViewPrefs): Pick<ViewPrefs, GlobalPrefKey> {
   };
 }
 
+/** Read-time (pre-editor) per-key migration to the `float:` grammar. Rewrites
+ *  the legacy pre-D10 block prefixes to `textobject:…` first, drops the
+ *  session-only `selection:`/`sel:` keys, and defers the doc-aware `list:`/
+ *  `example:` keys (passed through untouched for the post-load leg). Everything
+ *  else → `float:<domain>:<kind>:<id>`. Idempotent on already-`float:` keys. */
+function readTimePopoutKeyToFloat(key: string): string | null {
+  if (key.startsWith("paragraph:")) {
+    return migrateLegacyKeyToFloat(`textobject:paragraph:${key.slice("paragraph:".length)}`);
+  }
+  if (key.startsWith("heading:")) {
+    return migrateLegacyKeyToFloat(`textobject:heading:${key.slice("heading:".length)}`);
+  }
+  if (key.startsWith("texBlock:")) {
+    return migrateLegacyKeyToFloat(`textobject:texBlock:${key.slice("texBlock:".length)}`);
+  }
+  if (key.startsWith("selection:") || key.startsWith("sel:")) return null;
+  // `list:`/`example:` pass through (migrateLegacyKeyToFloat defers them);
+  // every other key → `float:`.
+  return migrateLegacyKeyToFloat(key);
+}
+
 function loadPrefs(): ViewPrefs {
   if (typeof window === "undefined") return DEFAULT_PREFS;
   try {
@@ -416,42 +438,43 @@ function loadPrefs(): ViewPrefs {
 
     const parsed = { ...windowParsed, ...globalParsed };
 
-    // Phase D10 popout-key migration. Block-popout prefixes
-    // (`paragraph:`, `heading:`, `texBlock:`) rewrite to the unified
-    // `textobject:<kind>:<id>` shape that `floating-cards.tsx`'s
-    // `case "textobject"` dispatcher now consumes. `list:<uuid>` and
-    // `example:<uuid>` need the doc to determine kind / disambiguate
-    // from the Examples panel-card prefix — those migrations live in
-    // EditorPane.tsx as a useEffect that fires when the editor + doc
-    // are both available. `selection:<id>` / `sel:<id>` were
-    // session-only (their floats were lost on reload anyway); drop
-    // them with a console.warn.
+    // AF popout-key migration (read-time leg). Converts every persisted key to
+    // the unified `float:<domain>:<kind>:<id>` grammar, in LOCKSTEP across
+    // BOTH `poppedOutCards` AND `cardFloatPositions` (the prior D10 migration
+    // rewrote only the former → every saved float rect orphaned; this fixes it).
+    //
+    // Block-popout prefixes (`paragraph:`/`heading:`/`texBlock:`) first rewrite
+    // to `textobject:…`, then to `float:textobject:…`. `selection:`/`sel:` were
+    // session-only → dropped (null). `list:`/`example:` need a doc walk to
+    // resolve kind, so they pass through here and the doc-aware leg
+    // (`post-load-migrations`, fired once the editor mounts) converts them.
+    // Idempotent: keys already `float:` pass straight through.
     if (Array.isArray(parsed.poppedOutCards)) {
-      const before = parsed.poppedOutCards as unknown as string[];
-      const after: string[] = [];
-      const droppedSelection: string[] = [];
-      for (const key of before) {
-        if (typeof key !== "string") continue;
-        if (key.startsWith("paragraph:")) {
-          after.push(`textobject:paragraph:${key.slice("paragraph:".length)}`);
-        } else if (key.startsWith("heading:")) {
-          after.push(`textobject:heading:${key.slice("heading:".length)}`);
-        } else if (key.startsWith("texBlock:")) {
-          after.push(`textobject:texBlock:${key.slice("texBlock:".length)}`);
-        } else if (key.startsWith("selection:") || key.startsWith("sel:")) {
-          droppedSelection.push(key);
-        } else {
-          // list:<id>, example:<id>, textobject:<kind>:<id>, and every
-          // panel-card prefix (note:, todo:, bib:, etc.) pass through.
-          after.push(key);
-        }
+      const droppedSelection = (parsed.poppedOutCards as unknown[]).filter(
+        (k): k is string =>
+          typeof k === "string" &&
+          (k.startsWith("selection:") || k.startsWith("sel:")),
+      );
+      const positions =
+        parsed.cardFloatPositions && typeof parsed.cardFloatPositions === "object"
+          ? (parsed.cardFloatPositions as Record<string, unknown>)
+          : {};
+      const result = migrateFloatKeys(
+        (parsed.poppedOutCards as unknown[]).filter(
+          (k): k is string => typeof k === "string",
+        ),
+        positions,
+        readTimePopoutKeyToFloat,
+      );
+      if (result.changed) {
+        parsed.poppedOutCards = result.keys;
+        parsed.cardFloatPositions = result.positions;
       }
       if (droppedSelection.length > 0) {
         console.warn(
-          `[viewPrefs] Phase D10 migration dropped ${droppedSelection.length} session-only selection popout key(s): ${droppedSelection.slice(0, 3).join(", ")}${droppedSelection.length > 3 ? ", …" : ""}`,
+          `[viewPrefs] AF migration dropped ${droppedSelection.length} session-only selection popout key(s): ${droppedSelection.slice(0, 3).join(", ")}${droppedSelection.length > 3 ? ", …" : ""}`,
         );
       }
-      parsed.poppedOutCards = after;
     }
 
     // Migrate: replace old "references" panel with "citations" + "bibliography"
@@ -1368,18 +1391,27 @@ export function useViewPrefs() {
   );
 
   /**
-   * Apply a transform to `poppedOutCards`. The transform may return the
-   * same array reference to indicate "no change"; only a new reference
-   * triggers a prefs write. Used by post-load migrations that need the
-   * editor doc to make decisions (e.g. resolving legacy `list:<uuid>`
-   * keys to `textobject:bulletList:<uuid>` vs `textobject:orderedList:<uuid>`).
+   * Apply a per-key migration to the popout keys, in LOCKSTEP across both
+   * `poppedOutCards` AND `cardFloatPositions`, so a saved rect follows its key
+   * to the new grammar (never orphans). `mapKey` returns the new key, or `null`
+   * to drop it. No-op (no prefs write) when nothing changed. Used by the
+   * doc-aware post-load leg that resolves legacy `list:`/`example:` keys to
+   * `float:textobject:…` vs `float:card:example:…` using the editor doc.
    */
   const migratePoppedOutCards = useCallback(
-    (transform: (prev: readonly string[]) => readonly string[]) => {
+    (mapKey: (key: string) => string | null) => {
       update((p) => {
-        const next = transform(p.poppedOutCards);
-        if (next === p.poppedOutCards) return p;
-        return { ...p, poppedOutCards: [...next] };
+        const result = migrateFloatKeys(
+          p.poppedOutCards,
+          p.cardFloatPositions,
+          mapKey,
+        );
+        if (!result.changed) return p;
+        return {
+          ...p,
+          poppedOutCards: result.keys,
+          cardFloatPositions: result.positions,
+        };
       });
     },
     [update],

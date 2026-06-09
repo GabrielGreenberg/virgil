@@ -43,6 +43,9 @@ export interface PoppedCardsValue {
   setFloatPosition: (key: string, rect: CardRect) => void;
   /** Mark a popped card as the most recently focused floating window (for Cmd-W). */
   recordFocus?: (key: string) => void;
+  /** Paint z-index for a float, derived from the MRU focus stack (raise-on-click).
+   *  Omitted in the Reader shim → FloatWindow falls back to insertion order. */
+  floatZIndex?: (key: string) => number;
 }
 
 export const PoppedCardsContext = createContext<PoppedCardsValue | null>(null);
