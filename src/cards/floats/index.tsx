@@ -16,12 +16,12 @@
  * JSX; AF makes it headerless when the header moves into `FloatChrome`.
  * `error` is intentionally NOT registered (ratified not-poppable, §3.5).
  *
- * DORMANT-until-AF fields (`title`, `canJump`, `jumpToSource`,
- * `snapshotForStack`) are populated best-effort: only `renderBody()` is on the
- * live A0 path (the card renders its own header + jump + self-wraps in
- * `<FloatCard>`). `snapshotForStack` returns null pending A0.7 (it's wired when
- * `cardKeyPrefixToStackKind` retires; EditorPane's stack-drop still uses the
- * legacy prefix path in A0).
+ * `snapshotForStack` is now LIVE: each stackable builder serializes the record
+ * it already resolved for `renderBody()` via `snapshotCard(...)`. EditorPane's
+ * `virgil-stack-drop` handler calls it through `CARD_REGISTRY[kind].toFloatable`
+ * (the legacy prefix-lookup resolver under `lib/stack/` is retired).
+ * Non-stackable poppable kinds (`report` / `report-request` / `ai`) and
+ * `example` (no reachable `ExampleRef` sidecar — see its builder) return null.
  */
 import type { ReactNode } from "react";
 import { NoteCard, HighlightCard } from "@/panels/Notes";
@@ -45,6 +45,8 @@ import type {
   ReportRequestCard as ReportRequestCardData,
 } from "@/lib/types";
 import type { Floatable, FloatChromeSlots } from "@/floats/types";
+import { snapshotCard } from "@/lib/stack/snapshot";
+import type { FootnoteRef } from "@/lib/types";
 import { buildFloatKey } from "@/floats/float-key";
 import type { CardFloatCtx } from "../card-float-ctx";
 import type { CardKind } from "../types";
@@ -64,6 +66,11 @@ function cardFloatable(
     canJump: boolean;
     jumpToSource: () => void;
     renderBody: () => ReactNode;
+    /** Serialize this card onto the Stack on a drop gesture. Each stackable
+     *  builder hands a closure over the record it ALREADY resolved for
+     *  `renderBody()` (a pure per-id resolver — no doc walk, runs only on the
+     *  drop). Non-stackable kinds pass `() => null`. */
+    snapshotForStack: Floatable["snapshotForStack"];
     title?: string;
     chromeSlots?: Floatable["chromeSlots"];
     bareWindow?: boolean;
@@ -82,7 +89,7 @@ function cardFloatable(
     jumpToSource: opts.jumpToSource,
     chromeSlots: opts.chromeSlots,
     bareWindow: opts.bareWindow,
-    snapshotForStack: () => null, // TODO(Stage 5): wire snapshotCard
+    snapshotForStack: opts.snapshotForStack,
     renderBody: opts.renderBody,
   };
 }
@@ -101,6 +108,7 @@ registerCardFloatable("note", (id, ctx: CardFloatCtx) => {
     chromeSlots: collabTrailing("note", id),
     canJump,
     jumpToSource: () => ctx.editorRef.current?.jumpToCard(note, null),
+    snapshotForStack: (source) => snapshotCard("note", note, source),
     renderBody: () => (
       <NoteCard
         note={note}
@@ -127,6 +135,7 @@ registerCardFloatable("highlight", (id, ctx: CardFloatCtx) => {
   return cardFloatable("highlight", id, {
     canJump,
     jumpToSource: () => ctx.editorRef.current?.jumpToCard(hl, null),
+    snapshotForStack: (source) => snapshotCard("highlight", hl, source),
     renderBody: () => (
       <HighlightCard
         card={hl}
@@ -154,6 +163,16 @@ registerCardFloatable("footnote", (id, ctx: CardFloatCtx) => {
     chromeSlots: collabTrailing("footnote", id),
     canJump: true,
     jumpToSource: () => ctx.editorRef.current?.scrollToFootnote(fn.footnoteId, null),
+    // R1 (Option B): build a FootnoteRef-shaped record from the FootnoteInfo
+    // already in hand. The stack payload only consumes `content`; `id` /
+    // `createdAt` are filled with sensible fallbacks (no live FootnoteRef
+    // is reachable here without a sidecar read).
+    snapshotForStack: (source) =>
+      snapshotCard(
+        "footnote",
+        { id: fn.footnoteId, content: fn.content, createdAt: "" } satisfies FootnoteRef,
+        source,
+      ),
     renderBody: () => (
       <FootnoteCard
         footnote={fn}
@@ -180,6 +199,7 @@ registerCardFloatable("archive", (id, ctx: CardFloatCtx) => {
     chromeSlots: collabTrailing("archive", id),
     canJump: true,
     jumpToSource: () => ctx.editorRef.current?.jumpToCard(snippet, null),
+    snapshotForStack: (source) => snapshotCard("archive", snippet, source),
     renderBody: () => (
       <ArchiveCard
         snippet={snippet}
@@ -207,6 +227,7 @@ registerCardFloatable("cutter-comment", (id, ctx: CardFloatCtx) => {
     chromeSlots: collabTrailing("cut", id),
     canJump,
     jumpToSource: () => ctx.editorRef.current?.jumpToCard(card, null),
+    snapshotForStack: (source) => snapshotCard("cutter-comment", card, source),
     renderBody: () => (
       <CutterCommentCard
         card={card}
@@ -230,6 +251,7 @@ registerCardFloatable("cutter-suggestion", (id, ctx: CardFloatCtx) => {
     chromeSlots: { trailing: <CutterSuggestionTrailing card={card} /> },
     canJump,
     jumpToSource: () => ctx.editorRef.current?.jumpToCard(card, null),
+    snapshotForStack: (source) => snapshotCard("cutter-suggestion", card, source),
     renderBody: () => (
       <CutterSuggestionCard
         card={card}
@@ -256,6 +278,7 @@ registerCardFloatable("report", (id, ctx: CardFloatCtx) => {
     chromeSlots: collabTrailing("report", id),
     canJump,
     jumpToSource: () => ctx.editorRef.current?.jumpToCard(card, null),
+    snapshotForStack: () => null, // not stackable (no StackCardKind for reports)
     renderBody: () => (
       <ReportCard
         report={card}
@@ -281,6 +304,7 @@ registerCardFloatable("report-request", (id, ctx: CardFloatCtx) => {
     chromeSlots: collabTrailing("report", id),
     canJump,
     jumpToSource: () => ctx.editorRef.current?.jumpToCard(card, null),
+    snapshotForStack: () => null, // not stackable (no StackCardKind for reports)
     renderBody: () => (
       <ReportRequestCard
         request={card}
@@ -304,6 +328,7 @@ registerCardFloatable("todo", (id, ctx: CardFloatCtx) => {
     chromeSlots: { trailing: <TodoDoneToggle item={item} onToggle={ctx.toggleTodo} /> },
     canJump,
     jumpToSource: () => ctx.editorRef.current?.jumpToCard(item, null),
+    snapshotForStack: (source) => snapshotCard("todo", item, source),
     renderBody: () => (
       <TodoRow
         item={item}
@@ -330,6 +355,7 @@ registerCardFloatable("bib", (id, ctx: CardFloatCtx) => {
     bareWindow: true, // bespoke in-body header until Stage 6
     canJump: false,
     jumpToSource: () => {},
+    snapshotForStack: (source) => snapshotCard("bibliography", entry, source),
     renderBody: () => (
       <BibEntryCard
         entry={entry}
@@ -360,6 +386,12 @@ registerCardFloatable("citation", (id, ctx: CardFloatCtx) => {
   return cardFloatable("citation", id, {
     canJump: true,
     jumpToSource: () => ctx.editorRef.current?.scrollToCitation(cit.id, null),
+    // R3: resolve bib sidecars from the ctx's already-loaded entries — no
+    // separate getBibEntry hook needed.
+    snapshotForStack: (source) =>
+      snapshotCard("citation", cit, source, {
+        getBibEntry: (k) => ctx.bibEntries.find((e) => e.key === k),
+      }),
     renderBody: () => (
       <CitationCard
         citation={cit}
@@ -399,6 +431,7 @@ registerCardFloatable("revision-comment", (id, ctx: CardFloatCtx) => {
   if (!card || card.kind !== "comment") return null; // data discriminator stays
   const canJump = getLinkedTextObjectIds(card).length > 0;
   return cardFloatable("revision-comment", id, {
+    snapshotForStack: (source) => snapshotCard("revision-comment", card, source),
     chromeSlots: {
       ...collabTrailing("revision", id),
       // Restore the comment↔suggestion morph control on popout (the docked
@@ -435,6 +468,7 @@ registerCardFloatable("revision-suggestion", (id, ctx: CardFloatCtx) => {
   if (!card || card.kind !== "suggestion") return null;
   const canJump = getLinkedTextObjectIds(card).length > 0;
   return cardFloatable("revision-suggestion", id, {
+    snapshotForStack: (source) => snapshotCard("revision-suggestion", card, source),
     chromeSlots: {
       trailing: <RevisionSuggestionTrailing card={card} />,
       // Restore the comment↔suggestion morph control on popout.
@@ -473,6 +507,7 @@ registerCardFloatable("ai", (id, ctx: CardFloatCtx) => {
     bareWindow: true, // bespoke in-body header until Stage 6
     canJump: false,
     jumpToSource: () => {},
+    snapshotForStack: () => null, // not stackable (no StackCardKind for ai)
     renderBody: () => (
       <AiRequestCard
         request={req}
@@ -490,6 +525,11 @@ registerCardFloatable("example", (id, ctx: CardFloatCtx) => {
   return cardFloatable("example", id, {
     canJump: true,
     jumpToSource: () => ctx.editorRef.current?.scrollToExample(ex.exampleId),
+    // R2: preserve today's behavior — byte-for-byte with the legacy
+    // resolve-card path, which returned null for example (no reachable
+    // `ExampleRef` sidecar here). Enabling example stacking is a separate
+    // follow-up.
+    snapshotForStack: () => null,
     renderBody: () => (
       <ExampleCard
         example={ex}
