@@ -2810,9 +2810,11 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
         if (mainEd) item = snapshotHeadingSection(mainEd, id, source);
       } else if (parsed.domain === "card" && isCardKind(parsed.kind)) {
         // Mirror `FloatHost.resolveFloatable`: build the same `Floatable` the
-        // popout renders from and ask it to serialize itself. `toFloatable`
-        // is a pure per-id resolver (no doc walk); `snapshotForStack` returns
-        // null for non-stackable kinds (report / ai / example).
+        // popout renders from and ask it to serialize itself. Some builders
+        // (footnote) do a one-shot doc read here on the drop gesture, but
+        // `snapshotForStack` itself is a pure closure over the resolved record
+        // — never keystroke-proportional. Returns null for non-stackable kinds
+        // (report / ai / example).
         const f = CARD_REGISTRY[parsed.kind].toFloatable(id, popoutsDeps);
         item = f?.snapshotForStack(source) ?? null;
       }

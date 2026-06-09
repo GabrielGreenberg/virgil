@@ -108,7 +108,7 @@ describe("card Floatable.snapshotForStack", () => {
     expected: unknown;
   }> = [
     { kind: "note", id: "note-1", stackKind: "note", probe: (d) => d.title, expected: "My note" },
-    { kind: "highlight", id: "hl-1", stackKind: "highlight", probe: (d) => d.id, expected: "hl-1" },
+    { kind: "highlight", id: "hl-1", stackKind: "highlight", probe: (d) => d.text, expected: "hi" },
     { kind: "footnote", id: "fn-1", stackKind: "footnote", probe: (d) => d.id, expected: "fn-1" },
     { kind: "archive", id: "arch-1", stackKind: "archive", probe: (d) => d.title, expected: "Arch" },
     { kind: "todo", id: "todo-1", stackKind: "todo", probe: (d) => d.text, expected: "do the thing" },
@@ -130,10 +130,18 @@ describe("card Floatable.snapshotForStack", () => {
       const card = cardPayload(item!);
       expect(card.cardKind).toBe(stackKind);
       expect(probe(card.data)).toEqual(expected);
-      // The snapshot is a deep copy — mutating it must not touch the source.
+      // The drop source descriptor round-trips onto the item.
       expect(item!.source).toEqual(SOURCE);
     });
   }
+
+  it("snapshotForStack deep-clones the record (mutating the snapshot can't touch the source)", () => {
+    const first = build("note", "note-1")!.snapshotForStack(SOURCE)!;
+    (cardPayload(first).data as { title?: string }).title = "MUTATED";
+    // A fresh snapshot re-reads the source record — which must be untouched.
+    const second = build("note", "note-1")!.snapshotForStack(SOURCE)!;
+    expect(cardPayload(second).data.title).toBe("My note");
+  });
 
   it("footnote shim carries the FootnoteInfo content (R1 Option B)", () => {
     const f = build("footnote", "fn-1");
