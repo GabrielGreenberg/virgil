@@ -10,6 +10,16 @@ A deep overhaul of Virgil's card system, run as a **management session**: this d
 
 ## Progress
 
+### Session 11 — Wave-2 audits + seam sweep landed; Wave-3 sequencing set (2026-06-09)
+- **All 9 Wave-2 arena audits landed** (`docs/card-refactor/{A1,A2,A3,A4,A5,A6,A8,A9,A10}-audit.md`, each 34–44 KB, re-pinned to HEAD `588ae7e` and audited against the finished A0+AF foundations) **+ a cross-arena seam sweep** (`WAVE2-seam-sweep.md`). Ran as one throttled Workflow (3-concurrent; a first 9-wide attempt tripped a server rate-limit, a second batch stalled, and a one-at-a-time retry pass recovered A1/A2/A3 — the resilience harness held).
+- **Caught + reverted unauthorized audit-phase source edits.** Despite the read-only contract, agents had modified 7 source files (4 stale-comment fixes + a real dead-`variant:"note"` removal across `RichTextField`/`panel-primitives`/`globals.css`). Reverted all → foundation restored clean at `588ae7e` (tsc clean, 570 tests). The edits are captured in the A1 audit and will land deliberately through the A1 chip under the merge gate. **Reaffirmed: audits are read-only; every code change lands via an impl chip + independent review — no exceptions, even for "obviously safe" gardening.**
+- **The picture (seam sweep §0):** the dominant Wave-2 theme is **registry-derivation debt** — A0 built the predicates but almost no consumer adopted them yet (`isAnchoredCardKind` has **zero consumers**; A2/A3/A4/A6 each still read a *different* hand-kept kind-enum A0 was meant to retire). Nothing forces a foundation re-design — it's consumer-side adoption + a handful of new `CardMeta` fields. The serialization choke points are `panel-primitives.tsx`, `anchored-card-store.ts`, `cards/types.ts`.
+- **The keystone is A4** (selection ⟂ expansion split in `anchored-card-store.ts` + the unified header): A5 reflow, A9 compressed-body, and A6 marker-select all consume A4's expansion signal → **A4 must land before them.** Three *free* registry-derivation folds unblock the rest in parallel: A2-B1 (`EntityKind` derive), A10-D1 (accent SSOT), A8 (print).
+- **Recommended Wave-3 batching** (seam sweep §5): **BATCH 0** (parallel, no inter-deps: A1 gardening · A2-B1 · A10-D1 · A8) → **BATCH 1** (A4 keystone, serialize) → **BATCH 2** (A3 ∥ A2-rest ∥ A9; A9 serialized after A4 on `panel-primitives.tsx`) → **BATCH 3** (A5 ∥ A6 ∥ A10-rest). Plus a new **AF-follow** chip (`snapshotForStack`, GAP-8) that MUST precede A1's legacy-stack-path deletion.
+- **34 ratification questions** consolidated + deduped in `WAVE2-seam-sweep.md §6` (R1–R34, each with a recommendation). Ratified just-in-time per chip, gating-subset-first; the A4/A1/A3 gating subset is in front of Gabriel now.
+- **4 SSOT reconciliations absorbed** — see Decisions (session 11).
+- **Next: ratify the gating decisions → spin BATCH 0 + the AF-follow chip.**
+
 ### Session 10 — re-review #3 GO; AF merged to main; both foundations landed (2026-06-08)
 - **Re-review #3 (5-agent final gate): GO.** The structural fix converged the entire DOM-key seam class onto one SSOT (`cardPopKey`/`cardDomSelector`): an independent completeness sweep found **zero live stragglers**; all 6 seams fixed structurally; the revision morph-remap correct (once · both directions · rect-follows · no new regression); `tsc` clean, **570 tests** green; keystroke sanctity intact.
 - **Merged `chip-AF-floatable` → `main`** (`--no-ff`, merge `e279864`; 65 files, +2087/−914; `FloatingCards.tsx` + `TextObjectFloat.tsx` deleted, `src/floats/` added). Re-verified on `main`: tsc clean, 570 tests green. **Not pushed** (local only; ahead of origin).
@@ -288,8 +298,19 @@ grip-redesign disabled drags (TodoRow/QuotationGroupCard/ErrorCard) · vestigial
 - **Float addressing (Q1):** unify everything on the `float:<domain>:<kind>:<id>` grammar (phased: additive dual-read → flip keys → remove legacy), upgrading drop/stack/focus dispatch too — no translator shim, no parallel grammars.
 - **Mandatory AF build guardrails** (from the verify workflow, no decision needed): dual-map lockstep prefs migration **+ tests**; colon-safe `parseFloatKey` with `revision:s:`→`revision-suggestion` normalization (overrides AF audit §4.2); doc-aware `example:`/`list:` passthrough on the read-time leg; write `Floatable.key` back to prefs; wire `snapshotForStack` before deleting the legacy stack path; preserve the `atom-grab`/`stack-pull`/`textobject:linkedRange` carve-outs.
 
+### Ratified (session 11 — Wave-2 audits + seam sweep)
+- **Lifecycle framing corrected (was "A3 fills the 5 gaps").** A3's audit ruled **4 of 5 are *permanent* gaps**, not fills: `todo`/`archive`/`example`/`report`/`report-request` are Mode-A / `origin:"derived"` kinds the clone/delete cascade walker (Mode-B + inline-atom only) cannot reach; a card-level clone/delete on `example` would double-act its `exampleBlock` TextObject (violates two-kinds). Only **`archive` delete-cascade** is a live decision (R18, defaulting NO). So A3 mostly *ratifies + documents* — annotating these permanent in the registry — it does not "fill" them. *(Supersedes §7 A3 + §5 "A3 fills" framing.)*
+- **Borrowed-from-main-text set corrected (A9 C1, supersedes the session-3 "Resolved by audit" guess below).** The display-only "borrows main text" set is **footnote, archive, example (+ highlight excerpt)** — **NOT** cutter excerpts or revision-suggestion (A9 verified those render flat strings, not main-text nodes). **A8's print-fidelity DoD adopts this corrected set** (GAP-6).
+- **New AF-follow thread gated before A1 (GAP-8).** Every `Floatable.snapshotForStack()` still returns `null`, so the legacy stack path (`cardKeyPrefixToStackKind`/`resolveCardData`) remains the only working stack-drop serialization. A Wave-3 **`AF-follow`** chip must land real `snapshotForStack` (+ optionally `bib`/`ai` full `FloatChrome`) **before A1 deletes the legacy stack path.**
+- **`popCardAtAnchor` owned by A3, not A1** (seam sweep C-1): the 33-ref re-type to `CardKind` + `cardPopKey` routing is a creation-pipeline concern, not a leaf deletion; A1 cedes it.
+- **Full ratification set lives in the seam sweep.** R1–R34 (each with the sweep's recommendation) in `docs/card-refactor/WAVE2-seam-sweep.md §6`; the management session ratifies them just-in-time per Wave-3 chip, gating-subset-first.
+- **Gating subset ratified by Gabriel (session 11):**
+  - **R1 — body-click default = `select + expand`.** Clicking a card body both selects (3-surface highlight + scroll) and expands; the new one-click expand-chevron + popout button are the axis-pure overrides, and `selected-but-collapsed` is reachable via the chevron. *(A4 keystone.)*
+  - **R5 / GAP-4 — non-anchored kinds get a panel-local expansion axis.** `bib`/`ai`/`error` gain a small panel-local `expanded` set so they expand/collapse uniformly with anchored cards; A4 owns it. *(Closes the undefined-behavior gap.)*
+  - **R30 — KILL the detached actions/formatting toolbars** *(Gabriel overrode the sweep's "keep").* A1 does the **full feature removal** of `DetachedActionsToolbar`/`Formatting`/`Menu` + the dead `menuLocation:"free"` pref + unused `AttachedPopover` — a user-visible removal, not just dead-code gardening, so the A1 chip verifies nothing reachable breaks. **§9 punch-list stands as written (remove), not corrected.**
+
 ### Resolved by audit (no decision)
-- **Borrowed-content full list (your C1/C3).** An audit output of the C consistency pass — beyond examples/archives/footnotes, candidates are **cutter cards** (main-text excerpts) and **revision-suggestion** (proposed text). The pass enumerates definitively.
+- **Borrowed-content full list (your C1/C3).** ⚠️ **Superseded by the A9 audit (session 11) — see above.** ~~beyond examples/archives/footnotes, candidates are **cutter cards** and **revision-suggestion**~~ — A9 verified cutter/revision-suggestion render flat strings, so the borrowed set is **footnote, archive, example (+ highlight excerpt)** only.
 
 ---
 
@@ -304,15 +325,26 @@ The management control surface. **Audit chips write to `docs/card-refactor/<ID>-
 | A0-impl | Card spine consolidation | 3 | impl | ✅ **landed** | `chip-A0-card-spine` | foundations ratified ✓ |
 | AF-impl | `Floatable` subsystem *(`src/floats/`)* | 3 | impl | ✅ **landed + merged** (`e279864`) | `main` | A0 ✓ · Q1 unify-phased ✓ |
 | AF-fix | Unify ALL DOM-key seams via one shared helper (`cardDomSelector` + `cardPopKey` SSOT) + `remapCardPopKey` morph remap + contract tests; class swept to zero | 3 | impl | ✅ **landed + merged** (`e279864`) | `main` | AF review NO-GO |
-| A1-audit | Gardening | 2 | audit | planned | — | A0 |
-| A2-audit | Anchoring & link model | 2 | audit | planned | — | A0 |
-| A3-audit | Creation & lifecycle | 2 | audit | planned | — | A0 |
-| A4-audit | Selection/focus/keyboard | 2 | audit | planned | — | A0 |
-| A5-audit | Omni-view | 2 | audit | planned | — | A0 |
-| A6-audit | Marginalia gutter | 2 | audit | planned | — | A0 |
-| A8-audit | Print + reader/library | 2 | audit | planned | — | A0 / AF |
-| A9-audit | Appearance & typography | 2 | audit | planned | — | A0 |
-| A10-audit | Cross-cutting integrations | 2 | audit | planned | — | A0 |
+| A1-audit | Gardening | 2 | audit | ✅ **landed** | `docs/card-refactor/A1-audit.md` | A0 |
+| A2-audit | Anchoring & link model | 2 | audit | ✅ **landed** | `docs/card-refactor/A2-audit.md` | A0 |
+| A3-audit | Creation & lifecycle | 2 | audit | ✅ **landed** | `docs/card-refactor/A3-audit.md` | A0 |
+| A4-audit | Selection/focus/keyboard | 2 | audit | ✅ **landed** | `docs/card-refactor/A4-audit.md` | A0 |
+| A5-audit | Omni-view | 2 | audit | ✅ **landed** | `docs/card-refactor/A5-audit.md` | A0 |
+| A6-audit | Marginalia gutter | 2 | audit | ✅ **landed** | `docs/card-refactor/A6-audit.md` | A0 |
+| A8-audit | Print + reader/library | 2 | audit | ✅ **landed** | `docs/card-refactor/A8-audit.md` | A0 / AF |
+| A9-audit | Appearance & typography | 2 | audit | ✅ **landed** | `docs/card-refactor/A9-audit.md` | A0 |
+| A10-audit | Cross-cutting integrations | 2 | audit | ✅ **landed** | `docs/card-refactor/A10-audit.md` | A0 |
+| **WAVE2-seam-sweep** | Cross-arena reconciliation (seams · contention map · conflicts · gaps · impl sequencing · R1–R34) | 2 | synthesis | ✅ **landed** | `docs/card-refactor/WAVE2-seam-sweep.md` | A1–A10 audits |
+| AF-follow | Real `Floatable.snapshotForStack()` (+ optional `bib`/`ai` full `FloatChrome`) — **GATES A1's legacy-stack-path deletion** (GAP-8) | 3 | impl | planned | — | AF |
+| A1-impl | Gardening (minus `popCardAtAnchor`→A3, minus stack-path→AF-follow) | 3 | impl | planned (BATCH 0) | — | A0 · AF |
+| A2-impl | Anchoring: B-1 `EntityKind` fold (BATCH 0) + rest (`resolveCardKind`, retire `EntityCollections`) (BATCH 2) | 3 | impl | planned | — | A0 · A1-reloc · A10-D1 |
+| A8-impl | Print/reader: registry-derived printable set, dead print CSS, `reports` printable | 3 | impl | planned (BATCH 0) | — | A0 |
+| A4-impl | **Keystone** — selection ⟂ expansion split, one-click expand + popout, marker-select | 3 | impl | planned (BATCH 1) | — | A0 · AF · A2-B1 |
+| A3-impl | Creation pipeline + lifecycle ratification; owns `popCardAtAnchor` | 3 | impl | planned (BATCH 2) | — | A4 |
+| A9-impl | Borrowed-display + two-class typography + morph chevron | 3 | impl | planned (BATCH 2) | — | A4 · A10-D1 |
+| A5-impl | Single-cascade omni reflow + unanchored band | 3 | impl | planned (BATCH 3) | — | A4 · A9 · A2 |
+| A6-impl | Marginalia pipeline collapse + registry-derived markers | 3 | impl | planned (BATCH 3) | — | A10-D1 · A2-B1 |
+| A10-impl | Accent SSOT (BATCH 0) + collab/AI-routing rest (BATCH 3) | 3 | impl | planned | — | A9 (D-2) |
 
 **Wave gates:** the two **Wave-1 foundations** (`A0`, `AF`) are read-only and non-conflicting (different code areas, separate audit files) — launch in either order or together. Wave-2 audits spawn after the foundations land & their designs are ratified. Wave-3 impl: `A0-impl` + `AF-impl` land first (foundations), then dependent arenas rebase, sequenced to limit conflicts on `panel-registry.ts` / `panel-primitives.tsx` / `marginalia.ts`. A1 (gardening) may land early.
 
