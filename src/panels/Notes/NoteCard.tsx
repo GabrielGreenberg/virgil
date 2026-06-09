@@ -70,10 +70,10 @@ export function NoteCard({
   );
 
   const ac = useAnchoredCard({ kind: "note", id: note.id });
-  // ac.expanded drives open/closed (multi-card); ac.selected drives halo
-  // (single primary). Keep the legacy `selected` prop accepted for back-
-  // compat — it folds into both because parent panels derive it from the
-  // same cardStore primary focus.
+  // N1 (A4): the two axes are independent. ac.expanded drives open/closed
+  // (multi-card); ac.selected drives the halo (single). The legacy `selected`
+  // prop folds into SELECTION ONLY now — expansion is its own axis, never
+  // derived from selection.
   const isExpanded = ac.expanded;
   const isSelected = ac.selected || selected;
   // isOrphaned was previously surfaced as a BadgeOrphaned in the header;

@@ -1639,6 +1639,11 @@ export const PanelCard = forwardRef<HTMLDivElement, PanelCardProps>(function Pan
     // the drag handle is the only popout affordance now. Only a popped
     // card disables the gesture (the X in its header docks it back).
     if (!cardKey || isPoppedOut) return;
+    // `isPoppable` is the SINGLE registry SSOT for poppability — it gates BOTH
+    // the docked one-click popout button AND this drag-lift. Without this, a
+    // non-poppable kind (`error`, whose toFloatable resolves to null) would
+    // lift into a blank ghost float (FloatHost renders nothing).
+    if (kind && !isPoppable(kind)) return;
     if (!popped?.popOutAtRect && !onTogglePopout) return;
     if (e.button !== 0) return;
     const cardEl = innerRef.current;

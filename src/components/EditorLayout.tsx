@@ -1465,11 +1465,11 @@ export default function EditorLayout() {
     setSelectedErrorId((cur) => (cur === id ? null : cur));
   }, []);
 
-  // Click-away: clear the transient selection when the user clicks
-  // outside any anchored surface. Sticky selections (hand-clicked cards
-  // and transients promoted via focus-in) are never touched here — they
-  // close only by clicking the card again. Bib and error are non-anchored
-  // — they get their own local clear so unrelated selection is cleared too.
+  // Click-away: clear the card SELECTION (the halo) when the user clicks
+  // outside any anchored surface. Per N1 (A4), expansion is a separate axis —
+  // `clearSelection` drops the halo but leaves every expanded card OPEN. Bib
+  // and error are non-anchored — they get their own local clear so unrelated
+  // selection is cleared too.
   useEffect(() => {
     const onMouseDown = (e: MouseEvent) => {
       const t = e.target;
