@@ -100,7 +100,7 @@ export function FootnoteCard({
       ? (anchor: DOMRect) => popped.toggleAtAnchor(cardKey, anchor)
       : undefined);
   const ac = useAnchoredCard({ kind: "footnote", id: fn.footnoteId });
-  const isExpanded = ac.expanded || isSelected;
+  const isExpanded = ac.expanded;
   const isHaloed = ac.selected || isSelected;
   const compressedLines = useCompressedLines();
   const compressed = !isExpanded && !isPoppedOut;
@@ -125,8 +125,7 @@ export function FootnoteCard({
       canJump
       onJump={(e) => onJump((e.currentTarget as HTMLElement).closest('[data-card]') as HTMLElement | null)}
       onClick={(e) => {
-        cardStore.toggleSelection(ac.ref);
-        if (!cardStore.isExpanded(ac.ref)) return;
+        ac.onActivate();
         onSelect();
         if (onJump) {
           onJump((e?.currentTarget as HTMLElement | undefined)?.closest('[data-card]') as HTMLElement | null);

@@ -74,7 +74,7 @@ export function NoteCard({
   // (single primary). Keep the legacy `selected` prop accepted for back-
   // compat — it folds into both because parent panels derive it from the
   // same cardStore primary focus.
-  const isExpanded = ac.expanded || selected;
+  const isExpanded = ac.expanded;
   const isSelected = ac.selected || selected;
   // isOrphaned was previously surfaced as a BadgeOrphaned in the header;
   // unified-chrome cards have no badge so this state isn't rendered, but
@@ -109,8 +109,7 @@ export function NoteCard({
       canJump={!!onJump}
       onJump={onJump ? (e) => onJump((e.currentTarget as HTMLElement).closest('[data-card]') as HTMLElement | null) : undefined}
       onClick={(e) => {
-        cardStore.toggleSelection(ac.ref);
-        if (!cardStore.isExpanded(ac.ref)) return;
+        ac.onActivate();
         onSelect(note.id);
         if (onJump) {
           onJump((e?.currentTarget as HTMLElement | undefined)?.closest('[data-card]') as HTMLElement | null);

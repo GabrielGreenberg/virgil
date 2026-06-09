@@ -66,7 +66,7 @@ export function ArchiveCard({
       ? (anchor: DOMRect) => popped.toggleAtAnchor(cardKey, anchor)
       : undefined);
   const ac = useAnchoredCard({ kind: "archive", id: snippet.id });
-  const isExpanded = ac.expanded || selected;
+  const isExpanded = ac.expanded;
   const isSelected = ac.selected || selected;
   const compressedLines = useCompressedLines();
   const compressed = !isExpanded && !isPoppedOut;
@@ -88,8 +88,7 @@ export function ArchiveCard({
       canJump={isAnchored && !!onJump}
       onJump={onJump ? (e) => onJump((e.currentTarget as HTMLElement).closest('[data-card]') as HTMLElement | null) : undefined}
       onClick={(e) => {
-        cardStore.toggleSelection(ac.ref);
-        if (!cardStore.isExpanded(ac.ref)) return;
+        ac.onActivate();
         onSelect(snippet.id);
         if (isAnchored && onJump) {
           onJump((e?.currentTarget as HTMLElement | undefined)?.closest('[data-card]') as HTMLElement | null);

@@ -66,7 +66,7 @@ export function RevisionCommentCard({
     (popped ? (anchor: DOMRect) => popped.toggleAtAnchor(cardKey, anchor) : undefined);
 
   const ac = useAnchoredCard({ kind: "revision-comment", id: card.id });
-  const isExpanded = ac.expanded || selected;
+  const isExpanded = ac.expanded;
   const isSelected = ac.selected || selected;
   const compressed = !isExpanded && !isPoppedOut;
   const compressedLines = useCompressedLines();
@@ -121,8 +121,7 @@ export function RevisionCommentCard({
           : undefined
       }
       onClick={(e) => {
-        cardStore.toggleSelection(ac.ref);
-        if (!cardStore.isExpanded(ac.ref)) return;
+        ac.onActivate();
         onSelect(card.id);
         if (onJump && isAnchored && !isOrphaned) {
           onJump(

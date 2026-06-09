@@ -55,7 +55,7 @@ export function ExampleCard({
       ? (anchor: DOMRect) => popped.toggleAtAnchor(cardKey, anchor)
       : undefined);
   const ac = useAnchoredCard({ kind: "example", id: example.exampleId });
-  const isExpanded = ac.expanded || isSelected;
+  const isExpanded = ac.expanded;
   const isHaloed = ac.selected || isSelected;
   const compressed = !isExpanded && !isPoppedOut;
   const compressedLines = useCompressedLines();
@@ -115,8 +115,7 @@ export function ExampleCard({
       theme={theme}
       selected={isHaloed}
       onClick={(e) => {
-        cardStore.toggleSelection(ac.ref);
-        if (!cardStore.isExpanded(ac.ref)) return;
+        ac.onActivate();
         onSelect();
         onJump((e.currentTarget as HTMLElement).closest('[data-card]') as HTMLElement | null);
       }}
