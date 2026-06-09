@@ -19,7 +19,7 @@
  * `snapshotForStack` is now LIVE: each stackable builder serializes the record
  * it already resolved for `renderBody()` via `snapshotCard(...)`. EditorPane's
  * `virgil-stack-drop` handler calls it through `CARD_REGISTRY[kind].toFloatable`
- * (the legacy `cardKeyPrefixToStackKind` + `resolveCardData` path is retired).
+ * (the legacy prefix-lookup resolver under `lib/stack/` is retired).
  * Non-stackable poppable kinds (`report` / `report-request` / `ai`) and
  * `example` (no reachable `ExampleRef` sidecar — see its builder) return null.
  */
@@ -526,7 +526,7 @@ registerCardFloatable("example", (id, ctx: CardFloatCtx) => {
     canJump: true,
     jumpToSource: () => ctx.editorRef.current?.scrollToExample(ex.exampleId),
     // R2: preserve today's behavior — byte-for-byte with the legacy
-    // `resolveCardData`, which returned null for example (no reachable
+    // resolve-card path, which returned null for example (no reachable
     // `ExampleRef` sidecar here). Enabling example stacking is a separate
     // follow-up.
     snapshotForStack: () => null,

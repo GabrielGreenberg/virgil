@@ -99,7 +99,8 @@ export interface CardMeta {
   /** Whether this kind can serialize onto the Stack (was the hand-kept
    *  `StackCardKind` union). `bib` is stackable despite being `system`, so this
    *  cannot be derived from `origin`. `example` is declared stackable to mirror
-   *  `StackCardKind` even though `resolveCardData` returns null for it today. */
+   *  `StackCardKind` even though its float's `snapshotForStack` returns null for
+   *  it today (no reachable `ExampleRef` sidecar — R2). */
   stackable: boolean;
   /** Whether this kind can pop out into a `Floatable` window. The single
    *  DECLARATIVE source of truth for poppability: `registerCardFloatable`

@@ -283,7 +283,7 @@ export const CARD_REGISTRY: Record<CardKind, CardMeta> = {
     markerType: null,
     lifecycle: { clone: false, delete: false, bindAnchor: false }, // gap → A3
     dropSpec: null,
-    stackable: true, // declared in StackCardKind (resolveCardData returns null today)
+    stackable: true, // declared in StackCardKind (its float's snapshotForStack returns null today — R2)
     poppable: true,
     toFloatable: PLACEHOLDER_TO_FLOATABLE,
   },
