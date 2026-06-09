@@ -24,11 +24,6 @@
  * (the expand chevron) are both first-class. The combined "open + focus" is an
  * explicit *composition* the body-click handler chooses (`select` + `expand`),
  * not something the store forces.
- *
- * NOTE: a handful of deprecated shims (`setTransient`/`toggleSelection`/
- * `markSticky`/`setSelection`/`addSticky`/`removeSticky`, `useTransient`/
- * `useStickySet`) write/read the new axes so un-migrated callers keep working;
- * they are removed once every consumer migrates.
  */
 
 import { useSyncExternalStore } from "react";
@@ -71,27 +66,8 @@ function expandedIndex(ref: AnchoredCardRef): number {
   return -1;
 }
 
-/**
- * @deprecated Transitional compat shape: the two-axis state plus `transient`/
- * `stickySet` aliases (transient's selection role is now `selected`; the sticky
- * expansion set is now `expandedSet`). Lets un-migrated imperative readers keep
- * compiling; removed once every reader migrates.
- */
-type CompatState = CardInteractionState & {
-  readonly transient: AnchoredCardRef | null;
-  readonly stickySet: AnchoredCardRef[];
-};
-
 export const cardStore = {
-  /** The two-axis state, plus deprecated `transient`/`stickySet` aliases for
-   *  un-migrated imperative readers. */
-  getState: (): CompatState => ({
-    expandedSet: _state.expandedSet,
-    selected: _state.selected,
-    hover: _state.hover,
-    transient: _state.selected,
-    stickySet: _state.expandedSet,
-  }),
+  getState: (): CardInteractionState => _state,
 
   // ── EXPANSION axis — `expandedSet` only, never touches `selected` ────────
   /** Add `ref` to the expansion set (open its body). No-op if already open. */
@@ -142,50 +118,6 @@ export const cardStore = {
     if (refsEqual(_state.hover, next)) return;
     _state = { ..._state, hover: next ? { ...next } : null };
     emit();
-  },
-
-  // ── Deprecated shims (write the new axes; removed once callers migrate) ───
-  /** @deprecated → `select` / `clearSelection`. */
-  setTransient(next: AnchoredCardRef | null): void {
-    if (next) cardStore.select(next);
-    else cardStore.clearSelection();
-  },
-  /** @deprecated → `expand`. */
-  addSticky(ref: AnchoredCardRef): void {
-    cardStore.expand(ref);
-  },
-  /** @deprecated → `collapse`. */
-  removeSticky(ref: AnchoredCardRef): void {
-    cardStore.collapse(ref);
-  },
-  /**
-   * @deprecated The conflated body-click. The R1 default (select + expand, and
-   * "click again" closes when both are set) is centralized in `useAnchoredCard`
-   * (`onActivate`); this shim preserves behavior for un-migrated callers.
-   */
-  toggleSelection(ref: AnchoredCardRef): void {
-    if (cardStore.isSelected(ref) && cardStore.isExpanded(ref)) {
-      cardStore.clearSelection();
-      cardStore.collapse(ref);
-    } else {
-      cardStore.select(ref);
-      cardStore.expand(ref);
-    }
-  },
-  /** @deprecated Focus-promotion is obsolete — expansion is now sticky by
-   *  construction, so there is nothing to promote. No-op. */
-  markSticky(): void {},
-  /** @deprecated → `select` / `clearSelection` (the `sticky` opt → `expand`). */
-  setSelection(next: AnchoredCardRef | null, opts?: { sticky?: boolean }): void {
-    if (next === null) {
-      cardStore.clearSelection();
-      return;
-    }
-    if (opts?.sticky) {
-      cardStore.expand(next);
-      return;
-    }
-    cardStore.select(next);
   },
 
   subscribe,
@@ -241,16 +173,4 @@ export function useIsHovered(ref: AnchoredCardRef | null | undefined): boolean {
   const h = useHover();
   if (!ref || !h) return false;
   return h.kind === ref.kind && h.id === ref.id;
-}
-
-// ── Deprecated shim hooks (removed once consumers migrate) ───────────────────
-
-/** @deprecated → `useSelection` (transient's selection role is now `selected`). */
-export function useTransient(): AnchoredCardRef | null {
-  return useSelection();
-}
-
-/** @deprecated → `useExpandedSet`. */
-export function useStickySet(): AnchoredCardRef[] {
-  return useExpandedSet();
 }
