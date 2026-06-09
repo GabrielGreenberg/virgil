@@ -224,11 +224,13 @@ export const CARD_THEMES = {
   // identity. CARD_THEMES.comment exists for legacy code paths that
   // referenced `comment`; the visual is the revision theme.
   comment:   themeFromAccent(DEFAULT_PANEL_COLORS.revision),
-  // System-level kinds (not user-customizable): hardcoded accents so a
-  // user-color override on (e.g.) the footnote panel does NOT also re-
-  // tint error cards.
-  aiRequest: themeFromAccent("#0ea5e9"),  // sky
-  error:     themeFromAccent("#b45757"),  // rust (same family as footnote, decoupled)
+  // System-level kinds (not user-customizable): their accents now live in
+  // DEFAULT_PANEL_COLORS like every other kind, but SYSTEM_THEME_KEYS marks
+  // them non-overridable so a user-color override on (e.g.) the footnote panel
+  // can NOT re-tint error / AI-request cards. One accent → one palette, no
+  // string-literal exception. (The literal-Tailwind body restyle is A9's.)
+  aiRequest: themeFromAccent(DEFAULT_PANEL_COLORS.aiRequest),  // sky
+  error:     themeFromAccent(DEFAULT_PANEL_COLORS.error),      // rust
   // Cutter panel hosts both comments and suggestions; both kinds share
   // the panel's cut accent so the panel reads as a single themed surface.
   cut:              themeFromAccent(DEFAULT_PANEL_COLORS.cut),
