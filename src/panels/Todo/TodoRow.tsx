@@ -2,7 +2,6 @@
 
 import { useState, useRef, useCallback } from "react";
 import type { TodoItem } from "@/lib/types";
-import { MIME_TODO } from "@/lib/marginalia";
 import {
   CARD_THEMES,
   PanelCard,
@@ -92,21 +91,6 @@ export function TodoRow({
   const commitNotes = useCallback(() => {
     if (notes !== item.notes) onUpdateNotes(item.id, notes);
   }, [notes, item.notes, item.id, onUpdateNotes]);
-
-  // TODO(grip-redesign): drop-into-document via the grip is disabled
-  // during the unified header redesign. Re-introduce thoughtfully via a
-  // separate body-level affordance, not the grip.
-  // const handleDragStart = useCallback(
-  //   (e: React.DragEvent) => {
-  //     e.stopPropagation();
-  //     e.dataTransfer.effectAllowed = "link";
-  //     e.dataTransfer.setData(MIME_TODO, JSON.stringify({ todoId: item.id }));
-  //     if (cardRef.current) {
-  //       e.dataTransfer.setDragImage(cardRef.current, 20, -10);
-  //     }
-  //   },
-  //   [item.id],
-  // );
 
   const onToggleFromCtx = onTogglePopout
     ?? (popped

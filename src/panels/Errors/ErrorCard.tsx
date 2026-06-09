@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useRef } from "react";
+import { useRef } from "react";
 import {
   CARD_THEMES,
   PanelCard,
@@ -10,7 +10,6 @@ import { useCompressedLines } from "@/components/editor-layout/contexts/card-dis
 import { usePoppedCards } from "@/hooks/usePoppedCards";
 import { popKey } from "@/panels/panel-registry";
 import type { LatexError, LatexErrorSeverity } from "@/lib/latex-errors";
-import { MIME_TEXT_INSERT } from "@/lib/marginalia";
 
 const theme = CARD_THEMES.error;
 
@@ -122,33 +121,6 @@ export function ErrorCard({
       : undefined);
   const compressed = !expanded && !isPoppedOut;
   const compressedLines = useCompressedLines();
-
-  // TODO(grip-redesign): drop-into-document via the grip is disabled
-  // during the unified header redesign. Re-introduce thoughtfully via a
-  // separate body-level affordance, not the grip. Original helper:
-  // const handleDragStart = useCallback(
-  //   (e: React.DragEvent) => {
-  //     e.stopPropagation();
-  //     const plain = `${title}${err.line > 0 ? ` (line ${err.line})` : ""}: ${err.message}`;
-  //     e.dataTransfer.setData("text/plain", plain);
-  //     e.dataTransfer.setData(
-  //       MIME_TEXT_INSERT,
-  //       JSON.stringify({
-  //         content: {
-  //           type: "doc",
-  //           content: [
-  //             { type: "paragraph", content: [{ type: "text", text: plain }] },
-  //           ],
-  //         },
-  //       }),
-  //     );
-  //     e.dataTransfer.effectAllowed = "copy";
-  //     if (cardRef.current) {
-  //       e.dataTransfer.setDragImage(cardRef.current, 20, -10);
-  //     }
-  //   },
-  //   [title, err.line, err.message],
-  // );
 
   const card = (
     <PanelCard
