@@ -198,17 +198,17 @@ export function OmniHost(p: OmniHostProps) {
   } = useSelectionsContext();
   const { getCitationDisplayText, onCitationCreated } = useCitationDisplayContext();
 
-  // Click-away in the omni panel clears the transient selection only.
-  // Sticky cards (hand-clicked or focus-promoted) survive — they stay
-  // expanded until the user clicks the card again to close.
+  // Click-away in the omni panel clears the selection (halo) only.
+  // Expanded cards survive — expansion is sticky and independent of
+  // selection (N1), so they stay open until collapsed via the chevron.
   const handleBackgroundClick = useCallback(() => {
-    cardStore.setTransient(null);
+    cardStore.clearSelection();
   }, []);
-  // Focus moving into a card body promotes a transient selection into
-  // the sticky set. Wired from OmniViewPanel's focusin listener.
-  const handleCardFocus = useCallback(() => {
-    cardStore.markSticky();
-  }, []);
+  // Focus moving into a card body used to promote a transient selection
+  // into the sticky set; obsolete now that expansion is sticky by
+  // construction (nothing to promote). Kept as a no-op so OmniViewPanel's
+  // focusin wiring stays intact (expand-on-focus, if wanted, is an A5 follow-up).
+  const handleCardFocus = useCallback(() => {}, []);
   const setFootnoteInOmni = useCallback((id: string | null) => {
     setSelectedFootnoteId(id);
     if (id !== null) {

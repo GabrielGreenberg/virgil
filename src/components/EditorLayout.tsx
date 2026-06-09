@@ -1483,7 +1483,7 @@ export default function EditorLayout() {
       ) {
         return;
       }
-      cardStore.setTransient(null);
+      cardStore.clearSelection();
       setSelectedBibKey(null);
       setSelectedErrorId(null);
     };
