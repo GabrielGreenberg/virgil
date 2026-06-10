@@ -16,6 +16,7 @@ import type {
 import type { PanelId, ViewPrefs } from "@/hooks/useViewPrefs";
 import type { TextObjectKind } from "@/text-objects/types";
 import type { CardKind } from "@/cards/types";
+import { panelForCardKind } from "@/cards/predicates";
 import { nextCardTitle } from "@/panels/panel-registry";
 import type { EditorHandle } from "../../Editor";
 import type {
@@ -312,31 +313,56 @@ export function useCardCreation(deps: CardCreationDeps): CardCreationApi {
   // visible).
   const fromToolbar = (opts: { anchorRect?: DOMRect | null }) => opts.anchorRect !== undefined;
 
+  /**
+   * Shared post-create tail for every factory: select the new card (through
+   * the kind's existing setter — already A4-correct: `cardStore.select({kind,id})`
+   * only, NEVER expand), pin it to the top of its panel, then surface it —
+   * either as a floating popup at the trigger rect (the toolbar path) or by
+   * activating its panel on the placed side (the in-panel "+" path). The
+   * omni-view path leaves the panel alone.
+   *
+   * `kind` is the canonical CardKind (drives the float key + the derived
+   * panel). `pinToken` is the parallel `RecentlyAddedKind` enum's bucket —
+   * NOT 1:1 with CardKind (e.g. cutter-comment/suggestion both pin "cutter",
+   * report/report-request both pin "reports", revision-* both pin "revision").
+   * TODO(A3-followup): reconcile RecentlyAddedKind onto the card registry so
+   * this second token can go away.
+   */
+  const finishCreate = useCallback(
+    (
+      kind: CardKind,
+      pinToken: RecentlyAddedKind,
+      setSelected: (id: string) => void,
+      id: string,
+      opts: { mode?: CardCreateMode; anchorRect?: DOMRect | null },
+    ) => {
+      setSelected(id);
+      pin(pinToken, id);
+      if (opts.mode === "omni") return;
+      if (fromToolbar(opts)) popCardAtAnchor(kind, id, opts.anchorRect!);
+      // Every creatable kind owns a panel (panelForCardKind is non-null for
+      // all 13 factories); the assertion documents that invariant.
+      else ensurePanelActive(panelForCardKind(kind)!);
+    },
+    [pin, ensurePanelActive, popCardAtAnchor],
+  );
+
   const createNote = useCallback<CardCreationApi["createNote"]>(
     (opts) => {
       const note = addNote(opts.paragraphId ?? null, opts.content, opts.anchor, opts.targetKind);
-      setSelectedNoteId(note.id);
-      pin("note", note.id);
-      if (opts.mode === "omni") return note;
-      if (fromToolbar(opts)) popCardAtAnchor("note", note.id, opts.anchorRect!);
-      else ensurePanelActive("notes");
+      finishCreate("note", "note", setSelectedNoteId, note.id, opts);
       return note;
     },
-    [addNote, setSelectedNoteId, pin, ensurePanelActive, popCardAtAnchor],
+    [addNote, setSelectedNoteId, finishCreate],
   );
 
   const createHighlight = useCallback<CardCreationApi["createHighlight"]>(
     (opts) => {
       const card = addHighlight(opts.anchor, opts.paragraphId ?? null, opts.color ?? null);
-      setSelectedNoteId(card.id);
-      pin("highlight", card.id);
-      if (opts.mode === "omni") return card;
-      if (fromToolbar(opts))
-        popCardAtAnchor("highlight", card.id, opts.anchorRect!);
-      else ensurePanelActive("notes");
+      finishCreate("highlight", "highlight", setSelectedNoteId, card.id, opts);
       return card;
     },
-    [addHighlight, setSelectedNoteId, pin, ensurePanelActive, popCardAtAnchor],
+    [addHighlight, setSelectedNoteId, finishCreate],
   );
 
   // R14: `addNoteForHighlight` (the one-way "+ note" morph) is removed —
@@ -361,21 +387,10 @@ export function useCardCreation(deps: CardCreationDeps): CardCreationApi {
         opts.anchor,
         opts.targetKind,
       );
-      setSelectedCutterCardId(card.id);
-      pin("cutter", card.id);
-      if (opts.mode === "omni") return card;
-      if (fromToolbar(opts))
-        popCardAtAnchor("cutter-comment", card.id, opts.anchorRect!);
-      else ensurePanelActive("cutter");
+      finishCreate("cutter-comment", "cutter", setSelectedCutterCardId, card.id, opts);
       return card;
     },
-    [
-      addCutterComment,
-      setSelectedCutterCardId,
-      pin,
-      ensurePanelActive,
-      popCardAtAnchor,
-    ],
+    [addCutterComment, setSelectedCutterCardId, finishCreate],
   );
 
   const createCutterSuggestion = useCallback<
@@ -387,21 +402,10 @@ export function useCardCreation(deps: CardCreationDeps): CardCreationApi {
         opts.originalText,
         opts.anchor,
       );
-      setSelectedCutterCardId(card.id);
-      pin("cutter", card.id);
-      if (opts.mode === "omni") return card;
-      if (fromToolbar(opts))
-        popCardAtAnchor("cutter-suggestion", card.id, opts.anchorRect!);
-      else ensurePanelActive("cutter");
+      finishCreate("cutter-suggestion", "cutter", setSelectedCutterCardId, card.id, opts);
       return card;
     },
-    [
-      addCutterSuggestion,
-      setSelectedCutterCardId,
-      pin,
-      ensurePanelActive,
-      popCardAtAnchor,
-    ],
+    [addCutterSuggestion, setSelectedCutterCardId, finishCreate],
   );
 
   const createReport = useCallback<CardCreationApi["createReport"]>(
@@ -412,14 +416,10 @@ export function useCardCreation(deps: CardCreationDeps): CardCreationApi {
         opts.anchor,
         opts.targetKind,
       );
-      setSelectedReportCardId(card.id);
-      pin("reports", card.id);
-      if (opts.mode === "omni") return card;
-      if (fromToolbar(opts)) popCardAtAnchor("report", card.id, opts.anchorRect!);
-      else ensurePanelActive("reports");
+      finishCreate("report", "reports", setSelectedReportCardId, card.id, opts);
       return card;
     },
-    [addReport, setSelectedReportCardId, pin, ensurePanelActive, popCardAtAnchor],
+    [addReport, setSelectedReportCardId, finishCreate],
   );
 
   const createReportRequest = useCallback<CardCreationApi["createReportRequest"]>(
@@ -430,21 +430,10 @@ export function useCardCreation(deps: CardCreationDeps): CardCreationApi {
         opts.anchor,
         opts.targetKind,
       );
-      setSelectedReportCardId(card.id);
-      pin("reports", card.id);
-      if (opts.mode === "omni") return card;
-      if (fromToolbar(opts))
-        popCardAtAnchor("report-request", card.id, opts.anchorRect!);
-      else ensurePanelActive("reports");
+      finishCreate("report-request", "reports", setSelectedReportCardId, card.id, opts);
       return card;
     },
-    [
-      addReportRequest,
-      setSelectedReportCardId,
-      pin,
-      ensurePanelActive,
-      popCardAtAnchor,
-    ],
+    [addReportRequest, setSelectedReportCardId, finishCreate],
   );
 
   const createRevisionComment = useCallback<
@@ -457,21 +446,10 @@ export function useCardCreation(deps: CardCreationDeps): CardCreationApi {
         opts.anchor,
         opts.targetKind,
       );
-      setSelectedCommentId(card.id);
-      pin("revision", card.id);
-      if (opts.mode === "omni") return card;
-      if (fromToolbar(opts))
-        popCardAtAnchor("revision-comment", card.id, opts.anchorRect!);
-      else ensurePanelActive("revisions");
+      finishCreate("revision-comment", "revision", setSelectedCommentId, card.id, opts);
       return card;
     },
-    [
-      addRevisionComment,
-      setSelectedCommentId,
-      pin,
-      ensurePanelActive,
-      popCardAtAnchor,
-    ],
+    [addRevisionComment, setSelectedCommentId, finishCreate],
   );
 
   const createRevisionSuggestion = useCallback<
@@ -483,21 +461,10 @@ export function useCardCreation(deps: CardCreationDeps): CardCreationApi {
         opts.originalText,
         opts.anchor,
       );
-      setSelectedCommentId(card.id);
-      pin("revision", card.id);
-      if (opts.mode === "omni") return card;
-      if (fromToolbar(opts))
-        popCardAtAnchor("revision-suggestion", card.id, opts.anchorRect!);
-      else ensurePanelActive("revisions");
+      finishCreate("revision-suggestion", "revision", setSelectedCommentId, card.id, opts);
       return card;
     },
-    [
-      addRevisionSuggestion,
-      setSelectedCommentId,
-      pin,
-      ensurePanelActive,
-      popCardAtAnchor,
-    ],
+    [addRevisionSuggestion, setSelectedCommentId, finishCreate],
   );
 
   const createTodo = useCallback<CardCreationApi["createTodo"]>(
@@ -505,14 +472,10 @@ export function useCardCreation(deps: CardCreationDeps): CardCreationApi {
       const todo = addTodo();
       if (opts.text) updateTodo(todo.id, opts.text);
       if (opts.paragraphId) addTodoTextObjectId(todo.id, opts.paragraphId, opts.targetKind);
-      setSelectedTodoId(todo.id);
-      pin("todo", todo.id);
-      if (opts.mode === "omni") return todo;
-      if (fromToolbar(opts)) popCardAtAnchor("todo", todo.id, opts.anchorRect!);
-      else ensurePanelActive("todo");
+      finishCreate("todo", "todo", setSelectedTodoId, todo.id, opts);
       return todo;
     },
-    [addTodo, updateTodo, addTodoTextObjectId, setSelectedTodoId, pin, ensurePanelActive, popCardAtAnchor],
+    [addTodo, updateTodo, addTodoTextObjectId, setSelectedTodoId, finishCreate],
   );
 
   const createFootnote = useCallback<CardCreationApi["createFootnote"]>(
@@ -526,14 +489,10 @@ export function useCardCreation(deps: CardCreationDeps): CardCreationApi {
       if (!result) return null;
       handle.renumberFootnotes();
       if (!opts.fromSelection) markFootnotePristine(result.footnoteId);
-      setSelectedFootnoteId(result.footnoteId);
-      pin("footnote", result.footnoteId);
-      if (opts.mode === "omni") return result;
-      if (fromToolbar(opts)) popCardAtAnchor("footnote", result.footnoteId, opts.anchorRect!);
-      else ensurePanelActive("footnotes");
+      finishCreate("footnote", "footnote", setSelectedFootnoteId, result.footnoteId, opts);
       return result;
     },
-    [editorRef, markFootnotePristine, setSelectedFootnoteId, pin, ensurePanelActive, popCardAtAnchor, getFootnoteCount],
+    [editorRef, markFootnotePristine, setSelectedFootnoteId, finishCreate, getFootnoteCount],
   );
 
   const createArchiveSnippet = useCallback<
@@ -547,12 +506,7 @@ export function useCardCreation(deps: CardCreationDeps): CardCreationApi {
       if (opts.paragraphId) {
         addArchiveTextObjectId(snippet.id, opts.paragraphId, opts.targetKind);
       }
-      setSelectedArchiveId(snippet.id);
-      pin("archive", snippet.id);
-      if (opts.mode === "omni") return snippet;
-      if (fromToolbar(opts))
-        popCardAtAnchor("archive", snippet.id, opts.anchorRect!);
-      else ensurePanelActive("archive");
+      finishCreate("archive", "archive", setSelectedArchiveId, snippet.id, opts);
       return snippet;
     },
     [
@@ -560,9 +514,7 @@ export function useCardCreation(deps: CardCreationDeps): CardCreationApi {
       updateArchiveSnippet,
       addArchiveTextObjectId,
       setSelectedArchiveId,
-      pin,
-      ensurePanelActive,
-      popCardAtAnchor,
+      finishCreate,
     ],
   );
 
@@ -573,14 +525,10 @@ export function useCardCreation(deps: CardCreationDeps): CardCreationApi {
         opts.citationId,
         opts.unanchored ?? true,
       );
-      setSelectedCitationId(ref.id);
-      pin("citation", ref.id);
-      if (opts.mode === "omni") return ref;
-      if (fromToolbar(opts)) popCardAtAnchor("citation", ref.id, opts.anchorRect!);
-      else ensurePanelActive("citations");
+      finishCreate("citation", "citation", setSelectedCitationId, ref.id, opts);
       return ref;
     },
-    [addCitation, setSelectedCitationId, pin, ensurePanelActive, popCardAtAnchor],
+    [addCitation, setSelectedCitationId, finishCreate],
   );
 
   return useMemo<CardCreationApi>(
