@@ -69,8 +69,47 @@ Each has an `*-override` companion the user can set. Always read the
 override first: `var(--font-serif-override, var(--font-serif))`.
 
 Editor scale: H1 1.75rem/700, H2 1.35rem/600, H3 1.15rem/600, body
-1.05rem/400 with line-height 1.6. Panel scale: header 14px/600, body
-13px/400, card title 12.5px/500, badge 10px/600.
+1.05rem/400 with line-height 1.6. Panel scale: header 14px/600, card
+title 12.5px/500, badge 10px/600.
+
+### Card body typography — the two-class rule (A9)
+
+Card *body* text is NOT one size. Every `CardKind` declares a
+`bodyClass` in `CARD_REGISTRY` (`src/cards/types.ts`), and
+`DEFAULT_PANEL_TYPOGRAPHY` (`src/lib/panel-typography.ts`) is **derived**
+from it — never hand-kept — so the declared class and the rendered
+default can't drift:
+
+| `bodyClass` | Family · size | Kinds |
+|---|---|---|
+| `"borrowed"` | Source Serif 4 · **15px** | footnote, archive, example — the apparatus that *quotes document prose*. Same family as main text (17px), one step down for hierarchy. |
+| `"sans"` | Inter · **12px** | everyone else — notes, todos, revisions, cuts, citations, bib, **reports** (R11), highlights. |
+
+A panel's default row comes from its primary kind's `bodyClass` (a dev
+assertion — `assertPanelTypographyCoverage` — pins that morph siblings in
+a panel agree, so a morph never flips typography). The per-field user
+override registry (the text-size stepper) sits on top of these defaults.
+
+A `"borrowed"`-class card renders its **compressed** view and any
+read-only surface through `BorrowedMainText` (a read-only TipTap clipped
+to `compressedLines`), so collapsed cards still show real inline atoms
+(citation / `\ref` / inline math) — not a flattened string. Sans-class
+cards keep the one-line summary. The empty-body placeholder is the single
+`CardEmptyText` component (one `text-ink-faint italic` style), not a
+hand-rolled span.
+
+### The card kind-chevron (morph) — A9
+
+A polymorphic panel (one panel hosting a kind PAIR — Notes
+note↔highlight, Revisions / Cutter comment↔suggestion, Reports
+report↔report-request) renders a **chevron-down kind dropdown** in the
+card header (`CardKindHeader`, options = `cardKindsForPanel(panel)`),
+docked AND popped (via `chromeSlots.title`). Picking the sibling morphs
+the card *in place* through the one chokepoint
+(`convertCardWithRemap`): it salvages fields via the registered transform
+(`registerCardMorph`), keeps a popped float alive (float-key remap), and
+confirms first when the morph is `lossy` (drops a body / byline that the
+target can't hold — `CardMeta.morph.lossy`). Never a one-way "+X" button.
 
 Numerals tabular for any list of numbers. Italic only in blockquote and
 the AI-marker label. No letter-spacing on body text.

@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import type { CutterSuggestionCard as CutterSuggestionCardData } from "@/lib/types";
 import {
   Button,
+  CardEmptyText,
   Chevron,
   PanelCard,
   compressedBodyStyle,
@@ -15,6 +16,7 @@ import { usePoppedCards } from "@/hooks/usePoppedCards";
 import { usePanelBodyStyle } from "@/hooks/usePanelTypography";
 import { useTabIndent } from "@/hooks/useTabIndent";
 import { cardPopKey } from "@/panels/panel-registry";
+import { cardKindsForPanel } from "@/cards/predicates";
 import { useAnchoredCard } from "@/links/_shared/useAnchoredCard";
 import { cardStore } from "@/links/_shared/anchored-card-store";
 import { MIME_CUT } from "@/lib/marginalia";
@@ -292,6 +294,7 @@ export function CutterSuggestionCard({
   card,
   selected,
   onUpdateField,
+  onConvert,
   onAccept,
   onReject,
   onDelete,
@@ -308,6 +311,8 @@ export function CutterSuggestionCard({
     field: SuggestionField,
     value: string,
   ) => void;
+  /** Morph suggestion ⇄ comment via the kind-chevron. */
+  onConvert?: (id: string, toKind: "comment" | "suggestion") => void;
   onAccept: (id: string) => void;
   onReject: (id: string) => void;
   onDelete: (id: string) => void;
@@ -380,6 +385,14 @@ export function CutterSuggestionCard({
       }}
       className="focus:outline-none mb-2"
       kind="cutter-suggestion"
+      kindOptions={onConvert ? cardKindsForPanel("cutter") : undefined}
+      onKindChange={
+        onConvert
+          ? (k) => {
+              if (k !== "cutter-suggestion") onConvert(card.id, "comment");
+            }
+          : undefined
+      }
       canJump={isAnchored && !!onJump}
       onJump={(e) => {
         if (onJump && isAnchored)
@@ -395,7 +408,7 @@ export function CutterSuggestionCard({
             ) : card.original_text ? (
               <span className="text-ink-subtle">→ <span className="text-red-700/70 italic">{card.original_text.replace(/\s+/g, " ").trim()}</span></span>
             ) : (
-              <span className="text-ink-faint italic">empty suggestion</span>
+              <CardEmptyText label="empty suggestion" />
             )}
           </div>
         </div>

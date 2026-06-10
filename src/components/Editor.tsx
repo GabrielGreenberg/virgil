@@ -180,6 +180,11 @@ export interface ExampleSubItem {
   tag: string;
   /** Flattened plain text of the item body. */
   text: string;
+  /** The item's body as JSONContent (a `doc`), so the Example card can render
+   *  real inline atoms (citation / `\ref` / inline math) via BorrowedMainText
+   *  instead of the flattened `text`. `null` for an empty item. Additive (A9
+   *  §C1): existing consumers read `text`; only the card body reads this. */
+  content: JSONContent | null;
 }
 
 export interface ExampleInfo {
@@ -201,6 +206,11 @@ export interface ExampleInfo {
   subLabelRange: string;
   /** Plain text from top-level paragraphs (`\ex` body before any `\a` items). */
   bodyText: string;
+  /** Top-level body paragraphs as JSONContent (a `doc`), so the Example card
+   *  can render real inline atoms (citation / `\ref` / inline math) via
+   *  BorrowedMainText instead of the flattened `bodyText`. `null` when there's
+   *  no top-level body. Additive (A9 §C1) — existing consumers read `bodyText`. */
+  bodyContent: JSONContent | null;
   /** Top-level sub-items (one entry per `\a`). Empty for `\ex` with no items. */
   items: ExampleSubItem[];
   /** Round-trippable LaTeX source for the entire `\ex…\xe` block. */
@@ -1203,12 +1213,21 @@ const VirgilEditor = forwardRef<EditorHandle, EditorProps>(function VirgilEditor
         // `\ex` examples this captures the whole body; for `\pex` it
         // captures any preamble paragraphs before the items.
         const bodyParagraphs: string[] = [];
+        // Capture the top-level body paragraphs as JSONContent too, so the
+        // Example card can render real inline atoms (citation / \ref / math)
+        // via BorrowedMainText. Same paragraphs as bodyText, kept in lockstep.
+        const bodyParaJson: JSONContent[] = [];
         node.forEach((child) => {
           if (child.type.name === "paragraph") {
             bodyParagraphs.push(child.textContent);
+            bodyParaJson.push(child.toJSON() as JSONContent);
           }
         });
         const bodyText = bodyParagraphs.join("\n").trim();
+        const bodyContent: JSONContent | null =
+          bodyParaJson.length > 0
+            ? { type: "doc", content: bodyParaJson }
+            : null;
         // Top-level sub-items: walk the first exampleItemList only, so
         // nested xlists don't get inlined into the flat list (they
         // remain accessible via the .tex source editor).
@@ -1217,11 +1236,23 @@ const VirgilEditor = forwardRef<EditorHandle, EditorProps>(function VirgilEditor
           if (child.type.name === "exampleItemList" && items.length === 0) {
             child.forEach((it) => {
               if (it.type.name !== "exampleItem") return;
+              // The item's inner paragraphs as a JSONContent doc (atoms intact)
+              // for BorrowedMainText; null when the item has no text.
+              const itemParas: JSONContent[] = [];
+              it.forEach((inner) => {
+                if (inner.type.name === "paragraph") {
+                  itemParas.push(inner.toJSON() as JSONContent);
+                }
+              });
               items.push({
                 subLabel: (it.attrs.subLabel as string) || "",
                 label: (it.attrs.label as string) || "",
                 tag: (it.attrs.tag as string) || "",
                 text: it.textContent.trim(),
+                content:
+                  itemParas.length > 0
+                    ? { type: "doc", content: itemParas }
+                    : null,
               });
             });
           }
@@ -1251,6 +1282,7 @@ const VirgilEditor = forwardRef<EditorHandle, EditorProps>(function VirgilEditor
           preview: (preview.trim() || "(empty example)").slice(0, 120),
           subLabelRange,
           bodyText,
+          bodyContent,
           items,
           latex,
         });

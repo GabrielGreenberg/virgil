@@ -3,7 +3,6 @@ import type { JSONContent } from "@tiptap/react";
 import type {
   UserNote,
   HighlightCard,
-  NoteCardItem,
   CutterCommentCard,
   CutterSuggestionCard,
   RevisionCommentCard,
@@ -17,7 +16,6 @@ import type {
 import type { PanelId, ViewPrefs } from "@/hooks/useViewPrefs";
 import type { TextObjectKind } from "@/text-objects/types";
 import { nextCardTitle } from "@/panels/panel-registry";
-import { getTextAnchor } from "@/links/links";
 import type { EditorHandle } from "../../Editor";
 import type {
   RecentlyAddedKind,
@@ -55,11 +53,6 @@ export interface CardCreationDeps {
     paragraphId: string | null,
     color?: string | null,
   ) => HighlightCard;
-  /** Notes panel's current cards (note + highlight union). Used by
-   *  `addNoteForHighlight` / `deleteHighlightOrNote` to look up the live
-   *  card by id without forcing those callers to thread the hook through
-   *  their own props. */
-  notesCards: NoteCardItem[];
   deleteNote: (id: string) => void;
   addCutterComment: (
     paragraphId: string | null,
@@ -163,11 +156,6 @@ export interface CardCreationApi {
     anchorRect?: DOMRect | null;
     mode?: CardCreateMode;
   }) => HighlightCard;
-  /** Spawn a sibling Note card anchored to the same text range as the
-   *  given highlight. The highlight is left untouched (yellow tint stays);
-   *  the new note shares the highlight's `anchorId` so no new in-doc mark
-   *  is created. */
-  addNoteForHighlight: (highlightId: string) => UserNote | null;
   /** Delete a note OR highlight by id. For highlights, also strips the
    *  in-doc `linkedAnchor` mark so the yellow tint goes away. */
   deleteHighlightOrNote: (id: string) => void;
@@ -264,7 +252,6 @@ export function useCardCreation(deps: CardCreationDeps): CardCreationApi {
     editorRef,
     addNote,
     addHighlight,
-    notesCards,
     deleteNote,
     addCutterComment,
     addCutterSuggestion,
@@ -351,31 +338,9 @@ export function useCardCreation(deps: CardCreationDeps): CardCreationApi {
     [addHighlight, setSelectedNoteId, pin, ensurePanelActive, popCardAtAnchor],
   );
 
-  const addNoteForHighlight = useCallback<CardCreationApi["addNoteForHighlight"]>(
-    (highlightId) => {
-      const highlight = notesCards.find(
-        (c): c is HighlightCard => c.kind === "highlight" && c.id === highlightId,
-      );
-      if (!highlight) return null;
-      const textAnchor = getTextAnchor(highlight);
-      const pids = highlight.links
-        .flatMap((l) => (l.anchor.type === "textObject" ? l.anchor.textObjectIds : []));
-      const paragraphId = pids[0] ?? null;
-      // The new note shares the highlight's existing `linkedAnchor` mark
-      // by referencing the same `anchorId` — no new mark is created, so
-      // the highlight's `tintColor` survives. Deleting the highlight
-      // strips the mark; the note's textRange link goes stale but its
-      // paragraph anchor still holds the note in the panel.
-      const anchor = textAnchor
-        ? { anchorId: textAnchor.anchorId, anchorText: textAnchor.anchorText }
-        : undefined;
-      const note = addNote(paragraphId, undefined, anchor);
-      setSelectedNoteId(note.id);
-      pin("note", note.id);
-      return note;
-    },
-    [notesCards, addNote, setSelectedNoteId, pin],
-  );
+  // R14: `addNoteForHighlight` (the one-way "+ note" morph) is removed —
+  // note ⇄ highlight is now BIDIRECTIONAL via the A9 kind-chevron, routed
+  // through EditorPane's `convertCardWithRemap` chokepoint.
 
   const deleteHighlightOrNote = useCallback<CardCreationApi["deleteHighlightOrNote"]>(
     // Mark cleanup is enforced centrally by `useLinkedAnchorReconciler`,
@@ -621,7 +586,6 @@ export function useCardCreation(deps: CardCreationDeps): CardCreationApi {
     () => ({
       createNote,
       createHighlight,
-      addNoteForHighlight,
       deleteHighlightOrNote,
       createCutterComment,
       createCutterSuggestion,
@@ -637,7 +601,6 @@ export function useCardCreation(deps: CardCreationDeps): CardCreationApi {
     [
       createNote,
       createHighlight,
-      addNoteForHighlight,
       deleteHighlightOrNote,
       createCutterComment,
       createCutterSuggestion,

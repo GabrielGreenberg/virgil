@@ -30,7 +30,9 @@ import { autoSizeInput } from "@/lib/autoSizeInput";
 import ConfirmDialog from "./ConfirmDialog";
 import { hasJsonContent } from "@/cards/has-content";
 import { isPoppable } from "@/cards/predicates";
+import { CARD_REGISTRY } from "@/cards/card-registry";
 import RichTextField from "./RichTextField";
+import { BorrowedMainText } from "./BorrowedMainText";
 import { useEditorChrome } from "./editor-layout/chrome-context";
 import PanelTextSizeRow from "./PanelTextSizeRow";
 import { useEnclosingPanelBodyKey } from "./panel-kind-context";
@@ -311,6 +313,14 @@ export function CardTypeLabel({
       {labelOverride ?? cardTypeLabel(kind)}
     </span>
   );
+}
+
+/** A9 §C3: the single empty-body placeholder for a compressed / empty card.
+ *  Replaces the ~5 hand-rolled `<span className="text-ink-faint italic">empty
+ *  …</span>` literals scattered across the cards (which had drifted between
+ *  `text-ink-faint` and `text-ink-muted`). One style, optional label. */
+export function CardEmptyText({ label = "empty" }: { label?: string }) {
+  return <span className="text-ink-faint italic">{label}</span>;
 }
 
 /* ── Unified card-chrome header components ────────────────────────── */
@@ -732,8 +742,16 @@ export interface EditableCardProps {
    *  select+expand via `onActivate`. */
   compressed?: boolean;
   /** One-line summary rendered in place of the rich body when compressed.
-   *  Required if compressed is ever true. */
+   *  Required if compressed is ever true (sans-class fallback / when no
+   *  `compressedContent` is given). */
   compressedSummary?: ReactNode;
+  /** A9 §C3: the card's resolved JSONContent body. For a `"borrowed"`-class
+   *  kind (footnote/archive/example — they quote document prose) the compressed
+   *  view renders this via `BorrowedMainText` clipped to `compressedLines`, so
+   *  collapsed cards show real inline atoms (citation / \ref / inline math)
+   *  instead of a flattened summary string. Ignored for `"sans"`-class kinds
+   *  (they keep `compressedSummary`). */
+  compressedContent?: unknown;
   /** Axis-pure expand toggle, forwarded straight to `PanelCard.onToggleExpanded`
    *  so the docked header renders the one-click expand chevron. Pass
    *  `useAnchoredCard().onToggleExpanded`. */
@@ -776,7 +794,7 @@ export function EditableCard({
   dataAttr, extraDataAttrs, wrapperClassName, wrapperStyle,
   hideToolbar, inlineDelete, onBodyFocus, onEditorFocus, onHoverChange,
   onTogglePopout, isPoppedOut, cardKey,
-  compressed, compressedSummary, onToggleExpanded,
+  compressed, compressedSummary, compressedContent, onToggleExpanded,
   kind, kindLabelOverride, kindOptions, onKindChange,
   canJump, onJump, chromeless,
 }: EditableCardProps) {
@@ -791,6 +809,13 @@ export function EditableCard({
     chrome.editableCardKinds.includes(cardKind);
   const compressedLines = useCompressedLines();
   const compressedBody = usePanelBodyStyle(panelKey);
+  // A9 §C3: a "borrowed"-class kind (footnote/archive/example) with a resolved
+  // body renders its compressed view via BorrowedMainText (real inline atoms),
+  // clipped to compressedLines. Sans-class kinds keep the summary string.
+  const useBorrowedCompressed =
+    !!cardKind &&
+    CARD_REGISTRY[cardKind].bodyClass === "borrowed" &&
+    compressedContent != null;
   const [isFocused, setIsFocused] = useState(false);
   const [toolbarTarget, setToolbarTarget] = useState<HTMLDivElement | null>(null);
   const [confirmOpen, setConfirmOpen] = useState(false);
@@ -961,7 +986,16 @@ export function EditableCard({
           }
         >
           <div style={{ ...compressedBody, ...compressedBodyStyle(compressedLines) }}>
-            {compressedSummary ?? <span className="text-ink-faint italic">empty</span>}
+            {useBorrowedCompressed ? (
+              <BorrowedMainText
+                value={compressedContent}
+                instanceKey={`compressed:${cardKind}:${id}`}
+                variant="footnote"
+                bodyStyle={compressedBody}
+              />
+            ) : (
+              compressedSummary ?? <CardEmptyText />
+            )}
           </div>
         </div>
       ) : (

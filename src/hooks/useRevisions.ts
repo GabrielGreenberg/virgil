@@ -25,6 +25,7 @@ import {
 } from "@/links/links";
 import { migrateCardLinks } from "@/links/migrate-card";
 import { bridgeCardAiRequestFlag } from "@/lib/ai-request-bridge";
+import { applyCardMorph } from "@/cards/morphs";
 import { usePersistentState } from "./usePersistentState";
 import { usePristineTracker } from "./usePristineTracker";
 import type { PristineKindApi } from "./usePristineCardManager";
@@ -320,8 +321,10 @@ export function useRevisions(
     [update, pristine],
   );
 
-  /** Flip a card's kind in place. Preserves id, createdAt, anchor and
-   *  paragraph links; salvages text fields across the shape change. */
+  /** Flip a card's kind in place (comment ⇄ suggestion) via the registered
+   *  morph transform. Preserves id, createdAt, anchor and paragraph links;
+   *  salvages text fields across the shape change. The float-key remap rides
+   *  on `convertCardWithRemap` in EditorPane (the morph chokepoint). */
   const convertCard = useCallback(
     (id: string, toKind: "comment" | "suggestion") => {
       pristine.markDirty(id);
@@ -329,44 +332,9 @@ export function useRevisions(
         ...prev,
         cards: prev.cards.map((c) => {
           if (c.id !== id || c.kind === toKind) return c;
-          if (c.kind === "comment" && toKind === "suggestion") {
-            const next: RevisionSuggestionCard = {
-              kind: "suggestion",
-              id: c.id,
-              createdAt: c.createdAt,
-              author: "human",
-              original_text: c.selectedText ?? "",
-              suggested_text: "",
-              explanation: "",
-              user_text: c.text,
-              instructions: "",
-              status: "pending",
-              selectedText: c.selectedText,
-              links: c.links,
-            };
-            return next;
-          }
-          const s = c as RevisionSuggestionCard;
-          const bodyText = s.user_text || s.suggested_text || "";
-          const content: JSONContent = bodyText
-            ? {
-                type: "doc",
-                content: [
-                  { type: "paragraph", content: [{ type: "text", text: bodyText }] },
-                ],
-              }
-            : emptyRichContent();
-          const next: RevisionCommentCard = {
-            kind: "comment",
-            id: s.id,
-            createdAt: s.createdAt,
-            text: bodyText,
-            content,
-            aiRequest: false,
-            selectedText: s.selectedText ?? s.original_text ?? undefined,
-            links: s.links,
-          };
-          return next;
+          const fromKind =
+            c.kind === "comment" ? "revision-comment" : "revision-suggestion";
+          return applyCardMorph(fromKind, c);
         }),
       }));
     },

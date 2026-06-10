@@ -18,6 +18,9 @@ export interface ReportsHostProps {
   updateReportTitle: (id: string, title: string) => void;
   updateRequestContent: (id: string, content: JSONContent) => void;
   setRequestAiRequest: (id: string, value: boolean) => void;
+  /** Morph report ⇄ report-request via the kind-chevron — routes through the
+   *  EditorPane morph chokepoint (lossy confirm + float-key remap). */
+  convertCard: (id: string, toKind: "report" | "report-request") => void;
   deleteCard: (id: string) => void;
   /** Called on host unmount to drop cards created via "+" but never edited. */
   discardPristine: () => void;
@@ -52,6 +55,7 @@ export function ReportsHost(p: ReportsHostProps) {
       onUpdateReportTitle={p.updateReportTitle}
       onUpdateRequestContent={p.updateRequestContent}
       onSetRequestAiRequest={p.setRequestAiRequest}
+      onConvertCard={p.convertCard}
       onDelete={p.deleteCard}
       onSelect={setSelectedReportCardId}
       selectedId={selectedReportCardId}

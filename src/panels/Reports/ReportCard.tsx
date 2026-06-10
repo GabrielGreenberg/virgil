@@ -12,6 +12,7 @@ import { normalizeRichContent } from "@/lib/footnote-content";
 import { cardPopKey } from "@/panels/panel-registry";
 import { useAnchoredCard } from "@/links/_shared/useAnchoredCard";
 import { cardStore } from "@/links/_shared/anchored-card-store";
+import { cardKindsForPanel } from "@/cards/predicates";
 import { MIME_REPORT } from "@/lib/marginalia";
 import { AuthorByline } from "./AuthorByline";
 
@@ -29,6 +30,7 @@ export function ReportCard({
   selected,
   onUpdate,
   onUpdateTitle,
+  onConvert,
   onDelete,
   onSelect,
   onJump,
@@ -44,6 +46,9 @@ export function ReportCard({
   selected: boolean;
   onUpdate: (id: string, content: JSONContent) => void;
   onUpdateTitle: (id: string, title: string) => void;
+  /** Morph report ⇄ report-request via the kind-chevron (lossy: drops the
+   *  title/author byline; the host confirms first). */
+  onConvert?: (id: string, toKind: "report" | "report-request") => void;
   onDelete: (id: string) => void;
   onSelect: (id: string | null) => void;
   onJump?: (sourceEl: HTMLElement | null) => void;
@@ -85,6 +90,14 @@ export function ReportCard({
       id={report.id}
       cardKind="report"
       kind="report"
+      kindOptions={onConvert ? cardKindsForPanel("reports") : undefined}
+      onKindChange={
+        onConvert
+          ? (k) => {
+              if (k !== "report") onConvert(report.id, "report-request");
+            }
+          : undefined
+      }
       selected={isSelected}
       theme={theme}
       hideToolbar

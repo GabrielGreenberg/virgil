@@ -20,6 +20,7 @@ import {
 } from "@/links/links";
 import { bridgeCardAiRequestFlag } from "@/lib/ai-request-bridge";
 import { migrateCardLinks } from "@/links/migrate-card";
+import { applyCardMorph } from "@/cards/morphs";
 import { nextCardTitle } from "@/panels/panel-registry";
 import { usePersistentState } from "./usePersistentState";
 import { usePristineTracker } from "./usePristineTracker";
@@ -434,6 +435,26 @@ export function useNotes(docId: string | null, externalPristine?: PristineKindAp
     [update],
   );
 
+  /** Flip a notes-panel card's kind in place (note ⇄ highlight) via the
+   *  registered morph transform. Preserves id/createdAt/links (the text-range
+   *  anchor rides across so the in-doc tint/marker survives). note → highlight
+   *  is lossy (discards the rich note body + title); a confirm guards that
+   *  direction at the call site (driven by `morph.lossy`). The float-key remap
+   *  rides on `convertCardWithRemap` in EditorPane. Replaces the one-way
+   *  `addNoteForHighlight` "+ note" path (R14). */
+  const convertCard = useCallback(
+    (id: string, toKind: "note" | "highlight") => {
+      pristine.markDirty(id);
+      update((prev) => ({
+        cards: prev.cards.map((c) => {
+          if (c.id !== id || c.kind === toKind) return c;
+          return applyCardMorph(c.kind, c);
+        }),
+      }));
+    },
+    [update, pristine],
+  );
+
   /**
    * Drop any notes that were created via `addNote()` but never edited.
    * Call from panel-close / host-unmount so "press +, do nothing, leave"
@@ -469,6 +490,7 @@ export function useNotes(docId: string | null, externalPristine?: PristineKindAp
     deleteNote,
     cloneNote,
     cloneHighlight,
+    convertCard,
     bindAnchor,
     setNoteAnchor,
     clearNoteAnchor: clearCardAnchor,

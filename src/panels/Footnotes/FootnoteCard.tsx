@@ -151,6 +151,7 @@ export function FootnoteCard({
       cardKey={cardKey}
       compressed={compressed}
       compressedSummary={compressedSummary}
+      compressedContent={fn.content}
       onToggleExpanded={ac.onToggleExpanded}
     />
   );
@@ -226,6 +227,7 @@ export function OrphanedFootnoteCard({
       wrapperStyle={wrapperStyle}
       compressed={compressed}
       compressedSummary={compressedSummary}
+      compressedContent={orphan.content}
     />
   );
 }

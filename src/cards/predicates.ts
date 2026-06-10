@@ -49,3 +49,10 @@ export const stackableCardKinds = (): CardKind[] =>
  *  for the docked one-click pop-out control (and `registerCardFloatable`'s
  *  registration guard). Only `error` is false (ratified not-poppable, §3.5). */
 export const isPoppable = (k: CardKind): boolean => CARD_REGISTRY[k].poppable;
+
+/** Whether a kind can morph in place into its sibling (the A9 kind-chevron).
+ *  The 4 morphing pairs (note↔highlight, revision-/cutter-comment↔suggestion,
+ *  report↔report-request) are true; the 8 standalone kinds are false. The
+ *  chevron's dropdown options are `cardKindsForPanel(panel)` — `morph.to`
+ *  always shares the kind's panel (a dev assertion pins this). */
+export const canMorph = (k: CardKind): boolean => CARD_REGISTRY[k].morph !== null;

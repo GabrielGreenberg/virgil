@@ -400,3 +400,38 @@ card body, not the grip), so it doesn't collide with the grip's lift/pop role.
 The original payload contract (`MIME_TODO` for todos, `MIME_TEXT_INSERT` for
 error cards) is preserved in git history (pre-A1) if the drop targets still
 accept those MIME types.
+
+---
+
+## 11. Borrowed-schema extraction: dedupe BorrowedMainText ⊕ RichTextField ⊕ main editor
+
+**Reported:** 2026-06-09 · **Status:** open · **Area:** main-text / card bodies (A9 deferral)
+
+**Context** — A9 Commit C added [src/components/BorrowedMainText.tsx](src/components/BorrowedMainText.tsx),
+a read-only TipTap renderer for a card's resolved body (real inline atoms:
+citation / `\ref` / inline math / nested footnote markers). It builds its OWN
+read-only extension list mirroring [RichTextField](src/components/RichTextField.tsx)'s
+hand-mirrored card-context schema (`~:239-261`) — StarterKit minus
+heading/blockquote/codeBlock, plus the inline atoms + block-atom previews — and
+additionally registers `LabelRef` + `Footnote` read-only.
+
+So the card-context inline-atom schema now lives in **two** hand-kept copies
+(RichTextField + BorrowedMainText), and the MAIN editor has a **third**
+(`buildEditorExtensions` in [src/lib/editor-extensions.ts](src/lib/editor-extensions.ts)).
+A new inline-atom kind must be added to all three or it's silently stripped in
+one surface.
+
+**Why deferred (not done in A9)** — the plan called for the fallback unless a
+shared `borrowed-schema.ts` is a *clean* pure-extraction. It is not: the main
+editor's `buildEditorExtensions` is full of stateful main-surface NodeViews
+(heading folding, paragraph-title chrome, the DocStructureObserver, grab
+handles) that a read-only card body must NOT run, so the main and card schemas
+are intentionally different. A faithful dedup would need to factor out only the
+**inline-atom + block-atom-preview** sub-schema (the part all three share) into
+one module that each surface composes with its own block/chrome layer.
+
+**Desired** — extract the shared inline/block-atom extension list into
+`borrowed-schema.ts`, consumed by RichTextField, BorrowedMainText, and (via a
+`cardContext`-style flag) the main editor's atom registration, so the
+"add an atom kind in one place" invariant holds. Verify with a main-editor
+smoke test (typing + atoms still render) and the full suite.

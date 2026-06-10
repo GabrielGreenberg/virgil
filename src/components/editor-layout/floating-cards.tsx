@@ -84,7 +84,8 @@ export interface PoppedCardDeps {
   updateNoteTitle: (id: string, title: string) => void;
   setNoteAiRequest: (id: string, value: boolean) => void;
   setHighlightAiRequest: (id: string, value: boolean) => void;
-  addNoteForHighlight: (id: string) => UserNote | null;
+  /** Morph a notes-panel card note ⇄ highlight (A9 kind-chevron, R14). */
+  convertNotesCard: (id: string, toKind: "note" | "highlight") => void;
   deleteNote: (id: string) => void;
 
   // Footnotes
@@ -115,6 +116,8 @@ export interface PoppedCardDeps {
     id: string,
     status: CutterSuggestionCardData["status"],
   ) => void;
+  /** Morph a cutter card comment ⇄ suggestion (A9 kind-chevron). */
+  convertCutterCard: (id: string, toKind: "comment" | "suggestion") => void;
   deleteCutterCard: (id: string) => void;
 
   // Reports (polymorphic: report + report-request)
@@ -122,6 +125,8 @@ export interface PoppedCardDeps {
   updateReportTitle: (id: string, title: string) => void;
   updateRequestContent: (id: string, content: JSONContent) => void;
   setRequestAiRequest: (id: string, value: boolean) => void;
+  /** Morph a report card report ⇄ report-request (A9 kind-chevron). */
+  convertReportCard: (id: string, toKind: "report" | "report-request") => void;
   deleteReportCard: (id: string) => void;
 
   // Todos

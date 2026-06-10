@@ -24,6 +24,7 @@ import {
 } from "@/links/links";
 import { migrateCardLinks } from "@/links/migrate-card";
 import { bridgeCardAiRequestFlag } from "@/lib/ai-request-bridge";
+import { applyCardMorph } from "@/cards/morphs";
 import { nextCardTitle } from "@/panels/panel-registry";
 import { usePersistentState } from "./usePersistentState";
 import { usePristineTracker } from "./usePristineTracker";
@@ -254,6 +255,24 @@ export function useReports(
     [update, pristine, docId, state.cards],
   );
 
+  /** Flip a report card's kind in place (report ⇄ report-request) via the
+   *  registered morph transform. Preserves id/createdAt/links; the rich body
+   *  carries across (title/author + aiRequest are the lossy fields). The
+   *  float-key remap rides on `convertCardWithRemap` in EditorPane. */
+  const convertCard = useCallback(
+    (id: string, toKind: "report" | "report-request") => {
+      pristine.markDirty(id);
+      update((prev) => ({
+        ...prev,
+        cards: prev.cards.map((c) => {
+          if (c.id !== id || c.kind === toKind) return c;
+          return applyCardMorph(c.kind, c);
+        }),
+      }));
+    },
+    [update, pristine],
+  );
+
   const addCardParagraphId = useCallback(
     (id: string, paragraphId: string) => {
       update((prev) => ({
@@ -404,6 +423,7 @@ export function useReports(
     deleteCard,
     cloneReport,
     cloneRequest,
+    convertCard,
     bindAnchor,
     clearCardAnchor,
     discardPristineCards,

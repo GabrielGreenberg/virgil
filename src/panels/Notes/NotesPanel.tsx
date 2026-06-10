@@ -25,7 +25,8 @@ interface NotesPanelProps {
   onAddNote: (anchorRect?: DOMRect) => UserNote;
   /** Returns null if no live selection (highlight requires a text range). */
   onAddHighlight?: (anchorRect?: DOMRect) => HighlightCardData | null;
-  onAddNoteForHighlight: (id: string) => UserNote | null;
+  /** Morph note ⇄ highlight via the kind-chevron (R14, bidirectional). */
+  onConvertCard: (id: string, toKind: "note" | "highlight") => void;
   onUpdate: (id: string, content: JSONContent) => void;
   onUpdateTitle: (id: string, title: string) => void;
   onSetNoteAiRequest: (id: string, value: boolean) => void;
@@ -47,7 +48,7 @@ export default function NotesPanel({
   cards,
   onAddNote,
   onAddHighlight,
-  onAddNoteForHighlight,
+  onConvertCard,
   onUpdate,
   onUpdateTitle,
   onSetNoteAiRequest,
@@ -141,7 +142,7 @@ export default function NotesPanel({
             <HighlightCard
               card={card}
               selected={selected}
-              onAddNote={onAddNoteForHighlight}
+              onConvert={onConvertCard}
               onSetAiRequest={onSetHighlightAiRequest}
               onDelete={onDelete}
               onSelect={onSelectNote}
@@ -159,6 +160,7 @@ export default function NotesPanel({
             selected={selected}
             onUpdate={onUpdate}
             onUpdateTitle={onUpdateTitle}
+            onConvert={onConvertCard}
             onSetAiRequest={onSetNoteAiRequest}
             onDelete={onDelete}
             onSelect={onSelectNote}

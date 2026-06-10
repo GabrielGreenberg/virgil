@@ -4,6 +4,7 @@ import { useRef } from "react";
 import type { HighlightCard as HighlightCardData } from "@/lib/types";
 import {
   AiRequestCheckbox,
+  CardEmptyText,
   PanelCard,
   compressedBodyStyle,
 } from "@/components/panel-primitives";
@@ -16,13 +17,14 @@ import {
 } from "@/links/links";
 import { usePoppedCards } from "@/hooks/usePoppedCards";
 import { cardPopKey } from "@/panels/panel-registry";
+import { cardKindsForPanel } from "@/cards/predicates";
 import { useAnchoredCard } from "@/links/_shared/useAnchoredCard";
 import { cardStore } from "@/links/_shared/anchored-card-store";
 
 export function HighlightCard({
   card,
   selected,
-  onAddNote,
+  onConvert,
   onSetAiRequest,
   onDelete,
   onSelect,
@@ -34,8 +36,8 @@ export function HighlightCard({
 }: {
   card: HighlightCardData;
   selected: boolean;
-  /** Morph this highlight into a note. The yellow tint stays. */
-  onAddNote: (id: string) => void;
+  /** Morph this highlight ⇄ note via the kind-chevron (R14, bidirectional). */
+  onConvert?: (id: string, toKind: "note" | "highlight") => void;
   onSetAiRequest: (id: string, value: boolean) => void;
   onDelete: (id: string) => void;
   onSelect: (id: string | null) => void;
@@ -95,6 +97,14 @@ export function HighlightCard({
       onToggleExpanded={ac.onToggleExpanded}
       onTrashClick={() => onDelete(card.id)}
       kind="highlight"
+      kindOptions={onConvert ? cardKindsForPanel("notes") : undefined}
+      onKindChange={
+        onConvert
+          ? (k) => {
+              if (k !== "highlight") onConvert(card.id, "note");
+            }
+          : undefined
+      }
       canJump={isAnchored && !isOrphaned && !!onJump}
       onJump={(e) => {
         if (onJump && isAnchored && !isOrphaned)
@@ -128,9 +138,7 @@ export function HighlightCard({
       {compressed ? (
         <div className="px-3 pt-1.5 pb-1.5 text-sm">
           <div style={{ ...snippetFontStyle, ...compressedBodyStyle(compressedLines) }}>
-            {compressedSnippet || (
-              <span className="text-ink-faint italic">empty highlight</span>
-            )}
+            {compressedSnippet || <CardEmptyText label="empty highlight" />}
           </div>
         </div>
       ) : (
@@ -141,22 +149,13 @@ export function HighlightCard({
               style={{ ...snippetFontStyle, padding: "4px 6px" }}
             >
               {trimmedAnchor || (
-                <span className="text-ink-faint italic">empty highlight</span>
+                <CardEmptyText label="empty highlight" />
               )}
             </div>
           </div>
 
-          <button
-            type="button"
-            onClick={(e) => {
-              e.stopPropagation();
-              onAddNote(card.id);
-            }}
-            className="text-[10px] text-[var(--muted)] hover:text-ink-strong cursor-pointer rounded px-1 py-0.5 hover-on-light"
-          >
-            + note
-          </button>
-
+          {/* R14: the one-way "+ note" morph button is gone — note ↔ highlight
+              is now BIDIRECTIONAL via the kind-chevron in the card header. */}
           <AiRequestCheckbox
             checked={card.aiRequest}
             onToggle={(next) => onSetAiRequest(card.id, next)}

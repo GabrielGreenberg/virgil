@@ -24,6 +24,9 @@ export interface NotesHostProps {
   updateNoteTitle: NotesHook["updateNoteTitle"];
   setNoteAiRequest: NotesHook["setNoteAiRequest"];
   setHighlightAiRequest: NotesHook["setHighlightAiRequest"];
+  /** Morph note ⇄ highlight via the kind-chevron (R14) — routes through the
+   *  EditorPane morph chokepoint (lossy confirm + float-key remap). */
+  convertCard: (id: string, toKind: "note" | "highlight") => void;
   deleteNote: NotesHook["deleteNote"];
   /** Called on host unmount to drop cards created via "+" but never edited. */
   discardPristine: () => void;
@@ -37,7 +40,6 @@ export function NotesHost(p: NotesHostProps) {
   const {
     createNote,
     createHighlight,
-    addNoteForHighlight,
     deleteHighlightOrNote,
   } = useCardCreationContext();
   // Each kind has its own recently-added slot — only one can be the
@@ -80,7 +82,7 @@ export function NotesHost(p: NotesHostProps) {
         try { window.getSelection()?.removeAllRanges(); } catch { /* ignore */ }
         return card;
       }}
-      onAddNoteForHighlight={(id) => addNoteForHighlight(id)}
+      onConvertCard={p.convertCard}
       onUpdate={p.updateNote}
       onUpdateTitle={p.updateNoteTitle}
       onSetNoteAiRequest={p.setNoteAiRequest}

@@ -7,7 +7,13 @@
  * Registered panels: footnote, note, archive, cut, revision, citation,
  * bib, todo, example. Some flow through RichTextField; others
  * apply the override inline on a bespoke body element.
+ *
+ * The default rows are DERIVED from `CardMeta.bodyClass` (A9 §C2) — see
+ * `DEFAULT_PANEL_TYPOGRAPHY` below. The registry import is a runtime LEAF
+ * (card-registry imports only types), so no cycle.
  */
+import { CARD_REGISTRY } from "@/cards/card-registry";
+import type { CardKind } from "@/cards/types";
 
 export type PanelBodyKey =
   | "footnote"
@@ -27,6 +33,38 @@ export interface PanelTypography {
   color: string;     // hex
 }
 
+/** The two visual tiers (A9 §N2 / C2). The default rows of
+ *  `DEFAULT_PANEL_TYPOGRAPHY` are now DERIVED from each panel's primary card
+ *  kind's `CardMeta.bodyClass`, not hand-kept — so the declared appearance
+ *  class and the rendered default can never drift.
+ *  - `"borrowed"` → 15px Source Serif 4: the apparatus kinds that quote
+ *    document prose (footnotes, archive, examples). Same family as main text
+ *    (17px) but one size down for visual hierarchy.
+ *  - `"sans"` → 12px Inter (compact): everyone else (notes, todos, revisions,
+ *    cuts, citations, bib, reports). Modeled on Cut Comments. */
+export const BODY_CLASS_TYPOGRAPHY: Record<"borrowed" | "sans", PanelTypography> = {
+  borrowed: { fontFamily: "Source Serif 4", fontSize: 15, color: "#44403c" },
+  sans:     { fontFamily: "Inter",          fontSize: 12, color: "#44403c" },
+};
+
+/** The card kind whose `bodyClass` defines each panel-body row. The single
+ *  representative kind per panel (the panel's primary content kind); morph
+ *  pairs share a `bodyClass`, so either sibling would yield the same row. A
+ *  dev assertion (`assertPanelTypographyCoverage`, card-registry-side) checks
+ *  every kind sharing a panel agrees on its class. */
+const PANEL_BODY_PRIMARY_KIND: Record<PanelBodyKey, CardKind> = {
+  footnote: "footnote",
+  note:     "note",
+  archive:  "archive",
+  cut:      "cutter-comment",
+  revision: "revision-comment",
+  citation: "citation",
+  bib:      "bib",
+  todo:     "todo",
+  report:   "report",
+  example:  "example",
+};
+
 /** Defaults are the source of truth for each panel's body typography.
  *  `usePanelBodyStyle` returns the effective (default ⊕ override) value,
  *  which RichTextField and the bespoke card textareas write inline onto
@@ -35,23 +73,16 @@ export interface PanelTypography {
  *  panelKey is set, so the rendered size matches the registry value
  *  step-for-step and the per-panel size stepper stays monotonic.
  *
- *  Two visual tiers:
- *  - 12px Inter (sans, compact) — Notes, Todos, Revisions, Cuts, Reports.
- *    Modeled on Cut Comments, which historically used `text-xs` directly.
- *  - 15px Source Serif 4 — Footnotes, Archive. Same family
- *    as main text (17px) but one size smaller for visual hierarchy. */
-export const DEFAULT_PANEL_TYPOGRAPHY: Record<PanelBodyKey, PanelTypography> = {
-  footnote: { fontFamily: "Source Serif 4", fontSize: 15, color: "#44403c" },
-  note:     { fontFamily: "Inter",          fontSize: 12, color: "#44403c" },
-  archive:  { fontFamily: "Source Serif 4", fontSize: 15, color: "#44403c" },
-  cut:      { fontFamily: "Inter",          fontSize: 12, color: "#44403c" },
-  revision: { fontFamily: "Inter",          fontSize: 12, color: "#44403c" },
-  citation: { fontFamily: "Inter",          fontSize: 12, color: "#44403c" },
-  bib:      { fontFamily: "Inter",          fontSize: 12, color: "#44403c" },
-  todo:     { fontFamily: "Inter",          fontSize: 12, color: "#44403c" },
-  report:   { fontFamily: "Inter",          fontSize: 12, color: "#44403c" },
-  example:  { fontFamily: "Source Serif 4", fontSize: 12, color: "#44403c" },
-};
+ *  DERIVED from `CardMeta.bodyClass` (A9 C2): a panel's default row is the
+ *  typography for its primary kind's class. This fixes the example row
+ *  (12 → 15px serif: it's a `"borrowed"` kind) and pins report to sans. */
+export const DEFAULT_PANEL_TYPOGRAPHY: Record<PanelBodyKey, PanelTypography> =
+  Object.fromEntries(
+    (Object.keys(PANEL_BODY_PRIMARY_KIND) as PanelBodyKey[]).map((key) => [
+      key,
+      BODY_CLASS_TYPOGRAPHY[CARD_REGISTRY[PANEL_BODY_PRIMARY_KIND[key]].bodyClass],
+    ]),
+  ) as Record<PanelBodyKey, PanelTypography>;
 
 /** User-facing labels for the smart-preferences grid. */
 export const PANEL_BODY_LABELS: Record<PanelBodyKey, string> = {

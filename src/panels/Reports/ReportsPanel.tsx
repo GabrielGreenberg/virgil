@@ -26,6 +26,7 @@ export default function ReportsPanel({
   onUpdateReportTitle,
   onUpdateRequestContent,
   onSetRequestAiRequest,
+  onConvertCard,
   onDelete,
   onSelect,
   selectedId,
@@ -39,6 +40,7 @@ export default function ReportsPanel({
   onUpdateReportTitle: (id: string, title: string) => void;
   onUpdateRequestContent: (id: string, content: import("@tiptap/react").JSONContent) => void;
   onSetRequestAiRequest: (id: string, value: boolean) => void;
+  onConvertCard: (id: string, toKind: "report" | "report-request") => void;
   onDelete: (id: string) => void;
   onSelect: (id: string | null) => void;
   selectedId: string | null;
@@ -92,6 +94,7 @@ export default function ReportsPanel({
               selected={selected}
               onUpdate={onUpdateReportContent}
               onUpdateTitle={onUpdateReportTitle}
+              onConvert={onConvertCard}
               onDelete={onDelete}
               onSelect={onSelect}
               onJump={
@@ -107,6 +110,7 @@ export default function ReportsPanel({
             request={it.data}
             selected={selected}
             onUpdate={onUpdateRequestContent}
+            onConvert={onConvertCard}
             onSetAiRequest={onSetRequestAiRequest}
             onDelete={onDelete}
             onSelect={onSelect}

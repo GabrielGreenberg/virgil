@@ -96,6 +96,18 @@ export interface CardMeta {
   lifecycle: CardLifecycleCapability;
   /** In-document drop behavior, or `null` for kinds that don't re-anchor by drop. */
   dropSpec: DropSpec | null;
+  /** The morph target for the polymorphic kind-chevron (A9), or `null` for the
+   *  non-morphing kinds. When set, this kind can convert *in place* into
+   *  `morph.to` (which always shares its panel — the chevron's options are
+   *  `cardKindsForPanel(panel)`), preserving id/createdAt/anchor. `lossy: true`
+   *  flags a conversion that drops fields the target shape can't hold (e.g.
+   *  note→highlight discards the note body) so the UI can show a confirm. The
+   *  actual data transform is registered out-of-band via `registerCardMorph`
+   *  (a runtime-leaf indirection, mirroring `registerCardFloatable`), never
+   *  imported into this card-UI-free module. A dev assertion checks every
+   *  `morph !== null` kind has a registered converter and that `morph.to`
+   *  shares the panel. */
+  morph: { to: CardKind; lossy: boolean } | null;
   /** Whether this kind can serialize onto the Stack (was the hand-kept
    *  `StackCardKind` union). `bib` is stackable despite being `system`, so this
    *  cannot be derived from `origin`. `example` is declared stackable to mirror
@@ -110,6 +122,16 @@ export interface CardMeta {
    *  `toFloatable` so poppability is statically inspectable without depending
    *  on boot-time registration order. */
   poppable: boolean;
+  /** Two-class body typography (A9 §N2). `"borrowed"` renders the card body in
+   *  the main-text serif face one size down (Source Serif 4 / 15px) — the
+   *  apparatus kinds that quote document prose (footnote / archive / example).
+   *  `"sans"` renders compact Inter / 12px (everyone else, including report —
+   *  R11, which fixes its declared-vs-rendered serif mismatch). The default
+   *  rows of `DEFAULT_PANEL_TYPOGRAPHY` (lib/panel-typography.ts) are DERIVED
+   *  from this class via the panel↔primary-kind map; a dev assertion pins the
+   *  declared class to the typography row so the two never drift. The mutable
+   *  per-field override registry (the user's text-size stepper) is unchanged. */
+  bodyClass: "borrowed" | "sans";
   /** AF integration point. Returns the shared `Floatable` presence, or `null`
    *  when this kind is not poppable (`error`). MUST be a pure per-id resolver —
    *  resolve one entity by id from `ctx`; NO full-doc descent (keystroke

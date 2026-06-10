@@ -34,6 +34,7 @@ export default function CutterPanel({
   onUpdateSuggestionField,
   onAcceptSuggestion,
   onRejectSuggestion,
+  onConvertCard,
   onDelete,
   onSelect,
   selectedId,
@@ -61,6 +62,7 @@ export default function CutterPanel({
   ) => void;
   onAcceptSuggestion: (id: string) => void;
   onRejectSuggestion: (id: string) => void;
+  onConvertCard: (id: string, toKind: "comment" | "suggestion") => void;
   onDelete: (id: string) => void;
   onSelect: (id: string | null) => void;
   selectedId: string | null;
@@ -124,6 +126,7 @@ export default function CutterPanel({
               card={it.data}
               selected={selected}
               onUpdateField={onUpdateSuggestionField}
+              onConvert={onConvertCard}
               onAccept={onAcceptSuggestion}
               onReject={onRejectSuggestion}
               onDelete={onDelete}
@@ -142,6 +145,7 @@ export default function CutterPanel({
             selected={selected}
             editor={editor}
             onUpdateText={onUpdateCommentText}
+            onConvert={onConvertCard}
             onSetAiRequest={onSetCommentAiRequest}
             onDelete={onDelete}
             onSelect={onSelect}
