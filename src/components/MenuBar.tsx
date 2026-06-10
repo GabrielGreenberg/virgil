@@ -359,26 +359,8 @@ interface MenuBarProps extends ActionToolbarCallbacks {
   /** Enter the in-editor margin-edit mode — guides appear over the
    *  text column and Save/Cancel buttons appear in the docked toolbar. */
   onOpenMarginsMode?: () => void;
-  onGrabStart?: (e: React.MouseEvent<HTMLDivElement>) => void;
   orientation: ToolbarOrientation;
   onSetOrientation: (o: ToolbarOrientation) => void;
-  /** Fired when the user mouseDowns on the Actions popover's grab bar.
-   *  Receives the pod's bounding rect so the detached toolbar can spawn
-   *  at the same spot, and the original mouse event so drag-to-move can
-   *  continue without a pickup re-grip. Each grab spawns a new detached
-   *  toolbar; the anchor button itself is a plain popover toggle. */
-  onActionsDetach?: (e: React.MouseEvent<HTMLDivElement>, rect: DOMRect) => void;
-  /** Same contract as `onActionsDetach`, for the Formatting popover.
-   *  Each grab spawns a new detached Formatting toolbar. */
-  onFormatDetach?: (e: React.MouseEvent<HTMLDivElement>, rect: DOMRect) => void;
-  /** When true, the toolbar is docked in the Virgil top bar (its "home"):
-   *  rotation knob and tab silhouette are hidden, orientation is locked
-   *  horizontal, and the pod outlines with a uniform rounded radius. The
-   *  grab bar stays visible so the user can drag the toolbar out. */
-  atHome?: boolean;
-  /** Fired when the user clicks the dock-up button (only rendered when
-   *  !atHome) to return the toolbar to its Virgil-bar home. */
-  onDockUp?: () => void;
   /** Optional collaborator-mode status pill, rendered at the start of
    *  the bar. Owned by the host (EditorLayout) so it can plug in
    *  per-doc collab state. */
@@ -1382,7 +1364,6 @@ function MenuBarContent({
   dividerWidth, onSetDividerWidth,
   onParaNavBack, onParaNavForward, paraNavBackDisabled, paraNavForwardDisabled,
   onCloseAllPanels,
-  onActionsDetach, onFormatDetach,
   onSetOrientation,
   onOpenFontsDialog,
   onOpenMarginsMode,
@@ -1397,7 +1378,7 @@ function MenuBarContent({
   /** When true, render the kebab/View menu after every other control
    *  instead of before. Used by the docked MenuBar above the editor. */
   kebabAtEnd?: boolean;
-} & Omit<MenuBarProps, "editor" | "orientation" | "onSetOrientation" | "onGrabStart" | "atHome" | "onDockUp">) {
+} & Omit<MenuBarProps, "editor" | "orientation" | "onSetOrientation">) {
   const isVert = orientation === "vertical";
   const viewMenu = (
     <ViewMenu
@@ -1501,7 +1482,7 @@ function MenuBarContent({
  *  the text window. Icons sit directly on the canvas background with
  *  no enclosing pod, mirroring the left tool strip's loose buttons.
  *  No grab handle, no tear-off; the kebab/View menu sits at the end. */
-function MenuBar({ orientation: _o, onSetOrientation: _so, atHome: _ah, onDockUp: _du, onGrabStart: _gs, ...rest }: MenuBarProps) {
+function MenuBar({ orientation: _o, onSetOrientation: _so, ...rest }: MenuBarProps) {
   if (!rest.editor) return null;
   return (
     <div className="flex flex-row items-center gap-0.5 h-[24px]">

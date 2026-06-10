@@ -58,7 +58,6 @@ import {
   useState,
   type RefObject,
 } from "react";
-import { createPortal } from "react-dom";
 import type { Editor, JSONContent } from "@tiptap/react";
 import VirgilEditor, { type EditorHandle } from "./Editor";
 import AIWindow, { aiRequestDotStatus } from "./AIWindow";
@@ -187,13 +186,8 @@ import { useSelectionsContext } from "./editor-layout/contexts/selections";
 import { IconBlank, IconSplit } from "./editor-layout/panel-icons";
 import { OmniFilterMenu, DEFAULT_OMNI_CATEGORIES } from "@/panels/Omni/OmniViewPanel";
 import MenuBar, {
-  DetachedActionsToolbar,
-  DetachedFormattingToolbar,
-  DetachedMenuToolbar,
   type MarginaliaType,
-  type ActionToolbarCallbacks,
 } from "./MenuBar";
-import { resolveDragPosition, type SnapGrid } from "./editor-layout/snap-grid";
 import { useDragGap } from "@/hooks/useDragGap";
 import {
   getLinkedTextObjectIds,
@@ -1947,20 +1941,8 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
   }, [documentStyleHook.styleId]);
 
   // ─── Detached-toolbar machinery (Path A 7.6 finish) ────────────────
-  // Per-pane state for the three torn-off floating toolbars (Actions,
-  // Formatting, Menu). The corresponding render blocks below gate on
-  // `viewPrefs && menuBar && menuPortalReady`, so the Reader (no
-  // menuBar) leaves all of this dormant.
-  type DetachedToolbarEntry = { id: string; pos: { left: number; top: number } };
-  const [detachedActions, setDetachedActions] = useState<DetachedToolbarEntry[]>([]);
-  const [detachedFormatting, setDetachedFormatting] = useState<DetachedToolbarEntry[]>([]);
-  const [detachedMenus, setDetachedMenus] = useState<DetachedToolbarEntry[]>([]);
-  const [toolbarDragging, setToolbarDragging] = useState(false);
-  const nextActionsIdRef = useRef(0);
-  const nextFormattingIdRef = useRef(0);
-  const nextMenuIdRef = useRef(0);
-  // Ref to the docked MenuBar's wrapper so the grab-to-tear gesture
-  // can compute its viewport position when spawning a detached copy.
+  // Ref to the docked MenuBar's wrapper so the `menubarWidth` observer
+  // below can publish `--menubar-width` for the section lozenge's max-width.
   const dockedMenuBarRef = useRef<HTMLDivElement | null>(null);
   // Refs for the custom EditorScrollbar overlay. `editorColRef` points
   // at the editor-pane-column wrapper; `rowScrollRef` resolves to the
@@ -1989,14 +1971,6 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
       el = el.parentElement;
     }
     rowScrollRef.current = null;
-  }, []);
-  // Body-portal targets aren't ready on first render in some test/SSR
-  // setups; flip ready after first effect tick so the createPortal
-  // calls below find a live document.body. Cheap and effectively
-  // synchronous in normal browser runs.
-  const [menuPortalReady, setMenuPortalReady] = useState(false);
-  useEffect(() => {
-    setMenuPortalReady(true);
   }, []);
 
   // Track the docked MenuBar's rendered width so the section lozenge can
@@ -2092,104 +2066,6 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
     gutterStartVal.current = viewPrefs.bottomGutter;
     bottomGutterDrag.onMouseDown(e);
   }, [bottomGutterDrag, viewPrefs]);
-
-  // Snap lines disabled — floating toolbars follow the cursor freely
-  // (viewport clamp still applies in resolveDragPosition). Re-enable by
-  // restoring the computeSnapGrid call and its colRect/splitPaneRects deps.
-  const snapGrid = useMemo<SnapGrid>(() => ({ h: [], v: [] }), []);
-  const snapGridRef = useRef(snapGrid);
-  snapGridRef.current = snapGrid;
-
-  // Shared drag routine for every floating toolbar — single-instance
-  // (MenuBar) and multi-instance (Actions, Formatting). Runs the snap
-  // grid math per frame against the wrapper resolved by `getWrapper()`.
-  const beginToolbarDrag = useCallback((opts: {
-    clientX: number;
-    clientY: number;
-    podLeft: number;
-    podTop: number;
-    getWrapper: () => HTMLElement | null;
-    onUpdatePos: (pos: { left: number; top: number }) => void;
-    onEnd?: (ev: MouseEvent, pos: { left: number; top: number }) => void;
-  }) => {
-    const { clientX, clientY, podLeft, podTop, getWrapper, onUpdatePos, onEnd } = opts;
-    const offX = clientX - podLeft;
-    const offY = clientY - podTop;
-    setToolbarDragging(true);
-    let lastPos = { left: podLeft, top: podTop };
-    const onMove = (ev: MouseEvent) => {
-      const rawLeft = ev.clientX - offX;
-      const rawTop = ev.clientY - offY;
-      const snapped = resolveDragPosition({
-        rawLeft, rawTop,
-        wrapper: getWrapper(),
-        grid: snapGridRef.current,
-        winW: window.innerWidth,
-        winH: window.innerHeight,
-      });
-      lastPos = snapped;
-      onUpdatePos(snapped);
-    };
-    const onUp = (ev: MouseEvent) => {
-      document.removeEventListener("mousemove", onMove);
-      document.removeEventListener("mouseup", onUp);
-      setToolbarDragging(false);
-      onEnd?.(ev, lastPos);
-    };
-    document.addEventListener("mousemove", onMove);
-    document.addEventListener("mouseup", onUp);
-  }, []);
-
-  const handleActionsDetach = useCallback((e: React.MouseEvent<HTMLDivElement>, rect: DOMRect) => {
-    e.preventDefault();
-    const id = `actions-${++nextActionsIdRef.current}`;
-    setDetachedActions(prev => [...prev, { id, pos: { left: rect.left, top: rect.top } }]);
-    beginToolbarDrag({
-      clientX: e.clientX, clientY: e.clientY,
-      podLeft: rect.left, podTop: rect.top,
-      getWrapper: () => document.querySelector<HTMLElement>(`[data-actions-id="${id}"]`),
-      onUpdatePos: (pos) => setDetachedActions(prev => prev.map(tb => tb.id === id ? { ...tb, pos } : tb)),
-    });
-  }, [beginToolbarDrag]);
-
-  const handleFormatDetach = useCallback((e: React.MouseEvent<HTMLDivElement>, rect: DOMRect) => {
-    e.preventDefault();
-    const id = `formatting-${++nextFormattingIdRef.current}`;
-    setDetachedFormatting(prev => [...prev, { id, pos: { left: rect.left, top: rect.top } }]);
-    beginToolbarDrag({
-      clientX: e.clientX, clientY: e.clientY,
-      podLeft: rect.left, podTop: rect.top,
-      getWrapper: () => document.querySelector<HTMLElement>(`[data-formatting-id="${id}"]`),
-      onUpdatePos: (pos) => setDetachedFormatting(prev => prev.map(tb => tb.id === id ? { ...tb, pos } : tb)),
-    });
-  }, [beginToolbarDrag]);
-
-  const handleMenuGrabStart = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
-    e.preventDefault();
-    const menuEl = dockedMenuBarRef.current;
-    if (!menuEl) return;
-    const menuRect = menuEl.getBoundingClientRect();
-    const id = `menu-${++nextMenuIdRef.current}`;
-    setDetachedMenus(prev => [...prev, { id, pos: { left: menuRect.left, top: menuRect.top } }]);
-    beginToolbarDrag({
-      clientX: e.clientX, clientY: e.clientY,
-      podLeft: menuRect.left, podTop: menuRect.top,
-      getWrapper: () => document.querySelector<HTMLElement>(`[data-menu-id="${id}"]`),
-      onUpdatePos: (pos) => setDetachedMenus(prev => prev.map(tb => tb.id === id ? { ...tb, pos } : tb)),
-    });
-  }, [beginToolbarDrag, menuBar]);
-
-  useEffect(() => {
-    if (!toolbarDragging) return;
-    const prevCursor = document.body.style.cursor;
-    const prevSelect = document.body.style.userSelect;
-    document.body.style.cursor = "grabbing";
-    document.body.style.userSelect = "none";
-    return () => {
-      document.body.style.cursor = prevCursor;
-      document.body.style.userSelect = prevSelect;
-    };
-  }, [toolbarDragging]);
 
   // ─── Toolbar action handlers (Path A 7.6 finish) ──────────────────
   // Each creates a card in its corresponding panel — selection-anchored
@@ -2315,26 +2191,6 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
   const handleToolbarInsertCitation = useCallback((anchorRect: DOMRect | null) => {
     cardCreation.createCitation({ anchorRect });
   }, [cardCreation]);
-
-  const actionsBundle = useMemo<ActionToolbarCallbacks>(() => ({
-    onAddComment: handleToolbarAddComment,
-    onAddNote: handleToolbarAddNote,
-    onAddHighlight: handleToolbarAddHighlight,
-    onAddTodo: handleToolbarAddTodo,
-    onCutSelection: handleToolbarAddCut,
-    onArchive: handleToolbarArchive,
-    onCreateFootnote: handleToolbarCreateFootnote,
-    onInsertCitation: handleToolbarInsertCitation,
-  }), [
-    handleToolbarAddComment,
-    handleToolbarAddNote,
-    handleToolbarAddHighlight,
-    handleToolbarAddTodo,
-    handleToolbarAddCut,
-    handleToolbarArchive,
-    handleToolbarCreateFootnote,
-    handleToolbarInsertCitation,
-  ]);
 
   // Editor-derived citations: BibliographyHost wants `keys` (parsed
   // from the LaTeX `\cite{a,b}` / `\cites{a}{b}` command) plus the
@@ -3066,143 +2922,6 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
               }}
             />
           )}
-          {/* Detached floating toolbars — portaled to body so they
-              outlive any popover that spawned them and float over
-              everything. All three blocks gate on `viewPrefs && menuBar
-              && menuPortalReady`: Reader (no menuBar) leaves
-              them dormant; main app post-7.8 wakes them by passing the
-              bundle. Path A 7.6 finish (additive) — EditorLayout still
-              owns its own copy of these portals until 7.8 deletes them. */}
-          {viewPrefs && menuBar && menuPortalReady && detachedActions.map(tb => createPortal(
-            <div
-              key={tb.id}
-              data-actions-id={tb.id}
-              className="fixed z-[9999] pointer-events-auto"
-              style={{ left: tb.pos.left, top: tb.pos.top }}
-              onMouseDownCapture={() => viewPrefs.focusFloating({ kind: "toolbar", bucket: "actions", id: tb.id })}
-            >
-              <DetachedActionsToolbar
-                actions={{
-                  onAddComment: handleToolbarAddComment,
-                  onAddNote: handleToolbarAddNote,
-                  onAddHighlight: handleToolbarAddHighlight,
-                  onAddTodo: handleToolbarAddTodo,
-                  onCutSelection: handleToolbarAddCut,
-                  onArchive: handleToolbarArchive,
-                  onCreateFootnote: handleToolbarCreateFootnote,
-                  onInsertCitation: handleToolbarInsertCitation,
-                }}
-                onGrabStart={(e) => {
-                  e.preventDefault();
-                  beginToolbarDrag({
-                    clientX: e.clientX, clientY: e.clientY,
-                    podLeft: tb.pos.left, podTop: tb.pos.top,
-                    getWrapper: () => document.querySelector<HTMLElement>(`[data-actions-id="${tb.id}"]`),
-                    onUpdatePos: (pos) => setDetachedActions(prev => prev.map(x => x.id === tb.id ? { ...x, pos } : x)),
-                  });
-                }}
-                onReattach={() => setDetachedActions(prev => prev.filter(x => x.id !== tb.id))}
-                pos={tb.pos}
-                onSetPos={(pos) => setDetachedActions(prev => prev.map(x => x.id === tb.id ? { ...x, pos } : x))}
-              />
-            </div>,
-            document.body,
-          ))}
-          {viewPrefs && menuBar && menuPortalReady && (chrome.showFormattingToolbar ?? true) && (overrideEditor ?? editor) && detachedFormatting.map(tb => createPortal(
-            <div
-              key={tb.id}
-              data-formatting-id={tb.id}
-              className="fixed z-[9999] pointer-events-auto"
-              style={{ left: tb.pos.left, top: tb.pos.top }}
-              onMouseDownCapture={() => viewPrefs.focusFloating({ kind: "toolbar", bucket: "formatting", id: tb.id })}
-            >
-              <DetachedFormattingToolbar
-                editor={(overrideEditor ?? editor)!}
-                onGrabStart={(e) => {
-                  e.preventDefault();
-                  beginToolbarDrag({
-                    clientX: e.clientX, clientY: e.clientY,
-                    podLeft: tb.pos.left, podTop: tb.pos.top,
-                    getWrapper: () => document.querySelector<HTMLElement>(`[data-formatting-id="${tb.id}"]`),
-                    onUpdatePos: (pos) => setDetachedFormatting(prev => prev.map(x => x.id === tb.id ? { ...x, pos } : x)),
-                  });
-                }}
-                onReattach={() => setDetachedFormatting(prev => prev.filter(x => x.id !== tb.id))}
-                pos={tb.pos}
-                onSetPos={(pos) => setDetachedFormatting(prev => prev.map(x => x.id === tb.id ? { ...x, pos } : x))}
-              />
-            </div>,
-            document.body,
-          ))}
-          {viewPrefs && menuBar && menuPortalReady && (overrideEditor ?? editor) && detachedMenus.map(tb => createPortal(
-            <div
-              key={tb.id}
-              data-menu-id={tb.id}
-              className="fixed z-[9999] pointer-events-auto"
-              style={{ left: tb.pos.left, top: tb.pos.top }}
-              onMouseDownCapture={() => viewPrefs.focusFloating({ kind: "toolbar", bucket: "menus", id: tb.id })}
-            >
-              <DetachedMenuToolbar
-                menuProps={{
-                  editor: (overrideEditor ?? editor)!,
-                  onAddComment: handleToolbarAddComment,
-                  onArchive: handleToolbarArchive,
-                  onCreateFootnote: handleToolbarCreateFootnote,
-                  onAddNote: handleToolbarAddNote,
-                  onAddTodo: handleToolbarAddTodo,
-                  onCutSelection: handleToolbarAddCut,
-                  onInsertCitation: handleToolbarInsertCitation,
-                  showParTitles: menuBar.showParTitles,
-                  onToggleParTitles: () => menuBar.setShowParTitles(!menuBar.showParTitles),
-                  showLatexComments: menuBar.showLatexComments,
-                  onToggleLatexComments: () => menuBar.setShowLatexComments(!menuBar.showLatexComments),
-                  showHeadingLabels: menuBar.showHeadingLabels,
-                  onToggleHeadingLabels: menuBar.toggleHeadingLabels,
-                  showSectionIndicator: menuBar.showSectionIndicator,
-                  onToggleSectionIndicator: menuBar.toggleSectionIndicator,
-                  onOpenPreferences: menuBar.onOpenPreferences,
-                  editorSplit: menuBar.editorSplit,
-                  onToggleEditorSplit: menuBar.toggleEditorSplit,
-                  activeSplitPane: menuBar.editorSplit ? menuBar.activeSplitPane : undefined,
-                  showMarginalia: menuBar.showMarginalia,
-                  onToggleMarginalia: menuBar.toggleMarginalia,
-                  hiddenMarginaliaTypes: menuBar.hiddenMarginaliaTypes,
-                  onToggleMarginaliaType: menuBar.toggleMarginaliaType,
-                  showHighlights: viewPrefs.prefs.showHighlights,
-                  onToggleHighlights: () => menuBar.setShowHighlights(!viewPrefs.prefs.showHighlights),
-                  hiddenHighlightTypes: menuBar.hiddenHighlightTypes,
-                  onToggleHighlightType: menuBar.toggleHighlightType,
-                  availableDividerLevels: menuBar.availableDividerLevels,
-                  dividerLevels: menuBar.activeDividerLevels,
-                  onToggleDividerLevel: menuBar.toggleDividerLevel,
-                  dividerWidth: menuBar.dividerWidth,
-                  onSetDividerWidth: menuBar.setDividerWidth,
-                  onParaNavBack: menuBar.paraNavBack,
-                  onParaNavForward: menuBar.paraNavForward,
-                  paraNavBackDisabled: menuBar.paraNavBackDisabled,
-                  paraNavForwardDisabled: menuBar.paraNavForwardDisabled,
-                  onCloseAllPanels: menuBar.closeAllPanels,
-                  onOpenFontsDialog: menuBar.onOpenFontsDialog,
-                  onOpenMarginsMode: enterMarginEditMode,
-                  onActionsDetach: handleActionsDetach,
-                  onFormatDetach: (chrome.showFormattingToolbar ?? true) ? handleFormatDetach : undefined,
-                }}
-                onGrabStart={(e) => {
-                  e.preventDefault();
-                  beginToolbarDrag({
-                    clientX: e.clientX, clientY: e.clientY,
-                    podLeft: tb.pos.left, podTop: tb.pos.top,
-                    getWrapper: () => document.querySelector<HTMLElement>(`[data-menu-id="${tb.id}"]`),
-                    onUpdatePos: (pos) => setDetachedMenus(prev => prev.map(x => x.id === tb.id ? { ...x, pos } : x)),
-                  });
-                }}
-                onReattach={() => setDetachedMenus(prev => prev.filter(x => x.id !== tb.id))}
-                pos={tb.pos}
-                onSetPos={(pos) => setDetachedMenus(prev => prev.map(x => x.id === tb.id ? { ...x, pos } : x))}
-              />
-            </div>,
-            document.body,
-          ))}
           {/* Open panels (docked + floating) — both modes flow through
               the same FloatingPanel shell. Docked panels portal into
               the PanelColumn's dock-slot anchor; floating panels portal
@@ -3700,12 +3419,8 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
                     onOpenMarginsMode={enterMarginEditMode}
                     orientation="horizontal"
                     onSetOrientation={() => {}}
-                    onActionsDetach={handleActionsDetach}
-                    onFormatDetach={handleFormatDetach}
-                    onGrabStart={handleMenuGrabStart}
                     showEditItems={chrome.showMenuBarEditItems ?? true}
                     showFormattingToolbar={chrome.showFormattingToolbar ?? true}
-                    atHome
                   />
                 </div>
               </div>
