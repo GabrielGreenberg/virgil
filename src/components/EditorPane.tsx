@@ -128,7 +128,7 @@ import { FloatHost } from "@/floats/FloatHost";
 import { parseAnyKey } from "@/floats/float-key";
 import { textObjectPopoutKey } from "@/text-objects/text-object-registry";
 import { CARD_REGISTRY } from "@/cards/card-registry";
-import { isCardKind } from "@/cards/predicates";
+import { isCardKind, panelForCardKind } from "@/cards/predicates";
 import { PoppedCardsContext, type PoppedCardsValue } from "@/hooks/usePoppedCards";
 import { DropModeProvider } from "./drop-mode/DropModeProvider";
 import { useAnchorRebindBridge } from "./editor-layout/event-bridges/anchor-rebind";
@@ -734,12 +734,16 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
   // every pane an independent tracker, matching the per-doc nature of
   // pristine state.
   const pristineManager = usePristineCardManager();
-  const notePristine = useMemo(() => pristineManager.forKind("note"), [pristineManager]);
-  const cutPristine = useMemo(() => pristineManager.forKind("cut"), [pristineManager]);
-  const reportPristine = useMemo(() => pristineManager.forKind("report"), [pristineManager]);
-  const todoPristine = useMemo(() => pristineManager.forKind("todo"), [pristineManager]);
-  const citationPristine = useMemo(() => pristineManager.forKind("citation"), [pristineManager]);
-  const footnotePristine = useMemo(() => pristineManager.forKind("footnote"), [pristineManager]);
+  // The discard bucket is the owning PANEL id, derived from the card registry
+  // (panelForCardKind) — not a hand-kept token. Each polymorphic pair collapses
+  // to its shared panel (cutter-* → "cutter", report* → "reports"). Every kind
+  // here owns a panel, so the non-null assertion is safe.
+  const notePristine = useMemo(() => pristineManager.forKind(panelForCardKind("note")!), [pristineManager]);
+  const cutPristine = useMemo(() => pristineManager.forKind(panelForCardKind("cutter-comment")!), [pristineManager]);
+  const reportPristine = useMemo(() => pristineManager.forKind(panelForCardKind("report")!), [pristineManager]);
+  const todoPristine = useMemo(() => pristineManager.forKind(panelForCardKind("todo")!), [pristineManager]);
+  const citationPristine = useMemo(() => pristineManager.forKind(panelForCardKind("citation")!), [pristineManager]);
+  const footnotePristine = useMemo(() => pristineManager.forKind(panelForCardKind("footnote")!), [pristineManager]);
 
   // ── Per-doc sidecar hooks ────────────────────────────────────────
   // These resolve to the paper folder via storage-fsa.ts's synthetic

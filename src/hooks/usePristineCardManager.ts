@@ -1,6 +1,7 @@
 "use client";
 
 import { useRef, useCallback, useEffect, useMemo } from "react";
+import type { PanelKind } from "@/panels/_shared/types";
 
 /**
  * Unified pristine-card tracking across all card kinds.
@@ -20,13 +21,18 @@ import { useRef, useCallback, useEffect, useMemo } from "react";
  * mount points (list row + floating copy) are both considered "inside".
  */
 
-export type CardKind =
-  | "note"
-  | "cut"
-  | "report"
-  | "todo"
-  | "footnote"
-  | "citation";
+/**
+ * Discard bucket key. Pristine discard is PANEL-level — a click-away from a
+ * blank card drops it regardless of which polymorphic kind it is (e.g.
+ * cutter-comment + cutter-suggestion share the one `cutter` bucket; report +
+ * report-request share `reports`). So the bucket is the owning panel id,
+ * derived from the card registry via `panelForCardKind(kind)` at the call
+ * site — replacing the former hand-kept `note|cut|report|todo|footnote|citation`
+ * union that drifted from both `CardKind` and `PanelKind`. The watcher matches
+ * pristine cards by `data-pristine-card-id` only, so this token is internal
+ * bookkeeping (which Set + which discard callback), never a DOM selector.
+ */
+export type PristineBucket = PanelKind;
 
 export interface PristineKindApi {
   markNew(id: string): void;
@@ -37,14 +43,14 @@ export interface PristineKindApi {
 }
 
 export interface PristineCardManager {
-  forKind(kind: CardKind): PristineKindApi;
+  forKind(kind: PristineBucket): PristineKindApi;
 }
 
 export function usePristineCardManager(): PristineCardManager {
-  const setsRef = useRef<Map<CardKind, Set<string>>>(new Map());
-  const discardRef = useRef<Map<CardKind, (id: string) => void>>(new Map());
+  const setsRef = useRef<Map<PristineBucket, Set<string>>>(new Map());
+  const discardRef = useRef<Map<PristineBucket, (id: string) => void>>(new Map());
 
-  const getSet = useCallback((kind: CardKind): Set<string> => {
+  const getSet = useCallback((kind: PristineBucket): Set<string> => {
     let s = setsRef.current.get(kind);
     if (!s) {
       s = new Set();
@@ -57,7 +63,7 @@ export function usePristineCardManager(): PristineCardManager {
     const handler = (e: PointerEvent) => {
       const target = e.target as Element | null;
       if (!target) return;
-      const pending: Array<{ kind: CardKind; id: string }> = [];
+      const pending: Array<{ kind: PristineBucket; id: string }> = [];
       for (const [kind, ids] of setsRef.current) {
         for (const id of ids) {
           const selector = `[data-pristine-card-id="${CSS.escape(id)}"]`;
@@ -84,7 +90,7 @@ export function usePristineCardManager(): PristineCardManager {
   }, [getSet]);
 
   const forKind = useCallback(
-    (kind: CardKind): PristineKindApi => ({
+    (kind: PristineBucket): PristineKindApi => ({
       markNew: (id: string) => {
         getSet(kind).add(id);
       },
@@ -113,10 +119,9 @@ export function usePristineCardManager(): PristineCardManager {
   );
 
   // Memoize the return so the manager has stable identity across
-  // renders. Consumers (EditorLayout / EditorPane) call
-  // `pristineManager.forKind("citation")` inside a useMemo with
-  // `[pristineManager]` as the dep — a fresh object literal here would
-  // invalidate that memo every render, which in turn invalidates
+  // renders. EditorPane calls `pristineManager.forKind("citations")` inside a
+  // useMemo with `[pristineManager]` as the dep — a fresh object literal here
+  // would invalidate that memo every render, which in turn invalidates
   // pristine-bearing callbacks inside `useCitations` and breaks the
   // memoized citations-hook bubble-up through `paneState`.
   return useMemo(() => ({ forKind }), [forKind]);

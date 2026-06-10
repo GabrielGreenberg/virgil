@@ -28,13 +28,13 @@ describe("R21: pristine context is render-dead-safe; one live manager", () => {
   });
 
   it("usePristineKind(...) returns null with no provider (the dead-context path)", () => {
-    const { result } = renderHook(() => usePristineKind("note"));
+    const { result } = renderHook(() => usePristineKind("notes"));
     expect(result.current).toBeNull();
   });
 
-  it("the single standalone manager (EditorPane's) tracks + discards per kind", () => {
+  it("the single standalone manager (EditorPane's) tracks + discards per bucket", () => {
     const { result } = renderHook(() => usePristineCardManager());
-    const notes = result.current.forKind("note");
+    const notes = result.current.forKind("notes");
     let discarded: string | null = null;
     act(() => {
       notes.registerDiscard((id) => {
