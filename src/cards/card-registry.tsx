@@ -238,7 +238,8 @@ export const CARD_REGISTRY: Record<CardKind, CardMeta> = {
     origin: "user",
     anchored: true,
     markerType: "archive",
-    lifecycle: { clone: false, delete: false, bindAnchor: false }, // gap → A3
+    // R18 ratified: NO cascade — archive survives anchor-paragraph deletion.
+    lifecycle: { clone: false, delete: false, bindAnchor: false },
     dropSpec: null,
     morph: null,
     bodyClass: "borrowed", // serif, 15px — quotes document prose
@@ -255,7 +256,8 @@ export const CARD_REGISTRY: Record<CardKind, CardMeta> = {
     origin: "user",
     anchored: true,
     markerType: "todo",
-    lifecycle: { clone: false, delete: false, bindAnchor: false }, // gap → A3
+    // permanent: Mode-A paragraph-anchored, no text-range anchor for the cascade to reach.
+    lifecycle: { clone: false, delete: false, bindAnchor: false },
     dropSpec: null,
     morph: null,
     bodyClass: "sans",
@@ -382,7 +384,8 @@ export const CARD_REGISTRY: Record<CardKind, CardMeta> = {
     origin: "user",
     anchored: true,
     markerType: "report",
-    lifecycle: { clone: false, delete: false, bindAnchor: false }, // gap → A3
+    // permanent: Mode-A paragraph-anchored, no cascade reaches it.
+    lifecycle: { clone: false, delete: false, bindAnchor: false },
     dropSpec: null,
     // report ⇄ report-request drops a field each way (a report's title + author
     // byline have no home on a request; a request's aiRequest flag has none on
@@ -402,7 +405,8 @@ export const CARD_REGISTRY: Record<CardKind, CardMeta> = {
     origin: "user",
     anchored: true,
     markerType: "report",
-    lifecycle: { clone: false, delete: false, bindAnchor: false }, // gap → A3
+    // permanent: Mode-A paragraph-anchored, no cascade reaches it.
+    lifecycle: { clone: false, delete: false, bindAnchor: false },
     dropSpec: null,
     morph: { to: "report", lossy: true },
     bodyClass: "sans",
@@ -419,7 +423,10 @@ export const CARD_REGISTRY: Record<CardKind, CardMeta> = {
     origin: "derived", // mirrors the doc exampleBlock harvested by useExamples
     anchored: true,
     markerType: null,
-    lifecycle: { clone: false, delete: false, bindAnchor: false }, // gap → A3
+    // PERMANENT (R19): the lifecycle is the exampleBlock TextObject's
+    // (origin:derived); a card-level clone/delete would double-act = two-kinds
+    // violation.
+    lifecycle: { clone: false, delete: false, bindAnchor: false },
     dropSpec: null,
     morph: null,
     bodyClass: "borrowed", // serif, 15px — quotes document prose (fixes example 12→15)

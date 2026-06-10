@@ -57,7 +57,22 @@ export type CardOrigin = "user" | "system" | "derived";
 /** Declared lifecycle coverage. Booleans, not closures: the actual ops are
  *  per-doc hooks wired in `EditorPane`'s `CardLifecycleProvider`. The registry
  *  declares INTENT; a dev assertion checks the provider satisfies exactly the
- *  declared ops, so a gap is intentional-and-visible, never silent. */
+ *  declared ops, so a gap is intentional-and-visible, never silent.
+ *
+ *  **CRITERION (A3/WS3 — what these flags actually drive).** These flags gate
+ *  the anchor-text duplicate/delete *CASCADE* — the Mode-B `linkedAnchor`
+ *  text-range walker (`duplicate-slice` / `delete-range` iterate the doc and
+ *  call `get(kind)?.clone(id)` / `.delete(id)`), plus the inline-atom kinds
+ *  (footnote/citation) whose markers ride the slice. They are NOT the card's
+ *  own UI delete (every card can be dismissed from its panel regardless).
+ *  So a kind is `{clone:true,delete:true}` IFF it is walker-reachable —
+ *  either it carries an inline atom, OR it sets `bindAnchor:true` (a Mode-B
+ *  text-range anchor the slice can re-bind). The all-false kinds are the
+ *  Mode-A paragraph-anchored kinds (todo / report / report-request) and the
+ *  origin:derived mirror (example) — no text-range anchor for the cascade to
+ *  reach — plus `archive` (R18: ratified NO cascade; it survives anchor
+ *  deletion). `assertLifecycleCoverage` + the E-4 criterion test pin this so a
+ *  future chip can't "fill" a permanent gap without tripping a test. */
 export interface CardLifecycleCapability {
   clone: boolean;
   delete: boolean;
