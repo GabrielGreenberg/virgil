@@ -125,7 +125,7 @@ import { DockOutline } from "./editor-layout/DockOutline";
 import { CardLiftOutline } from "./CardLiftOutline";
 import { type PoppedCardDeps } from "./editor-layout/floating-cards";
 import { FloatHost } from "@/floats/FloatHost";
-import { parseAnyKey, migrateLegacyKeyToFloat } from "@/floats/float-key";
+import { parseAnyKey } from "@/floats/float-key";
 import { textObjectPopoutKey } from "@/text-objects/text-object-registry";
 import { CARD_REGISTRY } from "@/cards/card-registry";
 import { isCardKind } from "@/cards/predicates";
@@ -1130,16 +1130,15 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
   const stubSetActive = useCallback(() => {}, []);
   // Pop a card into a floating window at the given anchor rect. Mirrors
   // EditorLayout's previous shell-side implementation (see prior path-A
-  // notes). Prefix-string convention matches `useCardCreation`'s kind
-  // argument — `"note" | "cutter-comment" | "revision" | …`. Reader
+  // notes). Takes the canonical `CardKind` (`"note" | "cutter-comment" |
+  // "revision-comment" | …`) and builds the float key directly via
+  // `cardPopKey` — the same chokepoint the card itself stamps. Reader
   // (no `viewPrefs`) leaves popouts as a no-op.
   const popCardAtAnchor = useCallback(
-    (cardKind: string, cardId: string, anchorRect: DOMRect | null) => {
+    (kind: CardKind, cardId: string, anchorRect: DOMRect | null) => {
       if (!viewPrefs) return;
-      // Build the unified `float:card:<kind>:<id>` key. `cardKind` is the legacy
-      // popout prefix (e.g. `revision` → `revision-comment`); the canonicalizing
-      // helper maps it and matches the card's own `cardKey` (via cardPopKey).
-      const key = migrateLegacyKeyToFloat(`${cardKind}:${cardId}`);
+      // `float:card:<kind>:<id>` — matches the card's own `cardKey`.
+      const key = cardPopKey(kind, cardId);
       const pos = computeSpawnPosition(anchorRect, {
         width: POPUP_W,
         height: POPUP_H,
@@ -2195,7 +2194,7 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
       const ed = innerRef.current?.getEditor();
       if (ed) updateLinkedAnchorCard(ed, anchorId, "revision-comment", created.id);
     }
-    popCardAtAnchor("revision", created.id, anchorRect);
+    popCardAtAnchor("revision-comment", created.id, anchorRect);
   }, [readSelection, revisionsHook, popCardAtAnchor]);
 
   const handleToolbarAddNote = useCallback((anchorRect: DOMRect | null) => {

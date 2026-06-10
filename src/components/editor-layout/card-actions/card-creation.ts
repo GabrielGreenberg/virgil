@@ -15,6 +15,7 @@ import type {
 } from "@/lib/types";
 import type { PanelId, ViewPrefs } from "@/hooks/useViewPrefs";
 import type { TextObjectKind } from "@/text-objects/types";
+import type { CardKind } from "@/cards/types";
 import { nextCardTitle } from "@/panels/panel-registry";
 import type { EditorHandle } from "../../Editor";
 import type {
@@ -114,7 +115,7 @@ export interface CardCreationDeps {
   prefs: ViewPrefs;
   setActiveLeft: (id: PanelId) => void;
   setActiveRight: (id: PanelId) => void;
-  popCardAtAnchor: (kind: string, id: string, anchorRect: DOMRect | null) => void;
+  popCardAtAnchor: (kind: CardKind, id: string, anchorRect: DOMRect | null) => void;
   markFootnotePristine: (id: string) => void;
   /** Total footnote count (anchored + orphans) the panel currently
    *  shows. Used to seed the auto-title of newly created footnotes. */
@@ -460,7 +461,7 @@ export function useCardCreation(deps: CardCreationDeps): CardCreationApi {
       pin("revision", card.id);
       if (opts.mode === "omni") return card;
       if (fromToolbar(opts))
-        popCardAtAnchor("revision", card.id, opts.anchorRect!);
+        popCardAtAnchor("revision-comment", card.id, opts.anchorRect!);
       else ensurePanelActive("revisions");
       return card;
     },
