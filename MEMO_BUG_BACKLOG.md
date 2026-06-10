@@ -379,3 +379,24 @@ inside the `z-30` virgil-bar has this exact bug — e.g. the `absolute … z-20`
 dropdown at [EditorLayout.tsx:4431](src/components/EditorLayout.tsx:4431), and
 `MyPapersPod` (glossary notes it "mirrors the Virgil-bar `TabPlusMenu`"). Sweep
 for `absolute z-[0-9]` menus inside low-z sticky bars and portal them uniformly.
+
+---
+
+## 10. Re-introduce grip-based drag-into-document for Todo / Error cards via a body-level affordance
+
+**Reported:** 2026-06-09 · **Status:** open · **Area:** ui-chrome / card panels
+
+In the A1 gardening pass the long-dead, commented-out `handleDragStart` blocks
+on `TodoRow` ([src/panels/Todo/TodoRow.tsx](src/panels/Todo/TodoRow.tsx)) and
+`ErrorCard` ([src/panels/Errors/ErrorCard.tsx](src/panels/Errors/ErrorCard.tsx))
+were removed — they wired the card **grip** as a `draggable` source that emitted
+`MIME_TODO` / `MIME_TEXT_INSERT` to drop the card's text into the document. That
+capability had already been severed (the grip no longer set `draggable`; the
+handlers were dead code) and the grip is now reserved for the lift/pop gesture.
+
+**Desired behavior** — if drag-the-card-text-into-the-document is still wanted,
+re-introduce it via a **body-level affordance** (a dedicated drag handle in the
+card body, not the grip), so it doesn't collide with the grip's lift/pop role.
+The original payload contract (`MIME_TODO` for todos, `MIME_TEXT_INSERT` for
+error cards) is preserved in git history (pre-A1) if the drop targets still
+accept those MIME types.

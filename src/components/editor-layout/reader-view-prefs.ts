@@ -210,7 +210,6 @@ export function useReaderViewPrefs(): EditorPaneViewPrefs {
       cardFloatPositions,
       showHighlights: true,
       hiddenHighlightTypes: [],
-      menuLocation: { kind: "home" },
       pageWidth: 880,
       topGutter,
       bottomGutter,

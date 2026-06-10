@@ -29,10 +29,11 @@ import {
  * same card its native panel renders. The caller (EditorLayout) builds
  * these by calling each panel's `build<Kind>OmniItems` helper.
  *
- * Card ids follow `${cardKindPrefix}:${id}` (e.g. `note:abc`,
- * `cutter-comment:xyz`). Filter categories are PanelKinds: one row per
- * omni-eligible panel. The cutter panel is polymorphic (two card kinds)
- * but appears as a single "Cutter" filter row.
+ * Card ids follow the canonical `float:card:<kind>:<id>` grammar built
+ * by `cardPopKey(kind, id)` (e.g. `float:card:note:abc`,
+ * `float:card:cutter-comment:xyz`). Filter categories are PanelKinds: one
+ * row per omni-eligible panel. The cutter panel is polymorphic (two card
+ * kinds) but appears as a single "Cutter" filter row.
  */
 
 export type { OmniItem };

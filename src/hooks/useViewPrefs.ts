@@ -59,14 +59,6 @@ export function dockSlotKey(side: Side, half: Half | "full"): DockSlotKey {
   return `${side}-${half}` as DockSlotKey;
 }
 
-/** Where the floating MenuBar sits. "home" = docked in the Virgil top bar,
- *  centered over the document (the default). "free" = free-floating at a
- *  specific viewport coordinate (after the user dragged the toolbar out
- *  of the top bar). */
-export type MenuLocation =
-  | { kind: "home" }
-  | { kind: "free"; left: number; top: number };
-
 export interface ViewPrefs {
   placements: PanelPlacement[];
   /** Top half (or only half when not split). */
@@ -130,9 +122,6 @@ export interface ViewPrefs {
    *  `data-link-card` prefix: "note", "todo", "comment"
    *  (= revisions panel), "cut". */
   hiddenHighlightTypes: HighlightType[];
-  /** Location of the floating MenuBar. Defaults to "home" (docked in the
-   *  Virgil top bar, centered over the document). */
-  menuLocation: MenuLocation;
   /** Preferred width of the editor "page" in pixels. The page is the
    *  solid element of the layout — panels and margins flex around it to
    *  absorb window resizes. Drag on panel or zen-margin inner edges
@@ -1208,13 +1197,6 @@ export function useViewPrefs() {
     }));
   }, [update]);
 
-  const setMenuLocation = useCallback((v: MenuLocation | ((prev: MenuLocation) => MenuLocation)) => {
-    update((p) => ({
-      ...p,
-      menuLocation: typeof v === "function" ? v(p.menuLocation) : v,
-    }));
-  }, [update]);
-
   /**
    * Close a panel — works for either a docked or a floating panel.
    * Preserves panelModes[id] and floatPositions[id] so re-opening
@@ -1518,7 +1500,6 @@ export function useViewPrefs() {
     toggleOmniCategory,
     resetOmniSide,
     toggleOmniHideAllCards,
-    setMenuLocation,
     togglePopout,
     closePopout,
     openPanel,

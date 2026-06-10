@@ -1032,10 +1032,10 @@ export function textObjectForNode(node: PMNode): TextObjectRef | null {
 }
 
 /**
- * Construct the canonical popout key for a TextObject: `textobject:<kind>:<id>`.
- * Centralized here so that callers never assemble the string by hand.
- * Phase D10 migrates legacy `paragraph:<id>` / `heading:<id>` / `list:<id>` /
- * `texBlock:<id>` / `example:<id>` / `selection:<id>` keys to this shape.
+ * Construct the canonical float key for a TextObject — the
+ * `float:textobject:<kind>:<id>` grammar emitted by `buildFloatKey`
+ * (the text-object sibling of `float:card:<kind>:<id>`). Centralized
+ * here so that callers never assemble the string by hand.
  */
 export function textObjectPopoutKey(ref: TextObjectRef): string {
   return buildFloatKey({ domain: "textobject", kind: ref.kind, id: ref.id });

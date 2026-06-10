@@ -852,12 +852,9 @@ export default function EditorLayout() {
   // insertion order in the popped-out arrays.
   type FloatingRef =
     | { kind: "panel"; id: PanelId }
-    | { kind: "card"; key: string }
-    | { kind: "toolbar"; bucket: "actions" | "formatting" | "menus"; id: string };
+    | { kind: "card"; key: string };
   const refKey = (r: FloatingRef): string =>
-    r.kind === "panel" ? `panel:${r.id}`
-      : r.kind === "card" ? `card:${r.key}`
-      : `tb:${r.bucket}:${r.id}`;
+    r.kind === "panel" ? `panel:${r.id}` : `card:${r.key}`;
   const [focusStack, setFocusStack] = useState<FloatingRef[]>([]);
   const focusFloating = useCallback((ref: FloatingRef) => {
     setFocusStack((prev) => {
@@ -2409,8 +2406,9 @@ export default function EditorLayout() {
   // callers needing to know about panel placement.
   const tryScrollOmniEntry = useCallback(
     (key: string, targetY?: number): boolean => {
-      // Use starts-with selector so multi-paragraph instances (e.g. "nt:id@0")
-      // are found when searching for the base key ("nt:id").
+      // Use starts-with selector so multi-paragraph instances (e.g.
+      // "float:card:note:id@0") are found when searching for the base key
+      // ("float:card:note:id").
       const entry = document.querySelector(
         `[data-omni-entry="${key}"], [data-omni-entry^="${key}@"]`,
       ) as HTMLElement | null;

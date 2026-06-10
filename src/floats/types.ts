@@ -90,11 +90,6 @@ export interface Floatable {
    *  thin draggable frame. */
   bareWindow?: boolean;
 
-  /** Opt in to the auto-fit grow-burst (a text float spawned at default size
-   *  grows to fit its content, capped by `POPOUT_MAX_VH`). Replaces the old
-   *  `.par-float-body` DOM sniff; cards never set it. */
-  autoFitBody?: boolean;
-
   /** Whether the window participates in the panel dock flow (redock proximity
    *  + dock outline). Cards/text-objects: false (panels only). Defaults false. */
   canRedock?: boolean;
