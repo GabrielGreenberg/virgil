@@ -1561,7 +1561,7 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
     [],
   );
 
-  // ── Marginalia markers ───────────────────────────────────────────
+  // ── Marginalia markers — THE live gutter-marker builder ───────────
   // Walks every card hook (notes, reports, archive, todos, cutter,
   // revisions) plus the live latex-error list and emits one
   // `MarginaliaMarker` per linked paragraph. Marker clicks route through
@@ -1569,6 +1569,24 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
   // selection state is NOT a dep (markers self-subscribe to the cardStore
   // for their halo, and the click handlers read it at click time), so a
   // selection change recomputes nothing here.
+  //
+  // SEAM B-3 (invariant): live positions come from two complementary
+  // derivation paths, split by anchor style.
+  //  - PARAGRAPH-anchored kinds (note / archive / revision / cut / todo /
+  //    report / error) emit gutter markers HERE, keyed by textObjectId;
+  //    the grid (`computeMarkerPositions`) resolves pixels from the
+  //    marginalia registry's per-UUID metrics.
+  //  - ENTITY-anchored kinds (footnote / citation / example — in-text
+  //    atoms/blocks, `markerType: null` in CARD_REGISTRY) have NO row
+  //    here; their live in-text positions come from the omni `resolvePos`
+  //    snapshot (`useInTextPositions`, fed by the DocStructureObserver's
+  //    per-transaction-mapped `getBus(editor).structure`).
+  // BOTH paths are gated on `useStructuralRevisions` counters
+  // (`rev.anchors` / `rev.blocks` here) — never on a raw update counter —
+  // so a structurally-null keystroke re-derives neither (keystroke
+  // sanctity). Don't add a footnote/citation/example branch here, and
+  // don't move a paragraph-anchored kind onto the omni path without
+  // moving its marker too.
   // eslint-disable-next-line react-hooks/exhaustive-deps
   const marginaliaMarkers = useMemo<MarginaliaMarker[]>(() => {
     // Re-resolve markers when anchors move between paragraphs (`rev.anchors`)
