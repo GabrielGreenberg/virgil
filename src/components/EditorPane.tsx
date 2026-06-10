@@ -2162,12 +2162,12 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
     bottomGutterDrag.onMouseDown(e);
   }, [bottomGutterDrag, viewPrefs]);
 
-  // ─── Toolbar action handlers (Path A 7.6 finish) ──────────────────
+  // ─── Toolbar action handlers ──────────────────────────────────────
   // Each creates a card in its corresponding panel — selection-anchored
-  // when text is selected, blank otherwise. `cardCreation` here uses
-  // the local stub `popCardAtAnchor` (no floating popup spawn) until
-  // Path A 7.8 wires the real one. EditorLayout still owns the active
-  // copies until then; these stay dormant.
+  // when text is selected, blank otherwise. These are the LIVE toolbar
+  // handlers (R20): selection-create routes through `useCardCreation`
+  // here, and `popCardAtAnchor` spawns the real floating popup. The old
+  // EditorLayout `useSelectionToCardActions` copies were dead and are gone.
 
   const readSelection = useCallback(() => {
     const ed = innerRef.current?.getEditor();

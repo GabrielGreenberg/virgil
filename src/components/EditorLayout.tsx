@@ -155,7 +155,6 @@ import { useCitationActions } from "./editor-layout/card-actions/citations";
 import { useRefActions } from "./editor-layout/card-actions/ref";
 import { useMarkerActions } from "./editor-layout/card-actions/markers";
 import { openForCard } from "./editor-layout/event-bridges/open-for-card";
-import { useSelectionToCardActions } from "./editor-layout/card-actions/selection-to-card";
 import { useLibraryBridge } from "./editor-layout/event-bridges/library";
 import { useMarkerClickBridges } from "./editor-layout/event-bridges/marker-clicks";
 import { useFootnoteSyncBridges } from "./editor-layout/event-bridges/footnote-sync";
@@ -563,7 +562,6 @@ export default function EditorLayout() {
     state: suggestionsState,
     currentSuggestion,
     isComplete,
-    actOnSuggestion,
     updateSuggestionField,
     jumpToSuggestion,
     clearSuggestions,
@@ -594,7 +592,6 @@ export default function EditorLayout() {
     removeNoteTextObjectId,
     deleteNote,
     setNoteAnchor,
-    discardPristineNotes,
   } = useNotes(docIdForHooks, notePristine);
   const {
     cards: cutterCards,
@@ -606,7 +603,6 @@ export default function EditorLayout() {
     addCardParagraphId,
     removeCardParagraphId,
     deleteCard: deleteCutterCard,
-    discardPristineCards,
   } = useCutter(docIdForHooks, cutPristine);
   // Vestigial parity mount (panel rendering moved to EditorPane post-7.8;
   // this feeds the shell-side margin-item delete handler bundle below).
@@ -640,7 +636,6 @@ export default function EditorLayout() {
     archiveDone: archiveTodos,
     addParagraphId: addTodoTextObjectId,
     removeParagraphId: removeTodoTextObjectId,
-    discardPristineTodos,
   } = useTodos(docIdForHooks, todoPristine);
 
   const {
@@ -2336,25 +2331,6 @@ export default function EditorLayout() {
     const words = sumIncludedWords(perBlock, focusMode.state.startBlockIndex, focusMode.state.endBlockIndex + 1, focusWcConfig.include);
     return { words };
   }, [focusMode.state, docForOutline, focusWcConfig.include]);
-
-  const {
-    handleAct,
-    handleCreateFootnote,
-    handleAddNoteFromSelection,
-    handleCutSelection,
-  } = useSelectionToCardActions({
-    editorRef,
-    addNote,
-    addCutterComment,
-    actOnSuggestion,
-    currentSuggestion,
-    setSelectedNoteId,
-    setSelectedCutterCardId,
-    setSelectedFootnoteId,
-    prefs,
-    setActiveLeft,
-    setActiveRight,
-  });
 
   // Selection ↔ linked-anchor highlight binding for each panel-anchored entity
   // (notes, text revisions, cuts). Each hook:
