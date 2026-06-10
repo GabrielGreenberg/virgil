@@ -753,7 +753,22 @@ function linkedAnchorKindToCardKind(kind: LinkedAnchorKind): CardKind {
  *  `LinkedAnchorKind` maps to a kind with a non-null `legacyDataKind`, so the
  *  fallback is unreachable (defensive). */
 function legacyKindToCardKindString(kind: LinkedAnchorKind): string {
-  return legacyDataKindForCardKind(linkedAnchorKindToCardKind(kind)) ?? kind;
+  const token = legacyDataKindForCardKind(linkedAnchorKindToCardKind(kind));
+  if (token == null) {
+    // Unreachable: every LinkedAnchorKind maps to a kind with a non-null
+    // legacyDataKind. If it ever fires, the raw `kind` is NOT a contract-faithful
+    // data-link-card token (e.g. "revision" has no [data-link-card^="revision:"]
+    // rule — the faithful token is "comment"). Make it loud in dev rather than
+    // silently stamping a CSS-ruleless token; preserve the runtime string.
+    if (process.env.NODE_ENV !== "production") {
+      console.error(
+        `[links] legacyKindToCardKindString("${kind}"): no legacyDataKind in the ` +
+          `crosswalk — the stamped data-link-card token may match no CSS rule.`,
+      );
+    }
+    return kind;
+  }
+  return token;
 }
 
 /**

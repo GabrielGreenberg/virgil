@@ -64,9 +64,8 @@ export const canMorph = (k: CardKind): boolean => CARD_REGISTRY[k].morph !== nul
  *  facet-derivable: `markerType === null` is shared with `highlight` (a tint,
  *  not an atom) and `bib`/`ai`/`example`, so this stays an explicit literal —
  *  the single source consumers route through (replacing the local
- *  `isInlineAtomKind` in `useAnchorHighlightReconciler` and the hardcoded check
- *  in `useTextHoverBridge`). A dev assertion (below) pins the invariant that
- *  both have `markerType === null`. */
+ *  `isInlineAtomKind` in `useAnchorHighlightReconciler`). A dev assertion
+ *  (below) pins the invariant that both have `markerType === null`. */
 export const isInlineAtomCardKind = (k: CardKind): boolean =>
   k === "footnote" || k === "citation";
 
