@@ -33,6 +33,8 @@ export function buildFootnoteOmniItems(a: BuildArgs): OmniItem[] {
     items.push({
       id,
       pos: fn.pos,
+      // A live footnote always resolves to its in-text marker pos.
+      anchorState: "anchored",
       content: (
         <FootnoteCard
           key={id}
@@ -58,6 +60,9 @@ export function buildFootnoteOmniItems(a: BuildArgs): OmniItem[] {
     items.push({
       id,
       pos: null,
+      // Orphaned footnotes carry a \footnote{} that lost its callout —
+      // they intend to anchor but have no resolvable in-text marker.
+      anchorState: "orphaned",
       content: (
         <OrphanedFootnoteCard
           key={id}

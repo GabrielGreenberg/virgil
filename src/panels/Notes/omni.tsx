@@ -70,14 +70,24 @@ export function buildNoteOmniItems(a: BuildArgs): OmniItem[] {
     };
 
     if (pids.length === 0) {
-      items.push({ id: baseId, pos: null, content: renderCard(baseId, false) });
+      items.push({
+        id: baseId,
+        pos: null,
+        anchorState: "free",
+        content: renderCard(baseId, false),
+      });
     } else {
       for (let pi = 0; pi < pids.length; pi++) {
         const pid = pids[pi];
         const pos = a.findParagraphPos(pid);
         const suffix = pids.length > 1 ? `@${pi}` : "";
         const omniId = `${baseId}${suffix}`;
-        items.push({ id: omniId, pos, content: renderCard(omniId, true) });
+        items.push({
+          id: omniId,
+          pos,
+          anchorState: pos == null ? "orphaned" : "anchored",
+          content: renderCard(omniId, true),
+        });
       }
     }
   }

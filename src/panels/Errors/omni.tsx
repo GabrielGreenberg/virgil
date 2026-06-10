@@ -39,10 +39,15 @@ export function buildErrorOmniItems(a: BuildArgs): OmniItem[] {
     const omniId = cardPopKey("error", err.id);
     const paraId = a.paragraphByErrorId.get(err.id) ?? null;
     const pos = a.findParagraphPos(paraId);
+    // No resolved source paragraph ⇒ the error has no anchor intent (free).
+    // A resolved paragraph that no longer maps to a live pos ⇒ orphaned.
+    const anchorState =
+      paraId == null ? "free" : pos == null ? "orphaned" : "anchored";
 
     items.push({
       id: omniId,
       pos,
+      anchorState,
       content: (
         <ErrorCard
           key={omniId}

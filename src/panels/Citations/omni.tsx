@@ -40,9 +40,13 @@ export function buildCitationOmniItems(a: BuildArgs): OmniItem[] {
     const pos = a.citationPositionMap.get(cit.id) ?? null;
     const isSelected = a.selectedCitationId === cit.id;
     const id = popKey("citations", cit.id);
+    // A citation is intrinsically an in-text \cite reference, so it's never
+    // "free": it either resolves to its marker pos (anchored) or its marker
+    // is missing from the doc (orphaned).
     items.push({
       id,
       pos,
+      anchorState: pos == null ? "orphaned" : "anchored",
       content: (
         <CitationCard
           key={id}

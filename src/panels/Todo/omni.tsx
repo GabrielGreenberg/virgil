@@ -32,6 +32,7 @@ export function buildTodoOmniItems(a: BuildArgs): OmniItem[] {
       items.push({
         id: baseId,
         pos: null,
+        anchorState: "free",
         content: (
           <TodoRow
             key={baseId}
@@ -57,6 +58,7 @@ export function buildTodoOmniItems(a: BuildArgs): OmniItem[] {
         items.push({
           id: omniId,
           pos,
+          anchorState: pos == null ? "orphaned" : "anchored",
           content: (
             <TodoRow
               key={omniId}

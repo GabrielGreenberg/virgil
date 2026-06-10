@@ -35,6 +35,9 @@ export function buildArchiveOmniItems(a: BuildArgs): OmniItem[] {
       items.push({
         id: baseId,
         pos: null,
+        // `orphaned` ⇒ had an anchor that vanished; otherwise it simply
+        // carries no link at all (free).
+        anchorState: orphaned ? "orphaned" : "free",
         content: (
           <ArchiveCard
             key={baseId}
@@ -61,6 +64,7 @@ export function buildArchiveOmniItems(a: BuildArgs): OmniItem[] {
         items.push({
           id: omniId,
           pos,
+          anchorState: pos == null ? "orphaned" : "anchored",
           content: (
             <ArchiveCard
               key={omniId}
