@@ -2444,7 +2444,8 @@ export default function EditorLayout() {
     enterMarginEditMode,
   ]);
 
-  // Listen for marker clicks from the editor
+  // Listen for marker clicks from the editor (in-text anchors, gutter
+  // markers, inline atoms, error markers — see marker-clicks.ts).
   useMarkerClickBridges({
     prefsRef,
     setActiveLeft,
@@ -2454,9 +2455,7 @@ export default function EditorLayout() {
     getOmniEnabled,
     setSelectedFootnoteId,
     setSelectedCitationId,
-    setSelectedNoteId,
-    setSelectedCutterCardId,
-    setSelectedCommentId,
+    setSelectedErrorId,
     setActiveRefLabel,
     setActiveRefRect,
     setActiveRefCommand,
