@@ -166,10 +166,11 @@ registerCardMorph("report-request", (card) =>
 /* ── Notes: note ⇄ highlight ──────────────────────────────────────────
  * note → highlight DISCARDS the rich note body + title (a highlight has no
  * body) → lossy; the text-range anchor in `links` rides across so the tint
- * survives. highlight → note seeds an empty note body from the highlight's
- * excerpt text (when available via the anchor) — also lossy (a highlight's
- * excerpt is a snapshot string, not editable rich body). A confirm guards the
- * body-dropping direction (driven by `morph.lossy` at the call site). */
+ * survives. highlight → note starts the note with an EMPTY body — the
+ * highlight's excerpt is a snapshot string, not editable rich body, so it is
+ * NOT carried into the note body; the text-range anchor still rides across.
+ * Both directions are marked `lossy` in the registry, so the confirm fires
+ * on either flip (driven by `morph.lossy` at the call site). */
 
 function noteToHighlight(n: UserNote): HighlightCard {
   return {

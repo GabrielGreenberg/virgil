@@ -178,6 +178,7 @@ export function ExampleCard({
                 instanceKey={`example-body:${example.exampleId}`}
                 variant="footnote"
                 className="leading-snug break-words"
+                bodyStyle={bodyStyle}
               />
             ) : (
               example.bodyText && (
@@ -203,6 +204,7 @@ export function ExampleCard({
                           instanceKey={`example-item:${example.exampleId}:${idx}`}
                           variant="footnote"
                           className="leading-snug break-words"
+                          bodyStyle={bodyStyle}
                         />
                       ) : (
                         <span className="leading-snug whitespace-pre-wrap break-words">

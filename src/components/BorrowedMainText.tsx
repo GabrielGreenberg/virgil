@@ -35,7 +35,7 @@
  * because its cards never need to edit them.
  */
 
-import { useMemo } from "react";
+import { useEffect, useMemo, useRef } from "react";
 import { useEditor, EditorContent, type JSONContent } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
 import {
@@ -64,14 +64,21 @@ export interface BorrowedMainTextProps {
    *  (e.g. "Abusch 2014"), so persisted citation nodes with an empty
    *  `displayText` render the formatted name instead of the raw command. */
   getCitationDisplayText?: (command: string) => string;
-  /** Visual variant — `"borrowed"` (serif, the default) borrows the main-text
-   *  serif face; `"sans"` matches the compact panel body. Drives the
+  /** Visual variant — `"footnote"` (serif, the default) borrows the main-text
+   *  serif face; `"note"` matches the compact panel body. Drives the
    *  `rtf-content-*` class so it shares RichTextField's body CSS. */
   variant?: "footnote" | "note";
   /** Extra class on the EditorContent wrapper (e.g. line-clamp for compressed). */
   className?: string;
   /** Inline style on the EditorContent wrapper (panel typography / clamp). */
   style?: React.CSSProperties;
+  /** Resolved panel body style (font-size / face / color) — the same
+   *  `usePanelBodyStyle(panelKey)` value the card uses. Threaded onto the
+   *  read-only editor DOM the way RichTextField does, so the panel's borrowed
+   *  default (15px) AND a user size-stepper override take effect instead of
+   *  being masked by the global `.tiptap p { font-size: var(--editor-font-size) }`
+   *  rule. Without this the body renders at the 1.05rem fallback (~16.8px). */
+  bodyStyle?: React.CSSProperties;
 }
 
 /** Rewrite citation nodes so their `displayText` reflects the current
@@ -106,14 +113,15 @@ export function BorrowedMainText({
   variant = "footnote",
   className,
   style,
+  bodyStyle,
 }: BorrowedMainTextProps) {
-  // Resolve the initial content once. The editor is read-only and remounts on
-  // instanceKey, so we never need a focus-gated external value sync.
-  const initialContent = useMemo(
+  // Resolve the content. The editor is read-only, so we never need a
+  // focus-gated external value sync — but we DO re-push content when `value`
+  // changes (see the value-sync effect below), so a card whose instanceKey is
+  // content-independent (e.g. keyed on a stable id) still reflects live edits.
+  const resolved = useMemo(
     () => refreshCitationDisplay(normalizeRichContent(value), getCitationDisplayText),
-    // instanceKey is the remount key; value/lookup are read at mount only.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [instanceKey],
+    [value, getCitationDisplayText],
   );
 
   const editor = useEditor(
@@ -142,7 +150,7 @@ export function BorrowedMainText({
         LatexComment.configure({ cardContext: true }),
         DisplayMath,
       ],
-      content: initialContent,
+      content: resolved,
       editorProps: {
         attributes: {
           // Share RichTextField's body CSS (font face / spacing) but flag this
@@ -154,6 +162,64 @@ export function BorrowedMainText({
     // Remount when the card identity changes (same contract as RichTextField).
     [instanceKey],
   );
+
+  // ── Read-only value-sync (FIX 2 / A9 review) ─────────────────────────────
+  // A consumer may key the editor on a CONTENT-INDEPENDENT identity (e.g.
+  // ExampleCard's `example-body:<id>`), so an in-card LaTeX edit keeps the same
+  // instanceKey and the editor never remounts. Re-push the resolved body when
+  // it changes by content identity. This fires on CONTENT change only — it
+  // never subscribes to the main editor and runs no per-keystroke doc work — so
+  // keystroke sanctity holds. `setContent(…, { emitUpdate: false })` does not
+  // emit an update (this editor is `editable:false` with zero `editor.on`
+  // anyway), keeping the re-push silent. We compare serialized JSON so an
+  // unchanged body (a new object identity from re-derivation) is a no-op.
+  const lastJsonRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (!editor) return;
+    const nextJson = JSON.stringify(resolved);
+    if (lastJsonRef.current === null) {
+      // Initial content was set at mount via `content: resolved`; just record it.
+      lastJsonRef.current = nextJson;
+      return;
+    }
+    if (lastJsonRef.current === nextJson) return;
+    lastJsonRef.current = nextJson;
+    editor.commands.setContent(resolved, { emitUpdate: false });
+  }, [editor, resolved]);
+
+  // ── Panel typography (FIX 1 / A9 review) ─────────────────────────────────
+  // Write the resolved panel font-size / face / color onto the editor DOM the
+  // way RichTextField does. Setting `--editor-font-size` (not just `font-size`)
+  // is required because the global `.tiptap p` rule resolves its own size from
+  // that var, which would otherwise mask an inherited inline value — so without
+  // this the borrowed body renders at the 1.05rem fallback (~16.8px) instead of
+  // the declared 15px (or a stepped override).
+  useEffect(() => {
+    if (!editor) return;
+    // We mutate the live ProseMirror DOM node's inline style, not the `editor`
+    // hook value — React Compiler's `react-hooks/immutability` rule can't tell
+    // the two apart and flags `editor cannot be modified`. RichTextField.tsx
+    // ships this same error on its identical panel-typography effect (the
+    // codebase-accepted norm); we suppress it here so the touched file stays
+    // lint-clean.
+    const dom = editor.view.dom as HTMLElement;
+    const fontFamily = bodyStyle?.fontFamily;
+    const fontSize = bodyStyle?.fontSize;
+    const color = bodyStyle?.color;
+    /* eslint-disable react-hooks/immutability */
+    if (fontFamily) dom.style.fontFamily = String(fontFamily);
+    else dom.style.removeProperty("font-family");
+    if (fontSize) {
+      dom.style.fontSize = String(fontSize);
+      dom.style.setProperty("--editor-font-size", String(fontSize));
+    } else {
+      dom.style.removeProperty("font-size");
+      dom.style.removeProperty("--editor-font-size");
+    }
+    if (color) dom.style.color = String(color);
+    else dom.style.removeProperty("color");
+    /* eslint-enable react-hooks/immutability */
+  }, [editor, bodyStyle]);
 
   return <EditorContent editor={editor} className={className} style={style} />;
 }

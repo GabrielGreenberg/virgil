@@ -444,6 +444,7 @@ export function useNotes(docId: string | null, externalPristine?: PristineKindAp
    *  `addNoteForHighlight` "+ note" path (R14). */
   const convertCard = useCallback(
     (id: string, toKind: "note" | "highlight") => {
+      pristine.markDirty(id);
       update((prev) => ({
         cards: prev.cards.map((c) => {
           if (c.id !== id || c.kind === toKind) return c;
@@ -451,7 +452,7 @@ export function useNotes(docId: string | null, externalPristine?: PristineKindAp
         }),
       }));
     },
-    [update],
+    [update, pristine],
   );
 
   /**

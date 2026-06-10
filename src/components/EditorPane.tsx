@@ -797,9 +797,17 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
       if (!morph) return; // non-morphing kind — defensive no-op
       const toCardKind = morph.to;
       if (morph.lossy) {
+        // report ↔ report-request KEEPS the rich body and only drops the
+        // title / byline / AI-request flag, so don't tell the user the body
+        // won't carry across (it does). note ↔ highlight drops the whole body.
+        const preservesBody =
+          fromCardKind === "report" || fromCardKind === "report-request";
+        const message = preservesBody
+          ? `This drops the title and byline (a ${CARD_REGISTRY[toCardKind].label} can't hold them); the body and text anchor stay. Continue?`
+          : `This drops fields that a ${CARD_REGISTRY[toCardKind].label} can't hold (the body and title don't carry across). The text anchor stays. Continue?`;
         const ok = await confirmMorph({
           title: `Change to ${CARD_REGISTRY[toCardKind].label}?`,
-          message: `This drops fields that a ${CARD_REGISTRY[toCardKind].label} can't hold (the body / title / byline don't carry across). The text anchor stays. Continue?`,
+          message,
           confirmLabel: `Make it a ${CARD_REGISTRY[toCardKind].label}`,
           cancelLabel: "Keep as is",
           tone: "default",

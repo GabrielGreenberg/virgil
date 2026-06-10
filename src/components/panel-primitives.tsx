@@ -991,6 +991,7 @@ export function EditableCard({
                 value={compressedContent}
                 instanceKey={`compressed:${cardKind}:${id}`}
                 variant="footnote"
+                bodyStyle={compressedBody}
               />
             ) : (
               compressedSummary ?? <CardEmptyText />
