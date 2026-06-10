@@ -8,7 +8,6 @@ import {
   getActiveHandle,
   isStalePipelineError,
 } from "@/lib/multi-window/doc-pipeline";
-import type { PristineKindApi } from "./usePristineCardManager";
 
 const EMPTY: ExamplesState = { examples: [] };
 
@@ -21,7 +20,7 @@ const EMPTY: ExamplesState = { examples: [] };
  * timestamps). `syncFromEditor` reconciles the sidecar against the current
  * editor contents on every parse.
  */
-export function useExamples(docId: string | null, pristine?: PristineKindApi | null) {
+export function useExamples(docId: string | null) {
   const [state, setState] = useState<ExamplesState>(EMPTY);
   const stateRef = useRef(state);
   stateRef.current = state;
@@ -63,7 +62,6 @@ export function useExamples(docId: string | null, pristine?: PristineKindApi | n
 
   const updateExampleTitle = useCallback(
     (id: string, title: string) => {
-      pristine?.markDirty(id);
       setState((prev) => {
         const next = {
           examples: prev.examples.map((e) =>
@@ -75,12 +73,11 @@ export function useExamples(docId: string | null, pristine?: PristineKindApi | n
         return next;
       });
     },
-    [persist, pristine],
+    [persist],
   );
 
   const deleteExample = useCallback(
     (id: string) => {
-      pristine?.markDirty(id);
       setState((prev) => {
         const next = { examples: prev.examples.filter((e) => e.id !== id) };
         stateRef.current = next;
@@ -88,7 +85,7 @@ export function useExamples(docId: string | null, pristine?: PristineKindApi | n
         return next;
       });
     },
-    [persist, pristine],
+    [persist],
   );
 
   /** Reconcile sidecar metadata against the editor's current example

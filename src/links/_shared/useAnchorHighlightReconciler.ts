@@ -47,8 +47,8 @@ import { cssTokenForCardKind } from "@/cards/legacy-token-crosswalk";
 import {
   cardKeyForEntity,
   findEntity,
-  type EntityCollections,
 } from "./entity-hover";
+import type { EntityCollectionSlots } from "@/cards/entity-collections";
 import type { Link } from "./types";
 import { resolveLink } from "../links";
 
@@ -81,7 +81,7 @@ function linkForInlineAtom(
   };
 }
 
-function entityExists(ref: AnchoredCardRef, c: EntityCollections): boolean {
+function entityExists(ref: AnchoredCardRef, c: EntityCollectionSlots): boolean {
   // Inline-atom kinds (footnote / citation) aren't kept in collections; their
   // existence is the editor's job. Treat them as always-present so the pruner
   // never drops them. Routed through the single-source predicate.
@@ -89,7 +89,7 @@ function entityExists(ref: AnchoredCardRef, c: EntityCollections): boolean {
   return findEntity(ref, c) !== undefined;
 }
 
-function linksForRef(ref: AnchoredCardRef, c: EntityCollections): Link[] {
+function linksForRef(ref: AnchoredCardRef, c: EntityCollectionSlots): Link[] {
   if (ref.kind === "footnote" || ref.kind === "citation") {
     return [linkForInlineAtom(ref.kind, ref.id)];
   }
@@ -99,7 +99,7 @@ function linksForRef(ref: AnchoredCardRef, c: EntityCollections): Link[] {
 
 export interface UseAnchorHighlightReconcilerArgs {
   editor: Editor | null;
-  collections: EntityCollections;
+  collections: EntityCollectionSlots;
 }
 
 export function useAnchorHighlightReconciler({
@@ -118,20 +118,20 @@ export function useAnchorHighlightReconciler({
     notes,
     cutterCards,
     archiveSnippets,
-    todos,
+    todoItems,
     comments,
-    reports,
+    reportCards,
     examples,
     highlights,
   } = collections;
-  const stableCollections = useMemo<EntityCollections>(
+  const stableCollections = useMemo<EntityCollectionSlots>(
     () => ({
       notes,
       cutterCards,
       archiveSnippets,
-      todos,
+      todoItems,
       comments,
-      reports,
+      reportCards,
       examples,
       highlights,
     }),
@@ -139,9 +139,9 @@ export function useAnchorHighlightReconciler({
       notes,
       cutterCards,
       archiveSnippets,
-      todos,
+      todoItems,
       comments,
-      reports,
+      reportCards,
       examples,
       highlights,
     ],
@@ -210,7 +210,7 @@ export function useAnchorHighlightReconciler({
     };
 
     const collectCardKey = (ref: AnchoredCardRef, into: Set<string>): void => {
-      const key = cardKeyForEntity(ref, stableCollections);
+      const key = cardKeyForEntity(ref);
       if (key) into.add(key);
     };
 

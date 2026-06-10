@@ -23,6 +23,7 @@ import { buildFloatKey } from "@/floats/float-key";
 import { CARD_KINDS, cardKindFromRecord, isAnchoredCardKind } from "@/cards/predicates";
 import { CARD_REGISTRY } from "@/cards/card-registry";
 import type { CardKind } from "@/cards/types";
+import type { EntityCollectionSlots } from "@/cards/entity-collections";
 
 /** The anchored card kinds — derived from the registry's `anchored` flag (the
  *  single membership source), replacing the former hand-kept literal array. */
@@ -58,39 +59,29 @@ export interface EntityRef {
   kind: EntityKind;
 }
 
-export interface EntityCollections {
-  notes: ReadonlyArray<{ id: string; links?: Link[] }>;
-  /** Highlights live alongside notes in the Notes panel; threaded here so
-   *  `findEntity({ kind: "highlight", ... })` can resolve them. Optional
-   *  so legacy callers (e.g. Reader paths without a highlights hook) still
-   *  compile — a missing list just means highlights resolve to `undefined`. */
-  highlights?: ReadonlyArray<{ id: string; links?: Link[] }>;
-  cutterCards: ReadonlyArray<{ id: string; kind?: string; links?: Link[] }>;
-  comments: ReadonlyArray<{ id: string; kind?: string; links?: Link[] }>;
-  todos: ReadonlyArray<{ id: string; links?: Link[] }>;
-  archiveSnippets: ReadonlyArray<{ id: string; links?: Link[] }>;
-  /** Reports panel hosts both `report` and `report-request` kinds; threaded
-   *  here so `findEntity` can resolve either by splitting on `kind`. Optional
-   *  so legacy callers without a reports hook still compile. */
-  reports?: ReadonlyArray<{ id: string; kind?: string; links?: Link[] }>;
-  examples: ReadonlyArray<{ id: string }>;
-}
-
 export function findEntity(
   ref: EntityRef,
-  c: EntityCollections,
+  c: EntityCollectionSlots,
 ): { id: string; kind?: string; links?: Link[] } | undefined {
   switch (ref.kind) {
     case "note":      return c.notes.find((e) => e.id === ref.id);
     case "highlight": return c.highlights?.find((e) => e.id === ref.id);
-    case "todo":      return c.todos.find((e) => e.id === ref.id);
+    case "todo":      return c.todoItems.find((e) => e.id === ref.id);
     case "archive":   return c.archiveSnippets.find((e) => e.id === ref.id);
     case "report":
     case "report-request": {
-      const card = c.reports?.find((e) => e.id === ref.id);
+      const card = c.reportCards?.find((e) => e.id === ref.id);
       return card && cardKindFromRecord(card, "reports") === ref.kind ? card : undefined;
     }
-    case "example":   return c.examples.find((e) => e.id === ref.id);
+    // `ExampleInfo` keys on `exampleId`, not `id` (the one-example carve-out);
+    // resolve from either so both shapes (ExampleInfo[] and the bag-less {id})
+    // work without a boundary adapter. Normalize the hit to the canonical
+    // `{ id }` shape (examples carry no Mode-B `links`, so there's nothing else
+    // to surface).
+    case "example": {
+      const ex = c.examples.find((e) => (e.exampleId ?? e.id) === ref.id);
+      return ex ? { id: ref.id } : undefined;
+    }
     case "cutter-comment":
     case "cutter-suggestion": {
       // Collection routing stays here (cutter records); the comment-vs-suggestion
@@ -121,17 +112,14 @@ export function findEntity(
  *  `buildFloatKey`), which guarantees this matches the DOM byte-for-byte.
  *  Built via the runtime-leaf `float-key` (not the panel registry) to avoid an
  *  import cycle. */
-export function cardKeyForEntity(
-  ref: EntityRef,
-  _c: EntityCollections,
-): string | null {
+export function cardKeyForEntity(ref: EntityRef): string | null {
   return buildFloatKey({ domain: "card", kind: ref.kind, id: ref.id });
 }
 
 /** Resolve a hovered/selected entity to its Mode B text-range anchor id, or null. */
 export function entityToAnchorId(
   ref: EntityRef | null,
-  c: EntityCollections,
+  c: EntityCollectionSlots,
 ): string | null {
   if (!ref) return null;
   const entity = findEntity(ref, c);
@@ -154,7 +142,6 @@ export function entityToAnchorId(
  *  literal switch. */
 export function entityKindToAnchorKind(
   ref: EntityRef | null,
-  _c: EntityCollections,
 ): "note" | "highlight" | "revision" | "cutter-comment" | "cutter-suggestion" | null {
   if (!ref) return null;
   // R-B carve-out: the cutter pair keeps its split (each carries its own tint),

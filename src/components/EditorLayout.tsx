@@ -149,13 +149,11 @@ import { useEditorOps } from "./editor-layout/card-actions/editor-ops";
 import { useFocusActions } from "./editor-layout/card-actions/focus";
 import { useCommentActions } from "./editor-layout/card-actions/comments";
 import { useFileActions } from "./editor-layout/card-actions/files";
-import { useFootnoteActions } from "./editor-layout/card-actions/footnotes";
 import { useOrphanActions } from "./editor-layout/card-actions/orphans";
 import { useCitationActions } from "./editor-layout/card-actions/citations";
 import { useRefActions } from "./editor-layout/card-actions/ref";
 import { useMarkerActions } from "./editor-layout/card-actions/markers";
 import { openForCard } from "./editor-layout/event-bridges/open-for-card";
-import { useSelectionToCardActions } from "./editor-layout/card-actions/selection-to-card";
 import { useLibraryBridge } from "./editor-layout/event-bridges/library";
 import { useMarkerClickBridges } from "./editor-layout/event-bridges/marker-clicks";
 import { useFootnoteSyncBridges } from "./editor-layout/event-bridges/footnote-sync";
@@ -167,10 +165,8 @@ import { AiRequestsProvider } from "./editor-layout/contexts/ai-requests";
 import { CitationDisplayProvider } from "./editor-layout/contexts/citation-display";
 import { SelectionsProvider, useAnchoredSelectionSlots } from "./editor-layout/contexts/selections";
 import { cardStore } from "@/links/_shared/anchored-card-store";
-import { PristineCardsProvider } from "./editor-layout/contexts/pristine-cards";
 import { RecentlyAddedProvider } from "./editor-layout/contexts/recently-added";
 import { RecentlyAddedAutoClear } from "./editor-layout/recently-added-auto-clear";
-import { usePristineCardManager } from "@/hooks/usePristineCardManager";
 import { useRecentlyAddedTracker } from "@/hooks/useRecentlyAddedTracker";
 import { OutlineHost } from "./editor-layout/panels/outline-host";
 import { CutterHost } from "./editor-layout/panels/cutter-host";
@@ -563,7 +559,6 @@ export default function EditorLayout() {
     state: suggestionsState,
     currentSuggestion,
     isComplete,
-    actOnSuggestion,
     updateSuggestionField,
     jumpToSuggestion,
     clearSuggestions,
@@ -576,15 +571,14 @@ export default function EditorLayout() {
     deleteCard: deleteRevisionCard,
   } = useRevisions(docIdForHooks);
   const comments = revisionCards;
-  // Unified pristine-card manager — tracks blank-on-create cards across all
-  // kinds and discards them via a global click-away listener once the user
-  // clicks outside the card's DOM. Each per-kind hook gets its slice here.
-  const pristineManager = usePristineCardManager();
+  // R21: the pristine-card manager lives ONLY in EditorPane (its single live
+  // manager owns blank-on-create click-away discard for every kind). The
+  // duplicate manager that used to mount here was render-dead — the panels
+  // moved to EditorPane post-7.8, so this shell's parity mounts of useNotes/
+  // useCutter/useTodos never surfaced a pristine card. Those parity hooks now
+  // fall back to their own usePristineTracker (the `?? localPristine` net,
+  // kept per the WS2 defer ruling); they stay only to feed marginItemHandlers.
   const recentlyAdded = useRecentlyAddedTracker();
-  const notePristine = useMemo(() => pristineManager.forKind("note"), [pristineManager]);
-  const cutPristine = useMemo(() => pristineManager.forKind("cut"), [pristineManager]);
-  const todoPristine = useMemo(() => pristineManager.forKind("todo"), [pristineManager]);
-  const footnotePristine = useMemo(() => pristineManager.forKind("footnote"), [pristineManager]);
   const {
     notes,
     highlights,
@@ -594,8 +588,7 @@ export default function EditorLayout() {
     removeNoteTextObjectId,
     deleteNote,
     setNoteAnchor,
-    discardPristineNotes,
-  } = useNotes(docIdForHooks, notePristine);
+  } = useNotes(docIdForHooks);
   const {
     cards: cutterCards,
     goal: cutterGoal,
@@ -606,8 +599,7 @@ export default function EditorLayout() {
     addCardParagraphId,
     removeCardParagraphId,
     deleteCard: deleteCutterCard,
-    discardPristineCards,
-  } = useCutter(docIdForHooks, cutPristine);
+  } = useCutter(docIdForHooks);
   // Vestigial parity mount (panel rendering moved to EditorPane post-7.8;
   // this feeds the shell-side margin-item delete handler bundle below).
   const {
@@ -640,8 +632,7 @@ export default function EditorLayout() {
     archiveDone: archiveTodos,
     addParagraphId: addTodoTextObjectId,
     removeParagraphId: removeTodoTextObjectId,
-    discardPristineTodos,
-  } = useTodos(docIdForHooks, todoPristine);
+  } = useTodos(docIdForHooks);
 
   const {
     requests: aiRequests,
@@ -1246,7 +1237,7 @@ export default function EditorLayout() {
     if (!hoveredEntityId || !hoveredEntityKind) return null;
     return entityToAnchorId(
       { id: hoveredEntityId, kind: hoveredEntityKind },
-      { notes, cutterCards, comments, todos: todoItems, archiveSnippets, examples: [] },
+      { notes, cutterCards, comments, todoItems, archiveSnippets, examples: [] },
     );
   }, [hoveredEntityId, hoveredEntityKind, notes, cutterCards, comments, todoItems, archiveSnippets]);
 
@@ -2337,25 +2328,6 @@ export default function EditorLayout() {
     return { words };
   }, [focusMode.state, docForOutline, focusWcConfig.include]);
 
-  const {
-    handleAct,
-    handleCreateFootnote,
-    handleAddNoteFromSelection,
-    handleCutSelection,
-  } = useSelectionToCardActions({
-    editorRef,
-    addNote,
-    addCutterComment,
-    actOnSuggestion,
-    currentSuggestion,
-    setSelectedNoteId,
-    setSelectedCutterCardId,
-    setSelectedFootnoteId,
-    prefs,
-    setActiveLeft,
-    setActiveRight,
-  });
-
   // Selection ↔ linked-anchor highlight binding for each panel-anchored entity
   // (notes, text revisions, cuts). Each hook:
   //   • syncs `activeAnchorId`/`activeAnchorKind` to the selected entity, so
@@ -2453,14 +2425,11 @@ export default function EditorLayout() {
 
 
 
-  const {
-    handleDeleteFootnote,
-  } = useFootnoteActions({
-    editorRef,
-    suppressOrphanRef,
-    setSelectedFootnoteId,
-    setOrphanedFootnotes,
-  });
+  // R21: useFootnoteActions was mounted here ONLY to feed the footnote
+  // pristine-discard effect (handleDeleteFootnote). That effect drove the
+  // render-dead shell pristine manager and is gone; the footnote discard now
+  // lives entirely in EditorPane's single manager. The other footnote-action
+  // handlers (edit/title/add) were never consumed from this shell mount.
 
   const { handleCitationCreated } = useCitationActions({
     editorRef,
@@ -2774,20 +2743,9 @@ export default function EditorLayout() {
     setPendingCommentText,
   });
 
-  // Register per-kind discard callbacks. When the click-away watcher in
-  // the pristine manager sees a pointerdown outside a pristine card, it
-  // calls the kind's registered discard callback to remove the card.
-  useEffect(() => notePristine.registerDiscard((id) => deleteNote(id)), [notePristine, deleteNote]);
-  useEffect(() => cutPristine.registerDiscard((id) => deleteCutterCard(id)), [cutPristine, deleteCutterCard]);
-  useEffect(() => todoPristine.registerDiscard((id) => deleteTodo(id)), [todoPristine, deleteTodo]);
-  // Citation discard is registered inside EditorPane against its own
-  // pristineManager + citationsHook (see EditorPane.tsx). Removed from
-  // here when EditorLayout's duplicate `useCitations` mount was hoisted
-  // up via paneState.
-  useEffect(
-    () => footnotePristine.registerDiscard((id) => handleDeleteFootnote(id)),
-    [footnotePristine, handleDeleteFootnote],
-  );
+  // R21: the per-kind pristine discard callbacks are registered ONLY against
+  // EditorPane's single live manager (see EditorPane.tsx). The duplicate set
+  // that used to live here drove the render-dead shell manager and is gone.
 
   const editorPaneViewPrefs: EditorPaneViewPrefs = useMemo(() => ({
     prefs,
@@ -3632,9 +3590,8 @@ export default function EditorLayout() {
         hoveredEntityId && hoveredEntityKind
           ? { id: hoveredEntityId, kind: hoveredEntityKind }
           : null,
-        { notes, cutterCards, comments, todos: todoItems, archiveSnippets, examples: [] },
       ),
-    [hoveredEntityId, hoveredEntityKind, notes, cutterCards, comments, todoItems, archiveSnippets],
+    [hoveredEntityId, hoveredEntityKind],
   );
   const effectiveAnchorKind = hoveredAnchorKind ?? activeAnchorKind;
   const effectiveAnchorColor = (() => {
@@ -3830,7 +3787,6 @@ export default function EditorLayout() {
         an anchored kind. The other 9 props on the legacy value shape are
         ignored by the provider. */}
     <SelectionsProvider value={{ selectedBibKey, setSelectedBibKey }}>
-    <PristineCardsProvider value={pristineManager}>
     <RecentlyAddedProvider value={recentlyAdded}>
     <RecentlyAddedAutoClear />
     <CollabProvider value={collab}>
@@ -5033,7 +4989,6 @@ export default function EditorLayout() {
     </div>
     </CollabProvider>
     </RecentlyAddedProvider>
-    </PristineCardsProvider>
     </SelectionsProvider>
     </CitationDisplayProvider>
     </AiRequestsProvider>

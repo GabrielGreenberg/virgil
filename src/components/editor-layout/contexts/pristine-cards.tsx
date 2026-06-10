@@ -2,7 +2,7 @@
 
 import { createContext, useContext, type ReactNode } from "react";
 import type {
-  CardKind,
+  PristineBucket,
   PristineCardManager,
   PristineKindApi,
 } from "@/hooks/usePristineCardManager";
@@ -29,7 +29,7 @@ export function usePristineCardsContext(): PristineCardManager | null {
   return useContext(PristineCardsCtx);
 }
 
-export function usePristineKind(kind: CardKind): PristineKindApi | null {
+export function usePristineKind(kind: PristineBucket): PristineKindApi | null {
   const mgr = useContext(PristineCardsCtx);
   return mgr ? mgr.forKind(kind) : null;
 }

@@ -125,10 +125,10 @@ import { DockOutline } from "./editor-layout/DockOutline";
 import { CardLiftOutline } from "./CardLiftOutline";
 import { type PoppedCardDeps } from "./editor-layout/floating-cards";
 import { FloatHost } from "@/floats/FloatHost";
-import { parseAnyKey, migrateLegacyKeyToFloat } from "@/floats/float-key";
+import { parseAnyKey } from "@/floats/float-key";
 import { textObjectPopoutKey } from "@/text-objects/text-object-registry";
 import { CARD_REGISTRY } from "@/cards/card-registry";
-import { isCardKind } from "@/cards/predicates";
+import { isCardKind, panelForCardKind } from "@/cards/predicates";
 import { PoppedCardsContext, type PoppedCardsValue } from "@/hooks/usePoppedCards";
 import { DropModeProvider } from "./drop-mode/DropModeProvider";
 import { useAnchorRebindBridge } from "./editor-layout/event-bridges/anchor-rebind";
@@ -349,8 +349,8 @@ export interface EditorPaneViewPrefs {
   getOmniHideAll: (side: Side) => boolean;
   toggleOmniHideAllCards: (side: Side) => void;
   /** Footnotes that exist as orphan cards (no in-doc reference). The
-   *  Reader has none; main app post-7.8 plumbs `useFootnoteActions`
-   *  output through here. */
+   *  Reader has none; the main app feeds these via EditorPane's own
+   *  footnote-add handler (`handleAddFootnote`). */
   orphanedFootnotes: import("@/lib/types").OrphanedFootnote[];
   onEditOrphan: (id: string, newContent: unknown) => void;
   onDeleteOrphan: (id: string) => void;
@@ -734,12 +734,16 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
   // every pane an independent tracker, matching the per-doc nature of
   // pristine state.
   const pristineManager = usePristineCardManager();
-  const notePristine = useMemo(() => pristineManager.forKind("note"), [pristineManager]);
-  const cutPristine = useMemo(() => pristineManager.forKind("cut"), [pristineManager]);
-  const reportPristine = useMemo(() => pristineManager.forKind("report"), [pristineManager]);
-  const todoPristine = useMemo(() => pristineManager.forKind("todo"), [pristineManager]);
-  const citationPristine = useMemo(() => pristineManager.forKind("citation"), [pristineManager]);
-  const footnotePristine = useMemo(() => pristineManager.forKind("footnote"), [pristineManager]);
+  // The discard bucket is the owning PANEL id, derived from the card registry
+  // (panelForCardKind) — not a hand-kept token. Each polymorphic pair collapses
+  // to its shared panel (cutter-* → "cutter", report* → "reports"). Every kind
+  // here owns a panel, so the non-null assertion is safe.
+  const notePristine = useMemo(() => pristineManager.forKind(panelForCardKind("note")!), [pristineManager]);
+  const cutPristine = useMemo(() => pristineManager.forKind(panelForCardKind("cutter-comment")!), [pristineManager]);
+  const reportPristine = useMemo(() => pristineManager.forKind(panelForCardKind("report")!), [pristineManager]);
+  const todoPristine = useMemo(() => pristineManager.forKind(panelForCardKind("todo")!), [pristineManager]);
+  const citationPristine = useMemo(() => pristineManager.forKind(panelForCardKind("citation")!), [pristineManager]);
+  const footnotePristine = useMemo(() => pristineManager.forKind(panelForCardKind("footnote")!), [pristineManager]);
 
   // ── Per-doc sidecar hooks ────────────────────────────────────────
   // These resolve to the paper folder via storage-fsa.ts's synthetic
@@ -1130,16 +1134,15 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
   const stubSetActive = useCallback(() => {}, []);
   // Pop a card into a floating window at the given anchor rect. Mirrors
   // EditorLayout's previous shell-side implementation (see prior path-A
-  // notes). Prefix-string convention matches `useCardCreation`'s kind
-  // argument — `"note" | "cutter-comment" | "revision" | …`. Reader
+  // notes). Takes the canonical `CardKind` (`"note" | "cutter-comment" |
+  // "revision-comment" | …`) and builds the float key directly via
+  // `cardPopKey` — the same chokepoint the card itself stamps. Reader
   // (no `viewPrefs`) leaves popouts as a no-op.
   const popCardAtAnchor = useCallback(
-    (cardKind: string, cardId: string, anchorRect: DOMRect | null) => {
+    (kind: CardKind, cardId: string, anchorRect: DOMRect | null) => {
       if (!viewPrefs) return;
-      // Build the unified `float:card:<kind>:<id>` key. `cardKind` is the legacy
-      // popout prefix (e.g. `revision` → `revision-comment`); the canonicalizing
-      // helper maps it and matches the card's own `cardKey` (via cardPopKey).
-      const key = migrateLegacyKeyToFloat(`${cardKind}:${cardId}`);
+      // `float:card:<kind>:<id>` — matches the card's own `cardKey`.
+      const key = cardPopKey(kind, cardId);
       const pos = computeSpawnPosition(anchorRect, {
         width: POPUP_W,
         height: POPUP_H,
@@ -2162,12 +2165,12 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
     bottomGutterDrag.onMouseDown(e);
   }, [bottomGutterDrag, viewPrefs]);
 
-  // ─── Toolbar action handlers (Path A 7.6 finish) ──────────────────
+  // ─── Toolbar action handlers ──────────────────────────────────────
   // Each creates a card in its corresponding panel — selection-anchored
-  // when text is selected, blank otherwise. `cardCreation` here uses
-  // the local stub `popCardAtAnchor` (no floating popup spawn) until
-  // Path A 7.8 wires the real one. EditorLayout still owns the active
-  // copies until then; these stay dormant.
+  // when text is selected, blank otherwise. These are the LIVE toolbar
+  // handlers (R20): selection-create routes through `useCardCreation`
+  // here, and `popCardAtAnchor` spawns the real floating popup. The old
+  // EditorLayout `useSelectionToCardActions` copies were dead and are gone.
 
   const readSelection = useCallback(() => {
     const ed = innerRef.current?.getEditor();
@@ -2195,7 +2198,7 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
       const ed = innerRef.current?.getEditor();
       if (ed) updateLinkedAnchorCard(ed, anchorId, "revision-comment", created.id);
     }
-    popCardAtAnchor("revision", created.id, anchorRect);
+    popCardAtAnchor("revision-comment", created.id, anchorRect);
   }, [readSelection, revisionsHook, popCardAtAnchor]);
 
   const handleToolbarAddNote = useCallback((anchorRect: DOMRect | null) => {
@@ -2848,24 +2851,18 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
     [],
   );
 
-  // ExampleInfo carries `exampleId`, not `id`; the entity-collections
-  // shape uses `id`. Adapt at the boundary so the entity vocabulary
-  // stays uniform.
-  const _examplesAsEntities = useMemo(
-    () => examples.map((e) => ({ id: e.exampleId })),
-    [examples],
-  );
-
   useAnchorHighlightReconciler({
     editor,
     collections: {
       notes: notesHook.notes,
       cutterCards: cutterHook.cards,
       archiveSnippets: archiveHook.snippets,
-      todos: todosHook.items,
+      todoItems: todosHook.items,
       comments: revisionsHook.cards,
-      reports: reportsHook.cards,
-      examples: _examplesAsEntities,
+      reportCards: reportsHook.cards,
+      // EntityCollectionSlots reads `exampleId ?? id`, so ExampleInfo[] (which
+      // keys on `exampleId`) resolves directly — no boundary adapter.
+      examples,
     },
   });
 
@@ -2898,10 +2895,10 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
       notes: notesHook.notes,
       cutterCards: cutterHook.cards,
       comments: revisionsHook.cards,
-      reports: reportsHook.cards,
-      todos: todosHook.items,
+      reportCards: reportsHook.cards,
+      todoItems: todosHook.items,
       archiveSnippets: archiveHook.snippets,
-      examples: _examplesAsEntities,
+      examples,
     },
   });
 

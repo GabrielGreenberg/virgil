@@ -2,7 +2,6 @@ import { describe, it, expect } from "vitest";
 import {
   cardKeyForEntity,
   ANCHORED_CARD_KINDS,
-  type EntityCollections,
 } from "../entity-hover";
 import { parseAnyKey } from "@/floats/float-key";
 import { cardPopKey, getPanelByCardKind } from "@/panels/panel-registry";
@@ -18,21 +17,13 @@ import type { CardKind } from "@/panels/_shared/types";
  * broke. This test pins the contract so it can't regress unnoticed again.
  */
 
-// cardKeyForEntity ignores its collections arg; an empty bag suffices.
-const EMPTY: EntityCollections = {
-  notes: [],
-  cutterCards: [],
-  comments: [],
-  todos: [],
-  archiveSnippets: [],
-  examples: [],
-};
+// cardKeyForEntity is now collection-free (WS5: it never read the bag).
 
 describe("entity-key ↔ data-card-key contract (AF float grammar)", () => {
   it("cardKeyForEntity == what the card actually stamps (cardPopKey) for every anchored kind", () => {
     for (const kind of ANCHORED_CARD_KINDS) {
       const id = `id-${kind}`;
-      const entityKey = cardKeyForEntity({ kind, id }, EMPTY);
+      const entityKey = cardKeyForEntity({ kind, id });
       // The reconciler/placement query `[data-card-key="${entityKey}"]`; the DOM
       // stamps `cardPopKey(kind, id)`. These MUST be byte-identical.
       expect(entityKey).toBe(cardPopKey(kind, id));
@@ -43,7 +34,7 @@ describe("entity-key ↔ data-card-key contract (AF float grammar)", () => {
   it("the produced key round-trips through parseAnyKey (the hover-bridge / isSelfDrop path)", () => {
     for (const kind of ANCHORED_CARD_KINDS) {
       const id = "uuid-1234";
-      const key = cardKeyForEntity({ kind, id }, EMPTY)!;
+      const key = cardKeyForEntity({ kind, id })!;
       const parsed = parseAnyKey(key);
       expect(parsed).not.toBeNull();
       expect(parsed!.domain).toBe("card");
@@ -53,10 +44,10 @@ describe("entity-key ↔ data-card-key contract (AF float grammar)", () => {
   });
 
   it("revision comment vs suggestion stay distinct (the s:-infix trap)", () => {
-    expect(cardKeyForEntity({ kind: "revision-comment", id: "x" }, EMPTY)).toBe(
+    expect(cardKeyForEntity({ kind: "revision-comment", id: "x" })).toBe(
       "float:card:revision-comment:x",
     );
-    expect(cardKeyForEntity({ kind: "revision-suggestion", id: "x" }, EMPTY)).toBe(
+    expect(cardKeyForEntity({ kind: "revision-suggestion", id: "x" })).toBe(
       "float:card:revision-suggestion:x",
     );
     expect(parseAnyKey("float:card:revision-suggestion:x")!.kind).toBe(
@@ -67,7 +58,7 @@ describe("entity-key ↔ data-card-key contract (AF float grammar)", () => {
   it("hover-bridge anchored check: a parsed card key's kind is in the anchored set", () => {
     const anchored = new Set<string>(ANCHORED_CARD_KINDS);
     for (const kind of ANCHORED_CARD_KINDS) {
-      const parsed = parseAnyKey(cardKeyForEntity({ kind, id: "i" }, EMPTY)!);
+      const parsed = parseAnyKey(cardKeyForEntity({ kind, id: "i" })!);
       expect(parsed!.domain).toBe("card");
       expect(anchored.has(parsed!.kind)).toBe(true);
     }
@@ -75,7 +66,7 @@ describe("entity-key ↔ data-card-key contract (AF float grammar)", () => {
 
   it("omni categoryOf path: each anchored kind resolves to an owning panel", () => {
     for (const kind of ANCHORED_CARD_KINDS) {
-      const parsed = parseAnyKey(cardKeyForEntity({ kind, id: "i" }, EMPTY)!);
+      const parsed = parseAnyKey(cardKeyForEntity({ kind, id: "i" })!);
       const panel = getPanelByCardKind(parsed!.kind as CardKind);
       expect(panel, `no owning panel for ${kind}`).not.toBeNull();
     }

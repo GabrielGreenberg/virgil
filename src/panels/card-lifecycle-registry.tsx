@@ -122,9 +122,12 @@ export function useCardLifecycleApi(
 /** Dev-only: verify a per-doc lifecycle registry provides EXACTLY the ops the
  *  card registry declares (`CardMeta.lifecycle` — clone / delete / bindAnchor).
  *  A declared-but-unwired op — or a wired-but-undeclared one — is silent
- *  capability drift; this makes it loud. The five intentional gaps
- *  (todo / archive / example / report / report-request) declare all-false and
- *  must stay unwired; filling them is A3's job. Call from the provider site. */
+ *  capability drift; this makes it loud. The five all-false kinds are 4
+ *  PERMANENT gaps (todo / report / report-request → Mode-A paragraph-anchored;
+ *  example → origin:derived mirror, R19) plus `archive` (R18: ratified NO
+ *  cascade — survives anchor-paragraph deletion). A3 DOCUMENTS the
+ *  cascade-vs-UI-delete criterion (see `CardLifecycleCapability`); it does not
+ *  fill them. The E-4 criterion test pins the gaps. Call from the provider site. */
 export function assertLifecycleCoverage(registry: CardLifecycleRegistry): void {
   if (process.env.NODE_ENV === "production") return;
   for (const k of Object.keys(CARD_REGISTRY) as CardKind[]) {
