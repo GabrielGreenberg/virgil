@@ -18,7 +18,11 @@ import { entityKindToAnchorKind } from "../entity-hover";
  * can't silently drift.
  */
 
-// The exact literals the hand-kept ANCHOR_CLICK_ROUTES table held pre-A2.
+// The exact literals the hand-kept ANCHOR_CLICK_ROUTES table held pre-A2
+// (the five Mode-B kinds), plus the four Mode-A paragraph-anchored kinds A6
+// added when gutter clicks unified onto the same bridge (R15). The Mode-A
+// entrySelectorBases are the legacy `data-<kind>-entry` attributes those
+// panels stamp (cf. panel-selection.ts).
 const EXPECTED_ROUTES = {
   note: { panelId: "notes", cardKind: "note", entrySelectorBase: "data-note-entry" },
   "cutter-comment": {
@@ -41,16 +45,25 @@ const EXPECTED_ROUTES = {
     cardKind: "revision-suggestion",
     entrySelectorBase: "data-card-key",
   },
+  // A6/R15: the gutter's Mode-A paragraph-anchored kinds.
+  archive: { panelId: "archive", cardKind: "archive", entrySelectorBase: "data-archive-entry" },
+  todo: { panelId: "todo", cardKind: "todo", entrySelectorBase: "data-todo-entry" },
+  report: { panelId: "reports", cardKind: "report", entrySelectorBase: "data-report-entry" },
+  "report-request": {
+    panelId: "reports",
+    cardKind: "report-request",
+    entrySelectorBase: "data-report-request-entry",
+  },
 } as const;
 
 // entityKindToAnchorKind is now collection-free (WS5: it never read the bag).
 
-describe("ANCHOR_CLICK_ROUTES derived ≡ the pre-A2 literals", () => {
-  it("matches the hand-kept table exactly (panelId via panelForCardKind, cardKind = key)", () => {
+describe("ANCHOR_CLICK_ROUTES derived ≡ the frozen literals", () => {
+  it("matches the frozen table exactly (panelId via panelForCardKind, cardKind = key)", () => {
     expect(ANCHOR_CLICK_ROUTES).toEqual(EXPECTED_ROUTES);
   });
 
-  it("only the five Mode-B kinds are routed (no extra/missing keys)", () => {
+  it("exactly the nine routed kinds — five Mode-B + four Mode-A (no extra/missing keys)", () => {
     expect(Object.keys(ANCHOR_CLICK_ROUTES).sort()).toEqual(
       Object.keys(EXPECTED_ROUTES).sort(),
     );

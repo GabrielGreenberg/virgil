@@ -27,6 +27,15 @@ export const LinkedAnchor = Mark.create({
       // sentinel value "transient" marks the plain selection grab's
       // cardless range handle — renderHTML then omits data-link-card so the
       // anchor is invisible (see linked-anchor-attrs.ts).
+      //
+      // E-5 status (A6): this attr is otherwise render-inert — anchor
+      // colour is keyed off `data-link-card`'s kind token (normally from
+      // `linkCard`; `kind` is only the LEGACY fallback when `linkCard` is
+      // empty — see linked-anchor-attrs.ts) and the highlight palette
+      // resolves through the panel-theme path, so `kind` itself paints
+      // nothing directly. It can't be removed yet: the legacy fallback and
+      // the load-bearing "transient" sentinel still read it. Removal is
+      // deferred to the keyspace/link-schema unification (A2/A10).
       kind: { default: "note", renderHTML: () => ({}) },
       linkId: { default: "", renderHTML: () => ({}) },
       linkKind: { default: "anchor", renderHTML: () => ({}) },

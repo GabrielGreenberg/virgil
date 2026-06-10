@@ -81,13 +81,13 @@ import { LoadingScreen } from "./LoadingScreen";
 import type { PrintPanelKey } from "@/lib/print";
 import { EditorRefProvider } from "./editor-layout/contexts/editor-ref";
 import { SelectionsProvider, useAnchoredSelectionSlots } from "./editor-layout/contexts/selections";
-import { cardStore } from "@/links/_shared/anchored-card-store";
+import { cardStore, type AnchoredCardRef } from "@/links/_shared/anchored-card-store";
 import type { EntityKind } from "@/links/_shared/entity-hover";
 import { useAnchorHighlightReconciler } from "@/links/_shared/useAnchorHighlightReconciler";
 import { useLinkedAnchorReconciler } from "@/links/_shared/useLinkedAnchorReconciler";
 import { useTextHoverBridge } from "@/links/_shared/useTextHoverBridge";
 import { usePanelCardHoverBridge } from "@/links/_shared/usePanelCardHoverBridge";
-import { usePlacement } from "@/links/_shared/usePlacement";
+import { usePlacement, suppressNextPlacement } from "@/links/_shared/usePlacement";
 import { AiRequestsProvider } from "./editor-layout/contexts/ai-requests";
 import { RecentlyAddedProvider } from "./editor-layout/contexts/recently-added";
 import { CardCreationProvider } from "./editor-layout/contexts/card-creation";
@@ -1507,13 +1507,90 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
     [marginItemHandlers, confirmMarginItemDelete],
   );
 
-  // ── Marginalia markers ───────────────────────────────────────────
+  // ── Gutter marker click (R15) ────────────────────────────────────
+  // One handler for every card-backed marker kind. Uniform toggle: a click
+  // on the already-selected marker DESELECTS (and skips the open/pin
+  // dispatch); otherwise select (selection axis only — N1: never expands)
+  // and dispatch into the SAME live `virgil-linked-anchor-click` bridge the
+  // in-text anchor clicks ride (EditorLayout routes it through `openForCard`
+  // omni-first + pins the card at the click Y — no document jump). The
+  // select happens locally FIRST so the halo is synchronous with the click;
+  // the dispatch is then handled by the window-level bridge, which
+  // EditorLayout mounts unconditionally (the Library Reader renders inside
+  // EditorLayout too, so reader clicks ride the same bridge). Stable callback:
+  // reads the cardStore at click time, so the marker memo below doesn't
+  // depend on selection state (a selection change re-renders no markers).
+  const handleGutterMarkerClick = useCallback(
+    (ref: AnchoredCardRef, clickY?: number) => {
+      if (cardStore.isSelected(ref)) {
+        // Toggle-off: second click deselects across ALL marker kinds.
+        cardStore.clearSelection();
+        return;
+      }
+      // Suppress the selection-driven placement scroll — alignment happens
+      // by pulling the card to the click (alignOmniCardWithClick), never by
+      // scrolling the document row.
+      suppressNextPlacement();
+      cardStore.select(ref);
+      window.dispatchEvent(
+        new CustomEvent("virgil-linked-anchor-click", {
+          detail: { entityId: ref.id, kind: ref.kind, clickY },
+        }),
+      );
+    },
+    [],
+  );
+
+  // Ref mirror so the error marker's toggle reads the live value without
+  // putting `selectedErrorId` back into the marker memo's deps (errors
+  // aren't cardStore-backed, so they can't use `cardStore.isSelected`).
+  const selectedErrorIdRef = useRef(selectedErrorId);
+  selectedErrorIdRef.current = selectedErrorId;
+  const handleErrorMarkerClick = useCallback(
+    (errorId: string, clickY?: number) => {
+      const next = selectedErrorIdRef.current === errorId ? null : errorId;
+      setSelectedErrorId(next);
+      // Mirror the post-toggle state to the shell: EditorLayout syncs its
+      // own error selection (text highlight + vbar popover) and, on select,
+      // opens the errors panel on its docked side. The bridge is window-level
+      // and mounted unconditionally by EditorLayout (the Reader renders
+      // inside it too); in the Reader this event is currently unreachable —
+      // compileErrors is never populated there.
+      window.dispatchEvent(
+        new CustomEvent("virgil-error-marker-click", {
+          detail: { errorId, selected: next != null, clickY },
+        }),
+      );
+    },
+    [],
+  );
+
+  // ── Marginalia markers — THE live gutter-marker builder ───────────
   // Walks every card hook (notes, reports, archive, todos, cutter,
   // revisions) plus the live latex-error list and emits one
-  // `MarginaliaMarker` per linked paragraph. Mirrors EditorLayout's
-  // pre-extraction shape but skips the cross-card hover linkage (no
-  // hoveredEntityId state in EditorPane yet) and the `openForCard`
-  // routing (basic select-then-activate is enough until popouts land).
+  // `MarginaliaMarker` per linked paragraph. Marker clicks route through
+  // `handleGutterMarkerClick` above (the shared live bridge — R15);
+  // selection state is NOT a dep (markers self-subscribe to the cardStore
+  // for their halo, and the click handlers read it at click time), so a
+  // selection change recomputes nothing here.
+  //
+  // SEAM B-3 (invariant): live positions come from two complementary
+  // derivation paths, split by anchor style.
+  //  - PARAGRAPH-anchored kinds (note / archive / revision / cut / todo /
+  //    report / error) emit gutter markers HERE, keyed by textObjectId;
+  //    the grid (`computeMarkerPositions`) resolves pixels from the
+  //    marginalia registry's per-UUID metrics.
+  //  - ENTITY-anchored kinds (footnote / citation / example — in-text
+  //    atoms/blocks, `markerType: null` in CARD_REGISTRY) have NO row
+  //    here; their live in-text positions come from the omni `resolvePos`
+  //    snapshot (`useInTextPositions`, fed by the DocStructureObserver's
+  //    per-transaction-mapped `getBus(editor).structure`).
+  // BOTH paths are gated on `useStructuralRevisions` counters
+  // (`rev.anchors` / `rev.blocks` here) — never on a raw update counter —
+  // so a structurally-null keystroke re-derives neither (keystroke
+  // sanctity). Don't add a footnote/citation/example branch here, and
+  // don't move a paragraph-anchored kind onto the omni path without
+  // moving its marker too.
   // eslint-disable-next-line react-hooks/exhaustive-deps
   const marginaliaMarkers = useMemo<MarginaliaMarker[]>(() => {
     // Re-resolve markers when anchors move between paragraphs (`rev.anchors`)
@@ -1538,10 +1615,8 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
           type: "note",
           textObjectId: pid,
           title: n.title || "Note",
-          onClick: () => {
-            setSelectedNoteId(n.id);
-            setActivePanelKindBySide("notes");
-          },
+          onClick: (clickY?: number) =>
+            handleGutterMarkerClick({ kind: "note", id: n.id }, clickY),
           onDelete: () => {
             void handleMarginItemDelete("note", n.id, pid, anchor?.anchorId);
           },
@@ -1562,10 +1637,8 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
           type: "archive",
           textObjectId: pid,
           title: "Archived snippet",
-          onClick: () => {
-            setSelectedArchiveId(snippet.id);
-            setActivePanelKindBySide("archive");
-          },
+          onClick: (clickY?: number) =>
+            handleGutterMarkerClick({ kind: "archive", id: snippet.id }, clickY),
           onDelete: () => { void handleMarginItemDelete("archive", snippet.id, pid); },
         });
       }
@@ -1600,18 +1673,18 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
         } catch { /* ignore */ }
         if (!paragraphId) continue;
         const pid: string = paragraphId;
+        const revKind: EntityKind =
+          r.kind === "suggestion" ? "revision-suggestion" : "revision-comment";
         result.push({
           id: `${r.id}:${pid}`,
           entityId: r.id,
-          entityKind: r.kind === "suggestion" ? "revision-suggestion" : "revision-comment",
+          entityKind: revKind,
           type: "revision",
           textObjectId: pid,
           title: r.selectedText || "Revision",
           anchorId,
-          onClick: () => {
-            setSelectedCommentId(selectedCommentId === r.id ? null : r.id);
-            setActivePanelKindBySide("revisions");
-          },
+          onClick: (clickY?: number) =>
+            handleGutterMarkerClick({ kind: revKind, id: r.id }, clickY),
           onDelete: () => {
             void handleMarginItemDelete("revision", r.id, pid, anchorId);
           },
@@ -1627,18 +1700,18 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
       const title = c.kind === "suggestion"
         ? c.explanation || "Suggestion"
         : c.text || "Comment";
+      const cutKind: EntityKind =
+        c.kind === "suggestion" ? "cutter-suggestion" : "cutter-comment";
       for (const pid of pids) {
         result.push({
           id: `${c.id}:${pid}`,
           entityId: c.id,
-          entityKind: c.kind === "suggestion" ? "cutter-suggestion" : "cutter-comment",
+          entityKind: cutKind,
           type: "cut",
           textObjectId: pid,
           title,
-          onClick: () => {
-            setSelectedCutterCardId(c.id);
-            setActivePanelKindBySide("cutter");
-          },
+          onClick: (clickY?: number) =>
+            handleGutterMarkerClick({ kind: cutKind, id: c.id }, clickY),
           onDelete: () => {
             void handleMarginItemDelete("cut", c.id, pid, cardAnchor?.anchorId);
           },
@@ -1663,10 +1736,8 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
           type: "report",
           textObjectId: pid,
           title,
-          onClick: () => {
-            setSelectedReportCardId(c.id);
-            setActivePanelKindBySide("reports");
-          },
+          onClick: (clickY?: number) =>
+            handleGutterMarkerClick({ kind: c.kind, id: c.id }, clickY),
           onDelete: () => {
             void handleMarginItemDelete("report", c.id, pid, cardAnchor?.anchorId);
           },
@@ -1688,10 +1759,8 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
           textObjectId: pid,
           title: item.text || "Todo",
           muted: item.done,
-          onClick: () => {
-            setSelectedTodoId(item.id);
-            setActivePanelKindBySide("todo");
-          },
+          onClick: (clickY?: number) =>
+            handleGutterMarkerClick({ kind: "todo", id: item.id }, clickY),
           onDelete: () => { void handleMarginItemDelete("todo", item.id, pid); },
         });
       }
@@ -1709,16 +1778,17 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
         textObjectId: pid,
         title: err.message.length > 80 ? err.message.slice(0, 80) + "…" : err.message,
         muted: err.severity === "info",
-        onClick: () => {
-          setSelectedErrorId(selectedErrorId === err.id ? null : err.id);
-          setActivePanelKindBySide("errors");
-        },
+        onClick: (clickY?: number) => handleErrorMarkerClick(err.id, clickY),
         onDelete: () => dismissError(err.id),
       });
     }
 
     return result;
   }, [
+    // Card arrays + structural revision counters + error state ONLY — no
+    // selection deps (markers self-subscribe for their halo; click handlers
+    // read the store/ref at click time), so selecting a card never
+    // recomputes the marker layer.
     notesHook.notes,
     archiveHook.snippets,
     todosHook.items,
@@ -1726,16 +1796,11 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
     revisionsHook.cards,
     reportsHook.cards,
     handleMarginItemDelete,
+    handleGutterMarkerClick,
+    handleErrorMarkerClick,
     allLatexErrors,
     dismissedErrorIds,
     paragraphByErrorId,
-    selectedNoteId,
-    selectedArchiveId,
-    selectedTodoId,
-    selectedCutterCardId,
-    selectedReportCardId,
-    selectedCommentId,
-    selectedErrorId,
     rev.anchors,
     rev.blocks,
   ]);

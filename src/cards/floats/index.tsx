@@ -52,6 +52,7 @@ import type { CardFloatCtx } from "../card-float-ctx";
 import type { CardKind } from "../types";
 import { CARD_REGISTRY, registerCardFloatable } from "../card-registry";
 import { cardKindsForPanel } from "../predicates";
+import { canMorphNoteToHighlight } from "../morphs";
 import { CardKindHeader } from "@/components/panel-primitives";
 
 /** Shared shell for a card `Floatable`. `key`/`domain`/`surface` are uniform;
@@ -108,15 +109,22 @@ registerCardFloatable("note", (id, ctx: CardFloatCtx) => {
   return cardFloatable("note", id, {
     chromeSlots: {
       ...collabTrailing("note", id),
-      title: (
-        <CardKindHeader
-          kind="note"
-          options={cardKindsForPanel("notes")}
-          onChange={(k) => {
-            if (k !== "note") ctx.convertNotesCard(id, "highlight");
-          }}
-        />
-      ),
+      // WS7 (A6): the kind-chevron title slot is gated off for
+      // paragraph-only Mode-A notes (no text range → nothing for a
+      // highlight to tint); FloatChrome falls back to the plain title.
+      ...(canMorphNoteToHighlight(note)
+        ? {
+            title: (
+              <CardKindHeader
+                kind="note"
+                options={cardKindsForPanel("notes")}
+                onChange={(k) => {
+                  if (k !== "note") ctx.convertNotesCard(id, "highlight");
+                }}
+              />
+            ),
+          }
+        : {}),
     },
     canJump,
     jumpToSource: () => ctx.editorRef.current?.jumpToCard(note, null),

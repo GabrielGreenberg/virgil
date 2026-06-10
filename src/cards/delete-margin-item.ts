@@ -40,16 +40,13 @@ import {
   cardHasContent,
   type CardContentKind,
 } from "@/cards/has-content";
+import type { MarkerType } from "@/cards/types";
 
-/** Gutter marker kinds that map to deletable cards. Mirrors `MarkerType`
- *  in `src/lib/marginalia.ts` minus `"error"` (errors aren't cards). */
-export type MarginItemKind =
-  | "note"
-  | "archive"
-  | "cut"
-  | "todo"
-  | "revision"
-  | "report";
+/** Gutter marker kinds that map to deletable cards — `MarkerType` minus
+ *  `"error"` (errors aren't cards; their marker dismisses the lint entry).
+ *  Derived, so a new marker namespace automatically needs a handler bundle
+ *  here or fails to typecheck. */
+export type MarginItemKind = Exclude<MarkerType, "error">;
 
 /** Per-kind handler bundle. `buildMarginItemHandlers` produces one of
  *  these maps from a set of hook returns. */

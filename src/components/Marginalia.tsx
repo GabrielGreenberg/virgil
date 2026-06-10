@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useMemo, useSyncExternalStore } from "react";
+import { useEffect, useRef, useMemo, useState, useSyncExternalStore } from "react";
 import { createPortal } from "react-dom";
 import type { Editor } from "@tiptap/react";
 import {
@@ -19,7 +19,9 @@ import {
   MIME_CUT,
   MIME_REPORT,
   isAnchorDrag,
+  type GridCell,
   type MarginaliaMarker,
+  type MarkerOverflowGroup,
   type PositionedMarker,
 } from "@/lib/marginalia";
 import { ensureAnchorUuid } from "@/lib/anchor-uuid";
@@ -31,23 +33,14 @@ import {
   getPanelColorVersion,
   isPanelColorOverridden,
   subscribePanelColors,
-  type PanelThemeKey,
 } from "@/lib/panel-theme";
+import { panelThemeKeyForMarkerType } from "@/cards/marker-meta";
 import {
   cardStore,
   useIsHovered,
   useIsSelected,
   type AnchoredCardRef,
 } from "@/links/_shared/anchored-card-store";
-
-/** Marker type → panel theme key for color overrides. */
-const MARKER_TO_THEME_KEY: Partial<Record<keyof typeof MARKER_META, PanelThemeKey>> = {
-  note: "note",
-  archive: "archive",
-  revision: "revision",
-  cut: "cut",
-  todo: "todo",
-};
 
 interface MarginaliaProps {
   editor: Editor | null;
@@ -119,8 +112,9 @@ export default function Marginalia({ editor, markers, panelSides }: MarginaliaPr
 
   // Compute line-aligned grid positions for all markers. The registry
   // returns null for off-screen blocks — those markers are skipped,
-  // which is correct since their anchor isn't visible either.
-  const positioned = useMemo(
+  // which is correct since their anchor isn't visible either. Overflowing
+  // grids come back as overflow groups (R16) rendered as "+K" pills.
+  const { positioned, overflowGroups } = useMemo(
     () => computeMarkerPositions(registry.getMetrics, markers, panelSides),
     // registryVersion is the re-render trigger; getMetrics itself is stable.
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -380,10 +374,12 @@ export default function Marginalia({ editor, markers, panelSides }: MarginaliaPr
   }, [scrollEl, editor, registry]);
 
   if (!scrollEl) return null;
-  if (positioned.length === 0) return null;
+  if (positioned.length === 0 && overflowGroups.length === 0) return null;
 
   const leftMarkers = positioned.filter((m) => m.side === "left");
   const rightMarkers = positioned.filter((m) => m.side === "right");
+  const leftOverflow = overflowGroups.filter((g) => g.side === "left");
+  const rightOverflow = overflowGroups.filter((g) => g.side === "right");
 
   // When the host editor is read-only (Library Reader), suppress
   // drag-to-rebind on every marker. Click + Delete still work.
@@ -391,8 +387,8 @@ export default function Marginalia({ editor, markers, panelSides }: MarginaliaPr
 
   return createPortal(
     <>
-      <Gutter side="left" markers={leftMarkers} dragEnabled={dragEnabled} />
-      <Gutter side="right" markers={rightMarkers} dragEnabled={dragEnabled} />
+      <Gutter side="left" markers={leftMarkers} overflow={leftOverflow} dragEnabled={dragEnabled} />
+      <Gutter side="right" markers={rightMarkers} overflow={rightOverflow} dragEnabled={dragEnabled} />
     </>,
     scrollEl
   );
@@ -405,11 +401,27 @@ export default function Marginalia({ editor, markers, panelSides }: MarginaliaPr
  * Mouse enter/leave write directly to the store; click delegates to the
  * marker's own onClick (which routes through openForCard for placement).
  *
+ * Two layouts: with a `cell` the button positions absolutely in the gutter
+ * grid; without one it renders in normal flow (inside the overflow pill's
+ * popover — R16), with identical click/delete/drag behavior.
+ *
  * Declared before `Gutter` so Turbopack Fast Refresh always sees the
  * binding when Gutter re-evaluates (function-declaration hoisting works
  * but bundler module boundaries can be strict in dev).
  */
-function MarkerButton({ m, dragEnabled }: { m: PositionedMarker; dragEnabled: boolean }) {
+function MarkerButton({
+  m,
+  cell,
+  dragEnabled,
+  onActivated,
+}: {
+  m: MarginaliaMarker;
+  /** Grid cell for absolute placement; omit for in-flow (popover) layout. */
+  cell?: GridCell;
+  dragEnabled: boolean;
+  /** Called after the marker's own onClick ran (popover closes itself). */
+  onActivated?: () => void;
+}) {
   const ref: AnchoredCardRef | null = m.entityKind
     ? { kind: m.entityKind, id: m.entityId }
     : null;
@@ -417,9 +429,14 @@ function MarkerButton({ m, dragEnabled }: { m: PositionedMarker; dragEnabled: bo
   const hovered = useIsHovered(ref);
 
   const meta = MARKER_META[m.type];
-  const themeKey = MARKER_TO_THEME_KEY[m.type];
+  // Registry-derived color slot (R17). Report markers honor a user report
+  // color override like every other kind (the old hand-kept map omitted
+  // them — a drift bug); "error" derives to the system "error" key, which
+  // `isPanelColorOverridden` always reports false for (SYSTEM_THEME_KEYS),
+  // so error markers stay fixed.
+  const themeKey = panelThemeKeyForMarkerType(m.type);
   const palette =
-    themeKey && isPanelColorOverridden(themeKey)
+    isPanelColorOverridden(themeKey)
       ? deriveMarkerPalette(getPanelColor(themeKey))
       : { color: meta.color, bg: meta.bg, border: meta.border };
 
@@ -437,10 +454,9 @@ function MarkerButton({ m, dragEnabled }: { m: PositionedMarker; dragEnabled: bo
       data-marginalia-marker={`${m.type}:${m.id}`}
       data-card-selected={selected ? "true" : undefined}
       data-card-hovered={hovered ? "true" : undefined}
-      className="marginalia-marker pointer-events-auto absolute flex items-center justify-center rounded focus:outline-none"
+      className={`marginalia-marker pointer-events-auto flex items-center justify-center rounded focus:outline-none${cell ? " absolute" : ""}`}
       style={{
-        left: m.cell.x,
-        top: m.cell.y,
+        ...(cell ? { left: cell.x, top: cell.y } : {}),
         width: MARGINALIA_ICON_SIZE,
         height: MARGINALIA_ICON_SIZE,
         color: palette.color,
@@ -459,6 +475,7 @@ function MarkerButton({ m, dragEnabled }: { m: PositionedMarker; dragEnabled: bo
         e.stopPropagation();
         const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
         m.onClick?.(rect.top);
+        onActivated?.();
       }}
       onMouseEnter={ref ? () => cardStore.setHover(ref) : undefined}
       onMouseLeave={ref ? () => {
@@ -494,13 +511,108 @@ function MarkerButton({ m, dragEnabled }: { m: PositionedMarker; dragEnabled: bo
   );
 }
 
+/**
+ * Overflow "+K" pill (R16). Renders in the grid's reserved last cell when a
+ * node's markers don't all fit; clicking it opens a small popover beside the
+ * gutter listing the hidden markers as ordinary `MarkerButton`s (click /
+ * delete / drag behave exactly like in-grid markers). Render-layer only —
+ * the open state is local, closed by click-away / Escape / marker click.
+ */
+function OverflowPill({
+  group,
+  dragEnabled,
+}: {
+  group: MarkerOverflowGroup;
+  dragEnabled: boolean;
+}) {
+  const [open, setOpen] = useState(false);
+  const rootRef = useRef<HTMLDivElement | null>(null);
+
+  // Click-away + Escape close. Mounted only while open.
+  useEffect(() => {
+    if (!open) return;
+    const onMouseDown = (e: MouseEvent) => {
+      const t = e.target;
+      if (t instanceof Node && rootRef.current?.contains(t)) return;
+      setOpen(false);
+    };
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setOpen(false);
+    };
+    document.addEventListener("mousedown", onMouseDown);
+    document.addEventListener("keydown", onKeyDown);
+    return () => {
+      document.removeEventListener("mousedown", onMouseDown);
+      document.removeEventListener("keydown", onKeyDown);
+    };
+  }, [open]);
+
+  const count = group.hidden.length;
+  const label = `${count} hidden marker${count === 1 ? "" : "s"}`;
+
+  return (
+    <div ref={rootRef} className="pointer-events-none" data-marginalia-overflow={`${group.side}:${group.textObjectId}`}>
+      <button
+        type="button"
+        className="marginalia-marker pointer-events-auto absolute flex items-center justify-center rounded focus:outline-none bg-surface text-ink-muted hover:text-ink-body"
+        style={{
+          left: group.cell.x,
+          top: group.cell.y,
+          width: MARGINALIA_ICON_SIZE,
+          height: MARGINALIA_ICON_SIZE,
+          border: "1.5px solid var(--edge-strong)",
+          fontSize: 10,
+          fontWeight: 600,
+          lineHeight: 1,
+          padding: 0,
+        }}
+        data-hint={label}
+        aria-label={label}
+        aria-haspopup="true"
+        aria-expanded={open}
+        onClick={(e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          setOpen((o) => !o);
+        }}
+      >
+        +{count}
+      </button>
+      {open && (
+        <div
+          className="pointer-events-auto absolute z-30 flex flex-col rounded-md border border-edge-subtle bg-surface shadow-lg"
+          style={{
+            top: group.cell.y + MARGINALIA_ICON_SIZE + 4,
+            [group.side]: 2,
+            padding: 5,
+            gap: 4,
+          }}
+          role="menu"
+          aria-label={label}
+        >
+          {group.hidden.map((m) => (
+            <MarkerButton
+              key={`${m.type}:${m.id}`}
+              m={m}
+              dragEnabled={dragEnabled}
+              onActivated={() => setOpen(false)}
+            />
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function Gutter({
   side,
   markers,
+  overflow,
   dragEnabled,
 }: {
   side: "left" | "right";
   markers: PositionedMarker[];
+  overflow: MarkerOverflowGroup[];
   dragEnabled: boolean;
 }) {
   // Subscribe to panel color changes so the gutter re-renders when the user
@@ -517,7 +629,10 @@ function Gutter({
       data-marginalia-gutter={side}
     >
       {markers.map((m) => (
-        <MarkerButton key={`${m.type}:${m.id}`} m={m} dragEnabled={dragEnabled} />
+        <MarkerButton key={`${m.type}:${m.id}`} m={m} cell={m.cell} dragEnabled={dragEnabled} />
+      ))}
+      {overflow.map((g) => (
+        <OverflowPill key={`overflow:${g.side}:${g.textObjectId}`} group={g} dragEnabled={dragEnabled} />
       ))}
     </div>
   );

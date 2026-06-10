@@ -5,32 +5,46 @@ import type { CardKind } from "@/panels/_shared/types";
 import type { EntityKind } from "@/links/_shared/entity-hover";
 import { panelForCardKind } from "@/cards/predicates";
 import { suppressNextPlacement } from "@/links/_shared/usePlacement";
-import { openForCard } from "./open-for-card";
+import { cardStore } from "@/links/_shared/anchored-card-store";
+import { openForCard, type OpenForCardDeps } from "./open-for-card";
 import { cardPopKey, cardDomSelector } from "@/panels/panel-registry";
 
-/** The five Mode-B text-range kinds that route through
- *  `virgil-linked-anchor-click`. Inline atoms (footnote, citation) and one-shot
- *  kinds (archive) use their own dedicated `virgil-*-click` events. */
+/** The card kinds that route through the shared anchor-click body
+ *  (`routeAnchorClick`): the five Mode-B text-range kinds (dispatched by
+ *  `useTextHoverBridge` when a `.linked-anchor` span is clicked) plus the
+ *  four Mode-A paragraph-anchored kinds (dispatched by EditorPane's gutter
+ *  marker builder — R15: gutter clicks ride the same live bridge as in-text
+ *  anchor clicks). Inline atoms (footnote, citation) use their own dedicated
+ *  `virgil-*-click` events; `error` isn't a card and gets its own small
+ *  bridge (`virgil-error-marker-click`) below. */
 type AnchorClickKind =
   | "note"
   | "cutter-comment"
   | "cutter-suggestion"
   | "revision-comment"
-  | "revision-suggestion";
+  | "revision-suggestion"
+  | "archive"
+  | "todo"
+  | "report"
+  | "report-request";
 
 /** Per-kind `entrySelectorBase` overrides. The default is `data-card-key` (the
- *  canonical AF float-key selector); `note` is the lone special case — the
- *  Notes panel stamps its entries with `data-note-entry`, not `data-card-key`,
- *  so the listener queries `[data-note-entry="${id}"]` instead of
- *  `cardDomSelector(kind, id)`. */
+ *  canonical AF float-key selector); the overrides are the panels that stamp
+ *  their entries with a legacy `data-<kind>-entry` attribute instead (cf. the
+ *  same conventions in `panel-selection.ts`), so the listener queries
+ *  `[data-<kind>-entry="${id}"]` instead of `cardDomSelector(kind, id)`. */
 const ENTRY_SELECTOR_BASE_OVERRIDE: Partial<Record<AnchorClickKind, string>> = {
   note: "data-note-entry",
+  archive: "data-archive-entry",
+  todo: "data-todo-entry",
+  report: "data-report-entry",
+  "report-request": "data-report-request-entry",
 };
 
 /** `AnchorClickKind` → routing config, DERIVED: `cardKind` is the kind itself
  *  and `panelId` is `panelForCardKind(kind)` (the registry SSOT), with the
  *  small `entrySelectorBase` override map above. A pin-test asserts these
- *  derived routes ≡ the old hand-kept literals. */
+ *  derived routes ≡ frozen literals. */
 export const ANCHOR_CLICK_ROUTES: Record<
   AnchorClickKind,
   { panelId: PanelId; cardKind: CardKind; entrySelectorBase: string }
@@ -42,6 +56,10 @@ export const ANCHOR_CLICK_ROUTES: Record<
       "cutter-suggestion",
       "revision-comment",
       "revision-suggestion",
+      "archive",
+      "todo",
+      "report",
+      "report-request",
     ] as const
   ).map((kind) => {
     const panel = panelForCardKind(kind);
@@ -59,6 +77,86 @@ export const ANCHOR_CLICK_ROUTES: Record<
     ];
   }),
 ) as Record<AnchorClickKind, { panelId: PanelId; cardKind: CardKind; entrySelectorBase: string }>;
+
+/** Everything `routeAnchorClick` needs from the shell: the `openForCard`
+ *  routing env (prefs read live via ref) plus the omni click-pin publisher. */
+interface AnchorClickEnv {
+  prefsRef: MutableRefObject<ViewPrefs>;
+  setActiveLeft: (id: PanelId) => void;
+  setActiveRight: (id: PanelId) => void;
+  setActiveHalf: (side: Side, half: Half, id: PanelId) => void;
+  tryScrollOmniEntry: (key: string, targetY?: number) => boolean;
+  getOmniEnabled: (side: "left" | "right") => Set<OmniCategory>;
+  alignOmniCardWithClick: (cardId: string, clickY: number, sourceEl: HTMLElement | null) => void;
+}
+
+/**
+ * The ONE shared routing body for "show me this card" clicks (R15): both the
+ * in-text Mode-B anchor click (`useTextHoverBridge` → `virgil-linked-anchor-
+ * click`) and the gutter marker click (EditorPane's marker builder dispatches
+ * the same event) land here. Select (selection axis ONLY — N1: never touches
+ * `expandedSet`), route through `openForCard` (omni-first, native fallback),
+ * and pin the omni card at the click Y. No document jump — `skipScroll` +
+ * `suppressNextPlacement` keep the editor row put; alignment happens by
+ * pulling the CARD to the click instead.
+ */
+function routeAnchorClick(
+  detail: { entityId: string; kind: EntityKind; clickY?: number },
+  env: AnchorClickEnv,
+): void {
+  const route = ANCHOR_CLICK_ROUTES[detail.kind as AnchorClickKind];
+  if (!route) return;
+
+  const id = detail.entityId;
+  // Click → card alignment goes through alignOmniCardWithClick below, NOT
+  // through usePlacement (which would scroll the row and drag the editor).
+  // See usePlacement's asymmetry-rule docstring.
+  suppressNextPlacement();
+  // Selection axis only. The event carries the exact kind (the dispatchers
+  // resolve comment-vs-suggestion / report-vs-request from the record), so
+  // select directly instead of going through the per-kind slot setters
+  // (which would have to re-derive the polymorphic kind).
+  cardStore.select({ kind: detail.kind, id });
+
+  const entrySelector =
+    route.entrySelectorBase === "data-card-key"
+      ? cardDomSelector(route.cardKind, id)
+      : `[${route.entrySelectorBase}="${id}"]`;
+
+  const clickY: number | undefined =
+    typeof detail.clickY === "number" ? detail.clickY : undefined;
+  // The omni id a panel stamps IS `cardPopKey(kind,id)` — no separate omni
+  // grammar — so the marker→omni scroll/pin matches `data-omni-entry`.
+  const omniKey = cardPopKey(route.cardKind, id);
+  openForCard(
+    {
+      omniKey,
+      entrySelector,
+      panelId: route.panelId,
+      cardKind: route.cardKind,
+      // skipScroll: alignment is handled by shifting the omni cards
+      // group (alignOmniCardWithClick) so the document stays put.
+      skipScroll: true,
+    },
+    {
+      prefs: env.prefsRef.current,
+      setActiveLeft: env.setActiveLeft,
+      setActiveRight: env.setActiveRight,
+      setActiveHalf: env.setActiveHalf,
+      tryScrollOmniEntry: env.tryScrollOmniEntry,
+      getOmniEnabled: env.getOmniEnabled,
+    } satisfies OpenForCardDeps,
+  );
+  if (typeof clickY === "number") {
+    const sourceEl = document.querySelector(
+      `.linked-anchor[data-link-id="${id}"]`,
+    ) as HTMLElement | null;
+    // alignOmniCardWithClick converts clickY → pod-relative and
+    // publishes a pin request. Retries one rAF later if the panel
+    // column hasn't rendered yet (cold-mount case).
+    env.alignOmniCardWithClick(omniKey, clickY, sourceEl);
+  }
+}
 
 /**
  * Editor-side → panel-side click routing for the four link-node kinds
@@ -85,9 +183,9 @@ export function useMarkerClickBridges(deps: {
   getOmniEnabled: (side: "left" | "right") => Set<OmniCategory>;
   setSelectedFootnoteId: Dispatch<SetStateAction<string | null>>;
   setSelectedCitationId: Dispatch<SetStateAction<string | null>>;
-  setSelectedNoteId: Dispatch<SetStateAction<string | null>>;
-  setSelectedCutterCardId: Dispatch<SetStateAction<string | null>>;
-  setSelectedCommentId: Dispatch<SetStateAction<string | null>>;
+  /** Shell-side error selection (drives the error highlight + the vbar
+   *  errors popover). Synced from gutter error-marker clicks. */
+  setSelectedErrorId: Dispatch<SetStateAction<string | null>>;
   setActiveRefLabel: Dispatch<SetStateAction<string | null>>;
   setActiveRefRect: Dispatch<SetStateAction<DOMRect | null>>;
   setActiveRefCommand: Dispatch<SetStateAction<"ref" | "getref" | "getfullref">>;
@@ -122,9 +220,7 @@ export function useMarkerClickBridges(deps: {
     getOmniEnabled,
     setSelectedFootnoteId,
     setSelectedCitationId,
-    setSelectedNoteId,
-    setSelectedCutterCardId,
-    setSelectedCommentId,
+    setSelectedErrorId,
     setActiveRefLabel,
     setActiveRefRect,
     setActiveRefCommand,
@@ -286,71 +382,27 @@ export function useMarkerClickBridges(deps: {
     return () => window.removeEventListener("virgil-figure-click", handler);
   }, [setActiveFigure]);
 
-  // Generic linked-anchor click bridge — `useTextHoverBridge` dispatches
-  // `virgil-linked-anchor-click` whenever a Mode B `.linked-anchor` span
-  // is clicked. We select the corresponding card and route through
-  // `openForCard` so the click behaves identically to clicking the
-  // matching margin icon (Omni-first, vertical alignment, etc.).
+  // Generic anchor-click bridge (R15) — `useTextHoverBridge` dispatches
+  // `virgil-linked-anchor-click` whenever a Mode B `.linked-anchor` span is
+  // clicked, and EditorPane's gutter marker builder dispatches the SAME
+  // event (with the marker's viewport Y) on a marker click. Both land in
+  // `routeAnchorClick`: select + `openForCard` (omni-first) + pin the card
+  // at the click Y — one shared route for in-text AND gutter clicks.
   useEffect(() => {
     const handler = (e: Event) => {
       const detail = (e as CustomEvent).detail as
         | { entityId: string; kind: EntityKind; clickY?: number }
         | undefined;
       if (!detail?.entityId || !detail.kind) return;
-      const route = ANCHOR_CLICK_ROUTES[detail.kind as keyof typeof ANCHOR_CLICK_ROUTES];
-      if (!route) return;
-
-      const id = detail.entityId;
-      // Marker click → card alignment goes through alignOmniCardWithClick
-      // below, NOT through usePlacement (which would scroll the row and drag
-      // the editor). See usePlacement's asymmetry-rule docstring.
-      suppressNextPlacement();
-      switch (detail.kind) {
-        case "note": setSelectedNoteId(id); break;
-        case "cutter-comment":
-        case "cutter-suggestion": setSelectedCutterCardId(id); break;
-        case "revision-comment":
-        case "revision-suggestion": setSelectedCommentId(id); break;
-      }
-
-      const entrySelector =
-        route.entrySelectorBase === "data-card-key"
-          ? cardDomSelector(route.cardKind, id)
-          : `[${route.entrySelectorBase}="${id}"]`;
-
-      const clickY: number | undefined =
-        typeof detail.clickY === "number" ? detail.clickY : undefined;
-      // The omni id a panel stamps IS `cardPopKey(kind,id)` — no separate omni
-      // grammar — so the marker→omni scroll/pin matches `data-omni-entry`.
-      const omniKey = cardPopKey(route.cardKind, id);
-      openForCard(
-        {
-          omniKey,
-          entrySelector,
-          panelId: route.panelId,
-          cardKind: route.cardKind,
-          // skipScroll: alignment is handled by shifting the omni cards
-          // group (alignOmniCardWithClick) so the document stays put.
-          skipScroll: true,
-        },
-        {
-          prefs: prefsRef.current,
-          setActiveLeft,
-          setActiveRight,
-          setActiveHalf,
-          tryScrollOmniEntry,
-          getOmniEnabled,
-        },
-      );
-      if (typeof clickY === "number") {
-        const sourceEl = document.querySelector(
-          `.linked-anchor[data-link-id="${id}"]`,
-        ) as HTMLElement | null;
-        // alignOmniCardWithClick converts clickY → pod-relative and
-        // publishes a pin request. Retries one rAF later if the panel
-        // column hasn't rendered yet (cold-mount case).
-        alignOmniCardWithClick(omniKey, clickY, sourceEl);
-      }
+      routeAnchorClick(detail, {
+        prefsRef,
+        setActiveLeft,
+        setActiveRight,
+        setActiveHalf,
+        tryScrollOmniEntry,
+        getOmniEnabled,
+        alignOmniCardWithClick,
+      });
     };
     window.addEventListener("virgil-linked-anchor-click", handler);
     return () => window.removeEventListener("virgil-linked-anchor-click", handler);
@@ -361,9 +413,33 @@ export function useMarkerClickBridges(deps: {
     setActiveHalf,
     tryScrollOmniEntry,
     getOmniEnabled,
-    setSelectedNoteId,
-    setSelectedCutterCardId,
-    setSelectedCommentId,
     alignOmniCardWithClick,
   ]);
+
+  // Error gutter-marker bridge — errors aren't anchored cards (no cardStore
+  // ref, no omni entry), so they bypass `routeAnchorClick`. EditorPane owns
+  // the toggle (uniform second-click-deselects) and dispatches the post-
+  // toggle state; this bridge mirrors it into the shell's error selection
+  // (driving the error text-highlight + vbar popover) and, on select, opens
+  // the errors panel on whichever side it's docked — the same side-aware
+  // open the retired EditorLayout marker builder performed.
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const detail = (e as CustomEvent).detail as
+        | { errorId: string; selected: boolean; clickY?: number }
+        | undefined;
+      if (!detail?.errorId) return;
+      setSelectedErrorId(detail.selected ? detail.errorId : null);
+      if (!detail.selected) return;
+      const p = prefsRef.current;
+      const placement = p.placements.find((pl) => pl.id === "errors");
+      if (placement?.side === "left") {
+        if (p.activeLeft !== "errors") setActiveLeft("errors");
+      } else {
+        if (p.activeRight !== "errors") setActiveRight("errors");
+      }
+    };
+    window.addEventListener("virgil-error-marker-click", handler);
+    return () => window.removeEventListener("virgil-error-marker-click", handler);
+  }, [prefsRef, setActiveLeft, setActiveRight, setSelectedErrorId]);
 }
