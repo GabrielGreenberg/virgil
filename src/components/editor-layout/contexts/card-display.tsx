@@ -20,7 +20,7 @@ export interface CardDisplayContextValue {
  * Declared per-surface compressed-line counts (A5 / R8). Both surfaces now
  * DECLARE their value via a `CardDisplayProvider` rather than leaning on the
  * silent default-1 — so a regression to the default is visible and a test
- * (`compression-symmetry-contract.test.ts`) can pin both numbers.
+ * (`compression-symmetry-contract.test.tsx`) can pin both numbers.
  *
  * - Omni view shows two lines: cards float free in the margin with room.
  * - The docked card panels show one line: the narrow dock column is tighter.

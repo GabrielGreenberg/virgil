@@ -276,7 +276,7 @@ export function OmniUnanchoredBin({
 
   return (
     <div
-      style={{ position: "absolute", top: 0, left: 2, right: 2, zIndex: 20 }}
+      style={{ position: "absolute", top: 0, left: 8, right: 8, zIndex: 20 }}
       data-omni-unanchored-bin=""
     >
       <button
@@ -284,18 +284,21 @@ export function OmniUnanchoredBin({
         onClick={() => setExpanded((e) => !e)}
         className="w-full flex items-center gap-2 px-2 py-1 rounded text-[11px] font-medium text-ink-muted bg-surface border border-edge-subtle shadow-sm hover-on-light"
         data-hint={expanded ? "Collapse unanchored cards" : "Show unanchored cards"}
+        aria-label={expanded ? "Collapse unanchored cards" : "Show unanchored cards"}
         aria-expanded={expanded}
       >
-        <BadgeOrphaned theme={CARD_THEMES.error} />
+        <span aria-hidden="true">
+          <BadgeOrphaned theme={CARD_THEMES.error} />
+        </span>
         <span>
           {count} unanchored
         </span>
-        <span className="ml-auto text-ink-muted">{expanded ? "▾" : "▸"}</span>
+        <span className="ml-auto text-ink-muted" aria-hidden="true">{expanded ? "▾" : "▸"}</span>
       </button>
       {expanded && (
         <div
           className="mt-1 space-y-2 overflow-y-auto rounded bg-surface/95 backdrop-blur-sm border border-edge-subtle p-2"
-          style={{ maxHeight: "var(--dock-slot-frame-h)" }}
+          style={{ maxHeight: "var(--dock-slot-frame-h, 80vh)" }}
         >
           {orphaned.map((item) => (
             <div key={item.id} className="flex items-start gap-2">
