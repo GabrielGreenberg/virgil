@@ -852,12 +852,9 @@ export default function EditorLayout() {
   // insertion order in the popped-out arrays.
   type FloatingRef =
     | { kind: "panel"; id: PanelId }
-    | { kind: "card"; key: string }
-    | { kind: "toolbar"; bucket: "actions" | "formatting" | "menus"; id: string };
+    | { kind: "card"; key: string };
   const refKey = (r: FloatingRef): string =>
-    r.kind === "panel" ? `panel:${r.id}`
-      : r.kind === "card" ? `card:${r.key}`
-      : `tb:${r.bucket}:${r.id}`;
+    r.kind === "panel" ? `panel:${r.id}` : `card:${r.key}`;
   const [focusStack, setFocusStack] = useState<FloatingRef[]>([]);
   const focusFloating = useCallback((ref: FloatingRef) => {
     setFocusStack((prev) => {

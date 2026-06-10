@@ -39,8 +39,9 @@
  *   - Bubbles per-doc state to the Virgil bar via `onPaneStateChange`.
  *
  * Chrome wiring already in place (carries through the extraction):
- *   - `chrome.showActionToolbar` + `chrome.actionToolbarKinds` filter
- *     `ActionButtonsRow`.
+ *   - `chrome.showActionToolbar` + `chrome.actionToolbarKinds` — the action
+ *     toolbar gate (its `ActionButtonsRow` consumer was removed in A1; the
+ *     flags are retained for the A8 chrome reconciliation).
  *   - `chrome.showParagraphFloatTitleEdit` /
  *     `chrome.showHeadingFloatLabelEdit` already gated.
  *   - Read-only `Marginalia` suppresses drag-to-rebind via
@@ -376,7 +377,6 @@ export interface EditorPaneViewPrefs {
   focusFloating: (
     target:
       | { kind: "panel"; id: PanelId }
-      | { kind: "toolbar"; bucket: "actions" | "formatting" | "menus"; id: string }
       | { kind: "card"; key: string },
   ) => void;
   /** Paint z-index for a popped float, derived from the MRU focus stack
@@ -407,19 +407,14 @@ export interface EditorPaneViewPrefs {
 }
 
 /**
- * Shell state needed to render the docked MenuBar + the three detached
- * toolbars (Actions / Formatting / Menu). The Reader doesn't pass this —
- * its chrome hides MenuBar's edit items + the formatting toolbar
- * entirely, so the affordances driven by these fields are absent.
+ * Shell state needed to render the docked MenuBar. The Reader doesn't pass
+ * this — its chrome hides MenuBar's edit items + the formatting affordances
+ * entirely, so the controls driven by these fields are absent.
  *
  * Kept as a separate bundle from `EditorPaneViewPrefs` because these
  * are general view-state toggles (par titles, latex comments, divider
  * levels, paranav, etc.) and shell-owned topbar refs — not
  * dock/float-shaped state.
- *
- * Path A 7.6 finish (additive). Built by EditorLayout but not passed to
- * EditorPane until Path A 7.8 — so the dormant detached-toolbar /
- * MenuBar JSX in EditorPane stays unmounted until then.
  */
 export interface EditorPaneMenuBarBundle {
   // ── Toggle state (read) ────────────────────────────────────────
@@ -618,12 +613,9 @@ export interface EditorPaneProps {
   leftGutterPrelude?: React.ReactNode;
 
   /**
-   * Bundle of MenuBar/toolbar shell state. Reader omits — its chrome
-   * hides every affordance these fields drive (no menu bar edit items,
-   * no formatting toolbar, no detached toolbars). Main app post-7.8
-   * passes this to opt EditorPane into rendering the docked MenuBar +
-   * the three detached toolbars (Actions / Formatting / Menu). Path A
-   * 7.6 finish defines the bundle but doesn't yet pass it.
+   * Bundle of docked-MenuBar shell state. Reader omits — its chrome hides
+   * every control these fields drive (no menu bar edit items, no formatting
+   * affordances). The main app passes this to render the docked MenuBar.
    */
   menuBar?: EditorPaneMenuBarBundle;
 
@@ -1940,7 +1932,7 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
     }
   }, [documentStyleHook.styleId]);
 
-  // ─── Detached-toolbar machinery (Path A 7.6 finish) ────────────────
+  // ─── Docked MenuBar wrapper ref ────────────────────────────────────
   // Ref to the docked MenuBar's wrapper so the `menubarWidth` observer
   // below can publish `--menubar-width` for the section lozenge's max-width.
   const dockedMenuBarRef = useRef<HTMLDivElement | null>(null);

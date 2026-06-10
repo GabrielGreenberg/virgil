@@ -387,7 +387,7 @@ for `absolute z-[0-9]` menus inside low-z sticky bars and portal them uniformly.
 **Reported:** 2026-06-09 · **Status:** open · **Area:** ui-chrome / card panels
 
 In the A1 gardening pass the long-dead, commented-out `handleDragStart` blocks
-on `TodoRow` ([src/panels/Todos/TodoRow.tsx](src/panels/Todos/TodoRow.tsx)) and
+on `TodoRow` ([src/panels/Todo/TodoRow.tsx](src/panels/Todo/TodoRow.tsx)) and
 `ErrorCard` ([src/panels/Errors/ErrorCard.tsx](src/panels/Errors/ErrorCard.tsx))
 were removed — they wired the card **grip** as a `draggable` source that emitted
 `MIME_TODO` / `MIME_TEXT_INSERT` to drop the card's text into the document. That
