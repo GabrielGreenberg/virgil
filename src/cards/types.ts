@@ -9,7 +9,6 @@
  */
 import type { CARD_THEMES } from "@/components/panel-primitives";
 import type { PanelKind } from "@/panels/_shared/types";
-import type { MarkerType } from "@/lib/marginalia";
 import type { DropSpec } from "@/components/drop-mode/types";
 import type { Floatable } from "@/floats/types";
 import type { CardFloatCtx } from "./card-float-ctx";
@@ -47,6 +46,25 @@ export type CardKind =
  *  NOT in `DEFAULT_PANEL_COLORS`) — always reach themes via this, never via
  *  `keyof typeof DEFAULT_PANEL_COLORS`. */
 export type ThemeKey = keyof typeof CARD_THEMES;
+
+/**
+ * Gutter-marker namespace union — the categories the marginalia gutter can
+ * render. Canonical home is HERE, beside `CardMeta.markerType` (A6/R17);
+ * `@/lib/marginalia` re-exports it so its existing importers are unchanged.
+ * (It used to live in `lib/marginalia.ts`, which made this type layer import
+ * from a UI lib module — an inverted edge.) Marker metadata that derives from
+ * the registry (owning panel, theme key) lives in `src/cards/marker-meta.ts`;
+ * the marginalia-local presentation fields (label / defaultSide / icon) stay
+ * in `MARKER_META` (`lib/marginalia.ts`).
+ */
+export type MarkerType =
+  | "note"
+  | "archive"
+  | "revision"
+  | "cut"
+  | "todo"
+  | "report"
+  | "error";
 
 /** Creation provenance.
  *  - `user`    — has a "+" / action / drop creation path

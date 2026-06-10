@@ -31,23 +31,14 @@ import {
   getPanelColorVersion,
   isPanelColorOverridden,
   subscribePanelColors,
-  type PanelThemeKey,
 } from "@/lib/panel-theme";
+import { panelThemeKeyForMarkerType } from "@/cards/marker-meta";
 import {
   cardStore,
   useIsHovered,
   useIsSelected,
   type AnchoredCardRef,
 } from "@/links/_shared/anchored-card-store";
-
-/** Marker type → panel theme key for color overrides. */
-const MARKER_TO_THEME_KEY: Partial<Record<keyof typeof MARKER_META, PanelThemeKey>> = {
-  note: "note",
-  archive: "archive",
-  revision: "revision",
-  cut: "cut",
-  todo: "todo",
-};
 
 interface MarginaliaProps {
   editor: Editor | null;
@@ -417,9 +408,14 @@ function MarkerButton({ m, dragEnabled }: { m: PositionedMarker; dragEnabled: bo
   const hovered = useIsHovered(ref);
 
   const meta = MARKER_META[m.type];
-  const themeKey = MARKER_TO_THEME_KEY[m.type];
+  // Registry-derived color slot (R17). Report markers honor a user report
+  // color override like every other kind (the old hand-kept map omitted
+  // them — a drift bug); "error" derives to the system "error" key, which
+  // `isPanelColorOverridden` always reports false for (SYSTEM_THEME_KEYS),
+  // so error markers stay fixed.
+  const themeKey = panelThemeKeyForMarkerType(m.type);
   const palette =
-    themeKey && isPanelColorOverridden(themeKey)
+    isPanelColorOverridden(themeKey)
       ? deriveMarkerPalette(getPanelColor(themeKey))
       : { color: meta.color, bg: meta.bg, border: meta.border };
 

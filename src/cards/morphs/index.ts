@@ -34,6 +34,7 @@ import {
   assertMorphCoverage,
   assertPanelTypographyCoverage,
 } from "../card-registry";
+import { assertMarkerCoverage } from "../marker-meta";
 
 /** Wrap a plain string into a single-paragraph rich doc (or empty doc). */
 function richFromText(text: string): JSONContent {
@@ -203,6 +204,7 @@ registerCardMorph("highlight", (card) => highlightToNote(card as HighlightCard))
 // Boot-time coverage assertions (dev-only no-ops in production).
 assertMorphCoverage();
 assertPanelTypographyCoverage();
+assertMarkerCoverage();
 
 // The per-doc hooks import the morph-application helper from here.
 export { applyCardMorph } from "./apply";

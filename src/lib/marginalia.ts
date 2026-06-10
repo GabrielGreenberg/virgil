@@ -12,14 +12,23 @@
  * 1. Add its MIME constant below and include it in the appropriate drag
  *    category (ANCHOR_DRAG_TYPES for paragraph-level anchoring, or leave
  *    it out for inline insertion).
- * 2. Add an entry to MarkerType and MARKER_META.
+ * 2. Add the token to `MarkerType` (`src/cards/types.ts`), declare it on the
+ *    owning card kind(s) in `CARD_REGISTRY` (`markerType` field), and add a
+ *    presentation row to MARKER_META below (label / defaultSide / icon —
+ *    panel + accent derive from the registry via `src/cards/marker-meta.ts`).
  * 3. Add a drop handler in Editor.tsx's handleDrop chain.
- * 4. Wire the event listener and marker generation in EditorLayout.tsx.
+ * 4. Wire the event listener and marker generation in EditorPane.tsx (the
+ *    live gutter-marker builder).
  */
 
 import type { PanelId } from "@/hooks/useViewPrefs";
 import type { NodeType } from "@tiptap/pm/model";
 import type { EntityKind } from "@/links/_shared/entity-hover";
+import type { MarkerType } from "@/cards/types";
+
+// Canonical home moved to `src/cards/types.ts` (beside `CardMeta.markerType`,
+// A6/R17). Re-exported here so this module's existing importers are unchanged.
+export type { MarkerType } from "@/cards/types";
 
 // ---------------------------------------------------------------------------
 // Anchor-target detection (schema-based)
@@ -92,8 +101,6 @@ export const ANCHOR_DRAG_TYPES: readonly string[] = [
 export function isAnchorDrag(dt: DataTransfer | null): boolean {
   return dt != null && ANCHOR_DRAG_TYPES.some((t) => dt.types.includes(t));
 }
-
-export type MarkerType = "note" | "archive" | "revision" | "cut" | "todo" | "report" | "error";
 
 export interface MarginaliaMarker {
   /** Stable per-marker id — unique per marker instance (may be composite for multi-anchor) */
@@ -210,6 +217,10 @@ import {
   IconErrors,
 } from "@/components/editor-layout/panel-icons";
 import { DEFAULT_PANEL_COLORS, markerPaletteFromAccent } from "@/lib/panel-theme";
+import {
+  panelForMarkerType,
+  panelThemeKeyForMarkerType,
+} from "@/cards/marker-meta";
 
 const MARGIN_ICON_SIZE = 16;
 
@@ -221,27 +232,34 @@ const TodoIcon = React.createElement(IconTodo, { size: MARGIN_ICON_SIZE });
 const ReportIcon = React.createElement(IconReports, { size: MARGIN_ICON_SIZE, hideFrame: true });
 const ErrorIcon = React.createElement(IconErrors, { size: MARGIN_ICON_SIZE });
 
-/** Build a MARKER_META row by deriving the color quartet from a panel-theme accent.
- *  All marginalia markers share the same `markerPaletteFromAccent` math so a
- *  user color override on a panel re-tints its gutter icon automatically. */
+/** Build a MARKER_META row. The owning panel and the accent color derive from
+ *  `CARD_REGISTRY` via `src/cards/marker-meta.ts` (R17) — only the
+ *  marginalia-local presentation fields (label / defaultSide / icon) are
+ *  declared per-row here. All markers share the same
+ *  `markerPaletteFromAccent` math so a user color override on a panel
+ *  re-tints its gutter icon automatically. */
 function meta(
-  accentKey: keyof typeof DEFAULT_PANEL_COLORS,
-  base: { label: string; panelId: PanelId; defaultSide: "left" | "right"; icon: React.ReactNode },
+  type: MarkerType,
+  base: { label: string; defaultSide: "left" | "right"; icon: React.ReactNode },
 ): MarkerMeta {
-  const palette = markerPaletteFromAccent(DEFAULT_PANEL_COLORS[accentKey]);
-  return { ...base, ...palette };
+  const palette = markerPaletteFromAccent(
+    DEFAULT_PANEL_COLORS[panelThemeKeyForMarkerType(type)],
+  );
+  return { ...base, panelId: panelForMarkerType(type), ...palette };
 }
 
 export const MARKER_META: Record<MarkerType, MarkerMeta> = {
-  note:     meta("note",     { label: "Note",      panelId: "notes",      defaultSide: "right", icon: NoteIcon }),
-  archive:  meta("archive",  { label: "Archived",  panelId: "archive",    defaultSide: "right", icon: ArchiveIcon }),
-  revision: meta("revision", { label: "Revision",  panelId: "revisions",  defaultSide: "right", icon: RevisionIcon }),
-  cut:      meta("cut",      { label: "Cut",       panelId: "cutter",     defaultSide: "right", icon: CutIcon }),
-  todo:     meta("todo",     { label: "Todo",      panelId: "todo",       defaultSide: "right", icon: TodoIcon }),
-  report:   meta("report",   { label: "Report",    panelId: "reports",    defaultSide: "left",  icon: ReportIcon }),
-  // error reuses the footnote rust accent intentionally — same color family,
-  // distinguished by the icon glyph.
-  error:    meta("footnote", { label: "Error",     panelId: "errors",     defaultSide: "right", icon: ErrorIcon }),
+  note:     meta("note",     { label: "Note",      defaultSide: "right", icon: NoteIcon }),
+  archive:  meta("archive",  { label: "Archived",  defaultSide: "right", icon: ArchiveIcon }),
+  revision: meta("revision", { label: "Revision",  defaultSide: "right", icon: RevisionIcon }),
+  cut:      meta("cut",      { label: "Cut",       defaultSide: "right", icon: CutIcon }),
+  todo:     meta("todo",     { label: "Todo",      defaultSide: "right", icon: TodoIcon }),
+  report:   meta("report",   { label: "Report",    defaultSide: "left",  icon: ReportIcon }),
+  // error derives from the registry "error" theme key — byte-identical to the
+  // old hand-pointed footnote rust accent (DEFAULT_PANEL_COLORS.error ===
+  // DEFAULT_PANEL_COLORS.footnote, pinned in marker-meta-derivation.test.ts);
+  // same color family as footnotes, distinguished by the icon glyph.
+  error:    meta("error",    { label: "Error",     defaultSide: "right", icon: ErrorIcon }),
 };
 
 /** Number of icon columns per row in the gutter grid */
