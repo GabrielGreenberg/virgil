@@ -11,7 +11,7 @@ import { isTier1BDisabled } from "@/lib/perf-flags";
 import { readPdf } from "@/lib/storage";
 import { migrateDocAwarePopoutKey } from "@/text-objects/post-load-migrations";
 import { useTransientAnchorCleanup } from "@/text-objects/useTransientAnchorCleanup";
-import { type MarginaliaType, type DividerLevel, type DividerWidth } from "@/hooks/useViewPrefs";
+import { type DividerLevel, type DividerWidth } from "@/hooks/useViewPrefs";
 import { Editor } from "@tiptap/react";
 import { type SectionPathEntry, buildPerBlockCounts, sumIncludedWords, extractHeadings } from "@/panels/Outline";
 import { useFiles } from "@/hooks/useFiles";
@@ -46,25 +46,27 @@ import {
   isAnchorableNode,
   MIME_ARCHIVE,
   MIME_ARCHIVE_ANCHOR,
-  MARKER_META,
-  type MarginaliaMarker,
 } from "@/lib/marginalia";
 import { useSyncExternalStore } from "react";
 import {
-  deriveMarkerPalette,
-  getPanelColor,
   getPanelColorVersion,
-  isPanelColorOverridden,
   loadPanelColors,
   subscribePanelColors,
-  type PanelThemeKey,
 } from "@/lib/panel-theme";
 import { loadPanelTypography } from "@/lib/panel-typography";
 import { loadPrefLinks } from "@/lib/pref-links";
 import { useDevPrefsMirror } from "@/lib/dev-prefs-mirror";
 import { useScrollActivityTracker } from "@/hooks/useScrollActivityTracker";
 
-/** Subscribe the EditorLayout tree to panel-color changes. */
+/**
+ * Idempotent boot loader for the per-user theming prefs: forces
+ * `loadPanelColors` / `loadPanelTypography` / `loadPrefLinks` to run once
+ * on first client render (each is internally guarded against re-runs), and
+ * subscribes the EditorLayout tree to panel-color changes so any consumer
+ * reading panel colors re-renders when an override lands. The returned
+ * version number is intentionally unused — the subscription side effect is
+ * the point.
+ */
 function usePanelColorSubscription(): number {
   // Load overrides on first use (idempotent).
   if (typeof window !== "undefined") {
@@ -74,29 +76,11 @@ function usePanelColorSubscription(): number {
   }
   return useSyncExternalStore(subscribePanelColors, getPanelColorVersion, () => 0);
 }
-
-/** Maps the marker kinds that can appear as linked-anchor highlights to their
- *  panel-theme key so the highlight color honors user color overrides. */
-const MARKER_KIND_TO_THEME_KEY: Partial<Record<string, PanelThemeKey>> = {
-  note: "note",
-  revision: "revision",
-  // Both cutter card kinds share the panel marker palette ("cut" key).
-  "cutter-comment": "cut",
-  "cutter-suggestion": "cut",
-  // Both report card kinds share the panel marker palette ("report" key).
-  report: "report",
-};
 import {
   reanchorByText,
   getLinkedTextObjectIds,
   getTextAnchor,
 } from "@/links/links";
-import {
-  buildMarginItemHandlers,
-  deleteMarginItem,
-  type MarginItemHandlers,
-  type MarginItemKind,
-} from "@/cards/delete-margin-item";
 import dynamic from "next/dynamic";
 import type { CodeEditorHandle } from "./CodeEditor";
 const CodeEditor = dynamic(() => import("./CodeEditor"), { ssr: false });
@@ -111,11 +95,7 @@ import {
 } from "@/panels/Omni";
 import { useViewPrefs, PanelId, Side, Half, ALL_HIGHLIGHT_TYPES, HighlightType, type DockSlotKey } from "@/hooks/useViewPrefs";
 import { useLinkHighlight } from "@/links/_shared/useLinkHighlight";
-import {
-  entityToAnchorId,
-  entityKindToAnchorKind,
-  type EntityKind,
-} from "@/links/_shared/entity-hover";
+import { entityToAnchorId } from "@/links/_shared/entity-hover";
 import { PanelChromeProvider } from "./panel-primitives";
 import FloatingPanel from "./FloatingPanel";
 import { DockOutline } from "./editor-layout/DockOutline";
@@ -152,8 +132,6 @@ import { useFileActions } from "./editor-layout/card-actions/files";
 import { useOrphanActions } from "./editor-layout/card-actions/orphans";
 import { useCitationActions } from "./editor-layout/card-actions/citations";
 import { useRefActions } from "./editor-layout/card-actions/ref";
-import { useMarkerActions } from "./editor-layout/card-actions/markers";
-import { openForCard } from "./editor-layout/event-bridges/open-for-card";
 import { useLibraryBridge } from "./editor-layout/event-bridges/library";
 import { useMarkerClickBridges } from "./editor-layout/event-bridges/marker-clicks";
 import { useFootnoteSyncBridges } from "./editor-layout/event-bridges/footnote-sync";
@@ -180,7 +158,6 @@ import { CitationsHost } from "./editor-layout/panels/citations-host";
 import { OmniHost } from "./editor-layout/panels/omni-host";
 import { SearchHost } from "./editor-layout/panels/search-host";
 import ExamplesPanel from "@/panels/Examples";
-import { cardPopKey, cardDomSelector } from "@/panels/panel-registry";
 import { usePreferences } from "@/hooks/usePreferences";
 // Preference mode — ctrl+click picker for live token editing. See
 // usePreferenceMode.ts for the full architecture / extension guide.
@@ -567,8 +544,6 @@ export default function EditorLayout() {
     cards: revisionCards,
     addComment: addRevisionComment,
     addSuggestion: addRevisionSuggestion,
-    removeCardParagraphId: removeRevisionTextObjectId,
-    deleteCard: deleteRevisionCard,
   } = useRevisions(docIdForHooks);
   const comments = revisionCards;
   // R21: the pristine-card manager lives ONLY in EditorPane (its single live
@@ -577,7 +552,10 @@ export default function EditorLayout() {
   // moved to EditorPane post-7.8, so this shell's parity mounts of useNotes/
   // useCutter/useTodos never surfaced a pristine card. Those parity hooks now
   // fall back to their own usePristineTracker (the `?? localPristine` net,
-  // kept per the WS2 defer ruling); they stay only to feed marginItemHandlers.
+  // kept per the WS2 defer ruling). The gutter-marker pipeline (markers +
+  // delete handlers) lives entirely in EditorPane; this shell keeps only the
+  // card arrays it still reads (anchor re-apply, hover→anchor derivation,
+  // selected-anchor sync) plus the add/drop-bridge mutators.
   const recentlyAdded = useRecentlyAddedTracker();
   const {
     notes,
@@ -585,8 +563,6 @@ export default function EditorLayout() {
     addNote,
     addHighlight,
     addNoteTextObjectId,
-    removeNoteTextObjectId,
-    deleteNote,
     setNoteAnchor,
   } = useNotes(docIdForHooks);
   const {
@@ -597,16 +573,11 @@ export default function EditorLayout() {
     setGoal: setCutterGoal,
     clearGoal: clearCutterGoal,
     addCardParagraphId,
-    removeCardParagraphId,
-    deleteCard: deleteCutterCard,
   } = useCutter(docIdForHooks);
   // Vestigial parity mount (panel rendering moved to EditorPane post-7.8;
-  // this feeds the shell-side margin-item delete handler bundle below).
+  // only the drop-bridge mutator is consumed here).
   const {
-    cards: reportCards,
     addCardParagraphId: addReportCardParagraphId,
-    removeCardParagraphId: removeReportCardParagraphId,
-    deleteCard: deleteReportCard,
   } = useReports(docIdForHooks);
   // Anchored selection slots (note, footnote, citation, example,
   // todo, archive, comment, cutter-comment) are now derived from the global
@@ -628,10 +599,8 @@ export default function EditorLayout() {
     items: todoItems,
     addItem: addTodo,
     updateItem: updateTodo,
-    deleteItem: deleteTodo,
     archiveDone: archiveTodos,
     addParagraphId: addTodoTextObjectId,
-    removeParagraphId: removeTodoTextObjectId,
   } = useTodos(docIdForHooks);
 
   const {
@@ -647,7 +616,6 @@ export default function EditorLayout() {
     archiveContent,
     updateSnippet: updateArchiveSnippet,
     addParagraphId: addArchiveTextObjectId,
-    removeParagraphId: removeArchiveTextObjectId,
     restoreSnippet,
     deleteSnippet,
   } = useArchive(docIdForHooks);
@@ -1198,11 +1166,11 @@ export default function EditorLayout() {
   // Effective anchor for the in-text highlight = hover ?? active.
   const [activeAnchorId, setActiveAnchorId] = useState<string | null>(null);
   const [activeAnchorKind, setActiveAnchorKind] = useState<"note" | "highlight" | "revision" | "cutter-comment" | "cutter-suggestion" | "report" | "report-request" | null>(null);
-  // Hover state for legacy EditorLayout-side consumers (color-theming for
-  // active anchors, MARKER_KIND_TO_THEME_KEY lookup). Kept synced from the
-  // canonical cardStore.hover via useSyncExternalStore-style subscription
-  // so callers can read it without subscribing themselves. New code should
-  // read cardStore directly via useHover().
+  // Hover state read from the canonical cardStore.hover via a
+  // useSyncExternalStore subscription. The only EditorLayout-side consumer
+  // is the `hoveredAnchorId` derivation below (hover → Mode B anchor id for
+  // the linked-anchor highlight). New code should read cardStore directly
+  // via useHover().
   const _paneHoverState = useSyncExternalStore(
     cardStore.subscribe,
     () => cardStore.getState().hover,
@@ -2347,10 +2315,9 @@ export default function EditorLayout() {
     setActiveAnchorKind,
   });
   // Cutter shares one selection across both card kinds. Anchor sync
-  // happens for both — the kind reported to setActiveAnchorKind is
-  // derived per-card by markers.ts when the user clicks a gutter icon;
-  // for selection-driven sync, both kinds resolve to "cutter-comment"
-  // since the only currently auto-anchored kind is the comment.
+  // happens for both — for selection-driven sync, both kinds resolve to
+  // "cutter-comment" since the only currently auto-anchored kind is the
+  // comment.
   useSelectedAnchorSync({
     selectedId: selectedCutterCardId,
     entities: cutterCards,
@@ -2396,33 +2363,6 @@ export default function EditorLayout() {
     },
     [],
   );
-
-  const {
-    handleNoteMarkerClick,
-    handleCutMarkerClick,
-    handleTodoMarkerClick,
-  } = useMarkerActions({
-    prefsRef,
-    setActiveLeft,
-    setActiveRight,
-    setActiveHalf,
-    tryScrollOmniEntry,
-    getOmniEnabled,
-    setActiveAnchorId,
-    setActiveAnchorKind,
-    notes,
-    selectedNoteId,
-    setSelectedNoteId,
-    cutterCards,
-    selectedCutterCardId,
-    setSelectedCutterCardId,
-    selectedTodoId,
-    setSelectedTodoId,
-    alignOmniCardWithClick,
-  });
-
-
-
 
 
   // R21: useFootnoteActions was mounted here ONLY to feed the footnote
@@ -3221,402 +3161,10 @@ export default function EditorLayout() {
     if (!editorSplit) setActiveSplitPane("top");
   }, [editorSplit]);
 
-  // ── Per-kind handler bundles for the shared margin-item delete utility ──
-  // Routes Delete/Backspace on a gutter marker through a uniform
-  // "if last anchor, confirm + delete card; otherwise just drop this
-  // link" path for every kind. See `src/lib/cards/delete-margin-item.ts`.
-  const marginItemHandlers = useMemo<Record<MarginItemKind, MarginItemHandlers>>(
-    () =>
-      buildMarginItemHandlers({
-        notes: {
-          notes,
-          removeNoteTextObjectId,
-          deleteNote,
-        },
-        archive: {
-          snippets: archiveSnippets,
-          removeParagraphId: removeArchiveTextObjectId,
-          deleteSnippet,
-        },
-        cutter: {
-          cards: cutterCards,
-          removeCardParagraphId,
-          deleteCard: deleteCutterCard,
-        },
-        todos: {
-          items: todoItems,
-          removeParagraphId: removeTodoTextObjectId,
-          deleteItem: deleteTodo,
-        },
-        revisions: {
-          cards: comments,
-          removeCardParagraphId: removeRevisionTextObjectId,
-          deleteCard: deleteRevisionCard,
-        },
-        reports: {
-          cards: reportCards,
-          removeCardParagraphId: removeReportCardParagraphId,
-          deleteCard: deleteReportCard,
-        },
-      }),
-    [
-      notes, removeNoteTextObjectId, deleteNote,
-      archiveSnippets, removeArchiveTextObjectId, deleteSnippet,
-      cutterCards, removeCardParagraphId, deleteCutterCard,
-      todoItems, removeTodoTextObjectId, deleteTodo,
-      comments, removeRevisionTextObjectId, deleteRevisionCard,
-      reportCards, removeReportCardParagraphId, deleteReportCard,
-    ],
-  );
-
-  const handleMarginItemDelete = useCallback(
-    (kind: MarginItemKind, cardId: string, paragraphId: string, anchorId?: string) =>
-      deleteMarginItem({
-        kind,
-        cardId,
-        paragraphId,
-        anchorId,
-        handlers: marginItemHandlers[kind],
-        confirm: runConfirm,
-        editor: editorRef.current?.getEditor() ?? null,
-      }),
-    [marginItemHandlers, runConfirm],
-  );
-
-  const marginaliaMarkers = useMemo<MarginaliaMarker[]>(() => {
-    // Recompute when anchors move between paragraphs (`rev.anchors`) or the
-    // paragraph-UUID set changes (`rev.blocks`) — the revision branch resolves
-    // anchorId→paragraph via a live doc walk. Card-store arrays are their own
-    // deps; plain typing bumps neither, so markers don't recompute per keystroke.
-    void rev.anchors;
-    void rev.blocks;
-    const result: MarginaliaMarker[] = [];
-
-    // Tag every marker with its anchored-card kind. Markers self-subscribe
-    // to the cardStore via (entityKind, entityId) — no per-marker hover
-    // wiring or selection threading needed. Replaces the old hoverPropsFor
-    // decoration that wrote per-marker (selected/hovered/onHover) props.
-    const hoverPropsFor = (_entityId: string, kind: EntityKind) => ({
-      entityKind: kind,
-    });
-
-    // Note markers — one marker per paragraphId
-    for (const n of notes) {
-      const pids = getLinkedTextObjectIds(n);
-      if (pids.length === 0) continue;
-      const noteAnchor = getTextAnchor(n);
-      for (const pid of pids) {
-        result.push({
-          id: `${n.id}:${pid}`,
-          entityId: n.id,
-          type: "note",
-          textObjectId: pid,
-          title: n.title || "Note",
-          onClick: (clickY?: number) => handleNoteMarkerClick(n.id, clickY),
-          onDelete: () => {
-            void handleMarginItemDelete("note", n.id, pid, noteAnchor?.anchorId);
-          },
-          anchorId: noteAnchor?.anchorId,
-          ...hoverPropsFor(n.id, "note"),
-        });
-      }
-    }
-
-    // Archive markers — one marker per paragraphId. Routes through
-    // `openForCard` so the card aligns to the click Y like other kinds.
-    for (const snippet of archiveSnippets) {
-      const pids = getLinkedTextObjectIds(snippet);
-      if (pids.length === 0) continue;
-      for (const pid of pids) {
-        result.push({
-          id: `${snippet.id}:${pid}`,
-          entityId: snippet.id,
-          type: "archive",
-          textObjectId: pid,
-          title: "Archived snippet",
-          onClick: (clickY?: number) => {
-            setSelectedArchiveId(snippet.id);
-            openForCard(
-              {
-                omniKey: cardPopKey("archive", snippet.id),
-                entrySelector: `[data-archive-entry="${snippet.id}"]`,
-                panelId: "archive",
-                cardKind: "archive",
-                skipScroll: true,
-              },
-              {
-                prefs: prefsRef.current,
-                setActiveLeft,
-                setActiveRight,
-                setActiveHalf,
-                tryScrollOmniEntry,
-                getOmniEnabled,
-              },
-            );
-            if (typeof clickY === "number") {
-              const sourceEl = document.querySelector(
-                `[data-marginalia-marker^="archive:${snippet.id}:"]`,
-              ) as HTMLElement | null;
-              requestAnimationFrame(() => {
-                alignOmniCardWithClick(cardPopKey("archive", snippet.id), clickY, sourceEl);
-              });
-            }
-          },
-          onDelete: () => { void handleMarginItemDelete("archive", snippet.id, pid); },
-          ...hoverPropsFor(snippet.id, "archive"),
-        });
-      }
-    }
-
-    // Anchored-comment markers — one marker per comment with a text
-    // anchor. The paragraph uuid is resolved live from the mark's range;
-    // if the mark is gone the comment becomes orphaned and gets no marker.
-    const ed = editorRef.current?.getEditor();
-    if (ed) {
-      for (const r of comments) {
-        if (r.kind === "suggestion" && r.status !== "pending") continue;
-        const revAnchor = getTextAnchor(r);
-        if (!revAnchor) continue;
-        const anchorId = revAnchor.anchorId;
-        // Find paragraphId by walking to the containing anchorable node
-        let paragraphId: string | null = null;
-        try {
-          ed.state.doc.descendants((node, pos) => {
-            if (paragraphId) return false;
-            if (node.isText) {
-              const hasMark = node.marks.some(
-                (m) => m.type.name === "linkedAnchor" && m.attrs.anchorId === anchorId,
-              );
-              if (hasMark) {
-                const $p = ed.state.doc.resolve(pos);
-                for (let d = $p.depth; d >= 0; d--) {
-                  const n = $p.node(d);
-                  if (n.attrs?.uuid) { paragraphId = n.attrs.uuid as string; return false; }
-                }
-              }
-            }
-            return true;
-          });
-        } catch { /* ignore */ }
-        if (!paragraphId) continue;
-        const pid: string = paragraphId;
-        result.push({
-          id: `${r.id}:${pid}`,
-          entityId: r.id,
-          type: "revision",
-          textObjectId: pid,
-          title: r.selectedText || "Revision",
-          anchorId,
-          onClick: (clickY?: number) => {
-            const nextSelected = selectedCommentId === r.id ? null : r.id;
-            setSelectedCommentId(nextSelected);
-            if (nextSelected) {
-              setActiveAnchorId(anchorId);
-              setActiveAnchorKind("revision");
-            } else {
-              setActiveAnchorId(null);
-              setActiveAnchorKind(null);
-              return;
-            }
-            // Route through `openForCard` so the card lands on the
-            // correct side / split. Revisions aren't omni-eligible, so
-            // this falls through to the native panel; alignOmniCardWithClick
-            // no-ops when the omni wrapper isn't present, leaving the
-            // native panel's own scrolling intact.
-            // Derive the real kind from the card's data discriminator — a
-            // pending suggestion still gets a marker and must route to its own
-            // `revision-suggestion` key/selector, not the comment's.
-            const revKind =
-              r.kind === "suggestion" ? "revision-suggestion" : "revision-comment";
-            openForCard(
-              {
-                omniKey: cardPopKey(revKind, r.id),
-                entrySelector: cardDomSelector(revKind, r.id),
-                panelId: "revisions",
-                cardKind: revKind,
-                skipScroll: true,
-              },
-              {
-                prefs: prefsRef.current,
-                setActiveLeft,
-                setActiveRight,
-                setActiveHalf,
-                tryScrollOmniEntry,
-                getOmniEnabled,
-              },
-            );
-            if (typeof clickY === "number") {
-              const sourceEl = document.querySelector(
-                `[data-marginalia-marker^="revision:${r.id}:"]`,
-              ) as HTMLElement | null;
-              requestAnimationFrame(() => {
-                alignOmniCardWithClick(cardPopKey(revKind, r.id), clickY, sourceEl);
-              });
-            }
-          },
-          onDelete: () => {
-            void handleMarginItemDelete("revision", r.id, pid, anchorId);
-          },
-          ...hoverPropsFor(r.id, r.kind === "suggestion" ? "revision-suggestion" : "revision-comment"),
-        });
-      }
-    }
-
-    // Cutter markers — one per paragraphId. Both card kinds share the
-    // "cut" gutter marker.
-    for (const c of cutterCards) {
-      const pids = getLinkedTextObjectIds(c);
-      if (pids.length === 0) continue;
-      const cardAnchor = getTextAnchor(c);
-      const title =
-        c.kind === "suggestion"
-          ? c.explanation || "Suggestion"
-          : c.text || "Comment";
-      for (const pid of pids) {
-        result.push({
-          id: `${c.id}:${pid}`,
-          entityId: c.id,
-          type: "cut",
-          textObjectId: pid,
-          title,
-          onClick: (clickY?: number) => handleCutMarkerClick(c.id, clickY),
-          onDelete: () => {
-            void handleMarginItemDelete("cut", c.id, pid, cardAnchor?.anchorId);
-          },
-          anchorId: cardAnchor?.anchorId,
-          ...hoverPropsFor(c.id, c.kind === "suggestion" ? "cutter-suggestion" : "cutter-comment"),
-        });
-      }
-    }
-
-    // Todo markers — one marker per paragraphId
-    for (const item of todoItems) {
-      const pids = getLinkedTextObjectIds(item);
-      if (pids.length === 0) continue;
-      for (const pid of pids) {
-        result.push({
-          id: `${item.id}:${pid}`,
-          entityId: item.id,
-          type: "todo",
-          textObjectId: pid,
-          title: item.text || "Todo",
-          muted: item.done,
-          onClick: (clickY?: number) => handleTodoMarkerClick(item.id, clickY),
-          onDelete: () => { void handleMarginItemDelete("todo", item.id, pid); },
-          ...hoverPropsFor(item.id, "todo"),
-        });
-      }
-    }
-
-    // Error markers — one per error whose line resolved to a paragraph
-    // UUID. Dismissed errors are filtered out so they don't hang around
-    // in the gutter.
-    for (const err of allLatexErrors) {
-      if (dismissedErrorIds.has(err.id)) continue;
-      const pid = paragraphByErrorId.get(err.id);
-      if (!pid) continue;
-      result.push({
-        id: `${err.id}:${pid}`,
-        entityId: err.id,
-        type: "error",
-        textObjectId: pid,
-        title:
-          err.message.length > 80
-            ? err.message.slice(0, 80) + "\u2026"
-            : err.message,
-        muted: err.severity === "info",
-        onClick: () => {
-          const next = selectedErrorId === err.id ? null : err.id;
-          setSelectedErrorId(next);
-          if (next) {
-            const p = prefsRef.current;
-            const placement = p.placements.find((pl) => pl.id === "errors");
-            if (placement?.side === "left") {
-              if (p.activeLeft !== "errors") setActiveLeft("errors");
-            } else {
-              if (p.activeRight !== "errors") setActiveRight("errors");
-            }
-          }
-        },
-        onDelete: () => dismissError(err.id),
-      });
-    }
-
-    return result;
-  }, [
-    notes,
-    selectedNoteId,
-    archiveSnippets,
-    selectedArchiveId,
-    todoItems,
-    selectedTodoId,
-    rev.anchors,
-    rev.blocks,
-    handleNoteMarkerClick,
-    handleTodoMarkerClick,
-    handleMarginItemDelete,
-    comments,
-    selectedCommentId,
-    setActiveLeft,
-    setActiveRight,
-    setActiveHalf,
-    tryScrollOmniEntry,
-    getOmniEnabled,
-    cutterCards,
-    selectedCutterCardId,
-    handleCutMarkerClick,
-    allLatexErrors,
-    dismissedErrorIds,
-    paragraphByErrorId,
-    selectedErrorId,
-    dismissError,
-    hoveredEntityId,
-    hoveredEntityKind,
-    setSelectedArchiveId,
-    setSelectedCommentId,
-    setActiveAnchorId,
-    setActiveAnchorKind,
-  ]);
-
-  // Subscribe to panel-color changes so linked-anchor highlight updates live.
+  // Boot-load the per-user theming prefs (panel colors / typography /
+  // pref links) and keep this tree subscribed to panel-color changes.
+  // See the hook's docstring at the top of this file.
   usePanelColorSubscription();
-  // Effective linked-anchor activation: hovered takes priority over sticky-active.
-  const effectiveAnchorId = hoveredAnchorId ?? activeAnchorId;
-  // When hovering, derive the anchor kind from the hovered entity so the
-  // color matches the hover target (not whatever was previously selected).
-  const hoveredAnchorKind = useMemo(
-    () =>
-      entityKindToAnchorKind(
-        hoveredEntityId && hoveredEntityKind
-          ? { id: hoveredEntityId, kind: hoveredEntityKind }
-          : null,
-      ),
-    [hoveredEntityId, hoveredEntityKind],
-  );
-  const effectiveAnchorKind = hoveredAnchorKind ?? activeAnchorKind;
-  const effectiveAnchorColor = (() => {
-    const activeAnchorKind = effectiveAnchorKind;
-    if (!activeAnchorKind) return null;
-    // LinkedAnchorKind → MarkerType. Both cutter card kinds share the
-    // single "cut" marker entry; revisions panel uses the "revision"
-    // marker; highlights have no marker of their own (pure text-tint),
-    // so they reuse the "note" marker for active-anchor coloring.
-    const markerType =
-      activeAnchorKind === "cutter-comment" ||
-      activeAnchorKind === "cutter-suggestion"
-        ? "cut"
-        : activeAnchorKind === "report-request"
-        ? "report"
-        : activeAnchorKind === "highlight"
-        ? "note"
-        : activeAnchorKind;
-    const meta = MARKER_META[markerType];
-    const key = MARKER_KIND_TO_THEME_KEY[activeAnchorKind];
-    if (key && isPanelColorOverridden(key)) {
-      return deriveMarkerPalette(getPanelColor(key)).border;
-    }
-    return meta.border;
-  })();
 
   // Re-apply linked-anchor marks on load. Each sidecar stores (anchorId, anchorText);
   // we walk the doc and try to re-attach each mark via text search. For legacy
@@ -3684,12 +3232,6 @@ export default function EditorLayout() {
     migratePoppedOutCards((key) => migrateDocAwarePopoutKey(editorInstance, key));
   }, [editorInstance, docIdForHooks, migratePoppedOutCards]);
 
-  // Filter marginalia by visibility settings
-  const visibleMarginaliaMarkers = useMemo(() => {
-    if (!showMarginalia) return [];
-    if (hiddenMarginaliaTypes.size === 0) return marginaliaMarkers;
-    return marginaliaMarkers.filter((m) => !hiddenMarginaliaTypes.has(m.type as MarginaliaType));
-  }, [marginaliaMarkers, showMarginalia, hiddenMarginaliaTypes]);
 
   // Loading
   if (filesLoading) {
