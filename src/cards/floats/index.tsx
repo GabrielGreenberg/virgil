@@ -51,6 +51,7 @@ import { buildFloatKey } from "@/floats/float-key";
 import type { CardFloatCtx } from "../card-float-ctx";
 import type { CardKind } from "../types";
 import { CARD_REGISTRY, registerCardFloatable } from "../card-registry";
+import { cardKindsForPanel } from "../predicates";
 import { CardKindHeader } from "@/components/panel-primitives";
 
 /** Shared shell for a card `Floatable`. `key`/`domain`/`surface` are uniform;
@@ -105,7 +106,18 @@ registerCardFloatable("note", (id, ctx: CardFloatCtx) => {
   if (!note) return null;
   const canJump = getLinkedTextObjectIds(note).length > 0;
   return cardFloatable("note", id, {
-    chromeSlots: collabTrailing("note", id),
+    chromeSlots: {
+      ...collabTrailing("note", id),
+      title: (
+        <CardKindHeader
+          kind="note"
+          options={cardKindsForPanel("notes")}
+          onChange={(k) => {
+            if (k !== "note") ctx.convertNotesCard(id, "highlight");
+          }}
+        />
+      ),
+    },
     canJump,
     jumpToSource: () => ctx.editorRef.current?.jumpToCard(note, null),
     snapshotForStack: (source) => snapshotCard("note", note, source),
@@ -115,6 +127,7 @@ registerCardFloatable("note", (id, ctx: CardFloatCtx) => {
         selected={ctx.selectedNoteId === note.id}
         onUpdate={ctx.updateNote}
         onUpdateTitle={ctx.updateNoteTitle}
+        onConvert={ctx.convertNotesCard}
         onSetAiRequest={ctx.setNoteAiRequest}
         onDelete={ctx.deleteNote}
         onSelect={ctx.setSelectedNoteId}
@@ -133,6 +146,17 @@ registerCardFloatable("highlight", (id, ctx: CardFloatCtx) => {
   if (!hl) return null;
   const canJump = getLinkedTextObjectIds(hl).length > 0;
   return cardFloatable("highlight", id, {
+    chromeSlots: {
+      title: (
+        <CardKindHeader
+          kind="highlight"
+          options={cardKindsForPanel("notes")}
+          onChange={(k) => {
+            if (k !== "highlight") ctx.convertNotesCard(id, "note");
+          }}
+        />
+      ),
+    },
     canJump,
     jumpToSource: () => ctx.editorRef.current?.jumpToCard(hl, null),
     snapshotForStack: (source) => snapshotCard("highlight", hl, source),
@@ -140,7 +164,7 @@ registerCardFloatable("highlight", (id, ctx: CardFloatCtx) => {
       <HighlightCard
         card={hl}
         selected={ctx.selectedNoteId === hl.id}
-        onAddNote={(hid) => ctx.addNoteForHighlight(hid)}
+        onConvert={ctx.convertNotesCard}
         onSetAiRequest={ctx.setHighlightAiRequest}
         onDelete={ctx.deleteNote}
         onSelect={ctx.setSelectedNoteId}
@@ -224,7 +248,20 @@ registerCardFloatable("cutter-comment", (id, ctx: CardFloatCtx) => {
   if (!card || card.kind !== "comment") return null;
   const canJump = getLinkedTextObjectIds(card).length > 0;
   return cardFloatable("cutter-comment", id, {
-    chromeSlots: collabTrailing("cut", id),
+    chromeSlots: {
+      ...collabTrailing("cut", id),
+      // Restore the comment↔suggestion morph control on popout (the docked
+      // CardKindDropdown is suppressed when the card renders chromeless).
+      title: (
+        <CardKindHeader
+          kind="cutter-comment"
+          options={cardKindsForPanel("cutter")}
+          onChange={(k) => {
+            if (k !== "cutter-comment") ctx.convertCutterCard(id, "suggestion");
+          }}
+        />
+      ),
+    },
     canJump,
     jumpToSource: () => ctx.editorRef.current?.jumpToCard(card, null),
     snapshotForStack: (source) => snapshotCard("cutter-comment", card, source),
@@ -233,6 +270,7 @@ registerCardFloatable("cutter-comment", (id, ctx: CardFloatCtx) => {
         card={card}
         selected={ctx.selectedCutterCardId === card.id}
         onUpdateText={ctx.updateCutterCommentText}
+        onConvert={ctx.convertCutterCard}
         onSetAiRequest={ctx.setCutterCommentAiRequest}
         onDelete={ctx.deleteCutterCard}
         onSelect={ctx.setSelectedCutterCardId}
@@ -248,7 +286,18 @@ registerCardFloatable("cutter-suggestion", (id, ctx: CardFloatCtx) => {
   if (!card || card.kind !== "suggestion") return null;
   const canJump = getLinkedTextObjectIds(card).length > 0;
   return cardFloatable("cutter-suggestion", id, {
-    chromeSlots: { trailing: <CutterSuggestionTrailing card={card} /> },
+    chromeSlots: {
+      trailing: <CutterSuggestionTrailing card={card} />,
+      title: (
+        <CardKindHeader
+          kind="cutter-suggestion"
+          options={cardKindsForPanel("cutter")}
+          onChange={(k) => {
+            if (k !== "cutter-suggestion") ctx.convertCutterCard(id, "comment");
+          }}
+        />
+      ),
+    },
     canJump,
     jumpToSource: () => ctx.editorRef.current?.jumpToCard(card, null),
     snapshotForStack: (source) => snapshotCard("cutter-suggestion", card, source),
@@ -257,6 +306,7 @@ registerCardFloatable("cutter-suggestion", (id, ctx: CardFloatCtx) => {
         card={card}
         selected={ctx.selectedCutterCardId === card.id}
         onUpdateField={ctx.updateCutterSuggestionField}
+        onConvert={ctx.convertCutterCard}
         onAccept={(cid) => ctx.setCutterSuggestionStatus(cid, "accepted")}
         onReject={(cid) => ctx.setCutterSuggestionStatus(cid, "rejected")}
         onDelete={ctx.deleteCutterCard}
@@ -275,7 +325,18 @@ registerCardFloatable("report", (id, ctx: CardFloatCtx) => {
   if (!card) return null;
   const canJump = getLinkedTextObjectIds(card).length > 0;
   return cardFloatable("report", id, {
-    chromeSlots: collabTrailing("report", id),
+    chromeSlots: {
+      ...collabTrailing("report", id),
+      title: (
+        <CardKindHeader
+          kind="report"
+          options={cardKindsForPanel("reports")}
+          onChange={(k) => {
+            if (k !== "report") ctx.convertReportCard(id, "report-request");
+          }}
+        />
+      ),
+    },
     canJump,
     jumpToSource: () => ctx.editorRef.current?.jumpToCard(card, null),
     snapshotForStack: () => null, // not stackable (no StackCardKind for reports)
@@ -285,6 +346,7 @@ registerCardFloatable("report", (id, ctx: CardFloatCtx) => {
         selected={ctx.selectedReportCardId === card.id}
         onUpdate={ctx.updateReportContent}
         onUpdateTitle={ctx.updateReportTitle}
+        onConvert={ctx.convertReportCard}
         onDelete={ctx.deleteReportCard}
         onSelect={ctx.setSelectedReportCardId}
         onJump={canJump ? (sourceEl) => ctx.editorRef.current?.jumpToCard(card, sourceEl) : undefined}
@@ -301,7 +363,18 @@ registerCardFloatable("report-request", (id, ctx: CardFloatCtx) => {
   if (!card) return null;
   const canJump = getLinkedTextObjectIds(card).length > 0;
   return cardFloatable("report-request", id, {
-    chromeSlots: collabTrailing("report", id),
+    chromeSlots: {
+      ...collabTrailing("report", id),
+      title: (
+        <CardKindHeader
+          kind="report-request"
+          options={cardKindsForPanel("reports")}
+          onChange={(k) => {
+            if (k !== "report-request") ctx.convertReportCard(id, "report");
+          }}
+        />
+      ),
+    },
     canJump,
     jumpToSource: () => ctx.editorRef.current?.jumpToCard(card, null),
     snapshotForStack: () => null, // not stackable (no StackCardKind for reports)
@@ -310,6 +383,7 @@ registerCardFloatable("report-request", (id, ctx: CardFloatCtx) => {
         request={card}
         selected={ctx.selectedReportCardId === card.id}
         onUpdate={ctx.updateRequestContent}
+        onConvert={ctx.convertReportCard}
         onSetAiRequest={ctx.setRequestAiRequest}
         onDelete={ctx.deleteReportCard}
         onSelect={ctx.setSelectedReportCardId}

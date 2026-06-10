@@ -13,6 +13,7 @@ import { useCardTheme } from "@/hooks/usePanelTheme";
 import { usePoppedCards } from "@/hooks/usePoppedCards";
 import { normalizeRichContent } from "@/lib/footnote-content";
 import { cardPopKey } from "@/panels/panel-registry";
+import { cardKindsForPanel } from "@/cards/predicates";
 import { useAnchoredCard } from "@/links/_shared/useAnchoredCard";
 import { cardStore } from "@/links/_shared/anchored-card-store";
 import { MIME_REPORT } from "@/lib/marginalia";
@@ -30,6 +31,7 @@ export function ReportRequestCard({
   request,
   selected,
   onUpdate,
+  onConvert,
   onSetAiRequest,
   onDelete,
   onSelect,
@@ -45,6 +47,8 @@ export function ReportRequestCard({
   request: ReportRequestCardData;
   selected: boolean;
   onUpdate: (id: string, content: JSONContent) => void;
+  /** Morph report-request ⇄ report via the kind-chevron. */
+  onConvert?: (id: string, toKind: "report" | "report-request") => void;
   onSetAiRequest?: (id: string, value: boolean) => void;
   onDelete: (id: string) => void;
   onSelect: (id: string | null) => void;
@@ -85,6 +89,14 @@ export function ReportRequestCard({
       id={request.id}
       cardKind="report-request"
       kind="report-request"
+      kindOptions={onConvert ? cardKindsForPanel("reports") : undefined}
+      onKindChange={
+        onConvert
+          ? (k) => {
+              if (k !== "report-request") onConvert(request.id, "report");
+            }
+          : undefined
+      }
       selected={isSelected}
       theme={theme}
       hideToolbar

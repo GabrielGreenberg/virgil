@@ -33,6 +33,7 @@ interface BuildArgs {
   ) => void;
   acceptSuggestion: (id: string) => void;
   rejectSuggestion: (id: string) => void;
+  convertCard: (id: string, toKind: "comment" | "suggestion") => void;
   deleteCard: (id: string) => void;
 }
 
@@ -57,6 +58,7 @@ export function buildCutterOmniItems(a: BuildArgs): OmniItem[] {
           card={card as CutterSuggestionCardData}
           selected={isSelected}
           onUpdateField={a.updateSuggestionField}
+          onConvert={a.convertCard}
           onAccept={a.acceptSuggestion}
           onReject={a.rejectSuggestion}
           onDelete={a.deleteCard}
@@ -75,6 +77,7 @@ export function buildCutterOmniItems(a: BuildArgs): OmniItem[] {
           selected={isSelected}
           editor={a.editor}
           onUpdateText={a.updateCommentText}
+          onConvert={a.convertCard}
           onSetAiRequest={a.setCommentAiRequest}
           onDelete={a.deleteCard}
           onSelect={a.setSelectedId}

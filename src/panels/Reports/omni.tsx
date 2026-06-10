@@ -22,6 +22,7 @@ interface BuildArgs {
   updateReportTitle: (id: string, title: string) => void;
   updateRequestContent: (id: string, content: JSONContent) => void;
   setRequestAiRequest: (id: string, value: boolean) => void;
+  convertCard: (id: string, toKind: "report" | "report-request") => void;
   deleteCard: (id: string) => void;
 }
 
@@ -46,6 +47,7 @@ export function buildReportsOmniItems(a: BuildArgs): OmniItem[] {
           selected={isSelected}
           onUpdate={a.updateReportContent}
           onUpdateTitle={a.updateReportTitle}
+          onConvert={a.convertCard}
           onDelete={a.deleteCard}
           onSelect={a.setSelectedId}
           onJump={
@@ -59,6 +61,7 @@ export function buildReportsOmniItems(a: BuildArgs): OmniItem[] {
           request={card as ReportRequestCardData}
           selected={isSelected}
           onUpdate={a.updateRequestContent}
+          onConvert={a.convertCard}
           onSetAiRequest={a.setRequestAiRequest}
           onDelete={a.deleteCard}
           onSelect={a.setSelectedId}

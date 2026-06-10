@@ -38,6 +38,9 @@ export interface CutterHostProps {
     id: string,
     status: CutterSuggestionCard["status"],
   ) => void;
+  /** Morph comment ⇄ suggestion via the kind-chevron — routes through the
+   *  EditorPane morph chokepoint (float-key remap). */
+  convertCard: (id: string, toKind: "comment" | "suggestion") => void;
   deleteCard: (id: string) => void;
   /** Called on host unmount to drop cards created via "+" but never edited. */
   discardPristine: () => void;
@@ -118,6 +121,7 @@ export function CutterHost(p: CutterHostProps) {
       onUpdateSuggestionField={p.updateSuggestionField}
       onAcceptSuggestion={onAcceptSuggestion}
       onRejectSuggestion={onRejectSuggestion}
+      onConvertCard={p.convertCard}
       onDelete={p.deleteCard}
       onSelect={setSelectedCutterCardId}
       selectedId={selectedCutterCardId}

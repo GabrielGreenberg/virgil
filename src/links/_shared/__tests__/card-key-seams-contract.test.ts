@@ -9,6 +9,7 @@ import {
   buildFloatKey,
   migrateFloatKeys,
 } from "@/floats/float-key";
+import { CARD_REGISTRY } from "@/cards/card-registry";
 
 /**
  * Companion to `entity-key-contract.test.ts`. That file pins the
@@ -142,6 +143,68 @@ describe("morph-survives: convert remaps the popout key in lockstep (rect follow
     // the prefs write (morphing a docked-only card touches nothing).
     const result = migrateFloatKeys([], {}, remap);
     expect(result.changed).toBe(false);
+  });
+});
+
+// A9 generalized the revision-only `convertRevisionCard` morph-remap to a
+// kind-agnostic `convertCardWithRemap` that ALL 4 pairs fire through. This
+// pins the SAME float-survival contract for a NON-revision pair (cutter) — the
+// regression class an adversarial review flagged is "the generalization broke
+// the float remap for one of the new pairs". The morph.to SSOT (CardMeta) is
+// also pinned so the chokepoint resolves the right target kind.
+describe("morph-remap generalizes to a non-revision pair (cutter)", () => {
+  it("CARD_REGISTRY.morph wires the cutter pair both directions", () => {
+    expect(CARD_REGISTRY["cutter-comment"].morph?.to).toBe("cutter-suggestion");
+    expect(CARD_REGISTRY["cutter-suggestion"].morph?.to).toBe("cutter-comment");
+    // Both share the cutter panel (so the chevron's cardKindsForPanel options
+    // always include the target).
+    expect(CARD_REGISTRY["cutter-comment"].panel).toBe("cutter");
+    expect(CARD_REGISTRY["cutter-suggestion"].panel).toBe("cutter");
+  });
+
+  it("both directions parse to the post-morph kind (rect follows the new key)", () => {
+    const id = "cut-7";
+    const commentKey = cardPopKey("cutter-comment", id);
+    const suggestionKey = cardPopKey("cutter-suggestion", id);
+    // comment → suggestion
+    expect(parseAnyKey(suggestionKey)?.kind).toBe("cutter-suggestion");
+    // suggestion → comment
+    expect(parseAnyKey(commentKey)?.kind).toBe("cutter-comment");
+    // …and never collapse to a shared prefix (the revision-pair bug class).
+    expect(commentKey).not.toBe(suggestionKey);
+  });
+
+  it("migrateFloatKeys moves BOTH the key list AND the saved rect on a cutter morph", () => {
+    const id = "cut-7";
+    const oldKey = cardPopKey("cutter-comment", id);
+    const newKey = cardPopKey("cutter-suggestion", id);
+    const rect = { x: 12, y: 24, width: 320, height: 210 };
+    const remap = (k: string) => (k === oldKey ? newKey : k);
+
+    const result = migrateFloatKeys([oldKey], { [oldKey]: rect }, remap);
+
+    expect(result.changed).toBe(true);
+    expect(result.keys).toEqual([newKey]);
+    // The rect follows the key — a popped→morphed cutter card keeps its window.
+    expect(result.positions[newKey]).toEqual(rect);
+    expect(result.positions[oldKey]).toBeUndefined();
+    expect(parseAnyKey(result.keys[0])?.kind).toBe("cutter-suggestion");
+  });
+
+  it("no-op when the cutter card isn't floated (remap touches nothing)", () => {
+    const oldKey = cardPopKey("cutter-suggestion", "not-popped");
+    const newKey = cardPopKey("cutter-comment", "not-popped");
+    const remap = (k: string) => (k === oldKey ? newKey : k);
+    const result = migrateFloatKeys([], {}, remap);
+    expect(result.changed).toBe(false);
+  });
+
+  it("the report pair (lossy) also carries the morph.to SSOT both ways", () => {
+    expect(CARD_REGISTRY.report.morph).toEqual({ to: "report-request", lossy: true });
+    expect(CARD_REGISTRY["report-request"].morph).toEqual({ to: "report", lossy: true });
+    // note→highlight is lossy both ways too (R14).
+    expect(CARD_REGISTRY.note.morph?.lossy).toBe(true);
+    expect(CARD_REGISTRY.highlight.morph?.lossy).toBe(true);
   });
 });
 

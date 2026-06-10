@@ -30,7 +30,6 @@ import type {
   OrphanedFootnote,
   RevisionCard,
   CutterCard,
-  UserNote,
 } from "@/lib/types";
 import type { LatexError } from "@/lib/latex-errors";
 import type { FootnoteInfo, ExampleInfo } from "../../Editor";
@@ -84,8 +83,9 @@ export interface OmniHostProps {
   updateNoteTitle: NotesHook["updateNoteTitle"];
   setNoteAiRequest: NotesHook["setNoteAiRequest"];
   setHighlightAiRequest: NotesHook["setHighlightAiRequest"];
-  /** Spawn a sibling note for a highlight; routed through cardCreation. */
-  addNoteForHighlight: (id: string) => UserNote | null;
+  /** Morph note ⇄ highlight via the kind-chevron (R14) — the EditorPane
+   *  morph chokepoint (lossy confirm + float-key remap). */
+  convertNotesCard: (id: string, toKind: "note" | "highlight") => void;
   /** Kind-aware delete; routed through cardCreation so deleting a
    *  highlight also strips the in-doc tint. */
   deleteNote: (id: string) => void;
@@ -127,6 +127,8 @@ export interface OmniHostProps {
   setCutterCommentAiRequest: CutterHook["setCommentAiRequest"];
   updateCutterSuggestionField: CutterHook["updateSuggestionField"];
   setCutterSuggestionStatus: CutterHook["setSuggestionStatus"];
+  /** Morph cutter comment ⇄ suggestion via the kind-chevron. */
+  convertCutterCard: (id: string, toKind: "comment" | "suggestion") => void;
   deleteCutterCard: CutterHook["deleteCard"];
   // Reports
   reportCards: ReportsHook["cards"];
@@ -134,6 +136,8 @@ export interface OmniHostProps {
   updateReportTitle: ReportsHook["updateReportTitle"];
   updateRequestContent: ReportsHook["updateRequestContent"];
   setRequestAiRequest: ReportsHook["setRequestAiRequest"];
+  /** Morph report ⇄ report-request via the kind-chevron. */
+  convertReportCard: (id: string, toKind: "report" | "report-request") => void;
   deleteReportCard: ReportsHook["deleteCard"];
   // Shell
   getOmniEnabled: (side: Side) => Set<OmniCategory>;
@@ -448,7 +452,7 @@ export function OmniHost(p: OmniHostProps) {
       updateNoteTitle: p.updateNoteTitle,
       setNoteAiRequest: p.setNoteAiRequest,
       setHighlightAiRequest: p.setHighlightAiRequest,
-      addNoteForHighlight: p.addNoteForHighlight,
+      convertCard: p.convertNotesCard,
       deleteNote: p.deleteNote,
       setOverrideEditor,
       getCitationDisplayText,
@@ -529,6 +533,7 @@ export function OmniHost(p: OmniHostProps) {
       updateSuggestionField: p.updateCutterSuggestionField,
       acceptSuggestion: acceptCutterInOmni,
       rejectSuggestion: rejectCutterInOmni,
+      convertCard: p.convertCutterCard,
       deleteCard: p.deleteCutterCard,
     }),
     ...buildReportsOmniItems({
@@ -541,6 +546,7 @@ export function OmniHost(p: OmniHostProps) {
       updateReportTitle: p.updateReportTitle,
       updateRequestContent: p.updateRequestContent,
       setRequestAiRequest: p.setRequestAiRequest,
+      convertCard: p.convertReportCard,
       deleteCard: p.deleteReportCard,
     }),
   ], [
@@ -576,7 +582,7 @@ export function OmniHost(p: OmniHostProps) {
     p.getAnnotation, p.setAnnotation,
     p.requestBibReview, p.cancelBibReview, p.getBibReviewStatus,
     // Note handlers
-    p.updateNote, p.updateNoteTitle, p.deleteNote,
+    p.updateNote, p.updateNoteTitle, p.convertNotesCard, p.deleteNote,
     // Archive handlers
     p.updateArchiveSnippet, p.updateArchiveSnippetTitle, p.handleDeleteArchive,
     // Todo handlers
@@ -589,7 +595,9 @@ export function OmniHost(p: OmniHostProps) {
     expandedErrorIds, expandErrorInOmni, toggleErrorInOmni,
     // Cutter handlers
     p.updateCutterCommentText, p.setCutterCommentAiRequest,
-    p.updateCutterSuggestionField, p.deleteCutterCard,
+    p.updateCutterSuggestionField, p.convertCutterCard, p.deleteCutterCard,
+    // Reports handlers
+    p.convertReportCard,
   ]);
 
   // Hide cards anchored inside a collapsed section. The section-folding

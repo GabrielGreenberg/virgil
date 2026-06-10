@@ -1,7 +1,7 @@
 "use client";
 
 import type { JSONContent } from "@tiptap/react";
-import type { NoteCardItem, UserNote } from "@/lib/types";
+import type { NoteCardItem } from "@/lib/types";
 import { cardPopKey } from "@/panels/panel-registry";
 import type { OmniItem } from "@/panels/_shared/types";
 import { NoteCard } from "./NoteCard";
@@ -18,7 +18,7 @@ interface BuildArgs {
   updateNoteTitle: (id: string, title: string) => void;
   setNoteAiRequest: (id: string, value: boolean) => void;
   setHighlightAiRequest: (id: string, value: boolean) => void;
-  addNoteForHighlight: (id: string) => UserNote | null;
+  convertCard: (id: string, toKind: "note" | "highlight") => void;
   deleteNote: (id: string) => void;
   setOverrideEditor: (editor: any) => void;
   getCitationDisplayText: (command: string) => string;
@@ -40,7 +40,7 @@ export function buildNoteOmniItems(a: BuildArgs): OmniItem[] {
             key={omniId}
             card={card}
             selected={isSelected}
-            onAddNote={a.addNoteForHighlight}
+            onConvert={a.convertCard}
             onSetAiRequest={a.setHighlightAiRequest}
             onDelete={a.deleteNote}
             onSelect={a.setSelectedNoteId}
@@ -56,6 +56,7 @@ export function buildNoteOmniItems(a: BuildArgs): OmniItem[] {
           selected={isSelected}
           onUpdate={a.updateNote}
           onUpdateTitle={a.updateNoteTitle}
+          onConvert={a.convertCard}
           onSetAiRequest={a.setNoteAiRequest}
           onDelete={a.deleteNote}
           onSelect={a.setSelectedNoteId}

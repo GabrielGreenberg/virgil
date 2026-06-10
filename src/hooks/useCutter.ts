@@ -25,6 +25,7 @@ import {
 } from "@/links/links";
 import { migrateCardLinks } from "@/links/migrate-card";
 import { bridgeCardAiRequestFlag } from "@/lib/ai-request-bridge";
+import { applyCardMorph } from "@/cards/morphs";
 import type { CardKind } from "@/panels/_shared/types";
 import { usePersistentState } from "./usePersistentState";
 import { usePristineTracker } from "./usePristineTracker";
@@ -355,6 +356,27 @@ export function useCutter(
     [update, pristine],
   );
 
+  /** Flip a cutter card's kind in place (comment ⇄ suggestion) via the
+   *  registered morph transform. Preserves id/createdAt/links; salvages text
+   *  across the shape change. Mirrors `useRevisions.convertCard`. The float-key
+   *  remap rides on `convertCardWithRemap` in EditorPane (the morph chokepoint),
+   *  so a popped-then-morphed card keeps its window. */
+  const convertCard = useCallback(
+    (id: string, toKind: "comment" | "suggestion") => {
+      pristine.markDirty(id);
+      update((prev) => ({
+        ...prev,
+        cards: prev.cards.map((c) => {
+          if (c.id !== id || c.kind === toKind) return c;
+          const fromKind =
+            c.kind === "comment" ? "cutter-comment" : "cutter-suggestion";
+          return applyCardMorph(fromKind, c);
+        }),
+      }));
+    },
+    [update, pristine],
+  );
+
   const setGoal = useCallback(
     (target: number, initialWords: number) => {
       if (!Number.isFinite(target) || target < 0) return;
@@ -553,6 +575,7 @@ export function useCutter(
     deleteCard,
     cloneComment,
     cloneSuggestion,
+    convertCard,
     bindAnchor,
     clearCardAnchor,
     discardPristineCards,

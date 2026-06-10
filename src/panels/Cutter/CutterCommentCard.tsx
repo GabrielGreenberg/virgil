@@ -19,6 +19,7 @@ import { usePoppedCards } from "@/hooks/usePoppedCards";
 import { usePanelBodyStyle } from "@/hooks/usePanelTypography";
 import { useTabIndent } from "@/hooks/useTabIndent";
 import { cardPopKey } from "@/panels/panel-registry";
+import { cardKindsForPanel } from "@/cards/predicates";
 import { useAnchoredCard } from "@/links/_shared/useAnchoredCard";
 import { cardStore } from "@/links/_shared/anchored-card-store";
 import { MIME_CUT } from "@/lib/marginalia";
@@ -39,6 +40,7 @@ export function CutterCommentCard({
   card,
   selected,
   onUpdateText,
+  onConvert,
   onSetAiRequest,
   onDelete,
   onSelect,
@@ -52,6 +54,8 @@ export function CutterCommentCard({
   card: CutterCommentCardData;
   selected: boolean;
   onUpdateText: (id: string, text: string) => void;
+  /** Morph comment ⇄ suggestion via the kind-chevron. */
+  onConvert?: (id: string, toKind: "comment" | "suggestion") => void;
   onSetAiRequest: (id: string, value: boolean) => void;
   onDelete: (id: string) => void;
   onSelect: (id: string | null) => void;
@@ -133,6 +137,14 @@ export function CutterCommentCard({
       }}
       className="focus:outline-none mb-2"
       kind="cutter-comment"
+      kindOptions={onConvert ? cardKindsForPanel("cutter") : undefined}
+      onKindChange={
+        onConvert
+          ? (k) => {
+              if (k !== "cutter-comment") onConvert(card.id, "suggestion");
+            }
+          : undefined
+      }
       canJump={isAnchored && !isOrphaned && !!onJump}
       onJump={(e) => {
         if (onJump && isAnchored && !isOrphaned)

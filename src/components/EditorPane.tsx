@@ -768,36 +768,132 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
   const annotationsHook = useAnnotations(docId);
   const bibReviewHook = useBibReview(docId);
   const bibSettingsHook = useBibSettings(docId);
-  const notesHook = useNotes(docId, notePristine);
+  const notesHookRaw = useNotes(docId, notePristine);
   const aiRequestsHook = useAiRequests(docId);
-  const cutterHook = useCutter(docId, cutPristine);
-  const reportsHook = useReports(docId, reportPristine);
+  const cutterHookRaw = useCutter(docId, cutPristine);
+  const reportsHookRaw = useReports(docId, reportPristine);
   const revisionsHookRaw = useRevisions(docId);
-  // Morph a revision card's kind (comment↔suggestion) AND, in lockstep, remap
-  // its popout key if it's currently floated — `convertCard` only flips
-  // `card.kind`, but the stored `float:card:<kind>:<id>` key bakes the kind and
+  // Lossy-morph confirm (note→highlight, report↔report-request). Distinct
+  // dialog instance so it coexists with the other confirm dialogs.
+  const { confirm: confirmMorph, dialog: confirmMorphDialog } = useConfirmDialog();
+  // ── The A9 morph chokepoint (generalized) ──────────────────────────────
+  // EVERY kind-chevron morph — note↔highlight, revision/cutter comment↔
+  // suggestion, report↔report-request — fires through `convertCardWithRemap`.
+  // It (1) optionally confirms when the morph is `lossy` (drops fields the
+  // target shape can't hold), (2) calls the owning panel hook's `convertCard`
+  // (which flips the on-disk data kind via the registered morph transform),
+  // and (3) in lockstep remaps the card's popout key IF it's currently floated.
+  // The stored `float:card:<kind>:<id>` key bakes the kind, and
   // `FloatHost.resolveFloatable` re-derives kind from the key, so without the
   // remap a popped-then-morphed card silently vanishes. `remapCardPopKey`
   // no-ops when the card isn't floated, so this is safe from every trigger
-  // (docked dropdown, omni, or the FloatChrome title control). Generalizes to
-  // the A9 morph chevron.
-  const convertRevisionCard = useCallback(
-    (id: string, toKind: "comment" | "suggestion") => {
-      const fromCardKind: CardKind =
-        toKind === "suggestion" ? "revision-comment" : "revision-suggestion";
-      const toCardKind: CardKind =
-        toKind === "suggestion" ? "revision-suggestion" : "revision-comment";
-      revisionsHookRaw.convertCard(id, toKind);
+  // (docked dropdown, omni, or the FloatChrome title control). Kind-agnostic:
+  // the TO spine kind + lossy flag are read from `CARD_REGISTRY[fromCardKind]
+  // .morph` (SSOT), and the per-pair data `toKind` each hook expects is
+  // derived from it.
+  const convertCardWithRemap = useCallback(
+    async (fromCardKind: CardKind, id: string) => {
+      const morph = CARD_REGISTRY[fromCardKind].morph;
+      if (!morph) return; // non-morphing kind — defensive no-op
+      const toCardKind = morph.to;
+      if (morph.lossy) {
+        const ok = await confirmMorph({
+          title: `Change to ${CARD_REGISTRY[toCardKind].label}?`,
+          message: `This drops fields that a ${CARD_REGISTRY[toCardKind].label} can't hold (the body / title / byline don't carry across). The text anchor stays. Continue?`,
+          confirmLabel: `Make it a ${CARD_REGISTRY[toCardKind].label}`,
+          cancelLabel: "Keep as is",
+          tone: "default",
+        });
+        if (!ok) return;
+      }
+      // Dispatch to the owning panel hook with its expected data toKind.
+      switch (fromCardKind) {
+        case "revision-comment":
+          revisionsHookRaw.convertCard(id, "suggestion");
+          break;
+        case "revision-suggestion":
+          revisionsHookRaw.convertCard(id, "comment");
+          break;
+        case "cutter-comment":
+          cutterHookRaw.convertCard(id, "suggestion");
+          break;
+        case "cutter-suggestion":
+          cutterHookRaw.convertCard(id, "comment");
+          break;
+        case "report":
+          reportsHookRaw.convertCard(id, "report-request");
+          break;
+        case "report-request":
+          reportsHookRaw.convertCard(id, "report");
+          break;
+        case "note":
+          notesHookRaw.convertCard(id, "highlight");
+          break;
+        case "highlight":
+          notesHookRaw.convertCard(id, "note");
+          break;
+        default:
+          return;
+      }
       viewPrefs?.remapCardPopKey(cardPopKey(fromCardKind, id), cardPopKey(toCardKind, id));
     },
-    [revisionsHookRaw, viewPrefs],
+    [revisionsHookRaw, cutterHookRaw, reportsHookRaw, notesHookRaw, viewPrefs, confirmMorph],
   );
-  // The hook threaded to every revision consumer (cardCtx, PaneRail/PaneRailBody,
-  // omni-host) with `convertCard` swapped for the popout-key-remapping wrapper —
-  // one chokepoint, so the morph survives regardless of which surface triggers it.
+  // Per-pair adapters that take each card's legacy `(id, dataToKind)` signature,
+  // resolve the FROM spine kind, and delegate to the generalized chokepoint —
+  // so all 4 pairs morph identically (float survival + lossy confirm + remap).
+  const convertRevisionCard = useCallback(
+    (id: string, toKind: "comment" | "suggestion") => {
+      void convertCardWithRemap(
+        toKind === "suggestion" ? "revision-comment" : "revision-suggestion",
+        id,
+      );
+    },
+    [convertCardWithRemap],
+  );
+  const convertCutterCard = useCallback(
+    (id: string, toKind: "comment" | "suggestion") => {
+      void convertCardWithRemap(
+        toKind === "suggestion" ? "cutter-comment" : "cutter-suggestion",
+        id,
+      );
+    },
+    [convertCardWithRemap],
+  );
+  const convertReportCard = useCallback(
+    (id: string, toKind: "report" | "report-request") => {
+      void convertCardWithRemap(
+        toKind === "report-request" ? "report" : "report-request",
+        id,
+      );
+    },
+    [convertCardWithRemap],
+  );
+  const convertNotesCard = useCallback(
+    (id: string, toKind: "note" | "highlight") => {
+      void convertCardWithRemap(toKind === "highlight" ? "note" : "highlight", id);
+    },
+    [convertCardWithRemap],
+  );
+  // Each panel hook threaded to its consumers (cardCtx, PaneRail/PaneRailBody,
+  // omni-host) with `convertCard` swapped for the popout-key-remapping adapter —
+  // one chokepoint per pair, so the morph survives regardless of which surface
+  // triggers it (docked dropdown, omni, or FloatChrome title control).
   const revisionsHook = useMemo(
     () => ({ ...revisionsHookRaw, convertCard: convertRevisionCard }),
     [revisionsHookRaw, convertRevisionCard],
+  );
+  const cutterHook = useMemo(
+    () => ({ ...cutterHookRaw, convertCard: convertCutterCard }),
+    [cutterHookRaw, convertCutterCard],
+  );
+  const reportsHook = useMemo(
+    () => ({ ...reportsHookRaw, convertCard: convertReportCard }),
+    [reportsHookRaw, convertReportCard],
+  );
+  const notesHook = useMemo(
+    () => ({ ...notesHookRaw, convertCard: convertNotesCard }),
+    [notesHookRaw, convertNotesCard],
   );
   const todosHook = useTodos(docId, todoPristine);
   const archiveHook = useArchive(docId);
@@ -1685,7 +1781,6 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
     editorRef: innerRef,
     addNote: notesHook.addNote,
     addHighlight: notesHook.addHighlight,
-    notesCards: notesHook.cards,
     deleteNote: notesHook.deleteNote,
     addCutterComment: cutterHook.addComment,
     addCutterSuggestion: cutterHook.addSuggestion,
@@ -2549,9 +2644,10 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
       updateNoteTitle: notesHook.updateNoteTitle,
       setNoteAiRequest: notesHook.setNoteAiRequest,
       setHighlightAiRequest: notesHook.setHighlightAiRequest,
-      // Route through cardCreation: spawning a sibling note shares the
-      // highlight's anchorId; deleting a highlight strips the in-doc tint.
-      addNoteForHighlight: cardCreation.addNoteForHighlight,
+      // note ⇄ highlight kind-chevron (R14, bidirectional via the morph
+      // chokepoint — replaces the one-way addNoteForHighlight "+ note" path).
+      convertNotesCard,
+      // Route through cardCreation: deleting a highlight strips the in-doc tint.
       deleteNote: cardCreation.deleteHighlightOrNote,
 
       // Footnotes
@@ -2570,6 +2666,7 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
       setCutterCommentAiRequest: cutterHook.setCommentAiRequest,
       updateCutterSuggestionField: cutterHook.updateSuggestionField,
       setCutterSuggestionStatus: cutterHook.setSuggestionStatus,
+      convertCutterCard,
       deleteCutterCard: cutterHook.deleteCard,
 
       // Reports
@@ -2577,6 +2674,7 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
       updateReportTitle: reportsHook.updateReportTitle,
       updateRequestContent: reportsHook.updateRequestContent,
       setRequestAiRequest: reportsHook.setRequestAiRequest,
+      convertReportCard,
       deleteReportCard: reportsHook.deleteCard,
 
       // Todos
@@ -2626,6 +2724,7 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
       selectedExampleId,
       handleCitationCreated, handleEditFootnote, handleDeleteFootnote,
       handleEditFootnoteTitle, handleArchiveDelete,
+      convertCutterCard, convertReportCard, convertNotesCard,
     ],
   );
 
@@ -4296,6 +4395,7 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
           {confirmMarginItemDeleteDialog}
           {confirmDragHandleActionDialog}
           {notifyDragHandleActionDialog}
+          {confirmMorphDialog}
         </PoppedCardsContext.Provider>
         </CollabProvider>
         </SelectionsProvider>
@@ -4648,7 +4748,7 @@ function PaneRail({
           updateNoteTitle={notesHook.updateNoteTitle}
           setNoteAiRequest={notesHook.setNoteAiRequest}
           setHighlightAiRequest={notesHook.setHighlightAiRequest}
-          addNoteForHighlight={cardCreation.addNoteForHighlight}
+          convertNotesCard={notesHook.convertCard}
           deleteNote={cardCreation.deleteHighlightOrNote}
           sortedArchiveSnippets={sortedArchiveSnippets}
           anchoredIds={anchoredArchiveIds}
@@ -4682,12 +4782,14 @@ function PaneRail({
           setCutterCommentAiRequest={cutterHook.setCommentAiRequest}
           updateCutterSuggestionField={cutterHook.updateSuggestionField}
           setCutterSuggestionStatus={cutterHook.setSuggestionStatus}
+          convertCutterCard={cutterHook.convertCard}
           deleteCutterCard={cutterHook.deleteCard}
           reportCards={reportsHook.cards}
           updateReportContent={reportsHook.updateReportContent}
           updateReportTitle={reportsHook.updateReportTitle}
           updateRequestContent={reportsHook.updateRequestContent}
           setRequestAiRequest={reportsHook.setRequestAiRequest}
+          convertReportCard={reportsHook.convertCard}
           deleteReportCard={reportsHook.deleteCard}
           getOmniEnabled={viewPrefs.getOmniEnabled}
           getOmniHideAll={viewPrefs.getOmniHideAll}
@@ -5037,6 +5139,7 @@ function PaneRailBody({
         updateNoteTitle={notesHook.updateNoteTitle}
         setNoteAiRequest={notesHook.setNoteAiRequest}
         setHighlightAiRequest={notesHook.setHighlightAiRequest}
+        convertCard={notesHook.convertCard}
         deleteNote={notesHook.deleteNote}
         discardPristine={discardPristineNotes}
       />
@@ -5087,6 +5190,7 @@ function PaneRailBody({
         setCommentAiRequest={cutterHook.setCommentAiRequest}
         updateSuggestionField={cutterHook.updateSuggestionField}
         setSuggestionStatus={cutterHook.setSuggestionStatus}
+        convertCard={cutterHook.convertCard}
         deleteCard={cutterHook.deleteCard}
         discardPristine={cutterHook.discardPristineCards}
       />
@@ -5102,6 +5206,7 @@ function PaneRailBody({
         updateReportTitle={reportsHook.updateReportTitle}
         updateRequestContent={reportsHook.updateRequestContent}
         setRequestAiRequest={reportsHook.setRequestAiRequest}
+        convertCard={reportsHook.convertCard}
         deleteCard={reportsHook.deleteCard}
         discardPristine={reportsHook.discardPristineCards}
       />
