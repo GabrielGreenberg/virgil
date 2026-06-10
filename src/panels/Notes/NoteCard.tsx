@@ -15,6 +15,7 @@ import { usePoppedCards } from "@/hooks/usePoppedCards";
 import { normalizeRichContent } from "@/lib/footnote-content";
 import { cardPopKey } from "@/panels/panel-registry";
 import { cardKindsForPanel } from "@/cards/predicates";
+import { canMorphNoteToHighlight } from "@/cards/morphs";
 import { useAnchoredCard } from "@/links/_shared/useAnchoredCard";
 import { cardStore } from "@/links/_shared/anchored-card-store";
 
@@ -99,14 +100,20 @@ export function NoteCard({
       ? (anchor: DOMRect) => popped.toggleAtAnchor(cardKey, anchor)
       : undefined);
 
+  // WS7 (A6): the note→highlight chevron is gated off for paragraph-only
+  // Mode-A notes (and orphaned ones) — no text range, nothing to tint.
+  // Covers docked AND omni (both render this component); the float's
+  // CardKindHeader title slot is gated in cards/floats/index.tsx.
+  const morphable = canMorphNoteToHighlight(note);
+
   const card = (
     <EditableCard
       id={note.id}
       cardKind="note"
       kind="note"
-      kindOptions={onConvert ? cardKindsForPanel("notes") : undefined}
+      kindOptions={onConvert && morphable ? cardKindsForPanel("notes") : undefined}
       onKindChange={
-        onConvert
+        onConvert && morphable
           ? (k) => {
               if (k !== "note") onConvert(note.id, "highlight");
             }

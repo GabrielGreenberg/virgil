@@ -35,6 +35,7 @@ import {
   assertPanelTypographyCoverage,
 } from "../card-registry";
 import { assertMarkerCoverage } from "../marker-meta";
+import { getTextAnchor } from "@/links/links";
 
 /** Wrap a plain string into a single-paragraph rich doc (or empty doc). */
 function richFromText(text: string): JSONContent {
@@ -200,6 +201,21 @@ function highlightToNote(h: HighlightCard): UserNote {
 
 registerCardMorph("note", (card) => noteToHighlight(card as UserNote));
 registerCardMorph("highlight", (card) => highlightToNote(card as HighlightCard));
+
+/** WS7 gate (A6): note → highlight is only offered for notes that carry a
+ *  Mode-B text-range anchor. A highlight IS its text range — a
+ *  paragraph-only Mode-A note (and an orphaned note, `links: []`) has no
+ *  range to tint, so the morph would produce an invisible highlight.
+ *  Consumer-owned predicate: the registry `morph` field stays static (the
+ *  note⇄highlight pair is still declared and the converter registered);
+ *  the chevron call sites gate on this — NoteCard's `kindOptions` (covers
+ *  docked + omni, which render the same component) and the note float
+ *  builder's `chromeSlots.title` CardKindHeader. The reverse direction
+ *  (highlight → note) needs NO gate — every highlight has a range, and a
+ *  note can always hold one. */
+export function canMorphNoteToHighlight(note: UserNote): boolean {
+  return getTextAnchor(note) != null;
+}
 
 // Boot-time coverage assertions (dev-only no-ops in production).
 assertMorphCoverage();
