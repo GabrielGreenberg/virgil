@@ -43,6 +43,7 @@ import {
 } from "./anchored-card-store";
 import type { CardKind } from "@/panels/_shared/types";
 import { isInlineAtomCardKind } from "@/cards/predicates";
+import { cssTokenForCardKind } from "@/cards/legacy-token-crosswalk";
 import {
   cardKeyForEntity,
   findEntity,
@@ -57,23 +58,12 @@ const DATA_PARAGRAPH_KIND = "data-paragraph-kind";
 const DATA_MARGIN_SIDE = "data-margin-side";
 
 /** Map a CardKind to the kind token used by `data-paragraph-kind`
- *  selectors in globals.css. Aligns with the existing
- *  `.linked-anchor[data-link-card^="<kind>:"]` map so a paragraph anchor
- *  and a Mode B span for the same card paint in the same color. */
-function paragraphKindFor(kind: CardKind): string | null {
-  switch (kind) {
-    case "note":               return "note";
-    case "cutter-comment":
-    case "cutter-suggestion":  return "cut";
-    case "revision-comment":
-    case "revision-suggestion": return "comment";
-    case "report":
-    case "report-request":     return "report";
-    case "archive":            return "archive";
-    case "todo":               return "todo";
-    default:                   return null;
-  }
-}
+ *  selectors in globals.css. Single-sourced through the legacy-token crosswalk
+ *  (R-C: byte-identical tokens — note→"note", cutter-*→"cut", revision-*→
+ *  "comment", report/-request→"report", archive→"archive", todo→"todo", all
+ *  others→null) so a paragraph anchor and a Mode B span for the same card
+ *  paint in the same color. */
+const paragraphKindFor = cssTokenForCardKind;
 
 /** Synthesized Link for an inline-atom card (footnote / citation) — those
  *  aren't kept in collections, so we fabricate one for `resolveLink` to
