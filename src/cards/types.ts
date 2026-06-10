@@ -96,6 +96,18 @@ export interface CardMeta {
   lifecycle: CardLifecycleCapability;
   /** In-document drop behavior, or `null` for kinds that don't re-anchor by drop. */
   dropSpec: DropSpec | null;
+  /** The morph target for the polymorphic kind-chevron (A9), or `null` for the
+   *  non-morphing kinds. When set, this kind can convert *in place* into
+   *  `morph.to` (which always shares its panel — the chevron's options are
+   *  `cardKindsForPanel(panel)`), preserving id/createdAt/anchor. `lossy: true`
+   *  flags a conversion that drops fields the target shape can't hold (e.g.
+   *  note→highlight discards the note body) so the UI can show a confirm. The
+   *  actual data transform is registered out-of-band via `registerCardMorph`
+   *  (a runtime-leaf indirection, mirroring `registerCardFloatable`), never
+   *  imported into this card-UI-free module. A dev assertion checks every
+   *  `morph !== null` kind has a registered converter and that `morph.to`
+   *  shares the panel. */
+  morph: { to: CardKind; lossy: boolean } | null;
   /** Whether this kind can serialize onto the Stack (was the hand-kept
    *  `StackCardKind` union). `bib` is stackable despite being `system`, so this
    *  cannot be derived from `origin`. `example` is declared stackable to mirror
