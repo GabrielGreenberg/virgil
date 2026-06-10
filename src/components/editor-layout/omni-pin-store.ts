@@ -31,7 +31,8 @@ import { useSyncExternalStore } from "react";
 export type PinSide = "left" | "right";
 
 export interface PinRequest {
-  /** `data-omni-entry-wrapper` key — e.g. "citation:abc123". */
+  /** `data-omni-entry-wrapper` key — the canonical `float:card:<kind>:<id>`
+   *  grammar, e.g. "float:card:citation:abc123". */
   cardId: string;
   /** Pod-relative Y (px) the card should be pinned at. Computed by the
    *  publisher as `viewportY - podRect.top` against the pod that hosts

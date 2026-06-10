@@ -36,7 +36,9 @@ export type { CardKind } from "@/cards/types";
 
 /** A single item to render inside the Omni view. */
 export interface OmniItem {
-  /** Globally unique within the omni list. Shape: `${cardKind}:${id}`. */
+  /** Globally unique within the omni list. Shape: `float:card:<kind>:<id>`
+   *  (built by `cardPopKey`/`popKey`); a multi-anchor card appends an
+   *  `@<index>` suffix per anchor. */
   id: string;
   /** Editor document position (null for unanchored items). */
   pos: number | null;
