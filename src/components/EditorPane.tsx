@@ -2851,24 +2851,18 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
     [],
   );
 
-  // ExampleInfo carries `exampleId`, not `id`; the entity-collections
-  // shape uses `id`. Adapt at the boundary so the entity vocabulary
-  // stays uniform.
-  const _examplesAsEntities = useMemo(
-    () => examples.map((e) => ({ id: e.exampleId })),
-    [examples],
-  );
-
   useAnchorHighlightReconciler({
     editor,
     collections: {
       notes: notesHook.notes,
       cutterCards: cutterHook.cards,
       archiveSnippets: archiveHook.snippets,
-      todos: todosHook.items,
+      todoItems: todosHook.items,
       comments: revisionsHook.cards,
-      reports: reportsHook.cards,
-      examples: _examplesAsEntities,
+      reportCards: reportsHook.cards,
+      // EntityCollectionSlots reads `exampleId ?? id`, so ExampleInfo[] (which
+      // keys on `exampleId`) resolves directly — no boundary adapter.
+      examples,
     },
   });
 
@@ -2901,10 +2895,10 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
       notes: notesHook.notes,
       cutterCards: cutterHook.cards,
       comments: revisionsHook.cards,
-      reports: reportsHook.cards,
-      todos: todosHook.items,
+      reportCards: reportsHook.cards,
+      todoItems: todosHook.items,
       archiveSnippets: archiveHook.snippets,
-      examples: _examplesAsEntities,
+      examples,
     },
   });
 

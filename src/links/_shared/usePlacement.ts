@@ -30,8 +30,8 @@ import {
 import {
   cardKeyForEntity,
   findEntity,
-  type EntityCollections,
 } from "./entity-hover";
+import type { EntityCollectionSlots } from "@/cards/entity-collections";
 import type { Link } from "./types";
 
 /** Synthesize a Link for inline-atom selections (footnote, citation) so
@@ -51,7 +51,7 @@ function linkForInlineAtom(
 
 function getAnchorLinks(
   ref: AnchoredCardRef,
-  collections: EntityCollections,
+  collections: EntityCollectionSlots,
 ): Link[] {
   if (ref.kind === "footnote" || ref.kind === "citation") {
     return [linkForInlineAtom(ref.kind, ref.id)];
@@ -62,7 +62,7 @@ function getAnchorLinks(
 
 export interface UsePlacementArgs {
   editor: Editor | null;
-  collections: EntityCollections;
+  collections: EntityCollectionSlots;
 }
 
 export function usePlacement({ editor, collections }: UsePlacementArgs): void {
@@ -106,7 +106,7 @@ export function usePlacement({ editor, collections }: UsePlacementArgs): void {
     // Locate the card element. Multiple matches are possible (popped
     // float + native panel mount); pick the first that's actually
     // visible-ish (offsetParent != null).
-    const cardKey = cardKeyForEntity(selection, collections);
+    const cardKey = cardKeyForEntity(selection);
     if (!cardKey) return;
     const cardCandidates = document.querySelectorAll<HTMLElement>(
       `[data-card-key="${cardKey}"]`,

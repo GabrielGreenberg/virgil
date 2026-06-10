@@ -1237,7 +1237,7 @@ export default function EditorLayout() {
     if (!hoveredEntityId || !hoveredEntityKind) return null;
     return entityToAnchorId(
       { id: hoveredEntityId, kind: hoveredEntityKind },
-      { notes, cutterCards, comments, todos: todoItems, archiveSnippets, examples: [] },
+      { notes, cutterCards, comments, todoItems, archiveSnippets, examples: [] },
     );
   }, [hoveredEntityId, hoveredEntityKind, notes, cutterCards, comments, todoItems, archiveSnippets]);
 
@@ -3590,9 +3590,8 @@ export default function EditorLayout() {
         hoveredEntityId && hoveredEntityKind
           ? { id: hoveredEntityId, kind: hoveredEntityKind }
           : null,
-        { notes, cutterCards, comments, todos: todoItems, archiveSnippets, examples: [] },
       ),
-    [hoveredEntityId, hoveredEntityKind, notes, cutterCards, comments, todoItems, archiveSnippets],
+    [hoveredEntityId, hoveredEntityKind],
   );
   const effectiveAnchorKind = hoveredAnchorKind ?? activeAnchorKind;
   const effectiveAnchorColor = (() => {

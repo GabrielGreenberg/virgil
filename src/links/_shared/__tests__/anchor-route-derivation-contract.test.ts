@@ -1,9 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { ANCHOR_CLICK_ROUTES } from "@/components/editor-layout/event-bridges/marker-clicks";
-import {
-  entityKindToAnchorKind,
-  type EntityCollections,
-} from "../entity-hover";
+import { entityKindToAnchorKind } from "../entity-hover";
 
 /**
  * A2 Commit D pin-test. `ANCHOR_CLICK_ROUTES` (marker-clicks) and
@@ -46,15 +43,7 @@ const EXPECTED_ROUTES = {
   },
 } as const;
 
-// entityKindToAnchorKind ignores its collections arg; an empty bag suffices.
-const EMPTY: EntityCollections = {
-  notes: [],
-  cutterCards: [],
-  comments: [],
-  todos: [],
-  archiveSnippets: [],
-  examples: [],
-};
+// entityKindToAnchorKind is now collection-free (WS5: it never read the bag).
 
 describe("ANCHOR_CLICK_ROUTES derived ≡ the pre-A2 literals", () => {
   it("matches the hand-kept table exactly (panelId via panelForCardKind, cardKind = key)", () => {
@@ -82,24 +71,24 @@ describe("entityKindToAnchorKind derived ≡ the pre-A2 literal switch (R-B carv
   it("note / highlight / revision-* / cutter-* map to the exact old tokens", () => {
     for (const [kind, expected] of Object.entries(EXPECTED_ANCHOR_KIND)) {
       expect(
-        entityKindToAnchorKind({ id: "x", kind: kind as never }, EMPTY),
+        entityKindToAnchorKind({ id: "x", kind: kind as never }),
         `anchor kind for ${kind}`,
       ).toBe(expected);
     }
   });
 
   it("R-B: the cutter pair does NOT collapse to the shared marker (stays split)", () => {
-    expect(entityKindToAnchorKind({ id: "x", kind: "cutter-comment" }, EMPTY)).toBe(
+    expect(entityKindToAnchorKind({ id: "x", kind: "cutter-comment" })).toBe(
       "cutter-comment",
     );
-    expect(entityKindToAnchorKind({ id: "x", kind: "cutter-suggestion" }, EMPTY)).toBe(
+    expect(entityKindToAnchorKind({ id: "x", kind: "cutter-suggestion" })).toBe(
       "cutter-suggestion",
     );
     // …while revisions DO collapse.
-    expect(entityKindToAnchorKind({ id: "x", kind: "revision-comment" }, EMPTY)).toBe(
+    expect(entityKindToAnchorKind({ id: "x", kind: "revision-comment" })).toBe(
       "revision",
     );
-    expect(entityKindToAnchorKind({ id: "x", kind: "revision-suggestion" }, EMPTY)).toBe(
+    expect(entityKindToAnchorKind({ id: "x", kind: "revision-suggestion" })).toBe(
       "revision",
     );
   });
@@ -107,10 +96,10 @@ describe("entityKindToAnchorKind derived ≡ the pre-A2 literal switch (R-B carv
   it("non-anchor-tint kinds (todo / report / archive / footnote) and null ref → null", () => {
     for (const kind of ["todo", "report", "report-request", "archive", "footnote", "citation", "example"] as const) {
       expect(
-        entityKindToAnchorKind({ id: "x", kind }, EMPTY),
+        entityKindToAnchorKind({ id: "x", kind }),
         `${kind} has no anchor tint`,
       ).toBeNull();
     }
-    expect(entityKindToAnchorKind(null, EMPTY)).toBeNull();
+    expect(entityKindToAnchorKind(null)).toBeNull();
   });
 });
