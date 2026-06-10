@@ -145,6 +145,35 @@ export function assertMorphCoverage(): void {
   }
 }
 
+/** Dev-only: verify the `bodyClass` declarations are panel-consistent — every
+ *  card kind that shares a panel agrees on its class. `DEFAULT_PANEL_TYPOGRAPHY`
+ *  derives each panel's row from a single primary kind's `bodyClass`, so a
+ *  morph sibling declaring a *different* class would silently render with the
+ *  wrong typography after a morph. This makes that loud. Call once at boot
+ *  (alongside `assertMorphCoverage`). */
+export function assertPanelTypographyCoverage(): void {
+  if (process.env.NODE_ENV === "production") return;
+  const byPanel = new Map<string, { kind: CardKind; cls: string }[]>();
+  for (const k of Object.keys(CARD_REGISTRY) as CardKind[]) {
+    const panel = CARD_REGISTRY[k].panel;
+    if (panel == null) continue; // ai is cross-panel — exempt
+    const row = byPanel.get(panel) ?? [];
+    row.push({ kind: k, cls: CARD_REGISTRY[k].bodyClass });
+    byPanel.set(panel, row);
+  }
+  for (const [panel, members] of byPanel) {
+    const classes = new Set(members.map((m) => m.cls));
+    if (classes.size > 1) {
+      console.error(
+        `[CardBodyClass] panel "${panel}" has mixed bodyClass across its ` +
+          `kinds (${members.map((m) => `${m.kind}=${m.cls}`).join(", ")}); ` +
+          `DEFAULT_PANEL_TYPOGRAPHY derives one row per panel, so morph ` +
+          `siblings must agree.`,
+      );
+    }
+  }
+}
+
 export const CARD_REGISTRY: Record<CardKind, CardMeta> = {
   note: {
     label: "Note",
@@ -161,6 +190,7 @@ export const CARD_REGISTRY: Record<CardKind, CardMeta> = {
     // none) → lossy. The reverse direction is also lossy (a highlight has no
     // body to seed the note with); a confirm guards the body-dropping case.
     morph: { to: "highlight", lossy: true },
+    bodyClass: "sans",
     stackable: true,
     poppable: true,
     toFloatable: PLACEHOLDER_TO_FLOATABLE,
@@ -177,6 +207,7 @@ export const CARD_REGISTRY: Record<CardKind, CardMeta> = {
     lifecycle: { clone: true, delete: true, bindAnchor: true },
     dropSpec: null,
     morph: { to: "note", lossy: true },
+    bodyClass: "sans",
     stackable: true,
     poppable: true,
     toFloatable: PLACEHOLDER_TO_FLOATABLE,
@@ -193,6 +224,7 @@ export const CARD_REGISTRY: Record<CardKind, CardMeta> = {
     lifecycle: { clone: true, delete: true, bindAnchor: false },
     dropSpec: null,
     morph: null,
+    bodyClass: "borrowed", // serif, 15px — quotes document prose
     stackable: true,
     poppable: true,
     toFloatable: PLACEHOLDER_TO_FLOATABLE,
@@ -209,6 +241,7 @@ export const CARD_REGISTRY: Record<CardKind, CardMeta> = {
     lifecycle: { clone: false, delete: false, bindAnchor: false }, // gap → A3
     dropSpec: null,
     morph: null,
+    bodyClass: "borrowed", // serif, 15px — quotes document prose
     stackable: true,
     poppable: true,
     toFloatable: PLACEHOLDER_TO_FLOATABLE,
@@ -225,6 +258,7 @@ export const CARD_REGISTRY: Record<CardKind, CardMeta> = {
     lifecycle: { clone: false, delete: false, bindAnchor: false }, // gap → A3
     dropSpec: null,
     morph: null,
+    bodyClass: "sans",
     stackable: true,
     poppable: true,
     toFloatable: PLACEHOLDER_TO_FLOATABLE,
@@ -241,6 +275,7 @@ export const CARD_REGISTRY: Record<CardKind, CardMeta> = {
     lifecycle: { clone: false, delete: false, bindAnchor: false },
     dropSpec: null, // intentional: bib entries don't anchor to text
     morph: null,
+    bodyClass: "sans",
     stackable: true, // StackCardKind: "bibliography"
     poppable: true,
     toFloatable: PLACEHOLDER_TO_FLOATABLE,
@@ -257,6 +292,7 @@ export const CARD_REGISTRY: Record<CardKind, CardMeta> = {
     lifecycle: { clone: true, delete: true, bindAnchor: false },
     dropSpec: null,
     morph: null,
+    bodyClass: "sans",
     stackable: true,
     poppable: true,
     toFloatable: PLACEHOLDER_TO_FLOATABLE,
@@ -280,6 +316,7 @@ export const CARD_REGISTRY: Record<CardKind, CardMeta> = {
     // text rides into `user_text` on the way out, back into the body on the
     // way in), so neither direction is lossy.
     morph: { to: "revision-suggestion", lossy: false },
+    bodyClass: "sans",
     stackable: true,
     poppable: true,
     toFloatable: PLACEHOLDER_TO_FLOATABLE,
@@ -297,6 +334,7 @@ export const CARD_REGISTRY: Record<CardKind, CardMeta> = {
     dropSpec: null,
     // Same non-destructive comment ⇄ suggestion salvage as the revision pair.
     morph: { to: "cutter-suggestion", lossy: false },
+    bodyClass: "sans",
     stackable: true,
     poppable: true,
     toFloatable: PLACEHOLDER_TO_FLOATABLE,
@@ -313,6 +351,7 @@ export const CARD_REGISTRY: Record<CardKind, CardMeta> = {
     lifecycle: { clone: true, delete: true, bindAnchor: true },
     dropSpec: null,
     morph: { to: "cutter-comment", lossy: false },
+    bodyClass: "sans",
     stackable: true,
     poppable: true,
     toFloatable: PLACEHOLDER_TO_FLOATABLE,
@@ -329,6 +368,7 @@ export const CARD_REGISTRY: Record<CardKind, CardMeta> = {
     lifecycle: { clone: true, delete: true, bindAnchor: true }, // provider re-keyed suggestion→here at the flip
     dropSpec: null,
     morph: { to: "revision-comment", lossy: false },
+    bodyClass: "sans",
     stackable: true,
     poppable: true,
     toFloatable: PLACEHOLDER_TO_FLOATABLE,
@@ -348,6 +388,7 @@ export const CARD_REGISTRY: Record<CardKind, CardMeta> = {
     // byline have no home on a request; a request's aiRequest flag has none on
     // a report) → lossy both directions; the body rich-text carries across.
     morph: { to: "report-request", lossy: true },
+    bodyClass: "sans", // R11: Report is apparatus → 12px Inter (fixes the variant=footnote serif declared-vs-rendered mismatch)
     stackable: false, // not in StackCardKind
     poppable: true,
     toFloatable: PLACEHOLDER_TO_FLOATABLE,
@@ -364,6 +405,7 @@ export const CARD_REGISTRY: Record<CardKind, CardMeta> = {
     lifecycle: { clone: false, delete: false, bindAnchor: false }, // gap → A3
     dropSpec: null,
     morph: { to: "report", lossy: true },
+    bodyClass: "sans",
     stackable: false,
     poppable: true,
     toFloatable: PLACEHOLDER_TO_FLOATABLE,
@@ -380,6 +422,7 @@ export const CARD_REGISTRY: Record<CardKind, CardMeta> = {
     lifecycle: { clone: false, delete: false, bindAnchor: false }, // gap → A3
     dropSpec: null,
     morph: null,
+    bodyClass: "borrowed", // serif, 15px — quotes document prose (fixes example 12→15)
     stackable: true, // declared in StackCardKind (its float's snapshotForStack returns null today — R2)
     poppable: true,
     toFloatable: PLACEHOLDER_TO_FLOATABLE,
@@ -396,6 +439,7 @@ export const CARD_REGISTRY: Record<CardKind, CardMeta> = {
     lifecycle: { clone: false, delete: false, bindAnchor: false },
     dropSpec: null,
     morph: null,
+    bodyClass: "sans",
     stackable: false,
     poppable: true,
     toFloatable: PLACEHOLDER_TO_FLOATABLE,
@@ -412,6 +456,7 @@ export const CARD_REGISTRY: Record<CardKind, CardMeta> = {
     lifecycle: { clone: false, delete: false, bindAnchor: false },
     dropSpec: null,
     morph: null,
+    bodyClass: "sans",
     stackable: false,
     poppable: false, // RATIFIED not poppable (§3.5) — the sole non-poppable kind
     toFloatable: PLACEHOLDER_TO_FLOATABLE, // never registered → stays null

@@ -122,6 +122,16 @@ export interface CardMeta {
    *  `toFloatable` so poppability is statically inspectable without depending
    *  on boot-time registration order. */
   poppable: boolean;
+  /** Two-class body typography (A9 §N2). `"borrowed"` renders the card body in
+   *  the main-text serif face one size down (Source Serif 4 / 15px) — the
+   *  apparatus kinds that quote document prose (footnote / archive / example).
+   *  `"sans"` renders compact Inter / 12px (everyone else, including report —
+   *  R11, which fixes its declared-vs-rendered serif mismatch). The default
+   *  rows of `DEFAULT_PANEL_TYPOGRAPHY` (lib/panel-typography.ts) are DERIVED
+   *  from this class via the panel↔primary-kind map; a dev assertion pins the
+   *  declared class to the typography row so the two never drift. The mutable
+   *  per-field override registry (the user's text-size stepper) is unchanged. */
+  bodyClass: "borrowed" | "sans";
   /** AF integration point. Returns the shared `Floatable` presence, or `null`
    *  when this kind is not poppable (`error`). MUST be a pure per-id resolver —
    *  resolve one entity by id from `ctx`; NO full-doc descent (keystroke
