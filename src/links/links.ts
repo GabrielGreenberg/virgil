@@ -27,6 +27,7 @@ import {
   linkCardKey,
   parseLinkCardKey,
 } from "./link-registry";
+import { legacyDataKindForCardKind } from "@/cards/legacy-token-crosswalk";
 import { alignEntryToY } from "@/components/editor-layout/layout-scroll";
 
 // Re-exports so callers import everything from one module.
@@ -731,23 +732,43 @@ export interface LinkedAnchorRecord {
   createdAt: string;
 }
 
-function legacyKindToCardKindString(kind: LinkedAnchorKind): string {
+/** `LinkedAnchorKind` (the legacy mark-attr namespace) → spine `CardKind`. The
+ *  one many-to-one fold is `revision` → `revision-comment` (the canonical
+ *  comment spine kind for the shared `revision` marker). */
+function linkedAnchorKindToCardKind(kind: LinkedAnchorKind): CardKind {
   switch (kind) {
-    case "note":
-      return "note";
-    case "highlight":
-      return "highlight";
-    case "cutter-comment":
-      return "cutter-comment";
-    case "cutter-suggestion":
-      return "cutter-suggestion";
-    case "revision":
-      return "comment";
-    case "report":
-      return "report";
-    case "report-request":
-      return "report-request";
+    case "note":              return "note";
+    case "highlight":         return "highlight";
+    case "cutter-comment":    return "cutter-comment";
+    case "cutter-suggestion": return "cutter-suggestion";
+    case "revision":          return "revision-comment";
+    case "report":            return "report";
+    case "report-request":    return "report-request";
   }
+}
+
+/** The `data-link-card` token for a legacy `LinkedAnchorKind`. Single-sourced
+ *  through `LEGACY_TOKEN_CROSSWALK` (R-C: byte-identical to the old literal
+ *  switch — note→"note", revision→"comment", cutter-*→"cutter-*", etc.). Every
+ *  `LinkedAnchorKind` maps to a kind with a non-null `legacyDataKind`, so the
+ *  fallback is unreachable (defensive). */
+function legacyKindToCardKindString(kind: LinkedAnchorKind): string {
+  const token = legacyDataKindForCardKind(linkedAnchorKindToCardKind(kind));
+  if (token == null) {
+    // Unreachable: every LinkedAnchorKind maps to a kind with a non-null
+    // legacyDataKind. If it ever fires, the raw `kind` is NOT a contract-faithful
+    // data-link-card token (e.g. "revision" has no [data-link-card^="revision:"]
+    // rule — the faithful token is "comment"). Make it loud in dev rather than
+    // silently stamping a CSS-ruleless token; preserve the runtime string.
+    if (process.env.NODE_ENV !== "production") {
+      console.error(
+        `[links] legacyKindToCardKindString("${kind}"): no legacyDataKind in the ` +
+          `crosswalk — the stamped data-link-card token may match no CSS rule.`,
+      );
+    }
+    return kind;
+  }
+  return token;
 }
 
 /**

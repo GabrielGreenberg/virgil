@@ -3,46 +3,62 @@ import type { PanelId, Side, Half, ViewPrefs } from "@/hooks/useViewPrefs";
 import type { OmniCategory } from "@/panels/Omni";
 import type { CardKind } from "@/panels/_shared/types";
 import type { EntityKind } from "@/links/_shared/entity-hover";
+import { panelForCardKind } from "@/cards/predicates";
 import { suppressNextPlacement } from "@/links/_shared/usePlacement";
 import { openForCard } from "./open-for-card";
 import { cardPopKey, cardDomSelector } from "@/panels/panel-registry";
 
-/** EntityKind → routing config for `virgil-linked-anchor-click`. Mode B
- *  text-range clicks fall into one of these; inline atoms (footnote,
- *  citation) and one-shot kinds (archive) use their own dedicated events. */
-const ANCHOR_CLICK_ROUTES: Record<
-  Extract<
-    EntityKind,
-    "note" | "cutter-comment" | "cutter-suggestion" | "revision-comment" | "revision-suggestion"
-  >,
-  { panelId: PanelId; cardKind: CardKind; entrySelectorBase: string }
-> = {
-  note: {
-    panelId: "notes",
-    cardKind: "note",
-    entrySelectorBase: "data-note-entry",
-  },
-  "cutter-comment": {
-    panelId: "cutter",
-    cardKind: "cutter-comment",
-    entrySelectorBase: "data-card-key",
-  },
-  "cutter-suggestion": {
-    panelId: "cutter",
-    cardKind: "cutter-suggestion",
-    entrySelectorBase: "data-card-key",
-  },
-  "revision-comment": {
-    panelId: "revisions",
-    cardKind: "revision-comment",
-    entrySelectorBase: "data-card-key",
-  },
-  "revision-suggestion": {
-    panelId: "revisions",
-    cardKind: "revision-suggestion",
-    entrySelectorBase: "data-card-key",
-  },
+/** The five Mode-B text-range kinds that route through
+ *  `virgil-linked-anchor-click`. Inline atoms (footnote, citation) and one-shot
+ *  kinds (archive) use their own dedicated `virgil-*-click` events. */
+type AnchorClickKind =
+  | "note"
+  | "cutter-comment"
+  | "cutter-suggestion"
+  | "revision-comment"
+  | "revision-suggestion";
+
+/** Per-kind `entrySelectorBase` overrides. The default is `data-card-key` (the
+ *  canonical AF float-key selector); `note` is the lone special case — the
+ *  Notes panel stamps its entries with `data-note-entry`, not `data-card-key`,
+ *  so the listener queries `[data-note-entry="${id}"]` instead of
+ *  `cardDomSelector(kind, id)`. */
+const ENTRY_SELECTOR_BASE_OVERRIDE: Partial<Record<AnchorClickKind, string>> = {
+  note: "data-note-entry",
 };
+
+/** `AnchorClickKind` → routing config, DERIVED: `cardKind` is the kind itself
+ *  and `panelId` is `panelForCardKind(kind)` (the registry SSOT), with the
+ *  small `entrySelectorBase` override map above. A pin-test asserts these
+ *  derived routes ≡ the old hand-kept literals. */
+export const ANCHOR_CLICK_ROUTES: Record<
+  AnchorClickKind,
+  { panelId: PanelId; cardKind: CardKind; entrySelectorBase: string }
+> = Object.fromEntries(
+  (
+    [
+      "note",
+      "cutter-comment",
+      "cutter-suggestion",
+      "revision-comment",
+      "revision-suggestion",
+    ] as const
+  ).map((kind) => {
+    const panel = panelForCardKind(kind);
+    // All five routed kinds own a panel; the registry can't return null here.
+    if (panel == null) {
+      throw new Error(`[marker-clicks] no owning panel for anchor-click kind "${kind}"`);
+    }
+    return [
+      kind,
+      {
+        panelId: panel as PanelId,
+        cardKind: kind,
+        entrySelectorBase: ENTRY_SELECTOR_BASE_OVERRIDE[kind] ?? "data-card-key",
+      },
+    ];
+  }),
+) as Record<AnchorClickKind, { panelId: PanelId; cardKind: CardKind; entrySelectorBase: string }>;
 
 /**
  * Editor-side → panel-side click routing for the four link-node kinds
