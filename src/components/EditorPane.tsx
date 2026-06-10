@@ -349,8 +349,8 @@ export interface EditorPaneViewPrefs {
   getOmniHideAll: (side: Side) => boolean;
   toggleOmniHideAllCards: (side: Side) => void;
   /** Footnotes that exist as orphan cards (no in-doc reference). The
-   *  Reader has none; main app post-7.8 plumbs `useFootnoteActions`
-   *  output through here. */
+   *  Reader has none; the main app feeds these via EditorPane's own
+   *  footnote-add handler (`handleAddFootnote`). */
   orphanedFootnotes: import("@/lib/types").OrphanedFootnote[];
   onEditOrphan: (id: string, newContent: unknown) => void;
   onDeleteOrphan: (id: string) => void;
