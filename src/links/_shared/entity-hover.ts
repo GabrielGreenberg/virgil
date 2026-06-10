@@ -20,7 +20,7 @@
 import type { Link } from "./types";
 import { getTextAnchor } from "../links";
 import { buildFloatKey } from "@/floats/float-key";
-import { CARD_KINDS, isAnchoredCardKind } from "@/cards/predicates";
+import { CARD_KINDS, cardKindFromRecord, isAnchoredCardKind } from "@/cards/predicates";
 import type { CardKind } from "@/cards/types";
 
 /** The anchored card kinds — derived from the registry's `anchored` flag (the
@@ -84,30 +84,23 @@ export function findEntity(
     case "highlight": return c.highlights?.find((e) => e.id === ref.id);
     case "todo":      return c.todos.find((e) => e.id === ref.id);
     case "archive":   return c.archiveSnippets.find((e) => e.id === ref.id);
-    case "report": {
-      const card = c.reports?.find((e) => e.id === ref.id);
-      return card && card.kind !== "report-request" ? card : undefined;
-    }
+    case "report":
     case "report-request": {
       const card = c.reports?.find((e) => e.id === ref.id);
-      return card && card.kind === "report-request" ? card : undefined;
+      return card && cardKindFromRecord(card, "reports") === ref.kind ? card : undefined;
     }
     case "example":   return c.examples.find((e) => e.id === ref.id);
-    case "cutter-comment": {
-      const card = c.cutterCards.find((e) => e.id === ref.id);
-      return card && card.kind !== "suggestion" ? card : undefined;
-    }
+    case "cutter-comment":
     case "cutter-suggestion": {
+      // Collection routing stays here (cutter records); the comment-vs-suggestion
+      // split is the single-source read classifier (cardKindFromRecord).
       const card = c.cutterCards.find((e) => e.id === ref.id);
-      return card && card.kind === "suggestion" ? card : undefined;
+      return card && cardKindFromRecord(card, "cutter") === ref.kind ? card : undefined;
     }
-    case "revision-comment": {
-      const card = c.comments.find((e) => e.id === ref.id);
-      return card && card.kind !== "suggestion" ? card : undefined;
-    }
+    case "revision-comment":
     case "revision-suggestion": {
       const card = c.comments.find((e) => e.id === ref.id);
-      return card && card.kind === "suggestion" ? card : undefined;
+      return card && cardKindFromRecord(card, "revisions") === ref.kind ? card : undefined;
     }
     case "footnote":
     case "citation":

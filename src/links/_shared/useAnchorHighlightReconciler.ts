@@ -42,11 +42,11 @@ import {
   type AnchoredCardRef,
 } from "./anchored-card-store";
 import type { CardKind } from "@/panels/_shared/types";
+import { isInlineAtomCardKind } from "@/cards/predicates";
 import {
   cardKeyForEntity,
   findEntity,
   type EntityCollections,
-  type EntityKind,
 } from "./entity-hover";
 import type { Link } from "./types";
 import { resolveLink } from "../links";
@@ -91,15 +91,11 @@ function linkForInlineAtom(
   };
 }
 
-/** Inline-atom kinds aren't kept in collections; their existence is the
- *  editor's job. Treat them as always-present so the pruner never drops
- *  them. */
-function isInlineAtomKind(kind: EntityKind): boolean {
-  return kind === "footnote" || kind === "citation";
-}
-
 function entityExists(ref: AnchoredCardRef, c: EntityCollections): boolean {
-  if (isInlineAtomKind(ref.kind)) return true;
+  // Inline-atom kinds (footnote / citation) aren't kept in collections; their
+  // existence is the editor's job. Treat them as always-present so the pruner
+  // never drops them. Routed through the single-source predicate.
+  if (isInlineAtomCardKind(ref.kind)) return true;
   return findEntity(ref, c) !== undefined;
 }
 

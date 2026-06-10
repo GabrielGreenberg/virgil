@@ -27,6 +27,7 @@ import { useEffect, useMemo, useRef } from "react";
 import type { Editor } from "@tiptap/react";
 import type { UserNote, CutterCard, RevisionCard, ReportItem } from "@/lib/types";
 import { getTextAnchor } from "../links";
+import { cardKindFromRecord } from "@/cards/predicates";
 import type { EntityKind } from "./entity-hover";
 
 interface AnchorIdEntry {
@@ -63,20 +64,17 @@ export function useTextHoverBridge({
     for (const c of cutterCards) {
       const a = getTextAnchor(c);
       if (!a) continue;
-      const kind: EntityKind = c.kind === "suggestion" ? "cutter-suggestion" : "cutter-comment";
-      m.set(a.anchorId, { entityId: c.id, kind });
+      m.set(a.anchorId, { entityId: c.id, kind: cardKindFromRecord(c, "cutter") });
     }
     for (const r of comments) {
       const a = getTextAnchor(r);
       if (!a) continue;
-      const kind: EntityKind = r.kind === "suggestion" ? "revision-suggestion" : "revision-comment";
-      m.set(a.anchorId, { entityId: r.id, kind });
+      m.set(a.anchorId, { entityId: r.id, kind: cardKindFromRecord(r, "revisions") });
     }
     for (const rep of reportCards) {
       const a = getTextAnchor(rep);
       if (!a) continue;
-      const kind: EntityKind = rep.kind === "report-request" ? "report-request" : "report";
-      m.set(a.anchorId, { entityId: rep.id, kind });
+      m.set(a.anchorId, { entityId: rep.id, kind: cardKindFromRecord(rep, "reports") });
     }
     return m;
   }, [notes, cutterCards, comments, reportCards]);
