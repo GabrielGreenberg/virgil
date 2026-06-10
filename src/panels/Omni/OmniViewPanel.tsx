@@ -12,7 +12,10 @@ import {
 import type { CardKind, OmniItem, PanelKind } from "@/panels/_shared/types";
 import { parseAnyKey } from "@/floats/float-key";
 import { OmniProvider } from "@/components/editor-layout/contexts/omni";
-import { CardDisplayProvider } from "@/components/editor-layout/contexts/card-display";
+import {
+  CardDisplayProvider,
+  OMNI_COMPRESSED_LINES,
+} from "@/components/editor-layout/contexts/card-display";
 import { BadgeOrphaned, CARD_THEMES } from "@/components/panel-primitives";
 import {
   omniPinStore,
@@ -427,7 +430,7 @@ function OmniViewPanel({
   // stays put. New marker/card-jump interactions still replace cleanly.
   return (
     <OmniProvider value={{ side }}>
-    <CardDisplayProvider value={{ compressedLines: 2 }}>
+    <CardDisplayProvider value={{ compressedLines: OMNI_COMPRESSED_LINES }}>
     <div
       ref={rootRef}
       className="relative w-full"

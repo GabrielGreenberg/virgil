@@ -16,6 +16,10 @@ import {
   AiRequestCard,
   AiRequestsSectionHeader,
 } from "@/components/panel-primitives";
+import {
+  CardDisplayProvider,
+  DOCKED_COMPRESSED_LINES,
+} from "@/components/editor-layout/contexts/card-display";
 import { Panel } from "./Panel";
 import type { PanelKind } from "./types";
 
@@ -108,6 +112,10 @@ export function CardListPanel<T>({
   const showEmpty = items.length === 0 && !hasAiRequests && emptyState != null;
 
   return (
+    // Docked card panels DECLARE their compressed-line count (R8) rather than
+    // relying on the silent context default — keeps omni (2) / docked (1)
+    // symmetry explicit and test-pinned.
+    <CardDisplayProvider value={{ compressedLines: DOCKED_COMPRESSED_LINES }}>
     <Panel
       kind={kind}
       title={title}
@@ -141,5 +149,6 @@ export function CardListPanel<T>({
         </>
       )}
     </Panel>
+    </CardDisplayProvider>
   );
 }
