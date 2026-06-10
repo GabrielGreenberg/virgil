@@ -298,11 +298,14 @@ export function PanelColumn({
         flex: collapsed ? '0 0 0px' : `0 0 ${panelPref}px`,
         minWidth: collapsed ? 0 : (isResizing ? 0 : 'var(--panel-min)'),
         // Cap height at the editor column's scrollHeight (set on the row
-        // as `--row-bound-h` by EditorScrollbar). Unanchored cards can
-        // stack the column taller than the editor; without this cap the
-        // row's natural scroll bound would exceed the editor's bottom and
-        // produce a visible bounce/stutter against any JS clamp. `clip`
-        // (not `hidden`) avoids establishing a scroll container, so any
+        // as `--row-bound-h` by EditorScrollbar). A tall anchored cascade
+        // (or a card pinned/expanded near the doc bottom) can run the
+        // column past the editor's last line; without this cap the row's
+        // natural scroll bound would exceed the editor's bottom and produce
+        // a visible bounce/stutter against any JS clamp. (The unanchored
+        // bin is absolute/zero-flow as of A5, so it no longer contributes
+        // to this height — only the anchored region does.) `clip` (not
+        // `hidden`) avoids establishing a scroll container, so any
         // `position: sticky` descendants keep latching to the row scroll.
         maxHeight: 'var(--row-bound-h, none)',
         overflow: 'clip',

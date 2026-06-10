@@ -12,7 +12,11 @@ import {
 import type { CardKind, OmniItem, PanelKind } from "@/panels/_shared/types";
 import { parseAnyKey } from "@/floats/float-key";
 import { OmniProvider } from "@/components/editor-layout/contexts/omni";
-import { CardDisplayProvider } from "@/components/editor-layout/contexts/card-display";
+import {
+  CardDisplayProvider,
+  OMNI_COMPRESSED_LINES,
+} from "@/components/editor-layout/contexts/card-display";
+import { BadgeOrphaned, CARD_THEMES } from "@/components/panel-primitives";
 import {
   omniPinStore,
   usePinRequest,
@@ -244,6 +248,75 @@ export function OmniFilterMenu({
   );
 }
 
+/**
+ * The unanchored-card bin. Holds every card with no live text anchor —
+ * `free` (no link at all) + `orphaned` (link target gone) together (R7).
+ * Default-COLLAPSED to a compact count pill (Gabriel-ratified); clicking
+ * expands it into a bounded, self-scrolling list that grows DOWNWARD.
+ *
+ * Rendered `position: absolute; top:0` inside the cascade pod so it takes
+ * zero flow space — the key structural fix for the overwrite bug (the old
+ * flow <div> displaced podRect.top, desyncing every anchored card). It
+ * carries NO `data-omni-entry-wrapper`, so the cascade ResizeObserver in
+ * `useInTextPositions` never observes it and its expand/collapse never
+ * bumps `measureVersion` (keystroke/measure sanctity). Its z-index sits
+ * above the cards so the pill overlays any card anchored to the very
+ * first paragraph rather than hiding under it.
+ */
+export function OmniUnanchoredBin({
+  free,
+  orphaned,
+}: {
+  free: OmniItem[];
+  orphaned: OmniItem[];
+}) {
+  const [expanded, setExpanded] = useState(false);
+  const count = free.length + orphaned.length;
+  if (count === 0) return null;
+
+  return (
+    <div
+      style={{ position: "absolute", top: 0, left: 8, right: 8, zIndex: 20 }}
+      data-omni-unanchored-bin=""
+    >
+      <button
+        type="button"
+        onClick={() => setExpanded((e) => !e)}
+        className="w-full flex items-center gap-2 px-2 py-1 rounded text-[11px] font-medium text-ink-muted bg-surface border border-edge-subtle shadow-sm hover-on-light"
+        data-hint={expanded ? "Collapse unanchored cards" : "Show unanchored cards"}
+        aria-label={expanded ? "Collapse unanchored cards" : "Show unanchored cards"}
+        aria-expanded={expanded}
+      >
+        <span aria-hidden="true">
+          <BadgeOrphaned theme={CARD_THEMES.error} />
+        </span>
+        <span>
+          {count} unanchored
+        </span>
+        <span className="ml-auto text-ink-muted" aria-hidden="true">{expanded ? "▾" : "▸"}</span>
+      </button>
+      {expanded && (
+        <div
+          className="mt-1 space-y-2 overflow-y-auto rounded bg-surface/95 backdrop-blur-sm border border-edge-subtle p-2"
+          style={{ maxHeight: "var(--dock-slot-frame-h, 80vh)" }}
+        >
+          {orphaned.map((item) => (
+            <div key={item.id} className="flex items-start gap-2">
+              <span className="pt-1 shrink-0" data-omni-bin-orphan-marker="">
+                <BadgeOrphaned theme={CARD_THEMES.error} />
+              </span>
+              <div className="min-w-0 flex-1">{item.content}</div>
+            </div>
+          ))}
+          {free.map((item) => (
+            <div key={item.id}>{item.content}</div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function OmniViewPanel({
   side,
   items,
@@ -272,9 +345,10 @@ function OmniViewPanel({
     });
   }, [items, enabledCategories, hideAllCards]);
 
-  const { anchored, unanchored } = useMemo(() => {
+  const { anchored, free, orphaned } = useMemo(() => {
     const anchored: Array<OmniItem & { pos: number }> = [];
-    const unanchored: OmniItem[] = [];
+    const free: OmniItem[] = [];
+    const orphaned: OmniItem[] = [];
     for (const item of visibleItems) {
       if (item.pos == null) {
         // Builders that resolve paragraph UUIDs return pos:null while the
@@ -282,13 +356,18 @@ function OmniViewPanel({
         // bucket — drop until the editor is live, at which point pos:null
         // genuinely means "no anchor / orphaned paragraph".
         if (!editor) continue;
-        unanchored.push(item);
+        // Split the unanchored items into the two bin sections by the
+        // builder-declared anchorState. (`anchored` here is an extra guard:
+        // an anchored item should never carry pos:null, but if a builder
+        // ever regresses, treat it as orphaned rather than dropping it.)
+        if (item.anchorState === "free") free.push(item);
+        else orphaned.push(item);
       } else {
         anchored.push({ ...item, pos: item.pos });
       }
     }
     anchored.sort((a, b) => a.pos - b.pos);
-    return { anchored, unanchored };
+    return { anchored, free, orphaned };
   }, [visibleItems, editor]);
 
   const inTextItems = useMemo(
@@ -354,7 +433,7 @@ function OmniViewPanel({
   // stays put. New marker/card-jump interactions still replace cleanly.
   return (
     <OmniProvider value={{ side }}>
-    <CardDisplayProvider value={{ compressedLines: 2 }}>
+    <CardDisplayProvider value={{ compressedLines: OMNI_COMPRESSED_LINES }}>
     <div
       ref={rootRef}
       className="relative w-full"
@@ -371,28 +450,27 @@ function OmniViewPanel({
           No item types selected — use the filter menu at the bottom of the strip.
         </div>
       )}
-      {unanchored.length > 0 && (
-        <div className="px-2 pt-4 pb-2 space-y-2">
-          <div className="text-[10px] font-semibold uppercase tracking-wider text-ink-muted px-1 pb-1">
-            Unanchored
-          </div>
-          {unanchored.map((item) => (
-            <div key={item.id}>{item.content}</div>
-          ))}
-        </div>
-      )}
       {/* Anchored region: cards absolute-positioned at the pod's top,
           translated to their Y via `transform: translateY(...)`. Using
           `transform` (not `top`) means position changes are composite-
           only — pin clicks don't invalidate layout, so the cascade
           reflow paints in one frame even with many cards.
           The min-height matches the editor content height so the panel
-          column extends alongside the document. */}
+          column extends alongside the document.
+
+          The unanchored bin renders as the FIRST child here, but
+          `position: absolute` so it takes ZERO flow space — it does not
+          displace this pod's top the way the old flow <div> did (that
+          shifted podRect.top while coordsAtPos did not, desyncing every
+          anchored card; A5's structural fix). It also deliberately omits
+          `data-omni-entry-wrapper`, so the cascade ResizeObserver never
+          measures it and its expand/collapse never bumps measureVersion. */}
       <div
         ref={panelScrollRef}
         className="relative"
         style={{ minHeight: editorContentHeight || undefined }}
       >
+        <OmniUnanchoredBin free={free} orphaned={orphaned} />
         {anchored.map((item) => {
           const isPinned = pinRequest?.cardId === item.id;
           const top = positions.get(item.id);

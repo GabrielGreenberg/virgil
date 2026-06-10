@@ -36,10 +36,22 @@ export type { CardKind } from "@/cards/types";
 
 /** A single item to render inside the Omni view. */
 export interface OmniItem {
-  /** Globally unique within the omni list. Shape: `${cardKind}:${id}`. */
+  /** Globally unique within the omni list. Shape: `float:card:<kind>:<id>`
+   *  (built by `cardPopKey`/`popKey`); a multi-anchor card appends an
+   *  `@<index>` suffix per anchor. */
   id: string;
   /** Editor document position (null for unanchored items). */
   pos: number | null;
+  /** Where this item sits relative to the document:
+   *  - `"anchored"`  — has a link AND it resolved to a live doc position.
+   *  - `"free"`      — carries no link at all (no in-text marker / no
+   *                    linked paragraph); lives only in its sidecar.
+   *  - `"orphaned"`  — *intends* to anchor (has a link / in-text marker)
+   *                    but the target is missing from the doc, so `pos`
+   *                    came back null.
+   *  The omni view routes `free` + `orphaned` into the unanchored bin and
+   *  cascades only `anchored` items inline with the text. */
+  anchorState: "anchored" | "free" | "orphaned";
   /** Pre-rendered card. Must include `data-omni-entry={id}` on its
    *  outermost element so `useInTextPositions` can measure it. */
   content: ReactNode;

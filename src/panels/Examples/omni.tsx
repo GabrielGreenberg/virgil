@@ -21,9 +21,12 @@ export function buildExampleOmniItems(a: BuildArgs): OmniItem[] {
   for (const ex of a.examples) {
     const isSelected = a.selectedExampleId === ex.exampleId;
     const omniId = popKey("examples", ex.exampleId);
+    // An example is an in-text block: it either resolves to its block pos
+    // (anchored) or the block is gone (orphaned). Never "free".
     items.push({
       id: omniId,
       pos: ex.pos,
+      anchorState: ex.pos == null ? "orphaned" : "anchored",
       content: (
         <ExampleCard
           key={omniId}

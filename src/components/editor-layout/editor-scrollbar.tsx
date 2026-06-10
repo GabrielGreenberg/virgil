@@ -107,10 +107,12 @@ export function EditorScrollbar({
     const ec = editorColRef.current;
     if (!row || !ec) return;
     // Bound the row's natural scroll to the editor's effective end. Panel
-    // columns can be taller than the editor (unanchored cards stack above
-    // the anchored ones); without a bound the row's scrollHeight grows to
-    // the tallest column and the user can scroll past the editor's bottom
-    // into empty space. We enforce the bound at the layout level by
+    // columns can run taller than the editor (a tall anchored cascade, or
+    // a card pinned/expanded near the doc bottom — the A5 unanchored bin is
+    // absolute/zero-flow and no longer adds to column height); without a
+    // bound the row's scrollHeight grows to the tallest column and the user
+    // can scroll past the editor's bottom into empty space. We enforce the
+    // bound at the layout level by
     // capping panel-column heights to ec.scrollHeight via a CSS custom
     // property + `overflow: clip` (which clips visually but does NOT
     // establish a scroll container, so sticky descendants still latch to
