@@ -14,6 +14,7 @@ import { usePoppedCards } from "@/hooks/usePoppedCards";
 import { popKey } from "@/panels/panel-registry";
 import { useAnchoredCard } from "@/links/_shared/useAnchoredCard";
 import { cardStore } from "@/links/_shared/anchored-card-store";
+import { BorrowedMainText } from "@/components/BorrowedMainText";
 
 export interface ExampleCardProps {
   example: ExampleInfo;
@@ -168,10 +169,21 @@ export function ExampleCard({
             ({example.number || "?"})
           </span>
           <div className="min-w-0 flex-1">
-            {example.bodyText && (
-              <div className="leading-snug whitespace-pre-wrap break-words">
-                {example.bodyText}
-              </div>
+            {example.bodyContent ? (
+              // BorrowedMainText renders the body with real inline atoms
+              // (citation / \ref / inline math) instead of flattened text.
+              <BorrowedMainText
+                value={example.bodyContent}
+                instanceKey={`example-body:${example.exampleId}`}
+                variant="footnote"
+                className="leading-snug break-words"
+              />
+            ) : (
+              example.bodyText && (
+                <div className="leading-snug whitespace-pre-wrap break-words">
+                  {example.bodyText}
+                </div>
+              )
             )}
             {example.items.length > 0 && (
               <ol className="list-none m-0 p-0 mt-1 flex flex-col gap-0.5">
@@ -184,11 +196,20 @@ export function ExampleCard({
                       {it.subLabel || (idx + 1)}.
                     </span>
                     <div className="min-w-0 flex-1">
-                      <span className="leading-snug whitespace-pre-wrap break-words">
-                        {it.text || (
-                          <span className="italic text-ink-muted">empty</span>
-                        )}
-                      </span>
+                      {it.content ? (
+                        <BorrowedMainText
+                          value={it.content}
+                          instanceKey={`example-item:${example.exampleId}:${idx}`}
+                          variant="footnote"
+                          className="leading-snug break-words"
+                        />
+                      ) : (
+                        <span className="leading-snug whitespace-pre-wrap break-words">
+                          {it.text || (
+                            <span className="italic text-ink-muted">empty</span>
+                          )}
+                        </span>
+                      )}
                       {it.label && (
                         <span className="heading-annotation ml-2 align-middle">
                           ex.<span className="opacity-70">{"  ·  label: "}</span>
