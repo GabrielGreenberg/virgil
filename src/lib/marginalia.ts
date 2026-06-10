@@ -202,8 +202,20 @@ export interface GridCell {
 export interface PositionedMarker extends MarginaliaMarker {
   side: "left" | "right";
   cell: GridCell;
-  /** Whether this marker overflowed the grid and is clamped to the last row */
-  overflow: boolean;
+}
+
+/** One overflowing (node, side) grid (R16): the markers that didn't fit in
+ *  the node's line grid. The gutter renders a "+K" pill in the reserved
+ *  `cell` (the grid's last cell); clicking it opens a popover listing
+ *  `hidden` as ordinary marker buttons (click/delete/drag behave normally). */
+export interface MarkerOverflowGroup {
+  side: "left" | "right";
+  /** Reserved last grid cell where the "+K" pill renders. */
+  cell: GridCell;
+  /** TextObject UUID whose grid overflowed. */
+  textObjectId: string;
+  /** The markers that did not fit, in builder order. */
+  hidden: MarginaliaMarker[];
 }
 
 import * as React from "react";

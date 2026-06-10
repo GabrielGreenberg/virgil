@@ -3,10 +3,14 @@
  *
  * Every UUID-bearing text element generates an implicit grid in both margins:
  * - Rows = number of text lines in the element
- * - Columns = MARGINALIA_COLS (2) per side
+ * - Columns = MARGINALIA_COLS (2) per side (1 effective column on the left —
+ *   the inner-left slot is reserved for the paragraph popout button)
  *
- * Markers fill cells left-to-right, top-to-bottom. When the grid overflows
- * (more markers than cells), excess markers clamp to the last row.
+ * Markers fill cells left-to-right, top-to-bottom. When a node's grid
+ * overflows (more markers than cells), the LAST cell is reserved for a
+ * "+K" overflow pill (R16): the markers that don't fit are returned in an
+ * overflow group instead of being stacked/clamped, and the gutter renders
+ * a pill in the reserved cell whose popover lists them.
  *
  * This module is a pure function with no DOM access — all measurements come
  * from the useMarginalia hook via AnchorNodeMetrics.
@@ -21,9 +25,48 @@ import {
   MARGINALIA_ICON_SIZE,
   MARGINALIA_INNER_PAD,
   type AnchorNodeMetrics,
+  type GridCell,
   type MarginaliaMarker,
+  type MarkerOverflowGroup,
   type PositionedMarker,
 } from "./marginalia";
+
+export interface MarkerPositionsResult {
+  /** Markers that fit in their node's grid, with resolved pixel cells. */
+  positioned: PositionedMarker[];
+  /** One group per overflowing (node, side): the reserved last cell where
+   *  the "+K" pill renders, plus the hidden markers it stands in for. */
+  overflowGroups: MarkerOverflowGroup[];
+}
+
+/** Pixel coordinates for grid cell (row, col) of `node` on `side`. */
+function cellAt(
+  side: "left" | "right",
+  node: AnchorNodeMetrics,
+  row: number,
+  col: number,
+): GridCell {
+  // Pixel Y: center the icon vertically within the text line.
+  const y =
+    node.top + row * node.lineHeight + (node.lineHeight - MARGINALIA_ICON_SIZE) / 2;
+
+  // Pixel X: icons are inset from the text edge by MARGINALIA_INNER_PAD.
+  // Left gutter packs from right (text edge) toward left (outer edge).
+  // Right gutter packs from left (text edge) toward right (outer edge).
+  const iconsWidth =
+    MARGINALIA_COLS * MARGINALIA_ICON_SIZE +
+    (MARGINALIA_COLS - 1) * MARGINALIA_COL_GAP;
+  const x =
+    side === "left"
+      ? MARGINALIA_GUTTER_WIDTH -
+        MARGINALIA_INNER_PAD -
+        iconsWidth +
+        col * (MARGINALIA_ICON_SIZE + MARGINALIA_COL_GAP)
+      : MARGINALIA_INNER_PAD +
+        col * (MARGINALIA_ICON_SIZE + MARGINALIA_COL_GAP);
+
+  return { col, row, x, y };
+}
 
 /**
  * Compute final pixel positions for all margin markers using the
@@ -34,21 +77,28 @@ import {
  *                    or not-yet-measured blocks — those markers are
  *                    silently skipped, which is correct (off-screen
  *                    blocks don't render marginalia).
- * @param markers     Flat list of markers from EditorLayout
+ * @param markers     Flat list of markers from the gutter-marker builder
  * @param panelSides  Which side each panel is currently docked on
- * @returns Markers with resolved side, grid cell, and pixel coordinates
+ * @returns Positioned markers plus per-(node, side) overflow groups (R16)
  */
 export function computeMarkerPositions(
   getMetrics: (uuid: string) => AnchorNodeMetrics | null,
   markers: readonly MarginaliaMarker[],
   panelSides: Partial<Record<PanelId, "left" | "right" | null>>,
-): PositionedMarker[] {
-  if (markers.length === 0) return [];
+): MarkerPositionsResult {
+  if (markers.length === 0) return { positioned: [], overflowGroups: [] };
 
-  const result: PositionedMarker[] = [];
-  // Track how many markers have been placed per paragraph+side
-  const counters = new Map<string, number>();
-
+  // Pass 1 — resolve each marker's side + metrics and group per
+  // (textObjectId, side), preserving input order. Grouping first lets us
+  // know a grid's total occupancy before placing anything, which is what
+  // the reserved-last-cell rule needs.
+  interface NodeGroup {
+    side: "left" | "right";
+    node: AnchorNodeMetrics;
+    textObjectId: string;
+    items: MarginaliaMarker[];
+  }
+  const groups = new Map<string, NodeGroup>();
   for (const m of markers) {
     const node = getMetrics(m.textObjectId);
     if (!node) continue; // anchor TextObject not visible / not yet measured
@@ -59,53 +109,55 @@ export function computeMarkerPositions(
     const side: "left" | "right" = m.side ?? dockedSide ?? meta.defaultSide;
 
     const key = `${m.textObjectId}|${side}`;
-    const idx = counters.get(key) ?? 0;
-    counters.set(key, idx + 1);
-
-    // Grid placement: fill L→R within a row, T→B across rows.
-    // The inner-left slot (col=1 on the left) is reserved across all
-    // paragraphs and headings — it's the strip immediately next to the
-    // grab handle, kept clear for the paragraph popout button. So on
-    // the left side we use a single effective column (col=0, outer);
-    // markers beyond the first stack to additional rows. The right
-    // side keeps both columns.
-    const effectiveCols = side === "left" ? 1 : MARGINALIA_COLS;
-    let row = Math.floor(idx / effectiveCols);
-    let col = idx % effectiveCols;
-    let overflow = false;
-
-    // Overflow: clamp to last row if the grid is full
-    if (row >= node.lineCount) {
-      row = Math.max(0, node.lineCount - 1);
-      overflow = true;
+    let g = groups.get(key);
+    if (!g) {
+      g = { side, node, textObjectId: m.textObjectId, items: [] };
+      groups.set(key, g);
     }
-
-    // Pixel Y: center the icon vertically within the text line
-    const y =
-      node.top + row * node.lineHeight + (node.lineHeight - MARGINALIA_ICON_SIZE) / 2;
-
-    // Pixel X: icons are inset from the text edge by MARGINALIA_INNER_PAD.
-    // Left gutter packs from right (text edge) toward left (outer edge).
-    // Right gutter packs from left (text edge) toward right (outer edge).
-    const iconsWidth =
-      MARGINALIA_COLS * MARGINALIA_ICON_SIZE +
-      (MARGINALIA_COLS - 1) * MARGINALIA_COL_GAP;
-    const x =
-      side === "left"
-        ? MARGINALIA_GUTTER_WIDTH -
-          MARGINALIA_INNER_PAD -
-          iconsWidth +
-          col * (MARGINALIA_ICON_SIZE + MARGINALIA_COL_GAP)
-        : MARGINALIA_INNER_PAD +
-          col * (MARGINALIA_ICON_SIZE + MARGINALIA_COL_GAP);
-
-    result.push({
-      ...m,
-      side,
-      cell: { col, row, x, y },
-      overflow,
-    });
+    g.items.push(m);
   }
 
-  return result;
+  // Pass 2 — place each group's markers L→R, T→B. The inner-left slot
+  // (col=1 on the left) is reserved across all paragraphs and headings —
+  // it's the strip immediately next to the grab handle, kept clear for the
+  // paragraph popout button — so the left side uses a single effective
+  // column. The right side keeps both columns.
+  const positioned: PositionedMarker[] = [];
+  const overflowGroups: MarkerOverflowGroup[] = [];
+
+  for (const g of groups.values()) {
+    const effectiveCols = g.side === "left" ? 1 : MARGINALIA_COLS;
+    const capacity = Math.max(1, g.node.lineCount) * effectiveCols;
+    const overflowing = g.items.length > capacity;
+    // R16: when overflowing, reserve the LAST cell for the "+K" pill; only
+    // capacity-1 markers render and the rest ride the pill's popover.
+    const visibleCount = overflowing ? capacity - 1 : g.items.length;
+
+    for (let idx = 0; idx < visibleCount; idx++) {
+      const row = Math.floor(idx / effectiveCols);
+      const col = idx % effectiveCols;
+      positioned.push({
+        ...g.items[idx],
+        side: g.side,
+        cell: cellAt(g.side, g.node, row, col),
+      });
+    }
+
+    if (overflowing) {
+      const pillIdx = capacity - 1;
+      overflowGroups.push({
+        side: g.side,
+        textObjectId: g.textObjectId,
+        cell: cellAt(
+          g.side,
+          g.node,
+          Math.floor(pillIdx / effectiveCols),
+          pillIdx % effectiveCols,
+        ),
+        hidden: g.items.slice(visibleCount),
+      });
+    }
+  }
+
+  return { positioned, overflowGroups };
 }
