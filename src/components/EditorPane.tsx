@@ -1514,8 +1514,10 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
   // and dispatch into the SAME live `virgil-linked-anchor-click` bridge the
   // in-text anchor clicks ride (EditorLayout routes it through `openForCard`
   // omni-first + pins the card at the click Y — no document jump). The
-  // select happens locally FIRST so the Library Reader, which mounts no
-  // bridge, still gets the three-surface selection halo. Stable callback:
+  // select happens locally FIRST so the halo is synchronous with the click;
+  // the dispatch is then handled by the window-level bridge, which
+  // EditorLayout mounts unconditionally (the Library Reader renders inside
+  // EditorLayout too, so reader clicks ride the same bridge). Stable callback:
   // reads the cardStore at click time, so the marker memo below doesn't
   // depend on selection state (a selection change re-renders no markers).
   const handleGutterMarkerClick = useCallback(
@@ -1550,8 +1552,10 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
       setSelectedErrorId(next);
       // Mirror the post-toggle state to the shell: EditorLayout syncs its
       // own error selection (text highlight + vbar popover) and, on select,
-      // opens the errors panel on its docked side. Reader mounts no bridge
-      // — the local toggle above is the whole behavior there.
+      // opens the errors panel on its docked side. The bridge is window-level
+      // and mounted unconditionally by EditorLayout (the Reader renders
+      // inside it too); in the Reader this event is currently unreachable —
+      // compileErrors is never populated there.
       window.dispatchEvent(
         new CustomEvent("virgil-error-marker-click", {
           detail: { errorId, selected: next != null, clickY },

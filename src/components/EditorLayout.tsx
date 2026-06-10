@@ -1433,6 +1433,7 @@ export default function EditorLayout() {
       if (
         t.closest("[data-card-key]") ||
         t.closest("[data-marginalia-marker]") ||
+        t.closest("[data-marginalia-overflow]") ||
         t.closest(".linked-anchor") ||
         t.closest(".footnote-marker") ||
         t.closest('[data-type="citation"]')
