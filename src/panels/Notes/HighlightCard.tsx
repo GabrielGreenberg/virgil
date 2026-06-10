@@ -4,6 +4,7 @@ import { useRef } from "react";
 import type { HighlightCard as HighlightCardData } from "@/lib/types";
 import {
   AiRequestCheckbox,
+  CardEmptyText,
   PanelCard,
   compressedBodyStyle,
 } from "@/components/panel-primitives";
@@ -137,9 +138,7 @@ export function HighlightCard({
       {compressed ? (
         <div className="px-3 pt-1.5 pb-1.5 text-sm">
           <div style={{ ...snippetFontStyle, ...compressedBodyStyle(compressedLines) }}>
-            {compressedSnippet || (
-              <span className="text-ink-faint italic">empty highlight</span>
-            )}
+            {compressedSnippet || <CardEmptyText label="empty highlight" />}
           </div>
         </div>
       ) : (
@@ -150,7 +149,7 @@ export function HighlightCard({
               style={{ ...snippetFontStyle, padding: "4px 6px" }}
             >
               {trimmedAnchor || (
-                <span className="text-ink-faint italic">empty highlight</span>
+                <CardEmptyText label="empty highlight" />
               )}
             </div>
           </div>

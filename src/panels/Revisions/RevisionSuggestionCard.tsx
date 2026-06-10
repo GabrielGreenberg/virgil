@@ -4,6 +4,7 @@ import { useRef, useState } from "react";
 import type { RevisionSuggestionCard as RevisionSuggestionCardData } from "@/lib/types";
 import {
   Button,
+  CardEmptyText,
   Chevron,
   PanelCard,
   compressedBodyStyle,
@@ -312,7 +313,7 @@ export function RevisionSuggestionCard({
             ) : card.original_text ? (
               <span className="text-ink-subtle">→ <span className="text-red-700/70 italic">{card.original_text.replace(/\s+/g, " ").trim()}</span></span>
             ) : (
-              <span className="text-ink-faint italic">empty suggestion</span>
+              <CardEmptyText label="empty suggestion" />
             )}
           </div>
         </div>

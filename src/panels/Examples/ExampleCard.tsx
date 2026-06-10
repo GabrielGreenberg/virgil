@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import type { ExampleInfo } from "@/components/Editor";
 import {
+  CardEmptyText,
   PanelCard,
   compressedBodyStyle,
 } from "@/components/panel-primitives";
@@ -150,7 +151,7 @@ export function ExampleCard({
               const text = example.bodyText || example.items[0]?.text || "";
               const trimmed = text.replace(/\s+/g, " ").trim();
               if (trimmed) return trimmed;
-              return <span className="italic text-ink-muted">empty</span>;
+              return <CardEmptyText />;
             })()}
           </div>
         </div>
@@ -205,9 +206,7 @@ export function ExampleCard({
                         />
                       ) : (
                         <span className="leading-snug whitespace-pre-wrap break-words">
-                          {it.text || (
-                            <span className="italic text-ink-muted">empty</span>
-                          )}
+                          {it.text || <CardEmptyText />}
                         </span>
                       )}
                       {it.label && (
@@ -230,7 +229,7 @@ export function ExampleCard({
               </div>
             )}
             {!example.bodyText && example.items.length === 0 && (
-              <span className="italic text-ink-muted">Empty example</span>
+              <CardEmptyText label="Empty example" />
             )}
           </div>
         </div>

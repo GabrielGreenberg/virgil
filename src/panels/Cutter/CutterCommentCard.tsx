@@ -5,6 +5,7 @@ import type { Editor } from "@tiptap/react";
 import type { CutterCommentCard as CutterCommentCardData } from "@/lib/types";
 import {
   AiRequestCheckbox,
+  CardEmptyText,
   PanelCard,
   compressedBodyStyle,
 } from "@/components/panel-primitives";
@@ -169,7 +170,7 @@ export function CutterCommentCard({
             ) : card.text ? (
               <span className="text-ink-subtle">{card.text.replace(/\s+/g, " ").trim()}</span>
             ) : (
-              <span className="text-ink-faint italic">empty comment</span>
+              <CardEmptyText label="empty comment" />
             )}
           </div>
         </div>
