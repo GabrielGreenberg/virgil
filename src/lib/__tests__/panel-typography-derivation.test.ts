@@ -2,6 +2,9 @@ import { describe, it, expect } from "vitest";
 import {
   DEFAULT_PANEL_TYPOGRAPHY,
   BODY_CLASS_TYPOGRAPHY,
+  FONT_STACKS,
+  PANEL_BODY_FONT_OPTIONS,
+  resolveFontStack,
   type PanelBodyKey,
 } from "@/lib/panel-typography";
 import { CARD_REGISTRY } from "@/cards/card-registry";
@@ -75,5 +78,82 @@ describe("DEFAULT_PANEL_TYPOGRAPHY is derived from CardMeta.bodyClass", () => {
     for (const [a, b] of pairs) {
       expect(CARD_REGISTRY[a].bodyClass).toBe(CARD_REGISTRY[b].bodyClass);
     }
+  });
+});
+
+/**
+ * Bare family names must never ship as inline font-family: next/font loads
+ * the real faces only behind CSS vars (--font-sans / --font-serif /
+ * --font-mono + the --font-*-override prefs), so a bare `Inter` silently
+ * falls back to the UA default (Times New Roman). `resolveFontStack` is the
+ * TOTAL name → real-stack resolver `usePanelBodyStyle` routes through.
+ */
+describe("resolveFontStack: bare family names never ship", () => {
+  const GENERIC_TAIL = /,\s*(serif|sans-serif|monospace)$/;
+
+  it("every BODY_CLASS_TYPOGRAPHY family resolves to a stack ending in a generic family", () => {
+    for (const tier of Object.values(BODY_CLASS_TYPOGRAPHY)) {
+      const stack = resolveFontStack(tier.fontFamily);
+      expect(stack).not.toBe(tier.fontFamily); // not a bare name
+      expect(stack).toMatch(GENERIC_TAIL);
+    }
+  });
+
+  it("the two registry defaults get the override-first var stacks", () => {
+    expect(resolveFontStack("Inter")).toBe(
+      "var(--font-sans-override, var(--font-sans)), Inter, system-ui, sans-serif",
+    );
+    expect(resolveFontStack("Source Serif 4")).toBe(
+      'var(--font-serif-override, var(--font-serif)), "Source Serif 4", Georgia, serif',
+    );
+  });
+
+  it("every picker-pool name resolves without a bare dead-end", () => {
+    for (const name of PANEL_BODY_FONT_OPTIONS) {
+      const stack = resolveFontStack(name);
+      // Never a single bare token — always a real stack with a generic tail.
+      expect(stack).not.toBe(name);
+      expect(stack).not.toBe(`"${name}"`);
+      expect(stack).toMatch(GENERIC_TAIL);
+      // Every pool name is curated, not heuristic-fallback territory.
+      expect(FONT_STACKS[name]).toBeDefined();
+    }
+  });
+
+  it("explicit picks of Google-pool-loaded fonts keep the literal FIRST (not hijacked by override vars)", () => {
+    const poolLoaded = [
+      "Libre Baskerville",
+      "Lora",
+      "Merriweather",
+      "EB Garamond",
+      "Crimson Text",
+      "Open Sans",
+      "Lato",
+      "Roboto",
+      "IBM Plex Sans",
+      "Source Sans 3",
+    ];
+    for (const name of poolLoaded) {
+      const stack = resolveFontStack(name);
+      const first = stack.split(",")[0].trim().replace(/^"|"$/g, "");
+      expect(first).toBe(name);
+      expect(stack).not.toContain("var(");
+    }
+  });
+
+  it("Playfair Display (next/font, not in the pool link) routes through --font-display to something real", () => {
+    const stack = resolveFontStack("Playfair Display");
+    expect(stack.split(",")[0].trim()).toBe('"Playfair Display"');
+    expect(stack).toContain("var(--font-display)");
+    expect(stack).toMatch(GENERIC_TAIL);
+  });
+
+  it("unknown names hit the total fallback with a heuristic generic", () => {
+    expect(resolveFontStack("Comic Neue")).toBe('"Comic Neue", sans-serif');
+    expect(resolveFontStack("Helvetica")).toBe("Helvetica, sans-serif");
+    expect(resolveFontStack("Adobe Garamond Pro")).toBe('"Adobe Garamond Pro", serif');
+    expect(resolveFontStack("PT Serif")).toBe('"PT Serif", serif');
+    expect(resolveFontStack("Fira Code")).toBe('"Fira Code", monospace');
+    expect(resolveFontStack("JetBrains Mono")).toBe('"JetBrains Mono", monospace');
   });
 });
