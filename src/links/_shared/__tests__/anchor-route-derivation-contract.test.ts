@@ -10,8 +10,8 @@ import { ANCHOR_CLICK_ROUTES } from "@/components/editor-layout/event-bridges/ma
  *    canonical `data-card-key`).
  *
  * This pins the derived output to the exact pre-A2 literals so the derivation
- * can't silently drift. (The sibling `entityKindToAnchorKind` half was deleted
- * in A10 Commit G — the function had no remaining consumers.)
+ * can't silently drift. (The sibling entity-kind→anchor-kind half was deleted
+ * in A10 Commit G — that mapper had no remaining consumers.)
  */
 
 // The exact literals the hand-kept ANCHOR_CLICK_ROUTES table held pre-A2

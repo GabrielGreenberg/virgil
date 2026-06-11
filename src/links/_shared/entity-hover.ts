@@ -125,5 +125,6 @@ export function entityToAnchorId(
   return entity ? getTextAnchor(entity)?.anchorId ?? null : null;
 }
 
-// (entityKindToAnchorKind lived here until A10 Commit G: it had no remaining
-// consumers — anchor-tint theming reads MARKER_KIND_TO_THEME_KEY directly.)
+// (The entity-kind → anchor-kind mapper lived here until A10 Commit G: it had
+// no remaining consumers — anchor-tint theming reads MARKER_KIND_TO_THEME_KEY
+// directly.)
