@@ -47,6 +47,65 @@ export const BODY_CLASS_TYPOGRAPHY: Record<"borrowed" | "sans", PanelTypography>
   sans:     { fontFamily: "Inter",          fontSize: 12, color: "#44403c" },
 };
 
+/** Real, loaded font stacks for the family names this registry (and the
+ *  per-panel font picker) traffics in.
+ *
+ *  Bare family names must NEVER ship as inline `font-family`: next/font loads
+ *  the actual faces only behind CSS variables (`--font-sans` / `--font-serif`
+ *  / `--font-mono`, plus the user-pref `--font-*-override` vars), so a bare
+ *  name like `Inter` or `Source Serif 4` matches no installed face and the
+ *  browser silently falls back to the UA default (Times New Roman).
+ *
+ *  Two entry shapes:
+ *  - The registry defaults (`Inter`, `Source Serif 4`) resolve VAR-FIRST so
+ *    they track the document's effective sans/serif faces (including user
+ *    override prefs).
+ *  - Explicit picker picks of Google-pool-loaded fonts put the quoted literal
+ *    FIRST so an explicit choice is honored, not hijacked by override vars,
+ *    with a real generic fallback after.
+ */
+export const FONT_STACKS: Record<string, string> = {
+  // Registry defaults — var-first (track the doc's effective faces).
+  "Inter":           "var(--font-sans-override, var(--font-sans)), Inter, system-ui, sans-serif",
+  "Source Serif 4":  'var(--font-serif-override, var(--font-serif)), "Source Serif 4", Georgia, serif',
+  // Not in the Google-fonts pool <link> — route to something real.
+  "Playfair Display": '"Playfair Display", var(--font-serif-override, var(--font-serif)), Georgia, serif',
+  // Loaded by the Google-fonts pool — literal first, generic fallback after.
+  "Libre Baskerville": '"Libre Baskerville", Georgia, serif',
+  "Lora":              "Lora, Georgia, serif",
+  "Merriweather":      "Merriweather, Georgia, serif",
+  "EB Garamond":       '"EB Garamond", Georgia, serif',
+  "Crimson Text":      '"Crimson Text", Georgia, serif',
+  "Open Sans":         '"Open Sans", system-ui, sans-serif',
+  "Lato":              "Lato, system-ui, sans-serif",
+  "Roboto":            "Roboto, system-ui, sans-serif",
+  "IBM Plex Sans":     '"IBM Plex Sans", system-ui, sans-serif',
+  "Source Sans 3":     '"Source Sans 3", system-ui, sans-serif',
+  // Locally available faces — quoted literal + generic fallback.
+  "Georgia":           "Georgia, serif",
+  "system-ui":         "system-ui, sans-serif",
+  "Helvetica Neue":    '"Helvetica Neue", system-ui, sans-serif',
+};
+
+/** Quote space-containing family names (browsers drop unquoted multi-word
+ *  values set programmatically via inline style). */
+function quoteFamily(name: string): string {
+  return /\s/.test(name) && !/^["']/.test(name) ? `"${name}"` : name;
+}
+
+/** Total resolver: family name → a real font stack. Known names get their
+ *  curated `FONT_STACKS` entry; unknown names get the quoted literal plus a
+ *  heuristic generic fallback so nothing ever dead-ends in the UA default. */
+export function resolveFontStack(name: string): string {
+  const known = FONT_STACKS[name];
+  if (known) return known;
+  const lower = name.toLowerCase();
+  let generic = "sans-serif";
+  if (/serif|garamond|playfair|lora|crimson/.test(lower)) generic = "serif";
+  if (/mono|code/.test(lower)) generic = "monospace";
+  return `${quoteFamily(name)}, ${generic}`;
+}
+
 /** The card kind whose `bodyClass` defines each panel-body row. The single
  *  representative kind per panel (the panel's primary content kind); morph
  *  pairs share a `bodyClass`, so either sibling would yield the same row. A
