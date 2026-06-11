@@ -51,3 +51,29 @@ jobs:
         run: node tools/check-coherence.mjs
         # - name: Check doc-graph coherence (strict)
         #   run: node tools/check-coherence.mjs --strict   # post-Phase-0 hardening
+
+  # Type + unit-test gate (A10 Commit A). A separate parallel job so a
+  # doc-graph failure can't mask a type failure (and vice versa) — each
+  # surfaces independently in the check list. This is what arms the
+  # type-level pins (registry facet types, contract tests) added by the
+  # card-system refactor: tsc + vitest now gate every push to main.
+  typecheck:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Set up Node
+        uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Unit tests
+        run: npx vitest run
