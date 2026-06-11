@@ -308,7 +308,8 @@ export function useCutter(
       if (card) {
         void bridgeCardAiRequestFlag(
           docId,
-          { panel: "cutter", cardId: id },
+          "cutter-comment",
+          id,
           value,
           {
             text: card.text || "<cutter comment>",

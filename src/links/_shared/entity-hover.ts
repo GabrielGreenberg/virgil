@@ -21,7 +21,6 @@ import type { Link } from "./types";
 import { getTextAnchor } from "../links";
 import { buildFloatKey } from "@/floats/float-key";
 import { CARD_KINDS, cardKindFromRecord, isAnchoredCardKind } from "@/cards/predicates";
-import { CARD_REGISTRY } from "@/cards/card-registry";
 import type { CardKind } from "@/cards/types";
 import type { EntityCollectionSlots } from "@/cards/entity-collections";
 
@@ -126,35 +125,6 @@ export function entityToAnchorId(
   return entity ? getTextAnchor(entity)?.anchorId ?? null : null;
 }
 
-/** Map an EntityKind to the marker-namespace key used downstream for color
- *  theming (MARKER_META, MARKER_KIND_TO_THEME_KEY).
- *
- *  Derived from `CARD_REGISTRY[kind].markerType` with two carve-outs:
- *   - **R-B cutter split:** cutter-comment/cutter-suggestion return their KIND
- *     (not the shared `markerType: "cut"`) so each suggestion-vs-comment pair
- *     can carry its own anchor tint; revisions collapse to the shared
- *     `markerType: "revision"` for both kinds.
- *   - **highlight:** has `markerType: null` (a tint, no gutter icon), but the
- *     anchor color is keyed `"highlight"`, so it's special-cased.
- *
- *  Every other markerType (archive / todo / report / error) is not a valid
- *  anchor-tint token here → null. A pin-test asserts this derivation ≡ the old
- *  literal switch. */
-export function entityKindToAnchorKind(
-  ref: EntityRef | null,
-): "note" | "highlight" | "revision" | "cutter-comment" | "cutter-suggestion" | null {
-  if (!ref) return null;
-  // R-B carve-out: the cutter pair keeps its split (each carries its own tint),
-  // not the shared "cut" markerType.
-  if (ref.kind === "cutter-comment" || ref.kind === "cutter-suggestion") {
-    return ref.kind;
-  }
-  // highlight is a tint (markerType null) but the anchor color is keyed
-  // "highlight" — special-cased.
-  if (ref.kind === "highlight") return "highlight";
-  const marker = CARD_REGISTRY[ref.kind].markerType;
-  // Only "note" and "revision" are valid anchor-tint tokens after the carve-outs
-  // above; revision-comment + revision-suggestion both collapse to "revision".
-  if (marker === "note" || marker === "revision") return marker;
-  return null;
-}
+// (The entity-kind → anchor-kind mapper lived here until A10 Commit G: it had
+// no remaining consumers — anchor-tint theming reads panelThemeKeyForMarkerType
+// / MARKER_META directly.)

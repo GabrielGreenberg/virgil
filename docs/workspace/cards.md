@@ -113,7 +113,7 @@ Three panels host **two** `CardKind`s each (registered `card: null`, resolved vi
 
 `getPanelByCardKind(kind)` resolves a kind to its panel — scanning
 `PANEL_REGISTRY[*].card.kind` first, then `POLYMORPHIC_CARD_PANEL`. **Revisions
-is *not* registered polymorphic** (its `card` is the single `comment` entry) but
+is *not* registered polymorphic** (its `card` is the single `revision-comment` entry) but
 it nonetheless hosts `revision-suggestion`, which `POLYMORPHIC_CARD_PANEL` maps
 back to `revisions`.
 
@@ -123,9 +123,9 @@ Two kinds have **no hosting panel** (`getPanelByCardKind` → `null`):
 
 - **`suggestion`** — the *generic* "respond with a doc edit" kind. On disk it
   always lives as `cutter-suggestion` / `revision-suggestion`; the bare
-  `suggestion` is the **bridge's** Task kind (`PANEL_TO_KIND` maps both `cutter`
-  and `revisions` → `suggestion`). It exists so the keying/labeling tables are
-  total, but it never names a panel.
+  `suggestion` is the **bridge's** Task kind (the registry's `aiRequest` routing
+  declares both `cutter-comment` and `revision-comment` → `suggestion`). It
+  exists so the keying/labeling tables are total, but it never names a panel.
 - **`ai`** — the **Task**, cross-cutting by design. AI requests surface in *every*
   panel's inbox, so they have no parent panel; the Inbox is their surfacing
   surface. See [the Task Card](#the-task-card-ai).

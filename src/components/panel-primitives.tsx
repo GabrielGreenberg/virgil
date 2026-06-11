@@ -29,7 +29,7 @@ import { useTabIndent } from "@/hooks/useTabIndent";
 import { autoSizeInput } from "@/lib/autoSizeInput";
 import ConfirmDialog from "./ConfirmDialog";
 import { hasJsonContent } from "@/cards/has-content";
-import { isPoppable } from "@/cards/predicates";
+import { isPoppable, hasCollabClaims, collabClaimScope } from "@/cards/predicates";
 import { CARD_REGISTRY } from "@/cards/card-registry";
 import RichTextField from "./RichTextField";
 import { BorrowedMainText } from "./BorrowedMainText";
@@ -44,7 +44,7 @@ import type { CardKind } from "@/panels/_shared/types";
 import { useInOmni } from "./editor-layout/contexts/omni";
 import { useCompressedLines } from "./editor-layout/contexts/card-display";
 import { usePanelBodyStyle } from "@/hooks/usePanelTypography";
-import { themeFromAccent, DEFAULT_PANEL_COLORS, type CardTheme } from "@/lib/panel-theme";
+import { themeFromAccent, DEFAULT_PANEL_COLORS, type CardTheme, type PanelThemeKey } from "@/lib/panel-theme";
 import { useCardClaim, useCollabContext } from "@/hooks/useCollab";
 import CollabClaimPill from "./CollabClaimPill";
 import CollabPresenceDots from "./CollabPresenceDots";
@@ -56,7 +56,8 @@ import { omniPinStore } from "./editor-layout/omni-pin-store";
  *  their own focus/blur to the same claim without prop-drilling.
  */
 export interface CardClaimSlot {
-  panelKind: string | undefined;
+  /** Registry-derived collab claim scope (`collabClaimScope(kind)`, R28/D-2). */
+  panelKind: PanelThemeKey | undefined;
   cardId: string | undefined;
   /** True when the partner has this card claimed. Title inputs go
    *  read-only / pointer-events:none when set. */
@@ -68,40 +69,72 @@ function useCardClaimSlot(): CardClaimSlot | null {
 }
 
 /**
- * The card-domain trailing node for a popped-out card's `FloatChrome` slot.
- * Built by each card's `toFloatable` factory and handed to `FloatChrome` as
- * `chromeSlots.trailing`; since it's a React element (not a hook call in the
- * factory), React runs its hooks when FloatChrome renders it. Hosts its own
- * `CardClaimContext.Provider` so the collab claim survives the relocated mount
- * (FloatChrome stays domain-neutral and renders it blindly).
+ * The ONE collab claim-pill / presence-dots trailing (R28/D-2). This
+ * pill-or-dots core used to be authored three times — the float chrome
+ * trailing, `EditableCard`'s docked trailing, and `CutterCommentCard`'s
+ * hand-rolled copy — each with its own scope literal. Now the scope derives
+ * from the registry (`collabClaimScope(kind)`), gated on the `collabClaims`
+ * facet: a non-claim-bearing kind renders nothing.
  *
- * Renders the per-card slot first (status dot / checkbox), then the collab
- * claim pill / presence dots — mirroring `EditableCard`'s docked trailing.
+ * Morph note (deliberate non-fix): when a card morphs (e.g. report ↔
+ * report-request, comment ↔ suggestion), there is NO claim remap. The scope
+ * re-derives per render from the *current* kind — claim-bearing morph pairs
+ * share a scope (pinned by `collab-claim-scope-contract.test.ts`), and a
+ * morph into a non-claim kind simply stops rendering the pill; any stale
+ * partner claim ages out via the existing heartbeat sweep.
+ */
+export function CollabCardTrailing({
+  kind,
+  cardId,
+}: {
+  kind: CardKind;
+  cardId: string;
+}) {
+  const scope = hasCollabClaims(kind) ? collabClaimScope(kind) : undefined;
+  const { partnerClaim } = useCardClaim(scope, cardId);
+  const collabCtx = useCollabContext();
+  const partnerSelections = scope
+    ? collabCtx.getCardSelections(scope, cardId)
+    : [];
+  if (!scope) return null;
+  return partnerClaim ? (
+    <CollabClaimPill holder={partnerClaim.holder} color={partnerClaim.color} />
+  ) : (
+    <CollabPresenceDots presences={partnerSelections} />
+  );
+}
+
+/**
+ * The card-domain trailing node for a popped-out card's `FloatChrome` slot.
+ * Built by the `cardFloatable` shell (`src/cards/floats/index.tsx`) for every
+ * claim-bearing kind and handed to `FloatChrome` as `chromeSlots.trailing`;
+ * since it's a React element (not a hook call in the factory), React runs its
+ * hooks when FloatChrome renders it. Hosts its own `CardClaimContext.Provider`
+ * so the collab claim survives the relocated mount (FloatChrome stays
+ * domain-neutral and renders it blindly).
+ *
+ * Kind-driven (R28/D-2): the claim scope derives from the registry via
+ * `collabClaimScope(kind)`, gated on `collabClaims` — no per-site literals.
+ * Renders the per-card slot first (status dot / checkbox), then the shared
+ * `CollabCardTrailing` — mirroring `EditableCard`'s docked trailing.
  */
 export function CardChromeTrailing({
-  panelKey,
+  kind,
   cardId,
   headerTrailing,
 }: {
-  panelKey?: string;
+  kind: CardKind;
   cardId: string;
   headerTrailing?: ReactNode;
 }) {
-  const { partnerClaim } = useCardClaim(panelKey, cardId);
-  const collabCtx = useCollabContext();
-  const partnerSelections = panelKey
-    ? collabCtx.getCardSelections(panelKey, cardId)
-    : [];
+  const scope = hasCollabClaims(kind) ? collabClaimScope(kind) : undefined;
+  const { partnerClaim } = useCardClaim(scope, cardId);
   return (
     <CardClaimContext.Provider
-      value={{ panelKind: panelKey, cardId, partnerClaimed: !!partnerClaim }}
+      value={{ panelKind: scope, cardId, partnerClaimed: !!partnerClaim }}
     >
       {headerTrailing}
-      {partnerClaim ? (
-        <CollabClaimPill holder={partnerClaim.holder} color={partnerClaim.color} />
-      ) : (
-        <CollabPresenceDots presences={partnerSelections} />
-      )}
+      <CollabCardTrailing kind={kind} cardId={cardId} />
     </CardClaimContext.Provider>
   );
 }
@@ -208,40 +241,31 @@ export function themedCardStyle(
   };
 }
 
-/** Pre-built themes for existing card types. Each theme is fully derived
- *  from one accent hex via `themeFromAccent`. User color overrides simply
+/** Pre-built themes for existing card types — one per `PanelThemeKey`, each
+ *  fully derived from its `DEFAULT_PANEL_COLORS` accent hex via
+ *  `themeFromAccent`. The two keyspaces are IDENTICAL post-A10/B (the legacy
+ *  `comment` alias for the revision identity is gone), so the whole table is
+ *  a mechanical fold over the color registry. User color overrides simply
  *  replace the accent and re-derive the rest — no more shadow `override`
- *  field. */
-export const CARD_THEMES = {
-  footnote:  themeFromAccent(DEFAULT_PANEL_COLORS.footnote),
-  note:      themeFromAccent(DEFAULT_PANEL_COLORS.note),
-  // Notes panel hosts highlights alongside notes; the highlight kind gets
-  // its own amber accent so the cards and the tint on the anchored text
-  // read as a distinct visual identity.
-  highlight: themeFromAccent(DEFAULT_PANEL_COLORS.highlight),
-  archive:   themeFromAccent(DEFAULT_PANEL_COLORS.archive),
-  todo:      themeFromAccent(DEFAULT_PANEL_COLORS.todo),
-  bib:       themeFromAccent(DEFAULT_PANEL_COLORS.bib),
-  citation:  themeFromAccent(DEFAULT_PANEL_COLORS.citation),
-  // Comments are revisions are the same thing — a single accent-purple
-  // identity. CARD_THEMES.comment exists for legacy code paths that
-  // referenced `comment`; the visual is the revision theme.
-  comment:   themeFromAccent(DEFAULT_PANEL_COLORS.revision),
-  // System-level kinds (not user-customizable): their accents now live in
-  // DEFAULT_PANEL_COLORS like every other kind, but SYSTEM_THEME_KEYS marks
-  // them non-overridable so a user-color override on (e.g.) the footnote panel
-  // can NOT re-tint error / AI-request cards. One accent → one palette, no
-  // string-literal exception. (The literal-Tailwind body restyle is A9's.)
-  aiRequest: themeFromAccent(DEFAULT_PANEL_COLORS.aiRequest),  // sky
-  error:     themeFromAccent(DEFAULT_PANEL_COLORS.error),      // rust
-  // Cutter panel hosts both comments and suggestions; both kinds share
-  // the panel's cut accent so the panel reads as a single themed surface.
-  cut:              themeFromAccent(DEFAULT_PANEL_COLORS.cut),
-  example:          themeFromAccent(DEFAULT_PANEL_COLORS.example),
-  // Reports panel hosts both reports and report-requests; both share the
-  // panel's report accent so the surface reads as one themed identity.
-  report:           themeFromAccent(DEFAULT_PANEL_COLORS.report),
-} satisfies Record<string, CardTheme>;
+ *  field.
+ *
+ *  Shared identities worth knowing (one theme, several card kinds):
+ *  - `revision` colors both revision kinds (comments ≡ revisions, one
+ *    accent-purple identity);
+ *  - `cut` colors both Cutter kinds; `report` colors report +
+ *    report-request — each polymorphic panel reads as a single themed
+ *    surface;
+ *  - `highlight` is distinct from `note` so highlights read as their own
+ *    amber identity inside the Notes panel;
+ *  - `aiRequest` (sky) / `error` (rust) are system accents:
+ *    `SYSTEM_THEME_KEYS` marks them non-overridable, so a user-color
+ *    override on (e.g.) the footnote panel can NOT re-tint them. */
+export const CARD_THEMES: Record<PanelThemeKey, CardTheme> = Object.fromEntries(
+  (Object.keys(DEFAULT_PANEL_COLORS) as PanelThemeKey[]).map((key) => [
+    key,
+    themeFromAccent(DEFAULT_PANEL_COLORS[key]),
+  ]),
+) as Record<PanelThemeKey, CardTheme>;
 
 /* ── Shared badge classes ────────────────────────────────────────── */
 
@@ -694,7 +718,9 @@ export interface EditableCardProps {
   // ── RichTextField props ──
   value: unknown;
   variant?: "footnote" | "note";
-  /** Panel kind — drives per-panel body typography overrides. */
+  /** Panel kind — drives per-panel body typography overrides ONLY. The
+   *  collab claim scope is registry-derived from `kind` (R28/D-2), so this
+   *  carries no collab duty. */
   panelKey?: import("@/lib/panel-typography").PanelBodyKey;
   /** Card kind for chrome-driven read-only mode. When set and the
    *  current chrome's `editableCardKinds` whitelist excludes this kind,
@@ -830,14 +856,11 @@ export function EditableCard({
 
   // Collab focus claim: when the partner has this card focused, dim it
   // and surface a "Sam · 12s" pill in the header. When we focus, write
-  // our own claim; on blur, release.
-  const { partnerClaim, claim: claimCard, release: releaseClaim } = useCardClaim(panelKey, id);
-  // Soft presence: which partners have this card selected (informational
-  // dot in the chrome, no locking).
-  const collabCtx = useCollabContext();
-  const partnerSelections = panelKey
-    ? collabCtx.getCardSelections(panelKey, id)
-    : [];
+  // our own claim; on blur, release. The claim scope is REGISTRY-DERIVED
+  // from the required `kind` prop (R28/D-2) and gated on the `collabClaims`
+  // facet — `panelKey` is typography-only and carries no collab duty.
+  const collabScope = hasCollabClaims(kind) ? collabClaimScope(kind) : undefined;
+  const { partnerClaim, claim: claimCard, release: releaseClaim } = useCardClaim(collabScope, id);
 
   /** Check whether the value has any visible text content. Delegates to
    *  the shared `hasJsonContent` helper so the same predicate drives both
@@ -903,11 +926,7 @@ export function EditableCard({
   const trailing = (
     <>
       {headerTrailing}
-      {partnerClaim ? (
-        <CollabClaimPill holder={partnerClaim.holder} color={partnerClaim.color} />
-      ) : (
-        <CollabPresenceDots presences={partnerSelections} />
-      )}
+      <CollabCardTrailing kind={kind} cardId={id} />
       {showHeaderMenu && (
         <div
           draggable={false}
@@ -923,7 +942,7 @@ export function EditableCard({
 
   return (
     <CardClaimContext.Provider
-      value={{ panelKind: panelKey, cardId: id, partnerClaimed: !!partnerClaim }}
+      value={{ panelKind: collabScope, cardId: id, partnerClaimed: !!partnerClaim }}
     >
     <PanelCard
       ref={cardRef}
@@ -2138,7 +2157,8 @@ export function AiRequestCard({
       >
         <CardDragHandle />
         <span
-          className="inline-flex items-center justify-center w-5 h-5 shrink-0 text-sky-500"
+          className="inline-flex items-center justify-center w-5 h-5 shrink-0"
+          style={{ color: theme.accent }}
           data-hint={`AI ${kindLabel} request`} aria-label={`AI ${kindLabel} request`}
         >
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
@@ -2150,10 +2170,16 @@ export function AiRequestCard({
             </g>
           </svg>
         </span>
-        <span className="text-xs font-medium text-sky-800 truncate">AI {kindLabel} request</span>
+        <span className="text-xs font-medium truncate" style={{ color: theme.titleColor }}>AI {kindLabel} request</span>
         {request.status === "submitted" && (
-          <span className="inline-flex items-center gap-1 text-[10px] text-sky-600 shrink-0">
-            <span className="w-1.5 h-1.5 rounded-full bg-sky-400 animate-pulse" />
+          <span
+            className="inline-flex items-center gap-1 text-[10px] shrink-0"
+            style={{ color: theme.titleColor }}
+          >
+            <span
+              className="w-1.5 h-1.5 rounded-full animate-pulse"
+              style={{ backgroundColor: theme.accent }}
+            />
             Pending
           </span>
         )}
@@ -2188,10 +2214,12 @@ export function AiRequestCard({
       </div>
 
       {/* Separator */}
-      <div className="border-t border-sky-200/70" />
+      <div className="border-t" style={{ borderColor: theme.separatorSelected }} />
 
-      {/* Body: auto-grow textarea */}
-      <div className={`bg-sky-50/20 px-3 py-2${isPoppedOut ? " flex-1 min-h-0 overflow-auto" : ""}`}>
+      {/* Body: auto-grow textarea. (The former near-invisible `bg-sky-50/20`
+          wash was dropped in A10 Commit H rather than minting a one-consumer
+          `bodyTint` palette token — it composited to ≈white anyway.) */}
+      <div className={`px-3 py-2${isPoppedOut ? " flex-1 min-h-0 overflow-auto" : ""}`}>
         <textarea
           ref={taRef}
           value={draft}

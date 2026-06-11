@@ -1,22 +1,46 @@
+// @vitest-environment jsdom
 /**
  * A6/R17 pin tests — registry-derived marker metadata.
  *
  * `MARKER_META`'s panel + accent now derive from `CARD_REGISTRY` via
  * `src/cards/marker-meta.ts`. These tables FREEZE the derived values so a
  * registry edit that silently re-routes or re-tints a gutter marker trips a
- * test instead of shipping. The one intentional keyspace bridge (registry
- * themeKey `"comment"` → PanelThemeKey `"revision"`) and the one intentional
- * accent identity (error ≡ footnote rust) are pinned explicitly.
+ * test instead of shipping. The unified themeKey keyspace (A10/B: registry
+ * `ThemeKey` ≡ `PanelThemeKey`, the old comment→revision crosswalk deleted)
+ * and the one intentional accent identity (error ≡ footnote rust) are pinned
+ * explicitly.
  */
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
+
+// `@/components/panel-primitives` transitively pulls `@/lib/storage`, whose
+// `require("@/lib/storage-fsa")` vitest's resolver can't alias (the known
+// barrel/storage gotcha). Stub every export as a no-op — we only read the
+// CARD_THEMES table, never touch a sidecar.
+vi.mock("@/lib/storage", () => {
+  const noop = () => undefined;
+  const names = [
+    "isDevStorage", "readSidecar", "readSidecarIfExists", "writeSidecar",
+    "readTex", "writeTex", "readDocBundle", "writeDocBundle", "readBib",
+    "writeBib", "createDocFromPicker", "createDocInFolder", "pickProjectFolder",
+    "registerDocInFolder", "openExistingDocFromPicker", "listDocs", "renameDoc",
+    "deleteDocFromIndex", "flushDoc", "drainDoc", "detectBibPackage",
+    "readPaperFolder", "getTexFilename", "writePdf", "readPdf", "getPdfFilename",
+    "pdfFilenameFromTex", "readFigureSource", "readFigureRaster",
+    "writeFigureRaster", "deleteFigureRaster", "readFigureIndex",
+    "writeFigureIndex", "getDocWriteHandle", "importFigureFile",
+  ];
+  return Object.fromEntries(names.map((n) => [n, noop]));
+});
+
 import { CARD_REGISTRY } from "@/cards/card-registry";
+import { CARD_THEMES } from "@/components/panel-primitives";
 import {
   ALL_MARKER_TYPES,
   cardKindsForMarkerType,
   panelForMarkerType,
   panelThemeKeyForMarkerType,
 } from "@/cards/marker-meta";
-import type { CardKind, MarkerType } from "@/cards/types";
+import type { CardKind, MarkerType, ThemeKey } from "@/cards/types";
 import type { MarginItemKind } from "@/cards/delete-margin-item";
 import { MARKER_META } from "@/lib/marginalia";
 import {
@@ -70,12 +94,10 @@ describe("marker-meta derivation (A6/R17)", () => {
     }
   });
 
-  it("per-type theme key matches the frozen table (comment→revision crosswalked)", () => {
+  it("per-type theme key matches the frozen table (one keyspace, no crosswalk)", () => {
     const frozen: Record<MarkerType, PanelThemeKey> = {
       note: "note",
       archive: "archive",
-      // The ONE divergent token: the revision pair declares registry
-      // themeKey "comment"; the user-overridable slot is "revision".
       revision: "revision",
       cut: "cut",
       todo: "todo",
@@ -85,11 +107,23 @@ describe("marker-meta derivation (A6/R17)", () => {
     for (const t of ALL_MARKER_TYPES) {
       expect(panelThemeKeyForMarkerType(t)).toBe(frozen[t]);
     }
-    // The crosswalk's precondition, pinned: the registry really does say
-    // "comment" for both revision kinds (if A10 unifies the keyspaces this
-    // expectation flips to "revision" and the crosswalk constant dies).
-    expect(CARD_REGISTRY["revision-comment"].themeKey).toBe("comment");
-    expect(CARD_REGISTRY["revision-suggestion"].themeKey).toBe("comment");
+    // A10/B keyspace unification, pinned directly: the revision pair
+    // declares the PanelThemeKey token verbatim (the legacy "comment"
+    // alias + its theme-key crosswalk table are gone).
+    expect(CARD_REGISTRY["revision-comment"].themeKey).toBe("revision");
+    expect(CARD_REGISTRY["revision-suggestion"].themeKey).toBe("revision");
+  });
+
+  it("ThemeKey keyspace ≡ PanelThemeKey keyspace (A10/B unification)", () => {
+    // Compile-time pin: the registry ThemeKey IS PanelThemeKey.
+    const pinned: AssertEqual<ThemeKey, PanelThemeKey> = true;
+    expect(pinned).toBe(true);
+    // Runtime pin: CARD_THEMES is a total fold over DEFAULT_PANEL_COLORS —
+    // same key set, and the revision theme derives from the revision accent.
+    expect(Object.keys(CARD_THEMES).sort()).toEqual(
+      Object.keys(DEFAULT_PANEL_COLORS).sort(),
+    );
+    expect(CARD_THEMES.revision.accent).toBe(DEFAULT_PANEL_COLORS.revision);
   });
 
   it("derived error palette is byte-identical to the old footnote-accent literal", () => {

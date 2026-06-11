@@ -124,7 +124,7 @@ export const PANEL_REGISTRY: Record<PanelKind, PanelRegistryEntry> = {
     kind: "revisions",
     label: "Revisions",
     folder: "src/panels/Revisions",
-    card: { kind: "revision-comment", keyPrefix: "revision", themeKey: "comment" },
+    card: { kind: "revision-comment", keyPrefix: "revision", themeKey: "revision" },
     omniEligible: true,
     omniSide: "right",
     defaultStripSide: "right",

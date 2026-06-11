@@ -39,9 +39,6 @@
  *   - Bubbles per-doc state to the Virgil bar via `onPaneStateChange`.
  *
  * Chrome wiring already in place (carries through the extraction):
- *   - `chrome.showActionToolbar` + `chrome.actionToolbarKinds` — the action
- *     toolbar gate (its `ActionButtonsRow` consumer was removed in A1; the
- *     flags are retained for the A8 chrome reconciliation).
  *   - `chrome.showParagraphFloatTitleEdit` /
  *     `chrome.showHeadingFloatLabelEdit` already gated.
  *   - Read-only `Marginalia` suppresses drag-to-rebind via
@@ -177,6 +174,7 @@ import { CutterHost } from "./editor-layout/panels/cutter-host";
 import { ReportsHost } from "./editor-layout/panels/reports-host";
 import { RevisionsHost } from "./editor-layout/panels/revisions-host";
 import { ErrorsHost } from "./editor-layout/panels/errors-host";
+import { pruneExpanded } from "@/panels/Errors/expansion";
 import { SearchHost } from "./editor-layout/panels/search-host";
 import WordCountPanel from "@/panels/WordCount";
 import { INITIAL_SEARCH_STATE, type SearchPanelState } from "@/panels/Search";
@@ -1447,10 +1445,45 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
   // them. `compileHook` is at line ~734, so `allLatexErrors` resolves.
   const [selectedErrorId, setSelectedErrorId] = useState<string | null>(null);
   const [dismissedErrorIds, setDismissedErrorIds] = useState<Set<string>>(new Set());
+  // R5: ONE error-card expansion scope for BOTH surfaces this pane mounts —
+  // the docked ErrorsPanel and the omni mirror — owned here beside
+  // `selectedErrorId` so expanding a card on one surface expands it on the
+  // other. (EditorLayout's code-view sidebar keeps its own small set: it
+  // renders a different error list by design.) `expandError` is the
+  // idempotent body-click set-true; `toggleErrorExpanded` is the chevron.
+  const [expandedErrorIds, setExpandedErrorIds] = useState<Set<string>>(() => new Set());
+  const expandError = useCallback((id: string) => {
+    setExpandedErrorIds((prev) => (prev.has(id) ? prev : new Set(prev).add(id)));
+  }, []);
+  const toggleErrorExpanded = useCallback((id: string) => {
+    setExpandedErrorIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }, []);
   const dismissError = useCallback((id: string) => {
     setDismissedErrorIds((prev) => new Set(prev).add(id));
+    // Prune the dismissed card's expansion alongside (A4 deferred #4) so a
+    // later lint run reusing the id doesn't resurrect a stale open state.
+    setExpandedErrorIds((prev) => {
+      if (!prev.has(id)) return prev;
+      const next = new Set(prev);
+      next.delete(id);
+      return next;
+    });
   }, []);
   const allLatexErrors: LatexError[] = compileHook.compileErrors;
+  // Prune dead expansion ids whenever the live error list changes (A4
+  // deferred #4). `pruneExpanded` is identity-stable and no-ops on an empty
+  // list, so the transient mid-compile empty list never wipes expansion and
+  // a no-change list never re-renders.
+  useEffect(() => {
+    setExpandedErrorIds((prev) =>
+      pruneExpanded(prev, allLatexErrors.map((e) => e.id)),
+    );
+  }, [allLatexErrors]);
   const errorSnippets = useMemo(() => new Map<string, string>(), []);
   const paragraphByErrorId = useMemo(() => new Map<string, string>(), []);
   const handleJumpToError = useCallback((_err: LatexError) => {
@@ -3178,6 +3211,9 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
                     onJumpToError={handleJumpToError}
                     errorSnippets={errorSnippets}
                     paragraphByErrorId={paragraphByErrorId}
+                    expandedErrorIds={expandedErrorIds}
+                    expandError={expandError}
+                    toggleErrorExpanded={toggleErrorExpanded}
                     searchState={searchState}
                     setSearchState={setSearchState}
                     setSearchHighlightRange={setSearchHighlightRange}
@@ -3247,6 +3283,9 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
                       onJumpToError={handleJumpToError}
                       errorSnippets={errorSnippets}
                       paragraphByErrorId={paragraphByErrorId}
+                      expandedErrorIds={expandedErrorIds}
+                      expandError={expandError}
+                      toggleErrorExpanded={toggleErrorExpanded}
                       searchState={searchState}
                       setSearchState={setSearchState}
                       setSearchHighlightRange={setSearchHighlightRange}
@@ -3366,6 +3405,9 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
                 onJumpToError={handleJumpToError}
                 errorSnippets={errorSnippets}
                 paragraphByErrorId={paragraphByErrorId}
+                expandedErrorIds={expandedErrorIds}
+                expandError={expandError}
+                toggleErrorExpanded={toggleErrorExpanded}
                 searchState={searchState}
                 setSearchState={setSearchState}
                 setSearchHighlightRange={setSearchHighlightRange}
@@ -4167,6 +4209,9 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
                         onJumpToError={handleJumpToError}
                         errorSnippets={errorSnippets}
                         paragraphByErrorId={paragraphByErrorId}
+                        expandedErrorIds={expandedErrorIds}
+                        expandError={expandError}
+                        toggleErrorExpanded={toggleErrorExpanded}
                         searchState={searchState}
                         setSearchState={setSearchState}
                         setSearchHighlightRange={setSearchHighlightRange}
@@ -4414,6 +4459,9 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
                 onJumpToError={handleJumpToError}
                 errorSnippets={errorSnippets}
                 paragraphByErrorId={paragraphByErrorId}
+                expandedErrorIds={expandedErrorIds}
+                expandError={expandError}
+                toggleErrorExpanded={toggleErrorExpanded}
                 searchState={searchState}
                 setSearchState={setSearchState}
                 setSearchHighlightRange={setSearchHighlightRange}
@@ -4556,6 +4604,9 @@ interface PaneRailProps {
   onJumpToError: (err: LatexError) => void;
   errorSnippets: Map<string, string>;
   paragraphByErrorId: Map<string, string>;
+  expandedErrorIds: Set<string>;
+  expandError: (id: string) => void;
+  toggleErrorExpanded: (id: string) => void;
   // Search panel
   searchState: SearchPanelState;
   setSearchState: React.Dispatch<React.SetStateAction<SearchPanelState>>;
@@ -4738,6 +4789,9 @@ function PaneRail({
   onJumpToError,
   errorSnippets,
   paragraphByErrorId,
+  expandedErrorIds,
+  expandError,
+  toggleErrorExpanded,
   searchState,
   setSearchState,
   setSearchHighlightRange,
@@ -4847,6 +4901,9 @@ function PaneRail({
           jumpToError={onJumpToError}
           selectedErrorId={selectedErrorId}
           setSelectedErrorId={setSelectedErrorId}
+          expandedErrorIds={expandedErrorIds}
+          expandError={expandError}
+          toggleErrorExpanded={toggleErrorExpanded}
           cutterCards={cutterHook.cards}
           updateCutterCommentText={cutterHook.updateCommentText}
           setCutterCommentAiRequest={cutterHook.setCommentAiRequest}
@@ -5020,6 +5077,9 @@ interface PaneRailBodyProps {
   onJumpToError: (err: LatexError) => void;
   errorSnippets: Map<string, string>;
   paragraphByErrorId: Map<string, string>;
+  expandedErrorIds: Set<string>;
+  expandError: (id: string) => void;
+  toggleErrorExpanded: (id: string) => void;
   searchState: SearchPanelState;
   setSearchState: React.Dispatch<React.SetStateAction<SearchPanelState>>;
   setSearchHighlightRange: React.Dispatch<React.SetStateAction<{ from: number; to: number } | null>>;
@@ -5085,6 +5145,9 @@ function PaneRailBody({
   onJumpToError,
   errorSnippets,
   paragraphByErrorId,
+  expandedErrorIds,
+  expandError,
+  toggleErrorExpanded,
   searchState,
   setSearchState,
   setSearchHighlightRange,
@@ -5311,6 +5374,9 @@ function PaneRailBody({
         onJump={onJumpToError}
         snippets={errorSnippets}
         paragraphByErrorId={paragraphByErrorId}
+        expandedIds={expandedErrorIds}
+        onExpand={expandError}
+        onToggleExpanded={toggleErrorExpanded}
       />
     );
   }

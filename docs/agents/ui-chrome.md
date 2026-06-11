@@ -191,7 +191,7 @@ Behavior: click anchor toggles; fixed-positioned below-right by default; flips a
 
 ## MarginActionToolbar (removed)
 
-The per-column "+" action-chip row (chips above each omni gutter) was suppressed in 652572a and **deleted in bcc583a** — the file, its call sites, `PaneRailProps.topOverlay`, the `panel-column.tsx` `topOverlay` mechanism, and `ActionChipButton` are all gone. The action vocabulary now lives only in `SelectionActionsMenu`, `ActionsStripButton`, `DragHandleMenu`, and the vestigial `DetachedActionsToolbar`. The `chrome.actionToolbarKinds` whitelist survives (Reader sets `["note"]`) and still filters which `ActionButtonsRow` buttons render in the paper surface.
+The per-column "+" action-chip row (chips above each omni gutter) was suppressed in 652572a and **deleted in bcc583a** — the file, its call sites, `PaneRailProps.topOverlay`, the `panel-column.tsx` `topOverlay` mechanism, and `ActionChipButton` are all gone. The action vocabulary now lives only in `SelectionActionsMenu`, `ActionsStripButton`, and `DragHandleMenu` (the detached toolbars were removed in the A1 gardening pass, and the dead `chrome-config` action defs in A10).
 
 ## Panel icons
 

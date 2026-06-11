@@ -14,7 +14,7 @@
  */
 import type { PanelKind } from "@/panels/_shared/types";
 import type { PanelThemeKey } from "@/lib/panel-theme";
-import type { CardKind, MarkerType, ThemeKey } from "./types";
+import type { CardKind, MarkerType } from "./types";
 import { CARD_REGISTRY } from "./card-registry";
 
 /**
@@ -39,18 +39,6 @@ type _MarkerTypeExhaustive = MarkerType extends (typeof ALL_MARKER_TYPES)[number
   : never;
 const _markerTypeExhaustive: _MarkerTypeExhaustive = true;
 void _markerTypeExhaustive;
-
-/**
- * The registry-themeKey ↔ `PanelThemeKey` keyspaces diverge on exactly ONE
- * token: the revision pair declares `themeKey: "comment"` (a `CARD_THEMES`
- * key) while the user-overridable color slot is `PanelThemeKey "revision"`.
- * This crosswalk is the single documented bridge; unifying the keyspaces
- * themselves is A10's job, at which point this constant collapses to empty
- * and can be deleted.
- */
-const THEME_KEY_CROSSWALK: Partial<Record<ThemeKey, PanelThemeKey>> = {
-  comment: "revision",
-};
 
 /* ── Eager derivation tables ──────────────────────────────────────────
  * Built once at module init. `CARD_REGISTRY` is a fully-initialized const
@@ -92,12 +80,11 @@ for (const [t, kinds] of kindsByMarkerType) {
   const panel = kinds.length > 0 ? CARD_REGISTRY[kinds[0]].panel : null;
   if (panel != null) panelByMarkerType.set(t, panel);
   const themeKey = kinds.length > 0 ? CARD_REGISTRY[kinds[0]].themeKey : null;
-  if (themeKey != null) {
-    // The crosswalk handles the one divergent token (comment → revision);
-    // every other marker-bearing themeKey is a PanelThemeKey verbatim
-    // (pinned by marker-meta-derivation.test.ts).
-    themeKeyByMarkerType.set(t, THEME_KEY_CROSSWALK[themeKey] ?? (themeKey as PanelThemeKey));
-  }
+  // Post-A10/B the registry themeKey vocabulary IS PanelThemeKey (the
+  // comment→revision crosswalk that used to bridge the one divergent token
+  // is gone) — every marker-bearing themeKey is the color slot verbatim
+  // (pinned by marker-meta-derivation.test.ts).
+  if (themeKey != null) themeKeyByMarkerType.set(t, themeKey);
 }
 
 /** The card kinds that share marker namespace `t` (e.g. `cut` →
@@ -118,8 +105,8 @@ export function panelForMarkerType(t: MarkerType): PanelKind {
   return panel;
 }
 
-/** The user-overridable color slot for marker namespace `t` — registry
- *  `.themeKey` run through the comment→revision crosswalk. */
+/** The user-overridable color slot for marker namespace `t` — the registry
+ *  `.themeKey` verbatim (one keyspace post-A10/B). */
 export function panelThemeKeyForMarkerType(t: MarkerType): PanelThemeKey {
   const key = themeKeyByMarkerType.get(t);
   if (!key) {

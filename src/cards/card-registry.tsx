@@ -180,6 +180,8 @@ export const CARD_REGISTRY: Record<CardKind, CardMeta> = {
     titleLabel: "Note",
     keyPrefix: "note",
     themeKey: "note",
+    collabClaims: true,
+    aiRequest: { kind: "note", linkPanel: "notes" }, // R29 — frozen wire contract
     panel: "notes",
     origin: "user",
     anchored: true,
@@ -200,6 +202,8 @@ export const CARD_REGISTRY: Record<CardKind, CardMeta> = {
     titleLabel: null,
     keyPrefix: "highlight",
     themeKey: "highlight",
+    collabClaims: false,
+    aiRequest: { kind: "highlight", linkPanel: "notes" }, // R29 — frozen wire contract
     panel: "notes",
     origin: "user",
     anchored: true,
@@ -217,6 +221,7 @@ export const CARD_REGISTRY: Record<CardKind, CardMeta> = {
     titleLabel: "Footnote",
     keyPrefix: "footnote",
     themeKey: "footnote",
+    collabClaims: true,
     panel: "footnotes",
     origin: "user",
     anchored: true,
@@ -234,6 +239,7 @@ export const CARD_REGISTRY: Record<CardKind, CardMeta> = {
     titleLabel: "Archive Text",
     keyPrefix: "archive",
     themeKey: "archive",
+    collabClaims: true,
     panel: "archive",
     origin: "user",
     anchored: true,
@@ -252,6 +258,8 @@ export const CARD_REGISTRY: Record<CardKind, CardMeta> = {
     titleLabel: "Task",
     keyPrefix: "todo",
     themeKey: "todo",
+    collabClaims: false,
+    aiRequest: { kind: "todo", linkPanel: "todos" }, // R29 — frozen wire contract
     panel: "todo",
     origin: "user",
     anchored: true,
@@ -270,6 +278,7 @@ export const CARD_REGISTRY: Record<CardKind, CardMeta> = {
     titleLabel: null,
     keyPrefix: "bib",
     themeKey: "bib",
+    collabClaims: false,
     panel: "bibliography",
     origin: "system",
     anchored: false,
@@ -287,6 +296,7 @@ export const CARD_REGISTRY: Record<CardKind, CardMeta> = {
     titleLabel: null,
     keyPrefix: "citation",
     themeKey: "citation",
+    collabClaims: false,
     panel: "citations",
     origin: "user",
     anchored: true,
@@ -307,7 +317,9 @@ export const CARD_REGISTRY: Record<CardKind, CardMeta> = {
     // normalizes the kind-in-key split. The float dispatch disambiguates from
     // the record's data kind (`cardKindForPopoutKey`).
     keyPrefix: "revision",
-    themeKey: "comment",
+    themeKey: "revision",
+    collabClaims: true,
+    aiRequest: { kind: "suggestion", linkPanel: "revisions" }, // R29 — frozen wire contract
     panel: "revisions",
     origin: "user",
     anchored: true,
@@ -328,6 +340,8 @@ export const CARD_REGISTRY: Record<CardKind, CardMeta> = {
     titleLabel: null,
     keyPrefix: "cutter-comment",
     themeKey: "cut",
+    collabClaims: true,
+    aiRequest: { kind: "suggestion", linkPanel: "cutter" }, // R29 — frozen wire contract
     panel: "cutter",
     origin: "user",
     anchored: true,
@@ -346,6 +360,7 @@ export const CARD_REGISTRY: Record<CardKind, CardMeta> = {
     titleLabel: null,
     keyPrefix: "cutter-suggestion",
     themeKey: "cut",
+    collabClaims: false,
     panel: "cutter",
     origin: "user",
     anchored: true,
@@ -362,7 +377,8 @@ export const CARD_REGISTRY: Record<CardKind, CardMeta> = {
     label: "Revision",
     titleLabel: null,
     keyPrefix: "revision-suggestion", // legacy value preserved (live key is revision:s:<id>)
-    themeKey: "comment",
+    themeKey: "revision",
+    collabClaims: false,
     panel: "revisions",
     origin: "user",
     anchored: true,
@@ -380,6 +396,7 @@ export const CARD_REGISTRY: Record<CardKind, CardMeta> = {
     titleLabel: "Report",
     keyPrefix: "report",
     themeKey: "report",
+    collabClaims: true,
     panel: "reports",
     origin: "user",
     anchored: true,
@@ -401,6 +418,8 @@ export const CARD_REGISTRY: Record<CardKind, CardMeta> = {
     titleLabel: null,
     keyPrefix: "report-request",
     themeKey: "report",
+    collabClaims: true,
+    aiRequest: { kind: "report", linkPanel: "reports" }, // R29 — frozen wire contract
     panel: "reports",
     origin: "user",
     anchored: true,
@@ -419,6 +438,7 @@ export const CARD_REGISTRY: Record<CardKind, CardMeta> = {
     titleLabel: "Example",
     keyPrefix: "example",
     themeKey: "example",
+    collabClaims: false,
     panel: "examples",
     origin: "derived", // mirrors the doc exampleBlock harvested by useExamples
     anchored: true,
@@ -439,6 +459,7 @@ export const CARD_REGISTRY: Record<CardKind, CardMeta> = {
     titleLabel: null,
     keyPrefix: "ai",
     themeKey: "aiRequest",
+    collabClaims: false,
     panel: null, // cross-panel: renders in Footnotes/Notes/Reports/Citations/Todo
     origin: "system",
     anchored: false,
@@ -456,6 +477,7 @@ export const CARD_REGISTRY: Record<CardKind, CardMeta> = {
     titleLabel: null,
     keyPrefix: "error",
     themeKey: "error",
+    collabClaims: false,
     panel: "errors",
     origin: "system",
     anchored: false,

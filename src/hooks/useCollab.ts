@@ -47,6 +47,12 @@ import {
   type CollabSidecar,
   type DerivedPen,
 } from "@/lib/collab";
+// Collab claim/presence scopes are typed as the registry-derived
+// `PanelThemeKey` (R28/D-2): the WRITE side emits only tokens from the
+// unified theme keyspace (`collabClaimScope` in `@/cards/predicates`). The
+// wire-READ side (`@/lib/collab`) deliberately stays `string` — disk data is
+// untyped.
+import type { PanelThemeKey } from "@/lib/panel-theme";
 
 export interface CollabState {
   /** True when the sidecar's `enabled` flag is set on disk. */
@@ -82,22 +88,23 @@ export interface CollabActions {
   takeOver: () => Promise<void>;
   /** Stamp activity (throttled) — call from real input handlers. */
   bumpActivity: () => void;
-  /** Claim a card for editing — call on focus. */
-  claimCard: (panelKind: string, cardId: string) => Promise<void>;
+  /** Claim a card for editing — call on focus. The scope is the kind's
+   *  registry-derived `collabClaimScope` (R28/D-2). */
+  claimCard: (panelKind: PanelThemeKey, cardId: string) => Promise<void>;
   /** Release whatever card the user has claimed — call on blur. */
   releaseClaim: () => Promise<void>;
   /** Lookup whether a card is currently claimed by the partner. */
   getCardClaim: (
-    panelKind: string,
+    panelKind: PanelThemeKey,
     cardId: string,
   ) => { holder: string; color: string; claim: CollabFocusClaim } | null;
   /** Soft presence: set the user's currently-selected cards. */
-  updateSelection: (cards: { panelKind: string; cardId: string }[]) => void;
+  updateSelection: (cards: { panelKind: PanelThemeKey; cardId: string }[]) => void;
   /** Soft presence: set the user's currently-active paragraph in the editor. */
   updateCursorParagraph: (paragraphId: string | null) => void;
   /** Lookup which partners have selected a given card. */
   getCardSelections: (
-    panelKind: string,
+    panelKind: PanelThemeKey,
     cardId: string,
   ) => { name: string; color: string }[];
   /** Lookup which partners have their cursor on a given paragraph. */
@@ -460,7 +467,7 @@ export function useCollab(docId: string | null): CollabHook {
   }, [mutate]);
 
   const claimCard = useCallback(
-    async (panelKind: string, cardId: string) => {
+    async (panelKind: PanelThemeKey, cardId: string) => {
       const me = identityRef.current?.name;
       if (!me) return;
       const now = new Date().toISOString();
@@ -489,7 +496,7 @@ export function useCollab(docId: string | null): CollabHook {
   }, [mutate]);
 
   const updateSelection = useCallback(
-    (cards: { panelKind: string; cardId: string }[]) => {
+    (cards: { panelKind: PanelThemeKey; cardId: string }[]) => {
       const me = identityRef.current?.name;
       if (!me) return;
       // De-dupe by stable serialization to avoid write churn.
@@ -522,7 +529,7 @@ export function useCollab(docId: string | null): CollabHook {
   );
 
   const getCardSelections = useCallback(
-    (panelKind: string, cardId: string) => {
+    (panelKind: PanelThemeKey, cardId: string) => {
       if (!sidecar.enabled) return [];
       const selfName = identityRef.current?.name ?? null;
       const out: { name: string; color: string }[] = [];
@@ -611,7 +618,7 @@ export function useCollab(docId: string | null): CollabHook {
   const canEditMainText = !sidecar.enabled || iHavePen;
 
   const getCardClaim = useCallback(
-    (panelKind: string, cardId: string) => {
+    (panelKind: PanelThemeKey, cardId: string) => {
       if (!sidecar.enabled) return null;
       return findClaim(sidecar, me, panelKind, cardId);
     },
@@ -697,7 +704,7 @@ export function useCollabContext(): CollabHook {
 /** Per-card claim helper. Returns the partner claim (if any), and stable
  *  `claim` / `release` callbacks scoped to this (panelKind, cardId). */
 export function useCardClaim(
-  panelKind: string | undefined,
+  panelKind: PanelThemeKey | undefined,
   cardId: string | undefined,
 ): {
   partnerClaim: { holder: string; color: string } | null;

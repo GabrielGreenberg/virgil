@@ -242,7 +242,8 @@ export function useReports(
       if (card) {
         void bridgeCardAiRequestFlag(
           docId,
-          { panel: "reports", cardId: id },
+          "report-request",
+          id,
           value,
           {
             text: card.text || "<report request>",
