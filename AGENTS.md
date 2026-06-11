@@ -53,7 +53,6 @@ The keystroke-sanctity sweep allows these direct subscriptions, because each is 
 - `useEditorUIState.ts` last-paragraph saver (400 ms debounce)
 - `EditorLayout.tsx` activity-presence bumper (counter increment)
 - `EditorLayout.tsx` + `EditorPane.tsx` PDF-stale bump (O(1): stamp a timestamp ref, flip `pdfStale` at most once per compile cycle)
-- `LinkConnector.tsx` (docChanged-gated, RAF-coalesced bezier)
 - `SlashCommandPopup.tsx` (closes popup, O(1))
 - `TextObjectGrabHandle.tsx` (docChanged-gated, cheap)
 - `EditorMirror.tsx` (RAF-deferred replay)

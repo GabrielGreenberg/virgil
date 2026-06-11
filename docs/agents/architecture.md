@@ -61,13 +61,13 @@ All in `src/hooks/`. Full list (~50 files) is large; these are the ones most oft
 | `useAutoAddLibraryEntriesForCitations` | Watches new citation keys in the doc and auto-adds matching entries from the user's Virgil Library into the paper's bibliography (after the bibliography-search redesign in 91f253c / 240bfda) |
 | `useEditorUIState` | Per-doc UI state hook factored out of EditorPane — tracks click-time selection / focus-mode / hover state etc. that several sibling hooks consume |
 | `useResolvedFigureUrl` | Resolves a figure block's `source` to a renderable blob URL: looks up the cached raster by source fingerprint, rasterizes the source on miss (PDF → webp via `pdfjs-dist`; PNG/JPEG pass-through), and manages the blob-URL lifecycle |
-| `useEditorViewportCache` | Module-level cache of per-viewport editor metrics (`editorRight`, `scrollTop`, etc.) so `SelectionActionsMenu`, `SelectionDragHandle`, and `LinkConnector` can place themselves without re-reading layout on every keystroke |
+| `useEditorViewportCache` | Module-level cache of per-viewport editor metrics (`editorRight`, `scrollTop`, etc.) so `SelectionActionsMenu` and `SelectionDragHandle` can place themselves without re-reading layout on every keystroke |
 
 ## Editor hot-path conventions (2dc963d)
 
 Per-keystroke perf regressions chase one anti-pattern: a synchronous TipTap subscriber that does a doc traversal / LaTeX serialization / forced layout read / IndexedDB write / wide-tree React setter. The 2dc963d refactor codifies the shape of a well-behaved hot-path subscriber:
 
-- **Subscribe to `update`, not `transaction`/`selectionUpdate`**, and gate on `tr.docChanged` so mark-only / selection-only transactions don't trigger a layout-reading recompute (see `LinkConnector`). (The EditorLayout focus-mode logic switched back to a single injected `<style>` tag in 91ce009 — PM doesn't touch `<style>` elements so the rules survive transactions without needing a per-tx stamp pass.)
+- **Subscribe to `update`, not `transaction`/`selectionUpdate`**, and gate on `tr.docChanged` so mark-only / selection-only transactions don't trigger a layout-reading recompute (see `TextObjectGrabHandle`). (The EditorLayout focus-mode logic switched back to a single injected `<style>` tag in 91ce009 — PM doesn't touch `<style>` elements so the rules survive transactions without needing a per-tx stamp pass.)
 - **RAF-batch any compute that reads layout** (`useMarginalia.compute()`, `Marginalia` host-detection notify, `SelectionDragHandle` placement, `ActionsStripButton` tick, `EditorMirror.updateState()`).
 - **Debounce React state setters** that fan out via useMemos (`docVersion` in EditorPane and `editorDocVersion` in EditorLayout both ~100ms; `usePersistentState.update()` ~300ms with flush-on-unmount/docId-change).
 - **WeakMap-memoize per-node serialization** keyed on the immutable PM node (`getExamples()` runs once per edited example block instead of N-per-keystroke).
