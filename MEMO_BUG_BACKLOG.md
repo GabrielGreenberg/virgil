@@ -382,6 +382,77 @@ for `absolute z-[0-9]` menus inside low-z sticky bars and portal them uniformly.
 
 ---
 
+## 10. ExpEx: multi-digit example numbers wrap — number column must adapt without breaking grab-handle geometry
+
+**Reported:** 2026-06-05 · **Status:** open · **Area:** main-text / expex layout ·
+**Related:** item 3 (same expex subsystem, unrelated fault)
+
+**Reported behavior** — example `(10)` doesn't fit its number column: the `)`
+wraps to a second line. The number gutter must make room for 1–3 digit numbers,
+**and** the inner grab handle (the dots sitting between the number and the body
+text) must reposition dynamically to match. User flags it as tricky because of
+that coupling.
+
+**Root cause** — the number column is a fixed `1.5em`:
+`.expex-block { grid-template-columns: 1.5em 1fr; column-gap: 0.8em }`
+([globals.css:3489](src/app/globals.css:3489)). `(9)` fits; `(10)` overflows and
+wraps inside the grid cell. Same fixed `1.5em` on the item rows
+(`.expex-item-row`, [globals.css:3544](src/app/globals.css:3544)).
+
+**The coupling web (why it's "tricky"):**
+1. **Equal-increment design:** A–B (number col + gap = 2.3em) is deliberately
+   equal to B–C on item rows so `(n)` / `a.` / text align in uniform steps
+   (comments at [:3492](src/app/globals.css:3492), [:3536](src/app/globals.css:3536),
+   [:3583](src/app/globals.css:3583)). Widening only the block column breaks the
+   symmetry; widening both over-indents nested tiers.
+2. **The 0.8em gap is the inner handle's breathing room** — explicitly widened
+   from 0.5em for that purpose ([:3494](src/app/globals.css:3494)). Any fix that
+   lets the number bleed into the gap (e.g. bare `white-space: nowrap`) eats the
+   zone where the inner handle renders (exactly the screenshot's dots position).
+3. **Hardcoded mirrors:** `.expex-item-label-annotation { margin-left: 2.4rem }`
+   ([:3554](src/app/globals.css:3554)) shifts the per-item "ex." pod by B–C — it
+   must track any column change. (Note it's already drifted: 2.4**rem** vs the
+   grid's 2.3**em**.)
+4. **Same bug class inside items:** depth-1/3 markers are roman
+   (`markerForDepth` — i., viii., xviii. …, [expex.ts:94](src/lib/tiptap/expex.ts:94));
+   wide romans overflow the items' own fixed `1.5em` column too. A digits-only
+   fix leaves that half alive.
+
+**What's already solved (don't re-solve it):** the grab handles do **not** use
+hardcoded offsets. `handle.left = markerLeft − gapPx − HANDLE_WIDTH`
+([handle-layout.ts:48](src/text-objects/handle-layout.ts:48)) where `markerLeft`
+is **measured** per block from the live `.expex-number` / `.expex-item-marker`
+rects ([block-frame.ts:298](src/text-objects/block-frame.ts:298),
+`markerElementLeft` at [:260](src/text-objects/block-frame.ts:260)). If the CSS
+columns adapt, every handle (outer + inner) repositions for free. The work is
+purely the CSS layout decision + its hardcoded mirrors.
+
+**Candidate fixes for the manage session:**
+- **(a) Cheap:** widen the fixed columns (e.g. 2.2em) + `white-space: nowrap` on
+  `.expex-number`/`.expex-item-marker`. Keeps doc-wide alignment; costs
+  permanent indent even in 1-digit docs; romans can still overflow extremes.
+- **(b) Per-block `max-content` columns:** each example sizes to its own number —
+  but adjacent examples' bodies stop aligning ((9) vs (10) ragged). Probably
+  reject; alignment is the point of the equal-increment design.
+- **(c) Deep fix — doc-adaptive shared width:** a CSS var (e.g.
+  `--expex-num-width`) on the editor container, derived from the document's max
+  example number, consumed by both grids (`grid-template-columns:
+  var(--expex-num-width) 1fr`) and the label-pod margins. The `ExpexNumbering`
+  appendTransaction ([expex.ts:1329](src/lib/tiptap/expex.ts:1329)) already
+  computes every number and is structurally gated, so it can maintain the var
+  with **zero keystroke-sanctity cost** (set style only when max-digit-count
+  changes). Same pattern for an item-marker width var if roman overflow is in
+  scope. All examples stay aligned, width adapts per doc, handles follow the
+  measured DOM automatically.
+
+**Verify after fix:** `(1)`/`(10)`/`(100)` render un-wrapped; inner + outer
+handle dots sit in their gap zones on all three; nested `viii.` tier; the
+per-item "ex." label pod still aligns with C; drop-indicator bars (also derived
+from `contentLeft`/`markerLeft` per [block-frame.ts:18](src/text-objects/block-frame.ts:18))
+still align.
+
+---
+
 ## 10. Re-introduce grip-based drag-into-document for Todo / Error cards via a body-level affordance
 
 **Reported:** 2026-06-09 · **Status:** open · **Area:** ui-chrome / card panels
@@ -456,3 +527,109 @@ draft citation card but expanding a draft is a no-op — a dead affordance.
 **Desired** — suppress the chevron while `isDraft` (or make expansion
 meaningful for drafts). (A4 Session-13 deferral #6, carried at refactor
 archival.)
+
+---
+
+# Session-17 card UI batch (reported 2026-06-11)
+
+Items 14–21 form one **card chrome & pop-out UX cluster** — they all touch the
+same header anatomy and should likely land as one architectural chip, not
+piecemeal. Items 22–23 are the **UI-consistency sweep** (the visual analogue of
+the functional refactor). Item 24 is a live runtime crash. Investigation
+findings from the Session-17 workflow refine these in place.
+
+## 14. Card chrome: kill the chevron — header click toggles expand/collapse
+
+**Reported:** 2026-06-11 · **Status:** open · **Area:** card panels / shared chrome
+
+No chevron control at all. Clicking anywhere on the card header toggles
+expand/collapse. Must disambiguate from header-drag (item 19) via the existing
+click-vs-drag threshold pattern. Subsumes item 13 (draft-citation dead chevron
+disappears with the chevron itself).
+
+## 15. Collapsed card must always show its title (when present)
+
+**Reported:** 2026-06-11 · **Status:** open · **Area:** card panels / shared chrome
+
+Collapsed view currently can omit the title. Desired: title always visible in
+collapsed mode whenever the card has one.
+
+## 16. Footnote cards: collapsed mode drops inline-style citations
+
+**Reported:** 2026-06-11 · **Status:** open · **Area:** card panels / footnotes
+
+A footnote whose text contains citations doesn't render them inline-style in
+collapsed mode (expanded mode does). Likely the collapsed preview path bypasses
+the borrowed-schema renderer — check whether the whole inline-atom class
+(refs, math) drops too. Related: item 11 (borrowed-schema dedupe).
+
+## 17. Titleless cards: shrink the title-row gap (+T affordance)
+
+**Reported:** 2026-06-11 · **Status:** open · **Area:** card panels / shared chrome
+
+When a card has no title, the title row leaves an oversized gap; it should
+collapse to a small +T affordance area.
+
+## 18. Kill the pop-out button — grab-to-pop is the only pop-out path
+
+**Reported:** 2026-06-11 · **Status:** open · **Area:** card panels / shared chrome
+
+Remove the ↑ pop-out button from the card header entirely.
+
+## 19. Unify grab surfaces: grab bar and header are the same grab
+
+**Reported:** 2026-06-11 · **Status:** open · **Area:** card panels / shared chrome
+
+The ⋮⋮ grab-dots and the header should be one grab surface — dragging the
+header lifts the card exactly like dragging the dots. Click on header =
+expand/collapse (item 14); drag = lift.
+
+## 20. Grab-to-pop must preserve shape + position (only expansion may change)
+
+**Reported:** 2026-06-11 · **Status:** open · **Area:** floats / pop-out pipeline
+
+Popping a card out must be visually seamless: the float keeps the in-panel
+card's shape (width/height) and position (where it was lifted/released); no
+chrome/font/padding jump. The single allowed change: a collapsed card may
+expand. Today the float visibly differs from the lifted card.
+
+## 21. Popped cards must NOT disappear from the omni panel
+
+**Reported:** 2026-06-11 · **Status:** open · **Area:** card panels / floats
+
+Example cards vanish from the omni panel when popped out. Desired: the card
+stays in the panel (design call pending: live duplicate vs ghosted placeholder).
+Make residue behavior uniform across all kinds at the registry level.
+
+## 22. Citation card typography is inconsistent across states
+
+**Reported:** 2026-06-11 · **Status:** open · **Area:** card panels / citations / style
+
+Fonts differ between collapsed (bold serif citekey), expanded-resolved (italic
+serif bib entry), expanded-unresolved (large red serif), and the TYPE/CODE/
+PREVIEW control rows — no shared typography tokens. Normalize against
+STYLE_GUIDE.md (and add a typography section there if silent).
+
+## 23. UI-consistency sweep: window shapes, pop-out geometry, fonts
+
+**Reported:** 2026-06-11 · **Status:** open · **Area:** cross-cutting / style
+
+The visual analogue of the functional refactor: audit + normalize window
+shapes (radius/border/shadow/padding), float sizes and pop-out positions, and
+font usage across all card kinds and floats. Audit first, then a normalization
+chip that lands shared tokens — sequence AFTER the chrome redesign (items
+14–21) so the audit measures the new chrome.
+
+## 24. Runtime crash: `cssTokenForCardKind` — unknown kind reaches the crosswalk
+
+**Reported:** 2026-06-11 · **Status:** open · **Area:** links / anchor reconciler
+
+`TypeError: Cannot read properties of undefined (reading 'cssToken')` at
+[src/cards/legacy-token-crosswalk.ts:61](src/cards/legacy-token-crosswalk.ts:61)
+in `cssTokenForCardKind`, called from `useAnchorHighlightReconciler`'s
+`collectAnchorEls` ([src/links/_shared/useAnchorHighlightReconciler.ts:202](src/links/_shared/useAnchorHighlightReconciler.ts:202)).
+The crosswalk is keyed by exactly the 16 spine `CardKind`s, so a legacy/unknown
+kind string is reaching it — likely the SEAM E-5 `linkedAnchor.kind` write-site
+residue (and/or `bibliography`-vs-`bib` drift) named in the DoD addendum.
+Deep fix should make unknown kinds impossible-or-harmless everywhere the
+crosswalk is read, not just guard this one call site.
