@@ -126,5 +126,5 @@ export function entityToAnchorId(
 }
 
 // (The entity-kind → anchor-kind mapper lived here until A10 Commit G: it had
-// no remaining consumers — anchor-tint theming reads MARKER_KIND_TO_THEME_KEY
-// directly.)
+// no remaining consumers — anchor-tint theming reads panelThemeKeyForMarkerType
+// / MARKER_META directly.)
