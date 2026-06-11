@@ -7,26 +7,20 @@
  * FloatCard wrapper and header chrome now live in the unified
  * `TextObjectFloat`; this module is body-only.
  *
- * Sync is hand-rolled because texBlock content is a plain string (the
- * `code` attr), not TipTap JSON — `useFloatMainSync` (TipTap-on-TipTap)
- * doesn't apply here. This is the load-bearing exception that justifies
- * keeping body sync per-kind:
- *   - main → float: subscribe to main editor transactions; when the
- *     target node's `code` differs from local state, refresh CodeMirror.
+ * Content sync is hand-rolled because texBlock content is a plain string
+ * (the `code` attr), not TipTap JSON — `useFloatMainSync`'s
+ * TipTap-on-TipTap `setContent` half doesn't apply here:
+ *   - main → float: `useMainTransactionSync` (the shared gated
+ *     subscription from float-sync — own-write filter + docChanged gate)
+ *     drives `syncFromMain`, which re-reads the target node's `code` /
+ *     `parTitle` attrs into local state, refreshing CodeMirror.
  *   - float → main: CodeMirror's onChange dispatches setNodeMarkup with
  *     the new `code` attr.
  *
  * Title editing piggybacks on the same FLOAT_WRITE_META gating.
  */
 
-import {
-  type RefObject,
-  useCallback,
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-} from "react";
+import { type RefObject, useCallback, useMemo, useState } from "react";
 import CodeMirror, { EditorView } from "@uiw/react-codemirror";
 import { latex } from "codemirror-lang-latex";
 import { EditorState } from "@codemirror/state";
@@ -35,7 +29,11 @@ import type { EditorHandle } from "@/components/Editor";
 import { usePoppedCards } from "@/hooks/usePoppedCards";
 import { useEditorChrome } from "@/components/editor-layout/chrome-context";
 import { viewToggleClasses } from "@/components/editor-layout/chrome-config";
-import { FLOAT_WRITE_META } from "@/lib/float-sync";
+import {
+  FLOAT_WRITE_META,
+  SourceMissingBanner,
+  useMainTransactionSync,
+} from "@/lib/float-sync";
 import type { TextObjectFloatBodyProps } from "../types";
 import { FloatTitleField } from "./float-title-field";
 
@@ -103,7 +101,6 @@ export function TexBlockBody({
   const [title, setTitle] = useState<string | null>(initial.title);
   const [sourceMissing, setSourceMissing] = useState(false);
   const [editingTitle, setEditingTitle] = useState(false);
-  const lastFromMainRef = useRef<string>(initial.code);
 
   const writeBackToMain = useCallback(
     (next: string) => {
@@ -180,64 +177,43 @@ export function TexBlockBody({
     [writeTitleBackToMain],
   );
 
-  // main → float subscription
-  useEffect(() => {
+  // main → float: re-read the node's attrs into local state. Same-value
+  // setState calls bail out of re-rendering, so this is a no-op when the
+  // doc change didn't touch our texBlock.
+  const syncFromMain = useCallback(() => {
     const ed = ref.current?.getEditor();
     if (!ed) return;
-    const myFloatId = `texBlock:${uuid}`;
-    const onTx = ({
-      transaction,
-    }: {
-      transaction: { getMeta: (k: string) => unknown };
-    }) => {
-      if (transaction.getMeta(FLOAT_WRITE_META) === myFloatId) return;
-      const view = ed.view;
-      let found: PMNode | null = null;
-      view.state.doc.descendants((n) => {
-        if (n.type.name === "texBlock" && n.attrs?.uuid === uuid) {
-          found = n;
-          return false;
-        }
-        return true;
-      });
-      if (!found) {
-        setSourceMissing(true);
-        return;
+    let found: PMNode | null = null;
+    ed.state.doc.descendants((n) => {
+      if (n.type.name === "texBlock" && n.attrs?.uuid === uuid) {
+        found = n;
+        return false;
       }
-      setSourceMissing(false);
-      const node: PMNode = found;
-      const nextCode = (node.attrs?.code as string) ?? "";
-      const nextTitle = (node.attrs?.parTitle as string | null) ?? null;
-      if (nextTitle !== title) setTitle(nextTitle);
-      if (nextCode !== code) {
-        lastFromMainRef.current = nextCode;
-        setCode(nextCode);
-      }
-    };
-    ed.on("transaction", onTx);
-    return () => {
-      ed.off("transaction", onTx);
-    };
-  }, [ref, uuid, code, title]);
+      return true;
+    });
+    if (!found) {
+      setSourceMissing(true);
+      return;
+    }
+    setSourceMissing(false);
+    const node: PMNode = found;
+    setTitle((node.attrs?.parTitle as string | null) ?? null);
+    setCode((node.attrs?.code as string) ?? "");
+  }, [ref, uuid]);
+
+  useMainTransactionSync({
+    mainEditor,
+    floatId: `texBlock:${uuid}`,
+    onMainDocChanged: syncFromMain,
+  });
 
   return (
     <>
       {sourceMissing && (
-        <div
-          role="status"
-          className="flex items-center gap-2 px-2 h-6 text-[11px] bg-[var(--surface-warning,#fdf3d1)] border-b border-[var(--edge-warning,#e7d49a)] text-[var(--ink-warning,#7a5a16)]"
-        >
-          <span className="flex-1 truncate">
-            LaTeX block — float is disconnected.
-          </span>
-          <button
-            type="button"
-            onClick={() => popped?.close(cardKey)}
-            className="text-[11px] underline underline-offset-2 hover:opacity-80"
-          >
-            Close
-          </button>
-        </div>
+        <SourceMissingBanner
+          kind="texBlock"
+          onClose={() => popped?.close(cardKey)}
+        />
       )}
       {/* Body mirrors paragraph-body.tsx's chrome contract so the float
           honors the lifted-overlay spawn geometry exactly (L3e.2):

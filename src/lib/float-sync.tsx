@@ -28,7 +28,7 @@
  * floats (HeadingFloat) the cursor lands at the same absolute offset.
  */
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import type { Editor, JSONContent } from "@tiptap/react";
 
 /**
@@ -110,6 +110,57 @@ export function SourceMissingBanner({
 
 export const FLOAT_WRITE_META = "from-float";
 
+export interface UseMainTransactionSyncArgs {
+  mainEditor: Editor | null;
+  /** Stable id used to tag transactions the caller dispatches into main,
+   *  so this hook's listener can skip its own echoes. */
+  floatId: string;
+  /** Called once on attach (seed) and again after every main transaction
+   *  that isn't this float's own write-back AND actually changed the doc.
+   *  Selection-only transactions never reach it. */
+  onMainDocChanged: () => void;
+}
+
+/**
+ * Low-level main→float subscription shared by every float body. Owns the
+ * two gates the keystroke-sanctity rule (AGENTS.md) requires of any
+ * main-editor transaction listener whose callback does O(doc) work:
+ * the own-write `FLOAT_WRITE_META` filter and the `docChanged` gate.
+ *
+ * `useFloatMainSync` layers the TipTap-on-TipTap doc replacement on top;
+ * non-TipTap bodies (tex-block-body's CodeMirror-over-string-attr) consume
+ * this directly instead of hand-rolling the subscription — hand-rolled
+ * copies are how a gate gets forgotten.
+ */
+export function useMainTransactionSync({
+  mainEditor,
+  floatId,
+  onMainDocChanged,
+}: UseMainTransactionSyncArgs): void {
+  useEffect(() => {
+    if (!mainEditor) return;
+
+    // Seed once on attach: cover the case where main was edited while the
+    // float was unmounted, or where the float seeded from a stale value.
+    onMainDocChanged();
+
+    const handler = ({
+      transaction,
+    }: {
+      transaction: import("@tiptap/pm/state").Transaction;
+    }) => {
+      if (transaction.getMeta(FLOAT_WRITE_META) === floatId) return;
+      if (!transaction.docChanged) return;
+      onMainDocChanged();
+    };
+
+    mainEditor.on("transaction", handler);
+    return () => {
+      mainEditor.off("transaction", handler);
+    };
+  }, [mainEditor, floatId, onMainDocChanged]);
+}
+
 export interface ReadSourceResult {
   /** The full doc the float should render. May be empty/placeholder when
    *  `missing` is true; callers usually ignore content in that case. */
@@ -137,28 +188,18 @@ export function useFloatMainSync({
 }: UseFloatMainSyncArgs): { sourceMissing: boolean } {
   const [sourceMissing, setSourceMissing] = useState(false);
 
-  useEffect(() => {
+  const onMainDocChanged = useCallback(() => {
     if (!mainEditor || !floatEditor) return;
-
-    // Seed once on attach: cover the case where main was edited while the
-    // float was unmounted, or where the float seeded from a stale value.
     syncFromMain(mainEditor, floatEditor, readSource, setSourceMissing);
+  }, [mainEditor, floatEditor, readSource]);
 
-    const handler = ({
-      transaction,
-    }: {
-      transaction: import("@tiptap/pm/state").Transaction;
-    }) => {
-      if (transaction.getMeta(FLOAT_WRITE_META) === floatId) return;
-      if (!transaction.docChanged) return;
-      syncFromMain(mainEditor, floatEditor, readSource, setSourceMissing);
-    };
-
-    mainEditor.on("transaction", handler);
-    return () => {
-      mainEditor.off("transaction", handler);
-    };
-  }, [mainEditor, floatEditor, floatId, readSource]);
+  useMainTransactionSync({
+    // Subscribe (and seed) only once both editors exist — the seed call
+    // must be able to write into the float.
+    mainEditor: floatEditor ? mainEditor : null,
+    floatId,
+    onMainDocChanged,
+  });
 
   return { sourceMissing };
 }
