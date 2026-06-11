@@ -72,6 +72,13 @@ export const LEGACY_TOKEN_CROSSWALK: Record<CardKind, LegacyTokens> = {
  *    `useCutter.ts` rewrites it via `rewriteLinkTargetKind("cut" →
  *    "cutter-comment")`. Mapped here so the same token is handled at the
  *    shared funnel too.
+ *
+ * Known-dead token, intentionally UNMAPPED: `"quotation"` (in
+ * `virgil-data/sync-test/virgil/quotations.json`) belongs to the removed
+ * quotations panel — its sidecar is never loaded (see the removed-panel note
+ * in `src/lib/print.ts`), and no spine kind corresponds to it. If it ever
+ * leaks in, `normalizeLegacyCardKind` returns `null` and the runtime-total
+ * accessors below absorb it.
  */
 const LEGACY_TOKEN_TO_CARD_KIND: Record<string, CardKind> = {
   comment: "revision-comment",
