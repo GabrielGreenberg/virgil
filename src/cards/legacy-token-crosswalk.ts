@@ -55,18 +55,88 @@ export const LEGACY_TOKEN_CROSSWALK: Record<CardKind, LegacyTokens> = {
   error:                 { legacyDataKind: null,               cssToken: null },
 };
 
+/**
+ * Inverse map: legacy on-disk card-kind token → spine `CardKind`.
+ *
+ * Pre-refactor sidecars persisted pre-spine tokens in `links[].target.ref.kind`
+ * (and per-card `kind` fields). These never appear as keys of
+ * `LEGACY_TOKEN_CROSSWALK`, so they must be normalized at the load funnel
+ * (`migrateCardLinks` in `src/links/migrate-card.ts`) before they reach any
+ * `Record<CardKind, …>` index. Evidence each token is real:
+ *
+ *  • `"comment"` — pre-refactor revision cards; live in
+ *    `samples/annotation-history/virgil/revisions.json` (and dev-doc copies).
+ *    Maps to `"revision-comment"` (the comment kind; suggestions were a later
+ *    split and always wrote spine kinds).
+ *  • `"cut"` — pre-refactor cutter cards; the legacy `cuts[]` branch in
+ *    `useCutter.ts` rewrites it via `rewriteLinkTargetKind("cut" →
+ *    "cutter-comment")`. Mapped here so the same token is handled at the
+ *    shared funnel too.
+ */
+const LEGACY_TOKEN_TO_CARD_KIND: Record<string, CardKind> = {
+  comment: "revision-comment",
+  cut: "cutter-comment",
+};
+
+const hasOwn = (obj: object, key: string): boolean =>
+  Object.prototype.hasOwnProperty.call(obj, key);
+
+/**
+ * Normalize a possibly-legacy on-disk card-kind token to a spine `CardKind`.
+ *
+ *  • Spine kinds pass through unchanged.
+ *  • Known legacy tokens map per `LEGACY_TOKEN_TO_CARD_KIND`.
+ *  • Unknown tokens → `null` (caller decides; the load funnel keeps the link
+ *    as-is and the runtime-total accessors below make the stray token
+ *    harmless).
+ */
+export function normalizeLegacyCardKind(kind: string): CardKind | null {
+  if (hasOwn(LEGACY_TOKEN_CROSSWALK, kind)) return kind as CardKind;
+  if (hasOwn(LEGACY_TOKEN_TO_CARD_KIND, kind)) {
+    return LEGACY_TOKEN_TO_CARD_KIND[kind];
+  }
+  return null;
+}
+
+/** Dev-only loud-once registry for unknown tokens hitting the accessors. */
+const warnedUnknownTokens = new Set<string>();
+
+function warnUnknownToken(fn: string, kind: string): void {
+  if (process.env.NODE_ENV === "production") return;
+  if (warnedUnknownTokens.has(kind)) return;
+  warnedUnknownTokens.add(kind);
+  console.error(
+    `[legacy-token-crosswalk] ${fn}: unknown card-kind token "${kind}" — ` +
+      `not a spine CardKind. Returning null. If this token exists in persisted ` +
+      `sidecar data, add a mapping to LEGACY_TOKEN_TO_CARD_KIND so the load ` +
+      `funnel (migrateCardLinks) normalizes it.`,
+  );
+}
+
 /** The `data-paragraph-kind` token for a spine kind, or `null`. Single source
- *  for the reconciler's `paragraphKindFor`. */
+ *  for the reconciler's `paragraphKindFor`. Runtime-total: an unknown token
+ *  (legacy on-disk kind that slipped past normalization) returns `null`
+ *  instead of throwing, with a loud dev-only error. */
 export function cssTokenForCardKind(kind: CardKind): string | null {
-  return LEGACY_TOKEN_CROSSWALK[kind].cssToken;
+  const entry = LEGACY_TOKEN_CROSSWALK[kind];
+  if (!entry) {
+    warnUnknownToken("cssTokenForCardKind", kind);
+    return null;
+  }
+  return entry.cssToken;
 }
 
 /** The `data-link-card` token for a spine kind, or `null` if the kind never
  *  carries a linked-anchor mark. Single source for `links.ts`'s
  *  `legacyKindToCardKindString` (via its `LinkedAnchorKind → CardKind`
- *  adapter). */
+ *  adapter). Runtime-total: unknown token → `null` + loud dev-only error. */
 export function legacyDataKindForCardKind(kind: CardKind): string | null {
-  return LEGACY_TOKEN_CROSSWALK[kind].legacyDataKind;
+  const entry = LEGACY_TOKEN_CROSSWALK[kind];
+  if (!entry) {
+    warnUnknownToken("legacyDataKindForCardKind", kind);
+    return null;
+  }
+  return entry.legacyDataKind;
 }
 
 if (process.env.NODE_ENV !== "production") {
