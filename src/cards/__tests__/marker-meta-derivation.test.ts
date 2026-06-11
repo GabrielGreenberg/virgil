@@ -109,7 +109,7 @@ describe("marker-meta derivation (A6/R17)", () => {
     }
     // A10/B keyspace unification, pinned directly: the revision pair
     // declares the PanelThemeKey token verbatim (the legacy "comment"
-    // alias + THEME_KEY_CROSSWALK are gone).
+    // alias + its theme-key crosswalk table are gone).
     expect(CARD_REGISTRY["revision-comment"].themeKey).toBe("revision");
     expect(CARD_REGISTRY["revision-suggestion"].themeKey).toBe("revision");
   });
