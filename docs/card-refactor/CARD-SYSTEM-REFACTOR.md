@@ -10,6 +10,14 @@ A deep overhaul of Virgil's card system, run as a **management session**: this d
 
 ## Progress
 
+### Session 16 (final) — **DoD VERIFIED: DONE-PENDING-MANUAL-WALKS · SSOT ARCHIVED** (2026-06-11)
+- **The whole-refactor DoD verification ran as a 10-lens Workflow** (`wf_c786bf77-875`: one adversarial lens per criterion + a completeness critic, ~2.4M tokens): **overall DONE-PENDING-MANUAL-WALKS, zero blocking gaps.** Criteria 3 (naming/keying) · 4 (lifecycle) · 8 (no data loss) fully SATISFIED with re-run contract tests; 5 · 7 · 9 SATISFIED-PENDING-MANUAL; 6 SATISFIED with §9 text drift (dispositions now annotated in place); 1 · 2 carry non-blocking routed residue (see the DoD addendum — `registry-completion` + `float-chrome-stage6` chips named as terminal owners).
+- **W8's core ran live at archival:** on the final merged `main`, 5 real keystrokes in the dev doc → `emitCount` Δ0 (version +5, doc mutated + restored byte-identical), zero console errors/warnings. (A wrong-element first probe incidentally confirmed A9's `BorrowedMainText` bodies are inert read-only TipTap instances.)
+- **W10 keyboard-UX signed off (Gabriel):** focused-but-collapsed is intended; no expand-on-focus chip (Decisions).
+- **The manual residue is W1–W10 in `MEMO_CARD_REFACTOR_WALKS.md`** (repo root) — the only remaining human work. The two A4 Session-13 deferrals (OrphanedFootnoteCard `compressed=!isSelected` weld; CitationCard draft-chevron dead click) folded into `MEMO_BUG_BACKLOG.md`.
+- **Archival executed per the verification's recommendation (CORRECT-then-MOVE):** cheat-sheet marked HISTORICAL · §9 dispositions annotated · the DoD addendum records the ratified deferrals + named residue chips + the §5 `resolveCardKind`-realized-piecewise note · doc moved to `docs/card-refactor/CARD-SYSTEM-REFACTOR.md` beside the per-arena audits · live pointers updated (auto-memory; `MEMO_V1_HANDOFF.md` if applicable).
+- **Final tree state: `main` tsc-clean, 664 tests / 72 files, ~95 commits ahead of origin (NOT pushed, by design).** The refactor's two foundations + ten arenas, 16 chips, ~16 independent adversarial reviews — all landed through the audit-first / per-step-commit / review-gated cadence.
+
 ### Session 16 (cont.) — A10-rest MERGED → **BATCH 3 COMPLETE (3/3) — ALL ARENAS LANDED** (2026-06-10)
 - **A10-rest ✅ merged to `main`** (merge `b297e06`, `--no-ff`; chip tip `c1a8aa9`; **main ~92 ahead of origin, NOT pushed**). 11 commits (A–H + 2 grep-gate hygiene + the review-nit fold); **tsc clean, 664 tests (72 files)** (+11 tests/+3 contract files over A6's 653). **Every Wave-3 arena has now landed** — remaining: the whole-refactor DoD verification + archive this SSOT.
 - **Chip provenance (the per-step commit guard earned its keep twice):** the impl chip was killed mid-Commit-F; a continuation chip inherited the uncommitted partial F from the tree, finished F/G/H + 2 hygiene commits, then also died before delivering its report. **Zero work lost** — the manager ran the verification sweep directly (tsc 0 · 664/664 · all 12 grep gates · wire-freeze · `editor.on` set identical to main) and tasked the review synthesizer with reconstructing the behavior-delta + manual-walk lists the dead chips would have reported.
@@ -193,9 +201,10 @@ A deep overhaul of Virgil's card system, run as a **management session**: this d
 
 ---
 
-## Current state cheat-sheet (read before touching code)
+## Current state cheat-sheet — **HISTORICAL (pre-refactor)**
 
-> ✅ **Verified by the A0/AF audits against HEAD `d1b3ee3` (2026-06-04).** Authoritative detail lives in `docs/card-refactor/A0-spine-audit.md` (taxonomy, per-kind matrix, exact `file:line`) and `AF-floatable-audit.md` (float layer).
+> ⚠️ **This section describes the PRE-refactor world** (17 kinds · `CardKind` in `panels/_shared` · `FloatCard`/`FloatingCards.tsx` · ~14 hand-synced sites) **and is preserved as the before-picture only.** The post-refactor reality: 16 kinds in `src/cards/types.ts`, one `CARD_REGISTRY` (`src/cards/card-registry.tsx`), one `Floatable` subsystem (`src/floats/`), one `float:card:<kind>:<id>` grammar. See the Definition of Done addendum + the Session-16 Progress entries for the verified end state.
+> ✅ Originally verified by the A0/AF audits against HEAD `d1b3ee3` (2026-06-04). Authoritative detail lives in `docs/card-refactor/A0-spine-audit.md` (taxonomy, per-kind matrix, exact `file:line`) and `AF-floatable-audit.md` (float layer).
 
 **~14 hand-synced card-kind definition sites across 10 files** (≈2× the original "~11" estimate), **plus 6 parallel kind-enums** with drifting tokens (canonical `CardKind` 17 · pristine 6 · `StackCardKind` 12 · `ANCHORED_CARD_KINDS` 13 · `MarkerType` 7 · `PanelThemeKey` 11 · `HighlightType` 5) **and a duplicate inline `entityKind` union** (`marginalia.ts:111`). Core sites:
 
@@ -360,6 +369,8 @@ AI requests (bridge; ephemeral cards), collab focus-claims, theming/color overri
 
 grip-redesign disabled drags (TodoRow/QuotationGroupCard/ErrorCard) · vestigial detached toolbars + `AttachedPopover` + `menuLocation:"free"` · legacy `comments.json`/`useComments` · `legacySpawn` · dual example-block popout key.
 
+> **Final dispositions (session 16, DoD-6):** grip-redesign drags **GONE** (A1) · detached toolbars + `AttachedPopover` + `menuLocation` **GONE** (A1, R30 full feature removal) · `comments.json`/`useComments` **GONE** (A1) · `legacySpawn` **RATIFIED KEPT** (A1-audit: the punch-list entry was a mislabel — it is live) · dual example key **RATIFIED KEPT** (session-3 Decisions: "Dual example key left intact → A1 decides any collapse"; A1-audit ruled do-not-collapse). 3 gone + 2 ratified-kept = the list is fully dispositioned; the DoD-6 letter ("punch-list gone") reads as "dispositioned".
+
 ---
 
 ## Decisions
@@ -431,6 +442,7 @@ grip-redesign disabled drags (TodoRow/QuotationGroupCard/ErrorCard) · vestigial
 - **R28 implemented as ratified** + the **`collabClaims` facet** *(self)*: exactly the 7 prior claim-bearing kinds, declared on the registry (same pattern as `poppable`) — prevents kind-derivation from silently making highlight/suggestions claim-bearing; zero behavior change, pinned.
 - **R29 implemented as ratified** *(self)*: `aiRequest` declared on 6 kinds; `linkPanel` is *declared, not derived* (registry panel `todo` vs wire token `todos` — the divergence is why the field exists); the external `AiRequestKind`/`AiRequestLink` skill contract frozen.
 - **SEAM E-6 resolved by deletion** *(self)*: the legacy `comment`/`cut` `ActionKind` tokens left the codebase with the zero-consumer defs (no reconciliation needed — A1's R30 kill had already severed everything).
+- **W10 — keyboard focus = focused-but-collapsed, SIGNED OFF** *(Gabriel, archival)*. Tab/arrow through docked cards and omni entries moves focus WITHOUT auto-expanding — the deliberate N1 model (focus is selection-axis; expansion stays explicit via chevron/Enter). The deferred expand-on-focus chip is NOT wanted; `handleCardFocus` stays a no-op by design.
 
 ### Resolved by audit (no decision)
 - **Borrowed-content full list (your C1/C3).** ⚠️ **Superseded by the A9 audit (session 11) — see above.** ~~beyond examples/archives/footnotes, candidates are **cutter cards** and **revision-suggestion**~~ — A9 verified cutter/revision-suggestion render flat strings, so the borrowed set is **footnote, archive, example (+ highlight excerpt)** only.
@@ -496,6 +508,17 @@ This doc is the refactor's SSOT, **owned by the management session.** Audit chip
 8. **No silent data loss** — prefs/sidecar + popout-key migrations clean.
 9. **Dev preview verified** — walk every card kind through creation, selection, anchoring, pop-out, drop-to-stack, clone, delete; pop out a text-object and a card and confirm identical window behavior.
 
+### DoD addendum — final verification outcome (Session 16, Workflow `wf_c786bf77-875`)
+
+**Overall: DONE-PENDING-MANUAL-WALKS — zero blocking gaps.** Per-criterion: 3/4/8 **SATISFIED** (evidence + re-run contract tests) · 5/7/9 **SATISFIED-PENDING-MANUAL** (the walk list, `MEMO_CARD_REFACTOR_WALKS.md`) · 6 **SATISFIED with text DRIFT** (§9 dispositions annotated above) · 1/2 **GAP, non-blocking, routed** (below). W8's core was run live at archival: `emitCount` Δ0 across real keystrokes on the final merged main, console clean.
+
+**Ratified deferral record (amends the DoD letter):**
+- **DoD-1 residue → the `registry-completion` chip:** the hand-kept `RecentlyAddedKind` (`useRecentlyAddedTracker.ts`, `TODO(A3-followup)` in `card-creation.ts`) · `StackCardKind` + the `snapshot.ts` switch (A0-dispositioned DERIVE, half-landed — the derived predicate has zero consumers; incl. the `bibliography`-vs-`bib` token drift) · inert vestiges (`HighlightType`, `CardContentKind`, write-only `PANEL_REGISTRY` `CardLink.keyPrefix`/`themeKey`) · the `example` `stackable:true`-but-snapshot-`null` facet wart · the 2-site hardcoded revision `kindOptions` · SEAM E-5 (the legacy `linkedAnchor` `kind` attr + the two legacy crosswalk fns — its assigned lander A1 already shipped; re-routed here). The "~10 sync points" wording vs the cheat-sheet's "~14": the audited real count was ~14; 12 retired/derived; the typed `LEGACY_TOKEN_CROSSWALK` is ratified-kept (R-C).
+- **DoD-2 residue → the `float-chrome-stage6` chip:** `bib`/`ai` floats keep the `bareWindow` bespoke-header degrade (deferred AF→AF-follow→A9, now with a terminal owner); the text-object `snapshotForStack` consumer-side domain branch stub.
+- **DoD-5 print residue → the `print-chrome` chip:** SEAM E-3/R23 — the A8-prepared `data-card-chrome` strip rule in `globals.css` is a no-op (zero DOM stamps; **verified pre-existing**, the old selectors had zero stamps pre-refactor too); appendix cards print WITH chrome until the one-attribute stamp lands.
+- **§5 shape delta:** `resolveCardKind(record, ctx)` never landed under that name — realized piecewise as `cardKindFromRecord(record, panel)` + the float-key parsers (equivalent coverage). §7/AF references to `FloatingCards.tsx`/`TextObjectFloat.tsx` are historical (both deleted by AF-impl).
+- **Carried forward outside this doc:** the `CARD_THEMES`/`panel-theme.defaults.json` frozen-13-key pin + the marker-meta tautology fix + the lifecycle CI assertion + AI-bridge idempotency pins + A5/A6 test-fidelity items → the **`test-hardening` chip** (elevated: the 2026-06-09 promote-defaults incident makes the defaults-key pin load-bearing); the **`error-apparatus-consolidation` chip**; the **`bridge-docId-hardening` chip**; the **doc-rot sweep before the next release-promote** (full inventory: `docs/workspace/actions.md:154-156` lists THREE deleted hooks — `useFootnoteActions`/`useMarkerActions`/`useSelectionToCardActions`; `docs/agents/main-text.md` still cites the deleted `marginaliaMarkers` memo; `docs/workspace/cards.md` materially stale — 17→16 kinds, deleted `POLYMORPHIC_CARD_PANEL`/`MARKER_KIND_TO_THEME_KEY`/comment-alias text; `docs/workspace/` ships to user papers via the manifest sync); the pre-existing keystroke chips already spawned (tex-block-body O(doc) walk; AGENTS.md subscriber-list staleness).
+
 ---
 
-*This is a working planning document for a single refactor. Archive or delete it once the refactor lands.*
+**ARCHIVED 2026-06-11** — refactor verified **DONE pending manual walks W1–W10** (`MEMO_CARD_REFACTOR_WALKS.md`); residue routed to the named chips above. *This was a working planning document for a single refactor; it is preserved with the per-arena audits in `docs/card-refactor/`.*

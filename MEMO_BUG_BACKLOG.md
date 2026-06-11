@@ -435,3 +435,24 @@ one module that each surface composes with its own block/chrome layer.
 `cardContext`-style flag) the main editor's atom registration, so the
 "add an atom kind in one place" invariant holds. Verify with a main-editor
 smoke test (typing + atoms still render) and the full suite.
+
+## 12. OrphanedFootnoteCard still welds compressed = !isSelected (pre-A4 axis)
+
+`src/panels/Footnotes/FootnoteCard.tsx` (~:196, the orphaned variant): the A4
+selection ⟂ expansion split gave every anchored card an independent `expanded`
+axis, but `OrphanedFootnoteCard` kept the old weld — no `ac`, no chevron,
+`compressed = !isSelected`. Selecting it expands it; the
+selected-but-collapsed cell is unreachable for this one card.
+
+**Desired** — give it a panel-local expansion axis like A4 Commit G did for
+ErrorCard (panel-owned `expanded` set + the chevron), so the N1 2×2 holds
+uniformly. (A4 Session-13 deferral #3, carried at refactor archival.)
+
+## 13. CitationCard draft chevron is a dead click while isDraft
+
+`src/panels/Citations/CitationCard.tsx`: the A4 expand chevron renders on a
+draft citation card but expanding a draft is a no-op — a dead affordance.
+
+**Desired** — suppress the chevron while `isDraft` (or make expansion
+meaningful for drafts). (A4 Session-13 deferral #6, carried at refactor
+archival.)
