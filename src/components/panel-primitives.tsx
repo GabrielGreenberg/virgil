@@ -56,7 +56,8 @@ import { omniPinStore } from "./editor-layout/omni-pin-store";
  *  their own focus/blur to the same claim without prop-drilling.
  */
 export interface CardClaimSlot {
-  panelKind: string | undefined;
+  /** Registry-derived collab claim scope (`collabClaimScope(kind)`, R28/D-2). */
+  panelKind: PanelThemeKey | undefined;
   cardId: string | undefined;
   /** True when the partner has this card claimed. Title inputs go
    *  read-only / pointer-events:none when set. */
@@ -83,7 +84,7 @@ export function CardChromeTrailing({
   cardId,
   headerTrailing,
 }: {
-  panelKey?: string;
+  panelKey?: PanelThemeKey;
   cardId: string;
   headerTrailing?: ReactNode;
 }) {

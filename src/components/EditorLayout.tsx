@@ -21,6 +21,7 @@ import { useUpdateAvailable, applyUpdate } from "@/hooks/useUpdateAvailable";
 import { DocPipeline } from "./editor-layout/DocPipeline";
 import { useSelectedAnchorSync } from "@/hooks/useSelectedAnchorSync";
 import { CollabProvider, COLLAB_INERT, type CollabHook } from "@/hooks/useCollab";
+import { collabClaimScope } from "@/cards/predicates";
 import CollabStatusPill from "./CollabStatusPill";
 import { useCollaboratorIdentity } from "./CollaboratorIdentityDialog";
 import { useLatexCompile } from "@/hooks/useLatexCompile";
@@ -52,6 +53,7 @@ import {
   getPanelColorVersion,
   loadPanelColors,
   subscribePanelColors,
+  type PanelThemeKey,
 } from "@/lib/panel-theme";
 import { loadPanelTypography } from "@/lib/panel-typography";
 import { loadPrefLinks } from "@/lib/pref-links";
@@ -3037,26 +3039,31 @@ export default function EditorLayout() {
   );
 
   // ── Soft presence: broadcast our card selections to the partner.
-  // Mapping uses the same `panelKind` strings as per-card claims so the
-  // partner-color dot lines up with the card chrome.
+  // Scope tokens are REGISTRY-DERIVED via `collabClaimScope` (R28/D-2) so the
+  // broadcast always matches what the card chrome reads back through
+  // `getCardSelections(scope, id)`. This fixed two bugs the hand-kept literal
+  // table shipped: the revision row broadcast "comment" (a token no reader
+  // ever used — the cards read "revision"), and the report selection was
+  // never broadcast at all.
   useEffect(() => {
     if (!collab.enabled) return;
-    const cards: { panelKind: string; cardId: string }[] = [];
-    if (selectedNoteId) cards.push({ panelKind: "note", cardId: selectedNoteId });
-    if (selectedFootnoteId) cards.push({ panelKind: "footnote", cardId: selectedFootnoteId });
-    if (selectedCitationId) cards.push({ panelKind: "citation", cardId: selectedCitationId });
-    if (selectedTodoId) cards.push({ panelKind: "todo", cardId: selectedTodoId });
-    if (selectedArchiveId) cards.push({ panelKind: "archive", cardId: selectedArchiveId });
-    if (selectedCutterCardId) cards.push({ panelKind: "cut", cardId: selectedCutterCardId });
-    if (selectedCommentId) cards.push({ panelKind: "comment", cardId: selectedCommentId });
-    if (selectedBibKey) cards.push({ panelKind: "bib", cardId: selectedBibKey });
-    if (selectedExampleId) cards.push({ panelKind: "example", cardId: selectedExampleId });
+    const cards: { panelKind: PanelThemeKey; cardId: string }[] = [];
+    if (selectedNoteId) cards.push({ panelKind: collabClaimScope("note"), cardId: selectedNoteId });
+    if (selectedFootnoteId) cards.push({ panelKind: collabClaimScope("footnote"), cardId: selectedFootnoteId });
+    if (selectedCitationId) cards.push({ panelKind: collabClaimScope("citation"), cardId: selectedCitationId });
+    if (selectedTodoId) cards.push({ panelKind: collabClaimScope("todo"), cardId: selectedTodoId });
+    if (selectedArchiveId) cards.push({ panelKind: collabClaimScope("archive"), cardId: selectedArchiveId });
+    if (selectedCutterCardId) cards.push({ panelKind: collabClaimScope("cutter-comment"), cardId: selectedCutterCardId });
+    if (selectedReportCardId) cards.push({ panelKind: collabClaimScope("report"), cardId: selectedReportCardId });
+    if (selectedCommentId) cards.push({ panelKind: collabClaimScope("revision-comment"), cardId: selectedCommentId });
+    if (selectedBibKey) cards.push({ panelKind: collabClaimScope("bib"), cardId: selectedBibKey });
+    if (selectedExampleId) cards.push({ panelKind: collabClaimScope("example"), cardId: selectedExampleId });
     collab.updateSelection(cards);
   }, [
     collab.enabled,
     collab.updateSelection,
     selectedNoteId, selectedFootnoteId, selectedCitationId, selectedTodoId,
-    selectedArchiveId, selectedCutterCardId,
+    selectedArchiveId, selectedCutterCardId, selectedReportCardId,
     selectedCommentId, selectedBibKey, selectedExampleId,
   ]);
 

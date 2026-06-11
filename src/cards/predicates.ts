@@ -16,6 +16,7 @@
 import { CARD_REGISTRY } from "./card-registry";
 import type { CardKind } from "./types";
 import type { PanelKind } from "@/panels/_shared/types";
+import type { PanelThemeKey } from "@/lib/panel-theme";
 
 /** All card kinds, in registry declaration order. */
 export const CARD_KINDS = Object.keys(CARD_REGISTRY) as CardKind[];
@@ -51,6 +52,24 @@ export const stackableCardKinds = (): CardKind[] =>
  *  for the docked one-click pop-out control (and `registerCardFloatable`'s
  *  registration guard). Only `error` is false (ratified not-poppable, §3.5). */
 export const isPoppable = (k: CardKind): boolean => CARD_REGISTRY[k].poppable;
+
+/** Whether a kind participates in collab focus-claims (R28/D-2). Gates the
+ *  claim-on-focus / release-on-blur wiring and the claim-pill/presence-dots
+ *  trailing on both the docked card and its float. Exactly 7 kinds are true
+ *  (pinned by `collab-claim-scope-contract.test.ts`). */
+export const hasCollabClaims = (k: CardKind): boolean =>
+  CARD_REGISTRY[k].collabClaims;
+
+/** The collab claim/presence WIRE SCOPE for a kind (R28/D-2): one source for
+ *  docked + float, derived from the registry — `collabClaimScope(kind) ≡
+ *  CARD_REGISTRY[kind].themeKey` (crosswalk-free post-A10/B; the keyspaces are
+ *  unified). Emits the exact legacy wire tokens the collab sidecar has always
+ *  carried (note / footnote / archive / cut / report / revision), so existing
+ *  on-disk claims keep matching — pinned byte-for-byte by
+ *  `collab-claim-scope-contract.test.ts`. Defined for every kind (it's just
+ *  the theme key); only `hasCollabClaims` kinds ever write claims with it. */
+export const collabClaimScope = (k: CardKind): PanelThemeKey =>
+  CARD_REGISTRY[k].themeKey;
 
 /** Whether a kind can morph in place into its sibling (the A9 kind-chevron).
  *  The 4 morphing pairs (note↔highlight, revision-/cutter-comment↔suggestion,

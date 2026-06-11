@@ -45,6 +45,7 @@ import type {
   ReportRequestCard as ReportRequestCardData,
 } from "@/lib/types";
 import type { Floatable, FloatChromeSlots } from "@/floats/types";
+import type { PanelThemeKey } from "@/lib/panel-theme";
 import { snapshotCard } from "@/lib/stack/snapshot";
 import type { FootnoteRef } from "@/lib/types";
 import { buildFloatKey } from "@/floats/float-key";
@@ -98,7 +99,7 @@ function cardFloatable(
 
 /** Collab trailing for a card float — the claim pill / presence dots that the
  *  card's docked header shows, hoisted into `FloatChrome`'s trailing slot. */
-function collabTrailing(panelKey: string, id: string): FloatChromeSlots {
+function collabTrailing(panelKey: PanelThemeKey, id: string): FloatChromeSlots {
   return { trailing: <CardChromeTrailing panelKey={panelKey} cardId={id} /> };
 }
 

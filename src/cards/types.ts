@@ -116,6 +116,17 @@ export interface CardMeta {
   keyPrefix: string;
   /** `CARD_THEMES` key (was the scattered per-card `themeKey` lookups). */
   themeKey: ThemeKey;
+  /** Whether this kind participates in collab focus-claims (R28/D-2): its
+   *  docked card claims on focus / releases on blur, and both docked + float
+   *  trailing render the partner claim pill / presence dots. True for EXACTLY
+   *  the 7 claim-bearing kinds (note, footnote, archive, report,
+   *  report-request, revision-comment, cutter-comment) — an explicit facet,
+   *  NOT derived from `anchored`/`origin`, so adding a kind can never silently
+   *  make it claim-bearing (highlight / the suggestion kinds stay out). The
+   *  claim's wire scope token is `collabClaimScope(kind)` (predicates.ts) ≡
+   *  the registry `themeKey` — pinned byte-for-byte by
+   *  `collab-claim-scope-contract.test.ts`. */
+  collabClaims: boolean;
   /** Owning panel (was `PANEL_REGISTRY.card` + `POLYMORPHIC_CARD_PANEL`). `null`
    *  only for the cross-panel `ai` kind (renders in multiple panels). */
   panel: PanelKind | null;
