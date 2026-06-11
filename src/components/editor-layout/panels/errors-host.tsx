@@ -17,6 +17,11 @@ export interface ErrorsHostProps {
    *  state of the per-card jump-target icon when an error has no
    *  resolvable paragraph anchor. */
   paragraphByErrorId: Map<string, string>;
+  /** Controlled expansion (R5) — owned by the host's owner (EditorPane /
+   *  EditorLayout) and threaded straight through to `ErrorsPanel`. */
+  expandedIds: Set<string>;
+  onExpand: (id: string) => void;
+  onToggleExpanded: (id: string) => void;
 }
 
 export function ErrorsHost(p: ErrorsHostProps) {
@@ -35,6 +40,9 @@ export function ErrorsHost(p: ErrorsHostProps) {
       anchoredIds={anchoredIds}
       dismissedIds={p.dismissedIds}
       onDismiss={p.onDismiss}
+      expandedIds={p.expandedIds}
+      onExpand={p.onExpand}
+      onToggleExpanded={p.onToggleExpanded}
     />
   );
 }

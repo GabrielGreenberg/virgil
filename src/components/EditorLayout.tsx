@@ -29,6 +29,7 @@ import { useLatexLint } from "@/hooks/useLatexLint";
 import type { LatexError } from "@/lib/latex-errors";
 import { findParagraphUuids, paragraphForLine } from "@/lib/latex-paragraph-map";
 import { ErrorsHost } from "./editor-layout/panels/errors-host";
+import { pruneExpanded } from "@/panels/Errors/expansion";
 import { IconErrors } from "./editor-layout/panel-icons";
 import PrintDialog from "./PrintDialog";
 import FontsDialog from "./FontsDialog";
@@ -1414,6 +1415,24 @@ export default function EditorLayout() {
     from: number;
     to: number;
   } | null>(null);
+  // Expansion for the CODE-VIEW errors sidebar only (R5): kept as its own
+  // small local set — deliberately NOT shared with EditorPane's
+  // docked-panel/omni scope, because this sidebar renders a different error
+  // list (the code editor's compile/lint diagnostics) by design.
+  const [expandedErrorIds, setExpandedErrorIds] = useState<Set<string>>(
+    () => new Set(),
+  );
+  const expandError = useCallback((id: string) => {
+    setExpandedErrorIds((prev) => (prev.has(id) ? prev : new Set(prev).add(id)));
+  }, []);
+  const toggleErrorExpanded = useCallback((id: string) => {
+    setExpandedErrorIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }, []);
   const dismissError = useCallback((id: string) => {
     setDismissedErrorIds((prev) => {
       const next = new Set(prev);
@@ -1421,7 +1440,22 @@ export default function EditorLayout() {
       return next;
     });
     setSelectedErrorId((cur) => (cur === id ? null : cur));
+    // Prune the dismissed card's expansion alongside (A4 deferred #4).
+    setExpandedErrorIds((prev) => {
+      if (!prev.has(id)) return prev;
+      const next = new Set(prev);
+      next.delete(id);
+      return next;
+    });
   }, []);
+  // Prune dead expansion ids when the error list changes. `pruneExpanded`
+  // is identity-stable and no-ops on an empty list (the transient
+  // mid-compile empty list must not wipe expansion).
+  useEffect(() => {
+    setExpandedErrorIds((prev) =>
+      pruneExpanded(prev, allLatexErrors.map((e) => e.id)),
+    );
+  }, [allLatexErrors]);
 
   // Click-away: clear the card SELECTION (the halo) when the user clicks
   // outside any anchored surface. Per N1 (A4), expansion is a separate axis —
@@ -4354,6 +4388,9 @@ export default function EditorLayout() {
                           onJump={jumpToError}
                           snippets={errorSnippets}
                           paragraphByErrorId={paragraphByErrorId}
+                          expandedIds={expandedErrorIds}
+                          onExpand={expandError}
+                          onToggleExpanded={toggleErrorExpanded}
                         />
                       </div>
                     ) : (
