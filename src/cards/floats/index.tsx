@@ -45,14 +45,13 @@ import type {
   ReportRequestCard as ReportRequestCardData,
 } from "@/lib/types";
 import type { Floatable, FloatChromeSlots } from "@/floats/types";
-import type { PanelThemeKey } from "@/lib/panel-theme";
 import { snapshotCard } from "@/lib/stack/snapshot";
 import type { FootnoteRef } from "@/lib/types";
 import { buildFloatKey } from "@/floats/float-key";
 import type { CardFloatCtx } from "../card-float-ctx";
 import type { CardKind } from "../types";
 import { CARD_REGISTRY, registerCardFloatable } from "../card-registry";
-import { cardKindsForPanel } from "../predicates";
+import { cardKindsForPanel, hasCollabClaims } from "../predicates";
 import { canMorphNoteToHighlight } from "../morphs";
 import { CardKindHeader } from "@/components/panel-primitives";
 
@@ -61,7 +60,14 @@ import { CardKindHeader } from "@/components/panel-primitives";
  *  card passes `chromeless` so its in-card header is suppressed and AF's
  *  `FloatChrome` (in `FloatWindow`) owns it; `chromeSlots.trailing` carries the
  *  collab pill / per-card slot up into that chrome. `bareWindow` cards (bib/ai)
- *  keep a bespoke in-body header for now (Stage 6 migrates them). */
+ *  keep a bespoke in-body header for now (Stage 6 migrates them).
+ *
+ *  Collab trailing is KIND-DRIVEN here (R28/D-2): every claim-bearing kind
+ *  (`CardMeta.collabClaims`) automatically gets the shared `CardChromeTrailing`
+ *  — scope derived from the registry inside it — so no per-registration scope
+ *  literal exists. A builder's own `trailing` (status dot / done toggle) rides
+ *  in `CardChromeTrailing`'s `headerTrailing` slot for claim-bearing kinds and
+ *  passes through untouched for the rest. */
 function cardFloatable(
   kind: CardKind,
   id: string,
@@ -79,6 +85,19 @@ function cardFloatable(
     bareWindow?: boolean;
   },
 ): Floatable {
+  const baseSlots: FloatChromeSlots = opts.chromeSlots ?? {};
+  const chromeSlots: Floatable["chromeSlots"] = hasCollabClaims(kind)
+    ? {
+        ...baseSlots,
+        trailing: (
+          <CardChromeTrailing
+            kind={kind}
+            cardId={id}
+            headerTrailing={baseSlots.trailing}
+          />
+        ),
+      }
+    : opts.chromeSlots;
   return {
     // The canonical float key via the runtime-leaf SSOT builder — same string
     // `cardPopKey(kind,id)` emits, never a hand-built `float:card:…` literal.
@@ -90,17 +109,11 @@ function cardFloatable(
     title: opts.title ?? CARD_REGISTRY[kind].label,
     canJump: opts.canJump,
     jumpToSource: opts.jumpToSource,
-    chromeSlots: opts.chromeSlots,
+    chromeSlots,
     bareWindow: opts.bareWindow,
     snapshotForStack: opts.snapshotForStack,
     renderBody: opts.renderBody,
   };
-}
-
-/** Collab trailing for a card float — the claim pill / presence dots that the
- *  card's docked header shows, hoisted into `FloatChrome`'s trailing slot. */
-function collabTrailing(panelKey: PanelThemeKey, id: string): FloatChromeSlots {
-  return { trailing: <CardChromeTrailing panelKey={panelKey} cardId={id} /> };
 }
 
 registerCardFloatable("note", (id, ctx: CardFloatCtx) => {
@@ -109,7 +122,6 @@ registerCardFloatable("note", (id, ctx: CardFloatCtx) => {
   const canJump = getLinkedTextObjectIds(note).length > 0;
   return cardFloatable("note", id, {
     chromeSlots: {
-      ...collabTrailing("note", id),
       // WS7 (A6): the kind-chevron title slot is gated off for
       // paragraph-only Mode-A notes (no text range → nothing for a
       // highlight to tint); FloatChrome falls back to the plain title.
@@ -193,7 +205,6 @@ registerCardFloatable("footnote", (id, ctx: CardFloatCtx) => {
   if (!fn) return null;
   const isSelected = ctx.selectedFootnoteId === fn.footnoteId;
   return cardFloatable("footnote", id, {
-    chromeSlots: collabTrailing("footnote", id),
     canJump: true,
     jumpToSource: () => ctx.editorRef.current?.scrollToFootnote(fn.footnoteId, null),
     // R1 (Option B): build a FootnoteRef-shaped record from the FootnoteInfo
@@ -229,7 +240,6 @@ registerCardFloatable("archive", (id, ctx: CardFloatCtx) => {
   if (!snippet) return null;
   const orphaned = ctx.anchoredIds && !ctx.anchoredIds.has(snippet.id);
   return cardFloatable("archive", id, {
-    chromeSlots: collabTrailing("archive", id),
     canJump: true,
     jumpToSource: () => ctx.editorRef.current?.jumpToCard(snippet, null),
     snapshotForStack: (source) => snapshotCard("archive", snippet, source),
@@ -258,7 +268,6 @@ registerCardFloatable("cutter-comment", (id, ctx: CardFloatCtx) => {
   const canJump = getLinkedTextObjectIds(card).length > 0;
   return cardFloatable("cutter-comment", id, {
     chromeSlots: {
-      ...collabTrailing("cut", id),
       // Restore the comment↔suggestion morph control on popout (the docked
       // CardKindDropdown is suppressed when the card renders chromeless).
       title: (
@@ -335,7 +344,6 @@ registerCardFloatable("report", (id, ctx: CardFloatCtx) => {
   const canJump = getLinkedTextObjectIds(card).length > 0;
   return cardFloatable("report", id, {
     chromeSlots: {
-      ...collabTrailing("report", id),
       title: (
         <CardKindHeader
           kind="report"
@@ -373,7 +381,6 @@ registerCardFloatable("report-request", (id, ctx: CardFloatCtx) => {
   const canJump = getLinkedTextObjectIds(card).length > 0;
   return cardFloatable("report-request", id, {
     chromeSlots: {
-      ...collabTrailing("report", id),
       title: (
         <CardKindHeader
           kind="report-request"
@@ -516,7 +523,6 @@ registerCardFloatable("revision-comment", (id, ctx: CardFloatCtx) => {
   return cardFloatable("revision-comment", id, {
     snapshotForStack: (source) => snapshotCard("revision-comment", card, source),
     chromeSlots: {
-      ...collabTrailing("revision", id),
       // Restore the comment↔suggestion morph control on popout (the docked
       // CardKindDropdown is suppressed when the card renders chromeless).
       title: (

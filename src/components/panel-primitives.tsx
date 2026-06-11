@@ -29,7 +29,7 @@ import { useTabIndent } from "@/hooks/useTabIndent";
 import { autoSizeInput } from "@/lib/autoSizeInput";
 import ConfirmDialog from "./ConfirmDialog";
 import { hasJsonContent } from "@/cards/has-content";
-import { isPoppable } from "@/cards/predicates";
+import { isPoppable, hasCollabClaims, collabClaimScope } from "@/cards/predicates";
 import { CARD_REGISTRY } from "@/cards/card-registry";
 import RichTextField from "./RichTextField";
 import { BorrowedMainText } from "./BorrowedMainText";
@@ -69,40 +69,72 @@ function useCardClaimSlot(): CardClaimSlot | null {
 }
 
 /**
- * The card-domain trailing node for a popped-out card's `FloatChrome` slot.
- * Built by each card's `toFloatable` factory and handed to `FloatChrome` as
- * `chromeSlots.trailing`; since it's a React element (not a hook call in the
- * factory), React runs its hooks when FloatChrome renders it. Hosts its own
- * `CardClaimContext.Provider` so the collab claim survives the relocated mount
- * (FloatChrome stays domain-neutral and renders it blindly).
+ * The ONE collab claim-pill / presence-dots trailing (R28/D-2). This
+ * pill-or-dots core used to be authored three times — the float chrome
+ * trailing, `EditableCard`'s docked trailing, and `CutterCommentCard`'s
+ * hand-rolled copy — each with its own scope literal. Now the scope derives
+ * from the registry (`collabClaimScope(kind)`), gated on the `collabClaims`
+ * facet: a non-claim-bearing kind renders nothing.
  *
- * Renders the per-card slot first (status dot / checkbox), then the collab
- * claim pill / presence dots — mirroring `EditableCard`'s docked trailing.
+ * Morph note (deliberate non-fix): when a card morphs (e.g. report ↔
+ * report-request, comment ↔ suggestion), there is NO claim remap. The scope
+ * re-derives per render from the *current* kind — claim-bearing morph pairs
+ * share a scope (pinned by `collab-claim-scope-contract.test.ts`), and a
+ * morph into a non-claim kind simply stops rendering the pill; any stale
+ * partner claim ages out via the existing heartbeat sweep.
+ */
+export function CollabCardTrailing({
+  kind,
+  cardId,
+}: {
+  kind: CardKind;
+  cardId: string;
+}) {
+  const scope = hasCollabClaims(kind) ? collabClaimScope(kind) : undefined;
+  const { partnerClaim } = useCardClaim(scope, cardId);
+  const collabCtx = useCollabContext();
+  const partnerSelections = scope
+    ? collabCtx.getCardSelections(scope, cardId)
+    : [];
+  if (!scope) return null;
+  return partnerClaim ? (
+    <CollabClaimPill holder={partnerClaim.holder} color={partnerClaim.color} />
+  ) : (
+    <CollabPresenceDots presences={partnerSelections} />
+  );
+}
+
+/**
+ * The card-domain trailing node for a popped-out card's `FloatChrome` slot.
+ * Built by the `cardFloatable` shell (`src/cards/floats/index.tsx`) for every
+ * claim-bearing kind and handed to `FloatChrome` as `chromeSlots.trailing`;
+ * since it's a React element (not a hook call in the factory), React runs its
+ * hooks when FloatChrome renders it. Hosts its own `CardClaimContext.Provider`
+ * so the collab claim survives the relocated mount (FloatChrome stays
+ * domain-neutral and renders it blindly).
+ *
+ * Kind-driven (R28/D-2): the claim scope derives from the registry via
+ * `collabClaimScope(kind)`, gated on `collabClaims` — no per-site literals.
+ * Renders the per-card slot first (status dot / checkbox), then the shared
+ * `CollabCardTrailing` — mirroring `EditableCard`'s docked trailing.
  */
 export function CardChromeTrailing({
-  panelKey,
+  kind,
   cardId,
   headerTrailing,
 }: {
-  panelKey?: PanelThemeKey;
+  kind: CardKind;
   cardId: string;
   headerTrailing?: ReactNode;
 }) {
-  const { partnerClaim } = useCardClaim(panelKey, cardId);
-  const collabCtx = useCollabContext();
-  const partnerSelections = panelKey
-    ? collabCtx.getCardSelections(panelKey, cardId)
-    : [];
+  const scope = hasCollabClaims(kind) ? collabClaimScope(kind) : undefined;
+  const { partnerClaim } = useCardClaim(scope, cardId);
   return (
     <CardClaimContext.Provider
-      value={{ panelKind: panelKey, cardId, partnerClaimed: !!partnerClaim }}
+      value={{ panelKind: scope, cardId, partnerClaimed: !!partnerClaim }}
     >
       {headerTrailing}
-      {partnerClaim ? (
-        <CollabClaimPill holder={partnerClaim.holder} color={partnerClaim.color} />
-      ) : (
-        <CollabPresenceDots presences={partnerSelections} />
-      )}
+      <CollabCardTrailing kind={kind} cardId={cardId} />
     </CardClaimContext.Provider>
   );
 }
@@ -686,7 +718,9 @@ export interface EditableCardProps {
   // ── RichTextField props ──
   value: unknown;
   variant?: "footnote" | "note";
-  /** Panel kind — drives per-panel body typography overrides. */
+  /** Panel kind — drives per-panel body typography overrides ONLY. The
+   *  collab claim scope is registry-derived from `kind` (R28/D-2), so this
+   *  carries no collab duty. */
   panelKey?: import("@/lib/panel-typography").PanelBodyKey;
   /** Card kind for chrome-driven read-only mode. When set and the
    *  current chrome's `editableCardKinds` whitelist excludes this kind,
@@ -822,14 +856,11 @@ export function EditableCard({
 
   // Collab focus claim: when the partner has this card focused, dim it
   // and surface a "Sam · 12s" pill in the header. When we focus, write
-  // our own claim; on blur, release.
-  const { partnerClaim, claim: claimCard, release: releaseClaim } = useCardClaim(panelKey, id);
-  // Soft presence: which partners have this card selected (informational
-  // dot in the chrome, no locking).
-  const collabCtx = useCollabContext();
-  const partnerSelections = panelKey
-    ? collabCtx.getCardSelections(panelKey, id)
-    : [];
+  // our own claim; on blur, release. The claim scope is REGISTRY-DERIVED
+  // from the required `kind` prop (R28/D-2) and gated on the `collabClaims`
+  // facet — `panelKey` is typography-only and carries no collab duty.
+  const collabScope = hasCollabClaims(kind) ? collabClaimScope(kind) : undefined;
+  const { partnerClaim, claim: claimCard, release: releaseClaim } = useCardClaim(collabScope, id);
 
   /** Check whether the value has any visible text content. Delegates to
    *  the shared `hasJsonContent` helper so the same predicate drives both
@@ -895,11 +926,7 @@ export function EditableCard({
   const trailing = (
     <>
       {headerTrailing}
-      {partnerClaim ? (
-        <CollabClaimPill holder={partnerClaim.holder} color={partnerClaim.color} />
-      ) : (
-        <CollabPresenceDots presences={partnerSelections} />
-      )}
+      <CollabCardTrailing kind={kind} cardId={id} />
       {showHeaderMenu && (
         <div
           draggable={false}
@@ -915,7 +942,7 @@ export function EditableCard({
 
   return (
     <CardClaimContext.Provider
-      value={{ panelKind: panelKey, cardId: id, partnerClaimed: !!partnerClaim }}
+      value={{ panelKind: collabScope, cardId: id, partnerClaimed: !!partnerClaim }}
     >
     <PanelCard
       ref={cardRef}

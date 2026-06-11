@@ -6,6 +6,7 @@ import type { CutterCommentCard as CutterCommentCardData } from "@/lib/types";
 import {
   AiRequestCheckbox,
   CardEmptyText,
+  CollabCardTrailing,
   PanelCard,
   compressedBodyStyle,
 } from "@/components/panel-primitives";
@@ -20,14 +21,12 @@ import { usePoppedCards } from "@/hooks/usePoppedCards";
 import { usePanelBodyStyle } from "@/hooks/usePanelTypography";
 import { useTabIndent } from "@/hooks/useTabIndent";
 import { cardPopKey } from "@/panels/panel-registry";
-import { cardKindsForPanel } from "@/cards/predicates";
+import { cardKindsForPanel, collabClaimScope } from "@/cards/predicates";
 import { useAnchoredCard } from "@/links/_shared/useAnchoredCard";
 import { cardStore } from "@/links/_shared/anchored-card-store";
 import { MIME_CUT } from "@/lib/marginalia";
 import { FieldTitleRow } from "./CutterSuggestionCard";
-import { useCardClaim, useCollabContext } from "@/hooks/useCollab";
-import CollabClaimPill from "@/components/CollabClaimPill";
-import CollabPresenceDots from "@/components/CollabPresenceDots";
+import { useCardClaim } from "@/hooks/useCollab";
 
 export function startCutterCommentDrag(e: React.DragEvent, cardId: string) {
   e.dataTransfer.setData(
@@ -89,9 +88,11 @@ export function CutterCommentCard({
   const isSelected = ac.selected || selected;
   const compressed = !isExpanded && !isPoppedOut;
   const compressedLines = useCompressedLines();
-  const { partnerClaim, claim, release } = useCardClaim("cut", card.id);
-  const collabCtx = useCollabContext();
-  const partnerSelections = collabCtx.getCardSelections("cut", card.id);
+  // Collab claim scope is REGISTRY-DERIVED (R28/D-2) — no "cut" literal.
+  const { partnerClaim, claim, release } = useCardClaim(
+    collabClaimScope("cutter-comment"),
+    card.id,
+  );
   useEffect(() => {
     if (selected && !card.text) taRef.current?.focus();
   }, [selected, card.text]);
@@ -151,13 +152,7 @@ export function CutterCommentCard({
         if (onJump && isAnchored && !isOrphaned)
           onJump((e.currentTarget as HTMLElement).closest('[data-card]') as HTMLElement | null);
       }}
-      headerTrailing={
-        partnerClaim ? (
-          <CollabClaimPill holder={partnerClaim.holder} color={partnerClaim.color} />
-        ) : (
-          <CollabPresenceDots presences={partnerSelections} />
-        )
-      }
+      headerTrailing={<CollabCardTrailing kind="cutter-comment" cardId={card.id} />}
     >
       {compressed ? (
         <div
