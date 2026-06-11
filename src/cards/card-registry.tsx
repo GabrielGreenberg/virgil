@@ -181,6 +181,7 @@ export const CARD_REGISTRY: Record<CardKind, CardMeta> = {
     keyPrefix: "note",
     themeKey: "note",
     collabClaims: true,
+    aiRequest: { kind: "note", linkPanel: "notes" }, // R29 — frozen wire contract
     panel: "notes",
     origin: "user",
     anchored: true,
@@ -202,6 +203,7 @@ export const CARD_REGISTRY: Record<CardKind, CardMeta> = {
     keyPrefix: "highlight",
     themeKey: "highlight",
     collabClaims: false,
+    aiRequest: { kind: "highlight", linkPanel: "notes" }, // R29 — frozen wire contract
     panel: "notes",
     origin: "user",
     anchored: true,
@@ -257,6 +259,7 @@ export const CARD_REGISTRY: Record<CardKind, CardMeta> = {
     keyPrefix: "todo",
     themeKey: "todo",
     collabClaims: false,
+    aiRequest: { kind: "todo", linkPanel: "todos" }, // R29 — frozen wire contract
     panel: "todo",
     origin: "user",
     anchored: true,
@@ -316,6 +319,7 @@ export const CARD_REGISTRY: Record<CardKind, CardMeta> = {
     keyPrefix: "revision",
     themeKey: "revision",
     collabClaims: true,
+    aiRequest: { kind: "suggestion", linkPanel: "revisions" }, // R29 — frozen wire contract
     panel: "revisions",
     origin: "user",
     anchored: true,
@@ -337,6 +341,7 @@ export const CARD_REGISTRY: Record<CardKind, CardMeta> = {
     keyPrefix: "cutter-comment",
     themeKey: "cut",
     collabClaims: true,
+    aiRequest: { kind: "suggestion", linkPanel: "cutter" }, // R29 — frozen wire contract
     panel: "cutter",
     origin: "user",
     anchored: true,
@@ -414,6 +419,7 @@ export const CARD_REGISTRY: Record<CardKind, CardMeta> = {
     keyPrefix: "report-request",
     themeKey: "report",
     collabClaims: true,
+    aiRequest: { kind: "report", linkPanel: "reports" }, // R29 — frozen wire contract
     panel: "reports",
     origin: "user",
     anchored: true,

@@ -238,10 +238,10 @@ export function useNotes(docId: string | null, externalPristine?: PristineKindAp
       if (note) {
         void bridgeCardAiRequestFlag(
           docId,
-          { panel: "notes", cardId: id },
+          "note",
+          id,
           value,
           {
-            kind: "note",
             text: note.title || "<note>",
             paragraphIds: getLinkedTextObjectIds(note),
             selectedText: getTextAnchor(note)?.anchorText,
@@ -264,10 +264,10 @@ export function useNotes(docId: string | null, externalPristine?: PristineKindAp
         const anchorText = getTextAnchor(card)?.anchorText || "";
         void bridgeCardAiRequestFlag(
           docId,
-          { panel: "notes", cardId: id },
+          "highlight",
+          id,
           value,
           {
-            kind: "highlight",
             text: anchorText || "<highlight>",
             paragraphIds: getLinkedTextObjectIds(card),
             selectedText: anchorText,

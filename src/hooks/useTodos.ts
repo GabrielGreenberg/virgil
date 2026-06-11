@@ -90,7 +90,8 @@ export function useTodos(docId: string | null, externalPristine?: PristineKindAp
     if (todo) {
       void bridgeCardAiRequestFlag(
         docId,
-        { panel: "todos", cardId: id },
+        "todo",
+        id,
         value,
         {
           text: todo.text || "<todo>",

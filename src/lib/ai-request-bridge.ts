@@ -20,7 +20,6 @@ import { generateEntityId } from "@/lib/uuid";
 import { readSidecar, writeSidecar } from "@/lib/storage";
 import type {
   AiRequest,
-  AiRequestKind,
   AiRequestLink,
   AiRequestsState,
 } from "@/lib/types";
@@ -28,19 +27,10 @@ import {
   getActiveHandle,
   isStalePipelineError,
 } from "@/lib/multi-window/doc-pipeline";
+import { CARD_REGISTRY } from "@/cards/card-registry";
+import type { CardKind } from "@/cards/types";
 
 const EMPTY: AiRequestsState = { requests: [] };
-
-/** Per-panel default kind for the bridged AiRequest entry. The `kind` on
- *  the request signals which subskill picks it up — for card-flag bridges,
- *  it's always one of `note` / `todo` / `suggestion`. */
-const PANEL_TO_KIND: Record<AiRequestLink["panel"], AiRequestKind> = {
-  notes: "note",
-  todos: "todo",
-  cutter: "suggestion",
-  revisions: "suggestion",
-  reports: "report",
-};
 
 export interface BridgeContext {
   /** Plain text excerpt of the card body — surfaces in the request as `text`. */
@@ -49,10 +39,6 @@ export interface BridgeContext {
   paragraphIds?: string[];
   /** Mode B selectedText snapshot, if any. */
   selectedText?: string;
-  /** Override for the default `PANEL_TO_KIND` mapping. Set when a panel
-   *  hosts multiple AI-request kinds (e.g. the Notes panel hosts both
-   *  `note` and `highlight`). */
-  kind?: AiRequestKind;
 }
 
 /**
@@ -62,17 +48,38 @@ export interface BridgeContext {
  * - `value=true` and an existing linked request → leave it (idempotent).
  * - `value=false` and an existing linked request → drop it.
  *
+ * Routing is REGISTRY-DECLARED (R29): the request `kind` and the
+ * `linkedTo.panel` wire token both come from `CARD_REGISTRY[kind].aiRequest`
+ * — the per-call-site panel/kind literals (and the old local panel→kind
+ * fan-out table) are gone. The emitted tokens are byte-identical to the
+ * legacy literals (pinned by `ai-request-routing-contract.test.ts`), so the
+ * idempotent open-request match keeps finding existing on-disk requests.
+ *
  * Best-effort: errors are logged, not thrown. The card flag is the source
  * of truth for the panel UI; a stale `ai-requests.json` will self-heal on
  * the next toggle or skill drain.
  */
 export async function bridgeCardAiRequestFlag(
   docId: string | null,
-  link: AiRequestLink,
+  cardKind: CardKind,
+  cardId: string,
   value: boolean,
   ctx: BridgeContext,
 ): Promise<void> {
   if (!docId) return;
+  const routing = CARD_REGISTRY[cardKind].aiRequest;
+  if (!routing) {
+    // A kind with no declared routing has no aiRequest flag to bridge —
+    // reaching here is a caller bug; make it loud in dev, no-op in prod.
+    if (process.env.NODE_ENV !== "production") {
+      console.error(
+        `[ai-request-bridge] card kind "${cardKind}" declares no aiRequest ` +
+          `routing on CARD_REGISTRY; flag toggle ignored.`,
+      );
+    }
+    return;
+  }
+  const link: AiRequestLink = { panel: routing.linkPanel, cardId };
   const handle = getActiveHandle(docId);
   if (!handle) return;
 
@@ -112,7 +119,7 @@ export async function bridgeCardAiRequestFlag(
     } else {
       const req: AiRequest = {
         id: generateEntityId(),
-        kind: ctx.kind ?? PANEL_TO_KIND[link.panel],
+        kind: routing.kind,
         text: ctx.text,
         createdAt: new Date().toISOString(),
         status: "pending",

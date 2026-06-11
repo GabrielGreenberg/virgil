@@ -273,7 +273,8 @@ export function useRevisions(
       if (card) {
         void bridgeCardAiRequestFlag(
           docId,
-          { panel: "revisions", cardId: id },
+          "revision-comment",
+          id,
           value,
           {
             text: card.text || "<revision comment>",
