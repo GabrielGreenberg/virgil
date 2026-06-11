@@ -68,9 +68,11 @@ export const FONT_STACKS: Record<string, string> = {
   // Registry defaults — var-first (track the doc's effective faces).
   "Inter":           "var(--font-sans-override, var(--font-sans)), Inter, system-ui, sans-serif",
   "Source Serif 4":  'var(--font-serif-override, var(--font-serif)), "Source Serif 4", Georgia, serif',
-  // Not in the Google-fonts pool <link> — route to something real.
-  "Playfair Display": '"Playfair Display", var(--font-serif-override, var(--font-serif)), Georgia, serif',
-  // Loaded by the Google-fonts pool — literal first, generic fallback after.
+  // Not in the Google-fonts pool <link>; next/font loads it under an
+  // obfuscated name behind --font-display, so route through that var.
+  "Playfair Display": '"Playfair Display", var(--font-display), var(--font-serif-override, var(--font-serif)), Georgia, serif',
+  // Loaded by the Google-fonts pool <link> (real family names) — literal
+  // first so an explicit pick is honored, generic fallback after.
   "Libre Baskerville": '"Libre Baskerville", Georgia, serif',
   "Lora":              "Lora, Georgia, serif",
   "Merriweather":      "Merriweather, Georgia, serif",
