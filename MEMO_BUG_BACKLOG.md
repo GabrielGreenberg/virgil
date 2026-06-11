@@ -382,77 +382,6 @@ for `absolute z-[0-9]` menus inside low-z sticky bars and portal them uniformly.
 
 ---
 
-## 10. ExpEx: multi-digit example numbers wrap — number column must adapt without breaking grab-handle geometry
-
-**Reported:** 2026-06-05 · **Status:** open · **Area:** main-text / expex layout ·
-**Related:** item 3 (same expex subsystem, unrelated fault)
-
-**Reported behavior** — example `(10)` doesn't fit its number column: the `)`
-wraps to a second line. The number gutter must make room for 1–3 digit numbers,
-**and** the inner grab handle (the dots sitting between the number and the body
-text) must reposition dynamically to match. User flags it as tricky because of
-that coupling.
-
-**Root cause** — the number column is a fixed `1.5em`:
-`.expex-block { grid-template-columns: 1.5em 1fr; column-gap: 0.8em }`
-([globals.css:3489](src/app/globals.css:3489)). `(9)` fits; `(10)` overflows and
-wraps inside the grid cell. Same fixed `1.5em` on the item rows
-(`.expex-item-row`, [globals.css:3544](src/app/globals.css:3544)).
-
-**The coupling web (why it's "tricky"):**
-1. **Equal-increment design:** A–B (number col + gap = 2.3em) is deliberately
-   equal to B–C on item rows so `(n)` / `a.` / text align in uniform steps
-   (comments at [:3492](src/app/globals.css:3492), [:3536](src/app/globals.css:3536),
-   [:3583](src/app/globals.css:3583)). Widening only the block column breaks the
-   symmetry; widening both over-indents nested tiers.
-2. **The 0.8em gap is the inner handle's breathing room** — explicitly widened
-   from 0.5em for that purpose ([:3494](src/app/globals.css:3494)). Any fix that
-   lets the number bleed into the gap (e.g. bare `white-space: nowrap`) eats the
-   zone where the inner handle renders (exactly the screenshot's dots position).
-3. **Hardcoded mirrors:** `.expex-item-label-annotation { margin-left: 2.4rem }`
-   ([:3554](src/app/globals.css:3554)) shifts the per-item "ex." pod by B–C — it
-   must track any column change. (Note it's already drifted: 2.4**rem** vs the
-   grid's 2.3**em**.)
-4. **Same bug class inside items:** depth-1/3 markers are roman
-   (`markerForDepth` — i., viii., xviii. …, [expex.ts:94](src/lib/tiptap/expex.ts:94));
-   wide romans overflow the items' own fixed `1.5em` column too. A digits-only
-   fix leaves that half alive.
-
-**What's already solved (don't re-solve it):** the grab handles do **not** use
-hardcoded offsets. `handle.left = markerLeft − gapPx − HANDLE_WIDTH`
-([handle-layout.ts:48](src/text-objects/handle-layout.ts:48)) where `markerLeft`
-is **measured** per block from the live `.expex-number` / `.expex-item-marker`
-rects ([block-frame.ts:298](src/text-objects/block-frame.ts:298),
-`markerElementLeft` at [:260](src/text-objects/block-frame.ts:260)). If the CSS
-columns adapt, every handle (outer + inner) repositions for free. The work is
-purely the CSS layout decision + its hardcoded mirrors.
-
-**Candidate fixes for the manage session:**
-- **(a) Cheap:** widen the fixed columns (e.g. 2.2em) + `white-space: nowrap` on
-  `.expex-number`/`.expex-item-marker`. Keeps doc-wide alignment; costs
-  permanent indent even in 1-digit docs; romans can still overflow extremes.
-- **(b) Per-block `max-content` columns:** each example sizes to its own number —
-  but adjacent examples' bodies stop aligning ((9) vs (10) ragged). Probably
-  reject; alignment is the point of the equal-increment design.
-- **(c) Deep fix — doc-adaptive shared width:** a CSS var (e.g.
-  `--expex-num-width`) on the editor container, derived from the document's max
-  example number, consumed by both grids (`grid-template-columns:
-  var(--expex-num-width) 1fr`) and the label-pod margins. The `ExpexNumbering`
-  appendTransaction ([expex.ts:1329](src/lib/tiptap/expex.ts:1329)) already
-  computes every number and is structurally gated, so it can maintain the var
-  with **zero keystroke-sanctity cost** (set style only when max-digit-count
-  changes). Same pattern for an item-marker width var if roman overflow is in
-  scope. All examples stay aligned, width adapts per doc, handles follow the
-  measured DOM automatically.
-
-**Verify after fix:** `(1)`/`(10)`/`(100)` render un-wrapped; inner + outer
-handle dots sit in their gap zones on all three; nested `viii.` tier; the
-per-item "ex." label pod still aligns with C; drop-indicator bars (also derived
-from `contentLeft`/`markerLeft` per [block-frame.ts:18](src/text-objects/block-frame.ts:18))
-still align.
-
----
-
 ## 10. Re-introduce grip-based drag-into-document for Todo / Error cards via a body-level affordance
 
 **Reported:** 2026-06-09 · **Status:** open · **Area:** ui-chrome / card panels
@@ -537,6 +466,87 @@ same header anatomy and should likely land as one architectural chip, not
 piecemeal. Items 22–23 are the **UI-consistency sweep** (the visual analogue of
 the functional refactor). Item 24 is a live runtime crash. Investigation
 findings from the Session-17 workflow refine these in place.
+
+> **Ratified design calls (Gabriel, 2026-06-11):** header click = **toggle +
+> select** (no jump; body click keeps select+expand+jump) · pop residue =
+> **fully live card** (delete ExampleCard's suppression; no ghosting) · float
+> chrome = **match the docked card** (surface `"card"` + kind-tinted
+> FloatChrome header) · collapsed-card pop = **expand to content height**,
+> capped by `capPopoutHeight` (55 vh).
+
+> **Session-17 investigation digest (2026-06-11, all causal claims 2×-verified).**
+> Full findings in the session transcript; per-item fix sites:
+>
+> - **#14/18/19** land in ONE component — `PanelCard`'s unified header
+>   ([panel-primitives.tsx:1838-1876](src/components/panel-primitives.tsx)).
+>   Chevron = `CardExpandChevron` (:1849), pop-out button = :1870-1872 (one
+>   deletion), lift gesture `onWrapperMouseDown` (:1690) is ALREADY scoped to
+>   the whole header — #19 is structurally done, needs only affordance polish.
+>   Header click today has no handler; it bubbles to root onClick =
+>   select+expand+jump. Click-vs-drag needs a StripButton-style suppress-click
+>   guard set in the drag branch (the exact missing-guard class of item 7 —
+>   fix both together). Deviants to handle in the same pass: BibEntryCard +
+>   AiRequestCard (bespoke headers, no `kind` prop), items 12/13 (else they
+>   become dead-header bugs under click=toggle).
+> - **#15** — `EditableCard`'s compressed branch drops `bodyTitle`
+>   unconditionally ([panel-primitives.tsx:998-1019](src/components/panel-primitives.tsx)); one site, five title-bearing kinds.
+> - **#17** — `CardBodyTitle` (:517-593) + `.card-title-*`
+>   ([globals.css:1157-1199](src/app/globals.css)); one component, one CSS block.
+> - **#16** — collapsed footnotes DO use BorrowedMainText; the mount at
+>   panel-primitives.tsx:1009 just omits the `getCitationDisplayText` resolver
+>   (and footnote-body citations persist `displayText=""`). Deep fix:
+>   BorrowedMainText consumes `CitationDisplayContext` (nullable accessor) —
+>   fixes footnote+archive+example surfaces at once. Bonus: kills the
+>   non-converging `updateCitationDisplay` loop in EditorPane (:1074-1101).
+>   No dependency on item 11.
+> - **#20** — lift spawn rect is hardcoded `{cursorX−180, cursorY−16, 360×280}`
+>   ([panel-primitives.tsx:1757-1774](src/components/panel-primitives.tsx)); the measured source rect is captured (:1750)
+>   but used only for the outline flash; the `CardLiftHandoff.width/height`
+>   fields documented "matched to the source card" are set to constants
+>   (vestigial channel). Fix: derive spawn rect from source rect via a shared
+>   `liftSpawnRect()` in [float-policy.ts](src/floats/float-policy.ts) — the text-object lift
+>   ([TextObjectGrabHandle.tsx:968-1001](src/text-objects/TextObjectGrabHandle.tsx)) is the proven reference math.
+>   Chrome continuity is separate: card floats use `surface:"panel"` (beige,
+>   3px border, heavy shadow — [cards/floats/index.tsx:108](src/cards/floats/index.tsx)) vs the docked
+>   white card, and FloatChrome's header is neutral vs the kind-tinted docked
+>   header — both one-site flips.
+> - **#21** — `ExampleCard` is the ONLY card that self-suppresses its docked
+>   render when popped ([ExampleCard.tsx:370](src/panels/Examples/ExampleCard.tsx) `isPopped → return null`):
+>   historical drift (ba90bd9 removed the pattern everywhere 2026-04-21;
+>   4ef533c re-introduced it on examples 6 days later). All other 14 poppable
+>   kinds keep a fully live docked card. Fix: delete :367-371 (+ comment scrub
+>   in usePoppedCards.ts:5-17); optional uniform ghost-residue would land once
+>   in PanelCard (texBlock `.is-popped` CSS is the ghost precedent).
+> - **#22** — ROOT CAUSE (live-verified): `BODY_CLASS_TYPOGRAPHY`
+>   ([panel-typography.ts](src/lib/panel-typography.ts)) stores bare family names ("Inter",
+>   "Source Serif 4") that are NEVER loaded under those literals → every
+>   element styled via `usePanelBodyStyle` ([usePanelTypography.ts:48-57](src/hooks/usePanelTypography.ts))
+>   renders UA-default **Times New Roman** (incl. the bold-serif collapsed
+>   citekey, all note/footnote/report/todo bodies, and the broken font-picker
+>   options). ONE-SITE fix: name→var-stack crosswalk in `usePanelBodyStyle`.
+>   Second bug: three sites spread `...bodyStyle` LAST over title styles
+>   (clobbers par-title size + theme.titleColor). NOTE: the screenshot's
+>   expanded-row serif did NOT reproduce in the dev env (measures real Inter)
+>   — needs one manual check on Gabriel's machine before scoping that part.
+> - **#23** — geometry already mostly single-sited (PanelCard shell;
+>   FloatHost→FloatWindow→FloatChrome→FloatingPanel + float-policy). Real
+>   divergences: 4 duplicate `360×280` literals; per-kind float sizes exist
+>   only for text objects (registry `initialFloatSize`) — add a CardMeta
+>   float-size facet; kind-color CSS block ([globals.css:2561-2585](src/app/globals.css)) omits
+>   bib/ai/example/error — stamp `--link-anchor-color` from `theme.accent` at
+>   the PanelCard root and delete the block; `Floatable.spawnHint` declared but
+>   dead; TextObjectGrabHandle's hand-mirrored chrome metrics (24/32/16/1)
+>   belong in float-policy; bib/ai still `bareWindow` (= float-chrome-stage6).
+> - **#24** — NOT seam E-5 firing: persisted sidecar `links[].target.ref.kind:
+>   "comment"` (pre-rename revisions.json — confirmed in the dev doc AND the
+>   sample paper) flows un-normalized through `migrateCardLinks`
+>   ([migrate-card.ts:39-41](src/links/migrate-card.ts)) into the crosswalk via an `as CardKind`
+>   cast at [useAnchorHighlightReconciler.ts:202](src/links/_shared/useAnchorHighlightReconciler.ts). Same-class latent crash in
+>   `getPanelByCardKind`. Fix (both): legacy-token→CardKind normalizer applied
+>   in the migrate-card.ts load funnel + make both crosswalk accessors total
+>   with a loud dev warn. The `useCutter.ts:50-68` `rewriteLinkTargetKind`
+>   ("cut"→"cutter-comment") is the proven in-repo pattern to generalize.
+>   E-5 proper (write-site unification) stays in the registry-completion chip.
 
 ## 14. Card chrome: kill the chevron — header click toggles expand/collapse
 
@@ -633,3 +643,77 @@ kind string is reaching it — likely the SEAM E-5 `linkedAnchor.kind` write-sit
 residue (and/or `bibliography`-vs-`bib` drift) named in the DoD addendum.
 Deep fix should make unknown kinds impossible-or-harmless everywhere the
 crosswalk is read, not just guard this one call site.
+
+---
+
+## 25. ExpEx: multi-digit example numbers wrap — number column must adapt without breaking grab-handle geometry
+
+*(Originally committed as a second "item 10" in `31db102`; renumbered here — 10
+was taken.)*
+
+**Reported:** 2026-06-05 · **Status:** open · **Area:** main-text / expex layout ·
+**Related:** item 3 (same expex subsystem, unrelated fault)
+
+**Reported behavior** — example `(10)` doesn't fit its number column: the `)`
+wraps to a second line. The number gutter must make room for 1–3 digit numbers,
+**and** the inner grab handle (the dots sitting between the number and the body
+text) must reposition dynamically to match. User flags it as tricky because of
+that coupling.
+
+**Root cause** — the number column is a fixed `1.5em`:
+`.expex-block { grid-template-columns: 1.5em 1fr; column-gap: 0.8em }`
+([globals.css:3489](src/app/globals.css:3489)). `(9)` fits; `(10)` overflows and
+wraps inside the grid cell. Same fixed `1.5em` on the item rows
+(`.expex-item-row`, [globals.css:3544](src/app/globals.css:3544)).
+
+**The coupling web (why it's "tricky"):**
+1. **Equal-increment design:** A–B (number col + gap = 2.3em) is deliberately
+   equal to B–C on item rows so `(n)` / `a.` / text align in uniform steps
+   (comments at [:3492](src/app/globals.css:3492), [:3536](src/app/globals.css:3536),
+   [:3583](src/app/globals.css:3583)). Widening only the block column breaks the
+   symmetry; widening both over-indents nested tiers.
+2. **The 0.8em gap is the inner handle's breathing room** — explicitly widened
+   from 0.5em for that purpose ([:3494](src/app/globals.css:3494)). Any fix that
+   lets the number bleed into the gap (e.g. bare `white-space: nowrap`) eats the
+   zone where the inner handle renders (exactly the screenshot's dots position).
+3. **Hardcoded mirrors:** `.expex-item-label-annotation { margin-left: 2.4rem }`
+   ([:3554](src/app/globals.css:3554)) shifts the per-item "ex." pod by B–C — it
+   must track any column change. (Note it's already drifted: 2.4**rem** vs the
+   grid's 2.3**em**.)
+4. **Same bug class inside items:** depth-1/3 markers are roman
+   (`markerForDepth` — i., viii., xviii. …, [expex.ts:94](src/lib/tiptap/expex.ts:94));
+   wide romans overflow the items' own fixed `1.5em` column too. A digits-only
+   fix leaves that half alive.
+
+**What's already solved (don't re-solve it):** the grab handles do **not** use
+hardcoded offsets. `handle.left = markerLeft − gapPx − HANDLE_WIDTH`
+([handle-layout.ts:48](src/text-objects/handle-layout.ts:48)) where `markerLeft`
+is **measured** per block from the live `.expex-number` / `.expex-item-marker`
+rects ([block-frame.ts:298](src/text-objects/block-frame.ts:298),
+`markerElementLeft` at [:260](src/text-objects/block-frame.ts:260)). If the CSS
+columns adapt, every handle (outer + inner) repositions for free. The work is
+purely the CSS layout decision + its hardcoded mirrors.
+
+**Candidate fixes for the manage session:**
+- **(a) Cheap:** widen the fixed columns (e.g. 2.2em) + `white-space: nowrap` on
+  `.expex-number`/`.expex-item-marker`. Keeps doc-wide alignment; costs
+  permanent indent even in 1-digit docs; romans can still overflow extremes.
+- **(b) Per-block `max-content` columns:** each example sizes to its own number —
+  but adjacent examples' bodies stop aligning ((9) vs (10) ragged). Probably
+  reject; alignment is the point of the equal-increment design.
+- **(c) Deep fix — doc-adaptive shared width:** a CSS var (e.g.
+  `--expex-num-width`) on the editor container, derived from the document's max
+  example number, consumed by both grids (`grid-template-columns:
+  var(--expex-num-width) 1fr`) and the label-pod margins. The `ExpexNumbering`
+  appendTransaction ([expex.ts:1329](src/lib/tiptap/expex.ts:1329)) already
+  computes every number and is structurally gated, so it can maintain the var
+  with **zero keystroke-sanctity cost** (set style only when max-digit-count
+  changes). Same pattern for an item-marker width var if roman overflow is in
+  scope. All examples stay aligned, width adapts per doc, handles follow the
+  measured DOM automatically.
+
+**Verify after fix:** `(1)`/`(10)`/`(100)` render un-wrapped; inner + outer
+handle dots sit in their gap zones on all three; nested `viii.` tier; the
+per-item "ex." label pod still aligns with C; drop-indicator bars (also derived
+from `contentLeft`/`markerLeft` per [block-frame.ts:18](src/text-objects/block-frame.ts:18))
+still align.
