@@ -1,9 +1,11 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi, afterEach } from "vitest";
 import {
   LEGACY_TOKEN_CROSSWALK,
   cssTokenForCardKind,
   legacyDataKindForCardKind,
+  normalizeLegacyCardKind,
 } from "../legacy-token-crosswalk";
+import type { CardKind } from "../types";
 
 /**
  * Frozen-table pin for the A2 legacy-token crosswalk (R-C: NO token migration).
@@ -46,5 +48,61 @@ describe("LEGACY_TOKEN_CROSSWALK (R-C frozen tokens)", () => {
     // Atoms / unanchored kinds carry no link-card or paragraph-kind token.
     expect(legacyDataKindForCardKind("footnote")).toBeNull();
     expect(cssTokenForCardKind("highlight")).toBeNull();
+  });
+});
+
+describe("normalizeLegacyCardKind", () => {
+  it("passes every spine CardKind through unchanged", () => {
+    for (const kind of Object.keys(LEGACY_TOKEN_CROSSWALK)) {
+      expect(normalizeLegacyCardKind(kind)).toBe(kind);
+    }
+  });
+
+  it("maps the evidenced legacy on-disk tokens to their spine kinds", () => {
+    // Pre-refactor revision cards persisted "comment" in links[].target.ref.kind.
+    expect(normalizeLegacyCardKind("comment")).toBe("revision-comment");
+    // Pre-refactor cutter cards (legacy cuts[] shape) persisted "cut".
+    expect(normalizeLegacyCardKind("cut")).toBe("cutter-comment");
+  });
+
+  it("returns null for unknown tokens (incl. the removed quotations panel)", () => {
+    expect(normalizeLegacyCardKind("quotation")).toBeNull();
+    expect(normalizeLegacyCardKind("bogus-token")).toBeNull();
+    expect(normalizeLegacyCardKind("")).toBeNull();
+    // Object.prototype keys must not leak through the string-keyed map.
+    expect(normalizeLegacyCardKind("hasOwnProperty")).toBeNull();
+    expect(normalizeLegacyCardKind("constructor")).toBeNull();
+  });
+});
+
+describe("runtime-total accessors (legacy on-disk token backstop)", () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it("cssTokenForCardKind returns null (no throw) on an unknown token", () => {
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    const poisoned = "legacy-unknown-css" as CardKind;
+    expect(() => cssTokenForCardKind(poisoned)).not.toThrow();
+    expect(cssTokenForCardKind(poisoned)).toBeNull();
+    // Loud dev-only error, once per token.
+    expect(errorSpy).toHaveBeenCalledTimes(1);
+    expect(String(errorSpy.mock.calls[0][0])).toContain("legacy-unknown-css");
+  });
+
+  it("legacyDataKindForCardKind returns null (no throw) on an unknown token", () => {
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    const poisoned = "legacy-unknown-data" as CardKind;
+    expect(() => legacyDataKindForCardKind(poisoned)).not.toThrow();
+    expect(legacyDataKindForCardKind(poisoned)).toBeNull();
+    expect(errorSpy).toHaveBeenCalledTimes(1);
+    expect(String(errorSpy.mock.calls[0][0])).toContain("legacy-unknown-data");
+  });
+
+  it("dev pins hold: the invariants the module-load assertions guard", () => {
+    // Mirrors the two module-level dev pins (see the bottom of
+    // legacy-token-crosswalk.ts) so the contract is also test-enforced.
+    expect(LEGACY_TOKEN_CROSSWALK["revision-comment"].legacyDataKind).toBe("comment");
+    expect(LEGACY_TOKEN_CROSSWALK["cutter-comment"].cssToken).toBe("cut");
   });
 });
