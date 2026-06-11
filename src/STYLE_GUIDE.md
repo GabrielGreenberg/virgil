@@ -180,6 +180,15 @@ A card renders via `<PanelCard theme={…} selected={…}>`. The frame
 across themes; only the colors differ. **Every card has a theme.** A
 card without a theme is a bug.
 
+Card chrome colors come from theme tokens (`theme.accent`,
+`theme.titleColor`, …), never raw Tailwind palette literals
+(`text-sky-500`). This holds for the system themes too (`aiRequest`,
+`error` — non-overridable, but they ride the same accent→palette
+derivation). A literal that happens to match the accent today will
+silently drift when the palette doesn't. Deliberate non-theme
+constants (e.g. the `info` severity steel in `ErrorCard`) get a
+comment saying why they're exempt.
+
 Selection: border flips to `theme.borderSelected`, header tint flips
 from `headerDefault` to `headerSelected`, separator flips to
 `theme.separatorSelected`, plus a soft `shadow-sm`. The body never

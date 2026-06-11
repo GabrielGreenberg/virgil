@@ -13,7 +13,14 @@ const theme = CARD_THEMES.error;
 
 const SEVERITY_COLOR: Record<LatexErrorSeverity, string> = {
   error: "var(--danger)",
-  warning: "#b45757",
+  // `warning` IS the error-panel identity color — derive it from the theme
+  // (DEFAULT_PANEL_COLORS.error, non-overridable per SYSTEM_THEME_KEYS) so it
+  // can't drift from the rest of the error palette. D-3/R27.
+  warning: theme.accent,
+  // `info` is a deliberate severity CONSTANT (steel), not a theme token: it
+  // signals "informational, not the panel's alarm color" and must stay
+  // distinct from the warning/error ramp. Do NOT couple it to another
+  // panel's accent (e.g. archive) just because the hex coincides.
   info: "#7191b0",
 };
 

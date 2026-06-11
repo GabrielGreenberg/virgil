@@ -2157,7 +2157,8 @@ export function AiRequestCard({
       >
         <CardDragHandle />
         <span
-          className="inline-flex items-center justify-center w-5 h-5 shrink-0 text-sky-500"
+          className="inline-flex items-center justify-center w-5 h-5 shrink-0"
+          style={{ color: theme.accent }}
           data-hint={`AI ${kindLabel} request`} aria-label={`AI ${kindLabel} request`}
         >
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
@@ -2169,10 +2170,16 @@ export function AiRequestCard({
             </g>
           </svg>
         </span>
-        <span className="text-xs font-medium text-sky-800 truncate">AI {kindLabel} request</span>
+        <span className="text-xs font-medium truncate" style={{ color: theme.titleColor }}>AI {kindLabel} request</span>
         {request.status === "submitted" && (
-          <span className="inline-flex items-center gap-1 text-[10px] text-sky-600 shrink-0">
-            <span className="w-1.5 h-1.5 rounded-full bg-sky-400 animate-pulse" />
+          <span
+            className="inline-flex items-center gap-1 text-[10px] shrink-0"
+            style={{ color: theme.titleColor }}
+          >
+            <span
+              className="w-1.5 h-1.5 rounded-full animate-pulse"
+              style={{ backgroundColor: theme.accent }}
+            />
             Pending
           </span>
         )}
@@ -2207,10 +2214,12 @@ export function AiRequestCard({
       </div>
 
       {/* Separator */}
-      <div className="border-t border-sky-200/70" />
+      <div className="border-t" style={{ borderColor: theme.separatorSelected }} />
 
-      {/* Body: auto-grow textarea */}
-      <div className={`bg-sky-50/20 px-3 py-2${isPoppedOut ? " flex-1 min-h-0 overflow-auto" : ""}`}>
+      {/* Body: auto-grow textarea. (The former near-invisible `bg-sky-50/20`
+          wash was dropped in A10 Commit H rather than minting a one-consumer
+          `bodyTint` palette token — it composited to ≈white anyway.) */}
+      <div className={`px-3 py-2${isPoppedOut ? " flex-1 min-h-0 overflow-auto" : ""}`}>
         <textarea
           ref={taRef}
           value={draft}
