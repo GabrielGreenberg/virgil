@@ -14,30 +14,7 @@
 
 import type { CardKind, PanelKind } from "@/panels/_shared/types";
 
-/**
- * Action kinds exposed in the Margin / Detached actions toolbar. Mirrors
- * the `onAdd*` / `onCutSelection` / etc. callbacks on
- * `ActionToolbarCallbacks` in `MenuBar.tsx`. Names match the underlying
- * card kind they create.
- */
-export type ActionKind =
-  | "comment"   // revision comment
-  | "note"
-  | "highlight"
-  | "todo"
-  | "cut"
-  | "archive"
-  | "footnote"
-  | "citation";
-
 export interface EditorChromeConfig {
-  /** Whether the action toolbar (Note/Cut/Comment/etc.) renders at all. */
-  showActionToolbar: boolean;
-  /**
-   * Whitelist of action buttons to keep when the toolbar shows. Empty or
-   * `undefined` = all buttons. Reader passes `["note"]`.
-   */
-  actionToolbarKinds?: ActionKind[];
   /** Whether the formatting toolbar (bold/italic/headings/etc.) renders. */
   showFormattingToolbar: boolean;
   /**
@@ -50,8 +27,6 @@ export interface EditorChromeConfig {
   showHeadingFloatLabelEdit: boolean;
   /** Paragraph float — keep editable title `<input>`. */
   showParagraphFloatTitleEdit: boolean;
-  /** Paragraph float — keep "+ note" / annotation buttons. */
-  showParagraphFloatNoteButton: boolean;
   /**
    * Whitelist of panels visible in the left/right strips. `undefined` =
    * all panels (default). When set, the strip filters PANEL_REGISTRY to
@@ -103,31 +78,26 @@ export function viewToggleClasses(
 }
 
 export const FULL_CHROME: EditorChromeConfig = {
-  showActionToolbar: true,
   showFormattingToolbar: true,
   showMenuBarEditItems: true,
   showHeadingFloatLabelEdit: true,
   showParagraphFloatTitleEdit: true,
-  showParagraphFloatNoteButton: true,
   // visiblePanelKinds undefined → show all
   // editableCardKinds undefined → all editable
 };
 
 /**
- * Reader preset: read-only main text, only the Note action button is
- * exposed, formatting toolbar hidden, MenuBar edit items hidden, the
- * six reading-affordance panels are visible. Mirrors the user's
- * explicit list (outline / footnotes / examples / citations /
- * bibliography / notes).
+ * Reader preset: read-only main text, formatting toolbar hidden, MenuBar
+ * edit items hidden, the six reading-affordance panels are visible.
+ * Mirrors the user's explicit list (outline / footnotes / examples /
+ * citations / bibliography / notes). Note cards stay editable so users
+ * can write inside them.
  */
 export const READER_CHROME: EditorChromeConfig = {
-  showActionToolbar: true,
-  actionToolbarKinds: ["note"],
   showFormattingToolbar: false,
   showMenuBarEditItems: false,
   showHeadingFloatLabelEdit: false,
   showParagraphFloatTitleEdit: false,
-  showParagraphFloatNoteButton: true,
   visiblePanelKinds: [
     "outline",
     "footnotes",
@@ -138,57 +108,6 @@ export const READER_CHROME: EditorChromeConfig = {
   ],
   editableCardKinds: ["note"],
 };
-
-/**
- * Helper: should an action button of `kind` be rendered given the
- * config? Centralizes the "show toolbar at all + filter by whitelist"
- * check so call sites don't have to repeat it.
- */
-export function isActionVisible(
-  chrome: EditorChromeConfig,
-  kind: ActionKind,
-): boolean {
-  if (!chrome.showActionToolbar) return false;
-  if (!chrome.actionToolbarKinds) return true;
-  return chrome.actionToolbarKinds.includes(kind);
-}
-
-/**
- * Maps the `ActionToolbarCallbacks` keys used by `ACTION_BUTTON_DEFS`
- * to their corresponding `ActionKind`. Buttons with no entry here
- * (currently just `onCreateBibEntry`) are not subject to the
- * `actionToolbarKinds` whitelist — they show whenever their callback
- * is provided. Used by `ActionButtonsRow` to filter buttons against
- * the chrome config without each call site repeating the mapping.
- */
-export const CALLBACK_TO_ACTION_KIND: Record<string, ActionKind | undefined> = {
-  onAddComment: "comment",
-  onAddNote: "note",
-  onAddHighlight: "highlight",
-  onAddTodo: "todo",
-  onCutSelection: "cut",
-  onArchive: "archive",
-  onCreateFootnote: "footnote",
-  onInsertCitation: "citation",
-  // onCreateBibEntry → no ActionKind; treated as always-visible when callback is provided.
-};
-
-/**
- * Helper: should the action button corresponding to `callbackKey` be
- * rendered given the chrome? Returns `true` when the callback isn't
- * mapped to an `ActionKind` (so the bibliography button stays visible
- * whenever its callback is wired). Returns `false` when the toolbar
- * is hidden altogether.
- */
-export function isActionCallbackVisible(
-  chrome: EditorChromeConfig,
-  callbackKey: string,
-): boolean {
-  if (!chrome.showActionToolbar) return false;
-  const kind = CALLBACK_TO_ACTION_KIND[callbackKey];
-  if (!kind) return true;
-  return isActionVisible(chrome, kind);
-}
 
 /**
  * Helper: filter a list of panel kinds against the chrome's whitelist.

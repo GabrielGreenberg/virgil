@@ -39,9 +39,6 @@
  *   - Bubbles per-doc state to the Virgil bar via `onPaneStateChange`.
  *
  * Chrome wiring already in place (carries through the extraction):
- *   - `chrome.showActionToolbar` + `chrome.actionToolbarKinds` — the action
- *     toolbar gate (its `ActionButtonsRow` consumer was removed in A1; the
- *     flags are retained for the A8 chrome reconciliation).
  *   - `chrome.showParagraphFloatTitleEdit` /
  *     `chrome.showHeadingFloatLabelEdit` already gated.
  *   - Read-only `Marginalia` suppresses drag-to-rebind via
