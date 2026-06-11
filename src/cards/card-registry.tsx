@@ -307,7 +307,7 @@ export const CARD_REGISTRY: Record<CardKind, CardMeta> = {
     // normalizes the kind-in-key split. The float dispatch disambiguates from
     // the record's data kind (`cardKindForPopoutKey`).
     keyPrefix: "revision",
-    themeKey: "comment",
+    themeKey: "revision",
     panel: "revisions",
     origin: "user",
     anchored: true,
@@ -362,7 +362,7 @@ export const CARD_REGISTRY: Record<CardKind, CardMeta> = {
     label: "Revision",
     titleLabel: null,
     keyPrefix: "revision-suggestion", // legacy value preserved (live key is revision:s:<id>)
-    themeKey: "comment",
+    themeKey: "revision",
     panel: "revisions",
     origin: "user",
     anchored: true,

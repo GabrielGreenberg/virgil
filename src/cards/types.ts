@@ -7,7 +7,7 @@
  * React dependency is erased at compile time and quarantined in `src/floats/`.
  * Keep it that way — the JSX-building closures live in `card-registry.tsx`.
  */
-import type { CARD_THEMES } from "@/components/panel-primitives";
+import type { PanelThemeKey } from "@/lib/panel-theme";
 import type { PanelKind } from "@/panels/_shared/types";
 import type { DropSpec } from "@/components/drop-mode/types";
 import type { Floatable } from "@/floats/types";
@@ -42,10 +42,13 @@ export type CardKind =
   | "ai"
   | "error";
 
-/** `CARD_THEMES` key. Includes the system accents `aiRequest`/`error` (which are
- *  NOT in `DEFAULT_PANEL_COLORS`) — always reach themes via this, never via
- *  `keyof typeof DEFAULT_PANEL_COLORS`. */
-export type ThemeKey = keyof typeof CARD_THEMES;
+/** `CARD_THEMES` key. ONE keyspace with the user-overridable color slots
+ *  (A10/B): the registry themeKey vocabulary IS `PanelThemeKey` — the legacy
+ *  `"comment"` alias for the revision identity is gone, and the old
+ *  comment→revision crosswalk in `marker-meta.ts` is deleted. Includes the
+ *  non-overridable system accents `aiRequest`/`error` (see
+ *  `SYSTEM_THEME_KEYS`). */
+export type ThemeKey = PanelThemeKey;
 
 /**
  * Gutter-marker namespace union — the categories the marginalia gutter can

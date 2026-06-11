@@ -44,7 +44,7 @@ import type { CardKind } from "@/panels/_shared/types";
 import { useInOmni } from "./editor-layout/contexts/omni";
 import { useCompressedLines } from "./editor-layout/contexts/card-display";
 import { usePanelBodyStyle } from "@/hooks/usePanelTypography";
-import { themeFromAccent, DEFAULT_PANEL_COLORS, type CardTheme } from "@/lib/panel-theme";
+import { themeFromAccent, DEFAULT_PANEL_COLORS, type CardTheme, type PanelThemeKey } from "@/lib/panel-theme";
 import { useCardClaim, useCollabContext } from "@/hooks/useCollab";
 import CollabClaimPill from "./CollabClaimPill";
 import CollabPresenceDots from "./CollabPresenceDots";
@@ -208,40 +208,31 @@ export function themedCardStyle(
   };
 }
 
-/** Pre-built themes for existing card types. Each theme is fully derived
- *  from one accent hex via `themeFromAccent`. User color overrides simply
+/** Pre-built themes for existing card types — one per `PanelThemeKey`, each
+ *  fully derived from its `DEFAULT_PANEL_COLORS` accent hex via
+ *  `themeFromAccent`. The two keyspaces are IDENTICAL post-A10/B (the legacy
+ *  `comment` alias for the revision identity is gone), so the whole table is
+ *  a mechanical fold over the color registry. User color overrides simply
  *  replace the accent and re-derive the rest — no more shadow `override`
- *  field. */
-export const CARD_THEMES = {
-  footnote:  themeFromAccent(DEFAULT_PANEL_COLORS.footnote),
-  note:      themeFromAccent(DEFAULT_PANEL_COLORS.note),
-  // Notes panel hosts highlights alongside notes; the highlight kind gets
-  // its own amber accent so the cards and the tint on the anchored text
-  // read as a distinct visual identity.
-  highlight: themeFromAccent(DEFAULT_PANEL_COLORS.highlight),
-  archive:   themeFromAccent(DEFAULT_PANEL_COLORS.archive),
-  todo:      themeFromAccent(DEFAULT_PANEL_COLORS.todo),
-  bib:       themeFromAccent(DEFAULT_PANEL_COLORS.bib),
-  citation:  themeFromAccent(DEFAULT_PANEL_COLORS.citation),
-  // Comments are revisions are the same thing — a single accent-purple
-  // identity. CARD_THEMES.comment exists for legacy code paths that
-  // referenced `comment`; the visual is the revision theme.
-  comment:   themeFromAccent(DEFAULT_PANEL_COLORS.revision),
-  // System-level kinds (not user-customizable): their accents now live in
-  // DEFAULT_PANEL_COLORS like every other kind, but SYSTEM_THEME_KEYS marks
-  // them non-overridable so a user-color override on (e.g.) the footnote panel
-  // can NOT re-tint error / AI-request cards. One accent → one palette, no
-  // string-literal exception. (The literal-Tailwind body restyle is A9's.)
-  aiRequest: themeFromAccent(DEFAULT_PANEL_COLORS.aiRequest),  // sky
-  error:     themeFromAccent(DEFAULT_PANEL_COLORS.error),      // rust
-  // Cutter panel hosts both comments and suggestions; both kinds share
-  // the panel's cut accent so the panel reads as a single themed surface.
-  cut:              themeFromAccent(DEFAULT_PANEL_COLORS.cut),
-  example:          themeFromAccent(DEFAULT_PANEL_COLORS.example),
-  // Reports panel hosts both reports and report-requests; both share the
-  // panel's report accent so the surface reads as one themed identity.
-  report:           themeFromAccent(DEFAULT_PANEL_COLORS.report),
-} satisfies Record<string, CardTheme>;
+ *  field.
+ *
+ *  Shared identities worth knowing (one theme, several card kinds):
+ *  - `revision` colors both revision kinds (comments ≡ revisions, one
+ *    accent-purple identity);
+ *  - `cut` colors both Cutter kinds; `report` colors report +
+ *    report-request — each polymorphic panel reads as a single themed
+ *    surface;
+ *  - `highlight` is distinct from `note` so highlights read as their own
+ *    amber identity inside the Notes panel;
+ *  - `aiRequest` (sky) / `error` (rust) are system accents:
+ *    `SYSTEM_THEME_KEYS` marks them non-overridable, so a user-color
+ *    override on (e.g.) the footnote panel can NOT re-tint them. */
+export const CARD_THEMES: Record<PanelThemeKey, CardTheme> = Object.fromEntries(
+  (Object.keys(DEFAULT_PANEL_COLORS) as PanelThemeKey[]).map((key) => [
+    key,
+    themeFromAccent(DEFAULT_PANEL_COLORS[key]),
+  ]),
+) as Record<PanelThemeKey, CardTheme>;
 
 /* ── Shared badge classes ────────────────────────────────────────── */
 
