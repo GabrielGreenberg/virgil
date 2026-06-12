@@ -99,13 +99,15 @@ overlays the editor. See `09-editor-and-marginalia.md`.
 
 ## Floating popped-out cards
 
-A card popped out of its panel renders as a `FloatCard` — a
+A card popped out of its panel renders through the unified `Floatable`
+window stack — `FloatHost` → `FloatWindow` → `FloatChrome` → a
 `FloatingPanel` portal sized from `useViewPrefs.cardFloatPositions`.
-The card chrome is unchanged inside; only the wrapper differs.
+The card body is unchanged inside; the float wraps it in the shared
+window chrome (kind-tinted header strip, white card surface).
 
 Popped cards stay alive when the host panel is closed. The dispatcher
-lives at `EditorLayout` root (`renderPoppedCard(key)`) so it has access
-to the same scope as panels.
+is `FloatHost`, mounted in `EditorPane`, iterating the popped keys
+(`float:card:<kind>:<id>`).
 
 ## Empty states
 

@@ -48,7 +48,7 @@ formerly-parallel tables are **derived** from it, never extended by hand
 | Derived accessor / table | File | `CardKind` → |
 |---|---|---|
 | `panelForCardKind` / `cardKindsForPanel` | [predicates.ts](../../src/cards/predicates.ts) | the hosting `PanelKind` (`CardMeta.panel`) |
-| `CARD_KEY_PREFIXES` / `cardKeyPrefix` | [panel-registry.ts](../../src/panels/panel-registry.ts) / [predicates.ts](../../src/cards/predicates.ts) | popout-key prefix (`${prefix}:${id}`, persisted to localStorage) |
+| `CARD_KEY_PREFIXES` / `cardKeyPrefix` | [panel-registry.ts](../../src/panels/panel-registry.ts) / [predicates.ts](../../src/cards/predicates.ts) | LEGACY popout-key prefix (`${prefix}:${id}` — dual-read + migrated; live keys are `float:card:<kind>:<id>` via `cardPopKey`) |
 | `CARD_TYPE_LABELS` | [panel-registry.ts](../../src/panels/panel-registry.ts) | uppercase overline label (OmniView disambiguation; `CardMeta.label`) |
 | `CARD_TITLE_LABELS` | [panel-registry.ts](../../src/panels/panel-registry.ts) | auto-title prefix, or `null` if the kind doesn't auto-title (`CardMeta.titleLabel`) |
 | `CARD_THEMES` | [panel-primitives.tsx](../../src/components/panel-primitives.tsx) | accent theme, keyed by `CardMeta.themeKey` |
@@ -116,7 +116,7 @@ polymorphic-panel map:
 
 | Panel | Hosts | Shared key/theme | Morph |
 |---|---|---|---|
-| **Notes** | `note` + `highlight` | each its own accent | `note` ⇄ `highlight`, **lossy both ways** (a highlight has no body/title) — a confirm guards the body-dropping direction |
+| **Notes** | `note` + `highlight` | each its own accent | `note` ⇄ `highlight`, **lossy both ways** (a highlight has no body/title) — a confirm guards both flips (`morph.lossy` is true in both directions) |
 | **Revisions** | `revision-comment` + `revision-suggestion` | the `revision` key | non-lossy both ways (the body rides into `user_text` and back) |
 | **Cutter** | `cutter-comment` + `cutter-suggestion` | the **legacy `cut` key** (`CARD_THEMES.cut`) | non-lossy both ways |
 | **Reports** | `report` + `report-request` | `report` | `report` ⇄ `report-request`, lossy both ways — [below](#the-reports-panel) |
@@ -233,7 +233,7 @@ Worth knowing before you touch any key:
   byte-for-byte** from the legacy table because they're persisted
   (localStorage `poppedOutCards`, omni ids). The Revisions pair is the
   intentional drift: `revision-comment` → prefix `revision`,
-  `revision-suggestion` → `revision-suggestion` (live key `revision:s:<id>`).
+  `revision-suggestion` → `revision-suggestion` (legacy persisted key `revision:s:<id>`, dual-read + migrated; live key `float:card:revision-suggestion:<id>`).
   *Don't rename a prefix without a migration* (`card-registry.tsx`).
 
 ## Rules for skills
