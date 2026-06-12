@@ -17,8 +17,10 @@ import {
 import {
   PanelCard,
   PANEL,
+  CardMetaLabel,
   cardTitleStyle,
 } from "@/components/panel-primitives";
+import { FONT_STACKS } from "@/lib/panel-typography";
 import { useCardTheme } from "@/hooks/usePanelTheme";
 import { usePanelBodyStyle } from "@/hooks/usePanelTypography";
 import { usePoppedCards } from "@/hooks/usePoppedCards";
@@ -75,6 +77,12 @@ const HAS_PLURAL = new Set([
   "footcite",
   "smartcite",
 ]);
+
+/** The PREVIEW row's intentional serif stack — the rendered citation text
+ *  previews how it reads in the (serif) document, independent of the
+ *  panel's body font. Reuses the curated override-first Source Serif 4
+ *  entry so it can't drift from the document's effective serif face. */
+const PREVIEW_SERIF_STACK = FONT_STACKS["Source Serif 4"];
 
 /* ── Helpers ──────────────────────────────────────────────────────── */
 
@@ -598,7 +606,6 @@ export function CitationCard({
   const hasAnyHeaderKey = headerRowData.some((r) => r.key);
   const headerContent = (
     <div
-      data-panel-kind="citation"
       className="leading-snug space-y-0.5"
       style={{
         ...headerStyle,
@@ -824,9 +831,7 @@ export function CitationCard({
             onClick={(e) => e.stopPropagation()}
           >
             <div className="flex items-center gap-1.5">
-              <span className="text-[10px] uppercase tracking-wide text-ink-body shrink-0">
-                Type
-              </span>
+              <CardMetaLabel className="shrink-0">Type</CardMetaLabel>
               <select
                 value={type}
                 onChange={(e) => {
@@ -834,7 +839,7 @@ export function CitationCard({
                   setType(v);
                   persist({ type: v });
                 }}
-                className="text-xs font-mono border border-edge-hover rounded px-1.5 py-0.5 bg-surface min-w-0"
+                className="text-xs card-mono border border-edge-hover rounded px-1.5 py-0.5 bg-surface min-w-0"
               >
                 {types.map((t) => (
                   <option key={t.value} value={t.value}>
@@ -897,9 +902,7 @@ export function CitationCard({
             </div>
 
             <div className="flex items-center gap-1.5 min-w-0">
-              <span className="text-[10px] uppercase tracking-wide text-ink-body shrink-0">
-                Code
-              </span>
+              <CardMetaLabel className="shrink-0">Code</CardMetaLabel>
               {codeDraft !== null ? (
                 <input
                   ref={codeInputRef}
@@ -915,7 +918,7 @@ export function CitationCard({
                   }}
                   onBlur={commitCodeDraft}
                   spellCheck={false}
-                  className="text-[11px] font-mono text-ink-body bg-surface border border-edge-strong rounded px-1 py-0 outline-none flex-1 min-w-0 focus:ring-0"
+                  className="text-[10px] card-mono text-ink-body bg-surface border border-edge-strong rounded px-1 py-0 outline-none flex-1 min-w-0 focus:ring-0"
                 />
               ) : (
                 <button
@@ -924,7 +927,7 @@ export function CitationCard({
                     codeDraftRef.current = cit.command;
                     setCodeDraft(cit.command);
                   }}
-                  className="text-[11px] font-mono text-ink-body truncate flex-1 min-w-0 text-left bg-transparent border border-transparent rounded px-1 py-0 cursor-text hover:border-edge-hover hover:bg-surface transition-colors"
+                  className="text-[10px] card-mono text-ink-body truncate flex-1 min-w-0 text-left bg-transparent border border-transparent rounded px-1 py-0 cursor-text hover:border-edge-hover hover:bg-surface transition-colors"
                   data-hint="Edit raw LaTeX" aria-label="Edit raw LaTeX"
                 >
                   {cit.command || (
@@ -938,15 +941,10 @@ export function CitationCard({
 
             {preview && (
               <div className="flex items-center gap-1.5 min-w-0">
-                <span className="text-[10px] uppercase tracking-wide text-ink-body shrink-0">
-                  Preview
-                </span>
+                <CardMetaLabel className="shrink-0">Preview</CardMetaLabel>
                 <span
-                  className="text-[13px] text-ink-body truncate"
-                  style={{
-                    fontFamily:
-                      "var(--font-serif-override, var(--font-serif)), 'Source Serif 4', Georgia, serif",
-                  }}
+                  className="card-content-row text-ink-body truncate"
+                  style={{ fontFamily: PREVIEW_SERIF_STACK }}
                   dangerouslySetInnerHTML={{
                     __html: preview.replace(
                       /<\/?(?!\/?[ib]>)[^>]+>/gi,
@@ -1111,15 +1109,17 @@ function CitationKeyRow({
   return (
     <li className="group/row flex flex-col gap-0.5">
       {/* Top line: filled = formatted citation. Empty = search input. */}
+      {/* Entry-row text sizes INHERIT from the card's body <ul> (the
+          per-panel font picker / size stepper) — no local px pins. */}
       {trimmed ? (
         <div className="flex items-start gap-2">
           <span
             aria-hidden
-            className="text-ink-body mt-[1px] select-none text-[12px] leading-none"
+            className="text-ink-body mt-[1px] select-none leading-none"
           >
             •
           </span>
-          <div className="flex-1 min-w-0 text-[12px] leading-snug">
+          <div className="flex-1 min-w-0 leading-snug">
             {entry ? (
               <div className="text-ink-body">
                 <span className="font-medium">
@@ -1152,8 +1152,8 @@ function CitationKeyRow({
                 )}
               </div>
             ) : (
-              <div className="text-danger text-[11.5px]">
-                <span className="font-mono">{trimmed}</span> — not in your
+              <div className="text-danger">
+                <span className="card-mono">{trimmed}</span> — not in your
                 bibliography
               </div>
             )}
@@ -1163,7 +1163,7 @@ function CitationKeyRow({
         <div className="flex items-center gap-2">
           <span
             aria-hidden
-            className="text-ink-body select-none text-[12px] leading-none"
+            className="text-ink-body select-none leading-none"
           >
             •
           </span>
@@ -1202,9 +1202,10 @@ function CitationKeyRow({
         </div>
       )}
 
-      {/* Bottom line: citekey controls. Only shown when row has a key. */}
+      {/* Bottom line: citekey controls — META tier (10px, the one meta
+          gray), fixed: the body-font picker never applies here. */}
       {trimmed && (
-        <div className="pl-[14px] flex items-center gap-1.5 text-[10.5px] text-ink-muted">
+        <div className="pl-[14px] flex items-center gap-1.5 text-[10px] text-[var(--muted)]">
           <button
             type="button"
             ref={(el) => registerAnchor(el)}
@@ -1212,7 +1213,7 @@ function CitationKeyRow({
               e.stopPropagation();
               onOpenPicker();
             }}
-            className="font-mono text-ink-muted hover:text-ink-body underline decoration-dotted decoration-edge-hover underline-offset-2"
+            className="card-mono text-[var(--muted)] hover:text-ink-body underline decoration-dotted decoration-edge-hover underline-offset-2"
             data-hint="Click to change" aria-label="Click to change"
           >
             {trimmed}
@@ -1220,7 +1221,7 @@ function CitationKeyRow({
           <button
             type="button"
             onClick={copyCitekey}
-            className="iconbtn-sm text-ink-muted hover:text-ink-body"
+            className="iconbtn-sm text-[var(--muted)] hover:text-ink-body"
             data-hint={copied ? "Copied" : "Copy citekey"} aria-label={copied ? "Copied" : "Copy citekey"}
           >
             {copied ? (
@@ -1263,7 +1264,7 @@ function CitationKeyRow({
               className={`text-[10px] uppercase tracking-wide px-1 py-0 rounded ${
                 bibExpanded
                   ? "text-ink-body bg-edge-subtle"
-                  : "text-ink-muted hover:text-ink-body hover:bg-edge-subtle"
+                  : "text-[var(--muted)] hover:text-ink-body hover:bg-edge-subtle"
               }`}
               data-hint={bibExpanded ? "Hide bib entry" : "Show bib entry"}
             >
@@ -1291,7 +1292,7 @@ function CitationKeyRow({
                   }
                 }}
                 placeholder="range"
-                className="w-14 text-[10.5px] font-mono border border-edge-subtle rounded px-1 py-0 bg-surface focus:border-edge-strong outline-none"
+                className="w-14 text-[10px] card-mono border border-edge-subtle rounded px-1 py-0 bg-surface focus:border-edge-strong outline-none"
               />
               {!row.postnote && pgDraft === "" && (
                 <button
@@ -1300,7 +1301,7 @@ function CitationKeyRow({
                     e.stopPropagation();
                     setPgOpen(false);
                   }}
-                  className="text-ink-muted hover:text-ink-body p-0.5"
+                  className="text-[var(--muted)] hover:text-ink-body p-0.5"
                   data-hint="Close" aria-label="Close"
                 >
                   <svg
@@ -1325,7 +1326,7 @@ function CitationKeyRow({
                 e.stopPropagation();
                 setPgOpen(true);
               }}
-              className="text-[10px] tracking-wide text-ink-muted hover:text-ink-body px-1 py-0 rounded hover:bg-edge-subtle"
+              className="text-[10px] tracking-wide text-[var(--muted)] hover:text-ink-body px-1 py-0 rounded hover:bg-edge-subtle"
               data-hint="Add a page range or locator"
             >
               +range
@@ -1338,7 +1339,7 @@ function CitationKeyRow({
               e.stopPropagation();
               onRemove();
             }}
-            className={`shrink-0 w-5 h-5 flex items-center justify-center rounded text-ink-muted hover:text-danger hover:bg-edge-subtle opacity-0 group-hover/row:opacity-100 transition-opacity ${
+            className={`shrink-0 w-5 h-5 flex items-center justify-center rounded text-[var(--muted)] hover:text-danger hover:bg-edge-subtle opacity-0 group-hover/row:opacity-100 transition-opacity ${
               !canRemove ? "pointer-events-none" : ""
             }`}
             data-hint="Remove this key" aria-label="Remove this key"
