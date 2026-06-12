@@ -54,3 +54,86 @@ export function capPopoutHeight(
 ): number {
   return Math.min(naturalHeight, Math.floor(viewportHeight * POPOUT_MAX_VH));
 }
+
+/* ── Card-float chrome constants ─────────────────────────────────────
+ * The chrome boxes that wrap a popped card's body, centralized here per
+ * this module's charter (one home for float sizing policy). Each mirrors
+ * a concrete style in the float stack — update BOTH if either changes:
+ */
+
+/** `FloatChrome`'s header strip: `h-6` (24px), INCLUDING its 1px
+ *  `border-b` (Tailwind preflight border-box). src/floats/FloatChrome.tsx. */
+export const CARD_FLOAT_HEADER_H = 24;
+/** `FloatingPanel`'s floating window border for the `"card"` surface:
+ *  `var(--pod-border, 1px solid #e5e2dd)` → 1px per edge.
+ *  src/components/FloatingPanel.tsx (floating-mode containerStyle). */
+export const CARD_FLOAT_BORDER = 1;
+/** A docked `PanelCard`'s own border: `CARD_BASE`'s `border` → 1px per
+ *  edge. src/components/panel-primitives.tsx. */
+export const DOCKED_CARD_BORDER = 1;
+/** The docked unified card header: `h-6` (24px), borderless — its
+ *  header/body divider is the SEPARATE `border-t` row below. */
+export const DOCKED_CARD_HEADER_H = 24;
+/** The docked header/body separator row: a zero-content div carrying a
+ *  1px `border-t` (rendered when `showSeparator`, the default). */
+export const DOCKED_CARD_SEPARATOR_H = 1;
+/** Min distance (px) a spawned float keeps from the viewport top/bottom
+ *  when its grown height forces a Y clamp. Mirrors the text-object
+ *  lift's `SPAWN_FIT_MARGIN` (TextObjectGrabHandle) and the legacy
+ *  auto-fit `adjustedY` convention. */
+export const FLOAT_SPAWN_FIT_MARGIN = 20;
+
+/** Chrome stacked above the docked card's body content:
+ *  1px card border + 24px header + 1px separator = 26. */
+const DOCKED_CHROME_TOP =
+  DOCKED_CARD_BORDER + DOCKED_CARD_HEADER_H + DOCKED_CARD_SEPARATOR_H;
+/** Chrome stacked above the float's body content:
+ *  1px window border + 24px FloatChrome (its border-b rides inside) = 25. */
+const FLOAT_CHROME_TOP = CARD_FLOAT_BORDER + CARD_FLOAT_HEADER_H;
+
+/** Viewport rect of the docked card at lift time (a
+ *  `getBoundingClientRect()` snapshot — border-box, so the card's own
+ *  border is inside `width`/`height`). */
+export interface LiftSourceRect {
+  left: number;
+  top: number;
+  width: number;
+  height: number;
+}
+
+/**
+ * The ONE formula deriving a lifted card float's spawn rect from the
+ * measured docked-card rect (pop-out continuity, Session-17 #20). The
+ * float is chrome-compensated so the card BODY does not visually move:
+ *
+ *  - Horizontally the docked card's 1px border and the float window's
+ *    1px border cancel → `x = left`, `width = width` (body spans
+ *    `+1 … −1` inside both boxes).
+ *  - Vertically the docked chrome above the body is 26px
+ *    (border + header + separator) while the float's is 25px
+ *    (border + FloatChrome, whose divider rides inside its 24px), so
+ *    the float frame drops 1px and gives that pixel back from its
+ *    height: `y = top + 1`, `height = height − 1`. Bottom borders
+ *    cancel (1px each).
+ *
+ * Used for BOTH expanded and collapsed lifts: an expanded card pops at
+ * exactly this rect (ratified: preserve the exact source size, no cap);
+ * a collapsed card spawns here too — header-only tall — and the float
+ * path's one-shot expand-to-content grows it, capped by
+ * {@link capPopoutHeight}.
+ */
+export function liftSpawnRect(source: LiftSourceRect): {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+} {
+  return {
+    x: Math.round(source.left),
+    y: Math.round(source.top + (DOCKED_CHROME_TOP - FLOAT_CHROME_TOP)),
+    width: Math.round(source.width),
+    height: Math.round(
+      source.height - (DOCKED_CHROME_TOP - FLOAT_CHROME_TOP),
+    ),
+  };
+}
