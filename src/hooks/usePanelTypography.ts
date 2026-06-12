@@ -7,6 +7,7 @@ import {
   getPanelTypographyVersion,
   isPanelTypographyFieldOverridden,
   loadPanelTypography,
+  resolveFontStack,
   subscribePanelTypography,
   type PanelBodyKey,
   type PanelTypography,
@@ -34,23 +35,20 @@ export function usePanelTypography(key: PanelBodyKey | undefined): PanelTypograp
   return getPanelTypography(key);
 }
 
-/** Quote space-containing font family names so the browser accepts them
- *  via inline `style.fontFamily =`. Browsers silently drop unquoted
- *  multi-word values when they're set programmatically. */
-function quoteFontFamily(name: string): string {
-  return /\s/.test(name) && !/^["']/.test(name) ? `"${name}"` : name;
-}
-
 /** Effective body style (default ⊕ override) as a ready-to-spread
  *  React.CSSProperties. Always populated when `key` is given, so cards
  *  can apply this inline and the registry default actually shows up
- *  (instead of being masked by upstream CSS rules like `.tiptap p`). */
+ *  (instead of being masked by upstream CSS rules like `.tiptap p`).
+ *
+ *  Family names are routed through `resolveFontStack`: bare names never
+ *  ship inline (next/font loads the real faces only behind CSS vars, so
+ *  a bare `Inter` would silently fall back to the UA default). */
 export function usePanelBodyStyle(key: PanelBodyKey | undefined): React.CSSProperties {
   useTypoVersion();
   if (!key) return {};
   const t = getPanelTypography(key);
   return {
-    fontFamily: quoteFontFamily(t.fontFamily),
+    fontFamily: resolveFontStack(t.fontFamily),
     fontSize: `${t.fontSize}px`,
     color: t.color,
   };
