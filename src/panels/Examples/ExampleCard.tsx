@@ -365,9 +365,8 @@ export function ExampleCard({
       )}
     </PanelCard>
   );
-  // When popped: wrap in FloatWindow (portals to body, draggable/resizable).
-  // The panel-side render checks isPopped and skips itself so the card
-  // mounts only once, in the float.
-  if (popped?.isPopped(cardKey) && !isPoppedOut) return null;
+  // Pop residue (#21): the docked card stays fully live while a float for
+  // the same example is open — no self-suppression (that pattern was
+  // removed everywhere in ba90bd9; this card had drifted back).
   return card;
 }

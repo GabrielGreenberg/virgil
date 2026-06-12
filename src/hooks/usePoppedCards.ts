@@ -4,16 +4,21 @@ import { createContext, useContext } from "react";
 
 /**
  * Thread-safe, tree-global access to the per-card popout state managed by
- * `useViewPrefs`. Wrapper cards (NoteCard, FootnoteCard, etc.) read this
- * context to:
- *   1. Skip their in-list render when popped (so `<FloatingCards>` can own
- *      the single render of the card inside a `FloatingPanel`).
- *   2. Wire up their `onTogglePopout` button handler without requiring
- *      every host panel to thread props through.
+ * `useViewPrefs`. Consumers:
+ *   - `PanelCard`'s lift gesture spawns floats via `popOutAtRect`; cards
+ *     without `onTogglePopout` threading still get popout this way.
+ *   - The float dispatcher (`FloatHost`/`FloatWindow`) iterates
+ *     `poppedKeys` and reads/writes float rects.
  *
- * Card keys are shaped `${kind}:${id}` where `kind` discriminates the card
- * variant (e.g. `note`, `footnote`, `archive`, `cut`, `todo`, `bib`,
- * `citation`, `revision`, `report`, `ai`).
+ * Pop residue: a popped card's DOCKED render stays fully live in its panel
+ * — the float is a second presence of the same card, not a relocation.
+ * Cards must NOT skip their in-list render while popped (the historical
+ * `isPopped(...) → return null` pattern was removed in ba90bd9).
+ *
+ * Card keys use the unified float grammar `float:card:<kind>:<id>`, built
+ * ONLY via `cardPopKey`/`popKey` (panel-registry) → `buildFloatKey`
+ * (floats/float-key). Text-object floats share the store with
+ * `float:textobject:<kind>:<id>` keys.
  */
 export interface CardRect {
   x: number;
