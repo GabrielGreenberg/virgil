@@ -699,6 +699,9 @@ export function CitationCard({
       onHeaderActivate={
         isDraft ? () => cardStore.select(ac.ref) : ac.onHeaderActivate
       }
+      // Select-only activation must not advertise disclosure semantics
+      // (aria-expanded/"Collapse card") for the pinned-open draft body.
+      headerDisclosure={!isDraft}
       extraCardClass={`cursor-pointer cursor-grab active:cursor-grabbing ${stateClass}`}
       draggable={!isDraft && pickerRowId === null && codeDraft === null}
       onDragStart={handleDragStart}

@@ -116,11 +116,14 @@ describe("OrphanedFootnoteCard expansion axis (backlog #12)", () => {
     expect(screen.getByTestId("rtf")).toBeTruthy();
   });
 
-  it("body click keeps the select+expand contract and fires the host onSelect", () => {
+  it("body click keeps the select+expand contract without the toggling host onSelect", () => {
     const { props } = renderOrphan();
     fireEvent.click(screen.getByTestId("borrowed"));
     expect(cardStore.isExpanded(REF)).toBe(true);
     expect(cardStore.isSelected(REF)).toBe(true);
-    expect(props.onSelect).toHaveBeenCalledTimes(1);
+    // Review nit fold: the host's TOGGLING onSelect is no longer composed in
+    // (cardStore.select drives the derived selection slot) - a second body
+    // click must not drop the halo.
+    expect(props.onSelect).toHaveBeenCalledTimes(0);
   });
 });

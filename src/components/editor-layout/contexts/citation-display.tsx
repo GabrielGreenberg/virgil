@@ -1,6 +1,6 @@
 "use client";
 
-import { createContext, useContext, type ReactNode } from "react";
+import { createContext, useContext, useMemo, type ReactNode } from "react";
 
 /**
  * Citation helpers shared by panels that host rich-text mini-editors
@@ -27,7 +27,17 @@ export function CitationDisplayProvider({
   value: CitationDisplayContextValue;
   children: ReactNode;
 }) {
-  return <CitationDisplayCtx.Provider value={value}>{children}</CitationDisplayCtx.Provider>;
+  // Both host mounts (EditorLayout/EditorPane) pass an inline object literal,
+  // so memoize here on the two function identities — otherwise every host
+  // render gives the context a new identity and re-renders every consumer
+  // (each BorrowedMainText card body) past its memo barriers. The callbacks
+  // are useCallback-stable, keyed on bib data, so identity changes only when
+  // resolution would actually differ.
+  const memoValue = useMemo(
+    () => value,
+    [value.getCitationDisplayText, value.onCitationCreated],
+  );
+  return <CitationDisplayCtx.Provider value={memoValue}>{children}</CitationDisplayCtx.Provider>;
 }
 
 export function useCitationDisplayContext(): CitationDisplayContextValue {

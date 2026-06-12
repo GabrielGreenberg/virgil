@@ -1202,6 +1202,13 @@ textarea,
   min-height: 0;
   margin-bottom: 0;
   z-index: 1;
+  /* Inert until the affordance is hover-revealed - the abspos row overlaps
+     the right end of the body's first text line and must not steal
+     caret-placement clicks while invisible. */
+  pointer-events: none;
+}
+[data-card]:hover .card-title-wrapper.card-title-add-only {
+  pointer-events: auto;
 }
 .card-title-add {
   font-size: calc(var(--par-title-size, 0.78rem) - 0.06rem);

@@ -207,10 +207,16 @@ Threading: `useAnchoredCard().onHeaderActivate` → `PanelCard`
 (`onHeaderActivate`); panel-local stores (Errors) compose their own
 select+toggle. The header carries the disclosure a11y (role="button",
 Enter/Space, `aria-expanded`, stateful "Expand card"/"Collapse card"
-label). Cursor: `cursor-default` on the header; the grab hint lives on
-the dots glyph (`CardDragHandle`, `cursor-grab`). A completed lift
-swallows its trailing click (suppress-click ref) so it can't also
-toggle.
+label). Cards whose body is pinned open (e.g. a draft citation)
+downgrade the header click to **select-only** — toggling a pinned-open
+body would be a silent no-op — and pass `headerDisclosure={false}` so
+the a11y drops `aria-expanded` and labels the header "Select card"
+(`CitationCard`'s `isDraft` branch is the precedent). Cursor:
+`cursor-default` on the header; the grab hint lives on the dots glyph
+(`CardDragHandle`, `cursor-grab`). A completed lift swallows its
+trailing click (suppress-click ref) so it can't also toggle. Tab focus
+on the header is inert (`data-card-header` bails the focus-capture
+auto-activation) — Enter/Space are the sole keyboard activation.
 
 ## Panels
 

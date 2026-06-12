@@ -177,7 +177,8 @@ export interface OrphanedFootnoteCardProps {
 export function OrphanedFootnoteCard({
   orphan,
   isSelected = false,
-  onSelect,
+  // onSelect intentionally not consumed: the global store drives selection
+  // (see the body onClick note below); the prop stays for host compatibility.
   onEdit,
   onDelete,
   onEditTitle,
@@ -219,10 +220,10 @@ export function OrphanedFootnoteCard({
       footnoteBadge={<BadgeOrphaned theme={theme} />}
       bodyTitle={orphan.title}
       onBodyTitleChange={onEditTitle ?? undefined}
-      onClick={() => {
-        ac.onActivate();
-        onSelect?.();
-      }}
+      // ac.onActivate's cardStore.select already drives the panel's derived
+      // selectedFootnoteId slot — composing the host's TOGGLING onSelect on
+      // top made a second body click drop the halo (review nit).
+      onClick={() => ac.onActivate()}
       onDelete={onDelete}
       value={orphan.content}
       variant="footnote"

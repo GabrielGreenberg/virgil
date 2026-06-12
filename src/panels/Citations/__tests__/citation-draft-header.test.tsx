@@ -91,13 +91,13 @@ describe("CitationCard draft header-click suppression (backlog #13)", () => {
   it("draft: header click selects but does NOT toggle the pinned-open body", () => {
     renderCard({ isDraft: true });
     // Draft is forced expanded → the header reads as collapsible.
-    const header = screen.getByLabelText("Collapse card");
+    const header = screen.getByLabelText("Select card");
     fireEvent.click(header);
     expect(cardStore.isSelected(REF)).toBe(true);
     // The expansion set is untouched — no silently-broken toggle.
     expect(cardStore.isExpanded(REF)).toBe(false);
     // Still expanded in the DOM (pinned by isDraft).
-    expect(screen.getByLabelText("Collapse card")).toBeTruthy();
+    expect(screen.getByLabelText("Select card")).toBeTruthy();
   });
 
   it("non-draft: header click keeps the full toggle+select composition", () => {

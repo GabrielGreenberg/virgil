@@ -953,8 +953,12 @@ export function EditableCard({
           isPointerInteractingRef.current = false;
         });
       }}
-      onFocusCapture={() => {
+      onFocusCapture={(e) => {
         if (isPointerInteractingRef.current) return;
+        // The unified header is its own keyboard target (click/Enter/Space =
+        // toggle+select, never jump) — Tab landing on it must not auto-fire
+        // the body composition (which jumps the editor to the anchor).
+        if ((e.target as HTMLElement).closest?.("[data-card-header]")) return;
         if (!selected && onClick) onClick();
       }}
       className={`focus:outline-none${wrapperClassName ? ` ${wrapperClassName}` : ""}`}
@@ -1545,6 +1549,13 @@ interface PanelCardProps extends Omit<HTMLAttributes<HTMLDivElement>, "onClick">
    *  interactive header children (kind dropdown, title input, ItemMenu,
    *  trailing controls) never reach it — they stopPropagation. */
   onHeaderActivate?: () => void;
+  /** Default true. Pass false when the threaded `onHeaderActivate` is NOT a
+   *  disclosure toggle (e.g. a draft citation's select-only header, whose
+   *  body is pinned open): the header keeps role=button + keyboard
+   *  activation but drops `aria-expanded`/`aria-controls` and is labeled
+   *  "Select card" — assistive tech must not be promised a collapse that
+   *  never happens. */
+  headerDisclosure?: boolean;
 
   /* ── Unified header chrome ───────────────────────────────────────
    * When `kind` is provided, PanelCard renders its own unified header
@@ -1614,6 +1625,7 @@ export const PanelCard = forwardRef<HTMLDivElement, PanelCardProps>(function Pan
     isCollapsed,
     onToggleExpanded,
     onHeaderActivate,
+    headerDisclosure = true,
     onMouseDown: callerMouseDown,
     kind,
     kindLabelOverride,
@@ -1863,13 +1875,26 @@ export const PanelCard = forwardRef<HTMLDivElement, PanelCardProps>(function Pan
           <div
             className="flex items-center gap-1 px-2 h-6 shrink-0 cursor-default"
             style={{ backgroundColor: selected ? theme.headerSelected : theme.headerDefault }}
+            // Lets EditableCard's focus-capture auto-activation skip header
+            // focus: the header has its own explicit activation (click /
+            // Enter / Space, never jump), so Tab landing here must not fire
+            // the body composition's jump.
+            data-card-header="1"
             {...(headerActivate
               ? {
                   role: "button" as const,
                   tabIndex: 0,
-                  "aria-expanded": !isCollapsed,
-                  "aria-controls": bodyId,
-                  "aria-label": isCollapsed ? "Expand card" : "Collapse card",
+                  // Non-disclosure headers (select-only activation, e.g. a
+                  // draft citation's pinned-open body) drop the expanded/
+                  // controls semantics — never advertise a collapse that
+                  // won't happen.
+                  ...(headerDisclosure
+                    ? {
+                        "aria-expanded": !isCollapsed,
+                        "aria-controls": bodyId,
+                        "aria-label": isCollapsed ? "Expand card" : "Collapse card",
+                      }
+                    : { "aria-label": "Select card" }),
                   onClick: (e: React.MouseEvent) => {
                     e.stopPropagation();
                     // Swallow the trailing click of a completed lift gesture.
@@ -2438,7 +2463,10 @@ export function ItemMenu({
           ref={menuRef}
           className="fixed bg-surface border border-[var(--border)] rounded-md shadow-lg py-1 z-[9999] min-w-[100px]"
           style={{ top: pos.top, left: pos.left, right: pos.right }}
-          onClick={() => setOpen(false)}
+          // stopPropagation fences ALL menu items (incl. future menuContent)
+          // from the card header's toggle+select and the root's body contract
+          // — the dropdown is DOM-nested inside the header div.
+          onClick={(e) => { e.stopPropagation(); setOpen(false); }}
         >
           {enhancedChildren}
         </div>
