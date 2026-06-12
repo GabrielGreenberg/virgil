@@ -35,12 +35,15 @@ export { FLOATING_PANEL_Z_BASE };
  * Shared "how tall can a popout be" policy — the maximum height of any
  * popped-out card/text-object as a fraction of the viewport, applied as a MAX
  * (never a floor; short content opens at its natural height). One value for
- * BOTH the lifted-overlay capture cap (`TextObjectGrabHandle`) and the
- * instant-popout auto-fit grow cap (`FloatWindow`), so a popped section always
- * fits on screen and scrolls internally for the overflow. User-chosen
- * 2026-06-01 (the 50–60% range); supersedes the old per-site 0.4 cap
- * (Issue-13). Relocated here from `text-object-registry` (it is a *float*
- * policy, not a text-object one); the registry re-exports it for back-compat.
+ * BOTH consumption sites (verified 2026-06-12): the text-object lift's
+ * capture cap (`TextObjectGrabHandle`, applied once to the measured source
+ * height at lift time) and `FloatWindow`'s collapsed-lift expand-to-content
+ * grow (back since pop-out continuity #20/#21 — it caps the
+ * `collectClippedHeight` natural height), so a popped section always fits on
+ * screen and scrolls internally for the overflow. User-chosen 2026-06-01
+ * (the 50–60% range); supersedes the old per-site 0.4 cap (Issue-13).
+ * Relocated here from `text-object-registry` (it is a *float* policy, not a
+ * text-object one); the registry re-exports it for back-compat.
  */
 export const POPOUT_MAX_VH = 0.55;
 

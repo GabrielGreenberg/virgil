@@ -117,7 +117,4 @@ export interface Floatable {
 
   /** Initial float size. Omit → subsystem default (`FLOAT_DEFAULT_SIZE`). */
   defaultSize?: { w: number; h: number };
-  /** Rect to spawn at (lift-off hands the cursor rect; otherwise computed from
-   *  the trigger anchor via `computeSpawnPosition`). */
-  spawnHint?: DOMRect;
 }
