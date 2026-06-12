@@ -60,27 +60,33 @@
 import { Fragment, useEffect, useMemo, useRef, type CSSProperties } from "react";
 import { createPortal } from "react-dom";
 import { resolveInlineContextElement } from "@/lib/text-metrics";
+import {
+  CARD_FLOAT_HEADER_H,
+  TEXT_FLOAT_BODY_PAD_X,
+  TEXT_FLOAT_BODY_PAD_Y,
+  TEXT_FLOAT_BORDER,
+} from "@/floats/float-policy";
 import { FloatHeaderContent } from "./FloatHeaderContent";
 import type { TextObjectRef } from "./types";
 
-/** Popout chrome dimensions. Mirror the real popout's chrome so the
- *  overlay's outer rect in popout mode and the `popOutAtRect` spawn rect
- *  produce a body-content rect that lands at exactly the ghost's text
- *  rect (L1.12 — text content stays still, chrome grows outward).
- *  HEADER_HEIGHT matches `.lifted-text-overlay__header` `height` in
- *  globals.css and `TextObjectFloat.tsx`'s header `h-6`. BODY_PADDING_X/Y
- *  match `.lifted-text-overlay__body[data-lift-mode="popout"]` padding
- *  and `paragraph-body.tsx`'s `px-8 py-4`. The header is rendered as a
- *  portal sibling of the overlay (L1.9 — the prior bottom:100%
- *  positioning silently clipped the header any time the overlay root
- *  carried overflow:hidden, even briefly via a stale Turbopack chunk).
- *  Sibling positioning takes the overlay's box out of the equation
- *  entirely; JS owns the header geometry. Mirrored in
- *  `TextObjectGrabHandle.tsx` (release-handoff spawn coords) and CSS
- *  (body popout-padding rule); L4 may centralize via the registry. */
-const HEADER_HEIGHT = 24;
-const BODY_PADDING_X = 32;
-const BODY_PADDING_Y = 16;
+/** Popout chrome dimensions. The real popout's chrome, so the overlay's
+ *  outer rect in popout mode and the `popOutAtRect` spawn rect produce a
+ *  body-content rect that lands at exactly the ghost's text rect (L1.12
+ *  — text content stays still, chrome grows outward). All read from
+ *  float-policy (one home for float chrome metrics): the header is the
+ *  shared `FloatChrome` `h-6` strip (CARD_FLOAT_HEADER_H, also matching
+ *  `.lifted-text-overlay__header` height in globals.css); the padding is
+ *  the `par-float-body` wrappers' TEXT_FLOAT_BODY_PAD_X/Y (also mirrored
+ *  by the `.lifted-text-overlay__body[data-lift-mode="popout"]` padding
+ *  rule — CSS can't import TS). The header is rendered as a portal
+ *  sibling of the overlay (L1.9 — the prior bottom:100% positioning
+ *  silently clipped the header any time the overlay root carried
+ *  overflow:hidden, even briefly via a stale Turbopack chunk). Sibling
+ *  positioning takes the overlay's box out of the equation entirely; JS
+ *  owns the header geometry. */
+const HEADER_HEIGHT = CARD_FLOAT_HEADER_H;
+const BODY_PADDING_X = TEXT_FLOAT_BODY_PAD_X;
+const BODY_PADDING_Y = TEXT_FLOAT_BODY_PAD_Y;
 /** Popout-mode overlay border, one side, in px (L3b.3). The overlay is
  *  `box-sizing: border-box` and gains `border: var(--pod-border)` (1px each
  *  side) in popout mode (globals.css `.lifted-text-overlay[data-lift-mode=
@@ -91,12 +97,8 @@ const BODY_PADDING_Y = 16;
  *  of wrapping in the ghost re-wraps in the popout. The popout geometry
  *  below grows the OUTER box by `2 * POPOUT_BORDER` and shifts it by
  *  `POPOUT_BORDER` so the text content lands at exactly `sourceWidth` (==
- *  ghost) while staying at the same absolute screen pixel (L1.12). Mirrors
- *  `--pod-border` width (globals.css ~51) and the released float's card
- *  border (FloatingPanel surface="card", same `--pod-border`); hardcoded
- *  like HEADER_HEIGHT / BODY_PADDING_* rather than parsed from the border
- *  shorthand at runtime. Mirrored in `TextObjectGrabHandle.tsx`. */
-const POPOUT_BORDER = 1;
+ *  ghost) while staying at the same absolute screen pixel (L1.12). */
+const POPOUT_BORDER = TEXT_FLOAT_BORDER;
 
 export interface LiftedTextOverlayProps {
   /** The ref the gesture is lifting. Informational — the overlay

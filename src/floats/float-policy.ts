@@ -84,6 +84,39 @@ export const DOCKED_CARD_SEPARATOR_H = 1;
  *  auto-fit `adjustedY` convention. */
 export const FLOAT_SPAWN_FIT_MARGIN = 20;
 
+/* ── Text-object float chrome constants ─────────────────────────────
+ * The float-WINDOW-layer metrics of a popped text-object, centralized
+ * here so the lifted-overlay spawn math (TextObjectGrabHandle /
+ * LiftedTextOverlay) and the float body's own padding cannot drift.
+ * The text-float header is `FloatChrome` — the SAME `h-6` strip cards
+ * use, so its height IS `CARD_FLOAT_HEADER_H` above (the deleted
+ * `TextObjectFloat.tsx` used to own a separate copy). */
+
+/** Body padding of every text-object float body (the `par-float-body`
+ *  wrappers in src/text-objects/floats/*): 32px horizontal / 16px
+ *  vertical. Realized in JSX via {@link TEXT_FLOAT_BODY_PAD_CLASS};
+ *  ALSO mirrored by the `.lifted-text-overlay__body` popout-mode
+ *  padding rule in globals.css (CSS can't import TS — update both). */
+export const TEXT_FLOAT_BODY_PAD_X = 32;
+export const TEXT_FLOAT_BODY_PAD_Y = 16;
+
+/** The Tailwind classes realizing {@link TEXT_FLOAT_BODY_PAD_X}/`_Y`
+ *  (px-8 = 32px, py-4 = 16px) — the single class-string every text-float
+ *  body consumes, so the JSX padding and the spawn-rect math share one
+ *  definition. */
+export const TEXT_FLOAT_BODY_PAD_CLASS = "px-8 py-4";
+
+/** Text-object float window border, one side, in px. The float
+ *  (`FloatingPanel` surface="card") is border-box with
+ *  `border: var(--pod-border)` (1px each side); the lifted overlay gains
+ *  the same border in popout mode (globals.css
+ *  `.lifted-text-overlay[data-lift-mode="popout"]`). Mirrors
+ *  `--pod-border`'s width. Same value as {@link CARD_FLOAT_BORDER} but a
+ *  separate name: this one compensates lifted-overlay/spawn geometry,
+ *  that one the card lift formula — they could diverge if the surfaces
+ *  ever did. */
+export const TEXT_FLOAT_BORDER = 1;
+
 /** Chrome stacked above the docked card's body content:
  *  1px card border + 24px header + 1px separator = 26. */
 const DOCKED_CHROME_TOP =

@@ -39,6 +39,7 @@ import { buildEditorExtensions } from "@/lib/editor-extensions";
 import { usePoppedCards } from "@/hooks/usePoppedCards";
 import { useEditorChrome } from "@/components/editor-layout/chrome-context";
 import { viewToggleClasses } from "@/components/editor-layout/chrome-config";
+import { TEXT_FLOAT_BODY_PAD_CLASS } from "@/floats/float-policy";
 import {
   FLOAT_WRITE_META,
   SourceMissingBanner,
@@ -231,7 +232,7 @@ export function ParagraphBody({
         />
       ) : null}
       <div
-        className={`par-float-body flex-1 overflow-auto px-8 py-4 ${viewToggleClasses(chrome.menuBar)}`}
+        className={`par-float-body flex-1 overflow-auto ${TEXT_FLOAT_BODY_PAD_CLASS} ${viewToggleClasses(chrome.menuBar)}`}
       >
         <EditorContent editor={floatEditor} />
       </div>

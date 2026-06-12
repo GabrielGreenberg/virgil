@@ -82,7 +82,13 @@ import {
   textObjectPopoutKey,
   capPopoutHeight,
 } from "./text-object-registry";
-import { FLOAT_DEFAULT_SIZE } from "@/floats/float-policy";
+import {
+  FLOAT_DEFAULT_SIZE,
+  CARD_FLOAT_HEADER_H,
+  TEXT_FLOAT_BODY_PAD_X,
+  TEXT_FLOAT_BODY_PAD_Y,
+  TEXT_FLOAT_BORDER,
+} from "@/floats/float-policy";
 import { resolveBlockFrame } from "./block-frame";
 import { computeHandleLeftEdge } from "./handle-layout";
 import { LiftedTextOverlay } from "./LiftedTextOverlay";
@@ -117,23 +123,21 @@ const SPAWN_FIT_MARGIN = 20;
  *  The lifted-overlay model treats the text content's absolute viewport
  *  position as invariant across ghost → popout overlay → real popout;
  *  chrome grows OUTWARD when modes change, the text never moves. These
- *  constants encode the real popout's chrome so the overlay's outer rect
- *  in popout mode and the `popOutAtRect` spawn rect can both be sized to
- *  produce a body-content rect that lands at exactly the ghost's text
- *  rect.
+ *  encode the real popout's chrome so the overlay's outer rect in popout
+ *  mode and the `popOutAtRect` spawn rect can both be sized to produce a
+ *  body-content rect that lands at exactly the ghost's text rect.
  *
- *  These mirror the real popout's chrome and MUST stay in sync with:
- *   - `TextObjectFloat.tsx` header `h-6` (24px tall) → POPOUT_HEADER_HEIGHT
- *   - `paragraph-body.tsx`'s `flex-1 overflow-auto px-8 py-4`
- *     (32px horizontal / 16px vertical padding) → POPOUT_BODY_PADDING_X/Y
- *   - the matching `.lifted-text-overlay__body` popout-mode padding rule
- *     in `globals.css` (currently 16px 32px) which mirrors the real body.
- *
- *  L4 cleanup may centralize these via the registry (per-kind chrome) once
- *  the lifted-overlay path generalizes beyond paragraph. */
-const POPOUT_HEADER_HEIGHT = 24;
-const POPOUT_BODY_PADDING_X = 32;
-const POPOUT_BODY_PADDING_Y = 16;
+ *  All read from float-policy (the one home for float chrome metrics) —
+ *  no hand-mirrored values:
+ *   - header: the `FloatChrome` `h-6` strip → CARD_FLOAT_HEADER_H
+ *   - body padding: the `par-float-body` wrappers' shared
+ *     TEXT_FLOAT_BODY_PAD_CLASS (px-8 py-4) → TEXT_FLOAT_BODY_PAD_X/Y
+ *   - border: the `--pod-border` 1px window border → TEXT_FLOAT_BORDER
+ *  (`.lifted-text-overlay__body`'s popout-mode padding rule in globals.css
+ *  still mirrors the padding by hand — CSS can't import TS.) */
+const POPOUT_HEADER_HEIGHT = CARD_FLOAT_HEADER_H;
+const POPOUT_BODY_PADDING_X = TEXT_FLOAT_BODY_PAD_X;
+const POPOUT_BODY_PADDING_Y = TEXT_FLOAT_BODY_PAD_Y;
 /** Released-popout card border, one side, in px (L3b.3). The real float
  *  (`FloatingPanel` surface="card") is `box-sizing: border-box` with
  *  `border: var(--pod-border)` (1px each side), so its body content rect is
@@ -141,9 +145,8 @@ const POPOUT_BODY_PADDING_Y = 16;
  *  deficit the lifted overlay has in popout mode. The `popOutAtRect` spawn
  *  below compensates so the released float's body text lands at exactly
  *  `sourceWidth × sourceHeight`, matching the ghost AND the drag-popout
- *  overlay (no re-wrap across the whole gesture). Mirrors
- *  `LiftedTextOverlay.tsx`'s `POPOUT_BORDER` and `--pod-border` width. */
-const POPOUT_BORDER = 1;
+ *  overlay (no re-wrap across the whole gesture). */
+const POPOUT_BORDER = TEXT_FLOAT_BORDER;
 
 /**
  * Default initial float size at spawn time — the subsystem-wide

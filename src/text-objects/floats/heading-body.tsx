@@ -44,6 +44,7 @@ import { usePoppedCards } from "@/hooks/usePoppedCards";
 import { useDocWriteHandleOrNull } from "@/components/editor-layout/DocPipeline";
 import { useEditorChrome } from "@/components/editor-layout/chrome-context";
 import { viewToggleClasses } from "@/components/editor-layout/chrome-config";
+import { TEXT_FLOAT_BODY_PAD_CLASS } from "@/floats/float-policy";
 import { getSectionRangeByUuid } from "@/lib/section-range";
 import { headingTypeName } from "@/lib/heading-types";
 import {
@@ -245,7 +246,7 @@ export function HeadingBody({
         />
       ) : null}
       <div
-        className={`par-float-body heading-float-body flex-1 overflow-auto px-8 py-4 relative ${viewToggleClasses(chrome.menuBar)}`}
+        className={`par-float-body heading-float-body flex-1 overflow-auto ${TEXT_FLOAT_BODY_PAD_CLASS} relative ${viewToggleClasses(chrome.menuBar)}`}
       >
         <EditorContent editor={floatEditor} />
       </div>
