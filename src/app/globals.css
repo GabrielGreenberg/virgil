@@ -1234,6 +1234,31 @@ textarea,
   opacity: 1;
 }
 
+/* ── In-card type scale (UI-consistency sweep, 2026-06-12) ──────────
+ * Two ratified tiers inside card bodies:
+ *   META    — 10px / 500 / uppercase / tracking-wide / var(--muted):
+ *             kind labels, key rows, chips, CODE rows.
+ *   CONTENT — 12px: entry rows, inputs, previews (and the picker-styled
+ *             body text, whose default is the same 12px).
+ * Anything at 10.5 / 11 / 11.5px is a stray — use one of these.
+ * React-side primitives: CardMetaLabel / CardMono (panel-primitives). */
+.card-meta-label {
+  font-size: 10px;
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.025em; /* tracking-wide */
+  color: var(--muted);
+}
+.card-content-row {
+  font-size: 12px;
+}
+/* Mono inside cards — ALWAYS the override-first var stack (a bare
+ * `font-family: monospace` or Tailwind `font-mono` skips the user's
+ * mono override pref). */
+.card-mono {
+  font-family: var(--font-mono-override, var(--font-mono)), monospace;
+}
+
 .par-title-annotation:hover {
   filter: brightness(0.8);
 }

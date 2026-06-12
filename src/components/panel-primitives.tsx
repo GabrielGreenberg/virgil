@@ -348,6 +348,47 @@ export function CardEmptyText({ label = "empty" }: { label?: string }) {
   return <span className="text-ink-faint italic">{label}</span>;
 }
 
+/** In-card META tier label (UI-consistency sweep): 10px / 500 / uppercase /
+ *  tracking-wide / the ONE meta gray (`var(--muted)`, matching
+ *  `CardTypeLabel`). For the small overlines naming a meta row inside a
+ *  card body ("Type", "Code", "Preview", …). Design-system-fixed — the
+ *  per-panel body-font picker never applies to meta rows. */
+export function CardMetaLabel({
+  children,
+  className,
+}: {
+  children: ReactNode;
+  className?: string;
+}) {
+  return (
+    <span className={`card-meta-label${className ? ` ${className}` : ""}`}>
+      {children}
+    </span>
+  );
+}
+
+/** In-card mono text routed through the override-first mono var stack
+ *  (`var(--font-mono-override, var(--font-mono)), monospace` — Tailwind's
+ *  `font-mono` skips the user's mono override pref). Two ratified sizes:
+ *  `"meta"` (10px — CODE rows, citekeys) and `"content"` (12px). */
+export function CardMono({
+  children,
+  size = "meta",
+  className,
+}: {
+  children: ReactNode;
+  size?: "meta" | "content";
+  className?: string;
+}) {
+  return (
+    <span
+      className={`card-mono ${size === "meta" ? "text-[10px]" : "text-[12px]"}${className ? ` ${className}` : ""}`}
+    >
+      {children}
+    </span>
+  );
+}
+
 /* ── Unified card-chrome header components ────────────────────────── */
 
 /** Kind label / kind dropdown for the unified card header.
