@@ -474,6 +474,12 @@ piecemeal. Items 22–23 are the **UI-consistency sweep** (the visual analogue o
 the functional refactor). Item 24 is a live runtime crash. Investigation
 findings from the Session-17 workflow refine these in place.
 
+> **Ratified design calls for chip E (Gabriel, 2026-06-12):** per-panel font
+> picker = **body text only** (titles/meta/labels override-immune, the TITLE
+> dialect) · type scale = **10px meta + 12px content** (kill 10.5/11/11.5
+> strays) · citation body padding **normalizes to the px-3 standard** · card
+> floats stay **uniform 360×280** (no per-kind registry facet).
+
 > **Ratified design calls (Gabriel, 2026-06-11):** header click = **toggle +
 > select** (no jump; body click keeps select+expand+jump) · pop residue =
 > **fully live card** (delete ExampleCard's suppression; no ghosting) · float
