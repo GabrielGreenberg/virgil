@@ -118,44 +118,9 @@ describe("OmniUnanchoredBin — zero-flow / measurement exclusion", () => {
   });
 });
 
-describe("cascade-purity — the panel split never feeds pos:null to the cascade", () => {
-  // Mirror of the {anchored, free, orphaned} split in OmniViewPanel. The
-  // cascade map is built from `anchored` only; this asserts the invariant the
-  // bin relies on: no pos:null item can leak into the natural positions.
-  function split(items: OmniItem[], editor: object | null) {
-    const anchored: Array<OmniItem & { pos: number }> = [];
-    const free: OmniItem[] = [];
-    const orphaned: OmniItem[] = [];
-    for (const item of items) {
-      if (item.pos == null) {
-        if (!editor) continue;
-        if (item.anchorState === "free") free.push(item);
-        else orphaned.push(item);
-      } else {
-        anchored.push({ ...item, pos: item.pos });
-      }
-    }
-    return { anchored, free, orphaned };
-  }
-
-  it("anchored note → cascade; free note + orphaned footnote → bin; cascade is pos-pure", () => {
-    const anchoredNote: OmniItem = {
-      id: "float:card:note:anchored-1",
-      pos: 12,
-      anchorState: "anchored",
-      content: null,
-    };
-    const items = [anchoredNote, freeItem, orphanItem];
-    const { anchored, free, orphaned } = split(items, {});
-
-    // The anchored note is in the cascade region, NOT the bin.
-    expect(anchored.map((i) => i.id)).toEqual(["float:card:note:anchored-1"]);
-    expect(free.map((i) => i.id)).toEqual(["float:card:note:free-1"]);
-    expect(orphaned.map((i) => i.id)).toEqual(["float:card:footnote:orphan-1"]);
-
-    // inTextItems (what feeds the cascade resolver) — every pos is a number.
-    const inTextItems = anchored.map((i) => ({ id: i.id, pos: i.pos }));
-    expect(inTextItems.every((it) => typeof it.pos === "number")).toBe(true);
-    expect(inTextItems.some((it) => it.pos == null)).toBe(false);
-  });
-});
+// The cascade-purity invariant (the panel split never feeds a pos:null item
+// to the cascade) used to be pinned here via a hand-copied mirror of
+// OmniViewPanel's split useMemo — a mirror can't fail when the component
+// drifts. It is now pinned against the REAL default-exported component in
+// `omni-view-panel-split-contract.test.tsx` (test-hardening rewire), which
+// captures the actual `inTextItems` argument via the useInTextPositions mock.

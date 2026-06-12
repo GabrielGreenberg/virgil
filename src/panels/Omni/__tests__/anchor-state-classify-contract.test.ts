@@ -481,40 +481,8 @@ describe("omni builder anchorState classification", () => {
   });
 });
 
-describe("OmniViewPanel mount-race guard (pos == null dropped while editor null)", () => {
-  // Mirror of the {anchored, unanchored} split in OmniViewPanel: while
-  // `editor` is null, builders that resolve UUIDs transiently return pos:null
-  // for items that WILL anchor once the editor mounts. Those must be dropped,
-  // not flashed into the unanchored bin.
-  function split(items: OmniItem[], editor: object | null) {
-    const anchored: OmniItem[] = [];
-    const unanchored: OmniItem[] = [];
-    for (const item of items) {
-      if (item.pos == null) {
-        if (!editor) continue; // mount-race guard
-        unanchored.push(item);
-      } else {
-        anchored.push(item);
-      }
-    }
-    return { anchored, unanchored };
-  }
-
-  const items: OmniItem[] = [
-    { id: "float:card:note:a", pos: 10, anchorState: "anchored", content: null },
-    { id: "float:card:note:b", pos: null, anchorState: "free", content: null },
-    { id: "float:card:note:c", pos: null, anchorState: "orphaned", content: null },
-  ];
-
-  it("drops every pos:null item while editor is null", () => {
-    const { anchored, unanchored } = split(items, null);
-    expect(anchored.map((i) => i.id)).toEqual(["float:card:note:a"]);
-    expect(unanchored).toHaveLength(0);
-  });
-
-  it("routes free + orphaned into unanchored once editor is live", () => {
-    const { anchored, unanchored } = split(items, {});
-    expect(anchored.map((i) => i.id)).toEqual(["float:card:note:a"]);
-    expect(unanchored.map((i) => i.anchorState).sort()).toEqual(["free", "orphaned"]);
-  });
-});
+// The OmniViewPanel mount-race guard (pos == null dropped while `editor` is
+// null) used to be pinned here via a hand-copied mirror of the component's
+// split useMemo — a mirror can't fail when the component drifts. It is now
+// pinned against the REAL default-exported component in
+// `omni-view-panel-split-contract.test.tsx` (test-hardening rewire).
