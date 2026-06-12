@@ -88,7 +88,8 @@ export interface ErrorCardProps {
   expanded: boolean;
   /** Body-click composition (R1): select + expand. Idempotent set-true. */
   onExpand: () => void;
-  /** The header expand chevron: toggle expansion only (never selection). */
+  /** Axis-pure expansion toggle (never selection). Composed with `onSelect`
+   *  into the header-click contract (select + toggle, no jump). */
   onToggleExpanded: () => void;
   hasAnchor: boolean;
   onSelect: (id: string | null) => void;
@@ -125,6 +126,12 @@ export function ErrorCard({
       selected={selected}
       isCollapsed={compressed}
       onToggleExpanded={onToggleExpanded}
+      // Header click = select + toggle (ratified contract), threaded from the
+      // panel-local expansion set — `error` has no slot in the shared cardStore.
+      onHeaderActivate={() => {
+        onSelect(err.id);
+        onToggleExpanded();
+      }}
       onTrashClick={() => onDismiss(err.id)}
       extraCardClass=""
       className="focus:outline-none"

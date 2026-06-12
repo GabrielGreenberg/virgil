@@ -113,6 +113,7 @@ export function ArchiveCard({
       compressedSummary={compressedSummary}
       compressedContent={snippet.content}
       onToggleExpanded={ac.onToggleExpanded}
+      onHeaderActivate={ac.onHeaderActivate}
     />
   );
   return card;

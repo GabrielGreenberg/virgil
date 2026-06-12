@@ -153,6 +153,7 @@ export function FootnoteCard({
       compressedSummary={compressedSummary}
       compressedContent={fn.content}
       onToggleExpanded={ac.onToggleExpanded}
+      onHeaderActivate={ac.onHeaderActivate}
     />
   );
   return card;
@@ -176,7 +177,8 @@ export interface OrphanedFootnoteCardProps {
 export function OrphanedFootnoteCard({
   orphan,
   isSelected = false,
-  onSelect,
+  // onSelect intentionally not consumed: the global store drives selection
+  // (see the body onClick note below); the prop stays for host compatibility.
   onEdit,
   onDelete,
   onEditTitle,
@@ -193,7 +195,14 @@ export function OrphanedFootnoteCard({
   );
   const theme = useCardTheme("footnote");
   const compressedLines = useCompressedLines();
-  const compressed = !isSelected;
+  // Backlog #12: orphans get a REAL expansion axis (the global store — the
+  // footnoteId is stable and the `footnote` kind already has a slot), instead
+  // of the old `compressed = !isSelected` weld. Header click toggles it like
+  // every other card; body click keeps select+expand (no jump — orphans have
+  // no in-text marker to jump to).
+  const ac = useAnchoredCard({ kind: "footnote", id: orphan.footnoteId });
+  const isHaloed = ac.selected || isSelected;
+  const compressed = !ac.expanded;
   const compressedSummary = compressed
     ? (makeCompressedSummary(orphan.content, compressedLines) || "")
     : undefined;
@@ -203,7 +212,7 @@ export function OrphanedFootnoteCard({
       id={orphan.footnoteId}
       cardKind="footnote"
       kind="footnote"
-      selected={isSelected}
+      selected={isHaloed}
       theme={theme}
       hideToolbar
       inlineDelete
@@ -211,7 +220,10 @@ export function OrphanedFootnoteCard({
       footnoteBadge={<BadgeOrphaned theme={theme} />}
       bodyTitle={orphan.title}
       onBodyTitleChange={onEditTitle ?? undefined}
-      onClick={onSelect}
+      // ac.onActivate's cardStore.select already drives the panel's derived
+      // selectedFootnoteId slot — composing the host's TOGGLING onSelect on
+      // top made a second body click drop the halo (review nit).
+      onClick={() => ac.onActivate()}
       onDelete={onDelete}
       value={orphan.content}
       variant="footnote"
@@ -228,6 +240,8 @@ export function OrphanedFootnoteCard({
       compressed={compressed}
       compressedSummary={compressedSummary}
       compressedContent={orphan.content}
+      onToggleExpanded={ac.onToggleExpanded}
+      onHeaderActivate={ac.onHeaderActivate}
     />
   );
 }

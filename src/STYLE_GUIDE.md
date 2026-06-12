@@ -197,6 +197,27 @@ tints.
 Hover (not selected): only the border changes (`edge-hover` →
 `edge-strong`). The header and body don't react.
 
+### Card header interaction (ratified 2026-06-11)
+
+The docked unified header is a two-gesture surface — **click = toggle
+expansion + select** (never jump, never open a panel), **drag = lift to
+pop out** (the ONLY pop-out path; there is no chevron and no docked
+pop-out button). The body click keeps the select+expand+jump contract.
+Threading: `useAnchoredCard().onHeaderActivate` → `PanelCard`
+(`onHeaderActivate`); panel-local stores (Errors) compose their own
+select+toggle. The header carries the disclosure a11y (role="button",
+Enter/Space, `aria-expanded`, stateful "Expand card"/"Collapse card"
+label). Cards whose body is pinned open (e.g. a draft citation)
+downgrade the header click to **select-only** — toggling a pinned-open
+body would be a silent no-op — and pass `headerDisclosure={false}` so
+the a11y drops `aria-expanded` and labels the header "Select card"
+(`CitationCard`'s `isDraft` branch is the precedent). Cursor:
+`cursor-default` on the header; the grab hint lives on the dots glyph
+(`CardDragHandle`, `cursor-grab`). A completed lift swallows its
+trailing click (suppress-click ref) so it can't also toggle. Tab focus
+on the header is inert (`data-card-header` bails the focus-capture
+auto-activation) — Enter/Space are the sole keyboard activation.
+
 ## Panels
 
 Sidebar pod with a locked-height header (`--header-h: 34px`). Header

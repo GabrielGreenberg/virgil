@@ -164,6 +164,7 @@ export function RevisionCommentCard({
       compressed={compressed}
       compressedSummary={compressedSummary}
       onToggleExpanded={ac.onToggleExpanded}
+      onHeaderActivate={ac.onHeaderActivate}
     />
   );
   return cardEl;

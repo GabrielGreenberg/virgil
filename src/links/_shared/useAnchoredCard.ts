@@ -42,12 +42,19 @@ export interface UseAnchoredCardResult {
    */
   onActivate: () => void;
   /**
-   * The axis-pure expand override (the header chevron's handler): toggles ONLY
-   * `expandedSet` membership — never selection. Threaded to `PanelCard` as
-   * `onToggleExpanded` so the docked one-click expand control flips the body
-   * without moving the halo. Stable across renders.
+   * The axis-pure expand override: toggles ONLY `expandedSet` membership —
+   * never selection. Threaded to `PanelCard` as `onToggleExpanded`. Stable
+   * across renders.
    */
   onToggleExpanded: () => void;
+  /**
+   * The header-click composition (ratified 2026-06-11): SELECT + TOGGLE
+   * expansion together — NO jump-to-anchor. Threaded to `PanelCard` as
+   * `onHeaderActivate` so a click anywhere on the docked header flips the
+   * body and moves the halo, while the body click keeps the select+expand+
+   * jump contract (`onActivate` + per-card side effects).
+   */
+  onHeaderActivate: () => void;
   ref: AnchoredCardRef;
 }
 
@@ -61,10 +68,16 @@ export function useAnchoredCard(ref: AnchoredCardRef): UseAnchoredCardResult {
     cardStore.expand(ref);
   }, [ref.kind, ref.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Axis-pure: the header expand chevron toggles ONLY the body, never the halo.
+  // Axis-pure: toggles ONLY the body, never the halo.
   const onToggleExpanded = useCallback(() => {
     cardStore.toggleExpanded(ref);
   }, [ref.kind, ref.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  return { selected, expanded, hovered, onActivate, onToggleExpanded, ref };
+  // Header-click composition: select + toggle expansion, NO jump.
+  const onHeaderActivate = useCallback(() => {
+    cardStore.select(ref);
+    cardStore.toggleExpanded(ref);
+  }, [ref.kind, ref.id]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  return { selected, expanded, hovered, onActivate, onToggleExpanded, onHeaderActivate, ref };
 }

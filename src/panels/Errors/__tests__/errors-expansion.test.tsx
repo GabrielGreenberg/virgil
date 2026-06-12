@@ -8,9 +8,10 @@
 //   1. `pruneExpanded` — drops dead ids, identity-stable, and NO-OP on an
 //      empty live list (the transient mid-compile empty list must not wipe
 //      the user's expansion state).
-//   2. ErrorsPanel's controlled contract — the header chevron fires
-//      `onToggleExpanded`, a body click fires `onExpand`, and the component
-//      holds NO internal expansion state (display tracks `expandedIds` only).
+//   2. ErrorsPanel's controlled contract — a header click fires the ratified
+//      select+toggle composition (`onSelect` + `onToggleExpanded`, no jump),
+//      a body click fires `onExpand`, and the component holds NO internal
+//      expansion state (display tracks `expandedIds` only).
 
 import { describe, it, expect, vi, afterEach } from "vitest";
 
@@ -96,11 +97,25 @@ describe("pruneExpanded (R5 / A4 deferred #4)", () => {
 });
 
 describe("ErrorsPanel controlled expansion contract (R5)", () => {
-  it("the header chevron fires onToggleExpanded with the error id", () => {
+  it("a header click fires the select+toggle composition (no jump, no onExpand)", () => {
     const { props } = renderPanel();
+    // The whole unified header is the disclosure trigger now (the per-card
+    // expand chevron was retired); it keeps the stateful aria-label.
     fireEvent.click(screen.getByLabelText("Expand card"));
     expect(props.onToggleExpanded).toHaveBeenCalledTimes(1);
     expect(props.onToggleExpanded).toHaveBeenCalledWith(ERR.id);
+    expect(props.onSelect).toHaveBeenCalledTimes(1);
+    expect(props.onSelect).toHaveBeenCalledWith(ERR.id);
+    expect(props.onExpand).not.toHaveBeenCalled();
+    expect(props.onJump).not.toHaveBeenCalled();
+  });
+
+  it("Enter on the focused header fires the same composition (keyboard a11y)", () => {
+    const { props } = renderPanel();
+    const header = screen.getByLabelText("Expand card");
+    fireEvent.keyDown(header, { key: "Enter" });
+    expect(props.onToggleExpanded).toHaveBeenCalledTimes(1);
+    expect(props.onSelect).toHaveBeenCalledWith(ERR.id);
     expect(props.onExpand).not.toHaveBeenCalled();
   });
 

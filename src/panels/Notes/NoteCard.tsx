@@ -163,6 +163,7 @@ export function NoteCard({
       compressed={compressed}
       compressedSummary={compressedSummary}
       onToggleExpanded={ac.onToggleExpanded}
+      onHeaderActivate={ac.onHeaderActivate}
     />
   );
   // Popped: AF's FloatHost wraps this body in a FloatWindow + FloatChrome; the

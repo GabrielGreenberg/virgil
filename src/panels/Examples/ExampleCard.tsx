@@ -132,6 +132,7 @@ export function ExampleCard({
       cardKey={cardKey}
       isCollapsed={compressed}
       onToggleExpanded={ac.onToggleExpanded}
+      onHeaderActivate={ac.onHeaderActivate}
       data-link-card={`example:${example.exampleId}`}
       {...(extraDataAttrs ?? {})}
       kind="example"

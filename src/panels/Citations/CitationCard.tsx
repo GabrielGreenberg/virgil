@@ -693,6 +693,15 @@ export function CitationCard({
       cardKey={cardKey}
       isCollapsed={compressed}
       onToggleExpanded={ac.onToggleExpanded}
+      // Backlog #13: a draft forces `isExpanded` true (`isDraft || ac.expanded`),
+      // so a header toggle would be silently broken — while drafting, the
+      // header click SELECTS only and never flips the (pinned-open) body.
+      onHeaderActivate={
+        isDraft ? () => cardStore.select(ac.ref) : ac.onHeaderActivate
+      }
+      // Select-only activation must not advertise disclosure semantics
+      // (aria-expanded/"Collapse card") for the pinned-open draft body.
+      headerDisclosure={!isDraft}
       extraCardClass={`cursor-pointer cursor-grab active:cursor-grabbing ${stateClass}`}
       draggable={!isDraft && pickerRowId === null && codeDraft === null}
       onDragStart={handleDragStart}

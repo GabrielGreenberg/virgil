@@ -95,6 +95,7 @@ export function HighlightCard({
       cardKey={cardKey}
       isCollapsed={compressed}
       onToggleExpanded={ac.onToggleExpanded}
+      onHeaderActivate={ac.onHeaderActivate}
       onTrashClick={() => onDelete(card.id)}
       kind="highlight"
       kindOptions={onConvert ? cardKindsForPanel("notes") : undefined}

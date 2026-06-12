@@ -135,7 +135,7 @@ Each panel lives in `src/panels/<PanelFolder>/`.
 
 | User term | Code name(s) | Where |
 |---|---|---|
-| **Pop-up button** / **popout button** (toggles docked ↔ floating) | `PopoutButton` (generic), `CardPopoutButton` (card level), `PanelPopout` (panel level, context-aware) | `panel-primitives.tsx` |
+| **Pop-up button** / **popout button** | `PopoutButton` (generic), `CardPopoutButton` (popped card's re-dock X only — docked cards pop via header drag-lift, no button since 2026-06-11), `PanelPopout` (panel level, context-aware) | `panel-primitives.tsx` |
 | **Jump-to button** (page-with-arrow icon, jumps from card to in-text anchor) | `CardTargetIcon` / `TargetIcon` | `panel-primitives.tsx` |
 | **"Can I request" button** / **request button** / **AI-request button** (8-ray star in panel headers) | `onAiRequest` callback rendered inline in `PanelHeader`; icon is the 8-ray sun-star (never a 5-point star) | `panel-primitives.tsx` (`PanelHeader`); icon spec in [src/STYLE_GUIDE.md](../../src/STYLE_GUIDE.md) |
 | **Add button** (+ in panel header) | `onAdd` callback rendered inline in `PanelHeader` | `panel-primitives.tsx` |
