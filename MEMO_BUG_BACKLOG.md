@@ -603,7 +603,7 @@ expand/collapse (item 14); drag = lift.
 
 ## 20. Grab-to-pop must preserve shape + position (only expansion may change)
 
-**Reported:** 2026-06-11 · **Status:** open · **Area:** floats / pop-out pipeline
+**Reported:** 2026-06-11 · **Status:** done (2026-06-12, chip `popout-continuity`, merge `42bcf11`) · **Area:** floats / pop-out pipeline
 
 Popping a card out must be visually seamless: the float keeps the in-panel
 card's shape (width/height) and position (where it was lifted/released); no
@@ -612,7 +612,7 @@ expand. Today the float visibly differs from the lifted card.
 
 ## 21. Popped cards must NOT disappear from the omni panel
 
-**Reported:** 2026-06-11 · **Status:** open · **Area:** card panels / floats
+**Reported:** 2026-06-11 · **Status:** done (2026-06-12, chip `popout-continuity`, merge `42bcf11`) · **Area:** card panels / floats
 
 Example cards vanish from the omni panel when popped out. Desired: the card
 stays in the panel (design call pending: live duplicate vs ghosted placeholder).
