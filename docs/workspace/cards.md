@@ -1,6 +1,6 @@
-<!-- last-verified: 3a54711 2026-06-08 -->
+<!-- last-verified: bcca090 2026-06-12 -->
 <!-- derives-from: docs/architecture/VIRGIL.md#card-kind-taxonomy -->
-<!-- covers-code: src/panels/_shared/types.ts, src/panels/panel-registry.ts, src/components/panel-primitives.tsx, src/lib/types.ts, src/hooks/useReports.ts, src/lib/ai-request-bridge.ts -->
+<!-- covers-code: src/cards/types.ts, src/cards/card-registry.tsx, src/cards/predicates.ts, src/panels/panel-registry.ts, src/components/panel-primitives.tsx, src/lib/types.ts, src/hooks/useReports.ts, src/lib/ai-request-bridge.ts -->
 
 # Cards (the kind taxonomy) — operational manifest
 
@@ -20,30 +20,38 @@ A **Card** is the parallel structure — "almost everything that isn't text"
 before it touches one: *which kind is this? where does it persist? how is it
 tied to text?*
 
-## The `CardKind` vocabulary — 17 kinds
+## The `CardKind` vocabulary — 16 kinds
 
-`CardKind` (SSOT: [src/panels/_shared/types.ts](../../src/panels/_shared/types.ts))
-is the canonical card vocabulary — **17 kinds** as shipped:
+`CardKind` (SSOT: [src/cards/types.ts](../../src/cards/types.ts), the type
+layer beside the registry) is the canonical card vocabulary — **16 kinds** as
+shipped:
 
-`note` · `highlight` · `footnote` · `archive` · `todo` · `bib` · `citation` ·
-`comment` · `suggestion` · `cutter-comment` · `cutter-suggestion` ·
-`revision-suggestion` · `report` · `report-request` · `example` · `ai` ·
-`error`.
+`note` · `highlight` · `footnote` · `citation` · `example` · `todo` ·
+`archive` · `report` · `report-request` · `revision-comment` ·
+`revision-suggestion` · `cutter-comment` · `cutter-suggestion` · `bib` ·
+`ai` · `error`.
 
-(Was 16 before the card-system refactor: `quotation` removed; `report` +
-`report-request` added.)
+(The card-system refactor removed `quotation`, added `report` +
+`report-request`, renamed the bare `comment` spine kind to `revision-comment`,
+and dropped bare `suggestion` from the spine — `comment`/`suggestion` survive
+only as the on-disk data discriminators, [below](#two-taxonomies-registry-cardkind-vs-the-persisted-discriminator).)
 
-`CardKind` is the **theming / keying / labeling** vocabulary — the shared key
-space of five parallel registries, each its own SSOT (extend the registry,
-never a parallel table — [VIRGIL.md → registries](../architecture/VIRGIL.md#the-single-sources-of-truth-registries)):
+Every per-kind fact hangs off **one registry**: `CARD_REGISTRY`
+([src/cards/card-registry.tsx](../../src/cards/card-registry.tsx)), a
+`Record<CardKind, CardMeta>` — one entry per kind carrying `panel` /
+`keyPrefix` / `label` / `titleLabel` / `themeKey` / `anchored` / `markerType` /
+`lifecycle` / `morph` / `stackable` / `poppable` / `bodyClass`. The
+formerly-parallel tables are **derived** from it, never extended by hand
+(extend the registry, never a parallel table —
+[VIRGIL.md → registries](../architecture/VIRGIL.md#the-single-sources-of-truth-registries)):
 
-| Registry | File | `CardKind` → |
+| Derived accessor / table | File | `CardKind` → |
 |---|---|---|
-| `PANEL_REGISTRY` + `POLYMORPHIC_CARD_PANEL` | [panel-registry.ts](../../src/panels/panel-registry.ts) | the hosting `PanelKind` |
-| `CARD_KEY_PREFIXES` | [panel-registry.ts](../../src/panels/panel-registry.ts) | popout-key prefix (`${prefix}:${id}`, persisted to localStorage) |
-| `CARD_TYPE_LABELS` | [panel-registry.ts](../../src/panels/panel-registry.ts) | uppercase overline label (OmniView disambiguation) |
-| `CARD_TITLE_LABELS` | [panel-registry.ts](../../src/panels/panel-registry.ts) | auto-title prefix, or `null` if the kind doesn't auto-title |
-| `CARD_THEMES` | [panel-primitives.tsx](../../src/components/panel-primitives.tsx) | static accent theme |
+| `panelForCardKind` / `cardKindsForPanel` | [predicates.ts](../../src/cards/predicates.ts) | the hosting `PanelKind` (`CardMeta.panel`) |
+| `CARD_KEY_PREFIXES` / `cardKeyPrefix` | [panel-registry.ts](../../src/panels/panel-registry.ts) / [predicates.ts](../../src/cards/predicates.ts) | LEGACY popout-key prefix (`${prefix}:${id}` — dual-read + migrated; live keys are `float:card:<kind>:<id>` via `cardPopKey`) |
+| `CARD_TYPE_LABELS` | [panel-registry.ts](../../src/panels/panel-registry.ts) | uppercase overline label (OmniView disambiguation; `CardMeta.label`) |
+| `CARD_TITLE_LABELS` | [panel-registry.ts](../../src/panels/panel-registry.ts) | auto-title prefix, or `null` if the kind doesn't auto-title (`CardMeta.titleLabel`) |
+| `CARD_THEMES` | [panel-primitives.tsx](../../src/components/panel-primitives.tsx) | accent theme, keyed by `CardMeta.themeKey` |
 
 ## Two taxonomies: registry `CardKind` vs. the persisted discriminator
 
@@ -57,19 +65,19 @@ never a parallel table — [VIRGIL.md → registries](../architecture/VIRGIL.md#
   records carry **no `kind` field at all** — the file they live in identifies the
   kind.
 - The **registry `CardKind`** re-qualifies the coarse Cutter/Revisions
-  discriminators by **panel context** into `cutter-comment` / `cutter-suggestion`
-  / `revision-suggestion` for popout keys, themes, anchored-card identity, and
-  OmniView filters. So `comment` (the registry `CardKind`) means specifically the
-  *Revisions* comment; a Cutter comment is `cutter-comment` though **both persist
-  `kind: "comment"`** on disk.
+  discriminators by **panel context** into `revision-comment` /
+  `revision-suggestion` / `cutter-comment` / `cutter-suggestion` for popout
+  keys, themes, anchored-card identity, and OmniView filters. So a Revisions
+  comment is the spine kind `revision-comment` and a Cutter comment is
+  `cutter-comment`, though **both persist `kind: "comment"`** on disk. The
+  read-side classifier is `cardKindFromRecord(record, panel)`
+  ([predicates.ts](../../src/cards/predicates.ts)) — an on-disk `kind` + the
+  owning panel resolve to the spine kind.
 
 Operationally: **never infer a card's registry `CardKind` from its on-disk `kind`
 alone — you also need the sidecar file it came from.** A `kind: "suggestion"`
 record in `cutter.json` is a `cutter-suggestion`; the same `kind: "suggestion"` in
-`revisions.json` is a `revision-suggestion`. (A third axis, the linkedRange
-highlight markers' `MARKER_KIND_TO_THEME_KEY`, is the marker-side palette key —
-distinct again from both; you meet it only when styling a highlight, not when
-routing a card.)
+`revisions.json` is a `revision-suggestion`.
 
 ## The per-kind table
 
@@ -89,11 +97,10 @@ equality** (no `links` array). Field schemas are [sidecars.md](sidecars.md).
 | `todo` | Todo | `todos.json` · `items` | — | anchor (A) | `done` bool; `aiRequest` → Task `todo` |
 | `bib` | Bibliography | the **`.bib` file** (+ `bib-settings.json` / `annotations.json` / `bib-review-requests.json`) | — | **atom-link** to every `\cite{}` of its key | reviewed via `bib-review-requests.json` |
 | `citation` | Citations | `citations.json` · `citations` | — | **atom-link** to cite commands (`id` = `\vcid`); `unanchored` flag | none |
-| `comment` | Revisions | `revisions.json` · `cards` | `"comment"` | anchor (A or B) | `aiRequest` → Task `suggestion` |
-| `suggestion` | *(homeless)* | stored as `cutter-`/`revision-suggestion` | `"suggestion"` | — | — (the bridge's generic Task kind) |
+| `revision-comment` | Revisions (poly) | `revisions.json` · `cards` | `"comment"` | anchor (A or B) | `aiRequest` → Task `suggestion` |
 | `cutter-comment` | Cutter (poly) | `cutter.json` · `cards` | `"comment"` | anchor (A or B) | `aiRequest` → Task `suggestion` |
 | `cutter-suggestion` | Cutter (poly) | `cutter.json` · `cards` | `"suggestion"` | anchor (A or B) | `status`; `author`; **Accept enqueues a Task** |
-| `revision-suggestion` | Revisions | `revisions.json` · `cards` | `"suggestion"` | anchor (A or B) | `status`; `author` |
+| `revision-suggestion` | Revisions (poly) | `revisions.json` · `cards` | `"suggestion"` | anchor (A or B) | `status`; `author` |
 | `report` | Reports (poly) | `reports.json` · `cards` | `"report"` | anchor (A or B) | `author` byline (human/ai) |
 | `report-request` | Reports (poly) | `reports.json` · `cards` | `"report-request"` | anchor (A or B) | `aiRequest` → Task `report` |
 | `example` | Examples | `examples.json` · `examples` | — | **is a TextObject** (`exampleBlock`, `\vexid`/`\vxid`); sidecar is a metadata *shadow* | none |
@@ -102,33 +109,39 @@ equality** (no `links` array). Field schemas are [sidecars.md](sidecars.md).
 
 ## The polymorphic panels
 
-Three panels host **two** `CardKind`s each (registered `card: null`, resolved via
-`POLYMORPHIC_CARD_PANEL`):
+Four panels host **two** `CardKind`s each. Membership is *derived* from
+`CardMeta.panel` via `cardKindsForPanel(panel)` / `panelForCardKind(kind)`
+([predicates.ts](../../src/cards/predicates.ts)) — there is no hand-kept
+polymorphic-panel map:
 
-| Panel | Hosts | Shared key/theme | Note |
+| Panel | Hosts | Shared key/theme | Morph |
 |---|---|---|---|
-| **Notes** | `note` + `highlight` | each its own accent | Adding a note to a highlight spawns a **sibling** note sharing the anchor — **no morph**; both coexist in the one `cards` array. |
-| **Cutter** | `cutter-comment` + `cutter-suggestion` | the **legacy `cut` key** (`CARD_THEMES.cut`) | One accent for the whole panel. |
-| **Reports** | `report` + `report-request` | `report` | The newest panel — [below](#the-reports-panel). |
+| **Notes** | `note` + `highlight` | each its own accent | `note` ⇄ `highlight`, **lossy both ways** (a highlight has no body/title) — a confirm guards both flips (`morph.lossy` is true in both directions) |
+| **Revisions** | `revision-comment` + `revision-suggestion` | the `revision` key | non-lossy both ways (the body rides into `user_text` and back) |
+| **Cutter** | `cutter-comment` + `cutter-suggestion` | the **legacy `cut` key** (`CARD_THEMES.cut`) | non-lossy both ways |
+| **Reports** | `report` + `report-request` | `report` | `report` ⇄ `report-request`, lossy both ways — [below](#the-reports-panel) |
 
-`getPanelByCardKind(kind)` resolves a kind to its panel — scanning
-`PANEL_REGISTRY[*].card.kind` first, then `POLYMORPHIC_CARD_PANEL`. **Revisions
-is *not* registered polymorphic** (its `card` is the single `revision-comment` entry) but
-it nonetheless hosts `revision-suggestion`, which `POLYMORPHIC_CARD_PANEL` maps
-back to `revisions`.
+Each pair is a reciprocal **morph pair** (`CardMeta.morph: { to, lossy }`): the
+card converts *in place* into its panel sibling — preserving id / createdAt /
+anchor, flipping the on-disk data discriminator — via the kind control on the
+card header (and the popped float's title control), backed by a transform
+registered through `registerCardMorph`
+([card-registry.tsx](../../src/cards/card-registry.tsx)).
 
-## Homeless kinds: `suggestion` and `ai`
+## The homeless kind: `ai` (and the ghost `suggestion`)
 
-Two kinds have **no hosting panel** (`getPanelByCardKind` → `null`):
+Exactly one kind has **no hosting panel** (`CardMeta.panel === null`,
+`panelForCardKind` → `null`):
 
-- **`suggestion`** — the *generic* "respond with a doc edit" kind. On disk it
-  always lives as `cutter-suggestion` / `revision-suggestion`; the bare
-  `suggestion` is the **bridge's** Task kind (the registry's `aiRequest` routing
-  declares both `cutter-comment` and `revision-comment` → `suggestion`). It
-  exists so the keying/labeling tables are total, but it never names a panel.
 - **`ai`** — the **Task**, cross-cutting by design. AI requests surface in *every*
   panel's inbox, so they have no parent panel; the Inbox is their surfacing
   surface. See [the Task Card](#the-task-card-ai).
+
+A bare **`suggestion`** is **not a `CardKind` at all** — it survives only as
+(1) the on-disk data discriminator on `cutter-suggestion` /
+`revision-suggestion` records, and (2) the *generic* "respond with a doc edit"
+**Task kind** (`AiRequestKind`): the registry's `aiRequest` routing declares
+both `cutter-comment` and `revision-comment` → Task kind `suggestion`.
 
 ## The Reports panel
 
@@ -198,23 +211,30 @@ This closes the **L3 (propose→review→apply) loop** — the last of the three
 levels to ride the contract end to end (L1 silent · L2 auto+comment · L3
 propose→accept→splice).
 
-## Theme resolution and the key aliases — a renaming hazard
+## Theme resolution — one keyspace, shared identities
 
-A card's accent resolves through two layers, and the names don't quite line up —
-worth knowing before you touch any key:
+A card's accent resolves through **one keyspace**: the registry `themeKey`
+vocabulary *is* `PanelThemeKey` (13 keys — the legacy `comment` alias for the
+revision identity is gone). `CARD_THEMES`
+([panel-primitives.tsx](../../src/components/panel-primitives.tsx)) is a
+mechanical fold over `DEFAULT_PANEL_COLORS`
+([panel-theme.ts](../../src/lib/panel-theme.ts)); a user color-override
+replaces the accent and re-derives the palette (`useCardTheme(themeKey)`).
+Worth knowing before you touch any key:
 
-- **`CARD_THEMES`** (static default, keyed by `CardKind`-ish strings; 13 keys).
-  `error` (rust) and `aiRequest` (sky) are **system** accents, hardcoded so a
-  user color-override can't re-tint them.
-- **the user-customizable panel palette** (`PanelThemeKey` / `DEFAULT_PANEL_COLORS`)
-  — read at runtime via `useCardTheme(panelKey)`. It uses **`revision`** where
-  `CARD_THEMES` uses **`comment`** (same accent, two names); Cutter cards use the
-  **`cut`** key.
-
-Two aliases live in this gap: `comment` ⇄ `revision`, and the Cutter trio sharing
-the legacy **`cut`** key. The Revisions popout prefix is `revision` (not
-`comment`) for the same historical reason — *the persisted popout keys predate the
-registry; don't rename them without a migration* (`panel-registry.ts`).
+- **Shared identities** (one theme, several card kinds): `revision` colors both
+  Revisions kinds; the legacy **`cut`** key colors both Cutter kinds; `report`
+  colors `report` + `report-request`. `highlight` is distinct from `note`, so
+  highlights read as their own accent inside the Notes panel.
+- **System accents**: `aiRequest` (sky) and `error` (rust) are in
+  `SYSTEM_THEME_KEYS` — non-overridable, so a user color-override can't
+  re-tint them.
+- **Popout-prefix hazard**: the `keyPrefix` values are **preserved
+  byte-for-byte** from the legacy table because they're persisted
+  (localStorage `poppedOutCards`, omni ids). The Revisions pair is the
+  intentional drift: `revision-comment` → prefix `revision`,
+  `revision-suggestion` → `revision-suggestion` (legacy persisted key `revision:s:<id>`, dual-read + migrated; live key `float:card:revision-suggestion:<id>`).
+  *Don't rename a prefix without a migration* (`card-registry.tsx`).
 
 ## Rules for skills
 
@@ -223,8 +243,8 @@ registry; don't rename them without a migration* (`panel-registry.ts`).
 2. **The on-disk `kind` is coarse.** Resolve the registry `CardKind` from
    *(sidecar file + on-disk `kind`)* together, never the `kind` alone.
 3. **Pick linkage by kind.** `footnote`/`citation` are **atom-linked** (id
-   equality, no `links` array); `note`/`todo`/`archive`/`comment`/`report` and the
-   suggestion kinds are **anchored** (`links: Link[]`); `example` *is* a
+   equality, no `links` array); `note`/`todo`/`archive`/`report` and the
+   comment/suggestion kinds are **anchored** (`links: Link[]`); `example` *is* a
    TextObject. Mechanism + invalidation: [anchoring.md](anchoring.md).
 4. **`report` is content, `report-request` is an ask.** Answer a request by
    drafting a *new* `report` (`author: "ai"`) — don't overwrite the request.

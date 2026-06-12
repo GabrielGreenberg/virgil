@@ -47,13 +47,12 @@ The diff is produced once per transaction by `DocStructureObserver` ([src/lib/ti
 
 The keystroke-sanctity sweep allows these direct subscriptions, because each is O(1) per transaction (debounced timer reset, counter bump, or RAF-coalesced layout read):
 
-- `useDocument.ts` autosaver (1500 ms debounce)
+- `useDocument.ts` autosaver (1500 ms debounce; subscribes via TipTap's `onUpdate` option through the `EditorPane` wrapper)
+- `useEditorUIState.ts` (transaction subscriber persists section folds, gated on fold-meta/docChanged; the last-paragraph saver rides `selectionUpdate`, 400 ms debounce)
 - `useWordCount.ts` (300 ms debounce, then full doc walk)
-- `useLatexLint.ts` (1500 ms debounce, full AST parse)
-- `useEditorUIState.ts` last-paragraph saver (400 ms debounce)
 - `EditorLayout.tsx` activity-presence bumper (counter increment)
 - `EditorLayout.tsx` + `EditorPane.tsx` PDF-stale bump (O(1): stamp a timestamp ref, flip `pdfStale` at most once per compile cycle)
-- `SlashCommandPopup.tsx` (closes popup, O(1))
+- `SlashCommandPopup.tsx` (mounted only while the popup is open; RAF-coalesced reposition)
 - `TextObjectGrabHandle.tsx` (docChanged-gated, cheap)
 - `EditorMirror.tsx` (RAF-deferred replay)
 - `Marginalia.tsx` (RAF-coalesced host-element notify)

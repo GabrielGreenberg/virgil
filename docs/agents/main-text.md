@@ -1,4 +1,4 @@
-<!-- last-verified: 3a54711 2026-06-08 -->
+<!-- last-verified: bcca090 2026-06-12 -->
 <!-- derives-from: docs/architecture/VIRGIL.md#ontology, docs/architecture/VIRGIL.md#latex-round-trip-vocabulary, docs/architecture/VIRGIL.md#uuid-marker-emission -->
 <!-- covers-code: src/lib/tiptap, src/links, src/lib/marginalia.ts, src/lib/latex-parser.ts, src/lib/latex-serializer.ts, src/text-objects -->
 
@@ -158,7 +158,7 @@ Per-card integration is one line: `const ac = useAnchoredCard({ kind, id }); ret
 - [src/links/_shared/useTextHoverBridge.ts](../../src/links/_shared/useTextHoverBridge.ts) — single delegated `mouseover`/`mouseout`/`click` listener on `editor.view.dom`. Resolves linkedAnchor spans, citation atoms (`[data-citation-id]`), footnote atoms (`[data-footnote-id]`); on Mode B click, dispatches `virgil-linked-anchor-click` for the bridge in `event-bridges/marker-clicks.ts` to route via `openForCard`.
 - [src/links/_shared/usePanelCardHoverBridge.ts](../../src/links/_shared/usePanelCardHoverBridge.ts) — single document-level listener that reads `data-card-key` to translate panel card hovers into entity hovers.
 
-Margin markers carry a generic `hovered` prop (boxShadow ring) and `onHover` callback applied uniformly across every kind in `EditorLayout.tsx`'s `marginaliaMarkers` useMemo.
+Margin markers carry no hover props — each marker self-subscribes to the `cardStore` (`useIsHovered` in `Marginalia.tsx`, painted as `data-card-hovered`) using its `entityKind` + `entityId`, so there's no prop threading from a parent loop. The marker rows themselves are built in `EditorPane.tsx`'s `marginaliaMarkers` useMemo — the live gutter-marker builder, gated on the `useStructuralRevisions` counters (`rev.anchors` / `rev.blocks`), never a raw update counter (keystroke sanctity).
 
 ## Drop mode
 
@@ -190,9 +190,9 @@ Shift-grabbing a popped float's grab bar puts the app into **drop mode** — the
 
 From the header comment in `src/lib/marginalia.ts`:
 1. Add MIME constant; include in appropriate drag category.
-2. Add entry to `MarkerType` and `MARKER_META`.
+2. Add the token to `MarkerType` (`src/cards/types.ts`), declare it on the owning card kind(s) in `CARD_REGISTRY` (`markerType` field), and add a presentation row to `MARKER_META` (label / defaultSide / icon — panel + accent derive from the registry via `src/cards/marker-meta.ts`).
 3. Add drop handler in `Editor.tsx`'s `handleDrop` chain.
-4. Wire event listener and marker generation in `EditorLayout.tsx`.
+4. Wire event listener and marker generation in `EditorPane.tsx` (the live gutter-marker builder).
 
 ## Citations & bibliography
 
