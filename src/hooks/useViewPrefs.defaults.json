@@ -83,10 +83,10 @@
   "showHighlights": true,
   "hiddenHighlightTypes": [],
   "pageWidth": 880,
-  "topGutter": 345,
+  "topGutter": 99,
   "bottomGutter": 0,
-  "editorLeftMargin": 155,
-  "editorRightMargin": 155,
+  "editorLeftMargin": 72,
+  "editorRightMargin": 24,
   "editorTopMargin": 24,
   "editorBottomMargin": 24,
   "topbarRightCollapsed": false,
@@ -109,9 +109,9 @@
   "omniCategories": {
     "left": [
       "footnotes",
+      "citations",
       "quotations",
-      "examples",
-      "citations"
+      "examples"
     ],
     "right": [
       "notes",
