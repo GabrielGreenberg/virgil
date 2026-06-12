@@ -53,10 +53,11 @@ export function usePanelBodyVarsForKind(kind: PanelKind | null | undefined): CSS
   const key = bodyKeyForKind(kind);
   const style = usePanelBodyStyle(key ?? undefined);
   if (!key) return undefined;
+  // Only the fontsize vars have consumers in globals.css — family/color are
+  // applied inline by the cards themselves (usePanelBodyStyle), so no
+  // --panel-body-fontfamily / --panel-body-color vars are written here.
   const vars: Record<string, string> = {};
   if (style.fontSize) vars["--panel-body-fontsize"] = String(style.fontSize);
-  if (style.fontFamily) vars["--panel-body-fontfamily"] = String(style.fontFamily);
-  if (style.color) vars["--panel-body-color"] = String(style.color);
   vars["--panel-body-fontsize-default"] = `${DEFAULT_PANEL_TYPOGRAPHY[key].fontSize}px`;
   return vars as CSSProperties;
 }
