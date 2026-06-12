@@ -2339,8 +2339,12 @@ export function AiRequestCard({
         />
       </div>
 
-      {/* Separator */}
-      <div className="border-t" style={{ borderColor: theme.separatorSelected }} />
+      {/* Separator — the standard card behavior: neutral unless selected
+          (every unified card tints via theme.separatorSelected only when
+          selected). AiRequest has no selection state, so it is always the
+          neutral edge — the previous always-tinted separator was the one
+          outlier. */}
+      <div className="border-t transition-colors border-edge-subtle group-hover:border-edge-hover" />
 
       {/* Body: auto-grow textarea. (The former near-invisible `bg-sky-50/20`
           wash was dropped in A10 Commit H rather than minting a one-consumer
