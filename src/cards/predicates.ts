@@ -71,6 +71,14 @@ export const hasCollabClaims = (k: CardKind): boolean =>
 export const collabClaimScope = (k: CardKind): PanelThemeKey =>
   CARD_REGISTRY[k].themeKey;
 
+/** RichTextField visual variant for a kind's body — DERIVED from the
+ *  registry `bodyClass` (the typography SSOT), never hand-picked per card:
+ *  `"borrowed"` kinds read in the serif `footnote` dialect, `"sans"` kinds
+ *  in the sans `note` dialect. (The per-panel `usePanelBodyStyle` inline
+ *  override sits on top; this fixes the declared fallback class.) */
+export const bodyVariantForCardKind = (k: CardKind): "footnote" | "note" =>
+  CARD_REGISTRY[k].bodyClass === "borrowed" ? "footnote" : "note";
+
 /** Whether a kind can morph in place into its sibling (the A9 kind-chevron).
  *  The 4 morphing pairs (note↔highlight, revision-/cutter-comment↔suggestion,
  *  report↔report-request) are true; the 8 standalone kinds are false. The

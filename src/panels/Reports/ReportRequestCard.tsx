@@ -13,7 +13,7 @@ import { useCardTheme } from "@/hooks/usePanelTheme";
 import { usePoppedCards } from "@/hooks/usePoppedCards";
 import { normalizeRichContent } from "@/lib/footnote-content";
 import { cardPopKey } from "@/panels/panel-registry";
-import { cardKindsForPanel } from "@/cards/predicates";
+import { bodyVariantForCardKind, cardKindsForPanel } from "@/cards/predicates";
 import { useAnchoredCard } from "@/links/_shared/useAnchoredCard";
 import { cardStore } from "@/links/_shared/anchored-card-store";
 import { MIME_REPORT } from "@/lib/marginalia";
@@ -123,7 +123,7 @@ export function ReportRequestCard({
         ) : undefined
       }
       value={request.content}
-      variant="footnote"
+      variant={bodyVariantForCardKind("report-request")}
       panelKey="report"
       placeholder="What should Claude report on?"
       onChange={handleChange}

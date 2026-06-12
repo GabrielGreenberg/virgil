@@ -12,7 +12,7 @@ import { normalizeRichContent } from "@/lib/footnote-content";
 import { cardPopKey } from "@/panels/panel-registry";
 import { useAnchoredCard } from "@/links/_shared/useAnchoredCard";
 import { cardStore } from "@/links/_shared/anchored-card-store";
-import { cardKindsForPanel } from "@/cards/predicates";
+import { bodyVariantForCardKind, cardKindsForPanel } from "@/cards/predicates";
 import { MIME_REPORT } from "@/lib/marginalia";
 import { AuthorByline } from "./AuthorByline";
 
@@ -117,7 +117,7 @@ export function ReportCard({
       onDelete={() => onDelete(report.id)}
       footer={!compressed ? <AuthorByline author={report.author} createdAt={report.createdAt} /> : undefined}
       value={report.content}
-      variant="footnote"
+      variant={bodyVariantForCardKind("report")}
       panelKey="report"
       placeholder="Report text."
       onChange={handleChange}
