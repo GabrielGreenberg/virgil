@@ -693,6 +693,7 @@ export function CitationCard({
       cardKey={cardKey}
       isCollapsed={compressed}
       onToggleExpanded={ac.onToggleExpanded}
+      onHeaderActivate={ac.onHeaderActivate}
       extraCardClass={`cursor-pointer cursor-grab active:cursor-grabbing ${stateClass}`}
       draggable={!isDraft && pickerRowId === null && codeDraft === null}
       onDragStart={handleDragStart}

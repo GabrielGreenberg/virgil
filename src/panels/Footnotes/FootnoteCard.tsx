@@ -153,6 +153,7 @@ export function FootnoteCard({
       compressedSummary={compressedSummary}
       compressedContent={fn.content}
       onToggleExpanded={ac.onToggleExpanded}
+      onHeaderActivate={ac.onHeaderActivate}
     />
   );
   return card;

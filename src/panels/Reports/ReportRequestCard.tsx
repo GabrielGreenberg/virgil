@@ -139,6 +139,7 @@ export function ReportRequestCard({
       compressed={compressed}
       compressedSummary={compressedSummary}
       onToggleExpanded={ac.onToggleExpanded}
+      onHeaderActivate={ac.onHeaderActivate}
     />
   );
   return card;
