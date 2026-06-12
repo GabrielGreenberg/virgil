@@ -26,7 +26,6 @@ import {
 import { migrateCardLinks } from "@/links/migrate-card";
 import { bridgeCardAiRequestFlag } from "@/lib/ai-request-bridge";
 import { applyCardMorph } from "@/cards/morphs";
-import type { CardKind } from "@/panels/_shared/types";
 import { usePersistentState } from "./usePersistentState";
 import { usePristineTracker } from "./usePristineTracker";
 import type { PristineKindApi } from "./usePristineCardManager";
@@ -45,26 +44,6 @@ function migrateGoal(raw: unknown): CutterGoal | null {
   if (!Number.isFinite(g.target) || g.target < 0) return null;
   if (!Number.isFinite(g.initialWords) || g.initialWords < 0) return null;
   return { target: g.target, initialWords: g.initialWords, setAt: g.setAt };
-}
-
-function rewriteLinkTargetKind(
-  links: unknown[],
-  from: string,
-  to: CardKind,
-): ReturnType<typeof migrateCardLinks> {
-  if (!Array.isArray(links)) return [];
-  return links.map((raw) => {
-    const l = raw as {
-      target?: { type?: string; ref?: { kind?: string; id?: string } };
-    } & Record<string, unknown>;
-    if (l?.target?.ref?.kind === from) {
-      return {
-        ...l,
-        target: { ...l.target, ref: { ...l.target.ref, kind: to } },
-      };
-    }
-    return raw;
-  }) as ReturnType<typeof migrateCardLinks>;
 }
 
 function migrateComment(raw: unknown): CutterCommentCard | null {
@@ -149,11 +128,11 @@ function migrateCutter(raw: unknown): CutterState {
       const titlePart = (c.title || "").trim();
       const bodyPart = richJsonToPlainText(content) || "";
       const text = [titlePart, bodyPart].filter(Boolean).join(" — ");
-      const links = rewriteLinkTargetKind(
-        migrateCardLinks("cutter-comment", raw),
-        "cut",
-        "cutter-comment",
-      );
+      // Legacy `"cut"` target.ref.kind tokens are normalized to
+      // `"cutter-comment"` inside migrateCardLinks, via the shared
+      // LEGACY_TOKEN_TO_CARD_KIND crosswalk (src/cards/legacy-token-crosswalk.ts)
+      // — this branch previously carried its own rewriteLinkTargetKind wrapper.
+      const links = migrateCardLinks("cutter-comment", raw);
       const ta = links.find(
         (l) =>
           l.anchor.type === "textObject" &&

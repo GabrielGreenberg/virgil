@@ -1,3 +1,4 @@
+import { normalizeLegacyCardKind } from "@/cards/legacy-token-crosswalk";
 import type { CardKind } from "@/panels/_shared/types";
 import type { Link, LinkAnchor } from "./_shared/types";
 import { derivedLinksForCard } from "./links";
@@ -5,7 +6,8 @@ import { derivedLinksForCard } from "./links";
 /**
  * Given the raw sidecar shape for a link-bearing card, return the
  * canonical `Link[]` — either the one already present (with any legacy
- * anchor shape migrated to the new TextObject shape), or a fresh one
+ * anchor shape migrated to the new TextObject shape and any legacy
+ * `target.ref.kind` token normalized to a spine `CardKind`), or a fresh one
  * derived from legacy per-card fields (`paragraphIds`, `anchorId`,
  * `anchorText`). Per-hook migrators previously duplicated this block
  * verbatim; consolidating here gives agents a single place to reason
@@ -50,14 +52,37 @@ export function migrateCardLinks(kind: CardKind, raw: unknown): Link[] {
 }
 
 /**
- * Migrate a single Link's anchor shape from the pre-D8 form
- * (`type: "anchor"` + `paragraphIds`) to the new TextObject form
- * (`type: "textObject"` + `targetKind` + `textObjectIds`).
+ * Normalize a possibly-legacy on-disk `target.ref.kind` token to its spine
+ * `CardKind` (e.g. pre-refactor `"comment"` → `"revision-comment"`, `"cut"`
+ * → `"cutter-comment"`), so a legacy token never enters memory and reaches a
+ * `Record<CardKind, …>` index (the `LEGACY_TOKEN_CROSSWALK` crash class).
+ *
+ * Unknown tokens are KEPT as-is — the runtime-total crosswalk accessors
+ * (`cssTokenForCardKind` / `legacyDataKindForCardKind`) are the backstop —
+ * because dropping or guessing would lose user data. Read-side only; the
+ * normalized kind is persisted naturally on the card's next write.
+ */
+function normalizeLinkTargetKind(link: Link): Link {
+  const ref = link.target?.ref;
+  if (!ref || typeof ref.kind !== "string") return link;
+  const spine = normalizeLegacyCardKind(ref.kind);
+  if (spine === null || spine === ref.kind) return link;
+  return { ...link, target: { ...link.target, ref: { ...ref, kind: spine } } };
+}
+
+/**
+ * Migrate a single Link from its on-disk legacy form:
+ *  • `target.ref.kind` legacy tokens normalized to spine `CardKind`s
+ *    (see `normalizeLinkTargetKind`).
+ *  • anchor shape migrated from the pre-D8 form (`type: "anchor"` +
+ *    `paragraphIds`) to the new TextObject form (`type: "textObject"` +
+ *    `targetKind` + `textObjectIds`).
  *
  * Idempotent: links already in the new shape pass through unchanged.
- * Inline-atom links (footnotes, citations) pass through unchanged.
+ * Inline-atom links (footnotes, citations) keep their anchor unchanged.
  */
-function migrateLink(link: Link): Link {
+function migrateLink(rawLink: Link): Link {
+  const link = normalizeLinkTargetKind(rawLink);
   const anchor = link.anchor as unknown as
     | LinkAnchor
     | {

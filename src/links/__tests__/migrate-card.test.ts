@@ -208,4 +208,103 @@ describe("migrateCardLinks", () => {
       }
     });
   });
+
+  describe("legacy target.ref.kind normalization (load funnel)", () => {
+    /** A pre-refactor revision-card link exactly as persisted on disk:
+     *  legacy anchor shape AND legacy "comment" ref kind. */
+    const legacyRevisionLink = {
+      id: "lk-legacy-rev",
+      kind: "anchor",
+      anchor: {
+        type: "anchor",
+        paragraphIds: ["p1"],
+        margin: { side: "right" },
+      },
+      target: { type: "card", ref: { kind: "comment", id: "rc1" } },
+      createdAt: "2026-01-01T00:00:00Z",
+    };
+
+    it("normalizes the pre-refactor 'comment' token to 'revision-comment' end-to-end", () => {
+      const result = migrateCardLinks("revision-comment", {
+        id: "rc1",
+        links: [legacyRevisionLink],
+      });
+      expect(result).toHaveLength(1);
+      expect(result[0].target.ref).toEqual({ kind: "revision-comment", id: "rc1" });
+      // Anchor migration still runs on the normalized link.
+      expect(result[0].anchor.type).toBe("textObject");
+    });
+
+    it("normalizes the legacy cuts[] 'cut' token to 'cutter-comment'", () => {
+      const result = migrateCardLinks("cutter-comment", {
+        id: "cc1",
+        links: [
+          {
+            ...legacyRevisionLink,
+            id: "lk-legacy-cut",
+            target: { type: "card", ref: { kind: "cut", id: "cc1" } },
+          },
+        ],
+      });
+      expect(result).toHaveLength(1);
+      expect(result[0].target.ref.kind).toBe("cutter-comment");
+    });
+
+    it("keeps a link with an unmappable kind as-is (never drops it)", () => {
+      const result = migrateCardLinks("note", {
+        id: "q1",
+        links: [
+          {
+            ...legacyRevisionLink,
+            id: "lk-quotation",
+            target: { type: "card", ref: { kind: "quotation", id: "q1" } },
+          },
+        ],
+      });
+      expect(result).toHaveLength(1);
+      // Unknown token preserved verbatim — the runtime-total crosswalk
+      // accessors are the backstop, not the funnel.
+      expect(result[0].target.ref).toEqual({ kind: "quotation", id: "q1" });
+      // Anchor migration still applies to the kept link.
+      expect(result[0].anchor.type).toBe("textObject");
+    });
+
+    it("leaves spine-kind links untouched (idempotent on already-clean data)", () => {
+      const clean = [
+        {
+          id: "lk-clean",
+          kind: "anchor",
+          anchor: {
+            type: "textObject",
+            targetKind: "paragraph",
+            textObjectIds: ["p1"],
+            margin: { side: "right" },
+          },
+          target: { type: "card", ref: { kind: "revision-comment", id: "rc2" } },
+          createdAt: "2026-01-01T00:00:00Z",
+        },
+      ];
+      const result = migrateCardLinks("revision-comment", { id: "rc2", links: clean });
+      expect(result).toEqual(clean);
+    });
+
+    it("tolerates a malformed link with no target", () => {
+      const malformed = [
+        {
+          id: "lk-broken",
+          kind: "anchor",
+          anchor: {
+            type: "textObject",
+            targetKind: "paragraph",
+            textObjectIds: ["p1"],
+            margin: { side: "right" },
+          },
+          createdAt: "2026-01-01T00:00:00Z",
+        },
+      ];
+      const result = migrateCardLinks("note", { id: "n9", links: malformed });
+      expect(result).toHaveLength(1);
+      expect(result[0].id).toBe("lk-broken");
+    });
+  });
 });
