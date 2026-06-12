@@ -640,7 +640,7 @@ export function CardTitleInput({
   theme?: CardTheme;
 }) {
   const merged = theme
-    ? { ...TITLE_STYLE, color: theme.titleColor, ...style }
+    ? { ...cardTitleStyle(theme), ...style }
     : style ? { ...TITLE_STYLE, ...style } : TITLE_STYLE;
   const inputRef = useRef<HTMLInputElement>(null);
   // If rendered inside an EditableCard, hook into that card's claim slot

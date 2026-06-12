@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect } from "react";
+import { bodyVariantForCardKind } from "@/cards/predicates";
 import type { Editor, JSONContent } from "@tiptap/react";
 import type { RevisionCommentCard as RevisionCommentCardData } from "@/lib/types";
 import {
@@ -143,7 +144,7 @@ export function RevisionCommentCard({
         ) : undefined
       }
       value={card.content}
-      variant="footnote"
+      variant={bodyVariantForCardKind("revision-comment")}
       panelKey="revision"
       placeholder="Comment text…"
       onChange={handleChange}

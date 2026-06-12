@@ -1246,7 +1246,7 @@ textarea,
   font-size: 10px;
   font-weight: 500;
   text-transform: uppercase;
-  letter-spacing: 0.025em; /* tracking-wide */
+  letter-spacing: 0.05em; /* tracking-wide */
   color: var(--muted);
 }
 .card-content-row {
@@ -2587,7 +2587,7 @@ textarea,
 .linked-anchor[data-link-card^="highlight:"] { --link-anchor-color: #fbbf24; }
 .linked-anchor[data-link-card^="cut:"]       { --link-anchor-color: #b45757; }
 .linked-anchor[data-link-card^="comment:"]   { --link-anchor-color: #9333ea; }
-.linked-anchor[data-link-card^="archive:"]   { --link-anchor-color: #5a7a99; }
+.linked-anchor[data-link-card^="archive:"]   { --link-anchor-color: #7191b0; }
 .linked-anchor[data-link-card^="report:"]         { --link-anchor-color: #6366f1; }
 .linked-anchor[data-link-card^="report-request:"] { --link-anchor-color: #6366f1; }
 .linked-anchor[data-link-card^="todo:"]      { --link-anchor-color: #44403c; }
@@ -2634,7 +2634,7 @@ textarea,
 [data-paragraph-kind="highlight"] { --link-anchor-color: #fbbf24; }
 [data-paragraph-kind="cut"]       { --link-anchor-color: #b45757; }
 [data-paragraph-kind="comment"]   { --link-anchor-color: #9333ea; }
-[data-paragraph-kind="archive"]   { --link-anchor-color: #5a7a99; }
+[data-paragraph-kind="archive"]   { --link-anchor-color: #7191b0; }
 [data-paragraph-kind="report"]         { --link-anchor-color: #6366f1; }
 [data-paragraph-kind="report-request"] { --link-anchor-color: #6366f1; }
 [data-paragraph-kind="todo"]      { --link-anchor-color: #44403c; }

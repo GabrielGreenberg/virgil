@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback } from "react";
+import { bodyVariantForCardKind } from "@/cards/predicates";
 import type { JSONContent } from "@tiptap/react";
 import type { UserNote } from "@/lib/types";
 import {
@@ -147,7 +148,7 @@ export function NoteCard({
         ) : undefined
       }
       value={note.content}
-      variant="footnote"
+      variant={bodyVariantForCardKind("note")}
       panelKey="note"
       placeholder="Text here."
       onChange={handleChange}

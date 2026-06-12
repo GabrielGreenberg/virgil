@@ -269,7 +269,7 @@ export default function BibEntryCard({
           // header line above stays in the fixed TITLE dialect).
           <div
             data-panel-kind="bib"
-            className="text-xs text-ink-subtle leading-relaxed break-words overflow-hidden"
+            className="leading-relaxed break-words overflow-hidden"
             style={{ ...bibBodyStyle, overflowWrap: "anywhere" }}
             dangerouslySetInnerHTML={{ __html: parts.join(". ") + "." }}
           />

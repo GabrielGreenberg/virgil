@@ -1408,7 +1408,7 @@ function EmptyRowSearchInput({
         }
       }}
       onClick={(e) => e.stopPropagation()}
-      className="flex-1 min-w-0 text-[12px] text-ink-body placeholder:text-ink-body bg-transparent border border-dashed border-edge-subtle rounded px-2 py-1 outline-none hover:border-edge-hover focus:border-edge-strong focus:border-solid"
+      className="flex-1 min-w-0 text-ink-body placeholder:text-ink-body bg-transparent border border-dashed border-edge-subtle rounded px-2 py-1 outline-none hover:border-edge-hover focus:border-edge-strong focus:border-solid"
     />
   );
 }
