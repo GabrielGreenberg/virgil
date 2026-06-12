@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { MAIN_TEXT_FONTS } from "@/lib/preferences-tree";
+import { resolveFontStack } from "@/lib/panel-typography";
 
 interface FontPickerProps {
   value: string;
@@ -13,10 +14,6 @@ interface FontPickerProps {
    *  and the trigger is disabled. */
   pinned?: boolean;
   pinnedLabel?: string;
-}
-
-function fontStack(name: string): string {
-  return /\s/.test(name) ? `"${name}"` : name;
 }
 
 export default function FontPicker({
@@ -63,7 +60,7 @@ export default function FontPicker({
       >
         <span
           className="text-sm text-ink-body truncate"
-          style={{ fontFamily: pinned ? undefined : fontStack(value) }}
+          style={{ fontFamily: pinned ? undefined : resolveFontStack(value) }}
         >
           {pinned ? pinnedLabel : value}
         </span>
@@ -106,13 +103,13 @@ export default function FontPicker({
                     >
                       <span
                         className="text-sm text-ink-body shrink-0"
-                        style={{ fontFamily: fontStack(f), minWidth: 140 }}
+                        style={{ fontFamily: resolveFontStack(f), minWidth: 140 }}
                       >
                         {f}
                       </span>
                       <span
                         className="text-xs text-ink-muted truncate flex-1 text-right"
-                        style={{ fontFamily: fontStack(f) }}
+                        style={{ fontFamily: resolveFontStack(f) }}
                       >
                         {previewPhrase}
                       </span>

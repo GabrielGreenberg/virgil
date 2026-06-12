@@ -8,6 +8,7 @@ import type { EditorPreferences } from "@/hooks/usePreferences";
 import { DEFAULT_PREFS } from "@/hooks/usePreferences";
 import {
   DEFAULT_PANEL_TYPOGRAPHY,
+  resolveFontStack,
   setPanelTypographyField,
 } from "@/lib/panel-typography";
 import { usePanelTypography } from "@/hooks/usePanelTypography";
@@ -17,10 +18,6 @@ interface FontsDialogProps {
   onClose: () => void;
   prefs: EditorPreferences;
   onUpdate: <K extends keyof EditorPreferences>(key: K, value: EditorPreferences[K]) => void;
-}
-
-function fontStack(name: string): string {
-  return /\s/.test(name) ? `"${name}"` : name;
 }
 
 /** Visual wrapper for a font category — generous spacing, soft pod look. */
@@ -79,7 +76,10 @@ function PreviewPod({
       style={{
         background: "var(--background, #f8f3ed)",
         border: "1px solid var(--border-light, #c9c5c5)",
-        fontFamily: fontStack(fontFamily),
+        // Never a bare family name — resolveFontStack routes through the
+        // loaded faces / CSS vars (a bare name silently falls back to the
+        // UA default for next/font-loaded families).
+        fontFamily: resolveFontStack(fontFamily),
         fontSize: `${fontSizeRem}rem`,
         fontWeight: weight,
         lineHeight: 1.4,
