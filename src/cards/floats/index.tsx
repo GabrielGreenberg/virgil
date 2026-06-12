@@ -105,7 +105,10 @@ function cardFloatable(
     domain: "card",
     kind,
     id,
-    surface: "panel",
+    // Pop-out continuity (#20): the float keeps the docked card's look —
+    // white card surface, 1px ambient border (NOT the beige panel pod) —
+    // same shell text-object floats use.
+    surface: "card",
     title: opts.title ?? CARD_REGISTRY[kind].label,
     canJump: opts.canJump,
     jumpToSource: opts.jumpToSource,

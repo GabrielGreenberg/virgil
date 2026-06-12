@@ -20,7 +20,9 @@ import type { StackItem } from "@/lib/stack/types";
 
 export type FloatDomain = "card" | "textobject";
 
-/** Visual treatment of the window shell (today: cards → "panel", text → "card"). */
+/** Visual treatment of the window shell. Cards AND text-objects float on
+ *  "card" (white surface, 1px ambient border — pop-out continuity #20);
+ *  "panel" is the beige pod look, kept for panel-shaped floats. */
 export type FloatSurface = "panel" | "card";
 
 /** Context handed to `renderBody()` at mount/refresh time. Domain-specific; the
