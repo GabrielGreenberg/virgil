@@ -1175,6 +1175,34 @@ textarea,
   width: 100%;
   display: block;
 }
+/* Static title line on a COLLAPSED card (backlog #15) — same dialect as
+ * .card-title-input, minus the input chrome (no underline, ellipsized). */
+.card-title-collapsed {
+  font-size: var(--par-title-size, 0.78rem);
+  font-weight: 500;
+  color: var(--par-title-color, #c45a5a);
+  font-family: var(--font-partitle-family, var(--font-sans-override, var(--font-sans))), Inter, sans-serif;
+  letter-spacing: 0.02em;
+  line-height: 1.4;
+  margin-bottom: 0.15em;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+/* Titleless EXPANDED card (backlog #17): don't reserve a full empty title
+ * row — collapse the wrapper out of flow and float the small hover-revealed
+ * +T at the top-right of the body (the body container is the positioning
+ * context: `relative px-3 pt-1.5`). The wrapper returns to normal flow the
+ * moment a title exists or is being edited (those render without
+ * .card-title-add-only). */
+.card-title-wrapper.card-title-add-only {
+  position: absolute;
+  top: 0.15rem;
+  right: 0.5rem;
+  min-height: 0;
+  margin-bottom: 0;
+  z-index: 1;
+}
 .card-title-add {
   font-size: calc(var(--par-title-size, 0.78rem) - 0.06rem);
   font-weight: 500;

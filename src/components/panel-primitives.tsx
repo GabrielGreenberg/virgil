@@ -551,6 +551,7 @@ export function CardBodyTitle({
         className="card-title-add"
         style={theme ? { color: theme.titleColor } : undefined}
         data-hint="Add title"
+        data-hint-pos="above"
       >
         +T
       </button>
@@ -975,6 +976,19 @@ export function EditableCard({
               : undefined
           }
         >
+          {/* Backlog #15: a collapsed card keeps its title visible. Static
+              (read-only) title row in the card-title dialect — OUTSIDE the
+              clamped summary div so the panel-body style spread and the
+              line-clamp can't clobber it. Titleless collapsed cards render
+              no title row at all (and no +T — that's expanded-only). */}
+          {bodyTitle?.trim() ? (
+            <div
+              className="card-title-collapsed"
+              style={theme ? { color: theme.titleColor } : undefined}
+            >
+              {bodyTitle}
+            </div>
+          ) : null}
           <div style={{ ...compressedBody, ...compressedBodyStyle(compressedLines) }}>
             {useBorrowedCompressed ? (
               <BorrowedMainText
