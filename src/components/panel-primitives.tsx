@@ -1667,22 +1667,15 @@ export const PanelCard = forwardRef<HTMLDivElement, PanelCardProps>(function Pan
   // rendering (e.g. BibEntryCard) still get the lift gesture even when
   // they don't pass onTogglePopout up to PanelCard.
   const popped = usePoppedCards();
-  // The one-click pop-out action — the SAME AF Seam-1 result path the lift
-  // gesture uses (`toggleAtAnchor`), so the docked button and the drag-lift
-  // converge. Prefer the caller's `onTogglePopout`; else build it from the
-  // popped-cards context + `cardKey`. Works on a collapsed card by construction.
-  const popoutAction: ((anchor: DOMRect) => void) | undefined =
-    onTogglePopout ??
-    (popped && cardKey ? (anchor: DOMRect) => popped.toggleAtAnchor(cardKey, anchor) : undefined);
   const onWrapperMouseDown = (e: React.MouseEvent) => {
     // Lift-to-popout is allowed in both expanded and collapsed states —
     // the drag handle is the only popout affordance now. Only a popped
     // card disables the gesture (the X in its header docks it back).
     if (!cardKey || isPoppedOut) return;
-    // `isPoppable` is the SINGLE registry SSOT for poppability — it gates BOTH
-    // the docked one-click popout button AND this drag-lift. Without this, a
-    // non-poppable kind (`error`, whose toFloatable resolves to null) would
-    // lift into a blank ghost float (FloatHost renders nothing).
+    // `isPoppable` is the SINGLE registry SSOT for poppability — it gates this
+    // drag-lift (the only pop-out path now that the docked button is retired).
+    // Without this, a non-poppable kind (`error`, whose toFloatable resolves
+    // to null) would lift into a blank ghost float (FloatHost renders nothing).
     if (kind && !isPoppable(kind)) return;
     if (!popped?.popOutAtRect && !onTogglePopout) return;
     if (e.button !== 0) return;
@@ -1890,12 +1883,9 @@ export const PanelCard = forwardRef<HTMLDivElement, PanelCardProps>(function Pan
             {isPoppedOut && canJump && onJump && (
               <CardJumpChevron onClick={onJump} />
             )}
-            {/* Docked: one-click pop-out (poppable kinds only — `error` shows
-                none). Popped: the X that docks it back. The lift-to-popout drag
-                gesture stays available in both states. */}
-            {!isPoppedOut && kind && isPoppable(kind) && popoutAction && (
-              <CardPopoutButton isPoppedOut={false} onClick={popoutAction} />
-            )}
+            {/* Popped: the X that docks the card back. Docked cards show NO
+                pop-out button (ratified 2026-06-11) — the header drag-lift is
+                the only pop-out path. */}
             {onTogglePopout && isPoppedOut && (
               <CardPopoutButton isPoppedOut onClick={onTogglePopout} />
             )}
