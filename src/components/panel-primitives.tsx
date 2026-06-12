@@ -39,6 +39,7 @@ import { useEnclosingPanelBodyKey } from "./panel-kind-context";
 import { normalizeRichContent, richJsonToPlainText } from "@/lib/footnote-content";
 import { usePoppedCards } from "@/hooks/usePoppedCards";
 import { setCardLiftTarget, setCardLiftHandoff } from "./card-lift";
+import { liftSpawnRect } from "@/floats/float-policy";
 import { cardPopKey, cardTypeLabel } from "@/panels/panel-registry";
 import type { CardKind } from "@/panels/_shared/types";
 import { useInOmni } from "./editor-layout/contexts/omni";
@@ -1604,10 +1605,6 @@ interface PanelCardProps extends Omit<HTMLAttributes<HTMLDivElement>, "onClick">
  *  immediately, large enough that text selection / single clicks within
  *  the header still work. */
 const CARD_LIFT_THRESHOLD = 5;
-/** Default size for a freshly lifted-off card float. Matches the
- *  `POPUP_W`/`POPUP_H` used by EditorLayout's spawn computations. */
-const LIFT_FLOAT_W = 360;
-const LIFT_FLOAT_H = 280;
 
 export const PanelCard = forwardRef<HTMLDivElement, PanelCardProps>(function PanelCard(
   {
@@ -1761,14 +1758,13 @@ export const PanelCard = forwardRef<HTMLDivElement, PanelCardProps>(function Pan
         cardKey,
         rect: { left: r.left, top: r.top, width: r.width, height: r.height },
       });
-      // Spawn the float centered on the cursor's x and slightly below
-      // the cursor's y, so the user's grip lands inside the header.
-      const spawn = {
-        x: Math.round(ev.clientX - LIFT_FLOAT_W / 2),
-        y: Math.round(ev.clientY - 16),
-        width: LIFT_FLOAT_W,
-        height: LIFT_FLOAT_H,
-      };
+      // Pop-out continuity (#20): spawn the float at the docked card's
+      // own rect, chrome-compensated by the ONE float-policy formula so
+      // the card body does not visually move. The user's grab offset
+      // rides naturally into the drag handoff (beginDragAt anchors to
+      // the spawn position). A collapsed card spawns header-only and
+      // asks the float path for its one-shot expand-to-content grow.
+      const spawn = liftSpawnRect(r);
       // Set the handoff BEFORE flipping to popped so the FloatWindow's
       // mount-time `consumeCardLiftHandoff` sees it and picks up the
       // in-flight drag without a frame gap.
@@ -1776,8 +1772,7 @@ export const PanelCard = forwardRef<HTMLDivElement, PanelCardProps>(function Pan
         cardKey,
         clientX: ev.clientX,
         clientY: ev.clientY,
-        width: LIFT_FLOAT_W,
-        height: LIFT_FLOAT_H,
+        expandToContent: !!isCollapsed,
       });
       if (popped?.popOutAtRect) {
         popped.popOutAtRect(cardKey, spawn);

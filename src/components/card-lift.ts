@@ -39,10 +39,13 @@ export interface CardLiftHandoff {
   cardKey: string;
   clientX: number;
   clientY: number;
-  /** Width/height the spawned float should adopt — matched to the
-   *  source card so the float visually grows out of the original. */
-  width: number;
-  height: number;
+  /** Set on a COLLAPSED-card lift: the spawn rect is the collapsed,
+   *  header-only rect, and the float path runs its one-shot
+   *  expand-to-content grow (capped by `capPopoutHeight`). Expanded
+   *  lifts pop at exactly the source size and skip the grow. The
+   *  float's spawn rect itself rides through `popOutAtRect`
+   *  (`liftSpawnRect` in float-policy), not through this handoff. */
+  expandToContent?: boolean;
 }
 
 let activeTarget: CardLiftTarget | null = null;
