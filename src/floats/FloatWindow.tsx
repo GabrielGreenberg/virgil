@@ -11,32 +11,10 @@ import {
   FLOAT_SPAWN_FIT_MARGIN,
   FLOAT_Z_BASE,
   capPopoutHeight,
+  collectClippedHeight,
 } from "./float-policy";
 import { FloatChrome } from "./FloatChrome";
 import type { Floatable } from "./types";
-
-/**
- * Height (px) currently clipped away inside `root`'s subtree — the sum of
- * `scrollHeight − clientHeight` over the clip containers (overflow ≠
- * visible). In the float's nested flex column every level either clips
- * (overflow-hidden/auto) or sits at natural height inside a clipping
- * parent, so `current float height + deficit` IS the float's natural
- * content height: each box's visible part is counted once by its parent
- * and its hidden remainder once by its own deficit. Overflow-visible
- * elements are skipped — their overflow already rides up into the
- * nearest clipping ancestor's scrollHeight (counting both would double).
- * One-shot O(subtree) walk; runs only on a collapsed-card lift.
- */
-function collectClippedHeight(root: HTMLElement): number {
-  let sum = Math.max(0, root.scrollHeight - root.clientHeight);
-  for (const el of Array.from(root.querySelectorAll<HTMLElement>("*"))) {
-    const deficit = el.scrollHeight - el.clientHeight;
-    if (deficit <= 0) continue;
-    if (getComputedStyle(el).overflowY === "visible") continue;
-    sum += deficit;
-  }
-  return sum;
-}
 
 /**
  * The window-layer presence shared by BOTH `Card` and `TextObject` floats.
@@ -94,11 +72,16 @@ export function FloatWindow({
       //      tick after mount; re-measure once and grow (never shrink,
       //      height only — the handed-off drag may be live, so Y stays
       //      under the cursor's control).
-      const panelEl = bodyHostRef.current?.closest<HTMLElement>(
-        '[data-floating-panel="true"]',
-      );
       const grow = (allowYClamp: boolean) => {
         const host = bodyHostRef.current;
+        // Re-query the panel element on EVERY invocation - never capture it
+        // in the closure. FloatingPanel only portals its DOM once its target
+        // state resolves; a one-time lookup here null-captures forever and
+        // silently kills both the pre-paint grow and the RAF correction
+        // (the review-gate regression this guards against).
+        const panelEl = host?.closest<HTMLElement>(
+          '[data-floating-panel="true"]',
+        );
         if (!panelEl || !host || !panelEl.isConnected) return;
         const current = panelEl.getBoundingClientRect();
         const natural = current.height + collectClippedHeight(host);

@@ -68,4 +68,15 @@ describe("FloatChrome header tint (#20)", () => {
     const strip = renderChrome(undefined);
     expect(strip.style.backgroundColor).toBe("var(--surface-muted-strong)");
   });
+
+  it("strip classes match the float-policy chrome constants (liftSpawnRect continuity)", async () => {
+    // liftSpawnRect's chrome delta assumes a 24px border-box strip (h-6
+    // including its border-b). If these classes change, the constant in
+    // float-policy.ts must change with them - this is the tripwire.
+    const { CARD_FLOAT_HEADER_H } = await import("../float-policy");
+    const strip = renderChrome(undefined);
+    expect(strip.className).toContain("h-6");
+    expect(strip.className).toContain("border-b");
+    expect(CARD_FLOAT_HEADER_H).toBe(24);
+  });
 });

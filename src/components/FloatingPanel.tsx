@@ -180,7 +180,25 @@ function FloatingPanelInner({
   // re-rendered props bring the new initial values down to us).
   // Skipping this would leave the floating panel stuck at the docked
   // rect's pre-undock position even though prefs say otherwise.
+  const setRectEchoRef = useRef<{ x: number; y: number; width: number; height: number } | null>(null);
   useEffect(() => {
+    // Own-write echo filter: an imperative setRect (collapsed-lift grow)
+    // persists via onChange and round-trips back as new initial props. By
+    // then a live handed-off drag may have moved pos past it - re-syncing
+    // to the echo would snap the float back for a frame. Genuine external
+    // rect changes (undock, programmatic moves) don't match the echo and
+    // sync as before.
+    const echo = setRectEchoRef.current;
+    if (
+      echo &&
+      echo.x === initialX &&
+      echo.y === initialY &&
+      echo.width === initialWidth &&
+      echo.height === initialHeight
+    ) {
+      setRectEchoRef.current = null;
+      return;
+    }
     setPos({ x: initialX, y: initialY, width: initialWidth, height: initialHeight });
   }, [initialX, initialY, initialWidth, initialHeight]);
 
@@ -536,6 +554,7 @@ function FloatingPanelInner({
       // beginDragAt issued later in the same effect anchors to the
       // updated rect, not the stale pre-setRect one.
       latestPosRef.current = next;
+      setRectEchoRef.current = next;
       setPos(next);
       handlersRef.current.onChange(next);
     },
@@ -558,7 +577,13 @@ function FloatingPanelInner({
   // Resolve portal target — body for floating, dock-slot anchor for
   // docked. Looked up via useLayoutEffect so the DOM is committed
   // before we try to query for the slot anchor.
-  const [target, setTarget] = useState<HTMLElement | null>(null);
+  // Floating mode resolves synchronously (lazy initializer): the portal DOM
+  // must exist in the FIRST commit so a child layout effect (FloatWindow's
+  // collapsed-lift pre-paint grow) can measure it before paint. Only the
+  // docked slot-anchor lookup needs the layout effect.
+  const [target, setTarget] = useState<HTMLElement | null>(() =>
+    typeof document !== "undefined" && mode === "floating" ? document.body : null,
+  );
   useLayoutEffect(() => {
     if (typeof document === "undefined") return;
     if (mode === "floating") {

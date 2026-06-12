@@ -12,9 +12,10 @@ import { FLOATING_PANEL_Z_BASE } from "@/components/editor-layout/constants";
 
 /**
  * The default size of a freshly-spawned float, used when a `Floatable` carries
- * no `defaultSize` and no saved `cardFloatPositions` rect. Collapses the three
+ * no `defaultSize` and no saved `cardFloatPositions` rect. Collapses the
  * historical `360×280` copies: `POPUP_W/H` (EditorPane), `DEFAULT_W/H`
- * (FloatingCards), `LIFT_FLOAT_W/H` (panel-primitives lift gesture).
+ * (FloatingCards). (`LIFT_FLOAT_W/H` is gone entirely - the lift gesture now
+ * preserves the docked card's measured rect via `liftSpawnRect`.)
  */
 export const FLOAT_DEFAULT_SIZE = { w: 360, h: 280 } as const;
 
@@ -121,6 +122,11 @@ export interface LiftSourceRect {
  * a collapsed card spawns here too — header-only tall — and the float
  * path's one-shot expand-to-content grows it, capped by
  * {@link capPopoutHeight}.
+ *
+ * Known 1px carve-out: `bareWindow` floats (bib/ai, pre-Stage-6) render no
+ * FloatChrome - their real chrome above the body is 1px on both sides, so
+ * the +1/-1 compensation is 1px off for them. Accepted until the Stage-6
+ * chrome migration makes the formula exact for every kind.
  */
 export function liftSpawnRect(source: LiftSourceRect): {
   x: number;
@@ -136,4 +142,27 @@ export function liftSpawnRect(source: LiftSourceRect): {
       source.height - (DOCKED_CHROME_TOP - FLOAT_CHROME_TOP),
     ),
   };
+}
+
+/**
+ * Height (px) currently clipped away inside `root`'s subtree — the sum of
+ * `scrollHeight − clientHeight` over the clip containers (overflow ≠
+ * visible). In the float's nested flex column every level either clips
+ * (overflow-hidden/auto) or sits at natural height inside a clipping
+ * parent, so `current float height + deficit` IS the float's natural
+ * content height: each box's visible part is counted once by its parent
+ * and its hidden remainder once by its own deficit. Overflow-visible
+ * elements are skipped — their overflow already rides up into the
+ * nearest clipping ancestor's scrollHeight (counting both would double).
+ * One-shot O(subtree) walk; runs only on a collapsed-card lift.
+ */
+export function collectClippedHeight(root: HTMLElement): number {
+  let sum = Math.max(0, root.scrollHeight - root.clientHeight);
+  for (const el of Array.from(root.querySelectorAll<HTMLElement>("*"))) {
+    const deficit = el.scrollHeight - el.clientHeight;
+    if (deficit <= 0) continue;
+    if (getComputedStyle(el).overflowY === "visible") continue;
+    sum += deficit;
+  }
+  return sum;
 }
