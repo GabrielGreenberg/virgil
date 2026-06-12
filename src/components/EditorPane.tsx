@@ -123,6 +123,7 @@ import { CardLiftOutline } from "./CardLiftOutline";
 import { type PoppedCardDeps } from "./editor-layout/floating-cards";
 import { FloatHost } from "@/floats/FloatHost";
 import { parseAnyKey } from "@/floats/float-key";
+import { FLOAT_DEFAULT_SIZE } from "@/floats/float-policy";
 import { textObjectPopoutKey } from "@/text-objects/text-object-registry";
 import { CARD_REGISTRY } from "@/cards/card-registry";
 import { isCardKind, panelForCardKind } from "@/cards/predicates";
@@ -222,10 +223,11 @@ import {
 // nothing meaningful changed.
 const noop = () => {};
 
-// Default popped-out card dimensions. Match EditorLayout's local
-// constants so spawn positions stay consistent across the swap.
-const POPUP_W = 360;
-const POPUP_H = 280;
+// Default popped-out card dimensions — the subsystem-wide
+// `FLOAT_DEFAULT_SIZE` (float-policy), so spawn positions stay
+// consistent with the float stack's own default.
+const POPUP_W = FLOAT_DEFAULT_SIZE.w;
+const POPUP_H = FLOAT_DEFAULT_SIZE.h;
 
 // Typed stub for `addStyleMergeRequest` — the real signature returns
 // an `AiRequest`, so a plain `noop` (returns void) doesn't fit. Step

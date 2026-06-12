@@ -41,6 +41,7 @@ import { usePoppedCards } from "@/hooks/usePoppedCards";
 import { parseAnyKey } from "@/floats/float-key";
 import { useEditorChrome } from "@/components/editor-layout/chrome-context";
 import { viewToggleClasses } from "@/components/editor-layout/chrome-config";
+import { TEXT_FLOAT_BODY_PAD_CLASS } from "@/floats/float-policy";
 import {
   FLOAT_WRITE_META,
   SourceMissingBanner,
@@ -232,7 +233,7 @@ export function FigureBody({
         />
       ) : null}
       <div
-        className={`par-float-body heading-float-body flex-1 overflow-auto px-8 py-4 relative ${viewToggleClasses(chrome.menuBar)}`}
+        className={`par-float-body heading-float-body flex-1 overflow-auto ${TEXT_FLOAT_BODY_PAD_CLASS} relative ${viewToggleClasses(chrome.menuBar)}`}
       >
         <EditorContent editor={floatEditor} />
       </div>

@@ -17,6 +17,7 @@ import {
   DEFAULT_PANEL_TYPOGRAPHY,
   PANEL_BODY_LABELS,
   PANEL_BODY_FONT_OPTIONS,
+  resolveFontStack,
   setPanelTypographyField,
   clearPanelTypographyField,
   type PanelBodyKey,
@@ -136,10 +137,10 @@ function PanelTypographyGridRow({ panelKey }: { panelKey: PanelBodyKey }) {
         value={typo.fontFamily}
         onChange={(e) => setField("fontFamily", e.target.value)}
         className="text-xs bg-surface border border-edge-subtle rounded px-1.5 py-0.5 text-ink-body outline-none focus:border-[var(--accent)]"
-        style={{ fontFamily: typo.fontFamily }}
+        style={{ fontFamily: resolveFontStack(typo.fontFamily) }}
       >
         {PANEL_BODY_FONT_OPTIONS.map((f) => (
-          <option key={f} value={f} style={{ fontFamily: f }}>{f}</option>
+          <option key={f} value={f} style={{ fontFamily: resolveFontStack(f) }}>{f}</option>
         ))}
       </select>
       <div className="flex items-center gap-1">

@@ -348,6 +348,47 @@ export function CardEmptyText({ label = "empty" }: { label?: string }) {
   return <span className="text-ink-faint italic">{label}</span>;
 }
 
+/** In-card META tier label (UI-consistency sweep): 10px / 500 / uppercase /
+ *  tracking-wide / the ONE meta gray (`var(--muted)`, matching
+ *  `CardTypeLabel`). For the small overlines naming a meta row inside a
+ *  card body ("Type", "Code", "Preview", …). Design-system-fixed — the
+ *  per-panel body-font picker never applies to meta rows. */
+export function CardMetaLabel({
+  children,
+  className,
+}: {
+  children: ReactNode;
+  className?: string;
+}) {
+  return (
+    <span className={`card-meta-label${className ? ` ${className}` : ""}`}>
+      {children}
+    </span>
+  );
+}
+
+/** In-card mono text routed through the override-first mono var stack
+ *  (`var(--font-mono-override, var(--font-mono)), monospace` — Tailwind's
+ *  `font-mono` skips the user's mono override pref). Two ratified sizes:
+ *  `"meta"` (10px — CODE rows, citekeys) and `"content"` (12px). */
+export function CardMono({
+  children,
+  size = "meta",
+  className,
+}: {
+  children: ReactNode;
+  size?: "meta" | "content";
+  className?: string;
+}) {
+  return (
+    <span
+      className={`card-mono ${size === "meta" ? "text-[10px]" : "text-[12px]"}${className ? ` ${className}` : ""}`}
+    >
+      {children}
+    </span>
+  );
+}
+
 /* ── Unified card-chrome header components ────────────────────────── */
 
 /** Kind label / kind dropdown for the unified card header.
@@ -571,6 +612,16 @@ const TITLE_STYLE: React.CSSProperties = {
   letterSpacing: "0.02em",
 };
 
+/** Canonical card-title inline style — the TITLE dialect (the `.par-title-*`
+ *  tokens, themed via `theme.titleColor`). Design-system-fixed: the per-panel
+ *  font picker (`usePanelBodyStyle`) styles BODY CONTENT ONLY and must never
+ *  be spread over a title/header line (ratified 2026-06-12). Consumed by
+ *  `CardTitleInput` and the bespoke title/header lines (citation collapsed
+ *  header, bib header). */
+export function cardTitleStyle(theme?: CardTheme): React.CSSProperties {
+  return theme ? { ...TITLE_STYLE, color: theme.titleColor } : { ...TITLE_STYLE };
+}
+
 /** Standard title input for card headers.
  *  Wraps the auto-sized input in a flex-1 container so trailing header items
  *  stay right-aligned and the empty space inside the wrapper remains
@@ -589,7 +640,7 @@ export function CardTitleInput({
   theme?: CardTheme;
 }) {
   const merged = theme
-    ? { ...TITLE_STYLE, color: theme.titleColor, ...style }
+    ? { ...cardTitleStyle(theme), ...style }
     : style ? { ...TITLE_STYLE, ...style } : TITLE_STYLE;
   const inputRef = useRef<HTMLInputElement>(null);
   // If rendered inside an EditableCard, hook into that card's claim slot
@@ -1009,7 +1060,7 @@ export function EditableCard({
         </div>
       ) : (
       <div
-        className={`relative px-3 pt-1.5 pb-2${isPoppedOut ? " flex-1 min-h-0 overflow-auto" : " overflow-y-auto"}`}
+        className={`relative ${PANEL.cardBody}${isPoppedOut ? " flex-1 min-h-0 overflow-auto" : " overflow-y-auto"}`}
         style={{
           ...(isPoppedOut
             ? null
@@ -1105,6 +1156,12 @@ export function AiRequestCheckbox({
 export const PANEL = {
   /** Scrollable list container wrapping all cards. */
   list: "flex-1 overflow-y-auto px-2 py-2 space-y-2",
+  /** Standard card-body padding (UI-consistency sweep, ratified
+   *  2026-06-12). One token for EditableCard's expanded body and the
+   *  bespoke bodies (citation rows, todo, highlight, AI request).
+   *  ExampleCard's sectioned strips intentionally keep their own
+   *  (structured expex content). */
+  cardBody: "px-3 pt-1.5 pb-2",
   /** Inner padding for card content. */
   cardInner: "px-4 py-3 relative min-w-0",
   /** Expandable sub-pod with muted background (for fields, notes, etc.). */
@@ -1838,8 +1895,16 @@ export const PanelCard = forwardRef<HTMLDivElement, PanelCardProps>(function Pan
       className={`group relative ${themedCard(theme, selected, extraCardClass)}${isPoppedOut ? (chromeless ? " flex-1 min-h-0 flex flex-col" : " h-full flex flex-col") : ""}${className ? ` ${className}` : ""}`}
       style={{
         ...themedCardStyle(theme, selected, { isPoppedOut }),
+        // Kind color for the card hover/selected outline rules (the
+        // `[data-card-key]` color-mix rules in globals.css) — DERIVED from
+        // the theme accent (CARD_THEMES / user color overrides), replacing
+        // the hand-mirrored `[data-card-key^="float:card:<kind>:"]` CSS
+        // prefix block. Every card passes `theme`, so all 16 kinds
+        // (including bib / ai / example / error, which the old block
+        // omitted) carry the right accent.
+        "--link-anchor-color": theme.accent,
         ...style,
-      }}
+      } as React.CSSProperties}
       onClick={onClick ? (e) => {
         e.stopPropagation();
         if (suppressClickRef.current) return;
@@ -2274,13 +2339,17 @@ export function AiRequestCard({
         />
       </div>
 
-      {/* Separator */}
-      <div className="border-t" style={{ borderColor: theme.separatorSelected }} />
+      {/* Separator — the standard card behavior: neutral unless selected
+          (every unified card tints via theme.separatorSelected only when
+          selected). AiRequest has no selection state, so it is always the
+          neutral edge — the previous always-tinted separator was the one
+          outlier. */}
+      <div className="border-t transition-colors border-edge-subtle group-hover:border-edge-hover" />
 
       {/* Body: auto-grow textarea. (The former near-invisible `bg-sky-50/20`
           wash was dropped in A10 Commit H rather than minting a one-consumer
           `bodyTint` palette token — it composited to ≈white anyway.) */}
-      <div className={`px-3 py-2${isPoppedOut ? " flex-1 min-h-0 overflow-auto" : ""}`}>
+      <div className={`${PANEL.cardBody}${isPoppedOut ? " flex-1 min-h-0 overflow-auto" : ""}`}>
         <textarea
           ref={taRef}
           value={draft}

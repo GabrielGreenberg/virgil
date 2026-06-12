@@ -1234,6 +1234,31 @@ textarea,
   opacity: 1;
 }
 
+/* ── In-card type scale (UI-consistency sweep, 2026-06-12) ──────────
+ * Two ratified tiers inside card bodies:
+ *   META    — 10px / 500 / uppercase / tracking-wide / var(--muted):
+ *             kind labels, key rows, chips, CODE rows.
+ *   CONTENT — 12px: entry rows, inputs, previews (and the picker-styled
+ *             body text, whose default is the same 12px).
+ * Anything at 10.5 / 11 / 11.5px is a stray — use one of these.
+ * React-side primitives: CardMetaLabel / CardMono (panel-primitives). */
+.card-meta-label {
+  font-size: 10px;
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.05em; /* tracking-wide */
+  color: var(--muted);
+}
+.card-content-row {
+  font-size: 12px;
+}
+/* Mono inside cards — ALWAYS the override-first var stack (a bare
+ * `font-family: monospace` or Tailwind `font-mono` skips the user's
+ * mono override pref). */
+.card-mono {
+  font-family: var(--font-mono-override, var(--font-mono)), monospace;
+}
+
 .par-title-annotation:hover {
   filter: brightness(0.8);
 }
@@ -2562,7 +2587,7 @@ textarea,
 .linked-anchor[data-link-card^="highlight:"] { --link-anchor-color: #fbbf24; }
 .linked-anchor[data-link-card^="cut:"]       { --link-anchor-color: #b45757; }
 .linked-anchor[data-link-card^="comment:"]   { --link-anchor-color: #9333ea; }
-.linked-anchor[data-link-card^="archive:"]   { --link-anchor-color: #5a7a99; }
+.linked-anchor[data-link-card^="archive:"]   { --link-anchor-color: #7191b0; }
 .linked-anchor[data-link-card^="report:"]         { --link-anchor-color: #6366f1; }
 .linked-anchor[data-link-card^="report-request:"] { --link-anchor-color: #6366f1; }
 .linked-anchor[data-link-card^="todo:"]      { --link-anchor-color: #44403c; }
@@ -2593,31 +2618,12 @@ textarea,
   background: color-mix(in oklab, #fbbf24 35%, transparent) !important;
 }
 
-/* Per-kind --link-anchor-color on panel cards. Mirrors the linked-anchor
- * map above so the card, the margin icon, and the linked text all paint
- * in one kind color across resting/hover/selected. Values are loosely
- * aligned with DEFAULT_PANEL_COLORS in src/lib/panel-theme.ts. Cards without
- * a hover relationship (bib, ai, error, example) fall through to the
- * `.linked-anchor`-default amber and don't matter here.
- *
- * The selectors MUST track `cardPopKey(kind,id)` in src/panels/panel-registry.ts,
- * which stamps `data-card-key="float:card:<kind>:<id>"` (the AF unified grammar).
- * The `<kind>` segment IS the CardKind verbatim — note in particular the revision
- * pair is `revision-comment` / `revision-suggestion` (NOT the legacy `revision:`
- * prefix). If `cardPopKey`'s format ever changes, these prefixes must change with
- * it (the entity-key contract test pins the grammar). */
-[data-card-key^="float:card:note:"]                { --link-anchor-color: #15803d; }
-[data-card-key^="float:card:highlight:"]           { --link-anchor-color: #fbbf24; }
-[data-card-key^="float:card:cutter-comment:"],
-[data-card-key^="float:card:cutter-suggestion:"]   { --link-anchor-color: #b45757; }
-[data-card-key^="float:card:revision-comment:"],
-[data-card-key^="float:card:revision-suggestion:"] { --link-anchor-color: #9333ea; }
-[data-card-key^="float:card:archive:"]             { --link-anchor-color: #5a7a99; }
-[data-card-key^="float:card:report:"],
-[data-card-key^="float:card:report-request:"]      { --link-anchor-color: #6366f1; }
-[data-card-key^="float:card:todo:"]                { --link-anchor-color: #44403c; }
-[data-card-key^="float:card:footnote:"]            { --link-anchor-color: #b45757; }
-[data-card-key^="float:card:citation:"]            { --link-anchor-color: #d4a843; }
+/* Per-kind --link-anchor-color on panel cards is NO LONGER a CSS map:
+ * `PanelCard` stamps `--link-anchor-color: theme.accent` inline on the
+ * card root (panel-primitives), so the color derives from CARD_THEMES /
+ * the user's panel-color overrides for ALL kinds — the hand-mirrored
+ * `[data-card-key^="float:card:<kind>:"]` prefix block that used to live
+ * here (and omitted bib/ai/example/error) is gone. */
 
 /* Per-kind --link-anchor-color on Mode A paragraph anchors. The
  * useCardSelectionHighlight / useCardHoverHighlight hooks write
@@ -2628,7 +2634,7 @@ textarea,
 [data-paragraph-kind="highlight"] { --link-anchor-color: #fbbf24; }
 [data-paragraph-kind="cut"]       { --link-anchor-color: #b45757; }
 [data-paragraph-kind="comment"]   { --link-anchor-color: #9333ea; }
-[data-paragraph-kind="archive"]   { --link-anchor-color: #5a7a99; }
+[data-paragraph-kind="archive"]   { --link-anchor-color: #7191b0; }
 [data-paragraph-kind="report"]         { --link-anchor-color: #6366f1; }
 [data-paragraph-kind="report-request"] { --link-anchor-color: #6366f1; }
 [data-paragraph-kind="todo"]      { --link-anchor-color: #44403c; }
@@ -2814,9 +2820,9 @@ textarea,
 
 /* Resting accent — small kind-colored stripe so cards are identifiable
  * without their margin icon. Inset so it doesn't shift layout. These rules
- * are grammar-agnostic (bare `[data-card-key]`); the per-kind COLOR comes
- * from the `[data-card-key^="float:card:<kind>:"]` block above, so a card's
- * ring is only correctly tinted when that block tracks `cardPopKey`. */
+ * are grammar-agnostic (bare `[data-card-key]`); the per-kind COLOR is the
+ * inline `--link-anchor-color: theme.accent` PanelCard stamps on the card
+ * root (panel-primitives), derived from CARD_THEMES. */
 [data-card-key] {
   outline-color: color-mix(in oklab, var(--link-anchor-color) 50%, transparent);
 }

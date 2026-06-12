@@ -68,9 +68,43 @@ Forbidden in new code: `text-stone-*`, `border-stone-*`,
 Each has an `*-override` companion the user can set. Always read the
 override first: `var(--font-serif-override, var(--font-serif))`.
 
+**Never write a bare font-family name inline.** next/font loads the real
+faces only behind CSS variables, so an inline `fontFamily: "Inter"` (or a
+hand-quoted `"Playfair Display"`) silently falls back to the UA default.
+Always emit the override-first var stack via `resolveFontStack(name)`
+(`src/lib/panel-typography.ts`) — it is total: curated names get their
+`FONT_STACKS` entry, unknown names get the quoted literal plus a
+heuristic generic tail. Don't write local `fontStack` helpers.
+
 Editor scale: H1 1.75rem/700, H2 1.35rem/600, H3 1.15rem/600, body
-1.05rem/400 with line-height 1.6. Panel scale: header 14px/600, card
-title 12.5px/500, badge 10px/600.
+1.05rem/400 with line-height 1.6. Panel scale: header 11px/600 uppercase
+tracking-wider (`PanelHeader`), card title `--par-title-size`
+(0.78rem ≈ 12.5px)/500, badge 10px/600.
+
+### In-card type scale — meta vs content (UI-consistency sweep)
+
+Inside a card body there are exactly **two tiers** (ratified 2026-06-12);
+anything at 10.5 / 11 / 11.5px is a stray:
+
+| Tier | Spec | Use | Token |
+|---|---|---|---|
+| **META** | 10px / 500 / uppercase / tracking-wide / `var(--muted)` | row labels ("Type", "Code"), key rows, chips, CODE text | `.card-meta-label` / `CardMetaLabel` |
+| **CONTENT** | 12px | entry rows, inputs, previews | `.card-content-row` (or the panel body style) |
+
+Mono inside cards always routes through the override-first stack
+`var(--font-mono-override, var(--font-mono)), monospace` — the `.card-mono`
+class / `CardMono` primitive (Tailwind's `font-mono` skips the user's mono
+override pref). CODE/key mono sits on the META tier (10px).
+
+### Picker scope — body content only
+
+The per-panel font picker (`usePanelBodyStyle`) styles **body content
+only**: entry rows, notes textareas, rich-text bodies. Card titles,
+collapsed header lines, kind labels, meta rows, and code rows are
+design-system-fixed (the TITLE and META dialects) and override-immune —
+never spread a panel body style over them. The canonical title style is
+`cardTitleStyle(theme)` (panel-primitives); `CardTitleInput` /
+`CardBodyTitle` already use it.
 
 ### Card body typography — the two-class rule (A9)
 

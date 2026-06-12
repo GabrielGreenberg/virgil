@@ -157,6 +157,44 @@ describe("resolveFontStack: bare family names never ship", () => {
     expect(resolveFontStack("JetBrains Mono")).toBe('"JetBrains Mono", monospace');
   });
 
+  it("every Fonts-dialog-pool serif/display name resolves with a serif tail (T5 heuristic widening)", () => {
+    // The non-curated serif names reachable from MAIN_TEXT_FONTS
+    // (src/lib/preferences-tree.ts) — each must heuristic-fallback to
+    // `serif`, not the default `sans-serif`.
+    const poolSerifs = [
+      "Lusitana",
+      "Cardo",
+      "Spectral",
+      "Vollkorn",
+      "Gentium Plus",
+      "Old Standard TT",
+      "Libre Caslon Text",
+      "Marcellus",
+      "Bodoni Moda",
+      "Cormorant Garamond",
+      "Cormorant SC",
+      "IM Fell English",
+    ];
+    for (const name of poolSerifs) {
+      const stack = resolveFontStack(name);
+      expect(stack, name).toMatch(/,\s*serif$/);
+      expect(stack).not.toBe(name);
+    }
+  });
+
+  it("the full MAIN_TEXT_FONTS pool never dead-ends bare and each group gets the right generic", async () => {
+    const { MAIN_TEXT_FONTS } = await import("@/lib/preferences-tree");
+    for (const group of MAIN_TEXT_FONTS) {
+      const expected = group.group === "Sans-serif" ? "sans-serif" : "serif";
+      for (const name of group.fonts) {
+        const stack = resolveFontStack(name);
+        expect(stack, name).not.toBe(name);
+        expect(stack, name).toMatch(GENERIC_TAIL);
+        expect(stack, name).toMatch(new RegExp(`,\\s*${expected}$`));
+      }
+    }
+  });
+
   it("Cinzel (next/font-only, Fonts-dialog pool) routes through --font-logo, not a bare dead-end", () => {
     const stack = resolveFontStack("Cinzel");
     expect(stack).toContain("var(--font-logo)");

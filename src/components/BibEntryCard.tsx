@@ -3,7 +3,7 @@
 import { useState, useRef, useEffect, useCallback } from "react";
 import type { BibEntry } from "@/lib/types";
 import { formatMinimalCitation } from "@/lib/bib-parser";
-import { PanelCard, PANEL, Chevron, TargetIcon, Button, CardPopoutButton, CardDragHandle } from "./panel-primitives";
+import { PanelCard, PANEL, Chevron, TargetIcon, Button, CardPopoutButton, CardDragHandle, cardTitleStyle } from "./panel-primitives";
 import { useCardTheme } from "@/hooks/usePanelTheme";
 import { usePanelBodyStyle } from "@/hooks/usePanelTypography";
 import { useTabIndent } from "@/hooks/useTabIndent";
@@ -152,6 +152,10 @@ export default function BibEntryCard({
 }: BibEntryCardProps) {
   const popped = usePoppedCards();
   const popKey = buildPopKey("bibliography", entry.key);
+  // Hooks must run unconditionally — declared here, above the `compact`
+  // early return below.
+  const theme = useCardTheme("bib");
+  const bibBodyStyle = usePanelBodyStyle("bib");
   // Per-entry state
   const [fieldsOpen, setFieldsOpen] = useState(false);
   const [annotationOpen, setAnnotationOpen] = useState(false);
@@ -261,9 +265,12 @@ export default function BibEntryCard({
         if (f.url && !f.doi) parts.push(f.url);
         if (parts.length === 0) return null;
         return (
+          // BODY CONTENT — the per-panel font picker applies here (the
+          // header line above stays in the fixed TITLE dialect).
           <div
-            className="text-xs text-ink-subtle leading-relaxed break-words overflow-hidden"
-            style={{ overflowWrap: "anywhere" }}
+            data-panel-kind="bib"
+            className="leading-relaxed break-words overflow-hidden"
+            style={{ ...bibBodyStyle, overflowWrap: "anywhere" }}
             dangerouslySetInnerHTML={{ __html: parts.join(". ") + "." }}
           />
         );
@@ -433,8 +440,6 @@ export default function BibEntryCard({
     );
   }
 
-  const theme = useCardTheme("bib");
-  const bibBodyStyle = usePanelBodyStyle("bib");
   const onToggleFromCtx = onTogglePopout
     ?? (popped
       ? (anchor: DOMRect) => popped.toggleAtAnchor(popKey, anchor)
@@ -470,17 +475,14 @@ export default function BibEntryCard({
         style={{ backgroundColor: isSelected ? theme.headerSelected : theme.headerDefault }}
       >
         <CardDragHandle />
+        {/* TITLE dialect — design-system-fixed; the per-panel body-font
+            picker (`bibBodyStyle`) applies to the publication-details body
+            row, never to this header line. */}
         <div
-          data-panel-kind="bib"
           className="flex-1 min-w-0 leading-snug"
           style={{
-            fontSize: "var(--par-title-size, 0.78rem)",
-            color: theme.titleColor,
-            fontWeight: 500,
-            fontFamily: "var(--font-sans), Inter, sans-serif",
-            letterSpacing: "0.02em",
+            ...cardTitleStyle(theme),
             overflowWrap: "anywhere",
-            ...bibBodyStyle,
           }}
           data-hint={headerText} aria-label={headerText}
         >

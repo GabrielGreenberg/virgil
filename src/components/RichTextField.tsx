@@ -484,10 +484,12 @@ function RichTextFieldImpl({
     return registerDropTarget(editor);
   }, [editor]);
 
-  // Sync per-panel body style (only overridden fields) onto the ProseMirror
-  // DOM. Leaving a field unset lets the class-based defaults in globals.css
-  // take over — so enabling `panelKey` by itself doesn't change anything
-  // visually until the user actually overrides a field.
+  // Sync the per-panel body style onto the ProseMirror DOM. NOTE:
+  // `usePanelBodyStyle` returns the FULL effective typography (registry
+  // default ⊕ user override), so with `panelKey` set the inline write always
+  // applies — it shadows the `.rtf-content-{variant}` class for family/size/
+  // color. The class still carries non-typography styling and the no-panelKey
+  // fallback.
   useEffect(() => {
     if (!editor) return;
     const dom = editor.view.dom as HTMLElement;

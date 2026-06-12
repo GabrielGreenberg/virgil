@@ -29,6 +29,7 @@ import type { EditorHandle } from "@/components/Editor";
 import { usePoppedCards } from "@/hooks/usePoppedCards";
 import { useEditorChrome } from "@/components/editor-layout/chrome-context";
 import { viewToggleClasses } from "@/components/editor-layout/chrome-config";
+import { TEXT_FLOAT_BODY_PAD_CLASS } from "@/floats/float-policy";
 import {
   FLOAT_WRITE_META,
   SourceMissingBanner,
@@ -217,7 +218,8 @@ export function TexBlockBody({
       )}
       {/* Body mirrors paragraph-body.tsx's chrome contract so the float
           honors the lifted-overlay spawn geometry exactly (L3e.2):
-          `px-8 py-4` == POPOUT_BODY_PADDING_X/Y (32 / 16), so the pod width
+          TEXT_FLOAT_BODY_PAD_CLASS == TEXT_FLOAT_BODY_PAD_X/Y (32 / 16,
+          float-policy — one source for both), so the pod width
           resolves to sourceWidth (502) == the source pod → the CM text-area
           is 444 == source/ghost → the code does NOT re-wrap on release. (The
           old `px-3` (12) title host + pod wrapper made the float pod
@@ -227,7 +229,7 @@ export function TexBlockBody({
           the lifted ghost, so the pod sits at the body's top with no vertical
           jump on release. */}
       <div
-        className={`par-float-body flex-1 overflow-auto px-8 py-4 ${viewToggleClasses(chrome.menuBar)}`}
+        className={`par-float-body flex-1 overflow-auto ${TEXT_FLOAT_BODY_PAD_CLASS} ${viewToggleClasses(chrome.menuBar)}`}
       >
         <div
           className={`par-title-wrapper has-text${
