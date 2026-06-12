@@ -45,9 +45,8 @@ EditorPane (canonical editor surface)
 │   ├─ VirgilEditor (the TipTap editor itself)
 │   ├─ SelectionActionsMenu (gutter lightning-bolt; click to expand ActionsMenuPanel)
 │   ├─ Marginalia gutters (left + right of text)
-│   ├─ FloatCard portals (popped-out cards)
+│   ├─ FloatHost → FloatWindow portals (popped-out cards + TextObjects — all 16 block/selection kinds)
 │   ├─ FloatingPanel portals (popped-out panels)
-│   ├─ TextObjectFloat portals (popped-out TextObjects — all 16 block/selection kinds)
 │   └─ DockOutline (body-portaled drag-target outline, suppressed in zen) — EditorPane.tsx:2965
 ├─ PanelColumn side="right"
 └─ PaneRail side="right" (icon strip, OmniFilterMenu)
