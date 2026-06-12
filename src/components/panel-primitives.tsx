@@ -1895,8 +1895,16 @@ export const PanelCard = forwardRef<HTMLDivElement, PanelCardProps>(function Pan
       className={`group relative ${themedCard(theme, selected, extraCardClass)}${isPoppedOut ? (chromeless ? " flex-1 min-h-0 flex flex-col" : " h-full flex flex-col") : ""}${className ? ` ${className}` : ""}`}
       style={{
         ...themedCardStyle(theme, selected, { isPoppedOut }),
+        // Kind color for the card hover/selected outline rules (the
+        // `[data-card-key]` color-mix rules in globals.css) — DERIVED from
+        // the theme accent (CARD_THEMES / user color overrides), replacing
+        // the hand-mirrored `[data-card-key^="float:card:<kind>:"]` CSS
+        // prefix block. Every card passes `theme`, so all 16 kinds
+        // (including bib / ai / example / error, which the old block
+        // omitted) carry the right accent.
+        "--link-anchor-color": theme.accent,
         ...style,
-      }}
+      } as React.CSSProperties}
       onClick={onClick ? (e) => {
         e.stopPropagation();
         if (suppressClickRef.current) return;
