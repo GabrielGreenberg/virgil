@@ -1855,8 +1855,13 @@ export const PanelCard = forwardRef<HTMLDivElement, PanelCardProps>(function Pan
               ItemMenu, trailing controls) stopPropagation and never reach it.
               stopPropagation here keeps the header click from bubbling to the
               card root's onClick (the body's select+expand+jump contract). */}
+          {/* Cursor contract (#19): default cursor across the header (it's a
+              click-to-toggle surface, not a text/grab surface) — the grab
+              affordance is the dots glyph, which keeps its own cursor-grab
+              as the visual drag hint. Overrides any cursor-pointer/grab the
+              card root sets via extraCardClass. */}
           <div
-            className="flex items-center gap-1 px-2 h-6 shrink-0"
+            className="flex items-center gap-1 px-2 h-6 shrink-0 cursor-default"
             style={{ backgroundColor: selected ? theme.headerSelected : theme.headerDefault }}
             {...(headerActivate
               ? {

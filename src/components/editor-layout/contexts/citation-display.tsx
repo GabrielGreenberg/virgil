@@ -35,3 +35,10 @@ export function useCitationDisplayContext(): CitationDisplayContextValue {
   if (!v) throw new Error("useCitationDisplayContext must be used inside CitationDisplayProvider");
   return v;
 }
+
+/** Nullable variant for consumers that must also render OUTSIDE a provider
+ *  (e.g. `BorrowedMainText`, which mounts in reader/float surfaces too).
+ *  Returns null instead of throwing when no provider is above. */
+export function useCitationDisplayContextOrNull(): CitationDisplayContextValue | null {
+  return useContext(CitationDisplayCtx);
+}

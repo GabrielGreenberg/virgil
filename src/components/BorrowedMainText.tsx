@@ -52,6 +52,7 @@ import {
   LatexComment,
 } from "@/lib/tiptap-extensions";
 import { normalizeRichContent } from "@/lib/footnote-content";
+import { useCitationDisplayContextOrNull } from "@/components/editor-layout/contexts/citation-display";
 
 export interface BorrowedMainTextProps {
   /** The card's already-resolved body. JSONContent (a `doc`), or anything
@@ -62,7 +63,11 @@ export interface BorrowedMainTextProps {
   instanceKey: string;
   /** Resolves a raw `\cite{...}` command into a human-readable display string
    *  (e.g. "Abusch 2014"), so persisted citation nodes with an empty
-   *  `displayText` render the formatted name instead of the raw command. */
+   *  `displayText` render the formatted name instead of the raw command.
+   *  Optional override — when omitted, the resolver is picked up from the
+   *  surrounding `CitationDisplayProvider` (backlog #16), so every mount
+   *  (collapsed footnote/archive bodies included) resolves citations without
+   *  per-site prop threading. */
   getCitationDisplayText?: (command: string) => string;
   /** Visual variant — `"footnote"` (serif, the default) borrows the main-text
    *  serif face; `"note"` matches the compact panel body. Drives the
@@ -115,13 +120,18 @@ export function BorrowedMainText({
   style,
   bodyStyle,
 }: BorrowedMainTextProps) {
+  // Citation resolver: the explicit prop wins; otherwise fall back to the
+  // surrounding CitationDisplayProvider (nullable — the throwing hook is for
+  // sites that REQUIRE a provider; this surface must also render without one).
+  const citationCtx = useCitationDisplayContextOrNull();
+  const resolveCitation = getCitationDisplayText ?? citationCtx?.getCitationDisplayText;
   // Resolve the content. The editor is read-only, so we never need a
   // focus-gated external value sync — but we DO re-push content when `value`
   // changes (see the value-sync effect below), so a card whose instanceKey is
   // content-independent (e.g. keyed on a stable id) still reflects live edits.
   const resolved = useMemo(
-    () => refreshCitationDisplay(normalizeRichContent(value), getCitationDisplayText),
-    [value, getCitationDisplayText],
+    () => refreshCitationDisplay(normalizeRichContent(value), resolveCitation),
+    [value, resolveCitation],
   );
 
   const editor = useEditor(
