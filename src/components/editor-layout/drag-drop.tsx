@@ -238,6 +238,10 @@ export function StripButton({
       onMove(panelId, toSide, toIndex);
       isDragging.current = false;
       pointerStart.current = null;
+      // The drag consumed this press — mark it handled so the browser's
+      // trailing click doesn't ALSO toggle the panel (backlog #7). Safe
+      // because pointerdown re-arms the guard on the next press.
+      handledByPointer.current = true;
       return;
     }
 

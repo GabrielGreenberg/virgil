@@ -1630,6 +1630,12 @@ export const PanelCard = forwardRef<HTMLDivElement, PanelCardProps>(function Pan
   // misaligns on some cards. The measured height is published as a CSS
   // variable on the card root; the popout uses `calc()` to self-center.
   const innerRef = useRef<HTMLDivElement>(null);
+  // Set when the lift gesture crosses its threshold so the browser's trailing
+  // click (mousedown→drag→mouseup still synthesizes one) is swallowed instead
+  // of firing the header toggle or the root onClick. Reset on the next
+  // mousedown — mirrors StripButton's `handledByPointer` pattern
+  // (src/components/editor-layout/drag-drop.tsx).
+  const suppressClickRef = useRef(false);
   useLayoutEffect(() => {
     const el = innerRef.current;
     if (!el) return;
@@ -1726,6 +1732,9 @@ export const PanelCard = forwardRef<HTMLDivElement, PanelCardProps>(function Pan
       const dy = ev.clientY - startY;
       if (dx * dx + dy * dy < CARD_LIFT_THRESHOLD * CARD_LIFT_THRESHOLD) return;
       triggered = true;
+      // The lift consumed this press — swallow the trailing click so it
+      // can't toggle/select/jump the card that's about to pop out.
+      suppressClickRef.current = true;
       // Snapshot the source card's rect before any DOM churn (the card
       // may unmount on the next render once it flips to popped).
       const r = cardEl.getBoundingClientRect();
@@ -1811,8 +1820,15 @@ export const PanelCard = forwardRef<HTMLDivElement, PanelCardProps>(function Pan
         ...themedCardStyle(theme, selected, { isPoppedOut }),
         ...style,
       }}
-      onClick={onClick ? (e) => { e.stopPropagation(); onClick(e); } : undefined}
+      onClick={onClick ? (e) => {
+        e.stopPropagation();
+        if (suppressClickRef.current) return;
+        onClick(e);
+      } : undefined}
       onMouseDown={(e) => {
+        // A fresh press re-arms the click path (the suppress flag only ever
+        // swallows the single trailing click of a completed lift gesture).
+        suppressClickRef.current = false;
         callerMouseDown?.(e);
         if (e.defaultPrevented) return;
         onWrapperMouseDown(e);
@@ -1844,6 +1860,8 @@ export const PanelCard = forwardRef<HTMLDivElement, PanelCardProps>(function Pan
                   "aria-label": isCollapsed ? "Expand card" : "Collapse card",
                   onClick: (e: React.MouseEvent) => {
                     e.stopPropagation();
+                    // Swallow the trailing click of a completed lift gesture.
+                    if (suppressClickRef.current) return;
                     headerActivate();
                   },
                   onKeyDown: (e: React.KeyboardEvent) => {
