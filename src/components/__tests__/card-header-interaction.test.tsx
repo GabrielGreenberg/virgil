@@ -58,6 +58,9 @@ class ResizeObserverStub {
 import { render, screen, fireEvent, cleanup } from "@testing-library/react";
 import type { ComponentProps } from "react";
 import { PanelCard, EditableCard, CARD_THEMES } from "@/components/panel-primitives";
+import { liftSpawnRect } from "@/floats/float-policy";
+import { consumeCardLiftHandoff } from "@/components/card-lift";
+import { PoppedCardsContext, type PoppedCardsValue } from "@/hooks/usePoppedCards";
 
 afterEach(cleanup);
 
@@ -209,5 +212,90 @@ describe("EditableCard collapsed title (backlog #15/#17)", () => {
     const wrapper = container.querySelector(".card-title-wrapper.card-title-add-only");
     expect(wrapper).toBeTruthy();
     expect(container.querySelector(".card-title-add")?.textContent).toBe("+T");
+  });
+});
+
+describe("lift spawn rect + handoff (backlog #20 wiring)", () => {
+  const STUB = { left: 120, top: 340, width: 296, height: 188, right: 416, bottom: 528, x: 120, y: 340, toJSON: () => ({}) } as DOMRect;
+
+  function withRectStub<T>(fn: () => T): T {
+    const spy = vi
+      .spyOn(Element.prototype, "getBoundingClientRect")
+      .mockReturnValue(STUB);
+    try {
+      return fn();
+    } finally {
+      spy.mockRestore();
+    }
+  }
+
+  function driveLift() {
+    const header = screen.getByLabelText(/Expand card|Collapse card/);
+    fireEvent.mouseDown(header, { button: 0, clientX: 10, clientY: 10 });
+    fireEvent(window, new MouseEvent("mousemove", { bubbles: true, clientX: 40, clientY: 40 }));
+    fireEvent(window, new MouseEvent("mouseup", { bubbles: true }));
+  }
+
+  it("the float spawns at liftSpawnRect of the measured docked rect (not a cursor-centered default)", () => {
+    const onTogglePopout = vi.fn();
+    withRectStub(() => {
+      renderPanelCard({ cardKey: "note:n1", onTogglePopout, isCollapsed: false });
+      driveLift();
+    });
+    expect(onTogglePopout).toHaveBeenCalledTimes(1);
+    const anchor = onTogglePopout.mock.calls[0][0] as DOMRect;
+    const expected = liftSpawnRect(STUB);
+    expect({ x: anchor.x, y: anchor.y, width: anchor.width, height: anchor.height }).toEqual(expected);
+    // Drain the armed handoff so it can't leak into other tests; expanded
+    // lifts must NOT request the grow.
+    expect(consumeCardLiftHandoff("note:n1")?.expandToContent).toBe(false);
+  });
+
+  it("a collapsed lift arms expandToContent on the handoff", () => {
+    withRectStub(() => {
+      renderPanelCard({ cardKey: "note:n1", onTogglePopout: vi.fn(), isCollapsed: true });
+      driveLift();
+    });
+    expect(consumeCardLiftHandoff("note:n1")?.expandToContent).toBe(true);
+  });
+
+  it("the docked residue of an already-popped card does not lift (no dead drag, no stale handoff)", () => {
+    const onTogglePopout = vi.fn();
+    const poppedCtx: PoppedCardsValue = {
+      poppedKeys: ["float:card:note:n1"],
+      isPopped: () => true,
+      toggle: vi.fn(),
+      toggleAtAnchor: vi.fn(),
+      popOutAtRect: vi.fn(),
+      close: vi.fn(),
+      getFloatPosition: () => undefined,
+      setFloatPosition: vi.fn(),
+    };
+    const props = {
+      theme,
+      selected: false,
+      kind: "note" as const,
+      isCollapsed: true,
+      onToggleExpanded: vi.fn(),
+      onHeaderActivate: vi.fn(),
+      onClick: vi.fn(),
+      cardKey: "note:n1",
+      onTogglePopout,
+      children: <div data-testid="body">body content</div>,
+    };
+    withRectStub(() => {
+      render(
+        <PoppedCardsContext.Provider value={poppedCtx}>
+          <PanelCard {...props} />
+        </PoppedCardsContext.Provider>,
+      );
+      driveLift();
+    });
+    expect(onTogglePopout).not.toHaveBeenCalled();
+    expect(poppedCtx.popOutAtRect).not.toHaveBeenCalled();
+    expect(consumeCardLiftHandoff("note:n1")).toBeNull();
+    // The residue header still works as a plain disclosure click.
+    fireEvent.click(screen.getByLabelText(/Expand card|Collapse card/));
+    expect(props.onHeaderActivate).toHaveBeenCalledTimes(1);
   });
 });

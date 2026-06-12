@@ -45,6 +45,7 @@ import type {
   ReportRequestCard as ReportRequestCardData,
 } from "@/lib/types";
 import type { Floatable, FloatChromeSlots } from "@/floats/types";
+import { getPanelColor, themeFromAccent } from "@/lib/panel-theme";
 import { snapshotCard } from "@/lib/stack/snapshot";
 import type { FootnoteRef } from "@/lib/types";
 import { buildFloatKey } from "@/floats/float-key";
@@ -105,7 +106,15 @@ function cardFloatable(
     domain: "card",
     kind,
     id,
-    surface: "panel",
+    // Pop-out continuity (#20): the float keeps the docked card's look —
+    // white card surface, 1px ambient border (NOT the beige panel pod) —
+    // same shell text-object floats use.
+    surface: "card",
+    // …and the kind-tinted header strip the docked card has. Resolved via
+    // the non-hook theme path (override-aware): the same accent →
+    // headerDefault derivation `useCardTheme` performs.
+    headerTint: themeFromAccent(getPanelColor(CARD_REGISTRY[kind].themeKey))
+      .headerDefault,
     title: opts.title ?? CARD_REGISTRY[kind].label,
     canJump: opts.canJump,
     jumpToSource: opts.jumpToSource,

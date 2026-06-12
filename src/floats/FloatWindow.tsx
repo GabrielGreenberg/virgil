@@ -1,12 +1,18 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useLayoutEffect, useRef, useState } from "react";
 import FloatingPanel, {
   type FloatingPanelHandle,
 } from "@/components/FloatingPanel";
 import { usePoppedCards } from "@/hooks/usePoppedCards";
 import { consumeCardLiftHandoff } from "@/components/card-lift";
-import { FLOAT_DEFAULT_SIZE, FLOAT_Z_BASE } from "./float-policy";
+import {
+  FLOAT_DEFAULT_SIZE,
+  FLOAT_SPAWN_FIT_MARGIN,
+  FLOAT_Z_BASE,
+  capPopoutHeight,
+  collectClippedHeight,
+} from "./float-policy";
 import { FloatChrome } from "./FloatChrome";
 import type { Floatable } from "./types";
 
@@ -40,14 +46,70 @@ export function FloatWindow({
   // Generalizes the text-object `setHeaderLabel`.
   const [titleOverride, setTitleOverride] = useState<string | null>(null);
   const panelHandleRef = useRef<FloatingPanelHandle>(null);
+  // The body-side wrapper (`data-pristine-card-id`) — the measure root for
+  // the collapsed-lift grow. In the bareWindow branch it's display:contents
+  // (zero box), which still enumerates children and resolves `closest()`.
+  const bodyHostRef = useRef<HTMLDivElement>(null);
   const key = windowKey;
 
   // Drag handoff: when this float was just spawned by a lift-off gesture, the
   // user's mouse is still down — pick up that drag here so it continues
-  // seamlessly until release. Run once on mount only.
-  useEffect(() => {
+  // seamlessly until release. Run once on mount only. A layout effect (not a
+  // passive one) so the collapsed-lift grow below lands before first paint.
+  useLayoutEffect(() => {
     const handoff = consumeCardLiftHandoff(key);
     if (!handoff) return;
+    if (handoff.expandToContent) {
+      // Collapsed-card lift (#20): the float spawned at the docked card's
+      // collapsed, header-only rect; grow it to content height, capped by
+      // the shared popout policy. ONE-SHOT, two ticks, then dead — no
+      // ResizeObserver, no editor subscription (keystroke sanctity):
+      //   1. pre-paint (here): measure + grow + clamp Y so the bottom
+      //      stays on screen — invisible, the first paint is already
+      //      grown. Catches plain-DOM bodies fully.
+      //   2. one double-RAF correction: RichTextField mounts TipTap with
+      //      `immediatelyRender: false`, so rich bodies enter the DOM a
+      //      tick after mount; re-measure once and grow (never shrink,
+      //      height only — the handed-off drag may be live, so Y stays
+      //      under the cursor's control).
+      const grow = (allowYClamp: boolean) => {
+        const host = bodyHostRef.current;
+        // Re-query the panel element on EVERY invocation - never capture it
+        // in the closure. FloatingPanel only portals its DOM once its target
+        // state resolves; a one-time lookup here null-captures forever and
+        // silently kills both the pre-paint grow and the RAF correction
+        // (the review-gate regression this guards against).
+        const panelEl = host?.closest<HTMLElement>(
+          '[data-floating-panel="true"]',
+        );
+        if (!panelEl || !host || !panelEl.isConnected) return;
+        const current = panelEl.getBoundingClientRect();
+        const natural = current.height + collectClippedHeight(host);
+        const target = capPopoutHeight(natural, window.innerHeight);
+        if (target <= current.height + 1) return;
+        const rect: Parameters<FloatingPanelHandle["setRect"]>[0] = {
+          height: target,
+        };
+        if (allowYClamp) {
+          rect.y = Math.max(
+            FLOAT_SPAWN_FIT_MARGIN,
+            Math.min(
+              current.top,
+              window.innerHeight - FLOAT_SPAWN_FIT_MARGIN - target,
+            ),
+          );
+        }
+        panelHandleRef.current?.setRect(rect);
+      };
+      grow(true);
+      // Not cancelled on cleanup: Strict Mode's mount→cleanup→mount would
+      // abort the one correction (the consumed handoff can't re-arm it);
+      // `isConnected` inside grow() guards real unmounts. Mirrors the
+      // retired autoFitBody burst's Strict-Mode note (commit 1f39ad4).
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => grow(false));
+      });
+    }
     panelHandleRef.current?.beginDragAt(handoff.clientX, handoff.clientY);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -83,11 +145,16 @@ export function FloatWindow({
         // Bib/AiRequest (Stage 6 migrates these): the body supplies its own
         // header; FloatChrome is skipped. Preserve the old wrapper so the
         // pristine-discard + auto-fit selectors still resolve.
-        <div data-pristine-card-id={floatable.id} style={{ display: "contents" }}>
+        <div
+          ref={bodyHostRef}
+          data-pristine-card-id={floatable.id}
+          style={{ display: "contents" }}
+        >
           {body}
         </div>
       ) : (
         <div
+          ref={bodyHostRef}
           data-pristine-card-id={floatable.id}
           className="h-full flex flex-col min-h-0 overflow-hidden"
         >
@@ -95,6 +162,7 @@ export function FloatWindow({
             title={titleOverride ?? floatable.title}
             titleNode={floatable.chromeSlots?.title}
             trailing={floatable.chromeSlots?.trailing}
+            headerTint={floatable.headerTint}
             canJump={floatable.canJump}
             onJump={floatable.jumpToSource}
             onClose={() => ctx.close(key)}
