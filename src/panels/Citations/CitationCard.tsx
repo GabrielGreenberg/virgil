@@ -17,6 +17,7 @@ import {
 import {
   PanelCard,
   PANEL,
+  cardTitleStyle,
 } from "@/components/panel-primitives";
 import { useCardTheme } from "@/hooks/usePanelTheme";
 import { usePanelBodyStyle } from "@/hooks/usePanelTypography";
@@ -573,14 +574,10 @@ export function CitationCard({
 
   /* ── Header (matches the compressed view in both states) ─────────── */
 
-  const headerStyle: React.CSSProperties = {
-    fontSize: "var(--par-title-size, 0.78rem)",
-    color: theme.titleColor,
-    fontWeight: 500,
-    fontFamily: "var(--font-sans), Inter, sans-serif",
-    letterSpacing: "0.02em",
-    ...bodyStyle,
-  };
+  // TITLE dialect — design-system-fixed; the per-panel body-font picker
+  // (`bodyStyle`) must never touch the header line (it styles the entry
+  // rows in the body instead).
+  const headerStyle: React.CSSProperties = cardTitleStyle(theme);
   const headerRowSources = rows.filter((r) => r.key.trim());
   const headerRowData = (headerRowSources.length > 0
     ? headerRowSources
@@ -753,7 +750,14 @@ export function CitationCard({
             }`}
             onClick={(e) => e.stopPropagation()}
           >
-            <ul className="flex flex-col gap-2 list-none m-0 p-0">
+            {/* Entry rows are BODY CONTENT — the per-panel font picker
+                (size stepper included) applies here, never to the header
+                or the meta strip below. */}
+            <ul
+              data-panel-kind="citation"
+              className="flex flex-col gap-2 list-none m-0 p-0"
+              style={bodyStyle}
+            >
               {rows.map((row) => (
                 <CitationKeyRow
                   key={row.id}

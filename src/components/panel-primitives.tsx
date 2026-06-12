@@ -571,6 +571,16 @@ const TITLE_STYLE: React.CSSProperties = {
   letterSpacing: "0.02em",
 };
 
+/** Canonical card-title inline style — the TITLE dialect (the `.par-title-*`
+ *  tokens, themed via `theme.titleColor`). Design-system-fixed: the per-panel
+ *  font picker (`usePanelBodyStyle`) styles BODY CONTENT ONLY and must never
+ *  be spread over a title/header line (ratified 2026-06-12). Consumed by
+ *  `CardTitleInput` and the bespoke title/header lines (citation collapsed
+ *  header, bib header). */
+export function cardTitleStyle(theme?: CardTheme): React.CSSProperties {
+  return theme ? { ...TITLE_STYLE, color: theme.titleColor } : { ...TITLE_STYLE };
+}
+
 /** Standard title input for card headers.
  *  Wraps the auto-sized input in a flex-1 container so trailing header items
  *  stay right-aligned and the empty space inside the wrapper remains

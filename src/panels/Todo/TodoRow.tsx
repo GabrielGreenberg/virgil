@@ -153,10 +153,10 @@ export function TodoRow({
           onChange={(t) => onUpdate(item.id, t)}
           placeholder="Task"
           theme={theme}
-          style={{
-            ...(item.done ? { textDecoration: "line-through" } : null),
-            ...todoBodyStyle,
-          }}
+          // TITLE dialect — design-system-fixed (CardTitleInput owns the
+          // par-title styling). The per-panel body-font picker
+          // (`todoBodyStyle`) applies to the notes textarea below only.
+          style={item.done ? { textDecoration: "line-through" } : undefined}
         />
         {!compressed && (
           <>
