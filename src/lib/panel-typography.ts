@@ -98,6 +98,15 @@ function quoteFamily(name: string): string {
   return /\s/.test(name) && !/^["']/.test(name) ? `"${name}"` : name;
 }
 
+/** Serif-name heuristic for the total-resolver fallback. Covers every
+ *  serif/display family reachable from the Fonts… dialog pool
+ *  (`MAIN_TEXT_FONTS` in src/lib/preferences-tree.ts) that has no curated
+ *  `FONT_STACKS` entry — Lusitana, Cardo, Spectral, Vollkorn, Gentium
+ *  Plus, Old Standard TT, Libre Caslon Text, Marcellus, Bodoni Moda,
+ *  Cormorant (SC), IM Fell English — plus the generic serif-ish cues. */
+const SERIF_NAME_RE =
+  /serif|garamond|playfair|lora|crimson|lusitana|cardo|spectral|vollkorn|gentium|old standard|caslon|marcellus|bodoni|cormorant|im fell/;
+
 /** Total resolver: family name → a real font stack. Known names get their
  *  curated `FONT_STACKS` entry; unknown names get the quoted literal plus a
  *  heuristic generic fallback so nothing ever dead-ends in the UA default. */
@@ -111,7 +120,7 @@ export function resolveFontStack(name: string): string {
   }
   const lower = trimmed.toLowerCase();
   let generic = "sans-serif";
-  if (/serif|garamond|playfair|lora|crimson/.test(lower)) generic = "serif";
+  if (SERIF_NAME_RE.test(lower)) generic = "serif";
   if (/mono|code/.test(lower)) generic = "monospace";
   return `${quoteFamily(trimmed)}, ${generic}`;
 }
