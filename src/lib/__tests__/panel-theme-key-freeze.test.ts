@@ -108,7 +108,7 @@ describe("panel-theme key freeze (13 frozen keys)", () => {
 
   it("every CARD_THEMES entry carries all palette-derivation fields, each a solid hex", () => {
     for (const key of FROZEN_THEME_KEYS) {
-      const theme = CARD_THEMES[key as PanelThemeKey] as Record<string, unknown>;
+      const theme = CARD_THEMES[key as PanelThemeKey] as unknown as Record<string, unknown>;
       expect(theme, `CARD_THEMES.${key} missing`).toBeTruthy();
       for (const field of REQUIRED_PALETTE_FIELDS) {
         expect(
