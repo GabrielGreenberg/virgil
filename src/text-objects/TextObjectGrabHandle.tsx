@@ -82,6 +82,7 @@ import {
   textObjectPopoutKey,
   capPopoutHeight,
 } from "./text-object-registry";
+import { FLOAT_DEFAULT_SIZE } from "@/floats/float-policy";
 import { resolveBlockFrame } from "./block-frame";
 import { computeHandleLeftEdge } from "./handle-layout";
 import { LiftedTextOverlay } from "./LiftedTextOverlay";
@@ -145,11 +146,16 @@ const POPOUT_BODY_PADDING_Y = 16;
 const POPOUT_BORDER = 1;
 
 /**
- * Default initial float size at spawn time. Per-kind overrides live on
- * the registry as `meta.initialFloatSize`; wider kinds (headings,
- * lists, tex blocks) populate it.
+ * Default initial float size at spawn time — the subsystem-wide
+ * `FLOAT_DEFAULT_SIZE` (float-policy), reshaped to the registry's
+ * `{width, height}` vocabulary. Per-kind overrides live on the registry
+ * as `meta.initialFloatSize`; wider kinds (headings, lists, tex blocks)
+ * populate it.
  */
-const DEFAULT_FLOAT_SIZE: { width: number; height: number } = { width: 360, height: 280 };
+const DEFAULT_FLOAT_SIZE: { width: number; height: number } = {
+  width: FLOAT_DEFAULT_SIZE.w,
+  height: FLOAT_DEFAULT_SIZE.h,
+};
 
 function floatSizeFor(kind: TextObjectKind) {
   return TEXT_OBJECT_REGISTRY[kind].initialFloatSize ?? DEFAULT_FLOAT_SIZE;
