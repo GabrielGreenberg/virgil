@@ -68,10 +68,11 @@ export const LEGACY_TOKEN_CROSSWALK: Record<CardKind, LegacyTokens> = {
  *    `samples/annotation-history/virgil/revisions.json` (and dev-doc copies).
  *    Maps to `"revision-comment"` (the comment kind; suggestions were a later
  *    split and always wrote spine kinds).
- *  • `"cut"` — pre-refactor cutter cards; the legacy `cuts[]` branch in
- *    `useCutter.ts` rewrites it via `rewriteLinkTargetKind("cut" →
- *    "cutter-comment")`. Mapped here so the same token is handled at the
- *    shared funnel too.
+ *  • `"cut"` — pre-refactor cutter cards (fixture:
+ *    `virgil-data/sync-test/virgil/cutter.json`). Previously rewritten by a
+ *    local `rewriteLinkTargetKind` wrapper in `useCutter.ts`'s legacy
+ *    `cuts[]` branch; that wrapper is deleted — the rewrite now happens
+ *    solely here, applied by the shared funnel.
  *
  * Known-dead token, intentionally UNMAPPED: `"quotation"` (in
  * `virgil-data/sync-test/virgil/quotations.json`) belongs to the removed
