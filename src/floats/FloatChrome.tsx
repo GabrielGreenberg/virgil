@@ -55,6 +55,11 @@ export interface FloatChromeProps {
   titleNode?: ReactNode;
   /** The single domain-contributed trailing slot. */
   trailing?: ReactNode;
+  /** Header-strip background (`Floatable.headerTint`) — card floats pass
+   *  their kind's `theme.headerDefault` so the strip matches the docked
+   *  card header (pop-out continuity #20). Absent → the neutral
+   *  `--surface-muted-strong` (text-object floats). */
+  headerTint?: string;
   /** Whether to show the jump-to-source chevron. */
   canJump: boolean;
   onJump: () => void;
@@ -65,13 +70,17 @@ export function FloatChrome({
   title,
   titleNode,
   trailing,
+  headerTint,
   canJump,
   onJump,
   onClose,
 }: FloatChromeProps) {
   const labelNoun = title.toLowerCase();
   return (
-    <div className="flex items-center gap-1 px-2 h-6 shrink-0 border-b border-edge-subtle bg-[var(--surface-muted-strong)]">
+    <div
+      className="flex items-center gap-1 px-2 h-6 shrink-0 border-b border-edge-subtle"
+      style={{ backgroundColor: headerTint ?? "var(--surface-muted-strong)" }}
+    >
       <FloatGrip />
       {titleNode ?? (
         <span

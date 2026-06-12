@@ -179,6 +179,7 @@ export function FloatWindow({
             title={titleOverride ?? floatable.title}
             titleNode={floatable.chromeSlots?.title}
             trailing={floatable.chromeSlots?.trailing}
+            headerTint={floatable.headerTint}
             canJump={floatable.canJump}
             onJump={floatable.jumpToSource}
             onClose={() => ctx.close(key)}

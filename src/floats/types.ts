@@ -78,6 +78,13 @@ export interface Floatable {
   /** Visual shell treatment. */
   surface: FloatSurface;
 
+  /** Optional header-strip background for `FloatChrome` — pop-out
+   *  continuity (#20): card floats set this to their kind's
+   *  `theme.headerDefault` so the float header matches the docked card
+   *  header. Absent → the neutral `--surface-muted-strong` strip
+   *  (text-object floats keep it). */
+  headerTint?: string;
+
   /** The specialized content — **headerless**: `FloatChrome` (owned by
    *  `FloatWindow`) renders the grip/title/trailing/jump/close skeleton above
    *  it. The `ctx` lets the body retitle the chrome (text headings). */
