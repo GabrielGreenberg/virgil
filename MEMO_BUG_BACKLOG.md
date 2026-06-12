@@ -613,7 +613,20 @@ Make residue behavior uniform across all kinds at the registry level.
 
 ## 22. Citation card typography is inconsistent across states
 
-**Reported:** 2026-06-11 · **Status:** open · **Area:** card panels / citations / style
+**Reported:** 2026-06-11 · **Status:** open (root cause FIXED 2026-06-11) · **Area:** card panels / citations / style
+
+**Root cause landed** (chip `font-stack-fix`, reviewed + merged): `FONT_STACKS`
+crosswalk + total `resolveFontStack` in [panel-typography.ts](src/lib/panel-typography.ts),
+consumed in `usePanelBodyStyle` — bare unloaded family names (the Times-fallback
+bug) can no longer ship; the per-panel font picker works. **Remaining for the
+ui-consistency-sweep chip:** the bodyStyle-over-title spread-order clobber ·
+token normalization (meta scale, CardMetaLabel/CardMono) · preview-chrome
+bare-name emitters the fix deliberately skipped (`FontsDialog.tsx:22/82/436`
+`fontStack`, `FontPicker.tsx:18` + option previews, `SmartPreferences.tsx:139,142`
+raw select styles — unify all three local helpers on `resolveFontStack`) ·
+serif-heuristic regex misses dialog-reachable serif names (cosmetic) · dead
+`--panel-body-fontfamily`/`--panel-body-color` vars in panel-kind-context.tsx ·
+the not-reproducing expanded-row serif (manual check on Gabriel's machine).
 
 Fonts differ between collapsed (bold serif citekey), expanded-resolved (italic
 serif bib entry), expanded-unresolved (large red serif), and the TYPE/CODE/
@@ -632,7 +645,17 @@ chip that lands shared tokens — sequence AFTER the chrome redesign (items
 
 ## 24. Runtime crash: `cssTokenForCardKind` — unknown kind reaches the crosswalk
 
-**Reported:** 2026-06-11 · **Status:** open · **Area:** links / anchor reconciler
+**Reported:** 2026-06-11 · **Status:** done (2026-06-11) · **Area:** links / anchor reconciler
+
+**FIXED** (chip `legacy-kind-crash-fix`, reviewed + merged): legacy tokens
+(`"comment"`, `"cut"`) normalized via `normalizeLegacyCardKind` at the
+`migrateLink` load funnel; both crosswalk accessors runtime-total (null + once-
+per-token dev warn); `useCutter`'s local rewrite deduped into the funnel
+(reviewer proved call-graph equivalence); `"quotation"` documented known-dead.
+**Follow-up routed to the registry-completion chip:** `resolveLinkPanel` →
+`getPanelByCardKind` ([panel-registry.ts:265](src/panels/panel-registry.ts)) is a
+dead-code pair whose unguarded `CARD_REGISTRY[kind]` index is the same crash
+shape — harden or delete.
 
 `TypeError: Cannot read properties of undefined (reading 'cssToken')` at
 [src/cards/legacy-token-crosswalk.ts:61](src/cards/legacy-token-crosswalk.ts:61)
