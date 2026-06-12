@@ -1060,7 +1060,7 @@ export function EditableCard({
         </div>
       ) : (
       <div
-        className={`relative px-3 pt-1.5 pb-2${isPoppedOut ? " flex-1 min-h-0 overflow-auto" : " overflow-y-auto"}`}
+        className={`relative ${PANEL.cardBody}${isPoppedOut ? " flex-1 min-h-0 overflow-auto" : " overflow-y-auto"}`}
         style={{
           ...(isPoppedOut
             ? null
@@ -1156,6 +1156,12 @@ export function AiRequestCheckbox({
 export const PANEL = {
   /** Scrollable list container wrapping all cards. */
   list: "flex-1 overflow-y-auto px-2 py-2 space-y-2",
+  /** Standard card-body padding (UI-consistency sweep, ratified
+   *  2026-06-12). One token for EditableCard's expanded body and the
+   *  bespoke bodies (citation rows, todo, highlight, AI request).
+   *  ExampleCard's sectioned strips intentionally keep their own
+   *  (structured expex content). */
+  cardBody: "px-3 pt-1.5 pb-2",
   /** Inner padding for card content. */
   cardInner: "px-4 py-3 relative min-w-0",
   /** Expandable sub-pod with muted background (for fields, notes, etc.). */
@@ -2331,7 +2337,7 @@ export function AiRequestCard({
       {/* Body: auto-grow textarea. (The former near-invisible `bg-sky-50/20`
           wash was dropped in A10 Commit H rather than minting a one-consumer
           `bodyTint` palette token — it composited to ≈white anyway.) */}
-      <div className={`px-3 py-2${isPoppedOut ? " flex-1 min-h-0 overflow-auto" : ""}`}>
+      <div className={`${PANEL.cardBody}${isPoppedOut ? " flex-1 min-h-0 overflow-auto" : ""}`}>
         <textarea
           ref={taRef}
           value={draft}

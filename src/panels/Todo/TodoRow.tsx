@@ -4,6 +4,7 @@ import { useState, useRef, useCallback } from "react";
 import type { TodoItem } from "@/lib/types";
 import {
   CARD_THEMES,
+  PANEL,
   PanelCard,
   CardTitleInput,
   AiRequestCheckbox,
@@ -147,7 +148,7 @@ export function TodoRow({
       onJump={(e) => onJump?.((e.currentTarget as HTMLElement).closest('[data-card]') as HTMLElement | null)}
       headerTrailing={<TodoDoneToggle item={item} onToggle={onToggle} />}
     >
-      <div className={`px-3 pt-1.5 pb-2${isPoppedOut ? " flex-1 min-h-0 overflow-auto flex flex-col" : ""}`}>
+      <div className={`${PANEL.cardBody}${isPoppedOut ? " flex-1 min-h-0 overflow-auto flex flex-col" : ""}`}>
         <CardTitleInput
           defaultValue={item.text}
           onChange={(t) => onUpdate(item.id, t)}

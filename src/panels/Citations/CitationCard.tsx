@@ -752,7 +752,7 @@ export function CitationCard({
       ) : (
         <>
           <div
-            className={`${PANEL.cardInner}${
+            className={`${PANEL.cardBody} relative min-w-0${
               isPoppedOut ? " flex-1 min-h-0 overflow-auto" : ""
             }`}
             onClick={(e) => e.stopPropagation()}

@@ -5,6 +5,7 @@ import type { HighlightCard as HighlightCardData } from "@/lib/types";
 import {
   AiRequestCheckbox,
   CardEmptyText,
+  PANEL,
   PanelCard,
   compressedBodyStyle,
 } from "@/components/panel-primitives";
@@ -143,7 +144,7 @@ export function HighlightCard({
           </div>
         </div>
       ) : (
-        <div className="px-3 pt-2 pb-2 space-y-2" onClick={(e) => e.stopPropagation()}>
+        <div className={`${PANEL.cardBody} space-y-2`} onClick={(e) => e.stopPropagation()}>
           <div>
             <div
               className="text-sm whitespace-pre-wrap break-words"
