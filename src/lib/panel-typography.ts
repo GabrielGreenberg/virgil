@@ -64,13 +64,16 @@ export const BODY_CLASS_TYPOGRAPHY: Record<"borrowed" | "sans", PanelTypography>
  *    FIRST so an explicit choice is honored, not hijacked by override vars,
  *    with a real generic fallback after.
  */
-export const FONT_STACKS: Record<string, string> = {
+export const FONT_STACKS: Record<string, string> = Object.freeze({
   // Registry defaults — var-first (track the doc's effective faces).
   "Inter":           "var(--font-sans-override, var(--font-sans)), Inter, system-ui, sans-serif",
   "Source Serif 4":  'var(--font-serif-override, var(--font-serif)), "Source Serif 4", Georgia, serif',
   // Not in the Google-fonts pool <link>; next/font loads it under an
   // obfuscated name behind --font-display, so route through that var.
   "Playfair Display": '"Playfair Display", var(--font-display), var(--font-serif-override, var(--font-serif)), Georgia, serif',
+  // Also next/font-only: Cinzel (the logo face) lives behind --font-logo —
+  // reachable from the Fonts… dialog's MAIN_TEXT_FONTS pool.
+  "Cinzel":           "Cinzel, var(--font-logo), serif",
   // Loaded by the Google-fonts pool <link> (real family names) — literal
   // first so an explicit pick is honored, generic fallback after.
   "Libre Baskerville": '"Libre Baskerville", Georgia, serif',
@@ -87,7 +90,7 @@ export const FONT_STACKS: Record<string, string> = {
   "Georgia":           "Georgia, serif",
   "system-ui":         "system-ui, sans-serif",
   "Helvetica Neue":    '"Helvetica Neue", system-ui, sans-serif',
-};
+});
 
 /** Quote space-containing family names (browsers drop unquoted multi-word
  *  values set programmatically via inline style). */
@@ -99,13 +102,18 @@ function quoteFamily(name: string): string {
  *  curated `FONT_STACKS` entry; unknown names get the quoted literal plus a
  *  heuristic generic fallback so nothing ever dead-ends in the UA default. */
 export function resolveFontStack(name: string): string {
-  const known = FONT_STACKS[name];
-  if (known) return known;
-  const lower = name.toLowerCase();
+  const trimmed = name.trim();
+  if (!trimmed) return "sans-serif";
+  // Own-key lookup: a crafted/corrupted pref like "toString" must not pull a
+  // function off the prototype chain.
+  if (Object.prototype.hasOwnProperty.call(FONT_STACKS, trimmed)) {
+    return FONT_STACKS[trimmed];
+  }
+  const lower = trimmed.toLowerCase();
   let generic = "sans-serif";
   if (/serif|garamond|playfair|lora|crimson/.test(lower)) generic = "serif";
   if (/mono|code/.test(lower)) generic = "monospace";
-  return `${quoteFamily(name)}, ${generic}`;
+  return `${quoteFamily(trimmed)}, ${generic}`;
 }
 
 /** The card kind whose `bodyClass` defines each panel-body row. The single

@@ -156,4 +156,23 @@ describe("resolveFontStack: bare family names never ship", () => {
     expect(resolveFontStack("Fira Code")).toBe('"Fira Code", monospace');
     expect(resolveFontStack("JetBrains Mono")).toBe('"JetBrains Mono", monospace');
   });
+
+  it("Cinzel (next/font-only, Fonts-dialog pool) routes through --font-logo, not a bare dead-end", () => {
+    const stack = resolveFontStack("Cinzel");
+    expect(stack).toContain("var(--font-logo)");
+    expect(stack).toMatch(GENERIC_TAIL);
+  });
+
+  it("degenerate inputs stay total: empty/whitespace → plain generic; prototype keys don't leak", () => {
+    expect(resolveFontStack("")).toBe("sans-serif");
+    expect(resolveFontStack("   ")).toBe("sans-serif");
+    // A corrupted pref like "toString" must resolve via the fallback rule
+    // (string result), never pull a function off the prototype chain.
+    expect(resolveFontStack("toString")).toBe("toString, sans-serif");
+    expect(resolveFontStack("constructor")).toBe("constructor, sans-serif");
+  });
+
+  it("FONT_STACKS is frozen", () => {
+    expect(Object.isFrozen(FONT_STACKS)).toBe(true);
+  });
 });
