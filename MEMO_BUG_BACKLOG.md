@@ -250,7 +250,7 @@ actions toolbar before deleting.
 
 ## 7. L/R tool strip: reordering a panel icon shouldn't open the panel
 
-**Reported:** 2026-06-05 · **Status:** open · **Area:** ui-chrome / pane rail ·
+**Reported:** 2026-06-05 · **Status:** done (2026-06-11, fixed as the suppress-click guard class in chip `card-chrome-ux`, merge `7f843a6`) · **Area:** ui-chrome / pane rail ·
 **Related:** item 2 (same "unwanted panel-open side effect" symptom, different root cause)
 
 **Reported behavior** — drag-and-dropping a left/right tool-strip item to a new
@@ -448,6 +448,9 @@ selected-but-collapsed cell is unreachable for this one card.
 ErrorCard (panel-owned `expanded` set + the chevron), so the N1 2×2 holds
 uniformly. (A4 Session-13 deferral #3, carried at refactor archival.)
 
+**DONE 2026-06-11** (chip `card-chrome-ux`, merge `7f843a6`): orphan now on the
+global store axis; 2×2 fully reachable; pinned by `orphan-expansion.test.tsx`.
+
 ## 13. CitationCard draft chevron is a dead click while isDraft
 
 `src/panels/Citations/CitationCard.tsx`: the A4 expand chevron renders on a
@@ -456,6 +459,10 @@ draft citation card but expanding a draft is a no-op — a dead affordance.
 **Desired** — suppress the chevron while `isDraft` (or make expansion
 meaningful for drafts). (A4 Session-13 deferral #6, carried at refactor
 archival.)
+
+**DONE 2026-06-11** (chip `card-chrome-ux`, merge `7f843a6`): chevron retired
+globally; draft header click = select-only with `headerDisclosure={false}` a11y;
+pinned by `citation-draft-header.test.tsx`.
 
 ---
 
@@ -550,7 +557,7 @@ findings from the Session-17 workflow refine these in place.
 
 ## 14. Card chrome: kill the chevron — header click toggles expand/collapse
 
-**Reported:** 2026-06-11 · **Status:** open · **Area:** card panels / shared chrome
+**Reported:** 2026-06-11 · **Status:** done (2026-06-11, chip `card-chrome-ux`, merge `7f843a6`) · **Area:** card panels / shared chrome
 
 No chevron control at all. Clicking anywhere on the card header toggles
 expand/collapse. Must disambiguate from header-drag (item 19) via the existing
@@ -559,14 +566,14 @@ disappears with the chevron itself).
 
 ## 15. Collapsed card must always show its title (when present)
 
-**Reported:** 2026-06-11 · **Status:** open · **Area:** card panels / shared chrome
+**Reported:** 2026-06-11 · **Status:** done (2026-06-11, chip `card-chrome-ux`, merge `7f843a6`) · **Area:** card panels / shared chrome
 
 Collapsed view currently can omit the title. Desired: title always visible in
 collapsed mode whenever the card has one.
 
 ## 16. Footnote cards: collapsed mode drops inline-style citations
 
-**Reported:** 2026-06-11 · **Status:** open · **Area:** card panels / footnotes
+**Reported:** 2026-06-11 · **Status:** done (2026-06-11, chip `card-chrome-ux`, merge `7f843a6`) · **Area:** card panels / footnotes
 
 A footnote whose text contains citations doesn't render them inline-style in
 collapsed mode (expanded mode does). Likely the collapsed preview path bypasses
@@ -575,20 +582,20 @@ the borrowed-schema renderer — check whether the whole inline-atom class
 
 ## 17. Titleless cards: shrink the title-row gap (+T affordance)
 
-**Reported:** 2026-06-11 · **Status:** open · **Area:** card panels / shared chrome
+**Reported:** 2026-06-11 · **Status:** done (2026-06-11, chip `card-chrome-ux`, merge `7f843a6`) · **Area:** card panels / shared chrome
 
 When a card has no title, the title row leaves an oversized gap; it should
 collapse to a small +T affordance area.
 
 ## 18. Kill the pop-out button — grab-to-pop is the only pop-out path
 
-**Reported:** 2026-06-11 · **Status:** open · **Area:** card panels / shared chrome
+**Reported:** 2026-06-11 · **Status:** done (2026-06-11, chip `card-chrome-ux`, merge `7f843a6`) · **Area:** card panels / shared chrome
 
 Remove the ↑ pop-out button from the card header entirely.
 
 ## 19. Unify grab surfaces: grab bar and header are the same grab
 
-**Reported:** 2026-06-11 · **Status:** open · **Area:** card panels / shared chrome
+**Reported:** 2026-06-11 · **Status:** done (2026-06-11, chip `card-chrome-ux`, merge `7f843a6`) · **Area:** card panels / shared chrome
 
 The ⋮⋮ grab-dots and the header should be one grab surface — dragging the
 header lifts the card exactly like dragging the dots. Click on header =
