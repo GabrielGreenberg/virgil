@@ -21,8 +21,7 @@
     "revisions": false,
     "cutter": false,
     "errors": false,
-    "reports": false,
-    "quotations": false
+    "reports": false
   },
   "fontSizeRem": 1.05
 }
