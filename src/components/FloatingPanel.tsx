@@ -35,6 +35,12 @@ export interface FloatingPanelHandle {
    *  mousedowned the floating panel's header. The window-level move/up
    *  listeners (already mounted) pick up the gesture from there. */
   beginDragAt: (clientX: number, clientY: number) => void;
+  /** One-shot programmatic rect update (partial — unset fields keep
+   *  their current value). Sets the live floating pos AND persists it
+   *  via `onChange`. Called from a layout effect it applies before the
+   *  next paint. Used by the collapsed-card lift's expand-to-content
+   *  grow (FloatWindow); not a resize gesture — no min/max clamping. */
+  setRect: (rect: Partial<{ x: number; y: number; width: number; height: number }>) => void;
 }
 
 interface FloatingPanelProps {
@@ -523,6 +529,15 @@ function FloatingPanelInner({
       };
       document.body.style.userSelect = "none";
       document.body.style.cursor = "grabbing";
+    },
+    setRect: (rect) => {
+      const next = { ...latestPosRef.current, ...rect };
+      // Refresh the ref eagerly (it normally syncs on render) so a
+      // beginDragAt issued later in the same effect anchors to the
+      // updated rect, not the stale pre-setRect one.
+      latestPosRef.current = next;
+      setPos(next);
+      handlersRef.current.onChange(next);
     },
   }), []);
 
