@@ -626,7 +626,7 @@ Make residue behavior uniform across all kinds at the registry level.
 
 ## 22. Citation card typography is inconsistent across states
 
-**Reported:** 2026-06-11 · **Status:** open (root cause FIXED 2026-06-11) · **Area:** card panels / citations / style
+**Reported:** 2026-06-11 · **Status:** done (2026-06-12, chip `ui-consistency-sweep`, merge `2f8eda5`; root cause earlier in `font-stack-fix`) · **Area:** card panels / citations / style
 
 **Root cause landed** (chip `font-stack-fix`, reviewed + merged): `FONT_STACKS`
 crosswalk + total `resolveFontStack` in [panel-typography.ts](src/lib/panel-typography.ts),
@@ -648,7 +648,7 @@ STYLE_GUIDE.md (and add a typography section there if silent).
 
 ## 23. UI-consistency sweep: window shapes, pop-out geometry, fonts
 
-**Reported:** 2026-06-11 · **Status:** open · **Area:** cross-cutting / style
+**Reported:** 2026-06-11 · **Status:** done (2026-06-12, chip `ui-consistency-sweep`, merge `2f8eda5`) · **Area:** cross-cutting / style
 
 The visual analogue of the functional refactor: audit + normalize window
 shapes (radius/border/shadow/padding), float sizes and pop-out positions, and
@@ -767,3 +767,36 @@ the float or hide the button there. (Same gate also noted, lower priority:
 `collectClippedHeight` over-counts fixed-height inner textareas — capped by
 55vh, observe in walk W11 — and the `headerTint` registry→FloatChrome wiring
 has no test, which belongs to the queued `test-hardening` chip.)
+
+---
+
+## 27. Derive the in-text anchor color maps from CARD_THEMES (second G3 surface)
+
+**Reported:** 2026-06-12 (chip-E review gate) · **Status:** open · **Area:** links / globals.css
+
+Chip E derived CARD outline colors from `theme.accent` (inline stamp on the
+PanelCard root) and deleted the card CSS block — but the **in-text** maps
+(`.linked-anchor` / `[data-paragraph-kind]` color blocks in globals.css, ~:2590
+and ~:2637 pre-merge) are still hand-mirrored hex tables. A user panel-color
+override now desyncs card outline vs in-text anchor paint. Fix the same way:
+stamp `--link-anchor-color` from the live theme at the highlight write-sites
+(`useCardSelectionHighlight`/`useCardHoverHighlight` family) or generate the
+map from `DEFAULT_PANEL_COLORS`, then delete both blocks. (Archive hexes were
+hand-aligned to `#7191b0` in the chip-E fold as a stopgap.)
+
+## 28. BibEntryCard renders bib fields via dangerouslySetInnerHTML — escape them
+
+**Reported:** 2026-06-12 (chip-E review gate) · **Status:** open · **Area:** bibliography / security
+
+`BibEntryCard`'s publication-details row joins raw `entry.fields` (journal,
+booktitle, editor, doi, url) into `dangerouslySetInnerHTML` to get literal
+`<i>` markup. A `.bib` entry containing HTML (e.g. fetched by find-citation
+from an external source, or a shared paper's references.bib) injects markup
+into the panel. Pre-existing, flagged by the chip-E gate. Fix: escape field
+values before templating (or render JSX spans), and audit the other
+formatted-bib innerHTML sinks (`getFormatted*` family) in the same pass.
+Smaller residue from the same gate, fold into whichever chip lands nearby:
+`CardMono` has zero call sites (adopt-or-delete) · BibEntryCard's `compact`
+prop is dead code · the Inter/"Source Serif 4" picker option previews render
+the user's override face rather than the named face (needs a preview-oriented
+resolver) · bib expanded body still on `PANEL.cardInner` (exempt or convert).
