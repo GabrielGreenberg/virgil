@@ -146,6 +146,62 @@ describe("computeMarkerPositions overflow (A6/R16)", () => {
     ]);
   });
 
+  it("capacity=1 edge (1-line LEFT grid): overflow reserves the ONLY cell for the pill — zero visible markers, ALL hidden", () => {
+    // Left side has 1 effective column, so a 1-line node has capacity 1.
+    // 2 markers overflow it: visibleCount = capacity - 1 = 0, the pill takes
+    // cell (0,0), and BOTH markers ride the popover. Pins the degenerate
+    // arithmetic (no -1th marker, no negative slice).
+    const markers = [1, 2].map((i) => marker(i, "left"));
+    const { positioned, overflowGroups } = computeMarkerPositions(
+      () => metricsFor(1),
+      markers,
+      {},
+    );
+
+    expect(positioned).toEqual([]);
+    expect(overflowGroups).toHaveLength(1);
+    const g = overflowGroups[0];
+    expect(g.hidden.map((m) => m.entityId)).toEqual(["m1", "m2"]);
+    expect(g.cell).toEqual({
+      col: 0,
+      row: 0,
+      x: expectedXLeft(0),
+      y: expectedY(0),
+    });
+  });
+
+  it("capacity=1 edge: a SINGLE marker still fits (no pill at the boundary)", () => {
+    const { positioned, overflowGroups } = computeMarkerPositions(
+      () => metricsFor(1),
+      [marker(1, "left")],
+      {},
+    );
+    expect(overflowGroups).toEqual([]);
+    expect(positioned.map((m) => m.entityId)).toEqual(["m1"]);
+    expect(positioned[0].cell).toEqual({
+      col: 0,
+      row: 0,
+      x: expectedXLeft(0),
+      y: expectedY(0),
+    });
+  });
+
+  it("lineCount=0 is clamped to capacity 1 (Math.max guard): same pill-only degenerate", () => {
+    // A measured-but-empty node (lineCount 0) must not produce capacity 0 —
+    // the Math.max(1, lineCount) clamp keeps the reserved-cell math sane.
+    const markers = [1, 2].map((i) => marker(i, "left"));
+    const { positioned, overflowGroups } = computeMarkerPositions(
+      () => metricsFor(0),
+      markers,
+      {},
+    );
+    expect(positioned).toEqual([]);
+    expect(overflowGroups).toHaveLength(1);
+    expect(overflowGroups[0].hidden.map((m) => m.entityId)).toEqual(["m1", "m2"]);
+    expect(overflowGroups[0].cell.row).toBe(0);
+    expect(overflowGroups[0].cell.col).toBe(0);
+  });
+
   it("unmeasured nodes are skipped entirely (no markers, no pill)", () => {
     const markers = [1, 2, 3].map((i) => marker(i, "right"));
     const { positioned, overflowGroups } = computeMarkerPositions(
