@@ -31,9 +31,25 @@ vi.mock("@/lib/storage", () => {
 
 import type { Link } from "@/links/_shared/types";
 import type { OmniItem } from "@/panels/_shared/types";
+import type {
+  ArchivedSnippet,
+  TodoItem,
+  CutterCard,
+  RevisionCard,
+  ReportItem,
+  CitationRef,
+} from "@/lib/types";
+import type { ExampleInfo } from "@/components/Editor";
 import { buildNoteOmniItems } from "@/panels/Notes/omni";
 import { buildFootnoteOmniItems } from "@/panels/Footnotes/omni";
 import { buildErrorOmniItems } from "@/panels/Errors/omni";
+import { buildArchiveOmniItems } from "@/panels/Archive/omni";
+import { buildTodoOmniItems } from "@/panels/Todo/omni";
+import { buildCutterOmniItems } from "@/panels/Cutter/omni";
+import { buildRevisionOmniItems } from "@/panels/Revisions/omni";
+import { buildReportsOmniItems } from "@/panels/Reports/omni";
+import { buildCitationOmniItems } from "@/panels/Citations/omni";
+import { buildExampleOmniItems } from "@/panels/Examples/omni";
 
 /** A Mode-A paragraph anchor link to one uuid. */
 function paraLink(uuid: string): Link {
@@ -188,42 +204,285 @@ describe("omni builder anchorState classification", () => {
     expect(orphan.anchorState).toBe("orphaned");
     expect(orphan.pos).toBeNull();
   });
-});
 
-describe("OmniViewPanel mount-race guard (pos == null dropped while editor null)", () => {
-  // Mirror of the {anchored, unanchored} split in OmniViewPanel: while
-  // `editor` is null, builders that resolve UUIDs transiently return pos:null
-  // for items that WILL anchor once the editor mounts. Those must be dropped,
-  // not flashed into the unanchored bin.
-  function split(items: OmniItem[], editor: object | null) {
-    const anchored: OmniItem[] = [];
-    const unanchored: OmniItem[] = [];
-    for (const item of items) {
-      if (item.pos == null) {
-        if (!editor) continue; // mount-race guard
-        unanchored.push(item);
-      } else {
-        anchored.push(item);
-      }
-    }
-    return { anchored, unanchored };
-  }
+  // ── The remaining 7 builders (test-hardening: full 10-builder coverage) ──
 
-  const items: OmniItem[] = [
-    { id: "float:card:note:a", pos: 10, anchorState: "anchored", content: null },
-    { id: "float:card:note:b", pos: null, anchorState: "free", content: null },
-    { id: "float:card:note:c", pos: null, anchorState: "orphaned", content: null },
-  ];
+  // Shared resolver: only "live-uuid" resolves.
+  const resolve = (uuid: string | null) => (uuid === "live-uuid" ? 42 : null);
 
-  it("drops every pos:null item while editor is null", () => {
-    const { anchored, unanchored } = split(items, null);
-    expect(anchored.map((i) => i.id)).toEqual(["float:card:note:a"]);
-    expect(unanchored).toHaveLength(0);
+  it("Archive: anchoredIds-orphan → orphaned; no links → free; live link → anchored; dead link → orphaned", () => {
+    const snippet = (id: string, links: Link[]): ArchivedSnippet => ({
+      id,
+      title: "",
+      content: { type: "doc", content: [] },
+      createdAt: "2026-01-01T00:00:00.000Z",
+      links,
+    });
+    const items = buildArchiveOmniItems({
+      archiveSnippets: [
+        // anchoredIds says this one's anchor vanished — orphaned EVEN with a
+        // live-looking link (the anchoredIds check wins).
+        snippet("s-anchorless", [paraLink("live-uuid")]),
+        snippet("s-free", []),
+        snippet("s-anchored", [paraLink("live-uuid")]),
+        snippet("s-orphan", [paraLink("dead-uuid")]),
+      ],
+      anchoredIds: new Set(["s-free", "s-anchored", "s-orphan"]),
+      selectedArchiveId: null,
+      setSelectedArchiveId: noopId,
+      jumpToCard: noop,
+      findParagraphPos: resolve,
+      updateArchiveSnippet: noop,
+      updateArchiveSnippetTitle: noop,
+      handleDeleteArchive: noop,
+      setOverrideEditor: noop,
+      getCitationDisplayText: () => "",
+      onCitationCreated: () => null,
+    });
+    const states = new Map(items.map((i) => [i.id, [i.anchorState, i.pos]]));
+    expect(states.get("float:card:archive:s-anchorless")).toEqual(["orphaned", null]);
+    expect(states.get("float:card:archive:s-free")).toEqual(["free", null]);
+    expect(states.get("float:card:archive:s-anchored")).toEqual(["anchored", 42]);
+    expect(states.get("float:card:archive:s-orphan")).toEqual(["orphaned", null]);
   });
 
-  it("routes free + orphaned into unanchored once editor is live", () => {
-    const { anchored, unanchored } = split(items, {});
-    expect(anchored.map((i) => i.id)).toEqual(["float:card:note:a"]);
-    expect(unanchored.map((i) => i.anchorState).sort()).toEqual(["free", "orphaned"]);
+  it("Todo: no links → free; live link → anchored; dead link → orphaned", () => {
+    const todo = (id: string, links: Link[]): TodoItem => ({
+      id,
+      text: "t",
+      notes: "",
+      done: false,
+      aiRequest: false,
+      createdAt: "2026-01-01T00:00:00.000Z",
+      links,
+    });
+    const items = buildTodoOmniItems({
+      todoItems: [
+        todo("t-free", []),
+        todo("t-anchored", [paraLink("live-uuid")]),
+        todo("t-orphan", [paraLink("dead-uuid")]),
+      ],
+      selectedTodoId: null,
+      setSelectedTodoId: noopId,
+      jumpToCard: noop,
+      findParagraphPos: resolve,
+      toggleTodo: noop,
+      updateTodo: noop,
+      updateTodoNotes: noop,
+      setTodoAiRequest: noop,
+      deleteTodo: noop,
+    });
+    const byState = items.map((i) => [i.id.split(":").pop(), i.anchorState, i.pos]);
+    expect(byState).toEqual([
+      ["t-free", "free", null],
+      ["t-anchored", "anchored", 42],
+      ["t-orphan", "orphaned", null],
+    ]);
+  });
+
+  it("Cutter: both kinds classify free / anchored / orphaned", () => {
+    const comment = (id: string, links: Link[]): CutterCard => ({
+      kind: "comment",
+      id,
+      createdAt: "2026-01-01T00:00:00.000Z",
+      text: "c",
+      content: { type: "doc", content: [] },
+      aiRequest: false,
+      links,
+    });
+    const suggestion = (id: string, links: Link[]): CutterCard => ({
+      kind: "suggestion",
+      id,
+      createdAt: "2026-01-01T00:00:00.000Z",
+      author: "human",
+      original_text: "",
+      suggested_text: "",
+      explanation: "",
+      user_text: "",
+      instructions: "",
+      status: "pending",
+      links,
+    });
+    const items = buildCutterOmniItems({
+      cards: [
+        comment("c-free", []),
+        comment("c-anchored", [paraLink("live-uuid")]),
+        suggestion("s-orphan", [paraLink("dead-uuid")]),
+      ],
+      selectedId: null,
+      setSelectedId: noopId,
+      jumpToCard: noop,
+      findParagraphPos: resolve,
+      editor: null,
+      updateCommentText: noop,
+      setCommentAiRequest: noop,
+      updateSuggestionField: noop,
+      acceptSuggestion: noop,
+      rejectSuggestion: noop,
+      convertCard: noop,
+      deleteCard: noop,
+    });
+    const states = new Map(items.map((i) => [i.id, [i.anchorState, i.pos]]));
+    // Canonical AF float-key grammar: kind-in-key, suggestions key separately.
+    expect(states.get("float:card:cutter-comment:c-free")).toEqual(["free", null]);
+    expect(states.get("float:card:cutter-comment:c-anchored")).toEqual(["anchored", 42]);
+    expect(states.get("float:card:cutter-suggestion:s-orphan")).toEqual(["orphaned", null]);
+  });
+
+  it("Revisions: both kinds classify free / anchored / orphaned", () => {
+    const comment = (id: string, links: Link[]): RevisionCard => ({
+      kind: "comment",
+      id,
+      createdAt: "2026-01-01T00:00:00.000Z",
+      text: "c",
+      content: { type: "doc", content: [] },
+      aiRequest: false,
+      links,
+    });
+    const suggestion = (id: string, links: Link[]): RevisionCard => ({
+      kind: "suggestion",
+      id,
+      createdAt: "2026-01-01T00:00:00.000Z",
+      author: "ai",
+      original_text: "",
+      suggested_text: "",
+      explanation: "",
+      user_text: "",
+      instructions: "",
+      status: "pending",
+      links,
+    });
+    const items = buildRevisionOmniItems({
+      cards: [
+        comment("r-free", []),
+        suggestion("r-anchored", [paraLink("live-uuid")]),
+        comment("r-orphan", [paraLink("dead-uuid")]),
+      ],
+      selectedId: null,
+      setSelectedId: noopId,
+      jumpToCard: noop,
+      findParagraphPos: resolve,
+      editor: null,
+      updateCommentContent: noop,
+      setCommentAiRequest: noop,
+      updateSuggestionField: noop,
+      acceptSuggestion: noop,
+      rejectSuggestion: noop,
+      convertCard: noop,
+      deleteCard: noop,
+    });
+    const states = new Map(items.map((i) => [i.id, [i.anchorState, i.pos]]));
+    expect(states.get("float:card:revision-comment:r-free")).toEqual(["free", null]);
+    expect(states.get("float:card:revision-suggestion:r-anchored")).toEqual(["anchored", 42]);
+    expect(states.get("float:card:revision-comment:r-orphan")).toEqual(["orphaned", null]);
+  });
+
+  it("Reports: both kinds classify free / anchored / orphaned", () => {
+    const report = (id: string, links: Link[]): ReportItem => ({
+      kind: "report",
+      id,
+      createdAt: "2026-01-01T00:00:00.000Z",
+      author: "ai",
+      title: "",
+      text: "r",
+      content: { type: "doc", content: [] },
+      links,
+    });
+    const request = (id: string, links: Link[]): ReportItem => ({
+      kind: "report-request",
+      id,
+      createdAt: "2026-01-01T00:00:00.000Z",
+      text: "q",
+      content: { type: "doc", content: [] },
+      aiRequest: false,
+      links,
+    });
+    const items = buildReportsOmniItems({
+      cards: [
+        report("rp-free", []),
+        report("rp-anchored", [paraLink("live-uuid")]),
+        request("rq-orphan", [paraLink("dead-uuid")]),
+      ],
+      selectedId: null,
+      setSelectedId: noopId,
+      jumpToCard: noop,
+      findParagraphPos: resolve,
+      updateReportContent: noop,
+      updateReportTitle: noop,
+      updateRequestContent: noop,
+      setRequestAiRequest: noop,
+      convertCard: noop,
+      deleteCard: noop,
+    });
+    const states = new Map(items.map((i) => [i.id, [i.anchorState, i.pos]]));
+    expect(states.get("float:card:report:rp-free")).toEqual(["free", null]);
+    expect(states.get("float:card:report:rp-anchored")).toEqual(["anchored", 42]);
+    expect(states.get("float:card:report-request:rq-orphan")).toEqual(["orphaned", null]);
+  });
+
+  it("Citations: never free — in the position map → anchored; missing marker → orphaned", () => {
+    const cit = (id: string): CitationRef => ({
+      id,
+      command: `\\citep{key-${id}}`,
+      keys: [`key-${id}`],
+      createdAt: "2026-01-01T00:00:00.000Z",
+    });
+    const items = buildCitationOmniItems({
+      citations: [cit("ci-anchored"), cit("ci-orphan")],
+      citationPositionMap: new Map([["ci-anchored", 7]]),
+      selectedCitationId: null,
+      setSelectedCitationId: noopId,
+      scrollToCitation: noop,
+      bibEntries: [],
+      bibPackage: "natbib",
+      getCitationDisplayText: () => "",
+      updateCitation: noop,
+      deleteCitation: noop,
+      getFormattedBib: () => "",
+      getAnnotation: () => "",
+      setAnnotation: noop,
+      requestBibReview: noop,
+      cancelBibReview: noop,
+      getBibReviewStatus: () => "none",
+      updateBibEntry: noop,
+      updateBibKeyAndType: noop,
+    });
+    const states = new Map(items.map((i) => [i.id, [i.anchorState, i.pos]]));
+    expect(states.get("float:card:citation:ci-anchored")).toEqual(["anchored", 7]);
+    // A citation with no in-text marker is ORPHANED, never "free" — an
+    // intrinsically in-text kind (this includes panel-created unanchored
+    // citations: current behavior classifies them orphaned too).
+    expect(states.get("float:card:citation:ci-orphan")).toEqual(["orphaned", null]);
+  });
+
+  it("Examples: never free — block pos → anchored; gone block (null pos) → orphaned", () => {
+    const ex = (exampleId: string, pos: number | null): ExampleInfo =>
+      ({
+        exampleId,
+        // The builder's defensive `pos == null` branch — ExampleInfo types pos
+        // as number, so cast to exercise the gone-block path.
+        pos: pos as unknown as number,
+        number: 1,
+        kind: "single",
+        tag: "",
+        label: "",
+        preview: "",
+        subRange: "",
+      }) as unknown as ExampleInfo;
+    const items = buildExampleOmniItems({
+      examples: [ex("ex-anchored", 31), ex("ex-orphan", null)],
+      selectedExampleId: null,
+      setSelectedExampleId: noopId,
+      onJump: noop,
+    });
+    const states = new Map(items.map((i) => [i.id, [i.anchorState, i.pos]]));
+    expect(states.get("float:card:example:ex-anchored")).toEqual(["anchored", 31]);
+    expect(states.get("float:card:example:ex-orphan")).toEqual(["orphaned", null]);
   });
 });
+
+// The OmniViewPanel mount-race guard (pos == null dropped while `editor` is
+// null) used to be pinned here via a hand-copied mirror of the component's
+// split useMemo — a mirror can't fail when the component drifts. It is now
+// pinned against the REAL default-exported component in
+// `omni-view-panel-split-contract.test.tsx` (test-hardening rewire).

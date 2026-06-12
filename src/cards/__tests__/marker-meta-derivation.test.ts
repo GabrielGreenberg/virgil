@@ -52,15 +52,39 @@ import {
 /** Bidirectional type-equality assert (compile-time pin). */
 type AssertEqual<A, B> = [A] extends [B] ? ([B] extends [A] ? true : false) : false;
 
+/** FROZEN literal marker-type list (test-hardening fix): the per-type tests
+ *  below iterate THIS list, never `ALL_MARKER_TYPES` — iterating the source
+ *  module's own array would silently skip a marker type that was dropped from
+ *  both the registry and `ALL_MARKER_TYPES` in the same edit (the alias
+ *  tautology). A real marker-type addition/removal must touch this literal. */
+const FROZEN_MARKER_TYPES = [
+  "note",
+  "archive",
+  "revision",
+  "cut",
+  "todo",
+  "report",
+  "error",
+] as const satisfies readonly MarkerType[];
+
+/** FROZEN literal theme-key list (13 keys) — same rationale; also pinned
+ *  against the defaults JSON in `panel-theme-key-freeze.test.ts`. */
+const FROZEN_THEME_KEYS = [
+  "citation", "bib", "footnote", "note", "highlight", "archive", "todo",
+  "cut", "revision", "report", "example", "aiRequest", "error",
+] as const satisfies readonly PanelThemeKey[];
+
 describe("marker-meta derivation (A6/R17)", () => {
-  it("registry distinct markerTypes ≡ MARKER_META keys ≡ ALL_MARKER_TYPES", () => {
+  it("registry distinct markerTypes ≡ MARKER_META keys ≡ ALL_MARKER_TYPES ≡ the FROZEN list", () => {
     const declared = new Set<MarkerType>();
     for (const kind of Object.keys(CARD_REGISTRY) as CardKind[]) {
       const t = CARD_REGISTRY[kind].markerType;
       if (t != null) declared.add(t);
     }
-    expect([...declared].sort()).toEqual([...ALL_MARKER_TYPES].sort());
-    expect(Object.keys(MARKER_META).sort()).toEqual([...ALL_MARKER_TYPES].sort());
+    // Anchor every derived/source set to the frozen literal, not to each other.
+    expect([...declared].sort()).toEqual([...FROZEN_MARKER_TYPES].sort());
+    expect([...ALL_MARKER_TYPES].sort()).toEqual([...FROZEN_MARKER_TYPES].sort());
+    expect(Object.keys(MARKER_META).sort()).toEqual([...FROZEN_MARKER_TYPES].sort());
   });
 
   it("per-type card kinds match the frozen table", () => {
@@ -73,7 +97,7 @@ describe("marker-meta derivation (A6/R17)", () => {
       report: ["report", "report-request"],
       error: ["error"],
     };
-    for (const t of ALL_MARKER_TYPES) {
+    for (const t of FROZEN_MARKER_TYPES) {
       expect(cardKindsForMarkerType(t).sort()).toEqual(frozen[t].sort());
     }
   });
@@ -88,7 +112,7 @@ describe("marker-meta derivation (A6/R17)", () => {
       report: "reports",
       error: "errors",
     };
-    for (const t of ALL_MARKER_TYPES) {
+    for (const t of FROZEN_MARKER_TYPES) {
       expect(panelForMarkerType(t)).toBe(frozen[t]);
       expect(MARKER_META[t].panelId).toBe(frozen[t]);
     }
@@ -104,7 +128,7 @@ describe("marker-meta derivation (A6/R17)", () => {
       report: "report",
       error: "error",
     };
-    for (const t of ALL_MARKER_TYPES) {
+    for (const t of FROZEN_MARKER_TYPES) {
       expect(panelThemeKeyForMarkerType(t)).toBe(frozen[t]);
     }
     // A10/B keyspace unification, pinned directly: the revision pair
@@ -118,12 +142,19 @@ describe("marker-meta derivation (A6/R17)", () => {
     // Compile-time pin: the registry ThemeKey IS PanelThemeKey.
     const pinned: AssertEqual<ThemeKey, PanelThemeKey> = true;
     expect(pinned).toBe(true);
-    // Runtime pin: CARD_THEMES is a total fold over DEFAULT_PANEL_COLORS —
-    // same key set, and the revision theme derives from the revision accent.
-    expect(Object.keys(CARD_THEMES).sort()).toEqual(
-      Object.keys(DEFAULT_PANEL_COLORS).sort(),
+    // Runtime pin against the FROZEN literal. (The old assertion compared
+    // CARD_THEMES' keys to DEFAULT_PANEL_COLORS' keys — a tautology, since
+    // CARD_THEMES is literally a fold over DEFAULT_PANEL_COLORS and could
+    // never disagree with it. Anchoring both sides to the hand-written list
+    // makes a dropped/renamed key fail loudly instead.)
+    expect(Object.keys(CARD_THEMES).sort()).toEqual([...FROZEN_THEME_KEYS].sort());
+    expect(Object.keys(DEFAULT_PANEL_COLORS).sort()).toEqual(
+      [...FROZEN_THEME_KEYS].sort(),
     );
-    expect(CARD_THEMES.revision.accent).toBe(DEFAULT_PANEL_COLORS.revision);
+    // The revision theme derives from the revision accent — pinned via the
+    // frozen shipped default, not via the same in-memory table.
+    expect(CARD_THEMES.revision.accent).toBe("#9333ea");
+    expect(DEFAULT_PANEL_COLORS.revision).toBe("#9333ea");
   });
 
   it("derived error palette is byte-identical to the old footnote-accent literal", () => {
