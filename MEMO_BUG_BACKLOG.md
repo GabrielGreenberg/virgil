@@ -747,3 +747,17 @@ handle dots sit in their gap zones on all three; nested `viii.` tier; the
 per-item "ex." label pod still aligns with C; drop-indicator bars (also derived
 from `contentLeft`/`markerLeft` per [block-frame.ts:18](src/text-objects/block-frame.ts:18))
 still align.
+
+---
+
+## 26. Float-side ExampleCard shows a permanently disabled Edit button
+
+**Reported:** 2026-06-12 (chip-D review gate, example-residue lens) · **Status:** open · **Area:** card panels / examples
+
+With the pop residue now live everywhere (#21), the popped example float
+renders a permanently **disabled** Edit button while the docked card next to
+it has the working one — a visible dead affordance. Either enable editing in
+the float or hide the button there. (Same gate also noted, lower priority:
+`collectClippedHeight` over-counts fixed-height inner textareas — capped by
+55vh, observe in walk W11 — and the `headerTint` registry→FloatChrome wiring
+has no test, which belongs to the queued `test-hardening` chip.)
