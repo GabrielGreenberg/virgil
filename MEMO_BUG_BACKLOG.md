@@ -800,3 +800,26 @@ Smaller residue from the same gate, fold into whichever chip lands nearby:
 prop is dead code · the Inter/"Source Serif 4" picker option previews render
 the user's override face rather than the named face (needs a preview-oriented
 resolver) · bib expanded body still on `PANEL.cardInner` (exempt or convert).
+
+---
+
+## 29. Per-heading fold-chevron transaction subscribers — gate or centralize (+ AGENTS.md list gap)
+
+**Reported:** 2026-06-12 (doc-rot chip G + its review gate) · **Status:** open · **Area:** main-text / keystroke sanctity
+
+`editor-extensions.ts` (~:908): each heading NodeView registers its own
+`editor.on("transaction")` fold-chevron refresher — N headings = N subscribers
+firing on EVERY transaction, ungated. Each is verified O(1) (plugin-state read
++ `Set.has` + `classList.toggle(force)`) and unsubscribes on destroy, so a
+50-heading doc costs ~µs — **benign today but a list-contract gap**: it brushes
+keystroke sanctity's letter and isn't on AGENTS.md's permitted list. Fix:
+(a) gate the refresh on `tr.getMeta(sectionFoldingPluginKey) !== undefined ||
+tr.docChanged` (mirroring useEditorUIState's gate over the same plugin state),
+or better one plugin-level subscriber updating all chevrons; (b) reconcile
+AGENTS.md's permitted list with the **six** unlisted subscribers chip G found
+(EditorLayout :1902/:2091/:2172, SelectionActionsMenu :238, omni-host :184,
+code-pane-bridge :405 — each looked gated/O(1); list or fix each).
+Also from the same gate, code-comment rot to sweep when nearby:
+`panel-registry.ts:52,90` ("See POLYMORPHIC_CARD_PANEL below" — retired
+symbol) and `card-registry.tsx:379` ("live key is revision:s:<id>" — that's
+the LEGACY key; live is `float:card:<kind>:<id>`).
