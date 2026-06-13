@@ -79,7 +79,7 @@
   "showHighlights": true,
   "hiddenHighlightTypes": [],
   "pageWidth": 880,
-  "topGutter": 99,
+  "topGutter": 0,
   "bottomGutter": 0,
   "editorLeftMargin": 72,
   "editorRightMargin": 24,
