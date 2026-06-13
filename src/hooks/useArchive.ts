@@ -10,7 +10,7 @@ import {
   removeTextObjectLink,
 } from "@/links/links";
 import { migrateCardLinks } from "@/links/migrate-card";
-import { nextCardTitle } from "@/panels/panel-registry";
+import { isAutoTitle } from "@/panels/panel-registry";
 import { usePersistentState } from "./usePersistentState";
 
 const EMPTY: ArchiveState = { snippets: [] };
@@ -23,7 +23,11 @@ function migrateSnippet(raw: unknown): ArchivedSnippet {
       : normalizeRichContent(s.content);
   return {
     id: s.id!,
-    title: typeof s.title === "string" ? s.title : "",
+    // BUG #31: strip a legacy auto-generated "Archive Text N" title on load.
+    title:
+      typeof s.title === "string" && !isAutoTitle("archive", s.title)
+        ? s.title
+        : "",
     content,
     createdAt: s.createdAt!,
     links: migrateCardLinks("archive", raw),
@@ -47,7 +51,8 @@ export function useArchive(docId: string | null) {
     (content: unknown): ArchivedSnippet => {
       const snippet: ArchivedSnippet = {
         id: generateEntityId(),
-        title: nextCardTitle("archive", state.snippets.length),
+        // BUG #31: never persist a generated title ("Archive text 1").
+        title: "",
         content: normalizeRichContent(content),
         createdAt: new Date().toISOString(),
         links: [],

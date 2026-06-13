@@ -17,7 +17,6 @@ import type { PanelId, ViewPrefs } from "@/hooks/useViewPrefs";
 import type { TextObjectKind } from "@/text-objects/types";
 import type { CardKind } from "@/cards/types";
 import { panelForCardKind } from "@/cards/predicates";
-import { nextCardTitle } from "@/panels/panel-registry";
 import type { EditorHandle } from "../../Editor";
 import type {
   RecentlyAddedKind,
@@ -482,10 +481,12 @@ export function useCardCreation(deps: CardCreationDeps): CardCreationApi {
     (opts) => {
       const handle = editorRef.current;
       if (!handle) return null;
-      const title = nextCardTitle("footnote", getFootnoteCount());
+      // BUG #31: never persist a generated title ("Footnote 2"). Leave the
+      // title empty so the collapsed view + expanded title row show the
+      // placeholder / +T affordance until the user types a real title.
       const result = opts.fromSelection
-        ? handle.createFootnoteFromSelection({ title })
-        : handle.createEmptyFootnote({ title });
+        ? handle.createFootnoteFromSelection({ title: "" })
+        : handle.createEmptyFootnote({ title: "" });
       if (!result) return null;
       handle.renumberFootnotes();
       if (!opts.fromSelection) markFootnotePristine(result.footnoteId);
