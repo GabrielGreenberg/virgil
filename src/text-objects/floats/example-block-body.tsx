@@ -28,13 +28,14 @@
  * compact static previews; the user edits the atoms in the main doc.
  */
 
-import { type CSSProperties, type RefObject, useCallback, useMemo, useRef } from "react";
+import { type CSSProperties, type RefObject, useCallback, useEffect, useMemo, useRef } from "react";
 import { useEditor, EditorContent, type JSONContent } from "@tiptap/react";
 import type { Node as PMNode } from "@tiptap/pm/model";
 import type { EditorHandle } from "@/components/Editor";
 import { buildEditorExtensions } from "@/lib/editor-extensions";
 import { computeExpexWidths, type ExpexColumnWidths } from "@/lib/tiptap/expex";
 import { useDocWriteHandleOrNull } from "@/components/editor-layout/DocPipeline";
+import { useMainEditable } from "@/components/editor-layout/contexts/editor-ref";
 import { usePoppedCards } from "@/hooks/usePoppedCards";
 import { useEditorChrome } from "@/components/editor-layout/chrome-context";
 import { viewToggleClasses } from "@/components/editor-layout/chrome-config";
@@ -77,6 +78,11 @@ export function ExampleBlockBody({
   const popped = usePoppedCards();
   const chrome = useEditorChrome();
   const mainEditor = ref.current?.getEditor() ?? null;
+  // Read-only gate (#39 nit 2): mirror the MAIN editor's editability so a
+  // read-only / partner-claimed doc shows a read-only float instead of
+  // accepting phantom typing whose write-back the readOnlyEnforcer would
+  // silently reject at dispatch.
+  const mainEditable = useMainEditable(mainEditor);
 
   const initial = useMemo(() => {
     let blockJson: JSONContent | null = null;
@@ -157,7 +163,7 @@ export function ExampleBlockBody({
   const floatEditor = useEditor({
     extensions: buildEditorExtensions({
       surface: "float",
-      editable: true,
+      editable: mainEditable,
       cardContext: true,
       callbacks: {
         isLabelTaken: isLabelTakenRef,
@@ -175,7 +181,7 @@ export function ExampleBlockBody({
       host: { getMainEditor: () => ref.current?.getEditor() ?? null },
     }),
     content: initial.doc,
-    editable: true,
+    editable: mainEditable,
     immediatelyRender: false,
     editorProps: {
       attributes: {
@@ -259,6 +265,14 @@ export function ExampleBlockBody({
     floatId,
     readSource,
   });
+
+  // Keep the float's editability in lock-step with the main doc's, in case
+  // read-only mode toggles after mount (collab pen handoff).
+  useEffect(() => {
+    if (floatEditor && floatEditor.isEditable !== mainEditable) {
+      floatEditor.setEditable(mainEditable);
+    }
+  }, [floatEditor, mainEditable]);
 
   return (
     <>

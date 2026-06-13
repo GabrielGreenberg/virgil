@@ -291,6 +291,29 @@ function nearestAnchorableUuid(doc: PMNode, pos: number): string | null {
   return null;
 }
 
+/**
+ * Walks up from `pos` in `doc` to find the nearest enclosing `exampleBlock`
+ * with a non-null UUID. Returns its UUID or null. Distinct from
+ * `nearestAnchorableUuid`: an edit inside an example item attributes to the
+ * exampleItem (the nearer anchorable node, since exampleItems also carry a
+ * uuid), but the Examples-panel card addresses itself by the EXAMPLE BLOCK's
+ * uuid — so it needs the enclosing block, not the item. Reuses the same
+ * `$pos.resolve` ancestor walk the content-change attribution already does;
+ * no extra doc walk.
+ */
+function nearestExampleBlockUuid(doc: PMNode, pos: number): string | null {
+  if (pos < 0) pos = 0;
+  if (pos > doc.content.size) pos = doc.content.size;
+  const $pos = doc.resolve(pos);
+  for (let depth = $pos.depth; depth >= 0; depth--) {
+    const node = $pos.node(depth);
+    if (node.type.name !== "exampleBlock") continue;
+    const uuid = (node.attrs as { uuid?: string | null } | undefined)?.uuid;
+    if (uuid) return uuid;
+  }
+  return null;
+}
+
 // ---------------------------------------------------------------------------
 // Public entry point.
 // ---------------------------------------------------------------------------
@@ -326,6 +349,7 @@ export function inspectSteps(
   const removed = emptyBundle();
   const added = emptyBundle();
   const contentChangedUuids = new Set<string>();
+  const exampleContentChangedUuids = new Set<string>();
   let footnoteOrderChanged = false;
   let citationOrderChanged = false;
 
@@ -362,6 +386,13 @@ export function inspectSteps(
       // Attribute content-change to nearest anchorable ancestor in newDoc.
       const uuid = nearestAnchorableUuid(newDoc, fromInNew);
       if (uuid) contentChangedUuids.add(uuid);
+
+      // Also attribute to the enclosing exampleBlock (if any) so the
+      // Examples-panel card — keyed by exampleBlock uuid, not the nearer
+      // anchorable exampleItem — can re-seed on a content-only edit. Same
+      // ancestor walk; no extra doc scan.
+      const exUuid = nearestExampleBlockUuid(newDoc, fromInNew);
+      if (exUuid) exampleContentChangedUuids.add(exUuid);
 
       // Footnotes whose pos changed need a renumber check too.
       if (removed.footnotes.size > 0 || added.footnotes.size > 0) {
@@ -700,7 +731,8 @@ export function inspectSteps(
     changedFigures.length === 0 &&
     addedLabels.length === 0 &&
     removedLabels.length === 0 &&
-    contentChangedUuids.size === 0
+    contentChangedUuids.size === 0 &&
+    exampleContentChangedUuids.size === 0
   ) {
     return EMPTY_DIFF;
   }
@@ -730,5 +762,6 @@ export function inspectSteps(
     addedLabels,
     removedLabels,
     contentChangedUuids,
+    exampleContentChangedUuids,
   };
 }
