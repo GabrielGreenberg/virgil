@@ -3565,7 +3565,11 @@ body[data-drop-mode-active="true"] * {
  * and the pod itself carries the 1.2em margin-bottom from
  * .heading-annotation for breathing room before the next content. */
 .expex-label-annotation {
-  margin-left: 2.4rem; /* matches A-B in the block grid (1.5em + 0.8em at body font) */
+  /* A-B = number col + gap. Tracks --expex-num-width so the pod stays at B
+   * (the body column) when multi-digit numbers widen the gutter. The 0.8em
+   * gap matches .expex-block's column-gap. (Was a hardcoded 2.4rem — drifted
+   * from the grid's 2.3em; reconciled to the live var per backlog #25.) */
+  margin-left: calc(var(--expex-num-width, 1.5em) + 0.8em);
   margin-top: 0;
   /* margin-bottom inherited from .heading-annotation (1.2em) */
   width: max-content;
@@ -3575,11 +3579,13 @@ body[data-drop-mode-active="true"] * {
 .expex-block {
   position: relative;
   display: grid;
-  /* A-B = 2.3em: number col + gap. Same total width as B-C in
-   * .expex-item below so (n)/letter/text align in equal increments.
-   * Widened from 2em (was 0.5em column-gap) to give the inner-item
-   * grab handle visual breathing room in the marker zone. */
-  grid-template-columns: 1.5em 1fr;
+  /* A-B = number col + gap. Same total width as B-C in .expex-item-row
+   * below so (n)/letter/text align in equal increments. The number column
+   * is --expex-num-width — 1.5em fits (1)..(9); the ExpexNumbering plugin
+   * widens the var (doc-wide, shared) when a 2+-digit example number is
+   * present, so (10)/(100) don't wrap (backlog #25, option c). The 0.8em gap
+   * gives the inner-item grab handle breathing room in the marker zone. */
+  grid-template-columns: var(--expex-num-width, 1.5em) 1fr;
   column-gap: 0.8em;
   row-gap: 0;
   align-items: start;
@@ -3594,6 +3600,10 @@ body[data-drop-mode-active="true"] * {
   font-size: 0.95em;
   color: inherit;
   user-select: none;
+  /* The grid column is sized to fit the doc's widest number (via
+   * --expex-num-width); guard against any sub-pixel rounding wrapping the
+   * trailing ")" to a second line. */
+  white-space: nowrap;
 }
 
 .expex-body {
@@ -3629,16 +3639,22 @@ body[data-drop-mode-active="true"] * {
 
 .expex-item-row {
   display: grid;
-  grid-template-columns: 1.5em 1fr;
+  /* B-C = marker col + gap; matches A-B in .expex-block. The marker column
+   * is --expex-marker-width (default 1.5em fits a./i./viii.); the
+   * ExpexNumbering plugin widens it doc-wide if a wide roman marker
+   * (xviii. …) would overflow (backlog #25). */
+  grid-template-columns: var(--expex-marker-width, 1.5em) 1fr;
   column-gap: 0.8em;
   align-items: start;
 }
 
 /* Per-item label pod — small "ex." chip BELOW the body, aligned with C
  * (the left edge of the body column = where the item's text starts).
- * Bottom margin inherits the 1.2em from .heading-annotation. */
+ * Bottom margin inherits the 1.2em from .heading-annotation. Tracks
+ * --expex-marker-width so the pod stays at C when wide markers widen the
+ * column. (Was a hardcoded 2.4rem — reconciled to the live var per #25.) */
 .expex-item-label-annotation {
-  margin-left: 2.4rem; /* shift by B-C so the pod sits at C, the body column */
+  margin-left: calc(var(--expex-marker-width, 1.5em) + 0.8em);
   margin-top: 0;
   /* margin-bottom inherited from .heading-annotation (1.2em) */
   width: max-content;
@@ -3653,6 +3669,7 @@ body[data-drop-mode-active="true"] * {
   color: inherit;
   user-select: none;
   text-align: right;
+  white-space: nowrap;
 }
 
 .expex-item-body {
