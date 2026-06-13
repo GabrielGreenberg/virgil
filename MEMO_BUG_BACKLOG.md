@@ -14,7 +14,7 @@ Status legend: `open` · `in-progress` · `done`
 
 ## 1. Inline-math popup: save-by-default, add a Cancel button
 
-**Reported:** 2026-06-05 · **Status:** open · **RATIFIED 2026-06-13:** Escape SAVES too (option a) — Cancel button is the only revert · **Area:** main-text / math editing
+**Reported:** 2026-06-05 · **Status:** done (2026-06-13, chip `Q1`) · **RATIFIED 2026-06-13:** Escape SAVES too (option a) — Cancel button is the only revert · **Area:** main-text / math editing
 
 **Current behavior** — `MathPopover` ([src/components/MathPopover.tsx](src/components/MathPopover.tsx))
 uses a two-key model:
@@ -44,7 +44,7 @@ toward (a); confirm with the user if ambiguous.
 
 ## 2. Slash commands should not open panels (`\ex` is the reported case)
 
-**Reported:** 2026-06-05 · **Status:** open · **RATIFIED 2026-06-13:** `\ex`/`\footnote` stop opening panels; `\cite` creates its card in OMNI-VIEW (not the dedicated Citations panel), surfacing only if another panel covers omni (the gentle soft-route) — NOT an inline popover · **Area:** main-text / slash commands
+**Reported:** 2026-06-05 · **Status:** done (2026-06-13, chip `Q1`) · **RATIFIED 2026-06-13:** `\ex`/`\footnote` stop opening panels; `\cite` creates its card in OMNI-VIEW (not the dedicated Citations panel), surfacing only if another panel covers omni (the gentle soft-route) — NOT an inline popover · **Area:** main-text / slash commands
 
 **Reported behavior** — typing the example slash command (`\ex`, shown in the
 popup; user called it "/x") correctly inserts a new example block inline, but
@@ -92,7 +92,7 @@ even if `\ex`/`\footnote` are fixed.)
 
 ## 3. ExpEx: Backspace on an empty example line should delete the sub-item / item
 
-**Reported:** 2026-06-05 · **Status:** open · **Area:** main-text / expex examples
+**Reported:** 2026-06-05 · **Status:** done (2026-06-13, chip `Q2`) · **Area:** main-text / expex examples
 
 **Reported behavior** — inside an example environment, when the current line is
 empty and you hit Delete (Backspace), it should:
@@ -140,7 +140,7 @@ and the cursor is at its start; otherwise normal character deletion.
 
 ## 4. Ref popover: keyboard-navigate the label dropdown (arrows + Enter)
 
-**Reported:** 2026-06-05 · **Status:** open · **Area:** main-text / ref popover ·
+**Reported:** 2026-06-05 · **Status:** done (2026-06-13, chip `Q1`) · **Area:** main-text / ref popover ·
 **Related:** item 1 (same "popover keyboard model" family)
 
 **Reported behavior** — after `\ref` opens the popover and you start typing a
@@ -704,7 +704,7 @@ crosswalk is read, not just guard this one call site.
 *(Originally committed as a second "item 10" in `31db102`; renumbered here — 10
 was taken.)*
 
-**Reported:** 2026-06-05 · **Status:** open · **Area:** main-text / expex layout ·
+**Reported:** 2026-06-05 · **Status:** done (2026-06-13, chip `Q2`) · **Area:** main-text / expex layout ·
 **Related:** item 3 (same expex subsystem, unrelated fault)
 
 **Reported behavior** — example `(10)` doesn't fit its number column: the `)`
@@ -803,7 +803,7 @@ hand-aligned to `#7191b0` in the chip-E fold as a stopgap.)
 
 ## 28. BibEntryCard renders bib fields via dangerouslySetInnerHTML — escape them
 
-**Reported:** 2026-06-12 (chip-E review gate) · **Status:** open · **Area:** bibliography / security
+**Reported:** 2026-06-12 (chip-E review gate) · **Status:** done (2026-06-13, chip `Q6`) · **Area:** bibliography / security
 
 `BibEntryCard`'s publication-details row joins raw `entry.fields` (journal,
 booktitle, editor, doi, url) into `dangerouslySetInnerHTML` to get literal
