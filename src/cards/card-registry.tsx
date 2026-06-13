@@ -376,7 +376,7 @@ export const CARD_REGISTRY: Record<CardKind, CardMeta> = {
   "revision-suggestion": {
     label: "Revision",
     titleLabel: null,
-    keyPrefix: "revision-suggestion", // legacy value preserved (live key is revision:s:<id>)
+    keyPrefix: "revision-suggestion", // legacy keyPrefix preserved; the LIVE card key is float:card:revision-suggestion:<id> via cardPopKey (panel-registry)
     themeKey: "revision",
     collabClaims: false,
     panel: "revisions",
