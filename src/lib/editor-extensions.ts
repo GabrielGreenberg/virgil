@@ -855,13 +855,6 @@ export function createHeadingWithLabel(
         // no fold state to drive a chevron, and folding a float's lone
         // section is meaningless.
         let foldBtn: HTMLButtonElement | null = null;
-        // The folded boolean this chevron last painted. `refreshFoldBtn`
-        // early-returns when it's unchanged, so the per-node `update()` only
-        // writes the DOM when THIS heading's fold state actually flipped
-        // (#29a). `null` = never painted. (The doc-wide resync now lives in the
-        // shared sectionFoldingPlugin `view()` — #29 nit-3 — not in a
-        // per-heading transaction subscriber.)
-        let lastFoldedFlag: boolean | null = null;
         if (!isFloat) {
           foldBtn = document.createElement("button");
           foldBtn.type = "button";
@@ -915,7 +908,7 @@ export function createHeadingWithLabel(
           // keystroke-sanctity nit this fix closed). The per-node `update()`
           // below still calls refreshFoldBtn() for THIS heading's own node
           // changes (e.g. undo re-inserting a heading), and it is idempotent
-          // on `lastFoldedFlag`, so it is O(1)-per-affected-node.
+          // against the live `is-folded` class, so it is O(1)-per-affected-node.
         }
 
         function refreshFoldBtn() {
@@ -924,12 +917,15 @@ export function createHeadingWithLabel(
           const folded = uuid
             ? getSectionFoldingState(nodeEditor.state).folded.has(uuid)
             : false;
-          // Idempotent (#29a): skip the DOM writes when this section's fold
-          // state didn't flip, so a plain keystroke (which can reach here via
-          // the gated transaction subscriber or the per-node update()) does no
-          // work. `null` on first paint always writes.
-          if (folded === lastFoldedFlag) return;
-          lastFoldedFlag = folded;
+          // Idempotent (#29a/#29 nit-3): skip the DOM writes when this section's
+          // fold state didn't flip. We compare against the LIVE `is-folded`
+          // class — the SAME source of truth the shared sectionFoldingPlugin
+          // `view()` writes — rather than a private mirror var, so the two
+          // paths can't drift (a stale mirror would force a redundant repaint
+          // when this NodeView's update() fires after the shared view already
+          // painted, e.g. a sibling heading was pruned). A plain keystroke that
+          // reaches here via update() therefore does no DOM work.
+          if (folded === foldBtn.classList.contains("is-folded")) return;
           foldBtn.classList.toggle("is-folded", folded);
           foldBtn.title = folded ? "Unfold section" : "Fold section";
         }
