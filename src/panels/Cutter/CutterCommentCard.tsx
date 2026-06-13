@@ -88,7 +88,7 @@ export function CutterCommentCard({
             &quot;{card.selectedText.replace(/\s+/g, " ").trim()}&quot;
           </span>
         )
-      : (makeCompressedSummary(card.content, compressedLines) || "")
+      : (makeCompressedSummary(card.content, compressedLines) || undefined)
     : undefined;
 
   const handleChange = useCallback(
