@@ -186,7 +186,7 @@ dropdown.
 
 ## 5. Unnecessary gap between the text tool strip and the editor pod
 
-**Reported:** 2026-06-05 · **Status:** done (2026-06-13 — shipped-default reset; **corrects the earlier "no-op" call**) · **Area:** ui-chrome / editor pane / prefs defaults
+**Reported:** 2026-06-05 · **Status:** done (2026-06-13 — **legacy gutter-pref subsystem removed**, superseding the shipped-default reset; corrects the earlier "no-op" call) · **Area:** ui-chrome / editor pane / prefs defaults
 
 **Verdict (2026-06-13, re-verification + fix) — NOT a no-op; a real shipped
 defect.** The earlier chrome-polish call got the *fact* right (the gap is the
@@ -203,18 +203,35 @@ there's no saved blob ([:301](src/hooks/useViewPrefs.ts:301),
 (24px strip + net-zero pod-cap, left untouched); the sole lever was the leaked
 default.
 
-**Fix applied (2026-06-13):** `topGutter` **99 → 0** in
-`useViewPrefs.defaults.json` (one line; eyeballed by hand — `tools/sync-defaults.sh`
-deliberately NOT run, per [[release-prefs-snapshot-gotcha]]).
+**Fix — two stages.**
+1. **Stopgap (reset):** `topGutter` 99 → 0 in `useViewPrefs.defaults.json`
+   (eyeballed by hand — `tools/sync-defaults.sh` deliberately NOT run, per
+   [[release-prefs-snapshot-gotcha]]). Closed the immediate gap for fresh users
+   but left the pref machinery — and the re-fold hazard — in place.
+2. **Deep fix (the real one — commit `1cac8e2`, merge `79596ac`, merged to `main`
+   but NOT pushed/deployed):** on the user's call ("top/bottom gutters aren't a
+   user pref — that's legacy, root it out"), **removed the entire top/bottom
+   gutter-pref subsystem.** Note the "inert" drag bar the user flagged
+   (`data-gutter-gap`) was actually *wired* (`onMouseDown → setEditorTopGutter`),
+   but a user-draggable whitespace gutter is the misfeature, not dead code.
+   Removed across 8 files: the `topGutter`/`bottomGutter` prefs + setters +
+   `GLOBAL_PREF_KEYS` (`useViewPrefs.ts` + `.defaults.json`); the drag handles,
+   spacers (`data-flex-row`), bars (`data-gutter-gap`) + interface fields
+   (`EditorPane.tsx`); the EditorLayout bundle wiring; the Reader exposure
+   (`reader-view-prefs.ts`); the **dead** zen-mirror fields (`useZenMode.ts` —
+   defined + persisted but never consumed); the now-dead print rule
+   (`globals.css`); and — critically — the promote whitelist
+   (`dev-prefs-registry.json`). The shared `useDragGap` primitive was **kept**
+   (panel-resize / code-split / zen-margins still use it). Typecheck clean,
+   31/31 tests, preview verified flush (pod frame at y≈64 under the 56px chrome).
 
-**⚠️ Durability — this regresses without a snapshot refresh.** The 99 arrived via
+**✅ Durability — resolved (not just mitigated).** The 99 arrived via
 `promote-defaults` folding the developer's `personal-snapshot.json` (history:
-`59af265` → `510888b` → `bcca090`, each a "Promote personal prefs" commit). The
-**next** promote run re-folds the personal value unless the user (a) drags the top
-gutter back to 0 and re-snapshots their personal prefs, or (b) the promote
-pipeline is taught to exclude `topGutter`. Existing users with a saved
-`topGutter` are unaffected by the default reset (they'd drag it themselves) —
-expected for any default change.
+`59af265` → `510888b` → `bcca090`). Removing `topGutter`/`bottomGutter` from the
+`dev-prefs-registry.json` whitelist (option (b) from the original plan) means
+promote-defaults can **never re-fold them** — the re-fold loop is closed for good.
+Stale values in any user's already-persisted blob are now inert: no consumer reads
+them, and the global-pref write path drops them on the next change.
 
 **Reported behavior** — too much vertical space between the tool strip above the
 editor (the 24px row holding the section breadcrumb on the left and the
