@@ -129,17 +129,68 @@ function handleFor(editor: TiptapEditor): EditorHandle {
 
 type FoundBlock = { node: import("@tiptap/pm/model").Node; pos: number };
 
-function findExampleBlock(editor: TiptapEditor): FoundBlock | null {
+function findExampleBlock(editor: TiptapEditor, uuid: string = EX_UUID): FoundBlock | null {
   let found: FoundBlock | null = null;
   editor.state.doc.descendants((node, pos) => {
     if (found) return false;
-    if (node.type.name === "exampleBlock" && node.attrs.uuid === EX_UUID) {
+    if (node.type.name === "exampleBlock" && node.attrs.uuid === uuid) {
       found = { node, pos };
       return false;
     }
     return true;
   });
   return found;
+}
+
+/** Reach the live embedded TipTap `Editor` a card mounted, so a test can
+ *  drive a REAL edit through it (firing the card's own `onUpdate` →
+ *  writeBackToMain, exactly as a keystroke would) and read its editability.
+ *  `useEditor` keeps the editor in React state, so we climb the fiber tree
+ *  from the `.example-card-editor` PM root (PM-created, no fiber of its own)
+ *  up through its parent chain and deep-scan each fiber's props/state for an
+ *  object that quacks like a TipTap editor. Returns one per card, DOM order. */
+function looksLikeEditor(v: unknown): v is TiptapEditor {
+  return (
+    !!v &&
+    typeof (v as TiptapEditor).getJSON === "function" &&
+    typeof (v as TiptapEditor).setEditable === "function" &&
+    !!(v as TiptapEditor).view
+  );
+}
+function deepScan(obj: unknown, seen: Set<unknown>, depth: number): TiptapEditor | null {
+  if (!obj || typeof obj !== "object" || seen.has(obj) || depth > 4) return null;
+  seen.add(obj);
+  if (looksLikeEditor(obj)) return obj;
+  for (const v of Object.values(obj as Record<string, unknown>)) {
+    const r = deepScan(v, seen, depth + 1);
+    if (r) return r;
+  }
+  return null;
+}
+function embeddedEditorFor(rootEl: Element): TiptapEditor | null {
+  let cur: Element | null = rootEl;
+  while (cur) {
+    const key = Object.keys(cur).find((k) => k.startsWith("__reactFiber$"));
+    if (key) {
+      let f = (cur as unknown as Record<string, { memoizedProps?: unknown; memoizedState?: unknown; return?: unknown }>)[key];
+      let depth = 0;
+      while (f && depth < 40) {
+        const hit =
+          deepScan(f.memoizedProps, new Set(), 0) ??
+          deepScan(f.memoizedState, new Set(), 0);
+        if (hit) return hit;
+        f = f.return as typeof f;
+        depth++;
+      }
+    }
+    cur = cur.parentElement;
+  }
+  return null;
+}
+function embeddedEditors(container: HTMLElement): TiptapEditor[] {
+  return Array.from(container.querySelectorAll(".example-card-editor"))
+    .map((el) => embeddedEditorFor(el.parentElement ?? el))
+    .filter((e): e is TiptapEditor => !!e);
 }
 
 const exampleInfo: ExampleInfo = {
@@ -209,38 +260,59 @@ describe("ExampleCard directly-editable expex body (#32/#33)", () => {
     editor.destroy();
   });
 
-  it("an edit in the card writes back to the in-doc exampleBlock (uuid preserved)", () => {
+  it("an edit in the card writes back via the REAL onUpdate path (uuid preserved)", () => {
+    // #39 nit 3: drive the edit THROUGH the embedded card editor's own view
+    // so its `onUpdate` → `writeBackToMain` fires, instead of hand-building a
+    // replaceWith on the main editor. This exercises the actual write-back
+    // contract a keystroke triggers.
     const editor = buildMain();
+    let container!: HTMLElement;
     act(() => {
-      renderCard(editor);
+      ({ container } = renderCard(editor));
     });
-    // Drive an edit through the card's embedded editor by simulating a write-
-    // back: replace the whole block with an edited copy (what onUpdate does).
-    const before = findExampleBlock(editor)!;
-    const edited: JSONContent = {
-      ...(before.node.toJSON() as JSONContent),
-      content: [
-        { type: "paragraph", content: [{ type: "text", text: "Edited body." }] },
-        ...((before.node.toJSON() as JSONContent).content!.slice(1)),
-      ],
-    };
+    const [cardEd] = embeddedEditors(container);
+    expect(cardEd).toBeTruthy(); // the card editor mounted + is reachable
+    expect(cardEd).not.toBe(editor); // it's the EMBEDDED editor, not main
+    // Type into the card editor's top body paragraph (its first paragraph
+    // opens at pos 1 → text "Top body." starts at 2). Insert at the end of
+    // that text (pos 11). Dispatching through the card editor's OWN view
+    // fires its `onUpdate` → writeBackToMain — the real wiring, not a
+    // hand-built main-editor replaceWith.
     act(() => {
-      const tr = editor.state.tr.replaceWith(
-        before.pos,
-        before.pos + before.node.nodeSize,
-        editor.state.schema.nodeFromJSON({ ...edited, attrs: before.node.attrs }),
-      );
-      editor.view.dispatch(tr);
+      cardEd.view.dispatch(cardEd.state.tr.insertText(" EDITED", 11, 11));
     });
     const after = findExampleBlock(editor)!;
-    expect(after.node.attrs.uuid).toBe(EX_UUID); // uuid intact
-    expect(after.node.textContent).toContain("Edited body.");
-    // Nested xlist + the \label on item 2 survive (the lossy projection dropped them).
+    expect(after.node.attrs.uuid).toBe(EX_UUID); // uuid intact through write-back
+    expect(after.node.textContent).toContain("Top body. EDITED");
+    // Nested \label on item 2 survives (whole-block seed + write-back).
     let item2Label: unknown = undefined;
     after.node.descendants((n) => {
       if (n.type.name === "exampleItem" && n.attrs.uuid === "it2") item2Label = n.attrs.label;
     });
     expect(item2Label).toBe("key");
+    editor.destroy();
+  });
+
+  it("threads a docIdRef into the embedded editor's figure extension (#39 nit 3)", () => {
+    // The card editor builds its extensions with `docIdRef` so nested
+    // figure/graphics atoms resolve their real image (read-only) instead of a
+    // compact pill — parity with the example float. Pin the wiring: the
+    // figureBlock extension on the EMBEDDED editor carries a docIdRef option
+    // (a ref object, even if its `.current` is null in this bare/no-pipeline
+    // mount). Without the threading this option is undefined.
+    const editor = buildMain();
+    let container!: HTMLElement;
+    act(() => {
+      ({ container } = renderCard(editor));
+    });
+    const [cardEd] = embeddedEditors(container);
+    const figureExt = cardEd.extensionManager.extensions.find(
+      (e) => e.name === "figureBlock",
+    );
+    expect(figureExt).toBeTruthy();
+    const docIdRef = (figureExt!.options as { docIdRef?: { current: unknown } }).docIdRef;
+    expect(docIdRef).toBeTruthy();
+    expect(docIdRef).toHaveProperty("current");
     editor.destroy();
   });
 
@@ -268,6 +340,155 @@ describe("ExampleCard directly-editable expex body (#32/#33)", () => {
     });
     // Two more plain-text keystrokes — no structural emit on either.
     expect(bus!.emitCount).toBe(before);
+    editor.destroy();
+  });
+});
+
+// ── #39 nit 1 (content re-seed) + nit 2 (read-only) ─────────────────────────
+
+const EX_A = "exaaaa01";
+const EX_B = "exbbbb01";
+
+function twoExampleDoc(): JSONContent {
+  // Inner paragraphs carry explicit uuids so the first content edit isn't
+  // consumed by a one-time uuid-hydration structural pass.
+  const block = (uuid: string, puuid: string, text: string): JSONContent => ({
+    type: "exampleBlock",
+    attrs: { uuid, number: 1, kind: "single" },
+    content: [{ type: "paragraph", attrs: { uuid: puuid }, content: [{ type: "text", text }] }],
+  });
+  return {
+    type: "doc",
+    content: [block(EX_A, "pa000001", "Alpha body."), block(EX_B, "pb000001", "Beta body.")],
+  };
+}
+
+function buildMainWith(content: JSONContent, editable = true): TiptapEditor {
+  const el = document.createElement("div");
+  document.body.appendChild(el);
+  const ed = new Editor({
+    element: el,
+    extensions: buildEditorExtensions(mainCtx()),
+    content,
+  }) as unknown as TiptapEditor;
+  // Mirror the read-only signal the way the live VirgilEditor does — the main
+  // PM view stays editable; `data-editable` is the declarative flag the card's
+  // `useMainEditable` reads.
+  ed.view.dom.setAttribute("data-editable", String(editable));
+  return ed;
+}
+
+function infoFor(uuid: string, bodyText: string): ExampleInfo {
+  return {
+    exampleId: uuid,
+    pos: 0,
+    number: 1,
+    kind: "single",
+    tag: "",
+    label: "",
+    preview: bodyText,
+    subLabelRange: "",
+    bodyText,
+    bodyContent: { type: "doc", content: [{ type: "paragraph", content: [{ type: "text", text: bodyText }] }] },
+    items: [],
+    latex: "",
+  };
+}
+
+function renderCardsFor(editor: TiptapEditor, infos: ExampleInfo[]) {
+  const handle = handleFor(editor);
+  return render(
+    <EditorRefProvider
+      value={{ editorInstance: editor, editorRef: { current: handle }, setOverrideEditor: () => {} }}
+    >
+      {infos.map((info) => (
+        <ExampleCard
+          key={info.exampleId}
+          example={info}
+          isSelected={false}
+          onSelect={() => {}}
+          onJump={() => {}}
+          isPoppedOut
+        />
+      ))}
+    </EditorRefProvider>,
+  );
+}
+
+describe("ExampleCard content-edit staleness fix (#39 nit 1)", () => {
+  it("a MAIN content edit to example A re-seeds card A but NOT card B", () => {
+    const editor = buildMainWith(twoExampleDoc());
+    let container!: HTMLElement;
+    act(() => {
+      ({ container } = renderCardsFor(editor, [infoFor(EX_A, "Alpha body."), infoFor(EX_B, "Beta body.")]));
+    });
+    const edsBefore = embeddedEditors(container);
+    expect(edsBefore).toHaveLength(2);
+    const [cardA, cardB] = edsBefore;
+    expect(cardA.getText()).toContain("Alpha body.");
+    expect(cardB.getText()).toContain("Beta body.");
+
+    // Warm-up: the observer's one-time first-transaction baseline pass fires a
+    // STRUCTURAL emit on the editor's very first edit (the W-A keystroke-
+    // sanctity test absorbs the same baseline). Spend it on a throwaway edit
+    // in a plain spot so the MEASURED edit below is a clean content-only
+    // signal. We append+remove a space at the end of B's paragraph so the
+    // baseline is consumed without leaving residue.
+    {
+      const b = findExampleBlock(editor, EX_B)!;
+      act(() => {
+        editor.view.dispatch(editor.state.tr.insertText(" ", b.pos + b.node.nodeSize - 2));
+      });
+      const b2 = findExampleBlock(editor, EX_B)!;
+      act(() => {
+        editor.view.dispatch(editor.state.tr.delete(b2.pos + b2.node.nodeSize - 3, b2.pos + b2.node.nodeSize - 2));
+      });
+    }
+
+    // Now the measured edit: a content-only edit to example A in the MAIN
+    // editor (no add/remove → `rev.examples` stays flat). Insert at the end
+    // of A's paragraph text (before the paragraph + block closing tokens).
+    const a = findExampleBlock(editor, EX_A)!;
+    act(() => {
+      editor.view.dispatch(editor.state.tr.insertText(" CHANGED", a.pos + a.node.nodeSize - 2));
+    });
+
+    // Card A re-seeded from the live block — its embedded editor now shows
+    // the changed text (the staleness the chip targets). Same Editor
+    // instance (setContent re-seed, no remount), so re-read it.
+    expect(cardA.getText()).toContain("CHANGED");
+    // Card B is unchanged — the per-uuid signal fired only for A's uuid.
+    expect(cardB.getText()).toContain("Beta body.");
+    expect(cardB.getText()).not.toContain("CHANGED");
+    editor.destroy();
+  });
+});
+
+describe("ExampleCard read-only typeability (#39 nit 2)", () => {
+  it("a read-only doc renders the example card editor NON-editable", () => {
+    const editor = buildMainWith(twoExampleDoc(), /* editable */ false);
+    let container!: HTMLElement;
+    act(() => {
+      ({ container } = renderCardsFor(editor, [infoFor(EX_A, "Alpha body.")]));
+    });
+    const [cardEd] = embeddedEditors(container);
+    expect(cardEd).toBeTruthy();
+    // The embedded editor is mounted read-only: TipTap `isEditable` is false
+    // and the contenteditable root reflects it — so a user can't type phantom
+    // text whose write-back the main readOnlyEnforcer would silently reject.
+    expect(cardEd.isEditable).toBe(false);
+    expect((cardEd.view.dom as HTMLElement).getAttribute("contenteditable")).toBe("false");
+    editor.destroy();
+  });
+
+  it("an editable doc renders the example card editor editable (control)", () => {
+    const editor = buildMainWith(twoExampleDoc(), /* editable */ true);
+    let container!: HTMLElement;
+    act(() => {
+      ({ container } = renderCardsFor(editor, [infoFor(EX_A, "Alpha body.")]));
+    });
+    const [cardEd] = embeddedEditors(container);
+    expect(cardEd.isEditable).toBe(true);
     editor.destroy();
   });
 });
