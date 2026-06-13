@@ -1710,6 +1710,22 @@ export function buildEditorExtensions(ctx: EditorExtensionsCtx) {
     createListItemWithUuid(),
     createBlockquoteWithUuid(),
     createCodeBlockWithUuid(),
+    // ── Borrowed-schema atoms (backlog #11) ──────────────────────────────
+    // The block-atom previews (TexBlock/FigureBlock/FigureCaption/
+    // GraphicsBlock + the LatexComment/Citation/LabelRef/Footnote/InlineMath/
+    // DisplayMath inline atoms below) are the SAME set the card surfaces share
+    // via `buildBorrowedAtomSchema` (src/lib/tiptap/borrowed-schema.ts). They
+    // are NOT spread from that module here on purpose: on MAIN they carry
+    // main-only config (isPoppedRef / docIdRef / figure callbacks / figureFloat
+    // / per-surface `surface`) and sit in a position-gated order
+    // (EXPECTED_MAIN_ORDER — the observer-first keystroke-sanctity invariant),
+    // so a drop-in would either reorder the stack or make borrowed-schema.ts a
+    // leaky owner of main-editor concerns. The cross-surface invariant ("add an
+    // atom kind in one place") is instead enforced by the contract test
+    // src/lib/tiptap/__tests__/borrowed-schema.test.ts, which asserts this main
+    // stack registers EVERY name in BORROWED_INLINE_ATOM_NAMES /
+    // BORROWED_BLOCK_ATOM_NAMES. Add a new atom to borrowed-schema.ts AND here;
+    // that test fails until both surfaces carry it.
     TexBlock.configure({
       isPoppedRef: ctx.texBlockIsPoppedRef ?? null,
       cardContext: ctx.cardContext,
