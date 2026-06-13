@@ -14,7 +14,7 @@ import {
 import { isAnchorableNode } from "@/lib/marginalia";
 import {
   getSectionFoldingState,
-  sectionFoldingPluginKey,
+  transactionTouchesFold,
 } from "@/lib/section-folding";
 import type { EditorStateData } from "@/lib/types";
 
@@ -181,14 +181,12 @@ export function useEditorUIState(
 
     const onTransaction = (props: { transaction: Transaction }) => {
       if (editor.isDestroyed) return;
-      const hasFoldMeta =
-        props.transaction.getMeta(sectionFoldingPluginKey) !== undefined;
-      const docChanged = props.transaction.docChanged;
       // Folds can change via an explicit toggle/setFolded meta OR via
-      // implicit pruning when a folded heading is deleted (apply
-      // reducer drops dead UUIDs on docChanged). Reading on every
-      // transaction would be overkill; gate on either signal.
-      if (!hasFoldMeta && !docChanged) return;
+      // implicit pruning when a folded heading is deleted (apply reducer
+      // drops dead UUIDs on docChanged). Reading on every transaction would
+      // be overkill; gate on either signal. Shared single-source gate with
+      // the per-heading fold-chevron subscriber (#29a) so the two can't drift.
+      if (!transactionTouchesFold(props.transaction)) return;
       const folded = [...getSectionFoldingState(editor.state).folded];
       writeFolds(folded);
     };

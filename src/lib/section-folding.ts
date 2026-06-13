@@ -1,4 +1,4 @@
-import { Plugin, PluginKey, type EditorState } from "@tiptap/pm/state";
+import { Plugin, PluginKey, type EditorState, type Transaction } from "@tiptap/pm/state";
 import { Decoration, DecorationSet } from "@tiptap/pm/view";
 import type { Node as PMNode } from "@tiptap/pm/model";
 import { readPendingDiff } from "@/lib/tiptap/doc-structure";
@@ -10,6 +10,23 @@ export interface SectionFoldingState {
 export const sectionFoldingPluginKey = new PluginKey<SectionFoldingState>(
   "sectionFolding",
 );
+
+/**
+ * Keystroke-sanctity gate (#29a): can this transaction have changed the fold
+ * state? A fold changes ONLY via (1) an explicit fold-meta on this plugin
+ * (toggle / collapseAll / expandAll / setFolded) or (2) a docChanged tx (the
+ * apply reducer prunes dead fold UUIDs when a folded heading is deleted).
+ *
+ * Every `editor.on("transaction")` subscriber that mirrors fold state — the
+ * per-heading fold-chevron refresher in `editor-extensions.ts` (N headings = N
+ * subscribers) and the section-fold persister in `useEditorUIState.ts` — gates
+ * on THIS so a structurally-null keystroke (typing inside a paragraph: no fold
+ * meta, no docChanged) does ZERO fold work. Single source so the two gates
+ * cannot drift.
+ */
+export function transactionTouchesFold(tr: Transaction): boolean {
+  return tr.getMeta(sectionFoldingPluginKey) !== undefined || tr.docChanged;
+}
 
 type Meta =
   | { action: "toggle"; uuid: string }
