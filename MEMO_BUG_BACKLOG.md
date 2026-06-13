@@ -186,22 +186,35 @@ dropdown.
 
 ## 5. Unnecessary gap between the text tool strip and the editor pod
 
-**Reported:** 2026-06-05 · **Status:** diagnosed no-op (2026-06-13) · **Area:** ui-chrome / editor pane
+**Reported:** 2026-06-05 · **Status:** done (2026-06-13 — shipped-default reset; **corrects the earlier "no-op" call**) · **Area:** ui-chrome / editor pane / prefs defaults
 
-**Verdict (2026-06-13, chrome-polish chip).** Diagnostic fork resolves to
-the **`topGutter` > 0** branch: the gap is the `[data-flex-row="top"]`
-spacer, currently **99px** (`src/hooks/useViewPrefs.defaults.json:86`,
-lowered from 345 by the 2026-06-12 personal-prefs promotion `bcca090`).
-**Not structural** — the 24px strip and the net-zero pod-cap are fine; the
-cap's load-bearing negative margins were left untouched as instructed.
-The only lever is the `topGutter` default in `useViewPrefs.defaults.json`,
-which is a *promoted personal pref* (the user's own value) and is off-limits
-to chip edits (no `*.defaults.json`); changing a global default also
-wouldn't move the needle for any user who already has a saved pref. The
-gap is therefore a **user-adjustable pref** (drag the top gutter handle, or
-lower `topGutter` in the next prefs refresh), not a code defect. **No-op.**
-If the user wants the *shipped* default tightened, that's a prefs-snapshot
-refresh, not a source change.
+**Verdict (2026-06-13, re-verification + fix) — NOT a no-op; a real shipped
+defect.** The earlier chrome-polish call got the *fact* right (the gap is the
+`[data-flex-row="top"]` spacer driven by `topGutter`, shipped at **99px** in
+`useViewPrefs.defaults.json`, leaked from the developer's personal drag height by
+the `bcca090` prefs promotion) but reached the wrong *disposition*. It concluded
+"no-op" by reasoning the change "wouldn't move the needle for users with a saved
+pref" — which under-weights the audience a **default** actually serves: **any
+fresh user with no persisted prefs blob gets the 99px gap, no drag required.**
+`DEFAULT_PREFS` spreads the JSON verbatim
+([useViewPrefs.ts:184](src/hooks/useViewPrefs.ts:184)) and is returned whenever
+there's no saved blob ([:301](src/hooks/useViewPrefs.ts:301),
+[:408](src/hooks/useViewPrefs.ts:408)). The structural stack is genuinely fine
+(24px strip + net-zero pod-cap, left untouched); the sole lever was the leaked
+default.
+
+**Fix applied (2026-06-13):** `topGutter` **99 → 0** in
+`useViewPrefs.defaults.json` (one line; eyeballed by hand — `tools/sync-defaults.sh`
+deliberately NOT run, per [[release-prefs-snapshot-gotcha]]).
+
+**⚠️ Durability — this regresses without a snapshot refresh.** The 99 arrived via
+`promote-defaults` folding the developer's `personal-snapshot.json` (history:
+`59af265` → `510888b` → `bcca090`, each a "Promote personal prefs" commit). The
+**next** promote run re-folds the personal value unless the user (a) drags the top
+gutter back to 0 and re-snapshots their personal prefs, or (b) the promote
+pipeline is taught to exclude `topGutter`. Existing users with a saved
+`topGutter` are unaffected by the default reset (they'd drag it themselves) —
+expected for any default change.
 
 **Reported behavior** — too much vertical space between the tool strip above the
 editor (the 24px row holding the section breadcrumb on the left and the
