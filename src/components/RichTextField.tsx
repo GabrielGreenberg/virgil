@@ -20,16 +20,9 @@ import StarterKit from "@tiptap/starter-kit";
 import Placeholder from "@tiptap/extension-placeholder";
 import { Node as PMNode } from "@tiptap/pm/model";
 import {
-  InlineMath,
-  Citation,
-  LatexCommandMark,
   TabIndent,
-  DisplayMath,
-  TexBlock,
-  FigureBlock,
-  FigureCaption,
-  GraphicsBlock,
-  LatexComment,
+  CARD_STARTER_KIT_CONFIG,
+  buildBorrowedAtomSchema,
 } from "@/lib/tiptap-extensions";
 import { normalizeRichContent } from "@/lib/footnote-content";
 import { generateShortId } from "@/lib/uuid";
@@ -238,33 +231,23 @@ function RichTextFieldImpl({
   const editor = useEditor({
     extensions: [
       StarterKit.configure({
-        // Disable heading/blockquote/codeBlock — they make no sense in a
-        // footnote / note body and would balloon the surface.
-        heading: false,
-        blockquote: false,
-        codeBlock: false,
-        horizontalRule: false,
+        // Shared card-body StarterKit config (heading/blockquote/codeBlock/
+        // horizontalRule disabled — they make no sense in a footnote / note
+        // body and would balloon the surface). SSOT in borrowed-schema.ts so
+        // RichTextField + BorrowedMainText can't drift on it.
+        ...CARD_STARTER_KIT_CONFIG,
         // StarterKit v3 already ships underline; we just want it on.
       }),
-      InlineMath,
-      Citation,
-      LatexCommandMark,
       Placeholder.configure({ placeholder }),
       TabIndent,
-      // Block-atom extensions in card-context mode. These mirror the
-      // main editor's schema so JSONContent with block atoms (texBlock,
-      // figureBlock, graphicsBlock, latexComment, displayMath) round-
-      // trips into and out of cards without being silently stripped on
-      // load. Each NodeView reads the `cardContext` flag and renders a
-      // compact static preview instead of the full main-editor chrome.
-      // If a new block-atom type is added to the main editor, also
-      // register it here (or the same bug class will re-appear).
-      TexBlock.configure({ cardContext: true }),
-      FigureBlock.configure({ cardContext: true }),
-      FigureCaption,
-      GraphicsBlock.configure({ cardContext: true }),
-      LatexComment.configure({ cardContext: true }),
-      DisplayMath,
+      // Shared card-context inline-atom + block-atom-preview sub-schema
+      // (borrowed-schema.ts — backlog #11). The block atoms render compact
+      // cardContext previews; the inline atoms (math, citation, latexCommand,
+      // displayMath) round-trip without being stripped. Adding a new atom kind
+      // there surfaces it here automatically (the contract test gates the main
+      // editor too). RichTextField omits LabelRef/Footnote — its editable cards
+      // never author `\ref` or nested footnote markers.
+      ...buildBorrowedAtomSchema(),
     ],
     content: initialContent,
     editable,
