@@ -1,4 +1,4 @@
-<!-- last-verified: bcca090 2026-06-12 -->
+<!-- last-verified: 7433bc2 2026-06-13 -->
 <!-- derives-from: docs/architecture/VIRGIL.md#code-organization, docs/architecture/VIRGIL.md#card-kind-taxonomy -->
 <!-- covers-code: src/panels/panel-registry.ts, src/components/MenuBar.tsx, src/components/EditorLayout.tsx, src/components/panel-primitives.tsx, src/components/editor-layout, src/floats -->
 
@@ -204,7 +204,7 @@ The per-column "+" action-chip row (chips above each omni gutter) was suppressed
 
 ## Floating panels & cards
 
-- [src/components/FloatingPanel.tsx](../../src/components/FloatingPanel.tsx) — `FloatingPanel` low-level draggable + resizable window via portal. Min 240×200, max 900×window-40. Drag on header, resize via bottom-right grip.
+- [src/components/FloatingPanel.tsx](../../src/components/FloatingPanel.tsx) — `FloatingPanel` low-level draggable + resizable window via portal. Min 240×200, max 900×window-40. Drag on header, resize via bottom-right grip. **A card inside a floating panel lifts the card (not the window)** — `FloatingPanel` yields to `PanelCard`'s 5px-threshold lift on any `[data-card]` surface, so header-dragging a card inside a float pops the card, leaving the panel window in place (bug #36).
 - **The float spine** ([src/floats/](../../src/floats)): `FloatHost` (mounted in EditorPane ~line 3083) maps each key in `prefs.poppedOutCards` to a `Floatable` — card keys resolve through `CARD_REGISTRY[kind].toFloatable(id, ctx)` (the ctx bag is `PoppedCardDeps` in [editor-layout/floating-cards.tsx](../../src/components/editor-layout/floating-cards.tsx)), text-object keys through `textObjectFloatable` — and mounts each in a `FloatWindow` with the unified `FloatChrome` header (grip · title · trailing · jump · close). **Card floats render on a white `card` surface** (1px ambient border) **with a kind-tinted header strip** (`Floatable.headerTint` = the kind's `theme.headerDefault`, so the strip matches the docked card header); text-object floats keep the neutral `--surface-muted-strong` strip. Saved positions live in the `cardFloatPositions` pref; popped-key state is read via `usePoppedCards()`.
 - **Pop-out path**: for docked cards, **header drag-lift is the only pop-out path** — pressing anywhere on the card header and dragging past the threshold lifts the card into its float (the 6-dot `CardDragHandle` just signals the affordance). The docked pop-out button is gone; `CardPopoutButton` survives only as the *popped* card's re-dock X. A header **click** (no drag) is toggle-collapse + select — the expand chevron was retired with that ratified click=toggle+select contract.
 - **Pop residue**: the docked card **stays fully live in its panel for every kind (including `example`)** while its float is open — the float is a second presence, not a replacement (pinned by `ExampleCard.test.tsx`).

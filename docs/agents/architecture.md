@@ -1,4 +1,4 @@
-<!-- last-verified: bcca090 2026-06-12 -->
+<!-- last-verified: 7433bc2 2026-06-13 -->
 <!-- derives-from: docs/architecture/VIRGIL.md#code-organization, docs/architecture/VIRGIL.md#sidecar-and-panel-inventory -->
 <!-- covers-code: src/hooks, src/lib/storage-fsa.ts, src/lib/types.ts, src/panels/panel-registry.ts, src/links/link-registry.ts, src/text-objects/text-object-registry.ts, src/lib/marginalia.ts -->
 

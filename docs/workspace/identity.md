@@ -1,4 +1,4 @@
-<!-- last-verified: 3a54711 2026-06-08 -->
+<!-- last-verified: 7433bc2 2026-06-13 -->
 <!-- derives-from: docs/architecture/VIRGIL.md#uuid-marker-emission -->
 <!-- covers-code: src/lib/uuid.ts, src/lib/latex-serializer.ts, src/lib/latex-parser.ts, src/text-objects/text-object-registry.ts, src/lib/latex-paragraph-map.ts, src/lib/document-styles.ts -->
 

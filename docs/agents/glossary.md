@@ -1,4 +1,4 @@
-<!-- last-verified: bcca090 2026-06-12 -->
+<!-- last-verified: 7433bc2 2026-06-13 -->
 <!-- derives-from: docs/architecture/VIRGIL.md#ontology, docs/architecture/VIRGIL.md#code-organization -->
 <!-- covers-code: src/panels/panel-registry.ts, src/components/MenuBar.tsx, src/components/EditorLayout.tsx, src/components/panel-primitives.tsx -->
 
@@ -72,7 +72,7 @@ All panels declared in [src/panels/panel-registry.ts](../../src/panels/panel-reg
 | `todo` | Todo List | `todo` | right | stone |
 | `archive` | Archived Text | `archive` | right | amber/blue-grey |
 | `revisions` | Revisions | `revision-comment` (key prefix `revision`) + `revision-suggestion` (polymorphic — registry `card.kind` is `revision-comment`; both kinds resolve to this panel via `CardMeta.panel`, registry-derived since 27458d8). Comment cards use `EditableCard` chrome (rich-text body, AI-request checkbox in footer); each card carries a **kind chevron** (the morph dropdown — distinct from the retired expand chevron) that converts in-place between comment ↔ revision-suggestion via `convertCard`. `CARD_TYPE_LABELS` labels `revision-suggestion` "Revision" (3fa5996). NOTE: the spine `CardKind` renamed `comment`→`revision-comment` (27458d8), but `RevisionCard.kind` / `revisions.json` / the Python layer still use `comment`/`suggestion`, bridged at float dispatch | right (omni-eligible) | stone |
-| `cutter` | Cutter | `cutter-comment` + `cutter-suggestion` (polymorphic — `card: null` in registry) | right (omni-eligible) | red |
+| `cutter` | Cutter | `cutter-comment` + `cutter-suggestion` (polymorphic — `card: null` in registry). `cutter-comment` uses `EditableCard` chrome (rich-text body, registry-derived collab/morph, shared `suggestion-fields.tsx` module) — same structure as `revision-comment` (migrated in backlog #35). | right (omni-eligible) | red |
 | `errors` | Errors | `error` | right (omni-eligible) | light red |
 
 ### Non-card panels

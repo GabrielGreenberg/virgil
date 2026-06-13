@@ -1,4 +1,4 @@
-<!-- last-verified: bcca090 2026-06-12 -->
+<!-- last-verified: 7433bc2 2026-06-13 -->
 <!-- derives-from: docs/architecture/VIRGIL.md#ontology, docs/architecture/VIRGIL.md#code-organization -->
 <!-- covers-code: src/components/DragHandleMenu.tsx, src/components/ActionsMenuPanel.tsx, src/components/SelectionActionsMenu.tsx, src/components/ActionsStripButton.tsx, src/components/editor-layout/card-actions, src/lib/editor-extensions.ts, src/lib/tiptap/tab-indent.ts, src/lib/tiptap/expex.ts, src/lib/tiptap/latex-comment.ts, src/lib/section-folding.ts, src/lib/tiptap/uuid-attr.ts, src/lib/tiptap/pgmark.ts, src/lib/tiptap/latex-command.ts, src/text-objects/text-object-registry.ts, src/text-objects/TextObjectGrabHandle.tsx, src/text-objects/drop-adapters.ts, src/components/drop-mode, src/lib/tiptap/atom-registry.ts -->
 

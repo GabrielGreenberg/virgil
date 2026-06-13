@@ -1,4 +1,4 @@
-<!-- last-verified: 3a54711 2026-06-08 -->
+<!-- last-verified: 7433bc2 2026-06-13 -->
 <!-- derives-from: (root — verified against code) -->
 <!-- covers-code: src/app, src/cards, src/components, src/hooks, src/lib, src/links, src/panels, src/text-objects, src/types, library, editor -->
 
@@ -289,7 +289,7 @@ The exhaustive per-kind account — every kind's panel, sidecar + list-key, pers
 ## Public-type registry
 <!-- covers-code: src/lib/types.ts, src/panels/_shared/types.ts, src/links/_shared/types.ts -->
 
-[src/lib/types.ts](../../src/lib/types.ts) is the type SSOT for the card / sidecar surface — **58** exported interfaces and type aliases as shipped. They fall into a few families: the **card interfaces** (`UserNote`, `HighlightCard`, `FootnoteRef`, `CitationRef`, `RevisionCard`, `ReportItem`, `CutterCard`, `ArchivedSnippet`, `TodoItem`, `ExampleRef`, …) and a `…State` wrapper per sidecar; the **Task surface** (`AiRequest`, `AiRequestKind`, `AiRequestStatus`, `AiRequestResult`, `AiRequestLink`, `AiRequestPayload`); the **notification** types (`DocNotification…`); the **bibliography** support types (`BibEntry`, `BibReviewRequest`, `BibSettings`, `AnnotationsState`); and a residue of **legacy** types from the pre-card review pipeline (`Suggestion`, `SessionState`, `ReviewRequest`, `ClaudeSuggestion`, `UserComment`), four of which have no live consumer.
+[src/lib/types.ts](../../src/lib/types.ts) is the type SSOT for the card / sidecar surface — **56** exported interfaces and type aliases as shipped. They fall into a few families: the **card interfaces** (`UserNote`, `HighlightCard`, `FootnoteRef`, `CitationRef`, `RevisionCard`, `ReportItem`, `CutterCard`, `ArchivedSnippet`, `TodoItem`, `ExampleRef`, …) and a `…State` wrapper per sidecar; the **Task surface** (`AiRequest`, `AiRequestKind`, `AiRequestStatus`, `AiRequestResult`, `AiRequestLink`, `AiRequestPayload`); the **notification** types (`DocNotification…`); the **bibliography** support types (`BibEntry`, `BibReviewRequest`, `BibSettings`, `AnnotationsState`); and a residue of **legacy** types from the pre-card review pipeline (`Suggestion`, `SessionState`, `ReviewRequest`, `ClaudeSuggestion`), four of which have no live consumer. (`UserComment` and `CommentsState` were removed in A1 gardening — `comments.json` was never wired into any panel.)
 
 This is the target state for **coherence check (2)** ([check-coherence.SKETCH.md](check-coherence.SKETCH.md#check-2--type-accounting)): every exported type in `types.ts` must be accounted for — mapped to its concept and a doc-of-record — or explicitly delegated to a named manifest doc. With this section filled, that check graduates from warn-only to per-type error.
 

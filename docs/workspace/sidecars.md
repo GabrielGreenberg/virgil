@@ -1,4 +1,4 @@
-<!-- last-verified: 694f789 2026-06-04 -->
+<!-- last-verified: 7433bc2 2026-06-13 -->
 <!-- derives-from: docs/architecture/VIRGIL.md#public-type-registry -->
 <!-- covers-code: src/lib/types.ts, src/lib/storage-fsa.ts -->
 
