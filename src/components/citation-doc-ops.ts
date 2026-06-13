@@ -96,6 +96,10 @@ export function stripFootnoteNestedCitation(
 ): number {
   let tr = editor.state.tr;
   let touched = 0;
+  // Safe to walk the ORIGINAL doc while accumulating into `tr`: setNodeMarkup
+  // is an attr-only op that never shifts positions, so `pos` stays valid
+  // across iterations (mirrors renumberFootnotes). Do NOT add a size-changing
+  // op to this loop without re-reading positions from the running tr.
   editor.state.doc.descendants((node, pos) => {
     if (node.type.name !== "footnote" || !node.attrs.content) return true;
     const { content, removed } = removeCitationFromJsonContent(
