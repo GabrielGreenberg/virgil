@@ -128,7 +128,7 @@ export interface OmniHostProps {
   toggleErrorExpanded: (id: string) => void;
   // Cutter
   cutterCards: CutterCard[];
-  updateCutterCommentText: CutterHook["updateCommentText"];
+  updateCutterCommentContent: CutterHook["updateCommentContent"];
   setCutterCommentAiRequest: CutterHook["setCommentAiRequest"];
   updateCutterSuggestionField: CutterHook["updateSuggestionField"];
   setCutterSuggestionStatus: CutterHook["setSuggestionStatus"];
@@ -511,7 +511,7 @@ export function OmniHost(p: OmniHostProps) {
       jumpToCard,
       findParagraphPos,
       editor: editorInstance,
-      updateCommentText: p.updateCutterCommentText,
+      updateCommentContent: p.updateCutterCommentContent,
       setCommentAiRequest: p.setCutterCommentAiRequest,
       updateSuggestionField: p.updateCutterSuggestionField,
       acceptSuggestion: acceptCutterInOmni,
@@ -577,7 +577,7 @@ export function OmniHost(p: OmniHostProps) {
     p.dismissError, p.jumpToError,
     p.expandedErrorIds, p.expandError, p.toggleErrorExpanded,
     // Cutter handlers
-    p.updateCutterCommentText, p.setCutterCommentAiRequest,
+    p.updateCutterCommentContent, p.setCutterCommentAiRequest,
     p.updateCutterSuggestionField, p.convertCutterCard, p.deleteCutterCard,
     // Reports handlers
     p.convertReportCard,

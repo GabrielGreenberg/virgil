@@ -939,10 +939,24 @@ docked halo unchanged.
 
 ## 35. Cutter comments should share the revision-comment layout
 
-**Reported:** 2026-06-12 · **Status:** open · **Area:** card panels / comment family
+**Reported:** 2026-06-12 · **Status:** done (2026-06-12, chip `W-E`) · **Area:** card panels / comment family
 
 CutterCommentCard's layout/structure drifted from RevisionCommentCard.
 Desired: one shared comment-card structure (check the suggestion pair too).
+
+Done: CutterCommentCard now renders through the canonical `EditableCard`
+(rich-text RichTextField body, registry-derived collab claim, morph
+chevron, AI-request footer) exactly like RevisionCommentCard. The one
+unique element — the excised "Original" cut excerpt (`selectedText`) — is
+kept as a section above the body via a new minimal, purely-additive
+`aboveBody` slot on EditableCard. The DIY chrome (raw `<textarea>`, manual
+`useCardClaim` wiring, partnerClaim dimming, headerTrailing
+CollabCardTrailing) is deleted; comment writeback moved from the plain-text
+path to the rich-text `updateCommentContent` path threaded through
+panel/host/omni/floats. The suggestion pair was already converged — the
+duplicated `FieldBlock` / `AuthorChip` / `SuggestionTrailing` / field maps
+were extracted to `src/panels/_shared/suggestion-fields.tsx` (FieldBlock
+parameterized by `panelKey`), consumed by both Cutter and Revisions.
 
 ## 36. Inside a floating panel, a card's grab-bar drags the PANEL
 

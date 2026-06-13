@@ -4952,7 +4952,7 @@ function PaneRail({
           expandError={expandError}
           toggleErrorExpanded={toggleErrorExpanded}
           cutterCards={cutterHook.cards}
-          updateCutterCommentText={cutterHook.updateCommentText}
+          updateCutterCommentContent={cutterHook.updateCommentContent}
           setCutterCommentAiRequest={cutterHook.setCommentAiRequest}
           updateCutterSuggestionField={cutterHook.updateSuggestionField}
           setCutterSuggestionStatus={cutterHook.setSuggestionStatus}
@@ -5371,7 +5371,7 @@ function PaneRailBody({
         goal={cutterHook.goal}
         setGoal={cutterHook.setGoal}
         clearGoal={cutterHook.clearGoal}
-        updateCommentText={cutterHook.updateCommentText}
+        updateCommentContent={cutterHook.updateCommentContent}
         setCommentAiRequest={cutterHook.setCommentAiRequest}
         updateSuggestionField={cutterHook.updateSuggestionField}
         setSuggestionStatus={cutterHook.setSuggestionStatus}
