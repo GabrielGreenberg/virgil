@@ -3,6 +3,7 @@
 import { useEffect, useSyncExternalStore } from "react";
 import {
   DEFAULT_PANEL_TYPOGRAPHY,
+  getPanelDefault,
   getPanelTypography,
   getPanelTypographyVersion,
   isPanelTypographyFieldOverridden,
@@ -33,6 +34,14 @@ export function usePanelTypography(key: PanelBodyKey | undefined): PanelTypograp
   useTypoVersion();
   if (!key) return null;
   return getPanelTypography(key);
+}
+
+/** The effective DEFAULT typography for `key` (doc-relative tier base ⊕ static
+ *  `bodyClass` row, BUG #30). Re-renders when the pushed tier bases change so a
+ *  prefs UI's "reset"/"is-default" comparison tracks the live doc size. */
+export function usePanelDefault(key: PanelBodyKey): PanelTypography {
+  useTypoVersion();
+  return getPanelDefault(key);
 }
 
 /** Effective body style (default ⊕ override) as a ready-to-spread

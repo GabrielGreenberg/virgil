@@ -19,9 +19,9 @@ import {
   setTextAnchorLink,
 } from "@/links/links";
 import { bridgeCardAiRequestFlag } from "@/lib/ai-request-bridge";
+import { isAutoTitle } from "@/panels/panel-registry";
 import { migrateCardLinks } from "@/links/migrate-card";
 import { applyCardMorph } from "@/cards/morphs";
-import { nextCardTitle } from "@/panels/panel-registry";
 import { usePersistentState } from "./usePersistentState";
 import { usePristineTracker } from "./usePristineTracker";
 import type { PristineKindApi } from "./usePristineCardManager";
@@ -33,7 +33,11 @@ function migrateNote(raw: unknown): UserNote {
   return {
     kind: "note",
     id: r.id!,
-    title: typeof r.title === "string" ? r.title : "",
+    // BUG #31: strip a legacy auto-generated "Note N" title on load.
+    title:
+      typeof r.title === "string" && !isAutoTitle("note", r.title)
+        ? r.title
+        : "",
     content: normalizeRichContent(r.content),
     createdAt: r.createdAt!,
     aiRequest: !!r.aiRequest,
@@ -107,7 +111,9 @@ export function useNotes(docId: string | null, externalPristine?: PristineKindAp
       let newNote: UserNote = {
         kind: "note",
         id: generateEntityId(),
-        title: nextCardTitle("note", notes.length),
+        // BUG #31: never persist a generated title ("Note 3"); leave it empty
+        // so the placeholder / +T affordance shows until the user types one.
+        title: "",
         content: content ?? emptyRichContent(),
         createdAt: new Date().toISOString(),
         aiRequest: false,

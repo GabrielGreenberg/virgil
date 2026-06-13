@@ -143,6 +143,19 @@ const PANEL_BODY_PRIMARY_KIND: Record<PanelBodyKey, CardKind> = {
   example:  "example",
 };
 
+/** Each panel-body row's visual TIER (its primary kind's `CardMeta.bodyClass`).
+ *  The tier picks which doc-relative base font size a row's *default* tracks
+ *  (BUG #30): borrowed → main-text size − 2px, sans → the `panelFontSize`
+ *  pref. Derived from the same `bodyClass` source as `DEFAULT_PANEL_TYPOGRAPHY`,
+ *  so the two can never disagree about which tier a panel sits in. */
+export const PANEL_BODY_TIER: Record<PanelBodyKey, "borrowed" | "sans"> =
+  Object.fromEntries(
+    (Object.keys(PANEL_BODY_PRIMARY_KIND) as PanelBodyKey[]).map((key) => [
+      key,
+      CARD_REGISTRY[PANEL_BODY_PRIMARY_KIND[key]].bodyClass,
+    ]),
+  ) as Record<PanelBodyKey, "borrowed" | "sans">;
+
 /** Defaults are the source of truth for each panel's body typography.
  *  `usePanelBodyStyle` returns the effective (default ⊕ override) value,
  *  which RichTextField and the bespoke card textareas write inline onto
@@ -206,6 +219,20 @@ let loaded = false;
 const listeners = new Set<() => void>();
 let version = 0;
 
+/** Doc-relative DEFAULT font sizes per tier (BUG #30). EditorLayout pushes the
+ *  live document/panel font-size prefs here whenever they change (O(1), only on
+ *  a pref edit — never per keystroke), so an un-overridden card body tracks the
+ *  main text instead of being frozen at the `BODY_CLASS_TYPOGRAPHY` literal:
+ *    - `borrowed` ← round(editorFontSize_rem * 16) − 2  (one size below body)
+ *    - `sans`     ← the `panelFontSize` px pref
+ *  `undefined` (SSR / before EditorLayout mounts) → fall back to the static
+ *  `BODY_CLASS_TYPOGRAPHY` literal. An explicit per-panel size override (a
+ *  numeric `fontSize` write from the stepper) always wins over these bases. */
+const tierBaseFontSize: Record<"borrowed" | "sans", number | undefined> = {
+  borrowed: undefined,
+  sans:     undefined,
+};
+
 export function getPanelTypographyVersion(): number {
   return version;
 }
@@ -218,6 +245,38 @@ export function subscribePanelTypography(listener: () => void): () => void {
 function notify() {
   version++;
   listeners.forEach((l) => l());
+}
+
+/** Push the live doc-relative DEFAULT font sizes for the two tiers (BUG #30).
+ *  Called from EditorLayout's prefs-injection effect, gated on the same
+ *  `editorPrefs` change as the CSS-var push — so this runs only when a font
+ *  pref actually changes, never per keystroke (keystroke sanctity). No-ops (and
+ *  skips `notify()`) when neither value moved, so a structurally-null prefs
+ *  re-render doesn't churn every card body. */
+export function setTierBaseFontSizes(borrowed: number, sans: number): void {
+  const b = Number.isFinite(borrowed) ? Math.round(borrowed) : undefined;
+  const s = Number.isFinite(sans) ? Math.round(sans) : undefined;
+  if (tierBaseFontSize.borrowed === b && tierBaseFontSize.sans === s) return;
+  tierBaseFontSize.borrowed = b;
+  tierBaseFontSize.sans = s;
+  notify();
+}
+
+/** The effective DEFAULT typography for `key`: the static `bodyClass` row, but
+ *  with `fontSize` swapped for the live doc-relative tier base when one has
+ *  been pushed (family/color stay literal). This is what an un-overridden card
+ *  body renders at and what the size stepper displays.
+ *
+ *  Exported so the prefs UIs (SmartPreferences / FontsDialog) compare against
+ *  the SAME doc-relative default the body actually renders — so "reset" and
+ *  "is at default" track the live doc size rather than the frozen literal
+ *  (otherwise dialing a borrowed slider to the old 15px literal would wrongly
+ *  read as default while the doc-relative base is, say, 13px). */
+export function getPanelDefault(key: PanelBodyKey): PanelTypography {
+  const base = DEFAULT_PANEL_TYPOGRAPHY[key];
+  const tierBase = tierBaseFontSize[PANEL_BODY_TIER[key]];
+  if (tierBase === undefined) return base;
+  return { ...base, fontSize: tierBase };
 }
 
 function persist() {
@@ -253,9 +312,13 @@ export function loadPanelTypography(): void {
   } catch { /* ignore */ }
 }
 
-/** Return the effective typography for `key` (override merged over default). */
+/** Return the effective typography for `key` (override merged over default).
+ *  The DEFAULT here is the doc-relative `effectiveDefault` (BUG #30): when the
+ *  user has set no `fontSize` override, the size tracks the live tier base
+ *  (main text − 2px for borrowed, the `panelFontSize` pref for sans). An
+ *  explicit numeric `fontSize` override from the stepper still wins. */
 export function getPanelTypography(key: PanelBodyKey): PanelTypography {
-  const base = DEFAULT_PANEL_TYPOGRAPHY[key];
+  const base = getPanelDefault(key);
   const o = overrides[key];
   if (!o) return base;
   return {

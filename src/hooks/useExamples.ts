@@ -3,7 +3,7 @@
 import { useState, useCallback, useEffect, useMemo, useRef } from "react";
 import { readSidecar, writeSidecar } from "@/lib/storage";
 import type { ExamplesState, ExampleRef } from "@/lib/types";
-import { nextCardTitle } from "@/panels/panel-registry";
+import { isAutoTitle } from "@/panels/panel-registry";
 import {
   getActiveHandle,
   isStalePipelineError,
@@ -39,7 +39,12 @@ export function useExamples(docId: string | null) {
     readSidecar<ExamplesState>(docId, "examples.json", EMPTY)
       .then((data) => {
         if (cancelled || !data.examples) return;
-        setState({ examples: data.examples });
+        // BUG #31: strip legacy auto-generated "Example N" titles on load.
+        setState({
+          examples: data.examples.map((e) =>
+            isAutoTitle("example", e.title) ? { ...e, title: "" } : e,
+          ),
+        });
       })
       .catch(() => {});
     return () => {
@@ -96,7 +101,6 @@ export function useExamples(docId: string | null) {
     (editorExamples: Array<{ id: string; tag: string; label: string }>) => {
       const current = stateRef.current;
       const byId = new Map(current.examples.map((e) => [e.id, e]));
-      let newCount = 0;
       const next: ExampleRef[] = editorExamples.map((ee) => {
         const existing = byId.get(ee.id);
         if (existing) {
@@ -106,13 +110,13 @@ export function useExamples(docId: string | null) {
             label: ee.label,
           };
         }
-        const title = nextCardTitle("example", current.examples.length + newCount);
-        newCount++;
         return {
           id: ee.id,
           tag: ee.tag,
           label: ee.label,
-          title,
+          // BUG #31: never persist a generated title ("Example 2"); empty
+          // until the user names it.
+          title: "",
           createdAt: new Date().toISOString(),
         };
       });

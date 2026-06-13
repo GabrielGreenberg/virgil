@@ -223,11 +223,37 @@ export const CARD_TITLE_LABELS: Record<CardKind, string | null> = Object.fromEnt
 ) as Record<CardKind, string | null>;
 
 /** Default title for a freshly created card: `${label} ${currentCount + 1}`.
- *  Returns "" for kinds that opt out (label is null). */
+ *  Returns "" for kinds that opt out (label is null).
+ *
+ *  NOTE (BUG #31): creation sites no longer PERSIST this. The generated title
+ *  is dead as stored data — it lives only as the historical shape that
+ *  `isAutoTitle` strips on load. Kept for tests / any future ephemeral use. */
 export function nextCardTitle(kind: CardKind, currentCount: number): string {
   const label = CARD_TITLE_LABELS[kind];
   if (!label) return "";
   return `${label} ${currentCount + 1}`;
+}
+
+function escapeRegExp(s: string): string {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+/** True when `title` is EXACTLY a legacy auto-generated title for `kind` — the
+ *  `^<Label> <digits>$` shape `nextCardTitle` used to persist (BUG #31). The
+ *  label is the kind's own `CARD_TITLE_LABELS` prefix (regex-escaped, so the
+ *  two-word "Archive Text" matches literally), so this is per-kind precise:
+ *  "Archive Text 1" is auto for archive, but "Footnote on Frege" or
+ *  "Chapter 2" survive (no leading kind label, or extra words after it).
+ *  Returns false for kinds that never auto-titled (label null) and for any
+ *  non-string / empty input, so a real title is never nulled by accident.
+ *
+ *  Used by the per-kind sidecar migrators to drop a stale generated title on
+ *  load (so collapsed/expanded rows fall back to the placeholder / +T). */
+export function isAutoTitle(kind: CardKind, title: unknown): boolean {
+  if (typeof title !== "string") return false;
+  const label = CARD_TITLE_LABELS[kind];
+  if (!label) return false;
+  return new RegExp(`^${escapeRegExp(label)} \\d+$`).test(title);
 }
 
 /** `float:card:<kind>:<id>` — the unified popout key for this panel's primary

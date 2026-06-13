@@ -10,7 +10,7 @@ import {
 } from "@/links/links";
 import { migrateCardLinks } from "@/links/migrate-card";
 import { bridgeCardAiRequestFlag } from "@/lib/ai-request-bridge";
-import { nextCardTitle } from "@/panels/panel-registry";
+import { isAutoTitle } from "@/panels/panel-registry";
 import { usePersistentState } from "./usePersistentState";
 import { usePristineTracker } from "./usePristineTracker";
 import type { PristineKindApi } from "./usePristineCardManager";
@@ -21,7 +21,10 @@ function migrateTodo(raw: unknown): TodoItem {
   const i = raw as Partial<TodoItem>;
   return {
     id: i.id!,
-    text: i.text ?? "",
+    // BUG #31: the legacy seed put a generated "Task N" in the BODY. Strip it
+    // on load (todo's title label is "Task") so an untouched todo reads as
+    // empty — the render-time placeholder shows and it stays pristine.
+    text: isAutoTitle("todo", i.text) ? "" : (i.text ?? ""),
     notes: i.notes ?? "",
     done: !!i.done,
     aiRequest: !!i.aiRequest,
@@ -48,7 +51,10 @@ export function useTodos(docId: string | null, externalPristine?: PristineKindAp
   const addItem = useCallback((): TodoItem => {
     const item: TodoItem = {
       id: generateEntityId(),
-      text: nextCardTitle("todo", state.items.length),
+      // BUG #31: never seed a generated "Task N" into the BODY — an empty body
+      // shows a render-time placeholder and keeps the todo genuinely pristine
+      // (so deleting an untouched todo doesn't trip the has-content confirm).
+      text: "",
       notes: "",
       done: false,
       aiRequest: false,
@@ -168,8 +174,8 @@ export function useTodos(docId: string | null, externalPristine?: PristineKindAp
   /**
    * Drop todos that were created via `addItem()` but never edited. Call
    * from panel-close so "press +, do nothing, leave" doesn't leave a
-   * blank "Task N" behind. When the external pristine manager is in use,
-   * it owns discard via the registered delete callback.
+   * blank (empty-body) todo behind. When the external pristine manager is
+   * in use, it owns discard via the registered delete callback.
    */
   const discardPristineTodos = useCallback(() => {
     if (externalPristine) {

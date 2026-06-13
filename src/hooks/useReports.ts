@@ -24,8 +24,8 @@ import {
 } from "@/links/links";
 import { migrateCardLinks } from "@/links/migrate-card";
 import { bridgeCardAiRequestFlag } from "@/lib/ai-request-bridge";
+import { isAutoTitle } from "@/panels/panel-registry";
 import { applyCardMorph } from "@/cards/morphs";
-import { nextCardTitle } from "@/panels/panel-registry";
 import { usePersistentState } from "./usePersistentState";
 import { usePristineTracker } from "./usePristineTracker";
 import type { PristineKindApi } from "./usePristineCardManager";
@@ -52,7 +52,11 @@ function migrateReportRecord(raw: unknown): ReportCard | null {
     id: r.id,
     createdAt: r.createdAt,
     author: r.author === "ai" ? "ai" : "human",
-    title: typeof r.title === "string" ? r.title : "",
+    // BUG #31: strip a legacy auto-generated "Report N" title on load.
+    title:
+      typeof r.title === "string" && !isAutoTitle("report", r.title)
+        ? r.title
+        : "",
     text,
     content,
     selectedText:
@@ -134,13 +138,13 @@ export function useReports(
       targetKind?: import("@/text-objects/types").TextObjectKind,
       author: "human" | "ai" = "human",
     ) => {
-      const count = state.cards.filter((c) => c.kind === "report").length;
       let card: ReportCard = {
         kind: "report",
         id: generateEntityId(),
         createdAt: new Date().toISOString(),
         author,
-        title: nextCardTitle("report", count),
+        // BUG #31: never persist a generated title ("Report 2").
+        title: "",
         text: content ? richJsonToPlainText(content) || "" : "",
         content: content ?? emptyRichContent(),
         selectedText: anchor?.anchorText,

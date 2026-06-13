@@ -56,7 +56,7 @@ import {
   subscribePanelColors,
   type PanelThemeKey,
 } from "@/lib/panel-theme";
-import { loadPanelTypography } from "@/lib/panel-typography";
+import { loadPanelTypography, setTierBaseFontSizes } from "@/lib/panel-typography";
 import { loadPrefLinks } from "@/lib/pref-links";
 import { useDevPrefsMirror } from "@/lib/dev-prefs-mirror";
 import { useScrollActivityTracker } from "@/hooks/useScrollActivityTracker";
@@ -1331,6 +1331,18 @@ export default function EditorLayout() {
     for (const entry of DERIVED_CSS) {
       s.setProperty(entry.cssVar, entry.compute(editorPrefs));
     }
+    // BUG #30: feed the live doc-relative DEFAULT body sizes into the
+    // panel-typography store so an un-overridden card body tracks the main
+    // text instead of a frozen literal. Borrowed bodies (footnote/archive/
+    // example) sit one size below body text (round(rem*16) − 2px); sans
+    // bodies track the `panelFontSize` pref. The store setter no-ops when
+    // neither value moved, so this is O(1) and only churns on a real font-pref
+    // change (this effect is already gated on `editorPrefs`, never per
+    // keystroke). The store is NOT a CSS var, so it sidesteps the
+    // `--editor-font-size` self-reference cycle (RichTextField / BorrowedMainText
+    // re-assign that var onto the card's own PM dom).
+    const docPx = Math.round(Number(editorPrefs.editorFontSize) * 16);
+    setTierBaseFontSizes(docPx - 2, Number(editorPrefs.panelFontSize));
     // Update browser theme-color meta tag. Always mirrors the topbar
     // background — in enhanced zen mode the whole window canvas is also
     // the topbar color, so this stays correct in both modes.

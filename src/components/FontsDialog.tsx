@@ -7,11 +7,11 @@ import SizeStepper from "./SizeStepper";
 import type { EditorPreferences } from "@/hooks/usePreferences";
 import { DEFAULT_PREFS } from "@/hooks/usePreferences";
 import {
-  DEFAULT_PANEL_TYPOGRAPHY,
   resolveFontStack,
   setPanelTypographyField,
+  clearPanelTypographyField,
 } from "@/lib/panel-typography";
-import { usePanelTypography } from "@/hooks/usePanelTypography";
+import { usePanelTypography, usePanelDefault } from "@/hooks/usePanelTypography";
 
 interface FontsDialogProps {
   open: boolean;
@@ -149,9 +149,12 @@ export default function FontsDialog({ open, onClose, prefs, onUpdate }: FontsDia
   }, [open, pos]);
 
   // Footnote driven through panel-typography (single source of truth).
+  // `footnoteDef` is the doc-relative default (BUG #30) so reset/at-default
+  // track the live body size rather than the frozen literal.
   const footnoteTypo = usePanelTypography("footnote");
-  const footnoteFamily = footnoteTypo?.fontFamily ?? DEFAULT_PANEL_TYPOGRAPHY.footnote.fontFamily;
-  const footnoteSize = footnoteTypo?.fontSize ?? DEFAULT_PANEL_TYPOGRAPHY.footnote.fontSize;
+  const footnoteDef = usePanelDefault("footnote");
+  const footnoteFamily = footnoteTypo?.fontFamily ?? footnoteDef.fontFamily;
+  const footnoteSize = footnoteTypo?.fontSize ?? footnoteDef.fontSize;
 
   if (!open || !pos) return null;
 
@@ -423,12 +426,14 @@ export default function FontsDialog({ open, onClose, prefs, onUpdate }: FontsDia
         <CategoryCard
           label="Footnotes"
           onReset={() => {
-            setPanelTypographyField("footnote", "fontFamily", DEFAULT_PANEL_TYPOGRAPHY.footnote.fontFamily);
-            setPanelTypographyField("footnote", "fontSize", DEFAULT_PANEL_TYPOGRAPHY.footnote.fontSize);
+            // Clear the overrides so family + size fall back to the
+            // doc-relative default (BUG #30), rather than pinning the literal.
+            clearPanelTypographyField("footnote", "fontFamily");
+            clearPanelTypographyField("footnote", "fontSize");
           }}
           resetDisabled={
-            footnoteFamily === DEFAULT_PANEL_TYPOGRAPHY.footnote.fontFamily &&
-            footnoteSize === DEFAULT_PANEL_TYPOGRAPHY.footnote.fontSize
+            footnoteFamily === footnoteDef.fontFamily &&
+            footnoteSize === footnoteDef.fontSize
           }
         >
           <PreviewPod
