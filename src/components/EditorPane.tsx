@@ -1930,13 +1930,16 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
   // the card resurrected on reload. This removes BOTH: first the in-doc
   // atom via the editor handle (a no-op for a draft / unanchored citation,
   // which has no node — `findInlineAtomPos` returns null), then the
-  // sidecar entry. A footnote-nested `\cite` lives inside a footnote's
-  // attrs.content rather than as a top-level doc atom, so the handle won't
-  // find it; the doc tx no-ops and we still drop the entry (entry-only
-  // delete — see chip report for this known edge). EVERY UI delete path
-  // routes here; the bare sidecar filter survives only as this handler's
-  // internal second step. Defined above the discard/registry/popouts memos
-  // that consume it so it's out of the TDZ when those factories evaluate.
+  // sidecar entry. A footnote-NESTED `\cite` lives inside a footnote's
+  // attrs.content rather than as a top-level doc atom; the handle's
+  // `deleteCitation` now ALSO strips it from the host footnote's content
+  // (backlog #38 — was previously left behind, so `getCitations()` re-derived
+  // the deleted card on reload). That footnote-content rewrite is a real doc
+  // tx, so the readOnlyEnforcer leaves it inert in collaborator read-only
+  // mode. EVERY UI delete path routes here; the bare sidecar filter survives
+  // only as this handler's internal second step. Defined above the
+  // discard/registry/popouts memos that consume it so it's out of the TDZ
+  // when those factories evaluate.
   const handleDeleteCitation = useCallback(
     (id: string) => {
       innerRef.current?.deleteCitation(id);
