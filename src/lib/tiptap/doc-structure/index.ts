@@ -56,6 +56,7 @@ export {
   useDocStructureBus,
   useDocStructureEvent,
   useBlockContentChanged,
+  useExampleContentRevision,
 } from "./hook";
 
 export {

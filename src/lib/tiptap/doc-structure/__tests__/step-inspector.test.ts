@@ -316,6 +316,52 @@ describe("inspectSteps — figures and examples", () => {
   });
 });
 
+describe("inspectSteps — example content-change signal (#39 nit 1)", () => {
+  // Two example blocks; the exampleItem (test schema) carries `inline*`,
+  // so an edit inside one item is a pure-text content edit.
+  function twoExamples() {
+    const a = exampleBlock("exA", { tag: "a" }, [exampleItem({}, "alpha")]);
+    const b = exampleBlock("exB", { tag: "b" }, [exampleItem({}, "beta")]);
+    return doc(a, b);
+  }
+
+  it("typing inside example A attributes ONLY exA to exampleContentChangedUuids", () => {
+    const s = stateOf(twoExamples());
+    // exampleBlock A opens at 0, its exampleItem at 1, text "alpha" starts at
+    // 2 → end of "alpha" is pos 7. Insert a char inside A's text.
+    const tr = s.tr.insertText("!", 7, 7);
+    const d = inspectSteps(tr, s.doc, tr.doc);
+    expect(d.exampleContentChangedUuids.has("exA")).toBe(true);
+    // The sibling example B is untouched — its card must NOT re-seed.
+    expect(d.exampleContentChangedUuids.has("exB")).toBe(false);
+    // It is NOT a structural example change (no add/remove/nesting change),
+    // so the structural counter stays flat — proving the new signal is the
+    // ONLY thing that fires for a content-only edit.
+    expect(d.exampleStructureChanged).toBe(false);
+    expect(d.addedExamples).toHaveLength(0);
+    expect(d.removedExamples).toHaveLength(0);
+  });
+
+  it("a plain edit in a NON-example paragraph fires NO example-content signal", () => {
+    const s = stateOf(doc(paragraph("p1", "hello"), exampleBlock("exA", { tag: "a" }, [exampleItem({}, "alpha")])));
+    // Type inside the plain paragraph p1 (text "hello" ends at pos 6).
+    const tr = s.tr.insertText("x", 6, 6);
+    const d = inspectSteps(tr, s.doc, tr.doc);
+    // Attributed to p1 (a normal block) only — no exampleBlock ancestor.
+    expect(d.contentChangedUuids.has("p1")).toBe(true);
+    expect(d.exampleContentChangedUuids.size).toBe(0);
+  });
+
+  it("keystroke sanctity: a non-example structural-null edit yields EMPTY_DIFF when nothing else changed", () => {
+    // A doc with only a paragraph — typing in it produces contentChangedUuids
+    // but NEVER an exampleContentChangedUuids entry.
+    const s = stateOf(doc(paragraph("p1", "hi")));
+    const tr = s.tr.insertText("!", 3, 3);
+    const d = inspectSteps(tr, s.doc, tr.doc);
+    expect(d.exampleContentChangedUuids.size).toBe(0);
+  });
+});
+
 describe("inspectSteps — undo invariants", () => {
   it("undo of a delete restores the same block UUID (round-trip empty)", () => {
     // Two-state simulation: tr1 deletes a paragraph; tr2 re-inserts it.

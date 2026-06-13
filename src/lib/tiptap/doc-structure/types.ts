@@ -203,6 +203,18 @@ export interface StructureDiff {
   /** Blocks whose interior content changed (text, marks, inline atoms)
    *  but whose UUID stayed the same. Drives float-mirror. */
   contentChangedUuids: ReadonlySet<string>;
+
+  /** exampleBlock UUIDs whose interior content changed this transaction
+   *  (text inside an example item, a gloss row, a nested atom) — keyed by
+   *  the ENCLOSING exampleBlock's uuid, NOT the nearer anchorable
+   *  exampleItem (which `contentChangedUuids` would carry instead, since
+   *  exampleItems are also UUID-bearing). Lets the Examples-panel card —
+   *  which addresses itself by exampleBlock uuid — re-seed on a content-only
+   *  edit to its example made in the MAIN editor, without subscribing to the
+   *  per-transaction stream. Derived from the SAME step walk that fills
+   *  `contentChangedUuids` (no extra doc walk); content-only, so it never
+   *  bumps the bus `emitCount`. */
+  exampleContentChangedUuids: ReadonlySet<string>;
 }
 
 export const EMPTY_DIFF: StructureDiff = {
@@ -230,6 +242,7 @@ export const EMPTY_DIFF: StructureDiff = {
   addedLabels: [],
   removedLabels: [],
   contentChangedUuids: new Set(),
+  exampleContentChangedUuids: new Set(),
 };
 
 export function isEmptyDiff(diff: StructureDiff): boolean {
@@ -257,6 +270,7 @@ export function isEmptyDiff(diff: StructureDiff): boolean {
     diff.changedFigures.length === 0 &&
     diff.addedLabels.length === 0 &&
     diff.removedLabels.length === 0 &&
-    diff.contentChangedUuids.size === 0
+    diff.contentChangedUuids.size === 0 &&
+    diff.exampleContentChangedUuids.size === 0
   );
 }

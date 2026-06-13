@@ -120,8 +120,14 @@ export function exampleBlock(
   return testSchema.nodes.exampleBlock.create({ uuid, ...attrs }, itemNodes);
 }
 
-export function exampleItem(attrs: Record<string, unknown> = {}): PMNode {
-  return testSchema.nodes.exampleItem.create(attrs);
+export function exampleItem(
+  attrs: Record<string, unknown> = {},
+  text = "",
+): PMNode {
+  return testSchema.nodes.exampleItem.create(
+    attrs,
+    text ? testSchema.text(text) : null,
+  );
 }
 
 export function footnoteNode(footnoteId: string, number = 1, thanks = false): PMNode {

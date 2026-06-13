@@ -100,6 +100,12 @@ export interface DocStructureBus {
   onContentChanged(fn: ContentChangeHandler): Unsub;
   /** Fires only when the given UUID's content changed. Used by float-mirror. */
   onBlockContentChanged(uuid: string, fn: () => void): Unsub;
+  /** Fires only when the given exampleBlock uuid's interior content changed
+   *  (text in an item / gloss / nested atom). Keyed by the enclosing
+   *  exampleBlock, so the Examples-panel card can re-seed on a content-only
+   *  MAIN edit without owning a per-transaction subscriber. Content-only —
+   *  never counted against `emitCount`. */
+  onExampleContentChanged(uuid: string, fn: () => void): Unsub;
 }
 
 // ---------------------------------------------------------------------------
@@ -175,6 +181,7 @@ export function createDocStructureBus(): DocStructureBus {
 
   const contentChanged = makeList<ContentChangeHandler>();
   const perBlockContent = new Map<string, Set<() => void>>();
+  const perExampleContent = new Map<string, Set<() => void>>();
 
   const bus: MutableBus = {
     get structure() {
@@ -287,6 +294,26 @@ export function createDocStructureBus(): DocStructureBus {
           }
         }
       }
+
+      // Per-exampleBlock content fan-out. Content-only (does NOT bump
+      // `emitCount` or wake the structural watchers) — only the example
+      // cards that subscribed to THIS uuid are notified, so a content edit
+      // to example A re-seeds card A and never touches card B.
+      if (diff.exampleContentChangedUuids.size > 0) {
+        for (const uuid of diff.exampleContentChangedUuids) {
+          const handlers = perExampleContent.get(uuid);
+          if (handlers) {
+            for (const fn of handlers) {
+              try {
+                fn();
+              } catch (err) {
+                // eslint-disable-next-line no-console
+                console.error("[DocStructureBus] per-example subscriber threw:", err);
+              }
+            }
+          }
+        }
+      }
     },
 
     onAnyChange: anyChange.add,
@@ -328,6 +355,20 @@ export function createDocStructureBus(): DocStructureBus {
         if (!set) return;
         set.delete(fn);
         if (set.size === 0) perBlockContent.delete(uuid);
+      };
+    },
+    onExampleContentChanged(uuid, fn) {
+      let handlers = perExampleContent.get(uuid);
+      if (!handlers) {
+        handlers = new Set();
+        perExampleContent.set(uuid, handlers);
+      }
+      handlers.add(fn);
+      return () => {
+        const set = perExampleContent.get(uuid);
+        if (!set) return;
+        set.delete(fn);
+        if (set.size === 0) perExampleContent.delete(uuid);
       };
     },
   };
