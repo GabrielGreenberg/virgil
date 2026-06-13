@@ -1015,9 +1015,10 @@ deferred nits:
    rejected at dispatch — the user types, sees a local change, it silently drops.
    PRE-EXISTING and identical to the shipped `example-block-body.tsx` float — fix
    both together (gate float editability on main editability).
-3. **Dead handle:** `EditorHandle.replaceExampleLatex` ([Editor.tsx:265](src/components/Editor.tsx)/:1294)
-   is now orphaned (omni-host consumer removed) — delete or annotate. Also:
-   `docIdRef` not threaded to the card editor, so nested figure/graphics atoms
-   render as pills not images (cosmetic); and the W-A write-back TEST hand-builds
-   a replaceWith instead of driving `writeBackToMain` through the card onUpdate —
-   strengthen it.
+3. **Dead handle:** ~~`EditorHandle.replaceExampleLatex` is now orphaned (omni-host
+   consumer removed) — delete or annotate.~~ DONE 2026-06-12: removed the declaration
+   + implementation + the now-orphaned `parseLatex` import (tsc clean,
+   `src/panels/Examples/` green). Still open: `docIdRef` not threaded to the card
+   editor, so nested figure/graphics atoms render as pills not images (cosmetic);
+   and the W-A write-back TEST hand-builds a replaceWith instead of driving
+   `writeBackToMain` through the card onUpdate — strengthen it.

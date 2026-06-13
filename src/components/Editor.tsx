@@ -35,7 +35,6 @@ import { registerDropTarget } from "@/components/drop-mode/target-registry";
 import "@/text-objects/floats";
 import { generateShortId } from "@/lib/uuid";
 import { ensureAnchorUuid } from "@/lib/anchor-uuid";
-import { parseLatex } from "@/lib/latex-parser";
 import { serializeBodyOnly } from "@/lib/latex-serializer";
 import { normalizeRichContent } from "@/lib/footnote-content";
 import type { JSONContent as TipJSON } from "@tiptap/react";
@@ -258,11 +257,6 @@ export interface EditorHandle {
   getExamples: () => ExampleInfo[];
   scrollToExample: (exampleId: string, sourceEl?: HTMLElement | null) => void;
   insertExample: (kind: "single" | "multi") => { exampleId: string } | null;
-  /** Replace an existing example block with the parsed result of `latex`.
-   *  Returns false when the source can't be parsed into an exampleBlock or
-   *  the target id no longer exists. The new block keeps the original uuid
-   *  so links/references stay intact. */
-  replaceExampleLatex: (exampleId: string, latex: string) => boolean;
   getCitations: () => { citationId: string; command: string; displayText: string; pos: number }[];
   scrollToCitation: (citationId: string, sourceEl?: HTMLElement | null) => void;
   updateCitationDisplay: (citationId: string, displayText: string, command?: string) => void;
@@ -1295,52 +1289,6 @@ const VirgilEditor = forwardRef<EditorHandle, EditorProps>(function VirgilEditor
         return false;
       });
       return out;
-    },
-
-    replaceExampleLatex(exampleId: string, latex: string): boolean {
-      if (!editor) return false;
-      let parsed: JSONContent;
-      try {
-        parsed = parseLatex(latex);
-      } catch {
-        return false;
-      }
-      // Find the first exampleBlock in the parsed result. The user's input
-      // may include surrounding whitespace or stray paragraphs — we ignore
-      // those and only adopt the first \ex…\xe block we encounter.
-      let newJson: JSONContent | null = null;
-      const walk = (n: JSONContent): boolean => {
-        if (n.type === "exampleBlock") { newJson = n; return true; }
-        if (n.content) for (const c of n.content) if (walk(c)) return true;
-        return false;
-      };
-      walk(parsed);
-      if (!newJson) return false;
-      // Force the uuid to match the original so any links/references that
-      // point at this example remain valid across the edit.
-      const existingAttrs = (newJson as JSONContent).attrs ?? {};
-      (newJson as JSONContent).attrs = { ...existingAttrs, uuid: exampleId };
-      // Locate target in the editor's doc.
-      let target = -1;
-      let oldNodeSize = 0;
-      editor.state.doc.descendants((node, pos) => {
-        if (node.type.name === "exampleBlock" && node.attrs.uuid === exampleId) {
-          target = pos;
-          oldNodeSize = node.nodeSize;
-          return false;
-        }
-        return true;
-      });
-      if (target < 0) return false;
-      let newNode;
-      try {
-        newNode = editor.schema.nodeFromJSON(newJson);
-      } catch {
-        return false;
-      }
-      const tr = editor.state.tr.replaceWith(target, target + oldNodeSize, newNode);
-      editor.view.dispatch(tr);
-      return true;
     },
 
     scrollToExample(exampleId: string, sourceEl?: HTMLElement | null): void {
