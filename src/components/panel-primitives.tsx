@@ -1150,10 +1150,13 @@ export const PANEL = {
   /** Standard card-body padding (UI-consistency sweep, ratified
    *  2026-06-12). One token for EditableCard's expanded body and the
    *  bespoke bodies (citation rows, todo, highlight, AI request).
-   *  ExampleCard's sectioned strips intentionally keep their own
-   *  (structured expex content). */
+   *  Exemptions (intentionally keep their own padding): ExampleCard's
+   *  sectioned strips (structured expex content); BibEntryCard's expanded
+   *  body (the multi-pod publication-details + BibTeX-fields + annotations
+   *  layout reads better at the roomier `cardInner` px-4 py-3 — backlog #28). */
   cardBody: "px-3 pt-1.5 pb-2",
-  /** Inner padding for card content. */
+  /** Inner padding for card content. Used by BibEntryCard's expanded body
+   *  (see the `cardBody` exemption note above). */
   cardInner: "px-4 py-3 relative min-w-0",
   /** Expandable sub-pod with muted background (for fields, notes, etc.). */
   subpod: "rounded-md border border-edge-subtle bg-surface-muted/70 p-3 overflow-hidden",

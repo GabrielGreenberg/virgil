@@ -572,7 +572,11 @@ export default function BibEntryCard({
             style={isSelected ? { borderTopColor: theme.separatorSelected } : undefined}
           />
 
-          {/* Body */}
+          {/* Body — keeps the roomier `cardInner` (px-4 py-3) rather than the
+              ratified `cardBody` (px-3): the multi-pod publication-details +
+              BibTeX-fields + annotations layout reads better with the extra
+              breathing room. Exempted in PANEL.cardBody's doc-comment
+              (backlog #28). */}
           <div className={`${PANEL.cardInner}${isPoppedOut ? " flex-1 min-h-0 overflow-auto" : ""}`}>
             {bodyContent}
           </div>
