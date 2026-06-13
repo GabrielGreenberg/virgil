@@ -537,8 +537,12 @@ function loadPrefs(): ViewPrefs {
     // member of its carrier's live registry SSOT, so a retired panel (e.g.
     // `quotations`) can never round-trip back through saved prefs → the
     // dev:preview snapshot → promote-defaults → shipped `*.defaults.json`.
-    // Validated against the FINAL merged values (covers both the loaded-prefs
-    // and the still-stale-DEFAULT_PREFS paths). Purely subtractive, order- and
+    // Validated against the merged/effective values. placements +
+    // printOptions.panels are filtered POST-merge, so even a stale entry baked
+    // into DEFAULT_PREFS is scrubbed (the defaults JSON placements still lists
+    // the retired `quotations` — it gets merged in then dropped here).
+    // omniCategories' default is derived clean from OMNI_PANELS, so there the
+    // filter guards the saved-blob path. Purely subtractive, order- and
     // side-preserving, malformed-safe; runs once per load (no per-render work).
     //   - placements          → PANEL_REGISTRY keys      (panel-registry.ts)
     //   - omniCategories       → OMNI_PANELS kinds        (panel-registry.ts)
