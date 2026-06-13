@@ -188,7 +188,6 @@ import { OmniFilterMenu, DEFAULT_OMNI_CATEGORIES } from "@/panels/Omni/OmniViewP
 import MenuBar, {
   type MarginaliaType,
 } from "./MenuBar";
-import { useDragGap } from "@/hooks/useDragGap";
 import {
   getLinkedTextObjectIds,
   getTextAnchor,
@@ -291,10 +290,6 @@ export interface EditorPaneViewPrefs {
   // ── Top / bottom gutter (drag-resizable spacers above/below the
   //    editor pod). The user adjusts these to push the page down from
   //    the docked MenuBar or up from the bottom edge of the window.
-  topGutter: number;
-  bottomGutter: number;
-  setEditorTopGutter: (px: number) => void;
-  setEditorBottomGutter: (px: number) => void;
 
   // ── Zen mode (replaces panel rails with adjustable margins) ────
   zenMode: boolean;
@@ -2257,39 +2252,6 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
   const effectiveTopMargin = effectiveMargins.top;
   const effectiveBottomMargin = effectiveMargins.bottom;
 
-  // ── Top / bottom gutter drag ────────────────────────────────────
-  // Restored from pre-extraction. The gutter spacers below sit above
-  // and below the editor pod inside `editor-pane-column`; their
-  // basis is `viewPrefs.{topGutter,bottomGutter}`. The drag handles
-  // are 4px-tall horizontal bars (`drag-gap-h`) immediately adjacent
-  // to the pod; dragging them updates the gutter pref live.
-  const gutterStartY = useRef(0);
-  const gutterStartVal = useRef(0);
-  const onTopGutterMove = useCallback((e: MouseEvent) => {
-    const delta = e.clientY - gutterStartY.current;
-    const next = Math.max(0, gutterStartVal.current + delta);
-    viewPrefs?.setEditorTopGutter(next);
-  }, [viewPrefs]);
-  const onBottomGutterMove = useCallback((e: MouseEvent) => {
-    const delta = gutterStartY.current - e.clientY;
-    const next = Math.max(0, gutterStartVal.current + delta);
-    viewPrefs?.setEditorBottomGutter(next);
-  }, [viewPrefs]);
-  const topGutterDrag = useDragGap({ cursor: 'row-resize', onMove: onTopGutterMove, deadzone: 3 });
-  const bottomGutterDrag = useDragGap({ cursor: 'row-resize', onMove: onBottomGutterMove, deadzone: 3 });
-  const onTopGutterDown = useCallback((e: React.MouseEvent) => {
-    if (!viewPrefs) return;
-    gutterStartY.current = e.clientY;
-    gutterStartVal.current = viewPrefs.topGutter;
-    topGutterDrag.onMouseDown(e);
-  }, [topGutterDrag, viewPrefs]);
-  const onBottomGutterDown = useCallback((e: React.MouseEvent) => {
-    if (!viewPrefs) return;
-    gutterStartY.current = e.clientY;
-    gutterStartVal.current = viewPrefs.bottomGutter;
-    bottomGutterDrag.onMouseDown(e);
-  }, [bottomGutterDrag, viewPrefs]);
-
   // ─── Toolbar action handlers ──────────────────────────────────────
   // Each creates a card in its corresponding panel — selection-anchored
   // when text is selected, blank otherwise. These are the LIVE toolbar
@@ -3738,47 +3700,6 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
                 />
               </div>
             )}
-            {/* Top gutter spacer — pushes the editor pod down from the
-                docked MenuBar / topbar. Sized by `viewPrefs.topGutter`
-                (default 0). Flex grow: 1 (vs. pod's 1000) so the pod
-                dominates window-resize growth; flex shrink 100 so the
-                gutter shrinks first when window-downsize squeezes the
-                column. During drag we freeze flex to `0 0 ${pref}px`
-                so the live drag value persists exactly. */}
-            {viewPrefs && (
-              <div
-                data-flex-row="top"
-                style={{
-                  // grow 0 so the spacer doesn't claim leftover space
-                  // — only the pod (grow 1000) absorbs growth. shrink
-                  // 100 means the spacer collapses first when window-
-                  // downsize squeezes the column.
-                  flex: `0 100 ${viewPrefs.topGutter}px`,
-                  minHeight: 0,
-                }}
-              />
-            )}
-            {/* Top drag gap — 4px grab handle pinned just below the
-                sticky chrome above (docked MenuBar 32 + pod cap 8 = 40
-                in main editor; 8 in Reader). z-31 puts it above the
-                pod (z-auto) so it remains hit-testable. marginBottom:
-                -4 negates flow space so the pod stays at its natural
-                position. */}
-            {viewPrefs && (
-              <div
-                data-gutter-gap="top"
-                ref={topGutterDrag.gapRef}
-                className="drag-gap drag-gap-h shrink-0"
-                style={{
-                  position: 'sticky',
-                  height: 4,
-                  top: menuBar ? 40 : 8,
-                  zIndex: 31,
-                  marginBottom: -4,
-                }}
-                onMouseDown={onTopGutterDown}
-              />
-            )}
             {/* ── Single-border pod frame ring ──────────────────────
                 The SOLE element that draws the pod's visible card edge:
                 border + rounded corners + drop shadow. Sticky over the
@@ -4299,36 +4220,6 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
                 above the Virgil bar like a released float; see
                 LiftedTextOverlay.tsx and Issue-11. The grab-handle portal
                 above stays column-level.) */}
-            {/* Bottom drag gap — 4px grab handle pinned just above the
-                sticky bottom chrome (pod-cap-bottom in main editor;
-                viewport bottom in Reader). z-31 above pod. marginTop:
-                -4 negates flow space. */}
-            {viewPrefs && (
-              <div
-                data-gutter-gap="bottom"
-                ref={bottomGutterDrag.gapRef}
-                className="drag-gap drag-gap-h shrink-0"
-                style={{
-                  position: 'sticky',
-                  height: 4,
-                  bottom: menuBar ? 16 : 0,
-                  zIndex: 31,
-                  marginTop: -4,
-                }}
-                onMouseDown={onBottomGutterDown}
-              />
-            )}
-            {/* Bottom gutter spacer — symmetric counterpart of the top
-                spacer. Sized by `viewPrefs.bottomGutter` (default 0). */}
-            {viewPrefs && (
-              <div
-                data-flex-row="bottom"
-                style={{
-                  flex: `0 100 ${viewPrefs.bottomGutter}px`,
-                  minHeight: 0,
-                }}
-              />
-            )}
             {/* 8px breathing spacer between the gutter and the cap.
                 Grows the column's flow by 8 so the cap container's
                 natural-position bottom lands 8 below the pod, which

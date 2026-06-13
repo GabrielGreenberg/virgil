@@ -91,18 +91,6 @@ export function useReaderViewPrefs(): EditorPaneViewPrefs {
   const [omniEnabledRight, setOmniEnabledRight] = useState(
     DEFAULT_READER_OMNI_RIGHT,
   );
-  // Session-only gutter state — Reader doesn't persist, but the user
-  // can still drag during a tab session.
-  const [topGutter, setTopGutterState] = useState(0);
-  const [bottomGutter, setBottomGutterState] = useState(0);
-  const setEditorTopGutter = useCallback(
-    (px: number) => setTopGutterState(Math.max(0, px)),
-    [],
-  );
-  const setEditorBottomGutter = useCallback(
-    (px: number) => setBottomGutterState(Math.max(0, px)),
-    [],
-  );
   // Session-only L/R panel-column widths so the user can drag the
   // boundary between the panel rail and the editor pod.
   const [panelWidths, setPanelWidthsState] = useState<Record<string, number>>({});
@@ -211,8 +199,6 @@ export function useReaderViewPrefs(): EditorPaneViewPrefs {
       showHighlights: true,
       hiddenHighlightTypes: [],
       pageWidth: 880,
-      topGutter,
-      bottomGutter,
       editorLeftMargin: 88,
       editorRightMargin: 72,
       editorTopMargin: 40,
@@ -234,8 +220,6 @@ export function useReaderViewPrefs(): EditorPaneViewPrefs {
     persistentPlacements,
     activeLeft,
     activeRight,
-    topGutter,
-    bottomGutter,
     panelWidths,
     poppedOutCards,
     cardFloatPositions,
@@ -310,10 +294,6 @@ export function useReaderViewPrefs(): EditorPaneViewPrefs {
       setEditorRightMargin: () => {},
       setEditorTopMargin: () => {},
       setEditorBottomMargin: () => {},
-      topGutter,
-      bottomGutter,
-      setEditorTopGutter,
-      setEditorBottomGutter,
       zenMode: false,
       zenLeftMargin: 0,
       zenRightMargin: 0,
@@ -379,10 +359,6 @@ export function useReaderViewPrefs(): EditorPaneViewPrefs {
       persistentMovePanel,
       toggleOmniCategory,
       setOmniSideToDefault,
-      topGutter,
-      bottomGutter,
-      setEditorTopGutter,
-      setEditorBottomGutter,
       getPanelWidth,
       setPanelWidth,
       toggleCardPopout,
