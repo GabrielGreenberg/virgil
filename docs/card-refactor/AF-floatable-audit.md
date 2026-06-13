@@ -272,8 +272,10 @@ export interface Floatable {
 
   /** Initial float size. Omit → subsystem default (FLOAT_DEFAULT_SIZE). */
   defaultSize?: { w: number; h: number };
-  /** Rect to spawn at (lift-off hands the cursor rect; otherwise computed
-   *  from the trigger anchor via computeSpawnPosition). */
+  /** NOT LANDED — design sketch only. The spawn-at-rect need is met by the
+   *  lift pipeline (TextObjectGrabHandle `liftSpawnRect` / `popOutAtRect`);
+   *  anchor spawns use `computeSpawnPosition`. The live `Floatable`
+   *  (src/floats/types.ts) ends at `defaultSize`. Kept as design history. */
   spawnHint?: DOMRect;
 }
 ```
@@ -461,7 +463,7 @@ place:
 - **stack-drop** → `f.snapshotForStack(source)` (replaces EditorPane's prefix switch +
   `cardKeyPrefixToStackKind` + `resolveCardData`, [`EditorPane.tsx:833-865`](../../src/components/EditorPane.tsx));
   also fixes the text-object-can't-snapshot gap noted in §1.8);
-- **spawn** → `f.spawnHint ?? computeSpawnPosition(anchor, f.defaultSize ?? FLOAT_DEFAULT_SIZE)`;
+- **spawn** → `computeSpawnPosition(anchor, f.defaultSize ?? FLOAT_DEFAULT_SIZE)` (the proposed `spawnHint` short-circuit was NOT landed — lift-off spawn-at-rect is handled by the lift pipeline's `liftSpawnRect`/`popOutAtRect`, not a contract field);
 - **z / MRU / Cmd-W** → unchanged focus stack, but z from `float-policy`;
 - **redock / dock-outline** → only when `f.canRedock` (cards/text-objects: false).
 
