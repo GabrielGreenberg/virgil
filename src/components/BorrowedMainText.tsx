@@ -21,35 +21,29 @@
  * example body. R12: highlight keeps its faithful serif STRING excerpt (it has
  * no JSONContent body) — do NOT route highlight through here.
  *
- * SCHEMA (the A9 fallback, ratified): this builds its own read-only extension
- * list mirroring RichTextField's hand-mirrored card-context schema (StarterKit
- * minus heading/blockquote/codeBlock, plus the inline atoms + block-atom
- * previews), rather than extracting a shared `borrowed-schema.ts` consumed by
- * BOTH the main editor and here. The full extraction was DEFERRED (backlog):
- * the main editor's `buildEditorExtensions` is full of stateful main-surface
- * NodeViews (heading folding, paragraph-title chrome, the doc-structure
- * observer, grab handles) that a read-only card body must not run, so the two
- * schemas are intentionally different and a "pure extraction" is not clean.
- * BorrowedMainText additionally registers `LabelRef` + `Footnote` (read-only)
- * so `\ref` and nested footnote markers render — RichTextField omits those
- * because its cards never need to edit them.
+ * SCHEMA (backlog #11, the A9 deferral, now LANDED): the inline-atom +
+ * block-atom-preview sub-schema this read-only surface shares with
+ * RichTextField is extracted into `borrowed-schema.ts` and composed via
+ * `buildBorrowedAtomSchema({ includeLabelRefFootnote: true })` on top of a
+ * StarterKit configured with the shared `CARD_STARTER_KIT_CONFIG`. The
+ * `includeLabelRefFootnote` flag adds the read-only `\ref` (LabelRef) + nested
+ * footnote markers (Footnote) this surface needs — RichTextField omits those
+ * because its editable cards never author them. Only the SHARED sub-schema was
+ * extracted: the main editor's `buildEditorExtensions` keeps its own ordered
+ * stack (it is full of stateful main-surface NodeViews — heading folding,
+ * paragraph-title chrome, the doc-structure observer, grab handles — that a
+ * read-only card body must NOT run, and its block atoms carry main-only config
+ * + a position-gated order), but a contract test asserts it registers every
+ * atom the borrowed-schema module knows about, so "add an atom kind in one
+ * place" holds across all three surfaces.
  */
 
 import { useEffect, useMemo, useRef } from "react";
 import { useEditor, EditorContent, type JSONContent } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
 import {
-  InlineMath,
-  DisplayMath,
-  Citation,
-  LabelRef,
-  Footnote,
-  LatexCommandMark,
-  TexBlock,
-  FigureBlock,
-  FigureCaption,
-  GraphicsBlock,
-  LatexComment,
+  CARD_STARTER_KIT_CONFIG,
+  buildBorrowedAtomSchema,
 } from "@/lib/tiptap-extensions";
 import { normalizeRichContent } from "@/lib/footnote-content";
 import { useCitationDisplayContextOrNull } from "@/components/editor-layout/contexts/citation-display";
@@ -139,26 +133,16 @@ export function BorrowedMainText({
       editable: false,
       immediatelyRender: false,
       extensions: [
-        StarterKit.configure({
-          heading: false,
-          blockquote: false,
-          codeBlock: false,
-          horizontalRule: false,
-        }),
-        InlineMath,
-        Citation,
-        LabelRef,
-        Footnote,
-        LatexCommandMark,
-        // Block-atom previews in card-context mode — mirror RichTextField so a
-        // body carrying a texBlock / figure / graphics / comment / displayMath
-        // renders its compact static preview instead of being stripped.
-        TexBlock.configure({ cardContext: true }),
-        FigureBlock.configure({ cardContext: true }),
-        FigureCaption,
-        GraphicsBlock.configure({ cardContext: true }),
-        LatexComment.configure({ cardContext: true }),
-        DisplayMath,
+        // Shared card-body StarterKit config (SSOT in borrowed-schema.ts).
+        StarterKit.configure({ ...CARD_STARTER_KIT_CONFIG }),
+        // Shared card-context inline-atom + block-atom-preview sub-schema
+        // (borrowed-schema.ts — backlog #11). `includeLabelRefFootnote: true`
+        // adds the read-only `\ref` (LabelRef) + nested footnote markers
+        // (Footnote) this borrowed surface needs — RichTextField omits those.
+        // Read-only, so no Placeholder / TabIndent layer. Adding a new atom
+        // kind there surfaces it here automatically (the contract test gates
+        // the main editor too).
+        ...buildBorrowedAtomSchema({ includeLabelRefFootnote: true }),
       ],
       content: resolved,
       editorProps: {
