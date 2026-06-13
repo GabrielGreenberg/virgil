@@ -671,6 +671,20 @@ Icons in the Virgil bar are **16px tall**. Buttons are 24px
 (`.topbarbtn`) so the icon sits with 4px of vertical padding. Don't
 author 14px or 20px topbar icons.
 
+**Dropdowns from a sticky bar must be body-portaled.** The Virgil bar is
+`sticky top-0 z-30`, which establishes a stacking context — any dropdown
+rendered `position:absolute` inline inside it is trapped at z-30 and
+floating panels / popped cards (z-1200+) paint over it, no matter how
+high the dropdown's own `z-index` (this was backlog #9). Render such
+dropdowns with `createPortal(..., document.body)`, position them from the
+trigger's `getBoundingClientRect()` via `useFloatingMenuPosition`
+(`src/hooks/useFloatingMenuPosition.ts`), and give them the chrome-menu
+tier **`zIndex: 2000`** (matching `DragHandleMenu` / `ActionsMenuPanel`).
+`TabPlusMenu` (the "+") and the Help (`?`) menu follow this; the
+`MyPapersPod` "Add paper" menu still renders inline `absolute` but lives
+in the Library tab, away from the editor's floating overlays — port it if
+that ever changes.
+
 ## Library tab — double-tab pattern
 
 Each open document renders a paired DocTab + LibraryTab in the Virgil

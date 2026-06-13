@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useCallback, useEffect, useLayoutEffect, useRef, useMemo, type ReactNode } from "react";
+import { createPortal } from "react-dom";
 import { JSONContent } from "@tiptap/react";
 import VirgilEditor, { EditorHandle } from "./Editor";
 import { LoadingScreen } from "./LoadingScreen";
@@ -17,6 +18,7 @@ import { type SectionPathEntry, buildPerBlockCounts, sumIncludedWords, extractHe
 import { useFiles } from "@/hooks/useFiles";
 import { useStructuralRevisions } from "@/hooks/useStructuralRevisions";
 import { useMyPapers } from "@/hooks/useMyPapers";
+import { useFloatingMenuPosition } from "@/hooks/useFloatingMenuPosition";
 import { useUpdateAvailable, applyUpdate } from "@/hooks/useUpdateAvailable";
 import { DocPipeline } from "./editor-layout/DocPipeline";
 import { useSelectedAnchorSync } from "@/hooks/useSelectedAnchorSync";
@@ -992,6 +994,24 @@ export default function EditorLayout() {
   const [printOpen, setPrintOpen] = useState(false);
   const [fontsOpen, setFontsOpen] = useState(false);
   const [helperMenuOpen, setHelperMenuOpen] = useState(false);
+  // Anchor rect for the body-portaled Help dropdown. The dropdown is
+  // portaled to document.body (not rendered inline) so it escapes the
+  // virgil-bar's `sticky z-30` stacking context — otherwise floating
+  // panels / popped cards (z-1200+) paint over it (backlog #9). Captured
+  // from the Help button on open; refreshed on resize/scroll while open.
+  const helperBtnRef = useRef<HTMLButtonElement>(null);
+  const [helperAnchorRect, setHelperAnchorRect] = useState<DOMRect | null>(null);
+  const {
+    ref: helperPositionRef,
+    style: helperPositionStyle,
+  } = useFloatingMenuPosition({
+    anchorRect: helperAnchorRect,
+    placements: [
+      { side: "below", align: "end" },
+      { side: "above", align: "end" },
+    ],
+    gap: 4,
+  });
   // Open state for ManageStylesModal — lifted from the old
   // DocStyleDropdown so the Virgil bar's Style mode button can mirror
   // its aria-pressed state.
@@ -1006,12 +1026,23 @@ export default function EditorLayout() {
   }, []);
 
   useEffect(() => {
-    if (!helperMenuOpen) return;
+    if (!helperMenuOpen) {
+      setHelperAnchorRect(null);
+      return;
+    }
+    setHelperAnchorRect(helperBtnRef.current?.getBoundingClientRect() ?? null);
     const close = () => { setHelperMenuOpen(false); setCommandsPopoutOpen(false); };
+    const refreshAnchor = () => {
+      setHelperAnchorRect(helperBtnRef.current?.getBoundingClientRect() ?? null);
+    };
     const id = window.setTimeout(() => window.addEventListener("click", close), 0);
+    window.addEventListener("resize", refreshAnchor);
+    window.addEventListener("scroll", refreshAnchor, true);
     return () => {
       window.clearTimeout(id);
       window.removeEventListener("click", close);
+      window.removeEventListener("resize", refreshAnchor);
+      window.removeEventListener("scroll", refreshAnchor, true);
     };
   }, [helperMenuOpen]);
 
@@ -4006,6 +4037,7 @@ export default function EditorLayout() {
           </button>
           <div className="relative">
             <button
+              ref={helperBtnRef}
               onClick={(e) => { e.stopPropagation(); setHelperMenuOpen((v) => !v); }}
               className="topbarbtn"
               data-hint="Help"
@@ -4016,9 +4048,11 @@ export default function EditorLayout() {
                 <path d="M12 17h.01" />
               </svg>
             </button>
-            {helperMenuOpen && (
+            {helperMenuOpen && typeof document !== "undefined" && createPortal(
               <div
-                className="absolute right-0 top-full mt-1 z-20 bg-surface border border-edge-subtle rounded shadow-md text-xs text-ink-body whitespace-nowrap text-left min-w-[160px]"
+                ref={helperPositionRef}
+                className="bg-surface border border-edge-subtle rounded shadow-md text-xs text-ink-body whitespace-nowrap text-left min-w-[160px]"
+                style={{ ...helperPositionStyle, zIndex: 2000 }}
                 onClick={(e) => e.stopPropagation()}
                 onMouseLeave={() => setCommandsPopoutOpen(false)}
               >
@@ -4067,7 +4101,8 @@ export default function EditorLayout() {
                   <span>Helper mode</span>
                   <span className="text-[var(--accent)]">{helperMode.on ? "✓" : ""}</span>
                 </button>
-              </div>
+              </div>,
+              document.body,
             )}
           </div>
           {/* Print — opens a dialog with toggles for which document
