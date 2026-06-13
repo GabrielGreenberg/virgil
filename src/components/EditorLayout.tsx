@@ -53,11 +53,13 @@ import {
 } from "@/lib/marginalia";
 import { useSyncExternalStore } from "react";
 import {
+  getPanelColor,
   getPanelColorVersion,
   loadPanelColors,
   subscribePanelColors,
   type PanelThemeKey,
 } from "@/lib/panel-theme";
+import { IN_TEXT_ANCHOR_ACCENTS } from "@/cards/predicates";
 import { loadPanelTypography, setTierBaseFontSizes } from "@/lib/panel-typography";
 import { loadPrefLinks } from "@/lib/pref-links";
 import { useDevPrefsMirror } from "@/lib/dev-prefs-mirror";
@@ -1347,6 +1349,31 @@ export default function EditorLayout() {
     () => deriveCategorySides(prefs.placements),
     [prefs.placements],
   );
+
+  // #27: Inject the in-text anchor accent map onto `:root` from the LIVE theme
+  // accents (default or user override). The `.linked-anchor[data-link-card^=…]`
+  // (Mode B) and `[data-paragraph-kind=…]` (Mode A) selectors in globals.css now
+  // read `var(--link-anchor-accent-<token>)` instead of hand-mirrored hex, so an
+  // in-text anchor's color derives from the SAME accent source as its card
+  // outline (chip E's `PanelCard` inline stamp) — a panel-color override can no
+  // longer desync the two. Derived from `CARD_REGISTRY` + the legacy-token
+  // crosswalk (`IN_TEXT_ANCHOR_ACCENTS`); subscribed to color changes via the
+  // panel-color version (`getPanelColorVersion`). O(1) per change — runs only on
+  // a color override, never per keystroke; the loop is over a fixed ~10-token
+  // map. Mirrors the existing PREF_TO_CSS injection just below.
+  const panelColorVersion = useSyncExternalStore(
+    subscribePanelColors,
+    getPanelColorVersion,
+    () => 0,
+  );
+  useEffect(() => {
+    const s = document.documentElement.style;
+    for (const row of IN_TEXT_ANCHOR_ACCENTS) {
+      s.setProperty(row.cssVar, getPanelColor(row.themeKey));
+    }
+    // panelColorVersion is the reactive trigger: a `setPanelColor` bumps it,
+    // re-running this effect with the fresh `getPanelColor` reads.
+  }, [panelColorVersion]);
 
   // Inject editor preferences as CSS custom properties (with global transforms)
   useEffect(() => {
