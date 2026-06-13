@@ -914,7 +914,7 @@ custom titles at the data level (provenance), not a render heuristic.
 
 ## 32. Example cards: directly editable, no separate EDIT button
 
-**Reported:** 2026-06-12 · **Status:** open · **Area:** card panels / examples
+**Reported:** 2026-06-12 · **Status:** done (2026-06-12, chip `W-A`) · **Area:** card panels / examples
 
 Example cards have an EDIT mode toggle (and the float-side button is
 permanently disabled — subsumes item 26). Desired: directly editable like
@@ -923,7 +923,7 @@ content (the card edits the in-text exampleBlock).
 
 ## 33. Example card expex rendering diverges from the main text
 
-**Reported:** 2026-06-12 · **Status:** open · **Area:** card panels / examples
+**Reported:** 2026-06-12 · **Status:** done (2026-06-12, chip `W-A`) · **Area:** card panels / examples
 
 The card's "(7) a." number font and alignment don't match the main-text
 expex rendering (screenshot on file: number sits high/offset, different
@@ -968,7 +968,7 @@ panel body; panel drag only from the panel's own chrome.
 
 ## 37. Deleting a citation card leaves the in-text atom; card resurrects on reload
 
-**Reported:** 2026-06-12 · **Status:** open · **Area:** citations / data integrity
+**Reported:** 2026-06-12 · **Status:** done (2026-06-12, chip `W-C`) · **Area:** citations / data integrity
 
 Create a citation, delete the card → the in-text \cite atom stays; on
 reload the atom re-derives the card. Atom-bearing kinds' delete contract
