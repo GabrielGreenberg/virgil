@@ -1,11 +1,10 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useRef } from "react";
 import type { RevisionSuggestionCard as RevisionSuggestionCardData } from "@/lib/types";
 import {
   Button,
   CardEmptyText,
-  Chevron,
   PanelCard,
   compressedBodyStyle,
 } from "@/components/panel-primitives";
@@ -14,86 +13,16 @@ import { useCardTheme } from "@/hooks/usePanelTheme";
 import { getLinkedTextObjectIds, hasTextAnchor } from "@/links/links";
 import { usePoppedCards } from "@/hooks/usePoppedCards";
 import { usePanelBodyStyle } from "@/hooks/usePanelTypography";
-import { useTabIndent } from "@/hooks/useTabIndent";
 import { cardPopKey } from "@/panels/panel-registry";
 import { useAnchoredCard } from "@/links/_shared/useAnchoredCard";
 import { cardStore } from "@/links/_shared/anchored-card-store";
 import { MIME_REVISION } from "./mime";
-import { countWords } from "@/hooks/useWordCount";
 import {
-  CopyButton,
-  FieldTitleRow,
-} from "@/panels/Cutter/CutterSuggestionCard";
-
-type SuggestionField =
-  | "original_text"
-  | "suggested_text"
-  | "explanation"
-  | "user_text"
-  | "instructions";
-
-const STATUS_DOT: Record<RevisionSuggestionCardData["status"], string> = {
-  pending: "bg-blue-400",
-  accepted: "bg-emerald-500",
-  rejected: "bg-red-400",
-};
-
-const STATUS_LABEL: Record<RevisionSuggestionCardData["status"], string> = {
-  pending: "Pending",
-  accepted: "Accepted",
-  rejected: "Rejected",
-};
-
-const FIELD_LABEL: Record<SuggestionField, string> = {
-  original_text: "Original",
-  suggested_text: "Suggested",
-  explanation: "Explanation",
-  user_text: "Your text",
-  instructions: "Instructions",
-};
-
-const FIELD_PLACEHOLDER: Record<SuggestionField, string> = {
-  original_text: "Target text…",
-  suggested_text: "Replacement text…",
-  explanation: "Why this change…",
-  user_text: "Your revision…",
-  instructions: "Instructions for the AI…",
-};
-
-const FIELD_TEXTAREA_CLASS: Record<SuggestionField, string> = {
-  original_text:
-    "w-full bg-danger-soft border border-red-200 rounded px-2 py-1.5 text-red-700 placeholder:text-red-300 focus:outline-none focus:border-red-400 resize-none min-h-[36px]",
-  suggested_text:
-    "w-full bg-emerald-50 border border-emerald-200 rounded px-2 py-1.5 text-emerald-800 placeholder:text-emerald-400 focus:outline-none focus:border-emerald-400 resize-none min-h-[36px]",
-  explanation:
-    "w-full bg-surface border border-[var(--border)] rounded px-2 py-1.5 placeholder:text-ink-muted focus:outline-none focus:border-edge-strong resize-none min-h-[36px]",
-  user_text:
-    "w-full bg-surface-muted border border-[var(--border)] rounded px-2 py-1.5 placeholder:text-ink-muted focus:outline-none focus:border-edge-strong resize-none min-h-[36px]",
-  instructions:
-    "w-full bg-surface-muted border border-[var(--border)] rounded px-2 py-1.5 placeholder:text-ink-muted focus:outline-none focus:border-edge-strong resize-none min-h-[36px]",
-};
-
-const FIELD_ORDER: SuggestionField[] = [
-  "original_text",
-  "suggested_text",
-  "explanation",
-  "user_text",
-];
-
-const FIELDS_WITH_WORD_COUNT: Set<SuggestionField> = new Set([
-  "original_text",
-  "suggested_text",
-  "user_text",
-  "instructions",
-]);
-
-/** Fields whose className already provides a deliberate color cue
- *  (red for original, green for suggested). At those textareas we
- *  apply only the registry's font family + size, not its color. */
-const FIELDS_WITH_COLOR_CUE: Set<SuggestionField> = new Set([
-  "original_text",
-  "suggested_text",
-]);
+  FIELD_ORDER,
+  FieldBlock,
+  SuggestionTrailing,
+  type SuggestionField,
+} from "@/panels/_shared/suggestion-fields";
 
 export function startRevisionSuggestionDrag(e: React.DragEvent, cardId: string) {
   e.dataTransfer.setData(
@@ -103,22 +32,6 @@ export function startRevisionSuggestionDrag(e: React.DragEvent, cardId: string) 
   e.dataTransfer.effectAllowed = "copy";
 }
 
-function AuthorChip({ author }: { author: RevisionSuggestionCardData["author"] }) {
-  const isAi = author === "ai";
-  return (
-    <span
-      className={`inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium tracking-wide ${
-        isAi
-          ? "bg-[var(--accent)]/10 text-[var(--accent)]"
-          : "bg-surface-muted-strong text-ink-body"
-      }`}
-      data-hint={isAi ? "AI-authored" : "Human-authored"} aria-label={isAi ? "AI-authored" : "Human-authored"}
-    >
-      {isAi ? "AI" : "Human"}
-    </span>
-  );
-}
-
 /** Status dot + author chip + status label — the revision-suggestion header
  *  trailing, shown docked and (via the `toFloatable` factory) in `FloatChrome`. */
 export function RevisionSuggestionTrailing({
@@ -126,77 +39,8 @@ export function RevisionSuggestionTrailing({
 }: {
   card: RevisionSuggestionCardData;
 }) {
-  return (
-    <>
-      <span
-        className={`inline-block w-2 h-2 rounded-full shrink-0 ${STATUS_DOT[card.status]}`}
-        data-hint={STATUS_LABEL[card.status]}
-        aria-label={STATUS_LABEL[card.status]}
-      />
-      <AuthorChip author={card.author} />
-      <span className="text-[10px] text-ink-muted">{STATUS_LABEL[card.status]}</span>
-    </>
-  );
+  return <SuggestionTrailing status={card.status} author={card.author} />;
 }
-
-function FieldBlock({
-  field,
-  value,
-  onChange,
-  readOnly,
-  kindHint,
-}: {
-  field: SuggestionField;
-  value: string;
-  onChange: (v: string) => void;
-  readOnly?: boolean;
-  kindHint?: string | null;
-}) {
-  const taRef = useRef<HTMLTextAreaElement | null>(null);
-  const onTextareaKeyDown = useTabIndent<HTMLTextAreaElement>();
-  const [folded, setFolded] = useState(false);
-  const bodyStyle = usePanelBodyStyle("revision");
-  const textareaStyle: React.CSSProperties = FIELDS_WITH_COLOR_CUE.has(field)
-    ? { fontFamily: bodyStyle.fontFamily, fontSize: bodyStyle.fontSize }
-    : bodyStyle;
-
-  const isSubstantive = FIELDS_WITH_WORD_COUNT.has(field);
-  return (
-    <div onClick={(e) => e.stopPropagation()}>
-      <FieldTitleRow
-        label={FIELD_LABEL[field]}
-        kindHint={kindHint}
-        text={value}
-        showCopy={isSubstantive}
-        showWordCount={isSubstantive}
-        folded={folded}
-        onToggleFold={() => setFolded((f) => !f)}
-      />
-      {!folded && (
-        <textarea
-          ref={taRef}
-          value={value}
-          readOnly={readOnly}
-          onChange={readOnly ? undefined : (e) => onChange(e.target.value)}
-          onClick={(e) => e.stopPropagation()}
-          onMouseDown={(e) => e.stopPropagation()}
-          onKeyDown={readOnly ? undefined : onTextareaKeyDown}
-          placeholder={readOnly ? "" : FIELD_PLACEHOLDER[field]}
-          style={textareaStyle}
-          className={`${FIELD_TEXTAREA_CLASS[field]}${readOnly ? " cursor-default" : ""}`}
-          rows={2}
-        />
-      )}
-    </div>
-  );
-}
-
-// Silence unused-import warnings — Chevron, CopyButton, countWords are
-// referenced indirectly through FieldTitleRow / FieldBlock elsewhere when
-// we reuse helper components but TypeScript still wants them imported.
-void Chevron;
-void CopyButton;
-void countWords;
 
 export function RevisionSuggestionCard({
   card,
@@ -334,6 +178,7 @@ export function RevisionSuggestionCard({
               (card.author === "ai" && field !== "user_text")
             }
             kindHint={field === "original_text" ? anchorKind : null}
+            panelKey="revision"
           />
         ))}
 
@@ -342,6 +187,7 @@ export function RevisionSuggestionCard({
             field="instructions"
             value={card.instructions}
             onChange={(v) => onUpdateField(card.id, "instructions", v)}
+            panelKey="revision"
           />
         )}
 
