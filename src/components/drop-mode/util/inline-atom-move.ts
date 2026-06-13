@@ -109,6 +109,10 @@ export function inlineAtomMoveSpec(opts: InlineAtomMoveOptions): DropSpec {
       }
       targetEditor.view.dispatch(insertTr);
       targetEditor.view.focus();
+      // Park a caret at the atom's home in the SOURCE editor before the delete,
+      // so that editor's undo `selectionBefore` is on-screen (same #8 rationale
+      // as the same-editor path). Selection-only, addToHistory:false.
+      parkCaretBeforeMove(sourceEditor, from);
       const deleteTr = sourceEditor.state.tr.delete(from, to);
       sourceEditor.view.dispatch(deleteTr);
     },
@@ -124,6 +128,16 @@ export function inlineAtomMoveSpec(opts: InlineAtomMoveOptions): DropSpec {
  * `selectable:false` atoms). NEVER `.scrollIntoView()`: that would
  * resurrect the ~100px scroll-jump that `selectable:false` was added to
  * avoid (footnote.ts / citation.ts).
+ *
+ * Undo-jump guard (backlog #8): inline atoms are `selectable:false`, so the
+ * grab gesture never rests a selection on the atom; at drop time the editor's
+ * selection is stale (often doc-top). prosemirror-history captures
+ * `selectionBefore` from the *pre-move* state, so Cmd-Z would restore that
+ * stale doc-top caret with `scrollIntoView()` → the viewport jumps to the top.
+ * Before building the move, `parkCaretBeforeMove` rests a `TextSelection` caret
+ * adjacent to the atom's ORIGINAL location (`addToHistory:false`), so
+ * `selectionBefore` lands at the atom's old home (on-screen) and undo scrolls
+ * *there*, not to the top.
  */
 function moveInlineAtomWithin(
   editor: Editor,
@@ -133,6 +147,9 @@ function moveInlineAtomWithin(
   insertPos: number,
   select: "node" | "caret-after" = "node",
 ): void {
+  // Park a caret at the atom's original home so the move's `selectionBefore`
+  // (captured by prosemirror-history) is on-screen — see helper jsdoc.
+  parkCaretBeforeMove(editor, from);
   const adjustedInsert = insertPos > to ? insertPos - (to - from) : insertPos;
   const tr = editor.state.tr.delete(from, to);
   tr.insert(adjustedInsert, node);
@@ -147,6 +164,38 @@ function moveInlineAtomWithin(
   }
   editor.view.dispatch(tr);
   editor.view.focus();
+}
+
+/**
+ * Park a `TextSelection` caret adjacent to `from` (the atom's original
+ * location) as a selection-only, `addToHistory:false` transaction, BEFORE the
+ * move transaction is built/dispatched. This makes prosemirror-history capture
+ * the move's `selectionBefore` here (on-screen, where the atom currently sits)
+ * instead of a stale doc-top selection — so Cmd-Z restores a caret at the
+ * atom's old home and scrolls *there* rather than jumping the viewport to the
+ * top (backlog #8).
+ *
+ * - MUST be a `TextSelection` caret, never a `NodeSelection`: these atoms are
+ *   `selectable:false`, and a NodeSelection on one would reintroduce the
+ *   ~100px scroll-jump the grab gesture deliberately avoids.
+ * - `addToHistory:false` keeps this parking tr out of the undo stack, so one
+ *   Cmd-Z still undoes the whole move in a single step.
+ * - Positions are untouched (selection-only), so the caller's `from`/`to`/
+ *   `insertPos` stay valid against the post-parking state.
+ *
+ * `TextSelection.near` resolves the nearest valid text position to `from`,
+ * tolerating atom boundaries; if no text position exists it no-ops silently.
+ */
+function parkCaretBeforeMove(editor: Editor, from: number): void {
+  try {
+    const tr = editor.state.tr;
+    const $from = tr.doc.resolve(Math.min(from, tr.doc.content.size));
+    tr.setSelection(TextSelection.near($from));
+    tr.setMeta("addToHistory", false);
+    editor.view.dispatch(tr);
+  } catch {
+    /* couldn't resolve a caret near the atom — skip; move still proceeds */
+  }
 }
 
 /** Walk the main editor first, then every other registered editor,
