@@ -1923,6 +1923,28 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
     recentlyAdded,
   });
 
+  // Compound citation delete (the hard-delete contract). The bare sidecar
+  // `citationsHook.deleteCitation` only filtered the citations.json entry
+  // and left the `\cite` atom in the doc — so the once-per-mount
+  // `syncFromEditor` (above) rebuilt the entry from the surviving atom and
+  // the card resurrected on reload. This removes BOTH: first the in-doc
+  // atom via the editor handle (a no-op for a draft / unanchored citation,
+  // which has no node — `findInlineAtomPos` returns null), then the
+  // sidecar entry. A footnote-nested `\cite` lives inside a footnote's
+  // attrs.content rather than as a top-level doc atom, so the handle won't
+  // find it; the doc tx no-ops and we still drop the entry (entry-only
+  // delete — see chip report for this known edge). EVERY UI delete path
+  // routes here; the bare sidecar filter survives only as this handler's
+  // internal second step. Defined above the discard/registry/popouts memos
+  // that consume it so it's out of the TDZ when those factories evaluate.
+  const handleDeleteCitation = useCallback(
+    (id: string) => {
+      innerRef.current?.deleteCitation(id);
+      citationsHook.deleteCitation(id);
+    },
+    [citationsHook.deleteCitation],
+  );
+
   // Register per-kind discard callbacks. The pristine manager's
   // pointerdown watcher fires these when the user clicks outside a
   // pristine card's DOM. Each effect re-registers when the
@@ -1944,8 +1966,8 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
     [todoPristine, todosHook.deleteItem],
   );
   useEffect(
-    () => citationPristine.registerDiscard((id) => citationsHook.deleteCitation(id)),
-    [citationPristine, citationsHook.deleteCitation],
+    () => citationPristine.registerDiscard((id) => handleDeleteCitation(id)),
+    [citationPristine, handleDeleteCitation],
   );
   useEffect(
     () =>
@@ -1979,7 +2001,7 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
       },
       citation: {
         clone: citationsHook.cloneCitation,
-        delete: citationsHook.deleteCitation,
+        delete: handleDeleteCitation,
       },
       note: {
         clone: notesHook.cloneNote,
@@ -2012,7 +2034,7 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
         bindAnchor: cutterHook.bindAnchor,
       },
     }),
-    [footnotesHook, citationsHook, notesHook, revisionsHook, cutterHook],
+    [footnotesHook, citationsHook, notesHook, revisionsHook, cutterHook, handleDeleteCitation],
   );
   const cardLifecycle = useCardLifecycleApi(cardLifecycleRegistry);
   // Dev-only: assert the provider satisfies exactly CARD_REGISTRY's declared
@@ -2530,6 +2552,18 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
     // read-only. Wired as a no-op until the main app needs it.
   }, []);
   const handleDeleteFootnote = useCallback((id: string) => {
+    // Arm the orphan-suppression latch BEFORE the atom is removed: the
+    // footnote orphan-detector (src/lib/tiptap/footnote.ts) dispatches a
+    // deferred `virgil-footnote-orphaned` on any non-empty footnote node
+    // that vanishes, and `useFootnoteSyncBridges` would otherwise
+    // resurrect this deliberate trash-delete as an orphan card. The
+    // suppress event is consumed by the same bridge hook (in EditorLayout)
+    // where `suppressOrphanRef` lives. See footnote-sync.ts.
+    window.dispatchEvent(
+      new CustomEvent("virgil-footnote-suppress-orphan", {
+        detail: { footnoteId: id },
+      }),
+    );
     innerRef.current?.deleteFootnote(id);
   }, []);
 
@@ -2808,7 +2842,7 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
 
       // Citations
       updateCitation: citationsHook.updateCitation,
-      deleteCitation: citationsHook.deleteCitation,
+      deleteCitation: handleDeleteCitation,
 
       // Revisions
       updateRevisionCommentContent: revisionsHook.updateCommentContent,
@@ -2834,6 +2868,7 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
       selectedCitationId, selectedCommentId,
       selectedExampleId,
       handleCitationCreated, handleEditFootnote, handleDeleteFootnote,
+      handleDeleteCitation,
       handleEditFootnoteTitle, handleArchiveDelete,
       convertCutterCard, convertReportCard, convertNotesCard,
     ],
@@ -3203,6 +3238,7 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
                     onEditFootnote={handleEditFootnote}
                     onEditFootnoteTitle={handleEditFootnoteTitle}
                     onDeleteFootnote={handleDeleteFootnote}
+                    onDeleteCitation={handleDeleteCitation}
                     selectedNoteId={selectedNoteId}
                     setSelectedNoteId={setSelectedNoteId}
                     latexErrors={allLatexErrors}
@@ -3275,6 +3311,7 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
                       onEditFootnote={handleEditFootnote}
                       onEditFootnoteTitle={handleEditFootnoteTitle}
                       onDeleteFootnote={handleDeleteFootnote}
+                      onDeleteCitation={handleDeleteCitation}
                       selectedNoteId={selectedNoteId}
                       setSelectedNoteId={setSelectedNoteId}
                       latexErrors={allLatexErrors}
@@ -3396,6 +3433,7 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
                 onEditFootnote={handleEditFootnote}
                 onEditFootnoteTitle={handleEditFootnoteTitle}
                 onDeleteFootnote={handleDeleteFootnote}
+                onDeleteCitation={handleDeleteCitation}
                 selectedNoteId={selectedNoteId}
                 setSelectedNoteId={setSelectedNoteId}
                 viewPrefs={viewPrefs}
@@ -4201,6 +4239,7 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
                         onEditFootnote={handleEditFootnote}
                         onEditFootnoteTitle={handleEditFootnoteTitle}
                         onDeleteFootnote={handleDeleteFootnote}
+                        onDeleteCitation={handleDeleteCitation}
                         selectedNoteId={selectedNoteId}
                         setSelectedNoteId={setSelectedNoteId}
                         latexErrors={allLatexErrors}
@@ -4450,6 +4489,7 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
                 onEditFootnote={handleEditFootnote}
                 onEditFootnoteTitle={handleEditFootnoteTitle}
                 onDeleteFootnote={handleDeleteFootnote}
+                onDeleteCitation={handleDeleteCitation}
                 selectedNoteId={selectedNoteId}
                 setSelectedNoteId={setSelectedNoteId}
                 viewPrefs={viewPrefs}
@@ -4595,6 +4635,10 @@ interface PaneRailProps {
   onEditFootnote: (id: string, newContent: JSONContent) => void;
   onEditFootnoteTitle: (id: string, title: string) => void;
   onDeleteFootnote: (id: string) => void;
+  /** Compound citation delete — strips the `\cite` atom AND the sidecar
+   *  entry (the hard-delete contract). Threaded like `onDeleteFootnote`
+   *  so the rail's panel slots don't reach for the bare sidecar filter. */
+  onDeleteCitation: (id: string) => void;
   selectedNoteId: string | null;
   setSelectedNoteId: React.Dispatch<React.SetStateAction<string | null>>;
   // Errors panel
@@ -4781,6 +4825,7 @@ function PaneRail({
   onEditFootnote,
   onEditFootnoteTitle,
   onDeleteFootnote,
+  onDeleteCitation,
   selectedNoteId,
   setSelectedNoteId,
   latexErrors,
@@ -4860,7 +4905,7 @@ function PaneRail({
           bibEntries={citationsHook.bibEntries}
           bibPackage={citationsHook.bibPackage}
           updateCitation={citationsHook.updateCitation}
-          deleteCitation={citationsHook.deleteCitation}
+          deleteCitation={onDeleteCitation}
           getFormattedBib={citationsHook.getFormattedBib}
           updateBibEntry={citationsHook.updateBibEntry}
           updateBibKeyAndType={citationsHook.updateBibKeyAndType}
@@ -5069,6 +5114,10 @@ interface PaneRailBodyProps {
   onEditFootnote: (id: string, newContent: JSONContent) => void;
   onEditFootnoteTitle: (id: string, title: string) => void;
   onDeleteFootnote: (id: string) => void;
+  /** Compound citation delete — strips the `\cite` atom AND the sidecar
+   *  entry (the hard-delete contract). Threaded like `onDeleteFootnote`
+   *  so the rail's panel slots don't reach for the bare sidecar filter. */
+  onDeleteCitation: (id: string) => void;
   selectedNoteId: string | null;
   setSelectedNoteId: React.Dispatch<React.SetStateAction<string | null>>;
   latexErrors: LatexError[];
@@ -5137,6 +5186,7 @@ function PaneRailBody({
   onEditFootnote,
   onEditFootnoteTitle,
   onDeleteFootnote,
+  onDeleteCitation,
   selectedNoteId,
   setSelectedNoteId,
   latexErrors,
@@ -5242,7 +5292,7 @@ function PaneRailBody({
         citationOrder={citationOrder}
         addCitation={citationsHook.addCitation}
         updateCitation={citationsHook.updateCitation}
-        deleteCitation={citationsHook.deleteCitation}
+        deleteCitation={onDeleteCitation}
         setCitationStyle={citationsHook.setStyle}
         setBibPackage={citationsHook.setBibPackage}
         updateBibEntry={citationsHook.updateBibEntry}

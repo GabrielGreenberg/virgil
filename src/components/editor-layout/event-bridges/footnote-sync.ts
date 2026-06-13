@@ -10,6 +10,13 @@ import type { OrphanedFootnote } from "@/lib/types";
  *   Deletions done via `handleDeleteFootnote` pre-register the id in
  *   `suppressOrphanRef` so the subsequent teardown event doesn't
  *   resurrect the footnote as an orphan card.
+ * - `virgil-footnote-suppress-orphan` — the PRODUCER side of the
+ *   suppression latch. `handleDeleteFootnote` (EditorPane) dispatches
+ *   this synchronously, BEFORE removing the atom, so the id is in
+ *   `suppressOrphanRef` by the time the orphan-detector's deferred
+ *   `virgil-footnote-orphaned` arrives. (The ref lives in EditorLayout
+ *   alongside this hook; the delete handler lives in EditorPane — the
+ *   window event is the decoupling seam.)
  * - `virgil-footnote-panel-dropped` — panel reports that the orphan was
  *   dropped back into the doc; we clear the orphan slot.
  * - `virgil-footnote-consumed-archive` — a footnote drop target swallowed
@@ -42,6 +49,22 @@ export function useFootnoteSyncBridges(deps: {
     window.addEventListener("virgil-footnote-orphaned", handler);
     return () => window.removeEventListener("virgil-footnote-orphaned", handler);
   }, [suppressOrphanRef, setOrphanedFootnotes]);
+
+  // Producer for the orphan-suppression latch. A deliberate trash-delete
+  // (`handleDeleteFootnote`) fires this before removing the atom; we arm
+  // `suppressOrphanRef` so the immediately-following `virgil-footnote-
+  // orphaned` is swallowed instead of resurrecting the footnote as an
+  // orphan card. O(1) per event; no doc walk.
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const detail = (e as CustomEvent).detail;
+      if (!detail?.footnoteId) return;
+      suppressOrphanRef.current.add(detail.footnoteId);
+    };
+    window.addEventListener("virgil-footnote-suppress-orphan", handler);
+    return () =>
+      window.removeEventListener("virgil-footnote-suppress-orphan", handler);
+  }, [suppressOrphanRef]);
 
   useEffect(() => {
     const handler = (e: Event) => {

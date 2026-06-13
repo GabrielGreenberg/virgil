@@ -269,6 +269,12 @@ export interface EditorHandle {
   getCitationIds: () => Set<string>;
   getCitationOrder: () => string[];
   insertCitation: (command: string, citationId: string, displayText: string) => void;
+  /** Remove a `\cite` atom from the doc by its citationId. Mirrors
+   *  `deleteFootnote`: builds an inline-atom link and routes through the
+   *  shared `deleteLink` primitive, which no-ops if the atom isn't found
+   *  (a draft / unanchored citation has no in-doc node). The sidecar
+   *  entry is the caller's responsibility (see `handleDeleteCitation`). */
+  deleteCitation: (citationId: string) => void;
   getActiveParagraphId: () => string | null;
   scrollToParagraphId: (uuid: string) => void;
   /** Jump to the first resolvable link on a card. Preferred over
@@ -1562,6 +1568,17 @@ const VirgilEditor = forwardRef<EditorHandle, EditorProps>(function VirgilEditor
           attrs: { citationId, command, displayText },
         })
         .run();
+    },
+    deleteCitation(citationId: string): void {
+      if (!editor) return;
+      const link: VirgilLink = {
+        id: citationId,
+        kind: "citation",
+        anchor: { type: "inline-atom", nodeName: "citation", pos: null },
+        target: { type: "card", ref: { kind: "citation", id: citationId } },
+        createdAt: "",
+      };
+      deleteLink(editor, link);
     },
     getActiveParagraphId(): string | null {
       if (!editor) return null;
