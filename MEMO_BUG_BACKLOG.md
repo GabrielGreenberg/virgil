@@ -980,3 +980,30 @@ footnote's `attrs.content`; or (ii) stop collecting footnote-nested citations
 into the deletable panel set. Also (W-C nit 2): add an integration pin for the
 EditorPane→window→EditorLayout suppress-orphan seam (currently only the hook is
 unit-tested; the synchronous-ordering guarantee rests on source inspection).
+
+---
+
+## 39. Example card staleness + read-only typeability + dead replaceExampleLatex (W-A nits)
+
+**Reported:** 2026-06-12 (W-A review gate) · **Status:** open · **Area:** examples / floats
+
+W-A landed example cards as embedded editors (keystroke-sanctity verified). Three
+deferred nits:
+1. **Content-edit staleness:** the card re-seeds only when `rev.examples` bumps
+   (add/remove), NOT on a content-only edit to the same example made in the MAIN
+   editor — so the card shows stale text until the next structural change/remount
+   (main is authoritative; no data loss unless the user then types into the stale
+   card). Fix: a per-uuid example-content structural event the card can subscribe
+   to (cheap, observer-driven), like the in-editor float's `useMainTransactionSync`
+   but without the per-transaction cost.
+2. **Read-only typeability:** the card editor is `editable:true` unconditionally;
+   on a read-only/claimed doc the write-back tr lacks `ignoreReadOnly`, so it's
+   rejected at dispatch — the user types, sees a local change, it silently drops.
+   PRE-EXISTING and identical to the shipped `example-block-body.tsx` float — fix
+   both together (gate float editability on main editability).
+3. **Dead handle:** `EditorHandle.replaceExampleLatex` ([Editor.tsx:265](src/components/Editor.tsx)/:1294)
+   is now orphaned (omni-host consumer removed) — delete or annotate. Also:
+   `docIdRef` not threaded to the card editor, so nested figure/graphics atoms
+   render as pills not images (cosmetic); and the W-A write-back TEST hand-builds
+   a replaceWith instead of driving `writeBackToMain` through the card onUpdate —
+   strengthen it.
