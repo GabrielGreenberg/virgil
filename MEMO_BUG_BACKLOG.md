@@ -828,6 +828,69 @@ the LEGACY key; live is `float:card:<kind>:<id>`).
 
 # Walk-session card/UX batch (reported 2026-06-12, Gabriel hands-on)
 
+> **Investigation digest + ratified calls (2026-06-12).** The 8 walk bugs
+> root into 5 chips (cross-cutting scan + 9-track workflow, causal claims
+> 2x-verified where marked):
+>
+> - **Chip W-A — projection seam (#32 example editability + #33 expex parity,
+>   subsumes #26):** ExampleCard.tsx hand-builds a `flex` lookalike of the
+>   expex block (`:161` "recreate the example structure") + a read-only
+>   BorrowedMainText whose schema lacks expex nodes; the EDIT button
+>   (`:246`) is `disabled` because `onUpdateLatex` is wired only in omni-host,
+>   not the float builder (`cards/floats/index.tsx`) or panel host
+>   (`EditorPane.tsx:5476`). DEEP FIX: mount a read-only editor seeded with the
+>   exampleBlock JSON via `buildEditorExtensions({surface:'float'})` (the
+>   text-object float `example-block-body.tsx` already proves it) → kills the
+>   3rd schema copy (backlog #11) AND gives always-on editing. Glosses/nested
+>   xlists currently dropped (`Editor.tsx:1221-1260`).
+> - **Chip W-B — popped-state seam (#34 selection + #36 gesture, both
+>   confirmed x2):** #34 — `useAnchorHighlightReconciler.ts:266-271` stamps
+>   `data-card-selected` on EVERY `[data-card-key]` incl. the chromeless
+>   PanelCard root inside a float; `globals.css:2841` draws a 2px inset
+>   rectangle around the inner body, not the window. FIX: a
+>   `[data-floating-panel]:has([data-card-selected])` window-ring rule (docked
+>   halo recipe) + suppress the inner outline in popped context; same class hits
+>   hover. #36 — `FloatingPanel.tsx:679-685` wraps all children in a 0-threshold
+>   grab handler; blocker selector (`:413-417`) lacks `[data-card]`, so a card
+>   press arms panel-move (and 0px `pendingUndock`) before the card's 5px lift.
+>   FIX: add `[data-card]` to the blocklist (dedup the 3 copies). Panel stays
+>   drag-from-gaps (ratified default).
+> - **Chip W-C — atom-delete contract (#37 confirmed x2 + footnote-orphan
+>   sibling):** `useCitations.ts:213` deleteCitation filters the sidecar only,
+>   no editor tx; `EditorPane.tsx:1112` syncFromEditor re-derives the card from
+>   the live `\cite` atom on reload. Footnote does it right
+>   (`Editor.tsx:1117` deleteFootnote → deleteLink → `tr.delete`);
+>   `findInlineAtomPos` already handles `'citation'`. FIX (ratified: remove
+>   atom + entry): compound `handleDeleteCitation` in EditorPane wired to all 4
+>   call sites; also restore the removed `suppressOrphanRef` producer
+>   (`footnote-sync.ts:7`) so footnote trash-delete stops resurrecting an orphan.
+>   Drafts/unanchored citations have no atom → entry-only delete.
+> - **Chip W-D — typography + title provenance (#30 + #31):** #30 —
+>   `BODY_CLASS_TYPOGRAPHY.borrowed.fontSize = 15`
+>   (`panel-typography.ts:46`) is a frozen px snapshot; main text is the live
+>   `editorFontSize` rem pref → `--editor-font-size` (`EditorLayout.tsx:1317`).
+>   RATIFIED: fixed −2px; derive in `usePanelBodyStyle` keyed on
+>   override-absence; needs a non-cyclic root alias (PREF_TO_CSS row) since
+>   RichTextField/BorrowedMainText write `--editor-font-size` into the nested PM
+>   dom. Also revive the dead sans-tier `panelFontSize` pref. #31 —
+>   `nextCardTitle()` (`panel-registry.ts:227`) is persisted at 6 creation
+>   sites; no provenance flag. RATIFIED: stop persisting (pass `""`), suppress
+>   collapsed+expanded, strip legacy titles matching `^<Label> \d+$` on load.
+>   Sibling: todo seeds "Task N" into the BODY (`useTodos.ts:51`), tripping the
+>   pristine-delete confirm.
+> - **Chip W-E — cutter↔revision comment parity (#35):** CutterCommentCard
+>   uses `PanelCard` + plain `<textarea>` + DIY collab wiring; RevisionComment
+>   uses the shared `EditableCard` + RichTextField. The suggestion pair is
+>   already converged (revision imports cutter's helpers). RATIFIED: migrate
+>   CutterCommentCard onto EditableCard (rich-text body, auto collab); keep the
+>   cut-excerpt as a labeled section. Extract the duplicated
+>   FieldBlock/SuggestionTrailing helpers while there.
+>
+> **Ordering:** W-B before W-A (its selection fix benefits the floats W-A
+> creates); W-C, W-D independent; W-E small, last. W-A & W-C both touch
+> EditorPane.tsx (different fns) — sequence or merge carefully.
+
+
 Items 30–37. User mandate: "many of these may be instances of broader
 phenomena — the point of the spear — check for generalizations." Session-17
 investigation workflow findings refine these in place.
