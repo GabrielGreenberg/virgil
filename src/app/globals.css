@@ -2067,6 +2067,32 @@ textarea,
 }
 /* kbd inside these hints now uses the global .kbd (see Kbd.tsx). */
 
+/* Footer row: hint on the left, the Cancel (revert) button on the right.
+ * Saving is the default on every dismissal; Cancel is the only discard path. */
+.math-popover-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+
+.math-popover-cancel {
+  flex: 0 0 auto;
+  font-size: 0.72rem;
+  color: var(--text-muted, #9a8f80);
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 0.25rem;
+  padding: 0.15em 0.5em;
+  cursor: pointer;
+}
+
+.math-popover-cancel:hover {
+  color: var(--text, #1a1a1a);
+  border-color: var(--border, #d9d3c8);
+  background: var(--code-bg, #f0eeeb);
+}
+
 /* Figure rendering — `\begin{figure}` envs and bare `\includegraphics`.
  * Block-level with column-width max; reload button hidden until hover. */
 .figure-block {
