@@ -22,7 +22,7 @@ import {
   clearPanelTypographyField,
   type PanelBodyKey,
 } from "@/lib/panel-typography";
-import { usePanelTypography } from "@/hooks/usePanelTypography";
+import { usePanelTypography, usePanelDefault } from "@/hooks/usePanelTypography";
 import {
   useLinkAwareUpdater,
   useLinkState,
@@ -115,7 +115,9 @@ function PanelColorRow({
 
 function PanelTypographyGridRow({ panelKey }: { panelKey: PanelBodyKey }) {
   const typo = usePanelTypography(panelKey)!;
-  const def = DEFAULT_PANEL_TYPOGRAPHY[panelKey];
+  // Doc-relative default (BUG #30): so "reset"/at-default and the snap-to-clear
+  // in `setField` track the live tier base, not the frozen literal.
+  const def = usePanelDefault(panelKey);
   const isDefault =
     typo.fontFamily === def.fontFamily &&
     typo.fontSize === def.fontSize &&

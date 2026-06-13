@@ -27,8 +27,12 @@ function commit(key: PanelBodyKey, raw: number) {
  *  Layout:  [ 14 ] pts
  *
  *  Uses the native number-input spinner (forced always-visible via
- *  `panel-text-size-input` styles in globals.css). Stepping or typing
- *  back to the panel's default clears the override automatically. */
+ *  `panel-text-size-input` styles in globals.css). Every step/typed value is
+ *  stored as an explicit override (see `commit` — no auto-clear at the
+ *  default), so the rendered size matches the stepper value step-for-step and
+ *  the stepper stays monotonic. The override survives even when it equals the
+ *  default; clearing it (to track the doc-relative default again, BUG #30) is
+ *  done from the Fonts… dialog / Smart Preferences reset, not here. */
 export default function PanelTextSize({ panelKey }: { panelKey: PanelBodyKey }) {
   const typo = usePanelTypography(panelKey);
   const current = typo?.fontSize ?? DEFAULT_PANEL_TYPOGRAPHY[panelKey].fontSize;

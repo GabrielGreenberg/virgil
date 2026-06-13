@@ -1,10 +1,16 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, afterEach } from "vitest";
 import {
   DEFAULT_PANEL_TYPOGRAPHY,
   BODY_CLASS_TYPOGRAPHY,
   FONT_STACKS,
   PANEL_BODY_FONT_OPTIONS,
+  PANEL_BODY_TIER,
   resolveFontStack,
+  getPanelTypography,
+  getPanelDefault,
+  setTierBaseFontSizes,
+  setPanelTypographyField,
+  clearPanelTypographyField,
   type PanelBodyKey,
 } from "@/lib/panel-typography";
 import { CARD_REGISTRY } from "@/cards/card-registry";
@@ -78,6 +84,93 @@ describe("DEFAULT_PANEL_TYPOGRAPHY is derived from CardMeta.bodyClass", () => {
     for (const [a, b] of pairs) {
       expect(CARD_REGISTRY[a].bodyClass).toBe(CARD_REGISTRY[b].bodyClass);
     }
+  });
+});
+
+/**
+ * BUG #30: an un-overridden card body's DEFAULT font size tracks the live
+ * document, not a frozen literal. `setTierBaseFontSizes(borrowed, sans)` is the
+ * O(1), pref-gated push EditorLayout makes when a font pref changes:
+ *   - borrowed tier (footnote/archive/example) ← main-text px − 2
+ *   - sans tier (everyone else)                ← the `panelFontSize` px pref
+ * An explicit numeric `fontSize` override (the size stepper) still wins.
+ */
+describe("BUG #30: doc-relative default body size, override still wins", () => {
+  afterEach(() => {
+    // Drop the pushed tier bases (NaN → undefined per the setter's
+    // Number.isFinite guard) and any overrides so tests don't bleed.
+    setTierBaseFontSizes(NaN, NaN);
+    for (const k of Object.keys(DEFAULT_PANEL_TYPOGRAPHY) as PanelBodyKey[]) {
+      clearPanelTypographyField(k, "fontSize");
+      clearPanelTypographyField(k, "fontFamily");
+      clearPanelTypographyField(k, "color");
+    }
+  });
+
+  it("PANEL_BODY_TIER agrees with each panel's BODY_CLASS_TYPOGRAPHY tier", () => {
+    const cases: Array<[PanelBodyKey, "borrowed" | "sans"]> = [
+      ["footnote", "borrowed"],
+      ["archive", "borrowed"],
+      ["example", "borrowed"],
+      ["note", "sans"],
+      ["cut", "sans"],
+      ["revision", "sans"],
+      ["citation", "sans"],
+      ["bib", "sans"],
+      ["todo", "sans"],
+      ["report", "sans"],
+    ];
+    for (const [key, tier] of cases) expect(PANEL_BODY_TIER[key]).toBe(tier);
+  });
+
+  it("before any push the default is the static literal (SSR / no-doc fallback)", () => {
+    expect(getPanelDefault("footnote").fontSize).toBe(15); // borrowed literal
+    expect(getPanelDefault("note").fontSize).toBe(12);     // sans literal
+  });
+
+  it("borrowed default = main-text px − 2; sans default = panelFontSize", () => {
+    // editorFontSize 0.95rem → round(0.95*16)=15 → borrowed 13; panelFontSize 13.
+    setTierBaseFontSizes(15 - 2, 13);
+    expect(getPanelDefault("footnote").fontSize).toBe(13);
+    expect(getPanelDefault("archive").fontSize).toBe(13);
+    expect(getPanelDefault("example").fontSize).toBe(13);
+    expect(getPanelDefault("note").fontSize).toBe(13);
+    expect(getPanelDefault("report").fontSize).toBe(13);
+    // family + color stay the literal — only the size tracks the doc.
+    expect(getPanelDefault("footnote").fontFamily).toBe("Source Serif 4");
+    expect(getPanelDefault("note").fontFamily).toBe("Inter");
+  });
+
+  it("a larger doc lifts the borrowed default in lock-step", () => {
+    // editorFontSize 1.25rem → round(1.25*16)=20 → borrowed 18.
+    setTierBaseFontSizes(20 - 2, 16);
+    expect(getPanelDefault("footnote").fontSize).toBe(18);
+    expect(getPanelDefault("note").fontSize).toBe(16); // sans tracks panelFontSize
+  });
+
+  it("the effective (getPanelTypography) value tracks the doc when un-overridden", () => {
+    setTierBaseFontSizes(15 - 2, 13);
+    expect(getPanelTypography("footnote").fontSize).toBe(13);
+    expect(getPanelTypography("note").fontSize).toBe(13);
+  });
+
+  it("an explicit fontSize override (size stepper) WINS over the doc-relative base", () => {
+    setTierBaseFontSizes(15 - 2, 13);
+    setPanelTypographyField("footnote", "fontSize", 22);
+    expect(getPanelTypography("footnote").fontSize).toBe(22); // override beats base
+    // the un-overridden sibling still tracks the doc
+    expect(getPanelTypography("archive").fontSize).toBe(13);
+    // clearing restores doc-relative tracking
+    clearPanelTypographyField("footnote", "fontSize");
+    expect(getPanelTypography("footnote").fontSize).toBe(13);
+  });
+
+  it("a family/color override leaves the un-overridden size doc-relative", () => {
+    setTierBaseFontSizes(15 - 2, 13);
+    setPanelTypographyField("footnote", "color", "#112233");
+    const t = getPanelTypography("footnote");
+    expect(t.color).toBe("#112233"); // override applied
+    expect(t.fontSize).toBe(13);     // size still doc-relative
   });
 });
 
