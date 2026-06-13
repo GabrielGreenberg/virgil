@@ -48,3 +48,10 @@ export {
   collectGraphicsBlockUuids,
   freshGraphicsBlockAttrs,
 } from "./graphics-block";
+export {
+  buildBorrowedAtomSchema,
+  CARD_STARTER_KIT_CONFIG,
+  BORROWED_INLINE_ATOM_NAMES,
+  BORROWED_BLOCK_ATOM_NAMES,
+  type BorrowedSchemaOptions,
+} from "./borrowed-schema";
