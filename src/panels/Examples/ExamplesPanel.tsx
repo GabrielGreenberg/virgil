@@ -18,7 +18,6 @@ interface ExamplesPanelProps {
   onSelect: (id: string | null) => void;
   onJump: (id: string, sourceEl?: HTMLElement | null) => void;
   onAdd?: (anchorRect?: DOMRect) => void;
-  onUpdateLatex?: (exampleId: string, latex: string) => boolean;
 }
 
 function ExamplesPanel(props: ExamplesPanelProps) {
@@ -28,7 +27,6 @@ function ExamplesPanel(props: ExamplesPanelProps) {
     onSelect,
     onJump,
     onAdd,
-    onUpdateLatex,
   } = props;
   const onActivate = useCallback(
     (ex: ExampleInfo) => {
@@ -101,11 +99,6 @@ function ExamplesPanel(props: ExamplesPanelProps) {
             onSelect(selectedId === ex.exampleId ? null : ex.exampleId)
           }
           onJump={(sourceEl) => onJump(ex.exampleId, sourceEl)}
-          onUpdateLatex={
-            onUpdateLatex
-              ? (latex) => onUpdateLatex(ex.exampleId, latex)
-              : undefined
-          }
         />
       )}
     />

@@ -10,7 +10,6 @@ interface BuildArgs {
   selectedExampleId: string | null;
   setSelectedExampleId: (id: string | null) => void;
   onJump: (id: string) => void;
-  onUpdateLatex?: (exampleId: string, latex: string) => boolean;
 }
 
 /** Build OmniItems for each example so they surface in the unified
@@ -34,11 +33,6 @@ export function buildExampleOmniItems(a: BuildArgs): OmniItem[] {
           isSelected={isSelected}
           onSelect={() => a.setSelectedExampleId(ex.exampleId)}
           onJump={() => a.onJump(ex.exampleId)}
-          onUpdateLatex={
-            a.onUpdateLatex
-              ? (latex) => a.onUpdateLatex!(ex.exampleId, latex)
-              : undefined
-          }
           extraDataAttrs={{ "data-omni-entry": omniId }}
         />
       ),

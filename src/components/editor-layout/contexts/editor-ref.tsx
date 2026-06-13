@@ -38,3 +38,15 @@ export function useEditorRefContext(): EditorRefContextValue {
   if (!v) throw new Error("useEditorRefContext must be used inside EditorRefProvider");
   return v;
 }
+
+/**
+ * Nullable variant — for components that mount BOTH inside the live app (where
+ * the provider exists) and in bare test / preview contexts (where it doesn't),
+ * and want to degrade gracefully rather than throw. ExampleCard's directly-
+ * editable body uses this: it self-sources the main editor to seed + write back
+ * its embedded expex editor when the provider is present, and falls back to a
+ * read-only mount when it isn't.
+ */
+export function useEditorRefContextOrNull(): EditorRefContextValue | null {
+  return useContext(EditorRefCtx);
+}
