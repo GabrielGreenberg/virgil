@@ -9,6 +9,11 @@ import { publish, subscribe, type BusEvent } from "@/lib/multi-window/bus";
 import { DEFAULT_OMNI_CATEGORIES, migrateOmniCategories, type OmniCategory } from "@/panels/Omni/OmniViewPanel";
 import defaultPrefsJson from "./useViewPrefs.defaults.json";
 import { migrateFloatKeys, migrateLegacyKeyToFloat } from "@/floats/float-key";
+import {
+  filterPlacements,
+  filterOmniCategories,
+  filterPrintPanels,
+} from "./dropUnknownPanelIds";
 
 /** Marginalia card kinds whose visibility is toggled from the View menu. */
 export type MarginaliaType = "note" | "archive" | "todo" | "report";
@@ -526,6 +531,23 @@ function loadPrefs(): ViewPrefs {
         ...(parsed.printOptions?.panels ?? {}),
       },
     };
+
+    // Defensive unknown-id drop (THE ROOT FIX for the recurring stale-snapshot
+    // incidents): subtractively scrub any panel id/key that is no longer a
+    // member of its carrier's live registry SSOT, so a retired panel (e.g.
+    // `quotations`) can never round-trip back through saved prefs → the
+    // dev:preview snapshot → promote-defaults → shipped `*.defaults.json`.
+    // Validated against the FINAL merged values (covers both the loaded-prefs
+    // and the still-stale-DEFAULT_PREFS paths). Purely subtractive, order- and
+    // side-preserving, malformed-safe; runs once per load (no per-render work).
+    //   - placements          → PANEL_REGISTRY keys      (panel-registry.ts)
+    //   - omniCategories       → OMNI_PANELS kinds        (panel-registry.ts)
+    //   - printOptions.panels  → PRINT_PANELS keys        (lib/print.ts)
+    const cleanedPlacements = filterPlacements<PanelPlacement>(merged);
+    printOptions.panels = filterPrintPanels(printOptions.panels) as PrintOptions["panels"];
+    const cleanedOmniCategories = filterOmniCategories(
+      parsed.omniCategories ?? DEFAULT_PREFS.omniCategories,
+    ) as ViewPrefs["omniCategories"];
     // Legacy dock-state fields kept clamped to "omni in slot": the
     // omni-side detection and marginalia connectors still read
     // activeLeft/Right to identify the omni column. Splits are off by
@@ -539,8 +561,9 @@ function loadPrefs(): ViewPrefs {
     return {
       ...DEFAULT_PREFS,
       ...parsed,
-      placements: merged,
+      placements: cleanedPlacements,
       printOptions,
+      omniCategories: cleanedOmniCategories,
       activeLeft: "omni",
       activeRight: "omni",
       activeLeftBottom: null,
