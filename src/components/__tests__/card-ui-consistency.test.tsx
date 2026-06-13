@@ -151,10 +151,13 @@ describe("T4: preview-chrome sites have no local fontStack helper", () => {
     "../SmartPreferences.tsx",
   ];
   for (const rel of SITES) {
-    it(`${rel.replace("../", "")} imports resolveFontStack and defines no local helper`, () => {
+    it(`${rel.replace("../", "")} routes through a shared resolver and defines no local helper`, () => {
       const src = readFileSync(resolve(__dirname, rel), "utf8");
       expect(src).not.toMatch(/function fontStack\s*\(/);
-      expect(src).toContain("resolveFontStack");
+      // Either the applied-style resolver or the preview-only resolver from
+      // panel-typography (backlog #28 added resolvePreviewFontStack for the
+      // option previews) — never a bespoke local stack.
+      expect(src).toMatch(/resolve(Preview)?FontStack/);
     });
   }
 });

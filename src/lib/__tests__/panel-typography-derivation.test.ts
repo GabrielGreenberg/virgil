@@ -6,6 +6,7 @@ import {
   PANEL_BODY_FONT_OPTIONS,
   PANEL_BODY_TIER,
   resolveFontStack,
+  resolvePreviewFontStack,
   getPanelTypography,
   getPanelDefault,
   setTierBaseFontSizes,
@@ -305,5 +306,35 @@ describe("resolveFontStack: bare family names never ship", () => {
 
   it("FONT_STACKS is frozen", () => {
     expect(Object.isFrozen(FONT_STACKS)).toBe(true);
+  });
+});
+
+describe("resolvePreviewFontStack: option previews show the NAMED face (backlog #28)", () => {
+  it("Inter previews literal-first through the un-overridden --font-sans var", () => {
+    expect(resolvePreviewFontStack("Inter")).toBe(
+      "Inter, var(--font-sans), system-ui, sans-serif",
+    );
+  });
+
+  it("Source Serif 4 previews literal-first through the un-overridden --font-serif var", () => {
+    expect(resolvePreviewFontStack("Source Serif 4")).toBe(
+      '"Source Serif 4", var(--font-serif), Georgia, serif',
+    );
+  });
+
+  it("the preview stacks are NOT override-first (the bug they fix)", () => {
+    // The applied-style resolver routes these two override-first; the
+    // preview resolver must not — otherwise the option shows the user's
+    // override face, not the named one.
+    expect(resolvePreviewFontStack("Inter")).not.toContain("--font-sans-override");
+    expect(resolvePreviewFontStack("Source Serif 4")).not.toContain("--font-serif-override");
+    expect(resolveFontStack("Inter")).toContain("--font-sans-override");
+    expect(resolveFontStack("Source Serif 4")).toContain("--font-serif-override");
+  });
+
+  it("every other family falls through to resolveFontStack unchanged", () => {
+    for (const name of ["Lora", "Playfair Display", "Georgia", "Comic Neue", "Cinzel", ""]) {
+      expect(resolvePreviewFontStack(name)).toBe(resolveFontStack(name));
+    }
   });
 });

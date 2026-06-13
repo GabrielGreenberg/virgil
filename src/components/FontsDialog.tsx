@@ -7,7 +7,7 @@ import SizeStepper from "./SizeStepper";
 import type { EditorPreferences } from "@/hooks/usePreferences";
 import { DEFAULT_PREFS } from "@/hooks/usePreferences";
 import {
-  resolveFontStack,
+  resolvePreviewFontStack,
   setPanelTypographyField,
   clearPanelTypographyField,
 } from "@/lib/panel-typography";
@@ -76,10 +76,12 @@ function PreviewPod({
       style={{
         background: "var(--background, #f8f3ed)",
         border: "1px solid var(--border-light, #c9c5c5)",
-        // Never a bare family name — resolveFontStack routes through the
-        // loaded faces / CSS vars (a bare name silently falls back to the
-        // UA default for next/font-loaded families).
-        fontFamily: resolveFontStack(fontFamily),
+        // Never a bare family name — resolvePreviewFontStack routes through
+        // the loaded faces / CSS vars (a bare name silently falls back to
+        // the UA default for next/font-loaded families). Preview-only: the
+        // var-first registry defaults (Inter / Source Serif 4) render their
+        // NAMED face here, not the user's override (backlog #28).
+        fontFamily: resolvePreviewFontStack(fontFamily),
         fontSize: `${fontSizeRem}rem`,
         fontWeight: weight,
         lineHeight: 1.4,
