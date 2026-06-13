@@ -17,6 +17,7 @@
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import type { Editor } from "@tiptap/react";
+import type { Fragment, Node as PMNode, Slice } from "@tiptap/pm/model";
 import { useDragHandleMenu } from "./editor-layout/card-actions/drag-handle-menu-context";
 import { MENU_ENTRIES } from "./DragHandleMenu";
 import { BlockTypeDropdown, buildExampleTemplate } from "./MenuBar";
@@ -54,6 +55,56 @@ function loadPalette(): string[] {
   } catch {
     return DEFAULT_PALETTE;
   }
+}
+
+/**
+ * Extract ONLY inline content (as ProseMirror JSON) from a selection slice,
+ * suitable for dropping into an `inline*` slot (e.g. the paragraph inside a
+ * freshly-built example template). See the DA-1 note in
+ * {@link wrapSelectionInExample} for the rationale.
+ *
+ * A `slice` between two positions yields top-level *block* nodes whenever the
+ * selection spans a block boundary, so we can't trust the raw fragment JSON to
+ * be inline. We walk the fragment and collect inline nodes:
+ *   - an inline node (text, inline atom)            → kept as-is;
+ *   - a block node whose own content is `inline*`    → its inline children are
+ *     spliced in (block boundaries collapse to nothing);
+ *   - any other block (lists, gloss tables, nested   → recurse to harvest the
+ *     example structure, …)                            inline leaves within.
+ *
+ * Returns a (possibly empty) array of inline-node JSON. An empty result is the
+ * caller's signal to use the empty-template fallback.
+ *
+ * This runs on a user gesture (menu click), not per keystroke — a bounded walk
+ * over the selection slice only, never the whole document.
+ */
+export function extractInlineJSON(slice: Slice): Record<string, unknown>[] {
+  const out: Record<string, unknown>[] = [];
+  let hasUsable = false; // any non-whitespace text OR any inline atom?
+  const walk = (fragment: Fragment) => {
+    fragment.forEach((child: PMNode) => {
+      if (child.isInline) {
+        // Text or an inline atom — exactly what an `inline*` slot accepts.
+        if (child.isText) {
+          if ((child.text ?? "").trim().length > 0) hasUsable = true;
+        } else {
+          // An inline atom (inline math, citation, \ref, …) is real content.
+          hasUsable = true;
+        }
+        out.push(child.toJSON() as Record<string, unknown>);
+      } else {
+        // A block node: never valid inline. Recurse into its content to pull
+        // out the inline leaves, discarding the block wrapper itself.
+        walk(child.content);
+      }
+    });
+  };
+  walk(slice.content);
+  // A pure-whitespace (or empty) selection carries no usable content — return
+  // empty so the caller takes the empty-template fallback rather than wrapping
+  // a blank line. (We don't strip individual whitespace text nodes mid-content,
+  // which would destroy inter-word spacing.)
+  return hasUsable ? out : [];
 }
 
 const MENU_W = 170;
@@ -167,19 +218,31 @@ export function ActionsMenuPanel({
 
   const wrapSelectionInExample = () => {
     const { from, to } = editor.state.selection;
-    let inlineContent: unknown[] = [];
-    try {
-      const slice = editor.state.doc.slice(from, to);
-      // `Fragment.toJSON()` returns `null` when the fragment is empty
-      // (e.g. a collapsed selection, or a selection consisting only of
-      // node-boundary openings). The cast to `unknown[]` lies in that
-      // case; guard explicitly so `inlineContent.length` below doesn't
-      // throw.
-      const json = slice.content.toJSON();
-      if (Array.isArray(json)) inlineContent = json as unknown[];
-    } catch {
-      /* fall through with empty content */
-    }
+
+    // DA-1 fix. The example template's first slot is an `exampleItem`'s
+    // paragraph, whose content is `inline*` — it accepts ONLY inline nodes
+    // (text + inline atoms). The previous version dropped the raw slice JSON
+    // (`slice.content.toJSON()`) straight into that slot guarded only by an
+    // `Array.isArray` check, which is the wrong test: a slice always
+    // serializes to an array, but its *members* are block-level whenever the
+    // selection spans a block boundary (two+ paragraphs, a list, a
+    // displayMath, …). Stuffing those block nodes into an inline-only slot is
+    // a schema violation that corrupts the document or throws.
+    //
+    // Behavior chosen for a multi-block selection: take the inline content of
+    // every block in the selection, JOINED into a single paragraph (block
+    // boundaries collapse to nothing — we intentionally do NOT inject spaces,
+    // matching how `\ex` examples read as one continuous line). Nested block
+    // structure (list items, gloss cells, …) is flattened to its inline
+    // leaves. This is the most faithful safe rendering of "wrap this text as a
+    // single-part example": the user's words survive, the block scaffolding
+    // (which a single `\ex` can't express inline) is dropped. If there is no
+    // usable inline content at all (collapsed / whitespace-only selection, or a
+    // selection of pure block boundaries), we fall back to inserting the empty
+    // single-example template for the user to fill — never throwing, never
+    // dropping garbage into the slot.
+    const inlineContent = extractInlineJSON(editor.state.doc.slice(from, to));
+
     const existing = new Set<string>();
     editor.state.doc.descendants((n) => {
       if (n.type.name === "exampleBlock" && n.attrs.uuid) {
@@ -190,8 +253,11 @@ export function ActionsMenuPanel({
     const { node } = buildExampleTemplate("single", existing);
     const content = node.content as Array<{ type: string; content?: unknown[] }>;
     if (content[0] && content[0].type === "paragraph" && inlineContent.length) {
+      // Only ever inline JSON reaches here — `extractInlineJSON` guarantees it.
       content[0].content = inlineContent;
     }
+    // When `inlineContent` is empty the template's first paragraph keeps its
+    // default empty body → the empty-template fallback.
     editor.chain().focus().deleteSelection().insertContent(node).run();
   };
 
