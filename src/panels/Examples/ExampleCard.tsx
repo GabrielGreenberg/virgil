@@ -24,6 +24,9 @@ import { cardStore } from "@/links/_shared/anchored-card-store";
 import { BorrowedMainText } from "@/components/BorrowedMainText";
 import { useEditorRefContextOrNull } from "@/components/editor-layout/contexts/editor-ref";
 import { useStructuralRevisions } from "@/hooks/useStructuralRevisions";
+import { useExampleContentRevision } from "@/lib/tiptap/doc-structure";
+import { useMainEditable } from "@/components/editor-layout/contexts/editor-ref";
+import { useDocWriteHandleOrNull } from "@/components/editor-layout/DocPipeline";
 import { buildEditorExtensions } from "@/lib/editor-extensions";
 import { FLOAT_WRITE_META } from "@/lib/float-sync";
 
@@ -110,6 +113,16 @@ function ExampleCardEditor({
   bodyStyle: React.CSSProperties;
 }) {
   const rev = useStructuralRevisions(mainEditor);
+  // Per-uuid content signal (#39 nit 1): bumps ONLY when THIS example's
+  // interior content changed in the MAIN editor — so a content-only edit
+  // (no add/remove → `rev.examples` stays flat) still re-seeds this card,
+  // and never re-seeds a sibling example's card.
+  const contentRev = useExampleContentRevision(mainEditor, exampleId);
+  // Read-only gate (#39 nit 2): on a read-only / partner-claimed doc the
+  // main editor's `data-editable` is "false". Mirror it onto the embedded
+  // editor so the card shows read-only content instead of accepting phantom
+  // typing whose write-back the readOnlyEnforcer would silently reject.
+  const mainEditable = useMainEditable(mainEditor);
 
   // Heading/label callbacks proxied to the MAIN handle, exactly as the
   // example float does — an example doc holds only an exampleBlock so the
@@ -175,11 +188,21 @@ function ExampleCardEditor({
     }
   }
 
+  // Doc-id mirror (#39 nit 3): thread the real docId so figure/graphics atoms
+  // nested in an example resolve + render their actual image (read-only)
+  // instead of a compact pill — parity with the example float, which threads
+  // it at example-block-body.tsx (`useDocWriteHandleOrNull()?.docId`). Read
+  // each render so a doc swap is seen; null in bare/no-pipeline contexts.
+  const docId = useDocWriteHandleOrNull()?.docId ?? null;
+  const docIdRef = useRef<string | null>(docId);
+  docIdRef.current = docId;
+
   const editor = useEditor({
     extensions: buildEditorExtensions({
       surface: "float",
-      editable: true,
+      editable: mainEditable,
       cardContext: true,
+      docIdRef,
       callbacks: {
         isLabelTaken: isLabelTakenRef,
         onConfirmLabelRename: onConfirmLabelRenameRef,
@@ -191,7 +214,7 @@ function ExampleCardEditor({
       host: { getMainEditor: () => editorRef.current?.getEditor() ?? null },
     }),
     content: initialDoc,
-    editable: true,
+    editable: mainEditable,
     immediatelyRender: false,
     editorProps: {
       attributes: {
@@ -204,14 +227,25 @@ function ExampleCardEditor({
     },
   });
 
-  // ── Main → card re-seed, gated on the structural example counter ───────
-  // Re-seed from the live block when `rev.examples` bumps (an example was
-  // added / removed / structurally changed in the main doc, including our
-  // OWN write-back which surfaces as `onExamplesRecomputable`). We compare
-  // serialized JSON so an echo of our own edit — or a re-derivation with no
-  // content change — is a no-op (no cursor reset). This is NOT a per-
-  // transaction subscriber: a structurally-null keystroke fires no example
-  // event, so this effect never runs and no per-card doc walk happens.
+  // Keep the embedded editor's editability in lock-step with the main doc's,
+  // in case read-only mode toggles after mount (collab pen handoff).
+  useEffect(() => {
+    if (editor && editor.isEditable !== mainEditable) {
+      editor.setEditable(mainEditable);
+    }
+  }, [editor, mainEditable]);
+
+  // ── Main → card re-seed, gated on structural + content example signals ──
+  // Re-seed from the live block when EITHER `rev.examples` bumps (an example
+  // was added / removed / structurally changed, including our OWN write-back
+  // which surfaces as `onExamplesRecomputable`) OR `contentRev` bumps (a
+  // content-only edit to THIS example was made in the main editor — the #39
+  // staleness fix). We compare serialized JSON so an echo of our own edit —
+  // or a re-derivation with no content change — is a no-op (no cursor reset).
+  // This is NOT a per-transaction subscriber: a structurally-null keystroke
+  // in a non-example paragraph fires neither signal, so this effect never
+  // runs; a content edit inside example A bumps only A's `contentRev`, so
+  // only card A re-seeds — card B (a different uuid) never fires.
   const lastSyncedRef = useRef<string | null>(null);
   useEffect(() => {
     if (!editor || !mainEditor) return;
@@ -244,7 +278,7 @@ function ExampleCardEditor({
     } catch {
       /* selection target may be invalid post-reset; OK */
     }
-  }, [editor, mainEditor, exampleId, rev.examples]);
+  }, [editor, mainEditor, exampleId, rev.examples, contentRev]);
 
   // Panel typography onto the editor DOM, the way BorrowedMainText /
   // RichTextField do (so the panel's borrowed font-size + a stepper override
