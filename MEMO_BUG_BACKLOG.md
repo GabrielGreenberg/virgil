@@ -823,3 +823,77 @@ Also from the same gate, code-comment rot to sweep when nearby:
 `panel-registry.ts:52,90` ("See POLYMORPHIC_CARD_PANEL below" — retired
 symbol) and `card-registry.tsx:379` ("live key is revision:s:<id>" — that's
 the LEGACY key; live is `float:card:<kind>:<id>`).
+
+---
+
+# Walk-session card/UX batch (reported 2026-06-12, Gabriel hands-on)
+
+Items 30–37. User mandate: "many of these may be instances of broader
+phenomena — the point of the spear — check for generalizations." Session-17
+investigation workflow findings refine these in place.
+
+## 30. Serif card bodies should track the main text size, one step smaller
+
+**Reported:** 2026-06-12 · **Status:** open · **Area:** card typography
+
+Borrowed-class bodies (archive, footnote, example) are a fixed 15px serif.
+Desired: derive from the document's main text size minus a step (main 14 →
+footnote ~12). Per-panel explicit size picks must still win.
+
+## 31. Collapsed cards: show the title only when it's CUSTOM
+
+**Reported:** 2026-06-12 · **Status:** open · **Area:** card panels / shared chrome
+
+The new collapsed-title row also shows auto-generated titles ("Archive text
+1", "Footnote 2"). Desired: generated titles never show in collapsed mode —
+only user-authored ones. Likely deep fix: stop conflating generated and
+custom titles at the data level (provenance), not a render heuristic.
+
+## 32. Example cards: directly editable, no separate EDIT button
+
+**Reported:** 2026-06-12 · **Status:** open · **Area:** card panels / examples
+
+Example cards have an EDIT mode toggle (and the float-side button is
+permanently disabled — subsumes item 26). Desired: directly editable like
+every other editable card. Needs the editability story for doc-projected
+content (the card edits the in-text exampleBlock).
+
+## 33. Example card expex rendering diverges from the main text
+
+**Reported:** 2026-06-12 · **Status:** open · **Area:** card panels / examples
+
+The card's "(7) a." number font and alignment don't match the main-text
+expex rendering (screenshot on file: number sits high/offset, different
+spacing). Likely the borrowed-content parity class (related: item 11).
+
+## 34. Popped-card selection should outline the float window, not square the text
+
+**Reported:** 2026-06-12 · **Status:** open · **Area:** floats / selection
+
+A selected popped card paints a highlight square around its TEXT — reads as
+broken. Desired: selection = an outline around the whole float window;
+docked halo unchanged.
+
+## 35. Cutter comments should share the revision-comment layout
+
+**Reported:** 2026-06-12 · **Status:** open · **Area:** card panels / comment family
+
+CutterCommentCard's layout/structure drifted from RevisionCommentCard.
+Desired: one shared comment-card structure (check the suggestion pair too).
+
+## 36. Inside a floating panel, a card's grab-bar drags the PANEL
+
+**Reported:** 2026-06-12 · **Status:** open · **Area:** floats / gestures
+
+With a panel popped out, grabbing a card's grab-bar/header moves the whole
+panel window instead of lifting the card. Card lift must win inside the
+panel body; panel drag only from the panel's own chrome.
+
+## 37. Deleting a citation card leaves the in-text atom; card resurrects on reload
+
+**Reported:** 2026-06-12 · **Status:** open · **Area:** citations / data integrity
+
+Create a citation, delete the card → the in-text \cite atom stays; on
+reload the atom re-derives the card. Atom-bearing kinds' delete contract
+must remove the atom + sidecar atomically (footnotes may already do this —
+the pattern). Audit the delete-contract matrix across kinds.
