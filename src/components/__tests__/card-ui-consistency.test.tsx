@@ -6,9 +6,9 @@
 //      rules derives from CARD_THEMES, replacing the deleted
 //      `[data-card-key^="float:card:<kind>:"]` CSS prefix block. Every
 //      kind is covered because every card passes `theme`.
-//   2. CardMetaLabel / CardMono render the ratified in-card tiers (T2):
-//      meta = 10px `.card-meta-label`, mono = `.card-mono` override-first
-//      stack at meta (10px) or content (12px).
+//   2. CardMetaLabel renders the ratified META tier (10px
+//      `.card-meta-label`); mono-in-card uses the `.card-mono` class token
+//      directly (the unused CardMono wrapper was deleted).
 //   3. PANEL.cardBody is the single ratified body-padding token (G1).
 //   4. The three preview-chrome font emitters (FontsDialog / FontPicker /
 //      SmartPreferences) carry no local `fontStack` helper and route
@@ -55,11 +55,11 @@ import { render, cleanup } from "@testing-library/react";
 import {
   PanelCard,
   CardMetaLabel,
-  CardMono,
   CARD_THEMES,
   PANEL,
   cardTitleStyle,
 } from "@/components/panel-primitives";
+import * as panelPrimitives from "@/components/panel-primitives";
 
 afterEach(cleanup);
 
@@ -118,16 +118,13 @@ describe("T2: in-card tier primitives", () => {
     expect(el.textContent).toBe("Type");
   });
 
-  it("CardMono routes through .card-mono at the two ratified sizes", () => {
-    const { container: meta } = render(<CardMono>\cite{"{x}"}</CardMono>);
-    const metaEl = meta.firstElementChild as HTMLElement;
-    expect(metaEl.classList.contains("card-mono")).toBe(true);
-    expect(metaEl.classList.contains("text-[10px]")).toBe(true);
-
-    const { container: content } = render(<CardMono size="content">key2026</CardMono>);
-    const contentEl = content.firstElementChild as HTMLElement;
-    expect(contentEl.classList.contains("card-mono")).toBe(true);
-    expect(contentEl.classList.contains("text-[12px]")).toBe(true);
+  it("CardMono is gone — `.card-mono` is the in-card mono token (backlog #28)", () => {
+    // The unused CardMono wrapper was deleted (its two-size API couldn't
+    // express the bare/inherit call sites). Mono-in-card sits on the
+    // `.card-mono` class, set directly at each call site.
+    expect(
+      (panelPrimitives as Record<string, unknown>).CardMono,
+    ).toBeUndefined();
   });
 
   it("cardTitleStyle is the par-title TITLE dialect, themed via titleColor", () => {

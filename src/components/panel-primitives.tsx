@@ -368,27 +368,11 @@ export function CardMetaLabel({
   );
 }
 
-/** In-card mono text routed through the override-first mono var stack
- *  (`var(--font-mono-override, var(--font-mono)), monospace` — Tailwind's
- *  `font-mono` skips the user's mono override pref). Two ratified sizes:
- *  `"meta"` (10px — CODE rows, citekeys) and `"content"` (12px). */
-export function CardMono({
-  children,
-  size = "meta",
-  className,
-}: {
-  children: ReactNode;
-  size?: "meta" | "content";
-  className?: string;
-}) {
-  return (
-    <span
-      className={`card-mono ${size === "meta" ? "text-[10px]" : "text-[12px]"}${className ? ` ${className}` : ""}`}
-    >
-      {children}
-    </span>
-  );
-}
+/** In-card mono text routes through the override-first mono var stack via the
+ *  `.card-mono` class (Tailwind's `font-mono` skips the user's mono override
+ *  pref). Used directly as a className — no React wrapper component, since
+ *  call sites set their own size and pair it with surrounding classes (the
+ *  bare/inherit case a two-size wrapper couldn't express). */
 
 /* ── Unified card-chrome header components ────────────────────────── */
 

@@ -93,8 +93,9 @@ anything at 10.5 / 11 / 11.5px is a stray:
 
 Mono inside cards always routes through the override-first stack
 `var(--font-mono-override, var(--font-mono)), monospace` — the `.card-mono`
-class / `CardMono` primitive (Tailwind's `font-mono` skips the user's mono
-override pref). CODE/key mono sits on the META tier (10px).
+class (Tailwind's `font-mono` skips the user's mono override pref; apply
+`.card-mono` directly and set the size alongside it). CODE/key mono sits on
+the META tier (10px).
 
 ### Picker scope — body content only
 
