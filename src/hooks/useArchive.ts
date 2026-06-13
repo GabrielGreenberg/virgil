@@ -51,7 +51,7 @@ export function useArchive(docId: string | null) {
     (content: unknown): ArchivedSnippet => {
       const snippet: ArchivedSnippet = {
         id: generateEntityId(),
-        // BUG #31: never persist a generated title ("Archive text 1").
+        // BUG #31: never persist a generated title ("Archive Text 1").
         title: "",
         content: normalizeRichContent(content),
         createdAt: new Date().toISOString(),
