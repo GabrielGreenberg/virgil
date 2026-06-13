@@ -179,7 +179,22 @@ dropdown.
 
 ## 5. Unnecessary gap between the text tool strip and the editor pod
 
-**Reported:** 2026-06-05 · **Status:** open · **Area:** ui-chrome / editor pane
+**Reported:** 2026-06-05 · **Status:** diagnosed no-op (2026-06-13) · **Area:** ui-chrome / editor pane
+
+**Verdict (2026-06-13, chrome-polish chip).** Diagnostic fork resolves to
+the **`topGutter` > 0** branch: the gap is the `[data-flex-row="top"]`
+spacer, currently **99px** (`src/hooks/useViewPrefs.defaults.json:86`,
+lowered from 345 by the 2026-06-12 personal-prefs promotion `bcca090`).
+**Not structural** — the 24px strip and the net-zero pod-cap are fine; the
+cap's load-bearing negative margins were left untouched as instructed.
+The only lever is the `topGutter` default in `useViewPrefs.defaults.json`,
+which is a *promoted personal pref* (the user's own value) and is off-limits
+to chip edits (no `*.defaults.json`); changing a global default also
+wouldn't move the needle for any user who already has a saved pref. The
+gap is therefore a **user-adjustable pref** (drag the top gutter handle, or
+lower `topGutter` in the next prefs refresh), not a code defect. **No-op.**
+If the user wants the *shipped* default tightened, that's a prefs-snapshot
+refresh, not a source change.
 
 **Reported behavior** — too much vertical space between the tool strip above the
 editor (the 24px row holding the section breadcrumb on the left and the
@@ -219,7 +234,8 @@ in the preview** to confirm the lever before editing.
 
 ## 6. Remove the redundant "action menu" (⚡) from the text tool strip
 
-**Reported:** 2026-06-05 · **Status:** open · **Area:** ui-chrome / MenuBar
+**Reported:** 2026-06-05 · **Status:** done (2026-06-13, chrome-polish chip) · **Area:** ui-chrome / MenuBar
+**Done:** removed the `<ActionsStripButton>` render + import from `MenuBar.tsx` and deleted the now-orphaned `ActionsStripButton.tsx`. The flagged detach plumbing (`onActionsDetach` / `handleActionsDetach` / `DetachedActionsToolbar` / `ActionButtonsRow`) was already gone from code in earlier passes — only stale doc/jsdoc references survived, which were corrected (glossary, ui-chrome, architecture, workspace/actions manifest + the `{@link ActionsStripButton}` jsdoc). Gutter `SelectionActionsMenu` + `Mod-/` remain the triggers.
 
 **Reported behavior** — the action menu up in the top tool strip is redundant and
 won't be used; remove it.
@@ -340,7 +356,8 @@ the `DocStructureObserver` mis-mapping multi-step txns; this is undo selection).
 
 ## 9. Virgil-bar "+" menu paints under floating panels (z-index / stacking trap)
 
-**Reported:** 2026-06-05 · **Status:** open · **Area:** ui-chrome / Virgil bar
+**Reported:** 2026-06-05 · **Status:** done (2026-06-13, chrome-polish chip) · **Area:** ui-chrome / Virgil bar
+**Done:** `TabPlusMenu` dropdown now `createPortal`s to `document.body`, positioned from the "+" button rect via `useFloatingMenuPosition`, at `zIndex 2000`. Adjacent sibling with the identical trap fixed the same way: the Help (`?`) menu dropdown in `EditorLayout.tsx` (was `absolute z-20` inside the bar). `MyPapersPod`'s "Add paper" menu still renders inline `absolute` but lives in the Library tab away from editor floating overlays → no live symptom, judged out-of-scope (noted in STYLE_GUIDE). Generalizable rule + test landed.
 
 **Reported behavior** — the "+" menu in the Virgil bar (Recent papers / Open folder
 / Create new document / New Virgil window) is at the wrong z-position; floating
