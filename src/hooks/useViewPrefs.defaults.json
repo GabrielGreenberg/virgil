@@ -49,10 +49,6 @@
       "side": "left"
     },
     {
-      "id": "quotations",
-      "side": "left"
-    },
-    {
       "id": "examples",
       "side": "left"
     },
@@ -110,7 +106,6 @@
     "left": [
       "footnotes",
       "citations",
-      "quotations",
       "examples"
     ],
     "right": [
