@@ -25,8 +25,6 @@ export interface BibEntryCardProps {
   onUpdateBibEntry: (key: string, fields: Record<string, string>) => void;
   onUpdateBibKeyAndType: (oldKey: string, newKey: string, newType: string) => void;
   occurrenceInfo?: { total: number; current: number; onCycle: (delta: number) => void };
-  /** When true, skip outer card wrapper (for embedding inside another card). */
-  compact?: boolean;
   /** Bib package ("natbib" | "biblatex") — used to determine the default cite command for drag. */
   bibPackage?: string;
   /** Bib entries list — needed for formatMinimalCitation in drag ghost. */
@@ -147,13 +145,11 @@ function AnnotationEditor({
 export default function BibEntryCard({
   entry, isSelected, onClick, getFormattedBib, getAnnotation, setAnnotation,
   onRequestReview, onCancelReview, getReviewStatus, onUpdateBibEntry, onUpdateBibKeyAndType,
-  occurrenceInfo, compact, bibPackage, bibEntries, isCited = true, onJump,
+  occurrenceInfo, bibPackage, bibEntries, isCited = true, onJump,
   onTogglePopout, isPoppedOut, libraryChip, addAction, draggable = true,
 }: BibEntryCardProps) {
   const popped = usePoppedCards();
   const popKey = buildPopKey("bibliography", entry.key);
-  // Hooks must run unconditionally — declared here, above the `compact`
-  // early return below.
   const theme = useCardTheme("bib");
   const bibBodyStyle = usePanelBodyStyle("bib");
   // Per-entry state
@@ -241,7 +237,7 @@ export default function BibEntryCard({
   const hasOccCounter = occurrenceInfo && occurrenceInfo.total > 1;
   // Target icon is always rendered (when the entry is cited) so its
   // hover/selected opacity states can fade in/out without layout shift.
-  const showTargetIcon = !!onJump && !compact;
+  const showTargetIcon = !!onJump;
 
   // Header: author · year · title (single line, truncates).
   const headerText = [author, year, title].filter(Boolean).join(" · ");
@@ -438,21 +434,6 @@ export default function BibEntryCard({
       </div>
     </>
   );
-
-  if (compact) {
-    // Embedded use (inside a CitationCard expansion) — no outer wrapper, no header.
-    // Show the author/year/title inline at the top of the body.
-    return (
-      <div className="relative">
-        {headerText && (
-          <div className="text-sm text-ink-strong font-semibold mb-1.5 leading-snug">
-            {headerText}
-          </div>
-        )}
-        {bodyContent}
-      </div>
-    );
-  }
 
   const onToggleFromCtx = onTogglePopout
     ?? (popped
