@@ -28,11 +28,12 @@
  * compact static previews; the user edits the atoms in the main doc.
  */
 
-import { type RefObject, useCallback, useMemo, useRef } from "react";
+import { type CSSProperties, type RefObject, useCallback, useMemo, useRef } from "react";
 import { useEditor, EditorContent, type JSONContent } from "@tiptap/react";
 import type { Node as PMNode } from "@tiptap/pm/model";
 import type { EditorHandle } from "@/components/Editor";
 import { buildEditorExtensions } from "@/lib/editor-extensions";
+import { computeExpexWidths, type ExpexColumnWidths } from "@/lib/tiptap/expex";
 import { useDocWriteHandleOrNull } from "@/components/editor-layout/DocPipeline";
 import { usePoppedCards } from "@/hooks/usePoppedCards";
 import { useEditorChrome } from "@/components/editor-layout/chrome-context";
@@ -79,9 +80,20 @@ export function ExampleBlockBody({
 
   const initial = useMemo(() => {
     let blockJson: JSONContent | null = null;
+    // Doc-adaptive gutter widths (backlog #25). The float omits ExpexNumbering
+    // (so it never writes the var via the main plugin) and is portaled outside
+    // the main editor's DOM, so it can't inherit the main container's var.
+    // Derive the widths from the popped example's OWN number/markers and apply
+    // them inline on the float body, so a popped `(10)`/wide-roman item doesn't
+    // wrap. Re-derived each render, which already tracks main-doc renumbers.
+    // Null widths → the 1.5em CSS default holds (1-digit / short markers).
+    let floatWidths: ExpexColumnWidths = { numWidth: null, markerWidth: null };
     if (mainEditor) {
       const src = findExampleBlockByUuid(mainEditor.state.doc, uuid);
-      if (src) blockJson = src.node.toJSON() as JSONContent;
+      if (src) {
+        blockJson = src.node.toJSON() as JSONContent;
+        floatWidths = computeExpexWidths(src.node);
+      }
     }
     const fallback: JSONContent = {
       type: "exampleBlock",
@@ -99,6 +111,7 @@ export function ExampleBlockBody({
     };
     return {
       doc: { type: "doc", content: [blockJson ?? fallback] } as JSONContent,
+      widths: floatWidths,
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [uuid, mainEditor]);
@@ -257,6 +270,16 @@ export function ExampleBlockBody({
       ) : null}
       <div
         className={`par-float-body heading-float-body flex-1 overflow-auto ${TEXT_FLOAT_BODY_PAD_CLASS} relative ${viewToggleClasses(chrome.menuBar)}`}
+        style={
+          {
+            ...(initial.widths.numWidth
+              ? { "--expex-num-width": initial.widths.numWidth }
+              : {}),
+            ...(initial.widths.markerWidth
+              ? { "--expex-marker-width": initial.widths.markerWidth }
+              : {}),
+          } as CSSProperties
+        }
       >
         <EditorContent editor={floatEditor} />
       </div>

@@ -1,6 +1,7 @@
 import { Node, Extension, mergeAttributes } from "@tiptap/react";
 import { Plugin, PluginKey } from "@tiptap/pm/state";
-import { TextSelection } from "@tiptap/pm/state";
+import { TextSelection, Selection } from "@tiptap/pm/state";
+import type { EditorState, Transaction } from "@tiptap/pm/state";
 import { generateShortId } from "@/lib/uuid";
 import { UUID_ATTR_SPEC } from "./uuid-attr";
 import { readDocStructure, readPendingDiff } from "@/lib/tiptap/doc-structure";
@@ -100,6 +101,236 @@ export function markerForDepth(depth: number, n: number): string {
     case 3: return toRomanUpper(n);
     default: return toSubLabel(n);
   }
+}
+
+// ---------------------------------------------------------------------------
+// Doc-adaptive number / marker column widths (backlog #25)
+// ---------------------------------------------------------------------------
+
+/**
+ * The CSS value for the example-number gutter (`.expex-block` / `.expex-item`
+ * grids consume it as `--expex-num-width`). Returns `null` for the common
+ * 1-digit doc, so the CSS default (`1.5em`, the tuned baseline for `(1)..(9)`)
+ * stays in force and the appearance is byte-identical. For 2+ digits the gutter
+ * widens to hold `(` + N digits + `)` without wrapping — shared across the whole
+ * doc so every example stays aligned (option c).
+ *
+ * Width is `${digits + 2}ch`: 2 ch of slack covers the two parens at the 0.95em
+ * serif size of `.expex-number` with comfortable margin.
+ */
+export function expexNumWidth(maxDigits: number): string | null {
+  if (maxDigits <= 1) return null;
+  return `${maxDigits + 2}ch`;
+}
+
+/**
+ * The CSS value for the item-marker gutter (`--expex-marker-width`). Markers are
+ * `a.`/`i.`/`viii.`/`xviii.` … `maxMarkerLen` is the longest marker STRING
+ * length (letters only, the trailing "." is added in CSS via the glyph). Returns
+ * `null` for short markers (≤ 2 chars, e.g. `a.`/`ii.`) so the 1.5em baseline
+ * stays; widens for long romans so they don't overflow their column.
+ */
+export function expexMarkerWidth(maxMarkerLen: number): string | null {
+  if (maxMarkerLen <= 2) return null;
+  // marker glyphs + the trailing "." ≈ (len + 1) ch; +0.5 slack.
+  return `${maxMarkerLen + 1.5}ch`;
+}
+
+/** The doc-adaptive column widths for the expex gutters (backlog #25). */
+export interface ExpexColumnWidths {
+  numWidth: string | null;
+  markerWidth: string | null;
+}
+
+/**
+ * Walk a doc and derive the shared `--expex-num-width` / `--expex-marker-width`
+ * values from its widest displayed example number and item marker. This is a
+ * full doc walk, so it must only run on structural change (the ExpexNumbering
+ * appendTransaction is already gated) or once at load (plugin-state `init`) —
+ * NEVER per keystroke.
+ */
+export function computeExpexWidths(
+  doc: import("@tiptap/pm/model").Node,
+): ExpexColumnWidths {
+  let maxDigits = 0;
+  let maxMarkerLen = 0;
+  const visit = (node: import("@tiptap/pm/model").Node) => {
+    if (node.type.name === "exampleBlock") {
+      const num = Number(node.attrs.number) || 0;
+      const digits = num > 0 ? String(num).length : 1;
+      if (digits > maxDigits) maxDigits = digits;
+    } else if (node.type.name === "exampleItem") {
+      const marker = String(node.attrs.subLabel || "");
+      if (marker.length > maxMarkerLen) maxMarkerLen = marker.length;
+    }
+  };
+  // Inspect the root itself too — callers may pass a bare exampleBlock (the
+  // float surface) where `descendants` would skip the top node.
+  visit(doc);
+  doc.descendants((node) => {
+    visit(node);
+    return true;
+  });
+  return {
+    numWidth: expexNumWidth(maxDigits),
+    markerWidth: expexMarkerWidth(maxMarkerLen),
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Shared empty-example deletion
+// ---------------------------------------------------------------------------
+
+/**
+ * Delete the empty example structure the cursor currently sits in.
+ *
+ * Factored out of the two Shift-Tab handlers (ExampleItem promote, ExampleBlock
+ * dissolve) so the Backspace/Delete handlers can reuse the *delete* half
+ * without the promote/dissolve re-insert.
+ *
+ * Two cursor positions are handled:
+ *
+ *  - Cursor in an `exampleItem` (a sub-item `a.`/`i.`/…): the 3-way delete
+ *    that ExampleItem Shift-Tab already computes —
+ *      • only item, only list, no other block content → delete whole block;
+ *      • only item in its list (block has other content) → delete the list
+ *        (and flip block kind back to "single" if no list survives);
+ *      • otherwise → delete just the item.
+ *
+ *  - Cursor at the top level of an `exampleBlock` (a preamble/trailing
+ *    paragraph, not inside a sub-item) on a fully-empty block → delete the
+ *    block (landing in the previous block) or, if it is the doc's only/leading
+ *    content, dissolve it to a plain empty paragraph.
+ *
+ * Returns a ready-to-dispatch `Transaction` (with selection + scrollIntoView
+ * already set) or `null` when the cursor is not in a deletable empty example
+ * structure. The caller's own empty-paragraph + cursor-at-start guard decides
+ * *whether* to call this; the ExpexNumbering appendTransaction re-letters /
+ * renumbers whatever survives.
+ */
+export function deleteEmptyExampleStructure(
+  state: EditorState,
+): Transaction | null {
+  const { $from } = state.selection;
+
+  // Resolve the nearest exampleItem (if any) and the enclosing block.
+  let itemDepth = -1,
+    listDepth = -1,
+    blockDepth = -1;
+  for (let d = $from.depth; d >= 0; d--) {
+    const name = $from.node(d).type.name;
+    if (itemDepth < 0 && name === "exampleItem") itemDepth = d;
+    else if (listDepth < 0 && itemDepth >= 0 && name === "exampleItemList")
+      listDepth = d;
+    if (name === "exampleBlock") {
+      blockDepth = d;
+      break;
+    }
+  }
+  if (blockDepth < 0) return null;
+
+  // --- Sub-item case: 3-way delete (block / list / item). ---
+  if (itemDepth >= 0 && listDepth >= 0) {
+    const itemNode = $from.node(itemDepth);
+    const itemStart = $from.before(itemDepth);
+    const itemEnd = itemStart + itemNode.nodeSize;
+    // Data-loss guard: only delete the item when it is a LONE empty paragraph.
+    // If the item also carries nested content (a Tab-nested exampleItemList or
+    // a gloss) alongside the empty line the cursor is on, deleting the item
+    // would silently destroy that content — fall through to default deletion
+    // instead. (Shift-Tab gets away with the same delete because it re-inserts
+    // the content as a new block; this path does not.)
+    if (itemNode.childCount !== 1 || (itemNode.firstChild?.content.size ?? 0) !== 0) {
+      return null;
+    }
+    const listNode = $from.node(listDepth);
+    const listStart = $from.before(listDepth);
+    const listEnd = listStart + listNode.nodeSize;
+    const blockNode = $from.node(blockDepth);
+    const blockStart = $from.before(blockDepth);
+    const blockEnd = $from.after(blockDepth);
+
+    const tr = state.tr;
+    let deleteFrom: number;
+    let originalBlockGone = false;
+    if (
+      listNode.childCount === 1 &&
+      blockNode.childCount === 1 &&
+      blockNode.firstChild?.type.name === "exampleItemList"
+    ) {
+      // Only item, only list, nothing else in the block → delete the block.
+      tr.delete(blockStart, blockEnd);
+      deleteFrom = blockStart;
+      originalBlockGone = true;
+    } else if (listNode.childCount === 1) {
+      // Only item in its list, but block has other content → delete the list.
+      tr.delete(listStart, listEnd);
+      deleteFrom = listStart;
+    } else {
+      // One of several items → delete just this item.
+      tr.delete(itemStart, itemEnd);
+      deleteFrom = itemStart;
+    }
+
+    // If the block survived but no longer holds any item list, flip its kind
+    // back to "single" so serialization emits \ex (mirrors Shift-Tab).
+    if (!originalBlockGone) {
+      const survivor = tr.doc.nodeAt(blockStart);
+      if (
+        survivor &&
+        survivor.type.name === "exampleBlock" &&
+        survivor.attrs.kind === "multi"
+      ) {
+        let hasList = false;
+        survivor.forEach((c) => {
+          if (c.type.name === "exampleItemList") hasList = true;
+        });
+        if (!hasList) {
+          tr.setNodeMarkup(blockStart, undefined, {
+            ...survivor.attrs,
+            kind: "single",
+          });
+        }
+      }
+    }
+
+    // Land the cursor at the nearest selectable position to the deletion
+    // point (end of the previous sibling, or start of what shifted up).
+    const landAt = Math.min(deleteFrom, tr.doc.content.size);
+    tr.setSelection(Selection.near(tr.doc.resolve(landAt), -1));
+    return tr.scrollIntoView();
+  }
+
+  // --- Top-level case: cursor in a block-level paragraph, not in a sub-item. ---
+  const blockNode = $from.node(blockDepth);
+  // Only fire on a fully-empty block — a single empty paragraph.
+  const blockIsEmpty =
+    blockNode.childCount === 1 &&
+    blockNode.firstChild?.type.name === "paragraph" &&
+    blockNode.firstChild.content.size === 0;
+  if (!blockIsEmpty) return null;
+
+  const blockStart = $from.before(blockDepth);
+  const blockEnd = $from.after(blockDepth);
+  const paraType = state.schema.nodes.paragraph;
+  if (!paraType) return null;
+
+  // If there is a previous block-level sibling in the doc, remove the empty
+  // example entirely and land the cursor at the end of that sibling. Otherwise
+  // (the example is the doc's leading/only content) dissolve it into a plain
+  // empty paragraph so the document is never left empty.
+  const $blockStart = state.doc.resolve(blockStart);
+  const hasPrevSibling = $blockStart.nodeBefore != null;
+  if (hasPrevSibling) {
+    const tr = state.tr.delete(blockStart, blockEnd);
+    const landAt = Math.min(blockStart, tr.doc.content.size);
+    tr.setSelection(Selection.near(tr.doc.resolve(landAt), -1));
+    return tr.scrollIntoView();
+  }
+
+  const tr = state.tr.replaceWith(blockStart, blockEnd, paraType.create());
+  tr.setSelection(TextSelection.create(tr.doc, blockStart + 1));
+  return tr.scrollIntoView();
 }
 
 // ---------------------------------------------------------------------------
@@ -375,6 +606,51 @@ export const ExampleBlock = Node.create<ExampleBlockOptions>({
         );
         tr.setSelection(TextSelection.create(tr.doc, blockStart + 1));
         view.dispatch(tr.scrollIntoView());
+        return true;
+      },
+
+      // Backspace at the start of an EMPTY top-level example paragraph
+      // deletes the (n) example (the delete half of Shift-Tab's dissolve,
+      // without leaving a stray paragraph when a previous block exists).
+      // The sub-item case is owned by ExampleItem's Backspace, which fires
+      // first; this handler only sees the cursor at the block's top level.
+      Backspace: () => {
+        const { state } = this.editor;
+        const view = this.editor.view;
+        const { $from, empty } = state.selection;
+        if (!empty) return false;
+        // Only at the start of an empty paragraph; else normal deletion.
+        if ($from.parent.type.name !== "paragraph") return false;
+        if ($from.parent.content.size !== 0) return false;
+        if ($from.parentOffset !== 0) return false;
+
+        // Bail if inside a sub-item (ExampleItem's Backspace owns that).
+        for (let d = $from.depth; d >= 0; d--) {
+          if ($from.node(d).type.name === "exampleItem") return false;
+        }
+        const tr = deleteEmptyExampleStructure(state);
+        if (!tr) return false;
+        view.dispatch(tr);
+        return true;
+      },
+
+      // forward-Delete on an EMPTY top-level example paragraph: the cursor is
+      // simultaneously at the paragraph's start and end (nothing forward to
+      // delete), and exampleBlock is `isolating` so the default join is a
+      // no-op — so symmetrically delete the same empty example as Backspace.
+      Delete: () => {
+        const { state } = this.editor;
+        const view = this.editor.view;
+        const { $from, empty } = state.selection;
+        if (!empty) return false;
+        if ($from.parent.type.name !== "paragraph") return false;
+        if ($from.parent.content.size !== 0) return false;
+        for (let d = $from.depth; d >= 0; d--) {
+          if ($from.node(d).type.name === "exampleItem") return false;
+        }
+        const tr = deleteEmptyExampleStructure(state);
+        if (!tr) return false;
+        view.dispatch(tr);
         return true;
       },
     };
@@ -969,6 +1245,63 @@ export const ExampleItem = Node.create({
         view.dispatch(tr.scrollIntoView());
         return true;
       },
+
+      // Backspace at the start of an EMPTY sub-item paragraph deletes the
+      // sub-item (the delete half of Shift-Tab's promote, without the
+      // re-insert). The shared helper picks the 3-way branch:
+      //   • one of several items   → delete just this item;
+      //   • only item in its list  → delete the (now-empty) list;
+      //   • only item, only list, nothing else in the block → delete the
+      //     whole block (mirrors Q3 in backlog #3).
+      // The numbering plugin re-letters the survivors. A non-empty item or a
+      // mid-paragraph cursor falls through to normal character deletion.
+      Backspace: () => {
+        if (inGlossCell()) return false;
+        const { state } = this.editor;
+        const view = this.editor.view;
+        const { $from, empty } = state.selection;
+        if (!empty) return false;
+        if ($from.parent.type.name !== "paragraph") return false;
+        if ($from.parent.content.size !== 0) return false;
+        if ($from.parentOffset !== 0) return false;
+        // Must actually be inside a sub-item (else defer to ExampleBlock).
+        let inItem = false;
+        for (let d = $from.depth; d >= 0; d--) {
+          if ($from.node(d).type.name === "exampleItem") {
+            inItem = true;
+            break;
+          }
+        }
+        if (!inItem) return false;
+        const tr = deleteEmptyExampleStructure(state);
+        if (!tr) return false;
+        view.dispatch(tr);
+        return true;
+      },
+
+      // forward-Delete mirrors Backspace on an empty sub-item (see the
+      // ExampleBlock Delete handler for the rationale).
+      Delete: () => {
+        if (inGlossCell()) return false;
+        const { state } = this.editor;
+        const view = this.editor.view;
+        const { $from, empty } = state.selection;
+        if (!empty) return false;
+        if ($from.parent.type.name !== "paragraph") return false;
+        if ($from.parent.content.size !== 0) return false;
+        let inItem = false;
+        for (let d = $from.depth; d >= 0; d--) {
+          if ($from.node(d).type.name === "exampleItem") {
+            inItem = true;
+            break;
+          }
+        }
+        if (!inItem) return false;
+        const tr = deleteEmptyExampleStructure(state);
+        if (!tr) return false;
+        view.dispatch(tr);
+        return true;
+      },
     };
   },
 
@@ -1330,9 +1663,56 @@ export const ExpexNumbering = Extension.create({
   name: "expexNumbering",
 
   addProseMirrorPlugins() {
+    // Plugin-state shape: the doc-adaptive column widths (backlog #25). Held in
+    // plugin state so the `view()` lifecycle is the SINGLE writer to view.dom,
+    // and so the var is applied at most once per width *change* — never on a
+    // structurally-null keystroke (appendTransaction is gated below, and the
+    // meta is only attached when a width actually differs).
+    type WidthState = ExpexColumnWidths;
+    const expexKey = new PluginKey<WidthState>("expexNumbering");
+    const WIDTH_META = "expexColumnWidths";
+
     return [
-      new Plugin({
-        key: new PluginKey("expexNumbering"),
+      new Plugin<WidthState>({
+        key: expexKey,
+        state: {
+          // One doc walk at load time so multi-digit examples already in the
+          // .tex render un-wrapped before the first edit (the appendTransaction
+          // gate is silent on the load transaction).
+          init: (_config, instance) => computeExpexWidths(instance.doc),
+          apply(tr, prev) {
+            const meta = tr.getMeta(WIDTH_META) as WidthState | undefined;
+            return meta ?? prev;
+          },
+        },
+        view(view) {
+          const apply = (s: WidthState) => {
+            const dom = view.dom as HTMLElement;
+            if (s.numWidth)
+              dom.style.setProperty("--expex-num-width", s.numWidth);
+            else dom.style.removeProperty("--expex-num-width");
+            if (s.markerWidth)
+              dom.style.setProperty("--expex-marker-width", s.markerWidth);
+            else dom.style.removeProperty("--expex-marker-width");
+          };
+          // Apply the initial (load-time) widths once.
+          apply(expexKey.getState(view.state) ?? { numWidth: null, markerWidth: null });
+          return {
+            update(v, prevState) {
+              const next = expexKey.getState(v.state);
+              const prev = expexKey.getState(prevState);
+              if (!next) return;
+              // O(1): only touch the DOM when a width string changed.
+              if (
+                prev &&
+                prev.numWidth === next.numWidth &&
+                prev.markerWidth === next.markerWidth
+              )
+                return;
+              apply(next);
+            },
+          };
+        },
         appendTransaction(transactions, _oldState, newState) {
           if (!transactions.some((tr) => tr.docChanged)) return null;
 
@@ -1393,6 +1773,12 @@ export const ExpexNumbering = Extension.create({
           // level items are a, b, c, d... regardless of how the lists
           // are split. Depth-aware markers cycle a/b/c → i/ii/iii →
           // A/B/C → I/II/III.
+          // Doc-adaptive gutter widths (backlog #25): accumulate the widest
+          // displayed number / marker as we renumber, so no SEPARATE doc walk
+          // is needed. These use the *target* values, i.e. the post-edit truth.
+          let maxNumDigits = 0;
+          let maxMarkerLen = 0;
+
           const walkList = (
             list: import("@tiptap/pm/model").Node,
             listAbsPos: number,
@@ -1403,6 +1789,7 @@ export const ExpexNumbering = Extension.create({
               if (item.type.name !== "exampleItem") return;
               counter.n++;
               const target = markerForDepth(depth, counter.n);
+              if (target.length > maxMarkerLen) maxMarkerLen = target.length;
               const itemAbsPos = listAbsPos + 1 + offsetIntoList;
               if (item.attrs.subLabel !== target) {
                 tr.setNodeMarkup(itemAbsPos, undefined, {
@@ -1434,6 +1821,9 @@ export const ExpexNumbering = Extension.create({
               const targetNumber = node.attrs.exnoOverride
                 ? node.attrs.exnoOverride
                 : exampleCounter;
+              const numDigits =
+                Number(targetNumber) > 0 ? String(targetNumber).length : 1;
+              if (numDigits > maxNumDigits) maxNumDigits = numDigits;
               if (node.attrs.number !== targetNumber) {
                 tr.setNodeMarkup(pos, undefined, {
                   ...node.attrs,
@@ -1476,6 +1866,27 @@ export const ExpexNumbering = Extension.create({
             }
             return true;
           });
+
+          // Maintain the doc-adaptive gutter-width vars (backlog #25). Only
+          // attach the meta when a width string actually CHANGED vs current
+          // plugin state, so the var is written at most once per digit-count
+          // change — zero cost on every other (already-gated) run, and the
+          // `view()` is the single DOM writer. (We carry the meta on the
+          // appended tr even if `changed` is false, so a delete that drops the
+          // max digit count narrows the gutter back down.)
+          const nextWidths: WidthState = {
+            numWidth: expexNumWidth(maxNumDigits),
+            markerWidth: expexMarkerWidth(maxMarkerLen),
+          };
+          const prevWidths = expexKey.getState(newState);
+          const widthsChanged =
+            !prevWidths ||
+            prevWidths.numWidth !== nextWidths.numWidth ||
+            prevWidths.markerWidth !== nextWidths.markerWidth;
+          if (widthsChanged) {
+            tr.setMeta(WIDTH_META, nextWidths);
+            return tr;
+          }
 
           return changed ? tr : null;
         },
