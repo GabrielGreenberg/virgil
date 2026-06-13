@@ -27,8 +27,8 @@ import { getBus } from "@/lib/tiptap/doc-structure";
  * Shared subscription that resolves the active TextObject from the
  * editor's selection. Single subscription replaces N independent ones —
  * before this existed, TextObjectGrabHandle, SelectionActionsMenu,
- * ActionsStripButton, ActionsMenuPanel, and useEditorUIState each
- * subscribed to `selectionUpdate` and ran their own resolver walk.
+ * ActionsMenuPanel, and useEditorUIState each subscribed to
+ * `selectionUpdate` and ran their own resolver walk.
  *
  * Resolution priority (mirrors the grab handle's 5-step priority, minus
  * the mouse-hover step that is consumer-specific):

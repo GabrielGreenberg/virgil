@@ -2,9 +2,8 @@
 
 /**
  * The expanded action menu — formatting grid + 9-row action list.
- * Mounted by whichever trigger opens it (the gutter button in
- * {@link SelectionActionsMenu}, the strip button in
- * {@link ActionsStripButton}). When this component is mounted, the
+ * Mounted by its trigger, the gutter button in
+ * {@link SelectionActionsMenu}. When this component is mounted, the
  * menu is open; the caller unmounts it to close.
  *
  * Owns:

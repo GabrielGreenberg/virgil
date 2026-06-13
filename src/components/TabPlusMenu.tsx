@@ -14,10 +14,12 @@
  */
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import type { FsaDocMeta } from "@/lib/doc-index";
 import { ensureRW } from "@/lib/fsa-permissions";
 import { getDocHandle } from "@/lib/doc-index";
 import { multiWindowSupported } from "@/lib/multi-window/bus";
+import { useFloatingMenuPosition } from "@/hooks/useFloatingMenuPosition";
 import { IconPlus } from "./editor-layout/panel-icons";
 import { RecentPaperRow } from "./RecentPapersList";
 import { Kbd } from "./Kbd";
@@ -43,7 +45,13 @@ export function TabPlusMenu({
 }: Props) {
   const [open, setOpen] = useState(false);
   const [canMultiWindow, setCanMultiWindow] = useState(false);
+  // Anchor rect for the body-portaled dropdown (captured from the "+"
+  // button). Null when closed. Refreshed on resize/scroll while open so
+  // the menu tracks the sticky bar if the viewport shifts.
+  const [anchorRect, setAnchorRect] = useState<DOMRect | null>(null);
   const wrapRef = useRef<HTMLDivElement>(null);
+  const btnRef = useRef<HTMLButtonElement>(null);
+  const menuRef = useRef<HTMLDivElement | null>(null);
 
   // Feature-detect cross-window plumbing on the client. Hidden for
   // Safari (no BroadcastChannel-backed lock semantics) so users don't
@@ -52,25 +60,63 @@ export function TabPlusMenu({
     setCanMultiWindow(multiWindowSupported());
   }, []);
 
-  const close = useCallback(() => setOpen(false), []);
+  const close = useCallback(() => {
+    setOpen(false);
+    setAnchorRect(null);
+  }, []);
 
+  const toggle = useCallback(() => {
+    setOpen((o) => {
+      const next = !o;
+      setAnchorRect(next ? (btnRef.current?.getBoundingClientRect() ?? null) : null);
+      return next;
+    });
+  }, []);
+
+  // Portaled menu lives outside wrapRef, so the outside-click guard must
+  // also exempt the menu element itself.
   useEffect(() => {
     if (!open) return;
     const onDown = (e: MouseEvent) => {
-      if (wrapRef.current && !wrapRef.current.contains(e.target as Node)) {
-        setOpen(false);
-      }
+      const t = e.target as Node;
+      if (wrapRef.current?.contains(t)) return;
+      if (menuRef.current?.contains(t)) return;
+      close();
     };
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") setOpen(false);
+      if (e.key === "Escape") close();
+    };
+    const refreshAnchor = () => {
+      setAnchorRect(btnRef.current?.getBoundingClientRect() ?? null);
     };
     window.addEventListener("mousedown", onDown);
     window.addEventListener("keydown", onKey);
+    window.addEventListener("resize", refreshAnchor);
+    window.addEventListener("scroll", refreshAnchor, true);
     return () => {
       window.removeEventListener("mousedown", onDown);
       window.removeEventListener("keydown", onKey);
+      window.removeEventListener("resize", refreshAnchor);
+      window.removeEventListener("scroll", refreshAnchor, true);
     };
-  }, [open]);
+  }, [open, close]);
+
+  const { ref: positionRef, style: positionStyle } = useFloatingMenuPosition({
+    anchorRect,
+    placements: [
+      { side: "below", align: "start" },
+      { side: "above", align: "start" },
+    ],
+    gap: 4,
+  });
+
+  const setMenuRef = useCallback(
+    (el: HTMLDivElement | null) => {
+      menuRef.current = el;
+      positionRef(el);
+    },
+    [positionRef],
+  );
 
   const openSet = new Set(openTabIds);
   const recents = [...docs]
@@ -102,25 +148,15 @@ export function TabPlusMenu({
     [devStorage, onOpenRecent, close],
   );
 
-  return (
-    <div ref={wrapRef} className="relative self-center inline-flex">
-      <button
-        type="button"
-        onClick={() => setOpen((o) => !o)}
-        className="topbarbtn topbarbtn-icon"
-        style={{ padding: "0 4px" }}
-        data-hint="Open paper or create new"
-        aria-haspopup="menu"
-        aria-expanded={open}
-      >
-        <IconPlus />
-      </button>
-      {open && (
+  const menu = open && typeof document !== "undefined" && (
+    createPortal(
         <div
+          ref={setMenuRef}
           role="menu"
-          className="absolute z-50 left-0 mt-1 min-w-[280px] py-1.5 rounded-md"
+          className="min-w-[280px] py-1.5 rounded-md"
           style={{
-            top: "100%",
+            ...positionStyle,
+            zIndex: 2000,
             background: "var(--pod-editor)",
             border: "var(--pod-border)",
             boxShadow: "var(--pod-shadow)",
@@ -185,8 +221,26 @@ export function TabPlusMenu({
               </MenuItem>
             </>
           )}
-        </div>
-      )}
+        </div>,
+      document.body,
+    )
+  );
+
+  return (
+    <div ref={wrapRef} className="self-center inline-flex">
+      <button
+        ref={btnRef}
+        type="button"
+        onClick={toggle}
+        className="topbarbtn topbarbtn-icon"
+        style={{ padding: "0 4px" }}
+        data-hint="Open paper or create new"
+        aria-haspopup="menu"
+        aria-expanded={open}
+      >
+        <IconPlus />
+      </button>
+      {menu}
     </div>
   );
 }
