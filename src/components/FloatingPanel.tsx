@@ -24,6 +24,7 @@ import {
   setStackDropTarget,
   getStackDropTarget,
 } from "@/lib/stack/stack-drop-target";
+import { WINDOW_DRAG_BLOCK_SELECTOR } from "@/lib/drag-blocklist";
 
 /**
  * Imperative handle exposed via `forwardRef`. Used by FloatCard to hand
@@ -63,6 +64,12 @@ interface FloatingPanelProps {
    *  shadow. Used by text-content floats (paragraph/heading/selection)
    *  whose chrome should disappear behind the prose. */
   surface?: "panel" | "card";
+  /** Kind accent for the popped-card WINDOW selection/hover ring (bug #34).
+   *  Stamped as `--link-anchor-color` on the shell root so the `:has()`
+   *  window-ring rules in globals.css resolve the kind color. The inner
+   *  PanelCard's own `--link-anchor-color` (on its root) doesn't inherit UP
+   *  to this host, so card floats pass `theme.accent` here explicitly. */
+  accentTint?: string;
   children: ReactNode;
   initialX: number;
   initialY: number;
@@ -108,6 +115,7 @@ function FloatingPanelInner({
   mode = "floating",
   slotKey = null,
   surface = "panel",
+  accentTint,
   children,
   initialX,
   initialY,
@@ -410,11 +418,11 @@ function FloatingPanelInner({
   // light up the dock socket outline.
   const onHeaderMouseDown = (e: React.MouseEvent) => {
     const target = e.target as HTMLElement;
-    if (
-      target.closest(
-        "button, input, textarea, select, a, [contenteditable='true'], [draggable='true'], [data-no-window-drag]",
-      )
-    ) {
+    // Bug #36: `[data-card]` is in WINDOW_DRAG_BLOCK_SELECTOR so a press on a
+    // CARD surface inside a float lifts the card (PanelCard's 5px-threshold
+    // lift), not the whole window. The window stays draggable from inter-card
+    // gaps / background (outside any [data-card]).
+    if (target.closest(WINDOW_DRAG_BLOCK_SELECTOR)) {
       return;
     }
     // Shift+mousedown on the grab bar → drop-mode session. Only for
@@ -673,7 +681,11 @@ function FloatingPanelInner({
       data-panel-shell-mode={mode}
       data-panel-shell-id={panelId}
       className="flex flex-col overflow-hidden"
-      style={containerStyle}
+      style={
+        accentTint
+          ? ({ ...containerStyle, "--link-anchor-color": accentTint } as React.CSSProperties)
+          : containerStyle
+      }
       onMouseDown={onFocus}
     >
       <div

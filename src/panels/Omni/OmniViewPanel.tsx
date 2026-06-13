@@ -22,6 +22,7 @@ import {
   usePinRequest,
   type PinSide,
 } from "@/components/editor-layout/omni-pin-store";
+import { INTERACTIVE_CONTROL_SELECTOR } from "@/lib/drag-blocklist";
 
 /**
  * The Omni-view threads pods from several other panels into a single
@@ -498,11 +499,7 @@ function OmniViewPanel({
                 // layout (header buttons, dropdowns, trash, drag handles).
                 // Mirrors the lift blocker at panel-primitives.tsx:1552.
                 const target = e.target as HTMLElement;
-                if (
-                  target.closest(
-                    "button, input, textarea, select, a, [contenteditable='true'], [draggable='true'], [data-no-window-drag]",
-                  )
-                ) {
+                if (target.closest(INTERACTIVE_CONTROL_SELECTOR)) {
                   return;
                 }
                 const wrapper = e.currentTarget;

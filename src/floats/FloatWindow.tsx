@@ -138,6 +138,7 @@ export function FloatWindow({
       initialHeight={initialHeight}
       zIndex={ctx.floatZIndex?.(key) ?? FLOAT_Z_BASE + indexHint}
       surface={floatable.surface}
+      accentTint={floatable.accentTint}
       onChange={(pos) => ctx.setFloatPosition(key, pos)}
       onFocus={() => ctx.recordFocus?.(key)}
     >
