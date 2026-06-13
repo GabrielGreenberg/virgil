@@ -2843,6 +2843,50 @@ textarea,
   outline-offset: -2px;
 }
 
+/* ── Popped-card seam (bug #34) ──────────────────────────────────────
+ * A card inside a FLOAT is the chromeless PanelCard root; it still carries
+ * `data-card-key` and the reconciler still stamps `data-card-selected` /
+ * `data-card-hovered` on it (document-wide sweep — by design, no behavior
+ * change there). But the inner `[data-card-key]` outline rules above would
+ * then draw a rectangle around the card BODY, not the window. So in popped
+ * context we (a) move the ring to the WINDOW and (b) suppress the inner one.
+ *
+ * The window ring reuses the EXACT docked selected-halo recipe from
+ * `themedCardStyle()` (panel-primitives.tsx) — `var(--card-shadow-ambient)`
+ * + a 3px accent ring at 55% + a 10px glow at 35% — so docked and popped
+ * read identically. `!important` is required because `FloatingPanel` sets
+ * `boxShadow` INLINE in `containerStyle` (an inline style otherwise wins
+ * over a stylesheet rule). The accent (`--link-anchor-color`) is propagated
+ * onto the FloatingPanel root via the card floatable's `accentTint`
+ * (FloatWindow → FloatingPanel), since the var the inner card stamps does
+ * not inherit UP to the `:has()` host. */
+[data-floating-panel]:has([data-card-key][data-card-selected="true"]) {
+  box-shadow:
+    var(--card-shadow-ambient),
+    0 0 0 3px color-mix(in oklab, var(--link-anchor-color) 55%, transparent),
+    0 0 10px 0 color-mix(in oklab, var(--link-anchor-color) 35%, transparent)
+      !important;
+}
+
+/* Hover gets the analogous WINDOW treatment — a subtler accent ring (no
+ * glow), consistent with the docked hover channel (50% ring). Selection
+ * wins via `:not(...)` so a selected+hovered window keeps the full halo. */
+[data-floating-panel]:has(
+    [data-card-key][data-card-hovered="true"]:not([data-card-selected="true"])
+  ):not(:has([data-card-key][data-card-selected="true"])) {
+  box-shadow:
+    var(--card-shadow-ambient),
+    0 0 0 1.5px color-mix(in oklab, var(--link-anchor-color) 50%, transparent)
+      !important;
+}
+
+/* Suppress the inner card-body outline in popped context — the window now
+ * carries the ring (selection AND hover). */
+[data-floating-panel] [data-card-key][data-card-selected="true"],
+[data-floating-panel] [data-card-key][data-card-hovered="true"] {
+  outline: none;
+}
+
 /* In-text connector lines are now drawn via InTextConnectors SVG component */
 
 /* Note markers (green N in editor gutter) */

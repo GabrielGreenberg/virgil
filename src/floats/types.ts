@@ -85,6 +85,14 @@ export interface Floatable {
    *  (text-object floats keep it). */
   headerTint?: string;
 
+  /** Optional kind accent (`theme.accent`) for the WINDOW selection/hover
+   *  ring (bug #34). The inner PanelCard stamps `--link-anchor-color` on
+   *  ITS root, but that var doesn't inherit UP to the `:has()` host, so
+   *  `FloatWindow` re-stamps this on the FloatingPanel root to bring the
+   *  accent into scope for the popped-card window-ring rules in globals.css.
+   *  Card floats set it; text-object floats omit it (neutral ring fallback). */
+  accentTint?: string;
+
   /** The specialized content — **headerless**: `FloatChrome` (owned by
    *  `FloatWindow`) renders the grip/title/trailing/jump/close skeleton above
    *  it. The `ctx` lets the body retitle the chrome (text headings). */

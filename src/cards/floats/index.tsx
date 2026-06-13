@@ -115,6 +115,12 @@ function cardFloatable(
     // headerDefault derivation `useCardTheme` performs.
     headerTint: themeFromAccent(getPanelColor(CARD_REGISTRY[kind].themeKey))
       .headerDefault,
+    // …and the raw kind accent for the popped-card WINDOW ring (bug #34) —
+    // same override-aware theme path; FloatWindow stamps it as
+    // `--link-anchor-color` on the FloatingPanel root so the `:has()`
+    // window-ring rules resolve the kind color.
+    accentTint: themeFromAccent(getPanelColor(CARD_REGISTRY[kind].themeKey))
+      .accent,
     title: opts.title ?? CARD_REGISTRY[kind].label,
     canJump: opts.canJump,
     jumpToSource: opts.jumpToSource,
