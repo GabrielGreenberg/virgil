@@ -16,32 +16,26 @@
 import { useEffect, useMemo, useRef } from "react";
 import { createPortal } from "react-dom";
 import {
-  IconArchive,
-  IconCitation,
-  IconCutter,
-  IconDuplicate,
-  IconFootnote,
-  IconHighlight,
-  IconNotes,
-  IconReports,
-  IconRevisions,
-  IconTodo,
-  IconTrash,
-} from "./editor-layout/panel-icons";
-import {
   useFloatingMenuPosition,
   type FloatingMenuPlacement,
 } from "@/hooks/useFloatingMenuPosition";
-import {
-  TEXT_OBJECT_REGISTRY,
-  isTextObjectKind,
-} from "@/text-objects/text-object-registry";
+import { isTextObjectKind } from "@/text-objects/text-object-registry";
 import type { TextObjectKind } from "@/text-objects/types";
+import {
+  cardActionRows,
+  type ActionContext,
+  type ActionRef,
+  type ActionSpec,
+} from "@/lib/actions/action-registry";
 
 // The action union is owned here so the registry's per-kind action lists
 // in `text-object-registry.ts` constrain a subset of this union — the
 // menu is the source of truth for the global vocabulary, the registry
-// for the per-kind subset.
+// for the per-kind subset. (CHIP 3: the menu DATA — labels / letters / icons
+// / per-kind grey-out — now lives in `VIRGIL_ACTION_REGISTRY`; this menu is a
+// thin view rendered via `cardActionRows("grab")`. The `DragHandleAction`
+// TYPE stays here as the shared action-id union the dispatcher + the
+// `TEXT_OBJECT_REGISTRY[kind].actions` lists speak.)
 export type DragHandleAction =
   | "footnote"
   | "citation"
@@ -55,39 +49,18 @@ export type DragHandleAction =
   | "archive"
   | "delete";
 
-export interface MenuEntry {
-  action: DragHandleAction;
-  label: string;
-  letter: string;
-  icon: React.ReactNode;
-  destructive?: boolean;
-  /** When true, draw a divider line above this entry. */
-  separator?: boolean;
-  /** Per-kind disabled state — computed from
-   *  `TEXT_OBJECT_REGISTRY[kind].actions` at menu-open time. Disabled
-   *  entries render greyed-out (visible) instead of being filtered
-   *  away, so the menu's shape stays consistent across kinds and the
-   *  user reads "ah, this doesn't apply here" instead of "wait, where's
-   *  the Footnote option?" See ACTION-MENU-DIAGNOSIS.md cluster C1. */
-  disabled?: boolean;
-  /** Optional rationale for the disabled state. Reserved for a future
-   *  tooltip pass; not wired up yet. */
-  reason?: string;
+/**
+ * A registry card row decorated with its per-kind disabled state for THIS
+ * menu open — the registry `ActionSpec` plus the resolved `disabled` flag the
+ * render + keyboard handler gate on. Replaces the former per-instance
+ * `MenuEntry`. `disabled` entries render greyed-out (visible) instead of being
+ * filtered away, so the menu's shape stays consistent across kinds. See
+ * ACTION-MENU-DIAGNOSIS.md cluster C1.
+ */
+interface DecoratedRow {
+  row: ActionSpec;
+  disabled: boolean;
 }
-
-export const MENU_ENTRIES: MenuEntry[] = [
-  { action: "highlight", label: "Highlight", letter: "H", icon: <IconHighlight size={16} /> },
-  { action: "note", label: "Note", letter: "N", icon: <IconNotes size={16} /> },
-  { action: "footnote", label: "Footnote", letter: "F", icon: <IconFootnote size={16} /> },
-  { action: "citation", label: "Citation", letter: "C", icon: <IconCitation size={16} /> },
-  { action: "todo", label: "Todo", letter: "T", icon: <IconTodo size={16} /> },
-  { action: "suggest-edit", label: "Suggest edit", letter: "E", icon: <IconRevisions size={16} /> },
-  { action: "cutter", label: "Suggest cut", letter: "X", icon: <IconCutter size={16} /> },
-  { action: "report", label: "Report", letter: "R", icon: <IconReports size={16} /> },
-  { action: "duplicate", label: "Duplicate", letter: "D", icon: <IconDuplicate size={16} />, separator: true },
-  { action: "archive", label: "Archive", letter: "A", icon: <IconArchive size={16} />, separator: true },
-  { action: "delete", label: "Delete", letter: "⌫", icon: <IconTrash size={16} />, destructive: true },
-];
 
 const MENU_W = 220;
 const MENU_PAD_Y = 6;
@@ -103,27 +76,36 @@ interface Props {
   anchorRect: DOMRect | { left: number; top: number; right: number; bottom: number; width: number; height: number };
   onSelect: (action: DragHandleAction) => void;
   onClose: () => void;
-  /** The kind that opened the menu. Used to filter `MENU_ENTRIES` by the
-   *  registry's per-kind `actions` set. `"selection"` is the gesture-
-   *  input case and exposes the full action list (matches today's
-   *  behavior). Omit to expose the full list as well — defensive
-   *  default for legacy call sites until they pass a ref. */
+  /** The kind that opened the menu. Drives the registry's per-kind `applies()`
+   *  grey-out. `"selection"` is the gesture-input case and exposes the full
+   *  action list (matches today's behavior). Omit to expose the full list as
+   *  well — defensive default for legacy call sites until they pass a ref. */
   kind?: TextObjectKind | "selection";
 }
 
 export function DragHandleMenu({ anchorRect, onSelect, onClose, kind }: Props) {
-  // Decorate the global `MENU_ENTRIES` with per-kind disabled state from
-  // the registry. Disabled entries stay in the list (visible-disabled
-  // grey-out) so the menu shape is consistent across kinds. The render
-  // and keyboard handler both gate on `entry.disabled`. See
-  // ACTION-MENU-DIAGNOSIS.md cluster C1 + §7 q3.
-  const entries = useMemo(() => {
-    if (!kind || kind === "selection") return MENU_ENTRIES;
-    if (!isTextObjectKind(kind)) return MENU_ENTRIES;
-    const allowed = new Set(TEXT_OBJECT_REGISTRY[kind].actions);
-    return MENU_ENTRIES.map((m) =>
-      allowed.has(m.action) ? m : { ...m, disabled: true },
-    );
+  // Render the CARD action rows straight off the registry (the SSOT) and
+  // decorate each with its per-kind disabled state from the row's own
+  // `applies()`. Disabled entries stay in the list (visible-disabled
+  // grey-out) so the menu shape is consistent across kinds. The render and
+  // keyboard handler both gate on `disabled`. See ACTION-MENU-DIAGNOSIS.md
+  // cluster C1 + §7 q3.
+  const entries = useMemo<DecoratedRow[]>(() => {
+    const rows = cardActionRows("grab");
+    // Synthesize the ref the registry's `applies()` reads. A persistent
+    // TextObject kind → a `TextObjectRef` (the id is irrelevant to the
+    // per-kind grey-out, which keys off `kind` alone); `"selection"` / no
+    // kind / an unknown kind → a live selection ref, which exposes the full
+    // vocabulary (matching the former "full list" branch).
+    const ref: ActionRef =
+      kind && kind !== "selection" && isTextObjectKind(kind)
+        ? { kind, id: "" }
+        : { kind: "selection", from: 0, to: 1, paragraphId: "" };
+    // The card rows' `applies()` reads only `ctx.ref`; the rest of the
+    // `ActionContext` (editor/view) is unused for the per-kind grey-out, so a
+    // ref-only context is sufficient at menu-decoration time.
+    const ctx = { ref } as ActionContext;
+    return rows.map((row) => ({ row, disabled: row.applies(ctx) === "disabled" }));
   }, [kind]);
   const menuRef = useRef<HTMLDivElement | null>(null);
   // Left of the handle by default so the menu doesn't cover the grip or
@@ -152,19 +134,19 @@ export function DragHandleMenu({ anchorRect, onSelect, onClose, kind }: Props) {
       if (e.metaKey || e.ctrlKey || e.altKey) return;
       // Backspace / Delete map to the destructive delete action when present.
       if (e.key === "Backspace" || e.key === "Delete") {
-        const hit = entries.find((m) => m.action === "delete");
+        const hit = entries.find((m) => m.row.id === "delete");
         if (hit && !hit.disabled) {
           e.preventDefault();
-          onSelect(hit.action);
+          onSelect(hit.row.id as DragHandleAction);
         }
         return;
       }
       if (e.key.length !== 1) return;
       const letter = e.key.toUpperCase();
-      const hit = entries.find((m) => m.letter === letter);
+      const hit = entries.find((m) => m.row.letter === letter);
       if (hit && !hit.disabled) {
         e.preventDefault();
-        onSelect(hit.action);
+        onSelect(hit.row.id as DragHandleAction);
       }
     };
     const onMouseDown = (e: MouseEvent) => {
@@ -204,9 +186,9 @@ export function DragHandleMenu({ anchorRect, onSelect, onClose, kind }: Props) {
       // selection — opening the menu shouldn't shift the editor caret.
       onMouseDown={(e) => e.stopPropagation()}
     >
-      {entries.map((entry) => (
-        <div key={entry.action}>
-          {entry.separator && (
+      {entries.map(({ row, disabled }) => (
+        <div key={row.id}>
+          {row.separator && (
             <div
               aria-hidden
               style={{
@@ -220,39 +202,38 @@ export function DragHandleMenu({ anchorRect, onSelect, onClose, kind }: Props) {
           <button
             type="button"
             role="menuitem"
-            disabled={entry.disabled}
-            aria-disabled={entry.disabled || undefined}
-            data-hint={entry.disabled ? entry.reason : undefined}
+            disabled={disabled}
+            aria-disabled={disabled || undefined}
             onClick={() => {
-              if (entry.disabled) return;
-              onSelect(entry.action);
+              if (disabled) return;
+              onSelect(row.id as DragHandleAction);
             }}
             className={
-              entry.disabled
+              disabled
                 ? "w-full flex items-center gap-2.5 px-3 text-sm text-left"
                 : "w-full flex items-center gap-2.5 px-3 text-sm text-left hover-on-light"
             }
             style={{
               height: ITEM_H,
-              color: entry.disabled
+              color: disabled
                 ? "var(--ink-subtle)"
-                : entry.destructive
+                : row.destructive
                   ? "var(--danger, #b45757)"
                   : "var(--ink-strong)",
               background: "transparent",
-              opacity: entry.disabled ? 0.45 : 1,
-              cursor: entry.disabled ? "not-allowed" : "pointer",
-            }} aria-label={entry.disabled ? entry.reason : undefined}
+              opacity: disabled ? 0.45 : 1,
+              cursor: disabled ? "not-allowed" : "pointer",
+            }}
           >
             <span className="shrink-0 flex items-center justify-center" style={{ width: 16, height: 16 }}>
-              {entry.icon}
+              {row.icon}
             </span>
-            <span className="flex-1">{entry.label}</span>
+            <span className="flex-1">{row.label}</span>
             <span
               className="tabular-nums"
               style={{ fontSize: 11, color: "var(--ink-subtle)" }}
             >
-              {entry.letter}
+              {row.letter}
             </span>
           </button>
         </div>

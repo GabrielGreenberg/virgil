@@ -3,17 +3,18 @@
  * "action / tool" Virgil exposes across its FOUR action surfaces.
  *
  * ──────────────────────────────────────────────────────────────────────────
- * STATUS (CHIP 2 — CARD ROWS POPULATED, DELEGATING). The module defines the
- * TYPES, the coverage assertion, the PM→React bridge CONTRACT, and now the 11
- * CARD-action rows. Each card `run()` DELEGATES to the existing grab-bar
- * dispatcher (`ctx.dispatch`), so the registry is the SSOT for the card
- * *vocabulary* (id / label / letter / surfaces / applicability / scope) while
- * live *behavior* is byte-identical to today — ZERO behavior change. The live
- * menus (`DragHandleMenu` / `ActionsMenuPanel`) still import `MENU_ENTRIES`
- * directly; re-pointing them at the registry is CHIP 3. The slash / block /
- * title / format ids are EXPECTED-PENDING (later chips). The coverage
- * assertion is now ARMED for the card slice via a vitest
- * (`action-coverage-assertion.test.ts`).
+ * STATUS (CHIP 3 — REGISTRY IS THE SSOT THE LIVE MENUS RENDER FROM). The
+ * module defines the TYPES, the coverage assertion, the PM→React bridge
+ * CONTRACT, and the 11 CARD-action rows. Each card `run()` DELEGATES to the
+ * existing grab-bar dispatcher (`ctx.dispatch`), so live *behavior* is
+ * byte-identical to today — ZERO behavior change. CHIP 3 INVERTED the menu
+ * dependency: the card rows now OWN their presentation (label / letter / icon
+ * / separator / destructive, in `action-icons.tsx`), the former `MENU_ENTRIES`
+ * array is deleted, and the two live menus (`DragHandleMenu` /
+ * `ActionsMenuPanel`) render their action list via `cardActionRows(surface)`
+ * — thin views over this registry. The slash / block / title / format ids are
+ * EXPECTED-PENDING (later chips). The coverage assertion is ARMED for the card
+ * slice via a vitest (`action-coverage-assertion.test.ts`).
  * ──────────────────────────────────────────────────────────────────────────
  *
  * # Why this registry exists
@@ -114,18 +115,21 @@ import { VIRGIL_COMMAND_NAMES } from "@/lib/tiptap/commands";
 // coverage assertion pins them equal so they cannot drift.
 import type { DragHandleAction } from "@/components/DragHandleMenu";
 
-// ── CHIP 2 row-population value imports ──
-// The 11 card rows derive their presentation (label / letter / icon) FROM
-// the live `MENU_ENTRIES` array — the registry mirrors the current SSOT this
-// chip rather than re-typing strings that could drift; CHIP 3 inverts the
-// dependency (menus read the registry, `MENU_ENTRIES` is deleted) at which
-// point the icon JSX already lives on the row. Importing `MENU_ENTRIES`
-// pulls its icon JSX in, so this module is React-light for TYPE-only
-// importers but carries React at runtime for the row consumers — acceptable:
+// ── Card-row presentation (CHIP 3: the registry now OWNS this) ──
+// The 11 card rows take their presentation (label / letter / icon /
+// separator / destructive) from `CARD_ACTION_PRESENTATION`. CHIP 2 derived
+// these FROM `MENU_ENTRIES` (the menu was the SSOT, the registry mirrored
+// it); CHIP 3 INVERTS that — the icon JSX now lives in `action-icons.tsx`,
+// this registry is the SSOT, and the two live menus render off these rows.
+// `MENU_ENTRIES` is deleted. The presentation module carries React JSX at
+// runtime, so the registry carries React for its row consumers — acceptable:
 // the only runtime consumers are the React menu surfaces. The assertion path
-// stays importable in node-env vitest (the chain bottoms out at
-// `card-registry`, already imported cleanly by the lifecycle test).
-import { MENU_ENTRIES } from "@/components/DragHandleMenu";
+// stays importable in node-env vitest; `action-icons` resolves to the icon
+// barrel, which the menu tests already pull cleanly.
+import {
+  CARD_ACTION_PRESENTATION,
+  CARD_ACTION_ORDER,
+} from "./action-icons";
 import {
   TEXT_OBJECT_REGISTRY,
   isTextObjectKind,
@@ -409,6 +413,13 @@ export interface ActionSpec {
    *  grab-bar / lightning letter hints: H/N/F/C/T/E/X/R/D/A/⌫). Menu-scoped,
    *  NOT a global keybinding — that is `keybinding`. */
   letter?: string;
+  /** Draw a divider line ABOVE this entry in the menu list. Menu-chrome
+   *  only (the former `MenuEntry.separator`); the grab-bar / lightning menus
+   *  render the rule when set (above Duplicate + Archive). */
+  separator?: boolean;
+  /** Render this entry with destructive (red) styling. Menu-chrome only
+   *  (the former `MenuEntry.destructive`); set on `delete`. */
+  destructive?: boolean;
   /** Coarse category — also the union-member family of `id`. */
   category: ActionCategory;
   /** Which surfaces expose this action. Cross-checked by
@@ -695,33 +706,19 @@ function cardRun(id: CardActionId, ctx: ActionContext): void {
   ctx.dispatch?.(id, ctx.ref);
 }
 
-/** Look up a card id's `MENU_ENTRIES` row for its presentation fields
- *  (label / letter / icon). The registry MIRRORS the live menu SSOT this
- *  chip; CHIP 3 inverts the dependency. */
-function menuEntryFor(id: CardActionId): {
-  label: string;
-  letter: string;
-  icon: React.ReactNode;
-} {
-  const e = MENU_ENTRIES.find((m) => m.action === id);
-  if (!e) {
-    // Unreachable: CardActionId ≡ DragHandleAction, every id has an entry.
-    // The coverage assertion would also catch a drift. Fail loud in dev.
-    throw new Error(`[actions] no MENU_ENTRIES row for card id "${id}"`);
-  }
-  return { label: e.label, letter: e.letter, icon: e.icon };
-}
-
-/** Build one delegating card row. Presentation from `MENU_ENTRIES`; behavior
- *  forwarded via `cardRun`; applicability + scope mirrored from the
- *  dispatcher. */
+/** Build one delegating card row. Presentation (label / letter / icon /
+ *  separator / destructive) from `CARD_ACTION_PRESENTATION` — the registry
+ *  OWNS it as of CHIP 3; behavior forwarded via `cardRun`; applicability +
+ *  scope mirrored from the dispatcher. */
 function cardRow(id: CardActionId): ActionSpec {
-  const { label, letter, icon } = menuEntryFor(id);
+  const p = CARD_ACTION_PRESENTATION[id];
   return {
     id,
-    label,
-    letter,
-    icon,
+    label: p.label,
+    letter: p.letter,
+    icon: p.icon,
+    separator: p.separator,
+    destructive: p.destructive,
     category: "card",
     surfaces: { grab: true, lightning: true },
     applies: (ctx) => cardApplies(id, ctx),
@@ -730,21 +727,12 @@ function cardRow(id: CardActionId): ActionSpec {
   };
 }
 
-/** The 11 card ids, in `MENU_ENTRIES` order. Equal to `CardActionId` — pinned
- *  by the coverage assertion. */
-const CARD_ACTION_IDS: readonly CardActionId[] = [
-  "highlight",
-  "note",
-  "footnote",
-  "citation",
-  "todo",
-  "suggest-edit",
-  "cutter",
-  "report",
-  "duplicate",
-  "archive",
-  "delete",
-];
+/** The 11 card ids, in canonical MENU-DISPLAY order — derived from
+ *  `CARD_ACTION_ORDER` (the insertion order of `CARD_ACTION_PRESENTATION`,
+ *  which mirrors the former `MENU_ENTRIES` order). Equal to `CardActionId` —
+ *  pinned by the coverage assertion. The menus iterate this same order via
+ *  `cardActionRows()` so the registry and the live menus can never disagree. */
+const CARD_ACTION_IDS: readonly CardActionId[] = CARD_ACTION_ORDER;
 
 /**
  * The SSOT map. `Partial<Record<…>>` so consumers tolerate not-yet-migrated
@@ -758,6 +746,33 @@ export const VIRGIL_ACTION_REGISTRY: Partial<Record<ActionId, ActionSpec>> =
   ) as Partial<Record<ActionId, ActionSpec>>;
 
 // ---------------------------------------------------------------------------
+// Menu views over the registry — the two live React menus (`DragHandleMenu`,
+// `ActionsMenuPanel`) render the CARD action list off THIS (CHIP 3), instead
+// of off the deleted `MENU_ENTRIES` array. The registry is the SSOT; the
+// menus are thin views.
+// ---------------------------------------------------------------------------
+
+/**
+ * The CARD action rows, in canonical menu-display order, that a given surface
+ * exposes — the SSOT the grab-bar / lightning menus iterate to render their
+ * action list. Filters to `category === "card"` rows whose `surfaces[surface]`
+ * flag is set, preserving `CARD_ACTION_ORDER` (the former `MENU_ENTRIES`
+ * order). Both menus currently pass the same set of card rows (grab and
+ * lightning are byte-identical lists); the `surface` arg keeps the view honest
+ * if a future row opts off one surface.
+ *
+ * Pure + cheap (an 11-row filter); called at menu-open, never per keystroke.
+ */
+export function cardActionRows(
+  surface: "grab" | "lightning",
+): readonly ActionSpec[] {
+  return CARD_ACTION_ORDER.map((id) => VIRGIL_ACTION_REGISTRY[id]).filter(
+    (row): row is ActionSpec =>
+      !!row && row.category === "card" && !!row.surfaces[surface],
+  );
+}
+
+// ---------------------------------------------------------------------------
 // Coverage assertion — DEV-ONLY, NOT YET WIRED.
 // ---------------------------------------------------------------------------
 
@@ -768,12 +783,13 @@ export const VIRGIL_ACTION_REGISTRY: Partial<Record<ActionId, ActionSpec>> =
  * headings; the typed/format/stray surfaces have no single exported list).
  * The assertion below cross-checks the importable lists (`VIRGIL_COMMAND_NAMES`
  * + the populated registry rows) against this manifest, so the manifest and
- * the live sources can't silently diverge. (As of CHIP 2 the module DOES
- * import `MENU_ENTRIES` to derive the card rows' label/letter/icon — so the
- * card slice is checked against the live menu SSOT directly.)
+ * the live sources can't silently diverge. (As of CHIP 3 the card rows OWN
+ * their label/letter/icon via `CARD_ACTION_PRESENTATION` — the registry is the
+ * SSOT and the two live menus render off it; the former `MENU_ENTRIES` array
+ * is gone.)
  *
  * Provenance of each entry (the four surfaces + the strays):
- *   - 11 card ids       ← `MENU_ENTRIES` letters (grab + lightning)
+ *   - 11 card ids       ← the card vocabulary (grab + lightning menus)
  *   - ref               ← `\ref` slash command
  *   - 4 heading ids     ← `\chapter/\section/\subsection/\subsubsection`
  *   - example           ← `\ex` slash + the STRAY `insertExampleAtCursor`

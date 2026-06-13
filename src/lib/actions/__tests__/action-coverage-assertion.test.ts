@@ -10,8 +10,10 @@
 //
 // WHAT IS PROVEN
 //   1. the 11 card rows exist, keyed === id, category "card",
-//      surfaces {grab, lightning}, with the right single-letter hint, derived
-//      from `MENU_ENTRIES` (the current SSOT this chip mirrors);
+//      surfaces {grab, lightning}, with the right single-letter hint, matching
+//      `CARD_ACTION_PRESENTATION` (the registry's OWN SSOT — CHIP 3 inverted
+//      the dependency so the registry owns the presentation and the live menus
+//      render off it; the former `MENU_ENTRIES` array is gone);
 //   2. `run(ctx)` with a SPY dispatch forwards exactly `(id, ref)` — the whole
 //      point of CHIP 2 (delegate, don't re-implement → zero behavior change);
 //   3. `applies()` greys the right actions per representative kinds
@@ -58,7 +60,11 @@ import {
   type ActionRef,
   type ActionSpec,
 } from "@/lib/actions/action-registry";
-import { MENU_ENTRIES, type DragHandleAction } from "@/components/DragHandleMenu";
+import {
+  CARD_ACTION_PRESENTATION,
+  CARD_ACTION_ORDER,
+} from "@/lib/actions/action-icons";
+import type { DragHandleAction } from "@/components/DragHandleMenu";
 
 // ---------------------------------------------------------------------------
 // Shared fixtures
@@ -135,12 +141,19 @@ describe("card-action rows", () => {
     }
   });
 
-  it("label + letter are derived from MENU_ENTRIES (the live SSOT)", () => {
-    for (const entry of MENU_ENTRIES) {
-      const r = row(entry.action);
-      expect(r.label).toBe(entry.label);
-      expect(r.letter).toBe(entry.letter);
+  it("label + letter match CARD_ACTION_PRESENTATION (the registry's own SSOT)", () => {
+    for (const id of CARD_ACTION_ORDER) {
+      const r = row(id);
+      const p = CARD_ACTION_PRESENTATION[id];
+      expect(r.label).toBe(p.label);
+      expect(r.letter).toBe(p.letter);
+      expect(r.separator).toBe(p.separator);
+      expect(r.destructive).toBe(p.destructive);
     }
+  });
+
+  it("the registry rows enumerate in canonical menu-display order", () => {
+    expect(Object.keys(VIRGIL_ACTION_REGISTRY)).toEqual([...CARD_ACTION_ORDER]);
   });
 });
 

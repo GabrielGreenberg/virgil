@@ -19,7 +19,8 @@ import { createPortal } from "react-dom";
 import type { Editor } from "@tiptap/react";
 import type { Fragment, Node as PMNode, Slice } from "@tiptap/pm/model";
 import { useDragHandleMenu } from "./editor-layout/card-actions/drag-handle-menu-context";
-import { MENU_ENTRIES } from "./DragHandleMenu";
+import type { DragHandleAction } from "./DragHandleMenu";
+import { cardActionRows } from "@/lib/actions/action-registry";
 import { BlockTypeDropdown, buildExampleTemplate } from "./MenuBar";
 import { insertTexBlock } from "@/lib/tiptap/tex-block";
 import { insertFigureBlock } from "@/lib/tiptap/figure-block";
@@ -112,6 +113,14 @@ const MENU_PAD_Y = 6;
 const ITEM_H = 28;
 const FORMATTING_ROW_H = 34;
 
+// CHIP 3: the lightning-bolt action list renders the CARD rows straight off
+// the registry (the SSOT) — replacing the deleted `MENU_ENTRIES` array. The
+// lightning surface exposes the full card vocabulary on every open (the bolt
+// is paragraph/selection-scoped, not per-kind); the only run-time grey-out is
+// Highlight in cursor mode, applied at render below. The row list is constant,
+// so it's computed once at module load (an 11-row registry view).
+const LIGHTNING_CARD_ROWS = cardActionRows("lightning");
+
 export interface ActionsMenuPanelProps {
   editor: Editor;
   /** Target paragraph for action dispatch. */
@@ -182,7 +191,7 @@ export function ActionsMenuPanel({
   // the native color picker steals focus.
   const stashedRangeRef = useRef<{ from: number; to: number } | null>(null);
 
-  const runAction = (action: (typeof MENU_ENTRIES)[number]["action"]) => {
+  const runAction = (action: DragHandleAction) => {
     if (!dragHandleMenu) return;
     const ref =
       mode === "cursor"
@@ -303,12 +312,12 @@ export function ActionsMenuPanel({
       if (e.metaKey || e.ctrlKey || e.altKey) return;
       if (e.key.length !== 1) return;
       const letter = e.key.toUpperCase();
-      const hit = MENU_ENTRIES.find((m) => m.letter === letter);
+      const hit = LIGHTNING_CARD_ROWS.find((m) => m.letter === letter);
       if (!hit) return;
       e.preventDefault();
       e.stopPropagation();
-      if (hit.action === "highlight" && mode === "cursor") return;
-      runAction(hit.action);
+      if (hit.id === "highlight" && mode === "cursor") return;
+      runAction(hit.id as DragHandleAction);
     };
     window.addEventListener("keydown", onKey, true);
     return () => window.removeEventListener("keydown", onKey, true);
@@ -545,10 +554,10 @@ export function ActionsMenuPanel({
         }}
       />
 
-      {MENU_ENTRIES.map((entry) => {
-        const disabled = mode === "cursor" && entry.action === "highlight";
+      {LIGHTNING_CARD_ROWS.map((entry) => {
+        const disabled = mode === "cursor" && entry.id === "highlight";
         return (
-          <div key={entry.action}>
+          <div key={entry.id}>
             {entry.separator && (
               <div
                 aria-hidden
@@ -566,7 +575,7 @@ export function ActionsMenuPanel({
               disabled={disabled}
               onClick={() => {
                 if (disabled) return;
-                runAction(entry.action);
+                runAction(entry.id as DragHandleAction);
               }}
               className={`w-full flex items-center gap-2 px-2.5 text-left ${disabled ? "" : "hover-on-light"}`}
               style={{
