@@ -26,6 +26,11 @@ export default function MathPopover({
   const previewRef = useRef<HTMLDivElement>(null);
   const [value, setValue] = useState(latex);
   const committedRef = useRef(false);
+  // Mirror `value` into a ref so the once-registered (mount-time, empty-dep)
+  // Escape and click-outside listeners commit the LATEST text, not the
+  // stale value captured when their closures were created.
+  const valueRef = useRef(latex);
+  valueRef.current = value;
 
   // Position: below the anchor, horizontally centered, clamped to viewport
   let left = anchorRect.left + anchorRect.width / 2 - POPOVER_WIDTH / 2;
@@ -74,7 +79,8 @@ export default function MathPopover({
   const commit = () => {
     if (committedRef.current) return;
     committedRef.current = true;
-    if (value !== latex) onSave(value);
+    const next = valueRef.current;
+    if (next !== latex) onSave(next);
     onClose();
   };
 
@@ -100,12 +106,13 @@ export default function MathPopover({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Close on Escape (cancel)
+  // Close on Escape (commit — saving is the default on every dismissal;
+  // the visible Cancel button is the only revert path)
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
       if (e.key === "Escape") {
         e.preventDefault();
-        cancel();
+        commit();
       }
     };
     document.addEventListener("keydown", handler);
@@ -144,13 +151,28 @@ export default function MathPopover({
         }}
         placeholder={kind === "display" ? "LaTeX (display math)" : "LaTeX"}
       />
-      <div className="math-popover-hint">
-        <Kbd keys="Enter" /> to save · <Kbd keys="Esc" /> to cancel
-        {kind === "display" && (
-          <>
-            {" "}· <Kbd keys="Shift+Enter" /> for newline
-          </>
-        )}
+      <div className="math-popover-footer">
+        <div className="math-popover-hint">
+          <Kbd keys="Enter" /> or <Kbd keys="Esc" /> to save
+          {kind === "display" && (
+            <>
+              {" "}· <Kbd keys="Shift+Enter" /> for newline
+            </>
+          )}
+        </div>
+        <button
+          type="button"
+          className="math-popover-cancel"
+          // mousedown (not click) so it fires before the click-outside
+          // commit handler, which is also a mousedown listener
+          onMouseDown={(e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            cancel();
+          }}
+        >
+          Cancel
+        </button>
       </div>
     </div>
   );

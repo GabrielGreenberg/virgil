@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState, useCallback } from "react";
+import { useEffect, useMemo, useRef, useState, useCallback } from "react";
 
 /**
  * A discoverable target for a `\ref`. Headings carry their own section
@@ -54,10 +54,16 @@ export default function LabelRefPopover({
 }: Props) {
   const popoverRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+  const dropdownRef = useRef<HTMLDivElement>(null);
   const isCreateMode = label === "";
   const [editing, setEditing] = useState(isCreateMode);
   const [inputValue, setInputValue] = useState(label);
   const [dropdownOpen, setDropdownOpen] = useState(isCreateMode);
+  // Keyboard nav over the dropdown listbox (backlog #4). -1 = nothing
+  // highlighted → Enter falls back to the typed `inputValue`. The index
+  // runs over the COMBINED [...headings, ...examples] list so ArrowUp/Down
+  // cross the Sections/Examples group boundary, mirroring the slash popup.
+  const [activeIndex, setActiveIndex] = useState(-1);
 
   // Resolve target info from label
   const target = labels.find((l) => l.label === label);
@@ -134,11 +140,36 @@ export default function LabelRefPopover({
   );
 
   // Filter labels for dropdown and split by kind.
-  const filteredLabels = labels.filter(
-    (l) => l.label.toLowerCase().includes(inputValue.toLowerCase()),
+  const filteredLabels = useMemo(
+    () =>
+      labels.filter((l) =>
+        l.label.toLowerCase().includes(inputValue.toLowerCase()),
+      ),
+    [labels, inputValue],
   );
-  const filteredHeadings = filteredLabels.filter((l) => l.kind !== "example");
-  const filteredExamples = filteredLabels.filter((l) => l.kind === "example");
+  const filteredHeadings = useMemo(
+    () => filteredLabels.filter((l) => l.kind !== "example"),
+    [filteredLabels],
+  );
+  const filteredExamples = useMemo(
+    () => filteredLabels.filter((l) => l.kind === "example"),
+    [filteredLabels],
+  );
+  // Render order of the listbox — arrow nav indexes into THIS so it crosses
+  // the Sections → Examples group boundary as one continuous list.
+  const combinedOptions = useMemo(
+    () => [...filteredHeadings, ...filteredExamples],
+    [filteredHeadings, filteredExamples],
+  );
+
+  // Scroll the highlighted row into view as it moves.
+  useEffect(() => {
+    if (activeIndex < 0 || !dropdownRef.current) return;
+    const row = dropdownRef.current.querySelector<HTMLElement>(
+      `[data-ref-opt-index="${activeIndex}"]`,
+    );
+    row?.scrollIntoView({ block: "nearest" });
+  }, [activeIndex]);
 
   return (
     <div
@@ -205,11 +236,30 @@ export default function LabelRefPopover({
               onChange={(e) => {
                 setInputValue(e.target.value);
                 setDropdownOpen(true);
+                // Reset the highlight on the same keystroke so a stale index
+                // never points past the filtered set (no set-state-in-effect).
+                setActiveIndex(-1);
               }}
               onKeyDown={(e) => {
-                if (e.key === "Enter") {
+                if (e.key === "ArrowDown") {
                   e.preventDefault();
-                  commitLabel(inputValue);
+                  const n = combinedOptions.length;
+                  if (n === 0) return;
+                  setDropdownOpen(true);
+                  setActiveIndex((i) => (i + 1) % n);
+                } else if (e.key === "ArrowUp") {
+                  e.preventDefault();
+                  const n = combinedOptions.length;
+                  if (n === 0) return;
+                  setDropdownOpen(true);
+                  setActiveIndex((i) => (i <= 0 ? n - 1 : i - 1));
+                } else if (e.key === "Enter") {
+                  e.preventDefault();
+                  // Commit the highlighted option when one is active;
+                  // otherwise fall back to the raw typed value.
+                  const picked =
+                    activeIndex >= 0 ? combinedOptions[activeIndex] : undefined;
+                  commitLabel(picked ? picked.label : inputValue);
                 } else if (e.key === "Escape") {
                   e.preventDefault();
                   setEditing(false);
@@ -227,39 +277,49 @@ export default function LabelRefPopover({
               spellCheck={false}
             />
             {dropdownOpen && filteredLabels.length > 0 && (
-              <div className="label-ref-popover-dropdown">
+              <div ref={dropdownRef} className="label-ref-popover-dropdown">
                 {filteredHeadings.length > 0 && filteredExamples.length > 0 && (
                   <div className="label-ref-popover-group-heading">Sections</div>
                 )}
-                {filteredHeadings.map((l) => (
-                  <div
-                    key={`h-${l.label}`}
-                    className={`label-ref-popover-option${l.label === label ? " current" : ""}`}
-                    onMouseDown={(e) => {
-                      e.preventDefault();
-                      commitLabel(l.label);
-                    }}
-                  >
-                    <span className="label-ref-option-label">{l.label}</span>
-                    <span className="label-ref-option-info">{l.typeLabel}</span>
-                  </div>
-                ))}
+                {filteredHeadings.map((l, i) => {
+                  // Combined-list index: headings occupy [0, H).
+                  const idx = i;
+                  return (
+                    <div
+                      key={`h-${l.label}`}
+                      data-ref-opt-index={idx}
+                      className={`label-ref-popover-option${l.label === label ? " current" : ""}${idx === activeIndex ? " active" : ""}`}
+                      onMouseDown={(e) => {
+                        e.preventDefault();
+                        commitLabel(l.label);
+                      }}
+                    >
+                      <span className="label-ref-option-label">{l.label}</span>
+                      <span className="label-ref-option-info">{l.typeLabel}</span>
+                    </div>
+                  );
+                })}
                 {filteredHeadings.length > 0 && filteredExamples.length > 0 && (
                   <div className="label-ref-popover-group-heading">Examples</div>
                 )}
-                {filteredExamples.map((l) => (
-                  <div
-                    key={`e-${l.label}`}
-                    className={`label-ref-popover-option${l.label === label ? " current" : ""}`}
-                    onMouseDown={(e) => {
-                      e.preventDefault();
-                      commitLabel(l.label);
-                    }}
-                  >
-                    <span className="label-ref-option-label">{l.label}</span>
-                    <span className="label-ref-option-info">{l.typeLabel}</span>
-                  </div>
-                ))}
+                {filteredExamples.map((l, i) => {
+                  // Combined-list index: examples follow the headings.
+                  const idx = filteredHeadings.length + i;
+                  return (
+                    <div
+                      key={`e-${l.label}`}
+                      data-ref-opt-index={idx}
+                      className={`label-ref-popover-option${l.label === label ? " current" : ""}${idx === activeIndex ? " active" : ""}`}
+                      onMouseDown={(e) => {
+                        e.preventDefault();
+                        commitLabel(l.label);
+                      }}
+                    >
+                      <span className="label-ref-option-label">{l.label}</span>
+                      <span className="label-ref-option-info">{l.typeLabel}</span>
+                    </div>
+                  );
+                })}
               </div>
             )}
           </div>

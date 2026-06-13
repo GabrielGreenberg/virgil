@@ -7,19 +7,24 @@ type CitationMode = "anchored" | "unanchored";
 
 /**
  * Command-input bridges — editor input rules dispatch these when the user
- * types a bare LaTeX command, to open the appropriate panel UI for
- * completing the command.
+ * types a bare LaTeX command, to complete the command inline.
  *
- * - `virgil-citation-create` ({ partial }) — bare `\cite` triggers an
- *   anchored-mode create in the citations panel.
+ * As a class, slash commands create their thing inline (atom/block + cursor
+ * placement) and do NOT hard-open a dedicated panel (backlog #2).
+ *
+ * - `virgil-citation-create` ({ partial, citationId }) — bare `\cite`
+ *   inserts the citation atom and routes the new card into OMNI-VIEW
+ *   (`createCitation({ mode: "omni" })` in citations-host). The soft route
+ *   here only surfaces omni when the citations side is collapsed/blank; it
+ *   never clobbers a panel the user already has covering omni.
  * - `virgil-ref-create` — bare `\ref` opens the LabelRef popover in
- *   create mode anchored at the current cursor.
+ *   create mode anchored at the current cursor (inline; no panel).
  * - `virgil-ex-create` — bare `\ex` inserts a single-part example block
- *   at the cursor, selects it in the Examples panel, and opens the
- *   panel on whichever side it's placed.
+ *   at the cursor and selects it (so an already-open Examples panel can
+ *   scroll to it); it does NOT open the panel.
  * - `virgil-footnote-input` — bare `\footnote` inserts an empty footnote
- *   node at cursor, opens the panel, and broadcasts
- *   `virgil-footnote-created` so the panel can scroll-to-new.
+ *   node at cursor, selects it, and broadcasts `virgil-footnote-created`
+ *   so an already-open panel can scroll-to-new; it does NOT open the panel.
  */
 export function useCommandInputBridges(deps: {
   editorRef: RefObject<EditorHandle | null>;
@@ -52,17 +57,23 @@ export function useCommandInputBridges(deps: {
         | { partial?: string; citationId?: string }
         | undefined;
       if (!detail?.partial) return;
-      // Soft routing: only expand the citations side if it's collapsed
-      // or blank. If the user already has omni mode (or any other panel)
-      // active on that side, leave it. Mirrors the
-      // `ensureOmniActiveForPanel` pattern used by the drag-handle path.
+      // Slash commands don't hard-open their dedicated panel (backlog #2).
+      // `\cite` is the nuance: the new card still needs a completion
+      // surface, so we route it into OMNI-VIEW rather than the Citations
+      // panel. Soft route — mirror `ensureOmniActiveForPanel` (the
+      // drag-handle path): only surface omni if the citations side is
+      // currently collapsed or blank. If the user has another panel up on
+      // that side (covering omni), we leave it — the card lands + selects
+      // in omni and reveals itself when the user next views it, instead of
+      // clobbering whatever panel they have open. `citations-host` does the
+      // select + pin + library-picker via `createCitation({ mode: "omni" })`.
       const p = prefsRef.current;
       const citPlacement = p.placements.find((pl) => pl.id === "citations");
       const side = citPlacement?.side ?? "right";
       const active = side === "left" ? p.activeLeft : p.activeRight;
       if (active == null || active === "blank") {
-        if (side === "left") setActiveLeft("citations");
-        else setActiveRight("citations");
+        if (side === "left") setActiveLeft("omni");
+        else setActiveRight("omni");
       }
       if (!detail.citationId) {
         // Legacy path: no inline atom — open a panel-only draft card.
@@ -97,18 +108,14 @@ export function useCommandInputBridges(deps: {
     const handler = () => {
       const result = editorRef.current?.insertExample("single");
       if (!result) return;
+      // Slash commands create their thing inline and do NOT activate any
+      // panel (backlog #2). We still select the new example so that if the
+      // Examples panel happens to be open it scrolls to it; we never open it.
       setSelectedExampleId(result.exampleId);
-      const p = prefsRef.current;
-      const placement = p.placements.find((pl) => pl.id === "examples");
-      if (placement?.side === "left") {
-        if (p.activeLeft !== "examples") setActiveLeft("examples");
-      } else {
-        if (p.activeRight !== "examples") setActiveRight("examples");
-      }
     };
     window.addEventListener("virgil-ex-create", handler);
     return () => window.removeEventListener("virgil-ex-create", handler);
-  }, [editorRef, prefsRef, setActiveLeft, setActiveRight, setSelectedExampleId]);
+  }, [editorRef, setSelectedExampleId]);
 
   useEffect(() => {
     const handler = () => {
@@ -129,13 +136,9 @@ export function useCommandInputBridges(deps: {
         .insertContent({ type: "footnote", attrs: { footnoteId, content, number: 0 } })
         .run();
       editorRef.current?.renumberFootnotes();
-      const p = prefsRef.current;
-      const fnPlacement = p.placements.find((pl) => pl.id === "footnotes");
-      if (fnPlacement?.side === "left") {
-        if (p.activeLeft !== "footnotes") setActiveLeft("footnotes");
-      } else {
-        if (p.activeRight !== "footnotes") setActiveRight("footnotes");
-      }
+      // Slash commands create their thing inline and do NOT activate any
+      // panel (backlog #2). Select the new footnote (so an already-open
+      // panel can scroll to it) but never open the Footnotes panel.
       setSelectedFootnoteId(footnoteId);
       window.dispatchEvent(
         new CustomEvent("virgil-footnote-created", { detail: { footnoteId, content } }),
@@ -143,5 +146,5 @@ export function useCommandInputBridges(deps: {
     };
     window.addEventListener("virgil-footnote-input", handler);
     return () => window.removeEventListener("virgil-footnote-input", handler);
-  }, [editorRef, prefsRef, setActiveLeft, setActiveRight, setSelectedFootnoteId]);
+  }, [editorRef, setSelectedFootnoteId]);
 }
