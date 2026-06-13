@@ -633,7 +633,11 @@ export default function EditorLayout() {
   const {
     bibEntries,
     addCitation,
-    deleteCitation,
+    // NB: the bare `citationsHook.deleteCitation` (sidecar-only filter) is
+    // intentionally NOT destructured here — citation deletes must go through
+    // EditorPane's compound `handleDeleteCitation`, which strips the `\cite`
+    // atom too (the #37 hard-delete contract). This shell has no editor
+    // handle, so the unsafe path stays out of reach from EditorLayout.
     getDisplayText: getCitationDisplayText,
   } = citationsHook;
 
