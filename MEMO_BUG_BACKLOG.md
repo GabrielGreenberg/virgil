@@ -1044,7 +1044,7 @@ deferred nits:
 
 ## 40. Example follow-up residue (R3 review nits)
 
-**Reported:** 2026-06-13 (R3 review gate) · **Status:** open · **Area:** examples / floats
+**Reported:** 2026-06-13 (R3 review gate) · **Status:** done (2026-06-13, chip `#40-residue`) · **Area:** examples / floats
 
 Two deferred items from the R3 gate (#39 work):
 1. **example-item-body.tsx read-only bug:** lines ~335/346 still hardcode
@@ -1052,6 +1052,11 @@ Two deferred items from the R3 gate (#39 work):
    + `ExampleCard.tsx`. An example-ITEM float on a read-only/partner-claimed doc
    accepts phantom typing the enforcer silently rejects. One-line fix: the
    identical `useMainEditable` + lock-step `setEditable` pattern.
+   **DONE:** mirrored the example-block-body fix exactly — `useMainEditable(mainEditor)`
+   gates `buildEditorExtensions({editable})` + the `useEditor` `editable` option +
+   a `setEditable` reconciliation effect. Test
+   `src/text-objects/floats/__tests__/example-item-body-readonly.test.tsx`
+   (read-only float mounts non-editable; editable control).
 2. **Echo-guard boundary test:** post-#39 the card's own write-back re-triggers
    the re-seed effect (via the new `contentRev`), and only the
    `editor.getJSON() === nextJson` compare (ExampleCard.tsx ~:265) prevents a
@@ -1060,3 +1065,17 @@ Two deferred items from the R3 gate (#39 work):
    editor (the fiber harness already exists in ExampleCardEditor.test.tsx) and
    asserts the cursor/selection survives — cheap insurance for a now-load-bearing
    invariant.
+   **DONE:** two tests added to `ExampleCardEditor.test.tsx` (describe
+   "ExampleCard re-seed cursor survival (#40 PART 2)"). **Finding:** the card's
+   own write-back does a *full-block* `replaceWith`, which the step-inspector
+   does NOT attribute to `exampleContentChangedUuids` (the replace range resolves
+   to a between-blocks boundary, not inside the example), so the own-write does
+   NOT bump `contentRev` — i.e. the "echo via contentRev" the original note
+   assumed does not actually fire; line ~264 (`lastSyncedRef === nextJson`) /
+   lack-of-signal is what protects the own-write path. The DETERMINISTIC,
+   mutation-proven load-bearing caret invariant is the `setTextSelection` *restore*
+   around the re-seed `setContent`: parking the card caret mid-text and driving a
+   *foreign* main interior edit re-seeds the card while preserving the caret
+   offset (4 → 4); removing the restore regresses it (4 → 14). The first test
+   still types THROUGH the card editor and asserts the caret survives the
+   self-write-back round-trip (no spurious re-seed) per the chip's spirit.

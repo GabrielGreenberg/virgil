@@ -50,6 +50,7 @@ class ResizeObserverStub {
 
 import { render, cleanup, act } from "@testing-library/react";
 import { Editor } from "@tiptap/core";
+import { TextSelection } from "@tiptap/pm/state";
 import type { Editor as TiptapEditor, JSONContent } from "@tiptap/react";
 import { buildEditorExtensions, type EditorExtensionsCtx } from "@/lib/editor-extensions";
 import { getBus } from "@/lib/tiptap/doc-structure";
@@ -489,6 +490,131 @@ describe("ExampleCard read-only typeability (#39 nit 2)", () => {
     });
     const [cardEd] = embeddedEditors(container);
     expect(cardEd.isEditable).toBe(true);
+    editor.destroy();
+  });
+});
+
+// ── #40 PART 2 — echo-guard / re-seed cursor survival ───────────────────────
+//
+// Post-#39 the example card has a re-seed effect (gated on `rev.examples` +
+// `contentRev`) that pushes the live main block into the embedded editor via
+// `setContent`. Two distinct caret hazards live on that path, both now
+// load-bearing and previously UNPINNED (the existing tests only check WHICH
+// card re-seeds + read-only, never the caret):
+//
+//   1. Echo guard — when the re-derived `nextJson` already EQUALS the card's
+//      own content (the card just wrote it back, or a foreign re-derivation
+//      produced no change), the effect MUST short-circuit BEFORE `setContent`
+//      (`lastSyncedRef === nextJson` / `editor.getJSON() === nextJson`). A
+//      spurious `setContent` mid-typing would rebuild the doc and disturb the
+//      caret. We type THROUGH the card editor and assert the live doc node +
+//      caret survive the self-write-back round-trip untouched.
+//
+//   2. Caret restore — when the re-seed genuinely DOES fire (a real foreign
+//      main edit to THIS example), the effect saves `{from,to}` and restores
+//      it after `setContent`, so the user's caret stays where it was rather
+//      than collapsing to the rebuilt doc's start. We park the card caret
+//      mid-text, drive a foreign main interior edit, and assert the caret is
+//      preserved at its original offset across the re-seed.
+describe("ExampleCard re-seed cursor survival (#40 PART 2)", () => {
+  /** Resolve the end-of-text position inside the card editor's sole paragraph
+   *  (robust to nesting depth). */
+  function endOfParagraph(cardEd: TiptapEditor): number {
+    let end = cardEd.state.doc.content.size;
+    cardEd.state.doc.descendants((n, pos) => {
+      if (n.type.name === "paragraph") end = pos + 1 + n.content.size;
+    });
+    return end;
+  }
+
+  /** Spend the observer's one-time first-transaction baseline emit on a
+   *  throwaway no-op edit in MAIN (append+remove a space in B), so a measured
+   *  edit afterward is a clean content-only signal — same warm-up the #39
+   *  nit 1 test uses. */
+  function absorbBaseline(editor: TiptapEditor) {
+    const b = findExampleBlock(editor, EX_B)!;
+    act(() => {
+      editor.view.dispatch(editor.state.tr.insertText(" ", b.pos + b.node.nodeSize - 2));
+    });
+    const b2 = findExampleBlock(editor, EX_B)!;
+    act(() => {
+      editor.view.dispatch(editor.state.tr.delete(b2.pos + b2.node.nodeSize - 3, b2.pos + b2.node.nodeSize - 2));
+    });
+  }
+
+  it("typing in the card does NOT reset the caret on its own write-back round-trip", () => {
+    const editor = buildMainWith(twoExampleDoc(), /* editable */ true);
+    let container!: HTMLElement;
+    act(() => {
+      ({ container } = renderCardsFor(editor, [infoFor(EX_A, "Alpha body.")]));
+    });
+    const [cardEd] = embeddedEditors(container);
+    expect(cardEd).toBeTruthy();
+    expect(cardEd).not.toBe(editor); // the embedded card editor, not main
+    absorbBaseline(editor);
+
+    // Type a char THROUGH the card editor's own view at the end of its body
+    // text, so its onUpdate → writeBackToMain fires (the real keystroke
+    // wiring). The caret lands right after the inserted "Z".
+    const endOfText = endOfParagraph(cardEd);
+    const expectedCaret = endOfText + 1;
+    act(() => {
+      const tr = cardEd.state.tr.insertText("Z", endOfText, endOfText);
+      tr.setSelection(TextSelection.create(tr.doc, expectedCaret));
+      cardEd.view.dispatch(tr);
+    });
+
+    // The write-back reached main (sanity: the example now carries the char).
+    const a = findExampleBlock(editor, EX_A)!;
+    expect(a.node.textContent).toContain("Alpha body.Z");
+
+    // THE INVARIANT: the card's own write-back did NOT trigger a spurious
+    // echo re-seed `setContent` — the caret survives exactly where typing left
+    // it (right after the "Z", a non-zero end-of-text position), the card still
+    // shows the typed text, and the embedded editor is the same instance (no
+    // remount). A regressed echo guard re-seeds mid-typing and yanks the caret.
+    expect(cardEd.state.selection.from).toBe(expectedCaret);
+    expect(cardEd.state.selection.from).toBeGreaterThan(1);
+    expect(cardEd.getText()).toContain("Alpha body.Z");
+    expect(embeddedEditors(container)[0]).toBe(cardEd);
+    editor.destroy();
+  });
+
+  it("a foreign main edit re-seeds the card but PRESERVES the caret offset", () => {
+    const editor = buildMainWith(twoExampleDoc(), /* editable */ true);
+    let container!: HTMLElement;
+    act(() => {
+      ({ container } = renderCardsFor(editor, [infoFor(EX_A, "Alpha body.")]));
+    });
+    const [cardEd] = embeddedEditors(container);
+    expect(cardEd).toBeTruthy();
+    absorbBaseline(editor);
+
+    // Park the card caret in the MIDDLE of "Alpha body." (after "Alp").
+    const midCaret = 4;
+    act(() => {
+      cardEd.view.dispatch(
+        cardEd.state.tr.setSelection(TextSelection.create(cardEd.state.doc, midCaret)),
+      );
+    });
+    expect(cardEd.state.selection.from).toBe(midCaret);
+    const docBefore = cardEd.state.doc;
+
+    // A FOREIGN main edit to example A's interior — bumps `contentRev` for A,
+    // so the re-seed effect genuinely fires (`getJSON() !== nextJson`) and
+    // pushes the updated block into the card via `setContent`.
+    const a = findExampleBlock(editor, EX_A)!;
+    act(() => {
+      editor.view.dispatch(editor.state.tr.insertText("Q", a.pos + a.node.nodeSize - 2));
+    });
+
+    // The card re-seeded (its doc was rebuilt + now shows the foreign edit) …
+    expect(cardEd.state.doc).not.toBe(docBefore); // a real re-seed fired
+    expect(cardEd.getText()).toContain("Alpha body.Q");
+    // … but the caret was RESTORED to its original mid-text offset rather than
+    // collapsing to the rebuilt doc's start. This pins the `setTextSelection`
+    // restore around the re-seed `setContent`.
+    expect(cardEd.state.selection.from).toBe(midCaret);
     editor.destroy();
   });
 });

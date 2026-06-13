@@ -47,12 +47,13 @@
  * round-trip lock in `__tests__/example-item-inner-writeback.test.ts`.
  */
 
-import { type RefObject, useCallback, useMemo, useRef } from "react";
+import { type RefObject, useCallback, useEffect, useMemo, useRef } from "react";
 import { useEditor, EditorContent, type JSONContent } from "@tiptap/react";
 import type { Node as PMNode, Schema } from "@tiptap/pm/model";
 import type { EditorHandle } from "@/components/Editor";
 import { buildEditorExtensions } from "@/lib/editor-extensions";
 import { useDocWriteHandleOrNull } from "@/components/editor-layout/DocPipeline";
+import { useMainEditable } from "@/components/editor-layout/contexts/editor-ref";
 import { usePoppedCards } from "@/hooks/usePoppedCards";
 import { useEditorChrome } from "@/components/editor-layout/chrome-context";
 import { viewToggleClasses } from "@/components/editor-layout/chrome-config";
@@ -238,6 +239,11 @@ export function ExampleItemBody({
   const popped = usePoppedCards();
   const chrome = useEditorChrome();
   const mainEditor = ref.current?.getEditor() ?? null;
+  // Read-only gate (#40 / R3 nit): mirror the MAIN editor's editability so a
+  // read-only / partner-claimed doc shows a read-only item float instead of
+  // accepting phantom typing whose write-back the readOnlyEnforcer would
+  // silently reject at dispatch. Same pattern as `example-block-body.tsx`.
+  const mainEditable = useMainEditable(mainEditor);
 
   // Stable wrapper uuid, minted EXACTLY once (lazy-init here, NOT inside the
   // seed memo). The seed memo re-runs on foreign re-renders; minting there would
@@ -332,7 +338,7 @@ export function ExampleItemBody({
   const floatEditor = useEditor({
     extensions: buildEditorExtensions({
       surface: "float",
-      editable: true,
+      editable: mainEditable,
       cardContext: true,
       callbacks: {
         isLabelTaken: isLabelTakenRef,
@@ -343,7 +349,7 @@ export function ExampleItemBody({
       host: { getMainEditor: () => ref.current?.getEditor() ?? null },
     }),
     content: initial.doc,
-    editable: true,
+    editable: mainEditable,
     immediatelyRender: false,
     editorProps: {
       attributes: {
@@ -411,6 +417,15 @@ export function ExampleItemBody({
     floatId,
     readSource,
   });
+
+  // Keep the float's editability in lock-step with the main doc's, in case
+  // read-only mode toggles after mount (collab pen handoff). Mirrors
+  // `example-block-body.tsx`.
+  useEffect(() => {
+    if (floatEditor && floatEditor.isEditable !== mainEditable) {
+      floatEditor.setEditable(mainEditable);
+    }
+  }, [floatEditor, mainEditable]);
 
   return (
     <>
