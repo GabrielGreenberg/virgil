@@ -305,7 +305,7 @@ just the reported instance.
 
 ## 8. Atom drag-drop → Cmd-Z jumps the viewport to the top of the page
 
-**Reported:** 2026-06-05 · **Status:** open · **Area:** main-text / inline-atom drag-drop
+**Reported:** 2026-06-05 · **Status:** done (2026-06-13, chip `R1`) · **Area:** main-text / inline-atom drag-drop
 
 **Reported behavior** — drag-and-drop an inline atom (footnote / citation / `\ref`
 / inline math), then hit Cmd-Z. The undo is correct, but the page also scrolls up
@@ -789,7 +789,7 @@ has no test, which belongs to the queued `test-hardening` chip.)
 
 ## 27. Derive the in-text anchor color maps from CARD_THEMES (second G3 surface)
 
-**Reported:** 2026-06-12 (chip-E review gate) · **Status:** open · **Area:** links / globals.css
+**Reported:** 2026-06-12 (chip-E review gate) · **Status:** done (2026-06-13, chip `R2`) · **Area:** links / globals.css
 
 Chip E derived CARD outline colors from `theme.accent` (inline stamp on the
 PanelCard root) and deleted the card CSS block — but the **in-text** maps
@@ -822,7 +822,7 @@ resolver) · bib expanded body still on `PANEL.cardInner` (exempt or convert).
 
 ## 29. Per-heading fold-chevron transaction subscribers — gate or centralize (+ AGENTS.md list gap)
 
-**Reported:** 2026-06-12 (doc-rot chip G + its review gate) · **Status:** open · **Area:** main-text / keystroke sanctity
+**Reported:** 2026-06-12 (doc-rot chip G + its review gate) · **Status:** done (2026-06-13, chip `R2`) · **Area:** main-text / keystroke sanctity
 
 `editor-extensions.ts` (~:908): each heading NodeView registers its own
 `editor.on("transaction")` fold-chevron refresher — N headings = N subscribers
@@ -996,7 +996,7 @@ the pattern). Audit the delete-contract matrix across kinds.
 
 ## 38. Footnote-nested citation still resurrects on reload (W-C deferred edge)
 
-**Reported:** 2026-06-12 (W-C review gate) · **Status:** open · **Area:** citations / data integrity
+**Reported:** 2026-06-12 (W-C review gate) · **Status:** done (2026-06-13, chip `R1`) · **Area:** citations / data integrity
 
 Chip W-C fixed #37 for top-level `\cite` atoms (hard-delete removes atom +
 entry). But a `\cite` living inside a footnote's `attrs.content` is NOT a
@@ -1016,7 +1016,7 @@ unit-tested; the synchronous-ordering guarantee rests on source inspection).
 
 ## 39. Example card staleness + read-only typeability + dead replaceExampleLatex (W-A nits)
 
-**Reported:** 2026-06-12 (W-A review gate) · **Status:** open · **Area:** examples / floats
+**Reported:** 2026-06-12 (W-A review gate) · **Status:** done (2026-06-13, chip `R3`) · **Area:** examples / floats
 
 W-A landed example cards as embedded editors (keystroke-sanctity verified). Three
 deferred nits:
@@ -1039,3 +1039,24 @@ deferred nits:
    editor, so nested figure/graphics atoms render as pills not images (cosmetic);
    and the W-A write-back TEST hand-builds a replaceWith instead of driving
    `writeBackToMain` through the card onUpdate — strengthen it.
+
+---
+
+## 40. Example follow-up residue (R3 review nits)
+
+**Reported:** 2026-06-13 (R3 review gate) · **Status:** open · **Area:** examples / floats
+
+Two deferred items from the R3 gate (#39 work):
+1. **example-item-body.tsx read-only bug:** lines ~335/346 still hardcode
+   `editable: true` — the SAME latent bug R3 fixed in `example-block-body.tsx`
+   + `ExampleCard.tsx`. An example-ITEM float on a read-only/partner-claimed doc
+   accepts phantom typing the enforcer silently rejects. One-line fix: the
+   identical `useMainEditable` + lock-step `setEditable` pattern.
+2. **Echo-guard boundary test:** post-#39 the card's own write-back re-triggers
+   the re-seed effect (via the new `contentRev`), and only the
+   `editor.getJSON() === nextJson` compare (ExampleCard.tsx ~:265) prevents a
+   mid-typing cursor reset. The new tests drive a MAIN-editor edit, not a CARD
+   edit, so the echo path is unpinned. Add a test that types THROUGH the card
+   editor (the fiber harness already exists in ExampleCardEditor.test.tsx) and
+   asserts the cursor/selection survives — cheap insurance for a now-load-bearing
+   invariant.
