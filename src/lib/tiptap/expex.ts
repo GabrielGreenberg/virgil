@@ -1,6 +1,7 @@
 import { Node, Extension, mergeAttributes } from "@tiptap/react";
 import { Plugin, PluginKey } from "@tiptap/pm/state";
-import { TextSelection } from "@tiptap/pm/state";
+import { TextSelection, Selection } from "@tiptap/pm/state";
+import type { EditorState, Transaction } from "@tiptap/pm/state";
 import { generateShortId } from "@/lib/uuid";
 import { UUID_ATTR_SPEC } from "./uuid-attr";
 import { readDocStructure, readPendingDiff } from "@/lib/tiptap/doc-structure";
@@ -100,6 +101,153 @@ export function markerForDepth(depth: number, n: number): string {
     case 3: return toRomanUpper(n);
     default: return toSubLabel(n);
   }
+}
+
+// ---------------------------------------------------------------------------
+// Shared empty-example deletion
+// ---------------------------------------------------------------------------
+
+/**
+ * Delete the empty example structure the cursor currently sits in.
+ *
+ * Factored out of the two Shift-Tab handlers (ExampleItem promote, ExampleBlock
+ * dissolve) so the Backspace/Delete handlers can reuse the *delete* half
+ * without the promote/dissolve re-insert.
+ *
+ * Two cursor positions are handled:
+ *
+ *  - Cursor in an `exampleItem` (a sub-item `a.`/`i.`/…): the 3-way delete
+ *    that ExampleItem Shift-Tab already computes —
+ *      • only item, only list, no other block content → delete whole block;
+ *      • only item in its list (block has other content) → delete the list
+ *        (and flip block kind back to "single" if no list survives);
+ *      • otherwise → delete just the item.
+ *
+ *  - Cursor at the top level of an `exampleBlock` (a preamble/trailing
+ *    paragraph, not inside a sub-item) on a fully-empty block → delete the
+ *    block (landing in the previous block) or, if it is the doc's only/leading
+ *    content, dissolve it to a plain empty paragraph.
+ *
+ * Returns a ready-to-dispatch `Transaction` (with selection + scrollIntoView
+ * already set) or `null` when the cursor is not in a deletable empty example
+ * structure. The caller's own empty-paragraph + cursor-at-start guard decides
+ * *whether* to call this; the ExpexNumbering appendTransaction re-letters /
+ * renumbers whatever survives.
+ */
+export function deleteEmptyExampleStructure(
+  state: EditorState,
+): Transaction | null {
+  const { $from } = state.selection;
+
+  // Resolve the nearest exampleItem (if any) and the enclosing block.
+  let itemDepth = -1,
+    listDepth = -1,
+    blockDepth = -1;
+  for (let d = $from.depth; d >= 0; d--) {
+    const name = $from.node(d).type.name;
+    if (itemDepth < 0 && name === "exampleItem") itemDepth = d;
+    else if (listDepth < 0 && itemDepth >= 0 && name === "exampleItemList")
+      listDepth = d;
+    if (name === "exampleBlock") {
+      blockDepth = d;
+      break;
+    }
+  }
+  if (blockDepth < 0) return null;
+
+  // --- Sub-item case: 3-way delete (block / list / item). ---
+  if (itemDepth >= 0 && listDepth >= 0) {
+    const itemNode = $from.node(itemDepth);
+    const itemStart = $from.before(itemDepth);
+    const itemEnd = itemStart + itemNode.nodeSize;
+    const listNode = $from.node(listDepth);
+    const listStart = $from.before(listDepth);
+    const listEnd = listStart + listNode.nodeSize;
+    const blockNode = $from.node(blockDepth);
+    const blockStart = $from.before(blockDepth);
+    const blockEnd = $from.after(blockDepth);
+
+    const tr = state.tr;
+    let deleteFrom: number;
+    let originalBlockGone = false;
+    if (
+      listNode.childCount === 1 &&
+      blockNode.childCount === 1 &&
+      blockNode.firstChild?.type.name === "exampleItemList"
+    ) {
+      // Only item, only list, nothing else in the block → delete the block.
+      tr.delete(blockStart, blockEnd);
+      deleteFrom = blockStart;
+      originalBlockGone = true;
+    } else if (listNode.childCount === 1) {
+      // Only item in its list, but block has other content → delete the list.
+      tr.delete(listStart, listEnd);
+      deleteFrom = listStart;
+    } else {
+      // One of several items → delete just this item.
+      tr.delete(itemStart, itemEnd);
+      deleteFrom = itemStart;
+    }
+
+    // If the block survived but no longer holds any item list, flip its kind
+    // back to "single" so serialization emits \ex (mirrors Shift-Tab).
+    if (!originalBlockGone) {
+      const survivor = tr.doc.nodeAt(blockStart);
+      if (
+        survivor &&
+        survivor.type.name === "exampleBlock" &&
+        survivor.attrs.kind === "multi"
+      ) {
+        let hasList = false;
+        survivor.forEach((c) => {
+          if (c.type.name === "exampleItemList") hasList = true;
+        });
+        if (!hasList) {
+          tr.setNodeMarkup(blockStart, undefined, {
+            ...survivor.attrs,
+            kind: "single",
+          });
+        }
+      }
+    }
+
+    // Land the cursor at the nearest selectable position to the deletion
+    // point (end of the previous sibling, or start of what shifted up).
+    const landAt = Math.min(deleteFrom, tr.doc.content.size);
+    tr.setSelection(Selection.near(tr.doc.resolve(landAt), -1));
+    return tr.scrollIntoView();
+  }
+
+  // --- Top-level case: cursor in a block-level paragraph, not in a sub-item. ---
+  const blockNode = $from.node(blockDepth);
+  // Only fire on a fully-empty block — a single empty paragraph.
+  const blockIsEmpty =
+    blockNode.childCount === 1 &&
+    blockNode.firstChild?.type.name === "paragraph" &&
+    blockNode.firstChild.content.size === 0;
+  if (!blockIsEmpty) return null;
+
+  const blockStart = $from.before(blockDepth);
+  const blockEnd = $from.after(blockDepth);
+  const paraType = state.schema.nodes.paragraph;
+  if (!paraType) return null;
+
+  // If there is a previous block-level sibling in the doc, remove the empty
+  // example entirely and land the cursor at the end of that sibling. Otherwise
+  // (the example is the doc's leading/only content) dissolve it into a plain
+  // empty paragraph so the document is never left empty.
+  const $blockStart = state.doc.resolve(blockStart);
+  const hasPrevSibling = $blockStart.nodeBefore != null;
+  if (hasPrevSibling) {
+    const tr = state.tr.delete(blockStart, blockEnd);
+    const landAt = Math.min(blockStart, tr.doc.content.size);
+    tr.setSelection(Selection.near(tr.doc.resolve(landAt), -1));
+    return tr.scrollIntoView();
+  }
+
+  const tr = state.tr.replaceWith(blockStart, blockEnd, paraType.create());
+  tr.setSelection(TextSelection.create(tr.doc, blockStart + 1));
+  return tr.scrollIntoView();
 }
 
 // ---------------------------------------------------------------------------
@@ -375,6 +523,51 @@ export const ExampleBlock = Node.create<ExampleBlockOptions>({
         );
         tr.setSelection(TextSelection.create(tr.doc, blockStart + 1));
         view.dispatch(tr.scrollIntoView());
+        return true;
+      },
+
+      // Backspace at the start of an EMPTY top-level example paragraph
+      // deletes the (n) example (the delete half of Shift-Tab's dissolve,
+      // without leaving a stray paragraph when a previous block exists).
+      // The sub-item case is owned by ExampleItem's Backspace, which fires
+      // first; this handler only sees the cursor at the block's top level.
+      Backspace: () => {
+        const { state } = this.editor;
+        const view = this.editor.view;
+        const { $from, empty } = state.selection;
+        if (!empty) return false;
+        // Only at the start of an empty paragraph; else normal deletion.
+        if ($from.parent.type.name !== "paragraph") return false;
+        if ($from.parent.content.size !== 0) return false;
+        if ($from.parentOffset !== 0) return false;
+
+        // Bail if inside a sub-item (ExampleItem's Backspace owns that).
+        for (let d = $from.depth; d >= 0; d--) {
+          if ($from.node(d).type.name === "exampleItem") return false;
+        }
+        const tr = deleteEmptyExampleStructure(state);
+        if (!tr) return false;
+        view.dispatch(tr);
+        return true;
+      },
+
+      // forward-Delete on an EMPTY top-level example paragraph: the cursor is
+      // simultaneously at the paragraph's start and end (nothing forward to
+      // delete), and exampleBlock is `isolating` so the default join is a
+      // no-op — so symmetrically delete the same empty example as Backspace.
+      Delete: () => {
+        const { state } = this.editor;
+        const view = this.editor.view;
+        const { $from, empty } = state.selection;
+        if (!empty) return false;
+        if ($from.parent.type.name !== "paragraph") return false;
+        if ($from.parent.content.size !== 0) return false;
+        for (let d = $from.depth; d >= 0; d--) {
+          if ($from.node(d).type.name === "exampleItem") return false;
+        }
+        const tr = deleteEmptyExampleStructure(state);
+        if (!tr) return false;
+        view.dispatch(tr);
         return true;
       },
     };
@@ -967,6 +1160,63 @@ export const ExampleItem = Node.create({
         }
 
         view.dispatch(tr.scrollIntoView());
+        return true;
+      },
+
+      // Backspace at the start of an EMPTY sub-item paragraph deletes the
+      // sub-item (the delete half of Shift-Tab's promote, without the
+      // re-insert). The shared helper picks the 3-way branch:
+      //   • one of several items   → delete just this item;
+      //   • only item in its list  → delete the (now-empty) list;
+      //   • only item, only list, nothing else in the block → delete the
+      //     whole block (mirrors Q3 in backlog #3).
+      // The numbering plugin re-letters the survivors. A non-empty item or a
+      // mid-paragraph cursor falls through to normal character deletion.
+      Backspace: () => {
+        if (inGlossCell()) return false;
+        const { state } = this.editor;
+        const view = this.editor.view;
+        const { $from, empty } = state.selection;
+        if (!empty) return false;
+        if ($from.parent.type.name !== "paragraph") return false;
+        if ($from.parent.content.size !== 0) return false;
+        if ($from.parentOffset !== 0) return false;
+        // Must actually be inside a sub-item (else defer to ExampleBlock).
+        let inItem = false;
+        for (let d = $from.depth; d >= 0; d--) {
+          if ($from.node(d).type.name === "exampleItem") {
+            inItem = true;
+            break;
+          }
+        }
+        if (!inItem) return false;
+        const tr = deleteEmptyExampleStructure(state);
+        if (!tr) return false;
+        view.dispatch(tr);
+        return true;
+      },
+
+      // forward-Delete mirrors Backspace on an empty sub-item (see the
+      // ExampleBlock Delete handler for the rationale).
+      Delete: () => {
+        if (inGlossCell()) return false;
+        const { state } = this.editor;
+        const view = this.editor.view;
+        const { $from, empty } = state.selection;
+        if (!empty) return false;
+        if ($from.parent.type.name !== "paragraph") return false;
+        if ($from.parent.content.size !== 0) return false;
+        let inItem = false;
+        for (let d = $from.depth; d >= 0; d--) {
+          if ($from.node(d).type.name === "exampleItem") {
+            inItem = true;
+            break;
+          }
+        }
+        if (!inItem) return false;
+        const tr = deleteEmptyExampleStructure(state);
+        if (!tr) return false;
+        view.dispatch(tr);
         return true;
       },
     };
