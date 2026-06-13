@@ -14,7 +14,7 @@ Status legend: `open` · `in-progress` · `done`
 
 ## 1. Inline-math popup: save-by-default, add a Cancel button
 
-**Reported:** 2026-06-05 · **Status:** open · **Area:** main-text / math editing
+**Reported:** 2026-06-05 · **Status:** open · **RATIFIED 2026-06-13:** Escape SAVES too (option a) — Cancel button is the only revert · **Area:** main-text / math editing
 
 **Current behavior** — `MathPopover` ([src/components/MathPopover.tsx](src/components/MathPopover.tsx))
 uses a two-key model:
@@ -44,7 +44,7 @@ toward (a); confirm with the user if ambiguous.
 
 ## 2. Slash commands should not open panels (`\ex` is the reported case)
 
-**Reported:** 2026-06-05 · **Status:** open · **Area:** main-text / slash commands
+**Reported:** 2026-06-05 · **Status:** open · **RATIFIED 2026-06-13:** `\ex`/`\footnote` stop opening panels; `\cite` creates its card in OMNI-VIEW (not the dedicated Citations panel), surfacing only if another panel covers omni (the gentle soft-route) — NOT an inline popover · **Area:** main-text / slash commands
 
 **Reported behavior** — typing the example slash command (`\ex`, shown in the
 popup; user called it "/x") correctly inserts a new example block inline, but
@@ -384,7 +384,7 @@ for `absolute z-[0-9]` menus inside low-z sticky bars and portal them uniformly.
 
 ## 10. Re-introduce grip-based drag-into-document for Todo / Error cards via a body-level affordance
 
-**Reported:** 2026-06-09 · **Status:** open · **Area:** ui-chrome / card panels
+**Reported:** 2026-06-09 · **Status:** wontfix (2026-06-13, Gabriel — grip is now the pop-out gesture; drag-text-into-doc not wanted) · **Area:** ui-chrome / card panels
 
 In the A1 gardening pass the long-dead, commented-out `handleDragStart` blocks
 on `TodoRow` ([src/panels/Todo/TodoRow.tsx](src/panels/Todo/TodoRow.tsx)) and
