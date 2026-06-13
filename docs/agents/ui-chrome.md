@@ -125,7 +125,7 @@ ae15791 dropped the home Format and Actions popovers from the docked bar. The ac
 
 ### Contents in order (horizontal, right-aligned)
 
-Collab status pill, `ActionsStripButton` (lightning-bolt — drops down the same `ActionsMenuPanel` the gutter button shows; added in 82872e7), paragraph back/forward (stemmed arrows), Split toggle, then the View menu kebab (three-dot, at the end via `kebabAtEnd`). Close-all-panels and Fonts… moved into the View menu.
+Collab status pill, paragraph back/forward (stemmed arrows), Split toggle, then the View menu kebab (three-dot, at the end via `kebabAtEnd`). Close-all-panels and Fonts… moved into the View menu. (The redundant strip `ActionsStripButton` lightning-bolt that once led the para-nav group was removed as backlog #6 — the action menu is now reached only from the gutter `SelectionActionsMenu` and the `DragHandleMenu`.)
 
 A **Style** mode toggle button sits in the right cluster of the Virgil bar (alongside the file/zen/version buttons), not inside the MenuBar pod itself. Click it to open [ManageStylesModal](../../src/components/ManageStylesModal.tsx) (the inline `DocStyleDropdown` was folded into this modal by `9744b71`) — apply a style to the active doc, edit/duplicate/delete entries, save the current preamble as a new entry, or pick the default for new docs. Drift between the picked style and the doc's preamble routes through [StyleApplyDialog](../../src/components/StyleApplyDialog.tsx). State: per-doc id in [useDocumentStyle](../../src/hooks/useDocumentStyle.ts); user style library in [useStyleLibrary](../../src/hooks/useStyleLibrary.ts); preset catalog in [document-styles.ts](../../src/lib/document-styles.ts). Mode toggle at `EditorLayout.tsx` ~line 4547; modal mount ~line 4925.
 
@@ -135,12 +135,11 @@ The **View menu** (three-dot kebab) gained a **Highlights** sub-menu of per-kind
 
 Paragraph back/forward chevrons (now stemmed arrows after ae15791) sit between collab status and split toggle; disabled at history bounds. The View menu's orientation toggle was dropped in c40d8d2.
 
-## SelectionActionsMenu + ActionsStripButton (the gutter + strip lightning-bolts)
+## SelectionActionsMenu (the gutter lightning-bolt)
 
-After 1bd614c the auto-popping menu is gone — selection now reveals only a small yellow lightning-bolt button in the right gutter; clicking it expands the dropdown in place. 82872e7 added a sibling strip-mounted lightning-bolt in the MenuBar (currentColor, not yellow) that drops the same dropdown anchored to the button. Both triggers render the shared `ActionsMenuPanel` body so the menus stay in lockstep.
+After 1bd614c the auto-popping menu is gone — selection now reveals only a small yellow lightning-bolt button in the right gutter; clicking it expands the dropdown in place. (82872e7 had also added a sibling strip-mounted lightning-bolt in the MenuBar; that redundant `ActionsStripButton` was removed as backlog #6, so the gutter button is now the sole click-trigger for the shared `ActionsMenuPanel` body, alongside the `DragHandleMenu`.)
 
 - [src/components/SelectionActionsMenu.tsx](../../src/components/SelectionActionsMenu.tsx) — the gutter button + open-state; works in cursor-only mode too (anchors via `kind:"paragraph"`, Highlight greyed out without a live range).
-- [src/components/ActionsStripButton.tsx](../../src/components/ActionsStripButton.tsx) — the stable strip trigger; disabled until the editor has been focused at least once.
 - [src/components/ActionsMenuPanel.tsx](../../src/components/ActionsMenuPanel.tsx) — the ~300-line shared body: 4×3 inline-formatting grid (bold/italic/underline, block-type dropdown, math inserters that *wrap* the selection rather than insert placeholders, text-color swatches via `SelectionColorPopover`) + vertical action list reusing `MENU_ENTRIES` from `DragHandleMenu`. Letter shortcuts only fire while the panel is open.
 
 Dispatch goes through `DragHandleMenuApi.dispatch`, the same pipeline as the left-of-paragraph click handle, so footnote / archive / note / etc. behave identically across all three entry points.
@@ -190,7 +189,7 @@ Behavior: click anchor toggles; fixed-positioned below-right by default; flips a
 
 ## MarginActionToolbar (removed)
 
-The per-column "+" action-chip row (chips above each omni gutter) was suppressed in 652572a and **deleted in bcc583a** — the file, its call sites, `PaneRailProps.topOverlay`, the `panel-column.tsx` `topOverlay` mechanism, and `ActionChipButton` are all gone. The action vocabulary now lives only in `SelectionActionsMenu`, `ActionsStripButton`, and `DragHandleMenu` (the detached toolbars were removed in the A1 gardening pass, and the dead `chrome-config` action defs in A10).
+The per-column "+" action-chip row (chips above each omni gutter) was suppressed in 652572a and **deleted in bcc583a** — the file, its call sites, `PaneRailProps.topOverlay`, the `panel-column.tsx` `topOverlay` mechanism, and `ActionChipButton` are all gone. The action vocabulary now lives only in `SelectionActionsMenu` and `DragHandleMenu` (the detached toolbars were removed in the A1 gardening pass, the dead `chrome-config` action defs in A10, and the redundant strip `ActionsStripButton` in backlog #6).
 
 ## Panel icons
 
@@ -284,7 +283,7 @@ Authoring is via [src/components/Hint.tsx](../../src/components/Hint.tsx): `useH
 
 [src/components/Kbd.tsx](../../src/components/Kbd.tsx) renders a portable shortcut string (`"Mod+/"`, `"Mod+Shift+N"`, …) as a platform-aware keycap chip in system sans — `Mod` → ⌘ on Mac, `Ctrl` elsewhere — via `isMac()` in [src/lib/platform.ts](../../src/lib/platform.ts) (the single Mac probe; SSR-safe `useIsMac()` external-store read). It's the only way to render a shortcut — no hardcoded `⌘…` strings.
 
-**Cmd+/ (`Mod+/`)** toggles the actions menu: a window-level keydown handler in [SelectionActionsMenu.tsx](../../src/components/SelectionActionsMenu.tsx) (~line 313) opens the `ActionsMenuPanel` at the live cursor/selection (the keyboard twin of clicking the gutter ⚡), and toggles it closed if already open. Both the gutter `SelectionActionsMenu` button and the strip `ActionsStripButton` carry a shortcut-only `useHint({ keys: "Mod+/" })` hint (the ⚡ glyph + ⌘/ keycap).
+**Cmd+/ (`Mod+/`)** toggles the actions menu: a window-level keydown handler in [SelectionActionsMenu.tsx](../../src/components/SelectionActionsMenu.tsx) (~line 313) opens the `ActionsMenuPanel` at the live cursor/selection (the keyboard twin of clicking the gutter ⚡), and toggles it closed if already open. The gutter `SelectionActionsMenu` button carries a shortcut-only `useHint({ keys: "Mod+/" })` hint (the ⚡ glyph + ⌘/ keycap).
 
 **Helper mode** is just the instant, always-on rendering of the same hints: toggled from the "?" button on the Virgil bar (circle-question-mark icon, next to the info "i" button); when active `document.body` gets `data-helper-mode="on"`, `HintLayer` drops the hover delay to 0, and a "Helper mode" indicator appears in the Virgil bar (styled like the Focus View indicator — click to deactivate). State: `useHelperMode()` in [src/hooks/useHelperMode.ts](../../src/hooks/useHelperMode.ts) — module-scoped `useSyncExternalStore` (same as `usePreferenceMode`), exports `{ on, toggle, set }`, persists to localStorage key `virgil-helper-mode`.
 

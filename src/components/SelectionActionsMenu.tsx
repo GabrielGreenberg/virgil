@@ -11,8 +11,6 @@
  * `blur` plus window `scroll` / `resize`.
  *
  * Counterpart triggers:
- *  - {@link ActionsStripButton} mounted in the MenuBar para-nav group
- *    (stable, always visible above the editor).
  *  - {@link SelectionDragHandle} (left side) for the drag-to-lift gesture.
  */
 

@@ -6,7 +6,6 @@ import { generateShortId } from "@/lib/uuid";
 import type { HighlightType, MarginaliaType, DividerLevel, DividerWidth } from "@/hooks/useViewPrefs";
 import { TextSelection } from "@tiptap/pm/state";
 import { type ToolbarOrientation } from "./editor-layout/floating-toolbar-shell";
-import { ActionsStripButton } from "./ActionsStripButton";
 
 export { type ToolbarOrientation };
 
@@ -794,11 +793,10 @@ function MenuBarContent({
       {collabStatus}
 
       {/* Paragraph navigation — back/forward stacked along the main axis.
-          Action button leads the group as a stable always-visible trigger
-          for the SelectionActionsMenu vocabulary. */}
+          The action menu is reached from the gutter SelectionActionsMenu
+          trigger; no redundant strip copy lives here. */}
       {(onParaNavBack || onParaNavForward) && (
         <div className={`flex items-stretch gap-1 ${isVert ? "flex-col" : "flex-row"}`}>
-          <ActionsStripButton editor={editor} />
           {onParaNavBack && (
             <button
               onClick={onParaNavBack}
