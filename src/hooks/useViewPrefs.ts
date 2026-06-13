@@ -132,11 +132,6 @@ export interface ViewPrefs {
    *  absorb window resizes. Drag on panel or zen-margin inner edges
    *  updates this pref. */
   pageWidth: number;
-  /** Preferred heights of the top and bottom gutters above/below the
-   *  text page, in pixels. Window-shrink eats these first before
-   *  touching the page's 400 min-height. */
-  topGutter: number;
-  bottomGutter: number;
   /** In-editor text margins (padding inside the editor pod), in pixels.
    *  The left margin must clear the 72px marginalia gutter plus an 8px
    *  breathing strip for heading fold-chevrons. Top/bottom/right floor
@@ -205,8 +200,8 @@ const WINDOW_STORAGE_PREFIX = "virgil-view-prefs/window/";
  * etc. — so a draft window and a reviewer window on different monitors
  * can have totally different shapes.
  *
- * Page-layout keys (`pageWidth`, `editor{Left,Right,Top,Bottom}Margin`,
- * `topGutter`, `bottomGutter`) are global because they're the values
+ * Page-layout keys (`pageWidth`, `editor{Left,Right,Top,Bottom}Margin`)
+ * are global because they're the values
  * the personal-prefs promotion pipeline reads to bake into shipped
  * defaults — see `tools/promote-defaults.mjs` and the whitelist in
  * `src/lib/dev-prefs-registry.json`.
@@ -221,8 +216,6 @@ const GLOBAL_PREF_KEYS = [
   "editorRightMargin",
   "editorTopMargin",
   "editorBottomMargin",
-  "topGutter",
-  "bottomGutter",
   "codePaneRatio",
   "showMarginalia",
   "hiddenMarginaliaTypes",
@@ -267,8 +260,6 @@ function pickGlobal(p: ViewPrefs): Pick<ViewPrefs, GlobalPrefKey> {
     editorRightMargin: p.editorRightMargin,
     editorTopMargin: p.editorTopMargin,
     editorBottomMargin: p.editorBottomMargin,
-    topGutter: p.topGutter,
-    bottomGutter: p.bottomGutter,
     codePaneRatio: p.codePaneRatio,
     showMarginalia: p.showMarginalia,
     hiddenMarginaliaTypes: p.hiddenMarginaliaTypes,
@@ -1438,14 +1429,6 @@ export function useViewPrefs() {
     update((p) => ({ ...p, pageWidth: Math.max(400, Math.min(1600, w)) }));
   }, [update]);
 
-  const setTopGutter = useCallback((h: number) => {
-    update((p) => ({ ...p, topGutter: Math.max(0, h) }));
-  }, [update]);
-
-  const setBottomGutter = useCallback((h: number) => {
-    update((p) => ({ ...p, bottomGutter: Math.max(0, h) }));
-  }, [update]);
-
   const setEditorLeftMargin = useCallback((px: number) => {
     update((p) => ({ ...p, editorLeftMargin: Math.max(72, Math.min(240, Math.round(px))) }));
   }, [update]);
@@ -1510,8 +1493,6 @@ export function useViewPrefs() {
     setEditorSplitRatio,
     setCodePaneRatio,
     setPageWidth,
-    setTopGutter,
-    setBottomGutter,
     setEditorLeftMargin,
     setEditorRightMargin,
     setEditorTopMargin,

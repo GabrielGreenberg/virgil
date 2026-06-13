@@ -4268,9 +4268,6 @@ body[data-pref-mode="on"] [data-panel-theme]:hover {
     flex: none !important;
   }
 
-  /* Hide gutter whitespace and drag handles so the page renders flush. */
-  [data-gutter], [data-gutter-gap] { display: none !important; }
-
   [data-editor-page] {
     background: white; box-shadow: none; border: 0;
   }
