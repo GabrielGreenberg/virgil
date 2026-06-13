@@ -129,3 +129,23 @@ describe("FloatingPanel window drag bails on a [data-card] child (bug #36)", () 
     fireEvent(window, new MouseEvent("mouseup", { bubbles: true }));
   });
 });
+
+describe("popped-state selection/hover rings are scoped to FLOATING shell mode (bug #34 regression guard)", () => {
+  // The FloatingPanel shell stamps data-floating-panel on BOTH docked and
+  // floating panels; only the floating mode should get the window ring +
+  // inner-outline suppression. A rule missing the shell-mode qualifier rings
+  // docked panels and kills their per-card outline (the gate-caught BLOCK).
+  const css = readFileSync(path.join(SRC, "app/globals.css"), "utf8");
+
+  it("every [data-floating-panel] :has(...card-selected...) ring also carries [data-panel-shell-mode=floating]", () => {
+    // Find each rule selector that targets a card-selected/hovered :has() ring
+    // and assert the floating qualifier sits on the same [data-floating-panel].
+    const ringLines = css
+      .split("\n")
+      .filter((l) => l.includes("[data-floating-panel]") && (l.includes(":has(") || l.includes("[data-card-key]")));
+    expect(ringLines.length).toBeGreaterThan(0);
+    for (const line of ringLines) {
+      expect(line).toContain('[data-panel-shell-mode="floating"]');
+    }
+  });
+});

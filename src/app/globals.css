@@ -2860,7 +2860,7 @@ textarea,
  * onto the FloatingPanel root via the card floatable's `accentTint`
  * (FloatWindow → FloatingPanel), since the var the inner card stamps does
  * not inherit UP to the `:has()` host. */
-[data-floating-panel]:has([data-card-key][data-card-selected="true"]) {
+[data-floating-panel][data-panel-shell-mode="floating"]:has([data-card-key][data-card-selected="true"]) {
   box-shadow:
     var(--card-shadow-ambient),
     0 0 0 3px color-mix(in oklab, var(--link-anchor-color) 55%, transparent),
@@ -2871,7 +2871,7 @@ textarea,
 /* Hover gets the analogous WINDOW treatment — a subtler accent ring (no
  * glow), consistent with the docked hover channel (50% ring). Selection
  * wins via `:not(...)` so a selected+hovered window keeps the full halo. */
-[data-floating-panel]:has(
+[data-floating-panel][data-panel-shell-mode="floating"]:has(
     [data-card-key][data-card-hovered="true"]:not([data-card-selected="true"])
   ):not(:has([data-card-key][data-card-selected="true"])) {
   box-shadow:
@@ -2882,8 +2882,9 @@ textarea,
 
 /* Suppress the inner card-body outline in popped context — the window now
  * carries the ring (selection AND hover). */
-[data-floating-panel] [data-card-key][data-card-selected="true"],
-[data-floating-panel] [data-card-key][data-card-hovered="true"] {
+[data-floating-panel][data-panel-shell-mode="floating"] [data-card-key][data-card-selected="true"],
+[data-floating-panel][data-panel-shell-mode="floating"] [data-card-key][data-card-hovered="true"],
+[data-floating-panel][data-panel-shell-mode="floating"] [data-card-key]:hover {
   outline: none;
 }
 
