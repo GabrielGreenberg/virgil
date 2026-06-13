@@ -1,14 +1,12 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
-import type { Editor } from "@tiptap/react";
+import { useCallback, useEffect, useState } from "react";
+import type { Editor, JSONContent } from "@tiptap/react";
 import type { CutterCommentCard as CutterCommentCardData } from "@/lib/types";
 import {
   AiRequestCheckbox,
-  CardEmptyText,
-  CollabCardTrailing,
-  PanelCard,
-  compressedBodyStyle,
+  EditableCard,
+  makeCompressedSummary,
 } from "@/components/panel-primitives";
 import { useCompressedLines } from "@/components/editor-layout/contexts/card-display";
 import { useCardTheme } from "@/hooks/usePanelTheme";
@@ -18,15 +16,13 @@ import {
   hasTextAnchor,
 } from "@/links/links";
 import { usePoppedCards } from "@/hooks/usePoppedCards";
-import { usePanelBodyStyle } from "@/hooks/usePanelTypography";
-import { useTabIndent } from "@/hooks/useTabIndent";
 import { cardPopKey } from "@/panels/panel-registry";
-import { cardKindsForPanel, collabClaimScope } from "@/cards/predicates";
+import { cardKindsForPanel, bodyVariantForCardKind } from "@/cards/predicates";
 import { useAnchoredCard } from "@/links/_shared/useAnchoredCard";
 import { cardStore } from "@/links/_shared/anchored-card-store";
+import { normalizeRichContent } from "@/lib/footnote-content";
 import { MIME_CUT } from "@/lib/marginalia";
 import { FieldTitleRow } from "./CutterSuggestionCard";
-import { useCardClaim } from "@/hooks/useCollab";
 
 export function startCutterCommentDrag(e: React.DragEvent, cardId: string) {
   e.dataTransfer.setData(
@@ -39,7 +35,7 @@ export function startCutterCommentDrag(e: React.DragEvent, cardId: string) {
 export function CutterCommentCard({
   card,
   selected,
-  onUpdateText,
+  onUpdateContent,
   onConvert,
   onSetAiRequest,
   onDelete,
@@ -53,7 +49,7 @@ export function CutterCommentCard({
 }: {
   card: CutterCommentCardData;
   selected: boolean;
-  onUpdateText: (id: string, text: string) => void;
+  onUpdateContent: (id: string, content: JSONContent) => void;
   /** Morph comment ⇄ suggestion via the kind-chevron. */
   onConvert?: (id: string, toKind: "comment" | "suggestion") => void;
   onSetAiRequest: (id: string, value: boolean) => void;
@@ -67,8 +63,6 @@ export function CutterCommentCard({
   extraDataAttrs?: Record<string, string>;
 }) {
   const theme = useCardTheme("cut");
-  const cutBodyStyle = usePanelBodyStyle("cut");
-  const cardRef = useRef<HTMLDivElement>(null);
   const isAnchored =
     getLinkedTextObjectIds(card).length > 0 || hasTextAnchor(card);
   const isOrphaned = !isAnchored && !!card.selectedText;
@@ -79,66 +73,69 @@ export function CutterCommentCard({
     onTogglePopout ??
     (popped ? (anchor: DOMRect) => popped.toggleAtAnchor(cardKey, anchor) : undefined);
 
-  const taRef = useRef<HTMLTextAreaElement | null>(null);
-  const onTextareaKeyDown = useTabIndent<HTMLTextAreaElement>();
   const [originalFolded, setOriginalFolded] = useState(false);
-  const [commentFolded, setCommentFolded] = useState(false);
   const ac = useAnchoredCard({ kind: "cutter-comment", id: card.id });
   const isExpanded = ac.expanded;
   const isSelected = ac.selected || selected;
   const compressed = !isExpanded && !isPoppedOut;
   const compressedLines = useCompressedLines();
-  // Collab claim scope is REGISTRY-DERIVED (R28/D-2) — no "cut" literal.
-  const { partnerClaim, claim, release } = useCardClaim(
-    collabClaimScope("cutter-comment"),
-    card.id,
+  // The cut excerpt is the cutter card's distinctive compressed cue — show it
+  // (red italic) when present, falling back to the rich-text body summary.
+  const compressedSummary = compressed
+    ? card.selectedText
+      ? (
+          <span className="text-red-700/80 italic">
+            &quot;{card.selectedText.replace(/\s+/g, " ").trim()}&quot;
+          </span>
+        )
+      : (makeCompressedSummary(card.content, compressedLines) || "")
+    : undefined;
+
+  const handleChange = useCallback(
+    (json: JSONContent) => {
+      onUpdateContent(card.id, normalizeRichContent(json));
+    },
+    [card.id, onUpdateContent],
   );
+
+  // Focus the body when a brand-new (empty) card is selected — mirrors the
+  // textarea autofocus the old chrome did.
   useEffect(() => {
-    if (selected && !card.text) taRef.current?.focus();
-  }, [selected, card.text]);
+    if (!isSelected) return;
+    if (card.text) return;
+    const el = document.querySelector<HTMLElement>(
+      `[data-pristine-card-id="${card.id}"] [contenteditable="true"]`,
+    );
+    el?.focus();
+  }, [isSelected, card.id, card.text]);
+
+  // The one structural element unique to cutter comments: the excised text,
+  // rendered as an "Original" section ABOVE the comment body (via EditableCard's
+  // additive `aboveBody` slot). Styled in the suggestion-card "Original" dialect
+  // (FieldTitleRow + the red danger-soft block) for cross-panel consistency.
+  const excerptBlock = card.selectedText ? (
+    <div className="mb-2">
+      <FieldTitleRow
+        label="Original"
+        kindHint={anchorSummary?.kind ?? null}
+        text={card.selectedText}
+        showCopy={true}
+        showWordCount={true}
+        folded={originalFolded}
+        onToggleFold={() => setOriginalFolded((f) => !f)}
+      />
+      {!originalFolded && (
+        <div className="bg-danger-soft border border-red-200 rounded px-2 py-1.5 text-xs text-red-700 whitespace-pre-wrap break-words">
+          {card.selectedText}
+        </div>
+      )}
+    </div>
+  ) : undefined;
 
   const cardEl = (
-    <PanelCard
-      ref={cardRef}
-      data-cutter-comment-entry={card.id}
-      data-card-key={cardKey}
-      data-pristine-card-id={card.id}
-      {...(extraDataAttrs || {})}
-      theme={theme}
-      selected={isSelected}
-      isPoppedOut={isPoppedOut}
-      chromeless={isPoppedOut}
-      onTogglePopout={onToggleFromCtx}
-      cardKey={cardKey}
-      isCollapsed={compressed}
-      onToggleExpanded={ac.onToggleExpanded}
-      onHeaderActivate={ac.onHeaderActivate}
-      onTrashClick={() => onDelete(card.id)}
-      draggable={!isSelected}
-      onDragStart={(e) => startCutterCommentDrag(e, card.id)}
-      tabIndex={isSelected ? 0 : -1}
-      onClick={(e) => {
-        e.stopPropagation();
-        ac.onActivate();
-        onSelect(card.id);
-        if (isAnchored && !isOrphaned && onJump) {
-          onJump((e.currentTarget as HTMLElement).closest('[data-card]') as HTMLElement | null);
-        }
-      }}
-      onMouseEnter={() => { cardStore.setHover(ac.ref); onHoverChange?.(true); }}
-      onMouseLeave={() => {
-        const h = cardStore.getState().hover;
-        if (h && h.kind === ac.ref.kind && h.id === ac.ref.id) cardStore.setHover(null);
-        onHoverChange?.(false);
-      }}
-      onKeyDown={(e) => {
-        if (!selected) return;
-        if (e.key === "Delete" || e.key === "Backspace") {
-          e.preventDefault();
-          onDelete(card.id);
-        }
-      }}
-      className="focus:outline-none mb-2"
+    <EditableCard
+      id={card.id}
+      cardKind="cutter-comment"
       kind="cutter-comment"
       kindOptions={onConvert ? cardKindsForPanel("cutter") : undefined}
       onKindChange={
@@ -148,92 +145,69 @@ export function CutterCommentCard({
             }
           : undefined
       }
+      selected={isSelected}
+      theme={theme}
+      hideToolbar
+      inlineDelete
       canJump={isAnchored && !isOrphaned && !!onJump}
-      onJump={(e) => {
-        if (onJump && isAnchored && !isOrphaned)
-          onJump((e.currentTarget as HTMLElement).closest('[data-card]') as HTMLElement | null);
-      }}
-      headerTrailing={<CollabCardTrailing kind="cutter-comment" cardId={card.id} />}
-    >
-      {compressed ? (
-        <div
-          className="px-3 pt-1.5 pb-1.5"
-          style={partnerClaim ? { opacity: 0.55, filter: "saturate(0.7)" } : undefined}
-        >
-          <div style={{ ...cutBodyStyle, ...compressedBodyStyle(compressedLines) }}>
-            {card.selectedText ? (
-              <span className="text-red-700/80 italic">"{card.selectedText.replace(/\s+/g, " ").trim()}"</span>
-            ) : card.text ? (
-              <span className="text-ink-subtle">{card.text.replace(/\s+/g, " ").trim()}</span>
-            ) : (
-              <CardEmptyText label="empty comment" />
-            )}
-          </div>
-        </div>
-      ) : (
-      <div
-        className={`px-3 pt-2 pb-2 space-y-2${isPoppedOut ? " flex-1 min-h-0 overflow-auto" : ""}`}
-        onClick={(e) => e.stopPropagation()}
-        style={
-          partnerClaim
-            ? { opacity: 0.55, pointerEvents: "none", filter: "saturate(0.7)" }
-            : undefined
+      onJump={
+        onJump && isAnchored && !isOrphaned
+          ? (e) =>
+              onJump(
+                (e.currentTarget as HTMLElement).closest(
+                  "[data-card]",
+                ) as HTMLElement | null,
+              )
+          : undefined
+      }
+      onClick={(e) => {
+        ac.onActivate();
+        onSelect(card.id);
+        if (onJump && isAnchored && !isOrphaned) {
+          onJump(
+            (e?.currentTarget as HTMLElement | undefined)?.closest(
+              "[data-card]",
+            ) as HTMLElement | null,
+          );
         }
-        data-hint={partnerClaim ? `${partnerClaim.holder} is editing this card` : undefined} aria-label={partnerClaim ? `${partnerClaim.holder} is editing this card` : undefined}
-      >
-        {card.selectedText && (
-          <div>
-            <FieldTitleRow
-              label="Original"
-              kindHint={anchorSummary?.kind ?? null}
-              text={card.selectedText}
-              showCopy={true}
-              showWordCount={true}
-              folded={originalFolded}
-              onToggleFold={() => setOriginalFolded((f) => !f)}
+      }}
+      onDelete={() => onDelete(card.id)}
+      onDragStart={(e) => startCutterCommentDrag(e, card.id)}
+      aboveBody={excerptBlock}
+      footer={
+        !compressed ? (
+          <div className="px-3 pb-2 -mt-1">
+            <AiRequestCheckbox
+              checked={card.aiRequest}
+              onToggle={(next) => onSetAiRequest(card.id, next)}
             />
-            {!originalFolded && (
-              <div className="bg-danger-soft border border-red-200 rounded px-2 py-1.5 text-xs text-red-700 whitespace-pre-wrap break-words">
-                {card.selectedText}
-              </div>
-            )}
           </div>
-        )}
-
-        <div>
-          <FieldTitleRow
-            label="Comment"
-            text={card.text}
-            showCopy={false}
-            showWordCount={false}
-            folded={commentFolded}
-            onToggleFold={() => setCommentFolded((f) => !f)}
-          />
-          {!commentFolded && (
-            <textarea
-              ref={taRef}
-              value={card.text}
-              onChange={(e) => onUpdateText(card.id, e.target.value)}
-              onFocus={() => claim()}
-              onBlur={() => release()}
-              onClick={(e) => e.stopPropagation()}
-              onMouseDown={(e) => e.stopPropagation()}
-              onKeyDown={onTextareaKeyDown}
-              placeholder="Comment text…"
-              style={cutBodyStyle}
-              className="w-full bg-surface border border-[var(--border)] rounded px-2 py-1.5 placeholder:text-ink-muted focus:outline-none focus:border-edge-strong resize-none min-h-[48px]"
-              rows={3}
-            />
-          )}
-        </div>
-
-        <AiRequestCheckbox
-          checked={card.aiRequest}
-          onToggle={(next) => onSetAiRequest(card.id, next)}
-        />
-      </div>
-      )}
-    </PanelCard>
+        ) : undefined
+      }
+      value={card.content}
+      variant={bodyVariantForCardKind("cutter-comment")}
+      panelKey="cut"
+      placeholder="Comment text…"
+      onChange={handleChange}
+      dataAttr={{ name: "cutter-comment-entry", value: card.id }}
+      extraDataAttrs={{
+        "data-pristine-card-id": card.id,
+        "data-card-key": cardKey,
+        ...(extraDataAttrs || {}),
+      }}
+      onHoverChange={(h) => {
+        cardStore.setHover(h ? ac.ref : null);
+        onHoverChange?.(h);
+      }}
+      onTogglePopout={onToggleFromCtx}
+      isPoppedOut={isPoppedOut}
+      chromeless={isPoppedOut}
+      cardKey={cardKey}
+      compressed={compressed}
+      compressedSummary={compressedSummary}
+      onToggleExpanded={ac.onToggleExpanded}
+      onHeaderActivate={ac.onHeaderActivate}
+    />
   );
 
   return cardEl;

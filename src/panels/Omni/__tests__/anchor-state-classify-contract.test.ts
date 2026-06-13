@@ -314,7 +314,7 @@ describe("omni builder anchorState classification", () => {
       jumpToCard: noop,
       findParagraphPos: resolve,
       editor: null,
-      updateCommentText: noop,
+      updateCommentContent: noop,
       setCommentAiRequest: noop,
       updateSuggestionField: noop,
       acceptSuggestion: noop,

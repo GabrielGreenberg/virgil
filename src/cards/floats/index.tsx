@@ -302,7 +302,7 @@ registerCardFloatable("cutter-comment", (id, ctx: CardFloatCtx) => {
       <CutterCommentCard
         card={card}
         selected={ctx.selectedCutterCardId === card.id}
-        onUpdateText={ctx.updateCutterCommentText}
+        onUpdateContent={ctx.updateCutterCommentContent}
         onConvert={ctx.convertCutterCard}
         onSetAiRequest={ctx.setCutterCommentAiRequest}
         onDelete={ctx.deleteCutterCard}

@@ -19,7 +19,7 @@ interface BuildArgs {
   jumpToCard: (card: CutterCard, sourceEl?: HTMLElement | null) => void;
   findParagraphPos: (uuid: string | null) => number | null;
   editor: Editor | null;
-  updateCommentText: (id: string, text: string) => void;
+  updateCommentContent: (id: string, content: import("@tiptap/react").JSONContent) => void;
   setCommentAiRequest: (id: string, value: boolean) => void;
   updateSuggestionField: (
     id: string,
@@ -76,7 +76,7 @@ export function buildCutterOmniItems(a: BuildArgs): OmniItem[] {
           card={card as CutterCommentCardData}
           selected={isSelected}
           editor={a.editor}
-          onUpdateText={a.updateCommentText}
+          onUpdateContent={a.updateCommentContent}
           onConvert={a.convertCard}
           onSetAiRequest={a.setCommentAiRequest}
           onDelete={a.deleteCard}

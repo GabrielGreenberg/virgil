@@ -22,7 +22,7 @@ export interface CutterHostProps {
   goal: CutterGoal | null;
   setGoal: (target: number, initialWords: number) => void;
   clearGoal: () => void;
-  updateCommentText: (id: string, text: string) => void;
+  updateCommentContent: (id: string, content: import("@tiptap/react").JSONContent) => void;
   setCommentAiRequest: (id: string, value: boolean) => void;
   updateSuggestionField: (
     id: string,
@@ -116,7 +116,7 @@ export function CutterHost(p: CutterHostProps) {
       onClearGoal={p.clearGoal}
       onAddComment={onAddComment}
       onAddSuggestion={onAddSuggestion}
-      onUpdateCommentText={p.updateCommentText}
+      onUpdateCommentContent={p.updateCommentContent}
       onSetCommentAiRequest={p.setCommentAiRequest}
       onUpdateSuggestionField={p.updateSuggestionField}
       onAcceptSuggestion={onAcceptSuggestion}

@@ -29,7 +29,7 @@ export default function CutterPanel({
   onClearGoal,
   onAddComment,
   onAddSuggestion,
-  onUpdateCommentText,
+  onUpdateCommentContent,
   onSetCommentAiRequest,
   onUpdateSuggestionField,
   onAcceptSuggestion,
@@ -48,7 +48,7 @@ export default function CutterPanel({
   onClearGoal: () => void;
   onAddComment: (anchorRect?: DOMRect) => CutterCommentCardData;
   onAddSuggestion: (anchorRect?: DOMRect) => CutterSuggestionCardData;
-  onUpdateCommentText: (id: string, text: string) => void;
+  onUpdateCommentContent: (id: string, content: import("@tiptap/react").JSONContent) => void;
   onSetCommentAiRequest: (id: string, value: boolean) => void;
   onUpdateSuggestionField: (
     id: string,
@@ -144,7 +144,7 @@ export default function CutterPanel({
             card={it.data}
             selected={selected}
             editor={editor}
-            onUpdateText={onUpdateCommentText}
+            onUpdateContent={onUpdateCommentContent}
             onConvert={onConvertCard}
             onSetAiRequest={onSetCommentAiRequest}
             onDelete={onDelete}

@@ -724,6 +724,11 @@ export interface EditableCardProps {
    *  renders a +T affordance via `CardBodyTitle`. */
   bodyTitle?: string | undefined;
   onBodyTitleChange?: (v: string) => void;
+  /** Extra content rendered inside the expanded body, ABOVE the
+   *  RichTextField (e.g. the Cutter "Original" cut-excerpt section).
+   *  Additive — default `undefined` renders nothing, leaving every other
+   *  consumer's layout unchanged. Only shown in the expanded view. */
+  aboveBody?: ReactNode;
   /** Extra content below the RichTextField body (e.g. action buttons). */
   footer?: ReactNode;
 
@@ -836,7 +841,7 @@ export interface EditableCardProps {
  */
 export function EditableCard({
   id, selected, theme,
-  footnoteBadge, headerTrailing, bodyTitle, onBodyTitleChange, footer,
+  footnoteBadge, headerTrailing, bodyTitle, onBodyTitleChange, aboveBody, footer,
   menuContent, onDelete,
   onClick, onDragStart,
   value, variant, placeholder, muted, panelKey, cardKind,
@@ -1072,6 +1077,7 @@ export function EditableCard({
         }}
         data-hint={partnerClaim ? `${partnerClaim.holder} is editing this card` : undefined} aria-label={partnerClaim ? `${partnerClaim.holder} is editing this card` : undefined}
       >
+        {aboveBody}
         {onBodyTitleChange && (
           <CardBodyTitle
             value={bodyTitle}
