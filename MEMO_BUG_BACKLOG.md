@@ -758,7 +758,7 @@ still align.
 
 ## 26. Float-side ExampleCard shows a permanently disabled Edit button
 
-**Reported:** 2026-06-12 (chip-D review gate, example-residue lens) · **Status:** open · **Area:** card panels / examples
+**Reported:** 2026-06-12 (chip-D review gate, example-residue lens) · **Status:** superseded by item 32 (chip W-A) · **Area:** card panels / examples
 
 With the pop residue now live everywhere (#21), the popped example float
 renders a permanently **disabled** Edit button while the docked card next to
@@ -897,7 +897,7 @@ investigation workflow findings refine these in place.
 
 ## 30. Serif card bodies should track the main text size, one step smaller
 
-**Reported:** 2026-06-12 · **Status:** open · **Area:** card typography
+**Reported:** 2026-06-12 · **Status:** done (2026-06-12, chip `W-D`) · **Area:** card typography
 
 Borrowed-class bodies (archive, footnote, example) are a fixed 15px serif.
 Desired: derive from the document's main text size minus a step (main 14 →
@@ -905,7 +905,7 @@ footnote ~12). Per-panel explicit size picks must still win.
 
 ## 31. Collapsed cards: show the title only when it's CUSTOM
 
-**Reported:** 2026-06-12 · **Status:** open · **Area:** card panels / shared chrome
+**Reported:** 2026-06-12 · **Status:** done (2026-06-12, chip `W-D`) · **Area:** card panels / shared chrome
 
 The new collapsed-title row also shows auto-generated titles ("Archive text
 1", "Footnote 2"). Desired: generated titles never show in collapsed mode —
@@ -931,7 +931,7 @@ spacing). Likely the borrowed-content parity class (related: item 11).
 
 ## 34. Popped-card selection should outline the float window, not square the text
 
-**Reported:** 2026-06-12 · **Status:** open · **Area:** floats / selection
+**Reported:** 2026-06-12 · **Status:** done (2026-06-12, chip `W-B`) · **Area:** floats / selection
 
 A selected popped card paints a highlight square around its TEXT — reads as
 broken. Desired: selection = an outline around the whole float window;
@@ -946,7 +946,7 @@ Desired: one shared comment-card structure (check the suggestion pair too).
 
 ## 36. Inside a floating panel, a card's grab-bar drags the PANEL
 
-**Reported:** 2026-06-12 · **Status:** open · **Area:** floats / gestures
+**Reported:** 2026-06-12 · **Status:** done (2026-06-12, chip `W-B`) · **Area:** floats / gestures
 
 With a panel popped out, grabbing a card's grab-bar/header moves the whole
 panel window instead of lifting the card. Card lift must win inside the
