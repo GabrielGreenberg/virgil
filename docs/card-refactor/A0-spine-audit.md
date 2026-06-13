@@ -396,7 +396,8 @@ export interface CardMeta {
 ### 4.3 `toFloatable` + `CardFloatCtx` (AF integration)
 AF §2 fixes the signature `toFloatable(id, ctx): Floatable | null` and the `Floatable` shape
 (`key`, `domain`, `kind`, `id`, `title`, `surface`, `renderBody()`, `chromeSlots?`,
-`jumpToSource()`, `canJump`, `snapshotForStack(source)`, `defaultSize?`, `spawnHint?`). A0 supplies
+`jumpToSource()`, `canJump`, `snapshotForStack(source)`, `defaultSize?`, `spawnHint?` — the
+latter NOT landed; superseded by the lift pipeline, see AF). A0 supplies
 the card side:
 
 - **`CardFloatCtx` ≈ today's `PoppedCardDeps`** (`floating-cards.tsx:45-185`) — the per-doc entity

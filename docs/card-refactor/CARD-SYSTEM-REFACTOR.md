@@ -275,7 +275,7 @@ interface Floatable {
   jumpToSource(): void;        // reveal where it actually lives
   snapshotForStack(): StackSnapshot; // domain serialization onto the stack
   defaultSize?: { w: number; h: number };
-  spawnHint?: DOMRect;
+  spawnHint?: DOMRect;          // sketch only — NOT landed; lift pipeline (liftSpawnRect/popOutAtRect) covers spawn-at-rect
 }
 ```
 Both `CARD_REGISTRY[kind].toFloatable(id)` and `TEXT_OBJECT_REGISTRY[kind].toFloatable(id)` yield a `Floatable`. The float subsystem operates only on this.
