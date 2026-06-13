@@ -40,6 +40,7 @@ import { normalizeRichContent, richJsonToPlainText } from "@/lib/footnote-conten
 import { usePoppedCards } from "@/hooks/usePoppedCards";
 import { setCardLiftTarget, setCardLiftHandoff } from "./card-lift";
 import { liftSpawnRect } from "@/floats/float-policy";
+import { INTERACTIVE_CONTROL_SELECTOR } from "@/lib/drag-blocklist";
 import { cardPopKey, cardTypeLabel } from "@/panels/panel-registry";
 import type { CardKind } from "@/panels/_shared/types";
 import { useInOmni } from "./editor-layout/contexts/omni";
@@ -1780,9 +1781,7 @@ export const PanelCard = forwardRef<HTMLDivElement, PanelCardProps>(function Pan
     // itself is often `draggable="true"` (for cross-editor anchor drags),
     // and an unscoped `closest('[draggable="true"]')` walks past the
     // header and matches that root — which would block every lift.
-    const blocker = target.closest(
-      "button, input, textarea, select, a, [contenteditable='true'], [draggable='true'], [data-no-window-drag]",
-    );
+    const blocker = target.closest(INTERACTIVE_CONTROL_SELECTOR);
     if (blocker && headerEl.contains(blocker)) return;
     const startX = e.clientX;
     const startY = e.clientY;

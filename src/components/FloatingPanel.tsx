@@ -24,6 +24,7 @@ import {
   setStackDropTarget,
   getStackDropTarget,
 } from "@/lib/stack/stack-drop-target";
+import { WINDOW_DRAG_BLOCK_SELECTOR } from "@/lib/drag-blocklist";
 
 /**
  * Imperative handle exposed via `forwardRef`. Used by FloatCard to hand
@@ -417,11 +418,11 @@ function FloatingPanelInner({
   // light up the dock socket outline.
   const onHeaderMouseDown = (e: React.MouseEvent) => {
     const target = e.target as HTMLElement;
-    if (
-      target.closest(
-        "button, input, textarea, select, a, [contenteditable='true'], [draggable='true'], [data-no-window-drag]",
-      )
-    ) {
+    // Bug #36: `[data-card]` is in WINDOW_DRAG_BLOCK_SELECTOR so a press on a
+    // CARD surface inside a float lifts the card (PanelCard's 5px-threshold
+    // lift), not the whole window. The window stays draggable from inter-card
+    // gaps / background (outside any [data-card]).
+    if (target.closest(WINDOW_DRAG_BLOCK_SELECTOR)) {
       return;
     }
     // Shift+mousedown on the grab bar → drop-mode session. Only for
