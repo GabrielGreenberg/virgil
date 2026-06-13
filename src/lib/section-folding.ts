@@ -17,12 +17,13 @@ export const sectionFoldingPluginKey = new PluginKey<SectionFoldingState>(
  * (toggle / collapseAll / expandAll / setFolded) or (2) a docChanged tx (the
  * apply reducer prunes dead fold UUIDs when a folded heading is deleted).
  *
- * Every `editor.on("transaction")` subscriber that mirrors fold state — the
- * per-heading fold-chevron refresher in `editor-extensions.ts` (N headings = N
- * subscribers) and the section-fold persister in `useEditorUIState.ts` — gates
- * on THIS so a structurally-null keystroke (typing inside a paragraph: no fold
- * meta, no docChanged) does ZERO fold work. Single source so the two gates
- * cannot drift.
+ * The section-fold persister in `useEditorUIState.ts` (an
+ * `editor.on("transaction")` subscriber) gates on THIS so a structurally-null
+ * keystroke (typing inside a paragraph: no fold meta, no docChanged) does ZERO
+ * fold work. (The fold-chevron doc-wide resync no longer rides a transaction
+ * subscriber at all — it moved to the shared plugin `view()` below, #29 nit-3 —
+ * which uses its own O(1) `SectionFoldingState` reference bail rather than this
+ * predicate.)
  */
 export function transactionTouchesFold(tr: Transaction): boolean {
   return tr.getMeta(sectionFoldingPluginKey) !== undefined || tr.docChanged;
