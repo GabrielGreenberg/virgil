@@ -3508,6 +3508,14 @@ body[data-drop-mode-active="true"] * {
   background: #f0f0ee;
 }
 
+/* Keyboard-highlighted row (backlog #4 arrow nav). Wins over .current and
+ * :hover so the active row is unambiguous while navigating by keyboard. */
+.label-ref-popover-option.active,
+.label-ref-popover-option.active:hover {
+  background: var(--accent-light, #f5f0ea);
+  box-shadow: inset 2px 0 0 var(--accent, #7c5e3c);
+}
+
 .label-ref-option-label {
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
   font-size: 0.76rem;
