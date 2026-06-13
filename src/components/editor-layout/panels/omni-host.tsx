@@ -330,11 +330,6 @@ export function OmniHost(p: OmniHostProps) {
     (id: string, sourceEl?: HTMLElement | null) => editorRef.current?.scrollToExample(id, sourceEl),
     [editorRef],
   );
-  const replaceExampleLatex = useCallback(
-    (id: string, latex: string) =>
-      editorRef.current?.replaceExampleLatex(id, latex) ?? false,
-    [editorRef],
-  );
   const setExampleInOmni = useCallback(
     (id: string | null) => {
       setSelectedExampleId(id);
@@ -478,7 +473,6 @@ export function OmniHost(p: OmniHostProps) {
       selectedExampleId,
       setSelectedExampleId: setExampleInOmni,
       onJump: scrollToExample,
-      onUpdateLatex: replaceExampleLatex,
     }),
     ...buildRevisionOmniItems({
       cards: p.revisionCards,
@@ -559,7 +553,7 @@ export function OmniHost(p: OmniHostProps) {
     setNoteInOmni, setArchiveInOmni, setTodoInOmni, setExampleInOmni,
     setRevisionInOmni, setCutterInOmni, setReportInOmni, p.setSelectedErrorId,
     acceptRevisionInOmni, rejectRevisionInOmni, acceptCutterInOmni, rejectCutterInOmni,
-    scrollToFootnote, scrollToCitation, scrollToExample, replaceExampleLatex, jumpToCard, findParagraphPos,
+    scrollToFootnote, scrollToCitation, scrollToExample, jumpToCard, findParagraphPos,
     editorInstance,
     // Contexts
     setOverrideEditor, getCitationDisplayText, onCitationCreated,
