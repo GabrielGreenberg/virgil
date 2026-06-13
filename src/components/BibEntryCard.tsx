@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef, useEffect, useCallback } from "react";
+import React, { useState, useRef, useEffect, useCallback } from "react";
 import type { BibEntry } from "@/lib/types";
 import { formatMinimalCitation } from "@/lib/bib-parser";
 import { PanelCard, PANEL, Chevron, TargetIcon, Button, CardPopoutButton, CardDragHandle, cardTitleStyle } from "./panel-primitives";
@@ -250,10 +250,17 @@ export default function BibEntryCard({
     <>
       {/* Remaining publication details (excludes author/year/title already shown in header) */}
       {(() => {
-        const parts: string[] = [];
+        // SECURITY (backlog #28): build the publication-details row as JSX
+        // nodes, never an HTML string. A `.bib` field may carry markup/script
+        // (fetched by find-citation from an external source, or a shared
+        // paper's references.bib); routing it through `dangerouslySetInnerHTML`
+        // would inject it live. Italic emphasis lives in known-safe <i>
+        // wrappers; the raw field text is rendered as a JSX child (React
+        // escapes it), so the sink is gone entirely.
+        const parts: React.ReactNode[] = [];
         const f = entry.fields;
-        if (f.journal) parts.push(`<i>${f.journal}</i>`);
-        if (f.booktitle) parts.push(`In <i>${f.booktitle}</i>`);
+        if (f.journal) parts.push(<i>{f.journal}</i>);
+        if (f.booktitle) parts.push(<>In <i>{f.booktitle}</i></>);
         if (f.editor) parts.push(`Ed. ${f.editor}`);
         if (f.volume) parts.push(f.number ? `${f.volume}(${f.number})` : `vol. ${f.volume}`);
         if (f.pages) parts.push(`pp. ${f.pages}`);
@@ -271,8 +278,15 @@ export default function BibEntryCard({
             data-panel-kind="bib"
             className="leading-relaxed break-words overflow-hidden"
             style={{ ...bibBodyStyle, overflowWrap: "anywhere" }}
-            dangerouslySetInnerHTML={{ __html: parts.join(". ") + "." }}
-          />
+          >
+            {parts.map((part, i) => (
+              <React.Fragment key={i}>
+                {i > 0 ? ". " : null}
+                {part}
+              </React.Fragment>
+            ))}
+            {"."}
+          </div>
         );
       })()}
 

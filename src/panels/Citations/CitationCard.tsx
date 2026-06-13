@@ -11,6 +11,7 @@ import type { BibEntry, CitationRef } from "@/lib/types";
 import {
   formatMediumCitationParts,
   parseCiteCommand,
+  sanitizeInlineCitationHtml,
   serializeCiteCommand,
   type ParsedCiteKey,
 } from "@/lib/bib-parser";
@@ -945,11 +946,11 @@ export function CitationCard({
                 <span
                   className="card-content-row text-ink-body truncate"
                   style={{ fontFamily: PREVIEW_SERIF_STACK }}
+                  // SECURITY (backlog #28): `preview` (formatInlineCitation)
+                  // interpolates raw .bib field text; escape everything then
+                  // restore only the formatter's known-safe <i>/<b> pairs.
                   dangerouslySetInnerHTML={{
-                    __html: preview.replace(
-                      /<\/?(?!\/?[ib]>)[^>]+>/gi,
-                      "",
-                    ),
+                    __html: sanitizeInlineCitationHtml(preview),
                   }}
                 />
               </div>
