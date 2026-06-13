@@ -20,7 +20,7 @@ import ListItem from "@tiptap/extension-list-item";
 import Blockquote from "@tiptap/extension-blockquote";
 import CodeBlock from "@tiptap/extension-code-block";
 import { Extension, mergeAttributes, type NodeViewRenderer } from "@tiptap/core";
-import { Plugin, PluginKey } from "@tiptap/pm/state";
+import { Plugin, PluginKey, type Transaction } from "@tiptap/pm/state";
 import type { Node as PMNode } from "@tiptap/pm/model";
 import type { MutableRefObject, RefObject } from "react";
 import { generateShortId } from "@/lib/uuid";
@@ -33,6 +33,7 @@ import {
   sectionFoldingPlugin,
   sectionFoldingPluginKey,
   getSectionFoldingState,
+  transactionTouchesFold,
 } from "@/lib/section-folding";
 import { headingTypeName } from "@/lib/heading-types";
 import type { HeadingTypePick } from "@/components/HeadingTypeMenu";
@@ -855,7 +856,14 @@ export function createHeadingWithLabel(
         // no fold state to drive a chevron, and folding a float's lone
         // section is meaningless.
         let foldBtn: HTMLButtonElement | null = null;
-        let onTransaction: (() => void) | null = null;
+        let onTransaction:
+          | ((props: { transaction: Transaction }) => void)
+          | null = null;
+        // The folded boolean this chevron last painted. `refreshFoldBtn`
+        // early-returns when it's unchanged, so neither the global transaction
+        // subscriber nor the per-node `update()` writes the DOM unless THIS
+        // heading's fold state actually flipped (#29a). `null` = never painted.
+        let lastFoldedFlag: boolean | null = null;
         if (!isFloat) {
           foldBtn = document.createElement("button");
           foldBtn.type = "button";
@@ -902,9 +910,26 @@ export function createHeadingWithLabel(
           wrapper.appendChild(foldBtn);
 
           // Decorations applied to sibling blocks don't trigger this node's
-          // update(), so subscribe to all transactions to keep the chevron in
+          // update(), so subscribe to transactions to keep the chevron in
           // sync with the folding plugin state.
-          onTransaction = () => refreshFoldBtn();
+          //
+          // KEYSTROKE SANCTITY (#29a): a heading NodeView is per-heading, so
+          // N headings = N of these subscribers, ungated before this fix. Now
+          // gated in two tiers, cheapest first:
+          //   (1) `transactionTouchesFold` — bail unless a fold-meta tx or a
+          //       docChanged tx (only those CAN move fold state). A
+          //       selection-only / appended-meta tx returns immediately, with
+          //       no plugin-state read.
+          //   (2) `refreshFoldBtn` itself is idempotent: it computes THIS
+          //       heading's folded boolean and early-returns when unchanged
+          //       (`lastFoldedFlag`), so a docChanged keystroke that doesn't
+          //       flip this section's fold writes no DOM. Net: typing plain
+          //       chars does ZERO fold-chevron DOM work regardless of heading
+          //       count, and the per-node `update()` path is cheap too.
+          onTransaction = ({ transaction }) => {
+            if (!transactionTouchesFold(transaction)) return;
+            refreshFoldBtn();
+          };
           nodeEditor.on("transaction", onTransaction);
         }
 
@@ -914,6 +939,12 @@ export function createHeadingWithLabel(
           const folded = uuid
             ? getSectionFoldingState(nodeEditor.state).folded.has(uuid)
             : false;
+          // Idempotent (#29a): skip the DOM writes when this section's fold
+          // state didn't flip, so a plain keystroke (which can reach here via
+          // the gated transaction subscriber or the per-node update()) does no
+          // work. `null` on first paint always writes.
+          if (folded === lastFoldedFlag) return;
+          lastFoldedFlag = folded;
           foldBtn.classList.toggle("is-folded", folded);
           foldBtn.title = folded ? "Unfold section" : "Fold section";
         }

@@ -2601,23 +2601,36 @@ textarea,
  * per kind via `data-show-hl-<kind>` on the editor root.
  *
  * The highlight color is per-target-card-kind, read via attribute-prefix
- * matching on `data-link-card="<cardKind>:<id>"`. Each card kind's color
- * mirrors its margin icon via MARKER_META (see src/lib/marginalia.ts).
- * See src/links/_shared/useLinkHighlight.ts for the sync logic. */
+ * matching on `data-link-card="<cardKind>:<id>"`. Each card kind's color is
+ * DERIVED from CARD_THEMES / the user's panel-color override (not a
+ * hand-mirrored hex): EditorLayout (#27) stamps `--link-anchor-accent-<token>`
+ * on `:root` from the live theme accent — the SAME source as the card-outline
+ * `--link-anchor-color: theme.accent` PanelCard stamp (chip E). The token set is
+ * derived from CARD_REGISTRY + the legacy-token crosswalk
+ * (`IN_TEXT_ANCHOR_ACCENTS` in src/cards/predicates.ts), so cutter anchors
+ * (cutter-comment/-suggestion → the `cut` accent) now paint too — the old
+ * hand-table omitted them and they fell back to amber.
+ * See src/links/_shared/useLinkHighlight.ts for the highlight-state sync. */
 .linked-anchor {
   --link-anchor-color: #fbbf24; /* amber fallback for unrecognised kinds */
   background: transparent;
   border-radius: 2px;
   transition: background-color 120ms ease-out;
 }
-.linked-anchor[data-link-card^="note:"]      { --link-anchor-color: #15803d; }
-.linked-anchor[data-link-card^="highlight:"] { --link-anchor-color: #fbbf24; }
-.linked-anchor[data-link-card^="cut:"]       { --link-anchor-color: #b45757; }
-.linked-anchor[data-link-card^="comment:"]   { --link-anchor-color: #9333ea; }
-.linked-anchor[data-link-card^="archive:"]   { --link-anchor-color: #7191b0; }
-.linked-anchor[data-link-card^="report:"]         { --link-anchor-color: #6366f1; }
-.linked-anchor[data-link-card^="report-request:"] { --link-anchor-color: #6366f1; }
-.linked-anchor[data-link-card^="todo:"]      { --link-anchor-color: #44403c; }
+/* The `var(…, <hex>)` fallback reproduces the shipped DEFAULT_PANEL_COLORS
+ * accent for the pre-mount window before EditorLayout injects the live vars
+ * (and for SSR), so the amber `.linked-anchor` fallback never bleeds onto a
+ * recognised kind. Once injected, the live var (default or override) wins. */
+.linked-anchor[data-link-card^="note:"]      { --link-anchor-color: var(--link-anchor-accent-note, #15803d); }
+.linked-anchor[data-link-card^="highlight:"] { --link-anchor-color: var(--link-anchor-accent-highlight, #fbbf24); }
+.linked-anchor[data-link-card^="cut:"]              { --link-anchor-color: var(--link-anchor-accent-cut, #b45757); }
+.linked-anchor[data-link-card^="cutter-comment:"]   { --link-anchor-color: var(--link-anchor-accent-cutter-comment, #b45757); }
+.linked-anchor[data-link-card^="cutter-suggestion:"]{ --link-anchor-color: var(--link-anchor-accent-cutter-suggestion, #b45757); }
+.linked-anchor[data-link-card^="comment:"]   { --link-anchor-color: var(--link-anchor-accent-comment, #9333ea); }
+.linked-anchor[data-link-card^="archive:"]   { --link-anchor-color: var(--link-anchor-accent-archive, #7191b0); }
+.linked-anchor[data-link-card^="report:"]         { --link-anchor-color: var(--link-anchor-accent-report, #6366f1); }
+.linked-anchor[data-link-card^="report-request:"] { --link-anchor-color: var(--link-anchor-accent-report-request, #6366f1); }
+.linked-anchor[data-link-card^="todo:"]      { --link-anchor-color: var(--link-anchor-accent-todo, #44403c); }
 
 /* Transient (cardless) anchor — the plain selection grab's invisible range
  * handle (`kind:"transient"`). renderHTML emits NO data-link-card, so none of
@@ -2653,18 +2666,21 @@ textarea,
  * here (and omitted bib/ai/example/error) is gone. */
 
 /* Per-kind --link-anchor-color on Mode A paragraph anchors. The
- * useCardSelectionHighlight / useCardHoverHighlight hooks write
- * data-paragraph-kind onto the paragraph wrapper alongside
- * data-card-{selected,hovered}="paragraph". These rules paint that
- * paragraph in the right kind color. */
-[data-paragraph-kind="note"]      { --link-anchor-color: #15803d; }
-[data-paragraph-kind="highlight"] { --link-anchor-color: #fbbf24; }
-[data-paragraph-kind="cut"]       { --link-anchor-color: #b45757; }
-[data-paragraph-kind="comment"]   { --link-anchor-color: #9333ea; }
-[data-paragraph-kind="archive"]   { --link-anchor-color: #7191b0; }
-[data-paragraph-kind="report"]         { --link-anchor-color: #6366f1; }
-[data-paragraph-kind="report-request"] { --link-anchor-color: #6366f1; }
-[data-paragraph-kind="todo"]      { --link-anchor-color: #44403c; }
+ * useAnchorHighlightReconciler hook writes data-paragraph-kind onto the
+ * paragraph wrapper alongside data-card-{selected,hovered}="paragraph".
+ * These rules paint that paragraph in the right kind color — DERIVED from
+ * CARD_THEMES / the user override via the same `--link-anchor-accent-<token>`
+ * `:root` vars EditorLayout stamps (#27), so a Mode A rail and a Mode B span
+ * for the same card share one accent source. (See the Mode B block above for
+ * the var-fallback rationale.) */
+[data-paragraph-kind="note"]      { --link-anchor-color: var(--link-anchor-accent-note, #15803d); }
+[data-paragraph-kind="highlight"] { --link-anchor-color: var(--link-anchor-accent-highlight, #fbbf24); }
+[data-paragraph-kind="cut"]       { --link-anchor-color: var(--link-anchor-accent-cut, #b45757); }
+[data-paragraph-kind="comment"]   { --link-anchor-color: var(--link-anchor-accent-comment, #9333ea); }
+[data-paragraph-kind="archive"]   { --link-anchor-color: var(--link-anchor-accent-archive, #7191b0); }
+[data-paragraph-kind="report"]         { --link-anchor-color: var(--link-anchor-accent-report, #6366f1); }
+[data-paragraph-kind="report-request"] { --link-anchor-color: var(--link-anchor-accent-report-request, #6366f1); }
+[data-paragraph-kind="todo"]      { --link-anchor-color: var(--link-anchor-accent-todo, #44403c); }
 
 [data-show-hl-report="true"]    .linked-anchor[data-link-card^="report:"],
 [data-show-hl-report="true"]    .linked-anchor[data-link-card^="report-request:"],
@@ -2672,6 +2688,8 @@ textarea,
 [data-show-hl-todo="true"]      .linked-anchor[data-link-card^="todo:"],
 [data-show-hl-comment="true"]   .linked-anchor[data-link-card^="comment:"],
 [data-show-hl-cut="true"]       .linked-anchor[data-link-card^="cut:"],
+[data-show-hl-cut="true"]       .linked-anchor[data-link-card^="cutter-comment:"],
+[data-show-hl-cut="true"]       .linked-anchor[data-link-card^="cutter-suggestion:"],
 [data-show-hl-archive="true"]   .linked-anchor[data-link-card^="archive:"] {
   background: color-mix(in oklab, var(--link-anchor-color) 18%, transparent);
 }

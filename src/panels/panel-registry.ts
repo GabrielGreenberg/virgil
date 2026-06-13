@@ -48,8 +48,9 @@ export const PANEL_REGISTRY: Record<PanelKind, PanelRegistryEntry> = {
     kind: "notes",
     label: "Notes",
     folder: "src/panels/Notes",
-    // Polymorphic — hosts both `note` and `highlight` card kinds. See
-    // POLYMORPHIC_CARD_PANEL below.
+    // Polymorphic — hosts both `note` and `highlight` card kinds. Membership
+    // is registry-derived (`cardKindsForPanel("notes")` in cards/predicates.ts,
+    // each kind declares its panel in CARD_REGISTRY); `card` stays null.
     card: null,
     omniEligible: true,
     omniSide: "right",
@@ -87,7 +88,8 @@ export const PANEL_REGISTRY: Record<PanelKind, PanelRegistryEntry> = {
     label: "Reports",
     folder: "src/panels/Reports",
     // Polymorphic — hosts both `report` and `report-request` card kinds.
-    // See POLYMORPHIC_CARD_PANEL below.
+    // Membership is registry-derived (`cardKindsForPanel("reports")` in
+    // cards/predicates.ts); `card` stays null.
     card: null,
     omniEligible: true,
     omniSide: "left",

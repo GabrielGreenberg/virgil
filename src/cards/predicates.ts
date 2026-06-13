@@ -17,6 +17,7 @@ import { CARD_REGISTRY } from "./card-registry";
 import type { CardKind } from "./types";
 import type { PanelKind } from "@/panels/_shared/types";
 import type { PanelThemeKey } from "@/lib/panel-theme";
+import { LEGACY_TOKEN_CROSSWALK } from "./legacy-token-crosswalk";
 
 /** All card kinds, in registry declaration order. */
 export const CARD_KINDS = Object.keys(CARD_REGISTRY) as CardKind[];
@@ -131,6 +132,61 @@ if (process.env.NODE_ENV !== "production") {
  * `collection.find(e => e.id === id)` to fetch the record — that's the existing
  * `findEntity` contract, unchanged.
  */
+/**
+ * In-text anchor accent map — the SSOT-derived replacement for the two
+ * hand-mirrored hex tables that used to live in `globals.css`:
+ *
+ *   1. `.linked-anchor[data-link-card^="<token>:"]` — Mode B span color, keyed
+ *      off the `legacyDataKind` token `createLinkedAnchor` stamps.
+ *   2. `[data-paragraph-kind="<token>"]` — Mode A paragraph accent rail, keyed
+ *      off the `cssToken` the anchor-highlight reconciler stamps.
+ *
+ * Both selectors now read a `--link-anchor-accent-<token>` CSS variable that
+ * `EditorLayout` writes onto `:root` from the LIVE theme accent (default or the
+ * user's panel-color override), exactly as `PanelCard` stamps
+ * `--link-anchor-color: theme.accent` on the card side (chip E). This is the
+ * second surface of that same kind-color derivation: a card-outline color and
+ * its in-text anchor color now share ONE accent source, so a panel-color
+ * override can never desync them.
+ *
+ * Each row is `{ token, themeKey }`: the CSS token (the string the selector
+ * matches) and the `PanelThemeKey` whose accent paints it. Deduped by token —
+ * `report` and `report-request` both project to the `report` theme, and a
+ * Mode-A `cssToken` and a Mode-B `legacyDataKind` that share a string (e.g.
+ * `note`) collapse to one row. Derived from `CARD_REGISTRY` (kind → themeKey)
+ * + `LEGACY_TOKEN_CROSSWALK` (kind → CSS tokens); add a card kind and its
+ * in-text anchor color follows automatically. The CSS var name is built once
+ * here so the writer (EditorLayout) and any test read the same grammar.
+ */
+export function inTextAnchorAccentVar(token: string): string {
+  return `--link-anchor-accent-${token}`;
+}
+
+export interface InTextAnchorAccentRow {
+  /** CSS selector token (`data-link-card` prefix / `data-paragraph-kind` value). */
+  token: string;
+  /** The `:root` custom property the globals.css selectors read. */
+  cssVar: string;
+  /** The theme whose live accent (default or user override) paints this token. */
+  themeKey: PanelThemeKey;
+}
+
+export const IN_TEXT_ANCHOR_ACCENTS: InTextAnchorAccentRow[] = (() => {
+  const byToken = new Map<string, PanelThemeKey>();
+  for (const k of CARD_KINDS) {
+    const { themeKey } = CARD_REGISTRY[k];
+    const { cssToken, legacyDataKind } = LEGACY_TOKEN_CROSSWALK[k];
+    for (const token of [cssToken, legacyDataKind]) {
+      if (token && !byToken.has(token)) byToken.set(token, themeKey);
+    }
+  }
+  return [...byToken].map(([token, themeKey]) => ({
+    token,
+    cssVar: inTextAnchorAccentVar(token),
+    themeKey,
+  }));
+})();
+
 export function cardKindFromRecord(
   record: { kind?: string },
   panel: PanelKind,
