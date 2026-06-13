@@ -187,6 +187,20 @@ export const TextObjectOrphanGuard = Extension.create({
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
+// LIFECYCLE_DELETE_META — set on a `tr` that performs a DELIBERATE lifecycle
+// removal of a block (the Archive / Delete drag-handle actions in
+// `drag-handle-actions.ts`). MarginaliaAnchorGuard early-returns on any
+// transaction carrying this meta, so the user's explicit intent to remove an
+// anchored block is honoured instead of being silently undone by the guard's
+// re-insert. This is the ONE case where the "preserve the uuid through
+// incidental edits" contract should NOT apply — the archive path reanchors its
+// snippet to the previous block and TextObjectOrphanGuard sweeps any Mode-A
+// card whose anchor disappears, so nothing is left dangling. Do NOT broaden
+// the bypass beyond archive/delete: an incidental edit that happens to remove
+// an anchored block MUST still resurrect (the guard's legitimate job).
+export const LIFECYCLE_DELETE_META = "virgilLifecycleDelete";
+
+// ─────────────────────────────────────────────────────────────────────────────
 // MarginaliaAnchorGuard — prevents paragraph deletion from orphaning the
 // cards attached to it. When a UUID-bearing block vanishes and it had
 // any kind of card anchor — a gutter marginalia marker (tracked via the
@@ -195,6 +209,10 @@ export const TextObjectOrphanGuard = Extension.create({
 // an empty paragraph carrying the same UUID at the deletion site. The
 // card's `links[].anchor.textObjectIds` entry therefore stays valid and
 // no card silently goes orphan through editor edits.
+//
+// EXCEPTION: a transaction tagged with `LIFECYCLE_DELETE_META` (the Archive /
+// Delete drag-handle actions) is a deliberate removal — the guard bypasses it
+// so the block actually goes. See the meta declaration above.
 //
 // To remove a card entirely, the user explicitly deletes it from the
 // gutter (see `deleteMarginItem` in `src/lib/cards/delete-margin-item.ts`)
@@ -220,6 +238,14 @@ export const MarginaliaAnchorGuard = Extension.create<{
         key: new PluginKey("marginaliaAnchorGuard"),
         appendTransaction(transactions, _oldState, newState) {
           if (!transactions.some((tr) => tr.docChanged)) return null;
+
+          // A deliberate lifecycle removal (Archive / Delete) carries
+          // LIFECYCLE_DELETE_META — the user intends the block to go, so
+          // do NOT resurrect its uuid. O(1) meta read per transaction; runs
+          // before any diff work (keystroke sanctity).
+          if (transactions.some((t) => t.getMeta(LIFECYCLE_DELETE_META))) {
+            return null;
+          }
 
           // Consume the typed diff already computed by
           // DocStructureObserver — no doc walks needed.

@@ -35,6 +35,7 @@ import {
   expandCascadeRange,
 } from "@/text-objects/delete-range";
 import { findPreviousAnchorableBlock } from "@/text-objects/anchor-resolution";
+import { LIFECYCLE_DELETE_META } from "@/lib/tiptap/linked-anchor";
 import type { CardCreationApi } from "./card-creation";
 import type { EditorHandle } from "../../Editor";
 import type { ViewPrefs, PanelId } from "@/hooks/useViewPrefs";
@@ -543,7 +544,14 @@ export function useDragHandleActions(deps: DragHandleActionsDeps) {
             extended.to,
             cardLifecycle,
           );
-          const tr = ed.state.tr.delete(extended.from, extended.to);
+          // Tag this as a deliberate lifecycle removal so
+          // MarginaliaAnchorGuard does NOT resurrect the anchored block as
+          // an empty same-uuid placeholder. The snippet reanchors to the
+          // previous block (above) and TextObjectOrphanGuard sweeps any
+          // Mode-A card whose anchor vanished.
+          const tr = ed.state.tr
+            .delete(extended.from, extended.to)
+            .setMeta(LIFECYCLE_DELETE_META, true);
           ed.view.dispatch(tr);
           const snippet = cardCreation.createArchiveSnippet({
             text,
@@ -576,7 +584,12 @@ export function useDragHandleActions(deps: DragHandleActionsDeps) {
             extended.to,
             cardLifecycle,
           );
-          const tr = ed.state.tr.delete(extended.from, extended.to);
+          // Deliberate lifecycle removal — tag so MarginaliaAnchorGuard
+          // bypasses the anchored-block re-insert. TextObjectOrphanGuard
+          // sweeps any Mode-A card whose anchor disappeared.
+          const tr = ed.state.tr
+            .delete(extended.from, extended.to)
+            .setMeta(LIFECYCLE_DELETE_META, true);
           ed.view.dispatch(tr);
           break;
         }
