@@ -162,12 +162,6 @@ export default function LabelRefPopover({
     [filteredHeadings, filteredExamples],
   );
 
-  // Reset the highlight whenever the filtered set changes (typing) so a
-  // stale index never points past the end / at the wrong row.
-  useEffect(() => {
-    setActiveIndex(-1);
-  }, [inputValue]);
-
   // Scroll the highlighted row into view as it moves.
   useEffect(() => {
     if (activeIndex < 0 || !dropdownRef.current) return;
@@ -242,6 +236,9 @@ export default function LabelRefPopover({
               onChange={(e) => {
                 setInputValue(e.target.value);
                 setDropdownOpen(true);
+                // Reset the highlight on the same keystroke so a stale index
+                // never points past the filtered set (no set-state-in-effect).
+                setActiveIndex(-1);
               }}
               onKeyDown={(e) => {
                 if (e.key === "ArrowDown") {
