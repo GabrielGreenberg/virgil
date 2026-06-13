@@ -234,6 +234,15 @@ export function deleteEmptyExampleStructure(
     const itemNode = $from.node(itemDepth);
     const itemStart = $from.before(itemDepth);
     const itemEnd = itemStart + itemNode.nodeSize;
+    // Data-loss guard: only delete the item when it is a LONE empty paragraph.
+    // If the item also carries nested content (a Tab-nested exampleItemList or
+    // a gloss) alongside the empty line the cursor is on, deleting the item
+    // would silently destroy that content — fall through to default deletion
+    // instead. (Shift-Tab gets away with the same delete because it re-inserts
+    // the content as a new block; this path does not.)
+    if (itemNode.childCount !== 1 || (itemNode.firstChild?.content.size ?? 0) !== 0) {
+      return null;
+    }
     const listNode = $from.node(listDepth);
     const listStart = $from.before(listDepth);
     const listEnd = listStart + listNode.nodeSize;

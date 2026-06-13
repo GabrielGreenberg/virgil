@@ -256,3 +256,40 @@ describe("deleteEmptyExampleStructure — no-op outside an example", () => {
     expect(deleteEmptyExampleStructure(cursorState)).toBeNull();
   });
 });
+
+describe("deleteEmptyExampleStructure — nested-content data-loss guard", () => {
+  it("returns null when the empty leading line's item ALSO holds a nested list (no silent content loss)", () => {
+    const d = schema.nodeFromJSON({
+      type: "doc",
+      content: [
+        {
+          type: "exampleBlock",
+          attrs: { uuid: "B", kind: "multi" },
+          content: [
+            {
+              type: "exampleItemList",
+              content: [
+                {
+                  type: "exampleItem",
+                  attrs: { uuid: "i1" },
+                  content: [
+                    { type: "paragraph" }, // empty leading line — cursor target
+                    {
+                      type: "exampleItemList",
+                      content: [exItem("nested-child", "i1a")],
+                    },
+                  ],
+                },
+                exItem("beta", "i2"),
+              ],
+            },
+          ],
+        },
+      ],
+    });
+    const state = stateWithCursorInEmptyParaOf(d);
+    // The item carries nested content beyond the empty paragraph → deleting the
+    // item would destroy it, so the helper must bail (fall through to default).
+    expect(deleteEmptyExampleStructure(state)).toBeNull();
+  });
+});
