@@ -960,3 +960,23 @@ Create a citation, delete the card → the in-text \cite atom stays; on
 reload the atom re-derives the card. Atom-bearing kinds' delete contract
 must remove the atom + sidecar atomically (footnotes may already do this —
 the pattern). Audit the delete-contract matrix across kinds.
+
+---
+
+## 38. Footnote-nested citation still resurrects on reload (W-C deferred edge)
+
+**Reported:** 2026-06-12 (W-C review gate) · **Status:** open · **Area:** citations / data integrity
+
+Chip W-C fixed #37 for top-level `\cite` atoms (hard-delete removes atom +
+entry). But a `\cite` living inside a footnote's `attrs.content` is NOT a
+top-level doc atom, so `findInlineAtomPos` no-ops on delete — yet
+`getCitations()` ([Editor.tsx:1487](src/components/Editor.tsx) via
+`walkJsonContentForCitations` ~:337) DOES collect footnote-nested citations
+into the panel, so on next mount the surviving nested `\cite` re-derives the
+deleted card. Pre-existing systemic asymmetry (most panel mutations —
+`updateCitationDisplay` too — only touch top-level), not introduced by W-C.
+**Fix options:** (i) on delete, strip the nested `\cite` from the host
+footnote's `attrs.content`; or (ii) stop collecting footnote-nested citations
+into the deletable panel set. Also (W-C nit 2): add an integration pin for the
+EditorPane→window→EditorLayout suppress-orphan seam (currently only the hook is
+unit-tested; the synchronous-ordering guarantee rests on source inspection).
