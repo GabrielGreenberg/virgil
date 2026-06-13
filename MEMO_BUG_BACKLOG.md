@@ -422,7 +422,7 @@ accept those MIME types.
 
 ## 11. Borrowed-schema extraction: dedupe BorrowedMainText ⊕ RichTextField ⊕ main editor
 
-**Reported:** 2026-06-09 · **Status:** open · **Area:** main-text / card bodies (A9 deferral)
+**Reported:** 2026-06-09 · **Status:** done (2026-06-13, chip `S` borrowed-schema) · **Area:** main-text / card bodies (A9 deferral)
 
 **Context** — A9 Commit C added [src/components/BorrowedMainText.tsx](src/components/BorrowedMainText.tsx),
 a read-only TipTap renderer for a card's resolved body (real inline atoms:
