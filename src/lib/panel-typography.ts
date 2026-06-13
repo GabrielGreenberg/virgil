@@ -125,6 +125,31 @@ export function resolveFontStack(name: string): string {
   return `${quoteFamily(trimmed)}, ${generic}`;
 }
 
+/** Preview-only stacks for the two var-first registry defaults. Their
+ *  `FONT_STACKS` entries resolve OVERRIDE-FIRST (so applied body text tracks
+ *  the user's effective sans/serif face), which is wrong for a font-PICKER
+ *  preview: previewing "Inter" / "Source Serif 4" should show the *named*
+ *  face, not whatever override the user has chosen. Route these two through
+ *  the un-overridden next/font vars with the literal name first; the loaded
+ *  default IS the named face, so the preview renders it faithfully. */
+const PREVIEW_FONT_STACKS: Record<string, string> = Object.freeze({
+  "Inter": "Inter, var(--font-sans), system-ui, sans-serif",
+  "Source Serif 4": '"Source Serif 4", var(--font-serif), Georgia, serif',
+});
+
+/** Like `resolveFontStack`, but for font-picker OPTION PREVIEWS only. Special-
+ *  cases the var-first registry defaults so a preview shows the named face
+ *  rather than the user's override; everything else falls through to
+ *  `resolveFontStack`. NEVER use for applied body style — that stays
+ *  override-first via `resolveFontStack`. */
+export function resolvePreviewFontStack(name: string): string {
+  const trimmed = name.trim();
+  if (Object.prototype.hasOwnProperty.call(PREVIEW_FONT_STACKS, trimmed)) {
+    return PREVIEW_FONT_STACKS[trimmed];
+  }
+  return resolveFontStack(trimmed);
+}
+
 /** The card kind whose `bodyClass` defines each panel-body row. The single
  *  representative kind per panel (the panel's primary content kind); morph
  *  pairs share a `bodyClass`, so either sibling would yield the same row. A

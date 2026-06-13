@@ -1241,7 +1241,8 @@ textarea,
  *   CONTENT — 12px: entry rows, inputs, previews (and the picker-styled
  *             body text, whose default is the same 12px).
  * Anything at 10.5 / 11 / 11.5px is a stray — use one of these.
- * React-side primitives: CardMetaLabel / CardMono (panel-primitives). */
+ * React-side primitive: CardMetaLabel (panel-primitives); mono-in-card uses
+ * the .card-mono class directly. */
 .card-meta-label {
   font-size: 10px;
   font-weight: 500;

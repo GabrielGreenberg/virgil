@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef, useEffect, useCallback } from "react";
+import React, { useState, useRef, useEffect, useCallback } from "react";
 import type { BibEntry } from "@/lib/types";
 import { formatMinimalCitation } from "@/lib/bib-parser";
 import { PanelCard, PANEL, Chevron, TargetIcon, Button, CardPopoutButton, CardDragHandle, cardTitleStyle } from "./panel-primitives";
@@ -25,8 +25,6 @@ export interface BibEntryCardProps {
   onUpdateBibEntry: (key: string, fields: Record<string, string>) => void;
   onUpdateBibKeyAndType: (oldKey: string, newKey: string, newType: string) => void;
   occurrenceInfo?: { total: number; current: number; onCycle: (delta: number) => void };
-  /** When true, skip outer card wrapper (for embedding inside another card). */
-  compact?: boolean;
   /** Bib package ("natbib" | "biblatex") — used to determine the default cite command for drag. */
   bibPackage?: string;
   /** Bib entries list — needed for formatMinimalCitation in drag ghost. */
@@ -147,13 +145,11 @@ function AnnotationEditor({
 export default function BibEntryCard({
   entry, isSelected, onClick, getFormattedBib, getAnnotation, setAnnotation,
   onRequestReview, onCancelReview, getReviewStatus, onUpdateBibEntry, onUpdateBibKeyAndType,
-  occurrenceInfo, compact, bibPackage, bibEntries, isCited = true, onJump,
+  occurrenceInfo, bibPackage, bibEntries, isCited = true, onJump,
   onTogglePopout, isPoppedOut, libraryChip, addAction, draggable = true,
 }: BibEntryCardProps) {
   const popped = usePoppedCards();
   const popKey = buildPopKey("bibliography", entry.key);
-  // Hooks must run unconditionally — declared here, above the `compact`
-  // early return below.
   const theme = useCardTheme("bib");
   const bibBodyStyle = usePanelBodyStyle("bib");
   // Per-entry state
@@ -241,7 +237,7 @@ export default function BibEntryCard({
   const hasOccCounter = occurrenceInfo && occurrenceInfo.total > 1;
   // Target icon is always rendered (when the entry is cited) so its
   // hover/selected opacity states can fade in/out without layout shift.
-  const showTargetIcon = !!onJump && !compact;
+  const showTargetIcon = !!onJump;
 
   // Header: author · year · title (single line, truncates).
   const headerText = [author, year, title].filter(Boolean).join(" · ");
@@ -250,10 +246,17 @@ export default function BibEntryCard({
     <>
       {/* Remaining publication details (excludes author/year/title already shown in header) */}
       {(() => {
-        const parts: string[] = [];
+        // SECURITY (backlog #28): build the publication-details row as JSX
+        // nodes, never an HTML string. A `.bib` field may carry markup/script
+        // (fetched by find-citation from an external source, or a shared
+        // paper's references.bib); routing it through `dangerouslySetInnerHTML`
+        // would inject it live. Italic emphasis lives in known-safe <i>
+        // wrappers; the raw field text is rendered as a JSX child (React
+        // escapes it), so the sink is gone entirely.
+        const parts: React.ReactNode[] = [];
         const f = entry.fields;
-        if (f.journal) parts.push(`<i>${f.journal}</i>`);
-        if (f.booktitle) parts.push(`In <i>${f.booktitle}</i>`);
+        if (f.journal) parts.push(<i>{f.journal}</i>);
+        if (f.booktitle) parts.push(<>In <i>{f.booktitle}</i></>);
         if (f.editor) parts.push(`Ed. ${f.editor}`);
         if (f.volume) parts.push(f.number ? `${f.volume}(${f.number})` : `vol. ${f.volume}`);
         if (f.pages) parts.push(`pp. ${f.pages}`);
@@ -271,8 +274,15 @@ export default function BibEntryCard({
             data-panel-kind="bib"
             className="leading-relaxed break-words overflow-hidden"
             style={{ ...bibBodyStyle, overflowWrap: "anywhere" }}
-            dangerouslySetInnerHTML={{ __html: parts.join(". ") + "." }}
-          />
+          >
+            {parts.map((part, i) => (
+              <React.Fragment key={i}>
+                {i > 0 ? ". " : null}
+                {part}
+              </React.Fragment>
+            ))}
+            {"."}
+          </div>
         );
       })()}
 
@@ -425,21 +435,6 @@ export default function BibEntryCard({
     </>
   );
 
-  if (compact) {
-    // Embedded use (inside a CitationCard expansion) — no outer wrapper, no header.
-    // Show the author/year/title inline at the top of the body.
-    return (
-      <div className="relative">
-        {headerText && (
-          <div className="text-sm text-ink-strong font-semibold mb-1.5 leading-snug">
-            {headerText}
-          </div>
-        )}
-        {bodyContent}
-      </div>
-    );
-  }
-
   const onToggleFromCtx = onTogglePopout
     ?? (popped
       ? (anchor: DOMRect) => popped.toggleAtAnchor(popKey, anchor)
@@ -577,7 +572,11 @@ export default function BibEntryCard({
             style={isSelected ? { borderTopColor: theme.separatorSelected } : undefined}
           />
 
-          {/* Body */}
+          {/* Body — keeps the roomier `cardInner` (px-4 py-3) rather than the
+              ratified `cardBody` (px-3): the multi-pod publication-details +
+              BibTeX-fields + annotations layout reads better with the extra
+              breathing room. Exempted in PANEL.cardBody's doc-comment
+              (backlog #28). */}
           <div className={`${PANEL.cardInner}${isPoppedOut ? " flex-1 min-h-0 overflow-auto" : ""}`}>
             {bodyContent}
           </div>

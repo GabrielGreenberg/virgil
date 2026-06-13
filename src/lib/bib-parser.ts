@@ -462,6 +462,32 @@ function htmlToInlineText(html: string): string {
 }
 
 /**
+ * SECURITY (backlog #28): `formatInlineCitation` interpolates raw `.bib`
+ * field text (titles, authors) into its output, and the only intentional
+ * markup it ever emits is `<i>…</i>` (a `\citetitle` of a standalone work).
+ * The Citations panel preview is the sole consumer that renders this string
+ * as HTML (`dangerouslySetInnerHTML`); every other consumer treats it as
+ * plain text. A `.bib` entry carrying markup/script (fetched from an external
+ * source by find-citation, or a shared paper's references.bib) would inject
+ * live nodes there.
+ *
+ * Allowlist sanitizer for that one HTML sink: escape EVERY angle bracket and
+ * ampersand first (so no field text can form a tag), then restore only the
+ * known-safe italic/bold pairs the formatters emit. The result has at most
+ * literal `<i>`, `</i>`, `<b>`, `</b>` tags; all field-derived text is
+ * escaped. Do NOT apply this at the formatter source — the plain-text
+ * consumers must not see escaped entities.
+ */
+export function sanitizeInlineCitationHtml(input: string): string {
+  const escaped = input
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;");
+  return escaped
+    .replace(/&lt;(\/?)(i|b)&gt;/g, (_m, slash: string, tag: string) => `<${slash}${tag}>`);
+}
+
+/**
  * Render a single bib entry as a full bibliographic string for \fullcite /
  * \footfullcite. Falls back to a simple Author + Title (Year) sketch if
  * citation-js fails or the entry is missing from the .bib file.
