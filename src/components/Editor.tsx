@@ -39,6 +39,10 @@ import { serializeBodyOnly } from "@/lib/latex-serializer";
 import { normalizeRichContent } from "@/lib/footnote-content";
 import type { JSONContent as TipJSON } from "@tiptap/react";
 import MenuBar from "./MenuBar";
+import {
+  walkJsonContentForCitations,
+  stripFootnoteNestedCitation,
+} from "./citation-doc-ops";
 import { createPopoutButtonEl } from "./panel-primitives";
 import { TextObjectGrabHandle } from "@/text-objects/TextObjectGrabHandle";
 import { ActiveTextObjectProvider } from "@/text-objects/active-text-object-context";
@@ -317,34 +321,10 @@ export interface EditorHandle {
   restoreCursorToParagraph: (uuid: string) => void;
 }
 
-/**
- * Walk a JSONContent tree and invoke `visit` for every citation node.
- *
- * Atomic nodes (footnote, examples) keep their inner content as a
- * JSONContent literal in `attrs.content`; ProseMirror's `descendants`
- * doesn't traverse into that. Citations stored inside such inner
- * content are otherwise invisible to the editor's citation collectors,
- * which means the Citations and Bibliography panels under-count the
- * doc's actual citations. This helper walks the literal to surface
- * them.
- */
-function walkJsonContentForCitations(
-  json: JSONContent | null | undefined,
-  visit: (cit: { citationId: string; command: string; displayText: string }) => void,
-): void {
-  if (!json) return;
-  if (json.type === "citation" && json.attrs) {
-    const a = json.attrs as Record<string, unknown>;
-    visit({
-      citationId: (a.citationId as string) || "",
-      command: (a.command as string) || "",
-      displayText: (a.displayText as string) || "",
-    });
-  }
-  if (Array.isArray(json.content)) {
-    for (const child of json.content) walkJsonContentForCitations(child, visit);
-  }
-}
+// Citation collectors/mutators (including footnote-nested cites) live in a
+// dedicated import-light module so the #38 data-integrity invariant — every
+// place that COLLECTS a footnote-nested cite has a matching remover — is
+// unit-testable without mounting this whole component. See citation-doc-ops.ts.
 
 function findTextRange(editor: Editor, searchText: string): { from: number; to: number } | null {
   const text = editor.getText();
@@ -1519,6 +1499,8 @@ const VirgilEditor = forwardRef<EditorHandle, EditorProps>(function VirgilEditor
     },
     deleteCitation(citationId: string): void {
       if (!editor) return;
+      // 1) Top-level `\cite` atom: removed via the shared deleteLink primitive
+      //    (no-ops for a draft/unanchored citation, which has no doc node).
       const link: VirgilLink = {
         id: citationId,
         kind: "citation",
@@ -1527,6 +1509,14 @@ const VirgilEditor = forwardRef<EditorHandle, EditorProps>(function VirgilEditor
         createdAt: "",
       };
       deleteLink(editor, link);
+      // 2) Footnote-NESTED `\cite` (backlog #38): a citation living inside a
+      //    footnote's `attrs.content` is not a top-level doc atom, so step (1)
+      //    leaves it in place — yet `getCitations()` collects it, so the
+      //    deleted card would re-derive on reload. Strip it from the host
+      //    footnote(s). The rewrite is a real doc tx with no ignoreReadOnly
+      //    meta, so the readOnlyEnforcer leaves it inert in collaborator
+      //    read-only mode (nested cite untouched in a partner-claimed doc).
+      stripFootnoteNestedCitation(editor, citationId);
     },
     getActiveParagraphId(): string | null {
       if (!editor) return null;
