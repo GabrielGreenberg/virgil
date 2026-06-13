@@ -56,7 +56,7 @@ The keystroke-sanctity sweep allows these direct subscriptions, because each is 
 - `EditorLayout.tsx` section-path recompute, main pane (`:2165`, `on('update')`; the handler only `cancelAnimationFrame`+`requestAnimationFrame` — the doc-walk/`coordsAtPos` is RAF-coalesced to one frame, plus a perf-flag gate)
 - `EditorLayout.tsx` section-path recompute, mirror pane (`:2246`, same RAF-coalesced pattern scoped to the mirror view)
 - `SelectionActionsMenu.tsx` gutter-bolt reposition (`:236`, `on('update')`; suppression check + RAF-already-scheduled bail — the single `coordsAtPos` placement math is RAF-coalesced and short-circuits on a placement-equality bail)
-- `editor-layout/panels/omni-host.tsx` fold-aware OmniHost tick (`:184`, `on('transaction')`; a single `getMeta(sectionFoldingPluginKey)` check — bumps ONLY on a fold-meta tx, returns immediately on a plain keystroke)
+- `src/components/editor-layout/panels/omni-host.tsx` fold-aware OmniHost tick (`:184`, `on('transaction')`; a single `getMeta(sectionFoldingPluginKey)` check — bumps ONLY on a fold-meta tx, returns immediately on a plain keystroke)
 - `lib/code-pane-bridge.ts` TipTap→code sync (`:405`, `on('transaction')`; docChanged-gated + own-write (`syncing`) filtered, then a debounced serialize — O(1) per tx)
 - `lib/editor-extensions.ts` per-heading fold-chevron refresher (`:933`, `on('transaction')`; gated via the shared `transactionTouchesFold` predicate, and `refreshFoldBtn` is idempotent on this heading's folded boolean — a plain keystroke does ZERO DOM work regardless of heading count, #29a)
 - `SlashCommandPopup.tsx` (mounted only while the popup is open; RAF-coalesced reposition)

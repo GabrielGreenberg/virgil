@@ -2688,6 +2688,8 @@ textarea,
 [data-show-hl-todo="true"]      .linked-anchor[data-link-card^="todo:"],
 [data-show-hl-comment="true"]   .linked-anchor[data-link-card^="comment:"],
 [data-show-hl-cut="true"]       .linked-anchor[data-link-card^="cut:"],
+[data-show-hl-cut="true"]       .linked-anchor[data-link-card^="cutter-comment:"],
+[data-show-hl-cut="true"]       .linked-anchor[data-link-card^="cutter-suggestion:"],
 [data-show-hl-archive="true"]   .linked-anchor[data-link-card^="archive:"] {
   background: color-mix(in oklab, var(--link-anchor-color) 18%, transparent);
 }
