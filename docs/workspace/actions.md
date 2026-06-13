@@ -1,4 +1,4 @@
-<!-- last-verified: 7433bc2 2026-06-13 -->
+<!-- last-verified: aa5e40f 2026-06-13 -->
 <!-- derives-from: docs/architecture/VIRGIL.md#ontology, docs/architecture/VIRGIL.md#code-organization -->
 <!-- covers-code: src/components/DragHandleMenu.tsx, src/components/ActionsMenuPanel.tsx, src/components/SelectionActionsMenu.tsx, src/components/editor-layout/card-actions, src/lib/editor-extensions.ts, src/lib/tiptap/tab-indent.ts, src/lib/tiptap/expex.ts, src/lib/tiptap/latex-comment.ts, src/lib/section-folding.ts, src/lib/tiptap/uuid-attr.ts, src/lib/tiptap/pgmark.ts, src/lib/tiptap/latex-command.ts, src/text-objects/text-object-registry.ts, src/text-objects/TextObjectGrabHandle.tsx, src/text-objects/drop-adapters.ts, src/components/drop-mode, src/lib/tiptap/atom-registry.ts -->
 
@@ -311,7 +311,9 @@ Not keymaps, but typed triggers that transform text (cite where relevant):
 
 - **Smart quotes** — typing `"` becomes a curly quote ([smart-quotes.ts](../../src/lib/tiptap/smart-quotes.ts)).
 - **`% ` → latexComment** — a line-leading `% ` converts to a comment atom; suppressed on card surfaces ([latex-comment.ts](../../src/lib/tiptap/latex-comment.ts)).
-- **Slash popup** — typing `/` opens the command popup (`SlashPopupExtension`; see [SlashCommandPopup.tsx](../../src/components/SlashCommandPopup.tsx)).
+- **Slash popup** — typing `\` opens the command popup (`SlashPopupExtension`; see [SlashCommandPopup.tsx](../../src/components/SlashCommandPopup.tsx)). Commands insert **inline only** — `\ex`/`\footnote` insert nodes at the cursor; `\cite` soft-routes to Omni-View (surfaced only if not already covered), not the dedicated Citations panel. No slash command force-opens a panel.
+- **Math popover (inline + display math click-to-edit)** — saves on **any** dismissal (Enter / click-away / blur / Escape); a **Cancel** button is the only revert path ([src/components/MathPopover.tsx](../../src/components/MathPopover.tsx)).
+- **Ref popover (`\ref` create-mode dropdown)** — the label candidate list is arrow-key navigable; Enter commits the selection ([src/components/LabelRefPopover.tsx](../../src/components/LabelRefPopover.tsx)).
 - **Markdown heading rules are deliberately OFF** — `createHeadingWithLabel` returns `addInputRules() { return [] }`, killing the `#`/`##`+space shortcut (the slash popup + BlockType menu own heading creation, and the level-0 rule had a real bug).
 
 ---

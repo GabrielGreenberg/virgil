@@ -1,4 +1,4 @@
-<!-- last-verified: 7433bc2 2026-06-13 -->
+<!-- last-verified: aa5e40f 2026-06-13 -->
 <!-- derives-from: docs/architecture/VIRGIL.md#ontology, docs/architecture/VIRGIL.md#latex-round-trip-vocabulary, docs/architecture/VIRGIL.md#uuid-marker-emission -->
 <!-- covers-code: src/lib/tiptap, src/links, src/lib/marginalia.ts, src/lib/latex-parser.ts, src/lib/latex-serializer.ts, src/text-objects -->
 
@@ -63,6 +63,8 @@ TipTap extensions in [src/lib/tiptap/](../../src/lib/tiptap/):
 | Standard marks | bold, italic, underline, code | `\textbf`, `\emph`, `\underline`, `\texttt` | StarterKit + custom |
 
 Barrel export in [src/lib/tiptap/index.ts](../../src/lib/tiptap/index.ts); also re-exported from [src/lib/tiptap-extensions.ts](../../src/lib/tiptap-extensions.ts).
+
+**Shared card-context atom sub-schema.** The inline atoms consumed inside card bodies (footnote, citation, labelRef, inlineMath) and block atoms (displayMath, graphicsBlock) are declared once in [src/lib/tiptap/borrowed-schema.ts](../../src/lib/tiptap/borrowed-schema.ts) (`buildBorrowedAtomSchema()`). Both `RichTextField` (editable card bodies) and `BorrowedMainText` (read-only borrowed prose) compose from this single source; the main editor is held to the same atom set by a contract test (`borrowed-schema.test.ts`). Before this, each surface hand-copied the extension list and could silently drift.
 
 ### Atoms are graspable (text-bound mobility)
 
