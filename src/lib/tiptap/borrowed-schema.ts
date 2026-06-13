@@ -15,7 +15,8 @@
  * block-atom *previews* — so the two card surfaces compose ONE list. The main
  * editor keeps its own ordered stack (its block atoms carry main-only config —
  * `isPoppedRef` / `docIdRef` / figure callbacks / `figureFloat` — and live in
- * a position-gated order, see `EXPECTED_MAIN_ORDER`), but it is held to the
+ * a position-gated order, pinned by `EXPECTED_MAIN_ORDER` in
+ * editor-extensions.test.ts — not an importable symbol), but it is held to the
  * SAME canonical atom set by a contract test (`borrowed-schema.test.ts`):
  * every name in {@link BORROWED_INLINE_ATOM_NAMES} /
  * {@link BORROWED_BLOCK_ATOM_NAMES} must also appear in the main stack. So
@@ -129,10 +130,13 @@ export interface BorrowedSchemaOptions {
  * array. Both card surfaces compose this on top of their own StarterKit (+
  * Placeholder / TabIndent / read-only) layer.
  *
- * Order note: the relative order here is NOT load-bearing for behavior (none of
- * these are decoration plugins keyed on position the way the main editor's
- * DocStructureObserver is); it simply mirrors the order the card surfaces used
- * pre-extraction so a `getSchema` of either surface is byte-stable.
+ * Order note: the relative order here is NOT load-bearing for behavior — none of
+ * these are decoration plugins keyed on position (unlike the main editor's
+ * DocStructureObserver), and every atom uses a distinct `data-type` parseDOM
+ * selector so parse-rule priority is unaffected by ordering. The order was
+ * NORMALIZED during extraction (notably DisplayMath now sits mid-list rather
+ * than last) and is therefore NOT byte-identical to the pre-extraction surface
+ * stacks — that reorder is schema-inert for the reasons above.
  */
 export function buildBorrowedAtomSchema(
   opts: BorrowedSchemaOptions = {},

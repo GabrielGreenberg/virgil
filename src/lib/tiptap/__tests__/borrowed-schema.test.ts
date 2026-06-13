@@ -156,6 +156,24 @@ describe("borrowed-schema (backlog #11)", () => {
     }
   });
 
+  it("the canonical name lists are EXHAUSTIVE — every builder atom is named (closes the add-to-builder-only gap, #11 teeth)", () => {
+    // The builder (with refs) returns ONLY the shared atom/preview extensions —
+    // StarterKit is composed per-surface, not here — so its output names must
+    // equal the canonical lists EXACTLY. The other tests prove names ⊆ builder;
+    // this proves builder ⊆ names. Without it, a dev could add an atom to the
+    // builder (both card surfaces get it) but forget the name constant, and the
+    // main-editor contract test (which iterates the name lists) would never gate
+    // the main editor on it — silently re-opening bug class #11. This closes the
+    // SSOT loop: builder ≡ names → (contract test) → main editor.
+    const canonical = new Set<string>([
+      ...BORROWED_INLINE_ATOM_NAMES,
+      ...BORROWED_BLOCK_ATOM_NAMES,
+    ]);
+    for (const n of names(buildBorrowedAtomSchema({ includeLabelRefFootnote: true }))) {
+      expect(canonical.has(n)).toBe(true);
+    }
+  });
+
   it("the editable card surface registers every borrowed atom EXCEPT labelRef/footnote", () => {
     const cardNames = new Set(names(buildBorrowedAtomSchema()));
     for (const atom of [...BORROWED_INLINE_ATOM_NAMES, ...BORROWED_BLOCK_ATOM_NAMES]) {
