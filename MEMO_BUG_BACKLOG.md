@@ -10,6 +10,13 @@ implementer doesn't have to re-derive scope.
 
 Status legend: `open` · `in-progress` · `done`
 
+> **DRAINED 2026-06-13:** items #1–40 are all done / wontfix / superseded (shipped
+> across releases v0.1.52 + v0.1.53). This file is now a clean running log —
+> append new items at the bottom. The next maintenance manager prompt (cadence +
+> hard guards) is `MEMO_MANAGER_HANDOFF.md` at the repo root. Outstanding
+> non-code work: the card-refactor **walks** W1–W9 + W11 (`MEMO_CARD_REFACTOR_WALKS.md`)
+> still need Gabriel's hands and are the most likely source of new bugs.
+
 ---
 
 ## 1. Inline-math popup: save-by-default, add a Cancel button
