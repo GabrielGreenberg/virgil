@@ -265,26 +265,16 @@ export const VIRGIL_COMMANDS: VirgilCommand[] = [
       });
     },
   },
-  {
-    name: "tex",
-    action: (view) => {
-      const { state } = view;
-      const texBlockType = state.schema.nodes.texBlock;
-      if (!texBlockType) return;
-      const existing = new Set<string>();
-      state.doc.descendants((node) => {
-        if (node.type.name === "texBlock" && node.attrs.uuid) {
-          existing.add(node.attrs.uuid as string);
-        }
-        return true;
-      });
-      const uuid = generateShortId(existing);
-      const tr = state.tr.replaceSelectionWith(
-        texBlockType.create({ uuid, code: "" }),
-      );
-      view.dispatch(tr);
-    },
-  },
+  // CHIP 5b: `\tex` routes through the SINGLE canonical `texRun` (seed `code`
+  // from the selection, mint a collision-free uuid, insert the `texBlock`) in
+  // the action registry — the SAME `run()` the lightning grid `\tex` cell calls.
+  // The former hand-rolled uuid-scan + `replaceSelectionWith({code:''})` closure
+  // is gone (it ALWAYS emptied the code and DISCARDED any selected text); the
+  // slash surface now ALSO seeds from selection, matching the grid. Pure
+  // ProseMirror (`texBlock` insert on the view), so NO bridge — `runViewOnlyAction`
+  // synthesizes the view-only ActionContext (`texRun` reads the live selection
+  // off `ctx.view.state`, not the synthesized CursorRef).
+  { name: "tex", action: (view) => runViewOnlyAction("tex", view) },
 ];
 
 /** Fast lookup by command name (without backslash). */

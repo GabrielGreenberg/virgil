@@ -4,6 +4,17 @@ import type { RefObject } from "react";
 import { generateShortId } from "@/lib/uuid";
 import TexBlockNodeView from "@/components/TexBlockNodeView";
 import { UUID_ATTR_SPEC } from "./uuid-attr";
+// CHIP 5b: the SINGLE canonical raw-LaTeX-block creator lives in the action
+// registry (`texRun` → seed `code` from the selection, mint a collision-free
+// uuid, insert the `texBlock`). The lightning grid `\tex` cell (via
+// `insertTexBlock` below) AND the slash `\tex` command both call THIS one
+// implementation, so the two surfaces can never diverge — the former dual
+// creators (grid here + slash in commands.ts) collapsed to one. `texRun` is
+// pure ProseMirror (operates on `ctx.view`), so no bridge is needed.
+import {
+  texRun,
+  type ActionContext,
+} from "@/lib/actions/action-registry";
 
 // Options injected from Editor.tsx via `TexBlock.configure({…})` so the
 // NodeView can read the popped-out state. Lift + click-to-menu live in
@@ -93,26 +104,39 @@ export function freshTexBlockAttrs(existing: Set<string>): { uuid: string; code:
   return { uuid: generateShortId(existing), code: "" };
 }
 
+/**
+ * Insert a raw-LaTeX `texBlock` from the lightning grid `\tex` cell.
+ *
+ * CHIP 5b: this is now a THIN delegation to the canonical `texRun` in the action
+ * registry — the SAME implementation the slash `\tex` command calls — so the two
+ * surfaces share ONE creator (seed `code` from the selection, mint a
+ * collision-free uuid, insert the block). The grid previously hand-rolled the
+ * seed + uuid-scan here; the slash command hand-rolled a DIFFERENT one
+ * (`code:''`, selection discarded). Both are gone; `texRun` is the SSOT.
+ *
+ * `texRun` is pure ProseMirror (operates on `ctx.view`), so we build a minimal
+ * view-only `ActionContext` from `editor.view` — `texRun` reads the live
+ * selection off `ctx.view.state` and dispatches there, so the grab-handle
+ * `cardCreation`/`cardLifecycle`/`ref` slots are intentionally absent (a pure
+ * insert needs none). We keep `editor.chain().focus()` first so the editor is
+ * focused before the insert (the grid cell is a toolbar button — focus may be
+ * on the button, not the doc — matching the former behavior).
+ */
 export function insertTexBlock(editor: Editor): void {
-  const { from, to, empty } = editor.state.selection;
-  // When a selection is present, seed the new block with the selected plain
-  // text rather than discarding it. `\n` between block boundaries, and the
-  // 4th leafText callback turns Shift+Enter `hardBreak` nodes into `\n` too
-  // (default would drop them). Tabs survive automatically — TabIndent
-  // ([src/lib/tiptap/tab-indent.ts](src/lib/tiptap/tab-indent.ts)) inserts
-  // literal `\t` into text content.
-  const seedCode = empty
-    ? ""
-    : editor.state.doc.textBetween(from, to, "\n", (node) =>
-        node.type.name === "hardBreak" ? "\n" : "",
-      );
-  const attrs = {
-    ...freshTexBlockAttrs(collectTexBlockUuids(editor.state.doc)),
-    code: seedCode,
+  editor.chain().focus().run();
+  const ctx: ActionContext = {
+    editor,
+    view: editor.view,
+    // The grid cell acts on the live selection; a SelectionRef best names it,
+    // but `texRun` reads `ctx.view.state.selection` directly (not the ref), so
+    // the ref is informational only. Use the live selection bounds.
+    ref: {
+      kind: "selection",
+      from: editor.state.selection.from,
+      to: editor.state.selection.to,
+      paragraphId: "",
+    },
+    surface: "lightning",
   };
-  // `.deleteSelection()` first, then `.insertContent()` — without the
-  // explicit delete, insertContent silently no-ops when trying to place a
-  // block-level atom across an active range inside a paragraph. Matches
-  // the wrapSelectionInExample pattern in SelectionActionsMenu.tsx.
-  editor.chain().focus().deleteSelection().insertContent({ type: "texBlock", attrs }).run();
+  texRun(ctx);
 }

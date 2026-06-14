@@ -57,6 +57,7 @@ import {
   VIRGIL_ACTION_REGISTRY,
   assertActionCoverage,
   type ActionContext,
+  type ActionId,
   type ActionRef,
   type ActionSpec,
 } from "@/lib/actions/action-registry";
@@ -81,6 +82,11 @@ const HEADING_IDS = [
   "heading-chapter", "heading-section", "heading-subsection",
   "heading-subsubsection",
 ] as const;
+
+// CHIP 5b — the single non-heading block row (`tex`), appended after the heading
+// slice. (example / figure / graphics / inline-math / display-math migrate in
+// later chips.)
+const BLOCK_IDS = ["tex"] as const;
 
 const mainCtx = (): EditorExtensionsCtx => ({
   surface: "main",
@@ -116,7 +122,7 @@ const emptyDoc: JSONContent = {
   content: [{ type: "paragraph", attrs: { uuid: "p0" }, content: [] }],
 };
 
-function row(id: DragHandleAction): ActionSpec {
+function row(id: ActionId): ActionSpec {
   const r = VIRGIL_ACTION_REGISTRY[id];
   if (!r) throw new Error(`no row for ${id}`);
   return r;
@@ -135,9 +141,10 @@ describe("card-action rows", () => {
       expect(r!.category).toBe("card");
     }
     // The registry now holds the 11 cards (CHIP 2-4) PLUS the 4 heading rows
-    // (CHIP 5a). No OTHER rows yet (block/title/format migrate in later chips).
+    // (CHIP 5a) PLUS the single `tex` block row (CHIP 5b). No OTHER rows yet
+    // (example/figure/graphics/math/title/format migrate in later chips).
     expect(Object.keys(VIRGIL_ACTION_REGISTRY).sort()).toEqual(
-      [...CARD_IDS, ...HEADING_IDS].sort(),
+      [...CARD_IDS, ...HEADING_IDS, ...BLOCK_IDS].sort(),
     );
   });
 
@@ -176,10 +183,11 @@ describe("card-action rows", () => {
     }
   });
 
-  it("the registry rows enumerate cards (menu order) then the 4 headings (level order)", () => {
+  it("the registry rows enumerate cards (menu order), then the 4 headings (level order), then the tex block", () => {
     expect(Object.keys(VIRGIL_ACTION_REGISTRY)).toEqual([
       ...CARD_ACTION_ORDER,
       ...HEADING_IDS,
+      ...BLOCK_IDS,
     ]);
   });
 });
@@ -342,11 +350,29 @@ describe("card-action resolveScope on a heading", () => {
 });
 
 // ---------------------------------------------------------------------------
-// (5) the coverage assertion is GREEN at the card milestone
+// (4b) CHIP 5b — the `tex` block row's shape (category block; slash + lightning;
+//      slashName "tex"; NO grab/typed surface).
 // ---------------------------------------------------------------------------
 
-describe("assertActionCoverage (card milestone)", () => {
-  it("reports NO problems for the populated card slice", () => {
+describe("tex block row (CHIP 5b)", () => {
+  it("is category 'block' on slash + lightning, slashName 'tex', no grab/typed", () => {
+    const r = row("tex");
+    expect(r.id).toBe("tex");
+    expect(r.category).toBe("block");
+    expect(r.surfaces.slash).toBe(true);
+    expect(r.surfaces.lightning).toBe(true);
+    expect(r.surfaces.grab).toBeFalsy();
+    expect(r.surfaces.typed).toBeFalsy();
+    expect(r.slashName).toBe("tex");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// (5) the coverage assertion is GREEN at the card + heading + tex milestone
+// ---------------------------------------------------------------------------
+
+describe("assertActionCoverage (card + heading + tex milestone)", () => {
+  it("reports NO problems for the populated slice", () => {
     expect(assertActionCoverage()).toEqual([]);
   });
 });

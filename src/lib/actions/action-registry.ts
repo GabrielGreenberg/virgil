@@ -100,6 +100,12 @@
 
 import type { Editor } from "@tiptap/core";
 import type { EditorView } from "@tiptap/pm/view";
+// VALUE import: the canonical collision-free short-id minter. `texRun` (the
+// raw-LaTeX block creator) mints a fresh `uuid` for the new `texBlock` the SAME
+// way every other node creator does (slash `\cite`/`\title`, the grid's
+// `freshTexBlockAttrs`). A plain string-id leaf — no React/DOM/TipTap — so the
+// value import is free for every consumer of this registry.
+import { generateShortId } from "@/lib/uuid";
 // Type-only (erased at compile time): the React-land APIs an action's
 // `run()` reaches for. Importing the TYPES does NOT instantiate them and
 // does NOT pull React into this module's runtime.
@@ -968,6 +974,96 @@ function headingRun(level: number): (ctx: ActionContext) => void {
   };
 }
 
+// ---------------------------------------------------------------------------
+// texRun — the SECOND pure-ProseMirror block action (CHIP 5b), modeled on
+// `headingRun`. Like heading (and unlike citation/footnote), a raw-LaTeX block
+// is a pure `texBlock` insert needing ONLY the `EditorView` — NO React
+// `cardCreation`, so NO bridge. `texRun` operates on `ctx.view` and is callable
+// DIRECTLY from BOTH the slash command (PM-side, has the view) and the lightning
+// grid `\tex` cell (React, has the editor → editor.view).
+//
+// THE DIVERGENCE THIS FIXES (MEMO_ACTION_ALIGNMENT.md §3 tex row): there were
+// TWO creators with different behavior —
+//   - slash `\tex` (commands.ts): `replaceSelectionWith(texBlock.create({code:
+//     ''}))` — ALWAYS empty code, DISCARDED any selected text;
+//   - lightning grid (tex-block.ts `insertTexBlock`): SEEDED `code` from the
+//     selected plain text (`textBetween`, hardBreak→\n) via
+//     `deleteSelection()+insertContent`.
+// Each re-implemented the uuid-collision scan. SETTLED DECISION: unify on the
+// RICHER behavior — **seed code from the selection**. Both surfaces now route
+// through this ONE helper; the slash creator gains seed-from-selection (a minor
+// improvement — it previously threw the selection away), and the duplicated
+// uuid-scan collapses to one (`generateShortId` over the doc's existing
+// `texBlock` uuids).
+// ---------------------------------------------------------------------------
+
+/**
+ * The canonical raw-LaTeX-block transform — seed `code` from the current
+ * selection (empty if collapsed), mint a collision-free `uuid`, insert the
+ * `texBlock`. Operates purely on `ctx.view` (no React, no bridge), so the slash
+ * command and the lightning grid cell can never diverge on the creator.
+ *
+ * Seeding mirrors the grid's former `insertTexBlock` VERBATIM: `textBetween`
+ * with `\n` between block boundaries, and a `leafText` callback that turns
+ * Shift+Enter `hardBreak` nodes into `\n` (the default drops them). Tabs survive
+ * automatically (TabIndent inserts literal `\t` into text content). The
+ * `deleteSelection()`-before-`insertContent()` dance is required: without the
+ * explicit delete, `insertContent` silently no-ops when placing a block-level
+ * atom across an active range inside a paragraph.
+ */
+export function texRun(ctx: ActionContext): void {
+  const { state } = ctx.view;
+  const texBlockType = state.schema.nodes.texBlock;
+  if (!texBlockType) return;
+  const { from, to, empty } = state.selection;
+  const seedCode = empty
+    ? ""
+    : state.doc.textBetween(from, to, "\n", (node) =>
+        node.type.name === "hardBreak" ? "\n" : "",
+      );
+  // The ONE uuid-collision scan (was duplicated across slash + grid).
+  const existing = new Set<string>();
+  state.doc.descendants((node) => {
+    if (node.type.name === "texBlock" && node.attrs.uuid) {
+      existing.add(node.attrs.uuid as string);
+    }
+    return true;
+  });
+  const attrs = { uuid: generateShortId(existing), code: seedCode };
+  let tr = state.tr;
+  if (!empty) tr = tr.deleteSelection();
+  // After deleteSelection the range collapsed; replaceSelectionWith places the
+  // atom at the caret (matching the grid's `insertContent` block-atom path).
+  tr = tr.replaceSelectionWith(texBlockType.create(attrs));
+  ctx.view.dispatch(tr.scrollIntoView());
+}
+
+/**
+ * The single `tex` registry row — `category: "block"`, exposed on the slash
+ * surface (`\tex`) AND the lightning surface (the grid `\tex` cell). No
+ * grab/typed/keyboard surface (a raw-LaTeX block is not a grab-handle action,
+ * and there is no `\tex{}`-style input rule). Both surfaces call `texRun`.
+ *
+ * `applies` mirrors heading's (the grid cell / slash command only fire from the
+ * body text): a selection / caret is always insertable; a non-text atom-block
+ * ref has no caret to insert at → "disabled". In practice tex is only invoked
+ * from a selection or caret, so this is "ok" everywhere it is reachable.
+ */
+const TEX_ACTION_ROW: ActionSpec = {
+  id: "tex",
+  label: "Raw LaTeX",
+  category: "block",
+  surfaces: { slash: true, lightning: true },
+  slashName: "tex",
+  applies: (ctx) => {
+    const ref = ctx.ref;
+    if (ref.kind === "selection" || ref.kind === "cursor") return "ok";
+    if (!isTextObjectKind(ref.kind)) return "ok"; // defensive: unknown → allow
+    return TEXT_OBJECT_REGISTRY[ref.kind].isAtomBlock ? "disabled" : "ok";
+  },
+  run: texRun,
+};
+
 /**
  * Build one heading row. Headings are `category: "block"`, exposed on the slash
  * surface (`\chapter` … `\subsubsection`) and the lightning surface (the
@@ -1104,6 +1200,8 @@ export const VIRGIL_ACTION_REGISTRY: Partial<Record<ActionId, ActionSpec>> =
     ...CARD_ACTION_IDS.map((id) => [id, cardRow(id)] as const),
     // CHIP 5a: the 4 heading rows (pure-PM block actions; slash + lightning).
     ...HEADING_ACTION_IDS.map((id) => [id, headingRow(id)] as const),
+    // CHIP 5b: the single `tex` row (pure-PM block action; slash + lightning).
+    ["tex", TEX_ACTION_ROW] as const,
   ]) as Partial<Record<ActionId, ActionSpec>>;
 
 // ---------------------------------------------------------------------------
@@ -1230,6 +1328,18 @@ const COVERED_HEADING_IDS: readonly (BlockActionId & `heading-${string}`)[] =
   HEADING_ACTION_IDS;
 
 /**
+ * The non-heading block ids covered so far — CHIP 5b adds `tex`. Each owns the
+ * slash surface (`\tex`) AND the lightning surface (the grid `\tex` cell),
+ * routes through the canonical pure-PM `texRun` (seed-from-selection), and
+ * carries a `slashName` the assertion reconciles against `VIRGIL_COMMAND_NAMES`.
+ * Moves these ids from EXPECTED-PENDING to COVERED so step (4) doesn't flag the
+ * new rows as out-of-order. Typed against `BlockActionId` so a drift trips the
+ * typechecker. (`example` / `figure` / `graphics` / `inline-math` /
+ * `display-math` stay pending for later chips.)
+ */
+const COVERED_BLOCK_IDS: readonly BlockActionId[] = ["tex"];
+
+/**
  * The card ids that ALSO own the PM-land surfaces (slash + typed): `citation`
  * (CHIP 4a-ii) and `footnote` (CHIP 4b). The other 9 card actions stay
  * grab/lightning-only (they have no slash/typed surface to migrate). The
@@ -1279,6 +1389,7 @@ export function assertActionCoverage(): string[] {
   const covered = new Set<ActionId>([
     ...COVERED_CARD_IDS,
     ...COVERED_HEADING_IDS,
+    ...COVERED_BLOCK_IDS,
   ]);
 
   // (1)+(2)+(3) the CARD slice is fully + correctly covered.
@@ -1371,6 +1482,43 @@ export function assertActionCoverage(): string[] {
     if (!row.slashName) {
       problems.push(
         `[actions] heading id "${id}" sets surfaces.slash but is missing slashName`,
+      );
+    }
+  }
+
+  // (3c) the non-heading BLOCK slice (CHIP 5b: `tex`) is fully + correctly
+  // covered. Each block row must be `category: "block"`, claim the slash AND
+  // lightning surfaces, and carry a `slashName` (the PM-land join key reconciled
+  // below against `VIRGIL_COMMAND_NAMES`). Like headings, these have NO
+  // grab/typed/keyboard surface (a raw-LaTeX block is not a grab-handle action
+  // and has no `\tex{}`-style input rule).
+  for (const id of COVERED_BLOCK_IDS) {
+    const row = VIRGIL_ACTION_REGISTRY[id];
+    if (!row) {
+      problems.push(`[actions] missing registry row for covered block id "${id}"`);
+      continue;
+    }
+    if (row.id !== id) {
+      problems.push(`[actions] row keyed "${id}" has mismatched id "${row.id}"`);
+    }
+    if (row.category !== "block") {
+      problems.push(
+        `[actions] block id "${id}" has category "${row.category}" (expected "block")`,
+      );
+    }
+    if (!row.surfaces.slash || !row.surfaces.lightning) {
+      problems.push(
+        `[actions] block id "${id}" must set surfaces.slash AND surfaces.lightning`,
+      );
+    }
+    if (row.surfaces.grab || row.surfaces.typed) {
+      problems.push(
+        `[actions] block id "${id}" claims a grab/typed surface it does not expose`,
+      );
+    }
+    if (!row.slashName) {
+      problems.push(
+        `[actions] block id "${id}" sets surfaces.slash but is missing slashName`,
       );
     }
   }
