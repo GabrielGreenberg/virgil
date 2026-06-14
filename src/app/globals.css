@@ -820,6 +820,14 @@ textarea,
   display: none !important;
 }
 
+/* Blocks hidden by focus view — `focusViewPlugin` applies this class (via a
+   ProseMirror node decoration) to each top-level child OUTSIDE the focused
+   band. Twin of `.section-folded`; the decoration mechanism reaches
+   React-NodeView blocks (figure / tex / graphics) the same way. */
+.focus-hidden {
+  display: none !important;
+}
+
 /* ── tex-block chrome ─────────────────────────────────────────────
    Mirrors the heading-* visuals (fold chevron + 6-dot drag grip) but
    scoped to the tex-block wrapper so the heading selectors stay

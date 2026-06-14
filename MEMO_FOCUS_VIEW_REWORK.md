@@ -134,10 +134,18 @@ flag becomes load-bearing in exactly one place.
   `useStructuralRevisions.ts` + tests.
   **DoD met:** 40 doc-structure unit tests pass (incl. new reorder + applyDiff
   tests), clean `tsc`. Typing never sets either field (verified by test).
-- **CHIP 1** — create `src/lib/focus-view.ts` (FocusBand, predicate trio,
-  transactionTouchesFocus, focusViewPlugin) + `.focus-hidden` CSS. No wiring.
-  **DoD:** vitest predicate trio (in/out/null-anchor/null-sentinel) + plugin
-  apply test (maps on plain insert, rebuilds only on add/remove/meta).
+- **CHIP 1** ✅ DONE — created `src/lib/focus-view.ts` (FocusBand,
+  INACTIVE_BAND, resolveFocusBand + isPos/isUuidInFocusBand,
+  transactionTouchesFocus, setFocusBandMeta, getFocusBand/State,
+  focusViewPlugin, dev rebuild counter) + `.focus-hidden` CSS. No wiring.
+  **Divergence from synthesis (for the better):** `resolveFocusBand(doc, band)`
+  reads the LIVE doc (walks top-level children for the anchor UUIDs) instead of
+  `structure.blocks` — staleness-free, simpler, and only called on structural
+  change (memo-gated) or plugin rebuild, so it never runs per keystroke.
+  `blockOrderChanged` (CHIP 0) remains the consumer re-resolve trigger.
+  **DoD met:** 12 vitest cases — predicate trio (named/sentinel/inactive/dead/
+  inverted) + plugin (activate hides out-of-band; plain typing MAPS w/ rebuild
+  counter flat; block add REBUILDS; deactivate clears). Clean `tsc`.
 - **CHIP 2** — register `focusViewPlugin()` in `editor-extensions.ts` behind
   `isFloat` gate; feed band via `tr.setMeta(focusViewPluginKey)` from an
   EditorLayout effect; **DELETE** the injected `<style>` effect +
@@ -183,7 +191,7 @@ flag becomes load-bearing in exactly one place.
 
 ## Progress tracker
 - [x] CHIP 0 — blockOrderChanged + changedBlocks plumbing (40 tests, clean tsc)
-- [ ] CHIP 1 — focus-view.ts lib + plugin + CSS
+- [x] CHIP 1 — focus-view.ts lib + plugin + CSS (12 tests, clean tsc)
 - [ ] CHIP 2 — register plugin, delete injected CSS
 - [ ] CHIP 3 — UUID-anchored useFocusMode + migration
 - [ ] CHIP 4 — route React consumers + card suppression UX
