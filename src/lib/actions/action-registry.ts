@@ -479,6 +479,18 @@ export interface ActionContext {
     pos: number;
     rect: DOMRect;
   }) => void;
+  /**
+   * Open the text-color popover (CHIP 6b). The `text-color` format row is the
+   * one format action that is NOT a fire-and-forget `editor.chain()` toggle —
+   * it pops the `SelectionColorPopover` so the user can pick a color (the swatch
+   * palette + native picker). Its `run()` calls THIS instead of mutating the
+   * doc directly, threaded down from `ActionsMenuPanel` (which owns the popover
+   * state + the selection-stash). The `anchorRect` is the color cell's bounding
+   * rect (the popover anchors to it). Supplied only on the lightning/grid
+   * surface; absent on any view-only path (the row then no-ops — there is no
+   * popover to open without React state).
+   */
+  openColorPopover?: (anchorRect: DOMRect) => void;
   panelRouting?: {
     prefs: ViewPrefs;
     setActiveLeft: (id: PanelId) => void;
@@ -539,6 +551,28 @@ export interface ActionSpec {
   destructive?: boolean;
   /** Coarse category — also the union-member family of `id`. */
   category: ActionCategory;
+  /**
+   * The "backbone" the action's `run()` reaches through to produce its effect —
+   * a DECLARED field recording HOW the action acts, so a row can never silently
+   * hide its implementation strategy:
+   *
+   *   - `"card-creation"` — routes through React-land `cardCreation` /
+   *     `cardLifecycle` (the card actions; citation/footnote).
+   *   - `"prosemirror"`   — a pure PM transaction on `ctx.view` (heading / tex /
+   *     example / the block-atom inserts) — no React, no bridge.
+   *   - `"tiptap-chain"`  — a pure `editor.chain()…run()` call, with NO bridge
+   *     and NO canonical Virgil SSOT (the format marks + list/quote toggles +
+   *     text-color, CHIP 6b). This value is a DELIBERATE record that these
+   *     actions are intentionally backbone-LESS: they are thin wrappers over
+   *     TipTap StarterKit commands, not routed through any Virgil SSOT. Declaring
+   *     it (rather than leaving the field unset) is exactly the point — the
+   *     registry STATES the absence of a backbone instead of hiding it.
+   *
+   * Optional: rows that predate this field (the card slice, the heading/tex/
+   * example/block-atom slice) leave it unset. The CHIP 6b format rows set it to
+   * `"tiptap-chain"`. Descriptive only — nothing dispatches on it today.
+   */
+  backbone?: "card-creation" | "prosemirror" | "tiptap-chain";
   /** Which surfaces expose this action. Cross-checked by
    *  `assertActionCoverage`. */
   surfaces: ActionSurfaces;
@@ -1616,6 +1650,128 @@ const GRAPHICS_ACTION_ROW: ActionSpec = {
   run: graphicsRun,
 };
 
+// ---------------------------------------------------------------------------
+// FORMAT rows (CHIP 6b) — the lightning grid's mark/list/quote toggles +
+// text-color. These complete the GRID fold: after this every grid cell (format
+// marks + block atoms) renders from the registry. They are `category: "format"`,
+// `surfaces: { lightning: true }`, `backbone: "tiptap-chain"` (the DECLARED
+// record that they are intentionally backbone-LESS — pure `editor.chain()` calls
+// over TipTap StarterKit commands, no bridge, no Virgil SSOT).
+//
+// Two shapes:
+//   - the SIX simple toggles (bold / italic / strike / code mark toggles;
+//     bullet-list / ordered-list / blockquote wrapper toggles) — each a pure
+//     `editor.chain().focus().toggleX().run()`, lifted VERBATIM from the grid's
+//     former inline `runFormat((c) => c.toggleX())` cells.
+//   - text-color — NOT a fire-and-forget toggle; it pops the
+//     `SelectionColorPopover`. Its `run()` calls `ctx.openColorPopover(rect)`
+//     (threaded from `ActionsMenuPanel`, which owns the popover state + the
+//     selection-stash + the MRU palette). The rect comes through `ctx.payload`
+//     (`{ anchorRect }`) — the cell supplies its bounding rect at click time.
+// ---------------------------------------------------------------------------
+
+/**
+ * Applicability for the format rows. The grid renders every format cell
+ * unconditionally today (no per-kind grey-out for the marks/lists/quote/color),
+ * so this returns `"ok"` everywhere — preserving the live behavior exactly. (A
+ * later chip's DA-5 mode taxonomy may grey a mark toggle out at a collapsed
+ * caret; until then we match the grid, which always shows them enabled.)
+ */
+function formatApplies(): "ok" {
+  return "ok";
+}
+
+/**
+ * Build a simple format-toggle row. `chainCmd` is the StarterKit toggle the
+ * cell ran inline (`(c) => c.toggleBold()`, …); `run()` applies it to
+ * `ctx.editor.chain().focus()` — the SAME `editor.chain().focus().toggleX().run()`
+ * the grid's `runFormat` did, just lifted into the registry so the cell renders
+ * from the SSOT. Pure `tiptap-chain` backbone — no bridge.
+ */
+function formatToggleRow(
+  id: FormatActionId,
+  label: string,
+  chainCmd: (chain: ReturnType<Editor["chain"]>) => ReturnType<Editor["chain"]>,
+): ActionSpec {
+  return {
+    id,
+    label,
+    category: "format",
+    backbone: "tiptap-chain",
+    surfaces: { lightning: true },
+    applies: formatApplies,
+    run: (ctx) => {
+      chainCmd(ctx.editor.chain().focus()).run();
+    },
+  };
+}
+
+/** The six simple format-toggle rows (mark toggles + list/quote wrappers). */
+const BOLD_ACTION_ROW = formatToggleRow("bold", "Bold", (c) => c.toggleBold());
+const ITALIC_ACTION_ROW = formatToggleRow("italic", "Italic", (c) => c.toggleItalic());
+const STRIKE_ACTION_ROW = formatToggleRow("strike", "Strikethrough", (c) => c.toggleStrike());
+const CODE_ACTION_ROW = formatToggleRow("code", "Inline code", (c) => c.toggleCode());
+const BULLET_LIST_ACTION_ROW = formatToggleRow("bullet-list", "Bullet list", (c) => c.toggleBulletList());
+const ORDERED_LIST_ACTION_ROW = formatToggleRow("ordered-list", "Numbered list", (c) => c.toggleOrderedList());
+const BLOCKQUOTE_ACTION_ROW = formatToggleRow("blockquote", "Blockquote", (c) => c.toggleBlockquote());
+
+/**
+ * The text-color row (CHIP 6b). Unlike the toggles, this opens the
+ * `SelectionColorPopover` rather than mutating the doc — its `run()` calls
+ * `ctx.openColorPopover(rect)`, the React seam `ActionsMenuPanel` threads down
+ * (it owns the popover state, the selection-stash that survives the native
+ * picker's focus theft, and the MRU palette). The anchor rect arrives via
+ * `ctx.payload.anchorRect` (the color cell's bounding rect at click time). When
+ * no `openColorPopover` is supplied (a pure view-only caller) the row no-ops —
+ * there is no popover to open without React state. Backbone is still
+ * `"tiptap-chain"`: the eventual color apply is `chain.setTextColor()`, a
+ * StarterKit-style mark command, just deferred behind the popover's pick.
+ */
+function textColorRun(ctx: ActionContext): void {
+  const payload = ctx.payload ?? {};
+  const anchorRect =
+    payload.anchorRect instanceof DOMRect ? payload.anchorRect : undefined;
+  if (!ctx.openColorPopover || !anchorRect) return;
+  ctx.openColorPopover(anchorRect);
+}
+
+const TEXT_COLOR_ACTION_ROW: ActionSpec = {
+  id: "text-color",
+  label: "Text color",
+  category: "format",
+  backbone: "tiptap-chain",
+  surfaces: { lightning: true },
+  applies: formatApplies,
+  run: textColorRun,
+};
+
+/** The 8 format ids, in grid render order (the order `ActionsMenuPanel` lays out
+ *  the cells). The registry appends these after the block-atom slice; the
+ *  coverage assertion + the grid both iterate by id. */
+const FORMAT_ACTION_IDS: readonly FormatActionId[] = [
+  "bold",
+  "italic",
+  "strike",
+  "code",
+  "bullet-list",
+  "ordered-list",
+  "blockquote",
+  "text-color",
+];
+
+/** The format rows by id (built above), for the registry assembly + the grid
+ *  render. */
+const FORMAT_ACTION_ROWS: Readonly<Record<FormatActionId, ActionSpec>> = {
+  bold: BOLD_ACTION_ROW,
+  italic: ITALIC_ACTION_ROW,
+  strike: STRIKE_ACTION_ROW,
+  code: CODE_ACTION_ROW,
+  "bullet-list": BULLET_LIST_ACTION_ROW,
+  "ordered-list": ORDERED_LIST_ACTION_ROW,
+  blockquote: BLOCKQUOTE_ACTION_ROW,
+  "text-color": TEXT_COLOR_ACTION_ROW,
+};
+
 /**
  * Build one heading row. Headings are `category: "block"`, exposed on the slash
  * surface (`\chapter` … `\subsubsection`) and the lightning surface (the
@@ -1762,6 +1918,10 @@ export const VIRGIL_ACTION_REGISTRY: Partial<Record<ActionId, ActionSpec>> =
     ["display-math", DISPLAY_MATH_ACTION_ROW] as const,
     ["figure", FIGURE_ACTION_ROW] as const,
     ["graphics", GRAPHICS_ACTION_ROW] as const,
+    // CHIP 6b: the 8 FORMAT grid rows (lightning-only; `backbone: "tiptap-chain"`).
+    // The mark/list/quote toggles + text-color — completing the grid fold (every
+    // grid cell now renders from the registry).
+    ...FORMAT_ACTION_IDS.map((id) => [id, FORMAT_ACTION_ROWS[id]] as const),
   ]) as Partial<Record<ActionId, ActionSpec>>;
 
 // ---------------------------------------------------------------------------
@@ -1788,6 +1948,23 @@ export function cardActionRows(
   return CARD_ACTION_ORDER.map((id) => VIRGIL_ACTION_REGISTRY[id]).filter(
     (row): row is ActionSpec =>
       !!row && row.category === "card" && !!row.surfaces[surface],
+  );
+}
+
+/**
+ * The FORMAT rows, in grid render order, that the lightning grid exposes (CHIP
+ * 6b) — the SSOT the grid's mark/list/quote/text-color cells render from,
+ * completing the grid fold. Filters to `category === "format"` rows on the
+ * lightning surface, preserving `FORMAT_ACTION_IDS` (the grid layout order).
+ * Every format row is lightning-only today, so the surface arg is implicit
+ * (lightning); kept as a 0-arg accessor mirroring how the grid consumes it.
+ *
+ * Pure + cheap (an 8-row lookup); called at menu-open, never per keystroke.
+ */
+export function formatActionRows(): readonly ActionSpec[] {
+  return FORMAT_ACTION_IDS.map((id) => VIRGIL_ACTION_REGISTRY[id]).filter(
+    (row): row is ActionSpec =>
+      !!row && row.category === "format" && !!row.surfaces.lightning,
   );
 }
 
@@ -1922,6 +2099,17 @@ const BLOCK_IDS_WITH_SLASH: ReadonlySet<BlockActionId> = new Set<BlockActionId>(
 ]);
 
 /**
+ * The 8 format ids — the slice CHIP 6b populates, completing the GRID fold. Each
+ * is `category: "format"`, `backbone: "tiptap-chain"`, and LIGHTNING-ONLY (the
+ * grid; no slash/typed/grab — a mark toggle is not a slash command or an input
+ * rule, and the keyboard bindings are owned by StarterKit, not this registry).
+ * Moves these ids from EXPECTED-PENDING to COVERED so step (4) doesn't flag the
+ * new rows as out-of-order. Typed against `FormatActionId` so a drift trips the
+ * typechecker.
+ */
+const COVERED_FORMAT_IDS: readonly FormatActionId[] = FORMAT_ACTION_IDS;
+
+/**
  * The card ids that ALSO own the PM-land surfaces (slash + typed): `citation`
  * (CHIP 4a-ii) and `footnote` (CHIP 4b). The other 9 card actions stay
  * grab/lightning-only (they have no slash/typed surface to migrate). The
@@ -1972,6 +2160,7 @@ export function assertActionCoverage(): string[] {
     ...COVERED_CARD_IDS,
     ...COVERED_HEADING_IDS,
     ...COVERED_BLOCK_IDS,
+    ...COVERED_FORMAT_IDS,
   ]);
 
   // (1)+(2)+(3) the CARD slice is fully + correctly covered.
@@ -2121,6 +2310,50 @@ export function assertActionCoverage(): string[] {
           `[actions] block id "${id}" prematurely sets surfaces.slash (it is grid-only today)`,
         );
       }
+    }
+  }
+
+  // (3d) the FORMAT slice (CHIP 6b) is fully + correctly covered — this is the
+  // milestone that completes the GRID fold (every grid cell now renders from the
+  // registry). Each format row must be `category: "format"`, declare
+  // `backbone: "tiptap-chain"` (the explicit record that it is backbone-less —
+  // a pure `editor.chain()` call, no Virgil SSOT), claim `surfaces.lightning`
+  // (every format cell is a grid cell), and never claim slash/typed/grab/keyboard
+  // (a mark toggle is not a slash command or an input rule; its keybindings are
+  // owned by StarterKit, not this registry).
+  for (const id of COVERED_FORMAT_IDS) {
+    const row = VIRGIL_ACTION_REGISTRY[id];
+    if (!row) {
+      problems.push(`[actions] missing registry row for covered format id "${id}"`);
+      continue;
+    }
+    if (row.id !== id) {
+      problems.push(`[actions] row keyed "${id}" has mismatched id "${row.id}"`);
+    }
+    if (row.category !== "format") {
+      problems.push(
+        `[actions] format id "${id}" has category "${row.category}" (expected "format")`,
+      );
+    }
+    if (row.backbone !== "tiptap-chain") {
+      problems.push(
+        `[actions] format id "${id}" must declare backbone "tiptap-chain" (it is intentionally backbone-less)`,
+      );
+    }
+    if (!row.surfaces.lightning) {
+      problems.push(
+        `[actions] format id "${id}" must set surfaces.lightning (every format cell is a grid cell)`,
+      );
+    }
+    if (
+      row.surfaces.grab ||
+      row.surfaces.slash ||
+      row.surfaces.typed ||
+      row.surfaces.keyboard
+    ) {
+      problems.push(
+        `[actions] format id "${id}" claims a grab/slash/typed/keyboard surface it does not expose`,
+      );
     }
   }
 

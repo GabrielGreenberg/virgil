@@ -56,6 +56,7 @@ import {
 import {
   VIRGIL_ACTION_REGISTRY,
   assertActionCoverage,
+  formatActionRows,
   type ActionContext,
   type ActionId,
   type ActionRef,
@@ -94,6 +95,20 @@ const BLOCK_IDS = [
   "display-math",
   "figure",
   "graphics",
+] as const;
+
+// CHIP 6b — the 8 FORMAT rows (mark/list/quote toggles + text-color), appended
+// after the block-atom slice in grid render order. All LIGHTNING-ONLY,
+// `category: "format"`, `backbone: "tiptap-chain"`. This completes the grid fold.
+const FORMAT_IDS = [
+  "bold",
+  "italic",
+  "strike",
+  "code",
+  "bullet-list",
+  "ordered-list",
+  "blockquote",
+  "text-color",
 ] as const;
 
 const mainCtx = (): EditorExtensionsCtx => ({
@@ -150,9 +165,10 @@ describe("card-action rows", () => {
     }
     // The registry now holds the 11 cards (CHIP 2-4) PLUS the 4 heading rows
     // (CHIP 5a) PLUS the `tex` (CHIP 5b) + `example` (CHIP 5c) + the 4 block-atom
-    // rows (CHIP 6a). No OTHER rows yet (title/format migrate in later chips).
+    // rows (CHIP 6a) PLUS the 8 format rows (CHIP 6b — completes the grid fold).
+    // No OTHER rows yet (title fields + `\ref` migrate in later chips).
     expect(Object.keys(VIRGIL_ACTION_REGISTRY).sort()).toEqual(
-      [...CARD_IDS, ...HEADING_IDS, ...BLOCK_IDS].sort(),
+      [...CARD_IDS, ...HEADING_IDS, ...BLOCK_IDS, ...FORMAT_IDS].sort(),
     );
   });
 
@@ -191,11 +207,12 @@ describe("card-action rows", () => {
     }
   });
 
-  it("the registry rows enumerate cards (menu order), then the 4 headings (level order), then tex + example blocks", () => {
+  it("the registry rows enumerate cards (menu order), then the 4 headings (level order), then the block slice, then the 8 format rows", () => {
     expect(Object.keys(VIRGIL_ACTION_REGISTRY)).toEqual([
       ...CARD_ACTION_ORDER,
       ...HEADING_IDS,
       ...BLOCK_IDS,
+      ...FORMAT_IDS,
     ]);
   });
 });
@@ -394,11 +411,49 @@ describe("example block row (CHIP 5c)", () => {
 });
 
 // ---------------------------------------------------------------------------
-// (5) the coverage assertion is GREEN at the card + heading + tex + example
-//     milestone
+// (4d) CHIP 6b — the 8 FORMAT rows' shape: category 'format', backbone
+//      'tiptap-chain' (the DECLARED record that they are backbone-less), and
+//      LIGHTNING-ONLY (no grab/slash/typed/keyboard).
 // ---------------------------------------------------------------------------
 
-describe("assertActionCoverage (card + heading + tex + example milestone)", () => {
+describe("format rows (CHIP 6b — completes the grid fold)", () => {
+  it("each format row is category 'format', backbone 'tiptap-chain', lightning-only", () => {
+    for (const id of FORMAT_IDS) {
+      const r = row(id);
+      expect(r.id).toBe(id);
+      expect(r.category).toBe("format");
+      expect(r.backbone).toBe("tiptap-chain");
+      expect(r.surfaces.lightning).toBe(true);
+      expect(r.surfaces.grab).toBeFalsy();
+      expect(r.surfaces.slash).toBeFalsy();
+      expect(r.surfaces.typed).toBeFalsy();
+      expect(r.surfaces.keyboard).toBeFalsy();
+      // No slash command name / input-rule pattern on a format row.
+      expect(r.slashName).toBeUndefined();
+      expect(r.inputRulePattern).toBeUndefined();
+    }
+  });
+
+  it("applies() is 'ok' everywhere (the grid never greys a format cell)", () => {
+    const cursor: ActionRef = { kind: "cursor", pos: 1, paragraphId: "p0" };
+    const live: ActionRef = { kind: "selection", from: 1, to: 5, paragraphId: "p0" };
+    for (const id of FORMAT_IDS) {
+      expect(row(id).applies(ctxFor(cursor, emptyDoc))).toBe("ok");
+      expect(row(id).applies(ctxFor(live, emptyDoc))).toBe("ok");
+    }
+  });
+
+  it("formatActionRows() returns the 8 rows in grid render order", () => {
+    expect(formatActionRows().map((r) => r.id)).toEqual([...FORMAT_IDS]);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// (5) the coverage assertion is GREEN at the card + heading + tex + example +
+//     block-atom + format milestone (the whole grid fold)
+// ---------------------------------------------------------------------------
+
+describe("assertActionCoverage (card + heading + block + format milestone)", () => {
   it("reports NO problems for the populated slice", () => {
     expect(assertActionCoverage()).toEqual([]);
   });

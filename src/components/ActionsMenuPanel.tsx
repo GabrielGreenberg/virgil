@@ -173,27 +173,31 @@ export function ActionsMenuPanel({
     onClose();
   };
 
-  const runFormat = (
-    cmd: (chain: ReturnType<Editor["chain"]>) => ReturnType<Editor["chain"]>,
-  ) => {
-    cmd(editor.chain().focus()).run();
-  };
-
-  // CHIP 6a: the block-ATOM grid cells (inline-math / display-math / figure /
-  // graphics) now render from the action registry — `runBlockAtom(id)` builds a
-  // view-only `ActionContext` off the live selection and invokes the registry
-  // row's `run()`, the SAME SSOT a future slash/keyboard surface would reach.
-  // math `run()` WRAPS the selection into the atom's `latex`; figure/graphics
-  // `run()` INSERT via `smartInsertBlock` then open the SOURCE popover via the
-  // `openFigurePopover` callback below — REPLACING the insert-time
-  // `virgil-figure-click` emit the low-level creator used to do. (The EDIT-
-  // existing-figure `virgil-figure-click` listener is untouched.)
-  const runBlockAtom = (id: ActionId) => {
+  // CHIP 6a + 6b: the WHOLE formatting grid (block-atom cells AND the format
+  // mark/list/quote/text-color cells) renders from the action registry —
+  // `runGridAction(id, payload?)` builds a view-only `ActionContext` off the
+  // live selection and invokes the registry row's `run()`, the SAME SSOT a
+  // future slash/keyboard surface would reach.
+  //
+  //   - FORMAT toggles (bold/italic/strike/code, bullet-/ordered-list,
+  //     blockquote) — `run()` is a pure `editor.chain().focus().toggleX().run()`
+  //     (`backbone: "tiptap-chain"`).
+  //   - math (inline/display) — `run()` WRAPS the selection into the atom's
+  //     `latex`; figure/graphics — `run()` INSERTs via `smartInsertBlock` then
+  //     opens the SOURCE popover via the `openFigurePopover` callback below
+  //     (REPLACING the insert-time `virgil-figure-click` emit the low-level
+  //     creator used to do; the EDIT-existing-figure listener is untouched).
+  //   - text-color — `run()` opens the `SelectionColorPopover` via the
+  //     `openColorPopover` callback below (the popover state + selection-stash +
+  //     MRU palette stay in this component); the cell passes its bounding rect in
+  //     `payload.anchorRect`.
+  const runGridAction = (id: ActionId, payload?: Record<string, unknown>) => {
     const row = VIRGIL_ACTION_REGISTRY[id];
     if (!row) return;
     // Focus the doc first (the grid cell is a toolbar button — focus may be on
-    // the button, not the doc); math `run()` re-focuses too, but figure/graphics
-    // read the live selection before inserting, so we focus up-front.
+    // the button, not the doc); the format/math `run()`s re-focus too, but
+    // figure/graphics read the live selection before inserting, so we focus
+    // up-front.
     editor.chain().focus().run();
     const ctx: ActionContext = {
       editor,
@@ -205,6 +209,7 @@ export function ActionsMenuPanel({
         paragraphId: "",
       },
       surface: "lightning",
+      payload,
       // The INSERT-time popover seam (figure/graphics). The grid is a React
       // subtree separate from EditorLayout's `activeFigure` state, so this
       // callback hops the same `virgil-figure-click` event the EDIT path uses
@@ -217,11 +222,21 @@ export function ActionsMenuPanel({
           new CustomEvent("virgil-figure-click", { detail: figure }),
         );
       },
+      // The text-color popover seam (CHIP 6b). The `text-color` row's `run()`
+      // calls this with the cell's bounding rect; we stash the live selection
+      // (so the native color picker's focus theft can't lose it) and open the
+      // popover by setting its anchor — the SAME behavior the former inline
+      // `openColorPopover` click handler had.
+      openColorPopover: (rect) => {
+        const { from, to } = editor.state.selection;
+        if (from !== to) stashedRangeRef.current = { from, to };
+        setColorPopoverAnchor(rect);
+      },
     };
     void row.run(ctx);
-    // NOTE: like the format cells (and the prior `wrapSelectionInMath` /
+    // NOTE: like the prior format cells (and the prior `wrapSelectionInMath` /
     // `insertFigureBlock` direct calls), we do NOT auto-close the menu here —
-    // it dismisses on click-outside. Faithful to pre-6a behavior.
+    // it dismisses on click-outside. Faithful to pre-6a/6b behavior.
   };
 
   const wrapSelectionInExample = () => {
@@ -273,12 +288,6 @@ export function ActionsMenuPanel({
     chain.unsetTextColor().run();
     setColorPopoverAnchor(null);
     stashedRangeRef.current = null;
-  };
-
-  const openColorPopover = (e: React.MouseEvent<HTMLButtonElement>) => {
-    const { from, to } = editor.state.selection;
-    if (from !== to) stashedRangeRef.current = { from, to };
-    setColorPopoverAnchor(e.currentTarget.getBoundingClientRect());
   };
 
   // Letter-key shortcuts. Escape closes the panel. Capture-phase +
@@ -368,7 +377,7 @@ export function ActionsMenuPanel({
         <FmtBtn
           title="Bold (⌘B)"
           active={isActive("bold")}
-          onClick={() => runFormat((c) => c.toggleBold())}
+          onClick={() => runGridAction("bold")}
         >
           <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
             <path d="M4 2.5h4.5c1.93 0 3 1.07 3 2.5 0 1.05-.55 1.8-1.4 2.15C11.25 7.5 12 8.4 12 9.5c0 1.6-1.2 2.75-3.25 2.75H4V2.5zm2 1.5v2.75h2.25c.97 0 1.5-.5 1.5-1.38 0-.87-.53-1.37-1.5-1.37H6zm0 4.25V10.75h2.5c1.05 0 1.6-.53 1.6-1.5 0-.93-.6-1.5-1.6-1.5H6z" />
@@ -377,7 +386,7 @@ export function ActionsMenuPanel({
         <FmtBtn
           title="Italic (⌘I)"
           active={isActive("italic")}
-          onClick={() => runFormat((c) => c.toggleItalic())}
+          onClick={() => runGridAction("italic")}
         >
           <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round">
             <path d="M6.5 2.5h5M4.5 13.5h5M9.5 2.5L6.5 13.5" />
@@ -386,7 +395,7 @@ export function ActionsMenuPanel({
         <FmtBtn
           title="Strikethrough"
           active={isActive("strike")}
-          onClick={() => runFormat((c) => c.toggleStrike())}
+          onClick={() => runGridAction("strike")}
         >
           <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round">
             <line x1="2.5" y1="8" x2="13.5" y2="8" />
@@ -396,7 +405,7 @@ export function ActionsMenuPanel({
         <FmtBtn
           title="Inline code"
           active={isActive("code")}
-          onClick={() => runFormat((c) => c.toggleCode())}
+          onClick={() => runGridAction("code")}
         >
           <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round">
             <polyline points="5,4 1.5,8 5,12" />
@@ -413,7 +422,7 @@ export function ActionsMenuPanel({
         <FmtBtn
           title="Bullet list"
           active={isActive("bulletList")}
-          onClick={() => runFormat((c) => c.toggleBulletList())}
+          onClick={() => runGridAction("bullet-list")}
         >
           <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round">
             <circle cx="3.5" cy="4" r="1.2" fill="currentColor" stroke="none" />
@@ -427,7 +436,7 @@ export function ActionsMenuPanel({
         <FmtBtn
           title="Numbered list"
           active={isActive("orderedList")}
-          onClick={() => runFormat((c) => c.toggleOrderedList())}
+          onClick={() => runGridAction("ordered-list")}
         >
           <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor" stroke="none">
             <text x="2" y="5.5" fontSize="5" fontWeight="600" fontFamily="sans-serif">1</text>
@@ -441,7 +450,7 @@ export function ActionsMenuPanel({
         <FmtBtn
           title="Blockquote"
           active={isActive("blockquote")}
-          onClick={() => runFormat((c) => c.toggleBlockquote())}
+          onClick={() => runGridAction("blockquote")}
         >
           <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor" stroke="none">
             <path d="M3 3.5C3 5.5 4 7 5.5 7.5L4.5 9C3 8.5 1.5 6.8 1.5 4.2c0-2 1.2-3.2 2.8-3.2 1.3 0 2.2.9 2.2 2.1S5.5 5.2 4.2 5.2c-.4 0-.8-.1-1.2-.3v-1.4zm7 0C10 5.5 11 7 12.5 7.5L11.5 9C10 8.5 8.5 6.8 8.5 4.2c0-2 1.2-3.2 2.8-3.2 1.3 0 2.2.9 2.2 2.1s-1 2.1-2.3 2.1c-.4 0-.8-.1-1.2-.3v-1.4z" transform="translate(0, 3)" />
@@ -456,7 +465,7 @@ export function ActionsMenuPanel({
         </FmtBtn>
         <FmtBtn
           title="Wrap selection in inline math"
-          onClick={() => runBlockAtom("inline-math")}
+          onClick={() => runGridAction("inline-math")}
         >
           <span style={{ fontFamily: "var(--font-serif, serif)", fontSize: 13 }}>
             $x$
@@ -464,7 +473,7 @@ export function ActionsMenuPanel({
         </FmtBtn>
         <FmtBtn
           title="Wrap selection in display math"
-          onClick={() => runBlockAtom("display-math")}
+          onClick={() => runGridAction("display-math")}
         >
           <span style={{ fontFamily: "var(--font-serif, serif)", fontSize: 13, letterSpacing: -0.5 }}>
             $$
@@ -473,7 +482,11 @@ export function ActionsMenuPanel({
         <button
           type="button"
           data-hint="Text color"
-          onClick={openColorPopover}
+          onClick={(e) =>
+            runGridAction("text-color", {
+              anchorRect: e.currentTarget.getBoundingClientRect(),
+            })
+          }
           className="flex flex-col items-center justify-center rounded transition-colors hover-on-light"
           style={{
             height: FORMATTING_ROW_H,
@@ -511,7 +524,7 @@ export function ActionsMenuPanel({
         </FmtBtn>
         <FmtBtn
           title="Insert figure block"
-          onClick={() => runBlockAtom("figure")}
+          onClick={() => runGridAction("figure")}
         >
           <span style={{ fontFamily: "var(--font-serif, serif)", fontStyle: "italic", fontSize: 12 }}>
             fig.
@@ -519,7 +532,7 @@ export function ActionsMenuPanel({
         </FmtBtn>
         <FmtBtn
           title="Insert image"
-          onClick={() => runBlockAtom("graphics")}
+          onClick={() => runGridAction("graphics")}
         >
           <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.25" strokeLinejoin="round">
             <rect x="1.5" y="2.5" width="13" height="11" rx="1" />
