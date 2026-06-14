@@ -141,6 +141,18 @@ import {
 import type { StackItem as StackItemType } from "@/lib/stack/types";
 import { useDragHandleActions, type DragHandleRef } from "./editor-layout/card-actions/drag-handle-actions";
 import { DragHandleMenuProvider, type DragHandleMenuApi } from "./editor-layout/card-actions/drag-handle-menu-context";
+// CHIP 4a-i — the PM→React bridge. EditorPane publishes an
+// `EditorActionsHandle` into the module-singleton so plugin-land code (slash /
+// typed, wired in 4a-ii) can reach the registry's React-land `run()`s. The
+// handle is the typed replacement for the scattered `virgil-*` CustomEvents.
+import {
+  VIRGIL_ACTION_REGISTRY,
+  type ActionContext,
+  type ActionId,
+  type CursorRef,
+  type EditorActionsHandle,
+} from "@/lib/actions/action-registry";
+import { setEditorActionsHandle } from "@/lib/actions/editor-actions-bridge";
 import { DragHandleMenu } from "./DragHandleMenu";
 import { HeadingTypeMenu, type HeadingTypePick } from "./HeadingTypeMenu";
 import { useConfirmDialog } from "./ConfirmDialog";
@@ -193,6 +205,7 @@ import {
   getTextAnchor,
   createLinkedAnchor,
   updateLinkedAnchorCard,
+  paragraphUuidAt,
 } from "@/links/links";
 import type { MarginaliaMarker } from "@/lib/marginalia";
 import type {
@@ -2096,6 +2109,96 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
     () => ({ open: openDragHandleMenu, dispatch: dragHandleActions.dispatch }),
     [openDragHandleMenu, dragHandleActions.dispatch],
   );
+
+  // ─── PM→React action bridge (CHIP 4a-i — INERT) ─────────────────────
+  // Publish ONE `EditorActionsHandle` into the module-singleton bridge so
+  // plugin-land code (slash commands / typed-LaTeX input rules — wired in
+  // 4a-ii) can reach the registry's React-land `run()`s. This REPLACES the
+  // scattered `virgil-*` CustomEvents with one typed entrypoint.
+  //
+  // ── INERT this chip ── nothing calls `getEditorActionsHandle().runAction`
+  // yet (the PM plugins are untouched), so publishing the handle changes NO
+  // user-facing behavior.
+  //
+  // Ref-stashing (mirrors how EditorPane stashes live values for stable
+  // callbacks elsewhere): the published handle reads `bridgeDepsRef.current`
+  // — refreshed EVERY render below — so it always sees the CURRENT
+  // editor/cardCreation/cardLifecycle/dispatch WITHOUT re-publishing on each
+  // render. The handle object identity is stable (built once in the effect,
+  // gated on the reactive `editor` mount), so the publish effect runs only on
+  // mount/unmount, not per render.
+  const bridgeDepsRef = useRef<{
+    cardCreation: typeof cardCreation;
+    cardLifecycle: typeof cardLifecycle;
+    dispatch: typeof dragHandleActions.dispatch;
+  }>({
+    cardCreation,
+    cardLifecycle,
+    dispatch: dragHandleActions.dispatch,
+  });
+  bridgeDepsRef.current = {
+    cardCreation,
+    cardLifecycle,
+    dispatch: dragHandleActions.dispatch,
+  };
+  // Publish on editor-mount; clear on unmount (or when the editor instance
+  // swaps). Gated on the reactive `editor` so the handle's `runAction` reads a
+  // live, non-null editor. The live editor is read through `innerRef.current?.
+  // getEditor()` at call time (not closed over) so an HMR remount stays sound.
+  useEffect(() => {
+    if (!editor) return;
+    const handle: EditorActionsHandle = {
+      runAction(id: ActionId, seed) {
+        const spec = VIRGIL_ACTION_REGISTRY[id];
+        if (!spec) {
+          // Unknown / not-yet-migrated id — no-op (dev-warn so a 4a-ii
+          // call-site typo is loud). The registry is partial until later
+          // chips populate the slash/typed/block/format rows.
+          if (process.env.NODE_ENV !== "production") {
+            console.warn(
+              `[editor-actions-bridge] runAction("${id}") — no registry row; ignoring`,
+            );
+          }
+          return;
+        }
+        // The live editor at call time (not the closed-over reactive value)
+        // — robust to an HMR remount between publish and call.
+        const ed = innerRef.current?.getEditor();
+        if (!ed) return;
+        const deps = bridgeDepsRef.current;
+        // Synthesize a `CursorRef` from the editor's current selection head
+        // for the collapsed-caret surfaces (slash / typed). `paragraphUuidAt`
+        // walks ancestors up from the caret for the containing block's uuid
+        // (Mode-A anchor); "" when the caret isn't inside an anchorable block.
+        const pos = ed.state.selection.head;
+        const ref: CursorRef = {
+          kind: "cursor",
+          pos,
+          paragraphId: paragraphUuidAt(ed.state.doc, pos) ?? "",
+        };
+        const ctx: ActionContext = {
+          editor: ed,
+          view: ed.view,
+          ref,
+          surface: seed.surface,
+          position: seed.position,
+          cardCreation: deps.cardCreation,
+          cardLifecycle: deps.cardLifecycle,
+          dispatch: deps.dispatch,
+          payload: seed.payload,
+        };
+        void spec.run(ctx);
+      },
+    };
+    setEditorActionsHandle(handle);
+    return () => setEditorActionsHandle(null);
+    // Intentionally depends ONLY on `editor` — the live cardCreation /
+    // cardLifecycle / dispatch are read through `bridgeDepsRef` (not closed
+    // over), and the editor itself is re-read via `innerRef` at call time, so
+    // the handle stays stable across renders and re-publishes solely on a
+    // mount / editor-swap / unmount. (No exhaustive-deps suppression needed —
+    // every other reference is module-scoped or a stable ref.)
+  }, [editor]);
 
   // Heading-lozenge type-menu state. The vanilla DOM node view inside
   // VirgilEditor calls `openHeadingTypeMenu` with the chip's rect plus a
