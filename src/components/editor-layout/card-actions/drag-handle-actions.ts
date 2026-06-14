@@ -489,9 +489,19 @@ export function useDragHandleActions(deps: DragHandleActionsDeps) {
           // content, resolve the reanchor target, cascade, cleanup
           // sidecars, delete the range, then mint the snippet.
           //
-          // `text` guard protects against zero-content text ranges;
-          // atom NodeSelections always have a meaningful slice.
-          if (resolved.selectionKind === "text" && !text) break;
+          // A line whose ONLY content is an inline atom — math-only
+          // (`$\lambda$`), citation-only, footnote-only — has empty
+          // `textContent` but is NOT empty: the slice still carries the
+          // atom. The old `!text` guard silently no-op'd these (the user
+          // could not archive a single `$\lambda$` line) — see
+          // ACTION-MENU-DIAGNOSIS.md §5.2.10. Bail only when the resolved
+          // range has NO content at all, so an atom-only line archives like
+          // any other text-bearing block.
+          if (
+            resolved.selectionKind === "text" &&
+            ed.state.doc.slice(range.from, range.to).content.size === 0
+          )
+            break;
           const outer = outerRangeFor(ed, ref);
           if (!outer || outer.to <= outer.from) break;
           // Same cascade as Delete — if the wrapper would be empty
