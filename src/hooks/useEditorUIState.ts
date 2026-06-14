@@ -184,8 +184,10 @@ export function useEditorUIState(
       // Folds can change via an explicit toggle/setFolded meta OR via
       // implicit pruning when a folded heading is deleted (apply reducer
       // drops dead UUIDs on docChanged). Reading on every transaction would
-      // be overkill; gate on either signal. Shared single-source gate with
-      // the per-heading fold-chevron subscriber (#29a) so the two can't drift.
+      // be overkill; gate on either signal. `transactionTouchesFold` now gates
+      // ONLY this fold persister — the fold-chevron resync moved to the shared
+      // sectionFoldingPlugin `view()` (#29 nit-3) with its own O(1) reference
+      // bail, so it no longer rides this predicate.
       if (!transactionTouchesFold(props.transaction)) return;
       const folded = [...getSectionFoldingState(editor.state).folded];
       writeFolds(folded);

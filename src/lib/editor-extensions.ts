@@ -923,8 +923,11 @@ export function createHeadingWithLabel(
           // `view()` writes — rather than a private mirror var, so the two
           // paths can't drift (a stale mirror would force a redundant repaint
           // when this NodeView's update() fires after the shared view already
-          // painted, e.g. a sibling heading was pruned). A plain keystroke that
-          // reaches here via update() therefore does no DOM work.
+          // painted — e.g. editing this heading's OWN text after it was folded,
+          // which fires update() while the shared view left the class set; note
+          // folding the section or pruning a SIBLING does NOT fire this update()).
+          // A plain keystroke that reaches here via update() therefore does no
+          // DOM work.
           if (folded === foldBtn.classList.contains("is-folded")) return;
           foldBtn.classList.toggle("is-folded", folded);
           foldBtn.title = folded ? "Unfold section" : "Fold section";

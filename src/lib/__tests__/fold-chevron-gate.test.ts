@@ -261,8 +261,11 @@ describe("#29 nit-3 fold-chevron: shared plugin-view does ZERO work on unrelated
     // Fold A, then prune heading B (a meta-less docChanged tx). A's folded
     // boolean is invariant under B's removal, so the apply reducer returns the
     // SAME SectionFoldingState object → the shared view's reference bail fires
-    // and A's chevron does ZERO DOM work. This is the central safety invariant:
-    // survivors never repaint on a meta-less prune.
+    // and never touches A's chevron. NOTE: A's NodeView update() also does not
+    // fire on EITHER tx (folding A decorates A's SIBLING, not A's own node; the
+    // prune reuses A's view via node-match without an update()), so this asserts
+    // the shared-view reference bail — NOT the per-node live-class idempotency
+    // (the next test covers that). Survivors stay put on a meta-less prune.
     editor.view.dispatch(
       editor.state.tr.setMeta(sectionFoldingPluginKey, {
         action: "toggle",
@@ -291,6 +294,39 @@ describe("#29 nit-3 fold-chevron: shared plugin-view does ZERO work on unrelated
     expect(aSpy).not.toHaveBeenCalled();
     // A is still folded after the prune (its boolean never changed).
     expect(chevronForUuid(el, "h-A").classList.contains("is-folded")).toBe(true);
+    editor.destroy();
+  });
+
+  it("folding then editing a heading's OWN text does not redundantly repaint its chevron (live-class idempotency)", () => {
+    // The deviation this test discriminates (#29 nit-3): refreshFoldBtn keys its
+    // idempotency off the LIVE `is-folded` class — the SSOT the shared view
+    // writes — NOT a private `lastFoldedFlag` mirror. Folding A paints A's
+    // chevron via the shared view WITHOUT firing A's NodeView update(), so a
+    // private mirror would be left stale (false) after the fold. Editing A's OWN
+    // heading text DOES fire A's update() → refreshFoldBtn(): reading the live
+    // class (already is-folded) it does nothing, whereas a stale mirror
+    // (false !== folded true) would fire a redundant toggle. Verified RED
+    // against the lastFoldedFlag design; GREEN against the shipped live-class one.
+    editor.view.dispatch(
+      editor.state.tr.setMeta(sectionFoldingPluginKey, {
+        action: "toggle",
+        uuid: "h-A",
+      }),
+    );
+    const aBtn = chevronForUuid(el, "h-A");
+    expect(aBtn.classList.contains("is-folded")).toBe(true);
+    const aSpy = spyChevron(aBtn);
+
+    // Edit heading A's own text ("Alpha") → fires A's NodeView update().
+    editor.view.dispatch(editor.state.tr.insertText("!", 3));
+    // The edit landed inside heading A (proves A's node changed → update() ran).
+    expect(editor.state.doc.firstChild?.textContent).toContain("!");
+    // The NodeView reused the SAME chevron button (update(), not recreate) —
+    // otherwise aSpy would trivially pass against a detached node.
+    expect(chevronForUuid(el, "h-A")).toBe(aBtn);
+    // Live-class idempotency: no redundant toggle, chevron still folded.
+    expect(aSpy).not.toHaveBeenCalled();
+    expect(aBtn.classList.contains("is-folded")).toBe(true);
     editor.destroy();
   });
 
