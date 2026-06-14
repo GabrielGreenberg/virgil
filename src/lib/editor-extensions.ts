@@ -35,6 +35,7 @@ import {
   getSectionFoldingState,
   transactionTouchesFold,
 } from "@/lib/section-folding";
+import { focusViewPlugin } from "@/lib/focus-view";
 import { headingTypeName } from "@/lib/heading-types";
 import type { HeadingTypePick } from "@/components/HeadingTypeMenu";
 import StarterKit from "@tiptap/starter-kit";
@@ -1364,6 +1365,11 @@ export function createHeadingWithLabel(
       return [
         ...(this.parent?.() || []),
         sectionFoldingPlugin(),
+        // Focus view: hides out-of-band top-level blocks via a node decoration.
+        // Main-only (omitted for float, like folding) — the mirror inherits it
+        // via the shared editor.state. Fed the band by an EditorLayout effect
+        // dispatching a focus-meta. Cannot reach card RichTextFields.
+        focusViewPlugin(),
         new Plugin({
           key: new PluginKey("sectionNumbers"),
           appendTransaction(transactions, _oldState, newState) {

@@ -146,13 +146,23 @@ flag becomes load-bearing in exactly one place.
   **DoD met:** 12 vitest cases — predicate trio (named/sentinel/inactive/dead/
   inverted) + plugin (activate hides out-of-band; plain typing MAPS w/ rebuild
   counter flat; block add REBUILDS; deactivate clears). Clean `tsc`.
-- **CHIP 2** — register `focusViewPlugin()` in `editor-extensions.ts` behind
-  `isFloat` gate; feed band via `tr.setMeta(focusViewPluginKey)` from an
-  EditorLayout effect; **DELETE** the injected `<style>` effect +
-  `editorChildCount` tracker + `focusStyleRef` (EditorLayout `~:1954-2008`).
-  **DoD:** out-of-band main blocks hide via decoration (incl. a figure/texBlock
-  NodeView); no `<style data-virgil-focus>` in head; plain keystroke → no decoSet
-  rebuild (dev counter flat).
+- **CHIP 2** ✅ DONE — registered `focusViewPlugin()` in `editor-extensions.ts`
+  next to `sectionFoldingPlugin()` (main-only, float omits, mirror inherits via
+  shared state). EditorLayout now dispatches `setFocusBandMeta` from an effect
+  that converts the (still index-based) `focusMode.state` → a UUID `FocusBand`
+  resolved against the live doc (doc-edge → null sentinel) — so the main-editor
+  hide is already UUID-stable. **DELETED** the injected `<style>` effect +
+  `editorChildCount` tracker + `focusStyleRef`.
+  **DoD met + LIVE-VERIFIED in preview (devtest01, band 10–15):**
+  · full path focus.json→useFocusMode→effect→plugin → 60 hidden / 6 visible;
+  · `.focus-hidden` reaches React-NodeView blocks — `node-figureBlock`/
+    `node-graphicsBlock`/`node-texBlock` outside the band all `display:none`,
+    in-band graphicsBlock stays visible (risk #2/#7 RESOLVED);
+  · no `style[data-virgil-focus]` in head;
+  · keystroke sanctity: typing 5 chars in-band left `__virgilBusStats().emitCount`
+    FLAT (16→16) and decoSet mapped at 60 (no rebuild); clean tsc.
+  Note: omni/outline/section-path still read index-state in CHIP 2 (migrate in
+  CHIP 3+4) — the index→UUID seam currently lives in the EditorLayout effect.
 - **CHIP 3** — `useFocusMode` FocusState→FocusBand (UUID), two-phase migrate,
   convert index→UUID at the persistence seam; expose live-resolved `band`.
   **DoD:** old index `focus.json` restores to SAME content; editing before the
@@ -192,7 +202,8 @@ flag becomes load-bearing in exactly one place.
 ## Progress tracker
 - [x] CHIP 0 — blockOrderChanged + changedBlocks plumbing (40 tests, clean tsc)
 - [x] CHIP 1 — focus-view.ts lib + plugin + CSS (12 tests, clean tsc)
-- [ ] CHIP 2 — register plugin, delete injected CSS
+- [x] CHIP 2 — register plugin, delete injected CSS (LIVE-verified: hide +
+      NodeView coverage + keystroke sanctity)
 - [ ] CHIP 3 — UUID-anchored useFocusMode + migration
 - [ ] CHIP 4 — route React consumers + card suppression UX
 - [ ] CHIP 5 — card-typing visual fix (confirm-first)

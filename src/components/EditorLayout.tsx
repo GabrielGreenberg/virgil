@@ -6,6 +6,11 @@ import { JSONContent } from "@tiptap/react";
 import VirgilEditor, { EditorHandle } from "./Editor";
 import { LoadingScreen } from "./LoadingScreen";
 import { VIRGIL_COMMAND_NAMES } from "@/lib/tiptap-extensions";
+import {
+  type FocusBand,
+  INACTIVE_BAND,
+  setFocusBandMeta,
+} from "@/lib/focus-view";
 import { isLabelTaken as isLabelTakenIn } from "@/lib/labels";
 import { isDevStorage } from "@/lib/storage-mode";
 import { isTier1BDisabled } from "@/lib/perf-flags";
@@ -1951,61 +1956,49 @@ export default function EditorLayout() {
   //
   // The stylesheet is rebuilt only when the focus range, the lock state,
   // or the top-level child count change — not on every transaction.
-  const focusStyleRef = useRef<HTMLStyleElement | null>(null);
   const focusStateRef = useRef(focusMode.state);
   focusStateRef.current = focusMode.state;
   const prevLockedRef = useRef(false);
 
-  // Track the top-level child count so we rebuild the stylesheet when
-  // blocks are added/removed (only docChanged transactions can change
-  // it, so listening on `update` is sufficient).
-  const [editorChildCount, setEditorChildCount] = useState(0);
+  // Feed the focus band to the main editor's `focusViewPlugin`, which hides
+  // out-of-band top-level blocks via a ProseMirror node decoration — replacing
+  // the old injected <style> nth-child stylesheet + child-count tracker. The
+  // decoration reaches React-NodeView blocks (figure/tex) and the mirror pane
+  // (shared editor.state) for free, and is structurally unable to touch a card
+  // editor.
+  //
+  // useFocusMode is still index-based here (CHIP 3 migrates it to UUID-native);
+  // convert its index range to UUID anchors resolved against the LIVE doc, so
+  // the plugin's hide is already UUID-STABLE: anchors are captured once per band
+  // change, and the plugin re-resolves UUID→index on every structural change.
+  // Doc-edge indices map to null sentinels so a band touching the top/bottom
+  // survives edge insertions.
   useEffect(() => {
     if (!editorInstance) return;
-    let editorDom: HTMLElement | null = null;
-    try { editorDom = editorInstance.view.dom; } catch { editorDom = null; }
-    if (!editorDom) return;
-    setEditorChildCount(editorDom.children.length);
-    const onUpdate = () => {
-      if (!editorDom) return;
-      setEditorChildCount(editorDom.children.length);
-    };
-    editorInstance.on("update", onUpdate);
-    return () => { editorInstance.off("update", onUpdate); };
-  }, [editorInstance]);
-
-  useEffect(() => {
-    // Tear down any previous stylesheet.
-    if (focusStyleRef.current) {
-      focusStyleRef.current.remove();
-      focusStyleRef.current = null;
-    }
-
     const fs = focusMode.state;
-    if (!fs.active || !editorInstance || editorChildCount === 0) return;
-
-    const rules: string[] = [];
-    for (let i = 0; i < editorChildCount; i++) {
-      const outside = i < fs.startBlockIndex || i > fs.endBlockIndex;
-      if (outside) {
-        rules.push(`.tiptap > :nth-child(${i + 1}) { display: none !important; }`);
-      }
+    let band: FocusBand = INACTIVE_BAND;
+    if (fs.active) {
+      const doc = editorInstance.view.state.doc;
+      const lastIdx = doc.childCount - 1;
+      const uuidAt = (i: number): string | null => {
+        if (i < 0 || i > lastIdx) return null;
+        return (doc.child(i).attrs?.uuid as string | null | undefined) ?? null;
+      };
+      band = {
+        active: true,
+        locked: fs.locked,
+        startUuid: fs.startBlockIndex <= 0 ? null : uuidAt(fs.startBlockIndex),
+        endUuid: fs.endBlockIndex >= lastIdx ? null : uuidAt(fs.endBlockIndex),
+      };
     }
-    if (rules.length === 0) return;
-
-    const style = document.createElement("style");
-    style.setAttribute("data-virgil-focus", "true");
-    style.textContent = rules.join("\n");
-    document.head.appendChild(style);
-    focusStyleRef.current = style;
-
-    return () => {
-      if (focusStyleRef.current) {
-        focusStyleRef.current.remove();
-        focusStyleRef.current = null;
-      }
-    };
-  }, [editorInstance, focusMode.state, editorChildCount]);
+    try {
+      editorInstance.view.dispatch(
+        setFocusBandMeta(editorInstance.view.state.tr, band),
+      );
+    } catch {
+      /* meta-only dispatch; ignore if the view is tearing down */
+    }
+  }, [editorInstance, focusMode.state]);
 
   // One-shot cursor coercion: fires only on the false→true lock
   // transition, not on every focus-state change. This decouples it
