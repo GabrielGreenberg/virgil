@@ -917,6 +917,107 @@ function footnoteRun(ctx: ActionContext): void {
   }
 }
 
+// ---------------------------------------------------------------------------
+// heading.run — the FIRST PURE-ProseMirror block action (CHIP 5a). Unlike
+// citation/footnote (which need a React `cardCreation` → the bridge), a heading
+// is a pure `setBlockType` needing only the `EditorView`. So `headingRun`
+// operates on `ctx.view` and is callable DIRECTLY from BOTH the slash command
+// (PM-side, has the view) and the BlockType dropdown (React, has the editor) —
+// NO bridge. This is the model for pure-PM block/format actions generally.
+//
+// THE DIVERGENCE THIS FIXES (MEMO_ACTION_ALIGNMENT.md §3 heading row): the slash
+// `\chapter/\section/\subsection/\subsubsection` always SET (`setBlockType` +
+// `numbered:true`), while the dropdown TOGGLED (`toggleHeading` → clicking
+// 'Section' on an existing level-2 heading reverted it to a paragraph). Both now
+// route through this ONE helper: the canonical heading verb is **always SET +
+// numbered:true**. The dropdown stops toggling-off; its separate 'Body' item
+// still does `setParagraph` (the explicit way back out of heading-hood).
+// ---------------------------------------------------------------------------
+
+/** The heading level each heading `ActionId` sets. The id is the SSOT (one id
+ *  per `\`-command name — see the HEADING ID SCHEME note on `BlockActionId`);
+ *  this lookup recovers the scalar `level` for the `setBlockType` attrs. */
+const HEADING_ID_LEVEL: Readonly<Record<BlockActionId & `heading-${string}`, number>> = {
+  "heading-chapter": 1,
+  "heading-section": 2,
+  "heading-subsection": 3,
+  "heading-subsubsection": 4,
+};
+
+/**
+ * The canonical heading transform — always SET + `numbered:true`, on
+ * `ctx.view`. Mirrors the slash command's `tr.setBlockType(from, to, heading,
+ * { level, numbered:true })` VERBATIM so the four heading commands and the
+ * dropdown can never diverge on the verb. Pure PM — no React, no bridge.
+ *
+ * `numbered:true` is passed explicitly (it also IS the schema default, so this
+ * is belt-and-suspenders, matching the slash command).
+ */
+function headingRun(level: number): (ctx: ActionContext) => void {
+  return (ctx: ActionContext) => {
+    const { state } = ctx.view;
+    const heading = state.schema.nodes.heading;
+    if (!heading) return;
+    const tr = state.tr.setBlockType(
+      state.selection.from,
+      state.selection.to,
+      heading,
+      { level, numbered: true },
+    );
+    ctx.view.dispatch(tr);
+  };
+}
+
+/**
+ * Build one heading row. Headings are `category: "block"`, exposed on the slash
+ * surface (`\chapter` … `\subsubsection`) and the lightning surface (the
+ * BlockType dropdown). No grab/typed/keyboard surface (a heading is not a
+ * grab-handle action, and there is no `\heading{}`-style input rule).
+ *
+ * `applies` mirrors the BlockType dropdown's availability: a heading conversion
+ * applies to any text block (paragraph / heading) or a live selection / caret
+ * inside one. We keep it simple ("ok" everywhere the dropdown is reachable) —
+ * the dropdown is always enabled when the caret is in the body text, and the
+ * slash command only fires inside a text block by construction. An atom-block
+ * ref (figure / displayMath) has no text to convert → "disabled".
+ */
+function headingRow(id: BlockActionId & `heading-${string}`): ActionSpec {
+  const level = HEADING_ID_LEVEL[id];
+  // \chapter → "chapter", … — the slashName WITHOUT the backslash, reconciled
+  // against VIRGIL_COMMAND_NAMES by assertActionCoverage.
+  const slashName = id.slice("heading-".length);
+  const label =
+    slashName.charAt(0).toUpperCase() + slashName.slice(1);
+  return {
+    id,
+    label,
+    category: "block",
+    surfaces: { slash: true, lightning: true },
+    slashName,
+    applies: (ctx) => {
+      const ref = ctx.ref;
+      // A selection / caret always sits in a text block → convertible.
+      if (ref.kind === "selection" || ref.kind === "cursor") return "ok";
+      // A TextObjectRef: only text-bearing blocks convert to a heading. An
+      // atom block (figure / displayMath / texBlock) has no text → disabled.
+      if (!isTextObjectKind(ref.kind)) return "ok"; // defensive: unknown → allow
+      const meta = TEXT_OBJECT_REGISTRY[ref.kind];
+      return meta.isAtomBlock ? "disabled" : "ok";
+    },
+    run: headingRun(level),
+  };
+}
+
+/** The 4 heading ids, in level order. The registry + the coverage assertion
+ *  iterate this list; the slash command + the BlockType dropdown look up the
+ *  row by id. */
+const HEADING_ACTION_IDS: readonly (BlockActionId & `heading-${string}`)[] = [
+  "heading-chapter",
+  "heading-section",
+  "heading-subsection",
+  "heading-subsubsection",
+];
+
 /** Build one delegating card row. Presentation (label / letter / icon /
  *  separator / destructive) from `CARD_ACTION_PRESENTATION` — the registry
  *  OWNS it as of CHIP 3; behavior forwarded via `cardRun`; applicability +
@@ -999,9 +1100,11 @@ const CARD_ACTION_IDS: readonly CardActionId[] = CARD_ACTION_ORDER;
  * chips). `assertActionCoverage` partitions covered (card) vs expected-pending.
  */
 export const VIRGIL_ACTION_REGISTRY: Partial<Record<ActionId, ActionSpec>> =
-  Object.fromEntries(
-    CARD_ACTION_IDS.map((id) => [id, cardRow(id)]),
-  ) as Partial<Record<ActionId, ActionSpec>>;
+  Object.fromEntries([
+    ...CARD_ACTION_IDS.map((id) => [id, cardRow(id)] as const),
+    // CHIP 5a: the 4 heading rows (pure-PM block actions; slash + lightning).
+    ...HEADING_ACTION_IDS.map((id) => [id, headingRow(id)] as const),
+  ]) as Partial<Record<ActionId, ActionSpec>>;
 
 // ---------------------------------------------------------------------------
 // Menu views over the registry — the two live React menus (`DragHandleMenu`,
@@ -1114,6 +1217,19 @@ const SLASH_NAME_TO_ACTION_ID: Readonly<Record<string, ActionId>> = {
 const COVERED_CARD_IDS: readonly CardActionId[] = CARD_ACTION_IDS;
 
 /**
+ * The 4 heading ids — the block slice CHIP 5a populates. Each owns the slash
+ * surface (`\chapter` … `\subsubsection`) AND the lightning surface (the
+ * BlockType dropdown), routes through the canonical SET+numbered `headingRun`,
+ * and carries a `slashName` the assertion reconciles against
+ * `VIRGIL_COMMAND_NAMES`. Like the card slice, this set moves these ids from
+ * EXPECTED-PENDING to COVERED so step (4) doesn't flag the new rows as
+ * out-of-order. Typed against the heading subset of `BlockActionId` so a drift
+ * trips the typechecker.
+ */
+const COVERED_HEADING_IDS: readonly (BlockActionId & `heading-${string}`)[] =
+  HEADING_ACTION_IDS;
+
+/**
  * The card ids that ALSO own the PM-land surfaces (slash + typed): `citation`
  * (CHIP 4a-ii) and `footnote` (CHIP 4b). The other 9 card actions stay
  * grab/lightning-only (they have no slash/typed surface to migrate). The
@@ -1160,7 +1276,10 @@ const CARD_IDS_WITH_PM_SURFACES: ReadonlySet<CardActionId> =
 export function assertActionCoverage(): string[] {
   if (process.env.NODE_ENV === "production") return [];
   const problems: string[] = [];
-  const covered = new Set<ActionId>(COVERED_CARD_IDS);
+  const covered = new Set<ActionId>([
+    ...COVERED_CARD_IDS,
+    ...COVERED_HEADING_IDS,
+  ]);
 
   // (1)+(2)+(3) the CARD slice is fully + correctly covered.
   for (const id of COVERED_CARD_IDS) {
@@ -1218,6 +1337,41 @@ export function assertActionCoverage(): string[] {
           `[actions] card id "${id}" prematurely sets surfaces.typed (a later chip owns the typed-LaTeX surface)`,
         );
       }
+    }
+  }
+
+  // (3b) the HEADING slice (CHIP 5a) is fully + correctly covered. Each heading
+  // row must be `category: "block"`, claim the slash AND lightning surfaces, and
+  // carry a `slashName` (the PM-land join key reconciled below against
+  // `VIRGIL_COMMAND_NAMES`). Headings have NO grab/typed/keyboard surface.
+  for (const id of COVERED_HEADING_IDS) {
+    const row = VIRGIL_ACTION_REGISTRY[id];
+    if (!row) {
+      problems.push(`[actions] missing registry row for covered heading id "${id}"`);
+      continue;
+    }
+    if (row.id !== id) {
+      problems.push(`[actions] row keyed "${id}" has mismatched id "${row.id}"`);
+    }
+    if (row.category !== "block") {
+      problems.push(
+        `[actions] heading id "${id}" has category "${row.category}" (expected "block")`,
+      );
+    }
+    if (!row.surfaces.slash || !row.surfaces.lightning) {
+      problems.push(
+        `[actions] heading id "${id}" must set surfaces.slash AND surfaces.lightning`,
+      );
+    }
+    if (row.surfaces.grab || row.surfaces.typed) {
+      problems.push(
+        `[actions] heading id "${id}" claims a grab/typed surface it does not expose`,
+      );
+    }
+    if (!row.slashName) {
+      problems.push(
+        `[actions] heading id "${id}" sets surfaces.slash but is missing slashName`,
+      );
     }
   }
 

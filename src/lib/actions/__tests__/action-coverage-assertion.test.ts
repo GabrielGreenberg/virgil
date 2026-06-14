@@ -75,6 +75,13 @@ const CARD_IDS = [
   "cutter", "report", "duplicate", "archive", "delete",
 ] as const;
 
+// CHIP 5a — the 4 heading rows, in level order (the order the registry appends
+// them after the card slice).
+const HEADING_IDS = [
+  "heading-chapter", "heading-section", "heading-subsection",
+  "heading-subsubsection",
+] as const;
+
 const mainCtx = (): EditorExtensionsCtx => ({
   surface: "main",
   editable: true,
@@ -127,8 +134,11 @@ describe("card-action rows", () => {
       expect(r!.id).toBe(id);
       expect(r!.category).toBe("card");
     }
-    // No EXTRA rows beyond the 11 cards this chip populates.
-    expect(Object.keys(VIRGIL_ACTION_REGISTRY).sort()).toEqual([...CARD_IDS].sort());
+    // The registry now holds the 11 cards (CHIP 2-4) PLUS the 4 heading rows
+    // (CHIP 5a). No OTHER rows yet (block/title/format migrate in later chips).
+    expect(Object.keys(VIRGIL_ACTION_REGISTRY).sort()).toEqual(
+      [...CARD_IDS, ...HEADING_IDS].sort(),
+    );
   });
 
   it("each card row sets surfaces {grab, lightning}; only citation + footnote add slash/typed (CHIP 4a-ii / 4b)", () => {
@@ -166,8 +176,11 @@ describe("card-action rows", () => {
     }
   });
 
-  it("the registry rows enumerate in canonical menu-display order", () => {
-    expect(Object.keys(VIRGIL_ACTION_REGISTRY)).toEqual([...CARD_ACTION_ORDER]);
+  it("the registry rows enumerate cards (menu order) then the 4 headings (level order)", () => {
+    expect(Object.keys(VIRGIL_ACTION_REGISTRY)).toEqual([
+      ...CARD_ACTION_ORDER,
+      ...HEADING_IDS,
+    ]);
   });
 });
 

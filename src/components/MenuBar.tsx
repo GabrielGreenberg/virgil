@@ -6,6 +6,18 @@ import { generateShortId } from "@/lib/uuid";
 import type { HighlightType, MarginaliaType, DividerLevel, DividerWidth } from "@/hooks/useViewPrefs";
 import { TextSelection } from "@tiptap/pm/state";
 import { type ToolbarOrientation } from "./editor-layout/floating-toolbar-shell";
+// CHIP 5a: the BlockType dropdown's heading items route through the canonical
+// `headingRun` (SET + numbered:true) in the action registry — the SAME `run()`
+// the `\chapter`…`\subsubsection` slash commands call. The dropdown used to
+// `toggleHeading` (clicking 'Section' on an existing level-2 heading reverted it
+// to a paragraph); it now always SETs. Heading is pure ProseMirror (no React
+// `cardCreation`), so the dropdown calls `run()` directly — no bridge.
+import {
+  VIRGIL_ACTION_REGISTRY,
+  type ActionContext,
+  type BlockActionId,
+} from "@/lib/actions/action-registry";
+import { paragraphUuidAt } from "@/links/links";
 
 export { type ToolbarOrientation };
 
@@ -343,6 +355,57 @@ const BLOCK_TYPES = [
   { value: "6", label: "Subparagraph heading" },
 ];
 
+/** The BlockType dropdown's heading levels that have a canonical registry row
+ *  (CHIP 5a): \chapter(1)…\subsubsection(4). Levels 0 (Part), 5 (Paragraph
+ *  heading) and 6 (Subparagraph heading) are out of the heading-alignment scope
+ *  — they have no slash command + no registry row, so they keep a direct
+ *  `setBlockType` (also SET + numbered, for consistency with the SET decision —
+ *  never a toggle). */
+const LEVEL_TO_HEADING_ACTION: Readonly<Record<string, BlockActionId>> = {
+  "1": "heading-chapter",
+  "2": "heading-section",
+  "3": "heading-subsection",
+  "4": "heading-subsubsection",
+};
+
+/**
+ * Apply a heading conversion from the BlockType dropdown — always SET, never
+ * toggle (CHIP 5a). Levels 1–4 route through the registry's canonical
+ * `headingRun` (the SAME `run()` the slash commands call); the out-of-scope
+ * levels (0/5/6) fall back to a direct SET `setBlockType` so the dropdown's
+ * verb is uniformly "set" across every level.
+ *
+ * Pure ProseMirror — builds a minimal view-only `ActionContext` from
+ * `editor.view` (the registry heading `run()` reads only `ctx.view`). No
+ * bridge: heading needs no React-land `cardCreation`.
+ */
+function applyHeadingFromDropdown(editor: Editor, levelValue: string): void {
+  const id = LEVEL_TO_HEADING_ACTION[levelValue];
+  if (id) {
+    const spec = VIRGIL_ACTION_REGISTRY[id];
+    if (spec) {
+      const view = editor.view;
+      const pos = view.state.selection.head;
+      const ctx: ActionContext = {
+        editor,
+        view,
+        ref: {
+          kind: "cursor",
+          pos,
+          paragraphId: paragraphUuidAt(view.state.doc, pos) ?? "",
+        },
+        surface: "lightning",
+      };
+      void spec.run(ctx);
+      return;
+    }
+  }
+  // Out-of-scope level (0/5/6, or a misconfigured value): SET directly +
+  // numbered (NOT toggle — matches the SET decision for the whole dropdown).
+  const level = parseInt(levelValue) as unknown as 1 | 2 | 3 | 4 | 5 | 6;
+  editor.chain().focus().setNode("heading", { level, numbered: true }).run();
+}
+
 export function BlockTypeDropdown({ editor }: { editor: Editor }) {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
@@ -406,12 +469,15 @@ export function BlockTypeDropdown({ editor }: { editor: Editor }) {
               key={bt.value}
               onClick={() => {
                 if (bt.value === "p") {
+                  // 'Body' is the explicit way OUT of heading-hood — setParagraph,
+                  // no toggle needed (CHIP 5a: the heading items no longer toggle
+                  // off, so 'Body' is the canonical return-to-paragraph).
                   if (editor.isActive("heading")) editor.chain().focus().setParagraph().run();
                 } else {
-                  // TipTap's Level type is 1..6; we widen to 0..6 for \part.
-                  // The schema accepts integer levels regardless.
-                  const level = parseInt(bt.value) as unknown as 1 | 2 | 3 | 4 | 5 | 6;
-                  editor.chain().focus().toggleHeading({ level }).run();
+                  // CHIP 5a: SET (never toggle). Levels 1–4 route through the
+                  // registry's canonical headingRun; 0/5/6 fall back to a direct
+                  // SET. See applyHeadingFromDropdown.
+                  applyHeadingFromDropdown(editor, bt.value);
                 }
                 setOpen(false);
               }}

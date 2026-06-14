@@ -7,6 +7,19 @@ import { generateShortId } from "@/lib/uuid";
 // `virgil-citation-create` CustomEvent — one typed entrypoint into the
 // registry's `citation.run`.
 import { getEditorActionsHandle } from "@/lib/actions/editor-actions-bridge";
+// CHIP 5a: the canonical heading transform lives in the action registry
+// (`headingRun` → SET + numbered:true). The 4 `\chapter`/`\section`/
+// `\subsection`/`\subsubsection` slash commands call the registry row's `run()`
+// directly — heading is PURE ProseMirror (`setBlockType` on the view), so NO
+// bridge is needed (unlike `\cite`/`\footnote`, which need React-land
+// `cardCreation`). The dropdown ([MenuBar.tsx] BlockTypeDropdown) calls the
+// SAME `run()`, so the two surfaces can never diverge on the verb.
+import {
+  VIRGIL_ACTION_REGISTRY,
+  type ActionContext,
+  type ActionId,
+} from "@/lib/actions/action-registry";
+import { paragraphUuidAt } from "@/links/links";
 
 export interface VirgilCommand {
   /** The command name without backslash (e.g. "section") */
@@ -123,54 +136,52 @@ function titleFieldCommand(field: "title" | "author" | "date") {
   };
 }
 
+/**
+ * Run a PURE-ProseMirror registry action from a slash command (CHIP 5a).
+ *
+ * Heading is the first action whose `run()` needs ONLY the `EditorView` (a
+ * `setBlockType` transform) — no React-land `cardCreation`, so NO bridge. We
+ * build a minimal `ActionContext` from the live `view` (synthesizing the
+ * `CursorRef` from the caret) and invoke `spec.run(ctx)` directly. The dropdown
+ * calls the same `run()`, so the slash + lightning surfaces share ONE verb.
+ *
+ * Only safe for view-only actions: `cardCreation` / `cardLifecycle` /
+ * `panelRouting` are intentionally absent — a card/atom action would no-op here
+ * and must route through the bridge (`getEditorActionsHandle`) instead.
+ */
+function runViewOnlyAction(id: ActionId, view: EditorView): void {
+  const spec = VIRGIL_ACTION_REGISTRY[id];
+  if (!spec) return;
+  const pos = view.state.selection.head;
+  const ctx: ActionContext = {
+    // For a TipTap editor `view === editor.view`; the slash plugin has only the
+    // view, so `editor` is filled with the same view-bearing object the registry
+    // heading `run()` reads `state.schema` / `selection` off of. (`headingRun`
+    // touches ONLY `ctx.view`.)
+    editor: { view, state: view.state } as unknown as ActionContext["editor"],
+    view,
+    ref: {
+      kind: "cursor",
+      pos,
+      paragraphId: paragraphUuidAt(view.state.doc, pos) ?? "",
+    },
+    surface: "slash",
+  };
+  void spec.run(ctx);
+}
+
 export const VIRGIL_COMMANDS: VirgilCommand[] = [
   { name: "title", action: titleFieldCommand("title") },
   { name: "author", action: titleFieldCommand("author") },
   { name: "date", action: titleFieldCommand("date") },
-  {
-    name: "chapter",
-    action: (view) => {
-      const { state } = view;
-      const heading = state.schema.nodes.heading;
-      if (heading) {
-        const tr = state.tr.setBlockType(state.selection.from, state.selection.to, heading, { level: 1, numbered: true });
-        view.dispatch(tr);
-      }
-    },
-  },
-  {
-    name: "section",
-    action: (view) => {
-      const { state } = view;
-      const heading = state.schema.nodes.heading;
-      if (heading) {
-        const tr = state.tr.setBlockType(state.selection.from, state.selection.to, heading, { level: 2, numbered: true });
-        view.dispatch(tr);
-      }
-    },
-  },
-  {
-    name: "subsection",
-    action: (view) => {
-      const { state } = view;
-      const heading = state.schema.nodes.heading;
-      if (heading) {
-        const tr = state.tr.setBlockType(state.selection.from, state.selection.to, heading, { level: 3, numbered: true });
-        view.dispatch(tr);
-      }
-    },
-  },
-  {
-    name: "subsubsection",
-    action: (view) => {
-      const { state } = view;
-      const heading = state.schema.nodes.heading;
-      if (heading) {
-        const tr = state.tr.setBlockType(state.selection.from, state.selection.to, heading, { level: 4, numbered: true });
-        view.dispatch(tr);
-      }
-    },
-  },
+  // CHIP 5a: the 4 heading commands route through the SINGLE canonical
+  // `headingRun` (SET + numbered:true) in the action registry — the SAME `run()`
+  // the BlockType dropdown calls. The former 4 copy-paste `setBlockType`
+  // closures are gone; the registry row is the SSOT for the heading verb.
+  { name: "chapter", action: (view) => runViewOnlyAction("heading-chapter", view) },
+  { name: "section", action: (view) => runViewOnlyAction("heading-section", view) },
+  { name: "subsection", action: (view) => runViewOnlyAction("heading-subsection", view) },
+  { name: "subsubsection", action: (view) => runViewOnlyAction("heading-subsubsection", view) },
   {
     name: "ref",
     action: () => {
