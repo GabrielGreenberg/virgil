@@ -113,6 +113,7 @@ export function useStructuralRevisions(
 
       bus.onBlocksAdded(bump("blocks")),
       bus.onBlocksRemoved(bump("blocks")),
+      bus.onBlockOrderChanged(bump("blocks")),
 
       bus.onHeadingsAdded(bump("headings")),
       bus.onHeadingsRemoved(bump("headings")),

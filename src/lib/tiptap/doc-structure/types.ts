@@ -157,6 +157,21 @@ export interface StructureDiff {
   // Block-level identity changes.
   addedBlocks: readonly BlockEntry[];
   removedBlocks: readonly BlockEntry[];
+  /** Same UUID, changed pos — the signature of a top-level block MOVE
+   *  (delete+insert, uuid preserved). The moved block's mapped position is
+   *  STALE (its old pos was deleted; `tr.mapping` does not follow moved
+   *  content), so the structure index must fold the NEW pos in — exactly as
+   *  `changedFootnotes`/`changedCitations` do for atom moves. Without this,
+   *  `structure.blocks.get(movedUuid).pos` is wrong after a reorder and any
+   *  position-keyed resolve (focus band) reads the wrong index. */
+  changedBlocks: readonly BlockEntry[];
+  /** True iff a top-level block was REORDERED with its UUID preserved (i.e.
+   *  `changedBlocks` is non-empty): no block identity entered or left, but
+   *  document order changed. Mirrors `citationOrderChanged`/
+   *  `footnoteOrderChanged` — the consumer-facing ping for position-keyed
+   *  consumers (focus band, fold filter) to re-resolve. A plain in-paragraph
+   *  keystroke never touches a block's opening token, so it cannot set this. */
+  blockOrderChanged: boolean;
 
   // Sub-views — independently consumable so subscribers don't have to
   // filter `addedBlocks` themselves.
@@ -220,6 +235,8 @@ export interface StructureDiff {
 export const EMPTY_DIFF: StructureDiff = {
   addedBlocks: [],
   removedBlocks: [],
+  changedBlocks: [],
+  blockOrderChanged: false,
   addedHeadings: [],
   removedHeadings: [],
   changedHeadings: [],
@@ -249,6 +266,8 @@ export function isEmptyDiff(diff: StructureDiff): boolean {
   return (
     diff.addedBlocks.length === 0 &&
     diff.removedBlocks.length === 0 &&
+    diff.changedBlocks.length === 0 &&
+    !diff.blockOrderChanged &&
     diff.addedHeadings.length === 0 &&
     diff.removedHeadings.length === 0 &&
     diff.changedHeadings.length === 0 &&

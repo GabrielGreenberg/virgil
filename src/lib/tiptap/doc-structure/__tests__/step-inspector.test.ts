@@ -78,6 +78,40 @@ describe("inspectSteps — paragraph split / merge", () => {
   });
 });
 
+describe("inspectSteps — top-level block reorder", () => {
+  it("MOVING a top-level paragraph (delete+insert, one tx) emits changedBlocks at the new pos + blockOrderChanged, not added/removed", () => {
+    // Mirrors the footnote/citation move spec, one level up: a reorder is a
+    // delete+insert of the SAME block (uuid preserved). The same-uuid cancels
+    // in added/removed (no phantom add/remove), but the new position must
+    // surface as changedBlocks (so the structure index doesn't keep the stale
+    // mapped pos) and blockOrderChanged must fire (so position-keyed consumers
+    // re-resolve).
+    const s = stateOf(doc(paragraph("p1", "first"), paragraph("p2", "second")));
+    const prev = buildInitial(s.doc);
+    // p1 = [0,7); p2 = [7,15). Move p2 before p1: delete p2, re-insert at 0.
+    const p2 = s.doc.child(1);
+    const tr = s.tr.delete(7, 15);
+    tr.insert(0, p2);
+    const d = inspectSteps(tr, s.doc, tr.doc, prev);
+    expect(d.addedBlocks.filter((b) => b.uuid === "p2")).toHaveLength(0);
+    expect(d.removedBlocks.filter((b) => b.uuid === "p2")).toHaveLength(0);
+    const moved = d.changedBlocks.find((b) => b.uuid === "p2");
+    expect(moved).toBeDefined();
+    expect(moved!.pos).toBe(0);
+    expect(d.blockOrderChanged).toBe(true);
+    // The unmoved block p1 just shifts via mapping — not part of the diff.
+    expect(d.changedBlocks.filter((b) => b.uuid === "p1")).toHaveLength(0);
+  });
+
+  it("typing inside a paragraph does NOT set blockOrderChanged or changedBlocks (keystroke sanctity)", () => {
+    const s = stateOf(doc(paragraph("p1", "hello"), paragraph("p2", "world")));
+    const tr = s.tr.insertText("!", 6, 6); // end of "hello"
+    const d = inspectSteps(tr, s.doc, tr.doc);
+    expect(d.blockOrderChanged).toBe(false);
+    expect(d.changedBlocks).toHaveLength(0);
+  });
+});
+
 describe("inspectSteps — heading delete", () => {
   it("removing a heading emits removedHeadings + removedBlocks", () => {
     const s = stateOf(

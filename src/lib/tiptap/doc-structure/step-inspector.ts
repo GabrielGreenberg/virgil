@@ -352,6 +352,7 @@ export function inspectSteps(
   const exampleContentChangedUuids = new Set<string>();
   let footnoteOrderChanged = false;
   let citationOrderChanged = false;
+  let blockOrderChanged = false;
 
   for (let stepIndex = 0; stepIndex < tr.steps.length; stepIndex++) {
     const step = tr.steps[stepIndex] as Step;
@@ -571,9 +572,24 @@ export function inspectSteps(
   // original block's position.
   const addedBlocks: BlockEntry[] = [];
   const removedBlocks: BlockEntry[] = [];
+  const changedBlocks: BlockEntry[] = [];
   const prevBlocks = prevStructure?.blocks;
   for (const [uuid, entry] of added.blocks) {
-    if (removed.blocks.has(uuid)) continue;
+    const wasRemoved = removed.blocks.get(uuid);
+    if (wasRemoved) {
+      // Same UUID in both added + removed = a top-level block MOVE
+      // (delete+insert, uuid preserved by block-uuid-backfill). The
+      // identity didn't change, so it must NOT appear in addedBlocks/
+      // removedBlocks — but its mapped position is stale (the old pos was
+      // deleted), so emit it as `changedBlocks` carrying the NEW pos (so the
+      // structure index folds it in) and flag the reorder for position-keyed
+      // consumers. Same pos = a no-op/round-trip, so neither.
+      if (wasRemoved.pos !== entry.pos) {
+        changedBlocks.push(entry);
+        blockOrderChanged = true;
+      }
+      continue;
+    }
     if (prevBlocks?.has(uuid)) {
       // Duplicate-UUID transient state from split/clone. Mark the
       // existing UUID's content as changed instead of adding a phantom.
@@ -711,6 +727,8 @@ export function inspectSteps(
   if (
     addedBlocks.length === 0 &&
     removedBlocks.length === 0 &&
+    changedBlocks.length === 0 &&
+    !blockOrderChanged &&
     addedHeadings.length === 0 &&
     removedHeadings.length === 0 &&
     changedHeadings.length === 0 &&
@@ -740,6 +758,8 @@ export function inspectSteps(
   return {
     addedBlocks,
     removedBlocks,
+    changedBlocks,
+    blockOrderChanged,
     addedHeadings,
     removedHeadings,
     changedHeadings,
