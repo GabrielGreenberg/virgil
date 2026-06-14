@@ -10,9 +10,16 @@ import type { EditorHandle } from "../../Editor";
  *
  * - `virgil-ref-create` — bare `\ref` opens the LabelRef popover in
  *   create mode anchored at the current cursor (inline; no panel).
- * - `virgil-ex-create` — bare `\ex` inserts a single-part example block
- *   at the cursor and selects it (so an already-open Examples panel can
- *   scroll to it); it does NOT open the panel.
+ *
+ * ── EXAMPLE MIGRATED (CHIP 5c) ── `\ex` (slash) no longer rides a
+ * `virgil-ex-create` CustomEvent + this listener, nor calls
+ * `editorRef.insertExample`. The slash command (commands.ts) now registers
+ * through the action-registry bridge (`runAction("example", …)` →
+ * `exampleRun`), which owns the SAME wrap-if-selection-else-insert creator the
+ * lightning grid `ex` cell calls AND the SAME backlog-#2 soft panel-select
+ * (`panelRouting.selectExample` → `setSelectedExampleId`; surface the open
+ * Examples panel's row, never force-open). So the example handler + its
+ * `setSelectedExampleId` dep are gone from this hook.
  *
  * ── CITATION MIGRATED (CHIP 4a-ii) ── `\cite` (slash + typed) no longer rides
  * a `virgil-citation-create` CustomEvent + this listener. The slash command
@@ -37,13 +44,11 @@ export function useCommandInputBridges(deps: {
   editorRef: RefObject<EditorHandle | null>;
   setActiveRefLabel: Dispatch<SetStateAction<string | null>>;
   setActiveRefRect: Dispatch<SetStateAction<DOMRect | null>>;
-  setSelectedExampleId: Dispatch<SetStateAction<string | null>>;
 }) {
   const {
     editorRef,
     setActiveRefLabel,
     setActiveRefRect,
-    setSelectedExampleId,
   } = deps;
 
   useEffect(() => {
@@ -59,17 +64,4 @@ export function useCommandInputBridges(deps: {
     window.addEventListener("virgil-ref-create", handler);
     return () => window.removeEventListener("virgil-ref-create", handler);
   }, [editorRef, setActiveRefLabel, setActiveRefRect]);
-
-  useEffect(() => {
-    const handler = () => {
-      const result = editorRef.current?.insertExample("single");
-      if (!result) return;
-      // Slash commands create their thing inline and do NOT activate any
-      // panel (backlog #2). We still select the new example so that if the
-      // Examples panel happens to be open it scrolls to it; we never open it.
-      setSelectedExampleId(result.exampleId);
-    };
-    window.addEventListener("virgil-ex-create", handler);
-    return () => window.removeEventListener("virgil-ex-create", handler);
-  }, [editorRef, setSelectedExampleId]);
 }

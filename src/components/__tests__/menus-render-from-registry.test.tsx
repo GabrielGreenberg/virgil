@@ -35,7 +35,6 @@ class ResizeObserverStub {
 // those — they are orthogonal to the CHIP-3 action-list inversion under test.
 vi.mock("../MenuBar", () => ({
   BlockTypeDropdown: () => <div data-testid="block-type-dropdown" />,
-  buildExampleTemplate: vi.fn(),
 }));
 vi.mock("@/lib/tiptap/tex-block", () => ({ insertTexBlock: vi.fn() }));
 vi.mock("@/lib/tiptap/figure-block", () => ({ insertFigureBlock: vi.fn() }));

@@ -1,20 +1,21 @@
 // @vitest-environment jsdom
 /**
- * DA-1 — `wrapSelectionInExample` must never place block-level nodes into the
- * example template's inline-only paragraph slot.
+ * DA-1 — the example WRAP must never place block-level nodes into the example
+ * template's inline-only paragraph slot.
  *
- * The Format grid's "Example (ex)" cell wraps the current selection into a
- * fresh single-example template (`buildExampleTemplate("single", …)`) and drops
- * the selection's inline content into the first `exampleItem` paragraph, whose
- * content is `inline*`. The old code shoveled the raw slice JSON in, guarded
- * only by `Array.isArray` — but a slice spanning a block boundary serializes to
- * *block* nodes (paragraphs, lists, displayMath), so that slot received
- * block-level JSON → a ProseMirror schema violation / document corruption.
+ * The grid `ex` cell and the slash `\ex` command both wrap the current selection
+ * into a fresh single-example template and drop the selection's inline content
+ * into the first item paragraph, whose content is `inline*`. The old code (grid)
+ * shoveled the raw slice JSON in, guarded only by `Array.isArray` — but a slice
+ * spanning a block boundary serializes to *block* nodes (paragraphs, lists,
+ * displayMath), so that slot received block-level JSON → a ProseMirror schema
+ * violation / document corruption.
  *
- * This locks the fix on the REAL editor schema (same harness as
- * single-example-expex-real-schema.test.ts): we replay the helper's exact
- * extract-then-assemble pipeline (`extractInlineJSON` → splice into the
- * template's first paragraph → `schema.nodeFromJSON(...).check()`) for:
+ * CHIP 5c — the harvest (`extractInlineFromSlice`) and the wrap+insert
+ * (`exampleRun`) are now the SINGLE canonical creator in the action registry,
+ * shared by both surfaces; this test locks them on the ACTUAL editor schema
+ * (`buildEditorExtensions`) by driving `exampleRun` against a real `EditorState`
+ * and inspecting the dispatched transaction's doc with `.check()`:
  *   (a) a plain inline selection            → wrapped, valid, words survive;
  *   (b) a multi-paragraph selection         → inline-only, valid, NO throw;
  *   (c) a selection containing a list       → inline-only, valid, NO throw;
@@ -46,13 +47,19 @@ vi.mock("@/lib/storage", () => {
 });
 
 import { getSchema } from "@tiptap/core";
+import { EditorState, TextSelection, type Transaction } from "@tiptap/pm/state";
 import type { Node as PMNode, Schema } from "@tiptap/pm/model";
+import type { EditorView } from "@tiptap/pm/view";
+import type { Editor } from "@tiptap/core";
 import {
   buildEditorExtensions,
   type EditorExtensionsCtx,
 } from "@/lib/editor-extensions";
-import { buildExampleTemplate } from "../MenuBar";
-import { extractInlineJSON } from "../ActionsMenuPanel";
+import {
+  exampleRun,
+  extractInlineFromSlice,
+  type ActionContext,
+} from "@/lib/actions/action-registry";
 
 function mainCtx(): EditorExtensionsCtx {
   return {
@@ -70,19 +77,42 @@ function mainCtx(): EditorExtensionsCtx {
 const schema: Schema = getSchema(buildEditorExtensions(mainCtx()));
 
 /**
- * Replay the production `wrapSelectionInExample` pipeline exactly:
- * extract inline JSON from the slice, splice it into the template's first
- * paragraph (only when non-empty), then build the example block on the REAL
- * schema and return it (so the caller can `check()` it).
+ * Drive the REAL `exampleRun` against a fresh `EditorState` seeded from `docJson`
+ * with the selection set to `[from, to)`, capture the dispatched transaction's
+ * doc, and return the new `exampleBlock` from it (so the caller can `check()`).
  */
-function buildWrappedExample(doc: PMNode, from: number, to: number): PMNode {
-  const inlineContent = extractInlineJSON(doc.slice(from, to));
-  const { node } = buildExampleTemplate("single", new Set<string>());
-  const content = node.content as Array<{ type: string; content?: unknown[] }>;
-  if (content[0] && content[0].type === "paragraph" && inlineContent.length) {
-    content[0].content = inlineContent;
-  }
-  return schema.nodeFromJSON(node);
+function runExampleWrap(docJson: object, from: number, to: number): PMNode {
+  const doc = schema.nodeFromJSON(docJson);
+  let state = EditorState.create({ schema, doc });
+  state = state.apply(
+    state.tr.setSelection(TextSelection.create(state.doc, from, to)),
+  );
+  let dispatched: Transaction | null = null;
+  const view = {
+    get state() {
+      return state;
+    },
+    dispatch: (tr: Transaction) => {
+      dispatched = tr;
+    },
+  } as unknown as EditorView;
+  const ctx: ActionContext = {
+    editor: { view, state } as unknown as Editor,
+    view,
+    ref: { kind: "selection", from, to, paragraphId: "" },
+    surface: "lightning",
+  };
+  exampleRun(ctx);
+  if (!dispatched) throw new Error("exampleRun did not dispatch");
+  const result = (dispatched as Transaction).doc;
+  expect(() => result.check()).not.toThrow(); // valid on the REAL schema
+  let block: PMNode | null = null;
+  result.descendants((n) => {
+    if (!block && n.type.name === "exampleBlock") block = n;
+    return !block;
+  });
+  if (!block) throw new Error("no exampleBlock produced");
+  return block;
 }
 
 /** The text in the example template's first (and only) item paragraph. */
@@ -102,46 +132,43 @@ describe("DA-1 — the slot is inline-only on the real schema", () => {
   });
 });
 
-describe("DA-1 — wrapSelectionInExample never corrupts the doc", () => {
+describe("DA-1 — exampleRun (the wrap) never corrupts the doc", () => {
   it("(a) plain inline selection → wrapped, valid, words survive", () => {
-    const doc = schema.nodeFromJSON({
-      type: "doc",
-      content: [
-        { type: "paragraph", content: [{ type: "text", text: "hello world" }] },
-      ],
-    });
-    // select "ello wor"
-    const block = buildWrappedExample(doc, 2, 10);
-    expect(() => block.check()).not.toThrow();
+    const block = runExampleWrap(
+      {
+        type: "doc",
+        content: [
+          { type: "paragraph", content: [{ type: "text", text: "hello world" }] },
+        ],
+      },
+      2,
+      10,
+    );
     expect(block.type.name).toBe("exampleBlock");
     expect(block.attrs.kind).toBe("single");
     expect(firstItemText(block)).toBe("ello wor");
   });
 
   it("(b) MULTI-BLOCK selection (two paragraphs) → inline-only, no schema throw", () => {
-    const doc = schema.nodeFromJSON({
-      type: "doc",
-      content: [
-        { type: "paragraph", content: [{ type: "text", text: "alpha" }] },
-        { type: "paragraph", content: [{ type: "text", text: "beta" }] },
-      ],
-    });
-    // from inside para1 ("lpha") to inside para2 ("be")
-    const block = buildWrappedExample(doc, 2, 10);
-    // The crux: this would THROW on the old code (block paragraphs into an
-    // inline-only slot). It must build cleanly now.
-    expect(() => block.check()).not.toThrow();
+    const block = runExampleWrap(
+      {
+        type: "doc",
+        content: [
+          { type: "paragraph", content: [{ type: "text", text: "alpha" }] },
+          { type: "paragraph", content: [{ type: "text", text: "beta" }] },
+        ],
+      },
+      2,
+      10,
+    );
     // Inline content joined, block boundary collapsed — no nested paragraphs.
     expect(block.child(0).type.name).toBe("paragraph");
     expect(firstItemText(block)).toBe("lphabe");
-    // No block leaked into the inline slot.
-    block.child(0).forEach((inline) => {
-      expect(inline.isInline).toBe(true);
-    });
+    block.child(0).forEach((inline) => expect(inline.isInline).toBe(true));
   });
 
   it("(c) selection containing a LIST → inline-only, no schema throw", () => {
-    const doc = schema.nodeFromJSON({
+    const doc = {
       type: "doc",
       content: [
         { type: "paragraph", content: [{ type: "text", text: "intro" }] },
@@ -157,18 +184,15 @@ describe("DA-1 — wrapSelectionInExample never corrupts the doc", () => {
           ],
         },
       ],
-    });
-    // from "intro" paragraph content start through the end of the list
-    const block = buildWrappedExample(doc, 1, doc.content.size);
-    expect(() => block.check()).not.toThrow();
-    // The list's inline leaves are harvested; no list/listItem/paragraph
-    // structure survives inside the inline slot.
+    };
+    const node = schema.nodeFromJSON(doc);
+    const block = runExampleWrap(doc, 1, node.content.size);
     block.child(0).forEach((inline) => expect(inline.isInline).toBe(true));
     expect(firstItemText(block)).toBe("introitem1");
   });
 
   it("(d) inline selection with an inline atom (inline math) preserves the atom", () => {
-    const doc = schema.nodeFromJSON({
+    const doc = {
       type: "doc",
       content: [
         {
@@ -180,9 +204,9 @@ describe("DA-1 — wrapSelectionInExample never corrupts the doc", () => {
           ],
         },
       ],
-    });
-    const block = buildWrappedExample(doc, 1, doc.child(0).nodeSize - 1);
-    expect(() => block.check()).not.toThrow();
+    };
+    const node = schema.nodeFromJSON(doc);
+    const block = runExampleWrap(doc, 1, node.child(0).nodeSize - 1);
     let sawMath = false;
     block.child(0).forEach((inline) => {
       expect(inline.isInline).toBe(true);
@@ -198,24 +222,22 @@ describe("DA-1 — wrapSelectionInExample never corrupts the doc", () => {
         { type: "paragraph", content: [{ type: "text", text: "a    b" }] },
       ],
     });
-    // select the run of spaces between "a" and "b"
-    expect(extractInlineJSON(doc.slice(2, 6))).toEqual([]);
-    const block = buildWrappedExample(doc, 2, 6);
-    expect(() => block.check()).not.toThrow();
-    // Empty template: first paragraph has no content.
+    // The harvest is the SSOT gate: a run of spaces yields no usable content.
+    expect(extractInlineFromSlice(doc.slice(2, 6))).toEqual([]);
+    const block = runExampleWrap(doc.toJSON(), 2, 6);
     expect(block.child(0).content.size).toBe(0);
   });
 
-  it("(f) collapsed selection → empty-template fallback (no throw)", () => {
+  it("(f) collapsed selection → empty single example (no throw)", () => {
     const doc = schema.nodeFromJSON({
       type: "doc",
       content: [
         { type: "paragraph", content: [{ type: "text", text: "hello" }] },
       ],
     });
-    expect(extractInlineJSON(doc.slice(3, 3))).toEqual([]);
-    const block = buildWrappedExample(doc, 3, 3);
-    expect(() => block.check()).not.toThrow();
+    expect(extractInlineFromSlice(doc.slice(3, 3))).toEqual([]);
+    const block = runExampleWrap(doc.toJSON(), 3, 3);
+    expect(block.attrs.kind).toBe("single");
     expect(block.child(0).content.size).toBe(0);
   });
 });

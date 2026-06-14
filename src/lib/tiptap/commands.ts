@@ -191,7 +191,17 @@ export const VIRGIL_COMMANDS: VirgilCommand[] = [
   {
     name: "ex",
     action: () => {
-      window.dispatchEvent(new CustomEvent("virgil-ex-create"));
+      // CHIP 5c: `\ex` routes through the SINGLE canonical `exampleRun`
+      // (wrap-if-selection-else-insert) in the action registry — the SAME
+      // `run()` the lightning grid `ex` cell calls. The former `virgil-ex-create`
+      // CustomEvent + its command-input.ts listener + `editorRef.insertExample`
+      // are retired. The INSERT is pure ProseMirror (an `exampleBlock` insert on
+      // the view), but the slash surface ALSO wants the soft panel-select
+      // (surface omni's Examples row → scroll to the new block, backlog #2 —
+      // never force-opens), which is a React-land side-effect. So `\ex` rides the
+      // bridge (like `\cite`/`\footnote`) rather than the view-only path, so
+      // `exampleRun` receives `ctx.panelRouting.selectExample`.
+      getEditorActionsHandle()?.runAction("example", { surface: "slash" });
     },
   },
   {

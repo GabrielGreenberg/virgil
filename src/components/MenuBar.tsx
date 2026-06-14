@@ -2,9 +2,7 @@
 
 import { memo, useState, useRef, useEffect, Fragment, type ReactNode } from "react";
 import { Editor } from "@tiptap/react";
-import { generateShortId } from "@/lib/uuid";
 import type { HighlightType, MarginaliaType, DividerLevel, DividerWidth } from "@/hooks/useViewPrefs";
-import { TextSelection } from "@tiptap/pm/state";
 import { type ToolbarOrientation } from "./editor-layout/floating-toolbar-shell";
 // CHIP 5a: the BlockType dropdown's heading items route through the canonical
 // `headingRun` (SET + numbered:true) in the action registry — the SAME `run()`
@@ -21,228 +19,16 @@ import { paragraphUuidAt } from "@/links/links";
 
 export { type ToolbarOrientation };
 
-/** Build a fresh example-block JSONContent template for insertion. The
- *  template includes a pre-assigned uuid so callers can locate the node
- *  after insertion to place the cursor inside its first paragraph. */
-export function buildExampleTemplate(
-  kind: "single" | "multi",
-  existing?: Set<string>,
-): {
-  uuid: string;
-  node: Record<string, unknown>;
-} {
-  const uuid = generateShortId(existing);
-  if (kind === "single") {
-    return {
-      uuid,
-      node: {
-        type: "exampleBlock",
-        attrs: {
-          uuid,
-          tag: "",
-          label: "",
-          kind: "single",
-          exnoOverride: null,
-          suppressSpace: false,
-          number: 0,
-        },
-        content: [{ type: "paragraph" }],
-      },
-    };
-  }
-  return {
-    uuid,
-    node: {
-      type: "exampleBlock",
-      attrs: {
-        uuid,
-        tag: "",
-        label: "",
-        kind: "multi",
-        exnoOverride: null,
-        suppressSpace: false,
-        number: 0,
-      },
-      content: [
-        {
-          type: "exampleItem",
-          attrs: { tag: "", label: "", subLabel: "" },
-          content: [{ type: "paragraph" }],
-        },
-        {
-          type: "exampleItem",
-          attrs: { tag: "", label: "", subLabel: "" },
-          content: [{ type: "paragraph" }],
-        },
-        {
-          type: "exampleGloss",
-          attrs: { glossId: null, colCount: 1 },
-          content: [
-            {
-              type: "alignedGlossRow",
-              attrs: { tier: "gla" },
-              content: [{ type: "glossCell", content: [] }],
-            },
-            {
-              type: "proseGlossRow",
-              attrs: { tier: "glft" },
-              content: [],
-            },
-          ],
-        },
-      ],
-    },
-  };
-}
-
-/** Insert a blank example block at the cursor and move selection into
- *  its first editable paragraph. Shared by the Format popover button
- *  and the Action-toolbar button's host. */
-export function insertExampleAtCursor(
-  editor: Editor,
-  kind: "single" | "multi",
-): { uuid: string } {
-  const existing = new Set<string>();
-  editor.state.doc.descendants((n) => {
-    if (n.type.name === "exampleBlock" && n.attrs.uuid) {
-      existing.add(n.attrs.uuid as string);
-    }
-    return true;
-  });
-  const { uuid, node } = buildExampleTemplate(kind, existing);
-  editor.chain().focus().insertContent(node).run();
-  let target = -1;
-  editor.state.doc.descendants((nd, pos) => {
-    if (nd.type.name === "exampleBlock" && nd.attrs.uuid === uuid) {
-      nd.descendants((child, relPos) => {
-        if (target >= 0) return false;
-        if (child.type.name === "paragraph") {
-          target = pos + 1 + relPos + 1;
-          return false;
-        }
-        return true;
-      });
-      return false;
-    }
-    return true;
-  });
-  if (target >= 0) {
-    editor.chain().focus().setTextSelection(target).scrollIntoView().run();
-  }
-  return { uuid };
-}
-
-/** Dispatch an "insert example" request from the Format-popover dropdown.
- *
- *  - If the cursor is already inside an `exampleBlock`, the "a." option
- *    extends that block in place: a new `\a` sub-item is appended, with
- *    the cursor parked inside it. If the host block was a single `\ex`,
- *    it's converted to a `\pex` first (existing paragraph content moves
- *    into the first `\a` item).
- *  - The "(1)" option, or either option from outside any example, inserts
- *    a fresh block at the cursor.
- *
- *  Returns true if the request was handled (so the popover can close). */
-export function handleExampleMenuPick(
-  editor: Editor,
-  kind: "single" | "multi",
-): boolean {
-  const { state } = editor;
-  const { $from } = state.selection;
-
-  // Walk ancestors to find an enclosing exampleBlock.
-  let blockDepth = -1;
-  for (let d = $from.depth; d >= 0; d--) {
-    if ($from.node(d).type.name === "exampleBlock") {
-      blockDepth = d;
-      break;
-    }
-  }
-
-  // Outside any example, or user picked "(1)": fall back to fresh insert.
-  if (blockDepth < 0 || kind === "single") {
-    insertExampleAtCursor(editor, kind);
-    return true;
-  }
-
-  // Inside an example + "a." request: extend in place.
-  const block = $from.node(blockDepth);
-  const blockPos = $from.before(blockDepth);
-  const itemType = state.schema.nodes.exampleItem;
-  const paragraphType = state.schema.nodes.paragraph;
-  if (!itemType || !paragraphType) return false;
-
-  if (block.attrs.kind === "multi") {
-    // Append a fresh `\a` item just after the last existing item so
-    // sub-labels stay monotonic.
-    const newItem = itemType.create(
-      { tag: "", label: "", subLabel: "" },
-      paragraphType.create(),
-    );
-    let insertPos = blockPos + 1; // start of block content
-    let lastItemEndInContent = -1;
-    block.forEach((child, offset) => {
-      if (child.type.name === "exampleItem") {
-        lastItemEndInContent = offset + child.nodeSize;
-      }
-    });
-    if (lastItemEndInContent >= 0) {
-      insertPos = blockPos + 1 + lastItemEndInContent;
-    } else {
-      insertPos = blockPos + block.nodeSize - 1;
-    }
-    const tr = state.tr.insert(insertPos, newItem);
-    // Park cursor inside the new item's first paragraph:
-    //   insertPos = start of the item → +1 steps into item → +1 steps into paragraph content.
-    const cursorPos = insertPos + 2;
-    tr.setSelection(TextSelection.create(tr.doc, cursorPos));
-    editor.view.dispatch(tr);
-    editor.view.focus();
-    return true;
-  }
-
-  // Single `\ex` → convert to `\pex` with the existing content wrapped
-  // as the first item and a blank second item for the user to type in.
-  const blockType = state.schema.nodes.exampleBlock;
-  if (!blockType) return false;
-  const carriedChildren: import("@tiptap/pm/model").Node[] = [];
-  const trailingChildren: import("@tiptap/pm/model").Node[] = [];
-  block.forEach((child) => {
-    if (child.type.name === "paragraph" || child.type.name === "exampleGloss") {
-      carriedChildren.push(child);
-    } else {
-      trailingChildren.push(child);
-    }
-  });
-  const firstItemContent =
-    carriedChildren.length > 0 ? carriedChildren : [paragraphType.create()];
-  const firstItem = itemType.create(
-    { tag: "", label: "", subLabel: "" },
-    firstItemContent,
-  );
-  const secondItem = itemType.create(
-    { tag: "", label: "", subLabel: "" },
-    paragraphType.create(),
-  );
-  const newBlockChildren = [firstItem, secondItem, ...trailingChildren];
-  const newBlock = blockType.create(
-    { ...block.attrs, kind: "multi" },
-    newBlockChildren,
-  );
-  const tr = state.tr.replaceRangeWith(
-    blockPos,
-    blockPos + block.nodeSize,
-    newBlock,
-  );
-  // Cursor into the second item's first paragraph:
-  //   blockPos + 1 (into block) + firstItem.nodeSize (past first item)
-  //   + 1 (into secondItem) + 1 (into its first paragraph content).
-  const cursorPos = blockPos + 1 + firstItem.nodeSize + 2;
-  tr.setSelection(TextSelection.create(tr.doc, cursorPos));
-  editor.view.dispatch(tr);
-  editor.view.focus();
-  return true;
-}
+// CHIP 5c: the example creators (`buildExampleTemplate` / `insertExampleAtCursor`
+// / `handleExampleMenuPick`) were RETIRED here. The single canonical example
+// creator is now `exampleRun` (wrap-if-selection-else-insert; one template, the
+// `exampleItemList`-wrapped `multi` shape) in
+// [src/lib/actions/action-registry.ts]; the grid `ex` cell + the slash `\ex`
+// command both route through it. `insertExampleAtCursor` + `handleExampleMenuPick`
+// had ZERO live callers (the Format-popover dropdown that once used them is gone),
+// and `buildExampleTemplate`'s `multi` shape diverged from the schema (bare
+// `exampleItem`s vs the serializer-correct `exampleItemList` wrapper) — that
+// dormant divergence is resolved in the canonical builder.
 
 // Types moved to useViewPrefs (the schema home for view-level prefs).
 // Re-exported here for back-compat with existing consumers.

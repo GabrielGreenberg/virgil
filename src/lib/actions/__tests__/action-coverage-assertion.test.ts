@@ -83,10 +83,10 @@ const HEADING_IDS = [
   "heading-subsubsection",
 ] as const;
 
-// CHIP 5b — the single non-heading block row (`tex`), appended after the heading
-// slice. (example / figure / graphics / inline-math / display-math migrate in
-// later chips.)
-const BLOCK_IDS = ["tex"] as const;
+// CHIP 5b — the `tex` block row; CHIP 5c — the `example` block row. Both
+// non-heading block rows, appended after the heading slice in registration
+// order. (figure / graphics / inline-math / display-math migrate in later chips.)
+const BLOCK_IDS = ["tex", "example"] as const;
 
 const mainCtx = (): EditorExtensionsCtx => ({
   surface: "main",
@@ -141,8 +141,8 @@ describe("card-action rows", () => {
       expect(r!.category).toBe("card");
     }
     // The registry now holds the 11 cards (CHIP 2-4) PLUS the 4 heading rows
-    // (CHIP 5a) PLUS the single `tex` block row (CHIP 5b). No OTHER rows yet
-    // (example/figure/graphics/math/title/format migrate in later chips).
+    // (CHIP 5a) PLUS the `tex` (CHIP 5b) + `example` (CHIP 5c) block rows. No
+    // OTHER rows yet (figure/graphics/math/title/format migrate in later chips).
     expect(Object.keys(VIRGIL_ACTION_REGISTRY).sort()).toEqual(
       [...CARD_IDS, ...HEADING_IDS, ...BLOCK_IDS].sort(),
     );
@@ -183,7 +183,7 @@ describe("card-action rows", () => {
     }
   });
 
-  it("the registry rows enumerate cards (menu order), then the 4 headings (level order), then the tex block", () => {
+  it("the registry rows enumerate cards (menu order), then the 4 headings (level order), then tex + example blocks", () => {
     expect(Object.keys(VIRGIL_ACTION_REGISTRY)).toEqual([
       ...CARD_ACTION_ORDER,
       ...HEADING_IDS,
@@ -368,10 +368,29 @@ describe("tex block row (CHIP 5b)", () => {
 });
 
 // ---------------------------------------------------------------------------
-// (5) the coverage assertion is GREEN at the card + heading + tex milestone
+// (4c) CHIP 5c — the `example` block row's shape (category block; slash +
+//      lightning; slashName "ex"; NO grab/typed surface).
 // ---------------------------------------------------------------------------
 
-describe("assertActionCoverage (card + heading + tex milestone)", () => {
+describe("example block row (CHIP 5c)", () => {
+  it("is category 'block' on slash + lightning, slashName 'ex', no grab/typed", () => {
+    const r = row("example");
+    expect(r.id).toBe("example");
+    expect(r.category).toBe("block");
+    expect(r.surfaces.slash).toBe(true);
+    expect(r.surfaces.lightning).toBe(true);
+    expect(r.surfaces.grab).toBeFalsy();
+    expect(r.surfaces.typed).toBeFalsy();
+    expect(r.slashName).toBe("ex");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// (5) the coverage assertion is GREEN at the card + heading + tex + example
+//     milestone
+// ---------------------------------------------------------------------------
+
+describe("assertActionCoverage (card + heading + tex + example milestone)", () => {
   it("reports NO problems for the populated slice", () => {
     expect(assertActionCoverage()).toEqual([]);
   });

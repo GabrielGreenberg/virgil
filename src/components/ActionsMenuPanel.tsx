@@ -17,11 +17,14 @@
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import type { Editor } from "@tiptap/react";
-import type { Fragment, Node as PMNode, Slice } from "@tiptap/pm/model";
 import { useDragHandleMenu } from "./editor-layout/card-actions/drag-handle-menu-context";
 import type { DragHandleAction } from "./DragHandleMenu";
-import { cardActionRows } from "@/lib/actions/action-registry";
-import { BlockTypeDropdown, buildExampleTemplate } from "./MenuBar";
+import {
+  cardActionRows,
+  exampleRun,
+  extractInlineFromSlice,
+} from "@/lib/actions/action-registry";
+import { BlockTypeDropdown } from "./MenuBar";
 import { insertTexBlock } from "@/lib/tiptap/tex-block";
 import { insertFigureBlock } from "@/lib/tiptap/figure-block";
 import { insertGraphicsBlock } from "@/lib/tiptap/graphics-block";
@@ -61,52 +64,15 @@ function loadPalette(): string[] {
 /**
  * Extract ONLY inline content (as ProseMirror JSON) from a selection slice,
  * suitable for dropping into an `inline*` slot (e.g. the paragraph inside a
- * freshly-built example template). See the DA-1 note in
- * {@link wrapSelectionInExample} for the rationale.
+ * freshly-built example template).
  *
- * A `slice` between two positions yields top-level *block* nodes whenever the
- * selection spans a block boundary, so we can't trust the raw fragment JSON to
- * be inline. We walk the fragment and collect inline nodes:
- *   - an inline node (text, inline atom)            → kept as-is;
- *   - a block node whose own content is `inline*`    → its inline children are
- *     spliced in (block boundaries collapse to nothing);
- *   - any other block (lists, gloss tables, nested   → recurse to harvest the
- *     example structure, …)                            inline leaves within.
- *
- * Returns a (possibly empty) array of inline-node JSON. An empty result is the
- * caller's signal to use the empty-template fallback.
- *
- * This runs on a user gesture (menu click), not per keystroke — a bounded walk
- * over the selection slice only, never the whole document.
+ * CHIP 5c: this is now a THIN re-export of the canonical `extractInlineFromSlice`
+ * in the action registry — the SAME harvest `exampleRun` (grid + slash) uses, so
+ * the grid's wrap and the slash's wrap can never diverge. The full DA-1 rationale
+ * lives on `extractInlineFromSlice`. Kept here under the old name so the DA-1 lock
+ * test (`wrap-selection-in-example.test.ts`) keeps importing from this module.
  */
-export function extractInlineJSON(slice: Slice): Record<string, unknown>[] {
-  const out: Record<string, unknown>[] = [];
-  let hasUsable = false; // any non-whitespace text OR any inline atom?
-  const walk = (fragment: Fragment) => {
-    fragment.forEach((child: PMNode) => {
-      if (child.isInline) {
-        // Text or an inline atom — exactly what an `inline*` slot accepts.
-        if (child.isText) {
-          if ((child.text ?? "").trim().length > 0) hasUsable = true;
-        } else {
-          // An inline atom (inline math, citation, \ref, …) is real content.
-          hasUsable = true;
-        }
-        out.push(child.toJSON() as Record<string, unknown>);
-      } else {
-        // A block node: never valid inline. Recurse into its content to pull
-        // out the inline leaves, discarding the block wrapper itself.
-        walk(child.content);
-      }
-    });
-  };
-  walk(slice.content);
-  // A pure-whitespace (or empty) selection carries no usable content — return
-  // empty so the caller takes the empty-template fallback rather than wrapping
-  // a blank line. (We don't strip individual whitespace text nodes mid-content,
-  // which would destroy inter-word spacing.)
-  return hasUsable ? out : [];
-}
+export const extractInlineJSON = extractInlineFromSlice;
 
 const MENU_W = 170;
 const MENU_PAD_Y = 6;
@@ -226,48 +192,35 @@ export function ActionsMenuPanel({
   };
 
   const wrapSelectionInExample = () => {
-    const { from, to } = editor.state.selection;
-
-    // DA-1 fix. The example template's first slot is an `exampleItem`'s
-    // paragraph, whose content is `inline*` — it accepts ONLY inline nodes
-    // (text + inline atoms). The previous version dropped the raw slice JSON
-    // (`slice.content.toJSON()`) straight into that slot guarded only by an
-    // `Array.isArray` check, which is the wrong test: a slice always
-    // serializes to an array, but its *members* are block-level whenever the
-    // selection spans a block boundary (two+ paragraphs, a list, a
-    // displayMath, …). Stuffing those block nodes into an inline-only slot is
-    // a schema violation that corrupts the document or throws.
+    // CHIP 5c: the grid `ex` cell is now a THIN delegation to the canonical
+    // `exampleRun` in the action registry — the SAME implementation the slash
+    // `\ex` command calls — so the two surfaces share ONE creator
+    // (wrap-if-selection-else-insert; one template). The grid previously
+    // hand-rolled the wrap here (`extractInlineJSON` → splice into
+    // `buildExampleTemplate("single")` → deleteSelection().insertContent); that
+    // logic moved INTO `exampleRun` (with the SAME CHIP 0 DA-1 inline-only
+    // safety: only inline nodes ever reach the `inline*` item paragraph). The
+    // dual creators (grid here + slash `insertExample`) collapsed to one.
     //
-    // Behavior chosen for a multi-block selection: take the inline content of
-    // every block in the selection, JOINED into a single paragraph (block
-    // boundaries collapse to nothing — we intentionally do NOT inject spaces,
-    // matching how `\ex` examples read as one continuous line). Nested block
-    // structure (list items, gloss cells, …) is flattened to its inline
-    // leaves. This is the most faithful safe rendering of "wrap this text as a
-    // single-part example": the user's words survive, the block scaffolding
-    // (which a single `\ex` can't express inline) is dropped. If there is no
-    // usable inline content at all (collapsed / whitespace-only selection, or a
-    // selection of pure block boundaries), we fall back to inserting the empty
-    // single-example template for the user to fill — never throwing, never
-    // dropping garbage into the slot.
-    const inlineContent = extractInlineJSON(editor.state.doc.slice(from, to));
-
-    const existing = new Set<string>();
-    editor.state.doc.descendants((n) => {
-      if (n.type.name === "exampleBlock" && n.attrs.uuid) {
-        existing.add(n.attrs.uuid as string);
-      }
-      return true;
+    // `exampleRun` is pure ProseMirror (operates on `ctx.view`): it reads the
+    // live selection off `ctx.view.state` and dispatches there, so the
+    // grab-handle `cardCreation`/`cardLifecycle` slots are intentionally absent
+    // (a pure insert needs none) and `panelRouting` is omitted (the grid inserts
+    // inline without a panel hop — matching the grid's prior no-panel-select
+    // behavior). We `focus()` first so the doc is focused before the insert (the
+    // grid cell is a toolbar button — focus may be on the button, not the doc).
+    editor.chain().focus().run();
+    exampleRun({
+      editor,
+      view: editor.view,
+      ref: {
+        kind: "selection",
+        from: editor.state.selection.from,
+        to: editor.state.selection.to,
+        paragraphId: "",
+      },
+      surface: "lightning",
     });
-    const { node } = buildExampleTemplate("single", existing);
-    const content = node.content as Array<{ type: string; content?: unknown[] }>;
-    if (content[0] && content[0].type === "paragraph" && inlineContent.length) {
-      // Only ever inline JSON reaches here — `extractInlineJSON` guarantees it.
-      content[0].content = inlineContent;
-    }
-    // When `inlineContent` is empty the template's first paragraph keeps its
-    // default empty body → the empty-template fallback.
-    editor.chain().focus().deleteSelection().insertContent(node).run();
   };
 
   const applyColor = (color: string) => {

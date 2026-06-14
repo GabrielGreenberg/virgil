@@ -2706,11 +2706,13 @@ export default function EditorLayout() {
   // bridge (CHIP 4a-ii) — so `prefsRef` / `setActiveLeft` / `setActiveRight` /
   // `setPendingCitation*` are no longer threaded here. They remain in scope for
   // the panel "+ Add citation" path (citations-host) and other consumers.
+  // Example (slash `\ex`) MIGRATED off this hook to the same bridge (CHIP 5c) —
+  // so `setSelectedExampleId` is no longer threaded here; `exampleRun`'s soft
+  // panel-select rides `panelRouting.selectExample` (wired in EditorPane).
   useCommandInputBridges({
     editorRef,
     setActiveRefLabel,
     setActiveRefRect,
-    setSelectedExampleId,
   });
 
   // Handle drag-and-drop of archive snippets into the editor.

@@ -100,6 +100,15 @@
 
 import type { Editor } from "@tiptap/core";
 import type { EditorView } from "@tiptap/pm/view";
+// VALUE import: `exampleRun` (CHIP 5c) parks the caret inside the freshly
+// inserted example's first paragraph via `TextSelection.create`. A plain PM
+// state primitive — no React/DOM — so the value import is free for every
+// consumer of this registry.
+import { TextSelection } from "@tiptap/pm/state";
+// Type-only (erased): the PM slice/fragment shapes `extractInlineFromSlice`
+// (the CHIP 5c example-wrap harvest, SSOT for the grid + slash + the DA-1 test)
+// walks. No runtime — erased at compile time.
+import type { Slice, Fragment } from "@tiptap/pm/model";
 // VALUE import: the canonical collision-free short-id minter. `texRun` (the
 // raw-LaTeX block creator) mints a fresh `uuid` for the new `texBlock` the SAME
 // way every other node creator does (slash `\cite`/`\title`, the grid's
@@ -433,6 +442,19 @@ export interface ActionContext {
     setActiveLeft: (id: PanelId) => void;
     setActiveRight: (id: PanelId) => void;
     focusCard: (cardKey: string) => void;
+    /**
+     * Select a newly-created example in the Examples panel (CHIP 5c). The
+     * example "card" is NOT a `cardCreation`-minted float keyed by a float key
+     * — it is an in-doc `exampleBlock` whose panel row is selected via the
+     * Examples panel's `selectedExampleId` state. So `exampleRun`'s soft-route
+     * uses THIS callback (mapping to `setSelectedExampleId`) rather than
+     * `focusCard`. Backlog #2: selecting the example only makes an ALREADY-open
+     * Examples panel scroll to it — it never force-opens the panel. Supplied by
+     * EditorPane through the bridge for the slash surface; absent on
+     * grab/lightning (the grid inserts inline without a panel hop) and on any
+     * pure view-only path.
+     */
+    selectExample?: (exampleId: string) => void;
   };
 }
 
@@ -1064,6 +1086,282 @@ const TEX_ACTION_ROW: ActionSpec = {
   run: texRun,
 };
 
+// ---------------------------------------------------------------------------
+// exampleRun — the THIRD pure-ProseMirror block action (CHIP 5c), modeled on
+// `texRun`. Like tex/heading (and unlike citation/footnote), an expex example
+// is a pure `exampleBlock` insert needing ONLY the `EditorView` — NO React
+// `cardCreation`, so the INSERT takes NO bridge. The only React touch is the
+// soft panel-select (`ctx.panelRouting?.selectExample`), which is optional and
+// surface-supplied; the insert runs view-only and lands even with no routing.
+//
+// THE DIVERGENCE THIS FIXES (MEMO_ACTION_ALIGNMENT.md §3 example row): there
+// were THREE creators for one intent —
+//   - grid `ex` cell (ActionsMenuPanel.wrapSelectionInExample → MenuBar's
+//     `buildExampleTemplate("single", …)`): WRAPS the selection's inline content
+//     into the first exampleItem paragraph;
+//   - slash `\ex` (commands.ts → `virgil-ex-create` CustomEvent → command-input.ts
+//     → `editorRef.insertExample("single")` in Editor.tsx): INSERTS an empty block;
+//   - the STRAY MenuBar `insertExampleAtCursor` (a third, now-dead creator).
+// Two template builders ALSO diverged on the dormant `multi` shape:
+// `insertExample`'s multi wrapped its items in an `exampleItemList` (the
+// schema-correct shape the serializer reads — latex-serializer.ts
+// `serializeExampleBlock` walks `exampleItemList`), while `buildExampleTemplate`'s
+// multi emitted BARE `exampleItem`s as direct `exampleBlock` children (a shape no
+// surface ever produced). SETTLED DECISION: ONE canonical builder here; `multi`
+// resolves to the `exampleItemList` wrapper.
+//
+// SETTLED DECISION (wrap-if-selection-else-insert): `exampleRun` WRAPS the
+// selection into the example when non-empty, INSERTS an empty single example when
+// collapsed. The wrap preserves CHIP 0's DA-1 inline-only safety
+// (`extractInlineFromSlice` over the selection slice → only inline nodes reach
+// the `inline*` item paragraph; block scaffolding is flattened to its inline
+// leaves).
+// ---------------------------------------------------------------------------
+
+/**
+ * Extract ONLY inline content (as ProseMirror JSON) from a selection slice,
+ * suitable for dropping into an `inline*` slot (the example template's first
+ * `exampleItem` paragraph). This is the CHIP 0 DA-1 safety, hoisted here as the
+ * SSOT so `exampleRun` (grid + slash) AND the DA-1 lock test exercise the SAME
+ * harvest — the grid's old private `extractInlineJSON` (ActionsMenuPanel) now
+ * delegates here, so the two can never diverge.
+ *
+ * A `slice` between two positions yields top-level *block* nodes whenever the
+ * selection spans a block boundary, so the raw fragment JSON can't be trusted to
+ * be inline. We walk the fragment and collect inline nodes:
+ *   - an inline node (text, inline atom)            → kept as-is;
+ *   - any block node                                 → recurse into its content to
+ *                                                      harvest the inline leaves,
+ *                                                      discarding the block wrapper
+ *                                                      (block boundaries collapse
+ *                                                      to nothing — NO spaces are
+ *                                                      injected, matching how `\ex`
+ *                                                      reads as one continuous line).
+ *
+ * Returns a (possibly empty) array of inline-node JSON. An empty result (a
+ * collapsed / whitespace-only / pure-block-boundary selection) is the caller's
+ * signal to use the empty-template fallback rather than wrapping a blank line.
+ * Runs on a user gesture, not per keystroke — a bounded walk over the selection
+ * slice only, never the whole document. Pure (no React/DOM), so the registry
+ * stays node-env-importable.
+ */
+export function extractInlineFromSlice(slice: Slice): Record<string, unknown>[] {
+  const out: Record<string, unknown>[] = [];
+  let hasUsable = false; // any non-whitespace text OR any inline atom?
+  const walk = (fragment: Fragment) => {
+    fragment.forEach((child) => {
+      if (child.isInline) {
+        if (child.isText) {
+          if ((child.text ?? "").trim().length > 0) hasUsable = true;
+        } else {
+          hasUsable = true; // an inline atom (inline math, citation, \ref, …)
+        }
+        out.push(child.toJSON() as Record<string, unknown>);
+      } else {
+        walk(child.content);
+      }
+    });
+  };
+  walk(slice.content);
+  return hasUsable ? out : [];
+}
+
+/**
+ * Build a fresh `exampleBlock` JSON template (the ONE canonical example
+ * builder, CHIP 5c). `kind: "single"` → a one-paragraph `\ex`; `kind: "multi"`
+ * → a `\pex` whose items are wrapped in an `exampleItemList` (the schema-correct
+ * shape — the bare-`exampleItem` variant the old `buildExampleTemplate` emitted
+ * is GONE). Stamps a collision-free `uuid` so the caller can locate the node
+ * after insertion. The `single` shape is byte-identical to the prior
+ * `buildExampleTemplate("single")` / `insertExample("single")` output, so the
+ * common single case round-trips to the SAME `.tex`.
+ *
+ * `inlineContent`, when supplied, seeds the first item paragraph (the wrap
+ * path) — it MUST be inline-only JSON (the caller guarantees this via
+ * `extractInlineFromSlice`; an empty array ⇒ the empty-template fallback).
+ */
+function buildExampleNode(
+  kind: "single" | "multi",
+  existing: Set<string>,
+  inlineContent?: Record<string, unknown>[],
+): { uuid: string; node: Record<string, unknown> } {
+  const uuid = generateShortId(existing);
+  const baseAttrs = {
+    uuid,
+    tag: "",
+    label: "",
+    exnoOverride: null,
+    suppressSpace: false,
+    number: 0,
+  };
+  if (kind === "single") {
+    const firstParagraph: Record<string, unknown> =
+      inlineContent && inlineContent.length
+        ? { type: "paragraph", content: inlineContent }
+        : { type: "paragraph" };
+    return {
+      uuid,
+      node: {
+        type: "exampleBlock",
+        attrs: { ...baseAttrs, kind: "single" },
+        content: [firstParagraph],
+      },
+    };
+  }
+  // multi → the `exampleItemList`-wrapped shape (schema-correct; the dormant
+  // bare-item divergence is resolved here). Two blank items + a one-row gloss,
+  // matching `insertExample("multi")` verbatim.
+  return {
+    uuid,
+    node: {
+      type: "exampleBlock",
+      attrs: { ...baseAttrs, kind: "multi" },
+      content: [
+        {
+          type: "exampleItemList",
+          content: [
+            {
+              type: "exampleItem",
+              attrs: { tag: "", label: "", subLabel: "" },
+              content: [{ type: "paragraph" }],
+            },
+            {
+              type: "exampleItem",
+              attrs: { tag: "", label: "", subLabel: "" },
+              content: [{ type: "paragraph" }],
+            },
+          ],
+        },
+        {
+          type: "exampleGloss",
+          attrs: { glossId: null, colCount: 1 },
+          content: [
+            {
+              type: "alignedGlossRow",
+              attrs: { tier: "gla" },
+              content: [{ type: "glossCell", content: [] }],
+            },
+            {
+              type: "proseGlossRow",
+              attrs: { tier: "glft" },
+              content: [],
+            },
+          ],
+        },
+      ],
+    },
+  };
+}
+
+/**
+ * The canonical example creator — wrap-if-selection-else-insert (CHIP 5c).
+ * Operates purely on `ctx.view` (no React, no bridge for the INSERT); the
+ * optional `ctx.panelRouting?.selectExample` soft-selects the new block in an
+ * already-open Examples panel (backlog #2 — never force-opens it). Both the grid
+ * `ex` cell and the slash `\ex` route through THIS, so they can never diverge.
+ *
+ *   - selection non-empty → WRAP: harvest the selection's inline content via
+ *     `extractInlineFromSlice` (the CHIP 0 DA-1 safety — only inline nodes ever
+ *     reach the `inline*` item paragraph; block scaffolding is flattened to its
+ *     inline leaves), build a SINGLE example seeded with it, `deleteSelection()`
+ *     then insert. A whitespace-only/empty harvest ⇒ the empty-template fallback
+ *     (a blank single example).
+ *   - collapsed caret → INSERT an empty single example at the caret.
+ *
+ * After insertion the caret is parked inside the new block's first editable
+ * paragraph (matching the former `insertExample`/`insertExampleAtCursor` tail) so
+ * the user can type immediately — `insertContent` doesn't do this for an
+ * `isolating` block.
+ */
+export function exampleRun(ctx: ActionContext): void {
+  const { state } = ctx.view;
+  const exampleBlockType = state.schema.nodes.exampleBlock;
+  if (!exampleBlockType) return;
+  const { from, to, empty } = state.selection;
+
+  // Harvest inline-only content from the selection (the WRAP path) via the SSOT
+  // `extractInlineFromSlice` — a bounded walk over the selection slice (never the
+  // whole doc), run on a user gesture, not per keystroke. An empty result (no
+  // usable text/atoms) ⇒ the empty-template fallback below.
+  const inlineContent = empty
+    ? []
+    : extractInlineFromSlice(state.doc.slice(from, to));
+
+  const existing = new Set<string>();
+  state.doc.descendants((node) => {
+    if (node.type.name === "exampleBlock" && node.attrs.uuid) {
+      existing.add(node.attrs.uuid as string);
+    }
+    return true;
+  });
+  const { uuid, node } = buildExampleNode("single", existing, inlineContent);
+
+  // Build the example block on the live schema and insert it. `deleteSelection`
+  // before insert is required when wrapping a non-empty range so the new block
+  // replaces the selection (mirrors the grid's
+  // `deleteSelection().insertContent(node)` and tex's delete-then-insert dance).
+  const exampleNode = state.schema.nodeFromJSON(node);
+  let tr = state.tr;
+  if (!empty) tr = tr.deleteSelection();
+  tr = tr.replaceSelectionWith(exampleNode);
+
+  // Park the caret inside the new block's first editable paragraph. We locate
+  // the just-inserted block by its uuid in the resulting doc (the insert position
+  // shifts under deleteSelection), then descend to its first paragraph.
+  let target = -1;
+  tr.doc.descendants((n, pos) => {
+    if (target >= 0) return false;
+    if (n.type.name === "exampleBlock" && n.attrs.uuid === uuid) {
+      n.descendants((child, relPos) => {
+        if (target >= 0) return false;
+        if (child.type.name === "paragraph") {
+          target = pos + 1 + relPos + 1; // +1 into block, +1 into paragraph content
+          return false;
+        }
+        return true;
+      });
+      return false;
+    }
+    return true;
+  });
+  if (target >= 0) {
+    tr = tr.setSelection(TextSelection.create(tr.doc, target));
+  }
+  ctx.view.dispatch(tr.scrollIntoView());
+
+  // Soft-select the new example so an ALREADY-open Examples panel scrolls to it
+  // (backlog #2: never force-opens the panel). Supplied only on the slash
+  // surface (via the bridge); the grid inserts inline without a panel hop.
+  ctx.panelRouting?.selectExample?.(uuid);
+}
+
+/**
+ * The single `example` registry row — `category: "block"`, exposed on the slash
+ * surface (`\ex`) AND the lightning surface (the grid `ex` cell). No
+ * grab/typed/keyboard surface (an example is not a grab-handle action, and there
+ * is no `\ex{}`-style input rule — the `\ex `/`\pex ` LaTeX is parsed at load,
+ * not via an inline input rule). Both surfaces call `exampleRun`.
+ *
+ * `applies` mirrors tex/heading: a selection / caret is always insertable; a
+ * non-text atom-block ref has no caret to insert at → "disabled". In practice
+ * example is only invoked from a selection or caret, so this is "ok" everywhere
+ * it is reachable.
+ */
+const EXAMPLE_ACTION_ROW: ActionSpec = {
+  id: "example",
+  label: "Example",
+  category: "block",
+  surfaces: { slash: true, lightning: true },
+  slashName: "ex",
+  applies: (ctx) => {
+    const ref = ctx.ref;
+    if (ref.kind === "selection" || ref.kind === "cursor") return "ok";
+    if (!isTextObjectKind(ref.kind)) return "ok"; // defensive: unknown → allow
+    return TEXT_OBJECT_REGISTRY[ref.kind].isAtomBlock ? "disabled" : "ok";
+  },
+  run: exampleRun,
+};
+
 /**
  * Build one heading row. Headings are `category: "block"`, exposed on the slash
  * surface (`\chapter` … `\subsubsection`) and the lightning surface (the
@@ -1202,6 +1500,8 @@ export const VIRGIL_ACTION_REGISTRY: Partial<Record<ActionId, ActionSpec>> =
     ...HEADING_ACTION_IDS.map((id) => [id, headingRow(id)] as const),
     // CHIP 5b: the single `tex` row (pure-PM block action; slash + lightning).
     ["tex", TEX_ACTION_ROW] as const,
+    // CHIP 5c: the single `example` row (pure-PM block insert; slash + lightning).
+    ["example", EXAMPLE_ACTION_ROW] as const,
   ]) as Partial<Record<ActionId, ActionSpec>>;
 
 // ---------------------------------------------------------------------------
@@ -1328,16 +1628,17 @@ const COVERED_HEADING_IDS: readonly (BlockActionId & `heading-${string}`)[] =
   HEADING_ACTION_IDS;
 
 /**
- * The non-heading block ids covered so far — CHIP 5b adds `tex`. Each owns the
- * slash surface (`\tex`) AND the lightning surface (the grid `\tex` cell),
- * routes through the canonical pure-PM `texRun` (seed-from-selection), and
- * carries a `slashName` the assertion reconciles against `VIRGIL_COMMAND_NAMES`.
- * Moves these ids from EXPECTED-PENDING to COVERED so step (4) doesn't flag the
- * new rows as out-of-order. Typed against `BlockActionId` so a drift trips the
- * typechecker. (`example` / `figure` / `graphics` / `inline-math` /
- * `display-math` stay pending for later chips.)
+ * The non-heading block ids covered so far — CHIP 5b adds `tex`; CHIP 5c adds
+ * `example`. Each owns the slash surface (`\tex` / `\ex`) AND the lightning
+ * surface (the grid `\tex` / `ex` cell), routes through its canonical pure-PM
+ * creator (`texRun` seed-from-selection; `exampleRun` wrap-if-selection-else-
+ * insert), and carries a `slashName` the assertion reconciles against
+ * `VIRGIL_COMMAND_NAMES`. Moves these ids from EXPECTED-PENDING to COVERED so
+ * step (4) doesn't flag the new rows as out-of-order. Typed against
+ * `BlockActionId` so a drift trips the typechecker. (`figure` / `graphics` /
+ * `inline-math` / `display-math` stay pending for later chips.)
  */
-const COVERED_BLOCK_IDS: readonly BlockActionId[] = ["tex"];
+const COVERED_BLOCK_IDS: readonly BlockActionId[] = ["tex", "example"];
 
 /**
  * The card ids that ALSO own the PM-land surfaces (slash + typed): `citation`

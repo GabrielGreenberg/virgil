@@ -2142,6 +2142,7 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
     routingPrefs: typeof bridgeRoutingPrefs;
     setActiveLeft: (id: PanelId) => void;
     setActiveRight: (id: PanelId) => void;
+    setSelectedExampleId: typeof setSelectedExampleId;
   }>({
     cardCreation,
     cardLifecycle,
@@ -2149,6 +2150,7 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
     routingPrefs: bridgeRoutingPrefs,
     setActiveLeft: bridgeSetActiveLeft,
     setActiveRight: bridgeSetActiveRight,
+    setSelectedExampleId,
   });
   bridgeDepsRef.current = {
     cardCreation,
@@ -2157,6 +2159,7 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
     routingPrefs: bridgeRoutingPrefs,
     setActiveLeft: bridgeSetActiveLeft,
     setActiveRight: bridgeSetActiveRight,
+    setSelectedExampleId,
   };
   // Publish on editor-mount; clear on unmount (or when the editor instance
   // swaps). Gated on the reactive `editor` so the handle's `runAction` reads a
@@ -2212,6 +2215,11 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
             setActiveLeft: deps.setActiveLeft,
             setActiveRight: deps.setActiveRight,
             focusCard: focusNewCard,
+            // CHIP 5c: the example soft-select. `exampleRun` calls this with the
+            // new block's uuid so an ALREADY-open Examples panel scrolls to it
+            // (backlog #2 — never force-opens). Maps to the Examples panel's
+            // `selectedExampleId` state.
+            selectExample: deps.setSelectedExampleId,
           },
         };
         void spec.run(ctx);

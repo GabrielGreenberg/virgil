@@ -260,7 +260,10 @@ export interface EditorHandle {
   renumberFootnotes: () => void;
   getExamples: () => ExampleInfo[];
   scrollToExample: (exampleId: string, sourceEl?: HTMLElement | null) => void;
-  insertExample: (kind: "single" | "multi") => { exampleId: string } | null;
+  // CHIP 5c: `insertExample` was RETIRED — the only caller was the now-retired
+  // `virgil-ex-create` command-input bridge. Example creation is unified on
+  // `exampleRun` (action-registry), reached by the slash `\ex` via the
+  // EditorActions bridge and by the grid `ex` cell directly.
   getCitations: () => { citationId: string; command: string; displayText: string; pos: number }[];
   scrollToCitation: (citationId: string, sourceEl?: HTMLElement | null) => void;
   updateCitationDisplay: (citationId: string, displayText: string, command?: string) => void;
@@ -1292,109 +1295,9 @@ const VirgilEditor = forwardRef<EditorHandle, EditorProps>(function VirgilEditor
       editor.chain().focus().setTextSelection(target + 1).scrollIntoView().run();
     },
 
-    insertExample(kind: "single" | "multi"): { exampleId: string } | null {
-      if (!editor) return null;
-      const existing = new Set<string>();
-      editor.state.doc.descendants((n) => {
-        if (n.type.name === "exampleBlock" && n.attrs.uuid) {
-          existing.add(n.attrs.uuid as string);
-        }
-        return true;
-      });
-      const exampleId = generateShortId(existing);
-      const single: any = {
-        type: "exampleBlock",
-        attrs: {
-          uuid: exampleId,
-          tag: "",
-          label: "",
-          kind: "single",
-          exnoOverride: null,
-          suppressSpace: false,
-          number: 0,
-        },
-        content: [{ type: "paragraph" }],
-      };
-      const multi: any = {
-        type: "exampleBlock",
-        attrs: {
-          uuid: exampleId,
-          tag: "",
-          label: "",
-          kind: "multi",
-          exnoOverride: null,
-          suppressSpace: false,
-          number: 0,
-        },
-        content: [
-          {
-            type: "exampleItemList",
-            content: [
-              {
-                type: "exampleItem",
-                attrs: { tag: "", label: "", subLabel: "" },
-                content: [{ type: "paragraph" }],
-              },
-              {
-                type: "exampleItem",
-                attrs: { tag: "", label: "", subLabel: "" },
-                content: [{ type: "paragraph" }],
-              },
-            ],
-          },
-          {
-            type: "exampleGloss",
-            attrs: { glossId: null, colCount: 1 },
-            content: [
-              {
-                type: "alignedGlossRow",
-                attrs: { tier: "gla" },
-                content: [{ type: "glossCell", content: [] }],
-              },
-              {
-                type: "proseGlossRow",
-                attrs: { tier: "glft" },
-                content: [],
-              },
-            ],
-          },
-        ],
-      };
-      editor.chain().focus().insertContent(kind === "multi" ? multi : single).run();
-      // Place the cursor inside the first editable paragraph of the
-      // newly-inserted example so the user can start typing immediately.
-      // `insertContent` doesn't do this for us when the root node is
-      // `isolating: true`.
-      let target = -1;
-      editor.state.doc.descendants((node, pos) => {
-        if (
-          node.type.name === "exampleBlock" &&
-          node.attrs.uuid === exampleId
-        ) {
-          // Walk into the block, find the first paragraph descendant.
-          node.descendants((child, relPos) => {
-            if (target >= 0) return false;
-            if (child.type.name === "paragraph") {
-              // +1 to step inside the paragraph's content
-              target = pos + 1 + relPos + 1;
-              return false;
-            }
-            return true;
-          });
-          return false;
-        }
-        return true;
-      });
-      if (target >= 0) {
-        editor
-          .chain()
-          .focus()
-          .setTextSelection(target)
-          .scrollIntoView()
-          .run();
-      }
-      return { exampleId };
-    },
+    // CHIP 5c: `insertExample` RETIRED here — example creation unified on
+    // `exampleRun` (action-registry); the slash `\ex` reaches it via the
+    // EditorActions bridge, the grid `ex` cell calls it directly.
 
     getCitations() {
       if (!editor) return [];
