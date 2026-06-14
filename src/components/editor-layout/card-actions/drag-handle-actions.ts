@@ -57,6 +57,7 @@ import {
   TEXT_OBJECT_REGISTRY,
   isTextObjectKind,
 } from "@/text-objects/text-object-registry";
+import { isAtomNode } from "@/lib/tiptap/atom-registry";
 import type {
   ConfirmDescriptor,
   TextObjectKind,
@@ -707,7 +708,7 @@ async function confirmHeadingLifecycle(
  * `TextObjectRef`, it consults `meta.confirmDestructive` and computes
  * the `outerRange` + `hasAnchorsOrAtoms` context once.
  */
-function resolveDestructiveConfirm(
+export function resolveDestructiveConfirm(
   ed: Editor,
   ref: DragHandleRef,
   action: "archive" | "delete",
@@ -754,10 +755,37 @@ function confirmSelectionDestructive(
   };
 }
 
-/** Cheap walk over `[from, to)` looking for any `linkedAnchor` mark or
- *  `footnote`/`citation` inline atom. Used to drive the
- *  "empty + nothing-attached → skip the warning" decision in per-kind
- *  `confirmDestructive` helpers. Bounded by the outer range, which is
+/**
+ * Block-atom / opaque-content node names whose presence makes a range
+ * non-trivial to lose — even when its `textContent` is empty. Derived from
+ * the SSOTs so a newly-added atom kind is recognized here for free:
+ *
+ *   • `isAtomNode` (ATOM_REGISTRY, the inline-Atom SSOT) covers the inline
+ *     atoms: `footnote`, `citation`, `labelRef` (`\ref`), `inlineMath`.
+ *   • This set covers the BLOCK atoms — every `TEXT_OBJECT_REGISTRY` kind
+ *     flagged `isAtomBlock` (`displayMath`, `texBlock`, `graphicsBlock`,
+ *     `latexComment`), the kind name being the PM node name — PLUS
+ *     `figureBlock`, which is NOT a schema atom (`content: figureCaption?`)
+ *     but is still meaningful, destroy-with-a-confirm content.
+ *
+ * Keep both sourced from the registries; do not hard-code a parallel
+ * inline list. If a new atom kind is added to either registry it must
+ * either carry `isAtomBlock` (block) or be in ATOM_REGISTRY (inline) for
+ * this gate to pick it up. */
+const MEANINGFUL_BLOCK_ATOM_NODE_NAMES: ReadonlySet<string> = new Set<string>([
+  ...Object.entries(TEXT_OBJECT_REGISTRY)
+    .filter(([, meta]) => meta.isAtomBlock)
+    .map(([kind]) => kind),
+  "figureBlock",
+]);
+
+/** Cheap walk over `[from, to)` looking for any `linkedAnchor` mark, inline
+ *  Atom (footnote / citation / `\ref` / inline-math — via the ATOM_REGISTRY
+ *  SSOT), or meaningful block atom (math / tex / graphic / figure block).
+ *  Used to drive the "empty + nothing-attached → skip the warning" decision
+ *  in per-kind `confirmDestructive` helpers, so deleting/archiving a block
+ *  whose only content is one of these surfaces the destructive confirm
+ *  instead of silently destroying it. Bounded by the outer range, which is
  *  always the single block the action targets. */
 function rangeHasAnchorsOrAtoms(
   doc: PMNode,
@@ -768,7 +796,7 @@ function rangeHasAnchorsOrAtoms(
   let found = false;
   doc.nodesBetween(from, to, (node) => {
     if (found) return false;
-    if (node.type.name === "footnote" || node.type.name === "citation") {
+    if (isAtomNode(node) || MEANINGFUL_BLOCK_ATOM_NODE_NAMES.has(node.type.name)) {
       found = true;
       return false;
     }
