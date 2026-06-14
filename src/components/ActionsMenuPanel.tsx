@@ -232,6 +232,27 @@ export function ActionsMenuPanel({
         if (from !== to) stashedRangeRef.current = { from, to };
         setColorPopoverAnchor(rect);
       },
+      // The `\ref` create-mode popover seam (CHIP 7a). The 'Cross-ref' grid cell's
+      // `run()` (`refRun`) calls this to open the `LabelRef` popover at the caret
+      // (the popover is the creator). Like `openFigurePopover`, the grid is a
+      // React subtree separate from EditorLayout's ref-popover state, so we
+      // compute the caret rect and hop the `virgil-ref-create-popover` CustomEvent
+      // the marker-clicks listener consumes to open create mode. SAME event the
+      // slash surface's bridge dispatches, so the two surfaces converge.
+      openRefPopover: () => {
+        if (typeof window === "undefined") return;
+        const { from } = editor.state.selection;
+        const coords = editor.view.coordsAtPos(from);
+        const rect = new DOMRect(
+          coords.left,
+          coords.top,
+          0,
+          coords.bottom - coords.top,
+        );
+        window.dispatchEvent(
+          new CustomEvent("virgil-ref-create-popover", { detail: { rect } }),
+        );
+      },
     };
     void row.run(ctx);
     // NOTE: like the prior format cells (and the prior `wrapSelectionInMath` /
@@ -540,7 +561,18 @@ export function ActionsMenuPanel({
             <path d="M2.5 12.5 L6 9 L9 11 L11 9.5 L13.5 12" />
           </svg>
         </FmtBtn>
-        <div />
+        {/* CHIP 7a: the NEW 'Cross-ref' cell — the lightning surface for `\ref`.
+            Routes through `runGridAction("ref")` → the registry's `refRun` →
+            `ctx.openRefPopover()`, opening the LabelRef create-mode popover at
+            the caret (the SAME `run()` the slash `\ref` reaches). */}
+        <FmtBtn
+          title="Insert cross-reference (\ref)"
+          onClick={() => runGridAction("ref")}
+        >
+          <span style={{ fontFamily: "var(--font-mono), monospace", fontSize: 11 }}>
+            \ref
+          </span>
+        </FmtBtn>
       </div>
 
       <div

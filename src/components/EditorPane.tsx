@@ -2206,6 +2206,29 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
           cardLifecycle: deps.cardLifecycle,
           dispatch: deps.dispatch,
           payload: seed.payload,
+          // CHIP 7a: the `\ref` create-mode popover seam. `refRun` calls this to
+          // open the `LabelRef` popover at the caret (the popover is the creator).
+          // The bridge can't reach EditorLayout's `setActiveRefLabel`/
+          // `setActiveRefRect` directly (they live up in the shell), so — exactly
+          // like the grid's `openFigurePopover` — we compute the caret rect here
+          // and hop the `virgil-ref-create-popover` CustomEvent that EditorLayout's
+          // marker-clicks listener consumes to open create mode. REPLACES the
+          // retired `virgil-ref-create` event (which carried no rect — the old
+          // command-input.ts listener computed it; that logic moves here).
+          openRefPopover: () => {
+            if (typeof window === "undefined") return;
+            const { from } = ed.state.selection;
+            const coords = ed.view.coordsAtPos(from);
+            const rect = new DOMRect(
+              coords.left,
+              coords.top,
+              0,
+              coords.bottom - coords.top,
+            );
+            window.dispatchEvent(
+              new CustomEvent("virgil-ref-create-popover", { detail: { rect } }),
+            );
+          },
           // Panel-routing wiring the citation soft-route (CHIP 4a-ii) reads to
           // surface OMNI only when the citations side is collapsed/blank, and
           // to drop focus into the new card's library-picker. `focusCard` just

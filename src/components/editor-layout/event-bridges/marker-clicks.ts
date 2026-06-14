@@ -348,6 +348,30 @@ export function useMarkerClickBridges(deps: {
     return () => window.removeEventListener("virgil-label-ref-click", handler);
   }, [setActiveRefLabel, setActiveRefRect, setActiveRefCommand]);
 
+  // CHIP 7a: open the LabelRef popover in CREATE mode at the caret. The slash
+  // `\ref` (via EditorPane's bridge → `refRun` → `openRefPopover`) and the new
+  // lightning 'Cross-ref' grid cell both compute the caret rect and dispatch
+  // `virgil-ref-create-popover` with it in `detail.rect`; we open create mode
+  // (`label=""` → the popover lists every `\label{…}` site and inserts the chosen
+  // `labelRef` atom at the cursor). REPLACES the retired `virgil-ref-create`
+  // event + its command-input.ts handler (which computed the rect itself; that
+  // now happens at the calling surface, mirroring `openFigurePopover`). The
+  // EDIT-existing-`\ref` listener above (`virgil-label-ref-click`) is untouched.
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const detail = (e as CustomEvent).detail;
+      const rect = detail?.rect;
+      if (!(rect instanceof DOMRect)) return;
+      setActiveRefLabel("");
+      setActiveRefRect(rect);
+      // Create mode defaults to the plain `\ref` command (matching the prior
+      // command-input.ts create path, which never set a command).
+      setActiveRefCommand("ref");
+    };
+    window.addEventListener("virgil-ref-create-popover", handler);
+    return () => window.removeEventListener("virgil-ref-create-popover", handler);
+  }, [setActiveRefLabel, setActiveRefRect, setActiveRefCommand]);
+
   useEffect(() => {
     const handler = (e: Event) => {
       const detail = (e as CustomEvent).detail;

@@ -111,6 +111,13 @@ const FORMAT_IDS = [
   "text-color",
 ] as const;
 
+// CHIP 7a — the FINAL slices, appended LAST in registration order: `ref` (the
+// `\ref` cross-reference atom; slash + the new lightning 'Cross-ref' cell) then
+// the 3 title-field ids (`title`/`author`/`date`; SLASH-ONLY by design). With
+// these the registry is the COMPLETE SSOT (every ActionId has a row).
+const ATOM_IDS = ["ref"] as const;
+const TITLE_IDS = ["title", "author", "date"] as const;
+
 const mainCtx = (): EditorExtensionsCtx => ({
   surface: "main",
   editable: true,
@@ -165,10 +172,18 @@ describe("card-action rows", () => {
     }
     // The registry now holds the 11 cards (CHIP 2-4) PLUS the 4 heading rows
     // (CHIP 5a) PLUS the `tex` (CHIP 5b) + `example` (CHIP 5c) + the 4 block-atom
-    // rows (CHIP 6a) PLUS the 8 format rows (CHIP 6b — completes the grid fold).
-    // No OTHER rows yet (title fields + `\ref` migrate in later chips).
+    // rows (CHIP 6a) PLUS the 8 format rows (CHIP 6b) PLUS — as of CHIP 7a — the
+    // `ref` atom + the 3 title-field rows. This is the COMPLETE SSOT: no OTHER
+    // rows exist.
     expect(Object.keys(VIRGIL_ACTION_REGISTRY).sort()).toEqual(
-      [...CARD_IDS, ...HEADING_IDS, ...BLOCK_IDS, ...FORMAT_IDS].sort(),
+      [
+        ...CARD_IDS,
+        ...HEADING_IDS,
+        ...BLOCK_IDS,
+        ...FORMAT_IDS,
+        ...ATOM_IDS,
+        ...TITLE_IDS,
+      ].sort(),
     );
   });
 
@@ -207,12 +222,14 @@ describe("card-action rows", () => {
     }
   });
 
-  it("the registry rows enumerate cards (menu order), then the 4 headings (level order), then the block slice, then the 8 format rows", () => {
+  it("the registry rows enumerate cards (menu order), then headings, the block slice, the 8 format rows, then the CHIP 7a `ref` + title fields LAST", () => {
     expect(Object.keys(VIRGIL_ACTION_REGISTRY)).toEqual([
       ...CARD_ACTION_ORDER,
       ...HEADING_IDS,
       ...BLOCK_IDS,
       ...FORMAT_IDS,
+      ...ATOM_IDS,
+      ...TITLE_IDS,
     ]);
   });
 });
@@ -449,12 +466,46 @@ describe("format rows (CHIP 6b — completes the grid fold)", () => {
 });
 
 // ---------------------------------------------------------------------------
-// (5) the coverage assertion is GREEN at the card + heading + tex + example +
-//     block-atom + format milestone (the whole grid fold)
+// (4e) CHIP 7a — the `ref` atom row + the 3 title-field rows.
+//   - `ref`: category 'atom', slash + lightning, slashName 'ref', no grab/typed.
+//   - title/author/date: category 'block', SLASH-ONLY (no grab/lightning/typed),
+//     slashName === the field name.
 // ---------------------------------------------------------------------------
 
-describe("assertActionCoverage (card + heading + block + format milestone)", () => {
-  it("reports NO problems for the populated slice", () => {
+describe("ref + title-field rows (CHIP 7a — completes the SSOT)", () => {
+  it("`ref` is category 'atom' on slash + lightning, slashName 'ref', no grab/typed", () => {
+    const r = row("ref");
+    expect(r.id).toBe("ref");
+    expect(r.category).toBe("atom");
+    expect(r.surfaces.slash).toBe(true);
+    expect(r.surfaces.lightning).toBe(true);
+    expect(r.surfaces.grab).toBeFalsy();
+    expect(r.surfaces.typed).toBeFalsy();
+    expect(r.slashName).toBe("ref");
+  });
+
+  it("each title field is category 'block', SLASH-ONLY, slashName === field", () => {
+    for (const id of TITLE_IDS) {
+      const r = row(id);
+      expect(r.id).toBe(id);
+      expect(r.category).toBe("block");
+      expect(r.surfaces.slash).toBe(true);
+      expect(r.surfaces.grab).toBeFalsy();
+      expect(r.surfaces.lightning).toBeFalsy();
+      expect(r.surfaces.typed).toBeFalsy();
+      expect(r.surfaces.keyboard).toBeFalsy();
+      expect(r.slashName).toBe(id);
+    }
+  });
+});
+
+// ---------------------------------------------------------------------------
+// (5) the coverage assertion is GREEN — and as of CHIP 7a the covered set EQUALS
+//     EXPECTED_ACTION_IDS (the registry is the COMPLETE SSOT, zero pending ids).
+// ---------------------------------------------------------------------------
+
+describe("assertActionCoverage (COMPLETE SSOT — CHIP 7a)", () => {
+  it("reports NO problems (every ActionId has a row; zero pending)", () => {
     expect(assertActionCoverage()).toEqual([]);
   });
 });

@@ -3,18 +3,17 @@
  * "action / tool" Virgil exposes across its FOUR action surfaces.
  *
  * ──────────────────────────────────────────────────────────────────────────
- * STATUS (CHIP 3 — REGISTRY IS THE SSOT THE LIVE MENUS RENDER FROM). The
- * module defines the TYPES, the coverage assertion, the PM→React bridge
- * CONTRACT, and the 11 CARD-action rows. Each card `run()` DELEGATES to the
- * existing grab-bar dispatcher (`ctx.dispatch`), so live *behavior* is
- * byte-identical to today — ZERO behavior change. CHIP 3 INVERTED the menu
- * dependency: the card rows now OWN their presentation (label / letter / icon
- * / separator / destructive, in `action-icons.tsx`), the former `MENU_ENTRIES`
- * array is deleted, and the two live menus (`DragHandleMenu` /
- * `ActionsMenuPanel`) render their action list via `cardActionRows(surface)`
- * — thin views over this registry. The slash / block / title / format ids are
- * EXPECTED-PENDING (later chips). The coverage assertion is ARMED for the card
- * slice via a vitest (`action-coverage-assertion.test.ts`).
+ * STATUS (CHIP 7a — REGISTRY IS THE COMPLETE SSOT). EVERY `ActionId` now has a
+ * row — the card vocabulary (CHIP 2/3, rendered by the live menus via
+ * `cardActionRows`), the slash/typed citation + footnote (CHIP 4), the heading /
+ * tex / example / block-atom / format grid slices (CHIP 5/6), and — landing in
+ * THIS chip — the final two slices: `ref` (the `\ref` cross-reference, slash +
+ * the NEW lightning 'Cross-ref' cell, via the `openRefPopover` seam) and the
+ * `title`/`author`/`date` title fields (pure-PM `titleFieldRun`, SLASH-ONLY by
+ * design — a doc-top singleton has no menu twin). The coverage assertion asserts
+ * **ZERO pending ids** (covered == `EXPECTED_ACTION_IDS`, both directions) — a
+ * new union member without a row trips CI. Wired via a vitest
+ * (`action-coverage-assertion.test.ts`).
  * ──────────────────────────────────────────────────────────────────────────
  *
  * # Why this registry exists
@@ -35,11 +34,13 @@
  *      figure, image).
  *   3. **Slash commands** — `VIRGIL_COMMANDS` / `VIRGIL_COMMAND_NAMES`
  *      ([src/lib/tiptap/commands.ts]). A ProseMirror plugin running with an
- *      `EditorView` ONLY — **no React context**. `\cite` (CHIP 4a-ii) and
- *      `\footnote` (CHIP 4b) now reach React-land via the typed
- *      `EditorActionsHandle` bridge (`runAction(id, seed)`); the remaining
- *      commands still ride `window` CustomEvents (`virgil-ref-create`,
- *      `virgil-ex-create`).
+ *      `EditorView` ONLY — **no React context**. Two routes, BOTH off the
+ *      registry: the card/atom commands that need React (`\cite` 4a-ii,
+ *      `\footnote` 4b, `\ex` 5c, `\ref` 7a) reach their `run()` via the typed
+ *      `EditorActionsHandle` bridge (`runAction(id, seed)`); the pure-PM commands
+ *      (`\chapter`…`\subsubsection` 5a, `\tex` 5b, `\title`/`\author`/`\date` 7a)
+ *      take the view-only path (`runViewOnlyAction`). NO command rides a `window`
+ *      CustomEvent anymore — they are all retired through CHIP 7a.
  *   4. **Typed-LaTeX input rules** — `\cite{…}` / `\cite ` in
  *      ([src/lib/tiptap/citation.ts] ~line 125) and `\footnote{…}` in
  *      ([src/lib/tiptap/footnote.ts] ~line 96). Also ProseMirror plugins; same
@@ -108,7 +109,7 @@ import { TextSelection } from "@tiptap/pm/state";
 // Type-only (erased): the PM slice/fragment shapes `extractInlineFromSlice`
 // (the CHIP 5c example-wrap harvest, SSOT for the grid + slash + the DA-1 test)
 // walks. No runtime — erased at compile time.
-import type { Slice, Fragment } from "@tiptap/pm/model";
+import type { Slice, Fragment, Node as PMNode } from "@tiptap/pm/model";
 // VALUE import: the canonical collision-free short-id minter. `texRun` (the
 // raw-LaTeX block creator) mints a fresh `uuid` for the new `texBlock` the SAME
 // way every other node creator does (slash `\cite`/`\title`, the grid's
@@ -491,6 +492,24 @@ export interface ActionContext {
    * popover to open without React state).
    */
   openColorPopover?: (anchorRect: DOMRect) => void;
+  /**
+   * Open the `LabelRef` create-mode popover at the caret (CHIP 7a). The `ref`
+   * (`\ref{}` cross-reference) action is NOT a fire-and-forget insert — the
+   * popover IS the creator: it lists every `\label{…}` site in the doc and
+   * `useRefActions.handleInsertRef` lands the chosen `labelRef` atom at the
+   * cursor when the user picks/types a label. So `refRun()` calls THIS rather
+   * than mutating the doc directly.
+   *
+   * Supplied by EditorPane's bridge handle (for the slash surface) and by
+   * `ActionsMenuPanel` (for the new lightning `\ref` cell) — both compute the
+   * live caret rect and route to EditorLayout's `LabelRefPopover` create mode
+   * (`setActiveRefLabel("")` + `setActiveRefRect(rect)`), REPLACING the retired
+   * `virgil-ref-create` CustomEvent. Absent on any pure view-only path (the row
+   * then no-ops — there is no popover to open without React state). The EDIT-
+   * existing-`\ref` path (`virgil-label-ref-click`, marker-clicks.ts) is
+   * untouched.
+   */
+  openRefPopover?: () => void;
   panelRouting?: {
     prefs: ViewPrefs;
     setActiveLeft: (id: PanelId) => void;
@@ -631,15 +650,16 @@ export interface ActionSpec {
  * `cardLifecycle` from React-land** so the plugin never touches React — and
  * invokes `spec.run(ctx)`.
  *
- * ── REPLACES ── this ONE typed entrypoint supersedes the scattered `window`
- * CustomEvent seams currently used to cross the boundary:
- *   - `virgil-citation-create`   (commands.ts → command-input.ts + citations-host.tsx)
- *   - `virgil-footnote-input`    (commands.ts → command-input.ts)
- *   - `virgil-ex-create`         (commands.ts → command-input.ts)
- *   - `virgil-ref-create`        (commands.ts → command-input.ts)
- *   - `virgil-footnote-created`  (command-input.ts → panel scroll-to-new)
+ * ── REPLACED ── this ONE typed entrypoint superseded the scattered `window`
+ * CustomEvent seams that used to cross the boundary. All are now RETIRED (the
+ * `command-input.ts` hook that bound them is DELETED through CHIP 7a):
+ *   - `virgil-citation-create`   (CHIP 4a-ii — was commands.ts → command-input.ts + citations-host.tsx)
+ *   - `virgil-footnote-input`    (CHIP 4b)
+ *   - `virgil-footnote-created`  (CHIP 4b — dead event, zero listeners)
+ *   - `virgil-ex-create`         (CHIP 5c)
+ *   - `virgil-ref-create`        (CHIP 7a — `\ref` now rides this bridge → `refRun`)
  * plus the two citation listeners (`command-input.ts` and `citations-host.tsx`
- * both bind `virgil-citation-create`). Those untyped string events become
+ * both bound `virgil-citation-create`). Those untyped string events became
  * `runAction(id, seed)` calls with a typed `id` + typed `seed`.
  */
 export interface EditorActionsHandle {
@@ -1073,6 +1093,153 @@ function headingRun(level: number): (ctx: ActionContext) => void {
 }
 
 // ---------------------------------------------------------------------------
+// titleFieldRun — the `\title` / `\author` / `\date` slash actions (CHIP 7a).
+// Like heading/tex/example (and unlike citation/footnote), a titleField insert
+// is a pure ProseMirror transform needing ONLY the `EditorView` — NO React
+// `cardCreation`, so NO bridge. `titleFieldRun` operates on `ctx.view` and is
+// invoked from the slash command via `runViewOnlyAction` (commands.ts).
+//
+// THESE ARE SLASH-ONLY BY DESIGN. A titleField is a STRUCTURAL singleton hoisted
+// to the doc top — NOT a card, and the menus offer no "insert title" affordance.
+// So the rows declare `surfaces: { slash: true }` ONLY; there is no menu twin to
+// align (a legitimate asymmetry the registry MODELS rather than forcing).
+//
+// IDEMPOTENT (the one asymmetry among the slash commands — these are the only
+// ones that don't ALWAYS insert): if a titleField of the requested kind already
+// exists, place the cursor at the end of its content rather than inserting a
+// duplicate. Lifted VERBATIM from the retired `titleFieldCommand` factory
+// (commands.ts) so the behavior is byte-identical:
+//   - find-existing-or-insert (dedupe),
+//   - canonical order (title=0 / author=1 / date=2; always BEFORE any
+//     non-titleField, incl. `\maketitle`, since `\maketitle` reads `\title` at
+//     expansion time),
+//   - `\date` pre-fills today (pretty-printed `\today`; `isToday: true` so the
+//     serializer emits `\date{\today}`).
+// ---------------------------------------------------------------------------
+function titleFieldRun(field: "title" | "author" | "date"): (ctx: ActionContext) => void {
+  return (ctx: ActionContext) => {
+    const view = ctx.view;
+    const { state } = view;
+    const titleFieldType = state.schema.nodes.titleField;
+    if (!titleFieldType) return;
+
+    // 1. Find an existing titleField of this kind. We only look at top-level
+    //    doc children — that's where the parser puts them and where
+    //    `hoistTitleFieldsToTop` keeps them.
+    let foundPos: number | null = null;
+    let foundNode: PMNode | null = null;
+    let offset = 0;
+    state.doc.forEach((child) => {
+      if (
+        foundPos === null &&
+        child.type.name === "titleField" &&
+        child.attrs?.field === field
+      ) {
+        foundPos = offset;
+        foundNode = child;
+      }
+      offset += child.nodeSize;
+    });
+    if (foundPos !== null && foundNode !== null) {
+      // IDEMPOTENT: cursor at end of the existing field's content — no node
+      // mutation, no duplicate. nodeSize = 2 (open+close) + content size; +1 is
+      // the opening token, then we add content size to land before the close.
+      const node: PMNode = foundNode;
+      const endOfContent = foundPos + 1 + node.content.size;
+      const tr = state.tr.setSelection(
+        TextSelection.create(state.doc, endOfContent),
+      );
+      view.dispatch(tr.scrollIntoView());
+      return;
+    }
+
+    // 2. Insert at canonical position. Order: title=0, author=1, date=2.
+    //    Anything else (including `maketitleMarker`) sorts after all titles, so
+    //    the new node lands before the first non-title and before any titleField
+    //    with a larger field order.
+    const order: Record<string, number> = { title: 0, author: 1, date: 2 };
+    const insertOrder = order[field];
+    let insertPos = 0;
+    let walkOffset = 0;
+    state.doc.forEach((child) => {
+      const childOrder =
+        child.type.name === "titleField"
+          ? order[child.attrs?.field as string] ?? 99
+          : 99;
+      if (childOrder < insertOrder) {
+        walkOffset += child.nodeSize;
+        insertPos = walkOffset;
+      }
+    });
+
+    // Build the new node. Pre-stamp a UUID so the in-memory id matches what
+    // will land on disk (matches the `cite` / `tex` pattern).
+    const existingUuids = new Set<string>();
+    state.doc.descendants((n) => {
+      if (n.attrs?.uuid) existingUuids.add(n.attrs.uuid as string);
+    });
+    const attrs = {
+      field,
+      rawPrefix: null,
+      isToday: field === "date",
+      uuid: generateShortId(existingUuids),
+    };
+    let nodeContent = null;
+    if (field === "date") {
+      // Mirror the parser's pretty-printed `\today` rendering so the lozenge
+      // shows the date immediately. The `isToday: true` flag tells the
+      // serializer to emit `\date{\today}` rather than the expanded string.
+      const now = new Date();
+      const pretty = now.toLocaleDateString("en-US", {
+        year: "numeric",
+        month: "long",
+        day: "numeric",
+      });
+      nodeContent = state.schema.text(pretty);
+    }
+    const node = titleFieldType.create(attrs, nodeContent);
+
+    const tr = state.tr.insert(insertPos, node);
+    // Cursor at end of inserted content (or just inside, for empty).
+    const cursorPos = insertPos + 1 + node.content.size;
+    tr.setSelection(TextSelection.create(tr.doc, cursorPos));
+    view.dispatch(tr.scrollIntoView());
+  };
+}
+
+/**
+ * Build one titleField row (`title` / `author` / `date`). `category: "block"`
+ * (a structural node insert; there is no dedicated `"title"` category in
+ * `ActionCategory` and these behave like the other pure-PM block inserts),
+ * SLASH-ONLY surface (`\title` / `\author` / `\date`), `slashName` reconciled
+ * against `VIRGIL_COMMAND_NAMES`. No menu/typed/keyboard twin by design — a
+ * titleField is a doc-top singleton, not a card.
+ *
+ * `applies` mirrors heading/tex: a selection / caret can always insert (the node
+ * hoists to the top regardless of where the caret sits); a non-text atom-block
+ * ref has no meaningful invocation → "disabled" via the shared `blockApplies`.
+ * In practice these are only invoked from a caret (the slash command), so "ok"
+ * everywhere reachable.
+ */
+function titleFieldRow(field: "title" | "author" | "date"): ActionSpec {
+  const label = field.charAt(0).toUpperCase() + field.slice(1);
+  return {
+    id: field,
+    label,
+    category: "block",
+    surfaces: { slash: true },
+    slashName: field,
+    applies: (ctx) => blockApplies(ctx),
+    run: titleFieldRun(field),
+  };
+}
+
+/** The 3 title-field ids, in canonical doc-top order. The registry + the
+ *  coverage assertion iterate this list; the slash commands look up the row by
+ *  id via `runViewOnlyAction`. */
+const TITLE_ACTION_IDS: readonly TitleActionId[] = ["title", "author", "date"];
+
+// ---------------------------------------------------------------------------
 // texRun — the SECOND pure-ProseMirror block action (CHIP 5b), modeled on
 // `headingRun`. Like heading (and unlike citation/footnote), a raw-LaTeX block
 // is a pure `texBlock` insert needing ONLY the `EditorView` — NO React
@@ -1157,6 +1324,58 @@ const TEX_ACTION_ROW: ActionSpec = {
   // it is hoisted above this row's definition.
   applies: (ctx) => blockApplies(ctx),
   run: texRun,
+};
+
+// ---------------------------------------------------------------------------
+// refRun — the `\ref` cross-reference action (CHIP 7a). The LAST inline-Atom id
+// to migrate. Unlike citation/footnote (the atom is inserted synchronously in
+// plugin-land, the CARD registered via the bridge), `\ref` has NO card: the
+// `LabelRef` POPOVER is the creator. So `refRun` is a one-liner that opens that
+// popover at the caret via the `ctx.openRefPopover` seam — the SAME create-mode
+// open the retired `virgil-ref-create` CustomEvent triggered (label="" +
+// caret-rect → `setActiveRefLabel("")` / `setActiveRefRect`). The user then
+// picks/types a label and `useRefActions.handleInsertRef` lands the `labelRef`
+// atom at the cursor.
+//
+// THE DIVERGENCE THIS FIXES (MEMO_ACTION_ALIGNMENT.md §3 `\ref` row): `\ref` was
+// SLASH-ONLY — no menu route to insert a cross-reference, despite `labelRef`
+// being a first-class atom in `ATOM_REGISTRY`. SETTLED: ADD a lightning cell.
+// Both the slash `\ref` (PM-land → bridge) and the new grid 'Cross-ref' cell
+// (React) now route through THIS one `run()`, so the two surfaces share ONE
+// creator (the popover) by construction.
+//
+// React-touch ONLY (the popover open). The seam is supplied per-surface:
+// EditorPane's bridge handle for slash, `ActionsMenuPanel` for lightning. On a
+// pure view-only caller (`runViewOnlyAction`) the seam is absent and `refRun`
+// no-ops — there is no popover to open without React state.
+// ---------------------------------------------------------------------------
+export function refRun(ctx: ActionContext): void {
+  ctx.openRefPopover?.();
+}
+
+/**
+ * The single `ref` registry row — `category: "atom"` (a `labelRef` inline atom;
+ * the only `AtomActionId`), exposed on the slash surface (`\ref`) AND the
+ * lightning surface (the new 'Cross-ref' grid cell, CHIP 7a). No grab/typed/
+ * keyboard surface (a cross-reference is not a grab-handle action, and there is
+ * no `\ref{}`-style typed input rule — `\ref` is a slash command, and the popover
+ * is the creator). Both surfaces call `refRun` → `ctx.openRefPopover()`.
+ *
+ * `applies`: a `\ref` is insertable at any caret / selection (the popover lands
+ * the atom at the cursor). A non-text atom-block ref (figure / displayMath) has
+ * no caret to insert at → "disabled", via the shared `blockApplies` gate (the
+ * same gate tex/example/math use). In practice `ref` is only invoked from a
+ * caret/selection (the slash command or the grid bolt), so it is "ok" everywhere
+ * it is reachable.
+ */
+const REF_ACTION_ROW: ActionSpec = {
+  id: "ref",
+  label: "Cross-ref",
+  category: "atom",
+  surfaces: { slash: true, lightning: true },
+  slashName: "ref",
+  applies: (ctx) => blockApplies(ctx),
+  run: refRun,
 };
 
 // ---------------------------------------------------------------------------
@@ -1922,6 +2141,13 @@ export const VIRGIL_ACTION_REGISTRY: Partial<Record<ActionId, ActionSpec>> =
     // The mark/list/quote toggles + text-color — completing the grid fold (every
     // grid cell now renders from the registry).
     ...FORMAT_ACTION_IDS.map((id) => [id, FORMAT_ACTION_ROWS[id]] as const),
+    // CHIP 7a: the FINAL slices — `ref` (atom; slash `\ref` + the NEW lightning
+    // 'Cross-ref' cell; `refRun` opens the LabelRef create-mode popover) and the
+    // 3 title-field rows (pure-PM block inserts; SLASH-ONLY — no menu twin by
+    // design; idempotent find-existing-or-insert; date pre-fills today). With
+    // these every `ActionId` has a row — the registry is the COMPLETE SSOT.
+    ["ref", REF_ACTION_ROW] as const,
+    ...TITLE_ACTION_IDS.map((id) => [id, titleFieldRow(id)] as const),
   ]) as Partial<Record<ActionId, ActionSpec>>;
 
 // ---------------------------------------------------------------------------
@@ -1984,17 +2210,18 @@ export function formatActionRows(): readonly ActionSpec[] {
  * SSOT and the two live menus render off it; the former `MENU_ENTRIES` array
  * is gone.)
  *
- * Provenance of each entry (the four surfaces + the strays):
+ * Provenance of each entry (the four surfaces). As of CHIP 7a this manifest is
+ * FULLY covered — every id has a registry row (the registry is the COMPLETE
+ * SSOT):
  *   - 11 card ids       ← the card vocabulary (grab + lightning menus)
- *   - ref               ← `\ref` slash command
- *   - 4 heading ids     ← `\chapter/\section/\subsection/\subsubsection`
- *   - example           ← `\ex` slash + the STRAY `insertExampleAtCursor`
- *                          MenuBar control (an as-yet-UN-unified surface —
- *                          flagged here so CHIP 2 folds it in)
+ *   - ref               ← `\ref` slash + the lightning 'Cross-ref' grid cell (CHIP 7a)
+ *   - 4 heading ids     ← `\chapter/\section/\subsection/\subsubsection` + dropdown
+ *   - example           ← `\ex` slash + lightning grid `ex` cell (CHIP 5c)
  *   - tex               ← `\tex` slash + lightning grid
  *   - figure / graphics ← lightning grid (no slash today)
  *   - inline/display-math ← lightning grid math buttons
- *   - title/author/date ← `\title/\author/\date` slash
+ *   - title/author/date ← `\title/\author/\date` slash (SLASH-ONLY by design —
+ *                          a titleField is a doc-top singleton, no menu twin; CHIP 7a)
  *   - 8 format ids      ← lightning formatting grid (bold/italic/strike/code/
  *                          bullet-list/ordered-list/blockquote/text-color)
  */
@@ -2110,6 +2337,27 @@ const BLOCK_IDS_WITH_SLASH: ReadonlySet<BlockActionId> = new Set<BlockActionId>(
 const COVERED_FORMAT_IDS: readonly FormatActionId[] = FORMAT_ACTION_IDS;
 
 /**
+ * The single ATOM id — `ref` — the slice CHIP 7a populates. `category: "atom"`,
+ * exposed on the slash surface (`\ref`) AND the lightning surface (the new
+ * 'Cross-ref' grid cell). Routes through `refRun` → `ctx.openRefPopover()` (the
+ * LabelRef create-mode popover is the creator). Moves `ref` from EXPECTED-
+ * PENDING to COVERED. Typed against `AtomActionId` so a drift trips the
+ * typechecker.
+ */
+const COVERED_ATOM_IDS: readonly AtomActionId[] = ["ref"];
+
+/**
+ * The 3 TITLE-field ids — `title` / `author` / `date` — the slice CHIP 7a
+ * populates, COMPLETING the registry (every `ActionId` now has a row). Each is
+ * `category: "block"` and SLASH-ONLY (`\title` / `\author` / `\date`; no menu/
+ * typed/keyboard twin — a titleField is a doc-top singleton, not a card). Routes
+ * through the idempotent `titleFieldRun` (find-existing-or-insert; date pre-fills
+ * today). Moves these ids from EXPECTED-PENDING to COVERED. Typed against
+ * `TitleActionId` so a drift trips the typechecker.
+ */
+const COVERED_TITLE_IDS: readonly TitleActionId[] = TITLE_ACTION_IDS;
+
+/**
  * The card ids that ALSO own the PM-land surfaces (slash + typed): `citation`
  * (CHIP 4a-ii) and `footnote` (CHIP 4b). The other 9 card actions stay
  * grab/lightning-only (they have no slash/typed surface to migrate). The
@@ -2122,11 +2370,15 @@ const CARD_IDS_WITH_PM_SURFACES: ReadonlySet<CardActionId> =
 /**
  * DEV-ONLY coverage assertion — partitioned for the PHASED rollout.
  *
- * Each chip migrates a slice of the vocabulary onto the registry; this
- * assertion checks ONLY the slice that is supposed to be live, and reports
- * the rest as expected-pending (not as failures). The live slice is the 11
- * CARD actions on grab + lightning, PLUS — as of CHIP 4a-ii — `citation` on
- * the slash + typed surfaces.
+ * ── MILESTONE (CHIP 7a): the registry is the COMPLETE SSOT. ── Each chip
+ * migrated a slice of the vocabulary onto the registry; this assertion grew a
+ * `COVERED_*` partition per slice. As of CHIP 7a the FINAL slices land —
+ * `ref` (atom) + `title`/`author`/`date` (title fields) — so the covered set now
+ * EQUALS `EXPECTED_ACTION_IDS`. There are **ZERO pending ids**: every `ActionId`
+ * has a registry row, and step (5) below ASSERTS that equality (covered ==
+ * expected, both directions) so the registry can never silently fall short of
+ * the full vocabulary again. The per-slice loops still run (they pin each row's
+ * shape); the old "expected-pending" branch is now vacuous by construction.
  *
  * Verifies, for the CARD slice:
  *   1. every card id in `COVERED_CARD_IDS` has a registry row whose key === id;
@@ -2137,21 +2389,24 @@ const CARD_IDS_WITH_PM_SURFACES: ReadonlySet<CardActionId> =
  *      `surfaces.slash` + `surfaces.typed` AND carry a `slashName` +
  *      `inputRulePattern` (the PM-land join keys).
  *
- * And, for the still-PENDING vocabulary (everything in `EXPECTED_ACTION_IDS`
- * NOT in `COVERED_CARD_IDS`):
- *   4. it must NOT yet have a row (a premature row means a chip landed out of
- *      order). The slash reconciliation against `VIRGIL_COMMAND_NAMES` checks,
- *      for the migrated slash ids, that the target row exists + opted into the
- *      slash surface; for not-yet-migrated names it only checks the mapping
- *      table is complete (a pure-data check independent of population order).
+ * And, for the (now-empty) pending vocabulary:
+ *   4. nothing has a row outside the covered set (a stray/typo'd row). With the
+ *      covered set == `EXPECTED_ACTION_IDS` this catches only an UNEXPECTED row.
+ *   5. (CHIP 7a) the covered set EQUALS `EXPECTED_ACTION_IDS` in BOTH directions
+ *      — no expected id is left uncovered, and no covered id is unexpected. This
+ *      is the COMPLETE-SSOT guard: a new `ActionId` added to the union without a
+ *      `COVERED_*` entry (or vice-versa) trips here.
  *
- * Returns a list of GENUINELY-UNEXPECTED problems (empty ⇒ the covered slice
- * is sound and nothing pending leaked in). Returns `[]` in production.
+ * The slash reconciliation against `VIRGIL_COMMAND_NAMES` pins, for every live
+ * slash command, that its target row exists + opted into the slash surface +
+ * named the same command.
+ *
+ * Returns a list of GENUINELY-UNEXPECTED problems (empty ⇒ the full vocabulary
+ * is covered + each row's shape is sound). Returns `[]` in production.
  *
  * WIRED: invoked from a vitest (`action-coverage-assertion.test.ts`),
  * mirroring `lifecycle-coverage-assertion.test.ts`, so a missing / mis-flagged
- * card row trips CI. A later chip widens `COVERED_*` /
- * `CARD_IDS_WITH_PM_SURFACES` as each surface migrates.
+ * row trips CI.
  */
 export function assertActionCoverage(): string[] {
   if (process.env.NODE_ENV === "production") return [];
@@ -2161,6 +2416,8 @@ export function assertActionCoverage(): string[] {
     ...COVERED_HEADING_IDS,
     ...COVERED_BLOCK_IDS,
     ...COVERED_FORMAT_IDS,
+    ...COVERED_ATOM_IDS,
+    ...COVERED_TITLE_IDS,
   ]);
 
   // (1)+(2)+(3) the CARD slice is fully + correctly covered.
@@ -2357,7 +2614,90 @@ export function assertActionCoverage(): string[] {
     }
   }
 
-  // (4) nothing PENDING has leaked in ahead of its chip.
+  // (3e) the ATOM slice (CHIP 7a: `ref`) is fully + correctly covered. The `ref`
+  // row must be `category: "atom"`, claim the slash (`\ref`) AND lightning (the
+  // 'Cross-ref' grid cell) surfaces with a `slashName` (reconciled below against
+  // `VIRGIL_COMMAND_NAMES`), and never claim grab/typed/keyboard (a cross-ref is
+  // not a grab-handle action and has no `\ref{}`-style typed input rule).
+  for (const id of COVERED_ATOM_IDS) {
+    const row = VIRGIL_ACTION_REGISTRY[id];
+    if (!row) {
+      problems.push(`[actions] missing registry row for covered atom id "${id}"`);
+      continue;
+    }
+    if (row.id !== id) {
+      problems.push(`[actions] row keyed "${id}" has mismatched id "${row.id}"`);
+    }
+    if (row.category !== "atom") {
+      problems.push(
+        `[actions] atom id "${id}" has category "${row.category}" (expected "atom")`,
+      );
+    }
+    if (!row.surfaces.slash || !row.surfaces.lightning) {
+      problems.push(
+        `[actions] atom id "${id}" must set surfaces.slash AND surfaces.lightning`,
+      );
+    }
+    if (row.surfaces.grab || row.surfaces.typed || row.surfaces.keyboard) {
+      problems.push(
+        `[actions] atom id "${id}" claims a grab/typed/keyboard surface it does not expose`,
+      );
+    }
+    if (!row.slashName) {
+      problems.push(
+        `[actions] atom id "${id}" sets surfaces.slash but is missing slashName`,
+      );
+    }
+  }
+
+  // (3f) the TITLE-field slice (CHIP 7a: `title` / `author` / `date`) is fully +
+  // correctly covered — the FINAL slice; with it every `ActionId` has a row. Each
+  // title row must be `category: "block"`, claim the slash surface ONLY (`\title`
+  // / `\author` / `\date`) with a `slashName` (reconciled below against
+  // `VIRGIL_COMMAND_NAMES`), and never claim grab/lightning/typed/keyboard — a
+  // titleField is a doc-top singleton with NO menu twin by design (a legitimate
+  // asymmetry the registry MODELS, not a missing surface).
+  for (const id of COVERED_TITLE_IDS) {
+    const row = VIRGIL_ACTION_REGISTRY[id];
+    if (!row) {
+      problems.push(`[actions] missing registry row for covered title id "${id}"`);
+      continue;
+    }
+    if (row.id !== id) {
+      problems.push(`[actions] row keyed "${id}" has mismatched id "${row.id}"`);
+    }
+    if (row.category !== "block") {
+      problems.push(
+        `[actions] title id "${id}" has category "${row.category}" (expected "block")`,
+      );
+    }
+    if (!row.surfaces.slash) {
+      problems.push(
+        `[actions] title id "${id}" must set surfaces.slash (it owns the slash surface)`,
+      );
+    }
+    if (
+      row.surfaces.grab ||
+      row.surfaces.lightning ||
+      row.surfaces.typed ||
+      row.surfaces.keyboard
+    ) {
+      problems.push(
+        `[actions] title id "${id}" claims a grab/lightning/typed/keyboard surface it does not expose (slash-only by design)`,
+      );
+    }
+    if (!row.slashName) {
+      problems.push(
+        `[actions] title id "${id}" sets surfaces.slash but is missing slashName`,
+      );
+    }
+  }
+
+  // (4) nothing PENDING has leaked in ahead of its chip. As of CHIP 7a the
+  // covered set EQUALS `EXPECTED_ACTION_IDS` — every ActionId has a registry row,
+  // so the registry is the COMPLETE SSOT and this loop has ZERO pending ids to
+  // skip (it now only catches an unexpected/typo'd row). See the milestone note
+  // on `assertActionCoverage`.
   for (const id of EXPECTED_ACTION_IDS) {
     if (covered.has(id)) continue;
     if (VIRGIL_ACTION_REGISTRY[id]) {
@@ -2368,17 +2708,40 @@ export function assertActionCoverage(): string[] {
     }
   }
 
+  // (5) COMPLETE-SSOT guard (CHIP 7a): the covered set EQUALS `EXPECTED_ACTION_IDS`
+  // — ZERO pending ids, in BOTH directions.
+  //   (a) every expected id is covered (nothing left to migrate); AND
+  //   (b) every covered id is expected (no covered id outside the manifest).
+  // After this chip these must both be empty. If a future chip adds an `ActionId`
+  // to the union, it MUST add it to `EXPECTED_ACTION_IDS` + a `COVERED_*` entry +
+  // a row — otherwise this guard trips, keeping the registry a COMPLETE SSOT.
+  const expectedSet = new Set<ActionId>(EXPECTED_ACTION_IDS);
+  for (const id of EXPECTED_ACTION_IDS) {
+    if (!covered.has(id)) {
+      problems.push(
+        `[actions] expected id "${id}" is NOT covered — the registry is no longer a complete SSOT ` +
+          `(add it to a COVERED_* slice + give it a row)`,
+      );
+    }
+  }
+  for (const id of covered) {
+    if (!expectedSet.has(id)) {
+      problems.push(
+        `[actions] covered id "${id}" is not in EXPECTED_ACTION_IDS ` +
+          `(add it to the manifest, or remove it from its COVERED_* slice)`,
+      );
+    }
+  }
+
   // (data + slash reconciliation) every live slash command name resolves to a
-  // known target id (the mapping table is complete — a population-order-
-  // independent check that stays armed regardless of which chip we're on).
+  // known target id (the mapping table is complete).
   //
-  // For a slash command whose target row has ALREADY MIGRATED its slash surface
-  // (today: only `citation`), additionally pin the row ↔ name correspondence
-  // so a typed `\cite` can never silently land on a row that forgot to claim
-  // slash OR named a different command. A row is considered migrated iff it
-  // sets `surfaces.slash` — so a card row that exists for grab/lightning only
-  // (e.g. `footnote`, whose `\footnote` migrates in a LATER chip) is correctly
-  // treated as expected-pending and skipped here.
+  // As of CHIP 7a EVERY slash command's target row has migrated its slash
+  // surface, so for each name we pin the row ↔ name correspondence: the target
+  // row must exist, claim `surfaces.slash`, and name the same command — so a
+  // typed `\<name>` can never silently land on a row that forgot to claim slash
+  // OR named a different command. (The `!row || !row.surfaces.slash` skip below
+  // is now defensive only — no live name should hit it.)
   for (const name of VIRGIL_COMMAND_NAMES) {
     const id = SLASH_NAME_TO_ACTION_ID[name];
     if (!id) {

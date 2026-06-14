@@ -5,11 +5,16 @@
  * ──────────────────────────────────────────────────────────────────────────
  * STATUS (LIVE). The React tree publishes an `EditorActionsHandle` here on
  * mount (`EditorPane.tsx`). CONSUMERS: the `\cite` slash command + `\cite{}` /
- * `\cite ` typed input rules (CHIP 4a-ii) and the `\footnote` slash command +
- * `\footnote{}` typed input rule (CHIP 4b) all call
- * `getEditorActionsHandle()?.runAction(id, seed)` to register their CARD in
- * React-land (the inline atom is still inserted synchronously in plugin-land).
- * The remaining PM commands (`\ref`, `\ex`) still ride the legacy CustomEvents.
+ * `\cite ` typed input rules (CHIP 4a-ii), the `\footnote` slash command +
+ * `\footnote{}` typed input rule (CHIP 4b), the `\ex` slash command (CHIP 5c),
+ * and — as of CHIP 7a — the `\ref` slash command all call
+ * `getEditorActionsHandle()?.runAction(id, seed)` to reach their React-land
+ * `run()` (register a CARD, or — for `\ref` — open the LabelRef create-mode
+ * popover via the `openRefPopover` seam; the inline atom for cite/footnote is
+ * still inserted synchronously in plugin-land). The pure-PM slash commands
+ * (`\chapter`…`\subsubsection`, `\tex`, `\title`/`\author`/`\date`) take the
+ * view-only path (`runViewOnlyAction`), NOT this bridge. NO PM command rides a
+ * legacy `virgil-*` CustomEvent anymore.
  * ──────────────────────────────────────────────────────────────────────────
  *
  * # Why a module singleton (not React Context)
@@ -24,18 +29,22 @@
  * a module-scoped `{ current }` cell with a `set*` / `get*` pair the two
  * disconnected parts of the tree share.
  *
- * # What it REPLACES (once 4a-ii wires the call sites)
+ * # What it REPLACED (all now retired through CHIP 7a)
  *
- * This ONE typed entrypoint supersedes the scattered `window` CustomEvents the
- * PM plugins currently use to cross the boundary — see the `EditorActionsHandle`
- * JSDoc in [action-registry.ts](./action-registry.ts):
- *   - `virgil-citation-create`   (commands.ts → command-input.ts + citations-host.tsx)
- *   - `virgil-footnote-input`    (commands.ts → command-input.ts)
- *   - `virgil-ex-create`         (commands.ts → command-input.ts)
- *   - `virgil-ref-create`        (commands.ts → command-input.ts)
- *   - `virgil-footnote-created`  (command-input.ts → panel scroll-to-new)
+ * This ONE typed entrypoint superseded the scattered `window` CustomEvents the
+ * PM plugins used to cross the boundary — see the `EditorActionsHandle` JSDoc in
+ * [action-registry.ts](./action-registry.ts). All are now RETIRED (the
+ * `command-input.ts` hook that bound them is DELETED):
+ *   - `virgil-citation-create`   (CHIP 4a-ii)
+ *   - `virgil-footnote-input`    (CHIP 4b)
+ *   - `virgil-footnote-created`  (dead event, zero listeners — CHIP 4b)
+ *   - `virgil-ex-create`         (CHIP 5c)
+ *   - `virgil-ref-create`        (CHIP 7a — `\ref` now rides this bridge; the
+ *                                  create-mode popover open hops the new
+ *                                  rect-carrying `virgil-ref-create-popover`
+ *                                  event from the surface to EditorLayout)
  * plus the two citation listeners (`command-input.ts` + `citations-host.tsx`
- * both bind `virgil-citation-create`). Those untyped string events collapse to
+ * both bound `virgil-citation-create`). Those untyped string events collapsed to
  * `getEditorActionsHandle()?.runAction(id, seed)` calls with a typed id + seed.
  *
  * # Lifecycle contract

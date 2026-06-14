@@ -143,7 +143,6 @@ import { useLibraryBridge } from "./editor-layout/event-bridges/library";
 import { useMarkerClickBridges } from "./editor-layout/event-bridges/marker-clicks";
 import { useFootnoteSyncBridges } from "./editor-layout/event-bridges/footnote-sync";
 import { usePanelDropBridges } from "./editor-layout/event-bridges/panel-drops";
-import { useCommandInputBridges } from "./editor-layout/event-bridges/command-input";
 import { EditorLayoutProvider } from "./editor-layout/context";
 import { EditorRefProvider } from "./editor-layout/contexts/editor-ref";
 import { AiRequestsProvider } from "./editor-layout/contexts/ai-requests";
@@ -2702,18 +2701,13 @@ export default function EditorLayout() {
     }
   }, []);
 
-  // Citation (slash + typed) MIGRATED off this hook to the action-registry
-  // bridge (CHIP 4a-ii) — so `prefsRef` / `setActiveLeft` / `setActiveRight` /
-  // `setPendingCitation*` are no longer threaded here. They remain in scope for
-  // the panel "+ Add citation" path (citations-host) and other consumers.
-  // Example (slash `\ex`) MIGRATED off this hook to the same bridge (CHIP 5c) —
-  // so `setSelectedExampleId` is no longer threaded here; `exampleRun`'s soft
-  // panel-select rides `panelRouting.selectExample` (wired in EditorPane).
-  useCommandInputBridges({
-    editorRef,
-    setActiveRefLabel,
-    setActiveRefRect,
-  });
+  // CHIP 7a: the `\ref` create-mode popover (the LAST slash command on this
+  // hook) MIGRATED to the action-registry bridge — slash `\ref` → `refRun` →
+  // `ctx.openRefPopover()` (EditorPane) and the new lightning 'Cross-ref' cell
+  // both dispatch `virgil-ref-create-popover`, consumed in `marker-clicks.ts`.
+  // With citation (CHIP 4a-ii), footnote (CHIP 4b), and example (CHIP 5c) already
+  // migrated, the `virgil-ref-create` event + the whole `useCommandInputBridges`
+  // hook (which only handled it) are RETIRED — `command-input.ts` is deleted.
 
   // Handle drag-and-drop of archive snippets into the editor.
   // - "card" drag (application/x-virgil-archive-id): ProseMirror inserts the
