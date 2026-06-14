@@ -81,9 +81,19 @@ interface Props {
    *  action list (matches today's behavior). Omit to expose the full list as
    *  well — defensive default for legacy call sites until they pass a ref. */
   kind?: TextObjectKind | "selection";
+  /** Whether this user may currently edit the main text — the UNIFORM
+   *  collab-read-only gate (CHIP 7b). Threaded from `collab.canEditMainText`
+   *  (the SSOT — see `ActionContext.canEdit`). When `false` (partner holds the
+   *  pen) EVERY card action greys out, declaratively, via the row's `applies()`.
+   *  Defaults to `true` (editable) so legacy call sites + non-collab docs are
+   *  un-gated — NO over-gating. In practice the grab handle's hover-zone math
+   *  already suppresses the handle when `!editor.isEditable`, so the menu rarely
+   *  opens in read-only; this makes the greying DECLARATIVE rather than
+   *  incidental. */
+  canEdit?: boolean;
 }
 
-export function DragHandleMenu({ anchorRect, onSelect, onClose, kind }: Props) {
+export function DragHandleMenu({ anchorRect, onSelect, onClose, kind, canEdit = true }: Props) {
   // Render the CARD action rows straight off the registry (the SSOT) and
   // decorate each with its per-kind disabled state from the row's own
   // `applies()`. Disabled entries stay in the list (visible-disabled
@@ -101,12 +111,14 @@ export function DragHandleMenu({ anchorRect, onSelect, onClose, kind }: Props) {
       kind && kind !== "selection" && isTextObjectKind(kind)
         ? { kind, id: "" }
         : { kind: "selection", from: 0, to: 1, paragraphId: "" };
-    // The card rows' `applies()` reads only `ctx.ref`; the rest of the
-    // `ActionContext` (editor/view) is unused for the per-kind grey-out, so a
-    // ref-only context is sufficient at menu-decoration time.
-    const ctx = { ref } as ActionContext;
+    // The card rows' `applies()` reads only `ctx.ref` + `ctx.canEdit`; the rest
+    // of the `ActionContext` (editor/view) is unused for the per-kind grey-out,
+    // so a minimal context is sufficient at menu-decoration time. `canEdit` is
+    // threaded so the row's uniform collab gate (CHIP 7b) greys EVERYTHING when
+    // the partner holds the pen. `canEdit !== false` ⇒ un-gated (no over-gating).
+    const ctx = { ref, canEdit } as ActionContext;
     return rows.map((row) => ({ row, disabled: row.applies(ctx) === "disabled" }));
-  }, [kind]);
+  }, [kind, canEdit]);
   const menuRef = useRef<HTMLDivElement | null>(null);
   // Left of the handle by default so the menu doesn't cover the grip or
   // the prose to its right; flip right if there's no room on the left.

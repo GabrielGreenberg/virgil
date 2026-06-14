@@ -166,6 +166,12 @@ const LEVEL_TO_HEADING_ACTION: Readonly<Record<string, BlockActionId>> = {
  * bridge: heading needs no React-land `cardCreation`.
  */
 function applyHeadingFromDropdown(editor: Editor, levelValue: string): void {
+  // CHIP 7b: uniform collab read-only gate. `editor.isEditable` is the in-editor
+  // mirror of `collab.canEditMainText` ([EditorLayout.tsx:946]) — false only when
+  // the partner holds the pen, so a heading conversion refuses here too (the
+  // registry `run()` ALSO guards on `ctx.canEdit`; this fail-safes the direct-set
+  // fallback below). No over-gating: a non-collab editor is always editable.
+  if (!editor.isEditable) return;
   const id = LEVEL_TO_HEADING_ACTION[levelValue];
   if (id) {
     const spec = VIRGIL_ACTION_REGISTRY[id];
@@ -181,6 +187,7 @@ function applyHeadingFromDropdown(editor: Editor, levelValue: string): void {
           paragraphId: paragraphUuidAt(view.state.doc, pos) ?? "",
         },
         surface: "lightning",
+        canEdit: editor.isEditable,
       };
       void spec.run(ctx);
       return;
@@ -254,6 +261,10 @@ export function BlockTypeDropdown({ editor }: { editor: Editor }) {
             <button
               key={bt.value}
               onClick={() => {
+                // CHIP 7b: uniform collab read-only gate — a block-type change
+                // (incl. 'Body' → setParagraph) refuses when the partner holds
+                // the pen. No over-gating: always editable in a non-collab doc.
+                if (!editor.isEditable) return;
                 if (bt.value === "p") {
                   // 'Body' is the explicit way OUT of heading-hood — setParagraph,
                   // no toggle needed (CHIP 5a: the heading items no longer toggle

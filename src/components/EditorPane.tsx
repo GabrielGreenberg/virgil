@@ -2185,6 +2185,17 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
         // — robust to an HMR remount between publish and call.
         const ed = innerRef.current?.getEditor();
         if (!ed) return;
+        // CHIP 7b: the UNIFORM collab read-only gate for the PM-land surfaces
+        // (slash / typed). `ed.isEditable` is the in-editor mirror of
+        // `collab.canEditMainText` (EditorLayout flips it via `setEditable` when
+        // the partner holds the pen — [EditorLayout.tsx:946]). When read-only the
+        // bridge no-ops entirely: no card registration, no soft-route, no popover
+        // open. (The synchronous `\cite`/`\footnote` ATOM the PM caller inserts
+        // before this call is ALSO suppressed at its own editability check — see
+        // commands.ts / citation.ts / footnote.ts — and would be rejected by the
+        // `readOnlyEnforcer` regardless.) No over-gating: a non-collab editor is
+        // always editable, so this is inert outside collaborator read-only.
+        if (!ed.isEditable) return;
         const deps = bridgeDepsRef.current;
         // Synthesize a `CursorRef` from the editor's current selection head
         // for the collapsed-caret surfaces (slash / typed). `paragraphUuidAt`
@@ -2202,6 +2213,10 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
           ref,
           surface: seed.surface,
           position: seed.position,
+          // CHIP 7b: thread the collab gate into the ctx too (the early-return
+          // above already short-circuits, so this is `true` whenever we reach
+          // here — but it keeps the `run()` guards' invariant honest).
+          canEdit: ed.isEditable,
           cardCreation: deps.cardCreation,
           cardLifecycle: deps.cardLifecycle,
           dispatch: deps.dispatch,
@@ -4585,6 +4600,12 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
             <DragHandleMenu
               anchorRect={dragHandleMenuState.anchorRect}
               kind={dragHandleMenuState.ref.kind}
+              // CHIP 7b: the UNIFORM collab read-only gate. `collab.canEditMainText`
+              // (`!sidecar.enabled || iHavePen`) is the SSOT — false only when
+              // collab is on AND the partner holds the pen, so every card row greys
+              // out declaratively via `applies()`. Non-collab docs leave it true →
+              // no over-gating.
+              canEdit={collab.canEditMainText}
               onSelect={(action) => {
                 const ref = dragHandleMenuState.ref;
                 closeDragHandleMenu();

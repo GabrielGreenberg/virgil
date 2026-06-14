@@ -129,6 +129,11 @@ export const Citation = Node.create<CitationOptions>({
         key: new PluginKey("citationInput"),
         props: {
           handleTextInput(view, from, to, text) {
+            // CHIP 7b: uniform collab read-only gate. PM already suppresses
+            // `handleTextInput` on a non-editable view, but guard explicitly so
+            // the typed-`\cite{}` surface refuses uniformly with the other three
+            // (no synchronous atom insert when the partner holds the pen).
+            if (!view.editable) return false;
             // Only check on characters that could complete a citation pattern
             if (text !== "}" && text !== " " && text !== "\n") return false;
 

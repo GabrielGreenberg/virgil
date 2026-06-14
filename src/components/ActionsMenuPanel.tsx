@@ -124,6 +124,14 @@ export function ActionsMenuPanel({
   onClose,
 }: ActionsMenuPanelProps) {
   const dragHandleMenu = useDragHandleMenu();
+  // CHIP 7b: the UNIFORM collab read-only signal for the lightning surface. The
+  // main editor is mounted `editable: true` always and flipped via
+  // `setEditable(collab.canEditMainText)` ([EditorLayout.tsx:946]) when the
+  // partner holds the pen, so `editor.isEditable` IS the in-editor mirror of the
+  // collab pen state (the `ActionContext.canEdit` SSOT). Threaded into every
+  // ctx the grid builds + the card-row grey-out below. `true` for a non-collab
+  // doc (editor always editable) → no over-gating.
+  const canEdit = editor.isEditable;
   const menuRef = useRef<HTMLDivElement | null>(null);
   const { ref: positionRef, style: positionStyle } = useFloatingMenuPosition({
     anchorRect: triggerRect,
@@ -209,6 +217,9 @@ export function ActionsMenuPanel({
         paragraphId: "",
       },
       surface: "lightning",
+      // CHIP 7b: the uniform collab gate. When the partner holds the pen the
+      // row's `run()` no-ops (and the cell is greyed below).
+      canEdit,
       payload,
       // The INSERT-time popover seam (figure/graphics). The grid is a React
       // subtree separate from EditorLayout's `activeFigure` state, so this
@@ -289,6 +300,8 @@ export function ActionsMenuPanel({
         paragraphId: "",
       },
       surface: "lightning",
+      // CHIP 7b: uniform collab gate — `exampleRun` no-ops when read-only.
+      canEdit,
     });
   };
 
@@ -398,6 +411,7 @@ export function ActionsMenuPanel({
         <FmtBtn
           title="Bold (⌘B)"
           active={isActive("bold")}
+          disabled={!canEdit}
           onClick={() => runGridAction("bold")}
         >
           <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
@@ -407,6 +421,7 @@ export function ActionsMenuPanel({
         <FmtBtn
           title="Italic (⌘I)"
           active={isActive("italic")}
+          disabled={!canEdit}
           onClick={() => runGridAction("italic")}
         >
           <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round">
@@ -416,6 +431,7 @@ export function ActionsMenuPanel({
         <FmtBtn
           title="Strikethrough"
           active={isActive("strike")}
+          disabled={!canEdit}
           onClick={() => runGridAction("strike")}
         >
           <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round">
@@ -426,6 +442,7 @@ export function ActionsMenuPanel({
         <FmtBtn
           title="Inline code"
           active={isActive("code")}
+          disabled={!canEdit}
           onClick={() => runGridAction("code")}
         >
           <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round">
@@ -443,6 +460,7 @@ export function ActionsMenuPanel({
         <FmtBtn
           title="Bullet list"
           active={isActive("bulletList")}
+          disabled={!canEdit}
           onClick={() => runGridAction("bullet-list")}
         >
           <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round">
@@ -457,6 +475,7 @@ export function ActionsMenuPanel({
         <FmtBtn
           title="Numbered list"
           active={isActive("orderedList")}
+          disabled={!canEdit}
           onClick={() => runGridAction("ordered-list")}
         >
           <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor" stroke="none">
@@ -471,6 +490,7 @@ export function ActionsMenuPanel({
         <FmtBtn
           title="Blockquote"
           active={isActive("blockquote")}
+          disabled={!canEdit}
           onClick={() => runGridAction("blockquote")}
         >
           <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor" stroke="none">
@@ -480,12 +500,14 @@ export function ActionsMenuPanel({
 
         <FmtBtn
           title="Wrap selection in example block"
+          disabled={!canEdit}
           onClick={() => wrapSelectionInExample()}
         >
           <span style={{ fontSize: 13, fontWeight: 500 }}>ex</span>
         </FmtBtn>
         <FmtBtn
           title="Wrap selection in inline math"
+          disabled={!canEdit}
           onClick={() => runGridAction("inline-math")}
         >
           <span style={{ fontFamily: "var(--font-serif, serif)", fontSize: 13 }}>
@@ -494,6 +516,7 @@ export function ActionsMenuPanel({
         </FmtBtn>
         <FmtBtn
           title="Wrap selection in display math"
+          disabled={!canEdit}
           onClick={() => runGridAction("display-math")}
         >
           <span style={{ fontFamily: "var(--font-serif, serif)", fontSize: 13, letterSpacing: -0.5 }}>
@@ -503,18 +526,23 @@ export function ActionsMenuPanel({
         <button
           type="button"
           data-hint="Text color"
-          onClick={(e) =>
-            runGridAction("text-color", {
-              anchorRect: e.currentTarget.getBoundingClientRect(),
-            })
+          disabled={!canEdit}
+          onClick={
+            canEdit
+              ? (e) =>
+                  runGridAction("text-color", {
+                    anchorRect: e.currentTarget.getBoundingClientRect(),
+                  })
+              : undefined
           }
-          className="flex flex-col items-center justify-center rounded transition-colors hover-on-light"
+          className={`flex flex-col items-center justify-center rounded transition-colors ${canEdit ? "hover-on-light" : ""}`}
           style={{
             height: FORMATTING_ROW_H,
             background: "transparent",
             color: "var(--ink-strong)",
             border: "none",
-            cursor: "pointer",
+            cursor: canEdit ? "pointer" : "not-allowed",
+            opacity: canEdit ? 1 : 0.4,
             padding: 0,
             lineHeight: 1,
           }} aria-label="Text color"
@@ -537,6 +565,7 @@ export function ActionsMenuPanel({
 
         <FmtBtn
           title="Insert raw LaTeX block"
+          disabled={!canEdit}
           onClick={() => insertTexBlock(editor)}
         >
           <span style={{ fontFamily: "var(--font-mono), monospace", fontSize: 11 }}>
@@ -545,6 +574,7 @@ export function ActionsMenuPanel({
         </FmtBtn>
         <FmtBtn
           title="Insert figure block"
+          disabled={!canEdit}
           onClick={() => runGridAction("figure")}
         >
           <span style={{ fontFamily: "var(--font-serif, serif)", fontStyle: "italic", fontSize: 12 }}>
@@ -553,6 +583,7 @@ export function ActionsMenuPanel({
         </FmtBtn>
         <FmtBtn
           title="Insert image"
+          disabled={!canEdit}
           onClick={() => runGridAction("graphics")}
         >
           <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.25" strokeLinejoin="round">
@@ -567,6 +598,7 @@ export function ActionsMenuPanel({
             the caret (the SAME `run()` the slash `\ref` reaches). */}
         <FmtBtn
           title="Insert cross-reference (\ref)"
+          disabled={!canEdit}
           onClick={() => runGridAction("ref")}
         >
           <span style={{ fontFamily: "var(--font-mono), monospace", fontSize: 11 }}>
@@ -586,7 +618,27 @@ export function ActionsMenuPanel({
       />
 
       {LIGHTNING_CARD_ROWS.map((entry) => {
-        const disabled = mode === "cursor" && entry.id === "highlight";
+        // CHIP 7b: the card-row grey-out now runs through the row's OWN
+        // `applies()` (the DA-5 taxonomy + the uniform collab gate), replacing
+        // the hand-rolled `mode === "cursor" && highlight` special-case. The ref
+        // mirrors the action's actual state: cursor mode → a collapsed-caret
+        // `cursor` ref (no live range, so `highlight` — selection-`"required"` —
+        // greys); selection mode → the live range. `canEdit` greys EVERY row when
+        // the partner holds the pen.
+        const applyRef =
+          mode === "cursor"
+            ? { kind: "cursor" as const, pos: range.from, paragraphId: paragraphUuid }
+            : {
+                kind: "selection" as const,
+                from: range.from,
+                to: range.to,
+                paragraphId: paragraphUuid,
+              };
+        const disabled =
+          entry.applies({
+            ref: applyRef,
+            canEdit,
+          } as ActionContext) === "disabled";
         return (
           <div key={entry.id}>
             {entry.separator && (
@@ -662,24 +714,29 @@ function FmtBtn({
   onClick,
   title,
   active,
+  disabled,
 }: {
   children: React.ReactNode;
   onClick: () => void;
   title: string;
   active?: boolean;
+  /** CHIP 7b: collab read-only greys the cell + inerts the click. */
+  disabled?: boolean;
 }) {
   return (
     <button
       type="button"
       data-hint={title}
-      onClick={onClick}
-      className="flex items-center justify-center rounded transition-colors hover-on-light"
+      disabled={disabled}
+      onClick={disabled ? undefined : onClick}
+      className={`flex items-center justify-center rounded transition-colors ${disabled ? "" : "hover-on-light"}`}
       style={{
         height: FORMATTING_ROW_H,
         background: active ? "var(--surface-muted-strong, rgba(0,0,0,0.08))" : "transparent",
         color: active ? "var(--ink-strong)" : "var(--ink-muted)",
         border: "none",
-        cursor: "pointer",
+        cursor: disabled ? "not-allowed" : "pointer",
+        opacity: disabled ? 0.4 : 1,
       }} aria-label={title}
     >
       {children}

@@ -104,6 +104,11 @@ export const Footnote = Node.create<FootnoteOptions>({
         key: new PluginKey("footnoteInput"),
         props: {
           handleTextInput(view, from, _to, text) {
+            // CHIP 7b: uniform collab read-only gate (same rationale as
+            // citation.ts). PM suppresses input on a non-editable view; guard
+            // explicitly so typed-`\footnote{}` refuses uniformly when the
+            // partner holds the pen.
+            if (!view.editable) return false;
             if (text !== "}") return false;
             const { state } = view;
             const $from = state.doc.resolve(from);

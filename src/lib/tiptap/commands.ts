@@ -52,6 +52,16 @@ export interface VirgilCommand {
 function runViewOnlyAction(id: ActionId, view: EditorView): void {
   const spec = VIRGIL_ACTION_REGISTRY[id];
   if (!spec) return;
+  // CHIP 7b: the UNIFORM collab read-only gate for the pure-PM slash commands
+  // (heading / tex / title-fields). `view.editable` is the in-editor mirror of
+  // `collab.canEditMainText` (EditorLayout flips it via `setEditable` when the
+  // partner holds the pen). When read-only the command no-ops — no block insert /
+  // conversion. (In practice PM already suppresses `handleTextInput` on a
+  // non-editable view, so the slash popup won't even fire; this makes the refusal
+  // EXPLICIT + uniform with the other surfaces.) No over-gating: a non-collab
+  // editor is always editable.
+  const canEdit = view.editable;
+  if (!canEdit) return;
   const pos = view.state.selection.head;
   const ctx: ActionContext = {
     // For a TipTap editor `view === editor.view`; the slash plugin has only the
@@ -66,6 +76,7 @@ function runViewOnlyAction(id: ActionId, view: EditorView): void {
       paragraphId: paragraphUuidAt(view.state.doc, pos) ?? "",
     },
     surface: "slash",
+    canEdit,
   };
   void spec.run(ctx);
 }
@@ -126,6 +137,11 @@ export const VIRGIL_COMMANDS: VirgilCommand[] = [
   {
     name: "cite",
     action: (view) => {
+      // CHIP 7b: uniform collab read-only gate — refuse BEFORE inserting the
+      // synchronous atom so the doc isn't mutated when the partner holds the pen
+      // (the bridge's `runAction` ALSO no-ops on read-only; this stops the atom
+      // landing at all). `view.editable` mirrors `collab.canEditMainText`.
+      if (!view.editable) return;
       const { state } = view;
       const citationNodeType = state.schema.nodes.citation;
       if (!citationNodeType) return;
@@ -160,6 +176,9 @@ export const VIRGIL_COMMANDS: VirgilCommand[] = [
   {
     name: "footnote",
     action: (view) => {
+      // CHIP 7b: uniform collab read-only gate (same rationale as `\cite`) —
+      // refuse before the synchronous atom insert.
+      if (!view.editable) return;
       const { state } = view;
       const footnoteNodeType = state.schema.nodes.footnote;
       if (!footnoteNodeType) return;

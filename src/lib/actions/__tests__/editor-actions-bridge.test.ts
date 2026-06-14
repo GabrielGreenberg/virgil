@@ -92,14 +92,16 @@ const docJson: JSONContent = {
  *  minimal `Editor`-shaped object exposing `.state` + `.view` — exactly the
  *  two fields the bridge handle reads (`ed.state.selection.head`,
  *  `ed.state.doc`, `ed.view`). The view's `state` mirrors the editor's. */
-function makeEditor(caretPos = 3) {
+function makeEditor(caretPos = 3, isEditable = true) {
   const doc = PMNode.fromJSON(schema, docJson);
   let state = EditorState.create({ schema, doc });
   state = state.apply(
     state.tr.setSelection(TextSelection.create(state.doc, caretPos)),
   );
   const view = { state } as unknown as ActionContext["view"];
-  const editor = { state, view } as unknown as ActionContext["editor"];
+  // `isEditable` mirrors the live editor's editability — the CHIP 7b collab gate
+  // the bridge reads (`!ed.isEditable` → no-op).
+  const editor = { state, view, isEditable } as unknown as ActionContext["editor"];
   return { editor, state };
 }
 
@@ -123,6 +125,10 @@ function buildHandle(
       const spec = VIRGIL_ACTION_REGISTRY[id];
       if (!spec) return; // unknown id → no-op (dev-warns in the real effect)
       const ed = editor;
+      // CHIP 7b: the uniform collab read-only gate — the bridge no-ops entirely
+      // when the partner holds the pen (mirrors EditorPane's `if (!ed.isEditable)
+      // return`). Treat a missing `isEditable` as editable (no over-gating).
+      if (ed.isEditable === false) return;
       const pos = ed.state.selection.head;
       const ref: CursorRef = {
         kind: "cursor",
@@ -135,6 +141,7 @@ function buildHandle(
         ref,
         surface: seed.surface,
         position: seed.position,
+        canEdit: ed.isEditable,
         cardCreation: deps.cardCreation,
         cardLifecycle: deps.cardLifecycle,
         dispatch: deps.dispatch,
@@ -277,5 +284,46 @@ describe("runAction on an unknown / not-yet-migrated id", () => {
     expect(() =>
       getEditorActionsHandle()!.runAction("__no_such_action__" as ActionId, { surface: "slash" }),
     ).not.toThrow();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// (4) CHIP 7b — the uniform collab read-only gate: the bridge no-ops the
+//     slash/typed surfaces when the partner holds the pen, and behaves exactly
+//     as before when editable (no over-gating).
+// ---------------------------------------------------------------------------
+
+describe("runAction collab read-only gate (CHIP 7b)", () => {
+  it("does NOT reach the spec's run() when the editor is collab read-only", () => {
+    const { editor } = makeEditor(3, /* isEditable */ false);
+    const note = VIRGIL_ACTION_REGISTRY.note!;
+    const runSpy = vi.spyOn(note, "run");
+    setEditorActionsHandle(buildHandle(editor, {}));
+    getEditorActionsHandle()!.runAction("note", { surface: "slash" });
+    expect(runSpy).not.toHaveBeenCalled();
+  });
+
+  it("citation/footnote (the PM-land card surfaces) are suppressed when collab read-only", () => {
+    const { editor } = makeEditor(3, false);
+    setEditorActionsHandle(buildHandle(editor, {}));
+    for (const id of ["citation", "footnote"] as const) {
+      const spec = VIRGIL_ACTION_REGISTRY[id]!;
+      const runSpy = vi.spyOn(spec, "run");
+      getEditorActionsHandle()!.runAction(id, { surface: "typed", payload: {} });
+      expect(runSpy, `${id}`).not.toHaveBeenCalled();
+      runSpy.mockRestore();
+    }
+  });
+
+  it("DOES reach run() when editable (no over-gating — unchanged from before)", () => {
+    const { editor } = makeEditor(3, true);
+    const note = VIRGIL_ACTION_REGISTRY.note!;
+    const runSpy = vi.spyOn(note, "run");
+    setEditorActionsHandle(buildHandle(editor, {}));
+    getEditorActionsHandle()!.runAction("note", { surface: "slash" });
+    expect(runSpy).toHaveBeenCalledTimes(1);
+    // And the ctx carries canEdit:true so the run()'s own guard passes.
+    const ctx = runSpy.mock.calls[0][0] as ActionContext;
+    expect(ctx.canEdit).toBe(true);
   });
 });

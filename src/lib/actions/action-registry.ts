@@ -291,6 +291,42 @@ export type ActionId =
 /** The `ActionSpec.category` discriminant. */
 export type ActionCategory = "card" | "atom" | "block" | "format";
 
+/**
+ * The DECLARATIVE selection-mode taxonomy (CHIP 7b, DA-5). Says how an action
+ * relates to a live TEXT RANGE — the ONE place cursor-mode greying is decided,
+ * replacing the ad-hoc per-action range checks scattered across `cardApplies`
+ * (highlight) + the placeholder `formatApplies`. `applies()` routes EVERY row
+ * through `applySelectionMode` so the rule lives once.
+ *
+ *   - `"required"` — the action NEEDS a non-empty range to act on, so it greys
+ *     out at a collapsed caret / cursor mode. The action WRAPS its selection
+ *     and has nothing to wrap when empty. Only `highlight` (it wraps the live
+ *     range in a `linkedAnchor` mark — a caret has nothing to wrap). Mirrors the
+ *     existing `ActionsMenuPanel` `mode === "cursor"` highlight grey-out + the
+ *     `cardApplies` `refHasLiveRange` check, now declared rather than special-cased.
+ *
+ *   - `"optional"` — the action can USE a selection but does NOT need one: at a
+ *     collapsed caret it inserts a placeholder / empty shell instead. NEVER greys
+ *     on range. The footnote/citation atoms (collapse-and-insert at the caret),
+ *     the math WRAP cells (insert a placeholder `latex` on empty — `mathRun`),
+ *     example/tex (wrap-if-selection-else-insert), figure/graphics/ref (insert at
+ *     the caret), and every card LIFECYCLE action (they act on a persistent node,
+ *     not a transient range). This is the default for a row that omits `selection`.
+ *
+ *   - `"ignored"` — the action is a stateful TOGGLE / block conversion that is
+ *     fully valid at a collapsed caret: it flips the pending/stored mark, wraps
+ *     the current block, or converts the block type. NEVER greys on range. The
+ *     mark toggles (bold/italic/strike/code — they toggle the STORED mark at a
+ *     caret), list/blockquote wrappers, headings, and text-color. This is the
+ *     real `formatApplies`: a mark toggle is `"ok"` at a collapsed caret, exactly
+ *     matching how the grid renders the format cells today (always enabled).
+ *
+ * `applySelectionMode` reads `refHasLiveRange(ctx.ref)` (false for a collapsed
+ * caret / `cursor` ref / empty selection): a `"required"` action with no live
+ * range → `"disabled"`; `"optional"` / `"ignored"` → unaffected by range.
+ */
+export type ActionSelectionMode = "required" | "optional" | "ignored";
+
 // ---------------------------------------------------------------------------
 // Surfaces
 // ---------------------------------------------------------------------------
@@ -396,6 +432,35 @@ export interface ActionContext {
    *  origin (e.g. slash-created cards do not hard-open their panel — see
    *  `command-input.ts`). */
   surface: ActionSurface;
+  /**
+   * Whether THIS user may currently edit the main text — the UNIFORM
+   * collab-read-only gate (CHIP 7b, the user-APPROVED new behavior).
+   *
+   * AUTHORITATIVE SIGNAL: the live editor's `editable` flag. Virgil mounts the
+   * main editor `editable: true` ALWAYS and flips it via
+   * `editorInstance.setEditable(collab.canEditMainText)` ([EditorLayout.tsx:946])
+   * whenever collab is enabled and the partner holds the pen — so
+   * `editor.isEditable` is the in-editor mirror of `collab.canEditMainText`
+   * (`!sidecar.enabled || iHavePen`, [useCollab.ts:618], the SSOT for "can this
+   * user edit the .tex"). The same `editableRef` drives the `readOnlyEnforcer`
+   * plugin's `filterTransaction` ([editor-extensions.ts:1839]), which is what
+   * actually rejects doc-mutating transactions in collaborator read-only mode.
+   *
+   * Every surface supplies this from that ONE signal:
+   *   - grab / lightning (React) — read `editor.isEditable` when building the
+   *     ctx (DragHandleMenu / ActionsMenuPanel);
+   *   - slash / typed (PM)        — the bridge / `runViewOnlyAction` read
+   *     `ed.isEditable`.
+   *
+   * `applies()` returns `"disabled"` for EVERY action (create + lifecycle +
+   * format) when this is `false`, and the shared `run()` paths guard no-op.
+   *
+   * **`undefined` ⇒ editable** — the no-over-gating default. A caller that
+   * doesn't supply its collab state, or a NON-collab doc (the common case),
+   * leaves this unset and NOTHING is gated, exactly as today. Only an explicit
+   * `false` (collab on AND partner holds the pen) gates.
+   */
+  canEdit?: boolean;
   /** Where the insertion/anchor should land. Defaults are surface-specific
    *  (slash/typed ⇒ "cursor"; grab footnote/citation ⇒ "passage-end"). */
   position?: ActionPosition;
@@ -571,6 +636,20 @@ export interface ActionSpec {
   /** Coarse category — also the union-member family of `id`. */
   category: ActionCategory;
   /**
+   * The DECLARATIVE selection-mode (CHIP 7b, DA-5) — how this action relates to
+   * a live text RANGE, and thus whether it greys out at a collapsed caret. This
+   * is the ONE place cursor-mode greying is decided; `applies()` routes through
+   * `applySelectionMode(spec, ctx, base)`. See `ActionSelectionMode`:
+   *   - `"required"` → greys at a collapsed caret (only `highlight`);
+   *   - `"optional"` → caret OK, inserts a placeholder (atoms / inserts / lifecycle);
+   *   - `"ignored"`  → caret OK, a stateful toggle / block conversion (marks /
+   *     lists / quote / headings / text-color).
+   * Optional in the type for back-compat, but EVERY row declares it explicitly so
+   * the taxonomy is exhaustive and visible. Absent ⇒ treated as `"optional"`
+   * (the no-grey default) by `applySelectionMode`.
+   */
+  selection?: ActionSelectionMode;
+  /**
    * The "backbone" the action's `run()` reaches through to produce its effect —
    * a DECLARED field recording HOW the action acts, so a row can never silently
    * hide its implementation strategy:
@@ -736,6 +815,68 @@ function refHasLiveRange(ref: ActionRef): boolean {
   return true; // every TextObjectRef resolves to a block / range
 }
 
+// ---------------------------------------------------------------------------
+// The TWO shared applicability gates (CHIP 7b) — the ONE place each rule lives.
+// Every row's `applies()` runs through `gateApplies(spec, ctx, base)`:
+//   (1) COLLAB read-only → disable EVERYTHING (uniform across all 4 surfaces);
+//   (2) SELECTION-MODE taxonomy → disable a `"required"` action at a collapsed
+//       caret (cursor mode); `"optional"` / `"ignored"` are range-agnostic.
+// A row computes its OWN per-kind/per-context base status (e.g. `cardApplies`'s
+// `TEXT_OBJECT_REGISTRY.actions` grey-out) and hands it in as `base`; the gates
+// can only TIGHTEN it to `"disabled"`, never loosen it.
+// ---------------------------------------------------------------------------
+
+/**
+ * The UNIFORM collab-read-only gate (CHIP 7b — the user-APPROVED new behavior).
+ * When `ctx.canEdit === false` (collab on AND the partner holds the pen — see
+ * the `ActionContext.canEdit` JSDoc for the authoritative signal) the action is
+ * `"disabled"` on EVERY surface; no create / lifecycle / format action may run
+ * while another collaborator holds the pen.
+ *
+ * CRITICAL — no over-gating: `canEdit` is `undefined` for a non-collab doc or a
+ * caller that doesn't supply collab state, so this returns `false` (not gated)
+ * and NOTHING changes in normal mode. ONLY an explicit `false` gates.
+ */
+function isCollabReadOnly(ctx: ActionContext): boolean {
+  return ctx.canEdit === false;
+}
+
+/**
+ * Resolve a row's selection-mode to a boolean grey-out decision. A `"required"`
+ * action greys out when the ref has no live range (collapsed caret / empty
+ * selection / `cursor`); `"optional"` and `"ignored"` (and an unset `selection`,
+ * defaulting to `"optional"`) are range-agnostic. This is the DA-5 taxonomy
+ * resolved in ONE place — the only consumer is `gateApplies`.
+ */
+function selectionModeDisables(mode: ActionSelectionMode | undefined, ctx: ActionContext): boolean {
+  if (mode === "required") return !refHasLiveRange(ctx.ref);
+  return false; // "optional" | "ignored" | undefined → never grey on range
+}
+
+/**
+ * The SHARED applicability gate every `applies()` routes through (CHIP 7b). It
+ * layers the two cross-cutting rules on top of a row's own per-context `base`:
+ *
+ *   1. COLLAB read-only (`ctx.canEdit === false`) → `"disabled"` uniformly.
+ *   2. SELECTION-MODE (`spec.selection`) → `"disabled"` when a `"required"`
+ *      action has no live range.
+ *
+ * The gates only TIGHTEN: a `base` of `"disabled"`/`"absent"` is returned
+ * unchanged (a kind that already excludes the action stays excluded). An
+ * `"absent"` base is left absent (the action isn't offered at all on this
+ * surface/context — the collab/selection rules don't resurrect it). Pure.
+ */
+function gateApplies(
+  spec: { selection?: ActionSelectionMode },
+  ctx: ActionContext,
+  base: "ok" | "disabled" | "absent",
+): "ok" | "disabled" | "absent" {
+  if (base !== "ok") return base; // already disabled/absent — nothing to tighten
+  if (isCollabReadOnly(ctx)) return "disabled"; // (1) uniform collab gate
+  if (selectionModeDisables(spec.selection, ctx)) return "disabled"; // (2) DA-5
+  return "ok";
+}
+
 /**
  * The per-kind action filter the live `DragHandleMenu` applies:
  * `TEXT_OBJECT_REGISTRY[kind].actions` is the allow-list; an id NOT in it
@@ -755,20 +896,26 @@ function kindAllowsCardAction(ref: ActionRef, id: CardActionId): boolean {
 /**
  * Shared applicability gate for every card row. Returns:
  *   - `"disabled"` when the kind's `actions` set excludes the id (Class A/B/C/D
- *     grey-out) OR — for `highlight` — the ref has no live range (cursor mode);
+ *     grey-out), OR the shared `gateApplies` tightens it (collab read-only, or
+ *     a `"required"` selection-mode action with no live range — `highlight`);
  *   - `"ok"` otherwise.
  *
  * Never returns `"absent"`: the card actions are present on every grab /
  * lightning menu (greyed when inapplicable), matching the live "visible-
  * disabled" decoration rather than filtering entries away.
+ *
+ * CHIP 7b: the highlight-needs-a-range check is NO LONGER special-cased here —
+ * it is declared `selection: "required"` on the highlight row and resolved by
+ * `gateApplies` (which also layers the uniform collab gate). The kind-allow-list
+ * is the row's per-context `base`; `gateApplies` only tightens it.
  */
-function cardApplies(id: CardActionId, ctx: ActionContext): "ok" | "disabled" {
-  if (!kindAllowsCardAction(ctx.ref, id)) return "disabled";
-  // Highlight needs a range to wrap (the one cursor-mode grey-out among the
-  // card actions — F/C etc. collapse-and-insert at a caret, so they stay
-  // enabled). Mirrors `ActionsMenuPanel`'s `mode === "cursor"` highlight gate.
-  if (id === "highlight" && !refHasLiveRange(ctx.ref)) return "disabled";
-  return "ok";
+function cardApplies(
+  id: CardActionId,
+  ctx: ActionContext,
+  selection: ActionSelectionMode | undefined,
+): "ok" | "disabled" | "absent" {
+  const base: "ok" | "disabled" = kindAllowsCardAction(ctx.ref, id) ? "ok" : "disabled";
+  return gateApplies({ selection }, ctx, base);
 }
 
 /**
@@ -873,6 +1020,7 @@ function cardResolveScope(
  * the dispatcher is the single source of behavior and we never re-implement it.
  */
 function cardRun(id: CardActionId, ctx: ActionContext): void {
+  if (isCollabReadOnly(ctx)) return; // CHIP 7b: uniform collab gate — no-op
   if (ctx.ref.kind === "cursor") return; // not a grab-bar ref — no-op (see JSDoc)
   ctx.dispatch?.(id, ctx.ref);
 }
@@ -920,6 +1068,12 @@ function softRouteCitationToOmni(routing: NonNullable<ActionContext["panelRoutin
  * may be invoked from any of the four surfaces.
  */
 function citationRun(ctx: ActionContext): void {
+  // CHIP 7b: uniform collab gate. When the partner holds the pen, the slash /
+  // typed callers ALSO no-op before inserting the synchronous atom (the PM
+  // surfaces check `runAction`'s gate — see the bridge), so this guard covers
+  // the grab/lightning path; it also fail-safes the PM path (the atom-insert tx
+  // would be rejected by `readOnlyEnforcer` regardless).
+  if (isCollabReadOnly(ctx)) return;
   // Surfaces 1 & 2 (grab / lightning): a `DragHandleRef`. Delegate to the
   // legacy dispatcher — its `case "citation"` inserts the placeholder atom AND
   // registers the anchored card (with its own `ensureOmniActiveForPanel`).
@@ -1002,6 +1156,8 @@ function softRouteFootnoteToOmni(routing: NonNullable<ActionContext["panelRoutin
  * may be invoked from any of the four surfaces.
  */
 function footnoteRun(ctx: ActionContext): void {
+  // CHIP 7b: uniform collab gate (same rationale as `citationRun`).
+  if (isCollabReadOnly(ctx)) return;
   // Surfaces 1 & 2 (grab / lightning): a `DragHandleRef`. Delegate to the
   // legacy dispatcher — its `case "footnote"` collapses the selection, inserts
   // the empty footnote atom AND registers the pristine+pinned card.
@@ -1079,6 +1235,7 @@ const HEADING_ID_LEVEL: Readonly<Record<BlockActionId & `heading-${string}`, num
  */
 function headingRun(level: number): (ctx: ActionContext) => void {
   return (ctx: ActionContext) => {
+    if (isCollabReadOnly(ctx)) return; // CHIP 7b: uniform collab gate — no-op
     const { state } = ctx.view;
     const heading = state.schema.nodes.heading;
     if (!heading) return;
@@ -1118,6 +1275,7 @@ function headingRun(level: number): (ctx: ActionContext) => void {
 // ---------------------------------------------------------------------------
 function titleFieldRun(field: "title" | "author" | "date"): (ctx: ActionContext) => void {
   return (ctx: ActionContext) => {
+    if (isCollabReadOnly(ctx)) return; // CHIP 7b: uniform collab gate — no-op
     const view = ctx.view;
     const { state } = view;
     const titleFieldType = state.schema.nodes.titleField;
@@ -1227,6 +1385,10 @@ function titleFieldRow(field: "title" | "author" | "date"): ActionSpec {
     id: field,
     label,
     category: "block",
+    // selection-`"ignored"`: a titleField is a doc-top singleton — the
+    // idempotent find-existing-or-insert never reads the selection range, so a
+    // caret is always valid (no DA-5 grey). Range-agnostic, like a block convert.
+    selection: "ignored",
     surfaces: { slash: true },
     slashName: field,
     applies: (ctx) => blockApplies(ctx),
@@ -1277,6 +1439,7 @@ const TITLE_ACTION_IDS: readonly TitleActionId[] = ["title", "author", "date"];
  * atom across an active range inside a paragraph.
  */
 export function texRun(ctx: ActionContext): void {
+  if (isCollabReadOnly(ctx)) return; // CHIP 7b: uniform collab gate — no-op
   const { state } = ctx.view;
   const texBlockType = state.schema.nodes.texBlock;
   if (!texBlockType) return;
@@ -1318,6 +1481,9 @@ const TEX_ACTION_ROW: ActionSpec = {
   id: "tex",
   label: "Raw LaTeX",
   category: "block",
+  // selection-`"optional"`: `texRun` seeds `code` from a selection when present,
+  // else inserts an empty block at the caret — so a caret is fine (no DA-5 grey).
+  selection: "optional",
   surfaces: { slash: true, lightning: true },
   slashName: "tex",
   // Shared block-atom gate (CHIP 6a: `blockApplies`). A function declaration, so
@@ -1350,6 +1516,7 @@ const TEX_ACTION_ROW: ActionSpec = {
 // no-ops — there is no popover to open without React state.
 // ---------------------------------------------------------------------------
 export function refRun(ctx: ActionContext): void {
+  if (isCollabReadOnly(ctx)) return; // CHIP 7b: uniform collab gate — no popover
   ctx.openRefPopover?.();
 }
 
@@ -1372,6 +1539,9 @@ const REF_ACTION_ROW: ActionSpec = {
   id: "ref",
   label: "Cross-ref",
   category: "atom",
+  // selection-`"optional"`: the popover lands the `labelRef` atom at the caret —
+  // a caret is the normal case, no range needed (no DA-5 grey).
+  selection: "optional",
   surfaces: { slash: true, lightning: true },
   slashName: "ref",
   applies: (ctx) => blockApplies(ctx),
@@ -1566,6 +1736,7 @@ function buildExampleNode(
  * `isolating` block.
  */
 export function exampleRun(ctx: ActionContext): void {
+  if (isCollabReadOnly(ctx)) return; // CHIP 7b: uniform collab gate — no-op
   const { state } = ctx.view;
   const exampleBlockType = state.schema.nodes.exampleBlock;
   if (!exampleBlockType) return;
@@ -1643,6 +1814,9 @@ const EXAMPLE_ACTION_ROW: ActionSpec = {
   id: "example",
   label: "Example",
   category: "block",
+  // selection-`"optional"`: `exampleRun` WRAPS a selection when present, else
+  // inserts an empty single example at the caret — a caret is fine (no DA-5 grey).
+  selection: "optional",
   surfaces: { slash: true, lightning: true },
   slashName: "ex",
   applies: (ctx) => blockApplies(ctx),
@@ -1657,12 +1831,22 @@ const EXAMPLE_ACTION_ROW: ActionSpec = {
 // only invoked from a selection or caret (the grid bolt / a slash command), so
 // it is "ok" everywhere they are reachable. Factored out so the six rows can't
 // drift. (tex/example kept their inline copies pre-6a; they now delegate here.)
+//
+// CHIP 7b: routes its kind-base through the shared `gateApplies` so the uniform
+// collab read-only gate layers on. The block/atom rows are selection-`"optional"`
+// (they WRAP a selection when present, else insert an empty shell / placeholder —
+// `texRun` / `exampleRun` insert empty on a collapsed caret; `mathRun` seeds a
+// placeholder `latex`), so the DA-5 range check never greys them — only the
+// `isAtomBlock` kind-base and collab read-only can.
 // ---------------------------------------------------------------------------
-function blockApplies(ctx: ActionContext): "ok" | "disabled" {
+function blockApplies(ctx: ActionContext): "ok" | "disabled" | "absent" {
   const ref = ctx.ref;
-  if (ref.kind === "selection" || ref.kind === "cursor") return "ok";
-  if (!isTextObjectKind(ref.kind)) return "ok"; // defensive: unknown → allow
-  return TEXT_OBJECT_REGISTRY[ref.kind].isAtomBlock ? "disabled" : "ok";
+  let base: "ok" | "disabled";
+  if (ref.kind === "selection" || ref.kind === "cursor") base = "ok";
+  else if (!isTextObjectKind(ref.kind)) base = "ok"; // defensive: unknown → allow
+  else base = TEXT_OBJECT_REGISTRY[ref.kind].isAtomBlock ? "disabled" : "ok";
+  // selection-`"optional"`: caret OK; only the kind-base + collab gate can grey.
+  return gateApplies({ selection: "optional" }, ctx, base);
 }
 
 // ---------------------------------------------------------------------------
@@ -1682,6 +1866,7 @@ function blockApplies(ctx: ActionContext): "ok" | "disabled" {
 // ---------------------------------------------------------------------------
 function mathRun(kind: "inline" | "display"): (ctx: ActionContext) => void {
   return (ctx: ActionContext) => {
+    if (isCollabReadOnly(ctx)) return; // CHIP 7b: uniform collab gate — no-op
     const editor = ctx.editor;
     const { from, to } = editor.state.selection;
     const text = editor.state.doc.textBetween(from, to, " ");
@@ -1734,6 +1919,7 @@ function openInsertPopover(
 }
 
 export function figureRun(ctx: ActionContext): void {
+  if (isCollabReadOnly(ctx)) return; // CHIP 7b: uniform collab gate — no-op
   const editor = ctx.editor;
   const figureType = editor.state.schema.nodes.figureBlock;
   if (!figureType) return;
@@ -1761,6 +1947,7 @@ export function figureRun(ctx: ActionContext): void {
 }
 
 export function graphicsRun(ctx: ActionContext): void {
+  if (isCollabReadOnly(ctx)) return; // CHIP 7b: uniform collab gate — no-op
   const editor = ctx.editor;
   const graphicsType = editor.state.schema.nodes.graphicsBlock;
   if (!graphicsType) return;
@@ -1835,11 +2022,18 @@ interface PMNodeLike {
  * shared `blockApplies`. `run`: math WRAPS the selection (`mathRun(kind)`);
  * figure/graphics INSERT via `smartInsertBlock` then open the source popover
  * (`figureRun` / `graphicsRun`).
+ *
+ * CHIP 7b: all 4 are selection-`"optional"` — the math cells WRAP a selection
+ * but seed a placeholder `latex` ("x" / "\int f(x)\,dx") when empty (`mathRun`),
+ * and figure/graphics insert an opaque block at the caret. So a collapsed caret
+ * is a valid invocation (no DA-5 grey); only the `isAtomBlock` kind-base + the
+ * uniform collab gate can disable them.
  */
 const INLINE_MATH_ACTION_ROW: ActionSpec = {
   id: "inline-math",
   label: "Inline math",
   category: "block",
+  selection: "optional",
   surfaces: { lightning: true },
   applies: blockApplies,
   run: mathRun("inline"),
@@ -1848,6 +2042,7 @@ const DISPLAY_MATH_ACTION_ROW: ActionSpec = {
   id: "display-math",
   label: "Display math",
   category: "block",
+  selection: "optional",
   surfaces: { lightning: true },
   applies: blockApplies,
   run: mathRun("display"),
@@ -1856,6 +2051,7 @@ const FIGURE_ACTION_ROW: ActionSpec = {
   id: "figure",
   label: "Figure",
   category: "block",
+  selection: "optional",
   surfaces: { lightning: true },
   applies: blockApplies,
   run: figureRun,
@@ -1864,6 +2060,7 @@ const GRAPHICS_ACTION_ROW: ActionSpec = {
   id: "graphics",
   label: "Image",
   category: "block",
+  selection: "optional",
   surfaces: { lightning: true },
   applies: blockApplies,
   run: graphicsRun,
@@ -1890,14 +2087,21 @@ const GRAPHICS_ACTION_ROW: ActionSpec = {
 // ---------------------------------------------------------------------------
 
 /**
- * Applicability for the format rows. The grid renders every format cell
- * unconditionally today (no per-kind grey-out for the marks/lists/quote/color),
- * so this returns `"ok"` everywhere — preserving the live behavior exactly. (A
- * later chip's DA-5 mode taxonomy may grey a mark toggle out at a collapsed
- * caret; until then we match the grid, which always shows them enabled.)
+ * Applicability for the format rows — REAL as of CHIP 7b (it was a placeholder
+ * `() => "ok"` in CHIP 6b). Every format action is selection-`"ignored"`: a mark
+ * toggle (bold/italic/strike/code) is fully valid at a COLLAPSED CARET — it
+ * flips the pending/STORED mark, so the next typed character is bold; the
+ * list/blockquote wrappers wrap the current block; text-color pops the popover.
+ * None need a live range, so the DA-5 range check is a no-op and the cell stays
+ * `"ok"` at a caret — EXACTLY matching how the grid renders the format cells
+ * today (always enabled).
+ *
+ * The only thing that now greys a format cell is the UNIFORM collab read-only
+ * gate (`ctx.canEdit === false`): a partner holding the pen disables marks too.
+ * Routed through `gateApplies` (base `"ok"`, `selection: "ignored"`).
  */
-function formatApplies(): "ok" {
-  return "ok";
+function formatApplies(ctx: ActionContext): "ok" | "disabled" | "absent" {
+  return gateApplies({ selection: "ignored" }, ctx, "ok");
 }
 
 /**
@@ -1906,6 +2110,13 @@ function formatApplies(): "ok" {
  * `ctx.editor.chain().focus()` — the SAME `editor.chain().focus().toggleX().run()`
  * the grid's `runFormat` did, just lifted into the registry so the cell renders
  * from the SSOT. Pure `tiptap-chain` backbone — no bridge.
+ *
+ * CHIP 7b: declares `selection: "ignored"` — a mark/list/quote toggle is valid
+ * at a collapsed caret (it toggles the stored mark / wraps the block). The
+ * `run()` GUARDS the uniform collab gate: when `ctx.canEdit === false` it
+ * no-ops, so a stray invocation (e.g. a held keyboard shortcut) can't mutate the
+ * doc while the partner holds the pen — belt-and-suspenders with the
+ * `readOnlyEnforcer` plugin (which would reject the tx anyway).
  */
 function formatToggleRow(
   id: FormatActionId,
@@ -1916,10 +2127,12 @@ function formatToggleRow(
     id,
     label,
     category: "format",
+    selection: "ignored",
     backbone: "tiptap-chain",
     surfaces: { lightning: true },
     applies: formatApplies,
     run: (ctx) => {
+      if (isCollabReadOnly(ctx)) return; // uniform collab gate — no-op
       chainCmd(ctx.editor.chain().focus()).run();
     },
   };
@@ -1947,6 +2160,7 @@ const BLOCKQUOTE_ACTION_ROW = formatToggleRow("blockquote", "Blockquote", (c) =>
  * StarterKit-style mark command, just deferred behind the popover's pick.
  */
 function textColorRun(ctx: ActionContext): void {
+  if (isCollabReadOnly(ctx)) return; // uniform collab gate — no popover, no-op
   const payload = ctx.payload ?? {};
   const anchorRect =
     payload.anchorRect instanceof DOMRect ? payload.anchorRect : undefined;
@@ -1958,6 +2172,7 @@ const TEXT_COLOR_ACTION_ROW: ActionSpec = {
   id: "text-color",
   label: "Text color",
   category: "format",
+  selection: "ignored",
   backbone: "tiptap-chain",
   surfaces: { lightning: true },
   applies: formatApplies,
@@ -2015,17 +2230,24 @@ function headingRow(id: BlockActionId & `heading-${string}`): ActionSpec {
     id,
     label,
     category: "block",
+    // selection-`"ignored"`: a heading is a `setBlockType` CONVERSION of the
+    // current block — range-agnostic, valid at a collapsed caret (no DA-5 grey).
+    selection: "ignored",
     surfaces: { slash: true, lightning: true },
     slashName,
     applies: (ctx) => {
       const ref = ctx.ref;
-      // A selection / caret always sits in a text block → convertible.
-      if (ref.kind === "selection" || ref.kind === "cursor") return "ok";
-      // A TextObjectRef: only text-bearing blocks convert to a heading. An
-      // atom block (figure / displayMath / texBlock) has no text → disabled.
-      if (!isTextObjectKind(ref.kind)) return "ok"; // defensive: unknown → allow
-      const meta = TEXT_OBJECT_REGISTRY[ref.kind];
-      return meta.isAtomBlock ? "disabled" : "ok";
+      // Per-kind base: a selection / caret always sits in a text block →
+      // convertible; a TextObjectRef converts iff it's a text-bearing block (an
+      // atom block — figure / displayMath / texBlock — has no text → disabled).
+      let base: "ok" | "disabled" = "ok";
+      if (ref.kind !== "selection" && ref.kind !== "cursor") {
+        if (isTextObjectKind(ref.kind)) {
+          base = TEXT_OBJECT_REGISTRY[ref.kind].isAtomBlock ? "disabled" : "ok";
+        }
+      }
+      // Layer the collab gate (the DA-5 range check is a no-op for "ignored").
+      return gateApplies({ selection: "ignored" }, ctx, base);
     },
     run: headingRun(level),
   };
@@ -2040,6 +2262,33 @@ const HEADING_ACTION_IDS: readonly (BlockActionId & `heading-${string}`)[] = [
   "heading-subsection",
   "heading-subsubsection",
 ];
+
+/**
+ * The DA-5 selection-mode (CHIP 7b) for each card action. ONLY `highlight` is
+ * `"required"` — it wraps the live range in a `linkedAnchor` mark and has
+ * nothing to wrap at a collapsed caret (the single cursor-mode grey-out among
+ * the card actions, matching `ActionsMenuPanel`'s `mode === "cursor"` highlight
+ * gate). Every other card action is `"optional"`:
+ *   - note / footnote / citation / todo / suggest-edit / cutter / report — they
+ *     COLLAPSE-and-insert (an annotation anchored to the passage, or an atom at
+ *     the caret), so a caret is fine;
+ *   - duplicate / archive / delete — LIFECYCLE actions on a persistent node
+ *     (the ref is a `TextObjectRef`, never a bare range), range-agnostic.
+ * Resolved through `gateApplies` in `cardApplies`.
+ */
+const CARD_SELECTION_MODE: Readonly<Record<CardActionId, ActionSelectionMode>> = {
+  highlight: "required",
+  note: "optional",
+  footnote: "optional",
+  citation: "optional",
+  todo: "optional",
+  "suggest-edit": "optional",
+  cutter: "optional",
+  report: "optional",
+  duplicate: "optional",
+  archive: "optional",
+  delete: "optional",
+};
 
 /** Build one delegating card row. Presentation (label / letter / icon /
  *  separator / destructive) from `CARD_ACTION_PRESENTATION` — the registry
@@ -2057,6 +2306,7 @@ function cardRow(id: CardActionId): ActionSpec {
   const isCitation = id === "citation";
   const isFootnote = id === "footnote";
   const hasPmSurfaces = isCitation || isFootnote;
+  const selection = CARD_SELECTION_MODE[id];
   return {
     id,
     label: p.label,
@@ -2065,6 +2315,7 @@ function cardRow(id: CardActionId): ActionSpec {
     separator: p.separator,
     destructive: p.destructive,
     category: "card",
+    selection,
     surfaces: hasPmSurfaces
       ? { grab: true, lightning: true, slash: true, typed: true }
       : { grab: true, lightning: true },
@@ -2080,7 +2331,7 @@ function cardRow(id: CardActionId): ActionSpec {
     // never recognize a different vocabulary.
     ...(isCitation ? { inputRulePattern: CITE_RE_FULL } : {}),
     ...(isFootnote ? { inputRulePattern: FOOTNOTE_INPUT_RULE_PATTERN } : {}),
-    applies: (ctx) => cardApplies(id, ctx),
+    applies: (ctx) => cardApplies(id, ctx, selection),
     resolveScope: (ctx) => cardResolveScope(id, ctx) ?? { from: 0, to: 0 },
     run: isCitation ? citationRun : isFootnote ? footnoteRun : (ctx) => cardRun(id, ctx),
   };
