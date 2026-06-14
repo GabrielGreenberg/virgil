@@ -2445,6 +2445,22 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
     return { ed, from, to, text, editorHandle: innerRef.current };
   }, []);
 
+  // Mode-A paragraph fallback for an ATOM-ONLY selection (a citation pill /
+  // `$\lambda$` / `\ref` selected alone). `readSelection()` rejects those (no
+  // textContent), so a Note / Cut / Comment built from them would land
+  // UNANCHORED. Resolve the containing paragraph's uuid so the card anchors
+  // Mode-A rather than orphaning. Returns null for a genuinely-empty / no
+  // selection (atoms count as content — mirrors the archive fix).
+  const atomOnlySelectionParagraphId = useCallback((): string | null => {
+    const ed = innerRef.current?.getEditor();
+    if (!ed || !innerRef.current) return null;
+    const { from, to } = ed.state.selection;
+    if (from < to && ed.state.doc.slice(from, to).content.size > 0) {
+      return innerRef.current.ensureParagraphUuid(from);
+    }
+    return null;
+  }, []);
+
   const handleToolbarAddComment = useCallback((anchorRect: DOMRect | null) => {
     const sel = readSelection();
     let anchorId: string | null = null;
@@ -2456,7 +2472,11 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
     const anchor = anchorId && sel?.text
       ? { anchorId, anchorText: sel.text }
       : undefined;
-    const created = revisionsHook.addComment(null, undefined, anchor);
+    // Atom-only selection (sel === null but a real atom is selected): anchor the
+    // comment Mode-A to its paragraph so it isn't orphaned. Text comments keep
+    // their existing Mode-B anchor (paragraphId null) unchanged.
+    const paragraphId = sel ? null : atomOnlySelectionParagraphId();
+    const created = revisionsHook.addComment(paragraphId, undefined, anchor);
     if (anchorId) {
       const ed = innerRef.current?.getEditor();
       if (ed) updateLinkedAnchorCard(ed, anchorId, "revision-comment", created.id);
@@ -2472,6 +2492,9 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
       paragraphId = sel.editorHandle.ensureParagraphUuid(sel.from);
       const record = createLinkedAnchor(sel.ed, "note");
       if (record) anchor = { anchorId: record.anchorId, anchorText: record.text };
+    } else {
+      // Atom-only selection: no text for a Mode-B mark, but anchor Mode-A.
+      paragraphId = atomOnlySelectionParagraphId();
     }
     const note = cardCreation.createNote({ paragraphId, anchor, anchorRect });
     if (sel && anchor) {
@@ -2520,6 +2543,9 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
       paragraphId = sel.editorHandle.ensureParagraphUuid(sel.from);
       const record = createLinkedAnchor(sel.ed, "cutter-comment");
       if (record) anchor = { anchorId: record.anchorId, anchorText: record.text };
+    } else {
+      // Atom-only selection: anchor the cut Mode-A so it isn't orphaned.
+      paragraphId = atomOnlySelectionParagraphId();
     }
     const card = cardCreation.createCutterComment({ paragraphId, anchor, anchorRect });
     if (sel && anchor) {

@@ -116,8 +116,12 @@ export function snapshotSelection(
       (cleanedSlice as { content: JSONContent[] }).content
     ).map(stripCrossDocMarks);
   }
+  // `plain` is a DISPLAY LABEL only. An atom-only selection (a citation pill /
+  // `$\lambda$` / `\ref` captured alone) has no `textContent` → `plain === ""`,
+  // but it carries real content (the slice already passed the authoritative
+  // emptiness guard at `slice.size === 0` above). Don't discard it on an empty
+  // label — allow a blank label rather than dropping the whole capture.
   const plain = editor.state.doc.textBetween(from, to, " ", " ").trim();
-  if (!plain) return null;
   return {
     id: makeStackId(),
     capturedAt: nowIso(),

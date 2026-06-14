@@ -1449,6 +1449,16 @@ export function texRun(ctx: ActionContext): void {
     : state.doc.textBetween(from, to, "\n", (node) =>
         node.type.name === "hardBreak" ? "\n" : "",
       );
+  // DATA-LOSS GUARD: a non-empty selection that carries an inline atom but no
+  // text (a citation pill / `$\lambda$` / `\ref` selected alone) has
+  // `seedCode === ""` yet a non-empty slice — the `deleteSelection()` /
+  // `replaceSelectionWith` below would DESTROY the atom and drop a placeholder
+  // texBlock in its place. Preserve the atom: a `\tex` block is a caret-insert
+  // gesture; selecting an atom to convert is not supported. (Same content-aware
+  // emptiness as the archive fix — atoms count as content.)
+  if (!empty && seedCode.length === 0 && state.doc.slice(from, to).content.size > 0) {
+    return;
+  }
   // The ONE uuid-collision scan (was duplicated across slash + grid).
   const existing = new Set<string>();
   state.doc.descendants((node) => {
@@ -1870,6 +1880,15 @@ function mathRun(kind: "inline" | "display"): (ctx: ActionContext) => void {
     const editor = ctx.editor;
     const { from, to } = editor.state.selection;
     const text = editor.state.doc.textBetween(from, to, " ");
+    // DATA-LOSS GUARD: a non-empty selection holding an inline atom but no text
+    // (a citation pill / `$\lambda$` / `\ref` selected alone) has `text === ""`
+    // yet a non-empty slice — `deleteSelection()` below would DESTROY the atom
+    // and drop a placeholder math node in its place. Preserve the atom: math-
+    // wrap needs real selected text (or a collapsed caret to insert a
+    // placeholder). Atoms count as content (mirrors the archive fix).
+    if (from < to && text.length === 0 && editor.state.doc.slice(from, to).content.size > 0) {
+      return;
+    }
     const latex = text || (kind === "inline" ? "x" : "\\int f(x)\\,dx");
     const type = kind === "inline" ? "inlineMath" : "displayMath";
     editor

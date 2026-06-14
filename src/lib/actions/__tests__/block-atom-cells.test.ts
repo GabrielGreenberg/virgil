@@ -427,3 +427,63 @@ describe("mathRun (wrap-based)", () => {
     expect(math!.attrs.latex).toBe("\\int f(x)\\,dx");
   });
 });
+
+// ---------------------------------------------------------------------------
+// DATA-LOSS GUARD — an atom-only selection (a `$\lambda$` / citation pill /
+// `\ref` selected alone) must NOT be destroyed by the math / tex cells. Before
+// the fix the non-empty-but-text-empty selection took the deleteSelection()
+// branch and the atom was REPLACED by a placeholder. (atom-only-empty-text
+// class — see drag-handle-actions archive fix + this audit sweep.)
+// ---------------------------------------------------------------------------
+
+describe("atom-only selection — math/tex preserve the atom (no data loss)", () => {
+  function selCtx(editor: Editor): ActionContext {
+    return {
+      editor,
+      view: editor.view,
+      ref: {
+        kind: "selection",
+        from: editor.state.selection.from,
+        to: editor.state.selection.to,
+        paragraphId: "",
+      },
+      surface: "lightning",
+    };
+  }
+  // A paragraph whose ONLY content is a pre-existing inlineMath atom, with that
+  // atom selected exactly ([1,2) — the atom's nodeSize is 1).
+  function mountAtomOnly(): Editor {
+    const editor = mountEditor("");
+    const im = editor.state.schema.nodes.inlineMath;
+    editor.view.dispatch(editor.state.tr.insert(1, im.create({ latex: "\\lambda" })));
+    selectRange(editor, 1, 2);
+    return editor;
+  }
+  const inlineRow = VIRGIL_ACTION_REGISTRY["inline-math"]!;
+  const displayRow = VIRGIL_ACTION_REGISTRY["display-math"]!;
+  const texRow = VIRGIL_ACTION_REGISTRY["tex"]!;
+
+  it("inline-math cell leaves the selected atom intact (no 'x' placeholder swap)", () => {
+    const editor = mountAtomOnly();
+    inlineRow.run(selCtx(editor));
+    expect(countOfType(editor, "inlineMath")).toBe(1);
+    // The ORIGINAL atom survives — the old bug deleted it and dropped 'x'.
+    expect(firstOfType(editor, "inlineMath")!.attrs.latex).toBe("\\lambda");
+  });
+
+  it("display-math cell leaves the selected atom intact (no displayMath inserted)", () => {
+    const editor = mountAtomOnly();
+    displayRow.run(selCtx(editor));
+    expect(countOfType(editor, "inlineMath")).toBe(1);
+    expect(firstOfType(editor, "inlineMath")!.attrs.latex).toBe("\\lambda");
+    expect(countOfType(editor, "displayMath")).toBe(0);
+  });
+
+  it("tex cell leaves the selected atom intact (no texBlock inserted)", () => {
+    const editor = mountAtomOnly();
+    texRow.run(selCtx(editor));
+    expect(countOfType(editor, "inlineMath")).toBe(1);
+    expect(firstOfType(editor, "inlineMath")!.attrs.latex).toBe("\\lambda");
+    expect(countOfType(editor, "texBlock")).toBe(0);
+  });
+});

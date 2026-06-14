@@ -35,15 +35,17 @@ export function useCommentActions(deps: {
   } = deps;
 
   const handleAddComment = useCallback(() => {
-    const selectedText = editorRef.current?.getSelectedText();
-    if (!selectedText || selectedText.trim().length === 0) return;
     const ed = editorRef.current?.getEditor();
-    if (ed) {
-      const record = createLinkedAnchor(ed, "revision");
-      pendingRevisionAnchorIdRef.current = record?.anchorId ?? null;
-    } else {
-      pendingRevisionAnchorIdRef.current = null;
-    }
+    if (!ed) return;
+    // Content-aware emptiness: an atom-only selection (a citation pill /
+    // `$\lambda$` / `\ref` selected alone) has NO textContent but real content,
+    // so the old `!selectedText` bail silently no-op'd it (panel never opened).
+    // Bail only on a collapsed / genuinely-empty selection — atoms count.
+    const { from, to } = ed.state.selection;
+    if (to <= from || ed.state.doc.slice(from, to).content.size === 0) return;
+    const selectedText = ed.state.doc.textBetween(from, to, " ");
+    const record = createLinkedAnchor(ed, "revision");
+    pendingRevisionAnchorIdRef.current = record?.anchorId ?? null;
     setPendingCommentText(selectedText);
     try { window.getSelection()?.removeAllRanges(); } catch { /* ignore */ }
     const revPlacement = prefs.placements.find((p) => p.id === "revisions");
