@@ -1,9 +1,6 @@
-import { useEffect, type Dispatch, type MutableRefObject, type RefObject, type SetStateAction } from "react";
-import type { PanelId, ViewPrefs } from "@/hooks/useViewPrefs";
+import { useEffect, type Dispatch, type RefObject, type SetStateAction } from "react";
 import type { EditorHandle } from "../../Editor";
 import { generateShortId } from "@/lib/uuid";
-
-type CitationMode = "anchored" | "unanchored";
 
 /**
  * Command-input bridges — editor input rules dispatch these when the user
@@ -12,11 +9,6 @@ type CitationMode = "anchored" | "unanchored";
  * As a class, slash commands create their thing inline (atom/block + cursor
  * placement) and do NOT hard-open a dedicated panel (backlog #2).
  *
- * - `virgil-citation-create` ({ partial, citationId }) — bare `\cite`
- *   inserts the citation atom and routes the new card into OMNI-VIEW
- *   (`createCitation({ mode: "omni" })` in citations-host). The soft route
- *   here only surfaces omni when the citations side is collapsed/blank; it
- *   never clobbers a panel the user already has covering omni.
  * - `virgil-ref-create` — bare `\ref` opens the LabelRef popover in
  *   create mode anchored at the current cursor (inline; no panel).
  * - `virgil-ex-create` — bare `\ex` inserts a single-part example block
@@ -25,14 +17,18 @@ type CitationMode = "anchored" | "unanchored";
  * - `virgil-footnote-input` — bare `\footnote` inserts an empty footnote
  *   node at cursor, selects it, and broadcasts `virgil-footnote-created`
  *   so an already-open panel can scroll-to-new; it does NOT open the panel.
+ *
+ * ── CITATION MIGRATED (CHIP 4a-ii) ── `\cite` (slash + typed) no longer rides
+ * a `virgil-citation-create` CustomEvent + this listener. The slash command
+ * (commands.ts) and the typed input rules (citation.ts) now insert the atom
+ * synchronously and register the card through the action-registry bridge
+ * (`runAction("citation", …)` → `citation.run`), which owns the SAME
+ * backlog-#2 soft-route (surface omni only when the citations side is
+ * collapsed/blank) that used to live here. So the citation handler + its
+ * prefs/setActive/pendingCitation deps are gone from this hook.
  */
 export function useCommandInputBridges(deps: {
   editorRef: RefObject<EditorHandle | null>;
-  prefsRef: MutableRefObject<ViewPrefs>;
-  setActiveLeft: (id: PanelId) => void;
-  setActiveRight: (id: PanelId) => void;
-  setPendingCitationMode: Dispatch<SetStateAction<CitationMode>>;
-  setPendingCitationCreate: Dispatch<SetStateAction<string | null>>;
   setActiveRefLabel: Dispatch<SetStateAction<string | null>>;
   setActiveRefRect: Dispatch<SetStateAction<DOMRect | null>>;
   setSelectedFootnoteId: Dispatch<SetStateAction<string | null>>;
@@ -40,55 +36,11 @@ export function useCommandInputBridges(deps: {
 }) {
   const {
     editorRef,
-    prefsRef,
-    setActiveLeft,
-    setActiveRight,
-    setPendingCitationMode,
-    setPendingCitationCreate,
     setActiveRefLabel,
     setActiveRefRect,
     setSelectedFootnoteId,
     setSelectedExampleId,
   } = deps;
-
-  useEffect(() => {
-    const handler = (e: Event) => {
-      const detail = (e as CustomEvent).detail as
-        | { partial?: string; citationId?: string }
-        | undefined;
-      if (!detail?.partial) return;
-      // Slash commands don't hard-open their dedicated panel (backlog #2).
-      // `\cite` is the nuance: the new card still needs a completion
-      // surface, so we route it into OMNI-VIEW rather than the Citations
-      // panel. Soft route — mirror `ensureOmniActiveForPanel` (the
-      // drag-handle path): only surface omni if the citations side is
-      // currently collapsed or blank. If the user has another panel up on
-      // that side (covering omni), we leave it — the card lands + selects
-      // in omni and reveals itself when the user next views it, instead of
-      // clobbering whatever panel they have open. `citations-host` does the
-      // select + pin + library-picker via `createCitation({ mode: "omni" })`.
-      const p = prefsRef.current;
-      const citPlacement = p.placements.find((pl) => pl.id === "citations");
-      const side = citPlacement?.side ?? "right";
-      const active = side === "left" ? p.activeLeft : p.activeRight;
-      if (active == null || active === "blank") {
-        if (side === "left") setActiveLeft("omni");
-        else setActiveRight("omni");
-      }
-      if (!detail.citationId) {
-        // Legacy path: no inline atom — open a panel-only draft card.
-        // (When `citationId` IS present, the atom is already in the
-        // editor; CitationsHost has its own listener that routes the
-        // event through `cardCreation.createCitation` so the card lands
-        // in the panel with the same pin / focus behavior as the
-        // drag-handle "Citation" action.)
-        setPendingCitationMode("anchored");
-        setPendingCitationCreate(detail.partial);
-      }
-    };
-    window.addEventListener("virgil-citation-create", handler);
-    return () => window.removeEventListener("virgil-citation-create", handler);
-  }, [prefsRef, setActiveLeft, setActiveRight, setPendingCitationMode, setPendingCitationCreate]);
 
   useEffect(() => {
     const handler = () => {

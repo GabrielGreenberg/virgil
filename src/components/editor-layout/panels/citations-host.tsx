@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, type Dispatch, type SetStateAction } from "react";
+import { type Dispatch, type SetStateAction } from "react";
 import CitationsPanel from "@/panels/Citations";
 import type { useCitations } from "@/hooks/useCitations";
 import type { useAnnotations } from "@/hooks/useAnnotations";
@@ -12,8 +12,6 @@ import { useAiRequestsContext } from "../contexts/ai-requests";
 import { useCitationDisplayContext } from "../contexts/citation-display";
 import { useCardCreationContext } from "../contexts/card-creation";
 import { useRecentlyAddedId } from "../contexts/recently-added";
-import { focusNewCard } from "@/lib/focus-new-card";
-import { cardPopKey } from "@/panels/panel-registry";
 
 type CitationsHook = ReturnType<typeof useCitations>;
 type AnnotationsHook = ReturnType<typeof useAnnotations>;
@@ -58,30 +56,13 @@ export function CitationsHost(p: CitationsHostProps) {
   const { createCitation } = useCardCreationContext();
   const recentlyAddedId = useRecentlyAddedId("citation");
 
-  // `\cite` typing / slash-popup `\cite` insert an empty citation atom in
-  // the editor and dispatch `virgil-citation-create` with the atom's id.
-  // We mirror the drag-handle "Citation" UX by routing the event through
-  // the SAME `cardCreation.createCitation` API the drag-handle uses —
-  // which registers the panel ref, selects it, AND pins it recently-added
-  // (lifting it visually). Then `focusNewCard` drops the caret into the
-  // merged "Add from library…" input so the picker auto-opens.
-  useEffect(() => {
-    const handler = (e: Event) => {
-      const detail = (e as CustomEvent).detail as
-        | { partial?: string; citationId?: string }
-        | undefined;
-      if (!detail?.partial || !detail.citationId) return;
-      createCitation({
-        command: `${detail.partial}{}`,
-        citationId: detail.citationId,
-        unanchored: false,
-        mode: "omni",
-      });
-      focusNewCard(cardPopKey("citation", detail.citationId));
-    };
-    window.addEventListener("virgil-citation-create", handler);
-    return () => window.removeEventListener("virgil-citation-create", handler);
-  }, [createCitation]);
+  // CHIP 4a-ii: the `virgil-citation-create` listener that registered the card
+  // for slash/typed `\cite` is GONE. The slash command + typed input rules now
+  // insert the atom synchronously and register the card through the
+  // action-registry bridge (`runAction("citation", …)` → `citation.run`),
+  // which calls this SAME `createCitation({ unanchored: false, mode: "omni" })`
+  // + soft-route + `focusNewCard`. `createCitation` stays in use below for the
+  // panel "+ Add citation" draft (`onCreateCitation`).
 
   return (
     <CitationsPanel

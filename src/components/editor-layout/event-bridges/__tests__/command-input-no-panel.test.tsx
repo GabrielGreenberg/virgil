@@ -5,10 +5,15 @@
 //     NOT open the Examples panel.
 //   - `\footnote` (virgil-footnote-input): inserts the footnote + selects it,
 //     but does NOT open the Footnotes panel.
-//   - `\cite` (virgil-citation-create): soft-routes the new card into
-//     OMNI-VIEW (not the dedicated Citations panel) when the citations side
-//     is collapsed/blank, and leaves the side alone when another panel
-//     already covers omni.
+//
+// CITATION MOVED (CHIP 4a-ii): `\cite` no longer rides the
+// `virgil-citation-create` event through this hook — it migrated to the
+// action-registry bridge (`runAction("citation", …)` → `citation.run`), which
+// now OWNS the same backlog-#2 soft-route. Those soft-route assertions live in
+// `src/lib/actions/__tests__/citation-cross-surface.test.ts` (section 7),
+// driven against the REAL `commands.ts` / `citation.ts` PM surfaces. Here we
+// keep only the remaining event-bridge surfaces (`\ex`, `\footnote`) and add a
+// tombstone proving `virgil-citation-create` is inert through this hook.
 
 import { describe, it, expect, vi, afterEach } from "vitest";
 import { renderHook, cleanup } from "@testing-library/react";
@@ -63,14 +68,14 @@ function makeDeps(prefsOverrides: Partial<ViewPrefs> = {}) {
     ...prefsOverrides,
   } as unknown as ViewPrefs;
 
+  // Citation deps (prefsRef / setActive* / setPendingCitation*) were removed
+  // from this hook in CHIP 4a-ii (citation migrated to the bridge). The `prefs`
+  // fixture is unused now but kept to document the panel layout the surfaces
+  // would see.
+  void prefs;
   return {
     deps: {
       editorRef: { current: editorHandle },
-      prefsRef: { current: prefs },
-      setActiveLeft: vi.fn(),
-      setActiveRight: vi.fn(),
-      setPendingCitationMode: vi.fn(),
-      setPendingCitationCreate: vi.fn(),
       setActiveRefLabel: vi.fn(),
       setActiveRefRect: vi.fn(),
       setSelectedFootnoteId: vi.fn(),
@@ -103,8 +108,6 @@ describe("\\ex (virgil-ex-create): inserts + selects, no panel open", () => {
 
     expect(insertExample).toHaveBeenCalledWith("single");
     expect(deps.setSelectedExampleId).toHaveBeenCalledWith("ex1");
-    expect(deps.setActiveLeft).not.toHaveBeenCalled();
-    expect(deps.setActiveRight).not.toHaveBeenCalled();
   });
 });
 
@@ -116,48 +119,23 @@ describe("\\footnote (virgil-footnote-input): inserts + selects, no panel open",
 
     expect(renumberFootnotes).toHaveBeenCalledTimes(1);
     expect(deps.setSelectedFootnoteId).toHaveBeenCalledTimes(1);
-    expect(deps.setActiveLeft).not.toHaveBeenCalled();
-    expect(deps.setActiveRight).not.toHaveBeenCalled();
   });
 });
 
-describe("\\cite (virgil-citation-create): soft-routes to omni, not the Citations panel", () => {
-  it("opens OMNI on the citations side when that side is collapsed (null)", () => {
-    const { deps } = makeDeps({ activeRight: null } as unknown as Partial<ViewPrefs>);
+describe("\\cite (virgil-citation-create): MIGRATED off this hook (CHIP 4a-ii)", () => {
+  it("dispatching the legacy event through this hook is now a no-op (no listener)", () => {
+    const { deps, insertExample, renumberFootnotes } = makeDeps();
     mount(deps);
-    dispatch("virgil-citation-create", { partial: "\\cite", citationId: "c1" });
-
-    expect(deps.setActiveRight).toHaveBeenCalledWith("omni");
-    expect(deps.setActiveRight).not.toHaveBeenCalledWith("citations");
-    expect(deps.setActiveLeft).not.toHaveBeenCalled();
-  });
-
-  it("opens OMNI when the citations side is blank", () => {
-    const { deps } = makeDeps({ activeRight: "blank" } as unknown as Partial<ViewPrefs>);
-    mount(deps);
-    dispatch("virgil-citation-create", { partial: "\\cite", citationId: "c1" });
-
-    expect(deps.setActiveRight).toHaveBeenCalledWith("omni");
-  });
-
-  it("leaves the side ALONE when another panel already covers omni", () => {
-    const { deps } = makeDeps({ activeRight: "todo" } as unknown as Partial<ViewPrefs>);
-    mount(deps);
-    dispatch("virgil-citation-create", { partial: "\\cite", citationId: "c1" });
-
-    expect(deps.setActiveRight).not.toHaveBeenCalled();
-    expect(deps.setActiveLeft).not.toHaveBeenCalled();
-  });
-
-  it("respects a LEFT dock placement for the citations panel", () => {
-    const { deps } = makeDeps({
-      placements: [{ id: "citations", side: "left" }],
-      activeLeft: null,
-    } as unknown as Partial<ViewPrefs>);
-    mount(deps);
-    dispatch("virgil-citation-create", { partial: "\\cite", citationId: "c1" });
-
-    expect(deps.setActiveLeft).toHaveBeenCalledWith("omni");
-    expect(deps.setActiveRight).not.toHaveBeenCalled();
+    // The hook no longer binds `virgil-citation-create`; firing it must not
+    // throw and must not collaterally trigger the other surfaces. (The real
+    // citation routing now goes through the action-registry bridge — proven in
+    // citation-cross-surface.test.ts.)
+    expect(() =>
+      dispatch("virgil-citation-create", { partial: "\\cite", citationId: "c1" }),
+    ).not.toThrow();
+    expect(insertExample).not.toHaveBeenCalled();
+    expect(renumberFootnotes).not.toHaveBeenCalled();
+    expect(deps.setSelectedFootnoteId).not.toHaveBeenCalled();
+    expect(deps.setSelectedExampleId).not.toHaveBeenCalled();
   });
 });

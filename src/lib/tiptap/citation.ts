@@ -2,6 +2,12 @@ import { Node, mergeAttributes } from "@tiptap/react";
 import { Plugin, PluginKey } from "@tiptap/pm/state";
 import { CITE_RE_FULL, CITE_RE_BARE } from "@/lib/cite-commands";
 import { generateShortId } from "@/lib/uuid";
+// CHIP 4a-ii: the PM→React bridge the typed-LaTeX input rules use to register
+// the citation CARD (the atom is still inserted synchronously below). Replaces
+// the `virgil-citation-create` CustomEvent. The FULL `\cite{key}` branch
+// previously made NO card at all — this is the bug fix: both the full and the
+// bare branch now land at the SAME registry `citation.run` as menu + slash.
+import { getEditorActionsHandle } from "@/lib/actions/editor-actions-bridge";
 
 // Flag: when a bare \cite is typed, signal the panel to open
 let _pendingCitationCreate: string | null = null;
@@ -136,7 +142,7 @@ export const Citation = Node.create<CitationOptions>({
             ) + text;
 
             if (text === "}") {
-              // Full citation command ending with }
+              // Full citation command ending with } (e.g. `\cite{key}`).
               const match = textBefore.match(CITE_RE_FULL);
               if (match) {
                 const command = match[0];
@@ -148,22 +154,30 @@ export const Citation = Node.create<CitationOptions>({
                   }
                   return true;
                 });
+                const citationId = idGenerator(existing);
+                // Insert the atom SYNCHRONOUSLY (lands even if React is
+                // unmounted).
                 const tr = state.tr.replaceWith(
                   start,
                   from + text.length,
-                  nodeType.create({
-                    citationId: idGenerator(existing),
-                    command,
-                    displayText: "",
-                  })
+                  nodeType.create({ citationId, command, displayText: "" }),
                 );
                 view.dispatch(tr);
+                // BUG FIX (CHIP 4a-ii): typed `\cite{key}` previously made NO
+                // card. Now register the panel card via the registry's
+                // `citation.run` (surface "typed"), the SAME destination as
+                // menu + slash. Keeps the FULL typed command on the card so
+                // the card renders the keys instead of an empty `\cite{}`.
+                getEditorActionsHandle()?.runAction("citation", {
+                  surface: "typed",
+                  payload: { citationId, command },
+                });
                 return true;
               }
             } else {
               // Bare citation command followed by space/enter — insert an
               // empty citation atom at the cursor so the resulting card is
-              // anchored, then signal the panel to open and select it.
+              // anchored, then register the card + soft-route via the bridge.
               const beforeSpace = textBefore.slice(0, -1);
               const match = beforeSpace.match(CITE_RE_BARE);
               if (match) {
@@ -177,23 +191,22 @@ export const Citation = Node.create<CitationOptions>({
                   return true;
                 });
                 const citationId = idGenerator(existing);
+                const command = `${partial}{}`;
+                // Insert the atom SYNCHRONOUSLY (lands even if React is
+                // unmounted).
                 const tr = state.tr.replaceWith(
                   start,
                   from,
-                  nodeType.create({
-                    citationId,
-                    command: `${partial}{}`,
-                    displayText: "",
-                  }),
+                  nodeType.create({ citationId, command, displayText: "" }),
                 );
                 view.dispatch(tr);
-                setTimeout(() => {
-                  window.dispatchEvent(
-                    new CustomEvent("virgil-citation-create", {
-                      detail: { partial, citationId },
-                    })
-                  );
-                }, 0);
+                // Register the panel card via the registry's `citation.run`
+                // (surface "typed"). Replaces the retired
+                // `virgil-citation-create` CustomEvent + its two listeners.
+                getEditorActionsHandle()?.runAction("citation", {
+                  surface: "typed",
+                  payload: { citationId, command },
+                });
                 return true;
               }
             }

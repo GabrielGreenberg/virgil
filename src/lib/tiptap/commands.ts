@@ -2,6 +2,11 @@ import type { EditorView } from "@tiptap/pm/view";
 import { TextSelection } from "@tiptap/pm/state";
 import type { Node as PMNode } from "@tiptap/pm/model";
 import { generateShortId } from "@/lib/uuid";
+// CHIP 4a-ii: the PM→React bridge the slash `\cite` uses to register the
+// citation CARD (the atom is still inserted synchronously below). Replaces the
+// `virgil-citation-create` CustomEvent — one typed entrypoint into the
+// registry's `citation.run`.
+import { getEditorActionsHandle } from "@/lib/actions/editor-actions-bridge";
 
 export interface VirgilCommand {
   /** The command name without backslash (e.g. "section") */
@@ -192,19 +197,24 @@ export const VIRGIL_COMMANDS: VirgilCommand[] = [
         return true;
       });
       const citationId = generateShortId(existing);
+      const command = "\\cite{}";
+      // Insert the atom SYNCHRONOUSLY — it must land even if React is
+      // unmounted (durability decision). Only the CARD registration routes
+      // through the bridge.
       const tr = state.tr.replaceSelectionWith(
-        citationNodeType.create({
-          citationId,
-          command: "\\cite{}",
-          displayText: "",
-        }),
+        citationNodeType.create({ citationId, command, displayText: "" }),
       );
       view.dispatch(tr);
-      window.dispatchEvent(
-        new CustomEvent("virgil-citation-create", {
-          detail: { partial: "\\cite", citationId },
-        }),
-      );
+      // Register the panel card via the registry's `citation.run` (surface
+      // "slash"). The bridge synthesizes the CursorRef + supplies cardCreation
+      // + the soft-route wiring; `run` calls `createCitation({ ...unanchored:
+      // false })` and soft-routes into omni (backlog #2 — never force-opens
+      // the Citations panel). Replaces the retired `virgil-citation-create`
+      // event + its two listeners (command-input.ts + citations-host.tsx).
+      getEditorActionsHandle()?.runAction("citation", {
+        surface: "slash",
+        payload: { citationId, command },
+      });
     },
   },
   {

@@ -69,6 +69,7 @@ import {
 import OutlinePanel from "@/panels/Outline/OutlinePanel";
 import ExamplesPanel from "@/panels/Examples";
 import { PANEL_REGISTRY, cardPopKey } from "@/panels/panel-registry";
+import { focusNewCard } from "@/lib/focus-new-card";
 import { SectionLozenge } from "./editor-layout/section-lozenge";
 import { useCodePaneSplit } from "./editor-layout/CodePaneSplitContext";
 import { EditorScrollbar } from "./editor-layout/editor-scrollbar";
@@ -2127,19 +2128,35 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
   // render. The handle object identity is stable (built once in the effect,
   // gated on the reactive `editor` mount), so the publish effect runs only on
   // mount/unmount, not per render.
+  // The live prefs + active-side setters the citation soft-route inspects
+  // (CHIP 4a-ii). `viewPrefs` is the FULL chrome's prefs hook; the Reader pane
+  // has no rail focus, so it falls back to the read-only `readerPrefs` + the
+  // no-op `stubSetActive` (a `\cite` in the Reader has no panel to surface).
+  const bridgeRoutingPrefs = viewPrefs?.prefs ?? readerPrefs;
+  const bridgeSetActiveLeft = viewPrefs?.setActiveLeft ?? stubSetActive;
+  const bridgeSetActiveRight = viewPrefs?.setActiveRight ?? stubSetActive;
   const bridgeDepsRef = useRef<{
     cardCreation: typeof cardCreation;
     cardLifecycle: typeof cardLifecycle;
     dispatch: typeof dragHandleActions.dispatch;
+    routingPrefs: typeof bridgeRoutingPrefs;
+    setActiveLeft: (id: PanelId) => void;
+    setActiveRight: (id: PanelId) => void;
   }>({
     cardCreation,
     cardLifecycle,
     dispatch: dragHandleActions.dispatch,
+    routingPrefs: bridgeRoutingPrefs,
+    setActiveLeft: bridgeSetActiveLeft,
+    setActiveRight: bridgeSetActiveRight,
   });
   bridgeDepsRef.current = {
     cardCreation,
     cardLifecycle,
     dispatch: dragHandleActions.dispatch,
+    routingPrefs: bridgeRoutingPrefs,
+    setActiveLeft: bridgeSetActiveLeft,
+    setActiveRight: bridgeSetActiveRight,
   };
   // Publish on editor-mount; clear on unmount (or when the editor instance
   // swaps). Gated on the reactive `editor` so the handle's `runAction` reads a
@@ -2186,6 +2203,16 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
           cardLifecycle: deps.cardLifecycle,
           dispatch: deps.dispatch,
           payload: seed.payload,
+          // Panel-routing wiring the citation soft-route (CHIP 4a-ii) reads to
+          // surface OMNI only when the citations side is collapsed/blank, and
+          // to drop focus into the new card's library-picker. `focusCard` just
+          // forwards the registry-built float key to `focusNewCard`.
+          panelRouting: {
+            prefs: deps.routingPrefs,
+            setActiveLeft: deps.setActiveLeft,
+            setActiveRight: deps.setActiveRight,
+            focusCard: focusNewCard,
+          },
         };
         void spec.run(ctx);
       },

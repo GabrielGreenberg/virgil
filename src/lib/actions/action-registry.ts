@@ -101,6 +101,10 @@ import type { EditorView } from "@tiptap/pm/view";
 // does NOT pull React into this module's runtime.
 import type { CardCreationApi } from "@/components/editor-layout/card-actions/card-creation";
 import type { CardLifecycleApi } from "@/panels/card-lifecycle-registry";
+// Type-only (erased): the panel-id + prefs shape the citation soft-route
+// inspects to decide whether to surface OMNI. Importing the TYPE pulls no
+// prefs runtime into this module.
+import type { PanelId, ViewPrefs } from "@/hooks/useViewPrefs";
 // The existing resolved-ref union the grab-bar dispatcher already speaks.
 // `DragHandleRef = TextObjectRef | SelectionRef`. We extend it below with a
 // `CursorRef` for the collapsed-caret (slash / typed) case.
@@ -138,6 +142,20 @@ import {
   getSectionRangeByUuid,
   getHeadingLineRangeByUuid,
 } from "@/lib/section-range";
+// VALUE import: the typed-LaTeX citation input-rule patterns. The PARSER, the
+// `citation.ts` input rule, AND this registry row all reference the SAME
+// regexes from `cite-commands` so the four surfaces can never recognize a
+// different cite vocabulary. `cite-commands` is a plain regex module (no
+// React/DOM), so importing the values here is free for every consumer.
+import { CITE_RE_FULL, CITE_RE_BARE } from "@/lib/cite-commands";
+// VALUE import: the canonical float-key builder. The citation soft-route
+// focuses the new card's library-picker input via the SAME key the card
+// itself stamps — `cardPopKey("citation", id)` === `buildFloatKey({domain:
+// "card", kind: "citation", id})` (see `panel-registry.cardPopKey`). We import
+// the lower-level `buildFloatKey` (a pure key-string module, no React) rather
+// than `cardPopKey` to keep this registry importable in node-env vitest
+// without pulling the `panel-registry` → `card-registry` (React JSX) graph in.
+import { buildFloatKey } from "@/floats/float-key";
 
 // ---------------------------------------------------------------------------
 // ActionId — the closed vocabulary of every editing action.
@@ -381,6 +399,25 @@ export interface ActionContext {
    * the one seam that lets the registry delegate without copying logic.
    */
   dispatch?: (action: DragHandleAction, ref: DragHandleRef) => void;
+  /**
+   * Panel-routing wiring the citation soft-route needs (CHIP 4a-ii). The
+   * slash/typed `citation.run` registers the card via `cardCreation` and then
+   * SOFT-ROUTES it into OMNI — surfacing the omni view ONLY when the citations
+   * side is currently collapsed/blank, never clobbering a panel the user has
+   * covering omni (backlog #2). That decision reads `prefs` (which side the
+   * citations panel docks + what's active there) and toggles it via
+   * `setActiveLeft`/`setActiveRight`; `focusCard` drops the caret into the new
+   * card's library-picker input once it mounts. Supplied by EditorPane (which
+   * holds prefs + the setters) through the bridge for surfaces 3 & 4. Absent
+   * for grab/lightning (they delegate to `ctx.dispatch`, which owns its own
+   * `ensureOmniActiveForPanel`) and on any pure view-only path.
+   */
+  panelRouting?: {
+    prefs: ViewPrefs;
+    setActiveLeft: (id: PanelId) => void;
+    setActiveRight: (id: PanelId) => void;
+    focusCard: (cardKey: string) => void;
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -706,12 +743,97 @@ function cardRun(id: CardActionId, ctx: ActionContext): void {
   ctx.dispatch?.(id, ctx.ref);
 }
 
+// ---------------------------------------------------------------------------
+// citation.run — the FIRST card action whose `run()` handles ALL FOUR surfaces
+// (CHIP 4a-ii). It is the join point that makes menu-Citation, slash `\cite`,
+// typed `\cite{key}`, and typed `\cite ` land at the SAME destination.
+//
+//   - grab / lightning (a `DragHandleRef`): DELEGATE to the legacy dispatcher
+//     exactly like every other card row — `ctx.dispatch("citation", ref)`
+//     inserts the atom + registers the anchored card. BYTE-IDENTICAL to today.
+//   - slash / typed (a `CursorRef`): the PM caller ALREADY inserted the `\cite`
+//     atom SYNCHRONOUSLY (durability decision — the atom lands even if React is
+//     unmounted), passing the atom's `citationId` + `command` in `ctx.payload`.
+//     Here we register the matching panel card via `cardCreation.createCitation`
+//     and apply the backlog-#2 SOFT-ROUTE. This is the bug fix: typed
+//     `\cite{key}` previously made NO card.
+// ---------------------------------------------------------------------------
+
+/**
+ * The backlog-#2 soft-route, lifted VERBATIM from the retired
+ * `command-input.ts` `virgil-citation-create` handler (~60-87). Slash/typed
+ * `\cite` needs a completion surface for the new card, so we route it into
+ * OMNI — but ONLY surface omni when the citations side is currently collapsed
+ * (`null`) or `blank`. If the user has another panel covering omni on that
+ * side, we LEAVE IT: the card still lands + selects in omni and reveals itself
+ * when the user next views it, rather than clobbering their panel. Honors the
+ * citations panel's docked side (left vs right). Never force-opens the
+ * dedicated Citations panel.
+ */
+function softRouteCitationToOmni(routing: NonNullable<ActionContext["panelRouting"]>): void {
+  const { prefs, setActiveLeft, setActiveRight } = routing;
+  const citPlacement = prefs.placements.find((pl) => pl.id === "citations");
+  const side = citPlacement?.side ?? "right";
+  const active = side === "left" ? prefs.activeLeft : prefs.activeRight;
+  if (active == null || active === "blank") {
+    if (side === "left") setActiveLeft("omni");
+    else setActiveRight("omni");
+  }
+}
+
+/**
+ * The citation card `run()` — see the block comment above. Returns nothing;
+ * may be invoked from any of the four surfaces.
+ */
+function citationRun(ctx: ActionContext): void {
+  // Surfaces 1 & 2 (grab / lightning): a `DragHandleRef`. Delegate to the
+  // legacy dispatcher — its `case "citation"` inserts the placeholder atom AND
+  // registers the anchored card (with its own `ensureOmniActiveForPanel`).
+  if (ctx.ref.kind !== "cursor") {
+    ctx.dispatch?.("citation", ctx.ref);
+    return;
+  }
+  // Surfaces 3 & 4 (slash / typed): the PM caller inserted the atom already.
+  // Register the panel card with the SAME `citationId` so the card and the
+  // in-doc atom share an identity (the card renders anchored), mirroring the
+  // dispatcher's anchored `createCitation({ unanchored: false, mode: "omni" })`.
+  const payload = ctx.payload ?? {};
+  const citationId =
+    typeof payload.citationId === "string" ? payload.citationId : undefined;
+  const command =
+    typeof payload.command === "string" && payload.command
+      ? payload.command
+      : "\\cite{}";
+  if (!citationId || !ctx.cardCreation) return; // misconfigured caller — atom already landed; no card
+  ctx.cardCreation.createCitation({
+    command,
+    citationId,
+    unanchored: false,
+    mode: "omni",
+  });
+  // Soft-route + focus the new card's library-picker (mirrors the retired
+  // citations-host listener's `focusNewCard(cardPopKey("citation", id))`).
+  if (ctx.panelRouting) {
+    softRouteCitationToOmni(ctx.panelRouting);
+    ctx.panelRouting.focusCard(
+      buildFloatKey({ domain: "card", kind: "citation", id: citationId }),
+    );
+  }
+}
+
 /** Build one delegating card row. Presentation (label / letter / icon /
  *  separator / destructive) from `CARD_ACTION_PRESENTATION` — the registry
  *  OWNS it as of CHIP 3; behavior forwarded via `cardRun`; applicability +
- *  scope mirrored from the dispatcher. */
+ *  scope mirrored from the dispatcher.
+ *
+ *  CITATION is special-cased (CHIP 4a-ii): it additionally exposes the
+ *  slash + typed surfaces and routes through `citationRun` (which handles all
+ *  four surfaces) instead of the grab/lightning-only `cardRun`. Its
+ *  `slashName` + `inputRulePattern` rows let the coverage assertion reconcile
+ *  the `\cite` slash command + the typed-LaTeX input rules against this row. */
 function cardRow(id: CardActionId): ActionSpec {
   const p = CARD_ACTION_PRESENTATION[id];
+  const isCitation = id === "citation";
   return {
     id,
     label: p.label,
@@ -720,12 +842,34 @@ function cardRow(id: CardActionId): ActionSpec {
     separator: p.separator,
     destructive: p.destructive,
     category: "card",
-    surfaces: { grab: true, lightning: true },
+    surfaces: isCitation
+      ? { grab: true, lightning: true, slash: true, typed: true }
+      : { grab: true, lightning: true },
+    // \cite — the slash command name (reconciled against VIRGIL_COMMAND_NAMES).
+    ...(isCitation ? { slashName: "cite" } : {}),
+    // The typed-LaTeX trigger. Two patterns exist (`\cite{key}` full +
+    // `\cite ` bare); we record CITE_RE_FULL as the canonical row pattern and
+    // note CITATION_INPUT_RULE_PATTERNS below for the bare form. Both live in
+    // `cite-commands` and drive `citation.ts`'s input rule.
+    ...(isCitation ? { inputRulePattern: CITE_RE_FULL } : {}),
     applies: (ctx) => cardApplies(id, ctx),
     resolveScope: (ctx) => cardResolveScope(id, ctx) ?? { from: 0, to: 0 },
-    run: (ctx) => cardRun(id, ctx),
+    run: isCitation ? citationRun : (ctx) => cardRun(id, ctx),
   };
 }
+
+/**
+ * The typed-LaTeX input-rule patterns the citation row recognizes, recorded
+ * here as the SSOT join between the registry and `citation.ts`. The row's
+ * scalar `inputRulePattern` slot holds the FULL form (`\cite{key}`); the bare
+ * form (`\cite ` with no braces yet) is the second trigger. Both are imported
+ * from `@/lib/cite-commands` so the registry and the live input rule can never
+ * recognize a different cite vocabulary.
+ */
+export const CITATION_INPUT_RULE_PATTERNS: readonly RegExp[] = [
+  CITE_RE_FULL,
+  CITE_RE_BARE,
+];
 
 /** The 11 card ids, in canonical MENU-DISPLAY order — derived from
  *  `CARD_ACTION_ORDER` (the insertion order of `CARD_ACTION_PRESENTATION`,
@@ -856,38 +1000,48 @@ const SLASH_NAME_TO_ACTION_ID: Readonly<Record<string, ActionId>> = {
 const COVERED_CARD_IDS: readonly CardActionId[] = CARD_ACTION_IDS;
 
 /**
+ * The card ids that, as of CHIP 4a-ii, ALSO own the PM-land surfaces
+ * (slash + typed) — currently just `citation`. The other 10 card actions stay
+ * grab/lightning-only until their dedicated chip (footnote is CHIP 4b). The
+ * assertion uses this set to flip the slash/typed checks from "must be absent"
+ * (premature) to "must be present + reconciled" for exactly these ids.
+ */
+const CARD_IDS_WITH_PM_SURFACES: ReadonlySet<CardActionId> =
+  new Set<CardActionId>(["citation"]);
+
+/**
  * DEV-ONLY coverage assertion — partitioned for the PHASED rollout.
  *
  * Each chip migrates a slice of the vocabulary onto the registry; this
  * assertion checks ONLY the slice that is supposed to be live, and reports
- * the rest as expected-pending (not as failures). For CHIP 2 the live slice is
- * the 11 CARD actions on the grab + lightning surfaces.
+ * the rest as expected-pending (not as failures). The live slice is the 11
+ * CARD actions on grab + lightning, PLUS — as of CHIP 4a-ii — `citation` on
+ * the slash + typed surfaces.
  *
  * Verifies, for the CARD slice:
  *   1. every card id in `COVERED_CARD_IDS` has a registry row whose key === id;
  *   2. every card row is `category: "card"` and sets `surfaces.grab` AND
- *      `surfaces.lightning` (the two surfaces this milestone wires) with a
- *      non-empty single-letter `letter`;
- *   3. NO card row prematurely claims a surface a LATER chip owns
- *      (`surfaces.slash` / `surfaces.typed`) — so the menus stay the SSOT for
- *      those surfaces until the dedicated chip flips them.
+ *      `surfaces.lightning` with a non-empty single-letter `letter`;
+ *   3. a card NOT in `CARD_IDS_WITH_PM_SURFACES` must NOT claim the slash/typed
+ *      surfaces (still menu-owned); a card IN that set (citation) MUST set
+ *      `surfaces.slash` + `surfaces.typed` AND carry a `slashName` +
+ *      `inputRulePattern` (the PM-land join keys).
  *
  * And, for the still-PENDING vocabulary (everything in `EXPECTED_ACTION_IDS`
  * NOT in `COVERED_CARD_IDS`):
  *   4. it must NOT yet have a row (a premature row means a chip landed out of
- *      order — flag it so the phasing stays honest). The slash / typed
- *      reconciliation against `VIRGIL_COMMAND_NAMES` is therefore DEFERRED to
- *      the chip that populates those ids (4–7); we only assert the mapping
- *      table itself is complete (every command name has a target id), which is
- *      a pure-data check independent of population order.
+ *      order). The slash reconciliation against `VIRGIL_COMMAND_NAMES` checks,
+ *      for the migrated slash ids, that the target row exists + opted into the
+ *      slash surface; for not-yet-migrated names it only checks the mapping
+ *      table is complete (a pure-data check independent of population order).
  *
  * Returns a list of GENUINELY-UNEXPECTED problems (empty ⇒ the covered slice
  * is sound and nothing pending leaked in). Returns `[]` in production.
  *
- * WIRED (CHIP 2): invoked from a vitest (`action-coverage-assertion.test.ts`),
+ * WIRED: invoked from a vitest (`action-coverage-assertion.test.ts`),
  * mirroring `lifecycle-coverage-assertion.test.ts`, so a missing / mis-flagged
- * card row trips CI. A later chip widens `COVERED_*` as each surface migrates
- * and folds the slash/typed reconciliation back in.
+ * card row trips CI. A later chip widens `COVERED_*` /
+ * `CARD_IDS_WITH_PM_SURFACES` as each surface migrates.
  */
 export function assertActionCoverage(): string[] {
   if (process.env.NODE_ENV === "production") return [];
@@ -917,18 +1071,39 @@ export function assertActionCoverage(): string[] {
     if (!row.letter || row.letter.length < 1) {
       problems.push(`[actions] card id "${id}" is missing its menu letter`);
     }
-    // The card actions do NOT yet own the slash / typed surfaces — those
-    // migrate in a later chip. A premature flag here would mean the row got
-    // ahead of the surface that actually reads it.
-    if (row.surfaces.slash) {
-      problems.push(
-        `[actions] card id "${id}" prematurely sets surfaces.slash (a later chip owns the slash surface)`,
-      );
-    }
-    if (row.surfaces.typed) {
-      problems.push(
-        `[actions] card id "${id}" prematurely sets surfaces.typed (CHIP 4 owns the typed-LaTeX surface)`,
-      );
+    if (CARD_IDS_WITH_PM_SURFACES.has(id)) {
+      // CHIP 4a-ii: this card owns the slash + typed surfaces. It MUST claim
+      // them and carry the PM-land join keys, or the bridge's `runAction` and
+      // the `citation.ts` input rule can't reconcile back to this row.
+      if (!row.surfaces.slash || !row.surfaces.typed) {
+        problems.push(
+          `[actions] card id "${id}" must set surfaces.slash AND surfaces.typed (it owns the PM-land surfaces)`,
+        );
+      }
+      if (!row.slashName) {
+        problems.push(
+          `[actions] card id "${id}" sets surfaces.slash but is missing slashName`,
+        );
+      }
+      if (!row.inputRulePattern) {
+        problems.push(
+          `[actions] card id "${id}" sets surfaces.typed but is missing inputRulePattern`,
+        );
+      }
+    } else {
+      // The remaining card actions do NOT yet own the slash / typed surfaces —
+      // those migrate in a later chip. A premature flag here would mean the
+      // row got ahead of the surface that actually reads it.
+      if (row.surfaces.slash) {
+        problems.push(
+          `[actions] card id "${id}" prematurely sets surfaces.slash (a later chip owns the slash surface)`,
+        );
+      }
+      if (row.surfaces.typed) {
+        problems.push(
+          `[actions] card id "${id}" prematurely sets surfaces.typed (a later chip owns the typed-LaTeX surface)`,
+        );
+      }
     }
   }
 
@@ -943,10 +1118,17 @@ export function assertActionCoverage(): string[] {
     }
   }
 
-  // (data) the slash mapping table is complete — every live slash command
-  // name resolves to a known target id. This is order-independent (it does
-  // NOT require the target row to exist yet), so it stays armed now and the
-  // PRESENCE/surface checks for those ids land with their chip.
+  // (data + slash reconciliation) every live slash command name resolves to a
+  // known target id (the mapping table is complete — a population-order-
+  // independent check that stays armed regardless of which chip we're on).
+  //
+  // For a slash command whose target row has ALREADY MIGRATED its slash surface
+  // (today: only `citation`), additionally pin the row ↔ name correspondence
+  // so a typed `\cite` can never silently land on a row that forgot to claim
+  // slash OR named a different command. A row is considered migrated iff it
+  // sets `surfaces.slash` — so a card row that exists for grab/lightning only
+  // (e.g. `footnote`, whose `\footnote` migrates in a LATER chip) is correctly
+  // treated as expected-pending and skipped here.
   for (const name of VIRGIL_COMMAND_NAMES) {
     const id = SLASH_NAME_TO_ACTION_ID[name];
     if (!id) {
@@ -958,6 +1140,16 @@ export function assertActionCoverage(): string[] {
     if (!EXPECTED_ACTION_IDS.includes(id)) {
       problems.push(
         `[actions] slash command "\\${name}" maps to "${id}", which is not an expected action id`,
+      );
+      continue;
+    }
+    const row = VIRGIL_ACTION_REGISTRY[id];
+    // Not-yet-migrated (no row, or a row that hasn't opted into slash) →
+    // expected-pending; its surface checks land with its chip.
+    if (!row || !row.surfaces.slash) continue;
+    if (row.slashName !== name) {
+      problems.push(
+        `[actions] slash command "\\${name}" maps to "${id}", whose slashName is "${row.slashName ?? "(unset)"}" (expected "${name}")`,
       );
     }
   }

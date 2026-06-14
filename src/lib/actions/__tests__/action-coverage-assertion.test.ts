@@ -131,13 +131,22 @@ describe("card-action rows", () => {
     expect(Object.keys(VIRGIL_ACTION_REGISTRY).sort()).toEqual([...CARD_IDS].sort());
   });
 
-  it("each card row sets surfaces {grab, lightning} and NOT slash/typed", () => {
+  it("each card row sets surfaces {grab, lightning}; only citation adds slash/typed (CHIP 4a-ii)", () => {
     for (const id of CARD_IDS) {
       const r = row(id);
       expect(r.surfaces.grab, `${id}.grab`).toBe(true);
       expect(r.surfaces.lightning, `${id}.lightning`).toBe(true);
-      expect(r.surfaces.slash, `${id}.slash`).toBeFalsy();
-      expect(r.surfaces.typed, `${id}.typed`).toBeFalsy();
+      if (id === "citation") {
+        // CHIP 4a-ii: citation is the first card whose run() handles the
+        // PM-land surfaces; it must claim them + carry the join keys.
+        expect(r.surfaces.slash, "citation.slash").toBe(true);
+        expect(r.surfaces.typed, "citation.typed").toBe(true);
+        expect(r.slashName, "citation.slashName").toBe("cite");
+        expect(r.inputRulePattern, "citation.inputRulePattern").toBeInstanceOf(RegExp);
+      } else {
+        expect(r.surfaces.slash, `${id}.slash`).toBeFalsy();
+        expect(r.surfaces.typed, `${id}.typed`).toBeFalsy();
+      }
     }
   });
 

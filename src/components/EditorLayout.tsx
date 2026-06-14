@@ -1275,12 +1275,12 @@ export default function EditorLayout() {
     rect: DOMRect;
   } | null>(null);
   const [bibActiveCitationId, setBibActiveCitationId] = useState<string | null>(null);
-  const [pendingCitationCreate, setPendingCitationCreate] = useState<string | null>(null);
-  // Whether the in-flight pending create should be inserted into the
-  // editor on save ("anchored", from the \cite typing rule) or kept as
-  // a panel-only card the user can later drag into the document
-  // ("unanchored", from the panel + button).
-  const [pendingCitationMode, setPendingCitationMode] = useState<"anchored" | "unanchored">("anchored");
+  // NOTE (CHIP 4a-ii): EditorLayout's own `pendingCitationCreate` /
+  // `pendingCitationMode` state was consumed ONLY by the now-removed
+  // `useCommandInputBridges` `virgil-citation-create` handler (the citation
+  // slash/typed path migrated to the action-registry bridge). The panel
+  // "+ Add citation" draft uses a SEPARATE copy owned by EditorPane
+  // (EditorPane.tsx → CitationsHost), so this duplicate is dead and removed.
   const [searchHighlightRange, setSearchHighlightRange] = useState<{ from: number; to: number } | null>(null);
   const [searchState, setSearchState] = useState<SearchPanelState>(INITIAL_SEARCH_STATE);
 
@@ -2702,13 +2702,12 @@ export default function EditorLayout() {
     }
   }, []);
 
+  // Citation (slash + typed) MIGRATED off this hook to the action-registry
+  // bridge (CHIP 4a-ii) — so `prefsRef` / `setActiveLeft` / `setActiveRight` /
+  // `setPendingCitation*` are no longer threaded here. They remain in scope for
+  // the panel "+ Add citation" path (citations-host) and other consumers.
   useCommandInputBridges({
     editorRef,
-    prefsRef,
-    setActiveLeft,
-    setActiveRight,
-    setPendingCitationMode,
-    setPendingCitationCreate,
     setActiveRefLabel,
     setActiveRefRect,
     setSelectedFootnoteId,
