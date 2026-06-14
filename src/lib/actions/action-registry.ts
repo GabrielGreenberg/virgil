@@ -115,6 +115,26 @@ import type { Slice, Fragment } from "@tiptap/pm/model";
 // `freshTexBlockAttrs`). A plain string-id leaf — no React/DOM/TipTap — so the
 // value import is free for every consumer of this registry.
 import { generateShortId } from "@/lib/uuid";
+// VALUE import: the ONE container-aware block-atom insert helper (CHIP 6a, DA-2).
+// `figureRun` / `graphicsRun` insert their block through `smartInsertBlock` so
+// the grid cell and any future figure/graphics FILE-DROP path converge on one
+// creator. Pure ProseMirror (operates on `editor.view`) — no React/DOM — so the
+// value import is free for every consumer of this registry.
+import { smartInsertBlock } from "@/lib/tiptap/smart-insert";
+// VALUE imports: the figure/graphics fresh-attrs builders + the figure raw
+// synthesizer. `figureRun` / `graphicsRun` seed the new block with the SAME stub
+// attrs the former `insertFigureBlock` / `insertGraphicsBlock` did (so the empty
+// `\includegraphics` shape is byte-identical), and `figureRun` synthesizes the
+// popover's `raw` seed from the new figure's attrs via `synthesizeFigureRaw`.
+// Imported from `figure-attrs.ts` (the React-free leaf, CHIP 6a) — NOT from
+// `figure-block.ts` / `graphics-block.ts`, whose React NodeView + `@/lib/storage`
+// graph must NOT be pulled into this registry (it's imported in node-env /
+// jsdom vitests without the storage mock).
+import {
+  freshFigureBlockAttrs,
+  freshGraphicsBlockAttrs,
+  synthesizeFigureRaw,
+} from "@/lib/tiptap/figure-attrs";
 // Type-only (erased at compile time): the React-land APIs an action's
 // `run()` reaches for. Importing the TYPES does NOT instantiate them and
 // does NOT pull React into this module's runtime.
@@ -437,6 +457,28 @@ export interface ActionContext {
    * for grab/lightning (they delegate to `ctx.dispatch`, which owns its own
    * `ensureOmniActiveForPanel`) and on any pure view-only path.
    */
+  /**
+   * Open the figure/graphics SOURCE popover for a freshly-inserted block (CHIP
+   * 6a). `figureRun` / `graphicsRun` insert the block via `smartInsertBlock`,
+   * then call THIS to pop the `FigurePopover` so the user can fill in the empty
+   * `\includegraphics` path immediately — REPLACING the insert-time
+   * `virgil-figure-click` CustomEvent (the event bus hack). It is the React
+   * twin of how the EDIT-existing-figure path still rides `virgil-figure-click`
+   * (the dual-use event's edit half stays; only the insert-time emit is retired).
+   *
+   * Supplied by `ActionsMenuPanel` (the grid surface) — which threads
+   * EditorLayout's `setActiveFigure` down — and absent on any pure view-only
+   * path (the insert still lands; only the popover-pop is skipped). The shape
+   * mirrors EditorLayout's `activeFigure` state EXACTLY so the popover renders
+   * identically whether opened via this callback (insert) or the
+   * `virgil-figure-click` listener (edit).
+   */
+  openFigurePopover?: (figure: {
+    kind: string;
+    raw: string;
+    pos: number;
+    rect: DOMRect;
+  }) => void;
   panelRouting?: {
     prefs: ViewPrefs;
     setActiveLeft: (id: PanelId) => void;
@@ -1077,12 +1119,9 @@ const TEX_ACTION_ROW: ActionSpec = {
   category: "block",
   surfaces: { slash: true, lightning: true },
   slashName: "tex",
-  applies: (ctx) => {
-    const ref = ctx.ref;
-    if (ref.kind === "selection" || ref.kind === "cursor") return "ok";
-    if (!isTextObjectKind(ref.kind)) return "ok"; // defensive: unknown → allow
-    return TEXT_OBJECT_REGISTRY[ref.kind].isAtomBlock ? "disabled" : "ok";
-  },
+  // Shared block-atom gate (CHIP 6a: `blockApplies`). A function declaration, so
+  // it is hoisted above this row's definition.
+  applies: (ctx) => blockApplies(ctx),
   run: texRun,
 };
 
@@ -1353,13 +1392,228 @@ const EXAMPLE_ACTION_ROW: ActionSpec = {
   category: "block",
   surfaces: { slash: true, lightning: true },
   slashName: "ex",
-  applies: (ctx) => {
-    const ref = ctx.ref;
-    if (ref.kind === "selection" || ref.kind === "cursor") return "ok";
-    if (!isTextObjectKind(ref.kind)) return "ok"; // defensive: unknown → allow
-    return TEXT_OBJECT_REGISTRY[ref.kind].isAtomBlock ? "disabled" : "ok";
-  },
+  applies: (ctx) => blockApplies(ctx),
   run: exampleRun,
+};
+
+// ---------------------------------------------------------------------------
+// Shared block-row applicability (CHIP 6a). The block-atom rows (tex / example /
+// figure / graphics / inline-math / display-math) all share the SAME gate: a
+// selection / caret is always insertable; a non-text atom-block ref (figure /
+// displayMath) has no caret to insert at → "disabled". In practice these are
+// only invoked from a selection or caret (the grid bolt / a slash command), so
+// it is "ok" everywhere they are reachable. Factored out so the six rows can't
+// drift. (tex/example kept their inline copies pre-6a; they now delegate here.)
+// ---------------------------------------------------------------------------
+function blockApplies(ctx: ActionContext): "ok" | "disabled" {
+  const ref = ctx.ref;
+  if (ref.kind === "selection" || ref.kind === "cursor") return "ok";
+  if (!isTextObjectKind(ref.kind)) return "ok"; // defensive: unknown → allow
+  return TEXT_OBJECT_REGISTRY[ref.kind].isAtomBlock ? "disabled" : "ok";
+}
+
+// ---------------------------------------------------------------------------
+// mathRun — the inline/display-math grid cells (CHIP 6a). Unlike figure/graphics
+// (a cursor-INSERT of an opaque atom), math WRAPS the selection: the selected
+// text becomes the atom's `latex`. This preserves the grid's prior
+// `wrapSelectionInMath` semantics EXACTLY — `deleteSelection().insertContent({
+// type, attrs: { latex } })` — just lifted into a registry `run()` so the cell
+// renders from the SSOT. Pure ProseMirror (operates on `ctx.editor`), no bridge.
+//
+// WRAP semantics (preserved verbatim from the former grid helper):
+//   - latex = the selected plain text, or a placeholder when the selection is
+//     empty ("x" for inline, "\int f(x)\,dx" for display);
+//   - inline → `inlineMath` (no uuid attr); display → `displayMath` (uuid hydrated
+//     lazily by `ensureAnchorUuid` on first interaction, same as before — we do
+//     NOT pre-mint it, matching the prior `insertContent` behavior).
+// ---------------------------------------------------------------------------
+function mathRun(kind: "inline" | "display"): (ctx: ActionContext) => void {
+  return (ctx: ActionContext) => {
+    const editor = ctx.editor;
+    const { from, to } = editor.state.selection;
+    const text = editor.state.doc.textBetween(from, to, " ");
+    const latex = text || (kind === "inline" ? "x" : "\\int f(x)\\,dx");
+    const type = kind === "inline" ? "inlineMath" : "displayMath";
+    editor
+      .chain()
+      .focus()
+      .deleteSelection()
+      .insertContent({ type, attrs: { latex } })
+      .run();
+  };
+}
+
+// ---------------------------------------------------------------------------
+// figureRun / graphicsRun — the figure/image grid cells (CHIP 6a). These INSERT
+// an opaque block atom at the caret (replacing a non-empty selection per the
+// `smartInsertBlock` documented policy — an atom can't absorb inline content),
+// then open the SOURCE popover so the user can fill in the empty
+// `\includegraphics` path. They are the SSOT the standalone `insertFigureBlock`
+// / `insertGraphicsBlock` helpers DELEGATE to (so the grid path, the helper
+// path, and any future FILE-DROP path all share `smartInsertBlock`, DA-2).
+//
+// Popover-open (the dual-use `virgil-figure-click` split): when `ctx.
+// openFigurePopover` is supplied (the grid cell threads EditorLayout's
+// `setActiveFigure` down), we open the popover DIRECTLY through that React
+// callback — the INSERT-time `virgil-figure-click` emit is RETIRED. When it is
+// absent (a pure view-only caller), we fall back to the legacy CustomEvent so
+// the popover still pops. The EDIT-existing-figure `virgil-figure-click`
+// listener (marker-clicks.ts) is UNTOUCHED either way.
+//
+// The popover opens one rAF after insert (the NodeView DOM must exist to measure
+// its rect — matches the prior timing). Pure ProseMirror for the insert; the
+// only React touch is the optional `openFigurePopover` callback.
+// ---------------------------------------------------------------------------
+
+/** Open the figure/graphics source popover for a freshly-inserted block: prefer
+ *  the threaded React callback (`ctx.openFigurePopover`, grid surface), else the
+ *  legacy `virgil-figure-click` CustomEvent (the insert-time fallback — the EDIT
+ *  listener is the same event and stays wired). */
+function openInsertPopover(
+  ctx: ActionContext,
+  seed: { kind: string; raw: string; pos: number; rect: DOMRect },
+): void {
+  if (ctx.openFigurePopover) {
+    ctx.openFigurePopover(seed);
+  } else if (typeof window !== "undefined") {
+    window.dispatchEvent(new CustomEvent("virgil-figure-click", { detail: seed }));
+  }
+}
+
+export function figureRun(ctx: ActionContext): void {
+  const editor = ctx.editor;
+  const figureType = editor.state.schema.nodes.figureBlock;
+  if (!figureType) return;
+  const attrs = freshFigureBlockAttrs(collectBlockUuids(editor, "figureBlock"));
+  const { uuid, pos } = smartInsertBlock({
+    editor,
+    type: figureType,
+    attrs: { ...attrs },
+    content: [{ type: "figureCaption" }],
+  });
+  if (pos < 0) return;
+  // One rAF so the NodeView's DOM exists to measure its rect (matches the prior
+  // `insertFigureBlock` timing).
+  requestAnimationFrame(() => {
+    const found = relocateBlock(editor, "figureBlock", uuid) ?? pos;
+    const dom = editor.view.nodeDOM(found);
+    if (!(dom instanceof HTMLElement)) return;
+    openInsertPopover(ctx, {
+      kind: "figureBlock",
+      raw: synthesizeFigureRaw(attrs.extras, "", attrs.label),
+      pos: found,
+      rect: dom.getBoundingClientRect(),
+    });
+  });
+}
+
+export function graphicsRun(ctx: ActionContext): void {
+  const editor = ctx.editor;
+  const graphicsType = editor.state.schema.nodes.graphicsBlock;
+  if (!graphicsType) return;
+  const attrs = freshGraphicsBlockAttrs(collectBlockUuids(editor, "graphicsBlock"));
+  const { uuid, pos } = smartInsertBlock({
+    editor,
+    type: graphicsType,
+    attrs: { ...attrs },
+  });
+  if (pos < 0) return;
+  requestAnimationFrame(() => {
+    const found = relocateBlock(editor, "graphicsBlock", uuid) ?? pos;
+    const dom = editor.view.nodeDOM(found);
+    if (!(dom instanceof HTMLElement)) return;
+    openInsertPopover(ctx, {
+      kind: "graphicsBlock",
+      raw: attrs.command,
+      pos: found,
+      rect: dom.getBoundingClientRect(),
+    });
+  });
+}
+
+/** Collect the existing `uuid`s on nodes of `typeName` (for collision-free
+ *  minting). The block-file `collect*Uuids` twins; inlined here so the registry
+ *  doesn't import the React block modules. */
+function collectBlockUuids(ctx: { state: { doc: PMNodeLike } }, typeName: string): Set<string> {
+  const set = new Set<string>();
+  ctx.state.doc.descendants((node: { type: { name: string }; attrs: Record<string, unknown> }) => {
+    if (node.type.name === typeName && node.attrs.uuid) set.add(node.attrs.uuid as string);
+    return true;
+  });
+  return set;
+}
+
+/** Find the position of the `typeName` node carrying `uuid` in the live doc, or
+ *  null if absent. */
+function relocateBlock(
+  ctx: { state: { doc: PMNodeLike } },
+  typeName: string,
+  uuid: string,
+): number | null {
+  let found: number | null = null;
+  ctx.state.doc.descendants((node: { type: { name: string }; attrs: Record<string, unknown> }, pos: number) => {
+    if (found !== null) return false;
+    if (node.type.name === typeName && node.attrs.uuid === uuid) {
+      found = pos;
+      return false;
+    }
+    return true;
+  });
+  return found;
+}
+
+/** Minimal structural type for the doc-walk above (a `descendants`-bearing
+ *  node). Keeps `collectBlockUuids` / `relocateBlock` PM-version-agnostic without
+ *  importing the model types. */
+interface PMNodeLike {
+  descendants: (
+    fn: (
+      n: { type: { name: string }; attrs: Record<string, unknown> },
+      pos: number,
+    ) => boolean | void,
+  ) => void;
+}
+
+/**
+ * The 4 block-ATOM grid rows (CHIP 6a) — `inline-math`, `display-math`,
+ * `figure`, `graphics`. All `category: "block"`, `surfaces: { lightning: true }`
+ * (grid-only — no slash/typed/grab/keyboard today; those stay false). `applies`
+ * follows the tex/example/heading `isAtomBlock → 'disabled'` pattern via the
+ * shared `blockApplies`. `run`: math WRAPS the selection (`mathRun(kind)`);
+ * figure/graphics INSERT via `smartInsertBlock` then open the source popover
+ * (`figureRun` / `graphicsRun`).
+ */
+const INLINE_MATH_ACTION_ROW: ActionSpec = {
+  id: "inline-math",
+  label: "Inline math",
+  category: "block",
+  surfaces: { lightning: true },
+  applies: blockApplies,
+  run: mathRun("inline"),
+};
+const DISPLAY_MATH_ACTION_ROW: ActionSpec = {
+  id: "display-math",
+  label: "Display math",
+  category: "block",
+  surfaces: { lightning: true },
+  applies: blockApplies,
+  run: mathRun("display"),
+};
+const FIGURE_ACTION_ROW: ActionSpec = {
+  id: "figure",
+  label: "Figure",
+  category: "block",
+  surfaces: { lightning: true },
+  applies: blockApplies,
+  run: figureRun,
+};
+const GRAPHICS_ACTION_ROW: ActionSpec = {
+  id: "graphics",
+  label: "Image",
+  category: "block",
+  surfaces: { lightning: true },
+  applies: blockApplies,
+  run: graphicsRun,
 };
 
 /**
@@ -1502,6 +1756,12 @@ export const VIRGIL_ACTION_REGISTRY: Partial<Record<ActionId, ActionSpec>> =
     ["tex", TEX_ACTION_ROW] as const,
     // CHIP 5c: the single `example` row (pure-PM block insert; slash + lightning).
     ["example", EXAMPLE_ACTION_ROW] as const,
+    // CHIP 6a: the 4 block-ATOM grid rows (lightning-only — no slash/typed/grab).
+    // math WRAPS the selection; figure/graphics INSERT via `smartInsertBlock`.
+    ["inline-math", INLINE_MATH_ACTION_ROW] as const,
+    ["display-math", DISPLAY_MATH_ACTION_ROW] as const,
+    ["figure", FIGURE_ACTION_ROW] as const,
+    ["graphics", GRAPHICS_ACTION_ROW] as const,
   ]) as Partial<Record<ActionId, ActionSpec>>;
 
 // ---------------------------------------------------------------------------
@@ -1629,16 +1889,37 @@ const COVERED_HEADING_IDS: readonly (BlockActionId & `heading-${string}`)[] =
 
 /**
  * The non-heading block ids covered so far — CHIP 5b adds `tex`; CHIP 5c adds
- * `example`. Each owns the slash surface (`\tex` / `\ex`) AND the lightning
- * surface (the grid `\tex` / `ex` cell), routes through its canonical pure-PM
- * creator (`texRun` seed-from-selection; `exampleRun` wrap-if-selection-else-
- * insert), and carries a `slashName` the assertion reconciles against
- * `VIRGIL_COMMAND_NAMES`. Moves these ids from EXPECTED-PENDING to COVERED so
- * step (4) doesn't flag the new rows as out-of-order. Typed against
- * `BlockActionId` so a drift trips the typechecker. (`figure` / `graphics` /
- * `inline-math` / `display-math` stay pending for later chips.)
+ * `example`; CHIP 6a adds the 4 block-ATOM ids (`inline-math` / `display-math` /
+ * `figure` / `graphics`). The tex/example rows own the slash surface (`\tex` /
+ * `\ex`) AND the lightning surface; the 4 block-atom rows are LIGHTNING-ONLY (no
+ * slash/typed/grab today — they're grid cells). Each routes through its canonical
+ * pure-PM creator (`texRun` / `exampleRun` / `mathRun` / `figureRun` /
+ * `graphicsRun`). Moves these ids from EXPECTED-PENDING to COVERED so step (4)
+ * doesn't flag the new rows as out-of-order. Typed against `BlockActionId` so a
+ * drift trips the typechecker.
  */
-const COVERED_BLOCK_IDS: readonly BlockActionId[] = ["tex", "example"];
+const COVERED_BLOCK_IDS: readonly BlockActionId[] = [
+  "tex",
+  "example",
+  "inline-math",
+  "display-math",
+  "figure",
+  "graphics",
+];
+
+/**
+ * The block ids that own the SLASH surface (tex `\tex`, example `\ex`) — the
+ * subset of `COVERED_BLOCK_IDS` whose rows must claim `surfaces.slash` + a
+ * `slashName` reconciled against `VIRGIL_COMMAND_NAMES`. The CHIP 6a block-atom
+ * rows (`inline-math` / `display-math` / `figure` / `graphics`) are GRID-ONLY:
+ * they must claim `surfaces.lightning` and must NOT claim slash/typed/grab. The
+ * assertion partitions on this set so a lightning-only row isn't wrongly flagged
+ * for missing a slashName.
+ */
+const BLOCK_IDS_WITH_SLASH: ReadonlySet<BlockActionId> = new Set<BlockActionId>([
+  "tex",
+  "example",
+]);
 
 /**
  * The card ids that ALSO own the PM-land surfaces (slash + typed): `citation`
@@ -1787,12 +2068,15 @@ export function assertActionCoverage(): string[] {
     }
   }
 
-  // (3c) the non-heading BLOCK slice (CHIP 5b: `tex`) is fully + correctly
-  // covered. Each block row must be `category: "block"`, claim the slash AND
-  // lightning surfaces, and carry a `slashName` (the PM-land join key reconciled
-  // below against `VIRGIL_COMMAND_NAMES`). Like headings, these have NO
-  // grab/typed/keyboard surface (a raw-LaTeX block is not a grab-handle action
-  // and has no `\tex{}`-style input rule).
+  // (3c) the non-heading BLOCK slice (CHIP 5b: `tex`; 5c: `example`; 6a: the 4
+  // block-ATOM rows) is fully + correctly covered. Each block row must be
+  // `category: "block"`, claim `surfaces.lightning` (every block row is on the
+  // grid), and never claim grab/typed (a block insert is not a grab-handle
+  // action and has no `\block{}`-style input rule). The SLASH surface is
+  // PARTITIONED: tex/example (in `BLOCK_IDS_WITH_SLASH`) MUST claim
+  // `surfaces.slash` + a `slashName` (reconciled below against
+  // `VIRGIL_COMMAND_NAMES`); the CHIP 6a block-atom rows are GRID-ONLY and must
+  // NOT claim slash.
   for (const id of COVERED_BLOCK_IDS) {
     const row = VIRGIL_ACTION_REGISTRY[id];
     if (!row) {
@@ -1807,20 +2091,36 @@ export function assertActionCoverage(): string[] {
         `[actions] block id "${id}" has category "${row.category}" (expected "block")`,
       );
     }
-    if (!row.surfaces.slash || !row.surfaces.lightning) {
+    if (!row.surfaces.lightning) {
       problems.push(
-        `[actions] block id "${id}" must set surfaces.slash AND surfaces.lightning`,
+        `[actions] block id "${id}" must set surfaces.lightning (every block row is a grid cell)`,
       );
     }
-    if (row.surfaces.grab || row.surfaces.typed) {
+    if (row.surfaces.grab || row.surfaces.typed || row.surfaces.keyboard) {
       problems.push(
-        `[actions] block id "${id}" claims a grab/typed surface it does not expose`,
+        `[actions] block id "${id}" claims a grab/typed/keyboard surface it does not expose`,
       );
     }
-    if (!row.slashName) {
-      problems.push(
-        `[actions] block id "${id}" sets surfaces.slash but is missing slashName`,
-      );
+    if (BLOCK_IDS_WITH_SLASH.has(id)) {
+      // tex / example own the slash surface (`\tex` / `\ex`).
+      if (!row.surfaces.slash) {
+        problems.push(
+          `[actions] block id "${id}" must set surfaces.slash (it owns the slash surface)`,
+        );
+      }
+      if (!row.slashName) {
+        problems.push(
+          `[actions] block id "${id}" sets surfaces.slash but is missing slashName`,
+        );
+      }
+    } else {
+      // The CHIP 6a block-atom rows are grid-only — slash migrates in a later
+      // chip (if ever). A premature slash flag would get ahead of that surface.
+      if (row.surfaces.slash) {
+        problems.push(
+          `[actions] block id "${id}" prematurely sets surfaces.slash (it is grid-only today)`,
+        );
+      }
     }
   }
 

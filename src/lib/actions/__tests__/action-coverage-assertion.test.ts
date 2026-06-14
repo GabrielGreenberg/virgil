@@ -83,10 +83,18 @@ const HEADING_IDS = [
   "heading-subsubsection",
 ] as const;
 
-// CHIP 5b — the `tex` block row; CHIP 5c — the `example` block row. Both
-// non-heading block rows, appended after the heading slice in registration
-// order. (figure / graphics / inline-math / display-math migrate in later chips.)
-const BLOCK_IDS = ["tex", "example"] as const;
+// CHIP 5b — `tex`; CHIP 5c — `example`; CHIP 6a — the 4 block-ATOM rows
+// (`inline-math` / `display-math` / `figure` / `graphics`). All non-heading
+// block rows, appended after the heading slice in registration order. tex/example
+// own the slash surface; the 4 block-atom rows are LIGHTNING-ONLY (grid cells).
+const BLOCK_IDS = [
+  "tex",
+  "example",
+  "inline-math",
+  "display-math",
+  "figure",
+  "graphics",
+] as const;
 
 const mainCtx = (): EditorExtensionsCtx => ({
   surface: "main",
@@ -141,8 +149,8 @@ describe("card-action rows", () => {
       expect(r!.category).toBe("card");
     }
     // The registry now holds the 11 cards (CHIP 2-4) PLUS the 4 heading rows
-    // (CHIP 5a) PLUS the `tex` (CHIP 5b) + `example` (CHIP 5c) block rows. No
-    // OTHER rows yet (figure/graphics/math/title/format migrate in later chips).
+    // (CHIP 5a) PLUS the `tex` (CHIP 5b) + `example` (CHIP 5c) + the 4 block-atom
+    // rows (CHIP 6a). No OTHER rows yet (title/format migrate in later chips).
     expect(Object.keys(VIRGIL_ACTION_REGISTRY).sort()).toEqual(
       [...CARD_IDS, ...HEADING_IDS, ...BLOCK_IDS].sort(),
     );

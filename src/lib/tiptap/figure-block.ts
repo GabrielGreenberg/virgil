@@ -1,9 +1,32 @@
 import { Node, mergeAttributes, ReactNodeViewRenderer } from "@tiptap/react";
 import type { Editor } from "@tiptap/react";
 import type { MutableRefObject, RefObject } from "react";
-import { generateShortId } from "@/lib/uuid";
 import FigureBlockNodeView from "@/components/FigureBlockNodeView";
 import { UUID_ATTR_SPEC } from "./uuid-attr";
+// CHIP 6a: the pure (React-free) fresh-attrs builders + raw synthesizer moved to
+// `figure-attrs.ts` so React-LIGHT consumers (the action registry's `figureRun`,
+// node-env vitests) can import them without pulling this module's NodeView +
+// `@/lib/storage` graph. Re-exported here under their original names so every
+// existing import path (`@/lib/tiptap/figure-block`, the barrel,
+// `FigureBlockNodeView`) keeps working unchanged.
+export {
+  FIGURE_STUB_EXTRAS,
+  freshFigureBlockAttrs,
+  synthesizeFigureRaw,
+} from "./figure-attrs";
+export type { FreshFigureBlockAttrs } from "./figure-attrs";
+// CHIP 6a: figure insertion is now ONE implementation — `figureRun` in the
+// action registry (INSERT via the shared `smartInsertBlock`, DA-2, then open the
+// source popover). The grid cell reaches `figureRun` directly through the
+// registry; this standalone `insertFigureBlock` DELEGATES to the SAME `figureRun`
+// (building a view-only `ActionContext`) so the cell path, the helper path, and
+// any future FILE-DROP path can never diverge on the creator. The registry is
+// already in the editor-extension barrel graph (via `texRun`), so importing it
+// here adds no new graph risk.
+import {
+  figureRun,
+  type ActionContext,
+} from "@/lib/actions/action-registry";
 
 type LabelRenameHandler = (
   oldLabel: string,
@@ -120,110 +143,54 @@ export function collectFigureBlockUuids(doc: {
   return set;
 }
 
-// Initial `extras` body for a fresh figure: centered `\includegraphics` with
-// an empty path so the user has the LaTeX shape to fill in. `\caption{}` and
-// `\label{}` are NOT included here — those are stored on the sub-node and
-// the `label` attr respectively, and rebuilt by the serializer.
-const FIGURE_STUB_EXTRAS =
-  "\\centering\n  \\includegraphics[width=0.6\\textwidth]{}\n  ";
-
-export interface FreshFigureBlockAttrs {
-  extras: string;
-  placement: string;
-  starred: boolean;
-  source: string | null;
-  widthPercent: number;
-  sources: unknown[];
-  label: string;
-  numbered: boolean;
-  figureNumber: null;
-  uuid: string;
+/**
+ * The seed the figure SOURCE popover opens on for a freshly-inserted block —
+ * the `{ kind, raw, pos, rect }` shape EditorLayout's `activeFigure` /
+ * `FigurePopover` consume. Re-exported as the typed shape `figureRun`'s
+ * `ctx.openFigurePopover` callback receives.
+ */
+export interface FigurePopoverSeed {
+  kind: "figureBlock";
+  raw: string;
+  pos: number;
+  rect: DOMRect;
 }
 
-export function freshFigureBlockAttrs(existing: Set<string>): FreshFigureBlockAttrs {
-  return {
-    extras: FIGURE_STUB_EXTRAS,
-    placement: "",
-    starred: false,
-    source: null,
-    widthPercent: 60,
-    sources: [],
-    label: "fig:",
-    numbered: true,
-    figureNumber: null,
-    uuid: generateShortId(existing),
+/**
+ * Insert a fresh `figureBlock` and (after the NodeView mounts) open its source
+ * popover so the user can fill in the empty `\includegraphics` path.
+ *
+ * CHIP 6a: this standalone helper now DELEGATES to the registry's `figureRun`
+ * (the ONE figure creator — INSERT via the shared `smartInsertBlock`, DA-2, then
+ * open the source popover). It builds a view-only `ActionContext` off the live
+ * selection and threads `onOpenPopover` as `ctx.openFigurePopover`, so the cell
+ * path (grid → `figureRun`), this helper, and any future FILE-DROP path can
+ * never diverge on the creator.
+ *
+ * Popover-open path (the dual-use `virgil-figure-click` split) is owned by
+ * `figureRun`: when `onOpenPopover` is supplied, the popover opens DIRECTLY
+ * through that callback (the INSERT-time `virgil-figure-click` emit is RETIRED);
+ * when absent, `figureRun` falls back to the legacy CustomEvent. The
+ * EDIT-existing-figure `virgil-figure-click` listener (marker-clicks.ts) is
+ * UNTOUCHED either way.
+ */
+export function insertFigureBlock(
+  editor: Editor,
+  onOpenPopover?: (seed: FigurePopoverSeed) => void,
+): void {
+  const ctx: ActionContext = {
+    editor,
+    view: editor.view,
+    ref: {
+      kind: "selection",
+      from: editor.state.selection.from,
+      to: editor.state.selection.to,
+      paragraphId: "",
+    },
+    surface: "lightning",
+    ...(onOpenPopover
+      ? { openFigurePopover: onOpenPopover as ActionContext["openFigurePopover"] }
+      : {}),
   };
-}
-
-// Rebuild a verbatim `\begin{figure}` body from structured attrs + caption
-// text. Used by the serializer (at save time) AND by the popover surface
-// (when opening the source editor — the popover wants something to display
-// /edit even though the canonical content lives in attrs + sub-node).
-export function synthesizeFigureRaw(
-  extras: string,
-  captionTex: string,
-  label: string,
-): string {
-  const parts: string[] = ["\n  "];
-  const extrasBody = (extras || "").replace(/\s+$/, "");
-  if (extrasBody) {
-    // Re-indent so the extras body sits at the same 2-space indent as the
-    // rest of the env body we synthesise.
-    parts.push(extrasBody.replace(/\n/g, "\n  "));
-    parts.push("\n  ");
-  }
-  parts.push(`\\caption{${captionTex}}`);
-  if (label) {
-    parts.push("\n  ");
-    parts.push(`\\label{${label}}`);
-  }
-  parts.push("\n");
-  return parts.join("");
-}
-
-export function insertFigureBlock(editor: Editor): void {
-  const attrs = freshFigureBlockAttrs(collectFigureBlockUuids(editor.state.doc));
-  // `.deleteSelection()` first to match the `insertTexBlock` / example-block
-  // patterns — block-level inserts no-op when straddling a paragraph selection.
-  editor
-    .chain()
-    .focus()
-    .deleteSelection()
-    .insertContent({
-      type: "figureBlock",
-      attrs,
-      content: [{ type: "figureCaption" }],
-    })
-    .run();
-  // Pop the tex-mode popover so the user can fill in the empty path
-  // immediately. One rAF is enough — matches the popover's own focus rAF.
-  // Look up the new node by uuid (unique to this insert) so we don't have
-  // to reason about where ProseMirror chose to place the block.
-  requestAnimationFrame(() => {
-    let foundPos = -1;
-    editor.state.doc.descendants((node, pos) => {
-      if (node.type.name === "figureBlock" && node.attrs.uuid === attrs.uuid) {
-        foundPos = pos;
-        return false;
-      }
-      return true;
-    });
-    if (foundPos < 0) return;
-    const dom = editor.view.nodeDOM(foundPos);
-    if (!(dom instanceof HTMLElement)) return;
-    window.dispatchEvent(
-      new CustomEvent("virgil-figure-click", {
-        detail: {
-          kind: "figureBlock",
-          // The popover takes a `raw` field. Synthesize one from current
-          // attrs + (empty) caption so the source-editing surface stays
-          // available even though we no longer store the env body as a
-          // single string. Commit re-derives everything via extractFigureAttrs.
-          raw: synthesizeFigureRaw(attrs.extras, "", attrs.label),
-          pos: foundPos,
-          rect: dom.getBoundingClientRect(),
-        },
-      }),
-    );
-  });
+  figureRun(ctx);
 }

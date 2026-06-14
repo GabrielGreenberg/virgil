@@ -23,11 +23,12 @@ import {
   cardActionRows,
   exampleRun,
   extractInlineFromSlice,
+  VIRGIL_ACTION_REGISTRY,
+  type ActionContext,
+  type ActionId,
 } from "@/lib/actions/action-registry";
 import { BlockTypeDropdown } from "./MenuBar";
 import { insertTexBlock } from "@/lib/tiptap/tex-block";
-import { insertFigureBlock } from "@/lib/tiptap/figure-block";
-import { insertGraphicsBlock } from "@/lib/tiptap/graphics-block";
 import { SelectionColorPopover } from "./SelectionColorPopover";
 import {
   useFloatingMenuPosition,
@@ -178,17 +179,49 @@ export function ActionsMenuPanel({
     cmd(editor.chain().focus()).run();
   };
 
-  const wrapSelectionInMath = (kind: "inline" | "display") => {
-    const { from, to } = editor.state.selection;
-    const text = editor.state.doc.textBetween(from, to, " ");
-    const latex = text || (kind === "inline" ? "x" : "\\int f(x)\\,dx");
-    const type = kind === "inline" ? "inlineMath" : "displayMath";
-    editor
-      .chain()
-      .focus()
-      .deleteSelection()
-      .insertContent({ type, attrs: { latex } })
-      .run();
+  // CHIP 6a: the block-ATOM grid cells (inline-math / display-math / figure /
+  // graphics) now render from the action registry — `runBlockAtom(id)` builds a
+  // view-only `ActionContext` off the live selection and invokes the registry
+  // row's `run()`, the SAME SSOT a future slash/keyboard surface would reach.
+  // math `run()` WRAPS the selection into the atom's `latex`; figure/graphics
+  // `run()` INSERT via `smartInsertBlock` then open the SOURCE popover via the
+  // `openFigurePopover` callback below — REPLACING the insert-time
+  // `virgil-figure-click` emit the low-level creator used to do. (The EDIT-
+  // existing-figure `virgil-figure-click` listener is untouched.)
+  const runBlockAtom = (id: ActionId) => {
+    const row = VIRGIL_ACTION_REGISTRY[id];
+    if (!row) return;
+    // Focus the doc first (the grid cell is a toolbar button — focus may be on
+    // the button, not the doc); math `run()` re-focuses too, but figure/graphics
+    // read the live selection before inserting, so we focus up-front.
+    editor.chain().focus().run();
+    const ctx: ActionContext = {
+      editor,
+      view: editor.view,
+      ref: {
+        kind: "selection",
+        from: editor.state.selection.from,
+        to: editor.state.selection.to,
+        paragraphId: "",
+      },
+      surface: "lightning",
+      // The INSERT-time popover seam (figure/graphics). The grid is a React
+      // subtree separate from EditorLayout's `activeFigure` state, so this
+      // callback hops the same `virgil-figure-click` event the EDIT path uses
+      // — but the DECISION to open now lives in the React surface, not in the
+      // pure `figure-block.ts` creator (which no longer emits on insert). The
+      // EDIT listener (marker-clicks.ts) consumes the same event, unchanged.
+      openFigurePopover: (figure) => {
+        if (typeof window === "undefined") return;
+        window.dispatchEvent(
+          new CustomEvent("virgil-figure-click", { detail: figure }),
+        );
+      },
+    };
+    void row.run(ctx);
+    // NOTE: like the format cells (and the prior `wrapSelectionInMath` /
+    // `insertFigureBlock` direct calls), we do NOT auto-close the menu here —
+    // it dismisses on click-outside. Faithful to pre-6a behavior.
   };
 
   const wrapSelectionInExample = () => {
@@ -423,7 +456,7 @@ export function ActionsMenuPanel({
         </FmtBtn>
         <FmtBtn
           title="Wrap selection in inline math"
-          onClick={() => wrapSelectionInMath("inline")}
+          onClick={() => runBlockAtom("inline-math")}
         >
           <span style={{ fontFamily: "var(--font-serif, serif)", fontSize: 13 }}>
             $x$
@@ -431,7 +464,7 @@ export function ActionsMenuPanel({
         </FmtBtn>
         <FmtBtn
           title="Wrap selection in display math"
-          onClick={() => wrapSelectionInMath("display")}
+          onClick={() => runBlockAtom("display-math")}
         >
           <span style={{ fontFamily: "var(--font-serif, serif)", fontSize: 13, letterSpacing: -0.5 }}>
             $$
@@ -478,7 +511,7 @@ export function ActionsMenuPanel({
         </FmtBtn>
         <FmtBtn
           title="Insert figure block"
-          onClick={() => insertFigureBlock(editor)}
+          onClick={() => runBlockAtom("figure")}
         >
           <span style={{ fontFamily: "var(--font-serif, serif)", fontStyle: "italic", fontSize: 12 }}>
             fig.
@@ -486,7 +519,7 @@ export function ActionsMenuPanel({
         </FmtBtn>
         <FmtBtn
           title="Insert image"
-          onClick={() => insertGraphicsBlock(editor)}
+          onClick={() => runBlockAtom("graphics")}
         >
           <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.25" strokeLinejoin="round">
             <rect x="1.5" y="2.5" width="13" height="11" rx="1" />

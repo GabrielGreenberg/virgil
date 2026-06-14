@@ -1,9 +1,25 @@
 import { Node, mergeAttributes, ReactNodeViewRenderer } from "@tiptap/react";
 import type { Editor } from "@tiptap/react";
-import { generateShortId } from "@/lib/uuid";
 import FigureBlockNodeView from "@/components/FigureBlockNodeView";
 import type { FigureBlockOptions } from "./figure-block";
 import { UUID_ATTR_SPEC } from "./uuid-attr";
+// CHIP 6a: the pure (React-free) fresh-attrs builder moved to `figure-attrs.ts`
+// (see figure-block.ts for the rationale — keep the registry's `graphicsRun` +
+// node-env vitests off this module's NodeView/storage graph). Re-exported under
+// the original names so existing import paths keep working.
+export {
+  GRAPHICS_STUB_COMMAND,
+  freshGraphicsBlockAttrs,
+} from "./figure-attrs";
+export type { FreshGraphicsBlockAttrs } from "./figure-attrs";
+// CHIP 6a: graphics insertion is ONE implementation — `graphicsRun` in the
+// action registry (INSERT via the shared `smartInsertBlock`, DA-2, then open the
+// source popover). This standalone helper DELEGATES to it, the graphics twin of
+// `insertFigureBlock`'s delegation to `figureRun`.
+import {
+  graphicsRun,
+  type ActionContext,
+} from "@/lib/actions/action-registry";
 
 // `graphicsBlock` — represents a standalone `\includegraphics` that lives
 // at block level (not inside a `\begin{figure}` env). Common in informal
@@ -66,51 +82,45 @@ export function collectGraphicsBlockUuids(doc: {
   return set;
 }
 
-const GRAPHICS_STUB_COMMAND = "\\includegraphics[width=0.5\\textwidth]{}";
-
-export interface FreshGraphicsBlockAttrs {
-  command: string;
-  source: string;
-  widthPercent: number;
-  uuid: string;
+/**
+ * The seed the graphics SOURCE popover opens on for a freshly-inserted block —
+ * the graphics twin of `FigurePopoverSeed`. `raw` is the `\includegraphics`
+ * command (graphicsBlock's source-of-truth lives on `command`, not a synthesized
+ * env body).
+ */
+export interface GraphicsPopoverSeed {
+  kind: "graphicsBlock";
+  raw: string;
+  pos: number;
+  rect: DOMRect;
 }
 
-export function freshGraphicsBlockAttrs(existing: Set<string>): FreshGraphicsBlockAttrs {
-  return {
-    command: GRAPHICS_STUB_COMMAND,
-    source: "",
-    widthPercent: 50,
-    uuid: generateShortId(existing),
+/**
+ * Insert a fresh `graphicsBlock` and open its source popover — the graphics twin
+ * of `insertFigureBlock` (CHIP 6a). DELEGATES to the registry's `graphicsRun`
+ * (the ONE graphics creator: INSERT via the shared `smartInsertBlock`, DA-2, then
+ * open the source popover), building a view-only `ActionContext` off the live
+ * selection and threading `onOpenPopover` as `ctx.openFigurePopover`. The dual-
+ * use `virgil-figure-click` split is owned by `graphicsRun`; the EDIT listener is
+ * untouched.
+ */
+export function insertGraphicsBlock(
+  editor: Editor,
+  onOpenPopover?: (seed: GraphicsPopoverSeed) => void,
+): void {
+  const ctx: ActionContext = {
+    editor,
+    view: editor.view,
+    ref: {
+      kind: "selection",
+      from: editor.state.selection.from,
+      to: editor.state.selection.to,
+      paragraphId: "",
+    },
+    surface: "lightning",
+    ...(onOpenPopover
+      ? { openFigurePopover: onOpenPopover as ActionContext["openFigurePopover"] }
+      : {}),
   };
-}
-
-export function insertGraphicsBlock(editor: Editor): void {
-  const attrs = freshGraphicsBlockAttrs(collectGraphicsBlockUuids(editor.state.doc));
-  editor.chain().focus().deleteSelection().insertContent({ type: "graphicsBlock", attrs }).run();
-  // Pop the tex-mode popover — mirrors `insertFigureBlock`. The bridge's
-  // `detail.raw` is the textarea seed; for graphicsBlock the source-of-truth
-  // string lives on `command`, so we pass that.
-  requestAnimationFrame(() => {
-    let foundPos = -1;
-    editor.state.doc.descendants((node, pos) => {
-      if (node.type.name === "graphicsBlock" && node.attrs.uuid === attrs.uuid) {
-        foundPos = pos;
-        return false;
-      }
-      return true;
-    });
-    if (foundPos < 0) return;
-    const dom = editor.view.nodeDOM(foundPos);
-    if (!(dom instanceof HTMLElement)) return;
-    window.dispatchEvent(
-      new CustomEvent("virgil-figure-click", {
-        detail: {
-          kind: "graphicsBlock",
-          raw: attrs.command,
-          pos: foundPos,
-          rect: dom.getBoundingClientRect(),
-        },
-      }),
-    );
-  });
+  graphicsRun(ctx);
 }

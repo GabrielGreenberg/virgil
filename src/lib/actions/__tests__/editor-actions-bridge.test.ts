@@ -270,11 +270,12 @@ describe("runAction on an unknown / not-yet-migrated id", () => {
   it("no-ops without throwing (the registry is partial until later chips)", () => {
     const { editor } = makeEditor(3);
     setEditorActionsHandle(buildHandle(editor, {}));
-    // `figure` has no registry row yet (a later chip migrates it) — absent →
-    // no-op. (`tex` USED to be the example here, but CHIP 5b gave it a row, so
-    // this now picks a still-unmigrated block id to prove the absent path.)
+    // A genuinely-UNKNOWN id (never an `ActionId`) → absent registry row →
+    // no-op + dev-warn. Use a fake id rather than a real-but-unmigrated one so
+    // this test can't go stale as later chips fill the registry (it broke once
+    // when `tex`→CHIP 5b, again when `figure`→CHIP 6a — a fake id is permanent).
     expect(() =>
-      getEditorActionsHandle()!.runAction("figure" as ActionId, { surface: "slash" }),
+      getEditorActionsHandle()!.runAction("__no_such_action__" as ActionId, { surface: "slash" }),
     ).not.toThrow();
   });
 });
