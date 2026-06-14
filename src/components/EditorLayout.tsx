@@ -2710,7 +2710,6 @@ export default function EditorLayout() {
     editorRef,
     setActiveRefLabel,
     setActiveRefRect,
-    setSelectedFootnoteId,
     setSelectedExampleId,
   });
 

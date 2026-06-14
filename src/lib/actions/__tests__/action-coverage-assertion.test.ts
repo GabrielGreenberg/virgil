@@ -131,18 +131,23 @@ describe("card-action rows", () => {
     expect(Object.keys(VIRGIL_ACTION_REGISTRY).sort()).toEqual([...CARD_IDS].sort());
   });
 
-  it("each card row sets surfaces {grab, lightning}; only citation adds slash/typed (CHIP 4a-ii)", () => {
+  it("each card row sets surfaces {grab, lightning}; only citation + footnote add slash/typed (CHIP 4a-ii / 4b)", () => {
+    // The two cards whose run() handles the PM-land surfaces (slash + typed):
+    // citation (CHIP 4a-ii, slashName "cite") and footnote (CHIP 4b, slashName
+    // "footnote"). Each must claim those surfaces + carry the join keys.
+    const PM_SLASH_NAME: Record<string, string> = {
+      citation: "cite",
+      footnote: "footnote",
+    };
     for (const id of CARD_IDS) {
       const r = row(id);
       expect(r.surfaces.grab, `${id}.grab`).toBe(true);
       expect(r.surfaces.lightning, `${id}.lightning`).toBe(true);
-      if (id === "citation") {
-        // CHIP 4a-ii: citation is the first card whose run() handles the
-        // PM-land surfaces; it must claim them + carry the join keys.
-        expect(r.surfaces.slash, "citation.slash").toBe(true);
-        expect(r.surfaces.typed, "citation.typed").toBe(true);
-        expect(r.slashName, "citation.slashName").toBe("cite");
-        expect(r.inputRulePattern, "citation.inputRulePattern").toBeInstanceOf(RegExp);
+      if (id === "citation" || id === "footnote") {
+        expect(r.surfaces.slash, `${id}.slash`).toBe(true);
+        expect(r.surfaces.typed, `${id}.typed`).toBe(true);
+        expect(r.slashName, `${id}.slashName`).toBe(PM_SLASH_NAME[id]);
+        expect(r.inputRulePattern, `${id}.inputRulePattern`).toBeInstanceOf(RegExp);
       } else {
         expect(r.surfaces.slash, `${id}.slash`).toBeFalsy();
         expect(r.surfaces.typed, `${id}.typed`).toBeFalsy();
@@ -189,10 +194,15 @@ describe("card-action run() delegates to ctx.dispatch", () => {
     expect(spy).toHaveBeenCalledWith("note", ref);
   });
 
-  it("is a no-op for a CursorRef (slash/typed refs cannot forward to the grab-bar dispatcher)", () => {
+  it("a grab/lightning-only card never forwards a CursorRef to the dispatcher", () => {
+    // `note` (no slash/typed surface) follows the generic `cardRun`, which is a
+    // no-op for a CursorRef — only `DragHandleRef`-shaped refs forward. (The two
+    // PM-surface cards — citation/footnote — DO have a cursor path, but it
+    // routes to `cardCreation`, never `ctx.dispatch`; proven in their
+    // cross-surface tests.)
     const spy = vi.fn();
     const ref: ActionRef = { kind: "cursor", pos: 1, paragraphId: "p0" };
-    row("footnote").run(ctxFor(ref, emptyDoc, spy));
+    row("note").run(ctxFor(ref, emptyDoc, spy));
     expect(spy).not.toHaveBeenCalled();
   });
 

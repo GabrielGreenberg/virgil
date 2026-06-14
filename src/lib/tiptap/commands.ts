@@ -219,8 +219,39 @@ export const VIRGIL_COMMANDS: VirgilCommand[] = [
   },
   {
     name: "footnote",
-    action: () => {
-      window.dispatchEvent(new CustomEvent("virgil-footnote-input"));
+    action: (view) => {
+      const { state } = view;
+      const footnoteNodeType = state.schema.nodes.footnote;
+      if (!footnoteNodeType) return;
+      const existing = new Set<string>();
+      state.doc.descendants((node) => {
+        if (node.type.name === "footnote" && node.attrs.footnoteId) {
+          existing.add(node.attrs.footnoteId as string);
+        }
+        return true;
+      });
+      const footnoteId = generateShortId(existing);
+      // Empty body — the panel card hosts the editable footnote text.
+      const content = { type: "doc", content: [{ type: "paragraph" }] };
+      // Insert the atom SYNCHRONOUSLY — it must land even if React is
+      // unmounted (durability decision, matching `\cite`). Only the CARD
+      // registration routes through the bridge.
+      const tr = state.tr.replaceSelectionWith(
+        footnoteNodeType.create({ footnoteId, content, number: 0 }),
+      );
+      view.dispatch(tr);
+      // Register the panel card via the registry's `footnote.run` (surface
+      // "slash"). The bridge synthesizes the CursorRef + supplies cardCreation
+      // + the soft-route wiring; `footnote.run` ADOPTS the just-inserted atom
+      // via `createFootnote({ existingFootnoteId })` (pristine + pinned, NO
+      // re-insert) and soft-routes into omni (backlog #2 — never force-opens
+      // the Footnotes panel). Replaces the retired `virgil-footnote-input`
+      // event + its command-input.ts listener (and the dead
+      // `virgil-footnote-created` it used to broadcast).
+      getEditorActionsHandle()?.runAction("footnote", {
+        surface: "slash",
+        payload: { footnoteId },
+      });
     },
   },
   {

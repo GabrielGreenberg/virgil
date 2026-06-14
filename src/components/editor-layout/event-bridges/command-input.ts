@@ -1,6 +1,5 @@
 import { useEffect, type Dispatch, type RefObject, type SetStateAction } from "react";
 import type { EditorHandle } from "../../Editor";
-import { generateShortId } from "@/lib/uuid";
 
 /**
  * Command-input bridges — editor input rules dispatch these when the user
@@ -14,9 +13,6 @@ import { generateShortId } from "@/lib/uuid";
  * - `virgil-ex-create` — bare `\ex` inserts a single-part example block
  *   at the cursor and selects it (so an already-open Examples panel can
  *   scroll to it); it does NOT open the panel.
- * - `virgil-footnote-input` — bare `\footnote` inserts an empty footnote
- *   node at cursor, selects it, and broadcasts `virgil-footnote-created`
- *   so an already-open panel can scroll-to-new; it does NOT open the panel.
  *
  * ── CITATION MIGRATED (CHIP 4a-ii) ── `\cite` (slash + typed) no longer rides
  * a `virgil-citation-create` CustomEvent + this listener. The slash command
@@ -26,19 +22,27 @@ import { generateShortId } from "@/lib/uuid";
  * backlog-#2 soft-route (surface omni only when the citations side is
  * collapsed/blank) that used to live here. So the citation handler + its
  * prefs/setActive/pendingCitation deps are gone from this hook.
+ *
+ * ── FOOTNOTE MIGRATED (CHIP 4b) ── `\footnote` (slash + typed) no longer rides
+ * the `virgil-footnote-input` CustomEvent + this listener, nor broadcasts the
+ * DEAD `virgil-footnote-created` event (it had ZERO listeners). The slash
+ * command (commands.ts) and the typed input rule (footnote.ts) now insert the
+ * footnote atom synchronously and register the card through the action-registry
+ * bridge (`runAction("footnote", …)` → `footnote.run`), which applies the SAME
+ * pristine + pinned lifecycle the menu's Footnote gets and the SAME backlog-#2
+ * soft-route. So the footnote handler + its `setSelectedFootnoteId` /
+ * `generateShortId` deps are gone from this hook.
  */
 export function useCommandInputBridges(deps: {
   editorRef: RefObject<EditorHandle | null>;
   setActiveRefLabel: Dispatch<SetStateAction<string | null>>;
   setActiveRefRect: Dispatch<SetStateAction<DOMRect | null>>;
-  setSelectedFootnoteId: Dispatch<SetStateAction<string | null>>;
   setSelectedExampleId: Dispatch<SetStateAction<string | null>>;
 }) {
   const {
     editorRef,
     setActiveRefLabel,
     setActiveRefRect,
-    setSelectedFootnoteId,
     setSelectedExampleId,
   } = deps;
 
@@ -68,35 +72,4 @@ export function useCommandInputBridges(deps: {
     window.addEventListener("virgil-ex-create", handler);
     return () => window.removeEventListener("virgil-ex-create", handler);
   }, [editorRef, setSelectedExampleId]);
-
-  useEffect(() => {
-    const handler = () => {
-      const editor = editorRef.current?.getEditor();
-      if (!editor) return;
-      const existing = new Set<string>();
-      editor.state.doc.descendants((n) => {
-        if (n.type.name === "footnote" && n.attrs.footnoteId) {
-          existing.add(n.attrs.footnoteId as string);
-        }
-        return true;
-      });
-      const footnoteId = generateShortId(existing);
-      const content = { type: "doc", content: [{ type: "paragraph" }] };
-      editor
-        .chain()
-        .focus()
-        .insertContent({ type: "footnote", attrs: { footnoteId, content, number: 0 } })
-        .run();
-      editorRef.current?.renumberFootnotes();
-      // Slash commands create their thing inline and do NOT activate any
-      // panel (backlog #2). Select the new footnote (so an already-open
-      // panel can scroll to it) but never open the Footnotes panel.
-      setSelectedFootnoteId(footnoteId);
-      window.dispatchEvent(
-        new CustomEvent("virgil-footnote-created", { detail: { footnoteId, content } }),
-      );
-    };
-    window.addEventListener("virgil-footnote-input", handler);
-    return () => window.removeEventListener("virgil-footnote-input", handler);
-  }, [editorRef, setSelectedFootnoteId]);
 }

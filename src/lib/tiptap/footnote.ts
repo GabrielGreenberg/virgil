@@ -4,6 +4,16 @@ import { Plugin, PluginKey } from "@tiptap/pm/state";
 import { richJsonToPlainText, normalizeRichContent } from "@/lib/footnote-content";
 import { generateShortId } from "@/lib/uuid";
 import { readDocStructure, readPendingDiff } from "@/lib/tiptap/doc-structure";
+// The shared `\footnote{…}` trigger regex — the SAME pattern the action
+// registry's footnote row references, so the typed surface and the registry can
+// never recognize a different footnote vocabulary.
+import { FOOTNOTE_RE_FULL } from "@/lib/footnote-commands";
+// CHIP 4b: the PM→React bridge the typed-LaTeX `\footnote{}` input rule uses to
+// register the footnote CARD (the atom is still inserted synchronously below).
+// Replaces the DEAD `virgil-footnote-created` CustomEvent (zero listeners) —
+// one typed entrypoint into the registry's `footnote.run`, which now applies
+// the SAME pristine + pinned lifecycle the menu's Footnote gets.
+import { getEditorActionsHandle } from "@/lib/actions/editor-actions-bridge";
 
 // Options accepted by the Footnote extension. `idGenerator` lets a host
 // (e.g. the Library Reader) substitute a different ID strategy for newly
@@ -103,7 +113,7 @@ export const Footnote = Node.create<FootnoteOptions>({
               undefined,
               "\ufffc"
             ) + text;
-            const match = textBefore.match(/\\footnote\{([^}]*)\}$/);
+            const match = textBefore.match(FOOTNOTE_RE_FULL);
             if (!match) return false;
             const content = normalizeRichContent(match[1]);
             const existing = new Set<string>();
@@ -143,12 +153,22 @@ export const Footnote = Node.create<FootnoteOptions>({
               return true;
             });
             view.dispatch(trFixed);
-            // Notify persistent state about the new footnote
-            window.dispatchEvent(
-              new CustomEvent("virgil-footnote-created", {
-                detail: { footnoteId, content },
-              })
-            );
+            // Register the panel card via the registry's `footnote.run`
+            // (surface "typed"). The bridge ADOPTS this just-inserted atom (via
+            // `createFootnote({ existingFootnoteId })` — pinned, NO re-insert)
+            // and soft-routes into omni (backlog #2). Replaces the DEAD
+            // `virgil-footnote-created` event (zero listeners).
+            //
+            // Pristine ONLY for a truly blank `\footnote{}` (no body between
+            // the braces) so it aligns with the menu's empty footnote (blank →
+            // click-away-discardable). A `\footnote{some text}` carries real
+            // body content, so we pass `pristine:false` — the click-away
+            // discarder must NOT reap a footnote the user typed prose into.
+            const pristine = match[1].trim().length === 0;
+            getEditorActionsHandle()?.runAction("footnote", {
+              surface: "typed",
+              payload: { footnoteId, pristine },
+            });
             return true;
           },
         },

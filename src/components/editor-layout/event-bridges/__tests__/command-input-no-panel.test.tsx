@@ -3,17 +3,23 @@
 // Pins backlog #2: slash commands no longer hard-open their dedicated panel.
 //   - `\ex` (virgil-ex-create): inserts the example + selects it, but does
 //     NOT open the Examples panel.
-//   - `\footnote` (virgil-footnote-input): inserts the footnote + selects it,
-//     but does NOT open the Footnotes panel.
 //
 // CITATION MOVED (CHIP 4a-ii): `\cite` no longer rides the
 // `virgil-citation-create` event through this hook — it migrated to the
 // action-registry bridge (`runAction("citation", …)` → `citation.run`), which
 // now OWNS the same backlog-#2 soft-route. Those soft-route assertions live in
 // `src/lib/actions/__tests__/citation-cross-surface.test.ts` (section 7),
-// driven against the REAL `commands.ts` / `citation.ts` PM surfaces. Here we
-// keep only the remaining event-bridge surfaces (`\ex`, `\footnote`) and add a
-// tombstone proving `virgil-citation-create` is inert through this hook.
+// driven against the REAL `commands.ts` / `citation.ts` PM surfaces.
+//
+// FOOTNOTE MOVED (CHIP 4b): `\footnote` likewise migrated off the
+// `virgil-footnote-input` event + this hook to the action-registry bridge
+// (`runAction("footnote", …)` → `footnote.run`), which applies the pristine +
+// pinned lifecycle AND the backlog-#2 soft-route. Those assertions live in
+// `src/lib/actions/__tests__/footnote-cross-surface.test.ts`. The dead
+// `virgil-footnote-created` event (zero listeners) is fully retired.
+//
+// Here we keep only the remaining event-bridge surface (`\ex`) and tombstones
+// proving the migrated events are inert through this hook.
 
 import { describe, it, expect, vi, afterEach } from "vitest";
 import { renderHook, cleanup } from "@testing-library/react";
@@ -27,8 +33,9 @@ afterEach(() => {
   vi.clearAllMocks();
 });
 
-// A minimal fake TipTap editor covering only what the footnote handler uses:
-// doc.descendants (to collect existing footnote ids) and the insert chain.
+// A minimal fake TipTap editor covering only what the remaining handlers use:
+// the `\ref` handler reads `selection.from` + `view.coordsAtPos`. (The footnote
+// handler — which used doc.descendants + the insert chain — is gone in 4b.)
 function makeFakeEditor() {
   const chain = {
     focus: () => chain,
@@ -50,11 +57,9 @@ function makeFakeEditor() {
 function makeDeps(prefsOverrides: Partial<ViewPrefs> = {}) {
   const fakeEditor = makeFakeEditor();
   const insertExample = vi.fn(() => ({ exampleId: "ex1" }));
-  const renumberFootnotes = vi.fn();
   const editorHandle = {
     getEditor: () => fakeEditor,
     insertExample,
-    renumberFootnotes,
   } as unknown as EditorHandle;
 
   const prefs = {
@@ -68,21 +73,18 @@ function makeDeps(prefsOverrides: Partial<ViewPrefs> = {}) {
     ...prefsOverrides,
   } as unknown as ViewPrefs;
 
-  // Citation deps (prefsRef / setActive* / setPendingCitation*) were removed
-  // from this hook in CHIP 4a-ii (citation migrated to the bridge). The `prefs`
-  // fixture is unused now but kept to document the panel layout the surfaces
-  // would see.
+  // Citation deps (CHIP 4a-ii) + footnote deps (CHIP 4b) were removed from this
+  // hook as those surfaces migrated to the bridge. The `prefs` fixture is unused
+  // now but kept to document the panel layout the surfaces would see.
   void prefs;
   return {
     deps: {
       editorRef: { current: editorHandle },
       setActiveRefLabel: vi.fn(),
       setActiveRefRect: vi.fn(),
-      setSelectedFootnoteId: vi.fn(),
       setSelectedExampleId: vi.fn(),
     },
     insertExample,
-    renumberFootnotes,
   };
 }
 
@@ -111,20 +113,34 @@ describe("\\ex (virgil-ex-create): inserts + selects, no panel open", () => {
   });
 });
 
-describe("\\footnote (virgil-footnote-input): inserts + selects, no panel open", () => {
-  it("inserts the footnote and selects it but never opens a panel", () => {
-    const { deps, renumberFootnotes } = makeDeps();
+describe("\\footnote (virgil-footnote-input): MIGRATED off this hook (CHIP 4b)", () => {
+  it("dispatching the legacy event through this hook is now a no-op (no listener)", () => {
+    const { deps, insertExample } = makeDeps();
     mount(deps);
-    dispatch("virgil-footnote-input");
+    // The hook no longer binds `virgil-footnote-input`; firing it must not
+    // throw and must not collaterally trigger the other surfaces. (The real
+    // footnote routing now goes through the action-registry bridge — proven in
+    // footnote-cross-surface.test.ts.)
+    expect(() =>
+      dispatch("virgil-footnote-input", { footnoteId: "f1" }),
+    ).not.toThrow();
+    expect(insertExample).not.toHaveBeenCalled();
+    expect(deps.setSelectedExampleId).not.toHaveBeenCalled();
+  });
 
-    expect(renumberFootnotes).toHaveBeenCalledTimes(1);
-    expect(deps.setSelectedFootnoteId).toHaveBeenCalledTimes(1);
+  it("the dead virgil-footnote-created event has no listener here either", () => {
+    const { deps } = makeDeps();
+    mount(deps);
+    expect(() =>
+      dispatch("virgil-footnote-created", { footnoteId: "f1", content: {} }),
+    ).not.toThrow();
+    expect(deps.setSelectedExampleId).not.toHaveBeenCalled();
   });
 });
 
 describe("\\cite (virgil-citation-create): MIGRATED off this hook (CHIP 4a-ii)", () => {
   it("dispatching the legacy event through this hook is now a no-op (no listener)", () => {
-    const { deps, insertExample, renumberFootnotes } = makeDeps();
+    const { deps, insertExample } = makeDeps();
     mount(deps);
     // The hook no longer binds `virgil-citation-create`; firing it must not
     // throw and must not collaterally trigger the other surfaces. (The real
@@ -134,8 +150,6 @@ describe("\\cite (virgil-citation-create): MIGRATED off this hook (CHIP 4a-ii)",
       dispatch("virgil-citation-create", { partial: "\\cite", citationId: "c1" }),
     ).not.toThrow();
     expect(insertExample).not.toHaveBeenCalled();
-    expect(renumberFootnotes).not.toHaveBeenCalled();
-    expect(deps.setSelectedFootnoteId).not.toHaveBeenCalled();
     expect(deps.setSelectedExampleId).not.toHaveBeenCalled();
   });
 });

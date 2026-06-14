@@ -3,13 +3,13 @@
  * (slash commands / typed-LaTeX input rules) uses to reach React-land actions.
  *
  * ──────────────────────────────────────────────────────────────────────────
- * STATUS (CHIP 4a-i — INERT INFRASTRUCTURE). This file is the PM→React bridge
- * *plumbing* only. The React tree publishes an `EditorActionsHandle` here on
- * mount (`EditorPane.tsx`); NOTHING consumes it yet. The PM plugins
- * (`commands.ts` slash dispatch, `citation.ts` / `footnote.ts` input rules)
- * are UNTOUCHED this chip — wiring them to `getEditorActionsHandle()` is the
- * NEXT chip (4a-ii). So publishing this handle changes ZERO user-facing
- * behavior; it just makes the seam available for 4a-ii to call.
+ * STATUS (LIVE). The React tree publishes an `EditorActionsHandle` here on
+ * mount (`EditorPane.tsx`). CONSUMERS: the `\cite` slash command + `\cite{}` /
+ * `\cite ` typed input rules (CHIP 4a-ii) and the `\footnote` slash command +
+ * `\footnote{}` typed input rule (CHIP 4b) all call
+ * `getEditorActionsHandle()?.runAction(id, seed)` to register their CARD in
+ * React-land (the inline atom is still inserted synchronously in plugin-land).
+ * The remaining PM commands (`\ref`, `\ex`) still ride the legacy CustomEvents.
  * ──────────────────────────────────────────────────────────────────────────
  *
  * # Why a module singleton (not React Context)

@@ -215,6 +215,26 @@ export interface CardCreationApi {
   }) => TodoItem;
   createFootnote: (opts: {
     fromSelection?: boolean;
+    /**
+     * Adopt an ALREADY-INSERTED footnote atom instead of minting + inserting
+     * one. The slash / typed surfaces (CHIP 4b) insert the `\footnote{}` atom
+     * SYNCHRONOUSLY in plugin-land (so it lands even if React is unmounted —
+     * the citation durability principle), then route the CARD registration
+     * here with the atom's id. When set, `createFootnote` runs ONLY the
+     * pristine + pin + select + renumber tail against this id — it does NOT
+     * call `createEmptyFootnote` (which would DOUBLE-insert). Mutually
+     * exclusive with `fromSelection`. */
+    existingFootnoteId?: string;
+    /**
+     * Adopt-path only: whether the adopted footnote is BLANK and so should be
+     * marked pristine (click-away-discardable), matching the menu's empty
+     * footnote. The menu's `fromSelection:false` path is ALWAYS pristine
+     * (blank); the adopt path is pristine iff the PM caller inserted an empty
+     * body. A typed `\footnote{some text}` carries real body content, so it
+     * must NOT be reaped on click-away — the caller passes `pristine:false`
+     * for it. Defaults to `true` (a slash `\footnote` inserts an empty body).
+     */
+    pristine?: boolean;
     anchorRect?: DOMRect | null;
     mode?: CardCreateMode;
   }) => { footnoteId: string } | null;
@@ -481,6 +501,29 @@ export function useCardCreation(deps: CardCreationDeps): CardCreationApi {
     (opts) => {
       const handle = editorRef.current;
       if (!handle) return null;
+      // ── ADOPT path (CHIP 4b: slash / typed) ──────────────────────────
+      // The PM caller already inserted the `\footnote{}` atom synchronously
+      // and passed its id. Re-inserting via `createEmptyFootnote` would
+      // DOUBLE-insert, so we skip the insert and run ONLY the shared tail —
+      // the SAME pristine + pin + select the menu's blank footnote gets, now
+      // applied to the already-landed atom. (Pristine ⇒ a blank footnote is
+      // click-away-discardable; pin ⇒ it rides the top of the panel.)
+      if (opts.existingFootnoteId) {
+        handle.renumberFootnotes();
+        // Pristine ⇒ a BLANK footnote is click-away-discardable. The slash
+        // `\footnote` (empty body) is pristine, matching the menu; a typed
+        // `\footnote{body}` carries real content, so the caller passes
+        // `pristine:false` to keep the discard watcher from reaping it.
+        if (opts.pristine !== false) markFootnotePristine(opts.existingFootnoteId);
+        finishCreate(
+          "footnote",
+          "footnote",
+          setSelectedFootnoteId,
+          opts.existingFootnoteId,
+          opts,
+        );
+        return { footnoteId: opts.existingFootnoteId };
+      }
       // BUG #31: never persist a generated title ("Footnote 2"). Leave the
       // title empty so the collapsed view + expanded title row show the
       // placeholder / +T affordance until the user types a real title.

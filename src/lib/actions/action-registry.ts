@@ -35,13 +35,16 @@
  *      figure, image).
  *   3. **Slash commands** — `VIRGIL_COMMANDS` / `VIRGIL_COMMAND_NAMES`
  *      ([src/lib/tiptap/commands.ts]). A ProseMirror plugin running with an
- *      `EditorView` ONLY — **no React context**. It reaches React-land via
- *      `window` CustomEvents (`virgil-citation-create`, `virgil-ref-create`,
- *      `virgil-ex-create`, `virgil-footnote-input`).
+ *      `EditorView` ONLY — **no React context**. `\cite` (CHIP 4a-ii) and
+ *      `\footnote` (CHIP 4b) now reach React-land via the typed
+ *      `EditorActionsHandle` bridge (`runAction(id, seed)`); the remaining
+ *      commands still ride `window` CustomEvents (`virgil-ref-create`,
+ *      `virgil-ex-create`).
  *   4. **Typed-LaTeX input rules** — `\cite{…}` / `\cite ` in
  *      ([src/lib/tiptap/citation.ts] ~line 125) and `\footnote{…}` in
- *      ([src/lib/tiptap/footnote.ts] ~line 96). Also ProseMirror plugins;
- *      same no-React-context constraint and same CustomEvent escape hatch.
+ *      ([src/lib/tiptap/footnote.ts] ~line 96). Also ProseMirror plugins; same
+ *      no-React-context constraint. Both now register their CARD via the bridge
+ *      (the atom is still inserted synchronously in plugin-land).
  *
  * The same logical action (e.g. "make a footnote") is implemented up to four
  * times with subtly different behavior and four different code paths. This
@@ -56,14 +59,15 @@
  * Surfaces 1 & 2 are React components, so they call `run()` directly.
  *
  * Surfaces 3 & 4 are ProseMirror plugins with only an `EditorView`. They
- * **cannot** call React-land `cardCreation`. The intended architecture (this
- * chip defines the contract; a later chip wires it):
+ * **cannot** call React-land `cardCreation`. The architecture (wired for
+ * `\cite` in CHIP 4a-ii and `\footnote` in CHIP 4b; the remaining PM commands
+ * still ride the legacy CustomEvents):
  *
  *   - The React tree publishes ONE imperative handle, `EditorActionsHandle`,
  *     into a ref (`editorActionsRef`) — the PM→React bridge.
  *   - A slash command / input rule, instead of `window.dispatchEvent(new
  *     CustomEvent("virgil-footnote-input"))`, calls
- *     `editorActionsRef.current?.runAction("footnote", { surface: "slash" })`.
+ *     `getEditorActionsHandle()?.runAction("footnote", { surface: "slash" })`.
  *   - The bridge resolves the spec, **supplies the React APIs**
  *     (`cardCreation` / `cardLifecycle`) into the `ActionContext`, and invokes
  *     `spec.run(ctx)` in React-land.
@@ -148,6 +152,12 @@ import {
 // different cite vocabulary. `cite-commands` is a plain regex module (no
 // React/DOM), so importing the values here is free for every consumer.
 import { CITE_RE_FULL, CITE_RE_BARE } from "@/lib/cite-commands";
+// VALUE import: the typed-LaTeX footnote trigger pattern — the footnote twin of
+// `CITE_RE_FULL`. The `footnote.ts` input rule AND this registry row reference
+// the SAME regex from `footnote-commands` (a plain regex leaf, no React/DOM/
+// TipTap) so the typed surface and the registry can never recognize a different
+// footnote vocabulary. Re-exported below as `FOOTNOTE_INPUT_RULE_PATTERN`.
+import { FOOTNOTE_RE_FULL as FOOTNOTE_INPUT_RULE_PATTERN } from "@/lib/footnote-commands";
 // VALUE import: the canonical float-key builder. The citation soft-route
 // focuses the new card's library-picker input via the SAME key the card
 // itself stamps — `cardPopKey("citation", id)` === `buildFloatKey({domain:
@@ -821,19 +831,108 @@ function citationRun(ctx: ActionContext): void {
   }
 }
 
+// ---------------------------------------------------------------------------
+// footnote.run — the SECOND card action whose `run()` handles ALL FOUR surfaces
+// (CHIP 4b). The footnote join point: menu-Footnote, slash `\footnote`, and
+// typed `\footnote{}` all land the SAME pristine + pinned card lifecycle.
+//
+//   - grab / lightning (a `DragHandleRef`): DELEGATE to the legacy dispatcher
+//     exactly like every other card row — `ctx.dispatch("footnote", ref)`
+//     inserts the empty footnote atom + registers the pristine+pinned card.
+//     BYTE-IDENTICAL to today.
+//   - slash / typed (a `CursorRef`): the PM caller ALREADY inserted the
+//     `\footnote{}` atom SYNCHRONOUSLY (durability decision — the atom lands
+//     even if React is unmounted), passing the atom's `footnoteId` in
+//     `ctx.payload`. Here we ADOPT that existing atom: register the matching
+//     panel card via `cardCreation.createFootnote({ existingFootnoteId })`,
+//     which runs ONLY the pristine + pin + select tail (NO re-insert → no
+//     double-insert), then SOFT-ROUTE into OMNI (backlog #2). This is the
+//     alignment fix: slash/typed footnotes were "lighter" before — no pristine
+//     (a blank one wasn't click-away-discardable), no panel pin, and a DEAD
+//     `virgil-footnote-created` event. Now they match the menu.
+// ---------------------------------------------------------------------------
+
+/**
+ * The backlog-#2 soft-route for footnote, the footnote twin of
+ * `softRouteCitationToOmni`. Slash/typed `\footnote` needs a surface for the
+ * new card, so we route it into OMNI — but ONLY surface omni when the footnotes
+ * side is currently collapsed (`null`) or `blank`. If the user has another
+ * panel covering omni on that side, we LEAVE IT: the card still lands + selects
+ * in omni and reveals itself when the user next views it, rather than
+ * clobbering their panel. Honors the footnotes panel's docked side (left vs
+ * right). Never force-opens the dedicated Footnotes panel.
+ */
+function softRouteFootnoteToOmni(routing: NonNullable<ActionContext["panelRouting"]>): void {
+  const { prefs, setActiveLeft, setActiveRight } = routing;
+  const fnPlacement = prefs.placements.find((pl) => pl.id === "footnotes");
+  const side = fnPlacement?.side ?? "left";
+  const active = side === "left" ? prefs.activeLeft : prefs.activeRight;
+  if (active == null || active === "blank") {
+    if (side === "left") setActiveLeft("omni");
+    else setActiveRight("omni");
+  }
+}
+
+/**
+ * The footnote card `run()` — see the block comment above. Returns nothing;
+ * may be invoked from any of the four surfaces.
+ */
+function footnoteRun(ctx: ActionContext): void {
+  // Surfaces 1 & 2 (grab / lightning): a `DragHandleRef`. Delegate to the
+  // legacy dispatcher — its `case "footnote"` collapses the selection, inserts
+  // the empty footnote atom AND registers the pristine+pinned card.
+  // BYTE-IDENTICAL to today.
+  if (ctx.ref.kind !== "cursor") {
+    ctx.dispatch?.("footnote", ctx.ref);
+    return;
+  }
+  // Surfaces 3 & 4 (slash / typed): the PM caller inserted the atom already
+  // (passing its `footnoteId`). ADOPT it — register the panel card with the
+  // SAME `footnoteId` so the card and the in-doc atom share an identity, and
+  // run the pristine + pin + select tail WITHOUT re-inserting (no double
+  // insert). Mirrors the menu's `createFootnote({ fromSelection: false })`
+  // lifecycle, minus the insert the PM caller already did.
+  const payload = ctx.payload ?? {};
+  const footnoteId =
+    typeof payload.footnoteId === "string" ? payload.footnoteId : undefined;
+  if (!footnoteId || !ctx.cardCreation) return; // misconfigured caller — atom already landed; no card
+  // Pristine iff the PM caller inserted a BLANK footnote (slash `\footnote`
+  // → empty body → pristine, matching the menu). A typed `\footnote{body}`
+  // carries real content, so its caller passes `pristine:false` to keep the
+  // click-away watcher from reaping a non-blank footnote. Defaults to `true`.
+  const pristine = payload.pristine !== false;
+  ctx.cardCreation.createFootnote({
+    existingFootnoteId: footnoteId,
+    pristine,
+    mode: "omni",
+  });
+  // Soft-route + focus the new card (mirrors the dispatcher's
+  // `cardPopKey("footnote", id)` focus key). Backlog #2: surface omni only
+  // when the footnotes side is collapsed/blank — never force-open Footnotes.
+  if (ctx.panelRouting) {
+    softRouteFootnoteToOmni(ctx.panelRouting);
+    ctx.panelRouting.focusCard(
+      buildFloatKey({ domain: "card", kind: "footnote", id: footnoteId }),
+    );
+  }
+}
+
 /** Build one delegating card row. Presentation (label / letter / icon /
  *  separator / destructive) from `CARD_ACTION_PRESENTATION` — the registry
  *  OWNS it as of CHIP 3; behavior forwarded via `cardRun`; applicability +
  *  scope mirrored from the dispatcher.
  *
- *  CITATION is special-cased (CHIP 4a-ii): it additionally exposes the
- *  slash + typed surfaces and routes through `citationRun` (which handles all
- *  four surfaces) instead of the grab/lightning-only `cardRun`. Its
- *  `slashName` + `inputRulePattern` rows let the coverage assertion reconcile
- *  the `\cite` slash command + the typed-LaTeX input rules against this row. */
+ *  CITATION (CHIP 4a-ii) and FOOTNOTE (CHIP 4b) are special-cased: each
+ *  additionally exposes the slash + typed surfaces and routes through its own
+ *  four-surface `run()` (`citationRun` / `footnoteRun`) instead of the
+ *  grab/lightning-only `cardRun`. Their `slashName` + `inputRulePattern` rows
+ *  let the coverage assertion reconcile the `\cite` / `\footnote` slash
+ *  commands + the typed-LaTeX input rules against these rows. */
 function cardRow(id: CardActionId): ActionSpec {
   const p = CARD_ACTION_PRESENTATION[id];
   const isCitation = id === "citation";
+  const isFootnote = id === "footnote";
+  const hasPmSurfaces = isCitation || isFootnote;
   return {
     id,
     label: p.label,
@@ -842,19 +941,24 @@ function cardRow(id: CardActionId): ActionSpec {
     separator: p.separator,
     destructive: p.destructive,
     category: "card",
-    surfaces: isCitation
+    surfaces: hasPmSurfaces
       ? { grab: true, lightning: true, slash: true, typed: true }
       : { grab: true, lightning: true },
-    // \cite — the slash command name (reconciled against VIRGIL_COMMAND_NAMES).
+    // The slash command name (reconciled against VIRGIL_COMMAND_NAMES):
+    // \cite → "cite", \footnote → "footnote".
     ...(isCitation ? { slashName: "cite" } : {}),
-    // The typed-LaTeX trigger. Two patterns exist (`\cite{key}` full +
-    // `\cite ` bare); we record CITE_RE_FULL as the canonical row pattern and
-    // note CITATION_INPUT_RULE_PATTERNS below for the bare form. Both live in
-    // `cite-commands` and drive `citation.ts`'s input rule.
+    ...(isFootnote ? { slashName: "footnote" } : {}),
+    // The typed-LaTeX trigger. For citation, two patterns exist (`\cite{key}`
+    // full + `\cite ` bare); we record CITE_RE_FULL as the canonical row
+    // pattern (CITATION_INPUT_RULE_PATTERNS below carries the bare form). For
+    // footnote, the single `\footnote{…}` rule (FOOTNOTE_INPUT_RULE_PATTERN).
+    // All live next to the input rules they drive so the four surfaces can
+    // never recognize a different vocabulary.
     ...(isCitation ? { inputRulePattern: CITE_RE_FULL } : {}),
+    ...(isFootnote ? { inputRulePattern: FOOTNOTE_INPUT_RULE_PATTERN } : {}),
     applies: (ctx) => cardApplies(id, ctx),
     resolveScope: (ctx) => cardResolveScope(id, ctx) ?? { from: 0, to: 0 },
-    run: isCitation ? citationRun : (ctx) => cardRun(id, ctx),
+    run: isCitation ? citationRun : isFootnote ? footnoteRun : (ctx) => cardRun(id, ctx),
   };
 }
 
@@ -870,6 +974,16 @@ export const CITATION_INPUT_RULE_PATTERNS: readonly RegExp[] = [
   CITE_RE_FULL,
   CITE_RE_BARE,
 ];
+
+/**
+ * The typed-LaTeX footnote trigger, re-exported here as the SSOT join between
+ * the registry and `footnote.ts`. The footnote row's `inputRulePattern` holds
+ * this same `\footnote{…}` regex; `footnote.ts`'s input rule imports it from
+ * `@/lib/footnote-commands` (the shared leaf) so the registry and the live
+ * input rule can never recognize a different footnote vocabulary. Unlike
+ * citation there is no bare form — a footnote has no partial-command path.
+ */
+export { FOOTNOTE_INPUT_RULE_PATTERN };
 
 /** The 11 card ids, in canonical MENU-DISPLAY order — derived from
  *  `CARD_ACTION_ORDER` (the insertion order of `CARD_ACTION_PRESENTATION`,
@@ -1000,14 +1114,14 @@ const SLASH_NAME_TO_ACTION_ID: Readonly<Record<string, ActionId>> = {
 const COVERED_CARD_IDS: readonly CardActionId[] = CARD_ACTION_IDS;
 
 /**
- * The card ids that, as of CHIP 4a-ii, ALSO own the PM-land surfaces
- * (slash + typed) — currently just `citation`. The other 10 card actions stay
- * grab/lightning-only until their dedicated chip (footnote is CHIP 4b). The
+ * The card ids that ALSO own the PM-land surfaces (slash + typed): `citation`
+ * (CHIP 4a-ii) and `footnote` (CHIP 4b). The other 9 card actions stay
+ * grab/lightning-only (they have no slash/typed surface to migrate). The
  * assertion uses this set to flip the slash/typed checks from "must be absent"
  * (premature) to "must be present + reconciled" for exactly these ids.
  */
 const CARD_IDS_WITH_PM_SURFACES: ReadonlySet<CardActionId> =
-  new Set<CardActionId>(["citation"]);
+  new Set<CardActionId>(["citation", "footnote"]);
 
 /**
  * DEV-ONLY coverage assertion — partitioned for the PHASED rollout.
