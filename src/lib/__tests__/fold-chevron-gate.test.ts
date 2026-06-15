@@ -1,25 +1,35 @@
 // @vitest-environment jsdom
 /**
- * #29a — per-heading fold-chevron subscriber keystroke-sanctity gate.
+ * #29 nit-3 — fold-chevron doc-wide resync keystroke-sanctity.
  *
- * Each heading NodeView registers its OWN `editor.on("transaction")` chevron
- * refresher (N headings = N subscribers). Before the fix it ran the chevron
- * refresh (plugin-state read + Set.has + classList.toggle) on EVERY
- * transaction — including a plain keystroke in an UNRELATED block — for every
- * heading in the doc. That global per-transaction work is what the gate kills.
+ * The doc-wide chevron resync (folding/unfolding a DIFFERENT section doesn't
+ * trigger this heading's NodeView `update()`) is now owned by a SINGLE shared
+ * plugin-view: `sectionFoldingPlugin().view()` (one pluginView per EditorView).
+ * It replaced the N per-heading `editor.on("transaction")` subscribers — N
+ * headings = N subscribers, ungated before #29a — that this file originally
+ * targeted. The new design bails O(1) on a plain keystroke by reference-
+ * comparing the `SectionFoldingState` (the apply reducer returns the SAME
+ * object on a structurally-null tx, a NEW object on a real fold change), so it
+ * only ever `querySelectorAll`s + repaints on an actual fold move.
  *
- * The legitimate, kept path is the NodeView's own `update(node)` — ProseMirror
- * fires it only when THAT heading node changes (e.g. typing in its title), so
- * its `refreshFoldBtn()` is O(1) per affected node, not doc-size-proportional.
- * These tests isolate the GLOBAL subscriber: they fold one heading, then type
- * in a paragraph under a DIFFERENT heading, and assert the folded heading's
- * chevron — whose node never updated — does ZERO DOM work. A real fold toggle
- * DOES refresh it, proving the gate didn't break behavior.
+ * The legitimate, kept per-node path is the NodeView's own `update(node)` —
+ * ProseMirror fires it only when THAT heading node changes (e.g. typing in its
+ * title), so its `refreshFoldBtn()` is O(1) per affected node, not doc-size-
+ * proportional.
  *
- * Two layers tested:
- *   1. `transactionTouchesFold` predicate — false for a non-fold tx.
- *   2. The mounted chevron's `classList.toggle` (its only fold-state DOM write)
- *      via a spy on a distant heading's button.
+ * These tests assert the OBSERVABLE DOM effect (a chevron's `classList.toggle`,
+ * its only fold-state DOM write) rather than the deleted subscriber's identity:
+ * folding one heading then typing under a DIFFERENT heading must leave every
+ * chevron's `classList.toggle` untouched (the shared view's reference bail),
+ * while a real fold toggle DOES repaint, proving the resync still works.
+ *
+ * Layers tested:
+ *   1. `transactionTouchesFold` predicate — false for a non-fold tx. (The
+ *      predicate survives: `useEditorUIState.ts`'s fold persister still gates
+ *      on it, even though the chevron resync no longer does.)
+ *   2. The mounted chevron's `classList.toggle` via a spy on its button —
+ *      driven now by the shared plugin-view (and the per-node `update()`),
+ *      not a per-heading transaction subscriber.
  */
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
@@ -48,6 +58,7 @@ import { Editor } from "@tiptap/core";
 import StarterKit from "@tiptap/starter-kit";
 import { TextSelection } from "@tiptap/pm/state";
 import { DocStructureObserver } from "@/lib/tiptap/doc-structure";
+import { UuidAttrDecorator } from "@/lib/tiptap/uuid-attr";
 import {
   createParagraphWithTitle,
   createHeadingWithLabel,
@@ -59,8 +70,11 @@ import {
 
 /**
  * Two sections: heading A + its paragraph, then heading B + its paragraph.
- * Folding A and typing in B's paragraph exercises the global subscriber path
- * (A's node never changes) without touching A's `update()`.
+ * Folding A and typing in B's paragraph exercises the shared plugin-view's
+ * doc-wide resync path (A's node never changes) without touching A's
+ * `update()`. `createHeadingWithLabel({ surface: "main" })` installs
+ * `sectionFoldingPlugin()` (its `addProseMirrorPlugins`), so the editor's
+ * `EditorView` runs the shared `view()` under test.
  */
 function buildTwoSectionEditor() {
   const el = document.createElement("div");
@@ -79,6 +93,11 @@ function buildTwoSectionEditor() {
         dropcursor: false,
       }),
       DocStructureObserver,
+      // Stamps `data-uuid` on each heading wrapper, exactly as the real
+      // editor does — the shared plugin-view's resync resolves a chevron's
+      // section via `closest('[data-uuid]')`, so without this the resync
+      // would see every chevron as unfolded.
+      UuidAttrDecorator,
       createParagraphWithTitle(),
       createHeadingWithLabel({}, { surface: "main" }),
     ],
@@ -127,6 +146,14 @@ function chevrons(el: HTMLElement): HTMLButtonElement[] {
   return [...el.querySelectorAll<HTMLButtonElement>(".heading-fold-chevron")];
 }
 
+/** The fold-chevron whose enclosing heading carries `data-uuid="<uuid>"`. */
+function chevronForUuid(el: HTMLElement, uuid: string): HTMLButtonElement {
+  const wrapper = el.querySelector<HTMLElement>(`[data-uuid="${uuid}"]`);
+  const btn = wrapper?.querySelector<HTMLButtonElement>(".heading-fold-chevron");
+  if (!btn) throw new Error(`no chevron for uuid ${uuid}`);
+  return btn;
+}
+
 /** Position inside the LAST paragraph's text ("Body B"), an unrelated block. */
 function posInLastParagraph(editor: Editor): number {
   // doc.content.size - 1 sits inside the trailing paragraph's text.
@@ -155,7 +182,7 @@ describe("#29a transactionTouchesFold predicate", () => {
   });
 });
 
-describe("#29a fold-chevron: global subscriber does ZERO work on unrelated typing", () => {
+describe("#29 nit-3 fold-chevron: shared plugin-view does ZERO work on unrelated typing", () => {
   let editor: Editor;
   let el: HTMLElement;
 
@@ -211,6 +238,111 @@ describe("#29a fold-chevron: global subscriber does ZERO work on unrelated typin
       s.mock.calls.some((c) => c[0] === "is-folded" && c[1] === true),
     );
     expect(anyFolded).toBe(true);
+    editor.destroy();
+  });
+
+  it("a fold toggle paints the toggled heading's OWN chevron via the shared view", () => {
+    const aBtn = chevronForUuid(el, "h-A");
+    expect(aBtn.classList.contains("is-folded")).toBe(false);
+    editor.view.dispatch(
+      editor.state.tr.setMeta(sectionFoldingPluginKey, {
+        action: "toggle",
+        uuid: "h-A",
+      }),
+    );
+    // The shared plugin-view resolved h-A via closest('[data-uuid]') and
+    // flipped its chevron — proving the resync keys off live DOM uuid, not
+    // the deleted per-node subscriber.
+    expect(aBtn.classList.contains("is-folded")).toBe(true);
+    editor.destroy();
+  });
+
+  it("deleting an UNRELATED heading never repaints a folded survivor's chevron", () => {
+    // Fold A, then prune heading B (a meta-less docChanged tx). A's folded
+    // boolean is invariant under B's removal, so the apply reducer returns the
+    // SAME SectionFoldingState object → the shared view's reference bail fires
+    // and never touches A's chevron. NOTE: A's NodeView update() also does not
+    // fire on EITHER tx (folding A decorates A's SIBLING, not A's own node; the
+    // prune reuses A's view via node-match without an update()), so this asserts
+    // the shared-view reference bail — NOT the per-node live-class idempotency
+    // (the next test covers that). Survivors stay put on a meta-less prune.
+    editor.view.dispatch(
+      editor.state.tr.setMeta(sectionFoldingPluginKey, {
+        action: "toggle",
+        uuid: "h-A",
+      }),
+    );
+    const aSpy = spyChevron(chevronForUuid(el, "h-A"));
+
+    // Find heading B's ("Beta") top-level range and delete just that node.
+    let bFrom = -1;
+    let bTo = -1;
+    let offset = 0;
+    editor.state.doc.forEach((node) => {
+      if (node.type.name === "heading" && node.attrs.uuid === "h-B") {
+        bFrom = offset;
+        bTo = offset + node.nodeSize;
+      }
+      offset += node.nodeSize;
+    });
+    expect(bFrom).toBeGreaterThanOrEqual(0);
+    const delTr = editor.state.tr.delete(bFrom, bTo);
+    expect(delTr.getMeta(sectionFoldingPluginKey)).toBeUndefined(); // meta-less
+    expect(delTr.docChanged).toBe(true);
+    editor.view.dispatch(delTr);
+
+    expect(aSpy).not.toHaveBeenCalled();
+    // A is still folded after the prune (its boolean never changed).
+    expect(chevronForUuid(el, "h-A").classList.contains("is-folded")).toBe(true);
+    editor.destroy();
+  });
+
+  it("folding then editing a heading's OWN text does not redundantly repaint its chevron (live-class idempotency)", () => {
+    // The deviation this test discriminates (#29 nit-3): refreshFoldBtn keys its
+    // idempotency off the LIVE `is-folded` class — the SSOT the shared view
+    // writes — NOT a private `lastFoldedFlag` mirror. Folding A paints A's
+    // chevron via the shared view WITHOUT firing A's NodeView update(), so a
+    // private mirror would be left stale (false) after the fold. Editing A's OWN
+    // heading text DOES fire A's update() → refreshFoldBtn(): reading the live
+    // class (already is-folded) it does nothing, whereas a stale mirror
+    // (false !== folded true) would fire a redundant toggle. Verified RED
+    // against the lastFoldedFlag design; GREEN against the shipped live-class one.
+    editor.view.dispatch(
+      editor.state.tr.setMeta(sectionFoldingPluginKey, {
+        action: "toggle",
+        uuid: "h-A",
+      }),
+    );
+    const aBtn = chevronForUuid(el, "h-A");
+    expect(aBtn.classList.contains("is-folded")).toBe(true);
+    const aSpy = spyChevron(aBtn);
+
+    // Edit heading A's own text ("Alpha") → fires A's NodeView update().
+    editor.view.dispatch(editor.state.tr.insertText("!", 3));
+    // The edit landed inside heading A (proves A's node changed → update() ran).
+    expect(editor.state.doc.firstChild?.textContent).toContain("!");
+    // The NodeView reused the SAME chevron button (update(), not recreate) —
+    // otherwise aSpy would trivially pass against a detached node.
+    expect(chevronForUuid(el, "h-A")).toBe(aBtn);
+    // Live-class idempotency: no redundant toggle, chevron still folded.
+    expect(aSpy).not.toHaveBeenCalled();
+    expect(aBtn.classList.contains("is-folded")).toBe(true);
+    editor.destroy();
+  });
+
+  it("a setFolded load-restore tx paints the restored heading via the shared view", () => {
+    // Guards the timing case where NodeViews mounted UNFOLDED before a
+    // restore-from-prefs setFolded meta arrives: the shared plugin-view must
+    // pick up the new state and paint h-A's chevron.
+    const aBtn = chevronForUuid(el, "h-A");
+    expect(aBtn.classList.contains("is-folded")).toBe(false);
+    editor.view.dispatch(
+      editor.state.tr.setMeta(sectionFoldingPluginKey, {
+        action: "setFolded",
+        uuids: ["h-A"],
+      }),
+    );
+    expect(aBtn.classList.contains("is-folded")).toBe(true);
     editor.destroy();
   });
 });

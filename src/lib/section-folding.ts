@@ -1,5 +1,5 @@
 import { Plugin, PluginKey, type EditorState, type Transaction } from "@tiptap/pm/state";
-import { Decoration, DecorationSet } from "@tiptap/pm/view";
+import { Decoration, DecorationSet, type EditorView } from "@tiptap/pm/view";
 import type { Node as PMNode } from "@tiptap/pm/model";
 import { readPendingDiff } from "@/lib/tiptap/doc-structure";
 
@@ -17,12 +17,13 @@ export const sectionFoldingPluginKey = new PluginKey<SectionFoldingState>(
  * (toggle / collapseAll / expandAll / setFolded) or (2) a docChanged tx (the
  * apply reducer prunes dead fold UUIDs when a folded heading is deleted).
  *
- * Every `editor.on("transaction")` subscriber that mirrors fold state — the
- * per-heading fold-chevron refresher in `editor-extensions.ts` (N headings = N
- * subscribers) and the section-fold persister in `useEditorUIState.ts` — gates
- * on THIS so a structurally-null keystroke (typing inside a paragraph: no fold
- * meta, no docChanged) does ZERO fold work. Single source so the two gates
- * cannot drift.
+ * The section-fold persister in `useEditorUIState.ts` (an
+ * `editor.on("transaction")` subscriber) gates on THIS so a structurally-null
+ * keystroke (typing inside a paragraph: no fold meta, no docChanged) does ZERO
+ * fold work. (The fold-chevron doc-wide resync no longer rides a transaction
+ * subscriber at all — it moved to the shared plugin `view()` below, #29 nit-3 —
+ * which uses its own O(1) `SectionFoldingState` reference bail rather than this
+ * predicate.)
  */
 export function transactionTouchesFold(tr: Transaction): boolean {
   return tr.getMeta(sectionFoldingPluginKey) !== undefined || tr.docChanged;
@@ -205,6 +206,55 @@ export function sectionFoldingPlugin(): Plugin<SectionFoldingState> {
         });
         return DecorationSet.create(state.doc, decos);
       },
+    },
+    // Shared fold-chevron refresher (#29 nit-3). This single plugin-view is
+    // the ONE replacement for the deleted N per-heading `on("transaction")`
+    // subscribers in editor-extensions.ts — each heading NodeView used to
+    // register its own subscriber (N headings = N subscribers), which is the
+    // keystroke-sanctity nit this fix closes. ProseMirror instantiates one
+    // pluginView per EditorView (main + mirror), so each pane's chevrons get
+    // resynced against their own DOM scope.
+    //
+    // Keystroke fast-path: update() does an O(1) reference-compare of the
+    // SectionFoldingState (old vs new). The apply reducer above returns the
+    // SAME object on a structurally-null tx (the `return value` no-op branches)
+    // and a NEW object on every real change (toggle/collapseAll/expandAll/
+    // setFolded/prune-with-removal), so a plain keystroke bails before any
+    // querySelectorAll.
+    //
+    // DOM-timing assumption: `data-uuid` (stamped by the UuidAttrDecorator,
+    // src/lib/tiptap/uuid-attr.ts) must be live on the heading wrapper before
+    // resync reads it. It is: a heading mints its uuid (ensureAnchorUuid) on a
+    // SEPARATE earlier transaction than the fold-toggle tx, so by the time a
+    // fold meta arrives the uuid attr is already on the DOM.
+    view(editorView: EditorView) {
+      const resync = (folded: Set<string>) => {
+        const chevrons =
+          editorView.dom.querySelectorAll<HTMLElement>(".heading-fold-chevron");
+        chevrons.forEach((btn) => {
+          const uuid =
+            btn.closest("[data-uuid]")?.getAttribute("data-uuid") ?? null;
+          const isFolded = uuid ? folded.has(uuid) : false;
+          if (btn.classList.contains("is-folded") !== isFolded) {
+            btn.classList.toggle("is-folded", isFolded);
+            btn.title = isFolded ? "Unfold section" : "Fold section";
+          }
+        });
+      };
+      // Load-time paint: the apply reducer doesn't fire a fold change on doc
+      // load, so paint the initial state once here (covers restore-from-prefs
+      // where NodeViews mounted unfolded before a setFolded meta arrives).
+      resync(getSectionFoldingState(editorView.state).folded);
+      return {
+        update(view: EditorView, prevState: EditorState) {
+          const next = sectionFoldingPluginKey.getState(view.state);
+          const prev = sectionFoldingPluginKey.getState(prevState);
+          // O(1) reference bail — the keystroke fast-path. `next === prev`
+          // whenever the apply reducer returned the same object (no fold move).
+          if (!next || next === prev) return;
+          resync(next.folded);
+        },
+      };
     },
   });
 }
