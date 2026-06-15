@@ -1156,3 +1156,38 @@ line). The two pills then share a height.
   bin's hardcoded stack offset `topPx={… ? 34 : 0}`
   ([OmniViewPanel.tsx:540](src/panels/Omni/OmniViewPanel.tsx:540)) to match the new
   (shorter pill + 4px top gap) bottom edge — otherwise the two bins overlap or gap.
+
+---
+
+## 42. Collapsed borrowed-body cards (footnote / archive / example) clip the 2nd preview line
+
+**Reported:** 2026-06-15 · **Status:** open · **Area:** ui-chrome / card chrome
+
+**Reported behavior** — a collapsed card should show its optional title + **two
+full lines** of body text. Most kinds are fine, but **footnote and archive** (and
+by the same mechanism, **example**) clip the **2nd** line mid-glyph — only its top
+half shows.
+
+**Root cause — a line-height mismatch between the clamp ceiling and the borrowed
+renderer.** The collapsed body is clamped by `compressedBodyStyle(n)`
+([panel-primitives.tsx:150](src/components/panel-primitives.tsx:150)), which sets
+`lineHeight: 1.4` **and a hard ceiling** `maxHeight: calc(1.4em * n)`
+([:167](src/components/panel-primitives.tsx:167)) — i.e. **2.8em** for 2 lines,
+computed assuming line-height 1.4. But the **borrowed-class** kinds
+(`CARD_REGISTRY[kind].bodyClass === "borrowed"` → footnote / archive / example,
+`useBorrowedCompressed` at [:854](src/components/panel-primitives.tsx:854)) render
+their collapsed body through **`BorrowedMainText`** (real prose with inline atoms)
+at the editor/footnote body line-height ([:1038–1045](src/components/panel-primitives.tsx:1038)).
+That line-height is **> 1.4**, so two rendered lines occupy **more than 2.8em** and
+the ceiling clips line 2. Non-borrowed kinds render the plain `compressedSummary`
+string directly at line-height 1.4, so two lines == exactly 2.8em and fit — hence
+"good for most."
+
+**Fix — align the ceiling with the actual rendered line-height.** When
+`useBorrowedCompressed`, call `compressedBodyStyle(compressedLines, { lineHeight:
+<the borrowed body's line-height> })` (the `compressedBody` from
+`usePanelBodyStyle` at [:850](src/components/panel-primitives.tsx:850) carries it),
+so the `maxHeight` ceiling matches the renderer — OR clamp the `BorrowedMainText`
+itself to `compressedLines` using its own line-height rather than the 1.4-based
+parent ceiling. Verify footnote / archive / example show two **full** lines and the
+plain-summary kinds don't regress (they're already correct at 1.4).
