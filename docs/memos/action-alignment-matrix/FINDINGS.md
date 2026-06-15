@@ -121,7 +121,18 @@ Three worktree chips, all merged to `origin/main` (`bd5252c` / `c3515a3` / `a2f0
 - **highlight empty-break → ALREADY GUARDED** (`c3515a3`, comment only): two independent guards already prevent it (`if (!text) break;` + `createLinkedAnchor` returns null on a zero-width range). Whole-block-wrap on a non-empty block is intentional (documented).
 - **#5 empty-cite → FIXED** (`a2f08a9`): `parseCiteCommand("\cite{}")` now returns `keys:[]` not `[""]`, so `addCitation`'s `keys.length===0` pristine branch fires.
 
-## F4 — DEFERRED (product-design question) — `todo` range-anchor symmetry
+## F4 — RESOLVED + SHIPPED (`5257b1a`) — `todo` range-anchor symmetry
+
+> **Outcome:** user chose to make todos range-anchored. Shipped via `fa7b898` (the cross-cutting
+> feature: "todo" → `LinkedAnchorKind` SSOT + `createTodo` anchor opt + dispatch range-anchor +
+> **todos in `useLinkedAnchorReconciler`'s alive-set** + legacy-token wiring) and `5257b1a` (the
+> reload-restore fix below). A pre-ship **adversarial verification Workflow** (5 refuters) caught a
+> regression the 1362-green suite missed: the `applyLinkedAnchors` restore loop omitted todos →
+> the range mark wasn't re-stamped on **reload** (tint vanished, jump-to degraded to paragraph).
+> `5257b1a` added todos to the restore loop + a load-bearing reload round-trip test. Mode-A
+> (cursor/block) todos unchanged.
+
+Original analysis (why it needed coordinated changes, not a naive fix):
 
 The §7 "todo selection-range loss" nit is **structurally deliberate, not a simple bug.** Chip B
 confirmed: `createTodo` has no Mode-B text-anchor path, AND `useLinkedAnchorReconciler`
