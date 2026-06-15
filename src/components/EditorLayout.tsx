@@ -1942,16 +1942,21 @@ export default function EditorLayout() {
   // ── Focus mode ──────────────────────────────────────────────────
   // Focus view confines the visible band of the editor: when focus is
   // active, top-level children outside [startBlockIndex, endBlockIndex]
-  // are hidden via `display: none`. The active/locked distinction lives
-  // only in the Outline panel — for the editor itself, active === hide.
+  // are hidden. The active/locked distinction lives only in the Outline
+  // panel — for the editor itself, active === hide.
   //
-  // Mechanism: an injected <style> tag with nth-child selectors. We
-  // can't stamp a data attribute on the children themselves because
-  // ProseMirror's DOM reconciliation strips classes/attrs from its
-  // managed nodes. A <style> tag is outside the editor and immune.
+  // Mechanism: a ProseMirror node decoration. The `focusViewPlugin`
+  // stamps `.focus-hidden` on each out-of-band top-level block — the
+  // twin of section-folding's `.section-folded` — owned by a
+  // `DecorationSet` in editor state, not an injected <style> tag. The
+  // band is fed to the plugin by the effect just below; see that
+  // effect's comment and src/lib/focus-view.ts for the full account.
   //
-  // The stylesheet is rebuilt only when the focus range, the lock state,
-  // or the top-level child count change — not on every transaction.
+  // The two refs below serve later consumers, not the hide itself:
+  // `focusStateRef` mirrors the live focus state for the breadcrumb
+  // recompute (which skips hidden blocks whose DOM reports bogus
+  // positions), and `prevLockedRef` arms the one-shot cursor coercion on
+  // the false→true lock transition.
   const focusStateRef = useRef(focusMode.state);
   focusStateRef.current = focusMode.state;
   const prevLockedRef = useRef(false);
