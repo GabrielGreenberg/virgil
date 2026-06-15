@@ -186,7 +186,19 @@ export function useDragHandleActions(deps: DragHandleActionsDeps) {
       // headings; lifecycle actions (D/A/⌫) work on the whole section.
       // Non-heading kinds yield the same range either way. See C9/C11.
       const resolved = resolveRefRange(ed, ref, actionClass(action));
-      if (!resolved) return;
+      if (!resolved) {
+        // Stale/unresolvable ref. A destructive lifecycle action (archive /
+        // delete / duplicate) clicked on a ghost handle must fail LOUD —
+        // this is the actual landing point for the "the block was already
+        // removed" case (the per-case `outerRangeFor` guards below only fire
+        // on the rarer divergence where the ref resolves here but not there).
+        // Annotation actions still bail silently: nothing is at stake. See
+        // post-refactor followup B1 + Nit D.
+        if (LIFECYCLE_ACTIONS.has(action)) {
+          notifyStaleRef(lifecycleLabel(action), ref, notify);
+        }
+        return;
+      }
 
       // Plant the main editor's selection so anchor / footnote / archive
       // paths operate on the right region. Atom refs plant a
@@ -309,9 +321,18 @@ export function useDragHandleActions(deps: DragHandleActionsDeps) {
           break;
         }
         case "highlight": {
-          // Highlights always anchor to a range. For block refs the
+          // Highlights always anchor to a range. For a NON-empty block ref the
           // selection spans the whole node's content, so the linkedAnchor
-          // wraps the entire passage.
+          // wraps the ENTIRE passage — this whole-block-wrap is INTENTIONAL
+          // (highlighting a block = highlight its text; to highlight only part,
+          // make a partial selection first). Do not "fix" it to a sub-range.
+          //
+          // Empty-block safety (Nit E): a truly-empty block has empty `text`,
+          // so the `!text` guard makes this a CLEAN no-op — no broken/empty
+          // anchor is ever minted. As a second layer, `createLinkedAnchor`
+          // itself returns null on a zero-width selection (`to <= from`) and
+          // the `!record` guard below bails on that too. So both an empty
+          // paragraph AND any zero-content range short-circuit cleanly here.
           if (!text) break;
           const record = createLinkedAnchor(ed, "highlight", undefined, undefined, {
             tintColor: "#fbbf24",
@@ -415,10 +436,7 @@ export function useDragHandleActions(deps: DragHandleActionsDeps) {
           //      a non-text-bearing wrapper).
           const outer = outerRangeFor(ed, ref);
           if (!outer || outer.to <= outer.from) {
-            console.warn("[Duplicate] stale ref — could not resolve outer range", ref);
-            notify({
-              message: "Could not find the source. Close the menu and try again.",
-            });
+            notifyStaleRef("Duplicate", ref, notify);
             break;
           }
           const slice = ed.state.doc.slice(outer.from, outer.to);
@@ -504,7 +522,13 @@ export function useDragHandleActions(deps: DragHandleActionsDeps) {
           )
             break;
           const outer = outerRangeFor(ed, ref);
-          if (!outer || outer.to <= outer.from) break;
+          // Stale/unresolvable ref (the block was already removed) — fail
+          // loud like Duplicate (B1), not the old silent `break;` that left
+          // the user clicking Archive on a ghost handle with zero feedback.
+          if (!outer || outer.to <= outer.from) {
+            notifyStaleRef("Archive", ref, notify);
+            break;
+          }
           // Same cascade as Delete — if the wrapper would be empty
           // after the deletion, swallow it too. See C6.
           const extended = expandCascadeRange(ed.state.doc, outer);
@@ -587,7 +611,13 @@ export function useDragHandleActions(deps: DragHandleActionsDeps) {
           // linkedAnchor marks) and calls each kind's lifecycle.delete
           // so the deletion doesn't leak orphan sidecar entries.
           const outer = outerRangeFor(ed, ref);
-          if (!outer || outer.to <= outer.from) break;
+          // Stale/unresolvable ref — fail loud like Duplicate (B1) rather
+          // than the old silent `break;`. Without this, Delete on a ghost
+          // handle no-op'd with no user feedback.
+          if (!outer || outer.to <= outer.from) {
+            notifyStaleRef("Delete", ref, notify);
+            break;
+          }
           // C6: if removing this child empties a structural wrapper
           // (last listItem in a list, last exampleItem in an
           // exampleItemList / exampleBlock), extend the range to
@@ -765,6 +795,29 @@ function confirmSelectionDestructive(
     message: `${verb} this ${wordCount}-word passage.`,
     confirmLabel: `${verb} passage`,
   };
+}
+
+/** Shared fail-loud feedback for the lifecycle actions when a ref can't be
+ *  resolved to an outer range — the block was already removed (stale uuid /
+ *  ghost handle). Duplicate established this convention (post-refactor
+ *  followup B1: console.warn + a single-button notify); Archive and Delete
+ *  reuse it so all three lifecycle actions surface the SAME message instead
+ *  of one failing loud and two returning silently. `label` is the action
+ *  name for the console tag. */
+function notifyStaleRef(
+  label: string,
+  ref: DragHandleRef,
+  notify: DragHandleActionsDeps["notify"],
+): void {
+  console.warn(`[${label}] stale ref — could not resolve outer range`, ref);
+  notify({
+    message: "Could not find the source. Close the menu and try again.",
+  });
+}
+
+/** Capitalized console tag for a lifecycle action ("archive" → "Archive"). */
+function lifecycleLabel(action: DragHandleAction): string {
+  return action.charAt(0).toUpperCase() + action.slice(1);
 }
 
 /**
