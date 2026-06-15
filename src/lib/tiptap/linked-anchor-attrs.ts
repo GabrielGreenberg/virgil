@@ -19,11 +19,20 @@
  * here, so the anchor renders with its per-kind colour the moment it becomes
  * an annotation (the sentinel never sticks once a card exists).
  *
- * Non-transient marks (every existing anchor) render byte-identically to the
- * previous inline implementation: `data-link-card` is always emitted, with
- * the explicit `linkCard` if present else a prefix derived from the legacy
- * `kind`.
+ * Non-transient marks always emit `data-link-card`: the explicit `linkCard`
+ * if present, else a per-kind token derived from the legacy `kind` via the
+ * SSOT `dataLinkCardTokenForLegacyMarkKind` (legacy-token-crosswalk). That
+ * fallback is what a RESTORED mark relies on — `applyLinkedAnchors` re-stamps
+ * with an empty `linkCard` (no cardId), so the kind→token derivation is the
+ * only thing giving the reload-restored span its per-kind tint. It covers the
+ * full `LinkedAnchorKind` set (note, highlight, todo, revision, the two cutter
+ * kinds, the two report kinds); note/highlight/cut/revision are byte-identical
+ * to the prior hand-rolled switch, while todo, the cutter kinds and the report
+ * kinds — previously fell through to an empty token, dropping their reload
+ * tint — now paint correctly.
  */
+
+import { dataLinkCardTokenForLegacyMarkKind } from "@/cards/legacy-token-crosswalk";
 
 export interface LinkedAnchorAttrsInput {
   anchorId?: unknown;
@@ -51,18 +60,13 @@ export function linkedAnchorRenderAttrs(
 
   let linkCard = explicitCard;
   if (!transient && !linkCard) {
+    // Derive the per-kind token from the SSOT crosswalk (note, highlight, todo,
+    // revision→comment, the cutter and report kinds, plus the legacy `cut`
+    // alias) so the restored mark's `data-link-card` can never drift from the
+    // CSS selectors. Unrecognised kind → null → empty token (amber), as before.
     const legacyKind = typeof attrs.kind === "string" ? attrs.kind : "";
-    const cardKind =
-      legacyKind === "revision"
-        ? "comment"
-        : legacyKind === "note"
-          ? "note"
-          : legacyKind === "highlight"
-            ? "highlight"
-            : legacyKind === "cut"
-              ? "cut"
-              : "";
-    if (cardKind) linkCard = `${cardKind}:`;
+    const token = dataLinkCardTokenForLegacyMarkKind(legacyKind);
+    if (token) linkCard = `${token}:`;
   }
 
   const out: Record<string, string> = {

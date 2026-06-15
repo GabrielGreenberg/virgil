@@ -147,6 +147,54 @@ export function legacyDataKindForCardKind(kind: CardKind): string | null {
   return entry.legacyDataKind;
 }
 
+/** Legacy `linkedAnchor` mark `kind` attr → spine `CardKind`. The mark's `kind`
+ *  is the LEGACY mark-attr namespace (note, highlight, todo, revision, the two
+ *  cutter kinds, the two report kinds), NOT a spine kind — only `revision`
+ *  folds (→ `revision-comment`); every other live value equals its spine kind.
+ *  The dead-but-persisted `cut` alias is handled separately in
+ *  `dataLinkCardTokenForLegacyMarkKind`. */
+const LEGACY_MARK_KIND_TO_CARD_KIND: Record<string, CardKind> = {
+  note: "note",
+  highlight: "highlight",
+  todo: "todo",
+  revision: "revision-comment",
+  "cutter-comment": "cutter-comment",
+  "cutter-suggestion": "cutter-suggestion",
+  report: "report",
+  "report-request": "report-request",
+};
+
+/**
+ * The `data-link-card` token a `linkedAnchor` mark falls back to when it carries
+ * NO explicit `linkCard` — i.e. a mark re-stamped by the once-per-doc
+ * `applyLinkedAnchors` → `reanchorByText` RESTORE pass, which passes no cardId
+ * (so `linkCard` is `""`). The render layer (`linkedAnchorRenderAttrs`) appends
+ * `":"` to build the `[data-link-card^="<token>:"]` prefix the per-kind CSS tint
+ * rules read.
+ *
+ * SSOT: every live kind's token comes from `LEGACY_TOKEN_CROSSWALK`, so it can
+ * never drift from the CSS selectors. The hand-rolled switch this replaced
+ * (in `linked-anchor-attrs.ts`) covered only note/highlight/cut/revision — so a
+ * restored `todo` / `cutter-comment` / `cutter-suggestion` / `report` mark fell
+ * through to an EMPTY token and its Mode-B range tint silently vanished on
+ * document reload (jump-to/range still recovered; only the paint was lost).
+ *
+ * Returns `null` for the `transient` sentinel (the cardless plain-grab handle —
+ * no tint) and any unrecognised kind, so the caller emits an empty token.
+ *
+ * The legacy `cut` alias — dead in live code but still present on older
+ * rich-content marks (see `normalize-rich-content-marks`) — is preserved
+ * byte-identically as `"cut"`; its CSS rule resolves to the same red accent as
+ * `cutter-comment`. (No spine kind carries the `legacyDataKind` `"cut"`, so it
+ * cannot come from the crosswalk.)
+ */
+export function dataLinkCardTokenForLegacyMarkKind(kind: string): string | null {
+  if (kind === "cut") return "cut";
+  const cardKind = LEGACY_MARK_KIND_TO_CARD_KIND[kind];
+  if (!cardKind) return null;
+  return legacyDataKindForCardKind(cardKind);
+}
+
 if (process.env.NODE_ENV !== "production") {
   // R-C dev pin: the two divergent mappings the CSS contract hinges on. If a
   // future edit changes either, the on-disk/CSS tokens drift silently — make

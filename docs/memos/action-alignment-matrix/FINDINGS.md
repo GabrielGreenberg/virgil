@@ -132,6 +132,19 @@ Three worktree chips, all merged to `origin/main` (`bd5252c` / `c3515a3` / `a2f0
 > `5257b1a` added todos to the restore loop + a load-bearing reload round-trip test. Mode-A
 > (cursor/block) todos unchanged.
 
+> **F4-residual — FIXED (follow-up, render-attr token gap).** `5257b1a` re-stamped the reload
+> mark (restoring jump-to + the range) but the **tint still did not paint**: `applyLinkedAnchors`
+> → `reanchorByText` re-stamps with an *empty* `linkCard` (no cardId), so the rendered
+> `data-link-card` is derived by `linkedAnchorRenderAttrs`' kind→token fallback — and that
+> hand-rolled switch covered only `note/highlight/cut/revision`, so a restored `todo` (also
+> `cutter-*`, `report*`) fell through to an **empty token** → `[data-link-card^="todo:"]` never
+> matched → no Mode-B tint. The `5257b1a` reload tests asserted mark **kind**, not the rendered
+> token, so they passed while the tint stayed broken. Fix: routed the fallback through the SSOT
+> `dataLinkCardTokenForLegacyMarkKind` in `legacy-token-crosswalk.ts` (eliminating the analogous
+> `cutter-*`/`report*` gaps), + a `linked-anchor-attrs` per-kind token test and a render-attr
+> assertion on the reload round-trip. Verified live: a restored `kind:"todo"` mark renders
+> `data-link-card="todo:"` and resolves `--link-anchor-color: #44403c` (the todo accent).
+
 Original analysis (why it needed coordinated changes, not a naive fix):
 
 The §7 "todo selection-range loss" nit is **structurally deliberate, not a simple bug.** Chip B

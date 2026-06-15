@@ -63,6 +63,7 @@ import { useTodos } from "@/hooks/useTodos";
 import { useLinkedAnchorReconciler } from "@/links/_shared/useLinkedAnchorReconciler";
 import { getTextAnchor, reanchorByText } from "@/links/links";
 import type { LinkedAnchorKind } from "@/links/links";
+import { linkedAnchorRenderAttrs } from "@/lib/tiptap/linked-anchor-attrs";
 
 // ---------------------------------------------------------------------------
 // Real editor stack (mirrors dispatch-nits.test.tsx)
@@ -420,6 +421,23 @@ describe("todo Mode-B — reload restore via applyLinkedAnchors", () => {
     // The range tint is back, stamped with kind "todo".
     expect(countLinkedAnchors(editor2)).toBe(1);
     expect(linkedAnchorKinds(editor2)).toEqual(["todo"]);
+
+    // …and it actually PAINTS: reanchorByText re-stamps with an empty linkCard
+    // (no cardId on the restore path), so the per-kind tint depends entirely on
+    // the kind→token fallback in linkedAnchorRenderAttrs deriving data-link-card
+    // = "todo:" for the `[data-link-card^="todo:"]` CSS rule. Asserting the mark
+    // kind alone (above) is NOT enough — the prior fallback emitted an empty
+    // token for `todo`, so the mark existed but the span stayed untinted.
+    let restoredAttrs: Record<string, unknown> | null = null;
+    editor2.state.doc.descendants((node) => {
+      if (!node.isText) return true;
+      for (const m of node.marks) {
+        if (m.type.name === "linkedAnchor") restoredAttrs = m.attrs as Record<string, unknown>;
+      }
+      return true;
+    });
+    expect(restoredAttrs).toBeTruthy();
+    expect(linkedAnchorRenderAttrs(restoredAttrs!)["data-link-card"]).toBe("todo:");
 
     // The mark covers exactly the persisted snapshot text — not the whole
     // paragraph (the degraded-to-paragraph failure mode).
