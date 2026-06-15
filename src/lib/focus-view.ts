@@ -24,10 +24,17 @@
  * Keystroke sanctity: the plugin's `apply` carries the decoration set forward
  * with `DecorationSet.map(tr.mapping)` on a plain keystroke (the explicit
  * departure from section-folding, which rebuilds in `decorations()` on every
- * call). It REBUILDS the set only on a focus-meta or a real block
- * add/remove/reorder (read from the DocStructure diff). `props.decorations`
- * returns the cached set — no doc walk. A structurally-null keystroke does no
- * band work at all.
+ * call). It REBUILDS the set only when a transaction could have changed which
+ * blocks are hidden or REPLACED a top-level node (which drops its node
+ * decoration under `.map()`). `props.decorations` returns the cached set — no
+ * doc walk. A plain in-block keystroke does no band work beyond an O(set-size)
+ * position remap.
+ *
+ * Note on rebuild detection: this plugin is registered in the heading
+ * extension, which runs BEFORE `DocStructureObserver`, so `readPendingDiff` is
+ * not yet populated in this plugin's `apply` (same constraint section-folding
+ * lives with). We therefore discriminate map-vs-rebuild from the transaction's
+ * STEPS directly (O(edit-size)), not from the structure diff.
  */
 
 import {
@@ -38,7 +45,14 @@ import {
 } from "@tiptap/pm/state";
 import { Decoration, DecorationSet } from "@tiptap/pm/view";
 import type { Node as PMNode } from "@tiptap/pm/model";
-import { readPendingDiff } from "@/lib/tiptap/doc-structure";
+import {
+  AddMarkStep,
+  AddNodeMarkStep,
+  AttrStep,
+  RemoveMarkStep,
+  RemoveNodeMarkStep,
+  ReplaceStep,
+} from "@tiptap/pm/transform";
 
 // ---------------------------------------------------------------------------
 // The band.
@@ -189,11 +203,14 @@ export function getFocusBand(state: EditorState): FocusBand {
 }
 
 // Dev-only rebuild counter — proves keystroke sanctity (flat on plain typing,
-// bumps on a focus move / block add-remove-reorder). Read via the window hook
-// wired in EditorLayout.
+// bumps on a focus move / block add-remove-reorder).
 let __focusRebuildCount = 0;
 export function __getFocusRebuildCount(): number {
   return __focusRebuildCount;
+}
+if (typeof window !== "undefined") {
+  (window as unknown as { __virgilFocusRebuilds?: () => number }).__virgilFocusRebuilds =
+    () => __focusRebuildCount;
 }
 
 /** Build the decoration set hiding every out-of-band top-level child. */
@@ -218,12 +235,53 @@ function buildFocusDecoSet(doc: PMNode, band: FocusBand): DecorationSet {
   return DecorationSet.create(doc, decos);
 }
 
+/**
+ * True iff every step in `tr` is safe to carry the cached node-decoration set
+ * forward with `DecorationSet.map` — i.e. a pure in-block content edit that does
+ * NOT replace any top-level node boundary. A `Decoration.node` is dropped by
+ * `.map()` when its node is replaced (a `ReplaceAroundStep`, a block-boundary
+ * `ReplaceStep`, a split/merge), so any such step forces a REBUILD instead.
+ *
+ * Map-safe steps:
+ *  - `ReplaceStep` whose from/to lie strictly inside a SINGLE top-level block
+ *    (typing, inline formatting) — the block's outer boundary is untouched.
+ *  - mark/attr steps — they don't move positions (identity mapping), so node
+ *    decorations survive unchanged.
+ * Everything else (ReplaceAroundStep, cross-block or boundary ReplaceStep,
+ * unknown step kinds) is NOT map-safe → rebuild.
+ */
+function isMapSafeEdit(tr: Transaction, oldDoc: PMNode): boolean {
+  for (const step of tr.steps) {
+    if (step instanceof ReplaceStep) {
+      const from = (step as unknown as { from: number }).from;
+      const to = (step as unknown as { to: number }).to;
+      const $from = oldDoc.resolve(from);
+      const $to = oldDoc.resolve(to);
+      // Touches a top-level boundary, or spans more than one top-level block.
+      if ($from.depth === 0 || $to.depth === 0) return false;
+      if ($from.index(0) !== $to.index(0)) return false;
+      continue;
+    }
+    if (
+      step instanceof AddMarkStep ||
+      step instanceof RemoveMarkStep ||
+      step instanceof AddNodeMarkStep ||
+      step instanceof RemoveNodeMarkStep ||
+      step instanceof AttrStep
+    ) {
+      continue;
+    }
+    return false;
+  }
+  return true;
+}
+
 export function focusViewPlugin(): Plugin<FocusViewState> {
   return new Plugin<FocusViewState>({
     key: focusViewPluginKey,
     state: {
       init: () => ({ band: INACTIVE_BAND, decoSet: DecorationSet.empty }),
-      apply(tr, value, _oldState, newState): FocusViewState {
+      apply(tr, value, oldState, newState): FocusViewState {
         const meta = tr.getMeta(focusViewPluginKey) as FocusViewMeta | undefined;
         if (meta) {
           // Band changed (user activate / move / lock / deactivate, or a
@@ -233,19 +291,17 @@ export function focusViewPlugin(): Plugin<FocusViewState> {
         if (!tr.docChanged) return value;
         if (!value.band.active) return value; // nothing hidden; set stays empty
 
-        // docChanged with an active band. A plain in-paragraph keystroke is
-        // structurally null → the observer leaves pendingDiff null → MAP the
-        // existing set forward (cheap, O(set size)), never rebuild. Rebuild
-        // only when the top-level block SET or ORDER changed (a new out-of-band
-        // block needs a decoration; mapping alone can't add one) or an anchor
-        // died (removedBlocks → resolveFocusBand may now return null).
-        const diff = readPendingDiff(newState);
-        const blockStructureChanged =
-          diff != null &&
-          (diff.addedBlocks.length > 0 ||
-            diff.removedBlocks.length > 0 ||
-            diff.blockOrderChanged);
-        if (blockStructureChanged) {
+        // docChanged with an active band. Carry the cached node-decoration set
+        // forward with DecorationSet.map() ONLY for a pure in-block content edit
+        // (typing / inline formatting). REBUILD when a top-level block is
+        // added/removed (childCount change) or a top-level node boundary is
+        // replaced (ReplaceAroundStep, split/merge, cross-block replace) — all
+        // of which DROP a node decoration under .map(), silently un-hiding an
+        // out-of-band block. Detected from the STEPS (readPendingDiff is not yet
+        // populated here — see the file header). Rebuild is O(top-level blocks)
+        // but never fires on a plain keystroke.
+        const childCountChanged = oldState.doc.childCount !== newState.doc.childCount;
+        if (childCountChanged || !isMapSafeEdit(tr, oldState.doc)) {
           return { band: value.band, decoSet: buildFocusDecoSet(newState.doc, value.band) };
         }
         return {

@@ -163,10 +163,32 @@ flag becomes load-bearing in exactly one place.
     FLAT (16→16) and decoSet mapped at 60 (no rebuild); clean tsc.
   Note: omni/outline/section-path still read index-state in CHIP 2 (migrate in
   CHIP 3+4) — the index→UUID seam currently lives in the EditorLayout effect.
-- **CHIP 3** — `useFocusMode` FocusState→FocusBand (UUID), two-phase migrate,
-  convert index→UUID at the persistence seam; expose live-resolved `band`.
-  **DoD:** old index `focus.json` restores to SAME content; editing before the
-  band no longer shifts it; disk holds startUuid/endUuid.
+- **CHIP 3** ✅ DONE — `useFocusMode(docId, editor)` now persists a UUID
+  `FocusBand` and exposes BOTH `band` (for the plugin) and a **live-derived**
+  `state: FocusState` (index projection via `resolveFocusBand`, gated on
+  `rev.blocks`). This keeps every index-based consumer (cursor, section-path,
+  word count, omni, OutlinePanel) UNCHANGED and drift-free for free. Two-phase
+  migration (sync `_legacy` carry → deferred Phase-B resolve+persist, gated on
+  the REACTIVE editor — the ref+silent-counter trap bit Phase B first), plus a
+  re-anchor effect (dead anchor → nearest surviving block via last-good index;
+  deactivate only if both die). EditorLayout dispatches `focusMode.band` via
+  meta (gated on band primitives).
+  **Two real bugs found + fixed during live verify:**
+  1. Phase B never persisted (effect gated on `editorRef` + load-silent counter
+     → fixed to depend on reactive `editor`).
+  2. The plugin's rebuild-vs-map used `readPendingDiff`, but `focusView$` is
+     registered BEFORE `docStructureObserver$` (heading-extension order), so the
+     diff is ALWAYS null there → every tx mapped, dropping node decorations of
+     newly-structural blocks (insert-above-band left the new block visible).
+     Rewrote the discriminator to read the transaction's STEPS directly
+     (`isMapSafeEdit`: map only for in-block `ReplaceStep`/mark/attr steps;
+     rebuild on childCount change or `ReplaceAroundStep`/boundary edits, which
+     drop node decos under `.map()`).
+  **DoD met + LIVE-VERIFIED (devtest01):** legacy index `focus.json` migrates to
+  `{startUuid,endUuid}` on disk and restores the SAME content; inserting a block
+  ABOVE the band keeps the band on the same paragraphs (drift-free) AND hides
+  the new out-of-band block; typing 5 chars → 0 plugin rebuilds (keystroke
+  sanctity); 52 unit tests pass; clean tsc.
 - **CHIP 4** — route all React consumers through the predicate; card suppression
   UX. Files: `omni-host.tsx`, `OmniViewPanel.tsx`, `panels/_shared/types.ts`,
   `EditorLayout.tsx`, `OutlinePanel.tsx`.
@@ -204,7 +226,9 @@ flag becomes load-bearing in exactly one place.
 - [x] CHIP 1 — focus-view.ts lib + plugin + CSS (12 tests, clean tsc)
 - [x] CHIP 2 — register plugin, delete injected CSS (LIVE-verified: hide +
       NodeView coverage + keystroke sanctity)
-- [ ] CHIP 3 — UUID-anchored useFocusMode + migration
+- [x] CHIP 3 — UUID-anchored useFocusMode + migration + derived state
+      (LIVE-verified: migration persists, drift-free, insert-above hides,
+      typing 0 rebuilds). Fixed Phase-B reactive-editor + step-based rebuild.
 - [ ] CHIP 4 — route React consumers + card suppression UX
 - [ ] CHIP 5 — card-typing visual fix (confirm-first)
 - [ ] Full live verification sweep (the 7 above)
