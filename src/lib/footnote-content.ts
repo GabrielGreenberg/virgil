@@ -32,14 +32,52 @@ export function emptyRichContent(): JSONContent {
  *   3. An HTML string — parsed into JSON via the lightweight HTML→JSON walker
  *   4. A plain text string — wrapped in a single paragraph
  */
+/**
+ * Marks that exist ONLY in the main editor's document schema and have no place
+ * in a card body / borrowed card surface. Card surfaces (RichTextField,
+ * BorrowedMainText) compose the `borrowed-schema` atom set, which deliberately
+ * omits these — so JSONContent borrowed from the document (e.g. a cut excerpt,
+ * a revision's original paragraph, or any prose a card quotes) that still
+ * carries one of these marks would make the card editor's `setContent` /
+ * creation throw ("There is no mark type X in this schema") and render BLANK.
+ * `linkedAnchor` is the doc-level note/highlight/cut/revision anchor mark —
+ * meaningless inside a card body — so we strip it here, at the one normalizer
+ * both card surfaces funnel content through.
+ */
+const DOC_ONLY_MARKS = new Set<string>(["linkedAnchor"]);
+
+/**
+ * Recursively drop {@link DOC_ONLY_MARKS} from a JSONContent tree. Clones only
+ * the nodes that actually change (the source — often the live card content —
+ * is never mutated); returns the input unchanged when there is nothing to strip.
+ */
+function stripDocOnlyMarks(node: JSONContent): JSONContent {
+  let nextMarks = node.marks;
+  if (nextMarks && nextMarks.some((m) => DOC_ONLY_MARKS.has(m.type))) {
+    nextMarks = nextMarks.filter((m) => !DOC_ONLY_MARKS.has(m.type));
+  }
+  let nextContent = node.content;
+  if (nextContent) {
+    const mapped = nextContent.map(stripDocOnlyMarks);
+    if (mapped.some((n, i) => n !== nextContent![i])) nextContent = mapped;
+  }
+  if (nextMarks === node.marks && nextContent === node.content) return node;
+  const out: JSONContent = { ...node };
+  if (nextMarks && nextMarks.length > 0) out.marks = nextMarks;
+  else delete out.marks;
+  if (nextContent) out.content = nextContent;
+  return out;
+}
+
 export function normalizeRichContent(content: unknown): JSONContent {
   if (!content) return emptyRichContent();
 
-  // Already JSON
+  // Already JSON. Strip doc-only marks (linkedAnchor) so borrowed prose never
+  // crashes a card editor whose schema lacks them.
   if (typeof content === "object") {
     const c = content as JSONContent;
-    if (c.type === "doc") return c;
-    if (c.type) return { type: "doc", content: [c] };
+    if (c.type === "doc") return stripDocOnlyMarks(c);
+    if (c.type) return { type: "doc", content: [stripDocOnlyMarks(c)] };
   }
 
   if (typeof content === "string") {

@@ -6,6 +6,7 @@ import { JSONContent } from "@tiptap/react";
 import VirgilEditor, { EditorHandle } from "./Editor";
 import { LoadingScreen } from "./LoadingScreen";
 import { VIRGIL_COMMAND_NAMES } from "@/lib/tiptap-extensions";
+import { setFocusBandMeta } from "@/lib/focus-view";
 import { isLabelTaken as isLabelTakenIn } from "@/lib/labels";
 import { isDevStorage } from "@/lib/storage-mode";
 import { isTier1BDisabled } from "@/lib/perf-flags";
@@ -963,7 +964,7 @@ export default function EditorLayout() {
   }, [editorInstance, collab.iHavePen, collab.bumpActivity]);
   // useWordCount is consumed inside EditorPane (per-doc); no shell-side
   // counter needed.
-  const focusMode = useFocusMode(docIdForHooks);
+  const focusMode = useFocusMode(docIdForHooks, editorInstance);
   const { config: focusWcConfig } = useWordCountConfig();
   const [showParTitles, setShowParTitles] = useState(true);
   const [showLatexComments, setShowLatexComments] = useState(true);
@@ -1941,71 +1942,46 @@ export default function EditorLayout() {
   // ── Focus mode ──────────────────────────────────────────────────
   // Focus view confines the visible band of the editor: when focus is
   // active, top-level children outside [startBlockIndex, endBlockIndex]
-  // are hidden via `display: none`. The active/locked distinction lives
-  // only in the Outline panel — for the editor itself, active === hide.
+  // are hidden. The active/locked distinction lives only in the Outline
+  // panel — for the editor itself, active === hide.
   //
-  // Mechanism: an injected <style> tag with nth-child selectors. We
-  // can't stamp a data attribute on the children themselves because
-  // ProseMirror's DOM reconciliation strips classes/attrs from its
-  // managed nodes. A <style> tag is outside the editor and immune.
+  // Mechanism: a ProseMirror node decoration. The `focusViewPlugin`
+  // stamps `.focus-hidden` on each out-of-band top-level block — the
+  // twin of section-folding's `.section-folded` — owned by a
+  // `DecorationSet` in editor state, not an injected <style> tag. The
+  // band is fed to the plugin by the effect just below; see that
+  // effect's comment and src/lib/focus-view.ts for the full account.
   //
-  // The stylesheet is rebuilt only when the focus range, the lock state,
-  // or the top-level child count change — not on every transaction.
-  const focusStyleRef = useRef<HTMLStyleElement | null>(null);
+  // The two refs below serve later consumers, not the hide itself:
+  // `focusStateRef` mirrors the live focus state for the breadcrumb
+  // recompute (which skips hidden blocks whose DOM reports bogus
+  // positions), and `prevLockedRef` arms the one-shot cursor coercion on
+  // the false→true lock transition.
   const focusStateRef = useRef(focusMode.state);
   focusStateRef.current = focusMode.state;
   const prevLockedRef = useRef(false);
 
-  // Track the top-level child count so we rebuild the stylesheet when
-  // blocks are added/removed (only docChanged transactions can change
-  // it, so listening on `update` is sufficient).
-  const [editorChildCount, setEditorChildCount] = useState(0);
+  // Feed the UUID focus band to the main editor's `focusViewPlugin`, which hides
+  // out-of-band top-level blocks via a ProseMirror node decoration — replacing
+  // the old injected <style> nth-child stylesheet + child-count tracker. The
+  // decoration reaches React-NodeView blocks (figure/tex) and the mirror pane
+  // (shared editor.state) for free, and is structurally unable to touch a card
+  // editor. The band is the persisted UUID truth from useFocusMode; the plugin
+  // re-resolves UUID→index on every structural change, so the hide never drifts.
+  // Gated on the band's primitive values so the meta dispatches only on a real
+  // band change, not on every memo recompute.
+  const focusBand = focusMode.band;
   useEffect(() => {
     if (!editorInstance) return;
-    let editorDom: HTMLElement | null = null;
-    try { editorDom = editorInstance.view.dom; } catch { editorDom = null; }
-    if (!editorDom) return;
-    setEditorChildCount(editorDom.children.length);
-    const onUpdate = () => {
-      if (!editorDom) return;
-      setEditorChildCount(editorDom.children.length);
-    };
-    editorInstance.on("update", onUpdate);
-    return () => { editorInstance.off("update", onUpdate); };
-  }, [editorInstance]);
-
-  useEffect(() => {
-    // Tear down any previous stylesheet.
-    if (focusStyleRef.current) {
-      focusStyleRef.current.remove();
-      focusStyleRef.current = null;
+    try {
+      editorInstance.view.dispatch(
+        setFocusBandMeta(editorInstance.view.state.tr, focusBand),
+      );
+    } catch {
+      /* meta-only dispatch; ignore if the view is tearing down */
     }
-
-    const fs = focusMode.state;
-    if (!fs.active || !editorInstance || editorChildCount === 0) return;
-
-    const rules: string[] = [];
-    for (let i = 0; i < editorChildCount; i++) {
-      const outside = i < fs.startBlockIndex || i > fs.endBlockIndex;
-      if (outside) {
-        rules.push(`.tiptap > :nth-child(${i + 1}) { display: none !important; }`);
-      }
-    }
-    if (rules.length === 0) return;
-
-    const style = document.createElement("style");
-    style.setAttribute("data-virgil-focus", "true");
-    style.textContent = rules.join("\n");
-    document.head.appendChild(style);
-    focusStyleRef.current = style;
-
-    return () => {
-      if (focusStyleRef.current) {
-        focusStyleRef.current.remove();
-        focusStyleRef.current = null;
-      }
-    };
-  }, [editorInstance, focusMode.state, editorChildCount]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [editorInstance, focusBand.active, focusBand.locked, focusBand.startUuid, focusBand.endUuid]);
 
   // One-shot cursor coercion: fires only on the false→true lock
   // transition, not on every focus-state change. This decouples it

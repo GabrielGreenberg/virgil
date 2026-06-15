@@ -116,6 +116,19 @@ describe("applyDiff", () => {
     expect([...afterAdd.blocks.keys()].sort()).toEqual(["h1", "p1", "p3"]);
   });
 
+  it("changedBlocks updates a moved block's position without adding/removing identity", () => {
+    const prev = makeBaseStructure();
+    const moveP2: StructureDiff = {
+      ...EMPTY_DIFF,
+      changedBlocks: [{ uuid: "p2", pos: 3, typeName: "paragraph" }],
+      blockOrderChanged: true,
+    };
+    const next = applyDiff(prev, moveP2);
+    // Identity set unchanged; only p2's tracked position moves.
+    expect([...next.blocks.keys()].sort()).toEqual(["h1", "p1", "p2"]);
+    expect(next.blocks.get("p2")?.pos).toBe(3);
+  });
+
   it("changedHeadings replaces the matching entry without touching others", () => {
     const prev = makeBaseStructure();
     const changeH1: StructureDiff = {

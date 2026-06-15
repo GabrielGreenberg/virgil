@@ -227,10 +227,13 @@ export function buildInitial(doc: PMNode): DocStructure {
  * per doc); a sort-or-binary-search would be premature.
  */
 export function applyDiff(prev: DocStructure, diff: StructureDiff): DocStructure {
-  // Blocks — keyed by UUID, simplest case.
+  // Blocks — keyed by UUID, simplest case. `changedBlocks` carries the new
+  // position of a MOVED block whose mapped pos went stale (its old pos was
+  // deleted) — overwrite the entry so the index tracks the move.
   const blocks = new Map(prev.blocks);
   for (const removed of diff.removedBlocks) blocks.delete(removed.uuid);
   for (const added of diff.addedBlocks) blocks.set(added.uuid, added);
+  for (const changed of diff.changedBlocks) blocks.set(changed.uuid, changed);
 
   // Headings: remove by UUID, fold in adds and changes. Re-sort by pos
   // afterwards so document order is preserved when positions shift.
