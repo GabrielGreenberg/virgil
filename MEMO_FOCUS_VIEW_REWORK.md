@@ -2,7 +2,17 @@
 
 **Branch:** `focus-view-rework` (worktree `.claude/worktrees/focus-view`)
 **Started:** 2026-06-14
-**Status:** in progress — see Progress tracker at bottom.
+**Status:** CORE COMPLETE — CHIPs 0–4 landed, live-verified, adversarially
+reviewed (one real crash found + fixed). 6 commits. 1120 tests pass, clean tsc,
+no new lint. NOT merged (left on the branch for review). Remaining: CHIP 4b
+(breadcrumb/cursor polish, deferred) + CHIP 5 (card-typing — needs a user screen
+recording; may already be fixed by the CSS removal). See Progress tracker.
+
+**The deep architectural fix (the primary ask) is done:** focus view is now a
+UUID-anchored band, computed once per structural change and consumed uniformly,
+hidden via a ProseMirror decoration that cannot touch card editors. The three
+reported bugs: index-drift = FIXED; silent card suppression = FIXED (bin); card
+typing = likely fixed (CSS removed) but unverifiable headlessly, documented.
 
 This memo is the SSOT for the focus-view rework. It supersedes the four
 `scratch/focus-mode-*.md` diagnosis memos (kept for history; some of their
