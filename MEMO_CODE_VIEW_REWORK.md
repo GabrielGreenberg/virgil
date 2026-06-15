@@ -79,17 +79,35 @@ patterns: `!`=error, `LaTeX Warning:`, `Package Warning:`. Bib → 3 passes.
 
 | Chip | What | Status |
 |------|------|--------|
-| 0 | Worktree + memo + dev-doc/preview setup | IN PROGRESS |
-| A | `code-position-map.ts` (S1) + refactor 3 call sites + tests | pending |
-| B | Diagnostics unification (S2): provider, kill dup hook/maps/stub, dedup, rewire compile | pending |
-| C | Mode-aware `jumpToError` (S3): stay-in-code-view + visual highlight + marker nav | pending |
-| D | Code-side cursor band (issue 4): CM StateField + `.cm-virgil-band`, decorate-only | pending |
-| E | Manual sync arrows + remove auto-align (issue 5 + corollary) | pending |
-| F | Code-view layout: hide strips, repad editor left, divider arrows visible (issue 1) | pending |
+| 0 | Worktree + memo + dev-doc/preview setup | DONE |
+| A | `code-position-map.ts` (S1) + refactor 3 call sites + tests | DONE (e3cdd54) |
+| B1 | Unify compile SOURCE: kill EditorLayout dead hook, bubble via paneState, mergeLatexErrors dedup | DONE (2a0f3c0) |
+| B2+C | Single error owner (EditorLayout) via props; mode-aware jumpToError (stay-in-code-view) | DONE (932d1fd) |
+| D | Code-side cursor band (issue 4): CM StateField + `.cm-virgil-band`, decorate-only | IN PROGRESS |
+| E | Manual sync arrows + remove auto-align (issue 5 + corollary) | IN PROGRESS (with D) |
+| F | Code-view layout: hide strips, repad editor left (issue 1) | pending |
 | G | nXn verification matrix (issues 6,7) in live preview | pending |
 | H | Full tests + typecheck/lint + docs/agents drift + finalize memo | pending |
 
-Foundation A→B→C is sequential (hot files). D/E touch the bridge (D→E). F is separable.
+Foundation A→B→C DONE; full vitest suite green; typecheck clean. D+E delegated together (both
+rewire the bridge's selection handling). F separable.
+
+### Findings confirmed during B (for the record)
+- EditorLayout's `useLatexCompile` (was line 528) was **dead** — `compilePdf` never called;
+  toolbar uses `paneState.compilePdf` = EditorPane's live hook. So code-view sidebar showed only
+  lint, log drawer always blank. EditorPane's live hook now bubbles `compileErrors/compileLog/
+  compileStatus` via `paneState`; EditorLayout is the single error owner.
+- PDF render uses EditorLayout's own `pdfBlobUrl` (iframe ~4347) populated by `switchToPdfView`
+  reading the `.pdf` from disk (the live hook writes it). PDF flow LEFT UNTOUCHED.
+- The `virgil-error-marker-click` window event is handled by `event-bridges/marker-clicks.ts`
+  (has tests) and already routes selection to EditorLayout's `setSelectedErrorId`.
+
+### ⚠️ GOTCHA: subagent cwd
+After a path-based `EnterWorktree` re-entry, a delegated subagent edited the **MAIN** checkout, not
+the worktree (B2). Recovery that worked: `git -C <main> diff <files> > /tmp/x.patch`; revert main
+(`git -C <main> checkout -- <files>`); `git apply` the patch in the worktree (resolve dup `noop`).
+**Mitigation:** tell subagents to use ABSOLUTE worktree paths + self-check `git -C <worktree> status`;
+verify placement (worktree dirty, main clean) after every subagent before committing.
 
 ---
 

@@ -68,6 +68,12 @@ export interface SplitWithCodeProps {
   left: ReactNode;
   /** The code view (CodeMirror pod). Only rendered when `open`. */
   right: ReactNode;
+  /** ► : push the TEXT cursor → align the CODE pane to it. When both
+   *  align handlers are provided (and `open`), the divider renders a
+   *  manual "sync position" pill. */
+  onMoveCodeToText?: () => void;
+  /** ◄ : push the CODE cursor → align the TEXT pane to it. */
+  onMoveTextToCode?: () => void;
 }
 
 export function SplitWithCode({
@@ -76,6 +82,8 @@ export function SplitWithCode({
   onRatioChange,
   left,
   right,
+  onMoveCodeToText,
+  onMoveTextToCode,
 }: SplitWithCodeProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const editorWrapperRef = useRef<HTMLDivElement>(null);
@@ -309,6 +317,83 @@ export function SplitWithCode({
                 className="drag-gap drag-gap-v w-full h-full"
                 onMouseDown={onMouseDown}
               />
+              {/* Manual "sync position" pill — pinned with the divider
+                  (it lives inside the sticky container). Two stacked
+                  arrows: ◄ aligns the LEFT/text pane to the code cursor,
+                  ► aligns the RIGHT/code pane to the text cursor. The
+                  pill is `pointer-events:auto` over the otherwise
+                  drag-only gap, and each button stops mousedown
+                  propagation so clicking a button never starts a drag. */}
+              {onMoveCodeToText && onMoveTextToCode && (
+                <div
+                  className="absolute top-1/2 left-1/2 z-20 flex flex-col"
+                  style={{
+                    transform: "translate(-50%, -50%)",
+                    pointerEvents: "auto",
+                    borderRadius: 6,
+                    border: "var(--pod-border, 1px solid var(--border))",
+                    background: "var(--pod-editor, var(--surface))",
+                    boxShadow: "var(--pod-shadow, 0 1px 2px rgba(0,0,0,0.08))",
+                    overflow: "hidden",
+                  }}
+                  onMouseDown={(e) => e.stopPropagation()}
+                >
+                  <button
+                    type="button"
+                    className="flex items-center justify-center text-ink-muted hover:text-ink-body hover-on-light"
+                    style={{ width: 18, height: 18 }}
+                    data-hint="Sync text to code position"
+                    aria-label="Sync text to code position"
+                    onMouseDown={(e) => e.stopPropagation()}
+                    onClick={onMoveTextToCode}
+                  >
+                    <svg
+                      width="10"
+                      height="10"
+                      viewBox="0 0 10 10"
+                      fill="none"
+                      aria-hidden
+                    >
+                      <path
+                        d="M6.5 2 3 5l3.5 3"
+                        stroke="currentColor"
+                        strokeWidth="1.4"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                      />
+                    </svg>
+                  </button>
+                  <div
+                    aria-hidden
+                    style={{ height: 1, background: "var(--border)" }}
+                  />
+                  <button
+                    type="button"
+                    className="flex items-center justify-center text-ink-muted hover:text-ink-body hover-on-light"
+                    style={{ width: 18, height: 18 }}
+                    data-hint="Sync code to text position"
+                    aria-label="Sync code to text position"
+                    onMouseDown={(e) => e.stopPropagation()}
+                    onClick={onMoveCodeToText}
+                  >
+                    <svg
+                      width="10"
+                      height="10"
+                      viewBox="0 0 10 10"
+                      fill="none"
+                      aria-hidden
+                    >
+                      <path
+                        d="M3.5 2 7 5l-3.5 3"
+                        stroke="currentColor"
+                        strokeWidth="1.4"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                      />
+                    </svg>
+                  </button>
+                </div>
+              )}
             </div>
             {/* Right: code pane */}
             <div

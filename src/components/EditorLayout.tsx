@@ -4371,6 +4371,12 @@ export default function EditorLayout() {
               open={codeView}
               ratio={prefs.codePaneRatio}
               onRatioChange={setCodePaneRatio}
+              onMoveCodeToText={() =>
+                codeEditorHandleRef.current?.moveCodeToTextCursor()
+              }
+              onMoveTextToCode={() =>
+                codeEditorHandleRef.current?.moveTextToCodeCursor()
+              }
               left={
                 <EditorPane
                   ref={editorRef}

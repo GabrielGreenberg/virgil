@@ -16,6 +16,7 @@ import {
   createCodePaneBridge,
   type CodePaneBridge,
 } from "@/lib/code-pane-bridge";
+import { codeBandField } from "@/lib/code-band";
 import CodeEditorLogDrawer from "./CodeEditorLogDrawer";
 
 const virgilTheme = EditorView.theme({
@@ -46,6 +47,9 @@ const virgilTheme = EditorView.theme({
   ".cm-activeLine": {
     backgroundColor: "rgba(124, 94, 60, 0.04)",
   },
+  ".cm-virgil-band": {
+    backgroundColor: "rgba(220, 38, 38, 0.09)",
+  },
   ".cm-selectionBackground": {
     backgroundColor: "rgba(124, 94, 60, 0.15) !important",
   },
@@ -67,6 +71,10 @@ export interface CodeEditorHandle {
   getActiveParagraphId(): string | null;
   scrollToParagraphId(uuid: string): void;
   scrollToLine(line: number, column?: number): void;
+  /** Manual align: move the CODE pane to match the TEXT cursor. */
+  moveCodeToTextCursor(): void;
+  /** Manual align: move the TEXT pane to match the CODE cursor. */
+  moveTextToCodeCursor(): void;
 }
 
 interface CodeEditorProps {
@@ -259,6 +267,7 @@ export default function CodeEditor({
           search(),
           highlightSelectionMatches(),
           virgilTheme,
+          codeBandField,
           EditorView.lineWrapping,
           EditorState.tabSize.of(2),
           updateListener,
@@ -384,6 +393,12 @@ export default function CodeEditor({
                 });
                 v.focus();
               } catch { /* ignore */ }
+            },
+            moveCodeToTextCursor() {
+              bridgeRef.current?.moveCodeToTextCursor();
+            },
+            moveTextToCodeCursor() {
+              bridgeRef.current?.moveTextToCodeCursor();
             },
           });
         }}
