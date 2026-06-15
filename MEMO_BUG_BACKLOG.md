@@ -1222,3 +1222,42 @@ compromise is acceptable or should match expanded. If matching: select the
 of the hardcoded `"footnote"`, and/or normalize the collapsed expex `(5)` number's
 color + size to its expanded values. Touches the same collapsed-borrowed-body code
 as #42, so the two likely fix together.
+
+---
+
+## 44. Tools band: gap above ≠ gap below; tighten the tools→pod gap
+
+**Reported:** 2026-06-15 · **Status:** open (catch — do not fix yet) · **Area:** ui-chrome / editor pane top stack · **Related:** #5 (gutter removal)
+
+**Reported behavior** — there's still an excessive gap between the **top of the
+document pod** and the **tools row above it** (the breadcrumb on the left + the
+←/→/split/⋮ cluster on the right) — the user calls it the "top gutter" being too
+big. The tools should have the **same gap above and below them** (vertically
+balanced in the band between the Virgil bar and the pod).
+
+**Current measured state (on `main`, after #5 removed the `topGutter` pref):**
+- Virgil bar: y 0–32 (32px).
+- Tools band `[data-tool-strip="text"]`: y 32–56 (24px) — **flush under the Virgil
+  bar, gap above = 0px**.
+- Pod frame top: y 64 → **gap below the tools = 8px**.
+
+So the spacing is **asymmetric**: 0 above, 8 below. The user wants it symmetric
+(center the tools in the band) and the residual tools→pod gap tightened.
+
+**Lever** — the tool-strip / pod-cap stack in
+[EditorPane.tsx:~3611](src/components/EditorPane.tsx:3611) (tool strip, `top:0`,
+`height:24`) and [~3709](src/components/EditorPane.tsx:3709) (pod cap, `top:10`,
+net-zero flow). Equalize by giving the tools band equal gap above/below (e.g.
+center it in the Virgil-bar→pod band) and/or trim the cap offset.
+**⚠️ Don't touch the pod-cap's negative-margin geometry** — it's load-bearing for
+the rounded-corner mask (see #5's trap note); adjust the tool-strip
+position/padding instead.
+
+**⚠️ Build-freshness caveat.** #5's `topGutter` removal is merged to `main` but
+**not pushed/deployed**, and the user's screenshot shows a *different* doc than the
+dev preview — i.e. they're likely viewing the **deployed/cached** build, which
+still has the old `topGutter` (their saved pref ≈ 99). So the *bulk* of the
+"excessive gap" they see is the not-yet-deployed gutter, **already fixed on main**.
+The genuinely NEW ask here is the **symmetric-spacing** refinement. The manage
+session must measure against **current main** (gutter-removed: ~8px residual,
+0-above/8-below asymmetry), not the deployed build.
