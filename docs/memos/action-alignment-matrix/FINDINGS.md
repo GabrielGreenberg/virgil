@@ -113,6 +113,28 @@ Full suite: 127 files / 1108 tests green; `tsc --noEmit` clean.
 
 ---
 
+## Follow-up nits (post-CHIP-8 cleanup, 2026-06-15) — 4 fixed, 1 deferred-by-design
+
+Three worktree chips, all merged to `origin/main` (`bd5252c` / `c3515a3` / `a2f08a9`), full suite 1357 green:
+- **#3 heading no-op → FIXED** (`bd5252c`): heading rows now grey (`applies:'disabled'`) where `setBlockType(heading)` would no-op — schema-driven `selectionCanHostHeading` (mirrors PM's own predicate), so `listItem`/`exampleItem` carets grey, top-level + blockquote-inner-paragraph stay `'ok'`.
+- **Stale-ref silent-break → FIXED** (`c3515a3`): the silent return was the shared `if (!resolved) return;` after `resolveRefRange` (duplicate's per-case fail-loud was unreachable for a stale uuid). Now archive/delete/duplicate on an unresolvable ref fail loud via a shared `notifyStaleRef` (console.warn + notify, matching duplicate's B1 convention); annotation actions still bail silently.
+- **highlight empty-break → ALREADY GUARDED** (`c3515a3`, comment only): two independent guards already prevent it (`if (!text) break;` + `createLinkedAnchor` returns null on a zero-width range). Whole-block-wrap on a non-empty block is intentional (documented).
+- **#5 empty-cite → FIXED** (`a2f08a9`): `parseCiteCommand("\cite{}")` now returns `keys:[]` not `[""]`, so `addCitation`'s `keys.length===0` pristine branch fires.
+
+## F4 — DEFERRED (product-design question) — `todo` range-anchor symmetry
+
+The §7 "todo selection-range loss" nit is **structurally deliberate, not a simple bug.** Chip B
+confirmed: `createTodo` has no Mode-B text-anchor path, AND `useLinkedAnchorReconciler`
+(`src/links/_shared/useLinkedAnchorReconciler.ts`) builds its alive-set from
+`{notes, highlights, cutterCards, comments, reportCards}` — **todos are excluded**. So dropping a
+`linkedAnchor` mark for a todo (to match note/cutter/revision) would be reaped as an orphan on the
+next sweep → a phantom-tint break. True symmetry needs coordinated out-of-scope changes
+(createTodo + the todo store + the reconciler alive-set). **OPEN QUESTION for the user: should todos
+support range anchors at all, or is paragraph-level (Mode-A) the intended todo UX?** Not fixed —
+forcing it would ship a regression.
+
+---
+
 ## F1 — UX (low) — `archive` on a `latexComment` surfaces no destructive confirm
 
 **Status:** RESOLVED — **BY DESIGN, not a bug.** `latexComment` declares
