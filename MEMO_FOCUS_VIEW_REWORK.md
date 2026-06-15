@@ -250,6 +250,38 @@ flag becomes load-bearing in exactly one place.
 
 ---
 
+## Card-blank-under-focus report (2026-06-14, follow-up)
+
+User: "footnote cards go blank when focus is on." Ran a 13-agent code+live sweep
+across ALL card kinds (workflow card-blank-under-focus-sweep).
+
+**Root cause (proven): the OLD injected-CSS hide mechanism — which THIS BRANCH
+ALREADY DELETED in CHIP 2.** On `main`, EditorLayout injected a global
+`<style data-virgil-focus>` with an UNSCOPED `.tiptap > :nth-child(N){display:none}`
+rule per out-of-band index. Because `.tiptap` matches EVERY editor on the page,
+it also hid the Nth child of every CARD body editor — and a single-paragraph
+footnote body is one child at a low slot, so it vanished entirely (footnotes the
+obvious victim). An agent proved it live: injecting the old first-child rule
+blanked a real footnote card body; removing it restored it.
+
+**This branch is already fixed.** CHIP 2 replaced that stylesheet with the
+`focusViewPlugin` node decoration registered ONLY in the main/float editors —
+structurally unable to reach a card editor. Verified on a CLEAN build (rm
+.next-preview): no `style[data-virgil-focus]`; focus-hidden decorations only in
+the main editor (0 in/around the 10 card editors); under active focus EVERY card
+kind renders full body content (footnote/note/comment/citation/example/archive/
+report/revision). (Todos show their compressed "Task" label in BOTH focus
+states — pre-existing/normal, not a focus blank.)
+
+**Why the user still saw it:** almost certainly STALE TURBOPACK CHUNKS (the
+running preview kept serving the old compiled injected-CSS EditorLayout after the
+source deleted it — the documented Virgil dev hazard), OR testing `main`. FIX:
+clean rebuild (`rm -rf .next-preview` + restart preview), or merge this branch.
+Nothing more to change in the branch — the deletion in CHIP 2 is the fix.
+Caveat: could not drive the in-session focus *toggle* headlessly to 100% seal it,
+but the mechanism guarantees it (no CSS to re-inject; toggle is a meta-only tx
+that doesn't mutate the doc or the card `value`).
+
 ## Progress tracker
 - [x] CHIP 0 — blockOrderChanged + changedBlocks plumbing (40 tests, clean tsc)
 - [x] CHIP 1 — focus-view.ts lib + plugin + CSS (12 tests, clean tsc)
