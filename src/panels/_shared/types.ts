@@ -52,6 +52,12 @@ export interface OmniItem {
    *  The omni view routes `free` + `orphaned` into the unanchored bin and
    *  cascades only `anchored` items inline with the text. */
   anchorState: "anchored" | "free" | "orphaned";
+  /** True when focus view is active and this card's anchor falls OUTSIDE the
+   *  focused band. Its in-text anchor is hidden (`display:none`), so it can't
+   *  cascade inline; the omni view routes it into the collapsed "N outside
+   *  focus" bin instead of dropping it (which would read as data loss). Stamped
+   *  by the omni-host focus filter; unset/false otherwise. */
+  outsideFocus?: boolean;
   /** Pre-rendered card. Must include `data-omni-entry={id}` on its
    *  outermost element so `useInTextPositions` can measure it. */
   content: ReactNode;

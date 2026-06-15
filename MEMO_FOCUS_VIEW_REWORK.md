@@ -189,15 +189,34 @@ flag becomes load-bearing in exactly one place.
   ABOVE the band keeps the band on the same paragraphs (drift-free) AND hides
   the new out-of-band block; typing 5 chars → 0 plugin rebuilds (keystroke
   sanctity); 52 unit tests pass; clean tsc.
-- **CHIP 4** — route all React consumers through the predicate; card suppression
-  UX. Files: `omni-host.tsx`, `OmniViewPanel.tsx`, `panels/_shared/types.ts`,
-  `EditorLayout.tsx`, `OutlinePanel.tsx`.
-  **DoD:** locked shows "N cards outside focus" (no loss); unlocked dims;
-  main+mirror breadcrumbs match in split focus; reorder re-resolves filter.
-- **CHIP 5** — card-typing visual fix, **confirm-first**: reproduce live, isolate
-  hyp B (instrument card translateY), hyp A (toggle scrollIntoView
-  `RichTextField.tsx:444`), then value-sync hardening (`editor.isFocused` +
-  recency). Land only the change that demonstrably removes the visible jump.
+- **CHIP 4** ✅ DONE (card suppression). The React consumers were already routed
+  via CHIP 3's live-derived `state` (drift-free for free), so CHIP 4 reduced to
+  the card-suppression UX. `omni-host` Pass 2 now STAMPS `outsideFocus:true` on
+  out-of-band cards instead of `continue`-dropping; `OmniViewPanel` routes them
+  into a new collapsed **"N outside focus" bin** (`OmniOutsideFocusBin`, peer of
+  the unanchored bin — zero-flow `position:absolute`; renders cards only when
+  expanded so NO live editors mount by default). Added `OmniItem.outsideFocus`.
+  **Design note:** the synthesis's dim-unlocked/collapse-locked split assumed
+  out-of-band cards could dim *in place*, but their anchors are `display:none` in
+  BOTH lock modes — nothing to dim against — so the bin is the correct single
+  behavior. No more silent data loss.
+  **LIVE-VERIFIED (devtest01, band 10–15):** both omni panels show "31 / 17
+  outside focus" bins (were silently dropped before); expanding reveals the cards
+  (0 live editors mounted); in-band cards still cascade inline; clean tsc.
+- **CHIP 4b** (deferred polish, NOT data-loss) — route the section-path breadcrumb
+  + cursor-coercion through `isPosInFocusBand` (the breadcrumb reads slightly
+  wrong under focus because it measures hidden headings), and verify the mirror
+  pane hides the same blocks. Lower priority than CHIP 5.
+- **CHIP 5** — card-typing visual fix, **confirm-first**. STATUS: the new
+  decoration mechanism REMOVED the injected global stylesheet (round-5 hyp D, the
+  leading suspect), so this may already be fixed. Could NOT verify the *visual*
+  symptom headlessly (it needs watching the card's translateY during real
+  keyboard typing — the round-5 memo's own conclusion: "get a screen recording").
+  Per that memo's hard-won lesson ("don't write more code before seeing the
+  recording" — 4 blind rounds failed), NO blind code landed. NEXT: get a user
+  screen recording under the new focus impl; if it persists, isolate hyp B
+  (cascade reflow, `useInTextPositions.ts:368-376`) / hyp A (`scrollIntoView`
+  `RichTextField.tsx:444`) and land only the change that removes the visible jump.
 
 ## Live verifications that MUST happen (don't assume)
 1. CHIP 5 root cause — reproduce carriage-return live BEFORE coding.
@@ -229,7 +248,9 @@ flag becomes load-bearing in exactly one place.
 - [x] CHIP 3 — UUID-anchored useFocusMode + migration + derived state
       (LIVE-verified: migration persists, drift-free, insert-above hides,
       typing 0 rebuilds). Fixed Phase-B reactive-editor + step-based rebuild.
-- [ ] CHIP 4 — route React consumers + card suppression UX
-- [ ] CHIP 5 — card-typing visual fix (confirm-first)
+- [x] CHIP 4 — card suppression: "N outside focus" bin (LIVE-verified, no data loss)
+- [ ] CHIP 4b — section-path/cursor via predicate + mirror verify (deferred polish)
+- [ ] CHIP 5 — card-typing visual fix (needs user screen recording; may be fixed
+      already by the CSS removal — no blind code landed per the round-5 lesson)
 - [ ] Full live verification sweep (the 7 above)
 - [ ] Adversarial review of the diff

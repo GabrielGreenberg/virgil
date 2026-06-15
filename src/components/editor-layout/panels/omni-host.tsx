@@ -596,12 +596,13 @@ export function OmniHost(p: OmniHostProps) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [editorInstance, editorTick]);
 
-  // Focus view drops on-view cards whose anchor falls outside the focused
-  // band, matching the editor's `display: none` on outside blocks. Cards
-  // remain in the side panels (which consume their own data) — only the
-  // in-text omni mirror is filtered. The active/locked distinction is
-  // collapsed here: active === filter; the Outline panel is the only
-  // place that still treats locked differently.
+  // Focus view: a card whose anchor falls outside the focused band has a
+  // hidden in-text anchor (the focusViewPlugin display:none's that block), so
+  // it can't cascade inline. Rather than DROP it (which silently hides
+  // user-created cards and reads as data loss), we STAMP `outsideFocus` and
+  // keep it — OmniViewPanel routes stamped cards into the collapsed "N outside
+  // focus" bin. Applies whenever focus is active (locked or not); the in-text
+  // anchor is hidden in both modes.
   //
   // Fold filter (pass 1) runs first: cards in a collapsed section are
   // dropped outright, independent of focus.
@@ -625,7 +626,7 @@ export function OmniHost(p: OmniHostProps) {
       }
     }
 
-    // Pass 2: focus filter.
+    // Pass 2: focus filter — stamp `outsideFocus` instead of dropping.
     const fs = p.focusState;
     if (!fs?.active || !doc) return foldFiltered;
     const { startBlockIndex, endBlockIndex } = fs;
@@ -636,8 +637,7 @@ export function OmniHost(p: OmniHostProps) {
       try { bi = doc.resolve(item.pos).index(0); } catch { /* stale */ }
       if (bi == null) { out.push(item); continue; }
       const outside = bi < startBlockIndex || bi > endBlockIndex;
-      if (outside) continue;
-      out.push(item);
+      out.push(outside ? { ...item, outsideFocus: true } : item);
     }
     return out;
   }, [items, hiddenTopLevel, p.focusState, editorInstance]);

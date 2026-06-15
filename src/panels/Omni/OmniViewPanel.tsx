@@ -318,6 +318,62 @@ export function OmniUnanchoredBin({
   );
 }
 
+/**
+ * The "outside focus" bin. When focus view is active, cards anchored OUTSIDE
+ * the focused band have a hidden in-text anchor, so they can't cascade inline.
+ * Rather than drop them (silent data loss — the user's note just vanishes),
+ * they collect here in a collapsed count pill, expandable to a bounded list —
+ * the same zero-flow `position:absolute` pattern as the unanchored bin. The
+ * cards render only when expanded, so no live editors mount by default.
+ *
+ * `topPx` stacks it just below the unanchored bin when both are present.
+ */
+export function OmniOutsideFocusBin({
+  items,
+  topPx,
+}: {
+  items: OmniItem[];
+  topPx: number;
+}) {
+  const [expanded, setExpanded] = useState(false);
+  const count = items.length;
+  if (count === 0) return null;
+
+  return (
+    <div
+      style={{ position: "absolute", top: topPx, left: 8, right: 8, zIndex: 19 }}
+      data-omni-outside-focus-bin=""
+    >
+      <button
+        type="button"
+        onClick={() => setExpanded((e) => !e)}
+        className="w-full flex items-center gap-2 px-2 py-1 rounded text-[11px] font-medium text-ink-muted bg-surface border border-edge-subtle shadow-sm hover-on-light"
+        data-hint={
+          expanded
+            ? "Collapse cards outside the focus band"
+            : "These cards are anchored outside your focus band. Switch off focus or extend the band to see them inline."
+        }
+        aria-label={expanded ? "Collapse cards outside focus" : "Show cards outside focus"}
+        aria-expanded={expanded}
+      >
+        <span aria-hidden="true" className="text-[10px] leading-none">◎</span>
+        <span>{count} outside focus</span>
+        <span className="ml-auto text-ink-muted" aria-hidden="true">{expanded ? "▾" : "▸"}</span>
+      </button>
+      {expanded && (
+        <div
+          className="mt-1 space-y-2 overflow-y-auto rounded bg-surface/95 backdrop-blur-sm border border-edge-subtle p-2"
+          style={{ maxHeight: "var(--dock-slot-frame-h, 80vh)" }}
+        >
+          {items.map((item) => (
+            <div key={item.id}>{item.content}</div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function OmniViewPanel({
   side,
   items,
@@ -346,11 +402,18 @@ function OmniViewPanel({
     });
   }, [items, enabledCategories, hideAllCards]);
 
-  const { anchored, free, orphaned } = useMemo(() => {
+  const { anchored, free, orphaned, outsideFocus } = useMemo(() => {
     const anchored: Array<OmniItem & { pos: number }> = [];
     const free: OmniItem[] = [];
     const orphaned: OmniItem[] = [];
+    const outsideFocus: OmniItem[] = [];
     for (const item of visibleItems) {
+      // Cards outside the focus band have a hidden in-text anchor → bin them
+      // (checked before pos so they never try to cascade at a hidden anchor).
+      if (item.outsideFocus) {
+        outsideFocus.push(item);
+        continue;
+      }
       if (item.pos == null) {
         // Builders that resolve paragraph UUIDs return pos:null while the
         // editor is still mounting. Don't flash those into the unanchored
@@ -368,7 +431,7 @@ function OmniViewPanel({
       }
     }
     anchored.sort((a, b) => a.pos - b.pos);
-    return { anchored, free, orphaned };
+    return { anchored, free, orphaned, outsideFocus };
   }, [visibleItems, editor]);
 
   const inTextItems = useMemo(
@@ -472,6 +535,10 @@ function OmniViewPanel({
         style={{ minHeight: editorContentHeight || undefined }}
       >
         <OmniUnanchoredBin free={free} orphaned={orphaned} />
+        <OmniOutsideFocusBin
+          items={outsideFocus}
+          topPx={free.length + orphaned.length > 0 ? 34 : 0}
+        />
         {anchored.map((item) => {
           const isPinned = pinRequest?.cardId === item.id;
           const top = positions.get(item.id);
