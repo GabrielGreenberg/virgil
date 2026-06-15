@@ -27,9 +27,8 @@ import { CollabProvider, COLLAB_INERT, type CollabHook } from "@/hooks/useCollab
 import { collabClaimScope } from "@/cards/predicates";
 import CollabStatusPill from "./CollabStatusPill";
 import { useCollaboratorIdentity } from "./CollaboratorIdentityDialog";
-import { useLatexCompile } from "@/hooks/useLatexCompile";
 import { useLatexLint } from "@/hooks/useLatexLint";
-import type { LatexError } from "@/lib/latex-errors";
+import { mergeLatexErrors, type LatexError } from "@/lib/latex-errors";
 import { findParagraphUuids, paragraphForLine } from "@/lib/latex-paragraph-map";
 import { ErrorsHost } from "./editor-layout/panels/errors-host";
 import { pruneExpanded } from "@/panels/Errors/expansion";
@@ -517,29 +516,12 @@ export default function EditorLayout() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentDocId]);
 
+  // `promptDocClassMismatch` feeds EditorPane's live `useLatexCompile`
+  // (via the `onDocumentClassMismatch` prop below) — EditorLayout no longer
+  // mounts its own compile hook. Compile errors / log / status are read from
+  // the live pane via `paneState` (the single authoritative compile source).
   const { prompt: promptDocClassMismatch, dialog: docClassDialog } =
     useDocumentClassMismatchDialog();
-  const {
-    compile: compilePdf,
-    isCompiling,
-    lastLog: compileLog,
-    lastStatus: compileStatus,
-    compileErrors,
-  } = useLatexCompile(docIdForHooks, {
-    onDocumentClassMismatch: promptDocClassMismatch,
-    onCompileSuccess: useCallback((pdfBytes: Uint8Array) => {
-      latestPdfBytes.current = pdfBytes;
-      if (pdfBlobUrl) URL.revokeObjectURL(pdfBlobUrl);
-      const blob = new Blob([pdfBytes.buffer as ArrayBuffer], { type: "application/pdf" });
-      setPdfBlobUrl(URL.createObjectURL(blob));
-      setLastCompileTime(Date.now());
-      // Compile lands fresh → PDF is in sync until next edit.
-      setPdfStale(false);
-      if (docIdForHooks) activateDocPane(docIdForHooks);
-      setCodeView(false);
-      setPdfView(true);
-    }, [pdfBlobUrl, activateDocPane, docIdForHooks]),
-  });
   const {
     state: suggestionsState,
     currentSuggestion,
@@ -1461,11 +1443,8 @@ export default function EditorLayout() {
     knownBibKeys,
   });
   const allLatexErrors: LatexError[] = useMemo(
-    () =>
-      [...lintErrors, ...compileErrors].sort(
-        (a, b) => a.line - b.line || (a.column ?? 0) - (b.column ?? 0),
-      ),
-    [lintErrors, compileErrors],
+    () => mergeLatexErrors(lintErrors, paneState?.compileErrors ?? []),
+    [lintErrors, paneState?.compileErrors],
   );
   const jumpToLineInCode = useCallback(
     (line: number, column?: number) => {
@@ -4431,9 +4410,9 @@ export default function EditorLayout() {
                         codeEditorHandleRef.current = handle;
                       }}
                       onTextChange={handleCodeEditorTextChange}
-                      compileLog={compileLog}
-                      compileStatus={compileStatus}
-                      isCompiling={isCompiling}
+                      compileLog={paneState?.compileLog ?? null}
+                      compileStatus={paneState?.compileStatus ?? null}
+                      isCompiling={paneState?.isCompiling ?? false}
                     />
                     {errorsSidebarOpen ? (
                       <div className="w-[260px] shrink-0 border-l border-edge-subtle bg-surface flex flex-col h-full relative">

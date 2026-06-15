@@ -23,6 +23,24 @@ export interface LatexError {
   ruleId?: string;
 }
 
+/**
+ * Merge lint + compile diagnostics into one sorted list, de-duplicating
+ * overlap: when a COMPILE error sits on a line, any LINT diagnostic on the
+ * SAME line is dropped (the compiler is authoritative there; the linter's
+ * guess is noise). Compile diagnostics are always kept. Sorted by line then
+ * column.
+ */
+export function mergeLatexErrors(
+  lint: LatexError[],
+  compile: LatexError[],
+): LatexError[] {
+  const compileLines = new Set(compile.filter((e) => e.line > 0).map((e) => e.line));
+  const keptLint = lint.filter((e) => e.line <= 0 || !compileLines.has(e.line));
+  return [...keptLint, ...compile].sort(
+    (a, b) => a.line - b.line || (a.column ?? 0) - (b.column ?? 0),
+  );
+}
+
 export function makeErrorId(parts: {
   source: LatexErrorSource;
   line: number;

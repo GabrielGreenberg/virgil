@@ -491,6 +491,13 @@ export interface PaneState {
   }) => AiRequest;
   compilePdf: () => void;
   isCompiling: boolean;
+  // Live compile diagnostics from EditorPane's single `useLatexCompile`
+  // instance. EditorLayout's code-view error sidebar + log drawer read
+  // these from here — EditorLayout no longer mounts a (dead) second
+  // compile hook, so this is the one authoritative compile source.
+  compileErrors: LatexError[];
+  compileLog: string | null;
+  compileStatus: number | null;
   pdfStale: boolean;
   pdfBlobUrl: string | null;
   pdfView: boolean;
@@ -3109,6 +3116,9 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
       addStyleMergeRequest: aiRequestsHook.addStyleMergeRequest,
       compilePdf: compileHook.compile,
       isCompiling: compileHook.isCompiling,
+      compileErrors: compileHook.compileErrors,
+      compileLog: compileHook.lastLog,
+      compileStatus: compileHook.lastStatus,
       pdfStale,
       pdfBlobUrl,
       pdfView,
@@ -3135,6 +3145,9 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
     revisionsHook.cards,
     compileHook.compile,
     compileHook.isCompiling,
+    compileHook.compileErrors,
+    compileHook.lastLog,
+    compileHook.lastStatus,
     pdfStale,
     pdfBlobUrl,
     pdfView,
