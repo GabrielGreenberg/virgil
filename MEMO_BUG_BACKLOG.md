@@ -1191,3 +1191,34 @@ so the `maxHeight` ceiling matches the renderer — OR clamp the `BorrowedMainTe
 itself to `compressedLines` using its own line-height rather than the 1.4-based
 parent ceiling. Verify footnote / archive / example show two **full** lines and the
 plain-summary kinds don't regress (they're already correct at 1.4).
+
+---
+
+## 43. Collapsed number/example cards: preview typography diverges from expanded
+
+**Reported:** 2026-06-15 · **Status:** open (possibly-intentional — user unsure) ·
+**Area:** ui-chrome / card chrome / examples · **Related:** #42 (same borrowed-collapsed path)
+
+**Reported behavior** — a number/example card looks right **expanded** (editor
+serif, black `(5)`, the a/b/c/d structure with `ex.` labels — matches the main
+text), but the **collapsed** preview renders the same content in **divergent
+typography**: the `(5)` example number turns **teal** (the example accent) instead
+of black, and the body reads in a different/larger serif than the expanded body.
+User flags it as "perhaps a necessary design decision, but not sure."
+
+**Mechanism.** Examples are a **borrowed-class** kind, so the collapsed body
+renders through `BorrowedMainText` — and the variant is **hardcoded
+`variant="footnote"`** ([panel-primitives.tsx:1043](src/components/panel-primitives.tsx:1043))
+for every borrowed kind. `BorrowedMainText` only defines `"footnote" | "note"`
+variants ([BorrowedMainText.tsx:69](src/components/BorrowedMainText.tsx:69)) — there
+is no "example" variant — so a collapsed example borrows footnote typography over
+the `compressedBody` panel style, and the embedded expex `(5)` number picks up the
+example accent color in that context rather than its expanded black. Hence the
+collapsed look ≠ the expanded (native expex) look.
+
+**Open question (user-flagged) + fix direction.** Decide whether the collapsed
+compromise is acceptable or should match expanded. If matching: select the
+`BorrowedMainText` variant by **card kind** (add/route an "example" variant) instead
+of the hardcoded `"footnote"`, and/or normalize the collapsed expex `(5)` number's
+color + size to its expanded values. Touches the same collapsed-borrowed-body code
+as #42, so the two likely fix together.
