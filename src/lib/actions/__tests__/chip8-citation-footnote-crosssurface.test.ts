@@ -1,0 +1,635 @@
+// @vitest-environment jsdom
+//
+// CHIP 8 — CITATION + FOOTNOTE cross-surface BYTE-IDENTITY verification.
+//
+// This is the alignment-matrix oracle's "cross-surface identity invariant" for
+// the two card actions whose `run()` spans all four surfaces (citation rows §112
+// + footnote row §111 of docs/memos/action-alignment-matrix/EXPECTED-MATRIX.md):
+//
+//   citation (grab, lightning, slash, typed):
+//     "Atom attrs {citationId, command, displayText:''} must be byte-identical
+//      across surfaces. CitationRef sidecar shape identical (id===citationId;
+//      keys parsed from command). Difference: typed \cite{key} carries the FULL
+//      command (renders keys) while menu/slash carry empty \cite{}."
+//
+//   footnote (grab, lightning, slash, typed):
+//     "All four surfaces must land the SAME footnote atom (footnoteId, ...,
+//      empty content) AND the SAME pristine+pinned+selected card lifecycle.
+//      Slash/typed adopt (no double-insert); menu inserts. Card footnoteId ===
+//      atom footnoteId on every surface."
+//
+// WHY A SEPARATE FILE (vs the per-surface citation-cross-surface.test.ts /
+// footnote-cross-surface.test.ts already in this dir): those prove each surface
+// in ISOLATION. This file drives TWO surfaces in ONE test and asserts the two
+// outputs are byte-identical (modulo the minted id / the documented typed-key
+// payload). It ALSO drives the registry creator destination directly —
+// `VIRGIL_ACTION_REGISTRY.citation.run` / `.footnote.run` with a constructed
+// ActionContext — AND the REAL `parseCiteCommand` that shapes the citations.json
+// `CitationRef` entry, which the per-surface files stub. The grab/lightning
+// React-hook WIRING (useDragHandleActions.dispatch) is covered by the manager's
+// live-preview canary; here we cover the run()/creator twin those surfaces share.
+//
+// (The extension barrel transitively imports `@/lib/storage`; stub it — the same
+// gotcha as the sibling action tests, per vitest_extension_barrel_storage_mock.)
+import { describe, it, expect, vi, afterEach, beforeEach } from "vitest";
+
+vi.mock("@/lib/storage", () => {
+  const STORAGE_FNS = [
+    "readSidecar", "readSidecarIfExists", "writeSidecar", "readTex", "writeTex",
+    "readDocBundle", "writeDocBundle", "readBib", "writeBib",
+    "createDocFromPicker", "createDocInFolder", "pickProjectFolder",
+    "registerDocInFolder", "openExistingDocFromPicker", "listDocs", "renameDoc",
+    "deleteDocFromIndex", "flushDoc", "drainDoc", "detectBibPackage",
+    "readPaperFolder", "getTexFilename", "writePdf", "readPdf", "getPdfFilename",
+    "pdfFilenameFromTex", "readFigureSource", "readFigureRaster",
+    "writeFigureRaster", "deleteFigureRaster", "readFigureIndex",
+    "writeFigureIndex", "getDocWriteHandle", "importFigureFile",
+  ];
+  const mod: Record<string, unknown> = { isDevStorage: false };
+  for (const name of STORAGE_FNS) mod[name] = vi.fn();
+  return mod;
+});
+
+import { Editor } from "@tiptap/core";
+import { TextSelection } from "@tiptap/pm/state";
+import {
+  buildEditorExtensions,
+  type EditorExtensionsCtx,
+} from "@/lib/editor-extensions";
+import { COMMAND_MAP } from "@/lib/tiptap/commands";
+import {
+  VIRGIL_ACTION_REGISTRY,
+  type ActionContext,
+  type ActionId,
+  type CursorRef,
+  type EditorActionsHandle,
+} from "@/lib/actions/action-registry";
+import { setEditorActionsHandle } from "@/lib/actions/editor-actions-bridge";
+import { buildFloatKey } from "@/floats/float-key";
+import { paragraphUuidAt } from "@/links/links";
+import { parseCiteCommand } from "@/lib/bib-parser";
+import type { ViewPrefs } from "@/hooks/useViewPrefs";
+
+// ---------------------------------------------------------------------------
+// Real editor stack (mirrors citation-cross-surface.test.ts mountEditor)
+// ---------------------------------------------------------------------------
+
+function mainCtx(): EditorExtensionsCtx {
+  return {
+    surface: "main",
+    editableRef: { current: true },
+    cardContext: false,
+    callbacks: {},
+    docIdRef: { current: null },
+    texBlockIsPoppedRef: { current: undefined },
+    anchoredUuidsRef: { current: new Set<string>() },
+    host: null,
+  };
+}
+
+function mountEditor(text: string, caretOffset = text.length): Editor {
+  const element = document.createElement("div");
+  document.body.appendChild(element);
+  const editor = new Editor({
+    element,
+    editable: true,
+    extensions: buildEditorExtensions(mainCtx()),
+    content: {
+      type: "doc",
+      content: [
+        {
+          type: "paragraph",
+          attrs: { uuid: "para-A" },
+          content: text ? [{ type: "text", text }] : [],
+        },
+      ],
+    },
+  });
+  const pos = 1 + caretOffset;
+  editor.view.dispatch(
+    editor.state.tr.setSelection(TextSelection.create(editor.state.doc, pos)),
+  );
+  return editor;
+}
+
+function citationAtoms(editor: Editor): Array<{
+  citationId: string;
+  command: string;
+  displayText: string;
+}> {
+  const out: Array<{ citationId: string; command: string; displayText: string }> = [];
+  editor.state.doc.descendants((node) => {
+    if (node.type.name === "citation") {
+      out.push({
+        citationId: node.attrs.citationId as string,
+        command: node.attrs.command as string,
+        displayText: node.attrs.displayText as string,
+      });
+    }
+    return true;
+  });
+  return out;
+}
+
+function footnoteAtoms(editor: Editor): Array<{
+  footnoteId: string;
+  content: unknown;
+  number: number;
+}> {
+  const out: Array<{ footnoteId: string; content: unknown; number: number }> = [];
+  editor.state.doc.descendants((node) => {
+    if (node.type.name === "footnote") {
+      out.push({
+        footnoteId: node.attrs.footnoteId as string,
+        content: node.attrs.content,
+        number: node.attrs.number as number,
+      });
+    }
+    return true;
+  });
+  return out;
+}
+
+// ---------------------------------------------------------------------------
+// Spies + a real bridge handle (mirrors EditorPane's publish effect)
+// ---------------------------------------------------------------------------
+
+let createCitation: ReturnType<typeof vi.fn>;
+let createFootnote: ReturnType<typeof vi.fn>;
+let setActiveLeft: ReturnType<typeof vi.fn>;
+let setActiveRight: ReturnType<typeof vi.fn>;
+let focusCard: ReturnType<typeof vi.fn>;
+
+function prefsWith(
+  panelId: "citations" | "footnotes",
+  side: "left" | "right",
+  active: string | null,
+): ViewPrefs {
+  return {
+    placements: [{ id: panelId, side }],
+    activeLeft: side === "left" ? active : "notes",
+    activeRight: side === "right" ? active : "notes",
+  } as unknown as ViewPrefs;
+}
+
+/** Publish a bridge handle EXACTLY like EditorPane: synthesize a CursorRef from
+ *  the live selection head, build the ActionContext with the spy cardCreation +
+ *  panelRouting, invoke `spec.run(ctx)`. Both create* spies are supplied so the
+ *  one handle services citation AND footnote surfaces. */
+function publishHandle(editor: Editor, prefs: ViewPrefs): void {
+  const handle: EditorActionsHandle = {
+    runAction(id: ActionId, seed) {
+      const spec = VIRGIL_ACTION_REGISTRY[id];
+      if (!spec) return;
+      const pos = editor.state.selection.head;
+      const ref: CursorRef = {
+        kind: "cursor",
+        pos,
+        paragraphId: paragraphUuidAt(editor.state.doc, pos) ?? "",
+      };
+      const ctx: ActionContext = {
+        editor,
+        view: editor.view,
+        ref,
+        surface: seed.surface,
+        position: seed.position,
+        cardCreation: {
+          createCitation,
+          createFootnote,
+        } as unknown as ActionContext["cardCreation"],
+        payload: seed.payload,
+        panelRouting: {
+          prefs,
+          setActiveLeft: setActiveLeft as (id: unknown) => void,
+          setActiveRight: setActiveRight as (id: unknown) => void,
+          focusCard: focusCard as (key: string) => void,
+        } as unknown as ActionContext["panelRouting"],
+      };
+      void spec.run(ctx);
+    },
+  };
+  setEditorActionsHandle(handle);
+}
+
+/** Drive the REAL typed input rule via `view.someProp("handleTextInput", …)` —
+ *  PM's contract stops at the first truthy handler. */
+function typeChar(editor: Editor, text: string): boolean {
+  const { from } = editor.state.selection;
+  type TextInputHandler = (
+    view: typeof editor.view,
+    from: number,
+    to: number,
+    text: string,
+  ) => boolean;
+  const handled = editor.view.someProp("handleTextInput", (f) =>
+    (f as TextInputHandler)(editor.view, from, from, text),
+  );
+  return !!handled;
+}
+
+beforeEach(() => {
+  createCitation = vi.fn((opts: { citationId?: string }) => ({
+    id: opts.citationId ?? "ref-id",
+  }));
+  createFootnote = vi.fn((opts: { existingFootnoteId?: string }) => ({
+    footnoteId: opts.existingFootnoteId ?? "fn-id",
+  }));
+  setActiveLeft = vi.fn();
+  setActiveRight = vi.fn();
+  focusCard = vi.fn();
+});
+
+afterEach(() => {
+  setEditorActionsHandle(null);
+  document.body.innerHTML = "";
+  vi.restoreAllMocks();
+});
+
+// ===========================================================================
+// CITATION — cross-surface byte-identity
+// ===========================================================================
+
+describe("citation: slash ⇄ bare-typed atom + card byte-identity", () => {
+  it("slash \\cite and typed \\cite·(space) produce byte-identical atom attrs (modulo id) and createCitation shape", () => {
+    // --- surface A: slash \cite ---
+    const slashEd = mountEditor("");
+    publishHandle(slashEd, prefsWith("citations", "right", null));
+    COMMAND_MAP.get("cite")!.action(slashEd.view, "\\cite");
+    const slashAtom = citationAtoms(slashEd)[0];
+    const slashCall = createCitation.mock.calls[0][0];
+
+    createCitation.mockClear();
+
+    // --- surface B: typed bare \cite + " " ---
+    const typedEd = mountEditor("\\cite");
+    publishHandle(typedEd, prefsWith("citations", "right", null));
+    expect(typeChar(typedEd, " ")).toBe(true);
+    const typedAtom = citationAtoms(typedEd)[0];
+    const typedCall = createCitation.mock.calls[0][0];
+
+    // ATOM: command + displayText byte-identical; only the minted id differs.
+    expect(slashAtom.command).toBe("\\cite{}");
+    expect(typedAtom.command).toBe(slashAtom.command);
+    expect(typedAtom.displayText).toBe(slashAtom.displayText); // ""
+    expect(slashAtom.citationId).toBeTruthy();
+    expect(typedAtom.citationId).toBeTruthy();
+
+    // CARD CALL: identical shape (command/unanchored/mode) modulo the minted id.
+    expect({ ...slashCall, citationId: "_" }).toEqual({
+      command: "\\cite{}",
+      citationId: "_",
+      unanchored: false,
+      mode: "omni",
+    });
+    expect({ ...typedCall, citationId: "_" }).toEqual({ ...slashCall, citationId: "_" });
+
+    // IDENTITY JOIN: the card's citationId === the in-doc atom's id (both surfaces).
+    expect(slashCall.citationId).toBe(slashAtom.citationId);
+    expect(typedCall.citationId).toBe(typedAtom.citationId);
+  });
+});
+
+describe("citation: typed \\cite{key} carries the FULL command (the CHIP 4a-ii fix)", () => {
+  it("the typed-full surface DIVERGES from slash ONLY in the documented way: command preserves the key", () => {
+    // slash carries the empty \cite{}
+    const slashEd = mountEditor("");
+    publishHandle(slashEd, prefsWith("citations", "right", null));
+    COMMAND_MAP.get("cite")!.action(slashEd.view, "\\cite");
+    const slashCall = createCitation.mock.calls[0][0];
+    createCitation.mockClear();
+
+    // typed-full carries \cite{smith}
+    const typedEd = mountEditor("\\cite{smith}".slice(0, -1)); // "\cite{smith"
+    publishHandle(typedEd, prefsWith("citations", "right", null));
+    expect(typeChar(typedEd, "}")).toBe(true);
+    const typedAtom = citationAtoms(typedEd)[0];
+    const typedCall = createCitation.mock.calls[0][0];
+
+    // THE FIX: typed \cite{key} now makes a card (it made NONE before 4a-ii).
+    expect(createCitation).toHaveBeenCalledTimes(1);
+
+    // The FULL command is preserved on BOTH the atom and the card call.
+    expect(typedAtom.command).toBe("\\cite{smith}");
+    expect(typedCall.command).toBe("\\cite{smith}");
+
+    // The ONLY oracle-documented difference vs slash: the command string (key).
+    // Everything else (unanchored/mode + the id-join) is byte-identical.
+    expect(typedCall.unanchored).toBe(slashCall.unanchored); // false
+    expect(typedCall.mode).toBe(slashCall.mode); // "omni"
+    expect(typedCall.citationId).toBe(typedAtom.citationId);
+  });
+});
+
+describe("citation: the citations.json-shaped CitationRef entry (real parseCiteCommand)", () => {
+  // The per-surface tests stub createCitation; here we drive the REAL sidecar
+  // shaper — `addCitation`'s body — to prove the entry the card lands in
+  // citations.json has the oracle shape {id, command, keys (parsed), createdAt,
+  // unanchored absent (anchored)}, and that `keys` is parsed from `command`.
+  function makeCitationRef(command: string, citationId: string, unanchored: boolean) {
+    // Mirrors useCitations.addCitation's ref construction VERBATIM (the real
+    // parseCiteCommand decides `keys`). The anchored card omits `unanchored`.
+    const parsed = parseCiteCommand(command);
+    return {
+      id: citationId,
+      command,
+      keys: parsed?.keys || [],
+      createdAt: new Date().toISOString(),
+      ...(unanchored ? { unanchored: true as const } : {}),
+    };
+  }
+
+  it("slash/bare \\cite{} → entry with a single EMPTY-STRING key, anchored (no unanchored flag)", () => {
+    const entry = makeCitationRef("\\cite{}", "abcd", /*unanchored*/ false);
+    expect(entry.id).toBe("abcd");
+    expect(entry.command).toBe("\\cite{}");
+    // LIVE-CODE TRUTH (not the oracle's loose "empty keys"): parseCiteCommand
+    // does `body.split(",").map(trim)`, so an empty `\cite{}` body yields a
+    // SINGLE empty-string key `[""]`, NOT `[]`. See the FLAGGED quirk note
+    // below — this `length===1` value defeats addCitation's
+    // `keys.length === 0` pristine check for an empty `\cite{}`.
+    expect(entry.keys).toEqual([""]);
+    expect(typeof entry.createdAt).toBe("string");
+    expect("unanchored" in entry).toBe(false); // anchored: flag ABSENT
+  });
+
+  it("FLAGGED quirk: \\cite{} keys===[''] (length 1) defeats the keys.length===0 pristine check", () => {
+    // useCitations.addCitation marks a citation pristine ONLY when
+    // `ref.keys.length === 0`. But parseCiteCommand("\\cite{}").keys === [""]
+    // (length 1), so a brand-new empty `\cite{}` is NOT marked pristine via
+    // that path. The card's pristine lifecycle for an empty cite therefore
+    // relies on a DIFFERENT signal, not this addCitation branch. Pin the
+    // observed parser value so a future "fix" to either side is caught here.
+    const keys = parseCiteCommand("\\cite{}")?.keys ?? [];
+    expect(keys).toEqual([""]);
+    expect(keys.length === 0).toBe(false); // → addCitation does NOT markNew here
+  });
+
+  it("typed \\cite{smith} → entry with keys parsed FROM the command", () => {
+    const entry = makeCitationRef("\\cite{smith}", "efgh", false);
+    expect(entry.command).toBe("\\cite{smith}");
+    expect(entry.keys).toEqual(["smith"]); // parsed from \cite{smith}
+    expect("unanchored" in entry).toBe(false);
+  });
+
+  it("the id-join holds end-to-end: an atom's citationId becomes the entry's id", () => {
+    // Drive a REAL typed-full surface, then shape the entry from the live atom's
+    // attrs the same way addCitation would (createCitation forwards command+id).
+    const ed = mountEditor("\\cite{jones2001}".slice(0, -1));
+    publishHandle(ed, prefsWith("citations", "right", null));
+    typeChar(ed, "}");
+    const atom = citationAtoms(ed)[0];
+    const call = createCitation.mock.calls[0][0];
+    const entry = makeCitationRef(call.command, call.citationId, !call.unanchored ? false : true);
+    expect(entry.id).toBe(atom.citationId); // entry.id === atom.citationId
+    expect(entry.command).toBe("\\cite{jones2001}");
+    expect(entry.keys).toEqual(["jones2001"]);
+  });
+});
+
+describe("citation: registry citation.run creator destination (grab/lightning twin)", () => {
+  it("a cursor-ref citation.run lands createCitation with the anchored omni shape + focuses the card", () => {
+    // Drive the registry run() DIRECTLY (the destination grab/lightning share via
+    // their dispatch → createCitation). A cursor-surface ctx with a payload.
+    const ed = mountEditor("");
+    const ctx = {
+      editor: ed,
+      view: ed.view,
+      ref: { kind: "cursor", pos: 1, paragraphId: "para-A" } as CursorRef,
+      surface: "slash",
+      payload: { citationId: "zzzz", command: "\\citep{a,b}" },
+      cardCreation: { createCitation } as unknown as ActionContext["cardCreation"],
+      panelRouting: {
+        prefs: prefsWith("citations", "right", null),
+        setActiveLeft,
+        setActiveRight,
+        focusCard,
+      } as unknown as ActionContext["panelRouting"],
+    } as unknown as ActionContext;
+
+    VIRGIL_ACTION_REGISTRY.citation!.run(ctx);
+
+    expect(createCitation).toHaveBeenCalledTimes(1);
+    expect(createCitation).toHaveBeenCalledWith({
+      command: "\\citep{a,b}",
+      citationId: "zzzz",
+      unanchored: false,
+      mode: "omni",
+    });
+    expect(focusCard).toHaveBeenCalledWith(
+      buildFloatKey({ domain: "card", kind: "citation", id: "zzzz" }),
+    );
+    // parseCiteCommand would yield two keys for this command (sidecar shape).
+    expect(parseCiteCommand("\\citep{a,b}")?.keys).toEqual(["a", "b"]);
+  });
+
+  it("a DragHandleRef (grab/lightning) DELEGATES to dispatch — NO cursor card-creation", () => {
+    const dispatch = vi.fn();
+    const ref = { kind: "paragraph", id: "para-A" } as const;
+    const ctx = { ref, surface: "grab", dispatch } as unknown as ActionContext;
+    VIRGIL_ACTION_REGISTRY.citation!.run(ctx);
+    expect(dispatch).toHaveBeenCalledWith("citation", ref);
+    expect(createCitation).not.toHaveBeenCalled();
+  });
+});
+
+// ===========================================================================
+// FOOTNOTE — cross-surface byte-identity + pristine alignment
+// ===========================================================================
+
+describe("footnote: slash ⇄ typed-empty atom + card byte-identity (pristine)", () => {
+  it("slash \\footnote and typed \\footnote{} produce the same atom shape + the same PRISTINE adopt call", () => {
+    // --- surface A: slash \footnote ---
+    const slashEd = mountEditor("");
+    publishHandle(slashEd, prefsWith("footnotes", "left", null));
+    COMMAND_MAP.get("footnote")!.action(slashEd.view, "\\footnote");
+    const slashAtoms = footnoteAtoms(slashEd);
+    const slashCall = createFootnote.mock.calls[0][0];
+    createFootnote.mockClear();
+
+    // --- surface B: typed \footnote{} (empty) ---
+    const typedEd = mountEditor("\\footnote{}".slice(0, -1)); // "\footnote{"
+    publishHandle(typedEd, prefsWith("footnotes", "left", null));
+    expect(typeChar(typedEd, "}")).toBe(true);
+    const typedAtoms = footnoteAtoms(typedEd);
+    const typedCall = createFootnote.mock.calls[0][0];
+
+    // ATOM: each surface lands EXACTLY ONE footnote atom with a real id.
+    expect(slashAtoms).toHaveLength(1);
+    expect(typedAtoms).toHaveLength(1);
+    expect(slashAtoms[0].footnoteId).toBeTruthy();
+    expect(typedAtoms[0].footnoteId).toBeTruthy();
+
+    // CARD CALL byte-identity: BOTH adopt the existing atom (existingFootnoteId),
+    // BOTH pristine:true (empty body → click-away-discardable), BOTH mode omni.
+    expect({ ...slashCall, existingFootnoteId: "_" }).toEqual({
+      existingFootnoteId: "_",
+      pristine: true,
+      mode: "omni",
+    });
+    expect({ ...typedCall, existingFootnoteId: "_" }).toEqual({
+      ...slashCall,
+      existingFootnoteId: "_",
+    });
+
+    // ADOPT (no double-insert): the call adopts the atom's id; never fromSelection.
+    expect(slashCall.existingFootnoteId).toBe(slashAtoms[0].footnoteId);
+    expect(typedCall.existingFootnoteId).toBe(typedAtoms[0].footnoteId);
+    expect(slashCall.fromSelection).toBeUndefined();
+    expect(typedCall.fromSelection).toBeUndefined();
+  });
+});
+
+describe("footnote: pristine alignment — empty vs body (the footnote.ts:172 fix)", () => {
+  it("typed \\footnote{body} adopts NON-pristine (body must not be reaped); empty stays pristine", () => {
+    // typed-with-body → pristine:false
+    const bodyEd = mountEditor("\\footnote{hello}".slice(0, -1)); // "\footnote{hello"
+    publishHandle(bodyEd, prefsWith("footnotes", "left", null));
+    expect(typeChar(bodyEd, "}")).toBe(true);
+    const bodyCall = createFootnote.mock.calls[0][0];
+    const bodyAtom = footnoteAtoms(bodyEd)[0];
+    expect(bodyCall.pristine).toBe(false); // real body → NOT discardable
+    expect(bodyCall.existingFootnoteId).toBe(bodyAtom.footnoteId);
+    // The typed body lives in the atom's content attr (a normalized PM doc).
+    expect(bodyAtom.content).toBeTruthy();
+    expect(JSON.stringify(bodyAtom.content)).toContain("hello");
+
+    createFootnote.mockClear();
+
+    // typed-empty → pristine:true (the contrast that proves the trim() branch).
+    const emptyEd = mountEditor("\\footnote{}".slice(0, -1)); // "\footnote{"
+    publishHandle(emptyEd, prefsWith("footnotes", "left", null));
+    expect(typeChar(emptyEd, "}")).toBe(true);
+    expect(createFootnote.mock.calls[0][0].pristine).toBe(true);
+  });
+
+  it("a whitespace-only body \\footnote{  } is treated as pristine (trim().length===0)", () => {
+    const ed = mountEditor("\\footnote{  }".slice(0, -1)); // "\footnote{  "
+    publishHandle(ed, prefsWith("footnotes", "left", null));
+    expect(typeChar(ed, "}")).toBe(true);
+    expect(createFootnote.mock.calls[0][0].pristine).toBe(true);
+  });
+});
+
+describe("footnote: registry footnote.run creator destination (grab/lightning twin)", () => {
+  it("a cursor-ref footnote.run adopts via createFootnote({existingFootnoteId,pristine,mode}) + focuses the card", () => {
+    const ed = mountEditor("");
+    const ctx = {
+      editor: ed,
+      view: ed.view,
+      ref: { kind: "cursor", pos: 1, paragraphId: "para-A" } as CursorRef,
+      surface: "slash",
+      payload: { footnoteId: "fn99", pristine: true },
+      cardCreation: { createFootnote } as unknown as ActionContext["cardCreation"],
+      panelRouting: {
+        prefs: prefsWith("footnotes", "left", null),
+        setActiveLeft,
+        setActiveRight,
+        focusCard,
+      } as unknown as ActionContext["panelRouting"],
+    } as unknown as ActionContext;
+
+    VIRGIL_ACTION_REGISTRY.footnote!.run(ctx);
+
+    expect(createFootnote).toHaveBeenCalledTimes(1);
+    expect(createFootnote).toHaveBeenCalledWith({
+      existingFootnoteId: "fn99",
+      pristine: true,
+      mode: "omni",
+    });
+    expect(focusCard).toHaveBeenCalledWith(
+      buildFloatKey({ domain: "card", kind: "footnote", id: "fn99" }),
+    );
+  });
+
+  it("footnote.run honors a pristine:false payload (typed-with-body twin)", () => {
+    const ed = mountEditor("");
+    const ctx = {
+      editor: ed,
+      view: ed.view,
+      ref: { kind: "cursor", pos: 1, paragraphId: "para-A" } as CursorRef,
+      surface: "typed",
+      payload: { footnoteId: "fn-body", pristine: false },
+      cardCreation: { createFootnote } as unknown as ActionContext["cardCreation"],
+      panelRouting: {
+        prefs: prefsWith("footnotes", "left", null),
+        setActiveLeft,
+        setActiveRight,
+        focusCard,
+      } as unknown as ActionContext["panelRouting"],
+    } as unknown as ActionContext;
+
+    VIRGIL_ACTION_REGISTRY.footnote!.run(ctx);
+    expect(createFootnote.mock.calls[0][0].pristine).toBe(false);
+  });
+
+  it("a DragHandleRef (grab/lightning) DELEGATES to dispatch — NO cursor card-creation", () => {
+    const dispatch = vi.fn();
+    const ref = { kind: "paragraph", id: "para-A" } as const;
+    const ctx = { ref, surface: "grab", dispatch } as unknown as ActionContext;
+    VIRGIL_ACTION_REGISTRY.footnote!.run(ctx);
+    expect(dispatch).toHaveBeenCalledWith("footnote", ref);
+    expect(createFootnote).not.toHaveBeenCalled();
+  });
+});
+
+// ===========================================================================
+// SIDECAR ASYMMETRY — citations.json IS shaped (CitationRef) for a new
+// citation; footnotes.json is NOT written for a NEW footnote (the body lives in
+// the atom's content attr until the card edits it). The mission asks us to flag
+// whether this is intended. These tests PIN the observed contract.
+// ===========================================================================
+
+describe("sidecar asymmetry: citation entry shaped vs footnote body in the atom", () => {
+  it("a new citation forwards command+id → a citations.json CitationRef is shaped", () => {
+    const ed = mountEditor("");
+    publishHandle(ed, prefsWith("citations", "right", null));
+    COMMAND_MAP.get("cite")!.action(ed.view, "\\cite");
+    const call = createCitation.mock.calls[0][0];
+    // createCitation receives the full data needed to build the CitationRef
+    // (command + id) — the sidecar entry IS shaped on create.
+    expect(call.command).toBe("\\cite{}");
+    expect(call.citationId).toBeTruthy();
+    // LIVE-CODE TRUTH: empty `\cite{}` parses to a single empty-string key.
+    expect(parseCiteCommand(call.command)?.keys).toEqual([""]);
+  });
+
+  it("a new footnote's BODY rides the atom's content attr; createFootnote carries NO body field", () => {
+    // OBSERVED (flagging per the mission): unlike citation (command on the
+    // entry), the footnote adopt call carries ONLY {existingFootnoteId, pristine,
+    // mode} — no body/content. The typed body is in the in-doc atom's `content`
+    // attr; footnotes.json is not written for the NEW footnote at create time.
+    const ed = mountEditor("\\footnote{deep body}".slice(0, -1));
+    publishHandle(ed, prefsWith("footnotes", "left", null));
+    typeChar(ed, "}");
+    const call = createFootnote.mock.calls[0][0];
+    const atom = footnoteAtoms(ed)[0];
+    expect(call.content).toBeUndefined();
+    expect(call.body).toBeUndefined();
+    expect(Object.keys(call).sort()).toEqual(
+      ["existingFootnoteId", "mode", "pristine"].sort(),
+    );
+    // The body is durable in the atom (round-trips via the .tex), not the call.
+    expect(JSON.stringify(atom.content)).toContain("deep body");
+  });
+});
+
+// ===========================================================================
+// DURABILITY — the atom lands even with the card host unmounted (bridge null).
+// A cross-action proof: BOTH cite and footnote keep the synchronous PM insert.
+// ===========================================================================
+
+describe("durability: atom lands with the bridge cleared (both kinds)", () => {
+  it("slash \\cite + typed \\footnote{} both insert the atom with no handle, no throw", () => {
+    setEditorActionsHandle(null);
+
+    const citeEd = mountEditor("");
+    expect(() => COMMAND_MAP.get("cite")!.action(citeEd.view, "\\cite")).not.toThrow();
+    expect(citationAtoms(citeEd)).toHaveLength(1);
+    expect(createCitation).not.toHaveBeenCalled();
+
+    const fnEd = mountEditor("\\footnote{}".slice(0, -1));
+    expect(() => typeChar(fnEd, "}")).not.toThrow();
+    expect(footnoteAtoms(fnEd)).toHaveLength(1);
+    expect(createFootnote).not.toHaveBeenCalled();
+  });
+});

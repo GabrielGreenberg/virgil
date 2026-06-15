@@ -115,8 +115,19 @@ Full suite: 127 files / 1108 tests green; `tsc --noEmit` clean.
 
 ## F1 — UX (low) — `archive` on a `latexComment` surfaces no destructive confirm
 
-**Status:** observed (CHIP 8 lifecycle sweep). `archive` on `latexComment 0c01` → removed,
-`sawDialog:false`. Analogous to the gap `63ccace` closed for math/`\ref`/figure/tex blocks.
-Verify against `resolveDestructiveConfirm` whether `latexComment` was intentionally excluded.
-Delete-on-latexComment not yet driven. Low severity (a `%`-comment is low-stakes), but inconsistent
-with the just-landed confirm policy. Not yet fixed.
+**Status:** RESOLVED — **BY DESIGN, not a bug.** `latexComment` declares
+`confirmDestructive: () => null` ([text-object-registry.ts:544](../../../src/text-objects/text-object-registry.ts))
+with the explicit rationale *"Author noise, cheap to redo — never warn."* The silent archive/delete
+is intentional (a `%`-comment is low-stakes), distinct from the math/`\ref`/figure/tex blocks that
+`63ccace` deliberately gave confirms. No action.
+
+---
+
+## F3 — observation (triage) — new footnote cards are not written to `footnotes.json`
+
+**Status:** observed (CHIP 8 footnote alignment). Creating a footnote via any surface
+(typed/slash/grab) sets the body in the footnote atom's `content` attr (→ round-trips via `.tex`),
+but does NOT add an entry to `footnotes.json`, whereas a new citation DOES add a `citations.json`
+entry. Uniform across all 3 footnote surfaces (so NOT a cross-surface divergence). May be intended
+(footnote body is atom/`.tex`-resident; the sidecar may be a derived/legacy cache) or a persistence
+gap. Delegated to the chip8-realstack citation/footnote agent to determine intent. Low priority.
