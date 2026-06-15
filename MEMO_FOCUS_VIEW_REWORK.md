@@ -1,18 +1,20 @@
 # Focus View — deep architectural rework
 
-**Branch:** `focus-view-rework` (worktree `.claude/worktrees/focus-view`)
-**Started:** 2026-06-14
-**Status:** CORE COMPLETE — CHIPs 0–4 landed, live-verified, adversarially
-reviewed (one real crash found + fixed). 6 commits. 1120 tests pass, clean tsc,
-no new lint. NOT merged (left on the branch for review). Remaining: CHIP 4b
-(breadcrumb/cursor polish, deferred) + CHIP 5 (card-typing — needs a user screen
-recording; may already be fixed by the CSS removal). See Progress tracker.
+**Started:** 2026-06-14 · **MERGED into `main` 2026-06-15** (merge `869f311`,
+`--no-ff`; CHIP 6 + CHIP 4b landed on main after). **LOCAL ONLY — not pushed.**
+The `focus-view-rework` branch + worktree have been **cleaned up** (removed).
+**Status:** DONE except CHIP 5. CHIPs 0–4 + crash fix + CHIP 6 (card-blank) +
+CHIP 4b (breadcrumb) all live-verified; 1127 tests pass on main, clean tsc.
 
-**The deep architectural fix (the primary ask) is done:** focus view is now a
-UUID-anchored band, computed once per structural change and consumed uniformly,
-hidden via a ProseMirror decoration that cannot touch card editors. The three
-reported bugs: index-drift = FIXED; silent card suppression = FIXED (bin); card
-typing = likely fixed (CSS removed) but unverifiable headlessly, documented.
+**The deep architectural fix (the primary ask) is done + merged:** focus view is
+now a UUID-anchored band, computed once per structural change and consumed
+uniformly, hidden via a ProseMirror decoration that cannot touch card editors.
+Reported bugs: index-drift = FIXED; silent card suppression = FIXED ("N outside
+focus" bin); footnote/card bodies blanking = FIXED (CHIP 6, strip linkedAnchor);
+breadcrumb-wrong-under-focus = FIXED (CHIP 4b). **Only remaining:** CHIP 5
+(card-*typing* visual glitch) — needs a user screen recording to confirm whether
+it survived; may already be resolved by the CSS removal; per the round-5 lesson,
+no blind code was landed.
 
 This memo is the SSOT for the focus-view rework. It supersedes the four
 `scratch/focus-mode-*.md` diagnosis memos (kept for history; some of their
