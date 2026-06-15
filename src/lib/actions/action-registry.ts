@@ -1539,11 +1539,14 @@ export function refRun(ctx: ActionContext): void {
  * is the creator). Both surfaces call `refRun` → `ctx.openRefPopover()`.
  *
  * `applies`: a `\ref` is insertable at any caret / selection (the popover lands
- * the atom at the cursor). A non-text atom-block ref (figure / displayMath) has
- * no caret to insert at → "disabled", via the shared `blockApplies` gate (the
- * same gate tex/example/math use). In practice `ref` is only invoked from a
- * caret/selection (the slash command or the grid bolt), so it is "ok" everywhere
- * it is reachable.
+ * the atom at the cursor). A non-text ATOM-BLOCK ref (the `isAtomBlock:true`
+ * kinds — `displayMath` / `texBlock` / `graphicsBlock` / `latexComment`) has no
+ * caret to insert at → "disabled", via the shared `blockApplies` gate (the same
+ * gate tex/example/math use). NOTE: `figureBlock` is NOT an atom block (it has
+ * caption content), so `blockApplies` returns "ok" for it — verified by the
+ * CHIP 8 real-stack matrix (RESULTS-realstack.md finding #4). In practice `ref`
+ * is only invoked from a caret/selection (the slash command or the grid bolt),
+ * so it is "ok" everywhere it is normally reachable.
  */
 const REF_ACTION_ROW: ActionSpec = {
   id: "ref",

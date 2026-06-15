@@ -1,5 +1,12 @@
 # CHIP 8 — Expected-Delta Matrix (cross-surface verification oracle)
 
+> **This is the PRE-verification ORACLE (code-read expectations).** Where it disagrees with the
+> live/real-stack runs, **the verified results win** — see [`RESULTS-realstack.md`](RESULTS-realstack.md)
+> + [`RESULTS-lifecycle.md`](RESULTS-lifecycle.md) + [`RESULTS-alignment.md`](RESULTS-alignment.md).
+> Known oracle corrections (live code is truth): **display-math is NOT lazy-uuid** — `BlockUuidBackfill`
+> assigns a non-null anchor uuid on insert (RESULTS-realstack finding #2); **`\ref` on a `figureBlock`
+> is `ok`, not disabled** — figureBlock is a non-atom block (finding #4, jsdoc corrected in code).
+
 Machine-readable companion: [`cells.json`](cells.json) — the flat Cartesian (action × applicableKind × surface) list the live sweep iterates. Live-sweep harness: [`_harness.js`](_harness.js) (inject via `preview_eval`; acquires `window.__v = {main, dh, cc}`).
 
 **717** applicable cells across **5** categories; **653** carry a known risk (drive-live-first).

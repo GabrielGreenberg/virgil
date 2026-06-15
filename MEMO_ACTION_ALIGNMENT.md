@@ -1,8 +1,15 @@
 # Multi-Surface Action Alignment — Plan & Chip Roadmap
 
-**Status: PLANNING COMPLETE, READY TO DISPATCH (2026-06-13).** This is the active
-handoff/SSOT for the effort to make every editing tool **work**, be **aligned**, and
-be **deeply designed** across all of Virgil's action surfaces. Modeled on the prior
+**Status: EFFORT COMPLETE (CHIP 0–8) — 2026-06-15.** The multi-surface action-alignment
+refactor + verification is done and on `origin/main`. One `VIRGIL_ACTION_REGISTRY` SSOT drives all
+4 surfaces; CHIP 8's empirical verification (live canary + a 200-case real-stack regression suite)
+covered the ACTION × KIND × SURFACE matrix and found+fixed **2 latent DATA-LOSS bugs** (F2
+graphicsBlock/atom over-delete `741c1fa`; Bug #1 wrapper-toggle destroys titleField/heading
+`7ecf358`). **Read [docs/memos/action-alignment-matrix/SUMMARY.md](docs/memos/action-alignment-matrix/SUMMARY.md)
+for the verification outcome.** The section below is the original plan/roadmap (historical).
+
+This was the active handoff/SSOT for the effort to make every editing tool **work**, be **aligned**,
+and be **deeply designed** across all of Virgil's action surfaces. Modeled on the prior
 [ACTION-MENU-DIAGNOSIS.md](docs/memos/ACTION-MENU-DIAGNOSIS.md) (which solved the
 grab-handle × text-object-kind matrix); this memo is the *cross-surface* successor.
 
