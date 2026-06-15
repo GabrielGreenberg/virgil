@@ -2046,10 +2046,14 @@ export default function EditorLayout() {
       // whenever a heading is crossed.
       let activeParTitleIdx: number | null = null;
 
-      // When focus is locked, skip blocks outside the focus range — their
-      // DOM nodes are hidden and would report bogus viewport positions.
+      // When focus is ACTIVE (locked or not), skip blocks outside the band —
+      // the focusViewPlugin display:none's them whenever focus is active, so
+      // their DOM nodes report bogus (collapsed) viewport positions and would
+      // drive the breadcrumb to a hidden heading. (Was gated on `locked`, but
+      // the hide is lock-independent — that mismatch made the unlocked-focus
+      // breadcrumb point at an out-of-band section. CHIP 4b.)
       const fs = focusStateRef.current;
-      const skipHidden = fs.active && fs.locked;
+      const skipHidden = fs.active;
 
       doc.forEach((node, offset, index) => {
         if (skipHidden && (index < fs.startBlockIndex || index > fs.endBlockIndex)) return;
@@ -2142,7 +2146,11 @@ export default function EditorLayout() {
       window.removeEventListener("resize", schedule);
       editorInstance.off("update", onEditorUpdate);
     };
-  }, [editorInstance]);
+    // Focus band values are deps so the breadcrumb recomputes when focus
+    // toggles/moves — a meta-only tx (not docChanged) doesn't fire `update`,
+    // so without these the breadcrumb would stay stale until the next scroll.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [editorInstance, focusMode.state.active, focusMode.state.startBlockIndex, focusMode.state.endBlockIndex]);
 
   // Mirror (second pane) position tracking — same logic as above but
   // scoped to the mirror ProseMirror view's scroll container.
@@ -2171,7 +2179,15 @@ export default function EditorLayout() {
       let lastCrossedStack: { level: number; text: string; index: number; sectionNumber: string | null }[] = [];
       let activeParTitleIdx: number | null = null;
 
+      // Mirror shares the main editor's state, so the focus band + decorations
+      // apply here too — skip out-of-band (hidden) blocks for the same reason
+      // as the main pane (CHIP 4b).
+      const fs = focusStateRef.current;
+      const skipHidden = fs.active;
+
       doc.forEach((node, offset, index) => {
+        if (skipHidden && (index < fs.startBlockIndex || index > fs.endBlockIndex)) return;
+
         if (node.type.name === "heading" && node.attrs?.level) {
           const level = node.attrs.level as number;
           let headingTop: number | null = null;
@@ -2223,7 +2239,10 @@ export default function EditorLayout() {
       window.removeEventListener("resize", schedule);
       editorInstance?.off("update", onEditorUpdate);
     };
-  }, [editorSplit, mirrorViewGen, editorInstance]);
+    // Focus band values are deps so the mirror breadcrumb recomputes on a
+    // focus toggle/move (meta-only tx — see the main pane's note).
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [editorSplit, mirrorViewGen, editorInstance, focusMode.state.active, focusMode.state.startBlockIndex, focusMode.state.endBlockIndex]);
 
   // Derive footnotes list from editor state (sorted by document position).
   // Recomputes on `editorInstance` change (initial mount + doc-switch remount)

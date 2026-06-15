@@ -213,10 +213,17 @@ flag becomes load-bearing in exactly one place.
   **LIVE-VERIFIED (devtest01, band 10–15):** both omni panels show "31 / 17
   outside focus" bins (were silently dropped before); expanding reveals the cards
   (0 live editors mounted); in-band cards still cascade inline; clean tsc.
-- **CHIP 4b** (deferred polish, NOT data-loss) — route the section-path breadcrumb
-  + cursor-coercion through `isPosInFocusBand` (the breadcrumb reads slightly
-  wrong under focus because it measures hidden headings), and verify the mirror
-  pane hides the same blocks. Lower priority than CHIP 5.
+- **CHIP 4b** ✅ DONE — section-path breadcrumb fixed. Root cause: `skipHidden`
+  was gated on `fs.active && fs.locked`, but the focusViewPlugin hides out-of-band
+  blocks whenever `fs.active` (lock-independent) — so under unlocked focus the
+  breadcrumb measured hidden headings' bogus (collapsed) coords and pointed at an
+  out-of-band section. Fix (EditorLayout.tsx): main pane `skipHidden = fs.active`;
+  the MIRROR pane had NO skip at all → added the same; both section-path effects
+  now also depend on the focus band values so the breadcrumb recomputes on a
+  focus toggle (meta-only tx, doesn't fire `update`). LIVE-VERIFIED on main: focus
+  unlocked on "Birth of the Footnote" (band 19–28) → breadcrumb reads "3 The Birth
+  of the Footnote" (was "6.1 The Coda of Cowork", a hidden heading). Cursor-
+  coercion already reads the live-derived band correctly — left as-is. Clean tsc.
 - **CHIP 5** — card-typing visual fix, **confirm-first**. STATUS: the new
   decoration mechanism REMOVED the injected global stylesheet (round-5 hyp D, the
   leading suspect), so this may already be fixed. Could NOT verify the *visual*
@@ -297,7 +304,8 @@ text; a live OFF→ON focus toggle leaves zero blank bodies. 1124 unit tests pas
       (LIVE-verified: migration persists, drift-free, insert-above hides,
       typing 0 rebuilds). Fixed Phase-B reactive-editor + step-based rebuild.
 - [x] CHIP 4 — card suppression: "N outside focus" bin (LIVE-verified, no data loss)
-- [ ] CHIP 4b — section-path/cursor via predicate + mirror verify (deferred polish)
+- [x] CHIP 4b — section-path breadcrumb under focus FIXED (main + mirror skip
+      hidden on active; recompute on focus toggle; LIVE-verified)
 - [ ] CHIP 5 — card-typing visual fix (needs user screen recording; may be fixed
       already by the CSS removal — no blind code landed per the round-5 lesson)
 - [x] Full test + tsc + lint sweep — 1120 tests pass, clean tsc, no new lint
