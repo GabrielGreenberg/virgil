@@ -828,34 +828,26 @@ describe("(F) atom-bearing selection: a mark over text+citation marks the text, 
 });
 
 // ===========================================================================
-// (F) applies()-VS-EFFECT on heading / titleField — the oracle's open concern.
+// (F) WRAPPER DATA-LOSS GUARD on heading / titleField (Bug #1 — FIXED).
 //
-// `formatApplies` returns "ok" UNCONDITIONALLY for the wrapper rows
-// (bullet-list / ordered-list / blockquote) on EVERY kind including heading and
-// titleField. The oracle (Format marks rows; drive-live #24/#26/#29) flags this
-// as a possible applies()-vs-effect divergence ("an enabled cell that does
-// nothing") and asks: SHOULD the cell be greyed on heading/titleField?
+// FIXED behavior (was a flagged characterization regression in CHIP 8):
+// `wrapperApplies` (action-registry.ts) now greys the WRAPPER rows (bullet-list
+// / ordered-list / blockquote) on any block a list/quote wrapper would destroy —
+// at minimum titleField + heading, plus the atom/opaque blocks. The fix is
+// schema-driven: a wrapper is `"ok"` ONLY when every block it would wrap is a
+// `paragraph` / `listItem` (the node types both wrapper content models —
+// `listItem` = "paragraph block*", `blockquote` = "block+" — preserve). The MARK
+// rows are UNAFFECTED (a mark over a heading is harmless).
 //
-// LIVE BEHAVIOR (the truth per the brief — codified here as a CHARACTERIZATION
-// regression, NOT an assertion that this is correct):
-//   - bullet/ordered-list on a HEADING: the heading is CONVERTED INTO a list
-//     item (heading node GONE → it becomes a plain paragraph inside a listItem).
-//     The `\section{}` semantics are lost. NOT a no-op.
-//   - bullet/ordered-list on a TITLEFIELD: the titleField is DESTROYED → it
-//     becomes a bulletList wrapping a plain paragraph. The `\title{}` field is
-//     silently lost.
-//   - blockquote on a TITLEFIELD: the titleField SURVIVES but is now NESTED in
-//     a blockquote (will not round-trip to LaTeX as a title).
-//
-// ⚠️ FLAGGED FOR THE MANAGER (applies-vs-effect / data-loss concern): on
-// heading/titleField these "ok" wrapper cells do NOT no-op — they convert/destroy
-// the block's structural identity. If the product intent is "greyed on
-// heading/titleField" then `formatApplies` (action-registry.ts:2122) needs a
-// per-kind base for the wrapper rows. These tests document the CURRENT behavior;
-// they will need updating if the cell is later greyed.
+// We assert BOTH halves of the deep fix:
+//   1. applies() is "disabled" on a heading / titleField caret (the cell greys,
+//      so the wrapper never runs from a menu);
+//   2. defense-in-depth — if run() is FORCE-invoked anyway (a surface that
+//      bypassed applies()), it NO-OPS: the heading / titleField SURVIVES and no
+//      wrapper node is added (count unchanged), so there is no data loss.
 // ===========================================================================
 
-describe("(F) wrapper toggle on heading/titleField — current (flagged) behavior", () => {
+describe("(F) wrapper toggle on heading/titleField — DATA-LOSS guard (Bug #1)", () => {
   function selectFirstText(editor: Editor, match: (n: PMNode) => boolean): void {
     const [from] = rangeOfText(editor, match);
     editor.view.dispatch(
@@ -863,41 +855,93 @@ describe("(F) wrapper toggle on heading/titleField — current (flagged) behavio
     );
   }
 
-  it("the wrapper cells are applies():'ok' on heading AND titleField (unconditional)", () => {
+  it("the wrapper cells are applies():'disabled' on heading AND titleField", () => {
     const editor = mountEditor(kindDoc());
     // caret in the heading
     selectFirstText(editor, (n) => n.type.name === "heading");
     let ctx = lightningCtx(editor);
-    for (const { row } of WRAPPER_ROWS) expect(row.applies(ctx)).toBe("ok");
+    for (const { row } of WRAPPER_ROWS) expect(row.applies(ctx)).toBe("disabled");
     // caret in the titleField
     selectFirstText(editor, (n) => n.type.name === "titleField");
     ctx = lightningCtx(editor);
-    for (const { row } of WRAPPER_ROWS) expect(row.applies(ctx)).toBe("ok");
+    for (const { row } of WRAPPER_ROWS) expect(row.applies(ctx)).toBe("disabled");
   });
 
-  it("bullet-list on a heading CONVERTS it to a list item (heading identity lost)", () => {
+  it("the MARK cells stay applies():'ok' on heading AND titleField (unchanged)", () => {
+    const editor = mountEditor(kindDoc());
+    selectFirstText(editor, (n) => n.type.name === "heading");
+    let ctx = lightningCtx(editor);
+    for (const row of [BOLD, ITALIC, STRIKE, CODE, TEXT_COLOR]) expect(row.applies(ctx)).toBe("ok");
+    selectFirstText(editor, (n) => n.type.name === "titleField");
+    ctx = lightningCtx(editor);
+    for (const row of [BOLD, ITALIC, STRIKE, CODE, TEXT_COLOR]) expect(row.applies(ctx)).toBe("ok");
+  });
+
+  it("bullet-list run() on a heading NO-OPS — the heading SURVIVES (defense-in-depth)", () => {
     const editor = mountEditor([
       { type: "heading", attrs: { level: 2, uuid: "h-x" }, content: [{ type: "text", text: "Head" }] },
     ]);
     placeCaret(editor, 2);
+    // Force-invoke run() even though applies() is "disabled" — the run() guard
+    // must still no-op so a bypassing surface can't destroy the heading.
+    expect(BULLET.applies(lightningCtx(editor))).toBe("disabled");
     BULLET.run(lightningCtx(editor));
-    // The heading node is GONE; a bulletList took its place.
-    expect(countOfType(editor, "heading")).toBe(0);
-    expect(countOfType(editor, "bulletList")).toBe(1);
-    expect(editor.state.doc.textContent).toContain("Head"); // text survives
+    // The heading is INTACT; no bulletList was created.
+    expect(countOfType(editor, "heading")).toBe(1);
+    expect(countOfType(editor, "bulletList")).toBe(0);
+    expect(editor.state.doc.textContent).toContain("Head");
   });
 
-  it("bullet-list on a titleField DESTROYS the title field (silent data loss)", () => {
+  it("bullet-list run() on a titleField NO-OPS — the title field SURVIVES (no data loss)", () => {
     const editor = mountEditor([
       { type: "titleField", attrs: { field: "title" }, content: [{ type: "text", text: "MyTitle" }] },
       paragraph("body", "p-body"),
     ]);
     selectFirstText(editor, (n) => n.type.name === "titleField");
+    expect(BULLET.applies(lightningCtx(editor))).toBe("disabled");
     BULLET.run(lightningCtx(editor));
-    // ⚠️ The titleField is GONE — converted into a bulletList. The \title{}
-    // semantics are silently lost.
-    expect(countOfType(editor, "titleField")).toBe(0);
-    expect(countOfType(editor, "bulletList")).toBe(1);
+    // The titleField is INTACT — the \title{} field is NOT lost; no bulletList.
+    expect(countOfType(editor, "titleField")).toBe(1);
+    expect(countOfType(editor, "bulletList")).toBe(0);
+    expect(firstOfType(editor, "titleField")!.textContent).toBe("MyTitle");
+  });
+
+  it("blockquote run() on a titleField NO-OPS — the title field is NOT nested", () => {
+    const editor = mountEditor([
+      { type: "titleField", attrs: { field: "title" }, content: [{ type: "text", text: "MyTitle" }] },
+      paragraph("body", "p-body"),
+    ]);
+    selectFirstText(editor, (n) => n.type.name === "titleField");
+    expect(BLOCKQUOTE.applies(lightningCtx(editor))).toBe("disabled");
+    BLOCKQUOTE.run(lightningCtx(editor));
+    expect(countOfType(editor, "titleField")).toBe(1);
+    expect(countOfType(editor, "blockquote")).toBe(0);
+  });
+
+  it("wrapper cells STAY 'ok' on a plain paragraph / listItem (no over-gating)", () => {
+    const editor = mountEditor(kindDoc());
+    // plain paragraph
+    selectFirstText(editor, (n) => n.type.name === "paragraph" && n.attrs.uuid === "p-1");
+    let ctx = lightningCtx(editor);
+    for (const { row } of WRAPPER_ROWS) expect(row.applies(ctx)).toBe("ok");
+    // a paragraph inside a list item (toggle-off / re-list case)
+    selectFirstText(editor, (n) => n.type.name === "paragraph" && n.attrs.uuid === "p-li");
+    ctx = lightningCtx(editor);
+    for (const { row } of WRAPPER_ROWS) expect(row.applies(ctx)).toBe("ok");
+    // a paragraph inside a blockquote (toggle-off case)
+    selectFirstText(editor, (n) => n.type.name === "paragraph" && n.attrs.uuid === "p-bq");
+    ctx = lightningCtx(editor);
+    for (const { row } of WRAPPER_ROWS) expect(row.applies(ctx)).toBe("ok");
+  });
+
+  it("wrapper cells are 'disabled' on a codeBlock (atom/opaque block guard)", () => {
+    const editor = mountEditor(kindDoc());
+    const [from] = rangeOfText(editor, (n) => n.type.name === "codeBlock");
+    editor.view.dispatch(
+      editor.state.tr.setSelection(TextSelection.create(editor.state.doc, from)),
+    );
+    const ctx = lightningCtx(editor);
+    for (const { row } of WRAPPER_ROWS) expect(row.applies(ctx)).toBe("disabled");
   });
 });
 

@@ -381,6 +381,29 @@ export function ActionsMenuPanel({
   const isActive = (name: string, attrs?: Record<string, unknown>) =>
     editor.isActive(name, attrs);
 
+  // Bug #1 (DATA-LOSS): the three structural WRAPPER cells (bullet-list /
+  // ordered-list / blockquote) grey out when the caret/selection sits on a block
+  // a list/quote wrapper would DESTROY (titleField / heading / atom blocks) — the
+  // registry's `wrapperApplies` decides this off the live selection. The three
+  // share one `applies()` (only `view` + `ref` + `canEdit` matter), so one probe
+  // covers all three. `!canEdit` still disables them (collab gate is folded into
+  // `applies()` too, but the other cells use the bare `!canEdit`, so we OR it for
+  // a uniform render). Computed at render (menu-open), never per keystroke.
+  const wrappersDisabled =
+    !canEdit ||
+    VIRGIL_ACTION_REGISTRY["bullet-list"]!.applies({
+      editor,
+      view: editor.view,
+      ref: {
+        kind: "selection",
+        from: editor.state.selection.from,
+        to: editor.state.selection.to,
+        paragraphId: "",
+      },
+      surface: "lightning",
+      canEdit,
+    } as ActionContext) === "disabled";
+
   const menuPortal = createPortal(
     <div
       ref={setMenuRef}
@@ -460,7 +483,7 @@ export function ActionsMenuPanel({
         <FmtBtn
           title="Bullet list"
           active={isActive("bulletList")}
-          disabled={!canEdit}
+          disabled={wrappersDisabled}
           onClick={() => runGridAction("bullet-list")}
         >
           <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round">
@@ -475,7 +498,7 @@ export function ActionsMenuPanel({
         <FmtBtn
           title="Numbered list"
           active={isActive("orderedList")}
-          disabled={!canEdit}
+          disabled={wrappersDisabled}
           onClick={() => runGridAction("ordered-list")}
         >
           <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor" stroke="none">
@@ -490,7 +513,7 @@ export function ActionsMenuPanel({
         <FmtBtn
           title="Blockquote"
           active={isActive("blockquote")}
-          disabled={!canEdit}
+          disabled={wrappersDisabled}
           onClick={() => runGridAction("blockquote")}
         >
           <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor" stroke="none">

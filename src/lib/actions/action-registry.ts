@@ -2106,21 +2106,123 @@ const GRAPHICS_ACTION_ROW: ActionSpec = {
 // ---------------------------------------------------------------------------
 
 /**
- * Applicability for the format rows — REAL as of CHIP 7b (it was a placeholder
- * `() => "ok"` in CHIP 6b). Every format action is selection-`"ignored"`: a mark
- * toggle (bold/italic/strike/code) is fully valid at a COLLAPSED CARET — it
- * flips the pending/STORED mark, so the next typed character is bold; the
- * list/blockquote wrappers wrap the current block; text-color pops the popover.
- * None need a live range, so the DA-5 range check is a no-op and the cell stays
- * `"ok"` at a caret — EXACTLY matching how the grid renders the format cells
- * today (always enabled).
+ * Applicability for the MARK format rows (bold / italic / strike / code /
+ * text-color) — REAL as of CHIP 7b (it was a placeholder `() => "ok"` in CHIP
+ * 6b). Every mark action is selection-`"ignored"`: a mark toggle is fully valid
+ * at a COLLAPSED CARET — it flips the pending/STORED mark, so the next typed
+ * character is bold; text-color pops the popover. None need a live range, so the
+ * DA-5 range check is a no-op and the cell stays `"ok"` at a caret — EXACTLY
+ * matching how the grid renders the mark cells today (always enabled). A mark is
+ * harmless on ANY block (you can bold text inside a heading / titleField; on a
+ * `marks: ""` codeBlock it's a near-no-op that leaves the text untouched), so
+ * the mark base is unconditionally `"ok"`.
  *
- * The only thing that now greys a format cell is the UNIFORM collab read-only
- * gate (`ctx.canEdit === false`): a partner holding the pen disables marks too.
+ * The only thing that greys a mark cell is the UNIFORM collab read-only gate
+ * (`ctx.canEdit === false`): a partner holding the pen disables marks too.
  * Routed through `gateApplies` (base `"ok"`, `selection: "ignored"`).
+ *
+ * NOTE — the structural WRAPPER rows (bullet-list / ordered-list / blockquote)
+ * do NOT use this; they route through `wrapperApplies` (below), which greys on
+ * blocks a list/quote wrapper would destroy. Splitting the two keeps the mark
+ * applicability byte-identical to CHIP 7b while the wrappers gain the data-loss
+ * guard (Bug #1).
  */
 function formatApplies(ctx: ActionContext): "ok" | "disabled" | "absent" {
   return gateApplies({ selection: "ignored" }, ctx, "ok");
+}
+
+// ---------------------------------------------------------------------------
+// WRAPPER applicability + the listable-block guard (Bug #1, DATA-LOSS).
+//
+// The three structural wrapper toggles — bullet-list / ordered-list /
+// blockquote — run `editor.chain().toggleBulletList()` / `toggleOrderedList()` /
+// `toggleBlockquote()`, each of which wraps the block(s) the selection spans
+// into a `bulletList > listItem` / `orderedList > listItem` / `blockquote`.
+// Both targets PRESERVE a `paragraph` and ONLY a paragraph:
+//   - `listItem`  content = "paragraph block*"  (must START with a paragraph)
+//   - `blockquote` content = "block+"
+// So wrapping a `paragraph` is lossless (it stays a paragraph inside the new
+// container), but wrapping a STRUCTURAL block silently destroys its identity:
+//   - a `titleField` (group "block", content "inline*") is NOT a paragraph, so
+//     ProseMirror coerces it into one — the `\title{}`/`\author{}`/`\date{}`
+//     field is LOST;
+//   - a `heading` is converted into a list item / quoted paragraph — the
+//     `\section{}` semantics are LOST;
+//   - the atom / opaque blocks (codeBlock, displayMath, texBlock, figureBlock,
+//     graphicsBlock, latexComment, maketitleMarker) either can't host a list or
+//     round-trip wrong once nested.
+//
+// The SCHEMA-DRIVEN signal for "listable" is therefore precise: the block the
+// wrapper would act on must be a `paragraph` — the one node type both wrapper
+// content models accept and preserve — OR a `listItem` (already a list item;
+// toggling a list just re-lists it, and its content starts with a paragraph, so
+// no identity is lost). We resolve the affected block(s) from the LIVE selection
+// (cheap: one `resolve` per endpoint at menu-open, never per keystroke) and grey
+// the cell unless EVERY spanned top-level block is listable. The toggle-OFF case
+// (caret already inside a blockquote / list) is covered for free — the immediate
+// block there is still a `paragraph`.
+// ---------------------------------------------------------------------------
+
+/**
+ * The schema node-type names a list/quote wrapper can safely wrap WITHOUT
+ * destroying structural identity. Centralized (not inlined) so the rule has one
+ * home + this comment. `paragraph` is the generic prose container both wrapper
+ * content models (`listItem` = "paragraph block*", `blockquote` = "block+")
+ * accept and KEEP as a paragraph; `listItem` is already a list item (a list
+ * toggle re-lists it losslessly). Every other block — titleField, heading,
+ * codeBlock, displayMath, texBlock, figureBlock, graphicsBlock, latexComment,
+ * maketitleMarker, exampleBlock, and the list/quote containers themselves — is
+ * NON-listable: wrapping it loses or corrupts its identity. These are SCHEMA
+ * node names (PM `node.type.name`), not `TextObjectKind`s — the caret may sit in
+ * a node (maketitleMarker) that has no TextObject twin.
+ */
+const LISTABLE_BLOCK_TYPES: ReadonlySet<string> = new Set(["paragraph", "listItem"]);
+
+/**
+ * True iff EVERY block a list/quote wrapper would act on for the current
+ * selection is listable — i.e. wrapping preserves each block's identity. We take
+ * the SAME block range ProseMirror's `wrapInList` / `wrapIn` take (`$from.
+ * blockRange($to)`): the contiguous run of sibling blocks at the shared depth
+ * that the wrapper would lift into the new container. Each of those siblings
+ * must be a listable node (`paragraph` / `listItem`); a single non-listable
+ * block (titleField / heading / atom block) greys the cell.
+ *
+ * A collapsed caret resolves to the single containing block. If no block range
+ * resolves (a degenerate selection — e.g. a NodeSelection on an opaque atom),
+ * we refuse: there is nothing safely listable to wrap. Cheap — bounded by the
+ * selection (O(blocks-in-range)), and only called at menu-open, never per
+ * keystroke (keystroke sanctity).
+ */
+function selectionIsListable(view: EditorView): boolean {
+  const { $from, $to } = view.state.selection;
+  const range = $from.blockRange($to);
+  if (!range) return false; // no wrappable block range → not listable, grey it
+  const parent = range.parent;
+  for (let i = range.startIndex; i < range.endIndex; i += 1) {
+    if (!LISTABLE_BLOCK_TYPES.has(parent.child(i).type.name)) return false;
+  }
+  // A zero-width range (startIndex === endIndex) means the resolved block isn't
+  // a direct child of `parent` at this depth — the caret's own textblock IS the
+  // affected block; check it directly.
+  if (range.startIndex === range.endIndex) {
+    return LISTABLE_BLOCK_TYPES.has($from.parent.type.name);
+  }
+  return true;
+}
+
+/**
+ * Applicability for the three structural WRAPPER rows. Same `selection:
+ * "ignored"` + uniform-collab base as the mark rows, but with the DATA-LOSS
+ * guard: when the caret/selection sits on a non-listable block (titleField,
+ * heading, codeBlock, the atom/opaque blocks, …) the cell is `"disabled"`
+ * (greyed, never run), so the wrapper can't destroy the block's structural
+ * identity. Listable prose (paragraph / listItem / a paragraph inside a
+ * blockquote-or-list) stays `"ok"`. The collab gate still layers via
+ * `gateApplies`.
+ */
+function wrapperApplies(ctx: ActionContext): "ok" | "disabled" | "absent" {
+  const base: "ok" | "disabled" = selectionIsListable(ctx.view) ? "ok" : "disabled";
+  return gateApplies({ selection: "ignored" }, ctx, base);
 }
 
 /**
@@ -2136,12 +2238,22 @@ function formatApplies(ctx: ActionContext): "ok" | "disabled" | "absent" {
  * no-ops, so a stray invocation (e.g. a held keyboard shortcut) can't mutate the
  * doc while the partner holds the pen — belt-and-suspenders with the
  * `readOnlyEnforcer` plugin (which would reject the tx anyway).
+ *
+ * Bug #1 (DATA-LOSS): the WRAPPER toggles (`wrapper: true`) additionally route
+ * `applies` through `wrapperApplies` (greying on non-listable blocks) AND guard
+ * the `run()` with the SAME `selectionIsListable` check — defense-in-depth, so a
+ * future surface that bypasses `applies()` (e.g. a held keyboard shortcut, or a
+ * new menu) still can't destroy a titleField / heading / atom block. The mark
+ * toggles (`wrapper` unset) keep `formatApplies` + the unconditional run, exactly
+ * as before.
  */
 function formatToggleRow(
   id: FormatActionId,
   label: string,
   chainCmd: (chain: ReturnType<Editor["chain"]>) => ReturnType<Editor["chain"]>,
+  opts: { wrapper?: boolean } = {},
 ): ActionSpec {
+  const isWrapper = opts.wrapper === true;
   return {
     id,
     label,
@@ -2149,22 +2261,28 @@ function formatToggleRow(
     selection: "ignored",
     backbone: "tiptap-chain",
     surfaces: { lightning: true },
-    applies: formatApplies,
+    applies: isWrapper ? wrapperApplies : formatApplies,
     run: (ctx) => {
       if (isCollabReadOnly(ctx)) return; // uniform collab gate — no-op
+      // Bug #1 defense-in-depth: a wrapper toggle on a non-listable block
+      // (titleField / heading / atom block) would DESTROY its identity — no-op
+      // here even if a surface invoked us without consulting `applies()`.
+      if (isWrapper && !selectionIsListable(ctx.view)) return;
       chainCmd(ctx.editor.chain().focus()).run();
     },
   };
 }
 
-/** The six simple format-toggle rows (mark toggles + list/quote wrappers). */
+/** The four MARK toggles + the three list/quote WRAPPER toggles. The wrappers
+ *  pass `{ wrapper: true }` so they grey + no-op on non-listable blocks (Bug
+ *  #1); the marks stay unconditionally applicable. */
 const BOLD_ACTION_ROW = formatToggleRow("bold", "Bold", (c) => c.toggleBold());
 const ITALIC_ACTION_ROW = formatToggleRow("italic", "Italic", (c) => c.toggleItalic());
 const STRIKE_ACTION_ROW = formatToggleRow("strike", "Strikethrough", (c) => c.toggleStrike());
 const CODE_ACTION_ROW = formatToggleRow("code", "Inline code", (c) => c.toggleCode());
-const BULLET_LIST_ACTION_ROW = formatToggleRow("bullet-list", "Bullet list", (c) => c.toggleBulletList());
-const ORDERED_LIST_ACTION_ROW = formatToggleRow("ordered-list", "Numbered list", (c) => c.toggleOrderedList());
-const BLOCKQUOTE_ACTION_ROW = formatToggleRow("blockquote", "Blockquote", (c) => c.toggleBlockquote());
+const BULLET_LIST_ACTION_ROW = formatToggleRow("bullet-list", "Bullet list", (c) => c.toggleBulletList(), { wrapper: true });
+const ORDERED_LIST_ACTION_ROW = formatToggleRow("ordered-list", "Numbered list", (c) => c.toggleOrderedList(), { wrapper: true });
+const BLOCKQUOTE_ACTION_ROW = formatToggleRow("blockquote", "Blockquote", (c) => c.toggleBlockquote(), { wrapper: true });
 
 /**
  * The text-color row (CHIP 6b). Unlike the toggles, this opens the
