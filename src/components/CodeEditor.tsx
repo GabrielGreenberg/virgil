@@ -7,7 +7,7 @@ import { search, highlightSelectionMatches } from "@codemirror/search";
 import { EditorState } from "@codemirror/state";
 import type { Editor as TipTapEditor } from "@tiptap/react";
 import { readTex } from "@/lib/storage";
-import { findParagraphUuids } from "@/lib/latex-paragraph-map";
+import { getRanges } from "@/lib/code-position-map";
 import {
   extractPreambleAndPostamble,
 } from "@/lib/latex-parser";
@@ -160,7 +160,7 @@ export default function CodeEditor({
 
         // Prefer paragraph UUID
         if (initialParagraphId) {
-          const paras = findParagraphUuids(view.state.doc.toString());
+          const paras = getRanges(view);
           const found = paras.find((p) => p.uuid === initialParagraphId);
           if (found) targetLine = found.startLine;
         }
@@ -306,8 +306,7 @@ export default function CodeEditor({
             getActiveParagraphId() {
               const v = editorViewRef.current;
               if (!v) return null;
-              const text = v.state.doc.toString();
-              const paras = findParagraphUuids(text);
+              const paras = getRanges(v);
               if (paras.length === 0) return null;
 
               // Cursor line (1-based)
@@ -358,7 +357,7 @@ export default function CodeEditor({
             scrollToParagraphId(uuid: string) {
               const v = editorViewRef.current;
               if (!v) return;
-              const paras = findParagraphUuids(v.state.doc.toString());
+              const paras = getRanges(v);
               const found = paras.find((p) => p.uuid === uuid);
               if (!found) return;
               try {

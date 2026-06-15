@@ -48,7 +48,11 @@ import {
   extractPreambleAndPostamble,
 } from "@/lib/latex-parser";
 import { serializeToLatex } from "@/lib/latex-serializer";
-import { findParagraphUuids } from "@/lib/latex-paragraph-map";
+import {
+  getRanges,
+  getLineRangeForUuid,
+  getActiveParagraphUuid,
+} from "@/lib/code-position-map";
 
 export const SYNC_ANNOTATION = Annotation.define<true>();
 
@@ -108,8 +112,7 @@ export function createCodePaneBridge(
 
   function captureCursorAnchor(): CursorAnchor {
     try {
-      const text = view.state.doc.toString();
-      const paras = findParagraphUuids(text);
+      const paras = getRanges(view);
       if (paras.length === 0) return { paragraphUuid: null, offsetInPara: 0 };
       const cursor = view.state.selection.main.head;
       const cursorLine = view.state.doc.lineAt(cursor).number;
@@ -130,9 +133,7 @@ export function createCodePaneBridge(
   function restoreCursorAnchor(anchor: CursorAnchor) {
     if (!anchor.paragraphUuid) return;
     try {
-      const text = view.state.doc.toString();
-      const paras = findParagraphUuids(text);
-      const para = paras.find((p) => p.uuid === anchor.paragraphUuid);
+      const para = getLineRangeForUuid(view, anchor.paragraphUuid);
       if (!para) return;
       const paraStartPos = view.state.doc.line(para.startLine).from;
       const target = Math.min(
@@ -261,34 +262,6 @@ export function createCodePaneBridge(
     return pos;
   }
 
-  function getCmActiveParagraphUuid(): string | null {
-    try {
-      const text = view.state.doc.toString();
-      const paras = findParagraphUuids(text);
-      if (paras.length === 0) return null;
-      const cursorLine = view.state.doc.lineAt(view.state.selection.main.head)
-        .number;
-      const direct = paras.find(
-        (p) => cursorLine >= p.startLine && cursorLine <= p.endLine,
-      );
-      if (direct) return direct.uuid;
-      // Cursor lies between paragraphs — pick the closest by mid-line.
-      let best = paras[0];
-      let bestDist = Infinity;
-      for (const p of paras) {
-        const mid = (p.startLine + p.endLine) / 2;
-        const d = Math.abs(mid - cursorLine);
-        if (d < bestDist) {
-          bestDist = d;
-          best = p;
-        }
-      }
-      return best.uuid;
-    } catch {
-      return null;
-    }
-  }
-
   function getTipTapActiveUuid(): string | null {
     try {
       const sel = editor.state.selection;
@@ -311,9 +284,7 @@ export function createCodePaneBridge(
     const uuid = getTipTapActiveUuid();
     if (!uuid) return;
     try {
-      const text = view.state.doc.toString();
-      const paras = findParagraphUuids(text);
-      const found = paras.find((p) => p.uuid === uuid);
+      const found = getLineRangeForUuid(view, uuid);
       if (!found) return;
       const line = Math.min(found.startLine, view.state.doc.lines);
       const pos = view.state.doc.line(Math.max(1, line)).from;
@@ -339,7 +310,7 @@ export function createCodePaneBridge(
     codeToTipTapSelRaf = null;
     if (disposed) return;
     if (selectionSyncing) return;
-    const uuid = getCmActiveParagraphUuid();
+    const uuid = getActiveParagraphUuid(view);
     if (!uuid) return;
     const pos = findTipTapPosByUuid(uuid);
     if (pos < 0) return;
