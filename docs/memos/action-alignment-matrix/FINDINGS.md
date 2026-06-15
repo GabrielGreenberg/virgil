@@ -8,7 +8,7 @@ fix.
 
 ## F2 — deleting/archiving a paragraph silently removes a trailing `graphicsBlock`
 
-**Status:** ROOT-CAUSED + repro'd (live + vitest) + FIXED, 2026-06-14.
+**Status:** ROOT-CAUSED + repro'd (live + vitest) + FIXED + **MERGED (`741c1fa`, on `origin/main`) + VERIFIED LIVE** by the manager, 2026-06-14. Live re-check after merge: `delete 4413` removes only `4413` (Δ−1), `94cf` survives. Full suite 1108 green.
 
 **TL;DR.** Deleting a paragraph that is immediately followed by a
 `graphicsBlock` removed the graphicsBlock too — silent **data loss** (the
@@ -110,3 +110,13 @@ real `buildEditorExtensions("main")` stack + the real
   proving the test exercises the defect and the fix is load-bearing.
 
 Full suite: 127 files / 1108 tests green; `tsc --noEmit` clean.
+
+---
+
+## F1 — UX (low) — `archive` on a `latexComment` surfaces no destructive confirm
+
+**Status:** observed (CHIP 8 lifecycle sweep). `archive` on `latexComment 0c01` → removed,
+`sawDialog:false`. Analogous to the gap `63ccace` closed for math/`\ref`/figure/tex blocks.
+Verify against `resolveDestructiveConfirm` whether `latexComment` was intentionally excluded.
+Delete-on-latexComment not yet driven. Low severity (a `%`-comment is low-stakes), but inconsistent
+with the just-landed confirm policy. Not yet fixed.

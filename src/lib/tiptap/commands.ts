@@ -230,3 +230,15 @@ export const COMMAND_MAP = new Map(VIRGIL_COMMANDS.map((c) => [c.name, c]));
 
 /** Names of all native Virgil commands (without the leading backslash). */
 export const VIRGIL_COMMAND_NAMES: readonly string[] = VIRGIL_COMMANDS.map((c) => c.name);
+
+// Dev-only: expose the slash command map for the live-harness verification
+// sweep (CHIP 8), mirroring the existing `window.__virgil` / `__virgilBusStats`
+// dev hooks. Lets a preview_eval driver invoke a slash command's `action`
+// exactly as `executeSelection` (slash-popup.ts) does after it deletes the
+// typed `\name` — the faithful slash-surface destination. Gated on the
+// dev-storage flag so it never ships in a production (static-export) build.
+if (typeof window !== "undefined" && process.env.NODE_ENV !== "production") {
+  (
+    window as unknown as { __virgilSlashCommands?: unknown }
+  ).__virgilSlashCommands = COMMAND_MAP;
+}
