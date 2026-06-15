@@ -3274,11 +3274,17 @@ export default function EditorLayout() {
     if (!editorInstance || !editorRef.current || !docIdForHooks) return;
     if (anchorsAppliedDocRef.current === docIdForHooks) return;
     anchorsAppliedDocRef.current = docIdForHooks;
-    const records: Array<{ anchorId: string; kind: "note" | "highlight" | "revision" | "cutter-comment" | "cutter-suggestion"; text: string }> = [];
+    const records: Array<{ anchorId: string; kind: LinkedAnchorKind; text: string }> = [];
     for (const n of notes) {
       const ta = getTextAnchor(n);
       if (ta && ta.anchorText) {
         records.push({ anchorId: ta.anchorId, kind: "note", text: ta.anchorText });
+      }
+    }
+    for (const t of todoItems) {
+      const ta = getTextAnchor(t);
+      if (ta && ta.anchorText) {
+        records.push({ anchorId: ta.anchorId, kind: "todo", text: ta.anchorText });
       }
     }
     for (const c of comments) {
@@ -3315,7 +3321,7 @@ export default function EditorLayout() {
     // Legacy anchored comments path retired with the revisions cutter rewrite.
     // Mode B (selection) anchors now persist via the unified link helpers,
     // so there's nothing to reanchor here.
-  }, [editorInstance, docIdForHooks, notes, highlights, comments, cutterCards]);
+  }, [editorInstance, docIdForHooks, notes, todoItems, highlights, comments, cutterCards]);
 
   // Phase F: doc-aware legacy popout-key sweep. The boot-time
   // `useViewPrefs.loadPrefs` migrator handles the kinds that don't

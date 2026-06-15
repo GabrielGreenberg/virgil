@@ -376,6 +376,8 @@ function cardKindToLegacyAnchorKind(cardKind: CardKind): string {
       return "note";
     case "highlight":
       return "highlight";
+    case "todo":
+      return "todo";
     case "cutter-comment":
       return "cutter-comment";
     case "cutter-suggestion":

@@ -61,7 +61,8 @@ import {
 import { useCardCreation } from "../card-creation";
 import { useTodos } from "@/hooks/useTodos";
 import { useLinkedAnchorReconciler } from "@/links/_shared/useLinkedAnchorReconciler";
-import { getTextAnchor } from "@/links/links";
+import { getTextAnchor, reanchorByText } from "@/links/links";
+import type { LinkedAnchorKind } from "@/links/links";
 
 // ---------------------------------------------------------------------------
 // Real editor stack (mirrors dispatch-nits.test.tsx)
@@ -120,6 +121,45 @@ function countLinkedAnchors(editor: Editor): number {
     return true;
   });
   return n;
+}
+
+/** Collect the `kind` attr of every `linkedAnchor` mark in the doc. */
+function linkedAnchorKinds(editor: Editor): string[] {
+  const kinds: string[] = [];
+  editor.state.doc.descendants((node) => {
+    if (!node.isText) return true;
+    for (const m of node.marks) {
+      if (m.type.name === "linkedAnchor") kinds.push(m.attrs.kind as string);
+    }
+    return true;
+  });
+  return kinds;
+}
+
+/**
+ * Mirror of the once-per-doc `applyLinkedAnchors` RESTORE pass in
+ * EditorLayout.tsx (~:3273) over a FRESH editor: build the `records` array
+ * from the todo collection exactly as the effect's todo loop does, then run
+ * the same `reanchorByText` re-stamp `applyLinkedAnchors` performs internally
+ * (Editor.tsx :1646). This is what runs on document RELOAD, where the parse
+ * has dropped the in-doc `linkedAnchor` mark and only the sidecar (the todo's
+ * persisted `links[]`) survives.
+ */
+function restoreTodoAnchorsOnReload(
+  editor: Editor,
+  todoItems: ReadonlyArray<Parameters<typeof getTextAnchor>[0]>,
+): void {
+  const records: Array<{ anchorId: string; kind: LinkedAnchorKind; text: string }> = [];
+  for (const t of todoItems) {
+    const ta = getTextAnchor(t);
+    if (ta && ta.anchorText) {
+      records.push({ anchorId: ta.anchorId, kind: "todo", text: ta.anchorText });
+    }
+  }
+  for (const rec of records) {
+    if (!rec.anchorId || !rec.text) continue;
+    reanchorByText(editor, rec.kind, rec.text, rec.anchorId);
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -325,5 +365,123 @@ describe("todo Mode-B — reconciler alive-set wiring", () => {
     expect(todos).toHaveLength(1);
     expect(getTextAnchor(todos[0])).toBeNull(); // Mode-A, no text-range anchor
     expect(countLinkedAnchors(editor)).toBe(0);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// The OTHER half of Mode-B: RELOAD restore. The reconciler keeps a live mark
+// alive (the describe above); this proves the mark is RE-STAMPED from the
+// sidecar on document reload, when the parse dropped it. The gap that slipped:
+// EditorLayout's `applyLinkedAnchors` restore loop omitted todos, so a
+// selection-anchored todo's range tint vanished on reload and jump-to degraded
+// to paragraph level. (note/highlight/cutter/revision ARE in that loop.)
+// ---------------------------------------------------------------------------
+describe("todo Mode-B — reload restore via applyLinkedAnchors", () => {
+  it("re-stamps a kind=\"todo\" linkedAnchor over the persisted snapshot on reload", async () => {
+    const docContent: JSONContent[] = [
+      {
+        type: "paragraph",
+        attrs: { uuid: "para-A" },
+        content: [{ type: "text", text: "anchor me here please" }],
+      },
+    ];
+
+    // 1. Author a todo over the selection "me here" on the live editor. The
+    //    real store path drops the Mode-B mark AND persists the anchor into
+    //    the todo's links[].
+    const editor1 = mountDoc(docContent);
+    const { result, rerender } = renderHook(() => useStack(editor1));
+    await act(async () => {
+      await result.current.dispatch("todo", {
+        kind: "selection",
+        from: 8,
+        to: 15,
+        paragraphId: "para-A",
+      } as DragHandleRef);
+    });
+    rerender();
+
+    const todos = result.current.todos;
+    expect(todos).toHaveLength(1);
+    const persisted = getTextAnchor(todos[0]);
+    expect(persisted).toBeTruthy();
+    expect(persisted?.anchorText).toBe("me here");
+
+    // 2. Simulate RELOAD: a fresh editor parsed from the SAME source, with no
+    //    in-doc linkedAnchor mark (the parse dropped it — only the sidecar
+    //    todo carries the range). Sanity: the reload editor starts mark-free.
+    const editor2 = mountDoc(docContent);
+    expect(countLinkedAnchors(editor2)).toBe(0);
+
+    // 3. Run the production restore pass (the EditorLayout effect's todo loop +
+    //    applyLinkedAnchors' reanchorByText) over the fresh editor.
+    restoreTodoAnchorsOnReload(editor2, todos);
+
+    // The range tint is back, stamped with kind "todo".
+    expect(countLinkedAnchors(editor2)).toBe(1);
+    expect(linkedAnchorKinds(editor2)).toEqual(["todo"]);
+
+    // The mark covers exactly the persisted snapshot text — not the whole
+    // paragraph (the degraded-to-paragraph failure mode).
+    let markedText = "";
+    editor2.state.doc.descendants((node) => {
+      if (node.isText && node.marks.some((m) => m.type.name === "linkedAnchor")) {
+        markedText += node.text ?? "";
+      }
+      return true;
+    });
+    expect(markedText).toBe("me here");
+
+    // 4. Tie the two halves together: the restored mark then SURVIVES a real
+    //    reconciler sweep with todos in the alive-set (the reload editor is
+    //    now in the same steady state as a freshly-authored one).
+    const recon = renderHook(() =>
+      useLinkedAnchorReconciler({
+        editor: editor2,
+        notes: [],
+        highlights: [],
+        cutterCards: [],
+        comments: [],
+        reportCards: [],
+        todos,
+      }),
+    );
+    await act(async () => {
+      await new Promise((r) => setTimeout(r, 5));
+    });
+    expect(countLinkedAnchors(editor2)).toBe(1); // not reaped
+    recon.unmount();
+  });
+
+  it("CONTROL: omitting todos from the restore records leaves the reload editor mark-free", async () => {
+    // This is the pre-fix EditorLayout behaviour: the restore loop never
+    // iterated todoItems, so `records` carried no todo entry and no mark was
+    // re-stamped. Proves the reload test above is load-bearing — it fails iff
+    // the todo loop is present.
+    const docContent: JSONContent[] = [
+      {
+        type: "paragraph",
+        attrs: { uuid: "para-A" },
+        content: [{ type: "text", text: "anchor me here please" }],
+      },
+    ];
+
+    const editor1 = mountDoc(docContent);
+    const { result, rerender } = renderHook(() => useStack(editor1));
+    await act(async () => {
+      await result.current.dispatch("todo", {
+        kind: "selection",
+        from: 8,
+        to: 15,
+        paragraphId: "para-A",
+      } as DragHandleRef);
+    });
+    rerender();
+    expect(getTextAnchor(result.current.todos[0])).toBeTruthy();
+
+    const editor2 = mountDoc(docContent);
+    // Restore with an EMPTY todo collection — mirrors the pre-fix omission.
+    restoreTodoAnchorsOnReload(editor2, []);
+    expect(countLinkedAnchors(editor2)).toBe(0);
   });
 });
