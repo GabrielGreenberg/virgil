@@ -250,30 +250,46 @@ function buildFocusDecoSet(doc: PMNode, band: FocusBand): DecorationSet {
  * Everything else (ReplaceAroundStep, cross-block or boundary ReplaceStep,
  * unknown step kinds) is NOT map-safe → rebuild.
  */
-function isMapSafeEdit(tr: Transaction, oldDoc: PMNode): boolean {
-  for (const step of tr.steps) {
-    if (step instanceof ReplaceStep) {
-      const from = (step as unknown as { from: number }).from;
-      const to = (step as unknown as { to: number }).to;
-      const $from = oldDoc.resolve(from);
-      const $to = oldDoc.resolve(to);
-      // Touches a top-level boundary, or spans more than one top-level block.
-      if ($from.depth === 0 || $to.depth === 0) return false;
-      if ($from.index(0) !== $to.index(0)) return false;
-      continue;
+function isMapSafeEdit(tr: Transaction): boolean {
+  try {
+    for (let i = 0; i < tr.steps.length; i++) {
+      const step = tr.steps[i];
+      if (step instanceof ReplaceStep) {
+        // CRITICAL: step.from/to are in the coordinate space of the doc BEFORE
+        // THIS step (`tr.docs[i]`), NOT `tr.docs[0]`. Resolving a later step's
+        // position against the original doc can land out of range (a multi-step
+        // tail edit — input rules / IME / smart punctuation — with no childCount
+        // change) and throw, OR mis-classify and drop a decoration. Resolve
+        // against the correct before-step doc, mirroring step-inspector.ts.
+        const beforeDoc = tr.docs[i];
+        if (!beforeDoc) return false;
+        const from = (step as unknown as { from: number }).from;
+        const to = (step as unknown as { to: number }).to;
+        if (from < 0 || to > beforeDoc.content.size) return false;
+        const $from = beforeDoc.resolve(from);
+        const $to = beforeDoc.resolve(to);
+        // Touches a top-level boundary, or spans more than one top-level block.
+        if ($from.depth === 0 || $to.depth === 0) return false;
+        if ($from.index(0) !== $to.index(0)) return false;
+        continue;
+      }
+      if (
+        step instanceof AddMarkStep ||
+        step instanceof RemoveMarkStep ||
+        step instanceof AddNodeMarkStep ||
+        step instanceof RemoveNodeMarkStep ||
+        step instanceof AttrStep
+      ) {
+        continue;
+      }
+      return false;
     }
-    if (
-      step instanceof AddMarkStep ||
-      step instanceof RemoveMarkStep ||
-      step instanceof AddNodeMarkStep ||
-      step instanceof RemoveNodeMarkStep ||
-      step instanceof AttrStep
-    ) {
-      continue;
-    }
+    return true;
+  } catch {
+    // Any surprise (unexpected step shape / position) → rebuild, which is always
+    // correct, just less optimal. Never let the discriminator crash dispatch.
     return false;
   }
-  return true;
 }
 
 export function focusViewPlugin(): Plugin<FocusViewState> {
@@ -301,7 +317,7 @@ export function focusViewPlugin(): Plugin<FocusViewState> {
         // populated here — see the file header). Rebuild is O(top-level blocks)
         // but never fires on a plain keystroke.
         const childCountChanged = oldState.doc.childCount !== newState.doc.childCount;
-        if (childCountChanged || !isMapSafeEdit(tr, oldState.doc)) {
+        if (childCountChanged || !isMapSafeEdit(tr)) {
           return { band: value.band, decoSet: buildFocusDecoSet(newState.doc, value.band) };
         }
         return {

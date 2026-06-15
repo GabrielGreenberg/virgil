@@ -252,5 +252,12 @@ flag becomes load-bearing in exactly one place.
 - [ ] CHIP 4b — section-path/cursor via predicate + mirror verify (deferred polish)
 - [ ] CHIP 5 — card-typing visual fix (needs user screen recording; may be fixed
       already by the CSS removal — no blind code landed per the round-5 lesson)
-- [ ] Full live verification sweep (the 7 above)
-- [ ] Adversarial review of the diff
+- [x] Full test + tsc + lint sweep — 1120 tests pass, clean tsc, no new lint
+- [x] Adversarial review of the diff (subagent) — found + FIXED one real crash:
+      `isMapSafeEdit` resolved later steps against the wrong doc (tr.docs[0] vs
+      tr.docs[i]) → a multi-step tail edit (input rules / IME / smart-punctuation)
+      with no childCount change threw "Position out of range" and broke dispatch.
+      Fixed (per-step before-doc + bounds guard + try/catch→rebuild); regression
+      test added; live-verified the repro no longer throws. Other findings were
+      minor/deferred (unused predicate exports kept for CHIP 4b; breadcrumb =
+      CHIP 4b; bin-overlap-when-expanded + 1-frame anchor-death flash = cosmetic).

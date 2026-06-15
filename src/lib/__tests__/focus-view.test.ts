@@ -184,6 +184,27 @@ describe("focusViewPlugin — decoration set", () => {
     expect(decoCount(state)).toBe(3);
   });
 
+  it("multi-step tail edit (no childCount change) does not crash and stays map-safe", () => {
+    // Regression: a multi-step transaction whose later step references a
+    // grown-tail position must be resolved against tr.docs[i], not the original
+    // doc — else oldDoc.resolve(tailPos) throws "Position out of range" and
+    // breaks dispatch. Triggers in the wild via input rules / IME / smart
+    // punctuation that emit two ReplaceSteps near the tail with no block change.
+    let state = stateWithFocus();
+    state = state.apply(setFocusBandMeta(state.tr, band({ startUuid: "p1", endUuid: "p2" })));
+    const rb0 = __getFocusRebuildCount();
+    const tr = state.tr;
+    const p1Inside = state.doc.child(0).nodeSize + 1; // inside h0/p1 area, in p1
+    tr.insertText("aa", p1Inside); // step 0 — grows the doc
+    tr.insertText("bb", tr.doc.content.size - 2); // step 1 — tail, in post-step-0 coords
+    expect(() => {
+      state = state.apply(tr);
+    }).not.toThrow();
+    // No childCount change, both in-block edits → mapped, not rebuilt.
+    expect(decoCount(state)).toBe(2); // h0 + p3 still hidden
+    expect(__getFocusRebuildCount()).toBe(rb0);
+  });
+
   it("deactivating clears the decorations", () => {
     let state = stateWithFocus();
     state = state.apply(setFocusBandMeta(state.tr, band({ startUuid: "p1", endUuid: "p2" })));
