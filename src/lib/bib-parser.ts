@@ -200,7 +200,14 @@ export function parseNatbibCommand(command: string): ParsedCiteCommand | null {
     postnote = m[3];
   }
 
-  const keys = m[5].split(",").map((k) => k.trim());
+  // Split on comma, trim, and drop empty fragments so that an empty body
+  // (`\cite{ }`) yields `[]` rather than `[""]`, and stray commas
+  // (`\citep{a,,b}`) collapse to the real keys. An empty `keys` array is the
+  // signal a pristine, key-less citation relies on (see useCitations.addCitation).
+  const keys = m[5]
+    .split(",")
+    .map((k) => k.trim())
+    .filter((k) => k.length > 0);
   // Natbib: pre/post applies to the *whole* citation (rendered once at the
   // edges). Don't put them on individual entries — the formatter reads the
   // top-level fields for natbib commands.
@@ -229,10 +236,15 @@ export function parseBiblatexCommand(command: string): ParsedCiteCommand | null 
   // Walk the rest of the string consuming `[pre][post]{key}` groups.
   let rest = command.slice(head[0].length);
   const entries: ParsedCiteKey[] = [];
+  // Whether we consumed at least one `{...}` brace group. This distinguishes a
+  // syntactically-complete but key-less command (`\cite{}` → empty keys, a
+  // valid pristine citation) from an unparseable bare head (`\cite` → null).
+  let matchedGroup = false;
   const groupRe = /^(?:\[([^\]]*)\])?(?:\[([^\]]*)\])?\{([^}]*)\}/;
   while (rest.length > 0) {
     const m = rest.match(groupRe);
     if (!m) break;
+    matchedGroup = true;
     let kPre: string | undefined;
     let kPost: string | undefined;
     if (m[2] !== undefined) { kPre = m[1]; kPost = m[2]; }
@@ -246,13 +258,17 @@ export function parseBiblatexCommand(command: string): ParsedCiteCommand | null 
         const trimmed = k.trim();
         if (trimmed) entries.push({ key: trimmed, prenote: kPre, postnote: kPost });
       }
-    } else {
+    } else if (keyContent.length > 0) {
+      // Drop an empty key body (`\cite{}`) — it contributes no entry, leaving
+      // `keys === []` so the pristine, key-less citation path fires correctly.
       entries.push({ key: keyContent, prenote: kPre, postnote: kPost });
     }
     rest = rest.slice(m[0].length);
   }
 
-  if (entries.length === 0) return null;
+  // A bare head with no brace group at all is unparseable. But a command that
+  // DID match a `{...}` group (even an empty one) is a valid, key-less citation.
+  if (!matchedGroup) return null;
   if (rest.trim().length > 0) return null;
 
   const keys = entries.map((e) => e.key);

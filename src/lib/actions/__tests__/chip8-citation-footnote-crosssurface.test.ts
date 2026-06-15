@@ -338,30 +338,28 @@ describe("citation: the citations.json-shaped CitationRef entry (real parseCiteC
     };
   }
 
-  it("slash/bare \\cite{} → entry with a single EMPTY-STRING key, anchored (no unanchored flag)", () => {
+  it("slash/bare \\cite{} → entry with an EMPTY keys array, anchored (no unanchored flag)", () => {
     const entry = makeCitationRef("\\cite{}", "abcd", /*unanchored*/ false);
     expect(entry.id).toBe("abcd");
     expect(entry.command).toBe("\\cite{}");
-    // LIVE-CODE TRUTH (not the oracle's loose "empty keys"): parseCiteCommand
-    // does `body.split(",").map(trim)`, so an empty `\cite{}` body yields a
-    // SINGLE empty-string key `[""]`, NOT `[]`. See the FLAGGED quirk note
-    // below — this `length===1` value defeats addCitation's
-    // `keys.length === 0` pristine check for an empty `\cite{}`.
-    expect(entry.keys).toEqual([""]);
+    // Parser-correctness fix (CHIP 8 #5): parseCiteCommand splits the body on
+    // comma, trims, and FILTERS OUT empty fragments, so an empty `\cite{}` body
+    // yields `[]` — NOT the old single empty-string key `[""]`. The empty array
+    // is the signal addCitation's `keys.length === 0` pristine check reads.
+    expect(entry.keys).toEqual([]);
     expect(typeof entry.createdAt).toBe("string");
     expect("unanchored" in entry).toBe(false); // anchored: flag ABSENT
   });
 
-  it("FLAGGED quirk: \\cite{} keys===[''] (length 1) defeats the keys.length===0 pristine check", () => {
+  it("FIXED: \\cite{} keys===[] (length 0) → addCitation's keys.length===0 pristine check fires", () => {
     // useCitations.addCitation marks a citation pristine ONLY when
-    // `ref.keys.length === 0`. But parseCiteCommand("\\cite{}").keys === [""]
-    // (length 1), so a brand-new empty `\cite{}` is NOT marked pristine via
-    // that path. The card's pristine lifecycle for an empty cite therefore
-    // relies on a DIFFERENT signal, not this addCitation branch. Pin the
-    // observed parser value so a future "fix" to either side is caught here.
+    // `ref.keys.length === 0`. parseCiteCommand("\\cite{}").keys is now `[]`
+    // (length 0), so a brand-new empty `\cite{}` IS marked pristine via that
+    // path — the previously-dead branch now fires for an empty cite. Pin the
+    // corrected parser value so a future regression on either side is caught here.
     const keys = parseCiteCommand("\\cite{}")?.keys ?? [];
-    expect(keys).toEqual([""]);
-    expect(keys.length === 0).toBe(false); // → addCitation does NOT markNew here
+    expect(keys).toEqual([]);
+    expect(keys.length === 0).toBe(true); // → addCitation DOES markNew here
   });
 
   it("typed \\cite{smith} → entry with keys parsed FROM the command", () => {
@@ -589,8 +587,8 @@ describe("sidecar asymmetry: citation entry shaped vs footnote body in the atom"
     // (command + id) — the sidecar entry IS shaped on create.
     expect(call.command).toBe("\\cite{}");
     expect(call.citationId).toBeTruthy();
-    // LIVE-CODE TRUTH: empty `\cite{}` parses to a single empty-string key.
-    expect(parseCiteCommand(call.command)?.keys).toEqual([""]);
+    // Parser-correctness fix (CHIP 8 #5): empty `\cite{}` parses to NO keys.
+    expect(parseCiteCommand(call.command)?.keys).toEqual([]);
   });
 
   it("a new footnote's BODY rides the atom's content attr; createFootnote carries NO body field", () => {
