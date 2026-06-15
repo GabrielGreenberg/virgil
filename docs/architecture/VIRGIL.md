@@ -1,4 +1,4 @@
-<!-- last-verified: aa5e40f 2026-06-13 -->
+<!-- last-verified: 12f0ef5 2026-06-15 -->
 <!-- derives-from: (root — verified against code) -->
 <!-- covers-code: src/app, src/cards, src/components, src/hooks, src/lib, src/links, src/panels, src/text-objects, src/types, library, editor -->
 
@@ -226,7 +226,7 @@ The agent writes `<sidecar>.json` (the new/changed card) + `ai-requests.json` (T
 - `src/components/` — React components. The canonical editor surface is `EditorPane.tsx` (used by both the main app and the Library Reader); `EditorLayout.tsx` is the shell wrapper (tabs, view-prefs, dialogs, the Virgil bar, the PDF/Code branches); `Editor.tsx` is the TipTap wrapper; `panel-primitives.tsx` holds `CARD_THEMES`; `MenuBar.tsx` is the docked menu pod.
 - `src/floats/` — the `Floatable` contract (the float-subsystem presence that `CardMeta.toFloatable` returns).
 - `src/hooks/` — ~50 state hooks (`useDocument`, `useCitations`, `useFootnotes`, `useViewPrefs`, `useCollab`, `usePoppedCards`, …).
-- `src/lib/` — core logic: LaTeX parse/serialize, TipTap extensions, storage, types.
+- `src/lib/` — core logic: LaTeX parse/serialize, TipTap extensions, storage, types. Includes `actions/` (the `VIRGIL_ACTION_REGISTRY` action SSOT + the `editor-actions-bridge.ts` PM→React seam + `action-icons.tsx`) and `focus-view.ts` (the UUID-anchored focus-band library + `focusViewPlugin`).
 - `src/links/` — the unified link architecture (registry, resolvers, three-surface highlight reconcilers).
 - `src/panels/` — one folder per panel + `_shared/` + `panel-registry.ts`.
 - `src/text-objects/` — the TextObject abstraction: registry, grab handle, float bodies, drop adapters.
@@ -244,6 +244,7 @@ Before adding a new panel, link kind, theme, or text-object kind, **extend the r
 | Card taxonomy | `CARD_REGISTRY` in [src/cards/card-registry.tsx](../../src/cards/card-registry.tsx); `CardKind` / `CardMeta` in [src/cards/types.ts](../../src/cards/types.ts) (`src/panels/_shared/types.ts` re-exports `CardKind`). The satellite tables (`CARD_KEY_PREFIXES`, labels, panel membership, `StackCardKind`) are registry-derived — never hand-kept. |
 | Link kinds | `LINK_REGISTRY` in [src/links/link-registry.ts](../../src/links/link-registry.ts) |
 | TextObject kinds | `TEXT_OBJECT_REGISTRY` in [src/text-objects/text-object-registry.ts](../../src/text-objects/text-object-registry.ts) |
+| Editing actions (all four surfaces) | `VIRGIL_ACTION_REGISTRY` in [src/lib/actions/action-registry.ts](../../src/lib/actions/action-registry.ts) — one row per action across grab-handle menu, gutter lightning, slash commands, typed-LaTeX input rules. The two live menus render from it; PM→React dispatch via [src/lib/actions/editor-actions-bridge.ts](../../src/lib/actions/editor-actions-bridge.ts). |
 | Card themes | `CARD_THEMES` in [src/components/panel-primitives.tsx](../../src/components/panel-primitives.tsx) |
 | Type definitions | [src/lib/types.ts](../../src/lib/types.ts) |
 | Design tokens | [src/app/globals.css](../../src/app/globals.css) + [src/STYLE_GUIDE.md](../../src/STYLE_GUIDE.md) |

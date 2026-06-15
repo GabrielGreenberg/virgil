@@ -1,4 +1,4 @@
-<!-- last-verified: aa5e40f 2026-06-13 -->
+<!-- last-verified: 12f0ef5 2026-06-15 -->
 <!-- derives-from: docs/architecture/VIRGIL.md#code-organization -->
 <!-- covers-code: src/lib/tiptap/doc-structure, src/hooks/useStructuralRevisions.ts, src/hooks/useInTextPositions.ts -->
 
@@ -52,9 +52,8 @@ The keystroke-sanctity sweep allows these direct subscriptions, because each is 
 - `useWordCount.ts` (300 ms debounce, then full doc walk)
 - `EditorLayout.tsx` activity-presence bumper (`:962`, docChanged-gated counter increment)
 - `EditorLayout.tsx` + `EditorPane.tsx` PDF-stale bump (O(1): stamp a timestamp ref, flip `pdfStale` at most once per compile cycle)
-- `EditorLayout.tsx` focus-mode child-count tracker (`:1976`, `on('update')` → docChanged-only; reads `view.dom.children.length` and calls a setState that bails when unchanged — O(1))
-- `EditorLayout.tsx` section-path recompute, main pane (`:2165`, `on('update')`; the handler only `cancelAnimationFrame`+`requestAnimationFrame` — the doc-walk/`coordsAtPos` is RAF-coalesced to one frame, plus a perf-flag gate)
-- `EditorLayout.tsx` section-path recompute, mirror pane (`:2246`, same RAF-coalesced pattern scoped to the mirror view)
+- `EditorLayout.tsx` section-path recompute, main pane (`:2146`, `on('update')`; the handler only `cancelAnimationFrame`+`requestAnimationFrame` — the doc-walk/`coordsAtPos` is RAF-coalesced to one frame, plus a perf-flag gate)
+- `EditorLayout.tsx` section-path recompute, mirror pane (`:2239`, same RAF-coalesced pattern scoped to the mirror view)
 - `SelectionActionsMenu.tsx` gutter-bolt reposition (`:236`, `on('update')`; suppression check + RAF-already-scheduled bail — the single `coordsAtPos` placement math is RAF-coalesced and short-circuits on a placement-equality bail)
 - `src/components/editor-layout/panels/omni-host.tsx` fold-aware OmniHost tick (`:184`, `on('transaction')`; a single `getMeta(sectionFoldingPluginKey)` check — bumps ONLY on a fold-meta tx, returns immediately on a plain keystroke)
 - `lib/code-pane-bridge.ts` TipTap→code sync (`:405`, `on('transaction')`; docChanged-gated + own-write (`syncing`) filtered, then a debounced serialize — O(1) per tx)

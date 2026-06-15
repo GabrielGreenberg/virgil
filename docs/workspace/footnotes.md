@@ -1,6 +1,6 @@
-<!-- last-verified: 7433bc2 2026-06-13 -->
+<!-- last-verified: 12f0ef5 2026-06-15 -->
 <!-- derives-from: docs/architecture/VIRGIL.md#cowork-pattern -->
-<!-- covers-code: src/lib/tiptap/footnote.ts, src/lib/types.ts, editor/scripts/create_card.py, editor/scripts/apply_response.py -->
+<!-- covers-code: src/lib/tiptap/footnote.ts, src/lib/footnote-commands.ts, src/lib/types.ts, editor/scripts/create_card.py, editor/scripts/apply_response.py -->
 
 # Footnotes — operational manifest
 

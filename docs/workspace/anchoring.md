@@ -1,4 +1,4 @@
-<!-- last-verified: 7433bc2 2026-06-13 -->
+<!-- last-verified: 12f0ef5 2026-06-15 -->
 <!-- derives-from: docs/architecture/VIRGIL.md#ontology -->
 <!-- covers-code: src/links/_shared/types.ts, src/links/links.ts, src/lib/tiptap/linked-anchor.ts, src/lib/latex-serializer.ts -->
 
@@ -48,7 +48,11 @@ is derived, never declared**:
   by a `linkedAnchor` mark. `textObjectIds` still names the containing block(s);
   `textRange` carries the mark's `anchorId` plus a **`textSnapshot`** (the recovery
   path, below). The span persists to the `.tex` as paired `\vlid{}…\vlidend{}`
-  markers ([identity.md](identity.md#example-and-linked-range-ids)).
+  markers ([identity.md](identity.md#example-and-linked-range-ids)). The
+  Mode-B-capable kinds are the `LinkedAnchorKind` union in
+  [src/links/links.ts](../../src/links/links.ts): `note`, `highlight`, **`todo`**
+  (gained range-anchor symmetry with note/cutter as of fa7b898/5257b1a),
+  `revision`, `cutter-comment`, `cutter-suggestion`, `report`, `report-request`.
 
 Every `"textObject"` anchor also carries a `margin` gutter entry (which side the
 Omni-View icon sits on). Resolution at measure time returns a `LinkResolution`
@@ -105,7 +109,7 @@ Each flavor breaks differently, and different machinery catches each
 
 | What breaks | Flavor | Guard (`src/lib/tiptap/linked-anchor.ts`) | Recovery |
 |---|---|---|---|
-| The anchored **block** is deleted | anchor (A) | **`TextObjectOrphanGuard`** emits `virgil-textobject-orphaned`; **`MarginaliaAnchorGuard`** *pre-empts* it for marginalia-bearing blocks by re-inserting a **placeholder paragraph with the same uuid** at the deletion site | `recoverOrphanedUuids` re-attaches a sidecar id by **unique** content fingerprint |
+| The anchored **block** is deleted | anchor (A) | **`TextObjectOrphanGuard`** emits `virgil-textobject-orphaned`; **`MarginaliaAnchorGuard`** *pre-empts* it for marginalia-bearing blocks by re-inserting a **placeholder paragraph with the same uuid** at the deletion site — **except** a transaction tagged `LIFECYCLE_DELETE_META` (the Archive / Delete drag-handle actions), where the removal is deliberate and the guard bypasses, letting the block actually go | `recoverOrphanedUuids` re-attaches a sidecar id by **unique** content fingerprint |
 | The **`linkedAnchor` mark** vanishes (delete, or lost on a parse/paste) | anchor (B) | **`LinkedAnchorGuard`** emits `virgil-anchor-orphaned` so the feature hook clears the link; its `transformPasted` strips pasted `linkedAnchor` marks so a paste can't duplicate an anchor id | `reanchorByText` ([src/links/links.ts](../../src/links/links.ts)) re-anchors by the `textRange.textSnapshot` |
 | The **`\vfid` / `\vcid` marker** (or the whole `\footnote{}`/`\cite{}`) is removed | atom-link | — (deleting the Atom is a normal edit) | `recoverOrphanedUuids` by fingerprint; a footnote whose marker vanished becomes an in-memory `OrphanedFootnote` the panel still hosts |
 

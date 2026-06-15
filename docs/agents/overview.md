@@ -1,4 +1,4 @@
-<!-- last-verified: aa5e40f 2026-06-13 -->
+<!-- last-verified: 12f0ef5 2026-06-15 -->
 <!-- derives-from: docs/architecture/VIRGIL.md#code-organization, docs/architecture/VIRGIL.md#ontology -->
 <!-- covers-code: src/app, src/components, src/hooks, src/lib, src/links, src/cards, src/floats, src/panels, src/text-objects, src/types, library, editor, package.json -->
 
@@ -29,9 +29,9 @@ Academic writers working in LaTeX who want to cowork with Claude or another agen
 ## Top-level `src/` map
 
 - `src/app/` — Next.js app router root, global styles (`globals.css`), manifest, layout, dev-only API routes
-- `src/components/` — React components. Biggest files: `EditorLayout.tsx` (~5080 lines, shrank in 2309137 when the strip-icon drops, panel-body drops, and main-editor selection HTML5 drag plumbing were all removed in favor of pop-out + drop-mode), `EditorPane.tsx` (~5510 lines, canonical editor surface used by both the main app and the Library Reader), `Editor.tsx` (~2010 lines, TipTap wrapper), `panel-primitives.tsx` (~2390 lines; lost the in-card text-drag grip and `onTextDragStart` prop in ec38210), `MenuBar.tsx` (~1570 lines, docked menu pod — slimmed in ae15791 when the home Format/Actions popups were dropped). See `architecture.md` → "EditorPane vs EditorLayout" for the split.
+- `src/components/` — React components. Biggest files: `EditorLayout.tsx` (~4710 lines, shrank in 2309137 when the strip-icon drops, panel-body drops, and main-editor selection HTML5 drag plumbing were all removed in favor of pop-out + drop-mode), `EditorPane.tsx` (~5650 lines, canonical editor surface used by both the main app and the Library Reader), `Editor.tsx` (~1880 lines, TipTap wrapper), `panel-primitives.tsx` (~2690 lines; lost the in-card text-drag grip and `onTextDragStart` prop in ec38210), `MenuBar.tsx` (~740 lines, docked menu pod — slimmed in ae15791 when the home Format/Actions popups were dropped). See `architecture.md` → "EditorPane vs EditorLayout" for the split.
 - `src/hooks/` — React hooks for state management (~50 files)
-- `src/lib/` — Core business logic: LaTeX parse/serialize, TipTap extensions, storage, types (~50 files)
+- `src/lib/` — Core business logic: LaTeX parse/serialize, TipTap extensions, storage, types (~75 files). Notable subsystems: `src/lib/actions/` (the multi-surface `VIRGIL_ACTION_REGISTRY` SSOT — one action set rendered by the grab-handle menu, gutter lightning, slash commands, and typed-LaTeX input rules; PM→React dispatch via `editor-actions-bridge.ts`, icons in `action-icons.tsx`), `src/lib/focus-view.ts` (UUID-anchored focus-mode band lib + `focusViewPlugin`), `src/lib/tiptap/` (the TipTap extension set)
 - `src/links/` — Unified link architecture (link registry, resolvers, types) for cross-references between editor and panel cards
 - `src/cards/` — Card-system SSOT (27458d8): `CARD_REGISTRY` (mirrors `TEXT_OBJECT_REGISTRY`), `CardKind`/`CardMeta` types, derived predicates, card floats, the unified `deleteMarginItem` path (moved here from `src/lib/cards/`)
 - `src/text-objects/` — TextObject SSOT (`TEXT_OBJECT_REGISTRY`), grab handle, float chrome + per-kind bodies, drop adapters, selection-hydration, `block-frame.ts` (the one canonical per-block gutter geometry — grab handle, drop indicator, and figure chrome all read it so they align by construction)

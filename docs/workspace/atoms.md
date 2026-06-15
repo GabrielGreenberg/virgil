@@ -1,4 +1,4 @@
-<!-- last-verified: 7433bc2 2026-06-13 -->
+<!-- last-verified: 12f0ef5 2026-06-15 -->
 <!-- derives-from: docs/architecture/VIRGIL.md#ontology -->
 <!-- covers-code: src/lib/tiptap/footnote.ts, src/lib/tiptap/citation.ts, src/lib/tiptap/math.ts, src/lib/tiptap/label.ts, src/lib/tiptap/linked-anchor.ts, src/lib/cite-commands.ts, src/lib/latex-parser.ts -->
 
@@ -28,7 +28,10 @@ element *within* a TextObject — finer than a TextObject, not itself one. It is
 A footnote Atom is **two adjacent `.tex` tokens**: `\vfid{<4hex>}` immediately
 before the authored `\footnote{...}` (or `\thanks{...}`, the title-page
 acknowledgement variant, which threads the Footnotes panel but doesn't consume the
-footnote counter). The Atom carries `footnoteId` ← `\vfid`.
+footnote counter). The Atom carries `footnoteId` ← `\vfid`. The trigger vocabulary
+is the SSOT `FOOTNOTE_RE_FULL` in `src/lib/footnote-commands.ts` (the footnote
+analog of `cite-commands.ts`), shared by the typed-`\footnote{}` input rule and the
+action registry so both recognize the same pattern.
 
 - **Card linkage:** the footnote *prose* is a Card in `footnotes.json` whose `id`
   **equals** the `\vfid` id — that equality *is* the link; there is no separate

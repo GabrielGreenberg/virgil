@@ -1,6 +1,6 @@
-<!-- last-verified: aa5e40f 2026-06-13 -->
+<!-- last-verified: 12f0ef5 2026-06-15 -->
 <!-- derives-from: docs/architecture/VIRGIL.md#ontology, docs/architecture/VIRGIL.md#code-organization -->
-<!-- covers-code: src/components/DragHandleMenu.tsx, src/components/ActionsMenuPanel.tsx, src/components/SelectionActionsMenu.tsx, src/components/editor-layout/card-actions, src/lib/editor-extensions.ts, src/lib/tiptap/tab-indent.ts, src/lib/tiptap/expex.ts, src/lib/tiptap/latex-comment.ts, src/lib/section-folding.ts, src/lib/tiptap/uuid-attr.ts, src/lib/tiptap/pgmark.ts, src/lib/tiptap/latex-command.ts, src/text-objects/text-object-registry.ts, src/text-objects/TextObjectGrabHandle.tsx, src/text-objects/drop-adapters.ts, src/components/drop-mode, src/lib/tiptap/atom-registry.ts -->
+<!-- covers-code: src/lib/actions/action-registry.ts, src/lib/actions/editor-actions-bridge.ts, src/lib/actions/action-icons.tsx, src/lib/tiptap/smart-insert.ts, src/components/DragHandleMenu.tsx, src/components/ActionsMenuPanel.tsx, src/components/SelectionActionsMenu.tsx, src/components/editor-layout/card-actions, src/lib/editor-extensions.ts, src/lib/tiptap/tab-indent.ts, src/lib/tiptap/expex.ts, src/lib/tiptap/latex-comment.ts, src/lib/section-folding.ts, src/lib/tiptap/uuid-attr.ts, src/lib/tiptap/pgmark.ts, src/lib/tiptap/latex-command.ts, src/text-objects/text-object-registry.ts, src/text-objects/TextObjectGrabHandle.tsx, src/text-objects/drop-adapters.ts, src/components/drop-mode, src/lib/tiptap/atom-registry.ts -->
 
 # Actions (the editing surface) — operational manifest
 
@@ -28,7 +28,7 @@ and roots every action in the registry / keymap / decoration plugin that
 
 | Family | What it is | SSOT that defines it |
 |---|---|---|
-| **Card actions** | The action + formatting vocabulary reached from the gutter button, the strip button, and the block grab handle | `MENU_ENTRIES` ([DragHandleMenu.tsx](../../src/components/DragHandleMenu.tsx)) + the formatting grid ([ActionsMenuPanel.tsx](../../src/components/ActionsMenuPanel.tsx)) |
+| **Card actions** | The action + formatting vocabulary reached from the gutter button, the block grab handle, slash commands, and typed-LaTeX input rules | `VIRGIL_ACTION_REGISTRY` ([action-registry.ts](../../src/lib/actions/action-registry.ts)) — the single SSOT every surface reads off; the two live menus ([DragHandleMenu.tsx](../../src/components/DragHandleMenu.tsx) / [ActionsMenuPanel.tsx](../../src/components/ActionsMenuPanel.tsx)) RENDER FROM it |
 | **Structural ops** | Block move / duplicate / delete / convert; the grab-handle lift; the three drag-drop flavors | `TEXT_OBJECT_REGISTRY` ([text-object-registry.ts](../../src/text-objects/text-object-registry.ts)) + the drop-spec registry ([drop-mode/registry.ts](../../src/components/drop-mode/registry.ts)) + `ATOM_REGISTRY` ([atom-registry.ts](../../src/lib/tiptap/atom-registry.ts)) |
 | **Keyboard** | Custom keymaps + the inherited TipTap defaults that survive | `addKeyboardShortcuts` in [tab-indent.ts](../../src/lib/tiptap/tab-indent.ts) / [expex.ts](../../src/lib/tiptap/expex.ts) / [latex-comment.ts](../../src/lib/tiptap/latex-comment.ts) + the assembled set in [editor-extensions.ts](../../src/lib/editor-extensions.ts) |
 | **Decorations** | The visual overlays that style/annotate without mutating the doc | The four `DecorationSet` plugins (table below) |
@@ -42,14 +42,19 @@ once below and the variants point at it.
 
 ## Family 1 — Card actions
 
-### The action vocabulary: `MENU_ENTRIES`
+### The action vocabulary: `VIRGIL_ACTION_REGISTRY`
 
-The SSOT for the action vocabulary is **`MENU_ENTRIES`** in
-[DragHandleMenu.tsx:78](../../src/components/DragHandleMenu.tsx) — an array of
-**11** entries; the `DragHandleAction` union ([DragHandleMenu.tsx:45](../../src/components/DragHandleMenu.tsx))
-is the type-level mirror. Each entry carries an `action`, a `label`, a
-single-`letter` shortcut, an `icon`, and optional `separator` / `destructive`
-flags.
+The SSOT for the action vocabulary is **`VIRGIL_ACTION_REGISTRY`** in
+[action-registry.ts:2575](../../src/lib/actions/action-registry.ts) — the single
+registry every surface reads off (CHIP 3 inverted the old dependency: the array
+`MENU_ENTRIES` is **deleted**, and the two live menus now render FROM the
+registry via `cardActionRows("grab" | "lightning")`). The card-action slice is
+**11** rows; the `DragHandleAction` union ([DragHandleMenu.tsx:39](../../src/components/DragHandleMenu.tsx))
+stays as the shared action-id union the dispatcher + the per-kind
+`TEXT_OBJECT_REGISTRY[kind].actions` lists speak. Each row's menu presentation
+(label, single-`letter` shortcut, `icon`, `separator` / `destructive` flags)
+lives in [action-icons.tsx](../../src/lib/actions/action-icons.tsx); each carries
+an `applies()` gate + `run()`.
 
 | # | `action` | Label | Letter | Class | Dispatch endpoint |
 |---|---|---|---|---|---|
@@ -65,7 +70,7 @@ flags.
 | 10 | `archive` | Archive | `A` | lifecycle | `cardCreation.createArchiveSnippet` |
 | 11 | `delete` | Delete | `⌫` | lifecycle | `cardLifecycle` delete + range cut |
 
-The `CardCreationApi` ([card-creation.ts:145](../../src/components/editor-layout/card-actions/card-creation.ts))
+The `CardCreationApi` ([card-creation.ts:142](../../src/components/editor-layout/card-actions/card-creation.ts))
 is the SSOT for the create endpoints; the `cardLifecycle`
 (`CardLifecycleApi`, the per-`CardKind` clone/delete registry) drives Duplicate
 and Delete. Three actions deliberately create the *request/comment* end of a
@@ -74,44 +79,60 @@ a `cutter-comment`, and `report` → a `report-request` (the quick gesture files
 the ask). The authored `revision-suggestion` / `cutter-suggestion` / `report`
 kinds are AI/responder outputs (see [cards.md](cards.md)). Footnote and Citation
 collapse the selection to the passage end before inserting their atom
-([drag-handle-actions.ts:256](../../src/components/editor-layout/card-actions/drag-handle-actions.ts),
-[:276](../../src/components/editor-layout/card-actions/drag-handle-actions.ts)) —
+([drag-handle-actions.ts:271](../../src/components/editor-layout/card-actions/drag-handle-actions.ts),
+[:291](../../src/components/editor-layout/card-actions/drag-handle-actions.ts)) —
 the audit's CITE behavior, below.
 
-**Per-kind subset.** `MENU_ENTRIES` is the *global* vocabulary; the per-kind
-allowed subset is `TEXT_OBJECT_REGISTRY[kind].actions`
-([text-object-registry.ts](../../src/text-objects/text-object-registry.ts)).
-When the menu opens for a given TextObject kind, the entries outside that set
-render **greyed-out** (visible-disabled), not filtered away, so the menu shape
-is stable across kinds ([DragHandleMenu.tsx:120](../../src/components/DragHandleMenu.tsx)).
+**Per-kind subset.** The registry's card-action rows are the *global*
+vocabulary; the per-kind allowed subset is `TEXT_OBJECT_REGISTRY[kind].actions`
+([text-object-registry.ts](../../src/text-objects/text-object-registry.ts)),
+which each row's `applies()` gate consults. When the menu opens for a given
+TextObject kind, the entries outside that set render **greyed-out**
+(visible-disabled), not filtered away, so the menu shape is stable across kinds.
 The four action sets are `PROSE_ACTIONS` / `NON_PROSE_BLOCK_ACTIONS` /
 `TITLE_FIELD_ACTIONS` / `LINKED_RANGE_ACTIONS`.
 
 ### The formatting vocabulary: the 4×4 grid
 
-The SSOT for formatting is the grid in
-[ActionsMenuPanel.tsx](../../src/components/ActionsMenuPanel.tsx) — **15 used
-cells** (16th is a spacer). Unlike the action row, formatting dispatches *in
-band* via `editor.chain()` or a dedicated insert/wrap helper, not through the
-card dispatcher.
+The grid in [ActionsMenuPanel.tsx](../../src/components/ActionsMenuPanel.tsx) is
+now **16 used cells** (the former spacer is filled by the new `\ref` cell,
+CHIP 7a). CHIP 6a/6b folded the FORMAT mark / list / blockquote / math /
+text-color / block-atom cells INTO the registry: each cell dispatches via
+`runGridAction(id)` → `VIRGIL_ACTION_REGISTRY[id].run(ctx)` (a view-only
+`ActionContext` off the live selection — the SAME SSOT the slash/typed surfaces
+reach). Two cells are still direct local calls (`\tex` → `insertTexBlock`,
+`ex` → `exampleRun`).
 
 | Cell | Effect | Dispatch |
 |---|---|---|
-| Bold / Italic / Strike / Code | toggle inline mark | `editor.chain().toggleBold()` … (`runFormat`) |
+| Bold / Italic / Strike / Code | toggle inline mark | `runGridAction("bold")` … → registry row (`backbone: "tiptap-chain"`) |
 | BlockType | set paragraph/heading level | `<BlockTypeDropdown>` (`setBlockType`) |
-| Bullet list / Numbered list / Blockquote | toggle block wrapper | `editor.chain().toggleBulletList()` … |
-| Example (`ex`) | wrap selection in an `exampleBlock` | `wrapSelectionInExample` (local; `buildExampleTemplate`) |
-| Inline math (`$x$`) / Display math (`$$`) | wrap selection in math | `wrapSelectionInMath` (local) |
-| Text color (`A`) | apply/clear text color | `SelectionColorPopover` → `setTextColor` / `unsetTextColor` |
-| `\tex` | insert a raw-LaTeX block | `insertTexBlock` ([tex-block.ts](../../src/lib/tiptap/tex-block.ts)) |
-| Figure (`fig.`) | insert a figure block | `insertFigureBlock` ([figure-block.ts](../../src/lib/tiptap/figure-block.ts)) |
-| Image | insert a graphics block | `insertGraphicsBlock` ([graphics-block.ts](../../src/lib/tiptap/graphics-block.ts)) |
+| Bullet list / Numbered list / Blockquote | toggle block wrapper | `runGridAction("bullet-list")` … → registry row |
+| Example (`ex`) | wrap selection in an `exampleBlock` | `exampleRun` (the canonical registry creator, shared with slash `\ex`) |
+| Inline math (`$x$`) / Display math (`$$`) | wrap selection in math | `runGridAction("inline-math" / "display-math")` → registry row |
+| Text color (`A`) | apply/clear text color | `runGridAction("text-color")` → `openColorPopover` → `SelectionColorPopover` → `setTextColor` / `unsetTextColor` |
+| `\tex` | insert a raw-LaTeX block | `insertTexBlock` ([tex-block.ts](../../src/lib/tiptap/tex-block.ts)) — grid cell still calls it directly; the slash `\tex` uses the registry's `texRun` |
+| Cross-ref (`\ref`) | open the `\ref` create-mode popover (NEW, CHIP 7a) | `runGridAction("ref")` → registry `refRun` → `openRefPopover` |
+| Figure (`fig.`) | insert a figure block | `runGridAction("figure")` → registry `figureRun` → `smartInsertBlock` ([smart-insert.ts](../../src/lib/tiptap/smart-insert.ts)) |
+| Image | insert a graphics block | `runGridAction("graphics")` → registry `graphicsRun` → `smartInsertBlock` ([smart-insert.ts](../../src/lib/tiptap/smart-insert.ts)) |
 
-### Three triggers, one dispatch
+### Four surfaces, one registry
 
-The action vocabulary is reached from **three** surfaces. Two mount the full
-`ActionsMenuPanel` (grid + action list); the third mounts the leaner
-`DragHandleMenu` (action list only):
+The registry is read off **four** surfaces (CHIP 3/4/5/6/7): the two React
+**menus** (below), plus **slash commands** ([commands.ts](../../src/lib/tiptap/commands.ts))
+and **typed-LaTeX input rules** (Family 3). The PM-plugin surfaces (slash /
+typed) cross into React-land via the **`editor-actions-bridge`**
+([editor-actions-bridge.ts](../../src/lib/actions/editor-actions-bridge.ts)): a
+plugin calls `getEditorActionsHandle()?.runAction(id, seed)`, the bridge supplies
+the React APIs (`cardCreation` / `cardLifecycle`) into the `ActionContext`, and
+invokes `spec.run()` in React-land. Pure-PM commands (`\chapter`…`\subsubsection`,
+`\tex`, `\title`/`\author`/`\date`) take the view-only `runViewOnlyAction` path
+instead. The deleted `command-input.ts` event-bridge and the scattered
+`virgil-*` `window` CustomEvents are all retired by this one typed seam.
+
+The two React menus: both mount off the registry. The **gutter button** mounts
+the full `ActionsMenuPanel` (grid + action list); the **block grab handle**
+mounts the leaner `DragHandleMenu` (action list only):
 
 | Trigger | Component | Mounts | Visibility |
 |---|---|---|---|
@@ -120,7 +141,7 @@ The action vocabulary is reached from **three** surfaces. Two mount the full
 
 (The redundant MenuBar strip-button trigger, `ActionsStripButton`, was removed as backlog #6.)
 
-Both route through one context, **`useDragHandleMenu()`**
+Both menus route through one context, **`useDragHandleMenu()`**
 ([drag-handle-menu-context.tsx](../../src/components/editor-layout/card-actions/drag-handle-menu-context.tsx)),
 whose value is wired in `EditorPane` as
 `{ open: openDragHandleMenu, dispatch: dragHandleActions.dispatch }`:
@@ -129,9 +150,9 @@ whose value is wired in `EditorPane` as
 - `dispatch(action, ref)` runs an action with no popover step (the toolbar path; both `ActionsMenuPanel` triggers call it directly).
 
 `dispatch` is owned by **`useDragHandleActions`**
-([drag-handle-actions.ts:112](../../src/components/editor-layout/card-actions/drag-handle-actions.ts)) —
+([drag-handle-actions.ts:115](../../src/components/editor-layout/card-actions/drag-handle-actions.ts)) —
 the single `switch (action)` over all 11 actions
-([drag-handle-actions.ts:249](../../src/components/editor-layout/card-actions/drag-handle-actions.ts)).
+([drag-handle-actions.ts:264](../../src/components/editor-layout/card-actions/drag-handle-actions.ts)).
 It receives `DragHandleActionsDeps` (`cardCreation`, `cardLifecycle`, `confirm`,
 `notify`, view-prefs) and resolves the ref before acting:
 
@@ -149,6 +170,13 @@ It receives `DragHandleActionsDeps` (`cardCreation`, `cardLifecycle`, `confirm`,
 - **Destructive confirm** — Archive / Delete consult the kind's
   `confirmDestructive` registry slot; Heading × Duplicate warns via
   `confirmHeadingLifecycle` (a whole-section copy is wide enough to disorient).
+  Atom-only lines (math / `\ref` / figure / `\tex` / citation-only) now
+  archive/delete cleanly AND surface the confirm — they were previously
+  silently no-op'd or deletable (`f4c830f` / `80170b3` / `63ccace`).
+- **Uniform collab read-only gate** (CHIP 7b) — every card row's `applies()`
+  routes through the shared gate keyed on `ActionContext.canEdit` (the SSOT
+  mirror of `collab.canEditMainText` / `editor.isEditable`). When the partner
+  holds the pen, every action greys out declaratively across all surfaces.
 
 The lower-level action hooks the dispatcher / `useCardCreation` compose live
 beside it in [editor-layout/card-actions/](../../src/components/editor-layout/card-actions):
@@ -167,22 +195,25 @@ injected store `add*` deps).
 but it predates two changes — verified against the current code:
 
 - **`Quotation` is gone.** The audit's action row listed a 9th item,
-  "Quotation"; it was removed in the card-system refactor. The current
-  `MENU_ENTRIES` has **no `quotation`** (and no `Q` letter). Its conceptual
+  "Quotation"; it was removed in the card-system refactor. The current card
+  vocabulary has **no `quotation`** (and no `Q` letter). Its conceptual
   successor is **`report`** (`R`), tracking the Quotations→Reports panel rename.
   **`duplicate`** (`D`) and **`delete`** (`⌫`) were also added. Net: the action
   row is now 11 entries, not 9.
-- **"Three triggers → one panel" split.** The audit said all three triggers
-  mount `ActionsMenuPanel`. Now only the **gutter** and **strip** triggers do;
-  the **block grab handle** mounts its own `DragHandleMenu` (action-list-only,
-  per-kind filtered). The shared root is still `MENU_ENTRIES` + the
-  `useDragHandleMenu` dispatch.
+- **The strip trigger is gone; the grab handle has its own menu.** The audit
+  said all three triggers mount `ActionsMenuPanel`. The MenuBar strip trigger
+  was removed (backlog #6); now only the **gutter** mounts `ActionsMenuPanel`,
+  and the **block grab handle** mounts its own `DragHandleMenu` (action-list-only,
+  per-kind filtered). The shared root is now `VIRGIL_ACTION_REGISTRY` (the
+  former `MENU_ENTRIES` is deleted) + the `useDragHandleMenu` dispatch.
 
 The audit's 18-context × 23-item **behavior matrix** (the ✅/⚠️/❌/💥/🪦 table)
-is a *known-issues* catalog (clusters EX / ATOM / CITE / CONT / MODE / MARK,
-with spin-off fixes DA-1…DA-5). Those inconsistencies are **not yet fixed** and
-are out of scope here — treat the matrix as a follow-up list, not current
-guaranteed behavior.
+was a *known-issues* catalog (clusters EX / ATOM / CITE / CONT / MODE / MARK,
+with spin-off fixes DA-1…DA-5). The action-alignment effort (the CHIP run that
+built this registry) **landed those fixes** — DA-1 (no block nodes in the
+inline-only example slot), DA-5 (applicability/mode taxonomy), the atom-only
+archive/delete + destructive-confirm fixes, and the uniform collab read-only
+gate are all shipped. Treat the matrix as historical, not a live follow-up list.
 
 ---
 
@@ -285,7 +316,7 @@ assembled in [editor-extensions.ts](../../src/lib/editor-extensions.ts).
 
 ### Inherited TipTap defaults (enabled in StarterKit)
 
-`StarterKit.configure({…})` ([editor-extensions.ts:1632](../../src/lib/editor-extensions.ts))
+`StarterKit.configure({…})` ([editor-extensions.ts:1652](../../src/lib/editor-extensions.ts))
 **disables** the block nodes (`heading`, `paragraph`, `bulletList`,
 `orderedList`, `listItem`, `blockquote`, `codeBlock`) and replaces each with a
 Virgil builder that `.extend()`s the base — so they keep the inherited keymaps
@@ -299,7 +330,7 @@ their default bindings survive:
 | `Shift-Enter`, `Mod-Enter` | hard line break | StarterKit `HardBreak` |
 | `Mod-Alt-1…6` | set heading level | `createHeadingWithLabel` (extends `Heading`) |
 | `Mod-Shift-8` / `Mod-Shift-7` / `Mod-Shift-B` | toggle Bullet / Numbered list / Blockquote | the list/blockquote builders (extend the base) |
-| `Mod-Shift-H` | toggle the highlight **mark** (multicolor text tint) | `Highlight` ([editor-extensions.ts:1706](../../src/lib/editor-extensions.ts)) |
+| `Mod-Shift-H` | toggle the highlight **mark** (multicolor text tint) | `Highlight` ([editor-extensions.ts:1742](../../src/lib/editor-extensions.ts)) |
 
 > The `Mod-Shift-H` **mark** (a text-background tint) is distinct from the
 > Family-1 **Highlight card** action (`H`), which creates a `HighlightCard`
@@ -311,9 +342,10 @@ Not keymaps, but typed triggers that transform text (cite where relevant):
 
 - **Smart quotes** — typing `"` becomes a curly quote ([smart-quotes.ts](../../src/lib/tiptap/smart-quotes.ts)).
 - **`% ` → latexComment** — a line-leading `% ` converts to a comment atom; suppressed on card surfaces ([latex-comment.ts](../../src/lib/tiptap/latex-comment.ts)).
-- **Slash popup** — typing `\` opens the command popup (`SlashPopupExtension`; see [SlashCommandPopup.tsx](../../src/components/SlashCommandPopup.tsx)). Commands insert **inline only** — `\ex`/`\footnote` insert nodes at the cursor; `\cite` soft-routes to Omni-View (surfaced only if not already covered), not the dedicated Citations panel. No slash command force-opens a panel.
+- **Slash popup** — typing `\` opens the command popup (`SlashPopupExtension`; see [SlashCommandPopup.tsx](../../src/components/SlashCommandPopup.tsx)). The command list ([commands.ts](../../src/lib/tiptap/commands.ts)) now routes EVERY command through the action registry — card/atom commands needing React (`\cite`, `\footnote`, `\ex`, `\ref`) via the bridge's `runAction(id, { surface: "slash" })`; pure-PM commands (`\chapter`…`\subsubsection`, `\tex`, `\title`/`\author`/`\date`) via `runViewOnlyAction`. Commands insert **inline only** — `\ex`/`\footnote` insert nodes at the cursor; `\cite` soft-routes to Omni-View (surfaced only if not already covered), not the dedicated Citations panel. No slash command force-opens a panel.
 - **Math popover (inline + display math click-to-edit)** — saves on **any** dismissal (Enter / click-away / blur / Escape); a **Cancel** button is the only revert path ([src/components/MathPopover.tsx](../../src/components/MathPopover.tsx)).
 - **Ref popover (`\ref` create-mode dropdown)** — the label candidate list is arrow-key navigable; Enter commits the selection ([src/components/LabelRefPopover.tsx](../../src/components/LabelRefPopover.tsx)).
+- **Typed-LaTeX atom rules** — typing `\cite{…}` / `\cite ` ([citation.ts](../../src/lib/tiptap/citation.ts)) and `\footnote{…}` ([footnote.ts](../../src/lib/tiptap/footnote.ts)) insert the inline atom synchronously in plugin-land, then register the CARD via the registry bridge (`runAction(id, { surface: "typed", … })`). The shared regexes live in leaf modules ([cite-commands.ts](../../src/lib/cite-commands.ts), [footnote-commands.ts](../../src/lib/footnote-commands.ts)) so the input rule + the registry row recognize the SAME vocabulary.
 - **Markdown heading rules are deliberately OFF** — `createHeadingWithLabel` returns `addInputRules() { return [] }`, killing the `#`/`##`+space shortcut (the slash popup + BlockType menu own heading creation, and the level-0 rule had a real bug).
 
 ---
