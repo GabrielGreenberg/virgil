@@ -2347,17 +2347,74 @@ const FORMAT_ACTION_ROWS: Readonly<Record<FormatActionId, ActionSpec>> = {
 };
 
 /**
+ * Can a heading actually REPLACE the textblock(s) the current selection spans?
+ * (Bug #3, DATA-NO-OP.) This is the SCHEMA-DRIVEN twin of the listable check —
+ * it mirrors ProseMirror's own `setBlockType` applicability predicate
+ * (prosemirror-commands) VERBATIM so the registry can never claim a heading
+ * conversion is `"ok"` where `setBlockType` would silently reject it:
+ *
+ *   for each textblock `node` at `pos` in the selection range:
+ *     - already that markup           → applicable (a re-level / no-op SET);
+ *     - `$pos.parent.canReplaceWith(index, index+1, heading)` → applicable.
+ *
+ * The bug this fixes: inside a `listItem` (content "paragraph block*") or an
+ * `exampleItem` (content "(paragraph | graphicsBlock | displayMath)+ …" — no
+ * `heading` in the union), the parent CANNOT host a `heading` in place of its
+ * leading paragraph, so
+ * `setBlockType(heading)` is a SILENT NO-OP (doc unchanged). The heading rows
+ * used to return `"ok"` there anyway — a dead menu cell / dead `\section`. Now
+ * `headingRow`'s `applies()` routes through this and greys to `"disabled"`.
+ *
+ * Pure; reads only `ctx.view.state` (doc + schema). Called at menu-open /
+ * dispatch time only — never per keystroke (keystroke sanctity). Returns `true`
+ * (don't over-grey) when the `heading` node type is absent from the schema, the
+ * defensive default everywhere else in this module takes.
+ */
+function selectionCanHostHeading(view: EditorView): boolean {
+  const { state } = view;
+  const heading = state.schema.nodes.heading;
+  if (!heading) return true; // defensive: no heading node → don't over-grey
+  let applicable = false;
+  for (const range of state.selection.ranges) {
+    if (applicable) break;
+    const { $from, $to } = range;
+    state.doc.nodesBetween($from.pos, $to.pos, (node, pos) => {
+      if (applicable) return false;
+      // Mirror setBlockType: only textblocks are candidates; a block already
+      // carrying the target markup is an applicable (re-level) SET.
+      if (!node.isTextblock || node.hasMarkup(heading)) return undefined;
+      if (node.type === heading) {
+        applicable = true;
+        return undefined;
+      }
+      const $pos = state.doc.resolve(pos);
+      const index = $pos.index();
+      // The schema-precise question setBlockType itself asks: can this block's
+      // PARENT host a `heading` where this textblock sits? `false` inside a
+      // listItem / exampleItem (their content models pin a leading paragraph).
+      applicable = $pos.parent.canReplaceWith(index, index + 1, heading);
+      return undefined;
+    });
+  }
+  return applicable;
+}
+
+/**
  * Build one heading row. Headings are `category: "block"`, exposed on the slash
  * surface (`\chapter` … `\subsubsection`) and the lightning surface (the
  * BlockType dropdown). No grab/typed/keyboard surface (a heading is not a
  * grab-handle action, and there is no `\heading{}`-style input rule).
  *
  * `applies` mirrors the BlockType dropdown's availability: a heading conversion
- * applies to any text block (paragraph / heading) or a live selection / caret
- * inside one. We keep it simple ("ok" everywhere the dropdown is reachable) —
- * the dropdown is always enabled when the caret is in the body text, and the
- * slash command only fires inside a text block by construction. An atom-block
- * ref (figure / displayMath) has no text to convert → "disabled".
+ * applies to any text block (paragraph / heading) the schema can host a heading
+ * at. An atom-block ref (figure / displayMath) has no text to convert →
+ * "disabled". And — Bug #3 (DATA-NO-OP) — a caret/selection whose textblock
+ * sits in a container that can't host a heading (`listItem` / `exampleItem`)
+ * greys to "disabled" too: `setBlockType(heading)` is a silent no-op there, so
+ * offering it was a dead cell. The schema-precise check
+ * (`selectionCanHostHeading`) mirrors ProseMirror's own `setBlockType`
+ * applicability test, so the registry can never claim "ok" where the run() would
+ * no-op.
  */
 function headingRow(id: BlockActionId & `heading-${string}`): ActionSpec {
   const level = HEADING_ID_LEVEL[id];
@@ -2377,14 +2434,16 @@ function headingRow(id: BlockActionId & `heading-${string}`): ActionSpec {
     slashName,
     applies: (ctx) => {
       const ref = ctx.ref;
-      // Per-kind base: a selection / caret always sits in a text block →
-      // convertible; a TextObjectRef converts iff it's a text-bearing block (an
-      // atom block — figure / displayMath / texBlock — has no text → disabled).
+      // Per-kind base: a selection / caret converts iff the SCHEMA can host a
+      // heading where it sits — false inside a `listItem` / `exampleItem`, where
+      // `setBlockType(heading)` is a silent no-op (Bug #3). A TextObjectRef
+      // converts iff it's a text-bearing block (an atom block — figure /
+      // displayMath / texBlock — has no text → disabled).
       let base: "ok" | "disabled" = "ok";
-      if (ref.kind !== "selection" && ref.kind !== "cursor") {
-        if (isTextObjectKind(ref.kind)) {
-          base = TEXT_OBJECT_REGISTRY[ref.kind].isAtomBlock ? "disabled" : "ok";
-        }
+      if (ref.kind === "selection" || ref.kind === "cursor") {
+        base = selectionCanHostHeading(ctx.view) ? "ok" : "disabled";
+      } else if (isTextObjectKind(ref.kind)) {
+        base = TEXT_OBJECT_REGISTRY[ref.kind].isAtomBlock ? "disabled" : "ok";
       }
       // Layer the collab gate (the DA-5 range check is a no-op for "ignored").
       return gateApplies({ selection: "ignored" }, ctx, base);

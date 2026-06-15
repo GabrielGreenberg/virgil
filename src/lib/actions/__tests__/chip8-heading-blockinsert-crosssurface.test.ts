@@ -485,6 +485,133 @@ describe("heading SET — content-model NO-OP on list/example items (applies-vs-
     expect(countOfType(e, "heading")).toBe(0);
     expect(shape(e)).toEqual(before);
   });
+
+  it("registry heading-section inside an exampleItem is the SAME no-op", () => {
+    const e = mount([
+      {
+        type: "exampleBlock",
+        attrs: { uuid: "B", kind: "multi", number: 1 },
+        content: [{ type: "exampleItemList", content: [{ type: "exampleItem", attrs: { uuid: "i1" }, content: [{ type: "paragraph", attrs: { uuid: "ip1" }, content: [{ type: "text", text: "ex" }] }] }] }],
+      },
+    ]);
+    caretInFirstTextblock(e);
+    const before = shape(e);
+    runRegistry(e, "heading-section");
+    expect(countOfType(e, "heading")).toBe(0);
+    expect(shape(e)).toEqual(before);
+  });
+});
+
+// ===========================================================================
+// PART 1b — Bug #3: applies() greys the heading rows where run() would no-op.
+//
+// The no-op above is a UX nit: the menu cell / slash command was OFFERED
+// ("ok") but did NOTHING inside a list/example item. The fix makes applies()
+// return "disabled" exactly where setBlockType(heading) would be rejected by
+// the schema (a container that can't host a heading), and keeps "ok" on the
+// normal top-level paragraph/heading caret. This codifies the applies-vs-effect
+// alignment so a future regression (offering a dead action again) is caught.
+// ===========================================================================
+
+describe("Bug #3 — heading applies() greys where the conversion would no-op", () => {
+  /** Build a cursor-ref ActionContext at the caret (the menu-open shape). */
+  function cursorCtx(editor: Editor): ActionContext {
+    const pos = editor.state.selection.head;
+    return {
+      editor,
+      view: editor.view,
+      ref: {
+        kind: "cursor",
+        pos,
+        paragraphId: paragraphUuidAt(editor.state.doc, pos) ?? "",
+      } as CursorRef,
+      surface: "lightning",
+    };
+  }
+
+  const HEADING_IDS: ActionId[] = [
+    "heading-chapter",
+    "heading-section",
+    "heading-subsection",
+    "heading-subsubsection",
+  ];
+
+  it("'ok' on a top-level paragraph caret (the normal case)", () => {
+    const e = mount([paragraph("Hello world")]);
+    caretInFirstTextblock(e);
+    const ctx = cursorCtx(e);
+    for (const id of HEADING_IDS) {
+      expect(VIRGIL_ACTION_REGISTRY[id]!.applies(ctx)).toBe("ok");
+    }
+  });
+
+  it("'ok' on a top-level heading caret (a re-level SET is valid)", () => {
+    const e = mount([
+      { type: "heading", attrs: { uuid: "h1", level: 2, numbered: true }, content: [{ type: "text", text: "Intro" }] },
+    ]);
+    caretInFirstTextblock(e);
+    const ctx = cursorCtx(e);
+    for (const id of HEADING_IDS) {
+      expect(VIRGIL_ACTION_REGISTRY[id]!.applies(ctx)).toBe("ok");
+    }
+  });
+
+  it("'disabled' inside a listItem caret (setBlockType would no-op)", () => {
+    const e = mount([
+      { type: "bulletList", content: [{ type: "listItem", content: [{ type: "paragraph", attrs: { uuid: "li1" }, content: [{ type: "text", text: "item" }] }] }] },
+    ]);
+    caretInFirstTextblock(e);
+    const ctx = cursorCtx(e);
+    for (const id of HEADING_IDS) {
+      expect(VIRGIL_ACTION_REGISTRY[id]!.applies(ctx)).toBe("disabled");
+    }
+  });
+
+  it("'disabled' inside an exampleItem caret (setBlockType would no-op)", () => {
+    const e = mount([
+      {
+        type: "exampleBlock",
+        attrs: { uuid: "B", kind: "multi", number: 1 },
+        content: [{ type: "exampleItemList", content: [{ type: "exampleItem", attrs: { uuid: "i1" }, content: [{ type: "paragraph", attrs: { uuid: "ip1" }, content: [{ type: "text", text: "ex" }] }] }] }],
+      },
+    ]);
+    caretInFirstTextblock(e);
+    const ctx = cursorCtx(e);
+    for (const id of HEADING_IDS) {
+      expect(VIRGIL_ACTION_REGISTRY[id]!.applies(ctx)).toBe("disabled");
+    }
+  });
+
+  it("APPLIES-VS-EFFECT alignment: 'disabled' iff the conversion is a no-op", () => {
+    // The contract the fix establishes: applies() === 'ok' EXACTLY when the run()
+    // actually converts. Prove it on both sides of the boundary in one test.
+    // (a) listItem — disabled + no-op:
+    const li = mount([
+      { type: "bulletList", content: [{ type: "listItem", content: [{ type: "paragraph", attrs: { uuid: "li1" }, content: [{ type: "text", text: "item" }] }] }] },
+    ]);
+    caretInFirstTextblock(li);
+    expect(VIRGIL_ACTION_REGISTRY["heading-section"]!.applies(cursorCtx(li))).toBe("disabled");
+    runRegistry(li, "heading-section");
+    expect(countOfType(li, "heading")).toBe(0); // no-op confirmed
+
+    // (b) top-level paragraph — ok + converts:
+    const p = mount([paragraph("Body")]);
+    caretInFirstTextblock(p);
+    expect(VIRGIL_ACTION_REGISTRY["heading-section"]!.applies(cursorCtx(p))).toBe("ok");
+    runRegistry(p, "heading-section");
+    expect(countOfType(p, "heading")).toBe(1); // converted
+  });
+
+  it("still 'ok' on the inner paragraph of a blockquote (the conversion is valid there)", () => {
+    // blockquote content = "block+", so a heading IS a valid child — the inner
+    // paragraph converts (PART 1's CONVERTING case proves run() works). applies()
+    // must NOT over-grey this listable-but-not-leading-pinned container.
+    const e = mount([
+      { type: "blockquote", content: [{ type: "paragraph", attrs: { uuid: "p1" }, content: [{ type: "text", text: "quote" }] }] },
+    ]);
+    caretInFirstTextblock(e);
+    expect(VIRGIL_ACTION_REGISTRY["heading-section"]!.applies(cursorCtx(e))).toBe("ok");
+  });
 });
 
 // ===========================================================================
