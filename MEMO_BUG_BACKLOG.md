@@ -1116,3 +1116,43 @@ Two deferred items from the R3 gate (#39 work):
    offset (4 → 4); removing the restore regresses it (4 → 14). The first test
    still types THROUGH the card editor and asserts the caret survives the
    self-write-back round-trip (no spurious re-seed) per the chip's spirit.
+
+---
+
+## 41. Omni unanchored / outside-focus bins — top gap + equal-height badge polish
+
+**Reported:** 2026-06-15 · **Status:** open · **Area:** ui-chrome / Omni panel bins
+
+Two corrections to the absolute-positioned "N unanchored" / "N outside focus" pill
+bins that float at the top of the omni folder
+([OmniViewPanel.tsx](src/panels/Omni/OmniViewPanel.tsx)):
+
+**(1) Thin gap above the "unanchored" box (NOT focus-view-specific).** The
+`OmniUnanchoredBin` is pinned flush to the folder top — `position: absolute; top: 0`
+([:280](src/panels/Omni/OmniViewPanel.tsx:280)). Add a thin gap (e.g. `top: 4`)
+between it and the manilla folder's top edge. This bin shows whenever there are
+unanchored cards, independent of focus view (hence "not focus-view specific").
+
+**(2) Equalize the two boxes' heights by shrinking the no-anchor badge.** The
+unanchored pill is taller than the "outside focus" pill because its leading icon is
+`BadgeOrphaned` — a **20px** (`w-5 h-5`) square with a diagonal cross-out
+([panel-primitives.tsx:309](src/components/panel-primitives.tsx:309)) — whereas the
+outside-focus pill uses a **10px** `◎` dot
+([OmniViewPanel.tsx:359](src/panels/Omni/OmniViewPanel.tsx:359)). Desired: make the
+no-anchor badge a **small squircle** (~dot-sized, ~10px), **same colors**
+(`theme.badgeBg` / `theme.badgeBorder`), **no cross-out** (drop the `<svg>` diagonal
+line). The two pills then share a height.
+
+**Implementation notes:**
+- `BadgeOrphaned` must get its **own** smaller dimensions — do NOT shrink the shared
+  `BADGE_BASE` (`w-5 h-5`, [panel-primitives.tsx:274](src/components/panel-primitives.tsx:274)),
+  which the count badge also uses.
+- The change is **global** to `BadgeOrphaned`, which also renders in the bin's
+  expanded orphan list ([OmniViewPanel.tsx:307](src/panels/Omni/OmniViewPanel.tsx:307))
+  and the **FootnoteCard header** ([FootnoteCard.tsx:220](src/panels/Footnotes/FootnoteCard.tsx:220)).
+  Verify the smaller, cross-out-less badge still reads as "orphaned" there (the
+  `data-hint="No anchor in document"` tooltip carries the meaning).
+- **Both corrections shift the unanchored pill's box**, so update the outside-focus
+  bin's hardcoded stack offset `topPx={… ? 34 : 0}`
+  ([OmniViewPanel.tsx:540](src/panels/Omni/OmniViewPanel.tsx:540)) to match the new
+  (shorter pill + 4px top gap) bottom edge — otherwise the two bins overlap or gap.
