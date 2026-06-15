@@ -258,14 +258,23 @@ describe("#29 nit-3 fold-chevron: shared plugin-view does ZERO work on unrelated
   });
 
   it("deleting an UNRELATED heading never repaints a folded survivor's chevron", () => {
-    // Fold A, then prune heading B (a meta-less docChanged tx). A's folded
-    // boolean is invariant under B's removal, so the apply reducer returns the
-    // SAME SectionFoldingState object → the shared view's reference bail fires
-    // and never touches A's chevron. NOTE: A's NodeView update() also does not
-    // fire on EITHER tx (folding A decorates A's SIBLING, not A's own node; the
-    // prune reuses A's view via node-match without an update()), so this asserts
-    // the shared-view reference bail — NOT the per-node live-class idempotency
-    // (the next test covers that). Survivors stay put on a meta-less prune.
+    // Fold A, then prune heading B (a meta-less docChanged tx). For A's chevron
+    // to stay put, TWO bails must both fire:
+    //   (1) the apply reducer returns the SAME SectionFoldingState (A's folded
+    //       boolean is invariant under B's removal) → the shared view's O(1)
+    //       reference bail fires, so the shared view never resyncs; AND
+    //   (2) deleting B DOES fire A's OWN NodeView update() — a node deletion
+    //       re-walks the doc's child list, so PM calls update() on the surviving
+    //       siblings — which runs refreshFoldBtn() while A's chevron is already
+    //       painted folded; its live-class idempotency (folded === the live
+    //       `is-folded` class) bails, so no redundant toggle.
+    // So this test DOES discriminate the live-class-vs-mirror deviation: under
+    // the old `lastFoldedFlag` mirror the fold paint (shared view) left the
+    // mirror stale (false), so refreshFoldBtn would redundantly toggle here →
+    // RED (verified). The next test exercises the SAME idempotency but fires A's
+    // update() by editing A's OWN text instead of a sibling prune. (Folding A
+    // itself does NOT fire A's update() — it decorates A's sibling, not A's node
+    // — so the fold is painted solely by the shared view.)
     editor.view.dispatch(
       editor.state.tr.setMeta(sectionFoldingPluginKey, {
         action: "toggle",
