@@ -25,6 +25,7 @@
  */
 
 import type { Node as PMNode } from "@tiptap/pm/model";
+import type { Editor } from "@tiptap/react";
 import type { CardLifecycleApi } from "@/panels/card-lifecycle-registry";
 import type { CardKind } from "@/panels/_shared/types";
 import { parseLinkCardKey } from "@/links/link-registry";
@@ -112,6 +113,63 @@ export function expandCascadeRange(
     to = wrapperTo;
   }
   return { from, to };
+}
+
+// ---------------------------------------------------------------------------
+// Cleanup-then-delete range correction — the F2 data-loss fix.
+//
+// THE BUG IT FIXES
+// The Archive / Delete dispatch computes a deletion range `[from, to)` against
+// the live doc, THEN calls `cleanupLinksInRange`, which — for an inline atom
+// inside the range (a `\cite` / `\footnote` whose card lifecycle owns a live
+// doc node) — SYNCHRONOUSLY dispatches its own transaction that strips the atom
+// from the doc. That shrinks the targeted block, so the editor's state advances
+// while the originally-computed `to` does not. The stale `to` then over-reaches
+// past the (now-shorter) block and into whatever sits immediately after it.
+// When the next sibling is a size-1 block atom (`graphicsBlock`, `displayMath`,
+// `texBlock`, …) the over-reach swallows it WHOLE — silent data loss (F2:
+// deleting a paragraph that precedes a `graphicsBlock` removed the graphics
+// too). A `figureBlock` survived only incidentally: the demo paragraph above it
+// happened to carry no atom to clean up, so the range never went stale.
+//
+// THE FIX (whole-class, not the one node type)
+// Every removal `cleanupLinksInRange` triggers is, by construction, STRICTLY
+// INSIDE `[from, to)` — it only deletes inline atoms / linkedAnchor-marked text
+// that the walker found within the range, never the block boundaries
+// themselves. So the block's opening boundary (`from`) never moves, and `to`
+// shifts left by exactly the total document-size delta. We capture the doc size
+// before cleanup and subtract the delta afterward. Ref-kind-agnostic (works for
+// a TextObject paragraph delete AND a selection-range delete) and atom-kind-
+// agnostic (citation, footnote, or any future atom whose lifecycle removes a
+// doc node). The caller dispatches `tr.delete(from, correctedTo)` against the
+// post-cleanup `ed.state`, so positions are internally consistent.
+// ---------------------------------------------------------------------------
+
+/**
+ * Run `cleanupLinksInRange` over `[from, to)` and return the range corrected
+ * for any doc mutation the cleanup's card-lifecycle deletes performed. The
+ * returned `{ from, to }` is valid against the POST-cleanup `editor.state.doc`
+ * and is what the Delete / Archive `tr.delete(...)` must use.
+ *
+ * `from` is returned unchanged: cleanup never touches positions at or before
+ * the block's opening boundary. `to` is reduced by the doc-size delta, since
+ * every cleanup removal lands strictly inside the range.
+ */
+export function cleanupAndComputeDeleteRange(
+  editor: Editor,
+  from: number,
+  to: number,
+  lifecycle: CardLifecycleApi,
+): { from: number; to: number } {
+  const sizeBefore = editor.state.doc.content.size;
+  cleanupLinksInRange(editor.state.doc, from, to, lifecycle);
+  const removed = sizeBefore - editor.state.doc.content.size;
+  // Clamp defensively: a removed count outside [0, to-from) would mean cleanup
+  // touched content outside the range (it never does), so guard against an
+  // inverted or out-of-doc range rather than trust the arithmetic blindly.
+  const safeRemoved = Math.max(0, Math.min(removed, to - from));
+  const correctedTo = Math.min(to - safeRemoved, editor.state.doc.content.size);
+  return { from: Math.min(from, correctedTo), to: correctedTo };
 }
 
 export function cleanupLinksInRange(

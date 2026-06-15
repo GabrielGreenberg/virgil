@@ -31,7 +31,7 @@ import {
   duplicateSlice,
 } from "@/text-objects/duplicate-slice";
 import {
-  cleanupLinksInRange,
+  cleanupAndComputeDeleteRange,
   expandCascadeRange,
 } from "@/text-objects/delete-range";
 import { findPreviousAnchorableBlock } from "@/text-objects/anchor-resolution";
@@ -549,8 +549,13 @@ export function useDragHandleActions(deps: DragHandleActionsDeps) {
             snippetParagraphId = reanchor?.uuid ?? "";
             snippetTargetKind = reanchor?.kind ?? targetKind;
           }
-          cleanupLinksInRange(
-            ed.state.doc,
+          // F2: same stale-range hazard as Delete — cleanup may strip an
+          // inline atom inside the range and shrink the block, so re-derive
+          // the deletion bounds against the post-cleanup state. The
+          // `richContent` snapshot above is taken BEFORE cleanup, so the
+          // archived copy still carries the atom. See delete-range.ts.
+          const delRange = cleanupAndComputeDeleteRange(
+            ed,
             extended.from,
             extended.to,
             cardLifecycle,
@@ -561,7 +566,7 @@ export function useDragHandleActions(deps: DragHandleActionsDeps) {
           // previous block (above) and TextObjectOrphanGuard sweeps any
           // Mode-A card whose anchor vanished.
           const tr = ed.state.tr
-            .delete(extended.from, extended.to)
+            .delete(delRange.from, delRange.to)
             .setMeta(LIFECYCLE_DELETE_META, true);
           ed.view.dispatch(tr);
           const snippet = cardCreation.createArchiveSnippet({
@@ -589,8 +594,15 @@ export function useDragHandleActions(deps: DragHandleActionsDeps) {
           // include the wrapper so PM's content-rule auto-fill never
           // gets a chance to inject a placeholder.
           const extended = expandCascadeRange(ed.state.doc, outer);
-          cleanupLinksInRange(
-            ed.state.doc,
+          // F2: cleanupLinksInRange may synchronously dispatch a doc tx
+          // (e.g. deleting a `\cite` atom inside the range), shrinking the
+          // block and making `extended.to` stale — the old code then deleted
+          // the stale range and swallowed the next sibling (a size-1
+          // graphicsBlock vanished silently). The helper runs the cleanup
+          // and returns a range corrected for that mutation, valid against
+          // the post-cleanup `ed.state`. See delete-range.ts.
+          const delRange = cleanupAndComputeDeleteRange(
+            ed,
             extended.from,
             extended.to,
             cardLifecycle,
@@ -599,7 +611,7 @@ export function useDragHandleActions(deps: DragHandleActionsDeps) {
           // bypasses the anchored-block re-insert. TextObjectOrphanGuard
           // sweeps any Mode-A card whose anchor disappeared.
           const tr = ed.state.tr
-            .delete(extended.from, extended.to)
+            .delete(delRange.from, delRange.to)
             .setMeta(LIFECYCLE_DELETE_META, true);
           ed.view.dispatch(tr);
           break;
