@@ -24,7 +24,7 @@ describe("LEGACY_TOKEN_CROSSWALK (R-C frozen tokens)", () => {
       footnote: { legacyDataKind: null, cssToken: null },
       citation: { legacyDataKind: null, cssToken: null },
       example: { legacyDataKind: null, cssToken: null },
-      todo: { legacyDataKind: null, cssToken: "todo" },
+      todo: { legacyDataKind: "todo", cssToken: "todo" },
       archive: { legacyDataKind: null, cssToken: "archive" },
       report: { legacyDataKind: "report", cssToken: "report" },
       "report-request": { legacyDataKind: "report-request", cssToken: "report" },

@@ -89,6 +89,7 @@ import {
   getLinkedTextObjectIds,
   getTextAnchor,
 } from "@/links/links";
+import type { LinkedAnchorKind } from "@/links/links";
 import dynamic from "next/dynamic";
 import type { CodeEditorHandle } from "./CodeEditor";
 const CodeEditor = dynamic(() => import("./CodeEditor"), { ssr: false });
@@ -1203,7 +1204,10 @@ export default function EditorLayout() {
   //     of any of the three surfaces, generic across all card kinds
   // Effective anchor for the in-text highlight = hover ?? active.
   const [activeAnchorId, setActiveAnchorId] = useState<string | null>(null);
-  const [activeAnchorKind, setActiveAnchorKind] = useState<"note" | "highlight" | "revision" | "cutter-comment" | "cutter-suggestion" | "report" | "report-request" | null>(null);
+  // Typed off the SSOT `LinkedAnchorKind` union (not a hand-maintained
+  // duplicate) so adding a new anchor-bearing kind (e.g. "todo") stays in
+  // sync with `useSelectedAnchorSync`'s setter signature.
+  const [activeAnchorKind, setActiveAnchorKind] = useState<LinkedAnchorKind | null>(null);
   // Hover state read from the canonical cardStore.hover via a
   // useSyncExternalStore subscription. The only EditorLayout-side consumer
   // is the `hoveredAnchorId` derivation below (hover → Mode B anchor id for

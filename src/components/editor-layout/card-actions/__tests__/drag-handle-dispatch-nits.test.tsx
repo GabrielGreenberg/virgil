@@ -11,7 +11,10 @@
 // stubs never mask the behavior under test.
 //
 //   • Nit C — `todo` from a non-empty selection must drop the SAME range
-//     `linkedAnchor` anchor that `note` does (symmetry; it was Mode-A-only).
+//     `linkedAnchor` anchor that `note` does (Mode-B symmetry). A cursor-only
+//     todo (block ref / no text) stays Mode-A paragraph-anchored. The
+//     reap-survival of that mark is covered by the sibling
+//     `todo-mode-b-reconciler.test.tsx`.
 //   • Nit D — `archive` / `delete` on a STALE/unresolvable ref must fail loud
 //     (notify the user), mirroring `duplicate`'s fail-loud, not `return`
 //     silently.
@@ -195,23 +198,20 @@ function hasAnyLinkedAnchor(editor: Editor): boolean {
 }
 
 // ---------------------------------------------------------------------------
-// Nit C — todo is Mode-A (paragraph-anchored) BY DESIGN, not by oversight.
+// Nit C — todo from a selection is now Mode-B symmetric with note/cutter.
 //
 // note/cutter/revision drop a Mode-B range `linkedAnchor` from a selection
 // because their card models carry a Mode-B text-anchor field (createNote &c.
 // take an `anchor` opt → addNote wires it into the card's links[]) AND
-// useLinkedAnchorReconciler tracks {notes, highlights, cutterCards, comments,
-// reportCards} so the mark survives. The todo card model has NEITHER:
-// `createTodo` takes no `anchor` (only Mode-A `addTodoTextObjectId`), and the
-// reconciler does not track todos — so any range anchor dropped for a todo
-// would be reaped as an orphan on the next collection sweep, producing exactly
-// the phantom-tint break the other nits fix. Making todo truly symmetric needs
-// out-of-scope changes (card-creation.ts + the todo store + the reconciler's
-// alive set), so todo stays Mode-A here. These tests lock in BOTH the note
-// reference behavior and todo's intended Mode-A semantics.
+// useLinkedAnchorReconciler tracks the anchor-bearing collections so the mark
+// survives. Todo now matches: `createTodo` accepts an `anchor`, `setTodoAnchor`
+// folds it into the card's links[], and the reconciler tracks `todos` in its
+// alive-set (proven in the sibling `todo-mode-b-reconciler.test.tsx`). A
+// cursor-only / block-ref todo (no selection text) still anchors Mode-A.
+// These tests lock in the note reference behavior AND todo's new symmetry.
 // ---------------------------------------------------------------------------
 
-describe("Nit C — note drops a range anchor; todo is Mode-A by design", () => {
+describe("Nit C — note and todo both drop a range anchor from a selection", () => {
   it("note from a selection drops a linkedAnchor mark (the reference behavior)", async () => {
     const editor = mountDoc([
       {
@@ -234,7 +234,7 @@ describe("Nit C — note drops a range anchor; todo is Mode-A by design", () => 
     expect(hasAnyLinkedAnchor(editor)).toBe(true);
   });
 
-  it("todo from a selection stays Mode-A: no range anchor mark dropped", async () => {
+  it("todo from a selection is now Mode-B: drops a linkedAnchor mark + passes an anchor", async () => {
     const editor = mountDoc([
       {
         type: "paragraph",
@@ -251,12 +251,13 @@ describe("Nit C — note drops a range anchor; todo is Mode-A by design", () => 
     };
     await h.dispatch("todo", ref);
     expect(h.createTodoCalls).toHaveLength(1);
-    // Mode-A: anchored to the containing paragraph (paragraphId), no Mode-B
-    // text-range mark — a todo's card model has no place to durably keep one.
-    expect(hasAnyLinkedAnchor(editor)).toBe(false);
+    // Symmetric with note: createTodo received a range anchor and a
+    // `linkedAnchor` mark landed in the doc.
+    expect(h.createTodoCalls[0].anchor).toBeTruthy();
+    expect(hasAnyLinkedAnchor(editor)).toBe(true);
   });
 
-  it("todo from a BLOCK ref also stays Mode-A: no mark", async () => {
+  it("todo from a BLOCK ref (cursor-only) stays Mode-A: no mark, no anchor", async () => {
     const editor = mountDoc([
       {
         type: "paragraph",
@@ -267,6 +268,8 @@ describe("Nit C — note drops a range anchor; todo is Mode-A by design", () => 
     const h = makeHarness(editor);
     await h.dispatch("todo", { kind: "paragraph", id: "para-A" });
     expect(h.createTodoCalls).toHaveLength(1);
+    // Block ref ⇒ wantRangeAnchor is false ⇒ no Mode-B anchor, no mark.
+    expect(h.createTodoCalls[0].anchor).toBeFalsy();
     expect(hasAnyLinkedAnchor(editor)).toBe(false);
   });
 });

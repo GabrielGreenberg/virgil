@@ -1911,6 +1911,7 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
     addTodo: todosHook.addItem,
     updateTodo: todosHook.updateItem,
     addTodoTextObjectId: todosHook.addParagraphId,
+    setTodoAnchor: todosHook.setTodoAnchor,
     addCitation: citationsHook.addCitation,
     archiveContent: archiveHook.archiveContent,
     updateArchiveSnippet: archiveHook.updateSnippet,
@@ -3175,6 +3176,7 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
     cutterCards: cutterHook.cards,
     comments:    revisionsHook.cards,
     reportCards: reportsHook.cards,
+    todos:       todosHook.items,
   });
 
   useTextHoverBridge({

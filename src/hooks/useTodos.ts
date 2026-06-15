@@ -5,8 +5,11 @@ import { generateEntityId } from "@/lib/uuid";
 import type { TodoState, TodoItem } from "@/lib/types";
 import {
   addTextObjectLink,
+  clearTextAnchorLink,
   getLinkedTextObjectIds,
+  getTextAnchor,
   removeTextObjectLink,
+  setTextAnchorLink,
 } from "@/links/links";
 import { migrateCardLinks } from "@/links/migrate-card";
 import { bridgeCardAiRequestFlag } from "@/lib/ai-request-bridge";
@@ -148,6 +151,74 @@ export function useTodos(docId: string | null, externalPristine?: PristineKindAp
     }));
   }, [update]);
 
+  /**
+   * Set a Mode-B text-range anchor on a todo (symmetric with
+   * `useNotes.setNoteAnchor`). Folds any existing Mode-A paragraph links
+   * into the canonical anchor link via `setTextAnchorLink`. Used by the
+   * selection drag-handle path so a todo created from a selection drops a
+   * `linkedAnchor` mark + carries the matching anchor in its `links[]`.
+   * The reconciler reads this anchor (`getTextAnchor`) to keep the mark
+   * alive — see `useLinkedAnchorReconciler`. */
+  const setTodoAnchor = useCallback(
+    (id: string, anchorId: string, anchorText: string) => {
+      pristine.markDirty(id);
+      update((prev) => ({
+        items: prev.items.map((i) =>
+          i.id === id ? setTextAnchorLink(i, "todo", anchorId, anchorText) : i,
+        ),
+      }));
+    },
+    [update, pristine],
+  );
+
+  /**
+   * Re-attach a Mode-B text-range anchor on a freshly-cloned todo.
+   * Idempotent — no-op if the todo already carries this anchorId. Mirrors
+   * `useNotes.bindAnchor` so a future todo-duplicate path can reuse it via
+   * the card-lifecycle registry. */
+  const bindAnchor = useCallback(
+    (id: string, _paragraphId: string, anchorId: string, anchorText: string) => {
+      update((prev) => {
+        const todo = prev.items.find((i) => i.id === id);
+        if (!todo) return prev;
+        if (getTextAnchor(todo)?.anchorId === anchorId) return prev;
+        return {
+          items: prev.items.map((i) =>
+            i.id === id ? setTextAnchorLink(i, "todo", anchorId, anchorText) : i,
+          ),
+        };
+      });
+    },
+    [update],
+  );
+
+  // Mode-B orphan sweep — when the `linkedAnchor` mark vanishes from the
+  // doc (e.g. the anchored text was deleted), clear the dead Mode-B anchor
+  // on the matching todo so it doesn't keep a stale text-range link. The
+  // todo stays in the panel (Mode-A paragraph links, if any, are preserved
+  // by `clearTextAnchorLink`). Mirrors `useNotes`'s `virgil-anchor-orphaned`
+  // listener. O(todos) per event, never per-keystroke.
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const { anchorId, kind } = (e as CustomEvent).detail || {};
+      if (!anchorId || kind !== "todo") return;
+      update((prev) => {
+        if (!prev.items.some((i) => getTextAnchor(i)?.anchorId === anchorId)) {
+          return prev;
+        }
+        return {
+          items: prev.items.map((i) =>
+            getTextAnchor(i)?.anchorId === anchorId
+              ? clearTextAnchorLink(i, "todo")
+              : i,
+          ),
+        };
+      });
+    };
+    window.addEventListener("virgil-anchor-orphaned", handler);
+    return () => window.removeEventListener("virgil-anchor-orphaned", handler);
+  }, [update]);
+
   // Mode A orphan sweep — when a text-object block is removed from the
   // doc (e.g. by Delete or Archive on a paragraph / heading / list / etc.),
   // strip the dead uuid from any todo's Mode A links. Pairs with the
@@ -200,6 +271,8 @@ export function useTodos(docId: string | null, externalPristine?: PristineKindAp
     archiveDone,
     addParagraphId,
     removeParagraphId,
+    setTodoAnchor,
+    bindAnchor,
     discardPristineTodos,
   };
 }

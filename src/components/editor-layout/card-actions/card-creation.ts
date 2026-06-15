@@ -93,6 +93,9 @@ export interface CardCreationDeps {
   addTodo: () => TodoItem;
   updateTodo: (id: string, text: string) => void;
   addTodoTextObjectId: (id: string, paragraphId: string, targetKind?: TextObjectKind) => void;
+  /** Set a todo's Mode-B text-range anchor (symmetric with note's
+   *  `setTextAnchorLink` path). Used by the selection drag-handle path. */
+  setTodoAnchor: (id: string, anchorId: string, anchorText: string) => void;
   addCitation: (command: string, existingId?: string, unanchored?: boolean) => CitationRef;
   /** Archive — mints a snippet and (optionally) writes a Mode A
    *  paragraph link. The dispatcher owns the editor mutation (cleanup
@@ -209,6 +212,11 @@ export interface CardCreationApi {
   createTodo: (opts: {
     text?: string;
     paragraphId?: string | null;
+    /** Mode-B text-range anchor (a `linkedAnchor` dropped over a selection).
+     *  When present, the new todo carries the range anchor in its `links[]`
+     *  — symmetric with `createNote`. Absent ⇒ Mode-A paragraph anchoring
+     *  (cursor-only todo). */
+    anchor?: AnchorRef;
     anchorRect?: DOMRect | null;
     mode?: CardCreateMode;
     targetKind?: TextObjectKind;
@@ -283,6 +291,7 @@ export function useCardCreation(deps: CardCreationDeps): CardCreationApi {
     addTodo,
     updateTodo,
     addTodoTextObjectId,
+    setTodoAnchor,
     addCitation,
     archiveContent,
     updateArchiveSnippet,
@@ -490,11 +499,18 @@ export function useCardCreation(deps: CardCreationDeps): CardCreationApi {
     (opts) => {
       const todo = addTodo();
       if (opts.text) updateTodo(todo.id, opts.text);
+      // Mode-A paragraph link first (mirrors `addNote`): record the
+      // containing paragraph, THEN fold it into the canonical Mode-B
+      // anchor link if a range anchor was dropped. `setTextAnchorLink`
+      // reads the just-added paragraph ids, so order matters.
       if (opts.paragraphId) addTodoTextObjectId(todo.id, opts.paragraphId, opts.targetKind);
+      if (opts.anchor) {
+        setTodoAnchor(todo.id, opts.anchor.anchorId, opts.anchor.anchorText);
+      }
       finishCreate("todo", "todo", setSelectedTodoId, todo.id, opts);
       return todo;
     },
-    [addTodo, updateTodo, addTodoTextObjectId, setSelectedTodoId, finishCreate],
+    [addTodo, updateTodo, addTodoTextObjectId, setTodoAnchor, setSelectedTodoId, finishCreate],
   );
 
   const createFootnote = useCallback<CardCreationApi["createFootnote"]>(

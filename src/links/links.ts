@@ -719,6 +719,7 @@ function removeLinkedAnchorMark(editor: Editor, anchorId: string): void {
 export type LinkedAnchorKind =
   | "note"
   | "highlight"
+  | "todo"
   | "revision"
   | "cutter-comment"
   | "cutter-suggestion"
@@ -739,6 +740,7 @@ function linkedAnchorKindToCardKind(kind: LinkedAnchorKind): CardKind {
   switch (kind) {
     case "note":              return "note";
     case "highlight":         return "highlight";
+    case "todo":              return "todo";
     case "cutter-comment":    return "cutter-comment";
     case "cutter-suggestion": return "cutter-suggestion";
     case "revision":          return "revision-comment";

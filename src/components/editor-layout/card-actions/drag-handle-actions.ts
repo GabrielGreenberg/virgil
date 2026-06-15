@@ -349,12 +349,22 @@ export function useDragHandleActions(deps: DragHandleActionsDeps) {
           break;
         }
         case "todo": {
+          // Mode-B symmetry with note/cutter/revision: a todo from a
+          // non-empty selection drops a range `linkedAnchor` mark; a
+          // cursor-only todo (no selection ⇒ no wantRangeAnchor) stays
+          // Mode-A paragraph-anchored. The reconciler tracks todos in its
+          // alive-set, so the mark survives the orphan sweep.
+          const anchor = wantRangeAnchor ? createAnchor(ed, "todo") : undefined;
           const todo = cardCreation.createTodo({
             text: text || undefined,
             paragraphId,
+            anchor,
             targetKind,
             mode: "omni",
           });
+          if (anchor) {
+            updateLinkedAnchorCard(ed, anchor.anchorId, "todo", todo.id);
+          }
           panelId = "todo";
           focusCardKey = cardPopKey("todo", todo.id);
           break;

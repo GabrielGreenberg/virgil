@@ -2,9 +2,9 @@
 
 /**
  * Single owner of the invariant: every `linkedAnchor` mark in the editor
- * doc must back a card alive in one of the four anchor-bearing collections
- * (notes, highlights, cutterCards, comments). On every change to those
- * collections, walk the doc and strip orphan marks.
+ * doc must back a card alive in one of the anchor-bearing collections
+ * (notes, highlights, cutterCards, comments, reportCards, todos). On every
+ * change to those collections, walk the doc and strip orphan marks.
  *
  * Dual of `useAnchorHighlightReconciler` — same idempotent-sweep pattern,
  * but the side effect is editor transactions instead of DOM attribute
@@ -28,6 +28,11 @@ export interface UseLinkedAnchorReconcilerArgs {
   cutterCards: ReadonlyArray<CardWithLinks>;
   comments:    ReadonlyArray<CardWithLinks>;
   reportCards: ReadonlyArray<CardWithLinks>;
+  /** Todos carry a Mode-B text-range anchor when created from a selection
+   *  (symmetric with note/cutter/revision). They MUST be in the alive-set:
+   *  without them the next collection sweep reaps a todo's `linkedAnchor`
+   *  as an orphan → phantom-tint break. See the todo Mode-B chip. */
+  todos:       ReadonlyArray<CardWithLinks>;
 }
 
 export function useLinkedAnchorReconciler({
@@ -37,11 +42,13 @@ export function useLinkedAnchorReconciler({
   cutterCards,
   comments,
   reportCards,
+  todos,
 }: UseLinkedAnchorReconcilerArgs): void {
-  // Memoize on the four array identities. EditorPane rebuilds collection
-  // wrappers on every render — depending on a wrapper object literal
-  // would re-fire the effect every render. Each hook only produces a new
-  // array when its data actually changed.
+  // Memoize on the collection array identities. EditorPane rebuilds
+  // collection wrappers on every render — depending on a wrapper object
+  // literal would re-fire the effect every render. Each hook only produces
+  // a new array when its data actually changed. The alive-set is built from
+  // card stores (O(cards)), never a per-keystroke doc walk.
   const aliveAnchorIds = useMemo(() => {
     const ids = new Set<string>();
     const add = (cards: ReadonlyArray<CardWithLinks>) => {
@@ -55,8 +62,9 @@ export function useLinkedAnchorReconciler({
     add(cutterCards);
     add(comments);
     add(reportCards);
+    add(todos);
     return ids;
-  }, [notes, highlights, cutterCards, comments, reportCards]);
+  }, [notes, highlights, cutterCards, comments, reportCards, todos]);
 
   useLayoutEffect(() => {
     if (!editor) return;
