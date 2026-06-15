@@ -1261,3 +1261,49 @@ still has the old `topGutter` (their saved pref ≈ 99). So the *bulk* of the
 The genuinely NEW ask here is the **symmetric-spacing** refinement. The manage
 session must measure against **current main** (gutter-removed: ~8px residual,
 0-above/8-below asymmetry), not the deployed build.
+
+---
+
+## 45. Action menus: new-example symbol should be "(1)", not "ex"
+
+**Reported:** 2026-06-15 · **Status:** open (catch — do not fix yet) · **Area:** ui-chrome / action menus / icon vocabulary
+
+**Reported behavior** — in the action menus (the lightning `ActionsMenuPanel` /
+slash surfaces), the new-example action shows the symbol **"ex"**. It should show
+**"(1)"** — the *same glyph the Examples panel uses* — for a consistent example
+vocabulary across surfaces.
+
+**Where it is.** The example action is in
+[action-registry.ts:~1820](src/lib/actions/action-registry.ts:1820) (`label:
+"Example"`, `slashName: "ex"` at [:1834](src/lib/actions/action-registry.ts:1834)).
+`action-icons.tsx` has **no example glyph**, so the menu falls back to rendering
+the slash text "ex". Meanwhile the Examples **panel** icon already renders the
+literal "(1)" glyph — `IconExample`
+([panel-icons.tsx:320](src/components/editor-layout/panel-icons.tsx:320), the
+serif-digit "(1)" at [:344](src/components/editor-layout/panel-icons.tsx:344)).
+
+**Fix direction.** Give the example action a real icon — reuse / mirror
+`IconExample`'s "(1)" glyph in the action-icon set so the action menu shows "(1)"
+instead of the "ex" slash-text fallback. Keep `slashName: "ex"` (that's the
+typed-command name, separate from the displayed symbol).
+
+---
+
+## 46. Reports panel icon should be a speech balloon, not a clipboard
+
+**Reported:** 2026-06-15 · **Status:** open (catch — do not fix yet) · **Area:** ui-chrome / panel icons
+
+**Reported behavior** — the Reports panel icon is a **clipboard** (with clip +
+ruled lines). It should instead be a **squircle speech balloon with a few lines of
+text in it**.
+
+**Where it is.** `IconReports`
+([panel-icons.tsx:218](src/components/editor-layout/panel-icons.tsx:218)) — the
+comment literally describes it as "a clipboard with a clip and ruled lines" — wired
+into `PANEL_ICONS` at
+[panel-icons.tsx:384](src/components/editor-layout/panel-icons.tsx:384)
+(`reports: (a) => <IconReports active={a} />`).
+
+**Fix direction.** Redraw `IconReports` as a rounded-square (squircle) speech
+balloon containing 2–3 short horizontal text lines. Keep the `active`/`size`/
+`hideFrame` (gutter-mode) prop contract so it still reads at 16px in the strip.
