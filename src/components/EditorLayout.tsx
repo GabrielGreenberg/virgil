@@ -1623,20 +1623,28 @@ export default function EditorLayout() {
     [paragraphByErrorId],
   );
 
-  // Jump to the error's location. Always switches to the rich-text
-  // editor (never code), scrolls the mapped paragraph into view, and
-  // sets the range highlight so the offending passage lights up.
+  // Jump to the error's location — MODE-AWARE (Chip C). In code view we
+  // STAY in code and scroll the CodeMirror pane to the error line; in PDF
+  // view we leave for the visual editor and let the pending-scroll
+  // mechanism scroll there once it mounts; in the visual editor we
+  // highlight the offending range + scroll the mapped paragraph into view.
   const jumpToError = useCallback(
     (err: LatexError) => {
       setSelectedErrorId(err.id);
-      if (codeView || pdfView) {
+      if (codeView) {
+        // STAY in code view — scroll the CodeMirror pane to the error line.
+        codeEditorHandleRef.current?.scrollToLine?.(err.line, err.column);
+        return;
+      }
+      if (pdfView) {
+        // Leave PDF for the visual editor, then scroll there once it mounts
+        // (the post-switch pending-scroll effect handles it).
         pendingParagraphId.current = paragraphByErrorId.get(err.id) ?? null;
-        pendingScrollText.current = null;
-        codeEditorHandleRef.current = null;
-        setCodeView(false);
+        pendingScrollText.current = errorSnippets.get(err.id) ?? null;
         setPdfView(false);
         return;
       }
+      // Visual editor: highlight the offending range + scroll the paragraph.
       const range = computeErrorHighlightRange(err);
       setErrorHighlightRange(range);
       const paraId = paragraphByErrorId.get(err.id);
@@ -1648,7 +1656,7 @@ export default function EditorLayout() {
         }
       }
     },
-    [codeView, pdfView, paragraphByErrorId, computeErrorHighlightRange],
+    [codeView, pdfView, paragraphByErrorId, errorSnippets, computeErrorHighlightRange],
   );
 
   // Keep the error-highlight range in sync with the current selection.
@@ -4385,6 +4393,17 @@ export default function EditorLayout() {
                   highlightText={highlightText}
                   highlightRange={effectiveHighlightRange}
                   onDocumentClassMismatch={promptDocClassMismatch}
+                  latexErrors={allLatexErrors}
+                  paragraphByErrorId={paragraphByErrorId}
+                  errorSnippets={errorSnippets}
+                  selectedErrorId={selectedErrorId}
+                  setSelectedErrorId={setSelectedErrorId}
+                  dismissedErrorIds={dismissedErrorIds}
+                  dismissError={dismissError}
+                  expandedErrorIds={expandedErrorIds}
+                  expandError={expandError}
+                  toggleErrorExpanded={toggleErrorExpanded}
+                  onJumpToError={jumpToError}
                 />
               }
               right={

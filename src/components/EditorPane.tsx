@@ -54,7 +54,9 @@ import {
   useMemo,
   useRef,
   useState,
+  type Dispatch,
   type RefObject,
+  type SetStateAction,
 } from "react";
 import type { Editor, JSONContent } from "@tiptap/react";
 import VirgilEditor, { type EditorHandle } from "./Editor";
@@ -188,7 +190,6 @@ import { CutterHost } from "./editor-layout/panels/cutter-host";
 import { ReportsHost } from "./editor-layout/panels/reports-host";
 import { RevisionsHost } from "./editor-layout/panels/revisions-host";
 import { ErrorsHost } from "./editor-layout/panels/errors-host";
-import { pruneExpanded } from "@/panels/Errors/expansion";
 import { SearchHost } from "./editor-layout/panels/search-host";
 import WordCountPanel from "@/panels/WordCount";
 import { INITIAL_SEARCH_STATE, type SearchPanelState } from "@/panels/Search";
@@ -647,6 +648,27 @@ export interface EditorPaneProps {
   aiWindowOpen?: boolean;
   onAiWindowClose?: () => void;
 
+  /**
+   * Error state — owned by EditorLayout (the single owner across all
+   * four error surfaces) and threaded down here so the docked
+   * ErrorsPanel + omni mirror read the SAME selection / expansion /
+   * dismissal / snippet / paragraph-mapping state the code-view
+   * sidebar and gutter markers already use. The Library Reader omits
+   * these (it never compiles); EditorPane falls back to empties so the
+   * error surfaces render nothing rather than crashing.
+   */
+  latexErrors?: LatexError[];
+  paragraphByErrorId?: Map<string, string>;
+  errorSnippets?: Map<string, string>;
+  selectedErrorId?: string | null;
+  setSelectedErrorId?: Dispatch<SetStateAction<string | null>>;
+  dismissedErrorIds?: Set<string>;
+  dismissError?: (id: string) => void;
+  expandedErrorIds?: Set<string>;
+  expandError?: (id: string) => void;
+  toggleErrorExpanded?: (id: string) => void;
+  onJumpToError?: (err: LatexError) => void;
+
   // Note: paragraph / heading / example popout handlers used to be
   // optional props here (added during the 7.6 partial). Step 7.6
   // collapses them — they're now derived locally from
@@ -654,6 +676,16 @@ export interface EditorPaneProps {
   // Reader (no viewPrefs) gets no-op popouts; main app post-7.8
   // wires them automatically once it passes the bundle.
 }
+
+// Stable empty defaults for the (optional) error-state props. The Library
+// Reader omits them; falling back to shared frozen identities keeps the
+// memos that depend on them from re-running on each render.
+const EMPTY_LATEX_ERRORS: LatexError[] = [];
+const EMPTY_STRING_MAP: Map<string, string> = new Map();
+const EMPTY_STRING_SET: Set<string> = new Set();
+// `noop` is the existing module-scope stable no-op (declared above for
+// PaneState stubs); reused here for the optional error-prop defaults.
+const noopSetSelectedErrorId: Dispatch<SetStateAction<string | null>> = () => {};
 
 const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane(
   {
@@ -677,9 +709,26 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
     menuBar,
     aiWindowOpen = false,
     onAiWindowClose,
+    latexErrors = EMPTY_LATEX_ERRORS,
+    paragraphByErrorId = EMPTY_STRING_MAP,
+    errorSnippets = EMPTY_STRING_MAP,
+    selectedErrorId = null,
+    setSelectedErrorId = noopSetSelectedErrorId,
+    dismissedErrorIds = EMPTY_STRING_SET,
+    dismissError = noop,
+    expandedErrorIds = EMPTY_STRING_SET,
+    expandError = noop,
+    toggleErrorExpanded = noop,
+    onJumpToError = noop,
   },
   ref,
 ) {
+  // Error state is owned by EditorLayout (single owner) and arrives via the
+  // props above. Local aliases keep every downstream reference (docked
+  // ErrorsPanel mount, omni host, margin-marker builder) untouched: they were
+  // written against `allLatexErrors` / `handleJumpToError` as the local names.
+  const allLatexErrors = latexErrors;
+  const handleJumpToError = onJumpToError;
   const innerRef = useRef<EditorHandle>(null);
   useImperativeHandle(ref, () => innerRef.current as EditorHandle);
   const [editor, setEditor] = useState<Editor | null>(null);
@@ -1459,55 +1508,14 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
   const effectivePlacements: PanelPlacement[] =
     placements ?? viewPrefs?.prefs.placements ?? [];
 
-  // Error state — declared early because `marginaliaMarkers` consumes
-  // them. `compileHook` is at line ~734, so `allLatexErrors` resolves.
-  const [selectedErrorId, setSelectedErrorId] = useState<string | null>(null);
-  const [dismissedErrorIds, setDismissedErrorIds] = useState<Set<string>>(new Set());
-  // R5: ONE error-card expansion scope for BOTH surfaces this pane mounts —
-  // the docked ErrorsPanel and the omni mirror — owned here beside
-  // `selectedErrorId` so expanding a card on one surface expands it on the
-  // other. (EditorLayout's code-view sidebar keeps its own small set: it
-  // renders a different error list by design.) `expandError` is the
-  // idempotent body-click set-true; `toggleErrorExpanded` is the chevron.
-  const [expandedErrorIds, setExpandedErrorIds] = useState<Set<string>>(() => new Set());
-  const expandError = useCallback((id: string) => {
-    setExpandedErrorIds((prev) => (prev.has(id) ? prev : new Set(prev).add(id)));
-  }, []);
-  const toggleErrorExpanded = useCallback((id: string) => {
-    setExpandedErrorIds((prev) => {
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
-      return next;
-    });
-  }, []);
-  const dismissError = useCallback((id: string) => {
-    setDismissedErrorIds((prev) => new Set(prev).add(id));
-    // Prune the dismissed card's expansion alongside (A4 deferred #4) so a
-    // later lint run reusing the id doesn't resurrect a stale open state.
-    setExpandedErrorIds((prev) => {
-      if (!prev.has(id)) return prev;
-      const next = new Set(prev);
-      next.delete(id);
-      return next;
-    });
-  }, []);
-  const allLatexErrors: LatexError[] = compileHook.compileErrors;
-  // Prune dead expansion ids whenever the live error list changes (A4
-  // deferred #4). `pruneExpanded` is identity-stable and no-ops on an empty
-  // list, so the transient mid-compile empty list never wipes expansion and
-  // a no-change list never re-renders.
-  useEffect(() => {
-    setExpandedErrorIds((prev) =>
-      pruneExpanded(prev, allLatexErrors.map((e) => e.id)),
-    );
-  }, [allLatexErrors]);
-  const errorSnippets = useMemo(() => new Map<string, string>(), []);
-  const paragraphByErrorId = useMemo(() => new Map<string, string>(), []);
-  const handleJumpToError = useCallback((_err: LatexError) => {
-    // Code-editor jump (`scrollToLine`) lives in EditorLayout. When
-    // the code-editor work moves into EditorPane, this routes there.
-  }, []);
+  // Error state (selection / dismissals / expansion / snippets /
+  // paragraph mapping / jump) is OWNED by EditorLayout — the single owner
+  // across all four error surfaces — and arrives via props (destructured +
+  // aliased to `allLatexErrors` / `handleJumpToError` at the top of the
+  // component). EditorLayout owns expansion pruning too, so the local
+  // `pruneExpanded` effect that used to live here is gone. `compileHook`
+  // still drives the PDF + bubbles `compileErrors` up via `paneState` (B1);
+  // its `.compileErrors` is no longer read locally for the error surfaces.
 
   // ── Confirm-dialog instance backing the shared `deleteMarginItem` ──
   // Surfaces the "This item has text. Delete it?" warning when the user
@@ -1592,21 +1600,24 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
     [],
   );
 
-  // Ref mirror so the error marker's toggle reads the live value without
-  // putting `selectedErrorId` back into the marker memo's deps (errors
-  // aren't cardStore-backed, so they can't use `cardStore.isSelected`).
+  // Ref mirror so the error marker's toggle reads the live (prop) selection
+  // without putting `selectedErrorId` back into the marker memo's deps (errors
+  // aren't cardStore-backed, so they can't use `cardStore.isSelected`). The
+  // prop is owned by EditorLayout; the ref tracks its latest value each render.
   const selectedErrorIdRef = useRef(selectedErrorId);
   selectedErrorIdRef.current = selectedErrorId;
   const handleErrorMarkerClick = useCallback(
     (errorId: string, clickY?: number) => {
       const next = selectedErrorIdRef.current === errorId ? null : errorId;
-      setSelectedErrorId(next);
-      // Mirror the post-toggle state to the shell: EditorLayout syncs its
-      // own error selection (text highlight + vbar popover) and, on select,
-      // opens the errors panel on its docked side. The bridge is window-level
-      // and mounted unconditionally by EditorLayout (the Reader renders
-      // inside it too); in the Reader this event is currently unreachable —
-      // compileErrors is never populated there.
+      // Selection is owned by EditorLayout. We DON'T set it locally — the
+      // window-level bridge (event-bridges/marker-clicks.ts) routes this event
+      // to EditorLayout's `setSelectedErrorId`, which flows the new selection
+      // back down through the `selectedErrorId` prop (avoids a double-set /
+      // split-brain). EditorLayout also syncs the text highlight + vbar popover
+      // and opens the errors panel on its docked side. The bridge is
+      // window-level and mounted unconditionally by EditorLayout (the Reader
+      // renders inside it too); in the Reader this event is currently
+      // unreachable — compileErrors is never populated there.
       window.dispatchEvent(
         new CustomEvent("virgil-error-marker-click", {
           detail: { errorId, selected: next != null, clickY },
