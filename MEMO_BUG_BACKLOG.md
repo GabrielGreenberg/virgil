@@ -1307,3 +1307,35 @@ into `PANEL_ICONS` at
 **Fix direction.** Redraw `IconReports` as a rounded-square (squircle) speech
 balloon containing 2–3 short horizontal text lines. Keep the `active`/`size`/
 `hideFrame` (gutter-mode) prop contract so it still reads at 16px in the strip.
+
+---
+
+## 47. Card titles: +T must always sit top-right (no left overlay) + drop the title underline
+
+**Reported:** 2026-06-15 · **Status:** open (catch — do not fix yet) · **Area:** ui-chrome / card chrome / titles
+
+**(1) +T position is variable — force it top-right, never overlapping.** The card's
+own add-title affordance is `CardBodyTitle`'s `+T`
+([panel-primitives.tsx:510](src/components/panel-primitives.tsx:510)), styled
+`.card-title-wrapper.card-title-add-only { position: absolute; top: .15rem; right:
+.5rem }` ([globals.css:1206](src/app/globals.css:1206)) — i.e. **top-right of the
+body**, which is the placement the user prefers and which fits. But on **example
+cards** a *second* `+T` appears overlaid **top-left over the card header** (see
+screenshot): that one is the **example block's own par-title affordance**
+(`.par-title-add-btn`, "+T", from the expex NodeView in
+[expex.ts](src/lib/tiptap/expex.ts) — the `.par-title-annotation` strip above the
+example), rendered inside the card body via `BorrowedMainText`. So a borrowed
+example body brings its in-editor par-title chrome into the card, colliding with
+the card's own title system. **Fix direction:** suppress the inner block's
+par-title affordance when an example (any borrowed block) is rendered *inside a
+card*, leaving only the card-level `CardBodyTitle` `+T` (top-right). No `+T` may
+overlap the header. (Confirm in the manage session that the left overlay is indeed
+the par-title affordance, not a mispositioned card `+T`.)
+
+**(2) Drop the title underline.** When a card title is present/edited it shows a
+"long underline" — `.card-title-input { border-bottom: 1px solid
+var(--par-title-color, #c45a5a) }` ([globals.css:1174](src/app/globals.css:1174)).
+The user wants the title written plain, **no underline** — remove that
+`border-bottom`. (The collapsed title `.card-title-collapsed` is already
+underline-free, [:1187](src/app/globals.css:1187), so this is just the editable
+input.)
