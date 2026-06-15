@@ -273,6 +273,31 @@ The panel strip (vertical column of toggles) uses 32×32 icon buttons.
 Active toggle: `bg-pod-dark/80 text-ink-strong`. The panel currently
 focused gets a 2px accent stripe on its leading edge.
 
+## Code view
+
+The CodeMirror LaTeX-source pane (right of the `SplitWithCode` divider)
+is a focused, two-pane mode — treat it as a clean document column, not a
+crowded workspace:
+
+- **No L/R panel strips.** Both `PaneRail`s are hidden while the code
+  pane is open (`useCodePaneSplit().active`); panels are unavailable in
+  code view by design. Errors get their own slim sidebar inside the code
+  pane.
+- **Comfortable gutter, never a squeeze.** When the splitter narrows the
+  editor below its natural width, gutters cap at `CODE_VIEW_GUTTER_PX`
+  (48px) — a healthy left/right margin, not prose jammed to the edge.
+  Keep in sync with `EDITOR_PANE_COMPRESSED_MIN_PX` in
+  `split-with-code.tsx` (300px prose + gutter×2 + 2px border).
+- **Panes do NOT auto-align cursors.** Moving the cursor in one pane does
+  not scroll the other. The TipTap cursor drives a passive light-red
+  **band** (`.cm-virgil-band`, `rgba(220,38,38,0.09)`) over the matching
+  source lines — highlight only, no scroll. Explicit alignment is a pair
+  of **sync arrows** on the divider (◄ aligns text to the code cursor, ►
+  aligns code to the text cursor).
+- **Errors stay in their pane.** Clicking an error in the code-view
+  sidebar scrolls CodeMirror and stays in code view; clicking one in the
+  visual editor scrolls + highlights the prose. One owner, one jump.
+
 ## Buttons
 
 Five variants × three sizes via `<Button variant size>`:

@@ -44,9 +44,11 @@ import {
  *  shrink to this; below it the splitter snaps. */
 const CODE_PANE_MIN_PX = 240;
 /** Hard minimum for the editor pane WITH compressed gutters. Matches
- *  the EditorPane CSS calc post-compression (~300px prose + ~16px
- *  gutters each side + 2px border ≈ 334px). Tuned visually. */
-const EDITOR_PANE_COMPRESSED_MIN_PX = 334;
+ *  the EditorPane CSS calc post-compression (~300px prose + the
+ *  comfortable code-view gutter — CODE_VIEW_GUTTER_PX=48 — each side +
+ *  2px border ≈ 398px). Keep in sync with EditorPane's
+ *  CODE_VIEW_GUTTER_PX. Tuned visually. */
+const EDITOR_PANE_COMPRESSED_MIN_PX = 398;
 /** How far past the compressed min the editor wrapper may shrink (px)
  *  before we just refuse — i.e. the editor will always retain at least
  *  this much visible width even at full overlay. Zero means the editor

@@ -2427,22 +2427,27 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
     cancel: cancelMarginEdit,
     beginDrag: beginMarginDrag,
   } = useMarginEdit({ viewPrefs });
-  // When the Code pane is open and SplitWithCode signals `compressed`,
-  // tighten the horizontal gutters down to a small floor so the
-  // editor's column hits a smaller hard minimum. Vertical margins are
-  // unaffected — compression only happens because of horizontal
-  // squeeze, and stomping vertical prefs would be gratuitous.
-  // `COMPRESSED_GUTTER_PX` is intentionally a literal: this is a
-  // mechanical layout floor, not a preference, so it doesn't belong
-  // in viewPrefs.
-  const COMPRESSED_GUTTER_PX = 16;
+  // When the Code pane is open and SplitWithCode signals `compressed`
+  // (the editor is narrower than its natural width — the common case at
+  // typical split ratios), cap the horizontal gutters at a COMFORTABLE
+  // code-view value instead of letting the prose jam against the pane
+  // edge. This is the "appropriate left padding in code view" that the
+  // old bare 16px floor denied — the editor reads as a clean document
+  // column, not a squeezed strip. `compressed` is only ever set while
+  // the code pane is open (SplitWithCode: `compressed: open && …`), so
+  // this floor exclusively governs code view. A mechanical layout value
+  // (not a pref), kept in sync with SplitWithCode's
+  // EDITOR_PANE_COMPRESSED_MIN_PX. Vertical margins are unaffected —
+  // compression is a horizontal squeeze; stomping vertical prefs would
+  // be gratuitous.
+  const CODE_VIEW_GUTTER_PX = 48;
   const codeSplit = useCodePaneSplit();
   const compressX = codeSplit.compressed;
   const effectiveLeftMargin = compressX
-    ? Math.min(effectiveMargins.left, COMPRESSED_GUTTER_PX)
+    ? Math.min(effectiveMargins.left, CODE_VIEW_GUTTER_PX)
     : effectiveMargins.left;
   const effectiveRightMargin = compressX
-    ? Math.min(effectiveMargins.right, COMPRESSED_GUTTER_PX)
+    ? Math.min(effectiveMargins.right, CODE_VIEW_GUTTER_PX)
     : effectiveMargins.right;
   const effectiveTopMargin = effectiveMargins.top;
   const effectiveBottomMargin = effectiveMargins.bottom;
