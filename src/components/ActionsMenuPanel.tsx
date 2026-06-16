@@ -28,6 +28,7 @@ import {
   type ActionId,
 } from "@/lib/actions/action-registry";
 import { BlockTypeDropdown } from "./MenuBar";
+import { IconExample } from "./editor-layout/panel-icons";
 import { insertTexBlock } from "@/lib/tiptap/tex-block";
 import { SelectionColorPopover } from "./SelectionColorPopover";
 import {
@@ -526,7 +527,7 @@ export function ActionsMenuPanel({
           disabled={!canEdit}
           onClick={() => wrapSelectionInExample()}
         >
-          <span style={{ fontSize: 13, fontWeight: 500 }}>ex</span>
+          <IconExample size={16} />
         </FmtBtn>
         <FmtBtn
           title="Wrap selection in inline math"

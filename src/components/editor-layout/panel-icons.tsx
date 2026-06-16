@@ -215,21 +215,28 @@ export function IconCutter({ active, size = 18 }: { active?: boolean; size?: num
   );
 }
 
-// Reports icon — a clipboard with a clip and ruled lines. In gutter mode
-// (hideFrame) the clipboard body is dropped so the clip + lines read at 16px.
+// Reports icon — a squircle speech balloon with short ruled text lines,
+// reading as "a written response/commentary." Modeled on IconOmni's
+// rounded-rect-plus-lines, but with a higher corner radius + a downward
+// tail + varied line lengths so it stays visually distinct from the omni
+// square. In gutter mode (hideFrame) the balloon outline + tail are dropped
+// so the centered text lines still read at 16px in the margin.
 export function IconReports({ active, size = 18, hideFrame }: { active?: boolean; size?: number; hideFrame?: boolean }) {
   const c = active ? "var(--accent)" : "currentColor";
   return (
     <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={c} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
       {!hideFrame && (
-        <path d="M9 4H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V6a2 2 0 0 0-2-2h-3" />
+        <>
+          {/* Squircle balloon body */}
+          <rect x="3" y="4" width="18" height="13" rx="4" />
+          {/* Tail pointing down from the lower-left */}
+          <path d="M8 17v3.5L11.5 17" />
+        </>
       )}
-      {/* Clip */}
-      <rect x="9" y="2.5" width="6" height="4" rx="1.2" />
-      {/* Ruled lines */}
-      <line x1="8" y1="11" x2="16" y2="11" />
-      <line x1="8" y1="14.5" x2="16" y2="14.5" />
-      <line x1="8" y1="18" x2="13" y2="18" />
+      {/* Short, varied text lines */}
+      <line x1="7" y1="8.5" x2="17" y2="8.5" />
+      <line x1="7" y1="11.5" x2="17" y2="11.5" />
+      <line x1="7" y1="14.5" x2="13" y2="14.5" />
     </svg>
   );
 }
