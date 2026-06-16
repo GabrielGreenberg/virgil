@@ -2537,10 +2537,11 @@ export function BandDivider({
         style={{ top: -4, bottom: -4, background: "transparent" }}
         onMouseDown={onMouseDown}
       />
-      {/* Drag gap — background-colored negative space with blue hover line */}
+      {/* Drag gap — visible grip slider (band-grip): muted at rest,
+          accent on hover/drag. */}
       <div
         ref={gapRef}
-        className="drag-gap drag-gap-h w-full h-full"
+        className="drag-gap drag-gap-h band-grip w-full h-full"
         onMouseDown={onMouseDown}
       />
     </div>

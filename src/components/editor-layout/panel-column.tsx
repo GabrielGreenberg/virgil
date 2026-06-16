@@ -150,7 +150,7 @@ function BottomEdgeHandle({
       }}
       onMouseDown={onMouseDown}
     >
-      <div ref={gapRef} className="drag-gap drag-gap-h w-full h-full" />
+      <div ref={gapRef} className="drag-gap drag-gap-h band-grip w-full h-full" />
     </div>
   );
 }
