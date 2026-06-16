@@ -3684,6 +3684,16 @@ body[data-drop-mode-active="true"] * {
   display: contents;
 }
 
+/* Collapsed example card preview (#43): renders through the real read-only
+ * expex editor for full parity with expanded (black native (N), serif, grid),
+ * height-clamped to a couple of lines. Hide the "Ex." / "ex." label pods —
+ * they're rename affordances (inert on a read-only preview) and would just
+ * clutter the compact clamp. The pods stay live in the expanded card / float. */
+.example-card-editor-collapsed .expex-label-annotation,
+.example-card-editor-collapsed .expex-item-label-annotation {
+  display: none;
+}
+
 /* Sub-item — a/b/c rows inside a \pex (or i/ii/iii … one tier deeper).
  * Block-flow container; the inner .expex-item-row holds the marker+body
  * grid, and the label pod sits below as a plain block sibling so
