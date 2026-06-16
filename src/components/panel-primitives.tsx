@@ -29,7 +29,9 @@ import { useTabIndent } from "@/hooks/useTabIndent";
 import { autoSizeInput } from "@/lib/autoSizeInput";
 import ConfirmDialog from "./ConfirmDialog";
 import { hasJsonContent } from "@/cards/has-content";
-import { isPoppable, hasCollabClaims, collabClaimScope } from "@/cards/predicates";
+import { isPoppable, hasCollabClaims, collabClaimScope, isDroppable } from "@/cards/predicates";
+import { DropChevrons } from "./icons/DropChevrons";
+import { beginCardDropGesture } from "./drop-mode/card-drop-gesture";
 import { CARD_REGISTRY } from "@/cards/card-registry";
 import RichTextField from "./RichTextField";
 import { BorrowedMainText } from "./BorrowedMainText";
@@ -508,6 +510,62 @@ export function CardJumpChevron({
       <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
         <polyline points="9 6 15 12 9 18" />
       </svg>
+    </button>
+  );
+}
+
+/** Double-chevron-down "drop" button — grab it (mousedown-drag) to enter
+ *  drop-mode and (re)anchor the card into the prose at a target position.
+ *  The rightmost header control on a docked card (left of the X when the
+ *  card is popped out). Registry-gated upstream: PanelCard renders it only
+ *  when `isDroppable(kind)`.
+ *
+ *  Press isolation (matches `CardJumpChevron` exactly + belt-and-suspenders):
+ *  a real `<button draggable=false>` is already auto-excluded from the header
+ *  drag-lift via `INTERACTIVE_CONTROL_SELECTOR` (`button, …`), but we ALSO
+ *  `stopPropagation()` + `preventDefault()` on mousedown and swallow
+ *  `dragstart` so the press can't co-fire the header lift OR the card root's
+ *  HTML5 anchor-drag (a multi-gesture race). The drop session itself is
+ *  started by the shared `beginCardDropGesture` helper, which also arms the
+ *  one-shot commit-on-mouseup. */
+export function CardDropButton({
+  cardKey,
+  disabled = false,
+  title = "Drop into text",
+}: {
+  /** Canonical `float:card:<kind>:<id>` key — `beginDropSession` looks the
+   *  spec up from this. */
+  cardKey: string;
+  /** Inline kinds (citation) disable when they can't currently produce an
+   *  atom (an empty / keyless draft). Footnotes are always enabled. */
+  disabled?: boolean;
+  title?: string;
+}) {
+  return (
+    <button
+      type="button"
+      // Press must NOT bubble to the header lift or the card-root anchor drag.
+      // The button tag already excludes it from the lift; these are defensive.
+      onMouseDown={(e) => {
+        e.stopPropagation();
+        e.preventDefault();
+        if (disabled) return;
+        beginCardDropGesture({
+          cardKey,
+          origin: { x: e.clientX, y: e.clientY },
+        });
+      }}
+      // A no-op onClick stopPropagation keeps the trailing click off the
+      // header toggle/select (mirrors CardJumpChevron's swallow).
+      onClick={(e) => e.stopPropagation()}
+      draggable={false}
+      onDragStart={(e) => { e.stopPropagation(); e.preventDefault(); }}
+      disabled={disabled}
+      className="w-4 h-4 flex items-center justify-center rounded text-ink-muted hover:text-ink-body transition-colors bg-transparent p-0 shrink-0 disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:text-ink-muted cursor-grab"
+      data-hint={disabled ? "Add a citation key to anchor" : title}
+      aria-label={title}
+    >
+      <DropChevrons />
     </button>
   );
 }
@@ -1667,6 +1725,11 @@ interface PanelCardProps extends Omit<HTMLAttributes<HTMLDivElement>, "onClick">
    *  left of the close X. Docked cards never show the jump-to button. */
   canJump?: boolean;
   onJump?: (e: React.MouseEvent) => void;
+  /** Disables the (re)anchor drop button — only consulted when the kind is
+   *  `isDroppable`. Inline kinds (citation) pass true while the card is an
+   *  empty / keyless draft (it can't produce a `\cite{}` atom yet); footnotes
+   *  never disable. Ignored for non-droppable kinds (no button renders). */
+  dropDisabled?: boolean;
   /** Optional placement of the separator line between header and body.
    *  Defaults to true so the existing visual is preserved; set false to
    *  suppress (e.g. a card that paints its own divider). */
@@ -1710,6 +1773,7 @@ export const PanelCard = forwardRef<HTMLDivElement, PanelCardProps>(function Pan
     headerTrailing,
     canJump,
     onJump,
+    dropDisabled,
     showSeparator = true,
     chromeless,
     ...rest
@@ -2009,6 +2073,18 @@ export const PanelCard = forwardRef<HTMLDivElement, PanelCardProps>(function Pan
             />
             <div className="flex-1" />
             {headerTrailing}
+            {/* (Re)anchor drop button — registry-gated (`isDroppable`), so it
+                renders on every droppable kind across BOTH the docked card and
+                the omni (same component). The `cardKey` IS the canonical
+                `float:card:<kind>:<id>` the card already stamps as
+                `data-card-key` (built via `buildFloatKey` upstream in
+                `cardPopKey`), so `beginDropSession` can look the spec up. On a
+                docked card it's the RIGHTMOST control; the jump chevron + X
+                below render only when popped, landing left of it there — i.e.
+                the drop button sits left of the X exactly when the X shows. */}
+            {kind != null && cardKey && isDroppable(kind) && (
+              <CardDropButton cardKey={cardKey} disabled={dropDisabled} />
+            )}
             {isPoppedOut && canJump && onJump && (
               <CardJumpChevron onClick={onJump} />
             )}

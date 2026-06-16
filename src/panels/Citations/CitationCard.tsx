@@ -681,6 +681,19 @@ export function CitationCard({
     return getDisplayText(cit.command);
   }, [cit.command, getDisplayText]);
 
+  /* ── Drop button enablement ──────────────────────────────────────────
+   * The (re)anchor drop button is disabled while the card is an empty /
+   * keyless draft: an unanchored citation with no real citekey can't
+   * produce a `\cite{}` atom (parseCiteCommand → 0 keys), so dropping it
+   * would plant a keyless atom. This mirrors `citationDropSpec`'s own
+   * decline guard (`commandFor` → null) — the button is the upstream half,
+   * the spec the downstream defense. An ANCHORED citation always has keys
+   * (it came from the prose), so this only ever disables a draft. */
+  const dropDisabled = useMemo(() => {
+    const parsed = parseCiteCommand(cit.command);
+    return !parsed || parsed.keys.length === 0;
+  }, [cit.command]);
+
   /* ── Render ──────────────────────────────────────────────────────── */
 
   const card = (
@@ -696,6 +709,7 @@ export function CitationCard({
       onTogglePopout={onToggleFromCtx}
       onTrashClick={!compressed && onDelete ? () => onDelete(cit.id) : undefined}
       cardKey={cardKey}
+      dropDisabled={dropDisabled}
       isCollapsed={compressed}
       onToggleExpanded={ac.onToggleExpanded}
       // Backlog #13: a draft forces `isExpanded` true (`isDraft || ac.expanded`),
