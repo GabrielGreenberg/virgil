@@ -195,9 +195,19 @@ describe("Chip F — inline-atom CREATE branch (anchor the unanchored)", () => {
     // The insert landed at the drop position.
     expect(atom!.from).toBe(3);
 
-    // Exactly one transaction (single insert — no parking, no delete).
-    expect(harness.dispatched).toHaveLength(1);
-    expect(harness.dispatched[0].docChanged).toBe(true);
+    // TWO transactions (FOLD 2 undo-park): a selection-only parking tr at the
+    // insert pos (addToHistory:false, NOT docChanged), then the insert.
+    expect(harness.dispatched).toHaveLength(2);
+    const [park, insert] = harness.dispatched;
+    // Parking tr: selection-only (no doc change), kept out of the undo stack so
+    // one Cmd-Z still undoes the whole create.
+    expect(park.docChanged).toBe(false);
+    expect(park.getMeta("addToHistory")).toBe(false);
+    // It parks a TEXT selection (NOT a NodeSelection — the atom is
+    // selectable:false; a NodeSelection would reintroduce the scroll-jump).
+    expect(park.selection.constructor.name).toBe("TextSelection");
+    // Insert tr: the actual atom insertion.
+    expect(insert.docChanged).toBe(true);
   });
 
   it("a declining createAtom (empty draft) falls back to no-op — classify + apply both inert", () => {

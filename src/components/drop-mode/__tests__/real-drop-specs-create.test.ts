@@ -184,10 +184,15 @@ describe("Chip F FOLD 1 — REAL footnote/citation drop specs (anchor the unanch
       });
       // number 0 — the renumber pass assigns the live number.
       expect(atom!.node.attrs.number).toBe(0);
-      // Landed at the drop position; single insert transaction.
+      // Landed at the drop position.
       expect(atom!.from).toBe(3);
-      expect(h.dispatched).toHaveLength(1);
-      expect(h.dispatched[0].docChanged).toBe(true);
+      // FOLD 2 undo-park: a selection-only parking tr at the insert pos
+      // precedes the insert (addToHistory:false, TextSelection, not docChanged).
+      expect(h.dispatched).toHaveLength(2);
+      expect(h.dispatched[0].docChanged).toBe(false);
+      expect(h.dispatched[0].getMeta("addToHistory")).toBe(false);
+      expect(h.dispatched[0].selection.constructor.name).toBe("TextSelection");
+      expect(h.dispatched[1].docChanged).toBe(true);
     });
   });
 
@@ -233,7 +238,12 @@ describe("Chip F FOLD 1 — REAL footnote/citation drop specs (anchor the unanch
       expect(atom!.node.attrs.command).toBe(COMMAND);
       expect(atom!.node.attrs.displayText).toBe("");
       expect(atom!.from).toBe(3);
-      expect(h.dispatched).toHaveLength(1);
+      // FOLD 2 undo-park: parking tr (selection-only, addToHistory:false) then
+      // the insert.
+      expect(h.dispatched).toHaveLength(2);
+      expect(h.dispatched[0].docChanged).toBe(false);
+      expect(h.dispatched[0].getMeta("addToHistory")).toBe(false);
+      expect(h.dispatched[1].docChanged).toBe(true);
     });
   });
 

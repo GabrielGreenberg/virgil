@@ -188,7 +188,7 @@ export function inlineAtomMoveSpec(opts: InlineAtomMoveOptions): DropSpec {
       // Park a caret at the atom's home in the SOURCE editor before the delete,
       // so that editor's undo `selectionBefore` is on-screen (same #8 rationale
       // as the same-editor path). Selection-only, addToHistory:false.
-      parkCaretBeforeMove(sourceEditor, from);
+      parkCaretBeforeChange(sourceEditor, from);
       const deleteTr = sourceEditor.state.tr.delete(from, to);
       sourceEditor.view.dispatch(deleteTr);
     },
@@ -219,11 +219,23 @@ function buildCreateNode(
 /**
  * Insert a freshly-built inline atom at `insertPos` (the "anchor the
  * unanchored" CREATE branch). Unlike the move path there is no source atom
- * to delete and no original home to undo-park to — the card simply had no
- * marker yet — so this is a single insert transaction. `select` mirrors the
- * move's post-action selection ("node" = NodeSelection on the new atom;
- * "caret-after" = caret just past it). NEVER `.scrollIntoView()`, matching
- * the move helper (these atoms are `selectable:false`).
+ * to delete — the card simply had no marker yet — so this is a single insert
+ * transaction. `select` mirrors the move's post-action selection ("node" =
+ * NodeSelection on the new atom; "caret-after" = caret just past it). NEVER
+ * `.scrollIntoView()`, matching the move helper (these atoms are
+ * `selectable:false`).
+ *
+ * Undo-jump guard (backlog #8, create-path analogue): inline atoms are
+ * `selectable:false`, so the grab gesture never rests a selection at the drop
+ * point; at insert time the editor's selection is still the stale pre-gesture
+ * one (often off-screen / doc-top). prosemirror-history captures the insert's
+ * `selectionBefore` from that stale state, so Cmd-Z right after anchoring would
+ * restore it with `scrollIntoView()` → the viewport jumps off-screen. There is
+ * no "original home" for a create (the card had no marker), so the on-screen
+ * target IS the insert pos: park a `TextSelection` caret there FIRST
+ * (`addToHistory:false`), so `selectionBefore` lands where the atom appears and
+ * undo scrolls *there*. (The MOVE path guards the same way via the original
+ * atom home — see `parkCaretBeforeChange`.)
  */
 function insertNewAtom(
   editor: Editor,
@@ -231,6 +243,9 @@ function insertNewAtom(
   node: PMNode,
   select: "node" | "caret-after" = "node",
 ): void {
+  // Park a caret at the insert pos so the insert's `selectionBefore` (captured
+  // by prosemirror-history) is on-screen where the atom appears — see jsdoc.
+  parkCaretBeforeChange(editor, insertPos);
   const tr = editor.state.tr.insert(insertPos, node);
   try {
     tr.setSelection(
@@ -259,7 +274,7 @@ function insertNewAtom(
  * selection is stale (often doc-top). prosemirror-history captures
  * `selectionBefore` from the *pre-move* state, so Cmd-Z would restore that
  * stale doc-top caret with `scrollIntoView()` → the viewport jumps to the top.
- * Before building the move, `parkCaretBeforeMove` rests a `TextSelection` caret
+ * Before building the move, `parkCaretBeforeChange` rests a `TextSelection` caret
  * adjacent to the atom's ORIGINAL location (`addToHistory:false`), so
  * `selectionBefore` lands at the atom's old home (on-screen) and undo scrolls
  * *there*, not to the top.
@@ -274,7 +289,7 @@ function moveInlineAtomWithin(
 ): void {
   // Park a caret at the atom's original home so the move's `selectionBefore`
   // (captured by prosemirror-history) is on-screen — see helper jsdoc.
-  parkCaretBeforeMove(editor, from);
+  parkCaretBeforeChange(editor, from);
   const adjustedInsert = insertPos > to ? insertPos - (to - from) : insertPos;
   const tr = editor.state.tr.delete(from, to);
   tr.insert(adjustedInsert, node);
@@ -292,34 +307,42 @@ function moveInlineAtomWithin(
 }
 
 /**
- * Park a `TextSelection` caret adjacent to `from` (the atom's original
- * location) as a selection-only, `addToHistory:false` transaction, BEFORE the
- * move transaction is built/dispatched. This makes prosemirror-history capture
- * the move's `selectionBefore` here (on-screen, where the atom currently sits)
- * instead of a stale doc-top selection — so Cmd-Z restores a caret at the
- * atom's old home and scrolls *there* rather than jumping the viewport to the
- * top (backlog #8).
+ * Park a `TextSelection` caret adjacent to `pos` as a selection-only,
+ * `addToHistory:false` transaction, BEFORE the structural (move or insert)
+ * transaction is built/dispatched. This makes prosemirror-history capture that
+ * transaction's `selectionBefore` here (on-screen) instead of the stale
+ * pre-gesture selection (often off-screen / doc-top) — so Cmd-Z restores a
+ * caret at `pos` and scrolls *there* rather than jumping the viewport off-screen
+ * (backlog #8).
  *
+ * Both inline-atom paths share this guard, anchoring at the on-screen target:
+ * - MOVE (`moveInlineAtomWithin` / cross-editor): `pos` is the atom's ORIGINAL
+ *   home — where it currently sits before relocating.
+ * - CREATE (`insertNewAtom`, "anchor the unanchored"): there is no original home
+ *   (the card had no marker), so `pos` is the INSERT position — where the new
+ *   atom appears.
+ *
+ * Invariants (identical for both callers):
  * - MUST be a `TextSelection` caret, never a `NodeSelection`: these atoms are
  *   `selectable:false`, and a NodeSelection on one would reintroduce the
  *   ~100px scroll-jump the grab gesture deliberately avoids.
  * - `addToHistory:false` keeps this parking tr out of the undo stack, so one
- *   Cmd-Z still undoes the whole move in a single step.
+ *   Cmd-Z still undoes the whole move/create in a single step.
  * - Positions are untouched (selection-only), so the caller's `from`/`to`/
  *   `insertPos` stay valid against the post-parking state.
  *
- * `TextSelection.near` resolves the nearest valid text position to `from`,
+ * `TextSelection.near` resolves the nearest valid text position to `pos`,
  * tolerating atom boundaries; if no text position exists it no-ops silently.
  */
-function parkCaretBeforeMove(editor: Editor, from: number): void {
+function parkCaretBeforeChange(editor: Editor, pos: number): void {
   try {
     const tr = editor.state.tr;
-    const $from = tr.doc.resolve(Math.min(from, tr.doc.content.size));
-    tr.setSelection(TextSelection.near($from));
+    const $pos = tr.doc.resolve(Math.min(pos, tr.doc.content.size));
+    tr.setSelection(TextSelection.near($pos));
     tr.setMeta("addToHistory", false);
     editor.view.dispatch(tr);
   } catch {
-    /* couldn't resolve a caret near the atom — skip; move still proceeds */
+    /* couldn't resolve a caret near the position — skip; change still proceeds */
   }
 }
 
