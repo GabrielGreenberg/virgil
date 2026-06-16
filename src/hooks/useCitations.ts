@@ -10,6 +10,7 @@ import {
   parseBibFile,
   serializeBibFile,
   parseCiteCommand,
+  citationCommandOrNull,
   formatInlineCitation,
   formatBibliography,
 } from "@/lib/bib-parser";
@@ -59,6 +60,7 @@ export const CITATIONS_INERT: CitationsHook = {
   getBibEntry: () => undefined,
   getDisplayText: (command: string) => command,
   getFormattedBib: () => "",
+  commandFor: () => null,
   syncFromEditor: () => {},
 };
 
@@ -344,6 +346,29 @@ export function useCitations(docId: string | null, pristine?: PristineKindApi | 
     [bibEntries, bibEntryMap, stateRef],
   );
 
+  /** The citation card's serialized `\cite{…}` command, read for the drop
+   *  spec's "anchor the unanchored" create branch (`ctx.citations.commandFor`).
+   *  An unanchored card has no `\cite{}` atom in any editor, so the atom
+   *  builder reads the command from here — the SAME `CitationRef.command`
+   *  field the code-edit / drag-anchor paths already serialize and round-trip
+   *  (no second serializer). Returns null for an empty / keyless DRAFT (no
+   *  parseable citekey): anchoring it would plant a `\cite{}` that can never
+   *  serialize, so the create branch declines — matching the upstream
+   *  disabled drop button. Reads `stateRef` for a stable identity (the live
+   *  citations array would re-create this callback on every keystroke-adjacent
+   *  edit). */
+  const commandFor = useCallback(
+    (id: string): string | null => {
+      const cit = stateRef.current.citations.find((c) => c.id === id);
+      if (!cit) return null;
+      // SSOT keyless-citation predicate — same one the upstream disabled drop
+      // button (`CitationCard.dropDisabled`) and the downstream spec decline
+      // (`citationDropSpec.createAtom`) consume, so all three agree.
+      return citationCommandOrNull(cit.command);
+    },
+    [stateRef],
+  );
+
   const getFormattedBib = useCallback(
     (entry: BibEntry): string => formatBibliography(entry, state.citationStyle),
     [state.citationStyle],
@@ -400,6 +425,7 @@ export function useCitations(docId: string | null, pristine?: PristineKindApi | 
       getBibEntry,
       getDisplayText,
       getFormattedBib,
+      commandFor,
       syncFromEditor,
     }),
     [
@@ -421,6 +447,7 @@ export function useCitations(docId: string | null, pristine?: PristineKindApi | 
       getBibEntry,
       getDisplayText,
       getFormattedBib,
+      commandFor,
       syncFromEditor,
     ],
   );
