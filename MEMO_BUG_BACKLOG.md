@@ -1121,7 +1121,7 @@ Two deferred items from the R3 gate (#39 work):
 
 ## 41. Omni unanchored / outside-focus bins — top gap + equal-height badge polish
 
-**Reported:** 2026-06-15 · **Status:** open · **Area:** ui-chrome / Omni panel bins
+**Reported:** 2026-06-15 · **Status:** done (2026-06-16, chip C — top-gap + 10px orphan dot, equal-height pills) · **Area:** ui-chrome / Omni panel bins
 
 Two corrections to the absolute-positioned "N unanchored" / "N outside focus" pill
 bins that float at the top of the omni folder
@@ -1161,7 +1161,7 @@ line). The two pills then share a height.
 
 ## 42. Collapsed borrowed-body cards (footnote / archive / example) clip the 2nd preview line
 
-**Reported:** 2026-06-15 · **Status:** open · **Area:** ui-chrome / card chrome
+**Reported:** 2026-06-15 · **Status:** done (2026-06-16, chip A — ceiling tracks var(--editor-line-height); footnote/archive only, NOT example) · **Area:** ui-chrome / card chrome
 
 **Reported behavior** — a collapsed card should show its optional title + **two
 full lines** of body text. Most kinds are fine, but **footnote and archive** (and
@@ -1196,7 +1196,7 @@ plain-summary kinds don't regress (they're already correct at 1.4).
 
 ## 43. Collapsed number/example cards: preview typography diverges from expanded
 
-**Reported:** 2026-06-15 · **Status:** open (possibly-intentional — user unsure) ·
+**Reported:** 2026-06-15 · **Status:** done (2026-06-16, chip A — FULL PARITY ratified by Gabriel: collapsed renders the real expex projection, not a BorrowedMainText variant as the writeup assumed) ·
 **Area:** ui-chrome / card chrome / examples · **Related:** #42 (same borrowed-collapsed path)
 
 **Reported behavior** — a number/example card looks right **expanded** (editor
@@ -1227,7 +1227,7 @@ as #42, so the two likely fix together.
 
 ## 44. Tools band: gap above ≠ gap below; tighten the tools→pod gap
 
-**Reported:** 2026-06-15 · **Status:** open (catch — do not fix yet) · **Area:** ui-chrome / editor pane top stack · **Related:** #5 (gutter removal)
+**Reported:** 2026-06-15 · **Status:** deferred (2026-06-16 — Gabriel skipped this batch: it is editor chrome not card-system, and the 8px below is the load-bearing pod-cap mask, so "symmetric" would ADD chrome, fighting the "too big" intent) · **Area:** ui-chrome / editor pane top stack · **Related:** #5 (gutter removal)
 
 **Reported behavior** — there's still an excessive gap between the **top of the
 document pod** and the **tools row above it** (the breadcrumb on the left + the
@@ -1266,7 +1266,7 @@ session must measure against **current main** (gutter-removed: ~8px residual,
 
 ## 45. Action menus: new-example symbol should be "(1)", not "ex"
 
-**Reported:** 2026-06-15 · **Status:** open (catch — do not fix yet) · **Area:** ui-chrome / action menus / icon vocabulary
+**Reported:** 2026-06-15 · **Status:** done (2026-06-16, chip B — reuse the IconExample "(1)" glyph; the "action-icon set" framing was wrong — it was a hardcoded span) · **Area:** ui-chrome / action menus / icon vocabulary
 
 **Reported behavior** — in the action menus (the lightning `ActionsMenuPanel` /
 slash surfaces), the new-example action shows the symbol **"ex"**. It should show
@@ -1291,7 +1291,7 @@ typed-command name, separate from the displayed symbol).
 
 ## 46. Reports panel icon should be a speech balloon, not a clipboard
 
-**Reported:** 2026-06-15 · **Status:** open (catch — do not fix yet) · **Area:** ui-chrome / panel icons
+**Reported:** 2026-06-15 · **Status:** done (2026-06-16, chip B — squircle speech balloon; shared by 3 sites, all "report") · **Area:** ui-chrome / panel icons
 
 **Reported behavior** — the Reports panel icon is a **clipboard** (with clip +
 ruled lines). It should instead be a **squircle speech balloon with a few lines of
@@ -1312,7 +1312,7 @@ balloon containing 2–3 short horizontal text lines. Keep the `active`/`size`/
 
 ## 47. Card titles: +T must always sit top-right (no left overlay) + drop the title underline
 
-**Reported:** 2026-06-15 · **Status:** open (catch — do not fix yet) · **Area:** ui-chrome / card chrome / titles
+**Reported:** 2026-06-15 · **Status:** done (2026-06-16, chip A — par-title +T gated in card context via cardContext; underline dropped; label-rename pod preserved) · **Area:** ui-chrome / card chrome / titles
 
 **(1) +T position is variable — force it top-right, never overlapping.** The card's
 own add-title affordance is `CardBodyTitle`'s `+T`
