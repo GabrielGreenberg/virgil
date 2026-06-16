@@ -4232,6 +4232,12 @@ body[data-pref-mode="on"] [data-panel-theme]:hover {
    interaction) makes the resize affordance discoverable, unlike the
    bare hover-only .drag-gap line that the editor/code splitter keeps.
    Scoped to `.band-grip`, so HSplit is unaffected. */
+.drag-gap-h.band-grip {
+  /* Opaque manilla backing (the panel pod fill) so the grip strip reads
+     as panel chrome and isn't lost against the omni cards showing
+     through behind/below the bands. */
+  background: var(--pod-panel);
+}
 .drag-gap-h.band-grip::before {
   content: '';
   position: absolute;
