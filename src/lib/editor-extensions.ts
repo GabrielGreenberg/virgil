@@ -127,7 +127,7 @@ export function createParagraphWithTitle(opts?: ParagraphSurfaceOpts) {
   const host = opts?.host;
   return Paragraph.extend({
     // Paragraphs never participate in HTML5 drag. Pop-out (custom mousedown
-    // lift on the 6-dot grip) and drop-mode (shift-drag on a float header)
+    // lift on the 6-dot grip) and drop-mode (grabbing the card's drop button)
     // own all paragraph repositioning; PM-native node-drag would be a third
     // text-move surface and is suppressed at the schema root.
     draggable: false,
