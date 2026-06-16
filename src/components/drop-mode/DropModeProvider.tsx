@@ -21,7 +21,12 @@ import { useConfirmDialog } from "../ConfirmDialog";
 import { setDropCtx } from "./controller";
 import { DropModeIndicator } from "./Indicator";
 import { InlineAtomGhost } from "./InlineAtomGhost";
-import type { DropCtx, ParagraphAnchorApi, StackPullApi } from "./types";
+import type {
+  CitationDropApi,
+  DropCtx,
+  ParagraphAnchorApi,
+  StackPullApi,
+} from "./types";
 
 export interface DropModeProviderProps {
   mainEditor: Editor | null;
@@ -34,6 +39,7 @@ export interface DropModeProviderProps {
   revisions?: ParagraphAnchorApi;
   reports?: ParagraphAnchorApi;
   stack?: StackPullApi;
+  citations?: CitationDropApi;
 }
 
 export function DropModeProvider({
@@ -47,6 +53,7 @@ export function DropModeProvider({
   revisions,
   reports,
   stack,
+  citations,
 }: DropModeProviderProps) {
   const { confirm, dialog } = useConfirmDialog();
 
@@ -77,6 +84,7 @@ export function DropModeProvider({
     revisions,
     reports,
     stack,
+    citations,
   };
   const ctxRef = useRef(snapshot);
   ctxRef.current = snapshot;
@@ -122,6 +130,9 @@ export function DropModeProvider({
       },
       get stack() {
         return ctxRef.current.stack;
+      },
+      get citations() {
+        return ctxRef.current.citations;
       },
     };
     setDropCtx(liveCtx);

@@ -148,6 +148,28 @@ export interface DropCtx {
    *  fresh entity in the destination doc with a new id. Absent means
    *  stack pulls into this doc are no-ops (e.g. paper render mode). */
   stack?: StackPullApi;
+  /** Read accessor for the citation drop spec's "anchor the unanchored"
+   *  create branch. An unanchored citation card has no `\cite{}` marker in
+   *  any editor, so the atom builder must read the card's current LaTeX
+   *  command (e.g. `\cite{smith2020}`) from the panel hook to populate the
+   *  new atom node. Absent (or returning an empty/keyless command) means the
+   *  citation create branch silently declines — matching the other "feature
+   *  not wired ⇒ no-op" sub-bags. */
+  citations?: CitationDropApi;
+}
+
+/**
+ * Minimal read accessor the citation inline-atom create branch needs. The
+ * unanchored card's serializable `\cite{…}` command lives in the citations
+ * panel hook, keyed by the card id; the create branch reads it to build the
+ * new atom. Read-only — anchoring (clearing the `unanchored` flag) is the
+ * panel hook's own concern, driven by the atom landing in the editor.
+ */
+export interface CitationDropApi {
+  /** The card's current full LaTeX command (e.g. `\citep{a,b}`), or null /
+   *  an empty string when the card has no serializable citekey yet (an empty
+   *  draft) — the create branch declines in that case. */
+  commandFor: (id: string) => string | null;
 }
 
 /**
