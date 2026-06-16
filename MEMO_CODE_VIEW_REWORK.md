@@ -86,8 +86,8 @@ patterns: `!`=error, `LaTeX Warning:`, `Package Warning:`. Bib → 3 passes.
 | D | Code-side cursor band (issue 4): `src/lib/code-band.ts` + `.cm-virgil-band`, decorate-only | DONE (930271b) |
 | E | Manual sync arrows + remove auto-align (issue 5 + corollary) | DONE (930271b, with D) |
 | F | Code-view layout: comfortable 48px gutter (strips already gated on !codeSplit.active) | DONE (a37a7bb) |
-| G | nXn verification matrix (issues 6,7) in live preview | IN PROGRESS |
-| H | Full tests + typecheck/lint + docs/agents drift + finalize memo | pending |
+| G | Verification (issues 6,7) — automated + adversarial review (live preview BLOCKED, see below) | DONE |
+| H | Review-fix pass (fccb805) + full suite + typecheck + lint + finalize memo | DONE |
 
 All code chips (A–F) committed on branch `worktree-code-view-rework`. Full vitest green after each;
 typecheck clean. Commits: A e3cdd54 · B1 2a0f3c0 · B2+C 932d1fd · D+E 930271b · F a37a7bb.
@@ -133,11 +133,60 @@ verify placement (worktree dirty, main clean) after every subagent before commit
 - Live editor: `parentElement.__reactFiber$ → PureEditorContent.editor`. Keystroke sanctity:
   `window.__virgilBusStats()` — `emitCount` flat on plain typing.
 
-## Verification matrix results
-_(filled during Chip G)_
+## Verification results (Chips G + H)
+
+**Automated (all green):**
+- Full vitest suite **1388 passing** after every chip and at the end (exit 0).
+- New unit tests: `code-position-map` (14), `mergeLatexErrors` (7); existing `marker-clicks` bridge tests (10) still pass.
+- `tsc --noEmit` clean throughout.
+- ESLint on all 10 changed files: **no NEW errors/warnings**. The 1 error
+  (`split-with-code.tsx` `compressedRef.current` during render) and the
+  ~170 `no-unused-vars` warnings are **pre-existing on base 055688e**
+  (confirmed: the ref line exists at base:159, shifted to 169 by the pill).
+
+**⚠️ Live preview verification was BLOCKED by harness instability.** The
+Claude_Preview MCP lost its server on essentially every call this session
+("No running servers for this workspace") — its workspace pointer follows
+the Bash cwd, which drifts between worktree and main on turn boundaries, and
+the server is killed on each drift. Spawned 3 servers; all lost immediately.
+A detached `npm run dev` (port 3010) survived turns, but the MCP wouldn't
+attach (autoPort spawned a duplicate it then lost). No alternative browser
+driver (Chrome MCP needs the user's extension; computer-use is desktop /
+browser tier-read). **So the nXn behavioral matrix was NOT driven live.**
+
+**Substitute: adversarial code review** of `055688e..HEAD` (a fresh
+general-purpose subagent, read-only). Verdict: **all six requirements PASS**
+in the code, with file:line evidence, plus a runtime-crash sweep (none found
+for code-view open/close or zero-errors). Minor findings 1/2/5 were FIXED
+(`fccb805`): band keystroke-sanctity equality-bail, the `setTextSelection`
+try/catch, the stale expansion-scope comment.
+
+**Still owed (recommend a manual smoke-test, or a fresh cleanly-pinned
+session to drive the preview):**
+1. Compile a doc with a real error (`\ref{nope}`, unbalanced brace) → confirm it
+   appears in the code-view sidebar + log drawer (the B1 fix), deduped.
+2. Click an error in the code-view sidebar → CodeMirror scrolls to the line,
+   stays in code view. Click one in the visual panel → prose scrolls + highlights.
+3. Cursor in a paragraph → light-red band on the matching source lines (no scroll).
+4. Divider arrows align the panes; moving the cursor otherwise does NOT auto-align.
+5. Code view shows comfortable left padding, no L/R strips.
 
 ---
 
-## Open judgment calls (quarantined for end)
-- Band scope = enclosing text-object only (default). Reverse band (code→text highlight) not requested — deferred.
-- Arrow glyph orientation must match live layout (text=left, code=right) — verify on real pane.
+## Open judgment calls (quarantined — for the user)
+- **Compile no longer auto-opens the PDF.** The deleted dead hook *would* have
+  done `setPdfView(true)` on compile success, but it never ran (dead), so the
+  observed pre-rework behavior was ALSO "stay in current view." No behavior
+  change. OPEN: should a successful compile auto-switch to PDF view? (Was never
+  the real behavior; easy to add if wanted.)
+- **Lint + paragraph/snippet maps need code view to have been opened once**
+  (they key off `codeEditorText`, produced only by the mounted CodeEditor).
+  Pre-existing, not a regression — but the rework now surfaces compile errors
+  in the *visual* docked panel, where their paragraph mapping is absent until
+  code view is opened (jump falls back to `err.detail` text-search, no scroll).
+  Possible deep follow-up: serialize the live TipTap doc to drive lint/maps even
+  when code view is closed.
+- Band scope = enclosing text-object only (default). Reverse band (code→text
+  highlight) not requested — deferred.
+- Arrow glyph orientation (◄ top = text→code-cursor, ► bottom = code→text-cursor)
+  assumes text-left/code-right (the real layout). Confirm visually; trivial to flip.
