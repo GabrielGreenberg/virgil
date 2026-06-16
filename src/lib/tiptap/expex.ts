@@ -17,7 +17,14 @@ export interface ExampleBlockOptions {
    *  collides with the card's own CardBodyTitle "+T". The card host owns the
    *  title affordance; the example body must not paint a second one. The
    *  "Ex." label pod is NOT gated — the example float uses it to rename the
-   *  `\label{}`. main: false (the in-doc editable example keeps its +T). */
+   *  `\label{}`. main: false (the in-doc editable example keeps its +T).
+   *
+   *  NOTE — this suppresses any EXISTING par-title TEXT too, not just the +T
+   *  add-button: with `titleAnnot` null, `renderTitle()` early-returns, so a
+   *  titled example shows no title row on a card. This is an INTENTIONAL
+   *  divergence from `TexBlock`'s `cardContext` (which keeps a compact static
+   *  title in card context); on an example the card host's own title is the
+   *  single title affordance. */
   cardContext: boolean;
 }
 

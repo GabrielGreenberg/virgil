@@ -329,10 +329,12 @@ function ExampleCardEditor({
     // the height to clampLines prose lines at the LIVE --editor-line-height
     // (same factor #42 uses) and clip the overflow. The full expex vocabulary
     // (black native (N), serif, grid alignment) renders above the fold.
+    // The var FALLBACK (1.8) must equal the `.tiptap p` line-height fallback
+    // (globals.css:657) so an undefined var can't clamp tighter than the line.
     return (
       <div
         style={{
-          maxHeight: `calc(var(--editor-line-height, 1.6) * 1em * ${Math.max(1, clampLines)})`,
+          maxHeight: `calc(var(--editor-line-height, 1.8) * 1em * ${Math.max(1, clampLines)})`,
           overflow: "hidden",
         }}
       >
@@ -422,6 +424,13 @@ export function ExampleCard({
            No onClick stopPropagation: the preview editor is read-only, so an
            expand click must bubble to the card's own onClick. */
         <div className="px-3 py-1.5 text-ink-body example-card-body">
+          {/* Mount-footprint note (#43): the collapsed preview now mounts a
+              FULL (read-only) expex editor per collapsed card, not a static
+              string — so the Examples panel / omni holds N embedded editors
+              when N example cards are collapsed. This is NOT a keystroke-
+              sanctity concern (the editor re-seeds only on the rev.examples /
+              contentRev STRUCTURAL counters, never per keystroke), but it
+              informs any future panel/omni virtualization decision. */}
           {canEdit ? (
             <div style={{ fontFamily: "var(--font-serif), Georgia, serif", ...bodyStyle }}>
               <ExampleCardEditor
@@ -467,8 +476,10 @@ export function ExampleCard({
           />
         ) : example.bodyContent || example.items.length > 0 ? (
           // Read-only fallback (no editor context — tests / no provider).
+          // The (N) is left UNCOLORED to match the collapsed black (N) the
+          // chip already fixed (no longer teal) — one no-editor look.
           <div className="flex gap-2">
-            <span className="font-mono shrink-0" style={{ color: theme.titleColor }}>
+            <span className="font-mono shrink-0">
               ({example.number || "?"})
             </span>
             <div className="min-w-0 flex-1">
@@ -491,7 +502,7 @@ export function ExampleCard({
                 <ol className="list-none m-0 p-0 mt-1 flex flex-col gap-0.5">
                   {example.items.map((it, idx) => (
                     <li key={idx} className="flex gap-2">
-                      <span className="shrink-0" style={{ minWidth: "1.25rem", color: theme.titleColor }}>
+                      <span className="shrink-0" style={{ minWidth: "1.25rem" }}>
                         {it.subLabel || (idx + 1)}.
                       </span>
                       <div className="min-w-0 flex-1">
@@ -517,7 +528,7 @@ export function ExampleCard({
           </div>
         ) : example.bodyText ? (
           <div className="flex gap-2">
-            <span className="font-mono shrink-0" style={{ color: theme.titleColor }}>
+            <span className="font-mono shrink-0">
               ({example.number || "?"})
             </span>
             <div className="leading-snug whitespace-pre-wrap break-words min-w-0 flex-1">
