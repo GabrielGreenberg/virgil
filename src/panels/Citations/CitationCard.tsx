@@ -9,6 +9,7 @@ import {
 } from "react";
 import type { BibEntry, CitationRef } from "@/lib/types";
 import {
+  citationCommandOrNull,
   formatMediumCitationParts,
   parseCiteCommand,
   sanitizeInlineCitationHtml,
@@ -684,15 +685,17 @@ export function CitationCard({
   /* ── Drop button enablement ──────────────────────────────────────────
    * The (re)anchor drop button is disabled while the card is an empty /
    * keyless draft: an unanchored citation with no real citekey can't
-   * produce a `\cite{}` atom (parseCiteCommand → 0 keys), so dropping it
-   * would plant a keyless atom. This mirrors `citationDropSpec`'s own
-   * decline guard (`commandFor` → null) — the button is the upstream half,
-   * the spec the downstream defense. An ANCHORED citation always has keys
-   * (it came from the prose), so this only ever disables a draft. */
-  const dropDisabled = useMemo(() => {
-    const parsed = parseCiteCommand(cit.command);
-    return !parsed || parsed.keys.length === 0;
-  }, [cit.command]);
+   * produce a `\cite{}` atom (no real citekey), so dropping it would plant a
+   * keyless atom. The shared `citationCommandOrNull` predicate is the SSOT
+   * for this test — the SAME one `useCitations.commandFor` and
+   * `citationDropSpec.createAtom` consume, so the button is disabled iff the
+   * spec would decline. The button is the upstream half, the spec the
+   * downstream defense. An ANCHORED citation always has keys (it came from
+   * the prose), so this only ever disables a draft. */
+  const dropDisabled = useMemo(
+    () => citationCommandOrNull(cit.command) === null,
+    [cit.command],
+  );
 
   /* ── Render ──────────────────────────────────────────────────────── */
 

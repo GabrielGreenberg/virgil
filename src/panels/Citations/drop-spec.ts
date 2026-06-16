@@ -21,7 +21,7 @@
 
 import type { Node as PMNode } from "@tiptap/pm/model";
 import { inlineAtomMoveSpec } from "@/components/drop-mode/util/inline-atom-move";
-import { parseCiteCommand } from "@/lib/bib-parser";
+import { citationCommandOrNull } from "@/lib/bib-parser";
 
 export const citationDropSpec = inlineAtomMoveSpec({
   nodeName: "citation",
@@ -31,13 +31,13 @@ export const citationDropSpec = inlineAtomMoveSpec({
     if (!citationNodeType) return null;
     // The serializable `\cite{…}` command lives in the citations panel hook,
     // keyed by the card id (the unanchored card has no marker to read it from).
-    const command = ctx.citations?.commandFor(id) ?? "";
     // Decline an empty DRAFT — no command, or a command with no real citekeys
-    // (`\cite{}`). Anchoring an empty draft would plant a keyless atom that
-    // can never serialize; the upstream button is disabled, this is defense.
+    // (`\cite{}`). Anchoring an empty draft would plant a keyless atom that can
+    // never serialize; the upstream button is disabled, this is defense. The
+    // SAME `citationCommandOrNull` predicate gates the button + commandFor, so
+    // this re-check can never disagree with them.
+    const command = citationCommandOrNull(ctx.citations?.commandFor(id));
     if (!command) return null;
-    const parsed = parseCiteCommand(command);
-    if (!parsed || parsed.keys.length === 0) return null;
     // Same shape the `\cite` typed/slash/menu create path builds (citation.ts),
     // but carry the card's EXISTING citationId so the new atom stays coupled
     // to the card. displayText is empty — the panel/renderer fills it from the

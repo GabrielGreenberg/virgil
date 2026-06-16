@@ -87,6 +87,37 @@ function renderCard(overrides: Partial<CitationCardProps> = {}) {
   return { props, ...utils };
 }
 
+describe("CitationCard keyless-draft drop button (FOLD 4)", () => {
+  // The (re)anchor drop button must be DISABLED while a draft citation has no
+  // real citekey — there is no `\cite{}` atom it could plant. This renders the
+  // real header chrome (vs. the parallel `commandFor`/prop-wiring unit tests)
+  // and exercises the shared `citationCommandOrNull` predicate end to end via
+  // `CitationCard.dropDisabled` → `PanelCard` → `CardDropButton.disabled`.
+  it("a keyless draft renders the drop button DISABLED", () => {
+    const keyless: CitationRef = {
+      id: "draft-empty",
+      command: "\\cite{}", // no keys → citationCommandOrNull(...) === null
+      keys: [],
+      createdAt: "2026-06-16T00:00:00.000Z",
+    };
+    renderCard({ citation: keyless, isDraft: true });
+    const drop = screen.getByLabelText("Drop into text") as HTMLButtonElement;
+    expect(drop.disabled).toBe(true);
+  });
+
+  it("a keyed draft renders the drop button ENABLED (symmetry)", () => {
+    const keyed: CitationRef = {
+      id: "draft-keyed",
+      command: "\\citep{xenakis2020}",
+      keys: ["xenakis2020"],
+      createdAt: "2026-06-16T00:00:00.000Z",
+    };
+    renderCard({ citation: keyed, isDraft: true });
+    const drop = screen.getByLabelText("Drop into text") as HTMLButtonElement;
+    expect(drop.disabled).toBe(false);
+  });
+});
+
 describe("CitationCard draft header-click suppression (backlog #13)", () => {
   it("draft: header click selects but does NOT toggle the pinned-open body", () => {
     renderCard({ isDraft: true });

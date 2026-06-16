@@ -10,6 +10,7 @@ import {
   parseBibFile,
   serializeBibFile,
   parseCiteCommand,
+  citationCommandOrNull,
   formatInlineCitation,
   formatBibliography,
 } from "@/lib/bib-parser";
@@ -360,9 +361,10 @@ export function useCitations(docId: string | null, pristine?: PristineKindApi | 
     (id: string): string | null => {
       const cit = stateRef.current.citations.find((c) => c.id === id);
       if (!cit) return null;
-      const parsed = parseCiteCommand(cit.command);
-      if (!parsed || parsed.keys.length === 0) return null;
-      return cit.command;
+      // SSOT keyless-citation predicate — same one the upstream disabled drop
+      // button (`CitationCard.dropDisabled`) and the downstream spec decline
+      // (`citationDropSpec.createAtom`) consume, so all three agree.
+      return citationCommandOrNull(cit.command);
     },
     [stateRef],
   );
