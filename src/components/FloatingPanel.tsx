@@ -17,7 +17,6 @@ import {
   findDockTargetAtPoint,
   type DockDragTarget,
 } from "@/components/editor-layout/dock-drag";
-import { beginDropSession } from "@/components/drop-mode/controller";
 import {
   isOverStackIcon,
   isHeaderOverStackIcon,
@@ -424,20 +423,6 @@ function FloatingPanelInner({
     // gaps / background (outside any [data-card]).
     if (target.closest(WINDOW_DRAG_BLOCK_SELECTOR)) {
       return;
-    }
-    // Shift+mousedown on the grab bar → drop-mode session. Only for
-    // popped-out cards/blocks (have a cardKey). The controller no-ops
-    // gracefully if no spec is registered for this kind, so this is a
-    // safe branch to install even before all specs are wired.
-    if (e.shiftKey && cardKey && mode === "floating") {
-      const started = beginDropSession({
-        cardKey,
-        origin: { x: e.clientX, y: e.clientY },
-      });
-      if (started) {
-        e.preventDefault();
-        return;
-      }
     }
     let origX = pos.x;
     let origY = pos.y;
