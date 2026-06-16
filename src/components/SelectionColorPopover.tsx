@@ -2,18 +2,63 @@
 
 /**
  * Color-picker popover spawned from the right-side SelectionActionsMenu's
- * Color button. Shows 7 swatches + a custom-color picker + a Clear
- * action. Picking a custom color replaces the least-recently-used slot.
- * Palette + MRU order persist via localStorage on the parent.
+ * Color button (and from the lightning grid's text-color cell). Shows 7
+ * swatches + a native custom-color picker + a Clear action. Picking a custom
+ * color replaces the least-recently-used slot. Palette + MRU order persist via
+ * localStorage on the parent.
+ *
+ * ── MENU-PRIMITIVE MIGRATION (Phase C) ──
+ * Migrated onto the `<Menu>` primitive (`src/components/menu/`, design
+ * `docs/agents/menu-system-design.md` §3.5 + §4 the SelectionColorPopover row)
+ * as the `role="dialog"` / `region="widget"` adapter. It now renders via a
+ * `<MenuProvider layout="list" portal>` whose container is the `role="dialog"`
+ * popover; the provider owns positioning (the old manual viewport-clamp
+ * positioner → `placements`), click-outside dismissal (the old deferred
+ * mousedown effect → the provider's), the Escape handler, and the keyboard
+ * controller. The swatch buttons + the clear button register via
+ * `useMenuItem({ region: "list", run })` and spread `getItemProps()`, so the
+ * row GAINS arrow nav with a visible `data-active` highlight +
+ * `aria-activedescendant` (NO focus theft — the PM view's contentEditable holds
+ * the caret).
+ *
+ * Horizontal layout note: the swatches are laid out horizontally, but the
+ * shared `list` layout binds Up/Down (Left/Right are inert in a flat list —
+ * `nav-core.ts` listMove). Per the migration brief we navigate the swatches
+ * with Up/Down (every swatch + clear is one flat list) rather than touching the
+ * primitive; Left/Right over a horizontal list is left as a follow-up the
+ * primitive owns.
+ *
+ * The native `<input type="color">` registers as `region: "widget"` — a
+ * focus-island skipped by roving (the registry/nav-core skip `region==="widget"`
+ * nodes) but reachable by Tab and clickable, keeping its native click-to-open
+ * picker behavior. It styles itself as the rainbow "custom" swatch (replacing
+ * the old hidden-input + visible-`+`-button pair).
+ *
+ * PRESERVED: clicking a swatch applies the color (onApply) + the clear handler
+ * (onClear) + the custom-pick handler (onPickCustom); `role="dialog"` +
+ * `aria-label="Text color"`; the `onContainerRef` wiring (so the parent
+ * lightning `<MenuProvider>` registers this popover into its click-outside
+ * `excludeRefs` — the lightning panel stays open while you use the color
+ * popover); Escape-close; click-outside dismiss.
  */
 
-import { useEffect, useMemo, useRef, useState } from "react";
-import { createPortal } from "react-dom";
+import { useLayoutEffect, useRef } from "react";
 import type { Editor } from "@tiptap/react";
+import type { FloatingMenuPlacement } from "@/hooks/useFloatingMenuPosition";
+import { MenuProvider } from "./menu/MenuProvider";
+import { useMenuItem } from "./menu/useMenuItem";
+import type { MenuRole } from "./menu/types";
 
 const POPOVER_W = 220;
 const SWATCH_SIZE = 22;
-const VIEWPORT_MARGIN = 8;
+
+// The old manual positioner opened the popover start-aligned below the trigger
+// and flipped it above on viewport overflow. That is exactly
+// `[{ side: "below", align: "start" }, { side: "above" }]`.
+const COLOR_POPOVER_PLACEMENTS: FloatingMenuPlacement[] = [
+  { side: "below", align: "start" },
+  { side: "above" },
+];
 
 interface Props {
   editor: Editor;
@@ -38,6 +83,19 @@ interface Props {
   onContainerRef?: (el: HTMLDivElement | null) => void;
 }
 
+/** The PM view's focused contentEditable holds the caret while the popover is
+ *  open (the popover never steals focus — roving aria-activedescendant only).
+ *  Use it as the activedescendant host so a screen reader tracks the active
+ *  swatch without the caret moving; fall back to null (the provider then no-ops
+ *  the attribute write) if focus isn't on an editable element. Mirrors
+ *  `HeadingTypeMenu` / `DragHandleMenu`'s resolver. */
+function getActiveDescendantHost(): HTMLElement | null {
+  if (typeof document === "undefined") return null;
+  const el = document.activeElement;
+  if (el instanceof HTMLElement && el.isContentEditable) return el;
+  return null;
+}
+
 export function SelectionColorPopover({
   anchorRect,
   palette,
@@ -47,160 +105,210 @@ export function SelectionColorPopover({
   onClose,
   onContainerRef,
 }: Props) {
-  const ref = useRef<HTMLDivElement | null>(null);
-  const fileInputRef = useRef<HTMLInputElement | null>(null);
-  const [pos, setPos] = useState<{ left: number; top: number } | null>(null);
-
-  const estimatedHeight = useMemo(() => {
-    // Single row of swatches + picker + clear.
-    return 8 + SWATCH_SIZE + 8;
-  }, []);
-
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-    const vw = window.innerWidth;
-    const vh = window.innerHeight;
-    // Default: open below + aligned to the button's left.
-    let left = anchorRect.left;
-    let top = anchorRect.bottom + 6;
-    if (left + POPOVER_W > vw - VIEWPORT_MARGIN) {
-      left = Math.max(VIEWPORT_MARGIN, vw - POPOVER_W - VIEWPORT_MARGIN);
-    }
-    if (left < VIEWPORT_MARGIN) left = VIEWPORT_MARGIN;
-    if (top + estimatedHeight > vh - VIEWPORT_MARGIN) {
-      // Flip above.
-      top = anchorRect.top - estimatedHeight - 6;
-      if (top < VIEWPORT_MARGIN) top = VIEWPORT_MARGIN;
-    }
-    setPos({ left, top });
-  }, [anchorRect.left, anchorRect.top, anchorRect.right, anchorRect.bottom, estimatedHeight]);
-
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") {
-        e.preventDefault();
-        onClose();
-      }
-    };
-    const onMouseDown = (e: MouseEvent) => {
-      if (!ref.current) return;
-      if (!ref.current.contains(e.target as Node)) onClose();
-    };
-    window.addEventListener("keydown", onKey, true);
-    // Defer so the click that opened the popover doesn't immediately close it.
-    const t = window.setTimeout(() => {
-      window.addEventListener("mousedown", onMouseDown, true);
-    }, 0);
-    return () => {
-      window.clearTimeout(t);
-      window.removeEventListener("keydown", onKey, true);
-      window.removeEventListener("mousedown", onMouseDown, true);
-    };
-  }, [onClose]);
-
   if (typeof document === "undefined") return null;
-  if (!pos) return null;
 
-  return createPortal(
-    <div
-      ref={(el) => {
-        ref.current = el;
-        onContainerRef?.(el);
-      }}
-      role="dialog"
-      aria-label="Text color"
-      style={{
-        position: "fixed",
-        left: pos.left,
-        top: pos.top,
+  return (
+    <MenuProvider
+      id="selection-color"
+      layout="list"
+      // KEEP role="dialog" (no filter input → not a combobox). The primitive's
+      // `MenuRole` type covers only the ARIA item-fork ("menu" | "listbox"); the
+      // dialog container role is set verbatim on the provider's container, so we
+      // pass "dialog" through (cast at the call site — no primitive change). The
+      // item-role resolution falls to "menuitem" (menuRole !== "listbox"), which
+      // is the correct role for the swatch/clear command buttons.
+      role={"dialog" as MenuRole}
+      portal
+      anchorRect={anchorRect}
+      placements={COLOR_POPOVER_PLACEMENTS}
+      gap={6}
+      getActiveDescendantHost={getActiveDescendantHost}
+      onClose={onClose}
+      ariaLabel="Text color"
+      containerStyle={{
         width: POPOVER_W,
-        zIndex: 2010,
         background: "var(--pod-editor)",
         border: "var(--pod-border)",
         boxShadow: "var(--pod-shadow)",
         borderRadius: "var(--pod-radius)",
         padding: 8,
       }}
-      onMouseDown={(e) => e.preventDefault()}
     >
-      {/* Row 1: swatches + custom-picker + clear */}
-      <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
-        {palette.map((color, i) => (
-          <button
-            key={`${color}-${i}`}
-            type="button"
-            data-hint={color}
-            onClick={() => onApply(color)}
-            style={{
-              width: SWATCH_SIZE,
-              height: SWATCH_SIZE,
-              borderRadius: 4,
-              background: color,
-              border: "1px solid var(--edge-hover)",
-              cursor: "pointer",
-              padding: 0,
-            }} aria-label={color}
-          />
-        ))}
-        <button
-          type="button"
-          data-hint="Pick a custom color"
-          onClick={() => fileInputRef.current?.click()}
-          style={{
-            width: SWATCH_SIZE,
-            height: SWATCH_SIZE,
-            marginLeft: 4,
-            borderRadius: 4,
-            background:
-              "conic-gradient(from 0deg, #ff0000, #ffff00, #00ff00, #00ffff, #0000ff, #ff00ff, #ff0000)",
-            border: "1px solid var(--edge-hover)",
-            cursor: "pointer",
-            padding: 0,
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            color: "white",
-            fontSize: 12,
-            fontWeight: 700,
-            textShadow: "0 0 2px rgba(0,0,0,0.6)",
-          }}
-        >
-          +
-        </button>
-        <input
-          ref={fileInputRef}
-          type="color"
-          aria-hidden
-          style={{ position: "absolute", width: 0, height: 0, opacity: 0, pointerEvents: "none" }}
-          onChange={(e) => {
-            const c = e.target.value;
-            if (c) onPickCustom(c);
-          }}
-        />
-        <button
-          type="button"
-          data-hint="Clear color"
-          onClick={onClear}
-          style={{
-            width: SWATCH_SIZE,
-            height: SWATCH_SIZE,
-            borderRadius: 4,
-            background: "transparent",
-            border: "1px solid var(--edge-hover)",
-            cursor: "pointer",
-            padding: 0,
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            color: "var(--ink-muted)",
-            fontSize: 14,
-            lineHeight: 1,
-          }}
-        >
-          ×
-        </button>
-      </div>
-    </div>,
-    document.body,
+      <ColorPopoverBody
+        palette={palette}
+        onApply={onApply}
+        onClear={onClear}
+        onPickCustom={onPickCustom}
+        onContainerRef={onContainerRef}
+      />
+    </MenuProvider>
+  );
+}
+
+interface BodyProps {
+  palette: string[];
+  onApply: (color: string) => void;
+  onClear: () => void;
+  onPickCustom: (color: string) => void;
+  onContainerRef?: (el: HTMLDivElement | null) => void;
+}
+
+/** The popover body — lives INSIDE the provider so the swatches + clear can
+ *  register via `useMenuItem` and the native color input can register as a
+ *  `region: "widget"` focus-island. */
+function ColorPopoverBody({
+  palette,
+  onApply,
+  onClear,
+  onPickCustom,
+  onContainerRef,
+}: BodyProps) {
+  // Surface the provider's `role="dialog"` container to the parent's
+  // `onContainerRef` (the lightning panel's `excludeRefs`). The provider owns
+  // its container ref and doesn't expose it, so resolve it from this row (a
+  // descendant of the dialog) via `closest('[role="dialog"]')`. Done in a layout
+  // effect so the parent's exclude set sees the live element before the next
+  // click-outside test.
+  const rowRef = useRef<HTMLDivElement | null>(null);
+  useLayoutEffect(() => {
+    const container = rowRef.current?.closest<HTMLDivElement>('[role="dialog"]') ?? null;
+    onContainerRef?.(container);
+    return () => onContainerRef?.(null);
+  }, [onContainerRef]);
+
+  return (
+    <div ref={rowRef} style={{ display: "flex", alignItems: "center", gap: 4 }}>
+      {palette.map((color, i) => (
+        <Swatch key={`${color}-${i}`} id={`swatch-${i}`} color={color} onApply={onApply} />
+      ))}
+      <CustomColorInput onPickCustom={onPickCustom} />
+      <ClearButton onClear={onClear} />
+    </div>
+  );
+}
+
+interface SwatchProps {
+  id: string;
+  color: string;
+  onApply: (color: string) => void;
+}
+
+/** One palette swatch. Registers as a `list` item so the roving cursor crosses
+ *  it; spreads `getItemProps()` so it gains arrow nav + the `data-active`
+ *  highlight. Click / Enter / Space applies the color. */
+function Swatch({ id, color, onApply }: SwatchProps) {
+  const { active, getItemProps } = useMenuItem({
+    id,
+    region: "list",
+    run: () => onApply(color),
+  });
+  return (
+    <button
+      {...getItemProps()}
+      type="button"
+      data-hint={color}
+      aria-label={color}
+      style={{
+        width: SWATCH_SIZE,
+        height: SWATCH_SIZE,
+        borderRadius: 4,
+        background: color,
+        // The roving-active swatch gets a stronger ring so the active item is
+        // unambiguous while arrowing (no focus move).
+        border: active ? "2px solid var(--accent)" : "1px solid var(--edge-hover)",
+        cursor: "pointer",
+        padding: 0,
+      }}
+    />
+  );
+}
+
+interface CustomColorInputProps {
+  onPickCustom: (color: string) => void;
+}
+
+/** The custom-color picker — a native `<input type="color">` registered as a
+ *  `region: "widget"` focus-island: skipped by roving (the registry/nav-core
+ *  ignore `region==="widget"` nodes), but Tab-reachable + clickable, keeping its
+ *  native click-to-open behavior. We register it for the snapshot (so the roving
+ *  cursor correctly steps OVER it) but DO NOT apply `getItemProps().tabIndex`
+ *  (-1) — the input must stay in the Tab order — so we spread only its `ref`,
+ *  `id`, and `role`. Styled as the rainbow "custom" swatch. */
+function CustomColorInput({ onPickCustom }: CustomColorInputProps) {
+  const { getItemProps } = useMenuItem({
+    id: "custom",
+    region: "widget",
+    run: () => {},
+  });
+  // Pull only the registry ref + id off the getter; deliberately omit
+  // `tabIndex: -1` (Tab-reachable) and the `onClick`/`onMouseEnter` roving hooks
+  // (the native input owns its own interaction).
+  const { ref, id } = getItemProps();
+  return (
+    <input
+      ref={ref}
+      id={id}
+      type="color"
+      data-hint="Pick a custom color"
+      aria-label="Pick a custom color"
+      onChange={(e) => {
+        const c = e.target.value;
+        if (c) onPickCustom(c);
+      }}
+      style={{
+        width: SWATCH_SIZE,
+        height: SWATCH_SIZE,
+        marginLeft: 4,
+        borderRadius: 4,
+        // Hide the native swatch chrome so the rainbow gradient reads as the
+        // "custom" affordance, matching the old visible `+` button.
+        background:
+          "conic-gradient(from 0deg, #ff0000, #ffff00, #00ff00, #00ffff, #0000ff, #ff00ff, #ff0000)",
+        border: "1px solid var(--edge-hover)",
+        cursor: "pointer",
+        padding: 0,
+        appearance: "none",
+        WebkitAppearance: "none",
+      }}
+    />
+  );
+}
+
+interface ClearButtonProps {
+  onClear: () => void;
+}
+
+/** The clear-color action. Registers as a `list` item (so arrows reach it) and
+ *  spreads `getItemProps()`; click / Enter / Space strips the color mark. */
+function ClearButton({ onClear }: ClearButtonProps) {
+  const { active, getItemProps } = useMenuItem({
+    id: "clear",
+    region: "list",
+    run: onClear,
+  });
+  return (
+    <button
+      {...getItemProps()}
+      type="button"
+      data-hint="Clear color"
+      aria-label="Clear color"
+      style={{
+        width: SWATCH_SIZE,
+        height: SWATCH_SIZE,
+        borderRadius: 4,
+        background: "transparent",
+        border: active ? "2px solid var(--accent)" : "1px solid var(--edge-hover)",
+        cursor: "pointer",
+        padding: 0,
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        color: "var(--ink-muted)",
+        fontSize: 14,
+        lineHeight: 1,
+      }}
+    >
+      ×
+    </button>
   );
 }
