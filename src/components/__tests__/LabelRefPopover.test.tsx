@@ -104,11 +104,16 @@ describe("LabelRefPopover create-mode keyboard nav (#4)", () => {
     expect(onInsertRef).toHaveBeenCalledWith("sec:meth", "ref");
   });
 
-  it("marks the active row with the .active class", () => {
+  it("marks the active row with the .active class + aria-selected (combobox)", () => {
     const { input } = setup();
-    fireEvent.keyDown(input, { key: "ArrowDown" }); // index 0
+    fireEvent.keyDown(input, { key: "ArrowDown" }); // first enabled → sec:intro
     const active = document.querySelector(".label-ref-popover-option.active");
     expect(active).not.toBeNull();
-    expect(active?.getAttribute("data-ref-opt-index")).toBe("0");
+    // The first row is sec:intro; it carries the option role + aria-selected,
+    // and the input's aria-activedescendant points at it (no focus theft).
+    expect(active?.getAttribute("role")).toBe("option");
+    expect(active?.getAttribute("aria-selected")).toBe("true");
+    expect(active?.textContent).toContain("sec:intro");
+    expect(input.getAttribute("aria-activedescendant")).toBe(active?.id);
   });
 });

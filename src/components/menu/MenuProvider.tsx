@@ -236,7 +236,12 @@ export function MenuProvider(props: MenuProviderProps): ReactNode {
   });
 
   // ── keyboard controller ──
-  useMenuKeyboard({
+  // The combobox source returns `handleKeyDown` for the owned `<input>` to wire
+  // onto its `onKeyDown` (§3.5); the window source returns it too but no child
+  // consumes it. We expose it through context so a child input (via
+  // `useMenuCombobox`) drives the controller while real focus stays in the
+  // input (NO focus theft) and `aria-activedescendant` sits on the input.
+  const { handleKeyDown } = useMenuKeyboard({
     registry,
     layout,
     letterShortcuts,
@@ -245,9 +250,15 @@ export function MenuProvider(props: MenuProviderProps): ReactNode {
     source: keyboardSource,
   });
 
+  // The listbox container id the combobox input references via `aria-controls`
+  // (§3.5). Stable + derived from the menu id so it's collision-free. Only set
+  // on a `role="listbox"` menu (the combobox pattern); a `role="menu"` command
+  // menu leaves the container id unset.
+  const listboxId = role === "listbox" ? `${id}-listbox` : undefined;
+
   const ctxValue = useMemo<MenuContextValue>(
-    () => ({ registry, role, registerExclude }),
-    [registry, role, registerExclude],
+    () => ({ registry, role, registerExclude, handleKeyDown, listboxId }),
+    [registry, role, registerExclude, handleKeyDown, listboxId],
   );
 
   if (typeof document === "undefined") return null;
@@ -256,6 +267,9 @@ export function MenuProvider(props: MenuProviderProps): ReactNode {
     <div
       ref={setContainerRef}
       role={role}
+      // The listbox container carries the id the combobox input's
+      // `aria-controls` points at (§3.5). Command menus leave it unset.
+      id={listboxId}
       aria-label={ariaLabel}
       className={containerClassName}
       style={{

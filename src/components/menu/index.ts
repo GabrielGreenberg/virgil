@@ -19,6 +19,12 @@ export { MenuGrid, MenuList, useMenuGrid } from "./regions";
 export type { MenuGridProps, MenuListProps } from "./regions";
 export { useMenuItem } from "./useMenuItem";
 export type { UseMenuItemOptions } from "./useMenuItem";
+export { useMenuCombobox } from "./useMenuCombobox";
+export type {
+  UseMenuComboboxResult,
+  ComboboxInputProps,
+  GetInputPropsOptions,
+} from "./useMenuCombobox";
 export { useMenuKeyboard } from "./useMenuKeyboard";
 export type {
   UseMenuKeyboardOptions,

@@ -14,9 +14,11 @@
  * but the contract is here so they require no refactor.
  */
 
-import { createContext, useContext } from "react";
+import { createContext, useContext, type KeyboardEvent as ReactKeyboardEvent } from "react";
 import type { MenuRegistry } from "./registry";
 import type { MenuRole } from "./types";
+
+type AnyKeyboardEvent = ReactKeyboardEvent | KeyboardEvent;
 
 export interface MenuContextValue {
   registry: MenuRegistry;
@@ -25,6 +27,16 @@ export interface MenuContextValue {
    *  (a spawned color popover, a combobox's external input). Returns an
    *  unregister fn. A nested `<MenuProvider>` calls this with its container. */
   registerExclude: (el: HTMLElement | null) => () => void;
+  /** The combobox seam (§3.5). For an input-bearing `role="listbox"` menu, the
+   *  owned `<input>` is the keyboard SOURCE — the provider mounts its keyboard
+   *  controller in `source: "input"` mode and exposes the controller's
+   *  `handleKeyDown` here so a child input (via `useMenuCombobox`) can wire it
+   *  onto its own `onKeyDown` without the provider rendering the input itself.
+   *  Undefined for the window-source command menus. */
+  handleKeyDown?: (e: AnyKeyboardEvent) => void;
+  /** Stable id of the provider's listbox container (the input's `aria-controls`
+   *  target). `${menuId}-listbox`. Present only when `role === "listbox"`. */
+  listboxId?: string;
 }
 
 export const MenuContext = createContext<MenuContextValue | null>(null);

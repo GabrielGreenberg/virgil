@@ -199,9 +199,18 @@ export function useMenuKeyboard(
   useEffect(() => {
     if (!open) return;
     const sync = () => {
+      const activeId = registry.activeId();
+      // Built-in scroll-into-view of the active row (§3.5) — re-anchors the
+      // active option as the cursor moves, replacing a combobox's bespoke
+      // `scrollIntoView` effect. NO `.focus()` (roving aria-activedescendant
+      // only), so the editor caret / combobox input keeps focus. `nearest`
+      // matches the old hand-rolled behavior and is a no-op when in view.
+      if (activeId) {
+        const el = registry.refFor(activeId);
+        el?.scrollIntoView?.({ block: "nearest" });
+      }
       const host = stateRef.current.getActiveDescendantHost?.();
       if (!host) return;
-      const activeId = registry.activeId();
       if (activeId) host.setAttribute("aria-activedescendant", registry.domIdFor(activeId));
       else host.removeAttribute("aria-activedescendant");
     };

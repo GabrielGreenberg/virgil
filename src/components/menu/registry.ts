@@ -114,6 +114,13 @@ export class MenuRegistry implements MenuRegistryHandle {
     if (rec) rec.ref = el; // ref churn does NOT bump (not nav-structural)
   }
 
+  /** The live element for a node id, or null. Used by the keyboard controller
+   *  to scroll the active row into view (the built-in §3.5 scroll re-anchor
+   *  that replaces a combobox's bespoke `scrollIntoView` effect). */
+  refFor(id: string): HTMLElement | null {
+    return this.records.get(id)?.ref ?? null;
+  }
+
   unregister(id: string): void {
     if (!this.records.delete(id)) return;
     if (this.active === id) this.active = null;
