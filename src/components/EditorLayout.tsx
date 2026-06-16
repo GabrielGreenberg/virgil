@@ -1470,10 +1470,11 @@ export default function EditorLayout() {
     from: number;
     to: number;
   } | null>(null);
-  // Expansion for the CODE-VIEW errors sidebar only (R5): kept as its own
-  // small local set — deliberately NOT shared with EditorPane's
-  // docked-panel/omni scope, because this sidebar renders a different error
-  // list (the code editor's compile/lint diagnostics) by design.
+  // Error-card expansion (R5). Since the diagnostics unification, this is
+  // the SINGLE expansion set for every error surface: the code-view sidebar
+  // here AND EditorPane's docked panel + omni mirror (threaded down via the
+  // `expandedErrorIds`/`expandError`/`toggleErrorExpanded` props). One owner,
+  // one list — expanding a card on any surface expands it everywhere.
   const [expandedErrorIds, setExpandedErrorIds] = useState<Set<string>>(
     () => new Set(),
   );

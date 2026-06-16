@@ -241,9 +241,10 @@ export function createCodePaneBridge(
     } finally {
       syncing = null;
     }
-    // The content replace shifted line positions, so the band's char
-    // range is stale. Recompute it against the fresh doc.
-    updateCodeBand();
+    // The content replace shifted line positions (and may have dropped
+    // the mapped band decoration), so force a recompute against the
+    // fresh doc — bypassing the equality bail.
+    updateCodeBand(true);
   }
 
   function scheduleTipTapToCode() {
@@ -301,12 +302,26 @@ export function createCodePaneBridge(
   // SYNC_ANNOTATION so the band update doesn't re-enter code→tiptap
   // sync. RAF-coalesced via `codeBandRaf` so a click-drag selection
   // fires at most one band update per frame.
-  function updateCodeBand() {
+  //
+  // Equality bail: typing inside the same paragraph yields the same
+  // {from,to} every frame — skip the redundant CM dispatch so the band
+  // costs nothing per plain keystroke (keystroke sanctity). `force`
+  // bypasses the bail after a TipTap→code content sync, where the line
+  // positions shifted (and the mapped DecorationSet may have dropped)
+  // even though the active UUID — hence the cached numbers — can collide.
+  let lastBandFrom = -1;
+  let lastBandTo = -1;
+  function updateCodeBand(force = false) {
     codeBandRaf = null;
     if (disposed) return;
     try {
       const uuid = getTipTapActiveUuid();
       const range = uuid ? getCharRangeForUuid(view, uuid) : null;
+      const from = range ? range.from : -1;
+      const to = range ? range.to : -1;
+      if (!force && from === lastBandFrom && to === lastBandTo) return;
+      lastBandFrom = from;
+      lastBandTo = to;
       view.dispatch({
         effects: setCodeBand.of(range),
         annotations: SYNC_ANNOTATION.of(true),
@@ -318,7 +333,8 @@ export function createCodePaneBridge(
 
   function scheduleCodeBand() {
     if (codeBandRaf !== null) return;
-    codeBandRaf = requestAnimationFrame(updateCodeBand);
+    // Wrap so requestAnimationFrame's timestamp arg isn't passed as `force`.
+    codeBandRaf = requestAnimationFrame(() => updateCodeBand());
   }
 
   function pushTipTapSelectionToCode() {
@@ -381,6 +397,9 @@ export function createCodePaneBridge(
       } catch {
         /* scroll best-effort */
       }
+    } catch {
+      /* setTextSelection best-effort — a manual align must never throw
+         out to the divider-arrow click handler. */
     } finally {
       selectionSyncing = null;
     }

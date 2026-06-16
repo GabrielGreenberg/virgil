@@ -83,11 +83,26 @@ patterns: `!`=error, `LaTeX Warning:`, `Package Warning:`. Bib → 3 passes.
 | A | `code-position-map.ts` (S1) + refactor 3 call sites + tests | DONE (e3cdd54) |
 | B1 | Unify compile SOURCE: kill EditorLayout dead hook, bubble via paneState, mergeLatexErrors dedup | DONE (2a0f3c0) |
 | B2+C | Single error owner (EditorLayout) via props; mode-aware jumpToError (stay-in-code-view) | DONE (932d1fd) |
-| D | Code-side cursor band (issue 4): CM StateField + `.cm-virgil-band`, decorate-only | IN PROGRESS |
-| E | Manual sync arrows + remove auto-align (issue 5 + corollary) | IN PROGRESS (with D) |
-| F | Code-view layout: hide strips, repad editor left (issue 1) | pending |
-| G | nXn verification matrix (issues 6,7) in live preview | pending |
+| D | Code-side cursor band (issue 4): `src/lib/code-band.ts` + `.cm-virgil-band`, decorate-only | DONE (930271b) |
+| E | Manual sync arrows + remove auto-align (issue 5 + corollary) | DONE (930271b, with D) |
+| F | Code-view layout: comfortable 48px gutter (strips already gated on !codeSplit.active) | DONE (a37a7bb) |
+| G | nXn verification matrix (issues 6,7) in live preview | IN PROGRESS |
 | H | Full tests + typecheck/lint + docs/agents drift + finalize memo | pending |
+
+All code chips (A–F) committed on branch `worktree-code-view-rework`. Full vitest green after each;
+typecheck clean. Commits: A e3cdd54 · B1 2a0f3c0 · B2+C 932d1fd · D+E 930271b · F a37a7bb.
+
+### Preview (Chip G)
+Added a `code-view-rework` config to MAIN's `.claude/launch.json` (gitignored — safe; cd's into the
+worktree, port 3010, `.next-preview` dist). `preview_start name="code-view-rework"` → serverId varies.
+Gabriel works concurrently in MAIN (committed `d9754dd` mid-session) — NEVER touch main's commits.
+
+### ⚠️ GOTCHA #2: Bash cwd drifts back to MAIN on turn boundaries
+Even after `EnterWorktree(path)`, the shell cwd reverts to `/Users/gabriel/Programming/virgil` (main)
+across user turns. A bare `git commit` then runs in MAIN. **ALWAYS use `git -C <worktree>` and absolute
+worktree paths for every git/file op.** (Edit-tool absolute paths land correctly; only bare-cwd git is
+the hazard.) Chip F edits were fine (absolute paths); only the bare commit mis-fired and was redone with
+`git -C`.
 
 Foundation A→B→C DONE; full vitest suite green; typecheck clean. D+E delegated together (both
 rewire the bridge's selection handling). F separable.
