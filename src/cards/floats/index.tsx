@@ -124,6 +124,12 @@ function cardFloatable(
     title: opts.title ?? CARD_REGISTRY[kind].label,
     canJump: opts.canJump,
     jumpToSource: opts.jumpToSource,
+    // (Re)anchor drop button gate (chip D): read the STATIC per-kind
+    // `droppable` facet here — the ONE place the card-side registry meets the
+    // neutral `Floatable`. FloatChrome stays card-blind: it only sees the
+    // resulting boolean + the `key` string (its `dropCardKey`). `bareWindow`
+    // floats (bib/ai) are `droppable:false`, so no button there regardless.
+    canDrop: CARD_REGISTRY[kind].droppable,
     chromeSlots,
     bareWindow: opts.bareWindow,
     snapshotForStack: opts.snapshotForStack,

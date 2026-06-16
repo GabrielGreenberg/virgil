@@ -166,6 +166,14 @@ export function FloatWindow({
             headerTint={floatable.headerTint}
             canJump={floatable.canJump}
             onJump={floatable.jumpToSource}
+            // (Re)anchor drop button: gated on the Floatable's static
+            // `canDrop` facet (cards derive it from `CARD_REGISTRY[*].droppable`
+            // in `cardFloatable`; text-objects omit it). The button hands
+            // `floatable.key` — the canonical `float:card:<kind>:<id>` string —
+            // to `beginCardDropGesture`, so the drop controller resolves the
+            // spec WITHOUT FloatChrome importing any card code.
+            canDrop={floatable.canDrop}
+            dropCardKey={floatable.key}
             onClose={() => ctx.close(key)}
           />
           <div className="flex-1 min-h-0 flex flex-col overflow-hidden">
