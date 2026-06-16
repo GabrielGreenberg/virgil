@@ -10,8 +10,15 @@ import { readDocStructure, readPendingDiff } from "@/lib/tiptap/doc-structure";
 // editor-mounted TextObjectGrabHandle handles both. No per-extension
 // options needed for grip/popout wiring.
 export interface ExampleBlockOptions {
-  /** Reserved — currently unused. */
-  _placeholder?: never;
+  /** When true, the NodeView suppresses the par-title annotation strip
+   *  (the hover-revealed "+T" affordance + any title row). Card / float
+   *  surfaces set this (#47): the absolutely-positioned untitled strip sits
+   *  ABOVE the block top, so on a card it overlays the card header and
+   *  collides with the card's own CardBodyTitle "+T". The card host owns the
+   *  title affordance; the example body must not paint a second one. The
+   *  "Ex." label pod is NOT gated — the example float uses it to rename the
+   *  `\label{}`. main: false (the in-doc editable example keeps its +T). */
+  cardContext: boolean;
 }
 
 function collectExampleIds(doc: import("@tiptap/pm/model").Node): Set<string> {
@@ -342,7 +349,7 @@ export const ExampleBlock = Node.create<ExampleBlockOptions>({
   group: "block textObject",
 
   addOptions() {
-    return {};
+    return { cardContext: false };
   },
   // Free-order content: paragraphs, gloss blocks, and item lists can
   // interleave in any order. The relaxed schema lets list-item Shift-Tab
@@ -706,10 +713,19 @@ export const ExampleBlock = Node.create<ExampleBlockOptions>({
       wrapper.className = "par-title-wrapper expex-par-wrapper";
 
       // Par-title annotation (above the example). Click to edit.
-      const titleAnnot = document.createElement("div");
-      titleAnnot.className = "par-title-annotation";
-      titleAnnot.contentEditable = "false";
-      wrapper.appendChild(titleAnnot);
+      // SUPPRESSED in card/float context (#47): the untitled strip is
+      // absolutely-positioned ABOVE the block top, so on a card it overlays
+      // the card header and collides with the card's own CardBodyTitle "+T".
+      // The card host owns the title affordance — don't paint a second one.
+      // `null` here makes the title-rendering / edit handlers below inert.
+      const titleAnnot: HTMLDivElement | null = opts.cardContext
+        ? null
+        : document.createElement("div");
+      if (titleAnnot) {
+        titleAnnot.className = "par-title-annotation";
+        titleAnnot.contentEditable = "false";
+        wrapper.appendChild(titleAnnot);
+      }
 
       // The label pod is created here but appended AFTER the block dom
       // below, so it sits beneath the example body — small bordered
@@ -764,6 +780,10 @@ export const ExampleBlock = Node.create<ExampleBlockOptions>({
       // Mirror the paragraph convention: `has-text` when a title exists
       // (always visible), `has-add-btn` when empty (reveal on hover).
       const renderTitle = () => {
+        // No-op when the title strip is suppressed (card/float context) —
+        // skip the wrapper has-add-btn/has-text classes so the absolutely-
+        // positioned untitled-strip CSS rule never matches (#47).
+        if (!titleAnnot) return;
         const title = (currentNode.attrs.parTitle as string | null) || null;
         titleAnnot.innerHTML = "";
         wrapper.classList.remove("has-text", "has-add-btn");
@@ -941,7 +961,9 @@ export const ExampleBlock = Node.create<ExampleBlockOptions>({
         editor.view.dispatch(tr);
       };
 
-      titleAnnot.addEventListener("click", (e) => {
+      // Title-edit wiring only when the strip exists (suppressed in card
+      // context, #47).
+      titleAnnot?.addEventListener("click", (e) => {
         e.preventDefault();
         e.stopPropagation();
         titleAnnot.innerHTML = "";
@@ -991,13 +1013,14 @@ export const ExampleBlock = Node.create<ExampleBlockOptions>({
         stopEvent(event) {
           const target = event.target as globalThis.Node | null;
           if (!target) return false;
-          if (titleAnnot === target || titleAnnot.contains(target)) return true;
+          if (titleAnnot && (titleAnnot === target || titleAnnot.contains(target)))
+            return true;
           if (labelAnnot === target || labelAnnot.contains(target)) return true;
           return false;
         },
         ignoreMutation(mutation) {
           const t = mutation.target as globalThis.Node;
-          if (titleAnnot.contains(t)) return true;
+          if (titleAnnot && titleAnnot.contains(t)) return true;
           if (labelAnnot.contains(t)) return true;
           return false;
         },
@@ -1016,8 +1039,9 @@ export const ExampleBlock = Node.create<ExampleBlockOptions>({
           else delete dom.dataset.tag;
           if (updatedNode.attrs.label) dom.dataset.label = updatedNode.attrs.label;
           else delete dom.dataset.label;
-          // Re-render title annot only if not currently being edited.
-          if (!titleAnnot.querySelector("input")) renderTitle();
+          // Re-render title annot only if not currently being edited
+          // (and only when the strip exists — suppressed in card context).
+          if (titleAnnot && !titleAnnot.querySelector("input")) renderTitle();
           if (!labelAnnot.querySelector("input")) renderLabelAnnot();
           return true;
         },
