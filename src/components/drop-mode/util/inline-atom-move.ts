@@ -19,10 +19,26 @@
  * Source-editor discovery for by-id: searches the main editor first,
  * then any other editors registered with the drop-target registry (card
  * bodies). This covers a footnote added inside a note's rich-text field.
+ *
+ * **Anchor the unanchored (opt-in `createAtom`):** a footnote/citation
+ * card can exist with NO marker in any editor (created via the panel "+"
+ * before being dropped into the prose). For such a card `locateAtom`
+ * returns null, so the move path no-ops. When a `createAtom` factory is
+ * configured, the no-op becomes an `apply` that BUILDS a fresh atom node
+ * — carrying the card's EXISTING id — and inserts it at the drop point.
+ * The branch is purely additive: with no factory the move path is
+ * byte-unchanged.
+ *
+ * **Inline invariant:** this factory must NEVER return `{kind:"confirm"}`.
+ * Inline atoms are `selectable:false`; the grab gesture is a live drag
+ * with a floating ghost, and an async confirm modal would freeze that
+ * ghost mid-gesture. Re-anchoring an existing atom is a silent MOVE, and
+ * anchoring an unanchored card is a silent CREATE — both `apply`, never
+ * `confirm`.
  */
 
 import type { Editor } from "@tiptap/react";
-import type { Node as PMNode } from "@tiptap/pm/model";
+import type { Node as PMNode, Schema } from "@tiptap/pm/model";
 import { NodeSelection, TextSelection } from "@tiptap/pm/state";
 import { getRegisteredEditors } from "../target-registry";
 import { parseAnyKey } from "@/floats/float-key";
@@ -33,6 +49,27 @@ export interface AtomLocation {
   node: PMNode;
   from: number;
   to: number;
+}
+
+/**
+ * Inputs handed to an opt-in `createAtom` factory (the "anchor the
+ * unanchored" branch). The factory builds a fresh inline-atom node for a
+ * card whose marker doesn't exist in any editor yet, reusing the card's
+ * EXISTING id so the new atom and the card stay coupled.
+ */
+export interface CreateAtomArgs {
+  /** The card's EXISTING entity id (footnoteId / citationId), parsed from
+   *  the drop's `cardKey`. The built node MUST carry this — minting a fresh
+   *  id would orphan the card from its marker. */
+  id: string;
+  /** Schema of the TARGET editor (where the atom will be inserted), so the
+   *  factory can resolve its node type and `create(...)` the node. */
+  schema: Schema;
+  /** The full drop `cardKey`, for factories that need more than the id. */
+  cardKey: string;
+  /** The per-doc drop context, so a factory can consult a hook accessor
+   *  (e.g. the citation command lookup) it needs to populate node attrs. */
+  ctx: DropCtx;
 }
 
 export interface InlineAtomMoveOptions {
@@ -47,6 +84,25 @@ export interface InlineAtomMoveOptions {
    * absent, falls back to the by-id scan (`nodeName` + `idAttr`).
    */
   resolveSource?: (cardKey: string, ctx: DropCtx) => AtomLocation | null;
+  /**
+   * OPT-IN "anchor the unanchored" branch. When source resolution finds NO
+   * atom (the card has no marker in any editor yet) AND this factory is
+   * configured, `classifyDrop` returns `apply` (instead of the move path's
+   * no-op) and `applyDrop` inserts a freshly-built atom — carrying the
+   * card's EXISTING id — at the drop position. Return `null` to DECLINE
+   * (e.g. an empty draft citation with no serializable citekey, or a target
+   * editor whose schema lacks the node type); declining falls back to no-op,
+   * exactly as if the factory were absent.
+   *
+   * When ABSENT the factory is byte-unchanged: the create branch never fires,
+   * so the id-less in-text atom-grab path and the by-id float-header move path
+   * behave precisely as before. The branch is purely additive.
+   *
+   * The factory MUST reuse the doc-level node construction (the same attrs the
+   * `\footnote{}` / `\cite{}` create paths build) but substitute the card's
+   * EXISTING id — it must NEVER mint a new one (that orphans the card).
+   */
+  createAtom?: (args: CreateAtomArgs) => PMNode | null;
   /** Reject cross-editor drops (the in-text grab is same-editor only). */
   sameEditorOnly?: boolean;
   /** Post-move selection: select the moved node (default) or a caret
@@ -68,7 +124,18 @@ export function inlineAtomMoveSpec(opts: InlineAtomMoveOptions): DropSpec {
     classifyDrop(placement, cardKey, ctx) {
       if (placement.kind !== "inline-cursor") return { kind: "no-op" };
       const src = resolve(cardKey, ctx);
-      if (!src) return { kind: "no-op" };
+      if (!src) {
+        // No marker in any editor. If a `createAtom` factory is configured
+        // AND it can build a node for this card (a serializable atom), this
+        // is the "anchor the unanchored" CREATE branch — apply, never
+        // confirm (the inline ghost can't survive an async modal). The
+        // factory declining (null) — e.g. an empty draft citation — falls
+        // through to no-op, exactly as if it weren't configured.
+        if (opts.createAtom && buildCreateNode(opts, placement, cardKey, ctx)) {
+          return { kind: "apply" };
+        }
+        return { kind: "no-op" };
+      }
       // The in-text grab is same-editor only (v1): a cross-editor move
       // splits into two transactions and would fire an unsuppressed
       // footnote-orphan event in the source editor.
@@ -89,7 +156,16 @@ export function inlineAtomMoveSpec(opts: InlineAtomMoveOptions): DropSpec {
     applyDrop(placement, cardKey, ctx) {
       if (placement.kind !== "inline-cursor") return;
       const src = resolve(cardKey, ctx);
-      if (!src) return;
+      if (!src) {
+        // CREATE branch (mirrors classifyDrop): no marker exists, so build a
+        // fresh atom carrying the card's EXISTING id and insert it at the
+        // drop position. A silent insert — never a confirm.
+        if (opts.createAtom) {
+          const node = buildCreateNode(opts, placement, cardKey, ctx);
+          if (node) insertNewAtom(placement.editor, placement.pos, node, opts.select);
+        }
+        return;
+      }
       const { editor: targetEditor, pos: insertPos } = placement;
       const { editor: sourceEditor, node, from, to } = src;
       if (targetEditor === sourceEditor) {
@@ -112,12 +188,76 @@ export function inlineAtomMoveSpec(opts: InlineAtomMoveOptions): DropSpec {
       // Park a caret at the atom's home in the SOURCE editor before the delete,
       // so that editor's undo `selectionBefore` is on-screen (same #8 rationale
       // as the same-editor path). Selection-only, addToHistory:false.
-      parkCaretBeforeMove(sourceEditor, from);
+      parkCaretBeforeChange(sourceEditor, from);
       const deleteTr = sourceEditor.state.tr.delete(from, to);
       sourceEditor.view.dispatch(deleteTr);
     },
     postDrop: "keep",
   };
+}
+
+/**
+ * Resolve the card's existing id and invoke the opt-in `createAtom` factory
+ * to build a fresh atom node for the TARGET editor's schema. Returns the
+ * built node, or null when no factory is configured, the cardKey has no id,
+ * or the factory declines (e.g. an empty draft citation). Pure (no dispatch)
+ * so `classifyDrop` can use it as a "can this card be created?" probe and
+ * `applyDrop` can reuse the same construction.
+ */
+function buildCreateNode(
+  opts: InlineAtomMoveOptions,
+  placement: Extract<Parameters<DropSpec["applyDrop"]>[0], { kind: "inline-cursor" }>,
+  cardKey: string,
+  ctx: DropCtx,
+): PMNode | null {
+  if (!opts.createAtom) return null;
+  const id = extractId(cardKey);
+  if (!id) return null;
+  return opts.createAtom({ id, schema: placement.editor.schema, cardKey, ctx });
+}
+
+/**
+ * Insert a freshly-built inline atom at `insertPos` (the "anchor the
+ * unanchored" CREATE branch). Unlike the move path there is no source atom
+ * to delete — the card simply had no marker yet — so this is a single insert
+ * transaction. `select` mirrors the move's post-action selection ("node" =
+ * NodeSelection on the new atom; "caret-after" = caret just past it). NEVER
+ * `.scrollIntoView()`, matching the move helper (these atoms are
+ * `selectable:false`).
+ *
+ * Undo-jump guard (backlog #8, create-path analogue): inline atoms are
+ * `selectable:false`, so the grab gesture never rests a selection at the drop
+ * point; at insert time the editor's selection is still the stale pre-gesture
+ * one (often off-screen / doc-top). prosemirror-history captures the insert's
+ * `selectionBefore` from that stale state, so Cmd-Z right after anchoring would
+ * restore it with `scrollIntoView()` → the viewport jumps off-screen. There is
+ * no "original home" for a create (the card had no marker), so the on-screen
+ * target IS the insert pos: park a `TextSelection` caret there FIRST
+ * (`addToHistory:false`), so `selectionBefore` lands where the atom appears and
+ * undo scrolls *there*. (The MOVE path guards the same way via the original
+ * atom home — see `parkCaretBeforeChange`.)
+ */
+function insertNewAtom(
+  editor: Editor,
+  insertPos: number,
+  node: PMNode,
+  select: "node" | "caret-after" = "node",
+): void {
+  // Park a caret at the insert pos so the insert's `selectionBefore` (captured
+  // by prosemirror-history) is on-screen where the atom appears — see jsdoc.
+  parkCaretBeforeChange(editor, insertPos);
+  const tr = editor.state.tr.insert(insertPos, node);
+  try {
+    tr.setSelection(
+      select === "caret-after"
+        ? TextSelection.create(tr.doc, insertPos + node.nodeSize)
+        : NodeSelection.create(tr.doc, insertPos),
+    );
+  } catch {
+    /* position couldn't host the selection — skip silently */
+  }
+  editor.view.dispatch(tr);
+  editor.view.focus();
 }
 
 /**
@@ -134,7 +274,7 @@ export function inlineAtomMoveSpec(opts: InlineAtomMoveOptions): DropSpec {
  * selection is stale (often doc-top). prosemirror-history captures
  * `selectionBefore` from the *pre-move* state, so Cmd-Z would restore that
  * stale doc-top caret with `scrollIntoView()` → the viewport jumps to the top.
- * Before building the move, `parkCaretBeforeMove` rests a `TextSelection` caret
+ * Before building the move, `parkCaretBeforeChange` rests a `TextSelection` caret
  * adjacent to the atom's ORIGINAL location (`addToHistory:false`), so
  * `selectionBefore` lands at the atom's old home (on-screen) and undo scrolls
  * *there*, not to the top.
@@ -149,7 +289,7 @@ function moveInlineAtomWithin(
 ): void {
   // Park a caret at the atom's original home so the move's `selectionBefore`
   // (captured by prosemirror-history) is on-screen — see helper jsdoc.
-  parkCaretBeforeMove(editor, from);
+  parkCaretBeforeChange(editor, from);
   const adjustedInsert = insertPos > to ? insertPos - (to - from) : insertPos;
   const tr = editor.state.tr.delete(from, to);
   tr.insert(adjustedInsert, node);
@@ -167,34 +307,42 @@ function moveInlineAtomWithin(
 }
 
 /**
- * Park a `TextSelection` caret adjacent to `from` (the atom's original
- * location) as a selection-only, `addToHistory:false` transaction, BEFORE the
- * move transaction is built/dispatched. This makes prosemirror-history capture
- * the move's `selectionBefore` here (on-screen, where the atom currently sits)
- * instead of a stale doc-top selection — so Cmd-Z restores a caret at the
- * atom's old home and scrolls *there* rather than jumping the viewport to the
- * top (backlog #8).
+ * Park a `TextSelection` caret adjacent to `pos` as a selection-only,
+ * `addToHistory:false` transaction, BEFORE the structural (move or insert)
+ * transaction is built/dispatched. This makes prosemirror-history capture that
+ * transaction's `selectionBefore` here (on-screen) instead of the stale
+ * pre-gesture selection (often off-screen / doc-top) — so Cmd-Z restores a
+ * caret at `pos` and scrolls *there* rather than jumping the viewport off-screen
+ * (backlog #8).
  *
+ * Both inline-atom paths share this guard, anchoring at the on-screen target:
+ * - MOVE (`moveInlineAtomWithin` / cross-editor): `pos` is the atom's ORIGINAL
+ *   home — where it currently sits before relocating.
+ * - CREATE (`insertNewAtom`, "anchor the unanchored"): there is no original home
+ *   (the card had no marker), so `pos` is the INSERT position — where the new
+ *   atom appears.
+ *
+ * Invariants (identical for both callers):
  * - MUST be a `TextSelection` caret, never a `NodeSelection`: these atoms are
  *   `selectable:false`, and a NodeSelection on one would reintroduce the
  *   ~100px scroll-jump the grab gesture deliberately avoids.
  * - `addToHistory:false` keeps this parking tr out of the undo stack, so one
- *   Cmd-Z still undoes the whole move in a single step.
+ *   Cmd-Z still undoes the whole move/create in a single step.
  * - Positions are untouched (selection-only), so the caller's `from`/`to`/
  *   `insertPos` stay valid against the post-parking state.
  *
- * `TextSelection.near` resolves the nearest valid text position to `from`,
+ * `TextSelection.near` resolves the nearest valid text position to `pos`,
  * tolerating atom boundaries; if no text position exists it no-ops silently.
  */
-function parkCaretBeforeMove(editor: Editor, from: number): void {
+function parkCaretBeforeChange(editor: Editor, pos: number): void {
   try {
     const tr = editor.state.tr;
-    const $from = tr.doc.resolve(Math.min(from, tr.doc.content.size));
-    tr.setSelection(TextSelection.near($from));
+    const $pos = tr.doc.resolve(Math.min(pos, tr.doc.content.size));
+    tr.setSelection(TextSelection.near($pos));
     tr.setMeta("addToHistory", false);
     editor.view.dispatch(tr);
   } catch {
-    /* couldn't resolve a caret near the atom — skip; move still proceeds */
+    /* couldn't resolve a caret near the position — skip; change still proceeds */
   }
 }
 
