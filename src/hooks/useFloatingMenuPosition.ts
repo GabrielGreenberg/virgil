@@ -10,14 +10,31 @@
  * stay in-bounds without each consumer re-deriving its own height math.
  *
  * Scope: the hook owns its own measurement, content-size changes, and
- * window resize. It does NOT subscribe to scroll — repositioning on
- * scroll is consumer-specific (see SelectionActionsMenu's scroll-idle
- * suppression). Consumers that need scroll-tracking pass a new
- * `anchorRect` and the hook reruns.
+ * window resize. By default it does NOT subscribe to scroll — repositioning
+ * on scroll is consumer-specific (see SelectionActionsMenu's scroll-idle
+ * suppression). Consumers that need scroll-tracking either pass a new
+ * `anchorRect` and let the hook rerun, OR opt in to the built-in
+ * `trackAnchor` RAF-coalesced scroll/resize re-anchor (Menu-primitive
+ * graft, design §3.3) which re-reads the anchor on every scroll/resize.
+ *
+ * Two optional capabilities the Menu primitive needs (design §3.3), both
+ * off by default so existing callers are byte-identical:
+ *   - `maxHeight` (boolean): when set, the result `style` carries a
+ *     `maxHeight` clamping the menu to the space available below/above the
+ *     anchor for the chosen placement (minus `margin`), with `overflowY:
+ *     auto`. Lets a tall list scroll instead of overflowing the viewport
+ *     (BibEntryPicker's hand-rolled clamp folds in here).
+ *   - `trackAnchor` (() => DOMRect | AnchorRect | null): when supplied, the
+ *     hook installs a capture-phase scroll + resize listener (RAF-coalesced
+ *     to one re-read per frame) that calls this thunk and re-feeds the
+ *     anchor. The slash caret / bib-picker / tab-plus scroll re-reads unify
+ *     onto this. The thunk is the authority while present; the static
+ *     `anchorRect` is the initial/fallback measurement.
  */
 
 import {
   useCallback,
+  useEffect,
   useLayoutEffect,
   useMemo,
   useRef,
@@ -52,6 +69,22 @@ export interface UseFloatingMenuPositionOptions {
   gap?: number;
   /** Min distance from viewport edges in px. Default 8. */
   margin?: number;
+  /**
+   * Clamp the menu's height to the space available for the chosen placement
+   * (design §3.3). When `true`, the result `style` carries a computed
+   * `maxHeight` + `overflowY: "auto"` so a tall list scrolls instead of
+   * overflowing the viewport. Off by default (existing callers unaffected).
+   */
+  maxHeight?: boolean;
+  /**
+   * RAF-coalesced scroll/resize re-anchor (design §3.3). When supplied, the
+   * hook installs a capture-phase `scroll` + `resize` listener that — at most
+   * once per animation frame — calls this thunk and re-feeds the returned
+   * rect as the live anchor. Used by caret-anchored / scroll-following menus
+   * (slash, bib-picker, tab-plus). The thunk is authoritative while present;
+   * the static `anchorRect` is the initial/fallback. Off by default.
+   */
+  trackAnchor?: () => DOMRect | AnchorRect | null;
 }
 
 export interface UseFloatingMenuPositionResult {
@@ -133,10 +166,40 @@ function clampToViewport(
   };
 }
 
+/**
+ * Space available between the anchor and the relevant viewport edge for a
+ * given placement side — the basis for the optional `maxHeight` clamp. For a
+ * below/above placement that's the gap between the anchor edge and the
+ * viewport bottom/top; for a side placement (left-of / right-of) the menu
+ * spans vertically from the anchor top, so the limit is the space down to the
+ * viewport bottom. All minus `margin`. Returns `Infinity`-free positive px.
+ */
+function availableHeightFor(
+  anchor: AnchorRect,
+  side: FloatingMenuSide,
+  vh: number,
+  gap: number,
+  margin: number,
+): number {
+  if (side === "below") return Math.max(0, vh - margin - (anchor.bottom + gap));
+  if (side === "above") return Math.max(0, anchor.top - gap - margin);
+  // left-of / right-of: the menu's top aligns near the anchor; clamp to the
+  // space from the anchor top down to the bottom margin (the common case —
+  // align "start"/"center" both start at/above the anchor top).
+  return Math.max(0, vh - margin - anchor.top);
+}
+
 export function useFloatingMenuPosition(
   opts: UseFloatingMenuPositionOptions,
 ): UseFloatingMenuPositionResult {
-  const { anchorRect, placements, gap = 6, margin = 8 } = opts;
+  const {
+    anchorRect,
+    placements,
+    gap = 6,
+    margin = 8,
+    maxHeight = false,
+    trackAnchor,
+  } = opts;
 
   // Memoize the anchor by its primitive fields so a fresh DOMRect-shaped
   // literal each render (typical caller pattern) doesn't churn the effects
@@ -176,22 +239,49 @@ export function useFloatingMenuPosition(
   ]);
 
   const [pos, setPos] = useState<Coords | null>(null);
+  // The computed clamp for the chosen placement when `maxHeight` is on; null
+  // when the feature is off or no anchor is resolved yet.
+  const [clampHeight, setClampHeight] = useState<number | null>(null);
   const elRef = useRef<HTMLElement | null>(null);
+
+  // The live anchor used at measure time: the `trackAnchor` thunk's result
+  // (authoritative while supplied + non-null) falls back to the static
+  // `stableAnchor`. Stash the thunk in a ref so the scroll/resize listeners
+  // can call the latest one without re-subscribing.
+  const trackAnchorRef = useRef(trackAnchor);
+  useLayoutEffect(() => {
+    trackAnchorRef.current = trackAnchor;
+  }, [trackAnchor]);
 
   const reposition = useCallback(() => {
     const el = elRef.current;
-    if (!el || !stableAnchor) return;
     if (typeof window === "undefined") return;
+    // Prefer the live tracked anchor (scroll/caret-following menus); fall back
+    // to the static one. Normalize a DOMRect-ish to the AnchorRect shape.
+    const tracked = trackAnchorRef.current?.() ?? null;
+    const anchor: AnchorRect | null = tracked
+      ? {
+          left: tracked.left,
+          top: tracked.top,
+          right: tracked.right,
+          bottom: tracked.bottom,
+          width: tracked.width,
+          height: tracked.height,
+        }
+      : stableAnchor;
+    if (!el || !anchor) return;
     const rect = el.getBoundingClientRect();
     const size: Size = { w: rect.width, h: rect.height };
     const vw = window.innerWidth;
     const vh = window.innerHeight;
 
     let chosen: Coords | null = null;
+    let chosenSide: FloatingMenuSide | null = null;
     for (const placement of placements) {
-      const coords = computeCoords(stableAnchor, size, placement, gap);
+      const coords = computeCoords(anchor, size, placement, gap);
       if (fits(coords, size, vw, vh, margin)) {
         chosen = coords;
+        chosenSide = placement.side;
         break;
       }
     }
@@ -200,14 +290,21 @@ export function useFloatingMenuPosition(
         placements[placements.length - 1] ?? {
           side: "below" as FloatingMenuSide,
         };
-      const coords = computeCoords(stableAnchor, size, last, gap);
+      const coords = computeCoords(anchor, size, last, gap);
       chosen = clampToViewport(coords, size, vw, vh, margin);
+      chosenSide = last.side;
     }
     const next = chosen;
     setPos((prev) =>
       prev && prev.left === next.left && prev.top === next.top ? prev : next,
     );
-  }, [stableAnchor, placements, gap, margin]);
+    if (maxHeight && chosenSide) {
+      const avail = availableHeightFor(anchor, chosenSide, vh, gap, margin);
+      setClampHeight((prev) => (prev === avail ? prev : avail));
+    } else if (clampHeight !== null) {
+      setClampHeight(null);
+    }
+  }, [stableAnchor, placements, gap, margin, maxHeight, clampHeight]);
 
   // Stash the latest reposition fn so the listeners below can call the
   // current implementation without re-subscribing on every change.
@@ -246,8 +343,42 @@ export function useFloatingMenuPosition(
     return () => window.removeEventListener("resize", onResize);
   }, []);
 
+  // Optional scroll/resize re-anchor (design §3.3). Installed ONLY when a
+  // `trackAnchor` thunk is supplied; RAF-coalesced so a burst of scroll
+  // events triggers at most one re-read per frame (keystroke-sanctity: this
+  // is scroll/resize-driven, never on the editor transaction path). The
+  // capture phase catches scrolls in any nested scroll container, not just
+  // the window.
+  const tracking = !!trackAnchor;
+  useEffect(() => {
+    if (!tracking) return;
+    if (typeof window === "undefined") return;
+    let raf = 0;
+    const onScrollOrResize = () => {
+      if (raf) return;
+      raf = window.requestAnimationFrame(() => {
+        raf = 0;
+        repositionRef.current();
+      });
+    };
+    window.addEventListener("scroll", onScrollOrResize, true);
+    window.addEventListener("resize", onScrollOrResize);
+    return () => {
+      if (raf) window.cancelAnimationFrame(raf);
+      window.removeEventListener("scroll", onScrollOrResize, true);
+      window.removeEventListener("resize", onScrollOrResize);
+    };
+  }, [tracking]);
+
   const style: CSSProperties = pos
-    ? { position: "fixed", left: pos.left, top: pos.top }
+    ? {
+        position: "fixed",
+        left: pos.left,
+        top: pos.top,
+        ...(clampHeight !== null
+          ? { maxHeight: clampHeight, overflowY: "auto" as const }
+          : null),
+      }
     : { position: "fixed", left: 0, top: 0, visibility: "hidden" };
 
   return { ref: setRef, style };
