@@ -18,7 +18,6 @@ import { createPortal } from "react-dom";
 import { useEditor, EditorContent, JSONContent } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
 import Placeholder from "@tiptap/extension-placeholder";
-import { Node as PMNode } from "@tiptap/pm/model";
 import {
   TabIndent,
   CARD_STARTER_KIT_CONFIG,
@@ -26,7 +25,7 @@ import {
 } from "@/lib/tiptap-extensions";
 import { normalizeRichContent } from "@/lib/footnote-content";
 import { generateShortId } from "@/lib/uuid";
-import { MIME_CITATION, MIME_NOTE, MIME_FOOTNOTE, MIME_ARCHIVE } from "@/lib/marginalia";
+import { MIME_CITATION, MIME_FOOTNOTE, MIME_ARCHIVE } from "@/lib/marginalia";
 import type { PanelBodyKey } from "@/lib/panel-typography";
 import { usePanelBodyStyle } from "@/hooks/usePanelTypography";
 import { registerDropTarget } from "@/components/drop-mode/target-registry";
@@ -306,42 +305,6 @@ function RichTextFieldImpl({
             });
             const tr = view.state.tr.insert(pos.pos, node);
             view.dispatch(tr);
-          } catch { /* ignore bad data */ }
-          return true;
-        }
-
-        // Note drop — splice the note's body inline at the drop point.
-        const noteData = event.dataTransfer?.getData(MIME_NOTE);
-        if (noteData) {
-          event.preventDefault();
-          try {
-            const { content } = JSON.parse(noteData);
-            if (!content) return true;
-            const coords = { left: event.clientX, top: event.clientY };
-            const posResult = view.posAtCoords(coords);
-            if (!posResult) return true;
-            const inlineJson: JSONContent[] = [];
-            const walk = (n: JSONContent | undefined) => {
-              if (!n) return;
-              if (n.type === "paragraph") {
-                if (inlineJson.length > 0) inlineJson.push({ type: "text", text: " " });
-                (n.content || []).forEach((c) => inlineJson.push(c));
-                return;
-              }
-              if (n.content) n.content.forEach(walk);
-            };
-            walk(content);
-            if (inlineJson.length === 0) return true;
-            const pmNodes = inlineJson
-              .map((j) => {
-                try { return PMNode.fromJSON(view.state.schema, j); }
-                catch { return null; }
-              })
-              .filter(Boolean) as PMNode[];
-            if (pmNodes.length > 0) {
-              const tr = view.state.tr.insert(posResult.pos, pmNodes);
-              view.dispatch(tr);
-            }
           } catch { /* ignore bad data */ }
           return true;
         }

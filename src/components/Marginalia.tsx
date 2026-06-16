@@ -13,11 +13,6 @@ import {
   MARGINALIA_GUTTER_WIDTH_RIGHT,
   MARGINALIA_ICON_SIZE,
   MIME_MARGINALIA_MOVE,
-  MIME_NOTE,
-  MIME_TODO,
-  MIME_ARCHIVE_ANCHOR,
-  MIME_CUT,
-  MIME_REPORT,
   isAnchorDrag,
   type GridCell,
   type MarginaliaMarker,
@@ -267,88 +262,6 @@ export default function Marginalia({ editor, markers, panelSides }: MarginaliaPr
             window.dispatchEvent(
               new CustomEvent("virgil-marginalia-reanchor", {
                 detail: { type, entityId, oldParagraphId: currentParagraphId, newParagraphId: paragraphId },
-              })
-            );
-          }
-        } catch { /* ignore */ }
-        return;
-      }
-
-      // --- Note drop (anchor to paragraph) ---
-      const noteData = e.dataTransfer?.getData(MIME_NOTE);
-      if (noteData) {
-        try {
-          const { noteId } = JSON.parse(noteData);
-          if (noteId) {
-            window.dispatchEvent(
-              new CustomEvent("virgil-note-drop", {
-                detail: { noteId, paragraphId },
-              })
-            );
-          }
-        } catch { /* ignore */ }
-        return;
-      }
-
-      // --- Todo drop (from TodoPanel) ---
-      const todoData = e.dataTransfer?.getData(MIME_TODO);
-      if (todoData) {
-        try {
-          const { todoId } = JSON.parse(todoData);
-          if (todoId) {
-            window.dispatchEvent(
-              new CustomEvent("virgil-todo-drop", {
-                detail: { todoId, paragraphId },
-              })
-            );
-          }
-        } catch { /* ignore */ }
-        return;
-      }
-
-      // --- Cutter card drop (comment or suggestion, from CutterPanel) ---
-      const cutData = e.dataTransfer?.getData(MIME_CUT);
-      if (cutData) {
-        try {
-          const parsed = JSON.parse(cutData);
-          const cardId: string | undefined = parsed.cardId ?? parsed.cutId;
-          if (cardId) {
-            window.dispatchEvent(
-              new CustomEvent("virgil-cut-drop", {
-                detail: { cardId, paragraphId },
-              })
-            );
-          }
-        } catch { /* ignore */ }
-        return;
-      }
-
-      // --- Report card drop (report or report-request, from ReportsPanel) ---
-      const reportData = e.dataTransfer?.getData(MIME_REPORT);
-      if (reportData) {
-        try {
-          const parsed = JSON.parse(reportData);
-          const cardId: string | undefined = parsed.cardId;
-          if (cardId) {
-            window.dispatchEvent(
-              new CustomEvent("virgil-report-drop", {
-                detail: { cardId, paragraphId },
-              })
-            );
-          }
-        } catch { /* ignore */ }
-        return;
-      }
-
-      // --- Archive anchor drop ---
-      const archiveData = e.dataTransfer?.getData(MIME_ARCHIVE_ANCHOR);
-      if (archiveData) {
-        try {
-          const { archiveId, oldParagraphId } = JSON.parse(archiveData);
-          if (archiveId && paragraphId !== oldParagraphId) {
-            window.dispatchEvent(
-              new CustomEvent("virgil-marginalia-reanchor", {
-                detail: { type: "archive", entityId: archiveId, oldParagraphId, newParagraphId: paragraphId },
               })
             );
           }

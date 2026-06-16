@@ -21,16 +21,7 @@ import { cardKindsForPanel, bodyVariantForCardKind } from "@/cards/predicates";
 import { useAnchoredCard } from "@/links/_shared/useAnchoredCard";
 import { cardStore } from "@/links/_shared/anchored-card-store";
 import { normalizeRichContent } from "@/lib/footnote-content";
-import { MIME_CUT } from "@/lib/marginalia";
 import { FieldTitleRow } from "./CutterSuggestionCard";
-
-export function startCutterCommentDrag(e: React.DragEvent, cardId: string) {
-  e.dataTransfer.setData(
-    MIME_CUT,
-    JSON.stringify({ cardId, kind: "comment" }),
-  );
-  e.dataTransfer.effectAllowed = "copy";
-}
 
 export function CutterCommentCard({
   card,
@@ -172,7 +163,6 @@ export function CutterCommentCard({
         }
       }}
       onDelete={() => onDelete(card.id)}
-      onDragStart={(e) => startCutterCommentDrag(e, card.id)}
       aboveBody={excerptBlock}
       footer={
         !compressed ? (

@@ -10,18 +10,9 @@ import { useCompressedLines } from "@/components/editor-layout/contexts/card-dis
 import { useCardTheme } from "@/hooks/usePanelTheme";
 import { usePoppedCards } from "@/hooks/usePoppedCards";
 import { normalizeRichContent } from "@/lib/footnote-content";
-import { MIME_ARCHIVE_ANCHOR } from "@/lib/marginalia";
 import { popKey } from "@/panels/panel-registry";
 import { useAnchoredCard } from "@/links/_shared/useAnchoredCard";
 import { cardStore } from "@/links/_shared/anchored-card-store";
-
-export function startArchiveDrag(e: React.DragEvent, archiveId: string) {
-  e.dataTransfer.setData(
-    MIME_ARCHIVE_ANCHOR,
-    JSON.stringify({ archiveId }),
-  );
-  e.dataTransfer.effectAllowed = "copy";
-}
 
 export function ArchiveCard({
   snippet,

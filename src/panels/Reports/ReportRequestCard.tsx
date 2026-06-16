@@ -16,16 +16,6 @@ import { cardPopKey } from "@/panels/panel-registry";
 import { bodyVariantForCardKind, cardKindsForPanel } from "@/cards/predicates";
 import { useAnchoredCard } from "@/links/_shared/useAnchoredCard";
 import { cardStore } from "@/links/_shared/anchored-card-store";
-import { MIME_REPORT } from "@/lib/marginalia";
-
-/** Top grab bar: anchor-only drag (no inline text insertion). */
-export function startReportRequestDrag(e: React.DragEvent, cardId: string) {
-  e.dataTransfer.setData(
-    MIME_REPORT,
-    JSON.stringify({ cardId, kind: "report-request" }),
-  );
-  e.dataTransfer.effectAllowed = "copy";
-}
 
 export function ReportRequestCard({
   request,

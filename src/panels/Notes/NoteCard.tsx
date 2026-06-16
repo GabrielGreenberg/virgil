@@ -20,18 +20,6 @@ import { canMorphNoteToHighlight } from "@/cards/morphs";
 import { useAnchoredCard } from "@/links/_shared/useAnchoredCard";
 import { cardStore } from "@/links/_shared/anchored-card-store";
 
-/** Top grab bar: anchor-only drag (no inline text insertion).
- *  NOTE: Do NOT set text/plain here — ProseMirror's default drop handler
- *  would insert it as inline text when the Editor's handleDrop returns
- *  false for anchor drags. */
-export function startNoteDrag(e: React.DragEvent, noteId: string) {
-  e.dataTransfer.setData(
-    "application/x-virgil-note",
-    JSON.stringify({ noteId }),
-  );
-  e.dataTransfer.effectAllowed = "copy";
-}
-
 export function NoteCard({
   note,
   selected,
