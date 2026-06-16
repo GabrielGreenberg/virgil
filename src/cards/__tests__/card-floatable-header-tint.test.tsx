@@ -151,6 +151,69 @@ describe("cardFloatable headerTint (registry → Floatable, chip-D chain)", () =
   });
 });
 
+describe("cardFloatable canDrop (registry → Floatable, chip-D drop button)", () => {
+  // `cardFloatable` reads the STATIC per-kind `droppable` facet — the ONE
+  // place the card registry meets the neutral Floatable — so FloatChrome's
+  // drop button stays card-blind (it only sees the resulting boolean + key).
+
+  it("note float: canDrop true (note is a droppable kind) + key is the dropCardKey", () => {
+    const f = CARD_REGISTRY.note.toFloatable(
+      "n1",
+      ctxWith({ notes: [note([modeBLink()])] }),
+    );
+    expect(f).not.toBeNull();
+    expect(CARD_REGISTRY.note.droppable).toBe(true);
+    expect(f!.canDrop).toBe(true);
+    // The canonical float key is what FloatWindow hands FloatChrome as
+    // `dropCardKey` → `beginCardDropGesture`.
+    expect(f!.key).toBe("float:card:note:n1");
+  });
+
+  it("todo float: canDrop mirrors the todo kind's droppable facet", () => {
+    const f = CARD_REGISTRY.todo.toFloatable("t1", ctxWith({ todoItems: [todo] }));
+    expect(f).not.toBeNull();
+    expect(f!.canDrop).toBe(CARD_REGISTRY.todo.droppable);
+    expect(f!.canDrop).toBe(true);
+  });
+
+  it("bib float (bareWindow): canDrop false — bib doesn't anchor to text", () => {
+    const f = CARD_REGISTRY.bib.toFloatable(
+      "smith2020",
+      ctxWith({
+        bibEntries: [
+          { key: "smith2020", type: "article", fields: {}, raw: "" },
+        ],
+        allEditorCitations: [],
+      } as unknown as Partial<CardFloatCtx>),
+    );
+    expect(f).not.toBeNull();
+    expect(f!.bareWindow).toBe(true); // FloatChrome is skipped entirely…
+    expect(CARD_REGISTRY.bib.droppable).toBe(false);
+    expect(f!.canDrop).toBe(false); // …and canDrop is independently false.
+  });
+
+  it("ai float (bareWindow): canDrop false — AI requests are not droppable", () => {
+    const f = CARD_REGISTRY.ai.toFloatable(
+      "req1",
+      ctxWith({
+        aiRequests: [
+          {
+            id: "req1",
+            kind: "note",
+            text: "",
+            status: "open",
+            createdAt: "2026-01-01T00:00:00.000Z",
+          },
+        ],
+      } as unknown as Partial<CardFloatCtx>),
+    );
+    expect(f).not.toBeNull();
+    expect(f!.bareWindow).toBe(true);
+    expect(CARD_REGISTRY.ai.droppable).toBe(false);
+    expect(f!.canDrop).toBe(false);
+  });
+});
+
 describe("note float kind-chevron gate (WS7 — float half of the docked gate)", () => {
   it("Mode-B note: chromeSlots.title carries the CardKindHeader", () => {
     const f = CARD_REGISTRY.note.toFloatable(
