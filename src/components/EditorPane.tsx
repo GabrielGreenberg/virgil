@@ -5420,15 +5420,20 @@ function PaneRailBody({
       <FootnotesHost
         side={side}
         footnotes={footnoteInfos}
-        // Reader has no orphans (no edit). Empty list.
-        orphanedFootnotes={[]}
+        // Orphans (in-text callout deleted, body preserved) live on the
+        // optional `viewPrefs` bundle — the main editable app always supplies
+        // it (same source the OmniHost mount reads). Only the Reader path
+        // (no `viewPrefs`, non-editable) falls back to the empty list + no-op
+        // orphan handlers. Must match the OmniHost wiring above, else orphan
+        // footnote cards never render in the Footnotes panel.
+        orphanedFootnotes={viewPrefs?.orphanedFootnotes ?? []}
         onEdit={onEditFootnote}
         onEditTitle={onEditFootnoteTitle}
         onDelete={onDeleteFootnote}
         onAdd={onAddFootnote}
-        onDeleteOrphan={() => {}}
-        onEditOrphan={() => {}}
-        onEditOrphanTitle={() => {}}
+        onDeleteOrphan={viewPrefs?.onDeleteOrphan ?? (() => {})}
+        onEditOrphan={viewPrefs?.onEditOrphan ?? (() => {})}
+        onEditOrphanTitle={viewPrefs?.onEditOrphanTitle ?? (() => {})}
       />
     );
   }
@@ -5588,7 +5593,10 @@ function PaneRailBody({
     return (
       <SearchHost
         footnotes={footnoteInfos}
-        orphanedFootnotes={[]}
+        // Same orphan source as the Footnotes/Omni mounts — without this the
+        // Search panel can't index orphan-footnote body text (Reader, which
+        // has no `viewPrefs`, correctly searches an empty orphan set).
+        orphanedFootnotes={viewPrefs?.orphanedFootnotes ?? []}
         notes={notesHook.notes}
         citations={citationsHook.citations}
         allEditorCitations={allEditorCitations}
