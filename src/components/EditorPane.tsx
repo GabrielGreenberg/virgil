@@ -1371,6 +1371,15 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
     }),
     [reportsHook.cards, reportsHook.addCardParagraphId, reportsHook.removeCardParagraphId],
   );
+  // Read accessor for the citation drop spec's "anchor the unanchored" create
+  // branch (the F downstream gap, now wired). `commandFor` returns the card's
+  // serialized `\cite{…}` (or null for an empty/keyless draft); the spec reads
+  // it to build the fresh inline atom. `commandFor` is already a stable
+  // callback (it reads `stateRef`), so this memo never churns.
+  const dropCitationsApi = useMemo(
+    () => ({ commandFor: citationsHook.commandFor }),
+    [citationsHook.commandFor],
+  );
 
   // Wire the marginalia gutter drag → reanchor bridge to THIS pane's hook
   // instances. EditorLayout owns a duplicate copy of these hooks, but only
@@ -3322,6 +3331,7 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
               cutterCards={dropCutterApi}
               revisions={dropRevisionsApi}
               reports={dropReportsApi}
+              citations={dropCitationsApi}
               stack={dropStackApi}
             />
           )}

@@ -181,6 +181,30 @@ export function parseCiteCommand(command: string): ParsedCiteCommand | null {
   return parseBiblatexCommand(command);
 }
 
+/**
+ * The single keyless-citation predicate, shared by the THREE sites that must
+ * agree on the "is this citation command anchorable?" invariant
+ * (button-disabled ⇔ spec-declines):
+ *   1. `CitationCard.dropDisabled` — the upstream disabled drop button,
+ *   2. `useCitations.commandFor` — the create-branch command source,
+ *   3. `citationDropSpec.createAtom` — the downstream decline guard.
+ *
+ * Returns the command UNCHANGED when it parses to at least one real citekey
+ * (anchorable → would plant a serializable `\cite{…}`), and `null` for an
+ * empty / keyless draft (`''`, `\cite{}`, a command with no keys) — where
+ * anchoring would plant a `\cite{}` atom that can never serialize. Keeping one
+ * predicate means the button can never enable a drop the spec would silently
+ * decline, and vice-versa.
+ */
+export function citationCommandOrNull(
+  command: string | null | undefined,
+): string | null {
+  if (!command) return null;
+  const parsed = parseCiteCommand(command);
+  if (!parsed || parsed.keys.length === 0) return null;
+  return command;
+}
+
 /** Parse a natbib command string */
 export function parseNatbibCommand(command: string): ParsedCiteCommand | null {
   const m = command.match(NATBIB_HEAD_RE);
