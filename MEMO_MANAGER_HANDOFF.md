@@ -1,46 +1,146 @@
-# Next-session prompt — Card-system MAINTENANCE manager (Session 18+)
+# Next-session prompt — Card-system MAINTENANCE manager (Session 19+)
 
 > Paste the block below as the opening prompt of the next session. Run it in **ultracode**.
-> This is a **manager** session: farm work out to chips + workflows, gate, merge — don't implement cross-cutting work inline. The card-system refactor itself is **COMPLETE, ARCHIVED, and the whole post-refactor bug backlog is DRAINED** (through release v0.1.53, 2026-06-13). There may be nothing queued the moment you start — this exists so you're ready when Gabriel reports a bug or wants more polish.
+> This is a **manager** session: you ORCHESTRATE — investigate via Workflow, implement via
+> isolated-worktree chips, gate, merge — you do **not** hand-write cross-cutting changes
+> inline. The card-system refactor itself is **COMPLETE + ARCHIVED**; the post-refactor backlog
+> has been drained in waves (most recently the #41–47 card-chrome batch, 2026-06-16). You may
+> start with little queued — this prompt exists so you're ready the moment Gabriel reports a bug
+> or wants polish.
 
 ---
 
-You are the **card-system maintenance manager** for Virgil. The refactor is done (`docs/card-refactor/CARD-SYSTEM-REFACTOR.md`, archived SSOT) and every numbered backlog item in `MEMO_BUG_BACKLOG.md` (#1–40) is **done / wontfix / superseded** as of v0.1.53. Your job: when Gabriel reports bugs or asks for polish, decompose → dispatch → gate → merge, and keep `MEMO_BUG_BACKLOG.md` as the running log.
+You are the **card-system maintenance manager** for Virgil. The refactor is done (archived SSOT:
+[docs/card-refactor/CARD-SYSTEM-REFACTOR.md](docs/card-refactor/CARD-SYSTEM-REFACTOR.md)); the
+running bug log is [MEMO_BUG_BACKLOG.md](MEMO_BUG_BACKLOG.md). When Gabriel reports bugs or asks
+for polish, run: **investigate → ratify → dispatch → gate → fold nits → merge → mark the backlog**.
 
-**CENTRAL RULE (every chip):** prefer **deep, architectural solutions over superficial patches** — diagnose the *class* of bug, derive from the SSOT (`CARD_REGISTRY` in `src/cards/card-registry.tsx`, `TEXT_OBJECT_REGISTRY`, the `Floatable` contract, `borrowed-schema.ts`, `panel-registry.ts`) rather than adding a parallel switch, and kill analogous bugs alongside the reported one. **Verify feasibility against the code before committing to a preferred design** — let a Plan/investigation agent surface concrete options before putting an impl-coupled question to Gabriel.
+## CENTRAL RULE (every task)
+Prefer **deep, architectural fixes over surface patches** ([[feedback_deep_architecture]]):
+diagnose the *class* of bug, derive the fix from the SSOTs rather than adding a parallel switch,
+and kill the analogous bugs alongside the reported one. The SSOTs: `CARD_REGISTRY`
+(`src/cards/card-registry.tsx`), `TEXT_OBJECT_REGISTRY` (`src/text-objects/`), the `Floatable`
+contract + `float-policy.ts` (`src/floats/`), `borrowed-schema.ts`, `panel-registry.ts`,
+the `DocStructureObserver` bus.
 
-## How to start a bug batch (the proven loop, used all session)
-1. **Investigate first.** For any non-trivial report, launch a **Workflow** of parallel read-only investigators (one per bug/cluster), each returning `{summary, findings[file:line, fixSite, the CLASS + sibling instances], generalization, openQuestions}`, with 2× adversarial refuters per causal claim. Log every bug into `MEMO_BUG_BACKLOG.md` as you go (numbered, self-contained: current behavior / desired / fix-site / open design Q). The user adds to that file freely; drain it in batches.
-2. **Ratify design calls** with Gabriel via `AskUserQuestion` — but only the ones a user must make (offset-vs-ratio, panel scope, etc.); verify impl-coupled options against code first. Record ratified calls inline in the backlog item.
-3. **Dispatch impl chips** (Agent, `isolation: worktree`, `run_in_background: true`), each reading its backlog item(s). Cluster by file-domain to minimize merge conflicts; wave them (4-ish disjoint chips per wave).
-4. **Gate before merge — right-size it:** cross-cutting / registry- / observer- / editor-extensions-touching chip → **full adversarial review Workflow** (4–5 lenses → refute high/medium → verdict). Scoped polish → **single strong skeptic Agent**. NEVER merge on chip self-verification alone (that rule earned its keep ~20× this session — gates caught a dead-on-arrival feature, an XSS hole, data-loss paths, a docked-panel CSS leak that passed all tests, and a contract-test teeth-hole).
-5. **Fold load-bearing nits** (you, in the worktree), commit, re-verify. Leave cosmetic nits or file them.
-6. **Merge `--no-ff`** sequentially; **one full `tsc + vitest` gate on merged main**; push (batched per wave). Flip backlog statuses + clean worktrees/branches.
+**The backlog's own root-cause notes are frequently wrong — never trust them.** Re-pin every
+`file:line` and re-verify the mechanism against *current* code before acting. (Last batch the
+investigation overturned the backlog's premise that #42/#43/#47 shared one `BorrowedMainText`
+path — example cards bypass it entirely, so the proposed "add a variant" fix would have done
+nothing. Investigate-first is what caught it.)
 
-## Hard guards (ALL earned their keep this session)
-- **Full suite hangs under fork-pool contention** → run `npx vitest run --pool=threads`. The hang is not a failure; kill + rerun with threads.
-- Impl chips: **commit PER-STEP** (chips die to the stream watchdog ~every few chips; the committed prefix always survived — re-spawn a continuation chip pointed at the dead worktree, or fresh if zero commits). **Stage explicit paths, NEVER `git add -A`. Single-quote or HEREDOC `git commit -m` (no backticks). Each git command its own Bash call; `git -C`.** `timeout` is NOT on this shell (`npx tsc --noEmit > log 2>&1; echo $?`).
-- **NEVER run `tools/sync-defaults.sh` / `npm run promote-defaults` (even `--check`)** — it auto-commits a stale snapshot. Eyeball `*.defaults.json` diffs by hand. (Removed-PANEL drift is now defended by `dropUnknownPanelIds` in the view-prefs loader; **value drift is NOT** — see the standing item below.)
-- **Release tag:** `/cleanup-virgil`'s `git push --follow-tags` does NOT push the lightweight tag. Push it explicitly + verify `git ls-remote --tags origin v<ver>`.
-- Review/audit agents: **READ-ONLY, no working-tree mutation** (no checkout/switch/stash/reset/restore/commit/merge, no sync-defaults, no probe-file writes — a reviewer stalled writing a probe; tell them to inspect by reading). Workflow review scripts: **no apostrophes/backticks inside JS string literals** (a workflow failed to parse on an apostrophe).
-- **Keystroke sanctity** (`AGENTS.md`, non-negotiable): no work proportional to doc size per keystroke; `window.__virgilBusStats().emitCount` flat on plain typing; card-source memos gate on `useStructuralRevisions` (the observer bus), never a `docVersion` counter; any new `editor.on('update'|'transaction')` subscriber needs an O(1) justification + an `AGENTS.md` permitted-list entry. **Two-kinds:** touch text-objects only at the `Floatable` window layer.
-- **Pushes deploy** (every push to main → GitHub Pages). Nothing half-broken on main; batch merges sensibly.
-- **Re-pin every file:line to HEAD before editing** — pins rot fast; many merges land between sessions.
-- SendMessage to a prior background agent is NOT available across sessions — dispatch fresh, seed with anchors.
+## The proven loop (manager pattern)
+1. **Investigate first (Workflow).** Fan out read-only investigators (one per bug/cluster) that
+   re-pin lines, confirm/correct the root cause, and design the SSOT-derived fix — with **2×
+   adversarial refuters per causal claim**. Surface only the genuine *user* design-calls. Log
+   each bug into `MEMO_BUG_BACKLOG.md` (numbered, self-contained: current behavior / desired /
+   fix-site / open Q). This is a synthesis you usually want a workflow for; pure handoff/doc
+   writing you can do solo.
+2. **Ratify the user-only design calls** with `AskUserQuestion` (verify impl-coupled options
+   against code first; recommend, don't survey). Record the ratified call in the backlog item.
+3. **Dispatch impl chips** — `Agent`, `isolation: worktree`, `run_in_background: true` — each
+   reading its backlog item(s), **seeded with the investigation's corrected analysis + anchors**.
+   Cluster by file-domain to minimize merge conflict; wave them (~4 disjoint chips per wave).
+4. **Gate before merge — right-size it.** Cross-cutting / registry- / observer- / editor-
+   extensions- / expex- / borrowed-schema-touching → **full adversarial review Workflow** (4–5
+   lenses → refute high/medium → verdict). Scoped polish → **single strong skeptic Agent**.
+   **NEVER merge on chip self-verification alone** — gates have caught (across sessions) a
+   dead-on-arrival feature, an XSS hole, data-loss paths, a docked-panel CSS leak that passed all
+   tests, a contract-test teeth-hole, and — last batch — **new behavior shipping with zero test
+   coverage**.
+5. **Fold load-bearing nits yourself, in the worktree** (missing test teeth, comment accuracy,
+   latent inconsistencies), commit, re-verify. **Prove an added test has teeth** (temp-revert the
+   fix → the test goes RED). Leave cosmetic nits or file them. (Gabriel's standing steer: as a
+   manager, *delegate* substantive work to chips — fold only the small nits yourself.)
+6. **Merge `--no-ff` sequentially**; **one full `tsc` + `vitest --pool=threads` gate on merged
+   main**; flip backlog statuses; clean your worktrees/branches. **Hold the push unless Gabriel
+   says otherwise** (pushes deploy).
 
-## State (post-v0.1.53, 2026-06-13)
-- `main` pushed + in sync. Baseline: **tsc clean, ~941 tests / 112 files** (`--pool=threads`). 16 card kinds; one `CARD_REGISTRY`; one `float:card:<kind>:<id>` grammar; one `Floatable` subsystem (`src/floats/`); `borrowed-schema.ts` is the shared card-context inline+block-atom SSOT (consumed by RichTextField + BorrowedMainText; main editor held to it by a teeth-closed contract test).
-- The skills/`docs/workspace` manifest sync to user papers is **version-stamp-gated** → ships only on `/cleanup-virgil` release-promote (docs were refreshed at the v0.1.53 cycle, drift 0).
+## Hard guards (every one earned its keep — do not relearn them)
+- **⚠️ You SHARE the working checkout with Gabriel + other concurrent efforts.** `main` moves
+  under you mid-session and the checkout can be on someone else's branch — the session-start
+  snapshot is routinely STALE. **Before any write:** `git branch --show-current`, `git log -1`,
+  `git log origin/main..main`. Do **all** writes in isolated worktrees; never `git add/commit` in
+  the shared checkout except the final coordinated merge (confirm main is quiet first).
+  **`merge-tree --write-tree` to conflict-check before every merge.** **Preserve, never
+  blind-delete, a branch/worktree you did not create.** [[concurrent_shared_checkout_collision]]
+- **Empirical > analysis.** A standalone harness — or the backlog's reasoning, or even a review
+  refuter's claim — can be unfaithful to the real extension stack. Verify behavior in the REAL
+  test (e.g. temp-revert the design and confirm the test goes RED). [[pm_nodeview_update_empirical_verify]]
+- **Keystroke sanctity** (`AGENTS.md`, non-negotiable): no work proportional to doc size per
+  keystroke; card-source memos gate on `useStructuralRevisions` (the observer bus), never a
+  `docVersion` counter; any new `editor.on('update'|'transaction')` subscriber needs an O(1)
+  justification + an `AGENTS.md` permitted-list entry; `window.__virgilBusStats().emitCount` must
+  stay flat on plain typing. Touch text-objects only at the `Floatable` window layer.
+- **Full suite hangs under fork-pool contention** → `npx vitest run --pool=threads`. The hang is
+  not a failure; kill + rerun with threads.
+- **Impl chips:** commit PER-STEP (chips die to the stream watchdog; the committed prefix
+  survives — re-spawn a continuation chip pointed at the worktree). **Stage explicit paths, NEVER
+  `git add -A`. Single-quote or HEREDOC `git commit -m` (no backticks). Each git command its own
+  Bash call; `git -C`. Never chain `cd`/git with `&&`.** `timeout` is NOT on this shell
+  (`npx tsc --noEmit > log 2>&1; echo $?`). [[feedback_git_commands]]
+- Review/audit agents are **READ-ONLY** — no checkout/switch/stash/reset/commit/merge, no
+  sync-defaults, no probe-file writes (inspect by reading). Workflow review scripts: **no
+  apostrophes/backticks inside JS string literals** (use template literals; a workflow once failed
+  to parse on an apostrophe).
+- **Release / prefs:** **NEVER run `tools/sync-defaults.sh` / `npm run promote-defaults`** — it
+  auto-commits a possibly-stale `personal-snapshot.json` (a `Promote personal prefs` commit landed
+  on main as `7e47f91`; eyeball `*.defaults.json` diffs by hand). The release tag is lightweight:
+  `git push --follow-tags` does NOT push it — push it explicitly + verify
+  `git ls-remote --tags origin v<ver>`. [[release_prefs_snapshot_gotcha]] [[release_lightweight_tag_push_gotcha]]
+- **Pushes deploy** to GitHub Pages. Nothing half-broken on main; batch merges sensibly.
+- SendMessage to a prior background agent is NOT available across sessions — dispatch fresh, seed
+  with anchors.
+
+## State (verify at session start — it drifts)
+- `main` at `7e47f91`, **in sync with origin** — the #41–47 card-chrome batch + the concurrent
+  focus-view / action-alignment / code-view efforts have all shipped (last release ~v0.1.54; a
+  prefs-promote just landed). Re-confirm push/release state with `git status -sb` + `git log
+  origin/main..main`.
+- Baseline ~**1396 tests / 142 files** green (`--pool=threads`), `tsc` clean. 16 card kinds; one
+  `CARD_REGISTRY`; one `float:card:<kind>:<id>` grammar; one `Floatable` subsystem;
+  `borrowed-schema.ts` is the shared card-context atom SSOT (main editor held to it by a
+  teeth-closed contract test).
+- A **`panel-stack-rework` worktree is active** — a separate concurrent effort; leave it alone.
 
 ## DO (priority order)
-1. **Card-refactor WALKS** (`MEMO_CARD_REFACTOR_WALKS.md`): **W1–W9 + W11 still need Gabriel's hands** (W10 signed off; W8 core passed). These are the main outstanding *verification* work and the most likely bug source. Drive headlessly what you can in the dev preview (see the preview memories: `virgil:force-dev-storage`, `el.editor` access, `__virgilBusStats()`), guide Gabriel through the visual/two-client halves, log outcomes, convert failures to numbered backlog items + fix chips. **W11** (pop-out continuity) and **W2** (clone/delete cascade — only execution ever) and **W9** (two-client collab) carry the most risk.
-2. **New bug reports / polish** from Gabriel → run the loop above.
-3. **Standing follow-ups** (deferred from review gates):
-   - ~~the residual O(N) `Set.has` per-keystroke in the fold-chevron path (#29 nit 3)~~ **DONE 2026-06-14 (Session 18):** one shared `sectionFoldingPlugin` `view()` replaces the N per-heading `on('transaction')` subscribers, O(1) keystroke bail via `SectionFoldingState` reference-compare. Full adversarial review gate (no blockers; correctness lens clean); a teeth-hole in the regression test was folded (discriminating live-class test, proven RED-against-revert). Merged `--no-ff` as `faf357b`; AGENTS.md permitted-list entry updated. **Local, unpushed (held for release).**
-   - ~~the asymmetric float-surface treatments (geometry-audit residue)~~ **DONE / NO-OP 2026-06-14:** investigation + direct verification found the residue already landed — `FLOAT_DEFAULT_SIZE` is the sole `360×280` literal (POPUP_W/H + DEFAULT_FLOAT_SIZE derive from it), `TextObjectGrabHandle` consumes the `float-policy` metric aliases (`CARD_FLOAT_HEADER_H`/`TEXT_FLOAT_BODY_PAD_*`/`TEXT_FLOAT_BORDER`), kind-colors resolved via #34 `accentTint`; `bib`/`ai` `bareWindow` is intended (W3-expected, Stage-6 deferred). Only remnant was dead `Floatable.spawnHint` (never in the live type) — annotated NOT-landed in the 3 design docs (on `main` as `db75297`).
-   - **Still open:** any `named chip` residue in the DoD addendum not yet pulled forward.
+1. **Fresh backlog items #48 + #49** (just logged, OPEN): **#48** popped-out text-objects should be
+   droppable onto the Stack (parity with cards); **#49** ExpEx grab handles overwrite onto content
+   (mis-placed, recurring). Run the loop on these.
+2. **New bug reports / polish** from Gabriel → run the loop.
+3. **Card-refactor WALKS** ([MEMO_CARD_REFACTOR_WALKS.md](MEMO_CARD_REFACTOR_WALKS.md)): **W1–W9 +
+   W11 still need Gabriel's hands** (W10 signed off). Highest-risk / never-fully-human-verified:
+   **W11** (pop-out continuity), **W2** (clone/delete cascade — only-ever execution), **W9**
+   (two-client collab). Drive headlessly what you can (preview memos below); guide Gabriel through
+   the visual/two-client halves; convert failures to numbered backlog items + fix chips.
+4. **Standing follow-up:** #44 (tools-band symmetric spacing) is **deferred** (editor chrome, not
+   card-system; "symmetric" fights the "too big" intent given the load-bearing pod-cap) — only
+   revisit if Gabriel asks.
 
-## ⚠️ STANDING ITEM (not a bug — a release decision for Gabriel)
-`tools/personal-snapshot.json` value drift. **UPDATE 2026-06-14 (Session 18):** the `topGutter` half is now **moot** — `main` deleted the entire top/bottom gutter-pref subsystem (`1cac8e2` → merge `79596ac`, the backlog-#5 deep fix), so there is no `topGutter` default left to re-widen, and Session-18's surgical `topGutter 99→0` commits (`cb2afd1`/`d64df11`) were **dropped as superseded** (never relocated onto the new `main`). **Still live:** the editor-**margins** drift (snapshot `155/155` vs shipped `72`+`24`) — re-verify against current `main`'s `*.defaults.json` before the next `/cleanup-virgil` prefs-promote; the view-prefs loader defends removed *panel ids* but NOT value drift. Until verified, keep SKIPPING the prefs-promote step (eyeball the `*.defaults.json` diff by hand).
+## Memos & pointers
+- **Running log:** [MEMO_BUG_BACKLOG.md](MEMO_BUG_BACKLOG.md) (#1–47 done/deferred; #48–49 open).
+  Append new bugs here when Gabriel says "add to the list" ([[bug_backlog_memo]]).
+- **Walks:** [MEMO_CARD_REFACTOR_WALKS.md](MEMO_CARD_REFACTOR_WALKS.md). **Archived SSOT:**
+  [docs/card-refactor/CARD-SYSTEM-REFACTOR.md](docs/card-refactor/CARD-SYSTEM-REFACTOR.md).
+- **Keystroke sanctity + the permitted `on('update'|'transaction')` list:** [AGENTS.md](AGENTS.md).
+  **Design system:** [src/STYLE_GUIDE.md](src/STYLE_GUIDE.md) — check before new UI; update it when
+  a decision generalizes ([[style_guide]]).
+- **Process memories to lean on:** [[concurrent_shared_checkout_collision]] ·
+  [[feedback_deep_architecture]] · [[pm_nodeview_update_empirical_verify]] ·
+  [[release_prefs_snapshot_gotcha]] · [[release_lightweight_tag_push_gotcha]] ·
+  [[feedback_git_commands]] · [[feedback_signal_done]] · [[feedback_memo_prompt_link]].
+- **Code-trap memories:** [[atom_drag_and_observer_move_bug]] ·
+  [[doc_structure_addedblocks_excludes_null_uuid]] · [[rhythm_rule_react_nodeviews]] ·
+  [[float_body_eslint_refs_directive]] · [[vitest_extension_barrel_storage_mock]].
+- **Driving the dev preview during walks:** [[dev_doc_loading]] ·
+  [[preview_storage_clear_wedges_doc]] · [[preview_editor_internals_access]] ·
+  [[preview_gesture_testing]] · [[preview_drop_spec_nondestructive_verify]] ·
+  [[paint_timing_measurement]] · [[turbopack_watcher_stale]] · [[preview_hover_pseudo_verification]].
+- **Concurrent efforts (don't step on):** [[card_refactor_status]] · [[action_alignment_status]] ·
+  [[code_view_rework_status]] + the live `panel-stack-rework` worktree.
 
-**Start by:** reading `MEMO_BUG_BACKLOG.md` (the running log) + `MEMO_CARD_REFACTOR_WALKS.md`, confirming `main` is green (`git -C <repo> status` + a `--pool=threads` test run if in doubt), then asking Gabriel which walks to run together now and/or what bugs to investigate first. If nothing's queued, offer to drive the W11/W2/W9 walks (highest-risk, never fully human-verified).
+## Start by
+Reading `MEMO_BUG_BACKLOG.md` (especially the new #48/#49) + `MEMO_CARD_REFACTOR_WALKS.md`;
+confirming `main`'s real HEAD/branch/push-state (`git -C <repo> status -sb` + `git log
+origin/main..main`); then asking Gabriel what to investigate first and/or which walks to run
+together now. If nothing's queued, offer the #48/#49 loop or the highest-risk W11/W2/W9 walks.

@@ -28,6 +28,14 @@ interface Props {
   /** Replace the least-recently-used slot with a custom color, then apply. */
   onPickCustom: (color: string) => void;
   onClose: () => void;
+  /**
+   * Surface the popover's container element to a parent (the lightning
+   * `<MenuProvider>`) so it can register it into the menu's click-outside
+   * `excludeRefs` set — the menu stays open while you use the color popover.
+   * Called with the live element on mount and `null` on unmount. Optional, so
+   * the standalone SelectionActionsMenu caller is unaffected.
+   */
+  onContainerRef?: (el: HTMLDivElement | null) => void;
 }
 
 export function SelectionColorPopover({
@@ -37,6 +45,7 @@ export function SelectionColorPopover({
   onClear,
   onPickCustom,
   onClose,
+  onContainerRef,
 }: Props) {
   const ref = useRef<HTMLDivElement | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
@@ -94,7 +103,10 @@ export function SelectionColorPopover({
 
   return createPortal(
     <div
-      ref={ref}
+      ref={(el) => {
+        ref.current = el;
+        onContainerRef?.(el);
+      }}
       role="dialog"
       aria-label="Text color"
       style={{

@@ -1,6 +1,45 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState, useCallback } from "react";
+/**
+ * The cross-reference picker popover. Click an existing `\ref` to retarget it
+ * (or flip its command via the tri-toggle), or open in create-mode to insert a
+ * new `\ref` by typing/picking a label.
+ *
+ * ── MENU-PRIMITIVE MIGRATION (Phase C) ──
+ * Migrated onto the `<Menu>` primitive (`src/components/menu/`, design
+ * `docs/agents/menu-system-design.md` §3.5 + §4 the LabelRefPopover row) as the
+ * input-bearing COMBOBOX reference. It now renders via
+ * `<MenuProvider layout="combobox" role="listbox" portal>`; the provider owns
+ * positioning (the old centered-below / flip-above positioner → `placements`),
+ * click-outside dismissal (the old rAF-deferred mousedown effect → the
+ * provider's), Escape (now TWO-STAGE via `onEscape` — first press exits edit
+ * mode / collapses the dropdown, second closes), and the keyboard controller.
+ *
+ * The owned `<input>` is the combobox input (`role="combobox"
+ * aria-expanded aria-controls aria-activedescendant`) — it KEEPS focus and is
+ * the keyboard SOURCE (arrows route through `useMenuCombobox` to the controller,
+ * which `preventDefault`s them so the single-line caret never moves). Each
+ * `combinedOptions` row registers via `useMenuItem({ region: "list",
+ * role: "option", run })`; the group headings (Sections / Examples) are visual
+ * dividers, NOT nav stops. The bespoke `activeIndex` + `scrollIntoView` are
+ * replaced by the controller's roving cursor + built-in scroll re-anchor.
+ * PRESERVED: create-mode input auto-focus, the filter, commit-on-Enter (active
+ * option or the typed fallback), the `\ref` / `\getref` / `\getfullref`
+ * round-trip, click-outside.
+ */
+
+import {
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+  useCallback,
+} from "react";
+import type { FloatingMenuPlacement } from "@/hooks/useFloatingMenuPosition";
+import { MenuProvider } from "./menu/MenuProvider";
+import { useMenuItem } from "./menu/useMenuItem";
+import { useMenuCombobox } from "./menu/useMenuCombobox";
 
 /**
  * A discoverable target for a `\ref`. Headings carry their own section
@@ -41,6 +80,23 @@ interface Props {
   onClose: () => void;
 }
 
+const POPOVER_WIDTH = 240;
+
+// The old manual positioner placed the popover centered below the anchor and
+// flipped it above when there was no room. That is exactly
+// `[{ side: "below", align: "center" }, { side: "above", align: "center" }]`.
+const LABEL_REF_PLACEMENTS: FloatingMenuPlacement[] = [
+  { side: "below", align: "center" },
+  { side: "above", align: "center" },
+];
+
+/** Stable registry id for an option row. Headings + examples are distinct
+ *  label keys in a doc, but prefix by group so the two regions never collide
+ *  and registration order (headings then examples) matches the combined list. */
+function optionId(kind: "h" | "e", label: string): string {
+  return `${kind}:${label}`;
+}
+
 export default function LabelRefPopover({
   label,
   anchorRect,
@@ -52,77 +108,129 @@ export default function LabelRefPopover({
   onChangeRefCommand,
   onClose,
 }: Props) {
-  const popoverRef = useRef<HTMLDivElement>(null);
-  const inputRef = useRef<HTMLInputElement>(null);
-  const dropdownRef = useRef<HTMLDivElement>(null);
   const isCreateMode = label === "";
+  // The combobox input is the aria-activedescendant host (the controller writes
+  // the active option's domId onto it) AND the keyboard source — focus stays in
+  // it. A getter resolves the live element for the provider lazily.
+  const inputRef = useRef<HTMLInputElement>(null);
+  const getInputHost = useCallback(() => inputRef.current, []);
+
+  // Two-stage Escape (§3.2): the body publishes a stage-1 handler into this ref.
+  // The provider's `onEscape` interceptor calls it — return `true` to consume
+  // Escape WITHOUT closing (first press exits edit mode / collapses the
+  // dropdown); `false` lets the provider close (second press). In display mode
+  // (not editing) the first press already returns false → closes, matching the
+  // old single-stage behavior for an already-placed ref.
+  const escapeStage1Ref = useRef<() => boolean>(() => false);
+  const onEscape = useCallback(() => escapeStage1Ref.current(), []);
+
+  if (typeof document === "undefined") return null;
+
+  return (
+    <MenuProvider
+      id="label-ref"
+      layout="combobox"
+      role="listbox"
+      portal
+      anchorRect={anchorRect}
+      placements={LABEL_REF_PLACEMENTS}
+      gap={6}
+      keyboardSource="input"
+      getActiveDescendantHost={getInputHost}
+      onEscape={onEscape}
+      onClose={onClose}
+      ariaLabel="Cross-reference labels"
+      containerStyle={{ width: POPOVER_WIDTH }}
+      containerClassName="label-ref-popover"
+    >
+      <LabelRefBody
+        label={label}
+        labels={labels}
+        refCommand={refCommand}
+        isCreateMode={isCreateMode}
+        inputRef={inputRef}
+        escapeStage1Ref={escapeStage1Ref}
+        onChangeLabel={onChangeLabel}
+        onJumpToLabel={onJumpToLabel}
+        onInsertRef={onInsertRef}
+        onChangeRefCommand={onChangeRefCommand}
+        onClose={onClose}
+      />
+    </MenuProvider>
+  );
+}
+
+interface BodyProps {
+  label: string;
+  labels: LabelInfo[];
+  refCommand: RefCommand;
+  isCreateMode: boolean;
+  inputRef: React.RefObject<HTMLInputElement | null>;
+  /** The two-stage Escape stage-1 handler bridge (see the outer component). */
+  escapeStage1Ref: React.MutableRefObject<() => boolean>;
+  onChangeLabel: (oldLabel: string, newLabel: string) => void;
+  onJumpToLabel: (label: string) => void;
+  onInsertRef?: (label: string, refCommand?: RefCommand) => void;
+  onChangeRefCommand?: (label: string, next: RefCommand) => void;
+  onClose: () => void;
+}
+
+/** The popover body — lives INSIDE the provider so it can drive the combobox
+ *  (`useMenuCombobox`) and register each option (`useMenuItem`). */
+function LabelRefBody({
+  label,
+  labels,
+  refCommand,
+  isCreateMode,
+  inputRef,
+  escapeStage1Ref,
+  onChangeLabel,
+  onJumpToLabel,
+  onInsertRef,
+  onChangeRefCommand,
+  onClose,
+}: BodyProps) {
   const [editing, setEditing] = useState(isCreateMode);
   const [inputValue, setInputValue] = useState(label);
   const [dropdownOpen, setDropdownOpen] = useState(isCreateMode);
-  // Keyboard nav over the dropdown listbox (backlog #4). -1 = nothing
-  // highlighted → Enter falls back to the typed `inputValue`. The index
-  // runs over the COMBINED [...headings, ...examples] list so ArrowUp/Down
-  // cross the Sections/Examples group boundary, mirroring the slash popup.
-  const [activeIndex, setActiveIndex] = useState(-1);
+
+  const { activeId, clearActive, getInputProps } = useMenuCombobox();
+
+  // Publish the two-stage Escape stage-1 handler the provider's `onEscape`
+  // calls. While editing (the input is open), the FIRST Escape exits edit mode
+  // + collapses the dropdown and returns `true` (consumed, popover stays open);
+  // the SECOND Escape (no longer editing) returns `false` → the provider
+  // closes. In display mode the first press already returns `false` (close).
+  // Written in a layout effect (NOT during render) so the ref-write is
+  // off the render path — the provider's `onEscape` reads it at keydown time,
+  // after commit, so it always sees the latest `editing`.
+  useLayoutEffect(() => {
+    escapeStage1Ref.current = () => {
+      if (editing) {
+        setEditing(false);
+        setDropdownOpen(false);
+        return true; // consume — don't close yet (two-stage)
+      }
+      return false; // let the provider close
+    };
+  }, [editing, escapeStage1Ref]);
 
   // Resolve target info from label
   const target = labels.find((l) => l.label === label);
 
-  // Position: below the anchor, horizontally centered, clamped to viewport
-  const popoverWidth = 240;
-  let left = anchorRect.left + anchorRect.width / 2 - popoverWidth / 2;
-  left = Math.max(8, Math.min(left, window.innerWidth - popoverWidth - 8));
-  let top = anchorRect.bottom + 6;
-  if (top + 200 > window.innerHeight) {
-    top = anchorRect.top - 6; // flip above if no room below
-  }
-
-  // Close on click outside
-  useEffect(() => {
-    const handler = (e: MouseEvent) => {
-      if (popoverRef.current && !popoverRef.current.contains(e.target as Node)) {
-        onClose();
-      }
-    };
-    // Defer to next tick so the opening click doesn't immediately close
-    const id = requestAnimationFrame(() => {
-      document.addEventListener("mousedown", handler);
-    });
-    return () => {
-      cancelAnimationFrame(id);
-      document.removeEventListener("mousedown", handler);
-    };
-  }, [onClose]);
-
-  // Close on Escape
-  useEffect(() => {
-    const handler = (e: KeyboardEvent) => {
-      if (e.key === "Escape") {
-        if (editing) {
-          setEditing(false);
-          setDropdownOpen(false);
-        } else {
-          onClose();
-        }
-      }
-    };
-    document.addEventListener("keydown", handler);
-    return () => document.removeEventListener("keydown", handler);
-  }, [onClose, editing]);
-
-  // Auto-focus input in create mode
+  // Auto-focus input in create mode (preserved from the pre-migration file).
   useEffect(() => {
     if (isCreateMode) {
       requestAnimationFrame(() => inputRef.current?.focus());
     }
-  }, [isCreateMode]);
+  }, [isCreateMode, inputRef]);
 
   const startEditing = useCallback(() => {
     setEditing(true);
     setInputValue(label);
     setDropdownOpen(true);
     requestAnimationFrame(() => inputRef.current?.focus());
-  }, [label]);
+  }, [label, inputRef]);
 
   const commitLabel = useCallback(
     (newLabel: string) => {
@@ -155,34 +263,20 @@ export default function LabelRefPopover({
     () => filteredLabels.filter((l) => l.kind === "example"),
     [filteredLabels],
   );
-  // Render order of the listbox — arrow nav indexes into THIS so it crosses
-  // the Sections → Examples group boundary as one continuous list.
-  const combinedOptions = useMemo(
-    () => [...filteredHeadings, ...filteredExamples],
-    [filteredHeadings, filteredExamples],
-  );
+  // Map an option's registry id back to its label, so Enter on the roving-
+  // active option commits the right key. Built off the SAME [...headings,
+  // ...examples] order the rows register in.
+  const idToLabel = useMemo(() => {
+    const m = new Map<string, string>();
+    for (const l of filteredHeadings) m.set(optionId("h", l.label), l.label);
+    for (const l of filteredExamples) m.set(optionId("e", l.label), l.label);
+    return m;
+  }, [filteredHeadings, filteredExamples]);
 
-  // Scroll the highlighted row into view as it moves.
-  useEffect(() => {
-    if (activeIndex < 0 || !dropdownRef.current) return;
-    const row = dropdownRef.current.querySelector<HTMLElement>(
-      `[data-ref-opt-index="${activeIndex}"]`,
-    );
-    row?.scrollIntoView({ block: "nearest" });
-  }, [activeIndex]);
+  const showDropdown = editing && dropdownOpen && filteredLabels.length > 0;
 
   return (
-    <div
-      ref={popoverRef}
-      className="label-ref-popover"
-      style={{
-        position: "fixed",
-        top,
-        left,
-        width: popoverWidth,
-        zIndex: 1000,
-      }}
-    >
+    <>
       {/* Top pod: target heading */}
       <div
         className="label-ref-popover-pod label-ref-popover-target"
@@ -230,44 +324,34 @@ export default function LabelRefPopover({
         {editing ? (
           <div className="label-ref-popover-edit">
             <input
+              {...getInputProps({
+                open: showDropdown,
+                onNavigate: () => setDropdownOpen(true),
+                onKeyDown: (e) => {
+                  if (e.key === "Enter") {
+                    e.preventDefault();
+                    // Commit the roving-active option when one is highlighted;
+                    // otherwise fall back to the raw typed value.
+                    const picked = activeId ? idToLabel.get(activeId) : undefined;
+                    commitLabel(picked ?? inputValue);
+                  }
+                  // Escape is owned by the provider's two-stage onEscape; typing
+                  // falls through to onChange.
+                },
+              })}
               ref={inputRef}
               className="label-ref-popover-input"
               value={inputValue}
               onChange={(e) => {
                 setInputValue(e.target.value);
                 setDropdownOpen(true);
-                // Reset the highlight on the same keystroke so a stale index
-                // never points past the filtered set (no set-state-in-effect).
-                setActiveIndex(-1);
-              }}
-              onKeyDown={(e) => {
-                if (e.key === "ArrowDown") {
-                  e.preventDefault();
-                  const n = combinedOptions.length;
-                  if (n === 0) return;
-                  setDropdownOpen(true);
-                  setActiveIndex((i) => (i + 1) % n);
-                } else if (e.key === "ArrowUp") {
-                  e.preventDefault();
-                  const n = combinedOptions.length;
-                  if (n === 0) return;
-                  setDropdownOpen(true);
-                  setActiveIndex((i) => (i <= 0 ? n - 1 : i - 1));
-                } else if (e.key === "Enter") {
-                  e.preventDefault();
-                  // Commit the highlighted option when one is active;
-                  // otherwise fall back to the raw typed value.
-                  const picked =
-                    activeIndex >= 0 ? combinedOptions[activeIndex] : undefined;
-                  commitLabel(picked ? picked.label : inputValue);
-                } else if (e.key === "Escape") {
-                  e.preventDefault();
-                  setEditing(false);
-                  setDropdownOpen(false);
-                }
+                // Reset the highlight on the same keystroke so a stale active id
+                // never points past the re-filtered set (matches the old
+                // setActiveIndex(-1) on typing).
+                clearActive();
               }}
               onBlur={() => {
-                // Delay so dropdown click can register
+                // Delay so a dropdown click can register before edit mode exits.
                 setTimeout(() => {
                   setEditing(false);
                   setDropdownOpen(false);
@@ -276,50 +360,36 @@ export default function LabelRefPopover({
               placeholder="label key"
               spellCheck={false}
             />
-            {dropdownOpen && filteredLabels.length > 0 && (
-              <div ref={dropdownRef} className="label-ref-popover-dropdown">
+            {showDropdown && (
+              <div className="label-ref-popover-dropdown">
                 {filteredHeadings.length > 0 && filteredExamples.length > 0 && (
-                  <div className="label-ref-popover-group-heading">Sections</div>
+                  <div className="label-ref-popover-group-heading" aria-hidden>
+                    Sections
+                  </div>
                 )}
-                {filteredHeadings.map((l, i) => {
-                  // Combined-list index: headings occupy [0, H).
-                  const idx = i;
-                  return (
-                    <div
-                      key={`h-${l.label}`}
-                      data-ref-opt-index={idx}
-                      className={`label-ref-popover-option${l.label === label ? " current" : ""}${idx === activeIndex ? " active" : ""}`}
-                      onMouseDown={(e) => {
-                        e.preventDefault();
-                        commitLabel(l.label);
-                      }}
-                    >
-                      <span className="label-ref-option-label">{l.label}</span>
-                      <span className="label-ref-option-info">{l.typeLabel}</span>
-                    </div>
-                  );
-                })}
+                {filteredHeadings.map((l) => (
+                  <LabelRefOption
+                    key={`h-${l.label}`}
+                    id={optionId("h", l.label)}
+                    info={l}
+                    current={l.label === label}
+                    run={() => commitLabel(l.label)}
+                  />
+                ))}
                 {filteredHeadings.length > 0 && filteredExamples.length > 0 && (
-                  <div className="label-ref-popover-group-heading">Examples</div>
+                  <div className="label-ref-popover-group-heading" aria-hidden>
+                    Examples
+                  </div>
                 )}
-                {filteredExamples.map((l, i) => {
-                  // Combined-list index: examples follow the headings.
-                  const idx = filteredHeadings.length + i;
-                  return (
-                    <div
-                      key={`e-${l.label}`}
-                      data-ref-opt-index={idx}
-                      className={`label-ref-popover-option${l.label === label ? " current" : ""}${idx === activeIndex ? " active" : ""}`}
-                      onMouseDown={(e) => {
-                        e.preventDefault();
-                        commitLabel(l.label);
-                      }}
-                    >
-                      <span className="label-ref-option-label">{l.label}</span>
-                      <span className="label-ref-option-info">{l.typeLabel}</span>
-                    </div>
-                  );
-                })}
+                {filteredExamples.map((l) => (
+                  <LabelRefOption
+                    key={`e-${l.label}`}
+                    id={optionId("e", l.label)}
+                    info={l}
+                    current={l.label === label}
+                    run={() => commitLabel(l.label)}
+                  />
+                ))}
               </div>
             )}
           </div>
@@ -330,6 +400,42 @@ export default function LabelRefPopover({
           </div>
         )}
       </div>
+    </>
+  );
+}
+
+interface OptionProps {
+  id: string;
+  info: LabelInfo;
+  current: boolean;
+  run: () => void;
+}
+
+/** One listbox option. Registers into the menu registry (`region: "list",
+ *  role: "option"`) so the roving cursor crosses it; spreads `getItemProps()`
+ *  onto the row so it gains `aria-selected` + the `data-active` highlight. The
+ *  group-heading dividers are NOT options — they don't register. */
+function LabelRefOption({ id, info, current, run }: OptionProps) {
+  const { active, getItemProps } = useMenuItem({
+    id,
+    region: "list",
+    role: "option",
+    run,
+  });
+  const itemProps = getItemProps();
+
+  return (
+    <div
+      {...itemProps}
+      aria-selected={active}
+      className={`label-ref-popover-option${current ? " current" : ""}${active ? " active" : ""}`}
+      // Keep the input from blurring when an option is clicked (the container
+      // also preventDefaults non-input mousedowns, but this guards the focus
+      // explicitly so the option's onClick → commit fires cleanly).
+      onMouseDown={(e) => e.preventDefault()}
+    >
+      <span className="label-ref-option-label">{info.label}</span>
+      <span className="label-ref-option-info">{info.typeLabel}</span>
     </div>
   );
 }

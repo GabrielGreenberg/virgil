@@ -1,21 +1,42 @@
 "use client";
 
 /**
- * The expanded action menu — formatting grid + 9-row action list.
- * Mounted by its trigger, the gutter button in
- * {@link SelectionActionsMenu}. When this component is mounted, the
- * menu is open; the caller unmounts it to close.
+ * The expanded action menu — formatting grid + 11-row action list (the
+ * "lightning" panel behind the gutter bolt + Cmd-/). Mounted by its trigger,
+ * the gutter button in {@link SelectionActionsMenu}. When this component is
+ * mounted, the menu is open; the caller unmounts it to close.
  *
- * Owns:
- *  - Letter-key shortcuts (H/N/F/C/Q/T/E/X/A) + Escape.
- *  - Click-outside dismissal.
- *  - Color-palette state (persisted to localStorage) + the popover.
+ * ── MENU-PRIMITIVE MIGRATION (Phase B2) ──
+ * This is the COMPOSITE reference for the `<Menu>` primitive
+ * (`src/components/menu/`, design `docs/agents/menu-system-design.md`). It now
+ * renders via `<MenuProvider layout="composite" role="menu" portal
+ * id="lightning">` with a `<MenuGrid cols={4}>` of the bespoke format-grid
+ * cells ABOVE a `<MenuList>` rendering the card actions via
+ * `<MenuItemsFromRegistry>`. The provider owns positioning
+ * (`useFloatingMenuPosition`), the deferred click-outside dismissal, the Escape
+ * handler (with the load-bearing `stopPropagation` that keeps Escape from
+ * reaching tab-indent.ts's Escape→blur), and the keyboard controller.
+ *
+ * The grid GAINS Up/Down/Left/Right arrow nav (it had none); the card list
+ * keeps its letter fast-path (H/N/F/C/T/E/X/R/D/A); the cross-region edge
+ * (Down off the last grid row → the card list, Up off the list top → the grid's
+ * remembered column) is automatic from the primitive (`layout="composite"`).
+ * Behavior is otherwise identical to before the migration.
+ *
+ * Still owns (the per-open state the primitive doesn't subsume):
+ *  - Color-palette state (persisted to localStorage) + the child color popover.
  *  - The formatting helpers (math wrap, example wrap, color apply).
  *  - The action dispatch into `useDragHandleMenu().dispatch`.
+ *
+ * The child color popover + the nested `BlockTypeDropdown` stay bespoke (Phase C
+ * migrates them). The color popover portals to `document.body` separately, so it
+ * is registered into the provider's `excludeRefs` (a real element ref, NOT the
+ * old `querySelector('div[aria-label="Text color"]')` string) so a click into it
+ * doesn't dismiss the lightning panel. The BlockTypeDropdown renders in-tree
+ * (a DOM descendant of the menu container), so it needs no exclusion.
  */
 
-import { useEffect, useRef, useState } from "react";
-import { createPortal } from "react-dom";
+import { useRef, useState } from "react";
 import type { Editor } from "@tiptap/react";
 import { useDragHandleMenu } from "./editor-layout/card-actions/drag-handle-menu-context";
 import type { DragHandleAction } from "./DragHandleMenu";
@@ -31,10 +52,14 @@ import { BlockTypeDropdown } from "./MenuBar";
 import { IconExample } from "./editor-layout/panel-icons";
 import { insertTexBlock } from "@/lib/tiptap/tex-block";
 import { SelectionColorPopover } from "./SelectionColorPopover";
+import { type FloatingMenuPlacement } from "@/hooks/useFloatingMenuPosition";
+import { MenuProvider } from "./menu/MenuProvider";
+import { MenuGrid, MenuList } from "./menu/regions";
 import {
-  useFloatingMenuPosition,
-  type FloatingMenuPlacement,
-} from "@/hooks/useFloatingMenuPosition";
+  MenuItemsFromRegistry,
+  type DecoratedMenuRow,
+} from "./menu/MenuItemsFromRegistry";
+import { useMenuItem } from "./menu/useMenuItem";
 
 const COLOR_PALETTE_KEY = "virgil:selection-menu-color-palette";
 const DEFAULT_PALETTE = [
@@ -78,8 +103,8 @@ export const extractInlineJSON = extractInlineFromSlice;
 
 const MENU_W = 170;
 const MENU_PAD_Y = 6;
-const ITEM_H = 28;
 const FORMATTING_ROW_H = 34;
+const GRID_COLS = 4;
 
 // CHIP 3: the lightning-bolt action list renders the CARD rows straight off
 // the registry (the SSOT) — replacing the deleted `MENU_ENTRIES` array. The
@@ -116,6 +141,18 @@ const PANEL_PLACEMENTS: FloatingMenuPlacement[] = [
   { side: "above", align: "start" },
 ];
 
+/** The PM view's focused contentEditable holds the caret while the menu is
+ *  open (the menu never steals focus — roving aria-activedescendant only). Use
+ *  it as the activedescendant host so a screen reader tracks the active item
+ *  without the caret moving; fall back to null (the provider then no-ops the
+ *  attribute write) if focus isn't on an editable element. */
+function getActiveDescendantHost(): HTMLElement | null {
+  if (typeof document === "undefined") return null;
+  const el = document.activeElement;
+  if (el instanceof HTMLElement && el.isContentEditable) return el;
+  return null;
+}
+
 export function ActionsMenuPanel({
   editor,
   paragraphUuid,
@@ -133,16 +170,6 @@ export function ActionsMenuPanel({
   // ctx the grid builds + the card-row grey-out below. `true` for a non-collab
   // doc (editor always editable) → no over-gating.
   const canEdit = editor.isEditable;
-  const menuRef = useRef<HTMLDivElement | null>(null);
-  const { ref: positionRef, style: positionStyle } = useFloatingMenuPosition({
-    anchorRect: triggerRect,
-    placements: PANEL_PLACEMENTS,
-    gap: 4,
-  });
-  const setMenuRef = (el: HTMLDivElement | null) => {
-    menuRef.current = el;
-    positionRef(el);
-  };
 
   // Color palette state (MRU-first, 7 slots).
   const [palette, setPalette] = useState<string[]>(() => loadPalette());
@@ -163,6 +190,13 @@ export function ActionsMenuPanel({
     persistPalette(next.slice(0, 7));
   };
   const [colorPopoverAnchor, setColorPopoverAnchor] = useState<DOMRect | null>(null);
+  // The spawned color popover's live container element — registered into the
+  // provider's click-outside exclude set so the lightning panel does NOT close
+  // when a click lands in the color popover (it portals to document.body, so
+  // it's not a DOM descendant of the menu container). This is the REAL ref that
+  // replaces the brittle `querySelector('div[aria-label="Text color"]')` the
+  // pre-migration click-outside effect used (design §3.2 / R8).
+  const [colorPopoverEl, setColorPopoverEl] = useState<HTMLElement | null>(null);
   // Stash the selection range so the color popover can re-apply it after
   // the native color picker steals focus.
   const stashedRangeRef = useRef<{ from: number; to: number } | null>(null);
@@ -325,58 +359,6 @@ export function ActionsMenuPanel({
     stashedRangeRef.current = null;
   };
 
-  // Letter-key shortcuts. Escape closes the panel. Capture-phase +
-  // preventDefault + stopPropagation keeps the letter from also typing
-  // into the prose if focus is in the editor.
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") {
-        e.preventDefault();
-        // Keep Esc from also reaching tab-indent.ts's Escape→blur handler, so
-        // closing the menu doesn't drop the editor's cursor/selection. This
-        // capture-phase listener runs before the editor's PM keydown handler.
-        e.stopPropagation();
-        onClose();
-        return;
-      }
-      if (e.metaKey || e.ctrlKey || e.altKey) return;
-      if (e.key.length !== 1) return;
-      const letter = e.key.toUpperCase();
-      const hit = LIGHTNING_CARD_ROWS.find((m) => m.letter === letter);
-      if (!hit) return;
-      e.preventDefault();
-      e.stopPropagation();
-      if (hit.id === "highlight" && mode === "cursor") return;
-      runAction(hit.id as DragHandleAction);
-    };
-    window.addEventListener("keydown", onKey, true);
-    return () => window.removeEventListener("keydown", onKey, true);
-    // runAction reads props/refs at call time.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [mode]);
-
-  // Click-outside dismissal. Deferred one tick so the mousedown that
-  // opened the panel (the trigger button click) doesn't immediately close
-  // it. The color popover handles its own dismissal.
-  useEffect(() => {
-    const onMouseDown = (e: MouseEvent) => {
-      const target = e.target as Node | null;
-      if (!target) return;
-      if (menuRef.current?.contains(target)) return;
-      const colorPopover = document.querySelector('div[aria-label="Text color"]');
-      if (colorPopover?.contains(target)) return;
-      onClose();
-    };
-    const t = window.setTimeout(() => {
-      window.addEventListener("mousedown", onMouseDown, true);
-    }, 0);
-    return () => {
-      window.clearTimeout(t);
-      window.removeEventListener("mousedown", onMouseDown, true);
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
   if (typeof document === "undefined") return null;
 
   const isActive = (name: string, attrs?: Record<string, unknown>) =>
@@ -405,316 +387,312 @@ export function ActionsMenuPanel({
       canEdit,
     } as ActionContext) === "disabled";
 
-  const menuPortal = createPortal(
-    <div
-      ref={setMenuRef}
-      role="menu"
-      aria-label="Selection actions"
-      className="selection-actions-menu"
-      style={{
-        ...positionStyle,
-        width: MENU_W,
-        zIndex: 2000,
-        background: "var(--pod-editor)",
-        border: "var(--pod-border)",
-        boxShadow: "var(--pod-shadow)",
-        borderRadius: "var(--pod-radius)",
-        padding: `${MENU_PAD_Y}px 0`,
-      }}
-      onMouseDown={(e) => e.preventDefault()}
-    >
-      {/* ── Formatting icon grid (4 cols × 4 rows) ─────────────── */}
-      <div
-        style={{
-          display: "grid",
-          gridTemplateColumns: "repeat(4, 1fr)",
-          gap: 2,
-          padding: "0 4px",
-        }}
-      >
-        <FmtBtn
-          title="Bold (⌘B)"
-          active={isActive("bold")}
-          disabled={!canEdit}
-          onClick={() => runGridAction("bold")}
-        >
-          <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
-            <path d="M4 2.5h4.5c1.93 0 3 1.07 3 2.5 0 1.05-.55 1.8-1.4 2.15C11.25 7.5 12 8.4 12 9.5c0 1.6-1.2 2.75-3.25 2.75H4V2.5zm2 1.5v2.75h2.25c.97 0 1.5-.5 1.5-1.38 0-.87-.53-1.37-1.5-1.37H6zm0 4.25V10.75h2.5c1.05 0 1.6-.53 1.6-1.5 0-.93-.6-1.5-1.6-1.5H6z" />
-          </svg>
-        </FmtBtn>
-        <FmtBtn
-          title="Italic (⌘I)"
-          active={isActive("italic")}
-          disabled={!canEdit}
-          onClick={() => runGridAction("italic")}
-        >
-          <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round">
-            <path d="M6.5 2.5h5M4.5 13.5h5M9.5 2.5L6.5 13.5" />
-          </svg>
-        </FmtBtn>
-        <FmtBtn
-          title="Strikethrough"
-          active={isActive("strike")}
-          disabled={!canEdit}
-          onClick={() => runGridAction("strike")}
-        >
-          <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round">
-            <line x1="2.5" y1="8" x2="13.5" y2="8" />
-            <path d="M11 4.5c-.5-1.2-1.7-2-3-2-1.8 0-3 1-3 2.4 0 1 .6 1.7 1.6 2.1M5 11.5c.5 1.2 1.7 2 3 2 1.8 0 3-1 3-2.4 0-.6-.2-1.1-.6-1.5" />
-          </svg>
-        </FmtBtn>
-        <FmtBtn
-          title="Inline code"
-          active={isActive("code")}
-          disabled={!canEdit}
-          onClick={() => runGridAction("code")}
-        >
-          <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round">
-            <polyline points="5,4 1.5,8 5,12" />
-            <polyline points="11,4 14.5,8 11,12" />
-          </svg>
-        </FmtBtn>
-
-        <div
-          className="flex items-center justify-center"
-          style={{ height: FORMATTING_ROW_H }}
-        >
-          <BlockTypeDropdown editor={editor} />
-        </div>
-        <FmtBtn
-          title="Bullet list"
-          active={isActive("bulletList")}
-          disabled={wrappersDisabled}
-          onClick={() => runGridAction("bullet-list")}
-        >
-          <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round">
-            <circle cx="3.5" cy="4" r="1.2" fill="currentColor" stroke="none" />
-            <circle cx="3.5" cy="8" r="1.2" fill="currentColor" stroke="none" />
-            <circle cx="3.5" cy="12" r="1.2" fill="currentColor" stroke="none" />
-            <line x1="6.5" y1="4" x2="13" y2="4" />
-            <line x1="6.5" y1="8" x2="13" y2="8" />
-            <line x1="6.5" y1="12" x2="13" y2="12" />
-          </svg>
-        </FmtBtn>
-        <FmtBtn
-          title="Numbered list"
-          active={isActive("orderedList")}
-          disabled={wrappersDisabled}
-          onClick={() => runGridAction("ordered-list")}
-        >
-          <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor" stroke="none">
-            <text x="2" y="5.5" fontSize="5" fontWeight="600" fontFamily="sans-serif">1</text>
-            <text x="2" y="9.5" fontSize="5" fontWeight="600" fontFamily="sans-serif">2</text>
-            <text x="2" y="13.5" fontSize="5" fontWeight="600" fontFamily="sans-serif">3</text>
-            <line x1="6.5" y1="4" x2="13" y2="4" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" />
-            <line x1="6.5" y1="8" x2="13" y2="8" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" />
-            <line x1="6.5" y1="12" x2="13" y2="12" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" />
-          </svg>
-        </FmtBtn>
-        <FmtBtn
-          title="Blockquote"
-          active={isActive("blockquote")}
-          disabled={wrappersDisabled}
-          onClick={() => runGridAction("blockquote")}
-        >
-          <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor" stroke="none">
-            <path d="M3 3.5C3 5.5 4 7 5.5 7.5L4.5 9C3 8.5 1.5 6.8 1.5 4.2c0-2 1.2-3.2 2.8-3.2 1.3 0 2.2.9 2.2 2.1S5.5 5.2 4.2 5.2c-.4 0-.8-.1-1.2-.3v-1.4zm7 0C10 5.5 11 7 12.5 7.5L11.5 9C10 8.5 8.5 6.8 8.5 4.2c0-2 1.2-3.2 2.8-3.2 1.3 0 2.2.9 2.2 2.1s-1 2.1-2.3 2.1c-.4 0-.8-.1-1.2-.3v-1.4z" transform="translate(0, 3)" />
-          </svg>
-        </FmtBtn>
-
-        <FmtBtn
-          title="Wrap selection in example block"
-          disabled={!canEdit}
-          onClick={() => wrapSelectionInExample()}
-        >
-          <IconExample size={16} />
-        </FmtBtn>
-        <FmtBtn
-          title="Wrap selection in inline math"
-          disabled={!canEdit}
-          onClick={() => runGridAction("inline-math")}
-        >
-          <span style={{ fontFamily: "var(--font-serif, serif)", fontSize: 13 }}>
-            $x$
-          </span>
-        </FmtBtn>
-        <FmtBtn
-          title="Wrap selection in display math"
-          disabled={!canEdit}
-          onClick={() => runGridAction("display-math")}
-        >
-          <span style={{ fontFamily: "var(--font-serif, serif)", fontSize: 13, letterSpacing: -0.5 }}>
-            $$
-          </span>
-        </FmtBtn>
-        <button
-          type="button"
-          data-hint="Text color"
-          disabled={!canEdit}
-          onClick={
-            canEdit
-              ? (e) =>
-                  runGridAction("text-color", {
-                    anchorRect: e.currentTarget.getBoundingClientRect(),
-                  })
-              : undefined
-          }
-          className={`flex flex-col items-center justify-center rounded transition-colors ${canEdit ? "hover-on-light" : ""}`}
-          style={{
-            height: FORMATTING_ROW_H,
-            background: "transparent",
-            color: "var(--ink-strong)",
-            border: "none",
-            cursor: canEdit ? "pointer" : "not-allowed",
-            opacity: canEdit ? 1 : 0.4,
-            padding: 0,
-            lineHeight: 1,
-          }} aria-label="Text color"
-        >
-          <span style={{ fontFamily: "var(--font-serif, serif)", fontWeight: 600, fontSize: 14 }}>
-            A
-          </span>
-          <span
-            aria-hidden
-            style={{
-              display: "block",
-              width: 14,
-              height: 3,
-              marginTop: 1,
-              background: lastAppliedColor,
-              borderRadius: 1,
-            }}
-          />
-        </button>
-
-        <FmtBtn
-          title="Insert raw LaTeX block"
-          disabled={!canEdit}
-          onClick={() => insertTexBlock(editor)}
-        >
-          <span style={{ fontFamily: "var(--font-mono), monospace", fontSize: 11 }}>
-            \tex
-          </span>
-        </FmtBtn>
-        <FmtBtn
-          title="Insert figure block"
-          disabled={!canEdit}
-          onClick={() => runGridAction("figure")}
-        >
-          <span style={{ fontFamily: "var(--font-serif, serif)", fontStyle: "italic", fontSize: 12 }}>
-            fig.
-          </span>
-        </FmtBtn>
-        <FmtBtn
-          title="Insert image"
-          disabled={!canEdit}
-          onClick={() => runGridAction("graphics")}
-        >
-          <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.25" strokeLinejoin="round">
-            <rect x="1.5" y="2.5" width="13" height="11" rx="1" />
-            <circle cx="11" cy="6" r="1.25" fill="currentColor" stroke="none" />
-            <path d="M2.5 12.5 L6 9 L9 11 L11 9.5 L13.5 12" />
-          </svg>
-        </FmtBtn>
-        {/* CHIP 7a: the NEW 'Cross-ref' cell — the lightning surface for `\ref`.
-            Routes through `runGridAction("ref")` → the registry's `refRun` →
-            `ctx.openRefPopover()`, opening the LabelRef create-mode popover at
-            the caret (the SAME `run()` the slash `\ref` reaches). */}
-        <FmtBtn
-          title="Insert cross-reference (\ref)"
-          disabled={!canEdit}
-          onClick={() => runGridAction("ref")}
-        >
-          <span style={{ fontFamily: "var(--font-mono), monospace", fontSize: 11 }}>
-            \ref
-          </span>
-        </FmtBtn>
-      </div>
-
-      <div
-        aria-hidden
-        style={{
-          height: 1,
-          margin: "6px 8px",
-          background: "var(--edge-hover)",
-          opacity: 0.5,
-        }}
-      />
-
-      {LIGHTNING_CARD_ROWS.map((entry) => {
-        // CHIP 7b: the card-row grey-out now runs through the row's OWN
-        // `applies()` (the DA-5 taxonomy + the uniform collab gate), replacing
-        // the hand-rolled `mode === "cursor" && highlight` special-case. The ref
-        // mirrors the action's actual state: cursor mode → a collapsed-caret
-        // `cursor` ref (no live range, so `highlight` — selection-`"required"` —
-        // greys); selection mode → the live range. `canEdit` greys EVERY row when
-        // the partner holds the pen.
-        const applyRef =
-          mode === "cursor"
-            ? { kind: "cursor" as const, pos: range.from, paragraphId: paragraphUuid }
-            : {
-                kind: "selection" as const,
-                from: range.from,
-                to: range.to,
-                paragraphId: paragraphUuid,
-              };
-        const disabled =
-          entry.applies({
-            ref: applyRef,
-            canEdit,
-          } as ActionContext) === "disabled";
-        return (
-          <div key={entry.id}>
-            {entry.separator && (
-              <div
-                aria-hidden
-                style={{
-                  height: 1,
-                  margin: "4px 8px",
-                  background: "var(--edge-hover)",
-                  opacity: 0.5,
-                }}
-              />
-            )}
-            <button
-              type="button"
-              role="menuitem"
-              disabled={disabled}
-              onClick={() => {
-                if (disabled) return;
-                runAction(entry.id as DragHandleAction);
-              }}
-              className={`w-full flex items-center gap-2 px-2.5 text-left ${disabled ? "" : "hover-on-light"}`}
-              style={{
-                height: ITEM_H,
-                fontSize: 13,
-                color: entry.destructive ? "var(--danger, #b45757)" : "var(--ink-strong)",
-                background: "transparent",
-                opacity: disabled ? 0.4 : 1,
-                cursor: disabled ? "not-allowed" : "pointer",
-              }}
-            >
-              <span
-                className="shrink-0 flex items-center justify-center"
-                style={{ width: 16, height: 16 }}
-              >
-                {entry.icon}
-              </span>
-              <span className="flex-1">{entry.label}</span>
-              <span className="tabular-nums" style={{ fontSize: 11, color: "var(--ink-subtle)" }}>
-                {entry.letter}
-              </span>
-            </button>
-          </div>
-        );
-      })}
-    </div>,
-    document.body,
-  );
+  // The 11 card-action rows, decorated with their per-open disabled state, fed
+  // to `<MenuItemsFromRegistry>` (the same mapper the grab menu uses). CHIP 7b:
+  // the card-row grey-out runs through the row's OWN `applies()` (the DA-5
+  // taxonomy + the uniform collab gate). The ref mirrors the action's actual
+  // state: cursor mode → a collapsed-caret `cursor` ref (no live range, so
+  // `highlight` — selection-`"required"` — greys); selection mode → the live
+  // range. `canEdit` greys EVERY row when the partner holds the pen.
+  const cardRows: DecoratedMenuRow[] = LIGHTNING_CARD_ROWS.map((entry) => {
+    const applyRef =
+      mode === "cursor"
+        ? { kind: "cursor" as const, pos: range.from, paragraphId: paragraphUuid }
+        : {
+            kind: "selection" as const,
+            from: range.from,
+            to: range.to,
+            paragraphId: paragraphUuid,
+          };
+    const disabled =
+      entry.applies({ ref: applyRef, canEdit } as ActionContext) === "disabled";
+    return {
+      id: entry.id,
+      label: entry.label,
+      // The lightning panel's letter fast-path is preserved (H/N/F/C/T/E/X/R/D/A).
+      // The delete row's display glyph "⌫" is NOT a typeable key, so — matching
+      // the pre-migration behavior — delete has no working letter shortcut here
+      // (no Backspace/Delete alias, unlike the grab menu which adds one).
+      letter: entry.letter,
+      icon: entry.icon,
+      separator: entry.separator,
+      destructive: entry.destructive,
+      disabled,
+      run: () => runAction(entry.id as DragHandleAction),
+    };
+  });
 
   return (
     <>
-      {menuPortal}
+      <MenuProvider
+        id="lightning"
+        layout="composite"
+        role="menu"
+        portal
+        anchorRect={triggerRect}
+        placements={PANEL_PLACEMENTS}
+        gap={4}
+        letterShortcuts
+        getActiveDescendantHost={getActiveDescendantHost}
+        // Preserve the load-bearing `e.stopPropagation()` on Escape (was
+        // ActionsMenuPanel.tsx:338): keeps Escape from reaching tab-indent.ts's
+        // Escape→blur handler, so closing the menu doesn't drop the editor's
+        // cursor/selection. Default is already true for editor-anchored menus;
+        // declared explicitly here so the seam is visible.
+        dismissOn={{ escape: { stopPropagation: true } }}
+        // The spawned color popover portals to document.body, so a click into it
+        // would otherwise land "outside" and dismiss the panel. Register its
+        // live element so the click-outside treats it as "inside" (R8).
+        excludeRefs={[colorPopoverEl]}
+        onClose={onClose}
+        ariaLabel="Selection actions"
+        containerClassName="selection-actions-menu"
+        containerStyle={{
+          width: MENU_W,
+          background: "var(--pod-editor)",
+          border: "var(--pod-border)",
+          boxShadow: "var(--pod-shadow)",
+          borderRadius: "var(--pod-radius)",
+          padding: `${MENU_PAD_Y}px 0`,
+        }}
+      >
+        {/* ── Formatting icon grid (4 cols × 4 rows) ─────────────── */}
+        <MenuGrid
+          cols={GRID_COLS}
+          style={{ gap: 2, padding: "0 4px" }}
+        >
+          {/* Row 0 */}
+          <FmtBtn
+            id="bold"
+            row={0}
+            col={0}
+            title="Bold (⌘B)"
+            active={isActive("bold")}
+            disabled={!canEdit}
+            run={() => runGridAction("bold")}
+          >
+            <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
+              <path d="M4 2.5h4.5c1.93 0 3 1.07 3 2.5 0 1.05-.55 1.8-1.4 2.15C11.25 7.5 12 8.4 12 9.5c0 1.6-1.2 2.75-3.25 2.75H4V2.5zm2 1.5v2.75h2.25c.97 0 1.5-.5 1.5-1.38 0-.87-.53-1.37-1.5-1.37H6zm0 4.25V10.75h2.5c1.05 0 1.6-.53 1.6-1.5 0-.93-.6-1.5-1.6-1.5H6z" />
+            </svg>
+          </FmtBtn>
+          <FmtBtn
+            id="italic"
+            row={0}
+            col={1}
+            title="Italic (⌘I)"
+            active={isActive("italic")}
+            disabled={!canEdit}
+            run={() => runGridAction("italic")}
+          >
+            <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round">
+              <path d="M6.5 2.5h5M4.5 13.5h5M9.5 2.5L6.5 13.5" />
+            </svg>
+          </FmtBtn>
+          <FmtBtn
+            id="strike"
+            row={0}
+            col={2}
+            title="Strikethrough"
+            active={isActive("strike")}
+            disabled={!canEdit}
+            run={() => runGridAction("strike")}
+          >
+            <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round">
+              <line x1="2.5" y1="8" x2="13.5" y2="8" />
+              <path d="M11 4.5c-.5-1.2-1.7-2-3-2-1.8 0-3 1-3 2.4 0 1 .6 1.7 1.6 2.1M5 11.5c.5 1.2 1.7 2 3 2 1.8 0 3-1 3-2.4 0-.6-.2-1.1-.6-1.5" />
+            </svg>
+          </FmtBtn>
+          <FmtBtn
+            id="code"
+            row={0}
+            col={3}
+            title="Inline code"
+            active={isActive("code")}
+            disabled={!canEdit}
+            run={() => runGridAction("code")}
+          >
+            <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round">
+              <polyline points="5,4 1.5,8 5,12" />
+              <polyline points="11,4 14.5,8 11,12" />
+            </svg>
+          </FmtBtn>
+
+          {/* Row 1 — the BlockTypeDropdown is a nested-menu trigger (kept bespoke
+              for Phase C). It registers as a grid cell so arrows can land on it;
+              Enter/Space + click open its dropdown via the cell wrapper. */}
+          <BlockTypeGridCell
+            row={1}
+            col={0}
+            editor={editor}
+          />
+          <FmtBtn
+            id="bullet-list"
+            row={1}
+            col={1}
+            title="Bullet list"
+            active={isActive("bulletList")}
+            disabled={wrappersDisabled}
+            run={() => runGridAction("bullet-list")}
+          >
+            <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round">
+              <circle cx="3.5" cy="4" r="1.2" fill="currentColor" stroke="none" />
+              <circle cx="3.5" cy="8" r="1.2" fill="currentColor" stroke="none" />
+              <circle cx="3.5" cy="12" r="1.2" fill="currentColor" stroke="none" />
+              <line x1="6.5" y1="4" x2="13" y2="4" />
+              <line x1="6.5" y1="8" x2="13" y2="8" />
+              <line x1="6.5" y1="12" x2="13" y2="12" />
+            </svg>
+          </FmtBtn>
+          <FmtBtn
+            id="ordered-list"
+            row={1}
+            col={2}
+            title="Numbered list"
+            active={isActive("orderedList")}
+            disabled={wrappersDisabled}
+            run={() => runGridAction("ordered-list")}
+          >
+            <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor" stroke="none">
+              <text x="2" y="5.5" fontSize="5" fontWeight="600" fontFamily="sans-serif">1</text>
+              <text x="2" y="9.5" fontSize="5" fontWeight="600" fontFamily="sans-serif">2</text>
+              <text x="2" y="13.5" fontSize="5" fontWeight="600" fontFamily="sans-serif">3</text>
+              <line x1="6.5" y1="4" x2="13" y2="4" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" />
+              <line x1="6.5" y1="8" x2="13" y2="8" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" />
+              <line x1="6.5" y1="12" x2="13" y2="12" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" />
+            </svg>
+          </FmtBtn>
+          <FmtBtn
+            id="blockquote"
+            row={1}
+            col={3}
+            title="Blockquote"
+            active={isActive("blockquote")}
+            disabled={wrappersDisabled}
+            run={() => runGridAction("blockquote")}
+          >
+            <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor" stroke="none">
+              <path d="M3 3.5C3 5.5 4 7 5.5 7.5L4.5 9C3 8.5 1.5 6.8 1.5 4.2c0-2 1.2-3.2 2.8-3.2 1.3 0 2.2.9 2.2 2.1S5.5 5.2 4.2 5.2c-.4 0-.8-.1-1.2-.3v-1.4zm7 0C10 5.5 11 7 12.5 7.5L11.5 9C10 8.5 8.5 6.8 8.5 4.2c0-2 1.2-3.2 2.8-3.2 1.3 0 2.2.9 2.2 2.1s-1 2.1-2.3 2.1c-.4 0-.8-.1-1.2-.3v-1.4z" transform="translate(0, 3)" />
+            </svg>
+          </FmtBtn>
+
+          {/* Row 2 */}
+          <FmtBtn
+            id="example"
+            row={2}
+            col={0}
+            title="Wrap selection in example block"
+            disabled={!canEdit}
+            run={() => wrapSelectionInExample()}
+          >
+            <IconExample size={16} />
+          </FmtBtn>
+          <FmtBtn
+            id="inline-math"
+            row={2}
+            col={1}
+            title="Wrap selection in inline math"
+            disabled={!canEdit}
+            run={() => runGridAction("inline-math")}
+          >
+            <span style={{ fontFamily: "var(--font-serif, serif)", fontSize: 13 }}>
+              $x$
+            </span>
+          </FmtBtn>
+          <FmtBtn
+            id="display-math"
+            row={2}
+            col={2}
+            title="Wrap selection in display math"
+            disabled={!canEdit}
+            run={() => runGridAction("display-math")}
+          >
+            <span style={{ fontFamily: "var(--font-serif, serif)", fontSize: 13, letterSpacing: -0.5 }}>
+              $$
+            </span>
+          </FmtBtn>
+          {/* text-color — a nested-menu trigger (opens the SelectionColorPopover).
+              Kept bespoke; registers as a grid cell so arrows reach it. */}
+          <ColorGridCell
+            row={2}
+            col={3}
+            disabled={!canEdit}
+            lastAppliedColor={lastAppliedColor}
+            run={(rect) => runGridAction("text-color", { anchorRect: rect })}
+          />
+
+          {/* Row 3 */}
+          <FmtBtn
+            id="tex"
+            row={3}
+            col={0}
+            title="Insert raw LaTeX block"
+            disabled={!canEdit}
+            run={() => insertTexBlock(editor)}
+          >
+            <span style={{ fontFamily: "var(--font-mono), monospace", fontSize: 11 }}>
+              \tex
+            </span>
+          </FmtBtn>
+          <FmtBtn
+            id="figure"
+            row={3}
+            col={1}
+            title="Insert figure block"
+            disabled={!canEdit}
+            run={() => runGridAction("figure")}
+          >
+            <span style={{ fontFamily: "var(--font-serif, serif)", fontStyle: "italic", fontSize: 12 }}>
+              fig.
+            </span>
+          </FmtBtn>
+          <FmtBtn
+            id="graphics"
+            row={3}
+            col={2}
+            title="Insert image"
+            disabled={!canEdit}
+            run={() => runGridAction("graphics")}
+          >
+            <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.25" strokeLinejoin="round">
+              <rect x="1.5" y="2.5" width="13" height="11" rx="1" />
+              <circle cx="11" cy="6" r="1.25" fill="currentColor" stroke="none" />
+              <path d="M2.5 12.5 L6 9 L9 11 L11 9.5 L13.5 12" />
+            </svg>
+          </FmtBtn>
+          {/* CHIP 7a: the 'Cross-ref' cell — the lightning surface for `\ref`.
+              Routes through `runGridAction("ref")` → the registry's `refRun` →
+              `ctx.openRefPopover()`, opening the LabelRef create-mode popover at
+              the caret (the SAME `run()` the slash `\ref` reaches). */}
+          <FmtBtn
+            id="ref"
+            row={3}
+            col={3}
+            title="Insert cross-reference (\ref)"
+            disabled={!canEdit}
+            run={() => runGridAction("ref")}
+          >
+            <span style={{ fontFamily: "var(--font-mono), monospace", fontSize: 11 }}>
+              \ref
+            </span>
+          </FmtBtn>
+        </MenuGrid>
+
+        <div
+          aria-hidden
+          style={{
+            height: 1,
+            margin: "6px 8px",
+            background: "var(--edge-hover)",
+            opacity: 0.5,
+          }}
+        />
+
+        {/* ── Card action list (11 rows) ─────────────────────────── */}
+        <MenuList className="lightning-card-list">
+          <MenuItemsFromRegistry rows={cardRows} />
+        </MenuList>
+      </MenuProvider>
+
       {colorPopoverAnchor && (
         <SelectionColorPopover
           editor={editor}
@@ -723,8 +701,10 @@ export function ActionsMenuPanel({
           onApply={applyColor}
           onClear={clearColor}
           onPickCustom={applyColor}
+          onContainerRef={setColorPopoverEl}
           onClose={() => {
             setColorPopoverAnchor(null);
+            setColorPopoverEl(null);
             stashedRangeRef.current = null;
           }}
         />
@@ -733,37 +713,200 @@ export function ActionsMenuPanel({
   );
 }
 
+/**
+ * One bespoke format-grid cell, registered into the lightning menu's grid
+ * region. Spreads `useMenuItem` getters onto the existing `<button>` so the
+ * cell GAINS arrow nav + the roving `data-active` highlight without a markup
+ * rewrite. `run` = the cell's existing action; `active` = the format-is-applied
+ * state (bold-is-on), painted distinctly from the roving-active highlight.
+ *
+ * The `data-hint` + `aria-label` carry the title (the registry-render test reads
+ * grid cells via `data-hint`).
+ */
 function FmtBtn({
+  id,
+  row,
+  col,
   children,
-  onClick,
+  run,
   title,
   active,
   disabled,
 }: {
+  id: string;
+  row: number;
+  col: number;
   children: React.ReactNode;
-  onClick: () => void;
+  run: () => void;
   title: string;
   active?: boolean;
   /** CHIP 7b: collab read-only greys the cell + inerts the click. */
   disabled?: boolean;
 }) {
+  const { active: roving, getItemProps } = useMenuItem({
+    id,
+    region: "grid",
+    coords: { row, col },
+    disabled,
+    run,
+  });
+  const itemProps = getItemProps();
   return (
     <button
+      {...itemProps}
       type="button"
       data-hint={title}
       disabled={disabled}
-      onClick={disabled ? undefined : onClick}
       className={`flex items-center justify-center rounded transition-colors ${disabled ? "" : "hover-on-light"}`}
       style={{
         height: FORMATTING_ROW_H,
-        background: active ? "var(--surface-muted-strong, rgba(0,0,0,0.08))" : "transparent",
+        // The roving-active cell paints the same highlight :hover uses (so the
+        // active item is unambiguous while arrowing); the format-is-applied
+        // state uses the stronger muted surface.
+        background: active
+          ? "var(--surface-muted-strong, rgba(0,0,0,0.08))"
+          : roving && !disabled
+            ? "var(--surface-muted, rgba(0,0,0,0.04))"
+            : "transparent",
         color: active ? "var(--ink-strong)" : "var(--ink-muted)",
         border: "none",
         cursor: disabled ? "not-allowed" : "pointer",
         opacity: disabled ? 0.4 : 1,
-      }} aria-label={title}
+      }}
+      aria-label={title}
     >
       {children}
     </button>
+  );
+}
+
+/**
+ * The text-color grid cell — a nested-menu trigger (opens the
+ * SelectionColorPopover). Kept bespoke for Phase C, but registered as a grid
+ * cell so arrows reach it. Its `run(rect)` opens the popover anchored to the
+ * cell; for keyboard activation (no mouse rect) it falls back to the cell's own
+ * bounding rect.
+ */
+function ColorGridCell({
+  row,
+  col,
+  disabled,
+  lastAppliedColor,
+  run,
+}: {
+  row: number;
+  col: number;
+  disabled: boolean;
+  lastAppliedColor: string;
+  run: (rect: DOMRect) => void;
+}) {
+  const btnRef = useRef<HTMLButtonElement | null>(null);
+  const { active: roving, getItemProps } = useMenuItem({
+    id: "text-color",
+    region: "grid",
+    coords: { row, col },
+    disabled,
+    // Keyboard activation (Enter/Space) has no mouse rect → anchor on the cell.
+    run: () => {
+      const rect = btnRef.current?.getBoundingClientRect();
+      if (rect) run(rect);
+    },
+  });
+  const itemProps = getItemProps();
+  return (
+    <button
+      {...itemProps}
+      ref={(el) => {
+        btnRef.current = el;
+        itemProps.ref(el);
+      }}
+      type="button"
+      data-hint="Text color"
+      disabled={disabled}
+      onClick={
+        disabled
+          ? itemProps.onClick
+          : (e) => run(e.currentTarget.getBoundingClientRect())
+      }
+      className={`flex flex-col items-center justify-center rounded transition-colors ${disabled ? "" : "hover-on-light"}`}
+      style={{
+        height: FORMATTING_ROW_H,
+        background:
+          roving && !disabled
+            ? "var(--surface-muted, rgba(0,0,0,0.04))"
+            : "transparent",
+        color: "var(--ink-strong)",
+        border: "none",
+        cursor: disabled ? "pointer" : "pointer",
+        opacity: disabled ? 0.4 : 1,
+        padding: 0,
+        lineHeight: 1,
+      }}
+      aria-label="Text color"
+    >
+      <span style={{ fontFamily: "var(--font-serif, serif)", fontWeight: 600, fontSize: 14 }}>
+        A
+      </span>
+      <span
+        aria-hidden
+        style={{
+          display: "block",
+          width: 14,
+          height: 3,
+          marginTop: 1,
+          background: lastAppliedColor,
+          borderRadius: 1,
+        }}
+      />
+    </button>
+  );
+}
+
+/**
+ * The BlockType dropdown grid cell — a nested-menu trigger (kept bespoke for
+ * Phase C). The `BlockTypeDropdown` owns its own button + open state + in-tree
+ * dropdown (a DOM descendant of the menu container, so click-outside needs no
+ * exclusion for it). We wrap it in a registered grid cell so arrows can land on
+ * it; Enter/Space (and click) open the dropdown by clicking the inner trigger.
+ */
+function BlockTypeGridCell({
+  row,
+  col,
+  editor,
+}: {
+  row: number;
+  col: number;
+  editor: Editor;
+}) {
+  const wrapRef = useRef<HTMLDivElement | null>(null);
+  const { active: roving, getItemProps } = useMenuItem({
+    id: "block-type",
+    region: "grid",
+    coords: { row, col },
+    // Keyboard activation: click the BlockTypeDropdown's own trigger button.
+    run: () => {
+      wrapRef.current?.querySelector("button")?.click();
+    },
+  });
+  const itemProps = getItemProps();
+  return (
+    <div
+      ref={(el) => {
+        wrapRef.current = el;
+        itemProps.ref(el);
+      }}
+      role={itemProps.role}
+      id={itemProps.id}
+      data-active={itemProps["data-active"]}
+      onMouseEnter={itemProps.onMouseEnter}
+      className="flex items-center justify-center"
+      style={{
+        height: FORMATTING_ROW_H,
+        borderRadius: 4,
+        background: roving ? "var(--surface-muted, rgba(0,0,0,0.04))" : "transparent",
+      }}
+    >
+      <BlockTypeDropdown editor={editor} />
+    </div>
   );
 }

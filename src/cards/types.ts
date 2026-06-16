@@ -158,6 +158,30 @@ export interface CardMeta {
   lifecycle: CardLifecycleCapability;
   /** In-document drop behavior, or `null` for kinds that don't re-anchor by drop. */
   dropSpec: DropSpec | null;
+  /** Whether this kind gets the docked drop button — the (re)anchor gesture that
+   *  enters drop-mode. A STATIC literal, NOT derived from `dropSpec != null`:
+   *  `dropSpec` is installed by the boot-time side-effect import
+   *  `@/cards/drop-specs` (folded onto the registry on the drop-dispatch path),
+   *  which `predicates.ts` can't import without a cycle and which may not have
+   *  run when a card header first paints — a dynamic gate would read `null` and
+   *  wrongly hide the button. So `droppable` is declared per-kind here and PINNED
+   *  to the real mechanism by a dev assertion + contract test:
+   *  `droppable` ⇔ the kind's `dropSpec` allows a *re-anchor* placement
+   *  (`inline-cursor` for in-text, `paragraph-side` for margin). `example` is
+   *  `false` despite carrying a `dropSpec`, because its spec is a `between-blocks`
+   *  block content-MOVE, not a card re-anchor (drop-button SYNTHESIS §7 design
+   *  call); `bib`/`ai`/`error` are `false` (no spec at all). */
+  droppable: boolean;
+  /** Where a (re)anchor drop for this kind LANDS — the declarative SSOT the drop
+   *  button + controller dispatch through, replacing `dropSpec.allowedPlacements`
+   *  introspection (drop-button SYNTHESIS §2). `"in-text"` = an inline caret /
+   *  `\cite`-`\footnote` atom position (footnote/citation); `"margin"` = the
+   *  paragraph horizontal band (note/highlight/todo/archive/report/…); `null` for
+   *  kinds that take no drop button (`bib`/`ai`/`error`, and `example` whose drop
+   *  is a block move, not a re-anchor). DERIVED-CONSISTENT with the kind's
+   *  `dropSpec.allowedPlacements`; a dev assertion pins the two so the declared
+   *  policy can't drift from the mechanism. `droppable` ⇔ `dropPlacement !== null`. */
+  dropPlacement: "in-text" | "margin" | null;
   /** The morph target for the polymorphic kind-chevron (A9), or `null` for the
    *  non-morphing kinds. When set, this kind can convert *in place* into
    *  `morph.to` (which always shares its panel — the chevron's options are

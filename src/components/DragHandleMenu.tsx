@@ -11,12 +11,21 @@
  * The letters are visible labels and also active shortcuts WHILE the
  * menu is open — pressing F runs Footnote, etc. They are not global
  * keybindings.
+ *
+ * ── MENU-PRIMITIVE MIGRATION (Phase B1) ──
+ * This is the clean LIST reference for the `<Menu>` primitive
+ * (`src/components/menu/`, design `docs/agents/menu-system-design.md`). It now
+ * renders via `<MenuProvider layout="list" role="menu" portal>` +
+ * `<MenuItemsFromRegistry>`; the provider owns positioning
+ * (`useFloatingMenuPosition`), click-outside dismissal, the Escape handler, and
+ * the keyboard controller. The menu GAINS Up/Down/Home/End/Enter arrow nav with
+ * a visible active highlight, and KEEPS the letter fast-path + the
+ * Backspace/Delete → delete alias (registered on the delete row's
+ * `letterAliases`). Behavior is otherwise identical to before the migration.
  */
 
-import { useEffect, useMemo, useRef } from "react";
-import { createPortal } from "react-dom";
+import { useMemo } from "react";
 import {
-  useFloatingMenuPosition,
   type FloatingMenuPlacement,
 } from "@/hooks/useFloatingMenuPosition";
 import { isTextObjectKind } from "@/text-objects/text-object-registry";
@@ -25,8 +34,12 @@ import {
   cardActionRows,
   type ActionContext,
   type ActionRef,
-  type ActionSpec,
 } from "@/lib/actions/action-registry";
+import { MenuProvider } from "./menu/MenuProvider";
+import {
+  MenuItemsFromRegistry,
+  type DecoratedMenuRow,
+} from "./menu/MenuItemsFromRegistry";
 
 // The action union is owned here so the registry's per-kind action lists
 // in `text-object-registry.ts` constrain a subset of this union — the
@@ -49,22 +62,8 @@ export type DragHandleAction =
   | "archive"
   | "delete";
 
-/**
- * A registry card row decorated with its per-kind disabled state for THIS
- * menu open — the registry `ActionSpec` plus the resolved `disabled` flag the
- * render + keyboard handler gate on. Replaces the former per-instance
- * `MenuEntry`. `disabled` entries render greyed-out (visible) instead of being
- * filtered away, so the menu's shape stays consistent across kinds. See
- * ACTION-MENU-DIAGNOSIS.md cluster C1.
- */
-interface DecoratedRow {
-  row: ActionSpec;
-  disabled: boolean;
-}
-
 const MENU_W = 220;
 const MENU_PAD_Y = 6;
-const ITEM_H = 30;
 
 const DRAG_HANDLE_PLACEMENTS: FloatingMenuPlacement[] = [
   { side: "left-of", align: "center" },
@@ -93,15 +92,27 @@ interface Props {
   canEdit?: boolean;
 }
 
+/** The PM view's focused contentEditable holds the caret while the menu is
+ *  open (the menu never steals focus — roving aria-activedescendant only). Use
+ *  it as the activedescendant host so a screen reader tracks the active item
+ *  without the caret moving; fall back to null (the provider then no-ops the
+ *  attribute write) if focus isn't on an editable element. */
+function getActiveDescendantHost(): HTMLElement | null {
+  if (typeof document === "undefined") return null;
+  const el = document.activeElement;
+  if (el instanceof HTMLElement && el.isContentEditable) return el;
+  return null;
+}
+
 export function DragHandleMenu({ anchorRect, onSelect, onClose, kind, canEdit = true }: Props) {
   // Render the CARD action rows straight off the registry (the SSOT) and
   // decorate each with its per-kind disabled state from the row's own
   // `applies()`. Disabled entries stay in the list (visible-disabled
-  // grey-out) so the menu shape is consistent across kinds. The render and
-  // keyboard handler both gate on `disabled`. See ACTION-MENU-DIAGNOSIS.md
-  // cluster C1 + §7 q3.
-  const entries = useMemo<DecoratedRow[]>(() => {
-    const rows = cardActionRows("grab");
+  // grey-out) so the menu shape is consistent across kinds. The registry
+  // mapper + nav controller both gate on `disabled`. See
+  // ACTION-MENU-DIAGNOSIS.md cluster C1 + §7 q3.
+  const rows = useMemo<DecoratedMenuRow[]>(() => {
+    const cardRows = cardActionRows("grab");
     // Synthesize the ref the registry's `applies()` reads. A persistent
     // TextObject kind → a `TextObjectRef` (the id is irrelevant to the
     // per-kind grey-out, which keys off `kind` alone); `"selection"` / no
@@ -117,140 +128,47 @@ export function DragHandleMenu({ anchorRect, onSelect, onClose, kind, canEdit = 
     // threaded so the row's uniform collab gate (CHIP 7b) greys EVERYTHING when
     // the partner holds the pen. `canEdit !== false` ⇒ un-gated (no over-gating).
     const ctx = { ref, canEdit } as ActionContext;
-    return rows.map((row) => ({ row, disabled: row.applies(ctx) === "disabled" }));
-  }, [kind, canEdit]);
-  const menuRef = useRef<HTMLDivElement | null>(null);
-  // Left of the handle by default so the menu doesn't cover the grip or
-  // the prose to its right; flip right if there's no room on the left.
-  // Vertically center on the handle. The hook handles flip + viewport
-  // clamp using the menu's measured size, so adding/removing entries
-  // doesn't drift the placement math out of sync.
-  const { ref: positionRef, style: positionStyle } = useFloatingMenuPosition({
-    anchorRect,
-    placements: DRAG_HANDLE_PLACEMENTS,
-  });
-  const setMenuRef = (el: HTMLDivElement | null) => {
-    menuRef.current = el;
-    positionRef(el);
-  };
-
-  // Close on Escape, click-outside, or letter shortcut.
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") {
-        e.preventDefault();
-        onClose();
-        return;
-      }
-      // Ignore when modifier keys are held — the menu's shortcuts are bare keys.
-      if (e.metaKey || e.ctrlKey || e.altKey) return;
-      // Backspace / Delete map to the destructive delete action when present.
-      if (e.key === "Backspace" || e.key === "Delete") {
-        const hit = entries.find((m) => m.row.id === "delete");
-        if (hit && !hit.disabled) {
-          e.preventDefault();
-          onSelect(hit.row.id as DragHandleAction);
-        }
-        return;
-      }
-      if (e.key.length !== 1) return;
-      const letter = e.key.toUpperCase();
-      const hit = entries.find((m) => m.row.letter === letter);
-      if (hit && !hit.disabled) {
-        e.preventDefault();
-        onSelect(hit.row.id as DragHandleAction);
-      }
-    };
-    const onMouseDown = (e: MouseEvent) => {
-      if (!menuRef.current) return;
-      if (!menuRef.current.contains(e.target as Node)) onClose();
-    };
-    window.addEventListener("keydown", onKey, true);
-    // Defer so the click that opened the menu doesn't immediately close it.
-    const t = window.setTimeout(() => {
-      window.addEventListener("mousedown", onMouseDown, true);
-    }, 0);
-    return () => {
-      window.clearTimeout(t);
-      window.removeEventListener("keydown", onKey, true);
-      window.removeEventListener("mousedown", onMouseDown, true);
-    };
-  }, [onClose, onSelect]);
+    return cardRows.map<DecoratedMenuRow>((row) => ({
+      id: row.id,
+      label: row.label,
+      letter: row.letter,
+      // The destructive `delete` row also activates on Backspace / Delete —
+      // preserved from the bespoke keydown listener as a letter-alias.
+      letterAliases: row.id === "delete" ? ["Backspace", "Delete"] : undefined,
+      icon: row.icon,
+      separator: row.separator,
+      destructive: row.destructive,
+      disabled: row.applies(ctx) === "disabled",
+      run: () => {
+        onSelect(row.id as DragHandleAction);
+      },
+    }));
+  }, [kind, canEdit, onSelect]);
 
   if (typeof document === "undefined") return null;
 
-  return createPortal(
-    <div
-      ref={setMenuRef}
+  return (
+    <MenuProvider
+      id="grab"
+      layout="list"
       role="menu"
-      aria-label="Passage actions"
-      style={{
-        ...positionStyle,
+      portal
+      anchorRect={anchorRect}
+      placements={DRAG_HANDLE_PLACEMENTS}
+      letterShortcuts
+      getActiveDescendantHost={getActiveDescendantHost}
+      onClose={onClose}
+      ariaLabel="Passage actions"
+      containerStyle={{
         width: MENU_W,
-        zIndex: 2000,
         background: "var(--pod-editor)",
         border: "var(--pod-border)",
         boxShadow: "var(--pod-shadow)",
         borderRadius: "var(--pod-radius)",
         padding: `${MENU_PAD_Y}px 0`,
       }}
-      // Stop pointer events from bubbling to the editor or the underlying
-      // selection — opening the menu shouldn't shift the editor caret.
-      onMouseDown={(e) => e.stopPropagation()}
     >
-      {entries.map(({ row, disabled }) => (
-        <div key={row.id}>
-          {row.separator && (
-            <div
-              aria-hidden
-              style={{
-                height: 1,
-                margin: "4px 8px",
-                background: "var(--edge-hover)",
-                opacity: 0.5,
-              }}
-            />
-          )}
-          <button
-            type="button"
-            role="menuitem"
-            disabled={disabled}
-            aria-disabled={disabled || undefined}
-            onClick={() => {
-              if (disabled) return;
-              onSelect(row.id as DragHandleAction);
-            }}
-            className={
-              disabled
-                ? "w-full flex items-center gap-2.5 px-3 text-sm text-left"
-                : "w-full flex items-center gap-2.5 px-3 text-sm text-left hover-on-light"
-            }
-            style={{
-              height: ITEM_H,
-              color: disabled
-                ? "var(--ink-subtle)"
-                : row.destructive
-                  ? "var(--danger, #b45757)"
-                  : "var(--ink-strong)",
-              background: "transparent",
-              opacity: disabled ? 0.45 : 1,
-              cursor: disabled ? "not-allowed" : "pointer",
-            }}
-          >
-            <span className="shrink-0 flex items-center justify-center" style={{ width: 16, height: 16 }}>
-              {row.icon}
-            </span>
-            <span className="flex-1">{row.label}</span>
-            <span
-              className="tabular-nums"
-              style={{ fontSize: 11, color: "var(--ink-subtle)" }}
-            >
-              {row.letter}
-            </span>
-          </button>
-        </div>
-      ))}
-    </div>,
-    document.body,
+      <MenuItemsFromRegistry rows={rows} />
+    </MenuProvider>
   );
 }
