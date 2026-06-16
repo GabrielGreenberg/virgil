@@ -1,10 +1,12 @@
 /**
  * Drop Mode — shared types.
  *
- * Drop mode is the "shift + grab a popped-out item's grab bar" gesture
- * that lets the user place the item back into the document text at a
- * specific location. A central controller handles the geometry, picks
- * an indicator shape, and dispatches a per-item `DropSpec` on release.
+ * Drop mode is the "grab a card's drop button (the double-chevron) and
+ * drag" gesture that lets the user place the item back into the document
+ * text at a specific location. A central controller handles the geometry,
+ * picks an indicator shape, and dispatches a per-item `DropSpec` on
+ * release. (Before req-7 the entry was a Shift-grab on a float header;
+ * that entry is retired — the drop button is now the gesture.)
  *
  * Architecture overview: see `/Users/gabriel/.claude/plans/today-i-need-a-nifty-prism.md`.
  */

@@ -461,7 +461,7 @@ function RichTextFieldImpl({
   }, [editor, editable]);
 
   // Register this nested editor with the drop-mode target registry, so
-  // shift-drag can target card bodies in addition to the main editor.
+  // drop-mode can target card bodies in addition to the main editor.
   useEffect(() => {
     if (!editor) return;
     return registerDropTarget(editor);

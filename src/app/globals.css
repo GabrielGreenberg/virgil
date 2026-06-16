@@ -3206,11 +3206,13 @@ textarea,
 }
 
 /* ── Drop mode ────────────────────────────────────────────────────────
- * "Shift + grab a popped-out item's grab bar" gesture. The Indicator
- * paints a blue bar (paragraph-side / between-blocks / inline-cursor)
- * showing where the dropped item will land. The source float dims so
- * the user's attention stays on the indicator; floats become click-
- * through so the cursor falls through to the editor for hit-testing.
+ * "Grab a card's drop button (the double-chevron) and drag" gesture
+ * (req-7 retired the legacy Shift-grab-on-a-float-header entry). The
+ * Indicator paints a blue bar (paragraph-side / between-blocks /
+ * inline-cursor) showing where the dropped item will land. A popped-out
+ * source float dims so the user's attention stays on the indicator;
+ * floats become click-through so the cursor falls through to the editor
+ * for hit-testing.
  */
 body[data-drop-mode-active="true"] [data-floating-panel="true"] {
   pointer-events: none;
@@ -3260,7 +3262,7 @@ body[data-drop-mode-active="true"] * {
 /* The marginalia gutter-drag indicator shares `.dropmode-bar-side` but
  * fires from native HTML5 `dragover` events that update many times per
  * second — the 80ms ease above is a visible trail. Snap directly. The
- * shift+drag drop-mode bar (no `.marginalia-drop-indicator`) keeps its
+ * mouse-driven drop-mode bar (no `.marginalia-drop-indicator`) keeps its
  * smooth glide for the lower-rate mouse-based flow. */
 .marginalia-drop-indicator.dropmode-bar-side {
   transition: none;

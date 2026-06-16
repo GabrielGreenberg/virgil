@@ -1,16 +1,22 @@
 /**
  * Drop-mode controller. Module-level state + window listeners that own
- * the gesture from "shift-mousedown on FloatingPanel header" to drop or
- * cancel. Follows the `card-lift.ts` pattern: producer (FloatingPanel)
- * and consumers (Indicator, DropModeProvider) communicate via a shared
- * signal instead of React context, since they live in unrelated subtrees.
+ * the gesture from "mousedown on a producer" to drop or cancel. Follows
+ * the `card-lift.ts` pattern: producers and consumers (Indicator,
+ * DropModeProvider) communicate via a shared signal instead of React
+ * context, since they live in unrelated subtrees.
+ *
+ * Producers (each calls `beginDropSession`): the card drop button
+ * (`CardDropButton` → `beginCardDropGesture`, shared by the docked card
+ * header + the float-chrome button), the in-text inline-atom grab, the
+ * lifted-overlay grab handle, and the stack-pull thumbnail. (The legacy
+ * Shift-mousedown-on-a-FloatingPanel-header entry was retired in req-7.)
  *
  * Public API:
  *   - `setDropCtx(ctx)` — called once by EditorPane to register the
  *     per-doc hook bag.
  *   - `lookupSpec(kind)` — registry-aware spec lookup.
- *   - `beginDropSession({...})` — called from FloatingPanel header on
- *     shift-mousedown. Installs window listeners and a CSS hook.
+ *   - `beginDropSession({...})` — called from a producer's mousedown.
+ *     Installs window listeners and a CSS hook.
  *   - `useDropSession()` — React hook for components that need to react
  *     to the current placement (Indicator).
  *
@@ -71,10 +77,11 @@ export function useDropSession(): DropSession | null {
 // ── Lifecycle ────────────────────────────────────────────────────────
 
 /**
- * Begin a drop session from the FloatingPanel header. Looks up the
- * spec from `cardKey`; no-ops if no spec is registered (Phase 0 ships
- * with no specs, so shift-grab is harmless until paragraphDropSpec
- * lands).
+ * Begin a drop session from a producer's mousedown (the card drop
+ * button, the in-text inline-atom grab, the lifted-overlay grab handle,
+ * or the stack-pull thumbnail). Looks up the spec from `cardKey`; no-ops
+ * if no spec is registered for the kind, so a producer is harmless until
+ * its spec lands.
  *
  * `inPlace` skips the float-dimming branch (`markSourceFloat`) — used
  * by the lifted-overlay gesture, where no popout exists to dim.

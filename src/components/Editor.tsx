@@ -501,7 +501,7 @@ const VirgilEditor = forwardRef<EditorHandle, EditorProps>(function VirgilEditor
         // Every canonical text move is mousedown-driven, not HTML5 drag:
         // block drag-to-pop-out (the 6-dot lift), the inline-Atom grab
         // (footnote/citation/ref/inline math → InlineAtomGrab), and
-        // drop-mode (float-header shift-drag). So native browser drags —
+        // drop-mode (the card drop-button grab). So native browser drags —
         // text-selection from contenteditable, an accidental node drag —
         // are suppressed here. No inline atom opts into native drag anymore;
         // the `[data-drag-handle]` / `[draggable="true"]` escape hatch is
@@ -1853,7 +1853,7 @@ const VirgilEditor = forwardRef<EditorHandle, EditorProps>(function VirgilEditor
   }, [editor, editable]);
 
   // Register the editor's ProseMirror DOM with the drop-mode target
-  // registry, so shift-drag hit-testing can find this editor under the
+  // registry, so drop-mode hit-testing can find this editor under the
   // cursor. Re-registers when the editor instance changes (extension
   // reloads, doc swaps).
   useEffect(() => {

@@ -16,7 +16,6 @@ import {
   findDockTargetByPanelProximity,
   type DockDragTarget,
 } from "@/components/editor-layout/dock-drag";
-import { beginDropSession } from "@/components/drop-mode/controller";
 import {
   isOverStackIcon,
   isHeaderOverStackIcon,
@@ -47,9 +46,11 @@ interface FloatingPanelProps {
   /** Panel id this shell hosts. Required for dock-aware mounts; optional
    *  for non-panel uses (cards, dialogs) that always float. */
   panelId?: PanelId;
-  /** Popout key for cards/blocks (`${kind}:${id}`). Required to start a
-   *  drop-mode session on shift+mousedown — non-card floats (dialogs)
-   *  may omit it. */
+  /** Popout key for cards/blocks (`${kind}:${id}`). Identifies a
+   *  card/block float so it can redock onto the StackIcon on a drag-over
+   *  (the stack-redock affordance below) — non-card floats (dialogs) may
+   *  omit it. (Drop-mode is no longer entered from here; that lives on
+   *  the card drop button — see `beginCardDropGesture`.) */
   cardKey?: string;
   /** "docked" mounts the panel inside the side gutter's dock slot via
    *  portal; "floating" mounts it at document.body. Defaults to
@@ -431,20 +432,6 @@ function FloatingPanelInner({
     // gaps / background (outside any [data-card]).
     if (target.closest(WINDOW_DRAG_BLOCK_SELECTOR)) {
       return;
-    }
-    // Shift+mousedown on the grab bar → drop-mode session. Only for
-    // popped-out cards/blocks (have a cardKey). The controller no-ops
-    // gracefully if no spec is registered for this kind, so this is a
-    // safe branch to install even before all specs are wired.
-    if (e.shiftKey && cardKey && mode === "floating") {
-      const started = beginDropSession({
-        cardKey,
-        origin: { x: e.clientX, y: e.clientY },
-      });
-      if (started) {
-        e.preventDefault();
-        return;
-      }
     }
     let origX = pos.x;
     let origY = pos.y;
