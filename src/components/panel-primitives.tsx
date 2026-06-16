@@ -2529,7 +2529,11 @@ export function BandDivider({
     <div
       data-band-divider={side}
       className="relative shrink-0 z-10"
-      style={{ height: 'var(--pod-gap)' }}
+      // pointer-events:auto — the stack frame sits inside the column's
+      // pointer-events:none pass-through overlay (Layer B); re-enable it
+      // here or a real mouse can't grab the divider (only synthetic
+      // dispatch, which bypasses hit-testing, could).
+      style={{ height: 'var(--pod-gap)', pointerEvents: 'auto' }}
     >
       {/* Wider invisible hit target */}
       <div

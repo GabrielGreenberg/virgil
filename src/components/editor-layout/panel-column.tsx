@@ -123,9 +123,11 @@ function BottomEdgeHandle({
   const onMouseDown = useCallback(
     (e: React.MouseEvent) => {
       const frame = frameRef.current;
-      const band = (e.currentTarget as HTMLElement).closest<HTMLElement>(
-        "[data-dock-slot]",
-      );
+      // The handle is now a sibling of the band anchor (not a descendant),
+      // so resolve the band by id rather than `closest`.
+      const band = frame?.querySelector<HTMLElement>(
+        `[data-dock-slot][data-panel-id="${bottomId}"]`,
+      ) ?? null;
       startY.current = e.clientY;
       startH.current = band?.getBoundingClientRect().height ?? MIN_BAND_PX;
       frameH.current = frame?.getBoundingClientRect().height ?? 0;
@@ -136,21 +138,26 @@ function BottomEdgeHandle({
       aboveStackPx.current = Math.max(0, bandTop - frameTop);
       gapMouseDown(e);
     },
-    [frameRef, gapMouseDown],
+    [frameRef, gapMouseDown, bottomId],
   );
 
   return (
     <div
-      className="absolute inset-x-0 cursor-row-resize"
-      style={{
-        bottom: 0,
-        height: 'var(--pod-gap)',
-        pointerEvents: 'auto',
-        zIndex: 2,
-      }}
-      onMouseDown={onMouseDown}
+      data-bottom-edge={bottomId}
+      className="relative shrink-0 z-10"
+      style={{ height: 'var(--pod-gap)', pointerEvents: 'auto' }}
     >
-      <div ref={gapRef} className="drag-gap drag-gap-h band-grip w-full h-full" />
+      {/* Wider invisible hit target (mirrors BandDivider). */}
+      <div
+        className="absolute inset-x-0 cursor-row-resize"
+        style={{ top: -4, bottom: -4, background: 'transparent' }}
+        onMouseDown={onMouseDown}
+      />
+      <div
+        ref={gapRef}
+        className="drag-gap drag-gap-h band-grip w-full h-full"
+        onMouseDown={onMouseDown}
+      />
     </div>
   );
 }
@@ -474,15 +481,18 @@ function BandFragment({
           ['--dock-slot-frame-h' as string]: '100%',
         }}
         onMouseDown={() => onFocusBand(band.id)}
-      >
-        {isLast && (
-          <BottomEdgeHandle
-            bottomId={band.id}
-            frameRef={frameRef}
-            onResize={onResizeBottomEdge}
-          />
-        )}
-      </div>
+      />
+      {/* Bottom-edge handle for the last band — a flex SIBLING (not inside
+          the anchor, whose portaled FloatingPanel pod would paint over it)
+          so it sits at the band's bottom edge over the omni gap and stays
+          grabbable; this is also the only resize handle a lone band has. */}
+      {isLast && (
+        <BottomEdgeHandle
+          bottomId={band.id}
+          frameRef={frameRef}
+          onResize={onResizeBottomEdge}
+        />
+      )}
     </>
   );
 }
