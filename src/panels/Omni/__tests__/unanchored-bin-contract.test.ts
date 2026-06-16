@@ -106,9 +106,11 @@ describe("OmniUnanchoredBin — zero-flow / measurement exclusion", () => {
     );
     const bin = container.querySelector("[data-omni-unanchored-bin]") as HTMLElement;
     // Inline style is the load-bearing zero-flow guard (absolute → no flow
-    // space → cannot displace the cascade pod's top).
+    // space → cannot displace the cascade pod's top). The exact `top` is a
+    // thin design gap above the pod top (4px), not the zero-flow guard — the
+    // guard is `position: absolute`, which any non-negative top preserves.
     expect(bin.style.position).toBe("absolute");
-    expect(bin.style.top).toBe("0px");
+    expect(bin.style.top).toBe("4px");
     // The cascade ResizeObserver measures `[data-omni-entry-wrapper]`. The bin
     // must never appear under that selector (collapsed OR expanded), or its
     // height changes would feed back into measureVersion.
