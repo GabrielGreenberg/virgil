@@ -357,6 +357,22 @@ describe("ActionsMenuPanel — Escape seam", () => {
 });
 
 // ---------------------------------------------------------------------------
+// Mouse-activation must NOT blur the editor (the load-bearing preventDefault on
+// the container mousedown — old ActionsMenuPanel:424; B2 regression).
+// ---------------------------------------------------------------------------
+describe("ActionsMenuPanel — mousedown preserves editor focus", () => {
+  it("a mousedown on a menu item is defaultPrevented (editor keeps focus/selection)", () => {
+    renderPanel({});
+    const item = menuEl().querySelector("button") as HTMLButtonElement;
+    const ev = new MouseEvent("mousedown", { bubbles: true, cancelable: true });
+    act(() => {
+      item.dispatchEvent(ev);
+    });
+    expect(ev.defaultPrevented).toBe(true);
+  });
+});
+
+// ---------------------------------------------------------------------------
 // Click-outside dismissal + the color-popover exclusion (the real ref).
 // ---------------------------------------------------------------------------
 describe("ActionsMenuPanel — click-outside + color-popover exclusion", () => {

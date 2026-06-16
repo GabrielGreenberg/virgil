@@ -263,9 +263,23 @@ export function MenuProvider(props: MenuProviderProps): ReactNode {
         zIndex: CHROME_Z,
         ...containerStyle,
       }}
-      // Opening the menu shouldn't shift the editor caret; swallow the
-      // mousedown so it doesn't reach the editor / underlying selection.
-      onMouseDown={(e) => e.stopPropagation()}
+      // Clicking the menu must NOT blur the editor or shift its selection.
+      // `preventDefault` stops the mousedown from moving DOM focus off the
+      // contentEditable (the load-bearing editor-chrome convention — old
+      // ActionsMenuPanel, SelectionColorPopover, SelectionActionsMenu), and
+      // `stopPropagation` keeps it from reaching the editor / click-outside.
+      // EXEMPT focusable form controls (a combobox filter input, the native
+      // color picker) so a click INTO them still focuses them (Phase C).
+      onMouseDown={(e) => {
+        e.stopPropagation();
+        const t = e.target as HTMLElement | null;
+        if (
+          !t ||
+          !t.closest('input, textarea, select, [contenteditable="true"]')
+        ) {
+          e.preventDefault();
+        }
+      }}
     >
       <MenuContext.Provider value={ctxValue}>
         <MenuStackContext.Provider value={stackValue}>
