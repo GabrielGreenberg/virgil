@@ -1371,3 +1371,47 @@ the **round-trip**: pulling the snapshot back off the stack into the doc
 `StackPullApi` in [drop-mode/types.ts:154](src/components/drop-mode/types.ts:154))
 handles a text-object snapshot, not just a card one. Scope: this is a deferred
 *feature wire-up* (Stage 5), larger than a one-liner — likely its own chip.
+
+---
+
+## 49. ExpEx grab handles overwrite onto content (mis-placed, recurring)
+
+**Reported:** 2026-06-15 · **Status:** open (catch — do not fix yet) · **Area:** text-objects / grab handles / expex · **Related:** #25 (expex handle geometry)
+
+**Reported behavior** — the `⠿` grab handles in expex examples land *on* content
+instead of sitting in the gutter to the left of each marker (user: "the grab bars
+are overwriting onto content"). Two observed cases:
+- **Single example** (`(16) There's a biscuit…`): the block handle sits correctly
+  left of `(16)`, but a **second** handle lands in the gap **right of `(16)`**
+  (overlapping the start of the text).
+- **Multi example** (`(13)` with `a.` / `b.` sub-items): the sub-item handle lands
+  **on the `b.` marker** itself rather than left of it.
+
+**Where it's computed.** Handle x = `markerLeft − gapPx − HANDLE_WIDTH`
+([handle-layout.ts:48](src/text-objects/handle-layout.ts:48)), where `markerLeft`
+is resolved per kind by `resolveMarkerLeft`
+([block-frame.ts:291](src/text-objects/block-frame.ts:291)):
+`exampleBlock → markerElementLeft(el, ".expex-number")`,
+`exampleItem → markerElementLeft(el, ".expex-item-marker")`
+([:298–301](src/text-objects/block-frame.ts:298)). `markerElementLeft`
+([:260](src/text-objects/block-frame.ts:260)) returns the marker's
+`getBoundingClientRect().left`, **or falls back to `contentLeft`** when the marker
+isn't an `HTMLElement`.
+
+**Hypotheses for the manage session:**
+1. **Fallback to `contentLeft`** — if `.expex-number` / `.expex-item-marker` isn't
+   resolved/measured, `markerLeft` becomes `contentLeft` (the text-start, *right* of
+   the marker), so the handle anchors into the content and overlaps the marker.
+   This best fits the "lands on the marker / in the gap" symptom.
+2. **Extra handle on a single example** — the inner paragraph of a `kind:"single"`
+   example may be getting its OWN handle (anchored to text-start = right of
+   `(16)`); decide whether a single example's body paragraph should be grabbable at
+   all, or only the block.
+3. **Stale measurement after #25** — the doc-adaptive `--expex-num-width` column
+   change shifted the markers; confirm the handle measures the marker's LIVE rect
+   (not a pre-width-apply position).
+
+**Verify carefully:** the handles are RAF- + hover-gated, and the cloneNode harness
+is unfaithful here (see [[preview-gesture-testing]] / [[pm-nodeview-update-empirical-verify]])
+— drive the REAL hover/measure on a live example for any offset fix, don't trust a
+synthetic harness.
