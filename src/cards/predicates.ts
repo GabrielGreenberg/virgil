@@ -14,7 +14,7 @@
  * (cutter vs revision both carry `kind: "comment" | "suggestion"` on disk).
  */
 import { CARD_REGISTRY } from "./card-registry";
-import type { CardKind } from "./types";
+import type { CardKind, CardMeta } from "./types";
 import type { PanelKind } from "@/panels/_shared/types";
 import type { PanelThemeKey } from "@/lib/panel-theme";
 import { LEGACY_TOKEN_CROSSWALK } from "./legacy-token-crosswalk";
@@ -53,6 +53,25 @@ export const stackableCardKinds = (): CardKind[] =>
  *  for the docked one-click pop-out control (and `registerCardFloatable`'s
  *  registration guard). Only `error` is false (ratified not-poppable, §3.5). */
 export const isPoppable = (k: CardKind): boolean => CARD_REGISTRY[k].poppable;
+
+/** Whether a kind gets the docked drop button — the (re)anchor gesture that
+ *  enters drop-mode. Registry-derived SSOT (mirrors `isPoppable`), read by the
+ *  button mount on both the docked card header and the FloatChrome. STATIC, not
+ *  `dropSpec != null`: the drop machinery (`@/cards/drop-specs`) registers
+ *  specs via a boot-time side-effect import on the drop-dispatch path, which
+ *  this module can't import without a cycle and which may not have run when a
+ *  card header first paints — see `CardMeta.droppable`. Pinned to the real spec
+ *  registration by the dev assertion below + `drop-facet-contract.test.ts`. */
+export const isDroppable = (k: CardKind): boolean => CARD_REGISTRY[k].droppable;
+
+/** Where a (re)anchor drop for a kind LANDS — `"in-text"` (inline caret / atom
+ *  position), `"margin"` (paragraph horizontal band), or `null` (no drop
+ *  button). Registry-derived SSOT (mirrors `isAnchoredCardKind`); the drop
+ *  button's grab handler + the controller dispatch through this instead of
+ *  re-deriving from `dropSpec.allowedPlacements`. `cardDropPlacement(k) !== null`
+ *  ⇔ `isDroppable(k)` (pinned by the assertion below). */
+export const cardDropPlacement = (k: CardKind): CardMeta["dropPlacement"] =>
+  CARD_REGISTRY[k].dropPlacement;
 
 /** Whether a kind participates in collab focus-claims (R28/D-2). Gates the
  *  claim-on-focus / release-on-blur wiring and the claim-pill/presence-dots
@@ -107,6 +126,22 @@ if (process.env.NODE_ENV !== "production") {
         `[predicates] isInlineAtomCardKind invariant broken: "${k}" must have ` +
           `markerType === null (its inline atom is the surface, no gutter icon), ` +
           `but CARD_REGISTRY marks it "${CARD_REGISTRY[k].markerType}".`,
+      );
+    }
+  }
+
+  // Static drop-facet internal consistency: `droppable` ⇔ `dropPlacement !== null`.
+  // This is the SPEC-FREE half of the drop-facet invariant — safe to check at
+  // predicates.ts load time (the spec-keyed half lives in `assertDropFacetCoverage`,
+  // card-registry.tsx, called from the drop-specs boot module once specs are
+  // folded on; at THIS point `dropSpec` is still null by cycle-avoidance design).
+  for (const k of CARD_KINDS) {
+    const { droppable, dropPlacement } = CARD_REGISTRY[k];
+    if (droppable !== (dropPlacement !== null)) {
+      console.error(
+        `[predicates] drop-facet invariant broken: "${k}" has droppable=${droppable} ` +
+          `but dropPlacement=${JSON.stringify(dropPlacement)} — droppable must equal ` +
+          `(dropPlacement !== null) so the button gate and the placement agree.`,
       );
     }
   }

@@ -27,7 +27,7 @@
 import type { CardKind, CardMeta } from "./types";
 import type { CardFloatCtx } from "./card-float-ctx";
 import type { Floatable } from "@/floats/types";
-import type { DropSpec } from "@/components/drop-mode/types";
+import type { DropSpec, PlacementKind } from "@/components/drop-mode/types";
 
 /**
  * `toFloatable` registration — mirrors the text-object registry's
@@ -140,6 +140,58 @@ export function assertMorphCoverage(): void {
       console.error(
         `[CardMorph] "${k}".morph.to = "${m.to}" is not reciprocated ` +
           `("${m.to}".morph.to = ${back ? `"${back.to}"` : "null"}).`,
+      );
+    }
+  }
+}
+
+/**
+ * Dev-only: pin the declared drop facets (`droppable` / `dropPlacement`) to the
+ * REAL drop mechanism (`dropSpec.allowedPlacements`), so the static policy can't
+ * silently drift from what a drag session actually does. MUST be called AFTER
+ * the `@/cards/drop-specs` side-effect import has folded the specs onto the
+ * registry (i.e. from `src/cards/drop-specs/index.ts`, the boot module) — at
+ * predicates.ts load time the specs are still `null` (the cycle-avoidance the
+ * static facet exists for), so this can't live in predicates.ts's load block.
+ *
+ * The invariant is PLACEMENT-KEYED, not `droppable ⇔ dropSpec != null`: `example`
+ * carries a `dropSpec` (`blockMoveSpec`, `["between-blocks"]`) yet is
+ * `droppable:false`, because a `between-blocks` content-MOVE is not a card
+ * re-anchor (SYNTHESIS §7). So:
+ *   - `dropPlacement === "in-text"` ⇔ the spec exists AND allows `inline-cursor`
+ *   - `dropPlacement === "margin"`  ⇔ the spec exists AND allows `paragraph-side`
+ *   - `dropPlacement === null` (≡ `!droppable`) ⇔ the spec allows NEITHER
+ *     (`between-blocks`-only like example, OR no spec at all like bib/ai/error)
+ * and `droppable ⇔ dropPlacement !== null` throughout. Mirrors
+ * `assertMorphCoverage`; the contract test (`drop-facet-contract.test.ts`)
+ * imports `@/cards/drop-specs` and asserts the same matrix with teeth.
+ */
+export function assertDropFacetCoverage(): void {
+  if (process.env.NODE_ENV === "production") return;
+  for (const k of Object.keys(CARD_REGISTRY) as CardKind[]) {
+    const meta = CARD_REGISTRY[k];
+    const allows = (p: PlacementKind): boolean =>
+      meta.dropSpec?.allowedPlacements.includes(p) ?? false;
+    const expected: CardMeta["dropPlacement"] = allows("inline-cursor")
+      ? "in-text"
+      : allows("paragraph-side")
+        ? "margin"
+        : null;
+    if (meta.dropPlacement !== expected) {
+      console.error(
+        `[DropFacet] "${k}" declares dropPlacement="${meta.dropPlacement}" but ` +
+          `its dropSpec.allowedPlacements (${
+            meta.dropSpec
+              ? JSON.stringify(meta.dropSpec.allowedPlacements)
+              : "no spec"
+          }) imply "${expected}". The declared facet drifted from the mechanism.`,
+      );
+    }
+    if (meta.droppable !== (meta.dropPlacement !== null)) {
+      console.error(
+        `[DropFacet] "${k}" has droppable=${meta.droppable} but ` +
+          `dropPlacement=${JSON.stringify(meta.dropPlacement)} — droppable must ` +
+          `equal (dropPlacement !== null).`,
       );
     }
   }

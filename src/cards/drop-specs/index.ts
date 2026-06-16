@@ -16,7 +16,7 @@
  * (which the legacy shared `revision` prefix used) — folding away the
  * special-case the Stage-4 `lookupSpec` carried.
  */
-import { registerCardDropSpec } from "../card-registry";
+import { registerCardDropSpec, assertDropFacetCoverage } from "../card-registry";
 import { noteDropSpec, highlightDropSpec } from "@/panels/Notes/drop-spec";
 import { todoDropSpec } from "@/panels/Todo/drop-spec";
 import { archiveDropSpec } from "@/panels/Archive/drop-spec";
@@ -43,3 +43,8 @@ registerCardDropSpec("report-request", reportRequestDropSpec);
 registerCardDropSpec("footnote", footnoteDropSpec);
 registerCardDropSpec("citation", citationDropSpec);
 registerCardDropSpec("example", exampleDropSpec);
+
+// Now that every spec is folded onto the registry, pin the declared drop facets
+// (droppable / dropPlacement) to the real dropSpec.allowedPlacements so the
+// static policy can't drift from the mechanism (mirrors assertMorphCoverage).
+assertDropFacetCoverage();
