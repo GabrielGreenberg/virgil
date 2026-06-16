@@ -158,6 +158,23 @@ describe("CardDropButton gesture start (inPlace + externalCommit)", () => {
     expect(beginDropSession).not.toHaveBeenCalled();
   });
 
+  it("a NON-PRIMARY (right-click) press starts NO session", () => {
+    // The `if (e.button !== 0) return` guard at the very top of the handler
+    // (matching inline-atom-grab + the header lift) means a right/middle press
+    // can't open a phantom drop session — it passes through to native behavior.
+    const key = buildFloatKey({ domain: "card", kind: "note", id: "n9" });
+    render(<CardDropButton cardKey={key} />);
+    fireEvent.mouseDown(screen.getByLabelText("Drop into text"), {
+      button: 2, clientX: 50, clientY: 60,
+    });
+    expect(beginDropSession).not.toHaveBeenCalled();
+    // And a primary press on the SAME button still does start one, proving the
+    // guard is button-selective rather than globally inert.
+    fireEvent.mouseDown(screen.getByLabelText("Drop into text"), { button: 0 });
+    expect(beginDropSession).toHaveBeenCalledTimes(1);
+    fireEvent(window, new MouseEvent("mouseup", { bubbles: true }));
+  });
+
   it("arms a one-shot commit on the next window mouseup, then self-removes", () => {
     const key = buildFloatKey({ domain: "card", kind: "note", id: "n9" });
     render(<CardDropButton cardKey={key} />);

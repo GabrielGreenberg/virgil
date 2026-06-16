@@ -270,12 +270,20 @@ droppable kind (note, footnote, citation, todo, archive, the
 comment/suggestion/report families) and is absent on `bib` / `ai` /
 `error` / `example`. The glyph component is domain-neutral (no card or
 drop-mode imports) so the float chrome and the gutter pin reuse the
-same mark. Press isolation matches `CardJumpChevron` (real
-`<button draggable=false>`, mousedown `stopPropagation` +
-`preventDefault`, `dragstart` swallowed) so it never co-fires the
-header drag-lift or the card-root anchor drag. Inline kinds disable the
-button (40% opacity, not-allowed) while the card is an empty/keyless
-draft — there is no atom to anchor yet.
+same mark. Press isolation builds on `CardJumpChevron`'s (real
+`<button draggable=false>`, mousedown `stopPropagation`, `dragstart`
+swallowed) so it never co-fires the header drag-lift or the card-root
+anchor drag — but it goes **intentionally beyond** the jump chevron by
+ALSO calling `preventDefault()` on mousedown. This is a press-**drag**,
+not a click: the `preventDefault` suppresses native focus + stray
+text-selection during the drag and trips the header wrapper's
+`if (e.defaultPrevented) return` lift-guard. That `preventDefault` is
+load-bearing — do not "align" it back to `CardJumpChevron` by removing
+it. A non-primary (right/middle) press is guarded out at the top of the
+handler (`if (e.button !== 0) return`) so it passes through with its
+native behavior intact. Inline kinds disable the button (40% opacity,
+not-allowed) while the card is an empty/keyless draft — there is no atom
+to anchor yet.
 
 ## Panels
 
