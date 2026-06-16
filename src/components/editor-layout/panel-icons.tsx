@@ -226,17 +226,14 @@ export function IconReports({ active, size = 18, hideFrame }: { active?: boolean
   return (
     <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={c} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
       {!hideFrame && (
-        <>
-          {/* Squircle balloon body */}
-          <rect x="3" y="4" width="18" height="13" rx="4" />
-          {/* Tail pointing down from the lower-left */}
-          <path d="M8 17v3.5L11.5 17" />
-        </>
+        // Squircle speech balloon with an integral tail at the lower-left:
+        // ONE continuous outline path (the bottom-left corner pulls down into
+        // the tail point) so it reads as an outline, not a filled wedge.
+        <path d="M7 4H17A4 4 0 0 1 21 8V13A4 4 0 0 1 17 17H7L3 21V8A4 4 0 0 1 7 4Z" />
       )}
-      {/* Short, varied text lines */}
-      <line x1="7" y1="8.5" x2="17" y2="8.5" />
-      <line x1="7" y1="11.5" x2="17" y2="11.5" />
-      <line x1="7" y1="14.5" x2="13" y2="14.5" />
+      {/* Two text lines, vertically centered in the bubble body */}
+      <line x1="7" y1="9" x2="17" y2="9" />
+      <line x1="7" y1="12" x2="17" y2="12" />
     </svg>
   );
 }
