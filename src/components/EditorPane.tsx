@@ -132,7 +132,6 @@ import { CARD_REGISTRY } from "@/cards/card-registry";
 import { isCardKind, panelForCardKind } from "@/cards/predicates";
 import { PoppedCardsContext, type PoppedCardsValue } from "@/hooks/usePoppedCards";
 import { DropModeProvider } from "./drop-mode/DropModeProvider";
-import { useAnchorRebindBridge } from "./editor-layout/event-bridges/anchor-rebind";
 import type { StackPullApi } from "./drop-mode/types";
 import { StackIcon } from "./stack/StackIcon";
 import { StackStrip } from "./stack/StackStrip";
@@ -1370,21 +1369,14 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
     [citationsHook.commandFor],
   );
 
-  // Wire the marginalia gutter drag → reanchor bridge to THIS pane's hook
-  // instances. EditorLayout owns a duplicate copy of these hooks, but only
-  // the EditorPane instances feed the rendered <Marginalia>. Dispatching
-  // reanchor events into EditorLayout's mutators would update the wrong
-  // state and leave the on-screen marker frozen.
-  useAnchorRebindBridge({
-    addTodoTextObjectId: todosHook.addParagraphId,
-    removeTodoTextObjectId: todosHook.removeParagraphId,
-    addNoteTextObjectId: notesHook.addNoteTextObjectId,
-    removeNoteTextObjectId: notesHook.removeNoteTextObjectId,
-    addArchiveTextObjectId: archiveHook.addParagraphId,
-    removeArchiveTextObjectId: archiveHook.removeParagraphId,
-    addCardParagraphId: cutterHook.addCardParagraphId,
-    removeCardParagraphId: cutterHook.removeCardParagraphId,
-  });
+  // The gutter-pin re-anchor gesture no longer dispatches a
+  // `virgil-marginalia-reanchor` CustomEvent into a per-pane mutator bridge —
+  // grabbing a pin now starts a unified drop-mode session (Marginalia's
+  // MarkerButton → `beginCardDropGesture`), and the controller commit calls
+  // each kind's registered `dropSpec.applyDrop` via the `ParagraphAnchorApi`
+  // sub-bags wired into `DropModeProvider` below (the same `links.ts`
+  // add/removeTextObjectLink the panel mutates). So the old `anchor-rebind`
+  // bridge is gone.
 
   // Stack-pull API — surfaces per-doc card-creation factories so the
   // stack-pull DropSpec can materialize fresh entities on pull. Each

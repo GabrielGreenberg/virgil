@@ -62,7 +62,15 @@ export function isAnchorableAtom(nodeType: NodeType): boolean {
 // Centralized MIME type constants
 // ---------------------------------------------------------------------------
 
-/** Drag a gutter icon to re-anchor it to a different paragraph. */
+/**
+ * Residual paragraph-anchor suppress token. The gutter-pin re-anchor gesture
+ * that used to set this MIME no longer exists — it was folded onto the unified
+ * drop-mode controller (chip H). No code produces this DataTransfer type
+ * anymore; it is kept ONLY as the lone member of `ANCHOR_DRAG_TYPES` so
+ * `isAnchorDrag` stays a live (if currently never-true) guard that suppresses
+ * ProseMirror's native dropcursor / inline-insert misread for any future
+ * native paragraph-anchor drag that opts back into this token.
+ */
 export const MIME_MARGINALIA_MOVE = "application/x-virgil-marginalia-move";
 
 /** Drag a citation to insert it inline. */
@@ -100,14 +108,20 @@ export interface MarginaliaMarker {
   /** Original entity id (e.g. note id) when id is a composite key */
   entityId: string;
   /**
-   * Anchored-card kind this marker belongs to. Markers self-subscribe to
-   * the global cardStore via this kind + entityId to compute their own
-   * selected/hovered state — no prop threading from a parent decoration
-   * loop. Optional only because legacy "error" markers (which aren't
-   * anchored cards) don't carry it.
+   * Anchored-card kind this marker belongs to (`EntityKind` = `CardKind`).
+   * Two roles:
+   *  1. Markers self-subscribe to the global cardStore via this kind +
+   *     entityId to compute their own selected/hovered state (the three-surface
+   *     hover) — no prop threading from a parent decoration loop.
+   *  2. It is the precise CardKind the gutter-pin re-anchor gesture uses to
+   *     build the `float:card:<kind>:<id>` key for `beginCardDropGesture`
+   *     (chip H). The marker builder knows the real kind (e.g. cut →
+   *     `cutter-comment`/`cutter-suggestion`, report → `report`/`report-request`),
+   *     so the pin needs no `MarkerType`→CardKind disambiguation.
+   * Optional only because the non-card "error" marker (not an anchored card,
+   * not re-anchorable) doesn't carry it — a pin without `entityKind` is
+   * click-only, never grabbable.
    */
-  /** Anchored-card kind for the three-surface hover. Was a hand-kept inline
-   *  union duplicating `ANCHORED_CARD_KINDS`; now reuses `EntityKind`. */
   entityKind?: EntityKind;
   /** Marker category — drives icon/color */
   type: MarkerType;

@@ -12,14 +12,13 @@ import {
   MARGINALIA_GUTTER_WIDTH_LEFT,
   MARGINALIA_GUTTER_WIDTH_RIGHT,
   MARGINALIA_ICON_SIZE,
-  MIME_MARGINALIA_MOVE,
-  isAnchorDrag,
   type GridCell,
   type MarginaliaMarker,
   type MarkerOverflowGroup,
   type PositionedMarker,
 } from "@/lib/marginalia";
-import { ensureAnchorUuid } from "@/lib/anchor-uuid";
+import { buildFloatKey } from "@/floats/float-key";
+import { beginCardDropGesture } from "@/components/drop-mode/card-drop-gesture";
 import { computeMarkerPositions } from "@/lib/marginalia-grid";
 import type { PanelId } from "@/hooks/useViewPrefs";
 import {
@@ -116,175 +115,11 @@ export default function Marginalia({ editor, markers, panelSides }: MarginaliaPr
     [registry, markers, panelSides, registryVersion],
   );
 
-  // Imperative vertical drop indicator for paragraph-linking drags
-  // (marginalia gutter icons, reports panel, note panel).
-  useEffect(() => {
-    if (!scrollEl || !editor) return;
-    let indicator: HTMLDivElement | null = null;
-    let rafId = 0;
-    // The paragraph UUID currently highlighted by the indicator.
-    // onDrop uses this directly — whatever the bar shows is what gets the drop.
-    let indicatedParagraphId: string | null = null;
-
-    const showIndicator = (paragraphId: string, side: "left" | "right") => {
-      const pos = registry.getMetrics(paragraphId);
-      if (!pos) { hideIndicator(); return; }
-      if (!indicator) {
-        indicator = document.createElement("div");
-        // Same blue token the drop-mode controller uses for its
-        // paragraph-side indicator — both gestures land here visually.
-        indicator.className = "marginalia-drop-indicator dropmode-bar-side";
-        Object.assign(indicator.style, {
-          position: "absolute",
-          width: "2px",
-          background: "var(--accent-blue, #2563eb)",
-          pointerEvents: "none",
-          zIndex: "20",
-          borderRadius: "1px",
-        });
-        scrollEl.appendChild(indicator);
-      }
-      // Span just the text lines (not the title or block spacing around them).
-      indicator.style.top = `${pos.top}px`;
-      indicator.style.height = `${pos.lineCount * pos.lineHeight}px`;
-      indicator.style[side] = `${side === "left" ? MARGINALIA_GUTTER_WIDTH_LEFT : MARGINALIA_GUTTER_WIDTH_RIGHT}px`;
-      indicator.style[side === "left" ? "right" : "left"] = "";
-      indicatedParagraphId = paragraphId;
-    };
-
-    const hideIndicator = () => {
-      if (indicator) {
-        indicator.remove();
-        indicator = null;
-      }
-      indicatedParagraphId = null;
-      scrollEl.classList.remove("anchor-drag-active");
-    };
-
-    const onDragOver = (e: DragEvent) => {
-      if (!isAnchorDrag(e.dataTransfer)) return;
-      // Signal the browser this is a valid drop target so the drop event fires
-      e.preventDefault();
-      scrollEl.classList.add("anchor-drag-active");
-      cancelAnimationFrame(rafId);
-      rafId = requestAnimationFrame(() => {
-        const scrollRect = scrollEl.getBoundingClientRect();
-        const side = e.clientX < scrollRect.left + scrollRect.width / 2 ? "left" : "right";
-
-        // Hit-test by what's actually under the pointer. The browser is
-        // the authoritative source for "which block is at (x, y)" — that's
-        // what `elementFromPoint` answers. Each anchorable block now
-        // carries a `data-uuid` (see UUID_ATTR_SPEC); walk up to find it.
-        //
-        // The marginalia gutter itself is `pointer-events: none` and the
-        // drop indicator is `pointer-events: none`, so neither intercepts.
-        // The marker buttons HAVE `pointer-events: auto`, but they live
-        // inside the gutter, which has no `[data-uuid]`, so closest()
-        // walks past them and returns null — falling through to the
-        // micro-scan below, which finds the paragraph underneath.
-        const findUuidAt = (x: number, y: number): string | null => {
-          const el = document.elementFromPoint(x, y) as HTMLElement | null;
-          if (!el) return null;
-          const block = el.closest("[data-uuid]") as HTMLElement | null;
-          return block?.getAttribute("data-uuid") ?? null;
-        };
-
-        let bestId: string | null = findUuidAt(e.clientX, e.clientY);
-        if (!bestId) {
-          // Pointer is in a gap between blocks (block spacing, list-item
-          // gutter, etc.). Probe vertically at ±a few px until we hit a
-          // UUID-bearing element.
-          for (const dy of [-4, 4, -10, 10, -20, 20]) {
-            bestId = findUuidAt(e.clientX, e.clientY + dy);
-            if (bestId) break;
-          }
-        }
-
-        if (bestId) {
-          showIndicator(bestId, side);
-        } else {
-          hideIndicator();
-        }
-      });
-    };
-
-    const onDragLeave = (e: DragEvent) => {
-      if (!scrollEl.contains(e.relatedTarget as Node)) {
-        cancelAnimationFrame(rafId);
-        hideIndicator();
-      }
-    };
-
-    const onDragEnd = () => {
-      cancelAnimationFrame(rafId);
-      hideIndicator();
-    };
-
-    const onDrop = (e: DragEvent) => {
-      // Capture the indicated paragraph BEFORE hideIndicator clears it.
-      const targetId = indicatedParagraphId;
-      cancelAnimationFrame(rafId);
-      hideIndicator();
-
-      // Only handle anchor drags (paragraph-level linking operations).
-      // Non-anchor drags (inline insertion) still need ProseMirror coords,
-      // so we let those fall through to the editor's own handleDrop.
-      if (!isAnchorDrag(e.dataTransfer)) return;
-
-      // Use whatever paragraph the indicator bar was showing — this is what
-      // the user sees and expects the drop to target.
-      let resolvedId = targetId;
-      if (!resolvedId) return;
-
-      // For synthetic "_pos:NNN" IDs (nodes without UUIDs), hydrate a UUID
-      // via the shared `ensureAnchorUuid` helper so all downstream stores
-      // get a stable string key.
-      if (resolvedId.startsWith("_pos:")) {
-        const rawPos = parseInt(resolvedId.slice(5), 10);
-        if (isNaN(rawPos)) return;
-        const doc = editor.state.doc;
-        if (rawPos < 0 || rawPos >= doc.content.size) return;
-        const newUuid = ensureAnchorUuid(editor.view, rawPos);
-        if (!newUuid) return;
-        resolvedId = newUuid;
-      }
-
-      const paragraphId = resolvedId;
-      e.preventDefault();
-      e.stopPropagation();
-
-      // --- Marginalia move (gutter icon re-anchor) ---
-      const margData = e.dataTransfer?.getData(MIME_MARGINALIA_MOVE);
-      if (margData) {
-        try {
-          const { type, entityId, currentParagraphId } = JSON.parse(margData);
-          if (paragraphId !== currentParagraphId) {
-            window.dispatchEvent(
-              new CustomEvent("virgil-marginalia-reanchor", {
-                detail: { type, entityId, oldParagraphId: currentParagraphId, newParagraphId: paragraphId },
-              })
-            );
-          }
-        } catch { /* ignore */ }
-        return;
-      }
-    };
-
-    scrollEl.addEventListener("dragover", onDragOver);
-    scrollEl.addEventListener("dragleave", onDragLeave);
-    document.addEventListener("dragend", onDragEnd);
-    scrollEl.addEventListener("drop", onDrop);
-    return () => {
-      cancelAnimationFrame(rafId);
-      hideIndicator();
-      scrollEl.removeEventListener("dragover", onDragOver);
-      scrollEl.removeEventListener("dragleave", onDragLeave);
-      document.removeEventListener("dragend", onDragEnd);
-      scrollEl.removeEventListener("drop", onDrop);
-    };
-    // `registry` is memoized with empty deps — its identity is stable
-    // across renders, so adding it here doesn't re-run the effect.
-  }, [scrollEl, editor, registry]);
+  // The gutter-pin re-anchor gesture is no longer native HTML5 DnD: grabbing
+  // a marker pin now starts a unified drop-mode session (see `MarkerButton`'s
+  // mousedown → `beginCardDropGesture`). The controller owns the hit-test and
+  // the blue paragraph-side Indicator for that gesture, so the old imperative
+  // dragover/drop/indicator machinery that used to live here is gone.
 
   if (!scrollEl) return null;
   if (positioned.length === 0 && overflowGroups.length === 0) return null;
@@ -321,8 +156,12 @@ export default function Marginalia({ editor, markers, panelSides }: MarginaliaPr
  * Declared before `Gutter` so Turbopack Fast Refresh always sees the
  * binding when Gutter re-evaluates (function-declaration hoisting works
  * but bundler module boundaries can be strict in dev).
+ *
+ * Exported for the pin-gesture test (mirrors `CardDropButton`): the test
+ * fires a mousedown and asserts it starts a drop session with the cardKey
+ * derived from `m.entityKind + m.entityId`.
  */
-function MarkerButton({
+export function MarkerButton({
   m,
   cell,
   dragEnabled,
@@ -340,6 +179,12 @@ function MarkerButton({
     : null;
   const selected = useIsSelected(ref);
   const hovered = useIsHovered(ref);
+  // Set true once a re-anchor grab crosses a small movement threshold, so the
+  // browser's trailing click (mousedown→drag→mouseup synthesizes one) is
+  // swallowed instead of opening the panel. A plain click (no drag) leaves it
+  // false → onClick opens the panel as before. Mirrors PanelCard's
+  // `suppressClickRef`.
+  const suppressClickRef = useRef(false);
 
   const meta = MARKER_META[m.type];
   // Registry-derived color slot (R17). Report markers honor a user report
@@ -360,10 +205,28 @@ function MarkerButton({
       ? `0 0 0 1.5px ${palette.border}`
       : undefined;
 
+  // Re-anchor by grab is folded onto the unified drop-mode controller (chip H).
+  // A pin can re-anchor when the editor is editable AND the marker is a real
+  // anchored card (`m.entityKind` — `= CardKind` — is present; the only marker
+  // without it is the non-card "error" badge, which is not re-anchorable). The
+  // gesture mirrors the card DROP BUTTON exactly: a primary-button mousedown
+  // starts `beginCardDropGesture`, which begins an `inPlace + externalCommit`
+  // drop session and arms a one-shot mouseup commit. The controller owns the
+  // hit-test + the blue paragraph-side Indicator; a drop in a paragraph's gutter
+  // band runs that kind's registered `dropSpec` (the same `links.ts`
+  // add/removeTextObjectLink the panel mutates), so the re-anchor is identical
+  // to the old native path — just routed through the one controller.
+  const reanchorKey =
+    dragEnabled && m.entityKind
+      ? buildFloatKey({ domain: "card", kind: m.entityKind, id: m.entityId })
+      : null;
+
   return (
     <button
       type="button"
-      draggable={dragEnabled}
+      // The card-root HTML5 anchor drag / header lift must not co-fire with the
+      // pin grab — swallow native drag the way `CardDropButton` does.
+      draggable={false}
       data-marginalia-marker={`${m.type}:${m.id}`}
       data-card-selected={selected ? "true" : undefined}
       data-card-hovered={hovered ? "true" : undefined}
@@ -378,14 +241,50 @@ function MarkerButton({
         boxShadow: interactionShadow,
         transition: "box-shadow 120ms ease-out",
         opacity: m.muted ? 0.4 : undefined,
-        cursor: dragEnabled ? "grab" : "pointer",
+        cursor: reanchorKey ? "grab" : "pointer",
         padding: 0,
         lineHeight: 1,
       }}
       data-hint={m.title || meta.label}
+      onMouseDown={reanchorKey ? (e) => {
+        // Primary button only — a right/middle press passes through to native
+        // behavior (matches inline-atom-grab + the header lift + CardDropButton).
+        if (e.button !== 0) return;
+        // Don't let the press bubble into the card-root lift / native drag.
+        e.stopPropagation();
+        e.preventDefault();
+        // Re-arm the click path; a movement watcher flips it only on a real drag.
+        suppressClickRef.current = false;
+        const startX = e.clientX;
+        const startY = e.clientY;
+        const onMove = (ev: MouseEvent) => {
+          if (
+            Math.abs(ev.clientX - startX) > 3 ||
+            Math.abs(ev.clientY - startY) > 3
+          ) {
+            suppressClickRef.current = true;
+          }
+        };
+        const onUp = () => {
+          window.removeEventListener("mousemove", onMove);
+          window.removeEventListener("mouseup", onUp);
+        };
+        window.addEventListener("mousemove", onMove);
+        window.addEventListener("mouseup", onUp);
+        beginCardDropGesture({
+          cardKey: reanchorKey,
+          origin: { x: e.clientX, y: e.clientY },
+        });
+      } : undefined}
       onClick={(e) => {
         e.preventDefault();
         e.stopPropagation();
+        // A re-anchor drag just completed — swallow the synthetic trailing
+        // click so it doesn't also open the panel.
+        if (suppressClickRef.current) {
+          suppressClickRef.current = false;
+          return;
+        }
         const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
         m.onClick?.(rect.top);
         onActivated?.();
@@ -403,21 +302,7 @@ function MarkerButton({
           (e.target as HTMLElement).blur();
         }
       }}
-      onDragStart={dragEnabled ? (e) => {
-        e.dataTransfer.effectAllowed = "move";
-        e.dataTransfer.setData(
-          MIME_MARGINALIA_MOVE,
-          JSON.stringify({
-            type: m.type,
-            entityId: m.entityId,
-            currentParagraphId: m.textObjectId,
-          })
-        );
-        (e.target as HTMLElement).style.opacity = "0.4";
-      } : undefined}
-      onDragEnd={dragEnabled ? (e) => {
-        (e.target as HTMLElement).style.opacity = "";
-      } : undefined} aria-label={m.title || meta.label}
+      aria-label={m.title || meta.label}
     >
       {meta.icon}
     </button>
