@@ -149,7 +149,13 @@ export function CardChromeTrailing({
 
 export function compressedBodyStyle(
   lines: number,
-  opts?: { lineHeight?: number },
+  // `lineHeight` may be a number (plain-summary kinds default to 1.4) or a
+  // CSS-var string. Borrowed-body kinds (footnote/archive/example) render
+  // their preview <p> at the LIVE `--editor-line-height` prose pref (1.6 by
+  // default, but user-tunable), so they pass `'var(--editor-line-height, 1.6)'`
+  // — the ceiling must track that same unit-less factor or line 2 gets clipped
+  // (#42). A literal 1.6 would drift from the pref; the var stays in sync.
+  opts?: { lineHeight?: number | string },
 ): React.CSSProperties {
   const n = Math.max(1, lines);
   const lh = opts?.lineHeight ?? 1.4;
@@ -164,7 +170,9 @@ export function compressedBodyStyle(
     // clamped next line gets clipped, not shown. box-sizing:content-box
     // makes maxHeight apply to the content area only, so the wrapping
     // div's padding lives outside the ceiling and isn't squeezed.
-    maxHeight: `calc(${lh}em * ${n})`,
+    // `${lh} * 1em` works for both a number and a `var(...)` string
+    // (a unit-less factor × 1em), valid CSS `calc` either way.
+    maxHeight: `calc(${lh} * 1em * ${n})`,
     boxSizing: "content-box",
   };
 }
@@ -1035,7 +1043,21 @@ export function EditableCard({
               {bodyTitle}
             </div>
           ) : null}
-          <div style={{ ...compressedBody, ...compressedBodyStyle(compressedLines) }}>
+          <div
+            style={{
+              ...compressedBody,
+              // Borrowed-body kinds render their preview <p> at the live
+              // `--editor-line-height` prose pref (BorrowedMainText doesn't
+              // override it), so the clamp ceiling must track the SAME factor
+              // or the 2nd line clips (#42). Plain-summary kinds keep 1.4.
+              ...compressedBodyStyle(
+                compressedLines,
+                useBorrowedCompressed
+                  ? { lineHeight: "var(--editor-line-height, 1.6)" }
+                  : undefined,
+              ),
+            }}
+          >
             {useBorrowedCompressed ? (
               <BorrowedMainText
                 value={compressedContent}
