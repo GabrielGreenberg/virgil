@@ -1759,7 +1759,12 @@ export function buildEditorExtensions(ctx: EditorExtensionsCtx) {
     LatexComment.configure({ surface: isFloat ? "float" : "main" }),
     Citation,
     LabelRef,
-    ExampleBlock,
+    // cardContext gates the example's par-title strip (#47): on a card/float
+    // surface its absolutely-positioned untitled "+T" overlays the card
+    // header and collides with the card's own CardBodyTitle +T. Mirrors the
+    // TexBlock/FigureBlock/GraphicsBlock threading above. The "Ex." label pod
+    // is NOT gated — the example float still renames its `\label{}`.
+    ExampleBlock.configure({ cardContext: ctx.cardContext }),
     ExampleItemList,
     ExampleItem,
     ExampleGloss,

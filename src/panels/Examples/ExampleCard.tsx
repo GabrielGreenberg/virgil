@@ -106,11 +106,22 @@ function ExampleCardEditor({
   mainEditor,
   editorRef,
   bodyStyle,
+  readOnly = false,
+  clampLines,
 }: {
   exampleId: string;
   mainEditor: Editor | null;
   editorRef: React.RefObject<EditorHandle | null>;
   bodyStyle: React.CSSProperties;
+  /** Force the embedded editor read-only regardless of the main doc's
+   *  editability — used for the COLLAPSED preview (#43), which renders
+   *  through the SAME expex NodeViews as expanded (black native (N),
+   *  expex serif/grid) but must never accept typing. */
+  readOnly?: boolean;
+  /** When set, height-clamp the rendered block to roughly this many prose
+   *  lines so the collapsed preview stays compact (a max-height ceiling +
+   *  overflow:hidden over the real expex grid, NOT a hand-built string). */
+  clampLines?: number;
 }) {
   const rev = useStructuralRevisions(mainEditor);
   // Per-uuid content signal (#39 nit 1): bumps ONLY when THIS example's
@@ -123,6 +134,9 @@ function ExampleCardEditor({
   // editor so the card shows read-only content instead of accepting phantom
   // typing whose write-back the readOnlyEnforcer would silently reject.
   const mainEditable = useMainEditable(mainEditor);
+  // The collapsed preview forces read-only on top of the doc's editability
+  // (#43): same renderer as expanded, but never typeable.
+  const effectiveEditable = mainEditable && !readOnly;
 
   // Heading/label callbacks proxied to the MAIN handle, exactly as the
   // example float does — an example doc holds only an exampleBlock so the
@@ -200,7 +214,7 @@ function ExampleCardEditor({
   const editor = useEditor({
     extensions: buildEditorExtensions({
       surface: "float",
-      editable: mainEditable,
+      editable: effectiveEditable,
       cardContext: true,
       docIdRef,
       callbacks: {
@@ -214,26 +228,30 @@ function ExampleCardEditor({
       host: { getMainEditor: () => editorRef.current?.getEditor() ?? null },
     }),
     content: initialDoc,
-    editable: mainEditable,
+    editable: effectiveEditable,
     immediatelyRender: false,
     editorProps: {
       attributes: {
         class:
-          "tiptap ProseMirror example-card-editor max-w-none focus:outline-none",
+          `tiptap ProseMirror example-card-editor max-w-none focus:outline-none${clampLines ? " example-card-editor-collapsed" : ""}`,
       },
     },
     onUpdate({ editor: ed }) {
+      // Read-only previews never emit (editor is non-editable), but guard
+      // anyway so a future toggle can't write a preview's content back.
+      if (readOnly) return;
       writeBackToMain(ed.getJSON());
     },
   });
 
   // Keep the embedded editor's editability in lock-step with the main doc's,
-  // in case read-only mode toggles after mount (collab pen handoff).
+  // in case read-only mode toggles after mount (collab pen handoff). The
+  // collapsed preview's forced read-only rides through `effectiveEditable`.
   useEffect(() => {
-    if (editor && editor.isEditable !== mainEditable) {
-      editor.setEditable(mainEditable);
+    if (editor && editor.isEditable !== effectiveEditable) {
+      editor.setEditable(effectiveEditable);
     }
-  }, [editor, mainEditable]);
+  }, [editor, effectiveEditable]);
 
   // ── Main → card re-seed, gated on structural + content example signals ──
   // Re-seed from the live block when EITHER `rev.examples` bumps (an example
@@ -304,7 +322,27 @@ function ExampleCardEditor({
     /* eslint-enable react-hooks/immutability */
   }, [editor, bodyStyle]);
 
-  return <EditorContent editor={editor} />;
+  const content = <EditorContent editor={editor} />;
+  if (clampLines) {
+    // Height-clamp the real expex grid to a compact preview. We can't use
+    // -webkit-line-clamp (the block is a CSS grid, not text flow), so cap
+    // the height to clampLines prose lines at the LIVE --editor-line-height
+    // (same factor #42 uses) and clip the overflow. The full expex vocabulary
+    // (black native (N), serif, grid alignment) renders above the fold.
+    // The var FALLBACK (1.8) must equal the `.tiptap p` line-height fallback
+    // (globals.css:657) so an undefined var can't clamp tighter than the line.
+    return (
+      <div
+        style={{
+          maxHeight: `calc(var(--editor-line-height, 1.8) * 1em * ${Math.max(1, clampLines)})`,
+          overflow: "hidden",
+        }}
+      >
+        {content}
+      </div>
+    );
+  }
+  return content;
 }
 
 /** Panel card for a single `\ex` / `\pex` block. The body mounts the real
@@ -374,21 +412,49 @@ export function ExampleCard({
       onJump={(e) => onJump((e.currentTarget as HTMLElement).closest('[data-card]') as HTMLElement | null)}
     >
       {compressed ? (
-        <div className="px-3 py-1.5 text-ink-body">
-          <div style={{ fontFamily: "var(--font-serif), Georgia, serif", ...bodyStyle, ...compressedBodyStyle(compressedLines) }}>
-            <span
-              className="font-mono mr-2"
-              style={{ color: theme.titleColor }}
-            >
-              ({example.number || "?"})
-            </span>
-            {(() => {
-              const text = example.bodyText || example.items[0]?.text || "";
-              const trimmed = text.replace(/\s+/g, " ").trim();
-              if (trimmed) return trimmed;
-              return <CardEmptyText />;
-            })()}
-          </div>
+        /* Collapsed preview (#43): full parity with expanded. When an editor
+           context is available, render through the SAME read-only,
+           height-clamped expex editor as expanded — black native (N) via
+           .expex-number (color:inherit), expex serif + grid alignment — so
+           collapsed and expanded share ONE renderer. The read-only editor
+           re-seeds only on the rev.examples / contentRev structural counters
+           (never per keystroke). In a bare mount (no editor context — the
+           unit test / no-provider preview) fall back to a static line, with
+           the (N) BLACK to match the expex look (no longer teal).
+           No onClick stopPropagation: the preview editor is read-only, so an
+           expand click must bubble to the card's own onClick. */
+        <div className="px-3 py-1.5 text-ink-body example-card-body">
+          {/* Mount-footprint note (#43): the collapsed preview now mounts a
+              FULL (read-only) expex editor per collapsed card, not a static
+              string — so the Examples panel / omni holds N embedded editors
+              when N example cards are collapsed. This is NOT a keystroke-
+              sanctity concern (the editor re-seeds only on the rev.examples /
+              contentRev STRUCTURAL counters, never per keystroke), but it
+              informs any future panel/omni virtualization decision. */}
+          {canEdit ? (
+            <div style={{ fontFamily: "var(--font-serif), Georgia, serif", ...bodyStyle }}>
+              <ExampleCardEditor
+                exampleId={example.exampleId}
+                mainEditor={mainEditor}
+                editorRef={editorRef}
+                bodyStyle={bodyStyle}
+                readOnly
+                clampLines={compressedLines}
+              />
+            </div>
+          ) : (
+            <div style={{ fontFamily: "var(--font-serif), Georgia, serif", ...bodyStyle, ...compressedBodyStyle(compressedLines) }}>
+              <span className="font-mono mr-2">
+                ({example.number || "?"})
+              </span>
+              {(() => {
+                const text = example.bodyText || example.items[0]?.text || "";
+                const trimmed = text.replace(/\s+/g, " ").trim();
+                if (trimmed) return trimmed;
+                return <CardEmptyText />;
+              })()}
+            </div>
+          )}
         </div>
       ) : (
       <>
@@ -410,8 +476,10 @@ export function ExampleCard({
           />
         ) : example.bodyContent || example.items.length > 0 ? (
           // Read-only fallback (no editor context — tests / no provider).
+          // The (N) is left UNCOLORED to match the collapsed black (N) the
+          // chip already fixed (no longer teal) — one no-editor look.
           <div className="flex gap-2">
-            <span className="font-mono shrink-0" style={{ color: theme.titleColor }}>
+            <span className="font-mono shrink-0">
               ({example.number || "?"})
             </span>
             <div className="min-w-0 flex-1">
@@ -434,7 +502,7 @@ export function ExampleCard({
                 <ol className="list-none m-0 p-0 mt-1 flex flex-col gap-0.5">
                   {example.items.map((it, idx) => (
                     <li key={idx} className="flex gap-2">
-                      <span className="shrink-0" style={{ minWidth: "1.25rem", color: theme.titleColor }}>
+                      <span className="shrink-0" style={{ minWidth: "1.25rem" }}>
                         {it.subLabel || (idx + 1)}.
                       </span>
                       <div className="min-w-0 flex-1">
@@ -460,7 +528,7 @@ export function ExampleCard({
           </div>
         ) : example.bodyText ? (
           <div className="flex gap-2">
-            <span className="font-mono shrink-0" style={{ color: theme.titleColor }}>
+            <span className="font-mono shrink-0">
               ({example.number || "?"})
             </span>
             <div className="leading-snug whitespace-pre-wrap break-words min-w-0 flex-1">

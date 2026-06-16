@@ -1171,7 +1171,6 @@ textarea,
 .card-title-input {
   background: transparent;
   border: none;
-  border-bottom: 1px solid var(--par-title-color, #c45a5a);
   outline: none;
   font-size: var(--par-title-size, 0.78rem);
   font-weight: 500;
@@ -3683,6 +3682,16 @@ body[data-drop-mode-active="true"] * {
  * out inside their parent. */
 .expex-item-list {
   display: contents;
+}
+
+/* Collapsed example card preview (#43): renders through the real read-only
+ * expex editor for full parity with expanded (black native (N), serif, grid),
+ * height-clamped to a couple of lines. Hide the "Ex." / "ex." label pods —
+ * they're rename affordances (inert on a read-only preview) and would just
+ * clutter the compact clamp. The pods stay live in the expanded card / float. */
+.example-card-editor-collapsed .expex-label-annotation,
+.example-card-editor-collapsed .expex-item-label-annotation {
+  display: none;
 }
 
 /* Sub-item — a/b/c rows inside a \pex (or i/ii/iii … one tier deeper).
