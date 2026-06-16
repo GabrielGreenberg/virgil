@@ -19,6 +19,16 @@ import type { CSSProperties } from "react";
 /** Menu layout — drives which key map `useMenuKeyboard` runs (§3.1/§3.4). */
 export type MenuLayout = "list" | "grid" | "composite" | "combobox";
 
+/**
+ * List stepping axis (opt-in). A `list` layout steps Up/Down by default
+ * ("vertical"); "horizontal" steps Left/Right instead (Up/Down inert), for a
+ * horizontal swatch row (the color popover). ONLY consulted for the `list`
+ * layout — `grid` / `composite` / `combobox` ignore it (a grid already maps all
+ * four arrows; a combobox owns Left/Right via `onArrowHorizontal`). Default
+ * "vertical", so every existing vertical menu is unaffected.
+ */
+export type MenuOrientation = "vertical" | "horizontal";
+
 /** ARIA fork (§3.5). `menu` → role=menu + menuitem; `listbox` → the combobox
  *  pattern (an owned input drives aria-activedescendant over a listbox). */
 export type MenuRole = "menu" | "listbox";

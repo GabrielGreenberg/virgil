@@ -20,6 +20,7 @@ import { computeNextActive, freshNavMemory, type NavMemory } from "./nav-core";
 import type {
   MenuLayout,
   MenuNode,
+  MenuOrientation,
   MenuRegistryHandle,
   NavDir,
 } from "./types";
@@ -46,6 +47,9 @@ type Listener = () => void;
 export class MenuRegistry implements MenuRegistryHandle {
   readonly menuId: string;
   private layout: MenuLayout;
+  // List stepping axis (opt-in). Only consulted for the `list` layout; default
+  // vertical so every existing vertical menu is unaffected.
+  private orientation: MenuOrientation = "vertical";
 
   // Insertion-ordered records. A Map preserves insertion order, but bespoke
   // JSX items mount in DOM order and the registry-mapper appends in row order,
@@ -73,6 +77,14 @@ export class MenuRegistry implements MenuRegistryHandle {
   setLayout(layout: MenuLayout): void {
     if (this.layout === layout) return;
     this.layout = layout;
+    this.bump();
+  }
+
+  /** Set the list stepping axis (opt-in horizontal for a swatch row). A no-op
+   *  for non-list layouts at nav time; stored cheaply regardless. */
+  setOrientation(orientation: MenuOrientation): void {
+    if (this.orientation === orientation) return;
+    this.orientation = orientation;
     this.bump();
   }
 
@@ -172,6 +184,7 @@ export class MenuRegistry implements MenuRegistryHandle {
       this.active,
       dir,
       this.mem,
+      this.orientation,
     );
     if (next !== this.active) {
       this.active = next;

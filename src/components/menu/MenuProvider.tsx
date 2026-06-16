@@ -27,6 +27,7 @@ import {
   useMemo,
   useRef,
   useState,
+  useSyncExternalStore,
   type CSSProperties,
   type ReactNode,
 } from "react";
@@ -38,14 +39,21 @@ import {
 import {
   MenuContext,
   MenuStackContext,
+  createMenuStackController,
   useMenuStack,
   useOptionalMenuContext,
   type MenuContextValue,
+  type MenuStackController,
 } from "./context";
 import { MenuRegistry, publishRegistry, unpublishRegistry } from "./registry";
 import { useMenuDismiss } from "./useMenuDismiss";
 import { useMenuKeyboard } from "./useMenuKeyboard";
-import type { MenuDismissConfig, MenuLayout, MenuRole } from "./types";
+import type {
+  MenuDismissConfig,
+  MenuLayout,
+  MenuOrientation,
+  MenuRole,
+} from "./types";
 
 interface AnchorRectLike {
   left: number;
@@ -60,6 +68,10 @@ export interface MenuProviderProps {
   /** Stable menu id; activedescendant ids derive from it. */
   id: string;
   layout: MenuLayout;
+  /** List stepping axis (opt-in). "horizontal" steps a `list` layout on
+   *  Left/Right instead of Up/Down (a swatch row); default "vertical". Ignored
+   *  for non-list layouts. */
+  orientation?: MenuOrientation;
   /** ARIA fork (§3.5). Default "menu". */
   role?: MenuRole;
   /** Anchor for positioning. A static rect or a thunk (caret-anchored). */
@@ -113,6 +125,7 @@ export function MenuProvider(props: MenuProviderProps): ReactNode {
   const {
     id,
     layout,
+    orientation = "vertical",
     role = "menu",
     anchorRect,
     placements,
@@ -137,12 +150,64 @@ export function MenuProvider(props: MenuProviderProps): ReactNode {
   // ── one registry per provider ──
   const [registry] = useState(() => new MenuRegistry(id, layout));
   useEffect(() => registry.setLayout(layout), [registry, layout]);
+  useEffect(
+    () => registry.setOrientation(orientation),
+    [registry, orientation],
+  );
 
   // ── nested-provider stack (R6) ──
+  // Each provider sits one level deeper than its parent. The OUTERMOST provider
+  // (parent is the -1 root sentinel → no controller yet) creates the single
+  // shared `MenuStackController`; every nested provider inherits that SAME
+  // instance unchanged, so the whole subtree shares one "deepest open menu"
+  // source of truth.
   const parentStack = useMenuStack();
   const depth = parentStack.depth + 1;
-  const isTop = true; // B1: single-level menus only. Phase C tracks an open-child flag.
-  const stackValue = useMemo(() => ({ depth }), [depth]);
+  const [ownController] = useState<MenuStackController>(() =>
+    createMenuStackController(),
+  );
+  const controller = parentStack.controller ?? ownController;
+  const stackValue = useMemo(
+    () => ({ depth, controller }),
+    [depth, controller],
+  );
+
+  // Register THIS provider as open in the shared stack while it's mounted — but
+  // ONLY for the window keyboard source. Input-source menus (combobox) install
+  // no window listener, so they never contend for the window keydown and must
+  // not push a parent window-source menu off the top while their child is open.
+  // O(1): a Set add on mount + delete on unmount, off the keystroke path.
+  const isWindowSource = keyboardSource === "window";
+  useEffect(() => {
+    if (!isWindowSource) return;
+    return controller.registerOpen(depth);
+  }, [controller, depth, isWindowSource]);
+
+  // `isTop` = "this provider owns the window keydown" = a WINDOW-source provider
+  // that is the deepest open window-source menu (its depth is the greatest open
+  // depth). An input-source provider installs no window listener, so it is never
+  // the window-keydown owner → never `isTop`. We subscribe to the controller so
+  // this re-evaluates reactively when a descendant opens/closes (a single
+  // boolean read in the snapshot — O(1) per change, NOT per keystroke).
+  const isTop = useSyncExternalStore(
+    controller.subscribe,
+    () => isWindowSource && controller.topDepth() === depth,
+    () => isWindowSource,
+  );
+
+  // Escape ownership is broader than window-keydown ownership: an input-source
+  // combobox owns ITS OWN Escape (two-stage clear-then-close via `onEscape`)
+  // even though it never owns the window keydown. The rule that scopes Escape to
+  // the innermost open menu is "no window-source menu is open DEEPER than me":
+  //   - window-source → `isTop` (deepest open window menu);
+  //   - input-source  → no window-source descendant has pushed past my depth
+  //     (`topDepth() <= depth`), preserving the single-level combobox behavior
+  //     (a lone combobox with no nested window menu still dismisses on Escape).
+  const ownsEscape = useSyncExternalStore(
+    controller.subscribe,
+    () => (isWindowSource ? controller.topDepth() === depth : controller.topDepth() <= depth),
+    () => true,
+  );
 
   // ── click-outside exclude set: caller refs + any nested provider's container ──
   const dynamicExcludes = useRef(new Set<HTMLElement>());
@@ -232,7 +297,7 @@ export function MenuProvider(props: MenuProviderProps): ReactNode {
       stopPropagation: dismissOn?.escape?.stopPropagation ?? true,
       onEscape,
     },
-    ownsEscape: isTop,
+    ownsEscape,
   });
 
   // ── keyboard controller ──

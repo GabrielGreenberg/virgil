@@ -95,6 +95,58 @@ describe("list nav", () => {
   });
 });
 
+// ── horizontal-orientation list nav (opt-in, the color swatch row) ────────────
+
+describe("list nav — horizontal orientation", () => {
+  const nodes = [listNode("a"), listNode("b"), listNode("c")];
+
+  it("Right/Left step (the swatch row's axis), wrapping", () => {
+    expect(computeNextActive("list", nodes, "a", "right", freshNavMemory(), "horizontal")).toBe("b");
+    expect(computeNextActive("list", nodes, "c", "right", freshNavMemory(), "horizontal")).toBe("a");
+    expect(computeNextActive("list", nodes, "b", "left", freshNavMemory(), "horizontal")).toBe("a");
+    expect(computeNextActive("list", nodes, "a", "left", freshNavMemory(), "horizontal")).toBe("c");
+  });
+
+  it("Up/Down are inert when horizontal (the off-axis keys)", () => {
+    expect(computeNextActive("list", nodes, "b", "up", freshNavMemory(), "horizontal")).toBe("b");
+    expect(computeNextActive("list", nodes, "b", "down", freshNavMemory(), "horizontal")).toBe("b");
+  });
+
+  it("no active id → Right lands on first, Left lands on last", () => {
+    expect(computeNextActive("list", nodes, null, "right", freshNavMemory(), "horizontal")).toBe("a");
+    expect(computeNextActive("list", nodes, null, "left", freshNavMemory(), "horizontal")).toBe("c");
+  });
+
+  it("Home/End still jump to first/last enabled regardless of orientation", () => {
+    expect(computeNextActive("list", nodes, "b", "home", freshNavMemory(), "horizontal")).toBe("a");
+    expect(computeNextActive("list", nodes, "b", "end", freshNavMemory(), "horizontal")).toBe("c");
+  });
+
+  it("skips disabled swatches on Right/Left", () => {
+    const withDisabled = [
+      listNode("a"),
+      listNode("b", { disabled: true }),
+      listNode("c"),
+    ];
+    expect(computeNextActive("list", withDisabled, "a", "right", freshNavMemory(), "horizontal")).toBe("c");
+    expect(computeNextActive("list", withDisabled, "c", "left", freshNavMemory(), "horizontal")).toBe("a");
+  });
+
+  it("the default (omitted) orientation is still vertical — Up/Down step, Left/Right inert", () => {
+    // Guards the 6 migrated vertical menus: omitting the arg keeps the old axis.
+    expect(computeNextActive("list", nodes, "a", "down", freshNavMemory())).toBe("b");
+    expect(computeNextActive("list", nodes, "a", "right", freshNavMemory())).toBe("a");
+    // An explicit "vertical" matches the default exactly.
+    expect(computeNextActive("list", nodes, "a", "down", freshNavMemory(), "vertical")).toBe("b");
+    expect(computeNextActive("list", nodes, "a", "right", freshNavMemory(), "vertical")).toBe("a");
+  });
+
+  it("a combobox stays vertical even if a horizontal orientation is passed (it owns Left/Right)", () => {
+    expect(computeNextActive("combobox", nodes, "a", "down", freshNavMemory(), "horizontal")).toBe("b");
+    expect(computeNextActive("combobox", nodes, "a", "right", freshNavMemory(), "horizontal")).toBe("a");
+  });
+});
+
 // ── grid nav (pure grid layout) ──────────────────────────────────────────────
 
 describe("grid nav", () => {

@@ -60,12 +60,85 @@ export function useOptionalMenuContext(): MenuContextValue | null {
 
 // ── Provider stack (R6) ──────────────────────────────────────────────────────
 
+/**
+ * The shared open-menu stack controller (R6). One instance is created by the
+ * OUTERMOST `<MenuProvider>` (the first whose parent depth is the -1 root
+ * sentinel) and handed down unchanged through every nested provider via
+ * `MenuStackContext`, so all providers in one React subtree share ONE source of
+ * truth for "who is the deepest currently-open menu".
+ *
+ * Each WINDOW-source provider registers its own depth here while it is open and
+ * unregisters on close/unmount; `topDepth()` returns the greatest open depth, so
+ * a provider is the TOP iff its depth equals `topDepth()` — i.e. no descendant
+ * window-source provider is open below it. Only the top provider's keyboard
+ * controller installs its window-capture keydown and only the top provider owns
+ * Escape, so keys are scoped to the innermost open menu (no double-move).
+ *
+ * Input-source providers (combobox / native-input menus) do NOT register here —
+ * they install no window listener, so they're inherently scoped to their own
+ * input and never contend for the window keydown. Registering them would wrongly
+ * make a parent window-source menu non-top while a child combobox is open.
+ *
+ * Everything here is O(1) per open/close: a `Set<number>` add/delete + a cached
+ * max, and one notify to the subscribed providers. It runs on mount/unmount and
+ * a `setActive`-style open flip — NEVER on the keystroke path.
+ */
+export interface MenuStackController {
+  /** Mark a window-source provider at `depth` as open. Returns an unregister
+   *  fn (call on close/unmount). Idempotent per depth via a refcount so two
+   *  providers can never collide (depths are unique per subtree anyway). */
+  registerOpen: (depth: number) => () => void;
+  /** The greatest currently-open window-source depth, or -1 if none. */
+  topDepth: () => number;
+  /** Subscribe to open-set changes (a provider re-evaluates its `isTop`). */
+  subscribe: (fn: () => void) => () => void;
+}
+
+export function createMenuStackController(): MenuStackController {
+  // Refcount per depth so a transient double-register (StrictMode double-invoke,
+  // a remount race) can't leave a phantom open depth pinned.
+  const counts = new Map<number, number>();
+  const listeners = new Set<() => void>();
+  const notify = () => {
+    for (const fn of listeners) fn();
+  };
+  return {
+    registerOpen(depth) {
+      counts.set(depth, (counts.get(depth) ?? 0) + 1);
+      notify();
+      return () => {
+        const n = (counts.get(depth) ?? 0) - 1;
+        if (n <= 0) counts.delete(depth);
+        else counts.set(depth, n);
+        notify();
+      };
+    },
+    topDepth() {
+      let max = -1;
+      for (const d of counts.keys()) if (d > max) max = d;
+      return max;
+    },
+    subscribe(fn) {
+      listeners.add(fn);
+      return () => {
+        listeners.delete(fn);
+      };
+    },
+  };
+}
+
 export interface MenuStackValue {
   /** Depth of THIS provider in the open-menu stack (0 = root). */
   depth: number;
+  /** The shared open-stack controller (R6). Null only at the -1 root sentinel
+   *  (no `<MenuProvider>` above) — the outermost provider creates one. */
+  controller: MenuStackController | null;
 }
 
-export const MenuStackContext = createContext<MenuStackValue>({ depth: -1 });
+export const MenuStackContext = createContext<MenuStackValue>({
+  depth: -1,
+  controller: null,
+});
 
 export function useMenuStack(): MenuStackValue {
   return useContext(MenuStackContext);

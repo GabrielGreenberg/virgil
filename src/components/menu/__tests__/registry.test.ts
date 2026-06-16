@@ -97,6 +97,21 @@ describe("MenuRegistry — active id + navigation + activation", () => {
     expect(r.activeId()).toBe("a");
   });
 
+  it("setOrientation('horizontal') flips a list to step on Left/Right (Up/Down inert)", () => {
+    const r = new MenuRegistry("m", "list");
+    r.register(reg({ id: "a" }));
+    r.register(reg({ id: "b" }));
+    r.setOrientation("horizontal");
+    r.move("right"); // no active → first
+    expect(r.activeId()).toBe("a");
+    r.move("right");
+    expect(r.activeId()).toBe("b");
+    r.move("down"); // off-axis → inert
+    expect(r.activeId()).toBe("b");
+    r.move("left");
+    expect(r.activeId()).toBe("a");
+  });
+
   it("activate() runs the active node's handler; activateById runs a specific one", () => {
     const r = new MenuRegistry("m", "list");
     const runA = vi.fn();

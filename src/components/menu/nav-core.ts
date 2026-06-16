@@ -12,7 +12,7 @@
  * over an array — never a doc read, never `doc.descendants`.
  */
 
-import type { MenuLayout, MenuNode, NavDir } from "./types";
+import type { MenuLayout, MenuNode, MenuOrientation, NavDir } from "./types";
 
 /** Carried across moves: the column the user last occupied in the grid, so
  *  re-entering the grid from the list lands on the same column (§3.4). */
@@ -39,22 +39,29 @@ export function initialActiveId(nodes: MenuNode[]): string | null {
 
 // ── List nav ────────────────────────────────────────────────────────────────
 
-/** Step within a flat list, wrapping, skipping disabled. `dir` is up/down;
- *  home/end jump to first/last enabled. Returns the next id (or the current
- *  one if there is no enabled target). */
+/** Step within a flat list, wrapping, skipping disabled. Vertical (default):
+ *  Up/Down step, Left/Right inert. Horizontal (opt-in, §3-color-popover):
+ *  Left/Right step, Up/Down inert. Home/End jump to first/last enabled in both.
+ *  Returns the next id (or the current one if there is no enabled target). */
 function listMove(
   nodes: MenuNode[],
   activeId: string | null,
   dir: NavDir,
+  orientation: MenuOrientation,
 ): string | null {
   const enabled = nodes.filter(ENABLED);
   if (enabled.length === 0) return null;
   if (dir === "home") return enabled[0].id;
   if (dir === "end") return enabled[enabled.length - 1].id;
-  if (dir !== "up" && dir !== "down") return activeId; // left/right inert in a list
+  // Normalize the stepping axis: the "forward" key is Down (vertical) or Right
+  // (horizontal); the "backward" key is Up or Left. The off-axis keys are inert.
+  const forward = orientation === "horizontal" ? "right" : "down";
+  const backward = orientation === "horizontal" ? "left" : "up";
+  if (dir !== forward && dir !== backward) return activeId; // off-axis: inert
   const curIdx = enabled.findIndex((n) => n.id === activeId);
-  if (curIdx < 0) return dir === "down" ? enabled[0].id : enabled[enabled.length - 1].id;
-  const delta = dir === "down" ? 1 : -1;
+  if (curIdx < 0)
+    return dir === forward ? enabled[0].id : enabled[enabled.length - 1].id;
+  const delta = dir === forward ? 1 : -1;
   const nextIdx = (curIdx + delta + enabled.length) % enabled.length;
   return enabled[nextIdx].id;
 }
@@ -193,11 +200,19 @@ export function computeNextActive(
   activeId: string | null,
   dir: NavDir,
   mem: NavMemory,
+  orientation: MenuOrientation = "vertical",
 ): string | null {
   const active = nodes.find((n) => n.id === activeId) ?? null;
 
   if (layout === "list" || layout === "combobox") {
-    return listMove(nodes, activeId, dir);
+    // Orientation only flips a `list` menu's axis. A `combobox` stays vertical
+    // (its Left/Right are owned by the input via `onArrowHorizontal`).
+    return listMove(
+      nodes,
+      activeId,
+      dir,
+      layout === "list" ? orientation : "vertical",
+    );
   }
 
   // No active node yet (the menu just opened, the editor caret holds focus): the

@@ -61,6 +61,17 @@ export interface GetInputPropsOptions {
    *  so the caller can reopen a collapsed dropdown on the first arrow — matching
    *  the old `setDropdownOpen(true)` on ArrowUp/Down. */
   onNavigate?: () => void;
+  /**
+   * Optional horizontal-arrow override (unblocks BibPicker's ArrowLeft/Right =
+   * expand/collapse the active row's detail, design §4 / R-table BibEntryPicker).
+   * When provided, a PLAIN ArrowLeft/ArrowRight is routed HERE (with
+   * `preventDefault`) instead of to the menu controller — where a `list`-layout
+   * combobox would otherwise swallow it inertly (NAV_KEYS includes Left/Right
+   * but `listMove` makes them no-ops). When omitted, Left/Right behave exactly
+   * as before (forwarded to the controller → inert in a list, no caret motion),
+   * so existing combobox callers (LabelRefPopover) are unaffected.
+   */
+  onArrowHorizontal?: (dir: "left" | "right") => void;
 }
 
 export interface UseMenuComboboxResult {
@@ -89,15 +100,34 @@ export function useMenuCombobox(): UseMenuComboboxResult {
   );
 
   const getInputProps = useCallback(
-    ({ open, onKeyDown, onNavigate }: GetInputPropsOptions): ComboboxInputProps => ({
+    ({
+      open,
+      onKeyDown,
+      onNavigate,
+      onArrowHorizontal,
+    }: GetInputPropsOptions): ComboboxInputProps => ({
       role: "combobox",
       "aria-autocomplete": "list",
       "aria-expanded": open,
       "aria-controls": listboxId,
       onKeyDown: (e) => {
+        const plain = !e.metaKey && !e.ctrlKey && !e.altKey && !e.shiftKey;
+        // Horizontal-arrow override (BibPicker expand/collapse). Intercept a
+        // PLAIN Left/Right BEFORE the controller so the row-detail binding wins
+        // — the controller would otherwise swallow it inertly in a list layout.
+        // Without an override we fall through to the controller (unchanged).
+        if (
+          plain &&
+          onArrowHorizontal &&
+          (e.key === "ArrowLeft" || e.key === "ArrowRight")
+        ) {
+          onArrowHorizontal(e.key === "ArrowLeft" ? "left" : "right");
+          e.preventDefault();
+          return;
+        }
         // The controller owns the navigation keys — it moves the roving cursor
         // and `preventDefault`s the arrow so the single-line caret stays put.
-        if (NAV_KEYS.has(e.key) && !e.metaKey && !e.ctrlKey && !e.altKey && !e.shiftKey) {
+        if (NAV_KEYS.has(e.key) && plain) {
           onNavigate?.();
           handleKeyDown?.(e);
           return;

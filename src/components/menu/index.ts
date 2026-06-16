@@ -48,6 +48,7 @@ export {
 export type { NavMemory } from "./nav-core";
 export type {
   MenuLayout,
+  MenuOrientation,
   MenuRole,
   MenuRegion,
   MenuCoords,
