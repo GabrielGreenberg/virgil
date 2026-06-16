@@ -257,6 +257,10 @@ export function SplitWithCode({
                   minHeight: 0,
                   overflowX: "clip",
                   overflowY: "visible",
+                  // Thin background gutter on the LEFT of the editor pod,
+                  // mirroring the code pod's `marginRight: 4` (EditorLayout)
+                  // so the code-view layout reads symmetric edge-to-edge.
+                  marginLeft: 4,
                 }
               : {
                   flex: "1 1 auto",
@@ -307,6 +311,11 @@ export function SplitWithCode({
               flex: "1 1 auto",
               minWidth: 0,
               minHeight: 0,
+              // Above the editor pod's sticky chrome (frame z-31, caps z-30,
+              // band z-40, z-41 element) — which lives in the outer stacking
+              // context. Without this the pod's edge/background-ring shadow
+              // paints over the divider + the manual-sync chevron pill.
+              zIndex: 45,
             }}
           >
             {/* Drag gap */}
