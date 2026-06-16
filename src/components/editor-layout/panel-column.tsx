@@ -95,10 +95,14 @@ function BottomEdgeHandle({
   bottomId,
   frameRef,
   onResize,
+  lone,
 }: {
   bottomId: PanelId;
   frameRef: React.RefObject<HTMLDivElement | null>;
   onResize: (id: PanelId, px: number) => void;
+  /** True when this is the only band on the side — fade the manilla
+   *  backing into the omni gap below instead of a hard edge. */
+  lone: boolean;
 }) {
   const startY = useRef(0);
   const startH = useRef(0);
@@ -158,6 +162,21 @@ function BottomEdgeHandle({
         className="drag-gap drag-gap-h band-grip w-full h-full"
         onMouseDown={onMouseDown}
       />
+      {/* Lone panel: extend the manilla backing past the handle and fade it
+          into the omni gap, so the single band dissolves into the desktop
+          instead of ending in a hard manilla edge. Non-interactive. */}
+      {lone && (
+        <div
+          aria-hidden="true"
+          className="absolute left-0 right-0"
+          style={{
+            top: '100%',
+            height: 22,
+            background: 'linear-gradient(to bottom, var(--pod-panel), transparent)',
+            pointerEvents: 'none',
+          }}
+        />
+      )}
     </div>
   );
 }
@@ -491,6 +510,7 @@ function BandFragment({
           bottomId={band.id}
           frameRef={frameRef}
           onResize={onResizeBottomEdge}
+          lone={index === 0}
         />
       )}
     </>
