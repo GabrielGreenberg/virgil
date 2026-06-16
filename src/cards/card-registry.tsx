@@ -27,7 +27,7 @@
 import type { CardKind, CardMeta } from "./types";
 import type { CardFloatCtx } from "./card-float-ctx";
 import type { Floatable } from "@/floats/types";
-import type { DropSpec } from "@/components/drop-mode/types";
+import type { DropSpec, PlacementKind } from "@/components/drop-mode/types";
 
 /**
  * `toFloatable` registration — mirrors the text-object registry's
@@ -145,6 +145,58 @@ export function assertMorphCoverage(): void {
   }
 }
 
+/**
+ * Dev-only: pin the declared drop facets (`droppable` / `dropPlacement`) to the
+ * REAL drop mechanism (`dropSpec.allowedPlacements`), so the static policy can't
+ * silently drift from what a drag session actually does. MUST be called AFTER
+ * the `@/cards/drop-specs` side-effect import has folded the specs onto the
+ * registry (i.e. from `src/cards/drop-specs/index.ts`, the boot module) — at
+ * predicates.ts load time the specs are still `null` (the cycle-avoidance the
+ * static facet exists for), so this can't live in predicates.ts's load block.
+ *
+ * The invariant is PLACEMENT-KEYED, not `droppable ⇔ dropSpec != null`: `example`
+ * carries a `dropSpec` (`blockMoveSpec`, `["between-blocks"]`) yet is
+ * `droppable:false`, because a `between-blocks` content-MOVE is not a card
+ * re-anchor (SYNTHESIS §7). So:
+ *   - `dropPlacement === "in-text"` ⇔ the spec exists AND allows `inline-cursor`
+ *   - `dropPlacement === "margin"`  ⇔ the spec exists AND allows `paragraph-side`
+ *   - `dropPlacement === null` (≡ `!droppable`) ⇔ the spec allows NEITHER
+ *     (`between-blocks`-only like example, OR no spec at all like bib/ai/error)
+ * and `droppable ⇔ dropPlacement !== null` throughout. Mirrors
+ * `assertMorphCoverage`; the contract test (`drop-facet-contract.test.ts`)
+ * imports `@/cards/drop-specs` and asserts the same matrix with teeth.
+ */
+export function assertDropFacetCoverage(): void {
+  if (process.env.NODE_ENV === "production") return;
+  for (const k of Object.keys(CARD_REGISTRY) as CardKind[]) {
+    const meta = CARD_REGISTRY[k];
+    const allows = (p: PlacementKind): boolean =>
+      meta.dropSpec?.allowedPlacements.includes(p) ?? false;
+    const expected: CardMeta["dropPlacement"] = allows("inline-cursor")
+      ? "in-text"
+      : allows("paragraph-side")
+        ? "margin"
+        : null;
+    if (meta.dropPlacement !== expected) {
+      console.error(
+        `[DropFacet] "${k}" declares dropPlacement="${meta.dropPlacement}" but ` +
+          `its dropSpec.allowedPlacements (${
+            meta.dropSpec
+              ? JSON.stringify(meta.dropSpec.allowedPlacements)
+              : "no spec"
+          }) imply "${expected}". The declared facet drifted from the mechanism.`,
+      );
+    }
+    if (meta.droppable !== (meta.dropPlacement !== null)) {
+      console.error(
+        `[DropFacet] "${k}" has droppable=${meta.droppable} but ` +
+          `dropPlacement=${JSON.stringify(meta.dropPlacement)} — droppable must ` +
+          `equal (dropPlacement !== null).`,
+      );
+    }
+  }
+}
+
 /** Dev-only: verify the `bodyClass` declarations are panel-consistent — every
  *  card kind that shares a panel agrees on its class. `DEFAULT_PANEL_TYPOGRAPHY`
  *  derives each panel's row from a single primary kind's `bodyClass`, so a
@@ -188,6 +240,8 @@ export const CARD_REGISTRY: Record<CardKind, CardMeta> = {
     markerType: "note",
     lifecycle: { clone: true, delete: true, bindAnchor: true },
     dropSpec: null,
+    droppable: true,
+    dropPlacement: "margin",
     // note → highlight discards the rich note body + title (the highlight has
     // none) → lossy. The reverse direction is also lossy (a highlight has no
     // body to seed the note with); a confirm guards the body-dropping case.
@@ -210,6 +264,8 @@ export const CARD_REGISTRY: Record<CardKind, CardMeta> = {
     markerType: null, // tint, no gutter icon
     lifecycle: { clone: true, delete: true, bindAnchor: true },
     dropSpec: null,
+    droppable: true,
+    dropPlacement: "margin",
     morph: { to: "note", lossy: true },
     bodyClass: "sans",
     stackable: true,
@@ -228,6 +284,8 @@ export const CARD_REGISTRY: Record<CardKind, CardMeta> = {
     markerType: null, // in-text atom
     lifecycle: { clone: true, delete: true, bindAnchor: false },
     dropSpec: null,
+    droppable: true,
+    dropPlacement: "in-text",
     morph: null,
     bodyClass: "borrowed", // serif, 15px — quotes document prose
     stackable: true,
@@ -247,6 +305,8 @@ export const CARD_REGISTRY: Record<CardKind, CardMeta> = {
     // R18 ratified: NO cascade — archive survives anchor-paragraph deletion.
     lifecycle: { clone: false, delete: false, bindAnchor: false },
     dropSpec: null,
+    droppable: true,
+    dropPlacement: "margin",
     morph: null,
     bodyClass: "borrowed", // serif, 15px — quotes document prose
     stackable: true,
@@ -267,6 +327,8 @@ export const CARD_REGISTRY: Record<CardKind, CardMeta> = {
     // permanent: Mode-A paragraph-anchored, no text-range anchor for the cascade to reach.
     lifecycle: { clone: false, delete: false, bindAnchor: false },
     dropSpec: null,
+    droppable: true,
+    dropPlacement: "margin",
     morph: null,
     bodyClass: "sans",
     stackable: true,
@@ -285,6 +347,8 @@ export const CARD_REGISTRY: Record<CardKind, CardMeta> = {
     markerType: null,
     lifecycle: { clone: false, delete: false, bindAnchor: false },
     dropSpec: null, // intentional: bib entries don't anchor to text
+    droppable: false,
+    dropPlacement: null,
     morph: null,
     bodyClass: "sans",
     stackable: true, // StackCardKind: "bibliography"
@@ -303,6 +367,8 @@ export const CARD_REGISTRY: Record<CardKind, CardMeta> = {
     markerType: null, // in-text atom
     lifecycle: { clone: true, delete: true, bindAnchor: false },
     dropSpec: null,
+    droppable: true,
+    dropPlacement: "in-text",
     morph: null,
     bodyClass: "sans",
     stackable: true,
@@ -326,6 +392,8 @@ export const CARD_REGISTRY: Record<CardKind, CardMeta> = {
     markerType: "revision",
     lifecycle: { clone: true, delete: true, bindAnchor: true },
     dropSpec: null,
+    droppable: true,
+    dropPlacement: "margin",
     // comment ⇄ suggestion is a non-destructive salvage both ways (the body
     // text rides into `user_text` on the way out, back into the body on the
     // way in), so neither direction is lossy.
@@ -348,6 +416,8 @@ export const CARD_REGISTRY: Record<CardKind, CardMeta> = {
     markerType: "cut",
     lifecycle: { clone: true, delete: true, bindAnchor: true },
     dropSpec: null,
+    droppable: true,
+    dropPlacement: "margin",
     // Same non-destructive comment ⇄ suggestion salvage as the revision pair.
     morph: { to: "cutter-suggestion", lossy: false },
     bodyClass: "sans",
@@ -367,6 +437,8 @@ export const CARD_REGISTRY: Record<CardKind, CardMeta> = {
     markerType: "cut",
     lifecycle: { clone: true, delete: true, bindAnchor: true },
     dropSpec: null,
+    droppable: true,
+    dropPlacement: "margin",
     morph: { to: "cutter-comment", lossy: false },
     bodyClass: "sans",
     stackable: true,
@@ -385,6 +457,8 @@ export const CARD_REGISTRY: Record<CardKind, CardMeta> = {
     markerType: "revision",
     lifecycle: { clone: true, delete: true, bindAnchor: true }, // provider re-keyed suggestion→here at the flip
     dropSpec: null,
+    droppable: true,
+    dropPlacement: "margin",
     morph: { to: "revision-comment", lossy: false },
     bodyClass: "sans",
     stackable: true,
@@ -404,6 +478,8 @@ export const CARD_REGISTRY: Record<CardKind, CardMeta> = {
     // permanent: Mode-A paragraph-anchored, no cascade reaches it.
     lifecycle: { clone: false, delete: false, bindAnchor: false },
     dropSpec: null,
+    droppable: true,
+    dropPlacement: "margin",
     // report ⇄ report-request drops a field each way (a report's title + author
     // byline have no home on a request; a request's aiRequest flag has none on
     // a report) → lossy both directions; the body rich-text carries across.
@@ -427,6 +503,8 @@ export const CARD_REGISTRY: Record<CardKind, CardMeta> = {
     // permanent: Mode-A paragraph-anchored, no cascade reaches it.
     lifecycle: { clone: false, delete: false, bindAnchor: false },
     dropSpec: null,
+    droppable: true,
+    dropPlacement: "margin",
     morph: { to: "report", lossy: true },
     bodyClass: "sans",
     stackable: false,
@@ -448,6 +526,13 @@ export const CARD_REGISTRY: Record<CardKind, CardMeta> = {
     // violation.
     lifecycle: { clone: false, delete: false, bindAnchor: false },
     dropSpec: null,
+    // NO drop button: example carries a `dropSpec` (exampleDropSpec) but it is a
+    // `between-blocks` block content-MOVE, not a card re-anchor — the drop button
+    // is for (re)anchoring, so example is excluded (drop-button SYNTHESIS §7
+    // design call). The contract test pins this: a `between-blocks`-only spec ⇔
+    // droppable:false / dropPlacement:null.
+    droppable: false,
+    dropPlacement: null,
     morph: null,
     bodyClass: "borrowed", // serif, 15px — quotes document prose (fixes example 12→15)
     stackable: true, // declared in StackCardKind (its float's snapshotForStack returns null today — R2)
@@ -466,6 +551,8 @@ export const CARD_REGISTRY: Record<CardKind, CardMeta> = {
     markerType: null,
     lifecycle: { clone: false, delete: false, bindAnchor: false },
     dropSpec: null,
+    droppable: false,
+    dropPlacement: null,
     morph: null,
     bodyClass: "sans",
     stackable: false,
@@ -484,6 +571,8 @@ export const CARD_REGISTRY: Record<CardKind, CardMeta> = {
     markerType: "error",
     lifecycle: { clone: false, delete: false, bindAnchor: false },
     dropSpec: null,
+    droppable: false,
+    dropPlacement: null,
     morph: null,
     bodyClass: "sans",
     stackable: false,
