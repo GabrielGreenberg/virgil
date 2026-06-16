@@ -11,22 +11,53 @@
  *
  * The caller supplies the entries pool, per-entry RowState, and the pick
  * handler. Filtering is performed inside via `searchBibFuzzy`.
+ *
+ * ── MENU-PRIMITIVE MIGRATION (Phase C) ──
+ * Migrated onto the `<Menu>` primitive's COMBOBOX path (`src/components/menu/`,
+ * design `docs/agents/menu-system-design.md` §3.5 + §4 the BibEntryPicker row).
+ * It renders via `<MenuProvider layout="combobox" role="listbox" portal>`; the
+ * provider owns positioning (the old `useLayoutEffect` coord math + viewport
+ * clamp → `placements` + the `maxHeight` clamp passthrough), click-outside
+ * dismissal (the old `mousedown` effect → the provider's `useMenuDismiss`, with
+ * `anchorEl` + `externalInputEl` moved into `excludeRefs`), Escape, and the
+ * keyboard controller.
+ *
+ * The search `<input>` is the combobox input (`role="combobox" aria-expanded
+ * aria-controls aria-activedescendant`) and the keyboard SOURCE — focus stays
+ * in it. In INTERNAL-input mode the picker renders the input and spreads
+ * `getInputProps(...)` onto it. In EXTERNAL-input mode the caller owns the
+ * input; the picker attaches the composed `getInputProps(...).onKeyDown` to it
+ * via an `addEventListener("keydown")` bridge (the input is also a dismiss
+ * exemption via `excludeRefs`). Each `filtered` row registers via
+ * `useMenuItem({ region: "list", role: "option", run })`; the bespoke
+ * `selectedIndex` + `scrollIntoView` are replaced by the controller's roving
+ * cursor + built-in scroll re-anchor.
+ *
+ * **ArrowLeft/Right = expand/collapse the active row's detail** rides the
+ * combobox seam's `onArrowHorizontal` (design §4 / the new seam in
+ * `useMenuCombobox`) instead of the old hand-rolled key handler.
+ *
+ * PRESERVED: the fuzzy filter, Enter picks the active entry OR commits raw
+ * text, Escape closes, row expand/collapse, internal- AND external-input modes.
  */
 
 import {
   useCallback,
   useEffect,
-  useLayoutEffect,
   useMemo,
   useRef,
   useState,
 } from "react";
-import { createPortal } from "react-dom";
+import type { FloatingMenuPlacement } from "@/hooks/useFloatingMenuPosition";
 import type { BibEntry } from "@/lib/types";
 import { searchBibFuzzy } from "@/lib/bib-searcher";
 import { formatAuthorsTruncated } from "@/lib/bib-parser";
 import type { LibraryIndexItem } from "@/lib/library/library-types";
 import { LibraryMembershipChips } from "@/components/library/provenance-chips";
+import { MenuProvider } from "@/components/menu/MenuProvider";
+import { useMenuItem } from "@/components/menu/useMenuItem";
+import { useMenuCombobox } from "@/components/menu/useMenuCombobox";
+import { useMenuContext } from "@/components/menu/context";
 
 export type RowState = "addable" | "added" | "conflict";
 
@@ -77,8 +108,14 @@ export interface BibEntryPickerMenuProps {
 }
 
 const POPUP_WIDTH = 360;
-const VIEWPORT_MARGIN = 8;
-const GAP = 4;
+
+// The old hand-rolled positioner dropped the popover directly beneath the
+// anchor and flipped it above when there was no room below — exactly
+// `[{ side: "below", align: "start" }, { side: "above", align: "start" }]`.
+const BIB_PICKER_PLACEMENTS: FloatingMenuPlacement[] = [
+  { side: "below", align: "start" },
+  { side: "above", align: "start" },
+];
 
 const DEFAULT_HINTS: NonNullable<BibEntryPickerMenuProps["emptyHint"]> = {
   noMatches: (q) => `No entries match "${q}".`,
@@ -86,15 +123,14 @@ const DEFAULT_HINTS: NonNullable<BibEntryPickerMenuProps["emptyHint"]> = {
   typeToSearch: "Type to search.",
 };
 
+/** Stable registry id for an option row — keyed by the entry's citekey. */
+function optionId(key: string): string {
+  return `opt:${key}`;
+}
+
 export function BibEntryPickerMenu(props: BibEntryPickerMenuProps) {
   if (!props.open) return null;
   return <BibEntryPickerMenuInner {...props} />;
-}
-
-interface Coords {
-  left: number;
-  top: number;
-  bottom: number;
 }
 
 function BibEntryPickerMenuInner({
@@ -114,74 +150,165 @@ function BibEntryPickerMenuInner({
   externalQuery,
   externalInputEl,
 }: BibEntryPickerMenuProps) {
+  // The internal search input ref lives at the provider level so the
+  // `getActiveDescendantHost` thunk (which the provider's keyboard controller
+  // reads at keydown time) can resolve it. In external-input mode the
+  // caller-owned `externalInputEl` is the host instead.
+  const inputRef = useRef<HTMLInputElement | null>(null);
+
+  // Anchor priority: externalInputEl (external-input mode visually owns the
+  // search field, so the popover must drop directly beneath it) > anchorRect
+  // > anchorEl. Resolved lazily through a thunk so the provider re-reads the
+  // live element rect (matching the old getBoundingClientRect-on-update).
+  const anchorThunk = useCallback((): DOMRect | null => {
+    if (anchorRect) return anchorRect;
+    const sourceEl = externalInputEl ?? anchorEl ?? null;
+    return sourceEl ? sourceEl.getBoundingClientRect() : null;
+  }, [anchorRect, anchorEl, externalInputEl]);
+
+  // The element whose `aria-activedescendant` mirrors the active option — the
+  // caller-owned input in external mode, else our own search input.
+  const getActiveDescendantHost = useCallback(
+    (): HTMLElement | null => externalInputEl ?? inputRef.current,
+    [externalInputEl],
+  );
+
+  // Dismiss exemptions: the trigger (clicking it again shouldn't self-close)
+  // and the caller-owned external input (it IS the search field). These were
+  // the old `mousedown` handler's `anchorEl`/`externalInputEl` contains-checks.
+  const excludeRefs = useMemo(
+    () => [anchorEl ?? null, externalInputEl ?? null],
+    [anchorEl, externalInputEl],
+  );
+
+  if (typeof document === "undefined") return null;
+
+  return (
+    <MenuProvider
+      id="bib-entry-picker"
+      layout="combobox"
+      role="listbox"
+      portal
+      anchorRect={anchorThunk}
+      trackAnchor={anchorThunk}
+      placements={BIB_PICKER_PLACEMENTS}
+      gap={4}
+      maxHeight
+      keyboardSource="input"
+      getActiveDescendantHost={getActiveDescendantHost}
+      excludeRefs={excludeRefs}
+      onClose={onClose}
+      ariaLabel={ariaLabel}
+      containerClassName="bib-entry-picker-menu bg-surface border border-edge-subtle rounded-md shadow-md"
+      containerStyle={{
+        width: POPUP_WIDTH,
+        display: "flex",
+        flexDirection: "column",
+      }}
+    >
+      <BibEntryPickerBody
+        entries={entries}
+        onPick={onPick}
+        getRowState={getRowState}
+        getLibraryItem={getLibraryItem}
+        getMembershipChips={getMembershipChips}
+        onCommitRaw={onCommitRaw}
+        initialQuery={initialQuery}
+        placeholder={placeholder}
+        emptyHint={emptyHint}
+        externalQuery={externalQuery}
+        externalInputEl={externalInputEl}
+        inputRef={inputRef}
+        onClose={onClose}
+      />
+    </MenuProvider>
+  );
+}
+
+interface BodyProps {
+  entries: BibEntry[];
+  onPick: (entry: BibEntry) => Promise<RowState> | RowState;
+  getRowState?: (entry: BibEntry) => RowState;
+  getLibraryItem?: (entry: BibEntry) => LibraryIndexItem | undefined;
+  getMembershipChips?: (entry: BibEntry) => MembershipChips;
+  onCommitRaw?: (text: string) => void;
+  initialQuery?: string;
+  placeholder: string;
+  emptyHint: NonNullable<BibEntryPickerMenuProps["emptyHint"]>;
+  externalQuery?: string;
+  externalInputEl?: HTMLElement | null;
+  /** The provider-owned search-input ref (the activedescendant host in
+   *  internal-input mode). */
+  inputRef: React.RefObject<HTMLInputElement | null>;
+  onClose: () => void;
+}
+
+/** The picker body — lives INSIDE the provider so it can drive the combobox
+ *  (`useMenuCombobox`) and register each option (`useMenuItem`). */
+function BibEntryPickerBody({
+  entries,
+  onPick,
+  getRowState,
+  getLibraryItem,
+  getMembershipChips,
+  onCommitRaw,
+  initialQuery,
+  placeholder,
+  emptyHint,
+  externalQuery,
+  externalInputEl,
+  inputRef,
+  onClose,
+}: BodyProps) {
   const isExternalInput = externalQuery !== undefined;
   const [internalQuery, setInternalQuery] = useState(initialQuery ?? "");
   const query = isExternalInput ? externalQuery! : internalQuery;
-  const setQuery = isExternalInput ? () => {} : setInternalQuery;
-  const [selectedIndex, setSelectedIndex] = useState(0);
+
   const [expandedKey, setExpandedKey] = useState<string | null>(null);
   const [localAdded, setLocalAdded] = useState<Set<string>>(new Set());
-  const [coords, setCoords] = useState<Coords | null>(null);
 
-  const popupRef = useRef<HTMLDivElement | null>(null);
-  const inputRef = useRef<HTMLInputElement | null>(null);
-  const listRef = useRef<HTMLDivElement | null>(null);
+  const { activeId, getInputProps } = useMenuCombobox();
+  // The provider's registry — reached through the public context the primitive
+  // already exposes (a leaf read, not a primitive change) so the body can seed
+  // the default highlight onto the FIRST option. This preserves the old
+  // `selectedIndex` default of 0: with matches present, the first row is
+  // highlighted and Enter picks it without an explicit ArrowDown.
+  const { registry } = useMenuContext();
 
   const filtered = useMemo(() => {
     if (!query.trim()) return entries.slice(0, 50);
     return searchBibFuzzy(entries, query, 50);
   }, [entries, query]);
 
-  // Reset the highlighted row whenever the (external) query changes so the
-  // first match is selected by default.
+  // Map an option's registry id back to its entry, so Enter on the roving-
+  // active option commits the right one (built off the SAME `filtered` order
+  // the rows register in).
+  const idToEntry = useMemo(() => {
+    const m = new Map<string, BibEntry>();
+    for (const e of filtered) m.set(optionId(e.key), e);
+    return m;
+  }, [filtered]);
+
+  // Default-highlight the FIRST filtered option (old: `selectedIndex` init 0 +
+  // `setSelectedIndex(0)` on every query change). Re-seeds to the top whenever
+  // the filtered set's head changes — i.e. on a query keystroke — so the active
+  // id never lags behind the re-filtered list. A PASSIVE effect (not layout):
+  // the rows register via their own passive `useMenuItem` effects, which — as
+  // children of this body — run BEFORE this parent effect, so the first option
+  // is already in the registry when we seed (`setActive` no-ops on an unknown
+  // id). O(1) on a query change only (a small popover list), never per document
+  // keystroke.
+  const firstId = filtered.length > 0 ? optionId(filtered[0].key) : null;
   useEffect(() => {
-    setSelectedIndex(0);
-  }, [query]);
+    registry.setActive(firstId);
+  }, [registry, firstId]);
 
-  const safeSelectedIndex =
-    filtered.length === 0
-      ? 0
-      : Math.min(Math.max(0, selectedIndex), filtered.length - 1);
-
+  // Internal-input mode auto-focuses + selects the search field on open.
   useEffect(() => {
     if (isExternalInput) return;
     inputRef.current?.focus();
     inputRef.current?.select();
-  }, [isExternalInput]);
-
-  useLayoutEffect(() => {
-    const update = () => {
-      // Anchor priority: externalInputEl (external-input mode) > anchorRect
-      // > anchorEl. The external input visually owns the search field, so
-      // the popover must drop directly beneath it.
-      const sourceEl = externalInputEl ?? anchorEl ?? null;
-      const rect = anchorRect ?? (sourceEl ? sourceEl.getBoundingClientRect() : null);
-      if (!rect) {
-        setCoords(null);
-        return;
-      }
-      setCoords({ left: rect.left, top: rect.top, bottom: rect.bottom });
-    };
-    update();
-    window.addEventListener("scroll", update, true);
-    window.addEventListener("resize", update);
-    return () => {
-      window.removeEventListener("scroll", update, true);
-      window.removeEventListener("resize", update);
-    };
-  }, [anchorEl, anchorRect, externalInputEl]);
-
-  useEffect(() => {
-    const onMouseDown = (e: MouseEvent) => {
-      if (!popupRef.current) return;
-      if (popupRef.current.contains(e.target as Node)) return;
-      if (anchorEl && anchorEl.contains(e.target as Node)) return;
-      if (externalInputEl && externalInputEl.contains(e.target as Node)) return;
-      onClose();
-    };
-    document.addEventListener("mousedown", onMouseDown);
-    return () => document.removeEventListener("mousedown", onMouseDown);
-  }, [anchorEl, externalInputEl, onClose]);
+  }, [isExternalInput, inputRef]);
 
   const rowStateFor = useCallback(
     (entry: BibEntry): RowState => {
@@ -206,163 +333,125 @@ function BibEntryPickerMenuInner({
   );
 
   const trimmedQuery = query.trim();
-  const showRawCommit = onCommitRaw && filtered.length === 0 && trimmedQuery.length > 0;
+  const showRawCommit =
+    !!onCommitRaw && filtered.length === 0 && trimmedQuery.length > 0;
 
-  const onKeyDown = useCallback(
+  // The active entry (the roving-active option), if any — used by Enter and by
+  // the horizontal-arrow expand/collapse override.
+  const activeEntry = activeId ? idToEntry.get(activeId) : undefined;
+
+  // ArrowLeft/Right = expand/collapse the active row's detail. Routed through
+  // the combobox seam's `onArrowHorizontal` (which intercepts a plain Left/
+  // Right BEFORE the controller and preventDefaults it so the caret never
+  // moves). Toggles regardless of direction, matching the old handler.
+  const onArrowHorizontal = useCallback(() => {
+    if (!activeEntry) return;
+    setExpandedKey((prev) => (prev === activeEntry.key ? null : activeEntry.key));
+  }, [activeEntry]);
+
+  // The caller's keydown — the keys the combobox controller does NOT own
+  // (Enter commits the active entry or the raw text; Escape closes). Arrow
+  // nav + Home/End route through the controller; Left/Right route through
+  // `onArrowHorizontal`. This is the merged handler for BOTH the internal
+  // input (spread) and the external input (attached via addEventListener).
+  const onInputKeyDown = useCallback(
     (e: React.KeyboardEvent) => {
-      if (filtered.length === 0) {
-        if (e.key === "Enter" && showRawCommit) {
-          e.preventDefault();
+      if (e.key === "Enter") {
+        e.preventDefault();
+        if (activeEntry) {
+          void performPick(activeEntry);
+        } else if (showRawCommit) {
           onCommitRaw?.(trimmedQuery);
-          return;
-        }
-        if (e.key === "Escape") {
-          e.preventDefault();
-          onClose();
         }
         return;
       }
-      if (e.key === "ArrowDown") {
-        e.preventDefault();
-        setSelectedIndex((i) => (i + 1) % filtered.length);
-      } else if (e.key === "ArrowUp") {
-        e.preventDefault();
-        setSelectedIndex((i) => (i - 1 + filtered.length) % filtered.length);
-      } else if (e.key === "Enter") {
-        e.preventDefault();
-        const entry = filtered[safeSelectedIndex];
-        if (entry) void performPick(entry);
-      } else if (e.key === "Escape") {
+      if (e.key === "Escape") {
         e.preventDefault();
         onClose();
-      } else if (e.key === "ArrowRight" || e.key === "ArrowLeft") {
-        const entry = filtered[safeSelectedIndex];
-        if (!entry) return;
-        e.preventDefault();
-        setExpandedKey((prev) => (prev === entry.key ? null : entry.key));
       }
     },
-    [filtered, safeSelectedIndex, performPick, onClose, onCommitRaw, showRawCommit, trimmedQuery],
+    [activeEntry, performPick, showRawCommit, onCommitRaw, trimmedQuery, onClose],
   );
 
-  useEffect(() => {
-    if (!listRef.current) return;
-    const row = listRef.current.querySelector<HTMLDivElement>(
-      `[data-row-index="${safeSelectedIndex}"]`,
-    );
-    row?.scrollIntoView({ block: "nearest" });
-  }, [safeSelectedIndex]);
+  const inputProps = getInputProps({
+    open: filtered.length > 0,
+    onKeyDown: onInputKeyDown,
+    onArrowHorizontal,
+  });
 
   // External-input mode: forward keyboard events from the caller-owned input
-  // to the picker's onKeyDown handler so ArrowUp/Down/Enter/Escape work from
-  // the merged search field.
+  // through the SAME composed combobox handler (nav → controller, Enter/
+  // Escape/typing → onInputKeyDown). Replaces the old hand-rolled
+  // addEventListener that called the bespoke key handler. `inputProps.onKeyDown`
+  // only reads `e.key` + the modifier flags + `preventDefault`, so a coerced
+  // native event is sufficient.
   useEffect(() => {
     if (!isExternalInput || !externalInputEl) return;
     const handler = (e: KeyboardEvent) => {
-      // Coerce DOM KeyboardEvent into a React-like shape for the existing
-      // onKeyDown callback. Only the keys it inspects need to exist.
-      onKeyDown({
+      inputProps.onKeyDown({
         key: e.key,
+        metaKey: e.metaKey,
+        ctrlKey: e.ctrlKey,
+        altKey: e.altKey,
+        shiftKey: e.shiftKey,
         preventDefault: () => e.preventDefault(),
       } as unknown as React.KeyboardEvent);
     };
     externalInputEl.addEventListener("keydown", handler);
     return () => externalInputEl.removeEventListener("keydown", handler);
-  }, [isExternalInput, externalInputEl, onKeyDown]);
+  }, [isExternalInput, externalInputEl, inputProps]);
 
-  if (!coords) return null;
-
-  const vw = typeof window !== "undefined" ? window.innerWidth : 1024;
-  const vh = typeof window !== "undefined" ? window.innerHeight : 768;
-
-  let left = coords.left;
-  left = Math.max(
-    VIEWPORT_MARGIN,
-    Math.min(left, vw - POPUP_WIDTH - VIEWPORT_MARGIN),
-  );
-  const maxHeight = Math.min(440, vh - coords.bottom - GAP - VIEWPORT_MARGIN);
-  const fitsBelow = maxHeight > 200 || vh - coords.bottom > vh - coords.top;
-  const top = fitsBelow
-    ? coords.bottom + GAP
-    : Math.max(
-        VIEWPORT_MARGIN,
-        coords.top - GAP - Math.min(440, vh - 2 * VIEWPORT_MARGIN),
-      );
-  const computedMaxHeight = fitsBelow
-    ? Math.max(220, maxHeight)
-    : Math.min(440, coords.top - GAP - VIEWPORT_MARGIN);
-
-  return createPortal(
-    <div
-      ref={popupRef}
-      role="dialog"
-      aria-label={ariaLabel}
-      className="bib-entry-picker-menu bg-surface border border-edge-subtle rounded-md shadow-md"
-      style={{
-        position: "fixed",
-        left,
-        top,
-        width: POPUP_WIDTH,
-        maxHeight: computedMaxHeight,
-        zIndex: 1000,
-        display: "flex",
-        flexDirection: "column",
-      }}
-      onKeyDown={onKeyDown}
-    >
+  return (
+    <>
       {!isExternalInput && (
-      <div className="flex items-center gap-1.5 px-2.5 py-1.5 border-b border-edge-subtle shrink-0">
-        <svg
-          width="12"
-          height="12"
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="currentColor"
-          strokeWidth="2"
-          strokeLinecap="round"
-          className="text-ink-muted shrink-0"
-        >
-          <circle cx="11" cy="11" r="8" />
-          <line x1="21" y1="21" x2="16.65" y2="16.65" />
-        </svg>
-        <input
-          ref={inputRef}
-          type="text"
-          value={query}
-          onChange={(e) => {
-            setQuery(e.target.value);
-            setSelectedIndex(0);
-          }}
-          placeholder={placeholder}
-          className="flex-1 min-w-0 text-xs bg-transparent outline-none text-ink-body placeholder:text-ink-muted"
-        />
-        <button
-          type="button"
-          onClick={onClose}
-          className="text-ink-muted hover:text-ink-body p-0.5 shrink-0"
-          data-hint="Close (Esc)" aria-label="Close (Esc)"
-        >
+        <div className="flex items-center gap-1.5 px-2.5 py-1.5 border-b border-edge-subtle shrink-0">
           <svg
-            width="11"
-            height="11"
+            width="12"
+            height="12"
             viewBox="0 0 24 24"
             fill="none"
             stroke="currentColor"
-            strokeWidth="2.5"
+            strokeWidth="2"
             strokeLinecap="round"
+            className="text-ink-muted shrink-0"
           >
-            <line x1="18" y1="6" x2="6" y2="18" />
-            <line x1="6" y1="6" x2="18" y2="18" />
+            <circle cx="11" cy="11" r="8" />
+            <line x1="21" y1="21" x2="16.65" y2="16.65" />
           </svg>
-        </button>
-      </div>
+          <input
+            {...inputProps}
+            ref={inputRef}
+            type="text"
+            value={query}
+            onChange={(e) => setInternalQuery(e.target.value)}
+            placeholder={placeholder}
+            className="flex-1 min-w-0 text-xs bg-transparent outline-none text-ink-body placeholder:text-ink-muted"
+            spellCheck={false}
+          />
+          <button
+            type="button"
+            onClick={onClose}
+            className="text-ink-muted hover:text-ink-body p-0.5 shrink-0"
+            data-hint="Close (Esc)"
+            aria-label="Close (Esc)"
+          >
+            <svg
+              width="11"
+              height="11"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2.5"
+              strokeLinecap="round"
+            >
+              <line x1="18" y1="6" x2="6" y2="18" />
+              <line x1="6" y1="6" x2="18" y2="18" />
+            </svg>
+          </button>
+        </div>
       )}
 
-      <div
-        ref={listRef}
-        role="listbox"
-        className="flex-1 min-h-0 overflow-y-auto py-1"
-      >
+      <div className="flex-1 min-h-0 overflow-y-auto py-1">
         {filtered.length === 0 ? (
           <div className="px-3 py-4 text-[11px] text-ink-muted text-center space-y-2">
             <div>
@@ -401,12 +490,10 @@ function BibEntryPickerMenuInner({
               key={entry.key}
               index={i}
               entry={entry}
-              selected={i === safeSelectedIndex}
               expanded={expandedKey === entry.key}
               state={rowStateFor(entry)}
               libraryItem={getLibraryItem?.(entry)}
               membershipChips={getMembershipChips?.(entry) ?? []}
-              onHover={() => setSelectedIndex(i)}
               onToggleExpand={() =>
                 setExpandedKey((prev) => (prev === entry.key ? null : entry.key))
               }
@@ -415,20 +502,17 @@ function BibEntryPickerMenuInner({
           ))
         )}
       </div>
-    </div>,
-    document.body,
+    </>
   );
 }
 
 interface RowProps {
   index: number;
   entry: BibEntry;
-  selected: boolean;
   expanded: boolean;
   state: RowState;
   libraryItem: LibraryIndexItem | undefined;
   membershipChips: MembershipChips;
-  onHover: () => void;
   onToggleExpand: () => void;
   onPickClick: () => void;
 }
@@ -436,12 +520,10 @@ interface RowProps {
 function BibEntryPickerRow({
   index,
   entry,
-  selected,
   expanded,
   state,
   libraryItem,
   membershipChips,
-  onHover,
   onToggleExpand,
   onPickClick,
 }: RowProps) {
@@ -451,17 +533,28 @@ function BibEntryPickerRow({
   const verified = libraryItem?.bibState === "authenticated";
   const showVerifiedPill = libraryItem !== undefined;
 
+  // The row registers as a listbox option — the roving cursor crosses it and
+  // its `active` flag drives the selection highlight + aria-selected. Picking
+  // is the registered `run` (Enter on the active row / click).
+  const { active, getItemProps } = useMenuItem({
+    id: optionId(entry.key),
+    region: "list",
+    role: "option",
+    run: onPickClick,
+  });
+  const itemProps = getItemProps();
+
+  const selected = active;
   const showCluster = selected || expanded;
 
   return (
     <div
+      {...itemProps}
       data-row-index={index}
-      role="option"
       aria-selected={selected}
-      onMouseEnter={onHover}
       onClick={(e) => {
         if ((e.target as HTMLElement).closest("button")) return;
-        onPickClick();
+        itemProps.onClick(e);
       }}
       className={`group relative px-2.5 py-1.5 cursor-pointer ${
         selected ? "bg-surface-muted" : "hover-on-light"
@@ -482,7 +575,8 @@ function BibEntryPickerRow({
           </div>
           <div
             className="text-[11.5px] text-ink-body italic leading-tight mt-0.5 overflow-hidden text-ellipsis whitespace-nowrap"
-            data-hint={title} aria-label={title}
+            data-hint={title}
+            aria-label={title}
           >
             {title}
           </div>
@@ -501,7 +595,8 @@ function BibEntryPickerRow({
               onToggleExpand();
             }}
             className="w-5 h-5 flex items-center justify-center rounded text-ink-muted hover:text-ink-body hover:bg-edge-subtle"
-            data-hint={expanded ? "Hide details" : "Show details"} aria-label={expanded ? "Hide details" : "Show details"}
+            data-hint={expanded ? "Hide details" : "Show details"}
+            aria-label={expanded ? "Hide details" : "Show details"}
           >
             <svg
               width="11"
@@ -558,7 +653,8 @@ function VerifiedPill({
   return (
     <span
       className={`text-[9px] uppercase tracking-wide px-1 py-0.5 rounded whitespace-nowrap ${cls}`}
-      data-hint={tooltip} aria-label={tooltip}
+      data-hint={tooltip}
+      aria-label={tooltip}
     >
       {verified ? "verified" : "unverified"}
     </span>
@@ -576,7 +672,8 @@ function AddButton({
     return (
       <span
         className="w-5 h-5 flex items-center justify-center rounded-full text-emerald-600"
-        data-hint="Already available here" aria-label="Already available here"
+        data-hint="Already available here"
+        aria-label="Already available here"
       >
         <svg
           width="11"
@@ -602,7 +699,8 @@ function AddButton({
         onClick();
       }}
       className="w-5 h-5 flex items-center justify-center rounded-full text-blue-600 bg-blue-50 hover:bg-blue-100"
-      data-hint={title} aria-label={title}
+      data-hint={title}
+      aria-label={title}
     >
       <svg
         width="12"
@@ -698,7 +796,8 @@ function CitekeyRow({ citekey }: { citekey: string }) {
           onCopy();
         }}
         className="text-ink-muted hover:text-ink-body p-0.5 rounded hover:bg-edge-subtle"
-        data-hint={copied ? "Copied" : "Copy citekey"} aria-label={copied ? "Copied" : "Copy citekey"}
+        data-hint={copied ? "Copied" : "Copy citekey"}
+        aria-label={copied ? "Copied" : "Copy citekey"}
       >
         {copied ? (
           <svg
