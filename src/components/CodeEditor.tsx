@@ -7,7 +7,7 @@ import { search, highlightSelectionMatches } from "@codemirror/search";
 import { EditorState } from "@codemirror/state";
 import type { Editor as TipTapEditor } from "@tiptap/react";
 import { readTex } from "@/lib/storage";
-import { findParagraphUuids } from "@/lib/latex-paragraph-map";
+import { getRanges } from "@/lib/code-position-map";
 import {
   extractPreambleAndPostamble,
 } from "@/lib/latex-parser";
@@ -16,6 +16,7 @@ import {
   createCodePaneBridge,
   type CodePaneBridge,
 } from "@/lib/code-pane-bridge";
+import { codeBandField } from "@/lib/code-band";
 import CodeEditorLogDrawer from "./CodeEditorLogDrawer";
 
 const virgilTheme = EditorView.theme({
@@ -46,6 +47,9 @@ const virgilTheme = EditorView.theme({
   ".cm-activeLine": {
     backgroundColor: "rgba(124, 94, 60, 0.04)",
   },
+  ".cm-virgil-band": {
+    backgroundColor: "rgba(220, 38, 38, 0.09)",
+  },
   ".cm-selectionBackground": {
     backgroundColor: "rgba(124, 94, 60, 0.15) !important",
   },
@@ -67,6 +71,10 @@ export interface CodeEditorHandle {
   getActiveParagraphId(): string | null;
   scrollToParagraphId(uuid: string): void;
   scrollToLine(line: number, column?: number): void;
+  /** Manual align: move the CODE pane to match the TEXT cursor. */
+  moveCodeToTextCursor(): void;
+  /** Manual align: move the TEXT pane to match the CODE cursor. */
+  moveTextToCodeCursor(): void;
 }
 
 interface CodeEditorProps {
@@ -160,7 +168,7 @@ export default function CodeEditor({
 
         // Prefer paragraph UUID
         if (initialParagraphId) {
-          const paras = findParagraphUuids(view.state.doc.toString());
+          const paras = getRanges(view);
           const found = paras.find((p) => p.uuid === initialParagraphId);
           if (found) targetLine = found.startLine;
         }
@@ -259,6 +267,7 @@ export default function CodeEditor({
           search(),
           highlightSelectionMatches(),
           virgilTheme,
+          codeBandField,
           EditorView.lineWrapping,
           EditorState.tabSize.of(2),
           updateListener,
@@ -306,8 +315,7 @@ export default function CodeEditor({
             getActiveParagraphId() {
               const v = editorViewRef.current;
               if (!v) return null;
-              const text = v.state.doc.toString();
-              const paras = findParagraphUuids(text);
+              const paras = getRanges(v);
               if (paras.length === 0) return null;
 
               // Cursor line (1-based)
@@ -358,7 +366,7 @@ export default function CodeEditor({
             scrollToParagraphId(uuid: string) {
               const v = editorViewRef.current;
               if (!v) return;
-              const paras = findParagraphUuids(v.state.doc.toString());
+              const paras = getRanges(v);
               const found = paras.find((p) => p.uuid === uuid);
               if (!found) return;
               try {
@@ -385,6 +393,12 @@ export default function CodeEditor({
                 });
                 v.focus();
               } catch { /* ignore */ }
+            },
+            moveCodeToTextCursor() {
+              bridgeRef.current?.moveCodeToTextCursor();
+            },
+            moveTextToCodeCursor() {
+              bridgeRef.current?.moveTextToCodeCursor();
             },
           });
         }}

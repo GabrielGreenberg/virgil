@@ -27,9 +27,8 @@ import { CollabProvider, COLLAB_INERT, type CollabHook } from "@/hooks/useCollab
 import { collabClaimScope } from "@/cards/predicates";
 import CollabStatusPill from "./CollabStatusPill";
 import { useCollaboratorIdentity } from "./CollaboratorIdentityDialog";
-import { useLatexCompile } from "@/hooks/useLatexCompile";
 import { useLatexLint } from "@/hooks/useLatexLint";
-import type { LatexError } from "@/lib/latex-errors";
+import { mergeLatexErrors, type LatexError } from "@/lib/latex-errors";
 import { findParagraphUuids, paragraphForLine } from "@/lib/latex-paragraph-map";
 import { ErrorsHost } from "./editor-layout/panels/errors-host";
 import { pruneExpanded } from "@/panels/Errors/expansion";
@@ -517,29 +516,12 @@ export default function EditorLayout() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentDocId]);
 
+  // `promptDocClassMismatch` feeds EditorPane's live `useLatexCompile`
+  // (via the `onDocumentClassMismatch` prop below) — EditorLayout no longer
+  // mounts its own compile hook. Compile errors / log / status are read from
+  // the live pane via `paneState` (the single authoritative compile source).
   const { prompt: promptDocClassMismatch, dialog: docClassDialog } =
     useDocumentClassMismatchDialog();
-  const {
-    compile: compilePdf,
-    isCompiling,
-    lastLog: compileLog,
-    lastStatus: compileStatus,
-    compileErrors,
-  } = useLatexCompile(docIdForHooks, {
-    onDocumentClassMismatch: promptDocClassMismatch,
-    onCompileSuccess: useCallback((pdfBytes: Uint8Array) => {
-      latestPdfBytes.current = pdfBytes;
-      if (pdfBlobUrl) URL.revokeObjectURL(pdfBlobUrl);
-      const blob = new Blob([pdfBytes.buffer as ArrayBuffer], { type: "application/pdf" });
-      setPdfBlobUrl(URL.createObjectURL(blob));
-      setLastCompileTime(Date.now());
-      // Compile lands fresh → PDF is in sync until next edit.
-      setPdfStale(false);
-      if (docIdForHooks) activateDocPane(docIdForHooks);
-      setCodeView(false);
-      setPdfView(true);
-    }, [pdfBlobUrl, activateDocPane, docIdForHooks]),
-  });
   const {
     state: suggestionsState,
     currentSuggestion,
@@ -1461,11 +1443,8 @@ export default function EditorLayout() {
     knownBibKeys,
   });
   const allLatexErrors: LatexError[] = useMemo(
-    () =>
-      [...lintErrors, ...compileErrors].sort(
-        (a, b) => a.line - b.line || (a.column ?? 0) - (b.column ?? 0),
-      ),
-    [lintErrors, compileErrors],
+    () => mergeLatexErrors(lintErrors, paneState?.compileErrors ?? []),
+    [lintErrors, paneState?.compileErrors],
   );
   const jumpToLineInCode = useCallback(
     (line: number, column?: number) => {
@@ -1491,10 +1470,11 @@ export default function EditorLayout() {
     from: number;
     to: number;
   } | null>(null);
-  // Expansion for the CODE-VIEW errors sidebar only (R5): kept as its own
-  // small local set — deliberately NOT shared with EditorPane's
-  // docked-panel/omni scope, because this sidebar renders a different error
-  // list (the code editor's compile/lint diagnostics) by design.
+  // Error-card expansion (R5). Since the diagnostics unification, this is
+  // the SINGLE expansion set for every error surface: the code-view sidebar
+  // here AND EditorPane's docked panel + omni mirror (threaded down via the
+  // `expandedErrorIds`/`expandError`/`toggleErrorExpanded` props). One owner,
+  // one list — expanding a card on any surface expands it everywhere.
   const [expandedErrorIds, setExpandedErrorIds] = useState<Set<string>>(
     () => new Set(),
   );
@@ -1644,20 +1624,28 @@ export default function EditorLayout() {
     [paragraphByErrorId],
   );
 
-  // Jump to the error's location. Always switches to the rich-text
-  // editor (never code), scrolls the mapped paragraph into view, and
-  // sets the range highlight so the offending passage lights up.
+  // Jump to the error's location — MODE-AWARE (Chip C). In code view we
+  // STAY in code and scroll the CodeMirror pane to the error line; in PDF
+  // view we leave for the visual editor and let the pending-scroll
+  // mechanism scroll there once it mounts; in the visual editor we
+  // highlight the offending range + scroll the mapped paragraph into view.
   const jumpToError = useCallback(
     (err: LatexError) => {
       setSelectedErrorId(err.id);
-      if (codeView || pdfView) {
+      if (codeView) {
+        // STAY in code view — scroll the CodeMirror pane to the error line.
+        codeEditorHandleRef.current?.scrollToLine?.(err.line, err.column);
+        return;
+      }
+      if (pdfView) {
+        // Leave PDF for the visual editor, then scroll there once it mounts
+        // (the post-switch pending-scroll effect handles it).
         pendingParagraphId.current = paragraphByErrorId.get(err.id) ?? null;
-        pendingScrollText.current = null;
-        codeEditorHandleRef.current = null;
-        setCodeView(false);
+        pendingScrollText.current = errorSnippets.get(err.id) ?? null;
         setPdfView(false);
         return;
       }
+      // Visual editor: highlight the offending range + scroll the paragraph.
       const range = computeErrorHighlightRange(err);
       setErrorHighlightRange(range);
       const paraId = paragraphByErrorId.get(err.id);
@@ -1669,7 +1657,7 @@ export default function EditorLayout() {
         }
       }
     },
-    [codeView, pdfView, paragraphByErrorId, computeErrorHighlightRange],
+    [codeView, pdfView, paragraphByErrorId, errorSnippets, computeErrorHighlightRange],
   );
 
   // Keep the error-highlight range in sync with the current selection.
@@ -4384,6 +4372,12 @@ export default function EditorLayout() {
               open={codeView}
               ratio={prefs.codePaneRatio}
               onRatioChange={setCodePaneRatio}
+              onMoveCodeToText={() =>
+                codeEditorHandleRef.current?.moveCodeToTextCursor()
+              }
+              onMoveTextToCode={() =>
+                codeEditorHandleRef.current?.moveTextToCodeCursor()
+              }
               left={
                 <EditorPane
                   ref={editorRef}
@@ -4406,6 +4400,17 @@ export default function EditorLayout() {
                   highlightText={highlightText}
                   highlightRange={effectiveHighlightRange}
                   onDocumentClassMismatch={promptDocClassMismatch}
+                  latexErrors={allLatexErrors}
+                  paragraphByErrorId={paragraphByErrorId}
+                  errorSnippets={errorSnippets}
+                  selectedErrorId={selectedErrorId}
+                  setSelectedErrorId={setSelectedErrorId}
+                  dismissedErrorIds={dismissedErrorIds}
+                  dismissError={dismissError}
+                  expandedErrorIds={expandedErrorIds}
+                  expandError={expandError}
+                  toggleErrorExpanded={toggleErrorExpanded}
+                  onJumpToError={jumpToError}
                 />
               }
               right={
@@ -4431,9 +4436,9 @@ export default function EditorLayout() {
                         codeEditorHandleRef.current = handle;
                       }}
                       onTextChange={handleCodeEditorTextChange}
-                      compileLog={compileLog}
-                      compileStatus={compileStatus}
-                      isCompiling={isCompiling}
+                      compileLog={paneState?.compileLog ?? null}
+                      compileStatus={paneState?.compileStatus ?? null}
+                      isCompiling={paneState?.isCompiling ?? false}
                     />
                     {errorsSidebarOpen ? (
                       <div className="w-[260px] shrink-0 border-l border-edge-subtle bg-surface flex flex-col h-full relative">

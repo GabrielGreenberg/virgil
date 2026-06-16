@@ -48,7 +48,13 @@ import {
   extractPreambleAndPostamble,
 } from "@/lib/latex-parser";
 import { serializeToLatex } from "@/lib/latex-serializer";
-import { findParagraphUuids } from "@/lib/latex-paragraph-map";
+import {
+  getRanges,
+  getLineRangeForUuid,
+  getActiveParagraphUuid,
+  getCharRangeForUuid,
+} from "@/lib/code-position-map";
+import { setCodeBand } from "@/lib/code-band";
 
 export const SYNC_ANNOTATION = Annotation.define<true>();
 
@@ -72,6 +78,18 @@ export interface CodePaneBridge {
   onCodeMirrorUpdate(u: ViewUpdate): void;
   /** Read-only view of the current preamble (for callers that care). */
   getPreamble(): string | undefined;
+  /**
+   * Manual align: move the CODE pane to match the TEXT (TipTap) cursor —
+   * selects + scrolls CodeMirror to the active paragraph's source. Invoked
+   * by the divider arrow; runs synchronously (not RAF-deferred).
+   */
+  moveCodeToTextCursor(): void;
+  /**
+   * Manual align: move the TEXT (TipTap) pane to match the CODE cursor —
+   * selects + scrolls TipTap to the source paragraph under the CodeMirror
+   * cursor. Invoked by the divider arrow; runs synchronously.
+   */
+  moveTextToCodeCursor(): void;
 }
 
 export interface CreateCodePaneBridgeOptions {
@@ -108,8 +126,7 @@ export function createCodePaneBridge(
 
   function captureCursorAnchor(): CursorAnchor {
     try {
-      const text = view.state.doc.toString();
-      const paras = findParagraphUuids(text);
+      const paras = getRanges(view);
       if (paras.length === 0) return { paragraphUuid: null, offsetInPara: 0 };
       const cursor = view.state.selection.main.head;
       const cursorLine = view.state.doc.lineAt(cursor).number;
@@ -130,9 +147,7 @@ export function createCodePaneBridge(
   function restoreCursorAnchor(anchor: CursorAnchor) {
     if (!anchor.paragraphUuid) return;
     try {
-      const text = view.state.doc.toString();
-      const paras = findParagraphUuids(text);
-      const para = paras.find((p) => p.uuid === anchor.paragraphUuid);
+      const para = getLineRangeForUuid(view, anchor.paragraphUuid);
       if (!para) return;
       const paraStartPos = view.state.doc.line(para.startLine).from;
       const target = Math.min(
@@ -226,6 +241,10 @@ export function createCodePaneBridge(
     } finally {
       syncing = null;
     }
+    // The content replace shifted line positions (and may have dropped
+    // the mapped band decoration), so force a recompute against the
+    // fresh doc — bypassing the equality bail.
+    updateCodeBand(true);
   }
 
   function scheduleTipTapToCode() {
@@ -233,18 +252,19 @@ export function createCodePaneBridge(
     tipTapTimer = setTimeout(flushTipTapToCode, reverseDebounceMs);
   }
 
-  // ── Selection sync (paragraph UUID, bidirectional) ──────────────
-  // Both sides emit selection events only on user action — TipTap's
-  // `selectionUpdate` fires on cursor moves (not keystrokes), and CM's
-  // updateListener exposes `tr.selection` separately from `docChanged`.
-  // We coalesce to one push per animation frame so click-and-drag
-  // selections don't fire a flurry. Within keystroke sanctity rules.
+  // ── Cursor align (paragraph UUID) ───────────────────────────────
+  // The two panes do NOT auto-follow each other's cursor. A TipTap
+  // cursor move drives only the passive code-side band (no scroll);
+  // explicit alignment is offered via the divider arrows, which call
+  // `moveCodeToTextCursor` / `moveTextToCodeCursor` → the
+  // `pushTipTapSelectionToCode` / `pushCodeSelectionToTipTap` bodies
+  // below (each selects + scrolls the target pane).
   //
   // `selectionSyncing` is separate from the doc-sync flag so a
-  // selection echo can't suppress a doc edit in flight.
+  // selection echo can't suppress a doc edit in flight. It guards the
+  // manual align dispatches from re-entering.
   let selectionSyncing: "code" | "tiptap" | null = null;
-  let tipTapToCodeSelRaf: number | null = null;
-  let codeToTipTapSelRaf: number | null = null;
+  let codeBandRaf: number | null = null;
 
   function findTipTapPosByUuid(uuid: string): number {
     let pos = -1;
@@ -259,34 +279,6 @@ export function createCodePaneBridge(
       return true;
     });
     return pos;
-  }
-
-  function getCmActiveParagraphUuid(): string | null {
-    try {
-      const text = view.state.doc.toString();
-      const paras = findParagraphUuids(text);
-      if (paras.length === 0) return null;
-      const cursorLine = view.state.doc.lineAt(view.state.selection.main.head)
-        .number;
-      const direct = paras.find(
-        (p) => cursorLine >= p.startLine && cursorLine <= p.endLine,
-      );
-      if (direct) return direct.uuid;
-      // Cursor lies between paragraphs — pick the closest by mid-line.
-      let best = paras[0];
-      let bestDist = Infinity;
-      for (const p of paras) {
-        const mid = (p.startLine + p.endLine) / 2;
-        const d = Math.abs(mid - cursorLine);
-        if (d < bestDist) {
-          bestDist = d;
-          best = p;
-        }
-      }
-      return best.uuid;
-    } catch {
-      return null;
-    }
   }
 
   function getTipTapActiveUuid(): string | null {
@@ -304,16 +296,54 @@ export function createCodePaneBridge(
     return null;
   }
 
+  // ── Code-side cursor band (passive, no scroll) ──────────────────
+  // Highlights the source lines of the text-object under the TipTap
+  // cursor. Replaces the old auto-scroll align. Dispatched with
+  // SYNC_ANNOTATION so the band update doesn't re-enter code→tiptap
+  // sync. RAF-coalesced via `codeBandRaf` so a click-drag selection
+  // fires at most one band update per frame.
+  //
+  // Equality bail: typing inside the same paragraph yields the same
+  // {from,to} every frame — skip the redundant CM dispatch so the band
+  // costs nothing per plain keystroke (keystroke sanctity). `force`
+  // bypasses the bail after a TipTap→code content sync, where the line
+  // positions shifted (and the mapped DecorationSet may have dropped)
+  // even though the active UUID — hence the cached numbers — can collide.
+  let lastBandFrom = -1;
+  let lastBandTo = -1;
+  function updateCodeBand(force = false) {
+    codeBandRaf = null;
+    if (disposed) return;
+    try {
+      const uuid = getTipTapActiveUuid();
+      const range = uuid ? getCharRangeForUuid(view, uuid) : null;
+      const from = range ? range.from : -1;
+      const to = range ? range.to : -1;
+      if (!force && from === lastBandFrom && to === lastBandTo) return;
+      lastBandFrom = from;
+      lastBandTo = to;
+      view.dispatch({
+        effects: setCodeBand.of(range),
+        annotations: SYNC_ANNOTATION.of(true),
+      });
+    } catch {
+      /* ignore */
+    }
+  }
+
+  function scheduleCodeBand() {
+    if (codeBandRaf !== null) return;
+    // Wrap so requestAnimationFrame's timestamp arg isn't passed as `force`.
+    codeBandRaf = requestAnimationFrame(() => updateCodeBand());
+  }
+
   function pushTipTapSelectionToCode() {
-    tipTapToCodeSelRaf = null;
     if (disposed) return;
     if (selectionSyncing) return;
     const uuid = getTipTapActiveUuid();
     if (!uuid) return;
     try {
-      const text = view.state.doc.toString();
-      const paras = findParagraphUuids(text);
-      const found = paras.find((p) => p.uuid === uuid);
+      const found = getLineRangeForUuid(view, uuid);
       if (!found) return;
       const line = Math.min(found.startLine, view.state.doc.lines);
       const pos = view.state.doc.line(Math.max(1, line)).from;
@@ -336,10 +366,9 @@ export function createCodePaneBridge(
   }
 
   function pushCodeSelectionToTipTap() {
-    codeToTipTapSelRaf = null;
     if (disposed) return;
     if (selectionSyncing) return;
-    const uuid = getCmActiveParagraphUuid();
+    const uuid = getActiveParagraphUuid(view);
     if (!uuid) return;
     const pos = findTipTapPosByUuid(uuid);
     if (pos < 0) return;
@@ -368,24 +397,21 @@ export function createCodePaneBridge(
       } catch {
         /* scroll best-effort */
       }
+    } catch {
+      /* setTextSelection best-effort — a manual align must never throw
+         out to the divider-arrow click handler. */
     } finally {
       selectionSyncing = null;
     }
   }
 
-  function scheduleTipTapSelectionToCode() {
-    if (tipTapToCodeSelRaf !== null) return;
-    tipTapToCodeSelRaf = requestAnimationFrame(pushTipTapSelectionToCode);
-  }
-  function scheduleCodeSelectionToTipTap() {
-    if (codeToTipTapSelRaf !== null) return;
-    codeToTipTapSelRaf = requestAnimationFrame(pushCodeSelectionToTipTap);
-  }
-
+  // TipTap cursor moves drive the passive code-side band only — NO
+  // auto-scroll. The old `scheduleTipTapSelectionToCode()` (which
+  // selected + scrolled CodeMirror) is now reachable only via the
+  // manual `moveCodeToTextCursor()` align action.
   const tipTapSelectionHandler = () => {
     if (disposed) return;
-    if (selectionSyncing) return;
-    scheduleTipTapSelectionToCode();
+    scheduleCodeBand();
   };
   editor.on("selectionUpdate", tipTapSelectionHandler);
 
@@ -416,13 +442,9 @@ export function createCodePaneBridge(
         clearTimeout(tipTapTimer);
         tipTapTimer = null;
       }
-      if (tipTapToCodeSelRaf !== null) {
-        cancelAnimationFrame(tipTapToCodeSelRaf);
-        tipTapToCodeSelRaf = null;
-      }
-      if (codeToTipTapSelRaf !== null) {
-        cancelAnimationFrame(codeToTipTapSelRaf);
-        codeToTipTapSelRaf = null;
+      if (codeBandRaf !== null) {
+        cancelAnimationFrame(codeBandRaf);
+        codeBandRaf = null;
       }
       editor.off("transaction", tipTapHandler);
       editor.off("selectionUpdate", tipTapSelectionHandler);
@@ -440,13 +462,18 @@ export function createCodePaneBridge(
       // edits we make ourselves carry SYNC_ANNOTATION).
       if (u.transactions.some((tr) => tr.annotation(SYNC_ANNOTATION))) return;
       if (u.docChanged && !syncing) scheduleCodeToTipTap();
-      // Selection-only updates also drive the paragraph cursor sync.
-      if (u.selectionSet && !selectionSyncing) {
-        scheduleCodeSelectionToTipTap();
-      }
+      // NOTE: selection-only updates no longer auto-align TipTap. The
+      // panes don't auto-follow each other's cursor; alignment is
+      // explicit via the divider arrows (`moveTextToCodeCursor`).
     },
     getPreamble() {
       return preamble;
+    },
+    moveCodeToTextCursor() {
+      pushTipTapSelectionToCode();
+    },
+    moveTextToCodeCursor() {
+      pushCodeSelectionToTipTap();
     },
   };
 }
