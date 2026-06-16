@@ -1339,3 +1339,35 @@ The user wants the title written plain, **no underline** — remove that
 `border-bottom`. (The collapsed title `.card-title-collapsed` is already
 underline-free, [:1187](src/app/globals.css:1187), so this is just the editable
 input.)
+
+---
+
+## 48. Popped-out text-objects should be droppable onto the stack (parity with cards)
+
+**Reported:** 2026-06-15 · **Status:** open (catch — do not fix yet) · **Area:** text-objects / floats / stack
+
+**Reported behavior** — a popped-out **text-object** float (footnote / citation /
+example / figure …) should be **droppable onto the stack** the same way card
+floats are. Today cards work; text-objects don't.
+
+**Root cause — the snapshot is stubbed, not the gesture.** The drop *gesture* is
+already shared: `FloatingPanel.tsx` (the common float container for both card and
+text-object floats) detects a release over the stack icon and fires
+`virgil-stack-drop` for **any** float
+([FloatingPanel.tsx:278–368](src/components/FloatingPanel.tsx:278), via
+[stack-drop-target](src/lib/stack/stack-drop-target.ts)). What's missing is the
+**snapshot**: a text-object float hands back nothing —
+`snapshotForStack: () => null` is an explicit stub
+([text-object-floatable.tsx:66](src/text-objects/text-object-floatable.tsx:66),
+comment: *"Stage 5 wires snapshotParagraph/Section"*). So the gesture fires but
+there's no content to materialize on the stack. Card floats implement
+`snapshotForStack`, hence the asymmetry.
+
+**Fix direction.** Implement `snapshotForStack` for `textObjectFloatable` — wire
+the deferred `snapshotParagraph` / `snapshotSection` capture (per the Stage-5
+comment) so the text-object's content becomes a real stack snapshot. Then verify
+the **round-trip**: pulling the snapshot back off the stack into the doc
+(`stackPullDropSpec`, [drop-mode/registry.ts](src/components/drop-mode/registry.ts);
+`StackPullApi` in [drop-mode/types.ts:154](src/components/drop-mode/types.ts:154))
+handles a text-object snapshot, not just a card one. Scope: this is a deferred
+*feature wire-up* (Stage 5), larger than a one-liner — likely its own chip.
