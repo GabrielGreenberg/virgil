@@ -1171,7 +1171,6 @@ textarea,
 .card-title-input {
   background: transparent;
   border: none;
-  border-bottom: 1px solid var(--par-title-color, #c45a5a);
   outline: none;
   font-size: var(--par-title-size, 0.78rem);
   font-weight: 500;
