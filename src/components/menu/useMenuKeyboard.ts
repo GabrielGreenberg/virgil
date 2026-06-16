@@ -105,24 +105,39 @@ export function useMenuKeyboard(
     };
   });
 
+  // The letter-map memo, keyed on the registry version so it rebuilds ONLY on a
+  // registration change (mount/unmount/disabled-flip), never per keystroke —
+  // honoring the keystroke-sanctity claim in this file's header comment.
+  const letterMapRef = useRef<{ version: number; map: Map<string, string> } | null>(
+    null,
+  );
+
   // The shared key handler. Returns true if it consumed the event (the window
   // source then prevents default + stops propagation).
   const consume = useCallback((e: KeyboardEvent | React.KeyboardEvent): boolean => {
     const { registry: reg, letterShortcuts: letters } = stateRef.current;
 
-    if (e.key === "Enter" || e.key === " " || e.key === "Spacebar") {
+    // Only PLAIN nav/activation keys drive the menu — a MODIFIED combo
+    // (Shift+Arrow to extend the editor selection, Cmd/Ctrl+Arrow line jumps,
+    // Cmd+Enter, …) passes THROUGH to the editor untouched, matching the
+    // bare-letter fast-path's modifier guard and the old menus' pass-through of
+    // editor selection gestures.
+    const plain = !e.metaKey && !e.ctrlKey && !e.altKey && !e.shiftKey;
+
+    if (plain && (e.key === "Enter" || e.key === " " || e.key === "Spacebar")) {
       reg.activate();
       return true;
     }
 
     const dir = NAV_KEYS[e.key];
-    if (dir) {
+    if (plain && dir) {
       reg.move(dir);
       return true;
     }
 
-    // Bare-letter fast-path: a single-char key with no modifier, checked
-    // BEFORE bailing. Disabled rows are excluded from the map (inert).
+    // Bare-letter fast-path: a single-char key with no meta/ctrl/alt, checked
+    // BEFORE bailing. Disabled rows are excluded from the map (inert). The map
+    // is rebuilt only when the registry version changes — not per keystroke.
     if (
       letters &&
       !e.metaKey &&
@@ -131,9 +146,11 @@ export function useMenuKeyboard(
       typeof e.key === "string" &&
       (e.key.length === 1 || e.key === "Backspace" || e.key === "Delete")
     ) {
-      const map = buildLetterMap(reg.items());
-      const key = e.key.length === 1 ? e.key.toUpperCase() : e.key.toUpperCase();
-      const id = map.get(key);
+      const ver = reg.getVersion();
+      if (!letterMapRef.current || letterMapRef.current.version !== ver) {
+        letterMapRef.current = { version: ver, map: buildLetterMap(reg.items()) };
+      }
+      const id = letterMapRef.current.map.get(e.key.toUpperCase());
       if (id) {
         reg.activateById(id);
         return true;
