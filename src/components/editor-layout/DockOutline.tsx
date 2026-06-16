@@ -102,25 +102,6 @@ export function DockOutline() {
         opacity: 0,
       }}
     >
-      {/* Companion outline (other half of a split column) — fainter so
-          the active landing target stays visually dominant. Rendered
-          first so the primary outline's box-shadow paints over it. */}
-      {displayed.companionRect && (
-        <div
-          aria-hidden="true"
-          style={{
-            position: "absolute",
-            left: displayed.companionRect.left,
-            top: displayed.companionRect.top,
-            width: displayed.companionRect.width,
-            height: displayed.companionRect.height,
-            border: OUTLINE_BORDER,
-            borderRadius: "var(--pod-radius)",
-            background: "transparent",
-            opacity: 0.35,
-          }}
-        />
-      )}
       <div
         aria-hidden="true"
         style={{

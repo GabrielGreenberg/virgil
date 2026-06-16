@@ -14,6 +14,7 @@ import type {
   ArchivedSnippet,
 } from "@/lib/types";
 import type { PanelId, ViewPrefs } from "@/hooks/useViewPrefs";
+import { isPanelDocked } from "@/hooks/view-prefs-derived";
 import type { TextObjectKind } from "@/text-objects/types";
 import type { CardKind } from "@/cards/types";
 import { panelForCardKind } from "@/cards/predicates";
@@ -322,15 +323,16 @@ export function useCardCreation(deps: CardCreationDeps): CardCreationApi {
 
   const ensurePanelActive = useCallback(
     (id: PanelId) => {
+      // Idempotence guard: skip the opener when the panel is already docked on
+      // its side. The opener is internally idempotent, but an unconditional
+      // call still churns the dock MRU + fires a spurious openPanel.
+      if (isPanelDocked(prefs, id)) return;
       const placement = prefs.placements.find((p) => p.id === id);
       const side = placement?.side ?? "right";
-      if (side === "left") {
-        if (prefs.activeLeft !== id) setActiveLeft(id);
-      } else {
-        if (prefs.activeRight !== id) setActiveRight(id);
-      }
+      if (side === "left") setActiveLeft(id);
+      else setActiveRight(id);
     },
-    [prefs.placements, prefs.activeLeft, prefs.activeRight, setActiveLeft, setActiveRight],
+    [prefs, setActiveLeft, setActiveRight],
   );
 
   // When `anchorRect` is provided (every Actions-toolbar path), the new

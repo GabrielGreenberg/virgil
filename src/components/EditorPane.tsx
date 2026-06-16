@@ -167,7 +167,7 @@ import {
 } from "@/cards/delete-margin-item";
 import { resolveStyle } from "@/lib/style-library";
 import { extractDocumentClass } from "@/lib/document-class";
-import { PanelColumn, type PanelSlot } from "./editor-layout/panel-column";
+import { PanelColumn } from "./editor-layout/panel-column";
 import { PanelChromeProvider } from "./panel-primitives";
 import FloatingPanel from "./FloatingPanel";
 import { OmniHost } from "./editor-layout/panels/omni-host";
@@ -197,7 +197,7 @@ import type { LatexError } from "@/lib/latex-errors";
 import Marginalia from "./Marginalia";
 import { StripButton, useStripHandlers } from "./editor-layout/drag-drop";
 import { useSelectionsContext } from "./editor-layout/contexts/selections";
-import { IconBlank, IconSplit } from "./editor-layout/panel-icons";
+import { IconBlank } from "./editor-layout/panel-icons";
 import { OmniFilterMenu, DEFAULT_OMNI_CATEGORIES } from "@/panels/Omni/OmniViewPanel";
 import MenuBar, {
   type MarginaliaType,
@@ -215,10 +215,9 @@ import type {
   PanelId,
   ViewPrefs,
   Side,
-  Half,
   DockSlotKey,
 } from "@/hooks/useViewPrefs";
-import { dockSlotKey } from "@/hooks/useViewPrefs";
+import { bandSlotKey } from "@/hooks/useViewPrefs";
 import { useMarginEdit, MARGIN_AXIS } from "@/hooks/useMarginEdit";
 import type { FocusState } from "@/hooks/useFocusMode";
 import type { OmniCategory } from "@/panels/Omni";
@@ -272,8 +271,6 @@ export const stubAddStyleMergeRequest: PaneState["addStyleMergeRequest"] = () =>
 export interface EditorPaneViewPrefs {
   // ── Read state ──────────────────────────────────────────────────
   prefs: ViewPrefs;
-  focusedHalfLeft: Half;
-  focusedHalfRight: Half;
   isResizingPanels: boolean;
   /** From useFocusMode. Drives focus-aware dimming/hiding. */
   focusState: FocusState | null;
@@ -285,8 +282,6 @@ export interface EditorPaneViewPrefs {
   mirrorParTitleIndex: number | null;
 
   // ── Setters / mutators ──────────────────────────────────────────
-  setFocusedHalfLeft: (h: Half) => void;
-  setFocusedHalfRight: (h: Half) => void;
   setIsResizingPanels: (r: boolean) => void;
   /** Snap all panel/margin prefs to their currently-rendered widths
    *  before drag start. */
@@ -294,7 +289,22 @@ export interface EditorPaneViewPrefs {
 
   getPanelWidth: (side: Side, panelId: PanelId) => number;
   setPanelWidth: (side: Side, panelId: PanelId, width: number) => void;
-  setSplitRatio: (side: Side, ratio: number) => void;
+
+  // ── Band heights (the stack model — replaces split ratios) ──────
+  /** Persist a per-panel band height in px (a bottom-edge resize). */
+  setPanelHeight: (id: PanelId, px: number) => void;
+  /** Drop a panel's height override → back to content-sized. */
+  clearPanelHeight: (id: PanelId) => void;
+  /** Slide the boundary between two adjacent bands (a divider trade);
+   *  the caller conserves their summed height. */
+  tradePanelHeights: (
+    aboveId: PanelId,
+    aboveH: number,
+    belowId: PanelId,
+    belowH: number,
+  ) => void;
+  /** MRU bump on interaction with a docked panel, for LRU eviction. */
+  notePanelUse: (side: Side, id: PanelId) => void;
 
   // ── Persisted page margins (driven by margin-edit mode) ────────
   setEditorLeftMargin: (px: number) => void;
@@ -315,7 +325,6 @@ export interface EditorPaneViewPrefs {
 
   setActiveLeft: (id: PanelId) => void;
   setActiveRight: (id: PanelId) => void;
-  setActiveHalf: (side: Side, half: Half, id: PanelId) => void;
   togglePanel: (id: PanelId) => void;
   movePanel: (id: PanelId, side: Side, index?: number) => void;
   closePopout: (id: PanelId) => void;
@@ -328,7 +337,7 @@ export interface EditorPaneViewPrefs {
     id: PanelId,
     rect: { x: number; y: number; width: number; height: number },
   ) => void;
-  redockPanel: (id: PanelId, slotKey: DockSlotKey) => void;
+  redockPanel: (id: PanelId, side: Side, index?: number) => void;
 
   // ── Card popout ─────────────────────────────────────────────────
   /** Toggle a card's popped-out state. Key shape: every float uses the
@@ -395,7 +404,7 @@ export interface EditorPaneViewPrefs {
 
   // ── Icon strip (view-controls pod + StripButton + OmniFilterMenu) ──
   /** Sidebar collapse / expand. Used by the view-controls pod's
-   *  collapse-toggle button — `activeLeft ? collapseLeft() : expandLeft()`. */
+   *  collapse-toggle button — `collapsedLeft ? expandLeft() : collapseLeft()`. */
   collapseLeft: () => void;
   collapseRight: () => void;
   expandLeft: () => void;
@@ -405,10 +414,12 @@ export interface EditorPaneViewPrefs {
   /** Clears the blank state on whichever side(s) have it set. Used by
    *  flows that open a new card and need to drop "show nothing" first. */
   clearBlankIfSet: () => void;
-  /** Toggles split panel on a side. */
-  toggleSplit: (side: Side) => void;
-  /** Force-docks a panel into its gutter slot. Required by `useStripHandlers`. */
-  openPanelDocked: (id: PanelId, side?: Side) => void;
+  /** Force-docks a panel into its gutter band (appends at the bottom of
+   *  the side's stack; evicts the LRU band if there's no room). The
+   *  optional `freeSpacePx` lets the caller pass the omni gap from
+   *  `measureOmniGap(side)` for the open-time fit check. Required by
+   *  `useStripHandlers`. */
+  openPanelDocked: (id: PanelId, side?: Side, freeSpacePx?: number) => void;
   /** OmniFilterMenu mutators for per-side category enablement. */
   toggleOmniCategory: (side: Side, cat: OmniCategory) => void;
   setOmniSideToDefault: (side: Side) => void;
@@ -1471,19 +1482,20 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
   ]);
   // Reader has no real `useViewPrefs` (that's per-window shell state).
   // Synthesize a minimal snapshot — `useCardCreation` reads only
-  // `prefs.placements`, `prefs.activeLeft`, `prefs.activeRight`. With
+  // `prefs.placements` + the docked-stack/collapsed sentinels. With
   // an empty placements array, `ensurePanelActive` defaults to "right"
   // for every panel id and the no-op setters keep things quiet.
   const readerPrefs = useMemo<ViewPrefs>(
     () =>
       ({
         placements: [],
-        activeLeft: null,
-        activeRight: null,
-        activeLeftBottom: null,
-        activeRightBottom: null,
-        splitLeftRatio: 0.5,
-        splitRightRatio: 0.5,
+        dockStack: { left: [], right: [] },
+        panelHeights: {},
+        panelMRU: { left: [], right: [] },
+        collapsedLeft: false,
+        collapsedRight: false,
+        blankLeft: false,
+        blankRight: false,
         panelWidths: {},
         editorSplit: false,
         editorSplitRatio: 0.5,
@@ -1491,7 +1503,6 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
         poppedOutOrigins: {},
         floatPositions: {},
         panelModes: {},
-        dockSlots: {},
         poppedOutCards: [],
         cardFloatPositions: {},
         showHighlights: true,
@@ -2154,6 +2165,13 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
   const bridgeRoutingPrefs = viewPrefs?.prefs ?? readerPrefs;
   const bridgeSetActiveLeft = viewPrefs?.setActiveLeft ?? stubSetActive;
   const bridgeSetActiveRight = viewPrefs?.setActiveRight ?? stubSetActive;
+  // Backlog #2 soft-route reveal: un-collapse / un-blank the panel's docked
+  // side so a freshly-created card shows in omni. The Reader pane has no rail,
+  // so these fall back to the no-op `stubSetActive` (a `\cite`/`\footnote` in
+  // the Reader has nothing to reveal).
+  const bridgeExpandLeft = viewPrefs?.expandLeft ?? stubSetActive;
+  const bridgeExpandRight = viewPrefs?.expandRight ?? stubSetActive;
+  const bridgeClearBlankIfSet = viewPrefs?.clearBlankIfSet ?? stubSetActive;
   const bridgeDepsRef = useRef<{
     cardCreation: typeof cardCreation;
     cardLifecycle: typeof cardLifecycle;
@@ -2161,6 +2179,9 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
     routingPrefs: typeof bridgeRoutingPrefs;
     setActiveLeft: (id: PanelId) => void;
     setActiveRight: (id: PanelId) => void;
+    expandLeft: () => void;
+    expandRight: () => void;
+    clearBlankIfSet: () => void;
     setSelectedExampleId: typeof setSelectedExampleId;
   }>({
     cardCreation,
@@ -2169,6 +2190,9 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
     routingPrefs: bridgeRoutingPrefs,
     setActiveLeft: bridgeSetActiveLeft,
     setActiveRight: bridgeSetActiveRight,
+    expandLeft: bridgeExpandLeft,
+    expandRight: bridgeExpandRight,
+    clearBlankIfSet: bridgeClearBlankIfSet,
     setSelectedExampleId,
   });
   bridgeDepsRef.current = {
@@ -2178,6 +2202,9 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
     routingPrefs: bridgeRoutingPrefs,
     setActiveLeft: bridgeSetActiveLeft,
     setActiveRight: bridgeSetActiveRight,
+    expandLeft: bridgeExpandLeft,
+    expandRight: bridgeExpandRight,
+    clearBlankIfSet: bridgeClearBlankIfSet,
     setSelectedExampleId,
   };
   // Publish on editor-mount; clear on unmount (or when the editor instance
@@ -2272,6 +2299,13 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
             setActiveLeft: deps.setActiveLeft,
             setActiveRight: deps.setActiveRight,
             focusCard: focusNewCard,
+            // Backlog #2 soft-route reveal: un-collapse / un-blank the panel's
+            // docked side so the new card is visible in the always-on omni
+            // background (`setActiveX("omni")` is a no-op in the band-stack
+            // model — omni is never an "active panel").
+            expandLeft: deps.expandLeft,
+            expandRight: deps.expandRight,
+            clearBlankIfSet: deps.clearBlankIfSet,
             // CHIP 5c: the example soft-select. `exampleRun` calls this with the
             // new block's uuid so an ALREADY-open Examples panel scrolls to it
             // (backlog #2 — never force-opens). Maps to the Examples panel's
@@ -3361,11 +3395,14 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
           {viewPrefs && (() => {
             const open: Array<{ pid: PanelId; mode: "docked" | "floating"; slotKey: DockSlotKey | null }> = [];
             const seen = new Set<PanelId>();
-            for (const sk of Object.keys(viewPrefs.prefs.dockSlots) as DockSlotKey[]) {
-              const pid = viewPrefs.prefs.dockSlots[sk];
-              if (!pid || seen.has(pid)) continue;
-              seen.add(pid);
-              open.push({ pid, mode: "docked", slotKey: sk });
+            // Docked bands: walk each side's ordered stack (top→bottom)
+            // and portal each into its band anchor (`bandSlotKey(side, i)`).
+            for (const side of ["left", "right"] as const) {
+              viewPrefs.prefs.dockStack[side].forEach((pid, i) => {
+                if (seen.has(pid)) return;
+                seen.add(pid);
+                open.push({ pid, mode: "docked", slotKey: bandSlotKey(side, i) });
+              });
             }
             for (const pid of viewPrefs.prefs.poppedOutPanels) {
               if (seen.has(pid)) continue;
@@ -3538,6 +3575,7 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
                   panelId={pid}
                   mode={mode}
                   slotKey={slotKey}
+                  fillSlot={viewPrefs.prefs.panelHeights[pid] != null}
                   initialX={initialX}
                   initialY={initialY}
                   initialWidth={initialWidth}
@@ -3545,14 +3583,32 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
                   zIndex={FLOATING_PANEL_Z_BASE + i}
                   onChange={(pos) => viewPrefs.setFloatPosition(pid, pos)}
                   onUndock={(rect) => viewPrefs.undockPanel(pid, rect)}
-                  getSplitState={() => ({
-                    left: viewPrefs.prefs.activeLeftBottom != null,
-                    right: viewPrefs.prefs.activeRightBottom != null,
-                  })}
-                  onMaybeRedock={(sk) => viewPrefs.redockPanel(pid, sk)}
+                  onMaybeRedock={(target) =>
+                    viewPrefs.redockPanel(pid, target.side, target.index)
+                  }
                   onFocus={() => viewPrefs.focusFloating({ kind: "panel", id: pid })}
                 >
-                  {panelInner}
+                  {mode === "docked" ? (
+                    // LRU wiring: a capture-phase mousedown anywhere in a
+                    // docked band bumps it to most-recent on its side so the
+                    // eviction target is always the genuinely-stalest panel.
+                    // Capture-phase + interaction-frequency (one bump per
+                    // click) — off the keystroke path. The band side is read
+                    // off the slot key (`left-…`/`right-…`).
+                    <div
+                      style={{ display: "contents" }}
+                      onMouseDownCapture={() =>
+                        viewPrefs.notePanelUse(
+                          slotKey?.startsWith("left") ? "left" : "right",
+                          pid,
+                        )
+                      }
+                    >
+                      {panelInner}
+                    </div>
+                  ) : (
+                    panelInner
+                  )}
                 </FloatingPanel>
               );
             });
@@ -4828,13 +4884,17 @@ function IconStrip({
     selections,
   });
 
-  const activeOnSide = side === "left"
-    ? viewPrefs.prefs.activeLeft
-    : viewPrefs.prefs.activeRight;
-  const activeBottomOnSide = side === "left"
-    ? viewPrefs.prefs.activeLeftBottom
-    : viewPrefs.prefs.activeRightBottom;
+  // In the stack model the column is "open" whenever it isn't collapsed.
+  // The view-controls collapse toggle reflects that; the per-strip-button
+  // "active" highlight reflects whether the panel is docked or floating.
+  const isCollapsed = side === "left"
+    ? viewPrefs.prefs.collapsedLeft
+    : viewPrefs.prefs.collapsedRight;
+  const isOpen = !isCollapsed;
   const isLeft = side === "left";
+  const isPanelOpen = (pid: PanelKind) =>
+    viewPrefs.prefs.dockStack[side].includes(pid as PanelId) ||
+    viewPrefs.prefs.poppedOutPanels.includes(pid as PanelId);
 
   return (
     <div
@@ -4842,23 +4902,24 @@ function IconStrip({
       data-prefs="backgroundColor"
       className="flex flex-col items-center pt-2 pb-3 px-1.5 bg-[var(--background)] shrink-0 gap-2.5 sticky top-0 z-20 self-start"
     >
-      {/* View-controls pod: collapse/expand, blank, split */}
+      {/* View-controls pod: collapse/expand, blank. The split toggle is
+          retired — panels now stack as bands over omni. */}
       <div className="flex flex-col items-center gap-0.5 p-1 rounded-md bg-surface/70 border border-edge-hover">
         <button
           onClick={() => {
-            if (activeOnSide) {
+            if (isOpen) {
               isLeft ? viewPrefs.collapseLeft() : viewPrefs.collapseRight();
             } else {
               isLeft ? viewPrefs.expandLeft() : viewPrefs.expandRight();
             }
           }}
           className="iconbtn-md iconbtn-toggle"
-          aria-pressed={!!activeOnSide}
+          aria-pressed={isOpen}
           data-hint="Toggle sidebar"
         >
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
             <rect x="4" y="4" width="16" height="16" rx="1.5" />
-            {activeOnSide && (
+            {isOpen && (
               isLeft
                 ? <rect x="4" y="4" width="5" height="16" fill="currentColor" opacity="0.25" stroke="none" />
                 : <rect x="15" y="4" width="5" height="16" fill="currentColor" opacity="0.25" stroke="none" />
@@ -4874,25 +4935,12 @@ function IconStrip({
         >
           <IconBlank active={viewPrefs.getOmniHideAll(side)} />
         </button>
-        <button
-          onClick={() => viewPrefs.toggleSplit(side)}
-          className="iconbtn-md iconbtn-toggle"
-          aria-pressed={activeBottomOnSide != null}
-          data-hint="Split panel"
-        >
-          <IconSplit
-            active={activeBottomOnSide != null}
-            focusedHalf={activeBottomOnSide != null
-              ? (isLeft ? viewPrefs.focusedHalfLeft : viewPrefs.focusedHalfRight)
-              : undefined}
-          />
-        </button>
       </div>
       {stripItems.map((p) => (
         <StripButton
           key={p}
           panelId={p}
-          active={activeOnSide === p || activeBottomOnSide === p}
+          active={isPanelOpen(p)}
           onClick={() => handleStripClick(p, side)}
           onMove={handleMove}
           side={side}
@@ -5002,27 +5050,15 @@ function PaneRail({
       const s = placed?.side ?? PANEL_REGISTRY[k]?.defaultStripSide ?? "right";
       return s === side;
     });
-    const isSplit = side === "left"
-      ? viewPrefs.prefs.activeLeftBottom != null
-      : viewPrefs.prefs.activeRightBottom != null;
-    const dockOccupancy = isSplit
-      ? {
-          top: viewPrefs.prefs.dockSlots[dockSlotKey(side, "top")],
-          bottom: viewPrefs.prefs.dockSlots[dockSlotKey(side, "bottom")],
-        }
-      : { full: viewPrefs.prefs.dockSlots[dockSlotKey(side, "full")] };
-    const focusedHalf = side === "left"
-      ? viewPrefs.focusedHalfLeft
-      : viewPrefs.focusedHalfRight;
-    const onFocusHalf = side === "left"
-      ? viewPrefs.setFocusedHalfLeft
-      : viewPrefs.setFocusedHalfRight;
-    const splitRatio = side === "left"
-      ? viewPrefs.prefs.splitLeftRatio
-      : viewPrefs.prefs.splitRightRatio;
+    // The docked stack for this side, top→bottom. Each band carries its
+    // persisted height (px) or undefined ⇒ content-sized. This is the only
+    // input PanelColumn needs to lay out the bands over omni.
+    const stack = viewPrefs.prefs.dockStack[side].map((id) => ({
+      id,
+      height: viewPrefs.prefs.panelHeights[id],
+    }));
 
-    const omniSlot: PanelSlot = {
-      omni: (
+    const omniNode: React.ReactNode = (
         <OmniHost
           side={side}
           footnotes={footnoteInfos}
@@ -5102,63 +5138,36 @@ function PaneRail({
           getOmniHideAll={viewPrefs.getOmniHideAll}
           focusState={viewPrefs.focusState}
         />
-      ),
-      // FloatingPanel portals its children into the dock-slot anchor
-      // for docked panels, or to body for floating panels. Either way
-      // the panel content arrives via portal, not via this overlay,
-      // so overlay stays null. (Overlay is reserved for the rare
-      // case of pre-rendering opaque content over omni without going
-      // through the FloatingPanel shell.)
-      overlay: null,
-    };
+    );
 
     const stripJsx = !viewPrefs.zenMode && (
       <IconStrip side={side} stripItems={stripItems} viewPrefs={viewPrefs} />
     );
 
     const isCollapsed = side === "left"
-      ? viewPrefs.prefs.activeLeft == null
-      : viewPrefs.prefs.activeRight == null;
+      ? viewPrefs.prefs.collapsedLeft
+      : viewPrefs.prefs.collapsedRight;
 
-    const panelColumnJsx = isSplit ? (
+    // One always-mounted omni desktop with up to MAX_STACK opaque bands
+    // stacked over it. PanelColumn owns the band frames + the bottom-edge
+    // resize / divider-trade gestures; EditorPane only supplies the
+    // ordered stack and the mutators.
+    const panelColumnJsx = (
       <PanelColumn
         side={side}
+        omni={omniNode}
+        stack={stack}
+        onTradeHeight={viewPrefs.tradePanelHeights}
+        onResizeBottomEdge={viewPrefs.setPanelHeight}
+        onFocusBand={(id) => viewPrefs.notePanelUse(side, id)}
         panelPref={viewPrefs.getPanelWidth(side, "omni")}
         onPanelPrefChange={(w) => viewPrefs.setPanelWidth(side, "omni", w)}
         isResizing={viewPrefs.isResizingPanels}
         onResizingChange={viewPrefs.setIsResizingPanels}
         onSyncBeforeDrag={viewPrefs.syncPanelPrefsToRendered}
-        topPanelId="omni"
-        bottomPanelId="omni"
-        dockOccupancy={dockOccupancy}
-        split
-        collapsed={isCollapsed}
-        focusedHalf={focusedHalf}
-        onFocusHalf={onFocusHalf}
-        tail={tail}
-      >
-        {{
-          top: omniSlot,
-          bottom: { omni: null, overlay: null },
-          ratio: splitRatio,
-          onRatioChange: (r: number) => viewPrefs.setSplitRatio(side, r),
-        }}
-      </PanelColumn>
-    ) : (
-      <PanelColumn
-        side={side}
-        panelPref={viewPrefs.getPanelWidth(side, "omni")}
-        onPanelPrefChange={(w) => viewPrefs.setPanelWidth(side, "omni", w)}
-        isResizing={viewPrefs.isResizingPanels}
-        onResizingChange={viewPrefs.setIsResizingPanels}
-        onSyncBeforeDrag={viewPrefs.syncPanelPrefsToRendered}
-        topPanelId="omni"
-        dockOccupancy={dockOccupancy}
         collapsed={isCollapsed}
         tail={tail}
-      >
-        {omniSlot}
-      </PanelColumn>
+      />
     );
 
     return (

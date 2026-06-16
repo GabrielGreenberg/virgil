@@ -1,5 +1,9 @@
 import { useEffect, type Dispatch, type MutableRefObject, type SetStateAction } from "react";
-import type { PanelId, Side, Half, ViewPrefs } from "@/hooks/useViewPrefs";
+import type { PanelId, ViewPrefs } from "@/hooks/useViewPrefs";
+// Pure dock-stack derivation — imported from the LEAF (not the hook module) so
+// this bridge stays clear of `useViewPrefs`'s heavy `OmniViewPanel` → storage
+// runtime chain (see view-prefs-derived.ts + anchor-route-derivation-contract).
+import { isPanelDocked } from "@/hooks/view-prefs-derived";
 import type { OmniCategory } from "@/panels/Omni";
 import type { CardKind } from "@/panels/_shared/types";
 import type { EntityKind } from "@/links/_shared/entity-hover";
@@ -84,7 +88,6 @@ interface AnchorClickEnv {
   prefsRef: MutableRefObject<ViewPrefs>;
   setActiveLeft: (id: PanelId) => void;
   setActiveRight: (id: PanelId) => void;
-  setActiveHalf: (side: Side, half: Half, id: PanelId) => void;
   tryScrollOmniEntry: (key: string, targetY?: number) => boolean;
   getOmniEnabled: (side: "left" | "right") => Set<OmniCategory>;
   alignOmniCardWithClick: (cardId: string, clickY: number, sourceEl: HTMLElement | null) => void;
@@ -142,7 +145,6 @@ function routeAnchorClick(
       prefs: env.prefsRef.current,
       setActiveLeft: env.setActiveLeft,
       setActiveRight: env.setActiveRight,
-      setActiveHalf: env.setActiveHalf,
       tryScrollOmniEntry: env.tryScrollOmniEntry,
       getOmniEnabled: env.getOmniEnabled,
     } satisfies OpenForCardDeps,
@@ -178,7 +180,6 @@ export function useMarkerClickBridges(deps: {
   prefsRef: MutableRefObject<ViewPrefs>;
   setActiveLeft: (id: PanelId) => void;
   setActiveRight: (id: PanelId) => void;
-  setActiveHalf: (side: Side, half: Half, id: PanelId) => void;
   tryScrollOmniEntry: (key: string, targetY?: number) => boolean;
   getOmniEnabled: (side: "left" | "right") => Set<OmniCategory>;
   setSelectedFootnoteId: Dispatch<SetStateAction<string | null>>;
@@ -215,7 +216,6 @@ export function useMarkerClickBridges(deps: {
     prefsRef,
     setActiveLeft,
     setActiveRight,
-    setActiveHalf,
     tryScrollOmniEntry,
     getOmniEnabled,
     setSelectedFootnoteId,
@@ -254,7 +254,6 @@ export function useMarkerClickBridges(deps: {
           prefs: prefsRef.current,
           setActiveLeft,
           setActiveRight,
-          setActiveHalf,
           tryScrollOmniEntry,
           getOmniEnabled,
         },
@@ -271,7 +270,7 @@ export function useMarkerClickBridges(deps: {
     };
     window.addEventListener("virgil-footnote-click", handler);
     return () => window.removeEventListener("virgil-footnote-click", handler);
-  }, [prefsRef, setActiveLeft, setActiveRight, setActiveHalf, tryScrollOmniEntry, getOmniEnabled, setSelectedFootnoteId, alignOmniCardWithClick]);
+  }, [prefsRef, setActiveLeft, setActiveRight, tryScrollOmniEntry, getOmniEnabled, setSelectedFootnoteId, alignOmniCardWithClick]);
 
   useEffect(() => {
     const handler = (e: Event) => {
@@ -284,9 +283,8 @@ export function useMarkerClickBridges(deps: {
       setSelectedCitationId(detail.citationId);
       const clickY: number | undefined =
         typeof detail.clickY === "number" ? detail.clickY : undefined;
-      const sourceSide = detail.sourceSide as Side | undefined;
-      const sourcePanelId = detail.sourcePanelId as PanelId | undefined;
-      const sourceHalf = detail.sourceHalf as Half | undefined;
+      // Split-aware routing is gone in the band-stack model — omni is always
+      // the background, so the target citation just opens on its home side.
       openForCard(
         {
           omniKey: cardPopKey("citation", detail.citationId),
@@ -296,16 +294,11 @@ export function useMarkerClickBridges(deps: {
           // skipScroll: alignment is handled by shifting the omni cards
           // group (alignOmniCardWithClick) so the document stays put.
           skipScroll: true,
-          splitSource:
-            sourceSide && sourcePanelId
-              ? { side: sourceSide, panelId: sourcePanelId, half: sourceHalf }
-              : undefined,
         },
         {
           prefs: prefsRef.current,
           setActiveLeft,
           setActiveRight,
-          setActiveHalf,
           tryScrollOmniEntry,
           getOmniEnabled,
         },
@@ -324,7 +317,7 @@ export function useMarkerClickBridges(deps: {
     };
     window.addEventListener("virgil-citation-click", handler);
     return () => window.removeEventListener("virgil-citation-click", handler);
-  }, [prefsRef, setActiveLeft, setActiveRight, setActiveHalf, tryScrollOmniEntry, getOmniEnabled, setSelectedCitationId, alignOmniCardWithClick]);
+  }, [prefsRef, setActiveLeft, setActiveRight, tryScrollOmniEntry, getOmniEnabled, setSelectedCitationId, alignOmniCardWithClick]);
 
   useEffect(() => {
     const handler = (e: Event) => {
@@ -422,7 +415,6 @@ export function useMarkerClickBridges(deps: {
         prefsRef,
         setActiveLeft,
         setActiveRight,
-        setActiveHalf,
         tryScrollOmniEntry,
         getOmniEnabled,
         alignOmniCardWithClick,
@@ -434,7 +426,6 @@ export function useMarkerClickBridges(deps: {
     prefsRef,
     setActiveLeft,
     setActiveRight,
-    setActiveHalf,
     tryScrollOmniEntry,
     getOmniEnabled,
     alignOmniCardWithClick,
@@ -456,12 +447,14 @@ export function useMarkerClickBridges(deps: {
       setSelectedErrorId(detail.selected ? detail.errorId : null);
       if (!detail.selected) return;
       const p = prefsRef.current;
+      // Idempotence guard: only call the opener when the errors panel isn't
+      // already docked on its side. The opener is internally idempotent, but
+      // calling it unconditionally still churns the dock MRU + fires a spurious
+      // openPanel — skip it when there's nothing to open.
+      if (isPanelDocked(p, "errors")) return;
       const placement = p.placements.find((pl) => pl.id === "errors");
-      if (placement?.side === "left") {
-        if (p.activeLeft !== "errors") setActiveLeft("errors");
-      } else {
-        if (p.activeRight !== "errors") setActiveRight("errors");
-      }
+      if (placement?.side === "left") setActiveLeft("errors");
+      else setActiveRight("errors");
     };
     window.addEventListener("virgil-error-marker-click", handler);
     return () => window.removeEventListener("virgil-error-marker-click", handler);

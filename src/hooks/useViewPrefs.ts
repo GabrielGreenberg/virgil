@@ -13,6 +13,7 @@ import {
   filterPlacements,
   filterOmniCategories,
   filterPrintPanels,
+  clampStack,
 } from "./dropUnknownPanelIds";
 
 /** Marginalia card kinds whose visibility is toggled from the View menu. */
@@ -53,39 +54,49 @@ export type Half = "top" | "bottom";
  *  window. The mode is per-panel and persists across reloads. */
 export type PanelMode = "docked" | "floating";
 
-/** One dock slot per side per half. When the side's split is off, the
- *  single slot is keyed `${side}-full`; when split, halves are
- *  `${side}-top` and `${side}-bottom`. */
-export type DockSlotKey =
-  | "left-full" | "left-top" | "left-bottom"
-  | "right-full" | "right-top" | "right-bottom";
+/** Max docked panels stacked on one side (the stack ceiling). */
+export const MAX_STACK = 3;
+/** Minimum free vertical space (px) a newly-opened panel needs before it
+ *  will displace the least-recently-used band instead of fitting in the
+ *  current omni gap. */
+export const MIN_BAND_PX = 140;
 
-export function dockSlotKey(side: Side, half: Half | "full"): DockSlotKey {
-  return `${side}-${half}` as DockSlotKey;
+/** One dock slot per band position (0 = top of the stack), up to
+ *  MAX_STACK per side. Used as the `data-dock-slot` portal key so each
+ *  docked FloatingPanel resolves to its band anchor in PanelColumn. */
+export type DockSlotKey = `left-${number}` | `right-${number}`;
+
+export function bandSlotKey(side: Side, index: number): DockSlotKey {
+  return `${side}-${index}` as DockSlotKey;
 }
 
 export interface ViewPrefs {
   placements: PanelPlacement[];
-  /** Top half (or only half when not split). */
-  activeLeft: PanelId | null;
-  activeRight: PanelId | null;
-  /** Bottom half — null when the side is not split. */
-  activeLeftBottom: PanelId | null;
-  activeRightBottom: PanelId | null;
-  /** Stashed panel state for restore on expand after collapse. */
-  _stashedLeft?: { top: PanelId; bottom: PanelId | null } | null;
-  _stashedRight?: { top: PanelId; bottom: PanelId | null } | null;
-  /** 0..1 — top half height ratio when the side is split. */
-  splitLeftRatio: number;
-  splitRightRatio: number;
-  /** Provenance of the current split. `"user"` = user clicked the
-   *  split-toggle icon (persists with empty halves when one panel
-   *  closes). `"auto"` = engaged automatically when a 2nd panel was
-   *  opened on the side (self-disengages back to single-slot when a
-   *  panel closes and only one or zero remain). `null` when not split. */
-  splitLeftOrigin: "auto" | "user" | null;
-  splitRightOrigin: "auto" | "user" | null;
-  panelWidths: Record<string, number>; // keyed by `${side}-${panelId}`
+  /** Ordered stack of docked panels per side, top→bottom, length ≤
+   *  MAX_STACK. Replaces the old activeLeft/Right + active*Bottom +
+   *  dockSlots split model. The top/only panel derives as
+   *  `dockStack[side][0] ?? null`. Persists per-window so the open
+   *  layout survives a reload. */
+  dockStack: { left: PanelId[]; right: PanelId[] };
+  /** Per-panel resized band height in px. Absent ⇒ content-sized
+   *  (auto-fit to the panel's content). Written when the user drags a
+   *  band border; persists. Keyed by PanelId (a panel is docked at most
+   *  once). */
+  panelHeights: Partial<Record<PanelId, number>>;
+  /** Per-side most-recently-used order, most-recent-first. The last
+   *  entry still present in `dockStack[side]` is the eviction target when
+   *  a new panel needs room. Session-only (recency resets with the open
+   *  set on reload). */
+  panelMRU: { left: PanelId[]; right: PanelId[] };
+  /** Whether each side column is collapsed (hidden) without destroying
+   *  its dockStack. Replaces the old `activeLeft === null` sentinel. */
+  collapsedLeft: boolean;
+  collapsedRight: boolean;
+  /** Whether each side suppresses the omni background (a clean, empty
+   *  column). Replaces the old `activeLeft === "blank"` sentinel. */
+  blankLeft: boolean;
+  blankRight: boolean;
+  panelWidths: Record<string, number>; // keyed by `${side}`
   /** Whether the main editor is split into two panes. */
   editorSplit: boolean;
   /** 0..1 — top pane ratio when editor is split. */
@@ -109,10 +120,6 @@ export interface ViewPrefs {
   /** Per-panel preferred mode. Persisted. New panels default to
    *  "docked"; switches to "floating" the first time the user undocks. */
   panelModes: Partial<Record<PanelId, PanelMode>>;
-  /** Currently-occupied dock slots: which panel id (if any) is sitting
-   *  in each slot. Session-only (cleared on reload — opening is a
-   *  session gesture, not a saved layout). */
-  dockSlots: Partial<Record<DockSlotKey, PanelId>>;
   /** Cards currently displayed as floating windows — keys shaped `${kind}:${id}`. */
   poppedOutCards: string[];
   /** Saved position/size of each floating card, keyed by card key. */
@@ -174,6 +181,14 @@ export interface ViewPrefs {
   /** Sticky "hide all cards in omni-view" toggle per side. */
   omniHideAllCards: { left: boolean; right: boolean };
 }
+
+/* ── Derived read helpers (pure) ───────────────────────────────────────
+ * Single implementation lives in the dependency-free leaf `view-prefs-
+ * derived` (it imports ONLY types from here, so route-derivation modules
+ * can pull these helpers without dragging the hook runtime + its
+ * @/lib/storage chain into their graph). Re-exported here for the many
+ * consumers that already import from `@/hooks/useViewPrefs`. */
+export { dockedSideOf, dockStackTop, isPanelDocked } from "./view-prefs-derived";
 
 // Shipped defaults are loaded from a JSON sidecar so the personal-prefs
 // promotion pipeline can rewrite them without touching TS source.
@@ -543,33 +558,61 @@ function loadPrefs(): ViewPrefs {
     const cleanedOmniCategories = filterOmniCategories(
       parsed.omniCategories ?? DEFAULT_PREFS.omniCategories,
     ) as ViewPrefs["omniCategories"];
-    // Legacy dock-state fields kept clamped to "omni in slot": the
-    // omni-side detection and marginalia connectors still read
-    // activeLeft/Right to identify the omni column. Splits are off by
-    // default; the new dock model can re-enable them via toggleSplit.
-    //
-    // Open state (poppedOutPanels, dockSlots) is session-only: a reload
-    // starts with no panels open. Mode prefs (panelModes), saved float
-    // rects (floatPositions), and gutter widths (panelWidths) DO persist
-    // so reopening a panel restores its last mode + rect, and the
-    // editor pod's surrounding gutters keep their dragged size.
+    // Migrate the legacy ≤2-panel split model → the ordered dockStack.
+    // Old persisted shape: activeLeft/Right (top/only) + active*Bottom
+    // (split 2nd). New shape: dockStack (top→bottom, ≤MAX_STACK). When a
+    // saved blob already carries dockStack (post-rework), clamp + use it;
+    // otherwise coerce the legacy fields. Collapse/blank carry forward
+    // from the old activeLeft sentinels (null = collapsed, "blank" = hidden
+    // omni). The dead split keys are deleted so they never round-trip.
+    const realPanel = (x: unknown): x is PanelId =>
+      typeof x === "string" && x !== "omni" && x !== "blank";
+    const legacyStack = (top: unknown, bottom: unknown): PanelId[] => {
+      const out: PanelId[] = [];
+      if (realPanel(top)) out.push(top);
+      if (realPanel(bottom) && bottom !== top) out.push(bottom);
+      return out;
+    };
+    const dockStack = clampStack(
+      parsed.dockStack ?? {
+        left: legacyStack(parsed.activeLeft, parsed.activeLeftBottom),
+        right: legacyStack(parsed.activeRight, parsed.activeRightBottom),
+      },
+    ) as ViewPrefs["dockStack"];
+    const collapsedLeft = parsed.collapsedLeft ?? parsed.activeLeft === null;
+    const collapsedRight = parsed.collapsedRight ?? parsed.activeRight === null;
+    const blankLeft = parsed.blankLeft ?? parsed.activeLeft === "blank";
+    const blankRight = parsed.blankRight ?? parsed.activeRight === "blank";
+    for (const k of [
+      "activeLeft", "activeRight", "activeLeftBottom", "activeRightBottom",
+      "splitLeftRatio", "splitRightRatio", "splitLeftOrigin", "splitRightOrigin",
+      "_stashedLeft", "_stashedRight", "dockSlots",
+    ]) {
+      delete (parsed as Record<string, unknown>)[k];
+    }
+
+    // Open layout (dockStack) + per-band heights (panelHeights) persist
+    // per-window so a reload restores the open panels and their sizes;
+    // recency (panelMRU) is session-only. Floats (poppedOutPanels) stay
+    // session-only. panelModes / floatPositions / panelWidths persist.
     return {
       ...DEFAULT_PREFS,
       ...parsed,
       placements: cleanedPlacements,
       printOptions,
       omniCategories: cleanedOmniCategories,
-      activeLeft: "omni",
-      activeRight: "omni",
-      activeLeftBottom: null,
-      activeRightBottom: null,
-      splitLeftOrigin: null,
-      splitRightOrigin: null,
-      _stashedLeft: null,
-      _stashedRight: null,
+      dockStack,
+      panelMRU: { left: [], right: [] },
+      panelHeights:
+        parsed.panelHeights && typeof parsed.panelHeights === "object"
+          ? (parsed.panelHeights as ViewPrefs["panelHeights"])
+          : {},
+      collapsedLeft,
+      collapsedRight,
+      blankLeft,
+      blankRight,
       poppedOutPanels: [],
       poppedOutOrigins: {},
-      dockSlots: {},
       panelModes: parsed.panelModes ?? {},
       floatPositions: parsed.floatPositions ?? {},
       panelWidths: parsed.panelWidths ?? {},
@@ -658,129 +701,111 @@ export function useViewPrefs() {
     });
   }, [persist]);
 
-  /** Return a free dock slot on `side`, or null if none. Prefers `top`
-   *  in split mode, falls back to `bottom`. Single-slot mode uses
-   *  `${side}-full`. */
-  function findOpenDockSlot(p: ViewPrefs, side: Side): DockSlotKey | null {
-    const isSplit =
-      side === "left" ? p.activeLeftBottom != null : p.activeRightBottom != null;
-    const candidates: DockSlotKey[] = isSplit
-      ? [dockSlotKey(side, "top"), dockSlotKey(side, "bottom")]
-      : [dockSlotKey(side, "full")];
-    for (const k of candidates) {
-      if (!p.dockSlots[k]) return k;
-    }
+  /* ── Stacked-panel engine (pure helpers) ─────────────────────────── */
+
+  function stackFor(p: ViewPrefs, side: Side): PanelId[] {
+    return side === "left" ? p.dockStack.left : p.dockStack.right;
+  }
+  function withStack(p: ViewPrefs, side: Side, next: PanelId[]): ViewPrefs {
+    return side === "left"
+      ? { ...p, dockStack: { ...p.dockStack, left: next } }
+      : { ...p, dockStack: { ...p.dockStack, right: next } };
+  }
+  function mruFor(p: ViewPrefs, side: Side): PanelId[] {
+    return side === "left" ? p.panelMRU.left : p.panelMRU.right;
+  }
+  function withMRU(p: ViewPrefs, side: Side, next: PanelId[]): ViewPrefs {
+    return side === "left"
+      ? { ...p, panelMRU: { ...p.panelMRU, left: next } }
+      : { ...p, panelMRU: { ...p.panelMRU, right: next } };
+  }
+
+  /** Which side `id` is docked on, or null. */
+  function sideOfDockedPanel(p: ViewPrefs, id: PanelId): Side | null {
+    if (p.dockStack.left.includes(id)) return "left";
+    if (p.dockStack.right.includes(id)) return "right";
     return null;
   }
 
-  /** Plan where `id` should land on `side`. Returns a partial state
-   *  patch describing the placement, or null if no docked slot is
-   *  available (caller decides: fall through to floating, or replace
-   *  the canonical slot). Cases:
-   *  - side already split with a free half → drop into the free half
-   *  - side not split, `${side}-full` empty → drop into full
-   *  - side not split, `${side}-full` occupied → auto-engage split:
-   *    migrate the existing full occupant to `${side}-top`, place
-   *    `id` in `${side}-bottom`, set origin "auto", ratio stays at
-   *    its persisted value (default 0.5).
-   *  - side already split with both halves occupied → null (no room) */
-  function planSlotAssignment(
-    p: ViewPrefs,
-    side: Side,
-    id: PanelId,
-  ): Partial<ViewPrefs> | null {
-    const isSplit =
-      side === "left" ? p.activeLeftBottom != null : p.activeRightBottom != null;
-    const fullKey = dockSlotKey(side, "full");
-    const topKey = dockSlotKey(side, "top");
-    const bottomKey = dockSlotKey(side, "bottom");
-    if (isSplit) {
-      if (!p.dockSlots[topKey]) {
-        return { dockSlots: { ...p.dockSlots, [topKey]: id } };
-      }
-      if (!p.dockSlots[bottomKey]) {
-        return { dockSlots: { ...p.dockSlots, [bottomKey]: id } };
-      }
-      return null;
-    }
-    if (!p.dockSlots[fullKey]) {
-      return { dockSlots: { ...p.dockSlots, [fullKey]: id } };
-    }
-    // Auto-engage split: migrate existing full occupant to top, new to bottom.
-    const existing = p.dockSlots[fullKey]!;
-    const nextDockSlots: Partial<Record<DockSlotKey, PanelId>> = { ...p.dockSlots };
-    delete nextDockSlots[fullKey];
-    nextDockSlots[topKey] = existing;
-    nextDockSlots[bottomKey] = id;
-    return side === "left"
-      ? {
-          dockSlots: nextDockSlots,
-          activeLeftBottom: id,
-          splitLeftOrigin: "auto",
-        }
-      : {
-          dockSlots: nextDockSlots,
-          activeRightBottom: id,
-          splitRightOrigin: "auto",
-        };
-  }
-
-  /** When a panel closes on a split side whose origin is "auto", and
-   *  one or zero panels remain on the side, collapse the split back
-   *  to single-slot mode: migrate any remaining occupant to
-   *  `${side}-full`, clear the bottom marker, clear the origin.
-   *  User-toggled splits (origin "user") persist with empty halves —
-   *  the user has to click the split toggle again to dismiss them.
-   *  Returns a partial patch including the (possibly updated)
-   *  dockSlots. Callers pass in their post-close dockSlots and merge
-   *  the result. */
-  function autoDisengageIfNeeded(
-    p: ViewPrefs,
-    side: Side,
-    nextDockSlots: Partial<Record<DockSlotKey, PanelId>>,
-  ): Partial<ViewPrefs> {
-    const origin = side === "left" ? p.splitLeftOrigin : p.splitRightOrigin;
-    if (origin !== "auto") return { dockSlots: nextDockSlots };
-    const fullKey = dockSlotKey(side, "full");
-    const topKey = dockSlotKey(side, "top");
-    const bottomKey = dockSlotKey(side, "bottom");
-    const top = nextDockSlots[topKey];
-    const bottom = nextDockSlots[bottomKey];
-    const occupiedCount = (top ? 1 : 0) + (bottom ? 1 : 0);
-    if (occupiedCount >= 2) return { dockSlots: nextDockSlots };
-    const remaining = top ?? bottom;
-    const finalDockSlots = { ...nextDockSlots };
-    delete finalDockSlots[topKey];
-    delete finalDockSlots[bottomKey];
-    if (remaining) finalDockSlots[fullKey] = remaining;
-    return side === "left"
-      ? {
-          dockSlots: finalDockSlots,
-          activeLeftBottom: null,
-          splitLeftOrigin: null,
-        }
-      : {
-          dockSlots: finalDockSlots,
-          activeRightBottom: null,
-          splitRightOrigin: null,
-        };
-  }
-
-  /** True when `id` is currently open in any form (docked or floating). */
+  /** True when `id` is open in any form (docked in a stack or floating). */
   function isPanelOpen(p: ViewPrefs, id: PanelId): boolean {
-    if (p.poppedOutPanels.includes(id)) return true;
-    return Object.values(p.dockSlots).includes(id);
+    return p.poppedOutPanels.includes(id) || sideOfDockedPanel(p, id) !== null;
   }
 
-  /** Find the dock slot currently holding `id`, if any. */
-  function findDockSlotForPanel(
+  /** Resolve the target side for an open: explicit arg → strip placement
+   *  → registry default → left. */
+  function resolveSide(p: ViewPrefs, id: PanelId, side?: Side): Side {
+    const placement = p.placements.find((pl) => pl.id === id);
+    const registryEntry = (PANEL_REGISTRY as Record<string, { defaultStripSide?: Side }>)[id];
+    return side ?? placement?.side ?? registryEntry?.defaultStripSide ?? "left";
+  }
+
+  /** Bump `id` to the front (most-recent) of its side's MRU. No-op (same
+   *  object reference) when already at the front. */
+  function bumpMRU(p: ViewPrefs, side: Side, id: PanelId): ViewPrefs {
+    const cur = mruFor(p, side);
+    if (cur[0] === id) return p;
+    return withMRU(p, side, [id, ...cur.filter((x) => x !== id)]);
+  }
+
+  /** Drop `id` from both sides' MRU lists. */
+  function pruneMRU(p: ViewPrefs, id: PanelId): ViewPrefs {
+    return {
+      ...p,
+      panelMRU: {
+        left: p.panelMRU.left.filter((x) => x !== id),
+        right: p.panelMRU.right.filter((x) => x !== id),
+      },
+    };
+  }
+
+  /** The stalest docked panel on `side`: the last MRU entry still present
+   *  in the stack. Falls back to the TOP of the stack (oldest-opened, since
+   *  opens append at the bottom) when MRU has no coverage — e.g. just after
+   *  a reload, when the open set is restored but recency is empty. */
+  function leastRecentlyUsed(p: ViewPrefs, side: Side): PanelId | null {
+    const stack = stackFor(p, side);
+    if (stack.length === 0) return null;
+    const mru = mruFor(p, side);
+    for (let i = mru.length - 1; i >= 0; i--) {
+      if (stack.includes(mru[i])) return mru[i];
+    }
+    return stack[0];
+  }
+
+  /** Shared docked-open: append `id` at the BOTTOM of `side`'s stack if it
+   *  fits (≥ MIN_BAND_PX of free omni space) and the stack has room
+   *  (< MAX_STACK); otherwise evict the least-recently-used band (it just
+   *  closes — never floats) and append. Un-collapses + un-blanks the
+   *  target side, drops any prior float of `id`, and bumps MRU.
+   *  `freeSpacePx` is a one-shot caller measurement of the side's current
+   *  omni gap; omitted ⇒ assume it fits. */
+  function dockOpen(
     p: ViewPrefs,
     id: PanelId,
-  ): DockSlotKey | null {
-    for (const k of Object.keys(p.dockSlots) as DockSlotKey[]) {
-      if (p.dockSlots[k] === id) return k;
+    side: Side,
+    freeSpacePx?: number,
+  ): ViewPrefs {
+    let next: ViewPrefs = {
+      ...p,
+      panelModes: { ...p.panelModes, [id]: "docked" },
+      collapsedLeft: side === "left" ? false : p.collapsedLeft,
+      collapsedRight: side === "right" ? false : p.collapsedRight,
+      blankLeft: side === "left" ? false : p.blankLeft,
+      blankRight: side === "right" ? false : p.blankRight,
+      poppedOutPanels: p.poppedOutPanels.filter((x) => x !== id),
+    };
+    const stack = stackFor(next, side);
+    const fits = freeSpacePx == null ? true : freeSpacePx >= MIN_BAND_PX;
+    if (stack.length < MAX_STACK && fits) {
+      next = withStack(next, side, [...stack, id]);
+    } else {
+      const victim = leastRecentlyUsed(next, side);
+      const pruned = victim ? stack.filter((x) => x !== victim) : stack;
+      next = withStack(next, side, [...pruned, id]);
+      if (victim) next = pruneMRU(next, victim);
     }
-    return null;
+    return bumpMRU(next, side, id);
   }
 
   /**
@@ -788,28 +813,19 @@ export function useViewPrefs() {
    * the user has previously undocked it). Routes strip clicks, marker
    * clicks, and programmatic opens through one entry point.
    *
-   * Docked: assigns the panel to a free dock slot on `side` (top first
-   * in split mode). If no slot is free, falls back to floating.
+   * Docked: appends to the bottom of the target side's stack, evicting
+   * the least-recently-used band if there's no room (see `dockOpen`).
    * Floating: appends to poppedOutPanels at the saved float rect (or a
-   * fresh column-spawn rect if no rect saved).
+   * fresh column-spawn rect if no rect saved). `freeSpacePx` is the
+   * caller's one-shot measurement of the side's omni gap (docked path).
    */
-  const openPanel = useCallback((id: PanelId, side?: Side) => {
+  const openPanel = useCallback((id: PanelId, side?: Side, freeSpacePx?: number) => {
     if (id === "omni" || id === "blank") return;
     update((p) => {
       if (isPanelOpen(p, id)) return p;
-      const placement = p.placements.find((pl) => pl.id === id);
-      const registryEntry = (PANEL_REGISTRY as Record<string, { defaultStripSide?: Side }>)[id];
-      const targetSide: Side =
-        side ?? placement?.side ?? registryEntry?.defaultStripSide ?? "left";
+      const targetSide = resolveSide(p, id, side);
       const mode: PanelMode = p.panelModes[id] ?? "docked";
-
-      if (mode === "docked") {
-        const plan = planSlotAssignment(p, targetSide, id);
-        if (plan) {
-          return { ...p, ...plan };
-        }
-        // Both halves of a split side are occupied — fall through to floating.
-      }
+      if (mode === "docked") return dockOpen(p, id, targetSide, freeSpacePx);
       const savedRect = p.floatPositions[id];
       const rect = savedRect ?? computeColumnSpawnRect(targetSide);
       return {
@@ -826,52 +842,24 @@ export function useViewPrefs() {
   const openPanelFloat = openPanel;
 
   /**
-   * Force-open a panel into a dock slot, ignoring its `panelModes`
-   * preference. Used by L/R strip-icon clicks: a strip click is an
-   * intentional "give me this panel docked" gesture and resets the
-   * panel's mode to "docked" so subsequent opens stay docked too.
-   *
-   * If every dock slot on the target side is occupied, the existing
-   * occupant of the canonical slot (`${side}-full` when not split,
-   * `${side}-top` when split) is displaced to floating so the new
-   * panel can take the slot. This matches the user expectation that
-   * strip clicks always land in the dock.
+   * Force-open a panel docked, ignoring its `panelModes` preference. Used
+   * by L/R strip-icon clicks: a strip click is an intentional "give me
+   * this panel docked" gesture and resets the panel's mode to "docked".
+   * Appends to the bottom of the target side's stack; if the side is full
+   * (no room and the newcomer doesn't fit the omni gap), the
+   * least-recently-used band is closed to make room (see `dockOpen`).
+   * `freeSpacePx` is the caller's one-shot measure of the side's omni gap.
    */
-  const openPanelDocked = useCallback((id: PanelId, side?: Side) => {
-    if (id === "omni" || id === "blank") return;
-    update((p) => {
-      if (isPanelOpen(p, id)) return p;
-      const placement = p.placements.find((pl) => pl.id === id);
-      const registryEntry = (PANEL_REGISTRY as Record<string, { defaultStripSide?: Side }>)[id];
-      const targetSide: Side =
-        side ?? placement?.side ?? registryEntry?.defaultStripSide ?? "left";
-      const next: ViewPrefs = {
-        ...p,
-        panelModes: { ...p.panelModes, [id]: "docked" },
-      };
-      // Try the standard slot plan first — handles empty full, free
-      // half in split, or auto-splits when full is occupied.
-      const plan = planSlotAssignment(p, targetSide, id);
-      if (plan) {
-        return { ...next, ...plan };
-      }
-      // No room in any half (split side, both occupied) — replace the
-      // canonical top slot. Replace, don't displace: the previous
-      // occupant just closes (kept out of poppedOutPanels). A strip
-      // click is "swap this into the dock", not "kick the other panel
-      // out as a floater".
-      const canonical = dockSlotKey(targetSide, "top");
-      const occupant = p.dockSlots[canonical];
-      return {
-        ...next,
-        dockSlots: { ...next.dockSlots, [canonical]: id },
-        poppedOutPanels:
-          occupant && occupant !== id
-            ? next.poppedOutPanels.filter((x) => x !== occupant)
-            : next.poppedOutPanels,
-      };
-    });
-  }, [update]);
+  const openPanelDocked = useCallback(
+    (id: PanelId, side?: Side, freeSpacePx?: number) => {
+      if (id === "omni" || id === "blank") return;
+      update((p) => {
+        if (isPanelOpen(p, id)) return p;
+        return dockOpen(p, id, resolveSide(p, id, side), freeSpacePx);
+      });
+    },
+    [update],
+  );
 
   // Legacy dock setters — kept as shims that route through openPanelFloat
   // so existing callers (marker clicks, search jump, command-input bridges,
@@ -889,29 +877,19 @@ export function useViewPrefs() {
   }, [openPanelFloat]);
 
   const collapseLeft = useCallback(() => {
-    update((p) => ({
-      ...p,
-      _stashedLeft: p.activeLeft ? { top: p.activeLeft, bottom: p.activeLeftBottom } : null,
-      activeLeft: null,
-      activeLeftBottom: null,
-    }));
+    update((p) => ({ ...p, collapsedLeft: true }));
   }, [update]);
 
   const collapseRight = useCallback(() => {
-    update((p) => ({
-      ...p,
-      _stashedRight: p.activeRight ? { top: p.activeRight, bottom: p.activeRightBottom } : null,
-      activeRight: null,
-      activeRightBottom: null,
-    }));
+    update((p) => ({ ...p, collapsedRight: true }));
   }, [update]);
 
   const expandLeft = useCallback(() => {
-    update((p) => ({ ...p, activeLeft: "omni", activeLeftBottom: null }));
+    update((p) => ({ ...p, collapsedLeft: false }));
   }, [update]);
 
   const expandRight = useCallback(() => {
-    update((p) => ({ ...p, activeRight: "omni", activeRightBottom: null }));
+    update((p) => ({ ...p, collapsedRight: false }));
   }, [update]);
 
   /** Close any open panels and pop-outs, but leave the side columns
@@ -921,92 +899,67 @@ export function useViewPrefs() {
   const closeAllPanels = useCallback(() => {
     update((p) => ({
       ...p,
-      activeLeft: p.activeLeft != null ? "omni" : p.activeLeft,
-      activeLeftBottom: null,
-      splitLeftOrigin: null,
-      activeRight: p.activeRight != null ? "omni" : p.activeRight,
-      activeRightBottom: null,
-      splitRightOrigin: null,
+      dockStack: { left: [], right: [] },
+      panelMRU: { left: [], right: [] },
       poppedOutPanels: [],
       poppedOutOrigins: {},
       poppedOutCards: [],
-      dockSlots: {},
     }));
   }, [update]);
 
-  /** Suppress omni on a side: set its top slot to the truly-blank canvas.
-   *  No-op for fully-collapsed sides (`null`). */
+  /** Suppress the omni background on a side (a clean, empty column).
+   *  No-op for fully-collapsed sides. */
   const setBlank = useCallback((side: Side) => {
     update((p) => {
-      if (side === "left") {
-        return p.activeLeft == null ? p : { ...p, activeLeft: "blank" };
-      }
-      return p.activeRight == null ? p : { ...p, activeRight: "blank" };
+      if (side === "left") return p.collapsedLeft ? p : { ...p, blankLeft: true };
+      return p.collapsedRight ? p : { ...p, blankRight: true };
     });
   }, [update]);
 
-  /** Restore omni on any side currently in the explicit "blank" state.
-   *  Called when the user does something that should re-reveal the
-   *  omni background (opens a panel, creates a card). */
+  /** Restore the omni background on any side currently blanked. Called
+   *  when the user does something that should re-reveal omni (opens a
+   *  panel, creates a card). */
   const clearBlankIfSet = useCallback(() => {
     update((p) => {
-      const leftBlank = p.activeLeft === "blank";
-      const rightBlank = p.activeRight === "blank";
-      if (!leftBlank && !rightBlank) return p;
-      return {
-        ...p,
-        activeLeft: leftBlank ? "omni" : p.activeLeft,
-        activeRight: rightBlank ? "omni" : p.activeRight,
-      };
+      if (!p.blankLeft && !p.blankRight) return p;
+      return { ...p, blankLeft: false, blankRight: false };
     });
   }, [update]);
 
   // Strip-click toggle: open if closed, close if open. "Open" means
-  // either docked or floating — closing removes the panel from its
-  // current home (clears dockSlot or removes from poppedOutPanels).
-  // The saved float rect persists so re-opening floating restores size.
-  const togglePanel = useCallback((id: PanelId) => {
-    if (id === "omni" || id === "blank") return;
-    update((p) => {
-      // Closing path
-      if (isPanelOpen(p, id)) {
-        const dockSlot = findDockSlotForPanel(p, id);
-        const nextDockSlots = { ...p.dockSlots };
-        if (dockSlot) delete nextDockSlots[dockSlot];
-        const sideAffected: Side | null = dockSlot
-          ? (dockSlot.startsWith("left") ? "left" : "right")
-          : null;
-        const disengagePatch = sideAffected
-          ? autoDisengageIfNeeded(p, sideAffected, nextDockSlots)
-          : { dockSlots: nextDockSlots };
+  // either docked (in a stack) or floating — closing removes the panel
+  // from its stack and/or poppedOutPanels. The saved float rect persists
+  // so re-opening floating restores size. `freeSpacePx` is the caller's
+  // one-shot omni-gap measurement for the docked-open fit check.
+  const togglePanel = useCallback(
+    (id: PanelId, side?: Side, freeSpacePx?: number) => {
+      if (id === "omni" || id === "blank") return;
+      update((p) => {
+        // Closing path
+        if (isPanelOpen(p, id)) {
+          const dockedSide = sideOfDockedPanel(p, id);
+          let next = p;
+          if (dockedSide) {
+            next = withStack(next, dockedSide, stackFor(next, dockedSide).filter((x) => x !== id));
+          }
+          next = pruneMRU(next, id);
+          return { ...next, poppedOutPanels: next.poppedOutPanels.filter((x) => x !== id) };
+        }
+        // Opening path
+        const targetSide = resolveSide(p, id, side);
+        const mode: PanelMode = p.panelModes[id] ?? "docked";
+        if (mode === "docked") return dockOpen(p, id, targetSide, freeSpacePx);
+        const savedRect = p.floatPositions[id];
+        const rect = savedRect ?? computeColumnSpawnRect(targetSide);
         return {
           ...p,
-          ...disengagePatch,
-          poppedOutPanels: p.poppedOutPanels.filter((x) => x !== id),
+          poppedOutPanels: [...p.poppedOutPanels, id],
+          floatPositions: { ...p.floatPositions, [id]: rect },
         };
-      }
-      // Opening path
-      const placement = p.placements.find((pl) => pl.id === id);
-      const registryEntry = (PANEL_REGISTRY as Record<string, { defaultStripSide?: Side }>)[id];
-      const targetSide: Side =
-        placement?.side ?? registryEntry?.defaultStripSide ?? "left";
-      const mode: PanelMode = p.panelModes[id] ?? "docked";
-
-      if (mode === "docked") {
-        const plan = planSlotAssignment(p, targetSide, id);
-        if (plan) {
-          return { ...p, ...plan };
-        }
-      }
-      const savedRect = p.floatPositions[id];
-      const rect = savedRect ?? computeColumnSpawnRect(targetSide);
-      return {
-        ...p,
-        poppedOutPanels: [...p.poppedOutPanels, id],
-        floatPositions: { ...p.floatPositions, [id]: rect },
-      };
-    });
-  }, [update]);
+      });
+    },
+    [update],
+  );
 
   const movePanel = useCallback((id: PanelId, toSide: Side, toIndex?: number) => {
     update((p) => {
@@ -1015,24 +968,16 @@ export function useViewPrefs() {
       const otherItems = filtered.filter((pl) => pl.side !== toSide);
       const idx = toIndex !== undefined ? Math.min(toIndex, sameItems.length) : sameItems.length;
       sameItems.splice(idx, 0, { id, side: toSide });
-
-      // If it was the active panel on the old side, clear it; set it active on new side
-      const oldPlacement = p.placements.find((pl) => pl.id === id);
-      let activeLeft = p.activeLeft;
-      let activeRight = p.activeRight;
-      if (oldPlacement) {
-        if (oldPlacement.side === "left" && activeLeft === id) activeLeft = null;
-        if (oldPlacement.side === "right" && activeRight === id) activeRight = null;
+      let next: ViewPrefs = { ...p, placements: [...otherItems, ...sameItems] };
+      // If the panel is currently docked on the OTHER side, relocate its
+      // open band to the new side's stack so the band follows its icon.
+      const dockedSide = sideOfDockedPanel(next, id);
+      if (dockedSide && dockedSide !== toSide) {
+        next = withStack(next, dockedSide, stackFor(next, dockedSide).filter((x) => x !== id));
+        next = pruneMRU(next, id);
+        next = dockOpen(next, id, toSide);
       }
-      if (toSide === "left") activeLeft = id;
-      else activeRight = id;
-
-      return {
-        ...p,
-        placements: [...otherItems, ...sameItems],
-        activeLeft,
-        activeRight,
-      };
+      return next;
     });
   }, [update]);
 
@@ -1047,82 +992,44 @@ export function useViewPrefs() {
     return prefs.panelWidths[side] || 320;
   }, [prefs.panelWidths]);
 
-  /**
-   * Legacy split setter — kept as a shim. Splits no longer exist in the
-   * always-float model, so this just opens `id` as a float on `side`.
-   * `half` is ignored. "omni"/"blank"/null are no-ops.
-   */
-  const setActiveHalf = useCallback(
-    (side: Side, _half: Half, id: PanelId | null) => {
-      if (!id || id === "omni" || id === "blank") return;
-      openPanelFloat(id, side);
-    },
-    [openPanelFloat],
-  );
+  /** Persist a per-panel band height in px (a resize). */
+  const setPanelHeight = useCallback((id: PanelId, px: number) => {
+    update((p) => ({
+      ...p,
+      panelHeights: { ...p.panelHeights, [id]: Math.max(MIN_BAND_PX, Math.round(px)) },
+    }));
+  }, [update]);
 
-  /**
-   * Toggle split for a side. If not currently split, splits with the
-   * existing active panel as top and "blank" as bottom (or vice-versa
-   * if there's no active panel). If split, collapses by keeping the
-   * top half and clearing the bottom.
-   */
-  const toggleSplit = useCallback((side: Side) => {
+  /** Clear a panel's height override → back to content-sized. */
+  const clearPanelHeight = useCallback((id: PanelId) => {
     update((p) => {
-      const isSplit =
-        side === "left" ? p.activeLeftBottom != null : p.activeRightBottom != null;
-      // Migrate dock slots so panels don't disappear across split toggles.
-      // off → on: move ${side}-full's occupant to ${side}-top.
-      // on → off: keep ${side}-top's occupant in ${side}-full; displace
-      //          ${side}-bottom's occupant to floating.
-      const fullKey = dockSlotKey(side, "full");
-      const topKey = dockSlotKey(side, "top");
-      const bottomKey = dockSlotKey(side, "bottom");
-      const nextDockSlots: Partial<Record<DockSlotKey, PanelId>> = { ...p.dockSlots };
-      let nextPopped = p.poppedOutPanels;
-      let nextModes = p.panelModes;
-      if (!isSplit) {
-        // Splitting on
-        if (nextDockSlots[fullKey]) {
-          nextDockSlots[topKey] = nextDockSlots[fullKey];
-          delete nextDockSlots[fullKey];
-        }
-      } else {
-        // Splitting off
-        const topOccupant = nextDockSlots[topKey];
-        const bottomOccupant = nextDockSlots[bottomKey];
-        delete nextDockSlots[topKey];
-        delete nextDockSlots[bottomKey];
-        if (topOccupant) nextDockSlots[fullKey] = topOccupant;
-        if (bottomOccupant) {
-          nextModes = { ...nextModes, [bottomOccupant]: "floating" };
-          if (!nextPopped.includes(bottomOccupant)) {
-            nextPopped = [...nextPopped, bottomOccupant];
-          }
-        }
-      }
-      const baseUpdate = {
-        ...p,
-        dockSlots: nextDockSlots,
-        poppedOutPanels: nextPopped,
-        panelModes: nextModes,
-      };
-      if (side === "left") {
-        if (isSplit) return { ...baseUpdate, activeLeftBottom: null, splitLeftOrigin: null };
-        const top = p.activeLeft ?? "omni";
-        return { ...baseUpdate, activeLeft: top, activeLeftBottom: "omni", splitLeftOrigin: "user" };
-      } else {
-        if (isSplit) return { ...baseUpdate, activeRightBottom: null, splitRightOrigin: null };
-        const top = p.activeRight ?? "omni";
-        return { ...baseUpdate, activeRight: top, activeRightBottom: "omni", splitRightOrigin: "user" };
-      }
+      if (p.panelHeights[id] == null) return p;
+      const { [id]: _dropped, ...rest } = p.panelHeights;
+      return { ...p, panelHeights: rest };
     });
   }, [update]);
 
-  const setSplitRatio = useCallback((side: Side, ratio: number) => {
-    const clamped = Math.max(0.05, Math.min(0.95, ratio));
-    update((p) => (side === "left"
-      ? { ...p, splitLeftRatio: clamped }
-      : { ...p, splitRightRatio: clamped }));
+  /** Set two adjacent bands' heights at once — a divider "trade", where
+   *  the boundary between `aboveId` and `belowId` slides (the caller
+   *  conserves their sum). */
+  const tradePanelHeights = useCallback(
+    (aboveId: PanelId, aboveH: number, belowId: PanelId, belowH: number) => {
+      update((p) => ({
+        ...p,
+        panelHeights: {
+          ...p.panelHeights,
+          [aboveId]: Math.max(MIN_BAND_PX, Math.round(aboveH)),
+          [belowId]: Math.max(MIN_BAND_PX, Math.round(belowH)),
+        },
+      }));
+    },
+    [update],
+  );
+
+  /** Note an interaction with a docked panel (open / click / scroll /
+   *  focus) → bump it to most-recent on its side, for LRU eviction. */
+  const notePanelUse = useCallback((side: Side, id: PanelId) => {
+    update((p) => (sideOfDockedPanel(p, id) === side ? bumpMRU(p, side, id) : p));
   }, [update]);
 
   const setEditorSplit = useCallback((v: boolean | ((prev: boolean) => boolean)) => {
@@ -1224,22 +1131,18 @@ export function useViewPrefs() {
   const closePopout = useCallback((id: PanelId) => {
     update((p) => {
       const { [id]: _droppedOrigin, ...remainingOrigins } = p.poppedOutOrigins;
-      const dockSlot = findDockSlotForPanel(p, id);
-      const nextDockSlots = { ...p.dockSlots };
-      if (dockSlot) delete nextDockSlots[dockSlot];
-      const sideAffected: Side | null = dockSlot
-        ? (dockSlot.startsWith("left") ? "left" : "right")
-        : null;
-      const disengagePatch = sideAffected
-        ? autoDisengageIfNeeded(p, sideAffected, nextDockSlots)
-        : { dockSlots: nextDockSlots };
+      const dockedSide = sideOfDockedPanel(p, id);
+      let next = p;
+      if (dockedSide) {
+        next = withStack(next, dockedSide, stackFor(next, dockedSide).filter((x) => x !== id));
+      }
+      next = pruneMRU(next, id);
       return {
-        ...p,
-        ...disengagePatch,
-        poppedOutPanels: p.poppedOutPanels.filter((x) => x !== id),
+        ...next,
+        poppedOutPanels: next.poppedOutPanels.filter((x) => x !== id),
         poppedOutOrigins: remainingOrigins,
-        // floatPositions intentionally unchanged: the user's pinned size
-        // sticks across close/open cycles.
+        // floatPositions + panelHeights intentionally unchanged: the
+        // user's pinned size sticks across close/open cycles.
       };
     });
   }, [update]);
@@ -1251,32 +1154,17 @@ export function useViewPrefs() {
   const togglePopout = useCallback((id: PanelId) => {
     update((p) => {
       if (isPanelOpen(p, id)) {
-        const dockSlot = findDockSlotForPanel(p, id);
-        const nextDockSlots = { ...p.dockSlots };
-        if (dockSlot) delete nextDockSlots[dockSlot];
-        const sideAffected: Side | null = dockSlot
-          ? (dockSlot.startsWith("left") ? "left" : "right")
-          : null;
-        const disengagePatch = sideAffected
-          ? autoDisengageIfNeeded(p, sideAffected, nextDockSlots)
-          : { dockSlots: nextDockSlots };
-        return {
-          ...p,
-          ...disengagePatch,
-          poppedOutPanels: p.poppedOutPanels.filter((x) => x !== id),
-        };
-      }
-      const placement = p.placements.find((pl) => pl.id === id);
-      const registryEntry = (PANEL_REGISTRY as Record<string, { defaultStripSide?: Side }>)[id];
-      const targetSide: Side =
-        placement?.side ?? registryEntry?.defaultStripSide ?? "left";
-      const mode: PanelMode = p.panelModes[id] ?? "docked";
-      if (mode === "docked") {
-        const plan = planSlotAssignment(p, targetSide, id);
-        if (plan) {
-          return { ...p, ...plan };
+        const dockedSide = sideOfDockedPanel(p, id);
+        let next = p;
+        if (dockedSide) {
+          next = withStack(next, dockedSide, stackFor(next, dockedSide).filter((x) => x !== id));
         }
+        next = pruneMRU(next, id);
+        return { ...next, poppedOutPanels: next.poppedOutPanels.filter((x) => x !== id) };
       }
+      const targetSide = resolveSide(p, id);
+      const mode: PanelMode = p.panelModes[id] ?? "docked";
+      if (mode === "docked") return dockOpen(p, id, targetSide);
       const savedRect = p.floatPositions[id];
       const rect = savedRect ?? computeColumnSpawnRect(targetSide);
       return {
@@ -1296,17 +1184,19 @@ export function useViewPrefs() {
   const undockPanel = useCallback(
     (id: PanelId, initialFloatRect: { x: number; y: number; width: number; height: number }) => {
       update((p) => {
-        const dockSlot = findDockSlotForPanel(p, id);
-        const nextDockSlots = { ...p.dockSlots };
-        if (dockSlot) delete nextDockSlots[dockSlot];
+        const dockedSide = sideOfDockedPanel(p, id);
+        let next = p;
+        if (dockedSide) {
+          next = withStack(next, dockedSide, stackFor(next, dockedSide).filter((x) => x !== id));
+        }
+        next = pruneMRU(next, id);
         return {
-          ...p,
-          dockSlots: nextDockSlots,
-          poppedOutPanels: p.poppedOutPanels.includes(id)
-            ? p.poppedOutPanels
-            : [...p.poppedOutPanels, id],
-          panelModes: { ...p.panelModes, [id]: "floating" },
-          floatPositions: { ...p.floatPositions, [id]: initialFloatRect },
+          ...next,
+          poppedOutPanels: next.poppedOutPanels.includes(id)
+            ? next.poppedOutPanels
+            : [...next.poppedOutPanels, id],
+          panelModes: { ...next.panelModes, [id]: "floating" },
+          floatPositions: { ...next.floatPositions, [id]: initialFloatRect },
         };
       });
     },
@@ -1320,26 +1210,31 @@ export function useViewPrefs() {
    * panelModes so future opens default to docked.
    */
   const redockPanel = useCallback(
-    (id: PanelId, slotKey: DockSlotKey) => {
+    (id: PanelId, side: Side, index?: number) => {
       update((p) => {
-        // Replace, don't displace: if the slot is occupied by a different
-        // panel, that panel just closes (kept out of poppedOutPanels).
-        // Matches the strip-click `openPanelDocked` semantics — dropping
-        // a panel onto an occupied dock is "swap this in", not "kick the
-        // other panel out as a floater".
-        const occupant = p.dockSlots[slotKey];
-        return {
+        // Remove any existing float + stack position, then splice into the
+        // target side's stack at `index` (default append). Enforce the cap
+        // by evicting the least-recently-used band if the side is full.
+        let next: ViewPrefs = {
           ...p,
-          dockSlots: { ...p.dockSlots, [slotKey]: id },
-          poppedOutPanels: p.poppedOutPanels.filter(
-            (x) => x !== id && (!occupant || x !== occupant),
-          ),
-          panelModes: {
-            ...p.panelModes,
-            [id]: "docked",
-            ...(occupant && occupant !== id ? { [occupant]: "docked" } : null),
-          },
+          poppedOutPanels: p.poppedOutPanels.filter((x) => x !== id),
+          panelModes: { ...p.panelModes, [id]: "docked" },
         };
+        const existingSide = sideOfDockedPanel(next, id);
+        if (existingSide) {
+          next = withStack(next, existingSide, stackFor(next, existingSide).filter((x) => x !== id));
+        }
+        let stack = stackFor(next, side);
+        if (stack.length >= MAX_STACK) {
+          const victim = leastRecentlyUsed(next, side);
+          if (victim) {
+            stack = stack.filter((x) => x !== victim);
+            next = pruneMRU(next, victim);
+          }
+        }
+        const at = index == null ? stack.length : Math.max(0, Math.min(index, stack.length));
+        next = withStack(next, side, [...stack.slice(0, at), id, ...stack.slice(at)]);
+        return bumpMRU(next, side, id);
       });
     },
     [update],
@@ -1486,9 +1381,10 @@ export function useViewPrefs() {
     movePanel,
     setPanelWidth,
     getPanelWidth,
-    setActiveHalf,
-    toggleSplit,
-    setSplitRatio,
+    setPanelHeight,
+    clearPanelHeight,
+    tradePanelHeights,
+    notePanelUse,
     setEditorSplit,
     setEditorSplitRatio,
     setCodePaneRatio,

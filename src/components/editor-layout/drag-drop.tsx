@@ -2,6 +2,7 @@ import { useCallback, useRef } from "react";
 import { PanelId, Side, ViewPrefs } from "@/hooks/useViewPrefs";
 import { PANEL_ICONS, panelLabel } from "./panel-icons";
 import { scrollEntryIntoView } from "./layout-scroll";
+import { measureOmniGap } from "./panel-column";
 import type { SelectionsContextValue } from "./contexts/selections";
 import { getPanelSelection } from "./panel-selection";
 
@@ -14,9 +15,10 @@ import { getPanelSelection } from "./panel-selection";
  */
 export function useStripHandlers(deps: {
   prefs: ViewPrefs;
-  /** Strip clicks force-dock the panel — opens it in the gutter dock
-   *  slot regardless of the panel's last-used mode. */
-  openPanelDocked: (id: PanelId, side?: Side) => void;
+  /** Strip clicks force-dock the panel — append it as a band at the
+   *  bottom of the side's stack (evicting the LRU band when there's no
+   *  room, gated by the measured omni gap). */
+  openPanelDocked: (id: PanelId, side?: Side, freeSpacePx?: number) => void;
   closePopout: (id: PanelId) => void;
   movePanel: (id: PanelId, side: Side, index?: number) => void;
   selections: SelectionsContextValue;
@@ -32,17 +34,19 @@ export function useStripHandlers(deps: {
 
   const handleStripClick = useCallback(
     (id: PanelId, side: Side) => {
-      // "Open" = in any open form: docked into a slot, or floating.
-      const isDocked = Object.values(prefs.dockSlots).includes(id);
+      // "Open" = in any open form: docked as a band on either side, or
+      // floating.
+      const isDocked =
+        prefs.dockStack.left.includes(id) || prefs.dockStack.right.includes(id);
       const isFloating = prefs.poppedOutPanels.includes(id);
       if (isDocked || isFloating) {
         closePopout(id);
         return;
       }
-      // Strip clicks always open the panel in its gutter dock slot —
-      // even if the user previously undocked it. This also resets the
-      // panel's mode preference to "docked".
-      openPanelDocked(id, side);
+      // Strip clicks always open the panel as a band on its side. Measure
+      // the live omni gap below the docked stack so the open-time fit check
+      // can evict the LRU band when there's no room.
+      openPanelDocked(id, side, measureOmniGap(side));
 
       // If the panel has a selected card, scroll to it once the panel
       // mounts. Two rAFs so the list has time to render.
@@ -55,7 +59,13 @@ export function useStripHandlers(deps: {
         });
       });
     },
-    [openPanelDocked, closePopout, prefs.poppedOutPanels, prefs.dockSlots, selections],
+    [
+      openPanelDocked,
+      closePopout,
+      prefs.poppedOutPanels,
+      prefs.dockStack,
+      selections,
+    ],
   );
 
   return { handleStripClick, handleMove };

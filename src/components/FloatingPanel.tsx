@@ -10,11 +10,10 @@ import {
   type ReactNode,
 } from "react";
 import { createPortal } from "react-dom";
-import type { DockSlotKey, PanelId } from "@/hooks/useViewPrefs";
+import type { DockSlotKey, PanelId, Side } from "@/hooks/useViewPrefs";
 import {
   setDockDragTarget,
   findDockTargetByPanelProximity,
-  findDockTargetAtPoint,
   type DockDragTarget,
 } from "@/components/editor-layout/dock-drag";
 import { beginDropSession } from "@/components/drop-mode/controller";
@@ -56,8 +55,15 @@ interface FloatingPanelProps {
    *  portal; "floating" mounts it at document.body. Defaults to
    *  "floating" so non-panel callers don't need to opt in. */
   mode?: "docked" | "floating";
-  /** When mode==='docked', identifies which slot to portal into. */
+  /** When mode==='docked', identifies which slot (band) to portal into.
+   *  Looks like "left-0" / "right-2" — the `data-dock-slot` key produced
+   *  by `bandSlotKey(side, index)`. */
   slotKey?: DockSlotKey | null;
+  /** When mode==='docked', whether the docked container should fill the
+   *  slot frame (`height: 100%`) rather than sizing to its content. True
+   *  for slots given an explicit band height by the parent; false (the
+   *  default) leaves the pod content-sized with a min/max clamp. */
+  fillSlot?: boolean;
   /** Visual treatment when floating. "panel" (default) is the popup
    *  look — beige pod bg, strong drop shadow. "card" reads as an
    *  ambient card on the canvas — white surface, gentle ambient
@@ -81,15 +87,12 @@ interface FloatingPanelProps {
    *  callers (cards, dialogs). */
   onUndock?: (initialFloatRect: { x: number; y: number; width: number; height: number }) => void;
   /** Called on mouseup when a floating panel is released within
-   *  redock proximity of a dock slot — fires only when an auto-dock
+   *  redock proximity of a dock column — fires only when an auto-dock
    *  target was active at the moment of release (i.e. the user could
-   *  already see the dock outline). Receives the slot key the parent
-   *  should redock into. */
-  onMaybeRedock?: (slotKey: DockSlotKey) => void;
-  /** Provides current split state per side. Used during drag to
-   *  hit-test the cursor against the right slot half. The shell only
-   *  needs to ask once per move. */
-  getSplitState?: () => { left: boolean; right: boolean };
+   *  already see the dock outline). Receives the side + band insertion
+   *  index the parent should redock into (consumer calls
+   *  `redockPanel(id, target.side, target.index)`). */
+  onMaybeRedock?: (target: { side: Side; index: number }) => void;
   onFocus?: () => void;
 }
 
@@ -114,6 +117,7 @@ function FloatingPanelInner({
   cardKey,
   mode = "floating",
   slotKey = null,
+  fillSlot = false,
   surface = "panel",
   accentTint,
   children,
@@ -125,7 +129,6 @@ function FloatingPanelInner({
   onChange,
   onUndock,
   onMaybeRedock,
-  getSplitState,
   onFocus,
 }: FloatingPanelProps, handleRef: React.ForwardedRef<FloatingPanelHandle>) {
   const [pos, setPos] = useState({
@@ -155,7 +158,6 @@ function FloatingPanelInner({
         // True until we've called onUndock() and flipped to floating.
         // First mousemove past 0px in this state triggers undock.
         pendingUndock: boolean;
-        socketSlot: DockSlotKey | null;
         // Lift-off "ghost": the panel's docked rect captured at
         // mousedown. While the user is dragging away from this source
         // slot (or hovering back over it), we keep this small outline
@@ -180,8 +182,8 @@ function FloatingPanelInner({
   // and re-binding window listeners on every prop change, and keeps
   // the hooks dep array a fixed length even when optional props
   // (onMaybeRedock) are sometimes omitted.
-  const handlersRef = useRef({ onChange, onUndock, onMaybeRedock, getSplitState, mode });
-  handlersRef.current = { onChange, onUndock, onMaybeRedock, getSplitState, mode };
+  const handlersRef = useRef({ onChange, onUndock, onMaybeRedock, mode });
+  handlersRef.current = { onChange, onUndock, onMaybeRedock, mode };
 
   // Sync local pos when the parent's float rect changes (e.g. on
   // undock the parent calls onUndock which writes a new floatPosition;
@@ -305,8 +307,6 @@ function FloatingPanelInner({
         //    set-down frame).
         //  - Pure set-down (drag started floating): show the proximity
         //    target's full dock frame on match, else clear.
-        const splitState =
-          handlersRef.current.getSplitState?.() ?? { left: false, right: false };
         const panelRect = {
           x: nx,
           y: ny,
@@ -315,12 +315,19 @@ function FloatingPanelInner({
         };
         const proximity = findDockTargetByPanelProximity(
           panelRect,
-          splitState,
           undefined,
           { x: e.clientX, y: e.clientY },
         );
-        if (proximity && proximity.slotKey !== s.sourceGhost?.slotKey) {
-          // A *different* dock is the candidate — show its full frame.
+        if (
+          proximity &&
+          !(
+            s.sourceGhost &&
+            proximity.side === s.sourceGhost.side &&
+            proximity.index === s.sourceGhost.index
+          )
+        ) {
+          // A *different* band insertion point is the candidate — show
+          // its set-down frame.
           setDockDragTarget(proximity);
         } else if (s.sourceGhost) {
           // Either no proximity or proximity matched the source slot:
@@ -381,8 +388,6 @@ function FloatingPanelInner({
       // redock signal. Only a real proximity hit redocks.
       let dropTarget: ReturnType<typeof findDockTargetByPanelProximity> = null;
       if (wasFloatingMove) {
-        const splitState =
-          handlersRef.current.getSplitState?.() ?? { left: false, right: false };
         dropTarget = findDockTargetByPanelProximity(
           {
             x: latestPosRef.current.x,
@@ -390,7 +395,6 @@ function FloatingPanelInner({
             width: latestPosRef.current.width,
             height: latestPosRef.current.height,
           },
-          splitState,
           undefined,
           { x: e.clientX, y: e.clientY },
         );
@@ -403,7 +407,10 @@ function FloatingPanelInner({
       document.body.style.cursor = "";
       handlersRef.current.onChange(latestPosRef.current);
       if (wasFloatingMove && handlersRef.current.onMaybeRedock && dropTarget) {
-        handlersRef.current.onMaybeRedock(dropTarget.slotKey);
+        handlersRef.current.onMaybeRedock({
+          side: dropTarget.side,
+          index: dropTarget.index,
+        });
       }
     };
     window.addEventListener("mousemove", onMove);
@@ -451,62 +458,21 @@ function FloatingPanelInner({
       origY = dockedRect.top;
     }
     const socketSlot = pendingUndock ? slotKey : null;
-    // Source-ghost rect: for a non-split slot, use the panel's rendered
-    // rect. For a split-half slot, use the half-slot anchor's rect
-    // instead — `rootRef` reflects the panel's intrinsic content height
-    // (which can exceed the half) while the anchor div is the actual
-    // half-height frame the user sees, clipped by `overflow: hidden`.
-    // Using the anchor keeps the primary outline visually symmetric
-    // with the companion half rect during the lift-off drag.
-    let primaryRect = dockedRect
+    // Source-ghost rect: the panel's rendered (band) rect captured at
+    // mousedown. In the band-stack model there are no split halves, so
+    // the lift-off ghost is just the band's own footprint — no companion
+    // rect to derive.
+    const primaryRect = dockedRect
       ? { left: dockedRect.left, top: dockedRect.top, width: dockedRect.width, height: dockedRect.height }
       : null;
-    let companionRect: DockDragTarget["companionRect"];
-    if (socketSlot) {
-      const m = socketSlot.match(/^(left|right)-(top|bottom)$/);
-      if (m) {
-        const sourceHalf = document.querySelector<HTMLElement>(
-          `[data-panel-column-side="${m[1]}"] [data-panel-half="${m[2]}"]`,
-        );
-        if (sourceHalf) {
-          const r = sourceHalf.getBoundingClientRect();
-          primaryRect = { left: r.left, top: r.top, width: r.width, height: r.height };
-        }
-        // Companion = the OTHER half's geometric rect (derived from the
-        // column + viewport, not the sibling element's bounding rect).
-        // The sibling div is empty while the other half is undocked, so
-        // its bounding rect collapses to ~0 — useless as an outline.
-        // Reuse findDockTargetAtPoint by probing at the column center
-        // and the other half's vertical midline.
-        const col = document.querySelector<HTMLElement>(
-          `[data-panel-column-side="${m[1]}"]`,
-        );
-        if (col) {
-          const cr = col.getBoundingClientRect();
-          const splitState = { left: m[1] === "left", right: m[1] === "right" };
-          // Probe at viewport-bound y so we don't fall outside the column rect.
-          const podGap =
-            parseFloat(
-              getComputedStyle(document.documentElement).getPropertyValue("--pod-gap"),
-            ) || 10;
-          const TOP_BAR = 32;
-          const fullTop = TOP_BAR + podGap;
-          const fullHeight = window.innerHeight - TOP_BAR - 2 * podGap;
-          const halfHeight = Math.floor((fullHeight - podGap) / 2);
-          const probeY = m[2] === "top"
-            ? fullTop + halfHeight + podGap + halfHeight / 2  // center of bottom
-            : fullTop + halfHeight / 2;                       // center of top
-          const otherTarget = findDockTargetAtPoint(
-            cr.left + cr.width / 2,
-            probeY,
-            splitState,
-          );
-          if (otherTarget) companionRect = otherTarget.rect;
-        }
-      }
-    }
-    const sourceGhost: DockDragTarget | null = (socketSlot && primaryRect)
-      ? { slotKey: socketSlot, rect: primaryRect, companionRect }
+    // `side` is encoded in the band slot key ("left-0" / "right-2") and
+    // is what the redock target needs (the precise band index resolves at
+    // drop time via the proximity hit-test).
+    const sourceSide: Side | null = socketSlot
+      ? (socketSlot.startsWith("left") ? "left" : "right")
+      : null;
+    const sourceGhost: DockDragTarget | null = (sourceSide && primaryRect)
+      ? { side: sourceSide, index: 0, rect: primaryRect }
       : null;
     if (sourceGhost) {
       // Body-portaled outline at the docked rect — captured once at
@@ -521,12 +487,10 @@ function FloatingPanelInner({
       origX,
       origY,
       pendingUndock,
-      socketSlot,
       sourceGhost,
       // Capture docked w/h from the same primaryRect the source ghost
-      // uses — for split halves this is the half-anchor's visual frame
-      // (not the panel's intrinsic content height), so undocking from a
-      // half-slot gives a half-sized floating panel.
+      // uses, so undocking from a band gives a floating panel sized to
+      // the band's visual frame.
       dockedWidth: pendingUndock && primaryRect ? primaryRect.width : null,
       dockedHeight: pendingUndock && primaryRect ? primaryRect.height : null,
     };
@@ -548,7 +512,6 @@ function FloatingPanelInner({
         origX: latestPosRef.current.x,
         origY: latestPosRef.current.y,
         pendingUndock: false,
-        socketSlot: null,
         sourceGhost: null,
         dockedWidth: null,
         dockedHeight: null,
@@ -622,20 +585,19 @@ function FloatingPanelInner({
   // leaving an empty manilla band below it. min-height keeps an empty
   // panel from collapsing below ~2 cards' worth.
   // Floating: positioned via fixed left/top and explicit w/h.
-  // In split mode, the slot anchor has an explicit height (50% of the
-  // column dock area). The docked panel must fill that to ~100% so its
-  // internal scrolling kicks in for tall content; otherwise the panel
-  // grows past the slot's max-height and gets clipped by the half's
-  // overflow:hidden, leaving the bottom truncated. In non-split (full
-  // slot) the anchor is auto-height with a max-height cap, so the panel
-  // stays content-driven (with min-height 200) — same as before.
-  const isHalfSlot = !!slotKey && (slotKey.endsWith("-top") || slotKey.endsWith("-bottom"));
+  // When the parent assigns the band an explicit height (`fillSlot`),
+  // the docked panel must fill that frame to ~100% so its internal
+  // scrolling kicks in for tall content; otherwise the panel grows past
+  // the slot's max-height and gets clipped by the band's overflow:hidden,
+  // leaving the bottom truncated. When the band is content-sized
+  // (`fillSlot===false`) the anchor is auto-height with a max-height cap,
+  // so the panel stays content-driven (with min-height 200).
   const containerStyle: React.CSSProperties =
     mode === "docked"
       ? {
           position: "relative",
           width: "100%",
-          ...(isHalfSlot
+          ...(fillSlot
             ? { height: "100%" }
             : {
                 minHeight: "var(--panel-min-h, 200px)",

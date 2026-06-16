@@ -129,20 +129,24 @@ export function useDragHandleActions(deps: DragHandleActionsDeps) {
     (panelId: PanelId) => {
       const placement = prefs.placements.find((p) => p.id === panelId);
       const side = placement?.side ?? "right";
-      const active = side === "left" ? prefs.activeLeft : prefs.activeRight;
-      if (active == null) {
+      const collapsed =
+        side === "left" ? prefs.collapsedLeft : prefs.collapsedRight;
+      const blank = side === "left" ? prefs.blankLeft : prefs.blankRight;
+      if (collapsed) {
         if (side === "left") expandLeft();
         else expandRight();
         return;
       }
-      if (active === "blank") {
+      if (blank) {
         clearBlankIfSet();
       }
     },
     [
       prefs.placements,
-      prefs.activeLeft,
-      prefs.activeRight,
+      prefs.collapsedLeft,
+      prefs.collapsedRight,
+      prefs.blankLeft,
+      prefs.blankRight,
       expandLeft,
       expandRight,
       clearBlankIfSet,

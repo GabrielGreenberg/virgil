@@ -25,6 +25,7 @@ import { type ReactNode, type HTMLAttributes, type ButtonHTMLAttributes, forward
 import type { JSONContent } from "@tiptap/react";
 import type { AiRequest, AiRequestKind } from "@/lib/types";
 import { useDragGap } from "@/hooks/useDragGap";
+import { MIN_BAND_PX, type PanelId, type Side } from "@/hooks/useViewPrefs";
 import { useTabIndent } from "@/hooks/useTabIndent";
 import { autoSizeInput } from "@/lib/autoSizeInput";
 import ConfirmDialog from "./ConfirmDialog";
@@ -2451,6 +2452,92 @@ export function HSplit({
         onMouseDown={onMouseDown}
       />
       {/* Drag gap — background-colored negative space with blue hover highlight */}
+      <div
+        ref={gapRef}
+        className="drag-gap drag-gap-h w-full h-full"
+        onMouseDown={onMouseDown}
+      />
+    </div>
+  );
+}
+
+/* ── Band divider (stacked-panel boundary) ────────────────────────── */
+
+/**
+ * Draggable boundary between two adjacent docked bands in a column's
+ * stack. Unlike `HSplit` (which converts mouse-Y to a 0..1 ratio of the
+ * container), `BandDivider` trades absolute pixel heights between the two
+ * bands it sits between: the boundary slides, conserving their sum.
+ *
+ * On mousedown it captures both adjacent band anchors' current rendered
+ * heights (via their `data-dock-slot` keys). On move it offsets by `dy`
+ * and calls `onTradeHeight(aboveId, startAboveH + dy, belowId,
+ * startBelowH - dy)`, each clamped ≥ MIN_BAND_PX by the consumer
+ * (viewPrefs.tradePanelHeights) — and defensively here too.
+ *
+ * Reuses the same `.drag-gap.drag-gap-h` visual as `HSplit`, sitting in
+ * the `var(--pod-gap)` gutter the flex column reserves between bands.
+ */
+export function BandDivider({
+  side,
+  aboveId,
+  belowId,
+  onTradeHeight,
+  containerRef,
+}: {
+  side: Side;
+  aboveId: PanelId;
+  belowId: PanelId;
+  onTradeHeight: (aboveId: PanelId, aboveH: number, belowId: PanelId, belowH: number) => void;
+  containerRef: React.RefObject<HTMLDivElement | null>;
+}) {
+  const startY = useRef(0);
+  const startAboveH = useRef(0);
+  const startBelowH = useRef(0);
+
+  const onMove = useCallback(
+    (ev: MouseEvent) => {
+      const dy = ev.clientY - startY.current;
+      const sum = startAboveH.current + startBelowH.current;
+      // Clamp the boundary so neither band drops below MIN_BAND_PX.
+      const above = Math.max(
+        MIN_BAND_PX,
+        Math.min(startAboveH.current + dy, sum - MIN_BAND_PX),
+      );
+      const below = sum - above;
+      onTradeHeight(aboveId, above, belowId, below);
+    },
+    [aboveId, belowId, onTradeHeight],
+  );
+
+  const { gapRef, onMouseDown: gapMouseDown } = useDragGap({ cursor: "row-resize", onMove });
+
+  const onMouseDown = useCallback(
+    (e: React.MouseEvent) => {
+      const root = containerRef.current ?? document;
+      const aboveEl = root.querySelector<HTMLElement>(`[data-dock-slot][data-panel-id="${aboveId}"]`);
+      const belowEl = root.querySelector<HTMLElement>(`[data-dock-slot][data-panel-id="${belowId}"]`);
+      startY.current = e.clientY;
+      startAboveH.current = aboveEl?.getBoundingClientRect().height ?? MIN_BAND_PX;
+      startBelowH.current = belowEl?.getBoundingClientRect().height ?? MIN_BAND_PX;
+      gapMouseDown(e);
+    },
+    [aboveId, belowId, containerRef, gapMouseDown],
+  );
+
+  return (
+    <div
+      data-band-divider={side}
+      className="relative shrink-0 z-10"
+      style={{ height: 'var(--pod-gap)' }}
+    >
+      {/* Wider invisible hit target */}
+      <div
+        className="absolute inset-x-0 cursor-row-resize"
+        style={{ top: -4, bottom: -4, background: "transparent" }}
+        onMouseDown={onMouseDown}
+      />
+      {/* Drag gap — background-colored negative space with blue hover line */}
       <div
         ref={gapRef}
         className="drag-gap drag-gap-h w-full h-full"

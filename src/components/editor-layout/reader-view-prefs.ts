@@ -19,7 +19,6 @@ import { useCallback, useMemo, useState } from "react";
 import type { EditorPaneViewPrefs } from "@/components/EditorPane";
 import {
   useViewPrefs,
-  dockSlotKey,
   type PanelId,
   type Side,
   type ViewPrefs,
@@ -47,7 +46,7 @@ const READER_CATEGORY_SIDES: Record<OmniCategory, Side> = (() => {
 // Default omni categories per side for the Reader. Mirrors the 6
 // reader-visible panel kinds in `READER_CHROME.visiblePanelKinds`. The
 // OmniHost surfaces the matching cards when the user clicks a strip
-// icon (the click drives `dockSlots` here).
+// icon (the click drives the reader's active-panel state → `dockStack`).
 const DEFAULT_READER_OMNI_LEFT = new Set<OmniCategory>([
   "outline",
   "footnotes",
@@ -157,34 +156,32 @@ export function useReaderViewPrefs(): EditorPaneViewPrefs {
     });
   }, []);
 
-  // Build a `ViewPrefs` snapshot. dockSlots reflect the active panels
-  // so OmniHost / PanelColumn render their content.
+  // Build a `ViewPrefs` snapshot. The band-stack `dockStack` reflects the
+  // reader's single active panel per side so OmniHost / PanelColumn render
+  // their content. `omni`/`blank` are NOT bands — omni is the always-mounted
+  // background; `blank` is an empty-state marker tracked on `blankLeft/Right`.
   const prefs = useMemo<ViewPrefs>(() => {
-    const dockSlots: ViewPrefs["dockSlots"] = {};
-    // Match the Editor's `useViewPrefs` contract: only specific panels
-    // live in `dockSlots`. `omni` is the always-mounted bottom layer of
-    // PanelColumn (rendered via `omniSlot.omni`); `blank` is an empty-
-    // state marker tracked on `activeLeft`/`activeRight` only. Putting
-    // either in `dockSlots` makes EditorPane's floating-panel block
-    // (which iterates dockSlots) render them via `PaneRailBody`, which
-    // dispatches only specific panel kinds and falls through to the
-    // "panel isn't wired into EditorPane yet" placeholder for omni/blank.
-    if (activeLeft && activeLeft !== "omni" && activeLeft !== "blank") {
-      dockSlots[dockSlotKey("left", "full")] = activeLeft;
-    }
-    if (activeRight && activeRight !== "omni" && activeRight !== "blank") {
-      dockSlots[dockSlotKey("right", "full")] = activeRight;
-    }
+    const leftBand =
+      activeLeft && activeLeft !== "omni" && activeLeft !== "blank"
+        ? activeLeft
+        : null;
+    const rightBand =
+      activeRight && activeRight !== "omni" && activeRight !== "blank"
+        ? activeRight
+        : null;
+    const dockStack: ViewPrefs["dockStack"] = {
+      left: leftBand ? [leftBand] : [],
+      right: rightBand ? [rightBand] : [],
+    };
     return {
       placements: persistentPlacements,
-      activeLeft,
-      activeRight,
-      activeLeftBottom: null,
-      activeRightBottom: null,
-      splitLeftRatio: 0.5,
-      splitRightRatio: 0.5,
-      splitLeftOrigin: null,
-      splitRightOrigin: null,
+      dockStack,
+      panelHeights: {},
+      panelMRU: { left: [], right: [] },
+      collapsedLeft: false,
+      collapsedRight: false,
+      blankLeft: activeLeft === "blank",
+      blankRight: activeRight === "blank",
       panelWidths,
       editorSplit: false,
       editorSplitRatio: 0.5,
@@ -193,7 +190,6 @@ export function useReaderViewPrefs(): EditorPaneViewPrefs {
       poppedOutOrigins: {},
       floatPositions: {},
       panelModes: {},
-      dockSlots,
       poppedOutCards,
       cardFloatPositions,
       showHighlights: true,
@@ -275,21 +271,16 @@ export function useReaderViewPrefs(): EditorPaneViewPrefs {
   return useMemo<EditorPaneViewPrefs>(
     () => ({
       prefs,
-      focusedHalfLeft: "top",
-      focusedHalfRight: "top",
       isResizingPanels: false,
       focusState: null,
       activeSectionPath: [],
       activeParTitleIndex: null,
       mirrorSectionPath: [],
       mirrorParTitleIndex: null,
-      setFocusedHalfLeft: () => {},
-      setFocusedHalfRight: () => {},
       setIsResizingPanels: () => {},
       syncPanelPrefsToRendered: () => {},
       getPanelWidth,
       setPanelWidth,
-      setSplitRatio: () => {},
       setEditorLeftMargin: () => {},
       setEditorRightMargin: () => {},
       setEditorTopMargin: () => {},
@@ -301,13 +292,16 @@ export function useReaderViewPrefs(): EditorPaneViewPrefs {
       setZenRightMargin: () => {},
       setActiveLeft,
       setActiveRight,
-      setActiveHalf: () => {},
       togglePanel,
       movePanel: persistentMovePanel,
       closePopout,
       setFloatPosition: () => {},
       undockPanel: () => {},
-      redockPanel: () => {},
+      redockPanel: (_id: PanelId, _side: Side, _index?: number) => {},
+      notePanelUse: () => {},
+      setPanelHeight: () => {},
+      clearPanelHeight: () => {},
+      tradePanelHeights: () => {},
       toggleCardPopout,
       closeCardPopout,
       setCardFloatPosition,
@@ -344,7 +338,6 @@ export function useReaderViewPrefs(): EditorPaneViewPrefs {
         setActiveLeft((cur) => (cur === "blank" ? null : cur));
         setActiveRight((cur) => (cur === "blank" ? null : cur));
       },
-      toggleSplit: () => {},
       openPanelDocked,
       toggleOmniCategory,
       setOmniSideToDefault,

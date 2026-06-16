@@ -57,14 +57,19 @@
       "side": "left"
     }
   ],
-  "activeLeft": "omni",
-  "activeRight": "omni",
-  "activeLeftBottom": null,
-  "activeRightBottom": null,
-  "splitLeftRatio": 0.5,
-  "splitRightRatio": 0.5,
-  "splitLeftOrigin": null,
-  "splitRightOrigin": null,
+  "dockStack": {
+    "left": [],
+    "right": []
+  },
+  "panelHeights": {},
+  "panelMRU": {
+    "left": [],
+    "right": []
+  },
+  "collapsedLeft": false,
+  "collapsedRight": false,
+  "blankLeft": false,
+  "blankRight": false,
   "panelWidths": {},
   "editorSplit": false,
   "editorSplitRatio": 0.5,
@@ -73,7 +78,6 @@
   "poppedOutOrigins": {},
   "floatPositions": {},
   "panelModes": {},
-  "dockSlots": {},
   "poppedOutCards": [],
   "cardFloatPositions": {},
   "showHighlights": true,

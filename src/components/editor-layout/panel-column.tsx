@@ -1,7 +1,12 @@
 import { useCallback, useRef } from "react";
 import { useDragGap } from "@/hooks/useDragGap";
-import { PanelId, type DockSlotKey, dockSlotKey } from "@/hooks/useViewPrefs";
-import { HSplit } from "../panel-primitives";
+import {
+  PanelId,
+  Side,
+  MIN_BAND_PX,
+  bandSlotKey,
+} from "@/hooks/useViewPrefs";
+import { BandDivider } from "../panel-primitives";
 
 export function PlaceholderPanel({ title }: { title: string }) {
   return (
@@ -18,29 +23,46 @@ export function PlaceholderPanel({ title }: { title: string }) {
   );
 }
 
-/** A panel half/slot: the always-mounted omni layer plus an optional
- *  opaque overlay. When `overlay` is `null`, omni is visible; otherwise
- *  the overlay occludes omni while omni stays mounted underneath. */
-export type PanelSlot = { omni: React.ReactNode; overlay: React.ReactNode | null };
+/** One docked band in a column's stack: a panel id plus an optional
+ *  resized height (px). Absent height ⇒ content-sized (flex auto). */
+export type BandSpec = { id: PanelId; height?: number };
 
-/** Per-side dock-slot occupancy, passed in from the parent. Each entry
- *  is the panel id currently sitting in that slot (or absent if empty). */
-export interface DockOccupancy {
-  full?: PanelId;
-  top?: PanelId;
-  bottom?: PanelId;
+/**
+ * Read the free vertical space (px) below the docked stack on `side` —
+ * the "omni gap" a newly-opened panel can grow into before it has to
+ * displace the least-recently-used band. One-shot synchronous read; no
+ * observers. Returns the full sticky-frame height when no bands are
+ * docked. 0 when the side column isn't mounted.
+ *
+ * Agents E and S call this at open-time and pass the result as
+ * `freeSpacePx` to the viewPrefs openers so the fit check can decide
+ * append-vs-evict without re-measuring per render.
+ */
+export function measureOmniGap(side: Side): number {
+  if (typeof document === "undefined") return 0;
+  const col = document.querySelector<HTMLElement>(
+    `[data-panel-column-side="${side}"]`,
+  );
+  if (!col) return 0;
+  const frame = col.querySelector<HTMLElement>("[data-stack-frame]");
+  if (!frame) return 0;
+  const frameRect = frame.getBoundingClientRect();
+  const bands = frame.querySelectorAll<HTMLElement>("[data-dock-slot]");
+  if (bands.length === 0) return frameRect.height;
+  const last = bands[bands.length - 1];
+  const lastRect = last.getBoundingClientRect();
+  return Math.max(0, frameRect.bottom - lastRect.bottom);
 }
 
 /** Column-edge fade — the manilla→transparent gradient strip pinned to the
  *  top or bottom of a gutter so omni cards scrolling past the scrollport edge
  *  dissolve into the background instead of clipping. Adds ZERO net flow height
  *  (a negative leading-margin equal to its height overlaps the adjacent
- *  content). z-20; docked pods lift to z-30 (single-slot pod / split stack) so
- *  they ride above it. The -4 horizontal bleed cancels the column's
- *  paddingLeft/Right: 4. `top: 0` / `bottom: 0` latch to the same row scrollport
- *  (`[data-virgil-row-scroll]`, which starts just below the 32px Virgil bar), so
- *  the two edges are exact mirrors. `data-tool-strip` is read existence-only by
- *  dock-drag.ts. */
+ *  content). z-20; docked bands lift to z-30 so they ride above it. The -4
+ *  horizontal bleed cancels the column's paddingLeft/Right: 4. `top: 0` /
+ *  `bottom: 0` latch to the same row scrollport (`[data-virgil-row-scroll]`,
+ *  which starts just below the 32px Virgil bar), so the two edges are exact
+ *  mirrors. `data-tool-strip` is read existence-only by dock-drag.ts. */
 function ColumnEdgeFade({ side, edge }: {
   side: "left" | "right";
   edge: "top" | "bottom";
@@ -65,20 +87,94 @@ function ColumnEdgeFade({ side, edge }: {
   );
 }
 
+/** Bottom-edge resize handle for the last band in the stack. A thin
+ *  pod-gap-tall strip pinned to the band's bottom edge. Dragging it
+ *  grows/shrinks the bottom band, revealing or covering the omni gap
+ *  below. Clamps `[MIN_BAND_PX, frameH - aboveStackPx]`. */
+function BottomEdgeHandle({
+  bottomId,
+  frameRef,
+  onResize,
+}: {
+  bottomId: PanelId;
+  frameRef: React.RefObject<HTMLDivElement | null>;
+  onResize: (id: PanelId, px: number) => void;
+}) {
+  const startY = useRef(0);
+  const startH = useRef(0);
+  const aboveStackPx = useRef(0);
+  const frameH = useRef(0);
+
+  const onMove = useCallback(
+    (e: MouseEvent) => {
+      const dy = e.clientY - startY.current;
+      const max = Math.max(MIN_BAND_PX, frameH.current - aboveStackPx.current);
+      const next = Math.max(MIN_BAND_PX, Math.min(startH.current + dy, max));
+      onResize(bottomId, next);
+    },
+    [bottomId, onResize],
+  );
+
+  const { gapRef, onMouseDown: gapMouseDown } = useDragGap({
+    cursor: "row-resize",
+    onMove,
+  });
+
+  const onMouseDown = useCallback(
+    (e: React.MouseEvent) => {
+      const frame = frameRef.current;
+      const band = (e.currentTarget as HTMLElement).closest<HTMLElement>(
+        "[data-dock-slot]",
+      );
+      startY.current = e.clientY;
+      startH.current = band?.getBoundingClientRect().height ?? MIN_BAND_PX;
+      frameH.current = frame?.getBoundingClientRect().height ?? 0;
+      // Space above this band inside the frame = top of this band minus
+      // top of the frame (covers the prior bands + their dividers).
+      const frameTop = frame?.getBoundingClientRect().top ?? 0;
+      const bandTop = band?.getBoundingClientRect().top ?? frameTop;
+      aboveStackPx.current = Math.max(0, bandTop - frameTop);
+      gapMouseDown(e);
+    },
+    [frameRef, gapMouseDown],
+  );
+
+  return (
+    <div
+      className="absolute inset-x-0 cursor-row-resize"
+      style={{
+        bottom: 0,
+        height: 'var(--pod-gap)',
+        pointerEvents: 'auto',
+        zIndex: 2,
+      }}
+      onMouseDown={onMouseDown}
+    >
+      <div ref={gapRef} className="drag-gap drag-gap-h w-full h-full" />
+    </div>
+  );
+}
+
 /**
- * Width-resizable column wrapper for sidebar panels. Accepts either a
- * single slot (`{omni, overlay}`) or a split of two slots plus ratio.
+ * Width-resizable column wrapper for sidebar panels. The column is an
+ * always-mounted omni "desktop"; up to MAX_STACK opaque content-sized
+ * BANDS stack top→bottom over it.
  *
- * Omni is always mounted inside every slot; closing a specific panel
- * just drops the overlay and reveals omni instantly. When a panel is
- * *docked* into a slot, the slot's `data-dock-slot` attribute marks it
- * as a portal target — `<FloatingPanel mode="docked">` portals its
- * children into the slot, visually covering omni (which stays mounted).
+ * Three layers inside the column root:
+ *   A. {omni} in normal flow — always rendered, the background.
+ *   B. an absolute pass-through layer so empty gaps click through to omni.
+ *   C. a sticky stack frame holding the band anchors (top→bottom) with a
+ *      BandDivider between consecutive bands; the bottom band also carries
+ *      a bottom-edge resize handle.
  *
- * Docked panels extend up over the action-toolbar strip: when any slot
- * on this side is docked, the strip is hidden (display: none) so the
- * column's content starts at row-top with `var(--pod-gap)` padding. The
- * docked pod then occupies the equal-padding region all the way around.
+ * Each band anchor is empty — `<FloatingPanel mode="docked">` portals its
+ * panel content into the anchor via its `data-dock-slot` key, visually
+ * covering omni (which stays mounted underneath). When `stack` is empty
+ * the column is omni-only with no z-lift (the Reader's case).
+ *
+ * Docked bands extend up over the action-toolbar strip whenever the stack
+ * is non-empty: the strip is hidden so the column's content starts at
+ * row-top with `var(--pod-gap)` padding.
  */
 export function PanelColumn({
   side,
@@ -87,14 +183,12 @@ export function PanelColumn({
   isResizing,
   onResizingChange,
   onSyncBeforeDrag,
-  children,
-  split,
+  omni,
+  stack,
+  onTradeHeight,
+  onResizeBottomEdge,
+  onFocusBand,
   collapsed,
-  focusedHalf,
-  onFocusHalf,
-  topPanelId,
-  bottomPanelId,
-  dockOccupancy,
   tail,
 }: {
   side: "left" | "right";
@@ -103,24 +197,17 @@ export function PanelColumn({
   isResizing?: boolean;
   onResizingChange?: (r: boolean) => void;
   onSyncBeforeDrag?: () => void;
-  children?:
-    | PanelSlot
-    | {
-        top: PanelSlot;
-        bottom: PanelSlot;
-        ratio: number;
-        onRatioChange: (r: number) => void;
-      };
-  split?: boolean;
+  /** The always-mounted omni desktop for this side (Layer A background). */
+  omni: React.ReactNode;
+  /** Ordered docked bands, top→bottom (length ≤ MAX_STACK). */
+  stack: BandSpec[];
+  /** Slide the boundary between two adjacent bands (divider drag). */
+  onTradeHeight: (aboveId: PanelId, aboveH: number, belowId: PanelId, belowH: number) => void;
+  /** Resize the bottom band from its bottom edge (reveal/cover omni). */
+  onResizeBottomEdge: (id: PanelId, px: number) => void;
+  /** Mark a band most-recently-used on interaction (MRU bump). */
+  onFocusBand: (id: PanelId) => void;
   collapsed?: boolean;
-  focusedHalf?: "top" | "bottom";
-  onFocusHalf?: (half: "top" | "bottom") => void;
-  topPanelId?: PanelId;
-  bottomPanelId?: PanelId;
-  /** Which dock slots on this side are currently occupied. The slot's
-   *  pod element gets `data-dock-slot="${side}-${half}"` so the
-   *  panel-shell portal can find it. */
-  dockOccupancy?: DockOccupancy;
   /** Optional adornment rendered inside the inner flex row, adjacent
    *  to the drag-gap on the editor-facing side (between the panel
    *  content and the drag-gap). The Library Reader uses this to mount
@@ -130,7 +217,7 @@ export function PanelColumn({
 }) {
   const startX = useRef(0);
   const startPanel = useRef(0);
-  const stackRef = useRef<HTMLDivElement>(null);
+  const frameRef = useRef<HTMLDivElement>(null);
 
   const onMove = useCallback(
     (e: MouseEvent) => {
@@ -203,91 +290,17 @@ export function PanelColumn({
     [panelPref, gapMouseDown, onResizingChange, onSyncBeforeDrag],
   );
 
-  const isSplitChildren = (
-    c: typeof children,
-  ): c is {
-    top: PanelSlot;
-    bottom: PanelSlot;
-    ratio: number;
-    onRatioChange: (r: number) => void;
-  } =>
-    !!c && typeof c === "object" && !Array.isArray(c) && "top" in (c as object) && "bottom" in (c as object);
+  // The stack lifts over the action-toolbar strip whenever any band is
+  // docked. Empty stack ⇒ omni-only column, toolbar stays, no z-lift.
+  const hasStack = stack.length > 0;
+  const extendsOverToolbar = hasStack;
 
-  const podRadius = 'var(--pod-radius)';
-
-  // Chromeless slots render on the bare canvas (no pod background/border).
-  // Omni and blank are both chromeless; specific panels get a pod.
-  const isChromeless = (id?: PanelId) => id === "omni" || id === "blank";
-
-  // Whether the column's slot extends up over the action-toolbar strip.
-  // True when:
-  //  - non-split + full slot has a docked panel
-  //  - split + top slot has a docked panel
-  // (A docked-only-bottom slot does NOT extend up; the toolbar stays.)
-  const fullSlot = dockOccupancy?.full;
-  const topSlot = dockOccupancy?.top;
-  const bottomSlot = dockOccupancy?.bottom;
-  const extendsOverToolbar = (!split && fullSlot != null) || (!!split && topSlot != null);
-
-  // Slot keys per geometry case
-  const fullKey: DockSlotKey = dockSlotKey(side, "full");
-  const topKey: DockSlotKey = dockSlotKey(side, "top");
-  const bottomKey: DockSlotKey = dockSlotKey(side, "bottom");
-
-  // When `hideOmni` is true, the omni layer is suppressed for this slot —
-  // used when a docked panel occupies the slot, so the docked panel's
-  // natural content height drives the slot's auto-sizing instead of
-  // omni's full-list height.
-  const renderSlot = (slot: PanelSlot, hideOmni: boolean = false) => (
-    <>
-      {!hideOmni && slot.omni}
-      {slot.overlay && (
-        <div className="absolute inset-0" style={{ background: 'var(--pod-panel)' }}>
-          {slot.overlay}
-        </div>
-      )}
-    </>
-  );
-
-  /** Sizing style for an occupied dock slot. The slot itself doesn't
-   *  need to fill the full dock frame anymore — the panel inside drives
-   *  its own height (auto-fit via FloatingPanel's docked-mode style),
-   *  so the slot just inherits that height. We still bound it with
-   *  max-height so a tall panel can't push past the dock's window
-   *  region. Same rule for every panel kind including outline —
-   *  letting outline shrink to its visible-headings size keeps it
-   *  consistent with the rest and avoids a stretched manilla gap.
-   *
-   *  Empty slot: full height for omni view (existing behavior). */
-  const dockSizingStyle = (occupant: PanelId | undefined): React.CSSProperties => {
-    const fullHeight = extendsOverToolbar
-      ? 'calc(100dvh - 32px - 2 * var(--pod-gap))'
-      : 'calc(100dvh - 32px - 64px - var(--pod-gap))';
-    if (occupant) {
-      // No min-height — the panel's own min handles that. The slot
-      // can shrink to the panel's auto-size; no manilla bg gap below.
-      // Also expose the dock-frame max-height as a CSS custom property
-      // so the docked FloatingPanel inside can cap itself at the same
-      // bound — without that cap, every parent height stays content-
-      // driven and PANEL.list's flex-1 overflow-y-auto never engages.
-      return {
-        maxHeight: fullHeight,
-        ['--dock-slot-frame-h' as string]: fullHeight,
-      };
-    }
-    // Slot empty — omni view shown, full height as before. Expose
-    // --dock-slot-frame-h here too so omni cards inside can cap their
-    // expanded bodies at the dock's visible height (same hook docked
-    // panels use above).
-    return {
-      height: fullHeight,
-      ['--dock-slot-frame-h' as string]: fullHeight,
-    };
-  };
-
-  // The dock-outline is rendered at EditorLayout root via the body-
-  // portaled `<DockOutline />` (so it stays at the captured rect and
-  // beats floating-panel z-index). Nothing to render here per-slot.
+  // The sticky stack-frame height — the visible dock window. Exposed
+  // column-wide as `--dock-slot-frame-h` so docked panels (and omni cards)
+  // can cap an expanded body at this bound and engage internal scrolling.
+  const frameH = extendsOverToolbar
+    ? 'calc(100dvh - 32px - 2 * var(--pod-gap))'
+    : 'calc(100dvh - 32px - 64px - var(--pod-gap))';
 
   return (
     <div
@@ -302,26 +315,19 @@ export function PanelColumn({
         // (or a card pinned/expanded near the doc bottom) can run the
         // column past the editor's last line; without this cap the row's
         // natural scroll bound would exceed the editor's bottom and produce
-        // a visible bounce/stutter against any JS clamp. (The unanchored
-        // bin is absolute/zero-flow as of A5, so it no longer contributes
-        // to this height — only the anchored region does.) `clip` (not
+        // a visible bounce/stutter against any JS clamp. `clip` (not
         // `hidden`) avoids establishing a scroll container, so any
         // `position: sticky` descendants keep latching to the row scroll.
         maxHeight: 'var(--row-bound-h, none)',
         overflow: 'clip',
         // Expose the dock-frame max-height column-wide so any descendant
         // (omni-view cards, docked-panel cards) can cap an expanded body
-        // at the visible dock height. The slot wrapper redeclares this
-        // with the same value when occupied — same number, no conflict —
-        // and chromeless omni paths inherit straight from here.
-        ['--dock-slot-frame-h' as string]: extendsOverToolbar
-          ? 'calc(100dvh - 32px - 2 * var(--pod-gap))'
-          : 'calc(100dvh - 32px - 64px - var(--pod-gap))',
-        // When a top-region docked panel is in this column, give the column
-        // its top var(--pod-gap) padding directly (the toolbar normally
-        // owned that space — it's hidden in this state). Otherwise leave
-        // padding-top: 0 so the toolbar's sticky positioning controls the
-        // top band.
+        // at the visible dock height.
+        ['--dock-slot-frame-h' as string]: frameH,
+        // When a band is docked, give the column its top var(--pod-gap)
+        // padding directly (the toolbar normally owned that space — it's
+        // hidden in this state). Otherwise leave padding-top: 0 so the
+        // toolbar's sticky positioning controls the top band.
         paddingTop: collapsed ? 0 : (extendsOverToolbar ? 'var(--pod-gap)' : 0),
         paddingBottom: collapsed ? 0 : 'var(--pod-gap)',
         paddingLeft: collapsed ? 0 : 4,
@@ -332,208 +338,59 @@ export function PanelColumn({
       <div className="flex flex-1 min-h-0 w-full">
       {collapsed ? (
         <div className={`flex-1 min-w-0 ${side === "left" ? "order-1" : "order-3"}`} />
-      ) : split && isSplitChildren(children) ? (
+      ) : (
         <div
           className={`relative flex-1 min-w-0 panel-container ${side === "left" ? "order-1" : "order-3"}`}
           style={{
             // Always normal-flow so omni scrolls with the page, regardless
-            // of whether a panel is docked. The sticky dock overlay below
+            // of whether bands are docked. The sticky stack frame (Layer C)
             // is `position: absolute` so it takes no flow space, and its
             // sticky inner stays pinned in the viewport.
             position: 'relative',
-            minHeight: extendsOverToolbar
-              ? 'calc(100dvh - 32px - 2 * var(--pod-gap))'
-              : 'calc(100dvh - 32px - 64px - var(--pod-gap))',
+            minHeight: frameH,
           }}
         >
-          {/* Omni layer — natural flex flow. Tall content scrolls with
-              the page exactly like non-split mode. Docked panels above
-              overlay (sticky) but never bound omni's height. */}
-          {children!.top.omni}
+          {/* Layer A — omni desktop, natural flex flow. Tall content
+              scrolls with the page. Bands above overlay (sticky) but never
+              bound omni's height. Always rendered, never hidden. */}
+          {omni}
 
-          {/* Dock overlay — absolute (zero flow), sticky inside so the
-              docked half anchors stay pinned in the viewport while omni
-              scrolls behind. pointer-events:none on the wrapper so empty
-              regions pass clicks through to omni; each occupied anchor
-              re-enables pointer events for itself. */}
-          <div
-            className="absolute inset-0"
-            style={{ pointerEvents: 'none' }}
-          >
+          {/* Layer B — pass-through overlay so empty gaps between/below
+              bands click straight through to omni. Each occupied band
+              anchor re-enables pointer events for itself. */}
+          <div className="absolute inset-0" style={{ pointerEvents: 'none' }}>
+            {/* Layer C — sticky stack frame. Holds the band anchors top→
+                bottom; bands are opaque (FloatingPanel paints --pod-panel)
+                so omni can't bleed in. Empty frame ⇒ no z-lift. */}
             <div
-              ref={stackRef}
+              ref={frameRef}
+              data-stack-frame={side}
               style={{
                 position: 'sticky',
-                top: extendsOverToolbar ? 'var(--pod-gap)' : 64,
-                height: extendsOverToolbar
-                  ? 'calc(100dvh - 32px - 2 * var(--pod-gap))'
-                  : 'calc(100dvh - 32px - 64px - var(--pod-gap))',
-                // Lift above column's bottom-fade strip (z-20) so docked
-                // pods don't get darkened at the bottom.
-                zIndex: (topSlot || bottomSlot) ? 30 : undefined,
+                top: hasStack ? 'var(--pod-gap)' : 64,
+                height: frameH,
+                overflow: 'hidden',
+                display: 'flex',
+                flexDirection: 'column',
+                zIndex: hasStack ? 30 : undefined,
               }}
             >
-              {/* Top half anchor — explicit height so the docked panel
-                  inside (which sets `height: 100%`) has a real value to
-                  resolve against and its internal scrolling can kick in
-                  for tall content. Empty halves are invisible boxes. */}
-              <div
-                className="absolute"
-                style={{
-                  top: 0,
-                  left: 0,
-                  right: 0,
-                  height: `calc(${children!.ratio * 100}% - var(--pod-gap) / 2)`,
-                  pointerEvents: topSlot ? 'auto' : 'none',
-                  overflow: 'hidden',
-                }}
-                onMouseDown={topSlot ? () => onFocusHalf?.("top") : undefined}
-                data-panel-side={side}
-                data-panel-id={topPanelId}
-                data-panel-half="top"
-                data-dock-slot={topSlot ? topKey : undefined}
-              >
-                {topSlot ? children!.top.overlay : null}
-              </div>
-
-              {/* Resize divider — always present, invisible until hover
-                  (the .drag-gap underlay shows a blue hover-preview line
-                  via useDragGap). */}
-              <div
-                className="absolute"
-                style={{
-                  left: 0,
-                  right: 0,
-                  top: `${children!.ratio * 100}%`,
-                  transform: 'translateY(-50%)',
-                  height: 'var(--pod-gap)',
-                  pointerEvents: 'auto',
-                  zIndex: 1,
-                }}
-              >
-                <HSplit
-                  ratio={children!.ratio}
-                  onRatioChange={children!.onRatioChange}
-                  containerRef={stackRef}
+              {stack.map((band, i) => (
+                <BandFragment
+                  key={band.id}
+                  side={side}
+                  band={band}
+                  index={i}
+                  prevId={i > 0 ? stack[i - 1].id : null}
+                  isLast={i === stack.length - 1}
+                  frameRef={frameRef}
+                  onTradeHeight={onTradeHeight}
+                  onResizeBottomEdge={onResizeBottomEdge}
+                  onFocusBand={onFocusBand}
                 />
-              </div>
-
-              {/* Gap-edge fades — when a panel is docked in a half, place
-                  opaque-to-transparent strips just outside the panel's
-                  edges so omni cards scrolling past behind don't bleed
-                  visually into the panel chrome. Mirrors the existing
-                  column-top/bottom fade strips. */}
-              {topSlot && (
-                <>
-                  {/* Above the top panel — fades omni in the gap between
-                      the Virgil bar and the panel's top edge. Negative
-                      top extends above the sticky inner; the Virgil bar
-                      hides the part outside the visible pod-gap. */}
-                  <div
-                    aria-hidden="true"
-                    className="absolute"
-                    style={{
-                      left: 0,
-                      right: 0,
-                      top: -32,
-                      height: 32,
-                      background:
-                        'linear-gradient(to top, var(--background) 0, transparent 100%)',
-                      pointerEvents: 'none',
-                      zIndex: 0,
-                    }}
-                  />
-                  {/* Below the top panel — into the gap between halves. */}
-                  <div
-                    aria-hidden="true"
-                    className="absolute"
-                    style={{
-                      left: 0,
-                      right: 0,
-                      top: `calc(${children!.ratio * 100}% - var(--pod-gap) / 2)`,
-                      height: 32,
-                      background:
-                        'linear-gradient(to bottom, var(--background) 0, transparent 100%)',
-                      pointerEvents: 'none',
-                      zIndex: 0,
-                    }}
-                  />
-                </>
-              )}
-              {bottomSlot && (
-                <div
-                  aria-hidden="true"
-                  className="absolute"
-                  style={{
-                    left: 0,
-                    right: 0,
-                    top: `calc(${children!.ratio * 100}% + var(--pod-gap) / 2 - 32px)`,
-                    height: 32,
-                    background:
-                      'linear-gradient(to top, var(--background) 0, transparent 100%)',
-                    pointerEvents: 'none',
-                    zIndex: 0,
-                  }}
-                />
-              )}
-
-              {/* Bottom half anchor — explicit height (mirror of top). */}
-              <div
-                className="absolute"
-                style={{
-                  bottom: 0,
-                  left: 0,
-                  right: 0,
-                  height: `calc(${(1 - children!.ratio) * 100}% - var(--pod-gap) / 2)`,
-                  pointerEvents: bottomSlot ? 'auto' : 'none',
-                  overflow: 'hidden',
-                }}
-                onMouseDown={bottomSlot ? () => onFocusHalf?.("bottom") : undefined}
-                data-panel-side={side}
-                data-panel-id={bottomPanelId}
-                data-panel-half="bottom"
-                data-dock-slot={bottomSlot ? bottomKey : undefined}
-              >
-                {bottomSlot ? children!.bottom.overlay : null}
-              </div>
+              ))}
             </div>
           </div>
-        </div>
-      ) : (
-        <div
-          className={`relative flex-1 min-w-0 panel-container ${(isChromeless(topPanelId) && !fullSlot) || fullSlot ? "" : "overflow-hidden"} ${side === "left" ? "order-1" : "order-3"}`}
-          style={(() => {
-            // Three cases:
-            // 1. Chromeless + empty slot: no styling (canvas/strip only).
-            // 2. Empty slot, non-chromeless: full-pod styling (omni view).
-            // 3. Occupied slot: panel container provides its own pod
-            //    styling, so the slot is just a positioning anchor —
-            //    no bg/border/radius/shadow here, only sticky + sizing.
-            if (isChromeless(topPanelId) && !fullSlot) return undefined;
-            const occupied = !!fullSlot;
-            return {
-              ...(occupied
-                ? {}
-                : {
-                    background: 'var(--pod-panel)',
-                    borderRadius: podRadius,
-                    border: 'var(--panel-border)',
-                    boxShadow: 'var(--pod-shadow-light)',
-                  }),
-              position: 'sticky' as const,
-              top: extendsOverToolbar ? 'var(--pod-gap)' : 64,
-              alignSelf: 'flex-start' as const,
-              ...dockSizingStyle(fullSlot),
-              // Lift the dock above the column's bottom-fade strip
-              // (z-20) so the fade doesn't darken the pod's bottom.
-              zIndex: fullSlot ? 30 : undefined,
-            };
-          })()}
-          data-panel-side={side}
-          data-panel-id={topPanelId}
-          data-dock-slot={fullSlot ? fullKey : undefined}
-        >
-          {renderSlot(children as PanelSlot, !!fullSlot)}
         </div>
       )}
       {tail && (
@@ -559,5 +416,73 @@ export function PanelColumn({
       </div>
       <ColumnEdgeFade side={side} edge="bottom" />
     </div>
+  );
+}
+
+/** One band in the stack: an optional divider above it (when it follows
+ *  another band) then the band anchor itself. The anchor is an empty
+ *  portal target — FloatingPanel docks its content here. */
+function BandFragment({
+  side,
+  band,
+  index,
+  prevId,
+  isLast,
+  frameRef,
+  onTradeHeight,
+  onResizeBottomEdge,
+  onFocusBand,
+}: {
+  side: "left" | "right";
+  band: BandSpec;
+  index: number;
+  prevId: PanelId | null;
+  isLast: boolean;
+  frameRef: React.RefObject<HTMLDivElement | null>;
+  onTradeHeight: (aboveId: PanelId, aboveH: number, belowId: PanelId, belowH: number) => void;
+  onResizeBottomEdge: (id: PanelId, px: number) => void;
+  onFocusBand: (id: PanelId) => void;
+}) {
+  return (
+    <>
+      {/* Divider between this band and the one above (trades heights). */}
+      {prevId != null && (
+        <BandDivider
+          side={side}
+          aboveId={prevId}
+          belowId={band.id}
+          onTradeHeight={onTradeHeight}
+          containerRef={frameRef}
+        />
+      )}
+      {/* Band anchor — empty; the panel content portals in via
+          FloatingPanel keyed on data-dock-slot. minHeight:0 so a tall
+          band flex-shrinks (its internal PANEL.list scrolls) instead of
+          overflowing the frame; content-sized bands use flex auto. */}
+      <div
+        data-panel-side={side}
+        data-panel-id={band.id}
+        data-dock-slot={bandSlotKey(side, index)}
+        style={{
+          position: 'relative',
+          pointerEvents: 'auto',
+          overflow: 'hidden',
+          minHeight: 0,
+          flex: band.height != null ? `0 0 ${band.height}px` : '0 1 auto',
+          // A tall content-driven band caps at its flex box; its internal
+          // PANEL.list overflow-y-auto then scrolls.
+          ['--dock-slot-frame-h' as string]: '100%',
+        }}
+        onMouseDown={() => onFocusBand(band.id)}
+      >
+        {isLast && (
+          <BottomEdgeHandle
+            bottomId={band.id}
+            frameRef={frameRef}
+            onResize={onResizeBottomEdge}
+          />
+        )}
+      </div>
+    </>
   );
 }

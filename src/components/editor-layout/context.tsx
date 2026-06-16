@@ -29,13 +29,9 @@ import type { PanelId, Side, Half, ViewPrefs } from "@/hooks/useViewPrefs";
 // when an extracted submodule needs to *read* them.
 // ---------------------------------------------------------------------------
 export interface EditorLayoutState {
-  /** Panel placement preferences: which panel is active on each side/half,
-   *  plus widths, split ratios, float positions. */
+  /** Panel placement preferences: the per-side dock stack, widths, band
+   *  heights, float positions. */
   prefs: ViewPrefs;
-  /** Which half of a left-side split is currently focused. */
-  focusedHalfLeft: Half;
-  /** Which half of a right-side split is currently focused. */
-  focusedHalfRight: Half;
 }
 
 // ---------------------------------------------------------------------------
@@ -47,8 +43,6 @@ export interface EditorLayoutActions {
   togglePanel: (id: PanelId) => void;
   /** Move a panel to a side (optionally at a specific index in the strip). */
   movePanel: (id: PanelId, side: Side, index?: number) => void;
-  /** Set which panel occupies a half of a split side. */
-  setActiveHalf: (side: Side, half: Half, id: PanelId) => void;
 }
 
 const EditorLayoutStateCtx = createContext<EditorLayoutState | null>(null);

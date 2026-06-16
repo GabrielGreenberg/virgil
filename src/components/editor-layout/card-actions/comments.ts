@@ -1,5 +1,6 @@
 import { useCallback, type Dispatch, type MutableRefObject, type RefObject, type SetStateAction } from "react";
 import type { PanelId, ViewPrefs } from "@/hooks/useViewPrefs";
+import { isPanelDocked } from "@/hooks/view-prefs-derived";
 import type { EditorHandle } from "../../Editor";
 import { createLinkedAnchor } from "@/links/links";
 
@@ -48,13 +49,13 @@ export function useCommentActions(deps: {
     pendingRevisionAnchorIdRef.current = record?.anchorId ?? null;
     setPendingCommentText(selectedText);
     try { window.getSelection()?.removeAllRanges(); } catch { /* ignore */ }
+    // Idempotence guard: skip the opener when revisions is already docked on its
+    // side (avoids a spurious openPanel + dock-MRU churn).
+    if (isPanelDocked(prefs, "revisions")) return;
     const revPlacement = prefs.placements.find((p) => p.id === "revisions");
-    if (revPlacement?.side === "left") {
-      if (prefs.activeLeft !== "revisions") setActiveLeft("revisions");
-    } else {
-      if (prefs.activeRight !== "revisions") setActiveRight("revisions");
-    }
-  }, [editorRef, pendingRevisionAnchorIdRef, setPendingCommentText, prefs.placements, prefs.activeLeft, prefs.activeRight, setActiveLeft, setActiveRight]);
+    if (revPlacement?.side === "left") setActiveLeft("revisions");
+    else setActiveRight("revisions");
+  }, [editorRef, pendingRevisionAnchorIdRef, setPendingCommentText, prefs, setActiveLeft, setActiveRight]);
 
   return { handleAddComment };
 }

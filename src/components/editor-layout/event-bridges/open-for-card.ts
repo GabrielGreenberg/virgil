@@ -1,4 +1,5 @@
-import type { PanelId, Side, Half, ViewPrefs } from "@/hooks/useViewPrefs";
+import type { PanelId, Side, ViewPrefs } from "@/hooks/useViewPrefs";
+import { dockedSideOf } from "@/hooks/view-prefs-derived";
 import type { CardKind, PanelKind } from "@/panels/_shared/types";
 import type { OmniCategory } from "@/panels/Omni";
 import { PANEL_REGISTRY } from "@/panels/panel-registry";
@@ -25,15 +26,8 @@ export interface OpenForCardDeps {
   prefs: ViewPrefs;
   setActiveLeft: (id: PanelId) => void;
   setActiveRight: (id: PanelId) => void;
-  setActiveHalf: (side: Side, half: Half, id: PanelId) => void;
   tryScrollOmniEntry: (key: string, targetY?: number) => boolean;
   getOmniEnabled: (side: "left" | "right") => Set<OmniCategory>;
-}
-
-export interface SplitSource {
-  side: Side;
-  panelId: PanelId;
-  half: Half | undefined;
 }
 
 export interface OpenForCardArgs {
@@ -48,8 +42,6 @@ export interface OpenForCardArgs {
   cardKind: CardKind;
   /** Optional viewport Y to align the card to (citations). */
   targetY?: number;
-  /** Optional split-aware routing source (citations). */
-  splitSource?: SplitSource;
   /** When true, skip all scroll-into-view / align calls. Used by callers
    *  that handle alignment some other way (e.g. citation clicks set an
    *  anchor override that pulls the card to the click without scrolling
@@ -71,12 +63,11 @@ function scrollAfterMount(selector: string, targetY?: number) {
 }
 
 export function openForCard(args: OpenForCardArgs, deps: OpenForCardDeps): void {
-  const { omniKey, entrySelector, panelId, targetY, splitSource, skipScroll } = args;
+  const { omniKey, entrySelector, panelId, targetY, skipScroll } = args;
   const {
     prefs,
     setActiveLeft,
     setActiveRight,
-    setActiveHalf,
     tryScrollOmniEntry,
     getOmniEnabled,
   } = deps;
@@ -95,8 +86,7 @@ export function openForCard(args: OpenForCardArgs, deps: OpenForCardDeps): void 
   const registry = PANEL_REGISTRY[panelId as keyof typeof PANEL_REGISTRY];
   const fallbackSide: Side = registry?.defaultStripSide ?? "left";
   const homeSide = resolveHomeSide(prefs, panelId, fallbackSide);
-  const isActive =
-    homeSide === "left" ? prefs.activeLeft === panelId : prefs.activeRight === panelId;
+  const isActive = dockedSideOf(prefs, panelId) === homeSide;
 
   // Rule 2: Native panel already open on home side → just scroll.
   if (isActive) {
@@ -111,32 +101,11 @@ export function openForCard(args: OpenForCardArgs, deps: OpenForCardDeps): void 
     !!registry?.omniEligible && getOmniEnabled(homeSide).has(panelId as PanelKind);
   const target: PanelId = omniWillShow ? "omni" : panelId;
 
-  // Citation-style split-aware routing: when the click originates inside
-  // a same-side panel and that side isn't already split, open target as a
-  // split so the source panel stays visible. Only applied for native
-  // fallback AND Omni open, since in both cases the target panel differs
-  // from the source.
-  const applySplit =
-    splitSource &&
-    splitSource.panelId !== target &&
-    splitSource.side === homeSide;
-
-  if (applySplit && splitSource) {
-    const isSplit =
-      homeSide === "left"
-        ? prefs.activeLeftBottom != null
-        : prefs.activeRightBottom != null;
-    if (!isSplit) {
-      setActiveHalf(homeSide, "top", splitSource.panelId);
-      setActiveHalf(homeSide, "bottom", target);
-    } else {
-      const oppHalf: Half = splitSource.half === "bottom" ? "top" : "bottom";
-      setActiveHalf(homeSide, oppHalf, target);
-    }
-  } else {
-    if (homeSide === "left") setActiveLeft(target);
-    else setActiveRight(target);
-  }
+  // Band-stack model: no halves — just open the target on its home side.
+  // Omni is always the background, so the source panel stays visible behind
+  // (or alongside in the band stack); there's no split to arrange.
+  if (homeSide === "left") setActiveLeft(target);
+  else setActiveRight(target);
 
   // Scroll: prefer the Omni entry (if we just opened Omni), else the
   // native entry. We do both queries in the rAF because by then whichever

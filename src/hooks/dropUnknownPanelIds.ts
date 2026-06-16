@@ -98,3 +98,40 @@ export function filterPrintPanels(panels: unknown): Record<string, boolean> {
   }
   return out;
 }
+
+/**
+ * Sanitize a per-side dock stack (the ordered list of docked panel ids).
+ * Drops the omni/blank layout sentinels, unknown ids (not live
+ * PANEL_REGISTRY keys), within-side duplicates, and any id already docked
+ * on the other side (a panel can be docked at most once). Truncates each
+ * side to `max` (the stack ceiling). Order-preserving; malformed input →
+ * empty sides. Returned as `string[]`s so this module stays free of the
+ * PanelId type (no import cycle with useViewPrefs); the caller casts.
+ */
+export function clampStack(
+  stack: unknown,
+  max = 3,
+): { left: string[]; right: string[] } {
+  const src = (stack && typeof stack === "object" ? stack : {}) as {
+    left?: unknown;
+    right?: unknown;
+  };
+  const clean = (arr: unknown, exclude: ReadonlySet<string>): string[] => {
+    if (!Array.isArray(arr)) return [];
+    const out: string[] = [];
+    const seen = new Set<string>();
+    for (const x of arr) {
+      if (typeof x !== "string") continue;
+      if (x === "omni" || x === "blank") continue;
+      if (!PLACEMENT_ID_ALLOWLIST.has(x)) continue;
+      if (seen.has(x) || exclude.has(x)) continue;
+      seen.add(x);
+      out.push(x);
+      if (out.length >= max) break;
+    }
+    return out;
+  };
+  const left = clean(src.left, new Set<string>());
+  const right = clean(src.right, new Set(left));
+  return { left, right };
+}

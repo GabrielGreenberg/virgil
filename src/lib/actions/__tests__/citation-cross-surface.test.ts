@@ -143,15 +143,28 @@ function citationAtoms(editor: Editor): Array<{
 let createCitation: ReturnType<typeof vi.fn>;
 let setActiveLeft: ReturnType<typeof vi.fn>;
 let setActiveRight: ReturnType<typeof vi.fn>;
+let expandLeft: ReturnType<typeof vi.fn>;
+let expandRight: ReturnType<typeof vi.fn>;
+let clearBlankIfSet: ReturnType<typeof vi.fn>;
 let focusCard: ReturnType<typeof vi.fn>;
 
-/** A prefs object with the citations panel docked on `side`, and that side's
- *  active panel set to `active` (null/blank ⇒ soft-route surfaces omni). */
-function prefsWith(side: "left" | "right", active: string | null): ViewPrefs {
+/** A prefs object with the citations panel docked on `side`, in one of three
+ *  visibility states for that side (backlog #2 band-stack model):
+ *   - "collapsed" ⇒ the column is folded away; soft-route un-collapses it.
+ *   - "blank"     ⇒ the "show nothing" overlay is set; soft-route clears it.
+ *   - "shown"     ⇒ omni is already visible behind any docked bands; no-op.
+ *  The OTHER side is always "shown" so a soft-route never touches it. */
+function prefsWith(
+  side: "left" | "right",
+  state: "collapsed" | "blank" | "shown",
+): ViewPrefs {
   return {
     placements: [{ id: "citations", side }],
-    activeLeft: side === "left" ? active : "notes",
-    activeRight: side === "right" ? active : "notes",
+    dockStack: { left: [], right: [] },
+    collapsedLeft: side === "left" && state === "collapsed",
+    collapsedRight: side === "right" && state === "collapsed",
+    blankLeft: side === "left" && state === "blank",
+    blankRight: side === "right" && state === "blank",
   } as unknown as ViewPrefs;
 }
 
@@ -181,6 +194,9 @@ function publishHandle(editor: Editor, prefs: ViewPrefs): void {
           prefs,
           setActiveLeft: setActiveLeft as (id: unknown) => void,
           setActiveRight: setActiveRight as (id: unknown) => void,
+          expandLeft: expandLeft as () => void,
+          expandRight: expandRight as () => void,
+          clearBlankIfSet: clearBlankIfSet as () => void,
           focusCard: focusCard as (key: string) => void,
         } as unknown as ActionContext["panelRouting"],
       };
@@ -218,6 +234,9 @@ beforeEach(() => {
   }));
   setActiveLeft = vi.fn();
   setActiveRight = vi.fn();
+  expandLeft = vi.fn();
+  expandRight = vi.fn();
+  clearBlankIfSet = vi.fn();
   focusCard = vi.fn();
 });
 
@@ -234,7 +253,7 @@ afterEach(() => {
 describe("slash \\cite", () => {
   it("inserts the \\cite{} atom AND registers an anchored card via the bridge", () => {
     const editor = mountEditor("");
-    publishHandle(editor, prefsWith("right", null));
+    publishHandle(editor, prefsWith("right", "shown"));
 
     COMMAND_MAP.get("cite")!.action(editor.view, "\\cite");
 
@@ -267,7 +286,7 @@ describe("typed \\cite{key} (full)", () => {
     // Paragraph already holds "\cite{smith" with the caret at the end; typing
     // the closing "}" completes CITE_RE_FULL.
     const editor = mountEditor("\\cite{smith}".slice(0, -1)); // "\cite{smith"
-    publishHandle(editor, prefsWith("right", null));
+    publishHandle(editor, prefsWith("right", "shown"));
 
     const handled = typeChar(editor, "}");
     expect(handled).toBe(true);
@@ -297,7 +316,7 @@ describe("typed \\cite{key} (full)", () => {
 describe("typed \\cite  (bare)", () => {
   it("inserts an empty \\cite{} atom AND registers a card", () => {
     const editor = mountEditor("\\cite"); // caret after "\cite"; type a space
-    publishHandle(editor, prefsWith("right", null));
+    publishHandle(editor, prefsWith("right", "shown"));
 
     const handled = typeChar(editor, " ");
     expect(handled).toBe(true);
@@ -381,7 +400,7 @@ describe("cross-surface consistency", () => {
   it("slash and bare-typed produce the SAME atom + createCitation shape", () => {
     // slash
     const e1 = mountEditor("");
-    publishHandle(e1, prefsWith("right", null));
+    publishHandle(e1, prefsWith("right", "shown"));
     COMMAND_MAP.get("cite")!.action(e1.view, "\\cite");
     const slashAtom = citationAtoms(e1)[0];
     const slashCall = createCitation.mock.calls[0][0];
@@ -389,7 +408,7 @@ describe("cross-surface consistency", () => {
     // reset spies + DOM, then bare-typed
     createCitation.mockClear();
     const e2 = mountEditor("\\cite");
-    publishHandle(e2, prefsWith("right", null));
+    publishHandle(e2, prefsWith("right", "shown"));
     typeChar(e2, " ");
     const typedAtom = citationAtoms(e2)[0];
     const typedCall = createCitation.mock.calls[0][0];
@@ -405,8 +424,11 @@ describe("cross-surface consistency", () => {
 });
 
 // ---------------------------------------------------------------------------
-// (7) backlog #2 soft-route — surface OMNI only when the citations side is
-//     collapsed/blank; never clobber a panel that covers omni.
+// (7) backlog #2 soft-route — in the band-stack model omni is the always-on
+//     background, so `setActiveX("omni")` is gone. The soft-route REVEALS omni
+//     only when the citations side is HIDDEN: un-collapse a collapsed side, or
+//     un-blank a blanked side. An already-shown side is a no-op (omni's already
+//     behind any docked bands), and the OTHER side is never touched.
 // ---------------------------------------------------------------------------
 
 describe("soft-route into omni (backlog #2)", () => {
@@ -416,26 +438,31 @@ describe("soft-route into omni (backlog #2)", () => {
     COMMAND_MAP.get("cite")!.action(editor.view, "\\cite");
   }
 
-  it("surfaces OMNI on the right when the citations (right) side is collapsed (null)", () => {
-    runSlash(prefsWith("right", null));
-    expect(setActiveRight).toHaveBeenCalledWith("omni");
-    expect(setActiveLeft).not.toHaveBeenCalled();
+  it("un-collapses the RIGHT side when the citations (right) side is collapsed", () => {
+    runSlash(prefsWith("right", "collapsed"));
+    expect(expandRight).toHaveBeenCalledTimes(1);
+    expect(expandLeft).not.toHaveBeenCalled();
+    expect(clearBlankIfSet).not.toHaveBeenCalled();
   });
 
-  it("surfaces OMNI when the citations side is blank", () => {
+  it("clears the blank when the citations side is blank", () => {
     runSlash(prefsWith("right", "blank"));
-    expect(setActiveRight).toHaveBeenCalledWith("omni");
+    expect(clearBlankIfSet).toHaveBeenCalledTimes(1);
+    expect(expandLeft).not.toHaveBeenCalled();
+    expect(expandRight).not.toHaveBeenCalled();
   });
 
-  it("leaves the side ALONE when another panel already covers omni", () => {
-    runSlash(prefsWith("right", "todo"));
-    expect(setActiveRight).not.toHaveBeenCalled();
-    expect(setActiveLeft).not.toHaveBeenCalled();
+  it("leaves the side ALONE when it's already shown (omni already behind any bands)", () => {
+    runSlash(prefsWith("right", "shown"));
+    expect(expandLeft).not.toHaveBeenCalled();
+    expect(expandRight).not.toHaveBeenCalled();
+    expect(clearBlankIfSet).not.toHaveBeenCalled();
   });
 
   it("respects a LEFT dock placement for the citations panel", () => {
-    runSlash(prefsWith("left", null));
-    expect(setActiveLeft).toHaveBeenCalledWith("omni");
-    expect(setActiveRight).not.toHaveBeenCalled();
+    runSlash(prefsWith("left", "collapsed"));
+    expect(expandLeft).toHaveBeenCalledTimes(1);
+    expect(expandRight).not.toHaveBeenCalled();
+    expect(clearBlankIfSet).not.toHaveBeenCalled();
   });
 });

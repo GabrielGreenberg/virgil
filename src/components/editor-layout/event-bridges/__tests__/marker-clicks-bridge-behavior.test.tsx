@@ -225,7 +225,12 @@ describe("error bridge (virgil-error-marker-click)", () => {
   });
 
   it("selected:true is idempotent when the errors panel is already active on its side", () => {
-    const deps = makeDeps({ activeRight: "errors" } as unknown as Partial<ViewPrefs>);
+    // New band-stack model: "already active on its side" = errors is docked in
+    // that side's stack (the retired `activeRight` field is gone), so the
+    // `isPanelDocked` guard short-circuits before calling the opener.
+    const deps = makeDeps({
+      dockStack: { left: [], right: ["errors"] },
+    } as unknown as Partial<ViewPrefs>);
     mountBridges(deps);
     dispatch("virgil-error-marker-click", { errorId: "e1", selected: true });
 

@@ -142,15 +142,28 @@ function footnoteAtoms(editor: Editor): Array<{ footnoteId: string }> {
 let createFootnote: ReturnType<typeof vi.fn>;
 let setActiveLeft: ReturnType<typeof vi.fn>;
 let setActiveRight: ReturnType<typeof vi.fn>;
+let expandLeft: ReturnType<typeof vi.fn>;
+let expandRight: ReturnType<typeof vi.fn>;
+let clearBlankIfSet: ReturnType<typeof vi.fn>;
 let focusCard: ReturnType<typeof vi.fn>;
 
-/** A prefs object with the footnotes panel docked on `side`, that side's active
- *  panel = `active` (null/blank ⇒ soft-route surfaces omni). */
-function prefsWith(side: "left" | "right", active: string | null): ViewPrefs {
+/** A prefs object with the footnotes panel docked on `side`, in one of three
+ *  visibility states for that side (backlog #2 band-stack model):
+ *   - "collapsed" ⇒ the column is folded away; soft-route un-collapses it.
+ *   - "blank"     ⇒ the "show nothing" overlay is set; soft-route clears it.
+ *   - "shown"     ⇒ omni is already visible behind any docked bands; no-op.
+ *  The OTHER side is always "shown" so a soft-route never touches it. */
+function prefsWith(
+  side: "left" | "right",
+  state: "collapsed" | "blank" | "shown",
+): ViewPrefs {
   return {
     placements: [{ id: "footnotes", side }],
-    activeLeft: side === "left" ? active : "notes",
-    activeRight: side === "right" ? active : "notes",
+    dockStack: { left: [], right: [] },
+    collapsedLeft: side === "left" && state === "collapsed",
+    collapsedRight: side === "right" && state === "collapsed",
+    blankLeft: side === "left" && state === "blank",
+    blankRight: side === "right" && state === "blank",
   } as unknown as ViewPrefs;
 }
 
@@ -178,6 +191,9 @@ function publishHandle(editor: Editor, prefs: ViewPrefs): void {
           prefs,
           setActiveLeft: setActiveLeft as (id: unknown) => void,
           setActiveRight: setActiveRight as (id: unknown) => void,
+          expandLeft: expandLeft as () => void,
+          expandRight: expandRight as () => void,
+          clearBlankIfSet: clearBlankIfSet as () => void,
           focusCard: focusCard as (key: string) => void,
         } as unknown as ActionContext["panelRouting"],
       };
@@ -210,6 +226,9 @@ beforeEach(() => {
   }));
   setActiveLeft = vi.fn();
   setActiveRight = vi.fn();
+  expandLeft = vi.fn();
+  expandRight = vi.fn();
+  clearBlankIfSet = vi.fn();
   focusCard = vi.fn();
 });
 
@@ -226,7 +245,7 @@ afterEach(() => {
 describe("slash \\footnote", () => {
   it("inserts EXACTLY ONE footnote atom AND adopts it via the bridge (pristine)", () => {
     const editor = mountEditor("");
-    publishHandle(editor, prefsWith("left", null));
+    publishHandle(editor, prefsWith("left", "shown"));
 
     COMMAND_MAP.get("footnote")!.action(editor.view, "\\footnote");
 
@@ -257,7 +276,7 @@ describe("typed \\footnote{body} (with content)", () => {
   it("inserts ONE atom AND registers a NON-pristine card (body must not be reaped)", () => {
     // Paragraph holds "\footnote{hello" with caret at end; typing "}" completes.
     const editor = mountEditor("\\footnote{hello}".slice(0, -1)); // "\footnote{hello"
-    publishHandle(editor, prefsWith("left", null));
+    publishHandle(editor, prefsWith("left", "shown"));
 
     const handled = typeChar(editor, "}");
     expect(handled).toBe(true);
@@ -283,7 +302,7 @@ describe("typed \\footnote{body} (with content)", () => {
 describe("typed \\footnote{} (empty)", () => {
   it("inserts ONE atom AND registers a PRISTINE card (blank → discardable)", () => {
     const editor = mountEditor("\\footnote{}".slice(0, -1)); // "\footnote{"
-    publishHandle(editor, prefsWith("left", null));
+    publishHandle(editor, prefsWith("left", "shown"));
 
     const handled = typeChar(editor, "}");
     expect(handled).toBe(true);
@@ -360,7 +379,7 @@ describe("atom lands even when the card host is unmounted", () => {
 describe("no double-insert", () => {
   it("createFootnote is called with existingFootnoteId (adopt — never re-inserts)", () => {
     const editor = mountEditor("");
-    publishHandle(editor, prefsWith("left", null));
+    publishHandle(editor, prefsWith("left", "shown"));
     COMMAND_MAP.get("footnote")!.action(editor.view, "\\footnote");
 
     expect(footnoteAtoms(editor)).toHaveLength(1);
@@ -373,9 +392,12 @@ describe("no double-insert", () => {
 });
 
 // ---------------------------------------------------------------------------
-// (7) backlog #2 soft-route — surface OMNI only when the footnotes side is
-//     collapsed/blank; never clobber a panel that covers omni; never
-//     force-open the dedicated Footnotes panel.
+// (7) backlog #2 soft-route — in the band-stack model omni is the always-on
+//     background, so `setActiveX("omni")` is gone. The soft-route REVEALS omni
+//     only when the footnotes side is HIDDEN: un-collapse a collapsed side, or
+//     un-blank a blanked side. An already-shown side is a no-op (omni's already
+//     behind any docked bands), the OTHER side is never touched, and the
+//     dedicated Footnotes panel is never force-opened.
 // ---------------------------------------------------------------------------
 
 describe("soft-route into omni (backlog #2)", () => {
@@ -385,31 +407,36 @@ describe("soft-route into omni (backlog #2)", () => {
     COMMAND_MAP.get("footnote")!.action(editor.view, "\\footnote");
   }
 
-  it("surfaces OMNI on the left when the footnotes (left) side is collapsed (null)", () => {
-    runSlash(prefsWith("left", null));
-    expect(setActiveLeft).toHaveBeenCalledWith("omni");
-    expect(setActiveRight).not.toHaveBeenCalled();
+  it("un-collapses the LEFT side when the footnotes (left) side is collapsed", () => {
+    runSlash(prefsWith("left", "collapsed"));
+    expect(expandLeft).toHaveBeenCalledTimes(1);
+    expect(expandRight).not.toHaveBeenCalled();
+    expect(clearBlankIfSet).not.toHaveBeenCalled();
   });
 
-  it("surfaces OMNI when the footnotes side is blank", () => {
+  it("clears the blank when the footnotes side is blank", () => {
     runSlash(prefsWith("left", "blank"));
-    expect(setActiveLeft).toHaveBeenCalledWith("omni");
+    expect(clearBlankIfSet).toHaveBeenCalledTimes(1);
+    expect(expandLeft).not.toHaveBeenCalled();
+    expect(expandRight).not.toHaveBeenCalled();
   });
 
-  it("leaves the side ALONE when another panel already covers omni", () => {
-    runSlash(prefsWith("left", "todo"));
-    expect(setActiveLeft).not.toHaveBeenCalled();
-    expect(setActiveRight).not.toHaveBeenCalled();
+  it("leaves the side ALONE when it's already shown (omni already behind any bands)", () => {
+    runSlash(prefsWith("left", "shown"));
+    expect(expandLeft).not.toHaveBeenCalled();
+    expect(expandRight).not.toHaveBeenCalled();
+    expect(clearBlankIfSet).not.toHaveBeenCalled();
   });
 
   it("respects a RIGHT dock placement for the footnotes panel", () => {
-    runSlash(prefsWith("right", null));
-    expect(setActiveRight).toHaveBeenCalledWith("omni");
-    expect(setActiveLeft).not.toHaveBeenCalled();
+    runSlash(prefsWith("right", "collapsed"));
+    expect(expandRight).toHaveBeenCalledTimes(1);
+    expect(expandLeft).not.toHaveBeenCalled();
+    expect(clearBlankIfSet).not.toHaveBeenCalled();
   });
 
   it("never force-opens the dedicated Footnotes panel", () => {
-    runSlash(prefsWith("left", null));
+    runSlash(prefsWith("left", "collapsed"));
     expect(setActiveLeft).not.toHaveBeenCalledWith("footnotes");
     expect(setActiveRight).not.toHaveBeenCalledWith("footnotes");
   });
@@ -427,11 +454,11 @@ describe("virgil-footnote-created is retired (zero emitters)", () => {
     window.addEventListener("virgil-footnote-created", spy);
     try {
       const e1 = mountEditor("");
-      publishHandle(e1, prefsWith("left", null));
+      publishHandle(e1, prefsWith("left", "shown"));
       COMMAND_MAP.get("footnote")!.action(e1.view, "\\footnote");
 
       const e2 = mountEditor("\\footnote{}".slice(0, -1));
-      publishHandle(e2, prefsWith("left", null));
+      publishHandle(e2, prefsWith("left", "shown"));
       typeChar(e2, "}");
 
       expect(spy).not.toHaveBeenCalled();

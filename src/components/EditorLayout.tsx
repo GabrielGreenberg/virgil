@@ -101,18 +101,13 @@ import {
   deriveCategorySides,
   OmniFilterMenu,
 } from "@/panels/Omni";
-import { useViewPrefs, PanelId, Side, Half, ALL_HIGHLIGHT_TYPES, HighlightType, type DockSlotKey } from "@/hooks/useViewPrefs";
+import { useViewPrefs, PanelId, Side, ALL_HIGHLIGHT_TYPES, HighlightType, dockedSideOf, isPanelDocked } from "@/hooks/useViewPrefs";
 import { useLinkHighlight } from "@/links/_shared/useLinkHighlight";
 import { entityToAnchorId } from "@/links/_shared/entity-hover";
 import { PanelChromeProvider } from "./panel-primitives";
 import FloatingPanel from "./FloatingPanel";
 import { DockOutline } from "./editor-layout/DockOutline";
 import { CardLiftOutline } from "./CardLiftOutline";
-import {
-  findDockTargetAtPoint,
-  setDockDragTarget,
-  getDockDragTarget,
-} from "./editor-layout/dock-drag";
 import {
   FLOATING_PANEL_WIDTH,
   FLOATING_PANEL_HEIGHT,
@@ -686,9 +681,10 @@ export default function EditorLayout() {
     clearBlankIfSet,
     setActiveLeft,
     setActiveRight,
-    setActiveHalf,
-    toggleSplit,
-    setSplitRatio,
+    setPanelHeight,
+    clearPanelHeight,
+    tradePanelHeights,
+    notePanelUse,
     setEditorSplit,
     setEditorSplitRatio,
     setCodePaneRatio,
@@ -727,49 +723,6 @@ export default function EditorLayout() {
   const editorSplit = prefs.editorSplit;
   const editorSplitRatio = prefs.editorSplitRatio;
 
-  // Which half (top or bottom) is currently focused on each side. Used to
-  // route strip-icon clicks when the side is split. Session-only state.
-  const [focusedHalfLeft, setFocusedHalfLeft] = useState<Half>("top");
-  const [focusedHalfRight, setFocusedHalfRight] = useState<Half>("top");
-
-  // Transient dock-zone flash on split toggle. Splitting a side doesn't
-  // visually change the column when no panels are docked; this brief
-  // outline pulse communicates *where* the two dock zones live so the
-  // toggle isn't silent. Reuses the DockOutline machinery (primary +
-  // companion rects with WAAPI fade) for a ~720ms pulse.
-  const prevSplitLeftRef = useRef(prefs.activeLeftBottom != null);
-  const prevSplitRightRef = useRef(prefs.activeRightBottom != null);
-  useEffect(() => {
-    const isSplitLeft = prefs.activeLeftBottom != null;
-    const isSplitRight = prefs.activeRightBottom != null;
-    const flash = (side: Side) => {
-      const col = document.querySelector<HTMLElement>(
-        `[data-panel-column-side="${side}"]`,
-      );
-      if (!col) return;
-      const r = col.getBoundingClientRect();
-      const splitState = { left: isSplitLeft, right: isSplitRight };
-      const target = findDockTargetAtPoint(
-        r.left + r.width / 2,
-        r.top + r.height * 0.25,
-        splitState,
-      );
-      if (!target) return;
-      setDockDragTarget(target);
-      window.setTimeout(() => {
-        const cur = getDockDragTarget();
-        // Only clear if the flash is still the active target — if a
-        // drag started in the meantime its mousemove already overwrote.
-        if (cur && cur.slotKey === target.slotKey && !cur.companionRect === !target.companionRect) {
-          setDockDragTarget(null);
-        }
-      }, 720);
-    };
-    if (isSplitLeft && !prevSplitLeftRef.current) flash("left");
-    if (isSplitRight && !prevSplitRightRef.current) flash("right");
-    prevSplitLeftRef.current = isSplitLeft;
-    prevSplitRightRef.current = isSplitRight;
-  }, [prefs.activeLeftBottom, prefs.activeRightBottom]);
   // Which pane last received focus — used to route panel interactions
   // (outline clicks, note jumps, etc.) to the pane the user is in.
   const [activeSplitPane, setActiveSplitPane] = useState<"top" | "bottom">("top");
@@ -1072,15 +1025,20 @@ export default function EditorLayout() {
           if (Math.abs(rendered - zenRightMargin) > 0.5) setZenRightMargin(rendered);
         }
       } else {
-        const active = side === 'left' ? prefs.activeLeft : prefs.activeRight;
-        if (active == null) return;
-        const currentPref = getPanelWidth(side, active);
+        // Column width is keyed by side now (panelWidths[`${side}`]), not by
+        // the docked panel — so persist whenever the side isn't collapsed.
+        // The omni desktop always backs a non-collapsed side, so an empty
+        // stack still has a meaningful rendered width to capture. The id arg
+        // to get/setPanelWidth is ignored (side-keyed); pass a stable token.
+        const collapsed = side === 'left' ? prefs.collapsedLeft : prefs.collapsedRight;
+        if (collapsed) return;
+        const currentPref = getPanelWidth(side, "omni");
         if (Math.abs(rendered - currentPref) > 0.5) {
-          setPanelWidth(side, active, rendered);
+          setPanelWidth(side, "omni", rendered);
         }
       }
     });
-  }, [zenModeOn, zenLeftMargin, zenRightMargin, setZenLeftMargin, setZenRightMargin, prefs.activeLeft, prefs.activeRight, setPanelWidth, getPanelWidth]);
+  }, [zenModeOn, zenLeftMargin, zenRightMargin, setZenLeftMargin, setZenRightMargin, prefs.collapsedLeft, prefs.collapsedRight, setPanelWidth, getPanelWidth]);
 
   // The editor-basis recompute, panel-min-height observer, MenuBar
   // home-position style, and zen-margin-snapshot toggle that used
@@ -1270,8 +1228,11 @@ export default function EditorLayout() {
   const [searchHighlightRange, setSearchHighlightRange] = useState<{ from: number; to: number } | null>(null);
   const [searchState, setSearchState] = useState<SearchPanelState>(INITIAL_SEARCH_STATE);
 
-  /** SearchPanel dispatches selection + opens the target panel (auto-splits
-   *  the search side when target is on the same side). */
+  /** SearchPanel dispatches selection + opens the target panel. In the
+   *  band-stack model both `search` and the target band coexist in their
+   *  side's stack (auto-arranged top→bottom), so we just dock both — no
+   *  split halves. When they share a side they stack together; the stack
+   *  evicts its LRU band if it's already full. */
   const openItemInPanel = useCallback((panel: PanelId, itemId: string) => {
     switch (panel) {
       case "footnotes": setSelectedFootnoteId(itemId); break;
@@ -1290,12 +1251,12 @@ export default function EditorLayout() {
     const targetSide = p.placements.find((x) => x.id === panel)?.side ?? searchSide;
 
     if (targetSide === searchSide) {
-      setActiveHalf(searchSide, "top", "search");
-      setActiveHalf(searchSide, "bottom", panel);
+      openPanelDocked("search", searchSide);
+      openPanelDocked(panel, searchSide);
     } else {
-      setActiveHalf(targetSide, "top", panel);
+      openPanelDocked(panel, targetSide);
     }
-  }, [setActiveHalf]);
+  }, [openPanelDocked]);
 
   // Omni-view category prefs + per-side hide-all toggle — sourced from
   // ViewPrefs (global, cross-window, promotable). The toggles arrive as
@@ -2545,7 +2506,6 @@ export default function EditorLayout() {
     prefsRef,
     setActiveLeft,
     setActiveRight,
-    setActiveHalf,
     tryScrollOmniEntry,
     getOmniEnabled,
     setSelectedFootnoteId,
@@ -2778,21 +2738,20 @@ export default function EditorLayout() {
 
   const editorPaneViewPrefs: EditorPaneViewPrefs = useMemo(() => ({
     prefs,
-    focusedHalfLeft,
-    focusedHalfRight,
     isResizingPanels,
     focusState: focusMode.state,
     activeSectionPath: currentSectionPath,
     activeParTitleIndex: currentParTitleIndex,
     mirrorSectionPath,
     mirrorParTitleIndex,
-    setFocusedHalfLeft,
-    setFocusedHalfRight,
     setIsResizingPanels,
     syncPanelPrefsToRendered,
     getPanelWidth,
     setPanelWidth,
-    setSplitRatio,
+    setPanelHeight,
+    clearPanelHeight,
+    tradePanelHeights,
+    notePanelUse,
     setEditorLeftMargin,
     setEditorRightMargin,
     setEditorTopMargin,
@@ -2804,7 +2763,6 @@ export default function EditorLayout() {
     setZenRightMargin,
     setActiveLeft,
     setActiveRight,
-    setActiveHalf,
     togglePanel,
     movePanel,
     closePopout,
@@ -2843,15 +2801,12 @@ export default function EditorLayout() {
     expandRight,
     setBlank,
     clearBlankIfSet,
-    toggleSplit,
     openPanelDocked,
     toggleOmniCategory,
     setOmniSideToDefault,
     categorySides,
   }), [
     prefs,
-    focusedHalfLeft,
-    focusedHalfRight,
     isResizingPanels,
     focusMode.state,
     focusMode.deactivate,
@@ -2860,12 +2815,13 @@ export default function EditorLayout() {
     currentParTitleIndex,
     mirrorSectionPath,
     mirrorParTitleIndex,
-    setFocusedHalfLeft,
-    setFocusedHalfRight,
     syncPanelPrefsToRendered,
     getPanelWidth,
     setPanelWidth,
-    setSplitRatio,
+    setPanelHeight,
+    clearPanelHeight,
+    tradePanelHeights,
+    notePanelUse,
     setEditorLeftMargin,
     setEditorRightMargin,
     setEditorTopMargin,
@@ -2877,7 +2833,6 @@ export default function EditorLayout() {
     setZenRightMargin,
     setActiveLeft,
     setActiveRight,
-    setActiveHalf,
     togglePanel,
     movePanel,
     closePopout,
@@ -2913,7 +2868,6 @@ export default function EditorLayout() {
     expandRight,
     setBlank,
     clearBlankIfSet,
-    toggleSplit,
     openPanelDocked,
     toggleOmniCategory,
     setOmniSideToDefault,
@@ -3155,48 +3109,54 @@ export default function EditorLayout() {
   });
 
   // Clear search highlight when the search panel is no longer visible
-  const searchPanelOpen = prefs.activeLeft === "search" || prefs.activeRight === "search";
+  const searchPanelOpen = isPanelDocked(prefs, "search");
   useEffect(() => {
     if (!searchPanelOpen) setSearchHighlightRange(null);
   }, [searchPanelOpen]);
 
   // --- Marginalia: build the marker list and side map ---
   // (Hooks must run on every render — placed before any early returns.)
-  // OmniView aggregates several panels on one side, so when omni is
-  // active the child panels count as "on that side" for marginalia too.
+  // OmniView aggregates several panels on one side. Omni is now ALWAYS the
+  // backdrop behind each side's band stack, so its aggregated children
+  // (notes/archive/revisions/cutter/todo) are visible on a side whenever
+  // that side isn't collapsed. As before, the omni backdrop counts as a
+  // RIGHT-side host only (left omni is deliberately not a marginalia
+  // fallback — `void omniLeft`); a kind docked as its own band overrides.
   const marginaliaPanelSides = useMemo(() => {
-    const omniLeft = prefs.activeLeft === "omni";
-    const omniRight = prefs.activeRight === "omni";
+    const omniLeft = !prefs.collapsedLeft;
+    const omniRight = !prefs.collapsedRight;
     void omniLeft;
-    // Notes, archive, revisions, cutter are right-side children of OmniView
+    // A kind docked as its own band wins its side; otherwise it falls to the
+    // right omni backdrop. Notes, archive, revisions, cutter, todo are
+    // right-side children of OmniView.
     const notesSide: "left" | "right" | null =
-      prefs.activeLeft === "notes"
+      dockedSideOf(prefs, "notes") === "left"
         ? "left"
-        : prefs.activeRight === "notes" || omniRight
+        : dockedSideOf(prefs, "notes") === "right" || omniRight
           ? "right"
           : null;
     const archiveSide: "left" | "right" | null =
-      prefs.activeLeft === "archive"
+      dockedSideOf(prefs, "archive") === "left"
         ? "left"
-        : prefs.activeRight === "archive" || omniRight
+        : dockedSideOf(prefs, "archive") === "right" || omniRight
           ? "right"
           : null;
     const revisionsSide: "left" | "right" | null =
-      prefs.activeLeft === "revisions"
+      dockedSideOf(prefs, "revisions") === "left"
         ? "left"
-        : prefs.activeRight === "revisions" || omniRight
+        : dockedSideOf(prefs, "revisions") === "right" || omniRight
           ? "right"
           : null;
     const cutterSide: "left" | "right" | null =
-      prefs.activeLeft === "cutter"
+      dockedSideOf(prefs, "cutter") === "left"
         ? "left"
-        : prefs.activeRight === "cutter" || omniRight
+        : dockedSideOf(prefs, "cutter") === "right" || omniRight
           ? "right"
           : null;
     const todoSide: "left" | "right" | null =
-      prefs.activeLeft === "todo"
+      dockedSideOf(prefs, "todo") === "left"
         ? "left"
-        : prefs.activeRight === "todo" || omniRight
+        : dockedSideOf(prefs, "todo") === "right" || omniRight
           ? "right"
           : null;
     return {
@@ -3206,7 +3166,7 @@ export default function EditorLayout() {
       cutter: cutterSide,
       todo: todoSide,
     };
-  }, [prefs.activeLeft, prefs.activeRight]);
+  }, [prefs]);
 
   // Card-source derivations (marginalia markers, footnotes, citations, archive
   // order) now key off `rev.*` from `useStructuralRevisions` above — they
@@ -3330,9 +3290,6 @@ export default function EditorLayout() {
     return <LoadingScreen className="h-screen" />;
   }
 
-  const activeLeft = prefs.activeLeft;
-  const activeRight = prefs.activeRight;
-
   // Search range highlight takes priority — skip text-based highlight when active
   const highlightText = searchHighlightRange || errorHighlightRange
     ? null
@@ -3342,7 +3299,7 @@ export default function EditorLayout() {
         ? pendingCommentText
         : commentHighlight
           ? commentHighlight
-          : (activeLeft === "revisions" || activeRight === "revisions") &&
+          : isPanelDocked(prefs, "revisions") &&
               currentSuggestion &&
               currentSuggestion.status === "pending"
             ? currentSuggestion.original_text
@@ -3350,23 +3307,24 @@ export default function EditorLayout() {
   // Range-based highlights — search wins over error (search is an
   // explicit user action, error highlight is derived from selection).
   const effectiveHighlightRange = searchHighlightRange ?? errorHighlightRange;
-  // OmniView aggregates several child panels on one side; when omni is
-  // active, the side-of-panel lookups must include its children so
-  // connector lines render from the correct side.
+  // OmniView aggregates several child panels on one side. Omni is now the
+  // perpetual backdrop behind each side's band stack, so the side-of-panel
+  // lookups must include its children. A kind docked as its own band wins
+  // its side; otherwise the right omni backdrop hosts it (left omni is not a
+  // marginalia fallback, matching the prior behavior).
   //   Left omni children:  footnotes, citations
   //   Right omni children: notes, revisions, cutter, archive
-  const omniLeftActive = activeLeft === "omni";
-  const omniRightActive = activeRight === "omni";
+  const omniRightActive = !prefs.collapsedRight;
   const notesPanelSide: "left" | "right" | null =
-    activeLeft === "notes" ? "left" : activeRight === "notes" || omniRightActive ? "right" : null;
+    dockedSideOf(prefs, "notes") === "left" ? "left" : dockedSideOf(prefs, "notes") === "right" || omniRightActive ? "right" : null;
   const todoPanelSide: "left" | "right" | null =
-    activeLeft === "todo" ? "left" : activeRight === "todo" || omniRightActive ? "right" : null;
+    dockedSideOf(prefs, "todo") === "left" ? "left" : dockedSideOf(prefs, "todo") === "right" || omniRightActive ? "right" : null;
   const cutterPanelSide: "left" | "right" | null =
-    activeLeft === "cutter" ? "left" : activeRight === "cutter" || omniRightActive ? "right" : null;
+    dockedSideOf(prefs, "cutter") === "left" ? "left" : dockedSideOf(prefs, "cutter") === "right" || omniRightActive ? "right" : null;
   const revisionsPanelSide: "left" | "right" | null =
-    activeLeft === "revisions" ? "left" : activeRight === "revisions" || omniRightActive ? "right" : null;
+    dockedSideOf(prefs, "revisions") === "left" ? "left" : dockedSideOf(prefs, "revisions") === "right" || omniRightActive ? "right" : null;
   const bibliographyPanelSide: "left" | "right" | null =
-    activeLeft === "bibliography" ? "left" : activeRight === "bibliography" ? "right" : null;
+    dockedSideOf(prefs, "bibliography");
 
   // Render helpers (renderPanelWithChrome / renderPanelInner / renderPanelColumn)
   // moved into EditorPane along with the panel mount itself. The icon
@@ -3410,8 +3368,8 @@ export default function EditorLayout() {
 
   return (
     <EditorLayoutProvider
-      state={{ prefs, focusedHalfLeft, focusedHalfRight }}
-      actions={{ togglePanel, movePanel, setActiveHalf }}
+      state={{ prefs }}
+      actions={{ togglePanel, movePanel }}
     >
     <EditorRefProvider value={{ editorInstance, editorRef, setOverrideEditor }}>
     <AiRequestsProvider value={{ aiRequests, addAiRequest, updateAiRequestText, deleteAiRequest }}>
