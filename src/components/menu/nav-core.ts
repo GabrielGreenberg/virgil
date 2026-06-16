@@ -200,6 +200,17 @@ export function computeNextActive(
     return listMove(nodes, activeId, dir);
   }
 
+  // No active node yet (the menu just opened, the editor caret holds focus): the
+  // first arrow ENTERS the menu at the first enabled node, for every layout —
+  // matching the list's no-active behavior (`listMove` returns the first/last on
+  // a null active). Without this seed, a grid/composite Down would start its
+  // row search at row 1 and skip the first row entirely. Home/End and any
+  // direction all land on the snapshot's first enabled cell as the entry point.
+  if (!active) {
+    const seed = initialActiveId(nodes);
+    if (seed !== null) return seed;
+  }
+
   const shape = gridShape(nodes);
   const listNodes = nodes.filter((n) => n.region === "list");
 

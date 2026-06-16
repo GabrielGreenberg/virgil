@@ -23,6 +23,7 @@
 import {
   useCallback,
   useEffect,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -152,9 +153,22 @@ export function MenuProvider(props: MenuProviderProps): ReactNode {
       dynamicExcludes.current.delete(el);
     };
   }, []);
+  // Mirror the caller's `excludeRefs` into a ref so the STABLE `getExcludes`
+  // closure (read at mousedown time by `useMenuDismiss`) always sees the latest
+  // — a freshly-spawned child popover (the lightning color popover, set into
+  // `excludeRefs` a render after it mounts) must be excluded immediately, not on
+  // the next listener re-subscribe. Without this the dismissal effect's captured
+  // closure would read a stale `excludeRefs` and self-close on a legitimate
+  // click into the child (design §3.2 / R8). Updated in a layout effect (not
+  // during render) so the listener reads fresh values on the next commit — the
+  // same ref-sync pattern `useMenuKeyboard` uses for its options.
+  const excludeRefsLatest = useRef(excludeRefs);
+  useLayoutEffect(() => {
+    excludeRefsLatest.current = excludeRefs;
+  });
   const getExcludes = useCallback(
-    () => [...(excludeRefs ?? []), ...dynamicExcludes.current],
-    [excludeRefs],
+    () => [...(excludeRefsLatest.current ?? []), ...dynamicExcludes.current],
+    [],
   );
 
   // Auto-register THIS container into a parent menu's exclude set (R8).

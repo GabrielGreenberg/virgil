@@ -234,13 +234,15 @@ describe("ActionsMenuPanel action list renders from the registry", () => {
     return { ...utils, dispatch };
   }
 
-  /** The action list lives below the formatting grid; select the menuitem
-   *  buttons (the grid uses data-hint buttons / FmtBtn, NOT role=menuitem). */
+  /** The action list lives below the formatting grid in the `<MenuList>`
+   *  region (`.lightning-card-list`). Post-B2 the grid FmtBtn cells ALSO carry
+   *  role=menuitem (they're registered grid items now), so scope to the card
+   *  list to read just the 11 card rows. */
   function actionItems() {
-    const menu = document.querySelector(
-      '[aria-label="Selection actions"]',
+    const list = document.querySelector(
+      '[aria-label="Selection actions"] .lightning-card-list',
     ) as HTMLElement;
-    return readItems(menu);
+    return readItems(list);
   }
 
   it("renders all 11 entries in the same order with the same labels + letters", () => {
