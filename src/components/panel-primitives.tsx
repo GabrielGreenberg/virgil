@@ -316,18 +316,17 @@ export function AnchorBadge({
   );
 }
 
-/** Orphaned/unanchored badge — local color square with diagonal cross, faded. */
+/** Orphaned/unanchored badge — a small faded color dot-squircle (~10px).
+ *  Matches the "outside focus" ◎ dot; the data-hint/aria-label carry the
+ *  "no anchor" meaning (no cross-out glyph). Deliberately NOT BADGE_BASE —
+ *  it is smaller than the 20px count badge it sits beside. */
 export function BadgeOrphaned({ theme }: { theme: CardTheme }) {
   return (
     <span
-      className={`relative ${BADGE_BASE} opacity-60`}
+      className="inline-flex items-center justify-center shrink-0 opacity-60 w-2.5 h-2.5 rounded-[3px]"
       style={{ background: theme.badgeBg, border: `1.5px solid ${theme.badgeBorder}` }}
       data-hint="No anchor in document" aria-label="No anchor in document"
-    >
-      <svg className="absolute inset-0" width="100%" height="100%" viewBox="0 0 20 20" fill="none" preserveAspectRatio="none">
-        <line x1="4" y1="16" x2="16" y2="4" stroke={theme.badgeColor} strokeWidth="2" />
-      </svg>
-    </span>
+    />
   );
 }
 

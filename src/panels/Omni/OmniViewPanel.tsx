@@ -277,7 +277,7 @@ export function OmniUnanchoredBin({
 
   return (
     <div
-      style={{ position: "absolute", top: 0, left: 8, right: 8, zIndex: 20 }}
+      style={{ position: "absolute", top: 4, left: 8, right: 8, zIndex: 20 }}
       data-omni-unanchored-bin=""
     >
       <button
@@ -537,7 +537,11 @@ function OmniViewPanel({
         <OmniUnanchoredBin free={free} orphaned={orphaned} />
         <OmniOutsideFocusBin
           items={outsideFocus}
-          topPx={free.length + orphaned.length > 0 ? 34 : 0}
+          // Stack just below the unanchored pill when present. Measured live
+          // (dev preview, doc_devtest): unanchored bin top:4 + pill height
+          // 26.5px (10px orphan dot fits inside the 16.5px text line, so the
+          // text line — not the badge — sets the row) → bottom edge ~30.5px.
+          topPx={free.length + orphaned.length > 0 ? 30 : 0}
         />
         {anchored.map((item) => {
           const isPinned = pinRequest?.cardId === item.id;
