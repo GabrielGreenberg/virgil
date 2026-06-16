@@ -578,35 +578,24 @@ function FloatingPanelInner({
 
   if (typeof document === "undefined" || !target) return null;
 
-  // Container style differs by mode. Docked: render in the slot's
-  // normal flow with the pod styling on this container (not the slot)
-  // — so when the panel's content is shorter than the dock frame, the
-  // visible pod itself shrinks to that content height instead of
-  // leaving an empty manilla band below it. min-height keeps an empty
-  // panel from collapsing below ~2 cards' worth.
+  // Container style differs by mode. Docked: the pod FILLS its band
+  // anchor via flexbox — the anchor is a flex column (set in
+  // panel-column's BandFragment) whose own height is flex-determined
+  // (content-sized, or the explicit resized px), and the pod is a
+  // `flex: 1 1 auto; min-height: 0` child that grows/shrinks to exactly
+  // that height. PANEL.list's `flex-1 overflow-y-auto` then scrolls when
+  // content overflows. This replaces the old `max-height: 100%` cap,
+  // which WebKit/Safari fails to resolve against a flex-shrunk item —
+  // the panel grew to full content height and ran off the bottom of the
+  // page instead of capping + scrolling (`fillSlot` is now vestigial).
   // Floating: positioned via fixed left/top and explicit w/h.
-  // When the parent assigns the band an explicit height (`fillSlot`),
-  // the docked panel must fill that frame to ~100% so its internal
-  // scrolling kicks in for tall content; otherwise the panel grows past
-  // the slot's max-height and gets clipped by the band's overflow:hidden,
-  // leaving the bottom truncated. When the band is content-sized
-  // (`fillSlot===false`) the anchor is auto-height with a max-height cap,
-  // so the panel stays content-driven (with min-height 200).
   const containerStyle: React.CSSProperties =
     mode === "docked"
       ? {
           position: "relative",
           width: "100%",
-          ...(fillSlot
-            ? { height: "100%" }
-            : {
-                minHeight: "var(--panel-min-h, 200px)",
-                // Cap at the dock-frame max-height the slot exposes,
-                // so PANEL.list's flex-1 overflow-y-auto can engage when
-                // content overflows. Falls back to none when not docked
-                // into a slot (defensive — shouldn't happen).
-                maxHeight: "var(--dock-slot-frame-h, none)",
-              }),
+          flex: "1 1 auto",
+          minHeight: 0,
           background: "var(--pod-panel, #f3f0eb)",
           borderRadius: "var(--pod-radius, 8px)",
           border: surface === "panel"

@@ -494,9 +494,15 @@ function BandFragment({
           pointerEvents: 'auto',
           overflow: 'hidden',
           minHeight: 0,
+          // Flex column so the portaled pod (FloatingPanel, flex: 1 1 auto)
+          // fills this anchor's flex-determined height exactly — content
+          // basis when short (omni shows below), or the shrunk height when
+          // the stack overflows — and its internal PANEL.list scrolls. A
+          // tall content-driven band thus caps + scrolls instead of running
+          // off the page (robust where a % max-height wouldn't resolve).
+          display: 'flex',
+          flexDirection: 'column',
           flex: band.height != null ? `0 0 ${band.height}px` : '0 1 auto',
-          // A tall content-driven band caps at its flex box; its internal
-          // PANEL.list overflow-y-auto then scrolls.
           ['--dock-slot-frame-h' as string]: '100%',
         }}
         onMouseDown={() => onFocusBand(band.id)}
