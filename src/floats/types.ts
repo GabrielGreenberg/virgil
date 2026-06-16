@@ -116,6 +116,14 @@ export interface Floatable {
   /** Whether the float shows the jump affordance (some cards have no anchor). */
   canJump: boolean;
 
+  /** Whether the float shows the (re)anchor drop button (left of the X).
+   *  Card floats set this from the static `CARD_REGISTRY[kind].droppable`
+   *  facet (read in `cardFloatable`, not here — the float subsystem stays
+   *  card-blind); text-object floats omit it (not droppable). `FloatChrome`
+   *  pairs it with `key` (its `float:<domain>:<kind>:<id>` string) as the
+   *  `dropCardKey` so `beginCardDropGesture` can look the spec up. */
+  canDrop?: boolean;
+
   /** Serialize onto the Stack. Returns null when this kind isn't stackable
    *  (ai / error / examples / text-object sub-objects). */
   snapshotForStack(source: {

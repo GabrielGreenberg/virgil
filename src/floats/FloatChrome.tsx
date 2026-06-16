@@ -2,6 +2,8 @@
 
 import type { ReactNode } from "react";
 import { PopoutButton } from "@/components/panel-primitives";
+import { DropChevrons } from "@/components/icons/DropChevrons";
+import { beginCardDropGesture } from "@/components/drop-mode/card-drop-gesture";
 
 /**
  * `FloatChrome` — the ONE header skeleton for every popped-out window, shared
@@ -63,6 +65,16 @@ export interface FloatChromeProps {
   /** Whether to show the jump-to-source chevron. */
   canJump: boolean;
   onJump: () => void;
+  /** Whether to show the (re)anchor drop button (mirrors `canJump`). Stays
+   *  domain-neutral: the caller (`FloatWindow` via `cardFloatable`) reads the
+   *  static `CARD_REGISTRY[kind].droppable` facet and hands a plain boolean —
+   *  no card code reaches in here. Absent / false → no button (text-object
+   *  floats and `droppable:false` kinds). */
+  canDrop?: boolean;
+  /** Opaque `float:card:<kind>:<id>` key the neutral drop button hands to
+   *  `beginCardDropGesture` so the drop controller can look the spec up. A
+   *  string at this layer — FloatChrome never parses or imports a card kind. */
+  dropCardKey?: string;
   onClose: () => void;
 }
 
@@ -73,6 +85,8 @@ export function FloatChrome({
   headerTint,
   canJump,
   onJump,
+  canDrop,
+  dropCardKey,
   onClose,
 }: FloatChromeProps) {
   const labelNoun = title.toLowerCase();
@@ -112,6 +126,44 @@ export function FloatChrome({
           >
             <polyline points="9 6 15 12 9 18" />
           </svg>
+        </button>
+      )}
+      {/* (Re)anchor drop button — the popped-float twin of the docked
+          `CardDropButton`, rendered LEFT of the close X. The press guards are
+          a verbatim mirror of that button (primary-button-only, then
+          stopPropagation + preventDefault + draggable=false + dragstart
+          swallow) so the press can't co-fire the FloatingPanel header
+          drag-lift. The drop session itself is owned by the shared neutral
+          `beginCardDropGesture` (arms its own one-shot commit-on-mouseup). The
+          `preventDefault` on mousedown is load-bearing — this is a press-DRAG,
+          not a click — and trips the header wrapper's `defaultPrevented`
+          lift-guard. Gated on the static `canDrop` boolean: no per-render /
+          per-keystroke work. */}
+      {canDrop && dropCardKey && (
+        <button
+          type="button"
+          onMouseDown={(e) => {
+            // Primary button only — a right/middle press passes through (no
+            // phantom session), matching the docked button + the 3 producers.
+            if (e.button !== 0) return;
+            e.stopPropagation();
+            e.preventDefault();
+            beginCardDropGesture({
+              cardKey: dropCardKey,
+              origin: { x: e.clientX, y: e.clientY },
+            });
+          }}
+          onClick={(e) => e.stopPropagation()}
+          draggable={false}
+          onDragStart={(e) => {
+            e.stopPropagation();
+            e.preventDefault();
+          }}
+          className="w-4 h-4 flex items-center justify-center rounded text-ink-muted hover:text-ink-body hover-on-light bg-transparent p-0 shrink-0 cursor-grab"
+          data-hint={`Drop ${labelNoun} into text`}
+          aria-label={`Drop ${labelNoun} into text`}
+        >
+          <DropChevrons />
         </button>
       )}
       <PopoutButton
