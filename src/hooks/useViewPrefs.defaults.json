@@ -33,11 +33,11 @@
       "side": "left"
     },
     {
-      "id": "footnotes",
+      "id": "outline",
       "side": "left"
     },
     {
-      "id": "outline",
+      "id": "footnotes",
       "side": "left"
     },
     {
@@ -79,8 +79,8 @@
   "showHighlights": true,
   "hiddenHighlightTypes": [],
   "pageWidth": 880,
-  "editorLeftMargin": 72,
-  "editorRightMargin": 24,
+  "editorLeftMargin": 155,
+  "editorRightMargin": 155,
   "editorTopMargin": 24,
   "editorBottomMargin": 24,
   "topbarRightCollapsed": false,
@@ -103,8 +103,8 @@
   "omniCategories": {
     "left": [
       "footnotes",
-      "citations",
-      "examples"
+      "examples",
+      "citations"
     ],
     "right": [
       "notes",
