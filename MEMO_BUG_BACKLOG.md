@@ -1444,3 +1444,37 @@ stay on top (it's also ~2000) — that's correct; only the resting **bolt** need
 demoting. Verify: a float dropped over a paragraph now hides that paragraph's bolt;
 the bolt still shows + is clickable when nothing overlaps; the open actions menu
 still renders above everything.
+
+---
+
+## 51. Reconcile "gutter" vs "margin" terminology (codebase + remaining glossary)
+
+**Reported:** 2026-06-15 · **Status:** open (catch — do not fix yet) · **Area:** terminology / docs + code-wide rename
+
+**The standard (set by the user, now canonical in the glossary).**
+- **Gutter** = OUTSIDE the text pod — the L/R panel columns / omni area where
+  **cards** live (+ space above/below the pod; the removed `topGutter` was correctly
+  named).
+- **Margin** = INSIDE the text pod — the L/R text margins where **marginalia** (and
+  the paragraph action bolt) live.
+
+**Done this turn:** added the canonical definition to
+[docs/agents/glossary.md](docs/agents/glossary.md) and fixed the two clearest
+in-glossary misnomers (the `SelectionActionsMenu` bolt "right gutter"→"right
+margin"; Marginalia "Gutter icons"→"Icons in the margin").
+
+**Remaining (the sweep — substantial, careful, NOT a blanket replace):** ~298
+"gutter" usages in `src` (excluding the already-removed `topGutter`/`bottomGutter`).
+The job is to split TRUE gutter from in-text misnomers:
+- **Keep "gutter"** where it means outside-the-pod (panel columns, omni, dock slots,
+  code-view `CODE_VIEW_GUTTER_PX`).
+- **Rename to "margin"** where it means in-text chrome: most prominently the
+  **`--gutter-*` CSS-var family** for grab-handle / fold-chevron placement
+  (`--gutter-handle-gap`, `--gutter-track-width`, `--gutter-col-chevron`,
+  `--gutter-col-handle-inset`, `--gutter-handle-hit-pad/-cap`), the "gutter chrome"
+  section of [STYLE_GUIDE.md](src/STYLE_GUIDE.md), "gutter pin", `handle-layout.ts`
+  comments, and the remaining glossary "gutter ⚡"/"editor gutter" descriptions.
+
+⚠️ **CSS-var renames must be all-or-nothing** (a half-renamed var silently breaks
+handle placement) — do it as one mechanical pass with a typecheck + grep-clean
+verify, not piecemeal. Probably its own chip.

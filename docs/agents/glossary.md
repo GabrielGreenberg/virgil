@@ -10,6 +10,25 @@ If a user term isn't yet in this file, add it under **Pending terminology** at t
 
 ---
 
+## Gutter vs Margin (canonical)
+
+These two are **distinct** and must not be conflated (standardized 2026-06-16):
+
+- **Gutter** — the area **OUTSIDE** the text pod: the left/right panel columns / the
+  omni-view area where **cards** live, plus the space above/below the pod. *"Outside
+  the text."* (The removed `topGutter`/`bottomGutter` pref — backlog #5 — was correctly
+  named: it was outside-pod space.)
+- **Margin** — the area **INSIDE** the text pod: the left/right text margins where
+  **marginalia** (and the paragraph action bolt) live. *"Inside the text."*
+
+⚠️ Several existing names predate this standard and are **misnomers**: the
+`SelectionActionsMenu` bolt sits in the paragraph's *margin* (not "gutter"),
+marginalia icons sit in the *margin*, etc. Descriptions below are being migrated to
+"margin" for in-text positions; code/comment usages of "gutter" for an in-text
+position are tracked for renaming in the backlog (#51).
+
+---
+
 ## Structural UI
 
 | User term | Code name(s) | Where |
@@ -35,7 +54,7 @@ If a user term isn't yet in this file, add it under **Pending terminology** at t
 
 | User term | Code name(s) | Where |
 |---|---|---|
-| **Selection actions menu** / **lightning-bolt button** (small yellow lightning-bolt anchored in the right gutter of the current paragraph; click to expand `ActionsMenuPanel` in place. After 1bd614c this is a click-to-expand collapse-button, not the original auto-popping menu; works in cursor-only mode too, with Highlight greyed out when there's no live range) | `SelectionActionsMenu` (the gutter button + open-state) → `ActionsMenuPanel` (the inline-formatting grid + vertical action list). Both this menu and `DragHandleMenu` now RENDER FROM the action registry via `cardActionRows()` — the SSOT `VIRGIL_ACTION_REGISTRY` replaced the deleted `MENU_ENTRIES` array. Dispatch through `DragHandleMenuApi.dispatch` | [src/components/SelectionActionsMenu.tsx](../../src/components/SelectionActionsMenu.tsx); [src/components/ActionsMenuPanel.tsx](../../src/components/ActionsMenuPanel.tsx); registry [src/lib/actions/action-registry.ts](../../src/lib/actions/action-registry.ts); PM→React dispatch [src/lib/actions/editor-actions-bridge.ts](../../src/lib/actions/editor-actions-bridge.ts); paired with [src/components/SelectionColorPopover.tsx](../../src/components/SelectionColorPopover.tsx); mounted from `Editor.tsx` |
+| **Selection actions menu** / **lightning-bolt button** (small yellow lightning-bolt anchored in the right margin of the current paragraph; click to expand `ActionsMenuPanel` in place. After 1bd614c this is a click-to-expand collapse-button, not the original auto-popping menu; works in cursor-only mode too, with Highlight greyed out when there's no live range) | `SelectionActionsMenu` (the gutter button + open-state) → `ActionsMenuPanel` (the inline-formatting grid + vertical action list). Both this menu and `DragHandleMenu` now RENDER FROM the action registry via `cardActionRows()` — the SSOT `VIRGIL_ACTION_REGISTRY` replaced the deleted `MENU_ENTRIES` array. Dispatch through `DragHandleMenuApi.dispatch` | [src/components/SelectionActionsMenu.tsx](../../src/components/SelectionActionsMenu.tsx); [src/components/ActionsMenuPanel.tsx](../../src/components/ActionsMenuPanel.tsx); registry [src/lib/actions/action-registry.ts](../../src/lib/actions/action-registry.ts); PM→React dispatch [src/lib/actions/editor-actions-bridge.ts](../../src/lib/actions/editor-actions-bridge.ts); paired with [src/components/SelectionColorPopover.tsx](../../src/components/SelectionColorPopover.tsx); mounted from `Editor.tsx` |
 | **Strip action button** / **stable lightning-bolt** (was a sibling of SelectionActionsMenu in the MenuBar's para-nav group) | **Removed** (backlog #6) — was `ActionsStripButton`, redundant with the gutter `SelectionActionsMenu`. The action menu is now reached only from the gutter ⚡ and the `DragHandleMenu` | — |
 | **Formatting toolbar** / **format popup** (no longer in the docked MenuBar; vocabulary moved into `SelectionActionsMenu` and `DragHandleMenu`) | **Removed.** `FormatButtonsRow` / `DetachedFormattingToolbar` no longer exist — the formatting grid is now driven by the action registry inside `ActionsMenuPanel` | — |
 | **Action toolbar** / **actions popup** (no longer in the docked MenuBar; vocabulary moved into `SelectionActionsMenu` and `DragHandleMenu`) | **Removed.** `ActionButtonsRow` / `ACTION_BUTTON_DEFS` are gone — every action now lives in the SSOT `VIRGIL_ACTION_REGISTRY` | [src/lib/actions/action-registry.ts](../../src/lib/actions/action-registry.ts) |
@@ -95,7 +114,7 @@ Each panel lives in `src/panels/<PanelFolder>/`.
 | **Heading lozenge** / **heading control strip** (the floating strip above each heading: type-dropdown chip + numbered (#) toggle + label slot + × delete; f59756b replaced the old redundant-section-number lozenge) | `HeadingTypeMenu` for the type dropdown; lozenge controls inline in `Editor.tsx` heading node-view | [src/components/HeadingTypeMenu.tsx](../../src/components/HeadingTypeMenu.tsx); heading-level vocabulary in [src/lib/heading-types.ts](../../src/lib/heading-types.ts) |
 | **Paragraph** | TipTap `paragraph` node (carries `uuid` attr) | See `main-text.md` |
 | **Paragraph title** | Stored in `virgil.json` sidecar (`ParagraphMeta.title`), **not** a Tiptap attr | Loaded in [src/hooks/useDocument.ts](../../src/hooks/useDocument.ts); shown in Omni view + search breadcrumbs |
-| **Marginalia** | Gutter icons in left/right margin of main text, anchored to paragraphs | [src/components/Marginalia.tsx](../../src/components/Marginalia.tsx); metadata in [src/lib/marginalia.ts](../../src/lib/marginalia.ts); grid math in [src/lib/marginalia-grid.ts](../../src/lib/marginalia-grid.ts) |
+| **Marginalia** | Icons in the left/right margin of main text (INSIDE the text pod — see *Gutter vs Margin*), anchored to paragraphs | [src/components/Marginalia.tsx](../../src/components/Marginalia.tsx); metadata in [src/lib/marginalia.ts](../../src/lib/marginalia.ts); grid math in [src/lib/marginalia-grid.ts](../../src/lib/marginalia-grid.ts) |
 | **Linked text** | Text carrying a `linkedAnchor` mark (Mode B) — connects to a card | [src/lib/tiptap/linked-anchor.ts](../../src/lib/tiptap/linked-anchor.ts) |
 | **Footnote** (in text) | TipTap atom node `footnote` | [src/lib/tiptap/footnote.ts](../../src/lib/tiptap/footnote.ts) |
 | **Citation** (in text) | TipTap atom node `citation` | [src/lib/tiptap/citation.ts](../../src/lib/tiptap/citation.ts) |
