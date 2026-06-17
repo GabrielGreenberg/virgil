@@ -57,6 +57,17 @@ export type LinkAnchor =
       textObjectIds: string[];
       /** Every TextObject-anchor link carries a margin-gutter entry. */
       margin: { side: "left" | "right" };
+      /** Mode-A self-healing snapshot. A plain-text capture of the
+       *  anchored paragraph at write time, used by the reload reconciler
+       *  to re-find the paragraph (UUID-first, snapshot-fallback) when its
+       *  `%!v:` UUID failed to round-trip through the `.tex` and got
+       *  re-minted on load. ADDITIVE + optional: legacy Mode-A links lack
+       *  it and keep today's UUID-only behavior until re-written /
+       *  backfilled. Distinct from `textRange.textSnapshot`, which is the
+       *  Mode-B *range* snapshot; this is the *whole-paragraph* snapshot
+       *  for a persistent-node (Mode-A) anchor. Symmetric with Mode B's
+       *  `reanchorByText` recovery. */
+      paragraphSnapshot?: string;
       /** Present iff `targetKind === "linkedRange"`. Carries the
        *  underlying `linkedAnchor` mark's id and a text snapshot used
        *  for re-anchoring if the mark is lost across a parse. */

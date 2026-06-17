@@ -93,6 +93,36 @@ export function paragraphUuidAt(doc: PMNode, pos: number): string | null {
   return null;
 }
 
+/**
+ * Capture a plain-text snapshot of the TextObject (paragraph / heading /
+ * listItem / …) whose `uuid` attr is `paragraphId`, for the Mode-A
+ * self-healing anchor (`LinkAnchor.paragraphSnapshot`).
+ *
+ * Returns the node's `textContent`, or `null` if the editor isn't ready
+ * or no live node carries that uuid (so a missing snapshot stays
+ * `undefined`/absent rather than an empty string that could false-match).
+ *
+ * O(doc) — call ONLY off the keystroke path (anchor write / re-anchor /
+ * load reconcile), never per keystroke.
+ */
+export function captureParagraphSnapshot(
+  editor: Editor | null | undefined,
+  paragraphId: string | null | undefined,
+): string | null {
+  if (!editor || !paragraphId) return null;
+  let snapshot: string | null = null;
+  editor.state.doc.descendants((node) => {
+    if (snapshot !== null) return false;
+    if ((node.attrs as { uuid?: string } | null)?.uuid === paragraphId) {
+      const text = node.textContent;
+      snapshot = text.length > 0 ? text : null;
+      return false;
+    }
+    return true;
+  });
+  return snapshot;
+}
+
 // ---------------------------------------------------------------------------
 // collectLinksFromEditor — the Cowork entry point
 // ---------------------------------------------------------------------------
@@ -1099,6 +1129,167 @@ export function isUnanchored(
   return false;
 }
 
+// ---------------------------------------------------------------------------
+// Mode-A self-healing reconcile (symmetric with Mode B's reanchorByText)
+//
+// A Mode-A margin card anchors via a bare paragraph UUID. That UUID
+// round-trips through the `.tex` only as a `%!v:` comment written by the
+// 1500 ms autosave; if the write loses the race against a reload, the
+// paragraph is re-minted a fresh UUID and the card's stored UUID matches
+// nothing — the card silently orphans (and `isUnanchored` still reports
+// `false` because `links.length > 0`).
+//
+// These helpers make the Mode-A anchor self-healing:
+//   - `resolveLiveUuids` builds the live `uuid` set once per reconcile.
+//   - `findParagraphIdBySnapshot` re-finds a paragraph by its captured
+//     text (UUID-first is the CALLER's responsibility — see
+//     `reconcileModeAAnchors`).
+//   - `reconcileModeAAnchors` is the pure card mutator the panel hooks run
+//     on load: UUID-first (backfill snapshot if the UUID still resolves),
+//     snapshot-fallback (rewrite `textObjectIds[0]` to the live UUID when
+//     the stored UUID is dead but the snapshot matches a live paragraph).
+//   - `isModeAOrphaned` surfaces the un-resolvable residue at the
+//     derivation layer so a dangling card doesn't silently linger.
+// ---------------------------------------------------------------------------
+
+/** All `uuid` attrs present on live anchorable nodes, built once per
+ *  reconcile so the per-link resolution is O(1). */
+export function collectLiveUuids(editor: Editor): Set<string> {
+  const out = new Set<string>();
+  editor.state.doc.descendants((node) => {
+    const uuid = (node.attrs as { uuid?: string } | null)?.uuid;
+    if (uuid) out.add(uuid);
+    return true;
+  });
+  return out;
+}
+
+/**
+ * Re-find a paragraph by its Mode-A text snapshot. Returns the live `uuid`
+ * of the FIRST node whose `textContent` equals the snapshot (whole-block
+ * match — stricter than Mode B's `indexOf` substring search, so it won't
+ * mis-bind to a sub-span). `null` if no live node matches.
+ *
+ * NOTE: first-match-wins on duplicated paragraph text. The reconcile
+ * caller MUST try the stored UUID first (`reconcileModeAAnchors`) and only
+ * fall back to this when the UUID is dead — so a still-live UUID is never
+ * overridden by a same-text sibling.
+ */
+export function findParagraphIdBySnapshot(
+  editor: Editor,
+  snapshot: string,
+): string | null {
+  if (!snapshot) return null;
+  let found: string | null = null;
+  editor.state.doc.descendants((node) => {
+    if (found !== null) return false;
+    const uuid = (node.attrs as { uuid?: string } | null)?.uuid;
+    if (uuid && node.textContent === snapshot) {
+      found = uuid;
+      return false;
+    }
+    return true;
+  });
+  return found;
+}
+
+/**
+ * Pure Mode-A reconcile for a single card. Returns a (possibly-rewritten)
+ * card and a `changed` flag. UUID-first / snapshot-fallback:
+ *
+ *   1. For each Mode-A (`targetKind !== "linkedRange"`) link whose
+ *      `textObjectIds[0]` STILL resolves to a live block: BACKFILL the
+ *      snapshot from the live paragraph's text if absent or stale. This
+ *      makes legacy snapshot-less links durable going forward, and keeps
+ *      the snapshot fresh if the paragraph text drifted.
+ *   2. For each Mode-A link whose `textObjectIds[0]` does NOT resolve but
+ *      whose `paragraphSnapshot` matches a live paragraph: REWRITE
+ *      `textObjectIds[0]` to the live UUID (and keep the snapshot).
+ *   3. Links with no snapshot and a dead UUID are left untouched (they
+ *      surface as orphaned via `isModeAOrphaned`).
+ *
+ * Mode-B links are passed through unchanged — their recovery is the
+ * separate `reanchorByText` / `applyLinkedAnchors` path.
+ *
+ * `liveUuids` is the shared set from `collectLiveUuids(editor)`; pass it in
+ * so a batch reconcile builds it once.
+ */
+export function reconcileModeAAnchors<T extends CardWithLinks>(
+  card: T,
+  editor: Editor,
+  liveUuids: Set<string>,
+): { card: T; changed: boolean } {
+  const links = card.links;
+  if (!Array.isArray(links) || links.length === 0) return { card, changed: false };
+  let changed = false;
+  const next: Link[] = links.map((link) => {
+    if (link.anchor.type !== "textObject") return link;
+    // Mode B is recovered by its own snapshot path — leave it alone.
+    if (link.anchor.targetKind === "linkedRange") return link;
+    const ids = link.anchor.textObjectIds;
+    const pid = ids[0];
+    if (!pid) return link;
+
+    // 1. UUID-first: the stored UUID still resolves → backfill snapshot.
+    if (liveUuids.has(pid)) {
+      const live = captureParagraphSnapshot(editor, pid);
+      if (live && link.anchor.paragraphSnapshot !== live) {
+        changed = true;
+        return {
+          ...link,
+          anchor: { ...link.anchor, paragraphSnapshot: live },
+        };
+      }
+      return link;
+    }
+
+    // 2. Snapshot-fallback: stored UUID is dead → re-find by text.
+    const snap = link.anchor.paragraphSnapshot;
+    if (!snap) return link; // legacy snapshot-less + dead UUID → orphaned
+    const reboundId = findParagraphIdBySnapshot(editor, snap);
+    if (!reboundId || reboundId === pid) return link;
+    changed = true;
+    const newIds = ids.slice();
+    newIds[0] = reboundId;
+    return {
+      ...link,
+      anchor: { ...link.anchor, textObjectIds: newIds },
+    };
+  });
+  if (!changed) return { card, changed: false };
+  return { card: { ...card, links: next }, changed: true };
+}
+
+/**
+ * Derivation-layer predicate: a Mode-A card is ORPHANED (no live anchor)
+ * when it has at least one Mode-A link but NONE of its Mode-A links'
+ * `textObjectIds[0]` resolve to a live block. Used to surface a dangling
+ * card as unanchored instead of letting it silently vanish from the
+ * gutter while `isUnanchored` (links.length only) still reports anchored.
+ *
+ * Returns `false` for cards with no Mode-A link (Mode-B-only / no-anchor
+ * cards are governed by their own paths), and `false` while `liveUuids`
+ * is empty (editor not yet ready — don't false-flag on load).
+ */
+export function isModeAOrphaned(
+  card: CardWithLinks | null | undefined,
+  liveUuids: Set<string>,
+): boolean {
+  if (!card || liveUuids.size === 0) return false;
+  const links = card.links;
+  if (!Array.isArray(links)) return false;
+  let hasModeA = false;
+  for (const link of links) {
+    if (link.anchor.type !== "textObject") continue;
+    if (link.anchor.targetKind === "linkedRange") continue;
+    const pid = link.anchor.textObjectIds[0];
+    if (!pid) continue;
+    hasModeA = true;
+    if (liveUuids.has(pid)) return false; // at least one live anchor → not orphaned
+  }
+  return hasModeA;
+}
+
 /** Convenience: a Set of all paragraph UUIDs across a list of cards. */
 export function collectAllLinkedParagraphIds(
   cards: readonly CardWithLinks[],
@@ -1116,6 +1307,7 @@ function makeAnchorLink(
   targetKind: TextObjectKind,
   textObjectIds: string[],
   textRange?: { anchorId: string; textSnapshot: string },
+  paragraphSnapshot?: string | null,
 ): Link {
   return {
     id: textRange?.anchorId ?? `${cardId}@${textObjectIds[0] ?? ""}`,
@@ -1126,6 +1318,7 @@ function makeAnchorLink(
       textObjectIds,
       margin: { side: inferMarginSide(cardKind) },
       ...(textRange ? { textRange } : {}),
+      ...(paragraphSnapshot ? { paragraphSnapshot } : {}),
     },
     target: { type: "card", ref: { kind: cardKind, id: cardId } },
     createdAt: new Date().toISOString(),
@@ -1149,6 +1342,12 @@ export function addTextObjectLink<T extends CardWithLinks>(
   cardKind: CardKind,
   textObjectId: string,
   targetKind: TextObjectKind = "paragraph",
+  /** Optional Mode-A self-healing snapshot of the anchored paragraph's
+   *  text, captured at the editor-aware call site (drop re-anchor /
+   *  card creation). Stored on the fresh Mode-A link so the reload
+   *  reconciler can re-find the paragraph if its UUID is lost. Omitted
+   *  → legacy UUID-only link (still valid; backfilled on next load). */
+  paragraphSnapshot?: string | null,
 ): T {
   if (!textObjectId) return card;
   const links = card.links ?? [];
@@ -1178,7 +1377,17 @@ export function addTextObjectLink<T extends CardWithLinks>(
   if (existing.includes(textObjectId)) return card;
   return {
     ...card,
-    links: [...links, makeAnchorLink(cardKind, card.id, targetKind, [textObjectId])],
+    links: [
+      ...links,
+      makeAnchorLink(
+        cardKind,
+        card.id,
+        targetKind,
+        [textObjectId],
+        undefined,
+        paragraphSnapshot,
+      ),
+    ],
   };
 }
 
