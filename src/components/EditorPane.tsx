@@ -209,6 +209,7 @@ import {
   paragraphUuidAt,
   captureParagraphSnapshot,
 } from "@/links/links";
+import { reapplyModeBAnchors } from "@/links/_shared/reapply-mode-b-anchors";
 import type { MarginaliaMarker } from "@/lib/marginalia";
 import type {
   PanelPlacement,
@@ -1110,6 +1111,24 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
     if (!editor || !docContentReady || !allCardSidecarsLoaded) return;
     if (modeAReconciledDocRef.current === docId) return;
     modeAReconciledDocRef.current = docId;
+    // RC-B: re-stamp every surviving Mode-B card's `linkedAnchor` mark from
+    // its persisted snapshot FIRST (this is the single load-time recovery
+    // writer that retired `EditorLayout.applyLinkedAnchors`). Re-applying
+    // before the per-panel reconcile makes the marks live in the doc, so the
+    // resolver's live-mark rung keeps healthy un-re-anchored Mode-B cards as
+    // Mode-B (the reconcile won't strip their textRange). See
+    // `reapplyModeBAnchors`'s block comment for the ordering rationale and the
+    // re-anchored-hybrid exclusion.
+    const handle = innerRef.current;
+    if (handle) {
+      reapplyModeBAnchors((records) => handle.applyLinkedAnchors(records), {
+        notes: notesHookRaw.notes,
+        todoItems: todosHook.items,
+        comments: revisionsHookRaw.cards,
+        cutterCards: cutterHookRaw.cards,
+        highlights: notesHookRaw.highlights,
+      });
+    }
     notesHookRaw.reconcileAnchors(editor);
     todosHook.reconcileAnchors(editor);
     cutterHookRaw.reconcileAnchors(editor);
@@ -1127,6 +1146,15 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
     revisionsHookRaw.reconcileAnchors,
     reportsHookRaw.reconcileAnchors,
     archiveHook.reconcileAnchors,
+    // The Mode-B re-apply reads these live arrays once, at the single
+    // latched firing. The `modeAReconciledDocRef` guard makes any re-fire a
+    // no-op, so listing them is for exhaustive-deps correctness only — it
+    // never causes the pass to run more than once per doc-open.
+    notesHookRaw.notes,
+    notesHookRaw.highlights,
+    todosHook.items,
+    revisionsHookRaw.cards,
+    cutterHookRaw.cards,
   ]);
 
   // Compile state — `pdfBlobUrl`, `lastCompileTime`, `pdfStale` live

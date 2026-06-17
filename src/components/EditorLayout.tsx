@@ -82,9 +82,7 @@ function usePanelColorSubscription(): number {
   return useSyncExternalStore(subscribePanelColors, getPanelColorVersion, () => 0);
 }
 import {
-  reanchorByText,
   getLinkedTextObjectIds,
-  getTextAnchor,
 } from "@/links/links";
 import type { LinkedAnchorKind } from "@/links/links";
 import dynamic from "next/dynamic";
@@ -3154,64 +3152,15 @@ export default function EditorLayout() {
   // See the hook's docstring at the top of this file.
   usePanelColorSubscription();
 
-  // Re-apply linked-anchor marks on load. Each sidecar stores (anchorId, anchorText);
-  // we walk the doc and try to re-attach each mark via text search. For legacy
-  // text revisions that have `selectedText` but no `anchorId`, we do a best-
-  // effort reanchor and persist the resulting anchorId back onto the revision.
-  // Guarded on docIdForHooks so we only run once per open document.
-  const anchorsAppliedDocRef = useRef<string | null>(null);
-  useEffect(() => {
-    if (!editorInstance || !editorRef.current || !docIdForHooks) return;
-    if (anchorsAppliedDocRef.current === docIdForHooks) return;
-    anchorsAppliedDocRef.current = docIdForHooks;
-    const records: Array<{ anchorId: string; kind: LinkedAnchorKind; text: string }> = [];
-    for (const n of notes) {
-      const ta = getTextAnchor(n);
-      if (ta && ta.anchorText) {
-        records.push({ anchorId: ta.anchorId, kind: "note", text: ta.anchorText });
-      }
-    }
-    for (const t of todoItems) {
-      const ta = getTextAnchor(t);
-      if (ta && ta.anchorText) {
-        records.push({ anchorId: ta.anchorId, kind: "todo", text: ta.anchorText });
-      }
-    }
-    for (const c of comments) {
-      const ta = getTextAnchor(c);
-      if (ta) {
-        records.push({ anchorId: ta.anchorId, kind: "revision", text: ta.anchorText || (c.selectedText ?? "") });
-      }
-    }
-    for (const c of cutterCards) {
-      const ta = getTextAnchor(c);
-      if (ta && ta.anchorText) {
-        records.push({
-          anchorId: ta.anchorId,
-          kind: c.kind === "suggestion" ? "cutter-suggestion" : "cutter-comment",
-          text: ta.anchorText,
-        });
-      }
-    }
-    // Highlights are applied last so a highlight whose range sits inside a
-    // broader revision/cutter selection wins the overlap. (setMark replaces
-    // earlier linkedAnchor marks in the overlap, and if a highlight mark
-    // were overwritten LinkedAnchorGuard would fire an orphan event and
-    // strip the textRange from the sidecar.)
-    for (const h of highlights) {
-      const ta = getTextAnchor(h);
-      if (ta && ta.anchorText) {
-        records.push({ anchorId: ta.anchorId, kind: "highlight", text: ta.anchorText });
-      }
-    }
-    if (records.length > 0) {
-      editorRef.current.applyLinkedAnchors(records);
-    }
-
-    // Legacy anchored comments path retired with the revisions cutter rewrite.
-    // Mode B (selection) anchors now persist via the unified link helpers,
-    // so there's nothing to reanchor here.
-  }, [editorInstance, docIdForHooks, notes, todoItems, highlights, comments, cutterCards]);
+  // RC-B: the once-per-load Mode-B `linkedAnchor` re-apply that used to live
+  // here (`applyLinkedAnchors` over notes/todos/revisions/cutter/highlights)
+  // was a SECOND load-time recovery writer racing the EditorPane reconcile
+  // pass (RC-A). It has moved into that pass (`reapplyModeBAnchors` in
+  // EditorPane.tsx), so there is now exactly ONE load-time owner. The
+  // underlying `EditorHandle.applyLinkedAnchors` / `reanchorByText` command is
+  // unchanged — the moved pass calls it. Retiring EditorLayout's parity HOOK
+  // mounts (the remaining non-recovery reads of `notes` / `todoItems` / etc.)
+  // is a separate later chip (E5); RC-B retires only the recovery WRITER.
 
   // Phase F: doc-aware legacy popout-key sweep. The boot-time
   // `useViewPrefs.loadPrefs` migrator handles the kinds that don't
