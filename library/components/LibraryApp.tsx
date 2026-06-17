@@ -23,7 +23,8 @@ interface Props {
 }
 
 export default function LibraryApp({ tabsOptions, showNavigator, belowNavigator }: Props = {}) {
-  const { state, pick, grant, reset, lastSync, pickerError } = useLibraryHandle();
+  const { state, pick, grant, reset, lastSync, pickerError, syncError, resyncSkills, dismissSyncError } =
+    useLibraryHandle();
 
   if (state.kind === "loading") {
     return (
@@ -52,6 +53,9 @@ export default function LibraryApp({ tabsOptions, showNavigator, belowNavigator 
       handle={state.handle}
       onReset={reset}
       lastSync={lastSync}
+      syncError={syncError}
+      onResync={resyncSkills}
+      onDismissSyncError={dismissSyncError}
       tabsOptions={tabsOptions}
       showNavigator={showNavigator}
       belowNavigator={belowNavigator}

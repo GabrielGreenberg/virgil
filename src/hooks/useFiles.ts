@@ -27,6 +27,7 @@ import {
 } from "@/lib/doc-index";
 import { syncSkillBundle } from "@library/lib/skill-sync";
 import { resolveLibraryRootPath } from "@library/lib/library-folder";
+import { ensureRW } from "@/lib/fsa-permissions";
 import { getWindowId } from "@/lib/multi-window/window-id";
 import {
   claimDoc,
@@ -37,6 +38,30 @@ import {
 } from "@/lib/multi-window/doc-ownership";
 import { subscribe, type BusEvent } from "@/lib/multi-window/bus";
 import { useSystemDialog } from "@/components/system-dialog-host";
+
+/** A surfaced skill-bundle sync failure for the open paper folder. Drives
+ *  a dismissible top-bar banner (see SkillSyncControls) so a failed sync
+ *  is a visible, fixable event rather than a silent console.error. */
+export interface SkillSyncError {
+  /** True when the failure is a revoked/denied FSA permission
+   *  (NotAllowedError) — the banner words it as a permission problem and
+   *  Retry re-grants via the user-gesture click. */
+  permission: boolean;
+  /** Human-readable explanation shown in the banner. */
+  message: string;
+}
+
+/** A surfaced "skills updated" notice. Fires only when a sync actually
+ *  WROTE files, so the user is told to restart their cowork session. */
+export interface SkillSyncNotice {
+  version: string;
+  filesWritten: number;
+}
+
+function describeSyncError(err: unknown): string {
+  if (err instanceof Error && err.message) return err.message;
+  return String(err);
+}
 
 /**
  * Manages the workspace tabs and the doc index.
@@ -487,6 +512,77 @@ export function useFiles() {
   // re-activations within the same session. Keyed by docId; reset on
   // page reload (which is also when a new bundle version arrives).
   const syncedDocIdsRef = useRef<Set<string>>(new Set());
+  // Surfaced sync state (driven into the top-bar SkillSyncControls). The
+  // error makes a failed sync loud + retryable; the notice tells the user
+  // to restart their cowork session after a real bundle update.
+  const [skillSyncError, setSkillSyncError] = useState<SkillSyncError | null>(
+    null,
+  );
+  const [skillSyncNotice, setSkillSyncNotice] =
+    useState<SkillSyncNotice | null>(null);
+
+  /**
+   * Write the Virgil skill bundle into a paper folder. Best-effort on the
+   * auto path (doc-open), but never silent: any failure becomes a surfaced
+   * `skillSyncError` and a real write becomes a `skillSyncNotice`.
+   *
+   * `regrant` re-acquires a possibly-revoked FSA permission first (e.g.
+   * after a PWA reinstall). `ensureRW` is a no-op when already granted and
+   * its prompt must ride a user gesture — so it's only passed from the
+   * Re-sync / Retry click, never the auto path.
+   */
+  const runSkillSync = useCallback(
+    async (docId: string, opts: { regrant?: boolean } = {}) => {
+      try {
+        const handle = await getDocHandle(docId);
+        if (!handle) return;
+        if (opts.regrant && !(await ensureRW(handle))) {
+          setSkillSyncError({
+            permission: true,
+            message:
+              "Virgil couldn't get permission to write the skill bundle into this paper's folder. Grant access and try again.",
+          });
+          return;
+        }
+        const libraryRoot = (await resolveLibraryRootPath()) ?? null;
+        const result = await syncSkillBundle(handle, { libraryRoot });
+        setSkillSyncError(null);
+        // Only announce when a sync actually WROTE files — a version-match
+        // no-op shouldn't nag the user to restart their cowork session.
+        if (result.synced && result.filesWritten > 0) {
+          setSkillSyncNotice({
+            version: result.version,
+            filesWritten: result.filesWritten,
+          });
+        }
+      } catch (err) {
+        const permission =
+          err instanceof DOMException && err.name === "NotAllowedError";
+        setSkillSyncError({
+          permission,
+          message: permission
+            ? "Virgil lost permission to write the skill bundle into this paper's folder (this can happen after reinstalling the app). Click Retry to re-grant access."
+            : `Virgil couldn't sync the skill bundle into this paper's folder: ${describeSyncError(err)}. Your cowork commands may be out of date — click Retry.`,
+        });
+        console.error("[skill-sync] paper-folder sync failed", err);
+      }
+    },
+    [],
+  );
+
+  /** Manually re-run the skill sync for the current paper. Clears the
+   *  per-session dedup so the write happens even if this folder already
+   *  synced, and re-grants permission from the click. Idempotent. */
+  const resyncSkills = useCallback(async () => {
+    const docId = currentDocIdRef.current;
+    if (!docId) return;
+    syncedDocIdsRef.current.delete(docId);
+    await runSkillSync(docId, { regrant: true });
+    syncedDocIdsRef.current.add(docId);
+  }, [runSkillSync]);
+
+  const dismissSkillSyncError = useCallback(() => setSkillSyncError(null), []);
+  const dismissSkillSyncNotice = useCallback(() => setSkillSyncNotice(null), []);
 
   /** Helper: register a doc and activate its tab. Re-opens of an
    *  existing doc go through the handoff flow when it's owned by
@@ -513,21 +609,13 @@ export function useFiles() {
       // folder so any cowork session opened against it sees /editor:*
       // and /library:* commands. Idempotent — the version-stamp dedup
       // in skill-sync makes the steady-state cost a single FSA stat.
+      // Failures are surfaced (not swallowed) via runSkillSync.
       if (!syncedDocIdsRef.current.has(meta.id)) {
         syncedDocIdsRef.current.add(meta.id);
-        void (async () => {
-          try {
-            const handle = await getDocHandle(meta.id);
-            if (!handle) return;
-            const libraryRoot = (await resolveLibraryRootPath()) ?? null;
-            await syncSkillBundle(handle, { libraryRoot });
-          } catch (err) {
-            console.error("[skill-sync] paper-folder sync failed", err);
-          }
-        })();
+        void runSkillSync(meta.id);
       }
     },
-    [appendToOuterOrder, bumpAccessed, claimWithHandoff],
+    [appendToOuterOrder, bumpAccessed, claimWithHandoff, runSkillSync],
   );
 
   /**
@@ -754,5 +842,11 @@ export function useFiles() {
     openLibraryOuterTab,
     closeLibraryOuterTab,
     activateLibraryOuterPane,
+    // Skill-bundle sync surface (loud failure + manual re-sync + reload nag)
+    skillSyncError,
+    skillSyncNotice,
+    resyncSkills,
+    dismissSkillSyncError,
+    dismissSkillSyncNotice,
   };
 }

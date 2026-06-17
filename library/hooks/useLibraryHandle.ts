@@ -18,9 +18,27 @@ export type FolderState =
   | { kind: "needs-permission"; handle: FileSystemDirectoryHandle }
   | { kind: "ready"; handle: FileSystemDirectoryHandle };
 
+/** A surfaced skill-bundle sync failure for the library folder. Drives a
+ *  dismissible banner in LibraryView so a failed sync is a visible, fixable
+ *  event rather than a silent console.error. */
+export interface SkillSyncError {
+  /** True for a revoked/denied FSA permission (NotAllowedError) — the
+   *  banner words it as a permission problem and Retry re-grants. */
+  permission: boolean;
+  message: string;
+}
+
+function describeSyncError(err: unknown): string {
+  if (err instanceof Error && err.message) return err.message;
+  return String(err);
+}
+
 export function useLibraryHandle() {
   const [state, setState] = useState<FolderState>({ kind: "loading" });
   const [lastSync, setLastSync] = useState<SyncResult | null>(null);
+  // Surfaced sync failure (driven into LibraryView's banner). Makes a
+  // failed skill sync loud + retryable instead of a silent console.error.
+  const [syncError, setSyncError] = useState<SkillSyncError | null>(null);
   // Last error from the picker (or grant) flow. Cleared on each fresh
   // attempt; surfaced to the UI so a stuck Chrome picker lock or a
   // permission-prompt rejection isn't a silent no-op.
@@ -35,6 +53,57 @@ export function useLibraryHandle() {
   // behind the window or on another macOS Space, where the user
   // can't see it).
   const pickerInFlightRef = useRef(false);
+
+  /**
+   * Write the Virgil skill bundle into the library folder. Best-effort on
+   * the auto path (library-open), but never silent: any failure becomes a
+   * surfaced `syncError` and a successful sync clears it + records lastSync.
+   *
+   * `regrant` re-acquires a possibly-revoked FSA permission first (e.g.
+   * after a PWA reinstall); its prompt must ride a user gesture, so it's
+   * only passed from the Re-sync / Retry click, never the auto path.
+   */
+  const runSkillSync = useCallback(
+    async (
+      handle: FileSystemDirectoryHandle,
+      opts: { dedupe?: boolean; regrant?: boolean } = {},
+    ) => {
+      if (opts.dedupe && syncedHandleRef.current === handle) return;
+      syncedHandleRef.current = handle;
+      try {
+        if (opts.regrant) {
+          const perm = await ensureReadWritePermission(handle);
+          if (perm !== "granted") {
+            setSyncError({
+              permission: true,
+              message:
+                "Virgil couldn't get permission to write the skill bundle into your library folder. Grant access and try again.",
+            });
+            return;
+          }
+        }
+        // Library folder writes its own library-path.json pointing to
+        // itself. In dev-storage we have the abs path via the dev API;
+        // in production FSA we leave it null (handled gracefully by
+        // library_path.py's resolution chain).
+        const libraryRoot = (await resolveLibraryRootPath()) ?? null;
+        const result = await syncSkillBundle(handle, { libraryRoot });
+        setSyncError(null);
+        setLastSync(result);
+      } catch (err) {
+        const permission =
+          err instanceof DOMException && err.name === "NotAllowedError";
+        setSyncError({
+          permission,
+          message: permission
+            ? "Virgil lost permission to write the skill bundle into your library folder (this can happen after reinstalling the app). Click Retry to re-grant access."
+            : `Virgil couldn't sync the skill bundle into your library: ${describeSyncError(err)}. Your cowork commands may be out of date — click Retry.`,
+        });
+        console.error("[skill-sync] failed", err);
+      }
+    },
+    [],
+  );
 
   const becameReady = useCallback(async (handle: FileSystemDirectoryHandle) => {
     console.log("[library] becameReady: starting ensureLibraryStructure");
@@ -74,20 +143,9 @@ export function useLibraryHandle() {
     }
     setState({ kind: "ready", handle });
     console.log("[library] becameReady: state set to ready", { timedOut });
-    if (syncedHandleRef.current === handle) return;
-    syncedHandleRef.current = handle;
-    try {
-      // Library folder writes its own library-path.json pointing to
-      // itself. In dev-storage we have the abs path via the dev API;
-      // in production FSA we leave it null (handled gracefully by
-      // library_path.py's resolution chain).
-      const libraryRoot = (await resolveLibraryRootPath()) ?? null;
-      const result = await syncSkillBundle(handle, { libraryRoot });
-      setLastSync(result);
-    } catch (err) {
-      console.error("[skill-sync] failed", err);
-    }
-  }, []);
+    // Best-effort, deduped, and never silent — failures surface via syncError.
+    void runSkillSync(handle, { dedupe: true });
+  }, [runSkillSync]);
 
   const refresh = useCallback(async () => {
     console.log("[library] refresh: reading stored handle from IDB");
@@ -179,8 +237,31 @@ export function useLibraryHandle() {
     syncedHandleRef.current = null;
     setLastSync(null);
     setPickerError(null);
+    setSyncError(null);
     setState({ kind: "none" });
   }, []);
 
-  return { state, pick, grant, reset, refresh, lastSync, pickerError };
+  /** Manually re-run the skill sync for the library. Clears the per-handle
+   *  dedup so the write happens even if this folder already synced, and
+   *  re-grants permission from the click. Idempotent. */
+  const resyncSkills = useCallback(async () => {
+    if (state.kind !== "ready") return;
+    syncedHandleRef.current = null;
+    await runSkillSync(state.handle, { regrant: true });
+  }, [state, runSkillSync]);
+
+  const dismissSyncError = useCallback(() => setSyncError(null), []);
+
+  return {
+    state,
+    pick,
+    grant,
+    reset,
+    refresh,
+    lastSync,
+    pickerError,
+    syncError,
+    resyncSkills,
+    dismissSyncError,
+  };
 }
