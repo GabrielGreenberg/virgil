@@ -50,6 +50,8 @@ import { withDocLock } from "@/lib/multi-window/doc-ownership";
 import {
   assertActive,
   assertNotSuperseded,
+  getActiveHandle,
+  isActive,
   type DocWriteHandle,
 } from "@/lib/multi-window/doc-pipeline";
 import {
@@ -284,7 +286,98 @@ export async function readDocBundle(docId: string): Promise<DocBundle> {
   // Assign UUIDs immediately on load so every paragraph is addressable
   // from the moment the editor opens (no waiting for the first save).
   assignUuids(content);
+
+  // Persist the re-stamped .tex (+ sidecar) back to disk on load, so a
+  // UUID minted here for a paragraph that lacked a `%!v:` marker is
+  // durable BEFORE the editor mounts — not volatile until the next
+  // 1500 ms autosave. Without this, a card anchored to a load-minted
+  // UUID orphans on the next reload (the production-only window the dev
+  // backend never exposes, because storage-dev already writes back here).
+  // Parity with storage-dev.readDocBundle; reuses writeDocBundle's
+  // preamble-preserving serialize so we never clobber the user's
+  // preamble/postamble.
+  //
+  // Guarded by the active-handle / pipeline check: a read kicked off
+  // during a doc switch must not write stale-derived content to the
+  // newer doc's file. `getActiveHandle` pins the destination to the
+  // pipeline currently registered for this docId, and routing through
+  // `enqueueDocWrite` re-checks staleness twice — strictly at enqueue
+  // (assertActive) and leniently inside the queued task
+  // (assertNotSuperseded) — so a superseded read can't overwrite the
+  // wrong .tex. Sharing the "bundle" subkey serializes this writeback
+  // against any concurrent real writeDocBundle for the same doc.
+  const writebackHandle = getActiveHandle(docId);
+  if (writebackHandle && isActive(writebackHandle)) {
+    // Fire-and-forget — don't block the editor from opening. A failed
+    // UUID-stamp writeback is opportunistic, not a save error.
+    void writeReStampedTexOnLoad(writebackHandle, content, latex).catch(() => {
+      // Silent — staleness rejections and FSA errors are non-fatal here.
+    });
+  }
+
   return { content, editorState };
+}
+
+/**
+ * Opportunistic load-writeback: serialize the just-re-stamped `content`
+ * (preserving the user's preamble/postamble verbatim, exactly as
+ * `writeDocBundle` does) and write the `.tex` + `virgil.json` sidecar
+ * back to disk. Routed through `enqueueDocWrite` so it inherits the
+ * pipeline staleness guard (so a read during a doc switch can't write to
+ * the wrong file) and serializes against real bundle writes for this doc.
+ *
+ * `existingLatex` is the raw `.tex` we already read in `readDocBundle`,
+ * reused as the preamble source — no second disk read on the load path.
+ */
+async function writeReStampedTexOnLoad(
+  h: DocWriteHandle,
+  content: JSONContent,
+  existingLatex: string,
+): Promise<void> {
+  // The caller already ran assignUuids on `content`. recoverOrphanedUuids
+  // stays disabled (same rationale as writeDocBundle — fingerprint
+  // matching causes UUID collisions).
+  //
+  // Preserve the user's preamble/postamble verbatim. Mirror writeDocBundle:
+  // for an existing doc the delimiters come straight off the .tex; only a
+  // brand-new / empty doc (no \begin{document}) seeds a preamble, here from
+  // the doc's selected style.
+  const delimiters = extractPreambleAndPostamble(existingLatex);
+  const newSidecar = extractSidecarData(content);
+
+  await enqueueDocWrite(h, "bundle", async () => {
+    const docHandle = await requireDocHandle(h.docId);
+    const meta = await getDocMetaOrThrow(h.docId);
+    const virgil = await getVirgilSubdir(docHandle);
+
+    let serializeOpts: { preamble?: string } | undefined = delimiters ?? undefined;
+    if (!delimiters) {
+      const rawSettings = await safeReadJson<unknown>(
+        virgil,
+        "document-settings.json",
+        { styleId: DEFAULT_STYLE_ID },
+      );
+      const settings = migrateDocumentSettings(rawSettings);
+      serializeOpts = { preamble: resolveStyle(settings.styleId).preamble };
+    }
+    const latex = serializeToLatex(content, serializeOpts);
+
+    // Snapshot the prior bundle before overwriting — same forensic safety
+    // net writeDocBundle uses.
+    await snapshotPriorBundle(docHandle, virgil, meta.texFilename);
+
+    const texFh = await docHandle.getFileHandle(meta.texFilename, {
+      create: true,
+    });
+    await writeTextToHandle(texFh, latex);
+
+    const sidecarFh = await virgil.getFileHandle("virgil.json", {
+      create: true,
+    });
+    await writeTextToHandle(sidecarFh, JSON.stringify(newSidecar, null, 2));
+
+    await touchDocTimestamp(h.docId);
+  });
 }
 
 export async function writeDocBundle(
