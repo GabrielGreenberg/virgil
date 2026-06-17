@@ -2,10 +2,30 @@
 
 # The `<Menu>` primitive — design doc
 
-> **Status:** design, not yet built. This doc is the agreed target after a 3-design
-> bake-off (compound-components vs. headless-hook vs. registry-provider) judged
-> against the live code. The chosen architecture is **the registry-provider** with
-> two grafts. Build per the phased plan in §5.
+> **Status: BUILT + SHIPPED (2026-06-16).** The registry-provider architecture (below) is
+> implemented in `src/components/menu/` and **8 of 9 menus are migrated onto it** on `main`
+> (grab, lightning/Cmd-/, heading, tab, color, MenuBar block-type + view-menu, label-ref,
+> bib-picker), suite green, app integration-healthy live. R1 (the aria-activedescendant premise)
+> was spiked live and PASSED before build. R6 nested-key ownership is active.
+>
+> **The ONE deliberate exception — `SlashCommandPopup`** (user decision, 2026-06-16): it stays a
+> ProseMirror plugin and is NOT migrated. It already has full arrow nav; absorbing it onto the
+> primitive (the R2 dual-backend `registryFor` seam, §2.3/§6 R2) is consistency-only with real risk
+> and zero user-facing change. The `registryFor` adapter + contract type remain in the primitive as
+> the available seam if absorption is ever wanted.
+>
+> **Deferred polish** (functional today via Enter/click/Up-Down; Left/Right is the ideal affordance):
+> (a) `ViewMenu` Right=expand/Left=collapse — needs a list `onArrowHorizontal(dir, activeId)` hook in
+> `useMenuKeyboard.consume` (before `reg.move` for left/right), threaded through `MenuProvider` (the
+> combobox path has its own `onArrowHorizontal`; the window-source list path does not yet);
+> (b) the color swatch row navigates Up/Down — could adopt the new `orientation="horizontal"` for
+> Left/Right (needs its test updated); (c) a real-keypress **Phase D** live a11y/keyboard smoke is
+> owed (synthetic events can't exercise native-caret suppression — best driven by a human pressing
+> real arrows in each menu).
+>
+> Original design rationale follows (historical). This doc was the agreed target after a 3-design
+> bake-off (compound-components vs. headless-hook vs. registry-provider) judged against the live
+> code; the chosen architecture is **the registry-provider** with two grafts.
 
 ## 0. The problem in one paragraph
 
