@@ -4007,6 +4007,33 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
                 // lozenge to compute a max-width that keeps it from
                 // crossing into the centered MenuBar's band.
                 ['--menubar-width' as string]: `${menubarWidth}px`,
+                // ── Chrome-top contract (single source of truth) ──
+                // The pod's top chrome budget, unified so the manila
+                // gap between the docked MenuBar tool-strip and the
+                // pod's card edge is tuned in ONE place. Previously the
+                // offset `32` (= band 24 + cap 8) was hand-duplicated
+                // across the reading mask, pod-frame ring, and margin
+                // overlay (and `40`/`10` derived from it), so the gap
+                // drifted and couldn't be balanced against the ~2px of
+                // air above the centered tool glyphs.
+                //   --chrome-top    = where the visible card border sits
+                //                     below the column top (Editor) /
+                //                     the lone cap (Reader: 8).
+                //   --pod-edge-inset = THE knob for the strip↔pod gap.
+                //                     It shifts the card POSITION only,
+                //                     never the corner-arc radius (that
+                //                     stays --pod-cap-h / --pod-cap-bleed).
+                // The pod caps (top + bottom) derive their geometry from
+                // the --pod-cap-* values so both stay coupled.
+                ['--tool-strip-h' as string]: '24px',
+                ['--pod-cap-inner' as string]: '8px',
+                ['--pod-cap-bleed' as string]: 'calc(4px + var(--pod-gap))',
+                ['--pod-cap-h' as string]:
+                  'calc(var(--pod-radius) + 4px + var(--pod-gap))',
+                ['--pod-edge-inset' as string]: '0px',
+                ['--chrome-top' as string]: menuBar
+                  ? 'calc(var(--tool-strip-h) + var(--pod-edge-inset))'
+                  : '8px',
               }}
             >
             {/* Top reading-frame mask — always-present letterbox band
@@ -4037,7 +4064,7 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
                 className="pointer-events-none shrink-0"
                 style={{
                   position: "sticky",
-                  top: menuBar ? 32 : 8,
+                  top: 'var(--chrome-top)',
                   height: "var(--editor-pt, 40px)",
                   marginBottom: "calc(-1 * var(--editor-pt, 40px))",
                   zIndex: 15,
@@ -4157,9 +4184,10 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
                 (justify-end): the two corners then share a center and
                 read as one arc. The surplus 14px of manila sits ABOVE
                 the white edge — to keep the white edge (the pod's
-                visible top) where it was, the sticky `top` shifts up
-                by the 14px bleed (24 → 10). That surplus manila lands
-                behind the MenuBar band (cap z-30 < band z-40, both
+                visible top) at the card edge, the sticky `top` shifts
+                up from the card edge by the 14px bleed
+                (`--chrome-top` − `--pod-cap-bleed`). That surplus
+                manila lands behind the MenuBar band (cap z-30 < band z-40, both
                 manila) so it blends seamlessly. Reader (no band) keeps
                 top:0; its surplus tail clips above the scroll top. */}
             {ready && (overrideEditor ?? editor) && (
@@ -4167,29 +4195,29 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
                 data-editor-pod-cap
                 className="sticky z-30 shrink-0 pointer-events-none flex flex-col"
                 style={{
-                  top: menuBar ? 10 : 0,
-                  height: 'calc(var(--pod-radius) + 4px + var(--pod-gap))',
+                  top: menuBar ? 'calc(var(--chrome-top) - var(--pod-cap-bleed))' : 0,
+                  height: 'var(--pod-cap-h)',
                   // The surplus 14px (= bleed) goes ABOVE the white
                   // inner. marginTop pulls the whole cap up by that
                   // 14px so the white edge stays at its original flow
-                  // position; marginBottom stays -8 (negating just the
-                  // white inner's 8px) so flow is neutral and the pod
+                  // position; marginBottom negates just the white inner
+                  // (--pod-cap-inner) so flow is neutral and the pod
                   // isn't pushed. Net flow: -14 + 22 - 8 = 0.
-                  marginTop: 'calc(-4px - var(--pod-gap))',
-                  marginBottom: -8,
-                  marginLeft: 'calc(-4px - var(--pod-gap))',
-                  marginRight: 'calc(-4px - var(--pod-gap))',
+                  marginTop: 'calc(-1 * var(--pod-cap-bleed))',
+                  marginBottom: 'calc(-1 * var(--pod-cap-inner))',
+                  marginLeft: 'calc(-1 * var(--pod-cap-bleed))',
+                  marginRight: 'calc(-1 * var(--pod-cap-bleed))',
                   background: 'var(--background)',
-                  borderTopLeftRadius: 'calc(var(--pod-radius) + 4px + var(--pod-gap))',
-                  borderTopRightRadius: 'calc(var(--pod-radius) + 4px + var(--pod-gap))',
+                  borderTopLeftRadius: 'var(--pod-cap-h)',
+                  borderTopRightRadius: 'var(--pod-cap-h)',
                   justifyContent: 'flex-end',
                 }}
               >
                 <div
                   style={{
-                    height: 8,
-                    marginLeft: 'calc(4px + var(--pod-gap))',
-                    marginRight: 'calc(4px + var(--pod-gap))',
+                    height: 'var(--pod-cap-inner)',
+                    marginLeft: 'var(--pod-cap-bleed)',
+                    marginRight: 'var(--pod-cap-bleed)',
                     background: 'var(--pod-editor)',
                     // Mask-only: NO border/shadow here. The single
                     // `[data-pod-frame]` ring draws the edge. This white
@@ -4216,8 +4244,9 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
                 showed as a 1–2px displaced edge on retina, is gone).
                 The pod content is borderless; the caps mask scrolling
                 content and fill the manila corner notches behind this
-                ring's rounded corners. chromeTop = 32 (menu band 24 +
-                cap 8) / 8 (Reader); chromeBottom = 8. z-31 sits above
+                ring's rounded corners. Top edge sits at `--chrome-top`
+                (Editor = tool-strip-h + pod-edge-inset; Reader = 8);
+                chromeBottom = `--pod-cap-inner` (8). z-31 sits above
                 the caps (z-30), below the MenuBar band (z-40). */}
             {ready && (overrideEditor ?? editor) && (
               <div
@@ -4226,13 +4255,15 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
                 className="pointer-events-none shrink-0"
                 style={{
                   position: "sticky",
-                  top: menuBar ? 32 : 8,
-                  height: menuBar
-                    ? "calc(var(--scroll-viewport-h, 100vh) - 40px)"
-                    : "calc(var(--scroll-viewport-h, 100vh) - 16px)",
-                  marginBottom: menuBar
-                    ? "calc(-1 * (var(--scroll-viewport-h, 100vh) - 40px))"
-                    : "calc(-1 * (var(--scroll-viewport-h, 100vh) - 16px))",
+                  top: 'var(--chrome-top)',
+                  // Visible rectangle = viewport minus the top chrome
+                  // (--chrome-top) and the bottom cap (--pod-cap-inner).
+                  // One form for both modes now that --chrome-top folds
+                  // the old 32/8 split (Editor → vh−32, Reader → vh−16).
+                  height:
+                    "calc(var(--scroll-viewport-h, 100vh) - var(--chrome-top) - var(--pod-cap-inner))",
+                  marginBottom:
+                    "calc(-1 * (var(--scroll-viewport-h, 100vh) - var(--chrome-top) - var(--pod-cap-inner)))",
                   zIndex: 31,
                   border: "var(--pod-border)",
                   borderRadius: "var(--pod-radius)",
@@ -4334,20 +4365,20 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
                     `useMarginEdit` toggles those vars without going
                     through React. */}
                 {marginEditMode && viewPrefs && (() => {
-                  // Chrome above (menu band 24 + cap 8 = 32 in main
-                  // editor; just 8 of cap in Reader) and below (8 of
-                  // bottom cap, sticky at viewport bottom).
-                  const chromeTop = menuBar ? 32 : 8;
-                  const chromeBottom = 8;
+                  // Align the guide frame to the visible pod rectangle:
+                  // top = the card edge (--chrome-top, folds the old
+                  // menu-band+cap 32 / Reader 8), bottom = the bottom
+                  // cap inner (--pod-cap-inner). Same tokens the pod
+                  // frame ring uses, so the guides can't drift from it.
                   const overlayHeight =
-                    `calc(var(--scroll-viewport-h, 100vh) - ${chromeTop}px - ${chromeBottom}px)`;
+                    "calc(var(--scroll-viewport-h, 100vh) - var(--chrome-top) - var(--pod-cap-inner))";
                   return (
                     <div
                       data-margin-frame
                       className="pointer-events-none"
                       style={{
                         position: "sticky",
-                        top: chromeTop,
+                        top: "var(--chrome-top)",
                         height: overlayHeight,
                         // Pull the overlay out of flow so it doesn't
                         // push prose down by its sticky height.
@@ -4757,13 +4788,13 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
                 className="sticky z-30 shrink-0 pointer-events-none flex flex-col"
                 style={{
                   bottom: -6,
-                  height: 'calc(var(--pod-radius) + 4px + var(--pod-gap))',
-                  marginTop: 'calc(-1 * (var(--pod-radius) + 4px + var(--pod-gap)))',
-                  marginLeft: 'calc(-4px - var(--pod-gap))',
-                  marginRight: 'calc(-4px - var(--pod-gap))',
+                  height: 'var(--pod-cap-h)',
+                  marginTop: 'calc(-1 * var(--pod-cap-h))',
+                  marginLeft: 'calc(-1 * var(--pod-cap-bleed))',
+                  marginRight: 'calc(-1 * var(--pod-cap-bleed))',
                   background: 'var(--background)',
-                  borderBottomLeftRadius: 'calc(var(--pod-radius) + 4px + var(--pod-gap))',
-                  borderBottomRightRadius: 'calc(var(--pod-radius) + 4px + var(--pod-gap))',
+                  borderBottomLeftRadius: 'var(--pod-cap-h)',
+                  borderBottomRightRadius: 'var(--pod-cap-h)',
                   // Hidden when the doc fits within the row's viewport
                   // (set by EditorScrollbar via `--cap-bottom-display`).
                   // Suppresses the doubled-bottom-edge visual for short
@@ -4774,9 +4805,9 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
               >
                 <div
                   style={{
-                    height: 8,
-                    marginLeft: 'calc(4px + var(--pod-gap))',
-                    marginRight: 'calc(4px + var(--pod-gap))',
+                    height: 'var(--pod-cap-inner)',
+                    marginLeft: 'var(--pod-cap-bleed)',
+                    marginRight: 'var(--pod-cap-bleed)',
                     background: 'var(--pod-editor)',
                     // Mask-only (see top cap): no border/shadow; the
                     // single `[data-pod-frame]` ring draws the edge.
