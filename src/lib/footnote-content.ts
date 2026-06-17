@@ -113,8 +113,15 @@ export function htmlToJson(html: string): JSONContent {
     };
   }
 
-  const wrapper = document.createElement("div");
-  wrapper.innerHTML = html;
+  // SECURITY (BIB-F5-01 sibling): parse into an INERT DOMParser document, NOT
+  // `div.innerHTML`. A detached div still carries a browsing context, so
+  // assigning `innerHTML` attempts resource loads — `<img src=x onerror=…>`
+  // fires its handler before we ever read the tree. A DOMParser document has no
+  // browsing context: parsing alone runs no scripts and fetches nothing, so the
+  // payload is neutralized before the walk. (Same inert-parse technique backs
+  // `sanitize-html.ts`.) The walker below only reads known marks / text /
+  // citation attrs, so the emitted JSON is already free of dangerous markup.
+  const doc = new DOMParser().parseFromString(html, "text/html");
 
   const blocks: JSONContent[] = [];
   let pendingInline: JSONContent[] | null = null;
@@ -255,7 +262,7 @@ export function htmlToJson(html: string): JSONContent {
     flushInline();
   }
 
-  walkBlocks(wrapper);
+  walkBlocks(doc.body);
 
   if (blocks.length === 0) blocks.push({ type: "paragraph" });
   return { type: "doc", content: blocks };
@@ -658,9 +665,11 @@ function htmlToPlain(html: string): string {
   if (typeof window === "undefined") {
     return html.replace(/<[^>]+>/g, "").replace(/&nbsp;/g, " ").trim();
   }
-  const div = document.createElement("div");
-  div.innerHTML = html;
-  return (div.textContent || "").trim();
+  // SECURITY (BIB-F5-01 sibling): inert DOMParser parse — `div.innerHTML` would
+  // attempt resource loads (e.g. `<img onerror>`); a DOMParser document has no
+  // browsing context, so nothing executes or fetches during the parse.
+  const doc = new DOMParser().parseFromString(html, "text/html");
+  return (doc.body.textContent || "").trim();
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
