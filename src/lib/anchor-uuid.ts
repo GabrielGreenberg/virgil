@@ -18,6 +18,7 @@ import type { EditorView } from "@tiptap/pm/view";
 import type { Node as PMNode } from "@tiptap/pm/model";
 import { isAnchorableNode } from "@/lib/marginalia";
 import { generateShortId } from "@/lib/uuid";
+import { markAnchorMint } from "@/lib/anchor-mint-signal";
 
 const DEFERRING_PARENTS = new Set([
   "listItem",
@@ -84,6 +85,10 @@ export function ensureAnchorUuid(
       uuid: newUuid,
     });
     tr.setMeta("addToHistory", false);
+    // Tag the mint so the autosave forces an immediate doc-bundle flush — the
+    // paragraph UUID must persist on the card's fast clock, not the doc's 1500 ms
+    // clock (see @/lib/anchor-mint-signal + the SYNTHESIS memo).
+    markAnchorMint(tr);
     view.dispatch(tr);
     return newUuid;
   } catch {

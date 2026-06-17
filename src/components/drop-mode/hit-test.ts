@@ -15,9 +15,11 @@
  */
 
 import type { Editor } from "@tiptap/react";
-import type { Node as PMNode } from "@tiptap/pm/model";
+import type { Node as PMNode, ResolvedPos } from "@tiptap/pm/model";
 import { isAnchorableNode } from "@/lib/marginalia";
 import { generateShortId } from "@/lib/uuid";
+import { resolveAnchorableNode, ensureAnchorUuid } from "@/lib/anchor-uuid";
+import { markAnchorMint } from "@/lib/anchor-mint-signal";
 import { resolveContentEdges } from "@/text-objects/block-frame";
 import { isCompatibleParent } from "@/text-objects/drop-adapters";
 import {
@@ -127,37 +129,65 @@ interface AnchorableBlockInfo {
   dom: HTMLElement;
 }
 
-/** Walk up from `pos` to the nearest anchorable node, minting a UUID if
- *  missing. Mirrors the pattern in `Marginalia.tsx` lines 222-256. */
-function resolveAnchorableBlock(
+/**
+ * Walk up from `pos` to the nearest anchorable node, minting a UUID if missing.
+ *
+ * The cursor-inside-a-block case DELEGATES to the canonical anchor resolver
+ * (`resolveAnchorableNode` / `ensureAnchorUuid` in `@/lib/anchor-uuid`) — the
+ * SAME SSOT the normal anchor path (grab handle / action button / Marginalia)
+ * uses. This is load-bearing: that resolver honors `DEFERRING_PARENTS`
+ * (listItem / blockquote / codeBlock / exampleItem), so a re-anchor INTO a
+ * list-item / blockquote / expex paragraph resolves the CONTAINER, not the
+ * inner paragraph. Minting on the inner paragraph (the pre-fix bug) was a
+ * deterministic orphan: `assignUuids` strips inner-container-paragraph UUIDs on
+ * the very next save (latex-serializer.ts), so the card's anchor was guaranteed
+ * stale on reload regardless of timing. Collapsing the two resolvers into one
+ * removes that whole class.
+ *
+ * `ensureAnchorUuid` mints with `addToHistory:false` AND tags the tx with the
+ * anchor-mint signal (so the autosave flushes the paragraph UUID immediately).
+ *
+ * Only the top-level GAP fallback below stays local — drop needs a target even
+ * in the hairline between top-level blocks, picked by Y-distance (not PM's
+ * position-based nodeBefore/nodeAfter). Top-level children have no deferring
+ * parent, so that branch was never affected by the container mis-mint; it just
+ * routes its mint through the same shared signal for the flush.
+ */
+export function resolveAnchorableBlock(
   editor: Editor,
   pos: number,
 ): AnchorableBlockInfo | null {
   const doc = editor.state.doc;
   if (pos < 0 || pos > doc.content.size) return null;
   const $pos = doc.resolve(pos);
-  // Walk up the parent chain (cursor inside a block).
-  for (let d = $pos.depth; d >= 0; d--) {
-    const node = $pos.node(d);
-    if (!isAnchorableNode(node.type)) continue;
-    const blockPos = d === 0 ? 0 : $pos.before(d);
-    let uuid: string | undefined = node.attrs?.uuid as string | undefined;
-    if (!uuid) {
-      const existing = new Set<string>();
-      doc.descendants((n) => {
-        if (n.attrs?.uuid) existing.add(n.attrs.uuid as string);
-      });
-      uuid = generateShortId(existing);
-      const tr = editor.state.tr.setNodeMarkup(blockPos, undefined, {
-        ...node.attrs,
-        uuid,
-      });
-      tr.setMeta("addToHistory", false);
-      editor.view.dispatch(tr);
+  // Cursor inside a block: defer to the SSOT resolver, which skips a
+  // container-nested paragraph in favour of its DEFERRING_PARENTS ancestor.
+  // We only honor this when the walk-up genuinely found an anchorable ancestor
+  // (depth ≥ 0 in the doc tree) — if the resolver fell back to nodeBefore /
+  // nodeAfter for a top-level-gap cursor, we prefer the local Y-distance gap
+  // heuristic below (it picks the visually-nearest neighbor, which the
+  // between-blocks indicator geometry depends on).
+  const inBlock = hasAnchorableAncestor($pos);
+  if (inBlock) {
+    const resolved = resolveAnchorableNode(editor.view, pos);
+    if (resolved) {
+      // Mint (if missing) through the SSOT — honors DEFERRING_PARENTS, tags the
+      // tx with the anchor-mint flush signal, dedups UUIDs doc-wide.
+      const uuid = ensureAnchorUuid(editor.view, pos);
+      if (uuid) {
+        // Re-read nodePos AFTER the mint: `setNodeMarkup` keeps positions
+        // stable (same node, same size), so `resolved.nodePos` is still valid.
+        const domAt = editor.view.nodeDOM(resolved.nodePos);
+        if (domAt instanceof HTMLElement) {
+          return {
+            blockPos: resolved.nodePos,
+            depth: $pos.depth,
+            uuid,
+            dom: domAt,
+          };
+        }
+      }
     }
-    const domAt = editor.view.nodeDOM(blockPos);
-    if (!(domAt instanceof HTMLElement)) continue;
-    return { blockPos, depth: d, uuid, dom: domAt };
   }
   // Walk-up didn't find an anchorable ancestor — the cursor is in the
   // "gap" between top-level blocks (depth 0). Fall back to the nearest
@@ -196,11 +226,28 @@ function resolveAnchorableBlock(
       uuid,
     });
     tr.setMeta("addToHistory", false);
+    // Same flush signal as the SSOT path — persist the minted UUID on the
+    // card's fast clock (see @/lib/anchor-mint-signal).
+    markAnchorMint(tr);
     editor.view.dispatch(tr);
   }
   const domAt = editor.view.nodeDOM(bestPos);
   if (!(domAt instanceof HTMLElement)) return null;
   return { blockPos: bestPos, depth: 0, uuid, dom: domAt };
+}
+
+/**
+ * Did the cursor at `$pos` land INSIDE an anchorable block (vs the gap between
+ * top-level blocks)? True iff some ancestor at depth ≥ 0 is anchorable. Mirrors
+ * the predicate `resolveAnchorableNode`'s walk-up loop tests, so the in-block
+ * delegation fires for exactly the cursors that resolver would resolve via its
+ * walk-up (not its nodeBefore/nodeAfter gap fallback).
+ */
+function hasAnchorableAncestor($pos: ResolvedPos): boolean {
+  for (let d = $pos.depth; d >= 0; d--) {
+    if (isAnchorableNode($pos.node(d).type)) return true;
+  }
+  return false;
 }
 
 /**
