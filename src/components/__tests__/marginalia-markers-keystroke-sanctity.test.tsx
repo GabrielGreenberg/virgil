@@ -94,6 +94,36 @@ function mountDoc(): Editor {
   });
 }
 
+function mountThreeDoc(): Editor {
+  const element = document.createElement("div");
+  document.body.appendChild(element);
+  return new Editor({
+    element,
+    editable: true,
+    extensions: buildEditorExtensions(mainCtx()),
+    content: {
+      type: "doc",
+      content: [
+        {
+          type: "paragraph",
+          attrs: { uuid: "P1" },
+          content: [{ type: "text", text: "The first paragraph." }],
+        },
+        {
+          type: "paragraph",
+          attrs: { uuid: "P2" },
+          content: [{ type: "text", text: "The second paragraph." }],
+        },
+        {
+          type: "paragraph",
+          attrs: { uuid: "P3" },
+          content: [{ type: "text", text: "The third paragraph." }],
+        },
+      ],
+    },
+  });
+}
+
 function modeACard(id: string, uuid: string): CardWithLinks & { id: string } {
   const link: Link = {
     id: `link-${uuid}`,
@@ -108,6 +138,32 @@ function modeACard(id: string, uuid: string): CardWithLinks & { id: string } {
     createdAt: "",
   };
   return { id, links: [link] };
+}
+
+/**
+ * A healthy MULTI-anchor Mode-A card: N separate clean Mode-A paragraph links
+ * (the shape `clearTextAnchorLink` leaves when a multi-paragraph selection-note
+ * loses its Mode-B mark and each surviving textObjectId becomes its own
+ * paragraph anchor). The resolver binds to the FIRST live uuid only, so the
+ * render glue must iterate the stored pids to keep a marker per paragraph.
+ */
+function multiModeACard(
+  id: string,
+  uuids: string[],
+): CardWithLinks & { id: string } {
+  const links: Link[] = uuids.map((uuid) => ({
+    id: `link-${uuid}`,
+    kind: "anchor",
+    anchor: {
+      type: "textObject",
+      targetKind: "paragraph",
+      textObjectIds: [uuid],
+      margin: { side: "right" },
+    },
+    target: { type: "card", ref: { kind: "note", id } },
+    createdAt: "",
+  }));
+  return { id, links };
 }
 
 describe("marginalia marker memo — keystroke sanctity (CHIP-B)", () => {
@@ -187,9 +243,14 @@ describe("marginalia marker memo — keystroke sanctity (CHIP-B)", () => {
   it("resolver-driven marker mapping: live-uuid card → unanchored:false on its live pid; an all-dead card → unanchored:true on its first stored pid (surfaced, not vanished)", () => {
     const editor = mountDoc(); // live paragraphs P1, P2
 
-    // Replicates `EditorPane.marginaliaMarkers`'s `resolveMarkerPids` glue:
-    // resolve each card through the SSOT, flag orphans, key on the first
-    // stored pid so the orphan marker still carries a textObjectId.
+    // Replicates `EditorPane.marginaliaMarkers`'s `resolveMarkerPids` glue
+    // (EditorPane.tsx ~:1824-1862): resolve each card through the SSOT, flag
+    // orphans, and on a resolved card emit ONE marker per LIVE stored pid
+    // (seeded with `res.paragraphId`, then every live raw pid, deduped
+    // order-stable) so a multi-anchor Mode-A card keeps a marker per paragraph.
+    // This mirror MUST be kept in sync with the production helper; the keystroke-
+    // sanctity dep-array mirror above tracks EditorPane's marginaliaMarkers memo
+    // dep array (~:2021-2046) in the same way.
     const resolveMarkerPids = (
       c: CardWithLinks,
       pids: string[],
@@ -201,7 +262,17 @@ describe("marginalia marker memo — keystroke sanctity (CHIP-B)", () => {
       if (res.source === "orphan") {
         return pids.length > 0 ? [{ pid: pids[0], unanchored: true }] : [];
       }
-      if (res.paragraphId) return [{ pid: res.paragraphId, unanchored: false }];
+      if (res.paragraphId) {
+        const livePids = pids.filter((p) => index.uuidToParagraph.has(p));
+        const seen = new Set<string>();
+        const out: Array<{ pid: string; unanchored: boolean }> = [];
+        for (const pid of [res.paragraphId, ...livePids]) {
+          if (seen.has(pid)) continue;
+          seen.add(pid);
+          out.push({ pid, unanchored: false });
+        }
+        return out;
+      }
       return pids.map((pid) => ({ pid, unanchored: false }));
     };
 
@@ -218,6 +289,59 @@ describe("marginalia marker memo — keystroke sanctity (CHIP-B)", () => {
     expect(resolveMarkerPids(dead, ["P-dead-uuid"])).toEqual([
       { pid: "P-dead-uuid", unanchored: true },
     ]);
+
+    editor.destroy();
+  });
+
+  it("multi-anchor Mode-A card with TWO live anchors [P1,P3] yields TWO markers (note:P1 + note:P3), not one (the BLOCKER regression)", () => {
+    const editor = mountThreeDoc(); // live paragraphs P1, P2, P3
+
+    // Same `resolveMarkerPids` mirror as the production helper (resolved branch
+    // emits one entry per live stored pid, seeded with res.paragraphId).
+    const resolveMarkerPids = (
+      c: CardWithLinks,
+      pids: string[],
+    ): Array<{ pid: string; unanchored: boolean }> => {
+      const index = buildResolveIndex(editor);
+      const ready = index.uuidToParagraph.size > 0;
+      if (!ready) return pids.map((pid) => ({ pid, unanchored: false }));
+      const res = resolveCardAnchor(c, editor, index);
+      if (res.source === "orphan") {
+        return pids.length > 0 ? [{ pid: pids[0], unanchored: true }] : [];
+      }
+      if (res.paragraphId) {
+        const livePids = pids.filter((p) => index.uuidToParagraph.has(p));
+        const seen = new Set<string>();
+        const out: Array<{ pid: string; unanchored: boolean }> = [];
+        for (const pid of [res.paragraphId, ...livePids]) {
+          if (seen.has(pid)) continue;
+          seen.add(pid);
+          out.push({ pid, unanchored: false });
+        }
+        return out;
+      }
+      return pids.map((pid) => ({ pid, unanchored: false }));
+    };
+
+    // The resolver binds this card to its FIRST live uuid (P1) only — the
+    // resolved branch must still emit a marker for P3 from the stored pids,
+    // else P3's marker silently vanishes (re-introduces RC2) and the per-pid
+    // detach affordance breaks.
+    const card = multiModeACard("note1", ["P1", "P3"]);
+    const entries = resolveMarkerPids(card, ["P1", "P3"]);
+
+    // TWO markers, both anchored (not orphan), order-stable P1→P3.
+    expect(entries).toEqual([
+      { pid: "P1", unanchored: false },
+      { pid: "P3", unanchored: false },
+    ]);
+
+    // Marker-id derivation is `<kind>:<pid>` (EditorPane keys markers that
+    // way), so the two markers get DISTINCT ids — the property that lets the
+    // gutter render + key both.
+    const ids = entries.map((e) => `note:${e.pid}`);
+    expect(ids).toEqual(["note:P1", "note:P3"]);
+    expect(new Set(ids).size).toBe(2);
 
     editor.destroy();
   });

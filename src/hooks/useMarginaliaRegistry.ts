@@ -57,6 +57,18 @@ export interface MarginaliaRegistry {
 /** Root margin for the intersection observer — viewport ±800 px. */
 const NEAR_ZONE_PX = 800;
 
+/**
+ * Max RAF retries for a single `pendingObserve` uuid before we give up on it
+ * (CHIP-B NIT 1). A uuid whose `[data-uuid]` decoration NEVER paints (e.g. a
+ * stale card pointing at a removed block) would otherwise self-reschedule the
+ * O(doc) `syncObservedSet` every frame forever — a perpetual CPU loop on an
+ * idle doc. After this many frames we evict it from `pendingObserve` and fold
+ * it into `lastUuidSet`, so it's retried ONLY on the next REAL structural
+ * transaction (which rebuilds both sets from scratch via the bus), not every
+ * frame. A uuid that paints within the cap is observed normally.
+ */
+const MAX_OBSERVE_RETRIES = 5;
+
 interface RegistryState {
   cache: Map<string, AnchorNodeMetrics>;
   observed: Map<string, HTMLElement>;
@@ -70,6 +82,15 @@ interface RegistryState {
    * element resolves and gets observed + measured. (CHIP-B)
    */
   pendingObserve: Set<string>;
+  /**
+   * Per-uuid RAF-retry count for `pendingObserve` (CHIP-B NIT 1). Incremented
+   * each time `scheduleObserveRetry`'s frame re-runs `syncObservedSet` while a
+   * uuid is still unpainted; at `MAX_OBSERVE_RETRIES` the uuid is evicted from
+   * the pending set (folded into `lastUuidSet`) so the retry loop stops. Reset
+   * for a uuid once it paints + gets observed, and on every fresh structural
+   * sync (a removed-then-readded uuid gets its full retry budget back).
+   */
+  observeAttempts: Map<string, number>;
   pendingRecompute: Set<string>;
   /** Document order of every observed UUID — kept in sync on structure-change. */
   docOrder: string[];
@@ -90,6 +111,7 @@ function emptyState(): RegistryState {
     observed: new Map(),
     lastUuidSet: new Set(),
     pendingObserve: new Set(),
+    observeAttempts: new Map(),
     pendingRecompute: new Set(),
     docOrder: [],
     version: 0,
@@ -367,16 +389,28 @@ export function useMarginaliaRegistry(
       // was folded into `lastUuidSet` (below) and the `.has` short-circuit
       // above skipped it forever, so its marker was never measured (RC2.b).
       const nextPending = new Set<string>();
+      const nextAttempts = new Map<string, number>();
       for (const uuid of nextSet) {
         const alreadyObserving =
           state.lastUuidSet.has(uuid) && !state.pendingObserve.has(uuid);
         if (alreadyObserving) continue;
         const el = resolveDomForUuid(editor, uuid);
         if (!el) {
-          // DOM not painted yet — retry on the next sync (don't mark handled).
-          nextPending.add(uuid);
+          // DOM not painted yet — retry on the next sync UNLESS we've burned
+          // the per-uuid retry budget (CHIP-B NIT 1). Bump the attempt count;
+          // at the cap, GIVE UP: leave it out of `nextPending` so the RAF loop
+          // stops. It stays in `nextSet` → folds into `lastUuidSet`, so the
+          // `alreadyObserving` short-circuit skips it until the NEXT real
+          // structural transaction rebuilds these sets (and grants a fresh
+          // budget). Bounds the otherwise-perpetual O(doc) retry loop.
+          const attempts = (state.observeAttempts.get(uuid) ?? 0) + 1;
+          if (attempts < MAX_OBSERVE_RETRIES) {
+            nextPending.add(uuid);
+            nextAttempts.set(uuid, attempts);
+          }
           continue;
         }
+        // Painted + observed — clear any prior retry budget for this uuid.
         io.observe(el);
       }
       // Drop observers + cache for removed UUIDs.
@@ -393,6 +427,7 @@ export function useMarginaliaRegistry(
       }
       state.lastUuidSet = nextSet;
       state.pendingObserve = nextPending;
+      state.observeAttempts = nextAttempts;
       state.docOrder = nextOrder;
       if (changed) notify();
 
@@ -413,6 +448,12 @@ export function useMarginaliaRegistry(
      * (cheap — `walkAnchorableBlocks` + the new-uuid loop short-circuits on
      * everything already observed) so removed uuids are still reaped and the
      * pending set is recomputed honestly.
+     *
+     * Bounded (CHIP-B NIT 1): each retry bumps the per-uuid `observeAttempts`
+     * count inside `syncObservedSet`; a uuid that never paints is evicted from
+     * `pendingObserve` after `MAX_OBSERVE_RETRIES` frames. Once the pending set
+     * empties (every uuid observed OR evicted), this stops self-rescheduling —
+     * so a stale never-painting uuid can't pin the O(doc) sync to every frame.
      */
     function scheduleObserveRetry() {
       if (state.observeRetryRafId) return;
@@ -569,6 +610,7 @@ export function useMarginaliaRegistry(
       state.cache.clear();
       state.lastUuidSet = new Set();
       state.pendingObserve.clear();
+      state.observeAttempts.clear();
       state.docOrder = [];
       state.pendingRecompute.clear();
       state.hostEl = null;

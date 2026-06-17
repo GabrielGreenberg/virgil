@@ -1814,12 +1814,19 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
     // flag) until the doc's blocks are present.
     const indexReady = !!resolveIndex && resolveIndex.uuidToParagraph.size > 0;
     /**
-     * Resolve a card to its live marker paragraph + orphan flag through the
-     * SSOT. Returns one entry per resolved paragraph (today the resolver
-     * binds a card to a single paragraph; multi-anchor cards still iterate
-     * their raw pids for the non-resolved fallback). On `orphan`, returns the
-     * card's first stored pid (so the marker still carries a textObjectId for
-     * keying / re-pin) flagged `unanchored`.
+     * Resolve a card to its live marker paragraph(s) + orphan flag through the
+     * SSOT. On a resolved (non-orphan) card, emits ONE marker per LIVE stored
+     * pid — seeded with the resolver's `res.paragraphId` (so a mark-/snapshot-
+     * resolved paragraph that isn't itself a raw stored pid is still rendered)
+     * then every still-live raw stored pid, DEDUPED + order-stable. This keeps
+     * a healthy MULTI-anchor Mode-A card (several live `textObjectIds`, e.g. a
+     * multi-paragraph selection-note whose mark was later deleted → N separate
+     * Mode-A paragraph links) rendering ONE marker PER live paragraph — the
+     * resolver itself binds to the FIRST live uuid only, so the resolved
+     * `res.paragraphId` alone would drop P2..Pn (silent vanish + breaks the
+     * per-pid detach affordance). On `orphan`, returns the card's first stored
+     * pid (so the marker still carries a textObjectId for keying / re-pin)
+     * flagged `unanchored`.
      */
     const resolveMarkerPids = (
       c: CardWithLinks,
@@ -1841,7 +1848,19 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
           : [];
       }
       if (res.paragraphId) {
-        return [{ pid: res.paragraphId, unanchored: false }];
+        // Emit a marker for EVERY live stored pid (multi-anchor Mode-A), not
+        // just the resolver's first-live binding. Seed with `res.paragraphId`
+        // (covers a mark-/snapshot-resolved pid that isn't a raw stored pid),
+        // then append every still-live raw stored pid; dedupe order-stable.
+        const live = pids.filter((p) => resolveIndex.uuidToParagraph.has(p));
+        const seen = new Set<string>();
+        const out: Array<{ pid: string; unanchored: boolean }> = [];
+        for (const pid of [res.paragraphId, ...live]) {
+          if (seen.has(pid)) continue;
+          seen.add(pid);
+          out.push({ pid, unanchored: false });
+        }
+        return out;
       }
       return pids.map((pid) => ({ pid, unanchored: false }));
     };

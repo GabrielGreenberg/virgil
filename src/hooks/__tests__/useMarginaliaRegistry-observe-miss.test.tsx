@@ -246,4 +246,47 @@ describe("useMarginaliaRegistry — first-paint observe-miss retry (CHIP-B)", ()
 
     editor.destroy();
   });
+
+  it("a uuid whose DOM NEVER paints is retried at most MAX_OBSERVE_RETRIES times, then STOPS self-rescheduling (no perpetual O(doc) RAF loop)", () => {
+    // CHIP-B NIT 1 — bound the observe retry. A stale card pointing at a uuid
+    // whose `[data-uuid]` decoration never paints would otherwise pin the
+    // O(doc) `syncObservedSet` to every frame forever.
+    const { editor } = mountDoc();
+    const MAX = 5; // mirror MAX_OBSERVE_RETRIES in useMarginaliaRegistry.ts
+
+    // resolveDomForUuid ALWAYS null → the uuid never gets observed.
+    resolveDomMock.mockReturnValue(null);
+
+    renderHook(() => useMarginaliaRegistry(editor));
+
+    // Flush the prime RAF → first syncObservedSet (sync #1: resolveDom call #1,
+    // attempt 1, schedules a retry RAF).
+    act(() => {
+      flushRaf();
+    });
+    expect(resolveDomMock).toHaveBeenCalledTimes(1);
+    // A retry was scheduled (pending non-empty after a miss).
+    expect(rafQueue.length).toBe(1);
+
+    // Drive the retry loop to exhaustion. Each flush runs ONE more sync
+    // (one resolveDom call for the single pending uuid) and re-schedules
+    // UNTIL the attempt cap evicts the uuid and the loop stops.
+    let guard = 0;
+    while (rafQueue.length > 0 && guard < 50) {
+      guard += 1;
+      act(() => {
+        flushRaf();
+      });
+    }
+
+    // THE TOOTH: the loop terminates. Total syncs == MAX (the cap), and the
+    // RAF queue is now empty — no further frames scheduled for the dead uuid.
+    // Without the cap this would loop until `guard` (50) and rafQueue would
+    // still be non-empty (RED).
+    expect(resolveDomMock).toHaveBeenCalledTimes(MAX);
+    expect(rafQueue.length).toBe(0);
+    expect(guard).toBeLessThan(50);
+
+    editor.destroy();
+  });
 });
