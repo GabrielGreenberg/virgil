@@ -176,4 +176,26 @@ describe("gutter-pin gesture guards", () => {
     fireEvent.click(screen.getByRole("button"));
     expect(onClick).toHaveBeenCalledTimes(1);
   });
+
+  it("FOLD 4: when begin returns false (session already live), a >3px move+release does NOT suppress the panel-open click", () => {
+    // beginCardDropGesture returns false when a session is already active. The
+    // MarkerButton must then install NO movement watcher and arm NO suppression
+    // — otherwise a drag-then-release would swallow the trailing panel-open
+    // click (a dead press). Drive the false branch and prove the click survives.
+    beginDropSession.mockReturnValue(false);
+    const onClick = vi.fn();
+    render(
+      <MarkerButton
+        m={marker({ type: "note", entityKind: "note", entityId: "n1", onClick })}
+        dragEnabled
+      />,
+    );
+    fireEvent.mouseDown(screen.getByRole("button"), { button: 0, clientX: 40, clientY: 50 });
+    // A >3px drag — if a watcher had been installed it would arm the suppressor.
+    fireEvent(window, new MouseEvent("mousemove", { bubbles: true, clientX: 120, clientY: 130 }));
+    fireEvent(window, new MouseEvent("mouseup", { bubbles: true }));
+    fireEvent.click(screen.getByRole("button"));
+    // The click is NOT suppressed — the gate skipped the watcher entirely.
+    expect(onClick).toHaveBeenCalledTimes(1);
+  });
 });

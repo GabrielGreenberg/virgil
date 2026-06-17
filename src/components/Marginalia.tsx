@@ -253,6 +253,16 @@ export function MarkerButton({
         // Don't let the press bubble into the card-root lift / native drag.
         e.stopPropagation();
         e.preventDefault();
+        // Start the session FIRST and gate everything else on its return. If a
+        // session is already live, begin returns false — installing the
+        // suppress-click watcher / arming suppressClickRef anyway would let a
+        // >3px move+release swallow the trailing panel-open click (a dead
+        // press). On a false return, do nothing: no listeners, no suppression.
+        const started = beginCardDropGesture({
+          cardKey: reanchorKey,
+          origin: { x: e.clientX, y: e.clientY },
+        });
+        if (!started) return;
         // Re-arm the click path; a movement watcher flips it only on a real drag.
         suppressClickRef.current = false;
         const startX = e.clientX;
@@ -271,10 +281,6 @@ export function MarkerButton({
         };
         window.addEventListener("mousemove", onMove);
         window.addEventListener("mouseup", onUp);
-        beginCardDropGesture({
-          cardKey: reanchorKey,
-          origin: { x: e.clientX, y: e.clientY },
-        });
       } : undefined}
       onClick={(e) => {
         e.preventDefault();
