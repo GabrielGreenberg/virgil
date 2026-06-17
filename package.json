@@ -1,6 +1,6 @@
 {
   "name": "virgil",
-  "version": "0.1.54",
+  "version": "0.1.55",
   "private": true,
   "scripts": {
     "predev": "node library/build/build-skill-bundle.mjs && node editor/build/build-editor-bundle.mjs && node virgil/build/build-virgil-bundle.mjs && node scripts/build-meta-bundle.mjs",
