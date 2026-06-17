@@ -14,6 +14,11 @@ vi.mock("@/lib/storage", () => ({
 }));
 
 import { useDocument } from "../useDocument";
+import {
+  ANCHOR_MINT_META,
+  markAnchorMint,
+} from "@/lib/anchor-mint-signal";
+import type { Transaction } from "@tiptap/pm/state";
 import { DocPipeline } from "@/components/editor-layout/DocPipeline";
 import {
   beginDocPipeline,
@@ -71,6 +76,18 @@ function makeMockEditor(content: JSONContent): Editor {
     getJSON: () => content,
     isDestroyed: false,
   } as unknown as Editor;
+}
+
+/** A transaction stub carrying ONLY a `getMeta` reader, enough for the
+ *  anchor-mint gate. `mint=true` stamps the anchor-mint meta (via the same
+ *  `markAnchorMint`-equivalent key the production mint sites set); `mint=false`
+ *  is a plain keystroke tx with no meta. */
+function makeTx(mint: boolean): Transaction {
+  const meta: Record<string, unknown> = {};
+  if (mint) meta[ANCHOR_MINT_META] = true;
+  return {
+    getMeta: (key: string) => meta[key],
+  } as unknown as Transaction;
 }
 
 /** Wrap a test component in a DocPipeline ancestor so useDocument can
@@ -310,5 +327,127 @@ describe("useDocument architectural guarantees", () => {
     });
     await waitFor(() => expect(mockWrite).toHaveBeenCalledTimes(1));
     expect(mockWrite.mock.calls[0][0].docId).toBe("doc-1");
+  });
+});
+
+// The keystroke-sanctity TEETH for the anchor-mint flush. An anchor-UUID mint
+// transaction must persist the doc IMMEDIATELY (so a freshly minted paragraph
+// UUID lands on the card's fast clock), while a plain edit must NOT — it stays
+// on the normal 1500 ms debounce. Both legs are proven below.
+describe("useDocument anchor-mint immediate flush (keystroke sanctity teeth)", () => {
+  it("FLUSHES IMMEDIATELY on an anchor-mint transaction — no 1500 ms wait", async () => {
+    vi.useFakeTimers();
+    try {
+      const { result } = renderHook(() => useDocument(), {
+        wrapper: withPipeline("doc-1"),
+      });
+      await vi.runOnlyPendingTimersAsync();
+
+      // A mint tx (tagged via markAnchorMint) arrives. The write must land NOW,
+      // synchronously inside onUpdate — without advancing past the debounce.
+      act(() => {
+        result.current.onUpdate(makeMockEditor(SAMPLE_CONTENT), makeTx(true));
+      });
+
+      // No timer advance. The flush fired on the mint tx itself.
+      await act(async () => {
+        await Promise.resolve();
+      });
+      expect(mockWrite).toHaveBeenCalledTimes(1);
+      expect(mockWrite.mock.calls[0][0].docId).toBe("doc-1");
+      expect(mockWrite.mock.calls[0][1]).toEqual(SAMPLE_CONTENT);
+
+      // And the now-cancelled debounce does NOT double-write when time passes.
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(2000);
+      });
+      expect(mockWrite).toHaveBeenCalledTimes(1);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("DOES NOT flush on a plain edit — stays on the 1500 ms debounce", async () => {
+    vi.useFakeTimers();
+    try {
+      const { result } = renderHook(() => useDocument(), {
+        wrapper: withPipeline("doc-1"),
+      });
+      await vi.runOnlyPendingTimersAsync();
+
+      // A plain keystroke tx (no mint meta). The flush must NOT fire.
+      act(() => {
+        result.current.onUpdate(makeMockEditor(SAMPLE_CONTENT), makeTx(false));
+      });
+
+      // Right after the edit — still well inside the debounce window — there is
+      // NO write. This is the keystroke-sanctity gate proving it does not fire.
+      await act(async () => {
+        await Promise.resolve();
+      });
+      expect(mockWrite).not.toHaveBeenCalled();
+
+      // Only after the full 1500 ms debounce does the normal autosave land.
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(1500);
+      });
+      expect(mockWrite).toHaveBeenCalledTimes(1);
+      expect(mockWrite.mock.calls[0][1]).toEqual(SAMPLE_CONTENT);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("also does not flush when onUpdate is called with NO transaction (legacy callers)", async () => {
+    vi.useFakeTimers();
+    try {
+      const { result } = renderHook(() => useDocument(), {
+        wrapper: withPipeline("doc-1"),
+      });
+      await vi.runOnlyPendingTimersAsync();
+
+      // Legacy callers (e.g. EditorLayout's handleUpdate) pass only the editor.
+      // The gate must treat a missing tx as "not a mint" → debounce only.
+      act(() => {
+        result.current.onUpdate(makeMockEditor(SAMPLE_CONTENT));
+      });
+      await act(async () => {
+        await Promise.resolve();
+      });
+      expect(mockWrite).not.toHaveBeenCalled();
+
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(1500);
+      });
+      expect(mockWrite).toHaveBeenCalledTimes(1);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+});
+
+// Unit-level guard for the signal predicate itself — the single source of the
+// mint vs keystroke distinction. If this drifts, the flush gate drifts.
+describe("anchor-mint-signal predicate", () => {
+  it("isAnchorMintTransaction is true ONLY for a markAnchorMint-tagged tx", async () => {
+    const { isAnchorMintTransaction } = await import(
+      "@/lib/anchor-mint-signal"
+    );
+    // A real-ish tr stub markAnchorMint can stamp.
+    const store: Record<string, unknown> = {};
+    const trStub = {
+      setMeta: (k: string, v: unknown) => {
+        store[k] = v;
+        return trStub;
+      },
+      getMeta: (k: string) => store[k],
+    } as unknown as Transaction;
+
+    expect(isAnchorMintTransaction(trStub)).toBe(false); // untagged
+    markAnchorMint(trStub);
+    expect(isAnchorMintTransaction(trStub)).toBe(true); // tagged
+    expect(isAnchorMintTransaction(makeTx(false))).toBe(false);
+    expect(isAnchorMintTransaction(null)).toBe(false);
+    expect(isAnchorMintTransaction(undefined)).toBe(false);
   });
 });
