@@ -73,6 +73,17 @@ export function textObjectSideReanchorSpec(
           // The mark might already be gone (orphaned); ignore.
         }
       }
+      // RC1 fix: a paragraph re-anchor of a SELECTION-origin (Mode-B
+      // `linkedRange`) card must CONVERT the surviving `linkedRange` link to
+      // a clean Mode-A `paragraph` link BEFORE the fresh anchor lands —
+      // otherwise `addTextObjectLink` folds P_new into the dead textRange
+      // link, dropping the snapshot, and the card reverts to the old
+      // paragraph on reload. `clearModeB` (notes only) converts it so
+      // `getTextAnchor` returns null. Highlights are intrinsically Mode-B
+      // and deliberately omit `clearModeB` (their bag doesn't carry it), so
+      // this no-ops for them — only the lost range is snapshotted to
+      // `originalAnchor` by `preserveModeBAnchor` above.
+      api.clearModeB?.(id);
       const current = api.getAnchorTextObjectIds(id);
       for (const pid of current) {
         if (pid !== placement.paragraphId) {

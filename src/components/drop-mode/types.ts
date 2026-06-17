@@ -118,6 +118,19 @@ export interface ParagraphAnchorApi {
    * support Mode B can omit this method.
    */
   preserveModeBAnchor?: (id: string) => string | null;
+  /**
+   * Convert a surviving Mode-B (`linkedRange`) link on the card into a
+   * clean Mode-A `paragraph` link, preserving the paragraph ids. Called
+   * by the paragraph-side re-anchor commit (after `preserveModeBAnchor`
+   * + mark strip) so the card sheds its `linkedRange` shape BEFORE the
+   * fresh paragraph anchor lands — otherwise the new paragraph would be
+   * folded into the dead textRange link (RC1). After this runs,
+   * `getTextAnchor` returns null. Optional — kinds that are intrinsically
+   * Mode-B (highlights) deliberately omit the call, and hooks that don't
+   * support Mode B can omit the method. Backs onto `useNotes`'
+   * `clearTextAnchorLink` / `links.ts:clearTextAnchorLink`.
+   */
+  clearModeB?: (id: string) => void;
 }
 
 /**

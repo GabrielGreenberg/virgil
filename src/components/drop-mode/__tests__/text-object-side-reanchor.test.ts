@@ -41,15 +41,20 @@ import type { DropCtx, ParagraphAnchorApi, Placement } from "../types";
 /** A recording `ParagraphAnchorApi` whose anchor set is seeded per-test. The
  *  add/remove handlers mutate the live set so a follow-up `getAnchorTextObjectIds`
  *  reads the post-mutation state (matches the real hook). */
-function makeApi(initial: string[]): {
+function makeApi(
+  initial: string[],
+  opts: { withClearModeB?: boolean } = {},
+): {
   api: ParagraphAnchorApi;
   anchors: () => string[];
   added: string[];
   removed: string[];
+  clearModeBCalls: string[];
 } {
   const set = new Set(initial);
   const added: string[] = [];
   const removed: string[] = [];
+  const clearModeBCalls: string[] = [];
   const api: ParagraphAnchorApi = {
     exists: () => true,
     getAnchorTextObjectIds: () => [...set],
@@ -63,8 +68,17 @@ function makeApi(initial: string[]): {
     },
     // Mode A on this path → null (no Mode-B preservation, no mainEditor touch).
     preserveModeBAnchor: () => null,
+    // Notes carry `clearModeB` (Mode-B → Mode-A conversion); highlights
+    // deliberately omit it. The `opts` flag mirrors that bag-level gate.
+    ...(opts.withClearModeB
+      ? {
+          clearModeB: (id: string) => {
+            clearModeBCalls.push(id);
+          },
+        }
+      : {}),
   };
-  return { api, anchors: () => [...set], added, removed };
+  return { api, anchors: () => [...set], added, removed, clearModeBCalls };
 }
 
 /** Minimal paragraph-side placement — the spec only reads `kind` + `paragraphId`. */
@@ -77,6 +91,18 @@ function paragraphSide(paragraphId: string): Placement {
  *  wires it). */
 function ctxWith(api: ParagraphAnchorApi): DropCtx {
   return { revisions: api } as unknown as DropCtx;
+}
+
+/** A DropCtx carrying the api in the `notes` sub-bag — the notes panel wires
+ *  `clearModeB` (Mode-B → Mode-A conversion) here. */
+function ctxWithNotes(api: ParagraphAnchorApi): DropCtx {
+  return { notes: api } as unknown as DropCtx;
+}
+
+/** A DropCtx carrying the api in the `highlights` sub-bag — highlights are
+ *  intrinsically Mode-B and the panel omits `clearModeB`. */
+function ctxWithHighlights(api: ParagraphAnchorApi): DropCtx {
+  return { highlights: api } as unknown as DropCtx;
 }
 
 const CARD_KEY = buildFloatKey({
@@ -154,5 +180,67 @@ describe("textObjectSideReanchorSpec — applyDrop (the mutation)", () => {
     spec.applyDrop(paragraphSide("P3"), CARD_KEY, ctxWith(api));
     expect(removed).toEqual([]);
     expect(added).toEqual([]);
+  });
+});
+
+// CHIP-A: a paragraph-side re-anchor of a SELECTION-origin (Mode-B) NOTE must
+// convert the surviving `linkedRange` link to a clean Mode-A `paragraph` link
+// BEFORE the fresh anchor lands — driven by the note bag's `clearModeB`.
+// Highlights are intrinsically Mode-B and omit `clearModeB`, so the conversion
+// must NOT fire for them.
+describe("textObjectSideReanchorSpec — Mode-B → Mode-A conversion (CHIP-A)", () => {
+  const NOTE_KEY = buildFloatKey({ domain: "card", kind: "note", id: "note1" });
+  const HL_KEY = buildFloatKey({ domain: "card", kind: "highlight", id: "hl1" });
+
+  function noteSpec() {
+    return textObjectSideReanchorSpec({
+      kindLabel: "note",
+      getApi: (ctx) => ctx.notes,
+    });
+  }
+  function highlightSpec() {
+    return textObjectSideReanchorSpec({
+      kindLabel: "highlight",
+      getApi: (ctx) => ctx.highlights,
+    });
+  }
+
+  it("a NOTE re-anchor calls clearModeB(id) before adding the fresh paragraph anchor", () => {
+    const spec = noteSpec();
+    const { api, clearModeBCalls, added } = makeApi(["P1"], {
+      withClearModeB: true,
+    });
+    expect(api.clearModeB).toBeDefined();
+    const clearSpy = vi.spyOn(api, "clearModeB");
+    const addSpy = vi.spyOn(api, "addTextObjectLink");
+
+    spec.applyDrop(paragraphSide("P3"), NOTE_KEY, ctxWithNotes(api));
+
+    // Conversion fires for the note id.
+    expect(clearModeBCalls).toEqual(["note1"]);
+    expect(clearSpy).toHaveBeenCalledWith("note1");
+    // And it fires BEFORE the fresh paragraph anchor is written.
+    expect(clearSpy.mock.invocationCallOrder[0]).toBeLessThan(
+      addSpy.mock.invocationCallOrder[0],
+    );
+    // Fresh anchor lands as a paragraph (snapshot null — no mainEditor here).
+    expect(addSpy).toHaveBeenCalledWith("note1", "P3", "paragraph", null);
+    expect(added).toEqual(["P3"]);
+  });
+
+  it("a HIGHLIGHT re-anchor does NOT call clearModeB (highlights stay Mode-B)", () => {
+    const spec = highlightSpec();
+    // The highlight bag omits clearModeB entirely (withClearModeB: false).
+    const { api, clearModeBCalls, added } = makeApi(["P1"], {
+      withClearModeB: false,
+    });
+    expect(api.clearModeB).toBeUndefined();
+
+    spec.applyDrop(paragraphSide("P3"), HL_KEY, ctxWithHighlights(api));
+
+    // No conversion — the optional call no-ops because the bag omits it.
+    expect(clearModeBCalls).toEqual([]);
+    // The re-anchor itself still lands.
+    expect(added).toEqual(["P3"]);
   });
 });
