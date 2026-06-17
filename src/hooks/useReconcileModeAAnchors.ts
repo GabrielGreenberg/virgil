@@ -2,8 +2,14 @@
 
 import { useCallback, useRef } from "react";
 import type { Editor } from "@tiptap/react";
-import { collectLiveUuids, reconcileModeAAnchors } from "@/links/links";
+import { captureParagraphSnapshot } from "@/links/links";
 import type { CardWithLinks } from "@/links/links";
+import {
+  buildResolveIndex,
+  resolveCardAnchor,
+  reconcileCardToResolved,
+  type ResolveIndex,
+} from "@/links/resolve-card-anchor";
 
 /**
  * Shared factory for a panel hook's Mode-A anchor reconcile.
@@ -11,20 +17,25 @@ import type { CardWithLinks } from "@/links/links";
  * On reload, a Mode-A margin card anchors via a bare paragraph UUID that
  * round-trips through the `.tex` only as a `%!v:` comment. If that write
  * lost the race to a reload, the paragraph is re-minted a fresh UUID and
- * the card silently orphans. `reconcileModeAAnchors` repairs this:
- *   - UUID-first: if the stored UUID still resolves, backfill the
- *     self-healing snapshot from the live paragraph (makes legacy
- *     snapshot-less links durable going forward).
- *   - Snapshot-fallback: if the stored UUID is dead but the snapshot
- *     matches a live paragraph, rewrite `textObjectIds[0]` to the live
- *     UUID and persist.
+ * the card silently orphans. The resolver SSOT (`resolve-card-anchor.ts`)
+ * repairs this on load — every card funnels through one
+ * `resolveCardAnchor` ladder (uuid → mark → rung-2b → snapshot → orphan)
+ * and one `reconcileCardToResolved` mutator:
+ *   - uuid: backfill the self-healing snapshot from the live paragraph
+ *     (makes legacy snapshot-less links durable) AND strip a residual
+ *     dead-mark `linkedRange` link (HYBRID CLEANUP — heals a re-anchored
+ *     Mode-B todo/revision/cutter/report so `getTextAnchor` returns null).
+ *   - snapshot: the stored UUID is dead but the text matches a live
+ *     paragraph → rewrite `textObjectIds[0]` (Mode-A) or convert a
+ *     relocated Mode-B to a clean Mode-A link.
  *
  * This factory wraps the hook's `usePersistentState` `update` setter so
  * each hook exposes a uniform `reconcileAnchors(editor)` the load
  * reconcile effect calls once per doc-open. Idempotent (a second run
  * finds nothing to change → no write). LOAD-ONLY — never on a keystroke;
- * `collectLiveUuids` + the per-card walk are O(doc) and must stay off the
- * typing path.
+ * `buildResolveIndex` is O(doc) and runs ONCE per pass (one index for all
+ * cards, a net reduction vs the legacy per-card walks), off the typing
+ * path.
  *
  * `getState` reads the hook's live state synchronously (the `stateRef`
  * from `usePersistentState`); `selectCards` reads the card array off that
@@ -67,23 +78,31 @@ export function useReconcileModeAAnchors<S, C extends CardWithLinks>(
       const prev = getStateRef.current();
       const cards = selectRef.current(prev);
       if (cards.length === 0) return; // not loaded (or genuinely empty) → never mutate
-      const liveUuids = collectLiveUuids(editor);
-      if (liveUuids.size === 0) return; // editor not ready — don't touch
+
+      // ONE index per pass (O(doc), card-count-independent). Built at the
+      // TOP, before the per-card loop — never per card (open-verification
+      // #2). `uuidToParagraph` empty ⇒ editor not ready ⇒ don't touch.
+      const index = buildResolveIndex(editor);
+      if (index.uuidToParagraph.size === 0) return; // editor not ready
+
       let anyChanged = false;
-      const next = cards.map((c) => {
-        const res = reconcileModeAAnchors(c, editor, liveUuids);
-        if (res.changed) anyChanged = true;
-        return res.card;
-      });
+      const next = cards.map((c) =>
+        reconcileOne(c, editor, index).card,
+      );
+      // Recompute `anyChanged` honestly: `reconcileOne` returns the same
+      // object reference when nothing changed.
+      anyChanged = next.some((nc, i) => nc !== cards[i]);
       if (!anyChanged) return; // no-op → ZERO update() calls, no loader poison
-      // Something changed → persist. The `update()` updater re-reads `prev`
-      // for correctness, but the reconcile decision was made on the live
-      // snapshot above.
+
+      // Something changed → persist. The `update()` updater re-reads the
+      // current state for correctness, re-running the (idempotent) reconcile
+      // on the live card array. The same `index` is reused — it's a pure
+      // snapshot of the doc at pass time.
       update((cur) => {
         const curCards = selectRef.current(cur);
         let changed = false;
         const mapped = curCards.map((c) => {
-          const res = reconcileModeAAnchors(c, editor, liveUuids);
+          const res = reconcileOne(c, editor, index);
           if (res.changed) changed = true;
           return res.card;
         });
@@ -93,4 +112,31 @@ export function useReconcileModeAAnchors<S, C extends CardWithLinks>(
     },
     [update],
   );
+}
+
+/**
+ * One card's resolve + reconcile against the shared index, threading the
+ * two editor-aware augmentations:
+ *   - `liveText` — captured (normalized) from the resolved live paragraph
+ *     so `reconcileCardToResolved` can backfill a MISSING snapshot
+ *     (AUGMENTATION 1); only fetched for a uuid resolution that has a
+ *     paragraph (the only branch that backfills).
+ *   - `isAnchorIdLive` — `index.anchorIdToParagraph.has`, so the mutator
+ *     can detect a dead-mark `linkedRange` residue and clean it up
+ *     (AUGMENTATION 2 — HYBRID CLEANUP).
+ */
+function reconcileOne<C extends CardWithLinks>(
+  card: C,
+  editor: Editor,
+  index: ResolveIndex,
+): { card: C; changed: boolean } {
+  const res = resolveCardAnchor(card, editor, index);
+  const liveText =
+    res.source === "uuid" && res.paragraphId
+      ? captureParagraphSnapshot(editor, res.paragraphId)
+      : null;
+  return reconcileCardToResolved(card, res, {
+    liveText,
+    isAnchorIdLive: (anchorId) => index.anchorIdToParagraph.has(anchorId),
+  });
 }

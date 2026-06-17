@@ -21,6 +21,7 @@ import type { CardKind } from "@/panels/_shared/types";
 import type { TextObjectKind } from "@/text-objects/types";
 import { countWords } from "@/hooks/useWordCount";
 import type { Link, LinkResolution } from "./_shared/types";
+import { normalizeParagraphText } from "./_shared/normalize-text";
 import { generateEntityId } from "@/lib/uuid";
 import {
   DATA_LINK_ID,
@@ -98,9 +99,25 @@ export function paragraphUuidAt(doc: PMNode, pos: number): string | null {
  * listItem / …) whose `uuid` attr is `paragraphId`, for the Mode-A
  * self-healing anchor (`LinkAnchor.paragraphSnapshot`).
  *
- * Returns the node's `textContent`, or `null` if the editor isn't ready
- * or no live node carries that uuid (so a missing snapshot stays
- * `undefined`/absent rather than an empty string that could false-match).
+ * Returns the node's `textContent` in NORMALIZED form (CHIP-D:
+ * `normalizeParagraphText` — trim ends, collapse internal whitespace,
+ * strip zero-width), or `null` if the editor isn't ready, no live node
+ * carries that uuid, OR the normalized text is empty (so a missing
+ * snapshot stays `undefined`/absent rather than an empty string that
+ * could false-match).
+ *
+ * Normalizing at CAPTURE time is the closing half of CHIP-D: the
+ * resolve index (`buildResolveIndex`) already normalizes live
+ * `textContent` into its snapshot map, so a snapshot captured through
+ * this function is stored in the SAME canonical form and the snapshot
+ * rung ties after a LaTeX parse→serialize round-trip (which can perturb
+ * whitespace/markup). Capture and match MUST use the identical form.
+ *
+ * Container-consistency note (DEFERRING_PARENTS): this keys on the SAME
+ * `uuid` attr the index walk keys on (`buildResolveIndex` step (b) reads
+ * `node.attrs.uuid` → `node.textContent`), and `node.textContent` is the
+ * full subtree text — so for a deferred-parent target both sides read the
+ * identical node and the same normalized text.
  *
  * O(doc) — call ONLY off the keystroke path (anchor write / re-anchor /
  * load reconcile), never per keystroke.
@@ -114,7 +131,7 @@ export function captureParagraphSnapshot(
   editor.state.doc.descendants((node) => {
     if (snapshot !== null) return false;
     if ((node.attrs as { uuid?: string } | null)?.uuid === paragraphId) {
-      const text = node.textContent;
+      const text = normalizeParagraphText(node.textContent);
       snapshot = text.length > 0 ? text : null;
       return false;
     }
@@ -1195,6 +1212,13 @@ export function findParagraphIdBySnapshot(
 }
 
 /**
+ * LEGACY (test-only as of RC-A): the original per-card Mode-A reconcile.
+ * Production now funnels through the unified resolver SSOT
+ * (`resolve-card-anchor.ts` — `buildResolveIndex` + `resolveCardAnchor` +
+ * `reconcileCardToResolved`, driven by `useReconcileModeAAnchors`). This
+ * function is kept only for its own test suite (`mode-a-reconcile.test.ts`)
+ * until those tests migrate onto the resolver; no non-test code imports it.
+ *
  * Pure Mode-A reconcile for a single card. Returns a (possibly-rewritten)
  * card and a `changed` flag. UUID-first / snapshot-fallback:
  *
