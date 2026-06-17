@@ -3432,6 +3432,14 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
             <DropModeProvider
               mainEditor={editor}
               closePopout={viewPrefs.closeCardPopout}
+              // CHIP-C: a re-anchor commit persists the `.tex` immediately via
+              // the SAME `useDocument` flush path the anchor-mint signal uses
+              // (`docHook.flushAnchorCommit` → `flushNow` → `save` →
+              // `writeDocBundle`), so the target paragraph's `%!v:<uuid>`
+              // survives a reload even when no mint fired (RC3). The
+              // `flushAnchorCommit` guard coalesces with any hover mint-flush so
+              // a commit that also minted writes once.
+              requestAnchorFlush={docHook.flushAnchorCommit}
               notes={dropNotesApi}
               highlights={dropHighlightsApi}
               todos={dropTodosApi}

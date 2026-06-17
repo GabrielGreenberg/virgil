@@ -31,6 +31,9 @@ import type {
 export interface DropModeProviderProps {
   mainEditor: Editor | null;
   closePopout: (cardKey: string) => void;
+  /** CHIP-C: persist the `.tex` on a re-anchor commit (the `useDocument`
+   *  immediate-flush entry the anchor-mint signal also uses). */
+  requestAnchorFlush?: (paragraphId: string) => void;
   notes?: ParagraphAnchorApi;
   highlights?: ParagraphAnchorApi;
   todos?: ParagraphAnchorApi;
@@ -45,6 +48,7 @@ export interface DropModeProviderProps {
 export function DropModeProvider({
   mainEditor,
   closePopout,
+  requestAnchorFlush,
   notes,
   highlights,
   todos,
@@ -75,6 +79,7 @@ export function DropModeProvider({
   const snapshot: DropCtx = {
     mainEditor,
     closePopout,
+    requestAnchorFlush,
     confirm,
     notes,
     highlights,
@@ -103,6 +108,9 @@ export function DropModeProvider({
       },
       get closePopout() {
         return ctxRef.current.closePopout;
+      },
+      get requestAnchorFlush() {
+        return ctxRef.current.requestAnchorFlush;
       },
       get confirm() {
         return ctxRef.current.confirm;

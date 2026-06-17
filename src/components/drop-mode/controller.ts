@@ -327,12 +327,28 @@ function finishApply(
   cardKey: string,
   ctx: DropCtx,
 ) {
+  let applied = false;
   try {
     spec.applyDrop(placement, cardKey, ctx);
+    applied = true;
   } catch (err) {
     // Don't leave the session hanging if applyDrop throws — log for the
     // dev and exit cleanly.
     console.error("[drop-mode] applyDrop threw:", err);
+  }
+  // CHIP-C: decouple `.tex` durability from whether a MINT happened. On a
+  // successful paragraph re-anchor commit, persist the doc bundle NOW so the
+  // target paragraph's `%!v:<uuid>` reaches the `.tex` on the card's fast
+  // clock — even when the paragraph already carried a UUID and so dispatched
+  // no mint tx (the RC3 gap). ONE flush per commit (this is the single mouseup
+  // commit per gesture); the hit-test mint-flush during the drag coalesces with
+  // it (the wired flush dedupes by content — see `useDocument.flushAnchorCommit`).
+  // Only paragraph-side placements re-anchor a card to a paragraph; between-
+  // blocks / inline-cursor drops (content moves, inline atoms) carry no
+  // paragraphId and need no anchor flush. We already passed the `no-op` gate in
+  // `commitDropSession`, so reaching here means `classifyDrop !== 'no-op'`.
+  if (applied && placement.kind === "paragraph-side") {
+    ctx.requestAnchorFlush?.(placement.paragraphId);
   }
   if (spec.postDrop === "close") {
     ctx.closePopout(cardKey);
