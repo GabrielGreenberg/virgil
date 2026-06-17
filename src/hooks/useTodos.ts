@@ -16,6 +16,7 @@ import { bridgeCardAiRequestFlag } from "@/lib/ai-request-bridge";
 import { isAutoTitle } from "@/panels/panel-registry";
 import { usePersistentState } from "./usePersistentState";
 import { usePristineTracker } from "./usePristineTracker";
+import { useReconcileModeAAnchors } from "./useReconcileModeAAnchors";
 import type { PristineKindApi } from "./usePristineCardManager";
 
 const EMPTY: TodoState = { items: [] };
@@ -42,7 +43,7 @@ function migrateTodos(raw: unknown): TodoState {
 }
 
 export function useTodos(docId: string | null, externalPristine?: PristineKindApi | null) {
-  const { state, update } = usePersistentState<TodoState>(
+  const { state, update, stateRef, loaded } = usePersistentState<TodoState>(
     docId,
     "todos.json",
     EMPTY,
@@ -133,10 +134,13 @@ export function useTodos(docId: string | null, externalPristine?: PristineKindAp
       todoId: string,
       paragraphId: string,
       targetKind?: import("@/text-objects/types").TextObjectKind,
+      paragraphSnapshot?: string | null,
     ) => {
       update((prev) => ({
         items: prev.items.map((i) =>
-          i.id === todoId ? addTextObjectLink(i, "todo", paragraphId, targetKind) : i,
+          i.id === todoId
+            ? addTextObjectLink(i, "todo", paragraphId, targetKind, paragraphSnapshot)
+            : i,
         ),
       }));
     },
@@ -150,6 +154,14 @@ export function useTodos(docId: string | null, externalPristine?: PristineKindAp
       ),
     }));
   }, [update]);
+
+  // Mode-A self-healing reconcile (load-only). See useReconcileModeAAnchors.
+  const reconcileAnchors = useReconcileModeAAnchors<TodoState, TodoItem>(
+    update,
+    () => stateRef.current,
+    (s) => s.items,
+    (_s, items) => ({ items }),
+  );
 
   /**
    * Set a Mode-B text-range anchor on a todo (symmetric with
@@ -271,6 +283,8 @@ export function useTodos(docId: string | null, externalPristine?: PristineKindAp
     archiveDone,
     addParagraphId,
     removeParagraphId,
+    reconcileAnchors,
+    loaded,
     setTodoAnchor,
     bindAnchor,
     discardPristineTodos,

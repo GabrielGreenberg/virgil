@@ -28,6 +28,7 @@ import { bridgeCardAiRequestFlag } from "@/lib/ai-request-bridge";
 import { applyCardMorph } from "@/cards/morphs";
 import { usePersistentState } from "./usePersistentState";
 import { usePristineTracker } from "./usePristineTracker";
+import { useReconcileModeAAnchors } from "./useReconcileModeAAnchors";
 import type { PristineKindApi } from "./usePristineCardManager";
 
 const EMPTY_STATE: CutterState = { cards: [], goal: null };
@@ -161,7 +162,7 @@ export function useCutter(
   docId: string | null,
   externalPristine?: PristineKindApi | null,
 ) {
-  const { state, update } = usePersistentState<CutterState>(
+  const { state, update, stateRef, loaded } = usePersistentState<CutterState>(
     docId,
     "cutter.json",
     EMPTY_STATE,
@@ -376,7 +377,12 @@ export function useCutter(
   }, [update]);
 
   const addCardParagraphId = useCallback(
-    (id: string, paragraphId: string) => {
+    (
+      id: string,
+      paragraphId: string,
+      targetKind?: import("@/text-objects/types").TextObjectKind,
+      paragraphSnapshot?: string | null,
+    ) => {
       update((prev) => ({
         ...prev,
         cards: prev.cards.map((c) =>
@@ -385,6 +391,8 @@ export function useCutter(
                 c,
                 c.kind === "suggestion" ? "cutter-suggestion" : "cutter-comment",
                 paragraphId,
+                targetKind,
+                paragraphSnapshot,
               )
             : c,
         ),
@@ -403,6 +411,14 @@ export function useCutter(
       }));
     },
     [update],
+  );
+
+  // Mode-A self-healing reconcile (load-only). See useReconcileModeAAnchors.
+  const reconcileAnchors = useReconcileModeAAnchors<CutterState, CutterCard>(
+    update,
+    () => stateRef.current,
+    (s) => s.cards,
+    (s, cards) => ({ ...s, cards }),
   );
 
   const deleteCard = useCallback(
@@ -552,6 +568,8 @@ export function useCutter(
     clearGoal,
     addCardParagraphId,
     removeCardParagraphId,
+    reconcileAnchors,
+    loaded,
     deleteCard,
     cloneComment,
     cloneSuggestion,

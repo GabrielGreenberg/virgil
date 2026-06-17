@@ -28,6 +28,7 @@ import { isAutoTitle } from "@/panels/panel-registry";
 import { applyCardMorph } from "@/cards/morphs";
 import { usePersistentState } from "./usePersistentState";
 import { usePristineTracker } from "./usePristineTracker";
+import { useReconcileModeAAnchors } from "./useReconcileModeAAnchors";
 import type { PristineKindApi } from "./usePristineCardManager";
 
 const EMPTY_STATE: ReportsState = { cards: [] };
@@ -118,7 +119,7 @@ export function useReports(
   docId: string | null,
   externalPristine?: PristineKindApi | null,
 ) {
-  const { state, update } = usePersistentState<ReportsState>(
+  const { state, update, stateRef, loaded } = usePersistentState<ReportsState>(
     docId,
     "reports.json",
     EMPTY_STATE,
@@ -279,11 +280,18 @@ export function useReports(
   );
 
   const addCardParagraphId = useCallback(
-    (id: string, paragraphId: string) => {
+    (
+      id: string,
+      paragraphId: string,
+      targetKind?: import("@/text-objects/types").TextObjectKind,
+      paragraphSnapshot?: string | null,
+    ) => {
       update((prev) => ({
         ...prev,
         cards: prev.cards.map((c) =>
-          c.id === id ? addTextObjectLink(c, c.kind, paragraphId) : c,
+          c.id === id
+            ? addTextObjectLink(c, c.kind, paragraphId, targetKind, paragraphSnapshot)
+            : c,
         ),
       }));
     },
@@ -300,6 +308,14 @@ export function useReports(
       }));
     },
     [update],
+  );
+
+  // Mode-A self-healing reconcile (load-only). See useReconcileModeAAnchors.
+  const reconcileAnchors = useReconcileModeAAnchors<ReportsState, ReportItem>(
+    update,
+    () => stateRef.current,
+    (s) => s.cards,
+    (s, cards) => ({ ...s, cards }),
   );
 
   const deleteCard = useCallback(
@@ -425,6 +441,8 @@ export function useReports(
     setRequestAiRequest,
     addCardParagraphId,
     removeCardParagraphId,
+    reconcileAnchors,
+    loaded,
     deleteCard,
     cloneReport,
     cloneRequest,

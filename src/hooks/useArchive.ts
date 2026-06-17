@@ -12,6 +12,7 @@ import {
 import { migrateCardLinks } from "@/links/migrate-card";
 import { isAutoTitle } from "@/panels/panel-registry";
 import { usePersistentState } from "./usePersistentState";
+import { useReconcileModeAAnchors } from "./useReconcileModeAAnchors";
 
 const EMPTY: ArchiveState = { snippets: [] };
 
@@ -40,7 +41,7 @@ function migrateArchive(raw: unknown): ArchiveState {
 }
 
 export function useArchive(docId: string | null) {
-  const { state, setState, update, persist, stateRef } =
+  const { state, setState, update, persist, stateRef, loaded } =
     usePersistentState<ArchiveState>(docId, "archive.json", EMPTY, {
       migrate: migrateArchive,
       persistMigrationOnLoad: true,
@@ -88,10 +89,13 @@ export function useArchive(docId: string | null) {
       id: string,
       paragraphId: string,
       targetKind?: import("@/text-objects/types").TextObjectKind,
+      paragraphSnapshot?: string | null,
     ) => {
       update((prev) => ({
         snippets: prev.snippets.map((s) =>
-          s.id === id ? addTextObjectLink(s, "archive", paragraphId, targetKind) : s,
+          s.id === id
+            ? addTextObjectLink(s, "archive", paragraphId, targetKind, paragraphSnapshot)
+            : s,
         ),
       }));
     },
@@ -158,6 +162,14 @@ export function useArchive(docId: string | null) {
     [update],
   );
 
+  // Mode-A self-healing reconcile (load-only). See useReconcileModeAAnchors.
+  const reconcileAnchors = useReconcileModeAAnchors<ArchiveState, ArchivedSnippet>(
+    update,
+    () => stateRef.current,
+    (s) => s.snippets,
+    (_s, snippets) => ({ snippets }),
+  );
+
   return {
     snippets: state.snippets,
     archiveContent,
@@ -165,6 +177,8 @@ export function useArchive(docId: string | null) {
     updateSnippetTitle,
     addParagraphId,
     removeParagraphId,
+    reconcileAnchors,
+    loaded,
     restoreSnippet,
     deleteSnippet,
   };

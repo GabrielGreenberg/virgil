@@ -52,6 +52,16 @@ export interface PersistentStateApi<S> {
   persist: (s: S) => Promise<void>;
   /** Live mirror of `state` for callers that need synchronous access. */
   stateRef: MutableRefObject<S>;
+  /**
+   * True once the initial sidecar read for the current `docId` has
+   * resolved (found-and-loaded, absent, or errored — any terminal state).
+   * Mirrors `useEditorUIState.loaded`. A load-only reconcile MUST gate on
+   * this: firing before the read resolves would run over an empty card
+   * array (the pre-load default) and then never re-run, silently skipping
+   * the heal. Reset to false on every `docId` change. Additive — existing
+   * consumers can ignore it.
+   */
+  loaded: boolean;
 }
 
 /**
@@ -81,6 +91,11 @@ export function usePersistentState<S>(
   const [state, setState] = useState<S>(defaultValue);
   const stateRef = useRef(state);
   stateRef.current = state;
+
+  // True after the initial read for the current docId resolves (loaded,
+  // absent, or errored). The Mode-A reconcile gate depends on this so it
+  // never fires over the pre-load default. Reset on docId change below.
+  const [loaded, setLoaded] = useState(false);
 
   // Debounce machinery: track the latest pending write so we can flush
   // it (synchronously where needed) on doc switch / unmount. `pendingRef`
@@ -112,9 +127,11 @@ export function usePersistentState<S>(
 
   useEffect(() => {
     hasMutatedRef.current = false;
+    setLoaded(false);
     let cancelled = false;
     if (!docId) {
       setState(defaultValue);
+      setLoaded(true);
       return;
     }
     // `readSidecarIfExists` returns null when the file doesn't exist on
@@ -126,7 +143,13 @@ export function usePersistentState<S>(
     // source of truth whenever a sidecar exists.
     readSidecarIfExists<S>(docId, filename)
       .then((raw) => {
-        if (cancelled || raw === null) return;
+        if (cancelled) return;
+        // `loaded` flips even on an absent sidecar or a mid-flight user
+        // mutation — the read is terminally resolved either way; we just
+        // skip the state overwrite. Set BEFORE the early returns so the
+        // reconcile gate releases.
+        setLoaded(true);
+        if (raw === null) return;
         if (hasMutatedRef.current) return;
         const migrated = migrate ? migrate(raw) : raw;
         setState(migrated);
@@ -135,7 +158,10 @@ export function usePersistentState<S>(
           if (h) writeSidecar(h, filename, migrated).catch(() => {});
         }
       })
-      .catch(() => {});
+      .catch(() => {
+        if (cancelled) return;
+        setLoaded(true);
+      });
     return () => {
       cancelled = true;
     };
@@ -210,5 +236,5 @@ export function usePersistentState<S>(
     };
   }, [docId, flushPending]);
 
-  return { state, setState, update, persist, stateRef };
+  return { state, setState, update, persist, stateRef, loaded };
 }

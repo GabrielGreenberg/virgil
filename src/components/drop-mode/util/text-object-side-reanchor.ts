@@ -13,7 +13,7 @@
  * `drop-mode/registry.ts`.
  */
 
-import { removeLinkedAnchor } from "@/links/links";
+import { removeLinkedAnchor, captureParagraphSnapshot } from "@/links/links";
 import { parseAnyKey } from "@/floats/float-key";
 import type { DropCtx, DropSpec, ParagraphAnchorApi } from "../types";
 
@@ -80,7 +80,18 @@ export function textObjectSideReanchorSpec(
         }
       }
       if (!current.includes(placement.paragraphId)) {
-        api.addTextObjectLink(id, placement.paragraphId);
+        // Capture the target paragraph's text so the fresh Mode-A link is
+        // self-healing: if this just-minted paragraph UUID never reaches
+        // the `.tex` (the 1500 ms autosave loses the race to a reload),
+        // the reload reconciler re-finds the paragraph by this snapshot
+        // instead of silently orphaning the card. `ctx.mainEditor` is the
+        // SSOT for the live target paragraph's text.
+        const snapshot = captureParagraphSnapshot(
+          ctx.mainEditor,
+          placement.paragraphId,
+        );
+        // The drop placement is always paragraph-side → targetKind "paragraph".
+        api.addTextObjectLink(id, placement.paragraphId, "paragraph", snapshot);
       }
     },
     postDrop: "keep",

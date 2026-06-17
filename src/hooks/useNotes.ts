@@ -18,6 +18,7 @@ import {
   removeTextObjectLink,
   setTextAnchorLink,
 } from "@/links/links";
+import { useReconcileModeAAnchors } from "./useReconcileModeAAnchors";
 import { bridgeCardAiRequestFlag } from "@/lib/ai-request-bridge";
 import { isAutoTitle } from "@/panels/panel-registry";
 import { migrateCardLinks } from "@/links/migrate-card";
@@ -82,7 +83,7 @@ function migrateNotes(raw: unknown): NotesState {
 }
 
 export function useNotes(docId: string | null, externalPristine?: PristineKindApi | null) {
-  const { state, update } = usePersistentState<NotesState>(
+  const { state, update, stateRef, loaded } = usePersistentState<NotesState>(
     docId,
     "notes.json",
     EMPTY_STATE,
@@ -285,11 +286,16 @@ export function useNotes(docId: string | null, externalPristine?: PristineKindAp
   );
 
   const addNoteTextObjectId = useCallback(
-    (id: string, paragraphId: string) => {
+    (
+      id: string,
+      paragraphId: string,
+      targetKind?: import("@/text-objects/types").TextObjectKind,
+      paragraphSnapshot?: string | null,
+    ) => {
       update((prev) => ({
         cards: prev.cards.map((c) =>
           c.id === id && c.kind === "note"
-            ? addTextObjectLink(c, "note", paragraphId)
+            ? addTextObjectLink(c, "note", paragraphId, targetKind, paragraphSnapshot)
             : c,
         ),
       }));
@@ -311,11 +317,16 @@ export function useNotes(docId: string | null, externalPristine?: PristineKindAp
   );
 
   const addHighlightTextObjectId = useCallback(
-    (id: string, paragraphId: string) => {
+    (
+      id: string,
+      paragraphId: string,
+      targetKind?: import("@/text-objects/types").TextObjectKind,
+      paragraphSnapshot?: string | null,
+    ) => {
       update((prev) => ({
         cards: prev.cards.map((c) =>
           c.id === id && c.kind === "highlight"
-            ? addTextObjectLink(c, "highlight", paragraphId)
+            ? addTextObjectLink(c, "highlight", paragraphId, targetKind, paragraphSnapshot)
             : c,
         ),
       }));
@@ -334,6 +345,16 @@ export function useNotes(docId: string | null, externalPristine?: PristineKindAp
       }));
     },
     [update],
+  );
+
+  // Mode-A self-healing reconcile, run once on doc-open by the load
+  // reconcile effect. Highlights are Mode B (untouched); Mode-A notes get
+  // UUID-first backfill / snapshot-fallback rebind.
+  const reconcileAnchors = useReconcileModeAAnchors<NotesState, NoteCardItem>(
+    update,
+    () => stateRef.current,
+    (s) => s.cards,
+    (_s, cards) => ({ cards }),
   );
 
   /**
@@ -492,6 +513,8 @@ export function useNotes(docId: string | null, externalPristine?: PristineKindAp
     removeNoteTextObjectId,
     addHighlightTextObjectId,
     removeHighlightTextObjectId,
+    reconcileAnchors,
+    loaded,
     preserveModeBAnchor,
     deleteNote,
     cloneNote,

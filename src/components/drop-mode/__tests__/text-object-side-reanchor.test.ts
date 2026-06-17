@@ -25,10 +25,12 @@
  *     (e) the mutation bottoms out by calling removeTextObjectLink(old) +
  *         addTextObjectLink(target) on the api.
  *
- * The spec only reads `placement.kind` / `placement.paragraphId` and the api
- * sub-bag off `ctx` — `editor`/`rect`/`side`/`mainEditor` are never touched on
- * this path (preserveModeBAnchor returns null), so the Placement/DropCtx are
- * minimal `as unknown as` casts, matching `real-drop-specs-create.test.ts`.
+ * The spec reads `placement.kind` / `placement.paragraphId` and the api
+ * sub-bag off `ctx`; `editor`/`rect`/`side` are untouched. `mainEditor` is
+ * read only to capture a Mode-A self-healing snapshot for the new anchor —
+ * absent here, so the snapshot arg comes through as null (the re-anchor
+ * still lands). preserveModeBAnchor returns null, so the Placement/DropCtx
+ * are minimal `as unknown as` casts, matching `real-drop-specs-create.test.ts`.
  */
 
 import { describe, expect, it, vi } from "vitest";
@@ -51,7 +53,7 @@ function makeApi(initial: string[]): {
   const api: ParagraphAnchorApi = {
     exists: () => true,
     getAnchorTextObjectIds: () => [...set],
-    addTextObjectLink: (_id, pid) => {
+    addTextObjectLink: (_id, pid, _targetKind, _snapshot) => {
       added.push(pid);
       set.add(pid);
     },
@@ -137,7 +139,11 @@ describe("textObjectSideReanchorSpec — applyDrop (the mutation)", () => {
     spec.applyDrop(paragraphSide("P3"), CARD_KEY, ctxWith(api));
 
     expect(removeSpy).toHaveBeenCalledWith("rvs1", "P1");
-    expect(addSpy).toHaveBeenCalledWith("rvs1", "P3");
+    // The re-anchor now passes the targetKind ("paragraph", drop is always
+    // paragraph-side) plus a Mode-A self-healing snapshot captured from
+    // ctx.mainEditor. This ctx has no mainEditor, so captureParagraphSnapshot
+    // returns null — snapshot arg is null but the anchor still lands.
+    expect(addSpy).toHaveBeenCalledWith("rvs1", "P3", "paragraph", null);
     expect(removed).toEqual(["P1"]);
     expect(added).toEqual(["P3"]);
   });
