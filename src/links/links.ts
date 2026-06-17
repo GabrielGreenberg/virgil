@@ -1148,8 +1148,9 @@ export function isUnanchored(
 //     on load: UUID-first (backfill snapshot if the UUID still resolves),
 //     snapshot-fallback (rewrite `textObjectIds[0]` to the live UUID when
 //     the stored UUID is dead but the snapshot matches a live paragraph).
-//   - `isModeAOrphaned` surfaces the un-resolvable residue at the
-//     derivation layer so a dangling card doesn't silently linger.
+//   - `isModeAOrphaned` is a test-only predicate for the un-resolvable
+//     residue (UUID dead AND snapshot unmatched). NOT wired into a
+//     production orphan-surfacing UI yet — see its `@internal` note.
 // ---------------------------------------------------------------------------
 
 /** All `uuid` attrs present on live anchorable nodes, built once per
@@ -1205,8 +1206,9 @@ export function findParagraphIdBySnapshot(
  *   2. For each Mode-A link whose `textObjectIds[0]` does NOT resolve but
  *      whose `paragraphSnapshot` matches a live paragraph: REWRITE
  *      `textObjectIds[0]` to the live UUID (and keep the snapshot).
- *   3. Links with no snapshot and a dead UUID are left untouched (they
- *      surface as orphaned via `isModeAOrphaned`).
+ *   3. Links with no snapshot and a dead UUID are left untouched — the
+ *      un-resolvable residue (detectable via the test-only
+ *      `isModeAOrphaned`; no production orphan-surfacing UI consumes it yet).
  *
  * Mode-B links are passed through unchanged — their recovery is the
  * separate `reanchorByText` / `applyLinkedAnchors` path.
@@ -1249,6 +1251,14 @@ export function reconcileModeAAnchors<T extends CardWithLinks>(
     const reboundId = findParagraphIdBySnapshot(editor, snap);
     if (!reboundId || reboundId === pid) return link;
     changed = true;
+    // Multi-anchor note: we rebind ONLY `textObjectIds[0]` — the primary
+    // Mode-A paragraph anchor that the single `paragraphSnapshot` describes.
+    // `ids.slice()` then `newIds[0] = reboundId` copies the array and
+    // rewrites only index 0, so any sibling ids (a multi-paragraph link's
+    // ids[1..]) are PRESERVED verbatim — no truncation, no corruption. We
+    // don't attempt to heal the siblings because there's exactly one
+    // snapshot (it pins index 0); a per-id snapshot + targetKind-match
+    // refinement for the wrapper-shadow nested-fallback edge is backlog.
     const newIds = ids.slice();
     newIds[0] = reboundId;
     return {
@@ -1263,13 +1273,21 @@ export function reconcileModeAAnchors<T extends CardWithLinks>(
 /**
  * Derivation-layer predicate: a Mode-A card is ORPHANED (no live anchor)
  * when it has at least one Mode-A link but NONE of its Mode-A links'
- * `textObjectIds[0]` resolve to a live block. Used to surface a dangling
- * card as unanchored instead of letting it silently vanish from the
- * gutter while `isUnanchored` (links.length only) still reports anchored.
+ * `textObjectIds[0]` resolve to a live block — i.e. the un-resolvable
+ * residue left after `reconcileModeAAnchors` runs (UUID dead AND snapshot
+ * didn't match a live block).
  *
  * Returns `false` for cards with no Mode-A link (Mode-B-only / no-anchor
  * cards are governed by their own paths), and `false` while `liveUuids`
  * is empty (editor not yet ready — don't false-flag on load).
+ *
+ * NOTE: exported for the reconcile test suite only. There is no
+ * orphan-surfacing UI consuming it yet (the panels don't render a Mode-A
+ * orphan badge), so it is deliberately NOT wired into production — keep it
+ * `@internal` rather than implying coverage that doesn't exist. Wiring it
+ * into the card-source derivation to surface dangling cards is backlog.
+ *
+ * @internal test-only
  */
 export function isModeAOrphaned(
   card: CardWithLinks | null | undefined,
