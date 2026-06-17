@@ -3192,12 +3192,6 @@ textarea,
   font-style: normal;
 }
 
-/* Hide ProseMirror's default horizontal drop cursor during paragraph-linking drags */
-.anchor-drag-active .prosemirror-dropcursor-block,
-.anchor-drag-active .prosemirror-dropcursor-inline {
-  display: none !important;
-}
-
 /* ── Drop mode ────────────────────────────────────────────────────────
  * "Shift + grab a popped-out item's grab bar" gesture. The Indicator
  * paints a blue bar (paragraph-side / between-blocks / inline-cursor)
@@ -3249,14 +3243,6 @@ body[data-drop-mode-active="true"] * {
 .dropmode-bar-vertical {
   transition: top 0.08s ease, height 0.08s ease;
   border-radius: 2px;
-}
-/* The marginalia gutter-drag indicator shares `.dropmode-bar-side` but
- * fires from native HTML5 `dragover` events that update many times per
- * second — the 80ms ease above is a visible trail. Snap directly. The
- * shift+drag drop-mode bar (no `.marginalia-drop-indicator`) keeps its
- * smooth glide for the lower-rate mouse-based flow. */
-.marginalia-drop-indicator.dropmode-bar-side {
-  transition: none;
 }
 @keyframes dropmode-bar-fadein {
   from { opacity: 0; }
