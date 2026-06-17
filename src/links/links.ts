@@ -1369,13 +1369,24 @@ export function addTextObjectLink<T extends CardWithLinks>(
 ): T {
   if (!textObjectId) return card;
   const links = card.links ?? [];
-  // If the card has a Mode B link, fold the new id into it.
-  const modeBIdx = links.findIndex(
-    (l) =>
-      l.anchor.type === "textObject" &&
-      l.anchor.targetKind === "linkedRange" &&
-      l.anchor.textRange,
-  );
+  // If the card has a Mode B link, fold the new id into it — EXCEPT for a
+  // paragraph re-anchor. A paragraph-side drop (`targetKind === "paragraph"`)
+  // must NOT fold P_new into a surviving `linkedRange` link: doing so leaves
+  // the card stuck as `targetKind: "linkedRange"` with the OLD textRange and
+  // NO `paragraphSnapshot`, so the load reconcile skips it and the Mode-B
+  // re-apply drags it back to the old paragraph (RC1). Instead it falls
+  // through to the fresh Mode-A branch below, which threads the snapshot.
+  // (The caller also converts the surviving link via `clearModeB`; this gate
+  // is belt-and-suspenders so a fold can never re-poison the link.)
+  const modeBIdx =
+    targetKind === "paragraph"
+      ? -1
+      : links.findIndex(
+          (l) =>
+            l.anchor.type === "textObject" &&
+            l.anchor.targetKind === "linkedRange" &&
+            l.anchor.textRange,
+        );
   if (modeBIdx !== -1) {
     const link = links[modeBIdx];
     if (link.anchor.type !== "textObject") return card;

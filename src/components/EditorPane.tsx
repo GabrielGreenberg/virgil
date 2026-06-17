@@ -1356,8 +1356,11 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
       addTextObjectLink: notesHook.addNoteTextObjectId,
       removeTextObjectLink: notesHook.removeNoteTextObjectId,
       preserveModeBAnchor: notesHook.preserveModeBAnchor,
+      // Notes convert a surviving Mode-B link → clean Mode-A on re-anchor
+      // (RC1). Highlights deliberately omit this (intrinsically Mode-B).
+      clearModeB: notesHook.clearTextAnchorById,
     }),
-    [notesHook.notes, notesHook.addNoteTextObjectId, notesHook.removeNoteTextObjectId, notesHook.preserveModeBAnchor],
+    [notesHook.notes, notesHook.addNoteTextObjectId, notesHook.removeNoteTextObjectId, notesHook.preserveModeBAnchor, notesHook.clearTextAnchorById],
   );
   const dropHighlightsApi = useMemo(
     () => ({

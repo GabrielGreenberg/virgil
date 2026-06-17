@@ -15,6 +15,7 @@ import {
   clearTextAnchorLink,
   getLinkedTextObjectIds,
   getTextAnchor,
+  hasTextAnchor,
   removeTextObjectLink,
   setTextAnchorLink,
 } from "@/links/links";
@@ -208,6 +209,31 @@ export function useNotes(docId: string | null, externalPristine?: PristineKindAp
     window.addEventListener("virgil-anchor-orphaned", handler);
     return () => window.removeEventListener("virgil-anchor-orphaned", handler);
   }, [clearCardAnchor]);
+
+  // Card-id-keyed Mode-B → Mode-A conversion. Unlike `clearCardAnchor`
+  // (keyed by the doc-side anchorId, driven by the orphan event), this is
+  // keyed by the card id and is called by the drop-mode re-anchor commit
+  // (`clearModeB` on the ParagraphAnchorApi). It converts a surviving
+  // `linkedRange` link to a clean `paragraph` link (preserving paragraph
+  // ids) so the subsequent paragraph re-anchor isn't folded back into the
+  // dead textRange link (RC1). No-op if the card carries no text anchor.
+  const clearTextAnchorById = useCallback(
+    (id: string) => {
+      update((prev) => {
+        const card = prev.cards.find((c) => c.id === id);
+        if (!card || !hasTextAnchor(card)) return prev;
+        return {
+          cards: prev.cards.map((c) => {
+            if (c.id !== id) return c;
+            if (c.kind === "note") return clearTextAnchorLink(c, "note");
+            if (c.kind === "highlight") return clearTextAnchorLink(c, "highlight");
+            return c;
+          }),
+        };
+      });
+    },
+    [update],
+  );
 
   const updateNote = useCallback(
     (id: string, content: JSONContent) => {
@@ -523,6 +549,7 @@ export function useNotes(docId: string | null, externalPristine?: PristineKindAp
     bindAnchor,
     setNoteAnchor,
     clearNoteAnchor: clearCardAnchor,
+    clearTextAnchorById,
     discardPristineNotes,
   };
 }
