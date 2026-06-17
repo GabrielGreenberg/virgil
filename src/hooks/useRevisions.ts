@@ -28,6 +28,7 @@ import { bridgeCardAiRequestFlag } from "@/lib/ai-request-bridge";
 import { applyCardMorph } from "@/cards/morphs";
 import { usePersistentState } from "./usePersistentState";
 import { usePristineTracker } from "./usePristineTracker";
+import { useReconcileModeAAnchors } from "./useReconcileModeAAnchors";
 import type { PristineKindApi } from "./usePristineCardManager";
 
 const EMPTY_STATE: RevisionsState = { cards: [], tracker: null };
@@ -389,6 +390,13 @@ export function useRevisions(
     [update],
   );
 
+  // Mode-A self-healing reconcile (load-only). See useReconcileModeAAnchors.
+  const reconcileAnchors = useReconcileModeAAnchors<RevisionsState, RevisionCard>(
+    update,
+    (s) => s.cards,
+    (s, cards) => ({ ...s, cards }),
+  );
+
   const deleteCard = useCallback(
     (id: string) => {
       pristine.markDirty(id);
@@ -532,6 +540,7 @@ export function useRevisions(
     setTrackerTarget,
     addCardParagraphId,
     removeCardParagraphId,
+    reconcileAnchors,
     deleteCard,
     cloneComment,
     cloneSuggestion,

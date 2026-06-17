@@ -18,6 +18,7 @@ import {
   removeTextObjectLink,
   setTextAnchorLink,
 } from "@/links/links";
+import { useReconcileModeAAnchors } from "./useReconcileModeAAnchors";
 import { bridgeCardAiRequestFlag } from "@/lib/ai-request-bridge";
 import { isAutoTitle } from "@/panels/panel-registry";
 import { migrateCardLinks } from "@/links/migrate-card";
@@ -336,6 +337,15 @@ export function useNotes(docId: string | null, externalPristine?: PristineKindAp
     [update],
   );
 
+  // Mode-A self-healing reconcile, run once on doc-open by the load
+  // reconcile effect. Highlights are Mode B (untouched); Mode-A notes get
+  // UUID-first backfill / snapshot-fallback rebind.
+  const reconcileAnchors = useReconcileModeAAnchors<NotesState, NoteCardItem>(
+    update,
+    (s) => s.cards,
+    (_s, cards) => ({ cards }),
+  );
+
   /**
    * Phase 4 sidecar capture: before drop mode strips a Mode B anchor
    * (text-range) from a note or highlight, save the original anchor
@@ -492,6 +502,7 @@ export function useNotes(docId: string | null, externalPristine?: PristineKindAp
     removeNoteTextObjectId,
     addHighlightTextObjectId,
     removeHighlightTextObjectId,
+    reconcileAnchors,
     preserveModeBAnchor,
     deleteNote,
     cloneNote,

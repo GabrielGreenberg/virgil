@@ -28,6 +28,7 @@ import { bridgeCardAiRequestFlag } from "@/lib/ai-request-bridge";
 import { applyCardMorph } from "@/cards/morphs";
 import { usePersistentState } from "./usePersistentState";
 import { usePristineTracker } from "./usePristineTracker";
+import { useReconcileModeAAnchors } from "./useReconcileModeAAnchors";
 import type { PristineKindApi } from "./usePristineCardManager";
 
 const EMPTY_STATE: CutterState = { cards: [], goal: null };
@@ -407,6 +408,13 @@ export function useCutter(
     [update],
   );
 
+  // Mode-A self-healing reconcile (load-only). See useReconcileModeAAnchors.
+  const reconcileAnchors = useReconcileModeAAnchors<CutterState, CutterCard>(
+    update,
+    (s) => s.cards,
+    (s, cards) => ({ ...s, cards }),
+  );
+
   const deleteCard = useCallback(
     (id: string) => {
       pristine.markDirty(id);
@@ -554,6 +562,7 @@ export function useCutter(
     clearGoal,
     addCardParagraphId,
     removeCardParagraphId,
+    reconcileAnchors,
     deleteCard,
     cloneComment,
     cloneSuggestion,

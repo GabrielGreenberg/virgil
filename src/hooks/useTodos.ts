@@ -16,6 +16,7 @@ import { bridgeCardAiRequestFlag } from "@/lib/ai-request-bridge";
 import { isAutoTitle } from "@/panels/panel-registry";
 import { usePersistentState } from "./usePersistentState";
 import { usePristineTracker } from "./usePristineTracker";
+import { useReconcileModeAAnchors } from "./useReconcileModeAAnchors";
 import type { PristineKindApi } from "./usePristineCardManager";
 
 const EMPTY: TodoState = { items: [] };
@@ -153,6 +154,13 @@ export function useTodos(docId: string | null, externalPristine?: PristineKindAp
     }));
   }, [update]);
 
+  // Mode-A self-healing reconcile (load-only). See useReconcileModeAAnchors.
+  const reconcileAnchors = useReconcileModeAAnchors<TodoState, TodoItem>(
+    update,
+    (s) => s.items,
+    (_s, items) => ({ items }),
+  );
+
   /**
    * Set a Mode-B text-range anchor on a todo (symmetric with
    * `useNotes.setNoteAnchor`). Folds any existing Mode-A paragraph links
@@ -273,6 +281,7 @@ export function useTodos(docId: string | null, externalPristine?: PristineKindAp
     archiveDone,
     addParagraphId,
     removeParagraphId,
+    reconcileAnchors,
     setTodoAnchor,
     bindAnchor,
     discardPristineTodos,

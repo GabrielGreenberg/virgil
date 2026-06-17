@@ -1067,6 +1067,53 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
     setReady(true);
   }, [docContentReady, editor]);
 
+  // Mode-A self-healing anchor reconcile (load-only, once per doc-open).
+  //
+  // A Mode-A margin card anchors via a bare paragraph UUID that survives a
+  // reload only if that paragraph's `%!v:` UUID round-tripped through the
+  // `.tex`. When the 1500 ms autosave loses the race to a reload, the
+  // paragraph is re-minted a fresh UUID and the card silently orphans
+  // (gone from the gutter, yet `isUnanchored` still reports anchored).
+  //
+  // This pass repairs that, symmetric with Mode B's `reanchorByText`:
+  // UUID-first (if the stored UUID still resolves, backfill the snapshot so
+  // legacy links become durable going forward), snapshot-fallback (if the
+  // UUID is dead but the captured paragraph text matches a live block,
+  // rebind `textObjectIds[0]` to the live UUID and persist). Run here in
+  // EditorPane — these hook instances own the rendered gutter markers, so
+  // a rebind takes effect this session AND lands on disk. Idempotent; the
+  // per-doc guard fires once `editor` + the doc content are ready (by which
+  // point the card sidecars have loaded). NOT on the keystroke path — the
+  // doc walk runs exactly once per open.
+  const modeAReconciledDocRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (!editor || !docContentReady) return;
+    if (modeAReconciledDocRef.current === docId) return;
+    modeAReconciledDocRef.current = docId;
+    notesHookRaw.reconcileAnchors(editor);
+    todosHook.reconcileAnchors(editor);
+    cutterHookRaw.reconcileAnchors(editor);
+    revisionsHookRaw.reconcileAnchors(editor);
+    reportsHookRaw.reconcileAnchors(editor);
+    archiveHook.reconcileAnchors(editor);
+  }, [
+    editor,
+    docContentReady,
+    docId,
+    notesHookRaw.notes,
+    todosHook.items,
+    cutterHookRaw.cards,
+    revisionsHookRaw.cards,
+    reportsHookRaw.cards,
+    archiveHook.snippets,
+    notesHookRaw.reconcileAnchors,
+    todosHook.reconcileAnchors,
+    cutterHookRaw.reconcileAnchors,
+    revisionsHookRaw.reconcileAnchors,
+    reportsHookRaw.reconcileAnchors,
+    archiveHook.reconcileAnchors,
+  ]);
+
   // Compile state — `pdfBlobUrl`, `lastCompileTime`, `pdfStale` live
   // here so they bubble up via `paneState` for the shell's Virgil bar
   // (PDF stale-dot, Compile spinner). Reset on docId change so

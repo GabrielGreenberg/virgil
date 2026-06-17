@@ -28,6 +28,7 @@ import { isAutoTitle } from "@/panels/panel-registry";
 import { applyCardMorph } from "@/cards/morphs";
 import { usePersistentState } from "./usePersistentState";
 import { usePristineTracker } from "./usePristineTracker";
+import { useReconcileModeAAnchors } from "./useReconcileModeAAnchors";
 import type { PristineKindApi } from "./usePristineCardManager";
 
 const EMPTY_STATE: ReportsState = { cards: [] };
@@ -304,6 +305,13 @@ export function useReports(
     [update],
   );
 
+  // Mode-A self-healing reconcile (load-only). See useReconcileModeAAnchors.
+  const reconcileAnchors = useReconcileModeAAnchors<ReportsState, ReportItem>(
+    update,
+    (s) => s.cards,
+    (s, cards) => ({ ...s, cards }),
+  );
+
   const deleteCard = useCallback(
     (id: string) => {
       pristine.markDirty(id);
@@ -427,6 +435,7 @@ export function useReports(
     setRequestAiRequest,
     addCardParagraphId,
     removeCardParagraphId,
+    reconcileAnchors,
     deleteCard,
     cloneReport,
     cloneRequest,

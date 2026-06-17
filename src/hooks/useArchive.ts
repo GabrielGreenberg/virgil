@@ -12,6 +12,7 @@ import {
 import { migrateCardLinks } from "@/links/migrate-card";
 import { isAutoTitle } from "@/panels/panel-registry";
 import { usePersistentState } from "./usePersistentState";
+import { useReconcileModeAAnchors } from "./useReconcileModeAAnchors";
 
 const EMPTY: ArchiveState = { snippets: [] };
 
@@ -160,6 +161,13 @@ export function useArchive(docId: string | null) {
     [update],
   );
 
+  // Mode-A self-healing reconcile (load-only). See useReconcileModeAAnchors.
+  const reconcileAnchors = useReconcileModeAAnchors<ArchiveState, ArchivedSnippet>(
+    update,
+    (s) => s.snippets,
+    (_s, snippets) => ({ snippets }),
+  );
+
   return {
     snippets: state.snippets,
     archiveContent,
@@ -167,6 +175,7 @@ export function useArchive(docId: string | null) {
     updateSnippetTitle,
     addParagraphId,
     removeParagraphId,
+    reconcileAnchors,
     restoreSnippet,
     deleteSnippet,
   };
