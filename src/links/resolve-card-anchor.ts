@@ -32,11 +32,17 @@
 
 import type { Editor } from "@tiptap/react";
 import type { Link } from "./_shared/types";
+import { normalizeParagraphText } from "./_shared/normalize-text";
 import {
   collectLiveUuids,
   paragraphUuidAt,
   type CardWithLinks,
 } from "./links";
+
+// Re-export so consumers (and CHIP-D's capture side) keep importing the
+// canonical normalization from the resolver's public surface, even though
+// the implementation lives in a leaf module to break the links.ts cycle.
+export { normalizeParagraphText };
 
 // ---------------------------------------------------------------------------
 // Public types
@@ -74,28 +80,11 @@ export interface ResolveIndex {
 }
 
 // ---------------------------------------------------------------------------
-// Normalization (shared by the index AND, in CHIP-D, by captureParagraphSnapshot)
+// Normalization — see `_shared/normalize-text.ts` (re-exported at the top of
+// this file). Canonical form shared by the index AND, since CHIP-D, by
+// `captureParagraphSnapshot`. Lives in a leaf module to break the links.ts
+// import cycle (links.ts imports it; this file imports links.ts).
 // ---------------------------------------------------------------------------
-
-/** Zero-width characters stripped before comparison: ZWSP (U+200B),
- *  ZWNJ (U+200C), ZWJ (U+200D), word-joiner (U+2060), and the BOM /
- *  zero-width no-break space (U+FEFF). Written as explicit code-point
- *  escapes so the source has no invisible characters. */
-const ZERO_WIDTH_RE = /[\u200B\u200C\u200D\u2060\uFEFF]/g;
-
-/**
- * Canonical form for whole-paragraph snapshot comparison: trim the ends,
- * collapse every internal whitespace run to a single space, and strip
- * zero-width characters. This is the SAME normalization the resolve index
- * applies to live `textContent`, so a snapshot captured through the same
- * function compares equal across LaTeX round-trip whitespace drift.
- *
- * Exported so CHIP-D can apply it at `captureParagraphSnapshot` time —
- * capture and match MUST use the identical form.
- */
-export function normalizeParagraphText(s: string): string {
-  return s.replace(ZERO_WIDTH_RE, "").replace(/\s+/g, " ").trim();
-}
 
 // ---------------------------------------------------------------------------
 // Index builder — ONE O(doc) pass, card-count-independent
@@ -308,13 +297,39 @@ export function resolveCardAnchor(
 // ---------------------------------------------------------------------------
 
 /**
+ * Optional editor-aware inputs the RC-A load pass threads in so the pure
+ * mutator can do the two things the resolution alone can't carry:
+ *
+ *   - `liveText` — the live paragraph's text (the load pass reads it once
+ *     via `captureParagraphSnapshot`, already normalized). On a
+ *     `source:'uuid'` resolution this BACKFILLS a MISSING snapshot from
+ *     real text (AUGMENTATION 1). Without it, a missing snapshot stays
+ *     missing (R0's pure-only behavior).
+ *   - `isAnchorIdLive` — `index.anchorIdToParagraph.has`. On a
+ *     `source:'uuid'` resolution it detects a residual `linkedRange` link
+ *     whose mark anchorId is DEAD (rung 2b self-heal left it behind) so the
+ *     pass can STRIP/convert it to a clean Mode-A link (AUGMENTATION 2 —
+ *     the HYBRID CLEANUP class fix for re-anchored Mode-B todo/revision/
+ *     cutter/report). Without it, no cleanup (R0 behavior).
+ */
+export interface ReconcileOpts {
+  /** Normalized live paragraph text for the resolved uuid, or null/absent. */
+  liveText?: string | null;
+  /** True iff the given linkedRange anchorId still backs a live mark. */
+  isAnchorIdLive?: (anchorId: string) => boolean;
+}
+
+/**
  * Reconcile a card's stored links to a resolution. The ONLY pure card
  * mutator the load reconcile pass invokes. Idempotent: a second call on a
  * just-reconciled card returns `changed:false` (no save loop).
  *
  *   - `source === 'uuid'` → the card is already on the live paragraph;
- *     BACKFILL a missing/stale `paragraphSnapshot` from the live text so
- *     the snapshot fallback stays durable. No id rewrite.
+ *     BACKFILL a missing/stale `paragraphSnapshot` (from `opts.liveText`
+ *     when present, else canonicalize an existing one) AND, via
+ *     `opts.isAnchorIdLive`, STRIP a residual dead-mark `linkedRange` link
+ *     (HYBRID CLEANUP) so `getTextAnchor(card)` returns null afterward. No
+ *     id rewrite.
  *   - `source === 'snapshot'` → the stored UUID is dead but the text was
  *     re-found. REWRITE `textObjectIds[0]` to `res.paragraphId` and
  *     restamp the snapshot. If the relocated link was Mode-B, CONVERT it
@@ -324,6 +339,10 @@ export function resolveCardAnchor(
  *   - `source === 'mark'` or `'orphan'` → no-op (mark survives / nothing
  *     recoverable).
  *
+ * `opts` is optional — called WITHOUT it (R0 pure callers / existing tests)
+ * the function behaves exactly as before (no backfill from live text, no
+ * hybrid cleanup). The editor-aware RC-A pass supplies it.
+ *
  * Returns a NEW card object when changed (never mutates the input in
  * place), so a stale reference can't observe the rewrite — preserving the
  * idempotency contract for callers that diff by identity.
@@ -331,6 +350,7 @@ export function resolveCardAnchor(
 export function reconcileCardToResolved<T extends CardWithLinks>(
   card: T,
   res: CardAnchorResolution,
+  opts?: ReconcileOpts,
 ): { card: T; changed: boolean } {
   const links = card.links;
   if (!Array.isArray(links) || links.length === 0) {
@@ -338,7 +358,7 @@ export function reconcileCardToResolved<T extends CardWithLinks>(
   }
 
   if (res.source === "uuid" && res.paragraphId) {
-    return backfillUuidSnapshot(card, res.paragraphId, links);
+    return backfillUuidSnapshot(card, res.paragraphId, links, opts);
   }
 
   if (res.source === "snapshot" && res.paragraphId) {
@@ -350,44 +370,124 @@ export function reconcileCardToResolved<T extends CardWithLinks>(
 }
 
 /**
- * `source === 'uuid'`: backfill a missing/stale `paragraphSnapshot` on the
- * Mode-A link that owns the resolved paragraph. Idempotent — when the
- * snapshot already equals the (normalized) live text, returns
- * `changed:false`.
+ * `source === 'uuid'`: the card is bound to a live paragraph via the uuid
+ * rung (rung 1, or the rung-2b RC1 self-heal). Two repairs, both idempotent:
  *
- * The live snapshot is stored in NORMALIZED form so a second pass — which
- * reads the same normalized live text — compares equal and is a no-op. The
- * normalized form is also what the snapshot rung matches against, so a
- * future reload-by-snapshot resolves correctly.
+ * (A) BACKFILL the Mode-A link's `paragraphSnapshot`. With `opts.liveText`
+ *     (RC-A's editor-aware pass) a MISSING snapshot is filled from the real
+ *     normalized live text; without it, an EXISTING non-canonical snapshot
+ *     is canonicalized (R0 pure behavior — a missing one stays missing).
+ *     `opts.liveText` arrives already normalized (RC-A normalizes at
+ *     capture, CHIP-D), so a second pass compares equal and is a no-op.
+ *
+ * (B) HYBRID CLEANUP (AUGMENTATION 2): strip/convert any residual
+ *     `linkedRange` (Mode-B) link whose mark anchorId is DEAD
+ *     (`opts.isAnchorIdLive(anchorId) === false`). This is the inert hybrid
+ *     a re-anchored Mode-B todo/revision/cutter/report left behind (CHIP-A
+ *     only wired the write-side `clearModeB` for notes). After cleanup the
+ *     card carries NO live `textRange`, so `getTextAnchor` returns null and
+ *     the Mode-B re-apply can't drag it back. The dead link becomes a clean
+ *     Mode-A `{paragraph,[paragraphId]}` link UNLESS a clean Mode-A link on
+ *     `paragraphId` already exists (the double-link hybrid), in which case
+ *     it's dropped — leaving exactly one clean Mode-A link. Guarded by
+ *     `isAnchorIdLive` so a HEALTHY Mode-B (live mark) is never touched —
+ *     but note rung 2 already wins for those, so `source` wouldn't be
+ *     'uuid' there anyway; this is belt-and-suspenders.
  */
 function backfillUuidSnapshot<T extends CardWithLinks>(
   card: T,
   paragraphId: string,
   links: Link[],
+  opts?: ReconcileOpts,
 ): { card: T; changed: boolean } {
-  // No editor here — the resolution already proved the uuid is live, but
-  // the live text isn't carried on the resolution. The index doesn't carry
-  // per-uuid text either. So backfill is best-effort from what the link
-  // already knows: we can only stamp a normalized form of an EXISTING
-  // snapshot (cleaning a legacy un-normalized one). A missing snapshot is
-  // left missing here — the editor-aware load pass (RC-A) backfills the
-  // real text via `captureParagraphSnapshot`; this pure mutator only
-  // canonicalizes what's present so idempotency holds.
+  const liveText = opts?.liveText ? normalizeParagraphText(opts.liveText) : null;
+  const isAnchorIdLive = opts?.isAnchorIdLive;
+
+  // Does a clean Mode-A link already cover `paragraphId`? Used by cleanup to
+  // decide convert-vs-drop so we never end up with two links on the same pid.
+  const hasCleanModeAOnPid = links.some(
+    (l) =>
+      l.anchor.type === "textObject" &&
+      l.anchor.targetKind !== "linkedRange" &&
+      l.anchor.textObjectIds[0] === paragraphId,
+  );
+
   let changed = false;
-  const next = links.map((link) => {
-    if (link.anchor.type !== "textObject") return link;
-    if (link.anchor.targetKind === "linkedRange") return link;
-    if (link.anchor.textObjectIds[0] !== paragraphId) return link;
-    const snap = link.anchor.paragraphSnapshot;
-    if (!snap) return link; // nothing to canonicalize; RC-A fills real text
-    const normalized = normalizeParagraphText(snap);
-    if (normalized === snap) return link; // already canonical → idempotent
-    changed = true;
-    return {
-      ...link,
-      anchor: { ...link.anchor, paragraphSnapshot: normalized },
-    };
-  });
+  const next: Link[] = [];
+  for (const link of links) {
+    if (link.anchor.type !== "textObject") {
+      next.push(link);
+      continue;
+    }
+
+    const isModeBLink = link.anchor.targetKind === "linkedRange";
+
+    // (B) HYBRID CLEANUP — a dead-mark linkedRange residue.
+    if (isModeBLink && isAnchorIdLive) {
+      const anchorId = link.anchor.textRange?.anchorId;
+      // Only act when the mark is provably DEAD. (No anchorId → also dead.)
+      const markDead = !anchorId || !isAnchorIdLive(anchorId);
+      if (markDead) {
+        changed = true;
+        if (hasCleanModeAOnPid) {
+          // A clean Mode-A link already owns this paragraph → drop the dead
+          // hybrid link entirely (avoids a duplicate anchor on `paragraphId`).
+          continue;
+        }
+        // No clean Mode-A link yet → CONVERT the dead link into one, anchored
+        // on the resolved paragraph with a normalized snapshot (live text if
+        // RC-A supplied it, else the link's stale textRange snapshot).
+        const snap =
+          liveText ??
+          (link.anchor.textRange?.textSnapshot
+            ? normalizeParagraphText(link.anchor.textRange.textSnapshot)
+            : undefined);
+        next.push({
+          ...link,
+          anchor: {
+            type: "textObject",
+            targetKind: "paragraph",
+            textObjectIds: [paragraphId],
+            margin: link.anchor.margin,
+            ...(snap ? { paragraphSnapshot: snap } : {}),
+          },
+        });
+        continue;
+      }
+      // Mark still live (healthy Mode-B) → leave untouched.
+      next.push(link);
+      continue;
+    }
+
+    // (A) BACKFILL on the resolved Mode-A link.
+    if (!isModeBLink && link.anchor.textObjectIds[0] === paragraphId) {
+      const snap = link.anchor.paragraphSnapshot;
+      // Editor-aware: backfill a MISSING snapshot from live text.
+      if (!snap && liveText) {
+        changed = true;
+        next.push({
+          ...link,
+          anchor: { ...link.anchor, paragraphSnapshot: liveText },
+        });
+        continue;
+      }
+      // Canonicalize an existing non-canonical snapshot (pure R0 behavior).
+      if (snap) {
+        const normalized = liveText ?? normalizeParagraphText(snap);
+        if (normalized !== snap) {
+          changed = true;
+          next.push({
+            ...link,
+            anchor: { ...link.anchor, paragraphSnapshot: normalized },
+          });
+          continue;
+        }
+      }
+    }
+
+    next.push(link);
+  }
+
   if (!changed) return { card, changed: false };
   return { card: { ...card, links: next }, changed: true };
 }
