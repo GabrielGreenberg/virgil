@@ -119,7 +119,7 @@ export function useReports(
   docId: string | null,
   externalPristine?: PristineKindApi | null,
 ) {
-  const { state, update } = usePersistentState<ReportsState>(
+  const { state, update, stateRef, loaded } = usePersistentState<ReportsState>(
     docId,
     "reports.json",
     EMPTY_STATE,
@@ -313,6 +313,7 @@ export function useReports(
   // Mode-A self-healing reconcile (load-only). See useReconcileModeAAnchors.
   const reconcileAnchors = useReconcileModeAAnchors<ReportsState, ReportItem>(
     update,
+    () => stateRef.current,
     (s) => s.cards,
     (s, cards) => ({ ...s, cards }),
   );
@@ -441,6 +442,7 @@ export function useReports(
     addCardParagraphId,
     removeCardParagraphId,
     reconcileAnchors,
+    loaded,
     deleteCard,
     cloneReport,
     cloneRequest,

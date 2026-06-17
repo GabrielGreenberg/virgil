@@ -83,7 +83,7 @@ function migrateNotes(raw: unknown): NotesState {
 }
 
 export function useNotes(docId: string | null, externalPristine?: PristineKindApi | null) {
-  const { state, update } = usePersistentState<NotesState>(
+  const { state, update, stateRef, loaded } = usePersistentState<NotesState>(
     docId,
     "notes.json",
     EMPTY_STATE,
@@ -352,6 +352,7 @@ export function useNotes(docId: string | null, externalPristine?: PristineKindAp
   // UUID-first backfill / snapshot-fallback rebind.
   const reconcileAnchors = useReconcileModeAAnchors<NotesState, NoteCardItem>(
     update,
+    () => stateRef.current,
     (s) => s.cards,
     (_s, cards) => ({ cards }),
   );
@@ -513,6 +514,7 @@ export function useNotes(docId: string | null, externalPristine?: PristineKindAp
     addHighlightTextObjectId,
     removeHighlightTextObjectId,
     reconcileAnchors,
+    loaded,
     preserveModeBAnchor,
     deleteNote,
     cloneNote,

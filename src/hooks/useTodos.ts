@@ -43,7 +43,7 @@ function migrateTodos(raw: unknown): TodoState {
 }
 
 export function useTodos(docId: string | null, externalPristine?: PristineKindApi | null) {
-  const { state, update } = usePersistentState<TodoState>(
+  const { state, update, stateRef, loaded } = usePersistentState<TodoState>(
     docId,
     "todos.json",
     EMPTY,
@@ -158,6 +158,7 @@ export function useTodos(docId: string | null, externalPristine?: PristineKindAp
   // Mode-A self-healing reconcile (load-only). See useReconcileModeAAnchors.
   const reconcileAnchors = useReconcileModeAAnchors<TodoState, TodoItem>(
     update,
+    () => stateRef.current,
     (s) => s.items,
     (_s, items) => ({ items }),
   );
@@ -283,6 +284,7 @@ export function useTodos(docId: string | null, externalPristine?: PristineKindAp
     addParagraphId,
     removeParagraphId,
     reconcileAnchors,
+    loaded,
     setTodoAnchor,
     bindAnchor,
     discardPristineTodos,

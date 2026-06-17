@@ -26,12 +26,24 @@ import type { CardWithLinks } from "@/links/links";
  * `collectLiveUuids` + the per-card walk are O(doc) and must stay off the
  * typing path.
  *
- * `selectCards` reads the card array off the hook's state; `mapCards`
- * writes a mapped array back into the same state shape (preserving any
- * sibling fields like `goal` / `tracker`).
+ * `getState` reads the hook's live state synchronously (the `stateRef`
+ * from `usePersistentState`); `selectCards` reads the card array off that
+ * state; `mapCards` writes a mapped array back into the same state shape
+ * (preserving any sibling fields like `goal` / `tracker`).
+ *
+ * Data-loss invariant (anchor-p1 BLOCKER): `update()` sets
+ * `hasMutatedRef.current = true` BEFORE its updater runs, and the
+ * still-pending sidecar loader bails `if (hasMutatedRef.current) return;`
+ * — so calling `update()` before the panel's cards have loaded silently
+ * DROPS that panel's entire on-disk set for the session. We therefore
+ *   (a) early-bail when the cards aren't loaded yet (empty array), and
+ *   (b) compute the reconcile result OUTSIDE `update()` and call `update()`
+ *       ONLY when something actually changed.
+ * A no-op pass must call `update()` ZERO times.
  */
 export function useReconcileModeAAnchors<S, C extends CardWithLinks>(
   update: (updater: (prev: S) => S) => void,
+  getState: () => S,
   selectCards: (state: S) => readonly C[],
   mapCards: (state: S, next: C[]) => S,
 ): (editor: Editor | null | undefined) => void {
@@ -39,6 +51,8 @@ export function useReconcileModeAAnchors<S, C extends CardWithLinks>(
   // (callers pass fresh inline arrows each render; the reconcile shape is
   // conceptually constant per hook). Keeps the once-per-doc load effect's
   // dependency list stable.
+  const getStateRef = useRef(getState);
+  getStateRef.current = getState;
   const selectRef = useRef(selectCards);
   selectRef.current = selectCards;
   const mapRef = useRef(mapCards);
@@ -46,18 +60,35 @@ export function useReconcileModeAAnchors<S, C extends CardWithLinks>(
   return useCallback(
     (editor) => {
       if (!editor) return;
+      // Read live state synchronously (no `update()` yet — that would
+      // poison `hasMutatedRef` and make the pending loader drop this
+      // panel's on-disk cards). Bail before any mutation when the panel's
+      // cards haven't loaded, so a not-yet-loaded panel is never touched.
+      const prev = getStateRef.current();
+      const cards = selectRef.current(prev);
+      if (cards.length === 0) return; // not loaded (or genuinely empty) → never mutate
       const liveUuids = collectLiveUuids(editor);
       if (liveUuids.size === 0) return; // editor not ready — don't touch
-      update((prev) => {
-        const cards = selectRef.current(prev);
-        let anyChanged = false;
-        const next = cards.map((c) => {
+      let anyChanged = false;
+      const next = cards.map((c) => {
+        const res = reconcileModeAAnchors(c, editor, liveUuids);
+        if (res.changed) anyChanged = true;
+        return res.card;
+      });
+      if (!anyChanged) return; // no-op → ZERO update() calls, no loader poison
+      // Something changed → persist. The `update()` updater re-reads `prev`
+      // for correctness, but the reconcile decision was made on the live
+      // snapshot above.
+      update((cur) => {
+        const curCards = selectRef.current(cur);
+        let changed = false;
+        const mapped = curCards.map((c) => {
           const res = reconcileModeAAnchors(c, editor, liveUuids);
-          if (res.changed) anyChanged = true;
+          if (res.changed) changed = true;
           return res.card;
         });
-        if (!anyChanged) return prev; // no-op → no persist, stable identity
-        return mapRef.current(prev, next);
+        if (!changed) return cur;
+        return mapRef.current(cur, mapped);
       });
     },
     [update],

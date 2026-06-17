@@ -41,7 +41,7 @@ function migrateArchive(raw: unknown): ArchiveState {
 }
 
 export function useArchive(docId: string | null) {
-  const { state, setState, update, persist, stateRef } =
+  const { state, setState, update, persist, stateRef, loaded } =
     usePersistentState<ArchiveState>(docId, "archive.json", EMPTY, {
       migrate: migrateArchive,
       persistMigrationOnLoad: true,
@@ -165,6 +165,7 @@ export function useArchive(docId: string | null) {
   // Mode-A self-healing reconcile (load-only). See useReconcileModeAAnchors.
   const reconcileAnchors = useReconcileModeAAnchors<ArchiveState, ArchivedSnippet>(
     update,
+    () => stateRef.current,
     (s) => s.snippets,
     (_s, snippets) => ({ snippets }),
   );
@@ -177,6 +178,7 @@ export function useArchive(docId: string | null) {
     addParagraphId,
     removeParagraphId,
     reconcileAnchors,
+    loaded,
     restoreSnippet,
     deleteSnippet,
   };

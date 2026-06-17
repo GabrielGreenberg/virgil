@@ -150,7 +150,7 @@ export function useRevisions(
   docId: string | null,
   externalPristine?: PristineKindApi | null,
 ) {
-  const { state, update } = usePersistentState<RevisionsState>(
+  const { state, update, stateRef, loaded } = usePersistentState<RevisionsState>(
     docId,
     "revisions.json",
     EMPTY_STATE,
@@ -398,6 +398,7 @@ export function useRevisions(
   // Mode-A self-healing reconcile (load-only). See useReconcileModeAAnchors.
   const reconcileAnchors = useReconcileModeAAnchors<RevisionsState, RevisionCard>(
     update,
+    () => stateRef.current,
     (s) => s.cards,
     (s, cards) => ({ ...s, cards }),
   );
@@ -546,6 +547,7 @@ export function useRevisions(
     addCardParagraphId,
     removeCardParagraphId,
     reconcileAnchors,
+    loaded,
     deleteCard,
     cloneComment,
     cloneSuggestion,

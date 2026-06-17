@@ -162,7 +162,7 @@ export function useCutter(
   docId: string | null,
   externalPristine?: PristineKindApi | null,
 ) {
-  const { state, update } = usePersistentState<CutterState>(
+  const { state, update, stateRef, loaded } = usePersistentState<CutterState>(
     docId,
     "cutter.json",
     EMPTY_STATE,
@@ -416,6 +416,7 @@ export function useCutter(
   // Mode-A self-healing reconcile (load-only). See useReconcileModeAAnchors.
   const reconcileAnchors = useReconcileModeAAnchors<CutterState, CutterCard>(
     update,
+    () => stateRef.current,
     (s) => s.cards,
     (s, cards) => ({ ...s, cards }),
   );
@@ -568,6 +569,7 @@ export function useCutter(
     addCardParagraphId,
     removeCardParagraphId,
     reconcileAnchors,
+    loaded,
     deleteCard,
     cloneComment,
     cloneSuggestion,
