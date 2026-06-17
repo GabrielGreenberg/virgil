@@ -93,7 +93,16 @@ export interface ParagraphAnchorApi {
   exists: (id: string) => boolean;
   /** Linked paragraph UUIDs for this entity. */
   getAnchorTextObjectIds: (id: string) => string[];
-  addTextObjectLink: (id: string, paragraphId: string) => void;
+  /** Anchor the card to `paragraphId`. `paragraphSnapshot` (optional) is
+   *  the anchored paragraph's plain text, captured at the editor-aware
+   *  drop site so the new Mode-A link is self-healing on reload (the
+   *  reconciler re-finds the paragraph by text if its UUID is lost).
+   *  Omitted → legacy UUID-only link, backfilled on next load. */
+  addTextObjectLink: (
+    id: string,
+    paragraphId: string,
+    paragraphSnapshot?: string | null,
+  ) => void;
   removeTextObjectLink: (id: string, paragraphId: string) => void;
   /**
    * Phase 4 sidecar capture. If the entity carries a Mode B textRange

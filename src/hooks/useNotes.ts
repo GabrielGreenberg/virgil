@@ -285,11 +285,11 @@ export function useNotes(docId: string | null, externalPristine?: PristineKindAp
   );
 
   const addNoteTextObjectId = useCallback(
-    (id: string, paragraphId: string) => {
+    (id: string, paragraphId: string, paragraphSnapshot?: string | null) => {
       update((prev) => ({
         cards: prev.cards.map((c) =>
           c.id === id && c.kind === "note"
-            ? addTextObjectLink(c, "note", paragraphId)
+            ? addTextObjectLink(c, "note", paragraphId, "paragraph", paragraphSnapshot)
             : c,
         ),
       }));
@@ -311,11 +311,11 @@ export function useNotes(docId: string | null, externalPristine?: PristineKindAp
   );
 
   const addHighlightTextObjectId = useCallback(
-    (id: string, paragraphId: string) => {
+    (id: string, paragraphId: string, paragraphSnapshot?: string | null) => {
       update((prev) => ({
         cards: prev.cards.map((c) =>
           c.id === id && c.kind === "highlight"
-            ? addTextObjectLink(c, "highlight", paragraphId)
+            ? addTextObjectLink(c, "highlight", paragraphId, "paragraph", paragraphSnapshot)
             : c,
         ),
       }));

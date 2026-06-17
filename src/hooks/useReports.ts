@@ -279,11 +279,13 @@ export function useReports(
   );
 
   const addCardParagraphId = useCallback(
-    (id: string, paragraphId: string) => {
+    (id: string, paragraphId: string, paragraphSnapshot?: string | null) => {
       update((prev) => ({
         ...prev,
         cards: prev.cards.map((c) =>
-          c.id === id ? addTextObjectLink(c, c.kind, paragraphId) : c,
+          c.id === id
+            ? addTextObjectLink(c, c.kind, paragraphId, "paragraph", paragraphSnapshot)
+            : c,
         ),
       }));
     },

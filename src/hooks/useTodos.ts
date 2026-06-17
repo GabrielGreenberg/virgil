@@ -132,11 +132,13 @@ export function useTodos(docId: string | null, externalPristine?: PristineKindAp
     (
       todoId: string,
       paragraphId: string,
-      targetKind?: import("@/text-objects/types").TextObjectKind,
+      paragraphSnapshot?: string | null,
     ) => {
       update((prev) => ({
         items: prev.items.map((i) =>
-          i.id === todoId ? addTextObjectLink(i, "todo", paragraphId, targetKind) : i,
+          i.id === todoId
+            ? addTextObjectLink(i, "todo", paragraphId, "paragraph", paragraphSnapshot)
+            : i,
         ),
       }));
     },
