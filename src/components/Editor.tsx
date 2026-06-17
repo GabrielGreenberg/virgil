@@ -18,14 +18,9 @@ import { alignEntryToY, findEditorScrollFor } from "@/components/editor-layout/l
 import {
   isAnchorableNode,
   isAnchorableAtom,
-  MIME_MARGINALIA_MOVE,
-  MIME_NOTE,
-  MIME_TODO,
   MIME_CITATION,
   MIME_FOOTNOTE,
   MIME_TEXT_INSERT,
-  MIME_CUT,
-  MIME_REPORT,
   isAnchorDrag,
 } from "@/lib/marginalia";
 import { getAtomText } from "@/lib/atom-text";
@@ -529,33 +524,14 @@ const VirgilEditor = forwardRef<EditorHandle, EditorProps>(function VirgilEditor
         // branches perform alongside the dispatch.
         if (readOnlyRef.current) return false;
 
-        // All paragraph-level anchor drags (notes, todos,
-        // marginalia moves) are handled exclusively by Marginalia.tsx,
-        // which uses the visible drop indicator to determine the target.
-        // Returning false tells ProseMirror to ignore the drop, letting
-        // the event bubble to the Marginalia scroll-container handler.
+        // Paragraph-level anchor drags are no longer native HTML5 DnD — both
+        // the panel→gutter anchor (chip H PHASE 1) and the gutter-pin re-anchor
+        // (chip H PHASE 2) now flow through the unified drop-mode controller, so
+        // no `handleDrop` branch handles them. This guard is the residual
+        // suppressor (kept for `ANCHOR_DRAG_TYPES` if any anchor MIME is ever
+        // re-introduced): returning false lets such a drop fall through rather
+        // than be mistaken for an inline insert.
         if (isAnchorDrag(event.dataTransfer)) return false;
-
-        // --- Marginalia move (drag a gutter icon to a new paragraph) ---
-        const margData = event.dataTransfer?.getData(MIME_MARGINALIA_MOVE);
-        if (margData) {
-          try {
-            const { type, entityId, currentParagraphId } = JSON.parse(margData);
-            const coords = { left: event.clientX, top: event.clientY };
-            const posResult = view.posAtCoords(coords);
-            if (!posResult) return true; // no preventDefault → Marginalia handles
-            event.preventDefault();
-            const paragraphId = ensureAnchorUuid(view, posResult.pos);
-            if (paragraphId && paragraphId !== currentParagraphId) {
-              window.dispatchEvent(
-                new CustomEvent("virgil-marginalia-reanchor", {
-                  detail: { type, entityId, oldParagraphId: currentParagraphId, newParagraphId: paragraphId },
-                })
-              );
-            }
-          } catch { /* ignore bad data */ }
-          return true;
-        }
 
         // --- Citation drop ---
         const citData = event.dataTransfer?.getData(MIME_CITATION);
@@ -611,99 +587,6 @@ const VirgilEditor = forwardRef<EditorHandle, EditorProps>(function VirgilEditor
               if (pmNodes.length > 0) {
                 view.dispatch(view.state.tr.insert(posResult.pos, pmNodes));
               }
-            }
-          } catch { /* ignore bad data */ }
-          return true;
-        }
-
-        // --- Note drop (from NotesPanel) ---
-        // Anchors the note to the paragraph at the drop point.
-        const noteData = event.dataTransfer?.getData(MIME_NOTE);
-        if (noteData) {
-          try {
-            const { noteId } = JSON.parse(noteData);
-            if (!noteId) return true;
-            const coords = { left: event.clientX, top: event.clientY };
-            const posResult = view.posAtCoords(coords);
-            if (!posResult) return true; // no preventDefault → Marginalia handles
-            event.preventDefault();
-            const paragraphId = ensureAnchorUuid(view, posResult.pos);
-            if (paragraphId) {
-              window.dispatchEvent(
-                new CustomEvent("virgil-note-drop", {
-                  detail: { noteId, paragraphId },
-                })
-              );
-            }
-          } catch { /* ignore bad data */ }
-          return true;
-        }
-
-        // --- Cutter card drop (from CutterPanel — comment or suggestion) ---
-        const cutData = event.dataTransfer?.getData(MIME_CUT);
-        if (cutData) {
-          try {
-            const parsed = JSON.parse(cutData);
-            // Payload shape evolved from { cutId } to { cardId, kind }.
-            // Accept both for forward compat.
-            const cardId: string | undefined = parsed.cardId ?? parsed.cutId;
-            if (!cardId) return true;
-            const coords = { left: event.clientX, top: event.clientY };
-            const posResult = view.posAtCoords(coords);
-            if (!posResult) return true; // no preventDefault → Marginalia handles
-            event.preventDefault();
-            const paragraphId = ensureAnchorUuid(view, posResult.pos);
-            if (paragraphId) {
-              window.dispatchEvent(
-                new CustomEvent("virgil-cut-drop", {
-                  detail: { cardId, paragraphId },
-                })
-              );
-            }
-          } catch { /* ignore bad data */ }
-          return true;
-        }
-
-        // --- Report card drop (report or report-request, from ReportsPanel) ---
-        const reportData = event.dataTransfer?.getData(MIME_REPORT);
-        if (reportData) {
-          try {
-            const parsed = JSON.parse(reportData);
-            const cardId: string | undefined = parsed.cardId;
-            if (!cardId) return true;
-            const coords = { left: event.clientX, top: event.clientY };
-            const posResult = view.posAtCoords(coords);
-            if (!posResult) return true; // no preventDefault → Marginalia handles
-            event.preventDefault();
-            const paragraphId = ensureAnchorUuid(view, posResult.pos);
-            if (paragraphId) {
-              window.dispatchEvent(
-                new CustomEvent("virgil-report-drop", {
-                  detail: { cardId, paragraphId },
-                })
-              );
-            }
-          } catch { /* ignore bad data */ }
-          return true;
-        }
-
-        // --- Todo drop (from TodoPanel) ---
-        const todoData = event.dataTransfer?.getData(MIME_TODO);
-        if (todoData) {
-          try {
-            const { todoId } = JSON.parse(todoData);
-            if (!todoId) return true;
-            const coords = { left: event.clientX, top: event.clientY };
-            const posResult = view.posAtCoords(coords);
-            if (!posResult) return true; // no preventDefault → Marginalia handles
-            event.preventDefault();
-            const paragraphId = ensureAnchorUuid(view, posResult.pos);
-            if (paragraphId) {
-              window.dispatchEvent(
-                new CustomEvent("virgil-todo-drop", {
-                  detail: { todoId, paragraphId },
-                })
-              );
             }
           } catch { /* ignore bad data */ }
           return true;

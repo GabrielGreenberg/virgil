@@ -9,16 +9,23 @@
  *
  * ## Adding a new marginalia type
  *
- * 1. Add its MIME constant below and include it in the appropriate drag
- *    category (ANCHOR_DRAG_TYPES for paragraph-level anchoring, or leave
- *    it out for inline insertion).
- * 2. Add the token to `MarkerType` (`src/cards/types.ts`), declare it on the
+ * 1. Add the token to `MarkerType` (`src/cards/types.ts`), declare it on the
  *    owning card kind(s) in `CARD_REGISTRY` (`markerType` field), and add a
  *    presentation row to MARKER_META below (label / defaultSide / icon —
  *    panel + accent derive from the registry via `src/cards/marker-meta.ts`).
- * 3. Add a drop handler in Editor.tsx's handleDrop chain.
- * 4. Wire the event listener and marker generation in EditorPane.tsx (the
- *    live gutter-marker builder).
+ * 2. Register a `dropSpec` for each owning card kind (the
+ *    `textObjectSideReanchorSpec` factory wired to a `ParagraphAnchorApi`
+ *    sub-bag on the `DropCtx`) so the gutter pin can re-anchor it through the
+ *    unified drop-mode controller. Wire that sub-bag in `EditorPane`'s
+ *    `DropModeProvider`.
+ * 3. Emit the marker in EditorPane.tsx's `marginaliaMarkers` builder, carrying
+ *    `entityKind` (the real CardKind) so the pin's `beginCardDropGesture`
+ *    builds the correct `float:card:<kind>:<id>` key.
+ *
+ * The `MIME_*` constants below are now ONLY the inline-insertion DnD payloads
+ * (citation / footnote / archive-restore / raw text). The old native
+ * paragraph-anchor drags (panel→gutter, gutter-pin re-anchor) were folded onto
+ * the drop-mode controller; `ANCHOR_DRAG_TYPES` is the residual suppress-set.
  */
 
 import type { PanelId } from "@/hooks/useViewPrefs";
@@ -55,14 +62,16 @@ export function isAnchorableAtom(nodeType: NodeType): boolean {
 // Centralized MIME type constants
 // ---------------------------------------------------------------------------
 
-/** Drag a gutter icon to re-anchor it to a different paragraph. */
+/**
+ * Residual paragraph-anchor suppress token. The gutter-pin re-anchor gesture
+ * that used to set this MIME no longer exists — it was folded onto the unified
+ * drop-mode controller (chip H). No code produces this DataTransfer type
+ * anymore; it is kept ONLY as the lone member of `ANCHOR_DRAG_TYPES` so
+ * `isAnchorDrag` stays a live (if currently never-true) guard that suppresses
+ * ProseMirror's native dropcursor / inline-insert misread for any future
+ * native paragraph-anchor drag that opts back into this token.
+ */
 export const MIME_MARGINALIA_MOVE = "application/x-virgil-marginalia-move";
-/** Drag a note badge to anchor/insert a note. */
-export const MIME_NOTE = "application/x-virgil-note";
-/** Drag a todo item to anchor it to a paragraph. */
-export const MIME_TODO = "application/x-virgil-todo";
-/** Drag an archive anchor badge to re-anchor an orphaned snippet. */
-export const MIME_ARCHIVE_ANCHOR = "application/x-virgil-archive-anchor-id";
 
 /** Drag a citation to insert it inline. */
 export const MIME_CITATION = "application/x-virgil-citation";
@@ -72,10 +81,6 @@ export const MIME_ARCHIVE = "application/x-virgil-archive-id";
 export const MIME_FOOTNOTE = "application/x-virgil-footnote";
 /** Drag raw text content for inline insertion (no entity identity). */
 export const MIME_TEXT_INSERT = "application/x-virgil-text-insert";
-/** Drag a cut card (Cutter tool) to anchor it to a paragraph. */
-export const MIME_CUT = "application/x-virgil-cut";
-/** Drag a report card (report or report-request) to anchor it to a paragraph. */
-export const MIME_REPORT = "application/x-virgil-report";
 /**
  * Drag the floating "selection chip" into a side panel (Notes / Revisions /
  * Cutter) to create a linked-margin item anchored to the selected range.
@@ -90,11 +95,6 @@ export const MIME_SELECTION_ANCHOR = "application/x-virgil-selection-anchor";
  */
 export const ANCHOR_DRAG_TYPES: readonly string[] = [
   MIME_MARGINALIA_MOVE,
-  MIME_NOTE,
-  MIME_TODO,
-  MIME_ARCHIVE_ANCHOR,
-  MIME_CUT,
-  MIME_REPORT,
 ];
 
 /** Returns true if the DataTransfer contains a paragraph-level anchor drag. */
@@ -108,14 +108,20 @@ export interface MarginaliaMarker {
   /** Original entity id (e.g. note id) when id is a composite key */
   entityId: string;
   /**
-   * Anchored-card kind this marker belongs to. Markers self-subscribe to
-   * the global cardStore via this kind + entityId to compute their own
-   * selected/hovered state — no prop threading from a parent decoration
-   * loop. Optional only because legacy "error" markers (which aren't
-   * anchored cards) don't carry it.
+   * Anchored-card kind this marker belongs to (`EntityKind` = `CardKind`).
+   * Two roles:
+   *  1. Markers self-subscribe to the global cardStore via this kind +
+   *     entityId to compute their own selected/hovered state (the three-surface
+   *     hover) — no prop threading from a parent decoration loop.
+   *  2. It is the precise CardKind the gutter-pin re-anchor gesture uses to
+   *     build the `float:card:<kind>:<id>` key for `beginCardDropGesture`
+   *     (chip H). The marker builder knows the real kind (e.g. cut →
+   *     `cutter-comment`/`cutter-suggestion`, report → `report`/`report-request`),
+   *     so the pin needs no `MarkerType`→CardKind disambiguation.
+   * Optional only because the non-card "error" marker (not an anchored card,
+   * not re-anchorable) doesn't carry it — a pin without `entityKind` is
+   * click-only, never grabbable.
    */
-  /** Anchored-card kind for the three-surface hover. Was a hand-kept inline
-   *  union duplicating `ANCHORED_CARD_KINDS`; now reuses `EntityKind`. */
   entityKind?: EntityKind;
   /** Marker category — drives icon/color */
   type: MarkerType;

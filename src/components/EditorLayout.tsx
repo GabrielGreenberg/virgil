@@ -45,11 +45,9 @@ import { CITATIONS_INERT } from "@/hooks/useCitations";
 import ManageStylesModal from "./ManageStylesModal";
 import { useNotes } from "@/hooks/useNotes";
 import { useCutter } from "@/hooks/useCutter";
-import { useReports } from "@/hooks/useReports";
 import {
   isAnchorableNode,
   MIME_ARCHIVE,
-  MIME_ARCHIVE_ANCHOR,
 } from "@/lib/marginalia";
 import { useSyncExternalStore } from "react";
 import {
@@ -138,7 +136,6 @@ import { useRefActions } from "./editor-layout/card-actions/ref";
 import { useLibraryBridge } from "./editor-layout/event-bridges/library";
 import { useMarkerClickBridges } from "./editor-layout/event-bridges/marker-clicks";
 import { useFootnoteSyncBridges } from "./editor-layout/event-bridges/footnote-sync";
-import { usePanelDropBridges } from "./editor-layout/event-bridges/panel-drops";
 import { EditorLayoutProvider } from "./editor-layout/context";
 import { EditorRefProvider } from "./editor-layout/contexts/editor-ref";
 import { AiRequestsProvider } from "./editor-layout/contexts/ai-requests";
@@ -547,7 +544,6 @@ export default function EditorLayout() {
     highlights,
     addNote,
     addHighlight,
-    addNoteTextObjectId,
     setNoteAnchor,
   } = useNotes(docIdForHooks);
   const {
@@ -557,13 +553,7 @@ export default function EditorLayout() {
     addSuggestion: addCutterSuggestion,
     setGoal: setCutterGoal,
     clearGoal: clearCutterGoal,
-    addCardParagraphId,
   } = useCutter(docIdForHooks);
-  // Vestigial parity mount (panel rendering moved to EditorPane post-7.8;
-  // only the drop-bridge mutator is consumed here).
-  const {
-    addCardParagraphId: addReportCardParagraphId,
-  } = useReports(docIdForHooks);
   // Anchored selection slots (note, footnote, citation, example,
   // todo, archive, comment, cutter-comment) are now derived from the global
   // cardStore via this hook — single source of truth, shared with EditorPane
@@ -585,7 +575,6 @@ export default function EditorLayout() {
     addItem: addTodo,
     updateItem: updateTodo,
     archiveDone: archiveTodos,
-    addParagraphId: addTodoTextObjectId,
   } = useTodos(docIdForHooks);
 
   const {
@@ -600,7 +589,6 @@ export default function EditorLayout() {
     snippets: archiveSnippets,
     archiveContent,
     updateSnippet: updateArchiveSnippet,
-    addParagraphId: addArchiveTextObjectId,
     restoreSnippet,
     deleteSnippet,
   } = useArchive(docIdForHooks);
@@ -2521,17 +2509,6 @@ export default function EditorLayout() {
 
   useFootnoteSyncBridges({ suppressOrphanRef, setOrphanedFootnotes, deleteSnippet });
 
-  usePanelDropBridges({
-    addTodoTextObjectId,
-    setSelectedTodoId,
-    addNoteTextObjectId,
-    setSelectedNoteId,
-    addCardParagraphId,
-    setSelectedCutterCardId,
-    addReportCardParagraphId,
-    setSelectedReportCardId,
-  });
-
   // Highlight the active \ref node with yellow while the popover is open
   useEffect(() => {
     if (!activeRefLabel) return;
@@ -2656,49 +2633,18 @@ export default function EditorLayout() {
   // migrated, the `virgil-ref-create` event + the whole `useCommandInputBridges`
   // hook (which only handled it) are RETIRED — `command-input.ts` is deleted.
 
-  // Handle drag-and-drop of archive snippets into the editor.
-  // - "card" drag (application/x-virgil-archive-id): ProseMirror inserts the
-  //   text from text/plain; we then delete the snippet from archive.
-  // - "anchor" drag (application/x-virgil-archive-anchor-id): re-anchor an
-  //   orphaned snippet by setting its paragraphId to the drop paragraph.
+  // Handle drag-and-drop of an archive snippet CARD into the editor to
+  // RESTORE its text: ProseMirror inserts the text from text/plain (an
+  // inline-insertion drag, NOT a paragraph anchor), and we then delete the
+  // snippet from archive. (Re-anchoring an orphaned snippet by dragging its
+  // gutter pin now flows through the unified drop-mode controller — the old
+  // native MIME_ARCHIVE_ANCHOR drag is gone.)
   useEffect(() => {
     const editor = editorRef.current?.getEditor();
     if (!editor) return;
     const editorDom = editor.view.dom;
 
-    const handleDragOver = (e: DragEvent) => {
-      const types = e.dataTransfer?.types;
-      if (!types) return;
-      if (types.includes(MIME_ARCHIVE_ANCHOR)) {
-        e.preventDefault();
-        if (e.dataTransfer) e.dataTransfer.dropEffect = "copy";
-        editorDom.classList.add("virgil-archive-drop-target");
-      }
-    };
-    const handleDragLeave = (e: DragEvent) => {
-      const related = e.relatedTarget as Node | null;
-      if (!related || !editorDom.contains(related)) {
-        editorDom.classList.remove("virgil-archive-drop-target");
-      }
-    };
-
     const handleDrop = (e: DragEvent) => {
-      editorDom.classList.remove("virgil-archive-drop-target");
-      const anchorData = e.dataTransfer?.getData(MIME_ARCHIVE_ANCHOR);
-      if (anchorData) {
-        // Re-anchor: resolve drop position to a paragraph UUID
-        e.preventDefault();
-        e.stopPropagation();
-        try {
-          const { archiveId } = JSON.parse(anchorData);
-          if (!archiveId) return;
-          const paragraphId = editorRef.current?.ensureParagraphUuidAtCoords(e.clientX, e.clientY);
-          if (paragraphId) {
-            addArchiveTextObjectId(archiveId, paragraphId);
-          }
-        } catch { /* ignore */ }
-        return;
-      }
       const archiveId = e.dataTransfer?.getData(MIME_ARCHIVE);
       if (archiveId) {
         // Let ProseMirror handle the text insertion; just clean up archive
@@ -2708,15 +2654,11 @@ export default function EditorLayout() {
       }
     };
 
-    editorDom.addEventListener("dragover", handleDragOver);
-    editorDom.addEventListener("dragleave", handleDragLeave);
     editorDom.addEventListener("drop", handleDrop);
     return () => {
-      editorDom.removeEventListener("dragover", handleDragOver);
-      editorDom.removeEventListener("dragleave", handleDragLeave);
       editorDom.removeEventListener("drop", handleDrop);
     };
-  }, [editorInstance, deleteSnippet, addArchiveTextObjectId]);
+  }, [editorInstance, deleteSnippet]);
 
   // Todo drop actions — create a new todo, link its paragraph, seed its
   // text from the dropped selection where applicable. Used both by the

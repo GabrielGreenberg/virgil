@@ -17,15 +17,6 @@ import { popKey } from "@/panels/panel-registry";
 import { useAnchoredCard } from "@/links/_shared/useAnchoredCard";
 import { cardStore } from "@/links/_shared/anchored-card-store";
 import { normalizeRichContent } from "@/lib/footnote-content";
-import { MIME_REVISION } from "./mime";
-
-export function startRevisionCommentDrag(e: React.DragEvent, cardId: string) {
-  e.dataTransfer.setData(
-    MIME_REVISION,
-    JSON.stringify({ cardId, kind: "comment" }),
-  );
-  e.dataTransfer.effectAllowed = "copy";
-}
 
 export function RevisionCommentCard({
   card,

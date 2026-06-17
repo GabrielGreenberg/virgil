@@ -451,10 +451,14 @@ Don't nest modals. Use a popover for transients over a modal.
 
 Three categories.
 
-1. **Anchor drag** (paragraph-level reanchor). MIMEs:
-   `MIME_REPORT`, `MIME_NOTE`, `MIME_TODO`, `MIME_ARCHIVE_ANCHOR`,
-   `MIME_CUT`, `MIME_MARGINALIA_MOVE`. Ghost: full card snapshot.
-   Drop indicator: 2px solid blue line.
+1. **Anchor drag** (paragraph-level reanchor). This no longer flows
+   through native HTML5 DnD — paragraph-level re-anchor now runs through
+   the drop-mode controller (the card/float drop button + the folded
+   gutter pin both call `beginCardDropGesture`), classified+applied by the
+   shared `textObjectSideReanchorSpec`. The per-panel anchor MIMEs
+   (`MIME_REPORT`/`MIME_NOTE`/`MIME_TODO`/`MIME_ARCHIVE_ANCHOR`/`MIME_CUT`/
+   the Revisions MIME) are gone. `MIME_MARGINALIA_MOVE` remains only as a
+   legacy `ANCHOR_DRAG_TYPES` member. Drop indicator: 2px solid blue line.
 2. **Inline insert drag** (text-only). MIMEs:
    `MIME_CITATION`, `MIME_ARCHIVE`, `MIME_FOOTNOTE`,
    `MIME_TEXT_INSERT`. Ghost: white pill with

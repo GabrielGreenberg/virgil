@@ -16,21 +16,12 @@ import { usePanelBodyStyle } from "@/hooks/usePanelTypography";
 import { cardPopKey } from "@/panels/panel-registry";
 import { useAnchoredCard } from "@/links/_shared/useAnchoredCard";
 import { cardStore } from "@/links/_shared/anchored-card-store";
-import { MIME_REVISION } from "./mime";
 import {
   FIELD_ORDER,
   FieldBlock,
   SuggestionTrailing,
   type SuggestionField,
 } from "@/panels/_shared/suggestion-fields";
-
-export function startRevisionSuggestionDrag(e: React.DragEvent, cardId: string) {
-  e.dataTransfer.setData(
-    MIME_REVISION,
-    JSON.stringify({ cardId, kind: "suggestion" }),
-  );
-  e.dataTransfer.effectAllowed = "copy";
-}
 
 /** Status dot + author chip + status label — the revision-suggestion header
  *  trailing, shown docked and (via the `toFloatable` factory) in `FloatChrome`. */
@@ -114,8 +105,6 @@ export function RevisionSuggestionCard({
       onToggleExpanded={ac.onToggleExpanded}
       onHeaderActivate={ac.onHeaderActivate}
       onTrashClick={() => onDelete(card.id)}
-      draggable={!isSelected}
-      onDragStart={(e) => startRevisionSuggestionDrag(e, card.id)}
       tabIndex={isSelected ? 0 : -1}
       onClick={(e) => {
         e.stopPropagation();

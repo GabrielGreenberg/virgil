@@ -17,7 +17,6 @@ import { cardPopKey } from "@/panels/panel-registry";
 import { cardKindsForPanel } from "@/cards/predicates";
 import { useAnchoredCard } from "@/links/_shared/useAnchoredCard";
 import { cardStore } from "@/links/_shared/anchored-card-store";
-import { MIME_CUT } from "@/lib/marginalia";
 import {
   CopyButton,
   FIELD_ORDER,
@@ -31,14 +30,6 @@ import {
 // suggestion-fields module (CutterCommentCard + RevisionSuggestionCard import
 // them from here, and the Cutter barrel re-exports them).
 export { CopyButton, FieldTitleRow };
-
-export function startCutterSuggestionDrag(e: React.DragEvent, cardId: string) {
-  e.dataTransfer.setData(
-    MIME_CUT,
-    JSON.stringify({ cardId, kind: "suggestion" }),
-  );
-  e.dataTransfer.effectAllowed = "copy";
-}
 
 /** Status dot + author chip + status label — the cutter-suggestion header
  *  trailing, shown docked and (via the `toFloatable` factory) in `FloatChrome`. */
@@ -121,8 +112,6 @@ export function CutterSuggestionCard({
       onToggleExpanded={ac.onToggleExpanded}
       onHeaderActivate={ac.onHeaderActivate}
       onTrashClick={() => onDelete(card.id)}
-      draggable={!isSelected}
-      onDragStart={(e) => startCutterSuggestionDrag(e, card.id)}
       tabIndex={isSelected ? 0 : -1}
       onClick={(e) => {
         e.stopPropagation();
