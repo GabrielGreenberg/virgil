@@ -1,4 +1,4 @@
-<!-- last-verified: 12f0ef5 2026-06-15 -->
+<!-- last-verified: 1ff9c1b 2026-06-16 -->
 <!-- derives-from: docs/architecture/VIRGIL.md#ontology, docs/architecture/VIRGIL.md#latex-round-trip-vocabulary, docs/architecture/VIRGIL.md#uuid-marker-emission -->
 <!-- covers-code: src/lib/tiptap, src/links, src/lib/marginalia.ts, src/lib/latex-parser.ts, src/lib/latex-serializer.ts, src/text-objects -->
 
@@ -59,7 +59,7 @@ TipTap extensions in [src/lib/tiptap/](../../src/lib/tiptap/):
 | `textColor` | mark | `\textcolor[HTML]{RRGGBB}{…}` (round-trips through the serializer; `\usepackage{xcolor}` auto-injected into preambles missing it, and `CLASSIC_PREAMBLE` ships it). Driven by the `ActionsMenuPanel` color swatch + `SelectionColorPopover`. | `text-color.ts` |
 | `SlashPopupExtension` | PM plugin | typing `\` in prose opens an inline popup of Virgil's `VIRGIL_COMMANDS` list (declared in `commands.ts`); every command now resolves to a row of `VIRGIL_ACTION_REGISTRY` in [src/lib/actions/action-registry.ts](../../src/lib/actions/action-registry.ts), but via TWO dispatch paths: atom/card commands (`cite`/`footnote`/`ref`/`example`) go through the PM→React bridge `getEditorActionsHandle().runAction(<id>, { surface: "slash" })` from [src/lib/actions/editor-actions-bridge.ts](../../src/lib/actions/editor-actions-bridge.ts) (they need React-land `cardCreation`); the pure-ProseMirror commands (`title`/`author`/`date`/`chapter`/`section`/`subsection`/`subsubsection`/`tex`) call the registry row's `spec.run(ctx)` directly via the local `runViewOnlyAction(<id>, view)` helper — NO bridge. Arrows + Enter inserts. Suppressed inside an unmatched `{` group or up against another `\name`. State lives in module-level `slashPopupStore`. | `slash-popup.ts` |
 | ~~`archiveMarker`~~ | — | **Removed in 6ad177f.** Archive cards still work via the Archive panel; the in-editor invisible-anchor node and its click bridge are gone. | — |
-| `exampleBlock` / `exampleItemList` / `exampleItem` / `exampleGloss` / `alignedGlossRow` / `proseGlossRow` / `glossCell` + `ExpexNumbering` plugin | nodes | expex package: `\ex`/`\pex`/`\a`/`\xlist`/`\begingl…\endgl`/`\gla`/`\glb`/`\glft`. `exampleItemList` is a recursive wrapper — nested `\xlist` tiers reuse the same wrapper node so the marker cycle (1 → a → i → A → I) compounds with depth. `exampleBlock` content schema is `(paragraph | exampleGloss | exampleItemList | bulletList | orderedList | graphicsBlock | displayMath)*` after 9dd0992 + Feature A2 (which added `graphicsBlock | displayMath` so a dropped picture/equation can join a single example's body directly) — itemize/enumerate now interleave freely inside an example, with the parser dropping (not fallback-paragraphing) unknown block types so `\vfid{}` / `\vcid{}` markers no longer double on save → reload. | `expex.ts` |
+| `exampleBlock` / `exampleItemList` / `exampleItem` / `exampleGloss` / `alignedGlossRow` / `proseGlossRow` / `glossCell` + `ExpexNumbering` plugin | nodes | expex package: `\ex`/`\pex`/`\a`/`\xlist`/`\begingl…\endgl`/`\gla`/`\glb`/`\glft`. `exampleItemList` is a recursive wrapper — nested `\xlist` tiers reuse the same wrapper node so the marker cycle (1 → a → i → A → I) compounds with depth. `exampleBlock` content schema is `(paragraph | exampleGloss | exampleItemList | bulletList | orderedList | graphicsBlock | displayMath)*` after 9dd0992 + Feature A2 (which added `graphicsBlock | displayMath` so a dropped picture/equation can join a single example's body directly) — itemize/enumerate now interleave freely inside an example, with the parser dropping (not fallback-paragraphing) unknown block types so `\vfid{}` / `\vcid{}` markers no longer double on save → reload. `ExampleBlockOptions.cardContext` (default `false`; set on card/float surfaces, #47) suppresses the example's own par-title strip — the absolutely-positioned "+T" annotation that would otherwise overlay the card header and collide with the host's `CardBodyTitle`; the in-doc editable example keeps its +T. | `expex.ts` |
 | Standard marks | bold, italic, underline, code | `\textbf`, `\emph`, `\underline`, `\texttt` | StarterKit + custom |
 
 Barrel export in [src/lib/tiptap/index.ts](../../src/lib/tiptap/index.ts); also re-exported from [src/lib/tiptap-extensions.ts](../../src/lib/tiptap-extensions.ts).
@@ -180,23 +180,22 @@ Grabbing a card's **drop button** (the double-chevron — rightmost control on t
 - **Columns per side**: 2 (`MARGINALIA_COLS`)
 - **Icon size**: 22px squares with 2px row gap
 - **Positioning**: line-aligned per paragraph; scroll-synced via `useSyncExternalStore`
-- **Drag**: MIME `MIME_MARGINALIA_MOVE` to re-anchor a marker
+- **Re-anchor**: a gutter pin is re-anchored through the unified **drop-mode** controller (chip H), not native DnD — grabbing a pin calls `beginCardDropGesture` with a `float:card:<kind>:<id>` key built from the marker's `entityKind`. The legacy `MIME_MARGINALIA_MOVE` DataTransfer drag was retired; that MIME survives only as the lone never-produced member of `ANCHOR_DRAG_TYPES` (a residual `isAnchorDrag` suppress-guard).
 
 ### Marker types (`MARKER_META`)
 
 `note`, `archive`, `revision`, `cut`, `todo`, `report`, `error`. Each has a color palette (primary, background, border) customizable per-panel via the header color picker (`deriveCardPalette` in [src/lib/panel-theme.ts](../../src/lib/panel-theme.ts)). Note that **Highlight cards do not appear in the marginalia** — they're a pure text-tint feature (`tintColor` attr on the `linkedAnchor` mark), so there is no `highlight` MarkerType.
 
-### Per-paragraph MIME drop types
+### MIME drop types
 
-`MIME_REPORT`, `MIME_NOTE`, `MIME_TODO`, `MIME_ARCHIVE_ANCHOR`, `MIME_CUT`, `MIME_SELECTION_ANCHOR` — see [src/lib/marginalia.ts](../../src/lib/marginalia.ts) for the full list and which are `ANCHOR_DRAG_TYPES` (trigger the vertical drop indicator).
+After the chip-H drop-mode fold (PHASE 1/2, 296280a/79ccdad), the paragraph-anchor MIMEs (`MIME_NOTE`, `MIME_TODO`, `MIME_ARCHIVE_ANCHOR`, `MIME_CUT`, `MIME_REPORT`) were **removed** — those panel→gutter / gutter-pin re-anchor drags now go through the drop-mode controller. The surviving `MIME_*` constants in [src/lib/marginalia.ts](../../src/lib/marginalia.ts) are now ONLY inline-insertion payloads (`MIME_CITATION`, `MIME_FOOTNOTE`, `MIME_ARCHIVE`, `MIME_TEXT_INSERT`) plus `MIME_SELECTION_ANCHOR` (the selection-chip → panel drag). `ANCHOR_DRAG_TYPES` is now just `[MIME_MARGINALIA_MOVE]` (a residual never-produced suppress token).
 
 ### Adding a new marginalia type
 
-From the header comment in `src/lib/marginalia.ts`:
-1. Add MIME constant; include in appropriate drag category.
-2. Add the token to `MarkerType` (`src/cards/types.ts`), declare it on the owning card kind(s) in `CARD_REGISTRY` (`markerType` field), and add a presentation row to `MARKER_META` (label / defaultSide / icon — panel + accent derive from the registry via `src/cards/marker-meta.ts`).
-3. Add drop handler in `Editor.tsx`'s `handleDrop` chain.
-4. Wire event listener and marker generation in `EditorPane.tsx` (the live gutter-marker builder).
+From the header comment in `src/lib/marginalia.ts` (rewritten after the chip-H drop-mode fold):
+1. Add the token to `MarkerType` (`src/cards/types.ts`), declare it on the owning card kind(s) in `CARD_REGISTRY` (`markerType` field), and add a presentation row to `MARKER_META` (label / defaultSide / icon — panel + accent derive from the registry via `src/cards/marker-meta.ts`).
+2. Register a `dropSpec` for each owning card kind (the `textObjectSideReanchorSpec` factory in [src/components/drop-mode/util/text-object-side-reanchor.ts](../../src/components/drop-mode/util/text-object-side-reanchor.ts), wired to a `ParagraphAnchorApi` sub-bag on the `DropCtx`) so the gutter pin can re-anchor through the unified drop-mode controller; wire that sub-bag in `EditorPane`'s `DropModeProvider`.
+3. Emit the marker in `EditorPane.tsx`'s `marginaliaMarkers` builder carrying `entityKind` (the real `CardKind`) so the pin's `beginCardDropGesture` builds the correct `float:card:<kind>:<id>` key.
 
 ## Citations & bibliography
 

@@ -1,6 +1,6 @@
-<!-- last-verified: aa5e40f 2026-06-13 -->
+<!-- last-verified: 1ff9c1b 2026-06-16 -->
 <!-- derives-from: docs/architecture/VIRGIL.md#card-kind-taxonomy -->
-<!-- covers-code: src/cards/types.ts, src/cards/card-registry.tsx, src/cards/predicates.ts, src/panels/panel-registry.ts, src/components/panel-primitives.tsx, src/lib/types.ts, src/hooks/useReports.ts, src/lib/ai-request-bridge.ts -->
+<!-- covers-code: src/cards/types.ts, src/cards/card-registry.tsx, src/cards/predicates.ts, src/panels/panel-registry.ts, src/components/panel-primitives.tsx, src/lib/types.ts, src/hooks/useReports.ts, src/lib/ai-request-bridge.ts, src/cards/drop-specs/index.ts, src/components/drop-mode/card-drop-gesture.ts, src/components/icons/DropChevrons.tsx -->
 
 # Cards (the kind taxonomy) — operational manifest
 
@@ -39,8 +39,9 @@ only as the on-disk data discriminators, [below](#two-taxonomies-registry-cardki
 Every per-kind fact hangs off **one registry**: `CARD_REGISTRY`
 ([src/cards/card-registry.tsx](../../src/cards/card-registry.tsx)), a
 `Record<CardKind, CardMeta>` — one entry per kind carrying `panel` /
-`keyPrefix` / `label` / `titleLabel` / `themeKey` / `anchored` / `markerType` /
-`lifecycle` / `morph` / `stackable` / `poppable` / `bodyClass`. The
+`origin` / `keyPrefix` / `label` / `titleLabel` / `themeKey` / `collabClaims` /
+`anchored` / `markerType` / `lifecycle` / `dropSpec` / `droppable` /
+`dropPlacement` / `morph` / `stackable` / `poppable` / `bodyClass`. The
 formerly-parallel tables are **derived** from it, never extended by hand
 (extend the registry, never a parallel table —
 [VIRGIL.md → registries](../architecture/VIRGIL.md#the-single-sources-of-truth-registries)):
@@ -107,6 +108,36 @@ equality** (no `links` array). Field schemas are [sidecars.md](sidecars.md).
 | `ai` | *(Inbox)* | `ai-requests.json` · `requests` | — (carries `kind: AiRequestKind`) | flexible — anchor and/or atom-links, or neither | the full Task machine ([below](#the-task-card-ai)) |
 | `error` | Errors | *(not persisted)* | — | maps to a `.tex` line / paragraph | ephemeral — re-derived each lint pass |
 
+## Drop facets — the (re)anchor button
+
+Two `CardMeta` facets drive the **card drop button** — the neutral chevron glyph
+([DropChevrons.tsx](../../src/components/icons/DropChevrons.tsx)) that enters
+drop-mode to (re)anchor a card. It mounts on the docked card header
+(`CardDropButton`, [panel-primitives.tsx](../../src/components/panel-primitives.tsx))
+and on a popped-out card float's chrome (FloatChrome), through the shared gesture
+[card-drop-gesture.ts](../../src/components/drop-mode/card-drop-gesture.ts). It
+replaced the retired Shift-grab drop-mode entry and the removed panel→gutter
+native drag (`event-bridges/panel-drops.ts` + `anchor-rebind.ts`, both DELETED).
+
+- **`droppable: boolean`** — does the kind get the button. Read via
+  `isDroppable(k)` ([predicates.ts](../../src/cards/predicates.ts)). True for
+  every anchored/atom kind; **false** for `bib` / `ai` / `error` (no anchor)
+  and `example` (its `dropSpec` is a `between-blocks` block content-MOVE, not a
+  card re-anchor).
+- **`dropPlacement: "in-text" | "margin" | null`** — where a (re)anchor drop
+  LANDS. `"in-text"` for the atom kinds (`footnote` / `citation` — inline caret /
+  `\cite`-`\footnote` position); `"margin"` for the paragraph-anchored kinds;
+  `null` ⇔ `!droppable`. Read via `cardDropPlacement(k)`.
+
+These are **STATIC literals**, not derived from `dropSpec != null`: specs are
+folded onto the registry at boot by the `@/cards/drop-specs`
+([drop-specs/index.ts](../../src/cards/drop-specs/index.ts)) side-effect import,
+which may not have run when a header first paints. A dev assertion
+(`assertDropFacetCoverage`, card-registry.tsx, run from the drop-specs boot
+module) + `drop-facet-contract.test.ts` pin the declared facets to the real
+`dropSpec.allowedPlacements`. Dropping an *unanchored* footnote/citation
+**creates the atom** in place (a `createAtom` branch on the move spec).
+
 ## The polymorphic panels
 
 Four panels host **two** `CardKind`s each. Membership is *derived* from
@@ -164,9 +195,11 @@ skill researches + composes, then drafts a **new** `ReportCard` with `author:
 "ai"` anchored to the same paragraph. It **never mutates the source request in
 place**; a human can equivalently `addReport` directly (`author: "human"`).
 
-Both kinds drag with one MIME (`MIME_REPORT`, the kind embedded in the payload),
-re-anchor through the single `ctx.reports` drop API, and collapse to one "Reports"
-OmniView filter. There is **no `quotations.json` → `reports.json` data migration**
+Both kinds re-anchor through the drop button → the single `ctx.reports` drop API
+([Reports/drop-spec.ts](../../src/panels/Reports/drop-spec.ts)) and collapse to
+one "Reports" OmniView filter. (The legacy panel→gutter native `MIME_REPORT`
+drag was retired with the drop-button rework — see [drop facets](#drop-facets--the-reanchor-button).)
+There is **no `quotations.json` → `reports.json` data migration**
 — the refactor was a replacement, so a pre-refactor paper's `quotations.json` is
 simply not read.
 

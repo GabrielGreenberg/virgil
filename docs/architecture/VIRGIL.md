@@ -1,4 +1,4 @@
-<!-- last-verified: 12f0ef5 2026-06-15 -->
+<!-- last-verified: 1ff9c1b 2026-06-16 -->
 <!-- derives-from: (root — verified against code) -->
 <!-- covers-code: src/app, src/cards, src/components, src/hooks, src/lib, src/links, src/panels, src/text-objects, src/types, library, editor -->
 
@@ -223,10 +223,10 @@ The agent writes `<sidecar>.json` (the new/changed card) + `ai-requests.json` (T
 
 - `src/app/` — Next.js 16 App Router root (static export): `globals.css`, manifest, layout, dev-only API routes. Almost pure scaffolding; real work is elsewhere.
 - `src/cards/` — the card spine: `CARD_REGISTRY` (`card-registry.tsx`), the `CardKind`/`CardMeta` types (`types.ts`), the registry-derived predicates (`predicates.ts`), and `floats/` (the per-kind `toFloatable` builders). The card-system refactor's SSOT, mirroring `src/text-objects/`; absorbed the former `src/lib/cards/`.
-- `src/components/` — React components. The canonical editor surface is `EditorPane.tsx` (used by both the main app and the Library Reader); `EditorLayout.tsx` is the shell wrapper (tabs, view-prefs, dialogs, the Virgil bar, the PDF/Code branches); `Editor.tsx` is the TipTap wrapper; `panel-primitives.tsx` holds `CARD_THEMES`; `MenuBar.tsx` is the docked menu pod.
+- `src/components/` — React components. The canonical editor surface is `EditorPane.tsx` (used by both the main app and the Library Reader); `EditorLayout.tsx` is the shell wrapper (tabs, view-prefs, dialogs, the Virgil bar, the PDF/Code branches) — also the single LaTeX-compile/diagnostics owner after the code-view rework; `Editor.tsx` is the TipTap wrapper; `panel-primitives.tsx` holds `CARD_THEMES`; `MenuBar.tsx` is the docked menu pod. Two cross-cutting subsystems live here: `menu/` — the unified `<Menu>` primitive (`MenuProvider`, `useMenuKeyboard`/`useMenuItem`/`useMenuCombobox`/`useMenuDismiss`, `nav-core.ts`, the per-provider `MenuRegistry`) giving every migrated action menu arrow-key nav (the slash popup is a documented exception); and `drop-mode/` — the unified drop-mode gesture engine (`card-drop-gesture.ts` powers the neutral drop button shared across docked card / popped-out float / gutter pin; `DropChevrons.tsx` in `components/icons/` is its glyph).
 - `src/floats/` — the `Floatable` contract (the float-subsystem presence that `CardMeta.toFloatable` returns).
 - `src/hooks/` — ~50 state hooks (`useDocument`, `useCitations`, `useFootnotes`, `useViewPrefs`, `useCollab`, `usePoppedCards`, …).
-- `src/lib/` — core logic: LaTeX parse/serialize, TipTap extensions, storage, types. Includes `actions/` (the `VIRGIL_ACTION_REGISTRY` action SSOT + the `editor-actions-bridge.ts` PM→React seam + `action-icons.tsx`) and `focus-view.ts` (the UUID-anchored focus-band library + `focusViewPlugin`).
+- `src/lib/` — core logic: LaTeX parse/serialize, TipTap extensions, storage, types. Includes `actions/` (the `VIRGIL_ACTION_REGISTRY` action SSOT + the `editor-actions-bridge.ts` PM→React seam + `action-icons.tsx`), `focus-view.ts` (the UUID-anchored focus-band library + `focusViewPlugin`), the code-view libs (`code-position-map.ts` — the unified UUID↔LaTeX-source position map; `code-band.ts` — the code-side cursor band), and `sanitize-html.ts` (the allowlist HTML sanitizer wired into the bibliography annotation editor, BIB-F5-01).
 - `src/links/` — the unified link architecture (registry, resolvers, three-surface highlight reconcilers).
 - `src/panels/` — one folder per panel + `_shared/` + `panel-registry.ts`.
 - `src/text-objects/` — the TextObject abstraction: registry, grab handle, float bodies, drop adapters.
@@ -245,6 +245,7 @@ Before adding a new panel, link kind, theme, or text-object kind, **extend the r
 | Link kinds | `LINK_REGISTRY` in [src/links/link-registry.ts](../../src/links/link-registry.ts) |
 | TextObject kinds | `TEXT_OBJECT_REGISTRY` in [src/text-objects/text-object-registry.ts](../../src/text-objects/text-object-registry.ts) |
 | Editing actions (all four surfaces) | `VIRGIL_ACTION_REGISTRY` in [src/lib/actions/action-registry.ts](../../src/lib/actions/action-registry.ts) — one row per action across grab-handle menu, gutter lightning, slash commands, typed-LaTeX input rules. The two live menus render from it; PM→React dispatch via [src/lib/actions/editor-actions-bridge.ts](../../src/lib/actions/editor-actions-bridge.ts). |
+| Action-menu keyboard behavior | The `<Menu>` primitive in [src/components/menu/](../../src/components/menu/) — build new action menus on `MenuProvider` + `useMenuItem` (one per-provider `MenuRegistry`, arrow/letter nav in `nav-core.ts`); don't roll your own keyboard handling. Migrated menus: grab-bar, lightning panel, color/label/heading/tab-plus popovers, bib-entry combobox, MenuBar block-type + view menus. The slash popup is a documented exception. |
 | Card themes | `CARD_THEMES` in [src/components/panel-primitives.tsx](../../src/components/panel-primitives.tsx) |
 | Type definitions | [src/lib/types.ts](../../src/lib/types.ts) |
 | Design tokens | [src/app/globals.css](../../src/app/globals.css) + [src/STYLE_GUIDE.md](../../src/STYLE_GUIDE.md) |

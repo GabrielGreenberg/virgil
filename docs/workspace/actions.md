@@ -1,6 +1,6 @@
-<!-- last-verified: 12f0ef5 2026-06-15 -->
+<!-- last-verified: 1ff9c1b 2026-06-16 -->
 <!-- derives-from: docs/architecture/VIRGIL.md#ontology, docs/architecture/VIRGIL.md#code-organization -->
-<!-- covers-code: src/lib/actions/action-registry.ts, src/lib/actions/editor-actions-bridge.ts, src/lib/actions/action-icons.tsx, src/lib/tiptap/smart-insert.ts, src/components/DragHandleMenu.tsx, src/components/ActionsMenuPanel.tsx, src/components/SelectionActionsMenu.tsx, src/components/editor-layout/card-actions, src/lib/editor-extensions.ts, src/lib/tiptap/tab-indent.ts, src/lib/tiptap/expex.ts, src/lib/tiptap/latex-comment.ts, src/lib/section-folding.ts, src/lib/tiptap/uuid-attr.ts, src/lib/tiptap/pgmark.ts, src/lib/tiptap/latex-command.ts, src/text-objects/text-object-registry.ts, src/text-objects/TextObjectGrabHandle.tsx, src/text-objects/drop-adapters.ts, src/components/drop-mode, src/lib/tiptap/atom-registry.ts -->
+<!-- covers-code: src/lib/actions/action-registry.ts, src/lib/actions/editor-actions-bridge.ts, src/lib/actions/action-icons.tsx, src/lib/tiptap/smart-insert.ts, src/components/menu, src/components/DragHandleMenu.tsx, src/components/ActionsMenuPanel.tsx, src/components/SelectionActionsMenu.tsx, src/components/editor-layout/card-actions, src/lib/editor-extensions.ts, src/lib/tiptap/tab-indent.ts, src/lib/tiptap/expex.ts, src/lib/tiptap/latex-comment.ts, src/lib/section-folding.ts, src/lib/tiptap/uuid-attr.ts, src/lib/tiptap/pgmark.ts, src/lib/tiptap/latex-command.ts, src/text-objects/text-object-registry.ts, src/text-objects/TextObjectGrabHandle.tsx, src/text-objects/drop-adapters.ts, src/components/drop-mode, src/cards/drop-specs, src/lib/tiptap/atom-registry.ts -->
 
 # Actions (the editing surface) — operational manifest
 
@@ -28,7 +28,7 @@ and roots every action in the registry / keymap / decoration plugin that
 
 | Family | What it is | SSOT that defines it |
 |---|---|---|
-| **Card actions** | The action + formatting vocabulary reached from the gutter button, the block grab handle, slash commands, and typed-LaTeX input rules | `VIRGIL_ACTION_REGISTRY` ([action-registry.ts](../../src/lib/actions/action-registry.ts)) — the single SSOT every surface reads off; the two live menus ([DragHandleMenu.tsx](../../src/components/DragHandleMenu.tsx) / [ActionsMenuPanel.tsx](../../src/components/ActionsMenuPanel.tsx)) RENDER FROM it |
+| **Card actions** | The action + formatting vocabulary reached from the gutter button, the block grab handle, slash commands, and typed-LaTeX input rules | `VIRGIL_ACTION_REGISTRY` ([action-registry.ts](../../src/lib/actions/action-registry.ts)) — the single SSOT every surface reads off; the two live menus ([DragHandleMenu.tsx](../../src/components/DragHandleMenu.tsx) / [ActionsMenuPanel.tsx](../../src/components/ActionsMenuPanel.tsx)) RENDER FROM it, *through* the `<Menu>` primitive ([src/components/menu/](../../src/components/menu)) |
 | **Structural ops** | Block move / duplicate / delete / convert; the grab-handle lift; the three drag-drop flavors | `TEXT_OBJECT_REGISTRY` ([text-object-registry.ts](../../src/text-objects/text-object-registry.ts)) + the drop-spec registry ([drop-mode/registry.ts](../../src/components/drop-mode/registry.ts)) + `ATOM_REGISTRY` ([atom-registry.ts](../../src/lib/tiptap/atom-registry.ts)) |
 | **Keyboard** | Custom keymaps + the inherited TipTap defaults that survive | `addKeyboardShortcuts` in [tab-indent.ts](../../src/lib/tiptap/tab-indent.ts) / [expex.ts](../../src/lib/tiptap/expex.ts) / [latex-comment.ts](../../src/lib/tiptap/latex-comment.ts) + the assembled set in [editor-extensions.ts](../../src/lib/editor-extensions.ts) |
 | **Decorations** | The visual overlays that style/annotate without mutating the doc | The four `DecorationSet` plugins (table below) |
@@ -132,7 +132,20 @@ instead. The deleted `command-input.ts` event-bridge and the scattered
 
 The two React menus: both mount off the registry. The **gutter button** mounts
 the full `ActionsMenuPanel` (grid + action list); the **block grab handle**
-mounts the leaner `DragHandleMenu` (action list only):
+mounts the leaner `DragHandleMenu` (action list only). Both now PRESENT through
+the shared **`<Menu>` primitive** ([src/components/menu/](../../src/components/menu),
+design [menu-system-design.md](../agents/menu-system-design.md)): `DragHandleMenu`
+renders `<MenuProvider layout="list">` + `<MenuItemsFromRegistry rows={cardActionRows("grab")}>`;
+`ActionsMenuPanel` renders `<MenuProvider layout="composite">` with a `<MenuGrid cols={4}>`
+above a `<MenuList>` carrying `<MenuItemsFromRegistry rows={cardActionRows("lightning")}>`.
+The primitive owns positioning, arrow-key/letter nav, the roving "selection
+square" highlight (CSS token `--menu-roving-bg`), and a container-mousedown
+`preventDefault` so a menu click can't blur the editor — but the action vocabulary
+is still `VIRGIL_ACTION_REGISTRY`, unchanged. The same primitive backs the
+migrated `SelectionColorPopover`, `LabelRefPopover`, `HeadingTypeMenu`,
+`TabPlusMenu`, `BibEntryPickerMenu` (combobox path), and MenuBar's
+`BlockTypeDropdown` + `ViewMenu`. The slash popup is a **documented exception**
+(not migrated).
 
 | Trigger | Component | Mounts | Visibility |
 |---|---|---|---|
@@ -261,20 +274,39 @@ hooks (`renderGhost` / `liftSourceRect` / `computeLabel`, overridden only by
 "Drop-mode" ([drop-mode/](../../src/components/drop-mode)) is the drag-drop
 engine. `DropModeProvider` holds the session (the lifted payload + the live drop
 indicator) and mounts the `DropModeIndicator` + `InlineAtomGhost`. Every drag is
-dispatched by **`cardKey` prefix** through `lookupSpec`
+dispatched by **`cardKey`** through `lookupSpec`
 ([drop-mode/registry.ts](../../src/components/drop-mode/registry.ts)) — there is
-**no DOM MIME map**; the `cardKey` (`"<prefix>:<id>"`) *is* the routing key.
-Three flavors:
+**no DOM MIME map**; the `cardKey` (`"<prefix>:<id>"` / `"float:<domain>:<kind>:<id>"`)
+*is* the routing key. `lookupSpec` parses the key, then: text-objects → the two
+text-object specs; **card kinds → the folded `CARD_REGISTRY[kind].dropSpec`**
+(no longer a parallel prefix table — the per-panel specs register via
+[src/cards/drop-specs/](../../src/cards/drop-specs), and `assertDropFacetCoverage`
+pins each kind's `droppable` / `dropPlacement` CardMeta facet to its
+`dropSpec.allowedPlacements`); transient `atom-grab` / `stack-pull` → a small
+`TRANSIENT_SPECS` table. Three flavors:
 
 | Flavor | Lifted from | `cardKey` prefix → spec | Placement | Effect |
 |---|---|---|---|---|
 | **Block / TextObject** | grab handle | `textobject:` → `textObjectDropSpec` (`textobject:linkedRange:` → `textRangeMoveDropSpec`) | between-blocks | Move the block; `dropAdapter` decides drop-direct vs. wrap (e.g. into a fresh list / `exampleItem`) |
-| **Inline Atom** | the atom itself, or a card-float header | `atom-grab:` → `inTextAtomGrabSpec`; `footnote:` / `citation:` → `inlineAtomMoveSpec` | inline-cursor | Move the marker to a new inline caret (same editor only) |
-| **Panel card** | a card in a panel / OmniView | `note:` `highlight:` `todo:` `archive:` `cutter-*:` `revision:` `report:` `report-request:` → `textObjectSideReanchorSpec`; `example:` → `blockMoveSpec` | paragraph-side / between-blocks | Re-anchor the card to the dropped-on paragraph (Mode-B preserved); move the example block |
+| **Inline Atom** | the atom itself, or a card's **drop button** (docked header / float chrome) | `atom-grab:` → `inTextAtomGrabSpec`; `footnote:` / `citation:` → `inlineAtomMoveSpec` (with an opt-in `createAtom` branch) | inline-cursor | Move the marker to a new inline caret (same editor only) — OR, for an **unanchored** footnote/citation card (no marker yet), CREATE the atom at the drop point carrying the card's existing id (citation reads the card's `\cite{…}` via `DropCtx.citations.commandFor`) |
+| **Panel card** | a card's **drop button** in a panel / Omni (or its popped-out float's drop button) | `note:` `highlight:` `todo:` `archive:` `cutter-*:` `revision-*:` `report:` `report-request:` → `textObjectSideReanchorSpec`; `example:` → `blockMoveSpec` (all folded onto `CARD_REGISTRY[kind].dropSpec`) | paragraph-side / between-blocks | Re-anchor the card to the dropped-on paragraph (Mode-B preserved); move the example block |
 
 (A fourth registry prefix, `stack-pull` → `stackPullDropSpec`, materializes a
 Library stack entry into the doc — a cross-document feature outside the
 single-doc editing surface, noted here only so the registry reads complete.)
+
+**Drop-mode entry — the drop button.** A card enters drop-mode (to anchor /
+re-anchor) via a neutral **drop button** (the double-chevron `DropChevrons`
+glyph) shown per `CardMeta.droppable`, mounted on both the docked card header
+and the popped-out card float's chrome. One shared mousedown→session helper,
+**`beginCardDropGesture`** ([drop-mode/card-drop-gesture.ts](../../src/components/drop-mode/card-drop-gesture.ts)),
+drives every drop-button surface (docked header, float chrome, and the
+gutter-pin re-anchor, now folded onto the controller). The legacy **Shift-grab**
+on a float header is **retired** (req-7), and the panel→gutter **native HTML5
+drag-and-drop** was **removed** (the `panel-drops.ts` / `anchor-rebind.ts`
+event-bridges + `Revisions/mime.ts` are deleted) — the drop button is now the
+single entry. The block grab handle (above) and the in-text inline-atom grab
+remain their own producers.
 
 **Inline-Atom drag** is rooted in **`ATOM_REGISTRY`**
 ([atom-registry.ts](../../src/lib/tiptap/atom-registry.ts)) — the four drag-able

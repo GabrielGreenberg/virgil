@@ -1,4 +1,4 @@
-<!-- last-verified: 12f0ef5 2026-06-15 -->
+<!-- last-verified: 1ff9c1b 2026-06-16 -->
 <!-- derives-from: docs/architecture/VIRGIL.md#code-organization, docs/architecture/VIRGIL.md#sidecar-and-panel-inventory -->
 <!-- covers-code: src/hooks, src/lib/storage-fsa.ts, src/lib/types.ts, src/panels/panel-registry.ts, src/links/link-registry.ts, src/text-objects/text-object-registry.ts, src/lib/marginalia.ts, src/lib/actions/action-registry.ts, src/lib/actions/editor-actions-bridge.ts, src/lib/actions/action-icons.tsx, src/lib/tiptap/smart-insert.ts, src/lib/focus-view.ts -->
 
@@ -29,7 +29,7 @@ All in `src/hooks/`. Full list (~50 files) is large; these are the ones most oft
 | Hook | What it owns |
 |---|---|
 | `useDocument` | Main doc state + autosave queue; `paragraphUuids`, `paragraphTitles` maps |
-| `useCitations` | Citation refs + `.bib` loading |
+| `useCitations` | Citation refs + `.bib` loading; `commandFor(id)` serializes a card's `\cite{…}` for the drop spec's create-if-absent branch (returns null for a keyless draft, via the shared `citationCommandOrNull` keyless-citation predicate) |
 | `useFootnotes` | Footnote persistence + numbering |
 | `useRevisions` | Revision/comment threads |
 | `useSuggestions` | AI line-edit suggestion state |
@@ -41,9 +41,10 @@ All in `src/hooks/`. Full list (~50 files) is large; these are the ones most oft
 | `useWordCount` | Live word counts by section |
 | `usePoppedCards` | Floating card registry (reads `prefs.poppedOutCards`) |
 | `useLinkHighlight` / `useAnchorHighlightReconciler` / `useLinkedAnchorReconciler` | Three-surface hover/selection coupling (text, margin icon, panel card). 930b9f6 collapsed the previous `useCardHoverHighlight` + `useCardSelectionHighlight` pair into one idempotent reconciler (`useAnchorHighlightReconciler`) that paints both `data-card-hovered` and `data-card-selected` in a single pass. Mode B `.linked-anchor` spans get their own thin reconciler (`useLinkedAnchorReconciler`). All in `src/links/_shared/`; see `main-text.md` → Highlight coupling for the full set including the `useTextHoverBridge` + `usePanelCardHoverBridge` event listeners and the module-level `cardStore` |
-| `useViewPrefs` | Panel visibility, layout state, placements, and (since b706812) the per-view editor-decoration prefs that previously lived as EditorLayout local state — marginalia visibility (`showMarginalia`, `hiddenMarginaliaTypes`), section indicator / heading labels, divider levels + width, omni-view categories + per-side hide-all, four-sided editor margins (`editorLeftMargin` / `editorRightMargin` / `editorTopMargin` / `editorBottomMargin`; top/bottom added in d211464 so the page padding is fully four-sided). Sourced via the centralized [src/lib/dev-prefs-registry.ts](../../src/lib/dev-prefs-registry.ts) (single source consumed by both the cross-window mirror and the personal-prefs promotion script). On load, [`dropUnknownPanelIds`](../../src/hooks/dropUnknownPanelIds.ts) subtractively drops any panel id that is no longer in its carrier's live registry SSOT (`placements` → `PANEL_REGISTRY`, `omniCategories` → `OMNI_PANELS`, `printOptions.panels` → `PRINT_PANELS`), so a retired panel (e.g. `quotations`) can't round-trip through saved prefs or the defaults snapshot |
+| `useViewPrefs` | Panel visibility, layout state, placements, and (since b706812) the per-view editor-decoration prefs that previously lived as EditorLayout local state — marginalia visibility (`showMarginalia`, `hiddenMarginaliaTypes`), section indicator / heading labels, divider levels + width, omni-view categories + per-side hide-all, four-sided editor margins (`editorLeftMargin` / `editorRightMargin` / `editorTopMargin` / `editorBottomMargin`; top/bottom added in d211464 so the page padding is fully four-sided). Sourced via the centralized [src/lib/dev-prefs-registry.ts](../../src/lib/dev-prefs-registry.ts) (single source consumed by both the cross-window mirror and the personal-prefs promotion script). On load, [`dropUnknownPanelIds`](../../src/hooks/dropUnknownPanelIds.ts) subtractively drops any panel id that is no longer in its carrier's live registry SSOT (`placements` → `PANEL_REGISTRY`, `omniCategories` → `OMNI_PANELS`, `printOptions.panels` → `PRINT_PANELS`), so a retired panel (e.g. `quotations`) can't round-trip through saved prefs or the defaults snapshot. The same module's `clampStack` sanitizes the band-stack rework's per-side `dockStack` (drops omni/blank sentinels, unknown/duplicate/cross-side ids, truncates to the stack ceiling); the panel-layout model moved from the old `activeLeft`/`activeRight` split sentinels to an ordered `dockStack` + `collapsedLeft/Right` + `blankLeft/Right` |
+| `view-prefs-derived` (not a hook) | Leaf module of pure derived read-helpers over `ViewPrefs` (`dockedSideOf` / `dockStackTop` / `isPanelDocked`) for the band-stack model. Imports ONLY types from `useViewPrefs` (no runtime cycle / heavy storage chain), so route-derivation code paths import them from here; `useViewPrefs` re-exports them |
 | `useMarginEdit` | Margin edit-mode state machine (d211464). Keyed on `Margins = Record<MarginSide, number>` with axis-lookup tables (`MARGIN_AXIS`, `MARGIN_OPPOSITE`, `MARGIN_MIN`, `MARGIN_CSS_VAR`) so one drag handler covers all four sides; adding a fifth side is one table-entry addition. Drives the four guide lines + glowing-blue Save/Cancel pill (see `ui-chrome.md` → Reading frame & margins) |
-| `useFloatingMenuPosition` | Shared viewport-clamping placement helper (f7461e2). Action menu / Highlights submenu / DragHandleMenu route through it so popovers never bleed off-screen. RAF-batched + recomputed on scroll/resize |
+| `useFloatingMenuPosition` | Shared viewport-clamping placement helper (f7461e2). Action menu / Highlights submenu / DragHandleMenu route through it so popovers never bleed off-screen. RAF-batched + recomputed on scroll/resize. Two opt-in capabilities for the `<Menu>` primitive (off by default, existing callers byte-identical): `maxHeight` (clamps to the space available for the chosen placement + `overflowY:auto` so a tall list scrolls), and `trackAnchor` (a RAF-coalesced capture-phase scroll/resize re-anchor thunk — slash caret / bib-picker / tab-plus scroll re-reads unify onto it) |
 | `usePersistentState` | IndexedDB persistence abstraction. `update()` debounces `persist()` ~300ms (2dc963d) with flush-on-unmount + flush-on-docId-change so safety isn't traded for the keystroke-cascade savings |
 | `useInTextPositions` | Omni-view positioning |
 | `usePristineCardManager` | Tracks freshly-created cards so they auto-discard if closed without edits; exposed via the `pristine-cards` context |
@@ -181,12 +182,12 @@ Users can recolor any panel via the header color picker. The override routes thr
 
 ## Drag / drop MIME map
 
-Paragraph-level anchor drops trigger the vertical drop indicator. Inline-insert drops don't. Both sets live in [src/lib/marginalia.ts](../../src/lib/marginalia.ts):
+The MIME constants live in [src/lib/marginalia.ts](../../src/lib/marginalia.ts). After the drop-button / unified drop-mode rework (chip H) the native **panel→gutter** and **gutter-pin re-anchor** paragraph-anchor drags were folded onto the unified drop-mode controller (re-anchoring now flows through the card drop button → `beginCardDropGesture`, not HTML5 DnD); the per-kind anchor MIMEs (`MIME_NOTE` / `MIME_TODO` / `MIME_ARCHIVE_ANCHOR` / `MIME_CUT` / `MIME_REPORT`) and the `panel-drops.ts` / `anchor-rebind.ts` event-bridges + `Revisions/mime.ts` were deleted. What remains:
 
-- **`ANCHOR_DRAG_TYPES`** (vertical indicator): marginalia-move, note, todo, archive-anchor, cut, report.
-- **Inline-insert**: citation, archive (restore), footnote, text-insert.
+- **`ANCHOR_DRAG_TYPES`** (vertical drop indicator suppress-set): now the lone residual `MIME_MARGINALIA_MOVE` — no live code produces it, kept only so `isAnchorDrag` stays a guard for any future native paragraph-anchor drag that opts back in.
+- **Inline-insert** (no vertical indicator): citation, archive (restore), footnote, text-insert.
 
-When wiring a new draggable type, pick a category and register it — the drop indicator behaves correctly for free.
+When a card kind is re-anchorable via the drop button, declare the `droppable` + `dropPlacement` facets on its `CARD_REGISTRY` entry and register its `dropSpec` (see `src/cards/types.ts` `CardMeta`) — these are facets on existing kinds, not new card kinds. For a genuinely new inline-insert DnD payload, add the `MIME_*` constant and keep it out of `ANCHOR_DRAG_TYPES`.
 
 **Text moves** are deliberately narrow. The canonical text-move gestures are:
 
