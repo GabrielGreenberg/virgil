@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback } from "react";
+import { useCallback, useRef } from "react";
 import type { Editor } from "@tiptap/react";
 import { collectLiveUuids, reconcileModeAAnchors } from "@/links/links";
 import type { CardWithLinks } from "@/links/links";
@@ -35,13 +35,21 @@ export function useReconcileModeAAnchors<S, C extends CardWithLinks>(
   selectCards: (state: S) => readonly C[],
   mapCards: (state: S, next: C[]) => S,
 ): (editor: Editor | null | undefined) => void {
+  // Hold the selectors in refs so the returned callback identity is stable
+  // (callers pass fresh inline arrows each render; the reconcile shape is
+  // conceptually constant per hook). Keeps the once-per-doc load effect's
+  // dependency list stable.
+  const selectRef = useRef(selectCards);
+  selectRef.current = selectCards;
+  const mapRef = useRef(mapCards);
+  mapRef.current = mapCards;
   return useCallback(
     (editor) => {
       if (!editor) return;
       const liveUuids = collectLiveUuids(editor);
       if (liveUuids.size === 0) return; // editor not ready — don't touch
       update((prev) => {
-        const cards = selectCards(prev);
+        const cards = selectRef.current(prev);
         let anyChanged = false;
         const next = cards.map((c) => {
           const res = reconcileModeAAnchors(c, editor, liveUuids);
@@ -49,9 +57,9 @@ export function useReconcileModeAAnchors<S, C extends CardWithLinks>(
           return res.card;
         });
         if (!anyChanged) return prev; // no-op → no persist, stable identity
-        return mapCards(prev, next);
+        return mapRef.current(prev, next);
       });
     },
-    [update, selectCards, mapCards],
+    [update],
   );
 }
