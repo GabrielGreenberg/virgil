@@ -1082,12 +1082,29 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
   // rebind `textObjectIds[0]` to the live UUID and persist). Run here in
   // EditorPane — these hook instances own the rendered gutter markers, so
   // a rebind takes effect this session AND lands on disk. Idempotent; the
-  // per-doc guard fires once `editor` + the doc content are ready (by which
-  // point the card sidecars have loaded). NOT on the keystroke path — the
-  // doc walk runs exactly once per open.
+  // per-doc guard fires once `editor` + the doc content are ready AND every
+  // card sidecar has finished its initial read. NOT on the keystroke path
+  // — the doc walk runs exactly once per open.
+  //
+  // The `*.loaded` gate is load-correctness, not cosmetics: the sidecar
+  // reads are async and can resolve AFTER the editor mounts. Firing the
+  // reconcile before they land would run it over the empty pre-load card
+  // arrays — a no-op — and then the per-doc `docId` guard would latch and
+  // NEVER re-run, silently skipping the heal on exactly the FSA doc-opens
+  // this fix targets. We require all six `loaded` flags so the pass sees
+  // real on-disk cards, and we latch the guard ONLY once it actually fires
+  // on loaded data. The guard is keyed on `docId`, so a doc switch resets
+  // it (a new docId ≠ the latched value) and the new doc reconciles.
   const modeAReconciledDocRef = useRef<string | null>(null);
+  const allCardSidecarsLoaded =
+    notesHookRaw.loaded &&
+    todosHook.loaded &&
+    cutterHookRaw.loaded &&
+    revisionsHookRaw.loaded &&
+    reportsHookRaw.loaded &&
+    archiveHook.loaded;
   useEffect(() => {
-    if (!editor || !docContentReady) return;
+    if (!editor || !docContentReady || !allCardSidecarsLoaded) return;
     if (modeAReconciledDocRef.current === docId) return;
     modeAReconciledDocRef.current = docId;
     notesHookRaw.reconcileAnchors(editor);
@@ -1099,13 +1116,8 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
   }, [
     editor,
     docContentReady,
+    allCardSidecarsLoaded,
     docId,
-    notesHookRaw.notes,
-    todosHook.items,
-    cutterHookRaw.cards,
-    revisionsHookRaw.cards,
-    reportsHookRaw.cards,
-    archiveHook.snippets,
     notesHookRaw.reconcileAnchors,
     todosHook.reconcileAnchors,
     cutterHookRaw.reconcileAnchors,
