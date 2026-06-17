@@ -20,6 +20,7 @@ import { parseBibFile } from "@library/lib/bib-parser";
 import type { BibEntry } from "@library/lib/types";
 import type { CatalogEntry } from "@library/lib/catalog";
 import type { SyncResult } from "@library/lib/skill-sync";
+import type { SkillSyncError } from "@library/hooks/useLibraryHandle";
 import type { NotificationItem } from "@library/lib/queue";
 import DropZone from "./DropZone";
 
@@ -32,6 +33,11 @@ interface Props {
   handle: FileSystemDirectoryHandle;
   onReset: () => void;
   lastSync: SyncResult | null;
+  /** Surfaced skill-bundle sync failure (loud banner). */
+  syncError: SkillSyncError | null;
+  /** Manually re-run the skill sync (Retry + the "Re-sync skills" menu). */
+  onResync: () => void;
+  onDismissSyncError: () => void;
   /** Optional scope/seed for `useLibraryTabs`. The inline Library tab
    *  passes nothing (default unscoped keys); each library outer tab
    *  passes its own scope so its panel state is isolated. */
@@ -70,6 +76,9 @@ export default function LibraryView({
   handle,
   onReset,
   lastSync,
+  syncError,
+  onResync,
+  onDismissSyncError,
   tabsOptions,
   showNavigator = true,
   belowNavigator,
@@ -218,12 +227,14 @@ export default function LibraryView({
   // user knows when CLAUDE.md / .claude/commands / scripts updated.
   const [syncToasts, setSyncToasts] = useState<NotificationItem[]>([]);
   useEffect(() => {
-    if (!lastSync || !lastSync.synced) return;
+    // Only announce when a sync actually WROTE files — a version-match
+    // no-op shouldn't nag the user to restart their cowork session.
+    if (!lastSync || !lastSync.synced || lastSync.filesWritten <= 0) return;
     setSyncToasts([
       {
         kind: "indexed",
         at: new Date().toISOString(),
-        summary: `Skill bundle synced to v${lastSync.version} (${lastSync.filesWritten} files)`,
+        summary: `Skills updated to v${lastSync.version} — restart your Claude Code cowork session to pick up the new commands.`,
       },
     ]);
   }, [lastSync]);
@@ -619,6 +630,7 @@ export default function LibraryView({
       handle={handle}
       onBibChanged={reloadBib}
       onChangeFolder={panel === "left" ? onReset : undefined}
+      onResync={panel === "left" ? onResync : undefined}
       // 2-column tear-out mode keeps the strip's "+" and recent dropdown.
       // 3-column inline mode hides them — the navigator owns those affordances.
       showAddTab={!showNavigator}
@@ -665,6 +677,62 @@ export default function LibraryView({
         background: "var(--background)",
       }}
     >
+      {/* Loud, dismissible skill-sync failure banner. A failed/stale skill
+          sync must never again silently strand the library on old skills —
+          so the bare console.error in useLibraryHandle now surfaces here
+          with a Retry (which re-grants FSA permission on NotAllowedError). */}
+      {syncError && (
+        <div
+          role="alert"
+          style={{
+            flexShrink: 0,
+            display: "flex",
+            alignItems: "center",
+            gap: 10,
+            padding: "8px 12px",
+            fontSize: 13,
+            background: "var(--danger-soft)",
+            color: "var(--danger)",
+            borderBottom:
+              "1px solid color-mix(in oklab, var(--danger) 30%, transparent)",
+          }}
+        >
+          <span style={{ flex: 1, minWidth: 0 }}>{syncError.message}</span>
+          <button
+            onClick={onResync}
+            style={{
+              flexShrink: 0,
+              padding: "3px 10px",
+              borderRadius: 4,
+              fontSize: 12,
+              fontWeight: 600,
+              cursor: "pointer",
+              color: "var(--danger)",
+              background: "var(--surface)",
+              border: "1px solid currentColor",
+            }}
+          >
+            {syncError.permission ? "Grant & retry" : "Retry"}
+          </button>
+          <button
+            onClick={onDismissSyncError}
+            aria-label="Dismiss skill-sync error"
+            style={{
+              flexShrink: 0,
+              display: "inline-flex",
+              padding: 2,
+              cursor: "pointer",
+              color: "var(--danger)",
+              background: "transparent",
+              border: "none",
+            }}
+          >
+            <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round">
+              <path d="M4 4l8 8M12 4l-8 8" />
+            </svg>
+          </button>
+        </div>
+      )}
       <DropZone dragActive={dragActive}>
         <div
           style={{

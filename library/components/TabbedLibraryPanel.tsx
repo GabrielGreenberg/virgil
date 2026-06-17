@@ -80,6 +80,10 @@ interface Props {
    *  in the panel-level "⋮" menu (left panel only). Right panel passes
    *  undefined and the menu button is omitted. */
   onChangeFolder?: () => void;
+  /** Re-write the Virgil skill bundle into the library folder. Surfaced
+   *  beside "Change folder…" in the Central library's "⋮" menu (left panel
+   *  only) — the one-click version of a manual skill re-sync. */
+  onResync?: () => void;
 }
 
 export default function TabbedLibraryPanel({
@@ -105,6 +109,7 @@ export default function TabbedLibraryPanel({
   handle,
   onBibChanged,
   onChangeFolder,
+  onResync,
   showAddTab = false,
   showRecent = false,
 }: Props) {
@@ -139,12 +144,19 @@ export default function TabbedLibraryPanel({
             outerDraggableLibraryId:
               !paper && !isBuiltin(l.id) ? l.id : undefined,
             menu:
-              l.id === CENTRAL_LIBRARY_ID && onChangeFolder
-                ? ([{ label: "Change folder…", onClick: onChangeFolder }] satisfies PanelMenuItem[])
+              l.id === CENTRAL_LIBRARY_ID && (onChangeFolder || onResync)
+                ? ([
+                    ...(onResync
+                      ? [{ label: "Re-sync skills", onClick: onResync }]
+                      : []),
+                    ...(onChangeFolder
+                      ? [{ label: "Change folder…", onClick: onChangeFolder }]
+                      : []),
+                  ] satisfies PanelMenuItem[])
                 : undefined,
           } satisfies TabDef;
         }),
-    [tabs.openIds, libraryById, onChangeFolder, onTogglePinLibrary],
+    [tabs.openIds, libraryById, onChangeFolder, onResync, onTogglePinLibrary],
   );
 
   const recentLibraries: RecentLibrary[] = useMemo(() => {

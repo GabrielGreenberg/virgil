@@ -21,6 +21,7 @@ import { useStructuralRevisions } from "@/hooks/useStructuralRevisions";
 import { useMyPapers } from "@/hooks/useMyPapers";
 import { useFloatingMenuPosition } from "@/hooks/useFloatingMenuPosition";
 import { useUpdateAvailable, applyUpdate } from "@/hooks/useUpdateAvailable";
+import SkillSyncControls from "./SkillSyncControls";
 import { DocPipeline } from "./editor-layout/DocPipeline";
 import { useSelectedAnchorSync } from "@/hooks/useSelectedAnchorSync";
 import { CollabProvider, COLLAB_INERT, type CollabHook } from "@/hooks/useCollab";
@@ -423,6 +424,11 @@ export default function EditorLayout() {
     openLibraryOuterTab,
     closeLibraryOuterTab,
     activateLibraryOuterPane,
+    skillSyncError,
+    skillSyncNotice,
+    resyncSkills,
+    dismissSkillSyncError,
+    dismissSkillSyncNotice,
   } = useFiles();
   const libraryRegistry = useLibraryRegistry();
   const { myPaperIds, addMyPaper, removeMyPaper } = useMyPapers();
@@ -3787,6 +3793,19 @@ export default function EditorLayout() {
               Virgil update — click to refresh
             </button>
           )}
+          {/* Skill-bundle sync surface — a failed/stale skill sync must
+              never again silently strand a paper on old skills. Sits
+              before the topbarRightCollapsed gate (like the Virgil-update
+              banner) so a sync failure can't be hidden by a collapsed
+              right toolbar. Pure UI: no per-keystroke work. */}
+          <SkillSyncControls
+            hasDoc={!!currentDoc}
+            error={skillSyncError}
+            notice={skillSyncNotice}
+            onResync={() => void resyncSkills()}
+            onDismissError={dismissSkillSyncError}
+            onDismissNotice={dismissSkillSyncNotice}
+          />
           {!prefs.topbarRightCollapsed && (<>
           {/* ── Status-indicator group (left of divider) ───────────────
               Passive indicators for system-wide modes that are
