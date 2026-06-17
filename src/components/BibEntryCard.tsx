@@ -11,6 +11,7 @@ import { usePoppedCards } from "@/hooks/usePoppedCards";
 import { MIME_CITATION } from "@/lib/marginalia";
 import { attachClampedDragGhost } from "@/lib/drag-ghost";
 import { popKey as buildPopKey } from "@/panels/panel-registry";
+import { sanitizeAnnotationHtml } from "@/lib/sanitize-html";
 
 export interface BibEntryCardProps {
   entry: BibEntry;
@@ -108,19 +109,38 @@ function AnnotationEditor({
   const [focused, setFocused] = useState(false);
   const onKeyDown = useTabIndent<HTMLDivElement>();
 
+  // SECURITY (BIB-F5-01): the annotation HTML is untrusted (AI-written via
+  // answer-bib-review, or carried in a shared paper's annotations.json), so it
+  // must be sanitized before it ever reaches the live contentEditable's
+  // innerHTML — otherwise <img onerror>/<svg onload>/<iframe> payloads fire on
+  // open (stored XSS). Sanitize on SEED (here, defensively cleaning anything
+  // already on disk)…
   useEffect(() => {
-    if (editorRef.current && editorRef.current.innerHTML !== content) {
-      editorRef.current.innerHTML = content || "";
+    const clean = sanitizeAnnotationHtml(content || "");
+    if (editorRef.current && editorRef.current.innerHTML !== clean) {
+      editorRef.current.innerHTML = clean;
     }
   }, [bibKey]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // …and on WRITE, so a payload is never persisted back to annotations.json.
   const handleInput = useCallback(() => {
     if (debounceRef.current) clearTimeout(debounceRef.current);
     debounceRef.current = setTimeout(() => {
-      const html = editorRef.current?.innerHTML || "";
+      const html = sanitizeAnnotationHtml(editorRef.current?.innerHTML || "");
       onUpdate(bibKey, html);
     }, 400);
   }, [bibKey, onUpdate]);
+
+  // Paste is the one live vector the seed/write paths don't cover (a pasted
+  // <img onerror> renders into the editable immediately). Intercept rich-HTML
+  // pastes, sanitize, and re-insert; plain-text pastes are already safe.
+  const handlePaste = useCallback((e: React.ClipboardEvent<HTMLDivElement>) => {
+    const html = e.clipboardData.getData("text/html");
+    if (!html) return;
+    e.preventDefault();
+    document.execCommand("insertHTML", false, sanitizeAnnotationHtml(html));
+    handleInput();
+  }, [handleInput]);
 
   return (
     <div onClick={(e) => e.stopPropagation()}>
@@ -130,6 +150,7 @@ function AnnotationEditor({
         contentEditable
         suppressContentEditableWarning
         onInput={handleInput}
+        onPaste={handlePaste}
         onFocus={() => setFocused(true)}
         onBlur={() => setFocused(false)}
         onClick={(e) => e.stopPropagation()}
