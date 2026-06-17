@@ -218,7 +218,7 @@ function Swatch({ id, color, onApply }: SwatchProps) {
         background: color,
         // The roving-active swatch gets a stronger ring so the active item is
         // unambiguous while arrowing (no focus move).
-        border: active ? "2px solid var(--accent)" : "1px solid var(--edge-hover)",
+        border: active ? "2px solid var(--accent-blue)" : "1px solid var(--edge-hover)",
         cursor: "pointer",
         padding: 0,
       }}
@@ -300,7 +300,7 @@ function ClearButton({ onClear }: ClearButtonProps) {
         height: SWATCH_SIZE,
         borderRadius: 4,
         background: "transparent",
-        border: active ? "2px solid var(--accent)" : "1px solid var(--edge-hover)",
+        border: active ? "2px solid var(--accent-blue)" : "1px solid var(--edge-hover)",
         cursor: "pointer",
         padding: 0,
         display: "flex",

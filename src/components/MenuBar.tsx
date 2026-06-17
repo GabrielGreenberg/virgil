@@ -250,7 +250,7 @@ function BlockTypeRow({
       aria-checked={current}
       data-current={current ? "" : undefined}
       className="w-full text-left px-3 py-1.5 text-sm text-[var(--foreground)] hover-on-light flex items-center gap-2"
-      style={{ background: active ? "var(--surface-muted-strong)" : undefined }}
+      style={{ background: active ? "var(--menu-roving-bg)" : undefined }}
     >
       <span className="w-4 text-center text-xs">
         {current ? "✓" : ""}
@@ -455,7 +455,7 @@ function ViewToggleRow({
       type="button"
       aria-checked={checked}
       className={`w-full text-left ${pad} py-1.5 text-xs text-ink-body hover-on-light flex items-center justify-between gap-3`}
-      style={{ background: active ? "var(--surface-muted-strong)" : undefined }}
+      style={{ background: active ? "var(--menu-roving-bg)" : undefined }}
     >
       <span>{label}</span>
       <span className="text-[var(--accent)]">{checked ? "✓" : ""}</span>
@@ -491,7 +491,7 @@ function ViewGroupRow({
       type="button"
       aria-expanded={expanded}
       className={`w-full text-left ${pad} py-1.5 text-xs text-ink-body hover-on-light flex items-center justify-between gap-3`}
-      style={{ background: active ? "var(--surface-muted-strong)" : undefined }}
+      style={{ background: active ? "var(--menu-roving-bg)" : undefined }}
     >
       <span>{label}</span>
       <svg className="w-3 h-3 text-ink-muted transition-transform" style={{ transform: expanded ? "rotate(90deg)" : "rotate(0deg)" }} viewBox="0 0 8 8" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
@@ -510,7 +510,7 @@ function ViewActionRow({ id, label, onRun }: { id: string; label: string; onRun:
       {...getItemProps()}
       type="button"
       className="w-full text-left px-3 py-1.5 text-xs text-ink-body hover-on-light flex items-center gap-3"
-      style={{ background: active ? "var(--surface-muted-strong)" : undefined }}
+      style={{ background: active ? "var(--menu-roving-bg)" : undefined }}
     >
       <span>{label}</span>
     </button>

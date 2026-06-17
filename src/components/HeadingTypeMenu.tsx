@@ -92,9 +92,9 @@ function HeadingRow({ id, label, disabled, current, hint, showCheckGutter, run }
   const style: CSSProperties = {
     height: ITEM_H,
     color: disabled ? "var(--ink-subtle)" : "var(--ink-strong)",
-    // The roving-active row paints the same highlight :hover uses, so the
+    // The roving-active row paints the blue-tinted selection highlight, so the
     // active item is unambiguous while arrowing (no focus move).
-    background: active && !disabled ? "var(--surface-muted-strong)" : "transparent",
+    background: active && !disabled ? "var(--menu-roving-bg)" : "transparent",
     cursor: disabled ? "not-allowed" : "pointer",
     opacity: disabled ? 0.55 : 1,
   };

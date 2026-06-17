@@ -760,13 +760,14 @@ function FmtBtn({
       className={`flex items-center justify-center rounded transition-colors ${disabled ? "" : "hover-on-light"}`}
       style={{
         height: FORMATTING_ROW_H,
-        // The roving-active cell paints the same highlight :hover uses (so the
-        // active item is unambiguous while arrowing); the format-is-applied
-        // state uses the stronger muted surface.
-        background: active
-          ? "var(--surface-muted-strong, rgba(0,0,0,0.08))"
-          : roving && !disabled
-            ? "var(--surface-muted, rgba(0,0,0,0.04))"
+        // The roving (keyboard-cursor) cell paints the blue-tinted selection
+        // highlight and WINS over the format-is-applied state, so the arrow
+        // cursor stays unambiguous even when it lands on an applied format;
+        // an applied-but-not-roving cell keeps the stronger muted surface.
+        background: roving && !disabled
+          ? "var(--menu-roving-bg)"
+          : active
+            ? "var(--surface-muted-strong, rgba(0,0,0,0.08))"
             : "transparent",
         color: active ? "var(--ink-strong)" : "var(--ink-muted)",
         border: "none",
@@ -833,7 +834,7 @@ function ColorGridCell({
         height: FORMATTING_ROW_H,
         background:
           roving && !disabled
-            ? "var(--surface-muted, rgba(0,0,0,0.04))"
+            ? "var(--menu-roving-bg)"
             : "transparent",
         color: "var(--ink-strong)",
         border: "none",
@@ -903,7 +904,7 @@ function BlockTypeGridCell({
       style={{
         height: FORMATTING_ROW_H,
         borderRadius: 4,
-        background: roving ? "var(--surface-muted, rgba(0,0,0,0.04))" : "transparent",
+        background: roving ? "var(--menu-roving-bg)" : "transparent",
       }}
     >
       <BlockTypeDropdown editor={editor} />

@@ -58,9 +58,9 @@ function RegistryItem({ row }: RegistryItemProps) {
   const style: CSSProperties = {
     height: ITEM_H,
     color: baseColor,
-    // The roving-active row paints the same highlight :hover uses, so the
+    // The roving-active row paints the blue-tinted selection highlight, so the
     // active item is unambiguous while arrowing (no focus move).
-    background: active && !row.disabled ? "var(--surface-muted-strong)" : "transparent",
+    background: active && !row.disabled ? "var(--menu-roving-bg)" : "transparent",
     opacity: row.disabled ? 0.45 : 1,
     cursor: row.disabled ? "not-allowed" : "pointer",
   };

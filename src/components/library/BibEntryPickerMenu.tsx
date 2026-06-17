@@ -557,7 +557,7 @@ function BibEntryPickerRow({
         itemProps.onClick(e);
       }}
       className={`group relative px-2.5 py-1.5 cursor-pointer ${
-        selected ? "bg-surface-muted" : "hover-on-light"
+        selected ? "bg-menu-roving" : "hover-on-light"
       }`}
     >
       <div className="flex items-start gap-2">

@@ -45,6 +45,16 @@ The token scales:
 - **Edge** (borders): `edge-subtle`, `edge-hover`, `edge-strong`.
 - **Surface** (backgrounds): `surface`, `surface-muted`,
   `surface-muted-strong`, plus the warmer `--pod-*` family.
+- **Menu selection** (the keyboard-roving "selection square" the L/R/U/D
+  arrow cursor moves in an action menu): `--menu-roving-bg` /
+  `bg-menu-roving` — a darker, blue-tinted surface (from `--accent-blue`)
+  so the active item reads clearly against the neutral `:hover` grey and
+  the near-white resting surface. Every menu's roving-active state consumes
+  this ONE token (grab, lightning grid+list, heading, tab, MenuBar, the
+  color-popover ring, the label-ref/bib comboboxes), so the cursor looks
+  the same everywhere and a new menu inherits it for free. This is the
+  sanctioned way to tint menu chrome blue — never reach for a raw
+  `bg-blue-*`.
 - **Footnote rust** (footnote, cut, error): `--footnote-50/100/200/300/500`.
 - **Warm amber** (citation, bib, quote): `--amber-50/100/200/500`.
 
