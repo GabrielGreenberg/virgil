@@ -207,6 +207,7 @@ import {
   createLinkedAnchor,
   updateLinkedAnchorCard,
   paragraphUuidAt,
+  captureParagraphSnapshot,
 } from "@/links/links";
 import type { MarginaliaMarker } from "@/lib/marginalia";
 import type {
@@ -1465,13 +1466,24 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
       addTodo: (paragraphId, seed) => {
         const t = todosHook.addItem();
         if (seed.text) todosHook.updateItem(t.id, seed.text);
-        if (paragraphId) todosHook.addParagraphId(t.id, paragraphId);
+        if (paragraphId) {
+          // FOLD A: capture the live paragraph snapshot at CREATION so the
+          // fresh Mode-A link is self-healing immediately (symmetric with
+          // the drop/pin re-anchor), not only after a later clean load.
+          const ed = innerRef.current?.getEditor();
+          const snapshot = captureParagraphSnapshot(ed, paragraphId);
+          todosHook.addParagraphId(t.id, paragraphId, "paragraph", snapshot);
+        }
         return t;
       },
       addArchive: (paragraphId, seed) => {
         const s = archiveHook.archiveContent(seed.content ?? "");
         if (seed.title) archiveHook.updateSnippetTitle(s.id, seed.title);
-        if (paragraphId) archiveHook.addParagraphId(s.id, paragraphId);
+        if (paragraphId) {
+          const ed = innerRef.current?.getEditor();
+          const snapshot = captureParagraphSnapshot(ed, paragraphId);
+          archiveHook.addParagraphId(s.id, paragraphId, "paragraph", snapshot);
+        }
         return s;
       },
       addRevisionComment: (paragraphId, seed) => {
@@ -2684,8 +2696,20 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
     if (!result) return;
     const sel = readSelection();
     const snippet = archiveHook.archiveContent(result.content ?? sel?.text ?? "");
-    if (result.paragraphId)
-      archiveHook.addParagraphId(snippet.id, result.paragraphId);
+    if (result.paragraphId) {
+      // FOLD A: snapshot the live paragraph at creation so the Mode-A link
+      // is self-healing immediately.
+      const snapshot = captureParagraphSnapshot(
+        innerRef.current.getEditor(),
+        result.paragraphId,
+      );
+      archiveHook.addParagraphId(
+        snippet.id,
+        result.paragraphId,
+        "paragraph",
+        snapshot,
+      );
+    }
     popCardAtAnchor("archive", snippet.id, anchorRect);
   }, [readSelection, archiveHook, popCardAtAnchor]);
 
