@@ -65,8 +65,10 @@ interface EditorProps {
   /** Called per docChanged transaction with the live editor instance.
    *  Pass-by-reference (not getJSON snapshot) so downstream consumers
    *  can defer O(doc-size) serialization to inside their own debounce
-   *  timers — see useDocument.ts / editor-ops.ts handleUpdate. */
-  onUpdate: (editor: Editor) => void;
+   *  timers — see useDocument.ts / editor-ops.ts handleUpdate. The second
+   *  arg is TipTap's update-event transaction, threaded so the autosave can
+   *  recognise an anchor-mint tx and flush immediately (anchor-mint-signal). */
+  onUpdate: (editor: Editor, tx?: import("@tiptap/pm/state").Transaction) => void;
   highlightText: string | null;
   /** Position-based highlight (from search panel). Takes priority over highlightText. */
   highlightRange: { from: number; to: number } | null;
@@ -676,8 +678,10 @@ const VirgilEditor = forwardRef<EditorHandle, EditorProps>(function VirgilEditor
     // `editor.getJSON()` only when their debounce settles. Pre-fix this
     // called `getJSON()` on every keystroke and triggered a React
     // re-render cascade through EditorPane via `useDocument.setContent`.
-    onUpdate: ({ editor }) => {
-      onUpdate(editor);
+    onUpdate: ({ editor, transaction }) => {
+      // Thread the update-event transaction so the autosave can recognise an
+      // anchor-mint tx and flush the doc bundle immediately (anchor-mint-signal).
+      onUpdate(editor, transaction);
     },
   });
 

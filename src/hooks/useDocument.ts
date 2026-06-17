@@ -2,6 +2,8 @@
 
 import { useState, useEffect, useCallback, useRef } from "react";
 import { JSONContent, type Editor } from "@tiptap/react";
+import type { Transaction } from "@tiptap/pm/state";
+import { isAnchorMintTransaction } from "@/lib/anchor-mint-signal";
 import { readDocBundle, writeDocBundle } from "@/lib/storage";
 import { isStalePipelineError } from "@/lib/multi-window/doc-pipeline";
 import { useDocWriteHandle } from "@/components/editor-layout/DocPipeline";
@@ -274,17 +276,45 @@ export function useDocument() {
     }, 1500);
   }, [save]);
 
+  // Immediate doc-bundle flush for anchor-UUID mint transactions. Cancels the
+  // pending 1500 ms debounce and writes the live editor JSON NOW, so a freshly
+  // minted paragraph UUID persists on the card's fast clock instead of the
+  // doc's slow autosave clock (closing the anchor-persistence race — see
+  // @/lib/anchor-mint-signal + docs/memos/anchor-persistence-bug/SYNTHESIS.md).
+  //
+  // Unlike `flushPending`, this does NOT early-return on a null timer: a mint
+  // tx is itself the "there is unsaved work" signal (it changed the doc), and
+  // it always arrives with the debounce just armed by `debouncedSave()` below.
+  const flushNow = useCallback(() => {
+    if (saveTimerRef.current !== null) {
+      clearTimeout(saveTimerRef.current);
+      saveTimerRef.current = null;
+    }
+    const editor = editorRef.current;
+    if (!editor || editor.isDestroyed) return;
+    const doc = editor.getJSON();
+    latestContentRef.current = doc;
+    void save(doc);
+  }, [save]);
+
   // Called by TipTap's `onUpdate` (via the EditorPane wrapper) on every
-  // docChanged transaction. Per-keystroke cost is O(1): capture the
-  // editor reference + reset the debounce timer. No serialization, no
-  // React state change — the per-keystroke React render storm through
-  // EditorPane is gone.
+  // docChanged transaction. Per-keystroke cost is O(1): capture the editor
+  // reference + reset the debounce timer. No serialization, no React state
+  // change — the per-keystroke React render storm through EditorPane is gone.
+  //
+  // `tx` is TipTap's update-event transaction. We arm the normal debounce, then
+  // — STRICTLY for a genuine anchor-UUID mint transaction (tagged via
+  // `markAnchorMint`) — force an immediate flush. KEYSTROKE SANCTITY: a plain
+  // keystroke carries no mint meta, so `isAnchorMintTransaction` is false and
+  // the flush NEVER fires; only the cheap debounce-reset runs (the same O(1) as
+  // before this gate existed).
   const onUpdate = useCallback(
-    (editor: Editor) => {
+    (editor: Editor, tx?: Transaction) => {
       editorRef.current = editor;
       debouncedSave();
+      if (isAnchorMintTransaction(tx)) flushNow();
     },
-    [debouncedSave],
+    [debouncedSave, flushNow],
   );
 
   const refetch = useCallback(() => {

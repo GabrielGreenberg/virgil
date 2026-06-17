@@ -574,8 +574,10 @@ export interface EditorPaneProps {
   /** Forwarded to TipTap's `onUpdate` via `VirgilEditor`. Receives the
    *  live editor instance — callers that need a JSON snapshot must call
    *  `editor.getJSON()` themselves, ideally inside their own debounce
-   *  timer (see editor-ops.ts handleUpdate). */
-  onUpdate?: (editor: Editor) => void;
+   *  timer (see editor-ops.ts handleUpdate). The optional second arg is
+   *  TipTap's update-event transaction (used by the autosave to flush on an
+   *  anchor-mint tx — see @/lib/anchor-mint-signal). */
+  onUpdate?: (editor: Editor, tx?: import("@tiptap/pm/state").Transaction) => void;
 
   /** Search-bar / link-jump highlight forwarded straight through. */
   highlightText?: string | null;
@@ -4371,7 +4373,7 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
                   <VirgilEditor
                     ref={innerRef}
                     initialContent={(initialContent ?? docHook.content) as JSONContent}
-                    onUpdate={(editor) => {
+                    onUpdate={(editor, tx) => {
                       // Forward to caller-supplied handler first (Reader
                       // omits — read-only), then drive the canonical
                       // debounced writeback through `useDocument` so
@@ -4384,8 +4386,12 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
                       // serialized here per keystroke and shipped through
                       // both branches — the dominant typing-lag cost on
                       // long docs.
-                      onUpdate?.(editor);
-                      docHook.onUpdate(editor);
+                      //
+                      // `tx` is threaded to `docHook.onUpdate` so the autosave
+                      // can flush immediately on an anchor-mint transaction
+                      // (closing the anchor-persistence race; @/lib/anchor-mint-signal).
+                      onUpdate?.(editor, tx);
+                      docHook.onUpdate(editor, tx);
                     }}
                     highlightText={highlightText}
                     highlightRange={highlightRange}
