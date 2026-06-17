@@ -406,7 +406,7 @@ through the one guard. See [editor/dev/README.md](../dev/README.md).
 - Never mutate `samples/annotation-history/` or `virgil-data/doc_devtest/` — only sandbox copies.
 - Never commit. Loop ends with diffs in the working tree for the user to inspect.
 - Never run a skill against the real fixture; sandboxes are mandatory.
-- Memos live at `editor/dev/iterations/<date>-<skill>/<case-slug>-attempt<k>.md`, written by `dev_loop.py write-iteration-memo` in the **unified shape**. They are gitignored dev scratch — do NOT route them to `<docPath>/.virgil/memos/` (that channel is for cowork dev memos *about a paper*, not about Virgil's skill markdown).
+- Memos live at `editor/dev/iterations/<date>-<skill>/<case-slug>-attempt<k>.md`, written by `dev_loop.py write-iteration-memo` in the **unified shape**. They are gitignored dev scratch — do NOT route them to `<docPath>/.virgil/memos/` (that channel is the cowork-memo / paper-note stream — notes *about a paper*, not about Virgil's skill markdown).
 - **Route every skill edit through `dev_loop.py route-edits` (the guard) before applying it.** Honor `blocked` (refused — never apply, never work around the boundary); flag `surface` (proposes — apply inline but surface for scrutiny); apply `acts` inline. The three boundaries are law.
 - **No worktree, no commit.** iterate is synchronous + inline; the propose-via-worktree autonomy is `dream`'s, not iterate's.
 - Loop driver edits skill markdown directly. Runner subagents never edit `editor/skills/`; they only write their critique JSON (in the sandbox) and call the writer script.

@@ -259,9 +259,21 @@ absolute, both work.
   cannot be turned on — in an end-user session. This is **distinct** from the
   per-paper "Memo discipline" below: that channel is cowork memos *about a
   paper*; this one is memos *about the skill set itself*.
-- Memo discipline: dev memos under `<docPath>/.virgil/memos/<YYYY-MM-DD>-<slug>.md`,
+- Memo discipline (the **cowork-memo / paper-note** channel): notes *about a
+  paper* go under `<docPath>/.virgil/memos/<YYYY-MM-DD>-<slug>.md`,
   paper-specific reports under `<docPath>/notes/<slug>.md`. Only
-  write a memo when something flagged a real ambiguity worth surfacing.
+  write a cowork memo when something flagged a real ambiguity worth surfacing.
+  This channel is **not** a dev-loop reflection — do not call it a "dev memo"
+  (that label is retired; it is what caused reflections to misroute here). For a
+  self-improvement note *about Virgil's skill set*, say "reflect" / use
+  [`/editor/reflect`](skills/reflect.md) (→ `editor/dev/memos/`).
+- **Memo routing rule (one decision, both channels point here).** Improving
+  Virgil's *skills* → a **reflection** → `/editor/reflect` → `editor/dev/memos/`.
+  A note about *this paper's* content → a **cowork memo** →
+  `<docPath>/.virgil/memos/`. The words *reflect/reflection* **always** mean the
+  former; never file a reflection under `.virgil/memos/`. (This rule is stated
+  identically in [skills/reflect.md](skills/reflect.md) so it disambiguates the
+  same way whichever file the agent reads.)
 
 ## Plumbing in `src/`
 
