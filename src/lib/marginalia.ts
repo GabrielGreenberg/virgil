@@ -151,6 +151,17 @@ export interface MarginaliaMarker {
    * hover/click.
    */
   anchorId?: string;
+  /**
+   * CHIP-B: the card's anchor resolved to `source:'orphan'` (its stored
+   * uuid + mark + text-snapshot are ALL dead in the live doc — see
+   * `resolveCardAnchor`). The card still exists in its sidecar but has no
+   * live paragraph to sit beside. The grid CANNOT line-align an orphan (no
+   * paragraph metrics), so instead of silently culling it (the RC2 "card
+   * vanishes" bug) the gutter surfaces it in a fixed "unanchored — click to
+   * re-pin" dock. `textObjectId` still carries the card's last-known stored
+   * pid so the marker keys stably and the re-pin grab gesture has a kind+id.
+   */
+  unanchored?: boolean;
 }
 
 export interface MarkerMeta {

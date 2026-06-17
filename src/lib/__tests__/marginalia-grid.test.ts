@@ -213,3 +213,75 @@ describe("computeMarkerPositions overflow (A6/R16)", () => {
     expect(overflowGroups).toEqual([]);
   });
 });
+
+// ===========================================================================
+// CHIP-B — orphan surfacing + no silent cull of resolved-but-unmeasured
+// ===========================================================================
+
+/** An orphan marker (resolver `source:'orphan'` → `unanchored:true`). */
+function orphanMarker(i: number, side: "left" | "right"): MarginaliaMarker {
+  return { ...marker(i, side), unanchored: true };
+}
+
+describe("computeMarkerPositions — CHIP-B orphan + no-cull", () => {
+  it("an `unanchored` (orphan) marker is NOT line-aligned; it goes to `orphans` even with NO metrics", () => {
+    // getMetrics returns null for EVERY uuid (the orphan has no live
+    // paragraph). The orphan must still surface — carried in `orphans`,
+    // never silently dropped (the RC2 vanish).
+    const m = orphanMarker(1, "right");
+    const { positioned, overflowGroups, orphans } = computeMarkerPositions(
+      () => null, // no metrics for anyone
+      [m],
+      {},
+    );
+    expect(positioned).toEqual([]);
+    expect(overflowGroups).toEqual([]);
+    expect(orphans).toHaveLength(1);
+    expect(orphans[0].entityId).toBe("m1");
+    expect(orphans[0].unanchored).toBe(true);
+    expect(orphans[0].side).toBe("right");
+  });
+
+  it("orphans never consult getMetrics (no paragraph) and resolve a side for the dock", () => {
+    // Side resolution still applies (explicit override on the marker → left).
+    const m = orphanMarker(2, "left");
+    const { orphans } = computeMarkerPositions(
+      () => {
+        throw new Error("getMetrics must NOT be called for an orphan");
+      },
+      [m],
+      {},
+    );
+    expect(orphans).toHaveLength(1);
+    expect(orphans[0].side).toBe("left");
+  });
+
+  it("a NON-orphan marker with live metrics is still line-aligned; an orphan in the same batch docks separately", () => {
+    const live = marker(1, "right"); // p1, will measure
+    const orphan = { ...marker(2, "right"), unanchored: true }; // no live paragraph
+    const { positioned, orphans } = computeMarkerPositions(
+      (uuid) => (uuid === "p1" ? metricsFor(2) : null),
+      [live, orphan],
+      {},
+    );
+    expect(positioned.map((m) => m.entityId)).toEqual(["m1"]);
+    expect(orphans.map((m) => m.entityId)).toEqual(["m2"]);
+  });
+
+  it("REGRESSION GUARD (the RC2 cull): a resolved (non-orphan) marker whose getMetrics is null is skipped from the GRID but is NOT reported as orphan — it re-renders once the registry observes it (CHIP-B part 2/4)", () => {
+    // This is the by-design measurement skip: a genuinely-offscreen or
+    // not-yet-observed block has no metrics, so it can't be placed THIS pass.
+    // It must NOT be mis-surfaced as an orphan (it has a coherent live pid);
+    // it simply waits for the registry to measure it. So: no positioned, no
+    // overflow, AND crucially `orphans` is empty (it's not an orphan).
+    const resolvedButUnmeasured = marker(1, "right"); // unanchored:false
+    const { positioned, overflowGroups, orphans } = computeMarkerPositions(
+      () => null,
+      [resolvedButUnmeasured],
+      {},
+    );
+    expect(positioned).toEqual([]);
+    expect(overflowGroups).toEqual([]);
+    expect(orphans).toEqual([]); // NOT an orphan — just unmeasured this pass
+  });
+});

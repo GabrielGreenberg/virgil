@@ -21,6 +21,18 @@ export interface PositionItem {
 /**
  * Helper: extract positions for link-anchored items. Uses the first
  * paragraph in each card's `links` array to resolve a doc position.
+ *
+ * CHIP-B contract: a card whose first pid isn't in the live doc's
+ * `uuidToPos` map is skipped — but that skip means "this paragraph isn't a
+ * live anchorable node right now" (genuinely off-screen blocks are still in
+ * the doc, so they DO resolve a pos and are kept; the cascade resolver then
+ * positions them). Deciding that a card's *stored* uuid is dead and needs
+ * snapshot/mark recovery is NO LONGER this helper's call — that lives in the
+ * anchor-recovery SSOT (`resolveCardAnchor`), which the gutter-marker builder
+ * (`EditorPane.marginaliaMarkers`) runs upstream so the pids that reach the
+ * render layer are already resolved-or-orphan-flagged. Callers that want
+ * recovery should feed resolver-resolved pids; this helper does only the
+ * live-doc position lookup.
  */
 export function getParagraphAnchorPositions(
   editor: Editor | null,
