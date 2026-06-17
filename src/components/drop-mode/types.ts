@@ -145,6 +145,18 @@ export interface DropCtx {
   mainEditor: Editor | null;
   /** Dismiss a popped-out float. */
   closePopout: (cardKey: string) => void;
+  /**
+   * CHIP-C: persist the `.tex` (with the target paragraph's `%!v:<uuid>`
+   * comment) on a successful paragraph re-anchor COMMIT — independent of
+   * whether `ensureAnchorUuid` minted a fresh UUID. Called ONCE per commit by
+   * `controller.finishApply` (the single mouseup), NEVER per pointermove.
+   * Closes the RC3 durability gap where re-anchoring onto an already-UUID'd
+   * paragraph dispatches no mint tx → no flush → the UUID never reaches the
+   * `.tex` → a reload re-mints and the anchor dies. Wired in `EditorPane` to
+   * the same `useDocument` immediate-flush path the anchor-mint signal uses, so
+   * a commit that ALSO minted coalesces to one write (no double-flush). Absent
+   * means the doc isn't wired for commit-flush (Reader mode) → silently no-op. */
+  requestAnchorFlush?: (paragraphId: string) => void;
   /** Imperative confirm — opens the modal and awaits the user's choice. */
   confirm: (opts: {
     title?: string;

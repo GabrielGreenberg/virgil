@@ -14,6 +14,7 @@ vi.mock("@/lib/storage", () => ({
 }));
 
 import { useDocument } from "../useDocument";
+import { assignUuids } from "@/lib/latex-serializer";
 import {
   ANCHOR_MINT_META,
   markAnchorMint,
@@ -423,6 +424,148 @@ describe("useDocument anchor-mint immediate flush (keystroke sanctity teeth)", (
     } finally {
       vi.useRealTimers();
     }
+  });
+});
+
+// CHIP-C teeth — the commit-flush entry (`flushAnchorCommit`) the drop-mode
+// re-anchor mouseup calls. It must (1) persist the `.tex` (carrying the target
+// paragraph's `%!v:<uuid>`) on a re-anchor commit EVEN WHEN no mint fired (the
+// RC3 durability gap), and (2) coalesce with any hover mint-flush so a commit
+// that ALSO minted writes ONCE — via the SAME `flushNow`/`save` path the
+// anchor-mint signal uses. The keystroke path never calls it.
+describe("useDocument commit-flush (CHIP-C — RC3 durability)", () => {
+  // A paragraph carrying UUID "X". On a real reload, storage parses the `.tex`
+  // and `assignUuids` re-mints only blocks LACKING a `%!v:` — so if the
+  // persisted doc carries X, X survives; if not, the paragraph gets a fresh id
+  // and the card orphans. We use the persisted JSON `mockWrite` received as the
+  // stand-in for what the `.tex` would round-trip back as.
+  const DOC_WITH_UUID_X: JSONContent = {
+    type: "doc",
+    content: [
+      {
+        type: "paragraph",
+        attrs: { uuid: "X" },
+        content: [{ type: "text", text: "anchored paragraph" }],
+      },
+    ],
+  };
+  // The same paragraph BEFORE its UUID was minted — what was last persisted in
+  // the bug window (sidecar points at X, but the `.tex` never got `%!v:X`).
+  const DOC_WITHOUT_UUID: JSONContent = {
+    type: "doc",
+    content: [
+      {
+        type: "paragraph",
+        content: [{ type: "text", text: "anchored paragraph" }],
+      },
+    ],
+  };
+
+  it("FLUSHES the live doc (with the target UUID) on a commit when it was not yet persisted (no-mint RC3 path) — and the UUID survives a reload", async () => {
+    // Seed disk with the UUID-less doc (the bug window: X is in the editor but
+    // never reached the persisted bundle).
+    mockRead.mockResolvedValue({ content: DOC_WITHOUT_UUID, editorState: {} });
+    const { result } = renderHook(() => useDocument(), {
+      wrapper: withPipeline("doc-1"),
+    });
+    await waitFor(() => expect(result.current.loading).toBe(false));
+
+    // The live editor carries X (minted earlier this session). The re-anchor
+    // onto this already-UUID'd paragraph fired NO mint tx (anchor-uuid early-
+    // return) → no mint flush. The commit-flush must persist X anyway.
+    act(() => {
+      result.current.onUpdate(makeMockEditor(DOC_WITH_UUID_X));
+    });
+    // onUpdate only arms the debounce — no write yet (no mint meta).
+    expect(mockWrite).not.toHaveBeenCalled();
+
+    act(() => {
+      result.current.flushAnchorCommit("X");
+    });
+
+    await waitFor(() => expect(mockWrite).toHaveBeenCalledTimes(1));
+    const persisted = mockWrite.mock.calls[0][1] as JSONContent;
+    expect(persisted).toEqual(DOC_WITH_UUID_X);
+
+    // THE DURABILITY INVARIANT: re-running assignUuids over the persisted doc
+    // (the load-time re-mint) leaves X intact — the card's anchor survives.
+    const reloaded: JSONContent = JSON.parse(JSON.stringify(persisted));
+    assignUuids(reloaded);
+    expect(reloaded.content?.[0]?.attrs?.uuid).toBe("X");
+  });
+
+  it("COALESCES with a mint-flush — a commit that also minted writes ONCE, not twice", async () => {
+    // Disk seeded UUID-less; editor carries X.
+    mockRead.mockResolvedValue({ content: DOC_WITHOUT_UUID, editorState: {} });
+    const { result } = renderHook(() => useDocument(), {
+      wrapper: withPipeline("doc-1"),
+    });
+    await waitFor(() => expect(result.current.loading).toBe(false));
+
+    // During the drag, the hit-test minted X → a mint tx arrives → the mint
+    // flush writes the X-doc immediately (write #1). This sets lastSavedRef.
+    act(() => {
+      result.current.onUpdate(makeMockEditor(DOC_WITH_UUID_X), makeTx(true));
+    });
+    await waitFor(() => expect(mockWrite).toHaveBeenCalledTimes(1));
+
+    // At mouseup the commit-flush runs. The applyDrop sidecar write did NOT
+    // touch the editor doc, so the live JSON still equals what the mint flush
+    // persisted → the dedupe guard skips the redundant second write.
+    act(() => {
+      result.current.flushAnchorCommit("X");
+    });
+    await act(async () => {
+      await Promise.resolve();
+    });
+    expect(mockWrite).toHaveBeenCalledTimes(1); // ONE write, coalesced.
+  });
+
+  it("is a NO-OP when the live doc already equals the last-persisted bundle (nothing new to flush)", async () => {
+    // Disk seeded WITH X (the no-bug case: the UUID is already durable).
+    mockRead.mockResolvedValue({ content: DOC_WITH_UUID_X, editorState: {} });
+    const { result } = renderHook(() => useDocument(), {
+      wrapper: withPipeline("doc-1"),
+    });
+    await waitFor(() => expect(result.current.loading).toBe(false));
+
+    act(() => {
+      result.current.flushAnchorCommit("X");
+    });
+    await act(async () => {
+      await Promise.resolve();
+    });
+    expect(mockWrite).not.toHaveBeenCalled();
+  });
+
+  it("routes through the SAME bundle writer (`writeDocBundle`) + docId the anchor-mint flush uses", async () => {
+    // Both the mint flush and the commit flush must land in the same `.tex` +
+    // sidecar bundle (one `writeDocBundle` call to the same docId) so a reload
+    // can't split them. We prove writer-identity: the commit-flush reaches
+    // `mockWrite` (the mocked `writeDocBundle`) with the registering doc's id.
+    mockRead.mockResolvedValue({ content: DOC_WITHOUT_UUID, editorState: {} });
+    const { result } = renderHook(() => useDocument(), {
+      wrapper: withPipeline("doc-bundle"),
+    });
+    await waitFor(() => expect(result.current.loading).toBe(false));
+
+    // Register the live editor (carrying X), then commit-flush → one bundle
+    // write to "doc-bundle". (Before the editor is registered, flushAnchorCommit
+    // defensively no-ops — same guard `flushNow` has.)
+    act(() => {
+      result.current.flushAnchorCommit("X");
+    });
+    expect(mockWrite).not.toHaveBeenCalled(); // no editor yet → no-op
+
+    act(() => {
+      result.current.onUpdate(makeMockEditor(DOC_WITH_UUID_X));
+    });
+    act(() => {
+      result.current.flushAnchorCommit("X");
+    });
+    await waitFor(() => expect(mockWrite).toHaveBeenCalledTimes(1));
+    expect(mockWrite.mock.calls[0][0].docId).toBe("doc-bundle");
+    expect(mockWrite.mock.calls[0][1]).toEqual(DOC_WITH_UUID_X);
   });
 });
 

@@ -297,6 +297,50 @@ export function useDocument() {
     void save(doc);
   }, [save]);
 
+  // CHIP-C: immediate doc-bundle flush requested on a drop-mode re-anchor
+  // COMMIT (the single mouseup in `controller.finishApply`). RC3: a card can
+  // re-anchor onto a paragraph that ALREADY carries a UUID — `ensureAnchorUuid`
+  // early-returns without a mint tx, so the anchor-mint flush above never
+  // fires and the paragraph's `%!v:<uuid>` may not have reached the `.tex`.
+  // Reload then re-mints the paragraph a fresh UUID and the card orphans. This
+  // entry decouples `.tex` durability from whether a MINT happened: on every
+  // successful re-anchor commit it persists the live doc (carrying the target
+  // UUID) on the card's fast clock via the SAME `flushNow` → `save` →
+  // `writeDocBundle` path the anchor-mint signal uses, so the `.tex` + sidecar
+  // never reload-split.
+  //
+  // COALESCING (no double-flush): a commit that ALSO minted already flushed via
+  // `flushNow` during the drag's hit-test (`hit-test.ts` mints on pointermove,
+  // tagging the tx so `onUpdate` flushes). The `applyDrop` sidecar write does
+  // NOT touch the editor doc, so by the time this runs `editor.getJSON()` still
+  // equals `lastSavedRef.current` (what the mint flush just persisted) → we
+  // skip the redundant second write. When NO mint happened but the existing
+  // UUID was not yet in the persisted bundle, the live doc differs from the
+  // last save → we flush, closing the RC3 gap.
+  //
+  // KEYSTROKE SANCTITY: invoked ONLY from `finishApply` (a discrete mouseup
+  // commit), NEVER on the typing path and NEVER per pointermove. The
+  // `JSON.stringify` dedupe is O(doc) but runs once per commit, off the
+  // keystroke path — no new `editor.on` / bus subscriber is added.
+  // The `_paragraphId` arg matches the `DropCtx.requestAnchorFlush` contract
+  // (the controller passes the re-anchored paragraph's UUID) so the wiring is a
+  // direct reference, not a wrapper. It is unused here: the flush persists the
+  // WHOLE bundle, which already carries that paragraph's `%!v:<uuid>`.
+  const flushAnchorCommit = useCallback((_paragraphId?: string) => {
+    const editor = editorRef.current;
+    if (!editor || editor.isDestroyed) return;
+    const doc = editor.getJSON();
+    // Coalesce with any mint-flush this gesture already armed: nothing new to
+    // persist since the last save → no-op (dedupes the double-flush).
+    if (
+      lastSavedRef.current !== null &&
+      JSON.stringify(doc) === JSON.stringify(lastSavedRef.current)
+    ) {
+      return;
+    }
+    flushNow();
+  }, [flushNow]);
+
   // Called by TipTap's `onUpdate` (via the EditorPane wrapper) on every
   // docChanged transaction. Per-keystroke cost is O(1): capture the editor
   // reference + reset the debounce timer. No serialization, no React state
@@ -330,5 +374,16 @@ export function useDocument() {
       });
   }, [docId]);
 
-  return { content, loading, onUpdate, saveNow: save, saveStatus, refetch };
+  return {
+    content,
+    loading,
+    onUpdate,
+    saveNow: save,
+    saveStatus,
+    refetch,
+    // CHIP-C: commit-flush entry for the drop-mode re-anchor mouseup. Routes
+    // through the same `flushNow` → `save` → `writeDocBundle` path the
+    // anchor-mint signal uses, with a coalescing guard (see `flushAnchorCommit`).
+    flushAnchorCommit,
+  };
 }
