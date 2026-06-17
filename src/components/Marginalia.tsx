@@ -108,7 +108,10 @@ export default function Marginalia({ editor, markers, panelSides }: MarginaliaPr
   // returns null for off-screen blocks — those markers are skipped,
   // which is correct since their anchor isn't visible either. Overflowing
   // grids come back as overflow groups (R16) rendered as "+K" pills.
-  const { positioned, overflowGroups } = useMemo(
+  // Orphan markers (card resolved to `source:'orphan'`, CHIP-B) have no live
+  // paragraph to line-align against — they come back in `orphans` and render
+  // in the fixed re-pin dock instead of being silently culled.
+  const { positioned, overflowGroups, orphans } = useMemo(
     () => computeMarkerPositions(registry.getMetrics, markers, panelSides),
     // registryVersion is the re-render trigger; getMetrics itself is stable.
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -122,12 +125,19 @@ export default function Marginalia({ editor, markers, panelSides }: MarginaliaPr
   // dragover/drop/indicator machinery that used to live here is gone.
 
   if (!scrollEl) return null;
-  if (positioned.length === 0 && overflowGroups.length === 0) return null;
+  if (
+    positioned.length === 0 &&
+    overflowGroups.length === 0 &&
+    orphans.length === 0
+  )
+    return null;
 
   const leftMarkers = positioned.filter((m) => m.side === "left");
   const rightMarkers = positioned.filter((m) => m.side === "right");
   const leftOverflow = overflowGroups.filter((g) => g.side === "left");
   const rightOverflow = overflowGroups.filter((g) => g.side === "right");
+  const leftOrphans = orphans.filter((m) => m.side === "left");
+  const rightOrphans = orphans.filter((m) => m.side === "right");
 
   // When the host editor is read-only (Library Reader), suppress
   // drag-to-rebind on every marker. Click + Delete still work.
@@ -135,8 +145,8 @@ export default function Marginalia({ editor, markers, panelSides }: MarginaliaPr
 
   return createPortal(
     <>
-      <Gutter side="left" markers={leftMarkers} overflow={leftOverflow} dragEnabled={dragEnabled} />
-      <Gutter side="right" markers={rightMarkers} overflow={rightOverflow} dragEnabled={dragEnabled} />
+      <Gutter side="left" markers={leftMarkers} overflow={leftOverflow} orphans={leftOrphans} dragEnabled={dragEnabled} />
+      <Gutter side="right" markers={rightMarkers} overflow={rightOverflow} orphans={rightOrphans} dragEnabled={dragEnabled} />
     </>,
     scrollEl
   );
@@ -408,15 +418,62 @@ function OverflowPill({
   );
 }
 
+/**
+ * Orphan dock (CHIP-B). A card whose anchor resolved to `source:'orphan'`
+ * (its stored uuid + mark + text-snapshot are all dead in the live doc) has
+ * no live paragraph to line-align against. Rather than silently culling it
+ * (the RC2 "card vanishes ~10s later" bug), its marker docks here — a fixed,
+ * faintly-tinted strip pinned to the top of the gutter that reads
+ * "unanchored — click to re-pin". Each entry is a normal `MarkerButton`, so:
+ *   - click opens the card's panel (the user can read/triage it), and
+ *   - the grab gesture (when editable) starts a drop-mode re-anchor session
+ *     exactly like a live gutter pin — that's the "re-pin".
+ * Rendered in normal flow (no `cell`), so no paragraph metrics are needed.
+ */
+function OrphanDock({
+  side,
+  orphans,
+  dragEnabled,
+}: {
+  side: "left" | "right";
+  orphans: Array<MarginaliaMarker & { side: "left" | "right" }>;
+  dragEnabled: boolean;
+}) {
+  if (orphans.length === 0) return null;
+  const count = orphans.length;
+  const label = `${count} unanchored — click to re-pin`;
+  return (
+    <div
+      className="pointer-events-auto absolute flex flex-col items-center gap-1 rounded-md border border-edge-subtle bg-surface/90 shadow-sm"
+      style={{
+        top: 6,
+        [side]: 2,
+        padding: 4,
+        zIndex: 12,
+      }}
+      data-marginalia-orphan-dock={side}
+      data-hint={label}
+      aria-label={label}
+      role="group"
+    >
+      {orphans.map((m) => (
+        <MarkerButton key={`orphan:${m.type}:${m.id}`} m={m} dragEnabled={dragEnabled} />
+      ))}
+    </div>
+  );
+}
+
 function Gutter({
   side,
   markers,
   overflow,
+  orphans,
   dragEnabled,
 }: {
   side: "left" | "right";
   markers: PositionedMarker[];
   overflow: MarkerOverflowGroup[];
+  orphans: Array<MarginaliaMarker & { side: "left" | "right" }>;
   dragEnabled: boolean;
 }) {
   // Subscribe to panel color changes so the gutter re-renders when the user
@@ -438,6 +495,7 @@ function Gutter({
       {overflow.map((g) => (
         <OverflowPill key={`overflow:${g.side}:${g.textObjectId}`} group={g} dragEnabled={dragEnabled} />
       ))}
+      <OrphanDock side={side} orphans={orphans} dragEnabled={dragEnabled} />
     </div>
   );
 }

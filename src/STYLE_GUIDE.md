@@ -732,6 +732,24 @@ matching panel theme accent via `markerPaletteFromAccent()`.
 Click → opens panel + selects card + scrolls. Cmd-click → opens
 without scrolling. Hover → highlights linked text range.
 
+**Orphan dock ("unanchored — click to re-pin").** A card whose anchor can
+no longer be resolved to any live paragraph (its stored UUID, its
+`linkedAnchor` mark, and its text snapshot are all dead — the resolver SSOT
+`resolveCardAnchor` returns `source:'orphan'`) has no line to align against.
+Rather than silently culling its marker (the old "card vanishes ~10s later"
+bug), the gutter surfaces it in a **fixed dock** pinned to the top of the
+side it would dock on (`OrphanDock` in `Marginalia.tsx`): a faint
+`bg-surface/90` + `border-edge-subtle` rounded strip of the card's normal
+marker buttons, with a `data-hint`/`aria-label` of "N unanchored — click to
+re-pin". Each entry behaves like any gutter marker — click opens the card's
+panel; grab (when editable) starts a drop-mode re-anchor session (the
+re-pin). The dock only appears when a card genuinely orphans against a
+**non-empty** live-UUID set — never during the editor-mount gap (the marker
+builder treats a zero-UUID resolve index as not-ready and falls back to the
+raw stored pids, so a momentarily-empty doc can't false-flag every card).
+This is render-layer only: the card and its sidecar are untouched, so a
+reload (or a successful re-anchor) restores it to the grid.
+
 ## Top bar
 
 40px, `--topbar-bg`. One row. Slots: logo, project tabs, title bar, AI

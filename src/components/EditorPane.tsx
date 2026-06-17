@@ -208,7 +208,12 @@ import {
   updateLinkedAnchorCard,
   paragraphUuidAt,
   captureParagraphSnapshot,
+  type CardWithLinks,
 } from "@/links/links";
+import {
+  buildResolveIndex,
+  resolveCardAnchor,
+} from "@/links/resolve-card-anchor";
 import { reapplyModeBAnchors } from "@/links/_shared/reapply-mode-b-anchors";
 import type { MarginaliaMarker } from "@/lib/marginalia";
 import type {
@@ -1769,23 +1774,84 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
   // sanctity). Don't add a footnote/citation/example branch here, and
   // don't move a paragraph-anchored kind onto the omni path without
   // moving its marker too.
+  //
+  // CHIP-B — RESOLVER-DRIVEN textObjectId. Each card's marker paragraph is
+  // resolved through the anchor-recovery SSOT (`resolveCardAnchor`) against
+  // ONE `buildResolveIndex(editor)` built at the TOP of this memo (O(doc),
+  // card-count-independent — never per card). The resolver's
+  // `anchorIdToParagraph` rung subsumes the old inline revision
+  // anchorId→paragraph doc walk (deleted). `source==='orphan'` (uuid + mark
+  // + snapshot all dead) emits an `unanchored` marker the gutter surfaces as
+  // a visible "click to re-pin" affordance instead of silently vanishing.
+  // `buildResolveIndex` reads the live doc, so this memo ALSO depends on the
+  // reactive `editor` instance (the `useStructuralRevisions` counters start
+  // at 0 and stay flat on load — see AGENTS "Initial population"); a plain
+  // keystroke mints no uuid / adds no block, so `rev.anchors`/`rev.blocks`
+  // stay flat → the memo doesn't recompute and `buildResolveIndex` doesn't
+  // run (keystroke sanctity is structural, not vigilance-based).
   // eslint-disable-next-line react-hooks/exhaustive-deps
   const marginaliaMarkers = useMemo<MarginaliaMarker[]>(() => {
     // Re-resolve markers when anchors move between paragraphs (`rev.anchors`)
-    // or the paragraph-UUID set changes (`rev.blocks`) — the revision branch
-    // below does a live anchorId→paragraph walk. Card-store arrays (notes,
-    // reports, …) and error state are their own deps; plain typing bumps
-    // none of these, so markers don't recompute or shift per keystroke.
+    // or the paragraph-UUID set changes (`rev.blocks`). Card-store arrays
+    // (notes, reports, …) and error state are their own deps; plain typing
+    // bumps none of these, so markers don't recompute or shift per keystroke.
     void rev.anchors;
     void rev.blocks;
     const result: MarginaliaMarker[] = [];
+
+    // ONE O(doc) resolve index for the whole pass, built at the TOP before
+    // any per-card loop (never per card). `null` until the editor mounts —
+    // the card branches fall back to the bare-link pids in that gap, then
+    // re-derive once `editor` (a memo dep) becomes non-null. A `linkedRange`
+    // card whose mark + uuid + snapshot are all dead resolves `orphan` →
+    // `unanchored` marker (surfaced, not culled).
+    const resolveIndex = editor ? buildResolveIndex(editor) : null;
+    // Not-on-load guard (orphan-affordance risk, MEMO §"Risks"): during the
+    // editor-mount gap the doc can be momentarily empty — `buildResolveIndex`
+    // then returns an EMPTY `uuidToParagraph`, against which EVERY card would
+    // resolve `orphan` and flash the re-pin dock spuriously. Treat a
+    // zero-uuid index as "not ready" and fall back to raw pids (no orphan
+    // flag) until the doc's blocks are present.
+    const indexReady = !!resolveIndex && resolveIndex.uuidToParagraph.size > 0;
+    /**
+     * Resolve a card to its live marker paragraph + orphan flag through the
+     * SSOT. Returns one entry per resolved paragraph (today the resolver
+     * binds a card to a single paragraph; multi-anchor cards still iterate
+     * their raw pids for the non-resolved fallback). On `orphan`, returns the
+     * card's first stored pid (so the marker still carries a textObjectId for
+     * keying / re-pin) flagged `unanchored`.
+     */
+    const resolveMarkerPids = (
+      c: CardWithLinks,
+      pids: string[],
+    ): Array<{ pid: string; unanchored: boolean }> => {
+      if (!resolveIndex || !editor || !indexReady) {
+        // Editor not mounted / doc not painted yet — fall back to the raw
+        // stored pids so the gutter isn't blank AND no card false-flags as
+        // orphan during the mount gap. Re-derives once `editor` is set (memo
+        // dep) and the index has live uuids.
+        return pids.map((pid) => ({ pid, unanchored: false }));
+      }
+      const res = resolveCardAnchor(c, editor, resolveIndex);
+      if (res.source === "orphan") {
+        // uuid + mark + snapshot all dead → surface, don't vanish. Key on the
+        // first stored pid (stable id for the marker + the re-pin gesture).
+        return pids.length > 0
+          ? [{ pid: pids[0], unanchored: true }]
+          : [];
+      }
+      if (res.paragraphId) {
+        return [{ pid: res.paragraphId, unanchored: false }];
+      }
+      return pids.map((pid) => ({ pid, unanchored: false }));
+    };
 
     // Notes
     for (const n of notesHook.notes) {
       const pids = getLinkedTextObjectIds(n);
       if (pids.length === 0) continue;
       const anchor = getTextAnchor(n);
-      for (const pid of pids) {
+      for (const { pid, unanchored } of resolveMarkerPids(n, pids)) {
         result.push({
           id: `${n.id}:${pid}`,
           entityId: n.id,
@@ -1793,6 +1859,7 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
           type: "note",
           textObjectId: pid,
           title: n.title || "Note",
+          unanchored,
           onClick: (clickY?: number) =>
             handleGutterMarkerClick({ kind: "note", id: n.id }, clickY),
           onDelete: () => {
@@ -1807,7 +1874,7 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
     for (const snippet of archiveHook.snippets) {
       const pids = getLinkedTextObjectIds(snippet);
       if (pids.length === 0) continue;
-      for (const pid of pids) {
+      for (const { pid, unanchored } of resolveMarkerPids(snippet, pids)) {
         result.push({
           id: `${snippet.id}:${pid}`,
           entityId: snippet.id,
@@ -1815,6 +1882,7 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
           type: "archive",
           textObjectId: pid,
           title: "Archived snippet",
+          unanchored,
           onClick: (clickY?: number) =>
             handleGutterMarkerClick({ kind: "archive", id: snippet.id }, clickY),
           onDelete: () => { void handleMarginItemDelete("archive", snippet.id, pid); },
@@ -1822,37 +1890,21 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
       }
     }
 
-    // Revision comments / suggestions — live-resolve paragraph from anchor mark
-    const ed = innerRef.current?.getEditor();
-    if (ed) {
-      for (const r of revisionsHook.cards) {
-        if (r.kind === "suggestion" && r.status !== "pending") continue;
-        const revAnchor = getTextAnchor(r);
-        if (!revAnchor) continue;
-        const anchorId = revAnchor.anchorId;
-        let paragraphId: string | null = null;
-        try {
-          ed.state.doc.descendants((node, pos) => {
-            if (paragraphId) return false;
-            if (node.isText) {
-              const hasMark = node.marks.some(
-                (m) => m.type.name === "linkedAnchor" && m.attrs.anchorId === anchorId,
-              );
-              if (hasMark) {
-                const $p = ed.state.doc.resolve(pos);
-                for (let d = $p.depth; d >= 0; d--) {
-                  const n = $p.node(d);
-                  if (n.attrs?.uuid) { paragraphId = n.attrs.uuid as string; return false; }
-                }
-              }
-            }
-            return true;
-          });
-        } catch { /* ignore */ }
-        if (!paragraphId) continue;
-        const pid: string = paragraphId;
-        const revKind: EntityKind =
-          r.kind === "suggestion" ? "revision-suggestion" : "revision-comment";
+    // Revision comments / suggestions — paragraph resolved through the SSOT
+    // (the resolver's `anchorIdToParagraph` rung replaces the old inline
+    // anchorId→paragraph doc walk). `orphan` (mark + uuid + snapshot all
+    // dead) still surfaces an `unanchored` marker rather than vanishing.
+    for (const r of revisionsHook.cards) {
+      if (r.kind === "suggestion" && r.status !== "pending") continue;
+      const revAnchor = getTextAnchor(r);
+      const pids = getLinkedTextObjectIds(r);
+      // A revision with neither a text anchor nor a stored pid has nothing
+      // to resolve from — skip (matches the old "no mark → no marker").
+      if (!revAnchor && pids.length === 0) continue;
+      const anchorId = revAnchor?.anchorId;
+      const revKind: EntityKind =
+        r.kind === "suggestion" ? "revision-suggestion" : "revision-comment";
+      for (const { pid, unanchored } of resolveMarkerPids(r, pids)) {
         result.push({
           id: `${r.id}:${pid}`,
           entityId: r.id,
@@ -1860,6 +1912,7 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
           type: "revision",
           textObjectId: pid,
           title: r.selectedText || "Revision",
+          unanchored,
           anchorId,
           onClick: (clickY?: number) =>
             handleGutterMarkerClick({ kind: revKind, id: r.id }, clickY),
@@ -1880,7 +1933,7 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
         : c.text || "Comment";
       const cutKind: EntityKind =
         c.kind === "suggestion" ? "cutter-suggestion" : "cutter-comment";
-      for (const pid of pids) {
+      for (const { pid, unanchored } of resolveMarkerPids(c, pids)) {
         result.push({
           id: `${c.id}:${pid}`,
           entityId: c.id,
@@ -1888,6 +1941,7 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
           type: "cut",
           textObjectId: pid,
           title,
+          unanchored,
           onClick: (clickY?: number) =>
             handleGutterMarkerClick({ kind: cutKind, id: c.id }, clickY),
           onDelete: () => {
@@ -1906,7 +1960,7 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
       const title = c.kind === "report"
         ? (c.title || c.text || "Report")
         : (c.text || "Report request");
-      for (const pid of pids) {
+      for (const { pid, unanchored } of resolveMarkerPids(c, pids)) {
         result.push({
           id: `${c.id}:${pid}`,
           entityId: c.id,
@@ -1914,6 +1968,7 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
           type: "report",
           textObjectId: pid,
           title,
+          unanchored,
           onClick: (clickY?: number) =>
             handleGutterMarkerClick({ kind: c.kind, id: c.id }, clickY),
           onDelete: () => {
@@ -1928,7 +1983,7 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
     for (const item of todosHook.items) {
       const pids = getLinkedTextObjectIds(item);
       if (pids.length === 0) continue;
-      for (const pid of pids) {
+      for (const { pid, unanchored } of resolveMarkerPids(item, pids)) {
         result.push({
           id: `${item.id}:${pid}`,
           entityId: item.id,
@@ -1937,6 +1992,7 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
           textObjectId: pid,
           title: item.text || "Todo",
           muted: item.done,
+          unanchored,
           onClick: (clickY?: number) =>
             handleGutterMarkerClick({ kind: "todo", id: item.id }, clickY),
           onDelete: () => { void handleMarginItemDelete("todo", item.id, pid); },
@@ -1981,6 +2037,12 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
     paragraphByErrorId,
     rev.anchors,
     rev.blocks,
+    // The reactive editor instance — `buildResolveIndex(editor)` reads the
+    // live doc, and the `useStructuralRevisions` counters are silent on load
+    // (`buildInitial` emits nothing), so the memo must re-derive once the
+    // editor mounts (AGENTS "Initial population"). A plain keystroke doesn't
+    // change `editor`'s identity, so this adds no per-keystroke recompute.
+    editor,
   ]);
 
   // Marginalia uses this to decide which gutter to render each marker
@@ -2008,7 +2070,14 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
   const anchoredUuidsRef = useRef(new Set<string>());
   useMemo(() => {
     const set = new Set<string>();
-    for (const m of marginaliaMarkers) set.add(m.textObjectId);
+    // Exclude orphan markers (CHIP-B): their `textObjectId` is a stale,
+    // already-dead pid (the card resolved `source:'orphan'`), so guarding a
+    // placeholder for it is meaningless — the live anchor is gone, and the
+    // card is awaiting a re-pin via the orphan dock.
+    for (const m of marginaliaMarkers) {
+      if (m.unanchored) continue;
+      set.add(m.textObjectId);
+    }
     anchoredUuidsRef.current = set;
   }, [marginaliaMarkers]);
 

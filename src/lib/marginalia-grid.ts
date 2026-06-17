@@ -37,6 +37,13 @@ export interface MarkerPositionsResult {
   /** One group per overflowing (node, side): the reserved last cell where
    *  the "+K" pill renders, plus the hidden markers it stands in for. */
   overflowGroups: MarkerOverflowGroup[];
+  /** CHIP-B: markers whose card resolved to `source:'orphan'` (`m.unanchored`).
+   *  They have no live paragraph to line-align against, so they're carried
+   *  out of the grid for the gutter's fixed "unanchored — click to re-pin"
+   *  dock instead of being silently dropped (the RC2 vanish bug). Side is
+   *  resolved the same way as a positioned marker (override > dock > default).
+   */
+  orphans: Array<MarginaliaMarker & { side: "left" | "right" }>;
 }
 
 /** Pixel coordinates for grid cell (row, col) of `node` on `side`. */
@@ -74,19 +81,27 @@ function cellAt(
  *
  * @param getMetrics  Per-UUID lookup of measurements from
  *                    useMarginaliaRegistry. Returns `null` for off-screen
- *                    or not-yet-measured blocks — those markers are
- *                    silently skipped, which is correct (off-screen
- *                    blocks don't render marginalia).
+ *                    or not-yet-measured blocks — those (non-orphan) markers
+ *                    are skipped from grid placement, which is correct
+ *                    (off-screen blocks don't render marginalia; an unmeasured
+ *                    but resolved block re-renders once the registry observes
+ *                    it — CHIP-B part 2). An `m.unanchored` (orphan) marker
+ *                    has no live paragraph at all, so it never consults
+ *                    `getMetrics` — it goes straight to the `orphans` bucket.
  * @param markers     Flat list of markers from the gutter-marker builder
  * @param panelSides  Which side each panel is currently docked on
- * @returns Positioned markers plus per-(node, side) overflow groups (R16)
+ * @returns Positioned markers, per-(node, side) overflow groups (R16), and
+ *          the orphan markers for the fixed re-pin dock (CHIP-B)
  */
 export function computeMarkerPositions(
   getMetrics: (uuid: string) => AnchorNodeMetrics | null,
   markers: readonly MarginaliaMarker[],
   panelSides: Partial<Record<PanelId, "left" | "right" | null>>,
 ): MarkerPositionsResult {
-  if (markers.length === 0) return { positioned: [], overflowGroups: [] };
+  if (markers.length === 0)
+    return { positioned: [], overflowGroups: [], orphans: [] };
+
+  const orphans: Array<MarginaliaMarker & { side: "left" | "right" }> = [];
 
   // Pass 1 — resolve each marker's side + metrics and group per
   // (textObjectId, side), preserving input order. Grouping first lets us
@@ -100,13 +115,22 @@ export function computeMarkerPositions(
   }
   const groups = new Map<string, NodeGroup>();
   for (const m of markers) {
-    const node = getMetrics(m.textObjectId);
-    if (!node) continue; // anchor TextObject not visible / not yet measured
-
-    // Resolve side: explicit override > current panel dock > default
+    // Resolve side first: explicit override > current panel dock > default.
+    // Orphans need a side for the dock too, so this runs before the metrics
+    // gate.
     const meta = MARKER_META[m.type];
     const dockedSide = panelSides[meta.panelId];
     const side: "left" | "right" = m.side ?? dockedSide ?? meta.defaultSide;
+
+    // CHIP-B: an orphan card has no live paragraph — it can't be line-aligned.
+    // Carry it to the fixed re-pin dock instead of culling it (the RC2 vanish).
+    if (m.unanchored) {
+      orphans.push({ ...m, side });
+      continue;
+    }
+
+    const node = getMetrics(m.textObjectId);
+    if (!node) continue; // anchor TextObject not visible / not yet measured
 
     const key = `${m.textObjectId}|${side}`;
     let g = groups.get(key);
@@ -159,5 +183,5 @@ export function computeMarkerPositions(
     }
   }
 
-  return { positioned, overflowGroups };
+  return { positioned, overflowGroups, orphans };
 }
