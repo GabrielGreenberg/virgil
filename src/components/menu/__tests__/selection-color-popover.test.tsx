@@ -142,7 +142,7 @@ describe("SelectionColorPopover — region='widget' focus-island", () => {
     // Walk the whole row twice; the active element is always a button, never the
     // input (roving skips region='widget').
     for (let i = 0; i < PALETTE.length + 4; i++) {
-      key("ArrowDown");
+      key("ArrowRight");
       const active = activeButton();
       // Whatever is active is a button (the input never carries data-active).
       expect(colorInput().getAttribute("data-active")).toBeNull();
@@ -152,18 +152,28 @@ describe("SelectionColorPopover — region='widget' focus-island", () => {
 });
 
 describe("SelectionColorPopover — NEW arrow navigation over swatches", () => {
-  it("Down/Up move a visible data-active highlight; Enter applies the active swatch", () => {
+  it("Right/Left move a visible data-active highlight; Enter applies the active swatch", () => {
     const onApply = vi.fn();
     renderPopover({ onApply });
-    key("ArrowDown"); // no active → first enabled (swatch 0)
+    key("ArrowRight"); // no active → first enabled (swatch 0)
     expect(activeButton()?.getAttribute("data-hint")).toBe(PALETTE[0]);
-    key("ArrowDown");
+    key("ArrowRight");
     expect(activeButton()?.getAttribute("data-hint")).toBe(PALETTE[1]);
-    key("ArrowUp");
+    key("ArrowLeft");
     expect(activeButton()?.getAttribute("data-hint")).toBe(PALETTE[0]);
 
     key("Enter");
     expect(onApply).toHaveBeenCalledWith(PALETTE[0]);
+  });
+
+  it("Up/Down are inert in the horizontal swatch row (off-axis)", () => {
+    renderPopover();
+    key("ArrowRight"); // → swatch 0
+    expect(activeButton()?.getAttribute("data-hint")).toBe(PALETTE[0]);
+    key("ArrowDown");
+    expect(activeButton()?.getAttribute("data-hint")).toBe(PALETTE[0]);
+    key("ArrowUp");
+    expect(activeButton()?.getAttribute("data-hint")).toBe(PALETTE[0]);
   });
 
   it("End jumps to the clear button (last), Home back to the first swatch", () => {
@@ -256,7 +266,7 @@ describe("SelectionColorPopover — aria-activedescendant (no focus theft)", () 
     expect(document.activeElement).toBe(editable);
 
     renderPopover();
-    key("ArrowDown");
+    key("ArrowRight");
 
     const active = activeButton();
     expect(active).toBeDefined();

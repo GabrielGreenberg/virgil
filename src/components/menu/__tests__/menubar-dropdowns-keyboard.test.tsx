@@ -332,6 +332,28 @@ describe("ViewMenu — expandable groups (click + Enter; snapshot grows/shrinks)
     expect(viewRowByLabel("Show marginalia")).toBeDefined();
   });
 
+  it("Right expands / Left collapses the active group row (tree affordance, cursor stays put)", () => {
+    const props = makeViewProps();
+    openViewMenu(props);
+    let guard = 0;
+    while (labelText(activeViewRow()) !== "Marginalia" && guard++ < 20) key("ArrowDown");
+    expect(labelText(activeViewRow())).toBe("Marginalia");
+    expect(expandedOf(viewRowByLabel("Marginalia"))).toBe(false);
+
+    key("ArrowRight"); // expand — does NOT move the cursor
+    expect(expandedOf(viewRowByLabel("Marginalia"))).toBe(true);
+    expect(viewRowByLabel("Show marginalia")).toBeDefined();
+    expect(labelText(activeViewRow())).toBe("Marginalia");
+
+    key("ArrowLeft"); // collapse
+    expect(expandedOf(viewRowByLabel("Marginalia"))).toBe(false);
+    expect(viewRowByLabel("Show marginalia")).toBeUndefined();
+
+    // Right on an already-expanded group is a no-op; Left on a collapsed one too.
+    key("ArrowLeft");
+    expect(expandedOf(viewRowByLabel("Marginalia"))).toBe(false);
+  });
+
   it("collapsing a group removes its children from the snapshot", () => {
     const props = makeViewProps();
     openViewMenu(props);

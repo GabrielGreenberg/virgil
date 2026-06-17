@@ -651,6 +651,26 @@ export function ViewMenu({
           id="view-menu"
           layout="list"
           role="menu"
+          // Right expands the active group row; Left collapses it (the tree
+          // affordance) — Enter/click still toggle. A non-group active row is a
+          // no-op. The primitive hands Left/Right here only for a vertical list
+          // (otherwise inert), so this can't shadow real nav.
+          onArrowHorizontal={(dir, activeId) => {
+            const groups: Record<
+              string,
+              [boolean, React.Dispatch<React.SetStateAction<boolean>>]
+            > = {
+              "marginalia-group": [marginaliaExpanded, setMarginaliaExpanded],
+              "highlights-group": [highlightsExpanded, setHighlightsExpanded],
+              "dividers-group": [dividersExpanded, setDividersExpanded],
+              "divider-prefs-group": [dividerPrefsExpanded, setDividerPrefsExpanded],
+            };
+            const g = activeId ? groups[activeId] : undefined;
+            if (!g) return;
+            const [expanded, setExpanded] = g;
+            if (dir === "right" && !expanded) setExpanded(true);
+            else if (dir === "left" && expanded) setExpanded(false);
+          }}
           portal={false}
           anchorRect={DOCKED_ZERO_RECT}
           placements={DOCKED_PLACEHOLDER_PLACEMENTS}

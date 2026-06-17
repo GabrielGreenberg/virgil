@@ -28,7 +28,7 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef } from "react";
 import { buildLetterMap } from "./nav-core";
 import type { MenuRegistry } from "./registry";
-import type { MenuLayout, NavDir } from "./types";
+import type { MenuLayout, MenuOrientation, NavDir } from "./types";
 
 export interface UseMenuKeyboardOptions {
   registry: MenuRegistry;
@@ -57,6 +57,19 @@ export interface UseMenuKeyboardOptions {
    * caller wires the returned `handleKeyDown` onto the owned input's onKeyDown.
    */
   source?: "window" | "input";
+  /**
+   * List stepping axis. Default `"vertical"` (Up/Down step; Left/Right are
+   * inert and available for `onArrowHorizontal`). `"horizontal"` makes Left/Right
+   * the nav axis. Ignored for grid/composite/combobox layouts.
+   */
+  orientation?: MenuOrientation;
+  /**
+   * For a VERTICAL `list` menu, intercept a plain Left/Right (otherwise inert —
+   * nav-core's `listMove` ignores them) and hand it to the caller (e.g. ViewMenu
+   * group expand/collapse) instead of the no-op `reg.move`. Receives the active
+   * node id. Has no effect on a horizontal list, grid, composite, or combobox.
+   */
+  onArrowHorizontal?: (dir: "left" | "right", activeId: string | null) => void;
 }
 
 const NAV_KEYS: Record<string, NavDir> = {
@@ -84,6 +97,8 @@ export function useMenuKeyboard(
     getActiveDescendantHost,
     isTop = true,
     source = "window",
+    orientation = "vertical",
+    onArrowHorizontal,
   } = opts;
 
   // Keep options the listener reads in a ref so we don't re-subscribe the
@@ -95,6 +110,8 @@ export function useMenuKeyboard(
     layout,
     letterShortcuts,
     getActiveDescendantHost,
+    orientation,
+    onArrowHorizontal,
   });
   useLayoutEffect(() => {
     stateRef.current = {
@@ -102,6 +119,8 @@ export function useMenuKeyboard(
       layout,
       letterShortcuts,
       getActiveDescendantHost,
+      orientation,
+      onArrowHorizontal,
     };
   });
 
@@ -115,7 +134,13 @@ export function useMenuKeyboard(
   // The shared key handler. Returns true if it consumed the event (the window
   // source then prevents default + stops propagation).
   const consume = useCallback((e: KeyboardEvent | React.KeyboardEvent): boolean => {
-    const { registry: reg, letterShortcuts: letters } = stateRef.current;
+    const {
+      registry: reg,
+      letterShortcuts: letters,
+      layout: lay,
+      orientation: orient,
+      onArrowHorizontal: onHoriz,
+    } = stateRef.current;
 
     // Only PLAIN nav/activation keys drive the menu — a MODIFIED combo
     // (Shift+Arrow to extend the editor selection, Cmd/Ctrl+Arrow line jumps,
@@ -131,7 +156,20 @@ export function useMenuKeyboard(
 
     const dir = NAV_KEYS[e.key];
     if (plain && dir) {
-      reg.move(dir);
+      // A VERTICAL `list` leaves Left/Right inert (nav-core's `listMove`
+      // ignores them); hand them to the caller's `onArrowHorizontal` (e.g.
+      // ViewMenu group expand/collapse) instead of the no-op move. A grid /
+      // composite / horizontal list uses Left/Right for real nav → falls through.
+      if (
+        (dir === "left" || dir === "right") &&
+        lay === "list" &&
+        orient === "vertical" &&
+        onHoriz
+      ) {
+        onHoriz(dir, reg.activeId());
+      } else {
+        reg.move(dir);
+      }
       return true;
     }
 

@@ -111,6 +111,9 @@ export function SelectionColorPopover({
     <MenuProvider
       id="selection-color"
       layout="list"
+      // The swatch row is visually horizontal, so Left/Right step it (Up/Down
+      // are inert here) — matching the user's spatial expectation.
+      orientation="horizontal"
       // KEEP role="dialog" (no filter input → not a combobox). The primitive's
       // `MenuRole` type covers only the ARIA item-fork ("menu" | "listbox"); the
       // dialog container role is set verbatim on the provider's container, so we

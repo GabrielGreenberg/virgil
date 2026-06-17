@@ -72,6 +72,10 @@ export interface MenuProviderProps {
    *  Left/Right instead of Up/Down (a swatch row); default "vertical". Ignored
    *  for non-list layouts. */
   orientation?: MenuOrientation;
+  /** For a VERTICAL `list` menu, intercept a plain Left/Right (otherwise inert)
+   *  and hand it to the caller — e.g. ViewMenu group expand (Right) / collapse
+   *  (Left). Receives the active node id. No effect on horizontal/grid/combobox. */
+  onArrowHorizontal?: (dir: "left" | "right", activeId: string | null) => void;
   /** ARIA fork (§3.5). Default "menu". */
   role?: MenuRole;
   /** Anchor for positioning. A static rect or a thunk (caret-anchored). */
@@ -126,6 +130,7 @@ export function MenuProvider(props: MenuProviderProps): ReactNode {
     id,
     layout,
     orientation = "vertical",
+    onArrowHorizontal,
     role = "menu",
     anchorRect,
     placements,
@@ -309,6 +314,8 @@ export function MenuProvider(props: MenuProviderProps): ReactNode {
   const { handleKeyDown } = useMenuKeyboard({
     registry,
     layout,
+    orientation,
+    onArrowHorizontal,
     letterShortcuts,
     getActiveDescendantHost,
     isTop,
