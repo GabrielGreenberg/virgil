@@ -4,8 +4,11 @@ description: |
   invocation. This is the "day" capture layer of the self-improvement loop
   (EDITOR_SKILLS_V1 §14). Triggers ONLY in a DEV-mode session (VIRGIL_DEV=1):
   as the automatic follow-up the editor/AGENTS.md convention attaches to every
-  completed skill, or on an explicit "reflect on that", "capture a dev memo",
-  "put this in the memo <note>" from a Virgil maintainer. Reads the Task's
+  completed skill, or on an explicit "reflect on that", "capture a reflection",
+  "log a reflection", "reflect on this run", or "/editor/reflect" from a Virgil
+  maintainer (the after-the-fact "put this in the reflection: <note>" tag path
+  routes here too). NOTE: "dev memo" is NOT a trigger — that term is retired and
+  names nothing now (it used to label the per-paper channel). Reads the Task's
   already-classified status/result, derives the tier, and writes a 4-bucket
   memo to editor/dev/memos/<date>/. NO-OP outside DEV mode. Does NOT trigger
   for end-user requests ("review my doc" → /editor/review) and never edits a
@@ -35,6 +38,21 @@ subskill it dispatches. The mechanical script is gated too: if `VIRGIL_DEV` is
 unset it writes nothing and exits 0, so an accidental invocation in a non-dev
 (or end-user) session is a safe no-op. **Never** turn this into a per-skill
 step copied into other skill files — the one convention is the whole seam.
+
+**Explicit triggers — the unambiguous set.** Besides the automatic follow-up, a
+maintainer kicks off a reflection by saying "reflect on that", "capture a
+reflection", "log a reflection", "reflect on this run", or "/editor/reflect" —
+plus the after-the-fact "put this in the reflection: …" tag path (step 4). The
+words *reflect/reflection* **always** mean this dev-loop note. **"dev memo" is
+not a trigger** and names nothing: it used to title the per-paper channel, and
+that overload is exactly what misrouted reflections into `<docPath>/.virgil/memos/`.
+
+**Memo routing rule — one decision rule, stated identically in
+[editor/AGENTS.md](../AGENTS.md) ("Memo routing rule") so either file
+disambiguates the same way.** Improving Virgil's *skills* → a **reflection** →
+`/editor/reflect` → `editor/dev/memos/`. A note about *this paper's* content →
+a **cowork memo** → `<docPath>/.virgil/memos/`. The words *reflect/reflection*
+always mean the former; **never file a reflection under `.virgil/memos/`.**
 
 ## Args
 
@@ -93,10 +111,10 @@ step copied into other skill files — the one convention is the whole seam.
    you left the matching bucket blank, so the memo is never empty when the
    outcome itself is the signal.
 
-4. **User tag (the "put this in the memo" path).** When the maintainer says
-   "put this in the memo: …", re-invoke with `--tag` (repeatable). It is
-   additive — it appends to the existing memo for that Task and promotes the
-   tier to `flagged`, preserving the analytic buckets:
+4. **User tag (the "put this in the reflection" path).** When the maintainer
+   says "put this in the reflection: …", re-invoke with `--tag` (repeatable). It
+   is additive — it appends to the existing reflection memo for that Task and
+   promotes the tier to `flagged`, preserving the analytic buckets:
 
    ```bash
    python3 editor/scripts/reflect.py <docPath> <skill> <taskId> --tag "<their note>"
@@ -172,8 +190,12 @@ captures), not two shapes. See [editor/dev/README.md](../dev/README.md).
 - **One seam, no bolt-ons.** Reflection lives in this one skill + the one
   editor/AGENTS.md convention. Do not add "now write a memo" steps to other
   skills.
-- **Never route to `<docPath>/.virgil/memos/`** — that channel is cowork dev
-  memos *about a paper*, not about Virgil's skill set.
+- **Never route to `<docPath>/.virgil/memos/`** — that channel is the **cowork
+  memo / paper-note** stream (notes *about a paper*), not about Virgil's skill
+  set. The decision rule: a reflection (about Virgil's *skills*) →
+  `/editor/reflect` → `editor/dev/memos/`; a cowork memo (about *this paper*) →
+  `<docPath>/.virgil/memos/`. The words *reflect/reflection* always mean the
+  former; never file a reflection under `.virgil/memos/`.
 
 ## Reply format
 

@@ -163,8 +163,12 @@ Skipped <requestId> (already complete).
 - If you can't decide between sibling-note and suggestion-card, prefer
   the sibling note — it's the lower-cost, more reversible choice.
 
-## Memo
+## Memo (cowork / paper note)
 
-Drop a short retro under `<docPath>/.virgil/memos/<YYYY-MM-DD>-answer-note-<requestId>.md`
+Drop a short **cowork memo** — a paper note, *about this paper* — under
+`<docPath>/.virgil/memos/<YYYY-MM-DD>-answer-note-<requestId>.md`
 **only** if you encountered an ambiguity in the source request that the
-user should know about. Skip the memo on a clean, expected-shape pass.
+user should know about. Skip it on a clean, expected-shape pass. This is the
+per-paper cowork channel — **not** a dev-loop reflection (those are a maintainer
+tool: `/editor/reflect` → `editor/dev/memos/`, DEV mode only). Never label this
+retro a "dev memo" or a "reflection."
