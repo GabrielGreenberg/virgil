@@ -1415,3 +1415,32 @@ isn't an `HTMLElement`.
 is unfaithful here (see [[preview-gesture-testing]] / [[pm-nodeview-update-empirical-verify]])
 — drive the REAL hover/measure on a live example for any offset fix, don't trust a
 synthetic harness.
+
+---
+
+## 50. Action button (gutter bolt) sits above pop-outs — should be at text z-level so floats occlude it
+
+**Reported:** 2026-06-15 · **Status:** open (catch — do not fix yet) · **Area:** ui-chrome / z-index / action button
+
+**Reported behavior** — the gutter action button (the lightning bolt next to the
+current paragraph) should be at the **same z-level as the text**, so **pop-outs
+(floats) occlude it**. Today they don't — the button paints on top of a float
+positioned over it.
+
+**Root cause.** The action button `SelectionActionsMenu` is
+`position: fixed; zIndex: 2000`
+([SelectionActionsMenu.tsx:373–378](src/components/SelectionActionsMenu.tsx:373)),
+which is **above** the float layer — floats / popped cards / lifted-text overlays /
+inline-atom ghost all sit at **`z-index: 1200`**
+([globals.css:1475](src/app/globals.css:1475), [:1533](src/app/globals.css:1533),
+[:3274](src/app/globals.css:3274)). So a pop-out (1200) can't cover the bolt
+(2000).
+
+**Fix direction.** Drop the action *button's* z to the text/content level — below
+the 1200 float layer — so pop-outs occlude it (while keeping it above plain text so
+it stays clickable when no float overlaps). **Distinguish the button from the open
+menu:** when clicked, `ActionsMenuPanel` mounts as a transient menu and *should*
+stay on top (it's also ~2000) — that's correct; only the resting **bolt** needs
+demoting. Verify: a float dropped over a paragraph now hides that paragraph's bolt;
+the bolt still shows + is clickable when nothing overlaps; the open actions menu
+still renders above everything.
