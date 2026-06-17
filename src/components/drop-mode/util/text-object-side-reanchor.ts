@@ -90,7 +90,8 @@ export function textObjectSideReanchorSpec(
           ctx.mainEditor,
           placement.paragraphId,
         );
-        api.addTextObjectLink(id, placement.paragraphId, snapshot);
+        // The drop placement is always paragraph-side → targetKind "paragraph".
+        api.addTextObjectLink(id, placement.paragraphId, "paragraph", snapshot);
       }
     },
     postDrop: "keep",

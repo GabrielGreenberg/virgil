@@ -88,12 +88,13 @@ export function useArchive(docId: string | null) {
     (
       id: string,
       paragraphId: string,
+      targetKind?: import("@/text-objects/types").TextObjectKind,
       paragraphSnapshot?: string | null,
     ) => {
       update((prev) => ({
         snippets: prev.snippets.map((s) =>
           s.id === id
-            ? addTextObjectLink(s, "archive", paragraphId, "paragraph", paragraphSnapshot)
+            ? addTextObjectLink(s, "archive", paragraphId, targetKind, paragraphSnapshot)
             : s,
         ),
       }));

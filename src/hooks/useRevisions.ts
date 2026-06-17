@@ -359,7 +359,12 @@ export function useRevisions(
   );
 
   const addCardParagraphId = useCallback(
-    (id: string, paragraphId: string, paragraphSnapshot?: string | null) => {
+    (
+      id: string,
+      paragraphId: string,
+      targetKind?: import("@/text-objects/types").TextObjectKind,
+      paragraphSnapshot?: string | null,
+    ) => {
       update((prev) => ({
         ...prev,
         cards: prev.cards.map((c) =>
@@ -368,7 +373,7 @@ export function useRevisions(
                 c,
                 c.kind === "suggestion" ? "revision-suggestion" : "revision-comment",
                 paragraphId,
-                "paragraph",
+                targetKind,
                 paragraphSnapshot,
               )
             : c,

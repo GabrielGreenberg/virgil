@@ -13,6 +13,7 @@
 
 import type { Editor } from "@tiptap/react";
 import type { ReactNode } from "react";
+import type { TextObjectKind } from "@/text-objects/types";
 import type {
   ArchivedSnippet,
   BibEntry,
@@ -93,14 +94,17 @@ export interface ParagraphAnchorApi {
   exists: (id: string) => boolean;
   /** Linked paragraph UUIDs for this entity. */
   getAnchorTextObjectIds: (id: string) => string[];
-  /** Anchor the card to `paragraphId`. `paragraphSnapshot` (optional) is
-   *  the anchored paragraph's plain text, captured at the editor-aware
-   *  drop site so the new Mode-A link is self-healing on reload (the
-   *  reconciler re-finds the paragraph by text if its UUID is lost).
-   *  Omitted → legacy UUID-only link, backfilled on next load. */
+  /** Anchor the card to `paragraphId`. `targetKind` (optional, defaults to
+   *  "paragraph") records the anchored TextObject kind. `paragraphSnapshot`
+   *  (optional) is the anchored paragraph's plain text, captured at the
+   *  editor-aware drop site so the new Mode-A link is self-healing on
+   *  reload (the reconciler re-finds the paragraph by text if its UUID is
+   *  lost). Omitted snapshot → legacy UUID-only link, backfilled on next
+   *  load. (Matches the underlying `links.ts:addTextObjectLink` arg order.) */
   addTextObjectLink: (
     id: string,
     paragraphId: string,
+    targetKind?: TextObjectKind,
     paragraphSnapshot?: string | null,
   ) => void;
   removeTextObjectLink: (id: string, paragraphId: string) => void;

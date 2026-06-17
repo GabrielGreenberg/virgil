@@ -286,11 +286,16 @@ export function useNotes(docId: string | null, externalPristine?: PristineKindAp
   );
 
   const addNoteTextObjectId = useCallback(
-    (id: string, paragraphId: string, paragraphSnapshot?: string | null) => {
+    (
+      id: string,
+      paragraphId: string,
+      targetKind?: import("@/text-objects/types").TextObjectKind,
+      paragraphSnapshot?: string | null,
+    ) => {
       update((prev) => ({
         cards: prev.cards.map((c) =>
           c.id === id && c.kind === "note"
-            ? addTextObjectLink(c, "note", paragraphId, "paragraph", paragraphSnapshot)
+            ? addTextObjectLink(c, "note", paragraphId, targetKind, paragraphSnapshot)
             : c,
         ),
       }));
@@ -312,11 +317,16 @@ export function useNotes(docId: string | null, externalPristine?: PristineKindAp
   );
 
   const addHighlightTextObjectId = useCallback(
-    (id: string, paragraphId: string, paragraphSnapshot?: string | null) => {
+    (
+      id: string,
+      paragraphId: string,
+      targetKind?: import("@/text-objects/types").TextObjectKind,
+      paragraphSnapshot?: string | null,
+    ) => {
       update((prev) => ({
         cards: prev.cards.map((c) =>
           c.id === id && c.kind === "highlight"
-            ? addTextObjectLink(c, "highlight", paragraphId, "paragraph", paragraphSnapshot)
+            ? addTextObjectLink(c, "highlight", paragraphId, targetKind, paragraphSnapshot)
             : c,
         ),
       }));

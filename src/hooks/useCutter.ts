@@ -377,7 +377,12 @@ export function useCutter(
   }, [update]);
 
   const addCardParagraphId = useCallback(
-    (id: string, paragraphId: string, paragraphSnapshot?: string | null) => {
+    (
+      id: string,
+      paragraphId: string,
+      targetKind?: import("@/text-objects/types").TextObjectKind,
+      paragraphSnapshot?: string | null,
+    ) => {
       update((prev) => ({
         ...prev,
         cards: prev.cards.map((c) =>
@@ -386,7 +391,7 @@ export function useCutter(
                 c,
                 c.kind === "suggestion" ? "cutter-suggestion" : "cutter-comment",
                 paragraphId,
-                "paragraph",
+                targetKind,
                 paragraphSnapshot,
               )
             : c,

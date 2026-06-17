@@ -280,12 +280,17 @@ export function useReports(
   );
 
   const addCardParagraphId = useCallback(
-    (id: string, paragraphId: string, paragraphSnapshot?: string | null) => {
+    (
+      id: string,
+      paragraphId: string,
+      targetKind?: import("@/text-objects/types").TextObjectKind,
+      paragraphSnapshot?: string | null,
+    ) => {
       update((prev) => ({
         ...prev,
         cards: prev.cards.map((c) =>
           c.id === id
-            ? addTextObjectLink(c, c.kind, paragraphId, "paragraph", paragraphSnapshot)
+            ? addTextObjectLink(c, c.kind, paragraphId, targetKind, paragraphSnapshot)
             : c,
         ),
       }));
