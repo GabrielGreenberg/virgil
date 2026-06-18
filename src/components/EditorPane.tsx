@@ -159,6 +159,7 @@ import { isRenameCitekey } from "@/lib/identity/identity-cascade";
 import { rewriteCiteKeyInDoc } from "@/lib/identity/bib-cite-rewrite";
 import { useIdentityBusConsumer } from "@/lib/identity/useIdentityBusConsumer";
 import { useInlineAtomLifecycle } from "@/links/_shared/useInlineAtomLifecycle";
+import { useCitationResync } from "@/links/_shared/useCitationResync";
 import { useOrphanedFootnotes } from "@/hooks/useOrphanedFootnotes";
 import { DragHandleMenu } from "./DragHandleMenu";
 import { HeadingTypeMenu, type HeadingTypePick } from "./HeadingTypeMenu";
@@ -955,6 +956,26 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
           remapCardPopKey: viewPrefs.remapCardPopKey,
         }
       : undefined,
+  });
+
+  // W2c — the citation add/resync reconciler, registered as a POLICY on the
+  // same single consumer (NOT a new subscription; the +1-not-+3 invariant). The
+  // mount-only `syncFromEditor` effect below (gated on `[editor]`) misses every
+  // out-of-band citation add/remove — a code-view `\cite`, a Backspace over a
+  // marker — leaving the sidecar card list stale until reload (C17). This policy
+  // re-runs that idempotent reconcile off the bus diff whenever a citation
+  // entered/left the doc, so a code-view-added `\cite` shows a card live
+  // (CI-F8-03) and a deleted `\cite` prunes its dead card live (CI-A1-01, the
+  // sidecar half — W2b owns the cardStore/float half on the same consumer, never
+  // double-owning the reconcile). A pure markerless re-parse (survivors T1
+  // already re-pointed) is skipped so it doesn't thrash the sidecar write.
+  // Behind `virgil:inline-atom-lifecycle` (default OFF); flag-off the hook is
+  // inert and the legacy mount-only path is the only reconcile (byte-identical).
+  useCitationResync({
+    editorReady: !!editor,
+    consumer: identityBusConsumer,
+    getCitations: () => innerRef.current?.getCitations() ?? [],
+    syncFromEditor: citationsHook.syncFromEditor,
   });
 
   const notesHookRaw = useNotes(docId, notePristine);
