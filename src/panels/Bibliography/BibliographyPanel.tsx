@@ -6,6 +6,7 @@ import { ItemMenu, PANEL, clearStaleHover } from "@/components/panel-primitives"
 import BibEntryCard from "@/components/BibEntryCard";
 import PanelThemePicker from "@/components/PanelThemePicker";
 import { searchCentralLibrary, searchLocalBib } from "@/lib/bib-search";
+import { mintBibUid } from "@/lib/bib-uid";
 import { CardListPanel } from "@/panels/_shared/CardListPanel";
 import {
   useLibraryItems,
@@ -520,8 +521,10 @@ function BibliographyPanel({
     }
     // Drop `raw` so the serializer rebuilds the block from fields and the
     // new citekey — keeping `raw` would re-emit the library's original
-    // `@type{<originalKey>,…}` and the suffix would never reach disk.
-    onAddBibEntry?.({ ...libraryEntry, key: next, raw: "" });
+    // `@type{<originalKey>,…}` and the suffix would never reach disk. Mint a
+    // fresh `uid` (don't inherit the library entry's) — this is a new, distinct
+    // bibliography entry that gets its own durable identity.
+    onAddBibEntry?.({ ...libraryEntry, uid: mintBibUid(), key: next, raw: "" });
     setConflictDecision(null);
     handleSelectBibKey(next);
   }, [conflictDecision, bibEntries, onAddBibEntry, handleSelectBibKey]);

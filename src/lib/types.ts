@@ -303,6 +303,12 @@ export interface DocNotificationsInbox {
 // --- Citations ---
 
 export interface BibEntry {
+  /** Durable internal id, minted once and round-tripped via a `\vbid{}`
+   *  marker in the `.bib`. Decoupled from the renameable citekey: a rename
+   *  changes `key`, never `uid`, so uid-keyed sidecars never strand, and two
+   *  entries that share a citekey get two distinct uids. Minted on first
+   *  parse for a markerless `.bib`; not yet consumed by UI (T1 Stage 0). */
+  uid: string;
   key: string;
   type: string; // "article", "book", "inproceedings", etc.
   fields: Record<string, string>;

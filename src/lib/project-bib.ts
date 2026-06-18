@@ -7,11 +7,24 @@
 
 import { readBib, writeBib } from "@/lib/storage";
 import { parseBibFile, serializeBibFile } from "@/lib/bib-parser";
+import { mintBibUid } from "@/lib/bib-uid";
 import {
   getActiveHandle,
   isStalePipelineError,
 } from "@/lib/multi-window/doc-pipeline";
 import type { BibEntry } from "@/lib/types";
+
+/**
+ * Incoming bib entries may originate from the library subsystem, whose
+ * `BibEntry` predates the paper-side `uid` surrogate (T1 Stage 0). Accept a
+ * uid-optional shape at this seam and mint one on the way in, so every entry
+ * written to the doc's references.bib carries a durable id from the start.
+ */
+type IncomingBibEntry = Omit<BibEntry, "uid"> & { uid?: string };
+
+function withUid(entry: IncomingBibEntry): BibEntry {
+  return { ...entry, uid: entry.uid ?? mintBibUid() };
+}
 
 /** Window-level event fired after a doc's references.bib changes via
  *  `addEntryToProjectBib`. `useCitations` listens and re-reads when
@@ -37,10 +50,10 @@ export const DOC_BIB_CHANGED_EVENT = "virgil-doc-bib-changed";
  */
 export async function addEntriesToProjectBib(
   docId: string,
-  entries: BibEntry[],
+  entries: IncomingBibEntry[],
 ): Promise<number> {
   if (!docId) return 0;
-  const incoming = entries.filter((e): e is BibEntry => Boolean(e?.key));
+  const incoming = entries.filter((e) => Boolean(e?.key)).map(withUid);
   if (incoming.length === 0) return 0;
   const handle = getActiveHandle(docId);
   if (!handle) return 0;
@@ -84,7 +97,7 @@ export async function addEntriesToProjectBib(
  */
 export async function addEntryToProjectBib(
   docId: string,
-  entry: BibEntry,
+  entry: IncomingBibEntry,
 ): Promise<boolean> {
   const added = await addEntriesToProjectBib(docId, [entry]);
   return added > 0;

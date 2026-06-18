@@ -45,6 +45,11 @@ const DEFAULT_POSTAMBLE = `
 function ensureVirgilCommands(preamble: string): string {
   const hasVfid = /\\(?:provide|new|renew)command\{\\vfid\}/.test(preamble);
   const hasVcid = /\\(?:provide|new|renew)command\{\\vcid\}/.test(preamble);
+  // `\vbid` marks a bibliography entry's durable surrogate id (in the `.bib`,
+  // round-tripped by serializeBibFile). It never appears in this `.tex`, but
+  // we declare the no-op so a `.bib` `\input` or a paper opened in raw LaTeX
+  // never breaks — mirrors the inline-atom `\vcid`/`\vfid` guards.
+  const hasVbid = /\\(?:provide|new|renew)command\{\\vbid\}/.test(preamble);
   const hasVexid = /\\(?:provide|new|renew)command\{\\vexid\}/.test(preamble);
   const hasVxid = /\\(?:provide|new|renew)command\{\\vxid\}/.test(preamble);
   const hasVlid = /\\(?:provide|new|renew)command\{\\vlid\}/.test(preamble);
@@ -56,6 +61,7 @@ function ensureVirgilCommands(preamble: string): string {
   if (
     hasVfid &&
     hasVcid &&
+    hasVbid &&
     hasVexid &&
     hasVxid &&
     hasVlid &&
@@ -73,6 +79,7 @@ function ensureVirgilCommands(preamble: string): string {
   if (!hasXcolor) additions.push("\\usepackage{xcolor}");
   if (!hasVfid) additions.push("\\providecommand{\\vfid}[1]{}");
   if (!hasVcid) additions.push("\\providecommand{\\vcid}[1]{}");
+  if (!hasVbid) additions.push("\\providecommand{\\vbid}[1]{}");
   if (!hasVexid) additions.push("\\providecommand{\\vexid}[1]{}");
   if (!hasVxid) additions.push("\\providecommand{\\vxid}[1]{}");
   if (!hasVlid) additions.push("\\providecommand{\\vlid}[1]{}");

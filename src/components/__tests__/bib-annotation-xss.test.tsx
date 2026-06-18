@@ -43,6 +43,7 @@ afterEach(cleanup);
 
 function makeEntry(): BibEntry {
   return {
+    uid: "evil",
     key: "evil2020",
     type: "article",
     fields: { author: "A. Author", year: "2020", title: "T" },

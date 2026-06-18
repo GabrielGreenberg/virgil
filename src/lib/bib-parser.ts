@@ -7,6 +7,7 @@
 
 import type { BibEntry } from "./types";
 import { MULTI_CITE_NAMES } from "./cite-commands";
+import { mintBibUid, orderedVbidBindings, serializeVbidMarker } from "./bib-uid";
 
 // citation-js is CJS-only; we lazy-load it to avoid SSR issues
 let Cite: any = null;
@@ -30,10 +31,18 @@ function stripBibComments(bibText: string): string {
     .join("\n");
 }
 
-/** Try to parse a single CSL-JSON item into a BibEntry */
+/**
+ * Try to parse a single CSL-JSON item into a BibEntry.
+ *
+ * `raw` and `uid` are supplied by the caller (paired to the source block by
+ * position, not by citekey) so that two entries sharing a citekey get their
+ * own `raw` block and their own durable `uid` instead of both collapsing onto
+ * the last-write-wins keyed lookup.
+ */
 function cslItemToEntry(
   item: Record<string, unknown>,
-  rawEntries: Record<string, string>
+  raw: string,
+  uid: string,
 ): BibEntry {
   const key = (item["citation-key"] || item.id || "") as string;
   const type = cslTypeToBib((item.type as string) || "misc");
@@ -58,7 +67,56 @@ function cslItemToEntry(
   if (item.edition) fields.edition = String(item.edition);
   if (item.note) fields.note = item.note as string;
 
-  return { key, type, fields, raw: rawEntries[key.toLowerCase()] || "" };
+  return { uid, key, type, fields, raw };
+}
+
+/**
+ * A raw BibTeX block in source order, with its citekey, its source-byte start
+ * (so a `\vbid` marker can be associated by position) and any `\vbid` uid that
+ * immediately precedes it.
+ */
+interface OrderedRawBlock {
+  key: string;
+  raw: string;
+  start: number;
+  /** uid recovered from a preceding `\vbid{}` marker, or undefined → mint. */
+  vbidUid?: string;
+}
+
+/**
+ * Extract raw BibTeX blocks from source text IN SOURCE ORDER (not keyed by
+ * citekey), each paired with any `\vbid{}` uid that precedes it. Two blocks
+ * that share a citekey produce two ordered entries — the parser pairs them
+ * positionally with citation-js's per-block items, so neither the `raw` nor
+ * the `uid` collapses.
+ */
+function extractOrderedRawBlocks(bibText: string): OrderedRawBlock[] {
+  const bindings = orderedVbidBindings(bibText);
+  const result: OrderedRawBlock[] = [];
+  const re = /@\w+\s*\{([^,]+),/g;
+  let match: RegExpExecArray | null;
+  while ((match = re.exec(bibText)) !== null) {
+    const key = match[1].trim();
+    const start = match.index;
+    // Find matching closing brace from the first `{` after the `@type` token.
+    let depth = 0;
+    let end = start;
+    for (let i = bibText.indexOf("{", start); i < bibText.length; i++) {
+      if (bibText[i] === "{") depth++;
+      else if (bibText[i] === "}") {
+        depth--;
+        if (depth === 0) {
+          end = i + 1;
+          break;
+        }
+      }
+    }
+    // A `\vbid` marker binds to this block iff its bound entry-head start
+    // matches this block's start (orderedVbidBindings binds positionally).
+    const binding = bindings.find((b) => b.entryStart === start);
+    result.push({ key, raw: bibText.slice(start, end), start, vbidUid: binding?.uid });
+  }
+  return result;
 }
 
 // Module-level memo: parsing a large .bib via citation-js is slow,
@@ -94,30 +152,62 @@ export function parseBibFile(bibText: string): BibEntry[] {
   const CiteClass = getCite();
   const entries: BibEntry[] = [];
   const cleaned = stripBibComments(bibText);
-  const rawEntries = extractRawEntries(cleaned);
+  // Source-ordered raw blocks (with any preceding `\vbid` uid). Two blocks
+  // that share a citekey appear as two ordered entries — the basis for
+  // distinct-uid-per-block.
+  const blocks = extractOrderedRawBlocks(cleaned);
+  // Mint into a live collision set so a markerless file gets unique uids and
+  // any pre-existing `\vbid` uid is reserved against fresh mints.
+  const usedUids = new Set<string>();
+  for (const b of blocks) if (b.vbidUid) usedUids.add(b.vbidUid);
+
+  // Positional cursor over `blocks`: pair each parsed item with the next
+  // unconsumed block whose citekey matches (case-insensitive), falling back to
+  // strict source order if citation-js dropped/reordered an item. Each block
+  // is consumed at most once so duplicate citekeys keep their own raw + uid.
+  const consumed = new Array<boolean>(blocks.length).fill(false);
+  const takeBlock = (key: string): OrderedRawBlock | undefined => {
+    const lc = key.toLowerCase();
+    let idx = blocks.findIndex((b, i) => !consumed[i] && b.key.toLowerCase() === lc);
+    if (idx === -1) idx = consumed.findIndex((c) => !c); // positional fallback
+    if (idx === -1) return undefined;
+    consumed[idx] = true;
+    return blocks[idx];
+  };
+  const uidForBlock = (block: OrderedRawBlock | undefined): string => {
+    if (block?.vbidUid) return block.vbidUid;
+    const fresh = mintBibUid(usedUids);
+    usedUids.add(fresh);
+    return fresh;
+  };
 
   // Try parsing the whole file at once
   try {
     const cite = new CiteClass(cleaned);
     for (const item of cite.data) {
-      entries.push(cslItemToEntry(item, rawEntries));
+      const key = (item["citation-key"] || item.id || "") as string;
+      const block = takeBlock(key);
+      entries.push(cslItemToEntry(item, block?.raw ?? "", uidForBlock(block)));
     }
     return rememberParse(bibText, entries);
   } catch {
     // Whole-file parse failed — try each entry individually
   }
 
-  // Fallback: parse entries one by one, skipping broken ones
-  for (const [key, raw] of Object.entries(rawEntries)) {
+  // Fallback: parse entries one by one (in source order), skipping broken
+  // ones. Each block carries its own raw + uid, so duplicate citekeys survive.
+  for (let i = 0; i < blocks.length; i++) {
+    const block = blocks[i];
     try {
-      const cite = new CiteClass(raw);
+      const cite = new CiteClass(block.raw);
       for (const item of cite.data) {
-        entries.push(cslItemToEntry(item, rawEntries));
+        consumed[i] = true;
+        entries.push(cslItemToEntry(item, block.raw, uidForBlock(block)));
       }
     } catch {
-      if (!WARNED_KEYS.has(key)) {
-        WARNED_KEYS.add(key);
-        console.warn(`Skipping unparseable bib entry: ${key}`);
+      if (!WARNED_KEYS.has(block.key)) {
+        WARNED_KEYS.add(block.key);
+        console.warn(`Skipping unparseable bib entry: ${block.key}`);
       }
     }
   }
@@ -125,16 +215,25 @@ export function parseBibFile(bibText: string): BibEntry[] {
   return rememberParse(bibText, entries);
 }
 
-/** Rebuild a .bib file string from BibEntry objects */
+/**
+ * Rebuild a .bib file string from BibEntry objects.
+ *
+ * Each entry is preceded by its durable `\vbid{<uid>}` marker (a no-op LaTeX
+ * macro declared in the `.tex` preamble) so the surrogate id round-trips: the
+ * marker is excluded from the entry's `raw` slice on the next parse and is
+ * tolerated by citation-js as ignorable inter-entry text. An entry with no uid
+ * (legacy in-memory literal that predates Stage 0) emits no marker.
+ */
 export function serializeBibFile(entries: BibEntry[]): string {
   return entries
     .map((e) => {
-      if (e.raw) return e.raw;
+      const marker = e.uid ? `${serializeVbidMarker(e.uid)}\n` : "";
+      if (e.raw) return marker + e.raw;
       // Fallback: reconstruct from fields
       const lines = Object.entries(e.fields)
         .map(([k, v]) => `  ${k} = {${v}}`)
         .join(",\n");
-      return `@${e.type}{${e.key},\n${lines}\n}`;
+      return `${marker}@${e.type}{${e.key},\n${lines}\n}`;
     })
     .join("\n\n") + "\n";
 }
@@ -872,30 +971,4 @@ function reconstructBibtex(entry: BibEntry): string {
     .map(([k, v]) => `  ${k} = {${v}}`)
     .join(",\n");
   return `@${entry.type}{${entry.key},\n${lines}\n}`;
-}
-
-/** Extract raw BibTeX entries from source text, keyed by lowercase cite key */
-function extractRawEntries(bibText: string): Record<string, string> {
-  const result: Record<string, string> = {};
-  const re = /@\w+\s*\{([^,]+),/g;
-  let match;
-  while ((match = re.exec(bibText)) !== null) {
-    const key = match[1].trim();
-    const start = match.index;
-    // Find matching closing brace
-    let depth = 0;
-    let end = start;
-    for (let i = bibText.indexOf("{", start); i < bibText.length; i++) {
-      if (bibText[i] === "{") depth++;
-      else if (bibText[i] === "}") {
-        depth--;
-        if (depth === 0) {
-          end = i + 1;
-          break;
-        }
-      }
-    }
-    result[key.toLowerCase()] = bibText.slice(start, end);
-  }
-  return result;
 }

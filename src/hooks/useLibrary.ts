@@ -17,6 +17,7 @@ import { getLibraryHandle } from "@library/lib/library-folder";
 import { useMasterBib } from "@library/hooks/useMasterBib";
 import { useDiskLibraries } from "@library/hooks/useDiskLibraries";
 import type { BibEntry } from "@/lib/types";
+import { mintBibUid } from "@/lib/bib-uid";
 import type {
   LibraryIndexItem,
   LibraryItemStatus,
@@ -116,7 +117,16 @@ export function useLibraryMasterBib(enabled: boolean = true): {
   // (it already returns `[]` for a null handle). Mounts unconditionally
   // either way, so hook order stays stable.
   const { entries, error } = useMasterBib(enabled ? handle : null);
-  return { entries, error };
+  // The library subsystem's `BibEntry` predates the paper-side `uid`
+  // surrogate (T1 Stage 0). Mint a uid as entries cross the library→paper
+  // seam. Memoized on the source array identity so the result is stable
+  // across renders (downstream memos key on identity, and the parser cache
+  // already returns a stable array reference).
+  const withUids = useMemo<BibEntry[]>(
+    () => entries.map((e) => ({ ...e, uid: mintBibUid() })),
+    [entries],
+  );
+  return { entries: withUids, error };
 }
 
 /** One membership slot — references a custom library (a manifest at
