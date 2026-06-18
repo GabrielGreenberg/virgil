@@ -512,6 +512,80 @@ export function serializeCiteCommand(
 }
 
 // ---------------------------------------------------------------------------
+// Singular↔plural command derivation (T6-C16 — the CI-F5 family)
+// ---------------------------------------------------------------------------
+
+/** The biblatex commands whose singular form has a `\xxxs` plural sibling,
+ *  mapping the *singular base* → its plural. Built from {@link HAS_PLURAL_FORM}
+ *  (which holds BOTH forms) so the two can't drift. A command not in this map
+ *  has no distinct plural form (e.g. `\citeauthor`, `\nocite`) — it serializes
+ *  with comma-separated keys and is left untouched by the derivation. */
+const SINGULAR_TO_PLURAL: ReadonlyMap<string, string> = (() => {
+  const m = new Map<string, string>();
+  for (const cmd of HAS_PLURAL_FORM) {
+    if (!cmd.endsWith("s")) m.set(cmd, `${cmd}s`);
+  }
+  return m;
+})();
+
+/** The reverse: plural form → its singular base. */
+const PLURAL_TO_SINGULAR: ReadonlyMap<string, string> = (() => {
+  const m = new Map<string, string>();
+  for (const [singular, plural] of SINGULAR_TO_PLURAL) m.set(plural, singular);
+  return m;
+})();
+
+/** The canonical singular base of a (possibly-plural) biblatex command type. */
+export function singularBaseOf(type: string): string {
+  return PLURAL_TO_SINGULAR.get(type) ?? type;
+}
+
+/** Whether a command base has a distinct `\xxxs` plural sibling. */
+export function hasPluralForm(type: string): boolean {
+  const base = singularBaseOf(type);
+  return SINGULAR_TO_PLURAL.has(base);
+}
+
+/**
+ * Derive the canonical command type for the CURRENT row set + package — the
+ * TWO-WAY singular↔plural toggle (T6-C16, the CI-F5 family). Replaces the
+ * one-way `shouldPromote ? type + "s" : type` that promoted singular→plural on
+ * distinct postnotes but never demoted (so a card stranded as `\cites` with one
+ * key — CI-F5-01/CI-F7-02 — or a package switch never re-derived — CI-F5-02).
+ *
+ * The plural `\xxxs` form exists for ONE reason: to carry per-key postnotes
+ * through serialization (biblatex's `\cites[p1][q1]{a}[p2][q2]{b}`). So the rule
+ * is a pure function of state:
+ *   - PROMOTE to `\xxxs` ⟺ biblatex AND the base has a plural sibling AND there
+ *     are ≥2 keys with distinct postnotes (the only case the plural form buys
+ *     anything);
+ *   - DEMOTE to the singular base otherwise (one key, or no distinct postnotes,
+ *     or a non-biblatex package, or a base with no plural sibling — all cases
+ *     where `\xxxs` is wrong or pointless).
+ *
+ * Idempotent and symmetric: feeding the result back in is a fixpoint, and the
+ * same inputs always yield the same canonical type regardless of the prior
+ * type's number. Callers pass the user-chosen command (which may already be
+ * singular or plural); the singular base is recovered first so the decision is
+ * order-independent.
+ */
+export function derivePlural(
+  type: string,
+  rows: ReadonlyArray<{ key: string; postnote?: string }>,
+  bibPackage: string,
+): string {
+  const base = singularBaseOf(type);
+  // No plural sibling (or natbib) → always the base; nothing to derive.
+  if (bibPackage !== "biblatex" || !SINGULAR_TO_PLURAL.has(base)) return base;
+  // Count only rows with a real key (empty draft rows don't serialize).
+  const keyed = rows.filter((r) => r.key.trim());
+  const distinctPostnotes =
+    new Set(keyed.map((r) => r.postnote?.trim() || "")).size > 1;
+  const shouldPromote = keyed.length >= 2 && distinctPostnotes;
+  return shouldPromote ? (SINGULAR_TO_PLURAL.get(base) as string) : base;
+}
+
+// ---------------------------------------------------------------------------
 // WYSIWYG display text
 // ---------------------------------------------------------------------------
 

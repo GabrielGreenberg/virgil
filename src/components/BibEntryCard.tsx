@@ -223,6 +223,18 @@ export default function BibEntryCard({
     setShowBibWarning(false);
   };
   const cancelEditBib = () => { setEditingBib(false); setShowBibWarning(false); };
+  /** Drop a field from the in-progress edit map. Because Save routes through
+   *  the set-all `replaceBibEntry` (D3), a field removed here is DELETED on
+   *  Save — not silently retained as `field = {}` (BIB-F5-04, "I cleared the
+   *  field but it came back"). Deletion is only honored by the set-all path;
+   *  the merge `updateBibEntry` fallback can only patch, never remove. */
+  const removeEditBibField = (field: string) => {
+    setEditBibFields((prev) => {
+      const next = { ...prev };
+      delete next[field];
+      return next;
+    });
+  };
 
   const handleCopyKey = () => {
     navigator.clipboard.writeText(entry.key).then(() => {
@@ -397,6 +409,14 @@ export default function BibEntryCard({
                       <input type="text" value={val}
                         onChange={(e) => setEditBibFields((prev) => ({ ...prev, [field]: e.target.value }))}
                         className="flex-1 font-mono border border-edge-subtle rounded px-1 py-0.5 text-xs" />
+                      <button
+                        type="button"
+                        onClick={(e) => { e.stopPropagation(); removeEditBibField(field); }}
+                        className="iconbtn-sm text-ink-muted hover:text-red-600 flex-shrink-0"
+                        data-hint={`Remove ${field}`} aria-label={`Remove field ${field}`}
+                      >
+                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                      </button>
                     </div>
                   ))}
                   <div className="flex gap-1 mt-1">

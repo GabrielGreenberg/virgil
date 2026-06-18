@@ -10,6 +10,7 @@ import {
 import type { BibEntry, CitationRef } from "@/lib/types";
 import {
   citationCommandOrNull,
+  derivePlural,
   formatMediumCitationParts,
   parseCiteCommand,
   sanitizeInlineCitationHtml,
@@ -68,17 +69,6 @@ const BIBLATEX_TYPES = [
   { value: "citeurl", label: "\\citeurl" },
   { value: "nocite", label: "\\nocite" },
 ];
-
-/** Biblatex command bases that have a `\xxxs` plural form, so per-key
- *  postnotes survive serialization. */
-const HAS_PLURAL = new Set([
-  "cite",
-  "textcite",
-  "parencite",
-  "autocite",
-  "footcite",
-  "smartcite",
-]);
 
 /** The PREVIEW row's intentional serif stack — the rendered citation text
  *  previews how it reads in the (serif) document, independent of the
@@ -351,6 +341,23 @@ export function CitationCard({
     ],
   );
 
+  /** Re-derive the command shape when the DOCUMENT's bib package toggles
+   *  (CI-F5-02 — biblatex↔natbib). A switch to natbib demotes a stranded
+   *  `\cites` to a package-valid `\cite`; a switch to biblatex promotes a
+   *  multi-key/distinct-postnote `\cite` to `\cites`. Gated on a ref so it
+   *  only fires on an actual package change, never on mount or a plain
+   *  re-render — and only persists when the derived type actually differs. */
+  const lastBibPackageRef = useRef(bibPackage);
+  useEffect(() => {
+    if (lastBibPackageRef.current === bibPackage) return;
+    lastBibPackageRef.current = bibPackage;
+    const nextType = derivePlural(type, rows, bibPackage);
+    if (nextType !== type) {
+      setType(nextType);
+      persist({ type: nextType });
+    }
+  }, [bibPackage, type, rows, persist]);
+
   /* ── Row mutations ───────────────────────────────────────────────── */
 
   // Each mutator computes `next` from the closure's current `rows`, calls
@@ -362,29 +369,26 @@ export function CitationCard({
   const setRowKey = useCallback(
     (rowId: string, key: string) => {
       const next = rows.map((r) => (r.id === rowId ? { ...r, key } : r));
+      // Re-derive: changing the keyed-row count crosses the ≥2-keys threshold
+      // either way, so the command shape follows (T6-C16, two-way).
+      const nextType = derivePlural(type, next, bibPackage);
       setRows(next);
-      persist({ rows: next });
+      if (nextType !== type) setType(nextType);
+      persist({ rows: next, type: nextType });
     },
-    [rows, persist],
+    [rows, persist, bibPackage, type],
   );
 
   const setRowPostnote = useCallback(
     (rowId: string, postnote: string) => {
       const next = rows.map((r) => (r.id === rowId ? { ...r, postnote } : r));
-
-      // Auto-promote singular biblatex → plural form when rows now have
-      // distinct postnotes, so each per-key range survives serialize.
-      const distinctPostnotes =
-        new Set(next.map((r) => r.postnote || "")).size > 1;
-      const shouldPromote =
-        bibPackage === "biblatex" &&
-        HAS_PLURAL.has(type) &&
-        next.length >= 2 &&
-        distinctPostnotes;
-      const nextType = shouldPromote ? type + "s" : type;
-
+      // Re-derive the canonical singular↔plural command shape for the new rows
+      // (T6-C16 — two-way: promotes to `\xxxs` when ≥2 keys gain distinct
+      // postnotes so each per-key range survives serialize, demotes back
+      // otherwise so the command can never strand as `\cites` with one key).
+      const nextType = derivePlural(type, next, bibPackage);
       setRows(next);
-      if (shouldPromote) setType(nextType);
+      if (nextType !== type) setType(nextType);
       persist({ rows: next, type: nextType });
     },
     [rows, persist, bibPackage, type],
@@ -396,10 +400,14 @@ export function CitationCard({
         rows.length <= 1
           ? [{ id: nextRowId(), key: "" }]
           : rows.filter((r) => r.id !== rowId);
+      // Re-derive: dropping a row back to one key (or losing the distinct-
+      // postnote condition) DEMOTES `\cites` → `\cite` (CI-F5-01).
+      const nextType = derivePlural(type, next, bibPackage);
       setRows(next);
-      persist({ rows: next });
+      if (nextType !== type) setType(nextType);
+      persist({ rows: next, type: nextType });
     },
-    [rows, persist],
+    [rows, persist, bibPackage, type],
   );
 
   const addRow = useCallback(() => {
@@ -518,11 +526,14 @@ export function CitationCard({
         const next = allEmpty
           ? [{ id: nextRowId(), key: parsed.bibKey! }]
           : [...prev, { id: nextRowId(), key: parsed.bibKey! }];
-        persist({ rows: next });
+        // Re-derive the command shape for the merged row set (T6-C16).
+        const nextType = derivePlural(type, next, bibPackage);
+        if (nextType !== type) setType(nextType);
+        persist({ rows: next, type: nextType });
         return next;
       });
     },
-    [persist],
+    [persist, bibPackage, type],
   );
 
   /* ── Code line (raw LaTeX editor) ────────────────────────────────── */
@@ -853,7 +864,11 @@ export function CitationCard({
               <select
                 value={type}
                 onChange={(e) => {
-                  const v = e.target.value;
+                  // Honor the user's base-command choice, but let the plural/
+                  // singular number follow the live rows (T6-C16): picking
+                  // `\cites` with one key normalizes back to `\cite`, and the
+                  // chosen base promotes if the rows warrant it.
+                  const v = derivePlural(e.target.value, rows, bibPackage);
                   setType(v);
                   persist({ type: v });
                 }}

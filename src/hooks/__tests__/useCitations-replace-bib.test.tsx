@@ -135,6 +135,25 @@ describe("useCitations — replaceBibEntry (set-all)", () => {
     expect(retypes).toEqual([]);
   });
 
+  it('"Replace with library" drops a local-only field the library version lacks (BIB-A3-02)', async () => {
+    // The local `foo` carries author+title+year. Replace with the library
+    // version's COMPLETE field set, which omits `year` — a set-all replace
+    // (what handleConflictReplace passes) must drop the local-only `year`,
+    // not merge-retain it. This is the panel's "Replace with library" seam.
+    const result = await mountWithFoo("doc-replace-library");
+    const libraryFields = { author: "Lib Author", title: "Library Title" };
+    act(() => {
+      result.current.replaceBibEntry("foo", libraryFields, "book");
+    });
+    await waitFor(() => {
+      const e = result.current.bibEntries.find((e) => e.key === "foo")!;
+      expect(e.fields.author).toBe("Lib Author");
+      expect(e.fields.title).toBe("Library Title");
+      expect("year" in e.fields).toBe(false); // local-only field dropped
+      expect(e.type).toBe("book"); // library's type carried through
+    });
+  });
+
   it("a same-type replace does NOT emit a retype (no spurious fan-out)", async () => {
     setIdentityCascadeFlag(true);
     const result = await mountWithFoo("doc-same-type");
