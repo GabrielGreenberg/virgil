@@ -21,7 +21,7 @@
 //
 // (Storage stub guards the extension-barrel/@/lib/storage gotcha: the
 // figure/graphics/tex NodeViews transitively import @/lib/storage.)
-import { describe, it, expect, vi } from "vitest";
+import { describe, it, expect, vi, afterEach } from "vitest";
 
 vi.mock("@/lib/storage", () => {
   const STORAGE_FNS = [
@@ -42,6 +42,7 @@ vi.mock("@/lib/storage", () => {
 
 import { Editor } from "@tiptap/core";
 import type { Decoration } from "@tiptap/pm/view";
+import { act, renderHook } from "@testing-library/react";
 import {
   buildEditorExtensions,
   type EditorExtensionsCtx,
@@ -54,6 +55,10 @@ import {
   type AnchorHighlightTarget,
 } from "@/lib/tiptap/anchor-highlight-deco";
 import { getBus } from "@/lib/tiptap/doc-structure";
+import { useAnchorHighlightReconciler } from "@/links/_shared/useAnchorHighlightReconciler";
+import { cardStore } from "@/links/_shared/anchored-card-store";
+import type { EntityCollectionSlots } from "@/cards/entity-collections";
+import type { Link } from "@/links/_shared/types";
 
 const LI_UUID = "li0001";
 const PARA_UUID = "p00001";
@@ -248,6 +253,14 @@ describe("AnchorHighlightDecorator — ROOT PROOF: no node redraw on hover", () 
         attrs: hoveredAttrs({ value: "paragraph", kind: "note", side: "right" }, true),
       },
     ]);
+    // Flush the domObserver before re-reading the DOM (mirrors the CONTRAST
+    // test below). Without this flush a cold first process can observe a
+    // pending mutation AFTER the `after` read, producing a flaky pass/fail; we
+    // force the view to drain any queued DOM mutation here so the assertion
+    // sees the steady state. (The whole point is that the decoration path
+    // queues NO redraw-triggering mutation — so the flush is a no-op for the
+    // fix, but it removes the timing nondeterminism the review hit.)
+    (editor.view as unknown as { domObserver?: { flush?: () => void } }).domObserver?.flush?.();
 
     const after = domElForUuid(editor, LI_UUID);
     // The SAME element is still in the tree — no detach, no fresh insert. This
@@ -352,6 +365,214 @@ describe("AnchorHighlightDecorator — keystroke sanctity", () => {
     expect(editor.state.doc).toBe(docBefore);
     expect(bus?.emitCount ?? 0).toBe(emitBefore);
 
+    editor.destroy();
+    element.remove();
+  });
+});
+
+// ───────────────────────────────────────────────────────────────────────────
+// Mode-B (text-range / `linkedAnchor`) REGRESSION GUARD.
+//
+// THE BUG the 6949dd3 deco rewrite introduced (now fixed): routing a text-range
+// anchor through `Decoration.inline` made PM wrap the TEXT node in a FRESH inner
+// <span> (TextViewDesc applyOuterDeco, needsWrap for nodeType 3), so the
+// `data-card-hovered` attr landed on a CHILD of `.linked-anchor`, not on
+// `.linked-anchor` itself. The consuming CSS requires attr+class on the SAME
+// element (`.linked-anchor[data-card-hovered="true"]`), so the in-text wash
+// never painted.
+//
+// THE FIX: Mode-B stays on the reconciler's RAW setAttribute path — the attr is
+// written directly onto the `.linked-anchor` span (`resolved.domEl`). This
+// drives the REAL `useAnchorHighlightReconciler` against a real editor carrying
+// a `linkedAnchor` mark, with a `note` whose `links[]` is the Mode-B anchor, and
+// asserts the attr lands on `.linked-anchor` itself — the CSS contract.
+//
+// TEMP-REVERT TOOTH: re-routing Mode-B back through `Decoration.inline` (the
+// 6949dd3 regression) makes `.linked-anchor` itself carry NO `data-card-hovered`
+// (it's on the wrapper child) → this test goes RED.
+// ───────────────────────────────────────────────────────────────────────────
+
+const RANGE_ANCHOR_ID = "rng0001";
+const NOTE_ID = "note-mb-1";
+const RANGE_PARA_UUID = "pmb0001";
+
+/** Mount a real main-stack editor with one paragraph whose middle word carries
+ *  a `linkedAnchor` mark (anchorId = RANGE_ANCHOR_ID, kind "note"), so the
+ *  rendered span is `.linked-anchor[data-link-id="rng0001"]` — exactly what
+ *  `resolveLink` queries for a Mode-B text-range. */
+function mountEditorWithLinkedAnchor(): { editor: Editor; element: HTMLElement } {
+  const element = document.createElement("div");
+  document.body.appendChild(element);
+  const editor = new Editor({
+    element,
+    editable: true,
+    extensions: buildEditorExtensions(mainCtx(new Set([RANGE_PARA_UUID]))),
+    content: {
+      type: "doc",
+      content: [
+        {
+          type: "paragraph",
+          attrs: { uuid: RANGE_PARA_UUID },
+          content: [{ type: "text", text: "before anchored after" }],
+        },
+      ],
+    },
+  });
+  // Stamp a `linkedAnchor` mark over "anchored" (chars 7..15 of the text → PM
+  // positions: para opens at 0, text starts at pos 1, so "anchored" is [8, 16)).
+  const markType = editor.schema.marks.linkedAnchor;
+  if (!markType) throw new Error("linkedAnchor mark missing from the main stack");
+  const from = 8;
+  const to = 16;
+  const mark = markType.create({
+    anchorId: RANGE_ANCHOR_ID,
+    linkId: RANGE_ANCHOR_ID,
+    kind: "note",
+    linkKind: "anchor",
+    linkCard: "note:",
+  });
+  editor.view.dispatch(editor.state.tr.addMark(from, to, mark));
+  return { editor, element };
+}
+
+/** TipTap flips `editor.isInitialized` to true in a deferred `setTimeout(0)`
+ *  after the `create` event (see @tiptap/core Editor.createView). The
+ *  reconciler's `editorReady` guard requires it, so await that tick (inside
+ *  `act`, since the store-subscribed hook may re-render) before driving hover. */
+async function waitForEditorInit(editor: Editor): Promise<void> {
+  await act(async () => {
+    await new Promise((r) => setTimeout(r, 5));
+  });
+  if (!editor.isInitialized) throw new Error("editor never initialized");
+}
+
+/** A `note` collection carrying a single Mode-B (`linkedRange`) anchor link
+ *  pointing at RANGE_ANCHOR_ID — the shape `findEntity`/`resolveLink` read. */
+function modeBNoteCollections(): EntityCollectionSlots {
+  const link: Link = {
+    id: "lnk-mb-1",
+    kind: "anchor",
+    anchor: {
+      type: "textObject",
+      targetKind: "linkedRange",
+      textObjectIds: [RANGE_PARA_UUID],
+      margin: { side: "right" },
+      textRange: { anchorId: RANGE_ANCHOR_ID, textSnapshot: "anchored" },
+    },
+    target: { type: "card", ref: { kind: "note", id: NOTE_ID } },
+    createdAt: "",
+  };
+  return {
+    notes: [{ id: NOTE_ID, links: [link] }],
+    highlights: [],
+    cutterCards: [],
+    comments: [],
+    todoItems: [],
+    archiveSnippets: [],
+    reportCards: [],
+    examples: [],
+  };
+}
+
+describe("AnchorHighlightDecorator — Mode-B (text-range) raw-attr regression guard", () => {
+  afterEach(() => {
+    // The reconciler reads the module-scope cardStore; reset it between tests.
+    act(() => {
+      cardStore.setHover(null);
+      cardStore.clearSelection();
+    });
+  });
+
+  it("hovering a selection-anchored note paints data-card-hovered on `.linked-anchor` ITSELF (CSS contract)", async () => {
+    const { editor, element } = mountEditorWithLinkedAnchor();
+    const collections = modeBNoteCollections();
+
+    // Sanity: the mark rendered a `.linked-anchor` span carrying the anchorId.
+    const span = editor.view.dom.querySelector(".linked-anchor") as HTMLElement | null;
+    expect(span).toBeTruthy();
+    expect(span!.getAttribute("data-link-id")).toBe(RANGE_ANCHOR_ID);
+    // Pre-hover: no highlight attr.
+    expect(span!.getAttribute("data-card-hovered")).toBeNull();
+
+    // Mount the REAL reconciler, then drive a hover on the note card. Wait for
+    // the editor's deferred `create` tick first so `editor.isInitialized` is
+    // true (the reconciler's `editorReady` guard requires it).
+    const recon = renderHook(() =>
+      useAnchorHighlightReconciler({ editor, collections }),
+    );
+    await waitForEditorInit(editor);
+    act(() => {
+      cardStore.setHover({ kind: "note", id: NOTE_ID });
+    });
+
+    // The attr MUST be on `.linked-anchor` itself (what
+    // `.linked-anchor[data-card-hovered="true"]` selects), NOT a wrapper child.
+    const after = editor.view.dom.querySelector(".linked-anchor") as HTMLElement;
+    expect(after.getAttribute("data-card-hovered")).toBe("true");
+    // And no inner child carries it instead (the Decoration.inline failure
+    // mode the temp-revert tooth reproduces).
+    expect(after.querySelector("[data-card-hovered]")).toBeNull();
+
+    // Un-hover clears it (clear-on-unhover sweep).
+    act(() => {
+      cardStore.setHover(null);
+    });
+    expect(
+      (editor.view.dom.querySelector(".linked-anchor") as HTMLElement).getAttribute(
+        "data-card-hovered",
+      ),
+    ).toBeNull();
+
+    recon.unmount();
+    editor.destroy();
+    element.remove();
+  });
+
+  it("SELECTING a selection-anchored note paints data-card-selected on `.linked-anchor` itself", async () => {
+    const { editor, element } = mountEditorWithLinkedAnchor();
+    const collections = modeBNoteCollections();
+
+    const recon = renderHook(() =>
+      useAnchorHighlightReconciler({ editor, collections }),
+    );
+    await waitForEditorInit(editor);
+    act(() => {
+      cardStore.select({ kind: "note", id: NOTE_ID });
+    });
+
+    const span = editor.view.dom.querySelector(".linked-anchor") as HTMLElement;
+    expect(span.getAttribute("data-card-selected")).toBe("true");
+
+    recon.unmount();
+    editor.destroy();
+    element.remove();
+  });
+
+  it("does NOT route Mode-B through the decoration plugin (no inline deco emitted)", async () => {
+    const { editor, element } = mountEditorWithLinkedAnchor();
+    const collections = modeBNoteCollections();
+
+    const recon = renderHook(() =>
+      useAnchorHighlightReconciler({ editor, collections }),
+    );
+    await waitForEditorInit(editor);
+    act(() => {
+      cardStore.setHover({ kind: "note", id: NOTE_ID });
+    });
+
+    // The raw path painted the span (so the hover IS live) …
+    expect(
+      (editor.view.dom.querySelector(".linked-anchor") as HTMLElement).getAttribute(
+        "data-card-hovered",
+      ),
+    ).toBe("true");
+    // … yet the deco plugin set stays EMPTY for a pure Mode-B hover — the range
+    // is painted by raw setAttribute, not a decoration. (If a future change
+    // re-introduced an inline decoration, this set would be non-empty.)
+    const set = anchorHighlightKey.getState(editor.state);
+    expect(set?.find() ?? []).toHaveLength(0);
+
+    recon.unmount();
     editor.destroy();
     element.remove();
   });

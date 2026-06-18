@@ -25,21 +25,34 @@
  * cards do NOT paint) and hover ref. No captured DOM references, no
  * conditional preservation, no inter-effect coordination.
  *
- * TWO PAINT SURFACES, TWO MECHANISMS:
+ * THREE PAINT SURFACES, TWO MECHANISMS:
  *
- *   1. IN-EDITOR anchor targets (paragraph / heading / listItem blocks,
- *      footnote / citation atoms, Mode-B `linkedAnchor` ranges) are painted
- *      via a ProseMirror DECORATION (`AnchorHighlightDecorator` in
- *      `anchor-highlight-deco.ts`). The reconciler resolves each link to live
- *      PM coordinates + an attr bag and pushes the COMPLETE desired target
- *      list through `setAnchorHighlightTargets`. PM owns the attrs, so it
- *      never treats them as a foreign mutation and never redraws the node —
- *      eliminating the listItem/heading hover-cull + the residual
- *      hover-highlight loss + the per-hover layout churn. (Raw setAttribute
- *      onto a `Decoration.node`-decorated block with no wrapper-guarded
- *      NodeView `ignoreMutation` was the root cause.)
+ *   1. IN-EDITOR NODE/ATOM targets (paragraph / heading / listItem blocks,
+ *      footnote / citation atoms) are painted via a ProseMirror DECORATION
+ *      (`AnchorHighlightDecorator` in `anchor-highlight-deco.ts`). The
+ *      reconciler resolves each link to live PM coordinates + an attr bag and
+ *      pushes the COMPLETE desired NODE target list through
+ *      `setAnchorHighlightTargets`. PM owns the attrs, so it never treats them
+ *      as a foreign mutation and never redraws the node — eliminating the
+ *      listItem/heading hover-cull + the residual hover-highlight loss + the
+ *      per-hover layout churn. (Raw setAttribute onto a `Decoration.node`-
+ *      decorated block with no wrapper-guarded NodeView `ignoreMutation` was
+ *      the root cause.)
  *
- *   2. PANEL CARDS (`[data-card-key]` elements in the rail / floats) are
+ *   2. IN-EDITOR Mode-B TEXT RANGES (`linkedAnchor` mark spans) are painted by
+ *      RAW `setAttribute` directly onto the `.linked-anchor` span
+ *      (`resolved.domEl`). A `.linked-anchor` is a plain mark span — NOT a
+ *      `Decoration.node`-owned block — so a raw setAttribute does NOT redraw or
+ *      detach it. Crucially, the consuming CSS requires the attr+class on the
+ *      SAME element (`.linked-anchor[data-card-hovered="true"]` /
+ *      `[data-card-selected="true"]`, globals.css). A `Decoration.inline` over
+ *      a TEXT node wraps it in a FRESH inner `<span>` (TextViewDesc
+ *      `applyOuterDeco`, `needsWrap` for nodeType 3), landing the attrs on a
+ *      CHILD of `.linked-anchor` — so the CSS never matches. Mode-B therefore
+ *      stays on the raw-setAttribute sweep path (this is the same path it used
+ *      pre-decoration, and Mode-B was never part of the redraw root cause).
+ *
+ *   3. PANEL CARDS (`[data-card-key]` elements in the rail / floats) are
  *      plain React DOM, NOT PM nodes — a raw `setAttribute` there causes no
  *      redraw, so they stay on the sweep-and-restamp path below, unchanged.
  *
@@ -78,6 +91,8 @@ import {
 
 const DATA_CARD_SELECTED = "data-card-selected";
 const DATA_CARD_HOVERED = "data-card-hovered";
+const DATA_PARAGRAPH_KIND = "data-paragraph-kind";
+const DATA_MARGIN_SIDE = "data-margin-side";
 
 /** Map a CardKind to the kind token used by `data-paragraph-kind`
  *  selectors in globals.css. Single-sourced through the legacy-token crosswalk
@@ -188,17 +203,23 @@ export function useAnchorHighlightReconciler({
   }, [stableCollections]);
 
   // Reconcile from the current (selection, hover, collections) tuple.
-  // Idempotent: recomputes the desired in-editor decoration targets + the
-  // desired panel-card key sets from scratch, then (1) hands the editor
-  // decorations the COMPLETE target list and (2) sweeps + restamps the panel
-  // cards. No captured DOM references; no inter-effect coordination.
+  // Idempotent: recomputes the desired in-editor NODE-decoration targets, the
+  // desired Mode-B `.linked-anchor` raw-attr targets, and the desired
+  // panel-card key sets from scratch, then (1) hands the editor decorations the
+  // COMPLETE node target list, (2) sweeps + restamps the Mode-B spans, and
+  // (3) sweeps + restamps the panel cards. No captured DOM references; no
+  // inter-effect coordination.
   useLayoutEffect(() => {
-    // ── In-editor targets, keyed by PM start position. First write wins
-    // per position (selection is single-card; no precedence among selected
-    // refs). Selection and hover are tracked separately so "selection wins"
-    // for kind/side on a shared element matches the legacy guard. ─────────
-    const selectedTargets = new Map<number, AnchorHighlightResolved>();
-    const hoveredTargets = new Map<number, AnchorHighlightResolved>();
+    // ── In-editor NODE/ATOM targets, keyed by PM start position. First write
+    // wins per position (selection is single-card; no precedence among
+    // selected refs). Selection and hover are tracked separately so "selection
+    // wins" for kind/side on a shared element matches the legacy guard. ─────
+    const selectedNodeTargets = new Map<number, AnchorHighlightResolved>();
+    const hoveredNodeTargets = new Map<number, AnchorHighlightResolved>();
+    // ── Mode-B text-range targets, keyed by the live `.linked-anchor` DOM
+    // element (raw-setAttribute path). Mirrors the legacy element-keyed maps. ─
+    const selectedRangeEls = new Map<HTMLElement, AnchorHighlightAttrs>();
+    const hoveredRangeEls = new Map<HTMLElement, AnchorHighlightAttrs>();
     const selectedCardKeys = new Set<string>();
     const hoveredCardKeys = new Set<string>();
 
@@ -207,37 +228,33 @@ export function useAnchorHighlightReconciler({
 
     const collectTargets = (
       ref: AnchoredCardRef,
-      into: Map<number, AnchorHighlightResolved>,
+      intoNode: Map<number, AnchorHighlightResolved>,
+      intoRange: Map<HTMLElement, AnchorHighlightAttrs>,
     ): void => {
       if (!editorReady) return;
       const links = linksForRef(ref, stableCollections);
       for (const link of links) {
         const resolved = resolveLink(editor, link);
         if (!resolved) continue;
-        // Resolve to PM coordinates + a decoration shape. Paragraph (Mode-A)
-        // and inline atoms are `Decoration.node`; text-range (Mode-B) is
-        // `Decoration.inline`. The value vocabulary is byte-identical to the
-        // legacy raw-setAttribute path.
-        let from: number;
-        let to: number;
-        let shape: "node" | "inline";
-        if (resolved.kind === "paragraph" || resolved.kind === "inline-atom") {
-          // `Decoration.node` needs the node's exact span. `inline-atom`
-          // resolution carries `nodeSize`; `paragraph` does not — read the
-          // live node at `pos` for its size (the same node `resolveLink`
-          // located, so it always exists here).
-          const node = editor.state.doc.nodeAt(resolved.pos);
-          if (!node) continue;
-          from = resolved.pos;
-          to = resolved.pos + node.nodeSize;
-          shape = "node";
-        } else {
-          // text-range (Mode B)
-          from = resolved.from;
-          to = resolved.to;
-          shape = "inline";
+        if (resolved.kind === "text-range") {
+          // ── Mode-B (text-range): paint RAW onto the `.linked-anchor` span
+          // so the attr lands on the SAME element the CSS selects. A
+          // `Decoration.inline` would wrap the text in a fresh child span and
+          // miss `.linked-anchor[data-card-hovered]`. (value "true", no
+          // kind/side — same as the legacy raw path.) ───────────────────────
+          if (!resolved.domEl) continue;
+          if (intoRange.has(resolved.domEl)) continue;
+          intoRange.set(resolved.domEl, { value: "true", kind: null, side: null });
+          continue;
         }
-        if (into.has(from)) continue;
+        // ── Node / inline-atom (Mode-A blocks + footnote/citation atoms):
+        // route through the `Decoration.node` plugin so PM owns the attrs and
+        // never redraws the block. ────────────────────────────────────────
+        const node = editor.state.doc.nodeAt(resolved.pos);
+        if (!node) continue;
+        const from = resolved.pos;
+        const to = resolved.pos + node.nodeSize;
+        if (intoNode.has(from)) continue;
         const valueAttr: "paragraph" | "true" =
           resolved.kind === "paragraph" ? "paragraph" : "true";
         const kind =
@@ -248,8 +265,8 @@ export function useAnchorHighlightReconciler({
           resolved.kind === "paragraph" && link.anchor.type === "textObject"
             ? link.anchor.margin.side
             : null;
-        into.set(from, {
-          shape,
+        intoNode.set(from, {
+          shape: "node",
           from,
           to,
           attrs: { value: valueAttr, kind, side },
@@ -266,38 +283,71 @@ export function useAnchorHighlightReconciler({
     // a single card (N1). Expansion (multi/sticky) no longer drives the
     // text/margin/card highlight; a distinct expanded marker is an A6 follow-up.
     if (selected) {
-      collectTargets(selected, selectedTargets);
+      collectTargets(selected, selectedNodeTargets, selectedRangeEls);
       collectCardKey(selected, selectedCardKeys);
     }
     if (hover) {
-      collectTargets(hover, hoveredTargets);
+      collectTargets(hover, hoveredNodeTargets, hoveredRangeEls);
       collectCardKey(hover, hoveredCardKeys);
     }
 
-    // ── Build the decoration target list and hand it to PM. ───────────────
+    // ── Build the NODE decoration target list and hand it to PM. ───────────
     if (editorReady) {
       const decoTargets: AnchorHighlightTarget[] = [];
-      for (const t of selectedTargets.values()) {
+      for (const t of selectedNodeTargets.values()) {
         decoTargets.push({
-          shape: t.shape,
+          shape: "node",
           from: t.from,
           to: t.to,
           attrs: selectedAttrs(t.attrs),
         });
       }
-      for (const t of hoveredTargets.values()) {
+      for (const t of hoveredNodeTargets.values()) {
         // If selection already painted this position, its kind/side win —
         // emit only the hover marker (no kind/side). Otherwise hover supplies
         // them. Mirrors the legacy `!selectedEls.has(el)` guard.
-        const selectionOwnsThisPos = selectedTargets.has(t.from);
+        const selectionOwnsThisPos = selectedNodeTargets.has(t.from);
         decoTargets.push({
-          shape: t.shape,
+          shape: "node",
           from: t.from,
           to: t.to,
           attrs: hoveredAttrs(t.attrs, !selectionOwnsThisPos),
         });
       }
       setAnchorHighlightTargets(editor.view, decoTargets);
+
+      // ── Mode-B `.linked-anchor` spans: sweep every previously-stamped span
+      // inside the editor root, then re-stamp from the desired sets. A
+      // `.linked-anchor` is a plain mark span (not Decoration.node-owned), so
+      // raw setAttribute neither redraws nor detaches it — and it satisfies
+      // the `.linked-anchor[data-card-*]` CSS contract. This is the legacy
+      // pre-decoration Mode-B behavior, restored exactly: selection-wins for
+      // kind/side (Mode-B has none, but the guard is preserved) + clear-on-
+      // unhover. ─────────────────────────────────────────────────────────────
+      const root = editor.view.dom;
+      const staleRangeSpans = root.querySelectorAll<HTMLElement>(
+        `.linked-anchor[${DATA_CARD_SELECTED}], .linked-anchor[${DATA_CARD_HOVERED}], .linked-anchor[${DATA_PARAGRAPH_KIND}], .linked-anchor[${DATA_MARGIN_SIDE}]`,
+      );
+      for (const el of staleRangeSpans) {
+        el.removeAttribute(DATA_CARD_SELECTED);
+        el.removeAttribute(DATA_CARD_HOVERED);
+        el.removeAttribute(DATA_PARAGRAPH_KIND);
+        el.removeAttribute(DATA_MARGIN_SIDE);
+      }
+      for (const [el, a] of selectedRangeEls) {
+        el.setAttribute(DATA_CARD_SELECTED, a.value);
+        if (a.kind) el.setAttribute(DATA_PARAGRAPH_KIND, a.kind);
+        if (a.side) el.setAttribute(DATA_MARGIN_SIDE, a.side);
+      }
+      for (const [el, a] of hoveredRangeEls) {
+        el.setAttribute(DATA_CARD_HOVERED, a.value);
+        // Selection wins for kind/side on a shared span (legacy
+        // `!selectedEls.has(el)` guard).
+        if (!selectedRangeEls.has(el)) {
+          if (a.kind) el.setAttribute(DATA_PARAGRAPH_KIND, a.kind);
+          if (a.side) el.setAttribute(DATA_MARGIN_SIDE, a.side);
+        }
+      }
     }
 
     // ── Panel cards live outside the editor root (some in portals) and are
@@ -325,11 +375,12 @@ export function useAnchorHighlightReconciler({
   }, [editor, selected, hover, stableCollections]);
 }
 
-/** A resolved in-editor target before the selected/hovered attr bag is
- *  materialized (selection-vs-hover kind/side precedence is applied at
- *  emit time). */
+/** A resolved in-editor NODE/ATOM target before the selected/hovered attr bag
+ *  is materialized (selection-vs-hover kind/side precedence is applied at
+ *  emit time). Mode-B text ranges do NOT use this — they go through the raw
+ *  `.linked-anchor` setAttribute path, keyed by DOM element. */
 interface AnchorHighlightResolved {
-  shape: "node" | "inline";
+  shape: "node";
   from: number;
   to: number;
   attrs: AnchorHighlightAttrs;

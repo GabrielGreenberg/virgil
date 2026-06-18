@@ -7,7 +7,7 @@ import { Decoration, DecorationSet } from "@tiptap/pm/view";
 /**
  * AnchorHighlightDecorator — paints the four card hover/selection attributes
  * (`data-card-selected` / `data-card-hovered` / `data-paragraph-kind` /
- * `data-margin-side`) onto IN-EDITOR anchor targets via ProseMirror
+ * `data-margin-side`) onto IN-EDITOR NODE/ATOM anchor targets via ProseMirror
  * decorations, so PM OWNS the attributes and never treats them as a foreign
  * mutation.
  *
@@ -24,14 +24,25 @@ import { Decoration, DecorationSet } from "@tiptap/pm/view";
  * (`uuid-attr.ts`), which already paints `data-uuid` as a decoration for
  * exactly this reason.
  *
- * Three in-editor target shapes (mirroring `LinkResolution`):
+ * SCOPE — NODE/ATOM ONLY. This plugin paints exactly the two target shapes
+ * that suffer the `Decoration.node` redraw:
  *   - paragraph / Mode-A block → `Decoration.node(pos, pos+nodeSize, attrs)`
  *   - inline atom (footnote / citation) → `Decoration.node(pos, pos+nodeSize)`
- *   - text-range (Mode B) → `Decoration.inline(from, to, attrs)` over the
- *     `linkedAnchor` mark span
  * The attribute VALUES exactly reproduce what the reconciler used to write
- * (`paragraph` for Mode-A halos, `true` for atoms / ranges), so the existing
- * `globals.css` accent-rail + atom/range rules paint byte-identically.
+ * (`paragraph` for Mode-A halos, `true` for atoms), so the existing
+ * `globals.css` accent-rail + atom rules paint byte-identically.
+ *
+ * Mode-B TEXT RANGES are deliberately NOT painted here. A `Decoration.inline`
+ * over a TEXT node wraps it in a FRESH inner `<span>` (TextViewDesc
+ * `applyOuterDeco`, `needsWrap` for nodeType 3), so the attrs would land on a
+ * CHILD of `.linked-anchor`, not on `.linked-anchor` itself — and the
+ * consuming CSS requires attr+class on the SAME element
+ * (`.linked-anchor[data-card-hovered="true"]`). A `.linked-anchor` is a plain
+ * mark span (not a `Decoration.node`-owned block), so a raw setAttribute on it
+ * causes no redraw AND satisfies the CSS. Mode-B therefore stays on the
+ * reconciler's raw-setAttribute path (`useAnchorHighlightReconciler.ts`), the
+ * same path it used pre-decoration; it was never part of the redraw root
+ * cause. (The plugin's target type is node-only for this reason.)
  *
  * Panel cards (`[data-card-key]`) are NOT touched here — they are React DOM,
  * not PM nodes, so a raw `setAttribute` there causes no redraw and stays in
@@ -52,27 +63,21 @@ const DATA_CARD_HOVERED = "data-card-hovered";
 const DATA_PARAGRAPH_KIND = "data-paragraph-kind";
 const DATA_MARGIN_SIDE = "data-margin-side";
 
-/** One in-editor highlight target — already resolved to live PM coordinates
- *  by the reconciler (via `resolveLink`). The reconciler owns the
+/** One in-editor NODE/ATOM highlight target — already resolved to live PM
+ *  coordinates by the reconciler (via `resolveLink`). The reconciler owns the
  *  selection-vs-hover precedence and the attr VALUES; this plugin only paints
- *  what it is handed. */
-export type AnchorHighlightTarget =
-  | {
-      /** `Decoration.node` over a block or inline atom (paragraph / heading /
-       *  listItem / footnote / citation). */
-      shape: "node";
-      from: number;
-      /** `from + node.nodeSize` at resolve time. */
-      to: number;
-      attrs: Record<string, string>;
-    }
-  | {
-      /** `Decoration.inline` over a Mode-B `linkedAnchor` range. */
-      shape: "inline";
-      from: number;
-      to: number;
-      attrs: Record<string, string>;
-    };
+ *  what it is handed. Mode-B text ranges are intentionally NOT representable
+ *  here (see the module docstring) — they are painted by the reconciler's raw
+ *  `.linked-anchor` setAttribute path. */
+export type AnchorHighlightTarget = {
+  /** `Decoration.node` over a block or inline atom (paragraph / heading /
+   *  listItem / footnote / citation). */
+  shape: "node";
+  from: number;
+  /** `from + node.nodeSize` at resolve time. */
+  to: number;
+  attrs: Record<string, string>;
+};
 
 /** The four attrs this plugin owns, in the value vocabulary the CSS reads. */
 export interface AnchorHighlightAttrs {
@@ -129,11 +134,7 @@ function buildSet(
     // span; skip rather than crash the view.
     if (t.from < 0 || t.to > doc.content.size || t.to <= t.from) continue;
     try {
-      decos.push(
-        t.shape === "node"
-          ? Decoration.node(t.from, t.to, t.attrs)
-          : Decoration.inline(t.from, t.to, t.attrs),
-      );
+      decos.push(Decoration.node(t.from, t.to, t.attrs));
     } catch {
       // Out-of-sync target (e.g. `Decoration.node` over a non-node range
       // after a concurrent edit). Drop it; the next reconcile re-paints.
