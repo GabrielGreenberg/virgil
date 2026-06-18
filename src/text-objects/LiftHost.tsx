@@ -415,12 +415,22 @@ export function LiftHost({ editorRef, children }: Props) {
         terminalPolicy === "float"
           ? FLOAT_GRAB_OFFSET_Y
           : origin.y - liftRect.top;
-      const initialMode = cacheRef.current.containsContentZone(
-        origin.x,
-        origin.y,
-      )
-        ? "ghost"
-        : "popout";
+      // The "float" policy is ghost-ONLY (never a popout terminal — a float is
+      // already open), so its overlay must MOUNT in "ghost" mode regardless of
+      // where the origin lands. The press origin is on the float HEADER (the
+      // FloatChrome drop button), which sits OUTSIDE `.editor-pane-pod`, so
+      // `containsContentZone(origin)` is false there — leaving this unguarded
+      // would wrongly mount the float lift in "popout" mode, contradicting the
+      // ghost-only contract (the dormant Chip-1 branch's latent bug). The
+      // `onMove`/`onDocLeave`/`onUp` float branches are already policy-gated to
+      // ghost-only; this closes the mount-time gap. The "grab" policy keeps
+      // computing initialMode from the live hit-test exactly as before.
+      const initialMode: "ghost" | "popout" =
+        terminalPolicy === "float"
+          ? "ghost"
+          : cacheRef.current.containsContentZone(origin.x, origin.y)
+            ? "ghost"
+            : "popout";
       // L3a: per-instance label override via the registry. Heading maps
       // node.attrs.level → "Chapter" / "Section" / "Subsection" so the
       // overlay's popout-mode header matches the real popout at handoff
