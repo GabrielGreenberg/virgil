@@ -46,6 +46,9 @@ import { Panel } from "@/panels/_shared/Panel";
 type BreadcrumbSegment = {
   text: string;
   kind: "section" | "parTitle" | "documentStart" | "title";
+  /** Heading level (1-6) for `section` segments — drives level-aware ancestry
+   *  popping (SR-F1-05). Absent for non-section kinds. */
+  level?: number;
 };
 
 interface SearchResult extends SearchHit {
@@ -93,6 +96,18 @@ const DROPDOWN_SCOPES: SearchScope[] = SCOPE_ORDER.filter(
 );
 
 const CTX = 40;
+// SR-F1-03: the matched run rendered inside the amber <mark> was unclamped — a
+// multi-thousand-char pasted query rendered its entire matched text, blowing
+// out the result card. The before/after context is already capped at CTX; cap
+// the match at a generous multiple of it (enough to read a sentence-length
+// match in full, but bounded) and append an ellipsis when truncated. Clamping
+// at the render sink covers EVERY scope's `match` uniformly (mainText + the
+// search-sources hits) without touching the position/live-range logic.
+const MARK_MAX = CTX * 3;
+export function clampMark(match: string): string {
+  if (match.length <= MARK_MAX) return match;
+  return match.slice(0, MARK_MAX).trimEnd() + "…";
+}
 const FIELD_LABEL: Record<NonNullable<SearchHit["field"]>, string> = {
   title: "title",
   body: "body",
@@ -113,8 +128,34 @@ function getDocTitle(editor: Editor): string {
   return title;
 }
 
-function buildBreadcrumb(editor: Editor, pos: number): BreadcrumbSegment[] {
+/**
+ * SR-F1-05: fold a left-to-right sequence of headings (each `{level, text}`)
+ * into the section-ancestry breadcrumb. Pops by the STORED heading level of
+ * each ancestor, NOT by the running stack LENGTH. With skipped levels (e.g. H1
+ * then H4) the old `stack.length >= level` test never popped (1 >= 4 is false),
+ * so a second H4 sibling APPENDED under the first (`[H1, H4, H4]`) instead of
+ * replacing it. Popping every entry whose level is >= this heading's level
+ * keeps only the true ancestor chain and replaces same/deeper siblings —
+ * correct for skip-level documents. Exported for direct unit testing.
+ */
+export function foldHeadingAncestry(
+  headings: { level: number; text: string }[],
+): BreadcrumbSegment[] {
   const sections: BreadcrumbSegment[] = [];
+  for (const { level, text } of headings) {
+    while (
+      sections.length > 0 &&
+      (sections[sections.length - 1].level ?? 0) >= level
+    ) {
+      sections.pop();
+    }
+    sections.push({ text, kind: "section", level });
+  }
+  return sections;
+}
+
+function buildBreadcrumb(editor: Editor, pos: number): BreadcrumbSegment[] {
+  const headings: { level: number; text: string }[] = [];
   let parTitle = "";
 
   editor.state.doc.descendants((node, nodePos) => {
@@ -123,8 +164,7 @@ function buildBreadcrumb(editor: Editor, pos: number): BreadcrumbSegment[] {
     if (node.type.name === "heading") {
       const level = node.attrs.level as number;
       const text = node.textContent?.trim() || "Untitled";
-      while (sections.length > 0 && sections.length >= level) sections.pop();
-      sections.push({ text, kind: "section" });
+      headings.push({ level, text });
       return true;
     }
 
@@ -142,6 +182,7 @@ function buildBreadcrumb(editor: Editor, pos: number): BreadcrumbSegment[] {
     return true;
   });
 
+  const sections = foldHeadingAncestry(headings);
   let crumbs: BreadcrumbSegment[];
   if (sections.length > 0) {
     crumbs = sections;
@@ -789,7 +830,7 @@ function ResultCard({
             </span>
           )}
           <mark className="bg-amber-200/80 text-ink-strong rounded-sm px-px">
-            {result.match}
+            {clampMark(result.match)}
           </mark>
           {result.after.length > 0 && (
             <span className="text-ink-muted">

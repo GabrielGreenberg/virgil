@@ -185,7 +185,14 @@ export function compressedBodyStyle(
 
 export function makeCompressedSummary(content: JSONContent | unknown, lines: number): string {
   const text = richJsonToPlainText(content).replace(/\s+/g, " ").trim();
-  return text.slice(0, 80 * Math.max(1, lines));
+  const limit = 80 * Math.max(1, lines);
+  // C24 (OMNI-F1-03): the old hard `.slice(0, limit)` cut mid-word with NO
+  // ellipsis, so a truncated summary looked like the whole body. Append "…"
+  // when (and only when) we actually dropped trailing content, so a body that
+  // fits is returned verbatim. The clamp is on the projected plain text; the
+  // CSS line-clamp (`compressedBodyStyle`) still caps the rendered height.
+  if (text.length <= limit) return text;
+  return text.slice(0, limit).trimEnd() + "…";
 }
 
 /* ── Class-string constants ───────────────────────────────────────── */
@@ -1135,14 +1142,29 @@ export function EditableCard({
             }}
           >
             {useBorrowedCompressed ? (
-              <BorrowedMainText
-                value={compressedContent}
-                instanceKey={`compressed:${cardKind}:${id}`}
-                variant="footnote"
-                bodyStyle={compressedBody}
-              />
+              // C24 (OMNI-F1-03): the borrowed branch never had the empty guard
+              // the summary branch has, so an empty footnote/archive/example body
+              // rendered a blank BorrowedMainText line instead of the muted
+              // "empty" sentinel. Detect an empty body from its projected plain
+              // text (same projection makeCompressedSummary uses) and show the
+              // sentinel, matching the summary branch.
+              richJsonToPlainText(compressedContent).trim() ? (
+                <BorrowedMainText
+                  value={compressedContent}
+                  instanceKey={`compressed:${cardKind}:${id}`}
+                  variant="footnote"
+                  bodyStyle={compressedBody}
+                />
+              ) : (
+                <CardEmptyText />
+              )
             ) : (
-              compressedSummary ?? <CardEmptyText />
+              // C24 (REP-F1-01 / OMNI-F1-03): `??` only fires on null/undefined,
+              // but every caller passes `makeCompressedSummary(...) || ""`, so an
+              // empty body arrived as `''` and `??` never substituted the
+              // sentinel — the card showed a blank line. `||` falls through on
+              // the falsy empty string too, so an empty body now shows "empty".
+              compressedSummary || <CardEmptyText />
             )}
           </div>
         </div>
