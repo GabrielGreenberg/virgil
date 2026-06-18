@@ -142,7 +142,11 @@ export function FloatWindow({
   //     `LiftHost.beginLift({terminalPolicy:"float", …})`. If no `LiftHost` is
   //     mounted (`liftHost === null` — defensive; in practice always present),
   //     leave `onDropPress` undefined so FloatChrome falls back to
-  //     `beginCardDropGesture`.
+  //     `beginCardDropGesture`. That fallback is no-ghost and skips the
+  //     linkedRange `removeTransientAnchor` cleanup — an accepted asymmetry
+  //     because the null-host path is UNREACHABLE in the full editor: EditorPane
+  //     wraps FloatHost (→ this FloatWindow) inside `<LiftHost>`, so
+  //     `useLiftHost()` here always resolves non-null.
   //   - card → leave `onDropPress` undefined so FloatChrome takes its existing
   //     `beginCardDropGesture` path (zero card-behavior change). Cards are NOT
   //     routed through `beginLift`.
