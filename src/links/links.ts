@@ -20,6 +20,7 @@ import type { Node as PMNode } from "@tiptap/pm/model";
 import type { CardKind } from "@/panels/_shared/types";
 import type { TextObjectKind } from "@/text-objects/types";
 import { countWords } from "@/hooks/useWordCount";
+import { findInlineAtomPosDeep } from "@/lib/inline-content";
 import type { Link, LinkResolution } from "./_shared/types";
 import { normalizeParagraphText } from "./_shared/normalize-text";
 import { generateEntityId } from "@/lib/uuid";
@@ -474,15 +475,26 @@ export function resolveLink(
   link: Link,
 ): LinkResolution | null {
   if (link.anchor.type === "inline-atom") {
-    const pos = findInlineAtomPos(editor, link.anchor.nodeName, link.id);
-    if (pos == null) return null;
+    // Deep resolve: a TOP-LEVEL atom resolves exactly as before; a citation
+    // (or footnote) NESTED in a footnote body resolves to the HOST footnote's
+    // marker — the nested atom has no own DOM, so the host superscript is the
+    // only scrollable target (`BIB-F3-01` / `CI-F3-01`).
+    const loc = findInlineAtomPosDeep(editor, link.anchor.nodeName, link.id);
+    if (loc == null) return null;
+    const pos = loc.pos;
     const node = editor.state.doc.nodeAt(pos);
+    // The DOM address to query: a top-level hit uses the atom's own link id;
+    // a nested hit uses the HOST footnote's id (its marker carries
+    // `data-link-id="<hostFootnoteId>"`).
+    const domLinkId = loc.nested ? loc.hostFootnoteId : link.id;
     // Prefer `data-link-id` (set by newer atoms); fall back to the atom's
     // own DOM via view.nodeDOM — older atoms (footnote/citation) render
     // their id as `data-footnote-id`/`data-citation-id`, not linkId.
-    const queried = editor.view.dom.querySelector(
-      `[${DATA_LINK_ID}="${link.id}"]`,
-    ) as HTMLElement | null;
+    const queried = domLinkId
+      ? (editor.view.dom.querySelector(
+          `[${DATA_LINK_ID}="${domLinkId}"]`,
+        ) as HTMLElement | null)
+      : null;
     const nodeDom = editor.view.nodeDOM(pos);
     const domEl =
       queried ??
@@ -689,24 +701,19 @@ export function deleteLink(editor: Editor, link: Link): void {
 // Helpers
 // ---------------------------------------------------------------------------
 
+/** TOP-LEVEL position of an inline atom by id, or null. Used by the create /
+ *  delete paths, which operate only on a real top-level doc atom (you can't
+ *  delete a footnote-nested cite by deleting its host footnote — that's
+ *  `stripFootnoteNestedCitation`'s job). Delegates to `findInlineAtomPosDeep`
+ *  but discards a nested hit, preserving the legacy "descendants-only" contract
+ *  for these mutators. */
 function findInlineAtomPos(
   editor: Editor,
   nodeName: "footnote" | "citation",
   linkId: string,
 ): number | null {
-  const idAttr = nodeName === "footnote" ? "footnoteId" : "citationId";
-  let found: number | null = null;
-  editor.state.doc.descendants((node, pos) => {
-    if (found != null) return false;
-    if (node.type.name !== nodeName) return true;
-    const attrs = node.attrs as Record<string, unknown>;
-    if (attrs.linkId === linkId || attrs[idAttr] === linkId) {
-      found = pos;
-      return false;
-    }
-    return true;
-  });
-  return found;
+  const loc = findInlineAtomPosDeep(editor, nodeName, linkId);
+  return loc && loc.nested === false ? loc.pos : null;
 }
 
 function findParagraphByUuid(editor: Editor, uuid: string): number | null {
