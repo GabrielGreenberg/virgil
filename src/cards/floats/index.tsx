@@ -479,6 +479,7 @@ registerCardFloatable("bib", (id, ctx: CardFloatCtx) => {
         onCancelReview={ctx.cancelBibReview}
         getReviewStatus={ctx.getBibReviewStatus}
         onUpdateBibEntry={ctx.updateBibEntry}
+        onReplaceBibEntry={ctx.replaceBibEntry}
         onUpdateBibKeyAndType={ctx.updateBibKeyAndType}
         bibPackage={ctx.bibPackage}
         bibEntries={ctx.bibEntries}

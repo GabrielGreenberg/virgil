@@ -24,6 +24,7 @@ import { isIdentityCascadeOn } from "@/lib/identity/identity-flag";
 import {
   IdentityCascade,
   renameCitekeyChange,
+  retypeChange,
 } from "@/lib/identity/identity-cascade";
 import { wholeWordPatternFor } from "@/lib/whole-word";
 import { mintBibUid } from "@/lib/bib-uid";
@@ -63,6 +64,7 @@ export const CITATIONS_INERT: CitationsHook = {
   setBibPackage: () => {},
   addBibEntry: () => {},
   updateBibEntry: () => {},
+  replaceBibEntry: () => {},
   updateBibKeyAndType: () => {},
   getBibEntry: () => undefined,
   getDisplayText: (command: string) => command,
@@ -277,6 +279,14 @@ export function useCitations(docId: string | null, pristine?: PristineKindApi | 
     [update],
   );
 
+  /**
+   * MERGE field updates into an entry (D3 — the `updateBibEntry`=merge half).
+   * `fields` is shallow-merged over the entry's existing `fields`, so a field
+   * absent from `fields` is KEPT. This is the incremental-edit primitive
+   * (typing in one field of the bib editor, an `answer-bib-review` field fill).
+   * For wholesale set-all semantics that honor field DELETION use
+   * {@link replaceBibEntry}.
+   */
   const updateBibEntry = useCallback(
     (key: string, fields: Record<string, string>) => {
       setBibEntries((prev) => {
@@ -296,6 +306,59 @@ export function useCitations(docId: string | null, pristine?: PristineKindApi | 
       });
     },
     [persistBib],
+  );
+
+  /**
+   * REPLACE an entry's fields (and optionally its type) WHOLESALE (D3 — the
+   * `replaceBibEntry`=set-all half; consumed by T6-C16's "Replace with library"
+   * and the bib-editor Save). Unlike {@link updateBibEntry}, the supplied
+   * `fields` is the COMPLETE new field set: a field the user cleared (absent
+   * from `fields`) is DELETED, not retained (BIB-A3-02 / BIB-F5-04 — "I cleared
+   * the field but it came back"). The entry's durable `uid` and citekey are
+   * untouched (this is not an identity move — a rename routes through
+   * `updateBibKeyAndType`/the cascade).
+   *
+   * Single-writer discipline (D3): under the `virgil:identity-cascade` flag the
+   * cascade is the canonical writer for every bib-entry mutation, so a `retype`
+   * (type changed) is fanned through `runIdentityChange` so any registered
+   * `bibEntry` migrator observes it. The `.bib`-side set-all + persist is done
+   * here regardless (it owns the entries array). Flag OFF: the cascade is never
+   * invoked — the on-disk write is byte-identical to a direct set-all, so the
+   * existing suite is unaffected.
+   */
+  const replaceBibEntry = useCallback(
+    (key: string, fields: Record<string, string>, type?: string) => {
+      setBibEntries((prev) => {
+        const next = prev.map((e) => {
+          if (e.key !== key) return e;
+          const nextType = type ?? e.type;
+          // set-all: replace the field map entirely (cleared fields are gone).
+          const updated: BibEntry = { ...e, type: nextType, fields: { ...fields } };
+          const lines = Object.entries(updated.fields)
+            .map(([k, v]) => `  ${k} = {${v}}`)
+            .join(",\n");
+          updated.raw = `@${updated.type}{${updated.key},\n${lines}\n}`;
+          return updated;
+        });
+        const newRaw = serializeBibFile(next);
+        setBibRaw(newRaw);
+        void persistBib(newRaw);
+        return next;
+      });
+      // Fan a REAL type change through the single writer so any registered
+      // migrator observes it. Resolve the retype decision from the live
+      // `bibEntries` (hook scope) — NOT from inside the state updater, whose
+      // run timing isn't synchronous under concurrent React.
+      if (isIdentityCascadeOn() && type !== undefined) {
+        const entry = bibEntries.find((e) => e.key === key);
+        if (entry?.uid && entry.type !== type) {
+          void identityCascade.runIdentityChange(
+            retypeChange({ uid: entry.uid, newType: type }),
+          );
+        }
+      }
+    },
+    [persistBib, bibEntries, identityCascade],
   );
 
   /** Apply the `.bib`-side `key`+`type` mutation for the entry currently
@@ -523,6 +586,7 @@ export function useCitations(docId: string | null, pristine?: PristineKindApi | 
       setBibPackage,
       addBibEntry,
       updateBibEntry,
+      replaceBibEntry,
       updateBibKeyAndType,
       getBibEntry,
       getDisplayText,
@@ -546,6 +610,7 @@ export function useCitations(docId: string | null, pristine?: PristineKindApi | 
       setBibPackage,
       addBibEntry,
       updateBibEntry,
+      replaceBibEntry,
       updateBibKeyAndType,
       getBibEntry,
       getDisplayText,

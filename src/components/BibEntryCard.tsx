@@ -24,6 +24,11 @@ export interface BibEntryCardProps {
   onCancelReview: (bibKey: string, type: "fields" | "notes") => void;
   getReviewStatus: (bibKey: string, type: "fields" | "notes") => "none" | "pending" | "complete";
   onUpdateBibEntry: (key: string, fields: Record<string, string>) => void;
+  /** Set-all field replacement (D3 — honors field deletion). The bib editor's
+   *  Save routes here (the editor's `editBibFields` IS the complete intended
+   *  field set, so clearing a field must remove it — BIB-A3-02). Optional for
+   *  back-compat: when absent, Save falls back to the merge `onUpdateBibEntry`. */
+  onReplaceBibEntry?: (key: string, fields: Record<string, string>, type?: string) => void;
   onUpdateBibKeyAndType: (oldKey: string, newKey: string, newType: string) => void;
   occurrenceInfo?: { total: number; current: number; onCycle: (delta: number) => void };
   /** Bib package ("natbib" | "biblatex") — used to determine the default cite command for drag. */
@@ -165,7 +170,7 @@ function AnnotationEditor({
 /* ── BibEntryCard ─────────────────────────────────────────────────── */
 export default function BibEntryCard({
   entry, isSelected, onClick, getFormattedBib, getAnnotation, setAnnotation,
-  onRequestReview, onCancelReview, getReviewStatus, onUpdateBibEntry, onUpdateBibKeyAndType,
+  onRequestReview, onCancelReview, getReviewStatus, onUpdateBibEntry, onReplaceBibEntry, onUpdateBibKeyAndType,
   occurrenceInfo, bibPackage, bibEntries, isCited = true, onJump,
   onTogglePopout, isPoppedOut, libraryChip, addAction, draggable = true,
 }: BibEntryCardProps) {
@@ -204,7 +209,13 @@ export default function BibEntryCard({
     setShowBibWarning(true);
   };
   const commitEditBib = () => {
-    onUpdateBibEntry(entry.key, editBibFields);
+    // The editor's `editBibFields` is the COMPLETE intended field set (seeded
+    // from `entry.fields`, edited in place), so a Save is set-all — a field the
+    // user cleared must be deleted, not silently retained (BIB-A3-02). Route to
+    // `replaceBibEntry` (D3) when available; fall back to the merge path so a
+    // caller that hasn't wired the new prop keeps working unchanged.
+    if (onReplaceBibEntry) onReplaceBibEntry(entry.key, editBibFields, editBibType.trim() || undefined);
+    else onUpdateBibEntry(entry.key, editBibFields);
     if (editBibKey.trim() && (editBibKey.trim() !== entry.key || editBibType.trim() !== entry.type)) {
       onUpdateBibKeyAndType(entry.key, editBibKey.trim(), editBibType.trim());
     }

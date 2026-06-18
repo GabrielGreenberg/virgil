@@ -892,6 +892,29 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
     return unregister;
   }, [identityCascade]);
 
+  // Second `bibEntry` migrator (BIB-A2-04): a citekey rename must NOT strand a
+  // popped-out bib float or the panel selection. The bib float key is
+  // `float:card:bib:<citekey>` and the floatable resolves the entry by citekey,
+  // so without a lockstep remap the popped window blanks/dies on rename (and
+  // its saved rect orphans in `cardFloatPositions`); likewise `selectedBibKey`
+  // (citekey-keyed) loses its target. The cascade is the single writer that
+  // owns this re-point: it (1) lockstep-migrates the float key + its rect via
+  // `remapCardPopKey` (no-op when the entry isn't floated), and (2) re-points
+  // the panel selection if it pointed at the old key. Keyed on the durable uid
+  // upstream, so this fires exactly once per real rename. Idempotent (Set).
+  useEffect(() => {
+    const unregister = identityCascade.registerMigrator("bibEntry", (change) => {
+      if (!isRenameCitekey(change)) return;
+      const { oldKey, newKey } = change.renameCitekey;
+      if (oldKey === newKey) return;
+      // Lockstep float-key remap (keys + saved rect move together).
+      viewPrefs?.remapCardPopKey(cardPopKey("bib", oldKey), cardPopKey("bib", newKey));
+      // Re-point the panel selection so the renamed entry stays selected.
+      setSelectedBibKey((prev) => (prev === oldKey ? newKey : prev));
+    });
+    return unregister;
+  }, [identityCascade, viewPrefs]);
+
   // W1b — the single inline-atom DocStructureBus consumer (D1.2/D1.4). Mounts
   // ONCE per pane behind `virgil:identity-cascade`. Opens exactly one
   // `onAnyChange` subscription and registers T1's `regenIds` policy FIRST: on a
@@ -3316,6 +3339,7 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
       cancelBibReview: bibReviewHook.cancelRequest,
       getBibReviewStatus: bibReviewHook.getRequestStatus,
       updateBibEntry: citationsHook.updateBibEntry,
+      replaceBibEntry: citationsHook.replaceBibEntry,
       updateBibKeyAndType: citationsHook.updateBibKeyAndType,
       addBibEntry: citationsHook.addBibEntry,
 
@@ -5918,6 +5942,7 @@ function PaneRailBody({
         bibPackage={citationsHook.bibPackage}
         addBibEntry={citationsHook.addBibEntry}
         updateBibEntry={citationsHook.updateBibEntry}
+        replaceBibEntry={citationsHook.replaceBibEntry}
         updateBibKeyAndType={citationsHook.updateBibKeyAndType}
         getFormattedBib={citationsHook.getFormattedBib}
         getAnnotation={annotationsHook.getAnnotation}

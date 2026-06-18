@@ -238,6 +238,34 @@ export function serializeBibFile(entries: BibEntry[]): string {
     .join("\n\n") + "\n";
 }
 
+/**
+ * Serialize a set of entries to a standalone `.bib` file for EXPORT (the
+ * "Export cited.bib" action) — never the raw-passthrough that drops entries.
+ *
+ * Why this exists (BIB-F7-01, DATA-LOSS): the export site used to do
+ * `entries.map(e => e.raw).filter(Boolean)`, which SILENTLY DROPS any entry
+ * whose `raw` is empty — exactly the case for an entry assembled in memory
+ * ("Save under new citekey", a library add, `/editor/find-citation`) that was
+ * never round-tripped through a parse. The user exports a cited.bib that's
+ * missing a cited reference and never knows. The fix is to reconstruct EVERY
+ * entry through the serializer (which already rebuilds from `fields` when
+ * `raw === ""`), so no entry can vanish on the way out.
+ *
+ * The export deliberately OMITS the `\vbid{...}` durable-id markers
+ * `serializeBibFile` emits: those are Virgil's internal surrogate-id round-trip
+ * and have no meaning in a `.bib` handed to an external bibliography manager (a
+ * fresh `uid` is minted on the next import anyway). An entry with a non-empty
+ * `raw` keeps its byte-exact source block (preserving the user's field order /
+ * formatting); an entry with empty `raw` is reconstructed from `fields`.
+ */
+export function serializeBibForExport(entries: BibEntry[]): string {
+  return (
+    entries
+      .map((e) => (e.raw ? e.raw : reconstructBibtex(e)))
+      .join("\n\n") + "\n"
+  );
+}
+
 // ---------------------------------------------------------------------------
 // Citation command parsing (natbib + biblatex)
 // ---------------------------------------------------------------------------

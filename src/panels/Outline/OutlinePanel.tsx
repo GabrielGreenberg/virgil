@@ -318,8 +318,19 @@ export function extractHeadings(doc: JSONContent | null): ExtractResult {
         }
       }
       pendingTitles = [];
+      // OUT-A2-01: key the heading's stable address on its durable block `uuid`,
+      // NOT its positional `heading-${idx}`. The persisted fold/collapse Set
+      // (and the pods parent-chain) keys on `id`; an index-based id DRIFTS the
+      // moment a block is inserted above a collapsed section — the heading
+      // formerly `heading-3` becomes `heading-4`, so the saved fold key no
+      // longer matches and the section silently un-collapses (and an unrelated
+      // section may collapse). The block uuid is insert-stable, so the fold
+      // survives. Un-hydrated headings (uuid still null — lazy-backfilled on
+      // first interaction) fall back to the positional id so they remain
+      // foldable until they earn a uuid; once hydrated they key durably.
+      const uuid = (node.attrs.uuid as string | null) || null;
       headings.push({
-        id: `heading-${idx}`,
+        id: uuid ?? `heading-${idx}`,
         level: node.attrs.level as number,
         text: extractText(node) || "Untitled",
         label: (node.attrs.label as string) || null,
