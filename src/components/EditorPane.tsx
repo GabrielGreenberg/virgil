@@ -128,6 +128,7 @@ import { FloatHost } from "@/floats/FloatHost";
 import { parseAnyKey } from "@/floats/float-key";
 import { FLOAT_DEFAULT_SIZE } from "@/floats/float-policy";
 import { textObjectPopoutKey } from "@/text-objects/text-object-registry";
+import { LiftHost } from "@/text-objects/LiftHost";
 import { CARD_REGISTRY } from "@/cards/card-registry";
 import { runCardLifecycleEvent } from "@/cards/lifecycle/run-event";
 import { bridgeCardAiRequestFlag } from "@/lib/ai-request-bridge";
@@ -769,6 +770,13 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
   const innerRef = useRef<EditorHandle>(null);
   useImperativeHandle(ref, () => innerRef.current as EditorHandle);
   const [editor, setEditor] = useState<Editor | null>(null);
+  // A plain `RefObject<Editor | null>` kept in sync with the `editor` state,
+  // for consumers that take a raw editor ref (not the `EditorHandle`). The
+  // shared `LiftHost` reads `.current` to drive the lifted-overlay gesture +
+  // its viewport cache. Synced during render (no effect lag) — the assignment
+  // is idempotent and `editor` is React state, so every change re-renders.
+  const editorInstanceRef = useRef<Editor | null>(null);
+  editorInstanceRef.current = editor;
   const [overrideEditor, setOverrideEditor] = useState<Editor | null>(null);
   // Gates the LoadingScreen curtain over `.editor-pane-pod`.
   const [ready, setReady] = useState(false);
@@ -3768,6 +3776,18 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
 
         <CollabProvider value={collab}>
         <PoppedCardsContext.Provider value={poppedCardsValue}>
+        {/* LiftHost — shared owner of the lifted-overlay ghost gesture. Mounted
+            here, inside PoppedCardsContext.Provider (and under
+            EditorChromeProvider), because this is the lowest common ancestor of
+            BOTH `VirgilEditor` (→ TextObjectGrabHandle, the grab-handle
+            producer) AND `FloatHost` (→ FloatWindow/FloatChrome, the Chip-2
+            float-button producer); both consume `host.beginLift` via
+            `useLiftHost()`. usePoppedCards()/useEditorChrome() resolve here and
+            the synced `editorInstanceRef` is in scope. The host renders the
+            single `<LiftedTextOverlay>` (moved out of the grab handle) and
+            installs NO per-keystroke subscriber — its overlay state mutates
+            only during an active gesture. */}
+        <LiftHost editorRef={editorInstanceRef}>
           {/* Body-portaled outlines for dock-target / card-lift drag
               affordances. Both read state from module-level singletons
               (useDockDragTarget / useCardLiftTarget) — Reader has no
@@ -5260,6 +5280,7 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
           {confirmDragHandleActionDialog}
           {notifyDragHandleActionDialog}
           {confirmMorphDialog}
+        </LiftHost>
         </PoppedCardsContext.Provider>
         </CollabProvider>
         </SelectionsProvider>

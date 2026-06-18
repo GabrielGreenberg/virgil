@@ -1,6 +1,6 @@
 "use client";
 
-import { useLayoutEffect, useRef, useState } from "react";
+import { useLayoutEffect, useRef, useState, type MouseEvent as ReactMouseEvent } from "react";
 import FloatingPanel, {
   type FloatingPanelHandle,
 } from "@/components/FloatingPanel";
@@ -14,6 +14,8 @@ import {
   collectClippedHeight,
 } from "./float-policy";
 import { FloatChrome } from "./FloatChrome";
+import { useLiftHost } from "@/text-objects/LiftHost";
+import type { TextObjectKind } from "@/text-objects/types";
 import type { Floatable } from "./types";
 
 /**
@@ -42,6 +44,11 @@ export function FloatWindow({
   windowKey: string;
 }) {
   const ctx = usePoppedCards();
+  // Chip 2: the shared lifted-overlay ghost host. Called UNCONDITIONALLY
+  // (hooks must be — `useLiftHost` is `useContext`, returns null when no
+  // `LiftHost` is mounted, e.g. an isolated test/Reader). Only consumed below
+  // for the text-object drop button; card floats never touch it.
+  const liftHost = useLiftHost();
   // Per-instance chrome title override (e.g. heading level → "Chapter").
   // Generalizes the text-object `setHeaderLabel`.
   const [titleOverride, setTitleOverride] = useState<string | null>(null);
@@ -128,6 +135,37 @@ export function FloatWindow({
 
   const body = floatable.renderBody({ setTitle: setTitleOverride, windowKey: key });
 
+  // Domain dispatch for the (re)anchor drop button (Chip 2). FloatChrome is
+  // domain-blind: it calls `onDropPress` when supplied, else falls back to its
+  // own `beginCardDropGesture(dropCardKey)`.
+  //   - textobject → drive the shared lifted-overlay ghost via
+  //     `LiftHost.beginLift({terminalPolicy:"float", …})`. If no `LiftHost` is
+  //     mounted (`liftHost === null` — defensive; in practice always present),
+  //     leave `onDropPress` undefined so FloatChrome falls back to
+  //     `beginCardDropGesture`. That fallback is no-ghost and skips the
+  //     linkedRange `removeTransientAnchor` cleanup — an accepted asymmetry
+  //     because the null-host path is UNREACHABLE in the full editor: EditorPane
+  //     wraps FloatHost (→ this FloatWindow) inside `<LiftHost>`, so
+  //     `useLiftHost()` here always resolves non-null.
+  //   - card → leave `onDropPress` undefined so FloatChrome takes its existing
+  //     `beginCardDropGesture` path (zero card-behavior change). Cards are NOT
+  //     routed through `beginLift`.
+  const onDropPress =
+    floatable.domain === "textobject" && liftHost
+      ? (e: ReactMouseEvent) => {
+          liftHost.beginLift({
+            terminalPolicy: "float",
+            // `floatable.kind` is `string` on the contract (CardKind |
+            // TextObjectKind); in the textobject branch it is a
+            // `TextObjectKind` by construction (`textObjectFloatable` builds it
+            // from `ref.kind`). Narrow it for `beginLift`'s `TextObjectRef`.
+            ref: { kind: floatable.kind as TextObjectKind, id: floatable.id },
+            cardKey: floatable.key,
+            origin: { x: e.clientX, y: e.clientY },
+          });
+        }
+      : undefined;
+
   return (
     <FloatingPanel
       ref={panelHandleRef}
@@ -174,6 +212,11 @@ export function FloatWindow({
             // spec WITHOUT FloatChrome importing any card code.
             canDrop={floatable.canDrop}
             dropCardKey={floatable.key}
+            // Domain dispatch (Chip 2): supplied for textobject floats (drives
+            // the lifted-overlay ghost via LiftHost); undefined for card floats
+            // and when no LiftHost is mounted → FloatChrome falls back to its
+            // own `beginCardDropGesture(dropCardKey)`.
+            onDropPress={onDropPress}
             onClose={() => ctx.close(key)}
           />
           <div className="flex-1 min-h-0 flex flex-col overflow-hidden">

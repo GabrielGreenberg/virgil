@@ -295,6 +295,23 @@ native behavior intact. Inline kinds disable the button (40% opacity,
 not-allowed) while the card is an empty/keyless draft — there is no atom
 to anchor yet.
 
+**Same glyph, domain-dispatched gesture core (text-object floats).** The
+drop button is now on **popped-out text-object floats too** (not just
+cards): a paragraph/heading/list/etc. float carries the same
+`DropChevrons` left of its X, and pressing it drops the block **back into
+the prose** (move-and-close). Because the glyph is domain-neutral, the
+DISPATCH lives one level up at the float host (`FloatWindow.onDropPress`),
+not in the button: a **card** float's press still routes to
+`beginCardDropGesture` (the byte-unchanged card path), while a
+**text-object** float's press drives the **lifted-overlay ghost** via
+`LiftHost.beginLift({terminalPolicy:"float"})` — the same lift core the
+in-editor grab handle uses (`terminalPolicy:"grab"`). The convention:
+**one drop-glyph, gated on the float's static `canDrop` facet; the
+gesture it arms is chosen by the float's domain at the host, so the
+chrome stays domain-blind.** The text-object terminal policy is
+ghost-only (no popout — the float is already open; outside-content
+release cancels).
+
 ## Panels
 
 Sidebar pod with a locked-height header (`--header-h: 34px`). Header

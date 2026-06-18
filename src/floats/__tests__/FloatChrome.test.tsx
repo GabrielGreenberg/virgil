@@ -242,4 +242,107 @@ describe("FloatChrome (re)anchor drop button (chip D)", () => {
     expect(closeIdx).toBeGreaterThanOrEqual(0);
     expect(dropIdx).toBeLessThan(closeIdx);
   });
+
+  // Chip 2: the optional domain-supplied `onDropPress` seam. A textobject
+  // float passes its own handler (→ LiftHost ghost); a card float omits it
+  // and FloatChrome falls back to beginCardDropGesture (the byte-unchanged
+  // regression guard).
+  describe("onDropPress domain seam (Chip 2)", () => {
+    it("renders the drop button for a TEXTOBJECT float (canDrop + a textobject key)", () => {
+      render(
+        <FloatChrome
+          title="Paragraph"
+          canJump={false}
+          onJump={() => {}}
+          canDrop
+          dropCardKey="float:textobject:paragraph:p1"
+          onDropPress={() => {}}
+          onClose={() => {}}
+        />,
+      );
+      expect(screen.getByLabelText("Drop paragraph into text")).toBeTruthy();
+    });
+
+    it("a PRIMARY press calls the supplied onDropPress exactly once and does NOT call beginCardDropGesture", () => {
+      const onDropPress = vi.fn();
+      render(
+        <FloatChrome
+          title="Paragraph"
+          canJump={false}
+          onJump={() => {}}
+          canDrop
+          dropCardKey="float:textobject:paragraph:p1"
+          onDropPress={onDropPress}
+          onClose={() => {}}
+        />,
+      );
+      fireEvent.mouseDown(screen.getByLabelText("Drop paragraph into text"), {
+        button: 0,
+        clientX: 11,
+        clientY: 22,
+      });
+      expect(onDropPress).toHaveBeenCalledTimes(1);
+      // The supplied handler WINS — the default card gesture (→ beginDropSession)
+      // must NOT fire when onDropPress is present.
+      expect(beginDropSession).not.toHaveBeenCalled();
+      // The press event carries the cursor coords the caller reads for `origin`.
+      const ev = onDropPress.mock.calls[0][0] as { clientX: number; clientY: number };
+      expect(ev.clientX).toBe(11);
+      expect(ev.clientY).toBe(22);
+    });
+
+    it("a NON-PRIMARY (right-click) press does NOT call onDropPress", () => {
+      const onDropPress = vi.fn();
+      render(
+        <FloatChrome
+          title="Paragraph"
+          canJump={false}
+          onJump={() => {}}
+          canDrop
+          dropCardKey="float:textobject:paragraph:p1"
+          onDropPress={onDropPress}
+          onClose={() => {}}
+        />,
+      );
+      fireEvent.mouseDown(screen.getByLabelText("Drop paragraph into text"), {
+        button: 2,
+        clientX: 11,
+        clientY: 22,
+      });
+      expect(onDropPress).not.toHaveBeenCalled();
+      // A primary press on the same button still fires it — the guard is
+      // button-selective, not globally inert.
+      fireEvent.mouseDown(screen.getByLabelText("Drop paragraph into text"), {
+        button: 0,
+      });
+      expect(onDropPress).toHaveBeenCalledTimes(1);
+    });
+
+    it("CARD path (no onDropPress) still falls back to beginCardDropGesture — regression guard", () => {
+      const key = "float:card:note:n9";
+      render(
+        <FloatChrome
+          title="Note"
+          canJump={false}
+          onJump={() => {}}
+          canDrop
+          dropCardKey={key}
+          onClose={() => {}}
+        />,
+      );
+      fireEvent.mouseDown(screen.getByLabelText(DROP_LABEL), {
+        button: 0,
+        clientX: 5,
+        clientY: 6,
+      });
+      // beginCardDropGesture → beginDropSession with the float's key (the
+      // unchanged card behavior).
+      expect(beginDropSession).toHaveBeenCalledTimes(1);
+      const arg = beginDropSession.mock.calls[0][0] as unknown as {
+        cardKey: string;
+      };
+      expect(arg.cardKey).toBe(key);
+      fireEvent(window, new MouseEvent("mouseup", { bubbles: true }));
+    });
+  });
 });
