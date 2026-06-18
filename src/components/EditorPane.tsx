@@ -1118,9 +1118,37 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
     () => ({ ...cutterHookRaw, convertCard: convertCutterCard }),
     [cutterHookRaw, convertCutterCard],
   );
+  // Wrap the reports `deleteCard` so a DELETE of an aiRequest-bearing
+  // report-request discharges the same cross-store obligation a morph does:
+  // UNBRIDGE the pending ai-requests.json entry (REP-F7-02, the symmetric
+  // delete leak) + publish the D6 card-deleted signal — through the SAME
+  // executor contract, so the delete and the morph can't diverge. The
+  // content-confirm already happened upstream (EditableCard / deleteMarginItem),
+  // so the executor runs with `hasContent: false` (no double-confirm). A plain
+  // `report` (no routing) deletes straight through.
+  const deleteReportCard = useCallback(
+    (id: string) => {
+      const card = reportsHookRaw.cards.find((c) => c.id === id);
+      const kind: CardKind = card?.kind === "report-request" ? "report-request" : "report";
+      void runCardLifecycleEvent(
+        { type: "delete", kind, id, hasContent: false },
+        {
+          confirm: async () => true, // upstream already confirmed
+          unbridgeAiRequest: (k, cid) =>
+            bridgeCardAiRequestFlag(docId, k, cid, false, { text: "" }),
+          mutate: () => reportsHookRaw.deleteCard(id),
+        },
+      );
+    },
+    [reportsHookRaw, docId],
+  );
   const reportsHook = useMemo(
-    () => ({ ...reportsHookRaw, convertCard: convertReportCard }),
-    [reportsHookRaw, convertReportCard],
+    () => ({
+      ...reportsHookRaw,
+      convertCard: convertReportCard,
+      deleteCard: deleteReportCard,
+    }),
+    [reportsHookRaw, convertReportCard, deleteReportCard],
   );
   const notesHook = useMemo(
     () => ({ ...notesHookRaw, convertCard: convertNotesCard }),
