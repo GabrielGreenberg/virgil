@@ -15,7 +15,7 @@
 // `panel-primitives` (where `useCycle` lives) transitively imports
 // `@/lib/storage` — stub it so the hook can import in jsdom.
 
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, type Mock } from "vitest";
 
 vi.mock("@/lib/storage", () => {
   const noop = () => undefined;
@@ -37,9 +37,9 @@ import { renderHook, act } from "@testing-library/react";
 import { useCycle } from "@/components/panel-primitives";
 
 describe("useCycle — read-clamp + wrap (the SR-cycle fix authority)", () => {
-  let activate: ReturnType<typeof vi.fn>;
+  let activate: Mock<(item: string, index: number) => void>;
   beforeEach(() => {
-    activate = vi.fn();
+    activate = vi.fn<(item: string, index: number) => void>();
   });
 
   it("next() advances and wraps at the end; prev() wraps at the start", () => {
