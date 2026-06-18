@@ -2761,109 +2761,71 @@ textarea,
 
 /* Marginalia interaction layer.
  *
- * Three-state vocabulary used everywhere: resting → hover → selected.
- * Each state uses the card's kind color (via --link-anchor-color) and
- * differs from the others only in INTENSITY — never in color, never via
- * fill changes. Mode A (paragraph) and Mode B (text-range) targets get
- * the same treatment at the same intensities so the system reads as one.
+ * Two ORTHOGONAL channels, deliberately kept distinct:
  *
- * Tuning targets:
- *   hover    : ~22% bg wash + 50% / 1.5px ring
- *   selected : ~40% bg wash + 80% / 2px ring + (Mode A only) inset stripe
+ *   • ATTENTION (the in-editor anchor highlight) — driven by EITHER a
+ *     transient pointer hover OR a persistent card selection. Both paint
+ *     the SAME light highlight: there is no longer a "heavy" selected ring.
+ *     Selection still differs FUNCTIONALLY (scroll-on-select, keyboard
+ *     target, ≤1 at a time) and the selected card keeps a quiet in-surface
+ *     tint on its own body (header/border, from panel-theme) so it stays
+ *     findable after the pointer leaves — but the anchor highlight is one
+ *     weight, so selecting a card never throws a loud outline into the text.
+ *
+ *   • Each state uses the card's kind color (via --link-anchor-color) and
+ *     differs from resting only in INTENSITY — never in color, never via
+ *     fill changes. Mode A (paragraph) and Mode B (text-range) targets get
+ *     the same treatment so the system reads as one.
+ *
+ * Highlight recipe (hover ≡ selected):
+ *   ~22% bg wash + 50% / 1.5px ring   (Mode A: 2px / 50% inset line)
  */
 
-/* SELECTED ─────────────────────────────────────────────────────────── */
+/* ATTENTION — hover and selection share one light treatment ─────────── */
 
-/* Inline atoms (footnote) — ring only (chip background preserved).
- * Stronger than hover. Citations get a different treatment below: they
- * lock the hover yellow on instead of a blue ring. */
+/* Inline atoms (footnote) — soft ring (chip background preserved).
+ * Citations get a different treatment below: they lock the hover yellow
+ * on instead of a blue ring. */
+.footnote-marker[data-card-hovered="true"],
 .footnote-marker[data-card-selected="true"] {
-  box-shadow: 0 0 0 2px color-mix(in oklab, var(--link-anchor-color) 80%, transparent);
+  box-shadow: 0 0 0 1.5px color-mix(in oklab, var(--link-anchor-color) 50%, transparent);
   border-radius: 3px;
 }
 
-/* Citation selected — same yellow as :hover, locked on. */
+/* Citation — lock the :hover yellow on, for both hover-from-card and
+ * selection (citations read via their native yellow, never a blue ring). */
+.citation-node[data-card-hovered="true"],
 .citation-node[data-card-selected="true"],
+[data-type="citation"][data-card-hovered="true"],
 [data-type="citation"][data-card-selected="true"] {
   background: #fef3c3;
   border-color: #d4a843;
   color: #4a3f20;
 }
 
-/* Mode B text-range spans — wash + ring. */
+/* Mode B text-range spans — soft wash, no ring. */
+.linked-anchor[data-card-hovered="true"],
 .linked-anchor[data-card-selected="true"] {
-  background: color-mix(in oklab, var(--link-anchor-color) 40%, transparent);
-  box-shadow: 0 0 0 1px color-mix(in oklab, var(--link-anchor-color) 80%, transparent);
+  background: color-mix(in oklab, var(--link-anchor-color) 22%, transparent);
 }
 
-/* Mode A paragraph anchors — show a kind-colored vertical line on the
- * same side as the margin marker (data-margin-side="left|right"), with
- * NO background wash. The whole-paragraph fill from the previous version
- * was visually heavier than the anchor relationship warranted; the line
- * alone is enough. The inset puts the line at the paragraph's edge,
- * inside its layout box but adjacent to the gutter where the marker and
- * grab handle live — naturally reading as "between the text and the
- * grab handle" on the left side. */
-/* Left side: bar sits fully in the gutter, 4px to the left of the
- * paragraph's text edge. Uses a pseudo-element so the bar can be
- * positioned independently of paragraph dimensions and stays at a
- * fixed width regardless of box-shadow geometry constraints.
- * Reads as a vertical highlight in the gutter between the text and
- * the grab handle (handle sits at left: -14px). */
+/* Mode A paragraph anchors — a kind-colored vertical line on the same
+ * side as the margin marker (data-margin-side="left|right"), with NO
+ * background wash. Left side uses a pseudo-element so the bar is
+ * positioned independently of paragraph dimensions and stays at a fixed
+ * width (reads as a highlight in the gutter between the text and the grab
+ * handle, which sits at left: -14px); right side uses an inset box-shadow.
+ * Hover and selection paint the same 2px / 50% line. */
+[data-card-hovered="paragraph"][data-margin-side="left"],
+[data-card-hovered="paragraph"]:not([data-margin-side]),
 [data-card-selected="paragraph"][data-margin-side="left"],
 [data-card-selected="paragraph"]:not([data-margin-side]) {
   position: relative;
 }
+[data-card-hovered="paragraph"][data-margin-side="left"]::before,
+[data-card-hovered="paragraph"]:not([data-margin-side])::before,
 [data-card-selected="paragraph"][data-margin-side="left"]::before,
 [data-card-selected="paragraph"]:not([data-margin-side])::before {
-  content: "";
-  position: absolute;
-  left: -5px;
-  top: 0;
-  bottom: 0;
-  width: 3px;
-  background: color-mix(in oklab, var(--link-anchor-color) 80%, transparent);
-  pointer-events: none;
-}
-[data-card-selected="paragraph"][data-margin-side="right"] {
-  box-shadow: inset -3px 0 0 0 color-mix(in oklab, var(--link-anchor-color) 80%, transparent);
-}
-
-/* HOVER ────────────────────────────────────────────────────────────── */
-/* Selection wins — these rules use `:not([data-card-selected])`. */
-
-/* Inline atoms (footnote) — softer ring than the selected variant.
- * Citations are excluded: their native :hover already provides yellow,
- * and data-card-hovered would otherwise add a blue ring we don't want. */
-.footnote-marker[data-card-hovered="true"]:not([data-card-selected="true"]) {
-  box-shadow: 0 0 0 1.5px color-mix(in oklab, var(--link-anchor-color) 50%, transparent);
-  border-radius: 3px;
-}
-
-/* Citation hovered-from-card — match the :hover yellow so card-side
- * hover lights up the citation the same way as direct mouseover. */
-.citation-node[data-card-hovered="true"]:not([data-card-selected="true"]),
-[data-type="citation"][data-card-hovered="true"]:not([data-card-selected="true"]) {
-  background: #fef3c3;
-  border-color: #d4a843;
-  color: #4a3f20;
-}
-
-/* Mode B text-range spans — softer wash. */
-.linked-anchor[data-card-hovered="true"]:not([data-card-selected="true"]) {
-  background: color-mix(in oklab, var(--link-anchor-color) 22%, transparent);
-}
-
-/* Mode A paragraphs — softer line than selected, on the same side as
- * the margin marker. Left side uses the same pseudo-element approach
- * as selected, just thinner (2px) and lower opacity (50%). Bar at
- * x=-4..-2 relative to paragraph edge. */
-[data-card-hovered="paragraph"][data-margin-side="left"]:not([data-card-selected="paragraph"]),
-[data-card-hovered="paragraph"]:not([data-margin-side]):not([data-card-selected="paragraph"]) {
-  position: relative;
-}
-[data-card-hovered="paragraph"][data-margin-side="left"]:not([data-card-selected="paragraph"])::before,
-[data-card-hovered="paragraph"]:not([data-margin-side]):not([data-card-selected="paragraph"])::before {
   content: "";
   position: absolute;
   left: -5px;
@@ -2873,7 +2835,8 @@ textarea,
   background: color-mix(in oklab, var(--link-anchor-color) 50%, transparent);
   pointer-events: none;
 }
-[data-card-hovered="paragraph"][data-margin-side="right"]:not([data-card-selected="paragraph"]) {
+[data-card-hovered="paragraph"][data-margin-side="right"],
+[data-card-selected="paragraph"][data-margin-side="right"] {
   box-shadow: inset -2px 0 0 0 color-mix(in oklab, var(--link-anchor-color) 50%, transparent);
 }
 
@@ -2888,53 +2851,35 @@ textarea,
   outline-color: color-mix(in oklab, var(--link-anchor-color) 50%, transparent);
 }
 
-/* Hover — outline at 50% (matches the other channels' hover ring).
- * Outline is inset (negative offset) so it sits inside the card's own
- * border-radius; we intentionally do NOT override the radius here, so
- * the card's outer shape is identical in default/hover/selected states. */
-[data-card-key][data-card-hovered="true"]:not([data-card-selected="true"]),
-[data-card-key]:hover:not([data-card-selected="true"]) {
+/* Hover OR selected — one light inset outline at 50% / 1.5px. Inset
+ * (negative offset) so it sits inside the card's own border-radius; we
+ * intentionally do NOT override the radius, so the card's outer shape is
+ * identical in default/hover/selected states. The selected card's quiet
+ * identity comes from its body tint (panel-theme), not a heavier ring. */
+[data-card-key][data-card-hovered="true"],
+[data-card-key][data-card-selected="true"],
+[data-card-key]:hover {
   outline: 1.5px solid color-mix(in oklab, var(--link-anchor-color) 50%, transparent);
   outline-offset: -1.5px;
-}
-
-/* Selected — outline at 80% (matches the other channels' selected ring). */
-[data-card-key][data-card-selected="true"] {
-  outline: 2px solid color-mix(in oklab, var(--link-anchor-color) 80%, transparent);
-  outline-offset: -2px;
 }
 
 /* ── Popped-card seam (bug #34) ──────────────────────────────────────
  * A card inside a FLOAT is the chromeless PanelCard root; it still carries
  * `data-card-key` and the reconciler still stamps `data-card-selected` /
  * `data-card-hovered` on it (document-wide sweep — by design, no behavior
- * change there). But the inner `[data-card-key]` outline rules above would
+ * change there). But the inner `[data-card-key]` outline rule above would
  * then draw a rectangle around the card BODY, not the window. So in popped
  * context we (a) move the ring to the WINDOW and (b) suppress the inner one.
  *
- * The window ring reuses the EXACT docked selected-halo recipe from
- * `themedCardStyle()` (panel-primitives.tsx) — `var(--card-shadow-ambient)`
- * + a 3px accent ring at 55% + a 10px glow at 35% — so docked and popped
- * read identically. `!important` is required because `FloatingPanel` sets
- * `boxShadow` INLINE in `containerStyle` (an inline style otherwise wins
- * over a stylesheet rule). The accent (`--link-anchor-color`) is propagated
- * onto the FloatingPanel root via the card floatable's `accentTint`
- * (FloatWindow → FloatingPanel), since the var the inner card stamps does
- * not inherit UP to the `:has()` host. */
+ * Hover and selection share one light window ring (50% / 1.5px, no glow),
+ * matching the docked attention channel. `!important` is required because
+ * `FloatingPanel` sets `boxShadow` INLINE in `containerStyle` (an inline
+ * style otherwise wins over a stylesheet rule). The accent
+ * (`--link-anchor-color`) is propagated onto the FloatingPanel root via the
+ * card floatable's `accentTint` (FloatWindow → FloatingPanel), since the var
+ * the inner card stamps does not inherit UP to the `:has()` host. */
+[data-floating-panel][data-panel-shell-mode="floating"]:has([data-card-key][data-card-hovered="true"]),
 [data-floating-panel][data-panel-shell-mode="floating"]:has([data-card-key][data-card-selected="true"]) {
-  box-shadow:
-    var(--card-shadow-ambient),
-    0 0 0 3px color-mix(in oklab, var(--link-anchor-color) 55%, transparent),
-    0 0 10px 0 color-mix(in oklab, var(--link-anchor-color) 35%, transparent)
-      !important;
-}
-
-/* Hover gets the analogous WINDOW treatment — a subtler accent ring (no
- * glow), consistent with the docked hover channel (50% ring). Selection
- * wins via `:not(...)` so a selected+hovered window keeps the full halo. */
-[data-floating-panel][data-panel-shell-mode="floating"]:has(
-    [data-card-key][data-card-hovered="true"]:not([data-card-selected="true"])
-  ):not(:has([data-card-key][data-card-selected="true"])) {
   box-shadow:
     var(--card-shadow-ambient),
     0 0 0 1.5px color-mix(in oklab, var(--link-anchor-color) 50%, transparent)

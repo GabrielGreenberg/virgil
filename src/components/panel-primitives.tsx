@@ -227,17 +227,18 @@ export function themedCard(_theme: CardTheme, selected: boolean, extra?: string)
   return `${CARD_BASE} ${selected ? "bg-surface" : CARD_DEFAULT}${extra ? ` ${extra}` : ""}`;
 }
 
-/** Single source of truth for card-surface inline style: border color,
- *  ambient lift shadow, and selection halo. PanelCard, SearchPanel
- *  result rows, and any other card surface must call this so the
- *  selection visual stays uniform across kinds and contexts.
+/** Single source of truth for card-surface inline style: border color
+ *  and ambient lift shadow. PanelCard, SearchPanel result rows, and any
+ *  other card surface must call this so the selection visual stays
+ *  uniform across kinds and contexts.
  *
- *  Selected cards get a 3px themed-color halo + soft glow on top of the
- *  ambient shadow. The halo uses the *original* accent hex (not the
- *  lightened `borderSelected`) so that amber/khaki/stone themes have
- *  enough chroma to read against the cream canvas — `borderSelected`
- *  is sized for contrast against the white card body, where it lives
- *  as the 1px border itself, but it washes out in the surround.
+ *  Selection no longer paints a heavy halo. A selected card's *attention*
+ *  ring is the same light 1.5px/50% outline as hover (the `[data-card-key]`
+ *  rule in globals.css); its persistent identity — the cue that survives the
+ *  pointer leaving — is the quiet `borderSelected` 1px border tint applied
+ *  here, plus the header tint PanelCard sets from `headerSelected`. So the
+ *  box-shadow is always just the ambient lift, for selected and unselected
+ *  alike.
  *
  *  Pop-out cards get borderless treatment because FloatingPanel adds
  *  its own chrome. */
@@ -251,9 +252,7 @@ export function themedCardStyle(
   }
   return {
     ...(selected ? { borderColor: theme.borderSelected } : {}),
-    boxShadow: selected
-      ? `var(--card-shadow-ambient), 0 0 0 3px color-mix(in oklab, ${theme.accent} 55%, transparent), 0 0 10px 0 color-mix(in oklab, ${theme.accent} 35%, transparent)`
-      : "var(--card-shadow-ambient)",
+    boxShadow: "var(--card-shadow-ambient)",
   };
 }
 
