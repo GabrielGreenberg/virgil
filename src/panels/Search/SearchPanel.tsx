@@ -22,15 +22,9 @@ import {
   SCOPE_ORDER,
   compileQuery,
   buildUuidPosMap,
-  searchFootnotes,
-  searchNotes,
-  searchCitations,
-  searchTodos,
-  searchArchive,
-  searchCutter,
-  searchComments,
-  searchBibliography,
 } from "@/lib/search-sources";
+import { SCOPE_DISPATCH, UUID_POS_SCOPES } from "@/panels/Search/scope-dispatch";
+import { resolveLiveBlockRange } from "@/hooks/useLivePosResolver";
 import type {
   ArchivedSnippet,
   BibEntry,
@@ -38,6 +32,7 @@ import type {
   RevisionCard,
   CutterCard,
   OrphanedFootnote,
+  ReportItem,
   TodoItem,
   UserNote,
 } from "@/lib/types";
@@ -83,6 +78,7 @@ interface SearchPanelProps {
   todos: TodoItem[];
   archiveSnippets: ArchivedSnippet[];
   cutterCards: CutterCard[];
+  reportCards: ReportItem[];
   comments: RevisionCard[];
   bibEntries: BibEntry[];
   onOpenItem: (panel: PanelId, itemId: string) => void;
@@ -200,12 +196,119 @@ function buildBreadcrumb(editor: Editor, pos: number): BreadcrumbSegment[] {
   return crumbs;
 }
 
-function searchMainText(editor: Editor, re: RegExp): SearchHit[] {
-  const docText = editor.state.doc.textBetween(
-    0,
-    editor.state.doc.content.size,
-    "\n",
-  );
+/**
+ * A textblock's span in the joined-document-text coordinate space, paired with
+ * the PM coordinates and stable uuid needed to (a) map a match start to a live
+ * range at click time and (b) compute the PM `from/to` for ordering.
+ *
+ * `textStart`/`textEnd` are offsets into the SAME joined string the matcher
+ * runs over; `contentStart` is the PM position of the first character inside
+ * the block (`nodePos + 1`).
+ */
+interface TextRun {
+  /** Offset of this run's first char in the joined doc text. */
+  charStart: number;
+  /** PM position of this run's first char. */
+  pmStart: number;
+  /** Number of chars in the run. */
+  len: number;
+}
+
+interface BlockSpan {
+  uuid: string | null;
+  /** PM position of the first inline slot in the block (`nodePos + 1`). */
+  contentStart: number;
+  /** Offsets into the joined doc text spanned by this block. */
+  textStart: number;
+  textEnd: number;
+  /** Per-text-node runs, in ascending char order. An inline ATOM
+   *  (footnote/citation/inline-math) contributes ZERO chars but occupies one
+   *  PM slot, so consecutive runs are NOT PM-contiguous — the run table is
+   *  what makes char→PM conversion atom-accurate. */
+  runs: TextRun[];
+}
+
+/**
+ * Build the joined main-text string AND the aligned per-textblock span/run
+ * table in ONE walk, so the matcher's offsets and the PM positions can never
+ * drift apart. Mirrors `doc.textBetween(0, size, "\n")`: consecutive
+ * textblocks are joined by a single "\n" separator.
+ *
+ * The previous implementation matched over `textBetween(...)` but RE-derived
+ * PM positions in a SEPARATE descendant walk that incremented a `textOffset`
+ * counter (`+= 1` per textblock boundary) — the two counters could disagree on
+ * a multi-block match, landing the highlight one position off. Deriving the
+ * joined text AND the PM-coordinate run table from the SAME walk removes that
+ * whole failure mode, and the per-run table keeps char→PM conversion correct
+ * across inline atoms (an atom occupies a PM slot but no chars).
+ */
+function buildMainTextIndex(editor: Editor): {
+  text: string;
+  spans: BlockSpan[];
+} {
+  const spans: BlockSpan[] = [];
+  let text = "";
+  let seenFirst = false;
+
+  editor.state.doc.descendants((node, nodePos) => {
+    if (!node.isTextblock) return true;
+    // Separator between consecutive textblocks (matches `textBetween`'s "\n").
+    if (seenFirst) text += "\n";
+    seenFirst = true;
+    const uuid = (node.attrs?.uuid as string | undefined) ?? null;
+    const contentStart = nodePos + 1;
+    const textStart = text.length;
+    const runs: TextRun[] = [];
+
+    // Walk the block's inline content. Text nodes contribute chars + a run;
+    // inline atoms advance the PM cursor but add no chars (and no run).
+    let pmCursor = contentStart;
+    node.forEach((child) => {
+      if (child.isText) {
+        const t = child.text ?? "";
+        runs.push({ charStart: text.length, pmStart: pmCursor, len: t.length });
+        text += t;
+      }
+      pmCursor += child.nodeSize;
+    });
+
+    spans.push({ uuid, contentStart, textStart, textEnd: text.length, runs });
+    // Don't descend further — we already consumed the block's inline content,
+    // and nested textblocks don't occur inside a leaf textblock in this schema.
+    return false;
+  });
+
+  return { text, spans };
+}
+
+/** Find the span whose half-open `[textStart, textEnd)` contains `offset`.
+ *  Spans are ascending, so a small linear scan is fine (result building is
+ *  event-time, not per keystroke). */
+function spanAt(spans: BlockSpan[], offset: number): BlockSpan | null {
+  for (const s of spans) {
+    if (offset >= s.textStart && offset < s.textEnd) return s;
+    // A zero-length block (empty paragraph) can host an empty match exactly at
+    // its start; tolerate `offset === textStart === textEnd`.
+    if (offset === s.textStart && s.textStart === s.textEnd) return s;
+  }
+  return null;
+}
+
+/** Convert a joined-text char offset to a PM position WITHIN `span`, walking
+ *  its run table so inline atoms (0 chars / 1 PM slot) don't skew the result.
+ *  Falls back to `contentStart + (offset - textStart)` for the degenerate
+ *  empty-block case. */
+function charOffsetToPm(span: BlockSpan, charOffset: number): number {
+  for (const run of span.runs) {
+    if (charOffset >= run.charStart && charOffset <= run.charStart + run.len) {
+      return run.pmStart + (charOffset - run.charStart);
+    }
+  }
+  return span.contentStart + (charOffset - span.textStart);
+}
+
+export function searchMainText(editor: Editor, re: RegExp): SearchHit[] {
+  const { text: docText, spans } = buildMainTextIndex(editor);
 
   const out: SearchHit[] = [];
   re.lastIndex = 0;
@@ -217,38 +320,15 @@ function searchMainText(editor: Editor, re: RegExp): SearchHit[] {
     const before = docText.slice(Math.max(0, matchStart - CTX), matchStart);
     const after = docText.slice(matchEnd, matchEnd + CTX);
 
-    let pmFrom = 0;
-    let pmTo = 0;
-    let textOffset = 0;
-    let seenFirstTextblock = false;
-    let foundFrom = false;
-    let foundTo = false;
-
-    editor.state.doc.descendants((node, nodePos) => {
-      if (foundTo) return false;
-      if (node.isTextblock) {
-        if (seenFirstTextblock) {
-          textOffset += 1;
-        } else {
-          seenFirstTextblock = true;
-        }
-      }
-      if (node.isText) {
-        const len = (node.text || "").length;
-        if (!foundFrom && textOffset + len > matchStart) {
-          pmFrom = nodePos + (matchStart - textOffset);
-          foundFrom = true;
-        }
-        if (!foundTo && textOffset + len >= matchEnd) {
-          pmTo = nodePos + (matchEnd - textOffset);
-          foundTo = true;
-        }
-        textOffset += len;
-      }
-      return true;
-    });
-
-    if (foundFrom && foundTo) {
+    // Anchor the hit to the block the match STARTS in. A match that crosses a
+    // block boundary (rare — only a query containing the "\n" separator) is
+    // clamped to its starting block, which is the correct, safe behavior:
+    // `to` is computed from the END offset clamped to the start block's text.
+    const startSpan = spanAt(spans, matchStart);
+    if (startSpan) {
+      const pmFrom = charOffsetToPm(startSpan, matchStart);
+      const clampedEnd = Math.min(matchEnd, startSpan.textEnd);
+      const pmTo = charOffsetToPm(startSpan, clampedEnd);
       out.push({
         scope: "mainText",
         from: pmFrom,
@@ -257,6 +337,16 @@ function searchMainText(editor: Editor, re: RegExp): SearchHit[] {
         match: m[0],
         after,
         field: "body",
+        // `offset` is the PM-position offset within the block (NOT a char
+        // offset) so `resolveLiveBlockRange` can recover `from` as
+        // `block.pos + 1 + offset` against the LIVE (re-mapped) block pos.
+        blockId: startSpan.uuid
+          ? {
+              blockUuid: startSpan.uuid,
+              offset: pmFrom - startSpan.contentStart,
+              length: pmTo - pmFrom,
+            }
+          : undefined,
       });
     }
     if (m[0].length === 0) re.lastIndex++;
@@ -276,6 +366,7 @@ function SearchPanel({
   todos,
   archiveSnippets,
   cutterCards,
+  reportCards,
   comments,
   bibEntries,
   onOpenItem,
@@ -348,51 +439,39 @@ function SearchPanel({
     const re = compileQuery(query, { caseSensitive, wholeWord });
     if (!re) return [];
 
-    const hits: SearchHit[] = [];
-
-    if (enabledScopes.has("mainText")) {
-      hits.push(...searchMainText(editor, re));
-    }
-
-    const needsUuidMap =
-      enabledScopes.has("notes") ||
-      enabledScopes.has("todos") ||
-      enabledScopes.has("archive") ||
-      enabledScopes.has("cuts");
+    // Build the shared UUID→pos map once, only if a uuid-anchored scope is on
+    // (the doc walk isn't free). `UUID_POS_SCOPES` is the single source of
+    // truth for which scopes need it (see scope-dispatch.ts).
+    const needsUuidMap = UUID_POS_SCOPES.some((s) => enabledScopes.has(s));
     const uuidPos = needsUuidMap
       ? buildUuidPosMap(editor)
       : new Map<string, number>();
 
-    if (enabledScopes.has("footnotes")) {
-      hits.push(...searchFootnotes(footnotes, orphanedFootnotes, re));
-    }
-    if (enabledScopes.has("notes")) {
-      hits.push(...searchNotes(notes, editor, uuidPos, re));
-    }
-    if (enabledScopes.has("citations")) {
-      hits.push(
-        ...searchCitations(
-          citations,
-          editorCitations,
-          getCitationDisplayText,
-          re,
-        ),
-      );
-    }
-    if (enabledScopes.has("todos")) {
-      hits.push(...searchTodos(todos, uuidPos, re));
-    }
-    if (enabledScopes.has("archive")) {
-      hits.push(...searchArchive(archiveSnippets, uuidPos, re));
-    }
-    if (enabledScopes.has("cuts")) {
-      hits.push(...searchCutter(cutterCards, editor, uuidPos, re));
-    }
-    if (enabledScopes.has("revisions")) {
-      hits.push(...searchComments(comments, editor, re));
-    }
-    if (enabledScopes.has("bibliography")) {
-      hits.push(...searchBibliography(bibEntries, re));
+    const ctx = {
+      editor,
+      re,
+      uuidPos,
+      footnotes,
+      orphanedFootnotes,
+      notes,
+      citations,
+      editorCitations,
+      getCitationDisplayText,
+      todos,
+      archiveSnippets,
+      cutterCards,
+      reportCards,
+      comments,
+      bibEntries,
+      searchMainText,
+    };
+
+    // Drive every enabled scope through the exhaustive dispatch table — a
+    // scope enumerated in SCOPE_ORDER but missing a dispatch entry is a
+    // COMPILE error, so the panel can never silently skip one (SR-F3-02).
+    const hits: SearchHit[] = [];
+    for (const scope of SCOPE_ORDER) {
+      if (enabledScopes.has(scope)) hits.push(...SCOPE_DISPATCH[scope](ctx));
     }
 
     hits.sort((a, b) => a.from - b.from);
@@ -416,6 +495,7 @@ function SearchPanel({
     todos,
     archiveSnippets,
     cutterCards,
+    reportCards,
     comments,
     bibEntries,
   ]);
@@ -427,7 +507,26 @@ function SearchPanel({
 
       if (result.unanchored) {
         onHighlightRange(null);
+      } else if (result.blockId) {
+        // SR-F1-01 / SR-F3-04: re-resolve the match to a LIVE PM range from the
+        // DocStructure snapshot at CLICK time, never the baked `result.from`.
+        // If the user typed in an earlier paragraph after searching, the block
+        // shifted — the live range tracks it. Fall back to the baked range when
+        // the snapshot doesn't carry the block (the bus isn't warmed on a
+        // freshly-loaded doc until the first structural edit — the same
+        // `resolve(id) ?? baked` discipline OmniViewPanel uses). If the block
+        // was genuinely deleted, the baked range is stale but the editor's
+        // highlight apply clamps/no-ops an out-of-range position.
+        onHighlightRange(
+          resolveLiveBlockRange(editor, result.blockId) ?? {
+            from: result.from,
+            to: result.to,
+          },
+        );
       } else {
+        // Collection hits (footnote/citation/etc.) anchor on a paragraph; the
+        // baked `from` was resolved at search time. They scroll-to + open their
+        // native panel; the editor highlight is best-effort.
         onHighlightRange({ from: result.from, to: result.to });
       }
 

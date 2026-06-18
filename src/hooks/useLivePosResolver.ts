@@ -10,10 +10,52 @@ export type LivePosResolver = (id: string) => number | undefined;
 /** The entity kinds the DocStructureObserver indexes positionally that this
  *  resolver walks when it rebuilds the lookup map. These are exactly the
  *  members of `CardKind` the hook keys on, so a `cardPopKey`-style `keyOf`
- *  type-checks directly. (Range-anchored consumers — e.g. a search highlight
- *  keyed on an `anchorId`/from — would extend this; that's a separate T5
- *  pillar and not introduced here.) */
+ *  type-checks directly. The range-anchored consumer (a main-text search
+ *  highlight keyed on a block uuid + char offset) is served by the separate
+ *  `resolveLiveBlockRange` below, which reads the same live snapshot. */
 export type LivePosKind = "footnote" | "citation" | "example";
+
+/** A block-relative match identity: the block's stable uuid + the character
+ *  offset of the match WITHIN that block's text + the match length. This is
+ *  the keystroke-durable surrogate for a raw `{from,to}` — the block can shift
+ *  arbitrarily under earlier edits, but the uuid + intra-block offset stay
+ *  valid until the block's own text changes. */
+export interface BlockRangeId {
+  blockUuid: string;
+  /** Character offset of the match start within the block's text content. */
+  offset: number;
+  /** Length of the matched run, in characters. */
+  length: number;
+}
+
+/**
+ * Resolve a block-relative match identity to a LIVE ProseMirror range from the
+ * editor's `DocStructureBus` snapshot. The block's opening-token position
+ * (`BlockEntry.pos`) is re-mapped every transaction by the observer, so adding
+ * a sentence in an EARLIER paragraph shifts this block's `pos` and the returned
+ * range tracks it — fixing the "highlight lands on stale text after an earlier
+ * edit" class (SR-F1-01 / SR-A2-01 / SR-F3-04).
+ *
+ * The block's text content begins at `pos + 1` (just inside the node's opening
+ * token), so `from = pos + 1 + offset`. Returns `null` when the snapshot no
+ * longer carries the block (it was deleted) — the caller should then no-op the
+ * highlight rather than scroll to a stale position.
+ *
+ * **Keystroke sanctity:** call this at a discrete user action (a result
+ * click), never per keystroke — same call-site discipline as `useLivePosResolver`.
+ * It is a single map lookup + two adds; it does NOT rebuild anything.
+ */
+export function resolveLiveBlockRange(
+  editor: Editor | null,
+  id: BlockRangeId,
+): { from: number; to: number } | null {
+  const s = getBus(editor)?.structure;
+  if (!s) return null;
+  const block = s.blocks.get(id.blockUuid);
+  if (!block) return null;
+  const from = block.pos + 1 + id.offset;
+  return { from, to: from + id.length };
+}
 
 /**
  * Maps a caller's id → the entity's LIVE document position, derived from the
@@ -26,15 +68,29 @@ export type LivePosKind = "footnote" | "citation" | "example";
  * keys on the bare entity id. The hook builds ONE `Map<id, pos>` from the
  * snapshot and returns `map.get(id)`.
  *
- * **Keystroke sanctity (non-negotiable):** the lookup map is cached by
- * SNAPSHOT IDENTITY (`livePosCacheRef.current.s !== s`), so it rebuilds only
- * when the observer publishes a NEW snapshot — i.e. once per *structural*
- * transaction. A plain in-paragraph keystroke produces the SAME snapshot
- * identity (the observer re-maps positions in place onto a new object only on
- * a `docChanged` tx, and a structurally-null edit leaves the bus snapshot
- * reference unchanged), so this resolver does ZERO work and rebuilds nothing
- * on plain typing. Never gate this on a doc-walk or an `editor.on('update')`
- * subscriber; the cache key is the observer's own snapshot object.
+ * **Keystroke sanctity (read this before adding a call site):** the lookup map
+ * is cached by SNAPSHOT IDENTITY (`cacheRef.current.s !== s`), so it rebuilds
+ * exactly once per *new* `DocStructure` object the observer hands out. That
+ * identity is NOT keystroke-stable: a plain keystroke inside a uuid-bearing
+ * block is a *content-change* diff (the block's uuid lands in
+ * `contentChangedUuids`), so the observer's `mapStructurePositions` builds a
+ * brand-new `DocStructure` (every position re-mapped) and `_emit` writes it to
+ * `getBus(editor).structure` — a NEW snapshot object on that keystroke (the
+ * `emitCount` probe stays flat because the emit is content-only, not
+ * structural, but the snapshot reference still changes). So calling `resolve()`
+ * during plain typing DOES rebuild the map. That rebuild is O(footnotes +
+ * citations + examples) — bounded and tiny, never O(doc-size) — but it is not
+ * free.
+ *
+ * Therefore the keystroke-safety of this hook lives at the CALL SITE, not in
+ * the cache key: only ever call `resolve()` behind a structural memo, inside a
+ * RAF-coalesced layout read, or at a discrete user action (a result click, a
+ * marker click) — NEVER from a raw per-keystroke handler (an
+ * `editor.on('update')` subscriber, an `onChange`, a render that runs on every
+ * transaction). Used that way, the resolver does zero work between user
+ * actions and the bounded rebuild only fires when a position is actually
+ * needed. Never gate this on a doc-walk; the snapshot object is the cache key,
+ * and the call cadence is the consumer's responsibility.
  *
  * Returns `undefined` for an id the snapshot doesn't carry, so callers can
  * fall back to a captured `pos` (the `resolvePos(id) ?? item.pos` pattern).

@@ -91,10 +91,6 @@ import dynamic from "next/dynamic";
 import type { CodeEditorHandle } from "./CodeEditor";
 const CodeEditor = dynamic(() => import("./CodeEditor"), { ssr: false });
 import {
-  type SearchPanelState,
-  INITIAL_SEARCH_STATE,
-} from "@/panels/Search";
-import {
   type OmniCategory,
   deriveCategorySides,
   OmniFilterMenu,
@@ -156,7 +152,6 @@ import { FootnotesHost } from "./editor-layout/panels/footnotes-host";
 import { RevisionsHost } from "./editor-layout/panels/revisions-host";
 import { CitationsHost } from "./editor-layout/panels/citations-host";
 import { OmniHost } from "./editor-layout/panels/omni-host";
-import { SearchHost } from "./editor-layout/panels/search-host";
 import ExamplesPanel from "@/panels/Examples";
 import { usePreferences } from "@/hooks/usePreferences";
 // Preference mode — ctrl+click picker for live token editing. See
@@ -1225,8 +1220,14 @@ export default function EditorLayout() {
   // slash/typed path migrated to the action-registry bridge). The panel
   // "+ Add citation" draft uses a SEPARATE copy owned by EditorPane
   // (EditorPane.tsx → CitationsHost), so this duplicate is dead and removed.
-  const [searchHighlightRange, setSearchHighlightRange] = useState<{ from: number; to: number } | null>(null);
-  const [searchState, setSearchState] = useState<SearchPanelState>(INITIAL_SEARCH_STATE);
+  //
+  // The search-highlight + search-panel state used to live here too, as a DEAD
+  // duplicate: SearchHost mounts inside EditorPane, so EditorLayout's local
+  // `searchHighlightRange`/`searchState` were never written (the producer is on
+  // the other side of the boundary). EditorPane now OWNS them; the live
+  // highlight range bubbles up via `paneState.searchHighlightRange`
+  // (SR-F3-01/F8-01). EditorLayout reads it back below for `effectiveHighlightRange`.
+  const searchHighlightRange = paneState?.searchHighlightRange ?? null;
 
   /** SearchPanel dispatches selection + opens the target panel. In the
    *  band-stack model both `search` and the target band coexist in their
@@ -3102,11 +3103,8 @@ export default function EditorLayout() {
     selections: selectionsForStrip,
   });
 
-  // Clear search highlight when the search panel is no longer visible
-  const searchPanelOpen = isPanelDocked(prefs, "search");
-  useEffect(() => {
-    if (!searchPanelOpen) setSearchHighlightRange(null);
-  }, [searchPanelOpen]);
+  // (Search-highlight clear-on-close moved to EditorPane — it OWNS the search
+  // highlight now; clearing it from here operated on a dead duplicate.)
 
   // --- Marginalia: build the marker list and side map ---
   // (Hooks must run on every render — placed before any early returns.)
@@ -3249,8 +3247,13 @@ export default function EditorLayout() {
               currentSuggestion.status === "pending"
             ? currentSuggestion.original_text
             : null;
-  // Range-based highlights — search wins over error (search is an
-  // explicit user action, error highlight is derived from selection).
+  // Range-based highlights — search wins over error (search is an explicit
+  // user action, error highlight is derived from selection). `searchHighlightRange`
+  // is now the live value bubbled up from EditorPane (the owner); `errorHighlightRange`
+  // is still EditorLayout's own (compile-derived) and bubbles DOWN via this prop.
+  // EditorPane re-applies the same `search ?? error` preference on its side, so
+  // passing the combined range here is idempotent — EditorPane's local search
+  // range and this bubbled copy are the same value.
   const effectiveHighlightRange = searchHighlightRange ?? errorHighlightRange;
   // OmniView aggregates several child panels on one side. Omni is now the
   // perpetual backdrop behind each side's band stack, so the side-of-panel

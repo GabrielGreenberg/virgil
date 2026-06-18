@@ -549,6 +549,13 @@ export interface PaneState {
   // `DOC_BIB_CHANGED_EVENT` listeners. Now EditorLayout reads the live
   // hook from here.
   citationsHook: CitationsHook;
+  // The search-panel highlight range. EditorPane is the canonical owner —
+  // SearchHost mounts INSIDE EditorPane and writes this local, and EditorPane's
+  // own <Editor> renders the highlight overlay. It bubbles up so EditorLayout
+  // (and any future cross-pane consumer) can read the live range from the one
+  // owner instead of a dead duplicate. The producer→editor path no longer
+  // crosses the component boundary in the wrong direction (SR-F3-01/F8-01).
+  searchHighlightRange: { from: number; to: number } | null;
 }
 
 export interface EditorPaneProps {
@@ -3109,8 +3116,13 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
   // side-aware setter so cross-panel jumps land where the user has
   // placed the destination.
   const [searchState, setSearchState] = useState<SearchPanelState>(INITIAL_SEARCH_STATE);
+  // EditorPane OWNS the search highlight: SearchHost (mounted below) writes it,
+  // and EditorPane's own <Editor> renders it (see `effectiveHighlightRange`).
+  // Previously this was `void`-ed and the highlight pipe was wired to a DEAD
+  // duplicate in EditorLayout that nothing wrote — so a result click never
+  // highlighted (SR-F3-01/F8-01). The state now lives where the producer and
+  // the renderer both are.
   const [searchHighlightRange, setSearchHighlightRange] = useState<{ from: number; to: number } | null>(null);
-  void searchHighlightRange; // surfaces in the editor's highlight overlay post-7.8
 
   // Archive helpers — anchored-id set + paragraph-order sort matching
   // EditorLayout. The ArchivePanel uses these to surface anchored
@@ -3329,6 +3341,27 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
       setActiveRightPanelKind(visiblePanelsRight[0] ?? null);
     }
   }, [visiblePanelsRight, activeRightPanelKind]);
+
+  // SR-F8-02: clear the search highlight when the search panel is no longer
+  // visible, owned WHERE the producer is (EditorPane). Search is visible if
+  // it's docked on either side (main app) or it's the active kind (Reader).
+  // This replaces the dead EditorLayout clear that operated on a state nothing
+  // wrote.
+  const searchPanelOpen =
+    visiblePanelsLeft.includes("search") ||
+    visiblePanelsRight.includes("search") ||
+    activeLeftPanelKind === "search" ||
+    activeRightPanelKind === "search";
+  useEffect(() => {
+    if (!searchPanelOpen) setSearchHighlightRange(null);
+  }, [searchPanelOpen]);
+
+  // The range fed to the editor's highlight overlay. Search wins over the
+  // error range bubbled down from EditorLayout (`highlightRange` prop) — a
+  // search highlight is an explicit user action; the error range is derived
+  // from selection. EditorPane owns search; EditorLayout still owns the error
+  // range and passes it down (the seam that bubbles the OTHER direction).
+  const effectiveHighlightRange = searchHighlightRange ?? highlightRange;
 
   // Marker click → activate the panel on the side it's been placed on.
   const setActivePanelKindBySide = useCallback(
@@ -3610,10 +3643,12 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
       }),
       collab,
       citationsHook,
+      searchHighlightRange,
     });
   }, [
     onPaneStateChange,
     editor,
+    searchHighlightRange,
     aiRequestsHook.requests,
     bibReviewHook.requests,
     bibSettingsHook.entryRequests,
@@ -4859,7 +4894,7 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
                       docHook.onUpdate(editor, tx);
                     }}
                     highlightText={highlightText}
-                    highlightRange={highlightRange}
+                    highlightRange={effectiveHighlightRange}
                     editable={editable}
                     onEditorReady={handleEditorReady}
                     anchoredUuidsRef={anchoredUuidsRef}
@@ -6066,6 +6101,7 @@ function PaneRailBody({
         todoItems={todosHook.items}
         archiveSnippets={archiveHook.snippets}
         cutterCards={cutterHook.cards}
+        reportCards={reportsHook.cards}
         comments={revisionsHook.cards}
         bibEntries={citationsHook.bibEntries}
         openItemInPanel={openItemInPanel}

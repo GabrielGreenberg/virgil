@@ -38,7 +38,11 @@ export type SearchScope =
 export interface SearchHit {
   scope: SearchScope;
   itemId?: string;
-  /** Doc position for ordering + editor highlight. MAX_SAFE for unanchored. */
+  /** Doc position at search time, for stable ORDERING of the result list and
+   *  as a render-time fallback. NOT the source of truth for the highlight —
+   *  main-text hits carry a `blockId` and re-resolve a LIVE range at click
+   *  time (SR-F1-01 / SR-F3-04), since this baked `from` goes stale the
+   *  instant an earlier edit shifts the doc. MAX_SAFE for unanchored. */
   from: number;
   to: number;
   before: string;
@@ -47,6 +51,13 @@ export interface SearchHit {
   /** Which field of the item was matched. */
   field?: "title" | "body" | "text" | "notes" | "key" | "author";
   unanchored?: boolean;
+  /** Keystroke-durable identity for a main-text hit: the matched block's
+   *  stable uuid + the char offset of the match within that block + the match
+   *  length. `navigateToResult` re-resolves this to a LIVE PM range via the
+   *  DocStructure snapshot, so a click highlights the correct CURRENT text
+   *  even after the user typed in an earlier paragraph. Absent for collection
+   *  scopes (those re-resolve through their anchor / the live-pos resolver). */
+  blockId?: { blockUuid: string; offset: number; length: number };
 }
 
 /** Editor-position panel used by FootnoteInfo objects. */
