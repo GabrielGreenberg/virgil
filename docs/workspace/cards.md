@@ -1,6 +1,6 @@
-<!-- last-verified: 1ff9c1b 2026-06-16 -->
+<!-- last-verified: dc11e7f 2026-06-17 -->
 <!-- derives-from: docs/architecture/VIRGIL.md#card-kind-taxonomy -->
-<!-- covers-code: src/cards/types.ts, src/cards/card-registry.tsx, src/cards/predicates.ts, src/panels/panel-registry.ts, src/components/panel-primitives.tsx, src/lib/types.ts, src/hooks/useReports.ts, src/lib/ai-request-bridge.ts, src/cards/drop-specs/index.ts, src/components/drop-mode/card-drop-gesture.ts, src/components/icons/DropChevrons.tsx -->
+<!-- covers-code: src/cards/types.ts, src/cards/card-registry.tsx, src/cards/predicates.ts, src/panels/panel-registry.ts, src/components/panel-primitives.tsx, src/lib/types.ts, src/hooks/useReports.ts, src/lib/ai-request-bridge.ts, src/cards/drop-specs/index.ts, src/components/drop-mode/card-drop-gesture.ts, src/components/icons/DropChevrons.tsx, src/hooks/useReconcileModeAAnchors.ts, src/links/resolve-card-anchor.ts -->
 
 # Cards (the kind taxonomy) — operational manifest
 
@@ -88,6 +88,13 @@ mechanism is [anchoring.md](anchoring.md)): **anchor** = a Card's paragraph
 pointer (Mode A) or text-range `linkedRange` pointer (Mode B), carried in
 `links: Link[]`; **atom-link** = a bidirectional tie to an inline Atom, by **id
 equality** (no `links` array). Field schemas are [sidecars.md](sidecars.md).
+A Mode-A anchor now also carries an optional self-healing
+`anchor.paragraphSnapshot` (plain-text capture of the anchored paragraph,
+written at create + drop re-anchor) — the reload reconciler
+([useReconcileModeAAnchors.ts](../../src/hooks/useReconcileModeAAnchors.ts),
+SSOT [resolveCardAnchor](../../src/links/resolve-card-anchor.ts)) re-finds the
+paragraph UUID-first, snapshot-fallback when the `%!v:` UUID got re-minted on
+load. ADDITIVE/optional; mechanism in [anchoring.md](anchoring.md).
 
 | `CardKind` | Host panel | Sidecar · key | On-disk `kind` | Linkage | Lifecycle |
 |---|---|---|---|---|---|

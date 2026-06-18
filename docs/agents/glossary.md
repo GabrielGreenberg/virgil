@@ -1,6 +1,6 @@
-<!-- last-verified: 1ff9c1b 2026-06-16 -->
+<!-- last-verified: dc11e7f 2026-06-17 -->
 <!-- derives-from: docs/architecture/VIRGIL.md#ontology, docs/architecture/VIRGIL.md#code-organization -->
-<!-- covers-code: src/panels/panel-registry.ts, src/components/MenuBar.tsx, src/components/EditorLayout.tsx, src/components/panel-primitives.tsx, src/components/menu/ -->
+<!-- covers-code: src/panels/panel-registry.ts, src/components/MenuBar.tsx, src/components/EditorLayout.tsx, src/components/panel-primitives.tsx, src/components/menu/, src/components/SkillSyncControls.tsx -->
 
 # Glossary
 
@@ -207,6 +207,7 @@ Self-contained subsystem under `library/` (sibling of `src/`). See [library/AGEN
 | **PDF view** (in-app PDF panel for a paper's compiled output) | `PdfView` | [library/components/PdfView.tsx](../../library/components/PdfView.tsx) |
 | **Pgmark** (`\pgmark{}` LaTeX command anchoring text to a source-page number) | `pgmark` TipTap node + Python pipeline | [src/lib/tiptap/pgmark.ts](../../src/lib/tiptap/pgmark.ts) (moved from `library/tiptap/` in Path A 7.8 — now part of the unified extension set); [library/scripts/pgmark.py](../../library/scripts/pgmark.py) |
 | **Skill bundle** (the agent skills synced into the user's library folder) | Built by `library/build/build-skill-bundle.mjs` from `library/skills/` + `library/scripts/`; written to `public/skill-bundle/` then copied into the user's library on demand | [library/lib/skill-sync.ts](../../library/lib/skill-sync.ts); built at `predev`/`prebuild` |
+| **Skill-sync controls** / **"Skill sync failed" banner** / **Re-sync button** (top-bar surface for the per-paper skill-bundle sync: a loud dismissible failure banner with Retry / "Grant & retry" on a permission failure, a "skills updated — restart your cowork session" notice, and a persistent manual Re-sync button; sits before the collapsed-right-toolbar gate, like the Virgil-update banner, so a failure can't be hidden. Pure presentational — no editor subscription) | `SkillSyncControls`; sync state + `SkillSyncError` / `SkillSyncNotice` types in `useFiles` (`skillSyncError` / `skillSyncNotice` / `resyncSkills` / `dismissSkillSyncError` / `dismissSkillSyncNotice`); library twin in `useLibraryHandle` | [src/components/SkillSyncControls.tsx](../../src/components/SkillSyncControls.tsx); [src/hooks/useFiles.ts](../../src/hooks/useFiles.ts); library twin [library/hooks/useLibraryHandle.ts](../../library/hooks/useLibraryHandle.ts); mounted in `EditorLayout.tsx` top bar (after the Virgil-update banner) |
 | **Drop zone** (drag-PDF-here area for triage) | `DropZone` | [library/components/DropZone.tsx](../../library/components/DropZone.tsx) |
 | **Recent papers list** (recently-opened papers shown on the home view) | `RecentPapersList` | [src/components/RecentPapersList.tsx](../../src/components/RecentPapersList.tsx) |
 | **Tab plus menu** ("+" menu on the Virgil bar tab strip for adding new tabs / opening papers) | `TabPlusMenu` | [src/components/TabPlusMenu.tsx](../../src/components/TabPlusMenu.tsx) |

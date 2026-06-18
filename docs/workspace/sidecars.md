@@ -1,4 +1,4 @@
-<!-- last-verified: 7433bc2 2026-06-13 -->
+<!-- last-verified: dc11e7f 2026-06-17 -->
 <!-- derives-from: docs/architecture/VIRGIL.md#public-type-registry -->
 <!-- covers-code: src/lib/types.ts, src/lib/storage-fsa.ts -->
 
@@ -224,6 +224,11 @@ DocNotificationsInbox { items: DocNotification[] }
 DocNotification       { kind: "ai-request-complete"|"ai-request-failed";
                         at; summary; requestId? }
 ```
+
+`virgil.json` is now re-written **on doc open**: `readDocBundle` stamps load-minted
+paragraph UUIDs back to the `.tex` + this sidecar (pipeline-guarded, fire-and-forget)
+so a card anchored to a freshly minted UUID is durable before the editor mounts —
+parity with the dev backend, which always wrote back here ([src/lib/storage-fsa.ts](../../src/lib/storage-fsa.ts) `writeReStampedTexOnLoad`).
 
 `collab.json` (the pen / turn-taking sidecar) and `document-settings.json`
 (preamble style id) are typed outside `types.ts` — in their defining modules

@@ -1,6 +1,6 @@
-<!-- last-verified: 12f0ef5 2026-06-15 -->
+<!-- last-verified: dc11e7f 2026-06-17 -->
 <!-- derives-from: docs/architecture/VIRGIL.md#ontology -->
-<!-- covers-code: src/links/_shared/types.ts, src/links/links.ts, src/lib/tiptap/linked-anchor.ts, src/lib/latex-serializer.ts -->
+<!-- covers-code: src/links/_shared/types.ts, src/links/links.ts, src/links/resolve-card-anchor.ts, src/links/_shared/reapply-mode-b-anchors.ts, src/links/_shared/normalize-text.ts, src/hooks/useReconcileModeAAnchors.ts, src/lib/anchor-mint-signal.ts, src/lib/tiptap/linked-anchor.ts, src/lib/latex-serializer.ts -->
 
 # Anchoring (Card → text linkage) — operational manifest
 
@@ -32,6 +32,7 @@ Link       { id; kind: "footnote" | "citation" | "anchor"; anchor: LinkAnchor;
 LinkAnchor = { type: "inline-atom"; nodeName: "footnote"|"citation"; pos }   // atom link
            | { type: "textObject"; targetKind: TextObjectKind;
                textObjectIds: string[]; margin: { side: "left"|"right" };
+               paragraphSnapshot?: string;                                    // Mode-A self-heal
                textRange?: { anchorId; textSnapshot } }                       // anchor
 ```
 
@@ -43,7 +44,14 @@ is derived, never declared**:
   kind — paragraph, heading, listItem, exampleItem, atom blocks — not just
   paragraphs. **Multi-anchor (N > 1) is allowed** for Mode A: one card may pin
   several blocks (e.g. an `archive` snippet). One-way and coarse: the Card knows
-  its blocks; the block doesn't know what points at it.
+  its blocks; the block doesn't know what points at it. A Mode-A link also carries
+  an **optional `paragraphSnapshot`** — a normalized plain-text capture of
+  `textObjectIds[0]`'s block, taken at card creation and at drop re-anchor
+  (`captureParagraphSnapshot` in [src/links/links.ts](../../src/links/links.ts), via
+  `normalizeParagraphText` in
+  [src/links/_shared/normalize-text.ts](../../src/links/_shared/normalize-text.ts)).
+  It's the self-healing recovery path (below) — additive/optional; legacy links
+  lack it and get it backfilled on the next load.
 - **Mode B — `targetKind === "linkedRange"`.** A pointer to a **text span** backed
   by a `linkedAnchor` mark. `textObjectIds` still names the containing block(s);
   `textRange` carries the mark's `anchorId` plus a **`textSnapshot`** (the recovery
@@ -62,7 +70,12 @@ Omni-View icon sits on). Resolution at measure time returns a `LinkResolution`
 ### OriginalAnchor
 
 When a Mode-B card is dropped onto a paragraph (Mode B → Mode A via drop mode), the
-prior range is saved so future UX can restore it:
+drop **converts** the link to a clean Mode-A anchor: `addTextObjectLink(…, "paragraph", …)`
+does **not** fold the new paragraph id into the surviving `linkedRange` link (the
+`targetKind === "paragraph"` gate in [src/links/links.ts](../../src/links/links.ts)),
+and the caller drops the stale range link via `clearModeB` so the load Mode-B re-apply
+can't drag the card back to the old paragraph. The prior range is saved so future UX
+can restore it:
 
 ```ts
 OriginalAnchor { droppedAt; anchorId; textSnapshot; paragraphIds: string[] }
@@ -110,8 +123,40 @@ Each flavor breaks differently, and different machinery catches each
 | What breaks | Flavor | Guard (`src/lib/tiptap/linked-anchor.ts`) | Recovery |
 |---|---|---|---|
 | The anchored **block** is deleted | anchor (A) | **`TextObjectOrphanGuard`** emits `virgil-textobject-orphaned`; **`MarginaliaAnchorGuard`** *pre-empts* it for marginalia-bearing blocks by re-inserting a **placeholder paragraph with the same uuid** at the deletion site — **except** a transaction tagged `LIFECYCLE_DELETE_META` (the Archive / Delete drag-handle actions), where the removal is deliberate and the guard bypasses, letting the block actually go | `recoverOrphanedUuids` re-attaches a sidecar id by **unique** content fingerprint |
-| The **`linkedAnchor` mark** vanishes (delete, or lost on a parse/paste) | anchor (B) | **`LinkedAnchorGuard`** emits `virgil-anchor-orphaned` so the feature hook clears the link; its `transformPasted` strips pasted `linkedAnchor` marks so a paste can't duplicate an anchor id | `reanchorByText` ([src/links/links.ts](../../src/links/links.ts)) re-anchors by the `textRange.textSnapshot` |
+| The anchored **block's `%!v:` uuid is re-minted** (the `.tex` reload race — the `%!v:` write lost to a reload, so the paragraph parsed back with a fresh uuid and the card's stored uuid matches nothing) | anchor (A) | — (no guard; caught on the next load) | The reload reconcile re-finds the block by `paragraphSnapshot` (snapshot rung of the resolver ladder) and rewrites `textObjectIds[0]` to the live uuid — see the unified resolver below |
+| The **`linkedAnchor` mark** vanishes (delete, or lost on a parse/paste) | anchor (B) | **`LinkedAnchorGuard`** emits `virgil-anchor-orphaned` so the feature hook clears the link; its `transformPasted` strips pasted `linkedAnchor` marks so a paste can't duplicate an anchor id | `reanchorByText` ([src/links/links.ts](../../src/links/links.ts)) re-anchors by the `textRange.textSnapshot`; on **load** the once-per-doc re-apply pass restamps every Mode-B mark (below) |
 | The **`\vfid` / `\vcid` marker** (or the whole `\footnote{}`/`\cite{}`) is removed | atom-link | — (deleting the Atom is a normal edit) | `recoverOrphanedUuids` by fingerprint; a footnote whose marker vanished becomes an in-memory `OrphanedFootnote` the panel still hosts |
+
+### The unified recovery owner (resolver SSOT)
+
+One pure resolver — [src/links/resolve-card-anchor.ts](../../src/links/resolve-card-anchor.ts) —
+answers "what paragraph does this card live on **now**?" for every consumer (the
+load reconcile, the marginalia render, the Mode-B re-apply). `buildResolveIndex(editor)`
+walks the doc **once** per pass (uuid set, `linkedAnchor`-mark→paragraph map, and a
+normalized-text→uuid snapshot lookup); `resolveCardAnchor` then resolves each card
+**O(1)** against that index down a strict ladder — **`uuid` → `mark` → snapshot →
+`orphan`** (a still-live stored uuid ALWAYS beats a same-text sibling). `reconcileCardToResolved`
+is the pure card mutator that applies the binding (backfill the snapshot on a uuid
+hit; rewrite `textObjectIds[0]` or convert a relocated Mode-B on a snapshot hit).
+
+- **Load reconcile.** [src/hooks/useReconcileModeAAnchors.ts](../../src/hooks/useReconcileModeAAnchors.ts)
+  is the shared factory the panel hooks run once on load — it builds the index and
+  funnels each card through `resolveCardAnchor` + `reconcileCardToResolved`.
+- **Single load-time Mode-B re-apply.** [src/links/_shared/reapply-mode-b-anchors.ts](../../src/links/_shared/reapply-mode-b-anchors.ts)
+  (`reapplyModeBAnchors`) restamps every persisted Mode-B mark **before** the
+  reconcile, so healthy Mode-B cards win the resolver's live-mark rung. This is the
+  **one** load-time recovery writer: it **retired** the second `EditorLayout.applyLinkedAnchors`
+  effect (the function `EditorHandle.applyLinkedAnchors` still exists; it's now called
+  from a single `EditorPane` recovery pass — [src/components/EditorPane.tsx](../../src/components/EditorPane.tsx)).
+- **Mint-race close.** [src/lib/anchor-mint-signal.ts](../../src/lib/anchor-mint-signal.ts)
+  tags a uuid-mint transaction (`ANCHOR_MINT_META`); the autosave subscriber forces an
+  **immediate** doc-bundle flush so the paragraph uuid lands on the card's fast clock,
+  not the 1500 ms doc clock. Belt-and-suspenders, `storage-fsa` also **writes load-minted
+  uuids back to the `.tex` on load** (parity with `storage-dev`).
+- **Legacy helpers.** `reconcileModeAAnchors` / `findParagraphIdBySnapshot` /
+  `isModeAOrphaned` in [src/links/links.ts](../../src/links/links.ts) are kept exported
+  **for their own tests only** — production funnels through the resolver SSOT. `isModeAOrphaned`
+  has no orphan-surfacing UI yet (`@internal`).
 
 **The honest caveat for skills.** The guards keep cards from *silently* orphaning,
 and `MarginaliaAnchorGuard`'s placeholder means an anchored paragraph you delete
@@ -132,3 +177,8 @@ conventions for the orphans you do create are [gardening.md](gardening.md#orphan
    pair as one unit; the paragraph anchor follows it.
 5. **Re-anchor deliberately after destructive edits.** The guards prevent silent
    loss; they don't reconstruct intent, and recovery skips ambiguous text.
+6. **Resolve via the SSOT, not by hand.** To find a card's live paragraph, use
+   `resolveCardAnchor` against one `buildResolveIndex` pass
+   ([src/links/resolve-card-anchor.ts](../../src/links/resolve-card-anchor.ts)) — never
+   walk the doc per card. When you write a fresh Mode-A anchor, pass a
+   `paragraphSnapshot` so it self-heals the reload race; legacy links get it backfilled.
