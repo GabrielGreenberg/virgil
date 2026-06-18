@@ -208,12 +208,12 @@ export function MarkerButton({
       ? deriveMarkerPalette(getPanelColor(themeKey))
       : { color: meta.color, bg: meta.bg, border: meta.border };
 
-  // Selected = wider ring + soft outer halo; hover = thin ring; resting = none.
-  const interactionShadow = selected
-    ? `0 0 0 2px ${palette.border}, 0 0 0 4px color-mix(in oklab, ${palette.border} 40%, transparent)`
-    : hovered
-      ? `0 0 0 1.5px ${palette.border}`
-      : undefined;
+  // Hover OR selected paint the same quiet 1.5px ring — no heavy selected halo.
+  // The marker's colored badge (bg + 1.5px border) carries persistent kind
+  // identity; selection stays visible because the ring persists while selected.
+  // Mirrors the panel-card change (selected collapsed to hover weight).
+  const interactionShadow =
+    selected || hovered ? `0 0 0 1.5px ${palette.border}` : undefined;
 
   // Re-anchor by grab is folded onto the unified drop-mode controller (chip H).
   // A pin can re-anchor when the editor is editable AND the marker is a real
