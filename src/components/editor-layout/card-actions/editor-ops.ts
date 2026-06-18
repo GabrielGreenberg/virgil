@@ -3,6 +3,11 @@ import type { Editor, JSONContent } from "@tiptap/react";
 import type { EditorView } from "prosemirror-view";
 import type { EditorHandle } from "../../Editor";
 import { findEditorScrollFor } from "../layout-scroll";
+import {
+  renameHeadingByUuid,
+  renameParTitleByUuid,
+  updateHeadingLabelByUuid,
+} from "@/lib/tiptap/structural-edit";
 
 /**
  * Editor-scope action handlers: update debouncing, scroll routing across
@@ -25,6 +30,10 @@ export function useEditorOps(deps: {
   editorSplit: boolean;
   activeSplitPane: "top" | "bottom";
   setLatestDoc: (doc: JSONContent | null) => void;
+  /** Central duplicate-label predicate (the SAME one the live label warning
+   *  reads). The label commit gates on it so the warning and the commit can
+   *  never disagree (OUT-F8-03 / OUT-F5-03). */
+  isLabelTaken: (candidate: string, excludeLabel: string | null) => boolean;
 }) {
   const {
     editorRef,
@@ -32,6 +41,7 @@ export function useEditorOps(deps: {
     editorSplit,
     activeSplitPane,
     setLatestDoc,
+    isLabelTaken,
   } = deps;
 
   const latestDocTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -120,55 +130,39 @@ export function useEditorOps(deps: {
     [editorRef],
   );
 
+  // Heading rename — UUID-addressed, atom-preserving (T3 / OUT-F5-01). The old
+  // `delete(from,to).insertText(plainText)` flattened away every inline atom
+  // (math / cite / ref) and mark in the heading; `renameHeadingByUuid` splices
+  // the new label back around them instead.
   const handleRenameHeading = useCallback(
-    (blockIndex: number, newText: string) => {
+    (uuid: string, newText: string) => {
       const editor = editorRef.current?.getEditor();
       if (!editor) return;
-      let idx = 0;
-      editor.state.doc.forEach((node, offset) => {
-        if (idx === blockIndex && node.type.name === "heading") {
-          const from = offset + 1;
-          const to = offset + node.nodeSize - 1;
-          const tr = editor.state.tr.delete(from, to).insertText(newText, from);
-          editor.view.dispatch(tr);
-        }
-        idx++;
-      });
+      renameHeadingByUuid(editor, uuid, newText);
     },
     [editorRef],
   );
 
+  // Heading-label commit — UUID-addressed, gated on the SAME `isLabelTaken`
+  // predicate the live warning reads, so a duplicate label can never be
+  // committed past the advisory warning (OUT-F8-03 / OUT-F5-03).
   const handleUpdateLabel = useCallback(
-    (blockIndex: number, newLabel: string | null) => {
+    (uuid: string, newLabel: string | null) => {
       const editor = editorRef.current?.getEditor();
       if (!editor) return;
-      let idx = 0;
-      editor.state.doc.forEach((node, offset) => {
-        if (idx === blockIndex && node.type.name === "heading") {
-          const tr = editor.state.tr.setNodeMarkup(offset, undefined, {
-            ...node.attrs,
-            label: newLabel && newLabel.trim() ? newLabel.trim() : null,
-          });
-          editor.view.dispatch(tr);
-        }
-        idx++;
-      });
+      updateHeadingLabelByUuid(editor, uuid, newLabel, isLabelTaken);
     },
-    [editorRef],
+    [editorRef, isLabelTaken],
   );
 
+  // parTitle rename — UUID-addressed with a node-type guard (refuses a heading),
+  // so a drifted address can no longer stamp `parTitle` onto the wrong node or
+  // throw (OUT-F5-02 / OUT-F8-04).
   const handleRenameParTitle = useCallback(
-    (blockIndex: number, newTitle: string) => {
+    (uuid: string, newTitle: string) => {
       const editor = editorRef.current?.getEditor();
       if (!editor) return;
-      let idx = 0;
-      editor.state.doc.forEach((node, offset) => {
-        if (idx === blockIndex) {
-          const tr = editor.state.tr.setNodeMarkup(offset, undefined, { ...node.attrs, parTitle: newTitle });
-          editor.view.dispatch(tr);
-        }
-        idx++;
-      });
+      renameParTitleByUuid(editor, uuid, newTitle);
     },
     [editorRef],
   );

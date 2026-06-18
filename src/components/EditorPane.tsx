@@ -394,9 +394,10 @@ export interface EditorPaneViewPrefs {
   // ── OutlineHost handlers ────────────────────────────────────────
   onScrollToHeading: (blockIndex: number) => void;
   onReorderBlocks: (fromIndex: number, count: number, toIndex: number) => void;
-  onRenameHeading: (blockIndex: number, newText: string) => void;
-  onRenameParTitle: (blockIndex: number, newTitle: string) => void;
-  onUpdateLabel: (blockIndex: number, newLabel: string | null) => void;
+  // T3 (W3a): rename/label address by durable block uuid, not integer index.
+  onRenameHeading: (uuid: string, newText: string) => void;
+  onRenameParTitle: (uuid: string, newTitle: string) => void;
+  onUpdateLabel: (uuid: string, newLabel: string | null) => void;
   isLabelTaken: (candidate: string, excludeLabel: string | null) => boolean;
   onFocusActivate: () => void;
   onFocusDeactivate: () => void;

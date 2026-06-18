@@ -2307,6 +2307,8 @@ export default function EditorLayout() {
     editorSplit,
     activeSplitPane,
     setLatestDoc,
+    // T3 (W3a): the label commit shares the live warning's predicate.
+    isLabelTaken: checkLabelTaken,
   });
 
   // ── Focus mode helpers ─────────────────────────────────────────────
