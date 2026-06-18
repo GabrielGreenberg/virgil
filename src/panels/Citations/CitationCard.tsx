@@ -11,7 +11,6 @@ import type { BibEntry, CitationRef } from "@/lib/types";
 import {
   citationCommandOrNull,
   derivePlural,
-  formatMediumCitationParts,
   parseCiteCommand,
   sanitizeInlineCitationHtml,
   serializeCiteCommand,
