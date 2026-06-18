@@ -766,15 +766,13 @@ export function CitationCard({
       style={wrapperStyle}
       onClick={(e) => {
         if (isDraft) return;
-        ac.onActivate();
-        onSelect();
-        if (isAnchored) {
-          onJump(
-            (e.currentTarget as HTMLElement).closest(
-              "[data-card]",
-            ) as HTMLElement | null,
-          );
-        }
+        const card = (e.currentTarget as HTMLElement).closest(
+          "[data-card]",
+        ) as HTMLElement | null;
+        ac.onBodyActivate({
+          onSelect,
+          jump: isAnchored ? () => onJump(card) : undefined,
+        });
       }}
       onMouseEnter={() => cardStore.setHover(ac.ref)}
       onMouseLeave={() => {

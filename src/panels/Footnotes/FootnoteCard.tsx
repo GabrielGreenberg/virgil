@@ -107,11 +107,11 @@ export function FootnoteCard({
       canJump
       onJump={(e) => onJump((e.currentTarget as HTMLElement).closest('[data-card]') as HTMLElement | null)}
       onClick={(e) => {
-        ac.onActivate();
-        onSelect();
-        if (onJump) {
-          onJump((e?.currentTarget as HTMLElement | undefined)?.closest('[data-card]') as HTMLElement | null);
-        }
+        const card = (e?.currentTarget as HTMLElement | undefined)?.closest('[data-card]') as HTMLElement | null;
+        ac.onBodyActivate({
+          onSelect,
+          jump: onJump ? () => onJump(card) : undefined,
+        });
       }}
       onHoverChange={(h) => cardStore.setHover(h ? ac.ref : null)}
       onDelete={onDelete}
@@ -159,8 +159,7 @@ export interface OrphanedFootnoteCardProps {
 export function OrphanedFootnoteCard({
   orphan,
   isSelected = false,
-  // onSelect intentionally not consumed: the global store drives selection
-  // (see the body onClick note below); the prop stays for host compatibility.
+  onSelect,
   onEdit,
   onDelete,
   onEditTitle,
@@ -202,10 +201,10 @@ export function OrphanedFootnoteCard({
       footnoteBadge={<BadgeOrphaned theme={theme} />}
       bodyTitle={orphan.title}
       onBodyTitleChange={onEditTitle ?? undefined}
-      // ac.onActivate's cardStore.select already drives the panel's derived
-      // selectedFootnoteId slot — composing the host's TOGGLING onSelect on
-      // top made a second body click drop the halo (review nit).
-      onClick={() => ac.onActivate()}
+      // C15: single body-click composition (store-backed select+expand; the
+      // monotonic onSelect mirrors it into the panel slot). Orphans have no
+      // in-text marker, so no jump.
+      onClick={() => ac.onBodyActivate({ onSelect })}
       onDelete={onDelete}
       value={orphan.content}
       variant="footnote"

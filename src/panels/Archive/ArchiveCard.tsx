@@ -79,11 +79,11 @@ export function ArchiveCard({
       canJump={isAnchored && !!onJump}
       onJump={onJump ? (e) => onJump((e.currentTarget as HTMLElement).closest('[data-card]') as HTMLElement | null) : undefined}
       onClick={(e) => {
-        ac.onActivate();
-        onSelect(snippet.id);
-        if (isAnchored && onJump) {
-          onJump((e?.currentTarget as HTMLElement | undefined)?.closest('[data-card]') as HTMLElement | null);
-        }
+        const card = (e?.currentTarget as HTMLElement | undefined)?.closest('[data-card]') as HTMLElement | null;
+        ac.onBodyActivate({
+          onSelect: () => onSelect(snippet.id),
+          jump: isAnchored && onJump ? () => onJump(card) : undefined,
+        });
       }}
       onHoverChange={(h) => cardStore.setHover(h ? ac.ref : null)}
       onDelete={() => onDelete(snippet.id)}

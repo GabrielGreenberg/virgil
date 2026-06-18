@@ -165,9 +165,10 @@ function FootnotePanel({
           <FootnoteCard
             footnote={it.data}
             isSelected={selected}
-            onSelect={() =>
-              onSelect(selectedId === it.data.footnoteId ? null : it.data.footnoteId)
-            }
+            // C15: MONOTONIC select (never the toggling `selectedId===id?null:id`).
+            // The store is the single selection source; the panel slot mirrors
+            // it. Re-click idempotence + skip-jump live in `ac.onBodyActivate`.
+            onSelect={() => onSelect(it.data.footnoteId)}
             onJump={(sourceEl) => onScrollToMarker(it.data.footnoteId, sourceEl)}
             onEdit={(json) => onEdit(it.data.footnoteId, json)}
             onDelete={() => onDelete(it.data.footnoteId)}
@@ -180,9 +181,8 @@ function FootnotePanel({
           <OrphanedFootnoteCard
             orphan={it.data}
             isSelected={selected}
-            onSelect={() =>
-              onSelect(selectedId === it.data.footnoteId ? null : it.data.footnoteId)
-            }
+            // C15: monotonic select (see anchored FootnoteCard above).
+            onSelect={() => onSelect(it.data.footnoteId)}
             onEdit={(json) => onEditOrphan(it.data.footnoteId, json)}
             onDelete={() => onDeleteOrphan(it.data.footnoteId)}
             onEditTitle={(title) => onEditOrphanTitle?.(it.data.footnoteId, title)}

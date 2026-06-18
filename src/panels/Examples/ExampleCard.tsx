@@ -389,9 +389,11 @@ export function ExampleCard({
       theme={theme}
       selected={isHaloed}
       onClick={(e) => {
-        ac.onActivate();
-        onSelect();
-        onJump((e.currentTarget as HTMLElement).closest('[data-card]') as HTMLElement | null);
+        const card = (e.currentTarget as HTMLElement).closest('[data-card]') as HTMLElement | null;
+        ac.onBodyActivate({
+          onSelect,
+          jump: () => onJump(card),
+        });
       }}
       onMouseEnter={() => cardStore.setHover(ac.ref)}
       onMouseLeave={() => {

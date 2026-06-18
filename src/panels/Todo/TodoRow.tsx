@@ -124,11 +124,11 @@ export function TodoRow({
       tabIndex={isSelected ? 0 : -1}
       onClick={(e) => {
         e.stopPropagation();
-        ac.onActivate();
-        onSelect(item.id);
-        if (isAnchored && onJump) {
-          onJump((e.currentTarget as HTMLElement).closest('[data-card]') as HTMLElement | null);
-        }
+        const card = (e.currentTarget as HTMLElement).closest('[data-card]') as HTMLElement | null;
+        ac.onBodyActivate({
+          onSelect: () => onSelect(item.id),
+          jump: isAnchored && onJump ? () => onJump(card) : undefined,
+        });
       }}
       onMouseEnter={() => cardStore.setHover(ac.ref)}
       onMouseLeave={() => {

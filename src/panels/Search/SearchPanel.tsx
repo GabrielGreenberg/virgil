@@ -9,6 +9,7 @@ import {
   PANEL,
   PrevNextCounter,
   clearStaleHover,
+  useCycle,
 } from "@/components/panel-primitives";
 import type { PanelId } from "@/hooks/useViewPrefs";
 import {
@@ -373,7 +374,7 @@ function SearchPanel({
   state,
   onStateChange,
 }: SearchPanelProps) {
-  const { query, caseSensitive, wholeWord, selectedIdx } = state;
+  const { query, caseSensitive, wholeWord } = state;
   const enabledScopes = useMemo(
     () => new Set(state.enabledScopes),
     [state.enabledScopes],
@@ -384,6 +385,20 @@ function SearchPanel({
   useEffect(() => {
     inputRef.current?.focus();
   }, []);
+
+  // SR-C1-01 / SR-F2-01 / SR-F1-02: the result cursor is owned by the SHARED
+  // `useCycle` read-clamp, not a hand-rolled `selectedIdx`. `useCycle` clamps
+  // its index on READ against the live `results.length`, so the counter can
+  // never report "16 of 10" after the list shrinks, and Enter/arrows wrap at
+  // both ends through the one primitive every other panel uses. The persisted
+  // `state.selectedIdx` is now just a back-compat mirror written on navigate —
+  // never the live cursor (the clamp makes a stale persisted value harmless).
+  const setPersistedIdx = useCallback(
+    (idx: number | null) => {
+      onStateChange((s) => (s.selectedIdx === idx ? s : { ...s, selectedIdx: idx }));
+    },
+    [onStateChange],
+  );
 
   const setQuery = useCallback(
     (q: string) => {
@@ -413,12 +428,6 @@ function SearchPanel({
       onHighlightRange(null);
     },
     [onStateChange, onHighlightRange],
-  );
-  const setSelectedIdx = useCallback(
-    (idx: number | null) => {
-      onStateChange((s) => ({ ...s, selectedIdx: idx }));
-    },
-    [onStateChange],
   );
   const toggleScope = useCallback(
     (scope: SearchScope) => {
@@ -500,10 +509,12 @@ function SearchPanel({
     bibEntries,
   ]);
 
+  // Pure navigation: highlight + open + scroll. The cursor index is owned by
+  // `useCycle` (below) — this only consumes `idx` to scroll the matching card
+  // into view. Persisting the index is the cycle-activate's job.
   const navigateToResult = useCallback(
     (result: SearchResult, idx: number) => {
       if (!editor) return;
-      setSelectedIdx(idx);
 
       if (result.unanchored) {
         onHighlightRange(null);
@@ -542,24 +553,42 @@ function SearchPanel({
         card?.scrollIntoView({ block: "nearest", behavior: "smooth" });
       });
     },
-    [editor, onHighlightRange, onOpenItem, setSelectedIdx],
+    [editor, onHighlightRange, onOpenItem],
   );
 
-  const goNext = useCallback(() => {
-    if (results.length === 0) return;
-    const next =
-      selectedIdx === null ? 0 : (selectedIdx + 1) % results.length;
-    navigateToResult(results[next], next);
-  }, [results, selectedIdx, navigateToResult]);
+  // `useCycle` owns the live result cursor and clamps it on READ against the
+  // current `results.length` — so `goNext`/`goPrev`/the counter all read the
+  // same always-valid index and the counter can never exceed total. The
+  // persisted `state.selectedIdx` mirror is updated on navigate for
+  // back-compat / remount restore; the clamp makes a stale persisted value
+  // harmless.
+  const onActivateResult = useCallback(
+    (result: SearchResult, idx: number) => {
+      navigateToResult(result, idx);
+      setPersistedIdx(idx);
+    },
+    [navigateToResult, setPersistedIdx],
+  );
 
-  const goPrev = useCallback(() => {
-    if (results.length === 0) return;
-    const prev =
-      selectedIdx === null
-        ? results.length - 1
-        : (selectedIdx - 1 + results.length) % results.length;
-    navigateToResult(results[prev], prev);
-  }, [results, selectedIdx, navigateToResult]);
+  const {
+    idx: selectedIdx,
+    setIdx: setCycleIdx,
+    next: goNext,
+    prev: goPrev,
+  } = useCycle(results, onActivateResult);
+
+  // A new query / scope / option change starts a fresh search — reset the
+  // cursor so the counter shows "<total> results" (not a carried-over "N of M")
+  // and the next Enter starts at the first hit. Keyed on the search inputs, not
+  // the results array (which also changes on a structural edit, where we must
+  // NOT drop a live selection). Skips the initial mount.
+  const searchKey = `${query} ${caseSensitive} ${wholeWord} ${state.enabledScopes.join(",")}`;
+  const prevSearchKeyRef = useRef(searchKey);
+  useEffect(() => {
+    if (prevSearchKeyRef.current === searchKey) return;
+    prevSearchKeyRef.current = searchKey;
+    setCycleIdx(null);
+  }, [searchKey, setCycleIdx]);
 
   const handleNavKeys = useCallback(
     (e: React.KeyboardEvent) => {
@@ -663,7 +692,11 @@ function SearchPanel({
           result={r}
           selected={selectedIdx === i}
           onClick={() => {
-            navigateToResult(r, i);
+            // Point the shared cursor at this row, then navigate. `setCycleIdx`
+            // is the index authority; `onActivateResult` (navigate + persist)
+            // runs through it so a click and a keyboard cycle land identically.
+            setCycleIdx(i);
+            onActivateResult(r, i);
             listRef.current?.focus();
           }}
         />

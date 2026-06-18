@@ -95,9 +95,8 @@ function ExamplesPanel(props: ExamplesPanelProps) {
         <ExampleCard
           example={ex}
           isSelected={selected}
-          onSelect={() =>
-            onSelect(selectedId === ex.exampleId ? null : ex.exampleId)
-          }
+          // C15: monotonic select (store is the single selection source).
+          onSelect={() => onSelect(ex.exampleId)}
           onJump={(sourceEl) => onJump(ex.exampleId, sourceEl)}
         />
       )}

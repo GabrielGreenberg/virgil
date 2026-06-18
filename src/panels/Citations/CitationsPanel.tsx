@@ -330,7 +330,10 @@ function CitationsPanel({
           isSelected={selected}
           isAnchored={anchoredIds.has(cit.id)}
           onSelect={() => {
-            onSelect(selected ? null : cit.id);
+            // C15: monotonic select — the store is the single selection
+            // source; the panel slot mirrors it. Re-click idempotence lives
+            // in `ac.onBodyActivate`, not a toggling host slot.
+            onSelect(cit.id);
             panelScrollRef.current?.focus();
           }}
           onJump={(sourceEl) => jumpToCitation(cit.id, sourceEl)}
