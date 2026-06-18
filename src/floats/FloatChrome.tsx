@@ -1,6 +1,6 @@
 "use client";
 
-import type { ReactNode } from "react";
+import type { MouseEvent as ReactMouseEvent, ReactNode } from "react";
 import { PopoutButton } from "@/components/panel-primitives";
 import { DropChevrons } from "@/components/icons/DropChevrons";
 import { beginCardDropGesture } from "@/components/drop-mode/card-drop-gesture";
@@ -75,6 +75,15 @@ export interface FloatChromeProps {
    *  `beginCardDropGesture` so the drop controller can look the spec up. A
    *  string at this layer — FloatChrome never parses or imports a card kind. */
   dropCardKey?: string;
+  /** Optional domain-supplied press handler for the (re)anchor drop button.
+   *  When provided, the guarded mousedown calls THIS instead of the default
+   *  `beginCardDropGesture(dropCardKey)` — the seam that lets a text-object
+   *  float drive `LiftHost.beginLift({terminalPolicy:"float", …})` (the full
+   *  lifted-overlay ghost) while CARD floats keep the no-ghost
+   *  `beginCardDropGesture` path byte-unchanged (caller leaves this undefined).
+   *  FloatChrome stays domain-blind: the caller (`FloatWindow`) builds the
+   *  handler; FloatChrome imports no card/text-object code. */
+  onDropPress?: (e: ReactMouseEvent) => void;
   onClose: () => void;
 }
 
@@ -87,6 +96,7 @@ export function FloatChrome({
   onJump,
   canDrop,
   dropCardKey,
+  onDropPress,
   onClose,
 }: FloatChromeProps) {
   const labelNoun = title.toLowerCase();
@@ -148,10 +158,20 @@ export function FloatChrome({
             if (e.button !== 0) return;
             e.stopPropagation();
             e.preventDefault();
-            beginCardDropGesture({
-              cardKey: dropCardKey,
-              origin: { x: e.clientX, y: e.clientY },
-            });
+            // Domain dispatch (Chip 2): a caller-supplied `onDropPress` wins
+            // (text-object floats → `LiftHost.beginLift({policy:"float"})`, the
+            // lifted-overlay ghost). Absent → the default neutral
+            // `beginCardDropGesture` (card floats, byte-unchanged). The guards
+            // above (primary-only / stopPropagation / preventDefault) run in
+            // BOTH cases so neither path co-fires the FloatingPanel header lift.
+            if (onDropPress) {
+              onDropPress(e);
+            } else {
+              beginCardDropGesture({
+                cardKey: dropCardKey,
+                origin: { x: e.clientX, y: e.clientY },
+              });
+            }
           }}
           onClick={(e) => e.stopPropagation()}
           draggable={false}

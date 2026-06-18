@@ -62,6 +62,13 @@ export function textObjectFloatable(
     surface: "card",
     title: meta.label,
     canJump: true,
+    // Chip 2: text-object floats get the (re)anchor drop button too. The
+    // button is rendered by `FloatChrome` (gated on this flag) and wired by
+    // `FloatWindow` to `LiftHost.beginLift({terminalPolicy:"float", …})` — the
+    // full lifted-overlay ghost. The drop spec it resolves to always exists
+    // (`textObjectDropSpec` / `textRangeMoveDropSpec`), pinned by the
+    // textobject-float-droppable contract test.
+    canDrop: true,
     jumpToSource: () => editorRef.current?.scrollToParagraphId(ref.id),
     snapshotForStack: () => null, // Stage 5 wires snapshotParagraph/Section
     // No auto-fit: text floats spawn at the lift's authoritative captured
