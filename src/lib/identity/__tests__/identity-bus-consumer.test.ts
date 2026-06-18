@@ -141,6 +141,33 @@ describe("matchFootnoteRegen", () => {
     expect(matchFootnoteRegen([], [fn("a", 1)])).toBeNull();
     expect(matchFootnoteRegen([fn("a", 1)], [])).toBeNull();
   });
+
+  it("does NOT remap a same-count footnote SWAP at a different position (Wave-2 prereq)", () => {
+    // A genuine same-transaction swap: delete footnote X at pos 3, insert a
+    // DIFFERENT footnote Y at pos 12, in ONE tx. Equal count (1 == 1), but the
+    // positions differ — this is NOT a whole-doc re-parse. A blind positional
+    // pair would false-remap X→Y and strand X's real selection/float card; the
+    // pos-set guard must refuse.
+    expect(matchFootnoteRegen([fn("x", 3)], [fn("y", 12)])).toBeNull();
+  });
+
+  it("does NOT remap a 2↔2 swap whose position sets differ", () => {
+    // Two footnotes removed at {2,9}, two added at {2,40} — one stayed put, one
+    // moved. Not a re-parse (positions don't coincide as a set) → no remap.
+    expect(
+      matchFootnoteRegen([fn("a", 2), fn("b", 9)], [fn("c", 2), fn("d", 40)]),
+    ).toBeNull();
+  });
+
+  it("DOES remap a whole-doc re-parse that preserves every footnote position", () => {
+    // The legit case: ids re-minted, but each footnote re-lands at its old pos.
+    const remap = matchFootnoteRegen(
+      [fn("old-1", 1), fn("old-2", 9)],
+      [fn("new-1", 1), fn("new-2", 9)],
+    );
+    expect(remap!.get("old-1")).toBe("new-1");
+    expect(remap!.get("old-2")).toBe("new-2");
+  });
 });
 
 // ── detectRegenRemap (the consumer's O(1)-bail gate) ─────────────────────────

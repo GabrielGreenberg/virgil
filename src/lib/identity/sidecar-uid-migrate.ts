@@ -57,6 +57,14 @@ const EMPTY_V2: AnnotationsStateV2 = { v: 2, byUid: {}, orphanByKey: {} };
  * `orphanByKey` entries gets another pass at re-homing them against the current
  * resolver, so an orphan recovers the moment its entry re-appears.
  *
+ * Returns the **same reference** when a v2 input re-homes nothing (no orphan
+ * resolved this pass), so a React caller can run this in an effect gated on the
+ * citekey→uid map: `update(prev => migrate(prev, keyToUid))` is then a no-op
+ * `setState` (React bails on `Object.is`) on every keystroke-adjacent bib
+ * change, and only the rare actual re-home produces a fresh object + a write.
+ * This mirrors {@link migrateBibReviewToUid}'s same-ref-on-no-op contract and
+ * is what makes the load/parse-race re-home effect safe from a render loop.
+ *
  * @param raw      the on-disk value (legacy record OR v2).
  * @param keyToUid citekey → uid, from the freshly-parsed entries.
  */
@@ -70,12 +78,19 @@ export function migrateAnnotationsToV2(
     // Re-home any orphans whose entry now exists; leave the rest orphaned.
     const byUid: Record<string, string> = { ...raw.byUid };
     const orphanByKey: Record<string, string> = {};
+    let rehomed = false;
     for (const [key, html] of Object.entries(raw.orphanByKey ?? {})) {
       const uid = keyToUid.get(key);
-      if (uid) byUid[uid] = byUid[uid] ?? html;
-      else orphanByKey[key] = html;
+      if (uid) {
+        if (!(uid in byUid)) byUid[uid] = html;
+        rehomed = true;
+      } else {
+        orphanByKey[key] = html;
+      }
     }
-    return { v: 2, byUid, orphanByKey };
+    // Nothing re-homed → hand the input straight back so an effect-driven
+    // re-home pass is a no-op setState (no re-render, no spurious persist).
+    return rehomed ? { v: 2, byUid, orphanByKey } : raw;
   }
 
   // Legacy flat record: { [citekey]: html }.

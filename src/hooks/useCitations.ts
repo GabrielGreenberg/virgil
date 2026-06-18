@@ -26,6 +26,7 @@ import {
   renameCitekeyChange,
 } from "@/lib/identity/identity-cascade";
 import { wholeWordPatternFor } from "@/lib/whole-word";
+import { mintBibUid } from "@/lib/bib-uid";
 
 const EMPTY: CitationsState = {
   citations: [],
@@ -410,7 +411,18 @@ export function useCitations(docId: string | null, pristine?: PristineKindApi | 
     (entry: BibEntry) => {
       setBibEntries((prev) => {
         if (prev.some((e) => e.key === entry.key)) return prev;
-        const next = [...prev, entry];
+        // SSOT uid-mint point: any new entry that arrives without a durable uid
+        // (e.g. /editor/find-citation, a library drop, a hand-built BibEntry)
+        // gets one minted here, avoiding collisions with the entries already in
+        // state, so the identity spine (annotations/bib-review keying, the
+        // rename cascade) has a stable id to anchor to from the entry's first
+        // moment. An entry that already carries a uid (round-tripped from a
+        // `\vbid` marker) keeps it. Under the flag this guarantees `entry.uid`
+        // is always present; flag-off it is harmless extra metadata.
+        const withUid: BibEntry = entry.uid
+          ? entry
+          : { ...entry, uid: mintBibUid(new Set(prev.map((e) => e.uid).filter(Boolean) as string[])) };
+        const next = [...prev, withUid];
         const newRaw = serializeBibFile(next);
         setBibRaw(newRaw);
         void persistBib(newRaw);

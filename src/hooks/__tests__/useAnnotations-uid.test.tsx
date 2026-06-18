@@ -10,16 +10,22 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { renderHook, act, waitFor } from "@testing-library/react";
 
+// Per-test on-disk fixture for annotations.json: the re-home test needs the
+// sidecar read to RESOLVE a legacy/orphan record (the load arm of
+// usePersistentState reads `readSidecarIfExists`), so the migrate-on-load runs
+// before the bib entries are available.
+let DISK_ANNOTATIONS: unknown = null;
+
 vi.mock("@/lib/storage", () => ({
   readSidecar: vi.fn(async () => ({})),
-  readSidecarIfExists: vi.fn(async () => null),
+  readSidecarIfExists: vi.fn(async () => DISK_ANNOTATIONS),
   writeSidecar: vi.fn(async () => undefined),
 }));
 
 import { useAnnotations } from "../useAnnotations";
 import { setIdentityCascadeFlag } from "@/lib/identity/identity-flag";
 import { beginDocPipeline, __resetForTests } from "@/lib/multi-window/doc-pipeline";
-import type { BibEntry } from "@/lib/types";
+import type { AnnotationsStateV2, BibEntry } from "@/lib/types";
 
 function entry(uid: string, key: string): BibEntry {
   return { uid, key, type: "article", fields: {}, raw: "" };
@@ -27,6 +33,7 @@ function entry(uid: string, key: string): BibEntry {
 
 beforeEach(() => {
   __resetForTests();
+  DISK_ANNOTATIONS = null;
 });
 afterEach(() => {
   setIdentityCascadeFlag(undefined);
@@ -90,6 +97,56 @@ describe("useAnnotations: uid keying (flag ON)", () => {
     rerender({ l: list });
     expect(result.current.getAnnotation("pending")).toBe("<p>early note</p>");
   });
+
+  it(
+    "re-homes a DISK orphan onto byUid when bib entries arrive after load " +
+      "(the load/parse race — re-home effect, not just a read-through)",
+    async () => {
+      setIdentityCascadeFlag(true);
+      beginDocPipeline("doc-ann-race");
+
+      // A legacy annotation already on disk, keyed by citekey. It loads BEFORE
+      // the .bib parses (the race), so keyToUid is empty at migrate-on-load and
+      // the record buckets into orphanByKey.
+      DISK_ANNOTATIONS = { smithkey: "<p>disk note</p>" };
+
+      // No bib entries yet at mount — the resolver is empty.
+      let list: BibEntry[] = [];
+      const { result, rerender } = renderHook(
+        ({ l }: { l: BibEntry[] }) =>
+          useAnnotations("doc-ann-race", (k) => l.find((e) => e.key === k), l),
+        { initialProps: { l: list } },
+      );
+
+      // After load: the migrate-on-load orphaned it (no uid resolvable yet).
+      await waitFor(() => {
+        const s = result.current.annotations as AnnotationsStateV2;
+        expect(s.v).toBe(2);
+        expect(s.orphanByKey.smithkey).toBe("<p>disk note</p>");
+        expect(Object.keys(s.byUid)).toHaveLength(0);
+      });
+
+      // The .bib parse completes — the entry with that citekey now exists.
+      list = [entry("u-1", "smithkey")];
+      rerender({ l: list });
+
+      // The re-home effect fires: the annotation MOVES onto byUid keyed by the
+      // durable uid (NOT merely read through the orphan bucket). This is the
+      // fix — without the effect the orphan would persist and a later citekey
+      // rename would strand it.
+      await waitFor(() => {
+        const s = result.current.annotations as AnnotationsStateV2;
+        expect(s.byUid["u-1"]).toBe("<p>disk note</p>");
+        expect(s.orphanByKey.smithkey).toBeUndefined();
+      });
+
+      // And now a later citekey rename (same uid, new key) does NOT strand it —
+      // the annotation reads through the new key because it lives under byUid.
+      const renamed = [entry("u-1", "newname")];
+      rerender({ l: renamed });
+      expect(result.current.getAnnotation("newname")).toBe("<p>disk note</p>");
+    },
+  );
 });
 
 describe("useAnnotations: legacy parity (flag OFF)", () => {

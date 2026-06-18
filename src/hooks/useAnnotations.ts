@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useMemo } from "react";
+import { useCallback, useEffect, useMemo } from "react";
 import type {
   AnnotationsState,
   AnnotationsStateV2,
@@ -61,12 +61,37 @@ export function useAnnotations(
     [cascadeOn, keyToUid],
   );
 
-  const { state, update } = usePersistentState<
+  const { state, update, stateRef } = usePersistentState<
     AnnotationsState | AnnotationsStateV2
   >(docId, "annotations.json", cascadeOn ? EMPTY_V2 : EMPTY_LEGACY, {
     migrate,
     errorLabel: "annotations",
   });
+
+  // Re-home orphaned annotations once the bib entries arrive AFTER the sidecar
+  // load (the read can resolve before the `.bib` parse — the load/parse race).
+  // The `migrate`-on-load pass runs ONCE per docId inside usePersistentState
+  // with whatever `keyToUid` existed then; if it was empty, every legacy
+  // annotation bucketed into `orphanByKey` and would never auto-recover. This
+  // effect re-runs the same migrator whenever the resolver changes (a parse /
+  // add / rename), so an orphan re-homes onto `byUid` the moment its entry
+  // appears — closing the DATA-LOSS-adjacent gap where a later citekey rename
+  // would otherwise strand the still-orphaned annotation. Mirrors
+  // useBibReview.ts's re-stamp effect.
+  //
+  // Safe from a render loop + spurious write: migrateAnnotationsToV2 returns the
+  // SAME reference when nothing re-homes, so we identity-check against the live
+  // state (via `stateRef`) and only call `update` (which schedules a persist)
+  // when an orphan actually recovered. On every other keystroke-adjacent bib
+  // change this is a pure compare and bails. Pure sidecar state, no editor walk,
+  // gated on the entry-list identity (`keyToUid`) — never a per-keystroke
+  // counter — so it does no doc-size work.
+  useEffect(() => {
+    if (!cascadeOn) return;
+    const prev = stateRef.current;
+    const next = migrateAnnotationsToV2(prev, keyToUid);
+    if (next !== prev) update(() => next);
+  }, [cascadeOn, keyToUid, update, stateRef]);
 
   const getAnnotation = useCallback(
     (key: string): string => {

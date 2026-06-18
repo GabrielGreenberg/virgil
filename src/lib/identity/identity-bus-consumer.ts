@@ -94,11 +94,23 @@ export function matchCitationRegen(
  *
  * A `FootnoteEntry` carries no body text in the diff (footnote content is an
  * opaque `attrs.content` JSON the step-inspector does not flatten), so footnote
- * atoms are matched POSITIONALLY: the i-th removed footnote (document order)
- * maps to the i-th added footnote. A re-parse that re-mints every footnote id
- * preserves document order, so positional matching is exact for the whole-doc
- * re-parse case. When the counts differ the diff is a genuine add/delete, not a
- * re-parse, so we return `null` (no remap) rather than a partial/ambiguous one.
+ * atoms can only be matched POSITIONALLY. That is sound for the whole-doc
+ * re-parse — `setContent(parseLatex(text))` re-mints every footnote id but
+ * rebuilds byte-identical content, so each footnote re-lands at the SAME
+ * document position; the i-th removed footnote (document order) maps to the
+ * i-th added footnote.
+ *
+ * But equal-count alone is NOT the re-parse signature (the bug this tightening
+ * fixes): a genuine same-transaction footnote swap — delete footnote X, insert
+ * a DIFFERENT footnote Y in one tx — also produces 1 removed + 1 added, and a
+ * blind positional pair would false-remap X→Y, stranding X's real card and
+ * mis-pointing it at Y (and Wave 2 wants to register a real
+ * selection/float migrator that this would corrupt). The distinguishing
+ * invariant is that a whole-doc re-parse PRESERVES POSITIONS: the multiset of
+ * removed `pos` values equals the multiset of added `pos` values. A real
+ * delete+add does not (the removed atom sat at one pos, the inserted atom at
+ * another). So we remap ONLY when the position sets coincide — the markerless-
+ * whole-doc-reparse shape — and return `null` otherwise (genuine add/delete).
  */
 export function matchFootnoteRegen(
   removed: readonly FootnoteEntry[],
@@ -106,12 +118,19 @@ export function matchFootnoteRegen(
 ): ReadonlyMap<string, string> | null {
   if (removed.length === 0 || added.length === 0) return null;
   if (removed.length !== added.length) return null;
-  const remap = new Map<string, string>();
   // Both arrays are in document (pos) order from the diff; pair index-wise.
   const sortByPos = <T extends { pos: number }>(xs: readonly T[]) =>
     [...xs].sort((a, b) => a.pos - b.pos);
   const r = sortByPos(removed);
   const a = sortByPos(added);
+  // Position-set guard: a re-parse re-lands every footnote at its old position,
+  // so the i-th removed pos must equal the i-th added pos (both pos-sorted). Any
+  // mismatch means a footnote actually entered/left at a new position — a
+  // genuine swap, not a re-parse — so we refuse to remap.
+  for (let i = 0; i < r.length; i++) {
+    if (r[i].pos !== a[i].pos) return null;
+  }
+  const remap = new Map<string, string>();
   for (let i = 0; i < r.length; i++) {
     if (r[i].id !== a[i].id) remap.set(r[i].id, a[i].id);
   }

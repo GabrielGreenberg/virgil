@@ -66,6 +66,18 @@ describe("migrateAnnotationsToV2", () => {
     expect(rehomed.orphanByKey).toEqual({});
   });
 
+  it("returns the SAME reference on a v2 no-op (re-home effect loop guard)", () => {
+    // A v2 state with an orphan that does NOT resolve against the current
+    // resolver re-homes nothing → the migrator must hand the input straight
+    // back, so the useAnnotations re-home effect's identity check bails (no
+    // re-render, no spurious persist) on a keystroke-adjacent bib change.
+    const stable = { v: 2 as const, byUid: { "u-smith": "<p>x</p>" }, orphanByKey: { unknownkey: "<p>orphan</p>" } };
+    expect(migrateAnnotationsToV2(stable, keyToUid)).toBe(stable);
+    // A fully-homed v2 state (no orphans) is likewise returned by reference.
+    const homed = { v: 2 as const, byUid: { "u-smith": "<p>x</p>" }, orphanByKey: {} };
+    expect(migrateAnnotationsToV2(homed, keyToUid)).toBe(homed);
+  });
+
   it("tolerates a null/garbage input", () => {
     expect(migrateAnnotationsToV2(null, keyToUid)).toEqual({ v: 2, byUid: {}, orphanByKey: {} });
     expect(migrateAnnotationsToV2(42, keyToUid)).toEqual({ v: 2, byUid: {}, orphanByKey: {} });
