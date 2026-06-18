@@ -56,7 +56,6 @@ function renderCard(entry: BibEntry) {
       entry={entry}
       isSelected
       onClick={() => {}}
-      getFormattedBib={() => ""}
       getAnnotation={() => ""}
       setAnnotation={() => {}}
       onRequestReview={() => {}}

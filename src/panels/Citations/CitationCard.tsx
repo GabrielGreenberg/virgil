@@ -1042,7 +1042,6 @@ export function CitationCard({
         entry={expandedBibEntry!}
         isSelected={false}
         onClick={() => {}}
-        getFormattedBib={getFormattedBib!}
         getAnnotation={getAnnotation!}
         setAnnotation={setAnnotation!}
         onRequestReview={onRequestReview!}

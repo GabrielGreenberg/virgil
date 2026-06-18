@@ -10,7 +10,7 @@ import type { OmniItem } from "@/panels/_shared/types";
 import { getLinkedTextObjectIds } from "@/links/links";
 import { ReportCard } from "./ReportCard";
 import { ReportRequestCard } from "./ReportRequestCard";
-import type { JSONContent } from "@tiptap/react";
+import type { JSONContent, Editor } from "@tiptap/react";
 
 interface BuildArgs {
   cards: ReportItem[];
@@ -24,6 +24,13 @@ interface BuildArgs {
   setRequestAiRequest: (id: string, value: boolean) => void;
   convertCard: (id: string, toKind: "report" | "report-request") => void;
   deleteCard: (id: string) => void;
+  // Required: the omni report cards are the SAME mini-editors as the docked
+  // panel — they need citation-display + editor-focus wiring or inline `\cite{}`
+  // drops dead-end and focus is lost (OMNI-F4-01 / OMNI-F5-01). Required (not
+  // optional) so a caller that drops them fails the build.
+  setOverrideEditor: (editor: Editor) => void;
+  getCitationDisplayText: (command: string) => string;
+  onCitationCreated: (command: string) => { id: string; displayText: string } | null;
 }
 
 /** Build OmniItems for reports and report-requests. Both kinds collapse to a
@@ -53,6 +60,9 @@ export function buildReportsOmniItems(a: BuildArgs): OmniItem[] {
           onJump={
             pids.length > 0 ? (sourceEl) => a.jumpToCard(card, sourceEl) : undefined
           }
+          onEditorFocus={a.setOverrideEditor}
+          getCitationDisplayText={a.getCitationDisplayText}
+          onCitationCreated={a.onCitationCreated}
           extraDataAttrs={{ "data-omni-entry": omniId }}
         />
       ) : (
@@ -68,6 +78,9 @@ export function buildReportsOmniItems(a: BuildArgs): OmniItem[] {
           onJump={
             pids.length > 0 ? (sourceEl) => a.jumpToCard(card, sourceEl) : undefined
           }
+          onEditorFocus={a.setOverrideEditor}
+          getCitationDisplayText={a.getCitationDisplayText}
+          onCitationCreated={a.onCitationCreated}
           extraDataAttrs={{ "data-omni-entry": omniId }}
         />
       );

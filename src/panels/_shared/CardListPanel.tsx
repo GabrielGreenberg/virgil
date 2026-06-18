@@ -133,7 +133,15 @@ export function CardListPanel<T>({
       scrollTabIndex={scrollTabIndex}
     >
       {showEmpty ? (
-        emptyState
+        // Even with no items and no AI requests, a panel may have trailing
+        // content that must survive the empty state — e.g. Bibliography's
+        // pending entry-requests block (BIB-F1-01). Render `listTrailing`
+        // alongside the empty-state so a pending request isn't dropped when
+        // the card list is empty.
+        <>
+          {emptyState}
+          {listTrailing}
+        </>
       ) : (
         <>
           {aiRequestsSection}

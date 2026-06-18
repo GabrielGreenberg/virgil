@@ -472,7 +472,6 @@ registerCardFloatable("bib", (id, ctx: CardFloatCtx) => {
         entry={entry}
         isSelected={ctx.selectedBibKey === entry.key}
         onClick={() => ctx.setSelectedBibKey(ctx.selectedBibKey === entry.key ? null : entry.key)}
-        getFormattedBib={ctx.getFormattedBib}
         getAnnotation={ctx.getAnnotation}
         setAnnotation={ctx.setAnnotation}
         onRequestReview={ctx.requestBibReview}

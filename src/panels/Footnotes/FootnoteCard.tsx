@@ -13,37 +13,19 @@ import {
 import { useCompressedLines } from "@/components/editor-layout/contexts/card-display";
 import { useCardTheme } from "@/hooks/usePanelTheme";
 import { usePoppedCards } from "@/hooks/usePoppedCards";
-import {
-  normalizeRichContent,
-  richJsonToPlainText,
-} from "@/lib/footnote-content";
-import { MIME_FOOTNOTE } from "@/lib/marginalia";
+import { normalizeRichContent } from "@/lib/footnote-content";
 import { popKey } from "@/panels/panel-registry";
 import { useAnchoredCard } from "@/links/_shared/useAnchoredCard";
 import { cardStore } from "@/links/_shared/anchored-card-store";
 
-export function startFootnoteDrag(
-  e: React.DragEvent,
-  footnoteId: string,
-  content: unknown,
-  isOrphan: boolean,
-) {
-  const normalized = normalizeRichContent(content);
-  const plain = richJsonToPlainText(normalized);
-  e.dataTransfer.setData("text/plain", plain);
-  e.dataTransfer.setData(
-    MIME_FOOTNOTE,
-    JSON.stringify({ footnoteId, content: normalized, isOrphan }),
-  );
-  e.dataTransfer.effectAllowed = "move";
-  const ghost = document.createElement("div");
-  ghost.textContent = plain.length > 80 ? plain.slice(0, 80) + "\u2026" : plain;
-  ghost.style.cssText =
-    "position:absolute;top:-9999px;left:-9999px;max-width:260px;padding:6px 10px;background:#fef2f2;border:1px solid #b45757;border-radius:4px;font-size:12px;color:#7f1d1d;font-family:Georgia,serif;line-height:1.4;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;";
-  document.body.appendChild(ghost);
-  e.dataTransfer.setDragImage(ghost, 10, 14);
-  requestAnimationFrame(() => document.body.removeChild(ghost));
-}
+// FN-F7-01 (audit-confirmed dead code, removed): `startFootnoteDrag` set up a
+// native HTML5 drag (MIME_FOOTNOTE + an 80-char-truncated ghost) but had NO
+// call site \u2014 footnote panel cards drag through the unified drop-mode /
+// InlineAtomGrab controller, not native DnD (see Editor.tsx handleDrop /
+// atom-drag-and-observer-move). The matching `MIME_FOOTNOTE` drop branch in
+// Editor.tsx is retained for any future re-introduction. If a panel-card
+// footnote drag is wanted later, build it on the drop-mode controller, not a
+// fresh native dragstart. Backlog: see MEMO_BUG_BACKLOG.md.
 
 export function onFootnoteArchiveConsumed(archiveId: string) {
   window.dispatchEvent(

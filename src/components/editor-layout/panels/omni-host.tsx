@@ -534,6 +534,9 @@ export function OmniHost(p: OmniHostProps) {
       setRequestAiRequest: p.setRequestAiRequest,
       convertCard: p.convertReportCard,
       deleteCard: p.deleteReportCard,
+      setOverrideEditor,
+      getCitationDisplayText,
+      onCitationCreated,
     }),
   ], [
     // Data arrays

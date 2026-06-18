@@ -56,7 +56,6 @@ function renderCard(overrides: Partial<React.ComponentProps<typeof BibEntryCard>
       entry={makeEntry()}
       isSelected
       onClick={() => {}}
-      getFormattedBib={() => ""}
       getAnnotation={() => ""}
       setAnnotation={() => {}}
       onRequestReview={() => {}}

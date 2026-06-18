@@ -59,7 +59,6 @@ interface BibliographyPanelProps {
   onUpdateBibEntry: (key: string, fields: Record<string, string>) => void;
   onReplaceBibEntry?: (key: string, fields: Record<string, string>, type?: string) => void;
   onUpdateBibKeyAndType: (oldKey: string, newKey: string, newType: string) => void;
-  getFormattedBib: (entry: BibEntry) => string;
   getAnnotation: (key: string) => string;
   setAnnotation: (key: string, text: string) => void;
   onRequestReview: (bibKey: string, type: "fields" | "notes", requestNotes?: string) => void;
@@ -84,7 +83,6 @@ function BibliographyPanel({
   onUpdateBibEntry,
   onReplaceBibEntry,
   onUpdateBibKeyAndType,
-  getFormattedBib,
   getAnnotation,
   setAnnotation,
   onRequestReview,
@@ -1000,7 +998,6 @@ function BibliographyPanel({
               listRef.current?.focus();
             }}
             onJump={isCited ? (sourceEl) => handleJumpToBibKey(entry.key, sourceEl) : undefined}
-            getFormattedBib={getFormattedBib}
             getAnnotation={getAnnotation}
             setAnnotation={setAnnotation}
             onRequestReview={onRequestReview}

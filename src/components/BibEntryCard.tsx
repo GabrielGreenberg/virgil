@@ -17,7 +17,12 @@ export interface BibEntryCardProps {
   entry: BibEntry;
   isSelected: boolean;
   onClick: () => void;
-  getFormattedBib: (entry: BibEntry) => string;
+  // BIB-F1-02 (audit-confirmed dead surface, removed): a `getFormattedBib`
+  // prop implied a CSL-formatted reference preview inside the bib card, but
+  // no such preview was ever built — the prop was destructured and never
+  // read. (The genuine formatted-bib preview lives in the Citations card,
+  // which keeps its own `getFormattedBib`.) Backlog: see MEMO_BUG_BACKLOG.md
+  // if a CSL preview in the Bibliography card is later wanted.
   getAnnotation: (key: string) => string;
   setAnnotation: (key: string, text: string) => void;
   onRequestReview: (bibKey: string, type: "fields" | "notes", requestNotes?: string) => void;
@@ -169,7 +174,7 @@ function AnnotationEditor({
 
 /* ── BibEntryCard ─────────────────────────────────────────────────── */
 export default function BibEntryCard({
-  entry, isSelected, onClick, getFormattedBib, getAnnotation, setAnnotation,
+  entry, isSelected, onClick, getAnnotation, setAnnotation,
   onRequestReview, onCancelReview, getReviewStatus, onUpdateBibEntry, onReplaceBibEntry, onUpdateBibKeyAndType,
   occurrenceInfo, bibPackage, bibEntries, isCited = true, onJump,
   onTogglePopout, isPoppedOut, libraryChip, addAction, draggable = true,

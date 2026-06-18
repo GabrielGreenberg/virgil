@@ -1428,7 +1428,13 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
   // `onCitationCreated` in the `CitationDisplayContext` so panel
   // mini-editors (notes, footnotes) can register fresh `\cite{}` drops
   // and get back the display text for their Citation node.
-  const { handleCitationCreated } = useCitationActions({
+  // `handleCitationCreated` lands in the CitationDisplayContext (panel
+  // mini-editors); `handleCitationDrop` is the main editor's counterpart —
+  // wired into the live `<Editor onCitationDrop>` below so dragging an
+  // unanchored citation card into the body anchors it (CI-A2-01). Before
+  // this the gate at Editor.tsx existed but no host ever threaded the prop,
+  // so the drop was a silent no-op.
+  const { handleCitationCreated, handleCitationDrop } = useCitationActions({
     editorRef: innerRef,
     getCitationDisplayText: citationsHook.getDisplayText,
     addCitation: citationsHook.addCitation,
@@ -4897,6 +4903,7 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
                     highlightRange={effectiveHighlightRange}
                     editable={editable}
                     onEditorReady={handleEditorReady}
+                    onCitationDrop={handleCitationDrop}
                     anchoredUuidsRef={anchoredUuidsRef}
                     texBlockIsPoppedRef={texBlockIsPoppedRef}
                     onOpenHeadingTypeMenu={openHeadingTypeMenu}
@@ -6131,7 +6138,6 @@ function PaneRailBody({
         updateBibEntry={citationsHook.updateBibEntry}
         replaceBibEntry={citationsHook.replaceBibEntry}
         updateBibKeyAndType={citationsHook.updateBibKeyAndType}
-        getFormattedBib={citationsHook.getFormattedBib}
         getAnnotation={annotationsHook.getAnnotation}
         setAnnotation={annotationsHook.setAnnotation}
         requestBibReview={bibReviewHook.requestReview}

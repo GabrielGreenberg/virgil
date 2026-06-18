@@ -1,10 +1,12 @@
 "use client";
 
 import { useMemo } from "react";
+import type { Editor } from "@tiptap/react";
 import type {
   ReportItem,
   ReportCard as ReportCardData,
   ReportRequestCard as ReportRequestCardData,
+  AiRequest,
 } from "@/lib/types";
 import { ItemMenu, PANEL } from "@/components/panel-primitives";
 import PanelThemePicker from "@/components/PanelThemePicker";
@@ -31,6 +33,12 @@ export default function ReportsPanel({
   onSelect,
   selectedId,
   onJumpToCard,
+  getCitationDisplayText,
+  onCitationCreated,
+  onEditorFocus,
+  aiRequests,
+  onUpdateAiRequestText,
+  onDeleteAiRequest,
   recentlyAddedId,
 }: {
   cards: ReportItem[];
@@ -45,6 +53,20 @@ export default function ReportsPanel({
   onSelect: (id: string | null) => void;
   selectedId: string | null;
   onJumpToCard?: (card: ReportItem, sourceEl?: HTMLElement | null) => void;
+  // Required at the host boundary (Pillar E-1): report/report-request card
+  // bodies are rich-text mini-editors that can host inline `\cite{}` drops and
+  // claim editor focus. These were declared on ReportCard/ReportRequestCard but
+  // ReportsPanel never threaded them (REP-F4-01 / OMNI-F5-01) — making them
+  // required means a host that forgets to wire them fails the build, not silently
+  // ships a card whose citation drops dead-end.
+  getCitationDisplayText: (command: string) => string;
+  onCitationCreated: (command: string) => { id: string; displayText: string } | null;
+  onEditorFocus: (editor: Editor) => void;
+  // Pending report AI-requests, surfaced above the card list (REP-C1-01 /
+  // REP-F5-02) — the Notes/Todos pattern that Reports lacked.
+  aiRequests?: AiRequest[];
+  onUpdateAiRequestText?: (id: string, text: string) => void;
+  onDeleteAiRequest?: (id: string) => void;
   recentlyAddedId?: string | null;
 }) {
   const items = useMemo<Item[]>(() => {
@@ -56,6 +78,12 @@ export default function ReportsPanel({
     out.sort((a, b) => a.createdAt.localeCompare(b.createdAt));
     return withRecentlyAddedFirst(out, recentlyAddedId, (i) => i.id);
   }, [cards, recentlyAddedId]);
+
+  // Report AI-requests surface above the card list, mirroring Notes/Todos.
+  const myAiRequests = useMemo(
+    () => (aiRequests ?? []).filter((r) => r.kind === "report"),
+    [aiRequests],
+  );
 
   const onAddOptions = useMemo(
     () => [
@@ -70,6 +98,9 @@ export default function ReportsPanel({
       kind="reports"
       count={cards.length}
       onAddOptions={onAddOptions}
+      aiRequests={myAiRequests}
+      onUpdateAiRequestText={onUpdateAiRequestText}
+      onDeleteAiRequest={onDeleteAiRequest}
       headerLeading={
         <ItemMenu align="left">
           <div className="px-3 py-1.5 flex items-center justify-end gap-2">
@@ -102,6 +133,9 @@ export default function ReportsPanel({
                   ? (sourceEl) => onJumpToCard(it.data, sourceEl)
                   : undefined
               }
+              onEditorFocus={onEditorFocus}
+              getCitationDisplayText={getCitationDisplayText}
+              onCitationCreated={onCitationCreated}
             />
           );
         }
@@ -119,6 +153,9 @@ export default function ReportsPanel({
                 ? (sourceEl) => onJumpToCard(it.data, sourceEl)
                 : undefined
             }
+            onEditorFocus={onEditorFocus}
+            getCitationDisplayText={getCitationDisplayText}
+            onCitationCreated={onCitationCreated}
           />
         );
       }}
