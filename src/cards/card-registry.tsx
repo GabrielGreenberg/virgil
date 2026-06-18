@@ -142,6 +142,86 @@ export function assertMorphCoverage(): void {
           `("${m.to}".morph.to = ${back ? `"${back.to}"` : "null"}).`,
       );
     }
+    // `lossy` is a static literal kept for back-compat (out-of-tree readers);
+    // PIN it to the real `drops` model so the two can never diverge (T4 §3.2).
+    if (m.lossy !== m.drops.length > 0) {
+      console.error(
+        `[CardMorph] "${k}".morph.lossy = ${m.lossy} but drops = ` +
+          `${JSON.stringify(m.drops)} (lossy must equal drops.length > 0).`,
+      );
+    }
+    // An `aiRequest` drop is only meaningful when the FROM kind actually has
+    // aiRequest routing and the TO kind does NOT (the inbox would orphan).
+    if (m.drops.includes("aiRequest")) {
+      const fromHasRouting = CARD_REGISTRY[k].aiRequest != null;
+      const toHasRouting = CARD_REGISTRY[m.to].aiRequest != null;
+      if (!fromHasRouting || toHasRouting) {
+        console.error(
+          `[CardMorph] "${k}".morph.drops includes "aiRequest" but the unbridge ` +
+            `is only meaningful when the FROM kind has routing and the TO kind ` +
+            `does not (from=${fromHasRouting}, to=${toHasRouting}).`,
+        );
+      }
+    }
+  }
+}
+
+/** Dev-only: verify EVERY card kind declares a `content` descriptor (or an
+ *  explicit `null` for the no-user-content system/tint kinds), and that every
+ *  field a descriptor names is a real `string` key in the descriptor's own
+ *  shape (so a typo'd field can't silently make the confirm blind). Mirrors
+ *  `assertMorphCoverage`; this is the boot guard behind the "no kind has
+ *  content the confirm can't see" invariant (T4 §3.1). A future kind can't ship
+ *  without declaring its content model. Call once at boot (alongside
+ *  `assertMorphCoverage`). */
+export function assertContentCoverage(): void {
+  if (process.env.NODE_ENV === "production") return;
+  // The kinds that legitimately carry NO user content (a `null` descriptor):
+  // the tint kind (highlight) + the system kinds (bib/ai/error). Any OTHER kind
+  // declaring `null` is a coverage gap (it would delete without a confirm).
+  const allowedNull: ReadonlySet<CardKind> = new Set<CardKind>([
+    "highlight",
+    "bib",
+    "ai",
+    "error",
+  ]);
+  for (const k of Object.keys(CARD_REGISTRY) as CardKind[]) {
+    const c = CARD_REGISTRY[k].content;
+    if (c === null) {
+      if (!allowedNull.has(k)) {
+        console.error(
+          `[CardContent] "${k}" declares content=null but is not a known ` +
+            `no-user-content kind — it would delete without a confirm. Declare ` +
+            `its content model (CardMeta.content).`,
+        );
+      }
+      continue;
+    }
+    // A non-null descriptor must name at least one field that could hold
+    // content (a bodyField or ≥1 textField) — an all-empty descriptor would
+    // report "no content" for everything, the same blind-confirm bug.
+    if (c.bodyField == null && c.textFields.length === 0) {
+      console.error(
+        `[CardContent] "${k}" declares a content model with no bodyField and ` +
+          `no textFields — every card of this kind would delete without a ` +
+          `confirm. Name the user-content field(s).`,
+      );
+    }
+    // No declared field may appear in BOTH the counted lists and the
+    // aiPrefilled (don't-count) list — that's a contradiction the walker can't
+    // resolve.
+    const counted = new Set<string>([
+      ...(c.bodyField ? [c.bodyField] : []),
+      ...c.textFields,
+    ]);
+    for (const f of c.aiPrefilledFields) {
+      if (counted.has(f)) {
+        console.error(
+          `[CardContent] "${k}" lists "${f}" as BOTH counted and aiPrefilled ` +
+            `(don't-count) — a field can't be both.`,
+        );
+      }
+    }
   }
 }
 
@@ -239,13 +319,15 @@ export const CARD_REGISTRY: Record<CardKind, CardMeta> = {
     anchored: true,
     markerType: "note",
     lifecycle: { clone: true, delete: true, bindAnchor: true },
+    // A note carries a rich body + an optional user title.
+    content: { bodyField: "content", textFields: ["title"], aiPrefilledFields: [] },
     dropSpec: null,
     droppable: true,
     dropPlacement: "margin",
     // note → highlight discards the rich note body + title (the highlight has
     // none) → lossy. The reverse direction is also lossy (a highlight has no
     // body to seed the note with); a confirm guards the body-dropping case.
-    morph: { to: "highlight", lossy: true },
+    morph: { to: "highlight", lossy: true, drops: ["body", "title"] },
     bodyClass: "sans",
     stackable: true,
     poppable: true,
@@ -263,10 +345,15 @@ export const CARD_REGISTRY: Record<CardKind, CardMeta> = {
     anchored: true,
     markerType: null, // tint, no gutter icon
     lifecycle: { clone: true, delete: true, bindAnchor: true },
+    // A highlight is a color + range; no user-typed body → never warns on delete.
+    content: null,
     dropSpec: null,
     droppable: true,
     dropPlacement: "margin",
-    morph: { to: "note", lossy: true },
+    // highlight → note seeds an EMPTY note body (the highlight has no body to
+    // carry), so the user's highlight tint is the only thing lost on the way out
+    // (note → highlight). The note's body/title are what drop.
+    morph: { to: "note", lossy: true, drops: ["body", "title"] },
     bodyClass: "sans",
     stackable: true,
     poppable: true,
@@ -283,6 +370,11 @@ export const CARD_REGISTRY: Record<CardKind, CardMeta> = {
     anchored: true,
     markerType: null, // in-text atom
     lifecycle: { clone: true, delete: true, bindAnchor: false },
+    // A footnote's body rides `attrs.content` (threaded in as `content` by the
+    // caller); the `\footnote` title (`\thanks` acknowledgement label) is an
+    // extra user field. FN-A1-02: a title-only footnote IS content (its marker
+    // delete must orphan + confirm), so `title` counts.
+    content: { bodyField: "content", textFields: ["title"], aiPrefilledFields: [] },
     dropSpec: null,
     droppable: true,
     dropPlacement: "in-text",
@@ -304,6 +396,8 @@ export const CARD_REGISTRY: Record<CardKind, CardMeta> = {
     markerType: "archive",
     // R18 ratified: NO cascade — archive survives anchor-paragraph deletion.
     lifecycle: { clone: false, delete: false, bindAnchor: false },
+    // An archive snippet carries a rich body + an optional display title.
+    content: { bodyField: "content", textFields: ["title"], aiPrefilledFields: [] },
     dropSpec: null,
     droppable: true,
     dropPlacement: "margin",
@@ -326,6 +420,9 @@ export const CARD_REGISTRY: Record<CardKind, CardMeta> = {
     markerType: "todo",
     // permanent: Mode-A paragraph-anchored, no text-range anchor for the cascade to reach.
     lifecycle: { clone: false, delete: false, bindAnchor: false },
+    // A todo's content is its `text` line (the `notes` field is a secondary
+    // scratch field; the existing confirm gated on `text` alone — preserved).
+    content: { bodyField: null, textFields: ["text"], aiPrefilledFields: [] },
     dropSpec: null,
     droppable: true,
     dropPlacement: "margin",
@@ -346,6 +443,8 @@ export const CARD_REGISTRY: Record<CardKind, CardMeta> = {
     anchored: false,
     markerType: null,
     lifecycle: { clone: false, delete: false, bindAnchor: false },
+    // System kind (derived from the .bib); no panel-trash delete-confirm.
+    content: null,
     dropSpec: null, // intentional: bib entries don't anchor to text
     droppable: false,
     dropPlacement: null,
@@ -366,6 +465,11 @@ export const CARD_REGISTRY: Record<CardKind, CardMeta> = {
     anchored: true,
     markerType: null, // in-text atom
     lifecycle: { clone: true, delete: true, bindAnchor: false },
+    // A citation's "content" is its cite keys (the `\cite{key,…}` reference);
+    // deleting the card removes the in-text `\cite{}` atom, so a citation with
+    // keys must confirm (CI-F7-01 / OMNI-F7-01). The `keys` array counts when
+    // non-empty.
+    content: { bodyField: null, textFields: ["keys"], aiPrefilledFields: [] },
     dropSpec: null,
     droppable: true,
     dropPlacement: "in-text",
@@ -391,13 +495,15 @@ export const CARD_REGISTRY: Record<CardKind, CardMeta> = {
     anchored: true,
     markerType: "revision",
     lifecycle: { clone: true, delete: true, bindAnchor: true },
+    // A revision comment carries a rich body + its plain-text mirror.
+    content: { bodyField: "content", textFields: ["text"], aiPrefilledFields: [] },
     dropSpec: null,
     droppable: true,
     dropPlacement: "margin",
     // comment ⇄ suggestion is a non-destructive salvage both ways (the body
     // text rides into `user_text` on the way out, back into the body on the
     // way in), so neither direction is lossy.
-    morph: { to: "revision-suggestion", lossy: false },
+    morph: { to: "revision-suggestion", lossy: false, drops: [] },
     bodyClass: "sans",
     stackable: true,
     poppable: true,
@@ -415,11 +521,13 @@ export const CARD_REGISTRY: Record<CardKind, CardMeta> = {
     anchored: true,
     markerType: "cut",
     lifecycle: { clone: true, delete: true, bindAnchor: true },
+    // A cutter comment carries a rich body + its plain-text mirror.
+    content: { bodyField: "content", textFields: ["text"], aiPrefilledFields: [] },
     dropSpec: null,
     droppable: true,
     dropPlacement: "margin",
     // Same non-destructive comment ⇄ suggestion salvage as the revision pair.
-    morph: { to: "cutter-suggestion", lossy: false },
+    morph: { to: "cutter-suggestion", lossy: false, drops: [] },
     bodyClass: "sans",
     stackable: true,
     poppable: true,
@@ -436,10 +544,18 @@ export const CARD_REGISTRY: Record<CardKind, CardMeta> = {
     anchored: true,
     markerType: "cut",
     lifecycle: { clone: true, delete: true, bindAnchor: true },
+    // An AI suggestion arrives with `original_text`/`suggested_text` prefilled —
+    // those are NOT user content. Only the user-typed `user_text`/`explanation`
+    // count toward the delete-confirm.
+    content: {
+      bodyField: null,
+      textFields: ["user_text", "explanation"],
+      aiPrefilledFields: ["original_text", "suggested_text"],
+    },
     dropSpec: null,
     droppable: true,
     dropPlacement: "margin",
-    morph: { to: "cutter-comment", lossy: false },
+    morph: { to: "cutter-comment", lossy: false, drops: [] },
     bodyClass: "sans",
     stackable: true,
     poppable: true,
@@ -456,10 +572,16 @@ export const CARD_REGISTRY: Record<CardKind, CardMeta> = {
     anchored: true,
     markerType: "revision",
     lifecycle: { clone: true, delete: true, bindAnchor: true }, // provider re-keyed suggestion→here at the flip
+    // Same as the cutter suggestion: only the user-typed fields count.
+    content: {
+      bodyField: null,
+      textFields: ["user_text", "explanation"],
+      aiPrefilledFields: ["original_text", "suggested_text"],
+    },
     dropSpec: null,
     droppable: true,
     dropPlacement: "margin",
-    morph: { to: "revision-comment", lossy: false },
+    morph: { to: "revision-comment", lossy: false, drops: [] },
     bodyClass: "sans",
     stackable: true,
     poppable: true,
@@ -477,13 +599,17 @@ export const CARD_REGISTRY: Record<CardKind, CardMeta> = {
     markerType: "report",
     // permanent: Mode-A paragraph-anchored, no cascade reaches it.
     lifecycle: { clone: false, delete: false, bindAnchor: false },
+    // A report carries a user-authored title + a rich body (+ its plain-text
+    // mirror). REP-F7-01: a titled-but-empty-body report IS content — the title
+    // must trigger the delete-confirm, so `title` counts.
+    content: { bodyField: "content", textFields: ["title", "text"], aiPrefilledFields: [] },
     dropSpec: null,
     droppable: true,
     dropPlacement: "margin",
-    // report ⇄ report-request drops a field each way (a report's title + author
-    // byline have no home on a request; a request's aiRequest flag has none on
-    // a report) → lossy both directions; the body rich-text carries across.
-    morph: { to: "report-request", lossy: true },
+    // report → report-request DROPS the title + author byline (a request has no
+    // home for them); the body rich-text carries across. The aiRequest flag has
+    // no home on the FROM (report) side, so it doesn't drop here.
+    morph: { to: "report-request", lossy: true, drops: ["title", "byline"] },
     bodyClass: "sans", // R11: Report is apparatus → 12px Inter (fixes the variant=footnote serif declared-vs-rendered mismatch)
     stackable: false, // not in StackCardKind
     poppable: true,
@@ -502,10 +628,16 @@ export const CARD_REGISTRY: Record<CardKind, CardMeta> = {
     markerType: "report",
     // permanent: Mode-A paragraph-anchored, no cascade reaches it.
     lifecycle: { clone: false, delete: false, bindAnchor: false },
+    // A report request carries a rich body + its plain-text mirror.
+    content: { bodyField: "content", textFields: ["text"], aiPrefilledFields: [] },
     dropSpec: null,
     droppable: true,
     dropPlacement: "margin",
-    morph: { to: "report", lossy: true },
+    // report-request → report DROPS the aiRequest flag (a report has no routing
+    // for it). `"aiRequest"` in `drops` is the declarative trigger to unbridge
+    // the pending `ai-requests.json` entry on this morph (REP-F5-01). The body
+    // carries across.
+    morph: { to: "report", lossy: true, drops: ["aiRequest"] },
     bodyClass: "sans",
     stackable: false,
     poppable: true,
@@ -525,6 +657,11 @@ export const CARD_REGISTRY: Record<CardKind, CardMeta> = {
     // (origin:derived); a card-level clone/delete would double-act = two-kinds
     // violation.
     lifecycle: { clone: false, delete: false, bindAnchor: false },
+    // An example's body lives in the doc block (no card-level body); its only
+    // card-level user field is the panel-only display `title`. Declared so the
+    // kind is never silently un-classified (coverage assertion), even though its
+    // delete rides the exampleBlock TextObject lifecycle, not a panel-trash.
+    content: { bodyField: null, textFields: ["title"], aiPrefilledFields: [] },
     dropSpec: null,
     // NO drop button: example carries a `dropSpec` (exampleDropSpec) but it is a
     // `between-blocks` block content-MOVE, not a card re-anchor — the drop button
@@ -550,6 +687,8 @@ export const CARD_REGISTRY: Record<CardKind, CardMeta> = {
     anchored: false,
     markerType: null,
     lifecycle: { clone: false, delete: false, bindAnchor: false },
+    // System kind (the unified AI-request queue mirror); no panel-trash confirm.
+    content: null,
     dropSpec: null,
     droppable: false,
     dropPlacement: null,
@@ -570,6 +709,8 @@ export const CARD_REGISTRY: Record<CardKind, CardMeta> = {
     anchored: false,
     markerType: "error",
     lifecycle: { clone: false, delete: false, bindAnchor: false },
+    // System kind (linter diagnostic); no user content, no panel-trash confirm.
+    content: null,
     dropSpec: null,
     droppable: false,
     dropPlacement: null,

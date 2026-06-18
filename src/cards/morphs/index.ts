@@ -33,6 +33,7 @@ import {
   registerCardMorph,
   assertMorphCoverage,
   assertPanelTypographyCoverage,
+  assertContentCoverage,
 } from "../card-registry";
 import { assertMarkerCoverage } from "../marker-meta";
 import { getTextAnchor } from "@/links/links";
@@ -221,6 +222,7 @@ export function canMorphNoteToHighlight(note: UserNote): boolean {
 assertMorphCoverage();
 assertPanelTypographyCoverage();
 assertMarkerCoverage();
+assertContentCoverage();
 
 // The per-doc hooks import the morph-application helper from here.
 export { applyCardMorph } from "./apply";

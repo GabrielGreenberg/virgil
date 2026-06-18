@@ -104,6 +104,39 @@ export interface CardLifecycleCapability {
   bindAnchor: boolean;
 }
 
+/** The set of fields a `morph` drops — the fields the TO shape cannot hold.
+ *  Drives both the generated confirm copy (so it's never direction-blind, the
+ *  `REP-F6-03` class) AND the lifecycle unbridge decision: `"aiRequest"` in the
+ *  list is the declarative trigger to clear the orphaned `ai-requests.json`
+ *  entry on morph (the C8 lossy-morph-leak class). */
+export type MorphDropField = "title" | "byline" | "aiRequest" | "body" | "keys";
+
+/** Declarative content model (T4 §3.1). The single descriptor `cardHasContent`
+ *  walks — both the panel-trash and gutter-marker delete-confirm read it, so a
+ *  kind can never silently delete user content the confirm couldn't see. Every
+ *  named field must exist on the kind's record type (pinned by
+ *  `assertContentCoverage`).
+ *
+ *  All three field lists are matched against the card record by name. A field
+ *  holding a Tiptap JSONContent doc (`bodyField`) is walked for visible text;
+ *  the `textFields` / `extraUserFields` are matched as plain-string-or-array
+ *  (non-empty array of keys, or trimmed-non-empty string). */
+export interface CardContentModel {
+  /** Rich-body JSONContent field name on the record (e.g. `"content"`), or
+   *  `null` for kinds whose body lives elsewhere (footnote body rides
+   *  `attrs.content`, threaded in as `content` by the caller). */
+  bodyField: string | null;
+  /** Plain-text mirror fields that ALSO count (e.g. `"text"` on
+   *  todo/report-request/report; `"title"` on report/footnote/note). A trimmed
+   *  non-empty string, or a non-empty array (e.g. citation `keys`). */
+  textFields: readonly string[];
+  /** AI-prefilled fields that DON'T count as user content (the suggestion
+   *  family's `original_text` / `suggested_text` arrive filled by the AI). Named
+   *  here for documentation + the coverage assertion; the walker never reads
+   *  them — it only consults `bodyField` + `textFields`. */
+  aiPrefilledFields: readonly string[];
+}
+
 /** Per-`CardKind` SSOT. Mirrors `TextObjectMeta`. */
 export interface CardMeta {
   /** Display label / uppercase overline (was `CARD_TYPE_LABELS`). */
@@ -156,6 +189,23 @@ export interface CardMeta {
   aiRequest?: { kind: AiRequestKind; linkPanel: AiRequestLink["panel"] };
   /** Declared lifecycle coverage (validated against the per-doc provider). */
   lifecycle: CardLifecycleCapability;
+  /** The card's USER-CONTENT model — the single declarative descriptor both
+   *  the panel-trash delete-confirm (`EditableCard.tryDelete`) and the
+   *  gutter-marker delete (`deleteMarginItem`) read to gate the
+   *  "This item has text. Delete it?" confirm AND the orphan-worthiness test.
+   *  Replaces the divergent per-kind `switch` in `cardHasContent` — NO kind may
+   *  carry content the confirm can't see (the deficiency behind REP-F7-01 /
+   *  CI-F7-01 / OMNI-F7-01 / FN-A1-02). A dev assertion (`assertContentCoverage`)
+   *  pins that every kind declares this and names only fields the kind's record
+   *  actually has.
+   *
+   *  The walker (`cardHasContent`) treats the card as "has content" iff ANY
+   *  declared body/text/extra field is non-empty (visible text). `null` for the
+   *  system kinds with no user content (`bib`/`ai`/`error`) and for `highlight`
+   *  (a color + range, no user-typed body) — a `null` descriptor ALWAYS reports
+   *  "no content" (delete without confirm), which is the correct behavior for
+   *  those kinds. */
+  content: CardContentModel | null;
   /** In-document drop behavior, or `null` for kinds that don't re-anchor by drop. */
   dropSpec: DropSpec | null;
   /** Whether this kind gets the docked drop button — the (re)anchor gesture that
@@ -192,8 +242,17 @@ export interface CardMeta {
    *  (a runtime-leaf indirection, mirroring `registerCardFloatable`), never
    *  imported into this card-UI-free module. A dev assertion checks every
    *  `morph !== null` kind has a registered converter and that `morph.to`
-   *  shares the panel. */
-  morph: { to: CardKind; lossy: boolean } | null;
+   *  shares the panel.
+   *
+   *  `drops` enumerates the fields the TO shape cannot hold (T4 §3.2). It drives
+   *  the GENERATED confirm copy (so it can't lie or be direction-blind —
+   *  `REP-F6-03`) and the lifecycle unbridge decision: `drops.includes("aiRequest")`
+   *  is the declarative trigger to clear the orphaned `ai-requests.json` entry
+   *  on a morph that drops an aiRequest-bearing kind's flag (the C8 leak class —
+   *  `REP-F5-01` et al). `lossy` is kept as a static literal (back-compat with
+   *  out-of-tree readers) and PINNED to `drops.length > 0` by
+   *  `assertMorphCoverage`, so the two can never diverge. */
+  morph: { to: CardKind; lossy: boolean; drops: readonly MorphDropField[] } | null;
   /** Whether this kind can serialize onto the Stack (was the hand-kept
    *  `StackCardKind` union). `bib` is stackable despite being `system`, so this
    *  cannot be derived from `origin`. `example` is declared stackable to mirror

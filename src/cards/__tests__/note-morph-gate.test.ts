@@ -75,8 +75,23 @@ describe("canMorphNoteToHighlight (A6/WS7)", () => {
   });
 
   it("the registry morph declaration stays static (note⇄highlight, lossy)", () => {
-    // The gate is consumer-owned; the declared pair must NOT change.
-    expect(CARD_REGISTRY.note.morph).toEqual({ to: "highlight", lossy: true });
-    expect(CARD_REGISTRY.highlight.morph).toEqual({ to: "note", lossy: true });
+    // The gate is consumer-owned; the declared pair must NOT change. The morph
+    // now also declares the dropped-field set (T4 §3.2): note↔highlight drops
+    // the body + title (a highlight has neither), but NOT aiRequest (it carries
+    // across — both kinds declare aiRequest routing), so no spurious unbridge.
+    expect(CARD_REGISTRY.note.morph).toEqual({
+      to: "highlight",
+      lossy: true,
+      drops: ["body", "title"],
+    });
+    expect(CARD_REGISTRY.highlight.morph).toEqual({
+      to: "note",
+      lossy: true,
+      drops: ["body", "title"],
+    });
+    // note↔highlight must NOT drop aiRequest (it's carried across in the morph
+    // transform) — a spurious unbridge would strand the inbox the user wants.
+    expect(CARD_REGISTRY.note.morph?.drops).not.toContain("aiRequest");
+    expect(CARD_REGISTRY.highlight.morph?.drops).not.toContain("aiRequest");
   });
 });
