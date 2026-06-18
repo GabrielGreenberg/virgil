@@ -603,5 +603,20 @@ export interface OrphanedFootnote {
   // Tiptap JSONContent doc — see normalizeRichContent for accepted shapes.
   content: unknown;
   title?: string;
+  // The dying footnote's `\thanks` attr, preserved so a re-dropped orphan
+  // restores it (FN-A2-02 — full-attr orphan clone, T2 §3b.1/§4.2).
+  thanks?: boolean;
   orphanedAt: string;
+}
+
+/**
+ * The persisted shape of `virgil/orphaned-footnotes.json` (T2 §4.1, D4).
+ * Carries an explicit `version` integer — the family standard for any NEW
+ * sidecar file (PLAN D4). Absent file ⇒ `{ version: 1, orphans: [] }`; there
+ * is nothing to migrate FROM (orphans were never durable before this), so an
+ * existing paper simply starts empty.
+ */
+export interface OrphanedFootnotesState {
+  version: 1;
+  orphans: OrphanedFootnote[];
 }
