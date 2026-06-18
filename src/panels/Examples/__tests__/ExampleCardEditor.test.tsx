@@ -617,4 +617,178 @@ describe("ExampleCard re-seed cursor survival (#40 PART 2)", () => {
     expect(cardEd.state.selection.from).toBe(midCaret);
     editor.destroy();
   });
+
+  // EX-F8-02 — the bug proper: a foreign edit UPSTREAM of the caret. The raw
+  // restore re-applied the same numeric offset, leaving the caret pointing
+  // earlier than its logical text once content shifted in front of it. The
+  // position-mapped restore moves the caret forward by the inserted length so
+  // it stays on the same logical character.
+  it("a foreign main edit BEFORE the caret shifts the restored caret with its text", () => {
+    const editor = buildMainWith(twoExampleDoc(), /* editable */ true);
+    let container!: HTMLElement;
+    act(() => {
+      ({ container } = renderCardsFor(editor, [infoFor(EX_A, "Alpha body.")]));
+    });
+    const [cardEd] = embeddedEditors(container);
+    expect(cardEd).toBeTruthy();
+    absorbBaseline(editor);
+
+    // Park the card caret in the MIDDLE of "Alpha body." (after "Alp" → pos 4).
+    const midCaret = 4;
+    act(() => {
+      cardEd.view.dispatch(
+        cardEd.state.tr.setSelection(TextSelection.create(cardEd.state.doc, midCaret)),
+      );
+    });
+    expect(cardEd.state.selection.from).toBe(midCaret);
+    // Capture the logical text BEFORE the caret in card coords, so we can
+    // assert it is preserved after the upstream insertion regardless of the
+    // exact wrapper-depth offset.
+    const textBeforeCaret = cardEd.state.doc.textBetween(0, midCaret, "", "");
+
+    // A FOREIGN main edit at the START of example A's text (before "Alpha").
+    // exampleBlock opens at a.pos, its paragraph at +1, text at +2 — so +2 is
+    // immediately before "A". Insert 3 chars there.
+    const a = findExampleBlock(editor, EX_A)!;
+    act(() => {
+      editor.view.dispatch(editor.state.tr.insertText("XYZ", a.pos + 2));
+    });
+
+    // The card re-seeded and now shows the upstream insertion.
+    expect(cardEd.getText()).toContain("XYZAlpha body.");
+    // THE INVARIANT (EX-F8-02): the caret was MAPPED through the structural
+    // change — shifted forward by the 3 inserted chars so it still sits on the
+    // same logical character. A raw-offset restore would have left it at
+    // `midCaret`, now pointing into the freshly-inserted "XYZ".
+    expect(cardEd.state.selection.from).toBe(midCaret + 3);
+    // The text before the caret grew by exactly the upstream insertion — the
+    // caret still trails the SAME original characters.
+    expect(
+      cardEd.state.doc.textBetween(0, cardEd.state.selection.from, "", ""),
+    ).toBe("XYZ" + textBeforeCaret);
+    editor.destroy();
+  });
+});
+
+// ── EX-F5-03 — a schema-invalid write-back is SURFACED, not swallowed ────────
+//
+// `writeBackToMain` rebuilds the card's serialized JSON into a real
+// `exampleBlock` node via `schema.nodeFromJSON` before splicing it into the
+// main doc. If that rebuild throws (stale uuid, malformed gloss/xlist nesting,
+// attr mismatch) the OLD code swallowed it in a bare `catch {}` — the card kept
+// showing the edit while the doc never received it, then the next re-seed
+// reverted the card and the user's typing vanished with no warning. The fix
+// holds the invalid write back from the doc AND surfaces a visible rejection
+// banner so the divergence is no longer silent.
+describe("ExampleCard schema-invalid write-back surfacing (EX-F5-03)", () => {
+  it("shows a rejection banner and leaves the main doc UNCHANGED when nodeFromJSON throws", () => {
+    const editor = buildMainWith(twoExampleDoc(), /* editable */ true);
+    let container!: HTMLElement;
+    act(() => {
+      ({ container } = renderCardsFor(editor, [infoFor(EX_A, "Alpha body.")]));
+    });
+    const [cardEd] = embeddedEditors(container);
+    expect(cardEd).toBeTruthy();
+
+    // Simulate the write-back's rebuild failing on a schema-invalid edit:
+    // spy on the MAIN editor's schema (the instance `writeBackToMain` calls)
+    // so the next nodeFromJSON throws exactly as a malformed gloss/xlist would.
+    const before = findExampleBlock(editor, EX_A)!.node.textContent;
+    const spy = vi
+      .spyOn(editor.state.schema, "nodeFromJSON")
+      .mockImplementation(() => {
+        throw new Error("invalid content for node exampleBlock");
+      });
+
+    // Type through the card editor's own view → onUpdate → writeBackToMain.
+    // Target the FIRST paragraph (the example body), not the editor's trailing
+    // empty paragraph, so the char lands inside the exampleBlock.
+    const endOfText = (() => {
+      let end: number | null = null;
+      cardEd.state.doc.descendants((n, pos) => {
+        if (end != null) return false;
+        if (n.type.name === "paragraph") {
+          end = pos + 1 + n.content.size;
+          return false;
+        }
+        return true;
+      });
+      return end ?? cardEd.state.doc.content.size;
+    })();
+    act(() => {
+      cardEd.view.dispatch(cardEd.state.tr.insertText("!", endOfText, endOfText));
+    });
+
+    // The rebuild threw, so the document was intentionally left untouched
+    // (no silent half-write) …
+    const after = findExampleBlock(editor, EX_A)!.node.textContent;
+    expect(after).toBe(before);
+    expect(after).not.toContain("!");
+
+    // … AND the failure is SURFACED: a visible rejection banner renders,
+    // rather than the edit silently disappearing on the next re-seed.
+    const banner = container.querySelector("[data-example-write-error]");
+    expect(banner).not.toBeNull();
+    expect(banner?.getAttribute("role")).toBe("alert");
+    expect((banner?.textContent ?? "").length).toBeGreaterThan(0);
+
+    spy.mockRestore();
+    editor.destroy();
+  });
+
+  it("clears the rejection banner once a subsequent valid edit lands", () => {
+    const editor = buildMainWith(twoExampleDoc(), /* editable */ true);
+    let container!: HTMLElement;
+    act(() => {
+      ({ container } = renderCardsFor(editor, [infoFor(EX_A, "Alpha body.")]));
+    });
+    const [cardEd] = embeddedEditors(container);
+
+    // End of the FIRST paragraph (the example body text), NOT the editor's
+    // trailing empty paragraph — so the inserted char lands inside the
+    // exampleBlock that the write-back rebuilds.
+    const endOf = (ed: typeof cardEd) => {
+      let end: number | null = null;
+      ed.state.doc.descendants((n, pos) => {
+        if (end != null) return false;
+        if (n.type.name === "paragraph") {
+          end = pos + 1 + n.content.size;
+          return false;
+        }
+        return true;
+      });
+      return end ?? ed.state.doc.content.size;
+    };
+
+    // First edit fails while the rebuild is forced to throw (banner appears,
+    // doc untouched). Use a persistent mock + explicit restore so the number
+    // of nodeFromJSON calls during this edit can't accidentally consume a
+    // "once" and let a half-write slip through.
+    const spy = vi
+      .spyOn(editor.state.schema, "nodeFromJSON")
+      .mockImplementation(() => {
+        throw new Error("invalid content for node exampleBlock");
+      });
+    act(() => {
+      const at = endOf(cardEd);
+      cardEd.view.dispatch(cardEd.state.tr.insertText("!", at, at));
+    });
+    expect(container.querySelector("[data-example-write-error]")).not.toBeNull();
+    spy.mockRestore(); // the schema can rebuild for real again
+
+    // Re-resolve the embedded editor in case the banner re-render swapped the
+    // instance, then drive a VALID edit through the LIVE editor → write-back
+    // lands + the banner clears.
+    const [liveEd] = embeddedEditors(container);
+    expect(liveEd).toBeTruthy();
+    act(() => {
+      const at = endOf(liveEd);
+      liveEd.view.dispatch(liveEd.state.tr.insertText("?", at, at));
+    });
+    const after = findExampleBlock(editor, EX_A)!.node.textContent;
+    expect(after).toContain("?"); // the valid edit reached the doc
+    expect(container.querySelector("[data-example-write-error]")).toBeNull();
+
+    editor.destroy();
+  });
 });
