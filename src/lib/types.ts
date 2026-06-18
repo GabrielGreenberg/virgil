@@ -130,6 +130,13 @@ export interface ReportCard {
   /** Display author. "ai" renders as "AI"; "human" renders the user's name. */
   author: "human" | "ai";
   title: string;
+  /** Title provenance (T6/C12). `true` = the title was machine-supplied and
+   *  may be discarded on load / never persisted as user content; `false` =
+   *  user-owned (typed into the title field), never strip. `undefined` =
+   *  pre-T6 legacy record — `resolveLoadedTitle` falls back to the shape
+   *  heuristic once, then self-stamps the bit. Records the fact we used to
+   *  guess from the title's shape (the auto-title false-positive class). */
+  titleAuto?: boolean;
   /** Plain-text mirror of `content`, kept in sync on every write. */
   text: string;
   /** Tiptap JSONContent — canonical editable body. */
@@ -164,6 +171,8 @@ export interface ArchivedSnippet {
   id: string;
   /** Optional display title (empty string if untitled). */
   title: string;
+  /** Title provenance (T6/C12). See `ReportCard.titleAuto`. */
+  titleAuto?: boolean;
   /** Rich content (Tiptap JSONContent). Legacy snippets stored plain `text`;
    *  the useArchive hook migrates them to JSONContent on load. */
   content: unknown;
@@ -180,6 +189,10 @@ export interface ArchiveState {
 export interface TodoItem {
   id: string;
   text: string;
+  /** Title provenance (T6/C12) — for a todo the "title" IS the body `text`
+   *  (the legacy seed put a generated "Task N" there). `true` = machine-seeded
+   *  body, strippable on load; `false` = user-typed. See `ReportCard.titleAuto`. */
+  titleAuto?: boolean;
   notes: string;
   done: boolean;
   aiRequest: boolean;
@@ -376,6 +389,8 @@ export interface ExampleRef {
   /** Optional panel-only display title. Doesn't serialize back to the
    *  `.tex` — this is a panel UX affordance. */
   title: string;
+  /** Title provenance (T6/C12). See `ReportCard.titleAuto`. */
+  titleAuto?: boolean;
   createdAt: string;
 }
 
@@ -414,6 +429,8 @@ export interface UserNote {
   kind: "note";
   id: string;
   title: string; // optional display title (empty string if untitled)
+  /** Title provenance (T6/C12). See `ReportCard.titleAuto`. */
+  titleAuto?: boolean;
   // Tiptap JSONContent doc — see normalizeRichContent for accepted shapes.
   // Legacy notes were stored as HTML strings; the helper migrates them on read.
   content: unknown;

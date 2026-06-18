@@ -21,7 +21,7 @@ import {
 } from "@/links/links";
 import { useReconcileModeAAnchors } from "./useReconcileModeAAnchors";
 import { bridgeCardAiRequestFlag } from "@/lib/ai-request-bridge";
-import { isAutoTitle } from "@/panels/panel-registry";
+import { resolveLoadedTitle, resolveTitleAuto } from "@/panels/panel-registry";
 import { migrateCardLinks } from "@/links/migrate-card";
 import { applyCardMorph } from "@/cards/morphs";
 import { usePersistentState } from "./usePersistentState";
@@ -35,11 +35,10 @@ function migrateNote(raw: unknown): UserNote {
   return {
     kind: "note",
     id: r.id!,
-    // BUG #31: strip a legacy auto-generated "Note N" title on load.
-    title:
-      typeof r.title === "string" && !isAutoTitle("note", r.title)
-        ? r.title
-        : "",
+    // T6/C12: recorded provenance, not shape — keep a user-owned title, drop a
+    // recorded/legacy generated one, self-stamp the resolved bit.
+    title: resolveLoadedTitle("note", r.title, r.titleAuto),
+    titleAuto: resolveTitleAuto("note", r.title, r.titleAuto),
     content: normalizeRichContent(r.content),
     createdAt: r.createdAt!,
     aiRequest: !!r.aiRequest,
@@ -88,7 +87,13 @@ export function useNotes(docId: string | null, externalPristine?: PristineKindAp
     docId,
     "notes.json",
     EMPTY_STATE,
-    { migrate: migrateNotes, errorLabel: "notes" },
+    {
+      migrate: migrateNotes,
+      // T6/C12: write the self-stamped `titleAuto` provenance back on first
+      // load so the shape heuristic is consulted at most once per record.
+      persistMigrationOnLoad: true,
+      errorLabel: "notes",
+    },
   );
   const localPristine = usePristineTracker();
   const pristine = externalPristine ?? localPristine;
@@ -113,9 +118,11 @@ export function useNotes(docId: string | null, externalPristine?: PristineKindAp
       let newNote: UserNote = {
         kind: "note",
         id: generateEntityId(),
-        // BUG #31: never persist a generated title ("Note 3"); leave it empty
-        // so the placeholder / +T affordance shows until the user types one.
+        // T6/C12 (FORK-1): blank title + machine-default provenance — the
+        // placeholder / +T affordance shows until the user types one (which
+        // flips `titleAuto` false via `updateNoteTitle`).
         title: "",
+        titleAuto: true,
         content: content ?? emptyRichContent(),
         createdAt: new Date().toISOString(),
         aiRequest: false,
@@ -251,8 +258,11 @@ export function useNotes(docId: string | null, externalPristine?: PristineKindAp
     (id: string, title: string) => {
       pristine.markDirty(id);
       update((prev) => ({
+        // T6/C12: user edit → user-owned title forever (clear auto-provenance).
         cards: prev.cards.map((c) =>
-          c.id === id && c.kind === "note" ? { ...c, title } : c,
+          c.id === id && c.kind === "note"
+            ? { ...c, title, titleAuto: false }
+            : c,
         ),
       }));
     },
@@ -435,6 +445,8 @@ export function useNotes(docId: string | null, externalPristine?: PristineKindAp
         kind: "note",
         id: generateEntityId(),
         title: source.title,
+        // T6/C12: carry the title provenance onto the clone.
+        titleAuto: source.titleAuto,
         content: normalizeRichContent(source.content),
         createdAt: new Date().toISOString(),
         aiRequest: false,
