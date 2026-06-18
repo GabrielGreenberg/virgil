@@ -100,21 +100,40 @@ export function matchCitationRegen(
  * document position; the i-th removed footnote (document order) maps to the
  * i-th added footnote.
  *
- * But equal-count alone is NOT the re-parse signature (the bug this tightening
- * fixes): a genuine same-transaction footnote swap — delete footnote X, insert
- * a DIFFERENT footnote Y in one tx — also produces 1 removed + 1 added, and a
- * blind positional pair would false-remap X→Y, stranding X's real card and
- * mis-pointing it at Y (and Wave 2 wants to register a real
- * selection/float migrator that this would corrupt). The distinguishing
- * invariant is that a whole-doc re-parse PRESERVES POSITIONS: the multiset of
- * removed `pos` values equals the multiset of added `pos` values. A real
- * delete+add does not (the removed atom sat at one pos, the inserted atom at
- * another). So we remap ONLY when the position sets coincide — the markerless-
- * whole-doc-reparse shape — and return `null` otherwise (genuine add/delete).
+ * But equal-count alone is NOT the re-parse signature: a genuine same-
+ * transaction footnote swap — delete footnote X, insert a DIFFERENT footnote Y
+ * in one tx — also produces 1 removed + 1 added, and a blind positional pair
+ * would false-remap X→Y, stranding X's real card and mis-pointing it at Y. The
+ * W2b lifecycle migrator (selection/float re-point) acts on this remap, so a
+ * false remap is now actively corrupting, not merely cosmetic.
+ *
+ * TWO discriminators, both required (W1 review NIT — position alone is not
+ * enough):
+ *
+ *  1. **Position-set guard** — a whole-doc re-parse re-lands every footnote at
+ *     its old document position, so the i-th removed `pos` (pos-sorted) must
+ *     equal the i-th added `pos`. A footnote that entered/left at a *new*
+ *     position is a genuine structural edit, not a re-parse.
+ *
+ *  2. **Body-identity discriminator** — the same-POSITION swap (delete X at pos
+ *     P, insert a different Y at the SAME pos P in one tx) defeats the position
+ *     guard alone (`{P}` == `{P}`), so we ALSO require the paired footnotes to
+ *     carry the SAME body. A markerless re-parse rebuilds byte-identical bodies
+ *     (`setContent(parseLatex(text))` runs `richLatexToJson` on the same
+ *     source), so the body text round-trips; a real swap changes the body. The
+ *     caller supplies a `bodyOf(entry) => string | null` resolver (the diff's
+ *     `FootnoteEntry` carries no body — the consumer reads it from the dying
+ *     node in oldState / the born node in newState). When `bodyOf` is omitted
+ *     (legacy call sites / unit tests of the position guard alone), only the
+ *     position guard applies — preserving the W1 behavior for those paths.
+ *
+ * We remap a pair ONLY when BOTH discriminators agree, and return `null`
+ * otherwise (the whole diff is treated as a genuine add/delete, not a re-parse).
  */
 export function matchFootnoteRegen(
   removed: readonly FootnoteEntry[],
   added: readonly FootnoteEntry[],
+  bodyOf?: (entry: FootnoteEntry) => string | null,
 ): ReadonlyMap<string, string> | null {
   if (removed.length === 0 || added.length === 0) return null;
   if (removed.length !== added.length) return null;
@@ -123,18 +142,34 @@ export function matchFootnoteRegen(
     [...xs].sort((a, b) => a.pos - b.pos);
   const r = sortByPos(removed);
   const a = sortByPos(added);
-  // Position-set guard: a re-parse re-lands every footnote at its old position,
-  // so the i-th removed pos must equal the i-th added pos (both pos-sorted). Any
-  // mismatch means a footnote actually entered/left at a new position — a
-  // genuine swap, not a re-parse — so we refuse to remap.
   for (let i = 0; i < r.length; i++) {
+    // Position-set guard.
     if (r[i].pos !== a[i].pos) return null;
+    // Body-identity discriminator (only when the caller supplies bodies). A
+    // re-parse preserves the body across the regen; a same-position swap does
+    // not. Normalize whitespace so trivial serializer reflow doesn't read as a
+    // swap; a null/null pair (both unresolvable) is treated as agreement (we
+    // fall back to the position guard for that pair rather than refusing the
+    // whole re-parse on a transient resolution gap).
+    if (bodyOf) {
+      const rb = bodyOf(r[i]);
+      const ab = bodyOf(a[i]);
+      if (rb !== null && ab !== null && normalizeBody(rb) !== normalizeBody(ab)) {
+        return null;
+      }
+    }
   }
   const remap = new Map<string, string>();
   for (let i = 0; i < r.length; i++) {
     if (r[i].id !== a[i].id) remap.set(r[i].id, a[i].id);
   }
   return remap.size > 0 ? remap : null;
+}
+
+/** Collapse runs of whitespace and trim, so a footnote body's identity compares
+ *  on its visible text rather than serializer reflow. */
+function normalizeBody(s: string): string {
+  return s.replace(/\s+/g, " ").trim();
 }
 
 /**
@@ -177,14 +212,53 @@ function matchByKey<T extends { pos: number }>(
 }
 
 /**
+ * Per-diff body resolvers the consumer threads into regen detection. The diff's
+ * `FootnoteEntry` carries no body text (it's an opaque `attrs.content` JSON the
+ * step-inspector never flattens), so the footnote body discriminator
+ * (`matchFootnoteRegen`'s NIT fix) needs the body read from the editor — for a
+ * REMOVED footnote that's the dying node in `oldState`, for an ADDED footnote
+ * the born node in `newState`. The mount hook builds these from those two
+ * states; when absent, footnote regen falls back to the position guard alone.
+ */
+export interface RegenBodyResolvers {
+  /** Body text of a REMOVED footnote (looked up in the pre-tx doc). */
+  removedFootnoteBody?: (entry: FootnoteEntry) => string | null;
+  /** Body text of an ADDED footnote (looked up in the post-tx doc). */
+  addedFootnoteBody?: (entry: FootnoteEntry) => string | null;
+}
+
+/**
  * The full regen detection for one diff. Combines the citation + footnote
  * remaps into one `oldId -> newId` map (atom ids are globally unique across the
  * two kinds, so the two sub-maps never key-collide). Returns `null` when the
  * diff carries no re-parse signature — the O(1) fast path the consumer bails on.
+ *
+ * Citations match BY COMMAND (carried in the diff, no editor read needed).
+ * Footnotes match by position AND, when `resolvers` supplies them, body text —
+ * the same-position-swap guard the W1 review flagged. The footnote pairing in
+ * `matchFootnoteRegen` is index-wise over pos-sorted arrays, so the body
+ * resolver is applied per-side (removed bodies from oldState, added from
+ * newState) and the matcher only needs ONE `bodyOf` — we route each entry to
+ * the correct side resolver by membership.
  */
-export function detectRegenRemap(diff: StructureDiff): ReadonlyMap<string, string> | null {
+export function detectRegenRemap(
+  diff: StructureDiff,
+  resolvers?: RegenBodyResolvers,
+): ReadonlyMap<string, string> | null {
   const citeRemap = matchCitationRegen(diff.removedCitations, diff.addedCitations);
-  const fnRemap = matchFootnoteRegen(diff.removedFootnotes, diff.addedFootnotes);
+  // Build a single `bodyOf` that dispatches to the removed- vs added-side
+  // resolver. `matchFootnoteRegen` only ever asks for the body of an entry that
+  // came from one of the two arrays it was handed, so identity membership in the
+  // removed set selects the removed resolver; otherwise it's an added entry.
+  let bodyOf: ((entry: FootnoteEntry) => string | null) | undefined;
+  if (resolvers?.removedFootnoteBody || resolvers?.addedFootnoteBody) {
+    const removedSet = new Set<FootnoteEntry>(diff.removedFootnotes);
+    bodyOf = (entry) =>
+      removedSet.has(entry)
+        ? (resolvers.removedFootnoteBody?.(entry) ?? null)
+        : (resolvers.addedFootnoteBody?.(entry) ?? null);
+  }
+  const fnRemap = matchFootnoteRegen(diff.removedFootnotes, diff.addedFootnotes, bodyOf);
   if (!citeRemap && !fnRemap) return null;
   const merged = new Map<string, string>();
   if (citeRemap) for (const [k, v] of citeRemap) merged.set(k, v);
@@ -227,6 +301,7 @@ export interface InlineAtomPolicyContext {
  */
 export class IdentityBusConsumer {
   private policies: InlineAtomPolicy[] = [];
+  private bodyResolverSource?: (diff: StructureDiff) => RegenBodyResolvers;
 
   /**
    * Append a policy to the ordered list. Returns an unregister function
@@ -240,6 +315,21 @@ export class IdentityBusConsumer {
     return () => {
       const i = this.policies.indexOf(policy);
       if (i >= 0) this.policies.splice(i, 1);
+    };
+  }
+
+  /**
+   * Install the per-tx footnote body resolver source (the W2b mount hook
+   * supplies one backed by its liveness cache, so the footnote regen matcher's
+   * body discriminator — the W1 review NIT — can tell a same-position swap from
+   * a re-parse without an oldState read). Idempotent; the last install wins.
+   * Returns an uninstaller (effect-cleanup friendly). Optional — without it,
+   * footnote regen falls back to the position guard alone.
+   */
+  setBodyResolverSource(source: (diff: StructureDiff) => RegenBodyResolvers): () => void {
+    this.bodyResolverSource = source;
+    return () => {
+      if (this.bodyResolverSource === source) this.bodyResolverSource = undefined;
     };
   }
 
@@ -261,7 +351,8 @@ export class IdentityBusConsumer {
    */
   async dispatch(diff: StructureDiff): Promise<void> {
     if (this.policies.length === 0) return;
-    const remap = detectRegenRemap(diff) ?? EMPTY_REMAP;
+    const resolvers = this.bodyResolverSource?.(diff);
+    const remap = detectRegenRemap(diff, resolvers) ?? EMPTY_REMAP;
     const ctx: InlineAtomPolicyContext = { remap };
     for (const policy of this.policies) {
       try {

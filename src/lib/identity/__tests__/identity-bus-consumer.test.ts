@@ -168,6 +168,60 @@ describe("matchFootnoteRegen", () => {
     expect(remap!.get("old-1")).toBe("new-1");
     expect(remap!.get("old-2")).toBe("new-2");
   });
+
+  // ── Body-identity discriminator (W1 review NIT) ───────────────────────────
+  // The same-POSITION swap defeats the position guard alone: delete footnote X
+  // at pos P, insert a DIFFERENT footnote Y at the SAME pos P in one tx →
+  // {P} == {P}, so the pos guard would false-remap X→Y. The body discriminator
+  // refuses, because a real swap changes the footnote body while a re-parse
+  // rebuilds it byte-identically.
+  describe("body discriminator (same-position swap)", () => {
+    const body: Record<string, string> = {
+      "old-1": "the original footnote text",
+      "new-1": "a completely different footnote", // genuine swap
+      "reparse-1": "the original footnote text", // re-parse: byte-identical body
+    };
+    const bodyOf = (e: FootnoteEntry) => body[e.id] ?? null;
+
+    it("does NOT remap a same-position swap whose bodies differ", () => {
+      // Same pos (5 == 5) — pos guard passes — but the body changed: a genuine
+      // delete-X-insert-Y-at-the-same-spot, not a re-parse. Refuse.
+      expect(
+        matchFootnoteRegen([fn("old-1", 5)], [fn("new-1", 5)], bodyOf),
+      ).toBeNull();
+    });
+
+    it("DOES remap a same-position re-parse whose body round-trips", () => {
+      // Same pos, byte-identical body → the markerless re-parse shape. Remap.
+      const remap = matchFootnoteRegen([fn("old-1", 5)], [fn("reparse-1", 5)], bodyOf);
+      expect(remap!.get("old-1")).toBe("reparse-1");
+    });
+
+    it("tolerates trivial whitespace reflow in the body (still a re-parse)", () => {
+      const reflow = (e: FootnoteEntry) =>
+        e.id === "old-1"
+          ? "the   original\nfootnote text"
+          : "the original footnote text";
+      const remap = matchFootnoteRegen([fn("old-1", 5)], [fn("reparse-1", 5)], reflow);
+      expect(remap!.get("old-1")).toBe("reparse-1");
+    });
+
+    it("falls back to the position guard when a body is unresolvable (null)", () => {
+      // A transient resolution gap (one side null) must not refuse a legit
+      // same-position re-parse — fall through to the position guard for that
+      // pair rather than dropping the whole remap.
+      const partial = (e: FootnoteEntry) => (e.id === "old-1" ? null : "x");
+      const remap = matchFootnoteRegen([fn("old-1", 5)], [fn("reparse-1", 5)], partial);
+      expect(remap!.get("old-1")).toBe("reparse-1");
+    });
+
+    it("without a bodyOf, behaves exactly as the W1 position guard", () => {
+      // Same position, no body resolver → remap (the legacy behavior preserved
+      // for flag-off / unit call sites).
+      const remap = matchFootnoteRegen([fn("old-1", 5)], [fn("new-1", 5)]);
+      expect(remap!.get("old-1")).toBe("new-1");
+    });
+  });
 });
 
 // ── detectRegenRemap (the consumer's O(1)-bail gate) ─────────────────────────
@@ -194,6 +248,38 @@ describe("detectRegenRemap", () => {
       }),
     );
     expect(remap!.get("oc")).toBe("nc");
+    expect(remap!.get("of")).toBe("nf");
+  });
+
+  it("routes the body resolver to the correct side (removed vs added) and refuses a swap", () => {
+    // The consumer supplies a removed-side resolver (dying-node body from the
+    // pre-tx doc) and an added-side resolver (born-node body from the post-tx
+    // doc). A same-position swap has differing bodies across the two sides → no
+    // remap. (Citations are unaffected — they match by command, no body read.)
+    const remap = detectRegenRemap(
+      diffWith({
+        removedFootnotes: [fn("of", 9)],
+        addedFootnotes: [fn("nf", 9)],
+      }),
+      {
+        removedFootnoteBody: (e) => (e.id === "of" ? "old body" : null),
+        addedFootnoteBody: (e) => (e.id === "nf" ? "new body" : null),
+      },
+    );
+    expect(remap).toBeNull();
+  });
+
+  it("body resolver allows a same-position re-parse (bodies match across sides)", () => {
+    const remap = detectRegenRemap(
+      diffWith({
+        removedFootnotes: [fn("of", 9)],
+        addedFootnotes: [fn("nf", 9)],
+      }),
+      {
+        removedFootnoteBody: () => "same body",
+        addedFootnoteBody: () => "same body",
+      },
+    );
     expect(remap!.get("of")).toBe("nf");
   });
 });

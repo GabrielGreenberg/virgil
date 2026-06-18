@@ -158,6 +158,8 @@ import { setEditorActionsHandle } from "@/lib/actions/editor-actions-bridge";
 import { isRenameCitekey } from "@/lib/identity/identity-cascade";
 import { rewriteCiteKeyInDoc } from "@/lib/identity/bib-cite-rewrite";
 import { useIdentityBusConsumer } from "@/lib/identity/useIdentityBusConsumer";
+import { useInlineAtomLifecycle } from "@/links/_shared/useInlineAtomLifecycle";
+import { useOrphanedFootnotes } from "@/hooks/useOrphanedFootnotes";
 import { DragHandleMenu } from "./DragHandleMenu";
 import { HeadingTypeMenu, type HeadingTypePick } from "./HeadingTypeMenu";
 import { useConfirmDialog } from "./ConfirmDialog";
@@ -925,8 +927,35 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
   // dispatcher is where Wave-2 T2 (inline-atom lifecycle) and T5 (citation
   // add-resync) register their reconcilers — they do NOT open new subscriptions.
   // O(1) bail on any non-atom transaction; never runs on a plain keystroke.
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const identityBusConsumer = useIdentityBusConsumer(editor, identityCascade);
+
+  // W2b — the inline-atom lifecycle reconciler, registered as a POLICY on the
+  // single consumer above (NOT a new subscription; the +1-not-+3 invariant). On
+  // the bus diff it (a) upserts/clears the durable orphan record so an undone
+  // delete can never leave the atom both anchored AND orphan (FN-A1-03), (b)
+  // prunes the `cardStore` selection/hover/expand ref of a genuinely-deleted
+  // inline atom (the prune-exemption ghost class, FN-A1-01 etc.), and (c) closes
+  // (or re-points, for a recoverable orphan) the popped float. It also registers
+  // the `inlineAtom`/`regenIds` selection+float re-point migrator on the cascade
+  // (OMNI-F3-02, CI-A3-01, CI-F1-02). Behind `virgil:inline-atom-lifecycle`
+  // (default OFF); flag-off the hook is inert and the legacy paths are untouched.
+  const orphanedFootnotesStore = useOrphanedFootnotes(docId);
+  useInlineAtomLifecycle({
+    editor,
+    consumer: identityBusConsumer,
+    cascade: identityCascade,
+    orphans: orphanedFootnotesStore,
+    // Inline structural counter — the liveness reconcile that closes the
+    // orphan-clear undo edge (FN-A1-03) fires when this bumps, never per keystroke.
+    atomRevision: rev.footnotes + rev.citations,
+    floats: viewPrefs
+      ? {
+          poppedOutCards: viewPrefs.prefs.poppedOutCards,
+          closeCardPopout: viewPrefs.closeCardPopout,
+          remapCardPopKey: viewPrefs.remapCardPopKey,
+        }
+      : undefined,
+  });
 
   const notesHookRaw = useNotes(docId, notePristine);
   const aiRequestsHook = useAiRequests(docId);
@@ -3497,6 +3526,10 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
 
   useAnchorHighlightReconciler({
     editor,
+    // The inline-atom structural counter (footnotes + citations) so the
+    // dangling-ref prune re-runs when an inline atom is added/removed — the
+    // inline kinds never change `collections` (they aren't in it). T2 §3b.2.
+    atomRevision: rev.footnotes + rev.citations,
     collections: {
       notes: notesHook.notes,
       cutterCards: cutterHook.cards,

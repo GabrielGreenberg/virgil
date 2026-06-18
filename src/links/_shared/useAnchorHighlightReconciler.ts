@@ -73,6 +73,7 @@ import {
 } from "./anchored-card-store";
 import type { CardKind } from "@/panels/_shared/types";
 import { isInlineAtomCardKind } from "@/cards/predicates";
+import { isInlineAtomLifecycleOn } from "@/lib/identity/inline-atom-lifecycle-flag";
 import { cssTokenForCardKind } from "@/cards/legacy-token-crosswalk";
 import {
   cardKeyForEntity,
@@ -118,11 +119,24 @@ function linkForInlineAtom(
   };
 }
 
-function entityExists(ref: AnchoredCardRef, c: EntityCollectionSlots): boolean {
-  // Inline-atom kinds (footnote / citation) aren't kept in collections; their
-  // existence is the editor's job. Treat them as always-present so the pruner
-  // never drops them. Routed through the single-source predicate.
-  if (isInlineAtomCardKind(ref.kind)) return true;
+function entityExists(
+  ref: AnchoredCardRef,
+  c: EntityCollectionSlots,
+  liveAtomIds: ReadonlySet<string> | null,
+): boolean {
+  // Inline-atom kinds (footnote / citation) aren't kept in `collections`; their
+  // liveness is the editor's. T2 §3b.2: when the inline-atom lifecycle is on,
+  // the reconciler is handed the LIVE atom-id set, so `entityExists` is
+  // answerable — a deleted footnote/citation now reads as gone and its stale
+  // `cardStore` selection/hover/expand ref clears (the prune-exemption ghost
+  // class, FN-A1-01 etc.). When the set is unavailable (flag off, or the editor
+  // isn't ready), fall back to the legacy always-present treatment so a
+  // transient re-parse gap never drops a valid selection — and so flag-off
+  // behavior is byte-identical.
+  if (isInlineAtomCardKind(ref.kind)) {
+    if (liveAtomIds == null) return true;
+    return liveAtomIds.has(ref.id);
+  }
   return findEntity(ref, c) !== undefined;
 }
 
@@ -137,11 +151,41 @@ function linksForRef(ref: AnchoredCardRef, c: EntityCollectionSlots): Link[] {
 export interface UseAnchorHighlightReconcilerArgs {
   editor: Editor | null;
   collections: EntityCollectionSlots;
+  /** Bumps when the footnote/citation set changes (the inline-atom structural
+   *  revision counter). Threaded so the dangling-ref prune RE-RUNS when an
+   *  inline atom is added/removed — a collection-identity change never fires for
+   *  the inline kinds (they aren't in `collections`), so without this the prune
+   *  effect would never re-fire on an inline delete. T2 §3b.2. */
+  atomRevision?: number;
+}
+
+/** Walk the editor's footnote + citation nodes into a live atom-id set, for the
+ *  inline-atom prune (the C14 ghost-halo fix). Returns null when the editor is
+ *  not ready — the caller then falls back to the legacy always-present
+ *  treatment. O(atoms in doc); runs only in the prune effect (which re-fires on
+ *  the inline structural counter), never per keystroke. */
+function liveAtomIdSet(editor: Editor | null): ReadonlySet<string> | null {
+  if (!editor || editor.isDestroyed || !editor.isInitialized) return null;
+  const ids = new Set<string>();
+  editor.state.doc.descendants((node) => {
+    if (node.type.name === "footnote") {
+      const id = (node.attrs.footnoteId as string) || (node.attrs.linkId as string) || "";
+      if (id) ids.add(id);
+      return false;
+    }
+    if (node.type.name === "citation") {
+      const id = (node.attrs.citationId as string) || "";
+      if (id) ids.add(id);
+    }
+    return true;
+  });
+  return ids;
 }
 
 export function useAnchorHighlightReconciler({
   editor,
   collections,
+  atomRevision,
 }: UseAnchorHighlightReconcilerArgs): void {
   const selected = useSelection();
   const hover = useHover();
@@ -184,23 +228,35 @@ export function useAnchorHighlightReconciler({
     ],
   );
 
-  // Prune dangling cardStore refs whenever a collection changes. Read
-  // cardStore state imperatively so the prune doesn't subscribe to it —
-  // otherwise the prune would re-fire on every selection change and could
+  // Prune dangling cardStore refs whenever a collection OR the inline-atom set
+  // changes. Read cardStore state imperatively so the prune doesn't subscribe to
+  // it — otherwise the prune would re-fire on every selection change and could
   // cycle with the reconciler. The reconciler subscribes to cardStore
   // separately above.
+  //
+  // For inline kinds (footnote / citation) the liveness comes from the editor,
+  // not `collections` — so the effect ALSO depends on `atomRevision` (the inline
+  // structural counter) and recomputes the live atom-id set on each fire. The
+  // primary inline prune is the W2b lifecycle policy (event-driven off the
+  // removal); this is the idempotent belt that also clears any inline ref left
+  // dangling by a non-policy removal. Gated behind the flag so flag-off keeps
+  // the legacy always-present inline treatment (`liveAtomIds` stays null).
   useEffect(() => {
+    const liveAtomIds = isInlineAtomLifecycleOn() ? liveAtomIdSet(editor) : null;
     const s = cardStore.getState();
-    if (s.selected && !entityExists(s.selected, stableCollections)) {
+    if (s.selected && !entityExists(s.selected, stableCollections, liveAtomIds)) {
       cardStore.clearSelection();
     }
-    if (s.hover && !entityExists(s.hover, stableCollections)) {
+    if (s.hover && !entityExists(s.hover, stableCollections, liveAtomIds)) {
       cardStore.setHover(null);
     }
     for (const ref of s.expandedSet) {
-      if (!entityExists(ref, stableCollections)) cardStore.collapse(ref);
+      if (!entityExists(ref, stableCollections, liveAtomIds)) cardStore.collapse(ref);
     }
-  }, [stableCollections]);
+    // `atomRevision` is a dep so an inline add/remove re-runs the prune (the
+    // inline kinds never change `stableCollections`); `editor` so the set is
+    // read from the current instance.
+  }, [stableCollections, atomRevision, editor]);
 
   // Reconcile from the current (selection, hover, collections) tuple.
   // Idempotent: recomputes the desired in-editor NODE-decoration targets, the
