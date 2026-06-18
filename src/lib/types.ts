@@ -528,8 +528,34 @@ export interface CutItemLegacy {
 
 // --- Annotations ---
 
+/**
+ * Legacy annotations sidecar shape: a flat `citekey → html` record. A renamed
+ * citekey stranded its annotation here (DATA-LOSS, BIB-A2-01). Kept as a named
+ * type for the migration path; the live shape under the identity-cascade flag
+ * is {@link AnnotationsStateV2}.
+ */
 export interface AnnotationsState {
   [bibKey: string]: string; // bib key → annotation text
+}
+
+/**
+ * Uid-keyed annotations sidecar (T1 Stage 1). Annotations now key on the
+ * durable {@link BibEntry.uid} so a citekey rename is a no-op here — they were
+ * never pointing at the mutable thing.
+ *
+ * Migration is NON-DESTRUCTIVE (PLAN D4): a legacy citekey-keyed record is
+ * mapped to uids via the freshly-parsed entries; any citekey that can't be
+ * matched (e.g. renamed before the upgrade) lands in `orphanByKey`, never
+ * dropped — a wrong/unmatched mapping is recoverable, not silent prose loss.
+ */
+export interface AnnotationsStateV2 {
+  v: 2;
+  /** uid → annotation html. */
+  byUid: Record<string, string>;
+  /** Legacy citekey → annotation html for entries whose uid couldn't be
+   *  resolved at migration time. Re-homed onto `byUid` the next time an entry
+   *  with that citekey is parsed and the annotation is touched. */
+  orphanByKey: Record<string, string>;
 }
 
 // --- Bib Review Requests ---
@@ -540,6 +566,11 @@ export interface BibReviewRequest {
   requestedAt: string;
   status: "pending" | "complete";
   requestNotes?: string;
+  /** Durable {@link BibEntry.uid} the request targets (T1 Stage 1). When set,
+   *  this — not `bibKey` — is the identity: a citekey rename re-points nothing.
+   *  `bibKey` is kept as a human-readable mirror (and the legacy fallback when
+   *  the uid couldn't be resolved at migration time). */
+  entryUid?: string;
 }
 
 export interface BibReviewState {

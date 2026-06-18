@@ -155,6 +155,8 @@ import {
   type EditorActionsHandle,
 } from "@/lib/actions/action-registry";
 import { setEditorActionsHandle } from "@/lib/actions/editor-actions-bridge";
+import { isRenameCitekey } from "@/lib/identity/identity-cascade";
+import { rewriteCiteKeyInDoc } from "@/lib/identity/bib-cite-rewrite";
 import { DragHandleMenu } from "./DragHandleMenu";
 import { HeadingTypeMenu, type HeadingTypePick } from "./HeadingTypeMenu";
 import { useConfirmDialog } from "./ConfirmDialog";
@@ -853,9 +855,42 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
     libraryEntries: libraryMasterBibEntries,
     addBibEntry: citationsHook.addBibEntry,
   });
-  const annotationsHook = useAnnotations(docId);
-  const bibReviewHook = useBibReview(docId);
+  // Thread the citekey → uid resolver + the live entry list into the bib
+  // sidecars so they can re-key on the durable uid under the identity-cascade
+  // flag (T1 Stage 1). Flag OFF: the resolver is ignored and they keep the
+  // legacy citekey-keyed shape (no behavior change).
+  const annotationsHook = useAnnotations(
+    docId,
+    citationsHook.getBibEntry,
+    citationsHook.bibEntries,
+  );
+  const bibReviewHook = useBibReview(
+    docId,
+    citationsHook.getBibEntry,
+    citationsHook.bibEntries,
+  );
   const bibSettingsHook = useBibSettings(docId);
+
+  // Register the editor `\cite{}` doc-rewrite as a migrator on the
+  // IdentityCascade (T1 Stage 2, checklist step 9). When a citekey rename fans
+  // out, this rewrites every `\cite{oldKey}` atom in the live doc — top-level
+  // AND footnote-nested — in one transaction, so the panel patch survives the
+  // next `syncFromEditor` re-derive (the deep half of the fix, BIB-F5-03). The
+  // editor is re-read via `innerRef` at call time so the migrator stays stable
+  // and an HMR remount is sound. Idempotent registration (Set semantics).
+  const identityCascade = citationsHook.identityCascade;
+  useEffect(() => {
+    const unregister = identityCascade.registerMigrator("bibEntry", (change) => {
+      if (!isRenameCitekey(change)) return;
+      const { oldKey, newKey } = change.renameCitekey;
+      if (oldKey === newKey) return;
+      const ed = innerRef.current?.getEditor();
+      if (!ed) return;
+      rewriteCiteKeyInDoc(ed, oldKey, newKey);
+    });
+    return unregister;
+  }, [identityCascade]);
+
   const notesHookRaw = useNotes(docId, notePristine);
   const aiRequestsHook = useAiRequests(docId);
   const cutterHookRaw = useCutter(docId, cutPristine);

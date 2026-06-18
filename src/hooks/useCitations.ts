@@ -20,6 +20,12 @@ import {
 } from "@/lib/multi-window/doc-pipeline";
 import { usePersistentState } from "./usePersistentState";
 import type { PristineKindApi } from "./usePristineCardManager";
+import { isIdentityCascadeOn } from "@/lib/identity/identity-flag";
+import {
+  IdentityCascade,
+  renameCitekeyChange,
+} from "@/lib/identity/identity-cascade";
+import { wholeWordPatternFor } from "@/lib/whole-word";
 
 const EMPTY: CitationsState = {
   citations: [],
@@ -62,6 +68,7 @@ export const CITATIONS_INERT: CitationsHook = {
   getFormattedBib: () => "",
   commandFor: () => null,
   syncFromEditor: () => {},
+  identityCascade: new IdentityCascade(),
 };
 
 function migrate(raw: unknown): CitationsState {
@@ -91,6 +98,16 @@ export function useCitations(docId: string | null, pristine?: PristineKindApi | 
   const [bibEntries, setBibEntries] = useState<BibEntry[]>([]);
   const [bibRaw, setBibRaw] = useState("");
   const docRef = useRef(docId);
+
+  // The IdentityCascade — the single writer for identity-changing ops, owned
+  // here (one per doc, NOT a module singleton — D1.4 / T1 §3.2c). A stable
+  // instance across renders (lazy `useState` initializer) so external surfaces
+  // (the editor `\cite{}` doc-rewrite, future citekey-keyed sidecars) can
+  // register migrators against it once. Gated behind `virgil:identity-cascade`:
+  // when the flag is OFF the cascade is never invoked, so the legacy
+  // `updateBibKeyAndType` path is the only writer and behavior is byte-identical
+  // to today.
+  const [identityCascade] = useState(() => new IdentityCascade());
 
   // Pin the bib write handle to docId's currently-active pipeline.
   // Stale handles (from a doc switch) are rejected by writeBib.
@@ -280,8 +297,82 @@ export function useCitations(docId: string | null, pristine?: PristineKindApi | 
     [persistBib],
   );
 
+  /** Apply the `.bib`-side `key`+`type` mutation for the entry currently
+   *  carrying `oldKey` (legacy path) OR the entry with `uid` (cascade path).
+   *  Reconstructs the entry's `raw` block + reserializes + persists. Shared by
+   *  both flag paths so the on-disk write is identical. */
+  const applyBibKeyType = useCallback(
+    (match: (e: BibEntry) => boolean, newKey: string, newType: string) => {
+      setBibEntries((prev) => {
+        const next = prev.map((e) => {
+          if (!match(e)) return e;
+          const updated = { ...e, key: newKey, type: newType };
+          const lines = Object.entries(updated.fields)
+            .map(([k, v]) => `  ${k} = {${v}}`)
+            .join(",\n");
+          updated.raw = `@${updated.type}{${updated.key},\n${lines}\n}`;
+          return updated;
+        });
+        const newRaw = serializeBibFile(next);
+        setBibRaw(newRaw);
+        void persistBib(newRaw);
+        return next;
+      });
+    },
+    [persistBib],
+  );
+
+  /** Rewrite the citation SIDECAR refs that reference `oldKey` → `newKey`.
+   *  Uses the boundary-class matcher (W0a) so a punctuation citekey rewrites
+   *  as a whole token and `foo` doesn't clobber `foobar`. */
+  const rewriteCitationRefs = useCallback(
+    (oldKey: string, newKey: string) => {
+      if (oldKey === newKey) return;
+      const re = new RegExp(wholeWordPatternFor(oldKey), "g");
+      update((prev) => ({
+        ...prev,
+        citations: prev.citations.map((c) => {
+          if (!c.keys.includes(oldKey)) return c;
+          const newKeys = c.keys.map((k) => (k === oldKey ? newKey : k));
+          return { ...c, keys: newKeys, command: c.command.replace(re, newKey) };
+        }),
+      }));
+    },
+    [update],
+  );
+
   const updateBibKeyAndType = useCallback(
     (oldKey: string, newKey: string, newType: string) => {
+      if (isIdentityCascadeOn()) {
+        // CASCADE PATH (flag ON): the IdentityCascade is the single writer.
+        // Resolve the durable uid so the rename targets the entry by identity
+        // (not by the about-to-change key), then fan out atomically.
+        const entry = bibEntries.find((e) => e.key === oldKey);
+        const uid = entry?.uid;
+        // 1. `.bib` key+type mutation (by uid when available, else by old key).
+        applyBibKeyType(
+          uid ? (e) => e.uid === uid : (e) => e.key === oldKey,
+          newKey,
+          newType,
+        );
+        // 2. citation-refs sidecar rewrite (boundary-safe).
+        if (oldKey !== newKey) rewriteCitationRefs(oldKey, newKey);
+        // 3. fan out to every registered migrator (the editor `\cite{}`
+        //    doc-rewrite, future citekey-keyed sidecars). annotations/bib-review
+        //    are uid-keyed → their migrator (if registered) is a no-op on a
+        //    pure rename. A rename with no migrators is a well-formed no-op.
+        if (uid) {
+          void identityCascade.runIdentityChange(
+            renameCitekeyChange({ uid, oldKey, newKey, newType }),
+          );
+        }
+        return;
+      }
+
+      // LEGACY PATH (flag OFF) — byte-identical to pre-cascade behavior,
+      // including the original bare-`\b` ref rewrite, so the existing suite is
+      // green. Do NOT route this through the boundary matcher: that's the
+      // flag-ON behavior change.
       setBibEntries((prev) => {
         const next = prev.map((e) => {
           if (e.key !== oldKey) return e;
@@ -297,7 +388,6 @@ export function useCitations(docId: string | null, pristine?: PristineKindApi | 
         void persistBib(newRaw);
         return next;
       });
-      // Update citation refs that reference the old key.
       if (oldKey !== newKey) {
         update((prev) => ({
           ...prev,
@@ -313,7 +403,7 @@ export function useCitations(docId: string | null, pristine?: PristineKindApi | 
         }));
       }
     },
-    [persistBib, update],
+    [persistBib, update, bibEntries, applyBibKeyType, rewriteCitationRefs, identityCascade],
   );
 
   const addBibEntry = useCallback(
@@ -427,6 +517,7 @@ export function useCitations(docId: string | null, pristine?: PristineKindApi | 
       getFormattedBib,
       commandFor,
       syncFromEditor,
+      identityCascade,
     }),
     [
       state.citations,
@@ -449,6 +540,7 @@ export function useCitations(docId: string | null, pristine?: PristineKindApi | 
       getFormattedBib,
       commandFor,
       syncFromEditor,
+      identityCascade,
     ],
   );
 }
