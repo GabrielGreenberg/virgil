@@ -1,6 +1,6 @@
-<!-- last-verified: 1ff9c1b 2026-06-16 -->
+<!-- last-verified: dc11e7f 2026-06-17 -->
 <!-- derives-from: docs/architecture/VIRGIL.md#code-organization, docs/architecture/VIRGIL.md#sidecar-and-panel-inventory -->
-<!-- covers-code: src/hooks, src/lib/storage-fsa.ts, src/lib/types.ts, src/panels/panel-registry.ts, src/links/link-registry.ts, src/text-objects/text-object-registry.ts, src/lib/marginalia.ts, src/lib/actions/action-registry.ts, src/lib/actions/editor-actions-bridge.ts, src/lib/actions/action-icons.tsx, src/lib/tiptap/smart-insert.ts, src/lib/focus-view.ts -->
+<!-- covers-code: src/hooks, src/lib/storage-fsa.ts, src/lib/types.ts, src/panels/panel-registry.ts, src/links/link-registry.ts, src/links/resolve-card-anchor.ts, src/lib/anchor-mint-signal.ts, src/text-objects/text-object-registry.ts, src/lib/marginalia.ts, src/lib/actions/action-registry.ts, src/lib/actions/editor-actions-bridge.ts, src/lib/actions/action-icons.tsx, src/lib/tiptap/smart-insert.ts, src/lib/focus-view.ts -->
 
 # Architecture: Registries, Hooks, Persistence, Sidecars
 
@@ -28,7 +28,7 @@ All in `src/hooks/`. Full list (~50 files) is large; these are the ones most oft
 
 | Hook | What it owns |
 |---|---|
-| `useDocument` | Main doc state + autosave queue; `paragraphUuids`, `paragraphTitles` maps |
+| `useDocument` | Main doc state + autosave queue; `paragraphUuids`, `paragraphTitles` maps. Exposes `flushNow` — an immediate doc-bundle write that cancels the 1500 ms debounce, fired on an anchor-UUID **mint** transaction (`isAnchorMintTransaction`, [src/lib/anchor-mint-signal.ts](../../src/lib/anchor-mint-signal.ts)) and on a drop-mode re-anchor COMMIT, so a freshly anchored paragraph's `%!v:<uuid>` reaches the `.tex` on the card's fast clock instead of the doc's slow autosave clock (anchor-persistence race) |
 | `useCitations` | Citation refs + `.bib` loading; `commandFor(id)` serializes a card's `\cite{…}` for the drop spec's create-if-absent branch (returns null for a keyless draft, via the shared `citationCommandOrNull` keyless-citation predicate) |
 | `useFootnotes` | Footnote persistence + numbering |
 | `useRevisions` | Revision/comment threads |
@@ -46,7 +46,8 @@ All in `src/hooks/`. Full list (~50 files) is large; these are the ones most oft
 | `useMarginEdit` | Margin edit-mode state machine (d211464). Keyed on `Margins = Record<MarginSide, number>` with axis-lookup tables (`MARGIN_AXIS`, `MARGIN_OPPOSITE`, `MARGIN_MIN`, `MARGIN_CSS_VAR`) so one drag handler covers all four sides; adding a fifth side is one table-entry addition. Drives the four guide lines + glowing-blue Save/Cancel pill (see `ui-chrome.md` → Reading frame & margins) |
 | `useFloatingMenuPosition` | Shared viewport-clamping placement helper (f7461e2). Action menu / Highlights submenu / DragHandleMenu route through it so popovers never bleed off-screen. RAF-batched + recomputed on scroll/resize. Two opt-in capabilities for the `<Menu>` primitive (off by default, existing callers byte-identical): `maxHeight` (clamps to the space available for the chosen placement + `overflowY:auto` so a tall list scrolls), and `trackAnchor` (a RAF-coalesced capture-phase scroll/resize re-anchor thunk — slash caret / bib-picker / tab-plus scroll re-reads unify onto it) |
 | `usePersistentState` | IndexedDB persistence abstraction. `update()` debounces `persist()` ~300ms (2dc963d) with flush-on-unmount + flush-on-docId-change so safety isn't traded for the keystroke-cascade savings |
-| `useInTextPositions` | Omni-view positioning |
+| `useInTextPositions` | Omni-view positioning. CHIP-B: a card whose first pid isn't a live anchorable node is skipped; deciding a *stored* uuid is dead + needs snapshot/mark recovery is no longer this helper's job — that's the anchor-recovery SSOT (`resolveCardAnchor`), run upstream by the gutter-marker builder, so the pids reaching this helper are already resolved-or-orphan-flagged |
+| `useReconcileModeAAnchors` | Shared factory wrapping a card-source hook's `usePersistentState` `update` setter into a uniform `reconcileAnchors(editor)`, called once per doc-open. Repairs a Mode-A margin card whose stored paragraph UUID was lost to a reload race (the `%!v:` write didn't round-trip): funnels every card through the `resolveCardAnchor` ladder (uuid → mark → rung-2b → snapshot → orphan) in [src/links/resolve-card-anchor.ts](../../src/links/resolve-card-anchor.ts) + the `reconcileCardToResolved` mutator (backfills the self-healing snapshot, strips dead-mark residue, or rewrites the dead pid to a live same-text paragraph). Load-only (`buildResolveIndex` is O(doc), one index per pass), idempotent, never on a keystroke. Wired into `useNotes` / `useTodos` / `useArchive` / `useReports` / `useRevisions` / `useCutter` |
 | `usePristineCardManager` | Tracks freshly-created cards so they auto-discard if closed without edits; exposed via the `pristine-cards` context |
 | `useDocumentStyle` | Per-document preamble preset. Reads/writes the style id to the doc settings sidecar and rewrites the preamble in place when the user picks a new style |
 | `useStyleLibrary` | User-curated style entries shown in `ManageStylesModal` (apply / edit / duplicate / delete / save current preamble as a new entry) |
@@ -81,6 +82,8 @@ Per-keystroke perf regressions chase one anti-pattern: a synchronous TipTap subs
 ### File System Access API (the disk)
 
 **Single boundary: [src/lib/storage-fsa.ts](../../src/lib/storage-fsa.ts).** Every disk read/write goes through here. If you're tempted to call `handle.getFile()` or `writable.write()` anywhere else, route it through storage-fsa instead.
+
+On load, `readDocBundle` assigns paragraph UUIDs and now writes the re-stamped `.tex` (+ `virgil.json` sidecar) back to disk opportunistically (`writeReStampedTexOnLoad`, 10e86d6) — parity with storage-dev, so a UUID minted for a paragraph that lacked a `%!v:` marker is durable BEFORE the editor mounts (not volatile until the next 1500 ms autosave; closes the production-only anchor-orphan-on-reload window). Fire-and-forget, routed through `enqueueDocWrite` with the active-handle / pipeline staleness guard so a read during a doc switch can't write to the wrong file, and preamble-preserving like `writeDocBundle`.
 
 Files on disk (per paper):
 - `<name>.tex` — the paper (source of truth)
@@ -175,6 +178,8 @@ Anchored cards (notes, todos, cuts, archives, revisions, reports) no longer disa
 - **Paragraph-deletion guard** — `MarginaliaAnchorGuard` (TipTap extension in [src/lib/tiptap/linked-anchor.ts](../../src/lib/tiptap/linked-anchor.ts)) reads a ref of currently-anchored UUIDs from EditorPane (populated in `EditorPane.tsx` ~line 1867) and, when a transaction would delete a paragraph carrying an anchor or a `linkedAnchor` mark, re-inserts an empty placeholder at the mapped original position with the same UUID. Covers both gutter-marked paragraphs and Mode-B text-range paragraphs. Configured in `buildEditorExtensions` ([src/lib/editor-extensions.ts](../../src/lib/editor-extensions.ts) ~line 1766).
 
 Together: only explicit user gestures (gutter delete or panel trash) destroy a card; incidental editor edits can't orphan one.
+
+**Resolver-driven render + orphan dock (RC2).** The gutter-marker builder resolves each card's live paragraph through the anchor-recovery SSOT (`resolveCardAnchor`) rather than a raw uuid→pos lookup. A card that resolves to `source:'orphan'` (its uuid + mark + text-snapshot are all dead) is no longer silently culled — its `MarginaliaMarker` carries an `unanchored` flag ([src/lib/marginalia.ts](../../src/lib/marginalia.ts)) and the gutter surfaces it in a fixed "unanchored — click to re-pin" dock instead. `useMarginaliaRegistry` ([src/hooks/useMarginaliaRegistry.ts](../../src/hooks/useMarginaliaRegistry.ts)) also heals a gutter marker when its anchor block's DOM is swapped (list-item / heading hover-cull) with bounded observe-retry.
 
 ## Per-panel color overrides
 

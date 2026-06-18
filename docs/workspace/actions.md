@@ -1,6 +1,6 @@
-<!-- last-verified: 1ff9c1b 2026-06-16 -->
+<!-- last-verified: dc11e7f 2026-06-17 -->
 <!-- derives-from: docs/architecture/VIRGIL.md#ontology, docs/architecture/VIRGIL.md#code-organization -->
-<!-- covers-code: src/lib/actions/action-registry.ts, src/lib/actions/editor-actions-bridge.ts, src/lib/actions/action-icons.tsx, src/lib/tiptap/smart-insert.ts, src/components/menu, src/components/DragHandleMenu.tsx, src/components/ActionsMenuPanel.tsx, src/components/SelectionActionsMenu.tsx, src/components/editor-layout/card-actions, src/lib/editor-extensions.ts, src/lib/tiptap/tab-indent.ts, src/lib/tiptap/expex.ts, src/lib/tiptap/latex-comment.ts, src/lib/section-folding.ts, src/lib/tiptap/uuid-attr.ts, src/lib/tiptap/pgmark.ts, src/lib/tiptap/latex-command.ts, src/text-objects/text-object-registry.ts, src/text-objects/TextObjectGrabHandle.tsx, src/text-objects/drop-adapters.ts, src/components/drop-mode, src/cards/drop-specs, src/lib/tiptap/atom-registry.ts -->
+<!-- covers-code: src/lib/actions/action-registry.ts, src/lib/actions/editor-actions-bridge.ts, src/lib/actions/action-icons.tsx, src/lib/tiptap/smart-insert.ts, src/components/menu, src/components/DragHandleMenu.tsx, src/components/ActionsMenuPanel.tsx, src/components/SelectionActionsMenu.tsx, src/components/editor-layout/card-actions, src/lib/editor-extensions.ts, src/lib/tiptap/tab-indent.ts, src/lib/tiptap/expex.ts, src/lib/tiptap/latex-comment.ts, src/lib/section-folding.ts, src/lib/focus-view.ts, src/lib/tiptap/uuid-attr.ts, src/lib/tiptap/anchor-highlight-deco.ts, src/lib/tiptap/pgmark.ts, src/lib/tiptap/latex-command.ts, src/text-objects/text-object-registry.ts, src/text-objects/TextObjectGrabHandle.tsx, src/text-objects/drop-adapters.ts, src/components/drop-mode, src/cards/drop-specs, src/lib/tiptap/atom-registry.ts -->
 
 # Actions (the editing surface) — operational manifest
 
@@ -289,7 +289,7 @@ pins each kind's `droppable` / `dropPlacement` CardMeta facet to its
 |---|---|---|---|---|
 | **Block / TextObject** | grab handle | `textobject:` → `textObjectDropSpec` (`textobject:linkedRange:` → `textRangeMoveDropSpec`) | between-blocks | Move the block; `dropAdapter` decides drop-direct vs. wrap (e.g. into a fresh list / `exampleItem`) |
 | **Inline Atom** | the atom itself, or a card's **drop button** (docked header / float chrome) | `atom-grab:` → `inTextAtomGrabSpec`; `footnote:` / `citation:` → `inlineAtomMoveSpec` (with an opt-in `createAtom` branch) | inline-cursor | Move the marker to a new inline caret (same editor only) — OR, for an **unanchored** footnote/citation card (no marker yet), CREATE the atom at the drop point carrying the card's existing id (citation reads the card's `\cite{…}` via `DropCtx.citations.commandFor`) |
-| **Panel card** | a card's **drop button** in a panel / Omni (or its popped-out float's drop button) | `note:` `highlight:` `todo:` `archive:` `cutter-*:` `revision-*:` `report:` `report-request:` → `textObjectSideReanchorSpec`; `example:` → `blockMoveSpec` (all folded onto `CARD_REGISTRY[kind].dropSpec`) | paragraph-side / between-blocks | Re-anchor the card to the dropped-on paragraph (Mode-B preserved); move the example block |
+| **Panel card** | a card's **drop button** in a panel / Omni (or its popped-out float's drop button) | `note:` `highlight:` `todo:` `archive:` `cutter-*:` `revision-*:` `report:` `report-request:` → `textObjectSideReanchorSpec`; `example:` → `blockMoveSpec` (all folded onto `CARD_REGISTRY[kind].dropSpec`) | paragraph-side / between-blocks | Re-anchor the card to the dropped-on paragraph; a selection-origin (Mode-B) note is CONVERTED to a clean Mode-A `paragraph` link (`clearModeB`, RC1) and the new link carries a self-healing paragraph-text snapshot; highlights are intrinsically Mode-B and skip the conversion. Move the example block |
 
 (A fourth registry prefix, `stack-pull` → `stackPullDropSpec`, materializes a
 Library stack entry into the doc — a cross-document feature outside the
@@ -385,17 +385,20 @@ Not keymaps, but typed triggers that transform text (cite where relevant):
 ## Family 4 — Decorations
 
 Decorations are ProseMirror overlays that render styling/widgets **without**
-changing the document. There are exactly **four** `DecorationSet` plugins (an
+changing the document. There are exactly **six** `DecorationSet` plugins (an
 exhaustive sweep of `Decoration.*` / `DecorationSet` across `src/` finds no
-others — marginalia markers and highlight/`linkedAnchor` tints are *not*
-decorations; see below):
+others — the `code-band.ts` set is CodeMirror, not ProseMirror; marginalia
+markers and the Mode-B `linkedAnchor` *text-range* tint are *not* decorations;
+see below):
 
 | Decoration | Renders | Kind | SSOT | Keystroke-sanctity |
 |---|---|---|---|---|
 | **UUID attrs** | `data-uuid` + `data-text-object-kind` on each anchorable block's DOM | node | [uuid-attr.ts](../../src/lib/tiptap/uuid-attr.ts) | Compliant — forward-maps, then adds/removes only for the `DocStructureBus` diff's added/removed blocks |
+| **Anchor hover/selection** | the four `data-card-selected` / `data-card-hovered` / `data-paragraph-kind` / `data-margin-side` attrs on in-editor NODE/ATOM anchor targets (paragraph / Mode-A block + footnote/citation atom) | node | [anchor-highlight-deco.ts](../../src/lib/tiptap/anchor-highlight-deco.ts) (driven by `useAnchorHighlightReconciler`) | Compliant — set rebuilds ONLY on a hover/selection meta tx; every other tx just `map(tr.mapping, tr.doc)`s the existing set (the meta tx is `!tr.docChanged`, so the bus stays silent) |
 | **LaTeX command** | grey-monospace `.latex-cmd` on in-progress `\command{…}` spans | inline | [latex-command.ts](../../src/lib/tiptap/latex-command.ts) | Compliant — `map(tr.mapping)` then rebuild only when a changed region holds a `\` |
 | **Pagination chip** | the `\pgmark{N}` label + page-break rule | inline + widget | [pgmark.ts](../../src/lib/tiptap/pgmark.ts) | Compliant — `map` + changed-region `\pgmark` scan |
 | **Section fold** | `.section-folded` (hides blocks under a collapsed heading) | node | [section-folding.ts](../../src/lib/section-folding.ts) | Rebuilds from a **top-level** `doc.forEach()` when a fold is active; gated to `DecorationSet.empty` when nothing is folded (see note) |
+| **Focus view** | `.focus-hidden` (hides out-of-band blocks while a focus band is active) | node | [focus-view.ts](../../src/lib/focus-view.ts) | Compliant — rebuilds only on a band-change meta tx or a top-level block add/remove/boundary-replace; otherwise carries the cached set forward via `DecorationSet.map(tr.mapping)`, so a plain keystroke never rebuilds |
 
 **Decoration vs. mark — a load-bearing nuance.** `latexCommand` is *both*: the
 `LatexCommandMark` ([latex-command.ts](../../src/lib/tiptap/latex-command.ts))
@@ -408,7 +411,7 @@ feature.
 **Not decorations** (so they're not in the table, despite looking like overlays):
 
 - **Marginalia markers** ([Marginalia.tsx](../../src/components/Marginalia.tsx)) — React gutter icons positioned by CSS, driven by the card stores.
-- **Highlight / `linkedAnchor` tints** — CSS on the `Highlight` mark and the `[data-link-card]` attribute, reconciled by the link layer ([src/links/](../../src/links)); no ProseMirror decoration.
+- **The `Highlight` mark + the Mode-B `linkedAnchor` text-range tint** — CSS on the `Highlight` mark and (for the Mode-B range only) a raw `setAttribute` of the four hover/selection attrs onto the `.linked-anchor` mark span, reconciled by the link layer ([src/links/](../../src/links)); no ProseMirror decoration. (The in-editor NODE/ATOM anchor hover/selection IS now a decoration — see the `Anchor hover/selection` row above; `useAnchorHighlightReconciler` keeps only the Mode-B text-range and the React panel-card `[data-card-key]` paint on raw `setAttribute`.)
 - **Drop-mode indicators** ([drop-mode/Indicator.tsx](../../src/components/drop-mode/Indicator.tsx)) — React, not PM decorations (Family 2).
 
 > **Note (follow-up).** Section fold is the one decoration that doesn't follow
