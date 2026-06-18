@@ -1893,7 +1893,7 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
   // reads the cardStore at click time, so the marker memo below doesn't
   // depend on selection state (a selection change re-renders no markers).
   const handleGutterMarkerClick = useCallback(
-    (ref: AnchoredCardRef, clickY?: number) => {
+    (ref: AnchoredCardRef, clickY?: number, anchorIndex?: number) => {
       if (cardStore.isSelected(ref)) {
         // Toggle-off: second click deselects across ALL marker kinds.
         cardStore.clearSelection();
@@ -1904,9 +1904,16 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
       // scrolling the document row.
       suppressNextPlacement();
       cardStore.select(ref);
+      // T5 Pillar E-2 (REP-F3-01 / OMNI-F3-01 / OMNI-F8-02): a multi-anchor
+      // card draws ONE gutter marker per anchored paragraph, and the omni
+      // surface draws one row per anchor keyed `…@<anchorIndex>`. Stamp the
+      // clicked marker's anchor index so the bridge can pin/jump to the RIGHT
+      // `@N` row instead of always the first. `undefined` for single-anchor
+      // cards (their omni row has no `@N` suffix — see each panel's omni
+      // builder, which only suffixes when `pids.length > 1`).
       window.dispatchEvent(
         new CustomEvent("virgil-linked-anchor-click", {
-          detail: { entityId: ref.id, kind: ref.kind, clickY },
+          detail: { entityId: ref.id, kind: ref.kind, clickY, anchorIndex },
         }),
       );
     },
@@ -2057,6 +2064,17 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
       return pids.map((pid) => ({ pid, unanchored: false }));
     };
 
+    // T5 Pillar E-2: the `@N` anchor index of a marker's paragraph within the
+    // card's stored anchor order — the SAME index each panel's omni builder
+    // uses to key its per-anchor row (`…@<pi>`, suffixed ONLY when the card
+    // has >1 anchor). Returns `undefined` for a single-anchor card (its omni
+    // row carries no `@N` suffix) so the bridge keys the bare card popKey.
+    const anchorIndexFor = (pids: string[], pid: string): number | undefined => {
+      if (pids.length <= 1) return undefined;
+      const i = pids.indexOf(pid);
+      return i >= 0 ? i : undefined;
+    };
+
     // Notes
     for (const n of notesHook.notes) {
       const pids = getLinkedTextObjectIds(n);
@@ -2072,7 +2090,7 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
           title: n.title || "Note",
           unanchored,
           onClick: (clickY?: number) =>
-            handleGutterMarkerClick({ kind: "note", id: n.id }, clickY),
+            handleGutterMarkerClick({ kind: "note", id: n.id }, clickY, anchorIndexFor(pids, pid)),
           onDelete: () => {
             void handleMarginItemDelete("note", n.id, pid, anchor?.anchorId);
           },
@@ -2095,7 +2113,7 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
           title: "Archived snippet",
           unanchored,
           onClick: (clickY?: number) =>
-            handleGutterMarkerClick({ kind: "archive", id: snippet.id }, clickY),
+            handleGutterMarkerClick({ kind: "archive", id: snippet.id }, clickY, anchorIndexFor(pids, pid)),
           onDelete: () => { void handleMarginItemDelete("archive", snippet.id, pid); },
         });
       }
@@ -2126,7 +2144,7 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
           unanchored,
           anchorId,
           onClick: (clickY?: number) =>
-            handleGutterMarkerClick({ kind: revKind, id: r.id }, clickY),
+            handleGutterMarkerClick({ kind: revKind, id: r.id }, clickY, anchorIndexFor(pids, pid)),
           onDelete: () => {
             void handleMarginItemDelete("revision", r.id, pid, anchorId);
           },
@@ -2154,7 +2172,7 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
           title,
           unanchored,
           onClick: (clickY?: number) =>
-            handleGutterMarkerClick({ kind: cutKind, id: c.id }, clickY),
+            handleGutterMarkerClick({ kind: cutKind, id: c.id }, clickY, anchorIndexFor(pids, pid)),
           onDelete: () => {
             void handleMarginItemDelete("cut", c.id, pid, cardAnchor?.anchorId);
           },
@@ -2181,7 +2199,7 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
           title,
           unanchored,
           onClick: (clickY?: number) =>
-            handleGutterMarkerClick({ kind: c.kind, id: c.id }, clickY),
+            handleGutterMarkerClick({ kind: c.kind, id: c.id }, clickY, anchorIndexFor(pids, pid)),
           onDelete: () => {
             void handleMarginItemDelete("report", c.id, pid, cardAnchor?.anchorId);
           },
@@ -2205,7 +2223,7 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
           muted: item.done,
           unanchored,
           onClick: (clickY?: number) =>
-            handleGutterMarkerClick({ kind: "todo", id: item.id }, clickY),
+            handleGutterMarkerClick({ kind: "todo", id: item.id }, clickY, anchorIndexFor(pids, pid)),
           onDelete: () => { void handleMarginItemDelete("todo", item.id, pid); },
         });
       }

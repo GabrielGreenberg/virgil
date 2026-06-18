@@ -3,6 +3,9 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { getHiddenTopLevelIndices, sectionFoldingPluginKey } from "@/lib/section-folding";
 import { getBus } from "@/lib/tiptap/doc-structure";
+import { useLivePosResolver } from "@/hooks/useLivePosResolver";
+import { filterOmniItemsByFoldAndFocus } from "./omni-fold-focus-filter";
+import { cardPopKey } from "@/panels/panel-registry";
 import type { Side } from "@/hooks/useViewPrefs";
 import OmniViewPanel, { type OmniItem, type OmniCategory } from "@/panels/Omni";
 import { buildCitationOmniItems } from "@/panels/Citations";
@@ -583,6 +586,19 @@ export function OmniHost(p: OmniHostProps) {
     p.convertReportCard,
   ]);
 
+  // Live in-text position resolver for the fold/focus binning below. The
+  // entity-anchored omni kinds (footnote / citation / example) carry a `pos`
+  // baked when `items` was last (structurally) rebuilt; plain typing that
+  // shifts later content re-maps the LIVE snapshot pos every transaction but
+  // leaves that baked `pos` stale, so a fold/boundary classification keyed on
+  // the baked pos can land in the WRONG bin (OMNI-F1-02). Resolve the live pos
+  // from the DocStructureObserver snapshot — the same engine OmniViewPanel's
+  // cascade already uses — and fall back to the baked pos for paragraph-anchored
+  // kinds (note/todo/… and the multi-anchor `@N` rows), whose pos is the
+  // structurally-rebuilt `findParagraphPos`. Snapshot-identity-cached, so plain
+  // typing rebuilds nothing here (keystroke sanctity) — see useLivePosResolver.
+  const resolvePos = useLivePosResolver(editorInstance, cardPopKey);
+
   // Hide cards anchored inside a collapsed section. The section-folding
   // plugin already hides the prose via a CSS decoration; mirror that on
   // the omni side so dangling cards don't sit next to a section that's
@@ -608,39 +624,10 @@ export function OmniHost(p: OmniHostProps) {
   // dropped outright, independent of focus.
   const displayedItems: OmniItem[] = useMemo(() => {
     const doc = editorInstance?.state.doc ?? null;
-
-    // Pass 1: fold filter.
-    let foldFiltered: OmniItem[];
-    if (hiddenTopLevel.size === 0 || !doc) {
-      foldFiltered = items;
-    } else {
-      foldFiltered = [];
-      for (const item of items) {
-        if (item.pos == null) { foldFiltered.push(item); continue; }
-        let bi: number | null = null;
-        try { bi = doc.resolve(item.pos).index(0); } catch { /* stale */ }
-        if (bi == null || !hiddenTopLevel.has(bi)) {
-          foldFiltered.push(item);
-        }
-        // else: drop — card lives in a collapsed section
-      }
-    }
-
-    // Pass 2: focus filter — stamp `outsideFocus` instead of dropping.
-    const fs = p.focusState;
-    if (!fs?.active || !doc) return foldFiltered;
-    const { startBlockIndex, endBlockIndex } = fs;
-    const out: OmniItem[] = [];
-    for (const item of foldFiltered) {
-      if (item.pos == null) { out.push(item); continue; }
-      let bi: number | null = null;
-      try { bi = doc.resolve(item.pos).index(0); } catch { /* stale */ }
-      if (bi == null) { out.push(item); continue; }
-      const outside = bi < startBlockIndex || bi > endBlockIndex;
-      out.push(outside ? { ...item, outsideFocus: true } : item);
-    }
-    return out;
-  }, [items, hiddenTopLevel, p.focusState, editorInstance]);
+    // Two-pass fold/focus binning on the LIVE pos (resolvePos) — see
+    // `filterOmniItemsByFoldAndFocus` (OMNI-F1-02). Pure + unit-tested.
+    return filterOmniItemsByFoldAndFocus(items, doc, hiddenTopLevel, p.focusState, resolvePos);
+  }, [items, hiddenTopLevel, p.focusState, editorInstance, resolvePos]);
 
   return (
     <OmniViewPanel

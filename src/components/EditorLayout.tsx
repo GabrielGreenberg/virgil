@@ -17,6 +17,7 @@ import { type DividerLevel, type DividerWidth } from "@/hooks/useViewPrefs";
 import { Editor } from "@tiptap/react";
 import { type SectionPathEntry, buildPerBlockCounts, sumIncludedWords, extractHeadings } from "@/panels/Outline";
 import { useFiles } from "@/hooks/useFiles";
+import { getBus } from "@/lib/tiptap/doc-structure";
 import { useStructuralRevisions } from "@/hooks/useStructuralRevisions";
 import { useMyPapers } from "@/hooks/useMyPapers";
 import { useFloatingMenuPosition } from "@/hooks/useFloatingMenuPosition";
@@ -133,6 +134,7 @@ import { useOrphanActions } from "./editor-layout/card-actions/orphans";
 import { useCitationActions } from "./editor-layout/card-actions/citations";
 import { useRefActions } from "./editor-layout/card-actions/ref";
 import { useLibraryBridge } from "./editor-layout/event-bridges/library";
+import { findOmniEntry } from "./editor-layout/event-bridges/open-for-card";
 import { useMarkerClickBridges } from "./editor-layout/event-bridges/marker-clicks";
 import { useFootnoteSyncBridges } from "./editor-layout/event-bridges/footnote-sync";
 import { EditorLayoutProvider } from "./editor-layout/context";
@@ -1073,9 +1075,14 @@ export default function EditorLayout() {
     (cardId: string, clickY: number, _sourceEl: HTMLElement | null) => {
       let tried = false;
       const apply = () => {
-        const wrapper = document.querySelector(
-          `[data-omni-entry-wrapper="${cardId}"]`,
-        ) as HTMLElement | null;
+        // Prefix-or-exact (T5 Pillar E-2): a multi-anchor card's wrapper id is
+        // `…@<anchorIndex>`, so an `@N`-suffixed `cardId` lands on its own row
+        // (exact), and a bare key still resolves a multi-anchor card's first
+        // row (prefix). Pin the wrapper's ACTUAL id — not the passed key — so
+        // omniPinStore's `pinRequest.cardId === item.id` match holds for the
+        // resolved `@N` row (REP-F3-01).
+        const wrapper = findOmniEntry(cardId, "data-omni-entry-wrapper");
+        const wrapperId = wrapper?.dataset.omniEntryWrapper ?? cardId;
         const sideEl = wrapper?.closest("[data-panel-column-side]") as HTMLElement | null;
         const side = sideEl?.dataset.panelColumnSide;
         const pod = wrapper?.parentElement as HTMLElement | null;
@@ -1087,7 +1094,7 @@ export default function EditorLayout() {
           return;
         }
         const pinTop = clickY - pod.getBoundingClientRect().top;
-        omniPinStore.requestPin(side, cardId, pinTop);
+        omniPinStore.requestPin(side, wrapperId, pinTop);
       };
       apply();
     },
@@ -1108,13 +1115,14 @@ export default function EditorLayout() {
         | undefined;
       if (!detail?.omniKey || typeof detail.pinTop !== "number") return;
       const { omniKey, pinTop } = detail;
-      const wrapper = document.querySelector(
-        `[data-omni-entry-wrapper="${omniKey}"]`,
-      );
+      // Prefix-or-exact match + pin the wrapper's ACTUAL id (T5 Pillar E-2) so
+      // a multi-anchor card's `@N` jump lands on its own row.
+      const wrapper = findOmniEntry(omniKey, "data-omni-entry-wrapper");
+      const wrapperId = wrapper?.dataset.omniEntryWrapper ?? omniKey;
       const sideEl = wrapper?.closest("[data-panel-column-side]") as HTMLElement | null;
       const side = sideEl?.dataset.panelColumnSide;
       if (side !== "left" && side !== "right") return;
-      omniPinStore.requestPin(side, omniKey, pinTop);
+      omniPinStore.requestPin(side, wrapperId, pinTop);
     };
     window.addEventListener("virgil-card-jumped", handler);
     return () => window.removeEventListener("virgil-card-jumped", handler);
@@ -2314,7 +2322,47 @@ export default function EditorLayout() {
   // ── Focus mode helpers ─────────────────────────────────────────────
   const docForOutline = latestDoc;
   const outlineHeadings = useMemo(() => extractHeadings(docForOutline).headings, [docForOutline]);
-  const outlineTotalBlocks = useMemo(() => docForOutline?.content?.length ?? 0, [docForOutline]);
+
+  // T5 Pillar C-2 (OUT-F2-01 / OUT-F8-02): the focus engine's heading-index +
+  // total-block inputs come from the LIVE DocStructureBus snapshot — re-mapped
+  // every transaction by the observer — NOT the 300 ms-debounced `latestDoc`.
+  // On a fresh doc `latestDoc` is null (Focus would focus the whole doc) and
+  // within the debounce window of a structural edit it's a stale block range.
+  // The bus `headings[]` carry live positions; map each `pos → top-level block
+  // index` against the live doc and read `doc.childCount` for the total — the
+  // exact `{ index, level }` shape `useFocusActions` consumes (which is all the
+  // focus engine needs; the rich outline rows still come from `latestDoc`).
+  //
+  // Keystroke sanctity: gated on the structural counters (`rev.headings` /
+  // `rev.blocks`) AND the reactive `editorInstance` (counters are silent on
+  // load — AGENTS "Initial population"). A plain keystroke shifts positions but
+  // adds/removes no heading or block, so neither counter bumps and this memo
+  // doesn't recompute; the snapshot it reads is already per-tx-mapped, so the
+  // *next* structural change reads correct indices.
+  const focusStructure = useMemo(() => {
+    void rev.headings;
+    void rev.blocks;
+    const doc = editorInstance?.state.doc ?? null;
+    const structure = editorInstance ? getBus(editorInstance)?.structure : null;
+    if (!doc || !structure) {
+      // Editor not mounted yet — fall back to the latest snapshot so Focus has
+      // *some* outline pre-mount (re-derives once `editorInstance` is set).
+      return {
+        headings: outlineHeadings.map((h) => ({ index: h.index, level: h.level })),
+        totalBlocks: docForOutline?.content?.length ?? 0,
+      };
+    }
+    const headings = structure.headings.map((h) => {
+      let index = 0;
+      try { index = doc.resolve(h.pos).index(0); } catch { /* stale */ }
+      return { index, level: h.level };
+    });
+    return { headings, totalBlocks: doc.childCount };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [editorInstance, rev.headings, rev.blocks, outlineHeadings, docForOutline]);
+  const outlineFocusHeadings = focusStructure.headings;
+  const outlineTotalBlocks = focusStructure.totalBlocks;
+
   const availableDividerLevels = useMemo(() => {
     const s = new Set<DividerLevel>();
     outlineHeadings.forEach((h) => {
@@ -2336,7 +2384,7 @@ export default function EditorLayout() {
     handleFocusMoveTo,
     handleFocusExpandTo,
     handleFocusSnapBoundary,
-  } = useFocusActions({ focusMode, outlineHeadings, outlineTotalBlocks });
+  } = useFocusActions({ focusMode, outlineHeadings: outlineFocusHeadings, outlineTotalBlocks });
 
   // Focus word count: sum per-block counts within the focused range
   const focusWordCount = useMemo(() => {
@@ -2395,12 +2443,10 @@ export default function EditorLayout() {
   // callers needing to know about panel placement.
   const tryScrollOmniEntry = useCallback(
     (key: string, targetY?: number): boolean => {
-      // Use starts-with selector so multi-paragraph instances (e.g.
-      // "float:card:note:id@0") are found when searching for the base key
-      // ("float:card:note:id").
-      const entry = document.querySelector(
-        `[data-omni-entry="${key}"], [data-omni-entry^="${key}@"]`,
-      ) as HTMLElement | null;
+      // Prefix-or-exact (the shared omni matcher): a fully-qualified `@N` key
+      // lands on its own row; a bare key still finds a multi-anchor card's
+      // first row (e.g. "float:card:note:id" → "float:card:note:id@0").
+      const entry = findOmniEntry(key, "data-omni-entry");
       if (!entry) return false;
       requestAnimationFrame(() => {
         if (typeof targetY === "number") {

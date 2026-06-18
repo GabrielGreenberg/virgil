@@ -1,9 +1,9 @@
 "use client";
 
-import { useMemo, memo, useState, useRef, useEffect, useCallback } from "react";
+import { useMemo, memo, useState, useRef, useEffect } from "react";
 import type { Editor } from "@tiptap/react";
 import { useInTextPositions } from "@/hooks/useInTextPositions";
-import { getBus, type DocStructure } from "@/lib/tiptap/doc-structure";
+import { useLivePosResolver } from "@/hooks/useLivePosResolver";
 import {
   cardPopKey,
   OMNI_PANELS,
@@ -461,31 +461,14 @@ function OmniViewPanel({
   // string the omni item id uses — which is what `useInTextPositions` passes here.
   // Paragraph-anchored kinds (note/todo/…) fall through to the captured pos —
   // their primary visualization is the marginalia gutter, which is already
-  // sourced live from layout observers. The lookup map is rebuilt only when
-  // the snapshot identity changes (once per measure pass), not per item — so
-  // plain typing (no structural change) re-derives nothing here.
-  const livePosCacheRef = useRef<{ s: DocStructure | null; map: Map<string, number> }>({
-    s: null,
-    map: new Map(),
-  });
-  const resolvePos = useCallback(
-    (id: string): number | undefined => {
-      const s = getBus(editor)?.structure ?? null;
-      if (!s) return undefined;
-      if (livePosCacheRef.current.s !== s) {
-        const map = new Map<string, number>();
-        for (const f of s.footnotes) map.set(cardPopKey("footnote", f.id), f.pos);
-        for (const c of s.citations) map.set(cardPopKey("citation", c.id), c.pos);
-        for (const e of s.examples) {
-          map.set(cardPopKey("example", e.id), e.pos);
-          if (e.uuid) map.set(cardPopKey("example", e.uuid), e.pos);
-        }
-        livePosCacheRef.current = { s, map };
-      }
-      return livePosCacheRef.current.map.get(id);
-    },
-    [editor],
-  );
+  // sourced live from layout observers.
+  //
+  // The canonical live-position pattern (snapshot-identity-cached map, rebuilt
+  // only on a structural tx, never on plain typing) now lives in the shared
+  // `useLivePosResolver` hook (T5 Pillar A); the omni id space IS
+  // `cardPopKey(kind, id)`, so we pass `cardPopKey` as `keyOf` — a pure
+  // de-duplication of the pattern OmniViewPanel first proved inline.
+  const resolvePos = useLivePosResolver(editor, cardPopKey);
 
   const { positions, editorContentHeight, panelScrollRef } =
     useInTextPositions(editor, inTextItems, true, "data-omni-entry-wrapper", pinned, resolvePos);

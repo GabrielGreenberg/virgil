@@ -104,7 +104,7 @@ interface AnchorClickEnv {
  * pulling the CARD to the click instead.
  */
 function routeAnchorClick(
-  detail: { entityId: string; kind: EntityKind; clickY?: number },
+  detail: { entityId: string; kind: EntityKind; clickY?: number; anchorIndex?: number },
   env: AnchorClickEnv,
 ): void {
   const route = ANCHOR_CLICK_ROUTES[detail.kind as AnchorClickKind];
@@ -128,9 +128,18 @@ function routeAnchorClick(
 
   const clickY: number | undefined =
     typeof detail.clickY === "number" ? detail.clickY : undefined;
-  // The omni id a panel stamps IS `cardPopKey(kind,id)` — no separate omni
-  // grammar — so the marker→omni scroll/pin matches `data-omni-entry`.
-  const omniKey = cardPopKey(route.cardKind, id);
+  // The omni id a panel stamps IS `cardPopKey(kind,id)` — except a MULTI-anchor
+  // card draws one row per anchor keyed `…@<anchorIndex>` (T5 Pillar E-2). The
+  // gutter marker stamps the clicked paragraph's `anchorIndex` (only for
+  // multi-anchor cards — single-anchor rows have no suffix), so append it here
+  // to pin/scroll the RIGHT row (REP-F3-01 / OMNI-F3-01 / OMNI-F8-02). The
+  // `openForCard` presence check + `alignOmniCardWithClick` both use the
+  // shared prefix-or-exact matcher, so the bare key still resolves if the
+  // index is absent.
+  const omniKey =
+    typeof detail.anchorIndex === "number"
+      ? `${cardPopKey(route.cardKind, id)}@${detail.anchorIndex}`
+      : cardPopKey(route.cardKind, id);
   openForCard(
     {
       omniKey,
@@ -408,7 +417,7 @@ export function useMarkerClickBridges(deps: {
   useEffect(() => {
     const handler = (e: Event) => {
       const detail = (e as CustomEvent).detail as
-        | { entityId: string; kind: EntityKind; clickY?: number }
+        | { entityId: string; kind: EntityKind; clickY?: number; anchorIndex?: number }
         | undefined;
       if (!detail?.entityId || !detail.kind) return;
       routeAnchorClick(detail, {
