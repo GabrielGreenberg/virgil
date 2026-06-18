@@ -32,6 +32,8 @@ import { MIME_CITATION } from "@/lib/marginalia";
 import { popKey } from "@/panels/panel-registry";
 import { useAnchoredCard } from "@/links/_shared/useAnchoredCard";
 import { cardStore } from "@/links/_shared/anchored-card-store";
+import { useConfirmDialog } from "@/components/ConfirmDialog";
+import { cardHasContent } from "@/cards/has-content";
 import { CitekeyPicker } from "./CitekeyPicker";
 
 /* ── Command type options per package ─────────────────────────────── */
@@ -247,6 +249,25 @@ export function CitationCard({
   const isExpanded = isDraft || ac.expanded;
   const isHaloed = ac.selected || isSelected;
   const compressed = !isExpanded && !isPoppedOut;
+
+  // CI-F7-01 / OMNI-F7-01: deleting a citation removes the in-text `\cite{}`
+  // atom. Route the trash through the SAME content-aware confirm every other
+  // card kind uses (CitationCard renders via PanelCard, not EditableCard, so it
+  // bypassed the shared `EditableCard.tryDelete` flow — that bypass IS the bug).
+  // A citation WITH keys confirms; a keyless draft deletes straight through.
+  const { confirm: confirmDelete, dialog: deleteConfirmDialog } = useConfirmDialog();
+  const tryDelete = useCallback(async () => {
+    if (!onDelete) return;
+    if (cardHasContent("citation", cit)) {
+      const ok = await confirmDelete({
+        message: "This citation is referenced in the document. Delete it?",
+        confirmLabel: "Delete",
+        tone: "danger",
+      });
+      if (!ok) return;
+    }
+    onDelete(cit.id);
+  }, [onDelete, cit, confirmDelete]);
 
   const bibEntryMap = useMemo(
     () => new Map(bibEntries.map((e) => [e.key, e])),
@@ -721,7 +742,7 @@ export function CitationCard({
       isPoppedOut={isPoppedOut}
       chromeless={isPoppedOut}
       onTogglePopout={onToggleFromCtx}
-      onTrashClick={!compressed && onDelete ? () => onDelete(cit.id) : undefined}
+      onTrashClick={!compressed && onDelete ? () => void tryDelete() : undefined}
       cardKey={cardKey}
       dropDisabled={dropDisabled}
       isCollapsed={compressed}
@@ -1063,6 +1084,7 @@ export function CitationCard({
         externalQuery={pickerExternalQuery ?? undefined}
         externalInputEl={pickerExternalInputEl}
       />
+      {deleteConfirmDialog}
     </>
   );
 

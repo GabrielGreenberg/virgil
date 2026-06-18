@@ -29,7 +29,7 @@ import { MIN_BAND_PX, type PanelId, type Side } from "@/hooks/useViewPrefs";
 import { useTabIndent } from "@/hooks/useTabIndent";
 import { autoSizeInput } from "@/lib/autoSizeInput";
 import ConfirmDialog from "./ConfirmDialog";
-import { hasJsonContent } from "@/cards/has-content";
+import { cardHasContent } from "@/cards/has-content";
 import { isPoppable, hasCollabClaims, collabClaimScope, isDroppable } from "@/cards/predicates";
 import { DropChevrons } from "./icons/DropChevrons";
 import { beginCardDropGesture } from "./drop-mode/card-drop-gesture";
@@ -963,10 +963,18 @@ export function EditableCard({
   const collabScope = hasCollabClaims(kind) ? collabClaimScope(kind) : undefined;
   const { partnerClaim, claim: claimCard, release: releaseClaim } = useCardClaim(collabScope, id);
 
-  /** Check whether the value has any visible text content. Delegates to
-   *  the shared `hasJsonContent` helper so the same predicate drives both
-   *  this trash-button flow and `deleteMarginItem`'s confirm decision. */
-  const hasContent = useCallback(() => hasJsonContent(value), [value]);
+  /** Check whether the card has any visible USER content. Routes through the
+   *  kind-aware `cardHasContent` (the SAME predicate `deleteMarginItem` uses),
+   *  passing the card's content body + title — so the confirm sees the title a
+   *  body-only read missed (REP-F7-01: a titled-but-empty-body report now
+   *  confirms). `value` is the rich body (the kind's `content` field) and
+   *  `bodyTitle` is the user title; together they cover every kind rendered via
+   *  EditableCard with an `onDelete` (note/archive/footnote/report and the
+   *  comment kinds — none of which has user content outside body+title). */
+  const hasContent = useCallback(
+    () => cardHasContent(kind, { content: value, title: bodyTitle }),
+    [kind, value, bodyTitle],
+  );
 
   /** Delete with confirmation if there is content. */
   const tryDelete = useCallback(() => {
