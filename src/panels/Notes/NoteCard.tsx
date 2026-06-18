@@ -118,11 +118,11 @@ export function NoteCard({
       canJump={!!onJump}
       onJump={onJump ? (e) => onJump((e.currentTarget as HTMLElement).closest('[data-card]') as HTMLElement | null) : undefined}
       onClick={(e) => {
-        ac.onActivate();
-        onSelect(note.id);
-        if (onJump) {
-          onJump((e?.currentTarget as HTMLElement | undefined)?.closest('[data-card]') as HTMLElement | null);
-        }
+        const card = (e?.currentTarget as HTMLElement | undefined)?.closest('[data-card]') as HTMLElement | null;
+        ac.onBodyActivate({
+          onSelect: () => onSelect(note.id),
+          jump: onJump ? () => onJump(card) : undefined,
+        });
       }}
       onDelete={() => onDelete(note.id)}
       footer={

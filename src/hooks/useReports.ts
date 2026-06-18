@@ -24,7 +24,7 @@ import {
 } from "@/links/links";
 import { migrateCardLinks } from "@/links/migrate-card";
 import { bridgeCardAiRequestFlag } from "@/lib/ai-request-bridge";
-import { isAutoTitle } from "@/panels/panel-registry";
+import { resolveLoadedTitle, resolveTitleAuto } from "@/panels/panel-registry";
 import { applyCardMorph } from "@/cards/morphs";
 import { usePersistentState } from "./usePersistentState";
 import { usePristineTracker } from "./usePristineTracker";
@@ -53,11 +53,11 @@ function migrateReportRecord(raw: unknown): ReportCard | null {
     id: r.id,
     createdAt: r.createdAt,
     author: r.author === "ai" ? "ai" : "human",
-    // BUG #31: strip a legacy auto-generated "Report N" title on load.
-    title:
-      typeof r.title === "string" && !isAutoTitle("report", r.title)
-        ? r.title
-        : "",
+    // T6/C12: title provenance is recorded, not guessed. Keep a user-owned
+    // title ("Report 8" the user typed), drop a recorded/legacy generated one,
+    // and self-stamp the resolved bit so the shape heuristic never runs again.
+    title: resolveLoadedTitle("report", r.title, r.titleAuto),
+    titleAuto: resolveTitleAuto("report", r.title, r.titleAuto),
     text,
     content,
     selectedText:
@@ -123,7 +123,13 @@ export function useReports(
     docId,
     "reports.json",
     EMPTY_STATE,
-    { migrate: migrateReports, errorLabel: "reports" },
+    {
+      migrate: migrateReports,
+      // T6/C12: write the self-stamped `titleAuto` provenance back on first
+      // load so the shape heuristic is consulted at most once per record.
+      persistMigrationOnLoad: true,
+      errorLabel: "reports",
+    },
   );
   const localPristine = usePristineTracker();
   const pristine = externalPristine ?? localPristine;
@@ -144,8 +150,12 @@ export function useReports(
         id: generateEntityId(),
         createdAt: new Date().toISOString(),
         author,
-        // BUG #31: never persist a generated title ("Report 2").
+        // T6/C12 (FORK-1): a freshly-created card title stays BLANK; the
+        // `titleAuto: true` provenance marks it machine-default (enables a
+        // future faded placeholder, and keeps it strippable until the user
+        // types a title — at which point `updateReportTitle` flips it false).
         title: "",
+        titleAuto: true,
         text: content ? richJsonToPlainText(content) || "" : "",
         content: content ?? emptyRichContent(),
         selectedText: anchor?.anchorText,
@@ -209,7 +219,12 @@ export function useReports(
       update((prev) => ({
         ...prev,
         cards: prev.cards.map((c) =>
-          c.id === id && c.kind === "report" ? { ...c, title } : c,
+          // T6/C12: a user edit makes the title user-owned forever — clear the
+          // auto-provenance so the next load never strips it ("Report 8" the
+          // user typed survives reload).
+          c.id === id && c.kind === "report"
+            ? { ...c, title, titleAuto: false }
+            : c,
         ),
       }));
     },
@@ -338,6 +353,8 @@ export function useReports(
         createdAt: new Date().toISOString(),
         author: source.author,
         title: source.title,
+        // T6/C12: carry the title provenance onto the clone.
+        titleAuto: source.titleAuto,
         text: source.text,
         content: normalizeRichContent(source.content),
         selectedText: source.selectedText,

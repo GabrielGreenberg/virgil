@@ -7,6 +7,7 @@
 
 import type { BibEntry } from "./types";
 import { MULTI_CITE_NAMES } from "./cite-commands";
+import { mintBibUid, orderedVbidBindings, serializeVbidMarker } from "./bib-uid";
 
 // citation-js is CJS-only; we lazy-load it to avoid SSR issues
 let Cite: any = null;
@@ -30,10 +31,18 @@ function stripBibComments(bibText: string): string {
     .join("\n");
 }
 
-/** Try to parse a single CSL-JSON item into a BibEntry */
+/**
+ * Try to parse a single CSL-JSON item into a BibEntry.
+ *
+ * `raw` and `uid` are supplied by the caller (paired to the source block by
+ * position, not by citekey) so that two entries sharing a citekey get their
+ * own `raw` block and their own durable `uid` instead of both collapsing onto
+ * the last-write-wins keyed lookup.
+ */
 function cslItemToEntry(
   item: Record<string, unknown>,
-  rawEntries: Record<string, string>
+  raw: string,
+  uid: string,
 ): BibEntry {
   const key = (item["citation-key"] || item.id || "") as string;
   const type = cslTypeToBib((item.type as string) || "misc");
@@ -58,7 +67,56 @@ function cslItemToEntry(
   if (item.edition) fields.edition = String(item.edition);
   if (item.note) fields.note = item.note as string;
 
-  return { key, type, fields, raw: rawEntries[key.toLowerCase()] || "" };
+  return { uid, key, type, fields, raw };
+}
+
+/**
+ * A raw BibTeX block in source order, with its citekey, its source-byte start
+ * (so a `\vbid` marker can be associated by position) and any `\vbid` uid that
+ * immediately precedes it.
+ */
+interface OrderedRawBlock {
+  key: string;
+  raw: string;
+  start: number;
+  /** uid recovered from a preceding `\vbid{}` marker, or undefined → mint. */
+  vbidUid?: string;
+}
+
+/**
+ * Extract raw BibTeX blocks from source text IN SOURCE ORDER (not keyed by
+ * citekey), each paired with any `\vbid{}` uid that precedes it. Two blocks
+ * that share a citekey produce two ordered entries — the parser pairs them
+ * positionally with citation-js's per-block items, so neither the `raw` nor
+ * the `uid` collapses.
+ */
+function extractOrderedRawBlocks(bibText: string): OrderedRawBlock[] {
+  const bindings = orderedVbidBindings(bibText);
+  const result: OrderedRawBlock[] = [];
+  const re = /@\w+\s*\{([^,]+),/g;
+  let match: RegExpExecArray | null;
+  while ((match = re.exec(bibText)) !== null) {
+    const key = match[1].trim();
+    const start = match.index;
+    // Find matching closing brace from the first `{` after the `@type` token.
+    let depth = 0;
+    let end = start;
+    for (let i = bibText.indexOf("{", start); i < bibText.length; i++) {
+      if (bibText[i] === "{") depth++;
+      else if (bibText[i] === "}") {
+        depth--;
+        if (depth === 0) {
+          end = i + 1;
+          break;
+        }
+      }
+    }
+    // A `\vbid` marker binds to this block iff its bound entry-head start
+    // matches this block's start (orderedVbidBindings binds positionally).
+    const binding = bindings.find((b) => b.entryStart === start);
+    result.push({ key, raw: bibText.slice(start, end), start, vbidUid: binding?.uid });
+  }
+  return result;
 }
 
 // Module-level memo: parsing a large .bib via citation-js is slow,
@@ -94,30 +152,62 @@ export function parseBibFile(bibText: string): BibEntry[] {
   const CiteClass = getCite();
   const entries: BibEntry[] = [];
   const cleaned = stripBibComments(bibText);
-  const rawEntries = extractRawEntries(cleaned);
+  // Source-ordered raw blocks (with any preceding `\vbid` uid). Two blocks
+  // that share a citekey appear as two ordered entries — the basis for
+  // distinct-uid-per-block.
+  const blocks = extractOrderedRawBlocks(cleaned);
+  // Mint into a live collision set so a markerless file gets unique uids and
+  // any pre-existing `\vbid` uid is reserved against fresh mints.
+  const usedUids = new Set<string>();
+  for (const b of blocks) if (b.vbidUid) usedUids.add(b.vbidUid);
+
+  // Positional cursor over `blocks`: pair each parsed item with the next
+  // unconsumed block whose citekey matches (case-insensitive), falling back to
+  // strict source order if citation-js dropped/reordered an item. Each block
+  // is consumed at most once so duplicate citekeys keep their own raw + uid.
+  const consumed = new Array<boolean>(blocks.length).fill(false);
+  const takeBlock = (key: string): OrderedRawBlock | undefined => {
+    const lc = key.toLowerCase();
+    let idx = blocks.findIndex((b, i) => !consumed[i] && b.key.toLowerCase() === lc);
+    if (idx === -1) idx = consumed.findIndex((c) => !c); // positional fallback
+    if (idx === -1) return undefined;
+    consumed[idx] = true;
+    return blocks[idx];
+  };
+  const uidForBlock = (block: OrderedRawBlock | undefined): string => {
+    if (block?.vbidUid) return block.vbidUid;
+    const fresh = mintBibUid(usedUids);
+    usedUids.add(fresh);
+    return fresh;
+  };
 
   // Try parsing the whole file at once
   try {
     const cite = new CiteClass(cleaned);
     for (const item of cite.data) {
-      entries.push(cslItemToEntry(item, rawEntries));
+      const key = (item["citation-key"] || item.id || "") as string;
+      const block = takeBlock(key);
+      entries.push(cslItemToEntry(item, block?.raw ?? "", uidForBlock(block)));
     }
     return rememberParse(bibText, entries);
   } catch {
     // Whole-file parse failed — try each entry individually
   }
 
-  // Fallback: parse entries one by one, skipping broken ones
-  for (const [key, raw] of Object.entries(rawEntries)) {
+  // Fallback: parse entries one by one (in source order), skipping broken
+  // ones. Each block carries its own raw + uid, so duplicate citekeys survive.
+  for (let i = 0; i < blocks.length; i++) {
+    const block = blocks[i];
     try {
-      const cite = new CiteClass(raw);
+      const cite = new CiteClass(block.raw);
       for (const item of cite.data) {
-        entries.push(cslItemToEntry(item, rawEntries));
+        consumed[i] = true;
+        entries.push(cslItemToEntry(item, block.raw, uidForBlock(block)));
       }
     } catch {
-      if (!WARNED_KEYS.has(key)) {
-        WARNED_KEYS.add(key);
-        console.warn(`Skipping unparseable bib entry: ${key}`);
+      if (!WARNED_KEYS.has(block.key)) {
+        WARNED_KEYS.add(block.key);
+        console.warn(`Skipping unparseable bib entry: ${block.key}`);
       }
     }
   }
@@ -125,18 +215,55 @@ export function parseBibFile(bibText: string): BibEntry[] {
   return rememberParse(bibText, entries);
 }
 
-/** Rebuild a .bib file string from BibEntry objects */
+/**
+ * Rebuild a .bib file string from BibEntry objects.
+ *
+ * Each entry is preceded by its durable `\vbid{<uid>}` marker (a no-op LaTeX
+ * macro declared in the `.tex` preamble) so the surrogate id round-trips: the
+ * marker is excluded from the entry's `raw` slice on the next parse and is
+ * tolerated by citation-js as ignorable inter-entry text. An entry with no uid
+ * (legacy in-memory literal that predates Stage 0) emits no marker.
+ */
 export function serializeBibFile(entries: BibEntry[]): string {
   return entries
     .map((e) => {
-      if (e.raw) return e.raw;
+      const marker = e.uid ? `${serializeVbidMarker(e.uid)}\n` : "";
+      if (e.raw) return marker + e.raw;
       // Fallback: reconstruct from fields
       const lines = Object.entries(e.fields)
         .map(([k, v]) => `  ${k} = {${v}}`)
         .join(",\n");
-      return `@${e.type}{${e.key},\n${lines}\n}`;
+      return `${marker}@${e.type}{${e.key},\n${lines}\n}`;
     })
     .join("\n\n") + "\n";
+}
+
+/**
+ * Serialize a set of entries to a standalone `.bib` file for EXPORT (the
+ * "Export cited.bib" action) — never the raw-passthrough that drops entries.
+ *
+ * Why this exists (BIB-F7-01, DATA-LOSS): the export site used to do
+ * `entries.map(e => e.raw).filter(Boolean)`, which SILENTLY DROPS any entry
+ * whose `raw` is empty — exactly the case for an entry assembled in memory
+ * ("Save under new citekey", a library add, `/editor/find-citation`) that was
+ * never round-tripped through a parse. The user exports a cited.bib that's
+ * missing a cited reference and never knows. The fix is to reconstruct EVERY
+ * entry through the serializer (which already rebuilds from `fields` when
+ * `raw === ""`), so no entry can vanish on the way out.
+ *
+ * The export deliberately OMITS the `\vbid{...}` durable-id markers
+ * `serializeBibFile` emits: those are Virgil's internal surrogate-id round-trip
+ * and have no meaning in a `.bib` handed to an external bibliography manager (a
+ * fresh `uid` is minted on the next import anyway). An entry with a non-empty
+ * `raw` keeps its byte-exact source block (preserving the user's field order /
+ * formatting); an entry with empty `raw` is reconstructed from `fields`.
+ */
+export function serializeBibForExport(entries: BibEntry[]): string {
+  return (
+    entries
+      .map((e) => (e.raw ? e.raw : reconstructBibtex(e)))
+      .join("\n\n") + "\n"
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -382,6 +509,80 @@ export function serializeCiteCommand(
   const pluralBase = capitalized ? pluralType[0].toUpperCase() + pluralType.slice(1) : pluralType;
   const parts = entries.map((e) => `${bracketsFor(e.prenote, e.postnote)}{${e.key}}`);
   return `\\${pluralBase}${star}${parts.join("")}`;
+}
+
+// ---------------------------------------------------------------------------
+// Singular↔plural command derivation (T6-C16 — the CI-F5 family)
+// ---------------------------------------------------------------------------
+
+/** The biblatex commands whose singular form has a `\xxxs` plural sibling,
+ *  mapping the *singular base* → its plural. Built from {@link HAS_PLURAL_FORM}
+ *  (which holds BOTH forms) so the two can't drift. A command not in this map
+ *  has no distinct plural form (e.g. `\citeauthor`, `\nocite`) — it serializes
+ *  with comma-separated keys and is left untouched by the derivation. */
+const SINGULAR_TO_PLURAL: ReadonlyMap<string, string> = (() => {
+  const m = new Map<string, string>();
+  for (const cmd of HAS_PLURAL_FORM) {
+    if (!cmd.endsWith("s")) m.set(cmd, `${cmd}s`);
+  }
+  return m;
+})();
+
+/** The reverse: plural form → its singular base. */
+const PLURAL_TO_SINGULAR: ReadonlyMap<string, string> = (() => {
+  const m = new Map<string, string>();
+  for (const [singular, plural] of SINGULAR_TO_PLURAL) m.set(plural, singular);
+  return m;
+})();
+
+/** The canonical singular base of a (possibly-plural) biblatex command type. */
+export function singularBaseOf(type: string): string {
+  return PLURAL_TO_SINGULAR.get(type) ?? type;
+}
+
+/** Whether a command base has a distinct `\xxxs` plural sibling. */
+export function hasPluralForm(type: string): boolean {
+  const base = singularBaseOf(type);
+  return SINGULAR_TO_PLURAL.has(base);
+}
+
+/**
+ * Derive the canonical command type for the CURRENT row set + package — the
+ * TWO-WAY singular↔plural toggle (T6-C16, the CI-F5 family). Replaces the
+ * one-way `shouldPromote ? type + "s" : type` that promoted singular→plural on
+ * distinct postnotes but never demoted (so a card stranded as `\cites` with one
+ * key — CI-F5-01/CI-F7-02 — or a package switch never re-derived — CI-F5-02).
+ *
+ * The plural `\xxxs` form exists for ONE reason: to carry per-key postnotes
+ * through serialization (biblatex's `\cites[p1][q1]{a}[p2][q2]{b}`). So the rule
+ * is a pure function of state:
+ *   - PROMOTE to `\xxxs` ⟺ biblatex AND the base has a plural sibling AND there
+ *     are ≥2 keys with distinct postnotes (the only case the plural form buys
+ *     anything);
+ *   - DEMOTE to the singular base otherwise (one key, or no distinct postnotes,
+ *     or a non-biblatex package, or a base with no plural sibling — all cases
+ *     where `\xxxs` is wrong or pointless).
+ *
+ * Idempotent and symmetric: feeding the result back in is a fixpoint, and the
+ * same inputs always yield the same canonical type regardless of the prior
+ * type's number. Callers pass the user-chosen command (which may already be
+ * singular or plural); the singular base is recovered first so the decision is
+ * order-independent.
+ */
+export function derivePlural(
+  type: string,
+  rows: ReadonlyArray<{ key: string; postnote?: string }>,
+  bibPackage: string,
+): string {
+  const base = singularBaseOf(type);
+  // No plural sibling (or natbib) → always the base; nothing to derive.
+  if (bibPackage !== "biblatex" || !SINGULAR_TO_PLURAL.has(base)) return base;
+  // Count only rows with a real key (empty draft rows don't serialize).
+  const keyed = rows.filter((r) => r.key.trim());
+  const distinctPostnotes =
+    new Set(keyed.map((r) => r.postnote?.trim() || "")).size > 1;
+  const shouldPromote = keyed.length >= 2 && distinctPostnotes;
+  return shouldPromote ? (SINGULAR_TO_PLURAL.get(base) as string) : base;
 }
 
 // ---------------------------------------------------------------------------
@@ -872,30 +1073,4 @@ function reconstructBibtex(entry: BibEntry): string {
     .map(([k, v]) => `  ${k} = {${v}}`)
     .join(",\n");
   return `@${entry.type}{${entry.key},\n${lines}\n}`;
-}
-
-/** Extract raw BibTeX entries from source text, keyed by lowercase cite key */
-function extractRawEntries(bibText: string): Record<string, string> {
-  const result: Record<string, string> = {};
-  const re = /@\w+\s*\{([^,]+),/g;
-  let match;
-  while ((match = re.exec(bibText)) !== null) {
-    const key = match[1].trim();
-    const start = match.index;
-    // Find matching closing brace
-    let depth = 0;
-    let end = start;
-    for (let i = bibText.indexOf("{", start); i < bibText.length; i++) {
-      if (bibText[i] === "{") depth++;
-      else if (bibText[i] === "}") {
-        depth--;
-        if (depth === 0) {
-          end = i + 1;
-          break;
-        }
-      }
-    }
-    result[key.toLowerCase()] = bibText.slice(start, end);
-  }
-  return result;
 }

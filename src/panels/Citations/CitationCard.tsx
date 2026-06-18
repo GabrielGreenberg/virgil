@@ -10,6 +10,7 @@ import {
 import type { BibEntry, CitationRef } from "@/lib/types";
 import {
   citationCommandOrNull,
+  derivePlural,
   parseCiteCommand,
   sanitizeInlineCitationHtml,
   serializeCiteCommand,
@@ -30,6 +31,8 @@ import { MIME_CITATION } from "@/lib/marginalia";
 import { popKey } from "@/panels/panel-registry";
 import { useAnchoredCard } from "@/links/_shared/useAnchoredCard";
 import { cardStore } from "@/links/_shared/anchored-card-store";
+import { useConfirmDialog } from "@/components/ConfirmDialog";
+import { cardHasContent } from "@/cards/has-content";
 import { CitekeyPicker } from "./CitekeyPicker";
 
 /* ── Command type options per package ─────────────────────────────── */
@@ -67,17 +70,6 @@ const BIBLATEX_TYPES = [
   { value: "citeurl", label: "\\citeurl" },
   { value: "nocite", label: "\\nocite" },
 ];
-
-/** Biblatex command bases that have a `\xxxs` plural form, so per-key
- *  postnotes survive serialization. */
-const HAS_PLURAL = new Set([
-  "cite",
-  "textcite",
-  "parencite",
-  "autocite",
-  "footcite",
-  "smartcite",
-]);
 
 /** The PREVIEW row's intentional serif stack — the rendered citation text
  *  previews how it reads in the (serif) document, independent of the
@@ -257,6 +249,25 @@ export function CitationCard({
   const isHaloed = ac.selected || isSelected;
   const compressed = !isExpanded && !isPoppedOut;
 
+  // CI-F7-01 / OMNI-F7-01: deleting a citation removes the in-text `\cite{}`
+  // atom. Route the trash through the SAME content-aware confirm every other
+  // card kind uses (CitationCard renders via PanelCard, not EditableCard, so it
+  // bypassed the shared `EditableCard.tryDelete` flow — that bypass IS the bug).
+  // A citation WITH keys confirms; a keyless draft deletes straight through.
+  const { confirm: confirmDelete, dialog: deleteConfirmDialog } = useConfirmDialog();
+  const tryDelete = useCallback(async () => {
+    if (!onDelete) return;
+    if (cardHasContent("citation", cit)) {
+      const ok = await confirmDelete({
+        message: "This citation is referenced in the document. Delete it?",
+        confirmLabel: "Delete",
+        tone: "danger",
+      });
+      if (!ok) return;
+    }
+    onDelete(cit.id);
+  }, [onDelete, cit, confirmDelete]);
+
   const bibEntryMap = useMemo(
     () => new Map(bibEntries.map((e) => [e.key, e])),
     [bibEntries],
@@ -350,6 +361,23 @@ export function CitationCard({
     ],
   );
 
+  /** Re-derive the command shape when the DOCUMENT's bib package toggles
+   *  (CI-F5-02 — biblatex↔natbib). A switch to natbib demotes a stranded
+   *  `\cites` to a package-valid `\cite`; a switch to biblatex promotes a
+   *  multi-key/distinct-postnote `\cite` to `\cites`. Gated on a ref so it
+   *  only fires on an actual package change, never on mount or a plain
+   *  re-render — and only persists when the derived type actually differs. */
+  const lastBibPackageRef = useRef(bibPackage);
+  useEffect(() => {
+    if (lastBibPackageRef.current === bibPackage) return;
+    lastBibPackageRef.current = bibPackage;
+    const nextType = derivePlural(type, rows, bibPackage);
+    if (nextType !== type) {
+      setType(nextType);
+      persist({ type: nextType });
+    }
+  }, [bibPackage, type, rows, persist]);
+
   /* ── Row mutations ───────────────────────────────────────────────── */
 
   // Each mutator computes `next` from the closure's current `rows`, calls
@@ -361,29 +389,26 @@ export function CitationCard({
   const setRowKey = useCallback(
     (rowId: string, key: string) => {
       const next = rows.map((r) => (r.id === rowId ? { ...r, key } : r));
+      // Re-derive: changing the keyed-row count crosses the ≥2-keys threshold
+      // either way, so the command shape follows (T6-C16, two-way).
+      const nextType = derivePlural(type, next, bibPackage);
       setRows(next);
-      persist({ rows: next });
+      if (nextType !== type) setType(nextType);
+      persist({ rows: next, type: nextType });
     },
-    [rows, persist],
+    [rows, persist, bibPackage, type],
   );
 
   const setRowPostnote = useCallback(
     (rowId: string, postnote: string) => {
       const next = rows.map((r) => (r.id === rowId ? { ...r, postnote } : r));
-
-      // Auto-promote singular biblatex → plural form when rows now have
-      // distinct postnotes, so each per-key range survives serialize.
-      const distinctPostnotes =
-        new Set(next.map((r) => r.postnote || "")).size > 1;
-      const shouldPromote =
-        bibPackage === "biblatex" &&
-        HAS_PLURAL.has(type) &&
-        next.length >= 2 &&
-        distinctPostnotes;
-      const nextType = shouldPromote ? type + "s" : type;
-
+      // Re-derive the canonical singular↔plural command shape for the new rows
+      // (T6-C16 — two-way: promotes to `\xxxs` when ≥2 keys gain distinct
+      // postnotes so each per-key range survives serialize, demotes back
+      // otherwise so the command can never strand as `\cites` with one key).
+      const nextType = derivePlural(type, next, bibPackage);
       setRows(next);
-      if (shouldPromote) setType(nextType);
+      if (nextType !== type) setType(nextType);
       persist({ rows: next, type: nextType });
     },
     [rows, persist, bibPackage, type],
@@ -395,10 +420,14 @@ export function CitationCard({
         rows.length <= 1
           ? [{ id: nextRowId(), key: "" }]
           : rows.filter((r) => r.id !== rowId);
+      // Re-derive: dropping a row back to one key (or losing the distinct-
+      // postnote condition) DEMOTES `\cites` → `\cite` (CI-F5-01).
+      const nextType = derivePlural(type, next, bibPackage);
       setRows(next);
-      persist({ rows: next });
+      if (nextType !== type) setType(nextType);
+      persist({ rows: next, type: nextType });
     },
-    [rows, persist],
+    [rows, persist, bibPackage, type],
   );
 
   const addRow = useCallback(() => {
@@ -517,11 +546,14 @@ export function CitationCard({
         const next = allEmpty
           ? [{ id: nextRowId(), key: parsed.bibKey! }]
           : [...prev, { id: nextRowId(), key: parsed.bibKey! }];
-        persist({ rows: next });
+        // Re-derive the command shape for the merged row set (T6-C16).
+        const nextType = derivePlural(type, next, bibPackage);
+        if (nextType !== type) setType(nextType);
+        persist({ rows: next, type: nextType });
         return next;
       });
     },
-    [persist],
+    [persist, bibPackage, type],
   );
 
   /* ── Code line (raw LaTeX editor) ────────────────────────────────── */
@@ -709,7 +741,7 @@ export function CitationCard({
       isPoppedOut={isPoppedOut}
       chromeless={isPoppedOut}
       onTogglePopout={onToggleFromCtx}
-      onTrashClick={!compressed && onDelete ? () => onDelete(cit.id) : undefined}
+      onTrashClick={!compressed && onDelete ? () => void tryDelete() : undefined}
       cardKey={cardKey}
       dropDisabled={dropDisabled}
       isCollapsed={compressed}
@@ -733,15 +765,13 @@ export function CitationCard({
       style={wrapperStyle}
       onClick={(e) => {
         if (isDraft) return;
-        ac.onActivate();
-        onSelect();
-        if (isAnchored) {
-          onJump(
-            (e.currentTarget as HTMLElement).closest(
-              "[data-card]",
-            ) as HTMLElement | null,
-          );
-        }
+        const card = (e.currentTarget as HTMLElement).closest(
+          "[data-card]",
+        ) as HTMLElement | null;
+        ac.onBodyActivate({
+          onSelect,
+          jump: isAnchored ? () => onJump(card) : undefined,
+        });
       }}
       onMouseEnter={() => cardStore.setHover(ac.ref)}
       onMouseLeave={() => {
@@ -852,7 +882,11 @@ export function CitationCard({
               <select
                 value={type}
                 onChange={(e) => {
-                  const v = e.target.value;
+                  // Honor the user's base-command choice, but let the plural/
+                  // singular number follow the live rows (T6-C16): picking
+                  // `\cites` with one key normalizes back to `\cite`, and the
+                  // chosen base promotes if the rows warrant it.
+                  const v = derivePlural(e.target.value, rows, bibPackage);
                   setType(v);
                   persist({ type: v });
                 }}
@@ -1005,7 +1039,6 @@ export function CitationCard({
         entry={expandedBibEntry!}
         isSelected={false}
         onClick={() => {}}
-        getFormattedBib={getFormattedBib!}
         getAnnotation={getAnnotation!}
         setAnnotation={setAnnotation!}
         onRequestReview={onRequestReview!}
@@ -1047,6 +1080,7 @@ export function CitationCard({
         externalQuery={pickerExternalQuery ?? undefined}
         externalInputEl={pickerExternalInputEl}
       />
+      {deleteConfirmDialog}
     </>
   );
 

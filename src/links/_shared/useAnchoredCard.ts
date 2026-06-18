@@ -28,6 +28,23 @@ import {
   type AnchoredCardRef,
 } from "./anchored-card-store";
 
+/**
+ * Side effects a card composes on top of the store-backed select+expand when
+ * its body is clicked (C15 — the single select/jump composition).
+ *
+ * - `onSelect`: the host's MONOTONIC select slot (`onSelect(id)`, never the
+ *   toggling `selectedId === id ? null : id`). It mirrors the store's selection
+ *   into the per-panel slot used for collab claims / cross-panel open. Passing
+ *   the toggling form is the C15 bug — it diverges from the store on a re-click.
+ * - `jump`: scroll the editor to the card's anchor. Called ONLY when the card
+ *   was NOT already selected, so a re-click of a selected card keeps its halo
+ *   and does NOT double-jump (FN-F2-01 et al.).
+ */
+export interface BodyActivateEffects {
+  onSelect?: () => void;
+  jump?: () => void;
+}
+
 export interface UseAnchoredCardResult {
   /** Single-card halo / scroll-on-select / keyboard target. */
   selected: boolean;
@@ -41,6 +58,18 @@ export interface UseAnchoredCardResult {
    * (`toggleExpanded`), NOT a body re-click — the axes are independent.
    */
   onActivate: () => void;
+  /**
+   * C15 — the ONE shared select/jump composition every anchored card body
+   * routes through. It (1) reads the LIVE store to learn whether this card was
+   * already selected (captured BEFORE the select mutates it), (2) runs the
+   * monotonic select+expand (`onActivate`), (3) mirrors the selection into the
+   * host's monotonic `onSelect` slot, and (4) jumps to the anchor ONLY if the
+   * card was not already selected. The "already selected → skip jump" rule
+   * makes a re-click idempotent: the halo stays and the editor does not
+   * double-jump. Selection stays single-sourced from the store (the halo is
+   * `ac.selected`), so docked / omni / float compose identically.
+   */
+  onBodyActivate: (effects?: BodyActivateEffects) => void;
   /**
    * The axis-pure expand override: toggles ONLY `expandedSet` membership —
    * never selection. Threaded to `PanelCard` as `onToggleExpanded`. Stable
@@ -68,6 +97,22 @@ export function useAnchoredCard(ref: AnchoredCardRef): UseAnchoredCardResult {
     cardStore.expand(ref);
   }, [ref.kind, ref.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // C15: the single body-click composition. Read the store-selected state
+  // BEFORE the select mutates it — that snapshot decides whether this is a
+  // re-click (skip the jump) or a fresh select (jump). Reading the store live
+  // (not the render-time `selected` closure) keeps the decision correct even if
+  // a sibling re-selected between renders.
+  const onBodyActivate = useCallback(
+    (effects?: BodyActivateEffects) => {
+      const wasSelected = cardStore.isSelected(ref);
+      cardStore.select(ref);
+      cardStore.expand(ref);
+      effects?.onSelect?.();
+      if (!wasSelected) effects?.jump?.();
+    },
+    [ref.kind, ref.id], // eslint-disable-line react-hooks/exhaustive-deps
+  );
+
   // Axis-pure: toggles ONLY the body, never the halo.
   const onToggleExpanded = useCallback(() => {
     cardStore.toggleExpanded(ref);
@@ -79,5 +124,5 @@ export function useAnchoredCard(ref: AnchoredCardRef): UseAnchoredCardResult {
     cardStore.toggleExpanded(ref);
   }, [ref.kind, ref.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  return { selected, expanded, hovered, onActivate, onToggleExpanded, onHeaderActivate, ref };
+  return { selected, expanded, hovered, onActivate, onBodyActivate, onToggleExpanded, onHeaderActivate, ref };
 }

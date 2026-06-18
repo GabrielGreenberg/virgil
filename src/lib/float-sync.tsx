@@ -23,13 +23,15 @@
  *    clears and sync resumes.
  *
  * Cursor preservation: the float's current selection {from, to} is
- * captured before `setContent` and re-applied clamped to the new doc
- * size. For single-paragraph floats this maps cleanly; for multi-block
- * floats (HeadingFloat) the cursor lands at the same absolute offset.
+ * captured before `setContent` and MAPPED through the structural diff
+ * (old↔new) via `reseedPreservingCaret`, so a foreign main edit upstream
+ * of the caret shifts the caret with its logical text rather than leaving
+ * it at a stale raw offset (EX-F8-02 class).
  */
 
 import { useCallback, useEffect, useState } from "react";
 import type { Editor, JSONContent } from "@tiptap/react";
+import { reseedPreservingCaret } from "@/lib/reseed-caret";
 
 /**
  * Kinds the source-missing banner can describe. Roughly tracks
@@ -218,16 +220,12 @@ function syncFromMain(
   setSourceMissing(false);
   if (sameDoc(doc, floatEditor.getJSON())) return;
 
-  const { from, to } = floatEditor.state.selection;
-  floatEditor.commands.setContent(doc, { emitUpdate: false });
-  const size = floatEditor.state.doc.content.size;
-  const safeFrom = Math.min(Math.max(from, 0), size);
-  const safeTo = Math.min(Math.max(to, 0), size);
-  try {
-    floatEditor.commands.setTextSelection({ from: safeFrom, to: safeTo });
-  } catch {
-    /* selection target may not be a valid text position post-reset; OK */
-  }
+  // Caret restore mapped through the structural change (EX-F8-02 class): a
+  // foreign main edit upstream of the float's caret shifts the content, so the
+  // raw {from,to} offset would land the caret earlier than its logical
+  // position. `reseedPreservingCaret` diffs old↔new and maps the caret through
+  // the edit — the shared single owner with ExampleCard's re-seed.
+  reseedPreservingCaret(floatEditor, doc);
 }
 
 function sameDoc(a: JSONContent, b: JSONContent): boolean {

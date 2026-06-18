@@ -10,7 +10,7 @@ import {
   removeTextObjectLink,
 } from "@/links/links";
 import { migrateCardLinks } from "@/links/migrate-card";
-import { isAutoTitle } from "@/panels/panel-registry";
+import { resolveLoadedTitle, resolveTitleAuto } from "@/panels/panel-registry";
 import { usePersistentState } from "./usePersistentState";
 import { useReconcileModeAAnchors } from "./useReconcileModeAAnchors";
 
@@ -24,11 +24,10 @@ function migrateSnippet(raw: unknown): ArchivedSnippet {
       : normalizeRichContent(s.content);
   return {
     id: s.id!,
-    // BUG #31: strip a legacy auto-generated "Archive Text N" title on load.
-    title:
-      typeof s.title === "string" && !isAutoTitle("archive", s.title)
-        ? s.title
-        : "",
+    // T6/C12: recorded provenance, not shape — keep a user-owned title, drop a
+    // recorded/legacy generated one, self-stamp the resolved bit.
+    title: resolveLoadedTitle("archive", s.title, s.titleAuto),
+    titleAuto: resolveTitleAuto("archive", s.title, s.titleAuto),
     content,
     createdAt: s.createdAt!,
     links: migrateCardLinks("archive", raw),
@@ -52,8 +51,9 @@ export function useArchive(docId: string | null) {
     (content: unknown): ArchivedSnippet => {
       const snippet: ArchivedSnippet = {
         id: generateEntityId(),
-        // BUG #31: never persist a generated title ("Archive Text 1").
+        // T6/C12 (FORK-1): blank title + machine-default provenance.
         title: "",
+        titleAuto: true,
         content: normalizeRichContent(content),
         createdAt: new Date().toISOString(),
         links: [],
@@ -78,7 +78,10 @@ export function useArchive(docId: string | null) {
   const updateSnippetTitle = useCallback(
     (id: string, title: string) => {
       update((prev) => ({
-        snippets: prev.snippets.map((s) => (s.id === id ? { ...s, title } : s)),
+        // T6/C12: user edit → user-owned title forever (clear auto-provenance).
+        snippets: prev.snippets.map((s) =>
+          s.id === id ? { ...s, title, titleAuto: false } : s,
+        ),
       }));
     },
     [update],

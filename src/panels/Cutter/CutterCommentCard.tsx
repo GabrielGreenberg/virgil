@@ -152,15 +152,13 @@ export function CutterCommentCard({
           : undefined
       }
       onClick={(e) => {
-        ac.onActivate();
-        onSelect(card.id);
-        if (onJump && isAnchored && !isOrphaned) {
-          onJump(
-            (e?.currentTarget as HTMLElement | undefined)?.closest(
-              "[data-card]",
-            ) as HTMLElement | null,
-          );
-        }
+        const el = (e?.currentTarget as HTMLElement | undefined)?.closest(
+          "[data-card]",
+        ) as HTMLElement | null;
+        ac.onBodyActivate({
+          onSelect: () => onSelect(card.id),
+          jump: onJump && isAnchored && !isOrphaned ? () => onJump(el) : undefined,
+        });
       }}
       onDelete={() => onDelete(card.id)}
       aboveBody={excerptBlock}

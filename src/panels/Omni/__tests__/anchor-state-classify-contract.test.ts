@@ -413,6 +413,9 @@ describe("omni builder anchorState classification", () => {
       setRequestAiRequest: noop,
       convertCard: noop,
       deleteCard: noop,
+      setOverrideEditor: noop,
+      getCitationDisplayText: () => "",
+      onCitationCreated: () => null,
     });
     const states = new Map(items.map((i) => [i.id, [i.anchorState, i.pos]]));
     expect(states.get("float:card:report:rp-free")).toEqual(["free", null]);

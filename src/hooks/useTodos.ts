@@ -13,7 +13,7 @@ import {
 } from "@/links/links";
 import { migrateCardLinks } from "@/links/migrate-card";
 import { bridgeCardAiRequestFlag } from "@/lib/ai-request-bridge";
-import { isAutoTitle } from "@/panels/panel-registry";
+import { resolveLoadedTitle, resolveTitleAuto } from "@/panels/panel-registry";
 import { usePersistentState } from "./usePersistentState";
 import { usePristineTracker } from "./usePristineTracker";
 import { useReconcileModeAAnchors } from "./useReconcileModeAAnchors";
@@ -25,10 +25,13 @@ function migrateTodo(raw: unknown): TodoItem {
   const i = raw as Partial<TodoItem>;
   return {
     id: i.id!,
-    // BUG #31: the legacy seed put a generated "Task N" in the BODY. Strip it
-    // on load (todo's title label is "Task") so an untouched todo reads as
-    // empty — the render-time placeholder shows and it stays pristine.
-    text: isAutoTitle("todo", i.text) ? "" : (i.text ?? ""),
+    // T6/C12: the legacy seed put a generated "Task N" in the BODY, so for a
+    // todo the "title" provenance governs `text`. Recorded provenance, not
+    // shape: keep a user-typed body (even "Task 9"), drop a recorded/legacy
+    // generated one, and self-stamp the resolved bit so the heuristic never
+    // runs again.
+    text: resolveLoadedTitle("todo", i.text, i.titleAuto),
+    titleAuto: resolveTitleAuto("todo", i.text, i.titleAuto),
     notes: i.notes ?? "",
     done: !!i.done,
     aiRequest: !!i.aiRequest,
@@ -47,7 +50,13 @@ export function useTodos(docId: string | null, externalPristine?: PristineKindAp
     docId,
     "todos.json",
     EMPTY,
-    { migrate: migrateTodos, errorLabel: "todos" },
+    {
+      migrate: migrateTodos,
+      // T6/C12: write the self-stamped `titleAuto` provenance back on first
+      // load so the shape heuristic is consulted at most once per record.
+      persistMigrationOnLoad: true,
+      errorLabel: "todos",
+    },
   );
   const localPristine = usePristineTracker();
   const pristine = externalPristine ?? localPristine;
@@ -55,10 +64,12 @@ export function useTodos(docId: string | null, externalPristine?: PristineKindAp
   const addItem = useCallback((): TodoItem => {
     const item: TodoItem = {
       id: generateEntityId(),
-      // BUG #31: never seed a generated "Task N" into the BODY — an empty body
+      // T6/C12 (FORK-1): blank body + machine-default provenance — an empty body
       // shows a render-time placeholder and keeps the todo genuinely pristine
       // (so deleting an untouched todo doesn't trip the has-content confirm).
+      // `updateItem` flips `titleAuto` false the moment the user types.
       text: "",
+      titleAuto: true,
       notes: "",
       done: false,
       aiRequest: false,
@@ -80,7 +91,12 @@ export function useTodos(docId: string | null, externalPristine?: PristineKindAp
   const updateItem = useCallback((id: string, text: string) => {
     pristine.markDirty(id);
     update((prev) => ({
-      items: prev.items.map((i) => i.id === id ? { ...i, text } : i),
+      // T6/C12: a user edit makes the body user-owned forever — clear the
+      // auto-provenance so the next load never strips it (a body the user
+      // typed as "Task 9" survives reload).
+      items: prev.items.map((i) =>
+        i.id === id ? { ...i, text, titleAuto: false } : i,
+      ),
     }));
   }, [update, pristine]);
 

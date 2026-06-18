@@ -8,7 +8,7 @@ import type { useCutter } from "@/hooks/useCutter";
 import type { useCitations } from "@/hooks/useCitations";
 import type { useTodos } from "@/hooks/useTodos";
 import type { useRevisions } from "@/hooks/useRevisions";
-import type { ArchivedSnippet, OrphanedFootnote } from "@/lib/types";
+import type { ArchivedSnippet, OrphanedFootnote, ReportItem } from "@/lib/types";
 import type { FootnoteInfo } from "../../Editor";
 import { useEditorRefContext } from "../contexts/editor-ref";
 import { useCitationDisplayContext } from "../contexts/citation-display";
@@ -28,6 +28,7 @@ export interface SearchHostProps {
   todoItems: TodosHook["items"];
   archiveSnippets: ArchivedSnippet[];
   cutterCards: CutterHook["cards"];
+  reportCards: ReportItem[];
   comments: RevisionsHook["cards"];
   bibEntries: CitationsHook["bibEntries"];
   openItemInPanel: (panel: PanelId, itemId: string) => void;
@@ -52,6 +53,7 @@ export function SearchHost(p: SearchHostProps) {
       todos={p.todoItems}
       archiveSnippets={p.archiveSnippets}
       cutterCards={p.cutterCards}
+      reportCards={p.reportCards}
       comments={p.comments}
       bibEntries={p.bibEntries}
       onOpenItem={p.openItemInPanel}

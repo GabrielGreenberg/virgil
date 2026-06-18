@@ -115,11 +115,11 @@ export function CutterSuggestionCard({
       tabIndex={isSelected ? 0 : -1}
       onClick={(e) => {
         e.stopPropagation();
-        ac.onActivate();
-        onSelect(card.id);
-        if (isAnchored && onJump) {
-          onJump((e.currentTarget as HTMLElement).closest('[data-card]') as HTMLElement | null);
-        }
+        const el = (e.currentTarget as HTMLElement).closest('[data-card]') as HTMLElement | null;
+        ac.onBodyActivate({
+          onSelect: () => onSelect(card.id),
+          jump: isAnchored && onJump ? () => onJump(el) : undefined,
+        });
       }}
       onMouseEnter={() => cardStore.setHover(ac.ref)}
       onMouseLeave={() => {

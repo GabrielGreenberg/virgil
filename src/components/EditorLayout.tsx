@@ -17,6 +17,7 @@ import { type DividerLevel, type DividerWidth } from "@/hooks/useViewPrefs";
 import { Editor } from "@tiptap/react";
 import { type SectionPathEntry, buildPerBlockCounts, sumIncludedWords, extractHeadings } from "@/panels/Outline";
 import { useFiles } from "@/hooks/useFiles";
+import { getBus } from "@/lib/tiptap/doc-structure";
 import { useStructuralRevisions } from "@/hooks/useStructuralRevisions";
 import { useMyPapers } from "@/hooks/useMyPapers";
 import { useFloatingMenuPosition } from "@/hooks/useFloatingMenuPosition";
@@ -90,10 +91,6 @@ import dynamic from "next/dynamic";
 import type { CodeEditorHandle } from "./CodeEditor";
 const CodeEditor = dynamic(() => import("./CodeEditor"), { ssr: false });
 import {
-  type SearchPanelState,
-  INITIAL_SEARCH_STATE,
-} from "@/panels/Search";
-import {
   type OmniCategory,
   deriveCategorySides,
   OmniFilterMenu,
@@ -133,6 +130,7 @@ import { useOrphanActions } from "./editor-layout/card-actions/orphans";
 import { useCitationActions } from "./editor-layout/card-actions/citations";
 import { useRefActions } from "./editor-layout/card-actions/ref";
 import { useLibraryBridge } from "./editor-layout/event-bridges/library";
+import { findOmniEntry } from "./editor-layout/event-bridges/open-for-card";
 import { useMarkerClickBridges } from "./editor-layout/event-bridges/marker-clicks";
 import { useFootnoteSyncBridges } from "./editor-layout/event-bridges/footnote-sync";
 import { EditorLayoutProvider } from "./editor-layout/context";
@@ -154,7 +152,6 @@ import { FootnotesHost } from "./editor-layout/panels/footnotes-host";
 import { RevisionsHost } from "./editor-layout/panels/revisions-host";
 import { CitationsHost } from "./editor-layout/panels/citations-host";
 import { OmniHost } from "./editor-layout/panels/omni-host";
-import { SearchHost } from "./editor-layout/panels/search-host";
 import ExamplesPanel from "@/panels/Examples";
 import { usePreferences } from "@/hooks/usePreferences";
 // Preference mode — ctrl+click picker for live token editing. See
@@ -1073,9 +1070,14 @@ export default function EditorLayout() {
     (cardId: string, clickY: number, _sourceEl: HTMLElement | null) => {
       let tried = false;
       const apply = () => {
-        const wrapper = document.querySelector(
-          `[data-omni-entry-wrapper="${cardId}"]`,
-        ) as HTMLElement | null;
+        // Prefix-or-exact (T5 Pillar E-2): a multi-anchor card's wrapper id is
+        // `…@<anchorIndex>`, so an `@N`-suffixed `cardId` lands on its own row
+        // (exact), and a bare key still resolves a multi-anchor card's first
+        // row (prefix). Pin the wrapper's ACTUAL id — not the passed key — so
+        // omniPinStore's `pinRequest.cardId === item.id` match holds for the
+        // resolved `@N` row (REP-F3-01).
+        const wrapper = findOmniEntry(cardId, "data-omni-entry-wrapper");
+        const wrapperId = wrapper?.dataset.omniEntryWrapper ?? cardId;
         const sideEl = wrapper?.closest("[data-panel-column-side]") as HTMLElement | null;
         const side = sideEl?.dataset.panelColumnSide;
         const pod = wrapper?.parentElement as HTMLElement | null;
@@ -1087,7 +1089,7 @@ export default function EditorLayout() {
           return;
         }
         const pinTop = clickY - pod.getBoundingClientRect().top;
-        omniPinStore.requestPin(side, cardId, pinTop);
+        omniPinStore.requestPin(side, wrapperId, pinTop);
       };
       apply();
     },
@@ -1108,13 +1110,14 @@ export default function EditorLayout() {
         | undefined;
       if (!detail?.omniKey || typeof detail.pinTop !== "number") return;
       const { omniKey, pinTop } = detail;
-      const wrapper = document.querySelector(
-        `[data-omni-entry-wrapper="${omniKey}"]`,
-      );
+      // Prefix-or-exact match + pin the wrapper's ACTUAL id (T5 Pillar E-2) so
+      // a multi-anchor card's `@N` jump lands on its own row.
+      const wrapper = findOmniEntry(omniKey, "data-omni-entry-wrapper");
+      const wrapperId = wrapper?.dataset.omniEntryWrapper ?? omniKey;
       const sideEl = wrapper?.closest("[data-panel-column-side]") as HTMLElement | null;
       const side = sideEl?.dataset.panelColumnSide;
       if (side !== "left" && side !== "right") return;
-      omniPinStore.requestPin(side, omniKey, pinTop);
+      omniPinStore.requestPin(side, wrapperId, pinTop);
     };
     window.addEventListener("virgil-card-jumped", handler);
     return () => window.removeEventListener("virgil-card-jumped", handler);
@@ -1217,8 +1220,14 @@ export default function EditorLayout() {
   // slash/typed path migrated to the action-registry bridge). The panel
   // "+ Add citation" draft uses a SEPARATE copy owned by EditorPane
   // (EditorPane.tsx → CitationsHost), so this duplicate is dead and removed.
-  const [searchHighlightRange, setSearchHighlightRange] = useState<{ from: number; to: number } | null>(null);
-  const [searchState, setSearchState] = useState<SearchPanelState>(INITIAL_SEARCH_STATE);
+  //
+  // The search-highlight + search-panel state used to live here too, as a DEAD
+  // duplicate: SearchHost mounts inside EditorPane, so EditorLayout's local
+  // `searchHighlightRange`/`searchState` were never written (the producer is on
+  // the other side of the boundary). EditorPane now OWNS them; the live
+  // highlight range bubbles up via `paneState.searchHighlightRange`
+  // (SR-F3-01/F8-01). EditorLayout reads it back below for `effectiveHighlightRange`.
+  const searchHighlightRange = paneState?.searchHighlightRange ?? null;
 
   /** SearchPanel dispatches selection + opens the target panel. In the
    *  band-stack model both `search` and the target band coexist in their
@@ -2307,12 +2316,54 @@ export default function EditorLayout() {
     editorSplit,
     activeSplitPane,
     setLatestDoc,
+    // T3 (W3a): the label commit shares the live warning's predicate.
+    isLabelTaken: checkLabelTaken,
   });
 
   // ── Focus mode helpers ─────────────────────────────────────────────
   const docForOutline = latestDoc;
   const outlineHeadings = useMemo(() => extractHeadings(docForOutline).headings, [docForOutline]);
-  const outlineTotalBlocks = useMemo(() => docForOutline?.content?.length ?? 0, [docForOutline]);
+
+  // T5 Pillar C-2 (OUT-F2-01 / OUT-F8-02): the focus engine's heading-index +
+  // total-block inputs come from the LIVE DocStructureBus snapshot — re-mapped
+  // every transaction by the observer — NOT the 300 ms-debounced `latestDoc`.
+  // On a fresh doc `latestDoc` is null (Focus would focus the whole doc) and
+  // within the debounce window of a structural edit it's a stale block range.
+  // The bus `headings[]` carry live positions; map each `pos → top-level block
+  // index` against the live doc and read `doc.childCount` for the total — the
+  // exact `{ index, level }` shape `useFocusActions` consumes (which is all the
+  // focus engine needs; the rich outline rows still come from `latestDoc`).
+  //
+  // Keystroke sanctity: gated on the structural counters (`rev.headings` /
+  // `rev.blocks`) AND the reactive `editorInstance` (counters are silent on
+  // load — AGENTS "Initial population"). A plain keystroke shifts positions but
+  // adds/removes no heading or block, so neither counter bumps and this memo
+  // doesn't recompute; the snapshot it reads is already per-tx-mapped, so the
+  // *next* structural change reads correct indices.
+  const focusStructure = useMemo(() => {
+    void rev.headings;
+    void rev.blocks;
+    const doc = editorInstance?.state.doc ?? null;
+    const structure = editorInstance ? getBus(editorInstance)?.structure : null;
+    if (!doc || !structure) {
+      // Editor not mounted yet — fall back to the latest snapshot so Focus has
+      // *some* outline pre-mount (re-derives once `editorInstance` is set).
+      return {
+        headings: outlineHeadings.map((h) => ({ index: h.index, level: h.level })),
+        totalBlocks: docForOutline?.content?.length ?? 0,
+      };
+    }
+    const headings = structure.headings.map((h) => {
+      let index = 0;
+      try { index = doc.resolve(h.pos).index(0); } catch { /* stale */ }
+      return { index, level: h.level };
+    });
+    return { headings, totalBlocks: doc.childCount };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [editorInstance, rev.headings, rev.blocks, outlineHeadings, docForOutline]);
+  const outlineFocusHeadings = focusStructure.headings;
+  const outlineTotalBlocks = focusStructure.totalBlocks;
+
   const availableDividerLevels = useMemo(() => {
     const s = new Set<DividerLevel>();
     outlineHeadings.forEach((h) => {
@@ -2334,7 +2385,7 @@ export default function EditorLayout() {
     handleFocusMoveTo,
     handleFocusExpandTo,
     handleFocusSnapBoundary,
-  } = useFocusActions({ focusMode, outlineHeadings, outlineTotalBlocks });
+  } = useFocusActions({ focusMode, outlineHeadings: outlineFocusHeadings, outlineTotalBlocks });
 
   // Focus word count: sum per-block counts within the focused range
   const focusWordCount = useMemo(() => {
@@ -2393,12 +2444,10 @@ export default function EditorLayout() {
   // callers needing to know about panel placement.
   const tryScrollOmniEntry = useCallback(
     (key: string, targetY?: number): boolean => {
-      // Use starts-with selector so multi-paragraph instances (e.g.
-      // "float:card:note:id@0") are found when searching for the base key
-      // ("float:card:note:id").
-      const entry = document.querySelector(
-        `[data-omni-entry="${key}"], [data-omni-entry^="${key}@"]`,
-      ) as HTMLElement | null;
+      // Prefix-or-exact (the shared omni matcher): a fully-qualified `@N` key
+      // lands on its own row; a bare key still finds a multi-anchor card's
+      // first row (e.g. "float:card:note:id" → "float:card:note:id@0").
+      const entry = findOmniEntry(key, "data-omni-entry");
       if (!entry) return false;
       requestAnimationFrame(() => {
         if (typeof targetY === "number") {
@@ -3054,11 +3103,8 @@ export default function EditorLayout() {
     selections: selectionsForStrip,
   });
 
-  // Clear search highlight when the search panel is no longer visible
-  const searchPanelOpen = isPanelDocked(prefs, "search");
-  useEffect(() => {
-    if (!searchPanelOpen) setSearchHighlightRange(null);
-  }, [searchPanelOpen]);
+  // (Search-highlight clear-on-close moved to EditorPane — it OWNS the search
+  // highlight now; clearing it from here operated on a dead duplicate.)
 
   // --- Marginalia: build the marker list and side map ---
   // (Hooks must run on every render — placed before any early returns.)
@@ -3201,8 +3247,13 @@ export default function EditorLayout() {
               currentSuggestion.status === "pending"
             ? currentSuggestion.original_text
             : null;
-  // Range-based highlights — search wins over error (search is an
-  // explicit user action, error highlight is derived from selection).
+  // Range-based highlights — search wins over error (search is an explicit
+  // user action, error highlight is derived from selection). `searchHighlightRange`
+  // is now the live value bubbled up from EditorPane (the owner); `errorHighlightRange`
+  // is still EditorLayout's own (compile-derived) and bubbles DOWN via this prop.
+  // EditorPane re-applies the same `search ?? error` preference on its side, so
+  // passing the combined range here is idempotent — EditorPane's local search
+  // range and this bubbled copy are the same value.
   const effectiveHighlightRange = searchHighlightRange ?? errorHighlightRange;
   // OmniView aggregates several child panels on one side. Omni is now the
   // perpetual backdrop behind each side's band stack, so the side-of-panel

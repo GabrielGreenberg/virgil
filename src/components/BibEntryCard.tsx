@@ -17,13 +17,23 @@ export interface BibEntryCardProps {
   entry: BibEntry;
   isSelected: boolean;
   onClick: () => void;
-  getFormattedBib: (entry: BibEntry) => string;
+  // BIB-F1-02 (audit-confirmed dead surface, removed): a `getFormattedBib`
+  // prop implied a CSL-formatted reference preview inside the bib card, but
+  // no such preview was ever built — the prop was destructured and never
+  // read. (The genuine formatted-bib preview lives in the Citations card,
+  // which keeps its own `getFormattedBib`.) Backlog: see MEMO_BUG_BACKLOG.md
+  // if a CSL preview in the Bibliography card is later wanted.
   getAnnotation: (key: string) => string;
   setAnnotation: (key: string, text: string) => void;
   onRequestReview: (bibKey: string, type: "fields" | "notes", requestNotes?: string) => void;
   onCancelReview: (bibKey: string, type: "fields" | "notes") => void;
   getReviewStatus: (bibKey: string, type: "fields" | "notes") => "none" | "pending" | "complete";
   onUpdateBibEntry: (key: string, fields: Record<string, string>) => void;
+  /** Set-all field replacement (D3 — honors field deletion). The bib editor's
+   *  Save routes here (the editor's `editBibFields` IS the complete intended
+   *  field set, so clearing a field must remove it — BIB-A3-02). Optional for
+   *  back-compat: when absent, Save falls back to the merge `onUpdateBibEntry`. */
+  onReplaceBibEntry?: (key: string, fields: Record<string, string>, type?: string) => void;
   onUpdateBibKeyAndType: (oldKey: string, newKey: string, newType: string) => void;
   occurrenceInfo?: { total: number; current: number; onCycle: (delta: number) => void };
   /** Bib package ("natbib" | "biblatex") — used to determine the default cite command for drag. */
@@ -99,6 +109,32 @@ function FormatToolbar({ editorRef }: { editorRef: React.RefObject<HTMLDivElemen
 }
 
 /* ── Rich-text annotation editor ──────────────────────────────────── */
+//
+// C4 (BIB-F8-01 DATA-LOSS / BIB-F8-02 HIGH): one controlled, flushed annotation
+// field with a SINGLE owner. The owner of the value is the `useAnnotations`
+// sidecar store (keyed by BibEntry.uid) — the docked card and the popped float
+// both read/write it through the SAME `getAnnotation`/`setAnnotation` pair, so
+// there is exactly one source of truth. This component's job is to keep its
+// uncontrolled contentEditable faithful to that single source:
+//
+//   • FLUSH on blur AND unmount (BIB-F8-01). The debounce no longer survives an
+//     unmount as an orphaned timer that fires against a null ref and writes ''.
+//     Instead, on blur/unmount we synchronously commit the live DOM (while the
+//     ref is still mounted) and cancel the pending timer. A fast collapse/close/
+//     doc-switch within the debounce window therefore persists the edit instead
+//     of wiping it.
+//
+//   • RE-SEED from the controlled `content` when an EXTERNAL writer changes it
+//     (BIB-F8-02). The seed effect now depends on `content`, so when the float
+//     saves, the docked instance re-renders with the fresh value and re-syncs
+//     its DOM — the two surfaces converge. We never re-seed while THIS field is
+//     focused (that would stomp the user's live caret), and we skip the echo of
+//     our own just-committed value (lastCommittedRef), so a save never clobbers
+//     in-progress typing or fights itself.
+//
+// The single write seam is `commit()`. SECURITY (BIB-F5-01) sanitization is
+// applied there (and on seed/paste) by a SEPARATE chip; this slice leaves that
+// one seam intact and adds no second writer.
 function AnnotationEditor({
   bibKey, content, onUpdate,
 }: {
@@ -106,30 +142,110 @@ function AnnotationEditor({
 }) {
   const editorRef = useRef<HTMLDivElement>(null);
   const debounceRef = useRef<ReturnType<typeof setTimeout>>(undefined);
+  // The HTML captured at the moment the debounce was last (re)scheduled. The
+  // unmount-flush reads THIS, not the live ref: React detaches the contentEditable
+  // ref during the commit phase, so by the time a passive-effect cleanup runs on
+  // unmount `editorRef.current` is already null. Capturing the value on input
+  // keeps the last-typed content recoverable across the unmount (BIB-F8-01).
+  const pendingHtmlRef = useRef<string | null>(null);
   const [focused, setFocused] = useState(false);
   const onKeyDown = useTabIndent<HTMLDivElement>();
 
-  // SECURITY (BIB-F5-01): the annotation HTML is untrusted (AI-written via
-  // answer-bib-review, or carried in a shared paper's annotations.json), so it
-  // must be sanitized before it ever reaches the live contentEditable's
-  // innerHTML — otherwise <img onerror>/<svg onload>/<iframe> payloads fire on
-  // open (stored XSS). Sanitize on SEED (here, defensively cleaning anything
-  // already on disk)…
+  // Latest props captured in refs so the unmount-flush cleanup (which must run
+  // with empty deps to fire only on unmount, not on every prop change) reads
+  // current values without re-subscribing. Synced in an effect, not during
+  // render (react-hooks/refs); commit() — the only reader — runs from event
+  // handlers / effects after commit, so the post-render sync is in time.
+  const onUpdateRef = useRef(onUpdate);
+  const bibKeyRef = useRef(bibKey);
   useEffect(() => {
+    onUpdateRef.current = onUpdate;
+    bibKeyRef.current = bibKey;
+  }, [onUpdate, bibKey]);
+
+  // The bibKey the DOM was last seeded for. A change means the entry switched
+  // (a new entry is never the "edit in progress"), so we always re-seed even
+  // from a focused field.
+  const seededKeyRef = useRef<string | null>(null);
+
+  // The single write seam. SECURITY (BIB-F5-01) sanitization is applied here by
+  // a separate chip — this is the one place an annotation HTML string is
+  // persisted, so the sanitizer slots in cleanly without a second writer.
+  //
+  // Reads the live DOM when mounted; falls back to the captured pending value
+  // when the ref has already been detached (unmount-flush path). Clears the
+  // pending capture once committed so a later flush can't double-write a stale
+  // value.
+  const commit = useCallback(() => {
+    const raw = editorRef.current?.innerHTML ?? pendingHtmlRef.current;
+    if (raw == null) return; // nothing live and nothing captured
+    pendingHtmlRef.current = null;
+    onUpdateRef.current(bibKeyRef.current, sanitizeAnnotationHtml(raw));
+  }, []);
+
+  // SECURITY (BIB-F5-01): seed the contentEditable from the untrusted stored
+  // HTML through the sanitizer, so an <img onerror>/<svg onload>/<iframe>
+  // payload never reaches the live innerHTML.
+  //
+  // BIB-F8-02: this effect now depends on `content`, so an EXTERNAL write (the
+  // other surface saving the same entry) re-seeds this DOM and the two surfaces
+  // converge. The seed is gated on focus to protect the user's live caret:
+  //   - ENTRY switch (bibKey changed): always re-seed — a different entry is
+  //     never the edit-in-progress, even if the field happens to be focused.
+  //   - same entry, content delta while NOT focused: re-seed — this is the
+  //     other surface's write landing; we own no live caret, so converge now.
+  //   - same entry, content delta while focused: DON'T touch the DOM — the user
+  //     owns the field; re-seeding would stomp their caret. Convergence for the
+  //     other surface happens on this field's next blur/commit (the user's edit
+  //     is authoritative while they type). The blur flush guarantees the store
+  //     ends up consistent, so the surfaces still converge — just on blur, not
+  //     mid-keystroke.
+  useEffect(() => {
+    const entrySwitched = seededKeyRef.current !== bibKey;
+    if (focused && !entrySwitched) return; // protect the live caret
     const clean = sanitizeAnnotationHtml(content || "");
-    if (editorRef.current && editorRef.current.innerHTML !== clean) {
-      editorRef.current.innerHTML = clean;
-    }
-  }, [bibKey]); // eslint-disable-line react-hooks/exhaustive-deps
+    const el = editorRef.current;
+    if (el && el.innerHTML !== clean) el.innerHTML = clean;
+    seededKeyRef.current = bibKey;
+  }, [bibKey, content, focused]);
 
   // …and on WRITE, so a payload is never persisted back to annotations.json.
+  // Debounced commit — keystroke-sane (no doc-size work; a single timer reset).
+  // Capture the live HTML on every input so the unmount-flush has a value even
+  // after the ref detaches (BIB-F8-01).
   const handleInput = useCallback(() => {
+    pendingHtmlRef.current = editorRef.current?.innerHTML ?? "";
     if (debounceRef.current) clearTimeout(debounceRef.current);
-    debounceRef.current = setTimeout(() => {
-      const html = sanitizeAnnotationHtml(editorRef.current?.innerHTML || "");
-      onUpdate(bibKey, html);
-    }, 400);
-  }, [bibKey, onUpdate]);
+    debounceRef.current = setTimeout(commit, 400);
+  }, [commit]);
+
+  // BIB-F8-01: flush on blur. Collapsing/closing the card deselects it (blur
+  // fires before the unmount), so the in-flight edit is committed synchronously
+  // — a fast collapse can no longer drop it.
+  const handleBlur = useCallback(() => {
+    setFocused(false);
+    if (debounceRef.current) {
+      clearTimeout(debounceRef.current);
+      debounceRef.current = undefined;
+    }
+    commit();
+  }, [commit]);
+
+  // BIB-F8-01: flush on UNMOUNT. The card body unmounts when it collapses /
+  // closes / the doc switches. We cancel the pending timer and, if an edit was
+  // in flight (pendingHtmlRef set), commit the captured value — the ref is
+  // already detached by now, so commit() reads the capture, not the DOM. The
+  // edit is never lost and no orphan timer fires against a null ref. Empty deps
+  // (commit is stable) → runs only on unmount.
+  useEffect(() => {
+    return () => {
+      if (debounceRef.current) {
+        clearTimeout(debounceRef.current);
+        debounceRef.current = undefined;
+      }
+      if (pendingHtmlRef.current != null) commit();
+    };
+  }, [commit]);
 
   // Paste is the one live vector the seed/write paths don't cover (a pasted
   // <img onerror> renders into the editable immediately). Intercept rich-HTML
@@ -152,7 +268,7 @@ function AnnotationEditor({
         onInput={handleInput}
         onPaste={handlePaste}
         onFocus={() => setFocused(true)}
-        onBlur={() => setFocused(false)}
+        onBlur={handleBlur}
         onClick={(e) => e.stopPropagation()}
         onKeyDown={onKeyDown}
         className="annotation-editor px-3 py-2 text-sm text-ink-body leading-relaxed focus:outline-none min-h-[2.5rem]"
@@ -164,8 +280,8 @@ function AnnotationEditor({
 
 /* ── BibEntryCard ─────────────────────────────────────────────────── */
 export default function BibEntryCard({
-  entry, isSelected, onClick, getFormattedBib, getAnnotation, setAnnotation,
-  onRequestReview, onCancelReview, getReviewStatus, onUpdateBibEntry, onUpdateBibKeyAndType,
+  entry, isSelected, onClick, getAnnotation, setAnnotation,
+  onRequestReview, onCancelReview, getReviewStatus, onUpdateBibEntry, onReplaceBibEntry, onUpdateBibKeyAndType,
   occurrenceInfo, bibPackage, bibEntries, isCited = true, onJump,
   onTogglePopout, isPoppedOut, libraryChip, addAction, draggable = true,
 }: BibEntryCardProps) {
@@ -204,7 +320,13 @@ export default function BibEntryCard({
     setShowBibWarning(true);
   };
   const commitEditBib = () => {
-    onUpdateBibEntry(entry.key, editBibFields);
+    // The editor's `editBibFields` is the COMPLETE intended field set (seeded
+    // from `entry.fields`, edited in place), so a Save is set-all — a field the
+    // user cleared must be deleted, not silently retained (BIB-A3-02). Route to
+    // `replaceBibEntry` (D3) when available; fall back to the merge path so a
+    // caller that hasn't wired the new prop keeps working unchanged.
+    if (onReplaceBibEntry) onReplaceBibEntry(entry.key, editBibFields, editBibType.trim() || undefined);
+    else onUpdateBibEntry(entry.key, editBibFields);
     if (editBibKey.trim() && (editBibKey.trim() !== entry.key || editBibType.trim() !== entry.type)) {
       onUpdateBibKeyAndType(entry.key, editBibKey.trim(), editBibType.trim());
     }
@@ -212,6 +334,18 @@ export default function BibEntryCard({
     setShowBibWarning(false);
   };
   const cancelEditBib = () => { setEditingBib(false); setShowBibWarning(false); };
+  /** Drop a field from the in-progress edit map. Because Save routes through
+   *  the set-all `replaceBibEntry` (D3), a field removed here is DELETED on
+   *  Save — not silently retained as `field = {}` (BIB-F5-04, "I cleared the
+   *  field but it came back"). Deletion is only honored by the set-all path;
+   *  the merge `updateBibEntry` fallback can only patch, never remove. */
+  const removeEditBibField = (field: string) => {
+    setEditBibFields((prev) => {
+      const next = { ...prev };
+      delete next[field];
+      return next;
+    });
+  };
 
   const handleCopyKey = () => {
     navigator.clipboard.writeText(entry.key).then(() => {
@@ -386,6 +520,14 @@ export default function BibEntryCard({
                       <input type="text" value={val}
                         onChange={(e) => setEditBibFields((prev) => ({ ...prev, [field]: e.target.value }))}
                         className="flex-1 font-mono border border-edge-subtle rounded px-1 py-0.5 text-xs" />
+                      <button
+                        type="button"
+                        onClick={(e) => { e.stopPropagation(); removeEditBibField(field); }}
+                        className="iconbtn-sm text-ink-muted hover:text-red-600 flex-shrink-0"
+                        data-hint={`Remove ${field}`} aria-label={`Remove field ${field}`}
+                      >
+                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                      </button>
                     </div>
                   ))}
                   <div className="flex gap-1 mt-1">

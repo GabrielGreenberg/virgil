@@ -116,14 +116,19 @@ describe("OrphanedFootnoteCard expansion axis (backlog #12)", () => {
     expect(screen.getByTestId("rtf")).toBeTruthy();
   });
 
-  it("body click keeps the select+expand contract without the toggling host onSelect", () => {
+  it("body click composes select+expand through the shared helper; re-click keeps the halo", () => {
     const { props } = renderOrphan();
     fireEvent.click(screen.getByTestId("borrowed"));
     expect(cardStore.isExpanded(REF)).toBe(true);
     expect(cardStore.isSelected(REF)).toBe(true);
-    // Review nit fold: the host's TOGGLING onSelect is no longer composed in
-    // (cardStore.select drives the derived selection slot) - a second body
-    // click must not drop the halo.
-    expect(props.onSelect).toHaveBeenCalledTimes(0);
+    // C15: the body routes through `ac.onBodyActivate`, which mirrors the
+    // store selection into the host's MONOTONIC onSelect (never the toggling
+    // `selectedId===id?null:id`). A monotonic mirror is safe to fire on every
+    // click — the store select is the SSOT, so a re-click keeps the halo.
+    expect(props.onSelect).toHaveBeenCalledTimes(1);
+
+    fireEvent.click(screen.getByTestId("rtf"));
+    expect(cardStore.isSelected(REF)).toBe(true); // halo stays on re-click
+    expect(props.onSelect).toHaveBeenCalledTimes(2); // monotonic — never null
   });
 });

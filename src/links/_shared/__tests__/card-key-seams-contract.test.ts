@@ -200,8 +200,19 @@ describe("morph-remap generalizes to a non-revision pair (cutter)", () => {
   });
 
   it("the report pair (lossy) also carries the morph.to SSOT both ways", () => {
-    expect(CARD_REGISTRY.report.morph).toEqual({ to: "report-request", lossy: true });
-    expect(CARD_REGISTRY["report-request"].morph).toEqual({ to: "report", lossy: true });
+    // The morph now declares its dropped-field set (T4 §3.2). report →
+    // report-request drops title + byline; the reverse drops the aiRequest flag
+    // (which is why a report-request→report morph unbridges the inbox).
+    expect(CARD_REGISTRY.report.morph).toEqual({
+      to: "report-request",
+      lossy: true,
+      drops: ["title", "byline"],
+    });
+    expect(CARD_REGISTRY["report-request"].morph).toEqual({
+      to: "report",
+      lossy: true,
+      drops: ["aiRequest"],
+    });
     // note→highlight is lossy both ways too (R14).
     expect(CARD_REGISTRY.note.morph?.lossy).toBe(true);
     expect(CARD_REGISTRY.highlight.morph?.lossy).toBe(true);

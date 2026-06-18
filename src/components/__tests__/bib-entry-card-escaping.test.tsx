@@ -42,6 +42,7 @@ afterEach(cleanup);
 
 function makeEntry(fields: Record<string, string>): BibEntry {
   return {
+    uid: "evil",
     key: "evil2020",
     type: "article",
     fields: { author: "A. Author", year: "2020", title: "T", ...fields },
@@ -55,7 +56,6 @@ function renderCard(entry: BibEntry) {
       entry={entry}
       isSelected
       onClick={() => {}}
-      getFormattedBib={() => ""}
       getAnnotation={() => ""}
       setAnnotation={() => {}}
       onRequestReview={() => {}}

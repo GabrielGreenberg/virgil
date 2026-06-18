@@ -60,6 +60,7 @@ afterEach(() => {
 
 function entry(key: string, author: string, title: string): BibEntry {
   return {
+    uid: `uid-${key}`,
     key,
     type: "article",
     fields: { author, title, year: "2020" },

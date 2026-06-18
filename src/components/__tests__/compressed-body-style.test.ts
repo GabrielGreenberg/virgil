@@ -34,7 +34,14 @@ vi.mock("@/lib/storage", () => {
   return mod;
 });
 
-import { compressedBodyStyle } from "@/components/panel-primitives";
+import { compressedBodyStyle, makeCompressedSummary } from "@/components/panel-primitives";
+
+function docOf(text: string) {
+  return {
+    type: "doc",
+    content: [{ type: "paragraph", content: text ? [{ type: "text", text }] : [] }],
+  };
+}
 
 describe("compressedBodyStyle — borrowed var ceiling (#42 / FOLD 2)", () => {
   it("the BORROWED call emits a var-based maxHeight + var lineHeight", () => {
@@ -68,5 +75,35 @@ describe("compressedBodyStyle — borrowed var ceiling (#42 / FOLD 2)", () => {
     // Guards the `Math.max(1, lines)` floor the ceiling math depends on.
     expect(compressedBodyStyle(0).maxHeight).toBe("calc(1.4 * 1em * 1)");
     expect(compressedBodyStyle(-3).maxHeight).toBe("calc(1.4 * 1em * 1)");
+  });
+});
+
+describe("makeCompressedSummary — ellipsis on truncation (C24 / OMNI-F1-03)", () => {
+  it("returns a short body verbatim with NO ellipsis", () => {
+    const short = "a quick summary";
+    expect(makeCompressedSummary(docOf(short), 1)).toBe(short);
+    expect(makeCompressedSummary(docOf(short), 1)).not.toContain("…");
+  });
+
+  it("appends an ellipsis when the projected text exceeds the 80×lines cap", () => {
+    // 200 chars > 80×1 → truncated; the old `.slice` cut mid-word with no cue.
+    const long = "x".repeat(200);
+    const out = makeCompressedSummary(docOf(long), 1);
+    expect(out.endsWith("…")).toBe(true);
+    // Body (sans ellipsis) is clamped to the limit; the "…" is the only extra.
+    expect(out.length).toBe(81); // 80 chars + the ellipsis glyph
+  });
+
+  it("scales the cap with the line count and still ellipsizes", () => {
+    const long = "y".repeat(300);
+    const out2 = makeCompressedSummary(docOf(long), 2); // cap 160
+    expect(out2.endsWith("…")).toBe(true);
+    expect(out2.length).toBe(161);
+  });
+
+  it("returns '' (falsy) for an empty body so the `||` sentinel can fire", () => {
+    // The empty-sentinel fix relies on an empty body projecting to a falsy ''
+    // (NOT undefined) so `compressedSummary || <CardEmptyText/>` substitutes.
+    expect(makeCompressedSummary(docOf(""), 1)).toBe("");
   });
 });

@@ -3,7 +3,7 @@
 import { useState, useCallback, useEffect, useMemo, useRef } from "react";
 import { readSidecar, writeSidecar } from "@/lib/storage";
 import type { ExamplesState, ExampleRef } from "@/lib/types";
-import { isAutoTitle } from "@/panels/panel-registry";
+import { resolveLoadedTitle, resolveTitleAuto } from "@/panels/panel-registry";
 import {
   getActiveHandle,
   isStalePipelineError,
@@ -39,12 +39,27 @@ export function useExamples(docId: string | null) {
     readSidecar<ExamplesState>(docId, "examples.json", EMPTY)
       .then((data) => {
         if (cancelled || !data.examples) return;
-        // BUG #31: strip legacy auto-generated "Example N" titles on load.
-        setState({
-          examples: data.examples.map((e) =>
-            isAutoTitle("example", e.title) ? { ...e, title: "" } : e,
-          ),
+        // T6/C12: resolve each example's title from recorded provenance (not
+        // shape), self-stamping the `titleAuto` bit so the legacy heuristic is
+        // consulted at most once per record.
+        let changed = false;
+        const examples = data.examples.map((e) => {
+          const title = resolveLoadedTitle("example", e.title, e.titleAuto);
+          const titleAuto = resolveTitleAuto("example", e.title, e.titleAuto);
+          if (title === e.title && titleAuto === e.titleAuto) return e;
+          changed = true;
+          return { ...e, title, titleAuto };
         });
+        const migrated = { examples };
+        stateRef.current = migrated;
+        setState(migrated);
+        // Self-heal write-back: persist the stamped provenance so the heuristic
+        // never runs again. Resolve the handle fresh (the pipeline may register
+        // after the parent's first render — see usePersistentState).
+        if (changed) {
+          const h = getActiveHandle(docId);
+          if (h) void writeSidecar(h, "examples.json", migrated).catch(() => {});
+        }
       })
       .catch(() => {});
     return () => {
@@ -69,8 +84,9 @@ export function useExamples(docId: string | null) {
     (id: string, title: string) => {
       setState((prev) => {
         const next = {
+          // T6/C12: user edit → user-owned title forever (clear auto-provenance).
           examples: prev.examples.map((e) =>
-            e.id === id ? { ...e, title } : e,
+            e.id === id ? { ...e, title, titleAuto: false } : e,
           ),
         };
         stateRef.current = next;
@@ -114,9 +130,10 @@ export function useExamples(docId: string | null) {
           id: ee.id,
           tag: ee.tag,
           label: ee.label,
-          // BUG #31: never persist a generated title ("Example 2"); empty
-          // until the user names it.
+          // T6/C12 (FORK-1): blank title + machine-default provenance, empty
+          // until the user names it (which flips `titleAuto` false).
           title: "",
+          titleAuto: true,
           createdAt: new Date().toISOString(),
         };
       });

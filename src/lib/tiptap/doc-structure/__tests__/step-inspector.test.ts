@@ -6,12 +6,14 @@ import { buildInitial } from "../structure-index";
 import { EMPTY_DIFF, type StructureDiff } from "../types";
 import {
   anchoredText,
+  citationLiteral,
   citationNode,
   doc,
   exampleBlock,
   exampleItem,
   figureBlock,
   footnoteNode,
+  footnoteWithBody,
   heading,
   paragraph,
   testSchema,
@@ -300,6 +302,72 @@ describe("inspectSteps — citations", () => {
     expect(d.addedCitations).toHaveLength(0);
     expect(d.removedCitations).toHaveLength(0);
     expect(d.contentChangedUuids.has("p1")).toBe(true);
+  });
+});
+
+describe("inspectSteps — footnote-nested citation (T3 / C10): per-tx path stays O(edit)", () => {
+  // The load-only `buildInitial` descend surfaces a footnote-nested `\cite` in
+  // structure.citations. Keystroke sanctity demands the PER-TRANSACTION step
+  // path NEVER re-walk a footnote body: typing must not emit a citation
+  // add/change for the cite hiding in `attrs.content`. These pins guard against
+  // a future regression that wires the descent into the per-keystroke path.
+  function paraWithNestedCiteFootnote() {
+    const body = {
+      type: "doc",
+      content: [
+        {
+          type: "paragraph",
+          content: [citationLiteral("nested-c", "\\cite{nested}", "Nested")],
+        },
+      ],
+    };
+    return testSchema.nodes.paragraph.create({ uuid: "p1" }, [
+      testSchema.text("body "),
+      footnoteWithBody("fn1", body, { linkId: "fn1" }),
+    ]);
+  }
+
+  it("typing in a paragraph that holds a footnote-nested cite emits NO citation diff", () => {
+    const s = stateOf(doc(paraWithNestedCiteFootnote()));
+    // Insert a plain char at the very start, clear of the atom.
+    const tr = s.tr.insertText("x", 1, 1);
+    const d = inspectSteps(tr, s.doc, tr.doc);
+    // The nested cite must NOT surface in the per-tx diff (it's inside the
+    // footnote's opaque `attrs.content` — the step path doesn't walk it).
+    expect(d.addedCitations).toHaveLength(0);
+    expect(d.removedCitations).toHaveLength(0);
+    expect(d.changedCitations).toHaveLength(0);
+    expect(d.citationOrderChanged).toBe(false);
+    // It's just a content edit to p1.
+    expect(d.contentChangedUuids.has("p1")).toBe(true);
+  });
+
+  it("rewriting the footnote body (setNodeMarkup) does NOT surface the nested cite as a citation add/change", () => {
+    const s = stateOf(doc(paraWithNestedCiteFootnote()));
+    let fnPos = -1;
+    s.doc.descendants((n, p) => {
+      if (n.type.name === "footnote") fnPos = p;
+    });
+    // Swap the footnote's body literal (as the footnote editor / cite-strip
+    // does). The cite lives in `attrs.content`, opaque to step inspection — so
+    // even this real attr edit must not produce a citation diff entry.
+    const newBody = {
+      type: "doc",
+      content: [
+        {
+          type: "paragraph",
+          content: [citationLiteral("nested-c", "\\cite{nested}", "Nested 2")],
+        },
+      ],
+    };
+    const tr = s.tr.setNodeMarkup(fnPos, undefined, {
+      ...s.doc.nodeAt(fnPos)!.attrs,
+      content: newBody,
+    });
+    const d = inspectSteps(tr, s.doc, tr.doc);
+    expect(d.addedCitations.filter((c) => c.id === "nested-c")).toHaveLength(0);
+    expect(d.changedCitations.filter((c) => c.id === "nested-c")).toHaveLength(0);
+    expect(d.removedCitations.filter((c) => c.id === "nested-c")).toHaveLength(0);
   });
 });
 

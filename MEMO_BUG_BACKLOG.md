@@ -1481,7 +1481,63 @@ verify, not piecemeal. Probably its own chip.
 
 ---
 
-## 52. 🔴 LaTeX compile broken — the committed SwiftLaTeX `.fmt` is a 15-byte CDN error blob
+## 52. (feature, deferred from LHS-sweep W4b) CSL-formatted bibliography preview in the Bibliography card
+
+**Reported:** 2026-06-18 · **Status:** open (feature, not a bug) · **Area:** Bibliography panel
+
+**Context** — Audit bug BIB-F1-02 noted the Bibliography card shows BibTeX fields +
+annotations but no CSL-formatted reference string, even though a `getFormattedBib`
+prop was threaded all the way down to `BibEntryCard`. That prop was **never read**
+in `BibEntryCard` — the preview surface was never built. Per Gabriel's FORK-2 call
+(delete dead code, don't build the feature), W4b **removed** the dead `getFormattedBib`
+prop from `BibEntryCard` and its pass-throughs (`BibliographyPanel`, the
+`cards/floats` bib mount, the `CitationCard`→`BibEntryCard` inline mount). The live
+formatted-bib preview still exists in the **Citations** card (its own
+`getFormattedBib`, untouched).
+
+**Desired (if wanted)** — render a CSL/formatted reference string inside the expanded
+Bibliography card body (alongside the BibTeX fields + annotations pods). The formatter
+is `useCitations.getFormattedBib` (still live); re-thread it to `BibEntryCard` and add a
+read-only preview pod. File pointer: `src/components/BibEntryCard.tsx` (where the prop
+was removed, with a comment).
+
+## 53. (feature, deferred from LHS-sweep W4b) Footnote panel-card native drag (re-anchor)
+
+**Reported:** 2026-06-18 · **Status:** open (feature, not a bug) · **Area:** Footnotes panel
+
+**Context** — Audit bug FN-F7-01: a `startFootnoteDrag` helper (set up an HTML5 drag
+with `MIME_FOOTNOTE` + an 80-char-truncated ghost) was exported from
+`src/panels/Footnotes/FootnoteCard.tsx` but had **no call site** — footnote panel cards
+re-anchor through the unified drop-mode / InlineAtomGrab controller, not native DnD.
+Per Gabriel's FORK-2 call, W4b **deleted** `startFootnoteDrag` (and its barrel export);
+the matching `MIME_FOOTNOTE` *drop* branch in `Editor.tsx` handleDrop is retained for a
+future re-introduction.
+
+**Desired (if wanted)** — a drag affordance on footnote panel cards to re-anchor them.
+Build it on the **drop-mode controller** (the way citation/archive cards drag today),
+not a fresh native `dragstart`. File pointer: comment at the deletion site in
+`src/panels/Footnotes/FootnoteCard.tsx`.
+
+## 54. (deferred from LHS-sweep W4b) Math interactivity inside example-card bodies (EX-F4-02)
+
+**Reported:** 2026-06-18 · **Status:** open · **Area:** Examples panel / math editing
+
+**Current behavior** — Clicking inline/display math inside an **example card body** does
+nothing: the click→edit bridge (`virgil-math-click` → MathPopover → handleMathSave) is
+gated to `surface === "main"` (`src/lib/tiptap/math.ts:73`) because it edits the MAIN
+editor by absolute `pos`. The example-card body is a separate editor surface with its own
+pos space, so firing from it would mis-target (and could corrupt) the MAIN doc at that pos.
+
+**Why deferred from W4b** — this is NOT a simple host-wiring fix (the rest of W4b's class);
+widening the gate without a **host/position remap** re-introduces the exact bug the gate
+prevents. It needs the click bridge to carry the originating surface + a pos remap to that
+surface's editor (the deep fix), which is out of scope for the wiring batch.
+
+**Desired** — math inside an example card body opens the editor and edits that surface's
+node (not MAIN). File pointer: `src/lib/tiptap/math.ts:73` (the surface gate);
+`src/panels/Examples/ExampleCard.tsx` (the example-card editor surface).
+
+## 55. 🔴 LaTeX compile broken — the committed SwiftLaTeX `.fmt` is a 15-byte CDN error blob
 
 **Reported:** 2026-06-15 · **Status:** open · **Priority: HIGH (functional — compile is dead)** · **Area:** LaTeX compile / SwiftLaTeX engine
 

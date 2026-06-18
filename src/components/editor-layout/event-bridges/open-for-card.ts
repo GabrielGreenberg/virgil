@@ -49,6 +49,35 @@ export interface OpenForCardArgs {
   skipScroll?: boolean;
 }
 
+/**
+ * The ONE prefix-or-exact omni matcher (T5 Pillar E-2). The omni item id is
+ * `cardPopKey(kind,id)` for a single-anchor card and `…@<anchorIndex>` for each
+ * row of a MULTI-anchor card. A consumer keyed on the bare card key must still
+ * find a multi-anchor card's first row, so we match `[attr="key"]` (exact —
+ * covers a single-anchor row OR a key that already carries `@N`) OR
+ * `[attr^="key@"]` (prefix — the multi-anchor rows when only the bare key is
+ * known). When the caller passes an `@N`-suffixed key the exact arm wins, so it
+ * pins/scrolls the RIGHT row. Used by `openForCard`, `tryScrollOmniEntry`,
+ * `alignOmniCardWithClick`, and the `virgil-card-jumped` handler — one grammar,
+ * not four hand-rolled copies. `attr` is `data-omni-entry` (the card) or
+ * `data-omni-entry-wrapper` (the positioned wrapper).
+ */
+export function omniEntrySelector(key: string, attr = "data-omni-entry"): string {
+  return `[${attr}="${key}"], [${attr}^="${key}@"]`;
+}
+
+/** Find the omni element for `key` (prefix-or-exact). Prefers the EXACT match
+ *  (an `@N`-suffixed key or single-anchor row) over a prefix match, so a
+ *  fully-qualified `@N` key lands on its own row, never the card's first. */
+export function findOmniEntry(
+  key: string,
+  attr = "data-omni-entry",
+): HTMLElement | null {
+  const exact = document.querySelector(`[${attr}="${key}"]`) as HTMLElement | null;
+  if (exact) return exact;
+  return document.querySelector(`[${attr}^="${key}@"]`) as HTMLElement | null;
+}
+
 function resolveHomeSide(prefs: ViewPrefs, panelId: PanelId, fallback: Side): Side {
   return prefs.placements.find((p) => p.id === panelId)?.side ?? fallback;
 }
@@ -75,9 +104,7 @@ export function openForCard(args: OpenForCardArgs, deps: OpenForCardDeps): void 
   // Rule 1: Omni is already hosting the card somewhere → scroll there
   // (unless the caller is handling alignment itself).
   if (skipScroll) {
-    const entry = document.querySelector(
-      `[data-omni-entry="${omniKey}"], [data-omni-entry^="${omniKey}@"]`,
-    );
+    const entry = document.querySelector(omniEntrySelector(omniKey));
     if (entry) return;
   } else if (tryScrollOmniEntry(omniKey, targetY)) {
     return;
@@ -114,11 +141,7 @@ export function openForCard(args: OpenForCardArgs, deps: OpenForCardDeps): void 
   if (skipScroll) return;
   requestAnimationFrame(() => {
     const omniEntry =
-      (target === "omni"
-        ? (document.querySelector(
-            `[data-omni-entry="${omniKey}"], [data-omni-entry^="${omniKey}@"]`,
-          ) as HTMLElement | null)
-        : null);
+      target === "omni" ? findOmniEntry(omniKey) : null;
     const entry =
       omniEntry ?? (document.querySelector(entrySelector) as HTMLElement | null);
     if (!entry) return;

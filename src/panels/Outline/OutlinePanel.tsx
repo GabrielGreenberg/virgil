@@ -10,15 +10,21 @@ import {
 import type { FocusState } from "@/hooks/useFocusMode";
 import { sectionRange } from "@/hooks/useFocusMode";
 import { Panel } from "@/panels/_shared/Panel";
+import { flattenInlineText } from "@/lib/inline-content";
 
 interface HeadingItem {
   id: string;
+  /** Durable block uuid — the address the structural-edit mutators key on
+   *  (T3 / W3a). Null until the block is hydrated (lazy uuid backfill); a
+   *  rename then no-ops gracefully rather than mis-addressing by index. */
+  uuid: string | null;
   level: number;
   text: string;
   label: string | null;
   sectionNumber: string | null;
   index: number; // top-level block index in doc.content
-  parTitles: { title: string; index: number }[]; // paragraph titles under this heading
+  // paragraph titles under this heading — each carries its own durable uuid.
+  parTitles: { title: string; index: number; uuid: string | null }[];
 }
 
 /* ── Position indicator helpers ─────────────────────────────────────── */
@@ -244,9 +250,10 @@ interface OutlinePanelProps {
   content: JSONContent | null;
   onScrollTo: (headingIndex: number) => void;
   onReorderBlocks?: (fromIndex: number, count: number, toIndex: number) => void;
-  onRenameHeading?: (blockIndex: number, newText: string) => void;
-  onRenameParTitle?: (blockIndex: number, newTitle: string) => void;
-  onUpdateLabel?: (blockIndex: number, newLabel: string | null) => void;
+  // T3 (W3a): rename/label address by durable block uuid, not integer index.
+  onRenameHeading?: (uuid: string, newText: string) => void;
+  onRenameParTitle?: (uuid: string, newTitle: string) => void;
+  onUpdateLabel?: (uuid: string, newLabel: string | null) => void;
   /** Central label-conflict predicate — thread down to every label
       input so they all agree on what counts as a collision. */
   isLabelTaken?: (candidate: string, excludeLabel: string | null) => boolean;
@@ -277,33 +284,39 @@ interface OutlinePanelProps {
 
 /* ── Doc text extraction ───────────────────────────────────────────── */
 
-function extractText(node: JSONContent): string {
-  if (node.type === "text") return node.text || "";
-  if (node.content) return node.content.map(extractText).join("");
-  return "";
-}
+// `extractText` (a flat `type==="text"`-only walk that dropped every inline
+// atom) was replaced by the atom-aware `flattenInlineText` from
+// `@/lib/inline-content` — so an outline row / drag-ghost / doc-title keeps the
+// text of nested math / \cite / \ref (OUT-F1-01 / OUT-F4-01).
 
 function getDocTitle(doc: JSONContent | null): string {
   if (!doc?.content) return "";
   for (const node of doc.content) {
     if (node.type === "titleField" && node.attrs?.field === "title") {
-      return extractText(node).trim();
+      // Atom-aware (OUT-F4-01): a title containing math / \cite keeps its text.
+      return flattenInlineText(node).trim();
     }
   }
   return "";
 }
 
+interface ParTitleItem {
+  title: string;
+  index: number;
+  uuid: string | null;
+}
+
 interface ExtractResult {
   headings: HeadingItem[];
   /** Par titles that appear before the first heading (Document start region). */
-  preambleTitles: { title: string; index: number }[];
+  preambleTitles: ParTitleItem[];
 }
 
 export function extractHeadings(doc: JSONContent | null): ExtractResult {
   if (!doc || !doc.content) return { headings: [], preambleTitles: [] };
   const headings: HeadingItem[] = [];
-  let pendingTitles: { title: string; index: number }[] = [];
-  const preambleTitles: { title: string; index: number }[] = [];
+  let pendingTitles: ParTitleItem[] = [];
+  const preambleTitles: ParTitleItem[] = [];
 
   doc.content.forEach((node, idx) => {
     if (node.type === "heading" && typeof node.attrs?.level === "number") {
@@ -318,10 +331,22 @@ export function extractHeadings(doc: JSONContent | null): ExtractResult {
         }
       }
       pendingTitles = [];
+      // OUT-A2-01: key the heading's stable address on its durable block `uuid`,
+      // NOT its positional `heading-${idx}`. The persisted fold/collapse Set
+      // (and the pods parent-chain) keys on `id`; an index-based id DRIFTS the
+      // moment a block is inserted above a collapsed section — the heading
+      // formerly `heading-3` becomes `heading-4`, so the saved fold key no
+      // longer matches and the section silently un-collapses (and an unrelated
+      // section may collapse). The block uuid is insert-stable, so the fold
+      // survives. Un-hydrated headings (uuid still null — lazy-backfilled on
+      // first interaction) fall back to the positional id so they remain
+      // foldable until they earn a uuid; once hydrated they key durably.
+      const uuid = (node.attrs.uuid as string | null) || null;
       headings.push({
-        id: `heading-${idx}`,
+        id: uuid ?? `heading-${idx}`,
+        uuid,
         level: node.attrs.level as number,
-        text: extractText(node) || "Untitled",
+        text: flattenInlineText(node) || "Untitled",
         label: (node.attrs.label as string) || null,
         sectionNumber: (node.attrs.sectionNumber as string) || null,
         index: idx,
@@ -333,7 +358,11 @@ export function extractHeadings(doc: JSONContent | null): ExtractResult {
         node.type === "orderedList") &&
       node.attrs?.parTitle
     ) {
-      pendingTitles.push({ title: node.attrs.parTitle as string, index: idx });
+      pendingTitles.push({
+        title: node.attrs.parTitle as string,
+        index: idx,
+        uuid: (node.attrs.uuid as string | null) || null,
+      });
     }
   });
   if (pendingTitles.length > 0) {
@@ -588,7 +617,7 @@ function OutlineNode({
   showNumbers: boolean;
   sectionWordCount: number;
   perSectionCounts: Map<string, number>;
-  onUpdateLabel?: (blockIndex: number, newLabel: string | null) => void;
+  onUpdateLabel?: (uuid: string, newLabel: string | null) => void;
   isLabelTaken?: (candidate: string, excludeLabel: string | null) => boolean;
   focusState?: FocusState | null;
   onFocusMoveTo?: (blockIndex: number) => void;
@@ -673,10 +702,10 @@ function OutlineNode({
             )}
             {node.heading.text}
           </span>
-          {showLabels && onUpdateLabel && (
+          {showLabels && onUpdateLabel && node.heading.uuid && (
             <InlineLabel
               label={node.heading.label}
-              onCommit={(val) => onUpdateLabel(node.heading.index, val)}
+              onCommit={(val) => onUpdateLabel(node.heading.uuid!, val)}
               isTaken={isLabelTaken}
             />
           )}
@@ -754,9 +783,12 @@ interface OutlinePod {
   type: "heading" | "parTitle";
   level: number;        // 1-3 for headings, 4 for parTitles
   text: string;
-  blockIndex: number;   // top-level block index in doc.content
+  blockIndex: number;   // top-level block index in doc.content (reorder/scroll)
   blockCount: number;   // how many top-level blocks this pod covers
   id: string;
+  /** Durable block uuid — the address the rename/label mutators key on (T3 /
+   *  W3a). Null when the block hasn't earned a uuid yet; rename then no-ops. */
+  uuid: string | null;
   parentHeadingId?: string; // parTitles & sub-headings collapse under this id
   hasCollapsibleChildren?: boolean; // headings only — true when something
                                     // would be hidden by collapsing
@@ -798,6 +830,7 @@ function buildPods(headings: HeadingItem[], totalBlocks: number): OutlinePod[] {
       blockIndex: h.index,
       blockCount,
       id: h.id,
+      uuid: h.uuid,
       parentHeadingId,
       hasCollapsibleChildren,
     });
@@ -813,7 +846,8 @@ function buildPods(headings: HeadingItem[], totalBlocks: number): OutlinePod[] {
         text: pt.title,
         blockIndex: pt.index,
         blockCount: 1,
-        id: `pt-${pt.index}`,
+        id: pt.uuid ?? `pt-${pt.index}`,
+        uuid: pt.uuid,
         parentHeadingId: h.id,
       });
     }
@@ -1033,8 +1067,8 @@ function EditableOutline({
   collapsed: Set<string>;
   onToggleCollapse: (id: string) => void;
   onReorderBlocks: (fromIndex: number, count: number, toIndex: number) => void;
-  onRenameHeading: (blockIndex: number, newText: string) => void;
-  onRenameParTitle: (blockIndex: number, newTitle: string) => void;
+  onRenameHeading: (uuid: string, newText: string) => void;
+  onRenameParTitle: (uuid: string, newTitle: string) => void;
 }) {
   const pods = useMemo(() => buildPods(headings, totalBlocks), [headings, totalBlocks]);
   const hiddenIds = useMemo(() => computeHiddenPods(pods, collapsed), [pods, collapsed]);
@@ -1098,10 +1132,14 @@ function EditableOutline({
   }, [draggingId, dropTarget, pods, onReorderBlocks]);
 
   const handleRename = useCallback((pod: OutlinePod, newText: string) => {
+    // Address by durable uuid (T3 / W3a). A pod that hasn't earned a uuid yet
+    // (lazy backfill) can't be safely renamed by index — skip rather than
+    // mis-address the live doc.
+    if (!pod.uuid) return;
     if (pod.type === "heading") {
-      onRenameHeading(pod.blockIndex, newText);
+      onRenameHeading(pod.uuid, newText);
     } else {
-      onRenameParTitle(pod.blockIndex, newText);
+      onRenameParTitle(pod.uuid, newText);
     }
   }, [onRenameHeading, onRenameParTitle]);
 

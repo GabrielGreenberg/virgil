@@ -9,7 +9,11 @@ interface BuildArgs {
   examples: ExampleInfo[];
   selectedExampleId: string | null;
   setSelectedExampleId: (id: string | null) => void;
-  onJump: (id: string) => void;
+  // Carries the clicked card element so the jump can align the block to the
+  // card's vertical position (EX-F3-03). ExampleCard supplies a `sourceEl`;
+  // dropping it forced scrollToExample down its no-source center-scroll
+  // fallback (unlike the docked panel, which already threads it).
+  onJump: (id: string, sourceEl?: HTMLElement | null) => void;
 }
 
 /** Build OmniItems for each example so they surface in the unified
@@ -32,7 +36,7 @@ export function buildExampleOmniItems(a: BuildArgs): OmniItem[] {
           example={ex}
           isSelected={isSelected}
           onSelect={() => a.setSelectedExampleId(ex.exampleId)}
-          onJump={() => a.onJump(ex.exampleId)}
+          onJump={(sourceEl) => a.onJump(ex.exampleId, sourceEl)}
           extraDataAttrs={{ "data-omni-entry": omniId }}
         />
       ),

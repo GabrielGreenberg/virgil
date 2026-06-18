@@ -6,6 +6,8 @@ import { ItemMenu, PANEL, clearStaleHover } from "@/components/panel-primitives"
 import BibEntryCard from "@/components/BibEntryCard";
 import PanelThemePicker from "@/components/PanelThemePicker";
 import { searchCentralLibrary, searchLocalBib } from "@/lib/bib-search";
+import { serializeBibForExport } from "@/lib/bib-parser";
+import { mintBibUid } from "@/lib/bib-uid";
 import { CardListPanel } from "@/panels/_shared/CardListPanel";
 import {
   useLibraryItems,
@@ -55,8 +57,8 @@ interface BibliographyPanelProps {
   selectedBibKey: string | null;
   onSelectBibKey: (key: string | null) => void;
   onUpdateBibEntry: (key: string, fields: Record<string, string>) => void;
+  onReplaceBibEntry?: (key: string, fields: Record<string, string>, type?: string) => void;
   onUpdateBibKeyAndType: (oldKey: string, newKey: string, newType: string) => void;
-  getFormattedBib: (entry: BibEntry) => string;
   getAnnotation: (key: string) => string;
   setAnnotation: (key: string, text: string) => void;
   onRequestReview: (bibKey: string, type: "fields" | "notes", requestNotes?: string) => void;
@@ -79,8 +81,8 @@ function BibliographyPanel({
   selectedBibKey,
   onSelectBibKey,
   onUpdateBibEntry,
+  onReplaceBibEntry,
   onUpdateBibKeyAndType,
-  getFormattedBib,
   getAnnotation,
   setAnnotation,
   onRequestReview,
@@ -96,7 +98,14 @@ function BibliographyPanel({
   onAddEntryRequest,
   onRemoveEntryRequest,
 }: BibliographyPanelProps) {
-  const [keyOccurrenceIdx, setKeyOccurrenceIdx] = useState<Record<string, number>>({});
+  // Occurrence cursor (which in-text citation a multi-cite entry's prev/next
+  // arrows currently point at). Keyed on the entry's durable `uid`, NOT its
+  // renameable citekey (BIB-A2-03 / BIB-F2-01): a rename mid-session must keep
+  // the cursor where the user left it. Falls back to citekey for an entry with
+  // no uid (legacy in-memory literal). Read with a clamp against the live
+  // occurrence count so a citation deleted out from under the cursor can never
+  // surface a stale "3 / 2" (BIB-F3-02).
+  const [occurrenceIdxByUid, setOccurrenceIdxByUid] = useState<Record<string, number>>({});
   const [filter, setFilter] = useState<"cited" | "all">("cited");
 
   const [addMenuOpen, setAddMenuOpen] = useState(false);
@@ -162,20 +171,45 @@ function BibliographyPanel({
     return map;
   }, [allEditorCitations]);
 
+  // citekey → durable uid resolver. The cursor is uid-keyed but every cursor
+  // call site addresses an entry by its (current) citekey, so we resolve the
+  // uid here. An entry with no uid (legacy literal) falls back to its citekey
+  // as the cursor key — harmless, just not rename-stable.
+  const uidForKey = useCallback(
+    (key: string): string => {
+      const entry = bibEntries.find((e) => e.key === key);
+      return entry?.uid || key;
+    },
+    [bibEntries],
+  );
+
+  // Clamped read of the occurrence cursor: the stored index is wrapped into the
+  // live `[0, count)` range so a citation removed out from under the cursor can
+  // never produce an out-of-range "N / M" (BIB-F3-02). Returns 0 when nothing
+  // is stored or the entry is no longer cited.
+  const clampedOccurrenceIdx = useCallback(
+    (key: string, count: number): number => {
+      if (count <= 0) return 0;
+      const raw = occurrenceIdxByUid[uidForKey(key)] || 0;
+      return ((raw % count) + count) % count;
+    },
+    [occurrenceIdxByUid, uidForKey],
+  );
+
   const cycleOccurrence = useCallback(
     (key: string, delta: number) => {
       const ids = keyToCitationIds()[key] || [];
       if (ids.length <= 1) return;
-      const cur = keyOccurrenceIdx[key] || 0;
+      const cur = clampedOccurrenceIdx(key, ids.length);
       const next = (cur + delta + ids.length) % ids.length;
-      setKeyOccurrenceIdx((prev) => ({ ...prev, [key]: next }));
+      setOccurrenceIdxByUid((prev) => ({ ...prev, [uidForKey(key)]: next }));
       const targetId = ids[next];
       if (targetId) {
         onScrollToCitation?.(targetId);
         onActiveCitationChange?.(targetId);
       }
     },
-    [keyToCitationIds, keyOccurrenceIdx, onScrollToCitation, onActiveCitationChange],
+    [keyToCitationIds, clampedOccurrenceIdx, uidForKey, onScrollToCitation, onActiveCitationChange],
   );
 
   const handleSelectBibKey = useCallback(
@@ -183,7 +217,7 @@ function BibliographyPanel({
       onSelectBibKey(key);
       if (key) {
         const ids = keyToCitationIds()[key] || [];
-        const idx = keyOccurrenceIdx[key] || 0;
+        const idx = clampedOccurrenceIdx(key, ids.length);
         const targetId = ids[idx] || ids[0];
         if (targetId) {
           onActiveCitationChange?.(targetId);
@@ -192,20 +226,20 @@ function BibliographyPanel({
         onActiveCitationChange?.(null);
       }
     },
-    [onSelectBibKey, keyToCitationIds, keyOccurrenceIdx, onActiveCitationChange],
+    [onSelectBibKey, keyToCitationIds, clampedOccurrenceIdx, onActiveCitationChange],
   );
 
   const handleJumpToBibKey = useCallback(
     (key: string, sourceEl?: HTMLElement | null) => {
       const ids = keyToCitationIds()[key] || [];
-      const idx = keyOccurrenceIdx[key] || 0;
+      const idx = clampedOccurrenceIdx(key, ids.length);
       const targetId = ids[idx] || ids[0];
       if (targetId) {
         onScrollToCitation?.(targetId, sourceEl);
         onActiveCitationChange?.(targetId);
       }
     },
-    [keyToCitationIds, keyOccurrenceIdx, onScrollToCitation, onActiveCitationChange],
+    [keyToCitationIds, clampedOccurrenceIdx, onScrollToCitation, onActiveCitationChange],
   );
 
   const citedKeys = useMemo(() => {
@@ -359,8 +393,12 @@ function BibliographyPanel({
       const authorB = (b.fields.author || b.key).toLowerCase();
       return authorA.localeCompare(authorB);
     });
-    const content =
-      cited.map((e) => e.raw).filter(Boolean).join("\n\n") + "\n";
+    // Reconstruct every entry through the serializer — NEVER the raw-passthrough
+    // that `.filter(Boolean)`-drops an in-memory entry with empty `raw`
+    // (BIB-F7-01, DATA-LOSS). `serializeBibForExport` rebuilds from fields when
+    // `raw === ""`, so a "Save under new citekey"/library-added/AI-found entry
+    // exports its reconstructed block instead of silently vanishing.
+    const content = serializeBibForExport(cited);
     const blob = new Blob([content], { type: "text/plain;charset=utf-8" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
@@ -495,14 +533,24 @@ function BibliographyPanel({
   const handleConflictReplace = useCallback(() => {
     if (!conflictDecision) return;
     const { libraryEntry, localEntry } = conflictDecision;
-    onUpdateBibEntry(localEntry.key, libraryEntry.fields);
-    if (libraryEntry.type !== localEntry.type) {
-      onUpdateBibKeyAndType(localEntry.key, localEntry.key, libraryEntry.type);
+    // "Replace with library" is set-all (D3 / BIB-A3-02): the local entry's
+    // fields become EXACTLY the library version's — a local-only field the
+    // library lacks must be dropped, not merge-retained. Route through
+    // `replaceBibEntry` (which also carries the type) when available; fall back
+    // to the legacy merge+separate-type-update path otherwise.
+    if (onReplaceBibEntry) {
+      onReplaceBibEntry(localEntry.key, libraryEntry.fields, libraryEntry.type);
+    } else {
+      onUpdateBibEntry(localEntry.key, libraryEntry.fields);
+      if (libraryEntry.type !== localEntry.type) {
+        onUpdateBibKeyAndType(localEntry.key, localEntry.key, libraryEntry.type);
+      }
     }
     setConflictDecision(null);
     handleSelectBibKey(localEntry.key);
   }, [
     conflictDecision,
+    onReplaceBibEntry,
     onUpdateBibEntry,
     onUpdateBibKeyAndType,
     handleSelectBibKey,
@@ -520,8 +568,10 @@ function BibliographyPanel({
     }
     // Drop `raw` so the serializer rebuilds the block from fields and the
     // new citekey — keeping `raw` would re-emit the library's original
-    // `@type{<originalKey>,…}` and the suffix would never reach disk.
-    onAddBibEntry?.({ ...libraryEntry, key: next, raw: "" });
+    // `@type{<originalKey>,…}` and the suffix would never reach disk. Mint a
+    // fresh `uid` (don't inherit the library entry's) — this is a new, distinct
+    // bibliography entry that gets its own durable identity.
+    onAddBibEntry?.({ ...libraryEntry, uid: mintBibUid(), key: next, raw: "" });
     setConflictDecision(null);
     handleSelectBibKey(next);
   }, [conflictDecision, bibEntries, onAddBibEntry, handleSelectBibKey]);
@@ -907,7 +957,7 @@ function BibliographyPanel({
       listTrailing={listTrailing}
       renderCard={(entry, { selected }) => {
         const ids = keyToCitationIds()[entry.key] || [];
-        const idx = keyOccurrenceIdx[entry.key] || 0;
+        const idx = clampedOccurrenceIdx(entry.key, ids.length);
         const isCited = citedKeys.has(entry.key);
         const isLibraryResult = showSearch && searchScope === "library";
         const isPreviewResult = isLibraryResult;
@@ -948,13 +998,13 @@ function BibliographyPanel({
               listRef.current?.focus();
             }}
             onJump={isCited ? (sourceEl) => handleJumpToBibKey(entry.key, sourceEl) : undefined}
-            getFormattedBib={getFormattedBib}
             getAnnotation={getAnnotation}
             setAnnotation={setAnnotation}
             onRequestReview={onRequestReview}
             onCancelReview={onCancelReview}
             getReviewStatus={getReviewStatus}
             onUpdateBibEntry={onUpdateBibEntry}
+            onReplaceBibEntry={onReplaceBibEntry}
             onUpdateBibKeyAndType={onUpdateBibKeyAndType}
             bibPackage={bibPackage}
             bibEntries={bibEntries}

@@ -20,6 +20,14 @@ import {
 } from "@/lib/multi-window/doc-pipeline";
 import { usePersistentState } from "./usePersistentState";
 import type { PristineKindApi } from "./usePristineCardManager";
+import { isIdentityCascadeOn } from "@/lib/identity/identity-flag";
+import {
+  IdentityCascade,
+  renameCitekeyChange,
+  retypeChange,
+} from "@/lib/identity/identity-cascade";
+import { wholeWordPatternFor } from "@/lib/whole-word";
+import { mintBibUid } from "@/lib/bib-uid";
 
 const EMPTY: CitationsState = {
   citations: [],
@@ -56,12 +64,14 @@ export const CITATIONS_INERT: CitationsHook = {
   setBibPackage: () => {},
   addBibEntry: () => {},
   updateBibEntry: () => {},
+  replaceBibEntry: () => {},
   updateBibKeyAndType: () => {},
   getBibEntry: () => undefined,
   getDisplayText: (command: string) => command,
   getFormattedBib: () => "",
   commandFor: () => null,
   syncFromEditor: () => {},
+  identityCascade: new IdentityCascade(),
 };
 
 function migrate(raw: unknown): CitationsState {
@@ -91,6 +101,16 @@ export function useCitations(docId: string | null, pristine?: PristineKindApi | 
   const [bibEntries, setBibEntries] = useState<BibEntry[]>([]);
   const [bibRaw, setBibRaw] = useState("");
   const docRef = useRef(docId);
+
+  // The IdentityCascade — the single writer for identity-changing ops, owned
+  // here (one per doc, NOT a module singleton — D1.4 / T1 §3.2c). A stable
+  // instance across renders (lazy `useState` initializer) so external surfaces
+  // (the editor `\cite{}` doc-rewrite, future citekey-keyed sidecars) can
+  // register migrators against it once. Gated behind `virgil:identity-cascade`:
+  // when the flag is OFF the cascade is never invoked, so the legacy
+  // `updateBibKeyAndType` path is the only writer and behavior is byte-identical
+  // to today.
+  const [identityCascade] = useState(() => new IdentityCascade());
 
   // Pin the bib write handle to docId's currently-active pipeline.
   // Stale handles (from a doc switch) are rejected by writeBib.
@@ -259,6 +279,14 @@ export function useCitations(docId: string | null, pristine?: PristineKindApi | 
     [update],
   );
 
+  /**
+   * MERGE field updates into an entry (D3 — the `updateBibEntry`=merge half).
+   * `fields` is shallow-merged over the entry's existing `fields`, so a field
+   * absent from `fields` is KEPT. This is the incremental-edit primitive
+   * (typing in one field of the bib editor, an `answer-bib-review` field fill).
+   * For wholesale set-all semantics that honor field DELETION use
+   * {@link replaceBibEntry}.
+   */
   const updateBibEntry = useCallback(
     (key: string, fields: Record<string, string>) => {
       setBibEntries((prev) => {
@@ -280,8 +308,135 @@ export function useCitations(docId: string | null, pristine?: PristineKindApi | 
     [persistBib],
   );
 
+  /**
+   * REPLACE an entry's fields (and optionally its type) WHOLESALE (D3 — the
+   * `replaceBibEntry`=set-all half; consumed by T6-C16's "Replace with library"
+   * and the bib-editor Save). Unlike {@link updateBibEntry}, the supplied
+   * `fields` is the COMPLETE new field set: a field the user cleared (absent
+   * from `fields`) is DELETED, not retained (BIB-A3-02 / BIB-F5-04 — "I cleared
+   * the field but it came back"). The entry's durable `uid` and citekey are
+   * untouched (this is not an identity move — a rename routes through
+   * `updateBibKeyAndType`/the cascade).
+   *
+   * Single-writer discipline (D3): under the `virgil:identity-cascade` flag the
+   * cascade is the canonical writer for every bib-entry mutation, so a `retype`
+   * (type changed) is fanned through `runIdentityChange` so any registered
+   * `bibEntry` migrator observes it. The `.bib`-side set-all + persist is done
+   * here regardless (it owns the entries array). Flag OFF: the cascade is never
+   * invoked — the on-disk write is byte-identical to a direct set-all, so the
+   * existing suite is unaffected.
+   */
+  const replaceBibEntry = useCallback(
+    (key: string, fields: Record<string, string>, type?: string) => {
+      setBibEntries((prev) => {
+        const next = prev.map((e) => {
+          if (e.key !== key) return e;
+          const nextType = type ?? e.type;
+          // set-all: replace the field map entirely (cleared fields are gone).
+          const updated: BibEntry = { ...e, type: nextType, fields: { ...fields } };
+          const lines = Object.entries(updated.fields)
+            .map(([k, v]) => `  ${k} = {${v}}`)
+            .join(",\n");
+          updated.raw = `@${updated.type}{${updated.key},\n${lines}\n}`;
+          return updated;
+        });
+        const newRaw = serializeBibFile(next);
+        setBibRaw(newRaw);
+        void persistBib(newRaw);
+        return next;
+      });
+      // Fan a REAL type change through the single writer so any registered
+      // migrator observes it. Resolve the retype decision from the live
+      // `bibEntries` (hook scope) — NOT from inside the state updater, whose
+      // run timing isn't synchronous under concurrent React.
+      if (isIdentityCascadeOn() && type !== undefined) {
+        const entry = bibEntries.find((e) => e.key === key);
+        if (entry?.uid && entry.type !== type) {
+          void identityCascade.runIdentityChange(
+            retypeChange({ uid: entry.uid, newType: type }),
+          );
+        }
+      }
+    },
+    [persistBib, bibEntries, identityCascade],
+  );
+
+  /** Apply the `.bib`-side `key`+`type` mutation for the entry currently
+   *  carrying `oldKey` (legacy path) OR the entry with `uid` (cascade path).
+   *  Reconstructs the entry's `raw` block + reserializes + persists. Shared by
+   *  both flag paths so the on-disk write is identical. */
+  const applyBibKeyType = useCallback(
+    (match: (e: BibEntry) => boolean, newKey: string, newType: string) => {
+      setBibEntries((prev) => {
+        const next = prev.map((e) => {
+          if (!match(e)) return e;
+          const updated = { ...e, key: newKey, type: newType };
+          const lines = Object.entries(updated.fields)
+            .map(([k, v]) => `  ${k} = {${v}}`)
+            .join(",\n");
+          updated.raw = `@${updated.type}{${updated.key},\n${lines}\n}`;
+          return updated;
+        });
+        const newRaw = serializeBibFile(next);
+        setBibRaw(newRaw);
+        void persistBib(newRaw);
+        return next;
+      });
+    },
+    [persistBib],
+  );
+
+  /** Rewrite the citation SIDECAR refs that reference `oldKey` → `newKey`.
+   *  Uses the boundary-class matcher (W0a) so a punctuation citekey rewrites
+   *  as a whole token and `foo` doesn't clobber `foobar`. */
+  const rewriteCitationRefs = useCallback(
+    (oldKey: string, newKey: string) => {
+      if (oldKey === newKey) return;
+      const re = new RegExp(wholeWordPatternFor(oldKey), "g");
+      update((prev) => ({
+        ...prev,
+        citations: prev.citations.map((c) => {
+          if (!c.keys.includes(oldKey)) return c;
+          const newKeys = c.keys.map((k) => (k === oldKey ? newKey : k));
+          return { ...c, keys: newKeys, command: c.command.replace(re, newKey) };
+        }),
+      }));
+    },
+    [update],
+  );
+
   const updateBibKeyAndType = useCallback(
     (oldKey: string, newKey: string, newType: string) => {
+      if (isIdentityCascadeOn()) {
+        // CASCADE PATH (flag ON): the IdentityCascade is the single writer.
+        // Resolve the durable uid so the rename targets the entry by identity
+        // (not by the about-to-change key), then fan out atomically.
+        const entry = bibEntries.find((e) => e.key === oldKey);
+        const uid = entry?.uid;
+        // 1. `.bib` key+type mutation (by uid when available, else by old key).
+        applyBibKeyType(
+          uid ? (e) => e.uid === uid : (e) => e.key === oldKey,
+          newKey,
+          newType,
+        );
+        // 2. citation-refs sidecar rewrite (boundary-safe).
+        if (oldKey !== newKey) rewriteCitationRefs(oldKey, newKey);
+        // 3. fan out to every registered migrator (the editor `\cite{}`
+        //    doc-rewrite, future citekey-keyed sidecars). annotations/bib-review
+        //    are uid-keyed → their migrator (if registered) is a no-op on a
+        //    pure rename. A rename with no migrators is a well-formed no-op.
+        if (uid) {
+          void identityCascade.runIdentityChange(
+            renameCitekeyChange({ uid, oldKey, newKey, newType }),
+          );
+        }
+        return;
+      }
+
+      // LEGACY PATH (flag OFF) — byte-identical to pre-cascade behavior,
+      // including the original bare-`\b` ref rewrite, so the existing suite is
+      // green. Do NOT route this through the boundary matcher: that's the
+      // flag-ON behavior change.
       setBibEntries((prev) => {
         const next = prev.map((e) => {
           if (e.key !== oldKey) return e;
@@ -297,7 +452,6 @@ export function useCitations(docId: string | null, pristine?: PristineKindApi | 
         void persistBib(newRaw);
         return next;
       });
-      // Update citation refs that reference the old key.
       if (oldKey !== newKey) {
         update((prev) => ({
           ...prev,
@@ -313,14 +467,25 @@ export function useCitations(docId: string | null, pristine?: PristineKindApi | 
         }));
       }
     },
-    [persistBib, update],
+    [persistBib, update, bibEntries, applyBibKeyType, rewriteCitationRefs, identityCascade],
   );
 
   const addBibEntry = useCallback(
     (entry: BibEntry) => {
       setBibEntries((prev) => {
         if (prev.some((e) => e.key === entry.key)) return prev;
-        const next = [...prev, entry];
+        // SSOT uid-mint point: any new entry that arrives without a durable uid
+        // (e.g. /editor/find-citation, a library drop, a hand-built BibEntry)
+        // gets one minted here, avoiding collisions with the entries already in
+        // state, so the identity spine (annotations/bib-review keying, the
+        // rename cascade) has a stable id to anchor to from the entry's first
+        // moment. An entry that already carries a uid (round-tripped from a
+        // `\vbid` marker) keeps it. Under the flag this guarantees `entry.uid`
+        // is always present; flag-off it is harmless extra metadata.
+        const withUid: BibEntry = entry.uid
+          ? entry
+          : { ...entry, uid: mintBibUid(new Set(prev.map((e) => e.uid).filter(Boolean) as string[])) };
+        const next = [...prev, withUid];
         const newRaw = serializeBibFile(next);
         setBibRaw(newRaw);
         void persistBib(newRaw);
@@ -421,12 +586,14 @@ export function useCitations(docId: string | null, pristine?: PristineKindApi | 
       setBibPackage,
       addBibEntry,
       updateBibEntry,
+      replaceBibEntry,
       updateBibKeyAndType,
       getBibEntry,
       getDisplayText,
       getFormattedBib,
       commandFor,
       syncFromEditor,
+      identityCascade,
     }),
     [
       state.citations,
@@ -443,12 +610,14 @@ export function useCitations(docId: string | null, pristine?: PristineKindApi | 
       setBibPackage,
       addBibEntry,
       updateBibEntry,
+      replaceBibEntry,
       updateBibKeyAndType,
       getBibEntry,
       getDisplayText,
       getFormattedBib,
       commandFor,
       syncFromEditor,
+      identityCascade,
     ],
   );
 }

@@ -8,23 +8,20 @@
  * silently get an empty string for every atom whose handler they forgot
  * to add.
  *
- * Adding a new atom node type: add one entry below. New consumers should
- * use this helper instead of hardcoding their own per-type switch.
+ * The extractor table now lives in `@/lib/inline-content` (T3 / C10), which is
+ * the single atom-aware inline-content reader. `getAtomText` is preserved as a
+ * thin PM-Node wrapper over that registry so its existing callers
+ * (`Editor.tsx`) keep working unchanged; new consumers should prefer
+ * `flattenInlineText` / `atomTextOf` from `@/lib/inline-content` directly.
  */
 
 import type { Node } from "@tiptap/pm/model";
-
-type AtomTextExtractor = (node: Node) => string;
-
-const extractors: Record<string, AtomTextExtractor> = {
-  texBlock: (n) => (n.attrs.code as string) || "",
-  displayMath: (n) => (n.attrs.latex as string) || "",
-  inlineMath: (n) => (n.attrs.latex as string) || "",
-  latexComment: (n) => `% ${(n.attrs.text as string) || ""}`,
-  figureBlock: (n) => (n.attrs.src as string) || "",
-  graphicsBlock: (n) => (n.attrs.src as string) || "",
-};
+import { atomTextOf } from "@/lib/inline-content";
 
 export function getAtomText(node: Node): string {
-  return extractors[node.type.name]?.(node) ?? node.textContent ?? "";
+  const attrText = atomTextOf(
+    node.type.name,
+    node.attrs as Record<string, unknown>,
+  );
+  return attrText ?? node.textContent ?? "";
 }

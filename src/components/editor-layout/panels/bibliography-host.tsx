@@ -23,8 +23,8 @@ export interface BibliographyHostProps {
   bibPackage: CitationsHook["bibPackage"];
   addBibEntry: CitationsHook["addBibEntry"];
   updateBibEntry: CitationsHook["updateBibEntry"];
+  replaceBibEntry: CitationsHook["replaceBibEntry"];
   updateBibKeyAndType: CitationsHook["updateBibKeyAndType"];
-  getFormattedBib: CitationsHook["getFormattedBib"];
   getAnnotation: AnnotationsHook["getAnnotation"];
   setAnnotation: AnnotationsHook["setAnnotation"];
   requestBibReview: BibReviewHook["requestReview"];
@@ -49,8 +49,8 @@ export function BibliographyHost(p: BibliographyHostProps) {
       selectedBibKey={selectedBibKey}
       onSelectBibKey={setSelectedBibKey}
       onUpdateBibEntry={p.updateBibEntry}
+      onReplaceBibEntry={p.replaceBibEntry}
       onUpdateBibKeyAndType={p.updateBibKeyAndType}
-      getFormattedBib={p.getFormattedBib}
       getAnnotation={p.getAnnotation}
       setAnnotation={p.setAnnotation}
       onRequestReview={p.requestBibReview}

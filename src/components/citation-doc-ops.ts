@@ -9,73 +9,24 @@
  * COLLECTS a footnote-nested cite must have a matching place that REMOVES it"
  * — can be unit-tested against a real Editor without mounting the whole
  * `Editor.tsx` component (backlog #38).
+ *
+ * The two pure walkers (`walkJsonContentForCitations` /
+ * `removeCitationFromJsonContent`) now delegate to the single atom-aware reader
+ * in `@/lib/inline-content` (T3 / C10) so the COLLECT and REMOVE sides can no
+ * longer drift apart, and so the next atom kind nested in a footnote is visible
+ * to every consumer the day it ships. The named exports + their tests are
+ * preserved; `stripFootnoteNestedCitation` is unchanged (the doc-mutation half).
  */
 
 import type { Editor, JSONContent } from "@tiptap/react";
+import {
+  removeCitationFromJsonContent,
+  walkJsonContentForCitations,
+} from "@/lib/inline-content";
 
-/**
- * Walk a JSONContent tree and invoke `visit` for every citation node.
- *
- * Atomic nodes (footnote, examples) keep their inner content as a JSONContent
- * literal in `attrs.content`; ProseMirror's `descendants` doesn't traverse into
- * that. Citations stored inside such inner content are otherwise invisible to
- * the editor's citation collectors, which means the Citations and Bibliography
- * panels under-count the doc's actual citations. This helper walks the literal
- * to surface them.
- */
-export function walkJsonContentForCitations(
-  json: JSONContent | null | undefined,
-  visit: (cit: { citationId: string; command: string; displayText: string }) => void,
-): void {
-  if (!json) return;
-  if (json.type === "citation" && json.attrs) {
-    const a = json.attrs as Record<string, unknown>;
-    visit({
-      citationId: (a.citationId as string) || "",
-      command: (a.command as string) || "",
-      displayText: (a.displayText as string) || "",
-    });
-  }
-  if (Array.isArray(json.content)) {
-    for (const child of json.content) walkJsonContentForCitations(child, visit);
-  }
-}
-
-/**
- * Return a deep copy of a footnote's `attrs.content` JSON with every nested
- * `citation` node whose id matches `citationId` removed, plus whether any was
- * removed. Mirror image of `walkJsonContentForCitations`: that collector
- * surfaces footnote-nested cites into the panels, so deleting such a card must
- * also strip the nested atom — otherwise the surviving nested `\cite`
- * re-derives the deleted card on reload (backlog #38). Matches on either the
- * `citationId` or the unified `linkId` attr (the inline atom carries both).
- * Pure (no mutation of the input); returns the original reference untouched
- * when nothing matched so callers can skip a no-op transaction.
- */
-export function removeCitationFromJsonContent(
-  json: JSONContent,
-  citationId: string,
-): { content: JSONContent; removed: boolean } {
-  let removed = false;
-  const prune = (node: JSONContent): JSONContent | null => {
-    if (node.type === "citation" && node.attrs) {
-      const a = node.attrs as Record<string, unknown>;
-      if (a.citationId === citationId || a.linkId === citationId) {
-        removed = true;
-        return null; // drop this node
-      }
-    }
-    if (Array.isArray(node.content)) {
-      const kept = node.content
-        .map((child) => prune(child))
-        .filter((c): c is JSONContent => c !== null);
-      return { ...node, content: kept };
-    }
-    return { ...node };
-  };
-  const next = prune(json) ?? json;
-  return { content: next, removed };
-}
+// Re-export the pure walkers from their new home so existing import sites
+// (`from "../citation-doc-ops"`) keep working unchanged.
+export { walkJsonContentForCitations, removeCitationFromJsonContent };
 
 /**
  * Strip every footnote-NESTED `\cite` matching `citationId` from the doc, by

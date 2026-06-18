@@ -129,6 +129,8 @@ import { parseAnyKey } from "@/floats/float-key";
 import { FLOAT_DEFAULT_SIZE } from "@/floats/float-policy";
 import { textObjectPopoutKey } from "@/text-objects/text-object-registry";
 import { CARD_REGISTRY } from "@/cards/card-registry";
+import { runCardLifecycleEvent } from "@/cards/lifecycle/run-event";
+import { bridgeCardAiRequestFlag } from "@/lib/ai-request-bridge";
 import { isCardKind, panelForCardKind } from "@/cards/predicates";
 import { PoppedCardsContext, type PoppedCardsValue } from "@/hooks/usePoppedCards";
 import { DropModeProvider } from "./drop-mode/DropModeProvider";
@@ -155,6 +157,14 @@ import {
   type EditorActionsHandle,
 } from "@/lib/actions/action-registry";
 import { setEditorActionsHandle } from "@/lib/actions/editor-actions-bridge";
+import { isRenameCitekey } from "@/lib/identity/identity-cascade";
+import { rewriteCiteKeyInDoc } from "@/lib/identity/bib-cite-rewrite";
+import { useIdentityBusConsumer } from "@/lib/identity/useIdentityBusConsumer";
+import { useInlineAtomLifecycle } from "@/links/_shared/useInlineAtomLifecycle";
+import { useCardLifecycleReconciler } from "@/cards/lifecycle/useCardLifecycleReconciler";
+import { useCitationResync } from "@/links/_shared/useCitationResync";
+import { useOrphanedFootnotes } from "@/hooks/useOrphanedFootnotes";
+import { isInlineAtomLifecycleOn } from "@/lib/identity/inline-atom-lifecycle-flag";
 import { DragHandleMenu } from "./DragHandleMenu";
 import { HeadingTypeMenu, type HeadingTypePick } from "./HeadingTypeMenu";
 import { useConfirmDialog } from "./ConfirmDialog";
@@ -384,9 +394,10 @@ export interface EditorPaneViewPrefs {
   // ── OutlineHost handlers ────────────────────────────────────────
   onScrollToHeading: (blockIndex: number) => void;
   onReorderBlocks: (fromIndex: number, count: number, toIndex: number) => void;
-  onRenameHeading: (blockIndex: number, newText: string) => void;
-  onRenameParTitle: (blockIndex: number, newTitle: string) => void;
-  onUpdateLabel: (blockIndex: number, newLabel: string | null) => void;
+  // T3 (W3a): rename/label address by durable block uuid, not integer index.
+  onRenameHeading: (uuid: string, newText: string) => void;
+  onRenameParTitle: (uuid: string, newTitle: string) => void;
+  onUpdateLabel: (uuid: string, newLabel: string | null) => void;
   isLabelTaken: (candidate: string, excludeLabel: string | null) => boolean;
   onFocusActivate: () => void;
   onFocusDeactivate: () => void;
@@ -538,6 +549,13 @@ export interface PaneState {
   // `DOC_BIB_CHANGED_EVENT` listeners. Now EditorLayout reads the live
   // hook from here.
   citationsHook: CitationsHook;
+  // The search-panel highlight range. EditorPane is the canonical owner —
+  // SearchHost mounts INSIDE EditorPane and writes this local, and EditorPane's
+  // own <Editor> renders the highlight overlay. It bubbles up so EditorLayout
+  // (and any future cross-pane consumer) can read the live range from the one
+  // owner instead of a dead duplicate. The producer→editor path no longer
+  // crosses the component boundary in the wrong direction (SR-F3-01/F8-01).
+  searchHighlightRange: { from: number; to: number } | null;
 }
 
 export interface EditorPaneProps {
@@ -853,9 +871,161 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
     libraryEntries: libraryMasterBibEntries,
     addBibEntry: citationsHook.addBibEntry,
   });
-  const annotationsHook = useAnnotations(docId);
-  const bibReviewHook = useBibReview(docId);
+  // Thread the citekey → uid resolver + the live entry list into the bib
+  // sidecars so they can re-key on the durable uid under the identity-cascade
+  // flag (T1 Stage 1). Flag OFF: the resolver is ignored and they keep the
+  // legacy citekey-keyed shape (no behavior change).
+  const annotationsHook = useAnnotations(
+    docId,
+    citationsHook.getBibEntry,
+    citationsHook.bibEntries,
+  );
+  const bibReviewHook = useBibReview(
+    docId,
+    citationsHook.getBibEntry,
+    citationsHook.bibEntries,
+  );
   const bibSettingsHook = useBibSettings(docId);
+
+  // Register the editor `\cite{}` doc-rewrite as a migrator on the
+  // IdentityCascade (T1 Stage 2, checklist step 9). When a citekey rename fans
+  // out, this rewrites every `\cite{oldKey}` atom in the live doc — top-level
+  // AND footnote-nested — in one transaction, so the panel patch survives the
+  // next `syncFromEditor` re-derive (the deep half of the fix, BIB-F5-03). The
+  // editor is re-read via `innerRef` at call time so the migrator stays stable
+  // and an HMR remount is sound. Idempotent registration (Set semantics).
+  const identityCascade = citationsHook.identityCascade;
+  useEffect(() => {
+    const unregister = identityCascade.registerMigrator("bibEntry", (change) => {
+      if (!isRenameCitekey(change)) return;
+      const { oldKey, newKey } = change.renameCitekey;
+      if (oldKey === newKey) return;
+      const ed = innerRef.current?.getEditor();
+      if (!ed) return;
+      rewriteCiteKeyInDoc(ed, oldKey, newKey);
+    });
+    return unregister;
+  }, [identityCascade]);
+
+  // Second `bibEntry` migrator (BIB-A2-04): a citekey rename must NOT strand a
+  // popped-out bib float or the panel selection. The bib float key is
+  // `float:card:bib:<citekey>` and the floatable resolves the entry by citekey,
+  // so without a lockstep remap the popped window blanks/dies on rename (and
+  // its saved rect orphans in `cardFloatPositions`); likewise `selectedBibKey`
+  // (citekey-keyed) loses its target. The cascade is the single writer that
+  // owns this re-point: it (1) lockstep-migrates the float key + its rect via
+  // `remapCardPopKey` (no-op when the entry isn't floated), and (2) re-points
+  // the panel selection if it pointed at the old key. Keyed on the durable uid
+  // upstream, so this fires exactly once per real rename. Idempotent (Set).
+  useEffect(() => {
+    const unregister = identityCascade.registerMigrator("bibEntry", (change) => {
+      if (!isRenameCitekey(change)) return;
+      const { oldKey, newKey } = change.renameCitekey;
+      if (oldKey === newKey) return;
+      // Lockstep float-key remap (keys + saved rect move together).
+      viewPrefs?.remapCardPopKey(cardPopKey("bib", oldKey), cardPopKey("bib", newKey));
+      // Re-point the panel selection so the renamed entry stays selected.
+      setSelectedBibKey((prev) => (prev === oldKey ? newKey : prev));
+    });
+    return unregister;
+  }, [identityCascade, viewPrefs]);
+
+  // W1b — the single inline-atom DocStructureBus consumer (D1.2/D1.4). Mounts
+  // ONCE per pane behind `virgil:identity-cascade`. Opens exactly one
+  // `onAnyChange` subscription and registers T1's `regenIds` policy FIRST: on a
+  // markerless re-parse (the diff carries same-tx add+remove of citations/
+  // footnotes whose ids regenerated), it routes the `oldId -> newId` remap
+  // through the cascade so panel selection / float / pin survive the re-parse
+  // (OMNI-F3-02, CI-A3-01, the CI-F1-02 id-survival class). The returned
+  // dispatcher is where Wave-2 T2 (inline-atom lifecycle) and T5 (citation
+  // add-resync) register their reconcilers — they do NOT open new subscriptions.
+  // O(1) bail on any non-atom transaction; never runs on a plain keystroke.
+  const identityBusConsumer = useIdentityBusConsumer(editor, identityCascade);
+
+  // W2b — the inline-atom lifecycle reconciler, registered as a POLICY on the
+  // single consumer above (NOT a new subscription; the +1-not-+3 invariant). On
+  // the bus diff it (a) upserts/clears the durable orphan record so an undone
+  // delete can never leave the atom both anchored AND orphan (FN-A1-03), (b)
+  // prunes the `cardStore` selection/hover/expand ref of a genuinely-deleted
+  // inline atom (the prune-exemption ghost class, FN-A1-01 etc.), and (c) closes
+  // (or re-points, for a recoverable orphan) the popped float. It also registers
+  // the `inlineAtom`/`regenIds` selection+float re-point migrator on the cascade
+  // (OMNI-F3-02, CI-A3-01, CI-F1-02). Behind `virgil:inline-atom-lifecycle`
+  // (default OFF); flag-off the hook is inert and the legacy paths are untouched.
+  const orphanedFootnotesStore = useOrphanedFootnotes(docId);
+  useInlineAtomLifecycle({
+    editor,
+    consumer: identityBusConsumer,
+    cascade: identityCascade,
+    orphans: orphanedFootnotesStore,
+    // Inline structural counter — the liveness reconcile that closes the
+    // orphan-clear undo edge (FN-A1-03) fires when this bumps, never per keystroke.
+    atomRevision: rev.footnotes + rev.citations,
+    floats: viewPrefs
+      ? {
+          poppedOutCards: viewPrefs.prefs.poppedOutCards,
+          closeCardPopout: viewPrefs.closeCardPopout,
+          remapCardPopKey: viewPrefs.remapCardPopKey,
+        }
+      : undefined,
+  });
+
+  // ── W2 CUTOVER: the SINGLE rendered orphan store ────────────────────────
+  // The panel / omni / search surfaces render orphaned footnotes from
+  // `viewPrefs.orphanedFootnotes` (+ the `onEditOrphan` / `onDeleteOrphan` /
+  // `onEditOrphanTitle` handlers). Pre-cutover that store was the volatile
+  // EditorLayout shell `useState`, populated by the legacy `virgil-footnote-
+  // orphaned` event web. W2a built the durable per-doc sidecar
+  // (`orphanedFootnotesStore`) and W2b made the bus reconciler its only writer —
+  // but NOTHING rendered it, so flag-ON the reconciler maintained a store the
+  // UI never read while the legacy web still drove the panel (the BLOCKER).
+  //
+  // Here we close that gap: flag-ON, swap the four orphan fields of the
+  // `viewPrefs` bundle to read/write the SIDECAR (one store: reconciler writes,
+  // panel reads). Flag-OFF, pass `viewPrefs` through UNCHANGED so the legacy
+  // event web + shell state still drive the panel byte-identically. The non-
+  // orphan fields of `viewPrefs` are never touched on either path.
+  const lifecycleFlagOn = isInlineAtomLifecycleOn();
+  const effectiveViewPrefs = useMemo(() => {
+    if (!viewPrefs || !lifecycleFlagOn) return viewPrefs;
+    return {
+      ...viewPrefs,
+      orphanedFootnotes: orphanedFootnotesStore.orphans,
+      onEditOrphan: orphanedFootnotesStore.editOrphanContent,
+      onDeleteOrphan: orphanedFootnotesStore.clearOrphan,
+      onEditOrphanTitle: orphanedFootnotesStore.editOrphanTitle,
+    };
+  }, [viewPrefs, lifecycleFlagOn, orphanedFootnotesStore]);
+
+  // W2d (T4 D6 seam) — the card-lifecycle reconciler. Consumes the
+  // `card-deleted` / `card-morphed` signal `runCardLifecycleEvent` publishes and
+  // prunes / re-keys the global `cardStore` for the SIDECAR-backed kinds
+  // (report/note/cutter/revision), whose lifecycle the DocStructureBus never
+  // sees. Unflagged (correct-by-construction; no bus subscription) — keeps a
+  // morphed report's selection halo (REP-F6-02 / OMNI-F6-02) and clears a
+  // deleted card's stale halo regardless of the inline-atom-lifecycle flag.
+  useCardLifecycleReconciler();
+
+  // W2c — the citation add/resync reconciler, registered as a POLICY on the
+  // same single consumer (NOT a new subscription; the +1-not-+3 invariant). The
+  // mount-only `syncFromEditor` effect below (gated on `[editor]`) misses every
+  // out-of-band citation add/remove — a code-view `\cite`, a Backspace over a
+  // marker — leaving the sidecar card list stale until reload (C17). This policy
+  // re-runs that idempotent reconcile off the bus diff whenever a citation
+  // entered/left the doc, so a code-view-added `\cite` shows a card live
+  // (CI-F8-03) and a deleted `\cite` prunes its dead card live (CI-A1-01, the
+  // sidecar half — W2b owns the cardStore/float half on the same consumer, never
+  // double-owning the reconcile). A pure markerless re-parse (survivors T1
+  // already re-pointed) is skipped so it doesn't thrash the sidecar write.
+  // Behind `virgil:inline-atom-lifecycle` (default OFF); flag-off the hook is
+  // inert and the legacy mount-only path is the only reconcile (byte-identical).
+  useCitationResync({
+    editorReady: !!editor,
+    consumer: identityBusConsumer,
+    getCitations: () => innerRef.current?.getCitations() ?? [],
+    syncFromEditor: citationsHook.syncFromEditor,
+  });
+
   const notesHookRaw = useNotes(docId, notePristine);
   const aiRequestsHook = useAiRequests(docId);
   const cutterHookRaw = useCutter(docId, cutPristine);
@@ -884,56 +1054,57 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
       const morph = CARD_REGISTRY[fromCardKind].morph;
       if (!morph) return; // non-morphing kind — defensive no-op
       const toCardKind = morph.to;
-      if (morph.lossy) {
-        // report ↔ report-request KEEPS the rich body and only drops the
-        // title / byline / AI-request flag, so don't tell the user the body
-        // won't carry across (it does). note ↔ highlight drops the whole body.
-        const preservesBody =
-          fromCardKind === "report" || fromCardKind === "report-request";
-        const message = preservesBody
-          ? `This drops the title and byline (a ${CARD_REGISTRY[toCardKind].label} can't hold them); the body and text anchor stay. Continue?`
-          : `This drops fields that a ${CARD_REGISTRY[toCardKind].label} can't hold (the body and title don't carry across). The text anchor stays. Continue?`;
-        const ok = await confirmMorph({
-          title: `Change to ${CARD_REGISTRY[toCardKind].label}?`,
-          message,
-          confirmLabel: `Make it a ${CARD_REGISTRY[toCardKind].label}`,
-          cancelLabel: "Keep as is",
-          tone: "default",
-        });
-        if (!ok) return;
-      }
-      // Dispatch to the owning panel hook with its expected data toKind.
-      switch (fromCardKind) {
-        case "revision-comment":
-          revisionsHookRaw.convertCard(id, "suggestion");
-          break;
-        case "revision-suggestion":
-          revisionsHookRaw.convertCard(id, "comment");
-          break;
-        case "cutter-comment":
-          cutterHookRaw.convertCard(id, "suggestion");
-          break;
-        case "cutter-suggestion":
-          cutterHookRaw.convertCard(id, "comment");
-          break;
-        case "report":
-          reportsHookRaw.convertCard(id, "report-request");
-          break;
-        case "report-request":
-          reportsHookRaw.convertCard(id, "report");
-          break;
-        case "note":
-          notesHookRaw.convertCard(id, "highlight");
-          break;
-        case "highlight":
-          notesHookRaw.convertCard(id, "note");
-          break;
-        default:
-          return;
-      }
+      // The morph chokepoint now routes through `runCardLifecycleEvent` (T4
+      // §3.3): the confirm copy is GENERATED from `morph.drops` (never
+      // direction-blind — REP-F6-03), the aiRequest inbox is UNBRIDGED when the
+      // morph drops the flag (report-request→report — REP-F5-01), the per-doc
+      // hook mutation is the `mutate` step, and a `card-morphed` signal is
+      // published (the D6 seam W2b consumes to re-key cardStore — REP-F6-02).
+      const committed = await runCardLifecycleEvent(
+        { type: "morph", fromKind: fromCardKind, id },
+        {
+          confirm: confirmMorph,
+          unbridgeAiRequest: (kind, cardId) =>
+            bridgeCardAiRequestFlag(docId, kind, cardId, false, {
+              // value=false drops the existing entry by {panel, cardId}; the
+              // ctx fields are only read on the add path, so a placeholder is fine.
+              text: "",
+            }),
+          mutate: () => {
+            // Dispatch to the owning panel hook with its expected data toKind.
+            switch (fromCardKind) {
+              case "revision-comment":
+                revisionsHookRaw.convertCard(id, "suggestion");
+                break;
+              case "revision-suggestion":
+                revisionsHookRaw.convertCard(id, "comment");
+                break;
+              case "cutter-comment":
+                cutterHookRaw.convertCard(id, "suggestion");
+                break;
+              case "cutter-suggestion":
+                cutterHookRaw.convertCard(id, "comment");
+                break;
+              case "report":
+                reportsHookRaw.convertCard(id, "report-request");
+                break;
+              case "report-request":
+                reportsHookRaw.convertCard(id, "report");
+                break;
+              case "note":
+                notesHookRaw.convertCard(id, "highlight");
+                break;
+              case "highlight":
+                notesHookRaw.convertCard(id, "note");
+                break;
+            }
+          },
+        },
+      );
+      if (!committed) return;
       viewPrefs?.remapCardPopKey(cardPopKey(fromCardKind, id), cardPopKey(toCardKind, id));
     },
-    [revisionsHookRaw, cutterHookRaw, reportsHookRaw, notesHookRaw, viewPrefs, confirmMorph],
+    [revisionsHookRaw, cutterHookRaw, reportsHookRaw, notesHookRaw, viewPrefs, confirmMorph, docId],
   );
   // Per-pair adapters that take each card's legacy `(id, dataToKind)` signature,
   // resolve the FROM spine kind, and delegate to the generalized chokepoint —
@@ -983,9 +1154,37 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
     () => ({ ...cutterHookRaw, convertCard: convertCutterCard }),
     [cutterHookRaw, convertCutterCard],
   );
+  // Wrap the reports `deleteCard` so a DELETE of an aiRequest-bearing
+  // report-request discharges the same cross-store obligation a morph does:
+  // UNBRIDGE the pending ai-requests.json entry (REP-F7-02, the symmetric
+  // delete leak) + publish the D6 card-deleted signal — through the SAME
+  // executor contract, so the delete and the morph can't diverge. The
+  // content-confirm already happened upstream (EditableCard / deleteMarginItem),
+  // so the executor runs with `hasContent: false` (no double-confirm). A plain
+  // `report` (no routing) deletes straight through.
+  const deleteReportCard = useCallback(
+    (id: string) => {
+      const card = reportsHookRaw.cards.find((c) => c.id === id);
+      const kind: CardKind = card?.kind === "report-request" ? "report-request" : "report";
+      void runCardLifecycleEvent(
+        { type: "delete", kind, id, hasContent: false },
+        {
+          confirm: async () => true, // upstream already confirmed
+          unbridgeAiRequest: (k, cid) =>
+            bridgeCardAiRequestFlag(docId, k, cid, false, { text: "" }),
+          mutate: () => reportsHookRaw.deleteCard(id),
+        },
+      );
+    },
+    [reportsHookRaw, docId],
+  );
   const reportsHook = useMemo(
-    () => ({ ...reportsHookRaw, convertCard: convertReportCard }),
-    [reportsHookRaw, convertReportCard],
+    () => ({
+      ...reportsHookRaw,
+      convertCard: convertReportCard,
+      deleteCard: deleteReportCard,
+    }),
+    [reportsHookRaw, convertReportCard, deleteReportCard],
   );
   const notesHook = useMemo(
     () => ({ ...notesHookRaw, convertCard: convertNotesCard }),
@@ -1229,7 +1428,13 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
   // `onCitationCreated` in the `CitationDisplayContext` so panel
   // mini-editors (notes, footnotes) can register fresh `\cite{}` drops
   // and get back the display text for their Citation node.
-  const { handleCitationCreated } = useCitationActions({
+  // `handleCitationCreated` lands in the CitationDisplayContext (panel
+  // mini-editors); `handleCitationDrop` is the main editor's counterpart —
+  // wired into the live `<Editor onCitationDrop>` below so dragging an
+  // unanchored citation card into the body anchors it (CI-A2-01). Before
+  // this the gate at Editor.tsx existed but no host ever threaded the prop,
+  // so the drop was a silent no-op.
+  const { handleCitationCreated, handleCitationDrop } = useCitationActions({
     editorRef: innerRef,
     getCitationDisplayText: citationsHook.getDisplayText,
     addCitation: citationsHook.addCitation,
@@ -1701,7 +1906,7 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
   // reads the cardStore at click time, so the marker memo below doesn't
   // depend on selection state (a selection change re-renders no markers).
   const handleGutterMarkerClick = useCallback(
-    (ref: AnchoredCardRef, clickY?: number) => {
+    (ref: AnchoredCardRef, clickY?: number, anchorIndex?: number) => {
       if (cardStore.isSelected(ref)) {
         // Toggle-off: second click deselects across ALL marker kinds.
         cardStore.clearSelection();
@@ -1712,9 +1917,16 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
       // scrolling the document row.
       suppressNextPlacement();
       cardStore.select(ref);
+      // T5 Pillar E-2 (REP-F3-01 / OMNI-F3-01 / OMNI-F8-02): a multi-anchor
+      // card draws ONE gutter marker per anchored paragraph, and the omni
+      // surface draws one row per anchor keyed `…@<anchorIndex>`. Stamp the
+      // clicked marker's anchor index so the bridge can pin/jump to the RIGHT
+      // `@N` row instead of always the first. `undefined` for single-anchor
+      // cards (their omni row has no `@N` suffix — see each panel's omni
+      // builder, which only suffixes when `pids.length > 1`).
       window.dispatchEvent(
         new CustomEvent("virgil-linked-anchor-click", {
-          detail: { entityId: ref.id, kind: ref.kind, clickY },
+          detail: { entityId: ref.id, kind: ref.kind, clickY, anchorIndex },
         }),
       );
     },
@@ -1865,6 +2077,17 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
       return pids.map((pid) => ({ pid, unanchored: false }));
     };
 
+    // T5 Pillar E-2: the `@N` anchor index of a marker's paragraph within the
+    // card's stored anchor order — the SAME index each panel's omni builder
+    // uses to key its per-anchor row (`…@<pi>`, suffixed ONLY when the card
+    // has >1 anchor). Returns `undefined` for a single-anchor card (its omni
+    // row carries no `@N` suffix) so the bridge keys the bare card popKey.
+    const anchorIndexFor = (pids: string[], pid: string): number | undefined => {
+      if (pids.length <= 1) return undefined;
+      const i = pids.indexOf(pid);
+      return i >= 0 ? i : undefined;
+    };
+
     // Notes
     for (const n of notesHook.notes) {
       const pids = getLinkedTextObjectIds(n);
@@ -1880,7 +2103,7 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
           title: n.title || "Note",
           unanchored,
           onClick: (clickY?: number) =>
-            handleGutterMarkerClick({ kind: "note", id: n.id }, clickY),
+            handleGutterMarkerClick({ kind: "note", id: n.id }, clickY, anchorIndexFor(pids, pid)),
           onDelete: () => {
             void handleMarginItemDelete("note", n.id, pid, anchor?.anchorId);
           },
@@ -1903,7 +2126,7 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
           title: "Archived snippet",
           unanchored,
           onClick: (clickY?: number) =>
-            handleGutterMarkerClick({ kind: "archive", id: snippet.id }, clickY),
+            handleGutterMarkerClick({ kind: "archive", id: snippet.id }, clickY, anchorIndexFor(pids, pid)),
           onDelete: () => { void handleMarginItemDelete("archive", snippet.id, pid); },
         });
       }
@@ -1934,7 +2157,7 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
           unanchored,
           anchorId,
           onClick: (clickY?: number) =>
-            handleGutterMarkerClick({ kind: revKind, id: r.id }, clickY),
+            handleGutterMarkerClick({ kind: revKind, id: r.id }, clickY, anchorIndexFor(pids, pid)),
           onDelete: () => {
             void handleMarginItemDelete("revision", r.id, pid, anchorId);
           },
@@ -1962,7 +2185,7 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
           title,
           unanchored,
           onClick: (clickY?: number) =>
-            handleGutterMarkerClick({ kind: cutKind, id: c.id }, clickY),
+            handleGutterMarkerClick({ kind: cutKind, id: c.id }, clickY, anchorIndexFor(pids, pid)),
           onDelete: () => {
             void handleMarginItemDelete("cut", c.id, pid, cardAnchor?.anchorId);
           },
@@ -1989,7 +2212,7 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
           title,
           unanchored,
           onClick: (clickY?: number) =>
-            handleGutterMarkerClick({ kind: c.kind, id: c.id }, clickY),
+            handleGutterMarkerClick({ kind: c.kind, id: c.id }, clickY, anchorIndexFor(pids, pid)),
           onDelete: () => {
             void handleMarginItemDelete("report", c.id, pid, cardAnchor?.anchorId);
           },
@@ -2013,7 +2236,7 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
           muted: item.done,
           unanchored,
           onClick: (clickY?: number) =>
-            handleGutterMarkerClick({ kind: "todo", id: item.id }, clickY),
+            handleGutterMarkerClick({ kind: "todo", id: item.id }, clickY, anchorIndexFor(pids, pid)),
           onDelete: () => { void handleMarginItemDelete("todo", item.id, pid); },
         });
       }
@@ -2899,8 +3122,13 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
   // side-aware setter so cross-panel jumps land where the user has
   // placed the destination.
   const [searchState, setSearchState] = useState<SearchPanelState>(INITIAL_SEARCH_STATE);
+  // EditorPane OWNS the search highlight: SearchHost (mounted below) writes it,
+  // and EditorPane's own <Editor> renders it (see `effectiveHighlightRange`).
+  // Previously this was `void`-ed and the highlight pipe was wired to a DEAD
+  // duplicate in EditorLayout that nothing wrote — so a result click never
+  // highlighted (SR-F3-01/F8-01). The state now lives where the producer and
+  // the renderer both are.
   const [searchHighlightRange, setSearchHighlightRange] = useState<{ from: number; to: number } | null>(null);
-  void searchHighlightRange; // surfaces in the editor's highlight overlay post-7.8
 
   // Archive helpers — anchored-id set + paragraph-order sort matching
   // EditorLayout. The ArchivePanel uses these to surface anchored
@@ -2989,11 +3217,20 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
     // resurrect this deliberate trash-delete as an orphan card. The
     // suppress event is consumed by the same bridge hook (in EditorLayout)
     // where `suppressOrphanRef` lives. See footnote-sync.ts.
-    window.dispatchEvent(
-      new CustomEvent("virgil-footnote-suppress-orphan", {
-        detail: { footnoteId: id },
-      }),
-    );
+    //
+    // W2 cutover: flag-ON the legacy orphan event web is RETIRED — the bus
+    // reconciler (`useInlineAtomLifecycle`) owns orphan upsert/clear off the
+    // structural diff, gated on the body-content test, so a deliberate delete
+    // needs no latch (the detector emission is itself short-circuited in
+    // footnote.ts on the flag path). Only dispatch the latch on the legacy
+    // (flag-OFF) path so the suppress producer/consumer stay in lockstep.
+    if (!isInlineAtomLifecycleOn()) {
+      window.dispatchEvent(
+        new CustomEvent("virgil-footnote-suppress-orphan", {
+          detail: { footnoteId: id },
+        }),
+      );
+    }
     innerRef.current?.deleteFootnote(id);
   }, []);
 
@@ -3110,6 +3347,27 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
       setActiveRightPanelKind(visiblePanelsRight[0] ?? null);
     }
   }, [visiblePanelsRight, activeRightPanelKind]);
+
+  // SR-F8-02: clear the search highlight when the search panel is no longer
+  // visible, owned WHERE the producer is (EditorPane). Search is visible if
+  // it's docked on either side (main app) or it's the active kind (Reader).
+  // This replaces the dead EditorLayout clear that operated on a state nothing
+  // wrote.
+  const searchPanelOpen =
+    visiblePanelsLeft.includes("search") ||
+    visiblePanelsRight.includes("search") ||
+    activeLeftPanelKind === "search" ||
+    activeRightPanelKind === "search";
+  useEffect(() => {
+    if (!searchPanelOpen) setSearchHighlightRange(null);
+  }, [searchPanelOpen]);
+
+  // The range fed to the editor's highlight overlay. Search wins over the
+  // error range bubbled down from EditorLayout (`highlightRange` prop) — a
+  // search highlight is an explicit user action; the error range is derived
+  // from selection. EditorPane owns search; EditorLayout still owns the error
+  // range and passes it down (the seam that bubbles the OTHER direction).
+  const effectiveHighlightRange = searchHighlightRange ?? highlightRange;
 
   // Marker click → activate the panel on the side it's been placed on.
   const setActivePanelKindBySide = useCallback(
@@ -3267,6 +3525,7 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
       cancelBibReview: bibReviewHook.cancelRequest,
       getBibReviewStatus: bibReviewHook.getRequestStatus,
       updateBibEntry: citationsHook.updateBibEntry,
+      replaceBibEntry: citationsHook.replaceBibEntry,
       updateBibKeyAndType: citationsHook.updateBibKeyAndType,
       addBibEntry: citationsHook.addBibEntry,
 
@@ -3390,10 +3649,12 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
       }),
       collab,
       citationsHook,
+      searchHighlightRange,
     });
   }, [
     onPaneStateChange,
     editor,
+    searchHighlightRange,
     aiRequestsHook.requests,
     bibReviewHook.requests,
     bibSettingsHook.entryRequests,
@@ -3424,6 +3685,10 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
 
   useAnchorHighlightReconciler({
     editor,
+    // The inline-atom structural counter (footnotes + citations) so the
+    // dangling-ref prune re-runs when an inline atom is added/removed — the
+    // inline kinds never change `collections` (they aren't in it). T2 §3b.2.
+    atomRevision: rev.footnotes + rev.citations,
     collections: {
       notes: notesHook.notes,
       cutterCards: cutterHook.cards,
@@ -3706,7 +3971,7 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
                     setSearchHighlightRange={setSearchHighlightRange}
                     openItemInPanel={openItemInPanel}
                     wordCountHook={wordCountHook}
-                    viewPrefs={viewPrefs}
+                    viewPrefs={effectiveViewPrefs}
                   />
                 ) : (
                   <PanelChromeProvider
@@ -3779,7 +4044,7 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
                       setSearchHighlightRange={setSearchHighlightRange}
                       openItemInPanel={openItemInPanel}
                       wordCountHook={wordCountHook}
-                      viewPrefs={viewPrefs}
+                      viewPrefs={effectiveViewPrefs}
                     />
                   </PanelChromeProvider>
                 );
@@ -3904,7 +4169,7 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
                 onDeleteCitation={handleDeleteCitation}
                 selectedNoteId={selectedNoteId}
                 setSelectedNoteId={setSelectedNoteId}
-                viewPrefs={viewPrefs}
+                viewPrefs={effectiveViewPrefs}
                 latexErrors={allLatexErrors}
                 selectedErrorId={selectedErrorId}
                 setSelectedErrorId={setSelectedErrorId}
@@ -4635,9 +4900,10 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
                       docHook.onUpdate(editor, tx);
                     }}
                     highlightText={highlightText}
-                    highlightRange={highlightRange}
+                    highlightRange={effectiveHighlightRange}
                     editable={editable}
                     onEditorReady={handleEditorReady}
+                    onCitationDrop={handleCitationDrop}
                     anchoredUuidsRef={anchoredUuidsRef}
                     texBlockIsPoppedRef={texBlockIsPoppedRef}
                     onOpenHeadingTypeMenu={openHeadingTypeMenu}
@@ -4720,7 +4986,7 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
                         setSearchHighlightRange={setSearchHighlightRange}
                         openItemInPanel={openItemInPanel}
                         wordCountHook={wordCountHook}
-                        viewPrefs={viewPrefs}
+                        viewPrefs={effectiveViewPrefs}
                       />
                     )}
                   />
@@ -4924,7 +5190,7 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
                 onDeleteCitation={handleDeleteCitation}
                 selectedNoteId={selectedNoteId}
                 setSelectedNoteId={setSelectedNoteId}
-                viewPrefs={viewPrefs}
+                viewPrefs={effectiveViewPrefs}
                 latexErrors={allLatexErrors}
                 selectedErrorId={selectedErrorId}
                 setSelectedErrorId={setSelectedErrorId}
@@ -5842,6 +6108,7 @@ function PaneRailBody({
         todoItems={todosHook.items}
         archiveSnippets={archiveHook.snippets}
         cutterCards={cutterHook.cards}
+        reportCards={reportsHook.cards}
         comments={revisionsHook.cards}
         bibEntries={citationsHook.bibEntries}
         openItemInPanel={openItemInPanel}
@@ -5869,8 +6136,8 @@ function PaneRailBody({
         bibPackage={citationsHook.bibPackage}
         addBibEntry={citationsHook.addBibEntry}
         updateBibEntry={citationsHook.updateBibEntry}
+        replaceBibEntry={citationsHook.replaceBibEntry}
         updateBibKeyAndType={citationsHook.updateBibKeyAndType}
-        getFormattedBib={citationsHook.getFormattedBib}
         getAnnotation={annotationsHook.getAnnotation}
         setAnnotation={annotationsHook.setAnnotation}
         requestBibReview={bibReviewHook.requestReview}

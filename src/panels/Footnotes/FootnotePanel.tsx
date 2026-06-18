@@ -70,45 +70,6 @@ function FootnotePanel({
     [aiRequests],
   );
 
-  const onActivateFootnote = useCallback(
-    (fn: FootnoteInfo) => {
-      onSelect(fn.footnoteId);
-      onScrollToMarker(fn.footnoteId);
-    },
-    [onSelect, onScrollToMarker],
-  );
-  const {
-    idx: cycleIdx,
-    next: cycleNext,
-    prev: cyclePrev,
-    setIdx: setCycleIdx,
-  } = useCycle(footnotes, onActivateFootnote);
-
-  useEffect(() => {
-    if (!selectedId) {
-      if (cycleIdx != null) setCycleIdx(null);
-      return;
-    }
-    const i = footnotes.findIndex((fn) => fn.footnoteId === selectedId);
-    if (i >= 0 && i !== cycleIdx) setCycleIdx(i);
-  }, [selectedId, footnotes, cycleIdx, setCycleIdx]);
-
-  const handleNavKeys = useCallback(
-    (e: React.KeyboardEvent) => {
-      if (footnotes.length === 0) return;
-      if (e.key === "ArrowDown") {
-        e.preventDefault();
-        cycleNext();
-        clearStaleHover(e.currentTarget as HTMLElement);
-      } else if (e.key === "ArrowUp") {
-        e.preventDefault();
-        cyclePrev();
-        clearStaleHover(e.currentTarget as HTMLElement);
-      }
-    },
-    [footnotes, cycleNext, cyclePrev],
-  );
-
   const items = useMemo<FootnoteItem[]>(
     () => {
       const out: FootnoteItem[] = [
@@ -126,10 +87,57 @@ function FootnotePanel({
     [orphanedFootnotes, footnotes, recentlyAddedId],
   );
 
+  // C25 (FN-F2-02): cycle the RENDERED union, not the anchored sub-array, so
+  // ArrowUp/Down keyboard nav visits the orphan cards that render at the top.
+  // Selection works for both kinds; only anchored footnotes have an in-text
+  // marker to scroll to (orphans have no callout), so the jump is gated.
+  const onActivateItem = useCallback(
+    (item: FootnoteItem) => {
+      onSelect(item.data.footnoteId);
+      if (item.kind === "anchored") onScrollToMarker(item.data.footnoteId);
+    },
+    [onSelect, onScrollToMarker],
+  );
+  const {
+    idx: cycleIdx,
+    next: cycleNext,
+    prev: cyclePrev,
+    setIdx: setCycleIdx,
+  } = useCycle(items, onActivateItem);
+
+  useEffect(() => {
+    if (!selectedId) {
+      if (cycleIdx != null) setCycleIdx(null);
+      return;
+    }
+    const i = items.findIndex((it) => it.data.footnoteId === selectedId);
+    if (i >= 0 && i !== cycleIdx) setCycleIdx(i);
+  }, [selectedId, items, cycleIdx, setCycleIdx]);
+
+  const handleNavKeys = useCallback(
+    (e: React.KeyboardEvent) => {
+      if (items.length === 0) return;
+      if (e.key === "ArrowDown") {
+        e.preventDefault();
+        cycleNext();
+        clearStaleHover(e.currentTarget as HTMLElement);
+      } else if (e.key === "ArrowUp") {
+        e.preventDefault();
+        cyclePrev();
+        clearStaleHover(e.currentTarget as HTMLElement);
+      }
+    },
+    [items, cycleNext, cyclePrev],
+  );
+
   return (
     <CardListPanel
       kind="footnotes"
-      count={footnotes.length}
+      // C25 (FN-C1-01 / FN-F1-03): the badge counts the RENDERED union (orphans
+      // + anchored), not the anchored sub-list — otherwise a panel showing N
+      // orphans + M anchored displayed only M (and "0", i.e. no badge, when the
+      // panel held orphans only).
+      count={items.length}
       onAdd={onAdd}
       headerLeading={
         <ItemMenu align="left">
@@ -157,9 +165,10 @@ function FootnotePanel({
           <FootnoteCard
             footnote={it.data}
             isSelected={selected}
-            onSelect={() =>
-              onSelect(selectedId === it.data.footnoteId ? null : it.data.footnoteId)
-            }
+            // C15: MONOTONIC select (never the toggling `selectedId===id?null:id`).
+            // The store is the single selection source; the panel slot mirrors
+            // it. Re-click idempotence + skip-jump live in `ac.onBodyActivate`.
+            onSelect={() => onSelect(it.data.footnoteId)}
             onJump={(sourceEl) => onScrollToMarker(it.data.footnoteId, sourceEl)}
             onEdit={(json) => onEdit(it.data.footnoteId, json)}
             onDelete={() => onDelete(it.data.footnoteId)}
@@ -172,9 +181,8 @@ function FootnotePanel({
           <OrphanedFootnoteCard
             orphan={it.data}
             isSelected={selected}
-            onSelect={() =>
-              onSelect(selectedId === it.data.footnoteId ? null : it.data.footnoteId)
-            }
+            // C15: monotonic select (see anchored FootnoteCard above).
+            onSelect={() => onSelect(it.data.footnoteId)}
             onEdit={(json) => onEditOrphan(it.data.footnoteId, json)}
             onDelete={() => onDeleteOrphan(it.data.footnoteId)}
             onEditTitle={(title) => onEditOrphanTitle?.(it.data.footnoteId, title)}

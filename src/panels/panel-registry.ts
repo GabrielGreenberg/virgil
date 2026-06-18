@@ -227,9 +227,11 @@ export const CARD_TITLE_LABELS: Record<CardKind, string | null> = Object.fromEnt
 /** Default title for a freshly created card: `${label} ${currentCount + 1}`.
  *  Returns "" for kinds that opt out (label is null).
  *
- *  NOTE (BUG #31): creation sites no longer PERSIST this. The generated title
- *  is dead as stored data — it lives only as the historical shape that
- *  `isAutoTitle` strips on load. Kept for tests / any future ephemeral use. */
+ *  NOTE (BUG #31 / T6-C12): creation sites no longer PERSIST this — a fresh card
+ *  is created blank + `titleAuto: true` (recorded provenance, FORK-1). The
+ *  generated string is no longer the oracle for "was this machine-generated?";
+ *  the recorded `titleAuto` bit is (see `resolveLoadedTitle`). Kept for tests /
+ *  any future ephemeral use (e.g. a faded placeholder for an auto title). */
 export function nextCardTitle(kind: CardKind, currentCount: number): string {
   const label = CARD_TITLE_LABELS[kind];
   if (!label) return "";
@@ -249,13 +251,66 @@ function escapeRegExp(s: string): string {
  *  Returns false for kinds that never auto-titled (label null) and for any
  *  non-string / empty input, so a real title is never nulled by accident.
  *
- *  Used by the per-kind sidecar migrators to drop a stale generated title on
- *  load (so collapsed/expanded rows fall back to the placeholder / +T). */
+ *  DEMOTED (T6/C12): this shape heuristic is **provably ambiguous** — a
+ *  generated "Report 8" and a user-typed "Report 8" are byte-identical, so it
+ *  silently strips a real title (REP-A2-02 [HIGH] + the ~5-site false-positive
+ *  class). It is now reachable ONLY as the one-time legacy fallback inside
+ *  `resolveLoadedTitle`, for pre-T6 records that carry no `titleAuto` bit. After
+ *  the migration write-back stamps the bit, the heuristic is never consulted
+ *  again for that record. Kept exported for the auto-title test + that fallback;
+ *  do NOT add new direct callers — read recorded provenance via
+ *  `resolveLoadedTitle` instead. */
 export function isAutoTitle(kind: CardKind, title: unknown): boolean {
   if (typeof title !== "string") return false;
   const label = CARD_TITLE_LABELS[kind];
   if (!label) return false;
   return new RegExp(`^${escapeRegExp(label)} \\d+$`).test(title);
+}
+
+/** Decide a card's effective title (or todo body) on load from RECORDED
+ *  provenance (T6/C12), with a one-time legacy fallback to the shape heuristic
+ *  for pre-migration records that have no `titleAuto` bit yet. This replaces the
+ *  `isAutoTitle(kind, title) ? "" : title` strip at the five sidecar load sites
+ *  (reports / archive / notes / todos / examples) — the title's *shape* is no
+ *  longer the oracle for "was this machine-generated?"; recorded provenance is.
+ *
+ *  Truth table:
+ *   - `title` not a string             → "" (never strands a non-string)
+ *   - `titleAuto === false`            → keep `title` ALWAYS (user-owned)
+ *   - `titleAuto === true`             → "" (recorded generated, drop)
+ *   - `titleAuto === undefined`        → legacy record: fall back to the shape
+ *     heuristic ONCE. The caller pairs this with `resolveTitleAuto` to stamp the
+ *     resolved bit back, so the guess happens at most once per record, ever.
+ *
+ *  Strictly no-worse-than-today: the legacy branch is identical to the current
+ *  (BUG #31) behavior, so no existing paper regresses; it self-heals on the
+ *  migration write-back. */
+export function resolveLoadedTitle(
+  kind: CardKind,
+  title: unknown,
+  titleAuto: boolean | undefined,
+): string {
+  if (typeof title !== "string") return "";
+  if (titleAuto === false) return title; // user-owned → keep, always
+  if (titleAuto === true) return ""; // recorded generated → drop
+  // Legacy record (no recorded bit): the ONLY surviving isAutoTitle caller.
+  return isAutoTitle(kind, title) ? "" : title;
+}
+
+/** Resolve the `titleAuto` provenance bit a migrator should STAMP onto a record
+ *  on load, given the stored title and stored bit (T6/C12). Self-stamping +
+ *  forward-only: an explicit bit is preserved verbatim; a legacy record
+ *  (`undefined`) derives the bit ONCE from the shape heuristic so the record is
+ *  permanently classified and `resolveLoadedTitle` never guesses again. Pair
+ *  with `resolveLoadedTitle` at every load/migrate site so the stored title and
+ *  the stamped bit stay consistent. */
+export function resolveTitleAuto(
+  kind: CardKind,
+  title: unknown,
+  titleAuto: boolean | undefined,
+): boolean {
+  if (titleAuto === true || titleAuto === false) return titleAuto;
+  return isAutoTitle(kind, title);
 }
 
 /** `float:card:<kind>:<id>` — the unified popout key for this panel's primary

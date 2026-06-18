@@ -168,6 +168,57 @@ describe("routeAnchorClick body (virgil-linked-anchor-click)", () => {
     );
   });
 
+  it("anchorIndex present: keys the omni open + pin on the `@N` row (REP-F3-01 / OMNI-F3-01 / OMNI-F8-02)", () => {
+    // A 2-anchor report draws one gutter marker per anchored paragraph; the
+    // omni surface draws one row per anchor keyed `…@<anchorIndex>`. The marker
+    // for the SECOND anchor stamps `anchorIndex: 1`, so the bridge must open +
+    // pin `float:card:report:r1@1`, NOT the bare (first-row) key.
+    const deps = makeDeps();
+    mountBridges(deps);
+    dispatch("virgil-linked-anchor-click", {
+      entityId: "r1",
+      kind: "report",
+      clickY: 200,
+      anchorIndex: 1,
+    });
+
+    expect(selectSpy).toHaveBeenCalledWith({ kind: "report", id: "r1" });
+    const [target] = openForCardMock.mock.calls[0];
+    expect(target).toMatchObject({
+      omniKey: "float:card:report:r1@1",
+      panelId: "reports",
+      cardKind: "report",
+      skipScroll: true,
+    });
+    // The pin targets the SAME `@1` row.
+    expect(deps.alignOmniCardWithClick).toHaveBeenCalledWith(
+      "float:card:report:r1@1",
+      200,
+      null,
+    );
+  });
+
+  it("anchorIndex absent (single-anchor card): keys the BARE card popKey (no `@N`)", () => {
+    // A single-anchor card's omni row carries no `@N` suffix (the omni builders
+    // only suffix when `pids.length > 1`), so the marker stamps no anchorIndex
+    // and the bridge keys the bare key — back-compat with the existing route.
+    const deps = makeDeps();
+    mountBridges(deps);
+    dispatch("virgil-linked-anchor-click", {
+      entityId: "r2",
+      kind: "report",
+      clickY: 50,
+    });
+
+    const [target] = openForCardMock.mock.calls[0];
+    expect(target).toMatchObject({ omniKey: "float:card:report:r2" });
+    expect(deps.alignOmniCardWithClick).toHaveBeenCalledWith(
+      "float:card:report:r2",
+      50,
+      null,
+    );
+  });
+
   it("unrouted kind (footnote rides its own event): TOTAL no-op — no select, no open", () => {
     const deps = makeDeps();
     mountBridges(deps);

@@ -130,6 +130,13 @@ export interface ReportCard {
   /** Display author. "ai" renders as "AI"; "human" renders the user's name. */
   author: "human" | "ai";
   title: string;
+  /** Title provenance (T6/C12). `true` = the title was machine-supplied and
+   *  may be discarded on load / never persisted as user content; `false` =
+   *  user-owned (typed into the title field), never strip. `undefined` =
+   *  pre-T6 legacy record — `resolveLoadedTitle` falls back to the shape
+   *  heuristic once, then self-stamps the bit. Records the fact we used to
+   *  guess from the title's shape (the auto-title false-positive class). */
+  titleAuto?: boolean;
   /** Plain-text mirror of `content`, kept in sync on every write. */
   text: string;
   /** Tiptap JSONContent — canonical editable body. */
@@ -164,6 +171,8 @@ export interface ArchivedSnippet {
   id: string;
   /** Optional display title (empty string if untitled). */
   title: string;
+  /** Title provenance (T6/C12). See `ReportCard.titleAuto`. */
+  titleAuto?: boolean;
   /** Rich content (Tiptap JSONContent). Legacy snippets stored plain `text`;
    *  the useArchive hook migrates them to JSONContent on load. */
   content: unknown;
@@ -180,6 +189,10 @@ export interface ArchiveState {
 export interface TodoItem {
   id: string;
   text: string;
+  /** Title provenance (T6/C12) — for a todo the "title" IS the body `text`
+   *  (the legacy seed put a generated "Task N" there). `true` = machine-seeded
+   *  body, strippable on load; `false` = user-typed. See `ReportCard.titleAuto`. */
+  titleAuto?: boolean;
   notes: string;
   done: boolean;
   aiRequest: boolean;
@@ -303,6 +316,12 @@ export interface DocNotificationsInbox {
 // --- Citations ---
 
 export interface BibEntry {
+  /** Durable internal id, minted once and round-tripped via a `\vbid{}`
+   *  marker in the `.bib`. Decoupled from the renameable citekey: a rename
+   *  changes `key`, never `uid`, so uid-keyed sidecars never strand, and two
+   *  entries that share a citekey get two distinct uids. Minted on first
+   *  parse for a markerless `.bib`; not yet consumed by UI (T1 Stage 0). */
+  uid: string;
   key: string;
   type: string; // "article", "book", "inproceedings", etc.
   fields: Record<string, string>;
@@ -370,6 +389,8 @@ export interface ExampleRef {
   /** Optional panel-only display title. Doesn't serialize back to the
    *  `.tex` — this is a panel UX affordance. */
   title: string;
+  /** Title provenance (T6/C12). See `ReportCard.titleAuto`. */
+  titleAuto?: boolean;
   createdAt: string;
 }
 
@@ -408,6 +429,8 @@ export interface UserNote {
   kind: "note";
   id: string;
   title: string; // optional display title (empty string if untitled)
+  /** Title provenance (T6/C12). See `ReportCard.titleAuto`. */
+  titleAuto?: boolean;
   // Tiptap JSONContent doc — see normalizeRichContent for accepted shapes.
   // Legacy notes were stored as HTML strings; the helper migrates them on read.
   content: unknown;
@@ -522,8 +545,34 @@ export interface CutItemLegacy {
 
 // --- Annotations ---
 
+/**
+ * Legacy annotations sidecar shape: a flat `citekey → html` record. A renamed
+ * citekey stranded its annotation here (DATA-LOSS, BIB-A2-01). Kept as a named
+ * type for the migration path; the live shape under the identity-cascade flag
+ * is {@link AnnotationsStateV2}.
+ */
 export interface AnnotationsState {
   [bibKey: string]: string; // bib key → annotation text
+}
+
+/**
+ * Uid-keyed annotations sidecar (T1 Stage 1). Annotations now key on the
+ * durable {@link BibEntry.uid} so a citekey rename is a no-op here — they were
+ * never pointing at the mutable thing.
+ *
+ * Migration is NON-DESTRUCTIVE (PLAN D4): a legacy citekey-keyed record is
+ * mapped to uids via the freshly-parsed entries; any citekey that can't be
+ * matched (e.g. renamed before the upgrade) lands in `orphanByKey`, never
+ * dropped — a wrong/unmatched mapping is recoverable, not silent prose loss.
+ */
+export interface AnnotationsStateV2 {
+  v: 2;
+  /** uid → annotation html. */
+  byUid: Record<string, string>;
+  /** Legacy citekey → annotation html for entries whose uid couldn't be
+   *  resolved at migration time. Re-homed onto `byUid` the next time an entry
+   *  with that citekey is parsed and the annotation is touched. */
+  orphanByKey: Record<string, string>;
 }
 
 // --- Bib Review Requests ---
@@ -534,6 +583,11 @@ export interface BibReviewRequest {
   requestedAt: string;
   status: "pending" | "complete";
   requestNotes?: string;
+  /** Durable {@link BibEntry.uid} the request targets (T1 Stage 1). When set,
+   *  this — not `bibKey` — is the identity: a citekey rename re-points nothing.
+   *  `bibKey` is kept as a human-readable mirror (and the legacy fallback when
+   *  the uid couldn't be resolved at migration time). */
+  entryUid?: string;
 }
 
 export interface BibReviewState {
@@ -566,5 +620,20 @@ export interface OrphanedFootnote {
   // Tiptap JSONContent doc — see normalizeRichContent for accepted shapes.
   content: unknown;
   title?: string;
+  // The dying footnote's `\thanks` attr, preserved so a re-dropped orphan
+  // restores it (FN-A2-02 — full-attr orphan clone, T2 §3b.1/§4.2).
+  thanks?: boolean;
   orphanedAt: string;
+}
+
+/**
+ * The persisted shape of `virgil/orphaned-footnotes.json` (T2 §4.1, D4).
+ * Carries an explicit `version` integer — the family standard for any NEW
+ * sidecar file (PLAN D4). Absent file ⇒ `{ version: 1, orphans: [] }`; there
+ * is nothing to migrate FROM (orphans were never durable before this), so an
+ * existing paper simply starts empty.
+ */
+export interface OrphanedFootnotesState {
+  version: 1;
+  orphans: OrphanedFootnote[];
 }

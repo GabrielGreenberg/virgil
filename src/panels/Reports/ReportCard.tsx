@@ -98,11 +98,11 @@ export function ReportCard({
       canJump={!!onJump}
       onJump={onJump ? (e) => onJump((e.currentTarget as HTMLElement).closest('[data-card]') as HTMLElement | null) : undefined}
       onClick={(e) => {
-        ac.onActivate();
-        onSelect(report.id);
-        if (onJump) {
-          onJump((e?.currentTarget as HTMLElement | undefined)?.closest('[data-card]') as HTMLElement | null);
-        }
+        const card = (e?.currentTarget as HTMLElement | undefined)?.closest('[data-card]') as HTMLElement | null;
+        ac.onBodyActivate({
+          onSelect: () => onSelect(report.id),
+          jump: onJump ? () => onJump(card) : undefined,
+        });
       }}
       onDelete={() => onDelete(report.id)}
       footer={!compressed ? <AuthorByline author={report.author} createdAt={report.createdAt} /> : undefined}

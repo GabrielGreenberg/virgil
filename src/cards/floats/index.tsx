@@ -472,13 +472,13 @@ registerCardFloatable("bib", (id, ctx: CardFloatCtx) => {
         entry={entry}
         isSelected={ctx.selectedBibKey === entry.key}
         onClick={() => ctx.setSelectedBibKey(ctx.selectedBibKey === entry.key ? null : entry.key)}
-        getFormattedBib={ctx.getFormattedBib}
         getAnnotation={ctx.getAnnotation}
         setAnnotation={ctx.setAnnotation}
         onRequestReview={ctx.requestBibReview}
         onCancelReview={ctx.cancelBibReview}
         getReviewStatus={ctx.getBibReviewStatus}
         onUpdateBibEntry={ctx.updateBibEntry}
+        onReplaceBibEntry={ctx.replaceBibEntry}
         onUpdateBibKeyAndType={ctx.updateBibKeyAndType}
         bibPackage={ctx.bibPackage}
         bibEntries={ctx.bibEntries}

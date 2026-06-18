@@ -4,6 +4,10 @@ import { Plugin, PluginKey } from "@tiptap/pm/state";
 import { richJsonToPlainText, normalizeRichContent } from "@/lib/footnote-content";
 import { generateShortId } from "@/lib/uuid";
 import { readDocStructure, readPendingDiff } from "@/lib/tiptap/doc-structure";
+// FN-A1-02: orphan-worthiness reads the SAME registry-driven content model as
+// the delete-confirm (a title-only footnote counts), so the two never diverge.
+import { cardHasContent } from "@/cards/has-content";
+import { isInlineAtomLifecycleOn } from "@/lib/identity/inline-atom-lifecycle-flag";
 // The shared `\footnote{…}` trigger regex — the SAME pattern the action
 // registry's footnote row references, so the typed surface and the registry can
 // never recognize a different footnote vocabulary.
@@ -193,15 +197,29 @@ export const Footnote = Node.create<FootnoteOptions>({
           if (!diff) return null;
 
           // Orphan dispatch — only when footnote nodes vanished.
-          if (diff.removedFootnotes.length > 0) {
+          //
+          // W2 cutover: flag-ON the bus reconciler (`useInlineAtomLifecycle`)
+          // owns orphan upsert/clear off the SAME structural diff, so the
+          // legacy `virgil-footnote-orphaned` event web is RETIRED — emitting
+          // it would race a second writer at the (now-dormant) shell store.
+          // Short-circuit the emission on the flag path; flag-OFF it is the
+          // sole orphan source, byte-identical to today. The renumber pass
+          // below is flag-agnostic and always runs.
+          if (diff.removedFootnotes.length > 0 && !isInlineAtomLifecycleOn()) {
             // The diff entries don't carry rich-text content, but the
             // event consumer needs it. Look up each removed id in
             // oldState (we have its pos in the diff).
             for (const removed of diff.removedFootnotes) {
               const oldNode = oldState.doc.nodeAt(removed.pos);
-              const content =
-                oldNode?.type?.name === "footnote" ? oldNode.attrs.content : null;
-              if (content && richJsonToPlainText(content).trim()) {
+              const isFootnote = oldNode?.type?.name === "footnote";
+              const content = isFootnote ? oldNode.attrs.content : null;
+              const title = isFootnote ? oldNode.attrs.title : undefined;
+              // FN-A1-02: orphan-worthiness counts the `\footnote` title
+              // (`\thanks` acknowledgement label), not just the body — a
+              // title-only footnote whose marker is deleted IS recoverable, so
+              // it must orphan. Routed through the shared `cardHasContent` so
+              // this gate and the delete-confirm read the SAME content model.
+              if (cardHasContent("footnote", { content, title })) {
                 setTimeout(() => {
                   window.dispatchEvent(
                     new CustomEvent("virgil-footnote-orphaned", {

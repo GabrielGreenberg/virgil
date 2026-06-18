@@ -29,6 +29,7 @@ import { useMainEditable } from "@/components/editor-layout/contexts/editor-ref"
 import { useDocWriteHandleOrNull } from "@/components/editor-layout/DocPipeline";
 import { buildEditorExtensions } from "@/lib/editor-extensions";
 import { FLOAT_WRITE_META } from "@/lib/float-sync";
+import { reseedPreservingCaret } from "@/lib/reseed-caret";
 
 export interface ExampleCardProps {
   example: ExampleInfo;
@@ -176,6 +177,15 @@ function ExampleCardEditor({
 
   const floatId = `example-card:${exampleId}`;
 
+  // EX-F5-03: a write-back that fails to rebuild as a valid exampleBlock node
+  // (stale uuid, malformed gloss/xlist nesting, attr mismatch) used to be
+  // swallowed by a bare catch — the card showed the edit but the doc never
+  // received it, then the next re-seed silently reverted the card, losing the
+  // user's typing with no warning. We now surface the failure: the offending
+  // write is held back from the doc (it's invalid) AND the user is told the
+  // edit was rejected, so the card↔doc divergence is no longer silent.
+  const [writeError, setWriteError] = useState<string | null>(null);
+
   function writeBackToMain(doc: JSONContent) {
     const ed = editorRef.current?.getEditor();
     if (!ed) return;
@@ -197,8 +207,18 @@ function ExampleCardEditor({
       tr.setMeta("addToHistory", false);
       tr.setMeta(FLOAT_WRITE_META, floatId);
       if (tr.docChanged) ed.view.dispatch(tr);
-    } catch {
-      /* schema mismatch / stale uuid — swallow (parity with the float) */
+      // The write reached the doc — clear any prior rejection banner.
+      setWriteError((prev) => (prev === null ? prev : null));
+    } catch (err) {
+      // The edit could not be rebuilt into a valid node, so the document is
+      // intentionally left untouched. Surface the rejection instead of
+      // swallowing it (EX-F5-03) — the user sees their edit did not land and
+      // can undo/fix it rather than discovering the loss on the next re-seed.
+      setWriteError(
+        err instanceof Error && err.message
+          ? `This edit couldn't be saved (${err.message}).`
+          : "This edit couldn't be saved — it produced an invalid example.",
+      );
     }
   }
 
@@ -285,17 +305,12 @@ function ExampleCardEditor({
       return;
     }
     lastSyncedRef.current = nextJson;
-    const { from, to } = editor.state.selection;
-    editor.commands.setContent(nextDoc, { emitUpdate: false });
-    const size = editor.state.doc.content.size;
-    try {
-      editor.commands.setTextSelection({
-        from: Math.min(Math.max(from, 0), size),
-        to: Math.min(Math.max(to, 0), size),
-      });
-    } catch {
-      /* selection target may be invalid post-reset; OK */
-    }
+    // Caret restore mapped through the structural change (EX-F8-02): a foreign
+    // edit upstream of the caret shifts the content, so re-applying the raw
+    // {from,to} offset would land the caret earlier than its logical position.
+    // `reseedPreservingCaret` diffs old↔new and maps the caret through the edit
+    // — the shared single owner with float-sync's `syncFromMain`.
+    reseedPreservingCaret(editor, nextDoc);
   }, [editor, mainEditor, exampleId, rev.examples, contentRev]);
 
   // Panel typography onto the editor DOM, the way BorrowedMainText /
@@ -342,7 +357,23 @@ function ExampleCardEditor({
       </div>
     );
   }
-  return content;
+  // EX-F5-03: surface a rejected write-back so a swallowed schema error no
+  // longer silently diverges the card from the doc. Only the editable
+  // (expanded) body ever writes back, so the banner only renders here.
+  return (
+    <>
+      {writeError && (
+        <div
+          role="alert"
+          className="mb-1.5 rounded-md border border-[color-mix(in_oklab,var(--danger)_30%,transparent)] bg-danger-soft px-2 py-1 text-xs text-danger"
+          data-example-write-error
+        >
+          {writeError}
+        </div>
+      )}
+      {content}
+    </>
+  );
 }
 
 /** Panel card for a single `\ex` / `\pex` block. The body mounts the real
@@ -389,9 +420,11 @@ export function ExampleCard({
       theme={theme}
       selected={isHaloed}
       onClick={(e) => {
-        ac.onActivate();
-        onSelect();
-        onJump((e.currentTarget as HTMLElement).closest('[data-card]') as HTMLElement | null);
+        const card = (e.currentTarget as HTMLElement).closest('[data-card]') as HTMLElement | null;
+        ac.onBodyActivate({
+          onSelect,
+          jump: () => onJump(card),
+        });
       }}
       onMouseEnter={() => cardStore.setHover(ac.ref)}
       onMouseLeave={() => {
