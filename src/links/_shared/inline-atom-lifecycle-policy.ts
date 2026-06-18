@@ -111,9 +111,11 @@ export interface InlineAtomLifecycleDeps {
   isFloatOpen?: (floatKey: string) => boolean;
 }
 
-/** Clear every `cardStore` ref (selected / hover / expand) pointing at an inline
- *  atom that is genuinely gone. Module-scoped store, so no instance needed. */
-function pruneCardStoreFor(kind: "footnote" | "citation", id: string): void {
+/** Clear every `cardStore` ref (selected / hover / expand) pointing at a card
+ *  of `kind` + `id` that is genuinely gone. Module-scoped store, so no instance
+ *  needed. Used both by the inline-atom removal path and by the D6 card-deleted
+ *  signal handler (sidecar-backed kinds). */
+export function pruneCardStoreFor(kind: string, id: string): void {
   const s = cardStore.getState();
   const matches = (ref: { kind: string; id: string } | null | undefined) =>
     !!ref && ref.kind === kind && ref.id === id;
@@ -121,6 +123,28 @@ function pruneCardStoreFor(kind: "footnote" | "citation", id: string): void {
   if (matches(s.hover)) cardStore.setHover(null);
   for (const ref of s.expandedSet) {
     if (matches(ref)) cardStore.collapse(ref);
+  }
+}
+
+/** Re-key every `cardStore` ref from `{fromKind, id}` to `{toKind, id}` after a
+ *  kind-change morph, so the selection halo / hover / expansion survive the
+ *  flip (REP-F6-02 / OMNI-F6-02). The id is preserved across a morph; only the
+ *  kind changes. The D6 card-morphed signal handler calls this. */
+export function rekeyCardStoreForMorph(
+  fromKind: string,
+  toKind: string,
+  id: string,
+): void {
+  const s = cardStore.getState();
+  const matches = (ref: { kind: string; id: string } | null | undefined) =>
+    !!ref && ref.kind === fromKind && ref.id === id;
+  if (matches(s.selected)) cardStore.select({ kind: toKind as never, id });
+  if (matches(s.hover)) cardStore.setHover({ kind: toKind as never, id });
+  for (const ref of s.expandedSet) {
+    if (matches(ref)) {
+      cardStore.collapse(ref);
+      cardStore.expand({ kind: toKind as never, id });
+    }
   }
 }
 

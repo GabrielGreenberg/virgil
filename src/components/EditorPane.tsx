@@ -129,6 +129,8 @@ import { parseAnyKey } from "@/floats/float-key";
 import { FLOAT_DEFAULT_SIZE } from "@/floats/float-policy";
 import { textObjectPopoutKey } from "@/text-objects/text-object-registry";
 import { CARD_REGISTRY } from "@/cards/card-registry";
+import { runCardLifecycleEvent } from "@/cards/lifecycle/run-event";
+import { bridgeCardAiRequestFlag } from "@/lib/ai-request-bridge";
 import { isCardKind, panelForCardKind } from "@/cards/predicates";
 import { PoppedCardsContext, type PoppedCardsValue } from "@/hooks/usePoppedCards";
 import { DropModeProvider } from "./drop-mode/DropModeProvider";
@@ -159,6 +161,7 @@ import { isRenameCitekey } from "@/lib/identity/identity-cascade";
 import { rewriteCiteKeyInDoc } from "@/lib/identity/bib-cite-rewrite";
 import { useIdentityBusConsumer } from "@/lib/identity/useIdentityBusConsumer";
 import { useInlineAtomLifecycle } from "@/links/_shared/useInlineAtomLifecycle";
+import { useCardLifecycleReconciler } from "@/cards/lifecycle/useCardLifecycleReconciler";
 import { useCitationResync } from "@/links/_shared/useCitationResync";
 import { useOrphanedFootnotes } from "@/hooks/useOrphanedFootnotes";
 import { DragHandleMenu } from "./DragHandleMenu";
@@ -958,6 +961,15 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
       : undefined,
   });
 
+  // W2d (T4 D6 seam) — the card-lifecycle reconciler. Consumes the
+  // `card-deleted` / `card-morphed` signal `runCardLifecycleEvent` publishes and
+  // prunes / re-keys the global `cardStore` for the SIDECAR-backed kinds
+  // (report/note/cutter/revision), whose lifecycle the DocStructureBus never
+  // sees. Unflagged (correct-by-construction; no bus subscription) — keeps a
+  // morphed report's selection halo (REP-F6-02 / OMNI-F6-02) and clears a
+  // deleted card's stale halo regardless of the inline-atom-lifecycle flag.
+  useCardLifecycleReconciler();
+
   // W2c — the citation add/resync reconciler, registered as a POLICY on the
   // same single consumer (NOT a new subscription; the +1-not-+3 invariant). The
   // mount-only `syncFromEditor` effect below (gated on `[editor]`) misses every
@@ -1006,56 +1018,57 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
       const morph = CARD_REGISTRY[fromCardKind].morph;
       if (!morph) return; // non-morphing kind — defensive no-op
       const toCardKind = morph.to;
-      if (morph.lossy) {
-        // report ↔ report-request KEEPS the rich body and only drops the
-        // title / byline / AI-request flag, so don't tell the user the body
-        // won't carry across (it does). note ↔ highlight drops the whole body.
-        const preservesBody =
-          fromCardKind === "report" || fromCardKind === "report-request";
-        const message = preservesBody
-          ? `This drops the title and byline (a ${CARD_REGISTRY[toCardKind].label} can't hold them); the body and text anchor stay. Continue?`
-          : `This drops fields that a ${CARD_REGISTRY[toCardKind].label} can't hold (the body and title don't carry across). The text anchor stays. Continue?`;
-        const ok = await confirmMorph({
-          title: `Change to ${CARD_REGISTRY[toCardKind].label}?`,
-          message,
-          confirmLabel: `Make it a ${CARD_REGISTRY[toCardKind].label}`,
-          cancelLabel: "Keep as is",
-          tone: "default",
-        });
-        if (!ok) return;
-      }
-      // Dispatch to the owning panel hook with its expected data toKind.
-      switch (fromCardKind) {
-        case "revision-comment":
-          revisionsHookRaw.convertCard(id, "suggestion");
-          break;
-        case "revision-suggestion":
-          revisionsHookRaw.convertCard(id, "comment");
-          break;
-        case "cutter-comment":
-          cutterHookRaw.convertCard(id, "suggestion");
-          break;
-        case "cutter-suggestion":
-          cutterHookRaw.convertCard(id, "comment");
-          break;
-        case "report":
-          reportsHookRaw.convertCard(id, "report-request");
-          break;
-        case "report-request":
-          reportsHookRaw.convertCard(id, "report");
-          break;
-        case "note":
-          notesHookRaw.convertCard(id, "highlight");
-          break;
-        case "highlight":
-          notesHookRaw.convertCard(id, "note");
-          break;
-        default:
-          return;
-      }
+      // The morph chokepoint now routes through `runCardLifecycleEvent` (T4
+      // §3.3): the confirm copy is GENERATED from `morph.drops` (never
+      // direction-blind — REP-F6-03), the aiRequest inbox is UNBRIDGED when the
+      // morph drops the flag (report-request→report — REP-F5-01), the per-doc
+      // hook mutation is the `mutate` step, and a `card-morphed` signal is
+      // published (the D6 seam W2b consumes to re-key cardStore — REP-F6-02).
+      const committed = await runCardLifecycleEvent(
+        { type: "morph", fromKind: fromCardKind, id },
+        {
+          confirm: confirmMorph,
+          unbridgeAiRequest: (kind, cardId) =>
+            bridgeCardAiRequestFlag(docId, kind, cardId, false, {
+              // value=false drops the existing entry by {panel, cardId}; the
+              // ctx fields are only read on the add path, so a placeholder is fine.
+              text: "",
+            }),
+          mutate: () => {
+            // Dispatch to the owning panel hook with its expected data toKind.
+            switch (fromCardKind) {
+              case "revision-comment":
+                revisionsHookRaw.convertCard(id, "suggestion");
+                break;
+              case "revision-suggestion":
+                revisionsHookRaw.convertCard(id, "comment");
+                break;
+              case "cutter-comment":
+                cutterHookRaw.convertCard(id, "suggestion");
+                break;
+              case "cutter-suggestion":
+                cutterHookRaw.convertCard(id, "comment");
+                break;
+              case "report":
+                reportsHookRaw.convertCard(id, "report-request");
+                break;
+              case "report-request":
+                reportsHookRaw.convertCard(id, "report");
+                break;
+              case "note":
+                notesHookRaw.convertCard(id, "highlight");
+                break;
+              case "highlight":
+                notesHookRaw.convertCard(id, "note");
+                break;
+            }
+          },
+        },
+      );
+      if (!committed) return;
       viewPrefs?.remapCardPopKey(cardPopKey(fromCardKind, id), cardPopKey(toCardKind, id));
     },
-    [revisionsHookRaw, cutterHookRaw, reportsHookRaw, notesHookRaw, viewPrefs, confirmMorph],
+    [revisionsHookRaw, cutterHookRaw, reportsHookRaw, notesHookRaw, viewPrefs, confirmMorph, docId],
   );
   // Per-pair adapters that take each card's legacy `(id, dataToKind)` signature,
   // resolve the FROM spine kind, and delegate to the generalized chokepoint —
