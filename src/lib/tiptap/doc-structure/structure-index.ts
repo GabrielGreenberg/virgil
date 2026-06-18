@@ -14,6 +14,8 @@
  */
 
 import type { Node as PMNode } from "@tiptap/pm/model";
+import type { JSONContent } from "@tiptap/react";
+import { inlineAtoms } from "@/lib/inline-content";
 import { isAnchorableNode } from "@/lib/marginalia";
 import {
   type AnchorEntry,
@@ -146,8 +148,10 @@ export function buildInitial(doc: PMNode): DocStructure {
     if (typeName === "footnote") {
       const attrs = node.attrs as {
         footnoteId?: string;
+        linkId?: string;
         thanks?: boolean;
         number?: number;
+        content?: JSONContent | null;
       };
       if (attrs.footnoteId) {
         footnotes.push({
@@ -156,6 +160,30 @@ export function buildInitial(doc: PMNode): DocStructure {
           thanks: !!attrs.thanks,
           number: attrs.number ?? 0,
         });
+      }
+
+      // T3 / C10 — LOAD-ONLY descend into the footnote body literal so a
+      // footnote-NESTED citation surfaces in `structure.citations` for
+      // omni/search (`BIB-F3-01` / `CI-F3-01`). `descendants()` cannot enter
+      // an atom's `attrs.content` (the footnote is `inline:true, atom:true`),
+      // so we hand the JSONContent literal to the shared atom-aware reader.
+      // This runs ONCE per footnote during the initial O(doc) walk; the
+      // per-transaction `applyDiff` path never re-walks a footnote body, so
+      // keystroke sanctity is preserved. The nested cite has no own PM node —
+      // its address is the HOST footnote's `pos` plus `nestedInFootnoteId`.
+      const hostId = attrs.linkId || attrs.footnoteId || "";
+      const body = attrs.content;
+      if (body && typeof body === "object") {
+        for (const hit of inlineAtoms(body)) {
+          if (hit.kind !== "citation" || !hit.id) continue;
+          citations.push({
+            id: hit.id,
+            pos,
+            command: hit.command ?? "",
+            displayText: hit.displayText ?? "",
+            nestedInFootnoteId: hostId,
+          });
+        }
       }
     }
 
@@ -200,7 +228,10 @@ export function buildInitial(doc: PMNode): DocStructure {
   });
 
   return {
-    version: 1,
+    // version 2 (T3 / C10): `structure.citations` now includes footnote-nested
+    // citations carrying `nestedInFootnoteId`. In-process sanity stamp only —
+    // no persisted consumer reads it; it bumps per `applyDiff` thereafter.
+    version: 2,
     blocks,
     headings,
     footnotes,

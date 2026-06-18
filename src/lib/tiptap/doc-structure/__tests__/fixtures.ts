@@ -61,8 +61,15 @@ export const testSchema = new Schema({
       atom: true,
       attrs: {
         footnoteId: { default: "" },
+        // Unified link id — production footnote carries this; the host-id used
+        // for a footnote-nested citation prefers it (`linkId ?? footnoteId`).
+        linkId: { default: "" },
         number: { default: 1 },
         thanks: { default: false },
+        // The footnote BODY — a JSONContent literal (NOT PM child nodes), so
+        // `descendants()` can't enter it. Mirrors production's
+        // `content: { default: null }`. Where a footnote-nested `\cite` lives.
+        content: { default: null },
       },
       toDOM: () => ["span", { class: "footnote" }],
     },
@@ -132,6 +139,37 @@ export function exampleItem(
 
 export function footnoteNode(footnoteId: string, number = 1, thanks = false): PMNode {
   return testSchema.nodes.footnote.create({ footnoteId, number, thanks });
+}
+
+/**
+ * A footnote whose body (`attrs.content`) is a JSONContent literal — the place
+ * a footnote-nested `\cite` lives, opaque to `descendants()`. `body` is the raw
+ * JSONContent (a `doc`/`paragraph` tree with `citation` literals inside).
+ */
+export function footnoteWithBody(
+  footnoteId: string,
+  body: unknown,
+  opts: { number?: number; thanks?: boolean; linkId?: string } = {},
+): PMNode {
+  return testSchema.nodes.footnote.create({
+    footnoteId,
+    number: opts.number ?? 1,
+    thanks: opts.thanks ?? false,
+    linkId: opts.linkId ?? "",
+    content: body,
+  });
+}
+
+/** A citation JSONContent literal (the shape stored inside a footnote body). */
+export function citationLiteral(
+  citationId: string,
+  command = "",
+  displayText = "",
+): Record<string, unknown> {
+  return {
+    type: "citation",
+    attrs: { citationId, command, displayText },
+  };
 }
 
 export function citationNode(

@@ -53,6 +53,14 @@ export interface CitationEntry {
   command: string;
   /** Rendered text shown in place, e.g. "Smith 2020". */
   displayText: string;
+  /** For a citation that lives INSIDE a footnote's `attrs.content` literal
+   *  (T3 / C10): the `footnoteId`/`linkId` of the host footnote. `pos` for such
+   *  an entry is the HOST footnote's position (the nested cite has no own PM
+   *  node — it's a JSONContent literal `descendants()` can't enter), so a
+   *  position-keyed jump scrolls to the visible footnote marker. Absent/undefined
+   *  for a top-level citation. Populated only by the load-only `buildInitial`
+   *  descend pass; the per-transaction `applyDiff` path does NOT touch it. */
+  nestedInFootnoteId?: string;
 }
 
 export interface AnchorEntry {
@@ -111,10 +119,14 @@ export interface DocStructure {
   headings: readonly HeadingEntry[];
   /** Just the footnote nodes (in document order). */
   footnotes: readonly FootnoteEntry[];
-  /** Every top-level citation node (in document order). Citations nested
-   *  inside footnote `attrs.content` are NOT included — they're opaque to
-   *  step inspection; consumers cover them via `getCitations()` re-walks
-   *  triggered by `footnoteOrderChanged`. */
+  /** Every citation node, in document order. Top-level citations have no
+   *  `nestedInFootnoteId`; citations NESTED inside a footnote's `attrs.content`
+   *  literal (opaque to step inspection / `descendants()`) carry their host
+   *  footnote id in `nestedInFootnoteId` and the host footnote's `pos` (T3 /
+   *  C10). The footnote-nested entries are populated ONLY by the load-only
+   *  `buildInitial` descend pass — the per-transaction `applyDiff` path stays
+   *  O(edit) and never re-walks a footnote body, so a nested cite's liveness is
+   *  refreshed out-of-band (`footnoteOrderChanged` re-walk), not per-keystroke. */
   citations: readonly CitationEntry[];
   /** Every distinct `anchorId` from linkedAnchor marks. Maps id → entry. */
   anchors: ReadonlyMap<string, AnchorEntry>;

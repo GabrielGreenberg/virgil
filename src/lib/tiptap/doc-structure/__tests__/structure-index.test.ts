@@ -3,12 +3,14 @@ import { applyDiff, buildInitial } from "../structure-index";
 import { EMPTY_DIFF, type StructureDiff } from "../types";
 import {
   anchoredText,
+  citationLiteral,
   citationNode,
   doc,
   exampleBlock,
   exampleItem,
   figureBlock,
   footnoteNode,
+  footnoteWithBody,
   heading,
   paragraph,
   testSchema,
@@ -59,6 +61,87 @@ describe("buildInitial", () => {
     const s = buildInitial(doc(para));
     expect(s.citations.map((c) => c.id)).toEqual(["c1", "c2"]);
     expect(s.citations[0]?.command).toBe("\\cite{a}");
+  });
+
+  it("stamps structure version 2 (T3: footnote-nested citation descent)", () => {
+    const s = buildInitial(doc(paragraph("p1", "body")));
+    expect(s.version).toBe(2);
+  });
+
+  it("surfaces a footnote-NESTED citation in structure.citations with its host footnote id (T3 / C10)", () => {
+    // A footnote whose body literal holds a `\cite` — `descendants()` cannot
+    // enter `attrs.content`, so the load-only descend pass must surface it.
+    const body = {
+      type: "doc",
+      content: [
+        {
+          type: "paragraph",
+          content: [
+            { type: "text", text: "see " },
+            citationLiteral("nested-c", "\\cite{nested}", "Nested"),
+          ],
+        },
+      ],
+    };
+    const para = testSchema.nodes.paragraph.create({ uuid: "p1" }, [
+      testSchema.text("body "),
+      footnoteWithBody("fn1", body, { linkId: "fn1" }),
+    ]);
+    const s = buildInitial(doc(para));
+
+    expect(s.footnotes.map((f) => f.id)).toEqual(["fn1"]);
+    const nested = s.citations.find((c) => c.id === "nested-c");
+    expect(nested).toBeDefined();
+    expect(nested?.nestedInFootnoteId).toBe("fn1");
+    expect(nested?.command).toBe("\\cite{nested}");
+    expect(nested?.displayText).toBe("Nested");
+  });
+
+  it("prefers the footnote's linkId over footnoteId as the nested-cite host id", () => {
+    const body = {
+      type: "doc",
+      content: [
+        { type: "paragraph", content: [citationLiteral("c-x", "\\cite{x}", "X")] },
+      ],
+    };
+    const para = testSchema.nodes.paragraph.create({ uuid: "p1" }, [
+      footnoteWithBody("fn-legacy", body, { linkId: "fn-link" }),
+    ]);
+    const s = buildInitial(doc(para));
+    expect(s.citations.find((c) => c.id === "c-x")?.nestedInFootnoteId).toBe(
+      "fn-link",
+    );
+  });
+
+  it("top-level and footnote-nested citations coexist; top-level carry no host id", () => {
+    const body = {
+      type: "doc",
+      content: [
+        { type: "paragraph", content: [citationLiteral("c-nested", "\\cite{n}", "N")] },
+      ],
+    };
+    const para = testSchema.nodes.paragraph.create({ uuid: "p1" }, [
+      citationNode("c-top", "\\cite{t}", "T"),
+      testSchema.text(" "),
+      footnoteWithBody("fn1", body, { linkId: "fn1" }),
+    ]);
+    const s = buildInitial(doc(para));
+
+    const top = s.citations.find((c) => c.id === "c-top");
+    const nested = s.citations.find((c) => c.id === "c-nested");
+    expect(top?.nestedInFootnoteId).toBeUndefined();
+    expect(nested?.nestedInFootnoteId).toBe("fn1");
+    // Both present.
+    expect(s.citations.map((c) => c.id).sort()).toEqual(["c-nested", "c-top"]);
+  });
+
+  it("a footnote with no body literal contributes no nested citation", () => {
+    const para = testSchema.nodes.paragraph.create({ uuid: "p1" }, [
+      footnoteNode("fn1", 1, false),
+    ]);
+    const s = buildInitial(doc(para));
+    expect(s.footnotes.map((f) => f.id)).toEqual(["fn1"]);
+    expect(s.citations).toHaveLength(0);
   });
 
   it("returns EMPTY_STRUCTURE-shaped snapshot for an empty doc", () => {
