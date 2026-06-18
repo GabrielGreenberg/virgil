@@ -19,12 +19,29 @@
  * collections in a ref and never re-ran on card-collection changes, so
  * captured paragraph references outlived the move.
  *
- * The reconciler is idempotent. Every effect run sweeps the editor root
- * for any element bearing any of the four attrs, clears all four, then
- * re-applies based on the current `cardStore` `selected` card (the single
- * halo — N1: selection ⟂ expansion, so expanded-but-unselected cards do NOT
- * paint) and hover ref. No captured DOM references, no conditional
- * preservation, no inter-effect coordination.
+ * The reconciler is idempotent. Every effect run recomputes the desired
+ * (selection, hover) state from the current `cardStore` `selected` card
+ * (the single halo — N1: selection ⟂ expansion, so expanded-but-unselected
+ * cards do NOT paint) and hover ref. No captured DOM references, no
+ * conditional preservation, no inter-effect coordination.
+ *
+ * TWO PAINT SURFACES, TWO MECHANISMS:
+ *
+ *   1. IN-EDITOR anchor targets (paragraph / heading / listItem blocks,
+ *      footnote / citation atoms, Mode-B `linkedAnchor` ranges) are painted
+ *      via a ProseMirror DECORATION (`AnchorHighlightDecorator` in
+ *      `anchor-highlight-deco.ts`). The reconciler resolves each link to live
+ *      PM coordinates + an attr bag and pushes the COMPLETE desired target
+ *      list through `setAnchorHighlightTargets`. PM owns the attrs, so it
+ *      never treats them as a foreign mutation and never redraws the node —
+ *      eliminating the listItem/heading hover-cull + the residual
+ *      hover-highlight loss + the per-hover layout churn. (Raw setAttribute
+ *      onto a `Decoration.node`-decorated block with no wrapper-guarded
+ *      NodeView `ignoreMutation` was the root cause.)
+ *
+ *   2. PANEL CARDS (`[data-card-key]` elements in the rail / floats) are
+ *      plain React DOM, NOT PM nodes — a raw `setAttribute` there causes no
+ *      redraw, so they stay on the sweep-and-restamp path below, unchanged.
  *
  * A sibling `useDanglingRefPruner` (same module, exported as part of the
  * same hook for ergonomics) clears `cardStore` entries that point to
@@ -51,11 +68,16 @@ import {
 import type { EntityCollectionSlots } from "@/cards/entity-collections";
 import type { Link } from "./types";
 import { resolveLink } from "../links";
+import {
+  setAnchorHighlightTargets,
+  selectedAttrs,
+  hoveredAttrs,
+  type AnchorHighlightTarget,
+  type AnchorHighlightAttrs,
+} from "@/lib/tiptap/anchor-highlight-deco";
 
 const DATA_CARD_SELECTED = "data-card-selected";
 const DATA_CARD_HOVERED = "data-card-hovered";
-const DATA_PARAGRAPH_KIND = "data-paragraph-kind";
-const DATA_MARGIN_SIDE = "data-margin-side";
 
 /** Map a CardKind to the kind token used by `data-paragraph-kind`
  *  selectors in globals.css. Single-sourced through the legacy-token crosswalk
@@ -165,36 +187,57 @@ export function useAnchorHighlightReconciler({
     }
   }, [stableCollections]);
 
-  // Reconcile DOM attrs from the current (selection, hover, collections)
-  // tuple. Idempotent: clears every attr in the editor root, then re-writes
-  // based on the desired state.
+  // Reconcile from the current (selection, hover, collections) tuple.
+  // Idempotent: recomputes the desired in-editor decoration targets + the
+  // desired panel-card key sets from scratch, then (1) hands the editor
+  // decorations the COMPLETE target list and (2) sweeps + restamps the panel
+  // cards. No captured DOM references; no inter-effect coordination.
   useLayoutEffect(() => {
-    type PaintEntry = {
-      kind: string | null;
-      side: "left" | "right" | null;
-      valueAttr: "paragraph" | "true";
-    };
-
-    // First write wins for a given element. Selection is single-card, so
-    // there is no precedence to resolve among multiple selected refs.
-    const selectedEls = new Map<HTMLElement, PaintEntry>();
-    const hoveredEls = new Map<HTMLElement, PaintEntry>();
+    // ── In-editor targets, keyed by PM start position. First write wins
+    // per position (selection is single-card; no precedence among selected
+    // refs). Selection and hover are tracked separately so "selection wins"
+    // for kind/side on a shared element matches the legacy guard. ─────────
+    const selectedTargets = new Map<number, AnchorHighlightResolved>();
+    const hoveredTargets = new Map<number, AnchorHighlightResolved>();
     const selectedCardKeys = new Set<string>();
     const hoveredCardKeys = new Set<string>();
 
     const editorReady =
       editor != null && !editor.isDestroyed && editor.isInitialized;
 
-    const collectAnchorEls = (
+    const collectTargets = (
       ref: AnchoredCardRef,
-      into: Map<HTMLElement, PaintEntry>,
+      into: Map<number, AnchorHighlightResolved>,
     ): void => {
       if (!editorReady) return;
       const links = linksForRef(ref, stableCollections);
       for (const link of links) {
         const resolved = resolveLink(editor, link);
-        if (!resolved?.domEl) continue;
-        if (into.has(resolved.domEl)) continue;
+        if (!resolved) continue;
+        // Resolve to PM coordinates + a decoration shape. Paragraph (Mode-A)
+        // and inline atoms are `Decoration.node`; text-range (Mode-B) is
+        // `Decoration.inline`. The value vocabulary is byte-identical to the
+        // legacy raw-setAttribute path.
+        let from: number;
+        let to: number;
+        let shape: "node" | "inline";
+        if (resolved.kind === "paragraph" || resolved.kind === "inline-atom") {
+          // `Decoration.node` needs the node's exact span. `inline-atom`
+          // resolution carries `nodeSize`; `paragraph` does not — read the
+          // live node at `pos` for its size (the same node `resolveLink`
+          // located, so it always exists here).
+          const node = editor.state.doc.nodeAt(resolved.pos);
+          if (!node) continue;
+          from = resolved.pos;
+          to = resolved.pos + node.nodeSize;
+          shape = "node";
+        } else {
+          // text-range (Mode B)
+          from = resolved.from;
+          to = resolved.to;
+          shape = "inline";
+        }
+        if (into.has(from)) continue;
         const valueAttr: "paragraph" | "true" =
           resolved.kind === "paragraph" ? "paragraph" : "true";
         const kind =
@@ -205,7 +248,12 @@ export function useAnchorHighlightReconciler({
           resolved.kind === "paragraph" && link.anchor.type === "textObject"
             ? link.anchor.margin.side
             : null;
-        into.set(resolved.domEl, { kind, side, valueAttr });
+        into.set(from, {
+          shape,
+          from,
+          to,
+          attrs: { value: valueAttr, kind, side },
+        });
       }
     };
 
@@ -218,44 +266,43 @@ export function useAnchorHighlightReconciler({
     // a single card (N1). Expansion (multi/sticky) no longer drives the
     // text/margin/card highlight; a distinct expanded marker is an A6 follow-up.
     if (selected) {
-      collectAnchorEls(selected, selectedEls);
+      collectTargets(selected, selectedTargets);
       collectCardKey(selected, selectedCardKeys);
     }
     if (hover) {
-      collectAnchorEls(hover, hoveredEls);
+      collectTargets(hover, hoveredTargets);
       collectCardKey(hover, hoveredCardKeys);
     }
 
-    // Nuke and rebuild on the editor root.
+    // ── Build the decoration target list and hand it to PM. ───────────────
     if (editorReady) {
-      const root = editor.view.dom;
-      const staleInRoot = root.querySelectorAll<HTMLElement>(
-        `[${DATA_CARD_SELECTED}], [${DATA_CARD_HOVERED}], [${DATA_PARAGRAPH_KIND}], [${DATA_MARGIN_SIDE}]`,
-      );
-      for (const el of staleInRoot) {
-        el.removeAttribute(DATA_CARD_SELECTED);
-        el.removeAttribute(DATA_CARD_HOVERED);
-        el.removeAttribute(DATA_PARAGRAPH_KIND);
-        el.removeAttribute(DATA_MARGIN_SIDE);
+      const decoTargets: AnchorHighlightTarget[] = [];
+      for (const t of selectedTargets.values()) {
+        decoTargets.push({
+          shape: t.shape,
+          from: t.from,
+          to: t.to,
+          attrs: selectedAttrs(t.attrs),
+        });
       }
-      for (const [el, entry] of selectedEls) {
-        el.setAttribute(DATA_CARD_SELECTED, entry.valueAttr);
-        if (entry.kind) el.setAttribute(DATA_PARAGRAPH_KIND, entry.kind);
-        if (entry.side) el.setAttribute(DATA_MARGIN_SIDE, entry.side);
+      for (const t of hoveredTargets.values()) {
+        // If selection already painted this position, its kind/side win —
+        // emit only the hover marker (no kind/side). Otherwise hover supplies
+        // them. Mirrors the legacy `!selectedEls.has(el)` guard.
+        const selectionOwnsThisPos = selectedTargets.has(t.from);
+        decoTargets.push({
+          shape: t.shape,
+          from: t.from,
+          to: t.to,
+          attrs: hoveredAttrs(t.attrs, !selectionOwnsThisPos),
+        });
       }
-      for (const [el, entry] of hoveredEls) {
-        el.setAttribute(DATA_CARD_HOVERED, entry.valueAttr);
-        // If selection already painted kind/side on this element, leave
-        // them alone. Otherwise the hover entry provides them.
-        if (!selectedEls.has(el)) {
-          if (entry.kind) el.setAttribute(DATA_PARAGRAPH_KIND, entry.kind);
-          if (entry.side) el.setAttribute(DATA_MARGIN_SIDE, entry.side);
-        }
-      }
+      setAnchorHighlightTargets(editor.view, decoTargets);
     }
 
-    // Panel cards live outside the editor root (some in portals). Sweep
-    // the [data-card-key]-bearing subset of the document independently.
+    // ── Panel cards live outside the editor root (some in portals) and are
+    // React DOM, not PM nodes — raw setAttribute causes no redraw there, so
+    // sweep + restamp the [data-card-key]-bearing subset independently. ────
     const stalePanelCards = document.querySelectorAll<HTMLElement>(
       `[data-card-key][${DATA_CARD_SELECTED}], [data-card-key][${DATA_CARD_HOVERED}]`,
     );
@@ -276,4 +323,14 @@ export function useAnchorHighlightReconciler({
       for (const el of matches) el.setAttribute(DATA_CARD_HOVERED, "true");
     }
   }, [editor, selected, hover, stableCollections]);
+}
+
+/** A resolved in-editor target before the selected/hovered attr bag is
+ *  materialized (selection-vs-hover kind/side precedence is applied at
+ *  emit time). */
+interface AnchorHighlightResolved {
+  shape: "node" | "inline";
+  from: number;
+  to: number;
+  attrs: AnchorHighlightAttrs;
 }

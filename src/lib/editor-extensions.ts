@@ -25,6 +25,7 @@ import type { Node as PMNode } from "@tiptap/pm/model";
 import type { MutableRefObject, RefObject } from "react";
 import { generateShortId } from "@/lib/uuid";
 import { UUID_ATTR_SPEC, UuidAttrDecorator } from "@/lib/tiptap/uuid-attr";
+import { AnchorHighlightDecorator } from "@/lib/tiptap/anchor-highlight-deco";
 import { DocStructureObserver, readPendingDiff } from "@/lib/tiptap/doc-structure";
 import { BlockUuidBackfill } from "@/lib/tiptap/block-uuid-backfill";
 import { ensureAnchorUuid } from "@/lib/anchor-uuid";
@@ -1818,6 +1819,12 @@ export function buildEditorExtensions(ctx: EditorExtensionsCtx) {
           // these attributes being present in the live DOM. See uuid-attr.ts
           // for why this needs to be a decoration and not renderHTML.
           UuidAttrDecorator,
+          // Paints the four card hover/selection attrs onto in-editor anchor
+          // targets via decorations (driven by useAnchorHighlightReconciler).
+          // A decoration — not raw setAttribute — so PM owns the attrs and
+          // never redraws the node (the listItem/heading hover-cull root).
+          // See anchor-highlight-deco.ts.
+          AnchorHighlightDecorator,
           // Read-only enforcement plugin: rejects any transaction that
           // mutates the document when the host's `editable` is false. For
           // surface "main" this reads the `editableRef` mirror of the React
