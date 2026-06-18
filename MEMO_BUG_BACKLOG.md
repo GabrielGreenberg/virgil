@@ -1478,3 +1478,36 @@ The job is to split TRUE gutter from in-text misnomers:
 ⚠️ **CSS-var renames must be all-or-nothing** (a half-renamed var silently breaks
 handle placement) — do it as one mechanical pass with a typecheck + grep-clean
 verify, not piecemeal. Probably its own chip.
+
+---
+
+## 52. 🔴 LaTeX compile broken — the committed SwiftLaTeX `.fmt` is a 15-byte CDN error blob
+
+**Reported:** 2026-06-15 · **Status:** open · **Priority: HIGH (functional — compile is dead)** · **Area:** LaTeX compile / SwiftLaTeX engine
+
+**Reported behavior** — compiling fails: `[compile] SwiftLaTeX failed (status=1)` …
+`This is pdfTeX … (preloaded format=swiftlatexpdftex)` … `I can't find the format
+file 'swiftlatexpdftex.fmt'!` (the `console.error` at
+[useLatexCompile.ts:222](src/hooks/useLatexCompile.ts:222) is just the log; the
+real failure is the engine boot).
+
+**Root cause — the vendored format file is a saved HTTP-error body, not a format
+file.** `public/swiftlatex/swiftlatexpdftex.fmt` is **15 bytes** and its entire
+content is the literal text **`error code: 522`** (a Cloudflare "connection timed
+out" page). It was saved when the SwiftLaTeX integration first landed (commit
+`21def6e`): the upstream CDN (`texlive2.swiftlatex.com`, **offline** — see the
+comment in [swiftlatex.ts:9](src/lib/swiftlatex.ts:9)) 522'd the download and the
+error body got written as the `.fmt`. The sibling assets are real
+(`.wasm` 1.7 MB, `.js` 85 KB, `PdfTeXEngine.js` 13 KB) — only the `.fmt` is the
+stub. The worker fetches it from `/swiftlatex/swiftlatexpdftex.fmt` (served 200) and
+hands pdfTeX a 15-byte non-format-file → boot fails. **So compile has never worked
+client-side.** (Verified live: the `.fmt` URL returns 200 with 15 bytes.)
+
+**Fix — obtain the real format file.** Re-fetch the genuine `swiftlatexpdftex.fmt`
+(multi-MB) from the **same source the working `.wasm`/`.js` came from** — the
+SwiftLaTeX/TeXlyre PDFTeX engine distribution (the living fork at
+`github.com/TeXlyre/texlyre` / `texlive.texlyre.org`, matching this build: pdfTeX
+1.40.21, SwiftLaTeX PDFTeX 0.3.0). Replace the 15-byte stub, commit, and verify a
+real compile produces a PDF. **External binary download — confirm with the user
+before fetching, and get the version-matched `.fmt`** (a mismatched format file
+fails with a fmt/engine version error).
