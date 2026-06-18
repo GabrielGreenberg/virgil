@@ -7,6 +7,7 @@ import { readDocStructure, readPendingDiff } from "@/lib/tiptap/doc-structure";
 // FN-A1-02: orphan-worthiness reads the SAME registry-driven content model as
 // the delete-confirm (a title-only footnote counts), so the two never diverge.
 import { cardHasContent } from "@/cards/has-content";
+import { isInlineAtomLifecycleOn } from "@/lib/identity/inline-atom-lifecycle-flag";
 // The shared `\footnote{…}` trigger regex — the SAME pattern the action
 // registry's footnote row references, so the typed surface and the registry can
 // never recognize a different footnote vocabulary.
@@ -196,7 +197,15 @@ export const Footnote = Node.create<FootnoteOptions>({
           if (!diff) return null;
 
           // Orphan dispatch — only when footnote nodes vanished.
-          if (diff.removedFootnotes.length > 0) {
+          //
+          // W2 cutover: flag-ON the bus reconciler (`useInlineAtomLifecycle`)
+          // owns orphan upsert/clear off the SAME structural diff, so the
+          // legacy `virgil-footnote-orphaned` event web is RETIRED — emitting
+          // it would race a second writer at the (now-dormant) shell store.
+          // Short-circuit the emission on the flag path; flag-OFF it is the
+          // sole orphan source, byte-identical to today. The renumber pass
+          // below is flag-agnostic and always runs.
+          if (diff.removedFootnotes.length > 0 && !isInlineAtomLifecycleOn()) {
             // The diff entries don't carry rich-text content, but the
             // event consumer needs it. Look up each removed id in
             // oldState (we have its pos in the diff).

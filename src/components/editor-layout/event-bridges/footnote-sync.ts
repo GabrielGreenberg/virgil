@@ -1,5 +1,6 @@
 import { useEffect, type Dispatch, type MutableRefObject, type SetStateAction } from "react";
 import type { OrphanedFootnote } from "@/lib/types";
+import { isInlineAtomLifecycleOn } from "@/lib/identity/inline-atom-lifecycle-flag";
 
 /**
  * Footnote ↔ orphan bookkeeping bridges.
@@ -29,8 +30,16 @@ export function useFootnoteSyncBridges(deps: {
 }) {
   const { suppressOrphanRef, setOrphanedFootnotes, deleteSnippet } = deps;
 
+  // W2 cutover: flag-ON the bus reconciler (`useInlineAtomLifecycle`) is the
+  // SOLE orphan store writer (the durable sidecar), so this legacy event web
+  // is RETIRED — each handler bails before touching the (now-dormant) shell
+  // `orphanedFootnotes` state, leaving ONE store. Flag-OFF every handler runs
+  // exactly as before (byte-identical). The flag is read inside each handler
+  // (at event time, not mount time) so a per-test toggle takes effect without
+  // re-subscribing. The archive bridge below is flag-agnostic (unrelated).
   useEffect(() => {
     const handler = (e: Event) => {
+      if (isInlineAtomLifecycleOn()) return;
       const detail = (e as CustomEvent).detail;
       if (!detail?.footnoteId) return;
       if (suppressOrphanRef.current.has(detail.footnoteId)) {
@@ -57,6 +66,7 @@ export function useFootnoteSyncBridges(deps: {
   // orphan card. O(1) per event; no doc walk.
   useEffect(() => {
     const handler = (e: Event) => {
+      if (isInlineAtomLifecycleOn()) return;
       const detail = (e as CustomEvent).detail;
       if (!detail?.footnoteId) return;
       suppressOrphanRef.current.add(detail.footnoteId);
@@ -68,6 +78,7 @@ export function useFootnoteSyncBridges(deps: {
 
   useEffect(() => {
     const handler = (e: Event) => {
+      if (isInlineAtomLifecycleOn()) return;
       const detail = (e as CustomEvent).detail;
       if (!detail?.footnoteId) return;
       if (detail.isOrphan) {

@@ -164,6 +164,7 @@ import { useInlineAtomLifecycle } from "@/links/_shared/useInlineAtomLifecycle";
 import { useCardLifecycleReconciler } from "@/cards/lifecycle/useCardLifecycleReconciler";
 import { useCitationResync } from "@/links/_shared/useCitationResync";
 import { useOrphanedFootnotes } from "@/hooks/useOrphanedFootnotes";
+import { isInlineAtomLifecycleOn } from "@/lib/identity/inline-atom-lifecycle-flag";
 import { DragHandleMenu } from "./DragHandleMenu";
 import { HeadingTypeMenu, type HeadingTypePick } from "./HeadingTypeMenu";
 import { useConfirmDialog } from "./ConfirmDialog";
@@ -960,6 +961,33 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
         }
       : undefined,
   });
+
+  // ── W2 CUTOVER: the SINGLE rendered orphan store ────────────────────────
+  // The panel / omni / search surfaces render orphaned footnotes from
+  // `viewPrefs.orphanedFootnotes` (+ the `onEditOrphan` / `onDeleteOrphan` /
+  // `onEditOrphanTitle` handlers). Pre-cutover that store was the volatile
+  // EditorLayout shell `useState`, populated by the legacy `virgil-footnote-
+  // orphaned` event web. W2a built the durable per-doc sidecar
+  // (`orphanedFootnotesStore`) and W2b made the bus reconciler its only writer —
+  // but NOTHING rendered it, so flag-ON the reconciler maintained a store the
+  // UI never read while the legacy web still drove the panel (the BLOCKER).
+  //
+  // Here we close that gap: flag-ON, swap the four orphan fields of the
+  // `viewPrefs` bundle to read/write the SIDECAR (one store: reconciler writes,
+  // panel reads). Flag-OFF, pass `viewPrefs` through UNCHANGED so the legacy
+  // event web + shell state still drive the panel byte-identically. The non-
+  // orphan fields of `viewPrefs` are never touched on either path.
+  const lifecycleFlagOn = isInlineAtomLifecycleOn();
+  const effectiveViewPrefs = useMemo(() => {
+    if (!viewPrefs || !lifecycleFlagOn) return viewPrefs;
+    return {
+      ...viewPrefs,
+      orphanedFootnotes: orphanedFootnotesStore.orphans,
+      onEditOrphan: orphanedFootnotesStore.editOrphanContent,
+      onDeleteOrphan: orphanedFootnotesStore.clearOrphan,
+      onEditOrphanTitle: orphanedFootnotesStore.editOrphanTitle,
+    };
+  }, [viewPrefs, lifecycleFlagOn, orphanedFootnotesStore]);
 
   // W2d (T4 D6 seam) — the card-lifecycle reconciler. Consumes the
   // `card-deleted` / `card-morphed` signal `runCardLifecycleEvent` publishes and
@@ -3152,11 +3180,20 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
     // resurrect this deliberate trash-delete as an orphan card. The
     // suppress event is consumed by the same bridge hook (in EditorLayout)
     // where `suppressOrphanRef` lives. See footnote-sync.ts.
-    window.dispatchEvent(
-      new CustomEvent("virgil-footnote-suppress-orphan", {
-        detail: { footnoteId: id },
-      }),
-    );
+    //
+    // W2 cutover: flag-ON the legacy orphan event web is RETIRED — the bus
+    // reconciler (`useInlineAtomLifecycle`) owns orphan upsert/clear off the
+    // structural diff, gated on the body-content test, so a deliberate delete
+    // needs no latch (the detector emission is itself short-circuited in
+    // footnote.ts on the flag path). Only dispatch the latch on the legacy
+    // (flag-OFF) path so the suppress producer/consumer stay in lockstep.
+    if (!isInlineAtomLifecycleOn()) {
+      window.dispatchEvent(
+        new CustomEvent("virgil-footnote-suppress-orphan", {
+          detail: { footnoteId: id },
+        }),
+      );
+    }
     innerRef.current?.deleteFootnote(id);
   }, []);
 
@@ -3874,7 +3911,7 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
                     setSearchHighlightRange={setSearchHighlightRange}
                     openItemInPanel={openItemInPanel}
                     wordCountHook={wordCountHook}
-                    viewPrefs={viewPrefs}
+                    viewPrefs={effectiveViewPrefs}
                   />
                 ) : (
                   <PanelChromeProvider
@@ -3947,7 +3984,7 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
                       setSearchHighlightRange={setSearchHighlightRange}
                       openItemInPanel={openItemInPanel}
                       wordCountHook={wordCountHook}
-                      viewPrefs={viewPrefs}
+                      viewPrefs={effectiveViewPrefs}
                     />
                   </PanelChromeProvider>
                 );
@@ -4072,7 +4109,7 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
                 onDeleteCitation={handleDeleteCitation}
                 selectedNoteId={selectedNoteId}
                 setSelectedNoteId={setSelectedNoteId}
-                viewPrefs={viewPrefs}
+                viewPrefs={effectiveViewPrefs}
                 latexErrors={allLatexErrors}
                 selectedErrorId={selectedErrorId}
                 setSelectedErrorId={setSelectedErrorId}
@@ -4888,7 +4925,7 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
                         setSearchHighlightRange={setSearchHighlightRange}
                         openItemInPanel={openItemInPanel}
                         wordCountHook={wordCountHook}
-                        viewPrefs={viewPrefs}
+                        viewPrefs={effectiveViewPrefs}
                       />
                     )}
                   />
@@ -5092,7 +5129,7 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
                 onDeleteCitation={handleDeleteCitation}
                 selectedNoteId={selectedNoteId}
                 setSelectedNoteId={setSelectedNoteId}
-                viewPrefs={viewPrefs}
+                viewPrefs={effectiveViewPrefs}
                 latexErrors={allLatexErrors}
                 selectedErrorId={selectedErrorId}
                 setSelectedErrorId={setSelectedErrorId}
