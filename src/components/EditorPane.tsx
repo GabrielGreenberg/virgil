@@ -157,6 +157,7 @@ import {
 import { setEditorActionsHandle } from "@/lib/actions/editor-actions-bridge";
 import { isRenameCitekey } from "@/lib/identity/identity-cascade";
 import { rewriteCiteKeyInDoc } from "@/lib/identity/bib-cite-rewrite";
+import { useIdentityBusConsumer } from "@/lib/identity/useIdentityBusConsumer";
 import { DragHandleMenu } from "./DragHandleMenu";
 import { HeadingTypeMenu, type HeadingTypePick } from "./HeadingTypeMenu";
 import { useConfirmDialog } from "./ConfirmDialog";
@@ -890,6 +891,19 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
     });
     return unregister;
   }, [identityCascade]);
+
+  // W1b — the single inline-atom DocStructureBus consumer (D1.2/D1.4). Mounts
+  // ONCE per pane behind `virgil:identity-cascade`. Opens exactly one
+  // `onAnyChange` subscription and registers T1's `regenIds` policy FIRST: on a
+  // markerless re-parse (the diff carries same-tx add+remove of citations/
+  // footnotes whose ids regenerated), it routes the `oldId -> newId` remap
+  // through the cascade so panel selection / float / pin survive the re-parse
+  // (OMNI-F3-02, CI-A3-01, the CI-F1-02 id-survival class). The returned
+  // dispatcher is where Wave-2 T2 (inline-atom lifecycle) and T5 (citation
+  // add-resync) register their reconcilers — they do NOT open new subscriptions.
+  // O(1) bail on any non-atom transaction; never runs on a plain keystroke.
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  const identityBusConsumer = useIdentityBusConsumer(editor, identityCascade);
 
   const notesHookRaw = useNotes(docId, notePristine);
   const aiRequestsHook = useAiRequests(docId);
