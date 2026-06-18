@@ -10,7 +10,6 @@ import {
 import type { BibEntry, CitationRef } from "@/lib/types";
 import {
   citationCommandOrNull,
-  formatMediumCitationParts,
   parseCiteCommand,
   sanitizeInlineCitationHtml,
   serializeCiteCommand,
