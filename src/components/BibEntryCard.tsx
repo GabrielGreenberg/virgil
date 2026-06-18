@@ -109,6 +109,32 @@ function FormatToolbar({ editorRef }: { editorRef: React.RefObject<HTMLDivElemen
 }
 
 /* ── Rich-text annotation editor ──────────────────────────────────── */
+//
+// C4 (BIB-F8-01 DATA-LOSS / BIB-F8-02 HIGH): one controlled, flushed annotation
+// field with a SINGLE owner. The owner of the value is the `useAnnotations`
+// sidecar store (keyed by BibEntry.uid) — the docked card and the popped float
+// both read/write it through the SAME `getAnnotation`/`setAnnotation` pair, so
+// there is exactly one source of truth. This component's job is to keep its
+// uncontrolled contentEditable faithful to that single source:
+//
+//   • FLUSH on blur AND unmount (BIB-F8-01). The debounce no longer survives an
+//     unmount as an orphaned timer that fires against a null ref and writes ''.
+//     Instead, on blur/unmount we synchronously commit the live DOM (while the
+//     ref is still mounted) and cancel the pending timer. A fast collapse/close/
+//     doc-switch within the debounce window therefore persists the edit instead
+//     of wiping it.
+//
+//   • RE-SEED from the controlled `content` when an EXTERNAL writer changes it
+//     (BIB-F8-02). The seed effect now depends on `content`, so when the float
+//     saves, the docked instance re-renders with the fresh value and re-syncs
+//     its DOM — the two surfaces converge. We never re-seed while THIS field is
+//     focused (that would stomp the user's live caret), and we skip the echo of
+//     our own just-committed value (lastCommittedRef), so a save never clobbers
+//     in-progress typing or fights itself.
+//
+// The single write seam is `commit()`. SECURITY (BIB-F5-01) sanitization is
+// applied there (and on seed/paste) by a SEPARATE chip; this slice leaves that
+// one seam intact and adds no second writer.
 function AnnotationEditor({
   bibKey, content, onUpdate,
 }: {
@@ -116,30 +142,110 @@ function AnnotationEditor({
 }) {
   const editorRef = useRef<HTMLDivElement>(null);
   const debounceRef = useRef<ReturnType<typeof setTimeout>>(undefined);
+  // The HTML captured at the moment the debounce was last (re)scheduled. The
+  // unmount-flush reads THIS, not the live ref: React detaches the contentEditable
+  // ref during the commit phase, so by the time a passive-effect cleanup runs on
+  // unmount `editorRef.current` is already null. Capturing the value on input
+  // keeps the last-typed content recoverable across the unmount (BIB-F8-01).
+  const pendingHtmlRef = useRef<string | null>(null);
   const [focused, setFocused] = useState(false);
   const onKeyDown = useTabIndent<HTMLDivElement>();
 
-  // SECURITY (BIB-F5-01): the annotation HTML is untrusted (AI-written via
-  // answer-bib-review, or carried in a shared paper's annotations.json), so it
-  // must be sanitized before it ever reaches the live contentEditable's
-  // innerHTML — otherwise <img onerror>/<svg onload>/<iframe> payloads fire on
-  // open (stored XSS). Sanitize on SEED (here, defensively cleaning anything
-  // already on disk)…
+  // Latest props captured in refs so the unmount-flush cleanup (which must run
+  // with empty deps to fire only on unmount, not on every prop change) reads
+  // current values without re-subscribing. Synced in an effect, not during
+  // render (react-hooks/refs); commit() — the only reader — runs from event
+  // handlers / effects after commit, so the post-render sync is in time.
+  const onUpdateRef = useRef(onUpdate);
+  const bibKeyRef = useRef(bibKey);
   useEffect(() => {
+    onUpdateRef.current = onUpdate;
+    bibKeyRef.current = bibKey;
+  }, [onUpdate, bibKey]);
+
+  // The bibKey the DOM was last seeded for. A change means the entry switched
+  // (a new entry is never the "edit in progress"), so we always re-seed even
+  // from a focused field.
+  const seededKeyRef = useRef<string | null>(null);
+
+  // The single write seam. SECURITY (BIB-F5-01) sanitization is applied here by
+  // a separate chip — this is the one place an annotation HTML string is
+  // persisted, so the sanitizer slots in cleanly without a second writer.
+  //
+  // Reads the live DOM when mounted; falls back to the captured pending value
+  // when the ref has already been detached (unmount-flush path). Clears the
+  // pending capture once committed so a later flush can't double-write a stale
+  // value.
+  const commit = useCallback(() => {
+    const raw = editorRef.current?.innerHTML ?? pendingHtmlRef.current;
+    if (raw == null) return; // nothing live and nothing captured
+    pendingHtmlRef.current = null;
+    onUpdateRef.current(bibKeyRef.current, sanitizeAnnotationHtml(raw));
+  }, []);
+
+  // SECURITY (BIB-F5-01): seed the contentEditable from the untrusted stored
+  // HTML through the sanitizer, so an <img onerror>/<svg onload>/<iframe>
+  // payload never reaches the live innerHTML.
+  //
+  // BIB-F8-02: this effect now depends on `content`, so an EXTERNAL write (the
+  // other surface saving the same entry) re-seeds this DOM and the two surfaces
+  // converge. The seed is gated on focus to protect the user's live caret:
+  //   - ENTRY switch (bibKey changed): always re-seed — a different entry is
+  //     never the edit-in-progress, even if the field happens to be focused.
+  //   - same entry, content delta while NOT focused: re-seed — this is the
+  //     other surface's write landing; we own no live caret, so converge now.
+  //   - same entry, content delta while focused: DON'T touch the DOM — the user
+  //     owns the field; re-seeding would stomp their caret. Convergence for the
+  //     other surface happens on this field's next blur/commit (the user's edit
+  //     is authoritative while they type). The blur flush guarantees the store
+  //     ends up consistent, so the surfaces still converge — just on blur, not
+  //     mid-keystroke.
+  useEffect(() => {
+    const entrySwitched = seededKeyRef.current !== bibKey;
+    if (focused && !entrySwitched) return; // protect the live caret
     const clean = sanitizeAnnotationHtml(content || "");
-    if (editorRef.current && editorRef.current.innerHTML !== clean) {
-      editorRef.current.innerHTML = clean;
-    }
-  }, [bibKey]); // eslint-disable-line react-hooks/exhaustive-deps
+    const el = editorRef.current;
+    if (el && el.innerHTML !== clean) el.innerHTML = clean;
+    seededKeyRef.current = bibKey;
+  }, [bibKey, content, focused]);
 
   // …and on WRITE, so a payload is never persisted back to annotations.json.
+  // Debounced commit — keystroke-sane (no doc-size work; a single timer reset).
+  // Capture the live HTML on every input so the unmount-flush has a value even
+  // after the ref detaches (BIB-F8-01).
   const handleInput = useCallback(() => {
+    pendingHtmlRef.current = editorRef.current?.innerHTML ?? "";
     if (debounceRef.current) clearTimeout(debounceRef.current);
-    debounceRef.current = setTimeout(() => {
-      const html = sanitizeAnnotationHtml(editorRef.current?.innerHTML || "");
-      onUpdate(bibKey, html);
-    }, 400);
-  }, [bibKey, onUpdate]);
+    debounceRef.current = setTimeout(commit, 400);
+  }, [commit]);
+
+  // BIB-F8-01: flush on blur. Collapsing/closing the card deselects it (blur
+  // fires before the unmount), so the in-flight edit is committed synchronously
+  // — a fast collapse can no longer drop it.
+  const handleBlur = useCallback(() => {
+    setFocused(false);
+    if (debounceRef.current) {
+      clearTimeout(debounceRef.current);
+      debounceRef.current = undefined;
+    }
+    commit();
+  }, [commit]);
+
+  // BIB-F8-01: flush on UNMOUNT. The card body unmounts when it collapses /
+  // closes / the doc switches. We cancel the pending timer and, if an edit was
+  // in flight (pendingHtmlRef set), commit the captured value — the ref is
+  // already detached by now, so commit() reads the capture, not the DOM. The
+  // edit is never lost and no orphan timer fires against a null ref. Empty deps
+  // (commit is stable) → runs only on unmount.
+  useEffect(() => {
+    return () => {
+      if (debounceRef.current) {
+        clearTimeout(debounceRef.current);
+        debounceRef.current = undefined;
+      }
+      if (pendingHtmlRef.current != null) commit();
+    };
+  }, [commit]);
 
   // Paste is the one live vector the seed/write paths don't cover (a pasted
   // <img onerror> renders into the editable immediately). Intercept rich-HTML
@@ -162,7 +268,7 @@ function AnnotationEditor({
         onInput={handleInput}
         onPaste={handlePaste}
         onFocus={() => setFocused(true)}
-        onBlur={() => setFocused(false)}
+        onBlur={handleBlur}
         onClick={(e) => e.stopPropagation()}
         onKeyDown={onKeyDown}
         className="annotation-editor px-3 py-2 text-sm text-ink-body leading-relaxed focus:outline-none min-h-[2.5rem]"
