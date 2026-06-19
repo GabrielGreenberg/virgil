@@ -174,7 +174,16 @@ export function useFocusMode(docId: string | null, editor: Editor | null) {
     docId,
     "focus.json",
     INITIAL_STORED,
-    { migrate: migrateFocusState, errorLabel: "focus", debounceMs: 0 },
+    // Debounce the focus.json DISK write (CHIP B). React state (stored → band /
+    // state) still updates synchronously inside update() — only the write to
+    // disk coalesces — so the editor confine on lock and the band overlay stay
+    // immediate. This is a safety net for any residual rapid update() bursts
+    // (e.g. click-then-lock, or an in-flight-write race); the per-snap drag
+    // write storm is already eliminated by the commit-on-mouseup change in
+    // FocusBand. Pending writes are FLUSHED synchronously on unmount and on
+    // docId change (usePersistentState's cleanup effect → flushPending), so the
+    // band is never lost on navigation.
+    { migrate: migrateFocusState, errorLabel: "focus", debounceMs: 150 },
   );
   // Re-resolve trigger: rev.blocks bumps on block add/remove/reorder (CHIP 0),
   // never on a plain keystroke — so the derived indices below recompute exactly
