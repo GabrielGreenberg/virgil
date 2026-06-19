@@ -518,13 +518,22 @@ export function setLayout(patch: Partial<LibraryViewSession["layout"]>): void {
 
 const DEFAULT_SORT: { col: SortColId; dir: SortDir } = { col: "year", dir: "desc" };
 
+// Stable singletons for the absent/default slices. The readers MUST return a
+// referentially-stable value when the slice is missing — `useSyncExternalStore`
+// caches on identity, so minting a fresh `emptyPanel()` / `{}` per call would
+// defeat the hooks' snapshot caches and loop ("getSnapshot should be cached").
+// These are treated as read-only; mutators never touch them (they build fresh
+// trees via `withScopePanel` / `withList`).
+const EMPTY_PANEL: PanelState = emptyPanel();
+const EMPTY_LIST_VIEW: ListView = {};
+
 function readScopePanel(scope: string, panel: PanelKey): PanelState {
   const s = ensureInit();
-  return s.scopes[scope]?.[panel] ?? emptyPanel();
+  return s.scopes[scope]?.[panel] ?? EMPTY_PANEL;
 }
 
 function readListView(scope: string, panel: PanelKey, libId: string): ListView {
-  return readScopePanel(scope, panel).lists[libId] ?? {};
+  return readScopePanel(scope, panel).lists[libId] ?? EMPTY_LIST_VIEW;
 }
 
 // ── React hooks (layered on useSyncExternalStore) ───────────────────────
@@ -545,20 +554,35 @@ export function usePanelSelection(
   anchorKey: string | null;
   setSelection: (keys: ReadonlySet<string>, anchor: string | null) => void;
 } {
-  // Cache the derived Set keyed by the source array reference so the
-  // snapshot is referentially stable while the panel slice is unchanged.
-  const cacheRef = useRef<{ src: string[]; set: ReadonlySet<string> } | null>(
-    null,
-  );
-  const getSnap = useCallback((): {
+  // Cache the WHOLE returned snapshot keyed by the source array reference
+  // AND the anchorKey, so the snapshot is referentially stable while the
+  // panel slice is unchanged. useSyncExternalStore requires getSnapshot to
+  // return an identical reference between calls when nothing changed —
+  // returning a fresh object literal (even with a cached inner Set) loops
+  // ("getSnapshot should be cached" / "Maximum update depth exceeded"). The
+  // default-empty mount returns the same `emptyPanel().selectedKeys` shape;
+  // caching the whole snap keeps that case stable across calls too.
+  type Snap = {
     selectedKeys: ReadonlySet<string>;
     anchorKey: string | null;
-  } => {
+  };
+  const cacheRef = useRef<{
+    srcKeys: string[];
+    anchorKey: string | null;
+    snap: Snap;
+  } | null>(null);
+  const getSnap = useCallback((): Snap => {
     const p = readScopePanel(scope, panel);
-    if (!cacheRef.current || cacheRef.current.src !== p.selectedKeys) {
-      cacheRef.current = { src: p.selectedKeys, set: new Set(p.selectedKeys) };
+    let c = cacheRef.current;
+    if (!c || c.srcKeys !== p.selectedKeys || c.anchorKey !== p.anchorKey) {
+      c = {
+        srcKeys: p.selectedKeys,
+        anchorKey: p.anchorKey,
+        snap: { selectedKeys: new Set(p.selectedKeys), anchorKey: p.anchorKey },
+      };
+      cacheRef.current = c;
     }
-    return { selectedKeys: cacheRef.current.set, anchorKey: p.anchorKey };
+    return c.snap;
   }, [scope, panel]);
   const snap = useSyncExternalStore(subscribe, getSnap, getSnap);
   const setSelectionCb = useCallback(
@@ -588,6 +612,11 @@ export function useListView(
   setQuery: (q: string) => void;
   setScroll: (top: number) => void;
 } {
+  // `readListView` returns the stable module-level `EMPTY_LIST_VIEW` for the
+  // absent/default slice, so `lv` is referentially stable across calls in the
+  // common (un-sorted, un-queried) case and this cache holds — no loop. The
+  // populated path is stable too: the store hands back the same ListView ref
+  // until a mutation rebuilds that slice.
   const cacheRef = useRef<{ src: ListView; view: ListView } | null>(null);
   const getSnap = useCallback((): ListView => {
     const lv = readListView(scope, panel, libId);
