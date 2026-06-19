@@ -1,6 +1,6 @@
-<!-- last-verified: dc11e7f 2026-06-17 -->
+<!-- last-verified: 985d891 2026-06-19 -->
 <!-- derives-from: docs/architecture/VIRGIL.md#ontology, docs/architecture/VIRGIL.md#code-organization -->
-<!-- covers-code: src/lib/actions/action-registry.ts, src/lib/actions/editor-actions-bridge.ts, src/lib/actions/action-icons.tsx, src/lib/tiptap/smart-insert.ts, src/components/menu, src/components/DragHandleMenu.tsx, src/components/ActionsMenuPanel.tsx, src/components/SelectionActionsMenu.tsx, src/components/editor-layout/card-actions, src/lib/editor-extensions.ts, src/lib/tiptap/tab-indent.ts, src/lib/tiptap/expex.ts, src/lib/tiptap/latex-comment.ts, src/lib/section-folding.ts, src/lib/focus-view.ts, src/lib/tiptap/uuid-attr.ts, src/lib/tiptap/anchor-highlight-deco.ts, src/lib/tiptap/pgmark.ts, src/lib/tiptap/latex-command.ts, src/text-objects/text-object-registry.ts, src/text-objects/TextObjectGrabHandle.tsx, src/text-objects/drop-adapters.ts, src/components/drop-mode, src/cards/drop-specs, src/lib/tiptap/atom-registry.ts -->
+<!-- covers-code: src/lib/actions/action-registry.ts, src/lib/actions/editor-actions-bridge.ts, src/lib/actions/action-icons.tsx, src/lib/tiptap/smart-insert.ts, src/components/menu, src/components/DragHandleMenu.tsx, src/components/ActionsMenuPanel.tsx, src/components/SelectionActionsMenu.tsx, src/components/editor-layout/card-actions, src/lib/editor-extensions.ts, src/lib/tiptap/tab-indent.ts, src/lib/tiptap/expex.ts, src/lib/tiptap/latex-comment.ts, src/lib/section-folding.ts, src/lib/focus-view.ts, src/lib/tiptap/uuid-attr.ts, src/lib/tiptap/anchor-highlight-deco.ts, src/lib/tiptap/pgmark.ts, src/lib/tiptap/latex-command.ts, src/text-objects/text-object-registry.ts, src/text-objects/TextObjectGrabHandle.tsx, src/text-objects/LiftHost.tsx, src/text-objects/drop-adapters.ts, src/components/drop-mode, src/cards/drop-specs, src/lib/tiptap/atom-registry.ts, src/lib/tiptap/structural-edit.ts -->
 
 # Actions (the editing surface) — operational manifest
 
@@ -31,7 +31,7 @@ and roots every action in the registry / keymap / decoration plugin that
 | **Card actions** | The action + formatting vocabulary reached from the gutter button, the block grab handle, slash commands, and typed-LaTeX input rules | `VIRGIL_ACTION_REGISTRY` ([action-registry.ts](../../src/lib/actions/action-registry.ts)) — the single SSOT every surface reads off; the two live menus ([DragHandleMenu.tsx](../../src/components/DragHandleMenu.tsx) / [ActionsMenuPanel.tsx](../../src/components/ActionsMenuPanel.tsx)) RENDER FROM it, *through* the `<Menu>` primitive ([src/components/menu/](../../src/components/menu)) |
 | **Structural ops** | Block move / duplicate / delete / convert; the grab-handle lift; the three drag-drop flavors | `TEXT_OBJECT_REGISTRY` ([text-object-registry.ts](../../src/text-objects/text-object-registry.ts)) + the drop-spec registry ([drop-mode/registry.ts](../../src/components/drop-mode/registry.ts)) + `ATOM_REGISTRY` ([atom-registry.ts](../../src/lib/tiptap/atom-registry.ts)) |
 | **Keyboard** | Custom keymaps + the inherited TipTap defaults that survive | `addKeyboardShortcuts` in [tab-indent.ts](../../src/lib/tiptap/tab-indent.ts) / [expex.ts](../../src/lib/tiptap/expex.ts) / [latex-comment.ts](../../src/lib/tiptap/latex-comment.ts) + the assembled set in [editor-extensions.ts](../../src/lib/editor-extensions.ts) |
-| **Decorations** | The visual overlays that style/annotate without mutating the doc | The four `DecorationSet` plugins (table below) |
+| **Decorations** | The visual overlays that style/annotate without mutating the doc | The six `DecorationSet` plugins (table below) |
 
 The deep structure to keep in mind: **one action vocabulary behind three
 triggers, one dispatch path** (Family 1), and **one drop-spec registry behind
@@ -240,7 +240,14 @@ Whole-block (TextObject) operations come from two places:
   — the structured block edits: `handleReorderBlocks` (move a contiguous block
   range), `handleRenameHeading`, `handleUpdateLabel`, `handleRenameParTitle`,
   plus the outline/scroll plumbing (`handleScrollToHeading`, debounced
-  `handleUpdate`).
+  `handleUpdate`). The three rename mutators no longer flatten a heading to
+  plaintext by integer block-index; they route through the UUID-anchored,
+  atom-preserving primitive `editStructuredNodeByUuid`
+  ([structural-edit.ts](../../src/lib/tiptap/structural-edit.ts)) — via
+  `renameHeadingByUuid` / `renameParTitleByUuid` / `updateHeadingLabelByUuid`,
+  which splice the new label around the heading's inline atoms (math/cite/ref)
+  and gate the label commit on the same `isLabelTaken` predicate the live
+  warning reads.
 - **The `DragHandleMenu` lifecycle actions** — `duplicate` (clone the captured
   passage, forking any contained atoms' sidecars via `cardLifecycle`),
   `archive`, and `delete` (Family 1).
@@ -254,7 +261,19 @@ selections. It realizes the [Ontology](../architecture/VIRGIL.md#ontology)
 
 - **Hover / selection** → a handle appears in the left gutter (innermost-to-outermost per nesting level).
 - **No-drag click** → opens the `DragHandleMenu` (Family 1).
-- **Drag past the lift threshold** → mounts a lifted-overlay ghost and begins a drop session. Two modes by cursor location: **ghost mode** (cursor in the content zone → release commits a placement via drop-mode) and **popout mode** (cursor outside → spawns a real floating window).
+- **Drag past the lift threshold** → hands off to the shared **`LiftHost`** (below), which mounts a lifted-overlay ghost and begins a drop session. Two modes by cursor location: **ghost mode** (cursor in the content zone → release commits a placement via drop-mode) and **popout mode** (cursor outside → spawns a real floating window).
+
+The grab handle now keeps only the **shell** — the `is-pressed` toggle, the 5px
+lift-threshold gate, the no-drag → menu fallback, and `SelectionRef`→`TextObjectRef`
+hydration. The post-threshold core (the lifted overlay, the drop-session /
+popout-spawn logic, anchor-DOM resolution, float-policy chrome) was extracted
+into **`LiftHost`** ([LiftHost.tsx](../../src/text-objects/LiftHost.tsx)), a
+provider mounted in `EditorPane` as the lowest common ancestor of both the grab
+handle and `FloatHost`. At threshold-cross the handle calls
+`useLiftHost().beginLift({ terminalPolicy: "grab", ref, cardKey, origin })`. A
+`terminalPolicy` of `"grab"` gives the grab-handle terminal (ghost-commit or
+popout); `"float"` is the other producer — the **drop button on popped-out
+text-object floats** (the lifted-overlay drop gesture, shared via the same host).
 
 ### `TEXT_OBJECT_REGISTRY` — what is graspable
 

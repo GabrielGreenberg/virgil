@@ -1,6 +1,6 @@
-<!-- last-verified: 7433bc2 2026-06-13 -->
+<!-- last-verified: 985d891 2026-06-19 -->
 <!-- derives-from: docs/architecture/VIRGIL.md#uuid-marker-emission -->
-<!-- covers-code: src/lib/uuid.ts, src/lib/latex-serializer.ts, src/lib/latex-parser.ts, src/text-objects/text-object-registry.ts, src/lib/latex-paragraph-map.ts, src/lib/document-styles.ts -->
+<!-- covers-code: src/lib/uuid.ts, src/lib/latex-serializer.ts, src/lib/latex-parser.ts, src/text-objects/text-object-registry.ts, src/lib/latex-paragraph-map.ts, src/lib/document-styles.ts, src/lib/bib-uid.ts, src/lib/bib-parser.ts, src/lib/identity/ -->
 
 # Identity (UUIDs & markers) — operational manifest
 
@@ -43,6 +43,7 @@ marker** except as a side effect of the content it wraps.
 | `%!v:blank` | an empty, unidentified paragraph | sentinel comment | round-trips to/from an empty paragraph. |
 | `\vfid{<4hex>}` | a **footnote** Atom | inline no-op macro | emitted immediately **before** `\footnote{}` / `\thanks{}`; parser stashes it as `pendingFootnoteId` and attaches to the next footnote. |
 | `\vcid{<4hex>}` | a **citation** Atom | inline no-op macro | emitted **before** the cite command; parser stashes `pendingCitationId` for the next cite. |
+| `\vbid{<4hex>}` | a **BibEntry** durable surrogate id (`BibEntry.uid`) | no-op macro **line in the `.bib`** (not the `.tex`) | emitted immediately before each BibTeX block by `serializeBibFile`; parser binds it positionally to the entry it precedes (`orderedVbidBindings`, `src/lib/bib-uid.ts`); a `.bib` with no markers mints fresh on first parse and the first save anchors it. Decouples sidecar identity from the renameable citekey — see the IdentityCascade section. |
 | `\vexid{<4hex>}` | an **exampleBlock** (`\ex`/`\pex`) | block no-op macro | emitted before `\ex`/`\pex`. |
 | `\vxid{<4hex>}` | an **exampleItem** (`\a` row) | block no-op macro | emitted before `\a`; a stray `\vxid` at body scope is discarded so it can't accrete. |
 | `\vlid{<4hex>}…\vlidend{<4hex>}` | a **linkedRange** (the `linkedAnchor` mark's span) | paired inline no-op macros | opened where the mark starts, closed where it ends; ranges open at a block boundary are closed and reopened. Reassembled on parse by `applyLinkedAnchorBoundaries`. |
@@ -124,10 +125,55 @@ matches are skipped — so a skill should not rely on recovery for duplicated te
 The `\v*` markers are no-op macros, so a `.tex` still compiles outside Virgil.
 `CLASSIC_PREAMBLE` (`src/lib/document-styles.ts`) seeds `\providecommand` no-ops
 for `\vfid` / `\vcid` / `\vexid` (+ `\usepackage{xcolor}`); `ensureVirgilCommands`
-(`src/lib/latex-serializer.ts`) tops up **all six** (`\vfid` `\vcid` `\vexid`
-`\vxid` `\vlid` `\vlidend`) on every save, even against a user-authored preamble.
-These names are **reserved** — the full never-override deny-list (macros, comment
-conventions, CSS, paths) is [gardening.md](gardening.md).
+(`src/lib/latex-serializer.ts`) tops up **all seven** (`\vfid` `\vcid` `\vbid`
+`\vexid` `\vxid` `\vlid` `\vlidend`) on every save, even against a user-authored
+preamble — `\vbid` is declared in the `.tex` preamble (so a `.bib` `\input` or a
+raw-LaTeX open never breaks) even though the marker itself only lives in the
+`.bib`. These names are **reserved** — the full never-override deny-list (macros,
+comment conventions, CSS, paths) is [gardening.md](gardening.md).
+
+## The IdentityCascade (durable identity, default-OFF rollout)
+
+A second identity axis sits beside the marker-id one above: **renaming a citekey
+or regenerating an inline-atom id must not strand the sidecars keyed on the old
+value.** The cascade is the single writer for any such identity change. It is
+gated behind two **default-OFF** localStorage flags — flag-OFF preserves the
+legacy paths exactly, so nothing below is on the hot path until a flag is set.
+
+- **`virgil:identity-cascade`** (`src/lib/identity/identity-flag.ts`,
+  `isIdentityCascadeOn`) — the bib-rename + id-regen cascade.
+- **`virgil:inline-atom-lifecycle`** (`inline-atom-lifecycle-flag.ts`,
+  `isInlineAtomLifecycleOn`) — the orphan-footnote lifecycle (T2 Wave 2).
+
+**`IdentityCascade`** (`src/lib/identity/identity-cascade.ts`) is a pure-logic,
+per-document service (no React/editor import). Surfaces `registerMigrator(kind,
+fn)`; `runIdentityChange(change)` fans one change out to every registered
+migrator atomically (errors isolated, never half-applied). Change vocabulary:
+`renameCitekeyChange` / `retypeChange` (kind `"bibEntry"`) and `regenIdsChange`
+(kind `"inlineAtom"`, an `oldId → newId` remap after a markerless re-parse).
+The `.bib` `key`+`type` write, every `\cite{oldKey}` doc-rewrite
+(`bib-cite-rewrite.ts`, whole-token + footnote-deep), and each citekey-keyed
+sidecar are migrators — adding a new citekey-keyed sidecar gets rename-safety by
+registering one, not by patching the rename call site.
+
+**`BibEntry.uid`** (the `\vbid` round-trip, `src/lib/bib-uid.ts` +
+`serializeBibFile`/parse in `src/lib/bib-parser.ts`) is the durable surrogate
+that decouples sidecar identity from the renameable citekey.
+**`sidecar-uid-migrate.ts`** re-keys `annotations.json` / `bib-review-requests
+.json` onto the uid non-destructively (unresolvable citekeys bucket under
+`orphanByKey`, never silent-delete; additive + idempotent).
+
+**The single inline-atom bus consumer** — `useIdentityBusConsumer`
+(`src/lib/identity/useIdentityBusConsumer.ts`) mounts ONCE per pane and opens
+exactly ONE `DocStructureBus.onAnyChange` subscription (the **+1, not +3**
+keystroke-sanctity consumer). It owns an `IdentityBusConsumer` dispatcher and
+registers T1's `regenIds` policy first; Wave-2 themes register **ordered
+policies** on it via `registerPolicy` rather than opening their own
+subscriptions: `inline-atom-lifecycle-policy.ts` (via `useInlineAtomLifecycle`,
+`src/links/_shared/`) and `citation-resync-policy.ts` (via `useCitationResync`).
+`onAnyChange` is `emitCount`-gated and the handler bails O(1) when no
+citation/footnote entered or left the transaction, so plain typing runs zero
+consumer code.
 
 ## Rules for skills
 

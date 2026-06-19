@@ -1,6 +1,6 @@
-<!-- last-verified: dc11e7f 2026-06-17 -->
+<!-- last-verified: 985d891 2026-06-19 -->
 <!-- derives-from: docs/architecture/VIRGIL.md#card-kind-taxonomy -->
-<!-- covers-code: src/cards/types.ts, src/cards/card-registry.tsx, src/cards/predicates.ts, src/panels/panel-registry.ts, src/components/panel-primitives.tsx, src/lib/types.ts, src/hooks/useReports.ts, src/lib/ai-request-bridge.ts, src/cards/drop-specs/index.ts, src/components/drop-mode/card-drop-gesture.ts, src/components/icons/DropChevrons.tsx, src/hooks/useReconcileModeAAnchors.ts, src/links/resolve-card-anchor.ts -->
+<!-- covers-code: src/cards/types.ts, src/cards/card-registry.tsx, src/cards/predicates.ts, src/cards/has-content.ts, src/cards/lifecycle/run-event.ts, src/cards/lifecycle/card-lifecycle-signal.ts, src/cards/lifecycle/useCardLifecycleReconciler.ts, src/panels/panel-registry.ts, src/panels/_shared/card-archive-actions.tsx, src/panels/_shared/card-archive-view.tsx, src/panels/_shared/CardViewModeMenu.tsx, src/components/panel-primitives.tsx, src/lib/types.ts, src/hooks/useReports.ts, src/lib/ai-request-bridge.ts, src/cards/drop-specs/index.ts, src/components/drop-mode/card-drop-gesture.ts, src/components/icons/DropChevrons.tsx, src/hooks/useReconcileModeAAnchors.ts, src/links/resolve-card-anchor.ts -->
 
 # Cards (the kind taxonomy) — operational manifest
 
@@ -40,7 +40,7 @@ Every per-kind fact hangs off **one registry**: `CARD_REGISTRY`
 ([src/cards/card-registry.tsx](../../src/cards/card-registry.tsx)), a
 `Record<CardKind, CardMeta>` — one entry per kind carrying `panel` /
 `origin` / `keyPrefix` / `label` / `titleLabel` / `themeKey` / `collabClaims` /
-`anchored` / `markerType` / `lifecycle` / `dropSpec` / `droppable` /
+`anchored` / `markerType` / `lifecycle` / `content` / `dropSpec` / `droppable` /
 `dropPlacement` / `morph` / `stackable` / `poppable` / `bodyClass`. The
 formerly-parallel tables are **derived** from it, never extended by hand
 (extend the registry, never a parallel table —
@@ -115,6 +115,74 @@ load. ADDITIVE/optional; mechanism in [anchoring.md](anchoring.md).
 | `ai` | *(Inbox)* | `ai-requests.json` · `requests` | — (carries `kind: AiRequestKind`) | flexible — anchor and/or atom-links, or neither | the full Task machine ([below](#the-task-card-ai)) |
 | `error` | Errors | *(not persisted)* | — | maps to a `.tex` line / paragraph | ephemeral — re-derived each lint pass |
 
+## The declarative content model — `CardMeta.content`
+
+`CardMeta.content: CardContentModel | null` ([types.ts](../../src/cards/types.ts))
+is the **single declarative descriptor** for "does this card hold user content?"
+— it replaced a divergent per-kind `switch`. A `CardContentModel` names three
+field lists on the kind's record: `bodyField` (a rich Tiptap JSONContent body
+walked for visible text, or `null`), `textFields` (plain-string/array mirrors
+that ALSO count — e.g. `title` on note/report/footnote, `text` on todo/report,
+`keys` on citation), and `aiPrefilledFields` (the suggestion family's AI-filled
+`original_text`/`suggested_text` — named for the coverage assertion but NEVER
+counted as user content). `null` for the no-user-content kinds (`highlight` /
+`bib` / `ai` / `error`) — a `null` descriptor always reports "no content."
+
+One walker reads it: `cardHasContent(kind, card)`
+([src/cards/has-content.ts](../../src/cards/has-content.ts)), consumed by BOTH
+the panel-trash confirm (`EditableCard.tryDelete`,
+[panel-primitives.tsx](../../src/components/panel-primitives.tsx)) and the
+gutter-marker delete (`deleteMarginItem`) — so no kind can silently delete
+content the confirm couldn't see. Every declared field is pinned to the record
+shape by `assertContentCoverage` (card-registry.tsx).
+
+## Per-card archive — the set-aside affordance
+
+Every **user-authored** card carries an optional `archived?: boolean`
+([src/lib/types.ts](../../src/lib/types.ts), on each card record). Archived cards
+hide from a panel's active view, the OmniView, and the gutter — set aside
+reversibly rather than deleted. This is **wholly distinct** from the text-object
+Archive PANEL (the `archive` CardKind, which *moves text objects*).
+
+- **`isArchivable(kind)`** ([predicates.ts](../../src/cards/predicates.ts)) —
+  derived from provenance: `origin === "user"`, MINUS two exceptions.
+  `highlight` is delete-only (a bodyless range tint; archiving would orphan the
+  tint) and `footnote` is delete-only (pending a footnote-lifecycle follow-up —
+  the subsystem doesn't model "unanchored" the way citations do; **user
+  decision**). So the archivable set is note/citation/archive/todo/report/
+  report-request + the comment/suggestion pairs.
+- **`archiveRemovesAtom(kind)`** (= `isInlineAtomCardKind`) — for the atom kinds,
+  archiving splices the `\footnote{}`/`\cite{}` marker out of the `.tex` (behind
+  a confirm) and does NOT re-insert it on unarchive (returns as an unanchored
+  ref). With `footnote` now delete-only, this is reachable only for `citation`.
+- **The button** — `CardArchiveButton` / `MenuArchive`
+  ([panel-primitives.tsx](../../src/components/panel-primitives.tsx)) mounts
+  beside the trash, self-wired from the **`CardArchiveActionsProvider`**
+  ([card-archive-actions.tsx](../../src/panels/_shared/card-archive-actions.tsx),
+  identity-stable so a body keystroke never re-renders every card).
+- **The View menu** — a three-dot "View Active / View Archives / View All"
+  selector (`CardViewModeMenuItems`,
+  [CardViewModeMenu.tsx](../../src/panels/_shared/CardViewModeMenu.tsx)) over a
+  shared `CardArchiveView` mode
+  ([card-archive-view.tsx](../../src/panels/_shared/card-archive-view.tsx)); the
+  list applies `filterByArchiveView(items, view, getArchived)`.
+
+## Card-lifecycle reconciler — selection survives delete/morph
+
+A card's delete / morph incurs a cross-store obligation: the global `cardStore`
+selection/hover/expansion slots, keyed `{kind, id}`, must be PRUNED (delete) or
+RE-KEYED `{fromKind→toKind, id}` (morph). The sidecar-backed kinds (report /
+note / cutter / revision) have no doc-node the `DocStructureBus` reports, so the
+single delete/morph executor `runCardLifecycleEvent`
+([src/cards/lifecycle/run-event.ts](../../src/cards/lifecycle/run-event.ts))
+PUBLISHES a `card-deleted` / `card-morphed` signal
+([card-lifecycle-signal.ts](../../src/cards/lifecycle/card-lifecycle-signal.ts)),
+and `useCardLifecycleReconciler`
+([useCardLifecycleReconciler.ts](../../src/cards/lifecycle/useCardLifecycleReconciler.ts),
+mounted once per pane) prunes/re-keys `cardStore`. This is an explicit
+user-action channel — NOT a `DocStructureBus` subscription, so it doesn't touch
+keystroke sanctity or the +1-not-+3 invariant.
+
 ## Drop facets — the (re)anchor button
 
 Two `CardMeta` facets drive the **card drop button** — the neutral chevron glyph
@@ -159,12 +227,17 @@ polymorphic-panel map:
 | **Cutter** | `cutter-comment` + `cutter-suggestion` | the **legacy `cut` key** (`CARD_THEMES.cut`) | non-lossy both ways |
 | **Reports** | `report` + `report-request` | `report` | `report` ⇄ `report-request`, lossy both ways — [below](#the-reports-panel) |
 
-Each pair is a reciprocal **morph pair** (`CardMeta.morph: { to, lossy }`): the
-card converts *in place* into its panel sibling — preserving id / createdAt /
+Each pair is a reciprocal **morph pair** (`CardMeta.morph: { to, lossy, drops }`):
+the card converts *in place* into its panel sibling — preserving id / createdAt /
 anchor, flipping the on-disk data discriminator — via the kind control on the
 card header (and the popped float's title control), backed by a transform
 registered through `registerCardMorph`
-([card-registry.tsx](../../src/cards/card-registry.tsx)).
+([card-registry.tsx](../../src/cards/card-registry.tsx)). `drops` enumerates the
+`MorphDropField`s the TO shape can't hold (`title` / `byline` / `aiRequest` /
+`body` / `keys`) — it drives the generated confirm copy AND the unbridge:
+`drops.includes("aiRequest")` is the declarative trigger to clear the orphaned
+`ai-requests.json` entry (the report→report-request flip). `lossy` is pinned to
+`drops.length > 0` by `assertMorphCoverage`.
 
 ## The homeless kind: `ai` (and the ghost `suggestion`)
 

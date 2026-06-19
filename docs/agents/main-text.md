@@ -1,4 +1,4 @@
-<!-- last-verified: 1fb80c6 2026-06-18 -->
+<!-- last-verified: 985d891 2026-06-19 -->
 <!-- derives-from: docs/architecture/VIRGIL.md#ontology, docs/architecture/VIRGIL.md#latex-round-trip-vocabulary, docs/architecture/VIRGIL.md#uuid-marker-emission -->
 <!-- covers-code: src/lib/tiptap, src/links, src/lib/marginalia.ts, src/lib/latex-parser.ts, src/lib/latex-serializer.ts, src/text-objects, src/hooks/useReconcileModeAAnchors.ts, src/lib/anchor-mint-signal.ts -->
 
@@ -18,7 +18,7 @@ Key props: `initialContent: JSONContent`, `onUpdate: (doc) => void`, `highlightT
 
 ## Block nodes
 
-All carry a `uuid` attr so they can serve as marginalia anchors. Detection is schema-based via the `textObject` schema group: `nodeType.isInGroup("textObject")`. `isAnchorableNode()` in [src/lib/marginalia.ts](../../src/lib/marginalia.ts) is now a one-line wrapper over that predicate.
+All carry a `uuid` attr so they can serve as marginalia anchors. `isAnchorableNode()` in [src/lib/marginalia.ts](../../src/lib/marginalia.ts) detects this directly off the schema: `nodeType.spec.attrs?.uuid !== undefined`.
 
 The `textObject` schema group is the single canonical answer to "is this graspable?" — paragraph, heading, list, list item, blockquote, codeBlock, displayMath, titleField, latexComment, texBlock, figureBlock, graphicsBlock, exampleBlock, exampleItem are all members. `linkedRange` (range-backed via the `linkedAnchor` mark) is a TextObject too but lives outside the schema group since it's a mark, not a node. See [TEXT-OBJECT-REFACTOR.md](../../TEXT-OBJECT-REFACTOR.md) for the full taxonomy and [src/text-objects/text-object-registry.ts](../../src/text-objects/text-object-registry.ts) for the per-kind meta that drives grab-handle layout, float body, and drop adapter.
 
@@ -216,7 +216,7 @@ From the header comment in `src/lib/marginalia.ts` (rewritten after the chip-H d
 - Citation commands (natbib + biblatex families, `~20+` commands) declared in [src/lib/cite-commands.ts](../../src/lib/cite-commands.ts).
 - `.bib` parsed via citation-js in [src/lib/bib-parser.ts](../../src/lib/bib-parser.ts).
 - Bibliography search/filter in [src/lib/bib-search.ts](../../src/lib/bib-search.ts).
-- Insert-citation UI in [src/components/CitationBuilder.tsx](../../src/components/CitationBuilder.tsx).
+- Insert-citation UI: the slash `\cite` action (see the `SlashPopupExtension` row above) and the in-panel builder in [src/panels/Citations/CitationsPanel.tsx](../../src/panels/Citations/CitationsPanel.tsx).
 - Bibliography panel shows only `.bib` entries actually referenced in the document, formatted per CSL style.
 
 ## Split-screen editing

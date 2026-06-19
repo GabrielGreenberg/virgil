@@ -1,6 +1,6 @@
-<!-- last-verified: 1fb80c6 2026-06-18 -->
+<!-- last-verified: 985d891 2026-06-19 -->
 <!-- derives-from: docs/architecture/VIRGIL.md#code-organization, docs/architecture/VIRGIL.md#card-kind-taxonomy -->
-<!-- covers-code: src/panels/panel-registry.ts, src/components/MenuBar.tsx, src/components/EditorLayout.tsx, src/components/SkillSyncControls.tsx, src/components/panel-primitives.tsx, src/components/editor-layout, src/components/menu, src/floats -->
+<!-- covers-code: src/panels/panel-registry.ts, src/components/MenuBar.tsx, src/components/EditorLayout.tsx, src/components/SkillSyncControls.tsx, src/components/panel-primitives.tsx, src/components/editor-layout, src/components/menu, src/floats, src/panels/_shared/card-archive-actions.tsx, src/panels/_shared/card-archive-view.tsx, src/panels/_shared/CardViewModeMenu.tsx -->
 
 # UI Chrome
 
@@ -89,7 +89,7 @@ Panels render via `<PaneRailBody>` inside EditorPane. The same panel components 
 All panels share the wrapper system in [src/components/panel-primitives.tsx](../../src/components/panel-primitives.tsx) and [src/panels/_shared/](../../src/panels/_shared/). Two wrapper shapes:
 
 - **`Panel`** — universal outer. Flex column with header, scroll body, absolute popout + close buttons. Used by panels with custom bodies (Outline, Search, WordCount).
-- **`CardListPanel<T>`** — wraps `Panel` + iterates items as cards + adds AI-requests section. Used by card panels. (The historical list/in-text view-mode toggle and `panel-view-mode` context were removed; cards now always render in list form.)
+- **`CardListPanel<T>`** — wraps `Panel` + iterates items as cards + adds AI-requests section. Used by card panels. (The historical list/in-text view-mode toggle and `panel-view-mode` context were removed; cards now always render in list form.) It also applies the **per-card archive view filter** (`filterByArchiveView` in [src/panels/_shared/card-archive-view.tsx](../../src/panels/_shared/card-archive-view.tsx)) — see "Per-card archive" below.
 
 **Header** is `PanelHeader` — fixed 34px (`--header-h`), title + count + optional `onAdd` (+ icon) and `onAiRequest` (8-ray star).
 
@@ -111,6 +111,15 @@ See `glossary.md` for the full table. Quick reference: 11 card panels (`notes`, 
 Omni-eligible panels (shown in Omni view): notes, footnotes, citations, reports, examples, todo, archive, **revisions**, **cutter**, **errors**. Bibliography is the only card panel that's *not* omni-eligible.
 
 Each omni-eligible panel owns its own `omni.tsx` next to the panel (e.g. [src/panels/Cutter/omni.tsx](../../src/panels/Cutter/omni.tsx), [src/panels/Errors/omni.tsx](../../src/panels/Errors/omni.tsx), [src/panels/Revisions/omni.tsx](../../src/panels/Revisions/omni.tsx)) exporting a `buildXOmniItems(args): OmniItem[]` builder. The orchestrator-side host [src/components/editor-layout/panels/omni-host.tsx](../../src/components/editor-layout/panels/omni-host.tsx) imports each builder and concatenates the results into the per-side omni columns. New omni-eligible panels add their builder there.
+
+### Per-card archive
+
+A per-card **archive** affordance (distinct from the text-object **Archive panel** and from the `Archive` *action* that creates archive cards) lets the user set an individual card aside. Each card carries its own `archived` flag; archived cards hide from active panel views, the in-text gutter markers, and omni.
+
+- **Predicate**: `isArchivable(kind)` ([src/cards/predicates.ts](../../src/cards/predicates.ts)) — true for user-authored kinds EXCEPT `highlight` (delete-only, user decision) and `footnote` (deferred — pending follow-up). `archiveRemovesAtom(kind)` (= the inline-atom predicate) is true for citation: archiving splices the `\cite{}` atom out of the `.tex` behind a confirm, and unarchiving does NOT re-insert it (card returns as an unanchored ref).
+- **Button**: `CardArchiveButton` ([panel-primitives.tsx](../../src/components/panel-primitives.tsx)) — hover-revealed, just left of `CardTrashButton` at the card's bottom-right; flips to an "Unarchive" restore glyph when archived. For cards whose delete lives in the header three-dot menu, `MenuArchive` is the menu-item sibling of `MenuDelete`.
+- **Wiring**: `EditableCard` self-wires the affordance from the `CardArchiveActionsApi` context ([src/panels/_shared/card-archive-actions.tsx](../../src/panels/_shared/card-archive-actions.tsx)) — `enabled` (false in Reader / tests) + `isArchived(id)` (stable-identity ref read, so a body keystroke never re-renders every card) + `archive(kind, id)`. EditorPane provides it from its single `useViewPrefs`.
+- **View menu**: `CardViewModeMenuItems` ([src/panels/_shared/CardViewModeMenu.tsx](../../src/panels/_shared/CardViewModeMenu.tsx)) drops a **View Active / View Archives / View All** radio section into each card panel's header three-dot menu, reading/writing the shared card-archive-view context via `useCardArchiveView()` ([card-archive-view.tsx](../../src/panels/_shared/card-archive-view.tsx)). `CardListPanel` filters its rows by that mode via `filterByArchiveView`. State: `prefs.cardArchiveView` (per panel kind) + `prefs.suppressArchiveAtomWarning` on `useViewPrefs` (`setCardArchiveView` / `setSuppressArchiveAtomWarning`). `OmniHost` filters archived cards out locally before building omni items (no archived-id set).
 
 ## MenuBar (the menu pod inside the editor column)
 

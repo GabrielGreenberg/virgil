@@ -1,4 +1,4 @@
-<!-- last-verified: dc11e7f 2026-06-17 -->
+<!-- last-verified: 985d891 2026-06-19 -->
 <!-- derives-from: docs/architecture/VIRGIL.md#reserved-name-inventory -->
 <!-- covers-code: src/lib/storage-fsa.ts, src/lib/latex-serializer.ts, src/lib/document-styles.ts, src/app/globals.css, editor/scripts/create_card.py -->
 
@@ -22,14 +22,18 @@ This doc is the operational home for the deny-list; the authoritative substrate 
 Every name Virgil reserves, such that authoring over it corrupts the round-trip.
 **Never define, override, or hand-author any of these.**
 
-**Injected LaTeX macros** — six no-op entity-id macros plus one package, owned by
+**Injected LaTeX macros** — seven no-op entity-id macros plus one package, owned by
 the serializer (`ensureVirgilCommands` + `CLASSIC_PREAMBLE`), topped up on **every
 save** even against a user preamble:
 
 ```
-\vfid  \vcid  \vexid  \vxid  \vlid  \vlidend      \usepackage{xcolor}
+\vfid  \vcid  \vbid  \vexid  \vxid  \vlid  \vlidend      \usepackage{xcolor}
 ```
 
+`\vbid` marks a `.bib` entry's durable surrogate id (round-tripped by
+`serializeBibFile`, minted by `src/lib/bib-uid.ts`); it lives in the `.bib`, not the
+`.tex`, but the serializer still declares the no-op in the preamble so a `\input`'d
+`.bib` or a raw-LaTeX open never breaks.
 `\pgmark` is reserved too but injected by the **library** indexer, not the editor.
 You never write these — the serializer manages them; you author only the content
 command they wrap ([identity.md → injected macros](identity.md#the-injected-macros)).

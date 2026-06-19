@@ -1,6 +1,6 @@
-<!-- last-verified: 12f0ef5 2026-06-15 -->
+<!-- last-verified: 985d891 2026-06-19 -->
 <!-- derives-from: docs/architecture/VIRGIL.md#cowork-pattern -->
-<!-- covers-code: src/lib/tiptap/footnote.ts, src/lib/footnote-commands.ts, src/lib/types.ts, editor/scripts/create_card.py, editor/scripts/apply_response.py -->
+<!-- covers-code: src/lib/tiptap/footnote.ts, src/lib/footnote-commands.ts, src/lib/types.ts, src/hooks/useOrphanedFootnotes.ts, src/cards/has-content.ts, editor/scripts/create_card.py, editor/scripts/apply_response.py -->
 
 # Footnotes — operational manifest
 
@@ -56,9 +56,11 @@ contract just places it.
     "createdAt": "2026-04-23T12:00:00.000Z" } ] }
 ```
 
-`FootnoteRef` (`src/lib/types.ts`) is exactly three fields — `id`, `content`
-(Tiptap `JSONContent` doc; legacy HTML strings migrate on read), `createdAt`.
-**There is no anchor / paragraphId field**: the `\vfid{<id>}` in the `.tex` *is*
+`FootnoteRef` (`src/lib/types.ts`) is `id`, `content` (Tiptap `JSONContent` doc;
+legacy HTML strings migrate on read), `createdAt`, plus the family-wide optional
+`archived?` flag (present for type-uniformity but **inert for footnotes** — see
+the delete-only note below). **There is no anchor / paragraphId field**: the
+`\vfid{<id>}` in the `.tex` *is*
 the anchor, and the entry's `id` **must equal** that `\vfid` id (the id-equality
 link rule — [identity.md#footnote-and-citation-ids](identity.md#footnote-and-citation-ids)).
 Id allocation (a fresh 4-hex colliding with neither an existing `footnotes.json`
@@ -83,3 +85,28 @@ specifically, a Level-3 `--propose` drafts the entry into `footnotes.json` while
 leaving the `.tex` untouched until the user accepts; every other level lands the
 `\vfid{}\footnote{}` splice and the `footnotes.json` entry together, atomically,
 alongside `ai-requests.json` + `notifications.json` + `version.txt`.
+
+## Delete-only + orphaned footnotes
+
+Footnotes are **delete-only** — `isArchivable` (`src/cards/predicates.ts`)
+excludes `footnote` (alongside `highlight`). The per-card Archive feature's
+button does NOT render on a footnote card: the desired archive→unanchored
+behavior isn't modelled the way citations' `unanchored` is, so it's a pending
+follow-up (the `card-archive-gaps` user decision). The `archived?` field on
+`FootnoteRef` is therefore never set by the footnote path.
+
+When a footnote's in-text marker is deleted but its body/title might still be
+wanted, it becomes an **orphan**. The `Footnote` plugin
+(`src/lib/tiptap/footnote.ts`) detects vanished footnote nodes off the
+structural diff (`diff.removedFootnotes`); orphan-worthiness is gated through the
+shared `cardHasContent("footnote", { content, title })` (`src/cards/has-content.ts`)
+so a title-only (`\thanks`) footnote still orphans, and the gate matches the
+delete-confirm's content model. Orphans persist per-doc in
+`virgil/orphaned-footnotes.json` (`OrphanedFootnotesState` = `{ version: 1, orphans }`,
+each an `OrphanedFootnote` carrying `content` + optional `title`/`thanks`), owned
+by `useOrphanedFootnotes` (`src/hooks/useOrphanedFootnotes.ts`) and surfaced in
+both the Footnotes and Search panels. The plumbing toggles on the DEFAULT-OFF
+`virgil:inline-atom-lifecycle` flag: flag-ON the bus reconciler
+(`src/links/_shared/useInlineAtomLifecycle.ts`) owns orphan upsert/clear and the
+legacy `virgil-footnote-orphaned` event is suppressed; flag-OFF that event is the
+sole orphan source (byte-identical to before).

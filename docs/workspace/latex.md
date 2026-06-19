@@ -1,6 +1,6 @@
-<!-- last-verified: dc11e7f 2026-06-17 -->
+<!-- last-verified: 985d891 2026-06-19 -->
 <!-- derives-from: docs/architecture/VIRGIL.md#latex-round-trip-vocabulary -->
-<!-- covers-code: src/lib/latex-parser.ts, src/lib/latex-serializer.ts, src/lib/tiptap, src/lib/cite-commands.ts, src/lib/heading-types.ts -->
+<!-- covers-code: src/lib/latex-parser.ts, src/lib/latex-serializer.ts, src/lib/tiptap, src/lib/cite-commands.ts, src/lib/heading-types.ts, src/lib/bib-uid.ts -->
 
 # LaTeX round-trip — operational manifest
 
@@ -90,8 +90,13 @@ and trust it to round-trip. But text inside a grey `latexCommand` block is opaqu
   editor preserves. So plain text a skill inserts as a Card body is escaped for
   those six, but braces/backslashes/dollars you write are treated as real LaTeX.
 - **Preamble:** with none supplied, `CLASSIC_PREAMBLE` is the default;
-  `ensureVirgilCommands` tops up the six `\v*` no-ops + `\usepackage{xcolor}` on
-  every save ([identity.md → injected macros](identity.md#the-injected-macros)).
+  `ensureVirgilCommands` tops up the seven `\v*` no-ops (`\vfid \vcid \vbid
+  \vexid \vxid \vlid \vlidend`) + `\usepackage{xcolor}` on every save
+  ([identity.md → injected macros](identity.md#the-injected-macros)). `\vbid` is
+  the lone macro that never appears in this `.tex` body — it marks a `.bib`
+  entry's durable surrogate uid (a `\vbid{<uid>}` line before each block, minted
+  + round-tripped by `serializeBibFile` / `src/lib/bib-uid.ts`); the preamble
+  no-op is declared only so a paper opened in raw LaTeX never breaks.
 
 ## Display-math source form
 

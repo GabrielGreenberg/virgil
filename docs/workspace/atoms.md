@@ -1,6 +1,6 @@
-<!-- last-verified: 12f0ef5 2026-06-15 -->
+<!-- last-verified: 985d891 2026-06-19 -->
 <!-- derives-from: docs/architecture/VIRGIL.md#ontology -->
-<!-- covers-code: src/lib/tiptap/footnote.ts, src/lib/tiptap/citation.ts, src/lib/tiptap/math.ts, src/lib/tiptap/label.ts, src/lib/tiptap/linked-anchor.ts, src/lib/cite-commands.ts, src/lib/latex-parser.ts -->
+<!-- covers-code: src/lib/tiptap/footnote.ts, src/lib/tiptap/citation.ts, src/lib/tiptap/math.ts, src/lib/tiptap/label.ts, src/lib/tiptap/linked-anchor.ts, src/lib/cite-commands.ts, src/lib/latex-parser.ts, src/lib/identity/, src/lib/bib-uid.ts -->
 
 # Atoms (inline elements) — operational manifest
 
@@ -102,3 +102,21 @@ not Atoms, but a skill editing inline content meets them:
 4. **Don't hand-write the id markers** (`\vfid` / `\vcid`) — compose the
    content command and let the create path allocate and place the marker
    ([identity.md → rules for skills](identity.md#rules-for-skills)).
+
+## Stable atom identity (default-OFF)
+
+Footnote/citation Atoms gain a stable in-session **identity UID** (separate from
+the `\vfid`/`\vcid` *marker*) so selection / float / pin survive a **markerless
+re-parse** — a re-serialize that regenerates a marker id leaves the Atom's UID
+intact. This is wired through `src/lib/identity/` (the `IdentityCascade`
+dispatcher and the **single** inline-atom `DocStructureBus` consumer
+`useIdentityBusConsumer`, the "+1 not +3" subscriber that Wave-2 lifecycle /
+citation-resync register on as ordered POLICIES) plus stable bib UIDs from
+`src/lib/bib-uid.ts`. Both halves are gated behind **default-OFF** flags:
+`virgil:identity-cascade` (sidecars re-key on `BibEntry.uid` instead of the
+renameable citekey; a citekey rename also rewrites every `\cite{}` in-doc) and
+`virgil:inline-atom-lifecycle` (orphan footnotes move to a durable
+`orphaned-footnotes.json` sidecar; the one `useInlineAtomLifecycle` reconciler
+owns orphan upsert/clear off the structural diff). **Flag OFF preserves current
+behavior exactly** — including the legacy `virgil-footnote-orphaned` event in
+`footnote.ts`, which the flag-ON path retires.

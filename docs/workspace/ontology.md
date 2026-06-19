@@ -1,6 +1,6 @@
-<!-- last-verified: dc11e7f 2026-06-17 -->
+<!-- last-verified: 985d891 2026-06-19 -->
 <!-- derives-from: docs/architecture/VIRGIL.md#ontology -->
-<!-- covers-code: src/text-objects/text-object-registry.ts, src/cards/card-registry.tsx, src/panels/_shared/types.ts, src/links/link-registry.ts, src/lib/tiptap, src/lib/latex-serializer.ts -->
+<!-- covers-code: src/text-objects/text-object-registry.ts, src/cards/card-registry.tsx, src/cards/types.ts, src/panels/_shared/types.ts, src/links/link-registry.ts, src/lib/tiptap, src/lib/latex-serializer.ts, src/lib/bib-uid.ts -->
 
 # Ontology — operational manifest
 
@@ -73,6 +73,13 @@ A Card is "almost everything else." Operationally:
 - It is **written only through `apply_response.py`** — never by hand-editing the
   JSON. The write path is in [structure.md → the write path](structure.md#the-write-path);
   the conceptual contract is [VIRGIL.md → Cowork pattern](../architecture/VIRGIL.md#cowork-pattern).
+- Each kind declares a **`content` descriptor** (`CardContentModel | null` on
+  `CardMeta`, `src/cards/types.ts`) naming the user-content fields. One walker
+  (`cardHasContent`) reads it so a delete-confirm can never miss content; the
+  `null` descriptor is the no-user-content kinds (`bib`/`ai`/`error`/`highlight`).
+  A kind's `morph` carries a `drops` field listing the fields the target shape
+  can't hold (drives the confirm copy + the lossy-morph unbridge). The `CardKind`
+  union itself is unchanged — this is data-model metadata, not a new kind.
 - **Tasks are a Card kind** (`ai`, stored in `ai-requests.json`) with a lifecycle
   the others lack (`status` / `result` / `safetyLevel`). The Inbox surfaces them.
   A Task may have an anchor, Atom links, both, or neither (a "review the whole
@@ -101,7 +108,10 @@ The user never sees them. Full rules in [identity.md](identity.md); the
 one-paragraph version:
 
 - **Short ids** (4-hex) name anything that appears in the `.tex`: the `%!v:`
-  block markers and the `\v*id{}` Atom markers.
+  block markers and the `\v*id{}` Atom markers. A `bib` Card also carries a
+  durable short-id surrogate in the **`.bib`** — a no-op `\vbid{<id>}` line
+  before each entry block (`src/lib/bib-uid.ts`), so a citekey rename no longer
+  strands its sidecars. It's the bibliography analogue of `\vcid`/`\vfid`.
 - **Entity ids** (v4 UUID) name sidecar-only data that never appears in `.tex`
   (notes, todos, links, Tasks).
 - Cards carry their id in their sidecar JSON (`"id": "…"`). For an Atom-linked

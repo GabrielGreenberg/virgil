@@ -1,6 +1,6 @@
-<!-- last-verified: dc11e7f 2026-06-17 -->
+<!-- last-verified: 985d891 2026-06-19 -->
 <!-- derives-from: docs/architecture/VIRGIL.md#public-type-registry -->
-<!-- covers-code: src/lib/types.ts, src/lib/storage-fsa.ts -->
+<!-- covers-code: src/lib/types.ts, src/lib/storage-fsa.ts, src/hooks/useOrphanedFootnotes.ts -->
 
 # Sidecar schemas — operational manifest
 
@@ -38,6 +38,19 @@ below carry only what's *distinctive*:
   paragraph-only / unanchored cards).
 - **`aiRequest: boolean`** — the sticky "I want Claude to act on this" flag the
   bridge collapses into a Task ([cards.md → the Task Card](cards.md#the-task-card-ai)).
+- **`archived?: boolean`** — set-aside flag (per-card Archive). Absent ≡ active;
+  `true` hides the card from the active list / omni / in-doc, surfaced only under
+  the View Archives/All menu. On most kinds it's a pure sidecar flip; on the
+  atom-linked kinds it's gated — `footnote`/`highlight` are **delete-only** (no
+  archive), and archiving a `citation` splices its atom out. The kind→behavior
+  switches are `isArchivable` / `archiveRemovesAtom` in
+  [src/cards/predicates.ts](../../src/cards/predicates.ts) — read those, don't
+  hard-code the list.
+- **`titleAuto?: boolean`** — title provenance (T6/C12). `true` ≡ the title (or,
+  for a todo, the body `text`) was machine-supplied and may be stripped on load;
+  `false` ≡ user-owned, never strip; `undefined` ≡ pre-T6 record (`resolveLoadedTitle`
+  falls back to the shape heuristic once, then self-stamps the bit). Present on
+  `UserNote` / `ReportCard` / `TodoItem` / `ExampleRef` / `ArchivedSnippet`.
 
 Every sidecar's root is a thin **`…State`** wrapper around one array (plus the odd
 per-doc scalar). The wrapper's array key is the `list-key` the writeback targets
@@ -73,16 +86,25 @@ FootnoteRef { id; content; createdAt }   // exactly three fields; no links/ancho
 ```
 
 The `id` **is** the anchor — it equals the `\vfid{}` marker. Splice recipe +
-create flow: [footnotes.md](footnotes.md). (`OrphanedFootnote { footnoteId;
-content; title?; orphanedAt }` is the **runtime** shape the Footnotes panel holds
-for a footnote whose `\footnote{}` marker vanished — not persisted to a sidecar;
-see [anchoring.md → orphans](anchoring.md#what-invalidates-a-link).)
+create flow: [footnotes.md](footnotes.md).
+
+`OrphanedFootnote { footnoteId; content; title?; thanks?; orphanedAt }` is the
+record the Footnotes (and Search) panels hold for a footnote whose `\footnote{}`
+marker vanished but whose body the user might recover/re-drop (`thanks?` preserves
+the dying footnote's `\thanks` attr for a full-attr re-drop). As of T2 it is now
+**persisted** to a per-doc `virgil/orphaned-footnotes.json` —
+`OrphanedFootnotesState { version: 1; orphans: OrphanedFootnote[] }`, owned by
+[useOrphanedFootnotes](../../src/hooks/useOrphanedFootnotes.ts) (the cutover that
+swaps shell `useState` for this sidecar is gated behind `virgil:inline-atom-lifecycle`,
+default OFF; the hook itself migrates a legacy bare-array / version-less shape to
+`{ version: 1, … }`). Absent file ⇒ start empty (nothing to migrate from). See
+[anchoring.md → orphans](anchoring.md#what-invalidates-a-link).
 
 **`citations.json` — `CitationsState`:**
 
 ```ts
 CitationsState { citations: CitationRef[]; bibPath; citationStyle; bibPackage }
-CitationRef    { id; command; keys: string[]; createdAt; unanchored? }
+CitationRef    { id; command; keys: string[]; createdAt; unanchored?; archived? }
 ```
 
 `command` is the full LaTeX cite string; `keys` the extracted citekeys; read
@@ -152,8 +174,12 @@ ExampleRef { id; tag; label; title; createdAt }   // metadata shadow, no links
 **`archive.json` — `ArchiveState { snippets: ArchivedSnippet[] }`:**
 
 ```ts
-ArchivedSnippet { id; title; content; createdAt; links: Link[] }  // links may pin many
+ArchivedSnippet { id; title; titleAuto?; content; createdAt; links: Link[];
+                  archived? }  // links may pin many
 ```
+
+(`archived?` here is the set-aside flag from the spine — distinct from this card
+being an Archive **text-object** snippet.)
 
 ## The Task store (`ai-requests.json`)
 
@@ -190,19 +216,33 @@ The `bib` card is backed by the **`.bib` file** (`BibEntry`), with three sidecar
 for the panel's extra state:
 
 ```ts
-BibEntry         { key; type; fields: Record<string,string>; raw }  // .bib entry
+BibEntry         { uid; key; type; fields: Record<string,string>; raw }  // .bib entry
 // bib-review-requests.json
 BibReviewState   { requests: BibReviewRequest[] }
-BibReviewRequest { bibKey; type: "fields"|"notes"; requestedAt;
+BibReviewRequest { bibKey; entryUid?; type: "fields"|"notes"; requestedAt;
                    status: "pending"|"complete"; requestNotes? }
 // annotations.json
-AnnotationsState { [bibKey: string]: string }      // bibKey → annotation text
+AnnotationsState   { [bibKey: string]: string }    // legacy: bibKey → annotation text
+AnnotationsStateV2 { v: 2; byUid: Record<string,string>;
+                     orphanByKey: Record<string,string> }
 // bib-settings.json
 BibSettings      { generalBibPath: string | null;  // @deprecated, read-only
                    entryRequests: BibEntryRequest[] }
 BibEntryRequest  { id; description; status: "pending"|"complete"; createdAt;
                    resolvedKey? }
 ```
+
+`BibEntry.uid` is a durable internal id minted once and round-tripped via a
+`\vbid{}` marker in the `.bib` (T1 Stage 0). It is **decoupled from the renameable
+citekey**: a rename changes `key`, never `uid`, so uid-keyed sidecars never strand,
+and two entries sharing a citekey get distinct uids. The uid-keyed sidecars
+(`AnnotationsStateV2` keying annotations on `uid` via `byUid`, with unmatched
+legacy keys parked in `orphanByKey` rather than dropped; `BibReviewRequest.entryUid`)
+are the **identity-cascade** path (T1 Stage 1) — live behind `virgil:identity-cascade`
+(default OFF). The flat-citekey `AnnotationsState` and `bibKey`-only review request
+remain the legacy/migration shape. `bib-uid.ts` mints the uid; `bib-cite-rewrite.ts`
++ `sidecar-uid-migrate.ts` (in [src/lib/identity/](../../src/lib/identity/)) carry
+the non-destructive migration.
 
 `bib-review-requests.json` is a **separate discovery path** (`list_requests.py`
 walks it directly) because reviews are per-bibkey, not per-paragraph.
@@ -260,7 +300,8 @@ doc-of-record noted), grouped by family:
 
 - **Card interfaces + their `…State` wrappers** — Notes: `UserNote`,
   `HighlightCard`, `NoteCardItem`, `NotesState`. Todos: `TodoItem`, `TodoState`.
-  Footnotes: `FootnoteRef`, `FootnotesState`, `OrphanedFootnote`. Citations:
+  Footnotes: `FootnoteRef`, `FootnotesState`, `OrphanedFootnote`,
+  `OrphanedFootnotesState`. Citations:
   `CitationRef`, `CitationsState`, `CitationInfo`. Cutter: `CutterCommentCard`,
   `CutterSuggestionCard`, `CutterCard`, `CutterGoal`, `CutterState`,
   `CutItemLegacy`. Revisions: `RevisionCommentCard`, `RevisionSuggestionCard`,
@@ -271,7 +312,7 @@ doc-of-record noted), grouped by family:
   `AiRequestResult`, `AiRequestLink`, `AiRequestPayload`, `AiRequestsState`.
 - **Notifications** — `DocNotification`, `DocNotificationsInbox`.
 - **Bibliography support** — `BibEntry`, `BibReviewRequest`, `BibReviewState`,
-  `BibSettings`, `BibEntryRequest`, `AnnotationsState`.
+  `BibSettings`, `BibEntryRequest`, `AnnotationsState`, `AnnotationsStateV2`.
 - **Infrastructure** — `VirgilSidecar`, `ParagraphMeta`, `EditorStateData`.
 - **Legacy / dead residue** — `Suggestion`, `SuggestionsState`, `UserComment`,
   `CommentsState`, `SessionState`, `DocumentPayload`, `ReviewRequest`,
