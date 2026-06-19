@@ -1,12 +1,13 @@
 /**
  * Per-card archive predicates (`isArchivable` / `archiveRemovesAtom`).
  *
- * `isArchivable` is DERIVED from provenance (`origin === "user"`) with ONE
- * documented exception — `footnote` is deferred in v1 (the Footnotes panel
- * sources items from live doc nodes, so an atom-less archived footnote can't
- * surface). These pins freeze that contract so a future registry/predicate edit
- * that would (a) make a system/derived kind archivable, or (b) silently
- * re-enable footnote, trips a test instead of shipping.
+ * `isArchivable` is DERIVED from provenance (`origin === "user"`) with TWO
+ * documented exceptions — `highlight` (a text-range tint with no body; archiving
+ * would orphan its persistent tint) and `footnote` (pending a footnote-lifecycle
+ * change to model unanchored footnotes). Both are delete-only. These pins freeze
+ * that contract so a future registry/predicate edit that would (a) make a
+ * system/derived kind archivable, or (b) silently re-enable highlight/footnote,
+ * trips a test instead of shipping.
  */
 import { describe, it, expect } from "vitest";
 import { CARD_KINDS, isArchivable, archiveRemovesAtom } from "../predicates";
@@ -15,7 +16,6 @@ import type { CardKind } from "../types";
 
 const ARCHIVABLE: CardKind[] = [
   "note",
-  "highlight",
   "citation",
   "archive",
   "todo",
@@ -28,7 +28,8 @@ const ARCHIVABLE: CardKind[] = [
 ];
 
 const NOT_ARCHIVABLE: CardKind[] = [
-  "footnote", // deferred (v1) — see isArchivable
+  "highlight", // user decision: delete-only (tint has no archived state)
+  "footnote", // pending follow-up: footnote subsystem doesn't model unanchored
   "example", // origin: derived
   "bib",
   "ai",
@@ -36,7 +37,7 @@ const NOT_ARCHIVABLE: CardKind[] = [
 ];
 
 describe("isArchivable", () => {
-  it("is true for exactly the user-authored kinds, minus the deferred footnote", () => {
+  it("is true for exactly the user-authored kinds, minus highlight + footnote", () => {
     for (const k of ARCHIVABLE) expect(isArchivable(k)).toBe(true);
     for (const k of NOT_ARCHIVABLE) expect(isArchivable(k)).toBe(false);
   });
@@ -47,9 +48,12 @@ describe("isArchivable", () => {
     );
   });
 
-  it("tracks origin === 'user' except for the footnote exception", () => {
+  it("tracks origin === 'user' except for the highlight + footnote exceptions", () => {
     for (const k of CARD_KINDS) {
-      const expected = CARD_REGISTRY[k].origin === "user" && k !== "footnote";
+      const expected =
+        CARD_REGISTRY[k].origin === "user" &&
+        k !== "highlight" &&
+        k !== "footnote";
       expect(isArchivable(k)).toBe(expected);
     }
   });
