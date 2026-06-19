@@ -827,6 +827,57 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
     };
   }, [editor]);
 
+  // Debounced doc-change tick for the outline. Structural counters (`rev.*`)
+  // miss in-heading TEXT edits (renaming a heading, word-count drift) — those
+  // fire no structural bus event. This single `editor.on('update')` subscriber
+  // is O(1) per transaction (clear+reset a 300ms timer, then one counter bump),
+  // explicitly permitted by the keystroke-sanctity doctrine ("debounced timer
+  // reset, counter bump"). It does NO doc-walk on the keystroke path; the walk
+  // only happens later, inside the `outlineContent` memo, when this tick (or a
+  // structural counter) actually changes.
+  const [outlineDocTick, setOutlineDocTick] = useState(0);
+  useEffect(() => {
+    if (!editor) return;
+    let t: ReturnType<typeof setTimeout> | null = null;
+    const bump = () => {
+      if (t) clearTimeout(t);
+      t = setTimeout(() => setOutlineDocTick((n) => n + 1), 300);
+    };
+    editor.on("update", bump);
+    return () => {
+      if (t) clearTimeout(t);
+      editor.off("update", bump);
+    };
+  }, [editor]);
+
+  // Stable, memoized doc snapshot for the OUTLINE panel only (the single
+  // consumer of PaneRailBody's `content` prop — see OutlineHost/OutlinePanel
+  // below). Pre-fix this was an inline `editor.getJSON()` evaluated on EVERY
+  // EditorPane render: a full O(doc) ProseMirror→JSON serialization returning a
+  // fresh object identity each time. EditorPane re-renders on every focus/
+  // selection change, so a fresh `content` identity busted `memo(OutlinePanel)`
+  // and all three of its O(doc) `useMemo`s (extractHeadings / getDocTitle /
+  // buildPerBlockCounts) on every mouse-down — the dominant "walks the whole
+  // doc on every interaction" cost.
+  //
+  // Now the snapshot is recomputed ONLY when the doc actually changes:
+  //   - `editor`         → first getJSON immediately on mount (non-blank load;
+  //                        the `rev.*` counters start at 0 and never fire on
+  //                        load, so the editor dep is what populates initially).
+  //   - `rev.headings/blocks/labels` → structural edits the outline depends on.
+  //   - `outlineDocTick` → debounced text edits (heading renames, word counts).
+  // A focus/selection-only re-render touches none of these deps, so the memo's
+  // identity is stable → `memo(OutlinePanel)` short-circuits and re-walks nothing.
+  // `editor.getJSON()` references no `rev.*`/tick value, so exhaustive-deps
+  // reports these as "unnecessary" — but they ARE the intentional doc-change
+  // signals (editor never reassigns in place, so it alone would never refresh).
+  // This accepted "unnecessary dependencies" warning matches the `rev.*`-gated
+  // sibling memos in this file (citationOrder / footnoteInfos / examples).
+  const outlineContent = useMemo<JSONContent | null>(
+    () => (editor && !isTier1CDisabled() ? (editor.getJSON() as JSONContent) : null),
+    [editor, rev.headings, rev.blocks, rev.labels, outlineDocTick],
+  );
+
   const handleEditorReady = useCallback(
     (ed: Editor) => {
       setEditor(ed);
@@ -4209,7 +4260,7 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
                     panelKind={pid as PanelKind}
                     editor={editor}
                     editorRef={innerRef}
-                    content={editor && !isTier1CDisabled() ? (editor.getJSON() as JSONContent) : null}
+                    content={outlineContent}
                     examples={examples}
                     docId={docId}
                     citationsHook={citationsHook}
@@ -4282,7 +4333,7 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
                       panelKind={pid as PanelKind}
                       editor={editor}
                       editorRef={innerRef}
-                      content={editor && !isTier1CDisabled() ? (editor.getJSON() as JSONContent) : null}
+                      content={outlineContent}
                       examples={examples}
                       docId={docId}
                       citationsHook={citationsHook}
