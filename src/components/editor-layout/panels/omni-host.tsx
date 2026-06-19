@@ -392,7 +392,20 @@ export function OmniHost(p: OmniHostProps) {
   // lets OmniViewPanel's memoized children (visibleItems, anchored,
   // unanchored, useInTextPositions) stay cached between renders — which
   // matters now that OmniHost is mounted persistently per side.
-  const items: OmniItem[] = useMemo(() => [
+  const items: OmniItem[] = useMemo(() => {
+    // Archived cards never appear in OmniView — they live only under their home
+    // panel's View Archives/All. Each card carries its own `archived` flag, so
+    // this is a local filter (no archived-id set needed). The docked panels
+    // still receive the FULL arrays (CardListPanel filters by view mode).
+    const active = <T extends { archived?: boolean }>(arr: readonly T[]): T[] =>
+      arr.filter((c) => !c.archived);
+    const activeNotes = active(p.notesCards);
+    const activeArchive = active(p.sortedArchiveSnippets);
+    const activeTodos = active(p.todoItems);
+    const activeRevisions = active(p.revisionCards);
+    const activeCutter = active(p.cutterCards);
+    const activeReports = active(p.reportCards);
+    return [
     ...buildFootnoteOmniItems({
       footnotes: p.footnotes,
       orphanedFootnotes: p.orphanedFootnotes,
@@ -430,7 +443,7 @@ export function OmniHost(p: OmniHostProps) {
       updateBibKeyAndType: p.updateBibKeyAndType,
     }),
     ...buildNoteOmniItems({
-      cards: p.notesCards,
+      cards: activeNotes,
       selectedNoteId,
       setSelectedNoteId: setNoteInOmni,
       jumpToCard,
@@ -446,7 +459,7 @@ export function OmniHost(p: OmniHostProps) {
       onCitationCreated,
     }),
     ...buildArchiveOmniItems({
-      archiveSnippets: p.sortedArchiveSnippets,
+      archiveSnippets: activeArchive,
       anchoredIds: p.anchoredIds,
       selectedArchiveId,
       setSelectedArchiveId: setArchiveInOmni,
@@ -460,7 +473,7 @@ export function OmniHost(p: OmniHostProps) {
       onCitationCreated,
     }),
     ...buildTodoOmniItems({
-      todoItems: p.todoItems,
+      todoItems: activeTodos,
       selectedTodoId,
       setSelectedTodoId: setTodoInOmni,
       jumpToCard,
@@ -478,7 +491,7 @@ export function OmniHost(p: OmniHostProps) {
       onJump: scrollToExample,
     }),
     ...buildRevisionOmniItems({
-      cards: p.revisionCards,
+      cards: activeRevisions,
       selectedId: selectedCommentId,
       setSelectedId: setRevisionInOmni,
       jumpToCard,
@@ -508,7 +521,7 @@ export function OmniHost(p: OmniHostProps) {
       onToggleExpanded: p.toggleErrorExpanded,
     }),
     ...buildCutterOmniItems({
-      cards: p.cutterCards,
+      cards: activeCutter,
       selectedId: selectedCutterCardId,
       setSelectedId: setCutterInOmni,
       jumpToCard,
@@ -523,7 +536,7 @@ export function OmniHost(p: OmniHostProps) {
       deleteCard: p.deleteCutterCard,
     }),
     ...buildReportsOmniItems({
-      cards: p.reportCards,
+      cards: activeReports,
       selectedId: selectedReportCardId,
       setSelectedId: setReportInOmni,
       jumpToCard,
@@ -538,7 +551,8 @@ export function OmniHost(p: OmniHostProps) {
       getCitationDisplayText,
       onCitationCreated,
     }),
-  ], [
+  ];
+  }, [
     // Data arrays
     p.footnotes, p.orphanedFootnotes,
     p.citations, p.citationPositionMap, p.bibEntries, p.bibPackage,

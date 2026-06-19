@@ -30,7 +30,8 @@ import { useTabIndent } from "@/hooks/useTabIndent";
 import { autoSizeInput } from "@/lib/autoSizeInput";
 import ConfirmDialog from "./ConfirmDialog";
 import { cardHasContent } from "@/cards/has-content";
-import { isPoppable, hasCollabClaims, collabClaimScope, isDroppable } from "@/cards/predicates";
+import { isPoppable, hasCollabClaims, collabClaimScope, isDroppable, isArchivable } from "@/cards/predicates";
+import { useCardArchiveActions } from "@/panels/_shared/card-archive-actions";
 import { DropChevrons } from "./icons/DropChevrons";
 import { beginCardDropGesture } from "./drop-mode/card-drop-gesture";
 import { CARD_REGISTRY } from "@/cards/card-registry";
@@ -806,15 +807,6 @@ export interface EditableCardProps {
   /** Menu items inside ItemMenu. Falls back to MenuDelete when onDelete is provided. */
   menuContent?: ReactNode;
   onDelete?: () => void;
-  /** When provided, the card gains an ARCHIVE affordance alongside delete: a
-   *  bottom-right button (when `inlineDelete`) or a `MenuArchive` item in the
-   *  three-dot menu (otherwise). The host owns the actual archive op + any
-   *  confirm (atom-bearing kinds splice the doc atom). Pass only for archivable
-   *  kinds (`isArchivable`, cards/predicates.ts). */
-  onArchive?: () => void;
-  /** Whether this card is currently archived (flips the affordance to
-   *  "Unarchive"). */
-  isArchived?: boolean;
 
   onClick?: (e?: React.MouseEvent) => void;
   /** When provided, the card is draggable (disabled while RichTextField is focused). */
@@ -922,7 +914,7 @@ export interface EditableCardProps {
 export function EditableCard({
   id, selected, theme,
   footnoteBadge, headerTrailing, bodyTitle, onBodyTitleChange, aboveBody, footer,
-  menuContent, onDelete, onArchive, isArchived,
+  menuContent, onDelete,
   onClick, onDragStart,
   value, variant, placeholder, muted, panelKey, cardKind,
   onChange, onArchiveConsumed, getCitationDisplayText, onCitationCreated,
@@ -970,6 +962,15 @@ export function EditableCard({
   // facet — `panelKey` is typography-only and carries no collab duty.
   const collabScope = hasCollabClaims(kind) ? collabClaimScope(kind) : undefined;
   const { partnerClaim, claim: claimCard, release: releaseClaim } = useCardClaim(collabScope, id);
+
+  // Per-card archive affordance — self-wired from the shared actions context (no
+  // per-card-component threading). Shows iff the kind is archivable AND a real
+  // provider is mounted; `archive` handles the atom splice + confirm for
+  // footnote/citation. Distinct from the text-object Archive PANEL.
+  const cardArchive = useCardArchiveActions();
+  const archivable = isArchivable(kind) && cardArchive.enabled;
+  const cardArchived = archivable && cardArchive.isArchived(id);
+  const doArchive = archivable ? () => cardArchive.archive(kind, id) : undefined;
 
   /** Check whether the card has any visible USER content. Routes through the
    *  kind-aware `cardHasContent` (the SAME predicate `deleteMarginItem` uses),
@@ -1049,10 +1050,10 @@ export function EditableCard({
           draggable={false}
           onDragStart={(e) => { e.stopPropagation(); e.preventDefault(); }}
         >
-          {menuContent ?? ((onDelete || onArchive) ? (
+          {menuContent ?? ((onDelete || doArchive) ? (
             <ItemMenu>
-              {onArchive && (
-                <MenuArchive onClick={onArchive} isArchived={isArchived} />
+              {doArchive && (
+                <MenuArchive onClick={doArchive} isArchived={cardArchived} />
               )}
               {onDelete && <MenuDelete onClick={tryDelete} />}
             </ItemMenu>
@@ -1084,8 +1085,8 @@ export function EditableCard({
       onToggleExpanded={onToggleExpanded}
       onHeaderActivate={onHeaderActivate}
       onTrashClick={inlineDelete && onDelete ? tryDelete : undefined}
-      onArchiveClick={inlineDelete && onArchive ? onArchive : undefined}
-      isArchived={isArchived}
+      onArchiveClick={inlineDelete ? doArchive : undefined}
+      isArchived={cardArchived}
       extraCardClass={cursorClass}
       draggable={cardDraggable}
       onDragStart={onDragStart}

@@ -136,7 +136,11 @@ import { LiftHost } from "@/text-objects/LiftHost";
 import { CARD_REGISTRY } from "@/cards/card-registry";
 import { runCardLifecycleEvent } from "@/cards/lifecycle/run-event";
 import { bridgeCardAiRequestFlag } from "@/lib/ai-request-bridge";
-import { isCardKind, panelForCardKind } from "@/cards/predicates";
+import { isCardKind, panelForCardKind, isArchivable, archiveRemovesAtom } from "@/cards/predicates";
+import {
+  CardArchiveActionsProvider,
+  type CardArchiveActionsApi,
+} from "@/panels/_shared/card-archive-actions";
 import { PoppedCardsContext, type PoppedCardsValue } from "@/hooks/usePoppedCards";
 import { DropModeProvider } from "./drop-mode/DropModeProvider";
 import type { StackPullApi } from "./drop-mode/types";
@@ -172,7 +176,7 @@ import { useOrphanedFootnotes } from "@/hooks/useOrphanedFootnotes";
 import { isInlineAtomLifecycleOn } from "@/lib/identity/inline-atom-lifecycle-flag";
 import { DragHandleMenu } from "./DragHandleMenu";
 import { HeadingTypeMenu, type HeadingTypePick } from "./HeadingTypeMenu";
-import { useConfirmDialog } from "./ConfirmDialog";
+import ConfirmDialog, { useConfirmDialog } from "./ConfirmDialog";
 import {
   buildMarginItemHandlers,
   deleteMarginItem,
@@ -2021,6 +2025,39 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
   // stay flat → the memo doesn't recompute and `buildResolveIndex` doesn't
   // run (keystroke sanctity is structural, not vigilance-based).
   // eslint-disable-next-line react-hooks/exhaustive-deps
+  // Set of archived card ids across every panel. Drives the in-document
+  // exclusion (gutter markers, highlights) + OmniView, and is read by the
+  // per-card archive actions context through `archivedIdsRef` (stable identity,
+  // so a card-body keystroke never broadly re-renders all cards). Recomputes
+  // only when a sidecar collection changes (an archive toggle / add / delete),
+  // never on a plain keystroke.
+  const archivedIds = useMemo(() => {
+    const s = new Set<string>();
+    const add = (arr: ReadonlyArray<{ id: string; archived?: boolean }>) => {
+      for (const c of arr) if (c.archived) s.add(c.id);
+    };
+    add(notesHook.cards);
+    add(todosHook.items);
+    add(reportsHook.cards);
+    add(revisionsHook.cards);
+    add(cutterHook.cards);
+    add(footnotesHook.footnoteRefs);
+    add(citationsHook.citations);
+    add(archiveHook.snippets);
+    return s;
+  }, [
+    notesHook.cards,
+    todosHook.items,
+    reportsHook.cards,
+    revisionsHook.cards,
+    cutterHook.cards,
+    footnotesHook.footnoteRefs,
+    citationsHook.citations,
+    archiveHook.snippets,
+  ]);
+  const archivedIdsRef = useRef(archivedIds);
+  archivedIdsRef.current = archivedIds;
+
   const marginaliaMarkers = useMemo<MarginaliaMarker[]>(() => {
     // Re-resolve markers when anchors move between paragraphs (`rev.anchors`)
     // or the paragraph-UUID set changes (`rev.blocks`). Card-store arrays
@@ -2357,9 +2394,19 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
   const visibleMarginaliaMarkers = useMemo(() => {
     if (menuBar?.showMarginalia === false) return [];
     const hidden = menuBar?.hiddenMarginaliaTypes;
-    if (!hidden || hidden.size === 0) return marginaliaMarkers;
-    return marginaliaMarkers.filter((m) => !hidden.has(m.type as MarginaliaType));
-  }, [marginaliaMarkers, menuBar?.showMarginalia, menuBar?.hiddenMarginaliaTypes]);
+    // Archived cards drop out of the gutter entirely (they live only under
+    // their panel's View Archives/All), on top of the per-type hide set.
+    return marginaliaMarkers.filter(
+      (m) =>
+        !archivedIds.has(m.entityId) &&
+        (!hidden || hidden.size === 0 || !hidden.has(m.type as MarginaliaType)),
+    );
+  }, [
+    marginaliaMarkers,
+    archivedIds,
+    menuBar?.showMarginalia,
+    menuBar?.hiddenMarginaliaTypes,
+  ]);
 
   const cardCreation = useCardCreation({
     editorRef: innerRef,
@@ -3779,6 +3826,106 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
     ],
   );
 
+  // ── Per-card archive actions ────────────────────────────────────────
+  // (`archivedIds` / `archivedIdsRef` are defined earlier, before the
+  // marginalia builder, since the marker filter reads them.)
+  //
+  // Route a flag flip to the owning panel's hook (the registry panel is the
+  // SSOT — no hand-kept kind list).
+  const setArchivedForKind = useCallback(
+    (kind: CardKind, id: string, next: boolean) => {
+      switch (panelForCardKind(kind)) {
+        case "notes": notesHook.setArchived(id, next); break;
+        case "todo": todosHook.setArchived(id, next); break;
+        case "reports": reportsHook.setArchived(id, next); break;
+        case "revisions": revisionsHook.setArchived(id, next); break;
+        case "cutter": cutterHook.setArchived(id, next); break;
+        case "archive": archiveHook.setArchived(id, next); break;
+        case "footnotes": footnotesHook.setArchived(id, next); break;
+        case "citations": citationsHook.setArchived(id, next); break;
+      }
+    },
+    [
+      notesHook.setArchived,
+      todosHook.setArchived,
+      reportsHook.setArchived,
+      revisionsHook.setArchived,
+      cutterHook.setArchived,
+      archiveHook.setArchived,
+      footnotesHook.setArchived,
+      citationsHook.setArchived,
+    ],
+  );
+
+  // Archiving an atom-bearing card: splice its `\footnote`/`\cite` marker out of
+  // the doc (mirrors the delete path's atom removal, incl. the footnote
+  // orphan-suppress latch) and flag the sidecar ref archived. Its content is
+  // kept (the ref survives `syncFromEditor` as unanchored). Unarchive does NOT
+  // re-insert the atom (handled in `archiveCard`).
+  const spliceAndArchiveAtom = useCallback(
+    (kind: CardKind, id: string) => {
+      if (kind === "footnote") {
+        if (!isInlineAtomLifecycleOn()) {
+          window.dispatchEvent(
+            new CustomEvent("virgil-footnote-suppress-orphan", {
+              detail: { footnoteId: id },
+            }),
+          );
+        }
+        innerRef.current?.deleteFootnote(id);
+        footnotesHook.setArchived(id, true);
+      } else {
+        innerRef.current?.deleteCitation(id);
+        citationsHook.setArchived(id, true);
+      }
+    },
+    [footnotesHook.setArchived, citationsHook.setArchived],
+  );
+
+  // Pending atom-archive confirm ({kind,id} while the dialog is open).
+  const [archiveConfirm, setArchiveConfirm] = useState<{
+    kind: CardKind;
+    id: string;
+  } | null>(null);
+  const [archiveDontAsk, setArchiveDontAsk] = useState(false);
+
+  const archiveCard = useCallback(
+    (kind: CardKind, id: string) => {
+      const currentlyArchived = archivedIdsRef.current.has(id);
+      if (archiveRemovesAtom(kind)) {
+        if (currentlyArchived) {
+          // Unarchive: clear the flag only — the atom is NOT re-inserted (the
+          // card returns as an unanchored ref the user re-places manually).
+          setArchivedForKind(kind, id, false);
+          return;
+        }
+        if (viewPrefs?.prefs.suppressArchiveAtomWarning) {
+          spliceAndArchiveAtom(kind, id);
+          return;
+        }
+        setArchiveDontAsk(false);
+        setArchiveConfirm({ kind, id });
+        return;
+      }
+      // Non-atom kinds: a pure flag toggle (no doc mutation, no confirm).
+      setArchivedForKind(kind, id, !currentlyArchived);
+    },
+    [
+      setArchivedForKind,
+      spliceAndArchiveAtom,
+      viewPrefs?.prefs.suppressArchiveAtomWarning,
+    ],
+  );
+
+  const cardArchiveActions = useMemo<CardArchiveActionsApi>(
+    () => ({
+      enabled: true,
+      isArchived: (id) => archivedIdsRef.current.has(id),
+      archive: archiveCard,
+    }),
+    [archiveCard],
+  );
+
   return (
     <EditorChromeProvider value={{ ...chrome, menuBar }}>
       <EditorRefProvider
@@ -3808,6 +3955,43 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
 
         <CollabProvider value={collab}>
         <CardArchiveViewProvider value={cardArchiveViewApi}>
+        <CardArchiveActionsProvider value={cardArchiveActions}>
+        {archiveConfirm && (
+          <ConfirmDialog
+            open
+            title={
+              archiveConfirm.kind === "footnote"
+                ? "Archive footnote?"
+                : "Archive citation?"
+            }
+            message={
+              <div className="flex flex-col gap-2">
+                <span>
+                  Archiving this {archiveConfirm.kind} removes its marker from
+                  your document. The card moves to this panel&apos;s archive —
+                  you can unarchive it later, but the marker won&apos;t be
+                  restored automatically.
+                </span>
+                <label className="flex items-center gap-2 text-ink-muted cursor-pointer select-none">
+                  <input
+                    type="checkbox"
+                    checked={archiveDontAsk}
+                    onChange={(e) => setArchiveDontAsk(e.target.checked)}
+                  />
+                  Don&apos;t ask again
+                </label>
+              </div>
+            }
+            confirmLabel="Archive"
+            onConfirm={() => {
+              if (archiveDontAsk)
+                viewPrefs?.setSuppressArchiveAtomWarning(true);
+              spliceAndArchiveAtom(archiveConfirm.kind, archiveConfirm.id);
+              setArchiveConfirm(null);
+            }}
+            onCancel={() => setArchiveConfirm(null)}
+          />
+        )}
         <PoppedCardsContext.Provider value={poppedCardsValue}>
         {/* LiftHost — shared owner of the lifted-overlay ghost gesture. Mounted
             here, inside PoppedCardsContext.Provider (and under
@@ -5315,6 +5499,7 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
           {confirmMorphDialog}
         </LiftHost>
         </PoppedCardsContext.Provider>
+        </CardArchiveActionsProvider>
         </CardArchiveViewProvider>
         </CollabProvider>
         </SelectionsProvider>
