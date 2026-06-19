@@ -11,6 +11,10 @@ import { useUnsortedBibEntries } from "@library/hooks/useUnsortedBibEntries";
 import { useLibraryTabs, type UseLibraryTabsOptions } from "@library/hooks/useLibraryTabs";
 import { docIdFromProjectLibraryId, isProjectDocId } from "@library/lib/library-store";
 import {
+  usePanelSelection,
+  useLibraryViewSessionFlush,
+} from "@library/lib/view-session-store";
+import {
   fileExists,
   pickBibFile,
   SUBDIRS,
@@ -253,10 +257,16 @@ export default function LibraryView({
   //     It's set on plain click and cmd/ctrl-click; left untouched on
   //     shift-click so successive shift-clicks pivot around the same
   //     anchor.
-  const [selectedKeys, setSelectedKeys] = useState<ReadonlySet<string>>(
-    () => new Set(),
-  );
-  const [anchorKey, setAnchorKey] = useState<string | null>(null);
+  //
+  // Persistence: selection now lives in the unified view-session store
+  // (per-PANEL, per-scope) so it survives a reload AND the Library's many
+  // remounts. The store is a module singleton, not React state.
+  const scope = tabsOptions?.scope ?? "";
+  const leftSelection = usePanelSelection(scope, "left");
+  const rightSelection = usePanelSelection(scope, "right");
+  // Mount the pagehide/visibilitychange flush once per Library instance
+  // (idempotent — safe for the inline + tear-out instances to both mount).
+  useLibraryViewSessionFlush();
   // Pass the FSA handle so the disk-libraries hook (consumed inside
   // useLibraryTabs) can read/write `.virgil/libraries/<slug>.json`.
   // Custom-library state is durable on disk, not localStorage.
@@ -271,13 +281,14 @@ export default function LibraryView({
       const detail = (e as CustomEvent<{ citekey?: string; itemId?: string }>).detail;
       const key = detail?.citekey ?? detail?.itemId;
       if (!key) return;
-      setSelectedKeys(new Set([key]));
-      setAnchorKey(key);
+      // The source row lives in the left panel's list (openPaper lands the
+      // paper tab on the right), so highlight the left panel's selection.
+      leftSelection.setSelection(new Set([key]), key);
       libraryTabs.openPaper(key, "left");
     };
     window.addEventListener("virgil-open-library", onOpen);
     return () => window.removeEventListener("virgil-open-library", onOpen);
-  }, [libraryTabs.openPaper]);
+  }, [libraryTabs.openPaper, leftSelection.setSelection]);
 
   // Tearout: when a paper inner tab is dropped on the Virgil bar, the
   // outer-bar drop handler dispatches this event; we close the donor
@@ -414,6 +425,42 @@ export default function LibraryView({
       ...unsortedBibSynthetic,
     ];
   }, [catalog, bibEntries, unsortedFiles, unsortedBibByFile]);
+
+  // Row keys that actually exist in the merged catalog. A row's selection
+  // key is its citekey, falling back to its original filename for
+  // un-triaged files (mirrors LeftListRow's key derivation).
+  const liveRowKeys = useMemo<Set<string>>(() => {
+    const s = new Set<string>();
+    for (const e of mergedEntries) {
+      const k = e.citekey ?? e.originalFilename;
+      if (k) s.add(k);
+    }
+    return s;
+  }, [mergedEntries]);
+
+  // One-shot stale-key prune on restore. A restored selection may carry
+  // keys for rows that were deleted/reindexed away while the session was
+  // persisted. Wait for the FIRST non-empty merged catalog, then drop any
+  // selected key absent from the live row set — once per panel. Gated on
+  // non-empty so we never prune before the catalog has loaded (restore-
+  // race tolerance: keys for rows that haven't resolved yet are kept).
+  const selectionPrunedRef = useRef(false);
+  useEffect(() => {
+    if (selectionPrunedRef.current) return;
+    if (liveRowKeys.size === 0) return; // catalog not loaded yet — keep all
+    selectionPrunedRef.current = true;
+    for (const sel of [leftSelection, rightSelection] as const) {
+      const kept = [...sel.selectedKeys].filter((k) => liveRowKeys.has(k));
+      if (kept.length !== sel.selectedKeys.size) {
+        const anchor =
+          sel.anchorKey && liveRowKeys.has(sel.anchorKey) ? sel.anchorKey : null;
+        sel.setSelection(new Set(kept), anchor);
+      }
+    }
+    // Intentionally one-shot: only `liveRowKeys` drives re-evaluation, and
+    // the ref short-circuits after the first non-empty pass.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [liveRowKeys]);
 
   const onFiles = useCallback(
     async (files: File[]) => {
@@ -606,7 +653,9 @@ export default function LibraryView({
     };
   }, [onFiles]);
 
-  const renderPanel = (panel: "left" | "right") => (
+  const renderPanel = (panel: "left" | "right") => {
+    const sel = panel === "left" ? leftSelection : rightSelection;
+    return (
     <TabbedLibraryPanel
       panel={panel}
       registry={libraryTabs.registry}
@@ -614,11 +663,10 @@ export default function LibraryView({
       libraryById={libraryTabs.libraryById}
       entries={mergedEntries}
       bibByKey={bibByKey}
-      selectedKeys={selectedKeys}
-      anchorKey={anchorKey}
+      selectedKeys={sel.selectedKeys}
+      anchorKey={sel.anchorKey}
       onSelectKeys={(keys, anchor) => {
-        setSelectedKeys(keys);
-        setAnchorKey(anchor);
+        sel.setSelection(keys, anchor);
       }}
       onOpenPaper={libraryTabs.openPaper}
       onActivate={libraryTabs.activate}
@@ -639,7 +687,8 @@ export default function LibraryView({
       showAddTab={!showNavigator}
       showRecent={!showNavigator}
     />
-  );
+    );
+  };
 
   // Set of library ids currently open in either panel. Used by the
   // navigator to render a small "open" dot next to non-active rows.
