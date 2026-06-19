@@ -123,6 +123,36 @@ main only after the full suite is green + a live preview smoke + user OK.
 - Drag across N rows: 1 focus.json write, smooth, no editor reflow while unlocked.
 - Click a paragraph row → band = that block; click a heading → band = its subtree.
 
+## STATUS — end of session 2026-06-19 (worktree `focus-view-perf-rework`, NOT merged/pushed)
+Base `1e00f6e`. Four chips landed; CHIP C deferred.
+- **CHIP A** ✅ `f5da452` — confinement re-gated to `locked` (bandConfines). LIVE-VERIFIED.
+- **CHIP D** ✅ `eeee6e3` — stable outline content (no per-render getJSON).
+- **CHIP E** ✅ `b9159c6` — unified range model (node-extent click; free row-to-row
+  symmetric drag; clamp-not-freeze; dead code deleted).
+- **CHIP B** ✅ `75e5a89` — band drag = local overlay, commits ONCE on mouseup;
+  focus.json debounced 150ms.
+- **CHIP C** ⏸ DEFERRED (optional) — section-path/breadcrumb effects still re-subscribe
+  listeners on each *discrete* band change (CHIP B removed the per-snap version). Lifting
+  the band-index deps out of the listener-bearing effects (read from focusStateRef,
+  recompute via a RAF schedule) is the clean follow-up. Low value now; delicate code.
+
+**Verification:** `tsc` clean · full suite **2294/2294 green** · no NEW eslint errors
+(3 pre-existing in OutlinePanel are on the base). **Live (dev preview, 6-block doc):**
+unlocked band → 0 hidden; locked band → exactly the 2 out-of-band blocks hidden;
+`__virgilFocusRebuilds` 0→0 (unlocked, no work) →1 (lock); typing 5 chars in-band under a
+locked band → `emitCount` Δ0 + `focusRebuilds` Δ0 (maps, never rebuilds). App loads with
+zero console errors.
+
+**OWED (user):** a gesture FEEL-check on the real paper — turn focus on without lock (text
+stays full, only the outline band shows) → drag the edges (should feel smooth, free
+row-to-row) → lock (confines). The dev doc is empty so the drag *feel* wasn't headlessly
+testable; the lock-gate logic + keystroke sanctity ARE verified above.
+**Preview recipe** (dev doc is empty — use the real paper or refresh doc_devtest from
+samples/annotation-history): worktree needs a REAL node_modules (Turbopack rejects the
+symlink — `cp -al ../../virgil/node_modules node_modules`), a launch.json entry cd-ing
+into the worktree with `NEXT_PUBLIC_DEV_STORAGE=true`, then in-page
+`localStorage.setItem('virgil:force-dev-storage','1')` + reload.
+
 ## Audit artifact
 Full structured findings (38 findings, 16 adversarially verified) in the workflow run
 `wf_38fd1800-7d2` (transcript under the worktree session dir).
