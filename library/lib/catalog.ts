@@ -78,6 +78,19 @@ export interface BibStatus {
   sources?: string[];
   fieldChanges?: BibFieldChange[];
   manuallyAcceptedAt?: string;
+  // Set by the bib-merge engine (merge_paper_references.py) when this paper's
+  // references.bib has been folded into the central master.bib — surfaced as a
+  // blue "imported" check. Skill-written only; the frontend reads but never
+  // writes the catalog.
+  imported?: boolean;
+  importedAt?: string;
+  // Sorted NFC citekeys present in references.bib at import time. Used for
+  // additions-only invalidation: if references.bib later gains a citekey not in
+  // this set, `imported` is cleared by the next library skill run that touches
+  // the bibliography (the /library/clean-bibliography tail step, or the
+  // catch-all sweep in /library/index-pending) — not synchronously. Removals
+  // are ignored.
+  importedKeys?: string[];
 }
 
 export interface CatalogEntry {

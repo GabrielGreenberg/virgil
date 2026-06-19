@@ -94,20 +94,52 @@ export function BibPill({ state }: { state: BibAuthState }) {
   return <Pill label={bibLabel[state]} tone={bibTone[state]} title={bibTitle[state]} />;
 }
 
+/** Blue "imported" pill — shown in the paper-header pill group when this
+ *  paper's references.bib has been folded into the central master.bib.
+ *  Reuses the slate-blue pill tone (same family as the manuscript/canonical
+ *  bib pills). */
+export function BibImportedPill() {
+  return <Pill label="✓ imp" tone="blue" title="Bibliography imported into master.bib" />;
+}
+
+/** Bare blue check — the dense indicator for the LeftList "imp" column.
+ *  Same slate-blue (`--pill-blue-fg`) as BibImportedPill so the two
+ *  surfaces read as the same signal. */
+export function BibImportedCheck() {
+  return (
+    <span
+      title="Bibliography imported into master.bib"
+      aria-label="Bibliography imported"
+      style={{
+        color: "var(--pill-blue-fg)",
+        fontSize: 13,
+        lineHeight: 1,
+        fontWeight: 600,
+      }}
+    >
+      ✓
+    </span>
+  );
+}
+
 export function StatusPills({
   pdfPresent,
   indexed,
   bib,
+  bibImported = false,
 }: {
   pdfPresent: boolean;
   indexed: IndexedState;
   bib: BibAuthState;
+  /** When true, appends a blue "imported" pill after the bib pill. */
+  bibImported?: boolean;
 }) {
   return (
     <span style={{ display: "inline-flex", gap: 3, alignItems: "center" }}>
       <PdfPill present={pdfPresent} />
       <IndexedPill state={indexed} />
       <BibPill state={bib} />
+      {bibImported && <BibImportedPill />}
     </span>
   );
 }

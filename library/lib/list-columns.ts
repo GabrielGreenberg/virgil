@@ -40,6 +40,11 @@ export function clampWidth(col: ResizableColId, w: number): number {
   return Math.max(MIN_WIDTHS[col], Math.min(MAX_WIDTHS[col], Math.round(w)));
 }
 
+/** Fixed width of the trailing "imp" (bibliography-imported) check column.
+ *  Non-resizable and non-sortable — a pure read-only indicator, so it stays
+ *  out of the resize/sort math (no ResizableColId / SortColId entry). */
+export const BIB_IMP_WIDTH = 52;
+
 export function gridTemplate(widths: Record<ResizableColId, number>): string {
   return [
     `${widths.year}px`,
@@ -51,6 +56,7 @@ export function gridTemplate(widths: Record<ResizableColId, number>): string {
     `${widths.status}px`,
     `${RESIZER_WIDTH}px`,
     `${widths.citekey}px`,
+    `${BIB_IMP_WIDTH}px`, // bib-imp (trailing, fixed)
   ].join(" ");
 }
 

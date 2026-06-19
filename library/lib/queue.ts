@@ -12,6 +12,7 @@ export type QueueKind =
   | "bib-edit"
   | "paper-review"
   | "deepIndex"
+  | "import-bib"
   | "delete";
 
 /** Legacy on-disk kind from before the rich-index → deep-index rename.
@@ -83,6 +84,10 @@ export function queueFilename(entry: QueueEntry): string {
   }
   if (entry.kind === "deepIndex") {
     return `${entry.citekey}-deepindex.json`;
+  }
+  if (entry.kind === "import-bib") {
+    // Own slot so it can coexist with an in-flight index / bib-review.
+    return `${entry.citekey}-importbib.json`;
   }
   if (entry.kind === "delete") {
     return `${entry.citekey}-delete.json`;

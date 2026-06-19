@@ -187,8 +187,12 @@ else has gone wrong.
 ## Step 1 — Build the worklist
 
 Print the list of citekeys to process. Filter to deep-indexed papers,
-honor `--filter`, and (unless `--force`) skip papers whose merge report
-is newer than their `references.bib`.
+honor `--filter`, and (unless `--force`) skip papers already imported.
+A paper counts as **already imported** when its catalog row has
+`bib.imported == true` AND its `references.bib` has gained no new citekey
+since import (additions-only — the engine snapshots `bib.importedKeys`
+at import time). Libraries imported before the flag existed fall back to
+the legacy report-mtime check so they aren't needlessly re-scanned.
 
 ```bash
 python3 - <<'PY'
@@ -197,6 +201,15 @@ from pathlib import Path
 library = Path(os.environ["VIRGIL_LIBRARY_ROOT"])
 FILTER = os.environ.get("MERGE_FILTER") or ""
 FORCE  = os.environ.get("MERGE_FORCE") == "1"
+
+# The single additions-only predicate lives in _tools (shared with the
+# engine + the invalidation sweep). Fall back to mtime-only if unavailable.
+sys.path.insert(0, str(library / ".virgil" / "scripts" / "library"))
+try:
+    from _tools import references_bib_keys, normalize_citekey
+    HAVE_KEYS = True
+except Exception:
+    HAVE_KEYS = False
 
 cat = json.loads((library / ".virgil" / "catalog.json").read_text())
 # `richIndexed` is the legacy spelling kept on read; new writes use `deepIndexed`.
@@ -217,10 +230,25 @@ for e in cat.get("entries", []):
     if not refs.exists():
         continue
     if not FORCE:
-        rpt = report_dir / f"{ck}.json"
-        if rpt.exists() and rpt.stat().st_mtime >= refs.stat().st_mtime:
-            skipped_uptodate += 1
-            continue
+        bib = e.get("bib") or {}
+        if HAVE_KEYS and bib.get("imported"):
+            # Flag-bearing: decide SOLELY by content (additions-only). Skip when
+            # nothing was added; otherwise force-include. Never fall through to
+            # the weaker mtime proxy — a content-confirmed addition must win even
+            # if the report mtime happens to be newer (sync/restore mtime resets,
+            # or a dry-run that regenerated the report without re-stamping keys).
+            baseline = {normalize_citekey(k) for k in (bib.get("importedKeys") or [])}
+            added = set(references_bib_keys(library, ck)) - baseline
+            if not added:
+                skipped_uptodate += 1
+                continue
+        else:
+            # Legacy fallback — pre-flag libraries (or _tools unavailable): skip
+            # when the merge report is newer than references.bib.
+            rpt = report_dir / f"{ck}.json"
+            if rpt.exists() and rpt.stat().st_mtime >= refs.stat().st_mtime:
+                skipped_uptodate += 1
+                continue
     todo.append(ck)
 
 (library / ".virgil" / "merge-reports").mkdir(parents=True, exist_ok=True)

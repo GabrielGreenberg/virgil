@@ -48,6 +48,7 @@ from _tools import (  # noqa: E402
     citekey_matches,
     lock_catalog,
     lock_master_bib,
+    mark_bib_imported,
     normalize_citekey,
     read_catalog,
     read_master_bib,
@@ -779,6 +780,11 @@ def main(argv: list[str] | None = None) -> int:
     report.entries_total = len(paper_entries)
     if not paper_entries:
         report.notes.append("references.bib is empty")
+        if not args.dry_run:
+            try:
+                mark_bib_imported(library, citekey, [])
+            except KeyError:
+                report.notes.append("no catalog row to mark imported")
         _atomic_write_text(report_path, json.dumps(report.to_json(), indent=2) + "\n")
         print(f"+0 ~0 ⤬0 ⚠0 ?0  (empty references.bib)")
         return 0
@@ -823,6 +829,19 @@ def main(argv: list[str] | None = None) -> int:
         }
 
     _atomic_write_text(report_path, json.dumps(report.to_json(), indent=2) + "\n")
+
+    # Mark the paper imported: snapshot the references.bib citekey set so a
+    # later *addition* can clear the flag (additions-only invalidation). Runs
+    # for both /library/import-bib and the whole-library /library/merge-bibs,
+    # since both call this engine. Skipped on --dry-run.
+    if not args.dry_run:
+        try:
+            mark_bib_imported(library, citekey, [
+                normalize_citekey(e["citekey"])
+                for e in paper_entries if e.get("citekey")
+            ])
+        except KeyError:
+            report.notes.append("no catalog row to mark imported")
 
     print(
         f"+{len(report.added)} "

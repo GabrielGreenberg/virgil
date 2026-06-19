@@ -651,6 +651,20 @@ python3 .virgil/scripts/library/synthesize_canonical_entries.py $ARGUMENTS \
 Synthesized entries are marked with a `% synthesized via Crossref on
 <date>` comment so future passes / users can verify or replace them.
 
+## Refresh the import badge (final step)
+
+Re-emitting `references.bib` here (itemization, synthesis) may have added
+cited works. If this paper was already imported into `master.bib`, clear its
+blue "imported" badge so the user knows to re-import the now-larger
+bibliography. This is content-aware and additions-only — it does nothing
+unless a NEW citekey appeared (removing entries does not clear the badge),
+and it's a no-op for papers that were never imported. (Also runs as a
+catch-all sweep from `/library/index-pending`.)
+
+```bash
+python3 .virgil/scripts/library/invalidate_bib_imports.py $ARGUMENTS
+```
+
 ## Pre-flight (called from /library/authenticate-bib, not here)
 
 Cross-field coherence + PDF cover-page check before authentication:

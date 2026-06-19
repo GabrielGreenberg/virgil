@@ -75,6 +75,7 @@ directory).
    - `kind: "bib-edit"`     → invoke `/apply-bib-edit <citekey>`
    - `kind: "authenticate"` → invoke `/authenticate-bib <citekey>`
    - `kind: "deepIndex"` (or legacy `"richIndex"`) → invoke `/deep-index <citekey>`
+   - `kind: "import-bib"`   → invoke `/library/import-bib <citekey>`
    - `kind: "triage"`       → these are pre-`triage_apply` stubs;
      normally produced only by the legacy per-file flow. Invoke
      `/triage-pdf <filename>` for each.
@@ -92,7 +93,17 @@ directory).
    newly-eligible `index`/`reindex` entries get picked up. Skip if
    step 2 was a no-op.
 
-4. **Print a final summary.** The drain script's own summary line is
+4. **Refresh the "imported" flags.** Any drain pass that re-emitted a
+   `references.bib` (re-index, deep-index, populate, synthesize…) may
+   have added bib entries to a previously-imported paper. Sweep the
+   catalog and clear `bib.imported` on any such paper (additions-only —
+   removals are ignored), so the blue "imported" check disappears until
+   the user re-imports:
+   ```bash
+   python3 .virgil/scripts/library/invalidate_bib_imports.py
+   ```
+
+5. **Print a final summary.** The drain script's own summary line is
    already in your transcript from step 1; if step 2 ran, append a
    second line counting the deferred dispatches:
    ```
