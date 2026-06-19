@@ -153,6 +153,17 @@ function enqueueDocWrite<T>(
   subkey: string,
   task: () => Promise<T>,
 ): Promise<T> {
+  // Read-only library-paper docs never persist — enforce the documented
+  // invariant at the single write funnel. Every card-hook sidecar write, the
+  // load-writeback (tex + bundle), bib, pdf, and the figure writers all pass
+  // through here, so this one guard covers the entire write class. Reads
+  // (`readSidecar`/`readTex`/`getTexFileHandle`/`requireDocHandleForRead`) call
+  // `requireDocHandle` directly and bypass this funnel, so library-paper reads
+  // keep working. The skipped writes resolve to `undefined`; every caller is a
+  // void write (`Promise<void>` / `Promise<string>` figure-import), none relies
+  // on a meaningful resolved value.
+  if (h.docId.startsWith(LIBRARY_PAPER_PREFIX))
+    return Promise.resolve(undefined as T);
   assertActive(h);
   return enqueueWrite(`${h.docId}/${subkey}`, () =>
     withDocLock(h.docId, async () => {
@@ -213,14 +224,9 @@ export async function writeSidecar<T>(
   filename: string,
   data: T,
 ): Promise<void> {
-  // Library-paper docs are read-only — served from the library handle, never
-  // registered for per-doc writes (see the readSidecar note above). The Reader
-  // mounts a full EditorPane whose derive-on-mount effects (citations,
-  // footnotes, …) would otherwise arm a write that throws "No folder handle
-  // stored" once the handle is torn down on unmount. Enforce the documented
-  // never-persist invariant here, at the single SSOT every card-hook sidecar
-  // write funnels through.
-  if (h.docId.startsWith(LIBRARY_PAPER_PREFIX)) return;
+  // Read-only library-paper docs never persist — the guard lives at the
+  // `enqueueDocWrite` funnel below, which this (and every other writer) routes
+  // through.
   return enqueueDocWrite(h, `virgil/${filename}`, async () => {
     const docHandle = await requireDocHandle(h.docId);
     const virgil = await getVirgilSubdir(docHandle);

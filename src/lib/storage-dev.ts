@@ -221,6 +221,10 @@ export async function readTex(docId: string): Promise<string> {
 }
 
 export async function writeTex(h: DocWriteHandle, latex: string): Promise<void> {
+  // Read-only library-paper docs never persist (parity with storage-fsa's
+  // enqueueDocWrite funnel guard). The load-writeback / minted-UUID writeback
+  // would otherwise PUT to the read-only source.
+  if (isLibraryPaper(h.docId)) return;
   assertActive(h);
   const docs = await getDevIndex();
   const entry = findEntry(docs, h.docId);
@@ -257,7 +261,10 @@ export async function readDocBundle(docId: string): Promise<{ content: JSONConte
   const delimiters = extractPreambleAndPostamble(latex);
   const newLatex = serializeToLatex(content, delimiters ?? undefined);
   const writebackHandle = getActiveHandle(docId);
-  if (writebackHandle) {
+  // Read-only library-paper docs never persist — skip the opportunistic
+  // load-writeback (the tex + virgil.json PUTs observed in the live smoke).
+  // Parity with the storage-fsa enqueueDocWrite funnel guard.
+  if (writebackHandle && !isLibraryPaper(docId)) {
     // Fire-and-forget — don't block the editor from opening. The
     // `isActive` re-check inside the closure rejects the writeback if
     // the pipeline was superseded between read and write.
@@ -280,6 +287,8 @@ export async function writeDocBundle(
   h: DocWriteHandle,
   content: JSONContent,
 ): Promise<void> {
+  // Read-only library-paper docs never persist (parity with storage-fsa).
+  if (isLibraryPaper(h.docId)) return;
   assertActive(h);
   const docs = await getDevIndex();
   const entry = findEntry(docs, h.docId);
@@ -345,6 +354,8 @@ export async function readBib(docId: string): Promise<BibReadResult> {
 }
 
 export async function writeBib(h: DocWriteHandle, bibText: string): Promise<void> {
+  // Read-only library-paper docs never persist (parity with storage-fsa).
+  if (isLibraryPaper(h.docId)) return;
   assertActive(h);
   const tex = await readTex(h.docId);
   const m = tex.match(BIB_DECL_RE);
@@ -373,6 +384,8 @@ export async function getPdfFilename(docId: string): Promise<string> {
 }
 
 export async function writePdf(h: DocWriteHandle, pdfBytes: Uint8Array): Promise<void> {
+  // Read-only library-paper docs never persist (parity with storage-fsa).
+  if (isLibraryPaper(h.docId)) return;
   assertActive(h);
   const filename = await getPdfFilename(h.docId);
   assertNotSuperseded(h);
@@ -453,6 +466,8 @@ export async function writeFigureRaster(
   cacheKey: string,
   blob: Blob,
 ): Promise<void> {
+  // Read-only library-paper docs never persist (parity with storage-fsa).
+  if (isLibraryPaper(h.docId)) return;
   assertActive(h);
   assertNotSuperseded(h);
   await fetch(docFileUrl(h.docId, `virgil/figures-cache/${cacheKey}.webp`), {
@@ -466,6 +481,9 @@ export async function deleteFigureRaster(
   h: DocWriteHandle,
   cacheKey: string,
 ): Promise<void> {
+  // Read-only library-paper docs never mutate the source (parity with
+  // storage-fsa, where deleteFigureRaster routes through enqueueDocWrite).
+  if (isLibraryPaper(h.docId)) return;
   assertActive(h);
   assertNotSuperseded(h);
   await fetch(docFileUrl(h.docId, `virgil/figures-cache/${cacheKey}.webp`), {
@@ -490,6 +508,8 @@ export async function writeFigureIndex(
   h: DocWriteHandle,
   index: Record<string, { source: string; mtimeMs: number; size: number }>,
 ): Promise<void> {
+  // Read-only library-paper docs never persist (parity with storage-fsa).
+  if (isLibraryPaper(h.docId)) return;
   assertActive(h);
   assertNotSuperseded(h);
   await putText(
@@ -524,10 +544,14 @@ export async function importFigureFile(
   picked: PickedFigureFile,
   subdir: string = "figures",
 ): Promise<string> {
-  assertActive(h);
-  assertNotSuperseded(h);
   const basename = picked.file.name;
   const destPath = `${subdir}/${basename}`;
+  // Read-only library-paper docs never persist — skip the copy-in PUT and
+  // just return the would-be relative path (parity with storage-fsa, whose
+  // byte write funnels through the guarded enqueueDocWrite).
+  if (isLibraryPaper(h.docId)) return destPath;
+  assertActive(h);
+  assertNotSuperseded(h);
   const url = docFileUrl(h.docId, destPath);
   // Reuse the figure-raster MIME conventions — the PUT route inspects
   // Content-Type to decide whether to read the body as binary or text.
