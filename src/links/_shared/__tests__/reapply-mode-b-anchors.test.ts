@@ -54,13 +54,15 @@ import { useNotes } from "@/hooks/useNotes";
 import { useTodos } from "@/hooks/useTodos";
 import { useCutter } from "@/hooks/useCutter";
 import { useRevisions } from "@/hooks/useRevisions";
-import { getTextAnchor, reanchorByText } from "@/links/links";
+import { getTextAnchor } from "@/links/links";
 import type { LinkedAnchorKind } from "@/links/links";
 import {
   reapplyModeBAnchors,
   buildModeBReapplyRecords,
   type ModeBReapplyRecord,
 } from "../reapply-mode-b-anchors";
+import { applyLinkedAnchorsImpl } from "../apply-linked-anchors";
+import { linkedAnchorRenderAttrs } from "@/lib/tiptap/linked-anchor-attrs";
 import { getBus } from "@/lib/tiptap/doc-structure/bus";
 import {
   beginDocPipeline,
@@ -126,27 +128,52 @@ function mountDoc(paras: ParaSpec[]): Editor {
   });
 }
 
-/** Faithful mirror of `Editor.tsx`'s `applyLinkedAnchors` (the real handle
- *  method the moved pass calls): skip records whose anchorId is already marked
- *  in the doc, else `reanchorByText`. */
+/** The REAL handle the moved pass calls — `applyLinkedAnchorsImpl`, the ONE
+ *  implementation production (`Editor.tsx`) and these tests share (so the test
+ *  can never pass against a stale hand-copied mirror). Reconcile-not-skip:
+ *  re-stamps present marks whose attrs disagree with their record, re-anchors
+ *  absent ones by snapshot text. */
 function applyLinkedAnchorsHandle(editor: Editor) {
   return (records: ModeBReapplyRecord[]): void => {
-    const present = new Set<string>();
-    editor.state.doc.descendants((node) => {
-      if (!node.isText) return true;
-      for (const m of node.marks) {
-        if (m.type.name === "linkedAnchor" && m.attrs.anchorId) {
-          present.add(m.attrs.anchorId as string);
-        }
-      }
-      return true;
-    });
-    for (const rec of records) {
-      if (!rec.anchorId || !rec.text) continue;
-      if (present.has(rec.anchorId)) continue;
-      reanchorByText(editor, rec.kind, rec.text, rec.anchorId);
-    }
+    applyLinkedAnchorsImpl(editor, records);
   };
+}
+
+/** The `linkedAnchor` mark attrs at the given anchorId (or null). */
+function markAttrsFor(
+  editor: Editor,
+  anchorId: string,
+): Record<string, unknown> | null {
+  let attrs: Record<string, unknown> | null = null;
+  editor.state.doc.descendants((node) => {
+    if (attrs) return false;
+    if (!node.isText) return true;
+    for (const m of node.marks) {
+      if (m.type.name === "linkedAnchor" && m.attrs.anchorId === anchorId) {
+        attrs = m.attrs as Record<string, unknown>;
+        return false;
+      }
+    }
+    return true;
+  });
+  return attrs;
+}
+
+/** How many distinct runs carry the linkedAnchor mark for the given anchorId. */
+function markRunCountFor(editor: Editor, anchorId: string): number {
+  let n = 0;
+  editor.state.doc.descendants((node) => {
+    if (
+      node.isText &&
+      node.marks.some(
+        (m) => m.type.name === "linkedAnchor" && m.attrs.anchorId === anchorId,
+      )
+    ) {
+      n += 1;
+    }
+    return true;
+  });
+  return n;
 }
 
 function countLinkedAnchors(editor: Editor): number {
@@ -234,6 +261,7 @@ describe("RC-B — un-re-anchored Mode-B highlight gets its mark re-applied", ()
       todoItems: [],
       comments: [],
       cutterCards: [],
+      reports: [],
       highlights: [highlight],
     });
 
@@ -312,6 +340,7 @@ describe("RC-B — overlap last-wins (highlights applied LAST)", () => {
       todoItems: [],
       comments: [revision],
       cutterCards: [],
+      reports: [],
       highlights: [highlight],
     });
 
@@ -421,6 +450,7 @@ describe("RC-B — re-anchored hybrid is EXCLUDED from re-apply", () => {
       todoItems: result.current.items,
       comments: [],
       cutterCards: [],
+      reports: [],
       highlights: [],
     });
     expect(applied).toBe(0); // excluded
@@ -487,6 +517,7 @@ describe("RC-B — healthy Mode-B survives the full ordered load (re-apply then 
       todoItems: result.current.items,
       comments: [],
       cutterCards: [],
+      reports: [],
       highlights: [],
     });
     expect(markedTextFor(editor, "anc-live")).toBe("me here");
@@ -535,7 +566,7 @@ describe("RC-B — re-apply covers all five kinds with highlights LAST", () => {
     } as never;
   }
 
-  it("builds records in note → todo → revision → cutter → highlight order", () => {
+  it("builds records in note → todo → revision → cutter → report → highlight order", () => {
     const records = buildModeBReapplyRecords({
       notes: [modeBCard("n1", "note", "a-note", "note span")],
       todoItems: [modeBCard("t1", "todo", "a-todo", "todo span")],
@@ -543,6 +574,10 @@ describe("RC-B — re-apply covers all five kinds with highlights LAST", () => {
       cutterCards: [
         modeBCard("c1", "comment", "a-cut", "cut span"),
         modeBCard("c2", "suggestion", "a-sug", "sug span"),
+      ],
+      reports: [
+        modeBCard("rp1", "report", "a-rep", "rep span"),
+        modeBCard("rq1", "report-request", "a-req", "req span"),
       ],
       highlights: [modeBCard("h1", "highlight", "a-hl", "hl span")],
     });
@@ -552,15 +587,17 @@ describe("RC-B — re-apply covers all five kinds with highlights LAST", () => {
       "revision",
       "cutter-comment",
       "cutter-suggestion",
-      "highlight", // LAST
+      "report", // reports collected AFTER cutters...
+      "report-request",
+      "highlight", // ...and BEFORE highlights (highlights stay LAST)
     ]);
   });
 
-  it("stamps all five kinds' marks into a real editor", () => {
+  it("stamps all six kinds' marks into a real editor", () => {
     const editor = mountDoc([
       {
         uuid: "para-A",
-        text: "note span todo span rev span cut span sug span hl span done",
+        text: "note span todo span rev span cut span rep span hl span done",
       },
     ]);
     reapplyModeBAnchors(applyLinkedAnchorsHandle(editor), {
@@ -568,12 +605,14 @@ describe("RC-B — re-apply covers all five kinds with highlights LAST", () => {
       todoItems: [modeBCard("t1", "todo", "a-todo", "todo span")],
       comments: [modeBCard("r1", "comment", "a-rev", "rev span")],
       cutterCards: [modeBCard("c1", "comment", "a-cut", "cut span")],
+      reports: [modeBCard("rp1", "report", "a-rep", "rep span")],
       highlights: [modeBCard("h1", "highlight", "a-hl", "hl span")],
     });
     expect(markedTextFor(editor, "a-note")).toBe("note span");
     expect(markedTextFor(editor, "a-todo")).toBe("todo span");
     expect(markedTextFor(editor, "a-rev")).toBe("rev span");
     expect(markedTextFor(editor, "a-cut")).toBe("cut span");
+    expect(markedTextFor(editor, "a-rep")).toBe("rep span");
     expect(markedTextFor(editor, "a-hl")).toBe("hl span");
     editor.destroy();
   });
@@ -612,6 +651,7 @@ describe("RC-B — keystroke sanctity (load-only)", () => {
       todoItems: [],
       comments: [],
       cutterCards: [],
+      reports: [],
       highlights: [highlight],
     });
     const marksAfterLoad = countLinkedAnchors(editor);
@@ -630,6 +670,211 @@ describe("RC-B — keystroke sanctity (load-only)", () => {
     // bus emitted nothing (plain in-paragraph typing is structurally null).
     expect(countLinkedAnchors(editor)).toBe(marksAfterLoad);
     expect(bus?.emitCount ?? 0).toBe(emitBefore);
+    editor.destroy();
+  });
+});
+
+// ===========================================================================
+// BUG1 — reconcile-not-skip (the core Chip-3 behavior)
+//
+// On reload the parser RESURRECTS every `\vlid` pair as a hardcoded
+// `kind:"note"` mark. The old handle SKIPPED any present anchorId, so a
+// revision/cutter/todo/report/highlight span reloaded permanently mislabeled
+// as a note. `applyLinkedAnchorsImpl` now RECONCILES: a present mark whose
+// attrs disagree with its sidecar record is re-stamped in place.
+// ===========================================================================
+
+describe("RC-B — BUG1 reconcile-not-skip (present marks re-stamped authoritatively)", () => {
+  /** A Mode-B card with one linkedRange link. Optional `highlightColor` exercises
+   *  the per-card tint override; `cardId` defaults to `id`. */
+  function modeBCard(
+    id: string,
+    cardKind: string,
+    anchorId: string,
+    snapshot: string,
+    extra?: { highlightColor?: string | null },
+  ) {
+    return {
+      id,
+      kind: cardKind,
+      ...(extra?.highlightColor !== undefined
+        ? { highlightColor: extra.highlightColor }
+        : {}),
+      links: [
+        {
+          id: `${id}@anc`,
+          kind: "anchor",
+          anchor: {
+            type: "textObject",
+            targetKind: "linkedRange",
+            textObjectIds: ["para-A"],
+            margin: { side: "right" },
+            textRange: { anchorId, textSnapshot: snapshot },
+          },
+          target: { type: "card", ref: { kind: cardKind, id } },
+          createdAt: "",
+        },
+      ],
+    } as never;
+  }
+
+  it("a present note-kind mark over a REVISION anchorId is re-stamped to kind:revision", () => {
+    // The parse resurrected the revision span as a note mark carrying the
+    // original anchorId — the exact BUG1 corruption.
+    const editor = mountDoc([
+      {
+        uuid: "para-A",
+        runs: [
+          { text: "before " },
+          { text: "the span", anchor: { anchorId: "anc-rev", kind: "note" } },
+          { text: " after" },
+        ],
+      },
+    ]);
+    // Precondition: the doc mark reads as a note (the corruption).
+    expect((markAttrsFor(editor, "anc-rev")?.kind as string)).toBe("note");
+
+    reapplyModeBAnchors(applyLinkedAnchorsHandle(editor), {
+      notes: [],
+      todoItems: [],
+      comments: [modeBCard("r1", "comment", "anc-rev", "the span")],
+      cutterCards: [],
+      reports: [],
+      highlights: [],
+    });
+
+    // Post-fix: the mark is authoritatively a revision, range + text unchanged,
+    // and there is exactly ONE run (re-stamped in place, no duplicate mark).
+    const attrs = markAttrsFor(editor, "anc-rev");
+    expect(attrs?.kind).toBe("revision");
+    // linkCard PRESERVED empty (re-stamp kind + tint only — see the
+    // apply-linked-anchors linkCard-policy note). A derived `comment:<id>` would
+    // parse to the non-spine kind "comment" and break delete-range for revisions.
+    expect(attrs?.linkCard ?? "").toBe("");
+    expect(markedTextFor(editor, "anc-rev")).toBe("the span");
+    expect(markRunCountFor(editor, "anc-rev")).toBe(1);
+    // The render layer paints the comment (purple) token via the KIND fallback,
+    // not the note token — the `comment:` prefix the CSS purple rule matches.
+    expect(linkedAnchorRenderAttrs(attrs ?? {})["data-link-card"]).toBe(
+      "comment:",
+    );
+    editor.destroy();
+  });
+
+  it("a present highlight mark missing tintColor gets #fbbf24 restored", () => {
+    // The reload mark for a highlight carries no tintColor (serializer dropped
+    // it); the kind happens to be "highlight" already, so kind agrees — but the
+    // tintColor disagrees, so the reconcile must still re-stamp.
+    const editor = mountDoc([
+      {
+        uuid: "para-A",
+        runs: [
+          { text: "shine " },
+          { text: "on me", anchor: { anchorId: "anc-hl", kind: "highlight" } },
+          { text: " now" },
+        ],
+      },
+    ]);
+    expect(markAttrsFor(editor, "anc-hl")?.tintColor ?? null).toBe(null);
+
+    reapplyModeBAnchors(applyLinkedAnchorsHandle(editor), {
+      notes: [],
+      todoItems: [],
+      comments: [],
+      cutterCards: [],
+      reports: [],
+      highlights: [modeBCard("h1", "highlight", "anc-hl", "on me")],
+    });
+
+    const attrs = markAttrsFor(editor, "anc-hl");
+    expect(attrs?.kind).toBe("highlight");
+    expect(attrs?.tintColor).toBe("#fbbf24");
+    expect(markedTextFor(editor, "anc-hl")).toBe("on me");
+    expect(markRunCountFor(editor, "anc-hl")).toBe(1);
+    editor.destroy();
+  });
+
+  it("an in-agreement present mark is a no-op (idempotent; bus emitCount flat)", () => {
+    // The reload mark already agrees with the sidecar (kind:revision,
+    // tintColor:null) — the reconcile must not touch it. (linkCard is preserved,
+    // not compared, so it never forces a re-stamp.)
+    const editor = mountDoc([
+      {
+        uuid: "para-A",
+        runs: [
+          { text: "left " },
+          { text: "middle", anchor: { anchorId: "anc-ok", kind: "revision" } },
+          { text: " right" },
+        ],
+      },
+    ]);
+    // The mounted mark already matches the record (kind:revision, tint:null), so
+    // this first pass is itself a no-op — confirm it left the mark agreeing.
+    applyLinkedAnchorsImpl(editor, [
+      { anchorId: "anc-ok", kind: "revision", text: "middle", cardId: "r1" },
+    ]);
+    const attrsBefore = markAttrsFor(editor, "anc-ok");
+    expect(attrsBefore?.kind).toBe("revision");
+    expect(attrsBefore?.linkCard ?? "").toBe("");
+
+    const bus = getBus(editor);
+    const emitBefore = bus?.emitCount ?? 0;
+    const versionBefore = editor.state.doc.nodeSize; // proxy: doc unchanged
+
+    // Second pass with the agreeing record — must be a no-op.
+    reapplyModeBAnchors(applyLinkedAnchorsHandle(editor), {
+      notes: [],
+      todoItems: [],
+      comments: [modeBCard("r1", "comment", "anc-ok", "middle")],
+      cutterCards: [],
+      reports: [],
+      highlights: [],
+    });
+
+    expect(markRunCountFor(editor, "anc-ok")).toBe(1);
+    expect(editor.state.doc.nodeSize).toBe(versionBefore);
+    expect(bus?.emitCount ?? 0).toBe(emitBefore);
+    editor.destroy();
+  });
+
+  it("RC-B builds + restamps a report-request range anchor (ordered before highlights)", () => {
+    // A report-request reloads as a note mark; reconcile re-stamps it to
+    // kind:report-request. Reports are collected AFTER cutters, BEFORE
+    // highlights — proven by the ordered record list here.
+    const editor = mountDoc([
+      {
+        uuid: "para-A",
+        runs: [
+          { text: "ask " },
+          { text: "for a report", anchor: { anchorId: "anc-req", kind: "note" } },
+          { text: " here" },
+        ],
+      },
+    ]);
+
+    const records = buildModeBReapplyRecords({
+      notes: [],
+      todoItems: [],
+      comments: [],
+      cutterCards: [],
+      reports: [modeBCard("rq1", "report-request", "anc-req", "for a report")],
+      highlights: [modeBCard("h1", "highlight", "anc-hl", "unused")],
+    });
+    // report-request record exists and is ordered before the highlight.
+    const reqIdx = records.findIndex((r) => r.kind === "report-request");
+    const hlIdx = records.findIndex((r) => r.kind === "highlight");
+    expect(reqIdx).toBeGreaterThanOrEqual(0);
+    expect(hlIdx).toBeGreaterThan(reqIdx);
+
+    applyLinkedAnchorsHandle(editor)(records);
+    const attrs = markAttrsFor(editor, "anc-req");
+    expect(attrs?.kind).toBe("report-request");
+    // linkCard preserved empty; render derives the report-request token from kind.
+    expect(attrs?.linkCard ?? "").toBe("");
+    expect(linkedAnchorRenderAttrs(attrs ?? {})["data-link-card"]).toBe(
+      "report-request:",
+    );
+    expect(markedTextFor(editor, "anc-req")).toBe("for a report");
     editor.destroy();
   });
 });

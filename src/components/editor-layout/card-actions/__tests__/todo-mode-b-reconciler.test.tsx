@@ -286,6 +286,7 @@ describe("todo Mode-B — reconciler alive-set wiring", () => {
       (props: { todos: typeof todos }) =>
         useLinkedAnchorReconciler({
           editor,
+          ready: true,
           notes: [],
           highlights: [],
           cutterCards: [],
@@ -329,6 +330,7 @@ describe("todo Mode-B — reconciler alive-set wiring", () => {
     const recon = renderHook(() =>
       useLinkedAnchorReconciler({
         editor,
+        ready: true,
         notes: [],
         highlights: [],
         cutterCards: [],
@@ -456,6 +458,7 @@ describe("todo Mode-B — reload restore via applyLinkedAnchors", () => {
     const recon = renderHook(() =>
       useLinkedAnchorReconciler({
         editor: editor2,
+        ready: true,
         notes: [],
         highlights: [],
         cutterCards: [],

@@ -382,7 +382,11 @@ function createAnchorLink(
         .setTextSelection(args.textRange)
         .setMark("linkedAnchor", {
           anchorId: linkId,
-          kind: cardKindToLegacyAnchorKind(args.targetCardKind),
+          // `?? "note"` is unreachable-defensive: `createAnchorLink` only ever
+          // runs for an anchor-bearing CardKind, all nine of which map to a real
+          // LinkedAnchorKind. A non-anchor kind would be a caller bug, not the
+          // old silent revision/report mislabel (now fixed in the map above).
+          kind: cardKindToLegacyAnchorKind(args.targetCardKind) ?? "note",
           linkId,
           linkKind: "anchor",
           linkCard: cardKey,
@@ -416,24 +420,38 @@ function createAnchorLink(
   };
 }
 
-/** Legacy `linkedAnchor.kind` values the mark accepts today. Kept until
- *  the mark's `kind` attr is dropped in Phase 3 cleanup. */
-function cardKindToLegacyAnchorKind(cardKind: CardKind): string {
+/** Inverse of `linkedAnchorKindToCardKind`: spine `CardKind` → the legacy
+ *  `linkedAnchor.kind` mark-attr value. EXHAUSTIVE over the nine anchor-bearing
+ *  CardKinds — both revision kinds and both cutter/report kinds fold to their
+ *  shared marker namespace (`revision-suggestion` → `revision`, `report-request`
+ *  → `report-request`, …). A non-anchor CardKind (footnote / citation / example /
+ *  archive / bib / ai / error) never carries a `linkedAnchor` mark and returns
+ *  `null` — this REPLACES the old silent `default: "note"` that mislabeled
+ *  `revision-suggestion` / `report` / `report-request` anchors as notes (the
+ *  BUG1 kind-corruption class, but at create time). Exported for the reload
+ *  re-stamp + kind-aware orphan glue. Kept until the mark's `kind` attr is
+ *  dropped in Phase 3 cleanup. */
+export function cardKindToLegacyAnchorKind(
+  cardKind: CardKind,
+): LinkedAnchorKind | null {
   switch (cardKind) {
-    case "note":
-      return "note";
-    case "highlight":
-      return "highlight";
-    case "todo":
-      return "todo";
-    case "cutter-comment":
-      return "cutter-comment";
-    case "cutter-suggestion":
-      return "cutter-suggestion";
-    case "revision-comment":
-      return "revision";
-    default:
-      return "note";
+    case "note":                return "note";
+    case "highlight":           return "highlight";
+    case "todo":                return "todo";
+    case "revision-comment":    return "revision";
+    case "revision-suggestion": return "revision";
+    case "cutter-comment":      return "cutter-comment";
+    case "cutter-suggestion":   return "cutter-suggestion";
+    case "report":              return "report";
+    case "report-request":      return "report-request";
+    case "footnote":
+    case "citation":
+    case "example":
+    case "archive":
+    case "bib":
+    case "ai":
+    case "error":
+      return null;
   }
 }
 
@@ -729,7 +747,7 @@ function findParagraphByUuid(editor: Editor, uuid: string): number | null {
   return found;
 }
 
-function resolveTextRangeByAnchorId(
+export function resolveTextRangeByAnchorId(
   editor: Editor,
   anchorId: string,
 ): { from: number; to: number } | null {
@@ -810,7 +828,7 @@ function linkedAnchorKindToCardKind(kind: LinkedAnchorKind): CardKind {
  *  switch — note→"note", revision→"comment", cutter-*→"cutter-*", etc.). Every
  *  `LinkedAnchorKind` maps to a kind with a non-null `legacyDataKind`, so the
  *  fallback is unreachable (defensive). */
-function legacyKindToCardKindString(kind: LinkedAnchorKind): string {
+export function legacyKindToCardKindString(kind: LinkedAnchorKind): string {
   const token = legacyDataKindForCardKind(linkedAnchorKindToCardKind(kind));
   if (token == null) {
     // Unreachable: every LinkedAnchorKind maps to a kind with a non-null
@@ -967,36 +985,91 @@ export function reanchorByText(
   snapshot: string,
   preferredAnchorId?: string,
   cardId?: string,
+  tintColor?: string | null,
+  // Declared from Chip 3; its uuid-scoped search body lands in Chip 6. Until
+  // then it is accepted-and-ignored (the legacy doc-wide search runs).
+  paragraphUuid?: string,
 ): LinkedAnchorRecord | null {
-  const text = editor.getText();
-  const index = text.indexOf(snapshot);
-  if (index === -1) return null;
-  let charCount = 0;
   let from = -1;
   let to = -1;
-  editor.state.doc.descendants((node, pos) => {
-    if (from !== -1 && to !== -1) return false;
-    if (node.isText && node.text) {
-      const nodeStart = charCount;
-      const nodeEnd = charCount + node.text.length;
-      if (from === -1 && index >= nodeStart && index < nodeEnd) {
-        from = pos + (index - nodeStart);
-      }
-      if (from !== -1 && to === -1) {
-        const endIndex = index + snapshot.length;
-        if (endIndex <= nodeEnd) to = pos + (endIndex - nodeStart);
-      }
-      charCount = nodeEnd;
+
+  // uuid-scoped path (Chip 6): when a containing-paragraph uuid is supplied
+  // and resolves to a live node, search ONLY that node's text — disambiguating
+  // co-located/duplicate snapshots that the legacy doc-wide first-match would
+  // displace. Map the char hit to doc positions with a per-CHILD offset walk:
+  // the doc pos advances by `nodeSize` for ALL children (incl. inline atoms),
+  // but the char index advances only for text — so `from`/`to` stay correct
+  // across an inline atom (footnote/citation/\ref) sitting inside the span.
+  const nodePos = paragraphUuid
+    ? findParagraphByUuid(editor, paragraphUuid)
+    : null;
+  if (nodePos != null) {
+    const node = editor.state.doc.nodeAt(nodePos);
+    if (node) {
+      const index = node.textContent.indexOf(snapshot);
+      if (index === -1) return null;
+      const endIndex = index + snapshot.length;
+      let charCount = 0;
+      // Children live at `nodePos + 1` (just inside the node's open token).
+      let childPos = nodePos + 1;
+      node.forEach((child) => {
+        if (from !== -1 && to !== -1) return;
+        if (child.isText && child.text) {
+          const charStart = charCount;
+          const charEnd = charCount + child.text.length;
+          if (from === -1 && index >= charStart && index < charEnd) {
+            from = childPos + (index - charStart);
+          }
+          if (from !== -1 && to === -1 && endIndex <= charEnd) {
+            to = childPos + (endIndex - charStart);
+          }
+          charCount = charEnd;
+        }
+        // Advance the doc pos by every child's full size (atoms included).
+        childPos += child.nodeSize;
+      });
     }
-    return true;
-  });
+  } else {
+    // Legacy doc-wide path: absent/unresolved uuid. First-match over the whole
+    // doc's text (the original behavior; preserves no-uuid callers).
+    const text = editor.getText();
+    const index = text.indexOf(snapshot);
+    if (index === -1) return null;
+    let charCount = 0;
+    editor.state.doc.descendants((node, pos) => {
+      if (from !== -1 && to !== -1) return false;
+      if (node.isText && node.text) {
+        const nodeStart = charCount;
+        const nodeEnd = charCount + node.text.length;
+        if (from === -1 && index >= nodeStart && index < nodeEnd) {
+          from = pos + (index - nodeStart);
+        }
+        if (from !== -1 && to === -1) {
+          const endIndex = index + snapshot.length;
+          if (endIndex <= nodeEnd) to = pos + (endIndex - nodeStart);
+        }
+        charCount = nodeEnd;
+      }
+      return true;
+    });
+  }
   if (from === -1 || to === -1) return null;
   const anchorId = preferredAnchorId ?? generateEntityId();
-  const paragraphId = paragraphUuidAt(editor.state.doc, from) ?? "";
+  // Prefer the resolved scoping uuid (the uuid-scoped path guarantees `from`
+  // lands inside it); fall back to deriving from the doc position (legacy path).
+  const paragraphId =
+    (nodePos != null ? paragraphUuid : undefined) ??
+    paragraphUuidAt(editor.state.doc, from) ??
+    "";
   const cardKind = legacyKindToCardKindString(kind);
   const linkCard = cardId ? `${cardKind}:${cardId}` : "";
   const ok = editor
     .chain()
+    // Load-time / gesture-time correction: not an undoable user edit.
+    .command(({ tr }) => {
+      tr.setMeta("addToHistory", false);
+      return true;
+    })
     .setTextSelection({ from, to })
     .setMark("linkedAnchor", {
       anchorId,
@@ -1004,6 +1077,7 @@ export function reanchorByText(
       linkId: anchorId,
       linkKind: "anchor",
       linkCard,
+      tintColor: tintColor ?? null,
     })
     .setTextSelection(from)
     .run();
@@ -1079,6 +1153,25 @@ export function getTextAnchor(
         anchorId: link.anchor.textRange.anchorId,
         anchorText: link.anchor.textRange.textSnapshot,
       };
+    }
+  }
+  return null;
+}
+
+/** The sidecar-persisted `CardKind` of this card's first Mode-B text-range
+ *  anchor (`link.target.ref.kind`), or null if the card carries no Mode-B
+ *  anchor. This is the authoritative kind owned by the card record — the SSOT
+ *  the parser-default `kind:"note"` mark is reconciled against (BUG1). Distinct
+ *  from `getTextAnchor`, which returns the anchorId/text but not the kind. */
+export function getTextAnchorCardKind(card: CardWithLinks): CardKind | null {
+  const links = card.links ?? [];
+  for (const link of links) {
+    if (
+      link.anchor.type === "textObject" &&
+      link.anchor.targetKind === "linkedRange" &&
+      link.anchor.textRange
+    ) {
+      return link.target.ref.kind;
     }
   }
   return null;

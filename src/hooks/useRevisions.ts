@@ -152,7 +152,7 @@ export function useRevisions(
   docId: string | null,
   externalPristine?: PristineKindApi | null,
 ) {
-  const { state, update, stateRef, loaded } = usePersistentState<RevisionsState>(
+  const { state, update, stateRef, loaded, loadError } = usePersistentState<RevisionsState>(
     docId,
     "revisions.json",
     EMPTY_STATE,
@@ -533,14 +533,13 @@ export function useRevisions(
   // Orphan listener — clears dead anchorId on the matching revision card.
   useEffect(() => {
     const handler = (e: Event) => {
-      const { anchorId, kind } = (e as CustomEvent).detail || {};
+      // No kind gate: after a reload the event carries the parser-default
+      // `kind:"note"` for EVERY `\vlid`, so gating on `kind` made this panel
+      // ignore its own orphaned revision mark (BUG1). `clearCardAnchor`
+      // already self-filters by anchorId membership (no-match early-return),
+      // so the OWNING panel decides — never the stale event kind.
+      const { anchorId } = (e as CustomEvent).detail || {};
       if (!anchorId) return;
-      if (
-        kind !== "revision" &&
-        kind !== "comment" &&
-        kind !== "revision-suggestion"
-      )
-        return;
       clearCardAnchor(anchorId);
     };
     window.addEventListener("virgil-anchor-orphaned", handler);
@@ -563,6 +562,7 @@ export function useRevisions(
     removeCardParagraphId,
     reconcileAnchors,
     loaded,
+    loadError,
     deleteCard,
     setArchived,
     cloneComment,

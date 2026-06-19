@@ -109,6 +109,7 @@ function renderPanel(
       <ActionsMenuPanel
         editor={makeEditor(opts.editable ?? true)}
         paragraphUuid="p7"
+        nodeKind="paragraph"
         range={{ from: 3, to: 9 }}
         mode={opts.mode ?? "selection"}
         triggerRect={RECT}

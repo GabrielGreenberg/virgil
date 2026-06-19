@@ -121,7 +121,7 @@ export function useReports(
   docId: string | null,
   externalPristine?: PristineKindApi | null,
 ) {
-  const { state, update, stateRef, loaded } = usePersistentState<ReportsState>(
+  const { state, update, stateRef, loaded, loadError } = usePersistentState<ReportsState>(
     docId,
     "reports.json",
     EMPTY_STATE,
@@ -454,9 +454,12 @@ export function useReports(
   // Orphan listener — clears dead anchorId on the matching report card.
   useEffect(() => {
     const handler = (e: Event) => {
-      const { anchorId, kind } = (e as CustomEvent).detail || {};
+      // No kind gate: a reloaded orphan event carries the parser-default
+      // `kind:"note"`, so gating made this panel ignore its own orphaned
+      // report mark (BUG1). `clearCardAnchor` self-filters by anchorId
+      // membership (no-match early-return) — the owning panel decides.
+      const { anchorId } = (e as CustomEvent).detail || {};
       if (!anchorId) return;
-      if (kind !== "report" && kind !== "report-request") return;
       clearCardAnchor(anchorId);
     };
     window.addEventListener("virgil-anchor-orphaned", handler);
@@ -475,6 +478,7 @@ export function useReports(
     removeCardParagraphId,
     reconcileAnchors,
     loaded,
+    loadError,
     deleteCard,
     setArchived,
     cloneReport,
