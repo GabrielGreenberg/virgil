@@ -485,6 +485,36 @@ export function setListScroll(
   );
 }
 
+/**
+ * Scroll-position write that does NOT notify subscribers (keystroke-sanctity:
+ * scrolling a list fires per-frame; re-rendering every `useListView`/selection
+ * consumer each frame is the kind of doc-size-proportional churn the subsystem
+ * forbids). `scrollTop` is write-mostly — no live subscriber reads it (LeftList
+ * restores it once via a one-shot guard; PaperRender reads it imperatively from
+ * `getSession()`). So we mutate the value IN PLACE on the existing slice,
+ * keeping every object ref identical (the `useListView` snapshot stays
+ * identity-stable → zero re-renders), and only arm the debounced localStorage
+ * write. The slice's first-ever touch (no slice yet) falls back to the
+ * notifying path once to create it; thereafter every scroll is quiet.
+ */
+export function setListScrollQuiet(
+  scope: string,
+  panel: PanelKey,
+  libId: string,
+  top: number,
+): void {
+  const s = ensureInit();
+  const existing = s.scopes[scope]?.[panel]?.lists[libId];
+  if (!existing) {
+    // No slice to mutate yet → create it via the normal (notifying) path
+    // exactly once. The next scroll frame finds the slice and goes quiet.
+    setListScroll(scope, panel, libId, top);
+    return;
+  }
+  existing.scrollTop = top;
+  armWrite();
+}
+
 export function togglePaperPin(id: string): void {
   const s = ensureInit();
   const has = s.paperPinned.includes(id);
@@ -635,7 +665,9 @@ export function useListView(
     [scope, panel, libId],
   );
   const setScroll = useCallback(
-    (top: number) => setListScroll(scope, panel, libId, top),
+    // Quiet (non-notifying) write — scrolling must not re-render subscribers
+    // each frame. See `setListScrollQuiet`.
+    (top: number) => setListScrollQuiet(scope, panel, libId, top),
     [scope, panel, libId],
   );
   return {

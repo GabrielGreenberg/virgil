@@ -14,7 +14,7 @@ import { parseLatex } from "@/lib/latex-parser";
 import { assignUuids } from "@/lib/latex-serializer";
 import type { IndexedState } from "@library/lib/catalog";
 import type { PanelKey } from "@library/hooks/useLibraryTabs";
-import { getSession, setListScroll } from "@library/lib/view-session-store";
+import { getSession, setListScrollQuiet } from "@library/lib/view-session-store";
 import PageScrollStrip from "./PageScrollStrip";
 
 interface Props {
@@ -192,13 +192,22 @@ function PaperReader({
   // RAF-coalesced scroll save; the store's 250 ms debounce then coalesces
   // the localStorage writes (no synchronous write per scroll tick).
   const scrollRafRef = useRef<number | null>(null);
+  // True while the one-shot restore below is still pending (the ~1 s streaming
+  // retry window). The save listener is attached the moment the scroll element
+  // exists — BEFORE restore lands — so without this gate a user scroll during
+  // streaming would persist, then the restore would clobber it back to the
+  // stale captured value. Suppress saves until restore completes; a real user
+  // scroll during the window also flips this off (see the restore effect) so
+  // the user's intent wins.
+  const restoringRef = useRef(false);
   const onReaderScroll = useCallback(
     (e: React.UIEvent<HTMLDivElement>) => {
       const el = e.currentTarget;
+      if (restoringRef.current) return; // restore in flight — don't persist
       if (scrollRafRef.current !== null) return;
       scrollRafRef.current = requestAnimationFrame(() => {
         scrollRafRef.current = null;
-        setListScroll(scope, panel, scrollSessionLibId, el.scrollTop);
+        setListScrollQuiet(scope, panel, scrollSessionLibId, el.scrollTop);
       });
     },
     [scope, panel, scrollSessionLibId],
@@ -219,6 +228,7 @@ function PaperReader({
   const restoredRef = useRef(false);
   useEffect(() => {
     restoredRef.current = false;
+    restoringRef.current = false;
   }, [scrollSessionLibId]);
   useEffect(() => {
     if (restoredRef.current) return;
@@ -227,23 +237,41 @@ function PaperReader({
       ?.scrollTop;
     if (!saved || saved <= 0) {
       restoredRef.current = true; // nothing to restore
+      restoringRef.current = false;
       return;
     }
+    // Restore is now pending: suppress the save listener so a mid-stream user
+    // scroll isn't first persisted then clobbered by `saved`. We also record
+    // the element's baseline so we can detect a deliberate user scroll during
+    // the retry window and yield to it.
+    restoringRef.current = true;
+    const baseline = scrollEl.scrollTop;
     let raf = 0;
     const deadline =
       (typeof performance !== "undefined" ? performance.now() : Date.now()) + 1000;
+    const finish = () => {
+      restoredRef.current = true;
+      restoringRef.current = false;
+    };
     const tryApply = () => {
       if (restoredRef.current) return;
       const el = scrollEl;
+      // If the user scrolled meaningfully since mount, their intent wins:
+      // abandon the restore (and re-enable saves) rather than yanking them
+      // back to the stale captured position.
+      if (Math.abs(el.scrollTop - baseline) > 4) {
+        finish();
+        return;
+      }
       if (el.scrollHeight > el.clientHeight) {
         el.scrollTop = saved;
-        restoredRef.current = true;
+        finish();
         return;
       }
       const now =
         typeof performance !== "undefined" ? performance.now() : Date.now();
       if (now >= deadline) {
-        restoredRef.current = true; // give up — content never grew tall enough
+        finish(); // give up — content never grew tall enough
         return;
       }
       raf = requestAnimationFrame(tryApply);
@@ -251,6 +279,9 @@ function PaperReader({
     raf = requestAnimationFrame(tryApply);
     return () => {
       if (raf) cancelAnimationFrame(raf);
+      // Effect teardown (libId change / unmount) must not leave saves wedged
+      // off. The re-arm effect above resets both flags on the next libId.
+      restoringRef.current = false;
     };
   }, [content, scrollEl, scope, panel, scrollSessionLibId]);
 

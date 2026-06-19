@@ -18,11 +18,13 @@ import {
   setLeftPinnedActiveId,
   setListQuery,
   setListScroll,
+  setListScrollQuiet,
   setListSort,
   setPanelTabs,
   setProjectHidden,
   setProjectPinned,
   setSelection,
+  subscribe,
   togglePaperPin,
 } from "../view-session-store";
 
@@ -325,5 +327,34 @@ describe("view-session-store — global slices", () => {
     expect(s.projectHidden).toEqual(["project:doc:h"]);
     expect(s.projectPinned).toEqual(["project:doc:p"]);
     expect(s.citedOnly).toBe(true);
+  });
+});
+
+describe("view-session-store — quiet scroll write (keystroke sanctity)", () => {
+  it("setListScrollQuiet does NOT notify subscribers once the slice exists, but still persists", () => {
+    // Create the slice first (one notifying write is allowed on first touch).
+    setListScroll("", "left", "central", 10);
+    const seen = vi.fn();
+    const unsub = subscribe(seen);
+    // Subsequent scroll frames go quiet: no notify, value still updated.
+    setListScrollQuiet("", "left", "central", 120);
+    setListScrollQuiet("", "left", "central", 240);
+    expect(seen).not.toHaveBeenCalled();
+    expect(getSession().scopes[""].left.lists["central"].scrollTop).toBe(240);
+    // And it persists to localStorage on flush.
+    flushNow();
+    const raw = JSON.parse(localStorage.getItem(VIEW_SESSION_KEY) as string);
+    expect(raw.scopes[""].left.lists["central"].scrollTop).toBe(240);
+    unsub();
+  });
+
+  it("setListScrollQuiet creates the slice via one notifying write when absent", () => {
+    const seen = vi.fn();
+    const unsub = subscribe(seen);
+    setListScrollQuiet("", "left", "paper:fresh", 88);
+    // First-ever touch creates the slice through the notifying path.
+    expect(seen).toHaveBeenCalledTimes(1);
+    expect(getSession().scopes[""].left.lists["paper:fresh"].scrollTop).toBe(88);
+    unsub();
   });
 });
