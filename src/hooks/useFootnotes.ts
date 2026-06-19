@@ -100,6 +100,26 @@ export function useFootnotes(docId: string | null, pristine?: PristineKindApi | 
     });
   }, [persist, pristine]);
 
+  /** Flip a footnote ref's archived (set-aside) flag. The caller (EditorPane's
+   *  archive handler) additionally splices the `\footnote` atom out of the doc;
+   *  the now-atomless ref survives `syncFromEditor` as an unanchored entry (the
+   *  `archived` flag rides along on the preserved object), so the archived card
+   *  keeps its content. Unarchive (archived=false) leaves it as a normal
+   *  unanchored ref — the atom is NOT re-inserted. */
+  const setArchived = useCallback((id: string, archived: boolean) => {
+    pristine?.markDirty(id);
+    setState((prev) => {
+      const next = {
+        footnotes: prev.footnotes.map((f) =>
+          f.id === id ? { ...f, archived } : f,
+        ),
+      };
+      stateRef.current = next;
+      persist(next);
+      return next;
+    });
+  }, [persist, pristine]);
+
   /** Deep-copy a footnote sidecar entry with a fresh id. Returns the new
    *  id, or null if the source id wasn't found. Used by the drag-handle
    *  Duplicate action when a duplicated block contains a footnote atom. */
@@ -147,6 +167,7 @@ export function useFootnotes(docId: string | null, pristine?: PristineKindApi | 
     addFootnote,
     updateFootnoteContent,
     deleteFootnote,
+    setArchived,
     cloneFootnote,
     syncFromEditor,
   };

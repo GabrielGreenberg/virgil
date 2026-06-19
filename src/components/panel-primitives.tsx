@@ -30,7 +30,8 @@ import { useTabIndent } from "@/hooks/useTabIndent";
 import { autoSizeInput } from "@/lib/autoSizeInput";
 import ConfirmDialog from "./ConfirmDialog";
 import { cardHasContent } from "@/cards/has-content";
-import { isPoppable, hasCollabClaims, collabClaimScope, isDroppable } from "@/cards/predicates";
+import { isPoppable, hasCollabClaims, collabClaimScope, isDroppable, isArchivable } from "@/cards/predicates";
+import { useCardArchiveActions } from "@/panels/_shared/card-archive-actions";
 import { DropChevrons } from "./icons/DropChevrons";
 import { beginCardDropGesture } from "./drop-mode/card-drop-gesture";
 import { CARD_REGISTRY } from "@/cards/card-registry";
@@ -962,6 +963,15 @@ export function EditableCard({
   const collabScope = hasCollabClaims(kind) ? collabClaimScope(kind) : undefined;
   const { partnerClaim, claim: claimCard, release: releaseClaim } = useCardClaim(collabScope, id);
 
+  // Per-card archive affordance — self-wired from the shared actions context (no
+  // per-card-component threading). Shows iff the kind is archivable AND a real
+  // provider is mounted; `archive` handles the atom splice + confirm for
+  // footnote/citation. Distinct from the text-object Archive PANEL.
+  const cardArchive = useCardArchiveActions();
+  const archivable = isArchivable(kind) && cardArchive.enabled;
+  const cardArchived = archivable && cardArchive.isArchived(id);
+  const doArchive = archivable ? () => cardArchive.archive(kind, id) : undefined;
+
   /** Check whether the card has any visible USER content. Routes through the
    *  kind-aware `cardHasContent` (the SAME predicate `deleteMarginItem` uses),
    *  passing the card's content body + title — so the confirm sees the title a
@@ -1040,8 +1050,13 @@ export function EditableCard({
           draggable={false}
           onDragStart={(e) => { e.stopPropagation(); e.preventDefault(); }}
         >
-          {menuContent ?? (onDelete ? (
-            <ItemMenu><MenuDelete onClick={tryDelete} /></ItemMenu>
+          {menuContent ?? ((onDelete || doArchive) ? (
+            <ItemMenu>
+              {doArchive && (
+                <MenuArchive onClick={doArchive} isArchived={cardArchived} />
+              )}
+              {onDelete && <MenuDelete onClick={tryDelete} />}
+            </ItemMenu>
           ) : null)}
         </div>
       )}
@@ -1070,6 +1085,8 @@ export function EditableCard({
       onToggleExpanded={onToggleExpanded}
       onHeaderActivate={onHeaderActivate}
       onTrashClick={inlineDelete && onDelete ? tryDelete : undefined}
+      onArchiveClick={inlineDelete ? doArchive : undefined}
+      isArchived={cardArchived}
       extraCardClass={cursorClass}
       draggable={cardDraggable}
       onDragStart={onDragStart}
@@ -1682,6 +1699,51 @@ export function CardTrashButton({
 }
 
 /**
+ * Universal card-archive affordance — the set-aside sibling of
+ * `CardTrashButton`. Absolute-positioned just left of the trash button at the
+ * card's bottom-right, hover-revealed. Toggles: when the card is already
+ * archived it reads "Unarchive" and shows a restore (box + up-arrow) glyph; a
+ * second press un-archives. Distinct from the text-object Archive PANEL — this
+ * is the per-card archived state (see `isArchivable`, cards/predicates.ts). The
+ * host decides whether a confirm is needed (atom-bearing kinds) before invoking
+ * `onClick`. Requires the outer card wrapper to be `position: relative`. */
+export function CardArchiveButton({
+  onClick,
+  isArchived = false,
+}: {
+  onClick: (e: React.MouseEvent) => void;
+  isArchived?: boolean;
+}) {
+  return (
+    <button
+      onClick={(e) => { e.stopPropagation(); onClick(e); }}
+      onMouseDown={(e) => e.stopPropagation()}
+      draggable={false}
+      onDragStart={(e) => { e.stopPropagation(); e.preventDefault(); }}
+      className="iconbtn-sm absolute bottom-1.5 right-7 opacity-0 group-hover:opacity-70 hover:!opacity-100 focus:opacity-100 transition-opacity"
+      aria-label={isArchived ? "Unarchive" : "Archive"}
+      data-hint={isArchived ? "Unarchive" : "Archive"}
+      data-hint-pos="above"
+    >
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <rect x="2" y="3" width="20" height="5" rx="1" />
+        {isArchived ? (
+          <>
+            <path d="M4 8v11a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8" />
+            <path d="m9 14 3-3 3 3" />
+          </>
+        ) : (
+          <>
+            <path d="M4 8v11a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8" />
+            <path d="M10 12h4" />
+          </>
+        )}
+      </svg>
+    </button>
+  );
+}
+
+/**
  * Universal card wrapper. One source of truth for:
  *   - outer card div (`group relative`, themed border + selection state)
  *   - popped-out state (removes rounding/border, fills floating window)
@@ -1699,6 +1761,14 @@ interface PanelCardProps extends Omit<HTMLAttributes<HTMLDivElement>, "onClick">
   onTogglePopout?: (anchor: DOMRect) => void;
   /** When provided, renders a bottom-right trash button that calls this. */
   onTrashClick?: () => void;
+  /** When provided, renders a bottom-right ARCHIVE button just left of the trash
+   *  (the set-aside sibling of delete). The host wires whether a confirm runs
+   *  first (atom-bearing kinds). Gated identically to `onTrashClick`
+   *  (hover-revealed, suppressed while collapsed). */
+  onArchiveClick?: () => void;
+  /** Whether this card is currently archived — flips the archive button to its
+   *  "Unarchive" affordance. */
+  isArchived?: boolean;
   /** Extra classes forwarded into `themedCard(theme, selected, extra)` — typically
    *  cursor / opacity modifiers like `"cursor-grab active:cursor-grabbing"` or
    *  `"opacity-60"`. */
@@ -1797,6 +1867,8 @@ export const PanelCard = forwardRef<HTMLDivElement, PanelCardProps>(function Pan
     isPoppedOut,
     onTogglePopout,
     onTrashClick,
+    onArchiveClick,
+    isArchived,
     extraCardClass,
     className,
     style,
@@ -2160,6 +2232,9 @@ export const PanelCard = forwardRef<HTMLDivElement, PanelCardProps>(function Pan
             </div>
           )}
         </>
+      )}
+      {onArchiveClick && !isCollapsed && (
+        <CardArchiveButton onClick={onArchiveClick} isArchived={isArchived} />
       )}
       {onTrashClick && !isCollapsed && <CardTrashButton onClick={onTrashClick} />}
     </div>
@@ -2846,6 +2921,29 @@ export function MenuDelete({ onClick, label }: { onClick: () => void; label?: st
       className="w-full text-left px-3 py-1.5 text-xs text-danger hover:bg-danger-soft transition-colors"
     >
       {label ?? "Delete"}
+    </button>
+  );
+}
+
+/** Three-dot menu item that archives (or unarchives) the card — the set-aside
+ *  sibling of `MenuDelete`, used by cards whose delete lives in the header menu
+ *  rather than the bottom-right trash overlay. Neutral tone (archive is
+ *  reversible, unlike delete). */
+export function MenuArchive({
+  onClick,
+  isArchived = false,
+  label,
+}: {
+  onClick: () => void;
+  isArchived?: boolean;
+  label?: string;
+}) {
+  return (
+    <button
+      onMouseDown={(e) => { e.preventDefault(); onClick(); }}
+      className="w-full text-left px-3 py-1.5 text-xs text-ink-body hover:bg-surface-muted-strong transition-colors"
+    >
+      {label ?? (isArchived ? "Unarchive" : "Archive")}
     </button>
   );
 }

@@ -341,6 +341,19 @@ export function useReports(
     [update, pristine],
   );
 
+  /** Flip a report/report-request card's archived (set-aside) flag. Filtering
+   *  happens at the panel; this persists through the same sidecar path. */
+  const setArchived = useCallback(
+    (id: string, archived: boolean) => {
+      pristine.markDirty(id);
+      update((prev) => ({
+        ...prev,
+        cards: prev.cards.map((c) => (c.id === id ? { ...c, archived } : c)),
+      }));
+    },
+    [update, pristine],
+  );
+
   /** Deep-copy a report sidecar entry with a fresh id. Links cleared; the
    *  duplicate walker rewires anchors after slice insertion. */
   const cloneReport = useCallback(
@@ -461,6 +474,7 @@ export function useReports(
     reconcileAnchors,
     loaded,
     deleteCard,
+    setArchived,
     cloneReport,
     cloneRequest,
     convertCard,

@@ -59,6 +59,7 @@ export const CITATIONS_INERT: CitationsHook = {
   }),
   updateCitation: () => {},
   deleteCitation: () => {},
+  setArchived: () => {},
   cloneCitation: () => null,
   setStyle: () => {},
   setBibPackage: () => {},
@@ -238,6 +239,28 @@ export function useCitations(docId: string | null, pristine?: PristineKindApi | 
       update((prev) => ({
         ...prev,
         citations: prev.citations.filter((c) => c.id !== id),
+      }));
+    },
+    [update, pristine],
+  );
+
+  /** Flip a citation ref's archived (set-aside) flag. The caller (EditorPane's
+   *  archive handler) additionally splices the `\cite` atom out of the doc. Since
+   *  `syncFromEditor` only carries forward `isUnanchored` refs, archiving ALSO
+   *  marks the ref `unanchored: true` — which is now literally true (the atom is
+   *  gone), so the archived ref survives the next parse with its content + the
+   *  `archived` flag intact. Unarchive (archived=false) leaves it as a normal
+   *  unanchored draft citation — the atom is NOT re-inserted. */
+  const setArchived = useCallback(
+    (id: string, archived: boolean) => {
+      pristine?.markDirty(id);
+      update((prev) => ({
+        ...prev,
+        citations: prev.citations.map((c) =>
+          c.id === id
+            ? { ...c, archived, ...(archived ? { unanchored: true as const } : {}) }
+            : c,
+        ),
       }));
     },
     [update, pristine],
@@ -581,6 +604,7 @@ export function useCitations(docId: string | null, pristine?: PristineKindApi | 
       addCitation,
       updateCitation,
       deleteCitation,
+      setArchived,
       cloneCitation,
       setStyle,
       setBibPackage,
@@ -605,6 +629,7 @@ export function useCitations(docId: string | null, pristine?: PristineKindApi | 
       addCitation,
       updateCitation,
       deleteCitation,
+      setArchived,
       cloneCitation,
       setStyle,
       setBibPackage,

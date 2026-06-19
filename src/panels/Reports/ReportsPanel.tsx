@@ -11,6 +11,7 @@ import type {
 import { ItemMenu, PANEL } from "@/components/panel-primitives";
 import PanelThemePicker from "@/components/PanelThemePicker";
 import { CardListPanel } from "@/panels/_shared/CardListPanel";
+import { CardViewModeMenuItems } from "@/panels/_shared/CardViewModeMenu";
 import { withRecentlyAddedFirst } from "@/hooks/useRecentlyAddedTracker";
 import { getLinkedTextObjectIds } from "@/links/links";
 import { ReportCard } from "./ReportCard";
@@ -106,10 +107,12 @@ export default function ReportsPanel({
           <div className="px-3 py-1.5 flex items-center justify-end gap-2">
             <PanelThemePicker panelKey="report" label="Report color" />
           </div>
+          <CardViewModeMenuItems kind="reports" />
         </ItemMenu>
       }
       items={items}
       getId={(it) => it.id}
+      getArchived={(it) => !!it.data.archived}
       selectedId={selectedId}
       onSelect={onSelect}
       emptyState={

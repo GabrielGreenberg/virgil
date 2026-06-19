@@ -429,6 +429,19 @@ export function useCutter(
     [update, pristine],
   );
 
+  /** Flip a cutter card's archived (set-aside) flag. Filtering happens at the
+   *  panel; this persists through the same sidecar path. */
+  const setArchived = useCallback(
+    (id: string, archived: boolean) => {
+      pristine.markDirty(id);
+      update((prev) => ({
+        ...prev,
+        cards: prev.cards.map((c) => (c.id === id ? { ...c, archived } : c)),
+      }));
+    },
+    [update, pristine],
+  );
+
   /** Deep-copy a cutter-comment sidecar entry with a fresh id. Links
    *  cleared; walker rewires anchors after slice insertion. */
   const cloneComment = useCallback(
@@ -571,6 +584,7 @@ export function useCutter(
     reconcileAnchors,
     loaded,
     deleteCard,
+    setArchived,
     cloneComment,
     cloneSuggestion,
     convertCard,

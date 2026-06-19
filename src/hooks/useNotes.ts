@@ -433,6 +433,20 @@ export function useNotes(docId: string | null, externalPristine?: PristineKindAp
     [update, pristine],
   );
 
+  /** Flip a card's archived (set-aside) flag. Works for both notes and
+   *  highlights (both carry `archived?`). Filtering active/archived/all happens
+   *  at the panel; this just persists the flag through the same sidecar path as
+   *  the other mutations. */
+  const setArchived = useCallback(
+    (id: string, archived: boolean) => {
+      pristine.markDirty(id);
+      update((prev) => ({
+        cards: prev.cards.map((c) => (c.id === id ? { ...c, archived } : c)),
+      }));
+    },
+    [update, pristine],
+  );
+
   /** Deep-copy a note sidecar entry with a fresh id. Returns the new id,
    *  or null if the source wasn't a note. Links are cleared so the clone
    *  starts without stale paragraph or anchor references; the duplicator
@@ -555,6 +569,7 @@ export function useNotes(docId: string | null, externalPristine?: PristineKindAp
     loaded,
     preserveModeBAnchor,
     deleteNote,
+    setArchived,
     cloneNote,
     cloneHighlight,
     convertCard,
