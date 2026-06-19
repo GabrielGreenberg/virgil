@@ -74,6 +74,9 @@ export interface RevisionCommentCard {
   kind: "comment";
   id: string;
   createdAt: string;
+  /** Archived (set aside): hidden from active list / omni / in-doc; shown under
+   *  View Archives/All. Absent ≡ active. See isArchivable (cards/predicates.ts). */
+  archived?: boolean;
   /** Plain-text mirror of `content`, kept in sync on every write. */
   text: string;
   /** Tiptap JSONContent — canonical editable body. */
@@ -89,6 +92,9 @@ export interface RevisionSuggestionCard {
   kind: "suggestion";
   id: string;
   createdAt: string;
+  /** Archived (set aside): hidden from active list / omni / in-doc; shown under
+   *  View Archives/All. Absent ≡ active. See isArchivable (cards/predicates.ts). */
+  archived?: boolean;
   author: "human" | "ai";
   original_text: string;
   suggested_text: string;
@@ -127,6 +133,9 @@ export interface ReportCard {
   kind: "report";
   id: string;
   createdAt: string;
+  /** Archived (set aside): hidden from active list / omni / in-doc; shown under
+   *  View Archives/All. Absent ≡ active. See isArchivable (cards/predicates.ts). */
+  archived?: boolean;
   /** Display author. "ai" renders as "AI"; "human" renders the user's name. */
   author: "human" | "ai";
   title: string;
@@ -150,6 +159,9 @@ export interface ReportRequestCard {
   kind: "report-request";
   id: string;
   createdAt: string;
+  /** Archived (set aside): hidden from active list / omni / in-doc; shown under
+   *  View Archives/All. Absent ≡ active. See isArchivable (cards/predicates.ts). */
+  archived?: boolean;
   /** Plain-text mirror of `content`, kept in sync on every write. */
   text: string;
   /** Tiptap JSONContent — canonical editable body. */
@@ -169,6 +181,10 @@ export interface ReportsState {
 
 export interface ArchivedSnippet {
   id: string;
+  /** Archived (set aside): hidden from active list / omni / in-doc; shown under
+   *  View Archives/All. Absent ≡ active. Distinct from this card being an Archive
+   *  text-object snippet — see isArchivable (cards/predicates.ts). */
+  archived?: boolean;
   /** Optional display title (empty string if untitled). */
   title: string;
   /** Title provenance (T6/C12). See `ReportCard.titleAuto`. */
@@ -188,6 +204,10 @@ export interface ArchiveState {
 
 export interface TodoItem {
   id: string;
+  /** Archived (set aside): hidden from active list / omni / in-doc; shown under
+   *  View Archives/All. Absent ≡ active. Orthogonal to `done`. See isArchivable
+   *  (cards/predicates.ts). */
+  archived?: boolean;
   text: string;
   /** Title provenance (T6/C12) — for a todo the "title" IS the body `text`
    *  (the legacy seed put a generated "Task N" there). `true` = machine-seeded
@@ -330,6 +350,10 @@ export interface BibEntry {
 
 export interface CitationRef {
   id: string;
+  /** Archived (set aside): hidden from active list / omni / in-doc; shown under
+   *  View Archives/All. Absent ≡ active. Archiving a citation splices its `\cite`
+   *  atom out (becomes `unanchored`); see archiveRemovesAtom (cards/predicates.ts). */
+  archived?: boolean;
   command: string; // full LaTeX command, e.g. "\citep[see][ch.2]{jones1990,smith2001}"
   keys: string[]; // extracted cite keys
   createdAt: string;
@@ -362,6 +386,11 @@ export interface CitationInfo {
 
 export interface FootnoteRef {
   id: string;
+  /** Archived (set aside): hidden from active list / omni / in-doc; shown under
+   *  View Archives/All. Absent ≡ active. Archiving a footnote splices its
+   *  `\footnote` atom out (survives sync as an unanchored ref); see
+   *  archiveRemovesAtom (cards/predicates.ts). */
+  archived?: boolean;
   // Tiptap JSONContent doc — see normalizeRichContent for accepted shapes.
   // Legacy footnotes stored HTML strings; migrated on read.
   content: unknown;
@@ -428,6 +457,9 @@ export interface OriginalAnchor {
 export interface UserNote {
   kind: "note";
   id: string;
+  /** Archived (set aside): hidden from active list / omni / in-doc; shown under
+   *  View Archives/All. Absent ≡ active. See isArchivable (cards/predicates.ts). */
+  archived?: boolean;
   title: string; // optional display title (empty string if untitled)
   /** Title provenance (T6/C12). See `ReportCard.titleAuto`. */
   titleAuto?: boolean;
@@ -448,6 +480,9 @@ export interface HighlightCard {
   kind: "highlight";
   id: string;
   createdAt: string;
+  /** Archived (set aside): hidden from active list / omni / in-doc; shown under
+   *  View Archives/All. Absent ≡ active. See isArchivable (cards/predicates.ts). */
+  archived?: boolean;
   /** Hex color override; null = panel-theme default. v1 always null. */
   highlightColor: string | null;
   aiRequest: boolean;
@@ -478,6 +513,9 @@ export interface CutterCommentCard {
   kind: "comment";
   id: string;
   createdAt: string;
+  /** Archived (set aside): hidden from active list / omni / in-doc; shown under
+   *  View Archives/All. Absent ≡ active. See isArchivable (cards/predicates.ts). */
+  archived?: boolean;
   /** Plain-text mirror of `content`, kept in sync on every write. */
   text: string;
   /** Tiptap JSONContent — canonical editable body. */
@@ -494,6 +532,9 @@ export interface CutterSuggestionCard {
   kind: "suggestion";
   id: string;
   createdAt: string;
+  /** Archived (set aside): hidden from active list / omni / in-doc; shown under
+   *  View Archives/All. Absent ≡ active. See isArchivable (cards/predicates.ts). */
+  archived?: boolean;
   /** Who composed this suggestion. Human-authored cards default to filling
    *  any of the fields directly; AI-authored cards typically arrive with
    *  the first three fields populated and `user_text` empty for the human

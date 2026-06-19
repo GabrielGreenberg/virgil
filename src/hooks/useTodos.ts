@@ -132,6 +132,17 @@ export function useTodos(docId: string | null, externalPristine?: PristineKindAp
     update((prev) => ({ items: prev.items.filter((i) => i.id !== id) }));
   }, [update, pristine]);
 
+  /** Flip a todo's archived (set-aside) flag. Orthogonal to `done` — a done
+   *  todo can still be separately archived. Filtering happens at the panel; this
+   *  just persists the flag through the same sidecar path. (Distinct from the
+   *  pre-existing `archiveDone`, which permanently drops completed todos.) */
+  const setArchived = useCallback((id: string, archived: boolean) => {
+    pristine.markDirty(id);
+    update((prev) => ({
+      items: prev.items.map((i) => (i.id === id ? { ...i, archived } : i)),
+    }));
+  }, [update, pristine]);
+
   const reorder = useCallback((fromIndex: number, toIndex: number) => {
     update((prev) => {
       const items = [...prev.items];
@@ -295,6 +306,7 @@ export function useTodos(docId: string | null, externalPristine?: PristineKindAp
     updateNotes,
     setAiRequest,
     deleteItem,
+    setArchived,
     reorder,
     archiveDone,
     addParagraphId,

@@ -165,6 +165,21 @@ export function useArchive(docId: string | null) {
     [update],
   );
 
+  /** Flip an archive snippet card's archived (set-aside) flag. This is the
+   *  card-archive axis (hide the card from the panel's active view), wholly
+   *  orthogonal to what this panel IS (a home for archived *text objects*) and
+   *  to `restoreSnippet` (which re-inserts the text into the document). */
+  const setArchived = useCallback(
+    (id: string, archived: boolean) => {
+      update((prev) => ({
+        snippets: prev.snippets.map((s) =>
+          s.id === id ? { ...s, archived } : s,
+        ),
+      }));
+    },
+    [update],
+  );
+
   // Mode-A self-healing reconcile (load-only). See useReconcileModeAAnchors.
   const reconcileAnchors = useReconcileModeAAnchors<ArchiveState, ArchivedSnippet>(
     update,
@@ -184,5 +199,6 @@ export function useArchive(docId: string | null) {
     loaded,
     restoreSnippet,
     deleteSnippet,
+    setArchived,
   };
 }

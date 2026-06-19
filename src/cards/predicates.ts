@@ -31,6 +31,30 @@ export const isAnchoredCardKind = (k: CardKind): boolean => CARD_REGISTRY[k].anc
 export const isSystemCardKind = (k: CardKind): boolean =>
   CARD_REGISTRY[k].origin === "system";
 
+/** Whether a card of this kind can be ARCHIVED — set aside (reversibly) into its
+ *  home panel's archive view instead of deleted. DERIVED from provenance (the
+ *  complement of `isSystemCardKind`, also excluding the `origin: "derived"`
+ *  mirror): a kind is archivable IFF the user authored it (`origin === "user"`).
+ *  That set is exactly note/highlight/footnote/citation/archive/todo/report/
+ *  report-request + the comment/suggestion pairs; `example` (derived — no
+ *  per-record flag home) and `bib`/`ai`/`error` (system) are not.
+ *
+ *  This is wholly distinct from the text-object Archive PANEL (a separate
+ *  subsystem that *moves text objects*). The archive button renders iff
+ *  `isArchivable(kind)` AND the card already shows a panel-trash button, so the
+ *  affordance lands "wherever the trash button appears." */
+export const isArchivable = (k: CardKind): boolean =>
+  CARD_REGISTRY[k].origin === "user";
+
+/** Whether archiving a card of this kind also splices an inline atom out of the
+ *  document (footnote/citation). These kinds' cards ARE backed by a
+ *  `\footnote{}` / `\cite{}` marker in the `.tex`, so archiving must remove the
+ *  atom (behind a confirm) — and, per the unarchive contract, does NOT re-insert
+ *  it (the card returns as an unanchored ref the user re-places). Aliases the
+ *  established inline-atom predicate so the two can never disagree. */
+export const archiveRemovesAtom = (k: CardKind): boolean =>
+  isInlineAtomCardKind(k);
+
 /** Replaces `CARD_KEY_PREFIXES` + the `popKey`/`cardPopKey` token lookup. */
 export const cardKeyPrefix = (k: CardKind): string => CARD_REGISTRY[k].keyPrefix;
 
