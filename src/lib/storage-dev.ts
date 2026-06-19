@@ -195,6 +195,11 @@ export async function writeSidecar<T>(
   filename: string,
   data: T,
 ): Promise<void> {
+  // Parity with storage-fsa: library-paper docs are read-only and must never
+  // persist sidecars. Without this, the dev backend silently PUTs to
+  // /api/dev-library, corrupting the read-only source (and masking the FSA
+  // "No folder handle stored" throw the Reader hits in production).
+  if (isLibraryPaper(h.docId)) return;
   assertActive(h);
   await putText(docFileUrl(h.docId, `virgil/${filename}`), JSON.stringify(data, null, 2));
 }

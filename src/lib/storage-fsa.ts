@@ -213,6 +213,14 @@ export async function writeSidecar<T>(
   filename: string,
   data: T,
 ): Promise<void> {
+  // Library-paper docs are read-only — served from the library handle, never
+  // registered for per-doc writes (see the readSidecar note above). The Reader
+  // mounts a full EditorPane whose derive-on-mount effects (citations,
+  // footnotes, …) would otherwise arm a write that throws "No folder handle
+  // stored" once the handle is torn down on unmount. Enforce the documented
+  // never-persist invariant here, at the single SSOT every card-hook sidecar
+  // write funnels through.
+  if (h.docId.startsWith(LIBRARY_PAPER_PREFIX)) return;
   return enqueueDocWrite(h, `virgil/${filename}`, async () => {
     const docHandle = await requireDocHandle(h.docId);
     const virgil = await getVirgilSubdir(docHandle);
