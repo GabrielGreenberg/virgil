@@ -23,7 +23,10 @@ export type ResolveOmniPos = (id: string) => number | undefined;
  *   Pass 1 (fold): DROP an item whose anchor lives in a collapsed section
  *     (the section-folding plugin hides the prose; mirror it on the omni side).
  *   Pass 2 (focus): STAMP `outsideFocus` (never drop — that would read as data
- *     loss) on an item whose anchor falls outside the focused band.
+ *     loss) on an item whose anchor falls outside the focused band — but ONLY
+ *     when the band is LOCKED (the only mode that hides the in-text anchor).
+ *     A mere focus selection (active && !locked) confines nothing, so Pass 2
+ *     is a no-op there (CHIP A).
  *
  * `doc` is the live ProseMirror doc (for `resolve(pos).index(0)`); `null` (editor
  * not mounted) short-circuits both passes to the identity.
@@ -53,8 +56,12 @@ export function filterOmniItemsByFoldAndFocus(
     }
   }
 
-  // Pass 2: focus filter — stamp `outsideFocus` instead of dropping.
-  if (!focusState?.active || !doc) return foldFiltered;
+  // Pass 2: focus filter — stamp `outsideFocus` instead of dropping. Only a
+  // LOCKED band confines: it display:none's the out-of-band in-text anchors, so
+  // their cards can't cascade inline and must route to the "outside focus" bin.
+  // A mere focus SELECTION (active && !locked) hides nothing (CHIP A) — every
+  // anchor stays visible in-text, so NO card is stamped `outsideFocus`.
+  if (!focusState?.active || !focusState.locked || !doc) return foldFiltered;
   const { startBlockIndex, endBlockIndex } = focusState;
   const out: OmniItem[] = [];
   for (const item of foldFiltered) {

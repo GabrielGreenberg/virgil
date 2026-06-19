@@ -629,9 +629,14 @@ function OutlineNode({
   const isCollapsed = collapsed.has(node.heading.id);
 
   const isFocusEditing = focusState?.active && !focusState.locked;
+  // `isOutsideFocus` drives the LOCKED subtree cull (below). The visual DIM is a
+  // SEPARATE, lock-gated concern: a mere focus selection (active && !locked)
+  // shows the band overlay only and dims NOTHING (CHIP A), so out-of-band rows
+  // stay full opacity until the band is locked.
   const isOutsideFocus = focusState?.active
     ? node.heading.index < focusState.startBlockIndex || node.heading.index > focusState.endBlockIndex
     : false;
+  const dimOutsideFocus = isOutsideFocus && !!focusState?.locked;
 
   // Locked mode: drop the entire subtree when nothing in it intersects
   // the focused band. If something does intersect (e.g., focus on a
@@ -659,7 +664,7 @@ function OutlineNode({
       <div
         data-outline-pos={`h-${node.heading.index}`}
         className={`flex items-start gap-1 group cursor-pointer rounded ${isFocusEditing ? "" : "hover-on-light"}`}
-        style={{ paddingLeft: `${depth * 16 + 8}px`, paddingRight: 8, paddingTop: 4, paddingBottom: 4, opacity: isOutsideFocus ? 0.3 : 1, transition: "opacity 200ms ease", position: "relative", zIndex: 5 }}
+        style={{ paddingLeft: `${depth * 16 + 8}px`, paddingRight: 8, paddingTop: 4, paddingBottom: 4, opacity: dimOutsideFocus ? 0.3 : 1, transition: "opacity 200ms ease", position: "relative", zIndex: 5 }}
         onClick={handleRowClick(node.heading.index)}
       >
         {hasChildren ? (
@@ -723,7 +728,10 @@ function OutlineNode({
             const ptOutside = focusState?.active
               ? pt.index < focusState.startBlockIndex || pt.index > focusState.endBlockIndex
               : false;
+            // Locked: cull out-of-band parTitles. Unlocked (mere selection):
+            // show them at full opacity, no dim (CHIP A).
             if (focusState?.active && focusState.locked && ptOutside) return null;
+            const ptDim = ptOutside && !!focusState?.locked;
             return (
               <div
                 key={`pt-${i}`}
@@ -734,7 +742,7 @@ function OutlineNode({
                   paddingRight: 8,
                   paddingTop: 2,
                   paddingBottom: 2,
-                  opacity: ptOutside ? 0.3 : 1,
+                  opacity: ptDim ? 0.3 : 1,
                   transition: "opacity 200ms ease",
                   position: "relative",
                   zIndex: 5,
@@ -1261,13 +1269,28 @@ function FocusBand({
   const [animated, setAnimated] = useState(true);
 
   // Drag state: a snapshot of all candidate row positions taken at drag
-  // start, plus the last index we reported (so we only call onSnapBoundary
-  // when the closest row actually changes).
+  // start. The drag is a purely LOCAL overlay gesture (CHIP B) — mid-drag we
+  // drive the band rect from this snapshot + the fixed-edge pixel/block (no
+  // parent state, no disk write), then commit ONCE on mouseup.
+  //  - `fixedPx`: pixel position of the edge that stays put (the band's bottom
+  //    when dragging "top", its top when dragging "bottom"), captured at
+  //    mousedown so the transient rect is computed against it.
+  //  - `fixedBlockIndex`: the committed block index of that fixed edge — used
+  //    on mouseup to decide whether the dragged edge actually moved.
+  //  - `pendingBlockIndex`: the block the dragged edge is currently snapped to
+  //    (the single value committed via onSnapBoundary on mouseup).
   const dragRef = useRef<{
     edge: "top" | "bottom";
-    rows: { blockIndex: number; mid: number }[];
-    lastIdx: number;
+    rows: { blockIndex: number; top: number; mid: number; bottom: number }[];
+    fixedPx: number;
+    fixedBlockIndex: number;
+    pendingBlockIndex: number | null;
   } | null>(null);
+
+  // Minimum band height in pixels so a drag past the opposite edge clamps to a
+  // thin band instead of inverting/collapsing (mirrors snapBoundary's 1-row
+  // clamp in useFocusMode — CHIP E).
+  const MIN_PX = 12;
 
   // Stable identity for outline row attrs, used both for measurement and as
   // the candidate set for drag snapping.
@@ -1289,6 +1312,12 @@ function FocusBand({
   // Synchronous measure — runs before paint, reads DOM in one querySelectorAll
   // pass, and only updates state if the rectangle actually changed.
   const measure = useCallback(() => {
+    // During a drag the rect is driven LOCALLY from the mousedown snapshot
+    // (see the rAF flush). measure() derives the rect from focusState, which
+    // hasn't moved yet (we only commit on mouseup) — letting it run here would
+    // clobber the live transient band. Bail; the post-commit measure restores
+    // the authoritative rect.
+    if (dragRef.current) return;
     const container = scrollRef.current;
     if (!container) return;
 
@@ -1338,8 +1367,11 @@ function FocusBand({
   }, [scrollRef, measure]);
 
   // Drag — snapshot row positions at mousedown and reuse them for every
-  // mousemove. Throttle with requestAnimationFrame and only call back when
-  // the snapped row index actually changes.
+  // mousemove (CHIP B). Mid-drag is a PURELY LOCAL overlay gesture: we drive
+  // the band rect from the snapshot via setBand and do NOT touch parent state
+  // or disk. Throttle with requestAnimationFrame. The single onSnapBoundary
+  // commit happens on mouseup, so an N-row drag = 1 state write + 1 re-render
+  // + 1 breadcrumb recompute (not N).
   useEffect(() => {
     if (!onSnapBoundary || focusState.locked) return;
 
@@ -1350,6 +1382,7 @@ function FocusBand({
       rafScheduled = false;
       const drag = dragRef.current;
       if (!drag) return;
+      // Nearest snapped row to the cursor.
       let bestIdx = 0;
       let bestDist = Infinity;
       for (let i = 0; i < drag.rows.length; i++) {
@@ -1359,9 +1392,16 @@ function FocusBand({
           bestIdx = i;
         }
       }
-      if (bestIdx !== drag.lastIdx) {
-        drag.lastIdx = bestIdx;
-        onSnapBoundary(drag.edge, drag.rows[bestIdx].blockIndex);
+      const row = drag.rows[bestIdx];
+      drag.pendingBlockIndex = row.blockIndex;
+      // Transient rect against the fixed edge. Clamp so the band never inverts
+      // or collapses (consistent with snapBoundary's 1-row clamp).
+      if (drag.edge === "top") {
+        const newTop = Math.min(row.top, drag.fixedPx - MIN_PX);
+        setBand({ top: newTop, height: drag.fixedPx - newTop });
+      } else {
+        const newBottom = Math.max(row.bottom, drag.fixedPx + MIN_PX);
+        setBand({ top: drag.fixedPx, height: newBottom - drag.fixedPx });
       }
     };
 
@@ -1378,11 +1418,25 @@ function FocusBand({
     };
 
     const handleMouseUp = () => {
-      if (!dragRef.current) return;
+      const drag = dragRef.current;
+      if (!drag) return;
+      // Commit ONCE — but only if the dragged edge actually moved off the
+      // fixed-edge-committed block (otherwise it's a no-op click on the handle
+      // and we skip the state write + re-render + breadcrumb recompute).
+      const moved =
+        drag.pendingBlockIndex != null &&
+        drag.pendingBlockIndex !== drag.fixedBlockIndex;
       dragRef.current = null;
       document.body.style.cursor = "";
       document.body.style.userSelect = "";
       setAnimated(true);
+      if (moved) {
+        // After this lands, focusState updates and the (now un-guarded)
+        // measure() recomputes the authoritative rect — which matches the
+        // transient rect we already painted (same snapped row → same offsetTop/
+        // offsetHeight), so there is no visible jump.
+        onSnapBoundary(drag.edge, drag.pendingBlockIndex as number);
+      }
     };
 
     document.addEventListener("mousemove", handleMouseMove);
@@ -1397,21 +1451,30 @@ function FocusBand({
     e.preventDefault();
     e.stopPropagation();
     const container = scrollRef.current;
-    if (!container) return;
-    // Snapshot row mids once. Drag doesn't change row layout, so we never
-    // need to re-read the DOM during the drag itself.
+    if (!container || !band) return;
+    // Snapshot row geometry once. Drag doesn't change row layout, so we never
+    // need to re-read the DOM during the drag itself. We keep top/mid/bottom:
+    // `mid` for nearest-row snapping, `top`/`bottom` for the transient rect.
     const rowMap = new Map<string, HTMLElement>();
     container.querySelectorAll<HTMLElement>("[data-outline-pos]").forEach((el) => {
       const attr = el.dataset.outlinePos;
       if (attr) rowMap.set(attr, el);
     });
-    const rows: { blockIndex: number; mid: number }[] = [];
+    const rows: { blockIndex: number; top: number; mid: number; bottom: number }[] = [];
     for (const r of allRowAttrs) {
       const el = rowMap.get(r.attr);
       if (!el) continue;
-      rows.push({ blockIndex: r.blockIndex, mid: el.offsetTop + el.offsetHeight / 2 });
+      const top = el.offsetTop;
+      const bottom = el.offsetTop + el.offsetHeight;
+      rows.push({ blockIndex: r.blockIndex, top, mid: top + el.offsetHeight / 2, bottom });
     }
-    dragRef.current = { edge, rows, lastIdx: -1 };
+    // The OPPOSITE edge stays put for the whole drag. Capture its pixel position
+    // from the current band rect and its committed block index from focusState
+    // so the transient rect (and the moved-check on commit) reference it.
+    const fixedPx = edge === "top" ? band.top + band.height : band.top;
+    const fixedBlockIndex =
+      edge === "top" ? focusState.endBlockIndex : focusState.startBlockIndex;
+    dragRef.current = { edge, rows, fixedPx, fixedBlockIndex, pendingBlockIndex: null };
     document.body.style.cursor = "ns-resize";
     document.body.style.userSelect = "none";
     // Disable transitions during drag so the band tracks the cursor.
@@ -1590,10 +1653,12 @@ function OutlinePanel({ content, onScrollTo, onReorderBlocks, onRenameHeading, o
 
   // Resolve where each pane's position chevron should appear, accounting
   // for collapsed sections (chevron bubbles up to the visible ancestor).
-  // When focus is active, clamp the position to the focused range so the
-  // indicator never sits on a grayed-out section.
+  // When focus is LOCKED, clamp the position to the focused range so the
+  // indicator never sits on a grayed-out (hidden) section. A mere focus
+  // SELECTION (active && !locked) grays/hides nothing (CHIP A), so the chevron
+  // must report the cursor's real row — no clamp.
   const clampToFocus = useCallback((pos: ResolvedPosition | null): ResolvedPosition | null => {
-    if (!pos || !focusState?.active) return pos;
+    if (!pos || !focusState?.active || !focusState.locked) return pos;
     // Determine the block index the position points at
     const blockIdx = pos.parTitleIndex ?? pos.headingIndex;
     if (blockIdx == null) {
@@ -1829,7 +1894,9 @@ function OutlinePanel({ content, onScrollTo, onReorderBlocks, onRenameHeading, o
                 className={`flex items-start gap-1 cursor-pointer rounded ${focusState?.active && !focusState.locked ? "" : "hover-on-light"}`}
                 style={{
                   paddingLeft: 8, paddingRight: 8, paddingTop: 4, paddingBottom: 4,
-                  opacity: focusState?.active && headings.length > 0 && (0 < focusState.startBlockIndex || 0 > focusState.endBlockIndex) ? 0.3 : 1,
+                  // Dim docstart only when LOCKED focus excludes block 0 — a mere
+                  // selection dims nothing (CHIP A).
+                  opacity: focusState?.active && focusState.locked && headings.length > 0 && (0 < focusState.startBlockIndex || 0 > focusState.endBlockIndex) ? 0.3 : 1,
                   transition: "opacity 200ms ease",
                   position: "relative",
                   zIndex: 5,
@@ -1868,7 +1935,10 @@ function OutlinePanel({ content, onScrollTo, onReorderBlocks, onRenameHeading, o
                   const ptOutside = focusState?.active
                     ? pt.index < focusState.startBlockIndex || pt.index > focusState.endBlockIndex
                     : false;
+                  // Locked: cull out-of-band preamble parTitles. Unlocked (mere
+                  // selection): full opacity, no dim (CHIP A).
                   if (focusState?.active && focusState.locked && ptOutside) return null;
+                  const ptDim = ptOutside && !!focusState?.locked;
                   return (
                     <div
                       key={`preamble-pt-${i}`}
@@ -1876,7 +1946,7 @@ function OutlinePanel({ content, onScrollTo, onReorderBlocks, onRenameHeading, o
                       className={`cursor-pointer rounded text-[11px] text-[#857070] truncate ${focusState?.active && !focusState.locked ? "" : "hover-on-light"}`}
                       style={{
                         paddingLeft: 40, paddingRight: 8, paddingTop: 2, paddingBottom: 2,
-                        opacity: ptOutside ? 0.3 : 1,
+                        opacity: ptDim ? 0.3 : 1,
                         transition: "opacity 200ms ease",
                         position: "relative",
                         zIndex: 5,

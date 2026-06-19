@@ -171,7 +171,9 @@ describe("filterOmniItemsByFoldAndFocus — live-pos focus binning (OMNI-F1-02)"
         anchorState: "anchored",
         content: null,
       };
-      const focus: FocusState = { active: true, startBlockIndex: 2, endBlockIndex: 3 } as FocusState;
+      // LOCKED band: only a locked band confines, so only then is an
+      // out-of-band card stamped (CHIP A).
+      const focus: FocusState = { active: true, locked: true, startBlockIndex: 2, endBlockIndex: 3 } as FocusState;
 
       const live = filterOmniItemsByFoldAndFocus([item], doc, new Set(), focus, liveResolver(editor));
       expect(live).toHaveLength(1);
@@ -182,13 +184,34 @@ describe("filterOmniItemsByFoldAndFocus — live-pos focus binning (OMNI-F1-02)"
     }
   });
 
+  it("CHIP A: an UNLOCKED (active-only) band stamps NOTHING, even out-of-band", () => {
+    const { editor, cleanup } = mount();
+    try {
+      const doc = editor.state.doc;
+      const item: OmniItem = {
+        id: FN_KEY,
+        pos: doc.resolve(0).pos,
+        anchorState: "anchored",
+        content: null,
+      };
+      // Live anchor (block 1) is OUTSIDE [2,3], but the band is NOT locked → a
+      // mere focus selection confines nothing, so no card is binned.
+      const focus: FocusState = { active: true, locked: false, startBlockIndex: 2, endBlockIndex: 3 } as FocusState;
+      const live = filterOmniItemsByFoldAndFocus([item], doc, new Set(), focus, liveResolver(editor));
+      expect(live).toHaveLength(1);
+      expect(live[0].outsideFocus).toBeUndefined();
+    } finally {
+      cleanup();
+    }
+  });
+
   it("an item INSIDE the focused band (live) is not stamped", () => {
     const { editor, cleanup } = mount();
     try {
       const doc = editor.state.doc;
       const item: OmniItem = { id: FN_KEY, pos: 0, anchorState: "anchored", content: null };
-      // Band covers block 1 (the live fn anchor).
-      const focus: FocusState = { active: true, startBlockIndex: 0, endBlockIndex: 2 } as FocusState;
+      // Locked band covers block 1 (the live fn anchor) → in-band, not stamped.
+      const focus: FocusState = { active: true, locked: true, startBlockIndex: 0, endBlockIndex: 2 } as FocusState;
       const live = filterOmniItemsByFoldAndFocus([item], doc, new Set(), focus, liveResolver(editor));
       expect(live).toHaveLength(1);
       expect(live[0].outsideFocus).toBeUndefined();

@@ -155,12 +155,35 @@ export function sectionRange(
   return [blockIndex, blockIndex];
 }
 
+/** The block range a clicked outline NODE owns: a heading → its subtree
+ *  (sectionRange); any non-heading block (paragraph/parTitle/doc-start) → just
+ *  that block. The band edges and clicks both resolve through THIS so the
+ *  highlighted row and the confined region always agree. */
+export function regionForNode(
+  blockIndex: number,
+  headings: { index: number; level: number }[],
+  totalBlocks: number,
+): [number, number] {
+  const isHeading = headings.some((h) => h.index === blockIndex);
+  if (isHeading) return sectionRange(blockIndex, headings, totalBlocks);
+  return [blockIndex, blockIndex];
+}
+
 export function useFocusMode(docId: string | null, editor: Editor | null) {
   const { state: stored, update } = usePersistentState<StoredBand>(
     docId,
     "focus.json",
     INITIAL_STORED,
-    { migrate: migrateFocusState, errorLabel: "focus", debounceMs: 0 },
+    // Debounce the focus.json DISK write (CHIP B). React state (stored → band /
+    // state) still updates synchronously inside update() — only the write to
+    // disk coalesces — so the editor confine on lock and the band overlay stay
+    // immediate. This is a safety net for any residual rapid update() bursts
+    // (e.g. click-then-lock, or an in-flight-write race); the per-snap drag
+    // write storm is already eliminated by the commit-on-mouseup change in
+    // FocusBand. Pending writes are FLUSHED synchronously on unmount and on
+    // docId change (usePersistentState's cleanup effect → flushPending), so the
+    // band is never lost on navigation.
+    { migrate: migrateFocusState, errorLabel: "focus", debounceMs: 150 },
   );
   // Re-resolve trigger: rev.blocks bumps on block add/remove/reorder (CHIP 0),
   // never on a plain keystroke — so the derived indices below recompute exactly
@@ -280,20 +303,11 @@ export function useFocusMode(docId: string | null, editor: Editor | null) {
     update((s) => (s.active ? { ...s, locked: !s.locked } : s));
   }, [update]);
 
-  const setRange = useCallback(
-    (startBlockIndex: number, endBlockIndex: number) => {
-      const doc = editorRef.current?.state?.doc;
-      if (!doc) return;
-      update((s) => (s.active ? bandFromIndices(doc, startBlockIndex, endBlockIndex, true, s.locked) : s));
-    },
-    [update],
-  );
-
   const moveTo = useCallback(
     (blockIndex: number, headings: { index: number; level: number }[], totalBlocks: number) => {
       const doc = editorRef.current?.state?.doc;
       if (!doc) return;
-      const [start, end] = sectionRange(blockIndex, headings, totalBlocks);
+      const [start, end] = regionForNode(blockIndex, headings, totalBlocks);
       update((s) => (s.active ? bandFromIndices(doc, start, end, true, s.locked) : s));
     },
     [update],
@@ -303,7 +317,7 @@ export function useFocusMode(docId: string | null, editor: Editor | null) {
     (blockIndex: number, headings: { index: number; level: number }[], totalBlocks: number) => {
       const doc = editorRef.current?.state?.doc;
       if (!doc) return;
-      const [clickStart, clickEnd] = sectionRange(blockIndex, headings, totalBlocks);
+      const [clickStart, clickEnd] = regionForNode(blockIndex, headings, totalBlocks);
       update((s) => {
         if (!s.active) return s;
         const cur = resolveFocusBand(doc, s) ?? { startIdx: 0, endIdx: doc.childCount - 1 };
@@ -315,57 +329,23 @@ export function useFocusMode(docId: string | null, editor: Editor | null) {
     [update],
   );
 
-  const nudgeBoundary = useCallback(
-    (
-      edge: "top" | "bottom",
-      direction: -1 | 1,
-      allRowIndices: number[],
-      headings: { index: number; level: number }[],
-      totalBlocks: number,
-    ) => {
-      const doc = editorRef.current?.state?.doc;
-      if (!doc) return;
-      update((s) => {
-        if (!s.active || s.locked) return s;
-        const cur = resolveFocusBand(doc, s) ?? { startIdx: 0, endIdx: doc.childCount - 1 };
-        if (edge === "top") {
-          const curIdx = allRowIndices.findIndex((ri) => ri >= cur.startIdx);
-          const nextIdx = curIdx + direction;
-          if (nextIdx < 0 || nextIdx >= allRowIndices.length) return s;
-          const newBlockIdx = allRowIndices[nextIdx];
-          if (newBlockIdx > cur.endIdx) return s;
-          return bandFromIndices(doc, newBlockIdx, cur.endIdx, true, s.locked);
-        }
-        const curIdx = allRowIndices.findIndex((ri) => ri >= cur.endIdx);
-        const nextIdx = curIdx + direction;
-        if (nextIdx < 0 || nextIdx >= allRowIndices.length) return s;
-        const newRowBlockIdx = allRowIndices[nextIdx];
-        if (newRowBlockIdx < cur.startIdx) return s;
-        const [, newEnd] = sectionRange(newRowBlockIdx, headings, totalBlocks);
-        return bandFromIndices(doc, cur.startIdx, newEnd, true, s.locked);
-      });
-    },
-    [update],
-  );
-
+  // Drag-handle reposition. Both edges are SYMMETRIC + FREE: each snaps to the
+  // raw outline row under the handle (no section re-expansion) and CLAMPS past
+  // the opposite edge to a minimum 1-row band — the handle keeps tracking the
+  // cursor instead of freezing when a drag crosses over. No heading/total-block
+  // args: edges are row-raw now, so the section list is irrelevant.
   const snapBoundary = useCallback(
-    (
-      edge: "top" | "bottom",
-      blockIndex: number,
-      headings: { index: number; level: number }[],
-      totalBlocks: number,
-    ) => {
+    (edge: "top" | "bottom", blockIndex: number) => {
       const doc = editorRef.current?.state?.doc;
       if (!doc) return;
       update((s) => {
         if (!s.active || s.locked) return s;
         const cur = resolveFocusBand(doc, s) ?? { startIdx: 0, endIdx: doc.childCount - 1 };
         if (edge === "top") {
-          if (blockIndex > cur.endIdx) return s;
-          return bandFromIndices(doc, blockIndex, cur.endIdx, true, s.locked);
+          const newStart = Math.min(blockIndex, cur.endIdx);
+          return bandFromIndices(doc, newStart, cur.endIdx, true, s.locked);
         }
-        if (blockIndex < cur.startIdx) return s;
-        const [, newEnd] = sectionRange(blockIndex, headings, totalBlocks);
+        const newEnd = Math.max(blockIndex, cur.startIdx);
         return bandFromIndices(doc, cur.startIdx, newEnd, true, s.locked);
       });
     },
@@ -378,10 +358,8 @@ export function useFocusMode(docId: string | null, editor: Editor | null) {
     activate,
     deactivate,
     toggleLock,
-    setRange,
     moveTo,
     expandTo,
-    nudgeBoundary,
     snapBoundary,
   };
 }

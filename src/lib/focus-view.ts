@@ -131,6 +131,13 @@ export function resolveFocusBand(
   return { startIdx, endIdx };
 }
 
+/** True iff the band should CONFINE the text viewer (hide out-of-band content).
+ *  Selection (active) is a mere preference; only LOCK confines. Every hide /
+ *  breadcrumb-skip / omni-bin / cursor-coerce surface keys off THIS, not `active`. */
+export function bandConfines(band: FocusBand): boolean {
+  return band.active && band.locked;
+}
+
 /**
  * True iff there is an active, resolvable band AND `pos` falls within it.
  * False when there is no band (so "outside the band, hide/dim it" is exactly
@@ -215,9 +222,16 @@ if (typeof window !== "undefined") {
 
 /** Build the decoration set hiding every out-of-band top-level child. */
 function buildFocusDecoSet(doc: PMNode, band: FocusBand): DecorationSet {
-  __focusRebuildCount++;
+  // A mere focus SELECTION (active && !locked) is a preference — it hides
+  // nothing. Only a LOCKED band confines the viewer. Bail before any doc walk
+  // so an unlocked band does zero work and hides no block.
+  if (!bandConfines(band)) return DecorationSet.empty;
   const resolved = resolveFocusBand(doc, band);
   if (!resolved) return DecorationSet.empty;
+  // Count only REAL decoration builds (past the confinement + resolvability
+  // guards) so __virgilFocusRebuilds() means "the hidden set was rebuilt" —
+  // flat on an unlocked select/drag, bumps once per locked-band change.
+  __focusRebuildCount++;
   const { startIdx, endIdx } = resolved;
   const decos: Decoration[] = [];
   let offset = 0;
@@ -305,7 +319,7 @@ export function focusViewPlugin(): Plugin<FocusViewState> {
           return { band: meta.band, decoSet: buildFocusDecoSet(newState.doc, meta.band) };
         }
         if (!tr.docChanged) return value;
-        if (!value.band.active) return value; // nothing hidden; set stays empty
+        if (!bandConfines(value.band)) return value; // nothing hidden; set stays empty
 
         // docChanged with an active band. Carry the cached node-decoration set
         // forward with DecorationSet.map() ONLY for a pure in-block content edit

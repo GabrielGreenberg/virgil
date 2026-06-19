@@ -1896,10 +1896,12 @@ export default function EditorLayout() {
   }, [editorInstance]);
 
   // ── Focus mode ──────────────────────────────────────────────────
-  // Focus view confines the visible band of the editor: when focus is
-  // active, top-level children outside [startBlockIndex, endBlockIndex]
-  // are hidden. The active/locked distinction lives only in the Outline
-  // panel — for the editor itself, active === hide.
+  // Focus view confines the visible band of the editor ONLY when LOCKED:
+  // a locked band hides top-level children outside [startBlockIndex,
+  // endBlockIndex]. A mere focus SELECTION (active && !locked) is a
+  // preference that hides nothing in the editor — it only draws the band
+  // overlay in the Outline panel (CHIP A). The hide path keys off
+  // `bandConfines` (active && locked); see src/lib/focus-view.ts.
   //
   // Mechanism: a ProseMirror node decoration. The `focusViewPlugin`
   // stamps `.focus-hidden` on each out-of-band top-level block — the
@@ -2002,14 +2004,16 @@ export default function EditorLayout() {
       // whenever a heading is crossed.
       let activeParTitleIdx: number | null = null;
 
-      // When focus is ACTIVE (locked or not), skip blocks outside the band —
-      // the focusViewPlugin display:none's them whenever focus is active, so
-      // their DOM nodes report bogus (collapsed) viewport positions and would
-      // drive the breadcrumb to a hidden heading. (Was gated on `locked`, but
-      // the hide is lock-independent — that mismatch made the unlocked-focus
-      // breadcrumb point at an out-of-band section. CHIP 4b.)
+      // Skip out-of-band blocks ONLY when focus is LOCKED — the focusViewPlugin
+      // display:none's them only in that mode, so their DOM nodes report bogus
+      // (collapsed) viewport positions and would drive the breadcrumb to a
+      // hidden heading. A mere focus SELECTION (active && !locked) hides nothing
+      // now (CHIP A), so out-of-band blocks report real coords and must NOT be
+      // skipped — skipping them would drop them from the breadcrumb even though
+      // they're fully visible. (CHIP 4b skipped on `active`; the hide is now
+      // lock-gated, so this matches it again.)
       const fs = focusStateRef.current;
-      const skipHidden = fs.active;
+      const skipHidden = fs.active && fs.locked;
 
       doc.forEach((node, offset, index) => {
         if (skipHidden && (index < fs.startBlockIndex || index > fs.endBlockIndex)) return;
@@ -2103,10 +2107,12 @@ export default function EditorLayout() {
       editorInstance.off("update", onEditorUpdate);
     };
     // Focus band values are deps so the breadcrumb recomputes when focus
-    // toggles/moves — a meta-only tx (not docChanged) doesn't fire `update`,
-    // so without these the breadcrumb would stay stale until the next scroll.
+    // toggles/moves/locks — a meta-only tx (not docChanged) doesn't fire
+    // `update`, so without these the breadcrumb would stay stale until the next
+    // scroll. `locked` is a dep because skipHidden is now lock-gated (CHIP A),
+    // so toggling the lock changes which blocks the breadcrumb considers.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [editorInstance, focusMode.state.active, focusMode.state.startBlockIndex, focusMode.state.endBlockIndex]);
+  }, [editorInstance, focusMode.state.active, focusMode.state.locked, focusMode.state.startBlockIndex, focusMode.state.endBlockIndex]);
 
   // Mirror (second pane) position tracking — same logic as above but
   // scoped to the mirror ProseMirror view's scroll container.
@@ -2136,10 +2142,12 @@ export default function EditorLayout() {
       let activeParTitleIdx: number | null = null;
 
       // Mirror shares the main editor's state, so the focus band + decorations
-      // apply here too — skip out-of-band (hidden) blocks for the same reason
-      // as the main pane (CHIP 4b).
+      // apply here too — skip out-of-band (hidden) blocks ONLY when LOCKED, for
+      // the same reason as the main pane: a mere focus selection hides nothing
+      // now (CHIP A), so out-of-band blocks report real coords and must not be
+      // skipped.
       const fs = focusStateRef.current;
-      const skipHidden = fs.active;
+      const skipHidden = fs.active && fs.locked;
 
       doc.forEach((node, offset, index) => {
         if (skipHidden && (index < fs.startBlockIndex || index > fs.endBlockIndex)) return;
@@ -2196,9 +2204,10 @@ export default function EditorLayout() {
       editorInstance?.off("update", onEditorUpdate);
     };
     // Focus band values are deps so the mirror breadcrumb recomputes on a
-    // focus toggle/move (meta-only tx — see the main pane's note).
+    // focus toggle/move/lock (meta-only tx — see the main pane's note). `locked`
+    // is a dep because skipHidden is now lock-gated (CHIP A).
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [editorSplit, mirrorViewGen, editorInstance, focusMode.state.active, focusMode.state.startBlockIndex, focusMode.state.endBlockIndex]);
+  }, [editorSplit, mirrorViewGen, editorInstance, focusMode.state.active, focusMode.state.locked, focusMode.state.startBlockIndex, focusMode.state.endBlockIndex]);
 
   // Derive footnotes list from editor state (sorted by document position).
   // Recomputes on `editorInstance` change (initial mount + doc-switch remount)
