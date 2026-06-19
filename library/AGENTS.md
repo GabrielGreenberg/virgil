@@ -279,4 +279,4 @@ The previously parallel `library/tiptap/` extension set has been deleted. `PgMar
 
 - Don't add a backend. The cowork pattern is load-bearing.
 - Don't write to `master.bib` or `catalog.json` from the frontend — those are skill outputs.
-- The Library may import from `@/lib/tiptap-extensions`, `@/components/Editor`, and `@/components/editor-layout/chrome-*` — those are sanctioned cross-silo bridges for Reader inheritance. Avoid reaching into other Virgil internals (`@/components/EditorLayout`, panel hooks, etc.) without a similar architectural justification.
+- The Library may import from `@/lib/tiptap-extensions`, `@/components/Editor`, `@/components/editor-layout/chrome-*` (sanctioned cross-silo bridges for Reader inheritance), and `@/lib/bib-searcher` (the shared fuzzy bib searcher — Library catalog search unifies onto it via `library/lib/catalog-search.ts` rather than duplicating the matcher; it's a leaf-pure `fuse.js`-only module). Avoid reaching into other Virgil internals (`@/components/EditorLayout`, panel hooks, etc.) without a similar architectural justification.

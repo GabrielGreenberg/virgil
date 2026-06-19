@@ -58,6 +58,13 @@ function getSynthRecords(
   entries: CatalogEntry[],
   bibByKey: Map<string, BibEntry>,
 ): SynthRecord[] {
+  // COUPLING INVARIANT: the cache keys on the `entries` array identity alone,
+  // but each synth record also reads `bibByKey` (missing-bib fallback fields).
+  // This is only safe because callers pass a fresh `entries` identity whenever
+  // `bibByKey` changes — today both `mergedEntries` and `bibByKey` derive from
+  // `bibEntries` (LibraryView.tsx), so any bib edit mints a new `entries` array.
+  // A future refactor that decouples them must add `bibByKey` to the cache key,
+  // or it will serve stale fallback fields.
   const cached = synthCache.get(entries);
   if (cached) return cached;
 
