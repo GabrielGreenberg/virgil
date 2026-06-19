@@ -629,9 +629,14 @@ function OutlineNode({
   const isCollapsed = collapsed.has(node.heading.id);
 
   const isFocusEditing = focusState?.active && !focusState.locked;
+  // `isOutsideFocus` drives the LOCKED subtree cull (below). The visual DIM is a
+  // SEPARATE, lock-gated concern: a mere focus selection (active && !locked)
+  // shows the band overlay only and dims NOTHING (CHIP A), so out-of-band rows
+  // stay full opacity until the band is locked.
   const isOutsideFocus = focusState?.active
     ? node.heading.index < focusState.startBlockIndex || node.heading.index > focusState.endBlockIndex
     : false;
+  const dimOutsideFocus = isOutsideFocus && !!focusState?.locked;
 
   // Locked mode: drop the entire subtree when nothing in it intersects
   // the focused band. If something does intersect (e.g., focus on a
@@ -659,7 +664,7 @@ function OutlineNode({
       <div
         data-outline-pos={`h-${node.heading.index}`}
         className={`flex items-start gap-1 group cursor-pointer rounded ${isFocusEditing ? "" : "hover-on-light"}`}
-        style={{ paddingLeft: `${depth * 16 + 8}px`, paddingRight: 8, paddingTop: 4, paddingBottom: 4, opacity: isOutsideFocus ? 0.3 : 1, transition: "opacity 200ms ease", position: "relative", zIndex: 5 }}
+        style={{ paddingLeft: `${depth * 16 + 8}px`, paddingRight: 8, paddingTop: 4, paddingBottom: 4, opacity: dimOutsideFocus ? 0.3 : 1, transition: "opacity 200ms ease", position: "relative", zIndex: 5 }}
         onClick={handleRowClick(node.heading.index)}
       >
         {hasChildren ? (
@@ -723,7 +728,10 @@ function OutlineNode({
             const ptOutside = focusState?.active
               ? pt.index < focusState.startBlockIndex || pt.index > focusState.endBlockIndex
               : false;
+            // Locked: cull out-of-band parTitles. Unlocked (mere selection):
+            // show them at full opacity, no dim (CHIP A).
             if (focusState?.active && focusState.locked && ptOutside) return null;
+            const ptDim = ptOutside && !!focusState?.locked;
             return (
               <div
                 key={`pt-${i}`}
@@ -734,7 +742,7 @@ function OutlineNode({
                   paddingRight: 8,
                   paddingTop: 2,
                   paddingBottom: 2,
-                  opacity: ptOutside ? 0.3 : 1,
+                  opacity: ptDim ? 0.3 : 1,
                   transition: "opacity 200ms ease",
                   position: "relative",
                   zIndex: 5,
@@ -1590,10 +1598,12 @@ function OutlinePanel({ content, onScrollTo, onReorderBlocks, onRenameHeading, o
 
   // Resolve where each pane's position chevron should appear, accounting
   // for collapsed sections (chevron bubbles up to the visible ancestor).
-  // When focus is active, clamp the position to the focused range so the
-  // indicator never sits on a grayed-out section.
+  // When focus is LOCKED, clamp the position to the focused range so the
+  // indicator never sits on a grayed-out (hidden) section. A mere focus
+  // SELECTION (active && !locked) grays/hides nothing (CHIP A), so the chevron
+  // must report the cursor's real row — no clamp.
   const clampToFocus = useCallback((pos: ResolvedPosition | null): ResolvedPosition | null => {
-    if (!pos || !focusState?.active) return pos;
+    if (!pos || !focusState?.active || !focusState.locked) return pos;
     // Determine the block index the position points at
     const blockIdx = pos.parTitleIndex ?? pos.headingIndex;
     if (blockIdx == null) {
@@ -1829,7 +1839,9 @@ function OutlinePanel({ content, onScrollTo, onReorderBlocks, onRenameHeading, o
                 className={`flex items-start gap-1 cursor-pointer rounded ${focusState?.active && !focusState.locked ? "" : "hover-on-light"}`}
                 style={{
                   paddingLeft: 8, paddingRight: 8, paddingTop: 4, paddingBottom: 4,
-                  opacity: focusState?.active && headings.length > 0 && (0 < focusState.startBlockIndex || 0 > focusState.endBlockIndex) ? 0.3 : 1,
+                  // Dim docstart only when LOCKED focus excludes block 0 — a mere
+                  // selection dims nothing (CHIP A).
+                  opacity: focusState?.active && focusState.locked && headings.length > 0 && (0 < focusState.startBlockIndex || 0 > focusState.endBlockIndex) ? 0.3 : 1,
                   transition: "opacity 200ms ease",
                   position: "relative",
                   zIndex: 5,
@@ -1868,7 +1880,10 @@ function OutlinePanel({ content, onScrollTo, onReorderBlocks, onRenameHeading, o
                   const ptOutside = focusState?.active
                     ? pt.index < focusState.startBlockIndex || pt.index > focusState.endBlockIndex
                     : false;
+                  // Locked: cull out-of-band preamble parTitles. Unlocked (mere
+                  // selection): full opacity, no dim (CHIP A).
                   if (focusState?.active && focusState.locked && ptOutside) return null;
+                  const ptDim = ptOutside && !!focusState?.locked;
                   return (
                     <div
                       key={`preamble-pt-${i}`}
@@ -1876,7 +1891,7 @@ function OutlinePanel({ content, onScrollTo, onReorderBlocks, onRenameHeading, o
                       className={`cursor-pointer rounded text-[11px] text-[#857070] truncate ${focusState?.active && !focusState.locked ? "" : "hover-on-light"}`}
                       style={{
                         paddingLeft: 40, paddingRight: 8, paddingTop: 2, paddingBottom: 2,
-                        opacity: ptOutside ? 0.3 : 1,
+                        opacity: ptDim ? 0.3 : 1,
                         transition: "opacity 200ms ease",
                         position: "relative",
                         zIndex: 5,

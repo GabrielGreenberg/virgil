@@ -150,9 +150,10 @@ export interface OmniHostProps {
   // Shell
   getOmniEnabled: (side: Side) => Set<OmniCategory>;
   getOmniHideAll: (side: Side) => boolean;
-  /** When focus mode is active, anchored cards outside the focused block
-   *  range are dimmed (unlocked) or hidden (locked) — mirroring the
-   *  editor's own focus-dim/hide behavior. Unanchored cards are unaffected. */
+  /** Only when focus is LOCKED, anchored cards outside the focused block range
+   *  are routed to the "outside focus" bin — mirroring the editor's own
+   *  lock-gated hide. A mere focus selection (active && !locked) confines
+   *  nothing, so no card is binned. Unanchored cards are always unaffected. */
   focusState?: FocusState | null;
 }
 
@@ -629,13 +630,13 @@ export function OmniHost(p: OmniHostProps) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [editorInstance, editorTick]);
 
-  // Focus view: a card whose anchor falls outside the focused band has a
-  // hidden in-text anchor (the focusViewPlugin display:none's that block), so
-  // it can't cascade inline. Rather than DROP it (which silently hides
+  // Focus view: when the band is LOCKED, a card whose anchor falls outside it
+  // has a hidden in-text anchor (the focusViewPlugin display:none's that block),
+  // so it can't cascade inline. Rather than DROP it (which silently hides
   // user-created cards and reads as data loss), we STAMP `outsideFocus` and
   // keep it — OmniViewPanel routes stamped cards into the collapsed "N outside
-  // focus" bin. Applies whenever focus is active (locked or not); the in-text
-  // anchor is hidden in both modes.
+  // focus" bin. Applies ONLY when locked; a mere focus selection
+  // (active && !locked) hides nothing (CHIP A), so no card is binned.
   //
   // Fold filter (pass 1) runs first: cards in a collapsed section are
   // dropped outright, independent of focus.

@@ -28,6 +28,14 @@ function band(partial: Partial<FocusBand>): FocusBand {
   return { active: true, locked: false, startUuid: null, endUuid: null, ...partial };
 }
 
+// CHIP A: only a LOCKED band confines (the focusViewPlugin hides out-of-band
+// blocks only when `bandConfines` = active && locked). A mere focus SELECTION
+// (active && !locked) hides nothing. The plugin-decoration tests below assert
+// the hide, so they must use a locked band.
+function lockedBand(partial: Partial<FocusBand>): FocusBand {
+  return band({ locked: true, ...partial });
+}
+
 // A four-block doc: h0, p1, p2, p3 (indices 0..3).
 function fourBlockDoc() {
   return doc(
@@ -153,17 +161,31 @@ function decoCount(state: EditorState): number {
 }
 
 describe("focusViewPlugin — decoration set", () => {
-  it("activating a band hides exactly the out-of-band top-level blocks", () => {
+  it("locking a band hides exactly the out-of-band top-level blocks", () => {
     let state = stateWithFocus();
     expect(decoCount(state)).toBe(0); // no band yet
-    state = state.apply(setFocusBandMeta(state.tr, band({ startUuid: "p1", endUuid: "p2" })));
+    state = state.apply(setFocusBandMeta(state.tr, lockedBand({ startUuid: "p1", endUuid: "p2" })));
     // Out of band: h0 (0) and p3 (3) → 2 hidden.
     expect(decoCount(state)).toBe(2);
   });
 
+  it("CHIP A: an unlocked (active-only) band hides NOTHING", () => {
+    let state = stateWithFocus();
+    // A mere focus SELECTION is a preference — it confines nothing in the
+    // editor, so no out-of-band block is hidden.
+    state = state.apply(setFocusBandMeta(state.tr, band({ startUuid: "p1", endUuid: "p2" })));
+    expect(decoCount(state)).toBe(0);
+    // Locking the same band now confines: h0 + p3 hidden.
+    state = state.apply(setFocusBandMeta(state.tr, lockedBand({ startUuid: "p1", endUuid: "p2" })));
+    expect(decoCount(state)).toBe(2);
+    // Unlocking again (still active) clears the hide.
+    state = state.apply(setFocusBandMeta(state.tr, band({ startUuid: "p1", endUuid: "p2" })));
+    expect(decoCount(state)).toBe(0);
+  });
+
   it("plain typing inside the band MAPS the set forward (no rebuild)", () => {
     let state = stateWithFocus();
-    state = state.apply(setFocusBandMeta(state.tr, band({ startUuid: "p1", endUuid: "p2" })));
+    state = state.apply(setFocusBandMeta(state.tr, lockedBand({ startUuid: "p1", endUuid: "p2" })));
     const before = __getFocusRebuildCount();
     // Insert a char inside p1 (after its opening token).
     const p1Pos = state.doc.child(0).nodeSize + 1;
@@ -174,7 +196,7 @@ describe("focusViewPlugin — decoration set", () => {
 
   it("inserting a new top-level block REBUILDS the set", () => {
     let state = stateWithFocus();
-    state = state.apply(setFocusBandMeta(state.tr, band({ startUuid: "p1", endUuid: "p2" })));
+    state = state.apply(setFocusBandMeta(state.tr, lockedBand({ startUuid: "p1", endUuid: "p2" })));
     const before = __getFocusRebuildCount();
     // Append a new paragraph at doc end (a real block add).
     const newPara = paragraph("p4", "delta");
@@ -191,7 +213,7 @@ describe("focusViewPlugin — decoration set", () => {
     // breaks dispatch. Triggers in the wild via input rules / IME / smart
     // punctuation that emit two ReplaceSteps near the tail with no block change.
     let state = stateWithFocus();
-    state = state.apply(setFocusBandMeta(state.tr, band({ startUuid: "p1", endUuid: "p2" })));
+    state = state.apply(setFocusBandMeta(state.tr, lockedBand({ startUuid: "p1", endUuid: "p2" })));
     const rb0 = __getFocusRebuildCount();
     const tr = state.tr;
     const p1Inside = state.doc.child(0).nodeSize + 1; // inside h0/p1 area, in p1
@@ -207,7 +229,7 @@ describe("focusViewPlugin — decoration set", () => {
 
   it("deactivating clears the decorations", () => {
     let state = stateWithFocus();
-    state = state.apply(setFocusBandMeta(state.tr, band({ startUuid: "p1", endUuid: "p2" })));
+    state = state.apply(setFocusBandMeta(state.tr, lockedBand({ startUuid: "p1", endUuid: "p2" })));
     expect(decoCount(state)).toBe(2);
     state = state.apply(setFocusBandMeta(state.tr, band({ active: false })));
     expect(decoCount(state)).toBe(0);
