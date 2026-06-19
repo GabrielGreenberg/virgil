@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useMemo, useRef } from "react";
 import type { CatalogEntry } from "@library/lib/catalog";
 import type { BibEntry } from "@library/lib/types";
 import {
@@ -11,10 +11,6 @@ import {
   type SortDir,
   clampWidth,
   gridTemplate,
-  loadSort,
-  loadWidths,
-  saveSort,
-  saveWidths,
   sortEntries,
 } from "@library/lib/list-columns";
 import LeftListRow, {
@@ -23,7 +19,7 @@ import LeftListRow, {
   type RowActions,
 } from "./LeftListRow";
 import { type PanelKey } from "@library/hooks/useLibraryTabs";
-import { useListView } from "@library/lib/view-session-store";
+import { useLayoutPrefs, useListView } from "@library/lib/view-session-store";
 
 interface Props {
   entries: CatalogEntry[];
@@ -76,25 +72,29 @@ export default function LeftList({
   dotToneFor,
   onRowViewed,
 }: Props) {
-  // Search query is persisted per-(panel,libId) in the view-session store,
-  // so it survives reload AND the LeftList per-tab remount.
-  const { query, setQuery } = useListView(scope, panel, libId);
-  const [widths, setWidths] = useState<Record<ResizableColId, number>>(DEFAULT_WIDTHS);
-  const [sort, setSort] = useState<{ col: SortColId; dir: SortDir }>({
-    col: "year",
-    dir: "desc",
-  });
-
-  // Hydrate widths/sort from localStorage on mount (client-only — server
-  // render uses the defaults so HTML is stable). (Sort + widths move to the
-  // store in a later step.)
-  useEffect(() => {
-    setWidths(loadWidths());
-    setSort(loadSort());
-  }, []);
+  // Query + sort are persisted per-(panel,libId) in the view-session store
+  // (sort is the coherence fix — each library remembers its own column);
+  // both survive reload AND the LeftList per-tab remount.
+  const { query, setQuery, sort, setSort } = useListView(scope, panel, libId);
+  // Column widths are GLOBAL (one set across every list), stored in the
+  // view-session layout slice. Merge the persisted partial with the
+  // clamped defaults so gridTemplate always has a complete record.
+  const { layout, setLayout } = useLayoutPrefs();
+  const widths = useMemo<Record<ResizableColId, number>>(() => {
+    const out = { ...DEFAULT_WIDTHS };
+    const saved = layout.colWidths;
+    if (saved) {
+      for (const k of Object.keys(DEFAULT_WIDTHS) as ResizableColId[]) {
+        const v = saved[k];
+        if (typeof v === "number" && Number.isFinite(v)) out[k] = clampWidth(k, v);
+      }
+    }
+    return out;
+  }, [layout.colWidths]);
 
   // Keep a ref to the live widths so the resize-handler closure can read
-  // the start width synchronously (state setter callbacks are async).
+  // the start width synchronously (the resize loop mutates a local draft
+  // and only commits to the store on pointer-up).
   const widthsRef = useRef(widths);
   widthsRef.current = widths;
 
@@ -171,16 +171,16 @@ export default function LeftList({
     [anchorKey, orderedKeys, selectedKeys, onSelectKeys, onOpenPaper, onRowViewed],
   );
 
-  const handleSort = useCallback((col: SortColId) => {
-    setSort((cur) => {
+  const handleSort = useCallback(
+    (col: SortColId) => {
       const next: { col: SortColId; dir: SortDir } =
-        cur.col === col
-          ? { col, dir: cur.dir === "asc" ? "desc" : "asc" }
+        sort.col === col
+          ? { col, dir: sort.dir === "asc" ? "desc" : "asc" }
           : { col, dir: defaultDirFor(col) };
-      saveSort(next);
-      return next;
-    });
-  }, []);
+      setSort(next);
+    },
+    [sort, setSort],
+  );
 
   const handleResize = useCallback(
     (leftCol: ResizableColId | null, rightCol: ResizableColId | null) => {
@@ -192,36 +192,42 @@ export default function LeftList({
         const startRightW = rightCol ? widthsRef.current[rightCol] : 0;
         const onMove = (ev: PointerEvent) => {
           const rawDelta = ev.clientX - startX;
-          setWidths((cur) => {
-            // Constrain the boundary delta against BOTH columns' clamps so
-            // total fixed width is preserved (otherwise the 1fr title
-            // absorbs the difference and the status column shifts visibly).
-            let delta = rawDelta;
-            if (leftCol) {
-              delta = clampWidth(leftCol, startLeftW + delta) - startLeftW;
-            }
-            if (rightCol) {
-              delta = startRightW - clampWidth(rightCol, startRightW - delta);
-            }
-            const next = { ...cur };
-            let changed = false;
-            if (leftCol) {
-              const v = startLeftW + delta;
-              if (cur[leftCol] !== v) { next[leftCol] = v; changed = true; }
-            }
-            if (rightCol) {
-              const v = startRightW - delta;
-              if (cur[rightCol] !== v) { next[rightCol] = v; changed = true; }
-            }
-            return changed ? next : cur;
-          });
+          // Constrain the boundary delta against BOTH columns' clamps so
+          // total fixed width is preserved (otherwise the 1fr title
+          // absorbs the difference and the status column shifts visibly).
+          let delta = rawDelta;
+          if (leftCol) {
+            delta = clampWidth(leftCol, startLeftW + delta) - startLeftW;
+          }
+          if (rightCol) {
+            delta = startRightW - clampWidth(rightCol, startRightW - delta);
+          }
+          const cur = widthsRef.current;
+          const patch: Partial<Record<ResizableColId, number>> = {};
+          let changed = false;
+          if (leftCol) {
+            const v = startLeftW + delta;
+            if (cur[leftCol] !== v) { patch[leftCol] = v; changed = true; }
+          }
+          if (rightCol) {
+            const v = startRightW - delta;
+            if (cur[rightCol] !== v) { patch[rightCol] = v; changed = true; }
+          }
+          // Write through the store: the in-memory update is synchronous
+          // (live drag feedback via the useLayoutPrefs re-render) while the
+          // store's 250 ms debounce coalesces the localStorage writes.
+          if (changed) {
+            setLayout({ colWidths: { ...cur, ...patch } });
+          }
         };
         const onUp = () => {
           window.removeEventListener("pointermove", onMove);
           window.removeEventListener("pointerup", onUp);
           document.body.style.cursor = "";
           document.body.style.userSelect = "";
-          saveWidths(widthsRef.current);
+          // Final commit so the last frame's value is persisted (the store
+          // flushes it on the trailing debounce / pagehide).
+          setLayout({ colWidths: { ...widthsRef.current } });
         };
         window.addEventListener("pointermove", onMove);
         window.addEventListener("pointerup", onUp);
@@ -229,7 +235,7 @@ export default function LeftList({
         document.body.style.userSelect = "none";
       };
     },
-    [],
+    [setLayout],
   );
 
   return (
