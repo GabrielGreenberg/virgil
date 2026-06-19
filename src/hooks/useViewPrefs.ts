@@ -180,7 +180,22 @@ export interface ViewPrefs {
   omniCategories: Record<"left" | "right", OmniCategory[]>;
   /** Sticky "hide all cards in omni-view" toggle per side. */
   omniHideAllCards: { left: boolean; right: boolean };
+
+  /* ── Card archive (per-card set-aside) ───────────────────────────── */
+
+  /** Per-panel card archive VIEW mode — the View Active / View Archives / View
+   *  All selector each card panel's three-dot menu gains. Absent ⇒ "active".
+   *  Keyed by PanelId; per-window (a reviewer window can browse archives while a
+   *  draft window stays on active). Wholly distinct from the text-object Archive
+   *  PANEL. */
+  cardArchiveView: Partial<Record<PanelId, "active" | "archived" | "all">>;
+  /** When true, suppress the "archiving removes the footnote/citation from your
+   *  text" confirm (the user ticked "don't ask again"). Per-window. */
+  suppressArchiveAtomWarning: boolean;
 }
+
+/** The three card-archive view modes. */
+export type CardArchiveView = "active" | "archived" | "all";
 
 /* ── Derived read helpers (pure) ───────────────────────────────────────
  * Single implementation lives in the dependency-free leaf `view-prefs-
@@ -196,9 +211,17 @@ export { dockedSideOf, dockStackTop, isPanelDocked } from "./view-prefs-derived"
 // print.ts) and `omniCategories` from DEFAULT_OMNI_CATEGORIES (derived
 // from the panel registry) rather than duplicated into the JSON.
 const DEFAULT_PREFS: ViewPrefs = {
-  ...(defaultPrefsJson as Omit<ViewPrefs, "printOptions" | "omniCategories">),
+  ...(defaultPrefsJson as Omit<
+    ViewPrefs,
+    | "printOptions"
+    | "omniCategories"
+    | "cardArchiveView"
+    | "suppressArchiveAtomWarning"
+  >),
   printOptions: DEFAULT_PRINT_OPTIONS,
   omniCategories: DEFAULT_OMNI_CATEGORIES,
+  cardArchiveView: {},
+  suppressArchiveAtomWarning: false,
 };
 
 const LEGACY_STORAGE_KEY = "virgil-view-prefs";
@@ -1122,6 +1145,24 @@ export function useViewPrefs() {
     }));
   }, [update]);
 
+  /* ── Card archive view ──────────────────────────────────────────── */
+
+  /** Set a card panel's archive view mode (active / archived / all). */
+  const setCardArchiveView = useCallback(
+    (panel: PanelId, mode: CardArchiveView) => {
+      update((p) => ({
+        ...p,
+        cardArchiveView: { ...p.cardArchiveView, [panel]: mode },
+      }));
+    },
+    [update],
+  );
+
+  /** Persist the "don't ask again" choice for the atom-archive confirm. */
+  const setSuppressArchiveAtomWarning = useCallback((v: boolean) => {
+    update((p) => ({ ...p, suppressArchiveAtomWarning: v }));
+  }, [update]);
+
   /**
    * Close a panel — works for either a docked or a floating panel.
    * Preserves panelModes[id] and floatPositions[id] so re-opening
@@ -1404,6 +1445,8 @@ export function useViewPrefs() {
     toggleOmniCategory,
     resetOmniSide,
     toggleOmniHideAllCards,
+    setCardArchiveView,
+    setSuppressArchiveAtomWarning,
     togglePopout,
     closePopout,
     openPanel,

@@ -211,6 +211,9 @@ export function useReaderViewPrefs(): EditorPaneViewPrefs {
       dividerWidth: "full",
       omniCategories: DEFAULT_OMNI_CATEGORIES,
       omniHideAllCards: { left: false, right: false },
+      // Reader is read-only: no per-card archive view state, never suppressed.
+      cardArchiveView: {},
+      suppressArchiveAtomWarning: false,
     };
   }, [
     persistentPlacements,
