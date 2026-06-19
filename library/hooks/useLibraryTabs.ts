@@ -16,6 +16,10 @@ import {
   type Registry,
 } from "@library/lib/library-store";
 import { useDiskLibraries } from "@library/hooks/useDiskLibraries";
+import {
+  getSession,
+  setLeftPinnedActiveId as persistLeftPinnedActiveId,
+} from "@library/lib/view-session-store";
 
 export type PanelKey = "left" | "right";
 
@@ -291,6 +295,11 @@ export function useLibraryTabs(opts: UseLibraryTabsOptions = {}): LibraryTabsApi
       setHiddenProjectIds(loadIdSet(PROJECT_HIDDEN_KEY));
       setProjectPinnedIds(loadIdSet(PROJECT_PINNED_KEY));
       setPaperPinnedIds(loadIdSet(PAPER_PINNED_KEY));
+      // Restore the left active-tab override from the view-session store
+      // (singleton scope). The `:386` includes-guard makes a stale id that
+      // no longer resolves a no-op, so restoring it is always safe.
+      const restored = getSession().scopes[""]?.left?.leftPinnedActiveId;
+      if (typeof restored === "string") setLeftPinnedActiveId(restored);
     }
     setHydrated(true);
     // Hydrate once per mount; scope/seed are treated as initial-mount-only
@@ -318,6 +327,13 @@ export function useLibraryTabs(opts: UseLibraryTabsOptions = {}): LibraryTabsApi
     if (!hydrated || !projectsEnabled) return;
     saveIdSet(PAPER_PINNED_KEY, paperPinnedIds);
   }, [paperPinnedIds, hydrated, projectsEnabled]);
+  // Persist the left active-tab override into the view-session store so it
+  // survives a reload (Tier A). Singleton (unscoped) left panel only —
+  // `projectsEnabled` is true exactly when `scope` is empty.
+  useEffect(() => {
+    if (!hydrated || !projectsEnabled) return;
+    persistLeftPinnedActiveId("", leftPinnedActiveId);
+  }, [leftPinnedActiveId, hydrated, projectsEnabled]);
 
   // Synthetic Library entries for the per-doc project inner tabs. Not
   // persisted in the registry — derived per-render from `openDocs`. The
