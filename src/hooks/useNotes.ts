@@ -84,7 +84,7 @@ function migrateNotes(raw: unknown): NotesState {
 }
 
 export function useNotes(docId: string | null, externalPristine?: PristineKindApi | null) {
-  const { state, update, stateRef, loaded } = usePersistentState<NotesState>(
+  const { state, update, stateRef, loaded, loadError } = usePersistentState<NotesState>(
     docId,
     "notes.json",
     EMPTY_STATE,
@@ -209,9 +209,12 @@ export function useNotes(docId: string | null, externalPristine?: PristineKindAp
 
   useEffect(() => {
     const handler = (e: Event) => {
-      const { anchorId, kind } = (e as CustomEvent).detail || {};
+      // No kind gate: a reloaded orphan event carries the parser-default
+      // `kind:"note"` for every `\vlid`, so gating could mis-route across
+      // panels (BUG1). `clearCardAnchor` self-filters by anchorId membership
+      // (no-match early-return) — the owning panel decides.
+      const { anchorId } = (e as CustomEvent).detail || {};
       if (!anchorId) return;
-      if (kind !== "note" && kind !== "highlight") return;
       clearCardAnchor(anchorId);
     };
     window.addEventListener("virgil-anchor-orphaned", handler);
@@ -568,6 +571,7 @@ export function useNotes(docId: string | null, externalPristine?: PristineKindAp
     removeHighlightTextObjectId,
     reconcileAnchors,
     loaded,
+    loadError,
     preserveModeBAnchor,
     deleteNote,
     setArchived,

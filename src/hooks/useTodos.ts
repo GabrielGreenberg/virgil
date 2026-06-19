@@ -47,7 +47,7 @@ function migrateTodos(raw: unknown): TodoState {
 }
 
 export function useTodos(docId: string | null, externalPristine?: PristineKindApi | null) {
-  const { state, update, stateRef, loaded } = usePersistentState<TodoState>(
+  const { state, update, stateRef, loaded, loadError } = usePersistentState<TodoState>(
     docId,
     "todos.json",
     EMPTY,
@@ -240,8 +240,12 @@ export function useTodos(docId: string | null, externalPristine?: PristineKindAp
   // listener. O(todos) per event, never per-keystroke.
   useEffect(() => {
     const handler = (e: Event) => {
-      const { anchorId, kind } = (e as CustomEvent).detail || {};
-      if (!anchorId || kind !== "todo") return;
+      // No kind gate: a reloaded orphan event carries the parser-default
+      // `kind:"note"`, so gating on `kind === "todo"` made this panel ignore
+      // its own orphaned todo mark (BUG1). The sweep below self-filters by
+      // anchorId membership (no-match early-return) — the owning panel decides.
+      const { anchorId } = (e as CustomEvent).detail || {};
+      if (!anchorId) return;
       update((prev) => {
         if (!prev.items.some((i) => getTextAnchor(i)?.anchorId === anchorId)) {
           return prev;
@@ -314,6 +318,7 @@ export function useTodos(docId: string | null, externalPristine?: PristineKindAp
     removeParagraphId,
     reconcileAnchors,
     loaded,
+    loadError,
     setTodoAnchor,
     bindAnchor,
     discardPristineTodos,

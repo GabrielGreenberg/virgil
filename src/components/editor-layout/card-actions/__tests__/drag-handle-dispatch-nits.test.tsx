@@ -117,28 +117,51 @@ afterEach(() => {
 // the assertions read the live PM doc, not panel state.
 // ---------------------------------------------------------------------------
 
+/** A card-creation call captured with the anchoring-relevant opts the
+ *  dispatcher passes (`paragraphId` / `targetKind` / `anchor`). BUG2 hinges on
+ *  these three being correct for a non-paragraph block ref. */
+interface CreateCall {
+  anchor: unknown;
+  paragraphId: unknown;
+  targetKind: unknown;
+  opts: unknown;
+}
+
 interface Harness {
   dispatch: (action: DragHandleAction, ref: DragHandleRef) => Promise<void>;
   notify: ReturnType<typeof vi.fn>;
-  createNoteCalls: Array<{ anchor: unknown }>;
+  createNoteCalls: CreateCall[];
   createTodoCalls: Array<{ anchor: unknown; opts: unknown }>;
   createHighlightCalls: Array<{ anchor: unknown }>;
+  createRevisionCalls: CreateCall[];
+  createFootnoteCalls: CreateCall[];
 }
 
 function makeHarness(editor: Editor): Harness {
   const notify = vi.fn();
-  const createNoteCalls: Array<{ anchor: unknown }> = [];
+  const createNoteCalls: CreateCall[] = [];
   const createTodoCalls: Array<{ anchor: unknown; opts: unknown }> = [];
   const createHighlightCalls: Array<{ anchor: unknown }> = [];
+  const createRevisionCalls: CreateCall[] = [];
+  const createFootnoteCalls: CreateCall[] = [];
 
   let n = 0;
   const nextId = () => `card-${++n}`;
 
-  const cardCreation = {
-    createNote: (opts: { anchor?: unknown }) => {
-      createNoteCalls.push({ anchor: opts.anchor });
+  const captureCreate =
+    (sink: CreateCall[]) =>
+    (opts: { anchor?: unknown; paragraphId?: unknown; targetKind?: unknown }) => {
+      sink.push({
+        anchor: opts.anchor,
+        paragraphId: opts.paragraphId,
+        targetKind: opts.targetKind,
+        opts,
+      });
       return { id: nextId() };
-    },
+    };
+
+  const cardCreation = {
+    createNote: captureCreate(createNoteCalls),
     createTodo: (opts: { anchor?: unknown }) => {
       createTodoCalls.push({ anchor: opts.anchor, opts });
       return { id: nextId() };
@@ -147,13 +170,27 @@ function makeHarness(editor: Editor): Harness {
       createHighlightCalls.push({ anchor: opts.anchor });
       return { id: nextId() };
     },
-    // The remaining factory methods are never reached by C/D/E, but the
+    createRevisionComment: captureCreate(createRevisionCalls),
+    // createFootnote returns `{ footnoteId }`, not `{ id }`; capture the
+    // anchoring opts the same way but mint the expected shape.
+    createFootnote: (opts: {
+      anchor?: unknown;
+      paragraphId?: unknown;
+      targetKind?: unknown;
+    }) => {
+      createFootnoteCalls.push({
+        anchor: opts.anchor,
+        paragraphId: opts.paragraphId,
+        targetKind: opts.targetKind,
+        opts,
+      });
+      return { footnoteId: nextId() };
+    },
+    // The remaining factory methods are never reached by these tests, but the
     // dispatcher type-checks the whole API surface; stub them as no-ops.
-    createFootnote: () => ({ footnoteId: nextId() }),
     createCitation: () => ({ id: nextId() }),
     createCutterComment: () => ({ id: nextId() }),
     createReportRequest: () => ({ id: nextId() }),
-    createRevisionComment: () => ({ id: nextId() }),
     createArchiveSnippet: () => ({ id: nextId() }),
   } as unknown as DragHandleActionsDeps["cardCreation"];
 
@@ -180,6 +217,8 @@ function makeHarness(editor: Editor): Harness {
     createNoteCalls,
     createTodoCalls,
     createHighlightCalls,
+    createRevisionCalls,
+    createFootnoteCalls,
   };
 }
 
@@ -354,5 +393,142 @@ describe("Nit E — highlight on an empty block is a clean no-op", () => {
     await h.dispatch("highlight", { kind: "paragraph", id: "para-A" });
     expect(h.createHighlightCalls).toHaveLength(1);
     expect(hasAnyLinkedAnchor(editor)).toBe(true);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// BUG2 — a collapsed-caret card action on a NON-paragraph anchorable block.
+//
+// BUG2 (DIAGNOSIS.md §3) was the lightning menu flattening every cursor anchor
+// to a fake `{kind:"paragraph", id:<blockUuid>}` ref, which `resolveRefRange`
+// could only match against a real paragraph node → null → silent annotation
+// bail → "nothing happens" on a heading / listItem / etc. The CHIP 4 fix is
+// upstream in `ActionsMenuPanel.runAction`: it now emits the REAL node kind
+// (`{kind:"heading"|"listItem", id}`), so the SAME `resolveRefRange` the
+// grab-handle surface already feeds resolves correctly.
+//
+// These tests drive the DISPATCHER directly with the post-fix REAL-kind ref —
+// the contract the fixed `runAction` now produces — and assert the card lands
+// (the dispatcher's resolve+create chain was always correct; BUG2 only ever
+// fed it the wrong ref). The negative test re-feeds the PRE-FIX flattened
+// paragraph ref and locks in that it no-ops, documenting the bug's mechanism.
+// ---------------------------------------------------------------------------
+
+describe("BUG2 — collapsed-caret card action on a non-paragraph block", () => {
+  it("Test A — suggest-edit on a HEADING ref creates a revision-comment on the heading line (Mode-A)", async () => {
+    const editor = mountDoc([
+      {
+        type: "heading",
+        attrs: { level: 2, uuid: "head-A" },
+        content: [{ type: "text", text: "Section Title" }],
+      },
+      {
+        type: "paragraph",
+        attrs: { uuid: "para-A" },
+        content: [{ type: "text", text: "body text" }],
+      },
+    ]);
+    const h = makeHarness(editor);
+
+    // The post-fix runAction emits the REAL node kind for a caret on a heading.
+    await h.dispatch("suggest-edit", { kind: "heading", id: "head-A" });
+
+    // The card lands (BUG2 fixed — no silent no-op).
+    expect(h.createRevisionCalls).toHaveLength(1);
+    // Anchored to the heading's own uuid, recorded with the heading targetKind
+    // (D9 sub-object anchoring depends on this being the real kind).
+    expect(h.createRevisionCalls[0].paragraphId).toBe("head-A");
+    expect(h.createRevisionCalls[0].targetKind).toBe("heading");
+    // A caret (no live range) is a Mode-A anchor — no linkedAnchor mark.
+    expect(h.createRevisionCalls[0].anchor).toBeFalsy();
+    expect(hasAnyLinkedAnchor(editor)).toBe(false);
+    // No silent bail.
+    expect(h.notify).not.toHaveBeenCalled();
+  });
+
+  it("Test B — note on a LISTITEM ref creates a note (user-confirmed bug); content range does not throw", async () => {
+    const editor = mountDoc([
+      {
+        type: "bulletList",
+        attrs: { uuid: "list-A" },
+        content: [
+          {
+            type: "listItem",
+            attrs: { uuid: "li-A" },
+            content: [
+              {
+                type: "paragraph",
+                attrs: { uuid: "li-para" },
+                content: [{ type: "text", text: "list item body" }],
+              },
+            ],
+          },
+        ],
+      },
+    ]);
+    const h = makeHarness(editor);
+
+    // The user-confirmed BUG2 repro (2026-06-19): listItem + caret + Note.
+    // Post-fix runAction emits the real listItem kind. The dispatcher resolves
+    // the container's inner content range and `setTextSelection` over it must
+    // not throw (the lead's atom-block/container resolution decision).
+    await expect(
+      h.dispatch("note", { kind: "listItem", id: "li-A" }),
+    ).resolves.toBeUndefined();
+
+    expect(h.createNoteCalls).toHaveLength(1);
+    expect(h.createNoteCalls[0].paragraphId).toBe("li-A");
+    expect(h.createNoteCalls[0].targetKind).toBe("listItem");
+    // Caret-only ⇒ Mode-A, no range anchor / mark.
+    expect(h.createNoteCalls[0].anchor).toBeFalsy();
+    expect(hasAnyLinkedAnchor(editor)).toBe(false);
+    expect(h.notify).not.toHaveBeenCalled();
+  });
+
+  it("Test C — footnote on a HEADING ref lands a footnote (not a no-op)", async () => {
+    const editor = mountDoc([
+      {
+        type: "heading",
+        attrs: { level: 2, uuid: "head-A" },
+        content: [{ type: "text", text: "Section Title" }],
+      },
+    ]);
+    const h = makeHarness(editor);
+
+    // footnote is an annotation action too — the same flattening previously
+    // no-op'd it on a heading. Post-fix it resolves to the heading line range
+    // and collapses the selection at range.to to insert the atom.
+    await h.dispatch("footnote", { kind: "heading", id: "head-A" });
+
+    expect(h.createFootnoteCalls).toHaveLength(1);
+    expect(h.notify).not.toHaveBeenCalled();
+  });
+
+  it("Negative (RED-lock) — the PRE-FIX flattened {kind:paragraph, id:headingUuid} silently no-ops", async () => {
+    // This is the exact ref the OLD `runAction` produced for a caret on a
+    // heading: a paragraph ref carrying the HEADING's uuid. `resolveRefRange`
+    // cannot match it (no paragraph node carries a heading uuid) → null →
+    // silent annotation bail. The fix is UPSTREAM in `runAction` (it now emits
+    // the real kind), so at the dispatcher level a genuinely-mislabeled
+    // annotation ref correctly resolves to nothing. This documents the no-op
+    // the flattening produced and stays GREEN before AND after the fix.
+    const editor = mountDoc([
+      {
+        type: "heading",
+        attrs: { level: 2, uuid: "head-A" },
+        content: [{ type: "text", text: "Section Title" }],
+      },
+    ]);
+    const h = makeHarness(editor);
+
+    await h.dispatch("suggest-edit", { kind: "paragraph", id: "head-A" });
+
+    // No card created (the silent annotation bail) ...
+    expect(h.createRevisionCalls).toHaveLength(0);
+    expect(h.createNoteCalls).toHaveLength(0);
+    // ... no user feedback (annotation actions don't notifyStaleRef) ...
+    expect(h.notify).not.toHaveBeenCalled();
+    // ... and no mark.
+    expect(hasAnyLinkedAnchor(editor)).toBe(false);
   });
 });

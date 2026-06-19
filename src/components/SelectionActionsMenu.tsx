@@ -18,7 +18,8 @@ import { useEffect, useRef, useState, type RefObject } from "react";
 import { createPortal } from "react-dom";
 import type { Editor } from "@tiptap/react";
 import { NodeSelection } from "@tiptap/pm/state";
-import { resolveAnchorableNode, ensureAnchorUuid } from "@/lib/anchor-uuid";
+import { resolveAnchorableNode, resolveAnchorUuidAndKind } from "@/lib/anchor-uuid";
+import type { TextObjectKind } from "@/text-objects/types";
 import { IconZap } from "./editor-layout/panel-icons";
 import { ActionsMenuPanel } from "./ActionsMenuPanel";
 import { useHint } from "./Hint";
@@ -144,6 +145,12 @@ export function SelectionActionsMenu({
   const [placement, setPlacement] = useState<Placement>(INVISIBLE_PLACEMENT);
   const [menuTarget, setMenuTarget] = useState<{
     uuid: string;
+    // The REAL anchorable node kind at the caret/head (heading, listItem, …,
+    // else "paragraph"). Threaded into ActionsMenuPanel so the cursor-mode
+    // dispatch ref carries the real kind instead of a flattened "paragraph"
+    // (the BUG2 fix). Both the dispatch ref and the grey-out probe derive from
+    // this ONE field, so they cannot diverge on identity.
+    kind: TextObjectKind;
     range: { from: number; to: number };
     mode: "selection" | "cursor";
   } | null>(null);
@@ -323,11 +330,12 @@ export function SelectionActionsMenu({
       if (!ed.isFocused) return;
       const sel = ed.state.selection;
       if (sel instanceof NodeSelection) return;
-      const uuid = ensureAnchorUuid(ed.view, sel.head);
-      if (!uuid) return;
+      const resolved = resolveAnchorUuidAndKind(ed.view, sel.head);
+      if (!resolved) return;
       e.preventDefault();
       setMenuTarget({
-        uuid,
+        uuid: resolved.uuid,
+        kind: resolved.kind,
         range: { from: sel.from, to: sel.to },
         mode: sel.empty ? "cursor" : "selection",
       });
@@ -346,10 +354,14 @@ export function SelectionActionsMenu({
 
   const openMenu = () => {
     if (!placement.range) return;
-    const uuid = ensureAnchorUuid(editor.view, editor.state.selection.head);
-    if (!uuid) return;
+    const resolved = resolveAnchorUuidAndKind(
+      editor.view,
+      editor.state.selection.head,
+    );
+    if (!resolved) return;
     setMenuTarget({
-      uuid,
+      uuid: resolved.uuid,
+      kind: resolved.kind,
       range: placement.range,
       mode: placement.mode,
     });
@@ -397,6 +409,7 @@ export function SelectionActionsMenu({
       <ActionsMenuPanel
         editor={editor}
         paragraphUuid={menuTarget.uuid}
+        nodeKind={menuTarget.kind}
         range={menuTarget.range}
         mode={menuTarget.mode}
         triggerRect={{

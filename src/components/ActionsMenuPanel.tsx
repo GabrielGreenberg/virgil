@@ -40,6 +40,7 @@ import { useRef, useState } from "react";
 import type { Editor } from "@tiptap/react";
 import { useDragHandleMenu } from "./editor-layout/card-actions/drag-handle-menu-context";
 import type { DragHandleAction } from "./DragHandleMenu";
+import type { TextObjectKind } from "@/text-objects/types";
 import {
   cardActionRows,
   exampleRun,
@@ -118,10 +119,22 @@ export interface ActionsMenuPanelProps {
   editor: Editor;
   /** Target paragraph for action dispatch. */
   paragraphUuid: string;
+  /**
+   * The REAL anchorable node kind at the caret (heading / listItem /
+   * blockquote / codeBlock / … else "paragraph"), resolved ONCE at menu-open by
+   * `resolveAnchorUuidAndKind` and carried on the same `menuTarget` as `uuid`.
+   * In cursor mode `runAction` emits the dispatch ref with THIS kind (not a
+   * flattened "paragraph") so `resolveRefRange` lands a non-null range for
+   * non-paragraph carets — the BUG2 fix (see
+   * docs/memos/action-menu-anchor-bugs/). The grey-out probe intentionally stays
+   * a `{kind:"cursor"}` ref (see `cardRows` below); both derive from one source.
+   */
+  nodeKind: TextObjectKind;
   /** Live selection range; used for `kind: "selection"` dispatch. */
   range: { from: number; to: number };
   /** "selection" → dispatch with `kind: "selection"` + range.
-   *  "cursor" → dispatch with `kind: "paragraph"` and grey out Highlight. */
+   *  "cursor" → dispatch with `kind: nodeKind` (the real node kind) and grey
+   *  out Highlight. */
   mode: "selection" | "cursor";
   /** The trigger element's bounding rect — the panel computes its own
    *  placement (below / above flip + viewport clamp) from this. */
@@ -156,6 +169,7 @@ function getActiveDescendantHost(): HTMLElement | null {
 export function ActionsMenuPanel({
   editor,
   paragraphUuid,
+  nodeKind,
   range,
   mode,
   triggerRect,
@@ -203,9 +217,18 @@ export function ActionsMenuPanel({
 
   const runAction = (action: DragHandleAction) => {
     if (!dragHandleMenu) return;
+    // BUG2 (Path A): in cursor mode dispatch the REAL anchorable node kind
+    // (`nodeKind`) — NOT a flattened "paragraph". A heading/listItem caret used
+    // to emit `{kind:"paragraph", id:<headingUuid>}`, which `resolveRefRange`
+    // could never match (no paragraph carries a heading uuid) → null → silent
+    // annotation bail. With the real kind it resolves the heading line / list
+    // item content range and the card lands. The grey-out probe below stays a
+    // `{kind:"cursor"}` ref ON PURPOSE — see the `cardRows` comment; both derive
+    // from the ONE `menuTarget` (uuid + kind), so probe and dispatch can never
+    // diverge on identity.
     const ref =
       mode === "cursor"
-        ? { kind: "paragraph" as const, id: paragraphUuid }
+        ? { kind: nodeKind, id: paragraphUuid }
         : {
             kind: "selection" as const,
             paragraphId: paragraphUuid,
@@ -394,6 +417,16 @@ export function ActionsMenuPanel({
   // state: cursor mode → a collapsed-caret `cursor` ref (no live range, so
   // `highlight` — selection-`"required"` — greys); selection mode → the live
   // range. `canEdit` greys EVERY row when the partner holds the pen.
+  //
+  // BUG2 / Path A — INTENTIONAL probe↔dispatch asymmetry: this applicability
+  // PROBE uses a `{kind:"cursor"}` ref while `runAction`'s DISPATCH uses the
+  // real `{kind: nodeKind}` ref. The probe MUST stay `cursor` so
+  // `refHasLiveRange`/`kindAllowsCardAction` correctly grey `highlight` at a
+  // caret (a cursor has no live range). The dispatch must carry the real node
+  // kind so `resolveRefRange` lands a non-null range (the heading line / list
+  // item content). The asymmetry is by design, not a bug to "fix" — and since
+  // BOTH derive from the ONE `menuTarget` (same `paragraphUuid`, same
+  // `nodeKind`/`range`), they cannot diverge on anchor identity.
   const cardRows: DecoratedMenuRow[] = LIGHTNING_CARD_ROWS.map((entry) => {
     const applyRef =
       mode === "cursor"

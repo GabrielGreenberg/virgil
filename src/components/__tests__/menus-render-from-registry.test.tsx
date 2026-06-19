@@ -224,6 +224,11 @@ describe("ActionsMenuPanel action list renders from the registry", () => {
         <ActionsMenuPanel
           editor={editorStub}
           paragraphUuid="p7"
+          // BUG2/Path A: cursor-mode dispatch now emits the REAL node kind.
+          // A paragraph caret resolves to kind "paragraph", so this keeps the
+          // cursor-mode assertion below (`{ kind: "paragraph", id: "p7" }`)
+          // faithful to the live behavior for a paragraph anchor.
+          nodeKind="paragraph"
           range={{ from: 3, to: 9 }}
           mode={mode}
           triggerRect={RECT}

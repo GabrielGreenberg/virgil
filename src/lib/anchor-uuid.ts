@@ -19,6 +19,8 @@ import type { Node as PMNode } from "@tiptap/pm/model";
 import { isAnchorableNode } from "@/lib/marginalia";
 import { generateShortId } from "@/lib/uuid";
 import { markAnchorMint } from "@/lib/anchor-mint-signal";
+import { isTextObjectKind } from "@/text-objects/text-object-registry";
+import type { TextObjectKind } from "@/text-objects/types";
 
 const DEFERRING_PARENTS = new Set([
   "listItem",
@@ -62,18 +64,27 @@ export function resolveAnchorableNode(
 }
 
 /**
- * Ensure the anchorable node at `pos` has a UUID. Assigns one if missing.
- * Collects all existing UUIDs in the document to avoid collisions.
- * Returns the UUID or null if no anchorable node was found.
+ * Resolve the anchorable node at `pos`, minting its UUID if missing, and
+ * return the freshly-resolved `{ uuid, node }` pair WITHOUT a stale re-read of
+ * the node after the `setNodeMarkup` dispatch.
+ *
+ * `setNodeMarkup` replaces the node in the doc, so re-reading `node.attrs.uuid`
+ * off the OLD `resolveAnchorableNode` result (or re-resolving by position after
+ * the dispatch) is fragile. Instead we keep the resolved `node` object — its
+ * `type.name` is what callers need for the kind and is unchanged by the mint —
+ * and return the uuid string we just generated. This is the single mint surface
+ * both `ensureAnchorUuid` and `resolveAnchorUuidAndKind` factor through.
+ *
+ * Returns null when no anchorable node was found OR the mint dispatch threw.
  */
-export function ensureAnchorUuid(
+function ensureAnchorUuidNode(
   view: EditorView,
   pos: number,
-): string | null {
+): { uuid: string; node: PMNode } | null {
   const result = resolveAnchorableNode(view, pos);
   if (!result) return null;
   const { node, nodePos } = result;
-  if (node.attrs?.uuid) return node.attrs.uuid as string;
+  if (node.attrs?.uuid) return { uuid: node.attrs.uuid as string, node };
   const existing = new Set<string>();
   view.state.doc.descendants((n) => {
     if (n.attrs?.uuid) existing.add(n.attrs.uuid as string);
@@ -90,8 +101,52 @@ export function ensureAnchorUuid(
     // clock (see @/lib/anchor-mint-signal + the SYNTHESIS memo).
     markAnchorMint(tr);
     view.dispatch(tr);
-    return newUuid;
+    // Return the uuid we just minted + the pre-mint node object. We do NOT
+    // re-read `node.attrs.uuid` (the dispatched node is a fresh instance) — but
+    // `node.type.name` is invariant across the mint, so the kind is faithful.
+    return { uuid: newUuid, node };
   } catch {
     return null;
   }
+}
+
+/**
+ * Ensure the anchorable node at `pos` has a UUID. Assigns one if missing.
+ * Collects all existing UUIDs in the document to avoid collisions.
+ * Returns the UUID or null if no anchorable node was found.
+ */
+export function ensureAnchorUuid(
+  view: EditorView,
+  pos: number,
+): string | null {
+  return ensureAnchorUuidNode(view, pos)?.uuid ?? null;
+}
+
+/**
+ * Resolve the anchorable node at `pos` to `{ uuid, kind }`, minting the UUID if
+ * missing. The `kind` is the resolved node's real type name when it is a
+ * recognized text-object kind (heading, listItem, blockquote, codeBlock, …),
+ * else `"paragraph"`.
+ *
+ * This is the Path-A primitive for the lightning/Cmd-/ action surface: it stops
+ * the menu from flattening every caret anchor to a fake `{kind:"paragraph"}`
+ * dispatch ref. `resolveAnchorableNode` already computes the real kind; this fn
+ * surfaces it (alongside the uuid) so `runAction` can emit the REAL node kind
+ * and `resolveRefRange` resolves a non-null range for heading/listItem carets
+ * (the BUG2 fix — see docs/memos/action-menu-anchor-bugs/).
+ *
+ * Returns null on the same conditions as `ensureAnchorUuid` (no anchorable node
+ * / mint dispatch threw), so callers can keep the old `if (!uuid) return;` gate.
+ */
+export function resolveAnchorUuidAndKind(
+  view: EditorView,
+  pos: number,
+): { uuid: string; kind: TextObjectKind } | null {
+  const resolved = ensureAnchorUuidNode(view, pos);
+  if (!resolved) return null;
+  const name = resolved.node.type.name;
+  return {
+    uuid: resolved.uuid,
+    kind: isTextObjectKind(name) ? name : "paragraph",
+  };
 }

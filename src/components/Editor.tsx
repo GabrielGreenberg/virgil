@@ -9,11 +9,11 @@ import {
   jumpToLink,
   jumpToCard,
   deleteLink,
-  reanchorByText,
   resolveAnchorRange,
-  type LinkedAnchorKind,
 } from "@/links/links";
 import type { Link as VirgilLink, CardWithLinks } from "@/links/links";
+import { applyLinkedAnchorsImpl } from "@/links/_shared/apply-linked-anchors";
+import type { ModeBReapplyRecord } from "@/links/_shared/reapply-mode-b-anchors";
 import { alignEntryToY, findEditorScrollFor } from "@/components/editor-layout/layout-scroll";
 import {
   isAnchorableNode,
@@ -300,13 +300,13 @@ export interface EditorHandle {
   /** Scroll to a raw doc position (used by panel prev/next navigation). */
   scrollToPos: (pos: number) => void;
   /**
-   * Re-apply linked-anchor marks from sidecar records. Called after load
-   * and whenever the editor is first ready. Uses text-snapshot search via
-   * `reanchorByText` — records whose text isn't found are skipped.
+   * Re-apply / reconcile linked-anchor marks from sidecar records. Called once
+   * per doc-open from the EditorPane load reconcile pass. Reconcile-not-skip:
+   * a present mark whose kind/linkCard/tintColor disagrees with its record is
+   * re-stamped in place (BUG1); an absent one is re-anchored by text snapshot
+   * (records whose text isn't found are skipped). See `applyLinkedAnchorsImpl`.
    */
-  applyLinkedAnchors: (
-    records: Array<{ anchorId: string; kind: LinkedAnchorKind; text: string }>,
-  ) => void;
+  applyLinkedAnchors: (records: ModeBReapplyRecord[]) => void;
   /** Collapse all top-level heading sections (fold every section). */
   collapseAllSections: () => void;
   /** Expand all previously folded sections. */
@@ -1516,22 +1516,10 @@ const VirgilEditor = forwardRef<EditorHandle, EditorProps>(function VirgilEditor
     },
     applyLinkedAnchors(records): void {
       if (!editor) return;
-      // Skip records whose anchor id is already present (already marked).
-      const present = new Set<string>();
-      editor.state.doc.descendants((node) => {
-        if (!node.isText) return true;
-        for (const m of node.marks) {
-          if (m.type.name === "linkedAnchor" && m.attrs.anchorId) {
-            present.add(m.attrs.anchorId as string);
-          }
-        }
-        return true;
-      });
-      for (const rec of records) {
-        if (!rec.anchorId || !rec.text) continue;
-        if (present.has(rec.anchorId)) continue;
-        reanchorByText(editor, rec.kind, rec.text, rec.anchorId);
-      }
+      // Reconcile-not-skip: re-stamp present marks whose kind/linkCard/tintColor
+      // disagree with the sidecar record (BUG1), re-anchor absent ones by text.
+      // The ONE shared impl both production and the RC-B tests import.
+      applyLinkedAnchorsImpl(editor, records);
     },
     collapseAllSections(): void {
       if (!editor) return;

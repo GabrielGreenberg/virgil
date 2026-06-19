@@ -11,6 +11,7 @@ import { useCitationDisplayContext } from "../contexts/citation-display";
 import { useCardCreationContext } from "../contexts/card-creation";
 import { useRecentlyAddedId } from "../contexts/recently-added";
 import { createLinkedAnchor, updateLinkedAnchorCard } from "@/links/links";
+import { defaultTintForLinkedAnchorKind } from "@/cards/legacy-token-crosswalk";
 
 type NotesHook = ReturnType<typeof useNotes>;
 
@@ -70,7 +71,7 @@ export function NotesHost(p: NotesHostProps) {
           "highlight",
           { from, to },
           undefined,
-          { tintColor: "#fbbf24" },
+          { tintColor: defaultTintForLinkedAnchorKind("highlight") },
         );
         if (!record) return null;
         const card = createHighlight({

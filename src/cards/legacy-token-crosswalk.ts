@@ -195,6 +195,24 @@ export function dataLinkCardTokenForLegacyMarkKind(kind: string): string | null 
   return legacyDataKindForCardKind(cardKind);
 }
 
+/**
+ * The persistent highlight TINT a `linkedAnchor` of the given kind paints, or
+ * `null` for every non-highlight kind. The SINGLE source for the Adobe-style
+ * yellow band: the three create sites (the drag-handle Highlight action, the
+ * EditorPane highlight action, the notes-host Highlight) AND the once-per-doc
+ * reload re-stamp all derive the tint from HERE, so a highlight's tint is
+ * byte-identical on create and on reload — closing the "highlight tint vanishes
+ * on reload" class (the serializer drops `data-tint-color`, so reload must
+ * reconstruct it from the kind, not from the `.tex`).
+ *
+ * `kind` is the legacy `linkedAnchor.kind` namespace ("highlight" / "note" /
+ * "revision" / …). A future per-card `highlightColor` override is layered by the
+ * caller (it prefers a non-null card color), never here — this is the DEFAULT.
+ */
+export function defaultTintForLinkedAnchorKind(kind: string): string | null {
+  return kind === "highlight" ? "#fbbf24" : null;
+}
+
 if (process.env.NODE_ENV !== "production") {
   // R-C dev pin: the two divergent mappings the CSS contract hinges on. If a
   // future edit changes either, the on-disk/CSS tokens drift silently — make

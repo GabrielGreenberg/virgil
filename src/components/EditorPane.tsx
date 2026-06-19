@@ -84,7 +84,10 @@ import { SelectionsProvider, useAnchoredSelectionSlots } from "./editor-layout/c
 import { cardStore, type AnchoredCardRef } from "@/links/_shared/anchored-card-store";
 import type { EntityKind } from "@/links/_shared/entity-hover";
 import { useAnchorHighlightReconciler } from "@/links/_shared/useAnchorHighlightReconciler";
-import { useLinkedAnchorReconciler } from "@/links/_shared/useLinkedAnchorReconciler";
+import {
+  useLinkedAnchorReconciler,
+  reapOrphanLinkedAnchors,
+} from "@/links/_shared/useLinkedAnchorReconciler";
 import { useTextHoverBridge } from "@/links/_shared/useTextHoverBridge";
 import { usePanelCardHoverBridge } from "@/links/_shared/usePanelCardHoverBridge";
 import { usePlacement, suppressNextPlacement } from "@/links/_shared/usePlacement";
@@ -234,6 +237,7 @@ import {
   resolveCardAnchor,
 } from "@/links/resolve-card-anchor";
 import { reapplyModeBAnchors } from "@/links/_shared/reapply-mode-b-anchors";
+import { defaultTintForLinkedAnchorKind } from "@/cards/legacy-token-crosswalk";
 import type { MarginaliaMarker } from "@/lib/marginalia";
 import type {
   PanelPlacement,
@@ -1334,6 +1338,20 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
     revisionsHookRaw.loaded &&
     reportsHookRaw.loaded &&
     archiveHook.loaded;
+  // True if ANY card sidecar's initial read THREW (corrupt/truncated JSON or a
+  // transient FSA error). Such a kind loaded as the EMPTY default, so its
+  // collection is NOT authoritative — an empty array does not mean "no cards of
+  // this kind own an anchor", it means "we don't know". The destructive orphan
+  // reaper infers anchor ownership from these collections, so it MUST stand
+  // down when any of them failed to load; otherwise a single bad sidecar read
+  // would strip every live `\vlid` mark of that kind and autosave the loss.
+  const anyCardSidecarLoadError =
+    notesHookRaw.loadError ||
+    todosHook.loadError ||
+    cutterHookRaw.loadError ||
+    revisionsHookRaw.loadError ||
+    reportsHookRaw.loadError ||
+    archiveHook.loadError;
   useEffect(() => {
     if (!editor || !docContentReady || !allCardSidecarsLoaded) return;
     if (modeAReconciledDocRef.current === docId) return;
@@ -1353,6 +1371,7 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
         todoItems: todosHook.items,
         comments: revisionsHookRaw.cards,
         cutterCards: cutterHookRaw.cards,
+        reports: reportsHookRaw.cards,
         highlights: notesHookRaw.highlights,
       });
     }
@@ -1362,10 +1381,40 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
     revisionsHookRaw.reconcileAnchors(editor);
     reportsHookRaw.reconcileAnchors(editor);
     archiveHook.reconcileAnchors(editor);
+    // LAST, once: reap any in-doc `linkedAnchor` mark with no live owning card
+    // (e.g. a parser-resurrected orphan `\vlid` whose card was deleted before
+    // this reload). Build the alive-set from the now-reconciled collections —
+    // the SAME six the `useLinkedAnchorReconciler` hook tracks — so a mark we
+    // just re-applied/reconciled above is alive and is NOT reaped.
+    const aliveIds = new Set<string>();
+    for (const cards of [
+      notesHookRaw.notes,
+      notesHookRaw.highlights,
+      cutterHookRaw.cards,
+      revisionsHookRaw.cards,
+      reportsHookRaw.cards,
+      todosHook.items,
+    ]) {
+      for (const c of cards) {
+        const ta = getTextAnchor(c);
+        if (ta) aliveIds.add(ta.anchorId);
+      }
+    }
+    // DESTRUCTIVE: only reap when every sidecar loaded SUCCESSFULLY. If any
+    // read threw, that kind's collection is the empty default (non-authoritative
+    // — see `anyCardSidecarLoadError`), so `aliveIds` is missing its live
+    // anchors and reaping now would strip them and persist the loss. Stand down
+    // on a load error; the constructive re-apply/reconcile above already ran
+    // (they only ADD/correct marks, so partial data is safe). A future clean
+    // reload re-runs this whole pass once the read succeeds.
+    if (!anyCardSidecarLoadError) {
+      reapOrphanLinkedAnchors(editor, aliveIds);
+    }
   }, [
     editor,
     docContentReady,
     allCardSidecarsLoaded,
+    anyCardSidecarLoadError,
     docId,
     notesHookRaw.reconcileAnchors,
     todosHook.reconcileAnchors,
@@ -1382,6 +1431,7 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
     todosHook.items,
     revisionsHookRaw.cards,
     cutterHookRaw.cards,
+    reportsHookRaw.cards,
   ]);
 
   // Compile state — `pdfBlobUrl`, `lastCompileTime`, `pdfStale` live
@@ -3054,7 +3104,7 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
       "highlight",
       undefined,
       undefined,
-      { tintColor: "#fbbf24" },
+      { tintColor: defaultTintForLinkedAnchorKind("highlight") },
     );
     if (!record) return;
     const card = cardCreation.createHighlight({
@@ -3770,6 +3820,15 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
 
   useLinkedAnchorReconciler({
     editor,
+    // DATA-LOSS gate (see the hook's `ready` JSDoc): the synchronous orphan
+    // sweep must not run until every sidecar has loaded AND the doc content is
+    // in the editor — otherwise the alive-set is incomplete and the sweep reaps
+    // live annotations on doc-open. SAME gate as the load-reconcile pass above.
+    // `!anyCardSidecarLoadError` extends the gate: if any sidecar read THREW it
+    // loaded as the empty default, so its anchors are missing from the alive-set
+    // — forcing `ready:false` keeps the reaper holding until a clean reload, the
+    // EditorPane-level mirror of the reaper stand-down in that reconcile pass.
+    ready:       allCardSidecarsLoaded && docContentReady && !anyCardSidecarLoadError,
     notes:       notesHook.notes,
     highlights:  notesHook.highlights,
     cutterCards: cutterHook.cards,

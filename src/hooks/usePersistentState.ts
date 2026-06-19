@@ -62,6 +62,19 @@ export interface PersistentStateApi<S> {
    * consumers can ignore it.
    */
   loaded: boolean;
+  /**
+   * True when the initial read for the current `docId` THREW (corrupt/truncated
+   * sidecar JSON, or a transient FSA error). DISTINCT from `loaded`: an errored
+   * read still flips `loaded` (the read terminated) but leaves `state` at the
+   * EMPTY default, so the in-memory collection is NOT authoritative. Any
+   * DESTRUCTIVE consumer that infers "this anchor has no owning card" from an
+   * empty collection (the linkedAnchor orphan reaper) MUST gate on `!loadError`
+   * — otherwise a single sidecar read error would reap every live `\vlid` mark
+   * of that kind and autosave the loss. Constructive consumers (Mode-B re-apply
+   * / Mode-A reconcile) are safe on partial data and keep gating on `loaded`
+   * alone. Reset to false on every `docId` change. Additive.
+   */
+  loadError: boolean;
 }
 
 /**
@@ -97,6 +110,19 @@ export function usePersistentState<S>(
   // never fires over the pre-load default. Reset on docId change below.
   const [loaded, setLoaded] = useState(false);
 
+  // True when the initial read THREW (corrupt/truncated sidecar JSON, or a
+  // transient FSA read error — `readSidecarIfExists` returns null only for a
+  // genuinely-absent file and re-throws everything else). DISTINCT from
+  // `loaded`: an errored read still flips `loaded` (the read terminated) but
+  // leaves `state` at the EMPTY default, so the in-memory cards are NOT
+  // authoritative. Any DESTRUCTIVE consumer that infers "this anchor has no
+  // owning card" from an empty collection (the linkedAnchor orphan reaper) MUST
+  // gate on `!loadError` — otherwise a sidecar read error would make it reap
+  // every live `\vlid` mark of that kind and autosave the loss. Constructive
+  // consumers (the Mode-B re-apply / Mode-A reconcile) are safe on partial data
+  // and keep gating on `loaded` alone. Reset on docId change below.
+  const [loadError, setLoadError] = useState(false);
+
   // Debounce machinery: track the latest pending write so we can flush
   // it (synchronously where needed) on doc switch / unmount. `pendingRef`
   // is non-null iff a debounced write is scheduled; the timer id is
@@ -128,6 +154,7 @@ export function usePersistentState<S>(
   useEffect(() => {
     hasMutatedRef.current = false;
     setLoaded(false);
+    setLoadError(false);
     let cancelled = false;
     if (!docId) {
       setState(defaultValue);
@@ -160,6 +187,10 @@ export function usePersistentState<S>(
       })
       .catch(() => {
         if (cancelled) return;
+        // The read terminated (so release the reconcile gate) but FAILED, so the
+        // empty default is NOT authoritative — flag it so the destructive orphan
+        // reaper stands down for this kind (no mass-reap of live marks).
+        setLoadError(true);
         setLoaded(true);
       });
     return () => {
@@ -201,9 +232,17 @@ export function usePersistentState<S>(
 
   const update = useCallback(
     (fn: (prev: S) => S) => {
-      hasMutatedRef.current = true;
       setState((prev) => {
         const next = fn(prev);
+        // No-op update (referentially-equal `next`) → don't mark mutated and
+        // don't arm a redundant byte-identical write. This matters now that the
+        // orphan-listener kind gates are dropped: ALL panels call
+        // `clearCardAnchor()` on every `virgil-anchor-orphaned` event, and the
+        // four NON-owning panels self-filter to a state no-op (`return prev`).
+        // Without this guard each would still schedule an identical `writeSidecar`
+        // and stamp `hasMutatedRef` (spuriously arming the loader-stomp guard).
+        if (next === prev) return prev;
+        hasMutatedRef.current = true;
         if (debounceMs <= 0) {
           void persist(next);
         } else {
@@ -236,5 +275,5 @@ export function usePersistentState<S>(
     };
   }, [docId, flushPending]);
 
-  return { state, setState, update, persist, stateRef, loaded };
+  return { state, setState, update, persist, stateRef, loaded, loadError };
 }

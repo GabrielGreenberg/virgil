@@ -58,6 +58,7 @@ import {
   isTextObjectKind,
 } from "@/text-objects/text-object-registry";
 import { isAtomNode } from "@/lib/tiptap/atom-registry";
+import { defaultTintForLinkedAnchorKind } from "@/cards/legacy-token-crosswalk";
 import type {
   ConfirmDescriptor,
   TextObjectKind,
@@ -196,8 +197,18 @@ export function useDragHandleActions(deps: DragHandleActionsDeps) {
         // this is the actual landing point for the "the block was already
         // removed" case (the per-case `outerRangeFor` guards below only fire
         // on the rarer divergence where the ref resolves here but not there).
-        // Annotation actions still bail silently: nothing is at stake. See
-        // post-refactor followup B1 + Nit D.
+        // Annotation actions still bail silently for the USER: nothing is at
+        // stake. See post-refactor followup B1 + Nit D. But a SILENT bail is
+        // exactly what hid BUG2 for a release (a mislabeled ref that resolves
+        // null → no card, no feedback). Surface a dev-only console.warn for the
+        // annotation class so the next ref-resolution regression is visible in
+        // the console without changing any production behavior.
+        if (!LIFECYCLE_ACTIONS.has(action) && process.env.NODE_ENV !== "production") {
+          console.warn(
+            `[ActionsMenu] annotation action "${action}" could not resolve its ref; no card created.`,
+            ref,
+          );
+        }
         if (LIFECYCLE_ACTIONS.has(action)) {
           notifyStaleRef(lifecycleLabel(action), ref, notify);
         }
@@ -339,7 +350,7 @@ export function useDragHandleActions(deps: DragHandleActionsDeps) {
           // paragraph AND any zero-content range short-circuit cleanly here.
           if (!text) break;
           const record = createLinkedAnchor(ed, "highlight", undefined, undefined, {
-            tintColor: "#fbbf24",
+            tintColor: defaultTintForLinkedAnchorKind("highlight"),
           });
           if (!record) break;
           const card = cardCreation.createHighlight({

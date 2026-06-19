@@ -164,7 +164,7 @@ export function useCutter(
   docId: string | null,
   externalPristine?: PristineKindApi | null,
 ) {
-  const { state, update, stateRef, loaded } = usePersistentState<CutterState>(
+  const { state, update, stateRef, loaded, loadError } = usePersistentState<CutterState>(
     docId,
     "cutter.json",
     EMPTY_STATE,
@@ -554,15 +554,12 @@ export function useCutter(
   // scoped listener handles both card kinds.
   useEffect(() => {
     const handler = (e: Event) => {
-      const { anchorId, kind } = (e as CustomEvent).detail || {};
+      // No kind gate: a reloaded orphan event carries the parser-default
+      // `kind:"note"`, so gating made this panel ignore its own orphaned
+      // cutter mark (BUG1). `clearCardAnchor` self-filters by anchorId
+      // membership (no-match early-return) — the owning panel decides.
+      const { anchorId } = (e as CustomEvent).detail || {};
       if (!anchorId) return;
-      // Accept legacy "cut" plus the two new kinds.
-      if (
-        kind !== "cut" &&
-        kind !== "cutter-comment" &&
-        kind !== "cutter-suggestion"
-      )
-        return;
       clearCardAnchor(anchorId);
     };
     window.addEventListener("virgil-anchor-orphaned", handler);
@@ -585,6 +582,7 @@ export function useCutter(
     removeCardParagraphId,
     reconcileAnchors,
     loaded,
+    loadError,
     deleteCard,
     setArchived,
     cloneComment,

@@ -41,7 +41,7 @@ function migrateArchive(raw: unknown): ArchiveState {
 }
 
 export function useArchive(docId: string | null) {
-  const { state, setState, update, persist, stateRef, loaded } =
+  const { state, setState, update, persist, stateRef, loaded, loadError } =
     usePersistentState<ArchiveState>(docId, "archive.json", EMPTY, {
       migrate: migrateArchive,
       persistMigrationOnLoad: true,
@@ -198,6 +198,7 @@ export function useArchive(docId: string | null) {
     removeParagraphId,
     reconcileAnchors,
     loaded,
+    loadError,
     restoreSnippet,
     deleteSnippet,
     setArchived,
