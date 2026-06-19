@@ -22,10 +22,20 @@ import LeftListRow, {
   STATUS_DOT_COL_WIDTH,
   type RowActions,
 } from "./LeftListRow";
+import { type PanelKey } from "@library/hooks/useLibraryTabs";
+import { useListView } from "@library/lib/view-session-store";
 
 interface Props {
   entries: CatalogEntry[];
   bibByKey: Map<string, BibEntry>;
+  /** View-session scope: '' for the inline Library tab, 'outer:<libId>'
+   *  for a tear-out outer-tab instance. */
+  scope: string;
+  /** Which panel this list lives in (per-panel persistence key). */
+  panel: PanelKey;
+  /** The active library's id — the per-(panel,libId) key under which this
+   *  list's query / sort / scroll are persisted in the view-session store. */
+  libId: string;
   /** Highlighted rows. A plain click replaces this with a single key; a
    *  cmd/ctrl-click toggles one key; a shift-click adds the range from
    *  `anchorKey` to the clicked row in the current sort/filter order. */
@@ -54,6 +64,9 @@ interface Props {
 export default function LeftList({
   entries,
   bibByKey,
+  scope,
+  panel,
+  libId,
   selectedKeys,
   anchorKey,
   onSelectKeys,
@@ -63,15 +76,18 @@ export default function LeftList({
   dotToneFor,
   onRowViewed,
 }: Props) {
-  const [query, setQuery] = useState("");
+  // Search query is persisted per-(panel,libId) in the view-session store,
+  // so it survives reload AND the LeftList per-tab remount.
+  const { query, setQuery } = useListView(scope, panel, libId);
   const [widths, setWidths] = useState<Record<ResizableColId, number>>(DEFAULT_WIDTHS);
   const [sort, setSort] = useState<{ col: SortColId; dir: SortDir }>({
     col: "year",
     dir: "desc",
   });
 
-  // Hydrate from localStorage on mount (client-only — server render uses
-  // the defaults so HTML is stable).
+  // Hydrate widths/sort from localStorage on mount (client-only — server
+  // render uses the defaults so HTML is stable). (Sort + widths move to the
+  // store in a later step.)
   useEffect(() => {
     setWidths(loadWidths());
     setSort(loadSort());

@@ -658,6 +658,7 @@ export default function LibraryView({
     return (
     <TabbedLibraryPanel
       panel={panel}
+      scope={scope}
       registry={libraryTabs.registry}
       tabs={panel === "left" ? libraryTabs.leftTabs : libraryTabs.rightTabs}
       libraryById={libraryTabs.libraryById}
