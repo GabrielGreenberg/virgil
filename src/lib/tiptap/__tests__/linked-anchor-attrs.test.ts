@@ -33,10 +33,21 @@ describe("linkedAnchorRenderAttrs — annotation kinds unchanged", () => {
     ).toBe("note:id1");
   });
 
-  it("highlight / cut / revision→comment kind fallbacks are unchanged", () => {
+  it("in-session revision linkCard (spine, from updateLinkedAnchorCard) renders the CSS-matching token", () => {
+    // updateLinkedAnchorCard writes the SPINE `revision-comment:<id>` via linkCardKey;
+    // the render emits it verbatim, and the CSS `[data-link-card^="revision-comment:"]`
+    // rule now matches it — so the in-session band is purple, matching reload. Before
+    // the unification the CSS only matched `comment:`, so the in-session band was amber.
+    expect(
+      linkedAnchorRenderAttrs({ anchorId: "a", kind: "revision", linkCard: "revision-comment:rc1" })["data-link-card"],
+    ).toBe("revision-comment:rc1");
+  });
+
+  it("highlight / cut / revision kind fallbacks", () => {
     expect(linkedAnchorRenderAttrs({ kind: "highlight" })["data-link-card"]).toBe("highlight:");
     expect(linkedAnchorRenderAttrs({ kind: "cut" })["data-link-card"]).toBe("cut:");
-    expect(linkedAnchorRenderAttrs({ kind: "revision" })["data-link-card"]).toBe("comment:");
+    // revision → the SPINE token `revision-comment:` (unified; CSS matches it).
+    expect(linkedAnchorRenderAttrs({ kind: "revision" })["data-link-card"]).toBe("revision-comment:");
   });
 
   // Regression: a mark re-stamped by the once-per-doc applyLinkedAnchors RESTORE

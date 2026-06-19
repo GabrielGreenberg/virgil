@@ -10,8 +10,12 @@
  *      by the `[data-paragraph-kind="<token>"]` CSS rules.
  *
  * These two namespaces DIVERGE for some kinds (e.g. cutter: `legacyDataKind`
- * is `"cutter-comment"`/`"cutter-suggestion"` but `cssToken` is `"cut"`), so
- * they are declared as two columns, not one.
+ * is `"cutter-comment"`/`"cutter-suggestion"` but `cssToken` is `"cut"`; and the
+ * revision kinds: `legacyDataKind` is the spine `"revision-comment"`/
+ * `"revision-suggestion"` — unified onto the spine kind so the `data-link-card`
+ * attr matches `linkCardKey`/`parseLinkCardKey` and `updateLinkedAnchorCard`,
+ * with `"comment:"` kept only as a legacy CSS alias — but `cssToken` is the
+ * legacy `"comment"`), so they are declared as two columns, not one.
  *
  * **R-C: this module does NOT migrate any token.** Every value here is
  * byte-identical to the literals it replaces (`legacyKindToCardKindString` in
@@ -46,8 +50,8 @@ export const LEGACY_TOKEN_CROSSWALK: Record<CardKind, LegacyTokens> = {
   archive:               { legacyDataKind: null,               cssToken: "archive" },
   report:                { legacyDataKind: "report",           cssToken: "report" },
   "report-request":      { legacyDataKind: "report-request",   cssToken: "report" },
-  "revision-comment":    { legacyDataKind: "comment",          cssToken: "comment" },
-  "revision-suggestion": { legacyDataKind: "comment",          cssToken: "comment" },
+  "revision-comment":    { legacyDataKind: "revision-comment",    cssToken: "comment" },
+  "revision-suggestion": { legacyDataKind: "revision-suggestion", cssToken: "comment" },
   "cutter-comment":      { legacyDataKind: "cutter-comment",   cssToken: "cut" },
   "cutter-suggestion":   { legacyDataKind: "cutter-suggestion", cssToken: "cut" },
   bib:                   { legacyDataKind: null,               cssToken: null },
@@ -217,10 +221,12 @@ if (process.env.NODE_ENV !== "production") {
   // R-C dev pin: the two divergent mappings the CSS contract hinges on. If a
   // future edit changes either, the on-disk/CSS tokens drift silently — make
   // it loud here, where the declaration lives.
-  if (LEGACY_TOKEN_CROSSWALK["revision-comment"].legacyDataKind !== "comment") {
+  if (LEGACY_TOKEN_CROSSWALK["revision-comment"].legacyDataKind !== "revision-comment") {
     console.error(
-      `[legacy-token-crosswalk] revision-comment.legacyDataKind must be "comment" ` +
-        `(the data-link-card token the CSS [data-link-card^="comment:"] rule reads), ` +
+      `[legacy-token-crosswalk] revision-comment.legacyDataKind must be "revision-comment" ` +
+        `(the data-link-card token the CSS [data-link-card^="revision-comment:"] rule reads — ` +
+        `unified onto the spine kind so updateLinkedAnchorCard + the render fallback agree; ` +
+        `"comment:" is kept only as a legacy CSS alias), ` +
         `got "${LEGACY_TOKEN_CROSSWALK["revision-comment"].legacyDataKind}".`,
     );
   }

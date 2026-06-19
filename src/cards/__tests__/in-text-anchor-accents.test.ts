@@ -43,7 +43,13 @@ const EXPECTED: Record<string, keyof typeof DEFAULT_PANEL_COLORS> = {
   // accent (the old hand-table omitted them → they fell back to amber).
   "cutter-comment": "cut",
   "cutter-suggestion": "cut",
-  comment: "revision", // revision-* anchors emit `comment:` / paint the revision accent
+  // revision anchors emit the SPINE data-link-card token (`revision-comment:` /
+  // `revision-suggestion:`); `comment` survives as the Mode-A cssToken
+  // (`data-paragraph-kind="comment"`) + a legacy data-link-card alias. All paint
+  // the revision accent.
+  "revision-comment": "revision",
+  "revision-suggestion": "revision",
+  comment: "revision",
   archive: "archive",
   report: "report",
   "report-request": "report",

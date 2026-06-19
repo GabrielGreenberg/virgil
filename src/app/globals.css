@@ -2642,7 +2642,15 @@ textarea,
 .linked-anchor[data-link-card^="cut:"]              { --link-anchor-color: var(--link-anchor-accent-cut, #b45757); }
 .linked-anchor[data-link-card^="cutter-comment:"]   { --link-anchor-color: var(--link-anchor-accent-cutter-comment, #b45757); }
 .linked-anchor[data-link-card^="cutter-suggestion:"]{ --link-anchor-color: var(--link-anchor-accent-cutter-suggestion, #b45757); }
-.linked-anchor[data-link-card^="comment:"]   { --link-anchor-color: var(--link-anchor-accent-comment, #9333ea); }
+/* Revisions: the `data-link-card` token is the SPINE kind (`revision-comment:` /
+ * `revision-suggestion:`) — what `updateLinkedAnchorCard` (via `linkCardKey`) and
+ * the render fallback (via the crosswalk's spine `legacyDataKind`) both emit, so
+ * the in-text band matches in-session AND on reload. `comment:` is kept as a
+ * legacy alias for any pre-migration / rich-content-snapshot mark (mirrors the
+ * `cut:` ⇄ `cutter-comment:` legacy pair above). All three share one accent var. */
+.linked-anchor[data-link-card^="comment:"]             { --link-anchor-color: var(--link-anchor-accent-comment, #9333ea); } /* legacy alias */
+.linked-anchor[data-link-card^="revision-comment:"]    { --link-anchor-color: var(--link-anchor-accent-revision-comment, #9333ea); }
+.linked-anchor[data-link-card^="revision-suggestion:"] { --link-anchor-color: var(--link-anchor-accent-revision-suggestion, #9333ea); }
 .linked-anchor[data-link-card^="archive:"]   { --link-anchor-color: var(--link-anchor-accent-archive, #7191b0); }
 .linked-anchor[data-link-card^="report:"]         { --link-anchor-color: var(--link-anchor-accent-report, #6366f1); }
 .linked-anchor[data-link-card^="report-request:"] { --link-anchor-color: var(--link-anchor-accent-report-request, #6366f1); }
@@ -2703,6 +2711,8 @@ textarea,
 [data-show-hl-note="true"]      .linked-anchor[data-link-card^="note:"],
 [data-show-hl-todo="true"]      .linked-anchor[data-link-card^="todo:"],
 [data-show-hl-comment="true"]   .linked-anchor[data-link-card^="comment:"],
+[data-show-hl-comment="true"]   .linked-anchor[data-link-card^="revision-comment:"],
+[data-show-hl-comment="true"]   .linked-anchor[data-link-card^="revision-suggestion:"],
 [data-show-hl-cut="true"]       .linked-anchor[data-link-card^="cut:"],
 [data-show-hl-cut="true"]       .linked-anchor[data-link-card^="cutter-comment:"],
 [data-show-hl-cut="true"]       .linked-anchor[data-link-card^="cutter-suggestion:"],
