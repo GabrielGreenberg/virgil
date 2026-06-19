@@ -20,6 +20,7 @@ import LeftListRow, {
 } from "./LeftListRow";
 import { type PanelKey } from "@library/hooks/useLibraryTabs";
 import { useLayoutPrefs, useListView } from "@library/lib/view-session-store";
+import { searchCatalogFuzzy } from "@library/lib/catalog-search";
 
 interface Props {
   entries: CatalogEntry[];
@@ -103,23 +104,15 @@ export default function LeftList({
   widthsRef.current = widths;
 
   const filtered = useMemo(() => {
-    const q = query.trim().toLowerCase();
-    const base = q
-      ? entries.filter((e) => {
-          const bib = e.citekey ? bibByKey.get(e.citekey) : undefined;
-          const hay = [
-            e.citekey ?? "",
-            e.title ?? bib?.fields.title ?? "",
-            (e.authors ?? []).join(" "),
-            bib?.fields.author ?? "",
-            String(e.year ?? bib?.fields.year ?? ""),
-            e.originalFilename ?? "",
-          ]
-            .join(" ")
-            .toLowerCase();
-          return hay.includes(q);
-        })
-      : entries;
+    // Flexible, multi-token, diacritic-folding match via the shared
+    // `searchBibFuzzy` (one matcher across the Bibliography panel, bib
+    // pickers, citekey picker, and now the Library catalog). Empty query →
+    // all entries; the per-row synthetic records are WeakMap-cached on the
+    // `entries` identity so a keystroke is a token scan, not a re-synthesis.
+    // The fuse relevance order is discarded — the column sort below is SSOT
+    // for ordering, exactly as before.
+    const q = query.trim();
+    const base = q ? searchCatalogFuzzy(entries, bibByKey, query) : entries;
     return sortEntries(base, bibByKey, sort.col, sort.dir);
   }, [entries, bibByKey, query, sort]);
 
