@@ -40,6 +40,10 @@ import {
 
 interface Props {
   panel: PanelKey;
+  /** View-session scope: '' for the inline Library tab, 'outer:<libId>'
+   *  for a tear-out outer-tab instance. Threaded into LeftList so its
+   *  per-(panel,libId) query/sort/scroll persist under the right scope. */
+  scope: string;
   registry: Registry;
   tabs: PanelTabsState;
   libraryById: Map<string, Library>;
@@ -89,6 +93,7 @@ interface Props {
 
 export default function TabbedLibraryPanel({
   panel,
+  scope,
   registry,
   tabs,
   libraryById,
@@ -432,6 +437,8 @@ export default function TabbedLibraryPanel({
               entries={entries}
               bibByKey={bibByKey}
               onBibChanged={onBibChanged}
+              scope={scope}
+              panel={panel}
             />
           ) : (
             <>
@@ -466,6 +473,9 @@ export default function TabbedLibraryPanel({
                   <LeftList
                     entries={visibleEntries}
                     bibByKey={bibByKey}
+                    scope={scope}
+                    panel={panel}
+                    libId={activeLibrary.id}
                     selectedKeys={selectedKeys}
                     anchorKey={anchorKey}
                     onSelectKeys={onSelectKeys}

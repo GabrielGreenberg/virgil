@@ -75,6 +75,11 @@ function ReadyView({
           void reloadBib();
           void reloadCatalog();
         }}
+        // Standalone outer paper tab — no LibraryView panel context. Give
+        // it its own isolated view-session scope so its reader scroll
+        // persists independently of any inline-Library paper view.
+        scope={`outer:paper:${citekey}`}
+        panel="left"
       />
     </div>
   );

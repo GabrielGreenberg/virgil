@@ -16,11 +16,10 @@
 import {
   createContext,
   useContext,
-  useEffect,
   useMemo,
-  useState,
   type ReactNode,
 } from "react";
+import { useCitedOnly } from "@library/lib/view-session-store";
 
 /** Compact subset of a BibEntry — just the fields the project tab needs
  *  to synthesize a CatalogEntry-shaped row when an entry exists in the
@@ -59,8 +58,6 @@ const EMPTY_PROJECT: ProjectLibraryValue = {
 
 const ProjectLibraryContext = createContext<ProjectLibraryValue>(EMPTY_PROJECT);
 
-const CITED_ONLY_KEY = "virgil-library-project-cited-only";
-
 interface ProviderProps {
   hasDoc: boolean;
   docLabel?: string;
@@ -81,29 +78,12 @@ export function ProjectLibraryProvider({
   bibMeta,
   children,
 }: ProviderProps) {
-  const [citedOnly, setCitedOnlyState] = useState<boolean>(false);
-
-  // Hydrate the toggle from localStorage on mount.
-  useEffect(() => {
-    try {
-      const raw = localStorage.getItem(CITED_ONLY_KEY);
-      if (raw === "1") setCitedOnlyState(true);
-    } catch {
-      // ignore (private mode)
-    }
-  }, []);
-
-  const setCitedOnly = useMemo(
-    () => (next: boolean) => {
-      setCitedOnlyState(next);
-      try {
-        localStorage.setItem(CITED_ONLY_KEY, next ? "1" : "0");
-      } catch {
-        // ignore
-      }
-    },
-    [],
-  );
+  // cited-only now lives in the unified view-session store (a module
+  // singleton), so it survives BOTH a full reload AND the provider's
+  // remount on doc-switch (ProjectLibraryProvider is mounted under
+  // `LibraryTabView key={currentDocId}`, which previously reset the local
+  // useState back to false mid-session).
+  const { citedOnly, setCitedOnly } = useCitedOnly();
 
   // Memoize the Sets so identity is stable across renders that don't
   // change membership — keeps downstream `useMemo`s from invalidating

@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef } from "react";
 import type { CatalogEntry } from "@library/lib/catalog";
 import type { BibEntry } from "@library/lib/types";
 import {
@@ -11,10 +11,6 @@ import {
   type SortDir,
   clampWidth,
   gridTemplate,
-  loadSort,
-  loadWidths,
-  saveSort,
-  saveWidths,
   sortEntries,
 } from "@library/lib/list-columns";
 import LeftListRow, {
@@ -22,10 +18,20 @@ import LeftListRow, {
   STATUS_DOT_COL_WIDTH,
   type RowActions,
 } from "./LeftListRow";
+import { type PanelKey } from "@library/hooks/useLibraryTabs";
+import { useLayoutPrefs, useListView } from "@library/lib/view-session-store";
 
 interface Props {
   entries: CatalogEntry[];
   bibByKey: Map<string, BibEntry>;
+  /** View-session scope: '' for the inline Library tab, 'outer:<libId>'
+   *  for a tear-out outer-tab instance. */
+  scope: string;
+  /** Which panel this list lives in (per-panel persistence key). */
+  panel: PanelKey;
+  /** The active library's id — the per-(panel,libId) key under which this
+   *  list's query / sort / scroll are persisted in the view-session store. */
+  libId: string;
   /** Highlighted rows. A plain click replaces this with a single key; a
    *  cmd/ctrl-click toggles one key; a shift-click adds the range from
    *  `anchorKey` to the clicked row in the current sort/filter order. */
@@ -54,6 +60,9 @@ interface Props {
 export default function LeftList({
   entries,
   bibByKey,
+  scope,
+  panel,
+  libId,
   selectedKeys,
   anchorKey,
   onSelectKeys,
@@ -63,22 +72,33 @@ export default function LeftList({
   dotToneFor,
   onRowViewed,
 }: Props) {
-  const [query, setQuery] = useState("");
-  const [widths, setWidths] = useState<Record<ResizableColId, number>>(DEFAULT_WIDTHS);
-  const [sort, setSort] = useState<{ col: SortColId; dir: SortDir }>({
-    col: "year",
-    dir: "desc",
-  });
-
-  // Hydrate from localStorage on mount (client-only — server render uses
-  // the defaults so HTML is stable).
-  useEffect(() => {
-    setWidths(loadWidths());
-    setSort(loadSort());
-  }, []);
+  // Query + sort are persisted per-(panel,libId) in the view-session store
+  // (sort is the coherence fix — each library remembers its own column);
+  // both survive reload AND the LeftList per-tab remount.
+  const { query, setQuery, sort, setSort, scrollTop, setScroll } = useListView(
+    scope,
+    panel,
+    libId,
+  );
+  // Column widths are GLOBAL (one set across every list), stored in the
+  // view-session layout slice. Merge the persisted partial with the
+  // clamped defaults so gridTemplate always has a complete record.
+  const { layout, setLayout } = useLayoutPrefs();
+  const widths = useMemo<Record<ResizableColId, number>>(() => {
+    const out = { ...DEFAULT_WIDTHS };
+    const saved = layout.colWidths;
+    if (saved) {
+      for (const k of Object.keys(DEFAULT_WIDTHS) as ResizableColId[]) {
+        const v = saved[k];
+        if (typeof v === "number" && Number.isFinite(v)) out[k] = clampWidth(k, v);
+      }
+    }
+    return out;
+  }, [layout.colWidths]);
 
   // Keep a ref to the live widths so the resize-handler closure can read
-  // the start width synchronously (state setter callbacks are async).
+  // the start width synchronously (the resize loop mutates a local draft
+  // and only commits to the store on pointer-up).
   const widthsRef = useRef(widths);
   widthsRef.current = widths;
 
@@ -112,6 +132,52 @@ export default function LeftList({
   const orderedKeys = useMemo(
     () => filtered.map((e) => e.citekey ?? `__triage__${e.originalFilename}`),
     [filtered],
+  );
+
+  // ── Catalog scroll save/restore (survives reload + per-tab remount) ──
+  // The rows container; its scrollTop is persisted per-(panel,libId).
+  const rowsRef = useRef<HTMLDivElement | null>(null);
+  // One-shot restore guard, keyed by libId so switching libraries re-arms.
+  const restoredForRef = useRef<string | null>(null);
+  // RAF coalescing for the scroll save (≤1 store update per frame; the
+  // store's own 250 ms debounce then coalesces the localStorage writes —
+  // no synchronous write per scroll tick).
+  const scrollRafRef = useRef<number | null>(null);
+  const handleRowsScroll = useCallback(() => {
+    if (scrollRafRef.current !== null) return;
+    scrollRafRef.current = requestAnimationFrame(() => {
+      scrollRafRef.current = null;
+      const el = rowsRef.current;
+      if (el) setScroll(el.scrollTop);
+    });
+  }, [setScroll]);
+  // Reset the one-shot guard when the active library changes so the new
+  // list restores its own saved position.
+  useEffect(() => {
+    restoredForRef.current = null;
+  }, [libId]);
+  // One-shot restore: after the first NON-EMPTY render with a real
+  // scrollHeight (so we never clamp to 0 on an empty / zero-height list),
+  // apply the saved scrollTop once. If content streams in (catalog 6 s
+  // poll), this re-runs on `filtered` change until it lands.
+  useLayoutEffect(() => {
+    if (restoredForRef.current === libId) return;
+    const el = rowsRef.current;
+    if (!el) return;
+    if (filtered.length === 0) return; // empty list — keep the saved value
+    if (el.scrollHeight <= el.clientHeight) return; // not scrollable yet
+    if (scrollTop > 0) el.scrollTop = scrollTop;
+    restoredForRef.current = libId;
+    // `scrollTop` is read once at restore time; we intentionally don't
+    // re-restore when it changes (that's the live user scroll feeding back).
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [libId, filtered]);
+  // Cancel a pending scroll-save RAF on unmount.
+  useEffect(
+    () => () => {
+      if (scrollRafRef.current !== null) cancelAnimationFrame(scrollRafRef.current);
+    },
+    [],
   );
 
   const handleRowClick = useCallback(
@@ -155,16 +221,16 @@ export default function LeftList({
     [anchorKey, orderedKeys, selectedKeys, onSelectKeys, onOpenPaper, onRowViewed],
   );
 
-  const handleSort = useCallback((col: SortColId) => {
-    setSort((cur) => {
+  const handleSort = useCallback(
+    (col: SortColId) => {
       const next: { col: SortColId; dir: SortDir } =
-        cur.col === col
-          ? { col, dir: cur.dir === "asc" ? "desc" : "asc" }
+        sort.col === col
+          ? { col, dir: sort.dir === "asc" ? "desc" : "asc" }
           : { col, dir: defaultDirFor(col) };
-      saveSort(next);
-      return next;
-    });
-  }, []);
+      setSort(next);
+    },
+    [sort, setSort],
+  );
 
   const handleResize = useCallback(
     (leftCol: ResizableColId | null, rightCol: ResizableColId | null) => {
@@ -176,36 +242,42 @@ export default function LeftList({
         const startRightW = rightCol ? widthsRef.current[rightCol] : 0;
         const onMove = (ev: PointerEvent) => {
           const rawDelta = ev.clientX - startX;
-          setWidths((cur) => {
-            // Constrain the boundary delta against BOTH columns' clamps so
-            // total fixed width is preserved (otherwise the 1fr title
-            // absorbs the difference and the status column shifts visibly).
-            let delta = rawDelta;
-            if (leftCol) {
-              delta = clampWidth(leftCol, startLeftW + delta) - startLeftW;
-            }
-            if (rightCol) {
-              delta = startRightW - clampWidth(rightCol, startRightW - delta);
-            }
-            const next = { ...cur };
-            let changed = false;
-            if (leftCol) {
-              const v = startLeftW + delta;
-              if (cur[leftCol] !== v) { next[leftCol] = v; changed = true; }
-            }
-            if (rightCol) {
-              const v = startRightW - delta;
-              if (cur[rightCol] !== v) { next[rightCol] = v; changed = true; }
-            }
-            return changed ? next : cur;
-          });
+          // Constrain the boundary delta against BOTH columns' clamps so
+          // total fixed width is preserved (otherwise the 1fr title
+          // absorbs the difference and the status column shifts visibly).
+          let delta = rawDelta;
+          if (leftCol) {
+            delta = clampWidth(leftCol, startLeftW + delta) - startLeftW;
+          }
+          if (rightCol) {
+            delta = startRightW - clampWidth(rightCol, startRightW - delta);
+          }
+          const cur = widthsRef.current;
+          const patch: Partial<Record<ResizableColId, number>> = {};
+          let changed = false;
+          if (leftCol) {
+            const v = startLeftW + delta;
+            if (cur[leftCol] !== v) { patch[leftCol] = v; changed = true; }
+          }
+          if (rightCol) {
+            const v = startRightW - delta;
+            if (cur[rightCol] !== v) { patch[rightCol] = v; changed = true; }
+          }
+          // Write through the store: the in-memory update is synchronous
+          // (live drag feedback via the useLayoutPrefs re-render) while the
+          // store's 250 ms debounce coalesces the localStorage writes.
+          if (changed) {
+            setLayout({ colWidths: { ...cur, ...patch } });
+          }
         };
         const onUp = () => {
           window.removeEventListener("pointermove", onMove);
           window.removeEventListener("pointerup", onUp);
           document.body.style.cursor = "";
           document.body.style.userSelect = "";
-          saveWidths(widthsRef.current);
+          // Final commit so the last frame's value is persisted (the store
+          // flushes it on the trailing debounce / pagehide).
+          setLayout({ colWidths: { ...widthsRef.current } });
         };
         window.addEventListener("pointermove", onMove);
         window.addEventListener("pointerup", onUp);
@@ -213,7 +285,7 @@ export default function LeftList({
         document.body.style.userSelect = "none";
       };
     },
-    [],
+    [setLayout],
   );
 
   return (
@@ -297,6 +369,8 @@ export default function LeftList({
       </div>
 
       <div
+        ref={rowsRef}
+        onScroll={handleRowsScroll}
         style={{
           overflowY: "auto",
           flex: 1,

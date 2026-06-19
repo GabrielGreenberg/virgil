@@ -3,6 +3,7 @@
 import { useMemo } from "react";
 import type { CatalogEntry } from "@library/lib/catalog";
 import type { BibEntry } from "@library/lib/types";
+import type { PanelKey } from "@library/hooks/useLibraryTabs";
 import RightDetail from "./RightDetail";
 
 interface Props {
@@ -11,6 +12,9 @@ interface Props {
   entries: CatalogEntry[];
   bibByKey: Map<string, BibEntry>;
   onBibChanged?: () => void;
+  /** View-session scope + panel — threaded into the Reader scroll key. */
+  scope: string;
+  panel: PanelKey;
 }
 
 /**
@@ -25,6 +29,8 @@ export default function PaperFileBody({
   entries,
   bibByKey,
   onBibChanged,
+  scope,
+  panel,
 }: Props) {
   const entry = useMemo<CatalogEntry | null>(() => {
     if (!citekey) return null;
@@ -51,6 +57,8 @@ export default function PaperFileBody({
       entry={entry}
       bib={bib}
       onBibChanged={onBibChanged}
+      scope={scope}
+      panel={panel}
     />
   );
 }

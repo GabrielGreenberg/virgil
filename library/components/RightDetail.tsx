@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import type { CatalogEntry } from "@library/lib/catalog";
 import type { BibEntry } from "@library/lib/types";
 import { queueBibEdit } from "@library/lib/bib-edit";
+import type { PanelKey } from "@library/hooks/useLibraryTabs";
 import BibEditModal from "./BibEditModal";
 import PaperHeader from "./PaperHeader";
 import PaperRender from "./PaperRender";
@@ -15,6 +16,10 @@ interface Props {
   bib: BibEntry | undefined;
   /** Reload master.bib after a save lands. */
   onBibChanged?: () => void;
+  /** View-session scope + panel — threaded into PaperRender so the reader
+   *  scroll persists under (scope, panel, paper:<citekey>). */
+  scope: string;
+  panel: PanelKey;
 }
 
 type ViewMode = "text" | "pdf";
@@ -28,7 +33,14 @@ function hasPdfSource(entry: CatalogEntry): boolean {
   return !!entry.pdf.alternates?.some((f) => f.toLowerCase().endsWith(".pdf"));
 }
 
-export default function RightDetail({ handle, entry, bib, onBibChanged }: Props) {
+export default function RightDetail({
+  handle,
+  entry,
+  bib,
+  onBibChanged,
+  scope,
+  panel,
+}: Props) {
   const [viewMode, setViewMode] = useState<ViewMode>("text");
   const [editOpen, setEditOpen] = useState(false);
 
@@ -135,6 +147,8 @@ export default function RightDetail({ handle, entry, bib, onBibChanged }: Props)
           handle={handle}
           citekey={entry.citekey}
           indexedState={entry.indexed.state}
+          scope={scope}
+          panel={panel}
         />
       </div>
       {editOpen && bib && handle && entry.citekey && (

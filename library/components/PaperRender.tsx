@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type { Editor } from "@tiptap/react";
 import type { JSONContent } from "@tiptap/react";
 import EditorPane from "@/components/EditorPane";
@@ -13,12 +13,18 @@ import { readTextFile } from "@library/lib/library-storage";
 import { parseLatex } from "@/lib/latex-parser";
 import { assignUuids } from "@/lib/latex-serializer";
 import type { IndexedState } from "@library/lib/catalog";
+import type { PanelKey } from "@library/hooks/useLibraryTabs";
+import { getSession, setListScrollQuiet } from "@library/lib/view-session-store";
 import PageScrollStrip from "./PageScrollStrip";
 
 interface Props {
   handle: FileSystemDirectoryHandle | null;
   citekey: string | null;
   indexedState: IndexedState;
+  /** View-session scope ('' inline / 'outer:<libId>' tear-out) + panel.
+   *  The reader scroll is persisted under (scope, panel, paper:<citekey>). */
+  scope: string;
+  panel: PanelKey;
 }
 
 /**
@@ -52,7 +58,13 @@ interface Props {
  *  - Omni view, drag-drop card creation, action toolbar, formatting
  *    toolbar — orchestrated by EditorLayout.
  */
-export default function PaperRender({ handle, citekey, indexedState }: Props) {
+export default function PaperRender({
+  handle,
+  citekey,
+  indexedState,
+  scope,
+  panel,
+}: Props) {
   const [tex, setTex] = useState<string | null>(null);
   const [parseError, setParseError] = useState<string | null>(null);
 
@@ -139,6 +151,8 @@ export default function PaperRender({ handle, citekey, indexedState }: Props) {
       tex={tex}
       onParseError={setParseError}
       parseError={parseError}
+      scope={scope}
+      panel={panel}
     />
   );
 }
@@ -148,9 +162,18 @@ interface PaperReaderProps {
   tex: string;
   parseError: string | null;
   onParseError: (err: string | null) => void;
+  scope: string;
+  panel: PanelKey;
 }
 
-function PaperReader({ citekey, tex, parseError, onParseError }: PaperReaderProps) {
+function PaperReader({
+  citekey,
+  tex,
+  parseError,
+  onParseError,
+  scope,
+  panel,
+}: PaperReaderProps) {
   const readerViewPrefs = useReaderViewPrefs();
   const [content, setContent] = useState<JSONContent | null>(null);
   // PageScrollStrip needs the live TipTap Editor instance to compute
@@ -163,6 +186,104 @@ function PaperReader({ citekey, tex, parseError, onParseError }: PaperReaderProp
   // with `null` on its first render.
   const [scrollEl, setScrollEl] = useState<HTMLDivElement | null>(null);
   const editorRef = useRef<EditorHandle | null>(null);
+
+  // ── Reader scroll save/restore (per (scope, panel, paper:<citekey>)) ──
+  const scrollSessionLibId = `paper:${citekey}`;
+  // RAF-coalesced scroll save; the store's 250 ms debounce then coalesces
+  // the localStorage writes (no synchronous write per scroll tick).
+  const scrollRafRef = useRef<number | null>(null);
+  // True while the one-shot restore below is still pending (the ~1 s streaming
+  // retry window). The save listener is attached the moment the scroll element
+  // exists — BEFORE restore lands — so without this gate a user scroll during
+  // streaming would persist, then the restore would clobber it back to the
+  // stale captured value. Suppress saves until restore completes; a real user
+  // scroll during the window also flips this off (see the restore effect) so
+  // the user's intent wins.
+  const restoringRef = useRef(false);
+  const onReaderScroll = useCallback(
+    (e: React.UIEvent<HTMLDivElement>) => {
+      const el = e.currentTarget;
+      if (restoringRef.current) return; // restore in flight — don't persist
+      if (scrollRafRef.current !== null) return;
+      scrollRafRef.current = requestAnimationFrame(() => {
+        scrollRafRef.current = null;
+        setListScrollQuiet(scope, panel, scrollSessionLibId, el.scrollTop);
+      });
+    },
+    [scope, panel, scrollSessionLibId],
+  );
+  useEffect(
+    () => () => {
+      if (scrollRafRef.current !== null) cancelAnimationFrame(scrollRafRef.current);
+    },
+    [],
+  );
+
+  // One-shot restore. The paper body is async (tex → JSONContent →
+  // EditorPane mount, which streams children after first paint), so we
+  // can't restore synchronously. Once `content` is resolved AND the scroll
+  // element exists, retry on RAF until the element is actually scrollable
+  // (scrollHeight > clientHeight), apply the saved scrollTop once, then
+  // stop. Bails after ~1 s so a short paper never spins.
+  const restoredRef = useRef(false);
+  useEffect(() => {
+    restoredRef.current = false;
+    restoringRef.current = false;
+  }, [scrollSessionLibId]);
+  useEffect(() => {
+    if (restoredRef.current) return;
+    if (!content || !scrollEl) return;
+    const saved = getSession().scopes[scope]?.[panel]?.lists[scrollSessionLibId]
+      ?.scrollTop;
+    if (!saved || saved <= 0) {
+      restoredRef.current = true; // nothing to restore
+      restoringRef.current = false;
+      return;
+    }
+    // Restore is now pending: suppress the save listener so a mid-stream user
+    // scroll isn't first persisted then clobbered by `saved`. We also record
+    // the element's baseline so we can detect a deliberate user scroll during
+    // the retry window and yield to it.
+    restoringRef.current = true;
+    const baseline = scrollEl.scrollTop;
+    let raf = 0;
+    const deadline =
+      (typeof performance !== "undefined" ? performance.now() : Date.now()) + 1000;
+    const finish = () => {
+      restoredRef.current = true;
+      restoringRef.current = false;
+    };
+    const tryApply = () => {
+      if (restoredRef.current) return;
+      const el = scrollEl;
+      // If the user scrolled meaningfully since mount, their intent wins:
+      // abandon the restore (and re-enable saves) rather than yanking them
+      // back to the stale captured position.
+      if (Math.abs(el.scrollTop - baseline) > 4) {
+        finish();
+        return;
+      }
+      if (el.scrollHeight > el.clientHeight) {
+        el.scrollTop = saved;
+        finish();
+        return;
+      }
+      const now =
+        typeof performance !== "undefined" ? performance.now() : Date.now();
+      if (now >= deadline) {
+        finish(); // give up — content never grew tall enough
+        return;
+      }
+      raf = requestAnimationFrame(tryApply);
+    };
+    raf = requestAnimationFrame(tryApply);
+    return () => {
+      if (raf) cancelAnimationFrame(raf);
+      // Effect teardown (libId change / unmount) must not leave saves wedged
+      // off. The re-arm effect above resets both flags on the next libId.
+      restoringRef.current = false;
+    };
+  }, [content, scrollEl, scope, panel, scrollSessionLibId]);
 
   useEffect(() => {
     try {
@@ -212,6 +333,7 @@ function PaperReader({ citekey, tex, parseError, onParseError }: PaperReaderProp
   return (
     <div
       ref={setScrollEl}
+      onScroll={onReaderScroll}
       data-virgil-row-scroll
       data-virgil-library-reader
       style={{
