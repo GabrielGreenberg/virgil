@@ -51,6 +51,7 @@ function migrateReportRecord(raw: unknown): ReportCard | null {
   return {
     kind: "report",
     id: r.id,
+    archived: r.archived,
     createdAt: r.createdAt,
     author: r.author === "ai" ? "ai" : "human",
     // T6/C12: title provenance is recorded, not guessed. Keep a user-owned
@@ -85,6 +86,7 @@ function migrateRequestRecord(raw: unknown): ReportRequestCard | null {
   return {
     kind: "report-request",
     id: r.id,
+    archived: r.archived,
     createdAt: r.createdAt,
     text,
     content,

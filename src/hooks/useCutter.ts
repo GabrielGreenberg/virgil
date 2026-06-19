@@ -57,6 +57,7 @@ function migrateComment(raw: unknown): CutterCommentCard | null {
   return {
     kind: "comment",
     id: r.id,
+    archived: r.archived,
     createdAt: r.createdAt,
     text,
     content,
@@ -78,6 +79,7 @@ function migrateSuggestion(raw: unknown): CutterSuggestionCard | null {
   return {
     kind: "suggestion",
     id: r.id,
+    archived: r.archived,
     createdAt: r.createdAt,
     author: r.author === "ai" ? "ai" : "human",
     original_text: typeof r.original_text === "string" ? r.original_text : "",

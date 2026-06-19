@@ -24,6 +24,7 @@ function migrateSnippet(raw: unknown): ArchivedSnippet {
       : normalizeRichContent(s.content);
   return {
     id: s.id!,
+    archived: s.archived,
     // T6/C12: recorded provenance, not shape — keep a user-owned title, drop a
     // recorded/legacy generated one, self-stamp the resolved bit.
     title: resolveLoadedTitle("archive", s.title, s.titleAuto),
