@@ -25,6 +25,7 @@ function migrateTodo(raw: unknown): TodoItem {
   const i = raw as Partial<TodoItem>;
   return {
     id: i.id!,
+    archived: i.archived,
     // T6/C12: the legacy seed put a generated "Task N" in the BODY, so for a
     // todo the "title" provenance governs `text`. Recorded provenance, not
     // shape: keep a user-typed body (even "Task 9"), drop a recorded/legacy

@@ -35,6 +35,7 @@ function migrateNote(raw: unknown): UserNote {
   return {
     kind: "note",
     id: r.id!,
+    archived: r.archived,
     // T6/C12: recorded provenance, not shape — keep a user-owned title, drop a
     // recorded/legacy generated one, self-stamp the resolved bit.
     title: resolveLoadedTitle("note", r.title, r.titleAuto),

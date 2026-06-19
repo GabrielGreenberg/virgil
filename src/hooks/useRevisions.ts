@@ -61,6 +61,7 @@ function migrateCommentRecord(raw: unknown): RevisionCommentCard | null {
   return {
     kind: "comment",
     id: r.id,
+    archived: r.archived,
     createdAt: r.createdAt,
     text,
     content,
@@ -82,6 +83,7 @@ function migrateSuggestionRecord(raw: unknown): RevisionSuggestionCard | null {
   return {
     kind: "suggestion",
     id: r.id,
+    archived: r.archived,
     createdAt: r.createdAt,
     author: r.author === "ai" ? "ai" : "human",
     original_text: typeof r.original_text === "string" ? r.original_text : "",
