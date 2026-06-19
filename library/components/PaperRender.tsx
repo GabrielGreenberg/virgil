@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type { Editor } from "@tiptap/react";
 import type { JSONContent } from "@tiptap/react";
 import EditorPane from "@/components/EditorPane";
@@ -13,12 +13,18 @@ import { readTextFile } from "@library/lib/library-storage";
 import { parseLatex } from "@/lib/latex-parser";
 import { assignUuids } from "@/lib/latex-serializer";
 import type { IndexedState } from "@library/lib/catalog";
+import type { PanelKey } from "@library/hooks/useLibraryTabs";
+import { getSession, setListScroll } from "@library/lib/view-session-store";
 import PageScrollStrip from "./PageScrollStrip";
 
 interface Props {
   handle: FileSystemDirectoryHandle | null;
   citekey: string | null;
   indexedState: IndexedState;
+  /** View-session scope ('' inline / 'outer:<libId>' tear-out) + panel.
+   *  The reader scroll is persisted under (scope, panel, paper:<citekey>). */
+  scope: string;
+  panel: PanelKey;
 }
 
 /**
@@ -52,7 +58,13 @@ interface Props {
  *  - Omni view, drag-drop card creation, action toolbar, formatting
  *    toolbar — orchestrated by EditorLayout.
  */
-export default function PaperRender({ handle, citekey, indexedState }: Props) {
+export default function PaperRender({
+  handle,
+  citekey,
+  indexedState,
+  scope,
+  panel,
+}: Props) {
   const [tex, setTex] = useState<string | null>(null);
   const [parseError, setParseError] = useState<string | null>(null);
 
@@ -139,6 +151,8 @@ export default function PaperRender({ handle, citekey, indexedState }: Props) {
       tex={tex}
       onParseError={setParseError}
       parseError={parseError}
+      scope={scope}
+      panel={panel}
     />
   );
 }
@@ -148,9 +162,18 @@ interface PaperReaderProps {
   tex: string;
   parseError: string | null;
   onParseError: (err: string | null) => void;
+  scope: string;
+  panel: PanelKey;
 }
 
-function PaperReader({ citekey, tex, parseError, onParseError }: PaperReaderProps) {
+function PaperReader({
+  citekey,
+  tex,
+  parseError,
+  onParseError,
+  scope,
+  panel,
+}: PaperReaderProps) {
   const readerViewPrefs = useReaderViewPrefs();
   const [content, setContent] = useState<JSONContent | null>(null);
   // PageScrollStrip needs the live TipTap Editor instance to compute
@@ -163,6 +186,73 @@ function PaperReader({ citekey, tex, parseError, onParseError }: PaperReaderProp
   // with `null` on its first render.
   const [scrollEl, setScrollEl] = useState<HTMLDivElement | null>(null);
   const editorRef = useRef<EditorHandle | null>(null);
+
+  // ── Reader scroll save/restore (per (scope, panel, paper:<citekey>)) ──
+  const scrollSessionLibId = `paper:${citekey}`;
+  // RAF-coalesced scroll save; the store's 250 ms debounce then coalesces
+  // the localStorage writes (no synchronous write per scroll tick).
+  const scrollRafRef = useRef<number | null>(null);
+  const onReaderScroll = useCallback(
+    (e: React.UIEvent<HTMLDivElement>) => {
+      const el = e.currentTarget;
+      if (scrollRafRef.current !== null) return;
+      scrollRafRef.current = requestAnimationFrame(() => {
+        scrollRafRef.current = null;
+        setListScroll(scope, panel, scrollSessionLibId, el.scrollTop);
+      });
+    },
+    [scope, panel, scrollSessionLibId],
+  );
+  useEffect(
+    () => () => {
+      if (scrollRafRef.current !== null) cancelAnimationFrame(scrollRafRef.current);
+    },
+    [],
+  );
+
+  // One-shot restore. The paper body is async (tex → JSONContent →
+  // EditorPane mount, which streams children after first paint), so we
+  // can't restore synchronously. Once `content` is resolved AND the scroll
+  // element exists, retry on RAF until the element is actually scrollable
+  // (scrollHeight > clientHeight), apply the saved scrollTop once, then
+  // stop. Bails after ~1 s so a short paper never spins.
+  const restoredRef = useRef(false);
+  useEffect(() => {
+    restoredRef.current = false;
+  }, [scrollSessionLibId]);
+  useEffect(() => {
+    if (restoredRef.current) return;
+    if (!content || !scrollEl) return;
+    const saved = getSession().scopes[scope]?.[panel]?.lists[scrollSessionLibId]
+      ?.scrollTop;
+    if (!saved || saved <= 0) {
+      restoredRef.current = true; // nothing to restore
+      return;
+    }
+    let raf = 0;
+    const deadline =
+      (typeof performance !== "undefined" ? performance.now() : Date.now()) + 1000;
+    const tryApply = () => {
+      if (restoredRef.current) return;
+      const el = scrollEl;
+      if (el.scrollHeight > el.clientHeight) {
+        el.scrollTop = saved;
+        restoredRef.current = true;
+        return;
+      }
+      const now =
+        typeof performance !== "undefined" ? performance.now() : Date.now();
+      if (now >= deadline) {
+        restoredRef.current = true; // give up — content never grew tall enough
+        return;
+      }
+      raf = requestAnimationFrame(tryApply);
+    };
+    raf = requestAnimationFrame(tryApply);
+    return () => {
+      if (raf) cancelAnimationFrame(raf);
+    };
+  }, [content, scrollEl, scope, panel, scrollSessionLibId]);
 
   useEffect(() => {
     try {
@@ -212,6 +302,7 @@ function PaperReader({ citekey, tex, parseError, onParseError }: PaperReaderProp
   return (
     <div
       ref={setScrollEl}
+      onScroll={onReaderScroll}
       data-virgil-row-scroll
       data-virgil-library-reader
       style={{

@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useMemo, useRef } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef } from "react";
 import type { CatalogEntry } from "@library/lib/catalog";
 import type { BibEntry } from "@library/lib/types";
 import {
@@ -75,7 +75,11 @@ export default function LeftList({
   // Query + sort are persisted per-(panel,libId) in the view-session store
   // (sort is the coherence fix — each library remembers its own column);
   // both survive reload AND the LeftList per-tab remount.
-  const { query, setQuery, sort, setSort } = useListView(scope, panel, libId);
+  const { query, setQuery, sort, setSort, scrollTop, setScroll } = useListView(
+    scope,
+    panel,
+    libId,
+  );
   // Column widths are GLOBAL (one set across every list), stored in the
   // view-session layout slice. Merge the persisted partial with the
   // clamped defaults so gridTemplate always has a complete record.
@@ -128,6 +132,52 @@ export default function LeftList({
   const orderedKeys = useMemo(
     () => filtered.map((e) => e.citekey ?? `__triage__${e.originalFilename}`),
     [filtered],
+  );
+
+  // ── Catalog scroll save/restore (survives reload + per-tab remount) ──
+  // The rows container; its scrollTop is persisted per-(panel,libId).
+  const rowsRef = useRef<HTMLDivElement | null>(null);
+  // One-shot restore guard, keyed by libId so switching libraries re-arms.
+  const restoredForRef = useRef<string | null>(null);
+  // RAF coalescing for the scroll save (≤1 store update per frame; the
+  // store's own 250 ms debounce then coalesces the localStorage writes —
+  // no synchronous write per scroll tick).
+  const scrollRafRef = useRef<number | null>(null);
+  const handleRowsScroll = useCallback(() => {
+    if (scrollRafRef.current !== null) return;
+    scrollRafRef.current = requestAnimationFrame(() => {
+      scrollRafRef.current = null;
+      const el = rowsRef.current;
+      if (el) setScroll(el.scrollTop);
+    });
+  }, [setScroll]);
+  // Reset the one-shot guard when the active library changes so the new
+  // list restores its own saved position.
+  useEffect(() => {
+    restoredForRef.current = null;
+  }, [libId]);
+  // One-shot restore: after the first NON-EMPTY render with a real
+  // scrollHeight (so we never clamp to 0 on an empty / zero-height list),
+  // apply the saved scrollTop once. If content streams in (catalog 6 s
+  // poll), this re-runs on `filtered` change until it lands.
+  useLayoutEffect(() => {
+    if (restoredForRef.current === libId) return;
+    const el = rowsRef.current;
+    if (!el) return;
+    if (filtered.length === 0) return; // empty list — keep the saved value
+    if (el.scrollHeight <= el.clientHeight) return; // not scrollable yet
+    if (scrollTop > 0) el.scrollTop = scrollTop;
+    restoredForRef.current = libId;
+    // `scrollTop` is read once at restore time; we intentionally don't
+    // re-restore when it changes (that's the live user scroll feeding back).
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [libId, filtered]);
+  // Cancel a pending scroll-save RAF on unmount.
+  useEffect(
+    () => () => {
+      if (scrollRafRef.current !== null) cancelAnimationFrame(scrollRafRef.current);
+    },
+    [],
   );
 
   const handleRowClick = useCallback(
@@ -319,6 +369,8 @@ export default function LeftList({
       </div>
 
       <div
+        ref={rowsRef}
+        onScroll={handleRowsScroll}
         style={{
           overflowY: "auto",
           flex: 1,

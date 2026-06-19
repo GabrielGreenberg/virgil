@@ -437,6 +437,8 @@ export default function TabbedLibraryPanel({
               entries={entries}
               bibByKey={bibByKey}
               onBibChanged={onBibChanged}
+              scope={scope}
+              panel={panel}
             />
           ) : (
             <>
