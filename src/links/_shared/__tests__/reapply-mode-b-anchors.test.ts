@@ -753,10 +753,11 @@ describe("RC-B — BUG1 reconcile-not-skip (present marks re-stamped authoritati
     expect(attrs?.linkCard ?? "").toBe("");
     expect(markedTextFor(editor, "anc-rev")).toBe("the span");
     expect(markRunCountFor(editor, "anc-rev")).toBe(1);
-    // The render layer paints the comment (purple) token via the KIND fallback,
-    // not the note token — the `comment:` prefix the CSS purple rule matches.
+    // The render layer paints the revision (purple) token via the KIND fallback,
+    // not the note token — the spine `revision-comment:` prefix the CSS purple
+    // rule matches (unified with updateLinkedAnchorCard; `comment:` is a legacy alias).
     expect(linkedAnchorRenderAttrs(attrs ?? {})["data-link-card"]).toBe(
-      "comment:",
+      "revision-comment:",
     );
     editor.destroy();
   });

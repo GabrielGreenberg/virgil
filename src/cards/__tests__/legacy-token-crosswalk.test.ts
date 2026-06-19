@@ -28,8 +28,8 @@ describe("LEGACY_TOKEN_CROSSWALK (R-C frozen tokens)", () => {
       archive: { legacyDataKind: null, cssToken: "archive" },
       report: { legacyDataKind: "report", cssToken: "report" },
       "report-request": { legacyDataKind: "report-request", cssToken: "report" },
-      "revision-comment": { legacyDataKind: "comment", cssToken: "comment" },
-      "revision-suggestion": { legacyDataKind: "comment", cssToken: "comment" },
+      "revision-comment": { legacyDataKind: "revision-comment", cssToken: "comment" },
+      "revision-suggestion": { legacyDataKind: "revision-suggestion", cssToken: "comment" },
       "cutter-comment": { legacyDataKind: "cutter-comment", cssToken: "cut" },
       "cutter-suggestion": { legacyDataKind: "cutter-suggestion", cssToken: "cut" },
       bib: { legacyDataKind: null, cssToken: null },
@@ -38,11 +38,15 @@ describe("LEGACY_TOKEN_CROSSWALK (R-C frozen tokens)", () => {
     });
   });
 
-  it("the divergent CSS-contract mappings hold (revision→comment, cutter→cut)", () => {
-    // The two columns intentionally diverge for cutter; these are the exact
-    // tokens the [data-link-card^="comment:"] / [data-paragraph-kind="cut"] rules read.
-    expect(legacyDataKindForCardKind("revision-comment")).toBe("comment");
-    expect(legacyDataKindForCardKind("revision-suggestion")).toBe("comment");
+  it("the CSS-contract mappings hold (revision data-link-card = spine; paragraph-kind = legacy)", () => {
+    // The data-link-card token for revisions is the SPINE kind (unified so
+    // updateLinkedAnchorCard + the render fallback agree; CSS rule
+    // [data-link-card^="revision-comment:"], with "comment:" kept as a legacy alias).
+    // The data-paragraph-kind cssToken stays the legacy "comment" — the two columns
+    // intentionally diverge here, like cutter (cssToken "cut").
+    expect(legacyDataKindForCardKind("revision-comment")).toBe("revision-comment");
+    expect(legacyDataKindForCardKind("revision-suggestion")).toBe("revision-suggestion");
+    expect(cssTokenForCardKind("revision-comment")).toBe("comment");
     expect(cssTokenForCardKind("cutter-comment")).toBe("cut");
     expect(cssTokenForCardKind("cutter-suggestion")).toBe("cut");
     // Atoms / unanchored kinds carry no link-card or paragraph-kind token.
@@ -101,8 +105,10 @@ describe("runtime-total accessors (legacy on-disk token backstop)", () => {
 
   it("dev pins hold: the invariants the module-load assertions guard", () => {
     // Mirrors the two module-level dev pins (see the bottom of
-    // legacy-token-crosswalk.ts) so the contract is also test-enforced.
-    expect(LEGACY_TOKEN_CROSSWALK["revision-comment"].legacyDataKind).toBe("comment");
+    // legacy-token-crosswalk.ts) so the contract is also test-enforced. The
+    // revision data-link-card token is the SPINE kind (unified; CSS matches
+    // [data-link-card^="revision-comment:"], "comment:" kept as a legacy alias).
+    expect(LEGACY_TOKEN_CROSSWALK["revision-comment"].legacyDataKind).toBe("revision-comment");
     expect(LEGACY_TOKEN_CROSSWALK["cutter-comment"].cssToken).toBe("cut");
   });
 });

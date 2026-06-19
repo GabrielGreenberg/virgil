@@ -54,11 +54,13 @@ import type { ModeBReapplyRecord } from "./reapply-mode-b-anchors";
 // delete silently failed to remove the revision card, and `collectLinksFromEditor`
 // minted an invalid `ref.kind`. Leaving `linkCard` empty restores the PROVEN
 // historical-restore behavior: `kind` drives the per-kind COLOUR via the render
-// fallback (`dataLinkCardTokenForLegacyMarkKind` → `comment:`) and consumer
-// resolution via the `legacyAnchorKindToCardKind` fallback. (A future enhancement
-// could make reloaded marks self-describing with the CANONICAL spine linkCard —
-// see docs/memos/action-menu-anchor-bugs/REVIEW.md — but that is a pre-existing
-// CSS-vs-spine inconsistency out of scope for this fix.)
+// fallback (`dataLinkCardTokenForLegacyMarkKind` → the spine `revision-comment:`
+// token the CSS now matches) and consumer resolution via the
+// `legacyAnchorKindToCardKind` fallback. (The data-link-card token namespace was
+// unified onto the spine kind — see the crosswalk + globals.css — so the render
+// fallback and `updateLinkedAnchorCard` agree and the CSS matches both. A future
+// enhancement could additionally make reloaded marks self-describing with the
+// CANONICAL spine linkCard — see docs/memos/action-menu-anchor-bugs/REVIEW.md.)
 // ─────────────────────────────────────────────────────────────────────────────
 
 /** The present `linkedAnchor` marks in the doc, keyed by anchorId. */

@@ -250,12 +250,13 @@ describe("BUG1 — linkedAnchor KIND survives the serialize → parse → reconc
     // linkCard-policy note; a derived `comment:<id>` would parse to the non-spine
     // kind "comment" and break delete-range/bindAnchor for revisions).
     expect(attrs?.linkCard ?? "").toBe("");
-    // The render layer derives the comment (purple) token from the KIND fallback,
-    // NOT the note (green) token — the user-visible half of the BUG1 fix. The
-    // `comment:` prefix is exactly what the CSS `[data-link-card^="comment:"]`
-    // purple rule matches.
+    // The render layer derives the revision (purple) token from the KIND fallback,
+    // NOT the note (green) token — the user-visible half of the BUG1 fix. The spine
+    // `revision-comment:` prefix is exactly what the CSS
+    // `[data-link-card^="revision-comment:"]` purple rule matches (unified with
+    // updateLinkedAnchorCard; `comment:` is kept only as a legacy CSS alias).
     expect(linkedAnchorRenderAttrs(attrs ?? {})["data-link-card"]).toBe(
-      "comment:",
+      "revision-comment:",
     );
     editor.destroy();
   });
@@ -265,7 +266,9 @@ describe("BUG1 — linkedAnchor KIND survives the serialize → parse → reconc
   // (parser default `note` wins) and reconciles back to its own token.
   // Tokens verified against legacy-token-crosswalk.ts /
   // legacyKindToCardKindString:
-  //   revision        → "comment"          (revision-comment.legacyDataKind)
+  //   revision        → "revision-comment" (the spine legacyDataKind; CSS keys on
+  //                                          [data-link-card^="revision-comment:"],
+  //                                          "comment:" kept as a legacy alias)
   //   todo            → "todo"
   //   cutter-comment  → "cutter-comment"   (NOT "cut" — that's the cssToken)
   //   report          → "report"
@@ -277,7 +280,7 @@ describe("BUG1 — linkedAnchor KIND survives the serialize → parse → reconc
     span: string;
     token: string;
   }> = [
-    { kind: "revision", anchorId: "rev2", span: "rev text", token: "comment" },
+    { kind: "revision", anchorId: "rev2", span: "rev text", token: "revision-comment" },
     { kind: "todo", anchorId: "td1", span: "todo text", token: "todo" },
     {
       kind: "cutter-comment",

@@ -61,8 +61,10 @@ describe("cardKindToLegacyAnchorKind — exhaustive, no silent note default", ()
   });
 
   it("round-trips through legacyKindToCardKindString to a real data-link-card token", () => {
-    // revision folds to the `comment:` CSS token, not a ruleless `revision:`.
-    expect(legacyKindToCardKindString("revision")).toBe("comment");
+    // revision folds to the spine `revision-comment:` data-link-card token (the
+    // CSS rule keys on `[data-link-card^="revision-comment:"]`; `comment:` is a
+    // legacy alias), NOT a ruleless `revision:`.
+    expect(legacyKindToCardKindString("revision")).toBe("revision-comment");
     expect(legacyKindToCardKindString("report")).toBe("report");
     expect(legacyKindToCardKindString("note")).toBe("note");
   });
