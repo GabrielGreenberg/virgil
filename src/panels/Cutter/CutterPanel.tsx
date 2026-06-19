@@ -13,6 +13,7 @@ import { useWordCount } from "@/hooks/useWordCount";
 import { getLinkedTextObjectIds } from "@/links/links";
 import PanelThemePicker from "@/components/PanelThemePicker";
 import { CardListPanel } from "@/panels/_shared/CardListPanel";
+import { CardViewModeMenuItems } from "@/panels/_shared/CardViewModeMenu";
 import { withRecentlyAddedFirst } from "@/hooks/useRecentlyAddedTracker";
 import { CutterCommentCard } from "./CutterCommentCard";
 import { CutterSuggestionCard } from "./CutterSuggestionCard";
@@ -100,6 +101,7 @@ export default function CutterPanel({
           <div className="px-3 py-1.5 flex items-center justify-end gap-2">
             <PanelThemePicker panelKey="cut" label="Cutter color" />
           </div>
+          <CardViewModeMenuItems kind="cutter" />
         </ItemMenu>
       }
       panelExtras={
@@ -112,6 +114,7 @@ export default function CutterPanel({
       }
       items={items}
       getId={(it) => it.id}
+      getArchived={(it) => !!it.data.archived}
       selectedId={selectedId}
       onSelect={onSelect}
       emptyState={

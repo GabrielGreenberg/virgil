@@ -12,6 +12,7 @@ import { ItemMenu, PANEL } from "@/components/panel-primitives";
 import { getLinkedTextObjectIds } from "@/links/links";
 import PanelThemePicker from "@/components/PanelThemePicker";
 import { CardListPanel } from "@/panels/_shared/CardListPanel";
+import { CardViewModeMenuItems } from "@/panels/_shared/CardViewModeMenu";
 import { withRecentlyAddedFirst } from "@/hooks/useRecentlyAddedTracker";
 import { RevisionCommentCard } from "./RevisionCommentCard";
 import { RevisionSuggestionCard } from "./RevisionSuggestionCard";
@@ -105,6 +106,7 @@ export default function RevisionsPanel({
           <div className="px-3 py-1.5 flex items-center justify-end gap-2">
             <PanelThemePicker panelKey="revision" label="Revisions color" />
           </div>
+          <CardViewModeMenuItems kind="revisions" />
         </ItemMenu>
       }
       panelExtras={
@@ -117,6 +119,7 @@ export default function RevisionsPanel({
       }
       items={items}
       getId={(it) => it.id}
+      getArchived={(it) => !!it.data.archived}
       selectedId={selectedId}
       onSelect={onSelect}
       emptyState={

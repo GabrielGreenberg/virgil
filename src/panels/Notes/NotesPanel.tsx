@@ -16,6 +16,7 @@ import {
 import { getLinkedTextObjectIds } from "@/links/links";
 import PanelThemePicker from "@/components/PanelThemePicker";
 import { CardListPanel } from "@/panels/_shared/CardListPanel";
+import { CardViewModeMenuItems } from "@/panels/_shared/CardViewModeMenu";
 import { withRecentlyAddedFirst } from "@/hooks/useRecentlyAddedTracker";
 import { NoteCard } from "./NoteCard";
 import { HighlightCard } from "./HighlightCard";
@@ -121,10 +122,12 @@ export default function NotesPanel({
             <PanelThemePicker panelKey="note" label="Note color" />
             <PanelThemePicker panelKey="highlight" label="Highlight color" />
           </div>
+          <CardViewModeMenuItems kind="notes" />
         </ItemMenu>
       }
       items={sortedCards}
       getId={(c) => c.id}
+      getArchived={(c) => !!c.archived}
       selectedId={selectedNoteId}
       onSelect={onSelectNote}
       emptyState={

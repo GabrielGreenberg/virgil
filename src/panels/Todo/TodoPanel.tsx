@@ -6,6 +6,7 @@ import { ItemMenu, PANEL } from "@/components/panel-primitives";
 import { getLinkedTextObjectIds } from "@/links/links";
 import PanelThemePicker from "@/components/PanelThemePicker";
 import { CardListPanel } from "@/panels/_shared/CardListPanel";
+import { CardViewModeMenuItems } from "@/panels/_shared/CardViewModeMenu";
 import { withRecentlyAddedFirst } from "@/hooks/useRecentlyAddedTracker";
 import { TodoRow } from "./TodoRow";
 
@@ -66,10 +67,12 @@ export default function TodoPanel({
           <div className="px-3 py-1.5 flex items-center justify-end gap-2">
             <PanelThemePicker panelKey="todo" label="Todo color" />
           </div>
+          <CardViewModeMenuItems kind="todo" />
         </ItemMenu>
       }
       items={orderedItems}
       getId={(t) => t.id}
+      getArchived={(t) => !!t.archived}
       selectedId={selectedTodoId}
       onSelect={onSelectTodo}
       emptyState={

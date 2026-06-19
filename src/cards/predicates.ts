@@ -42,9 +42,17 @@ export const isSystemCardKind = (k: CardKind): boolean =>
  *  This is wholly distinct from the text-object Archive PANEL (a separate
  *  subsystem that *moves text objects*). The archive button renders iff
  *  `isArchivable(kind)` AND the card already shows a panel-trash button, so the
- *  affordance lands "wherever the trash button appears." */
+ *  affordance lands "wherever the trash button appears."
+ *
+ *  EXCEPTION — `footnote` is deferred (v1): the Footnotes panel sources its
+ *  items from the live doc nodes (`getFootnotes()`), so an archived footnote
+ *  (whose `\footnote` atom is spliced out) would vanish from the panel with no
+ *  way to unarchive it. Surfacing archived footnotes needs a footnote
+ *  item-model change (+ a card-render decision for an atom-less footnote) and is
+ *  tracked as a follow-up. Citation — the other atom kind — works fully because
+ *  the Citations panel already lists unanchored refs. */
 export const isArchivable = (k: CardKind): boolean =>
-  CARD_REGISTRY[k].origin === "user";
+  CARD_REGISTRY[k].origin === "user" && k !== "footnote";
 
 /** Whether archiving a card of this kind also splices an inline atom out of the
  *  document (footnote/citation). These kinds' cards ARE backed by a

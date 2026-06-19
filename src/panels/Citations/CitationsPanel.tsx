@@ -10,6 +10,7 @@ import {
 } from "@/components/panel-primitives";
 import PanelThemePicker from "@/components/PanelThemePicker";
 import { CardListPanel } from "@/panels/_shared/CardListPanel";
+import { CardViewModeMenuItems } from "@/panels/_shared/CardViewModeMenu";
 import { withRecentlyAddedFirst } from "@/hooks/useRecentlyAddedTracker";
 import { CitationCard } from "./CitationCard";
 
@@ -279,6 +280,7 @@ function CitationsPanel({
               </span>
             </button>
           ))}
+          <CardViewModeMenuItems kind="citations" />
         </ItemMenu>
       }
       panelExtras={
@@ -303,6 +305,7 @@ function CitationsPanel({
       }
       items={orderedCitations}
       getId={(c) => c.id}
+      getArchived={(c) => !!c.archived}
       selectedId={selectedId}
       onSelect={onSelect}
       emptyState={

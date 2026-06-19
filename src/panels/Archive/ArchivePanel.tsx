@@ -9,6 +9,7 @@ import {
 } from "@/components/panel-primitives";
 import PanelThemePicker from "@/components/PanelThemePicker";
 import { CardListPanel } from "@/panels/_shared/CardListPanel";
+import { CardViewModeMenuItems } from "@/panels/_shared/CardViewModeMenu";
 import { ArchiveCard } from "./ArchiveCard";
 
 interface ArchivePanelProps {
@@ -50,10 +51,12 @@ function ArchivePanel({
           <div className="px-3 py-1.5 flex items-center justify-end gap-2">
             <PanelThemePicker panelKey="archive" label="Archive color" />
           </div>
+          <CardViewModeMenuItems kind="archive" />
         </ItemMenu>
       }
       items={snippets}
       getId={(s) => s.id}
+      getArchived={(s) => !!s.archived}
       selectedId={selectedId}
       onSelect={onSelect}
       emptyState={
