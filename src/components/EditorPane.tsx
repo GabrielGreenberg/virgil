@@ -91,6 +91,10 @@ import { usePlacement, suppressNextPlacement } from "@/links/_shared/usePlacemen
 import { AiRequestsProvider } from "./editor-layout/contexts/ai-requests";
 import { RecentlyAddedProvider } from "./editor-layout/contexts/recently-added";
 import { CardCreationProvider } from "./editor-layout/contexts/card-creation";
+import {
+  CardArchiveViewProvider,
+  type CardArchiveViewApi,
+} from "@/panels/_shared/card-archive-view";
 import { useCardCreation } from "./editor-layout/card-actions/card-creation";
 import { useCitationActions } from "./editor-layout/card-actions/citations";
 import { isAnchorableNode } from "@/lib/marginalia";
@@ -384,6 +388,13 @@ export interface EditorPaneViewPrefs {
   getOmniEnabled: (side: Side) => Set<OmniCategory>;
   getOmniHideAll: (side: Side) => boolean;
   toggleOmniHideAllCards: (side: Side) => void;
+
+  // ── Card archive view (per-panel View Active/Archives/All) ──────
+  setCardArchiveView: (
+    panel: PanelId,
+    mode: import("@/hooks/useViewPrefs").CardArchiveView,
+  ) => void;
+  setSuppressArchiveAtomWarning: (v: boolean) => void;
   /** Footnotes that exist as orphan cards (no in-doc reference). The
    *  Reader has none; the main app feeds these via EditorPane's own
    *  footnote-add handler (`handleAddFootnote`). */
@@ -3747,6 +3758,27 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
     },
   });
 
+  // Card archive view API — shared by every CardListPanel filter + the
+  // CardViewModeMenuItems in each panel's three-dot menu. Sourced from the
+  // single useViewPrefs instance (via the threaded viewPrefs bundle) so the
+  // filter and the menu can never drift.
+  const cardArchiveViewApi = useMemo<CardArchiveViewApi>(
+    () => ({
+      getView: (panel) =>
+        viewPrefs?.prefs.cardArchiveView[panel as PanelId] ?? "active",
+      setView: (panel, mode) =>
+        viewPrefs?.setCardArchiveView(panel as PanelId, mode),
+      suppressAtomWarning: viewPrefs?.prefs.suppressArchiveAtomWarning ?? false,
+      setSuppressAtomWarning: (v) => viewPrefs?.setSuppressArchiveAtomWarning(v),
+    }),
+    [
+      viewPrefs?.prefs.cardArchiveView,
+      viewPrefs?.prefs.suppressArchiveAtomWarning,
+      viewPrefs?.setCardArchiveView,
+      viewPrefs?.setSuppressArchiveAtomWarning,
+    ],
+  );
+
   return (
     <EditorChromeProvider value={{ ...chrome, menuBar }}>
       <EditorRefProvider
@@ -3775,6 +3807,7 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
         <SelectionsProvider value={{ selectedBibKey, setSelectedBibKey }}>
 
         <CollabProvider value={collab}>
+        <CardArchiveViewProvider value={cardArchiveViewApi}>
         <PoppedCardsContext.Provider value={poppedCardsValue}>
         {/* LiftHost — shared owner of the lifted-overlay ghost gesture. Mounted
             here, inside PoppedCardsContext.Provider (and under
@@ -5282,6 +5315,7 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
           {confirmMorphDialog}
         </LiftHost>
         </PoppedCardsContext.Provider>
+        </CardArchiveViewProvider>
         </CollabProvider>
         </SelectionsProvider>
         </DragHandleMenuProvider>

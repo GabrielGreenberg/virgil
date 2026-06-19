@@ -705,6 +705,8 @@ export default function EditorLayout() {
     toggleOmniCategory,
     resetOmniSide,
     toggleOmniHideAllCards,
+    setCardArchiveView,
+    setSuppressArchiveAtomWarning,
   } = useViewPrefs();
   const prefsRef = useRef(prefs);
   prefsRef.current = prefs;
@@ -2800,6 +2802,8 @@ export default function EditorLayout() {
     toggleOmniCategory,
     setOmniSideToDefault,
     categorySides,
+    setCardArchiveView,
+    setSuppressArchiveAtomWarning,
   }), [
     prefs,
     isResizingPanels,
@@ -2867,6 +2871,8 @@ export default function EditorLayout() {
     toggleOmniCategory,
     setOmniSideToDefault,
     categorySides,
+    setCardArchiveView,
+    setSuppressArchiveAtomWarning,
   ]);
 
   const {

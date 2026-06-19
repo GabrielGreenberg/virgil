@@ -345,6 +345,9 @@ export function useReaderViewPrefs(): EditorPaneViewPrefs {
       toggleOmniCategory,
       setOmniSideToDefault,
       categorySides: READER_CATEGORY_SIDES,
+      // Reader is read-only — card archive view never changes.
+      setCardArchiveView: () => {},
+      setSuppressArchiveAtomWarning: () => {},
     }),
     [
       prefs,
