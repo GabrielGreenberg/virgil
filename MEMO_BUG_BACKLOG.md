@@ -1567,3 +1567,35 @@ SwiftLaTeX/TeXlyre PDFTeX engine distribution (the living fork at
 real compile produces a PDF. **External binary download — confirm with the user
 before fetching, and get the version-matched `.fmt`** (a mismatched format file
 fails with a fmt/engine version error).
+
+---
+
+## 53. Collapsed example cards: multi-digit number wraps (no `--expex-num-width`)
+
+**Reported:** 2026-06-15 · **Status:** open (catch — do not fix yet) · **Area:** ui-chrome / card chrome / expex · **Related:** #25 (main-editor fix), #42 / #43 (collapsed borrowed render)
+
+**Reported behavior** — in a **collapsed/compressed** example card the number
+wraps: `(13` on one line, `)` on the next.
+
+**Root cause — the collapsed/borrowed render never receives the #25 adaptive
+column width.** `--expex-num-width` (the doc-adaptive number-column width that #25
+added) is set in only **two** places:
+1. the main editor's `ExpexNumbering` plugin
+   ([expex.ts:1723](src/lib/tiptap/expex.ts:1723)), and
+2. the example **float** body, which applies it inline
+   ([example-block-body.tsx:290](src/text-objects/floats/example-block-body.tsx:290),
+   computed via `computeExpexWidths` at [:101](src/text-objects/floats/example-block-body.tsx:101)).
+
+The **collapsed card** renders the example through `BorrowedMainText` (the #42/#43
+path), which sets **neither** var — so `.expex-block`'s
+`grid-template-columns: var(--expex-num-width, 1.5em) 1fr` falls back to the
+**1.5em** default, too narrow for a 2-digit `(13)`, and it wraps (the
+`.expex-number` `white-space: nowrap` from #25 also isn't holding in the borrowed
+context — confirm whether the borrowed `white-space` base overrides it).
+
+**Fix direction.** Mirror the example-float fix on the collapsed/borrowed path:
+run `computeExpexWidths` on the example's content and apply
+`--expex-num-width` / `--expex-marker-width` inline to the `BorrowedMainText`
+container in the compressed card (and verify `.expex-number` keeps `nowrap` there).
+Bundles naturally with #42 / #43 (all three are the same collapsed-borrowed-example
+render path).
