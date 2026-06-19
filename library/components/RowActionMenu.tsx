@@ -5,13 +5,14 @@ import { createPortal } from "react-dom";
 
 interface Props {
   /** Disabled when the entry has no citekey (e.g. an unsorted triage row).
-   *  All three actions key off citekey so they can't run on triage rows. */
+   *  All actions key off citekey so they can't run on triage rows. */
   disabled?: boolean;
   /** Label for the destructive item — "Delete…" or "Remove from library". */
   deleteLabel: string;
   onDelete: () => void;
   onBibReview: () => void;
   onTextReview: () => void;
+  onImportBib: () => void;
 }
 
 export default function RowActionMenu({
@@ -20,6 +21,7 @@ export default function RowActionMenu({
   onDelete,
   onBibReview,
   onTextReview,
+  onImportBib,
 }: Props) {
   const [open, setOpen] = useState(false);
   const [pos, setPos] = useState<{ top: number; right: number } | null>(null);
@@ -113,6 +115,9 @@ export default function RowActionMenu({
             </MenuItem>
             <MenuItem onClick={(e) => runAction(e, onTextReview)}>
               AI text review
+            </MenuItem>
+            <MenuItem onClick={(e) => runAction(e, onImportBib)}>
+              Import bibliography
             </MenuItem>
             <MenuDivider />
             <MenuItem

@@ -5,7 +5,7 @@ import type { CatalogEntry } from "@library/lib/catalog";
 import type { BibEntry } from "@library/lib/types";
 import { ENTRIES_DT_TYPE, ENTRY_DT_TYPE } from "@library/lib/dnd-types";
 import { attachClampedDragGhost } from "@/lib/drag-ghost";
-import { Dot, StatusPills } from "./StatusPill";
+import { BibImportedCheck, Dot, StatusPills } from "./StatusPill";
 import RowActionMenu from "./RowActionMenu";
 
 export interface RowActions {
@@ -18,6 +18,8 @@ export interface RowActions {
   onDelete: (citekey: string) => void;
   onBibReview: (citekey: string) => void;
   onTextReview: (citekey: string) => void;
+  /** Import this paper's references.bib into master.bib (single-paper merge). */
+  onImportBib: (citekey: string) => void;
   /** Menu label for the destructive action — "Delete…" in Central,
    *  "Remove from library" in a custom library. */
   deleteLabel: string;
@@ -309,6 +311,17 @@ export default function LeftListRow({ entry, bib, selected, gridTemplate, entryK
             </button>
           )}
         </div>
+        {/* bib-imp: blue check when this paper's references.bib is in master.bib */}
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            overflow: "hidden",
+          }}
+        >
+          {entry.bib.imported ? <BibImportedCheck /> : null}
+        </div>
       </div>
       {/* Always-visible action-menu column. Stays pinned on the right
           regardless of how compressed the grid is — it's a flex sibling
@@ -329,6 +342,7 @@ export default function LeftListRow({ entry, bib, selected, gridTemplate, entryK
           onDelete={() => ck && actions.onDelete(ck)}
           onBibReview={() => ck && actions.onBibReview(ck)}
           onTextReview={() => ck && actions.onTextReview(ck)}
+          onImportBib={() => ck && actions.onImportBib(ck)}
         />
       </div>
     </div>

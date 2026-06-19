@@ -6,12 +6,15 @@ import type { CatalogEntry, IndexedState } from "@library/lib/catalog";
 import {
   cancelBibReview,
   cancelDeepIndex,
+  cancelImportBib,
   cancelPaperReview,
   queueBibReview,
   queueDeepIndex,
+  queueImportBib,
   queuePaperReview,
   readBibReviewState,
   readDeepIndexState,
+  readImportBibState,
   readPaperReviewState,
 } from "@library/lib/bib-edit";
 import { writeQueueEntry } from "@library/lib/queue";
@@ -33,13 +36,14 @@ interface Props {
   onEdit?: () => void;
 }
 
-type RequestKind = "index" | "deep" | "bib" | "doc";
+type RequestKind = "index" | "deep" | "bib" | "doc" | "importbib";
 
 const REQUESTS: { kind: RequestKind; label: string }[] = [
   { kind: "index", label: "Index" },
   { kind: "deep", label: "Deep index" },
   { kind: "bib", label: "Bib review" },
   { kind: "doc", label: "Doc review" },
+  { kind: "importbib", label: "Import bib" },
 ];
 
 /** Sole header for a paper-file tab — a 2-column grid:
@@ -67,28 +71,31 @@ export default function PaperHeader({
     deep: false,
     bib: false,
     doc: false,
+    importbib: false,
   });
   const [busy, setBusy] = useState<Record<RequestKind, boolean>>({
     index: false,
     deep: false,
     bib: false,
     doc: false,
+    importbib: false,
   });
 
   const indexedState: IndexedState = entry.indexed.state;
   const isIndexed = indexedState === "indexed" || indexedState === "deepIndexed";
   const indexNeeded = indexedState === "none" || indexedState === "failed";
 
-  // Refresh all four queue states for this citekey.
+  // Refresh all queue states for this citekey.
   const refreshAll = async () => {
     if (!handle || !citekey) {
-      setQueued({ index: false, deep: false, bib: false, doc: false });
+      setQueued({ index: false, deep: false, bib: false, doc: false, importbib: false });
       return;
     }
-    const [bibR, docR, deepR, shared] = await Promise.all([
+    const [bibR, docR, deepR, importR, shared] = await Promise.all([
       readBibReviewState(handle, citekey),
       readPaperReviewState(handle, citekey),
       readDeepIndexState(handle, citekey),
+      readImportBibState(handle, citekey),
       readJsonFile<QueueEntry>(handle, `${SUBDIRS.queue}/${citekey}.json`),
     ]);
     const indexQueued = !!shared && shared.kind === "index" && shared.status === "requested";
@@ -97,20 +104,22 @@ export default function PaperHeader({
       deep: !!deepR,
       bib: !!bibR,
       doc: !!docR,
+      importbib: !!importR,
     });
   };
 
   useEffect(() => {
     let cancelled = false;
     if (!handle || !citekey) {
-      setQueued({ index: false, deep: false, bib: false, doc: false });
+      setQueued({ index: false, deep: false, bib: false, doc: false, importbib: false });
       return;
     }
     void (async () => {
-      const [bibR, docR, deepR, shared] = await Promise.all([
+      const [bibR, docR, deepR, importR, shared] = await Promise.all([
         readBibReviewState(handle, citekey),
         readPaperReviewState(handle, citekey),
         readDeepIndexState(handle, citekey),
+        readImportBibState(handle, citekey),
         readJsonFile<QueueEntry>(handle, `${SUBDIRS.queue}/${citekey}.json`),
       ]);
       if (cancelled) return;
@@ -120,6 +129,7 @@ export default function PaperHeader({
         deep: !!deepR,
         bib: !!bibR,
         doc: !!docR,
+        importbib: !!importR,
       });
     })();
     return () => { cancelled = true; };
@@ -165,12 +175,14 @@ export default function PaperHeader({
         if (kind === "index") await queueIndex(note);
         else if (kind === "deep") await queueDeepIndex(handle, citekey, note, indexNeeded);
         else if (kind === "bib") await queueBibReview(handle, citekey, note);
+        else if (kind === "importbib") await queueImportBib(handle, citekey, note);
         else await queuePaperReview(handle, citekey, note);
         flashFor("queued ✓");
       } else {
         if (kind === "index") await cancelIndex();
         else if (kind === "deep") await cancelDeepIndex(handle, citekey);
         else if (kind === "bib") await cancelBibReview(handle, citekey);
+        else if (kind === "importbib") await cancelImportBib(handle, citekey);
         else await cancelPaperReview(handle, citekey);
         flashFor("cancelled");
       }
@@ -192,6 +204,11 @@ export default function PaperHeader({
       // Doc review needs the paper text to exist.
       if (!isIndexed) return { disabled: true, title: "Index the paper first to file a document AI request" };
     }
+    if (kind === "importbib") {
+      // Importing folds the paper's references.bib into master.bib — needs
+      // an indexed paper (no references.bib otherwise).
+      if (!isIndexed) return { disabled: true, title: "Index the paper first to import its bibliography" };
+    }
     return { disabled: false };
   };
 
@@ -210,7 +227,7 @@ export default function PaperHeader({
   if (fields.volume) metaSegments.push(`vol. ${fields.volume}`);
   if (fields.pages) metaSegments.push(`pp. ${fields.pages}`);
 
-  const anyChecked = queued.index || queued.deep || queued.bib || queued.doc;
+  const anyChecked = Object.values(queued).some(Boolean);
 
   return (
     <div
@@ -354,6 +371,7 @@ export default function PaperHeader({
               pdfPresent={pdfAvailable}
               indexed={entry.indexed.state}
               bib={entry.bib.state}
+              bibImported={!!entry.bib.imported}
             />
             <ViewToggle
               mode={viewMode}

@@ -279,6 +279,19 @@ export default function LeftList({
           <SortHeader col="status" label="status" activeSort={sort} onSort={handleSort} />
           <Resizer onPointerDown={handleResize("status", "citekey")} />
           <SortHeader col="citekey" label="citekey" activeSort={sort} onSort={handleSort} />
+          <div
+            title="Bibliography imported into master.bib"
+            style={{
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              padding: "0 4px",
+              color: "var(--muted)",
+              userSelect: "none",
+            }}
+          >
+            imp
+          </div>
         </div>
         <div style={{ flexShrink: 0, width: ACTION_COL_WIDTH }} />
       </div>

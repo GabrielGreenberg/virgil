@@ -125,6 +125,57 @@ export async function cancelPaperReview(
   return true;
 }
 
+/** Enqueue an "import bibliography" request — fold this paper's
+ *  references.bib into the central master.bib. Drained by
+ *  `/library/import-bib` (single-paper slice of `/library/merge-bibs`).
+ *  An optional `note` lets the user attach instructions; surfaced by
+ *  `/library/ai-requests`. */
+export async function queueImportBib(
+  root: FileSystemDirectoryHandle,
+  citekey: string,
+  note?: string,
+): Promise<string> {
+  const trimmed = note?.trim() ?? "";
+  const entry: QueueEntry = {
+    kind: "import-bib",
+    status: "requested",
+    citekey,
+    requestedAt: new Date().toISOString(),
+    attempts: 0,
+    ...(trimmed.length > 0 ? { note: trimmed } : {}),
+  };
+  return writeQueueEntry(root, entry);
+}
+
+/** Read a pending import-bib queue entry. Returns null if none queued. */
+export async function readImportBibState(
+  root: FileSystemDirectoryHandle,
+  citekey: string,
+): Promise<QueueEntry | null> {
+  const cur = await readJsonFile<QueueEntry>(
+    root,
+    `${SUBDIRS.queue}/${citekey}-importbib.json`,
+  );
+  if (!cur || cur.kind !== "import-bib" || cur.status !== "requested") {
+    return null;
+  }
+  return cur;
+}
+
+/** Cancel a queued import-bib request by deleting its queue file. */
+export async function cancelImportBib(
+  root: FileSystemDirectoryHandle,
+  citekey: string,
+): Promise<boolean> {
+  const path = `${SUBDIRS.queue}/${citekey}-importbib.json`;
+  const cur = await readJsonFile<QueueEntry>(root, path);
+  if (!cur) return false;
+  if (cur.kind !== "import-bib") return false;
+  if (cur.status !== "requested") return false;
+  await deleteFile(root, path);
+  return true;
+}
+
 /** Cancel a previously queued AI review by deleting its queue file —
  *  but only if the file is still a pending `authenticate` request.
  *  Refuses to delete an in-flight or unrelated entry (e.g. a queued

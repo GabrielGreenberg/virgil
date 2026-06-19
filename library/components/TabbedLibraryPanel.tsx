@@ -28,6 +28,7 @@ export interface EntryActions {
   queueDelete: (citekey: string) => void;
   queueBibReview: (citekey: string) => void;
   queuePaperReview: (citekey: string) => void;
+  queueImportBib: (citekey: string) => void;
   removeFromLibrary: (libId: string, entryKey: string) => void;
 }
 import {
@@ -186,6 +187,7 @@ export default function TabbedLibraryPanel({
         },
         onBibReview: entryActions.queueBibReview,
         onTextReview: entryActions.queuePaperReview,
+        onImportBib: entryActions.queueImportBib,
       };
     }
     if (isProject(activeLibrary.id)) {
@@ -206,6 +208,7 @@ export default function TabbedLibraryPanel({
         },
         onBibReview: entryActions.queueBibReview,
         onTextReview: entryActions.queuePaperReview,
+        onImportBib: entryActions.queueImportBib,
       };
     }
     const libId = activeLibrary.id;
@@ -217,6 +220,7 @@ export default function TabbedLibraryPanel({
       onDelete: (citekey: string) => entryActions.removeFromLibrary(libId, citekey),
       onBibReview: entryActions.queueBibReview,
       onTextReview: entryActions.queuePaperReview,
+      onImportBib: entryActions.queueImportBib,
     };
   }, [activeLibrary, entryActions]);
 

@@ -27,7 +27,7 @@ import DropZone from "./DropZone";
 import Toaster from "./Toaster";
 import TabbedLibraryPanel, { type EntryActions } from "./TabbedLibraryPanel";
 import LibrariesNavigator from "./LibrariesNavigator";
-import { queueBibReview, queueDelete, queuePaperReview } from "@library/lib/bib-edit";
+import { queueBibReview, queueDelete, queueImportBib, queuePaperReview } from "@library/lib/bib-edit";
 
 interface Props {
   handle: FileSystemDirectoryHandle;
@@ -439,6 +439,9 @@ export default function LibraryView({
       },
       queuePaperReview: (citekey: string) => {
         void queuePaperReview(handle, citekey);
+      },
+      queueImportBib: (citekey: string) => {
+        void queueImportBib(handle, citekey);
       },
       // Custom-library memberships are tracked in registry.libraries;
       // project-library "memberships" are entries in the open doc's

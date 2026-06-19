@@ -460,6 +460,100 @@ def upsert_catalog_entry(catalog: dict, citekey: str, **fields) -> dict:
     return e
 
 
+# ── bib-import flag (per-paper references.bib → master.bib) ───────────
+#
+# `bib.imported` marks that a paper's references.bib has been folded into
+# master.bib (via merge_paper_references.py / /library/import-bib). The
+# companion `bib.importedKeys` snapshots the citekey set at import time so we
+# can detect *additions* later: if references.bib gains a citekey not in the
+# snapshot, the flag is cleared. Removals are ignored (additions-only — a
+# product decision). This is the single switch behind both the merge-bibs
+# worklist skip-gate (req 4) and the on-bib-change invalidation (req 5).
+
+
+def references_bib_keys(library: Path, citekey: str) -> list[str]:
+    """Sorted NFC citekeys in papers/<citekey>/references.bib (empty if
+    the file is absent or unparseable)."""
+    refs = library / "papers" / citekey / "references.bib"
+    if not refs.exists():
+        return []
+    try:
+        from _bib_parse import read_bib_file  # lazy: sibling, avoids import cycle
+        entries = read_bib_file(refs)
+    except Exception:
+        return []
+    return sorted({
+        normalize_citekey(e["citekey"]) for e in entries if e.get("citekey")
+    })
+
+
+def mark_bib_imported(
+    library: Path, citekey: str, keys: list[str] | None = None
+) -> None:
+    """Stamp bib.imported=true + importedAt + importedKeys on the catalog row.
+    Self-locks via `update_catalog_entry`. `keys` defaults to the current
+    references.bib citekey set. Raises KeyError if the row is missing."""
+    if keys is None:
+        keys = references_bib_keys(library, citekey)
+    update_catalog_entry(library, citekey, {"bib": {
+        "imported": True,
+        "importedAt": _now(),
+        "importedKeys": sorted(set(keys)),
+    }})
+
+
+def bib_import_added_keys(library: Path, citekey: str) -> list[str]:
+    """Citekeys now in references.bib that were NOT present at import time.
+    Empty list => nothing added since import (or the row isn't marked
+    imported — no baseline to compare). Additions-only; removals ignored."""
+    cat = read_catalog(library)
+    entry = None
+    for e in cat.get("entries", []):
+        if citekey_matches(e.get("citekey", ""), citekey):
+            entry = e
+            break
+    if entry is None:
+        return []
+    bib = entry.get("bib") or {}
+    if not bib.get("imported"):
+        return []
+    baseline = {normalize_citekey(k) for k in (bib.get("importedKeys") or [])}
+    current = set(references_bib_keys(library, citekey))
+    return sorted(current - baseline)
+
+
+def invalidate_bib_imported_if_added(library: Path, citekey: str) -> bool:
+    """If bib.imported is set and references.bib gained a citekey since
+    import, clear bib.imported. Returns True if it flipped, False on no-op
+    (not imported, nothing added, or no catalog row). Safe to call from any
+    references.bib writer — it's a no-op when the paper isn't imported."""
+    if not bib_import_added_keys(library, citekey):
+        return False
+    try:
+        update_catalog_entry(library, citekey, {"bib": {"imported": False}})
+    except KeyError:
+        return False
+    return True
+
+
+def invalidate_changed_imports(library: Path) -> list[str]:
+    """Sweep every imported catalog row and clear bib.imported on any paper
+    whose references.bib has gained a citekey since import (additions-only).
+    Returns the citekeys that flipped. This is the steady-state catch-all for
+    requirement 5 — run it from the drain so the "imported" badge clears on
+    the next skill pass no matter which writer changed references.bib."""
+    flipped: list[str] = []
+    for e in read_catalog(library).get("entries", []):
+        ck = e.get("citekey")
+        if not ck:
+            continue
+        if not (e.get("bib") or {}).get("imported"):
+            continue
+        if invalidate_bib_imported_if_added(library, ck):
+            flipped.append(ck)
+    return flipped
+
+
 # ── inbox ────────────────────────────────────────────────────────────
 
 
