@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useRef, useState, type DragEvent } from "react";
+import { useCallback, useMemo, useRef, useState, type DragEvent } from "react";
 import type { CatalogEntry } from "@library/lib/catalog";
 import type { BibEntry } from "@library/lib/types";
 import {
@@ -368,7 +368,19 @@ export default function TabbedLibraryPanel({
     onAddEntriesToLibrary(dropTargetId, keys);
   };
 
-  const handleOpenPaper = (citekey: string) => onOpenPaper(citekey, panel);
+  // Memoized so LeftList's `onOpenPaper`/`onRowViewed` props stay stable —
+  // that's what keeps LeftList's `onActivate` callback (and therefore every
+  // memoized row) from being invalidated on each panel re-render.
+  const handleOpenPaper = useCallback(
+    (citekey: string) => onOpenPaper(citekey, panel),
+    [onOpenPaper, panel],
+  );
+  const handleRowViewed = useCallback(
+    (citekey: string | null | undefined) => {
+      if (citekey) markViewed(citekey);
+    },
+    [markViewed],
+  );
 
   return (
     <div
@@ -483,9 +495,7 @@ export default function TabbedLibraryPanel({
                     rowActions={rowActions}
                     dropHighlight={panelDragOver === "entry"}
                     dotToneFor={dotToneFor}
-                    onRowViewed={(citekey: string | null | undefined) => {
-                      if (citekey) markViewed(citekey);
-                    }}
+                    onRowViewed={handleRowViewed}
                   />
                 </div>
               )}

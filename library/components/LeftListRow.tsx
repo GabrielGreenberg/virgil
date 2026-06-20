@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { memo, useState } from "react";
 import type { CatalogEntry } from "@library/lib/catalog";
 import type { BibEntry } from "@library/lib/types";
 import { ENTRIES_DT_TYPE, ENTRY_DT_TYPE } from "@library/lib/dnd-types";
@@ -34,11 +34,22 @@ interface Props {
    * for unsorted ones. Used as the dataTransfer payload when dragging the
    * row to another library. */
   entryKey: string;
-  /** Full multi-select set (so a drag from a selected row can carry the
-   *  whole selection). When the dragged row isn't in the set, the drag
-   *  carries just `entryKey`. */
-  selectedKeys: ReadonlySet<string>;
-  onClick: (e: React.MouseEvent | React.KeyboardEvent) => void;
+  /** Stable activation handler (click / Enter / Space). The row passes its
+   *  OWN identity back up so the parent doesn't have to mint a per-row
+   *  closure each render — that closure churn is what defeats `React.memo`
+   *  on the row (keystroke-sanctity: the catalog list must not re-render
+   *  every row on every keystroke / selection / 6 s poll). */
+  onActivate: (
+    entryKey: string,
+    citekey: string | null | undefined,
+    e: React.MouseEvent | React.KeyboardEvent,
+  ) => void;
+  /** Stable resolver for the multi-row drag payload: given this row's key,
+   *  returns the keys to carry (the whole selection when this row is part
+   *  of a multi-select, else just this row). Reads the live selection from
+   *  a ref in the parent so the row needn't take the selection Set as a
+   *  prop (a Set whose identity churns on every selection change). */
+  resolveDragKeys: (entryKey: string) => string[];
   actions: RowActions;
   /** Far-left request-state dot. Red = a queue request is outstanding for
    *  this citekey; green = a completion notification has fired and the
@@ -52,7 +63,7 @@ export const ACTION_COL_WIDTH = 32;
 /** Width of the always-visible request-state dot column on the left edge. */
 export const STATUS_DOT_COL_WIDTH = 16;
 
-export default function LeftListRow({ entry, bib, selected, gridTemplate, entryKey, selectedKeys, onClick, actions, dotTone }: Props) {
+function LeftListRow({ entry, bib, selected, gridTemplate, entryKey, onActivate, resolveDragKeys, actions, dotTone }: Props) {
   // Bib wins over catalog: master.bib is the authoritative source for
   // bibliographic display fields. Catalog title/authors/year is a snapshot
   // taken at index time and can drift after /authenticate-bib runs.
@@ -91,11 +102,10 @@ export default function LeftListRow({ entry, bib, selected, gridTemplate, entryK
         // Multi-row drag: if the grabbed row is part of the current
         // selection, carry every selected key. Otherwise the drag
         // operates on just this row, regardless of what else is
-        // highlighted (matches Finder / VS Code behavior).
-        const keys =
-          selectedKeys.has(entryKey) && selectedKeys.size > 1
-            ? Array.from(selectedKeys)
-            : [entryKey];
+        // highlighted (matches Finder / VS Code behavior). The parent
+        // resolves this from the live selection ref so the row stays
+        // memoizable (no selection-Set prop).
+        const keys = resolveDragKeys(entryKey);
         e.dataTransfer.setData(ENTRY_DT_TYPE, entryKey);
         e.dataTransfer.setData(ENTRIES_DT_TYPE, JSON.stringify(keys));
         // copy semantics — drops are additive, the source row stays put.
@@ -126,11 +136,11 @@ export default function LeftListRow({ entry, bib, selected, gridTemplate, entryK
           cursorOffsetY: e.clientY - rect.top,
         });
       }}
-      onClick={onClick}
+      onClick={(e) => onActivate(entryKey, entry.citekey, e)}
       onKeyDown={(e) => {
         if (e.key === "Enter" || e.key === " ") {
           e.preventDefault();
-          onClick(e);
+          onActivate(entryKey, entry.citekey, e);
         }
       }}
       title={`${title}${firstAuthor ? ` — ${firstAuthor}` : ""}${year ? ` (${year})` : ""}`}
@@ -348,6 +358,15 @@ export default function LeftListRow({ entry, bib, selected, gridTemplate, entryK
     </div>
   );
 }
+
+// Memoized so the catalog list re-renders only the rows whose props
+// actually changed — a single selection touches 2 rows, a 6 s request-state
+// poll touches only rows whose dot flipped, and a keystroke touches only the
+// rows whose membership in the filtered set changed. All incoming props are
+// primitive (`selected`, `dotTone`, `gridTemplate`, `entryKey`) or stable
+// (`entry`/`bib` refs from the catalog, `onActivate`/`resolveDragKeys`/`actions`
+// memoized by the parent), so the default shallow comparison is correct.
+export default memo(LeftListRow);
 
 function Cell({ children }: { children: React.ReactNode }) {
   return (

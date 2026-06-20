@@ -704,9 +704,10 @@ export default function LibraryView({
       bibByKey={bibByKey}
       selectedKeys={sel.selectedKeys}
       anchorKey={sel.anchorKey}
-      onSelectKeys={(keys, anchor) => {
-        sel.setSelection(keys, anchor);
-      }}
+      // Pass the store setter directly — it's already referentially stable
+      // (memoized in usePanelSelection), so the row memo chain isn't broken
+      // by a fresh inline closure each render.
+      onSelectKeys={sel.setSelection}
       onOpenPaper={libraryTabs.openPaper}
       onActivate={libraryTabs.activate}
       onClose={libraryTabs.close}
