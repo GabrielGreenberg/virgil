@@ -29,6 +29,8 @@ import { registerDropTarget } from "@/components/drop-mode/target-registry";
 // registry via `registerFloatBody`. Must run before any popout renders.
 import "@/text-objects/floats";
 import { generateShortId } from "@/lib/uuid";
+import { insertInlineAtom } from "@/lib/tiptap/insert-inline-atom";
+import { chromeAwareScrollMargin } from "@/lib/tiptap/chrome-scroll-margin";
 import { ensureAnchorUuid } from "@/lib/anchor-uuid";
 import { serializeBodyOnly } from "@/lib/latex-serializer";
 import { normalizeRichContent } from "@/lib/footnote-content";
@@ -439,6 +441,16 @@ const VirgilEditor = forwardRef<EditorHandle, EditorProps>(function VirgilEditor
   const documentClassRef = useRef<string | null>(documentClass ?? null);
   documentClassRef.current = documentClass ?? null;
 
+  // Chrome-aware scroll margin (Part B): an intentional scrollIntoView() (block
+  // inserts, jump-to-link) lands BELOW the sticky MenuBar strip + top reading-mask
+  // instead of beneath them. Read live off the editor DOM so a top-margin drag
+  // (which mutates --editor-pt) stays correct without re-creating the editor.
+  // Created once (the getters re-read at scroll time, so a stable object is fine).
+  const editorViewDomRef = useRef<HTMLElement | null>(null);
+  const chromeScrollMargin = useRef(
+    chromeAwareScrollMargin(() => editorViewDomRef.current),
+  ).current;
+
   const editor = useEditor({
     extensions: buildEditorExtensions({
       surface: "main",
@@ -465,6 +477,10 @@ const VirgilEditor = forwardRef<EditorHandle, EditorProps>(function VirgilEditor
     // on the imperative drop / drag paths.
     editable: true,
     editorProps: {
+      // Chrome-aware: intentional scrollIntoView() lands below the sticky top
+      // chrome (MenuBar strip + reading-mask), not beneath it. Live-tracking
+      // getters; see chrome-scroll-margin.ts.
+      scrollMargin: chromeScrollMargin,
       attributes: {
         // Page padding driven by --editor-pl / --editor-pr / --editor-pt
         // / --editor-pb (set on the editor column from the persisted
@@ -746,6 +762,12 @@ const VirgilEditor = forwardRef<EditorHandle, EditorProps>(function VirgilEditor
     };
   }, [editor]);
 
+  // Keep the chrome-aware scroll-margin's DOM source pointed at the live editor
+  // (its getters read CSS vars off this element at scroll time). See Part B above.
+  useEffect(() => {
+    editorViewDomRef.current = (editor?.view?.dom as HTMLElement | undefined) ?? null;
+  }, [editor]);
+
   // Dev-only: expose window.__virgil.collectLinks() for ad-hoc inspection
   // while the Link system is being rolled out. Reads from the live editor.
   useEffect(() => {
@@ -1013,15 +1035,14 @@ const VirgilEditor = forwardRef<EditorHandle, EditorProps>(function VirgilEditor
         type: "doc",
         content: [{ type: "paragraph", content: [{ type: "text", text }] }],
       };
-      editor
-        .chain()
-        .focus()
-        .deleteSelection()
-        .insertContent({
-          type: "footnote",
-          attrs: { footnoteId, content, number: 0, title: opts?.title ?? "" },
-        })
-        .run();
+      // No scroll: inline atoms must never jump the viewport (insertInlineAtom
+      // enforces the invariant). insertContent replaces the selected range, so the
+      // highlighted text becomes the footnote's seed content.
+      insertInlineAtom({
+        editor,
+        type: "footnote",
+        attrs: { footnoteId, content, number: 0, title: opts?.title ?? "" },
+      });
       return { footnoteId };
     },
     createEmptyFootnote(opts): { footnoteId: string } | null {
@@ -1035,14 +1056,12 @@ const VirgilEditor = forwardRef<EditorHandle, EditorProps>(function VirgilEditor
       });
       const footnoteId = generateShortId(existing);
       const content: TipJSON = { type: "doc", content: [{ type: "paragraph" }] };
-      editor
-        .chain()
-        .focus()
-        .insertContent({
-          type: "footnote",
-          attrs: { footnoteId, content, number: 0, title: opts?.title ?? "" },
-        })
-        .run();
+      // No scroll: inline atoms must never jump the viewport.
+      insertInlineAtom({
+        editor,
+        type: "footnote",
+        attrs: { footnoteId, content, number: 0, title: opts?.title ?? "" },
+      });
       return { footnoteId };
     },
     renumberFootnotes(): void {
@@ -1278,14 +1297,12 @@ const VirgilEditor = forwardRef<EditorHandle, EditorProps>(function VirgilEditor
 
     insertCitation(command: string, citationId: string, displayText: string): void {
       if (!editor) return;
-      editor
-        .chain()
-        .focus()
-        .insertContent({
-          type: "citation",
-          attrs: { citationId, command, displayText },
-        })
-        .run();
+      // No scroll: inline atoms must never jump the viewport.
+      insertInlineAtom({
+        editor,
+        type: "citation",
+        attrs: { citationId, command, displayText },
+      });
     },
     deleteCitation(citationId: string): void {
       if (!editor) return;

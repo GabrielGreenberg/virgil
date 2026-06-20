@@ -122,6 +122,7 @@ import { generateShortId } from "@/lib/uuid";
 // creator. Pure ProseMirror (operates on `editor.view`) — no React/DOM — so the
 // value import is free for every consumer of this registry.
 import { smartInsertBlock } from "@/lib/tiptap/smart-insert";
+import { insertInlineAtom } from "@/lib/tiptap/insert-inline-atom";
 // VALUE imports: the figure/graphics fresh-attrs builders + the figure raw
 // synthesizer. `figureRun` / `graphicsRun` seed the new block with the SAME stub
 // attrs the former `insertFigureBlock` / `insertGraphicsBlock` did (so the empty
@@ -1915,12 +1916,22 @@ function mathRun(kind: "inline" | "display"): (ctx: ActionContext) => void {
       return;
     }
     const latex = text || (kind === "inline" ? "x" : "\\int f(x)\\,dx");
-    const type = kind === "inline" ? "inlineMath" : "displayMath";
+    if (kind === "inline") {
+      // `inlineMath` is an INLINE atom — like footnote/citation it must never
+      // jump the viewport (insertInlineAtom enforces the no-scroll invariant).
+      // insertContent replaces the selected range (the harvested `latex`), matching
+      // the former deleteSelection()→insertContent net effect.
+      insertInlineAtom({ editor, type: "inlineMath", attrs: { latex } });
+      return;
+    }
+    // `displayMath` is a BLOCK atom — bringing the freshly inserted block into
+    // view IS intended (and now lands below the sticky chrome via the editor's
+    // chrome-aware scrollMargin). Keep the block-insert scroll path.
     editor
       .chain()
       .focus()
       .deleteSelection()
-      .insertContent({ type, attrs: { latex } })
+      .insertContent({ type: "displayMath", attrs: { latex } })
       .run();
   };
 }
