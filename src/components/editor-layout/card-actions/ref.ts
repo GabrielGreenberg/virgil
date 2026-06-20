@@ -1,6 +1,7 @@
 import { useCallback, type Dispatch, type RefObject, type SetStateAction } from "react";
 import type { EditorHandle } from "../../Editor";
 import type { LabelInfo, RefCommand } from "../../LabelRefPopover";
+import { insertInlineAtom } from "@/lib/tiptap/insert-inline-atom";
 
 // Indexed by heading level 0..6 (Part..Subparagraph).
 const HEADING_TYPE_NAMES = ["Part", "Chapter", "Section", "Subsection", "Subsubsection", "Paragraph", "Subparagraph"];
@@ -330,10 +331,13 @@ export function useRefActions(deps: {
         newLabel,
         refCommand,
       );
-      editor.chain().focus().insertContent({
+      // No scroll: `labelRef` is an inline atom — inserting one at the (already
+      // on-screen) caret must never jump the viewport (insertInlineAtom invariant).
+      insertInlineAtom({
+        editor,
         type: "labelRef",
         attrs: { label: newLabel, displayText: display, refCommand, targetKind },
-      }).run();
+      });
     },
     [editorRef],
   );
