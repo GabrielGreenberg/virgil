@@ -81,6 +81,43 @@
    300px in Reader mode. */
 [data-virgil-library-reader] { --editor-wrapper-inset: 64px; }
 
+/* ── Reader page fit (no horizontal overflow) ─────────────────────────
+   The shared EditorPane lays the page out as a symmetric 3-column flex
+   row inside `.editor-pane-root`: [left panel-dock | page | right
+   panel-dock]. In the wide main editor that's fine, but the Library
+   reader pane is narrow (~794px) and the two side dock columns are
+   `flex: 0 0 320px` (~366px each with their 46px strip) — non-shrinking
+   — while the page can't go below `min-width: 526px`. The row then needs
+   366+526+366 ≈ 1258px and overflows the pane by ~468px: the page is
+   shoved right and the right margin runs off the edge (the user's
+   "running off the page / weird gutter").
+
+   Reader-scoped fix (does NOT touch the wide editor): let the side
+   panel-dock columns shrink to fit, and relax the page's min-width floor
+   so flexbox can size everything within the pane. The page keeps its
+   high flex-grow + the bounded, centered `.tiptap` measure below, so it
+   resolves to a comfortably-wide reading column centered between the two
+   thin strip rails. For the common reader paper (no docked panel / no
+   margin notes) the empty dock columns collapse to ~0, giving the page
+   the full pane width to center in. A paper that DOES dock a panel keeps
+   it rendered — just narrower — rather than forcing overflow. Marginalia
+   markers portal into the pod (`[data-marginalia-host]`), not these
+   columns, so margin-note papers are unaffected by the collapse. */
+[data-virgil-library-reader] .editor-pane-root > div:not(.editor-pane-column) {
+  /* !important is required: the dock columns carry inline `flex` +
+     `min-width` from EditorPane, which a plain external rule can't beat.
+     Scoped to the reader root so the wide editor is untouched. */
+  flex-shrink: 1 !important;
+  min-width: 0 !important;
+}
+[data-virgil-library-reader] .editor-pane-root [data-panel-column-side] {
+  flex-shrink: 1 !important;
+  min-width: 0 !important;
+}
+[data-virgil-library-reader] .editor-pane-root > .editor-pane-column {
+  min-width: 0 !important;
+}
+
 [data-virgil-library-reader] .paper-render .tiptap {
   outline: none;
   /* Bounded, centered prose column. Without this the read-only column
