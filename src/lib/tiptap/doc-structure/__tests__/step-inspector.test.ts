@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { EditorState } from "@tiptap/pm/state";
 import { Slice, Fragment } from "@tiptap/pm/model";
+import { AttrStep } from "@tiptap/pm/transform";
 import { inspectSteps } from "../step-inspector";
 import { buildInitial } from "../structure-index";
 import { EMPTY_DIFF, type StructureDiff } from "../types";
@@ -77,6 +78,41 @@ describe("inspectSteps — paragraph split / merge", () => {
     const removed = d.removedBlocks.map((b) => b.uuid).sort();
     expect(removed).toContain("p2");
     expect(removed).not.toContain("p1");
+  });
+
+  it("post-split re-mint (uuid AttrStep on the CLONE) does NOT report the surviving original as removed", () => {
+    // Reproduce the duplicate-uuid transient that a split leaves before
+    // BlockUuidBackfill re-mints: TWO paragraphs both carry "p1". oldDoc is that
+    // state; the backfill then issues a uuid AttrStep on the SECOND (clone) half,
+    // changing its uuid "p1" → "fresh". The ORIGINAL first half keeps "p1".
+    const oldDoc = doc(paragraph("p1", "hello"), paragraph("p1", "world"));
+    const s = stateOf(oldDoc);
+    const prev = buildInitial(oldDoc); // prev.blocks has "p1"
+    // Second paragraph starts at pos 7 (para1 = open+5+close = 7 tokens).
+    const tr = s.tr.step(new AttrStep(7, "uuid", "fresh"));
+    const d = inspectSteps(tr, s.doc, tr.doc, prev);
+
+    const removed = d.removedBlocks.map((b) => b.uuid);
+    const added = d.addedBlocks.map((b) => b.uuid);
+    // The original p1 SURVIVES (it's still on the first paragraph), so the
+    // inspector must NOT claim it removed — doing so would desync structure.blocks
+    // and strip the original's data-uuid decoration (the gutter/omni-flash class).
+    expect(removed).not.toContain("p1");
+    // The freshly-minted clone identity is a real new block.
+    expect(added).toContain("fresh");
+  });
+
+  it("a genuine uuid death (clone uuid not present elsewhere) STILL reports removal", () => {
+    // Control: the same AttrStep shape, but the old uuid genuinely vanishes (no
+    // surviving sibling carries it) → removal must still fire, so a real
+    // identity change isn't masked by the survival guard.
+    const oldDoc = doc(paragraph("only", "hello"));
+    const s = stateOf(oldDoc);
+    const prev = buildInitial(oldDoc);
+    const tr = s.tr.step(new AttrStep(0, "uuid", "renamed"));
+    const d = inspectSteps(tr, s.doc, tr.doc, prev);
+    expect(d.removedBlocks.map((b) => b.uuid)).toContain("only");
+    expect(d.addedBlocks.map((b) => b.uuid)).toContain("renamed");
   });
 });
 

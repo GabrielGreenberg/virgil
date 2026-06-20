@@ -1,6 +1,7 @@
 import { Mark, Extension, mergeAttributes } from "@tiptap/react";
 import { Plugin, PluginKey } from "@tiptap/pm/state";
 import { Fragment as PMFragmentCtor, Slice as PMSliceCtor, type Node as PMNode2, type Fragment as PMFragment } from "@tiptap/pm/model";
+import type { EditorView } from "@tiptap/pm/view";
 import type { MutableRefObject } from "react";
 import { readPendingDiff } from "@/lib/tiptap/doc-structure";
 import { linkedAnchorRenderAttrs } from "@/lib/tiptap/linked-anchor-attrs";
@@ -163,15 +164,57 @@ export const TextObjectOrphanGuard = Extension.create({
   name: "textObjectOrphanGuard",
 
   addProseMirrorPlugins() {
+    // Capture the live view so the deferred dispatch can re-check liveness
+    // against the FINAL, fully-committed doc — after every appendTransaction,
+    // crucially MarginaliaAnchorGuard's resurrection (it re-inserts a same-uuid
+    // placeholder when an *anchored* block is incidentally removed).
+    // MarginaliaAnchorGuard is registered AFTER this guard, so at this plugin's
+    // `appendTransaction` time the resurrection hasn't run yet and `newState`
+    // still shows the block as removed. Firing the orphan event off that stale
+    // view made the Mode-A sweep (useTodos / useArchive) PERMANENTLY strip a
+    // link the resurrection had just kept valid — silent data loss on an
+    // incidental edit. Re-checking the settled doc in the `setTimeout(0)` (after
+    // the whole dispatch commits) skips any uuid that is actually still live.
+    let liveView: EditorView | null = null;
     return [
       new Plugin({
         key: new PluginKey("textObjectOrphanGuard"),
+        view(v) {
+          liveView = v;
+          return {
+            update(v2) {
+              liveView = v2;
+            },
+            destroy() {
+              liveView = null;
+            },
+          };
+        },
         appendTransaction(transactions, _oldState, newState) {
           if (!transactions.some((tr) => tr.docChanged)) return null;
           const diff = readPendingDiff(newState);
           if (!diff || diff.removedBlocks.length === 0) return null;
+          const removed = diff.removedBlocks;
           setTimeout(() => {
-            for (const block of diff.removedBlocks) {
+            // Build the set of uuids still live in the settled doc ONCE. A uuid
+            // present here was resurrected (or re-added by a later edit) and is
+            // NOT an orphan — skip its event so the sweep doesn't strip a valid
+            // link. O(doc), but only on a block-removal transaction (removed.length
+            // > 0), never the plain-typing path. Fallback (no view): dispatch all,
+            // matching the prior unconditional behavior.
+            const doc = liveView?.state.doc ?? null;
+            let liveUuids: Set<string> | null = null;
+            if (doc) {
+              liveUuids = new Set<string>();
+              doc.descendants((node) => {
+                const u = (node.attrs as { uuid?: string | null } | undefined)
+                  ?.uuid;
+                if (u) liveUuids!.add(u);
+                return true;
+              });
+            }
+            for (const block of removed) {
+              if (liveUuids && liveUuids.has(block.uuid)) continue; // resurrected
               window.dispatchEvent(
                 new CustomEvent("virgil-textobject-orphaned", {
                   detail: { uuid: block.uuid, typeName: block.typeName },

@@ -101,6 +101,7 @@ export function buildReportsOmniItems(a: BuildArgs): OmniItem[] {
         items.push({
           id: omniId,
           pos,
+          anchorUuid: pid,
           anchorState: pos == null ? "orphaned" : "anchored",
           content: renderCard(omniId),
         });
