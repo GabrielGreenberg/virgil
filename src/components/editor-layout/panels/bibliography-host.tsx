@@ -6,7 +6,7 @@ import type { useCitations } from "@/hooks/useCitations";
 import type { useAnnotations } from "@/hooks/useAnnotations";
 import type { useBibReview } from "@/hooks/useBibReview";
 import type { useBibSettings } from "@/hooks/useBibSettings";
-import type { Side } from "@/hooks/useViewPrefs";
+import type { Side, ViewPrefs } from "@/hooks/useViewPrefs";
 import { useEditorRefContext } from "../contexts/editor-ref";
 import { useSelectionsContext } from "../contexts/selections";
 
@@ -37,6 +37,11 @@ export interface BibliographyHostProps {
   entryRequests: BibSettingsHook["entryRequests"];
   addEntryRequest: BibSettingsHook["addEntryRequest"];
   removeEntryRequest: BibSettingsHook["removeEntryRequest"];
+  /** Bug 3: the persisted "Cited only / Full" filter (per-window) + its
+   *  setter. Optional so the Reader path (no `viewPrefs`) falls back to the
+   *  panel's own default. */
+  bibFilter?: ViewPrefs["bibFilter"];
+  setBibFilter?: (v: ViewPrefs["bibFilter"]) => void;
 }
 
 export function BibliographyHost(p: BibliographyHostProps) {
@@ -65,6 +70,8 @@ export function BibliographyHost(p: BibliographyHostProps) {
       entryRequests={p.entryRequests}
       onAddEntryRequest={p.addEntryRequest}
       onRemoveEntryRequest={p.removeEntryRequest}
+      bibFilter={p.bibFilter}
+      setBibFilter={p.setBibFilter}
     />
   );
 }

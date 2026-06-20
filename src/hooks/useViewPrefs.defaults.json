@@ -88,6 +88,8 @@
   "editorTopMargin": 24,
   "editorBottomMargin": 24,
   "topbarRightCollapsed": false,
+  "showParTitles": true,
+  "showLatexComments": true,
   "showMarginalia": true,
   "hiddenMarginaliaTypes": [],
   "showSectionIndicator": true,

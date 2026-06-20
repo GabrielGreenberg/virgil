@@ -19,7 +19,10 @@ import {
   setListQuery,
   setListScroll,
   setListScrollQuiet,
+  setLayout,
   setListSort,
+  setListViewMode,
+  migrateLegacyLayoutSizes,
   setPanelTabs,
   setProjectHidden,
   setProjectPinned,
@@ -124,19 +127,27 @@ describe("view-session-store — versioning / migration", () => {
     expect(s.projectPinned).toEqual(["project:doc:d2"]);
     expect(s.citedOnly).toBe(true);
     expect(s.layout.colWidths?.year).toBe(80);
-    expect(s.layout.navWidth).toBe(210);
-    expect(s.layout.middleWidth).toBe(330);
-    expect(s.layout.papersHeight).toBe(144);
+    // Column/pod SIZES are deliberately NOT part of the Tier-A seed anymore —
+    // they're adopted (freshest-wins, then key-deleted) one-shot by
+    // migrateLegacyLayoutSizes(), so the seed leaves the size fields unset and
+    // the size keys untouched (the migration owns them).
+    expect(s.layout.navWidth).toBeUndefined();
+    expect(s.layout.middleWidth).toBeUndefined();
+    expect(s.layout.papersHeight).toBeUndefined();
     // col-sort seeds ONLY the singleton central list's default sort.
     expect(s.scopes[""].left.lists["central"].sort).toEqual({
       col: "title",
       dir: "asc",
     });
 
-    // Legacy keys are NOT deleted.
+    // Legacy keys are NOT deleted by the seed — including the size keys, which
+    // the seed now leaves entirely for migrateLegacyLayoutSizes() to consume.
     expect(localStorage.getItem(PAPER_PINNED_KEY)).not.toBeNull();
     expect(localStorage.getItem(CITED_ONLY_KEY)).toBe("1");
     expect(localStorage.getItem(COL_SORT_KEY)).not.toBeNull();
+    expect(localStorage.getItem(NAV_WIDTH_KEY)).toBe("210");
+    expect(localStorage.getItem(MIDDLE_WIDTH_KEY)).toBe("330");
+    expect(localStorage.getItem(PAPERS_HEIGHT_KEY)).toBe("144");
   });
 
   it("(b) schemaVersion missing or !==1 → empty session, no throw, no seed", () => {
@@ -276,6 +287,34 @@ describe("view-session-store — scroll key isolation", () => {
   });
 });
 
+describe("view-session-store — paper view mode (Text/PDF)", () => {
+  it("round-trips per-(panel,paper) and survives a simulated reload", () => {
+    setListViewMode("", "left", "paper:foo", "pdf");
+    flushNow();
+    expect(getSession().scopes[""].left.lists["paper:foo"].viewMode).toBe("pdf");
+
+    // Simulate reload: drop the singleton, re-read the same localStorage.
+    __resetViewSessionForTests();
+    expect(getSession().scopes[""].left.lists["paper:foo"].viewMode).toBe("pdf");
+  });
+
+  it("each paper remembers its own mode — switching papers doesn't bleed", () => {
+    setListViewMode("", "left", "paper:foo", "pdf");
+    setListViewMode("", "left", "paper:bar", "text");
+    const s = getSession();
+    expect(s.scopes[""].left.lists["paper:foo"].viewMode).toBe("pdf");
+    expect(s.scopes[""].left.lists["paper:bar"].viewMode).toBe("text");
+  });
+
+  it("coexists with the reader scroll on the same paper:<citekey> slice", () => {
+    setListViewMode("", "left", "paper:foo", "pdf");
+    setListScroll("", "left", "paper:foo", 333);
+    const lv = getSession().scopes[""].left.lists["paper:foo"];
+    expect(lv.viewMode).toBe("pdf");
+    expect(lv.scrollTop).toBe(333);
+  });
+});
+
 describe("view-session-store — write coalescing + flush", () => {
   it("N rapid setListQuery within the debounce window → ≤1 localStorage.setItem", () => {
     vi.useFakeTimers();
@@ -356,5 +395,78 @@ describe("view-session-store — quiet scroll write (keystroke sanctity)", () =>
     expect(seen).toHaveBeenCalledTimes(1);
     expect(getSession().scopes[""].left.lists["paper:fresh"].scrollTop).toBe(88);
     unsub();
+  });
+});
+
+describe("view-session-store — legacy layout-size migration", () => {
+  function seedBlob(layout: Record<string, number>): void {
+    localStorage.setItem(
+      VIEW_SESSION_KEY,
+      JSON.stringify({
+        schemaVersion: 1,
+        scopes: {},
+        paperPinned: [],
+        projectHidden: [],
+        projectPinned: [],
+        citedOnly: false,
+        layout,
+      }),
+    );
+    __resetViewSessionForTests();
+  }
+
+  it("adopts the freshest standalone key over a stale seeded layout value (the bitten-cohort bug)", () => {
+    // An existing blob froze a stale middleWidth; the standalone key holds the
+    // user's newer resize. The newer standalone value must win.
+    seedBlob({ middleWidth: 420 });
+    localStorage.setItem(MIDDLE_WIDTH_KEY, "500");
+
+    const adopted = migrateLegacyLayoutSizes();
+
+    expect(adopted).toBe(true);
+    expect(getSession().layout.middleWidth).toBe(500);
+    // The legacy key is deleted so it can never re-clobber a later store write.
+    expect(localStorage.getItem(MIDDLE_WIDTH_KEY)).toBeNull();
+  });
+
+  it("is idempotent across reloads — a second run never re-clobbers a value set through the store", () => {
+    seedBlob({ middleWidth: 420 });
+    localStorage.setItem(MIDDLE_WIDTH_KEY, "500");
+    migrateLegacyLayoutSizes(); // → 500, key deleted
+
+    // The user resizes under the new code (store-only write).
+    setLayout({ middleWidth: 600 });
+    // Simulate a reload: the in-memory session resets but the (key-less) blob
+    // persists. A second migration must be a no-op, NOT re-apply the old 500.
+    flushNow();
+    __resetViewSessionForTests();
+    const adopted = migrateLegacyLayoutSizes();
+
+    expect(adopted).toBe(false);
+    expect(getSession().layout.middleWidth).toBe(600);
+  });
+
+  it("min-floors a corrupt sub-minimum legacy size and deletes every legacy key", () => {
+    seedBlob({});
+    localStorage.setItem(NAV_WIDTH_KEY, "40"); // below NAV_MIN (180)
+    localStorage.setItem(MIDDLE_WIDTH_KEY, "900");
+    localStorage.setItem(PAPERS_HEIGHT_KEY, "10"); // below PAPERS_MIN (100)
+
+    migrateLegacyLayoutSizes();
+
+    const { layout } = getSession();
+    expect(layout.navWidth).toBe(180);
+    expect(layout.middleWidth).toBe(900);
+    expect(layout.papersHeight).toBe(100);
+    expect(localStorage.getItem(NAV_WIDTH_KEY)).toBeNull();
+    expect(localStorage.getItem(MIDDLE_WIDTH_KEY)).toBeNull();
+    expect(localStorage.getItem(PAPERS_HEIGHT_KEY)).toBeNull();
+  });
+
+  it("is a no-op when no legacy keys exist", () => {
+    seedBlob({ middleWidth: 360 });
+    const adopted = migrateLegacyLayoutSizes();
+    expect(adopted).toBe(false);
+    expect(getSession().layout.middleWidth).toBe(360);
   });
 });

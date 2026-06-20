@@ -24,8 +24,9 @@
  * ────────────────────────────────────────────────────────────────────────
  *
  *   ┌──────────────────────────────────┐
- *   │  usePreferenceMode()   (this)    │  on/off state + localStorage +
- *   │                                  │  pub/sub via useSyncExternalStore
+ *   │  usePreferenceMode()   (this)    │  on/off state (session-only,
+ *   │                                  │  in-memory) + pub/sub via
+ *   │                                  │  useSyncExternalStore
  *   └──────────────┬───────────────────┘
  *                  │
  *         ┌────────┴────────┬─────────────────────┐
@@ -79,38 +80,39 @@
  *      they're harmless without the picker and would allow re-enabling the
  *      feature later.
  *
- * Storage key: "virgil-pref-mode" (boolean JSON-encoded in localStorage).
+ * Persistence: NONE. Preference mode is a debug/edit posture, so it's
+ * session-only in-memory state that DEFAULTS TO OFF on every fresh load —
+ * it must not silently stick across reloads or sessions. (The legacy
+ * "virgil-pref-mode" localStorage key is cleared once on first use; see
+ * _clearLegacyOnce.)
  */
 
 import { useCallback, useEffect, useSyncExternalStore } from "react";
 
-const STORAGE_KEY = "virgil-pref-mode";
+// Legacy persistence key — no longer written or read. Kept only so we can
+// clear any value a returning user has from before this became session-only.
+const LEGACY_STORAGE_KEY = "virgil-pref-mode";
 
 // Module-scoped store so every consumer of this hook observes the same
 // value without prop-drilling. Pattern mirrors panel-theme.ts.
+//
+// Session-only: `_on` starts false on every fresh module load and is never
+// hydrated from or persisted to storage.
 let _on = false;
-let _loaded = false;
+let _legacyCleared = false;
 const _listeners = new Set<() => void>();
 
 function _notify() {
   _listeners.forEach((l) => l());
 }
 
-function _loadOnce() {
-  if (_loaded) return;
-  _loaded = true;
+// One-time housekeeping: drop any previously-persisted value so a returning
+// user doesn't keep an old "on" state. Runs once per session; never reads it.
+function _clearLegacyOnce() {
+  if (_legacyCleared) return;
+  _legacyCleared = true;
   if (typeof window === "undefined") return;
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    if (raw != null) _on = JSON.parse(raw) === true;
-  } catch {
-    /* ignore */
-  }
-}
-
-function _persist() {
-  if (typeof window === "undefined") return;
-  try { localStorage.setItem(STORAGE_KEY, JSON.stringify(_on)); } catch { /* ignore */ }
+  try { localStorage.removeItem(LEGACY_STORAGE_KEY); } catch { /* ignore */ }
 }
 
 function _subscribe(listener: () => void) {
@@ -131,7 +133,7 @@ function _subscribe(listener: () => void) {
  * whenever the state is on. Consumers don't need to do this themselves.
  */
 export function usePreferenceMode() {
-  _loadOnce();
+  _clearLegacyOnce();
 
   const on = useSyncExternalStore(
     _subscribe,
@@ -158,13 +160,11 @@ export function usePreferenceMode() {
   const set = useCallback((value: boolean) => {
     if (_on === value) return;
     _on = value;
-    _persist();
     _notify();
   }, []);
 
   const toggle = useCallback(() => {
     _on = !_on;
-    _persist();
     _notify();
   }, []);
 
