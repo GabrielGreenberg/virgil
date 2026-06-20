@@ -3,7 +3,10 @@
 import { useMemo, memo, useState, useRef, useEffect } from "react";
 import type { Editor } from "@tiptap/react";
 import { useInTextPositions } from "@/hooks/useInTextPositions";
-import { useLivePosResolver } from "@/hooks/useLivePosResolver";
+import {
+  useLivePosResolver,
+  buildParagraphAnchorMap,
+} from "@/hooks/useLivePosResolver";
 import {
   cardPopKey,
   OMNI_PANELS,
@@ -402,6 +405,23 @@ function OmniViewPanel({
     });
   }, [items, enabledCategories, hideAllCards]);
 
+  // Live-position resolver (T5 Pillar A). Entity-anchored kinds (footnote /
+  // citation / example) resolve their live pos from the DocStructureObserver
+  // snapshot via `cardPopKey(kind,id)`; PARAGRAPH-anchored kinds (note / todo /
+  // cutter / revision / report / archive, incl. multi-anchor `@N` rows) now
+  // ALSO resolve live via their `anchorUuid` → block snapshot pos (the
+  // `paragraphAnchors` map). Both the cascade (`useInTextPositions`, at measure
+  // time) AND the anchored/orphaned binning below prefer this live pos over the
+  // stale baked `item.pos` — closing the gap that made note cards drift up and
+  // stack at the top of the gutter while typing (esp. backspace). Snapshot/
+  // anchors-identity-cached, so plain typing rebuilds nothing here (keystroke
+  // sanctity) — see `useLivePosResolver`.
+  const paragraphAnchors = useMemo(
+    () => buildParagraphAnchorMap(visibleItems),
+    [visibleItems],
+  );
+  const resolvePos = useLivePosResolver(editor, cardPopKey, paragraphAnchors);
+
   const { anchored, free, orphaned, outsideFocus } = useMemo(() => {
     const anchored: Array<OmniItem & { pos: number }> = [];
     const free: OmniItem[] = [];
@@ -414,11 +434,19 @@ function OmniViewPanel({
         outsideFocus.push(item);
         continue;
       }
-      if (item.pos == null) {
-        // Builders that resolve paragraph UUIDs return pos:null while the
-        // editor is still mounting. Don't flash those into the unanchored
-        // bucket — drop until the editor is live, at which point pos:null
-        // genuinely means "no anchor / orphaned paragraph".
+      // Prefer the LIVE position (re-mapped every transaction) over the baked
+      // `item.pos`, which goes stale as content shifts under plain typing. A
+      // paragraph-anchored card whose anchor is still live resolves here; if its
+      // anchor is gone the resolver returns undefined and we fall back to the
+      // baked pos (so a since-deleted anchor isn't newly orphaned mid-session —
+      // the textobject-orphaned sweep owns that strip). This is the bin-side half
+      // of the "note cards stack at the top while typing" fix.
+      const live = resolvePos(item.id);
+      const pos = live ?? item.pos;
+      if (pos == null) {
+        // No live anchor AND no baked pos → genuinely unanchored. Builders that
+        // resolve paragraph UUIDs return pos:null while the editor is still
+        // mounting; don't flash those into the unanchored bucket until live.
         if (!editor) continue;
         // Split the unanchored items into the two bin sections by the
         // builder-declared anchorState. (`anchored` here is an extra guard:
@@ -427,12 +455,12 @@ function OmniViewPanel({
         if (item.anchorState === "free") free.push(item);
         else orphaned.push(item);
       } else {
-        anchored.push({ ...item, pos: item.pos });
+        anchored.push({ ...item, pos });
       }
     }
     anchored.sort((a, b) => a.pos - b.pos);
     return { anchored, free, orphaned, outsideFocus };
-  }, [visibleItems, editor]);
+  }, [visibleItems, editor, resolvePos]);
 
   const inTextItems = useMemo(
     () => anchored.map((i) => ({ id: i.id, pos: i.pos })),
@@ -453,23 +481,11 @@ function OmniViewPanel({
     [pinRequest],
   );
 
-  // Live-position resolver for `useInTextPositions`. The entity-anchored omni
-  // kinds (footnote / citation / example) carry a captured `pos` that only
-  // refreshes on structural change post keystroke-sanctity refactor; resolve
-  // their live pos from the DocStructureObserver snapshot (re-mapped every
-  // transaction) keyed to the SAME `cardPopKey(kind,id)` (= `float:card:<kind>:<id>`)
-  // string the omni item id uses — which is what `useInTextPositions` passes here.
-  // Paragraph-anchored kinds (note/todo/…) fall through to the captured pos —
-  // their primary visualization is the marginalia gutter, which is already
-  // sourced live from layout observers.
-  //
-  // The canonical live-position pattern (snapshot-identity-cached map, rebuilt
-  // only on a structural tx, never on plain typing) now lives in the shared
-  // `useLivePosResolver` hook (T5 Pillar A); the omni id space IS
-  // `cardPopKey(kind, id)`, so we pass `cardPopKey` as `keyOf` — a pure
-  // de-duplication of the pattern OmniViewPanel first proved inline.
-  const resolvePos = useLivePosResolver(editor, cardPopKey);
-
+  // `resolvePos` + `paragraphAnchors` are defined above (before the binning
+  // memo, which now also consumes the live pos). `useInTextPositions` calls
+  // `resolvePos(id) ?? item.pos` at measure time, so paragraph-anchored cards
+  // track their anchor live on every reflow instead of riding the stale baked
+  // pos — the core of the "cards stack at the top while typing" fix.
   const { positions, editorContentHeight, panelScrollRef } =
     useInTextPositions(editor, inTextItems, true, "data-omni-entry-wrapper", pinned, resolvePos);
 

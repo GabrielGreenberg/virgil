@@ -40,8 +40,27 @@ export interface OmniItem {
    *  (built by `cardPopKey`/`popKey`); a multi-anchor card appends an
    *  `@<index>` suffix per anchor. */
   id: string;
-  /** Editor document position (null for unanchored items). */
+  /** Editor document position (null for unanchored items).
+   *
+   *  NOTE: this is a *baked* position — captured by the builder's
+   *  `findParagraphPos` only when the omni `items` memo last (structurally)
+   *  rebuilt. It goes STALE as plain typing shifts content. Consumers that
+   *  position a card inline (the `useInTextPositions` cascade, the
+   *  anchored/orphaned binning) MUST prefer the LIVE position resolved from
+   *  `anchorUuid` via the `DocStructureObserver` block snapshot — see
+   *  `useLivePosResolver(editor, keyOf, paragraphAnchors)`. Falling back to this
+   *  baked `pos` is the cause of the "note cards drift/stack at the top while
+   *  typing" bug for paragraph-anchored kinds. */
   pos: number | null;
+  /** Paragraph (text-object) UUID this item is anchored to, for
+   *  paragraph-anchored kinds (note / todo / cutter / revision / report /
+   *  archive). Lets `useLivePosResolver` re-resolve a LIVE document position
+   *  from the per-transaction-remapped `DocStructureObserver` block snapshot,
+   *  the same way footnotes / citations / examples already track live — so the
+   *  card stays aligned with its paragraph during typing instead of riding the
+   *  stale baked `pos`. Absent for entity-anchored kinds (their live pos comes
+   *  from `cardPopKey(kind, entityId)`) and for `free` items (no anchor). */
+  anchorUuid?: string;
   /** Where this item sits relative to the document:
    *  - `"anchored"`  — has a link AND it resolved to a live doc position.
    *  - `"free"`      — carries no link at all (no in-text marker / no

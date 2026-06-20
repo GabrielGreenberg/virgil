@@ -354,6 +354,31 @@ export function inspectSteps(
   let citationOrderChanged = false;
   let blockOrderChanged = false;
 
+  // Lazily-built set of every uuid live in `newDoc`. Consulted ONLY by the
+  // uuid-AttrStep branch to avoid claiming a block "removed" when its uuid in
+  // fact still survives elsewhere in the doc. The canonical trigger: a split
+  // clones a block (both halves transiently share one uuid), then
+  // BlockUuidBackfill re-mints the CLONE (oldUuid → fresh) via a setNodeMarkup
+  // AttrStep — but the ORIGINAL half still carries `oldUuid`. Naively emitting
+  // `removed.blocks[oldUuid]` there desyncs `structure.blocks` (drops a still-
+  // live uuid) and makes UuidAttrDecorator strip the original's `data-uuid`.
+  // Built at most once per transaction, and ONLY when a uuid-changing AttrStep
+  // exists — never on a plain keystroke (no AttrStep), so keystroke sanctity is
+  // preserved (the O(doc) walk is off the typing path).
+  let newDocUuidsCache: Set<string> | null = null;
+  const oldUuidSurvivesInNewDoc = (uuid: string): boolean => {
+    if (!newDocUuidsCache) {
+      const set = new Set<string>();
+      newDoc.descendants((node) => {
+        const u = (node.attrs as { uuid?: string | null } | undefined)?.uuid;
+        if (u) set.add(u);
+        return true;
+      });
+      newDocUuidsCache = set;
+    }
+    return newDocUuidsCache.has(uuid);
+  };
+
   for (let stepIndex = 0; stepIndex < tr.steps.length; stepIndex++) {
     const step = tr.steps[stepIndex] as Step;
     if (step instanceof ReplaceStep || step instanceof ReplaceAroundStep) {
@@ -471,7 +496,13 @@ export function inspectSteps(
       // block being born.
       if (attr === "uuid" && isAnchorableNode(newNode.type)) {
         if (oldUuid !== newUuid) {
-          if (oldUuid) {
+          // Only report the OLD uuid as removed if it did NOT survive elsewhere
+          // in the final doc. After a split, the re-minted CLONE sheds `oldUuid`
+          // here while the ORIGINAL half still carries it — emitting a removal
+          // would drop a still-live block from `structure.blocks` and strip its
+          // `data-uuid`. A genuine rename/death (uuid → null, or a true identity
+          // change) leaves `oldUuid` nowhere in the doc → removal still fires.
+          if (oldUuid && !oldUuidSurvivesInNewDoc(oldUuid)) {
             removed.blocks.set(oldUuid, { uuid: oldUuid, pos: step.pos, typeName });
           }
           if (newUuid) {

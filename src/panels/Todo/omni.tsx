@@ -58,6 +58,7 @@ export function buildTodoOmniItems(a: BuildArgs): OmniItem[] {
         items.push({
           id: omniId,
           pos,
+          anchorUuid: pid,
           anchorState: pos == null ? "orphaned" : "anchored",
           content: (
             <TodoRow

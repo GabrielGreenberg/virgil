@@ -50,8 +50,18 @@ export interface MarginaliaRegistry {
    * `getMetrics` for the UUIDs they care about.
    */
   subscribe(cb: () => void): () => void;
-  /** Diagnostic — exposed for the success-criteria test. */
-  stats(): { cached: number; observed: number; recomputes: number };
+  /** Diagnostic — exposed for the success-criteria test. `version` bumps on
+   *  EVERY `notify()` (recompute, intersection enter/leave, observed-set sync),
+   *  so it — not `recomputes` — is the correct re-render trigger for consumers
+   *  that must reflect an intersection-only cache change (a block scrolling into
+   *  the near-zone and getting measured). `recomputes` bumps only on
+   *  `flushRecompute`. */
+  stats(): {
+    cached: number;
+    observed: number;
+    recomputes: number;
+    version: number;
+  };
 }
 
 /** Root margin for the intersection observer — viewport ±800 px. */
@@ -288,6 +298,7 @@ export function useMarginaliaRegistry(
         cached: stateRef.current.cache.size,
         observed: stateRef.current.observed.size,
         recomputes: stateRef.current.recomputes,
+        version: stateRef.current.version,
       }),
     }),
     [],
@@ -754,11 +765,22 @@ export function useMarginaliaRegistry(
  *
  * Built on top of `useMarginaliaRegistry` + `useSyncExternalStore` so
  * React's concurrent rendering sees a consistent snapshot per commit.
+ *
+ * Snapshots `version` (bumped by every `notify()`), NOT `recomputes`: the
+ * registry calls `notify()` whenever the cache changes — including a block
+ * ENTERING the near-zone via the IntersectionObserver and getting measured,
+ * which bumps `version` but NOT `recomputes` (only `flushRecompute` does the
+ * latter). Snapshotting `recomputes` therefore MISSED intersection-only updates,
+ * so a marker whose anchor scrolled into view didn't re-render to its measured
+ * position until some unrelated recompute fired. `version` re-renders on the
+ * actual cache change. Still keystroke-safe: plain typing changes nothing in the
+ * registry (no reflow / no intersection / no structural sync) → no `notify()` →
+ * `version` stays flat.
  */
 export function useRegistryVersion(registry: MarginaliaRegistry): number {
   return useSyncExternalStore(
     (cb) => registry.subscribe(cb),
-    () => registry.stats().recomputes,
+    () => registry.stats().version,
     () => 0,
   );
 }

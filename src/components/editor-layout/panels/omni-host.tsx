@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { getHiddenTopLevelIndices, sectionFoldingPluginKey } from "@/lib/section-folding";
 import { getBus } from "@/lib/tiptap/doc-structure";
-import { useLivePosResolver } from "@/hooks/useLivePosResolver";
+import { useLivePosResolver, buildParagraphAnchorMap } from "@/hooks/useLivePosResolver";
 import { filterOmniItemsByFoldAndFocus } from "./omni-fold-focus-filter";
 import { cardPopKey } from "@/panels/panel-registry";
 import type { Side } from "@/hooks/useViewPrefs";
@@ -611,11 +611,17 @@ export function OmniHost(p: OmniHostProps) {
   // leaves that baked `pos` stale, so a fold/boundary classification keyed on
   // the baked pos can land in the WRONG bin (OMNI-F1-02). Resolve the live pos
   // from the DocStructureObserver snapshot — the same engine OmniViewPanel's
-  // cascade already uses — and fall back to the baked pos for paragraph-anchored
-  // kinds (note/todo/… and the multi-anchor `@N` rows), whose pos is the
-  // structurally-rebuilt `findParagraphPos`. Snapshot-identity-cached, so plain
-  // typing rebuilds nothing here (keystroke sanctity) — see useLivePosResolver.
-  const resolvePos = useLivePosResolver(editorInstance, cardPopKey);
+  // cascade already uses. PARAGRAPH-anchored kinds (note/todo/cutter/revision/
+  // report/archive, incl. the multi-anchor `@N` rows) now ALSO resolve live via
+  // their `anchorUuid` → block snapshot pos (the `paragraphAnchors` map), closing
+  // the gap that left their baked `pos` stale (note cards drifting/stacking at
+  // the top while typing). Snapshot/anchors-identity-cached, so plain typing
+  // rebuilds nothing here (keystroke sanctity) — see useLivePosResolver.
+  const paragraphAnchors = useMemo(
+    () => buildParagraphAnchorMap(items),
+    [items],
+  );
+  const resolvePos = useLivePosResolver(editorInstance, cardPopKey, paragraphAnchors);
 
   // Hide cards anchored inside a collapsed section. The section-folding
   // plugin already hides the prose via a CSS decoration; mirror that on

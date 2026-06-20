@@ -103,17 +103,33 @@ export function resolveLiveBlockRange(
 export function useLivePosResolver(
   editor: Editor | null,
   keyOf: (kind: LivePosKind, id: string) => string,
+  /**
+   * Optional `omniItemId → paragraph UUID` map for PARAGRAPH-anchored cards
+   * (note / todo / cutter / revision / report / archive). Unlike footnotes /
+   * citations / examples — which are entity-anchored and key on
+   * `keyOf(kind, entityId)` — these cards anchor to a paragraph whose UUID the
+   * builder knows but the snapshot can't infer from the card id. Pass the map
+   * (built from the omni items, which now carry `anchorUuid`) and this resolver
+   * also indexes `structure.blocks.get(uuid).pos` for each, so the card tracks
+   * its paragraph live during typing instead of riding the stale baked `pos`.
+   * The map identity changes only when the items (structurally) rebuild, so it
+   * participates in the cache key alongside the snapshot identity.
+   */
+  paragraphAnchors?: ReadonlyMap<string, string>,
 ): LivePosResolver {
-  const cacheRef = useRef<{ s: DocStructure | null; map: Map<string, number> }>({
-    s: null,
-    map: new Map(),
-  });
+  const cacheRef = useRef<{
+    s: DocStructure | null;
+    anchors: ReadonlyMap<string, string> | undefined;
+    map: Map<string, number>;
+  }>({ s: null, anchors: undefined, map: new Map() });
 
   return useCallback(
     (id: string): number | undefined => {
       const s = getBus(editor)?.structure ?? null;
       if (!s) return undefined;
-      if (cacheRef.current.s !== s) {
+      // Rebuild when EITHER the snapshot (positions re-mapped every tx) OR the
+      // paragraph-anchor map (structural rebuild of the items) changes identity.
+      if (cacheRef.current.s !== s || cacheRef.current.anchors !== paragraphAnchors) {
         const map = new Map<string, number>();
         for (const f of s.footnotes) map.set(keyOf("footnote", f.id), f.pos);
         for (const c of s.citations) map.set(keyOf("citation", c.id), c.pos);
@@ -121,13 +137,42 @@ export function useLivePosResolver(
           map.set(keyOf("example", e.id), e.pos);
           if (e.uuid) map.set(keyOf("example", e.uuid), e.pos);
         }
-        cacheRef.current = { s, map };
+        // Paragraph-anchored cards: resolve each omni id to its anchor block's
+        // LIVE position from the snapshot. Bounded by the number of anchored
+        // cards (a `blocks.get` per entry), never the doc size. A card whose
+        // anchor paragraph is no longer in the snapshot (deleted) is simply not
+        // added → the resolver returns `undefined` for it and the caller falls
+        // back to the baked pos / orphan binning.
+        if (paragraphAnchors) {
+          for (const [omniId, uuid] of paragraphAnchors) {
+            const b = s.blocks.get(uuid);
+            if (b) map.set(omniId, b.pos);
+          }
+        }
+        cacheRef.current = { s, anchors: paragraphAnchors, map };
       }
       return cacheRef.current.map.get(id);
     },
     // `keyOf` is expected to be a stable reference (module-level helper like
     // `cardPopKey`); listing it keeps the lint exhaustiveness rule satisfied
-    // without churning the cache (the snapshot-identity guard does the gating).
-    [editor, keyOf],
+    // without churning the cache (the snapshot/anchors-identity guard gates).
+    [editor, keyOf, paragraphAnchors],
   );
+}
+
+/**
+ * Build the `omniItemId → paragraph UUID` map `useLivePosResolver` consumes,
+ * from a list of omni items. Only paragraph-anchored items (those carrying an
+ * `anchorUuid`) are included. Memoize on the items array so the map identity is
+ * stable until the items (structurally) rebuild — that stability is what keeps
+ * the resolver's snapshot cache from churning on plain typing.
+ */
+export function buildParagraphAnchorMap(
+  items: ReadonlyArray<{ id: string; anchorUuid?: string }>,
+): Map<string, string> {
+  const m = new Map<string, string>();
+  for (const it of items) {
+    if (it.anchorUuid) m.set(it.id, it.anchorUuid);
+  }
+  return m;
 }
