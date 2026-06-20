@@ -221,15 +221,17 @@ export default function LeftList({
     ro.observe(el);
     return () => ro.disconnect();
   }, []);
-  // Reset the one-shot guard when the active library changes so the new
-  // list restores its own saved position.
-  useEffect(() => {
-    restoredForRef.current = null;
-  }, [libId]);
   // One-shot restore: after the first NON-EMPTY render with a real
   // scrollHeight (so we never clamp to 0 on an empty / zero-height list),
   // apply the saved scrollTop once. If content streams in (catalog 6 s
-  // poll), this re-runs on `filtered` change until it lands.
+  // poll), this re-runs on `filtered` change until it lands — but the guard
+  // below makes it idempotent per library.
+  //
+  // The guard `restoredForRef.current === libId` is self-re-arming: on a
+  // library switch the ref holds the OLD id (≠ the new libId), so the restore
+  // runs once for the new list and stamps the ref. A separate reset effect
+  // would null the ref AFTER this layout effect and trigger a SECOND restore
+  // on the next `filtered` change (yanking the user back) — so there is none.
   useLayoutEffect(() => {
     if (restoredForRef.current === libId) return;
     const el = rowsRef.current;
@@ -238,8 +240,11 @@ export default function LeftList({
     if (el.scrollHeight <= el.clientHeight) return; // not scrollable yet
     if (scrollTop > 0) {
       el.scrollTop = scrollTop;
-      // Seed the window to the restored offset so it doesn't paint the top
-      // for one frame before the scroll event catches up (virtualization).
+      // Seed the window to the restored offset. This runs in a
+      // useLayoutEffect, so React flushes this state update SYNCHRONOUSLY
+      // before paint — the first painted frame already renders the rows at
+      // the restored offset (overscan covers any residual), instead of
+      // painting row 0 then jumping once the scroll event lands.
       setViewport({ scrollTop: el.scrollTop, height: el.clientHeight });
     }
     restoredForRef.current = libId;

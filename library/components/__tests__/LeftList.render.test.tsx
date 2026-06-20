@@ -50,6 +50,7 @@ import LeftList from "../LeftList";
 import type { RowActions } from "../LeftListRow";
 import {
   __resetViewSessionForTests,
+  setListScroll,
   setSelection,
   usePanelSelection,
 } from "@library/lib/view-session-store";
@@ -121,9 +122,11 @@ const noop = () => {};
 function Harness({
   dotToneFor = NO_TONE,
   entries = ENTRIES,
+  libId = "central",
 }: {
   dotToneFor?: (c: string | null | undefined) => "red" | "green" | null;
   entries?: CatalogEntry[];
+  libId?: string;
 }) {
   const sel = usePanelSelection("", "left");
   return (
@@ -132,7 +135,7 @@ function Harness({
       bibByKey={BIB_BY_KEY}
       scope=""
       panel="left"
-      libId="central"
+      libId={libId}
       selectedKeys={sel.selectedKeys}
       anchorKey={sel.anchorKey}
       onSelectKeys={sel.setSelection}
@@ -218,5 +221,80 @@ describe("LeftList — render-count / keystroke-sanctity", () => {
     expect(rendered.length).toBeGreaterThan(20);
     expect(rendered.length).toBeLessThan(80);
     expect(rendered.length).toBeLessThan(many.length);
+  });
+});
+
+describe("LeftList — scroll restore one-shot guard (C7-001)", () => {
+  // jsdom has no layout engine, so stub the scroll geometry: the restore path
+  // bails when scrollHeight <= clientHeight, and scrollTop must actually store.
+  const saved: Record<string, PropertyDescriptor | undefined> = {};
+  beforeEach(() => {
+    for (const k of ["scrollHeight", "clientHeight", "scrollTop"] as const) {
+      saved[k] = Object.getOwnPropertyDescriptor(HTMLElement.prototype, k);
+    }
+    Object.defineProperty(HTMLElement.prototype, "scrollHeight", {
+      configurable: true,
+      get() {
+        return 5000;
+      },
+    });
+    Object.defineProperty(HTMLElement.prototype, "clientHeight", {
+      configurable: true,
+      get() {
+        return 500;
+      },
+    });
+    const TOP = Symbol("scrollTop");
+    Object.defineProperty(HTMLElement.prototype, "scrollTop", {
+      configurable: true,
+      get() {
+        return (this as Record<symbol, number>)[TOP] ?? 0;
+      },
+      set(v: number) {
+        (this as Record<symbol, number>)[TOP] = v;
+      },
+    });
+  });
+  afterEach(() => {
+    for (const k of ["scrollHeight", "clientHeight", "scrollTop"] as const) {
+      if (saved[k]) Object.defineProperty(HTMLElement.prototype, k, saved[k]!);
+      else
+        delete (HTMLElement.prototype as unknown as Record<string, unknown>)[k];
+    }
+  });
+
+  const many = (n: number) =>
+    Array.from({ length: n }, (_, i) =>
+      entry(`k${String(i).padStart(3, "0")}`, `Title ${i}`, `Author ${i}`, 2000),
+    );
+  const scrollContainer = (container: HTMLElement) =>
+    [...container.querySelectorAll("div")].find(
+      (d) =>
+        /auto|scroll/.test(getComputedStyle(d).overflowY) &&
+        d.querySelector('[data-testid^="row-"]'),
+    ) as HTMLDivElement;
+
+  it("restores once per library and a later poll does NOT clobber a user scroll after a library switch", () => {
+    setListScroll("", "left", "central", 1500);
+    setListScroll("", "left", "other", 800);
+
+    const { container, rerender } = render(
+      <Harness entries={many(300)} libId="central" />,
+    );
+    const sc = scrollContainer(container);
+    expect(sc).toBeTruthy();
+    expect(sc.scrollTop).toBe(1500); // central's saved offset restored
+
+    // Switch libraries — the path where the old reset effect nulled the guard.
+    rerender(<Harness entries={many(300)} libId="other" />);
+    expect(sc.scrollTop).toBe(800); // other's saved offset restored
+
+    // User scrolls within "other".
+    sc.scrollTop = 3000;
+
+    // A poll changes `filtered` (new entries identity, SAME libId). With the
+    // bug this re-restored to 800; with the guard intact it must hold at 3000.
+    rerender(<Harness entries={many(300)} libId="other" />);
+    expect(sc.scrollTop).toBe(3000);
   });
 });
