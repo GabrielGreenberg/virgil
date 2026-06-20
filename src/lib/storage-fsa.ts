@@ -59,6 +59,7 @@ import {
   DEFAULT_TEMPLATE_ID,
   type DocumentTemplate,
 } from "@/lib/document-templates";
+import { getLibraryHandle } from "@library/lib/library-folder";
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -90,13 +91,46 @@ const DEFAULT_SIDECAR: VirgilSidecar = { paragraphs: {} };
 // Internal helpers
 // ---------------------------------------------------------------------------
 
-/** Read a doc's directory handle, throwing a clear error if it isn't there. */
+/** Read a doc's directory handle, throwing a clear error if it isn't there.
+ *
+ * Fast-path: the per-doc registry (`getDocHandle`) — populated by the picker
+ * for normal docs, and one-shot by `PaperRender` for the active library
+ * Reader. When that's absent for a `library-paper:<citekey>` doc — a Reader
+ * teardown/remount race, or a non-Reader read (view-session auto-open, façade
+ * reads) — fall back to resolving the handle on demand from the mounted
+ * library folder. This keeps READS working without relying on PaperRender's
+ * racy registration; it does NOT re-enable writes, which short-circuit earlier
+ * at the `enqueueDocWrite` library-paper guard (before any `requireDocHandle`
+ * call in the task body). A normal doc with no registered handle still throws
+ * the same diagnostic — the fallback is gated on the `library-paper:` prefix. */
 async function requireDocHandle(
   docId: string,
 ): Promise<FileSystemDirectoryHandle> {
   const h = await getDocHandle(docId);
-  if (!h) throw new Error(`No folder handle stored for doc ${docId}`);
-  return h;
+  if (h) return h; // registered fast-path — unchanged, still wins
+  if (docId.startsWith(LIBRARY_PAPER_PREFIX)) {
+    const dir = await resolveLibraryPaperDir(docId);
+    if (dir) return dir;
+  }
+  throw new Error(`No folder handle stored for doc ${docId}`);
+}
+
+/** On-demand resolve of a `library-paper:<citekey>` doc's directory handle
+ *  from the mounted library folder (`<library>/papers/<citekey>/`). Returns
+ *  null when the library isn't mounted or the paper dir is missing mid-index,
+ *  so the caller falls through to the same "No folder handle stored" throw. */
+async function resolveLibraryPaperDir(
+  docId: string,
+): Promise<FileSystemDirectoryHandle | null> {
+  const citekey = docId.slice(LIBRARY_PAPER_PREFIX.length);
+  const lib = await getLibraryHandle();
+  if (!lib) return null;
+  try {
+    const papers = await lib.getDirectoryHandle("papers");
+    return await papers.getDirectoryHandle(citekey);
+  } catch {
+    return null; // NotFound mid-index → null → same diagnostic throw
+  }
 }
 
 /** Get/create the `virgil/` subdir under a doc folder. */
