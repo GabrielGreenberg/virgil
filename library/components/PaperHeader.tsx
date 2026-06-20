@@ -31,6 +31,9 @@ interface Props {
   viewMode: "text" | "pdf";
   onViewModeChange: (m: "text" | "pdf") => void;
   pdfAvailable: boolean;
+  /** Deep-index state of this paper — drives the Text button's dynamic
+   *  label ("Virgil Text" when deepIndexed, else "Raw Text"). */
+  indexedState: IndexedState;
   /** Open the manual bib edit modal. Owned by the parent so the modal
    *  state can outlive header re-renders. */
   onEdit?: () => void;
@@ -57,6 +60,7 @@ export default function PaperHeader({
   viewMode,
   onViewModeChange,
   pdfAvailable,
+  indexedState,
   onEdit,
 }: Props) {
   const citekey = entry.citekey;
@@ -81,7 +85,6 @@ export default function PaperHeader({
     importbib: false,
   });
 
-  const indexedState: IndexedState = entry.indexed.state;
   const isIndexed = indexedState === "indexed" || indexedState === "deepIndexed";
   const indexNeeded = indexedState === "none" || indexedState === "failed";
 
@@ -377,6 +380,7 @@ export default function PaperHeader({
               mode={viewMode}
               onChange={onViewModeChange}
               pdfAvailable={pdfAvailable}
+              indexedState={indexedState}
             />
           </div>
 
@@ -508,10 +512,12 @@ function ViewToggle({
   mode,
   onChange,
   pdfAvailable,
+  indexedState,
 }: {
   mode: "text" | "pdf";
   onChange: (m: "text" | "pdf") => void;
   pdfAvailable: boolean;
+  indexedState: IndexedState;
 }) {
   return (
     <div
@@ -524,7 +530,11 @@ function ViewToggle({
         overflow: "hidden",
       }}
     >
-      <ToggleButton active={mode === "text"} onClick={() => onChange("text")} label="Text" />
+      <ToggleButton
+        active={mode === "text"}
+        onClick={() => onChange("text")}
+        label={indexedState === "deepIndexed" ? "Virgil Text" : "Raw Text"}
+      />
       <ToggleButton
         active={mode === "pdf"}
         onClick={() => onChange("pdf")}
