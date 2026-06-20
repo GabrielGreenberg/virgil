@@ -8,6 +8,13 @@ import { getWindowId } from "@/lib/multi-window/window-id";
 import { publish, subscribe, type BusEvent } from "@/lib/multi-window/bus";
 import { DEFAULT_OMNI_CATEGORIES, migrateOmniCategories, type OmniCategory } from "@/panels/Omni/OmniViewPanel";
 import defaultPrefsJson from "./useViewPrefs.defaults.json";
+import {
+  REGISTRY_DEFAULTS,
+  REGISTRY_GLOBAL_KEYS,
+  VIEW_PREF_REGISTRY,
+  type RegistryPrefs,
+  type ViewPrefKey,
+} from "@/lib/view-prefs/registry";
 import { migrateFloatKeys, migrateLegacyKeyToFloat } from "@/floats/float-key";
 import {
   filterPlacements,
@@ -70,7 +77,13 @@ export function bandSlotKey(side: Side, index: number): DockSlotKey {
   return `${side}-${index}` as DockSlotKey;
 }
 
-export interface ViewPrefs {
+/** View preferences split into a global slice (mirrored across windows) and
+ *  a per-window slice. The registry-owned fields (par-titles, % comments,
+ *  marginalia, highlights, dividers, bib filter) come from `RegistryPrefs`
+ *  via `extends`; only the structural layout fields below are hand-authored.
+ *  Add a new view toggle by adding ONE entry to `VIEW_PREF_REGISTRY`, never
+ *  by hand-declaring it here. */
+export interface ViewPrefs extends RegistryPrefs {
   placements: PanelPlacement[];
   /** Ordered stack of docked panels per side, top→bottom, length ≤
    *  MAX_STACK. Replaces the old activeLeft/Right + active*Bottom +
@@ -124,16 +137,8 @@ export interface ViewPrefs {
   poppedOutCards: string[];
   /** Saved position/size of each floating card, keyed by card key. */
   cardFloatPositions: Record<string, { x: number; y: number; width: number; height: number }>;
-  /** Master switch for highlight-style decorations in the main text.
-   *  When false, all per-kind highlights below are suppressed
-   *  regardless of `hiddenHighlightTypes`. */
-  showHighlights: boolean;
-  /** Per-kind suppression — each entry hides one card-kind's highlight.
-   *  Stored as an array (rather than a Set) so it round-trips through
-   *  JSON. Values use the CardKind names that appear in the
-   *  `data-link-card` prefix: "note", "todo", "comment"
-   *  (= revisions panel), "cut". */
-  hiddenHighlightTypes: HighlightType[];
+  /* `showHighlights` + `hiddenHighlightTypes` are registry-owned
+   *  (`VIEW_PREF_REGISTRY`, global scope) and arrive via `RegistryPrefs`. */
   /** Preferred width of the editor "page" in pixels. The page is the
    *  solid element of the layout — panels and margins flex around it to
    *  absorb window resizes. Drag on panel or zen-margin inner edges
@@ -158,23 +163,11 @@ export interface ViewPrefs {
   topbarRightCollapsed: boolean;
 
   /* ── Editor decoration prefs (global; promote to defaults) ───────── */
+  /*  `showMarginalia` / `hiddenMarginaliaTypes` / `showSectionIndicator` /
+   *  `showHeadingLabels` / `dividerLevels` / `dividerWidth` are all
+   *  registry-owned (`VIEW_PREF_REGISTRY`, global scope) and arrive via
+   *  `RegistryPrefs`. Add a new decoration toggle there, not here. */
 
-  /** Master switch for marginalia (linked-card halos in the side
-   *  margins). When false, every marginalia kind is suppressed. */
-  showMarginalia: boolean;
-  /** Per-kind suppression for marginalia. Array form (not Set) so it
-   *  round-trips through JSON. */
-  hiddenMarginaliaTypes: MarginaliaType[];
-  /** Show the section-indicator lozenge floating over the document. */
-  showSectionIndicator: boolean;
-  /** Show inline heading-kind labels next to headings (Part / Chapter /
-   *  Section / …). */
-  showHeadingLabels: boolean;
-  /** Heading depths whose dividers (horizontal rules above the heading)
-   *  are drawn. Array form (not Set) so it round-trips through JSON. */
-  dividerLevels: DividerLevel[];
-  /** Width policy for heading dividers. */
-  dividerWidth: DividerWidth;
   /** Omni-view filter chips: which card categories are enabled on each
    *  side. */
   omniCategories: Record<"left" | "right", OmniCategory[]>;
@@ -211,8 +204,16 @@ export { dockedSideOf, dockStackTop, isPanelDocked } from "./view-prefs-derived"
 // print.ts) and `omniCategories` from DEFAULT_OMNI_CATEGORIES (derived
 // from the panel registry) rather than duplicated into the JSON.
 const DEFAULT_PREFS: ViewPrefs = {
+  // Registry defaults FIRST so the 8 promoted decoration/highlight fields
+  // (showMarginalia, dividerLevels, …) and `bibFilter` get a value; the JSON
+  // spread comes AFTER so the JSON's values for the registry keys it carries
+  // win (the promotion pipeline is byte-stable against the JSON). `bibFilter`
+  // is window-scoped, lives ONLY in the registry (not the JSON), so it's
+  // omitted from the JSON cast below and supplied by REGISTRY_DEFAULTS.
+  ...REGISTRY_DEFAULTS,
   ...(defaultPrefsJson as Omit<
     ViewPrefs,
+    | "bibFilter"
     | "printOptions"
     | "omniCategories"
     | "cardArchiveView"
@@ -244,9 +245,12 @@ const WINDOW_STORAGE_PREFIX = "virgil-view-prefs/window/";
  * defaults — see `tools/promote-defaults.mjs` and the whitelist in
  * `src/lib/dev-prefs-registry.json`.
  */
-const GLOBAL_PREF_KEYS = [
-  "showHighlights",
-  "hiddenHighlightTypes",
+/** Structural (non-registry) global keys — page geometry, strip placements,
+ *  omni filters, print options. The registry-owned global keys
+ *  (`showMarginalia`, `dividerLevels`, highlights, …) are appended from
+ *  `REGISTRY_GLOBAL_KEYS` so "is this pref global?" is decided in ONE place
+ *  (the registry's `scope` field), never re-asserted by hand here. */
+const STRUCTURAL_GLOBAL_PREF_KEYS = [
   "printOptions",
   "placements",
   "pageWidth",
@@ -255,16 +259,16 @@ const GLOBAL_PREF_KEYS = [
   "editorTopMargin",
   "editorBottomMargin",
   "codePaneRatio",
-  "showMarginalia",
-  "hiddenMarginaliaTypes",
-  "showSectionIndicator",
-  "showHeadingLabels",
-  "dividerLevels",
-  "dividerWidth",
   "omniCategories",
   "omniHideAllCards",
 ] as const;
-type GlobalPrefKey = (typeof GLOBAL_PREF_KEYS)[number];
+const GLOBAL_PREF_KEYS = [
+  ...STRUCTURAL_GLOBAL_PREF_KEYS,
+  ...REGISTRY_GLOBAL_KEYS,
+] as const;
+type GlobalPrefKey =
+  | (typeof STRUCTURAL_GLOBAL_PREF_KEYS)[number]
+  | (typeof REGISTRY_GLOBAL_KEYS)[number];
 const GLOBAL_PREF_SET = new Set<string>(GLOBAL_PREF_KEYS);
 
 function windowStorageKey(): string {
@@ -288,26 +292,14 @@ function notifySameWindow() {
 }
 
 function pickGlobal(p: ViewPrefs): Pick<ViewPrefs, GlobalPrefKey> {
-  return {
-    showHighlights: p.showHighlights,
-    hiddenHighlightTypes: p.hiddenHighlightTypes,
-    printOptions: p.printOptions,
-    placements: p.placements,
-    pageWidth: p.pageWidth,
-    editorLeftMargin: p.editorLeftMargin,
-    editorRightMargin: p.editorRightMargin,
-    editorTopMargin: p.editorTopMargin,
-    editorBottomMargin: p.editorBottomMargin,
-    codePaneRatio: p.codePaneRatio,
-    showMarginalia: p.showMarginalia,
-    hiddenMarginaliaTypes: p.hiddenMarginaliaTypes,
-    showSectionIndicator: p.showSectionIndicator,
-    showHeadingLabels: p.showHeadingLabels,
-    dividerLevels: p.dividerLevels,
-    dividerWidth: p.dividerWidth,
-    omniCategories: p.omniCategories,
-    omniHideAllCards: p.omniHideAllCards,
-  };
+  const out = {} as Pick<ViewPrefs, GlobalPrefKey>;
+  for (const k of GLOBAL_PREF_KEYS) {
+    // `k` is a GlobalPrefKey; the assignment is sound (same key on both
+    // sides) but TS can't track the per-key value type through the loop, so
+    // a single localized cast keeps the loop builder honest.
+    (out as Record<GlobalPrefKey, unknown>)[k] = p[k];
+  }
+  return out;
 }
 
 /** Read-time (pre-editor) per-key migration to the `float:` grammar. Rewrites
@@ -331,7 +323,10 @@ function readTimePopoutKeyToFloat(key: string): string | null {
   return migrateLegacyKeyToFloat(key);
 }
 
-function loadPrefs(): ViewPrefs {
+/** Read + merge + migrate both pref blobs into a fully-defaulted `ViewPrefs`.
+ *  Exported so the registry round-trip test can drive the real load pipeline
+ *  (it was previously module-private). */
+export function loadPrefs(): ViewPrefs {
   if (typeof window === "undefined") return DEFAULT_PREFS;
   try {
     // Migration: split the legacy single-blob key into per-window +
@@ -614,10 +609,39 @@ function loadPrefs(): ViewPrefs {
       delete (parsed as Record<string, unknown>)[k];
     }
 
+    // Bug 5: popped-out PANELS now re-float on reload (the float rect already
+    // persists via `floatPositions`; only the "is currently floating" state
+    // was being dropped). Validate the stored list against the live layout so
+    // a stale/retired id can never round-trip back into a float: keep only
+    // real panels (not `omni`/`blank`), that survived placement cleaning
+    // (`cleanedPlacements`), and are known `PANEL_REGISTRY` kinds. The MRU
+    // reset below stays session-only (recency genuinely rebuilds).
+    const placedIds = new Set(cleanedPlacements.map((pl) => pl.id));
+    const validPanelId = (x: unknown): x is PanelId =>
+      typeof x === "string" &&
+      x !== "omni" &&
+      x !== "blank" &&
+      placedIds.has(x as PanelId) &&
+      (PANEL_REGISTRY as Record<string, unknown>)[x] !== undefined;
+    const survivingPoppedPanels: PanelId[] = Array.isArray(parsed.poppedOutPanels)
+      ? (parsed.poppedOutPanels as unknown[]).filter(validPanelId)
+      : [];
+    const survivingPanelSet = new Set<PanelId>(survivingPoppedPanels);
+    const survivingOrigins: ViewPrefs["poppedOutOrigins"] = {};
+    if (parsed.poppedOutOrigins && typeof parsed.poppedOutOrigins === "object") {
+      for (const [k, v] of Object.entries(
+        parsed.poppedOutOrigins as Record<string, unknown>,
+      )) {
+        if (survivingPanelSet.has(k as PanelId) && (v === "top" || v === "bottom")) {
+          survivingOrigins[k as PanelId] = v;
+        }
+      }
+    }
+
     // Open layout (dockStack) + per-band heights (panelHeights) persist
     // per-window so a reload restores the open panels and their sizes;
-    // recency (panelMRU) is session-only. Floats (poppedOutPanels) stay
-    // session-only. panelModes / floatPositions / panelWidths persist.
+    // recency (panelMRU) is session-only. Floats (poppedOutPanels) re-float
+    // (validated above). panelModes / floatPositions / panelWidths persist.
     return {
       ...DEFAULT_PREFS,
       ...parsed,
@@ -634,8 +658,8 @@ function loadPrefs(): ViewPrefs {
       collapsedRight,
       blankLeft,
       blankRight,
-      poppedOutPanels: [],
-      poppedOutOrigins: {},
+      poppedOutPanels: survivingPoppedPanels,
+      poppedOutOrigins: survivingOrigins,
       panelModes: parsed.panelModes ?? {},
       floatPositions: parsed.floatPositions ?? {},
       panelWidths: parsed.panelWidths ?? {},
@@ -1120,6 +1144,48 @@ export function useViewPrefs() {
     update((p) => ({ ...p, dividerWidth: w }));
   }, [update]);
 
+  /* ── Registry-backed view toggles (Bug 1/2 + generic) ────────────── */
+
+  /** Bug 1: persist the "Paragraph titles" View-menu toggle (global). Was a
+   *  plain `useState(true)` in EditorLayout, so it reset on every reload. */
+  const toggleParTitles = useCallback(() => {
+    update((p) => ({ ...p, showParTitles: !p.showParTitles }));
+  }, [update]);
+
+  /** Bug 2: persist the "% comments" View-menu toggle (global). Same defect
+   *  as par-titles, adjacent line. */
+  const toggleLatexComments = useCallback(() => {
+    update((p) => ({ ...p, showLatexComments: !p.showLatexComments }));
+  }, [update]);
+
+  /** Bug 3: persist the Bibliography panel's "Cited only / Full" filter
+   *  (per-window). Was a plain `useState("cited")` in BibliographyPanel. */
+  const setBibFilter = useCallback((v: ViewPrefs["bibFilter"]) => {
+    update((p) => ({ ...p, bibFilter: v }));
+  }, [update]);
+
+  /** Generic registry-guarded setter: write any single registry field by key.
+   *  Refuses keys not in `VIEW_PREF_REGISTRY` so a typo can't silently smear a
+   *  non-pref field. Persistence scope is decided by the registry's `scope`. */
+  const setViewPref = useCallback(
+    <K extends ViewPrefKey>(key: K, value: RegistryPrefs[K]) => {
+      if (!(key in VIEW_PREF_REGISTRY)) return;
+      update((p) => ({ ...p, [key]: value }));
+    },
+    [update],
+  );
+
+  /** Generic registry-guarded toggle for the boolean (`kind: "toggle"`)
+   *  registry fields. A no-op for non-toggle keys (guards at runtime). */
+  const toggleViewPref = useCallback(
+    (key: ViewPrefKey) => {
+      const def = VIEW_PREF_REGISTRY[key];
+      if (!def || def.kind !== "toggle") return;
+      update((p) => ({ ...p, [key]: !(p as RegistryPrefs)[key] }));
+    },
+    [update],
+  );
+
   const toggleOmniCategory = useCallback(
     (side: "left" | "right", cat: OmniCategory) => {
       update((p) => {
@@ -1442,6 +1508,11 @@ export function useViewPrefs() {
     toggleHeadingLabels,
     toggleDividerLevel,
     setDividerWidth,
+    toggleParTitles,
+    toggleLatexComments,
+    setBibFilter,
+    setViewPref,
+    toggleViewPref,
     toggleOmniCategory,
     resetOmniSide,
     toggleOmniHideAllCards,

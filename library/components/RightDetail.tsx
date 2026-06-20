@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import type { CatalogEntry } from "@library/lib/catalog";
 import type { BibEntry } from "@library/lib/types";
 import { queueBibEdit } from "@library/lib/bib-edit";
+import { usePaperViewMode } from "@library/lib/view-session-store";
 import type { PanelKey } from "@library/hooks/useLibraryTabs";
 import BibEditModal from "./BibEditModal";
 import PaperHeader from "./PaperHeader";
@@ -41,16 +42,37 @@ export default function RightDetail({
   scope,
   panel,
 }: Props) {
-  const [viewMode, setViewMode] = useState<ViewMode>("text");
+  // View mode is persisted per-paper under the same `paper:<citekey>` slice
+  // the reader scroll uses — so each source remembers Text vs PDF across
+  // reloads AND intra-session paper switches. A paper never toggled defaults
+  // to "text". `entry` can be null (empty-selection placeholder below); use a
+  // stable sentinel libId so the hook order stays constant — it's read only
+  // when a real paper is selected.
+  const viewModeLibId = `paper:${entry?.citekey ?? "__none__"}`;
+  const { viewMode, setViewMode } = usePaperViewMode(scope, panel, viewModeLibId);
   const [editOpen, setEditOpen] = useState(false);
 
-  // Reset to text view when the selection changes — otherwise switching
-  // from a PDF-having paper to a DOCX-only one would land on a disabled
-  // PDF view. Also close the edit modal if the user navigates away.
+  // Close the edit modal when the user navigates to a different paper. The
+  // view mode itself is NOT force-reset here — it's persisted per-paper now,
+  // so each source restores its own posture. The only place we coerce the
+  // mode is when the persisted choice is genuinely unavailable for THIS paper
+  // (e.g. a DOCX-only source that can't show "pdf"); see the `pdfOnDisk`
+  // coercion effect below.
   useEffect(() => {
-    setViewMode("text");
     setEditOpen(false);
   }, [entry?.citekey]);
+
+  // Coerce the mode to "text" ONLY when the persisted/current choice is "pdf"
+  // but no PDF is on disk for this paper (e.g. a DOCX-only source) — otherwise
+  // the toggle would land on a disabled PDF view. This replaces the old
+  // unconditional reset-to-text on every paper switch. Computed from `entry`
+  // directly (not the post-early-return `pdfAvailable`) so the hook runs in a
+  // stable order; a null entry has no PDF, but the coercion is moot then since
+  // the mode isn't rendered.
+  const pdfOnDisk = !!entry && hasPdfSource(entry);
+  useEffect(() => {
+    if (viewMode === "pdf" && !pdfOnDisk) setViewMode("text");
+  }, [viewMode, pdfOnDisk, setViewMode]);
 
   const canEdit = !!(handle && bib && entry?.citekey);
 
@@ -72,7 +94,8 @@ export default function RightDetail({
     );
   }
 
-  const pdfAvailable = hasPdfSource(entry);
+  // `entry` is non-null past the early return, so this equals `pdfOnDisk`.
+  const pdfAvailable = pdfOnDisk;
 
   if (viewMode === "pdf") {
     // PDF mode: full-width layout, no drag handles.

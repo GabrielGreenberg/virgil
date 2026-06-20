@@ -12,7 +12,9 @@ import { useLibraryTabs, type UseLibraryTabsOptions } from "@library/hooks/useLi
 import { docIdFromProjectLibraryId, isProjectDocId } from "@library/lib/library-store";
 import {
   usePanelSelection,
+  useLayoutPrefs,
   useLibraryViewSessionFlush,
+  migrateLegacyLayoutSizes,
 } from "@library/lib/view-session-store";
 import {
   fileExists,
@@ -57,22 +59,32 @@ interface Props {
   belowNavigator?: ReactNode;
 }
 
-// Persisted column widths. The middle-column key is named "left" for
-// back-compat with the pre-3-column persisted state; treat it as the
-// "library file" column going forward (the column with library tabs +
-// entry list).
-const LEFT_WIDTH_KEY = "virgil-library-left-width";
+// The three column/pod sizes now live in the unified view-session-store's
+// `layout` slice (`useLayoutPrefs` → layout.{middleWidth,navWidth,papersHeight})
+// instead of three standalone `useState` + localStorage pairs. The store was
+// already DEAD-SEEDING those layout fields from the legacy keys below but
+// nothing read them back — folding the readers onto the store closes that
+// mismatch. Same scope as before: the store's `layout` is a per-origin
+// localStorage slice (the store has no window-id partitioning — its `scopes`
+// keys distinguish inline vs tear-out panels, not browser windows), exactly
+// like the standalone keys it replaces. The legacy keys are kept ONLY as a
+// one-shot migration source for users whose blob predates this change (the
+// store's absent-blob seed already covers brand-new users).
+//
+// The legacy standalone size keys (virgil-library-{left,nav,papers}-*) are now
+// owned by the store: `migrateLegacyLayoutSizes()` adopts them once on mount
+// and deletes them. Only the min-floors + defaults live here, shared with the
+// resize handlers and the load-time viewport clamp. (Mins MUST match the
+// store's NAV_WIDTH_MIN / MIDDLE_WIDTH_MIN / PAPERS_HEIGHT_MIN.)
 const LEFT_MIN = 220;
 const LEFT_DEFAULT = 360;
 
-const NAV_WIDTH_KEY = "virgil-library-nav-width";
 const NAV_MIN = 180;
 const NAV_DEFAULT = 220;
 
 // Height of the My Papers pod in the navigator column. The Libraries pod
 // above takes the remaining space; both stay at least 100px tall so the
 // drag bar can't smash either pod into invisibility.
-const PAPERS_HEIGHT_KEY = "virgil-library-papers-height";
 const PAPERS_MIN = 100;
 const PAPERS_DEFAULT = 240;
 
@@ -96,78 +108,71 @@ export default function LibraryView({
   const notifications = useNotificationStream(handle);
   const setupStatus = useSetupStatus(handle);
 
-  // Resizable middle panel — width persisted in localStorage so it
-  // survives reloads. (Key is named "left" for back-compat with the
-  // pre-3-column layout; semantically this is the middle column now.)
-  const [leftWidth, setLeftWidth] = useState<number>(LEFT_DEFAULT);
-  const [navWidth, setNavWidth] = useState<number>(NAV_DEFAULT);
-  const [papersHeight, setPapersHeight] = useState<number>(PAPERS_DEFAULT);
+  // Resizable middle panel + nav column + papers pod — sizes persisted in the
+  // unified view-session-store's `layout` slice so they survive reloads AND
+  // the Library's many remounts. (The middle-column field is named
+  // `middleWidth`; the older standalone localStorage key was "left" for the
+  // pre-3-column layout.)
+  const { layout, setLayout } = useLayoutPrefs();
+  // Clamp the stored widths to the viewport on read so an oversized width
+  // persisted on a wider monitor can't starve the content pane when reopened
+  // on a narrower screen (mirrors the load-time clamp the pre-store code
+  // applied). Only the RENDERED width is clamped — the stored value is left
+  // intact so it re-expands when the window grows again.
+  const viewportW =
+    typeof window !== "undefined" ? window.innerWidth : Number.POSITIVE_INFINITY;
+  const leftWidth = Math.max(
+    LEFT_MIN,
+    Math.min(layout.middleWidth ?? LEFT_DEFAULT, viewportW - 200),
+  );
+  const navWidth = Math.max(
+    NAV_MIN,
+    Math.min(layout.navWidth ?? NAV_DEFAULT, viewportW - 300),
+  );
+  const papersHeight = layout.papersHeight ?? PAPERS_DEFAULT;
   const navColumnRef = useRef<HTMLDivElement | null>(null);
+
+  // One-shot migration of the legacy standalone size keys into the store, for
+  // users whose `virgil-library-view-session` blob predates the layout-fold.
+  // Idempotent via key-deletion inside the store (NOT a per-mount ref), so a
+  // later reload never re-clobbers a size the user set through the store — see
+  // `migrateLegacyLayoutSizes`. The adopted value is the freshest (the old
+  // resize handler kept the standalone key live, never this blob).
   useEffect(() => {
-    try {
-      const saved = parseInt(localStorage.getItem(LEFT_WIDTH_KEY) ?? "", 10);
-      if (!Number.isNaN(saved)) {
-        const maxW = window.innerWidth - 200;
-        setLeftWidth(Math.max(LEFT_MIN, Math.min(maxW, saved)));
-      }
-      const navSaved = parseInt(
-        localStorage.getItem(NAV_WIDTH_KEY) ?? "",
-        10,
-      );
-      if (!Number.isNaN(navSaved)) {
-        const maxW = window.innerWidth - 300;
-        setNavWidth(Math.max(NAV_MIN, Math.min(maxW, navSaved)));
-      }
-      const papersSaved = parseInt(
-        localStorage.getItem(PAPERS_HEIGHT_KEY) ?? "",
-        10,
-      );
-      if (!Number.isNaN(papersSaved)) {
-        setPapersHeight(Math.max(PAPERS_MIN, papersSaved));
-      }
-    } catch {
-      // localStorage unavailable — fall back to default.
-    }
+    migrateLegacyLayoutSizes();
   }, []);
+
   const makeResizeHandler = useCallback(
     (
       currentWidth: number,
-      setWidth: (next: number | ((w: number) => number)) => void,
+      commit: (next: number) => void,
       minWidth: number,
       maxOffset: number,
-      storageKey: string,
     ) =>
       (e: React.PointerEvent<HTMLDivElement>) => {
         e.preventDefault();
         const startX = e.clientX;
         const startWidth = currentWidth;
+        let latest = currentWidth;
         const onMove = (ev: PointerEvent) => {
-          const next = Math.max(
+          latest = Math.max(
             minWidth,
             Math.min(
               window.innerWidth - maxOffset,
               startWidth + (ev.clientX - startX),
             ),
           );
-          setWidth(next);
+          // Live drag feedback: the store commit re-renders this component so
+          // the grid track follows the pointer. The store's 250 ms debounce
+          // coalesces the localStorage writes (no synchronous write per frame).
+          commit(latest);
         };
         const onUp = () => {
           window.removeEventListener("pointermove", onMove);
           window.removeEventListener("pointerup", onUp);
           document.body.style.cursor = "";
           document.body.style.userSelect = "";
-          try {
-            setWidth((w) => {
-              try {
-                localStorage.setItem(storageKey, String(Math.round(w)));
-              } catch {
-                // ignore
-              }
-              return w;
-            });
-          } catch {
-            // ignore
-          }
+          commit(Math.round(latest));
         };
         window.addEventListener("pointermove", onMove);
         window.addEventListener("pointerup", onUp);
@@ -177,8 +182,14 @@ export default function LibraryView({
     [],
   );
   const startResize = useMemo(
-    () => makeResizeHandler(leftWidth, setLeftWidth, LEFT_MIN, 200, LEFT_WIDTH_KEY),
-    [leftWidth, makeResizeHandler],
+    () =>
+      makeResizeHandler(
+        leftWidth,
+        (w) => setLayout({ middleWidth: w }),
+        LEFT_MIN,
+        200,
+      ),
+    [leftWidth, makeResizeHandler, setLayout],
   );
   // Vertical resizer between Libraries (top) and My Papers (bottom).
   // Dragging up grows the My Papers pod; dragging down shrinks it.
@@ -188,43 +199,39 @@ export default function LibraryView({
       e.preventDefault();
       const startY = e.clientY;
       const startHeight = papersHeight;
+      let latest = papersHeight;
       const onMove = (ev: PointerEvent) => {
         const colH = navColumnRef.current?.getBoundingClientRect().height ?? 0;
         const maxH = Math.max(PAPERS_MIN, colH - PAPERS_MIN - 6);
-        const next = Math.max(
+        latest = Math.max(
           PAPERS_MIN,
           Math.min(maxH, startHeight - (ev.clientY - startY)),
         );
-        setPapersHeight(next);
+        setLayout({ papersHeight: latest });
       };
       const onUp = () => {
         window.removeEventListener("pointermove", onMove);
         window.removeEventListener("pointerup", onUp);
         document.body.style.cursor = "";
         document.body.style.userSelect = "";
-        try {
-          setPapersHeight((h) => {
-            try {
-              localStorage.setItem(PAPERS_HEIGHT_KEY, String(Math.round(h)));
-            } catch {
-              // ignore
-            }
-            return h;
-          });
-        } catch {
-          // ignore
-        }
+        setLayout({ papersHeight: Math.round(latest) });
       };
       window.addEventListener("pointermove", onMove);
       window.addEventListener("pointerup", onUp);
       document.body.style.cursor = "row-resize";
       document.body.style.userSelect = "none";
     },
-    [papersHeight],
+    [papersHeight, setLayout],
   );
   const startNavResize = useMemo(
-    () => makeResizeHandler(navWidth, setNavWidth, NAV_MIN, 300, NAV_WIDTH_KEY),
-    [navWidth, makeResizeHandler],
+    () =>
+      makeResizeHandler(
+        navWidth,
+        (w) => setLayout({ navWidth: w }),
+        NAV_MIN,
+        300,
+      ),
+    [navWidth, makeResizeHandler, setLayout],
   );
 
   // Surface the most recent skill-bundle sync as a transient toast so the

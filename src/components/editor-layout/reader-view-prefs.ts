@@ -203,12 +203,17 @@ export function useReaderViewPrefs(): EditorPaneViewPrefs {
       topbarRightCollapsed: false,
       // Reader exposes the same decoration schema as the editor, but
       // hard-coded to the reader-appropriate defaults (no persistence).
+      showParTitles: true,
+      showLatexComments: true,
       showMarginalia: true,
       hiddenMarginaliaTypes: [],
       showSectionIndicator: true,
       showHeadingLabels: true,
       dividerLevels: [],
       dividerWidth: "full",
+      // Reader bibliography filter — no persistence; the panel's own
+      // session-only fallback drives it when no setter is provided.
+      bibFilter: "cited",
       omniCategories: DEFAULT_OMNI_CATEGORIES,
       omniHideAllCards: { left: false, right: false },
       // Reader is read-only: no per-card archive view state, never suppressed.
@@ -348,6 +353,10 @@ export function useReaderViewPrefs(): EditorPaneViewPrefs {
       // Reader is read-only — card archive view never changes.
       setCardArchiveView: () => {},
       setSuppressArchiveAtomWarning: () => {},
+      // Reader is read-only / session-only; the bib filter has no persistence
+      // here, so the panel's local fallback drives it (this no-op is never
+      // wired through because the Reader passes no setter to the panel).
+      setBibFilter: () => {},
     }),
     [
       prefs,

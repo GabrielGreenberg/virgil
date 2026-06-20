@@ -73,6 +73,12 @@ interface BibliographyPanelProps {
   entryRequests: BibEntryRequest[];
   onAddEntryRequest: (description: string) => void;
   onRemoveEntryRequest: (id: string) => void;
+  /** Bug 3: the persisted "Cited only / Full" filter + its setter (per-window,
+   *  via useViewPrefs). Optional: when absent (the Reader path with no
+   *  `viewPrefs` bundle) the panel falls back to a session-only local state so
+   *  the control still works, just without reload survival. */
+  bibFilter?: "cited" | "all";
+  setBibFilter?: (v: "cited" | "all") => void;
 }
 
 function BibliographyPanel({
@@ -97,6 +103,8 @@ function BibliographyPanel({
   entryRequests,
   onAddEntryRequest,
   onRemoveEntryRequest,
+  bibFilter,
+  setBibFilter,
 }: BibliographyPanelProps) {
   // Occurrence cursor (which in-text citation a multi-cite entry's prev/next
   // arrows currently point at). Keyed on the entry's durable `uid`, NOT its
@@ -106,7 +114,14 @@ function BibliographyPanel({
   // occurrence count so a citation deleted out from under the cursor can never
   // surface a stale "3 / 2" (BIB-F3-02).
   const [occurrenceIdxByUid, setOccurrenceIdxByUid] = useState<Record<string, number>>({});
-  const [filter, setFilter] = useState<"cited" | "all">("cited");
+  // Bug 3: the "Cited only / Full" filter now persists per-window via
+  // useViewPrefs (threaded in as `bibFilter`/`setBibFilter`). The local
+  // `useState` is retained ONLY as the Reader-path fallback (no `viewPrefs`
+  // bundle there); when the persisted prop is wired, `filter`/`setFilter`
+  // read/write it instead so the choice survives reload.
+  const [localFilter, setLocalFilter] = useState<"cited" | "all">("cited");
+  const filter = bibFilter ?? localFilter;
+  const setFilter = setBibFilter ?? setLocalFilter;
 
   const [addMenuOpen, setAddMenuOpen] = useState(false);
   const addMenuRef = useRef<HTMLDivElement>(null);

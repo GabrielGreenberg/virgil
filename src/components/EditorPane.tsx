@@ -403,6 +403,10 @@ export interface EditorPaneViewPrefs {
     mode: import("@/hooks/useViewPrefs").CardArchiveView,
   ) => void;
   setSuppressArchiveAtomWarning: (v: boolean) => void;
+  /** Bug 3: persist the Bibliography "Cited only / Full" filter (per-window).
+   *  Read side is `prefs.bibFilter`; mirror of the `cardArchiveView`
+   *  per-window precedent above. */
+  setBibFilter: (v: import("@/hooks/useViewPrefs").ViewPrefs["bibFilter"]) => void;
   /** Footnotes that exist as orphan cards (no in-doc reference). The
    *  Reader has none; the main app feeds these via EditorPane's own
    *  footnote-add handler (`handleAddFootnote`). */
@@ -490,8 +494,8 @@ export interface EditorPaneMenuBarBundle {
   activeSplitPane: "top" | "bottom";
 
   // ── Toggle setters ─────────────────────────────────────────────
-  setShowParTitles: (v: boolean) => void;
-  setShowLatexComments: (v: boolean) => void;
+  onToggleParTitles: () => void;
+  onToggleLatexComments: () => void;
   toggleHeadingLabels: () => void;
   toggleSectionIndicator: () => void;
   toggleMarginalia: () => void;
@@ -4736,9 +4740,9 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
                     onCutSelection={handleToolbarAddCut}
                     onInsertCitation={handleToolbarInsertCitation}
                     showParTitles={menuBar.showParTitles}
-                    onToggleParTitles={() => menuBar.setShowParTitles(!menuBar.showParTitles)}
+                    onToggleParTitles={menuBar.onToggleParTitles}
                     showLatexComments={menuBar.showLatexComments}
-                    onToggleLatexComments={() => menuBar.setShowLatexComments(!menuBar.showLatexComments)}
+                    onToggleLatexComments={menuBar.onToggleLatexComments}
                     showSectionIndicator={menuBar.showSectionIndicator}
                     onToggleSectionIndicator={menuBar.toggleSectionIndicator}
                     showHeadingLabels={menuBar.showHeadingLabels}
@@ -6500,6 +6504,8 @@ function PaneRailBody({
         entryRequests={bibSettingsHook.entryRequests}
         addEntryRequest={bibSettingsHook.addEntryRequest}
         removeEntryRequest={bibSettingsHook.removeEntryRequest}
+        bibFilter={viewPrefs?.prefs.bibFilter}
+        setBibFilter={viewPrefs?.setBibFilter}
       />
     );
   }

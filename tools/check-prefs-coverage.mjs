@@ -8,6 +8,10 @@
  *   2. Every key in the `ViewPrefs` interface (excluding session-only
  *      keys excluded by name pattern) has a matching entry in
  *      `useViewPrefs.defaults.json`.
+ *   2b. Every GLOBAL key in `VIEW_PREF_REGISTRY` (the SSOT for the View-
+ *      menu display prefs — these live in `RegistryPrefs`, not the
+ *      `ViewPrefs` body) has a matching entry in `useViewPrefs.defaults.json`.
+ *      Window-scoped registry keys are exempt by scope.
  *   3. Every entry in the registry's `whitelist` arrays resolves to a
  *      key in the corresponding interface.
  *   4. Every `cssVarMap[*].source` of shape `bucket.key` resolves to a
@@ -26,7 +30,27 @@ const EDITOR_DEFAULTS = path.join(REPO_ROOT, "src/hooks/usePreferences.defaults.
 const VIEW_DEFAULTS = path.join(REPO_ROOT, "src/hooks/useViewPrefs.defaults.json");
 const EDITOR_TS = path.join(REPO_ROOT, "src/hooks/usePreferences.ts");
 const VIEW_TS = path.join(REPO_ROOT, "src/hooks/useViewPrefs.ts");
+const VIEW_PREF_REGISTRY_TS = path.join(REPO_ROOT, "src/lib/view-prefs/registry.ts");
 const REGISTRY = path.join(REPO_ROOT, "src/lib/dev-prefs-registry.json");
+
+/* ── View-pref registry parsing ───────────────────────────────────
+ *
+ * VIEW_PREF_REGISTRY is the SSOT for the View-menu display prefs +
+ * the Bibliography filter; its keys live in `RegistryPrefs` (which
+ * `ViewPrefs extends`), NOT the ViewPrefs interface body, so the
+ * interface parser above can't see them. Extract each entry's key +
+ * `scope` directly. Each entry's `scope: "..."` sits before any nested
+ * `{ ... }` (memberLabels / valueLabels), so a brace-free lazy match
+ * from the entry key to its scope is unambiguous. */
+function parseRegistryScopes(file) {
+  const src = fs.readFileSync(file, "utf-8");
+  const body = src.slice(src.indexOf("VIEW_PREF_REGISTRY = {"));
+  const re = /(\w+):\s*\{[^{}]*?scope:\s*"(global|window)"/g;
+  const out = {};
+  let m;
+  while ((m = re.exec(body))) out[m[1]] = m[2];
+  return out;
+}
 
 /* ── Interface parsing ────────────────────────────────────────────
  *
@@ -37,8 +61,14 @@ const REGISTRY = path.join(REPO_ROOT, "src/lib/dev-prefs-registry.json");
  */
 function parseInterfaceKeys(file, interfaceName) {
   const src = fs.readFileSync(file, "utf-8");
+  // Allow an optional `extends Foo, Bar` clause — `ViewPrefs extends
+  // RegistryPrefs` (the registry-owned keys live in RegistryPrefs, not this
+  // interface body; they're validated separately in check 2b). NOTE: the
+  // body capture is lazy to the first `}`, so inline-brace fields cut it
+  // short — this check effectively validates only the leading flat keys.
+  // The meaningful coverage is checks 2b / 3 / 4.
   const re = new RegExp(
-    String.raw`(?:export\s+)?interface\s+${interfaceName}\s*\{([\s\S]*?)\}`,
+    String.raw`(?:export\s+)?interface\s+${interfaceName}(?:\s+extends\s+[\w,\s]+)?\s*\{([\s\S]*?)\}`,
     "m",
   );
   const m = re.exec(src);
@@ -99,6 +129,31 @@ const VIEW_RUNTIME_KEYS = new Set([
     if (VIEW_RUNTIME_KEYS.has(k)) continue;
     if (!(k in defaults)) {
       fail(`ViewPrefs key "${k}" missing from ${path.relative(REPO_ROOT, VIEW_DEFAULTS)}`);
+    }
+  }
+}
+
+// 2b. Every GLOBAL view-pref registry key must have a default in
+//     useViewPrefs.defaults.json. The registry is the SSOT for these keys
+//     (they're in RegistryPrefs, not the ViewPrefs interface body), so this
+//     is the check that actually guarantees showParTitles / showLatexComments
+//     / showMarginalia / … ship a default. Window-scoped registry keys
+//     (bibFilter) persist per-window and are intentionally absent from the
+//     global defaults JSON, so they're exempt by scope.
+{
+  const scopes = parseRegistryScopes(VIEW_PREF_REGISTRY_TS);
+  const globalKeys = Object.keys(scopes).filter((k) => scopes[k] === "global");
+  if (globalKeys.length === 0) {
+    fail(
+      `no global keys parsed from ${path.relative(REPO_ROOT, VIEW_PREF_REGISTRY_TS)} — the registry parser is stale`,
+    );
+  }
+  const defaults = readJson(VIEW_DEFAULTS);
+  for (const k of globalKeys) {
+    if (!(k in defaults)) {
+      fail(
+        `global registry key "${k}" missing from ${path.relative(REPO_ROOT, VIEW_DEFAULTS)}`,
+      );
     }
   }
 }

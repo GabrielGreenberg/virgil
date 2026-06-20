@@ -702,11 +702,14 @@ export default function EditorLayout() {
     toggleHeadingLabels,
     toggleDividerLevel,
     setDividerWidth,
+    toggleParTitles,
+    toggleLatexComments,
     toggleOmniCategory,
     resetOmniSide,
     toggleOmniHideAllCards,
     setCardArchiveView,
     setSuppressArchiveAtomWarning,
+    setBibFilter,
   } = useViewPrefs();
   const prefsRef = useRef(prefs);
   prefsRef.current = prefs;
@@ -893,8 +896,13 @@ export default function EditorLayout() {
   // counter needed.
   const focusMode = useFocusMode(docIdForHooks, editorInstance);
   const { config: focusWcConfig } = useWordCountConfig();
-  const [showParTitles, setShowParTitles] = useState(true);
-  const [showLatexComments, setShowLatexComments] = useState(true);
+  // Paragraph-titles + %-comments visibility — persisted via ViewPrefs
+  // (global, like their View-menu siblings). Previously a plain
+  // `useState(true)` here, which reset on every reload (the reported bug);
+  // now derived read-side from `prefs`, toggled via `toggleParTitles` /
+  // `toggleLatexComments`.
+  const showParTitles = prefs.showParTitles;
+  const showLatexComments = prefs.showLatexComments;
 
   // Marginalia / divider / heading-label visibility — persisted via
   // ViewPrefs (global, mirrors across windows, rides the personal-prefs
@@ -2503,8 +2511,8 @@ export default function EditorLayout() {
     dividerWidth,
     editorSplit,
     activeSplitPane,
-    setShowParTitles,
-    setShowLatexComments,
+    onToggleParTitles: toggleParTitles,
+    onToggleLatexComments: toggleLatexComments,
     toggleHeadingLabels,
     toggleSectionIndicator,
     toggleMarginalia,
@@ -2535,6 +2543,8 @@ export default function EditorLayout() {
     dividerWidth,
     editorSplit,
     activeSplitPane,
+    toggleParTitles,
+    toggleLatexComments,
     toggleHeadingLabels,
     toggleSectionIndicator,
     toggleMarginalia,
@@ -2813,6 +2823,7 @@ export default function EditorLayout() {
     categorySides,
     setCardArchiveView,
     setSuppressArchiveAtomWarning,
+    setBibFilter,
   }), [
     prefs,
     isResizingPanels,
@@ -2882,6 +2893,7 @@ export default function EditorLayout() {
     categorySides,
     setCardArchiveView,
     setSuppressArchiveAtomWarning,
+    setBibFilter,
   ]);
 
   const {

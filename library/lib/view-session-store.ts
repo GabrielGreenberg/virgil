@@ -52,6 +52,14 @@ const NAV_WIDTH_KEY = "virgil-library-nav-width";
 const MIDDLE_WIDTH_KEY = "virgil-library-left-width"; // back-compat name
 const PAPERS_HEIGHT_KEY = "virgil-library-papers-height";
 
+// Min-floors for the three sizes, mirrored from LibraryView (the resize
+// handlers clamp to these). The legacy-size migration applies them so a
+// corrupt/sub-min standalone value can't seed a crushed column. Kept in sync
+// with LibraryView's LEFT_MIN / NAV_MIN / PAPERS_MIN.
+const NAV_WIDTH_MIN = 180;
+const MIDDLE_WIDTH_MIN = 220;
+const PAPERS_HEIGHT_MIN = 100;
+
 // ── types ───────────────────────────────────────────────────────────────
 
 export type PanelKey = "left" | "right";
@@ -73,6 +81,11 @@ export interface ListView {
   // scrollTop is per-(panel,libId). Catalog rows container for a list; the
   // reader scroll for a paper:<citekey> "list".
   scrollTop?: number;
+  // viewMode is meaningful ONLY on a paper:<citekey> "list" — the paper-detail
+  // Text/PDF toggle. Persisted per-(panel,paper) so each source remembers its
+  // own Text-vs-PDF posture across reloads AND intra-session paper switches.
+  // Absent ⇒ the default ("text") for a paper the user never toggled.
+  viewMode?: "text" | "pdf";
 }
 
 export interface PanelState {
@@ -288,12 +301,13 @@ function seedFromLegacy(): LibraryViewSession {
   } catch {
     /* leave undefined */
   }
-  const navWidth = readNum(NAV_WIDTH_KEY);
-  if (navWidth !== undefined) s.layout.navWidth = navWidth;
-  const middleWidth = readNum(MIDDLE_WIDTH_KEY);
-  if (middleWidth !== undefined) s.layout.middleWidth = middleWidth;
-  const papersHeight = readNum(PAPERS_HEIGHT_KEY);
-  if (papersHeight !== undefined) s.layout.papersHeight = papersHeight;
+  // NOTE: the three column/pod SIZES (navWidth/middleWidth/papersHeight) are
+  // deliberately NOT seeded here. Seeding them froze a possibly-stale snapshot
+  // of the legacy standalone keys (the old resize handler kept writing those
+  // keys, never this blob), so a seeded value could shadow a fresher standalone
+  // value forever. Their one-shot adoption now lives in
+  // `migrateLegacyLayoutSizes()` (adopt-freshest-then-delete-the-key), the
+  // single authoritative ingest path — see below.
   // col-sort → the DEFAULT sort of the SINGLETON central list only. Every
   // other (panel,libId) inherits {col:'year',dir:'desc'} until the user
   // sorts it (the coherence fix).
@@ -485,6 +499,21 @@ export function setListScroll(
   );
 }
 
+/** Persist the paper-detail Text/PDF view mode on a `paper:<citekey>` list.
+ *  Notifying (the toggle re-renders the detail pane immediately); the write
+ *  rides the shared 250 ms debounce. */
+export function setListViewMode(
+  scope: string,
+  panel: PanelKey,
+  libId: string,
+  mode: "text" | "pdf",
+): void {
+  const s = ensureInit();
+  commit(
+    withScopePanel(s, scope, panel, (p) => withList(p, libId, { viewMode: mode })),
+  );
+}
+
 /**
  * Scroll-position write that does NOT notify subscribers (keystroke-sanctity:
  * scrolling a list fires per-frame; re-rendering every `useListView`/selection
@@ -542,6 +571,65 @@ export function setCitedOnly(v: boolean): void {
 export function setLayout(patch: Partial<LibraryViewSession["layout"]>): void {
   const s = ensureInit();
   commit({ ...s, layout: { ...s.layout, ...patch } });
+}
+
+/** Read + min-floor a legacy standalone size key. Returns undefined when the
+ *  key is absent/invalid. */
+function readLegacySize(key: string, min: number): number | undefined {
+  const n = readNum(key);
+  if (n === undefined) return undefined;
+  return Math.max(min, Math.round(n));
+}
+
+function removeLegacyKey(key: string): void {
+  if (!hasStorage()) return;
+  try {
+    localStorage.removeItem(key);
+  } catch {
+    /* private-mode / quota — leave it; a stale key is harmless next run. */
+  }
+}
+
+/**
+ * One-shot reconciliation of the three legacy standalone size keys
+ * (`virgil-library-{nav,left,papers}-*`) into the unified store's `layout`
+ * slice. Call once on mount from the Library view.
+ *
+ * Under the OLD code these keys were the LIVE values (the resize handler wrote
+ * them on pointer-up) while the store's `layout` sizes were only ever a frozen
+ * seed snapshot. So on upgrade the standalone key — when present — is the
+ * freshest value and WINS over whatever the seed may have frozen. After
+ * adopting (clamped to the min-floor), the legacy key is DELETED so this never
+ * re-clobbers a value the user later sets through the store (the new resize
+ * handler writes the store ONLY, never the standalone key). Deletion — not a
+ * per-mount ref — is what makes this idempotent across reloads: once the keys
+ * are gone, subsequent runs are a no-op and the store is the single source of
+ * truth. Returns true if it adopted at least one value (for tests).
+ */
+export function migrateLegacyLayoutSizes(): boolean {
+  if (!hasStorage()) return false;
+  const s = ensureInit();
+  const patch: Partial<LibraryViewSession["layout"]> = {};
+  const nav = readLegacySize(NAV_WIDTH_KEY, NAV_WIDTH_MIN);
+  if (nav !== undefined) {
+    if (nav !== s.layout.navWidth) patch.navWidth = nav;
+    removeLegacyKey(NAV_WIDTH_KEY);
+  }
+  const mid = readLegacySize(MIDDLE_WIDTH_KEY, MIDDLE_WIDTH_MIN);
+  if (mid !== undefined) {
+    if (mid !== s.layout.middleWidth) patch.middleWidth = mid;
+    removeLegacyKey(MIDDLE_WIDTH_KEY);
+  }
+  const pap = readLegacySize(PAPERS_HEIGHT_KEY, PAPERS_HEIGHT_MIN);
+  if (pap !== undefined) {
+    if (pap !== s.layout.papersHeight) patch.papersHeight = pap;
+    removeLegacyKey(PAPERS_HEIGHT_KEY);
+  }
+  if (Object.keys(patch).length > 0) {
+    setLayout(patch);
+    return true;
+  }
+  return false;
 }
 
 // ── selector-side helpers (cached-equality snapshots) ───────────────────
@@ -678,6 +766,37 @@ export function useListView(
     setQuery,
     setScroll,
   };
+}
+
+/**
+ * Per-(panel, paper) Text/PDF view mode for the paper-detail header toggle.
+ * `libId` is the `paper:<citekey>` key (the same slice the reader scroll uses).
+ * Returns the persisted mode (default "text" for a never-toggled paper) plus a
+ * setter. Survives reload AND intra-session paper switches — the value is keyed
+ * by citekey, so navigating away and back restores the prior posture instead of
+ * snapping to "text".
+ */
+export function usePaperViewMode(
+  scope: string,
+  panel: PanelKey,
+  libId: string,
+): {
+  viewMode: "text" | "pdf";
+  setViewMode: (m: "text" | "pdf") => void;
+} {
+  // The store hands back the stable module-level EMPTY_LIST_VIEW for the
+  // absent slice, so reading `.viewMode` directly (a primitive) is snapshot-
+  // safe without the object-identity caching `useListView` needs.
+  const getSnap = useCallback(
+    () => readListView(scope, panel, libId).viewMode ?? "text",
+    [scope, panel, libId],
+  );
+  const viewMode = useSyncExternalStore(subscribe, getSnap, getSnap);
+  const setViewMode = useCallback(
+    (m: "text" | "pdf") => setListViewMode(scope, panel, libId, m),
+    [scope, panel, libId],
+  );
+  return { viewMode, setViewMode };
 }
 
 /** Global layout prefs (widths / heights / col widths). */

@@ -3,6 +3,7 @@
 import { memo, useCallback, useState, useRef, useEffect, type ReactNode } from "react";
 import { Editor } from "@tiptap/react";
 import type { HighlightType, MarginaliaType, DividerLevel, DividerWidth } from "@/hooks/useViewPrefs";
+import { VIEW_PREF_REGISTRY } from "@/lib/view-prefs/registry";
 import { type ToolbarOrientation } from "./editor-layout/floating-toolbar-shell";
 import { MenuProvider } from "./menu/MenuProvider";
 import { useMenuItem } from "./menu/useMenuItem";
@@ -37,21 +38,33 @@ export { type ToolbarOrientation };
 // Re-exported here for back-compat with existing consumers.
 export type { MarginaliaType, DividerLevel, DividerWidth } from "@/hooks/useViewPrefs";
 
-const DIVIDER_LEVEL_LABELS: Record<DividerLevel, string> = {
-  0: "Parts",
-  1: "Chapters",
-  2: "Sections",
-  3: "Subsections",
-  4: "Subsubsections",
-  5: "Paragraph headings",
-  6: "Subparagraph headings",
-};
-
-const DIVIDER_WIDTH_LABELS: Record<DividerWidth, string> = {
-  full: "Full width",
-  mid: "Mid width",
-  text: "Text width",
-};
+// Row labels are sourced from VIEW_PREF_REGISTRY (the single source of truth),
+// not re-declared here. The ViewMenu maps the registry's `memberLabels` /
+// `valueLabels` / `menu` grouping into the existing ViewToggleRow/ViewGroupRow
+// JSX, keeping the prop-controlled `checked`/`onToggle` contract intact.
+const DIVIDER_LEVEL_LABELS = VIEW_PREF_REGISTRY.dividerLevels.memberLabels as Record<DividerLevel, string>;
+const DIVIDER_WIDTH_LABELS = VIEW_PREF_REGISTRY.dividerWidth.valueLabels as Record<DividerWidth, string>;
+/** Display-group rows in render order, with each row's label + the props key
+ *  that supplies its `checked`/`onToggle`. Enumerated from the registry
+ *  (`menu === "display"`) so the Display block is registry-driven; the prop
+ *  wiring stays explicit (the keyboard test mounts ViewMenu with a full prop
+ *  bag). The id is the existing row id (kept stable for the menu registry). */
+const DISPLAY_ROWS = [
+  { id: "par-titles", key: "showParTitles", label: VIEW_PREF_REGISTRY.showParTitles.label },
+  { id: "latex-comments", key: "showLatexComments", label: VIEW_PREF_REGISTRY.showLatexComments.label },
+  { id: "section-indicator", key: "showSectionIndicator", label: VIEW_PREF_REGISTRY.showSectionIndicator.label },
+  { id: "heading-labels", key: "showHeadingLabels", label: VIEW_PREF_REGISTRY.showHeadingLabels.label },
+] as const;
+/** Marginalia per-type sub-rows (members + labels from the registry). */
+const MARGINALIA_TYPE_ROWS = VIEW_PREF_REGISTRY.hiddenMarginaliaTypes.members.map((type) => ({
+  type,
+  label: VIEW_PREF_REGISTRY.hiddenMarginaliaTypes.memberLabels[type],
+}));
+/** Highlight per-type sub-rows (members + labels from the registry). */
+const HIGHLIGHT_TYPE_ROWS = VIEW_PREF_REGISTRY.hiddenHighlightTypes.members.map((type) => ({
+  type,
+  label: VIEW_PREF_REGISTRY.hiddenHighlightTypes.memberLabels[type],
+}));
 
 /** Callbacks wired to every button in the Actions toolbar. Shared by the
  *  attached popover in MenuBar and the detached floating toolbar rendered
@@ -682,20 +695,43 @@ export function ViewMenu({
         >
         <div ref={dropdownRef}>
           <div className="px-3 pt-1 pb-0.5 text-[10px] font-medium text-ink-muted uppercase tracking-wide">Display</div>
-          <ViewToggleRow id="par-titles" label="Paragraph titles" checked={showParTitles} onToggle={() => { onToggleParTitles(); setOpen(false); }} />
-          <ViewToggleRow id="latex-comments" label="% comments" checked={showLatexComments} onToggle={() => { onToggleLatexComments(); setOpen(false); }} />
-          <ViewToggleRow id="section-indicator" label="Current section" checked={showSectionIndicator} onToggle={() => { onToggleSectionIndicator(); setOpen(false); }} />
-          <ViewToggleRow id="heading-labels" label="Labels" checked={showHeadingLabels} onToggle={() => { onToggleHeadingLabels(); setOpen(false); }} />
+          {/* The Display rows are enumerated from VIEW_PREF_REGISTRY (id + label
+              + membership). `checked`/`onToggle` stay PROP-controlled — the
+              keyboard test mounts ViewMenu with a full prop bag — so these two
+              small maps bridge the registry key to the existing per-row props. */}
+          {(() => {
+            const displayChecked: Record<(typeof DISPLAY_ROWS)[number]["key"], boolean> = {
+              showParTitles,
+              showLatexComments,
+              showSectionIndicator,
+              showHeadingLabels,
+            };
+            const displayToggle: Record<(typeof DISPLAY_ROWS)[number]["key"], () => void> = {
+              showParTitles: onToggleParTitles,
+              showLatexComments: onToggleLatexComments,
+              showSectionIndicator: onToggleSectionIndicator,
+              showHeadingLabels: onToggleHeadingLabels,
+            };
+            return DISPLAY_ROWS.map((row) => (
+              <ViewToggleRow
+                key={row.id}
+                id={row.id}
+                label={row.label}
+                checked={displayChecked[row.key]}
+                onToggle={() => { displayToggle[row.key](); setOpen(false); }}
+              />
+            ));
+          })()}
           <div className="my-1 border-t border-edge-subtle" />
           <ViewGroupRow id="marginalia-group" label="Marginalia" expanded={marginaliaExpanded} onToggle={() => setMarginaliaExpanded((p) => !p)} />
           {marginaliaExpanded && (
             <>
-              <ViewToggleRow id="marginalia-show" label="Show marginalia" checked={showMarginalia} indent={1} onToggle={() => onToggleMarginalia()} />
-              {showMarginalia && (["note", "archive", "todo"] as const).map((type) => (
+              <ViewToggleRow id="marginalia-show" label={VIEW_PREF_REGISTRY.showMarginalia.label} checked={showMarginalia} indent={1} onToggle={() => onToggleMarginalia()} />
+              {showMarginalia && MARGINALIA_TYPE_ROWS.map(({ type, label }) => (
                 <ViewToggleRow
                   key={type}
                   id={`marginalia-type-${type}`}
-                  label={type === "note" ? "Notes" : type === "archive" ? "Archive" : "Todo"}
+                  label={label}
                   checked={!hiddenMarginaliaTypes.has(type)}
                   indent={1}
                   onToggle={() => onToggleMarginaliaType(type)}
@@ -706,17 +742,12 @@ export function ViewMenu({
           <ViewGroupRow id="highlights-group" label="Highlights" expanded={highlightsExpanded} onToggle={() => setHighlightsExpanded((p) => !p)} />
           {highlightsExpanded && (
             <>
-              <ViewToggleRow id="highlights-show" label="Show highlights" checked={showHighlights} indent={1} onToggle={onToggleHighlights} />
-              {showHighlights && (["note", "todo", "comment", "cut"] as const).map((type) => (
+              <ViewToggleRow id="highlights-show" label={VIEW_PREF_REGISTRY.showHighlights.label} checked={showHighlights} indent={1} onToggle={onToggleHighlights} />
+              {showHighlights && HIGHLIGHT_TYPE_ROWS.map(({ type, label }) => (
                 <ViewToggleRow
                   key={type}
                   id={`highlights-type-${type}`}
-                  label={
-                    type === "note" ? "Notes"
-                      : type === "todo" ? "Todo"
-                      : type === "comment" ? "Revisions"
-                      : "Cuts"
-                  }
+                  label={label}
                   checked={!hiddenHighlightTypes.has(type)}
                   indent={1}
                   onToggle={() => onToggleHighlightType(type)}
@@ -726,10 +757,10 @@ export function ViewMenu({
           )}
           {availableDividerLevels.size > 0 && (
             <>
-              <ViewGroupRow id="dividers-group" label="Show dividers for…" expanded={dividersExpanded} onToggle={() => setDividersExpanded((p) => !p)} />
+              <ViewGroupRow id="dividers-group" label={VIEW_PREF_REGISTRY.dividerLevels.label} expanded={dividersExpanded} onToggle={() => setDividersExpanded((p) => !p)} />
               {dividersExpanded && (
                 <>
-                  {([0, 1, 2, 3, 4, 5, 6] as const).filter((lvl) => availableDividerLevels.has(lvl)).map((lvl) => (
+                  {VIEW_PREF_REGISTRY.dividerLevels.members.filter((lvl) => availableDividerLevels.has(lvl)).map((lvl) => (
                     <ViewToggleRow
                       key={lvl}
                       id={`divider-level-${lvl}`}
@@ -739,8 +770,8 @@ export function ViewMenu({
                       onToggle={() => onToggleDividerLevel(lvl)}
                     />
                   ))}
-                  <ViewGroupRow id="divider-prefs-group" label="Divider preferences" expanded={dividerPrefsExpanded} indent={1} onToggle={() => setDividerPrefsExpanded((p) => !p)} />
-                  {dividerPrefsExpanded && (["full", "mid", "text"] as const).map((w) => (
+                  <ViewGroupRow id="divider-prefs-group" label={VIEW_PREF_REGISTRY.dividerWidth.label} expanded={dividerPrefsExpanded} indent={1} onToggle={() => setDividerPrefsExpanded((p) => !p)} />
+                  {dividerPrefsExpanded && VIEW_PREF_REGISTRY.dividerWidth.values.map((w) => (
                     <ViewToggleRow
                       key={w}
                       id={`divider-width-${w}`}
