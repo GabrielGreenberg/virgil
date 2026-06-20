@@ -241,3 +241,288 @@
 }
 [data-virgil-library-reader] .paper-render .tiptap .title-field-annotation { display: none; }
 [data-virgil-library-reader] .paper-render .tiptap .maketitle-marker { display: none; }
+
+
+/* ── Central library dashboard (ASK 7) ──────────────────────────────────
+   The no-browse stats home shown for the Central library by default. Mounts
+   WITHOUT the virtualized LeftList (that's the perf point). All colors route
+   through the shared pill/ink/surface tokens — no hex literals. Selectors are
+   namespaced under `.lib-dashboard*` so this block is append-only and isolated. */
+
+.lib-dashboard {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+  background: var(--surface);
+}
+
+.lib-dashboard-head {
+  flex-shrink: 0;
+  padding: 16px 18px 10px;
+}
+
+.lib-dashboard-title {
+  margin: 0;
+  font-family: var(--font-serif, var(--serif, Georgia, serif));
+  font-size: 18px;
+  font-weight: 600;
+  color: var(--ink-strong, var(--foreground));
+  line-height: 1.2;
+}
+
+.lib-dashboard-summary {
+  margin: 4px 0 0;
+  font-size: 12px;
+  color: var(--ink-muted, var(--muted));
+  font-family: var(--mono);
+}
+
+.lib-dashboard-searchrow {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 18px 12px;
+}
+
+.lib-dashboard-search {
+  flex: 1;
+  min-width: 0;
+  padding: 9px 12px;
+  border: 1px solid var(--border-light, var(--edge-subtle));
+  border-radius: 6px;
+  background: var(--background);
+  font-size: 14px;
+  outline: none;
+  transition: border-color 120ms;
+}
+
+.lib-dashboard-search:focus {
+  border-color: var(--edge-strong, var(--accent));
+}
+
+.lib-dashboard-browsebtn {
+  flex-shrink: 0;
+  padding: 8px 12px;
+  border: 1px solid var(--edge-subtle, var(--border-light));
+  border-radius: 6px;
+  background: var(--surface);
+  color: var(--ink-body, var(--foreground));
+  font-size: 12px;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background 120ms, border-color 120ms;
+}
+
+.lib-dashboard-browsebtn:hover {
+  background: var(--surface-muted, var(--library-bg));
+  border-color: var(--edge-hover, var(--accent));
+}
+
+.lib-dashboard-scroll {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 4px 18px 18px;
+}
+
+.lib-dashboard-section {
+  margin-top: 14px;
+}
+.lib-dashboard-section:first-child {
+  margin-top: 4px;
+}
+
+.lib-dashboard-section-title {
+  margin: 0 0 8px;
+  font-family: var(--mono);
+  font-size: 10px;
+  font-weight: 500;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--ink-muted, var(--muted));
+}
+
+.lib-dashboard-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: 10px;
+}
+
+.lib-dashboard-card {
+  background: var(--surface);
+  border: 1px solid var(--pod-border, var(--border-light));
+  border-radius: var(--pod-radius, 8px);
+  box-shadow: var(--pod-shadow-light, 0 1px 5px rgba(0, 0, 0, 0.09));
+  padding: 12px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.lib-dashboard-card-value {
+  font-size: 26px;
+  font-weight: 600;
+  line-height: 1.05;
+  color: var(--ink-strong, var(--foreground));
+  font-variant-numeric: tabular-nums;
+}
+
+.lib-dashboard-card-label {
+  font-family: var(--mono);
+  font-size: 10px;
+  font-weight: 500;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--ink-muted, var(--muted));
+}
+
+.lib-dashboard-card-sub {
+  font-size: 11px;
+  color: var(--ink-subtle, var(--muted));
+}
+
+.lib-dashboard-card-pill {
+  margin-top: 2px;
+}
+
+/* ── Inline search palette ──────────────────────────────────────────── */
+
+.lib-dashboard-palette {
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--pod-border, var(--border-light));
+  border-radius: var(--pod-radius, 8px);
+  overflow: hidden;
+  background: var(--surface);
+}
+
+.lib-dashboard-palette-row {
+  display: grid;
+  grid-template-columns: 48px minmax(80px, 0.8fr) minmax(0, 2fr) auto;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  text-align: left;
+  padding: 7px 12px;
+  border: none;
+  border-bottom: 1px solid var(--border-light, var(--edge-subtle));
+  background: transparent;
+  cursor: pointer;
+  font-size: 12px;
+  transition: background 100ms;
+}
+
+.lib-dashboard-palette-row:last-child {
+  border-bottom: none;
+}
+
+.lib-dashboard-palette-row:hover:not(:disabled),
+.lib-dashboard-palette-row:focus-visible {
+  background: var(--surface-muted, var(--accent-light));
+  outline: none;
+}
+
+.lib-dashboard-palette-row:disabled {
+  cursor: default;
+  opacity: 0.6;
+}
+
+.lib-dashboard-row-year {
+  color: var(--ink-muted, var(--muted));
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
+.lib-dashboard-row-author {
+  color: var(--ink-body, var(--foreground));
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.lib-dashboard-row-title {
+  color: var(--ink-body, var(--foreground));
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.lib-dashboard-row-status {
+  display: inline-flex;
+  gap: 3px;
+  align-items: center;
+  justify-self: end;
+}
+
+.lib-dashboard-palette-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-top: 8px;
+  font-size: 11px;
+  color: var(--ink-muted, var(--muted));
+  font-family: var(--mono);
+}
+
+.lib-dashboard-browseall {
+  padding: 5px 10px;
+  border: 1px solid var(--edge-subtle, var(--border-light));
+  border-radius: 6px;
+  background: var(--surface);
+  color: var(--ink-body, var(--foreground));
+  font-size: 11px;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background 120ms, border-color 120ms;
+}
+
+.lib-dashboard-browseall:hover {
+  background: var(--surface-muted, var(--library-bg));
+  border-color: var(--edge-hover, var(--accent));
+}
+
+.lib-dashboard-empty {
+  padding: 24px 8px;
+  text-align: center;
+  font-size: 13px;
+  color: var(--ink-muted, var(--muted));
+}
+
+/* ── Central view switch (segmented control in ProjectHeader) ────────── */
+
+.lib-viewswitch {
+  display: inline-flex;
+  align-items: center;
+  gap: 0;
+  border: 1px solid var(--edge-subtle, var(--border-light));
+  border-radius: 6px;
+  overflow: hidden;
+  flex-shrink: 0;
+}
+
+.lib-viewswitch-btn {
+  padding: 3px 10px;
+  border: none;
+  background: var(--surface);
+  color: var(--ink-body, var(--foreground));
+  font-size: 11px;
+  font-family: var(--mono);
+  cursor: pointer;
+  transition: background 120ms, color 120ms;
+}
+
+.lib-viewswitch-btn + .lib-viewswitch-btn {
+  border-left: 1px solid var(--edge-subtle, var(--border-light));
+}
+
+.lib-viewswitch-btn[aria-pressed="true"] {
+  background: var(--accent);
+  color: #fff;
+}
+
+.lib-viewswitch-btn[aria-pressed="false"]:hover {
+  background: var(--surface-muted, var(--library-bg));
+}
