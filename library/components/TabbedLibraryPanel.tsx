@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useRef, useState, type DragEvent } from "react";
+import { useCallback, useMemo, useRef, useState, type DragEvent } from "react";
 import type { CatalogEntry } from "@library/lib/catalog";
 import type { BibEntry } from "@library/lib/types";
 import {
@@ -15,7 +15,6 @@ import {
 } from "@library/lib/library-store";
 import { ENTRIES_DT_TYPE, ENTRY_DT_TYPE, TAB_DT_TYPE } from "@library/lib/dnd-types";
 import type { PanelKey } from "@library/hooks/useLibraryTabs";
-import { useRowDotState } from "@library/hooks/useRowDotState";
 import { useProjectLibrary } from "@library/lib/project-library-context";
 import LeftList from "./LeftList";
 import PaperFileBody from "./PaperFileBody";
@@ -75,10 +74,14 @@ interface Props {
    *  true in tear-out 2-column layouts for back-compat. */
   showAddTab?: boolean;
   showRecent?: boolean;
-  /** FSA handle for the library root. Used by the request-state dot hook
-   *  to scan .virgil/queue/ and .virgil/notifications/inbox.json on a 6s poll, and by
-   *  paper-kind tabs to read main.tex / references.bib / source PDF. */
+  /** FSA handle for the library root. Used by paper-kind tabs to read
+   *  main.tex / references.bib / source PDF. */
   handle: FileSystemDirectoryHandle;
+  /** Far-left request-state dot tone for a citekey + the "mark viewed"
+   *  callback. The 6 s queue/inbox poll behind these is LIFTED to LibraryView
+   *  (chip A3): one shared poll feeds BOTH panels instead of one per panel. */
+  dotToneFor: (citekey: string | null | undefined) => "red" | "green" | null;
+  markViewed: (citekey: string) => void;
   /** Reload master.bib after a save lands inside a paper-kind tab. */
   onBibChanged?: () => void;
   /** Forget the current library folder and prompt for a new one. Surfaced
@@ -113,13 +116,14 @@ export default function TabbedLibraryPanel({
   onTogglePinLibrary,
   entryActions,
   handle,
+  dotToneFor,
+  markViewed,
   onBibChanged,
   onChangeFolder,
   onResync,
   showAddTab = false,
   showRecent = false,
 }: Props) {
-  const { toneFor: dotToneFor, markViewed } = useRowDotState(handle);
   const project = useProjectLibrary();
 
   const tabDefs: TabDef[] = useMemo(
@@ -368,7 +372,19 @@ export default function TabbedLibraryPanel({
     onAddEntriesToLibrary(dropTargetId, keys);
   };
 
-  const handleOpenPaper = (citekey: string) => onOpenPaper(citekey, panel);
+  // Memoized so LeftList's `onOpenPaper`/`onRowViewed` props stay stable —
+  // that's what keeps LeftList's `onActivate` callback (and therefore every
+  // memoized row) from being invalidated on each panel re-render.
+  const handleOpenPaper = useCallback(
+    (citekey: string) => onOpenPaper(citekey, panel),
+    [onOpenPaper, panel],
+  );
+  const handleRowViewed = useCallback(
+    (citekey: string | null | undefined) => {
+      if (citekey) markViewed(citekey);
+    },
+    [markViewed],
+  );
 
   return (
     <div
@@ -483,9 +499,7 @@ export default function TabbedLibraryPanel({
                     rowActions={rowActions}
                     dropHighlight={panelDragOver === "entry"}
                     dotToneFor={dotToneFor}
-                    onRowViewed={(citekey: string | null | undefined) => {
-                      if (citekey) markViewed(citekey);
-                    }}
+                    onRowViewed={handleRowViewed}
                   />
                 </div>
               )}

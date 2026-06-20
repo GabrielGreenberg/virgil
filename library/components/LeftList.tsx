@@ -1,6 +1,14 @@
 "use client";
 
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef } from "react";
+import {
+  useCallback,
+  useDeferredValue,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import type { CatalogEntry } from "@library/lib/catalog";
 import type { BibEntry } from "@library/lib/types";
 import {
@@ -21,6 +29,7 @@ import LeftListRow, {
 import { type PanelKey } from "@library/hooks/useLibraryTabs";
 import { useLayoutPrefs, useListView } from "@library/lib/view-session-store";
 import { searchCatalogFuzzy } from "@library/lib/catalog-search";
+import { ROW_HEIGHT, computeListWindow } from "@library/lib/list-window";
 
 interface Props {
   entries: CatalogEntry[];
@@ -103,36 +112,78 @@ export default function LeftList({
   const widthsRef = useRef(widths);
   widthsRef.current = widths;
 
+  // Typing must stay snappy: defer the query so the input reflects each
+  // keystroke immediately while the filter catches up on a low-priority
+  // render. The keystroke-sanctity stance for the list — the text box is
+  // never blocked by the catalog scan.
+  const deferredQuery = useDeferredValue(query);
+
+  // Sort the FULL catalog once per (entries, bibByKey, sort) — NOT per
+  // keystroke. Sorting is the expensive O(n log n) collated pass; lifting it
+  // out of the per-keystroke path is the T2 fix.
+  const sorted = useMemo(
+    () => sortEntries(entries, bibByKey, sort.col, sort.dir),
+    [entries, bibByKey, sort],
+  );
+
+  // Per keystroke: only the WeakMap-cached fuzzy scan (its index is built
+  // once per `entries` identity, so a keystroke is a token match, not a
+  // re-synthesis) + an O(n) membership filter over the already-sorted array.
+  // Flexible, multi-token, diacritic-folding matching via the shared
+  // `searchBibFuzzy` (one matcher across the Bibliography panel, bib pickers,
+  // citekey picker, and the Library catalog). Sort order stays the SSOT for
+  // display — the fuse relevance order is discarded and `filter` is
+  // order-preserving, so this matches the prior behavior exactly, minus the
+  // per-keystroke re-sort.
   const filtered = useMemo(() => {
-    // Flexible, multi-token, diacritic-folding match via the shared
-    // `searchBibFuzzy` (one matcher across the Bibliography panel, bib
-    // pickers, citekey picker, and now the Library catalog). Empty query →
-    // all entries; the per-row synthetic records are WeakMap-cached on the
-    // `entries` identity so a keystroke is a token scan, not a re-synthesis.
-    // The fuse relevance order is discarded — the column sort below is SSOT
-    // for ordering, exactly as before.
-    const q = query.trim();
-    const base = q ? searchCatalogFuzzy(entries, bibByKey, query) : entries;
-    return sortEntries(base, bibByKey, sort.col, sort.dir);
-  }, [entries, bibByKey, query, sort]);
+    const q = deferredQuery.trim();
+    if (!q) return sorted;
+    const matched = searchCatalogFuzzy(entries, bibByKey, deferredQuery);
+    const keep = new Set(matched.map(keyOf));
+    return sorted.filter((e) => keep.has(keyOf(e)));
+  }, [sorted, entries, bibByKey, deferredQuery]);
 
   const template = useMemo(() => gridTemplate(widths), [widths]);
 
-  // Stable per-row key (citekey for indexed rows, synthesized for triage).
-  // Memoized because LeftListRow's onClick closes over the visible ordering
-  // for shift-click range computation, and we don't want to recompute on
-  // every render.
-  const orderedKeys = useMemo(
-    () => filtered.map((e) => e.citekey ?? `__triage__${e.originalFilename}`),
-    [filtered],
-  );
+  // Visible ordering as keys — used by the shift-click range math (read via
+  // a ref from the stable activation handler below). Memoized on `filtered`.
+  const orderedKeys = useMemo(() => filtered.map(keyOf), [filtered]);
+
+  // Live mirrors of selection + ordering so the STABLE activation handler
+  // and the drag-key resolver read current values at event time WITHOUT
+  // taking them as deps. That keeps those callbacks referentially stable
+  // across selection / keystroke / 6 s-poll re-renders, which is what lets
+  // each memoized `LeftListRow` skip — pass primitives + stable fns, never
+  // the selection Set or a per-row closure.
+  const selectedKeysRef = useRef(selectedKeys);
+  selectedKeysRef.current = selectedKeys;
+  const anchorKeyRef = useRef(anchorKey);
+  anchorKeyRef.current = anchorKey;
+  const orderedKeysRef = useRef(orderedKeys);
+  orderedKeysRef.current = orderedKeys;
 
   // ── Catalog scroll save/restore (survives reload + per-tab remount) ──
   // The rows container; its scrollTop is persisted per-(panel,libId).
   const rowsRef = useRef<HTMLDivElement | null>(null);
+  // The translated slice container — measured to self-correct the row height.
+  const innerRef = useRef<HTMLDivElement | null>(null);
   // One-shot restore guard, keyed by libId so switching libraries re-arms.
   const restoredForRef = useRef<string | null>(null);
-  // RAF coalescing for the scroll save (≤1 store update per frame; the
+
+  // ── Virtualization (chip C7) ─────────────────────────────────────────
+  // Render only the rows intersecting the viewport (+ overscan). `viewport`
+  // tracks the scroll container's scrollTop + clientHeight; `rowHeight` is
+  // seeded from the measured constant and self-corrected from the first real
+  // row so the spacer math stays pixel-exact regardless of theme/zoom. Both
+  // are cheap state — a scroll frame re-renders ONLY ~viewport rows, never
+  // all N (the keystroke-sanctity cap for the catalog list at any size).
+  const [viewport, setViewport] = useState<{ scrollTop: number; height: number }>({
+    scrollTop: 0,
+    height: 0,
+  });
+  const [rowHeight, setRowHeight] = useState(ROW_HEIGHT);
+
+  // RAF coalescing for the scroll save + window update (≤1 per frame; the
   // store's own 250 ms debounce then coalesces the localStorage writes —
   // no synchronous write per scroll tick).
   const scrollRafRef = useRef<number | null>(null);
@@ -141,25 +192,61 @@ export default function LeftList({
     scrollRafRef.current = requestAnimationFrame(() => {
       scrollRafRef.current = null;
       const el = rowsRef.current;
-      if (el) setScroll(el.scrollTop);
+      if (!el) return;
+      setScroll(el.scrollTop); // persist (quiet — no subscriber re-render)
+      // Drive the window. Guard so a no-op scroll frame doesn't re-render.
+      setViewport((v) =>
+        v.scrollTop === el.scrollTop && v.height === el.clientHeight
+          ? v
+          : { scrollTop: el.scrollTop, height: el.clientHeight },
+      );
     });
   }, [setScroll]);
-  // Reset the one-shot guard when the active library changes so the new
-  // list restores its own saved position.
-  useEffect(() => {
-    restoredForRef.current = null;
-  }, [libId]);
+
+  // Measure the viewport height on mount + on resize (the window needs the
+  // container height; the scroll handler only fires on scroll). Guarded for
+  // jsdom / SSR where ResizeObserver may be absent.
+  useLayoutEffect(() => {
+    const el = rowsRef.current;
+    if (!el) return;
+    const measure = () =>
+      setViewport((v) =>
+        v.height === el.clientHeight && v.scrollTop === el.scrollTop
+          ? v
+          : { scrollTop: el.scrollTop, height: el.clientHeight },
+      );
+    measure();
+    if (typeof ResizeObserver === "undefined") return;
+    const ro = new ResizeObserver(measure);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
   // One-shot restore: after the first NON-EMPTY render with a real
   // scrollHeight (so we never clamp to 0 on an empty / zero-height list),
   // apply the saved scrollTop once. If content streams in (catalog 6 s
-  // poll), this re-runs on `filtered` change until it lands.
+  // poll), this re-runs on `filtered` change until it lands — but the guard
+  // below makes it idempotent per library.
+  //
+  // The guard `restoredForRef.current === libId` is self-re-arming: on a
+  // library switch the ref holds the OLD id (≠ the new libId), so the restore
+  // runs once for the new list and stamps the ref. A separate reset effect
+  // would null the ref AFTER this layout effect and trigger a SECOND restore
+  // on the next `filtered` change (yanking the user back) — so there is none.
   useLayoutEffect(() => {
     if (restoredForRef.current === libId) return;
     const el = rowsRef.current;
     if (!el) return;
     if (filtered.length === 0) return; // empty list — keep the saved value
     if (el.scrollHeight <= el.clientHeight) return; // not scrollable yet
-    if (scrollTop > 0) el.scrollTop = scrollTop;
+    if (scrollTop > 0) {
+      el.scrollTop = scrollTop;
+      // Seed the window to the restored offset. This runs in a
+      // useLayoutEffect, so React flushes this state update SYNCHRONOUSLY
+      // before paint — the first painted frame already renders the rows at
+      // the restored offset (overscan covers any residual), instead of
+      // painting row 0 then jumping once the scroll event lands.
+      setViewport({ scrollTop: el.scrollTop, height: el.clientHeight });
+    }
     restoredForRef.current = libId;
     // `scrollTop` is read once at restore time; we intentionally don't
     // re-restore when it changes (that's the live user scroll feeding back).
@@ -173,7 +260,52 @@ export default function LeftList({
     [],
   );
 
-  const handleRowClick = useCallback(
+  // ── C6: defer the (heavy) paper open behind idle time ────────────────
+  // A plain click commits the highlight synchronously (instant), but the
+  // actual open — which mounts a full read-only <EditorPane> (disk read +
+  // parseLatex + TipTap) — is coalesced: rapidly clicking or holding the
+  // arrow through rows schedules-then-cancels, so only the row the user
+  // settles on mounts a reader. A lone click fires at the next idle tick
+  // (≈ immediately, bounded by the 200 ms timeout). `openPaper` is
+  // idempotent for an already-active tab, so a repeat citekey is a cheap
+  // no-op. Read `onOpenPaper` through a ref so `scheduleOpen` stays stable.
+  const onOpenPaperRef = useRef(onOpenPaper);
+  onOpenPaperRef.current = onOpenPaper;
+  const pendingOpenRef = useRef<number | null>(null);
+  const cancelPendingOpen = useCallback(() => {
+    if (pendingOpenRef.current === null) return;
+    const id = pendingOpenRef.current;
+    pendingOpenRef.current = null;
+    if (typeof window !== "undefined" && typeof window.cancelIdleCallback === "function") {
+      window.cancelIdleCallback(id);
+    } else {
+      clearTimeout(id);
+    }
+  }, []);
+  const scheduleOpen = useCallback(
+    (citekey: string) => {
+      cancelPendingOpen();
+      const run = () => {
+        pendingOpenRef.current = null;
+        onOpenPaperRef.current(citekey);
+      };
+      if (typeof window !== "undefined" && typeof window.requestIdleCallback === "function") {
+        pendingOpenRef.current = window.requestIdleCallback(run, { timeout: 200 });
+      } else {
+        pendingOpenRef.current = window.setTimeout(run, 150);
+      }
+    },
+    [cancelPendingOpen],
+  );
+  // Cancel any pending open on unmount (explicit cleanup-arrow form: the
+  // RETURNED fn is the unmount teardown, so a tab-switch / unmount can't fire
+  // a deferred open into a torn-down tree).
+  useEffect(() => () => cancelPendingOpen(), [cancelPendingOpen]);
+
+  // Stable activation handler (click / Enter / Space) — reads the live
+  // selection/anchor/ordering from refs so its identity never changes,
+  // keeping the row memo intact. Receives the row's own key + citekey.
+  const onActivate = useCallback(
     (
       key: string,
       citekey: string | null | undefined,
@@ -182,22 +314,25 @@ export default function LeftList({
       const shift = e.shiftKey;
       // ⌘ on macOS, Ctrl elsewhere — both standard for toggle-select.
       const meta = e.metaKey || e.ctrlKey;
+      const selected = selectedKeysRef.current;
+      const anchor = anchorKeyRef.current;
+      const ordered = orderedKeysRef.current;
 
-      if (shift && anchorKey && orderedKeys.includes(anchorKey)) {
-        const a = orderedKeys.indexOf(anchorKey);
-        const b = orderedKeys.indexOf(key);
+      if (shift && anchor && ordered.includes(anchor)) {
+        const a = ordered.indexOf(anchor);
+        const b = ordered.indexOf(key);
         if (b < 0) return;
         const [lo, hi] = a < b ? [a, b] : [b, a];
-        const next = new Set(selectedKeys);
-        for (let i = lo; i <= hi; i++) next.add(orderedKeys[i]);
+        const next = new Set(selected);
+        for (let i = lo; i <= hi; i++) next.add(ordered[i]);
         // Anchor stays put so successive shift-clicks pivot around the
         // same origin (matches Finder / VS Code behavior).
-        onSelectKeys(next, anchorKey);
+        onSelectKeys(next, anchor);
         return;
       }
 
       if (meta) {
-        const next = new Set(selectedKeys);
+        const next = new Set(selected);
         if (next.has(key)) next.delete(key);
         else next.add(key);
         // Move the anchor to the cmd-clicked row — the row the user
@@ -206,13 +341,21 @@ export default function LeftList({
         return;
       }
 
-      // Plain click: replace selection with this row, open the paper.
+      // Plain click: replace selection with this row (instant highlight) +
+      // bump the viewed stamp; DEFER the heavy paper open (C6).
       onRowViewed(citekey);
       onSelectKeys(new Set([key]), key);
-      if (citekey) onOpenPaper(citekey);
+      if (citekey) scheduleOpen(citekey);
     },
-    [anchorKey, orderedKeys, selectedKeys, onSelectKeys, onOpenPaper, onRowViewed],
+    [onSelectKeys, onRowViewed, scheduleOpen],
   );
+
+  // Stable drag-payload resolver: reads the live selection from a ref so the
+  // row needn't take the selection Set as a prop.
+  const resolveDragKeys = useCallback((ek: string): string[] => {
+    const sel = selectedKeysRef.current;
+    return sel.has(ek) && sel.size > 1 ? Array.from(sel) : [ek];
+  }, []);
 
   const handleSort = useCallback(
     (col: SortColId) => {
@@ -280,6 +423,33 @@ export default function LeftList({
     },
     [setLayout],
   );
+
+  // ── Window (chip C7) ─────────────────────────────────────────────────
+  // Before the container is measured, fall back to a generous viewport so the
+  // first paint fills any reasonable panel (then ResizeObserver trims it).
+  const effectiveHeight = viewport.height > 0 ? viewport.height : 1200;
+  const win = useMemo(
+    () =>
+      computeListWindow({
+        scrollTop: viewport.scrollTop,
+        viewportHeight: effectiveHeight,
+        rowHeight,
+        count: filtered.length,
+      }),
+    [viewport.scrollTop, effectiveHeight, rowHeight, filtered.length],
+  );
+  const visibleRows = useMemo(
+    () => filtered.slice(win.startIndex, win.endIndex),
+    [filtered, win.startIndex, win.endIndex],
+  );
+  // Self-correct the row height from the first real row so the spacer math is
+  // pixel-exact. Runs once the slice paints; no-op in jsdom (offsetHeight 0).
+  useLayoutEffect(() => {
+    const firstRow = innerRef.current?.firstElementChild as HTMLElement | null;
+    if (!firstRow) return;
+    const h = firstRow.offsetHeight;
+    if (h > 0 && Math.abs(h - rowHeight) > 0.5) setRowHeight(h);
+  }, [visibleRows, rowHeight]);
 
   return (
     <div style={{ display: "flex", flexDirection: "column", height: "100%" }}>
@@ -378,23 +548,38 @@ export default function LeftList({
               : "No papers match this search."}
           </div>
         ) : (
-          filtered.map((entry) => {
-            const key = entry.citekey ?? `__triage__${entry.originalFilename}`;
-            return (
-              <LeftListRow
-                key={key}
-                entry={entry}
-                bib={entry.citekey ? bibByKey.get(entry.citekey) : undefined}
-                selected={selectedKeys.has(key)}
-                gridTemplate={template}
-                entryKey={key}
-                selectedKeys={selectedKeys}
-                onClick={(e) => handleRowClick(key, entry.citekey, e)}
-                actions={rowActions}
-                dotTone={dotToneFor(entry.citekey)}
-              />
-            );
-          })
+          // Virtualized: a full-height spacer drives the scrollbar; the visible
+          // slice is offset by `padTop`. Only ~viewport rows are in the DOM.
+          <div style={{ height: win.totalHeight, position: "relative" }}>
+            <div
+              ref={innerRef}
+              style={{
+                position: "absolute",
+                top: 0,
+                left: 0,
+                right: 0,
+                transform: `translateY(${win.padTop}px)`,
+              }}
+            >
+              {visibleRows.map((entry) => {
+                const key = keyOf(entry);
+                return (
+                  <LeftListRow
+                    key={key}
+                    entry={entry}
+                    bib={entry.citekey ? bibByKey.get(entry.citekey) : undefined}
+                    selected={selectedKeys.has(key)}
+                    gridTemplate={template}
+                    entryKey={key}
+                    onActivate={onActivate}
+                    resolveDragKeys={resolveDragKeys}
+                    actions={rowActions}
+                    dotTone={dotToneFor(entry.citekey)}
+                  />
+                );
+              })}
+            </div>
+          </div>
         )}
       </div>
     </div>
@@ -480,4 +665,11 @@ function Resizer({
 function defaultDirFor(col: SortColId): SortDir {
   if (col === "year" || col === "status") return "desc";
   return "asc";
+}
+
+/** Stable per-row key: the citekey for indexed rows, a synthesized key for
+ *  triage rows (no citekey yet). One definition shared by the sort/filter
+ *  memos, the shift-click range math, the virtualizer item-key, and render. */
+function keyOf(e: CatalogEntry): string {
+  return e.citekey ?? `__triage__${e.originalFilename}`;
 }
