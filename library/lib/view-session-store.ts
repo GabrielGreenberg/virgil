@@ -114,6 +114,10 @@ export interface LibraryViewSession {
     middleWidth?: number;
     papersHeight?: number;
     colWidths?: Partial<Record<ResizableColId, number>>;
+    // Central library landing view. Absent → "dashboard" (the stats home is
+    // the default entry point; the heavy virtualized list mounts only when the
+    // user explicitly clicks Browse). Persists the user's last explicit choice.
+    centralViewMode?: "dashboard" | "list";
   };
 }
 
@@ -771,10 +775,13 @@ export function useListView(
 /**
  * Per-(panel, paper) Text/PDF view mode for the paper-detail header toggle.
  * `libId` is the `paper:<citekey>` key (the same slice the reader scroll uses).
- * Returns the persisted mode (default "text" for a never-toggled paper) plus a
- * setter. Survives reload AND intra-session paper switches — the value is keyed
- * by citekey, so navigating away and back restores the prior posture instead of
- * snapping to "text".
+ * Returns the persisted mode (default "pdf" for a never-toggled paper — we lead
+ * with the source PDF, since the rendered text is a derived view) plus a setter.
+ * Survives reload AND intra-session paper switches — the value is keyed by
+ * citekey, so navigating away and back restores the prior posture (a paper the
+ * user explicitly switched to Text stays Text) instead of snapping back.
+ * DOCX-only sources with no PDF on disk are coerced back to "text" by the
+ * consumer (RightDetail.tsx), so the PDF default never strands them.
  */
 export function usePaperViewMode(
   scope: string,
@@ -788,7 +795,7 @@ export function usePaperViewMode(
   // absent slice, so reading `.viewMode` directly (a primitive) is snapshot-
   // safe without the object-identity caching `useListView` needs.
   const getSnap = useCallback(
-    () => readListView(scope, panel, libId).viewMode ?? "text",
+    () => readListView(scope, panel, libId).viewMode ?? "pdf",
     [scope, panel, libId],
   );
   const viewMode = useSyncExternalStore(subscribe, getSnap, getSnap);
@@ -807,6 +814,29 @@ export function useLayoutPrefs(): {
   const getSnap = useCallback(() => ensureInit().layout, []);
   const layout = useSyncExternalStore(subscribe, getSnap, getSnap);
   return { layout, setLayout };
+}
+
+/**
+ * Central library landing view ("dashboard" | "list"), global slice.
+ * Absent value resolves to "dashboard" for ALL users (the stats home is the
+ * default entry point — the heavy list mounts only on an explicit Browse).
+ * Once the user picks Browse (→ "list") or returns to the dashboard, the choice
+ * persists across reloads, exactly like the Text/PDF posture per paper.
+ */
+export function useCentralViewMode(): {
+  centralViewMode: "dashboard" | "list";
+  setCentralViewMode: (m: "dashboard" | "list") => void;
+} {
+  const getSnap = useCallback(
+    () => ensureInit().layout.centralViewMode ?? "dashboard",
+    [],
+  );
+  const centralViewMode = useSyncExternalStore(subscribe, getSnap, getSnap);
+  const setCentralViewMode = useCallback(
+    (m: "dashboard" | "list") => setLayout({ centralViewMode: m }),
+    [],
+  );
+  return { centralViewMode, setCentralViewMode };
 }
 
 /** Global cited-only toggle (survives the ProjectLibraryProvider remount). */

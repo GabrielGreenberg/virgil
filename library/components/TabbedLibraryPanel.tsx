@@ -16,7 +16,12 @@ import {
 import { ENTRIES_DT_TYPE, ENTRY_DT_TYPE, TAB_DT_TYPE } from "@library/lib/dnd-types";
 import type { PanelKey } from "@library/hooks/useLibraryTabs";
 import { useProjectLibrary } from "@library/lib/project-library-context";
+import {
+  setListQuery,
+  useCentralViewMode,
+} from "@library/lib/view-session-store";
 import LeftList from "./LeftList";
+import LibraryCentralDashboard from "./LibraryCentralDashboard";
 import PaperFileBody from "./PaperFileBody";
 import type { RowActions } from "./LeftListRow";
 
@@ -125,6 +130,9 @@ export default function TabbedLibraryPanel({
   showRecent = false,
 }: Props) {
   const project = useProjectLibrary();
+  // Central-library landing view ("dashboard" | "list"). Global slice; default
+  // "dashboard" so the heavy virtualized LeftList stays unmounted until Browse.
+  const { centralViewMode, setCentralViewMode } = useCentralViewMode();
 
   const tabDefs: TabDef[] = useMemo(
     () =>
@@ -403,6 +411,17 @@ export default function TabbedLibraryPanel({
         background: "var(--library-bg)",
       }}
     >
+      {/* Unifying "folder + page" frame. The rounded border + overflow live
+       *  HERE, enclosing the tab strip AND the body as one continuous
+       *  surface — NOT on the body div (which used to carry its own
+       *  competing rounded card, causing the active tab's corners to spill
+       *  into the body's top corners and the catalog header to read as a
+       *  separate clipped seam). The strip's tabs poke up at the top of this
+       *  frame; the body fills below; the active tab's bottom merges into the
+       *  body via its swoop stroke. Background is --surface so the seam reads
+       *  cleanly (paper-kind bodies override to --background below). This is
+       *  also the node the tab drag-ghost clones, so the ghost now carries
+       *  the whole folder silhouette. */}
       <div
         ref={panelRef}
         style={{
@@ -410,6 +429,10 @@ export default function TabbedLibraryPanel({
           minHeight: 0,
           display: "flex",
           flexDirection: "column",
+          border: "1px solid var(--topbar-border)",
+          borderRadius: 10,
+          overflow: "hidden",
+          background: "var(--surface)",
         }}
       >
       <PanelTabStrip
@@ -429,21 +452,19 @@ export default function TabbedLibraryPanel({
         showRecent={showRecent}
       />
       {activeLibrary ? (
+        // Body region. The rounded frame + 1px border now live on the
+        // unifying wrapper above; this div only owns its fill + flex sizing.
+        // Paper-kind tabs fill the warm Virgil canvas so the body extends the
+        // active tab's color into the editor pod's frame (same ground the
+        // editor/view sits on elsewhere); other kinds inherit the wrapper's
+        // crisp --surface and leave this transparent.
         <div
           style={{
             flex: 1,
             minHeight: 0,
-            // Paper-kind tabs fill the warm Virgil canvas so the body
-            // extends the active tab's color into the editor pod's
-            // frame — same ground the editor/view sits on elsewhere.
-            // Other library kinds (Central, project, custom) keep the
-            // crisp white surface.
-            background: isPaper(activeLibrary) ? "var(--background)" : "var(--surface)",
-            overflow: "hidden",
+            background: isPaper(activeLibrary) ? "var(--background)" : "transparent",
             display: "flex",
             flexDirection: "column",
-            border: "1px solid var(--topbar-border)",
-            borderRadius: 10,
           }}
         >
           {isPaper(activeLibrary) ? (
@@ -485,23 +506,53 @@ export default function TabbedLibraryPanel({
                   Open a document tab to see its bibliography here.
                 </div>
               ) : (
-                <div style={{ flex: 1, minHeight: 0, overflow: "hidden" }}>
-                  <LeftList
+                // BODY-CONTENT BRANCH POINT. Non-paper libraries render here.
+                // Central defaults to a no-browse stats dashboard (ASK 7); the
+                // heavy virtualized LeftList stays UNMOUNTED until the user hits
+                // Browse (that's the whole perf point). Project / custom
+                // libraries — and Central once Browse is chosen — render the
+                // LeftList. A persistent [Dashboard | Browse] switch rides the
+                // Central header in list mode so the user can flip back.
+                isCentral(activeLibrary.id) && centralViewMode === "dashboard" ? (
+                  <LibraryCentralDashboard
                     entries={visibleEntries}
                     bibByKey={bibByKey}
-                    scope={scope}
-                    panel={panel}
-                    libId={activeLibrary.id}
-                    selectedKeys={selectedKeys}
-                    anchorKey={anchorKey}
-                    onSelectKeys={onSelectKeys}
+                    libraryName={activeLibrary.label}
                     onOpenPaper={handleOpenPaper}
-                    rowActions={rowActions}
-                    dropHighlight={panelDragOver === "entry"}
-                    dotToneFor={dotToneFor}
-                    onRowViewed={handleRowViewed}
+                    onBrowse={() => setCentralViewMode("list")}
+                    onBrowseWithQuery={(q) => {
+                      // Pre-fill the list's persisted query slice (the same one
+                      // LeftList reads via useListView), then switch to list.
+                      setListQuery(scope, panel, activeLibrary.id, q);
+                      setCentralViewMode("list");
+                    }}
                   />
-                </div>
+                ) : (
+                  <>
+                    {isCentral(activeLibrary.id) ? (
+                      <CentralListHeader
+                        onDashboard={() => setCentralViewMode("dashboard")}
+                      />
+                    ) : null}
+                    <div style={{ flex: 1, minHeight: 0, overflow: "hidden" }}>
+                      <LeftList
+                        entries={visibleEntries}
+                        bibByKey={bibByKey}
+                        scope={scope}
+                        panel={panel}
+                        libId={activeLibrary.id}
+                        selectedKeys={selectedKeys}
+                        anchorKey={anchorKey}
+                        onSelectKeys={onSelectKeys}
+                        onOpenPaper={handleOpenPaper}
+                        rowActions={rowActions}
+                        dropHighlight={panelDragOver === "entry"}
+                        dotToneFor={dotToneFor}
+                        onRowViewed={handleRowViewed}
+                      />
+                    </div>
+                  </>
+                )
               )}
             </>
           )}
@@ -546,6 +597,51 @@ function EmptyPanelBody() {
   );
 }
 
+/** Slim header for the Central library while it's in LIST mode. Hosts a
+ *  persistent [ Dashboard | Browse ] segmented switch so the user can always
+ *  return to the stats home — not only via the dashboard's own CTA. Mirrors
+ *  ProjectHeader's top-corner-radius treatment so it reads as the top of the
+ *  one continuous folder surface. The dashboard itself owns the inverse
+ *  affordance (its "Browse all →" button), so both directions are reachable
+ *  from a persistent, obvious control. */
+function CentralListHeader({ onDashboard }: { onDashboard: () => void }) {
+  return (
+    <div
+      style={{
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "flex-end",
+        padding: "6px 10px",
+        borderTopLeftRadius: 10,
+        borderTopRightRadius: 10,
+        borderBottom: "1px solid var(--border-light)",
+        background: "var(--surface)",
+        flexShrink: 0,
+      }}
+    >
+      <div className="lib-viewswitch" role="group" aria-label="Central library view">
+        <button
+          type="button"
+          className="lib-viewswitch-btn"
+          aria-pressed={false}
+          onClick={onDashboard}
+        >
+          Dashboard
+        </button>
+        <button
+          type="button"
+          className="lib-viewswitch-btn"
+          aria-pressed={true}
+          // Already in Browse/list mode — pressed + inert.
+          onClick={() => {}}
+        >
+          Browse
+        </button>
+      </div>
+    </div>
+  );
+}
+
 interface ProjectHeaderProps {
   hasDoc: boolean;
   docLabel?: string;
@@ -570,7 +666,15 @@ function ProjectHeader({
         alignItems: "center",
         justifyContent: "space-between",
         padding: "6px 10px",
-        borderBottom: "1px solid var(--border)",
+        // Top corners match the unifying wrapper's R=10 so the header reads
+        // as the top of the one continuous folder surface (the wrapper's
+        // overflow:hidden also clips to this radius — belt-and-suspenders).
+        borderTopLeftRadius: 10,
+        borderTopRightRadius: 10,
+        // Flattened from a hard 1px --border seam to a subtle divider: it
+        // separates the controls from the catalog list without reading as a
+        // separate clipped card edge.
+        borderBottom: "1px solid var(--border-light)",
         background: "var(--surface)",
         gap: 8,
         flexShrink: 0,

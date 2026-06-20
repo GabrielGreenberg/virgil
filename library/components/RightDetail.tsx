@@ -116,6 +116,7 @@ export default function RightDetail({
           viewMode={viewMode}
           onViewModeChange={setViewMode}
           pdfAvailable={pdfAvailable}
+          indexedState={entry.indexed.state}
           onEdit={canEdit ? () => setEditOpen(true) : undefined}
         />
         <div style={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "column" }}>
@@ -156,6 +157,7 @@ export default function RightDetail({
         viewMode={viewMode}
         onViewModeChange={setViewMode}
         pdfAvailable={pdfAvailable}
+        indexedState={entry.indexed.state}
         onEdit={canEdit ? () => setEditOpen(true) : undefined}
       />
       <div

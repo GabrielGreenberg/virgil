@@ -747,6 +747,17 @@ export function TextObjectGrabHandle({ editorRef }: Props) {
         setPlacements((p) => (p.length === 0 ? p : []));
         return;
       }
+      // Read-only surfaces (the Library Reader) have nothing draggable, so
+      // the grab handle is pure clutter in the gutter. Yield ZERO placements
+      // when the editor isn't editable — mirrors `Marginalia.tsx`, which gates
+      // its drag affordance on `editor.isEditable`. O(1), no doc walk, so it
+      // doesn't regress keystroke sanctity. (Decision D-2: gate here in the
+      // shared layer rather than adding a chrome flag, so a future Reader that
+      // wants handles just passes `editable={true}`.)
+      if (!editor.isEditable) {
+        setPlacements((p) => (p.length === 0 ? p : []));
+        return;
+      }
       const resolved = resolveActiveRefs(editor);
       const next: Placement[] = [];
       for (const { ref, el } of resolved) {

@@ -11,10 +11,11 @@ import {
   type ReactNode,
   type RefObject,
 } from "react";
-import { flushSync } from "react-dom";
+import { createPortal, flushSync } from "react-dom";
 import type { PanelKey } from "@library/hooks/useLibraryTabs";
 import { ENTRIES_DT_TYPE, ENTRY_DT_TYPE, LIBRARY_DT_TYPE, PAPER_DT_TYPE, TAB_DT_TYPE } from "@library/lib/dnd-types";
 import { attachClampedDragGhost } from "@/lib/drag-ghost";
+import { useFloatingMenuPosition } from "@/hooks/useFloatingMenuPosition";
 import { PanelFolderTab } from "./PanelFolderTab";
 
 export type TabDef = {
@@ -101,6 +102,9 @@ export function PanelTabStrip({
   const [editingId, setEditingId] = useState<string | null>(null);
   const [draftLabel, setDraftLabel] = useState("");
   const [menuOpen, setMenuOpen] = useState(false);
+  // Rect captured at toggle so the portaled AddTabMenu can anchor to the "+"
+  // button without reading a ref during render (react-hooks/refs).
+  const [addAnchorRect, setAddAnchorRect] = useState<DOMRect | null>(null);
   const [tabMenuOpenId, setTabMenuOpenId] = useState<string | null>(null);
   const [draggingId, setDraggingId] = useState<string | null>(null);
   const [dragOverIndex, setDragOverIndex] = useState<number | null>(null);
@@ -110,6 +114,7 @@ export function PanelTabStrip({
 
   const stripRef = useRef<HTMLDivElement | null>(null);
   const tabRefs = useRef<Map<string, HTMLElement>>(new Map());
+  const addBtnRef = useRef<HTMLButtonElement | null>(null);
 
   const startEditing = (id: string, label: string) => {
     setEditingId(id);
@@ -336,10 +341,21 @@ export function PanelTabStrip({
         alignItems: "flex-end",
         gap: 2,
         padding: "0 4px",
-        background: "var(--library-bg)",
+        // Transparent so the unifying folder frame's --surface shows through
+        // uniformly behind the tabs — no two-tone notch at the wrapper's
+        // rounded top corners (was --library-bg, which fought the frame).
+        background: "transparent",
         flexShrink: 0,
         position: "relative",
         zIndex: 20,
+        // Tabs are flexShrink:0; when more open than fit, scroll horizontally
+        // rather than hard-clipping the rightmost tab against the folder
+        // frame. Scrollbar hidden — the strip stays visually clean. Per-tab
+        // menus are body-portaled (see TabMenuTrigger) so this overflow can't
+        // clip them.
+        overflowX: "auto",
+        overflowY: "hidden",
+        scrollbarWidth: "none",
       }}
       onDragOver={handleStripDragOver}
       onDragLeave={handleStripDragLeave}
@@ -470,9 +486,16 @@ export function PanelTabStrip({
       })}
       {showAddTab && (
         <div style={{ position: "relative", flexShrink: 0 }}>
-          <AddTabButton onClick={() => setMenuOpen((v) => !v)} />
-          {menuOpen && (
+          <AddTabButton
+            ref={addBtnRef}
+            onClick={() => {
+              setAddAnchorRect(addBtnRef.current?.getBoundingClientRect() ?? null);
+              setMenuOpen((v) => !v);
+            }}
+          />
+          {menuOpen && addAnchorRect && (
             <AddTabMenu
+              anchorRect={addAnchorRect}
               recent={showRecent ? recentLibraries : []}
               onNewLibrary={handleNewLibrary}
               onOpenRecent={handleOpenRecent}
@@ -719,9 +742,11 @@ function CloseButton({
   );
 }
 
-function AddTabButton({ onClick }: { onClick: () => void }) {
+const AddTabButton = forwardRef<HTMLButtonElement, { onClick: () => void }>(
+  function AddTabButton({ onClick }, ref) {
   return (
     <button
+      ref={ref}
       type="button"
       onClick={onClick}
       title="New tab"
@@ -745,7 +770,7 @@ function AddTabButton({ onClick }: { onClick: () => void }) {
       +
     </button>
   );
-}
+});
 
 function TabMenuTrigger({
   open,
@@ -765,6 +790,11 @@ function TabMenuTrigger({
   pushRight?: boolean;
 }) {
   const idleColor = muted ? "var(--muted)" : "var(--foreground)";
+  const btnRef = useRef<HTMLButtonElement | null>(null);
+  // Capture the trigger rect into state at toggle time (not during render) so
+  // the portaled popup can anchor to it — mirrors TabPlusMenu's pattern and
+  // keeps the react-hooks/refs rule happy.
+  const [anchorRect, setAnchorRect] = useState<DOMRect | null>(null);
   return (
     <div
       style={{
@@ -775,9 +805,11 @@ function TabMenuTrigger({
       }}
     >
       <button
+        ref={btnRef}
         type="button"
         onClick={(e) => {
           e.stopPropagation();
+          setAnchorRect(btnRef.current?.getBoundingClientRect() ?? null);
           onToggle();
         }}
         onMouseDown={(e) => e.stopPropagation()}
@@ -815,21 +847,35 @@ function TabMenuTrigger({
       >
         ⋮
       </button>
-      {open && (
-        <PanelMenuPopup items={items} onClose={onClose} />
+      {open && anchorRect && (
+        <PanelMenuPopup anchorRect={anchorRect} items={items} onClose={onClose} />
       )}
     </div>
   );
 }
 
+// Body-portaled so it escapes the folder frame's overflow:hidden and the
+// tab strip's horizontal scroll-overflow (both clip absolutely-positioned
+// children). Anchored to the trigger via getBoundingClientRect +
+// useFloatingMenuPosition, the same convention the editor chrome menus use.
 function PanelMenuPopup({
+  anchorRect,
   items,
   onClose,
 }: {
+  anchorRect: DOMRect | null;
   items: PanelMenuItem[];
   onClose: () => void;
 }) {
   const ref = useRef<HTMLDivElement | null>(null);
+  const { ref: positionRef, style: positionStyle } = useFloatingMenuPosition({
+    anchorRect,
+    placements: [
+      { side: "below", align: "start" },
+      { side: "above", align: "start" },
+    ],
+    gap: 4,
+  });
 
   useEffect(() => {
     const onDown = (e: MouseEvent) => {
@@ -851,22 +897,24 @@ function PanelMenuPopup({
     };
   }, [onClose]);
 
-  return (
+  if (typeof document === "undefined") return null;
+
+  return createPortal(
     <div
-      ref={ref}
+      ref={(el) => {
+        ref.current = el;
+        positionRef(el);
+      }}
       role="menu"
       style={{
-        position: "absolute",
-        top: "100%",
-        left: 0,
-        marginTop: 2,
+        ...positionStyle,
         minWidth: 180,
         background: "var(--surface)",
         border: "1px solid var(--border-light)",
         borderRadius: 6,
         boxShadow: "var(--pod-shadow)",
         padding: "4px 0",
-        zIndex: 50,
+        zIndex: 2000,
       }}
     >
       {items.map((item, i) => (
@@ -880,22 +928,35 @@ function PanelMenuPopup({
           {item.label}
         </MenuItem>
       ))}
-    </div>
+    </div>,
+    document.body,
   );
 }
 
+// Body-portaled for the same reason as PanelMenuPopup — the folder frame's
+// overflow:hidden + the strip's scroll-overflow would otherwise clip it.
 function AddTabMenu({
+  anchorRect,
   recent,
   onNewLibrary,
   onOpenRecent,
   onClose,
 }: {
+  anchorRect: DOMRect | null;
   recent: RecentLibrary[];
   onNewLibrary: () => void;
   onOpenRecent: (id: string) => void;
   onClose: () => void;
 }) {
   const ref = useRef<HTMLDivElement | null>(null);
+  const { ref: positionRef, style: positionStyle } = useFloatingMenuPosition({
+    anchorRect,
+    placements: [
+      { side: "below", align: "start" },
+      { side: "above", align: "start" },
+    ],
+    gap: 4,
+  });
 
   useEffect(() => {
     const onDown = (e: MouseEvent) => {
@@ -917,22 +978,24 @@ function AddTabMenu({
     };
   }, [onClose]);
 
-  return (
+  if (typeof document === "undefined") return null;
+
+  return createPortal(
     <div
-      ref={ref}
+      ref={(el) => {
+        ref.current = el;
+        positionRef(el);
+      }}
       role="menu"
       style={{
-        position: "absolute",
-        top: "100%",
-        left: 0,
-        marginTop: 2,
+        ...positionStyle,
         minWidth: 200,
         background: "var(--surface)",
         border: "1px solid var(--border-light)",
         borderRadius: 6,
         boxShadow: "var(--pod-shadow)",
         padding: "4px 0",
-        zIndex: 50,
+        zIndex: 2000,
       }}
     >
       <MenuItem onClick={onNewLibrary}>+ New Library</MenuItem>
@@ -964,7 +1027,8 @@ function AddTabMenu({
           ))}
         </>
       )}
-    </div>
+    </div>,
+    document.body,
   );
 }
 

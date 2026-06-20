@@ -12,6 +12,11 @@ import {
 } from "react";
 import { buildActiveTabStrokePath, buildTabFillPath } from "./folder-path";
 
+// R=10: top-corner radius of the manila-folder tab. DELIBERATELY distinct
+// from the global --pod-radius (8) — the Library tab strip keeps its own
+// slightly rounder manila aesthetic on purpose. It also matches the
+// unifying folder-frame radius in TabbedLibraryPanel so the active tab's
+// corners line up with the panel frame. Do NOT "fix" this to 8 to unify.
 const R = 10;
 const S = 12;
 const TAB_H = 32;
@@ -80,7 +85,11 @@ export const PanelFolderTab = forwardRef<HTMLDivElement, Props>(
           width: svgW,
           height: svgH,
           zIndex: active ? 10 : 1,
-          marginBottom: -1,
+          // No marginBottom offset: the rounded body frame now lives on the
+          // unifying wrapper (TabbedLibraryPanel), not on the body div, so
+          // there is no body top-border for the tab to overlap by 1px. The
+          // tab's own 1px fill bridge (svgH = TAB_H + 1) draws the join into
+          // the body cleanly; pulling the tab down would misalign the seam.
           ...extraStyle,
         }}
         onClick={onClick}
