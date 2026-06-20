@@ -403,6 +403,17 @@ export default function TabbedLibraryPanel({
         background: "var(--library-bg)",
       }}
     >
+      {/* Unifying "folder + page" frame. The rounded border + overflow live
+       *  HERE, enclosing the tab strip AND the body as one continuous
+       *  surface — NOT on the body div (which used to carry its own
+       *  competing rounded card, causing the active tab's corners to spill
+       *  into the body's top corners and the catalog header to read as a
+       *  separate clipped seam). The strip's tabs poke up at the top of this
+       *  frame; the body fills below; the active tab's bottom merges into the
+       *  body via its swoop stroke. Background is --surface so the seam reads
+       *  cleanly (paper-kind bodies override to --background below). This is
+       *  also the node the tab drag-ghost clones, so the ghost now carries
+       *  the whole folder silhouette. */}
       <div
         ref={panelRef}
         style={{
@@ -410,6 +421,10 @@ export default function TabbedLibraryPanel({
           minHeight: 0,
           display: "flex",
           flexDirection: "column",
+          border: "1px solid var(--topbar-border)",
+          borderRadius: 10,
+          overflow: "hidden",
+          background: "var(--surface)",
         }}
       >
       <PanelTabStrip
@@ -429,21 +444,19 @@ export default function TabbedLibraryPanel({
         showRecent={showRecent}
       />
       {activeLibrary ? (
+        // Body region. The rounded frame + 1px border now live on the
+        // unifying wrapper above; this div only owns its fill + flex sizing.
+        // Paper-kind tabs fill the warm Virgil canvas so the body extends the
+        // active tab's color into the editor pod's frame (same ground the
+        // editor/view sits on elsewhere); other kinds inherit the wrapper's
+        // crisp --surface and leave this transparent.
         <div
           style={{
             flex: 1,
             minHeight: 0,
-            // Paper-kind tabs fill the warm Virgil canvas so the body
-            // extends the active tab's color into the editor pod's
-            // frame — same ground the editor/view sits on elsewhere.
-            // Other library kinds (Central, project, custom) keep the
-            // crisp white surface.
-            background: isPaper(activeLibrary) ? "var(--background)" : "var(--surface)",
-            overflow: "hidden",
+            background: isPaper(activeLibrary) ? "var(--background)" : "transparent",
             display: "flex",
             flexDirection: "column",
-            border: "1px solid var(--topbar-border)",
-            borderRadius: 10,
           }}
         >
           {isPaper(activeLibrary) ? (
@@ -485,6 +498,13 @@ export default function TabbedLibraryPanel({
                   Open a document tab to see its bibliography here.
                 </div>
               ) : (
+                // BODY-CONTENT BRANCH POINT. Today every non-paper library
+                // (Central, project, custom) renders the LeftList catalog
+                // here. A later chip branches THIS region for the Central
+                // library to render a dashboard instead (e.g.
+                // `isCentral(activeLibrary.id) && centralViewMode ===
+                // "dashboard" ? <LibraryCentralDashboard/> : <LeftList/>`).
+                // Keep this insertion point clean and obvious.
                 <div style={{ flex: 1, minHeight: 0, overflow: "hidden" }}>
                   <LeftList
                     entries={visibleEntries}
@@ -570,7 +590,15 @@ function ProjectHeader({
         alignItems: "center",
         justifyContent: "space-between",
         padding: "6px 10px",
-        borderBottom: "1px solid var(--border)",
+        // Top corners match the unifying wrapper's R=10 so the header reads
+        // as the top of the one continuous folder surface (the wrapper's
+        // overflow:hidden also clips to this radius — belt-and-suspenders).
+        borderTopLeftRadius: 10,
+        borderTopRightRadius: 10,
+        // Flattened from a hard 1px --border seam to a subtle divider: it
+        // separates the controls from the catalog list without reading as a
+        // separate clipped card edge.
+        borderBottom: "1px solid var(--border-light)",
         background: "var(--surface)",
         gap: 8,
         flexShrink: 0,
