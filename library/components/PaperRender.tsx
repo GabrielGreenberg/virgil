@@ -15,7 +15,7 @@ import { assignUuids } from "@/lib/latex-serializer";
 import type { IndexedState } from "@library/lib/catalog";
 import type { PanelKey } from "@library/hooks/useLibraryTabs";
 import { getSession, setListScrollQuiet } from "@library/lib/view-session-store";
-import PageScrollStrip from "./PageScrollStrip";
+import PageScrollLozenge from "./PageScrollLozenge";
 
 interface Props {
   handle: FileSystemDirectoryHandle | null;
@@ -39,7 +39,8 @@ interface Props {
  *  - drop / paste handlers (gated on `view.editable`)
  *
  * Library-specific chrome layered on top of the editor:
- *  - sticky `PageScrollStrip` for `\pgmark{N}` printed-page navigation
+ *  - floating `PageScrollLozenge` (`p. N` pill near the right scrollbar)
+ *    surfacing the current `\pgmark{N}` printed page while scrolling
  *  - right-side panel rail with the Outline panel (more panels follow
  *    the EditorPane extraction)
  *
@@ -176,13 +177,13 @@ function PaperReader({
 }: PaperReaderProps) {
   const readerViewPrefs = useReaderViewPrefs();
   const [content, setContent] = useState<JSONContent | null>(null);
-  // PageScrollStrip needs the live TipTap Editor instance to compute
+  // PageScrollLozenge needs the live TipTap Editor instance to compute
   // page-mark scroll positions. Editor.tsx hands one back via
-  // `onEditorReady`; we keep it in state (not a ref) so the strip
+  // `onEditorReady`; we keep it in state (not a ref) so the lozenge
   // re-renders once the editor is mounted.
   const [editor, setEditor] = useState<Editor | null>(null);
-  // Tracked as state (not a ref) so the strip re-mounts/relays out once
-  // the scroll container exists. A plain ref would leave the strip
+  // Tracked as state (not a ref) so the lozenge re-mounts/relays out once
+  // the scroll container exists. A plain ref would leave the lozenge
   // with `null` on its first render.
   const [scrollEl, setScrollEl] = useState<HTMLDivElement | null>(null);
   const editorRef = useRef<EditorHandle | null>(null);
@@ -331,42 +332,58 @@ function PaperReader({
   const docId = `library-paper:${citekey}`;
 
   return (
+    // Positioned wrapper so the page lozenge can pin near the right
+    // scrollbar without scrolling away with the content. The wrapper owns
+    // the flex sizing; the inner div is the actual scroll container.
     <div
-      ref={setScrollEl}
-      onScroll={onReaderScroll}
-      data-virgil-row-scroll
-      data-virgil-library-reader
       style={{
+        position: "relative",
         flex: 1,
         minHeight: 0,
-        overflow: "auto",
-        background: "var(--background)",
         display: "flex",
         flexDirection: "column",
         alignItems: "stretch",
       }}
     >
-      {/* `<DocPipeline key={docId}>` wraps EditorPane so `useDocument`
-          (which the canonical EditorPane mounts unconditionally) can
-          read its handle from context. The Reader is read-only so the
-          handle is never used for writes, but `useDocument` will throw
-          without an ancestor — this wrap satisfies the architectural
-          contract and gives the Reader the same `key=`-driven remount
-          on docId change as the main app. */}
-      <DocPipeline key={docId} docId={docId}>
-        <EditorPane
-          ref={editorRef}
-          docId={docId}
-          initialContent={content as JSONContent}
-          editable={false}
-          chrome={READER_CHROME}
-          viewPrefs={readerViewPrefs}
-          onEditorReady={setEditor}
-          leftGutterPrelude={
-            <PageScrollStrip editor={editor} scrollContainer={scrollEl} />
-          }
-        />
-      </DocPipeline>
+      <div
+        ref={setScrollEl}
+        onScroll={onReaderScroll}
+        data-virgil-row-scroll
+        data-virgil-library-reader
+        style={{
+          flex: 1,
+          minHeight: 0,
+          overflow: "auto",
+          background: "var(--background)",
+          display: "flex",
+          flexDirection: "column",
+          alignItems: "stretch",
+        }}
+      >
+        {/* `<DocPipeline key={docId}>` wraps EditorPane so `useDocument`
+            (which the canonical EditorPane mounts unconditionally) can
+            read its handle from context. The Reader is read-only so the
+            handle is never used for writes, but `useDocument` will throw
+            without an ancestor — this wrap satisfies the architectural
+            contract and gives the Reader the same `key=`-driven remount
+            on docId change as the main app. */}
+        <DocPipeline key={docId} docId={docId}>
+          <EditorPane
+            ref={editorRef}
+            docId={docId}
+            initialContent={content as JSONContent}
+            editable={false}
+            chrome={READER_CHROME}
+            viewPrefs={readerViewPrefs}
+            onEditorReady={setEditor}
+          />
+        </DocPipeline>
+      </div>
+      {/* Page lozenge — a floating `p. N` pill pinned near the right
+          scrollbar (D-4), absolutely positioned against this wrapper so
+          it stays put while the inner div scrolls. Fades in on scroll,
+          out after ~1s idle; renders nothing for pgmark-less papers. */}
+      <PageScrollLozenge editor={editor} scrollContainer={scrollEl} />
     </div>
   );
 }

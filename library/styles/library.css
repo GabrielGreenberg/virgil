@@ -41,11 +41,35 @@
   box-shadow: var(--pod-shadow);
 }
 
-/* ── Page-number scroll strip ──────────────────────────────────────── */
+/* ── Page-number scroll lozenge ────────────────────────────────────── */
 
-.page-scroll-strip {
-  /* Inherits the warm canvas from its parent; no border so the strip
-   * blends visually with the body around it. */
+/* A small floating pill pinned near the right scrollbar showing the
+ * current printed page (`p. N`). Absolutely positioned against the
+ * Reader's positioned wrapper (PaperRender) so it stays fixed while the
+ * inner column scrolls. Fades in on scroll, out after ~1s idle (the
+ * `.is-visible` class is toggled by PageScrollLozenge). */
+.page-scroll-lozenge {
+  position: absolute;
+  right: 12px;
+  bottom: 16px;
+  padding: 6px 12px;
+  border-radius: 20px;
+  background: var(--surface-muted, var(--surface));
+  border: 1px solid var(--edge-subtle);
+  color: var(--ink-muted);
+  font-family: var(--font-mono), monospace;
+  font-size: 11px;
+  line-height: 1;
+  letter-spacing: 0.02em;
+  box-shadow: var(--pod-shadow);
+  opacity: 0;
+  transition: opacity 0.25s ease;
+  z-index: 10;
+  pointer-events: none;
+  user-select: none;
+}
+.page-scroll-lozenge.is-visible {
+  opacity: 1;
 }
 
 /* ── TipTap rendering for indexed papers ──────────────────────────── */
@@ -59,6 +83,15 @@
 
 [data-virgil-library-reader] .paper-render .tiptap {
   outline: none;
+  /* Bounded, centered prose column. Without this the read-only column
+     stretches to the full pod width on wide viewports, so the prose
+     sprawls and the asymmetric reader gutter (28px/32px padding) reads
+     as lopsided. Cap at --page-preferred (≈880px, the same token the
+     main editor column prefers in globals.css) and center, so the
+     Reader matches the editor's measure and narrow laptops are
+     unaffected — only very wide viewports reflow. */
+  max-width: var(--page-preferred, 880px);
+  margin-inline: auto;
   /* Pinned to --library-editing-font so all indexed papers render in
      one face. Defined in src/app/globals.css; tracks the editor's
      serif font (and any FontsDialog override). */
