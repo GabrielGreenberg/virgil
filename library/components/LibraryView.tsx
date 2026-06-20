@@ -131,6 +131,11 @@ export default function LibraryView({
   );
   const papersHeight = layout.papersHeight ?? PAPERS_DEFAULT;
   const navColumnRef = useRef<HTMLDivElement | null>(null);
+  // The resizable grid node + the My Papers pod node. The resizers write live
+  // drag feedback STRAIGHT to these DOM nodes (no per-frame React state) and
+  // commit to the store only on pointer-up — see makeResizeHandler.
+  const gridRef = useRef<HTMLDivElement | null>(null);
+  const papersPodRef = useRef<HTMLDivElement | null>(null);
 
   // One-shot migration of the legacy standalone size keys into the store, for
   // users whose `virgil-library-view-session` blob predates the layout-fold.
@@ -142,18 +147,40 @@ export default function LibraryView({
     migrateLegacyLayoutSizes();
   }, []);
 
+  // Write the grid track string STRAIGHT to the live grid node. Mirrors the
+  // JSX `gridTemplateColumns` below (3-col with navigator, 2-col without).
+  const applyGridTemplate = useCallback(
+    (nav: number, mid: number) => {
+      const el = gridRef.current;
+      if (!el) return;
+      el.style.gridTemplateColumns = showNavigator
+        ? `${nav}px 6px ${mid}px 6px 1fr`
+        : `${mid}px 6px 1fr`;
+    },
+    [showNavigator],
+  );
+  // A column resizer drives its live drag feedback IMPERATIVELY (writing the
+  // grid track to the DOM via `applyLive`) and commits the size to the store
+  // exactly ONCE on pointer-up (`commit`). This keeps a deliberate drag
+  // gesture entirely off the React render path: a per-frame store commit would
+  // re-render all of LibraryView — and with it the middle column's LeftList
+  // and its non-memoized rows — on every pointer-move frame. The committed
+  // value equals the last live value, so the post-drag render reconciles to
+  // the identical template (no jump). Persistence stays in the unified store,
+  // so sizes still survive reload.
   const makeResizeHandler = useCallback(
     (
       currentWidth: number,
-      commit: (next: number) => void,
       minWidth: number,
       maxOffset: number,
+      applyLive: (next: number) => void,
+      commit: (next: number) => void,
     ) =>
       (e: React.PointerEvent<HTMLDivElement>) => {
         e.preventDefault();
         const startX = e.clientX;
         const startWidth = currentWidth;
-        let latest = currentWidth;
+        let latest = startWidth;
         const onMove = (ev: PointerEvent) => {
           latest = Math.max(
             minWidth,
@@ -162,10 +189,7 @@ export default function LibraryView({
               startWidth + (ev.clientX - startX),
             ),
           );
-          // Live drag feedback: the store commit re-renders this component so
-          // the grid track follows the pointer. The store's 250 ms debounce
-          // coalesces the localStorage writes (no synchronous write per frame).
-          commit(latest);
+          applyLive(latest);
         };
         const onUp = () => {
           window.removeEventListener("pointermove", onMove);
@@ -185,21 +209,25 @@ export default function LibraryView({
     () =>
       makeResizeHandler(
         leftWidth,
-        (w) => setLayout({ middleWidth: w }),
         LEFT_MIN,
         200,
+        // Live: only the middle width changes; the nav width stays put.
+        (next) => applyGridTemplate(navWidth, next),
+        (next) => setLayout({ middleWidth: next }),
       ),
-    [leftWidth, makeResizeHandler, setLayout],
+    [leftWidth, navWidth, makeResizeHandler, applyGridTemplate, setLayout],
   );
   // Vertical resizer between Libraries (top) and My Papers (bottom).
-  // Dragging up grows the My Papers pod; dragging down shrinks it.
-  // Both pods clamp to at least PAPERS_MIN so neither disappears.
+  // Dragging up grows the My Papers pod; dragging down shrinks it. Both pods
+  // clamp to at least PAPERS_MIN so neither disappears. Like the column
+  // resizers, the live drag writes `flex-basis` straight to the pod node and
+  // commits to the store only on pointer-up.
   const startPapersResize = useCallback(
     (e: React.PointerEvent<HTMLDivElement>) => {
       e.preventDefault();
       const startY = e.clientY;
       const startHeight = papersHeight;
-      let latest = papersHeight;
+      let latest = startHeight;
       const onMove = (ev: PointerEvent) => {
         const colH = navColumnRef.current?.getBoundingClientRect().height ?? 0;
         const maxH = Math.max(PAPERS_MIN, colH - PAPERS_MIN - 6);
@@ -207,7 +235,8 @@ export default function LibraryView({
           PAPERS_MIN,
           Math.min(maxH, startHeight - (ev.clientY - startY)),
         );
-        setLayout({ papersHeight: latest });
+        const pod = papersPodRef.current;
+        if (pod) pod.style.flexBasis = `${latest}px`;
       };
       const onUp = () => {
         window.removeEventListener("pointermove", onMove);
@@ -227,11 +256,13 @@ export default function LibraryView({
     () =>
       makeResizeHandler(
         navWidth,
-        (w) => setLayout({ navWidth: w }),
         NAV_MIN,
         300,
+        // Live: only the nav width changes; the middle width stays put.
+        (next) => applyGridTemplate(next, leftWidth),
+        (next) => setLayout({ navWidth: next }),
       ),
-    [navWidth, makeResizeHandler, setLayout],
+    [navWidth, leftWidth, makeResizeHandler, applyGridTemplate, setLayout],
   );
 
   // Surface the most recent skill-bundle sync as a transient toast so the
@@ -795,6 +826,7 @@ export default function LibraryView({
       )}
       <DropZone dragActive={dragActive}>
         <div
+          ref={gridRef}
           style={{
             display: "grid",
             // Three columns when the navigator is shown; two when it's
@@ -864,6 +896,7 @@ export default function LibraryView({
                       }}
                     />
                     <div
+                      ref={papersPodRef}
                       style={{
                         flex: `0 0 ${papersHeight}px`,
                         minHeight: PAPERS_MIN,
