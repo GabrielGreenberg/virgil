@@ -243,8 +243,10 @@ export default function LeftList({
     },
     [cancelPendingOpen],
   );
-  // Cancel any pending open on unmount.
-  useEffect(() => cancelPendingOpen, [cancelPendingOpen]);
+  // Cancel any pending open on unmount (explicit cleanup-arrow form: the
+  // RETURNED fn is the unmount teardown, so a tab-switch / unmount can't fire
+  // a deferred open into a torn-down tree).
+  useEffect(() => () => cancelPendingOpen(), [cancelPendingOpen]);
 
   // Stable activation handler (click / Enter / Space) — reads the live
   // selection/anchor/ordering from refs so its identity never changes,

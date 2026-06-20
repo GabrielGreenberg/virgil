@@ -146,4 +146,13 @@ describe("LeftList — C6 deferred single-click open", () => {
     expect(onOpenPaper).toHaveBeenCalledTimes(1);
     expect(onOpenPaper).toHaveBeenCalledWith("frege1892");
   });
+
+  it("cancels a pending open on unmount (never fires into a torn-down tree)", () => {
+    const onOpenPaper = vi.fn();
+    const { getByTitle, unmount } = render(<Harness onOpenPaper={onOpenPaper} />);
+    fireEvent.click(getByTitle(/Scorekeeping/i)); // schedules a deferred open
+    unmount(); // cleanup must cancel the pending idle callback
+    flushIdle(); // a surviving callback would fire here
+    expect(onOpenPaper).not.toHaveBeenCalled();
+  });
 });
