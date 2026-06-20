@@ -7,6 +7,7 @@ import {
   useLayoutEffect,
   useMemo,
   useRef,
+  useState,
 } from "react";
 import type { CatalogEntry } from "@library/lib/catalog";
 import type { BibEntry } from "@library/lib/types";
@@ -28,6 +29,7 @@ import LeftListRow, {
 import { type PanelKey } from "@library/hooks/useLibraryTabs";
 import { useLayoutPrefs, useListView } from "@library/lib/view-session-store";
 import { searchCatalogFuzzy } from "@library/lib/catalog-search";
+import { ROW_HEIGHT, computeListWindow } from "@library/lib/list-window";
 
 interface Props {
   entries: CatalogEntry[];
@@ -163,9 +165,25 @@ export default function LeftList({
   // ── Catalog scroll save/restore (survives reload + per-tab remount) ──
   // The rows container; its scrollTop is persisted per-(panel,libId).
   const rowsRef = useRef<HTMLDivElement | null>(null);
+  // The translated slice container — measured to self-correct the row height.
+  const innerRef = useRef<HTMLDivElement | null>(null);
   // One-shot restore guard, keyed by libId so switching libraries re-arms.
   const restoredForRef = useRef<string | null>(null);
-  // RAF coalescing for the scroll save (≤1 store update per frame; the
+
+  // ── Virtualization (chip C7) ─────────────────────────────────────────
+  // Render only the rows intersecting the viewport (+ overscan). `viewport`
+  // tracks the scroll container's scrollTop + clientHeight; `rowHeight` is
+  // seeded from the measured constant and self-corrected from the first real
+  // row so the spacer math stays pixel-exact regardless of theme/zoom. Both
+  // are cheap state — a scroll frame re-renders ONLY ~viewport rows, never
+  // all N (the keystroke-sanctity cap for the catalog list at any size).
+  const [viewport, setViewport] = useState<{ scrollTop: number; height: number }>({
+    scrollTop: 0,
+    height: 0,
+  });
+  const [rowHeight, setRowHeight] = useState(ROW_HEIGHT);
+
+  // RAF coalescing for the scroll save + window update (≤1 per frame; the
   // store's own 250 ms debounce then coalesces the localStorage writes —
   // no synchronous write per scroll tick).
   const scrollRafRef = useRef<number | null>(null);
@@ -174,9 +192,35 @@ export default function LeftList({
     scrollRafRef.current = requestAnimationFrame(() => {
       scrollRafRef.current = null;
       const el = rowsRef.current;
-      if (el) setScroll(el.scrollTop);
+      if (!el) return;
+      setScroll(el.scrollTop); // persist (quiet — no subscriber re-render)
+      // Drive the window. Guard so a no-op scroll frame doesn't re-render.
+      setViewport((v) =>
+        v.scrollTop === el.scrollTop && v.height === el.clientHeight
+          ? v
+          : { scrollTop: el.scrollTop, height: el.clientHeight },
+      );
     });
   }, [setScroll]);
+
+  // Measure the viewport height on mount + on resize (the window needs the
+  // container height; the scroll handler only fires on scroll). Guarded for
+  // jsdom / SSR where ResizeObserver may be absent.
+  useLayoutEffect(() => {
+    const el = rowsRef.current;
+    if (!el) return;
+    const measure = () =>
+      setViewport((v) =>
+        v.height === el.clientHeight && v.scrollTop === el.scrollTop
+          ? v
+          : { scrollTop: el.scrollTop, height: el.clientHeight },
+      );
+    measure();
+    if (typeof ResizeObserver === "undefined") return;
+    const ro = new ResizeObserver(measure);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
   // Reset the one-shot guard when the active library changes so the new
   // list restores its own saved position.
   useEffect(() => {
@@ -192,7 +236,12 @@ export default function LeftList({
     if (!el) return;
     if (filtered.length === 0) return; // empty list — keep the saved value
     if (el.scrollHeight <= el.clientHeight) return; // not scrollable yet
-    if (scrollTop > 0) el.scrollTop = scrollTop;
+    if (scrollTop > 0) {
+      el.scrollTop = scrollTop;
+      // Seed the window to the restored offset so it doesn't paint the top
+      // for one frame before the scroll event catches up (virtualization).
+      setViewport({ scrollTop: el.scrollTop, height: el.clientHeight });
+    }
     restoredForRef.current = libId;
     // `scrollTop` is read once at restore time; we intentionally don't
     // re-restore when it changes (that's the live user scroll feeding back).
@@ -370,6 +419,33 @@ export default function LeftList({
     [setLayout],
   );
 
+  // ── Window (chip C7) ─────────────────────────────────────────────────
+  // Before the container is measured, fall back to a generous viewport so the
+  // first paint fills any reasonable panel (then ResizeObserver trims it).
+  const effectiveHeight = viewport.height > 0 ? viewport.height : 1200;
+  const win = useMemo(
+    () =>
+      computeListWindow({
+        scrollTop: viewport.scrollTop,
+        viewportHeight: effectiveHeight,
+        rowHeight,
+        count: filtered.length,
+      }),
+    [viewport.scrollTop, effectiveHeight, rowHeight, filtered.length],
+  );
+  const visibleRows = useMemo(
+    () => filtered.slice(win.startIndex, win.endIndex),
+    [filtered, win.startIndex, win.endIndex],
+  );
+  // Self-correct the row height from the first real row so the spacer math is
+  // pixel-exact. Runs once the slice paints; no-op in jsdom (offsetHeight 0).
+  useLayoutEffect(() => {
+    const firstRow = innerRef.current?.firstElementChild as HTMLElement | null;
+    if (!firstRow) return;
+    const h = firstRow.offsetHeight;
+    if (h > 0 && Math.abs(h - rowHeight) > 0.5) setRowHeight(h);
+  }, [visibleRows, rowHeight]);
+
   return (
     <div style={{ display: "flex", flexDirection: "column", height: "100%" }}>
       <div
@@ -467,23 +543,38 @@ export default function LeftList({
               : "No papers match this search."}
           </div>
         ) : (
-          filtered.map((entry) => {
-            const key = keyOf(entry);
-            return (
-              <LeftListRow
-                key={key}
-                entry={entry}
-                bib={entry.citekey ? bibByKey.get(entry.citekey) : undefined}
-                selected={selectedKeys.has(key)}
-                gridTemplate={template}
-                entryKey={key}
-                onActivate={onActivate}
-                resolveDragKeys={resolveDragKeys}
-                actions={rowActions}
-                dotTone={dotToneFor(entry.citekey)}
-              />
-            );
-          })
+          // Virtualized: a full-height spacer drives the scrollbar; the visible
+          // slice is offset by `padTop`. Only ~viewport rows are in the DOM.
+          <div style={{ height: win.totalHeight, position: "relative" }}>
+            <div
+              ref={innerRef}
+              style={{
+                position: "absolute",
+                top: 0,
+                left: 0,
+                right: 0,
+                transform: `translateY(${win.padTop}px)`,
+              }}
+            >
+              {visibleRows.map((entry) => {
+                const key = keyOf(entry);
+                return (
+                  <LeftListRow
+                    key={key}
+                    entry={entry}
+                    bib={entry.citekey ? bibByKey.get(entry.citekey) : undefined}
+                    selected={selectedKeys.has(key)}
+                    gridTemplate={template}
+                    entryKey={key}
+                    onActivate={onActivate}
+                    resolveDragKeys={resolveDragKeys}
+                    actions={rowActions}
+                    dotTone={dotToneFor(entry.citekey)}
+                  />
+                );
+              })}
+            </div>
+          </div>
         )}
       </div>
     </div>

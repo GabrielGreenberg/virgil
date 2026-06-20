@@ -120,13 +120,15 @@ const noop = () => {};
 
 function Harness({
   dotToneFor = NO_TONE,
+  entries = ENTRIES,
 }: {
   dotToneFor?: (c: string | null | undefined) => "red" | "green" | null;
+  entries?: CatalogEntry[];
 }) {
   const sel = usePanelSelection("", "left");
   return (
     <LeftList
-      entries={ENTRIES}
+      entries={entries}
       bibByKey={BIB_BY_KEY}
       scope=""
       panel="left"
@@ -202,5 +204,19 @@ describe("LeftList — render-count / keystroke-sanctity", () => {
     // changed, so the memo held.
     expect(queryByTestId("row-kant1781")).not.toBeNull();
     expect(countOf("kant1781") - before.kant1781).toBe(0);
+  });
+
+  it("virtualizes — only ~viewport rows hit the DOM, not all N (C7)", () => {
+    const many: CatalogEntry[] = Array.from({ length: 300 }, (_, i) =>
+      entry(`k${String(i).padStart(3, "0")}`, `Title ${i}`, `Author ${i}`, 2000),
+    );
+    const { container } = render(<Harness entries={many} />);
+    const rendered = container.querySelectorAll('[data-testid^="row-"]');
+    // The fallback viewport (1200px / ~29px row) windows to ~50 rows + overscan,
+    // never the full 300. The exact number depends on overscan; assert it is a
+    // small fraction of N.
+    expect(rendered.length).toBeGreaterThan(20);
+    expect(rendered.length).toBeLessThan(80);
+    expect(rendered.length).toBeLessThan(many.length);
   });
 });
