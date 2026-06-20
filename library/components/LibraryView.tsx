@@ -8,6 +8,7 @@ import { useNotificationStream } from "@library/hooks/useNotificationStream";
 import { useSetupStatus } from "@library/hooks/useSetupStatus";
 import { useUnsortedPdfs } from "@library/hooks/useUnsortedPdfs";
 import { useUnsortedBibEntries } from "@library/hooks/useUnsortedBibEntries";
+import { useRowDotState } from "@library/hooks/useRowDotState";
 import { useLibraryTabs, type UseLibraryTabsOptions } from "@library/hooks/useLibraryTabs";
 import { docIdFromProjectLibraryId, isProjectDocId } from "@library/lib/library-store";
 import {
@@ -107,6 +108,9 @@ export default function LibraryView({
   const dropPdf = useDropPdf(handle);
   const notifications = useNotificationStream(handle);
   const setupStatus = useSetupStatus(handle);
+  // Request-state dots: ONE shared 6 s queue/inbox poll for BOTH panels
+  // (chip A3) — previously each TabbedLibraryPanel ran its own instance.
+  const { toneFor: dotToneFor, markViewed } = useRowDotState(handle);
 
   // Resizable middle panel + nav column + papers pod — sizes persisted in the
   // unified view-session-store's `layout` slice so they survive reloads AND
@@ -719,6 +723,8 @@ export default function LibraryView({
       onTogglePinLibrary={libraryTabs.togglePinLibrary}
       entryActions={entryActions}
       handle={handle}
+      dotToneFor={dotToneFor}
+      markViewed={markViewed}
       onBibChanged={reloadBib}
       onChangeFolder={panel === "left" ? onReset : undefined}
       onResync={panel === "left" ? onResync : undefined}
