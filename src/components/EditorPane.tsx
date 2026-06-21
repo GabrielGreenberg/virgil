@@ -686,7 +686,7 @@ export interface EditorPaneProps {
    * so it sits flush against the editor pod's left side rather than
    * at the far edge of the manila canvas.
    */
-  leftGutterPrelude?: React.ReactNode;
+  leftMarginPrelude?: React.ReactNode;
 
   /**
    * Bundle of docked-MenuBar shell state. Reader omits — its chrome hides
@@ -712,7 +712,7 @@ export interface EditorPaneProps {
    * four error surfaces) and threaded down here so the docked
    * ErrorsPanel + omni mirror read the SAME selection / expansion /
    * dismissal / snippet / paragraph-mapping state the code-view
-   * sidebar and gutter markers already use. The Library Reader omits
+   * sidebar and margin markers already use. The Library Reader omits
    * these (it never compiles); EditorPane falls back to empties so the
    * error surfaces render nothing rather than crashing.
    */
@@ -764,7 +764,7 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
     onToggleCodeView,
     placements,
     viewPrefs,
-    leftGutterPrelude,
+    leftMarginPrelude,
     menuBar,
     aiWindowOpen = false,
     onAiWindowClose,
@@ -1391,14 +1391,14 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
   // reload only if that paragraph's `%!v:` UUID round-tripped through the
   // `.tex`. When the 1500 ms autosave loses the race to a reload, the
   // paragraph is re-minted a fresh UUID and the card silently orphans
-  // (gone from the gutter, yet `isUnanchored` still reports anchored).
+  // (gone from the margin, yet `isUnanchored` still reports anchored).
   //
   // This pass repairs that, symmetric with Mode B's `reanchorByText`:
   // UUID-first (if the stored UUID still resolves, backfill the snapshot so
   // legacy links become durable going forward), snapshot-fallback (if the
   // UUID is dead but the captured paragraph text matches a live block,
   // rebind `textObjectIds[0]` to the live UUID and persist). Run here in
-  // EditorPane — these hook instances own the rendered gutter markers, so
+  // EditorPane — these hook instances own the rendered margin markers, so
   // a rebind takes effect this session AND lands on disk. Idempotent; the
   // per-doc guard fires once `editor` + the doc content are ready AND every
   // card sidecar has finished its initial read. NOT on the keystroke path
@@ -1839,7 +1839,7 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
     [citationsHook.commandFor],
   );
 
-  // The gutter-pin re-anchor gesture no longer dispatches a
+  // The margin-pin re-anchor gesture no longer dispatches a
   // `virgil-marginalia-reanchor` CustomEvent into a per-pane mutator bridge —
   // grabbing a pin now starts a unified drop-mode session (Marginalia's
   // MarkerButton → `beginCardDropGesture`), and the controller commit calls
@@ -2001,7 +2001,7 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
 
   // ── Confirm-dialog instance backing the shared `deleteMarginItem` ──
   // Surfaces the "This item has text. Delete it?" warning when the user
-  // deletes the last anchor on a non-empty card via the gutter marker.
+  // deletes the last anchor on a non-empty card via the margin marker.
   // Distinct from `confirmHeadingDelete` below so the two dialogs can
   // coexist independently.
   const { confirm: confirmMarginItemDelete, dialog: confirmMarginItemDeleteDialog } =
@@ -2048,7 +2048,7 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
     [marginItemHandlers, confirmMarginItemDelete],
   );
 
-  // ── Gutter marker click (R15) ────────────────────────────────────
+  // ── Margin marker click (R15) ────────────────────────────────────
   // One handler for every card-backed marker kind. Uniform toggle: a click
   // on the already-selected marker DESELECTS (and skips the open/pin
   // dispatch); otherwise select (selection axis only — N1: never expands)
@@ -2061,7 +2061,7 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
   // EditorLayout too, so reader clicks ride the same bridge). Stable callback:
   // reads the cardStore at click time, so the marker memo below doesn't
   // depend on selection state (a selection change re-renders no markers).
-  const handleGutterMarkerClick = useCallback(
+  const handleMarginMarkerClick = useCallback(
     (ref: AnchoredCardRef, clickY?: number, anchorIndex?: number) => {
       if (cardStore.isSelected(ref)) {
         // Toggle-off: second click deselects across ALL marker kinds.
@@ -2074,7 +2074,7 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
       suppressNextPlacement();
       cardStore.select(ref);
       // T5 Pillar E-2 (REP-F3-01 / OMNI-F3-01 / OMNI-F8-02): a multi-anchor
-      // card draws ONE gutter marker per anchored paragraph, and the omni
+      // card draws ONE margin marker per anchored paragraph, and the omni
       // surface draws one row per anchor keyed `…@<anchorIndex>`. Stamp the
       // clicked marker's anchor index so the bridge can pin/jump to the RIGHT
       // `@N` row instead of always the first. `undefined` for single-anchor
@@ -2116,11 +2116,11 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
     [],
   );
 
-  // ── Marginalia markers — THE live gutter-marker builder ───────────
+  // ── Marginalia markers — THE live margin-marker builder ───────────
   // Walks every card hook (notes, reports, archive, todos, cutter,
   // revisions) plus the live latex-error list and emits one
   // `MarginaliaMarker` per linked paragraph. Marker clicks route through
-  // `handleGutterMarkerClick` above (the shared live bridge — R15);
+  // `handleMarginMarkerClick` above (the shared live bridge — R15);
   // selection state is NOT a dep (markers self-subscribe to the cardStore
   // for their halo, and the click handlers read it at click time), so a
   // selection change recomputes nothing here.
@@ -2128,7 +2128,7 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
   // SEAM B-3 (invariant): live positions come from two complementary
   // derivation paths, split by anchor style.
   //  - PARAGRAPH-anchored kinds (note / archive / revision / cut / todo /
-  //    report / error) emit gutter markers HERE, keyed by textObjectId;
+  //    report / error) emit margin markers HERE, keyed by textObjectId;
   //    the grid (`computeMarkerPositions`) resolves pixels from the
   //    marginalia registry's per-UUID metrics.
   //  - ENTITY-anchored kinds (footnote / citation / example — in-text
@@ -2149,7 +2149,7 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
   // card-count-independent — never per card). The resolver's
   // `anchorIdToParagraph` rung subsumes the old inline revision
   // anchorId→paragraph doc walk (deleted). `source==='orphan'` (uuid + mark
-  // + snapshot all dead) emits an `unanchored` marker the gutter surfaces as
+  // + snapshot all dead) emits an `unanchored` marker the margin surfaces as
   // a visible "click to re-pin" affordance instead of silently vanishing.
   // `buildResolveIndex` reads the live doc, so this memo ALSO depends on the
   // reactive `editor` instance (the `useStructuralRevisions` counters start
@@ -2159,7 +2159,7 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
   // run (keystroke sanctity is structural, not vigilance-based).
   // eslint-disable-next-line react-hooks/exhaustive-deps
   // Set of archived card ids across every panel. Drives the in-document
-  // exclusion (gutter markers, highlights) + OmniView, and is read by the
+  // exclusion (margin markers, highlights) + OmniView, and is read by the
   // per-card archive actions context through `archivedIdsRef` (stable identity,
   // so a card-body keystroke never broadly re-renders all cards). Recomputes
   // only when a sidecar collection changes (an archive toggle / add / delete),
@@ -2245,7 +2245,7 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
     ): Array<{ pid: string; unanchored: boolean }> => {
       if (!resolveIndex || !editor || !indexReady) {
         // Editor not mounted / doc not painted yet — fall back to the raw
-        // stored pids so the gutter isn't blank AND no card false-flags as
+        // stored pids so the margin isn't blank AND no card false-flags as
         // orphan during the mount gap. Re-derives once `editor` is set (memo
         // dep) and the index has live uuids.
         return pids.map((pid) => ({ pid, unanchored: false }));
@@ -2302,7 +2302,7 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
           title: n.title || "Note",
           unanchored,
           onClick: (clickY?: number) =>
-            handleGutterMarkerClick({ kind: "note", id: n.id }, clickY, anchorIndexFor(pids, pid)),
+            handleMarginMarkerClick({ kind: "note", id: n.id }, clickY, anchorIndexFor(pids, pid)),
           onDelete: () => {
             void handleMarginItemDelete("note", n.id, pid, anchor?.anchorId);
           },
@@ -2325,7 +2325,7 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
           title: "Archived snippet",
           unanchored,
           onClick: (clickY?: number) =>
-            handleGutterMarkerClick({ kind: "archive", id: snippet.id }, clickY, anchorIndexFor(pids, pid)),
+            handleMarginMarkerClick({ kind: "archive", id: snippet.id }, clickY, anchorIndexFor(pids, pid)),
           onDelete: () => { void handleMarginItemDelete("archive", snippet.id, pid); },
         });
       }
@@ -2356,7 +2356,7 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
           unanchored,
           anchorId,
           onClick: (clickY?: number) =>
-            handleGutterMarkerClick({ kind: revKind, id: r.id }, clickY, anchorIndexFor(pids, pid)),
+            handleMarginMarkerClick({ kind: revKind, id: r.id }, clickY, anchorIndexFor(pids, pid)),
           onDelete: () => {
             void handleMarginItemDelete("revision", r.id, pid, anchorId);
           },
@@ -2384,7 +2384,7 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
           title,
           unanchored,
           onClick: (clickY?: number) =>
-            handleGutterMarkerClick({ kind: cutKind, id: c.id }, clickY, anchorIndexFor(pids, pid)),
+            handleMarginMarkerClick({ kind: cutKind, id: c.id }, clickY, anchorIndexFor(pids, pid)),
           onDelete: () => {
             void handleMarginItemDelete("cut", c.id, pid, cardAnchor?.anchorId);
           },
@@ -2411,7 +2411,7 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
           title,
           unanchored,
           onClick: (clickY?: number) =>
-            handleGutterMarkerClick({ kind: c.kind, id: c.id }, clickY, anchorIndexFor(pids, pid)),
+            handleMarginMarkerClick({ kind: c.kind, id: c.id }, clickY, anchorIndexFor(pids, pid)),
           onDelete: () => {
             void handleMarginItemDelete("report", c.id, pid, cardAnchor?.anchorId);
           },
@@ -2435,7 +2435,7 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
           muted: item.done,
           unanchored,
           onClick: (clickY?: number) =>
-            handleGutterMarkerClick({ kind: "todo", id: item.id }, clickY, anchorIndexFor(pids, pid)),
+            handleMarginMarkerClick({ kind: "todo", id: item.id }, clickY, anchorIndexFor(pids, pid)),
           onDelete: () => { void handleMarginItemDelete("todo", item.id, pid); },
         });
       }
@@ -2471,7 +2471,7 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
     revisionsHook.cards,
     reportsHook.cards,
     handleMarginItemDelete,
-    handleGutterMarkerClick,
+    handleMarginMarkerClick,
     handleErrorMarkerClick,
     allLatexErrors,
     dismissedErrorIds,
@@ -2486,7 +2486,7 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
     editor,
   ]);
 
-  // Marginalia uses this to decide which gutter to render each marker
+  // Marginalia uses this to decide which margin to render each marker
   // in — anchors on the left when a panel sits left, right otherwise.
   // Derived from `effectivePlacements` so the prop-supplied placements
   // (main app, post-7.8) and the Reader's synthetic right-only fallback
@@ -2500,14 +2500,14 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
     [effectivePlacements],
   );
 
-  // Snapshot of paragraph UUIDs that host at least one gutter marker.
+  // Snapshot of paragraph UUIDs that host at least one margin marker.
   // Read by the `MarginaliaAnchorGuard` ProseMirror plugin (see
   // `src/lib/tiptap/linked-anchor.ts`) to preserve a placeholder
   // paragraph with the same UUID when the user deletes the host
   // paragraph — anchored cards stay attached through incidental
   // editor edits. The plugin auto-discovers UUIDs that host
   // `linkedAnchor` marks in addition to this set, so cards without a
-  // gutter icon (highlights) are also protected.
+  // margin icon (highlights) are also protected.
   const anchoredUuidsRef = useRef(new Set<string>());
   useMemo(() => {
     const set = new Set<string>();
@@ -2537,7 +2537,7 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
   const visibleMarginaliaMarkers = useMemo(() => {
     if (menuBar?.showMarginalia === false) return [];
     const hidden = menuBar?.hiddenMarginaliaTypes;
-    // Archived cards drop out of the gutter entirely (they live only under
+    // Archived cards drop out of the margin entirely (they live only under
     // their panel's View Archives/All), on top of the per-type hide set.
     return marginaliaMarkers.filter(
       (m) =>
@@ -4593,7 +4593,7 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
                 setSearchHighlightRange={setSearchHighlightRange}
                 openItemInPanel={openItemInPanel}
                 wordCountHook={wordCountHook}
-                tail={leftGutterPrelude}
+                tail={leftMarginPrelude}
               />
             ))}
             {/* Column wrapper — sits between the two PaneRails. Holds the
@@ -5408,7 +5408,7 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
                 the column level (sibling of the pod), so it ESCAPES the
                 pod's clipPath (`inset(0 -20px 0 -20px)`) that clips
                 lateral descendants of the pod past ±20px — handles
-                render ~22px left of the content edge (in the gutter)
+                render ~22px left of the content edge (in the margin)
                 and would otherwise be clipped. The column-level
                 placement still: (a) scrolls with content (column is
                 inside [data-virgil-row-scroll]); (b) clips behind the

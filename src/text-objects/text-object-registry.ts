@@ -786,7 +786,7 @@ export const TEXT_OBJECT_REGISTRY: Record<TextObjectKind, TextObjectMeta> = {
     floatBodyComponent: PLACEHOLDER_FLOAT_BODY,
     actions: LINKED_RANGE_ACTIONS,
     // L3f-2: a plain text SELECTION is a first-class lifted-overlay grab —
-    // ghost that follows the cursor, gutter-release pops the bidirectional
+    // ghost that follows the cursor, margin-release pops the bidirectional
     // linked-range float, page-release moves the text to the caret. This is
     // the FIRST mark-over-a-RANGE consumer of the two lift-overlay hooks
     // (heading was the first multi-block ELEMENT consumer). A plain grab

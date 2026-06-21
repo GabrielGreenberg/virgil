@@ -17,8 +17,8 @@ import { cardPopKey, cardDomSelector } from "@/panels/panel-registry";
 /** The card kinds that route through the shared anchor-click body
  *  (`routeAnchorClick`): the five Mode-B text-range kinds (dispatched by
  *  `useTextHoverBridge` when a `.linked-anchor` span is clicked) plus the
- *  four Mode-A paragraph-anchored kinds (dispatched by EditorPane's gutter
- *  marker builder — R15: gutter clicks ride the same live bridge as in-text
+ *  four Mode-A paragraph-anchored kinds (dispatched by EditorPane's margin
+ *  marker builder — R15: margin clicks ride the same live bridge as in-text
  *  anchor clicks). Inline atoms (footnote, citation) use their own dedicated
  *  `virgil-*-click` events; `error` isn't a card and gets its own small
  *  bridge (`virgil-error-marker-click`) below. */
@@ -97,7 +97,7 @@ interface AnchorClickEnv {
 /**
  * The ONE shared routing body for "show me this card" clicks (R15): both the
  * in-text Mode-B anchor click (`useTextHoverBridge` → `virgil-linked-anchor-
- * click`) and the gutter marker click (EditorPane's marker builder dispatches
+ * click`) and the margin marker click (EditorPane's marker builder dispatches
  * the same event) land here. Select (selection axis ONLY — N1: never touches
  * `expandedSet`), route through `openForCard` (omni-first, native fallback),
  * and pin the omni card at the click Y. No document jump — `skipScroll` +
@@ -131,7 +131,7 @@ function routeAnchorClick(
     typeof detail.clickY === "number" ? detail.clickY : undefined;
   // The omni id a panel stamps IS `cardPopKey(kind,id)` — except a MULTI-anchor
   // card draws one row per anchor keyed `…@<anchorIndex>` (T5 Pillar E-2). The
-  // gutter marker stamps the clicked paragraph's `anchorIndex` (only for
+  // margin marker stamps the clicked paragraph's `anchorIndex` (only for
   // multi-anchor cards — single-anchor rows have no suffix), so append it here
   // to pin/scroll the RIGHT row (REP-F3-01 / OMNI-F3-01 / OMNI-F8-02). The
   // `openForCard` presence check + `alignOmniCardWithClick` both use the
@@ -195,7 +195,7 @@ export function useMarkerClickBridges(deps: {
   setSelectedFootnoteId: Dispatch<SetStateAction<string | null>>;
   setSelectedCitationId: Dispatch<SetStateAction<string | null>>;
   /** Shell-side error selection (drives the error highlight + the vbar
-   *  errors popover). Synced from gutter error-marker clicks. */
+   *  errors popover). Synced from margin error-marker clicks. */
   setSelectedErrorId: Dispatch<SetStateAction<string | null>>;
   setActiveRefLabel: Dispatch<SetStateAction<string | null>>;
   setActiveRefRect: Dispatch<SetStateAction<DOMRect | null>>;
@@ -423,10 +423,10 @@ export function useMarkerClickBridges(deps: {
 
   // Generic anchor-click bridge (R15) — `useTextHoverBridge` dispatches
   // `virgil-linked-anchor-click` whenever a Mode B `.linked-anchor` span is
-  // clicked, and EditorPane's gutter marker builder dispatches the SAME
+  // clicked, and EditorPane's margin marker builder dispatches the SAME
   // event (with the marker's viewport Y) on a marker click. Both land in
   // `routeAnchorClick`: select + `openForCard` (omni-first) + pin the card
-  // at the click Y — one shared route for in-text AND gutter clicks.
+  // at the click Y — one shared route for in-text AND margin clicks.
   useEffect(() => {
     const handler = (e: Event) => {
       const detail = (e as CustomEvent).detail as
@@ -453,7 +453,7 @@ export function useMarkerClickBridges(deps: {
     alignOmniCardWithClick,
   ]);
 
-  // Error gutter-marker bridge — errors aren't anchored cards (no cardStore
+  // Error margin-marker bridge — errors aren't anchored cards (no cardStore
   // ref, no omni entry), so they bypass `routeAnchorClick`. EditorPane owns
   // the toggle (uniform second-click-deselects) and dispatches the post-
   // toggle state; this bridge mirrors it into the shell's error selection

@@ -106,7 +106,7 @@ export function buildUuidDecorations(doc: PMNode): DecorationSet {
  *
  * Consumers:
  *   - `useMarginaliaRegistry` looks up blocks via
- *     `document.querySelector('[data-uuid="…"]')` and the gutter drag
+ *     `document.querySelector('[data-uuid="…"]')` and the margin drag
  *     hit-test uses `closest('[data-uuid]')`.
  *   - `TextObjectGrabHandle`'s hover resolver walks `closest('[data-uuid]')`
  *     ancestors and reads `data-text-object-kind` directly from DOM —

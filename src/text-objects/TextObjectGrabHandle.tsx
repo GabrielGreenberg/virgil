@@ -30,14 +30,14 @@
  * inside `editor-pane-column` as a sibling of the editor pod. The
  * column placement (rather than inside `paper-render`) is required: the
  * pod has a `clipPath` that clips lateral descendants beyond ±20px,
- * which would silently swallow handles in the gutter (handles sit ~22px
+ * which would silently swallow handles in the margin (handles sit ~22px
  * left of the content edge). Mounting at the column level: (a) lets
  * handles scroll with the paper (the column is inside the row scroll
  * container); (b) clips them behind the sticky pod caps (top z:30,
  * bottom z:31) which are also column-level siblings sharing the root
  * stacking context against the handle's z:20; (c) clips them at the
  * row scroll container's overflow. Pointer continuity from prose →
- * gutter → handle is native (no portal-to-body decoupling), so the
+ * margin → handle is native (no portal-to-body decoupling), so the
  * leave-grace timer, `mouseOverHandleRef`, and per-handle enter/leave
  * callbacks that the old portal-to-body model required are all retired.
  */
@@ -119,7 +119,7 @@ interface Placement {
   /** Chip 3: half-width cap (px) for the hit/hover halo — half the distance to
    *  the nearest handle on the SAME visual row, or null when no near sibling
    *  shares the row. Threaded to the handle as the inline
-   *  `--gutter-handle-hit-cap` so two close nested handles (e.g. a bullet
+   *  `--margin-handle-hit-cap` so two close nested handles (e.g. a bullet
    *  container + its first item, ~19px apart) get halos that meet at the
    *  midpoint and stay independently grabbable. Derived from the resolved
    *  placements ({@link applyHitCaps}), never from a doc walk. */
@@ -234,7 +234,7 @@ function refKey(ref: TextObjectRef | SelectionRef): string {
  *
  * Why Y-axis containment rather than `elementFromPoint` + closest walk:
  * the point-hit-test silently misses anchorables nested in a container
- * whose DOM "owns" the gutter-X column. Two recurring shapes:
+ * whose DOM "owns" the margin-X column. Two recurring shapes:
  *
  *   - **listItem under `<ul>`**: with `list-style-position: outside`,
  *     `::marker` renders in the `<ul>`'s padding zone, the `<li>`'s box
@@ -321,7 +321,7 @@ const EMPTY_RESOLVED: ResolvedRef[] = [];
 
 /**
  * Compute placement for a single ref. Pins the handle's LEFT edge to the
- * source block's gutter via `computeHandleLeftEdge` (X is unchanged by the
+ * source block's margin via `computeHandleLeftEdge` (X is unchanged by the
  * chrome-geometry unification — chip 2 owns the horizontal axis). Pins the
  * handle glyph's VERTICAL center to the block's optical (cap-band) center
  * via the canonical block frame, so every affordance on a row — a container
@@ -397,13 +397,13 @@ function computePlacement(
   // handle width and floors at the editor column so a deeply-indented block on
   // a narrow viewport never pushes the handle off-screen-left.
   // (editorColumnLeft is the .ProseMirror outside-left edge; the floor inset is
-  // --gutter-col-handle-inset via cache.gutterInset.)
+  // --margin-col-handle-inset via cache.marginInset.)
   const editorColumnLeft = editor.view.dom.getBoundingClientRect().left;
   const left = computeHandleLeftEdge({
     markerLeft: ref.kind === "selection" ? frame.contentLeft : frame.markerLeft,
     gapPx: frame.gapPx,
     editorColumnLeft,
-    baselineInset: cache.gutterInset,
+    baselineInset: cache.marginInset,
   });
 
   // ---- Vertical: the Y the handle glyph's CENTER lands on ----
@@ -434,7 +434,7 @@ function computePlacement(
 
   // Convert viewport coords → portal-relative coords. The portal mounts
   // inside `editor-pane-column` (column-level sibling of the pod — escapes
-  // the pod's clipPath that would otherwise clip handles in the gutter) as
+  // the pod's clipPath that would otherwise clip handles in the margin) as
   // an absolute-positioned child. The sticky pod caps (z:30/31) cover
   // handles when they overlap on scroll.
   const portal = cache.toPortalCoords(left, dotsCenterY);
@@ -488,7 +488,7 @@ export function TextObjectGrabHandle({ editorRef }: Props) {
   // Mouse position drives the hover-based discovery path. null when the
   // mouse hasn't moved over the editor or has left the hover zone.
   // Since handles render inside the scroll container (post-Phase 6),
-  // pointer continuity from prose → gutter → handle is preserved by the
+  // pointer continuity from prose → margin → handle is preserved by the
   // browser — no leave-grace timer needed.
   const mousePosRef = useRef<{ clientX: number; clientY: number } | null>(null);
 
@@ -667,7 +667,7 @@ export function TextObjectGrabHandle({ editorRef }: Props) {
         prevEditor.off("update", onDocUpdate);
       }
       // Mousemove was attached document-wide (not on the editor DOM) so
-      // the hover zone could include the gutter to the left of content.
+      // the hover zone could include the margin to the left of content.
       // Detach the global listener whenever the editor instance changes.
       document.removeEventListener("mousemove", onMouseMove);
     };
@@ -748,7 +748,7 @@ export function TextObjectGrabHandle({ editorRef }: Props) {
         return;
       }
       // Read-only surfaces (the Library Reader) have nothing draggable, so
-      // the grab handle is pure clutter in the gutter. Yield ZERO placements
+      // the grab handle is pure clutter in the margin. Yield ZERO placements
       // when the editor isn't editable — mirrors `Marginalia.tsx`, which gates
       // its drag affordance on `editor.isEditable`. O(1), no doc walk, so it
       // doesn't regress keystroke sanctity. (Decision D-2: gate here in the
@@ -799,9 +799,9 @@ export function TextObjectGrabHandle({ editorRef }: Props) {
         editor.on("selectionUpdate", onSelectionUpdate);
         editor.on("update", onDocUpdate);
       }
-      // Hover zone now extends into the gutter to the left of the
+      // Hover zone now extends into the margin to the left of the
       // editor content (so the user can travel from text to the
-      // gutter-anchored handle without losing hover). The
+      // margin-anchored handle without losing hover). The
       // viewport-cache `containsHoverZone` predicate gates the actual
       // hover effect inside `onMouseMove`. A single document listener
       // is enough — no separate mouseleave handler is needed because
@@ -844,7 +844,7 @@ export function TextObjectGrabHandle({ editorRef }: Props) {
       // so the array won't surprise during an active gesture.)
       // Outside the row hover zone → clear immediately. With handles
       // rendered inside the scroll container, pointer continuity from
-      // prose → gutter → handle is native; no grace timer needed.
+      // prose → margin → handle is native; no grace timer needed.
       const cache = cacheRef.current;
       if (!cache.containsHoverZone(e.clientX, e.clientY)) {
         if (mousePosRef.current !== null) {
@@ -940,7 +940,7 @@ export function TextObjectGrabHandle({ editorRef }: Props) {
 
   if (typeof document === "undefined") return null;
   // The lifted-overlay ghost render moved to the shared `LiftHost`; the grab
-  // handle now renders only its gutter handles, so it bails when there are no
+  // handle now renders only its margin handles, so it bails when there are no
   // placements (no overlay state lives here anymore).
   if (placements.length === 0) return null;
   // Resolve the portal target INLINE from the same cacheRef.current
@@ -1013,7 +1013,7 @@ function GrabHandleRender({
   // the gap so two close nested handles don't overlap. Absent → the CSS
   // default (effectively unbounded) keeps the full em-scaled pad.
   if (placement.hitCapPx != null) {
-    (style as Record<string, string | number>)["--gutter-handle-hit-cap"] =
+    (style as Record<string, string | number>)["--margin-handle-hit-cap"] =
       `${placement.hitCapPx}px`;
   }
   return (

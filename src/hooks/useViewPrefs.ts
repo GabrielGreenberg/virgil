@@ -145,7 +145,7 @@ export interface ViewPrefs extends RegistryPrefs {
    *  updates this pref. */
   pageWidth: number;
   /** In-editor text margins (padding inside the editor pod), in pixels.
-   *  The left margin must clear the 72px marginalia gutter plus an 8px
+   *  The left margin must clear the 72px marginalia margin plus an 8px
    *  breathing strip for heading fold-chevrons. Top/bottom/right floor
    *  at 24px (breathing room); all cap at 240px so the column can't
    *  collapse. Adjustable via the ViewMenu → "Margins…" mode, which

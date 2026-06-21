@@ -10,9 +10,9 @@
  * cycle or a card-code dependency:
  *   - the docked card header (`CardDropButton`, chip B/C),
  *   - the float chrome button (chip D's `FloatChrome`),
- *   - the gutter pin (chip H).
+ *   - the margin pin (chip H).
  * Keeping it here (not in card code) lets the domain-neutral FloatChrome and
- * the gutter pin import it without pulling in `panel-primitives` / card kinds.
+ * the margin pin import it without pulling in `panel-primitives` / card kinds.
  */
 
 /** Default glyph edge in px — matches `CardJumpChevron`'s 10×10 chevron so the

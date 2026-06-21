@@ -488,7 +488,7 @@ function createListTitleNodeView(
     // (src/text-objects/TextObjectGrabHandle.tsx) handles bulletList /
     // orderedList lift via the registry-driven, cursor/hover-following
     // handle. The list wrapper keeps its `position: relative` so the
-    // editor-level handle can pin to its gutter via DOM-rect math.
+    // editor-level handle can pin to its margin via DOM-rect math.
 
     function setTitle(newTitle: string | null) {
       if (isFloat) {
@@ -850,7 +850,7 @@ export function createHeadingWithLabel(
         const wrapper = document.createElement("div");
         wrapper.className = `heading-wrapper heading-wrapper-l${node.attrs.level}`;
 
-        // Folding chevron — positioned in the left margin gutter at the same
+        // Folding chevron — positioned in the left margin at the same
         // horizontal offset as the paragraph drag handles. Clicking toggles
         // the fold state for this heading's section. OMITTED in floats: the
         // section-folding plugin doesn't run there (decision 6), so there's

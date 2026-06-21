@@ -39,17 +39,17 @@ export interface EditorViewportCache {
   scrollParent: HTMLElement | null;
   scrollTop: number;
   scrollBottom: number;
-  /** Pixels read from --gutter-col-handle-inset on the editor element — the
+  /** Pixels read from --margin-col-handle-inset on the editor element — the
    *  narrow-viewport FLOOR for handle placement (`editorColumnLeft −
-   *  gutterInset`), applied in src/text-objects/handle-layout.ts. (Handles
+   *  marginInset`), applied in src/text-objects/handle-layout.ts. (Handles
    *  otherwise hug each block's measured marker via block-frame.ts; this is
    *  just the off-screen-left clamp.) Read here so JS and CSS share one knob. */
-  gutterInset: number;
+  marginInset: number;
   /** Left edge of the grab-handle hover zone — the horizontal stripe
    *  where hovering reveals a TextObject's grab handle. Extends leftward
-   *  from `contentLeft` by `gutterInset` (where the handle lives) plus a
+   *  from `contentLeft` by `marginInset` (where the handle lives) plus a
    *  small cushion. So the user can move the cursor from the prose into
-   *  the gutter toward the handle without the resolver dropping hover. */
+   *  the margin toward the handle without the resolver dropping hover. */
   hoverZoneLeft: number;
   /** Right edge of the hover zone — equal to `editorRight`. Handle is
    *  on the left; no widening on the right. */
@@ -82,7 +82,7 @@ export interface EditorViewportCache {
    *  serves as the grab-handle portal's positioning context. The portal
    *  div lives as a column-level sibling of the pod (NOT inside the
    *  pod) so it escapes the pod's `clipPath` that would otherwise clip
-   *  handles in the gutter. Handles render as absolute-positioned
+   *  handles in the margin. Handles render as absolute-positioned
    *  children of `[data-grab-handle-portal]` inside this column; the
    *  rect's top-left is the origin for converting viewport coords to
    *  portal-relative coords. Null when the column isn't mounted yet.
@@ -104,10 +104,10 @@ export interface EditorViewportCache {
   toPortalCoords(viewportX: number, viewportY: number): { x: number; y: number };
 }
 
-const DEFAULT_GUTTER_INSET = 22;
+const DEFAULT_MARGIN_INSET = 22;
 /** Cushion added to the hover zone's leftward extent so the handle
  *  (~10px wide) sits comfortably inside. */
-const HOVER_GUTTER_PAD = 8;
+const HOVER_MARGIN_PAD = 8;
 
 const EMPTY_CACHE: EditorViewportCache = {
   editorEl: null,
@@ -116,7 +116,7 @@ const EMPTY_CACHE: EditorViewportCache = {
   scrollParent: null,
   scrollTop: 0,
   scrollBottom: 0,
-  gutterInset: DEFAULT_GUTTER_INSET,
+  marginInset: DEFAULT_MARGIN_INSET,
   hoverZoneLeft: 0,
   hoverZoneRight: 0,
   podLeft: 0,
@@ -177,12 +177,12 @@ export function useEditorViewportCache(editor: Editor | null): {
       const editorRight = rect.right - padRight;
       const scrollTop = scrollRect.top;
       const scrollBottom = scrollRect.bottom;
-      const insetRaw = cs.getPropertyValue("--gutter-col-handle-inset").trim();
+      const insetRaw = cs.getPropertyValue("--margin-col-handle-inset").trim();
       const parsedInset = parseFloat(insetRaw);
-      const gutterInset = Number.isFinite(parsedInset) && parsedInset > 0
+      const marginInset = Number.isFinite(parsedInset) && parsedInset > 0
         ? parsedInset
-        : DEFAULT_GUTTER_INSET;
-      const hoverZoneLeft = contentLeft - gutterInset - HOVER_GUTTER_PAD;
+        : DEFAULT_MARGIN_INSET;
+      const hoverZoneLeft = contentLeft - marginInset - HOVER_MARGIN_PAD;
       const hoverZoneRight = editorRight;
       // `.editor-pane-pod` is the outer pod wrapper around the text
       // column (white surface + chrome). The lifted-overlay gesture's
@@ -204,7 +204,7 @@ export function useEditorViewportCache(editor: Editor | null): {
       // handle portal. The portal lives at column level (sibling of the
       // pod) so it escapes the pod's `clipPath` that clips lateral
       // descendants beyond ±20px (the handle sits ~22px left of the
-      // pod's content edge, in the gutter). Walk from the editorEl up
+      // pod's content edge, in the margin). Walk from the editorEl up
       // — same direction as the scroll parent walk — to find it.
       const paperEl = (editorEl.closest(
         '[data-editor-col="true"]',
@@ -220,7 +220,7 @@ export function useEditorViewportCache(editor: Editor | null): {
         prev.scrollParent === scrollParent &&
         prev.scrollTop === scrollTop &&
         prev.scrollBottom === scrollBottom &&
-        prev.gutterInset === gutterInset &&
+        prev.marginInset === marginInset &&
         prev.podLeft === podLeft &&
         prev.podRight === podRight &&
         prev.podTop === podTop &&
@@ -258,7 +258,7 @@ export function useEditorViewportCache(editor: Editor | null): {
         scrollParent,
         scrollTop,
         scrollBottom,
-        gutterInset,
+        marginInset,
         hoverZoneLeft,
         hoverZoneRight,
         podLeft,

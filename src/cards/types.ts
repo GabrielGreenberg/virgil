@@ -54,7 +54,7 @@ export type CardKind =
 export type ThemeKey = PanelThemeKey;
 
 /**
- * Gutter-marker namespace union — the categories the marginalia gutter can
+ * Margin-marker namespace union — the categories the marginalia margin can
  * render. Canonical home is HERE, beside `CardMeta.markerType` (A6/R17);
  * `@/lib/marginalia` re-exports it so its existing importers are unchanged.
  * (It used to live in `lib/marginalia.ts`, which made this type layer import
@@ -112,7 +112,7 @@ export interface CardLifecycleCapability {
 export type MorphDropField = "title" | "byline" | "aiRequest" | "body" | "keys";
 
 /** Declarative content model (T4 §3.1). The single descriptor `cardHasContent`
- *  walks — both the panel-trash and gutter-marker delete-confirm read it, so a
+ *  walks — both the panel-trash and margin-marker delete-confirm read it, so a
  *  kind can never silently delete user content the confirm couldn't see. Every
  *  named field must exist on the kind's record type (pinned by
  *  `assertContentCoverage`).
@@ -172,7 +172,7 @@ export interface CardMeta {
    *  `ANCHORED_CARD_KINDS` / `EntityKind` / `MarginaliaMarker.entityKind`). A
    *  static capability flag — never computed by scanning the doc. */
   anchored: boolean;
-  /** Gutter-marker namespace, or `null` for kinds with no marginalia icon
+  /** Margin-marker namespace, or `null` for kinds with no marginalia icon
    *  (footnote/citation render in-text atoms; bib/ai unanchored; highlight = tint). */
   markerType: MarkerType | null;
   /** AI-request routing (R29), or absent for kinds whose cards carry no
@@ -191,7 +191,7 @@ export interface CardMeta {
   lifecycle: CardLifecycleCapability;
   /** The card's USER-CONTENT model — the single declarative descriptor both
    *  the panel-trash delete-confirm (`EditableCard.tryDelete`) and the
-   *  gutter-marker delete (`deleteMarginItem`) read to gate the
+   *  margin-marker delete (`deleteMarginItem`) read to gate the
    *  "This item has text. Delete it?" confirm AND the orphan-worthiness test.
    *  Replaces the divergent per-kind `switch` in `cardHasContent` — NO kind may
    *  carry content the confirm can't see (the deficiency behind REP-F7-01 /

@@ -1,9 +1,9 @@
 // @vitest-environment jsdom
 //
-// RC — list-item-note gutter-marker cull on HOVER (the real trigger).
+// RC — list-item-note margin-marker cull on HOVER (the real trigger).
 //
 // THE BUG (root-caused live, 2026-06-17)
-// A note anchored to a live `<li>` (listItem) renders a gutter marker; the
+// A note anchored to a live `<li>` (listItem) renders a margin marker; the
 // registry observed + cached the li's uuid. Hovering that marker writes
 // `data-card-hovered` / `data-paragraph-kind` / `data-margin-side` onto the
 // anchored block via `useAnchorHighlightReconciler` (a raw `setAttribute`, not

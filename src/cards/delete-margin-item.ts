@@ -1,7 +1,7 @@
 /**
- * Delete-or-unanchor for a single gutter margin item.
+ * Delete-or-unanchor for a single margin item.
  *
- * Contract: Delete/Backspace on a focused gutter marker routes through this
+ * Contract: Delete/Backspace on a focused margin marker routes through this
  * helper rather than the old "just remove the paragraph link" path. The
  * result cuts down the number of incidental ways an unanchored card can
  * come into being:
@@ -42,7 +42,7 @@ import {
 } from "@/cards/has-content";
 import type { MarkerType } from "@/cards/types";
 
-/** Gutter marker kinds that map to deletable cards — `MarkerType` minus
+/** Margin marker kinds that map to deletable cards — `MarkerType` minus
  *  `"error"` (errors aren't cards; their marker dismisses the lint entry).
  *  Derived, so a new marker namespace automatically needs a handler bundle
  *  here or fails to typecheck. */

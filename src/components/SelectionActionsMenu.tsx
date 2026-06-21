@@ -1,8 +1,8 @@
 "use client";
 
 /**
- * The contextual gutter trigger for the action menu. Renders a small
- * yellow-lightning-bolt button anchored in the far-right gutter at the
+ * The contextual margin trigger for the action menu. Renders a small
+ * yellow-lightning-bolt button anchored in the far-right margin at the
  * head line of the current selection (or cursor, when no selection).
  * Clicking it mounts {@link ActionsMenuPanel} at the button's position.
  *
@@ -28,7 +28,7 @@ import {
   type EditorViewportCache,
 } from "@/hooks/useEditorViewportCache";
 import { findEditorScrollFor } from "@/components/editor-layout/layout-scroll";
-import { RESTING_GUTTER_TRIGGER_Z } from "@/floats/float-policy";
+import { RESTING_MARGIN_TRIGGER_Z } from "@/floats/float-policy";
 
 const VIEWPORT_MARGIN = 8;
 const RIGHT_GAP = 6;
@@ -61,7 +61,7 @@ interface Placement {
 }
 
 /**
- * Single placement rule: far-right gutter at the line containing the
+ * Single placement rule: far-right margin at the line containing the
  * selection head. Stable under tiny selection changes because the X
  * comes from the editor box (not per-line geometry) and the Y is the
  * head line's top.
@@ -314,7 +314,7 @@ export function SelectionActionsMenu({
   }, [menuTarget]);
 
   // Cmd+/ opens the menu at the live cursor/selection — the keyboard twin of
-  // clicking the gutter ⚡. O(1) bail; window-level (not an editor.on
+  // clicking the margin ⚡. O(1) bail; window-level (not an editor.on
   // subscriber), so it costs nothing per keystroke.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -372,7 +372,7 @@ export function SelectionActionsMenu({
   // the two states feel like one component: the menu expands out of the
   // button, anchored at the same `left/top`.
   //
-  // z-index: the RESTING bolt sits at `RESTING_GUTTER_TRIGGER_Z`
+  // z-index: the RESTING bolt sits at `RESTING_MARGIN_TRIGGER_Z`
   // (= FLOAT_Z_BASE − 1, see src/floats/float-policy.ts tier map) — above
   // editor content + the docked-panel band so it's clickable when nothing
   // overlaps, but strictly BELOW the float layer (1200) so a popout / popped
@@ -398,7 +398,7 @@ export function SelectionActionsMenu({
         top: placement.top,
         width: BUTTON_SIZE,
         height: BUTTON_SIZE,
-        zIndex: RESTING_GUTTER_TRIGGER_Z,
+        zIndex: RESTING_MARGIN_TRIGGER_Z,
         background: "var(--pod-editor)",
         border: "var(--pod-border)",
         boxShadow: "var(--pod-shadow)",

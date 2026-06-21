@@ -5,7 +5,7 @@
  * `markerLeft` per kind: an example block hugs its `.expex-number`, an example
  * item its `.expex-item-marker`. When that marker chrome ISN'T resolvable (a
  * transient render before the NodeView mounts, or an unfaithful clone), the
- * helper falls back. The fallback MUST stay in the GUTTER (left of content) —
+ * helper falls back. The fallback MUST stay in the MARGIN (left of content) —
  * a `contentLeft` fallback would anchor the handle at the text start, RIGHT of
  * the marker, dropping the dots onto the content (the reported symptom).
  *
@@ -50,7 +50,7 @@ describe("resolveMarkerLeft — example marker fallback stays LEFT of content (#
       CONTENT_LEFT,
       TRACK_WIDTH,
     );
-    // Must be strictly left of the content start (in the gutter), never == it.
+    // Must be strictly left of the content start (in the margin), never == it.
     expect(left).toBeLessThan(CONTENT_LEFT);
     expect(left).toBe(CONTENT_LEFT - TRACK_WIDTH);
   });

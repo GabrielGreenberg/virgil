@@ -213,7 +213,7 @@ interface OverlayState {
 /**
  * The terminal behavior of a lift gesture, chosen by the producer:
  *
- *  - `"grab"` (the in-editor gutter grab handle): ghost-over-content commits a
+ *  - `"grab"` (the in-editor margin grab handle): ghost-over-content commits a
  *    doc MOVE (`commitDropSession`); ghost-OUT-of-content enters "popout" mode
  *    and on release CANCELS the session + SPAWNS a real float at the overlay's
  *    rect (the chrome-offset math). The legacy grab-handle behavior — preserved

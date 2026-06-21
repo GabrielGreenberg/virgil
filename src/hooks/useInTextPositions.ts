@@ -28,7 +28,7 @@ export interface PositionItem {
  * the doc, so they DO resolve a pos and are kept; the cascade resolver then
  * positions them). Deciding that a card's *stored* uuid is dead and needs
  * snapshot/mark recovery is NO LONGER this helper's call — that lives in the
- * anchor-recovery SSOT (`resolveCardAnchor`), which the gutter-marker builder
+ * anchor-recovery SSOT (`resolveCardAnchor`), which the margin-marker builder
  * (`EditorPane.marginaliaMarkers`) runs upstream so the pids that reach the
  * render layer are already resolved-or-orphan-flagged. Callers that want
  * recovery should feed resolver-resolved pids; this helper does only the

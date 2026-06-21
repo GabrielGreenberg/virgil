@@ -3,7 +3,7 @@
 /**
  * Module-scope store for the global "anchored card" interaction state. The
  * three surfaces of every anchored card (linked text in the editor, marginalia
- * icon in the gutter, panel card in the rail) all subscribe here; whatever the
+ * icon in the margin, panel card in the rail) all subscribe here; whatever the
  * user touches paints all three.
  *
  * Module scope (not Context) so `EditorLayout` (host shell), `EditorPane` (the

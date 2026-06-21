@@ -219,7 +219,7 @@ export function IconCutter({ active, size = 18 }: { active?: boolean; size?: num
 // reading as "a written response/commentary." Modeled on IconOmni's
 // rounded-rect-plus-lines, but with a higher corner radius + a downward
 // tail + varied line lengths so it stays visually distinct from the omni
-// square. In gutter mode (hideFrame) the balloon outline + tail are dropped
+// square. In margin mode (hideFrame) the balloon outline + tail are dropped
 // so the centered text lines still read at 16px in the margin.
 export function IconReports({ active, size = 18, hideFrame }: { active?: boolean; size?: number; hideFrame?: boolean }) {
   const c = active ? "var(--accent)" : "currentColor";
@@ -352,7 +352,7 @@ export function IconExample({
 }
 
 // Lightning-bolt glyph used on the action triggers that expand into the
-// SelectionActionsMenu. The contextual gutter trigger uses the filled
+// SelectionActionsMenu. The contextual margin trigger uses the filled
 // yellow variant (default); the stable MenuBar-strip trigger passes
 // `muted` to get a stroked currentColor outline that inherits the
 // strip's ink-muted/hover-ink-body palette like its sibling buttons.

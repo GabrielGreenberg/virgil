@@ -1,5 +1,5 @@
 /**
- * A6/R16 pin tests — gutter overflow with a reserved "+K" pill cell.
+ * A6/R16 pin tests — margin overflow with a reserved "+K" pill cell.
  *
  * `computeMarkerPositions` is a pure function (no DOM): when a node's
  * markers exceed its line-grid capacity, the LAST cell is reserved for the
@@ -11,7 +11,7 @@ import { computeMarkerPositions } from "@/lib/marginalia-grid";
 import {
   MARGINALIA_COLS,
   MARGINALIA_COL_GAP,
-  MARGINALIA_GUTTER_WIDTH,
+  MARGINALIA_MARGIN_WIDTH,
   MARGINALIA_ICON_SIZE,
   MARGINALIA_INNER_PAD,
   type AnchorNodeMetrics,
@@ -55,7 +55,7 @@ function expectedXLeft(col: number): number {
     MARGINALIA_COLS * MARGINALIA_ICON_SIZE +
     (MARGINALIA_COLS - 1) * MARGINALIA_COL_GAP;
   return (
-    MARGINALIA_GUTTER_WIDTH -
+    MARGINALIA_MARGIN_WIDTH -
     MARGINALIA_INNER_PAD -
     iconsWidth +
     col * (MARGINALIA_ICON_SIZE + MARGINALIA_COL_GAP)
@@ -95,7 +95,7 @@ describe("computeMarkerPositions overflow (A6/R16)", () => {
     });
   });
 
-  it("left gutter has 1 effective column: 2-line paragraph + 3 markers → 1 visible + pill(+2)", () => {
+  it("left margin has 1 effective column: 2-line paragraph + 3 markers → 1 visible + pill(+2)", () => {
     // Left side packs a single column (inner-left slot reserved for the
     // popout button) → capacity = lineCount. 2 lines, 3 markers → cell 0
     // visible, cell 1 (row 1) reserved for the pill.

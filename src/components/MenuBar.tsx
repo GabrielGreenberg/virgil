@@ -892,7 +892,7 @@ function MenuBarContent({
       {collabStatus}
 
       {/* Paragraph navigation — back/forward stacked along the main axis.
-          The action menu is reached from the gutter SelectionActionsMenu
+          The action menu is reached from the margin SelectionActionsMenu
           trigger; no redundant strip copy lives here. */}
       {(onParaNavBack || onParaNavForward) && (
         <div className={`flex items-stretch gap-1 ${isVert ? "flex-col" : "flex-row"}`}>

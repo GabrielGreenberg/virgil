@@ -1,5 +1,5 @@
 /**
- * Registry-derived marker metadata (A6/R17). The gutter's per-`MarkerType`
+ * Registry-derived marker metadata (A6/R17). The margin's per-`MarkerType`
  * facts that are really CARD facts — which card kinds share a marker
  * namespace, which panel owns it, which theme key colors it — are derived
  * HERE from `CARD_REGISTRY`, the card-spine SSOT. The marginalia-local
@@ -119,7 +119,7 @@ export function panelThemeKeyForMarkerType(t: MarkerType): PanelThemeKey {
  *  distinct non-null `markerType`s declared in `CARD_REGISTRY` must equal
  *  `ALL_MARKER_TYPES` (≡ the `MarkerType` union ≡ `MARKER_META`'s keys, by
  *  the type pins above). Catches a registry kind declaring a markerType the
- *  gutter has no row for, or a marker row no kind produces. */
+ *  margin has no row for, or a marker row no kind produces. */
 export function assertMarkerCoverage(): void {
   if (process.env.NODE_ENV === "production") return;
   const declared = new Set<MarkerType>(kindsByMarkerType.keys());

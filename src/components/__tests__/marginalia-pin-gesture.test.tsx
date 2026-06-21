@@ -1,8 +1,8 @@
 // @vitest-environment jsdom
 //
-// Pins for the FOLDED gutter-pin re-anchor gesture (chip H PHASE 2).
+// Pins for the FOLDED margin-pin re-anchor gesture (chip H PHASE 2).
 //
-// The marginalia gutter pin used to re-anchor a card via native HTML5 DnD
+// The marginalia margin pin used to re-anchor a card via native HTML5 DnD
 // (MIME_MARGINALIA_MOVE → a `virgil-marginalia-reanchor` CustomEvent → the
 // `anchor-rebind` bridge). That parallel machinery is deleted; the pin now
 // starts a unified drop-mode session via the SAME `beginCardDropGesture`
@@ -75,7 +75,7 @@ function pressPin(button = 0, clientX = 40, clientY = 50) {
   fireEvent.mouseDown(screen.getByRole("button"), { button, clientX, clientY });
 }
 
-describe("gutter-pin → beginCardDropGesture (folded re-anchor)", () => {
+describe("margin-pin → beginCardDropGesture (folded re-anchor)", () => {
   // [markerType, entityKind, entityId] — covers the single-kind markers and
   // BOTH legs of every ambiguous MarkerType (cut, report, revision).
   const cases: Array<[MarginaliaMarker["type"], EntityKind, string]> = [
@@ -121,7 +121,7 @@ describe("gutter-pin → beginCardDropGesture (folded re-anchor)", () => {
   }
 });
 
-describe("gutter-pin gesture guards", () => {
+describe("margin-pin gesture guards", () => {
   it("a non-card 'error' marker (no entityKind) starts NO session", () => {
     render(
       <MarkerButton

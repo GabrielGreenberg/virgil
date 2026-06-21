@@ -1,10 +1,10 @@
 // @vitest-environment jsdom
 //
-// RC — list-item-note gutter-marker cull on a transient `walkAnchorableBlocks`
+// RC — list-item-note margin-marker cull on a transient `walkAnchorableBlocks`
 // exclusion.
 //
 // THE BUG
-// A note anchored to a live `<li>` (listItem) renders a gutter marker: the
+// A note anchored to a live `<li>` (listItem) renders a margin marker: the
 // registry observed + cached the li's uuid. Then a `syncObservedSet` runs whose
 // `walkAnchorableBlocks` TRANSIENTLY excludes that still-live uuid (a mid-
 // transaction / measure-time walk that momentarily didn't enumerate the li).

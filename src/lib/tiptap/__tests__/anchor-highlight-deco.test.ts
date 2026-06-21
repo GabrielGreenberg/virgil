@@ -10,7 +10,7 @@
 // ignoreMutation), PM's MutationObserver sees the foreign attr as a node
 // mutation and REDRAWS the node — detaching the old element and inserting a
 // fresh one. The hover highlight is lost (lands on the detached element) and
-// the gutter marker is culled. THE FIX paints via a ProseMirror decoration
+// the margin marker is culled. THE FIX paints via a ProseMirror decoration
 // (setAnchorHighlightTargets → meta-only tx → DecorationSet) so PM OWNS the
 // attrs and never treats them as a foreign mutation → no redraw.
 //

@@ -96,7 +96,7 @@ describe("inspectSteps — paragraph split / merge", () => {
     const added = d.addedBlocks.map((b) => b.uuid);
     // The original p1 SURVIVES (it's still on the first paragraph), so the
     // inspector must NOT claim it removed — doing so would desync structure.blocks
-    // and strip the original's data-uuid decoration (the gutter/omni-flash class).
+    // and strip the original's data-uuid decoration (the margin/omni-flash class).
     expect(removed).not.toContain("p1");
     // The freshly-minted clone identity is a real new block.
     expect(added).toContain("fresh");

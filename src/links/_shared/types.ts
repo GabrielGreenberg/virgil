@@ -8,7 +8,7 @@
  *    a panel card; bidirectional jump.
  *  - `anchor` — anchored to a TextObject (any kind: paragraph, heading,
  *    listItem, exampleItem, atom block, linkedRange, …); always has a
- *    margin-gutter icon; many anchor links can point at the same card.
+ *    margin icon; many anchor links can point at the same card.
  *
  * Mode is derived, not declared: an `anchor` link is Mode B iff
  * `anchor.targetKind === "linkedRange"` (the TextObject kind is a
@@ -55,7 +55,7 @@ export type LinkAnchor =
        *  a Mode B link also lives inside the containing TextObject(s).
        *  Multi-anchor (N > 1) is allowed for Mode A. */
       textObjectIds: string[];
-      /** Every TextObject-anchor link carries a margin-gutter entry. */
+      /** Every TextObject-anchor link carries a margin entry. */
       margin: { side: "left" | "right" };
       /** Mode-A self-healing snapshot. A plain-text capture of the
        *  anchored paragraph at write time, used by the reload reconciler

@@ -29,14 +29,14 @@ export interface HandleLayoutInput {
   /** The block's MEASURED marker-left from `block-frame.ts` (a selection,
    *  which labels text not a marker, passes its `contentLeft` instead). */
   markerLeft: number;
-  /** The block's `--gutter-handle-gap` resolved (em → px) against its font,
+  /** The block's `--margin-handle-gap` resolved (em → px) against its font,
    *  from `block-frame.ts`. */
   gapPx: number;
   /** Left edge of the editor column (the `.ProseMirror` DOM rect.left) — the
    *  floor reference so narrow viewports don't push the handle off-screen. */
   editorColumnLeft: number;
-  /** Narrow-viewport floor inset, read from `--gutter-col-handle-inset` via
-   *  the EditorViewportCache (`cache.gutterInset`). */
+  /** Narrow-viewport floor inset, read from `--margin-col-handle-inset` via
+   *  the EditorViewportCache (`cache.marginInset`). */
   baselineInset: number;
 }
 

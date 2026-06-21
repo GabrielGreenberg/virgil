@@ -24,7 +24,7 @@ import {
   FLOATING_PANEL_Z_BASE,
   OPEN_CHROME_MENU_Z,
   POPOUT_MAX_VH,
-  RESTING_GUTTER_TRIGGER_Z,
+  RESTING_MARGIN_TRIGGER_Z,
   capPopoutHeight,
   liftSpawnRect,
 } from "../float-policy";
@@ -92,26 +92,26 @@ describe("collapsed-lift grow target (capPopoutHeight branch)", () => {
   });
 });
 
-// BUG #50 — the resting gutter bolt (SelectionActionsMenu) must sit at TEXT/
+// BUG #50 — the resting margin bolt (SelectionActionsMenu) must sit at TEXT/
 // content z-level so a popout dropped over its paragraph OCCLUDES it, while the
 // transient menu it opens (ActionsMenuPanel via the <Menu> primitive) stays on
 // top of everything. These pins guard the editor stacking tier ORDERING so the
 // "resting trigger below floats, open menu above floats" split can't silently
 // regress to the old magic `2000` on the resting bolt.
-describe("editor stacking tiers (BUG #50: gutter bolt below floats)", () => {
+describe("editor stacking tiers (BUG #50: margin bolt below floats)", () => {
   it("orders the tiers panels < resting trigger < float layer < open menu", () => {
-    expect(FLOATING_PANEL_Z_BASE).toBeLessThan(RESTING_GUTTER_TRIGGER_Z);
-    expect(RESTING_GUTTER_TRIGGER_Z).toBeLessThan(FLOAT_Z_BASE);
+    expect(FLOATING_PANEL_Z_BASE).toBeLessThan(RESTING_MARGIN_TRIGGER_Z);
+    expect(RESTING_MARGIN_TRIGGER_Z).toBeLessThan(FLOAT_Z_BASE);
     expect(FLOAT_Z_BASE).toBeLessThan(OPEN_CHROME_MENU_Z);
   });
 
-  it("demotes the RESTING gutter trigger strictly below the float layer", () => {
+  it("demotes the RESTING margin trigger strictly below the float layer", () => {
     // The core BUG #50 invariant: at rest the bolt must be UNDER floats so a
     // popped card / lifted-text overlay (z = FLOAT_Z_BASE) paints over it.
-    expect(RESTING_GUTTER_TRIGGER_Z).toBeLessThan(FLOAT_Z_BASE);
+    expect(RESTING_MARGIN_TRIGGER_Z).toBeLessThan(FLOAT_Z_BASE);
     // Derived, not a magic number — sits exactly one below the float base so it
     // wins over content/panels but loses to every float.
-    expect(RESTING_GUTTER_TRIGGER_Z).toBe(FLOAT_Z_BASE - 1);
+    expect(RESTING_MARGIN_TRIGGER_Z).toBe(FLOAT_Z_BASE - 1);
   });
 
   it("keeps an OPEN chrome menu above the float layer", () => {
@@ -123,7 +123,7 @@ describe("editor stacking tiers (BUG #50: gutter bolt below floats)", () => {
   it("keeps the resting trigger above the docked-panel band (still clickable)", () => {
     // When nothing overlaps, the bolt must out-stack docked panels so it stays
     // visible + clickable.
-    expect(RESTING_GUTTER_TRIGGER_Z).toBeGreaterThan(FLOATING_PANEL_Z_BASE);
+    expect(RESTING_MARGIN_TRIGGER_Z).toBeGreaterThan(FLOATING_PANEL_Z_BASE);
   });
 });
 
@@ -135,12 +135,12 @@ describe("BUG #50 consumer wiring", () => {
   const HERE = path.dirname(fileURLToPath(import.meta.url));
   const SRC = path.resolve(HERE, "../.."); // src/
 
-  it("SelectionActionsMenu's resting bolt reads RESTING_GUTTER_TRIGGER_Z, not 2000", () => {
+  it("SelectionActionsMenu's resting bolt reads RESTING_MARGIN_TRIGGER_Z, not 2000", () => {
     const src = readFileSync(
       path.join(SRC, "components/SelectionActionsMenu.tsx"),
       "utf8",
     );
-    expect(src).toContain("RESTING_GUTTER_TRIGGER_Z");
+    expect(src).toContain("RESTING_MARGIN_TRIGGER_Z");
     expect(src).toContain('from "@/floats/float-policy"');
     // The resting bolt must NOT carry the old above-floats literal.
     expect(src).not.toContain("zIndex: 2000");

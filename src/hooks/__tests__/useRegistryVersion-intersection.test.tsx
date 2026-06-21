@@ -1,11 +1,11 @@
 // @vitest-environment jsdom
 //
-// Regression guard for the gutter "stale position on scroll-in" bug:
+// Regression guard for the margin "stale position on scroll-in" bug:
 // `useRegistryVersion` used to snapshot `recomputes`, which bumps ONLY in
 // `flushRecompute`. But the registry also `notify()`s (bumping `version`) when a
 // block ENTERS the near-zone via the IntersectionObserver and is measured —
 // WITHOUT bumping `recomputes`. So an intersection-only cache change did NOT
-// re-render the gutter, leaving a marker at a stale position until some unrelated
+// re-render the margin, leaving a marker at a stale position until some unrelated
 // recompute fired. The fix snapshots `version`. This test drives an intersection
 // ENTER and asserts the version snapshot advances while `recomputes` stays flat
 // (so the OLD snapshot would have missed it).
@@ -182,7 +182,7 @@ describe("useRegistryVersion — intersection-only updates re-render (snapshots 
       flushRaf();
     });
 
-    // `version` is what consumers (Marginalia gutter) re-render on; `stats()`
+    // `version` is what consumers (Marginalia margin) re-render on; `stats()`
     // exposes both for the diagnostic contract.
     expect(typeof result.current.version).toBe("number");
     const r0 = result.current.registry.stats().recomputes;
@@ -203,7 +203,7 @@ describe("useRegistryVersion — intersection-only updates re-render (snapshots 
     // version advanced (so useRegistryVersion re-renders) ...
     expect(v1).toBeGreaterThan(v0);
     // ... while recomputes did NOT — i.e. the OLD `recomputes` snapshot would
-    // have MISSED this update and left the gutter stale.
+    // have MISSED this update and left the margin stale.
     expect(r1).toBe(r0);
     // And the hook's reactive value tracks `version`.
     expect(result.current.version).toBe(v1);

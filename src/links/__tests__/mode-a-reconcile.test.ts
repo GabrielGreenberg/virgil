@@ -6,7 +6,7 @@
 // round-trips through the `.tex` only as a `%!v:` comment written by the
 // 1500 ms autosave; if the write loses the race to a reload, the
 // paragraph is re-minted a fresh UUID and the card silently orphans
-// (gone from the gutter, yet `isUnanchored` still reports anchored).
+// (gone from the margin, yet `isUnanchored` still reports anchored).
 //
 // These pins exercise the recovery machinery against the REAL main
 // editor stack (so paragraphs carry a `uuid` attr exactly as in prod):

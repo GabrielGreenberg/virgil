@@ -338,7 +338,7 @@ describe("marginalia marker memo — keystroke sanctity (CHIP-B)", () => {
 
     // Marker-id derivation is `<kind>:<pid>` (EditorPane keys markers that
     // way), so the two markers get DISTINCT ids — the property that lets the
-    // gutter render + key both.
+    // margin render + key both.
     const ids = entries.map((e) => `note:${e.pid}`);
     expect(ids).toEqual(["note:P1", "note:P3"]);
     expect(new Set(ids).size).toBe(2);

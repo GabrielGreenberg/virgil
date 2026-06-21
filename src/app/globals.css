@@ -81,15 +81,15 @@
   --h2h3-color: var(--editor-text-color);
   --par-title-size: 0.78rem;
   --par-title-color: #c45a5a;
-  /* Gutter coordinate system — distances are CSS-negative px from the
-     content column's left edge. Two columns share this gutter: the
+  /* Margin coordinate system — distances are CSS-negative px from the
+     content column's left edge. Two columns share this margin: the
      fold chevron (leftmost) and the grab-handle baseline (between
      chevron and content). The handle inset (used as the narrow-viewport
      FLOOR) is read by block-frame.ts via getComputedStyle so JS placement
-     and CSS chrome stay in lockstep. See STYLE_GUIDE.md "Gutter chrome". */
-  --gutter-col-chevron: -44px;
-  --gutter-col-handle-inset: 22px;
-  /* Chip-2 chrome geometry: a gutter affordance's RIGHT edge sits one
+     and CSS chrome stay in lockstep. See STYLE_GUIDE.md "Margin chrome". */
+  --margin-col-chevron: -44px;
+  --margin-col-handle-inset: 22px;
+  /* Chip-2 chrome geometry: a margin affordance's RIGHT edge sits one
      uniform GAP left of its block's MEASURED marker (text content-left for
      prose/headings; the (n)/a. chip for examples; the bullet band for list
      items). em-based so it scales with the labeled text's font — resolved
@@ -99,9 +99,9 @@
      edge (= markerLeft − gap − 12px box) lands at the pre-chip-2
      contentLeft − ~22px baseline. A markerless container (bulletList /
      orderedList) steps its handle one TRACK-WIDTH left of its first item's
-     handle (⠿⠿ • text). See STYLE_GUIDE.md "Gutter chrome". */
-  --gutter-handle-gap: 0.625em;
-  --gutter-track-width: 1.25em;
+     handle (⠿⠿ • text). See STYLE_GUIDE.md "Margin chrome". */
+  --margin-handle-gap: 0.625em;
+  --margin-track-width: 1.25em;
   /* Inter-block vertical rhythm. Owned by each block's margin-top
      (margin-bottom: 0 on every block) so the gap is predictable
      regardless of margin-collapse. The .par-title-annotation overlays
@@ -743,12 +743,12 @@ textarea,
   margin-top: 1.8em;
 }
 
-/* Folding chevron — sits in the gutter just to the left of the heading
+/* Folding chevron — sits in the margin just to the left of the heading
    drag handle, with a small breathing gap. Default state (expanded) points
    down; folded state rotates the chevron so it faces into the heading. */
 .heading-fold-chevron {
   position: absolute;
-  left: var(--gutter-col-chevron, -44px);
+  left: var(--margin-col-chevron, -44px);
   top: 0.5em;
   width: 14px;
   height: 14px;
@@ -857,7 +857,7 @@ textarea,
    The sensor is the FIRST child of .tex-block-pod; in normal stacking
    order the editor/preview (later siblings) sit on top in the overlap
    area, so the pod still receives clicks. The sensor catches events
-   in the gutter (where the chevron + grab visually sit) — that's the
+   in the margin (where the chevron + grab visually sit) — that's the
    key path: the handle itself has `pointer-events: none` until the
    parent is :hover, so cursor over the handle's visible position
    hits the sensor instead and reveals the handle. */
@@ -872,7 +872,7 @@ textarea,
 
 .tex-block-fold-chevron {
   position: absolute;
-  left: var(--gutter-col-chevron, -44px);
+  left: var(--margin-col-chevron, -44px);
   top: 0;
   width: 14px;
   height: 14px;
@@ -1339,7 +1339,7 @@ textarea,
   /* Chip 3: width of the centered grab hit/hover halo (the ::before below).
      Scales with the editor font like the handle height (~1.8× font ≈ 1.8em),
      so the target grows with larger prose rather than staying a fixed px. */
-  --gutter-handle-hit-pad: calc(var(--editor-font-size, 1.05rem) * 1.8);
+  --margin-handle-hit-pad: calc(var(--editor-font-size, 1.05rem) * 1.8);
   /* Chip 3: sibling-overlap cap — the MAX half-width (px) the halo may take.
      Default is effectively unbounded (full pad); the grab-handle component
      sets this inline to half the distance to the nearest same-row handle when
@@ -1347,7 +1347,7 @@ textarea,
      its first item, measured ~19px apart) get halos that meet at the midpoint
      and stay independently grabbable instead of the wider swallowing the
      narrower. See TextObjectGrabHandle.tsx `applyHitCaps`. */
-  --gutter-handle-hit-cap: 999px;
+  --margin-handle-hit-cap: 999px;
   transform: translateY(-50%);
   opacity: 1;
   pointer-events: auto;
@@ -1376,7 +1376,7 @@ textarea,
   left: 50%;
   width: max(
     12px,
-    min(var(--gutter-handle-hit-pad), calc(var(--gutter-handle-hit-cap) * 2))
+    min(var(--margin-handle-hit-pad), calc(var(--margin-handle-hit-cap) * 2))
   );
   height: 100%;
   transform: translate(-50%, -50%);
@@ -1430,7 +1430,7 @@ textarea,
                  no border / background / shadow. Communicates
                  "this is what you're moving; the move will commit
                  in place when you release."
-   - "popout"  = cursor in gutter or beyond; full frame matching
+   - "popout"  = cursor in margin or beyond; full frame matching
                  TextObjectFloat's chrome, 100% opacity. Communicates
                  "release here to spawn a floating popout."
 
@@ -1908,7 +1908,7 @@ textarea,
    text line. Fallback selector covers bare <p> children.
 
    The negative margin-left + matching extra padding-left shifts the grey
-   bar a little further into the gutter without moving the text. */
+   bar a little further into the margin without moving the text. */
 .tiptap blockquote .par-body-container,
 .tiptap blockquote > p {
   margin-left: -0.3em;
@@ -2823,7 +2823,7 @@ textarea,
  * side as the margin marker (data-margin-side="left|right"), with NO
  * background wash. Left side uses a pseudo-element so the bar is
  * positioned independently of paragraph dimensions and stays at a fixed
- * width (reads as a highlight in the gutter between the text and the grab
+ * width (reads as a highlight in the margin between the text and the grab
  * handle, which sits at left: -14px); right side uses an inset box-shadow.
  * Hover and selection paint the same 2px / 50% line. */
 [data-card-hovered="paragraph"][data-margin-side="left"],
@@ -2906,7 +2906,7 @@ textarea,
 
 /* In-text connector lines are now drawn via InTextConnectors SVG component */
 
-/* Note markers (green N in editor gutter) */
+/* Note markers (green N in editor margin) */
 .note-marker {
   display: flex;
   align-items: center;
@@ -3585,7 +3585,7 @@ body[data-drop-mode-active="true"] * {
  * .heading-annotation for breathing room before the next content. */
 .expex-label-annotation {
   /* A-B = number col + gap. Tracks --expex-num-width so the pod stays at B
-   * (the body column) when multi-digit numbers widen the gutter. The 0.8em
+   * (the body column) when multi-digit numbers widen the column. The 0.8em
    * gap matches .expex-block's column-gap. (Was a hardcoded 2.4rem — drifted
    * from the grid's 2.3em; reconciled to the live var per backlog #25.) */
   margin-left: calc(var(--expex-num-width, 1.5em) + 0.8em);
@@ -4354,7 +4354,7 @@ body[data-pref-mode="on"] [data-panel-theme]:hover {
   html[data-print-e-citations="false"] .citation-node { display: none; }
   html[data-print-e-examples="false"] .expex-block { display: none; }
   html[data-print-e-display-math="false"] .display-math { display: none; }
-  html[data-print-e-marginalia="false"] [data-marginalia-gutter] { display: none; }
+  html[data-print-e-marginalia="false"] [data-marginalia-margin] { display: none; }
   html[data-print-e-linked-anchor-underlines="false"] .linked-anchor {
     text-decoration: none; background: transparent; color: inherit;
   }
