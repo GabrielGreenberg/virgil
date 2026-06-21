@@ -340,22 +340,28 @@ export function PanelTabStrip({
         display: "flex",
         alignItems: "flex-end",
         gap: 2,
-        padding: "0 4px",
+        // 1px bottom padding + -1px bottom margin lets the active tab's 1px
+        // fill bridge spill exactly 1px below the strip and overlap the body's
+        // top border — covering it under the active tab so the tab merges into
+        // the page with NO seam line — without changing the strip's outer
+        // footprint. The overflowY:hidden scroll-clip would otherwise eat that
+        // 1px; the padding keeps it inside the clip box. The strip stays
+        // transparent (--library-bg) elsewhere, so the body's top border still
+        // shows through under the inactive tabs (the page outline continues).
+        padding: "0 4px 1px",
+        marginBottom: -1,
         // The strip + the (transparent) inactive tabs sit on the LIBRARY
         // backdrop (--library-bg) so unselected tabs read as part of the
         // library background; only the active tab's manila fill (--surface /
-        // --background for paper) and the body pop as the white "page". The
-        // unifying folder frame (rounded + overflow:clip on the wrapper) clips
-        // this fill cleanly at the top corners — no notch.
+        // --background for paper) and the body pop as the white "page".
         background: "var(--library-bg)",
         flexShrink: 0,
         position: "relative",
         zIndex: 20,
         // Tabs are flexShrink:0; when more open than fit, scroll horizontally
-        // rather than hard-clipping the rightmost tab against the folder
-        // frame. Scrollbar hidden — the strip stays visually clean. Per-tab
-        // menus are body-portaled (see TabMenuTrigger) so this overflow can't
-        // clip them.
+        // rather than hard-clipping the rightmost tab. Scrollbar hidden — the
+        // strip stays visually clean. Per-tab menus are body-portaled (see
+        // TabMenuTrigger) so this overflow can't clip them.
         overflowX: "auto",
         overflowY: "hidden",
         scrollbarWidth: "none",
@@ -568,6 +574,19 @@ const BackgroundTab = forwardRef<
       ref={ref}
       {...dragProps}
       data-tab-id={tabId}
+      // Inactive tabs darken on hover (like regular tabs in the Virgil bar:
+      // bg-black/5). Imperative on the resting bg, matching the icon-button
+      // hover pattern elsewhere in this file; skipped while a drag-drop target
+      // so the accent-light highlight isn't overwritten.
+      onMouseEnter={(e) => {
+        if (!isEntryDropTarget)
+          (e.currentTarget as HTMLDivElement).style.background =
+            "rgba(0,0,0,0.05)";
+      }}
+      onMouseLeave={(e) => {
+        if (!isEntryDropTarget)
+          (e.currentTarget as HTMLDivElement).style.background = "transparent";
+      }}
       style={{
         display: "inline-flex",
         alignItems: "center",
@@ -577,8 +596,9 @@ const BackgroundTab = forwardRef<
         cursor: dragProps.draggable ? "grab" : "default",
         outline: isEntryDropTarget ? "2px solid var(--accent)" : "none",
         outlineOffset: isEntryDropTarget ? -2 : 0,
-        borderRadius: isEntryDropTarget ? 6 : 0,
+        borderRadius: 6,
         background: isEntryDropTarget ? "var(--accent-light)" : "transparent",
+        transition: "background 90ms ease",
         paddingLeft: hasPin ? 4 : 0,
         paddingRight: hasTrailing ? 4 : 0,
       }}
