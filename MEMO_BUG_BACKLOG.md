@@ -1656,3 +1656,42 @@ AI-request card** is the `"ai"` card kind ([cards/types.ts:45](src/cards/types.t
    the `CardListPanel` AI-request rendering; migrate any existing AI-request cards
    onto the per-card checkbox model. Confirm nothing else depends on the `"ai"` kind
    (registry, crosswalk, sidecars) before deleting.
+
+---
+
+## 56. Typing "\" (slash menu) appears to compress the whole editor's text
+
+**Reported:** 2026-06-15 · **Status:** open (catch — **could not reproduce on current main; see investigation**) · **Area:** main-text / slash popup / layout
+
+**Reported behavior** — typing `\` (which opens the Virgil command menu) makes the
+whole editor's text compress slightly (user's guess: font-size or line-height). User
+wants the trigger found + a check for anything else that causes the same thing.
+
+**Investigation (live preview, current `main`) — NOT reproduced.** Measured the main
+editor's `<p>` font-size / line-height / scroll-container scrollbar / window
+scrollbar / content width in three states:
+- **Baseline:** 15.2px / 24.32px / 0 / 0 / 398px.
+- **Slash popup mounted** (dispatched the extension's open-meta — popup confirmed
+  rendered): **identical** — so the popup mounting is NOT the cause.
+- **`\` char inserted** into the doc: **identical** — so the char itself isn't it.
+
+Also ruled out by code: only `SlashCommandPopup` (a `position: fixed`, body-portaled
+element) + the extension touch slash state — **nothing reacts to slash-open by
+changing the editor font** — and the editor scroll container is `scrollbar-width:
+none` (no width-taking scrollbar). On macOS overlay scrollbars take no layout width
+either.
+
+**Two live hypotheses for the manage session:**
+1. **Real-keyboard-input side-effect** — the synthetic meta-dispatch + tr-insert
+   don't exercise the real `beforeinput`/input/focus cycle. A *real* keystroke may
+   trigger a transient measurement-driven recompute (a debounced layout read /
+   ResizeObserver / focus reflow) that briefly changes a font/line-height/gap var.
+   → Reproduce with a REAL `\` keystroke on current main and watch for a transient.
+2. **Already fixed on main / stale build** — the user is likely viewing the
+   deployed/cached build (this whole batch is local-not-pushed; cf. the gutter-gap
+   and `.fmt` cases where the live view lagged main). The heavy recent layout work
+   may have already resolved it. → Have the user hard-reload / retry after deploy.
+
+If #1 reproduces, then do the "anything else that triggers this" sweep (any other
+transient that mounts a portaled overlay or fires the same recompute); if it can't
+be reproduced with a real keystroke on current main, it's #2 — close as fixed.
