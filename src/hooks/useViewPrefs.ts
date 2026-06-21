@@ -672,6 +672,12 @@ export function loadPrefs(): ViewPrefs {
 export function useViewPrefs() {
   const [prefs, setPrefs] = useState<ViewPrefs>(DEFAULT_PREFS);
   const initialized = useRef(false);
+  // Deferred-persistence handoff: `update` records the change here (a pure ref
+  // write) and the post-commit effect below flushes it. See the comment on
+  // `update` for why persistence must NOT run inside the state updater.
+  const pendingPersist = useRef<{ next: ViewPrefs; prev: ViewPrefs } | null>(
+    null,
+  );
 
   useEffect(() => {
     setPrefs(loadPrefs());
@@ -743,10 +749,38 @@ export function useViewPrefs() {
   const update = useCallback((fn: (prev: ViewPrefs) => ViewPrefs) => {
     setPrefs((prev) => {
       const next = fn(prev);
-      persist(next, prev);
+      // DO NOT persist inside this updater. `persist` writes localStorage AND
+      // notifies sibling instances via `notifySameWindow` → `rereadGlobal` →
+      // a re-entrant `setPrefs`. React invokes a state updater more than once
+      // per dispatch (the eager bail-out computation at dispatch time + the
+      // render-phase queue replay), so persisting here fires that re-entrant
+      // `setPrefs` MID-DISPATCH, prepending an update to the queue. On replay
+      // the queue becomes [rereadGlobal-sets-the-new-value, toggle-applies-
+      // `!value`-AGAIN], so a boolean toggle lands twice and reverts to its
+      // original value — the "toggle won't stick / resets on reload" bug.
+      // Instead record the change (a pure ref write, idempotent across the
+      // re-invocations) and let the effect below persist it AFTER commit, where
+      // a re-entrant setPrefs is harmless. Keep the batch's STARTING `prev` so
+      // a multi-change batch still diffs every changed key for the peer notify.
+      pendingPersist.current = {
+        next,
+        prev: pendingPersist.current?.prev ?? prev,
+      };
       return next;
     });
-  }, [persist]);
+  }, []);
+
+  // Flush deferred persistence after a commit that ran an `update`. Gated on
+  // the pending ref, so a plain re-render (including the one `rereadGlobal`
+  // triggers) is an O(1) no-op (keystroke-sanctity safe); clearing the ref
+  // BEFORE persisting breaks the persist→notify→rereadGlobal→render feedback
+  // loop after exactly one pass.
+  useEffect(() => {
+    const pending = pendingPersist.current;
+    if (!pending) return;
+    pendingPersist.current = null;
+    persist(pending.next, pending.prev);
+  });
 
   /* ── Stacked-panel engine (pure helpers) ─────────────────────────── */
 
