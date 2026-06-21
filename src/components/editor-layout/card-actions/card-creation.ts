@@ -18,6 +18,7 @@ import { isPanelDocked } from "@/hooks/view-prefs-derived";
 import type { TextObjectKind } from "@/text-objects/types";
 import type { CardKind } from "@/cards/types";
 import { panelForCardKind } from "@/cards/predicates";
+import { suppressNextPlacement } from "@/links/_shared/usePlacement";
 import type { EditorHandle } from "../../Editor";
 import type {
   RecentlyAddedKind,
@@ -366,6 +367,15 @@ export function useCardCreation(deps: CardCreationDeps): CardCreationApi {
       id: string,
       opts: { mode?: CardCreateMode; anchorRect?: DOMRect | null },
     ) => {
+      // Suppress card→text placement for THIS selection change. A brand-new
+      // card is already surfaced at the right spot — floated at its anchorRect
+      // (toolbar/grab-bar paths) or pinned to its panel — so the editor must
+      // NOT scroll to "align" it. Without this, the `setSelected` below trips
+      // usePlacement's effect, whose `alignEntryToY` drags the shared row
+      // scroll: the "creating a footnote/citation jumps the viewport" bug.
+      // Mirrors marker-clicks.ts, the only other suppressor (same asymmetry
+      // rule: usePlacement owns card→text; create surfaces text→card itself).
+      suppressNextPlacement();
       setSelected(id);
       pin(pinToken, id);
       if (opts.mode === "omni") return;
