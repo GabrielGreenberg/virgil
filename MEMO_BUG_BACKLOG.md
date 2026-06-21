@@ -1599,3 +1599,60 @@ run `computeExpexWidths` on the example's content and apply
 container in the compressed card (and verify `.expex-number` keeps `nowrap` there).
 Bundles naturally with #42 / #43 (all three are the same collapsed-borrowed-example
 render path).
+
+---
+
+## 54. Empty card + click-away should silently discard — works for footnote, not note (class)
+
+**Reported:** 2026-06-15 · **Status:** open (catch — do not fix yet) · **Area:** card lifecycle / pristine discard
+
+**Reported behavior** — create a card, enter nothing, click away → it should be
+silently discarded. Works for some kinds (e.g. **footnote**) but not others (e.g.
+**note**).
+
+**Root cause — the pristine condition excludes anchored cards.** A note is marked
+discardable only when it's blank **and** unanchored:
+`if (!content && !anchor && !paragraphId) pristine.markNew(newNote.id)`
+([useNotes.ts:139](src/hooks/useNotes.ts:139)) — the comment frames an anchored
+note as "committed intent." But the common case (a note added at the cursor /
+selection) HAS a `paragraphId`/anchor, so an empty-but-anchored note is **never
+pristine → never discarded**. **`useCutter` uses the identical strict condition**
+([useCutter.ts:202](src/hooks/useCutter.ts:202)), so this is a class (note / cutter
+/ todo …). Footnotes discard empty regardless of anchor — hence the asymmetry.
+
+**Fix direction.** Align the strict-condition kinds to footnote's behavior: mark an
+empty card pristine on `!content` alone (drop the `&& !anchor && !paragraphId`), so
+an anchored-but-empty card also discards on click-away. Audit every kind's
+`markNew` condition. Also verify the pristine *manager* is actually wired per kind —
+R21 note: the live `usePristineCardManager` lives only in `EditorPane`
+([EditorLayout.tsx:532](src/components/EditorLayout.tsx:532)), and some hooks fall
+back to a `localPristine` tracker that isn't connected to the click-away discard.
+
+---
+
+## 55. Give footnotes (and all remaining cards) an AI-request click; retire the AI-request cards
+
+**Reported:** 2026-06-15 · **Status:** open (catch — do not fix yet) · **Area:** AI-request system / card chrome
+
+**Reported behavior / ask** — (a) give **footnotes** an AI-request click on the
+bottom row, like other cards have; (b) **remove the AI-request *cards*** (the old
+system) everywhere they're still used — every relevant card should instead carry
+the per-card AI-request click.
+
+**Current state.** The per-card affordance is `AiRequestCheckbox`
+([panel-primitives.tsx:1259](src/components/panel-primitives.tsx:1259)). It's used by
+**6** card kinds: Todo, Note, Highlight, CutterComment, RevisionComment,
+ReportRequest. **`FootnoteCard` has none** (confirmed: 0 usages). The **legacy
+AI-request card** is the `"ai"` card kind ([cards/types.ts:45](src/cards/types.ts:45))
+→ `AiRequestCard` ([panel-primitives.tsx:2439](src/components/panel-primitives.tsx:2439))
++ `AiRequestsSectionHeader`, still rendered via
+[CardListPanel.tsx](src/panels/_shared/CardListPanel.tsx).
+
+**Fix direction (substantial — own chip).**
+1. Add `AiRequestCheckbox` to `FootnoteCard`'s bottom row, plus **audit the other
+   card kinds that still lack it** (citation, report, the suggestion cards, bib,
+   example) — "all relevant cards" per the ask.
+2. **Retire the `"ai"` card kind** / `AiRequestCard` / `AiRequestsSectionHeader` and
+   the `CardListPanel` AI-request rendering; migrate any existing AI-request cards
+   onto the per-card checkbox model. Confirm nothing else depends on the `"ai"` kind
+   (registry, crosswalk, sidecars) before deleting.
