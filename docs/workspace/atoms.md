@@ -1,6 +1,6 @@
-<!-- last-verified: 985d891 2026-06-19 -->
+<!-- last-verified: 590ed60 2026-06-20 -->
 <!-- derives-from: docs/architecture/VIRGIL.md#ontology -->
-<!-- covers-code: src/lib/tiptap/footnote.ts, src/lib/tiptap/citation.ts, src/lib/tiptap/math.ts, src/lib/tiptap/label.ts, src/lib/tiptap/linked-anchor.ts, src/lib/cite-commands.ts, src/lib/latex-parser.ts, src/lib/identity/, src/lib/bib-uid.ts -->
+<!-- covers-code: src/lib/tiptap/footnote.ts, src/lib/tiptap/citation.ts, src/lib/tiptap/math.ts, src/lib/tiptap/label.ts, src/lib/tiptap/linked-anchor.ts, src/lib/tiptap/insert-inline-atom.ts, src/lib/tiptap/chrome-scroll-margin.ts, src/lib/cite-commands.ts, src/lib/latex-parser.ts, src/lib/identity/, src/lib/bib-uid.ts -->
 
 # Atoms (inline elements) — operational manifest
 
@@ -102,6 +102,14 @@ not Atoms, but a skill editing inline content meets them:
 4. **Don't hand-write the id markers** (`\vfid` / `\vcid`) — compose the
    content command and let the create path allocate and place the marker
    ([identity.md → rules for skills](identity.md#rules-for-skills)).
+5. **Inserting an Atom never scrolls the viewport.** Atoms are `selectable:false`
+   precisely so a create/selection doesn't trigger ProseMirror's default
+   `scrollIntoView`. The in-app React create helpers (footnote / citation /
+   labelRef / inlineMath) all route through the one no-scroll primitive
+   `insertInlineAtom` (`src/lib/tiptap/insert-inline-atom.ts`) — focus without
+   scroll, then `insertContent` — instead of hand-rolling `.chain().focus()`.
+   Deliberate scrolls (block inserts, jump-to-link) land below the sticky chrome
+   via the chrome-aware `scrollMargin` in `src/lib/tiptap/chrome-scroll-margin.ts`.
 
 ## Stable atom identity (default-OFF)
 

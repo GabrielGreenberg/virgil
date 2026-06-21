@@ -1,4 +1,4 @@
-<!-- last-verified: 985d891 2026-06-19 -->
+<!-- last-verified: 590ed60 2026-06-20 -->
 <!-- derives-from: docs/architecture/VIRGIL.md#code-organization, docs/architecture/VIRGIL.md#sidecar-and-panel-inventory, docs/architecture/VIRGIL.md#cowork-pattern -->
 <!-- covers-code: src/lib/storage-fsa.ts, src/panels/panel-registry.ts, editor/scripts, library/lib/skill-sync.ts -->
 
@@ -13,7 +13,12 @@ Operational cut of [VIRGIL.md → Code organization](../architecture/VIRGIL.md#c
 [Sidecar and panel inventory](../architecture/VIRGIL.md#sidecar-and-panel-inventory),
 and [Cowork pattern](../architecture/VIRGIL.md#cowork-pattern). The single disk
 boundary is `src/lib/storage-fsa.ts` — every read/write the app does routes
-through it, so the reserved names below are authoritative.
+through it, so the reserved names below are authoritative. (One invariant the
+boundary enforces: a read-only `library-paper:<citekey>` Reader doc *never*
+persists — all writes short-circuit at the shared `enqueueDocWrite` funnel,
+while reads still resolve the paper's handle on demand from the mounted
+library; this is a Library-subsystem concern, not the paper-folder write path
+below.)
 
 ## The paper folder
 

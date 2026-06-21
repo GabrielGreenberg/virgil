@@ -1,6 +1,6 @@
-<!-- last-verified: 985d891 2026-06-19 -->
+<!-- last-verified: 590ed60 2026-06-20 -->
 <!-- derives-from: docs/architecture/VIRGIL.md#ontology, docs/architecture/VIRGIL.md#code-organization -->
-<!-- covers-code: src/lib/actions/action-registry.ts, src/lib/actions/editor-actions-bridge.ts, src/lib/actions/action-icons.tsx, src/lib/tiptap/smart-insert.ts, src/components/menu, src/components/DragHandleMenu.tsx, src/components/ActionsMenuPanel.tsx, src/components/SelectionActionsMenu.tsx, src/components/editor-layout/card-actions, src/lib/editor-extensions.ts, src/lib/tiptap/tab-indent.ts, src/lib/tiptap/expex.ts, src/lib/tiptap/latex-comment.ts, src/lib/section-folding.ts, src/lib/focus-view.ts, src/lib/tiptap/uuid-attr.ts, src/lib/tiptap/anchor-highlight-deco.ts, src/lib/tiptap/pgmark.ts, src/lib/tiptap/latex-command.ts, src/text-objects/text-object-registry.ts, src/text-objects/TextObjectGrabHandle.tsx, src/text-objects/LiftHost.tsx, src/text-objects/drop-adapters.ts, src/components/drop-mode, src/cards/drop-specs, src/lib/tiptap/atom-registry.ts, src/lib/tiptap/structural-edit.ts -->
+<!-- covers-code: src/lib/actions/action-registry.ts, src/lib/actions/editor-actions-bridge.ts, src/lib/actions/action-icons.tsx, src/lib/tiptap/smart-insert.ts, src/components/menu, src/components/DragHandleMenu.tsx, src/components/ActionsMenuPanel.tsx, src/components/SelectionActionsMenu.tsx, src/components/editor-layout/card-actions, src/lib/editor-extensions.ts, src/lib/tiptap/tab-indent.ts, src/lib/tiptap/expex.ts, src/lib/tiptap/latex-comment.ts, src/lib/section-folding.ts, src/lib/focus-view.ts, src/lib/tiptap/uuid-attr.ts, src/lib/tiptap/anchor-highlight-deco.ts, src/lib/tiptap/pgmark.ts, src/lib/tiptap/latex-command.ts, src/text-objects/text-object-registry.ts, src/text-objects/TextObjectGrabHandle.tsx, src/text-objects/LiftHost.tsx, src/text-objects/drop-adapters.ts, src/components/drop-mode, src/cards/drop-specs, src/lib/tiptap/atom-registry.ts, src/lib/tiptap/structural-edit.ts, src/lib/tiptap/insert-inline-atom.ts, src/lib/tiptap/chrome-scroll-margin.ts -->
 
 # Actions (the editing surface) — operational manifest
 
@@ -82,6 +82,22 @@ collapse the selection to the passage end before inserting their atom
 ([drag-handle-actions.ts:271](../../src/components/editor-layout/card-actions/drag-handle-actions.ts),
 [:291](../../src/components/editor-layout/card-actions/drag-handle-actions.ts)) —
 the audit's CITE behavior, below.
+
+**No-scroll create (two halves).** Creating any card must NOT jump the viewport —
+the new card is already surfaced at its anchor (float/panel). (1) The shared
+`finishCreate` tail calls `suppressNextPlacement()`
+([usePlacement](../../src/links/_shared/usePlacement.ts)) before `setSelected`, so
+selecting the fresh card doesn't trip `usePlacement`'s card→text `alignEntryToY`
+scroll (one call covers all card kinds — footnote/citation were the reported
+jumps). (2) Inline-atom creates (footnote/citation/`\ref`/inline-math) route
+through the unified no-scroll primitive **`insertInlineAtom`**
+([insert-inline-atom.ts](../../src/lib/tiptap/insert-inline-atom.ts)) — `focus(null,
+{ scrollIntoView: false })` + `insertContent`, never `.focus().scrollIntoView()`,
+the inline-atom sibling of `smartInsertBlock`. Deliberate scrolls (block inserts,
+jump-to-link) get a chrome-aware `scrollMargin`
+([chrome-scroll-margin.ts](../../src/lib/tiptap/chrome-scroll-margin.ts)) so they
+land below the sticky MenuBar + reading-mask instead of beneath them. `displayMath`
+stays on the block-insert (scrolling) path — bringing a block into view is intended.
 
 **Per-kind subset.** The registry's card-action rows are the *global*
 vocabulary; the per-kind allowed subset is `TEXT_OBJECT_REGISTRY[kind].actions`
@@ -170,9 +186,18 @@ It receives `DragHandleActionsDeps` (`cardCreation`, `cardLifecycle`, `confirm`,
 `notify`, view-prefs) and resolves the ref before acting:
 
 - **Mode** is computed by the trigger from the live selection: `selection.empty`
-  → `cursor` mode (ref `{ kind: "paragraph", id }`); else `selection` mode (ref
-  `{ kind: "selection", from, to }`). In cursor mode the Highlight action is
-  greyed out (it needs a range).
+  → `cursor` mode; else `selection` mode (ref `{ kind: "selection", from, to }`).
+  In cursor mode the dispatch ref now carries the **real anchorable node kind**
+  at the caret (`{ kind: nodeKind, id }` — heading / listItem / blockquote /
+  codeBlock / … else `paragraph`), resolved ONCE at menu-open by
+  `resolveAnchorUuidAndKind` ([anchor-uuid.ts](../../src/lib/anchor-uuid.ts)) and
+  threaded `SelectionActionsMenu → ActionsMenuPanel` on the `menuTarget`. A
+  flattened `"paragraph"` ref was the BUG2 no-op (a heading/listItem caret emitted
+  `{kind:"paragraph", id:<headingUuid>}`, which `resolveRefRange` could never match
+  → silent annotation bail; `56e904a`, docs/memos/action-menu-anchor-bugs/). The
+  grey-out PROBE stays a `{kind:"cursor"}` ref on purpose — both derive from the
+  one `menuTarget`, so probe and dispatch can't diverge on identity. In cursor mode
+  the Highlight action is greyed out (it needs a range).
 - **Ref class** — a `DragHandleRef` is a `TextObjectRef | SelectionRef`. The
   dispatcher plants a `TextSelection` over text-bearing refs and a
   `NodeSelection` on atom-blocks before the create helper runs.
@@ -417,7 +442,7 @@ see below):
 | **LaTeX command** | grey-monospace `.latex-cmd` on in-progress `\command{…}` spans | inline | [latex-command.ts](../../src/lib/tiptap/latex-command.ts) | Compliant — `map(tr.mapping)` then rebuild only when a changed region holds a `\` |
 | **Pagination chip** | the `\pgmark{N}` label + page-break rule | inline + widget | [pgmark.ts](../../src/lib/tiptap/pgmark.ts) | Compliant — `map` + changed-region `\pgmark` scan |
 | **Section fold** | `.section-folded` (hides blocks under a collapsed heading) | node | [section-folding.ts](../../src/lib/section-folding.ts) | Rebuilds from a **top-level** `doc.forEach()` when a fold is active; gated to `DecorationSet.empty` when nothing is folded (see note) |
-| **Focus view** | `.focus-hidden` (hides out-of-band blocks while a focus band is active) | node | [focus-view.ts](../../src/lib/focus-view.ts) | Compliant — rebuilds only on a band-change meta tx or a top-level block add/remove/boundary-replace; otherwise carries the cached set forward via `DecorationSet.map(tr.mapping)`, so a plain keystroke never rebuilds |
+| **Focus view** | `.focus-hidden` (hides out-of-band blocks while a focus band CONFINES the viewer) | node | [focus-view.ts](../../src/lib/focus-view.ts) | Compliant — only a **LOCKED** band confines (the `bandConfines` = `active && locked` gate, CHIP A); an unlocked selection-band bails to `DecorationSet.empty` and hides nothing. Rebuilds only on a band-change meta tx or a top-level block add/remove/boundary-replace; otherwise carries the cached set forward via `DecorationSet.map(tr.mapping)`, so a plain keystroke never rebuilds |
 
 **Decoration vs. mark — a load-bearing nuance.** `latexCommand` is *both*: the
 `LatexCommandMark` ([latex-command.ts](../../src/lib/tiptap/latex-command.ts))

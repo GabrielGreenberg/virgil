@@ -1,6 +1,6 @@
-<!-- last-verified: 985d891 2026-06-19 -->
+<!-- last-verified: 590ed60 2026-06-20 -->
 <!-- derives-from: docs/architecture/VIRGIL.md#ontology -->
-<!-- covers-code: src/links/_shared/types.ts, src/links/links.ts, src/links/resolve-card-anchor.ts, src/links/_shared/reapply-mode-b-anchors.ts, src/links/_shared/normalize-text.ts, src/hooks/useReconcileModeAAnchors.ts, src/lib/anchor-mint-signal.ts, src/lib/tiptap/linked-anchor.ts, src/lib/latex-serializer.ts -->
+<!-- covers-code: src/links/_shared/types.ts, src/links/links.ts, src/links/resolve-card-anchor.ts, src/links/_shared/reapply-mode-b-anchors.ts, src/links/_shared/apply-linked-anchors.ts, src/links/_shared/normalize-text.ts, src/hooks/useReconcileModeAAnchors.ts, src/lib/anchor-mint-signal.ts, src/lib/tiptap/linked-anchor.ts, src/lib/latex-serializer.ts -->
 
 # Anchoring (Card → text linkage) — operational manifest
 
@@ -125,6 +125,7 @@ Each flavor breaks differently, and different machinery catches each
 | The anchored **block** is deleted | anchor (A) | **`TextObjectOrphanGuard`** emits `virgil-textobject-orphaned`; **`MarginaliaAnchorGuard`** *pre-empts* it for marginalia-bearing blocks by re-inserting a **placeholder paragraph with the same uuid** at the deletion site — **except** a transaction tagged `LIFECYCLE_DELETE_META` (the Archive / Delete drag-handle actions), where the removal is deliberate and the guard bypasses, letting the block actually go | `recoverOrphanedUuids` re-attaches a sidecar id by **unique** content fingerprint |
 | The anchored **block's `%!v:` uuid is re-minted** (the `.tex` reload race — the `%!v:` write lost to a reload, so the paragraph parsed back with a fresh uuid and the card's stored uuid matches nothing) | anchor (A) | — (no guard; caught on the next load) | The reload reconcile re-finds the block by `paragraphSnapshot` (snapshot rung of the resolver ladder) and rewrites `textObjectIds[0]` to the live uuid — see the unified resolver below |
 | The **`linkedAnchor` mark** vanishes (delete, or lost on a parse/paste) | anchor (B) | **`LinkedAnchorGuard`** emits `virgil-anchor-orphaned` so the feature hook clears the link; its `transformPasted` strips pasted `linkedAnchor` marks so a paste can't duplicate an anchor id | `reanchorByText` ([src/links/links.ts](../../src/links/links.ts)) re-anchors by the `textRange.textSnapshot`; on **load** the once-per-doc re-apply pass restamps every Mode-B mark (below) |
+| The mark **reloads mislabeled** — the serializer drops the mark `kind`, and the parser's `applyLinkedAnchorBoundaries` resurrects every `\vlid` pair as a hardcoded `kind:"note"`/`linkCard:""` (the schema default in [src/lib/tiptap/linked-anchor.ts](../../src/lib/tiptap/linked-anchor.ts)), so a revision/cutter/todo/report/highlight span reloads painted as a note | anchor (B) | — (caught on the next load) | The load reconcile (`applyLinkedAnchorsImpl`, below) is **authoritative**: it re-stamps each present-but-disagreeing mark's `kind`/`linkCard`/`tintColor` from the owning sidecar card over the parser default |
 | The **`\vfid` / `\vcid` marker** (or the whole `\footnote{}`/`\cite{}`) is removed | atom-link | — (deleting the Atom is a normal edit) | `recoverOrphanedUuids` by fingerprint; a footnote whose marker vanished becomes an in-memory `OrphanedFootnote` the panel still hosts |
 
 ### The unified recovery owner (resolver SSOT)
@@ -142,12 +143,26 @@ hit; rewrite `textObjectIds[0]` or convert a relocated Mode-B on a snapshot hit)
 - **Load reconcile.** [src/hooks/useReconcileModeAAnchors.ts](../../src/hooks/useReconcileModeAAnchors.ts)
   is the shared factory the panel hooks run once on load — it builds the index and
   funnels each card through `resolveCardAnchor` + `reconcileCardToResolved`.
-- **Single load-time Mode-B re-apply.** [src/links/_shared/reapply-mode-b-anchors.ts](../../src/links/_shared/reapply-mode-b-anchors.ts)
-  (`reapplyModeBAnchors`) restamps every persisted Mode-B mark **before** the
-  reconcile, so healthy Mode-B cards win the resolver's live-mark rung. This is the
-  **one** load-time recovery writer: it **retired** the second `EditorLayout.applyLinkedAnchors`
-  effect (the function `EditorHandle.applyLinkedAnchors` still exists; it's now called
-  from a single `EditorPane` recovery pass — [src/components/EditorPane.tsx](../../src/components/EditorPane.tsx)).
+- **Single load-time Mode-B re-apply (authoritative reconcile).**
+  [src/links/_shared/reapply-mode-b-anchors.ts](../../src/links/_shared/reapply-mode-b-anchors.ts)
+  (`reapplyModeBAnchors`) feeds every persisted Mode-B card **before** the per-panel
+  reconcile, so healthy Mode-B cards win the resolver's live-mark rung. It routes
+  each record through the **one** load-time recovery writer,
+  `applyLinkedAnchorsImpl` ([src/links/_shared/apply-linked-anchors.ts](../../src/links/_shared/apply-linked-anchors.ts)),
+  shared by the production `EditorHandle.applyLinkedAnchors` and the RC-B tests so
+  they can't drift. **It does not skip present marks** (the prior skip-if-present
+  behavior was the BUG1 kind-corruption class): it makes the **sidecar
+  authoritative** — an *absent* range is re-stamped via `reanchorByText` from the
+  snapshot; a *present-but-disagreeing* range (kind / `linkCard` token / `tintColor`
+  mismatch) is re-stamped **in place** (`addToHistory:false`); an *agreeing* one is
+  skipped (idempotent). This is the load-time reconcile that **replaced** the retired
+  second `EditorLayout.applyLinkedAnchors` effect — it now lives in this shared impl,
+  driven from a single `EditorPane` recovery pass latched on `modeAReconciledDocRef`
+  ([src/components/EditorPane.tsx](../../src/components/EditorPane.tsx)). Per-kind
+  tint flows through the `defaultTintForLinkedAnchorKind` SSOT; the `linkCard` token
+  is built via the shared `legacyKindToCardKindString` so it is byte-identical to
+  create-time. A trailing `reapOrphanLinkedAnchors` pass (load-order- and
+  read-error-gated) drops only marks with no live owning card.
 - **Mint-race close.** [src/lib/anchor-mint-signal.ts](../../src/lib/anchor-mint-signal.ts)
   tags a uuid-mint transaction (`ANCHOR_MINT_META`); the autosave subscriber forces an
   **immediate** doc-bundle flush so the paragraph uuid lands on the card's fast clock,
