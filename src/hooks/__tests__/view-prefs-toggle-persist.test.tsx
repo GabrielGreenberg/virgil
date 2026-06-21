@@ -63,7 +63,10 @@ function Toggle({
   onClick,
   testId,
 }: {
-  pick: (vp: ReturnType<typeof useViewPrefs>) => boolean;
+  // `pick` reads the live toggle state, which lives on the `prefs` slice of
+  // the hook return (NOT the return root). `onClick` gets the full return so
+  // it can call the `toggle*` setters.
+  pick: (prefs: ReturnType<typeof useViewPrefs>["prefs"]) => boolean;
   onClick: (vp: ReturnType<typeof useViewPrefs>) => void;
   testId: string;
 }) {
