@@ -17,6 +17,19 @@ Status legend: `open` · `in-progress` · `done`
 > non-code work: the card-refactor **walks** W1–W9 + W11 (`MEMO_CARD_REFACTOR_WALKS.md`)
 > still need Gabriel's hands and are the most likely source of new bugs.
 
+> **DRAINED 2026-06-21 (overnight manager session, ultracode):** the open items
+> at the file's tail were worked through. **Fixed + merged** (8 deep/class fixes
+> on `drain/integration`, verified tsc + 2492 vitest + footnote python tests):
+> #48, #49, #50, #53b (collapsed wrap), #54a (math in example cards), #54b
+> (pristine discard), #55b part (a) (footnote AI-request, end-to-end), #56
+> (slash-compress). **Deferred / staged as one-click chips:** #51 (gutter→margin
+> rename — needs a live feel-check), #55a (LaTeX `.fmt` — external download needs
+> user OK; exact source URL found), #55b part (b) (retire legacy "ai" kind —
+> needs data migration). **Reviewed, kept deferred (explicit features):** #52,
+> #53a. **New follow-up surfaced:** `handleFigureSave` has the same embedded-surface
+> class bug the #54a math fix solved — figure/graphics editing is inert in float
+> surfaces (EditorLayout.tsx:2650).
+
 ---
 
 ## 1. Inline-math popup: save-by-default, add a Cancel button
@@ -1344,7 +1357,7 @@ input.)
 
 ## 48. Popped-out text-objects should be droppable onto the stack (parity with cards)
 
-**Reported:** 2026-06-15 · **Status:** open (catch — do not fix yet) · **Area:** text-objects / floats / stack
+**Reported:** 2026-06-15 · **Status:** done (2026-06-21, backlog-drain) · **Area:** text-objects / floats / stack
 
 **Reported behavior** — a popped-out **text-object** float (footnote / citation /
 example / figure …) should be **droppable onto the stack** the same way card
@@ -1376,7 +1389,7 @@ handles a text-object snapshot, not just a card one. Scope: this is a deferred
 
 ## 49. ExpEx grab handles overwrite onto content (mis-placed, recurring)
 
-**Reported:** 2026-06-15 · **Status:** open (catch — do not fix yet) · **Area:** text-objects / grab handles / expex · **Related:** #25 (expex handle geometry)
+**Reported:** 2026-06-15 · **Status:** done (2026-06-21, backlog-drain) · **Area:** text-objects / grab handles / expex · **Related:** #25 (expex handle geometry)
 
 **Reported behavior** — the `⠿` grab handles in expex examples land *on* content
 instead of sitting in the gutter to the left of each marker (user: "the grab bars
@@ -1420,7 +1433,7 @@ synthetic harness.
 
 ## 50. Action button (gutter bolt) sits above pop-outs — should be at text z-level so floats occlude it
 
-**Reported:** 2026-06-15 · **Status:** open (catch — do not fix yet) · **Area:** ui-chrome / z-index / action button
+**Reported:** 2026-06-15 · **Status:** done (2026-06-21, backlog-drain) · **Area:** ui-chrome / z-index / action button
 
 **Reported behavior** — the gutter action button (the lightning bolt next to the
 current paragraph) should be at the **same z-level as the text**, so **pop-outs
@@ -1449,7 +1462,7 @@ still renders above everything.
 
 ## 51. Reconcile "gutter" vs "margin" terminology (codebase + remaining glossary)
 
-**Reported:** 2026-06-15 · **Status:** open (catch — do not fix yet) · **Area:** terminology / docs + code-wide rename
+**Reported:** 2026-06-15 · **Status:** deferred (2026-06-21 — staged as a one-click chip; all-or-nothing CSS-var rename needs a live grab-handle feel-check) · **Area:** terminology / docs + code-wide rename
 
 **The standard (set by the user, now canonical in the glossary).**
 - **Gutter** = OUTSIDE the text pod — the L/R panel columns / omni area where
@@ -1520,7 +1533,7 @@ not a fresh native `dragstart`. File pointer: comment at the deletion site in
 
 ## 54. (deferred from LHS-sweep W4b) Math interactivity inside example-card bodies (EX-F4-02)
 
-**Reported:** 2026-06-18 · **Status:** open · **Area:** Examples panel / math editing
+**Reported:** 2026-06-18 · **Status:** done (2026-06-21, backlog-drain) · **Area:** Examples panel / math editing
 
 **Current behavior** — Clicking inline/display math inside an **example card body** does
 nothing: the click→edit bridge (`virgil-math-click` → MathPopover → handleMathSave) is
@@ -1539,7 +1552,7 @@ node (not MAIN). File pointer: `src/lib/tiptap/math.ts:73` (the surface gate);
 
 ## 55. 🔴 LaTeX compile broken — the committed SwiftLaTeX `.fmt` is a 15-byte CDN error blob
 
-**Reported:** 2026-06-15 · **Status:** open · **Priority: HIGH (functional — compile is dead)** · **Area:** LaTeX compile / SwiftLaTeX engine
+**Reported:** 2026-06-15 · **Status:** deferred (2026-06-21 — staged as a one-click chip with the exact 9.88 MB version-matched source URL; external binary download needs user OK) · **Priority: HIGH (functional — compile is dead)** · **Area:** LaTeX compile / SwiftLaTeX engine
 
 **Reported behavior** — compiling fails: `[compile] SwiftLaTeX failed (status=1)` …
 `This is pdfTeX … (preloaded format=swiftlatexpdftex)` … `I can't find the format
@@ -1572,7 +1585,7 @@ fails with a fmt/engine version error).
 
 ## 53. Collapsed example cards: multi-digit number wraps (no `--expex-num-width`)
 
-**Reported:** 2026-06-15 · **Status:** open (catch — do not fix yet) · **Area:** ui-chrome / card chrome / expex · **Related:** #25 (main-editor fix), #42 / #43 (collapsed borrowed render)
+**Reported:** 2026-06-15 · **Status:** done (2026-06-21, backlog-drain) · **Area:** ui-chrome / card chrome / expex · **Related:** #25 (main-editor fix), #42 / #43 (collapsed borrowed render)
 
 **Reported behavior** — in a **collapsed/compressed** example card the number
 wraps: `(13` on one line, `)` on the next.
@@ -1604,7 +1617,7 @@ render path).
 
 ## 54. Empty card + click-away should silently discard — works for footnote, not note (class)
 
-**Reported:** 2026-06-15 · **Status:** open (catch — do not fix yet) · **Area:** card lifecycle / pristine discard
+**Reported:** 2026-06-15 · **Status:** done (2026-06-21, backlog-drain) · **Area:** card lifecycle / pristine discard
 
 **Reported behavior** — create a card, enter nothing, click away → it should be
 silently discarded. Works for some kinds (e.g. **footnote**) but not others (e.g.
@@ -1632,7 +1645,7 @@ back to a `localPristine` tracker that isn't connected to the click-away discard
 
 ## 55. Give footnotes (and all remaining cards) an AI-request click; retire the AI-request cards
 
-**Reported:** 2026-06-15 · **Status:** open (catch — do not fix yet) · **Area:** AI-request system / card chrome
+**Reported:** 2026-06-15 · **Status:** done — part (a) footnote (+ all relevant cards) AI-request click, end-to-end drainable (2026-06-21, backlog-drain); part (b) retire legacy "ai" kind staged as a chip (needs data migration) · **Area:** AI-request system / card chrome
 
 **Reported behavior / ask** — (a) give **footnotes** an AI-request click on the
 bottom row, like other cards have; (b) **remove the AI-request *cards*** (the old
@@ -1661,7 +1674,7 @@ AI-request card** is the `"ai"` card kind ([cards/types.ts:45](src/cards/types.t
 
 ## 56. Typing "\" (slash menu) appears to compress the whole editor's text
 
-**Reported:** 2026-06-15 · **Status:** open (catch — **could not reproduce on current main; see investigation**) · **Area:** main-text / slash popup / layout
+**Reported:** 2026-06-15 · **Status:** done (2026-06-21, backlog-drain — root cause WAS reproducible: a lone "\\" gets a .latex-cmd decoration whose :has() rule dropped the typed paragraph line-height 1.6→1.5) · **Area:** main-text / slash popup / layout
 
 **Reported behavior** — typing `\` (which opens the Virgil command menu) makes the
 whole editor's text compress slightly (user's guess: font-size or line-height). User
