@@ -1,15 +1,25 @@
 // @vitest-environment jsdom
 //
-// Locks the L3h.1 gate: the math click→edit bridge (`virgil-math-click` →
-// MathPopover → handleMathSave) edits the MAIN editor by absolute `pos`, so the
-// NodeView click must fire from the MAIN surface ONLY. A float's `getPos()`
-// indexes the float doc, not the page, so firing from a float mis-targets MAIN
-// (the data-corruption path). This holds for editable AND read-only floats.
+// EX-F4-02 — math interactivity inside embedded editor surfaces.
 //
-// Faithful end-to-end exercise of the whole gate path: the `surface` option's
+// The math click→edit bridge (`virgil-math-click` → MathPopover →
+// handleMathSave) used to gate on `surface === "main"` because the save always
+// targeted the MAIN editor by absolute `pos`; a float's `getPos()` indexes the
+// float doc, so firing from a float would have mis-targeted MAIN (corruption).
+// The gate's side-effect was the bug: clicking math inside an example-card body
+// (an embedded `surface: "float"` editor) did nothing.
+//
+// The DEEP fix routes by the editor instance that OWNS the clicked node: the
+// NodeView carries its `editor` in the event detail, and the save dispatches
+// into THAT editor. So the click now fires on ANY editable surface — main OR an
+// embedded card/float — and the event carries the owning editor; only the
+// `editor.isEditable` check still suppresses it (read-only main + the read-only
+// displayMath lift). These tests lock that behaviour.
+//
+// Faithful end-to-end exercise of the whole path: the `surface` option's
 // `addOptions` default → `.configure({surface})` → `this.options.surface`
-// threaded into `mathNodeView` → the click gate. Mounts a real editor with one
-// math node under jsdom (the same mount path `editor-extensions.test.ts`
+// threaded into `mathNodeView` → the click handler. Mounts a real editor with
+// one math node under jsdom (the same mount path `editor-extensions.test.ts`
 // relies on) and dispatches a click on the rendered NodeView.
 //
 // Import-light: `@/lib/tiptap/math` pulls only @tiptap, katex, and uuid-attr
@@ -38,13 +48,18 @@ function contentFor(kind: Kind) {
 
 // Mount a real editor with one math node configured for `surface`, click the
 // rendered NodeView, and return how many `virgil-math-click` events fired
-// (+ the last detail). `configure: false` mounts the bare extension to prove
-// the addOptions default ("main").
+// (+ the last detail, + whether the detail's `editor` is the SAME instance we
+// mounted — the routing invariant). `configure: false` mounts the bare
+// extension to prove the addOptions default ("main").
 function mountAndClick(
   kind: Kind,
   surface: "main" | "float",
   opts: { editable?: boolean; configure?: boolean } = {},
-): { fired: number; detail: { kind?: string; pos?: unknown; latex?: unknown } | null } {
+): {
+  fired: number;
+  detail: { kind?: string; pos?: unknown; latex?: unknown; editor?: unknown } | null;
+  ownerMatches: boolean;
+} {
   const editable = opts.editable ?? true;
   const configure = opts.configure ?? true;
   const base = kind === "inline" ? InlineMath : DisplayMath;
@@ -60,10 +75,15 @@ function mountAndClick(
   });
 
   let fired = 0;
-  let detail: { kind?: string; pos?: unknown; latex?: unknown } | null = null;
+  let detail: { kind?: string; pos?: unknown; latex?: unknown; editor?: unknown } | null = null;
+  let ownerMatches = false;
   const onClick = (e: Event) => {
     fired++;
     detail = (e as CustomEvent).detail;
+    // The event must carry the editor instance that owns the clicked node, so
+    // the save can target it (not blindly MAIN). Compare against the editor we
+    // just mounted — same instance ⇒ correct routing.
+    ownerMatches = detail?.editor === editor;
   };
   window.addEventListener("virgil-math-click", onClick);
   try {
@@ -76,7 +96,7 @@ function mountAndClick(
     editor.destroy();
     element.remove();
   }
-  return { fired, detail };
+  return { fired, detail, ownerMatches };
 }
 
 // Mount a real editor with one math node configured for `surface`, drop a
@@ -139,7 +159,7 @@ describe("atom selection chrome gated on the MAIN surface (R2)", () => {
   });
 });
 
-describe("math click→edit bridge gated on the MAIN surface (L3h.1)", () => {
+describe("math click→edit bridge routes by the owning editor (EX-F4-02)", () => {
   it("inline math on the MAIN surface fires virgil-math-click at a numeric pos", () => {
     const { fired, detail } = mountAndClick("inline", "main");
     expect(fired).toBe(1);
@@ -153,17 +173,40 @@ describe("math click→edit bridge gated on the MAIN surface (L3h.1)", () => {
     expect(detail?.kind).toBe("display");
   });
 
-  it("inline math on a FLOAT surface is inert (editable-float class — the L3h.1 fix)", () => {
-    expect(mountAndClick("inline", "float").fired).toBe(0);
+  it("the event carries the owning editor instance on the MAIN surface", () => {
+    expect(mountAndClick("inline", "main").ownerMatches).toBe(true);
+    expect(mountAndClick("display", "main").ownerMatches).toBe(true);
   });
 
-  it("display math on a FLOAT surface is inert (read-only lift + editable-float alike)", () => {
-    expect(mountAndClick("display", "float").fired).toBe(0);
+  it("inline math on an editable FLOAT surface NOW fires (the EX-F4-02 fix)", () => {
+    // This is the bug: an example-card body / paragraph float is a
+    // `surface: "float"` editor. The click used to be inert here; now it fires
+    // and carries the float's own editor so the save round-trips to that embed.
+    const { fired, detail, ownerMatches } = mountAndClick("inline", "float");
+    expect(fired).toBe(1);
+    expect(detail?.kind).toBe("inline");
+    expect(typeof detail?.pos).toBe("number");
+    expect(ownerMatches).toBe(true);
   });
 
-  it("a read-only MAIN editor stays inert (L3h's editor.isEditable gate preserved)", () => {
+  it("display math on an editable FLOAT surface NOW fires, carrying its editor", () => {
+    const { fired, detail, ownerMatches } = mountAndClick("display", "float");
+    expect(fired).toBe(1);
+    expect(detail?.kind).toBe("display");
+    expect(ownerMatches).toBe(true);
+  });
+
+  it("a read-only MAIN editor stays inert (editor.isEditable gate preserved)", () => {
     expect(mountAndClick("inline", "main", { editable: false }).fired).toBe(0);
     expect(mountAndClick("display", "main", { editable: false }).fired).toBe(0);
+  });
+
+  it("a read-only FLOAT editor stays inert (the displayMath 'view & move only' lift, decision D)", () => {
+    // The displayMath SingleBlockBody float mounts `editable:false`; the math
+    // is edited on the page, never in the read-only float. `isEditable` keeps it
+    // inert even though the click no longer gates on `surface`.
+    expect(mountAndClick("inline", "float", { editable: false }).fired).toBe(0);
+    expect(mountAndClick("display", "float", { editable: false }).fired).toBe(0);
   });
 
   it("defaults to the MAIN surface when unconfigured (safe addOptions default)", () => {
