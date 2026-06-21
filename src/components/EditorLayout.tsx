@@ -1215,6 +1215,11 @@ export default function EditorLayout() {
     latex: string;
     pos: number;
     rect: DOMRect;
+    // The editor instance that owns the clicked math node — the save targets
+    // THIS editor (main OR an embedded card/float surface), so a math edit
+    // always lands in the editor whose pos-space `pos` belongs to. See
+    // `handleMathSave` and math.ts's click bridge (EX-F4-02).
+    editor: Editor;
   } | null>(null);
   // ── Figure tex-mode popover state ──
   const [activeFigure, setActiveFigure] = useState<{
@@ -2608,9 +2613,23 @@ export default function EditorLayout() {
   });
 
   // ── Math popover save handler ──
-  const handleMathSave = useCallback((pos: number, newLatex: string) => {
-    const editor = editorRef.current?.getEditor();
-    if (!editor) return;
+  // EX-F4-02: route the math edit back to the editor that OWNS the clicked node
+  // (carried through `virgil-math-click` → `activeMath.editor`), NOT blindly to
+  // MAIN. On the main surface `editor` IS the main editor (behaviour
+  // unchanged). On an embedded card/float surface (example-card body, example/
+  // paragraph/linked-range floats) `editor` is the embed: `pos` is its
+  // pos-space, the `setNodeMarkup` lands in the embed, and the embed's own
+  // write-back (`onUpdate` → `writeBackToMain` / `useFloatMainSync`) propagates
+  // the change to the main doc. Targeting MAIN with a float-space `pos` would
+  // mis-target / corrupt the wrong node — the very corruption the old
+  // `surface === "main"` gate prevented (by making embedded math inert).
+  const handleMathSave = useCallback((editor: Editor, pos: number, newLatex: string) => {
+    if (!editor || editor.isDestroyed) return;
+    // The popover outlives the click, so by save time the owning editor may have
+    // re-seeded (an embedded card/float re-syncs from MAIN) and shifted `pos`
+    // past the doc end — `nodeAt` THROWS on an out-of-range pos. Guard the
+    // bounds so a stale pos is a safe no-op, never a crash.
+    if (pos < 0 || pos >= editor.state.doc.content.size) return;
     const node = editor.state.doc.nodeAt(pos);
     if (!node) return;
     if (node.type.name !== "inlineMath" && node.type.name !== "displayMath") return;
@@ -4538,7 +4557,7 @@ export default function EditorLayout() {
           kind={activeMath.kind}
           latex={activeMath.latex}
           anchorRect={activeMath.rect}
-          onSave={(newLatex) => handleMathSave(activeMath.pos, newLatex)}
+          onSave={(newLatex) => handleMathSave(activeMath.editor, activeMath.pos, newLatex)}
           onClose={() => setActiveMath(null)}
         />
       )}
