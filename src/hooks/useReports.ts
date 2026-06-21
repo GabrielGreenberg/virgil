@@ -165,7 +165,9 @@ export function useReports(
       };
       if (paragraphId) card = addTextObjectLink(card, "report", paragraphId, targetKind);
       if (anchor) card = setTextAnchorLink(card, "report", anchor.anchorId, anchor.anchorText);
-      if (!content && !anchor && !paragraphId) pristine.markNew(card.id);
+      // Unified pristine contract (BUG #54): an empty-body report discards on
+      // click-away regardless of anchor/paragraph (an anchor isn't user content).
+      if (!content) pristine.markNew(card.id);
       update((prev) => ({ ...prev, cards: [...prev.cards, card] }));
       return card;
     },
@@ -194,7 +196,9 @@ export function useReports(
         card = addTextObjectLink(card, "report-request", paragraphId, targetKind);
       if (anchor)
         card = setTextAnchorLink(card, "report-request", anchor.anchorId, anchor.anchorText);
-      if (!content && !anchor && !paragraphId) pristine.markNew(card.id);
+      // Unified pristine contract (BUG #54): an empty-body report-request
+      // discards on click-away regardless of anchor/paragraph.
+      if (!content) pristine.markNew(card.id);
       update((prev) => ({ ...prev, cards: [...prev.cards, card] }));
       return card;
     },
