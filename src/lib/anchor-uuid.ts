@@ -22,12 +22,52 @@ import { markAnchorMint } from "@/lib/anchor-mint-signal";
 import { isTextObjectKind } from "@/text-objects/text-object-registry";
 import type { TextObjectKind } from "@/text-objects/types";
 
-const DEFERRING_PARENTS = new Set([
+/**
+ * The SSOT set of container kinds whose DIRECT-child `paragraph` defers its
+ * anchor identity to the container — the container is the real text-object, and
+ * the inner-paragraph uuid is stripped at serialization, so anchoring to it (or
+ * grabbing it as its own text-object) is pointless and produces a phantom
+ * second handle ON the body text (backlog #49).
+ *
+ * `exampleBlock` joins the original three here: a SINGLE example (`\ex`) holds
+ * its body `paragraph` DIRECTLY (not via an `exampleItem`), so without this the
+ * body paragraph mints its own uuid → gets a grab handle anchored at text-start,
+ * right of the `(n)` number. (`exampleItem` was already covered for the multi
+ * `\pex` sub-item case.) Every OTHER child of an exampleBlock —
+ * exampleItemList / bulletList / orderedList / graphicsBlock / displayMath — is
+ * NOT a `paragraph`, so it stays an independent anchor, unchanged.
+ *
+ * The single owner: `block-uuid-backfill` (insertion-time mint) and the
+ * decoration walk in `@/lib/tiptap/uuid-attr` both IMPORT this + the
+ * {@link isDeferredInnerParagraph} predicate rather than re-declaring it, so
+ * the "what is a grabbable text-object" boundary can't drift between surfaces.
+ */
+export const DEFERRING_PARENTS = new Set([
   "listItem",
   "blockquote",
   "codeBlock",
   "exampleItem",
+  "exampleBlock",
 ]);
+
+/**
+ * True iff `node` is a `paragraph` whose immediate `parent` is a
+ * DEFERRING_PARENT container — i.e. an inner body paragraph that defers its
+ * anchor identity to the container and must NOT receive its own uuid / grab
+ * handle. The single predicate every surface uses (mint resolve, backfill,
+ * decoration walk) so the "what is a grabbable text-object" boundary can't
+ * drift between them.
+ */
+export function isDeferredInnerParagraph(
+  node: { type: { name: string } },
+  parent: { type: { name: string } } | null | undefined,
+): boolean {
+  return (
+    node.type.name === "paragraph" &&
+    !!parent &&
+    DEFERRING_PARENTS.has(parent.type.name)
+  );
+}
 
 /**
  * Resolve a ProseMirror position to the nearest anchorable node, handling
@@ -46,9 +86,8 @@ export function resolveAnchorableNode(
   for (let depth = $pos.depth; depth >= 0; depth--) {
     const node = $pos.node(depth);
     if (!isAnchorableNode(node.type)) continue;
-    if (depth > 0 && node.type.name === "paragraph") {
-      const parent = $pos.node(depth - 1);
-      if (DEFERRING_PARENTS.has(parent.type.name)) continue;
+    if (depth > 0 && isDeferredInnerParagraph(node, $pos.node(depth - 1))) {
+      continue;
     }
     const nodePos = depth === 0 ? 0 : $pos.before(depth);
     return { node, nodePos };

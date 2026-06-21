@@ -42,6 +42,11 @@ interface FootnotePanelProps {
   onEditTitle?: (id: string, title: string) => void;
   onEditorFocus?: (editor: any) => void;
   recentlyAddedId?: string | null;
+  /** BUG #55: per-footnote AI-request flags (footnoteId → bool) from the
+   *  footnotes.json sidecar, + the toggle callback. When `onSetFootnoteAiRequest`
+   *  is supplied each anchored footnote card renders the AI-request checkbox. */
+  footnoteAiRequests?: Record<string, boolean>;
+  onSetFootnoteAiRequest?: (id: string, value: boolean) => void;
 }
 
 function FootnotePanel({
@@ -64,6 +69,8 @@ function FootnotePanel({
   onEditTitle,
   onEditorFocus,
   recentlyAddedId,
+  footnoteAiRequests,
+  onSetFootnoteAiRequest,
 }: FootnotePanelProps) {
   const myAiRequests = useMemo(
     () => (aiRequests ?? []).filter((r) => r.kind === "footnote"),
@@ -176,6 +183,12 @@ function FootnotePanel({
             onEditorFocus={onEditorFocus}
             getCitationDisplayText={getCitationDisplayText}
             onCitationCreated={onCitationCreated}
+            aiRequest={!!footnoteAiRequests?.[it.data.footnoteId]}
+            onSetAiRequest={
+              onSetFootnoteAiRequest
+                ? (value) => onSetFootnoteAiRequest(it.data.footnoteId, value)
+                : undefined
+            }
           />
         ) : (
           <OrphanedFootnoteCard

@@ -3,6 +3,7 @@ import { Plugin, PluginKey } from "@tiptap/pm/state";
 import { Decoration, DecorationSet } from "@tiptap/pm/view";
 import type { Node as PMNode } from "@tiptap/pm/model";
 import { isAnchorableNode } from "@/lib/marginalia";
+import { isDeferredInnerParagraph } from "@/lib/anchor-uuid";
 import { readPendingDiff } from "@/lib/tiptap/doc-structure";
 
 /**
@@ -55,10 +56,25 @@ export const UUID_ATTR_SPEC = {
  * happens on first interaction — until then the block has no sticky
  * identity to expose).
  */
-function buildUuidDecorations(doc: PMNode): DecorationSet {
+// Exported for the #49 decoration-gate regression test (it must assert that a
+// container-nested body paragraph yields NO `data-uuid` decoration, the spec
+// the grab-handle hover scan keys on). Otherwise an internal of the plugin.
+export function buildUuidDecorations(doc: PMNode): DecorationSet {
   const decos: Decoration[] = [];
-  doc.descendants((node, pos) => {
+  doc.descendants((node, pos, parent) => {
     if (!isAnchorableNode(node.type)) return true;
+    // A container-nested body paragraph (listItem / blockquote / codeBlock /
+    // exampleItem / exampleBlock) defers its anchor identity to its container —
+    // the container IS the grabbable text-object. It must NOT be decorated even
+    // if it carries a stale/leftover uuid (a session-minted one before the mint
+    // sites deferred it, or one loaded from an older .tex): the `data-uuid`
+    // decoration is what the grab-handle hover scan keys on, so decorating it
+    // produces a phantom SECOND handle ON the body text, right of the marker
+    // (backlog #49 — single-example `(16)` + multi-example `b.`). This is the
+    // authoritative gate; the mint sites (anchor-uuid / block-uuid-backfill)
+    // merely stop creating the uuid, but a pre-existing one must still be
+    // suppressed here. Same predicate as both mint sites (SSOT).
+    if (isDeferredInnerParagraph(node, parent)) return true;
     const uuid = node.attrs?.uuid as string | null | undefined;
     if (uuid) {
       decos.push(
@@ -70,8 +86,7 @@ function buildUuidDecorations(doc: PMNode): DecorationSet {
     }
     // Walk into anchorable containers: listItem and exampleItem are
     // themselves anchorable text objects (Phase B+ of the TextObject
-    // refactor). The deferring-parent rule in anchor-uuid.ts controls
-    // which inner nodes get UUIDs minted, not whether we decorate.
+    // refactor).
     return true;
   });
   return decos.length > 0 ? DecorationSet.create(doc, decos) : DecorationSet.empty;
@@ -146,6 +161,19 @@ export const UuidAttrDecorator = Extension.create({
               for (const b of diff.addedBlocks) {
                 const node = newState.doc.nodeAt(b.pos);
                 if (!node || !isAnchorableNode(node.type)) continue;
+                // Suppress a container-nested body paragraph (#49) — same gate
+                // as buildUuidDecorations. The parent is the node enclosing
+                // b.pos; resolve(b.pos).parent IS that immediate container
+                // (b.pos is the position just before the block's open token).
+                if (
+                  node.type.name === "paragraph" &&
+                  isDeferredInnerParagraph(
+                    node,
+                    newState.doc.resolve(b.pos).parent,
+                  )
+                ) {
+                  continue;
+                }
                 adds.push(
                   Decoration.node(b.pos, b.pos + node.nodeSize, {
                     "data-uuid": b.uuid,

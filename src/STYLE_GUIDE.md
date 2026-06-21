@@ -584,6 +584,22 @@ spacing) — same gap everywhere, and because markers are MEASURED + the gap is
 em-based, a wide `(100)` marker or a font-size change can't break it. Floored
 at `editorColumnLeft − var(--gutter-col-handle-inset)` for narrow viewports.
 
+**Marker-left fallback invariant (generalizable).** When a kind's marker
+chrome can't be measured (a transient render before the NodeView mounts, an
+unfaithful clone that stripped the span), `resolveMarkerLeft` must fall back to
+a position in the GUTTER — **left of content** (e.g. `contentLeft −
+trackWidthPx`, the column the marker occupies) — NEVER to `contentLeft` itself.
+A `contentLeft` fallback puts the handle at the text start, *right* of the
+marker, dropping the dots onto the content (the backlog #49 symptom). The
+deeper "no second handle" rule: a container's INNER body paragraph is NOT its
+own grabbable text-object — only the container is. The `data-uuid` decoration
+the hover scan keys on is suppressed for any `paragraph` whose parent is a
+`DEFERRING_PARENTS` container (listItem / blockquote / codeBlock / exampleItem /
+**exampleBlock**), so a single example's `(16)` body and a sub-item's `b.` body
+never sprout a phantom handle on their text. That set is the SSOT in
+`@/lib/anchor-uuid` (`isDeferredInnerParagraph`), shared by the mint resolve,
+the backfill plugin, and the decoration walk so the boundary can't drift.
+
 Two vertical policies, branched on `meta.chromeAnchor`:
 
 - **`text-top`** (paragraphs, headings, titleField, blockquotes,

@@ -65,6 +65,10 @@ export interface OmniHostProps {
   handleEditOrphan: (id: string, newContent: unknown) => void;
   handleDeleteOrphan: (id: string) => void;
   handleEditOrphanTitle: (id: string, title: string) => void;
+  /** BUG #55: per-footnote AI-request flags + toggle (from the footnotes.json
+   *  sidecar via EditorPane). */
+  footnoteAiRequests: Record<string, boolean>;
+  setFootnoteAiRequest: (id: string, value: boolean) => void;
   // Citations
   citations: CitationsHook["citations"];
   citationPositionMap: Map<string, number>;
@@ -422,6 +426,8 @@ export function OmniHost(p: OmniHostProps) {
       setOverrideEditor,
       getCitationDisplayText,
       onCitationCreated,
+      footnoteAiRequests: p.footnoteAiRequests,
+      onSetFootnoteAiRequest: p.setFootnoteAiRequest,
     }),
     ...buildCitationOmniItems({
       citations: p.citations,
@@ -581,6 +587,13 @@ export function OmniHost(p: OmniHostProps) {
     // Footnote handlers
     p.handleEditFootnote, p.handleDeleteFootnote, p.handleEditFootnoteTitle,
     p.handleEditOrphan, p.handleDeleteOrphan, p.handleEditOrphanTitle,
+    // #55b: the footnote AI-request flag lives in a SEPARATE `footnoteAiRequests`
+    // map (not carried by `p.footnotes`, unlike note/todo whose flag rides their
+    // card array), so without these deps the omni checkbox wouldn't re-render on
+    // toggle until an unrelated rebuild. Both are stable refs/maps (the map only
+    // identity-changes when a flag flips; the setter is a stable useCallback) —
+    // not per-keystroke recomputation, so no keystroke-sanctity cost.
+    p.footnoteAiRequests, p.setFootnoteAiRequest,
     // Citation/bib handlers
     p.updateCitation, p.getFormattedBib, p.updateBibEntry, p.updateBibKeyAndType,
     p.getAnnotation, p.setAnnotation,

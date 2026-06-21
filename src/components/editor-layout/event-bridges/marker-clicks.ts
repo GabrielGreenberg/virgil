@@ -1,4 +1,5 @@
 import { useEffect, type Dispatch, type MutableRefObject, type SetStateAction } from "react";
+import type { Editor } from "@tiptap/react";
 import type { PanelId, ViewPrefs } from "@/hooks/useViewPrefs";
 // Pure dock-stack derivation — imported from the LEAF (not the hook module) so
 // this bridge stays clear of `useViewPrefs`'s heavy `OmniViewPanel` → storage
@@ -205,6 +206,11 @@ export function useMarkerClickBridges(deps: {
       latex: string;
       pos: number;
       rect: DOMRect;
+      // The editor instance that OWNS the clicked math node (main OR an
+      // embedded card/float surface). The save dispatches into THIS editor so
+      // `pos` is interpreted in the pos-space it was minted in — never blindly
+      // against MAIN. See math.ts's click handler + EditorLayout.handleMathSave.
+      editor: Editor;
     } | null>
   >;
   setActiveFigure: Dispatch<
@@ -380,11 +386,18 @@ export function useMarkerClickBridges(deps: {
       if (!detail || typeof detail.pos !== "number") return;
       if (detail.kind !== "inline" && detail.kind !== "display") return;
       if (!(detail.rect instanceof DOMRect)) return;
+      // The owning editor is required: the save dispatches into THIS instance,
+      // so `pos` is read in the pos-space it was minted in (main OR an embedded
+      // card/float editor). A detail without it is malformed — bail rather than
+      // fall back to MAIN, which would re-introduce the EX-F4-02 mis-target.
+      const owner = detail.editor as Editor | undefined;
+      if (!owner || typeof owner.isEditable !== "boolean") return;
       setActiveMath({
         kind: detail.kind,
         latex: typeof detail.latex === "string" ? detail.latex : "",
         pos: detail.pos,
         rect: detail.rect,
+        editor: owner,
       });
     };
     window.addEventListener("virgil-math-click", handler);

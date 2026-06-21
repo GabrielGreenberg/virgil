@@ -150,11 +150,9 @@ import type { StackPullApi } from "./drop-mode/types";
 import { StackIcon } from "./stack/StackIcon";
 import { StackStrip } from "./stack/StackStrip";
 import { useStack, addStackItem } from "@/hooks/useStack";
-import {
-  snapshotHeadingSection,
-  snapshotParagraph,
-} from "@/lib/stack/snapshot";
 import type { StackItem as StackItemType } from "@/lib/stack/types";
+import { textObjectFloatable } from "@/text-objects/text-object-floatable";
+import { isTextObjectKind } from "@/text-objects/text-object-registry";
 import { useDragHandleActions, type DragHandleRef } from "./editor-layout/card-actions/drag-handle-actions";
 import { DragHandleMenuProvider, type DragHandleMenuApi } from "./editor-layout/card-actions/drag-handle-menu-context";
 // CHIP 4a-i — the PM→React bridge. EditorPane publishes an
@@ -924,6 +922,12 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
   // here owns a panel, so the non-null assertion is safe.
   const notePristine = useMemo(() => pristineManager.forKind(panelForCardKind("note")!), [pristineManager]);
   const cutPristine = useMemo(() => pristineManager.forKind(panelForCardKind("cutter-comment")!), [pristineManager]);
+  // BUG #54: Revisions was the one card panel never wired into the click-away
+  // discard watcher — `useRevisions(docId)` fell back to its in-hook
+  // `localPristine` (panel-close only), so a blank revision comment/suggestion
+  // created at the cursor lingered on click-away. Give it a manager bucket like
+  // every other kind so the unified empty-body contract actually fires.
+  const revisionPristine = useMemo(() => pristineManager.forKind(panelForCardKind("revision-comment")!), [pristineManager]);
   const reportPristine = useMemo(() => pristineManager.forKind(panelForCardKind("report")!), [pristineManager]);
   const todoPristine = useMemo(() => pristineManager.forKind(panelForCardKind("todo")!), [pristineManager]);
   const citationPristine = useMemo(() => pristineManager.forKind(panelForCardKind("citation")!), [pristineManager]);
@@ -1112,7 +1116,7 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
   const aiRequestsHook = useAiRequests(docId);
   const cutterHookRaw = useCutter(docId, cutPristine);
   const reportsHookRaw = useReports(docId, reportPristine);
-  const revisionsHookRaw = useRevisions(docId);
+  const revisionsHookRaw = useRevisions(docId, revisionPristine);
   // Lossy-morph confirm (note→highlight, report↔report-request). Distinct
   // dialog instance so it coexists with the other confirm dialogs.
   const { confirm: confirmMorph, dialog: confirmMorphDialog } = useConfirmDialog();
@@ -1274,7 +1278,31 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
   );
   const todosHook = useTodos(docId, todoPristine);
   const archiveHook = useArchive(docId);
-  const footnotesHook = useFootnotes(docId, footnotePristine);
+  // #55b: resolve a footnote's anchoring paragraph(s) from the LIVE doc, so the
+  // bridged AI-request carries `paragraphIds` and is actually drainable (the
+  // skill halts on empty paragraphIds). A footnote's anchor isn't in the
+  // sidecar — it's the position of its `\footnote` atom — so we read it from
+  // the editor here (where the ref is in scope) and hand it to useFootnotes,
+  // the analogue of note/highlight threading `getLinkedTextObjectIds(card)`.
+  // Stable (reads `innerRef.current` at call time), runs only on a toggle, never
+  // per keystroke.
+  const resolveFootnoteAnchor = useCallback(
+    (footnoteId: string): { paragraphIds?: string[]; selectedText?: string } => {
+      const ed = innerRef.current?.getEditor();
+      const fn = innerRef.current
+        ?.getFootnotes()
+        .find((f) => f.footnoteId === footnoteId);
+      if (!ed || !fn || typeof fn.pos !== "number") return {};
+      const pid = paragraphUuidAt(ed.state.doc, fn.pos);
+      if (!pid) return {};
+      return {
+        paragraphIds: [pid],
+        selectedText: captureParagraphSnapshot(ed, pid) || undefined,
+      };
+    },
+    [],
+  );
+  const footnotesHook = useFootnotes(docId, footnotePristine, resolveFootnoteAnchor);
   const suggestionsHook = useSuggestions(docId);
   void suggestionsHook; // surfaces in the suggestions panel mounting later
   const collab = useCollab(docId);
@@ -2163,6 +2191,16 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
   const archivedIdsRef = useRef(archivedIds);
   archivedIdsRef.current = archivedIds;
 
+  // BUG #55: per-footnote AI-request flags, sourced from the footnotes.json
+  // sidecar (FootnoteInfo is .tex-derived and carries no flag). Pure derivation
+  // off `footnoteRefs` — recomputes only when the sidecar collection changes (a
+  // flag toggle / add / delete / content edit), never on a plain keystroke.
+  const footnoteAiRequests = useMemo(() => {
+    const m: Record<string, boolean> = {};
+    for (const f of footnotesHook.footnoteRefs) if (f.aiRequest) m[f.id] = true;
+    return m;
+  }, [footnotesHook.footnoteRefs]);
+
   const marginaliaMarkers = useMemo<MarginaliaMarker[]>(() => {
     // Re-resolve markers when anchors move between paragraphs (`rev.anchors`)
     // or the paragraph-UUID set changes (`rev.blocks`). Card-store arrays
@@ -2585,6 +2623,10 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
   useEffect(
     () => cutPristine.registerDiscard((id) => cutterHook.deleteCard(id)),
     [cutPristine, cutterHook.deleteCard],
+  );
+  useEffect(
+    () => revisionPristine.registerDiscard((id) => revisionsHook.deleteCard(id)),
+    [revisionPristine, revisionsHook.deleteCard],
   );
   useEffect(
     () => reportPristine.registerDiscard((id) => reportsHook.deleteCard(id)),
@@ -3658,6 +3700,8 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
       handleEditFootnote,
       handleDeleteFootnote,
       handleEditFootnoteTitle,
+      footnoteAiRequests,
+      setFootnoteAiRequest: footnotesHook.setFootnoteAiRequest,
 
       // Archive
       updateArchiveSnippet: archiveHook.updateSnippet,
@@ -3718,7 +3762,7 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
       deleteAiRequest: aiRequestsHook.deleteRequest,
     }),
     [
-      notesHook, footnoteInfos, archiveHook, cutterHook, todosHook,
+      notesHook, footnoteInfos, footnoteAiRequests, archiveHook, cutterHook, todosHook,
       citationsHook, annotationsHook, bibReviewHook, revisionsHook,
       reportsHook,
       aiRequestsHook,
@@ -3756,11 +3800,17 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
       const id = parsed.id;
       const source = { docId: stackSourceRef.current.docId };
       let item: StackItemType | null = null;
-      const mainEd = innerRef.current?.getEditor() ?? null;
-      if (parsed.domain === "textobject" && parsed.kind === "paragraph") {
-        if (mainEd) item = snapshotParagraph(mainEd, id, source);
-      } else if (parsed.domain === "textobject" && parsed.kind === "heading") {
-        if (mainEd) item = snapshotHeadingSection(mainEd, id, source);
+      if (parsed.domain === "textobject" && isTextObjectKind(parsed.kind)) {
+        // Mirror the CARD branch (parity, BUG #48): build the SAME `Floatable`
+        // the text-object popout renders from and ask it to serialize itself.
+        // `snapshotForStack` is the single capture entry point now —
+        // `snapshotTextObject` dispatches by kind (paragraph / heading /
+        // block / list-item / range) inside the snapshot SSOT, so EditorPane
+        // no longer carries a per-kind branch. A one-shot doc read on the drop
+        // gesture, never keystroke-proportional. Returns null when the source
+        // can't be resolved (deleted) or the kind isn't poppable.
+        const f = textObjectFloatable({ kind: parsed.kind, id }, innerRef);
+        item = f?.snapshotForStack(source) ?? null;
       } else if (parsed.domain === "card" && isCardKind(parsed.kind)) {
         // Mirror `FloatHost.resolveFloatable`: build the same `Floatable` the
         // popout renders from and ask it to serialize itself. Some builders
@@ -4277,6 +4327,8 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
                     citationPositionMap={citationPositionMap}
                     citationOrder={citationOrder}
                     footnoteInfos={footnoteInfos}
+                    footnoteAiRequests={footnoteAiRequests}
+                    setFootnoteAiRequest={footnotesHook.setFootnoteAiRequest}
                     setBibActiveCitationId={setBibActiveCitationId}
                     pendingCitationCreate={pendingCitationCreate}
                     setPendingCitationCreate={setPendingCitationCreate}
@@ -4350,6 +4402,8 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
                       citationPositionMap={citationPositionMap}
                       citationOrder={citationOrder}
                       footnoteInfos={footnoteInfos}
+                      footnoteAiRequests={footnoteAiRequests}
+                      setFootnoteAiRequest={footnotesHook.setFootnoteAiRequest}
                       setBibActiveCitationId={setBibActiveCitationId}
                       pendingCitationCreate={pendingCitationCreate}
                       setPendingCitationCreate={setPendingCitationCreate}
@@ -4491,6 +4545,8 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
                 citationPositionMap={citationPositionMap}
                 citationOrder={citationOrder}
                 footnoteInfos={footnoteInfos}
+                footnoteAiRequests={footnoteAiRequests}
+                setFootnoteAiRequest={footnotesHook.setFootnoteAiRequest}
                 setBibActiveCitationId={setBibActiveCitationId}
                 pendingCitationCreate={pendingCitationCreate}
                 setPendingCitationCreate={setPendingCitationCreate}
@@ -5292,6 +5348,8 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
                         citationPositionMap={citationPositionMap}
                         citationOrder={citationOrder}
                         footnoteInfos={footnoteInfos}
+                        footnoteAiRequests={footnoteAiRequests}
+                        setFootnoteAiRequest={footnotesHook.setFootnoteAiRequest}
                         setBibActiveCitationId={setBibActiveCitationId}
                         pendingCitationCreate={pendingCitationCreate}
                         setPendingCitationCreate={setPendingCitationCreate}
@@ -5512,6 +5570,8 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
                 citationPositionMap={citationPositionMap}
                 citationOrder={citationOrder}
                 footnoteInfos={footnoteInfos}
+                footnoteAiRequests={footnoteAiRequests}
+                setFootnoteAiRequest={footnotesHook.setFootnoteAiRequest}
                 setBibActiveCitationId={setBibActiveCitationId}
                 pendingCitationCreate={pendingCitationCreate}
                 setPendingCitationCreate={setPendingCitationCreate}
@@ -5667,6 +5727,10 @@ interface PaneRailProps {
   citationPositionMap: Map<string, number>;
   citationOrder: string[];
   footnoteInfos: ReturnType<NonNullable<RefObject<EditorHandle | null>["current"]>["getFootnotes"]>;
+  /** BUG #55: per-footnote AI-request flags + toggle (from the footnotes.json
+   *  sidecar). Threaded down alongside `footnoteInfos`. */
+  footnoteAiRequests: Record<string, boolean>;
+  setFootnoteAiRequest: (id: string, value: boolean) => void;
   setBibActiveCitationId: React.Dispatch<React.SetStateAction<string | null>>;
   pendingCitationCreate: string | null;
   setPendingCitationCreate: React.Dispatch<React.SetStateAction<string | null>>;
@@ -5849,6 +5913,8 @@ function PaneRail({
   citationPositionMap,
   citationOrder,
   footnoteInfos,
+  footnoteAiRequests,
+  setFootnoteAiRequest,
   setBibActiveCitationId,
   pendingCitationCreate,
   setPendingCitationCreate,
@@ -5938,6 +6004,8 @@ function PaneRail({
           handleEditOrphan={viewPrefs.onEditOrphan}
           handleDeleteOrphan={viewPrefs.onDeleteOrphan}
           handleEditOrphanTitle={viewPrefs.onEditOrphanTitle}
+          footnoteAiRequests={footnoteAiRequests}
+          setFootnoteAiRequest={setFootnoteAiRequest}
           citations={citationsHook.citations}
           citationPositionMap={citationPositionMap}
           bibEntries={citationsHook.bibEntries}
@@ -6099,6 +6167,10 @@ interface PaneRailBodyProps {
   citationPositionMap: Map<string, number>;
   citationOrder: string[];
   footnoteInfos: ReturnType<NonNullable<RefObject<EditorHandle | null>["current"]>["getFootnotes"]>;
+  /** BUG #55: per-footnote AI-request flags + toggle (from the footnotes.json
+   *  sidecar). Threaded down alongside `footnoteInfos`. */
+  footnoteAiRequests: Record<string, boolean>;
+  setFootnoteAiRequest: (id: string, value: boolean) => void;
   setBibActiveCitationId: React.Dispatch<React.SetStateAction<string | null>>;
   pendingCitationCreate: string | null;
   setPendingCitationCreate: React.Dispatch<React.SetStateAction<string | null>>;
@@ -6171,6 +6243,8 @@ function PaneRailBody({
   citationPositionMap,
   citationOrder,
   footnoteInfos,
+  footnoteAiRequests,
+  setFootnoteAiRequest,
   setBibActiveCitationId,
   pendingCitationCreate,
   setPendingCitationCreate,
@@ -6293,6 +6367,8 @@ function PaneRailBody({
         onDeleteOrphan={viewPrefs?.onDeleteOrphan ?? (() => {})}
         onEditOrphan={viewPrefs?.onEditOrphan ?? (() => {})}
         onEditOrphanTitle={viewPrefs?.onEditOrphanTitle ?? (() => {})}
+        footnoteAiRequests={footnoteAiRequests}
+        onSetFootnoteAiRequest={setFootnoteAiRequest}
       />
     );
   }

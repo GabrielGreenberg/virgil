@@ -1,4 +1,5 @@
 import { Node, mergeAttributes } from "@tiptap/react";
+import type { Editor } from "@tiptap/core";
 import { Plugin, PluginKey } from "@tiptap/pm/state";
 import katex from "katex";
 import { UUID_ATTR_SPEC } from "./uuid-attr";
@@ -30,12 +31,16 @@ function renderMath(target: HTMLElement, latex: string, displayMode: boolean) {
 function mathNodeView(opts: {
   node: any;
   getPos: any;
-  // Only `isEditable` is read (the read-only-MAIN gate below); typed
-  // structurally so the new param adds no `any` (tighter than node/getPos).
-  editor: { isEditable: boolean };
-  // Which editor surface this NodeView is mounted on; the click→edit bridge
-  // fires from "main" only (see the click gate below). Threaded from the
-  // node's `surface` option by the factory.
+  // The full TipTap editor instance that OWNS this NodeView — i.e. the editor
+  // whose pos-space `getPos()` indexes. The click→edit bridge carries this
+  // instance so the save routes the write back to THIS editor (main OR an
+  // embedded card/float surface), never blindly to MAIN. `isEditable` still
+  // gates the click (a read-only surface stays inert). See the click handler.
+  editor: Editor;
+  // Which editor surface this NodeView is mounted on. The click→edit bridge no
+  // longer gates on this (it routes by the owning `editor` instead); `surface`
+  // is still read by `selectNode()` to keep the single-node-float selection
+  // chrome MAIN-only (R2). Threaded from the node's `surface` option.
   surface: "main" | "float";
   tag: "span" | "div";
   className: string;
@@ -55,22 +60,27 @@ function mathNodeView(opts: {
     e.preventDefault();
     e.stopPropagation();
     // The click→edit bridge (`virgil-math-click` → MathPopover →
-    // handleMathSave) edits the MAIN editor by absolute `pos`, so it is only
-    // correct when the click originates from the main editor surface. Every
-    // float carries a `getPos()` that indexes the FLOAT doc, not the page, so
-    // firing from a float mis-targets MAIN at that pos (opens the popover on /
-    // can corrupt the WRONG node). This holds for editable floats (a popped
-    // paragraph with inline math; a linkedRange float spanning a display
-    // equation — reachable since selection-bug A) AND read-only ones (the
-    // displayMath "view & move only" lift, decision D). So gate on the MAIN
-    // surface: fire from "main" only — inert in EVERY float. This generalizes
-    // L3h's `editor.isEditable` gate, which only caught read-only floats; an
-    // editable float is `isEditable:true` and slipped through. Keep the
-    // `editor.isEditable` check too: the main surface always mounts
-    // TipTap-editable (read-only is enforced by the readOnlyEnforcer plugin),
-    // so a read-only MAIN doc shouldn't open the editor either. Net: fire iff
-    // `surface === "main" && editor.isEditable`. Covers inline + display alike.
-    if (surface !== "main") return;
+    // handleMathSave) edits a math node by absolute `pos`. The OLD gate fired
+    // from the "main" surface only, because the save always targeted the MAIN
+    // editor: a float's `getPos()` indexes the float doc, not the page, so a
+    // MAIN-pos write from a float would corrupt the wrong node — and the gate
+    // made math inert in EVERY embedded surface (the EX-F4-02 bug: clicking
+    // math inside an example-card body did nothing).
+    //
+    // The DEEP fix routes by the editor instance that OWNS the clicked node:
+    // we carry THIS NodeView's `editor` in the event detail, and the save
+    // dispatches `setNodeMarkup(pos)` on THAT editor — so `pos` is always
+    // interpreted in the pos-space it was minted in. On MAIN it edits MAIN; on
+    // an embedded card/float editor it edits the embed, whose own write-back
+    // (`onUpdate` → `writeBackToMain` / `useFloatMainSync`) round-trips the
+    // change to the main doc — no MAIN mis-targeting, no corruption. This works
+    // uniformly for every editable embedded surface that hosts math: the
+    // example-card body, the example-block / paragraph / linked-range floats.
+    //
+    // The `editor.isEditable` check is preserved (and is now the sole gate):
+    // a read-only surface stays inert. This covers the read-only MAIN doc AND
+    // the displayMath "view & move only" lift (decision D — its SingleBlockBody
+    // float mounts `editable:false`), which both correctly remain non-editable.
     if (editor && !editor.isEditable) return;
     const pos = typeof getPos === "function" ? getPos() : undefined;
     if (pos == null) return;
@@ -81,6 +91,8 @@ function mathNodeView(opts: {
           latex: node.attrs.latex || "",
           pos,
           rect: dom.getBoundingClientRect(),
+          // The owning editor — the save MUST target this instance, not MAIN.
+          editor,
         },
       })
     );
@@ -101,10 +113,10 @@ function mathNodeView(opts: {
       // interior text position, so ProseMirror rests a NodeSelection on the
       // lone atom (NodeSelection{0,1}, unfocused) — firing selectNode() at
       // rest. That would paint `.selected` chrome (a tinted background; an
-      // outline for some atoms) the page never shows. Gate it the same way as
-      // the click→edit bridge above: suppress on the float surface only (memo
-      // L3h.1, generalized from the click bridge to the selection chrome). The
-      // MAIN surface keeps its selection chrome unchanged.
+      // outline for some atoms) the page never shows. So suppress the chrome
+      // on the float surface only (R2 / memo L3h.1). This is INDEPENDENT of the
+      // click→edit bridge above, which now routes by the owning editor rather
+      // than gating on `surface`. The MAIN surface keeps its chrome unchanged.
       if (surface !== "float") dom.classList.add("selected");
     },
     deselectNode() {
@@ -113,13 +125,17 @@ function mathNodeView(opts: {
   };
 }
 
-// `surface`: which editor surface the math node is mounted on. The
-// click→edit bridge edits the MAIN editor by absolute `pos`, so the NodeView
-// click fires from "main" only (see `mathNodeView`'s click gate). The
-// `buildEditorExtensions` factory configures this per-surface
+// `surface`: which editor surface the math node is mounted on. It is read by
+// the NodeView's `selectNode()` to keep the single-node-float selection chrome
+// MAIN-only (R2). The click→edit bridge NO LONGER gates on `surface` — it
+// routes the math edit back to the editor instance that owns the clicked node
+// (carried in the `virgil-math-click` event), so math is editable on MAIN and
+// on every editable embedded surface (example-card body, example/paragraph/
+// linked-range floats) alike, with read-only surfaces inert via `isEditable`.
+// The `buildEditorExtensions` factory configures this per-surface
 // (`.configure({ surface: isFloat ? "float" : "main" })`), exactly like its
 // sibling NodeViews. Default "main" so any stray / non-factory usage behaves
-// like the editable main surface.
+// like the main surface.
 export interface MathOptions {
   surface: "main" | "float";
 }

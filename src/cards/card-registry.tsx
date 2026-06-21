@@ -365,6 +365,12 @@ export const CARD_REGISTRY: Record<CardKind, CardMeta> = {
     keyPrefix: "footnote",
     themeKey: "footnote",
     collabClaims: true,
+    // BUG #55: footnotes join the per-card AI-request model. The bridge writes
+    // a `kind: "footnote"` queue entry (dispatched to /editor/draft-footnote)
+    // with `linkedTo.panel: "footnotes"`. The flag lives in the footnotes.json
+    // sidecar (FootnoteRef.aiRequest), not the live FootnoteInfo. Wire tokens
+    // pinned by ai-request-routing-contract.test.ts.
+    aiRequest: { kind: "footnote", linkPanel: "footnotes" },
     panel: "footnotes",
     origin: "user",
     anchored: true,

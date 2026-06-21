@@ -18,9 +18,12 @@ Claude to do something" signals while they write:
    (`pending | in-progress | complete | failed`) + `result` (outcome, set on a
    terminal status) + optional `safetyLevel` (1/2/3). Legacy
    `status: draft | submitted` still parse and read as open.
-2. **Card-level `aiRequest: boolean` flags** on notes, todos,
-   cutter-comments, revision-comments. Bridged into the unified queue
-   on toggle (see *Bridge* below).
+2. **Card-level `aiRequest: boolean` flags** on notes, highlights, todos,
+   cutter-comments, revision-comments, report-requests, and footnotes
+   (footnote joined in BUG #55 — its flag lives in `footnotes.json` via
+   `FootnoteRef.aiRequest`, and bridges a `kind: "footnote"` entry that
+   `/editor/draft-footnote` drains). Bridged into the unified queue on toggle
+   (see *Bridge* below).
 3. **`virgil/bib-review-requests.json`** — per-bib-key reviews
    (`type: "fields" | "notes"`). Stays separate because it's
    per-bib-key, not per-paragraph.
@@ -195,13 +198,15 @@ reloads sidecars.
 
 ## Bridge: card flags → ai-requests.json
 
-When a user toggles `aiRequest: true` on a note/todo/cutter-comment/
-revision-comment, the React hook calls
+When a user toggles `aiRequest: true` on a note/highlight/todo/cutter-comment/
+revision-comment/report-request/footnote, the React hook calls
 [bridgeCardAiRequestFlag()](../src/lib/ai-request-bridge.ts) which
 adds an entry to `ai-requests.json` with `linkedTo: { panel, cardId }`.
 Toggling off removes the entry; toggling back on re-adds it (with
 fresh paragraph context). This collapses three discovery paths into
-two so `/editor/review` only needs to walk two files.
+two so `/editor/review` only needs to walk two files. The `kind`/`linkPanel`
+of the bridged entry are registry-declared (`CARD_REGISTRY[kind].aiRequest`,
+R29) and pinned byte-for-byte by `ai-request-routing-contract.test.ts`.
 
 For papers created before the bridge landed, card-level flags exist
 without matching `ai-requests.json` entries.
@@ -209,6 +214,30 @@ without matching `ai-requests.json` entries.
 a virtual id `virtual:<panel>:<cardId>` so the umbrella can still
 process them. `apply_response.py` recognizes the virtual prefix and
 clears the source flag without touching `ai-requests.json`.
+
+Footnotes (#55b) are protected by the SAME fallback as the other flag-bearing
+kinds, with a footnote-specific twist. Their flag lives in `footnotes.json` (not
+a panel card list) and their body is rich JSONContent, so `list_requests.py`'s
+`PANEL_FILES` carries a `"footnotes"` row that flattens the body to a plain-text
+summary. A footnote AI request is ALWAYS bridged into `ai-requests.json` on
+toggle **with its anchoring `paragraphIds`** (resolved from the live `\footnote`
+atom position by `EditorPane`'s `resolveFootnoteAnchor`, threaded through
+`useFootnotes`), so the primary drain path is the unified queue
+(`kind: "footnote"`). The `PANEL_FILES` fallback exists only for the best-effort
+bridge-write-failure case — the bridge swallows I/O errors, so without the
+fallback a failed write would silently drop the request. (Note: a footnote has
+no `links` array, so the virtual fallback row's `paragraphIds` will be empty in
+that degraded case — the skill then re-derives / asks for an anchor rather than
+losing the request.)
+
+**A footnote AI request acts on the EXISTING footnote, not a new one.** A bridged
+`kind: "footnote"` request carrying `linkedTo.panel == "footnotes"` points at an
+existing footnote card the user flagged for revision/expansion. `/editor/draft-footnote`
+detects this `linkedTo` and routes to `/editor/edit-card --body` (which rewrites
+both `footnotes.json` `content` and the `.tex` `\footnote{}` atomically), rather
+than direct-creating a duplicate. A `kind: "footnote"` request with NO `linkedTo`
+stays a direct create at the anchor (the AIWindow-composed "add a footnote here"
+path). This mirrors `answer-note-request`'s linked-vs-standalone split.
 
 ## Path resolution for skills
 

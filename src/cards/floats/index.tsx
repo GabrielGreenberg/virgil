@@ -250,6 +250,8 @@ registerCardFloatable("footnote", (id, ctx: CardFloatCtx) => {
         onEditorFocus={ctx.setOverrideEditor}
         getCitationDisplayText={ctx.getCitationDisplayText}
         onCitationCreated={ctx.handleCitationCreated}
+        aiRequest={!!ctx.footnoteAiRequests[fn.footnoteId]}
+        onSetAiRequest={(value) => ctx.setFootnoteAiRequest(fn.footnoteId, value)}
         isPoppedOut
       />
     ),

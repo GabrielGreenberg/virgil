@@ -198,8 +198,9 @@ export function useCutter(
           anchor.anchorId,
           anchor.anchorText,
         );
-      // Only blank-on-creation cards are pristine.
-      if (!content && !anchor && !paragraphId) pristine.markNew(card.id);
+      // Unified pristine contract (BUG #54): an empty-body comment discards on
+      // click-away regardless of anchor/paragraph (an anchor isn't user content).
+      if (!content) pristine.markNew(card.id);
       update((prev) => ({ ...prev, cards: [...prev.cards, card] }));
       return card;
     },
@@ -235,8 +236,13 @@ export function useCutter(
           anchor.anchorId,
           anchor.anchorText,
         );
-      // A suggestion with no seed text/anchor/paragraph is pristine.
-      if (!originalText && !anchor && !paragraphId) pristine.markNew(card.id);
+      // Unified pristine contract (BUG #54): a suggestion is pristine when it
+      // carries no seed text — `original_text` is empty. We still gate on
+      // `!anchor` because a suggestion seeded from a selection captures the
+      // anchor text AS its `original_text` (real content), but `!paragraphId`
+      // is dropped: a blank suggestion anchored to a paragraph (Mode-A) has no
+      // original text and must discard on click-away like every other card.
+      if (!originalText && !anchor) pristine.markNew(card.id);
       update((prev) => ({ ...prev, cards: [...prev.cards, card] }));
       return card;
     },
