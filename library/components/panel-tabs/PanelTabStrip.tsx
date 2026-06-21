@@ -341,10 +341,13 @@ export function PanelTabStrip({
         alignItems: "flex-end",
         gap: 2,
         padding: "0 4px",
-        // Transparent so the unifying folder frame's --surface shows through
-        // uniformly behind the tabs — no two-tone notch at the wrapper's
-        // rounded top corners (was --library-bg, which fought the frame).
-        background: "transparent",
+        // The strip + the (transparent) inactive tabs sit on the LIBRARY
+        // backdrop (--library-bg) so unselected tabs read as part of the
+        // library background; only the active tab's manila fill (--surface /
+        // --background for paper) and the body pop as the white "page". The
+        // unifying folder frame (rounded + overflow:clip on the wrapper) clips
+        // this fill cleanly at the top corners — no notch.
+        background: "var(--library-bg)",
         flexShrink: 0,
         position: "relative",
         zIndex: 20,
