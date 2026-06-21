@@ -8,11 +8,16 @@ request — that the `/editor/review` umbrella consumes:
      is not a terminal `complete` / `failed`; legacy `draft` / `submitted` and
      v1 `pending` / `in-progress` are all open).
   2. `virgil/bib-review-requests.json` — entries with status == "pending".
-  3. The four card-flag panels (notes / todos / cutter / revisions).
+  3. The card-flag panels (notes / todos / cutter / revisions / footnotes).
      Cards whose `aiRequest: true` flag has no matching `linkedTo` entry
-     in `ai-requests.json` (transitional case for libraries created
-     before the bridge landed) are emitted as virtual entries so the
-     skill can still pick them up.
+     in `ai-requests.json` are emitted as virtual entries so the skill can
+     still pick them up. This covers two cases: libraries created before the
+     bridge landed (transitional), AND a bridge-write that silently failed
+     (the bridge is best-effort — it swallows I/O errors), so the request
+     survives to the drain either way. Footnotes (#55b) join this fallback:
+     their flag lives in `footnotes.json` (not a panel card list), and a
+     bridge failure would otherwise drop the request entirely — the fallback
+     guarantees it still surfaces (as `kind: "footnote"`).
 
 Each row is a JSON object with at minimum:
   { "source": "ai-requests" | "bib-review" | "card-flag",
@@ -127,7 +132,39 @@ PANEL_FILES = {
     "todos": ("todos.json", "items", "text", "todo"),
     "cutter": ("cutter.json", "cards", "text", "suggestion"),
     "revisions": ("revisions.json", "cards", "text", "suggestion"),
+    # #55b: footnotes join the unbridged-flag fallback. Their flag lives in
+    # footnotes.json (FootnoteRef.aiRequest), the body is rich JSONContent (not a
+    # plain field), and they carry no `links` array — so the summary is extracted
+    # from the JSON below, and the paragraph anchor can't come from card_paragraph_ids
+    # (it lives in the .tex `\footnote` position, only known to the editor that bridged
+    # it). A footnote AI request is ALWAYS bridged on toggle WITH paragraphIds; this
+    # fallback exists ONLY for the best-effort bridge-write-failure case, so the request
+    # still surfaces to the drain (its paragraphIds may be empty in that degraded case —
+    # the skill then asks for / re-derives an anchor rather than losing the request).
+    "footnotes": ("footnotes.json", "footnotes", "content", "footnote"),
 }
+
+
+def _rich_json_to_text(value) -> str:
+    """Flatten a TipTap JSONContent body (or a plain string) into plain text.
+    Mirrors `richJsonToPlainText` in src/lib/footnote-content.ts just enough to
+    produce a legible inbox summary for a footnote's rich `content`."""
+    if isinstance(value, str):
+        return value.strip()
+    out: list[str] = []
+
+    def walk(node) -> None:
+        if isinstance(node, dict):
+            if isinstance(node.get("text"), str):
+                out.append(node["text"])
+            for child in node.get("content", []) or []:
+                walk(child)
+        elif isinstance(node, list):
+            for child in node:
+                walk(child)
+
+    walk(value)
+    return " ".join(s for s in (t.strip() for t in out) if s).strip()
 
 
 def list_unbridged_card_flags(doc, bridged: set[tuple[str, str]]) -> list[dict]:
@@ -148,12 +185,20 @@ def list_unbridged_card_flags(doc, bridged: set[tuple[str, str]]) -> list[dict]:
                 continue
             if (panel, cid) in bridged:
                 continue
+            # Footnote bodies are rich JSONContent (not a plain field) — flatten
+            # to text for the summary. The others use a plain `summary_key` field.
+            raw_summary = c.get(summary_key)
+            summary = (
+                _rich_json_to_text(raw_summary)
+                if panel == "footnotes"
+                else raw_summary
+            )
             rows.append(
                 {
                     "source": "card-flag",
                     "kind": kind,
                     "id": f"virtual:{panel}:{cid}",
-                    "text": c.get(summary_key) or f"<{panel} card>",
+                    "text": summary or f"<{panel} card>",
                     "paragraphIds": card_paragraph_ids(c),
                     "selectedText": c.get("selectedText") or card_text_anchor(c),
                     "linkedTo": {"panel": panel, "cardId": cid},

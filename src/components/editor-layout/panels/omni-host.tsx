@@ -587,6 +587,13 @@ export function OmniHost(p: OmniHostProps) {
     // Footnote handlers
     p.handleEditFootnote, p.handleDeleteFootnote, p.handleEditFootnoteTitle,
     p.handleEditOrphan, p.handleDeleteOrphan, p.handleEditOrphanTitle,
+    // #55b: the footnote AI-request flag lives in a SEPARATE `footnoteAiRequests`
+    // map (not carried by `p.footnotes`, unlike note/todo whose flag rides their
+    // card array), so without these deps the omni checkbox wouldn't re-render on
+    // toggle until an unrelated rebuild. Both are stable refs/maps (the map only
+    // identity-changes when a flag flips; the setter is a stable useCallback) —
+    // not per-keystroke recomputation, so no keystroke-sanctity cost.
+    p.footnoteAiRequests, p.setFootnoteAiRequest,
     // Citation/bib handlers
     p.updateCitation, p.getFormattedBib, p.updateBibEntry, p.updateBibKeyAndType,
     p.getAnnotation, p.setAnnotation,

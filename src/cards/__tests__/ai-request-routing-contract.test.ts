@@ -39,9 +39,11 @@ import type { AiRequest, AiRequestsState } from "@/lib/types";
  *  todos→todo, cutter/revisions→suggestion, reports→report, footnotes→footnote).
  *  BUG #55 added `footnote`: its flag lives in footnotes.json (not a panel card
  *  list), so its bridged entry is consumed via the unified `ai-requests.json`
- *  path (kind: "footnote" → /editor/draft-footnote), NOT a PANEL_FILES fallback
- *  row — hence "footnotes" is a valid `linkPanel` token but is intentionally
- *  absent from list_requests.py's PANEL_FILES (the unbridged-flag fallback). */
+ *  path (kind: "footnote" → /editor/draft-footnote). #55b ALSO added "footnotes"
+ *  to list_requests.py's PANEL_FILES as an unbridged-flag fallback, so a
+ *  best-effort bridge-write failure can't silently drop the request (it still
+ *  surfaces to the drain). The bridge remains the primary path (always carries
+ *  paragraphIds); the fallback is the safety net. */
 const FROZEN_ROUTING_TABLE: Record<
   string,
   { kind: string; linkPanel: string }

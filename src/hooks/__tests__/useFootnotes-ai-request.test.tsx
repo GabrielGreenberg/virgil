@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 //
-// BUG #55 — footnotes join the per-card AI-request model.
+// BUG #55 / #55b — footnotes join the per-card AI-request model, drainably.
 //
 // `useFootnotes(...).setFootnoteAiRequest(id, value)` must do TWO things,
 // mirroring the note/todo/comment `setXAiRequest` callbacks:
@@ -10,6 +10,12 @@
 //      `bridgeCardAiRequestFlag` — a `kind: "footnote"` entry linked to
 //      `{ panel: "footnotes", cardId }` (the registry-declared routing, pinned
 //      byte-for-byte by ai-request-routing-contract.test.ts).
+//
+// #55b — the bridged request must be DRAINABLE, not just well-shaped: it must
+// carry the footnote's anchoring `paragraphIds` (the drain skill HALTS on empty
+// paragraphIds), threaded from the owner's anchor resolver (EditorPane resolves
+// the `\footnote` atom's enclosing paragraph). A footnote's anchor isn't in the
+// sidecar, so without the resolver the request is filed unactionable.
 //
 // Untoggling drops the bridged request again (no orphan inbox entry).
 
@@ -65,7 +71,14 @@ describe("useFootnotes — per-card AI-request flag (BUG #55)", () => {
       ],
     } satisfies FootnotesState;
 
-    const { result } = renderHook(() => useFootnotes(DOC));
+    // #55b: a resolver supplies the footnote's anchoring paragraph (the
+    // analogue of EditorPane resolving the `\footnote` atom position).
+    const resolveAnchor = vi.fn((id: string) =>
+      id === "fn-1"
+        ? { paragraphIds: ["para-uuid-9"], selectedText: "the host sentence" }
+        : {},
+    );
+    const { result } = renderHook(() => useFootnotes(DOC, undefined, resolveAnchor));
     await waitFor(() => expect(result.current.footnoteRefs).toHaveLength(1));
 
     await act(async () => {
@@ -90,6 +103,55 @@ describe("useFootnotes — per-card AI-request flag (BUG #55)", () => {
     expect(req.linkedTo).toEqual({ panel: "footnotes", cardId: "fn-1" });
     // The request text is a plain-text summary of the footnote body.
     expect(req.text).toContain("a note body");
+    // #55b: DRAINABLE — the resolver-supplied anchor rides the bridged request.
+    expect(resolveAnchor).toHaveBeenCalledWith("fn-1");
+    expect(req.paragraphIds).toEqual(["para-uuid-9"]);
+    expect(req.selectedText).toBe("the host sentence");
+  });
+
+  it("#55b — a bridged footnote request is DRAINABLE end-to-end (carries paragraphIds the skill needs)", async () => {
+    // The previous test pins the shape; this one pins FULFILLABILITY: the
+    // bridged entry must satisfy the draft-footnote step-0 gate, i.e. a
+    // non-empty paragraphIds (the skill HALTS otherwise). Asserting the wire
+    // shape alone (kind/linkedTo/status) is NOT enough — that's the broken
+    // contract #55b corrected.
+    beginDocPipeline(DOC);
+    DISK["footnotes.json"] = {
+      footnotes: [
+        {
+          id: "fn-drain",
+          content: { type: "doc", content: [{ type: "paragraph", content: [{ type: "text", text: "needs expanding" }] }] },
+          createdAt: "2026-01-01T00:00:00.000Z",
+        },
+      ],
+    } satisfies FootnotesState;
+
+    const resolveAnchor = vi.fn(() => ({ paragraphIds: ["6607"] }));
+    const { result } = renderHook(() => useFootnotes(DOC, undefined, resolveAnchor));
+    await waitFor(() => expect(result.current.footnoteRefs).toHaveLength(1));
+
+    await act(async () => {
+      result.current.setFootnoteAiRequest("fn-drain", true);
+    });
+
+    await waitFor(() => {
+      const q = lastWrite("ai-requests.json") as AiRequestsState | undefined;
+      expect(q?.requests).toHaveLength(1);
+    });
+    const req = (lastWrite("ai-requests.json") as AiRequestsState).requests[0];
+    // The drain-gate predicate: open status + a footnote linkedTo + a non-empty
+    // anchor. This is exactly what /editor/draft-footnote step 0 checks before
+    // routing to the act-on-existing (edit-card) path; a request that passes it
+    // is actionable, not a no-op file-and-halt.
+    const drainable =
+      req.kind === "footnote" &&
+      req.status !== "complete" &&
+      req.status !== "failed" &&
+      req.linkedTo?.panel === "footnotes" &&
+      req.linkedTo?.cardId === "fn-drain" &&
+      Array.isArray(req.paragraphIds) &&
+      req.paragraphIds.length > 0;
+    expect(drainable).toBe(true);
   });
 
   it("setFootnoteAiRequest(false) drops the bridged request and clears the flag", async () => {

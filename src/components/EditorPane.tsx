@@ -1280,7 +1280,31 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
   );
   const todosHook = useTodos(docId, todoPristine);
   const archiveHook = useArchive(docId);
-  const footnotesHook = useFootnotes(docId, footnotePristine);
+  // #55b: resolve a footnote's anchoring paragraph(s) from the LIVE doc, so the
+  // bridged AI-request carries `paragraphIds` and is actually drainable (the
+  // skill halts on empty paragraphIds). A footnote's anchor isn't in the
+  // sidecar — it's the position of its `\footnote` atom — so we read it from
+  // the editor here (where the ref is in scope) and hand it to useFootnotes,
+  // the analogue of note/highlight threading `getLinkedTextObjectIds(card)`.
+  // Stable (reads `innerRef.current` at call time), runs only on a toggle, never
+  // per keystroke.
+  const resolveFootnoteAnchor = useCallback(
+    (footnoteId: string): { paragraphIds?: string[]; selectedText?: string } => {
+      const ed = innerRef.current?.getEditor();
+      const fn = innerRef.current
+        ?.getFootnotes()
+        .find((f) => f.footnoteId === footnoteId);
+      if (!ed || !fn || typeof fn.pos !== "number") return {};
+      const pid = paragraphUuidAt(ed.state.doc, fn.pos);
+      if (!pid) return {};
+      return {
+        paragraphIds: [pid],
+        selectedText: captureParagraphSnapshot(ed, pid) || undefined,
+      };
+    },
+    [],
+  );
+  const footnotesHook = useFootnotes(docId, footnotePristine, resolveFootnoteAnchor);
   const suggestionsHook = useSuggestions(docId);
   void suggestionsHook; // surfaces in the suggestions panel mounting later
   const collab = useCollab(docId);
