@@ -3254,14 +3254,28 @@ body[data-drop-mode-active="true"] * {
   font-size: 0.9em;
 }
 
-/* Collapse spacing between consecutive command-only paragraphs */
-.tiptap p:has(> .latex-cmd:first-child:last-child) {
-  margin-bottom: 0.15em;
-  line-height: 1.5;
-}
-
+/* Tighten spacing between consecutive command-only paragraphs.
+ *
+ * BUG #56: this used to also set `line-height: 1.5` + `margin-bottom: 0.15em`
+ * on the BASE `:has()` rule — i.e. on EVERY command-only paragraph, including
+ * a single/first one. The `matchCommandLength` scanner paints a `.latex-cmd`
+ * decoration on a lone bare `\` (latex-command.ts ~L37 returns 1 for "\"),
+ * so the instant a user typed `\` into an empty/fresh paragraph that
+ * paragraph became `p:has(> .latex-cmd:first-child:last-child)` and dropped
+ * its own line-height 1.6→1.5 + collapsed its bottom margin — the typed
+ * paragraph visibly shifted its baseline ("the whole editor compresses").
+ * A prior measurement of a SIBLING paragraph missed this: the selector only
+ * matches the one paragraph that contains the lone `\`.
+ *
+ * Fix: a single command-only paragraph must keep the same rhythm as any
+ * other paragraph (body line-height 1.6 per STYLE_GUIDE; the unified
+ * inter-block model owns gaps in `margin-top`, with `margin-bottom: 0`).
+ * The DELIBERATE tightening of a RUN of command lines is intentional, so it
+ * stays — but it now lives ENTIRELY on the adjacent-sibling rule below, and
+ * tightens the gap-bearing `margin-top` rather than mutating the typed line's
+ * own baseline. No base `:has()` override → no self-shift on the keystroke. */
 .tiptap p:has(> .latex-cmd:first-child:last-child) + p:has(> .latex-cmd:first-child:last-child) {
-  margin-top: 0;
+  margin-top: 0.15em;
 }
 
 /* Citation inline nodes */
