@@ -177,12 +177,11 @@ export function assertMorphCoverage(): void {
 export function assertContentCoverage(): void {
   if (process.env.NODE_ENV === "production") return;
   // The kinds that legitimately carry NO user content (a `null` descriptor):
-  // the tint kind (highlight) + the system kinds (bib/ai/error). Any OTHER kind
+  // the tint kind (highlight) + the system kinds (bib/error). Any OTHER kind
   // declaring `null` is a coverage gap (it would delete without a confirm).
   const allowedNull: ReadonlySet<CardKind> = new Set<CardKind>([
     "highlight",
     "bib",
-    "ai",
     "error",
   ]);
   for (const k of Object.keys(CARD_REGISTRY) as CardKind[]) {
@@ -682,28 +681,12 @@ export const CARD_REGISTRY: Record<CardKind, CardMeta> = {
     poppable: true,
     toFloatable: PLACEHOLDER_TO_FLOATABLE,
   },
-  ai: {
-    label: "AI Request",
-    titleLabel: null,
-    keyPrefix: "ai",
-    themeKey: "aiRequest",
-    collabClaims: false,
-    panel: null, // cross-panel: renders in Footnotes/Notes/Reports/Citations/Todo
-    origin: "system",
-    anchored: false,
-    markerType: null,
-    lifecycle: { clone: false, delete: false, bindAnchor: false },
-    // System kind (the unified AI-request queue mirror); no panel-trash confirm.
-    content: null,
-    dropSpec: null,
-    droppable: false,
-    dropPlacement: null,
-    morph: null,
-    bodyClass: "sans",
-    stackable: false,
-    poppable: true,
-    toFloatable: PLACEHOLDER_TO_FLOATABLE,
-  },
+  // The legacy `ai` kind (the per-panel display of UNLINKED ai-requests.json
+  // entries) was retired in BUG #55b. Pre-existing unlinked note/todo requests
+  // migrate into real cards with the per-card `aiRequest` flag
+  // (`migrate-ai-request-cards.ts`); footnote/citation requests stay surfaced
+  // in the AIWindow. The `aiRequest` theme key is preserved (a frozen system
+  // accent — `panel-theme-key-freeze.test.ts`), now unused by any card kind.
   error: {
     label: "Error",
     titleLabel: null,

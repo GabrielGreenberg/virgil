@@ -6,7 +6,6 @@ import type {
   UserNote,
   HighlightCard as HighlightCardData,
   NoteCardItem,
-  AiRequest,
 } from "@/lib/types";
 import {
   ItemMenu,
@@ -38,9 +37,6 @@ interface NotesPanelProps {
   onJumpToCard?: (card: NoteCardItem, sourceEl?: HTMLElement | null) => void;
   getCitationDisplayText?: (command: string) => string;
   onCitationCreated?: (command: string) => { id: string; displayText: string } | null;
-  aiRequests?: AiRequest[];
-  onUpdateAiRequestText?: (id: string, text: string) => void;
-  onDeleteAiRequest?: (id: string) => void;
   onEditorFocus?: (editor: any) => void;
   recentlyAddedId?: string | null;
 }
@@ -60,9 +56,6 @@ export default function NotesPanel({
   onJumpToCard,
   getCitationDisplayText,
   onCitationCreated,
-  aiRequests,
-  onUpdateAiRequestText,
-  onDeleteAiRequest,
   onEditorFocus,
   recentlyAddedId,
 }: NotesPanelProps) {
@@ -75,14 +68,6 @@ export default function NotesPanel({
       return withRecentlyAddedFirst(out, recentlyAddedId, (c) => c.id);
     },
     [cards, recentlyAddedId],
-  );
-
-  // Notes and highlights both contribute AI requests; the bridge marks them
-  // with kind: "note" or "highlight" so the panel can show both above the
-  // card list (mirrors the Cutter panel's mixed-AI-request aggregation).
-  const myAiRequests = useMemo(
-    () => (aiRequests ?? []).filter((r) => r.kind === "note" || r.kind === "highlight"),
-    [aiRequests],
   );
 
   const onActivateCard = useCallback(
@@ -136,9 +121,6 @@ export default function NotesPanel({
           button, or click + to create a note.
         </div>
       }
-      aiRequests={myAiRequests}
-      onUpdateAiRequestText={onUpdateAiRequestText}
-      onDeleteAiRequest={onDeleteAiRequest}
       renderCard={(card, { selected }) => {
         if (card.kind === "highlight") {
           return (

@@ -32,7 +32,6 @@ const NOT_ARCHIVABLE: CardKind[] = [
   "footnote", // pending follow-up: footnote subsystem doesn't model unanchored
   "example", // origin: derived
   "bib",
-  "ai",
   "error", // origin: system
 ];
 

@@ -18,6 +18,13 @@ const EMPTY: AiRequestsState = { requests: [] };
 
 export function useAiRequests(docId: string | null) {
   const [state, setState] = useState<AiRequestsState>(EMPTY);
+  // The docId whose initial read has resolved (loaded, absent, or errored).
+  // `loaded` is DERIVED from it (below) so it flips back to false the instant
+  // `docId` changes — without a synchronous reset-setState in the effect (which
+  // trips react-hooks/set-state-in-effect). The card-request migration gates on
+  // `loaded` so it never runs over a stale/pre-load request list.
+  const [loadedDocId, setLoadedDocId] = useState<string | null>(null);
+  const loaded = docId == null ? true : loadedDocId === docId;
   const handle = useMemo(
     () => (docId ? getActiveHandle(docId) : null),
     [docId],
@@ -28,9 +35,11 @@ export function useAiRequests(docId: string | null) {
     if (!docId) { setState(EMPTY); return; }
     readSidecar<AiRequestsState>(docId, "ai-requests.json", EMPTY)
       .then((data) => {
-        if (!cancelled && Array.isArray(data.requests)) setState(data);
+        if (cancelled) return;
+        if (Array.isArray(data.requests)) setState(data);
+        setLoadedDocId(docId);
       })
-      .catch(() => {});
+      .catch(() => { if (!cancelled) setLoadedDocId(docId); });
     return () => {
       cancelled = true;
     };
@@ -124,11 +133,32 @@ export function useAiRequests(docId: string | null) {
     });
   }, [persist]);
 
+  /**
+   * Merge a set of already-computed request objects back over the store by
+   * `id`, persisting the result. Used by the BUG #55b card-request migration
+   * to re-bridge converted note/todo requests in place (set `linkedTo` at the
+   * freshly-created card). Each entry REPLACES the matching request; ids with
+   * no match are ignored. No-op when `updated` is empty.
+   */
+  const relinkRequests = useCallback((updated: AiRequest[]) => {
+    if (updated.length === 0) return;
+    const byId = new Map(updated.map((r) => [r.id, r]));
+    setState((prev) => {
+      const next = {
+        requests: prev.requests.map((r) => byId.get(r.id) ?? r),
+      };
+      persist(next);
+      return next;
+    });
+  }, [persist]);
+
   return {
     requests: state.requests,
+    loaded,
     addRequest,
     addStyleMergeRequest,
     updateRequestText,
     deleteRequest,
+    relinkRequests,
   };
 }

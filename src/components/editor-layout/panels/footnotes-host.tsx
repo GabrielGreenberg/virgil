@@ -7,7 +7,6 @@ import type { OrphanedFootnote } from "@/lib/types";
 import type { FootnoteInfo } from "../../Editor";
 import { useEditorRefContext } from "../contexts/editor-ref";
 import { useSelectionsContext } from "../contexts/selections";
-import { useAiRequestsContext } from "../contexts/ai-requests";
 import { useCitationDisplayContext } from "../contexts/citation-display";
 import { useRecentlyAddedId } from "../contexts/recently-added";
 
@@ -31,7 +30,6 @@ export interface FootnotesHostProps {
 export function FootnotesHost(p: FootnotesHostProps) {
   const { editorRef, setOverrideEditor } = useEditorRefContext();
   const { selectedFootnoteId, setSelectedFootnoteId } = useSelectionsContext();
-  const { aiRequests, updateAiRequestText, deleteAiRequest } = useAiRequestsContext();
   const { getCitationDisplayText, onCitationCreated } = useCitationDisplayContext();
   const recentlyAddedId = useRecentlyAddedId("footnote");
   return (
@@ -49,9 +47,6 @@ export function FootnotesHost(p: FootnotesHostProps) {
       onAdd={p.onAdd}
       getCitationDisplayText={getCitationDisplayText}
       onCitationCreated={onCitationCreated}
-      aiRequests={aiRequests}
-      onUpdateAiRequestText={updateAiRequestText}
-      onDeleteAiRequest={deleteAiRequest}
       onEditTitle={p.onEditTitle}
       onEditorFocus={setOverrideEditor}
       recentlyAddedId={recentlyAddedId}

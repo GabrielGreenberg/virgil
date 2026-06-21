@@ -559,11 +559,27 @@ export function useNotes(docId: string | null, externalPristine?: PristineKindAp
     update((prev) => ({ cards: prev.cards.filter((c) => !idSet.has(c.id)) }));
   }, [update, externalPristine, localPristine]);
 
+  /**
+   * Append fully-formed note cards built outside the hook. Used by the BUG
+   * #55b card-request migration to materialize an unlinked `note` AI request
+   * as a real Note card (already carrying `aiRequest: true`). Append-only and
+   * NOT marked pristine — a migrated card is committed content, not a fresh
+   * "+" placeholder, so it must survive click-away.
+   */
+  const appendCards = useCallback(
+    (newCards: UserNote[]) => {
+      if (newCards.length === 0) return;
+      update((prev) => ({ cards: [...prev.cards, ...newCards] }));
+    },
+    [update],
+  );
+
   return {
     cards,
     notes,
     highlights,
     addNote,
+    appendCards,
     addHighlight,
     updateNote,
     updateNoteTitle,

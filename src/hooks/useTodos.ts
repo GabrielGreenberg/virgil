@@ -303,9 +303,24 @@ export function useTodos(docId: string | null, externalPristine?: PristineKindAp
     update((prev) => ({ items: prev.items.filter((i) => !idSet.has(i.id)) }));
   }, [update, externalPristine, localPristine]);
 
+  /**
+   * Append fully-formed todo items built outside the hook. Used by the BUG
+   * #55b card-request migration to materialize an unlinked `todo` AI request
+   * as a real Todo card (already carrying `aiRequest: true`). Append-only and
+   * NOT marked pristine — a migrated card is committed content.
+   */
+  const appendItems = useCallback(
+    (newItems: TodoItem[]) => {
+      if (newItems.length === 0) return;
+      update((prev) => ({ items: [...prev.items, ...newItems] }));
+    },
+    [update],
+  );
+
   return {
     items: state.items,
     addItem,
+    appendItems,
     toggleItem,
     updateItem,
     updateNotes,

@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, memo } from "react";
 import type { JSONContent } from "@tiptap/react";
 import type { FootnoteInfo } from "@/components/Editor";
-import type { OrphanedFootnote, AiRequest } from "@/lib/types";
+import type { OrphanedFootnote } from "@/lib/types";
 import {
   ItemMenu,
   PANEL,
@@ -36,9 +36,6 @@ interface FootnotePanelProps {
   onAdd?: (anchorRect?: DOMRect) => void;
   getCitationDisplayText?: (command: string) => string;
   onCitationCreated?: (command: string) => { id: string; displayText: string } | null;
-  aiRequests?: AiRequest[];
-  onUpdateAiRequestText?: (id: string, text: string) => void;
-  onDeleteAiRequest?: (id: string) => void;
   onEditTitle?: (id: string, title: string) => void;
   onEditorFocus?: (editor: any) => void;
   recentlyAddedId?: string | null;
@@ -63,20 +60,12 @@ function FootnotePanel({
   onAdd,
   getCitationDisplayText,
   onCitationCreated,
-  aiRequests,
-  onUpdateAiRequestText,
-  onDeleteAiRequest,
   onEditTitle,
   onEditorFocus,
   recentlyAddedId,
   footnoteAiRequests,
   onSetFootnoteAiRequest,
 }: FootnotePanelProps) {
-  const myAiRequests = useMemo(
-    () => (aiRequests ?? []).filter((r) => r.kind === "footnote"),
-    [aiRequests],
-  );
-
   const items = useMemo<FootnoteItem[]>(
     () => {
       const out: FootnoteItem[] = [
@@ -162,9 +151,6 @@ function FootnotePanel({
           No footnotes. Select text and use the toolbar to create one.
         </div>
       }
-      aiRequests={myAiRequests}
-      onUpdateAiRequestText={onUpdateAiRequestText}
-      onDeleteAiRequest={onDeleteAiRequest}
       onKeyDown={handleNavKeys}
       scrollTabIndex={0}
       renderCard={(it, { selected }) =>

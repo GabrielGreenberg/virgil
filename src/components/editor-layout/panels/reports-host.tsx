@@ -7,7 +7,6 @@ import type { Side } from "@/hooks/useViewPrefs";
 import type { JSONContent } from "@tiptap/react";
 import { useEditorRefContext } from "../contexts/editor-ref";
 import { useSelectionsContext } from "../contexts/selections";
-import { useAiRequestsContext } from "../contexts/ai-requests";
 import { useCitationDisplayContext } from "../contexts/citation-display";
 import { useCardCreationContext } from "../contexts/card-creation";
 import { useRecentlyAddedId } from "../contexts/recently-added";
@@ -31,7 +30,6 @@ export interface ReportsHostProps {
 export function ReportsHost(p: ReportsHostProps) {
   const { editorRef, setOverrideEditor } = useEditorRefContext();
   const { selectedReportCardId, setSelectedReportCardId } = useSelectionsContext();
-  const { aiRequests, updateAiRequestText, deleteAiRequest } = useAiRequestsContext();
   const { getCitationDisplayText, onCitationCreated } = useCitationDisplayContext();
   const { createReport, createReportRequest } = useCardCreationContext();
   const recentlyAddedId = useRecentlyAddedId("reports");
@@ -67,9 +65,6 @@ export function ReportsHost(p: ReportsHostProps) {
       getCitationDisplayText={getCitationDisplayText}
       onCitationCreated={onCitationCreated}
       onEditorFocus={setOverrideEditor}
-      aiRequests={aiRequests}
-      onUpdateAiRequestText={updateAiRequestText}
-      onDeleteAiRequest={deleteAiRequest}
       recentlyAddedId={recentlyAddedId}
     />
   );

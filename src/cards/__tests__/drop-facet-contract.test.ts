@@ -53,7 +53,6 @@ const EXPECTED: Record<CardKind, "in-text" | "margin" | null> = {
   "cutter-suggestion": "margin",
   example: null, // block-MOVE spec, not a re-anchor — no button (SYNTHESIS §7)
   bib: null,
-  ai: null,
   error: null,
 };
 
@@ -129,8 +128,8 @@ describe("drop-facet contract (drop-button SYNTHESIS §2)", () => {
       expect(cardDropPlacement("example")).toBeNull();
     });
 
-    it("non-droppable kinds (bib/ai/error) have no spec at all", () => {
-      for (const k of ["bib", "ai", "error"] as const) {
+    it("non-droppable kinds (bib/error) have no spec at all", () => {
+      for (const k of ["bib", "error"] as const) {
         expect(CARD_REGISTRY[k].dropSpec).toBeNull();
         expect(isDroppable(k)).toBe(false);
       }

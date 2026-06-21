@@ -168,10 +168,4 @@ describe("card Floatable.snapshotForStack", () => {
     expect(f).not.toBeNull(); // record resolves → a real Floatable
     expect(f!.snapshotForStack(SOURCE)).toBeNull(); // …but not stackable
   });
-
-  it("ai is poppable but not stackable — a built Floatable snapshots null", () => {
-    const f = build("ai", "ai-1");
-    expect(f).not.toBeNull();
-    expect(f!.snapshotForStack(SOURCE)).toBeNull();
-  });
 });

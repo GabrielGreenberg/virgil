@@ -92,7 +92,7 @@ function renderCard(kind: CardKind, overrides: Partial<PanelCardProps> = {}) {
 
 describe("CardDropButton registry gating (isDroppable)", () => {
   const droppable: CardKind[] = ["note", "footnote", "citation", "todo", "report"];
-  const notDroppable: CardKind[] = ["bib", "ai", "error", "example"];
+  const notDroppable: CardKind[] = ["bib", "error", "example"];
 
   for (const kind of droppable) {
     it(`renders the drop button for droppable kind "${kind}"`, () => {

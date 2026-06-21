@@ -6,7 +6,6 @@ import type { useNotes } from "@/hooks/useNotes";
 import type { Side } from "@/hooks/useViewPrefs";
 import { useEditorRefContext } from "../contexts/editor-ref";
 import { useSelectionsContext } from "../contexts/selections";
-import { useAiRequestsContext } from "../contexts/ai-requests";
 import { useCitationDisplayContext } from "../contexts/citation-display";
 import { useCardCreationContext } from "../contexts/card-creation";
 import { useRecentlyAddedId } from "../contexts/recently-added";
@@ -36,7 +35,6 @@ export interface NotesHostProps {
 export function NotesHost(p: NotesHostProps) {
   const { editorRef, setOverrideEditor } = useEditorRefContext();
   const { selectedNoteId, setSelectedNoteId } = useSelectionsContext();
-  const { aiRequests, updateAiRequestText, deleteAiRequest } = useAiRequestsContext();
   const { getCitationDisplayText, onCitationCreated } = useCitationDisplayContext();
   const {
     createNote,
@@ -94,9 +92,6 @@ export function NotesHost(p: NotesHostProps) {
       onJumpToCard={(card, sourceEl) => editorRef.current?.jumpToCard(card, sourceEl)}
       getCitationDisplayText={getCitationDisplayText}
       onCitationCreated={onCitationCreated}
-      aiRequests={aiRequests}
-      onUpdateAiRequestText={updateAiRequestText}
-      onDeleteAiRequest={deleteAiRequest}
       onEditorFocus={setOverrideEditor}
       recentlyAddedId={recentlyAddedId}
     />

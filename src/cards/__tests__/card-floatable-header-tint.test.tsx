@@ -192,26 +192,6 @@ describe("cardFloatable canDrop (registry → Floatable, chip-D drop button)", (
     expect(f!.canDrop).toBe(false); // …and canDrop is independently false.
   });
 
-  it("ai float (bareWindow): canDrop false — AI requests are not droppable", () => {
-    const f = CARD_REGISTRY.ai.toFloatable(
-      "req1",
-      ctxWith({
-        aiRequests: [
-          {
-            id: "req1",
-            kind: "note",
-            text: "",
-            status: "open",
-            createdAt: "2026-01-01T00:00:00.000Z",
-          },
-        ],
-      } as unknown as Partial<CardFloatCtx>),
-    );
-    expect(f).not.toBeNull();
-    expect(f!.bareWindow).toBe(true);
-    expect(CARD_REGISTRY.ai.droppable).toBe(false);
-    expect(f!.canDrop).toBe(false);
-  });
 });
 
 describe("note float kind-chevron gate (WS7 — float half of the docked gate)", () => {

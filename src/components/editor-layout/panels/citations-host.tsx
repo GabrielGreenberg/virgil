@@ -8,7 +8,6 @@ import type { useBibReview } from "@/hooks/useBibReview";
 import type { Side } from "@/hooks/useViewPrefs";
 import { useEditorRefContext } from "../contexts/editor-ref";
 import { useSelectionsContext } from "../contexts/selections";
-import { useAiRequestsContext } from "../contexts/ai-requests";
 import { useCitationDisplayContext } from "../contexts/citation-display";
 import { useCardCreationContext } from "../contexts/card-creation";
 import { useRecentlyAddedId } from "../contexts/recently-added";
@@ -51,7 +50,6 @@ export interface CitationsHostProps {
 export function CitationsHost(p: CitationsHostProps) {
   const { editorRef } = useEditorRefContext();
   const { selectedCitationId, setSelectedCitationId } = useSelectionsContext();
-  const { aiRequests, updateAiRequestText, deleteAiRequest } = useAiRequestsContext();
   const { getCitationDisplayText } = useCitationDisplayContext();
   const { createCitation } = useCardCreationContext();
   const recentlyAddedId = useRecentlyAddedId("citation");
@@ -106,9 +104,6 @@ export function CitationsHost(p: CitationsHostProps) {
       onUpdateBibEntry={p.updateBibEntry}
       onUpdateBibKeyAndType={p.updateBibKeyAndType}
       onAddBibEntry={p.addBibEntry}
-      aiRequests={aiRequests}
-      onUpdateAiRequestText={updateAiRequestText}
-      onDeleteAiRequest={deleteAiRequest}
       recentlyAddedId={recentlyAddedId}
     />
   );

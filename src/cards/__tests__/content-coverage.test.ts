@@ -11,7 +11,7 @@ import type { CardKind } from "../types";
  *
  *   • every kind declares a `content` descriptor (or an explicit null for the
  *     no-user-content kinds) — `assertContentCoverage` logs nothing;
- *   • a `null` descriptor is ONLY the tint/system kinds (highlight/bib/ai/error);
+ *   • a `null` descriptor is ONLY the tint/system kinds (highlight/bib/error);
  *   • `cardHasContent` classifies every kind correctly, including the cases the
  *     old per-kind switch missed: report-with-title (REP-F7-01),
  *     citation-with-keys (CI-F7-01 / OMNI-F7-01), footnote-with-title (FN-A1-02),
@@ -21,7 +21,6 @@ import type { CardKind } from "../types";
 const NO_USER_CONTENT: ReadonlySet<CardKind> = new Set<CardKind>([
   "highlight",
   "bib",
-  "ai",
   "error",
 ]);
 

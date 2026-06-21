@@ -110,6 +110,7 @@ import { useBibReview } from "@/hooks/useBibReview";
 import { useBibSettings } from "@/hooks/useBibSettings";
 import { useNotes } from "@/hooks/useNotes";
 import { useAiRequests } from "@/hooks/useAiRequests";
+import { useAiRequestCardMigration } from "@/hooks/useAiRequestCardMigration";
 import { useRecentlyAddedTracker } from "@/hooks/useRecentlyAddedTracker";
 import { useDocument } from "@/hooks/useDocument";
 import { useEditorUIState } from "@/hooks/useEditorUIState";
@@ -1277,6 +1278,19 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
     [notesHookRaw, convertNotesCard],
   );
   const todosHook = useTodos(docId, todoPristine);
+  // BUG #55b (part b): subsume any pre-existing UNLINKED note/todo AI request
+  // into a real card with the per-card `aiRequest` flag (re-bridged via
+  // `linkedTo`), so retiring the legacy `"ai"` CardKind / `AiRequestCard`
+  // doesn't strand them. One-time + idempotent (see the hook). Runs here in
+  // EditorPane — the authoritative mount whose hooks feed the panels + AIWindow.
+  useAiRequestCardMigration({
+    docId,
+    ready: notesHookRaw.loaded && todosHook.loaded && aiRequestsHook.loaded,
+    aiRequests: aiRequestsHook.requests,
+    appendNotes: notesHookRaw.appendCards,
+    appendTodos: todosHook.appendItems,
+    relinkRequests: aiRequestsHook.relinkRequests,
+  });
   const archiveHook = useArchive(docId);
   // #55b: resolve a footnote's anchoring paragraph(s) from the LIVE doc, so the
   // bridged AI-request carries `paragraphIds` and is actually drainable (the
