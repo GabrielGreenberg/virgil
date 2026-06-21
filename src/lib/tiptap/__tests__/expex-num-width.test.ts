@@ -49,6 +49,8 @@ import {
   expexNumWidth,
   expexMarkerWidth,
   computeExpexWidths,
+  applyExpexWidthVars,
+  expexWidthStyle,
 } from "@/lib/tiptap/expex";
 
 function mainCtx(): EditorExtensionsCtx {
@@ -149,6 +151,53 @@ describe("computeExpexWidths — walks a doc (or a bare exampleBlock)", () => {
     });
     const w = computeExpexWidths(block);
     expect(w.numWidth).toBe("5ch"); // (100) — root node inspected too
+  });
+});
+
+describe("applyExpexWidthVars / expexWidthStyle — the shared apply (backlog #53b)", () => {
+  // The drift class #53b fixes: `--expex-num-width` was applied by hand in 3
+  // surfaces (main plugin, float body, card editor). These helpers are the SSOT
+  // both the imperative (plugin / card editor) and declarative (float) surfaces
+  // consume, so a 2-digit `(13)` widens the same way everywhere.
+
+  it("applyExpexWidthVars sets both vars when non-null", () => {
+    const el = document.createElement("div");
+    applyExpexWidthVars(el, { numWidth: "5ch", markerWidth: "6.5ch" });
+    expect(el.style.getPropertyValue("--expex-num-width")).toBe("5ch");
+    expect(el.style.getPropertyValue("--expex-marker-width")).toBe("6.5ch");
+  });
+
+  it("applyExpexWidthVars REMOVES vars when null (restore the 1.5em default)", () => {
+    const el = document.createElement("div");
+    el.style.setProperty("--expex-num-width", "5ch");
+    el.style.setProperty("--expex-marker-width", "6.5ch");
+    applyExpexWidthVars(el, { numWidth: null, markerWidth: null });
+    expect(el.style.getPropertyValue("--expex-num-width")).toBe("");
+    expect(el.style.getPropertyValue("--expex-marker-width")).toBe("");
+  });
+
+  it("applyExpexWidthVars(computeExpexWidths(2-digit block)) widens the card editor (#53b)", () => {
+    // The exact #53b scenario: a collapsed/expanded example CARD mounts a
+    // standalone editor with NO ExpexNumbering plugin, so it relies on this
+    // helper. A `(13)` block must yield a widened --expex-num-width.
+    const block = schema.nodeFromJSON({
+      type: "exampleBlock",
+      attrs: { uuid: "B13", kind: "single", number: 13 },
+      content: [{ type: "paragraph" }],
+    });
+    const el = document.createElement("div");
+    applyExpexWidthVars(el, computeExpexWidths(block));
+    expect(el.style.getPropertyValue("--expex-num-width")).toBe("4ch"); // 2 digits
+  });
+
+  it("expexWidthStyle returns only the non-null vars as a style object", () => {
+    expect(expexWidthStyle({ numWidth: "5ch", markerWidth: null })).toEqual({
+      "--expex-num-width": "5ch",
+    });
+    expect(expexWidthStyle({ numWidth: null, markerWidth: "6.5ch" })).toEqual({
+      "--expex-marker-width": "6.5ch",
+    });
+    expect(expexWidthStyle({ numWidth: null, markerWidth: null })).toEqual({});
   });
 });
 

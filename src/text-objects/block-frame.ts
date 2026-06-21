@@ -255,15 +255,25 @@ function resolveGutterEm(
  * within `el`. `querySelector` returns the first match in document order —
  * the block's OWN row marker, which always precedes any nested descendant's
  * marker — so a `\pex` with sub-items reads its `(n)`, not a sub-item's `a.`.
- * Falls back to `contentLeft` if the marker isn't present.
+ *
+ * Falls back to `fallbackLeft` when the marker isn't an `HTMLElement` (a
+ * transient render before the NodeView marker mounts, or an unfaithful clone
+ * that stripped the chrome span). `fallbackLeft` MUST be a gutter position to
+ * the LEFT of the marker — NEVER `contentLeft` (the text start, RIGHT of the
+ * marker), or the handle anchors INTO the content and overlaps the marker
+ * (backlog #49 hypothesis 1). The marker column is one track-width wide, so the
+ * caller passes `contentLeft − trackWidthPx` — the position the marker would
+ * occupy — keeping the fallback handle in the gutter where it belongs.
  */
 function markerElementLeft(
   el: HTMLElement,
   selector: string,
-  contentLeft: number,
+  fallbackLeft: number,
 ): number {
   const m = el.querySelector(selector);
-  return m instanceof HTMLElement ? m.getBoundingClientRect().left : contentLeft;
+  return m instanceof HTMLElement
+    ? m.getBoundingClientRect().left
+    : fallbackLeft;
 }
 
 /**
@@ -286,9 +296,14 @@ function bulletBandAnchor(li: HTMLElement, contentLeft: number): number {
 /**
  * MEASURED leftmost-marker left edge for a block, per kind (see
  * {@link BlockFrame.markerLeft}). `trackWidthPx` is this block's resolved
- * track-width, consumed only by the markerless-container branch.
+ * track-width, consumed by the markerless-container branch AND as the
+ * left-of-content fallback for the example marker kinds (#49).
+ *
+ * Exported for the #49 fallback-direction regression test (it asserts that an
+ * example block/item whose marker chrome is missing anchors LEFT of content,
+ * not on it). Otherwise an internal of `resolveBlockFrame`.
  */
-function resolveMarkerLeft(
+export function resolveMarkerLeft(
   el: HTMLElement,
   kind: string | null,
   contentLeft: number,
@@ -296,9 +311,16 @@ function resolveMarkerLeft(
 ): number {
   switch (kind) {
     case "exampleBlock":
-      return markerElementLeft(el, ".expex-number", contentLeft);
+      // Fallback (marker unresolved) = one track-width LEFT of content, the
+      // position the `(n)` column occupies — never `contentLeft` (#49: a
+      // contentLeft fallback puts the handle on the text, right of the marker).
+      return markerElementLeft(el, ".expex-number", contentLeft - trackWidthPx);
     case "exampleItem":
-      return markerElementLeft(el, ".expex-item-marker", contentLeft);
+      return markerElementLeft(
+        el,
+        ".expex-item-marker",
+        contentLeft - trackWidthPx,
+      );
     case "listItem":
       return bulletBandAnchor(el, contentLeft);
     case "bulletList":
