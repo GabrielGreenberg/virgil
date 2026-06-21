@@ -22,6 +22,10 @@ interface BuildArgs {
   setOverrideEditor: (editor: any) => void;
   getCitationDisplayText: (command: string) => string;
   onCitationCreated: (command: string) => { id: string; displayText: string } | null;
+  /** BUG #55: per-footnote AI-request flags + toggle (optional; omitted by the
+   *  contract test harness). */
+  footnoteAiRequests?: Record<string, boolean>;
+  onSetFootnoteAiRequest?: (id: string, value: boolean) => void;
 }
 
 export function buildFootnoteOmniItems(a: BuildArgs): OmniItem[] {
@@ -48,6 +52,12 @@ export function buildFootnoteOmniItems(a: BuildArgs): OmniItem[] {
           onEditorFocus={a.setOverrideEditor}
           getCitationDisplayText={a.getCitationDisplayText}
           onCitationCreated={a.onCitationCreated}
+          aiRequest={!!a.footnoteAiRequests?.[fn.footnoteId]}
+          onSetAiRequest={
+            a.onSetFootnoteAiRequest
+              ? (value) => a.onSetFootnoteAiRequest!(fn.footnoteId, value)
+              : undefined
+          }
           extraDataAttrs={{ "data-omni-entry": id }}
         />
       ),

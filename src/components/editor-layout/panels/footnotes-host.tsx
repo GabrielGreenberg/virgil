@@ -22,6 +22,10 @@ export interface FootnotesHostProps {
   onDeleteOrphan: (id: string) => void;
   onEditOrphan: (id: string, newContent: unknown) => void;
   onEditOrphanTitle: (id: string, title: string) => void;
+  /** BUG #55: per-footnote AI-request flags + toggle (from the footnotes.json
+   *  sidecar via EditorPane). */
+  footnoteAiRequests?: Record<string, boolean>;
+  onSetFootnoteAiRequest?: (id: string, value: boolean) => void;
 }
 
 export function FootnotesHost(p: FootnotesHostProps) {
@@ -51,6 +55,8 @@ export function FootnotesHost(p: FootnotesHostProps) {
       onEditTitle={p.onEditTitle}
       onEditorFocus={setOverrideEditor}
       recentlyAddedId={recentlyAddedId}
+      footnoteAiRequests={p.footnoteAiRequests}
+      onSetFootnoteAiRequest={p.onSetFootnoteAiRequest}
     />
   );
 }

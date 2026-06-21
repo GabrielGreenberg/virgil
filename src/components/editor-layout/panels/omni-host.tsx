@@ -65,6 +65,10 @@ export interface OmniHostProps {
   handleEditOrphan: (id: string, newContent: unknown) => void;
   handleDeleteOrphan: (id: string) => void;
   handleEditOrphanTitle: (id: string, title: string) => void;
+  /** BUG #55: per-footnote AI-request flags + toggle (from the footnotes.json
+   *  sidecar via EditorPane). */
+  footnoteAiRequests: Record<string, boolean>;
+  setFootnoteAiRequest: (id: string, value: boolean) => void;
   // Citations
   citations: CitationsHook["citations"];
   citationPositionMap: Map<string, number>;
@@ -422,6 +426,8 @@ export function OmniHost(p: OmniHostProps) {
       setOverrideEditor,
       getCitationDisplayText,
       onCitationCreated,
+      footnoteAiRequests: p.footnoteAiRequests,
+      onSetFootnoteAiRequest: p.setFootnoteAiRequest,
     }),
     ...buildCitationOmniItems({
       citations: p.citations,

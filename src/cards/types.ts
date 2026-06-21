@@ -176,12 +176,12 @@ export interface CardMeta {
    *  (footnote/citation render in-text atoms; bib/ai unanchored; highlight = tint). */
   markerType: MarkerType | null;
   /** AI-request routing (R29), or absent for kinds whose cards carry no
-   *  `aiRequest: boolean` flag. Declared on exactly 6 kinds (note, highlight,
-   *  todo, cutter-comment, revision-comment, report-request). `kind` is the
-   *  `AiRequest.kind` the bridged queue entry gets (which subskill picks it
-   *  up); `linkPanel` is the `AiRequestLink.panel` wire token. BOTH halves are
-   *  the FROZEN external skill contract (`editor/scripts/list_requests.py`) —
-   *  wire bytes must not change (pinned by
+   *  `aiRequest: boolean` flag. Declared on exactly 7 kinds (note, highlight,
+   *  todo, cutter-comment, revision-comment, report-request, footnote — footnote
+   *  joined in BUG #55). `kind` is the `AiRequest.kind` the bridged queue entry
+   *  gets (which subskill picks it up); `linkPanel` is the `AiRequestLink.panel`
+   *  wire token. BOTH halves are the FROZEN external skill contract
+   *  (`editor/scripts/list_requests.py`) — wire bytes must not change (pinned by
    *  `ai-request-routing-contract.test.ts`). `linkPanel` is DECLARED, not
    *  derived from `.panel`: the registry panel for todo is `"todo"` but the
    *  wire token is `"todos"` (and notes hosts two kinds), so a derivation

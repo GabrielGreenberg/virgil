@@ -5,8 +5,9 @@
  * The editor has two parallel signals for "the user wants Claude to act on
  * this":
  *
- *   1. Per-card sticky flags on notes / todos / cutter-comments /
- *      revision-comments. Each lives in its panel sidecar.
+ *   1. Per-card sticky flags on notes / highlights / todos / cutter-comments /
+ *      revision-comments / report-requests / footnotes (BUG #55). Each lives in
+ *      its panel sidecar (footnotes in `footnotes.json` via FootnoteRef.aiRequest).
  *   2. The unified `ai-requests.json` queue (drafted, submitted, complete).
  *
  * Skills run from outside the app and need a single inbox they can drain.

@@ -32,11 +32,16 @@ import { bridgeCardAiRequestFlag } from "@/lib/ai-request-bridge";
 import type { CardKind } from "@/cards/types";
 import type { AiRequest, AiRequestsState } from "@/lib/types";
 
-/** The 6 flag-bearing kinds and their FROZEN wire routing. `linkPanel` is the
- *  `AiRequestLink.panel` vocabulary ({notes,todos,cutter,revisions,reports} —
- *  `list_requests.py` PANEL_FILES + the reports bridge); `kind` is the
- *  `AiRequest.kind` each panel's row maps to there (notes→note/highlight,
- *  todos→todo, cutter/revisions→suggestion, reports→report). */
+/** The 7 flag-bearing kinds and their FROZEN wire routing. `linkPanel` is the
+ *  `AiRequestLink.panel` vocabulary ({notes,todos,cutter,revisions,reports,
+ *  footnotes} — `list_requests.py` PANEL_FILES + the reports bridge); `kind` is
+ *  the `AiRequest.kind` each panel's row maps to there (notes→note/highlight,
+ *  todos→todo, cutter/revisions→suggestion, reports→report, footnotes→footnote).
+ *  BUG #55 added `footnote`: its flag lives in footnotes.json (not a panel card
+ *  list), so its bridged entry is consumed via the unified `ai-requests.json`
+ *  path (kind: "footnote" → /editor/draft-footnote), NOT a PANEL_FILES fallback
+ *  row — hence "footnotes" is a valid `linkPanel` token but is intentionally
+ *  absent from list_requests.py's PANEL_FILES (the unbridged-flag fallback). */
 const FROZEN_ROUTING_TABLE: Record<
   string,
   { kind: string; linkPanel: string }
@@ -47,10 +52,11 @@ const FROZEN_ROUTING_TABLE: Record<
   "cutter-comment": { kind: "suggestion", linkPanel: "cutter" },
   "revision-comment": { kind: "suggestion", linkPanel: "revisions" },
   "report-request": { kind: "report", linkPanel: "reports" },
+  footnote: { kind: "footnote", linkPanel: "footnotes" },
 };
 
 describe("AI-request routing contract (R29)", () => {
-  it("the registry declares the frozen routing on exactly the 6 flag-bearing kinds", () => {
+  it("the registry declares the frozen routing on exactly the 7 flag-bearing kinds", () => {
     const declared = CARD_KINDS.filter((k) => CARD_REGISTRY[k].aiRequest != null);
     expect(declared.sort()).toEqual(Object.keys(FROZEN_ROUTING_TABLE).sort());
     for (const [kind, frozen] of Object.entries(FROZEN_ROUTING_TABLE)) {
@@ -58,13 +64,16 @@ describe("AI-request routing contract (R29)", () => {
     }
   });
 
-  it("the other 10 kinds declare NO aiRequest routing", () => {
+  it("the other 9 kinds declare NO aiRequest routing", () => {
     const without = CARD_KINDS.filter((k) => CARD_REGISTRY[k].aiRequest == null);
-    expect(without.length).toBe(10);
+    expect(without.length).toBe(9);
     // The suggestion siblings + atom/system kinds must stay out — a routing
-    // declaration here would invent a wire token no skill reads.
+    // declaration here would invent a wire token no skill reads. (footnote moved
+    // INTO the routing table in BUG #55; citation deliberately stays out — its
+    // "request" surface is find-citation via the AIWindow composer, not a
+    // per-card flag.)
     for (const k of [
-      "footnote", "citation", "example", "archive", "report", "bib", "ai",
+      "citation", "example", "archive", "report", "bib", "ai",
       "error", "revision-suggestion", "cutter-suggestion",
     ] as CardKind[]) {
       expect(CARD_REGISTRY[k].aiRequest).toBeUndefined();
@@ -95,7 +104,9 @@ describe("AI-request routing contract (R29)", () => {
   it("the bridge no-ops (no write) for a kind with no declared routing", async () => {
     written.length = 0;
     const errSpy = vi.spyOn(console, "error").mockImplementation(() => {});
-    await bridgeCardAiRequestFlag("doc-test", "footnote", "card-123", true, {
+    // `citation` carries no aiRequest routing (find-citation runs via the
+    // AIWindow composer, not a per-card flag) — the bridge must not write.
+    await bridgeCardAiRequestFlag("doc-test", "citation", "card-123", true, {
       text: "hello",
     });
     expect(written.length).toBe(0);

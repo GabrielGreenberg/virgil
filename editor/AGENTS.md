@@ -18,9 +18,12 @@ Claude to do something" signals while they write:
    (`pending | in-progress | complete | failed`) + `result` (outcome, set on a
    terminal status) + optional `safetyLevel` (1/2/3). Legacy
    `status: draft | submitted` still parse and read as open.
-2. **Card-level `aiRequest: boolean` flags** on notes, todos,
-   cutter-comments, revision-comments. Bridged into the unified queue
-   on toggle (see *Bridge* below).
+2. **Card-level `aiRequest: boolean` flags** on notes, highlights, todos,
+   cutter-comments, revision-comments, report-requests, and footnotes
+   (footnote joined in BUG #55 — its flag lives in `footnotes.json` via
+   `FootnoteRef.aiRequest`, and bridges a `kind: "footnote"` entry that
+   `/editor/draft-footnote` drains). Bridged into the unified queue on toggle
+   (see *Bridge* below).
 3. **`virgil/bib-review-requests.json`** — per-bib-key reviews
    (`type: "fields" | "notes"`). Stays separate because it's
    per-bib-key, not per-paragraph.
@@ -195,13 +198,15 @@ reloads sidecars.
 
 ## Bridge: card flags → ai-requests.json
 
-When a user toggles `aiRequest: true` on a note/todo/cutter-comment/
-revision-comment, the React hook calls
+When a user toggles `aiRequest: true` on a note/highlight/todo/cutter-comment/
+revision-comment/report-request/footnote, the React hook calls
 [bridgeCardAiRequestFlag()](../src/lib/ai-request-bridge.ts) which
 adds an entry to `ai-requests.json` with `linkedTo: { panel, cardId }`.
 Toggling off removes the entry; toggling back on re-adds it (with
 fresh paragraph context). This collapses three discovery paths into
-two so `/editor/review` only needs to walk two files.
+two so `/editor/review` only needs to walk two files. The `kind`/`linkPanel`
+of the bridged entry are registry-declared (`CARD_REGISTRY[kind].aiRequest`,
+R29) and pinned byte-for-byte by `ai-request-routing-contract.test.ts`.
 
 For papers created before the bridge landed, card-level flags exist
 without matching `ai-requests.json` entries.
@@ -209,6 +214,12 @@ without matching `ai-requests.json` entries.
 a virtual id `virtual:<panel>:<cardId>` so the umbrella can still
 process them. `apply_response.py` recognizes the virtual prefix and
 clears the source flag without touching `ai-requests.json`.
+
+Footnotes are the exception to this unbridged fallback: their flag lives in
+`footnotes.json` (not a panel card list), so `"footnotes"` is intentionally
+absent from list_requests.py's `PANEL_FILES`. A footnote AI request is ALWAYS
+bridged into `ai-requests.json` on toggle, so it surfaces through the unified
+queue (`kind: "footnote"` → `/editor/draft-footnote`), never the virtual path.
 
 ## Path resolution for skills
 

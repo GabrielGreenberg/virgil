@@ -4,8 +4,9 @@ import { useState, useCallback, useEffect, useMemo, useRef } from "react";
 import type { JSONContent } from "@tiptap/react";
 import { readSidecar, writeSidecar } from "@/lib/storage";
 import type { FootnotesState, FootnoteRef } from "@/lib/types";
-import { normalizeRichContent } from "@/lib/footnote-content";
+import { normalizeRichContent, richJsonToPlainText } from "@/lib/footnote-content";
 import { generateShortId } from "@/lib/uuid";
+import { bridgeCardAiRequestFlag } from "@/lib/ai-request-bridge";
 import {
   getActiveHandle,
   isStalePipelineError,
@@ -120,6 +121,37 @@ export function useFootnotes(docId: string | null, pristine?: PristineKindApi | 
     });
   }, [persist, pristine]);
 
+  /** Flip a footnote ref's per-card AI-request flag (BUG #55) AND bridge the
+   *  toggle into the unified `ai-requests.json` queue. Mirrors the note/todo/
+   *  comment `setXAiRequest` callbacks: the flag is the panel UI's source of
+   *  truth; the bridge keeps the skill-drain inbox in sync (best-effort, never
+   *  throws). The bridged entry's `kind`/`linkPanel` come from CARD_REGISTRY
+   *  (registry-declared routing, R29). `text` is a short plain-text summary of
+   *  the footnote body so the request row is legible in the inbox. */
+  const setFootnoteAiRequest = useCallback(
+    (id: string, value: boolean) => {
+      pristine?.markDirty(id);
+      const ref = stateRef.current.footnotes.find((f) => f.id === id);
+      setState((prev) => {
+        const next = {
+          footnotes: prev.footnotes.map((f) =>
+            f.id === id ? { ...f, aiRequest: value } : f,
+          ),
+        };
+        stateRef.current = next;
+        persist(next);
+        return next;
+      });
+      const summary = ref
+        ? richJsonToPlainText(normalizeRichContent(ref.content)).trim()
+        : "";
+      void bridgeCardAiRequestFlag(docId, "footnote", id, value, {
+        text: summary || "<footnote>",
+      });
+    },
+    [persist, pristine, docId],
+  );
+
   /** Deep-copy a footnote sidecar entry with a fresh id. Returns the new
    *  id, or null if the source id wasn't found. Used by the drag-handle
    *  Duplicate action when a duplicated block contains a footnote atom. */
@@ -168,6 +200,7 @@ export function useFootnotes(docId: string | null, pristine?: PristineKindApi | 
     updateFootnoteContent,
     deleteFootnote,
     setArchived,
+    setFootnoteAiRequest,
     cloneFootnote,
     syncFromEditor,
   };
