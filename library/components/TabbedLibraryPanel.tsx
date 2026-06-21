@@ -429,10 +429,12 @@ export default function TabbedLibraryPanel({
           minHeight: 0,
           display: "flex",
           flexDirection: "column",
-          border: "1px solid var(--topbar-border)",
-          borderRadius: 10,
-          overflow: "hidden",
-          background: "var(--surface)",
+          // No outer "pod" frame: the tab strip sits bare on the library
+          // backdrop, and the page outline (border + rounded corners) lives on
+          // the BODY below, so the active tab integrates into the page edge and
+          // the outline continues under the inactive tabs. (Was a unifying
+          // border/radius/overflow wrapper.)
+          background: "transparent",
         }}
       >
       <PanelTabStrip
@@ -452,17 +454,23 @@ export default function TabbedLibraryPanel({
         showRecent={showRecent}
       />
       {activeLibrary ? (
-        // Body region. The rounded frame + 1px border now live on the
-        // unifying wrapper above; this div only owns its fill + flex sizing.
-        // Paper-kind tabs fill the warm Virgil canvas so the body extends the
-        // active tab's color into the editor pod's frame (same ground the
-        // editor/view sits on elsewhere); other kinds inherit the wrapper's
-        // crisp --surface and leave this transparent.
+        // Body region = the "page". It owns the outline (1px border + rounded
+        // corners): the active tab's open-bottomed stroke + its 1px fill bridge
+        // merge into THIS top border (the tab overlaps it by 1px via
+        // marginBottom:-1), while the border continues full-width under the
+        // inactive tabs — so the active tab reads as part of the page and the
+        // page has clean rounded top corners. Paper-kind tabs fill the warm
+        // Virgil canvas; other kinds use --surface.
         <div
           style={{
             flex: 1,
             minHeight: 0,
-            background: isPaper(activeLibrary) ? "var(--background)" : "transparent",
+            background: isPaper(activeLibrary)
+              ? "var(--background)"
+              : "var(--surface)",
+            border: "1px solid var(--topbar-border)",
+            borderRadius: 10,
+            overflow: "hidden",
             display: "flex",
             flexDirection: "column",
           }}

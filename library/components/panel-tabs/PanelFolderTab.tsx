@@ -85,11 +85,12 @@ export const PanelFolderTab = forwardRef<HTMLDivElement, Props>(
           width: svgW,
           height: svgH,
           zIndex: active ? 10 : 1,
-          // No marginBottom offset: the rounded body frame now lives on the
-          // unifying wrapper (TabbedLibraryPanel), not on the body div, so
-          // there is no body top-border for the tab to overlap by 1px. The
-          // tab's own 1px fill bridge (svgH = TAB_H + 1) draws the join into
-          // the body cleanly; pulling the tab down would misalign the seam.
+          // The active tab overlaps the body's top border by 1px so its 1px
+          // fill bridge (svgH = TAB_H + 1) paints over that border segment —
+          // the tab merges seamlessly into the page while the body's top
+          // border continues, uncovered, under the inactive tabs to either
+          // side. Active only; inactive tabs sit flush on the strip baseline.
+          marginBottom: active ? -1 : 0,
           ...extraStyle,
         }}
         onClick={onClick}
