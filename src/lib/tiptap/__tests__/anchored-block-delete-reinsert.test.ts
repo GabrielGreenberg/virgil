@@ -9,7 +9,7 @@
 // mutation the archive/delete dispatcher performs) silently leaves the
 // paragraph behind — resurrected as an EMPTY paragraph carrying the same uuid —
 // when that paragraph's uuid is ANCHORED (i.e. a card points at it, so its uuid
-// is in the shared `anchoredUuidsRef` gutter-marker set). It is NOT triggered by
+// is in the shared `anchoredUuidsRef` margin-marker set). It is NOT triggered by
 // inline math. The CHIP-V reporter conflated the two because the sample's math
 // paragraph (3311) ALSO has a cutter card anchored to it (cutter.json links
 // textObjectIds:["3311"]), while the plain control (1102) has no card.
@@ -75,7 +75,7 @@ function mainCtx(anchored: Set<string>): EditorExtensionsCtx {
     callbacks: {},
     docIdRef: { current: null },
     texBlockIsPoppedRef: { current: undefined },
-    // The gutter-marker set MarginaliaAnchorGuard reads. Decided at mount time.
+    // The margin-marker set MarginaliaAnchorGuard reads. Decided at mount time.
     anchoredUuidsRef: { current: anchored },
     host: null,
   };
@@ -89,7 +89,7 @@ type BlockState = "absent" | "empty" | "has-content";
  * whether the target uuid survives — and if so, whether empty.
  *
  *  - `hasMath`   : target paragraph carries an inlineMath atom (vs plain text).
- *  - `anchored`  : target uuid is in the gutter-marker set (a card points at it).
+ *  - `anchored`  : target uuid is in the margin-marker set (a card points at it).
  *  - `lifecycle` : tag the delete tr with LIFECYCLE_DELETE_META, exactly as the
  *                  archive/delete dispatcher does. When false the delete is an
  *                  "incidental" edit (an unrelated edit that happens to remove an

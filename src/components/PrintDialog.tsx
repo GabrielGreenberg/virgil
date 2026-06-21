@@ -22,8 +22,8 @@ interface PrintDialogProps {
   onClose: () => void;
   options: PrintOptions;
   onOptionsChange: (next: PrintOptions) => void;
-  /** Whether marginalia gutters are currently rendered live. When false
-   *  the print toggle for marginalia is disabled (the gutters can't be
+  /** Whether marginalia margins are currently rendered live. When false
+   *  the print toggle for marginalia is disabled (the margins can't be
    *  conjured into the DOM at print time). */
   marginaliaLive: boolean;
 }

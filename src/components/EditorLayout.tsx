@@ -533,7 +533,7 @@ export default function EditorLayout() {
   // moved to EditorPane post-7.8, so this shell's parity mounts of useNotes/
   // useCutter/useTodos never surfaced a pristine card. Those parity hooks now
   // fall back to their own usePristineTracker (the `?? localPristine` net,
-  // kept per the WS2 defer ruling). The gutter-marker pipeline (markers +
+  // kept per the WS2 defer ruling). The margin-marker pipeline (markers +
   // delete handlers) lives entirely in EditorPane; this shell keeps only the
   // card arrays it still reads (anchor re-apply, hover→anchor derivation,
   // selected-anchor sync) plus the add/drop-bridge mutators.
@@ -845,12 +845,12 @@ export default function EditorLayout() {
     [],
   );
   // When the list of popped-out paragraphs changes from anywhere other
-  // than the gutter button (e.g. float's own X, restored from prefs),
+  // than the margin button (e.g. float's own X, restored from prefs),
   // ping the editor so every paragraph node view rebuilds its glyph.
   // (The ref EditorPane passes to its VirgilEditor handles the per-render
   // glyph predicate; this just nudges the editor on prefs change.)
   // The paragraph / heading / example refreshers used to be needed by
-  // the per-NodeView gutter popout buttons to flip their glyphs when
+  // the per-NodeView margin popout buttons to flip their glyphs when
   // popout state changed externally. After Phase D4 (grab-handle
   // unification), those buttons are gone and the editor-mounted
   // TextObjectGrabHandle subscribes to viewPrefs directly via
@@ -2569,7 +2569,7 @@ export default function EditorLayout() {
     enterMarginEditMode,
   ]);
 
-  // Listen for marker clicks from the editor (in-text anchors, gutter
+  // Listen for marker clicks from the editor (in-text anchors, margin
   // markers, inline atoms, error markers — see marker-clicks.ts).
   useMarkerClickBridges({
     prefsRef,
@@ -2748,7 +2748,7 @@ export default function EditorLayout() {
   // RESTORE its text: ProseMirror inserts the text from text/plain (an
   // inline-insertion drag, NOT a paragraph anchor), and we then delete the
   // snippet from archive. (Re-anchoring an orphaned snippet by dragging its
-  // gutter pin now flows through the unified drop-mode controller — the old
+  // margin pin now flows through the unified drop-mode controller — the old
   // native MIME_ARCHIVE_ANCHOR drag is gone.)
   useEffect(() => {
     const editor = editorRef.current?.getEditor();
@@ -3349,7 +3349,7 @@ export default function EditorLayout() {
   }
 
   // Paragraph / heading / example popout handlers and their is-popped
-  // predicates now live inside EditorPane (which owns the gutter buttons
+  // predicates now live inside EditorPane (which owns the margin buttons
   // and the popouts mount). EditorPane also owns the
   // `PoppedCardsContext.Provider` post-7.8.1 so the same provider value
   // covers both the main app and the Library Reader without EditorLayout

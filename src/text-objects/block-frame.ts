@@ -1,6 +1,6 @@
 /**
  * block-frame.ts — the ONE canonical per-block geometry source for every
- * gutter affordance (grab handle, drop indicator, and figure chrome).
+ * margin affordance (grab handle, drop indicator, and figure chrome).
  * Resolve a block's frame once and every affordance
  * reads the SAME numbers, so they align BY CONSTRUCTION rather than by
  * coincidence (the bug this replaces: each handle measured its own block,
@@ -10,7 +10,7 @@
  * HORIZONTAL axis — `contentLeft` (the block's text-start X), a MEASURED
  * `markerLeft` (the block's leftmost marker glyph: bullet band / `(n)` /
  * `a.` / plain text), and `gapPx` (the em handle-gap resolved against THIS
- * block's font). Every gutter affordance now hugs `markerLeft − gapPx − <its
+ * block's font). Every margin affordance now hugs `markerLeft − gapPx − <its
  * own width>`, so a container and its first item align BY CONSTRUCTION. All
  * fields are viewport-space and resolvable from `el` + ancestry alone.
  *
@@ -53,7 +53,7 @@ import {
 
 /**
  * Per-block geometry, all in VIEWPORT coordinates — the ONE source every
- * gutter affordance reads, so they align by construction.
+ * margin affordance reads, so they align by construction.
  */
 export interface BlockFrame {
   /** The block's outer DOM element (the `[data-uuid]` node DOM — the same
@@ -73,14 +73,14 @@ export interface BlockFrame {
   /**
    * Optical (cap-band) center Y of the first visual text line:
    * `firstLineRect.top + capTopOffset + capHeight/2`. THE canonical
-   * vertical anchor for gutter chrome — center an affordance's glyph on
+   * vertical anchor for margin chrome — center an affordance's glyph on
    * this and it sits on the optical middle of the text it labels,
    * independent of font size / line-height.
    */
   opticalCenterY: number;
   /**
    * Nesting depth = count of ancestor elements carrying `data-uuid`,
-   * bounded by the editor root. O(depth). Exposed for future gutter chrome
+   * bounded by the editor root. O(depth). Exposed for future margin chrome
    * (the chip-2 horizontal axis steps via the markerless-container
    * track-width below, not via depth).
    */
@@ -113,7 +113,7 @@ export interface BlockFrame {
   contentRight: number;
   /**
    * The MEASURED left edge of the block's leftmost rendered marker — the
-   * single horizontal anchor every gutter affordance hugs. Per kind:
+   * single horizontal anchor every margin affordance hugs. Per kind:
    *   • exampleBlock → its `(n)` number (`.expex-number`) left.
    *   • exampleItem  → its `a./b.` marker (`.expex-item-marker`) left.
    *   • listItem     → the bullet band: the parent list's marker indent,
@@ -130,7 +130,7 @@ export interface BlockFrame {
    */
   markerLeft: number;
   /**
-   * `--gutter-handle-gap` resolved (em → px) against THIS block's font, so the
+   * `--margin-handle-gap` resolved (em → px) against THIS block's font, so the
    * gap scales with the labeled text — every prose block shares one value (a
    * uniform gap), a larger heading font widens it proportionally. The shared
    * horizontal gap for every affordance on this row.
@@ -220,22 +220,22 @@ function countUuidAncestors(el: HTMLElement, root: HTMLElement | null): number {
   return depth;
 }
 
-/** Fallback px for the em gutter tokens when the custom property is missing
+/** Fallback px for the em margin tokens when the custom property is missing
  *  / unreadable — the resolved values at the editor's nominal 16px font
- *  (`--gutter-handle-gap: 0.625em` → 10px, `--gutter-track-width: 1.25em` →
+ *  (`--margin-handle-gap: 0.625em` → 10px, `--margin-track-width: 1.25em` →
  *  20px). */
 const DEFAULT_HANDLE_GAP_PX = 10;
 const DEFAULT_TRACK_WIDTH_PX = 20;
 
 /**
- * Resolve a gutter length custom property to px against a font size. The
- * tokens are authored in `em` (`--gutter-handle-gap` / `--gutter-track-width`)
+ * Resolve a margin length custom property to px against a font size. The
+ * tokens are authored in `em` (`--margin-handle-gap` / `--margin-track-width`)
  * so they scale with the labeled text; `getComputedStyle` does NOT resolve a
  * custom property's `em` to px (it returns the literal "0.625em"), so we
  * resolve it here against the block's own `font-size`. A px value passes
  * through (forward-compat). O(1) — reads an already-fetched computed style.
  */
-function resolveGutterEm(
+function resolveMarginEm(
   cs: CSSStyleDeclaration,
   fontSizePx: number,
   varName: string,
@@ -258,12 +258,12 @@ function resolveGutterEm(
  *
  * Falls back to `fallbackLeft` when the marker isn't an `HTMLElement` (a
  * transient render before the NodeView marker mounts, or an unfaithful clone
- * that stripped the chrome span). `fallbackLeft` MUST be a gutter position to
+ * that stripped the chrome span). `fallbackLeft` MUST be a margin position to
  * the LEFT of the marker — NEVER `contentLeft` (the text start, RIGHT of the
  * marker), or the handle anchors INTO the content and overlaps the marker
  * (backlog #49 hypothesis 1). The marker column is one track-width wide, so the
  * caller passes `contentLeft − trackWidthPx` — the position the marker would
- * occupy — keeping the fallback handle in the gutter where it belongs.
+ * occupy — keeping the fallback handle in the margin where it belongs.
  */
 function markerElementLeft(
   el: HTMLElement,
@@ -407,7 +407,7 @@ export function resolveBlockFrame(
   const root: HTMLElement | null =
     cache?.editorEl ?? (editor?.view?.dom as HTMLElement | null) ?? null;
   const depth = countUuidAncestors(el, root);
-  // Resolve the em gutter tokens against the LABELED TEXT's font, so the gap
+  // Resolve the em margin tokens against the LABELED TEXT's font, so the gap
   // scales with the prose the user reads and every prose block shares ONE
   // value. `resolveInlineContextElement` descends wrappers to the inline text
   // for paragraphs / example items / headings, but leaves a bare `<li>` at its
@@ -421,16 +421,16 @@ export function resolveBlockFrame(
       : target;
   const cs = getComputedStyle(fontEl);
   const fontSizePx = parseFloat(cs.fontSize) || DEFAULT_HANDLE_GAP_PX * 1.6;
-  const gapPx = resolveGutterEm(
+  const gapPx = resolveMarginEm(
     cs,
     fontSizePx,
-    "--gutter-handle-gap",
+    "--margin-handle-gap",
     DEFAULT_HANDLE_GAP_PX,
   );
-  const trackWidthPx = resolveGutterEm(
+  const trackWidthPx = resolveMarginEm(
     cs,
     fontSizePx,
-    "--gutter-track-width",
+    "--margin-track-width",
     DEFAULT_TRACK_WIDTH_PX,
   );
   const markerLeft = resolveMarkerLeft(

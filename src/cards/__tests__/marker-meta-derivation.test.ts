@@ -4,7 +4,7 @@
  *
  * `MARKER_META`'s panel + accent now derive from `CARD_REGISTRY` via
  * `src/cards/marker-meta.ts`. These tables FREEZE the derived values so a
- * registry edit that silently re-routes or re-tints a gutter marker trips a
+ * registry edit that silently re-routes or re-tints a margin marker trips a
  * test instead of shipping. The unified themeKey keyspace (A10/B: registry
  * `ThemeKey` ≡ `PanelThemeKey`, the old comment→revision crosswalk deleted)
  * and the one intentional accent identity (error ≡ footnote rust) are pinned

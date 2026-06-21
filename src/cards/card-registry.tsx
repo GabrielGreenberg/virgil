@@ -342,7 +342,7 @@ export const CARD_REGISTRY: Record<CardKind, CardMeta> = {
     panel: "notes",
     origin: "user",
     anchored: true,
-    markerType: null, // tint, no gutter icon
+    markerType: null, // tint, no margin icon
     lifecycle: { clone: true, delete: true, bindAnchor: true },
     // A highlight is a color + range; no user-typed body → never warns on delete.
     content: null,

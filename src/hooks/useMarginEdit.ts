@@ -67,7 +67,7 @@ export const MARGIN_OPPOSITE: Record<MarginSide, MarginSide> = {
 };
 
 // Per-side minimum padding. Left must clear the 72px marginalia
-// gutter (plus heading fold-chevron breathing strip). The other
+// margin (plus heading fold-chevron breathing strip). The other
 // three floor at 24px so the prose has air without bumping into the
 // pod border. All four cap at MARGIN_MAX so an extreme drag can't
 // collapse the column.

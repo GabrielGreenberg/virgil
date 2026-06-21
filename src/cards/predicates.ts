@@ -156,14 +156,14 @@ export const isInlineAtomCardKind = (k: CardKind): boolean =>
   k === "footnote" || k === "citation";
 
 if (process.env.NODE_ENV !== "production") {
-  // The two inline-atom kinds carry no gutter marker (their in-text atom IS the
+  // The two inline-atom kinds carry no margin marker (their in-text atom IS the
   // surface). If a registry edit ever gives one a `markerType`, the explicit
   // literal above would silently drift from the facet — make it loud.
   for (const k of ["footnote", "citation"] as const) {
     if (CARD_REGISTRY[k].markerType !== null) {
       console.error(
         `[predicates] isInlineAtomCardKind invariant broken: "${k}" must have ` +
-          `markerType === null (its inline atom is the surface, no gutter icon), ` +
+          `markerType === null (its inline atom is the surface, no margin icon), ` +
           `but CARD_REGISTRY marks it "${CARD_REGISTRY[k].markerType}".`,
       );
     }

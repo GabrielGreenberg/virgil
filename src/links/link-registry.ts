@@ -28,7 +28,7 @@ export interface LinkRegistryEntry {
   /** Structural shape of the anchor — drives resolver dispatch. */
   anchorType: "inline-atom" | "anchor";
   /** In-editor marker style. */
-  marker: "atom-node" | "gutter-icon";
+  marker: "atom-node" | "margin-icon";
   /** Visible SVG connector between marker and card. */
   connector: "always" | "on-select" | "none";
   /** Multiplicity — how many Links may point at the same target card.
@@ -94,7 +94,7 @@ export const LINK_REGISTRY: Record<LinkKind, LinkRegistryEntry> = {
     label: "Anchor",
     folder: "src/links/Anchor",
     anchorType: "anchor",
-    marker: "gutter-icon",
+    marker: "margin-icon",
     connector: "none",
     multiplicity: "many",
     bidirectional: true,

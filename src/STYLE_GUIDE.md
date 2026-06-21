@@ -174,7 +174,7 @@ color (`currentColor`). Three exceptions are filled by design: the AI
 star (sky `#0ea5e9`), the trash icon (`text-danger`), and the
 heading-fold chevron (`--footnote-color` when folded).
 
-Marginalia gutter icons are 16px, rendered via the components in
+Marginalia margin icons are 16px, rendered via the components in
 `src/components/editor-layout/panel-icons.tsx`.
 
 ## Interaction
@@ -218,7 +218,7 @@ Eleven themes, four families:
 - **Errors:** `error` (rust), `example` (teal — rare).
 
 `cut`, `footnote`, and `error` share the rust accent — they're never
-adjacent in the same surface, and the gutter icon distinguishes them.
+adjacent in the same surface, and the margin icon distinguishes them.
 
 A card renders via `<PanelCard theme={…} selected={…}>`. The frame
 (border, header strip, separator, body, popout, trash) is identical
@@ -279,7 +279,7 @@ the static `isDroppable(kind)` registry facet — so it appears on every
 droppable kind (note, footnote, citation, todo, archive, the
 comment/suggestion/report families) and is absent on `bib` / `ai` /
 `error` / `example`. The glyph component is domain-neutral (no card or
-drop-mode imports) so the float chrome and the gutter pin reuse the
+drop-mode imports) so the float chrome and the margin pin reuse the
 same mark. Press isolation builds on `CardJumpChevron`'s (real
 `<button draggable=false>`, mousedown `stopPropagation`, `dragstart`
 swallowed) so it never co-fires the header drag-lift or the card-root
@@ -481,7 +481,7 @@ Three categories.
 1. **Anchor drag** (paragraph-level reanchor). This no longer flows
    through native HTML5 DnD — paragraph-level re-anchor now runs through
    the drop-mode controller (the card/float drop button + the folded
-   gutter pin both call `beginCardDropGesture`), classified+applied by the
+   margin pin both call `beginCardDropGesture`), classified+applied by the
    shared `textObjectSideReanchorSpec`. The per-panel anchor MIMEs
    (`MIME_REPORT`/`MIME_NOTE`/`MIME_TODO`/`MIME_ARCHIVE_ANCHOR`/`MIME_CUT`/
    the Revisions MIME) are gone. `MIME_MARGINALIA_MOVE` remains only as a
@@ -526,39 +526,39 @@ Selection-from-card on inline atoms: 2px ring in
 `--link-anchor-color`. On Mode-A paragraph anchors: subtle left-border
 stripe.
 
-## Gutter chrome
+## Margin chrome
 
 The editor's left padding (`--editor-pl`, default 88px) houses two
 shared chrome columns, expressed as CSS variables in `:root` so every
 consumer reads the same source:
 
-- `--gutter-col-chevron` (default `-44px`) — fold chevron column for
+- `--margin-col-chevron` (default `-44px`) — fold chevron column for
   headings and the texBlock pod. Consumed by `.heading-fold-chevron`
   and `.tex-block-fold-chevron`.
-- `--gutter-col-handle-inset` (default `22px`) — the narrow-viewport
+- `--margin-col-handle-inset` (default `22px`) — the narrow-viewport
   **floor** for handle placement (`editorColumnLeft − this`), below which a
   deeply-indented block's handle won't be pushed off-screen-left. Read by JS
   via `getComputedStyle` in [src/hooks/useEditorViewportCache.ts](src/hooks/useEditorViewportCache.ts)
-  (`cache.gutterInset`) and applied in [src/text-objects/handle-layout.ts](src/text-objects/handle-layout.ts).
-- `--gutter-handle-gap` (default `0.625em`) — the **one uniform GAP** every
-  gutter affordance leaves between its RIGHT edge and its block's marker.
+  (`cache.marginInset`) and applied in [src/text-objects/handle-layout.ts](src/text-objects/handle-layout.ts).
+- `--margin-handle-gap` (default `0.625em`) — the **one uniform GAP** every
+  margin affordance leaves between its RIGHT edge and its block's marker.
   em-based so it scales with the labeled text; resolved PER BLOCK in
   [src/text-objects/block-frame.ts](src/text-objects/block-frame.ts) against
   that block's font (`gapPx`), so every prose block shares one value and a
   larger heading font widens it proportionally.
-- `--gutter-track-width` (default `1.25em`) — the step a **markerless
+- `--margin-track-width` (default `1.25em`) — the step a **markerless
   container** (`bulletList` / `orderedList`) takes left of its first item's
   handle, so container + item stack with uniform spacing.
-- `--gutter-handle-hit-pad` (default `calc(var(--editor-font-size) * 1.8)`,
+- `--margin-handle-hit-pad` (default `calc(var(--editor-font-size) * 1.8)`,
   ≈ 1.8em) — the width of a grab handle's **hit/hover halo** (the
   `.text-object-grab-handle::before`): a wide, centered pad around the 12px
   dots so the target is grabbable even when the cursor occludes the dots.
-  Scales with the editor font; clamped per-handle by `--gutter-handle-hit-cap`
+  Scales with the editor font; clamped per-handle by `--margin-handle-hit-cap`
   (an inline override, half the distance to the nearest same-row handle) so
   close nested handles don't overlap. See "Grab hit/hover halo" below.
 
 **Horizontal — measured marker-left + one uniform em gap.** There is NO
-per-kind placement constant. Every gutter affordance hugs the block's
+per-kind placement constant. Every margin affordance hugs the block's
 MEASURED marker (`block-frame.ts` `markerLeft`):
 
 > `affordance.left = markerLeft − gapPx − <its own width>`
@@ -573,7 +573,7 @@ measured, never a guessed glyph width, per kind:
   pseudo isn't rect-able, so we anchor to the measured band (em-scaling),
   never a hardcoded bullet width.
 - **bulletList / orderedList** (markerless container) → one
-  `--gutter-track-width` left of the first grabbable child's `markerLeft`.
+  `--margin-track-width` left of the first grabbable child's `markerLeft`.
 - **paragraph / heading / blockquote / codeBlock / titleField / framed
   atoms** (no marker) → the text `contentLeft`. (A text **selection** also
   anchors to `contentLeft` — it labels text, not a marker.)
@@ -582,12 +582,12 @@ The result: `⠿ (2) ⠿ a.` (example container left of the number, item left of
 its marker) and `⠿⠿ • text` (both list handles left of the bullet, uniform
 spacing) — same gap everywhere, and because markers are MEASURED + the gap is
 em-based, a wide `(100)` marker or a font-size change can't break it. Floored
-at `editorColumnLeft − var(--gutter-col-handle-inset)` for narrow viewports.
+at `editorColumnLeft − var(--margin-col-handle-inset)` for narrow viewports.
 
 **Marker-left fallback invariant (generalizable).** When a kind's marker
 chrome can't be measured (a transient render before the NodeView mounts, an
 unfaithful clone that stripped the span), `resolveMarkerLeft` must fall back to
-a position in the GUTTER — **left of content** (e.g. `contentLeft −
+a position in the MARGIN — **left of content** (e.g. `contentLeft −
 trackWidthPx`, the column the marker occupies) — NEVER to `contentLeft` itself.
 A `contentLeft` fallback puts the handle at the text start, *right* of the
 marker, dropping the dots onto the content (the backlog #49 symptom). The
@@ -621,15 +621,15 @@ Two vertical policies, branched on `meta.chromeAnchor`:
   edge. For framed visual kinds where there's no "first line of prose" to
   align with.
 
-Adding a new TextObject kind requires no gutter-chrome CSS and no placement
+Adding a new TextObject kind requires no margin-chrome CSS and no placement
 constant — drop a registry entry, set `chromeAnchor` (and `isSubObject` /
 `parentKind` if it nests), teach `block-frame.ts` `resolveMarkerLeft` how to
 measure the new kind's marker if it has one, and the handle places itself on
-both axes. Tune the visual globally by editing the `--gutter-handle-gap` /
-`--gutter-track-width` / `--gutter-col-handle-inset` CSS variables.
+both axes. Tune the visual globally by editing the `--margin-handle-gap` /
+`--margin-track-width` / `--margin-col-handle-inset` CSS variables.
 
-**Optical-center anchoring (generalizable chrome rule).** Any gutter or
-marginal affordance that labels a line of text — a grab handle or a marker —
+**Optical-center anchoring (generalizable chrome rule).** Any margin
+affordance that labels a line of text — a grab handle or a marker —
 centers its glyph on the text's *optical center*
 (`capTopOffset + capHeight / 2` below the line-box top), NOT on the line-box
 top or the glyph cap-top. Anchoring to the line-box top (or `flex-start`
@@ -675,7 +675,7 @@ drop indicator's figure-adjacent bar to image width (a chip-4a regression).
 math above pins it precisely on both axes — do NOT resize the box, the X
 formula depends on its width). The *target*, though, is a wider transparent
 `.text-object-grab-handle::before` halo CENTERED on the dots —
-`--gutter-handle-hit-pad` wide (≈ 1.8em, scaling with the editor font) × one
+`--margin-handle-hit-pad` wide (≈ 1.8em, scaling with the editor font) × one
 line tall — so the user can grab it even with the cursor occluding the dots.
 Three rules:
 
@@ -697,9 +697,9 @@ Three rules:
   that distance from the already-resolved on-screen placements (NOT a doc walk;
   [TextObjectGrabHandle.tsx](src/text-objects/TextObjectGrabHandle.tsx)
   `applyHitCaps`, gated on the per-hover handle set so it stays O(1) per
-  keystroke) and writes it to the handle as an inline `--gutter-handle-hit-cap`
+  keystroke) and writes it to the handle as an inline `--margin-handle-hit-cap`
   (half the gap, px); the `::before` width is then
-  `max(12px, min(var(--gutter-handle-hit-pad), calc(var(--gutter-handle-hit-cap) * 2)))`.
+  `max(12px, min(var(--margin-handle-hit-pad), calc(var(--margin-handle-hit-cap) * 2)))`.
   Result: the 19px bullet handles shrink to 19px halos that meet at the
   midpoint with no overlap (each dots-cluster fully owned, the midpoint
   resolving to the inner/item handle — the more specific grab), while the 37px
@@ -754,7 +754,7 @@ parallel popout affordance.
 
 ## Marginalia
 
-Two gutters (left wider for the heading-fold chevron, right narrower).
+Two margins (left wider for the heading-fold chevron, right narrower).
 Two-column grid per side (`MARGINALIA_COLS = 2`). Markers anchor to
 paragraph UUIDs.
 
@@ -770,11 +770,11 @@ no longer be resolved to any live paragraph (its stored UUID, its
 `linkedAnchor` mark, and its text snapshot are all dead — the resolver SSOT
 `resolveCardAnchor` returns `source:'orphan'`) has no line to align against.
 Rather than silently culling its marker (the old "card vanishes ~10s later"
-bug), the gutter surfaces it in a **fixed dock** pinned to the top of the
+bug), the margin surfaces it in a **fixed dock** pinned to the top of the
 side it would dock on (`OrphanDock` in `Marginalia.tsx`): a faint
 `bg-surface/90` + `border-edge-subtle` rounded strip of the card's normal
 marker buttons, with a `data-hint`/`aria-label` of "N unanchored — click to
-re-pin". Each entry behaves like any gutter marker — click opens the card's
+re-pin". Each entry behaves like any margin marker — click opens the card's
 panel; grab (when editable) starts a drop-mode re-anchor session (the
 re-pin). The dock only appears when a card genuinely orphans against a
 **non-empty** live-UUID set — never during the editor-mount gap (the marker

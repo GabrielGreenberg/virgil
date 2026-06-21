@@ -1,9 +1,9 @@
 /**
  * Marginalia system — shared types, MIME constants, and metadata for the
- * gutter icons that sit to the left and right of paragraphs in the editor.
+ * margin icons that sit to the left and right of paragraphs in the editor.
  *
  * Each consumer panel (notes, archive, revisions, cut, todo)
- * registers markers via the <Marginalia> gutter component. Markers are
+ * registers markers via the <Marginalia> margin component. Markers are
  * anchored to any node that carries a UUID attr and packed into rows next
  * to the node's first line.
  *
@@ -15,7 +15,7 @@
  *    panel + accent derive from the registry via `src/cards/marker-meta.ts`).
  * 2. Register a `dropSpec` for each owning card kind (the
  *    `textObjectSideReanchorSpec` factory wired to a `ParagraphAnchorApi`
- *    sub-bag on the `DropCtx`) so the gutter pin can re-anchor it through the
+ *    sub-bag on the `DropCtx`) so the margin pin can re-anchor it through the
  *    unified drop-mode controller. Wire that sub-bag in `EditorPane`'s
  *    `DropModeProvider`.
  * 3. Emit the marker in EditorPane.tsx's `marginaliaMarkers` builder, carrying
@@ -24,7 +24,7 @@
  *
  * The `MIME_*` constants below are now ONLY the inline-insertion DnD payloads
  * (citation / footnote / archive-restore / raw text). The old native
- * paragraph-anchor drags (panel→gutter, gutter-pin re-anchor) were folded onto
+ * paragraph-anchor drags (panel→margin, margin-pin re-anchor) were folded onto
  * the drop-mode controller; `ANCHOR_DRAG_TYPES` is the residual suppress-set.
  */
 
@@ -63,7 +63,7 @@ export function isAnchorableAtom(nodeType: NodeType): boolean {
 // ---------------------------------------------------------------------------
 
 /**
- * Residual paragraph-anchor suppress token. The gutter-pin re-anchor gesture
+ * Residual paragraph-anchor suppress token. The margin-pin re-anchor gesture
  * that used to set this MIME no longer exists — it was folded onto the unified
  * drop-mode controller (chip H). No code produces this DataTransfer type
  * anymore; it is kept ONLY as the lone member of `ANCHOR_DRAG_TYPES` so
@@ -84,7 +84,7 @@ export const MIME_TEXT_INSERT = "application/x-virgil-text-insert";
 /**
  * Drag the floating "selection chip" into a side panel (Notes / Revisions /
  * Cutter) to create a linked-margin item anchored to the selected range.
- * Panel-level drop, not gutter-level — intentionally not in ANCHOR_DRAG_TYPES.
+ * Panel-level drop, not margin-level — intentionally not in ANCHOR_DRAG_TYPES.
  */
 export const MIME_SELECTION_ANCHOR = "application/x-virgil-selection-anchor";
 
@@ -113,7 +113,7 @@ export interface MarginaliaMarker {
    *  1. Markers self-subscribe to the global cardStore via this kind +
    *     entityId to compute their own selected/hovered state (the three-surface
    *     hover) — no prop threading from a parent decoration loop.
-   *  2. It is the precise CardKind the gutter-pin re-anchor gesture uses to
+   *  2. It is the precise CardKind the margin-pin re-anchor gesture uses to
    *     build the `float:card:<kind>:<id>` key for `beginCardDropGesture`
    *     (chip H). The marker builder knows the real kind (e.g. cut →
    *     `cutter-comment`/`cutter-suggestion`, report → `report`/`report-request`),
@@ -133,7 +133,7 @@ export interface MarginaliaMarker {
   /** Optional: side override. If omitted, uses MARKER_META[type].defaultSide */
   side?: "left" | "right";
   /** Click handler — typically opens the panel and selects the item.
-   *  `clickY` is the viewport Y of the clicked gutter marker, used by
+   *  `clickY` is the viewport Y of the clicked margin marker, used by
    *  the panel host to align the opened card next to the source. */
   onClick?: (clickY?: number) => void;
   /** Delete this anchor. If it's the last anchor on the underlying card,
@@ -157,7 +157,7 @@ export interface MarginaliaMarker {
    * `resolveCardAnchor`). The card still exists in its sidecar but has no
    * live paragraph to sit beside. The grid CANNOT line-align an orphan (no
    * paragraph metrics), so instead of silently culling it (the RC2 "card
-   * vanishes" bug) the gutter surfaces it in a fixed "unanchored — click to
+   * vanishes" bug) the margin surfaces it in a fixed "unanchored — click to
    * re-pin" dock. `textObjectId` still carries the card's last-known stored
    * pid so the marker keys stably and the re-pin grab gesture has a kind+id.
    */
@@ -205,11 +205,11 @@ export interface AnchorNodeMetrics {
 
 /** A fully resolved grid cell position for a single marker */
 export interface GridCell {
-  /** 0-based column within the side gutter */
+  /** 0-based column within the side margin */
   col: number;
   /** 0-based row corresponding to a text line */
   row: number;
-  /** Absolute pixel X offset within the gutter div */
+  /** Absolute pixel X offset within the margin div */
   x: number;
   /** Absolute pixel Y offset within the scroll container */
   y: number;
@@ -222,7 +222,7 @@ export interface PositionedMarker extends MarginaliaMarker {
 }
 
 /** One overflowing (node, side) grid (R16): the markers that didn't fit in
- *  the node's line grid. The gutter renders a "+K" pill in the reserved
+ *  the node's line grid. The margin renders a "+K" pill in the reserved
  *  `cell` (the grid's last cell); clicking it opens a popover listing
  *  `hidden` as ordinary marker buttons (click/delete/drag behave normally). */
 export interface MarkerOverflowGroup {
@@ -266,7 +266,7 @@ const ErrorIcon = React.createElement(IconErrors, { size: MARGIN_ICON_SIZE });
  *  marginalia-local presentation fields (label / defaultSide / icon) are
  *  declared per-row here. All markers share the same
  *  `markerPaletteFromAccent` math so a user color override on a panel
- *  re-tints its gutter icon automatically. */
+ *  re-tints its margin icon automatically. */
 function meta(
   type: MarkerType,
   base: { label: string; defaultSide: "left" | "right"; icon: React.ReactNode },
@@ -291,7 +291,7 @@ export const MARKER_META: Record<MarkerType, MarkerMeta> = {
   error:    meta("error",    { label: "Error",     defaultSide: "right", icon: ErrorIcon }),
 };
 
-/** Number of icon columns per row in the gutter grid */
+/** Number of icon columns per row in the margin grid */
 export const MARGINALIA_COLS = 2;
 /** Size of an individual marker button */
 export const MARGINALIA_ICON_SIZE = 22;
@@ -306,20 +306,20 @@ export const MARGINALIA_INNER_PAD = 8;
 export const MARGINALIA_OUTER_PAD_LEFT = 22;
 export const MARGINALIA_OUTER_PAD_RIGHT = 6;
 /** Back-compat alias — equal to LEFT, the side whose icon packing
- *  depends on the gutter width. */
+ *  depends on the margin width. */
 export const MARGINALIA_OUTER_PAD = MARGINALIA_OUTER_PAD_LEFT;
 /**
- * Width of one gutter, in pixels. Side-specific because the left gutter
+ * Width of one margin, in pixels. Side-specific because the left margin
  * hosts the fold-chevron in its outer-pad strip.
  * Layout: [OUTER_PAD] col col [INNER_PAD] [text edge]
  */
 const ICONS_BLOCK_WIDTH =
   MARGINALIA_COLS * MARGINALIA_ICON_SIZE +
   (MARGINALIA_COLS - 1) * MARGINALIA_COL_GAP;
-export const MARGINALIA_GUTTER_WIDTH_LEFT =
+export const MARGINALIA_MARGIN_WIDTH_LEFT =
   MARGINALIA_OUTER_PAD_LEFT + ICONS_BLOCK_WIDTH + MARGINALIA_INNER_PAD;
-export const MARGINALIA_GUTTER_WIDTH_RIGHT =
+export const MARGINALIA_MARGIN_WIDTH_RIGHT =
   MARGINALIA_OUTER_PAD_RIGHT + ICONS_BLOCK_WIDTH + MARGINALIA_INNER_PAD;
-/** Back-compat alias — equal to the LEFT gutter width. Callers that care
+/** Back-compat alias — equal to the LEFT margin width. Callers that care
  *  about side should use the side-specific constants above. */
-export const MARGINALIA_GUTTER_WIDTH = MARGINALIA_GUTTER_WIDTH_LEFT;
+export const MARGINALIA_MARGIN_WIDTH = MARGINALIA_MARGIN_WIDTH_LEFT;

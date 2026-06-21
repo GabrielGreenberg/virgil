@@ -9,7 +9,7 @@
  * Markers fill cells left-to-right, top-to-bottom. When a node's grid
  * overflows (more markers than cells), the LAST cell is reserved for a
  * "+K" overflow pill (R16): the markers that don't fit are returned in an
- * overflow group instead of being stacked/clamped, and the gutter renders
+ * overflow group instead of being stacked/clamped, and the margin renders
  * a pill in the reserved cell whose popover lists them.
  *
  * This module is a pure function with no DOM access — all measurements come
@@ -21,7 +21,7 @@ import {
   MARKER_META,
   MARGINALIA_COLS,
   MARGINALIA_COL_GAP,
-  MARGINALIA_GUTTER_WIDTH,
+  MARGINALIA_MARGIN_WIDTH,
   MARGINALIA_ICON_SIZE,
   MARGINALIA_INNER_PAD,
   type AnchorNodeMetrics,
@@ -39,7 +39,7 @@ export interface MarkerPositionsResult {
   overflowGroups: MarkerOverflowGroup[];
   /** CHIP-B: markers whose card resolved to `source:'orphan'` (`m.unanchored`).
    *  They have no live paragraph to line-align against, so they're carried
-   *  out of the grid for the gutter's fixed "unanchored — click to re-pin"
+   *  out of the grid for the margin's fixed "unanchored — click to re-pin"
    *  dock instead of being silently dropped (the RC2 vanish bug). Side is
    *  resolved the same way as a positioned marker (override > dock > default).
    */
@@ -58,14 +58,14 @@ function cellAt(
     node.top + row * node.lineHeight + (node.lineHeight - MARGINALIA_ICON_SIZE) / 2;
 
   // Pixel X: icons are inset from the text edge by MARGINALIA_INNER_PAD.
-  // Left gutter packs from right (text edge) toward left (outer edge).
-  // Right gutter packs from left (text edge) toward right (outer edge).
+  // Left margin packs from right (text edge) toward left (outer edge).
+  // Right margin packs from left (text edge) toward right (outer edge).
   const iconsWidth =
     MARGINALIA_COLS * MARGINALIA_ICON_SIZE +
     (MARGINALIA_COLS - 1) * MARGINALIA_COL_GAP;
   const x =
     side === "left"
-      ? MARGINALIA_GUTTER_WIDTH -
+      ? MARGINALIA_MARGIN_WIDTH -
         MARGINALIA_INNER_PAD -
         iconsWidth +
         col * (MARGINALIA_ICON_SIZE + MARGINALIA_COL_GAP)
@@ -88,7 +88,7 @@ function cellAt(
  *                    it — CHIP-B part 2). An `m.unanchored` (orphan) marker
  *                    has no live paragraph at all, so it never consults
  *                    `getMetrics` — it goes straight to the `orphans` bucket.
- * @param markers     Flat list of markers from the gutter-marker builder
+ * @param markers     Flat list of markers from the margin-marker builder
  * @param panelSides  Which side each panel is currently docked on
  * @returns Positioned markers, per-(node, side) overflow groups (R16), and
  *          the orphan markers for the fixed re-pin dock (CHIP-B)

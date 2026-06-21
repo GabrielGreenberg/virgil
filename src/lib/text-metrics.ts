@@ -1,5 +1,5 @@
 /**
- * Font-metric helpers for aligning gutter chrome (grab handles, future
+ * Font-metric helpers for aligning margin chrome (grab handles, future
  * markers) to the cap-top of the first rendered glyph of a block.
  *
  * The browser positions an inline `<span>` (or block element)'s bounding
@@ -146,7 +146,7 @@ export function capTopOffset(el: HTMLElement): number {
  * first line, in CSS px. Paired with {@link capTopOffset} to find the
  * optical (cap-band) CENTER of a line:
  * `lineTop + capTopOffset(el) + capHeight(el) / 2`. THE canonical vertical
- * anchor for gutter chrome (see `src/text-objects/block-frame.ts`).
+ * anchor for margin chrome (see `src/text-objects/block-frame.ts`).
  * Returns 0 when metrics are unavailable (SSR / canvas stub).
  */
 export function capHeight(el: HTMLElement): number {

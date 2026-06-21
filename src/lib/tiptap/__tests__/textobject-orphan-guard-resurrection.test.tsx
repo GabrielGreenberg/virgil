@@ -106,7 +106,7 @@ describe("TextObjectOrphanGuard — resurrection awareness", () => {
   });
 
   it("does NOT fire the orphan event for an ANCHORED block that MarginaliaAnchorGuard resurrects", async () => {
-    const editor = mountThreeDoc(new Set(["P2"])); // P2 is gutter-anchored
+    const editor = mountThreeDoc(new Set(["P2"])); // P2 is margin-anchored
     deleteParagraphByUuid(editor, "P2");
     // MarginaliaAnchorGuard re-inserts a same-uuid placeholder in the same dispatch.
     expect(liveUuids(editor).has("P2")).toBe(true);

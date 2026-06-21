@@ -4,7 +4,7 @@
  *
  *   - the docked card header (`CardDropButton`, chip B/C),
  *   - the float chrome button (chip D's `FloatChrome`),
- *   - the gutter pin (chip H).
+ *   - the margin pin (chip H).
  *
  * It mirrors the two existing float-less producers that already drive a
  * drop session with `inPlace + externalCommit + their own mouseup`:
@@ -28,7 +28,7 @@
  * assumes that guard is already in place and only manages the SESSION.
  *
  * Runtime LEAF beyond the controller: no card imports, no React. Safe for the
- * domain-neutral FloatChrome and the gutter pin to call.
+ * domain-neutral FloatChrome and the margin pin to call.
  */
 
 import { beginDropSession, commitDropSession } from "./controller";

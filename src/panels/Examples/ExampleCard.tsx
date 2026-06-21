@@ -338,7 +338,7 @@ function ExampleCardEditor({
     /* eslint-enable react-hooks/immutability */
   }, [editor, bodyStyle]);
 
-  // Doc-adaptive expex gutter widths (backlog #25/#53b). Like the example
+  // Doc-adaptive expex column widths (backlog #25/#53b). Like the example
   // FLOAT body, this embedded editor OMITS `ExpexNumbering` (surface:"float"),
   // so it never gets the `--expex-num-width` / `--expex-marker-width` vars the
   // main plugin maintains — and `.expex-block`'s `grid-template-columns`

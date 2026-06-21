@@ -2,8 +2,8 @@
 
 /**
  * The expanded action menu — formatting grid + 11-row action list (the
- * "lightning" panel behind the gutter bolt + Cmd-/). Mounted by its trigger,
- * the gutter button in {@link SelectionActionsMenu}. When this component is
+ * "lightning" panel behind the margin bolt + Cmd-/). Mounted by its trigger,
+ * the margin button in {@link SelectionActionsMenu}. When this component is
  * mounted, the menu is open; the caller unmounts it to close.
  *
  * ── MENU-PRIMITIVE MIGRATION (Phase B2) ──

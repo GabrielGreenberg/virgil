@@ -122,10 +122,10 @@ export function markerForDepth(depth: number, n: number): string {
 // ---------------------------------------------------------------------------
 
 /**
- * The CSS value for the example-number gutter (`.expex-block` / `.expex-item`
+ * The CSS value for the example-number column (`.expex-block` / `.expex-item`
  * grids consume it as `--expex-num-width`). Returns `null` for the common
  * 1-digit doc, so the CSS default (`1.5em`, the tuned baseline for `(1)..(9)`)
- * stays in force and the appearance is byte-identical. For 2+ digits the gutter
+ * stays in force and the appearance is byte-identical. For 2+ digits the column
  * widens to hold `(` + N digits + `)` without wrapping — shared across the whole
  * doc so every example stays aligned (option c).
  *
@@ -138,7 +138,7 @@ export function expexNumWidth(maxDigits: number): string | null {
 }
 
 /**
- * The CSS value for the item-marker gutter (`--expex-marker-width`). Markers are
+ * The CSS value for the item-marker column (`--expex-marker-width`). Markers are
  * `a.`/`i.`/`viii.`/`xviii.` … `maxMarkerLen` is the longest marker STRING
  * length (letters only, the trailing "." is added in CSS via the glyph). Returns
  * `null` for short markers (≤ 2 chars, e.g. `a.`/`ii.`) so the 1.5em baseline
@@ -150,7 +150,7 @@ export function expexMarkerWidth(maxMarkerLen: number): string | null {
   return `${maxMarkerLen + 1.5}ch`;
 }
 
-/** The doc-adaptive column widths for the expex gutters (backlog #25). */
+/** The doc-adaptive column widths for the expex columns (backlog #25). */
 export interface ExpexColumnWidths {
   numWidth: string | null;
   markerWidth: string | null;
@@ -795,7 +795,7 @@ export const ExampleBlock = Node.create<ExampleBlockOptions>({
       if (node.attrs.tag) dom.dataset.tag = node.attrs.tag;
       if (node.attrs.label) dom.dataset.label = node.attrs.label;
 
-      // The grip and the in-gutter popout button moved to the editor-
+      // The grip and the in-margin popout button moved to the editor-
       // mounted TextObjectGrabHandle (src/text-objects/TextObjectGrabHandle.tsx).
       // The handle drives lift-to-float for exampleBlock + exampleItem
       // alike via the registry; HTML5 drag-to-reorder routes through
@@ -1835,7 +1835,7 @@ export const ExpexNumbering = Extension.create({
           // level items are a, b, c, d... regardless of how the lists
           // are split. Depth-aware markers cycle a/b/c → i/ii/iii →
           // A/B/C → I/II/III.
-          // Doc-adaptive gutter widths (backlog #25): accumulate the widest
+          // Doc-adaptive column widths (backlog #25): accumulate the widest
           // displayed number / marker as we renumber, so no SEPARATE doc walk
           // is needed. These use the *target* values, i.e. the post-edit truth.
           let maxNumDigits = 0;
@@ -1929,13 +1929,13 @@ export const ExpexNumbering = Extension.create({
             return true;
           });
 
-          // Maintain the doc-adaptive gutter-width vars (backlog #25). Only
+          // Maintain the doc-adaptive column-width vars (backlog #25). Only
           // attach the meta when a width string actually CHANGED vs current
           // plugin state, so the var is written at most once per digit-count
           // change — zero cost on every other (already-gated) run, and the
           // `view()` is the single DOM writer. (We carry the meta on the
           // appended tr even if `changed` is false, so a delete that drops the
-          // max digit count narrows the gutter back down.)
+          // max digit count narrows the column back down.)
           const nextWidths: WidthState = {
             numWidth: expexNumWidth(maxNumDigits),
             markerWidth: expexMarkerWidth(maxMarkerLen),

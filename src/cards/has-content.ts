@@ -7,7 +7,7 @@
  *    show the "This item has text. Delete it?" confirm before deleting via
  *    the trash button / three-dot menu.
  *  - `deleteMarginItem` (cards/delete-margin-item.ts) — same decision,
- *    triggered by Delete/Backspace on a gutter marker.
+ *    triggered by Delete/Backspace on a margin marker.
  *  - The footnote orphan gate (`lib/tiptap/footnote.ts`) — orphan-worthiness
  *    (a footnote with body OR title is recoverable; FN-A1-02).
  *  - The citation trash confirm (`CitationCard`) — a citation with keys.
@@ -33,7 +33,7 @@ import { CARD_REGISTRY } from "./card-registry";
 import type { CardKind } from "./types";
 
 /** Card-kind discriminator used by `cardHasContent`. Retained as a NARROW alias
- *  of `CardKind` for the gutter-marker call sites (`delete-margin-item.ts`),
+ *  of `CardKind` for the margin-marker call sites (`delete-margin-item.ts`),
  *  which only ever resolve to a marker-bearing spine kind — but the walker now
  *  accepts any `CardKind` (footnote / citation included). Keep in sync with the
  *  `MarginItemKind` union in `delete-margin-item.ts`. */

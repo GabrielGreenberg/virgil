@@ -40,7 +40,7 @@ export { FLOATING_PANEL_Z_BASE };
  *   text / content              ~1–31  (editor prose, sticky pod caps, Virgil
  *                                       bar — local z's inside the editor)
  *   panel band                  1000   (FLOATING_PANEL_Z_BASE — docked panels)
- *   RESTING gutter triggers     1199   (RESTING_GUTTER_TRIGGER_Z — the gutter
+ *   RESTING margin triggers     1199   (RESTING_MARGIN_TRIGGER_Z — the margin
  *                                       bolt / drag handle at rest: ABOVE
  *                                       content + panels so it's clickable, but
  *                                       just BELOW the float layer so a popout
@@ -52,7 +52,7 @@ export { FLOATING_PANEL_Z_BASE };
  *   open chrome menus           2000   (OPEN_CHROME_MENU_Z — the <Menu>
  *                                       primitive's CHROME_Z; a transient open
  *                                       menu, e.g. the ActionsMenuPanel that the
- *                                       gutter bolt opens, MUST stay on top of
+ *                                       margin bolt opens, MUST stay on top of
  *                                       everything INCLUDING floats)
  *   drop-mode indicator         9999   (the blue insertion bar — above floats
  *                                       and ghosts during a move, Issue-11)
@@ -64,7 +64,7 @@ export { FLOATING_PANEL_Z_BASE };
  */
 
 /**
- * Paint z-index for an editor GUTTER TRIGGER at REST (the lightning-bolt action
+ * Paint z-index for an editor MARGIN TRIGGER at REST (the lightning-bolt action
  * button beside the current paragraph; conceptually also the left drag handle).
  * One below {@link FLOAT_Z_BASE}: high enough to sit over editor content and the
  * docked-panel band so it stays clickable when nothing overlaps, but strictly
@@ -72,11 +72,11 @@ export { FLOATING_PANEL_Z_BASE };
  * over the trigger's paragraph OCCLUDES it (BUG #50). This is the RESTING tier
  * only — clicking the bolt opens a menu that rides {@link OPEN_CHROME_MENU_Z}.
  */
-export const RESTING_GUTTER_TRIGGER_Z = FLOAT_Z_BASE - 1;
+export const RESTING_MARGIN_TRIGGER_Z = FLOAT_Z_BASE - 1;
 
 /**
  * Paint z-index for a transient OPEN chrome menu (the `<Menu>` primitive's
- * `CHROME_Z`; e.g. the ActionsMenuPanel the gutter bolt spawns). Above the
+ * `CHROME_Z`; e.g. the ActionsMenuPanel the margin bolt spawns). Above the
  * float layer so an open menu always composes on top of floats. Declared here
  * so the resting-trigger ↔ open-menu z split reads from one tier map; the
  * `<Menu>` primitive's `CHROME_Z` is wired to THIS symbol, so the resting-bolt

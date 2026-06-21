@@ -485,9 +485,9 @@ const VirgilEditor = forwardRef<EditorHandle, EditorProps>(function VirgilEditor
         // Page padding driven by --editor-pl / --editor-pr / --editor-pt
         // / --editor-pb (set on the editor column from the persisted
         // user prefs `editor{Left,Right,Top,Bottom}Margin`, defaults
-        // 88/72/40/40). The left default 88 = 72px marginalia gutter
+        // 88/72/40/40). The left default 88 = 72px marginalia margin
         // + 8px breathing strip for heading fold-chevron + extra.
-        // Right 72 sits flush against the 72px right gutter.
+        // Right 72 sits flush against the 72px right margin.
         //
         // L/R control prose column width directly (page padding).
         // T/B serve a dual role: they set the height of the persistent
@@ -543,7 +543,7 @@ const VirgilEditor = forwardRef<EditorHandle, EditorProps>(function VirgilEditor
         if (readOnlyRef.current) return false;
 
         // Paragraph-level anchor drags are no longer native HTML5 DnD — both
-        // the panel→gutter anchor (chip H PHASE 1) and the gutter-pin re-anchor
+        // the panel→margin anchor (chip H PHASE 1) and the margin-pin re-anchor
         // (chip H PHASE 2) now flow through the unified drop-mode controller, so
         // no `handleDrop` branch handles them. This guard is the residual
         // suppressor (kept for `ANCHOR_DRAG_TYPES` if any anchor MIME is ever
@@ -714,14 +714,14 @@ const VirgilEditor = forwardRef<EditorHandle, EditorProps>(function VirgilEditor
   // Paragraph drag-handle hover: detect via Y coordinate against each
   // wrapper's bounding rect, scoped to the editor's scroll container.
   // Why not CSS :hover or mouseover-on-dom? The grab handle and popout
-  // button sit in the marginalia gutter, which is OUTSIDE the
+  // button sit in the marginalia margin, which is OUTSIDE the
   // contenteditable element. Once the cursor leaves the contenteditable
-  // (e.g. moving from text into the gutter to grab the handle), a
+  // (e.g. moving from text into the margin to grab the handle), a
   // mouseover-on-dom listener fires mouseleave and the .hovered class
   // is dropped — so the handle disappears mid-reach. Y-based detection
   // on the scroll container keeps the band lit for the full row the
   // paragraph occupies, regardless of where horizontally the cursor
-  // sits (text, left gutter, right gutter).
+  // sits (text, left margin, right margin).
   useEffect(() => {
     const dom = editor?.view?.dom as HTMLElement | undefined;
     if (!dom) return;

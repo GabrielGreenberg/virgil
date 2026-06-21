@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 /**
- * Backlog #25 — multi-digit example numbers must not wrap. The number gutter
+ * Backlog #25 — multi-digit example numbers must not wrap. The number column
  * adapts via a shared `--expex-num-width` CSS var (option c, doc-adaptive).
  *
  * Two layers under test:

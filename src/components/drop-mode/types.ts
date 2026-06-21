@@ -50,7 +50,7 @@ export type Placement =
       rect: ViewportRect;
     }
   /** Cursor is alongside a paragraph; indicator is a 2px vertical bar
-   *  in the gutter. Used for whole-paragraph attachments (note, todo). */
+   *  in the margin. Used for whole-paragraph attachments (note, todo). */
   | {
       kind: "paragraph-side";
       editor: Editor;

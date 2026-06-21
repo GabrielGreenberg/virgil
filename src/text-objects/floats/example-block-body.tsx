@@ -90,7 +90,7 @@ export function ExampleBlockBody({
 
   const initial = useMemo(() => {
     let blockJson: JSONContent | null = null;
-    // Doc-adaptive gutter widths (backlog #25). The float omits ExpexNumbering
+    // Doc-adaptive column widths (backlog #25). The float omits ExpexNumbering
     // (so it never writes the var via the main plugin) and is portaled outside
     // the main editor's DOM, so it can't inherit the main container's var.
     // Derive the widths from the popped example's OWN number/markers and apply

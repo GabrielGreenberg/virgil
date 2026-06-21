@@ -5,7 +5,7 @@
  * ==============================================================
  *
  * A global toggle that hides the editor's surrounding chrome (icon strips,
- * panel columns, floating MenuBar, marginalia gutters, popped-out panels
+ * panel columns, floating MenuBar, marginalia margins, popped-out panels
  * and cards) while leaving the underlying layout state untouched. The top
  * bar stays visible so there's always an affordance to toggle Zen off.
  *

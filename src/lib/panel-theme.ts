@@ -165,13 +165,13 @@ export interface DerivedCardPalette {
 }
 
 export interface DerivedMarkerPalette {
-  /** Gutter-icon stroke color. */
+  /** Margin-icon stroke color. */
   color: string;
-  /** Gutter-icon background. The icon's fill is constant across
+  /** Margin-icon background. The icon's fill is constant across
    *  resting/hover/selected — interaction states are conveyed entirely
    *  by the ring (boxShadow) using `border`. */
   bg: string;
-  /** Gutter-icon border + interaction-ring color. */
+  /** Margin-icon border + interaction-ring color. */
   border: string;
 }
 

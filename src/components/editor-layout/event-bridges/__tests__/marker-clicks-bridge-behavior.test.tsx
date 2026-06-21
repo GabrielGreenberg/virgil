@@ -169,7 +169,7 @@ describe("routeAnchorClick body (virgil-linked-anchor-click)", () => {
   });
 
   it("anchorIndex present: keys the omni open + pin on the `@N` row (REP-F3-01 / OMNI-F3-01 / OMNI-F8-02)", () => {
-    // A 2-anchor report draws one gutter marker per anchored paragraph; the
+    // A 2-anchor report draws one margin marker per anchored paragraph; the
     // omni surface draws one row per anchor keyed `…@<anchorIndex>`. The marker
     // for the SECOND anchor stamps `anchorIndex: 1`, so the bridge must open +
     // pin `float:card:report:r1@1`, NOT the bare (first-row) key.

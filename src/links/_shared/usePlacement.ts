@@ -168,7 +168,7 @@ export function setSelectionWithoutPlacement(ref: AnchoredCardRef | null): void 
 /** Imperative escape hatch for callers that change selection via the
  *  legacy slot setters (which route through cardStore.select) and
  *  don't want placement to fire. The usual case is a marker click in the
- *  editor or a gutter icon click in the panel column: alignment is
+ *  editor or a margin icon click in the panel column: alignment is
  *  handled by `alignOmniCardWithClick` (offset-based card shift), not by
  *  scrolling the row (which would drag the editor too — both views share
  *  the row scroll). Honors the asymmetry rule in this hook's docstring:

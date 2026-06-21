@@ -9,8 +9,8 @@ import {
 } from "@/hooks/useMarginaliaRegistry";
 import {
   MARKER_META,
-  MARGINALIA_GUTTER_WIDTH_LEFT,
-  MARGINALIA_GUTTER_WIDTH_RIGHT,
+  MARGINALIA_MARGIN_WIDTH_LEFT,
+  MARGINALIA_MARGIN_WIDTH_RIGHT,
   MARGINALIA_ICON_SIZE,
   type GridCell,
   type MarginaliaMarker,
@@ -89,7 +89,7 @@ function useMarginaliaHost(editor: Editor | null): HTMLElement | null {
 }
 
 /**
- * Marginalia gutter — renders icon markers in a line-aligned grid on each
+ * Marginalia margin — renders icon markers in a line-aligned grid on each
  * side of the editor column. Each UUID-bearing text element generates an
  * implicit 2-column grid where rows correspond to actual text lines.
  * Markers fill left-to-right, top-to-bottom.
@@ -118,7 +118,7 @@ export default function Marginalia({ editor, markers, panelSides }: MarginaliaPr
     [registry, markers, panelSides, registryVersion],
   );
 
-  // The gutter-pin re-anchor gesture is no longer native HTML5 DnD: grabbing
+  // The margin-pin re-anchor gesture is no longer native HTML5 DnD: grabbing
   // a marker pin now starts a unified drop-mode session (see `MarkerButton`'s
   // mousedown → `beginCardDropGesture`). The controller owns the hit-test and
   // the blue paragraph-side Indicator for that gesture, so the old imperative
@@ -145,26 +145,26 @@ export default function Marginalia({ editor, markers, panelSides }: MarginaliaPr
 
   return createPortal(
     <>
-      <Gutter side="left" markers={leftMarkers} overflow={leftOverflow} orphans={leftOrphans} dragEnabled={dragEnabled} />
-      <Gutter side="right" markers={rightMarkers} overflow={rightOverflow} orphans={rightOrphans} dragEnabled={dragEnabled} />
+      <MarginColumn side="left" markers={leftMarkers} overflow={leftOverflow} orphans={leftOrphans} dragEnabled={dragEnabled} />
+      <MarginColumn side="right" markers={rightMarkers} overflow={rightOverflow} orphans={rightOrphans} dragEnabled={dragEnabled} />
     </>,
     scrollEl
   );
 }
 
 /**
- * Single gutter marker. Self-subscribes to the global cardStore via
+ * Single margin marker. Self-subscribes to the global cardStore via
  * `useIsSelected`/`useIsHovered` keyed by the marker's anchored
  * (kind, entityId) — no prop threading from a parent decoration loop.
  * Mouse enter/leave write directly to the store; click delegates to the
  * marker's own onClick (which routes through openForCard for placement).
  *
- * Two layouts: with a `cell` the button positions absolutely in the gutter
+ * Two layouts: with a `cell` the button positions absolutely in the margin
  * grid; without one it renders in normal flow (inside the overflow pill's
  * popover — R16), with identical click/delete/drag behavior.
  *
- * Declared before `Gutter` so Turbopack Fast Refresh always sees the
- * binding when Gutter re-evaluates (function-declaration hoisting works
+ * Declared before `MarginColumn` so Turbopack Fast Refresh always sees the
+ * binding when MarginColumn re-evaluates (function-declaration hoisting works
  * but bundler module boundaries can be strict in dev).
  *
  * Exported for the pin-gesture test (mirrors `CardDropButton`): the test
@@ -222,7 +222,7 @@ export function MarkerButton({
   // gesture mirrors the card DROP BUTTON exactly: a primary-button mousedown
   // starts `beginCardDropGesture`, which begins an `inPlace + externalCommit`
   // drop session and arms a one-shot mouseup commit. The controller owns the
-  // hit-test + the blue paragraph-side Indicator; a drop in a paragraph's gutter
+  // hit-test + the blue paragraph-side Indicator; a drop in a paragraph's margin
   // band runs that kind's registered `dropSpec` (the same `links.ts`
   // add/removeTextObjectLink the panel mutates), so the re-anchor is identical
   // to the old native path — just routed through the one controller.
@@ -328,7 +328,7 @@ export function MarkerButton({
 /**
  * Overflow "+K" pill (R16). Renders in the grid's reserved last cell when a
  * node's markers don't all fit; clicking it opens a small popover beside the
- * gutter listing the hidden markers as ordinary `MarkerButton`s (click /
+ * margin listing the hidden markers as ordinary `MarkerButton`s (click /
  * delete / drag behave exactly like in-grid markers). Render-layer only —
  * the open state is local, closed by click-away / Escape / marker click.
  */
@@ -423,11 +423,11 @@ function OverflowPill({
  * (its stored uuid + mark + text-snapshot are all dead in the live doc) has
  * no live paragraph to line-align against. Rather than silently culling it
  * (the RC2 "card vanishes ~10s later" bug), its marker docks here — a fixed,
- * faintly-tinted strip pinned to the top of the gutter that reads
+ * faintly-tinted strip pinned to the top of the margin that reads
  * "unanchored — click to re-pin". Each entry is a normal `MarkerButton`, so:
  *   - click opens the card's panel (the user can read/triage it), and
  *   - the grab gesture (when editable) starts a drop-mode re-anchor session
- *     exactly like a live gutter pin — that's the "re-pin".
+ *     exactly like a live margin pin — that's the "re-pin".
  * Rendered in normal flow (no `cell`), so no paragraph metrics are needed.
  */
 function OrphanDock({
@@ -463,7 +463,7 @@ function OrphanDock({
   );
 }
 
-function Gutter({
+function MarginColumn({
   side,
   markers,
   overflow,
@@ -476,7 +476,7 @@ function Gutter({
   orphans: Array<MarginaliaMarker & { side: "left" | "right" }>;
   dragEnabled: boolean;
 }) {
-  // Subscribe to panel color changes so the gutter re-renders when the user
+  // Subscribe to panel color changes so the margin re-renders when the user
   // picks a new color for a panel.
   useSyncExternalStore(subscribePanelColors, getPanelColorVersion, () => 0);
   return (
@@ -484,10 +484,10 @@ function Gutter({
       className="absolute top-0 bottom-0 pointer-events-none"
       style={{
         [side]: 0,
-        width: side === "left" ? MARGINALIA_GUTTER_WIDTH_LEFT : MARGINALIA_GUTTER_WIDTH_RIGHT,
+        width: side === "left" ? MARGINALIA_MARGIN_WIDTH_LEFT : MARGINALIA_MARGIN_WIDTH_RIGHT,
         zIndex: 10,
       }}
-      data-marginalia-gutter={side}
+      data-marginalia-margin={side}
     >
       {markers.map((m) => (
         <MarkerButton key={`${m.type}:${m.id}`} m={m} cell={m.cell} dragEnabled={dragEnabled} />

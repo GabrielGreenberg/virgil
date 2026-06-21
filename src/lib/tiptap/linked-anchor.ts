@@ -155,7 +155,7 @@ export const LinkedAnchorGuard = Extension.create({
 // uuid-bearing empty paragraph when an *anchored* block vanishes, so
 // blocks present in `anchoredUuidsRef` never actually become orphans.
 // This guard is the safety net for blocks Mode-A-anchored but NOT
-// gutter-tracked — common for cascade-extended deletions that swallow
+// margin-tracked — common for cascade-extended deletions that swallow
 // a wrapper (list / exampleBlock) whose uuid was anchored. See
 // ACTION-MENU-DIAGNOSIS.md cluster C3.
 // ─────────────────────────────────────────────────────────────────────────────
@@ -246,7 +246,7 @@ export const LIFECYCLE_DELETE_META = "virgilLifecycleDelete";
 // ─────────────────────────────────────────────────────────────────────────────
 // MarginaliaAnchorGuard — prevents paragraph deletion from orphaning the
 // cards attached to it. When a UUID-bearing block vanishes and it had
-// any kind of card anchor — a gutter marginalia marker (tracked via the
+// any kind of card anchor — a marginalia margin marker (tracked via the
 // shared `anchoredUuidsRef`) OR an inline `linkedAnchor` mark inside it
 // (notes / cuts / revisions text-range anchors) — the plugin re-inserts
 // an empty paragraph carrying the same UUID at the deletion site. The
@@ -258,7 +258,7 @@ export const LIFECYCLE_DELETE_META = "virgilLifecycleDelete";
 // so the block actually goes. See the meta declaration above.
 //
 // To remove a card entirely, the user explicitly deletes it from the
-// gutter (see `deleteMarginItem` in `src/lib/cards/delete-margin-item.ts`)
+// margin (see `deleteMarginItem` in `src/lib/cards/delete-margin-item.ts`)
 // or via the panel's trash button. This is the unified contract behind
 // "cut down on unanchored cards".
 // ─────────────────────────────────────────────────────────────────────────────
@@ -301,7 +301,7 @@ export const MarginaliaAnchorGuard = Extension.create<{
             return null;
           }
 
-          // A block "needs preserving" if it had a gutter marker
+          // A block "needs preserving" if it had a margin marker
           // (anchoredUuidsRef) or hosted any linkedAnchor mark
           // (signalled by removedAnchors that landed in the same range).
           const anchored = anchoredUuidsRef.current;
@@ -310,7 +310,7 @@ export const MarginaliaAnchorGuard = Extension.create<{
           // be conservative: if any anchor was removed, treat all
           // removed blocks as candidates (the orphan-event consumer
           // for inline anchors clears the card anyway; preserving the
-          // paragraph here keeps gutter cards consistent).
+          // paragraph here keeps margin cards consistent).
           const anchorVanished = diff.removedAnchors.length > 0;
 
           type Vanished = { uuid: string; pos: number };

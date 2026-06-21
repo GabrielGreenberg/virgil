@@ -17,7 +17,7 @@ import { Decoration, DecorationSet } from "@tiptap/pm/view";
  * `uuid-attr.ts`, and which lack a wrapper-guarded NodeView `ignoreMutation`),
  * ProseMirror's MutationObserver sees the foreign attribute as a node mutation
  * and REDRAWS the node — detaching the old element and inserting a fresh one.
- * Consequences: the gutter marker is culled (separately healed at the
+ * Consequences: the margin marker is culled (separately healed at the
  * marginalia-registry layer), the hover HIGHLIGHT is lost (it lands on the
  * detached element; the fresh node has no attr and the reconciler won't
  * re-fire), and per-hover layout churn. Modeled on `UuidAttrDecorator`

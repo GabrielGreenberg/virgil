@@ -121,7 +121,7 @@ export interface MenuProviderProps {
 // An open menu is transient chrome that must compose ABOVE the float layer
 // (popped cards / lifted-text overlays at z:1200) — see the editor stacking
 // tier map in src/floats/float-policy.ts. Reading the shared symbol keeps this
-// primitive in lockstep with the resting-trigger tier (RESTING_GUTTER_TRIGGER_Z
+// primitive in lockstep with the resting-trigger tier (RESTING_MARGIN_TRIGGER_Z
 // = FLOAT_Z_BASE − 1), so the "resting bolt below floats, open menu above
 // floats" split (BUG #50) can never silently drift apart.
 const CHROME_Z = OPEN_CHROME_MENU_Z;

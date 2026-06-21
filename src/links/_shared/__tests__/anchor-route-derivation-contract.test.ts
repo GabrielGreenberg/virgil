@@ -16,7 +16,7 @@ import { ANCHOR_CLICK_ROUTES } from "@/components/editor-layout/event-bridges/ma
 
 // The exact literals the hand-kept ANCHOR_CLICK_ROUTES table held pre-A2
 // (the five Mode-B kinds), plus the four Mode-A paragraph-anchored kinds A6
-// added when gutter clicks unified onto the same bridge (R15). The Mode-A
+// added when margin clicks unified onto the same bridge (R15). The Mode-A
 // entrySelectorBases are the legacy `data-<kind>-entry` attributes those
 // panels stamp (cf. panel-selection.ts).
 const EXPECTED_ROUTES = {
@@ -41,7 +41,7 @@ const EXPECTED_ROUTES = {
     cardKind: "revision-suggestion",
     entrySelectorBase: "data-card-key",
   },
-  // A6/R15: the gutter's Mode-A paragraph-anchored kinds.
+  // A6/R15: the margin's Mode-A paragraph-anchored kinds.
   archive: { panelId: "archive", cardKind: "archive", entrySelectorBase: "data-archive-entry" },
   todo: { panelId: "todo", cardKind: "todo", entrySelectorBase: "data-todo-entry" },
   report: { panelId: "reports", cardKind: "report", entrySelectorBase: "data-report-entry" },
