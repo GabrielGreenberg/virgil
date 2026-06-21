@@ -6,7 +6,6 @@ import type { TodoItem } from "@/lib/types";
 import type { Side } from "@/hooks/useViewPrefs";
 import { useEditorRefContext } from "../contexts/editor-ref";
 import { useSelectionsContext } from "../contexts/selections";
-import { useAiRequestsContext } from "../contexts/ai-requests";
 import { useCardCreationContext } from "../contexts/card-creation";
 import { useRecentlyAddedId } from "../contexts/recently-added";
 
@@ -28,7 +27,6 @@ export interface TodoHostProps {
 export function TodoHost(p: TodoHostProps) {
   const { editorRef } = useEditorRefContext();
   const { selectedTodoId, setSelectedTodoId } = useSelectionsContext();
-  const { aiRequests, updateAiRequestText, deleteAiRequest } = useAiRequestsContext();
   const { createTodo } = useCardCreationContext();
   const recentlyAddedId = useRecentlyAddedId("todo");
   const discardRef = useRef(p.discardPristine);
@@ -47,9 +45,6 @@ export function TodoHost(p: TodoHostProps) {
       selectedTodoId={selectedTodoId}
       onSelectTodo={setSelectedTodoId}
       onJumpToCard={(item, sourceEl) => editorRef.current?.jumpToCard(item, sourceEl)}
-      aiRequests={aiRequests}
-      onUpdateAiRequestText={updateAiRequestText}
-      onDeleteAiRequest={deleteAiRequest}
       recentlyAddedId={recentlyAddedId}
     />
   );

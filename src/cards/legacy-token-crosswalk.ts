@@ -55,7 +55,6 @@ export const LEGACY_TOKEN_CROSSWALK: Record<CardKind, LegacyTokens> = {
   "cutter-comment":      { legacyDataKind: "cutter-comment",   cssToken: "cut" },
   "cutter-suggestion":   { legacyDataKind: "cutter-suggestion", cssToken: "cut" },
   bib:                   { legacyDataKind: null,               cssToken: null },
-  ai:                    { legacyDataKind: null,               cssToken: null },
   error:                 { legacyDataKind: null,               cssToken: null },
 };
 

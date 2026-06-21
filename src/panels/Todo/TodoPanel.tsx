@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo } from "react";
-import type { TodoItem, AiRequest } from "@/lib/types";
+import type { TodoItem } from "@/lib/types";
 import { ItemMenu, PANEL } from "@/components/panel-primitives";
 import { getLinkedTextObjectIds } from "@/links/links";
 import PanelThemePicker from "@/components/PanelThemePicker";
@@ -22,9 +22,6 @@ interface TodoPanelProps {
   selectedTodoId: string | null;
   onSelectTodo: (id: string | null) => void;
   onJumpToCard?: (card: TodoItem, sourceEl?: HTMLElement | null) => void;
-  aiRequests?: AiRequest[];
-  onUpdateAiRequestText?: (id: string, text: string) => void;
-  onDeleteAiRequest?: (id: string) => void;
   recentlyAddedId?: string | null;
 }
 
@@ -40,9 +37,6 @@ export default function TodoPanel({
   selectedTodoId,
   onSelectTodo,
   onJumpToCard,
-  aiRequests,
-  onUpdateAiRequestText,
-  onDeleteAiRequest,
   recentlyAddedId,
 }: TodoPanelProps) {
   const orderedItems = useMemo(
@@ -51,11 +45,6 @@ export default function TodoPanel({
   );
   const pending = orderedItems.filter((i) => !i.done);
   const done = orderedItems.filter((i) => i.done);
-
-  const myAiRequests = useMemo(
-    () => (aiRequests ?? []).filter((r) => r.kind === "todo"),
-    [aiRequests],
-  );
 
   return (
     <CardListPanel
@@ -80,9 +69,6 @@ export default function TodoPanel({
           No tasks yet. Click &quot;+&quot; to create one.
         </div>
       }
-      aiRequests={myAiRequests}
-      onUpdateAiRequestText={onUpdateAiRequestText}
-      onDeleteAiRequest={onDeleteAiRequest}
       renderCard={(item, { selected }) => (
         <TodoRow
           item={item}

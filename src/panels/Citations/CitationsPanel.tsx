@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useEffect, useCallback, memo, useRef } from "react";
-import type { BibEntry, CitationRef, AiRequest } from "@/lib/types";
+import type { BibEntry, CitationRef } from "@/lib/types";
 import {
   ItemMenu,
   PANEL,
@@ -51,9 +51,6 @@ interface CitationsPanelProps {
   onUpdateBibEntry: (key: string, fields: Record<string, string>) => void;
   onUpdateBibKeyAndType: (oldKey: string, newKey: string, newType: string) => void;
   onAddBibEntry: (entry: BibEntry) => void;
-  aiRequests?: AiRequest[];
-  onUpdateAiRequestText?: (id: string, text: string) => void;
-  onDeleteAiRequest?: (id: string) => void;
   recentlyAddedId?: string | null;
 }
 
@@ -97,15 +94,8 @@ function CitationsPanel({
   onUpdateBibEntry,
   onUpdateBibKeyAndType,
   onAddBibEntry,
-  aiRequests,
-  onUpdateAiRequestText,
-  onDeleteAiRequest,
   recentlyAddedId,
 }: CitationsPanelProps) {
-  const myAiRequests = useMemo(
-    () => (aiRequests ?? []).filter((r) => r.kind === "citation"),
-    [aiRequests],
-  );
   const panelScrollRef = useRef<HTMLDivElement>(null);
   const orderedCitations = useMemo(
     () => {
@@ -321,9 +311,6 @@ function CitationsPanel({
           </div>
         ) : undefined
       }
-      aiRequests={myAiRequests}
-      onUpdateAiRequestText={onUpdateAiRequestText}
-      onDeleteAiRequest={onDeleteAiRequest}
       scrollRef={panelScrollRef}
       onKeyDown={handleNavKeys}
       scrollTabIndex={0}

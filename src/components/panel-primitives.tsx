@@ -23,10 +23,8 @@
 
 import { type ReactNode, type HTMLAttributes, type ButtonHTMLAttributes, forwardRef, useState, useRef, useEffect, useLayoutEffect, useCallback, useId, createContext, useContext, Children, cloneElement, isValidElement, useMemo } from "react";
 import type { JSONContent } from "@tiptap/react";
-import type { AiRequest, AiRequestKind } from "@/lib/types";
 import { useDragGap } from "@/hooks/useDragGap";
 import { MIN_BAND_PX, type PanelId, type Side } from "@/hooks/useViewPrefs";
-import { useTabIndent } from "@/hooks/useTabIndent";
 import { autoSizeInput } from "@/lib/autoSizeInput";
 import ConfirmDialog from "./ConfirmDialog";
 import { cardHasContent } from "@/cards/has-content";
@@ -45,7 +43,7 @@ import { usePoppedCards } from "@/hooks/usePoppedCards";
 import { setCardLiftTarget, setCardLiftHandoff } from "./card-lift";
 import { liftSpawnRect } from "@/floats/float-policy";
 import { INTERACTIVE_CONTROL_SELECTOR } from "@/lib/drag-blocklist";
-import { cardPopKey, cardTypeLabel } from "@/panels/panel-registry";
+import { cardTypeLabel } from "@/panels/panel-registry";
 import type { CardKind } from "@/panels/_shared/types";
 import { useInOmni } from "./editor-layout/contexts/omni";
 import { useCompressedLines } from "./editor-layout/contexts/card-display";
@@ -2407,193 +2405,6 @@ function HeaderAddDropdown({
           ))}
         </div>
       )}
-    </div>
-  );
-}
-
-/* ── AI request card ───────────────────────────────────────────────── */
-
-const AI_REQUEST_KIND_LABEL: Record<AiRequestKind, string> = {
-  footnote: "footnote",
-  note: "note",
-  highlight: "highlight",
-  citation: "citation",
-  todo: "todo",
-  suggestion: "suggestion",
-  report: "report",
-  // style-merge requests are filed by the Style dropdown and never
-  // surface as panel cards; this entry exists only to keep the Record
-  // type exhaustive.
-  "style-merge": "style merge",
-};
-
-/**
- * Draft card holding a free-text AI request the user can later have
- * fulfilled. It pops out as a float (header lift), but is not dragged
- * into the editor — AI requests live in cards, not as in-text markers.
- *
- * Local behavior: the textarea is uncontrolled and only fires
- * `onChangeText` on blur to keep typing snappy without re-rendering the
- * whole panel on every keystroke.
- */
-export function AiRequestCard({
-  request,
-  onChangeText,
-  onDelete,
-  onTogglePopout,
-  isPoppedOut,
-}: {
-  request: AiRequest;
-  onChangeText: (text: string) => void;
-  onDelete: () => void;
-  onTogglePopout?: (anchor: DOMRect) => void;
-  isPoppedOut?: boolean;
-}) {
-  const [draft, setDraft] = useState(request.text);
-  const [confirmOpen, setConfirmOpen] = useState(false);
-  const taRef = useRef<HTMLTextAreaElement>(null);
-  const onTextareaKeyDown = useTabIndent<HTMLTextAreaElement>();
-  const popped = usePoppedCards();
-  const popKey = cardPopKey("ai", request.id);
-
-  // Sync external updates (e.g. AI fulfillment) into the local draft.
-  useEffect(() => {
-    setDraft(request.text);
-  }, [request.text, request.id]);
-
-  // Auto-grow textarea
-  useEffect(() => {
-    const el = taRef.current;
-    if (!el) return;
-    el.style.height = "auto";
-    el.style.height = `${el.scrollHeight}px`;
-  }, [draft]);
-
-  const handleBlur = useCallback(() => {
-    if (draft !== request.text) onChangeText(draft);
-  }, [draft, request.text, onChangeText]);
-
-  const kindLabel = AI_REQUEST_KIND_LABEL[request.kind] ?? request.kind;
-  const theme = CARD_THEMES.aiRequest;
-
-  const onToggleFromCtx = onTogglePopout
-    ?? (popped ? (anchor: DOMRect) => popped.toggleAtAnchor(popKey, anchor) : undefined);
-
-  const card = (
-    <PanelCard
-      data-ai-request-id={request.id}
-      data-card-key={popKey}
-      theme={theme}
-      selected={false}
-      isPoppedOut={isPoppedOut}
-      onTogglePopout={onToggleFromCtx}
-    >
-      {/* Header — pr-7 reserves space for the absolute top-right popout overlay */}
-      <div
-        className="flex items-center gap-2 pl-3 pr-7 py-1.5"
-        style={{ backgroundColor: theme.headerDefault }}
-      >
-        <CardDragHandle />
-        <span
-          className="inline-flex items-center justify-center w-5 h-5 shrink-0"
-          style={{ color: theme.accent }}
-          data-hint={`AI ${kindLabel} request`} aria-label={`AI ${kindLabel} request`}
-        >
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-            <g transform="rotate(15 12 12)">
-              <line x1="12" y1="2" x2="12" y2="22" />
-              <line x1="2" y1="12" x2="22" y2="12" />
-              <line x1="4.93" y1="4.93" x2="19.07" y2="19.07" />
-              <line x1="19.07" y1="4.93" x2="4.93" y2="19.07" />
-            </g>
-          </svg>
-        </span>
-        <span className="text-xs font-medium truncate" style={{ color: theme.titleColor }}>AI {kindLabel} request</span>
-        {request.status === "submitted" && (
-          <span
-            className="inline-flex items-center gap-1 text-[10px] shrink-0"
-            style={{ color: theme.titleColor }}
-          >
-            <span
-              className="w-1.5 h-1.5 rounded-full animate-pulse"
-              style={{ backgroundColor: theme.accent }}
-            />
-            Pending
-          </span>
-        )}
-        <div className="flex-1" />
-        <button
-          onClick={(e) => {
-            e.stopPropagation();
-            if (draft.trim()) {
-              setConfirmOpen(true);
-            } else {
-              onDelete();
-            }
-          }}
-          onMouseDown={(e) => e.stopPropagation()}
-          className="text-ink-muted hover:text-ink-body shrink-0 p-0.5 opacity-0 group-hover:opacity-100 transition-opacity"
-          data-hint="Delete request"
-          data-hint-pos="above"
-        >
-          <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
-            <line x1="18" y1="6" x2="6" y2="18" />
-            <line x1="6" y1="6" x2="18" y2="18" />
-          </svg>
-        </button>
-        <ConfirmDialog
-          open={confirmOpen}
-          message="This request has text. Discard it?"
-          confirmLabel="Discard"
-          tone="danger"
-          onConfirm={() => { setConfirmOpen(false); onDelete(); }}
-          onCancel={() => setConfirmOpen(false)}
-        />
-      </div>
-
-      {/* Separator — the standard card behavior: neutral unless selected
-          (every unified card tints via theme.separatorSelected only when
-          selected). AiRequest has no selection state, so it is always the
-          neutral edge — the previous always-tinted separator was the one
-          outlier. */}
-      <div className="border-t transition-colors border-edge-subtle group-hover:border-edge-hover" />
-
-      {/* Body: auto-grow textarea. (The former near-invisible `bg-sky-50/20`
-          wash was dropped in A10 Commit H rather than minting a one-consumer
-          `bodyTint` palette token — it composited to ≈white anyway.) */}
-      <div className={`${PANEL.cardBody}${isPoppedOut ? " flex-1 min-h-0 overflow-auto" : ""}`}>
-        <textarea
-          ref={taRef}
-          value={draft}
-          onChange={(e) => setDraft(e.target.value)}
-          onBlur={handleBlur}
-          onMouseDown={(e) => e.stopPropagation()}
-          onDragStart={(e) => e.stopPropagation()}
-          onKeyDown={onTextareaKeyDown}
-          draggable={false}
-          placeholder={`Describe what you want the AI to ${
-            request.kind === "todo" ? "do" : "find or write"
-          }\u2026`}
-          className="w-full resize-none bg-transparent text-xs text-ink-body placeholder:text-ink-muted focus:outline-none leading-snug font-serif"
-          style={{ fontFamily: "var(--font-serif), Georgia, serif" }}
-          rows={1}
-        />
-      </div>
-    </PanelCard>
-  );
-  // Popped: AF's FloatHost wraps this in a (bare) FloatWindow — the AiRequest
-  // body keeps its bespoke header until Stage 6. Docked: render inline.
-  return card;
-}
-
-/**
- * Header label for the "Pending AI requests" section that panels render
- * above their AiRequestCard list. Mirrors the bibliography precedent.
- */
-export function AiRequestsSectionHeader({ count }: { count: number }) {
-  return (
-    <div className="text-[10px] font-medium text-ink-subtle uppercase tracking-wide px-2 mb-1.5 mt-2 pt-2 border-t border-edge-subtle">
-      Pending AI requests ({count})
     </div>
   );
 }

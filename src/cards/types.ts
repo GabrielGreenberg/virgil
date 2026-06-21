@@ -21,11 +21,14 @@ import type { AiRequestKind, AiRequestLink } from "@/lib/types";
  * re-exports this (the canonical home moved here, mirroring `TextObjectKind`
  * living beside `TEXT_OBJECT_REGISTRY`).
  *
- * 16 symmetric kinds. The Revisions/Cutter comment+suggestion pairs are spelled
+ * 15 symmetric kinds. The Revisions/Cutter comment+suggestion pairs are spelled
  * `revision-comment`/`revision-suggestion` and `cutter-comment`/`cutter-suggestion`.
  * **Bare `comment`/`suggestion` are NOT spine kinds** — they remain only as the
  * on-disk `RevisionCard`/`CutterCard.kind` *data discriminator* (untouched on
  * disk + in the Python skill layer; bridged to the spine by `resolveCardKind`).
+ * (The legacy `"ai"` kind — the per-panel display of UNLINKED ai-requests.json
+ * entries — was retired in BUG #55b: note/todo requests migrate to real cards
+ * with the per-card `aiRequest` flag; footnote/citation stay in the AIWindow.)
  */
 export type CardKind =
   | "note"
@@ -42,7 +45,6 @@ export type CardKind =
   | "cutter-comment"
   | "cutter-suggestion"
   | "bib"
-  | "ai"
   | "error";
 
 /** `CARD_THEMES` key. ONE keyspace with the user-overridable color slots
@@ -74,7 +76,7 @@ export type MarkerType =
 
 /** Creation provenance.
  *  - `user`    — has a "+" / action / drop creation path
- *  - `system`  — generated from a sidecar or the linter (`bib`, `ai`, `error`)
+ *  - `system`  — generated from a sidecar or the linter (`bib`, `error`)
  *  - `derived` — mirrors a `TextObject` harvested from the doc (`example`) */
 export type CardOrigin = "user" | "system" | "derived";
 
@@ -163,8 +165,9 @@ export interface CardMeta {
    *  the registry `themeKey` — pinned byte-for-byte by
    *  `collab-claim-scope-contract.test.ts`. */
   collabClaims: boolean;
-  /** Owning panel (was `PANEL_REGISTRY.card` + `POLYMORPHIC_CARD_PANEL`). `null`
-   *  only for the cross-panel `ai` kind (renders in multiple panels). */
+  /** Owning panel (was `PANEL_REGISTRY.card` + `POLYMORPHIC_CARD_PANEL`).
+   *  `null` is now unused — it was the cross-panel `"ai"` kind's slot before
+   *  #55b retired it; kept on the type for forward flexibility. */
   panel: PanelKind | null;
   /** Creation provenance. */
   origin: CardOrigin;
@@ -173,7 +176,7 @@ export interface CardMeta {
    *  static capability flag — never computed by scanning the doc. */
   anchored: boolean;
   /** Gutter-marker namespace, or `null` for kinds with no marginalia icon
-   *  (footnote/citation render in-text atoms; bib/ai unanchored; highlight = tint). */
+   *  (footnote/citation render in-text atoms; bib unanchored; highlight = tint). */
   markerType: MarkerType | null;
   /** AI-request routing (R29), or absent for kinds whose cards carry no
    *  `aiRequest: boolean` flag. Declared on exactly 7 kinds (note, highlight,
@@ -201,7 +204,7 @@ export interface CardMeta {
    *
    *  The walker (`cardHasContent`) treats the card as "has content" iff ANY
    *  declared body/text/extra field is non-empty (visible text). `null` for the
-   *  system kinds with no user content (`bib`/`ai`/`error`) and for `highlight`
+   *  system kinds with no user content (`bib`/`error`) and for `highlight`
    *  (a color + range, no user-typed body) — a `null` descriptor ALWAYS reports
    *  "no content" (delete without confirm), which is the correct behavior for
    *  those kinds. */
@@ -220,14 +223,14 @@ export interface CardMeta {
    *  (`inline-cursor` for in-text, `paragraph-side` for margin). `example` is
    *  `false` despite carrying a `dropSpec`, because its spec is a `between-blocks`
    *  block content-MOVE, not a card re-anchor (drop-button SYNTHESIS §7 design
-   *  call); `bib`/`ai`/`error` are `false` (no spec at all). */
+   *  call); `bib`/`error` are `false` (no spec at all). */
   droppable: boolean;
   /** Where a (re)anchor drop for this kind LANDS — the declarative SSOT the drop
    *  button + controller dispatch through, replacing `dropSpec.allowedPlacements`
    *  introspection (drop-button SYNTHESIS §2). `"in-text"` = an inline caret /
    *  `\cite`-`\footnote` atom position (footnote/citation); `"margin"` = the
    *  paragraph horizontal band (note/highlight/todo/archive/report/…); `null` for
-   *  kinds that take no drop button (`bib`/`ai`/`error`, and `example` whose drop
+   *  kinds that take no drop button (`bib`/`error`, and `example` whose drop
    *  is a block move, not a re-anchor). DERIVED-CONSISTENT with the kind's
    *  `dropSpec.allowedPlacements`; a dev assertion pins the two so the declared
    *  policy can't drift from the mechanism. `droppable` ⇔ `dropPlacement !== null`. */

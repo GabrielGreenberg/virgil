@@ -11,11 +11,6 @@
  */
 
 import { Fragment, useCallback, useEffect, type ReactNode } from "react";
-import type { AiRequest } from "@/lib/types";
-import {
-  AiRequestCard,
-  AiRequestsSectionHeader,
-} from "@/components/panel-primitives";
 import {
   CardDisplayProvider,
   DOCKED_COMPRESSED_LINES,
@@ -42,15 +37,8 @@ export interface CardListPanelProps<T> {
   selectedId: string | null;
   onSelect: (id: string | null) => void;
 
-  /** Optional empty-state. Rendered when items is empty AND there are no
-   *  pending AI requests. */
+  /** Optional empty-state. Rendered when items is empty. */
   emptyState?: ReactNode;
-
-  /** Pre-filtered AI requests for this panel (caller filters by kind).
-   *  Rendered above items. */
-  aiRequests?: AiRequest[];
-  onUpdateAiRequestText?: (id: string, text: string) => void;
-  onDeleteAiRequest?: (id: string) => void;
 
   /** Optional content rendered inside the list scroll body, after the
    *  items. Used by Bibliography for its pending-entry-requests block. */
@@ -83,9 +71,6 @@ export function CardListPanel<T>({
   selectedId,
   onSelect,
   emptyState,
-  aiRequests,
-  onUpdateAiRequestText,
-  onDeleteAiRequest,
   listTrailing,
   title,
   count,
@@ -100,7 +85,6 @@ export function CardListPanel<T>({
   scrollTabIndex,
 }: CardListPanelProps<T>) {
   const handleEmptyClick = useCallback(() => onSelect(null), [onSelect]);
-  const hasAiRequests = aiRequests && aiRequests.length > 0;
 
   // Archive view: filter the list by the panel's current mode (active /
   // archived / all). When `getArchived` is omitted the panel has no archivable
@@ -123,22 +107,7 @@ export function CardListPanel<T>({
     if (!visibleItems.some((it) => getId(it) === selectedId)) onSelect(null);
   }, [getArchived, selectedId, visibleItems, getId, onSelect]);
 
-  const aiRequestsSection = hasAiRequests ? (
-    <>
-      <AiRequestsSectionHeader count={aiRequests!.length} />
-      {aiRequests!.map((req) => (
-        <AiRequestCard
-          key={req.id}
-          request={req}
-          onChangeText={(text) => onUpdateAiRequestText?.(req.id, text)}
-          onDelete={() => onDeleteAiRequest?.(req.id)}
-        />
-      ))}
-    </>
-  ) : null;
-
-  const showEmpty =
-    visibleItems.length === 0 && !hasAiRequests && emptyState != null;
+  const showEmpty = visibleItems.length === 0 && emptyState != null;
 
   return (
     // Docked card panels DECLARE their compressed-line count (R8) rather than
@@ -162,18 +131,16 @@ export function CardListPanel<T>({
       scrollTabIndex={scrollTabIndex}
     >
       {showEmpty ? (
-        // Even with no items and no AI requests, a panel may have trailing
-        // content that must survive the empty state — e.g. Bibliography's
-        // pending entry-requests block (BIB-F1-01). Render `listTrailing`
-        // alongside the empty-state so a pending request isn't dropped when
-        // the card list is empty.
+        // Even with no items, a panel may have trailing content that must
+        // survive the empty state — e.g. Bibliography's pending entry-requests
+        // block (BIB-F1-01). Render `listTrailing` alongside the empty-state so
+        // a pending request isn't dropped when the card list is empty.
         <>
           {emptyState}
           {listTrailing}
         </>
       ) : (
         <>
-          {aiRequestsSection}
           {visibleItems.map((item, index) => {
             const id = getId(item);
             return (

@@ -618,11 +618,14 @@ export default function AIWindow({
                           <option value="bib-entry">New bibliography entry</option>
                           <option value="bib-fields">Bib field review</option>
                           <option value="bib-notes">Bib notes review</option>
+                          {/* #55b: note/todo AI requests are now made via the
+                              per-card AI checkbox (add a Note/Todo card, tick
+                              its AI box), so they are no longer composable as
+                              free-floating requests here. footnote/citation
+                              stay — they have no per-card-flag path. */}
                           <optgroup label="Panel requests">
                             <option value="panel-footnote">Footnote request</option>
-                            <option value="panel-note">Note request</option>
                             <option value="panel-citation">Citation request</option>
-                            <option value="panel-todo">Todo request</option>
                           </optgroup>
                         </select>
                         <span className="text-[11px] text-ink-muted truncate">

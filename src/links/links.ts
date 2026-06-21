@@ -449,7 +449,6 @@ export function cardKindToLegacyAnchorKind(
     case "example":
     case "archive":
     case "bib":
-    case "ai":
     case "error":
       return null;
   }

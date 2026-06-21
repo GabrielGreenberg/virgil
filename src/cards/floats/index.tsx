@@ -38,7 +38,7 @@ import {
 import { ReportCard, ReportRequestCard } from "@/panels/Reports";
 import { ExampleCard } from "@/panels/Examples/ExampleCard";
 import BibEntryCard from "@/components/BibEntryCard";
-import { AiRequestCard, CardChromeTrailing } from "@/components/panel-primitives";
+import { CardChromeTrailing } from "@/components/panel-primitives";
 import { getLinkedTextObjectIds } from "@/links/links";
 import type {
   ReportCard as ReportCardData,
@@ -606,25 +606,6 @@ registerCardFloatable("revision-suggestion", (id, ctx: CardFloatCtx) => {
         onConvert={ctx.convertRevisionCard}
         onDelete={ctx.deleteRevisionCard}
         onSelect={ctx.setSelectedCommentId}
-        isPoppedOut
-      />
-    ),
-  });
-});
-
-registerCardFloatable("ai", (id, ctx: CardFloatCtx) => {
-  const req = ctx.aiRequests.find((r) => r.id === id);
-  if (!req) return null;
-  return cardFloatable("ai", id, {
-    bareWindow: true, // bespoke in-body header until Stage 6
-    canJump: false,
-    jumpToSource: () => {},
-    snapshotForStack: () => null, // not stackable (no StackCardKind for ai)
-    renderBody: () => (
-      <AiRequestCard
-        request={req}
-        onChangeText={(text) => ctx.updateAiRequestText(req.id, text)}
-        onDelete={() => ctx.deleteAiRequest(req.id)}
         isPoppedOut
       />
     ),

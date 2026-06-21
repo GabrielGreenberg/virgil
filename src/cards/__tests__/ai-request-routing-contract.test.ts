@@ -66,16 +66,16 @@ describe("AI-request routing contract (R29)", () => {
     }
   });
 
-  it("the other 9 kinds declare NO aiRequest routing", () => {
+  it("the other 8 kinds declare NO aiRequest routing", () => {
     const without = CARD_KINDS.filter((k) => CARD_REGISTRY[k].aiRequest == null);
-    expect(without.length).toBe(9);
+    expect(without.length).toBe(8);
     // The suggestion siblings + atom/system kinds must stay out — a routing
     // declaration here would invent a wire token no skill reads. (footnote moved
     // INTO the routing table in BUG #55; citation deliberately stays out — its
     // "request" surface is find-citation via the AIWindow composer, not a
-    // per-card flag.)
+    // per-card flag. The legacy "ai" kind was retired in BUG #55b.)
     for (const k of [
-      "citation", "example", "archive", "report", "bib", "ai",
+      "citation", "example", "archive", "report", "bib",
       "error", "revision-suggestion", "cutter-suggestion",
     ] as CardKind[]) {
       expect(CARD_REGISTRY[k].aiRequest).toBeUndefined();
