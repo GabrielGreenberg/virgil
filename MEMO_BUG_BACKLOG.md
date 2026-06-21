@@ -22,10 +22,10 @@ Status legend: `open` · `in-progress` · `done`
 > on `drain/integration`, verified tsc + 2492 vitest + footnote python tests):
 > #48, #49, #50, #53b (collapsed wrap), #54a (math in example cards), #54b
 > (pristine discard), #55b part (a) (footnote AI-request, end-to-end), #56
-> (slash-compress). **Deferred / staged as one-click chips:** #51 (gutter→margin
-> rename — needs a live feel-check), #55a (LaTeX `.fmt` — external download needs
-> user OK; exact source URL found), #55b part (b) (retire legacy "ai" kind —
-> needs data migration). **Reviewed, kept deferred (explicit features):** #52,
+> (slash-compress). **Staged chips — now ALL DONE:** #51 (gutter→margin rename —
+> ✅ 2026-06-21, merge `c692ab0e`, live-verified), #55a (LaTeX `.fmt` restore —
+> ✅ `7059e5d3`), #55b part (b) (retire legacy "ai" kind —
+> ✅ `95e7b989`). **Reviewed, kept deferred (explicit features):** #52,
 > #53a. **Follow-up FIXED 2026-06-21 (EX-F4-02 figure twin):** `handleFigureSave`
 > had the same embedded-surface class bug the #54a math fix solved — figure/
 > graphics click-to-edit was inert in the figure's own float (`figureFloat`
@@ -1472,7 +1472,9 @@ still renders above everything.
 
 ## 51. Reconcile "gutter" vs "margin" terminology (codebase + remaining glossary)
 
-**Reported:** 2026-06-15 · **Status:** deferred (2026-06-21 — staged as a one-click chip; all-or-nothing CSS-var rename needs a live grab-handle feel-check) · **Area:** terminology / docs + code-wide rename
+**Reported:** 2026-06-15 · **Status:** ✅ DONE (2026-06-21 — full in-text sweep, merged to local main no-ff `c692ab0e`, not pushed) · **Area:** terminology / docs + code-wide rename
+
+**Resolution (2026-06-21).** Full in-pod `gutter`→`margin` sweep across 68 files. The `--gutter-*` CSS-var family → `--margin-*` (defs + every JS/CSS consumer in lockstep, values unchanged: `resolveMarginEm`, `marginInset`/`DEFAULT_MARGIN_INSET`/`HOVER_MARGIN_PAD`, fold-chevron, hit-halo). Beyond the enumerated list (user chose the full in-text sweep): the marginalia gutter (`MARGINALIA_GUTTER_WIDTH*`→`MARGINALIA_MARGIN_WIDTH*`, `<Gutter>`→`<MarginColumn>`, `data-marginalia-gutter`→`data-marginalia-margin` + print rule), the margin-marker builder (`handleGutterMarkerClick`→`handleMarginMarkerClick`), `link-registry` marker `"gutter-icon"`→`"margin-icon"`, `RESTING_GUTTER_TRIGGER_Z`→`RESTING_MARGIN_TRIGGER_Z`, "gutter pin"→"margin pin", expex example-number "gutter"→"column", STYLE_GUIDE "Margin chrome", glossary descriptions. **Kept as gutter (outside-pod):** `CODE_VIEW_GUTTER_PX` + split-with-code/CodePaneSplitContext compression gutters, CodeMirror `foldGutter`/`.cm-gutters`, panel/dock-slot/omni/between-pods gutters, `showCheckGutter` (menu). tsc 0 errors, 2502 vitest green, grep-clean (no stray `--gutter-*`); live-verified in the dev preview — `--margin-*` vars resolve to original values, grab handle sits −21px in the left margin (right edge one `--margin-handle-gap` left of text). Worktree + branch removed.
 
 **The standard (set by the user, now canonical in the glossary).**
 - **Gutter** = OUTSIDE the text pod — the L/R panel columns / omni area where
