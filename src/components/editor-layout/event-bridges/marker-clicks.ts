@@ -219,6 +219,11 @@ export function useMarkerClickBridges(deps: {
       raw: string;
       pos: number;
       rect: DOMRect;
+      // The editor instance that OWNS the clicked figure/graphics node (main OR
+      // the figure's own float surface). The save dispatches into THIS editor so
+      // `pos` is interpreted in the pos-space it was minted in — never blindly
+      // against MAIN. See FigureBlockNodeView's click handler + handleFigureSave.
+      editor: Editor;
     } | null>
   >;
   /** Pins the omni card with the given id at `clickY` (viewport-Y).
@@ -410,11 +415,18 @@ export function useMarkerClickBridges(deps: {
       if (!detail || typeof detail.pos !== "number") return;
       if (typeof detail.kind !== "string") return;
       if (!(detail.rect instanceof DOMRect)) return;
+      // The owning editor is required: the save dispatches into THIS instance,
+      // so `pos` is read in the pos-space it was minted in (main OR the figure
+      // float). A detail without it is malformed — bail rather than fall back to
+      // MAIN, which would re-introduce the EX-F4-02 mis-target (figure twin).
+      const owner = detail.editor as Editor | undefined;
+      if (!owner || typeof owner.isEditable !== "boolean") return;
       setActiveFigure({
         kind: detail.kind,
         raw: typeof detail.raw === "string" ? detail.raw : "",
         pos: detail.pos,
         rect: detail.rect,
+        editor: owner,
       });
     };
     window.addEventListener("virgil-figure-click", handler);

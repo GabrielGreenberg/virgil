@@ -109,7 +109,7 @@ import {
   FLOATING_PANEL_STACK_OFFSET,
   FLOATING_PANEL_Z_BASE,
 } from "./editor-layout/constants";
-import { FLOAT_Z_BASE } from "@/floats/float-policy";
+import { FLOAT_Z_BASE, OPEN_CHROME_MENU_Z } from "@/floats/float-policy";
 import {
   alignEntryToY,
   scrollEntryIntoView,
@@ -525,8 +525,6 @@ export default function EditorLayout() {
   } = useSuggestions(docIdForHooks);
   const {
     cards: revisionCards,
-    addComment: addRevisionComment,
-    addSuggestion: addRevisionSuggestion,
   } = useRevisions(docIdForHooks);
   const comments = revisionCards;
   // R21: the pristine-card manager lives ONLY in EditorPane (its single live
@@ -550,8 +548,6 @@ export default function EditorLayout() {
   const {
     cards: cutterCards,
     goal: cutterGoal,
-    addComment: addCutterComment,
-    addSuggestion: addCutterSuggestion,
     setGoal: setCutterGoal,
     clearGoal: clearCutterGoal,
   } = useCutter(docIdForHooks);
@@ -1227,6 +1223,12 @@ export default function EditorLayout() {
     raw: string;
     pos: number;
     rect: DOMRect;
+    // The editor instance that owns the clicked figure/graphics node — the save
+    // targets THIS editor (main OR the figure's own float surface), so a figure
+    // edit always lands in the editor whose pos-space `pos` belongs to. Mirrors
+    // `activeMath.editor`; see `handleFigureSave` + FigureBlockNodeView's click
+    // bridge (EX-F4-02 figure twin).
+    editor: Editor;
   } | null>(null);
   const [bibActiveCitationId, setBibActiveCitationId] = useState<string | null>(null);
   // NOTE (CHIP 4a-ii): EditorLayout's own `pendingCitationCreate` /
@@ -2647,9 +2649,25 @@ export default function EditorLayout() {
   // We re-extract structured attrs from the new text and dispatch a
   // setNodeMarkup transaction; the NodeView's update hook picks up
   // the change and re-rasterizes if `source` changed.
-  const handleFigureSave = useCallback((pos: number, newText: string) => {
-    const editor = editorRef.current?.getEditor();
-    if (!editor) return;
+  //
+  // EX-F4-02 (figure twin of the math fix): route the edit back to the editor
+  // that OWNS the clicked node (carried through `virgil-figure-click` →
+  // `activeFigure.editor`), NOT blindly to MAIN. On the main surface `editor`
+  // IS the main editor (behaviour unchanged). On the figure's own float
+  // surface `editor` is the embed: `pos` is its pos-space, the `setNodeMarkup`
+  // (and the figureCaption re-tokenize) land in the embed, and the embed's own
+  // write-back (figure-body's `onUpdate` → `writeBackToMain`) round-trips the
+  // change to the main doc. Targeting MAIN with a float-space `pos` would
+  // mis-target / corrupt the wrong node — the very corruption the dropped
+  // `figureFloat` click-suppression prevented (by making float figures inert).
+  const handleFigureSave = useCallback((editor: Editor, pos: number, newText: string) => {
+    if (!editor || editor.isDestroyed) return;
+    // The popover outlives the click, so by save time the owning editor may
+    // have re-seeded (the figure float re-syncs from MAIN) and shifted `pos`
+    // past the doc end — `nodeAt` THROWS on an out-of-range pos. Guard the
+    // bounds so a stale pos is a safe no-op, never a crash. Mirrors
+    // handleMathSave.
+    if (pos < 0 || pos >= editor.state.doc.content.size) return;
     const node = editor.state.doc.nodeAt(pos);
     if (!node) return;
     if (node.type.name === "figureBlock") {
@@ -4021,7 +4039,7 @@ export default function EditorLayout() {
               <div
                 ref={helperPositionRef}
                 className="bg-surface border border-edge-subtle rounded shadow-md text-xs text-ink-body whitespace-nowrap text-left min-w-[160px]"
-                style={{ ...helperPositionStyle, zIndex: 2000 }}
+                style={{ ...helperPositionStyle, zIndex: OPEN_CHROME_MENU_Z }}
                 onClick={(e) => e.stopPropagation()}
                 onMouseLeave={() => setCommandsPopoutOpen(false)}
               >
@@ -4566,7 +4584,7 @@ export default function EditorLayout() {
           kind={activeFigure.kind}
           raw={activeFigure.raw}
           anchorRect={activeFigure.rect}
-          onSave={(newText) => handleFigureSave(activeFigure.pos, newText)}
+          onSave={(newText) => handleFigureSave(activeFigure.editor, activeFigure.pos, newText)}
           onClose={() => setActiveFigure(null)}
         />
       )}

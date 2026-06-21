@@ -536,8 +536,11 @@ export interface ActionContext {
    * Supplied by `ActionsMenuPanel` (the grid surface) — which threads
    * EditorLayout's `setActiveFigure` down — and absent on any pure view-only
    * path (the insert still lands; only the popover-pop is skipped). The shape
-   * mirrors EditorLayout's `activeFigure` state EXACTLY so the popover renders
-   * identically whether opened via this callback (insert) or the
+   * mirrors EditorLayout's `activeFigure` state EXACTLY — including the owning
+   * `editor` (EX-F4-02): the inserted block's pos belongs to `ctx.editor`, so
+   * the save must target it, never MAIN. The callback forwards this `editor`
+   * straight into the `virgil-figure-click` detail, so the popover renders +
+   * saves identically whether opened via this callback (insert) or the
    * `virgil-figure-click` listener (edit).
    */
   openFigurePopover?: (figure: {
@@ -545,6 +548,7 @@ export interface ActionContext {
     raw: string;
     pos: number;
     rect: DOMRect;
+    editor: Editor;
   }) => void;
   /**
    * Open the text-color popover (CHIP 6b). The `text-color` format row is the
@@ -1966,10 +1970,17 @@ function openInsertPopover(
   ctx: ActionContext,
   seed: { kind: string; raw: string; pos: number; rect: DOMRect },
 ): void {
+  // EX-F4-02: carry the OWNING editor — the one figureRun/graphicsRun just
+  // inserted the block into (`ctx.editor`). The popover's save routes back to
+  // THIS editor, the same owning-editor contract the EDIT path's
+  // `virgil-figure-click` now enforces; the marker-clicks listener BAILS on a
+  // detail without it. Both the React-callback forward and the legacy event
+  // fallback must carry it, so augment once here at the chokepoint.
+  const detail = { ...seed, editor: ctx.editor };
   if (ctx.openFigurePopover) {
-    ctx.openFigurePopover(seed);
+    ctx.openFigurePopover(detail);
   } else if (typeof window !== "undefined") {
-    window.dispatchEvent(new CustomEvent("virgil-figure-click", { detail: seed }));
+    window.dispatchEvent(new CustomEvent("virgil-figure-click", { detail }));
   }
 }
 

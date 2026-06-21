@@ -38,6 +38,23 @@ const CHROME_BESIDE_GAP = 8;
 // the identity is stable across renders (FigurePanel's effect depends on it).
 const noopRegisterRefresh = (): (() => void) => () => {};
 
+// The tex-mode popover seed for a figure/graphics node — the faithful env body
+// (figureBlock: `extras` + the live caption text + `\label`) or the verbatim
+// `\includegraphics` command (graphicsBlock). Shared by BOTH click surfaces
+// (the page `FigureFullView` and the float `FigureFloatView`) so they open the
+// popover on identical raw and can never drift (the Issue-4/9/10 lesson).
+function figurePopoverRaw(node: NodeViewProps["node"]): string {
+  if (node.type.name !== "figureBlock") {
+    return (node.attrs.command as string | undefined) || "";
+  }
+  const extras = (node.attrs.extras as string | undefined) || "";
+  const label = (node.attrs.label as string | undefined) || "";
+  const captionChild = node.firstChild;
+  const captionText =
+    captionChild?.type.name === "figureCaption" ? captionChild.textContent : "";
+  return synthesizeFigureRaw(extras, captionText, label);
+}
+
 // Shared node view for both `figureBlock` and `graphicsBlock`. The node
 // type drives whether caption/label chrome is shown. For figureBlock the
 // caption is a `figureCaption` child sub-node (`content: "inline*"`) so
@@ -48,9 +65,11 @@ const noopRegisterRefresh = (): (() => void) => () => {};
 //
 // The outer component is a thin dispatcher across three modes:
 //   1. `figureFloat` (L3n) — the figure's OWN lifted-overlay float: the shared
-//      FigureVisual with an EDITABLE caption (decision B) but a read-only image,
-//      NO chrome, and NO click-to-edit (so the `virgil-figure-click`→MAIN-pos
-//      popover can't misfire from a float — the L3h.1 class). Checked FIRST.
+//      FigureVisual with an EDITABLE caption (decision B) but a read-only image
+//      and NO chrome. Click-to-edit DOES fire here (EX-F4-02): the
+//      `virgil-figure-click` carries THIS float's editor, so the save routes
+//      back into the float (not MAIN by absolute pos) and round-trips via
+//      figure-body's write-back. Checked FIRST.
 //   2. `cardContext` (popped-out section/list/example floats) — a READ-ONLY
 //      image preview (Issue-4: a popped section should SHOW its nested figures,
 //      not a `Figure: …` pill). UNCHANGED by L3n.
@@ -190,19 +209,25 @@ function FigureCardPreview({
 // (decision B — `NodeViewContent`, round-tripping via figure-body's
 // `writeBackToMain`) + a read-only image (`FigurePanel`, reusing the Issue-7b
 // object-URL so the popped image is flicker-free) + a readOnly `\label` lozenge,
-// but NO chrome and — critically — NO wrapper `onClick`. The page view's
-// `handleBodyClick` dispatches `virgil-figure-click` with the node's pos, which
-// `EditorLayout.handleFigureSave` applies to MAIN by absolute pos; from a float
-// that pos is meaningless (the exact L3h.1 math-click misfire class). We avoid
-// it the cleanest way the figure affords — by simply not wiring the click here
-// (the figure click lives in this per-view wrapper, not a shared handler, so
-// there's nothing to gate). The image's source/width are edited on the page,
-// like displayMath's "edit-in-main". graphicsBlock (atom, no caption) renders a
-// read-only image only (≈ displayMath "view & move").
-function FigureFloatView({ node, extension }: NodeViewProps) {
+// but NO chrome.
+//
+// Click-to-edit DOES fire here (EX-F4-02, the figure twin of the math fix). The
+// OLD design deliberately omitted the wrapper `onClick` because the page's
+// `handleBodyClick` dispatched `virgil-figure-click` with the node's pos and
+// `EditorLayout.handleFigureSave` applied it to MAIN by absolute pos — from a
+// float that pos is meaningless (the L3h.1 math-click misfire class), so the
+// edit was suppressed and the image's source/width were "edited on the page"
+// only. The fix routes by the editor instance that OWNS the clicked node: we
+// carry THIS float's `editor` in the event, and the save dispatches into it, so
+// `pos` is read in the float's pos-space and the edit round-trips to MAIN via
+// figure-body's write-back (`onUpdate` → `writeBackToMain`). graphicsBlock
+// (atom, no caption) now opens the same popover on its `\includegraphics`
+// command rather than being view-only.
+function FigureFloatView({ node, getPos, editor, extension }: NodeViewProps) {
   const opts = extension.options as FigureBlockOptions;
   const docId = opts.docIdRef?.current ?? null;
   const isFigure = node.type.name === "figureBlock";
+  const wrapperRef = useRef<HTMLDivElement | null>(null);
 
   // Same source derivation as FigureCardPreview (serves both kinds): explicit
   // `sources` first, else the single `source` attr. graphicsBlock has no
@@ -228,19 +253,58 @@ function FigureFloatView({ node, extension }: NodeViewProps) {
 
   // An un-sourced figure in its own float is an edge case (the dev doc has
   // none): FigureVisual then renders an empty `.figure-row` (no FigurePanel)
-  // plus the editable caption — NOT the page's picker CTA, since the source is
-  // edited on the page (like displayMath). The caption `NodeViewContent` stays
-  // mounted regardless so PM keeps the figureCaption child for write-back.
+  // plus the editable caption — NOT the page's picker CTA (the float never
+  // mounts the chrome/picker; the source is set via the tex-mode popover the
+  // click below opens). The caption `NodeViewContent` stays mounted regardless
+  // so PM keeps the figureCaption child for write-back.
   //
+  // EX-F4-02: clicking the read-only image opens the tex-mode popover, exactly
+  // like the page view — but the save routes back into THIS float editor
+  // (carried via `virgil-figure-click` → handleFigureSave), so `pos` is read in
+  // the float's pos-space and the edit round-trips to MAIN via figure-body's
+  // write-back. The editable caption + its label lozenge manage their own
+  // clicks (a click there places the cursor), so guard those targets — the same
+  // guard FigureFullView uses (its `.figure-chrome` / `.figure-empty-cta`
+  // selectors simply never match in the chrome-free float).
+  const handleBodyClick = (e: React.MouseEvent) => {
+    if (
+      (e.target as HTMLElement).closest(".figure-caption, .figure-annotation")
+    )
+      return;
+    // The float editor is editable, but mirror the math gate: a read-only
+    // surface (none today, the displayMath-D analog) stays inert.
+    if (!editor.isEditable) return;
+    e.preventDefault();
+    e.stopPropagation();
+    const pos = typeof getPos === "function" ? getPos() : undefined;
+    if (pos == null) return;
+    const rect = wrapperRef.current?.getBoundingClientRect();
+    if (!rect) return;
+    window.dispatchEvent(
+      new CustomEvent("virgil-figure-click", {
+        detail: {
+          kind: node.type.name,
+          raw: figurePopoverRaw(node),
+          pos,
+          rect,
+          // The owning editor — the save MUST target this float, not MAIN.
+          editor,
+        },
+      }),
+    );
+  };
+
   // The wrapper inherits the float's editability (no `contentEditable` prop) so
   // the caption is editable; `rowContentEditable={false}` keeps the image row
-  // read-only — exactly FigureFullView's slot wiring minus chrome / onClick, and
-  // with a readOnly (vs editable) lozenge.
+  // read-only — exactly FigureFullView's slot wiring minus chrome, plus the
+  // owning-editor-routed click, and with a readOnly (vs editable) lozenge.
   return (
     <NodeViewWrapper
+      ref={wrapperRef as React.Ref<HTMLDivElement>}
       className={`figure-block figure-block-float ${
         isFigure ? "figure-block-wrapped" : "figure-block-bare"
       }`}
+      onClick={handleBodyClick}
     >
       <FigureVisual
         isFigure={isFigure}
@@ -303,18 +367,16 @@ function FigureFullView({ node, getPos, editor, extension }: NodeViewProps) {
     : (node.attrs.command as string | undefined) || "";
 
   // The popover seed: a faithful view of the env body for the "edit raw"
-  // surface, synthesized from extras + caption text + label.
+  // surface, synthesized from extras + caption text + label. Routed through the
+  // shared `figurePopoverRaw` so the page and the float (FigureFloatView) can
+  // never drift on what raw the popover opens. `captionTextContent` is still
+  // derived here because the width/path mutators below re-attach it.
   const captionChild = node.firstChild;
   const captionTextContent =
     isFigure && captionChild?.type.name === "figureCaption"
       ? captionChild.textContent
       : "";
-  const popoverRaw = useMemo(() => {
-    if (!isFigure) {
-      return (node.attrs.command as string | undefined) || "";
-    }
-    return synthesizeFigureRaw(extras, captionTextContent, label);
-  }, [isFigure, extras, captionTextContent, label, node.attrs.command]);
+  const popoverRaw = useMemo(() => figurePopoverRaw(node), [node]);
 
   const wrapperRef = useRef<HTMLDivElement | null>(null);
 
@@ -532,7 +594,11 @@ function FigureFullView({ node, getPos, editor, extension }: NodeViewProps) {
     if (!rect) return;
     window.dispatchEvent(
       new CustomEvent("virgil-figure-click", {
-        detail: { kind: node.type.name, raw: popoverRaw, pos, rect },
+        // EX-F4-02: carry the owning editor so the save targets THIS editor
+        // (the page = main). The float surface (FigureFloatView) carries its
+        // own editor the same way; handleFigureSave routes by it, never to
+        // MAIN by absolute pos.
+        detail: { kind: node.type.name, raw: popoverRaw, pos, rect, editor },
       }),
     );
   };

@@ -26,9 +26,19 @@ Status legend: `open` · `in-progress` · `done`
 > rename — needs a live feel-check), #55a (LaTeX `.fmt` — external download needs
 > user OK; exact source URL found), #55b part (b) (retire legacy "ai" kind —
 > needs data migration). **Reviewed, kept deferred (explicit features):** #52,
-> #53a. **New follow-up surfaced:** `handleFigureSave` has the same embedded-surface
-> class bug the #54a math fix solved — figure/graphics editing is inert in float
-> surfaces (EditorLayout.tsx:2650).
+> #53a. **Follow-up FIXED 2026-06-21 (EX-F4-02 figure twin):** `handleFigureSave`
+> had the same embedded-surface class bug the #54a math fix solved — figure/
+> graphics click-to-edit was inert in the figure's own float (`figureFloat`
+> click-suppression + a MAIN-pos save). Applied the route-by-owning-editor
+> pattern: `virgil-figure-click` now carries the owning editor (EDIT path =
+> FigureFloatView/FigureFullView; INSERT path = `openInsertPopover` chokepoint),
+> `handleFigureSave(editor, pos, newText)` routes into THAT editor with a
+> bounds/`isDestroyed` guard, and FigureFloatView wires click-to-edit (round-
+> trips via figure-body's `writeBackToMain`). Pinned by `figure-save-routing.test.ts`
+> (5) + insert-seed `editor` assertions in `block-atom-cells.test.ts`. tsc + 2497
+> vitest + eslint green. NOT committed (working tree on `main`). OWED: live FSA
+> gesture feel-check (pop a figure/graphics float → click image → popover opens →
+> save round-trips to main).
 
 ---
 

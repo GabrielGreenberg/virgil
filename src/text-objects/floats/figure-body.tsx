@@ -10,12 +10,15 @@
  * Decision B (editable caption): the figure NodeView, built with
  * `figureFloat: true`, renders its third mode `FigureFloatView` — the shared
  * `FigureVisual` (L3m) with an EDITABLE caption (`NodeViewContent`) but a
- * read-only image, no chrome, and no click-to-edit. So:
- *  - `figureBlock` → the caption round-trips here (whole-node write-back); the
- *    image's source/width are edited on the PAGE (like displayMath's
- *    "edit-in-main"), never in the float.
- *  - `graphicsBlock` (atom, no caption) → effectively read-only ("view &
- *    move", ≈ displayMath).
+ * read-only image and no chrome. Click-to-edit fires (EX-F4-02): the figure
+ * click carries THIS float's editor, so the tex-mode popover's save targets the
+ * float (`onUpdate` → `writeBackToMain`), not MAIN by absolute pos. So:
+ *  - `figureBlock` → the caption round-trips here, and clicking the image opens
+ *    the popover to edit the env body (source/width/label), which writes back
+ *    via the whole-node merge below.
+ *  - `graphicsBlock` (atom, no caption) → the image is read-only but clicking it
+ *    opens the popover on its `\includegraphics` command, round-tripping the
+ *    same way.
  *
  * The real docId is threaded via `useDocWriteHandleOrNull()` (NOT a null
  * docIdRef) so `FigurePanel` resolves the actual image and reuses the
@@ -136,8 +139,9 @@ export function FigureBody({
       editable: true,
       cardContext: false,
       // The figure NodeView's third mode: editable caption + read-only image,
-      // no chrome, no click-to-edit (so virgil-figure-click can't misfire from
-      // the float — the L3h.1 class).
+      // no chrome. Click-to-edit DOES fire and routes the save back into THIS
+      // float editor (EX-F4-02) — the editor is editable, so the popover save
+      // round-trips through `writeBackToMain` rather than mis-targeting MAIN.
       figureFloat: true,
       // The figure float's lozenge is readOnly (no rename/delete prompts) and
       // its doc holds only a figure (no heading/list/paragraph-with-title), so
@@ -163,10 +167,14 @@ export function FigureBody({
   });
 
   // Whole-node write-back by uuid (the example-block-body shape): replace the
-  // source figure with the float's edited node, preserving MAIN's attrs. Only
-  // the figureCaption child (riding in `first.content`) actually changes — the
-  // float has no chrome, so the image attrs (source/width/label/extras/
-  // figureNumber) are byte-identical to what was seeded and survive the merge.
+  // source figure with the float's edited node. The attr merge below layers the
+  // float's attrs OVER MAIN's, so whatever the float changed wins: typing in the
+  // caption changes the figureCaption child (riding in `first.content`), and —
+  // since EX-F4-02 wired click-to-edit in the float — the tex-mode popover save
+  // can now also change the image attrs (source/width/label/extras), which ride
+  // in via `first.attrs` and round-trip here. `figureNumber` is seeded from MAIN
+  // (the float omits the numberer) and the popover never rewrites it, so it
+  // stays in lockstep; `uuid` is always pinned to MAIN's below.
   function writeBackToMain(doc: JSONContent) {
     const ed = ref.current?.getEditor();
     if (!ed) return;

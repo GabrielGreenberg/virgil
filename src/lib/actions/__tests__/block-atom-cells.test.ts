@@ -302,12 +302,24 @@ describe("figureRun", () => {
 
     // rAF is stubbed synchronous, so the popover-open fired already.
     expect(spy).toHaveBeenCalledTimes(1);
-    const seed = spy.mock.calls[0][0] as { kind: string; raw: string; pos: number; rect: DOMRect };
+    const seed = spy.mock.calls[0][0] as {
+      kind: string;
+      raw: string;
+      pos: number;
+      rect: DOMRect;
+      editor: Editor;
+    };
     expect(seed.kind).toBe("figureBlock");
     // The seed pos locates the live figureBlock in the doc.
     expect(editor.state.doc.nodeAt(seed.pos)?.type.name).toBe("figureBlock");
     // The synthesized raw carries the figure LaTeX scaffold (a \caption, at least).
     expect(seed.raw).toContain("\\caption");
+    // EX-F4-02: the seed carries the OWNING editor (the one the block was
+    // inserted into) so the popover's save routes back to it — the same
+    // owning-editor contract the EDIT path requires. The marker-clicks listener
+    // BAILS on a detail without it, so an editor-less insert seed would silently
+    // break fresh-figure insertion.
+    expect(seed.editor).toBe(editor);
   });
 });
 
@@ -356,10 +368,17 @@ describe("graphicsRun", () => {
     graphicsRun(ctxFor(editor, spy));
 
     expect(spy).toHaveBeenCalledTimes(1);
-    const seed = spy.mock.calls[0][0] as { kind: string; raw: string; pos: number };
+    const seed = spy.mock.calls[0][0] as {
+      kind: string;
+      raw: string;
+      pos: number;
+      editor: Editor;
+    };
     expect(seed.kind).toBe("graphicsBlock");
     expect(seed.raw).toContain("\\includegraphics");
     expect(editor.state.doc.nodeAt(seed.pos)?.type.name).toBe("graphicsBlock");
+    // EX-F4-02: the seed carries the owning editor (see the figureRun twin).
+    expect(seed.editor).toBe(editor);
   });
 });
 
