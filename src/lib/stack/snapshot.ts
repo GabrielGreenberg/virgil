@@ -13,6 +13,9 @@ import type { Editor, JSONContent } from "@tiptap/react";
 import { generateEntityId } from "@/lib/uuid";
 import { richJsonToPlainText } from "@/lib/footnote-content";
 import { getSectionRangeByUuid } from "@/lib/section-range";
+import { findNodeByUuid } from "@/lib/tiptap/structural-edit";
+import { findLinkedAnchorRange } from "@/lib/linked-anchor-range";
+import type { TextObjectKind, TextObjectRef } from "@/text-objects/types";
 import type {
   ArchivedSnippet,
   BibEntry,
@@ -179,6 +182,129 @@ export function snapshotHeadingSection(
     source,
     payload: { kind: "heading", nodes },
   };
+}
+
+// ── Linked-range (mark-backed) snapshot ───────────────────────────────
+/** Snapshot a mark-backed text range (`linkedRange`, identified by its
+ *  `linkedAnchor.anchorId`) as a `text` slice. Uses the shared
+ *  `findLinkedAnchorRange` resolver so the captured bounds match what the
+ *  lift-overlay and `text-range-move` spec resolve, then strips the
+ *  `linkedAnchor` + cross-doc marks so the slice carries no orphaned
+ *  identity into a different doc (or a paste-as-new in the same doc).
+ *  Returns null when the mark can't be mapped (deleted / not yet
+ *  reanchored). */
+export function snapshotLinkedRange(
+  editor: Editor,
+  anchorId: string,
+  source: { docId: string | null; docTitle?: string },
+): StackItem | null {
+  const range = findLinkedAnchorRange(editor.state.doc, anchorId);
+  if (!range || range.to <= range.from) return null;
+  const slice = editor.state.doc.slice(range.from, range.to);
+  if (slice.size === 0) return null;
+  const sliceJson = slice.toJSON();
+  if (!sliceJson) return null;
+  const cleanedSlice: Record<string, unknown> = {
+    ...(sliceJson as Record<string, unknown>),
+  };
+  if (Array.isArray((cleanedSlice as { content?: JSONContent[] }).content)) {
+    cleanedSlice.content = (
+      (cleanedSlice as { content: JSONContent[] }).content
+    ).map(stripCrossDocMarks);
+  }
+  const plain = editor.state.doc
+    .textBetween(range.from, range.to, " ", " ")
+    .trim();
+  return {
+    id: makeStackId(),
+    capturedAt: nowIso(),
+    source,
+    payload: { kind: "text", slice: cleanedSlice, plain },
+  };
+}
+
+// ── Sub-object (listItem / exampleItem) snapshot ──────────────────────
+/** Snapshot a sub-object (a `listItem` / `exampleItem`, identified by its
+ *  `uuid`) as a `text` slice of its INNER content. A bare sub-object node
+ *  can't round-trip as a top-level `paragraph` payload (it's schema-invalid
+ *  outside its parent list/example), so we capture the item's block content
+ *  and let the pull side drop it at a between-blocks / inline placement via
+ *  the `text` payload — the same form a plain selection rides. Strips uuids
+ *  + cross-doc marks. Returns null when the uuid resolves to no node or an
+ *  empty item. */
+export function snapshotSubObjectContent(
+  editor: Editor,
+  uuid: string,
+  source: { docId: string | null; docTitle?: string },
+): StackItem | null {
+  const hit = findNodeByUuid(editor, uuid);
+  if (!hit) return null;
+  // Inner content range: skip the sub-object's own open/close tokens.
+  const innerFrom = hit.pos + 1;
+  const innerTo = hit.pos + hit.node.nodeSize - 1;
+  if (innerTo <= innerFrom) return null;
+  const slice = editor.state.doc.slice(innerFrom, innerTo);
+  if (slice.size === 0) return null;
+  const sliceJson = slice.toJSON();
+  if (!sliceJson) return null;
+  const cleanedSlice: Record<string, unknown> = {
+    ...(sliceJson as Record<string, unknown>),
+  };
+  if (Array.isArray((cleanedSlice as { content?: JSONContent[] }).content)) {
+    cleanedSlice.content = (
+      (cleanedSlice as { content: JSONContent[] }).content
+    ).map((n) => stripCrossDocMarks(stripUuids(n)));
+  }
+  const plain = editor.state.doc.textBetween(innerFrom, innerTo, " ", " ").trim();
+  return {
+    id: makeStackId(),
+    capturedAt: nowIso(),
+    source,
+    payload: { kind: "text", slice: cleanedSlice, plain },
+  };
+}
+
+// ── Unified text-object snapshot dispatcher ───────────────────────────
+/** Sub-object kinds that wrap into a parent (can't stand alone at top level). */
+const SUB_OBJECT_KINDS: ReadonlySet<TextObjectKind> = new Set<TextObjectKind>([
+  "listItem",
+  "exampleItem",
+]);
+
+/**
+ * The text-object analogue of `snapshotCard` — the SINGLE entry point that
+ * `textObjectFloatable.snapshotForStack` calls so the snapshot logic lives in
+ * ONE place (this module), symmetric with the card spine (R2 of the AF
+ * floatable plan). Routes by kind to the matching payload, each of which the
+ * stack-pull spec already round-trips:
+ *
+ *   • heading      → `heading` payload (the whole dominated section)
+ *   • linkedRange  → `text` slice (the marked range, identity stripped)
+ *   • listItem /
+ *     exampleItem  → `text` slice (the item's inner content)
+ *   • every other
+ *     top-level node → `paragraph` payload (a single block by uuid)
+ *
+ * Returns null when the source can't be resolved (deleted / unmappable),
+ * mirroring `snapshotCard`'s "non-stackable → null" contract.
+ */
+export function snapshotTextObject(
+  editor: Editor,
+  ref: TextObjectRef,
+  source: { docId: string | null; docTitle?: string },
+): StackItem | null {
+  if (ref.kind === "heading") {
+    return snapshotHeadingSection(editor, ref.id, source);
+  }
+  if (ref.kind === "linkedRange") {
+    return snapshotLinkedRange(editor, ref.id, source);
+  }
+  if (SUB_OBJECT_KINDS.has(ref.kind)) {
+    return snapshotSubObjectContent(editor, ref.id, source);
+  }
+  // Every other text-object kind is a top-level persistent node addressable
+  // by its `uuid` attr — snapshot it as a single block.
+  return snapshotParagraph(editor, ref.id, source);
 }
 
 // ── Card snapshot ─────────────────────────────────────────────────────
