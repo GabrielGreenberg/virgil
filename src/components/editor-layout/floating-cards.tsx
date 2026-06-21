@@ -92,6 +92,11 @@ export interface PoppedCardDeps {
   handleEditFootnote: (id: string, content: JSONContent) => void;
   handleDeleteFootnote: (id: string) => void;
   handleEditFootnoteTitle: (id: string, title: string) => void;
+  /** BUG #55: per-footnote AI-request flags (footnoteId → bool, from the
+   *  footnotes.json sidecar) + the toggle callback. The float/omni footnote
+   *  cards read these to render the unified AI-request checkbox. */
+  footnoteAiRequests: Record<string, boolean>;
+  setFootnoteAiRequest: (id: string, value: boolean) => void;
 
   // Archive
   updateArchiveSnippet: (id: string, content: unknown) => void;

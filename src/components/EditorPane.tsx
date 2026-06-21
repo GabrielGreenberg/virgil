@@ -1278,7 +1278,31 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
   );
   const todosHook = useTodos(docId, todoPristine);
   const archiveHook = useArchive(docId);
-  const footnotesHook = useFootnotes(docId, footnotePristine);
+  // #55b: resolve a footnote's anchoring paragraph(s) from the LIVE doc, so the
+  // bridged AI-request carries `paragraphIds` and is actually drainable (the
+  // skill halts on empty paragraphIds). A footnote's anchor isn't in the
+  // sidecar — it's the position of its `\footnote` atom — so we read it from
+  // the editor here (where the ref is in scope) and hand it to useFootnotes,
+  // the analogue of note/highlight threading `getLinkedTextObjectIds(card)`.
+  // Stable (reads `innerRef.current` at call time), runs only on a toggle, never
+  // per keystroke.
+  const resolveFootnoteAnchor = useCallback(
+    (footnoteId: string): { paragraphIds?: string[]; selectedText?: string } => {
+      const ed = innerRef.current?.getEditor();
+      const fn = innerRef.current
+        ?.getFootnotes()
+        .find((f) => f.footnoteId === footnoteId);
+      if (!ed || !fn || typeof fn.pos !== "number") return {};
+      const pid = paragraphUuidAt(ed.state.doc, fn.pos);
+      if (!pid) return {};
+      return {
+        paragraphIds: [pid],
+        selectedText: captureParagraphSnapshot(ed, pid) || undefined,
+      };
+    },
+    [],
+  );
+  const footnotesHook = useFootnotes(docId, footnotePristine, resolveFootnoteAnchor);
   const suggestionsHook = useSuggestions(docId);
   void suggestionsHook; // surfaces in the suggestions panel mounting later
   const collab = useCollab(docId);
@@ -2166,6 +2190,16 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
   ]);
   const archivedIdsRef = useRef(archivedIds);
   archivedIdsRef.current = archivedIds;
+
+  // BUG #55: per-footnote AI-request flags, sourced from the footnotes.json
+  // sidecar (FootnoteInfo is .tex-derived and carries no flag). Pure derivation
+  // off `footnoteRefs` — recomputes only when the sidecar collection changes (a
+  // flag toggle / add / delete / content edit), never on a plain keystroke.
+  const footnoteAiRequests = useMemo(() => {
+    const m: Record<string, boolean> = {};
+    for (const f of footnotesHook.footnoteRefs) if (f.aiRequest) m[f.id] = true;
+    return m;
+  }, [footnotesHook.footnoteRefs]);
 
   const marginaliaMarkers = useMemo<MarginaliaMarker[]>(() => {
     // Re-resolve markers when anchors move between paragraphs (`rev.anchors`)
@@ -3666,6 +3700,8 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
       handleEditFootnote,
       handleDeleteFootnote,
       handleEditFootnoteTitle,
+      footnoteAiRequests,
+      setFootnoteAiRequest: footnotesHook.setFootnoteAiRequest,
 
       // Archive
       updateArchiveSnippet: archiveHook.updateSnippet,
@@ -3726,7 +3762,7 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
       deleteAiRequest: aiRequestsHook.deleteRequest,
     }),
     [
-      notesHook, footnoteInfos, archiveHook, cutterHook, todosHook,
+      notesHook, footnoteInfos, footnoteAiRequests, archiveHook, cutterHook, todosHook,
       citationsHook, annotationsHook, bibReviewHook, revisionsHook,
       reportsHook,
       aiRequestsHook,
@@ -4291,6 +4327,8 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
                     citationPositionMap={citationPositionMap}
                     citationOrder={citationOrder}
                     footnoteInfos={footnoteInfos}
+                    footnoteAiRequests={footnoteAiRequests}
+                    setFootnoteAiRequest={footnotesHook.setFootnoteAiRequest}
                     setBibActiveCitationId={setBibActiveCitationId}
                     pendingCitationCreate={pendingCitationCreate}
                     setPendingCitationCreate={setPendingCitationCreate}
@@ -4364,6 +4402,8 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
                       citationPositionMap={citationPositionMap}
                       citationOrder={citationOrder}
                       footnoteInfos={footnoteInfos}
+                      footnoteAiRequests={footnoteAiRequests}
+                      setFootnoteAiRequest={footnotesHook.setFootnoteAiRequest}
                       setBibActiveCitationId={setBibActiveCitationId}
                       pendingCitationCreate={pendingCitationCreate}
                       setPendingCitationCreate={setPendingCitationCreate}
@@ -4505,6 +4545,8 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
                 citationPositionMap={citationPositionMap}
                 citationOrder={citationOrder}
                 footnoteInfos={footnoteInfos}
+                footnoteAiRequests={footnoteAiRequests}
+                setFootnoteAiRequest={footnotesHook.setFootnoteAiRequest}
                 setBibActiveCitationId={setBibActiveCitationId}
                 pendingCitationCreate={pendingCitationCreate}
                 setPendingCitationCreate={setPendingCitationCreate}
@@ -5306,6 +5348,8 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
                         citationPositionMap={citationPositionMap}
                         citationOrder={citationOrder}
                         footnoteInfos={footnoteInfos}
+                        footnoteAiRequests={footnoteAiRequests}
+                        setFootnoteAiRequest={footnotesHook.setFootnoteAiRequest}
                         setBibActiveCitationId={setBibActiveCitationId}
                         pendingCitationCreate={pendingCitationCreate}
                         setPendingCitationCreate={setPendingCitationCreate}
@@ -5526,6 +5570,8 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
                 citationPositionMap={citationPositionMap}
                 citationOrder={citationOrder}
                 footnoteInfos={footnoteInfos}
+                footnoteAiRequests={footnoteAiRequests}
+                setFootnoteAiRequest={footnotesHook.setFootnoteAiRequest}
                 setBibActiveCitationId={setBibActiveCitationId}
                 pendingCitationCreate={pendingCitationCreate}
                 setPendingCitationCreate={setPendingCitationCreate}
@@ -5681,6 +5727,10 @@ interface PaneRailProps {
   citationPositionMap: Map<string, number>;
   citationOrder: string[];
   footnoteInfos: ReturnType<NonNullable<RefObject<EditorHandle | null>["current"]>["getFootnotes"]>;
+  /** BUG #55: per-footnote AI-request flags + toggle (from the footnotes.json
+   *  sidecar). Threaded down alongside `footnoteInfos`. */
+  footnoteAiRequests: Record<string, boolean>;
+  setFootnoteAiRequest: (id: string, value: boolean) => void;
   setBibActiveCitationId: React.Dispatch<React.SetStateAction<string | null>>;
   pendingCitationCreate: string | null;
   setPendingCitationCreate: React.Dispatch<React.SetStateAction<string | null>>;
@@ -5863,6 +5913,8 @@ function PaneRail({
   citationPositionMap,
   citationOrder,
   footnoteInfos,
+  footnoteAiRequests,
+  setFootnoteAiRequest,
   setBibActiveCitationId,
   pendingCitationCreate,
   setPendingCitationCreate,
@@ -5952,6 +6004,8 @@ function PaneRail({
           handleEditOrphan={viewPrefs.onEditOrphan}
           handleDeleteOrphan={viewPrefs.onDeleteOrphan}
           handleEditOrphanTitle={viewPrefs.onEditOrphanTitle}
+          footnoteAiRequests={footnoteAiRequests}
+          setFootnoteAiRequest={setFootnoteAiRequest}
           citations={citationsHook.citations}
           citationPositionMap={citationPositionMap}
           bibEntries={citationsHook.bibEntries}
@@ -6113,6 +6167,10 @@ interface PaneRailBodyProps {
   citationPositionMap: Map<string, number>;
   citationOrder: string[];
   footnoteInfos: ReturnType<NonNullable<RefObject<EditorHandle | null>["current"]>["getFootnotes"]>;
+  /** BUG #55: per-footnote AI-request flags + toggle (from the footnotes.json
+   *  sidecar). Threaded down alongside `footnoteInfos`. */
+  footnoteAiRequests: Record<string, boolean>;
+  setFootnoteAiRequest: (id: string, value: boolean) => void;
   setBibActiveCitationId: React.Dispatch<React.SetStateAction<string | null>>;
   pendingCitationCreate: string | null;
   setPendingCitationCreate: React.Dispatch<React.SetStateAction<string | null>>;
@@ -6185,6 +6243,8 @@ function PaneRailBody({
   citationPositionMap,
   citationOrder,
   footnoteInfos,
+  footnoteAiRequests,
+  setFootnoteAiRequest,
   setBibActiveCitationId,
   pendingCitationCreate,
   setPendingCitationCreate,
@@ -6307,6 +6367,8 @@ function PaneRailBody({
         onDeleteOrphan={viewPrefs?.onDeleteOrphan ?? (() => {})}
         onEditOrphan={viewPrefs?.onEditOrphan ?? (() => {})}
         onEditOrphanTitle={viewPrefs?.onEditOrphanTitle ?? (() => {})}
+        footnoteAiRequests={footnoteAiRequests}
+        onSetFootnoteAiRequest={setFootnoteAiRequest}
       />
     );
   }

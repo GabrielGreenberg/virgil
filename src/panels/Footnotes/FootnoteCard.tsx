@@ -6,6 +6,7 @@ import type { FootnoteInfo } from "@/components/Editor";
 import type { OrphanedFootnote } from "@/lib/types";
 import {
   EditableCard,
+  AiRequestCheckbox,
   BadgeLabel,
   BadgeOrphaned,
   makeCompressedSummary,
@@ -51,6 +52,13 @@ export interface FootnoteCardProps {
   extraDataAttrs?: Record<string, string>;
   onTogglePopout?: (anchor: DOMRect) => void;
   isPoppedOut?: boolean;
+  /** BUG #55: per-card AI-request flag + toggle. When `onSetAiRequest` is
+   *  supplied the expanded card renders the unified AiRequestCheckbox (same as
+   *  note/todo/comment). Omitted by surfaces with no flag source (e.g. the
+   *  Reader). `aiRequest` is the current flag value (from the footnotes.json
+   *  sidecar — FootnoteInfo itself is .tex-derived and carries no flag). */
+  aiRequest?: boolean;
+  onSetAiRequest?: (value: boolean) => void;
 }
 
 export function FootnoteCard({
@@ -69,6 +77,8 @@ export function FootnoteCard({
   extraDataAttrs,
   onTogglePopout,
   isPoppedOut,
+  aiRequest,
+  onSetAiRequest,
 }: FootnoteCardProps) {
   const handleEdit = useCallback(
     (json: JSONContent) => onEdit(normalizeRichContent(json)),
@@ -115,6 +125,16 @@ export function FootnoteCard({
       }}
       onHoverChange={(h) => cardStore.setHover(h ? ac.ref : null)}
       onDelete={onDelete}
+      footer={
+        onSetAiRequest && !compressed ? (
+          <div className="px-3 pb-2 -mt-1">
+            <AiRequestCheckbox
+              checked={!!aiRequest}
+              onToggle={(next) => onSetAiRequest(next)}
+            />
+          </div>
+        ) : undefined
+      }
       value={fn.content}
       variant="footnote"
       panelKey="footnote"

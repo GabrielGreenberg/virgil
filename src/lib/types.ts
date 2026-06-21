@@ -254,7 +254,7 @@ export type AiRequestPayload =
  *  `aiRequest: true` flag (notes / todos / cutter-comments / revision-comments).
  *  Lets a fulfillment skill load the source card and update it on completion. */
 export interface AiRequestLink {
-  panel: "notes" | "todos" | "cutter" | "revisions" | "reports";
+  panel: "notes" | "todos" | "cutter" | "revisions" | "reports" | "footnotes";
   cardId: string;
 }
 
@@ -391,6 +391,13 @@ export interface FootnoteRef {
    *  `\footnote` atom out (survives sync as an unanchored ref); see
    *  archiveRemovesAtom (cards/predicates.ts). */
   archived?: boolean;
+  /** Per-card "AI request" flag (BUG #55). Mirrors note/todo/comment.aiRequest:
+   *  flags this footnote as something the user wants Claude to act on. Toggling
+   *  it bridges a `kind: "footnote"` entry into `ai-requests.json` (the unified
+   *  queue) via `bridgeCardAiRequestFlag`. Absent ≡ false. The flag lives in
+   *  the `footnotes.json` sidecar (not the live `FootnoteInfo`, which is derived
+   *  from the .tex) — the same home as `archived`. */
+  aiRequest?: boolean;
   // Tiptap JSONContent doc — see normalizeRichContent for accepted shapes.
   // Legacy footnotes stored HTML strings; migrated on read.
   content: unknown;

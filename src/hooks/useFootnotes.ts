@@ -4,8 +4,9 @@ import { useState, useCallback, useEffect, useMemo, useRef } from "react";
 import type { JSONContent } from "@tiptap/react";
 import { readSidecar, writeSidecar } from "@/lib/storage";
 import type { FootnotesState, FootnoteRef } from "@/lib/types";
-import { normalizeRichContent } from "@/lib/footnote-content";
+import { normalizeRichContent, richJsonToPlainText } from "@/lib/footnote-content";
 import { generateShortId } from "@/lib/uuid";
+import { bridgeCardAiRequestFlag } from "@/lib/ai-request-bridge";
 import {
   getActiveHandle,
   isStalePipelineError,
@@ -14,7 +15,24 @@ import type { PristineKindApi } from "./usePristineCardManager";
 
 const EMPTY: FootnotesState = { footnotes: [] };
 
-export function useFootnotes(docId: string | null, pristine?: PristineKindApi | null) {
+/** The anchor context a footnote AI-request needs to be *drainable*: which
+ *  paragraph(s) the footnote's `\footnote` atom sits in (so the skill can splice
+ *  / act at the right place) and the surrounding selected text, if any. Unlike a
+ *  panel card (whose anchor lives in its `links[]` array), a footnote's anchor is
+ *  only knowable from the live editor — its `\footnote` atom position resolved to
+ *  the enclosing block's uuid. The hook has no editor, so the owner (EditorPane,
+ *  which closes over the editor ref) supplies this resolver. Mirrors how
+ *  note/highlight setters build ctx via `getLinkedTextObjectIds` — but sourced
+ *  from the doc instead of the card, because that's where a footnote's anchor is. */
+export type FootnoteAnchorResolver = (
+  footnoteId: string,
+) => { paragraphIds?: string[]; selectedText?: string };
+
+export function useFootnotes(
+  docId: string | null,
+  pristine?: PristineKindApi | null,
+  resolveAnchor?: FootnoteAnchorResolver | null,
+) {
   const [state, setState] = useState<FootnotesState>(EMPTY);
   const stateRef = useRef(state);
   stateRef.current = state;
@@ -120,6 +138,50 @@ export function useFootnotes(docId: string | null, pristine?: PristineKindApi | 
     });
   }, [persist, pristine]);
 
+  /** Flip a footnote ref's per-card AI-request flag (BUG #55) AND bridge the
+   *  toggle into the unified `ai-requests.json` queue. Mirrors the note/todo/
+   *  comment `setXAiRequest` callbacks: the flag is the panel UI's source of
+   *  truth; the bridge keeps the skill-drain inbox in sync (best-effort, never
+   *  throws). The bridged entry's `kind`/`linkPanel` come from CARD_REGISTRY
+   *  (registry-declared routing, R29). `text` is a short plain-text summary of
+   *  the footnote body so the request row is legible in the inbox.
+   *
+   *  CRITICAL (#55b): the bridged request must carry the footnote's anchoring
+   *  `paragraphIds` (and any `selectedText`), or it files an UNACTIONABLE request
+   *  — the drain skill halts when `paragraphIds` is empty. Unlike a panel card,
+   *  a footnote's anchor isn't in the sidecar; it's the position of the
+   *  `\footnote` atom in the live doc. The owner supplies that via
+   *  `resolveAnchor` (EditorPane closes over the editor ref). This is the exact
+   *  analogue of note/highlight threading `getLinkedTextObjectIds(card)` —
+   *  sourced from the doc instead of the card, because that's where the anchor
+   *  lives for an atom-bearing kind. */
+  const setFootnoteAiRequest = useCallback(
+    (id: string, value: boolean) => {
+      pristine?.markDirty(id);
+      const ref = stateRef.current.footnotes.find((f) => f.id === id);
+      setState((prev) => {
+        const next = {
+          footnotes: prev.footnotes.map((f) =>
+            f.id === id ? { ...f, aiRequest: value } : f,
+          ),
+        };
+        stateRef.current = next;
+        persist(next);
+        return next;
+      });
+      const summary = ref
+        ? richJsonToPlainText(normalizeRichContent(ref.content)).trim()
+        : "";
+      const anchor = resolveAnchor?.(id);
+      void bridgeCardAiRequestFlag(docId, "footnote", id, value, {
+        text: summary || "<footnote>",
+        paragraphIds: anchor?.paragraphIds,
+        selectedText: anchor?.selectedText,
+      });
+    },
+    [persist, pristine, docId, resolveAnchor],
+  );
+
   /** Deep-copy a footnote sidecar entry with a fresh id. Returns the new
    *  id, or null if the source id wasn't found. Used by the drag-handle
    *  Duplicate action when a duplicated block contains a footnote atom. */
@@ -168,6 +230,7 @@ export function useFootnotes(docId: string | null, pristine?: PristineKindApi | 
     updateFootnoteContent,
     deleteFootnote,
     setArchived,
+    setFootnoteAiRequest,
     cloneFootnote,
     syncFromEditor,
   };
