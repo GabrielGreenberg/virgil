@@ -186,7 +186,9 @@ export function useRevisions(
           anchor.anchorId,
           anchor.anchorText,
         );
-      if (!content && !anchor && !paragraphId) pristine.markNew(card.id);
+      // Unified pristine contract (BUG #54): an empty-body comment discards on
+      // click-away regardless of anchor/paragraph (an anchor isn't user content).
+      if (!content) pristine.markNew(card.id);
       update((prev) => ({ ...prev, cards: [...prev.cards, card] }));
       return card;
     },
@@ -222,7 +224,11 @@ export function useRevisions(
           anchor.anchorId,
           anchor.anchorText,
         );
-      if (!originalText && !anchor && !paragraphId) pristine.markNew(card.id);
+      // Unified pristine contract (BUG #54): a suggestion is pristine when it
+      // carries no seed text. `!anchor` is kept (a selection-seeded suggestion
+      // captures the anchor text as `original_text` = real content), but
+      // `!paragraphId` is dropped so a blank Mode-A suggestion still discards.
+      if (!originalText && !anchor) pristine.markNew(card.id);
       update((prev) => ({ ...prev, cards: [...prev.cards, card] }));
       return card;
     },

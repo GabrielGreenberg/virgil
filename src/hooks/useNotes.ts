@@ -133,10 +133,13 @@ export function useNotes(docId: string | null, externalPristine?: PristineKindAp
       if (anchor) {
         newNote = setTextAnchorLink(newNote, "note", anchor.anchorId, anchor.anchorText);
       }
-      // Only a truly blank note (no content, no anchor, no paragraph) is
-      // pristine — a note seeded from a drop or selection counts as
-      // "written to" since the user already committed an intent.
-      if (!content && !anchor && !paragraphId) pristine.markNew(newNote.id);
+      // Unified pristine contract (BUG #54): a card is pristine — and so
+      // discards on click-away — when it has NO BODY CONTENT, regardless of
+      // anchor/paragraph. An anchor is just *where* the card lives, not
+      // user-committed content; the common "+ at the cursor" note carries a
+      // paragraphId yet is still empty. This matches footnotes/todos/citations
+      // (the correct model). Once the user types, `updateNote` marks it dirty.
+      if (!content) pristine.markNew(newNote.id);
       update((prev) => ({ cards: [...prev.cards, newNote] }));
       return newNote;
     },
@@ -542,7 +545,8 @@ export function useNotes(docId: string | null, externalPristine?: PristineKindAp
    * Drop any notes that were created via `addNote()` but never edited.
    * Call from panel-close / host-unmount so "press +, do nothing, leave"
    * does not leave a blank card behind. Highlights are never pristine —
-   * they always carry a text anchor.
+   * `addHighlight` never calls `markNew` (a highlight is a body-less tint,
+   * so the unified empty-body contract doesn't apply to it).
    */
   const discardPristineNotes = useCallback(() => {
     if (externalPristine) {

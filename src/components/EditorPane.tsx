@@ -924,6 +924,12 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
   // here owns a panel, so the non-null assertion is safe.
   const notePristine = useMemo(() => pristineManager.forKind(panelForCardKind("note")!), [pristineManager]);
   const cutPristine = useMemo(() => pristineManager.forKind(panelForCardKind("cutter-comment")!), [pristineManager]);
+  // BUG #54: Revisions was the one card panel never wired into the click-away
+  // discard watcher — `useRevisions(docId)` fell back to its in-hook
+  // `localPristine` (panel-close only), so a blank revision comment/suggestion
+  // created at the cursor lingered on click-away. Give it a manager bucket like
+  // every other kind so the unified empty-body contract actually fires.
+  const revisionPristine = useMemo(() => pristineManager.forKind(panelForCardKind("revision-comment")!), [pristineManager]);
   const reportPristine = useMemo(() => pristineManager.forKind(panelForCardKind("report")!), [pristineManager]);
   const todoPristine = useMemo(() => pristineManager.forKind(panelForCardKind("todo")!), [pristineManager]);
   const citationPristine = useMemo(() => pristineManager.forKind(panelForCardKind("citation")!), [pristineManager]);
@@ -1112,7 +1118,7 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
   const aiRequestsHook = useAiRequests(docId);
   const cutterHookRaw = useCutter(docId, cutPristine);
   const reportsHookRaw = useReports(docId, reportPristine);
-  const revisionsHookRaw = useRevisions(docId);
+  const revisionsHookRaw = useRevisions(docId, revisionPristine);
   // Lossy-morph confirm (note→highlight, report↔report-request). Distinct
   // dialog instance so it coexists with the other confirm dialogs.
   const { confirm: confirmMorph, dialog: confirmMorphDialog } = useConfirmDialog();
@@ -2585,6 +2591,10 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
   useEffect(
     () => cutPristine.registerDiscard((id) => cutterHook.deleteCard(id)),
     [cutPristine, cutterHook.deleteCard],
+  );
+  useEffect(
+    () => revisionPristine.registerDiscard((id) => revisionsHook.deleteCard(id)),
+    [revisionPristine, revisionsHook.deleteCard],
   );
   useEffect(
     () => reportPristine.registerDiscard((id) => reportsHook.deleteCard(id)),
