@@ -4,6 +4,7 @@ import type { ComponentType, RefObject } from "react";
 import type { EditorHandle } from "@/components/Editor";
 import type { Floatable, FloatBodyContext } from "@/floats/types";
 import { buildFloatKey } from "@/floats/float-key";
+import { snapshotTextObject } from "@/lib/stack/snapshot";
 import { TEXT_OBJECT_REGISTRY } from "./text-object-registry";
 import type { TextObjectFloatBodyProps, TextObjectKind, TextObjectRef } from "./types";
 
@@ -70,7 +71,20 @@ export function textObjectFloatable(
     // textobject-float-droppable contract test.
     canDrop: true,
     jumpToSource: () => editorRef.current?.scrollToParagraphId(ref.id),
-    snapshotForStack: () => null, // Stage 5 wires snapshotParagraph/Section
+    // Stage 5 (BUG #48 — parity with cards): serialize the floated text-object
+    // onto the Stack so a popped-out paragraph / heading / block / list-item /
+    // range drops onto the stack icon exactly like a card float does. The
+    // capture lives in the snapshot SSOT (`snapshotTextObject` dispatches by
+    // kind: heading → section, linkedRange/sub-objects → text slice, every
+    // other top-level node → single block) so this builder is the same thin
+    // "ask the source to serialize itself" caller the card spine is. A
+    // one-shot live doc read on the drop gesture — never keystroke-proportional.
+    // Returns null when the source can't be resolved (deleted / unmappable).
+    snapshotForStack: (source) => {
+      const editor = editorRef.current?.getEditor() ?? null;
+      if (!editor) return null;
+      return snapshotTextObject(editor, ref, source);
+    },
     // No auto-fit: text floats spawn at the lift's authoritative captured
     // height (or `defaultSize` on a cold reload). The old grow-burst explicitly
     // skipped text-object floats; nothing opts in now.

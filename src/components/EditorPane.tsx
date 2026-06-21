@@ -150,11 +150,9 @@ import type { StackPullApi } from "./drop-mode/types";
 import { StackIcon } from "./stack/StackIcon";
 import { StackStrip } from "./stack/StackStrip";
 import { useStack, addStackItem } from "@/hooks/useStack";
-import {
-  snapshotHeadingSection,
-  snapshotParagraph,
-} from "@/lib/stack/snapshot";
 import type { StackItem as StackItemType } from "@/lib/stack/types";
+import { textObjectFloatable } from "@/text-objects/text-object-floatable";
+import { isTextObjectKind } from "@/text-objects/text-object-registry";
 import { useDragHandleActions, type DragHandleRef } from "./editor-layout/card-actions/drag-handle-actions";
 import { DragHandleMenuProvider, type DragHandleMenuApi } from "./editor-layout/card-actions/drag-handle-menu-context";
 // CHIP 4a-i — the PM→React bridge. EditorPane publishes an
@@ -3766,11 +3764,17 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
       const id = parsed.id;
       const source = { docId: stackSourceRef.current.docId };
       let item: StackItemType | null = null;
-      const mainEd = innerRef.current?.getEditor() ?? null;
-      if (parsed.domain === "textobject" && parsed.kind === "paragraph") {
-        if (mainEd) item = snapshotParagraph(mainEd, id, source);
-      } else if (parsed.domain === "textobject" && parsed.kind === "heading") {
-        if (mainEd) item = snapshotHeadingSection(mainEd, id, source);
+      if (parsed.domain === "textobject" && isTextObjectKind(parsed.kind)) {
+        // Mirror the CARD branch (parity, BUG #48): build the SAME `Floatable`
+        // the text-object popout renders from and ask it to serialize itself.
+        // `snapshotForStack` is the single capture entry point now —
+        // `snapshotTextObject` dispatches by kind (paragraph / heading /
+        // block / list-item / range) inside the snapshot SSOT, so EditorPane
+        // no longer carries a per-kind branch. A one-shot doc read on the drop
+        // gesture, never keystroke-proportional. Returns null when the source
+        // can't be resolved (deleted) or the kind isn't poppable.
+        const f = textObjectFloatable({ kind: parsed.kind, id }, innerRef);
+        item = f?.snapshotForStack(source) ?? null;
       } else if (parsed.domain === "card" && isCardKind(parsed.kind)) {
         // Mirror `FloatHost.resolveFloatable`: build the same `Floatable` the
         // popout renders from and ask it to serialize itself. Some builders
