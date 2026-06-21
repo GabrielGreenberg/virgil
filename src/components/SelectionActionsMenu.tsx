@@ -28,6 +28,7 @@ import {
   type EditorViewportCache,
 } from "@/hooks/useEditorViewportCache";
 import { findEditorScrollFor } from "@/components/editor-layout/layout-scroll";
+import { RESTING_GUTTER_TRIGGER_Z } from "@/floats/float-policy";
 
 const VIEWPORT_MARGIN = 8;
 const RIGHT_GAP = 6;
@@ -370,6 +371,16 @@ export function SelectionActionsMenu({
   // Collapsed-state action button. Same chrome variables as the menu so
   // the two states feel like one component: the menu expands out of the
   // button, anchored at the same `left/top`.
+  //
+  // z-index: the RESTING bolt sits at `RESTING_GUTTER_TRIGGER_Z`
+  // (= FLOAT_Z_BASE − 1, see src/floats/float-policy.ts tier map) — above
+  // editor content + the docked-panel band so it's clickable when nothing
+  // overlaps, but strictly BELOW the float layer (1200) so a popout / popped
+  // card / lifted-text overlay dropped over this paragraph OCCLUDES the bolt
+  // (BUG #50). This is the RESTING tier ONLY: clicking it opens the
+  // `ActionsMenuPanel` below, which rides the `<Menu>` primitive's CHROME_Z
+  // (2000, = OPEN_CHROME_MENU_Z) and therefore stays on top of EVERYTHING,
+  // floats included. Never demote the open menu — only the resting trigger.
   const buttonPortal = createPortal(
     <button
       ref={buttonRef}
@@ -387,7 +398,7 @@ export function SelectionActionsMenu({
         top: placement.top,
         width: BUTTON_SIZE,
         height: BUTTON_SIZE,
-        zIndex: 2000,
+        zIndex: RESTING_GUTTER_TRIGGER_Z,
         background: "var(--pod-editor)",
         border: "var(--pod-border)",
         boxShadow: "var(--pod-shadow)",

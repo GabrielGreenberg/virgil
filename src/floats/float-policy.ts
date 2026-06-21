@@ -32,6 +32,59 @@ export const FLOAT_Z_BASE = 1200;
 export { FLOATING_PANEL_Z_BASE };
 
 /**
+ * Editor stacking tiers, low → high — the SSOT map for "what paints over what"
+ * across the editor surface. Every chrome layer that needs to reason about
+ * floats should derive its z-index from one of these symbols, never a magic
+ * number, so the ordering invariants below can't silently drift:
+ *
+ *   text / content              ~1–31  (editor prose, sticky pod caps, Virgil
+ *                                       bar — local z's inside the editor)
+ *   panel band                  1000   (FLOATING_PANEL_Z_BASE — docked panels)
+ *   RESTING gutter triggers     1199   (RESTING_GUTTER_TRIGGER_Z — the gutter
+ *                                       bolt / drag handle at rest: ABOVE
+ *                                       content + panels so it's clickable, but
+ *                                       just BELOW the float layer so a popout
+ *                                       dropped over its paragraph OCCLUDES it)
+ *   float layer                 1200   (FLOAT_Z_BASE — popped cards, the
+ *                                       lifted-text overlay, the inline-atom
+ *                                       drag ghost; CSS mirror at z-index:1200
+ *                                       in globals.css)
+ *   open chrome menus           2000   (OPEN_CHROME_MENU_Z — the <Menu>
+ *                                       primitive's CHROME_Z; a transient open
+ *                                       menu, e.g. the ActionsMenuPanel that the
+ *                                       gutter bolt opens, MUST stay on top of
+ *                                       everything INCLUDING floats)
+ *   drop-mode indicator         9999   (the blue insertion bar — above floats
+ *                                       and ghosts during a move, Issue-11)
+ *
+ * The load-bearing split: a RESTING trigger and the OPEN menu it spawns live in
+ * DIFFERENT tiers. The bolt-at-rest is demoted below floats (so floats occlude
+ * it — BUG #50); the menu it opens rides OPEN_CHROME_MENU_Z and is never
+ * demoted. Keep that split principled — derive, don't hardcode.
+ */
+
+/**
+ * Paint z-index for an editor GUTTER TRIGGER at REST (the lightning-bolt action
+ * button beside the current paragraph; conceptually also the left drag handle).
+ * One below {@link FLOAT_Z_BASE}: high enough to sit over editor content and the
+ * docked-panel band so it stays clickable when nothing overlaps, but strictly
+ * below the float layer so a popout / popped card / lifted-text overlay dropped
+ * over the trigger's paragraph OCCLUDES it (BUG #50). This is the RESTING tier
+ * only — clicking the bolt opens a menu that rides {@link OPEN_CHROME_MENU_Z}.
+ */
+export const RESTING_GUTTER_TRIGGER_Z = FLOAT_Z_BASE - 1;
+
+/**
+ * Paint z-index for a transient OPEN chrome menu (the `<Menu>` primitive's
+ * `CHROME_Z`; e.g. the ActionsMenuPanel the gutter bolt spawns). Above the
+ * float layer so an open menu always composes on top of floats. Declared here
+ * so the resting-trigger ↔ open-menu z split reads from one tier map; the
+ * `<Menu>` primitive's `CHROME_Z` is wired to THIS symbol, so the resting-bolt
+ * (below floats) vs open-menu (above floats) split can never drift.
+ */
+export const OPEN_CHROME_MENU_Z = 2000;
+
+/**
  * Shared "how tall can a popout be" policy — the maximum height of any
  * popped-out card/text-object as a fraction of the viewport, applied as a MAX
  * (never a floor; short content opens at its natural height). One value for
