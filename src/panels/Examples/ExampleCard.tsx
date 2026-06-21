@@ -28,6 +28,7 @@ import { useExampleContentRevision } from "@/lib/tiptap/doc-structure";
 import { useMainEditable } from "@/components/editor-layout/contexts/editor-ref";
 import { useDocWriteHandleOrNull } from "@/components/editor-layout/DocPipeline";
 import { buildEditorExtensions } from "@/lib/editor-extensions";
+import { applyExpexWidthVars, computeExpexWidths } from "@/lib/tiptap/expex";
 import { FLOAT_WRITE_META } from "@/lib/float-sync";
 import { reseedPreservingCaret } from "@/lib/reseed-caret";
 
@@ -336,6 +337,24 @@ function ExampleCardEditor({
     else dom.style.removeProperty("color");
     /* eslint-enable react-hooks/immutability */
   }, [editor, bodyStyle]);
+
+  // Doc-adaptive expex gutter widths (backlog #25/#53b). Like the example
+  // FLOAT body, this embedded editor OMITS `ExpexNumbering` (surface:"float"),
+  // so it never gets the `--expex-num-width` / `--expex-marker-width` vars the
+  // main plugin maintains — and `.expex-block`'s `grid-template-columns`
+  // falls back to the 1.5em default, wrapping a 2-digit `(13)` in BOTH the
+  // collapsed preview AND the expanded card body. Derive the widths from this
+  // card's OWN seeded block (one exampleBlock) and apply them via the shared
+  // `applyExpexWidthVars` helper — the SAME apply the plugin uses, so all three
+  // surfaces stay in lockstep. Re-runs only on a re-seed (`rev.examples` /
+  // `contentRev`), never per keystroke, so a renumber `(9)`→`(10)` re-widens.
+  useEffect(() => {
+    if (!editor) return;
+    applyExpexWidthVars(
+      editor.view.dom as HTMLElement,
+      computeExpexWidths(editor.state.doc),
+    );
+  }, [editor, rev.examples, contentRev]);
 
   const content = <EditorContent editor={editor} />;
   if (clampLines) {

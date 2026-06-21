@@ -59,8 +59,12 @@ const schema = new Schema({
       toDOM: () => ["li", 0],
     },
     exampleBlock: {
+      // Production allows BOTH a direct body `paragraph` (a single `\ex`) and an
+      // `exampleItemList` (a multi `\pex`). Model both so the single-example
+      // body-paragraph deferral (#49 — exampleBlock is now a DEFERRING_PARENT)
+      // is covered alongside the multi exampleItem case.
       group: "block",
-      content: "exampleItemList+",
+      content: "(paragraph | exampleItemList)+",
       attrs: { uuid: { default: null } },
       toDOM: () => ["div", 0],
     },
@@ -91,6 +95,10 @@ const exList = (...items: PMNode[]) =>
   schema.nodes.exampleItemList.create(null, items);
 const exBlock = (...items: PMNode[]) =>
   schema.nodes.exampleBlock.create(null, items);
+// A SINGLE example (`\ex`): the body paragraph is a DIRECT child of the
+// exampleBlock (no exampleItemList) — the #49 single-example case.
+const exBlockSingle = (...paras: PMNode[]) =>
+  schema.nodes.exampleBlock.create(null, paras);
 const doc = (...blocks: PMNode[]) => schema.nodes.doc.create(null, blocks);
 
 interface NodeInfo {
@@ -209,6 +217,33 @@ describe("resolveAnchorableBlock — honors DEFERRING_PARENTS (SSOT delegation)"
     const mintedNode = editor.state.doc.nodeAt(firstItem.pos)!;
     expect(mintedNode.type.name).toBe("exampleItem");
     expect(mintedNode.attrs.uuid).toBe(info!.uuid);
+  });
+
+  it("cursor inside a SINGLE example's body paragraph resolves the exampleBlock, NOT the inner paragraph (#49)", () => {
+    // A `\ex` whose body paragraph is a DIRECT child of the exampleBlock. Before
+    // #49 added exampleBlock to DEFERRING_PARENTS, the body paragraph minted its
+    // OWN uuid → a phantom grab handle right of `(16)`. It must now defer to the
+    // exampleBlock, exactly like the multi exampleItem case above.
+    const d = doc(exBlockSingle(para("There's a biscuit")));
+    const { editor } = mockEditor(d);
+    const exBlocks = findByType(d, "exampleBlock");
+    const firstBlock = exBlocks[0];
+    const innerPara = findByType(d, "paragraph").find(
+      (p) => p.pos === firstBlock.pos + 1,
+    )!;
+
+    const info = resolveAnchorableBlock(editor, innerPara.pos + 1);
+    expect(info).not.toBeNull();
+    expect(info!.blockPos).toBe(firstBlock.pos);
+    expect(info!.blockPos).not.toBe(innerPara.pos);
+    const mintedNode = editor.state.doc.nodeAt(firstBlock.pos)!;
+    expect(mintedNode.type.name).toBe("exampleBlock");
+    expect(mintedNode.attrs.uuid).toBe(info!.uuid);
+    // The body paragraph stayed uuid-less (so assignUuids has nothing to strip
+    // and the decoration walk emits no handle for it).
+    const innerNode = editor.state.doc.nodeAt(innerPara.pos)!;
+    expect(innerNode.type.name).toBe("paragraph");
+    expect(innerNode.attrs.uuid).toBeNull();
   });
 
   it("a plain TOP-LEVEL paragraph still resolves the paragraph itself (unchanged)", () => {

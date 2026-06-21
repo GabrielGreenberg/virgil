@@ -191,6 +191,44 @@ export function computeExpexWidths(
   };
 }
 
+/**
+ * Apply the doc-adaptive expex column widths to a host element's inline style
+ * (sets `--expex-num-width` / `--expex-marker-width` when non-null, removes
+ * them otherwise so the 1.5em CSS default holds). The SINGLE imperative apply
+ * for the var pair — consumed by the main editor's `ExpexNumbering` plugin view
+ * AND by every embedded expex surface that omits that plugin (the example card
+ * editor, collapsed + expanded), so the var is set the same way everywhere and
+ * a 2-digit `(13)` never wraps in a card/preview (backlog #49/#53b — kills the
+ * "applied by hand in 3 surfaces" drift class). O(1): two property writes.
+ */
+export function applyExpexWidthVars(
+  dom: HTMLElement,
+  widths: ExpexColumnWidths,
+): void {
+  if (widths.numWidth) dom.style.setProperty("--expex-num-width", widths.numWidth);
+  else dom.style.removeProperty("--expex-num-width");
+  if (widths.markerWidth)
+    dom.style.setProperty("--expex-marker-width", widths.markerWidth);
+  else dom.style.removeProperty("--expex-marker-width");
+}
+
+/**
+ * The doc-adaptive expex column widths as a React inline-style object (the
+ * declarative twin of {@link applyExpexWidthVars}). For surfaces that set the
+ * vars on a JSX wrapper rather than mutating the live editor DOM — the example
+ * float body. Null widths contribute no key, so the 1.5em CSS default holds.
+ */
+export function expexWidthStyle(
+  widths: ExpexColumnWidths,
+): import("react").CSSProperties {
+  return {
+    ...(widths.numWidth ? { "--expex-num-width": widths.numWidth } : {}),
+    ...(widths.markerWidth
+      ? { "--expex-marker-width": widths.markerWidth }
+      : {}),
+  } as import("react").CSSProperties;
+}
+
 // ---------------------------------------------------------------------------
 // Shared empty-example deletion
 // ---------------------------------------------------------------------------
@@ -1717,15 +1755,8 @@ export const ExpexNumbering = Extension.create({
           },
         },
         view(view) {
-          const apply = (s: WidthState) => {
-            const dom = view.dom as HTMLElement;
-            if (s.numWidth)
-              dom.style.setProperty("--expex-num-width", s.numWidth);
-            else dom.style.removeProperty("--expex-num-width");
-            if (s.markerWidth)
-              dom.style.setProperty("--expex-marker-width", s.markerWidth);
-            else dom.style.removeProperty("--expex-marker-width");
-          };
+          const apply = (s: WidthState) =>
+            applyExpexWidthVars(view.dom as HTMLElement, s);
           // Apply the initial (load-time) widths once.
           apply(expexKey.getState(view.state) ?? { numWidth: null, markerWidth: null });
           return {

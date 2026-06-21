@@ -4,6 +4,7 @@ import type { EditorState, Transaction } from "@tiptap/pm/state";
 import { ReplaceAroundStep, ReplaceStep } from "@tiptap/pm/transform";
 import type { Node as PMNode } from "@tiptap/pm/model";
 import { isAnchorableNode } from "@/lib/marginalia";
+import { isDeferredInnerParagraph } from "@/lib/anchor-uuid";
 import { readDocStructure } from "@/lib/tiptap/doc-structure";
 import { generateShortId } from "@/lib/uuid";
 
@@ -65,18 +66,14 @@ import { generateShortId } from "@/lib/uuid";
 
 const BACKFILL_META = "blockUuidBackfill";
 
-// A `paragraph` nested directly inside one of these containers defers its
+// A `paragraph` nested directly inside a DEFERRING_PARENTS container defers its
 // anchor identity to the parent (the real text-object), and its uuid is
-// stripped at serialization — so we never mint on it. Mirrors DEFERRING_PARENTS
-// in `@/lib/anchor-uuid` (kept local to hold this plugin's scope; the set is
-// stable). Every other anchorable kind (incl. nested lists) is minted, matching
-// `resolveAnchorableNode`'s policy exactly.
-const DEFERRING_PARENTS = new Set([
-  "listItem",
-  "blockquote",
-  "codeBlock",
-  "exampleItem",
-]);
+// stripped at serialization — so we never mint on it. The set + the predicate
+// (`isDeferredInnerParagraph`) are the SSOT in `@/lib/anchor-uuid`, imported
+// rather than re-declared so the "grabbable text-object" boundary can't drift
+// between the mint resolve, this backfill, and the decoration walk. Every other
+// anchorable kind (incl. nested lists, and a single example's graphicsBlock /
+// displayMath / list body) is minted, matching `resolveAnchorableNode`'s policy.
 
 interface BackfillFix {
   pos: number;
@@ -154,14 +151,11 @@ function planBackfill(
         to = transactions[j].mapping.map(to, 1);
       }
       forEachAnchorableStart(newDoc, from, to, (node, pos, parent) => {
-        // A list/blockquote/code/exampleItem-nested paragraph defers to its
-        // parent — don't give it its own identity (matches resolveAnchorableNode
-        // and keeps inner-paragraph uuids out of the serialized .tex).
-        if (
-          node.type.name === "paragraph" &&
-          parent &&
-          DEFERRING_PARENTS.has(parent.type.name)
-        ) {
+        // A container-nested body paragraph (list / blockquote / code /
+        // exampleItem / exampleBlock) defers to its parent — don't give it its
+        // own identity (matches resolveAnchorableNode and keeps inner-paragraph
+        // uuids out of the serialized .tex).
+        if (isDeferredInnerParagraph(node, parent)) {
           return;
         }
         if (seenPos.has(pos)) return;

@@ -28,12 +28,16 @@
  * compact static previews; the user edits the atoms in the main doc.
  */
 
-import { type CSSProperties, type RefObject, useCallback, useEffect, useMemo, useRef } from "react";
+import { type RefObject, useCallback, useEffect, useMemo, useRef } from "react";
 import { useEditor, EditorContent, type JSONContent } from "@tiptap/react";
 import type { Node as PMNode } from "@tiptap/pm/model";
 import type { EditorHandle } from "@/components/Editor";
 import { buildEditorExtensions } from "@/lib/editor-extensions";
-import { computeExpexWidths, type ExpexColumnWidths } from "@/lib/tiptap/expex";
+import {
+  computeExpexWidths,
+  expexWidthStyle,
+  type ExpexColumnWidths,
+} from "@/lib/tiptap/expex";
 import { useDocWriteHandleOrNull } from "@/components/editor-layout/DocPipeline";
 import { useMainEditable } from "@/components/editor-layout/contexts/editor-ref";
 import { usePoppedCards } from "@/hooks/usePoppedCards";
@@ -284,16 +288,7 @@ export function ExampleBlockBody({
       ) : null}
       <div
         className={`par-float-body heading-float-body flex-1 overflow-auto ${TEXT_FLOAT_BODY_PAD_CLASS} relative ${viewToggleClasses(chrome.menuBar)}`}
-        style={
-          {
-            ...(initial.widths.numWidth
-              ? { "--expex-num-width": initial.widths.numWidth }
-              : {}),
-            ...(initial.widths.markerWidth
-              ? { "--expex-marker-width": initial.widths.markerWidth }
-              : {}),
-          } as CSSProperties
-        }
+        style={expexWidthStyle(initial.widths)}
       >
         <EditorContent editor={floatEditor} />
       </div>
