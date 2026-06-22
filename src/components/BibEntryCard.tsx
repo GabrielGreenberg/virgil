@@ -48,11 +48,14 @@ export interface BibEntryCardProps {
   onTogglePopout?: (anchor: DOMRect) => void;
   /** Whether this card is currently rendered in a floating window. */
   isPoppedOut?: boolean;
-  /** Small badge/chip rendered at the right side of the header — used by
-   *  the Bibliography panel to surface library-status (in library /
-   *  processing / no PDF) without this component needing to know about
-   *  the Library feature. */
-  libraryChip?: React.ReactNode;
+  /** Meta block stacked BELOW the title line (layers 2 + 3 of the card:
+   *  library membership chips, then the verification / processing-tier
+   *  status row). Supplied by the Bibliography panel so this component stays
+   *  agnostic of the Library feature — it just renders the node in a column
+   *  under the title. Replaces the old single-row `libraryChip`, which
+   *  competed with the title for horizontal space and collapsed at narrow
+   *  widths. */
+  headerMeta?: React.ReactNode;
   /** Optional Add-to-local affordance for global search results. When set,
    *  renders a small "Add" / "Added" pill in the card header. */
   addAction?: { onAdd: () => void; alreadyAdded: boolean };
@@ -283,7 +286,7 @@ export default function BibEntryCard({
   entry, isSelected, onClick, getAnnotation, setAnnotation,
   onRequestReview, onCancelReview, getReviewStatus, onUpdateBibEntry, onReplaceBibEntry, onUpdateBibKeyAndType,
   occurrenceInfo, bibPackage, bibEntries, isCited = true, onJump,
-  onTogglePopout, isPoppedOut, libraryChip, addAction, draggable = true,
+  onTogglePopout, isPoppedOut, headerMeta, addAction, draggable = true,
 }: BibEntryCardProps) {
   const popped = usePoppedCards();
   const popKey = buildPopKey("bibliography", entry.key);
@@ -625,58 +628,68 @@ export default function BibEntryCard({
       onDragStart={draggable ? handleDragStart : undefined}
       onClick={onClick}
     >
-      {/* Header — pr-14 reserves space for the absolute top-right control
-          stack (target + popout cluster, with optional occurrence counter
-          stacked below). */}
+      {/* Header — a vertical stack of layers (text → libraries → status) so a
+          narrow card no longer forces the title to vertical-truncate against a
+          trailing chip row. pr-14 reserves space for the absolute top-right
+          control stack (target + popout cluster, occurrence counter below). */}
       <div
-        className="flex items-center gap-2 pl-3 pr-14 py-1.5"
+        className="flex flex-col gap-1 pl-3 pr-14 py-1.5"
         style={{ backgroundColor: isSelected ? theme.headerSelected : theme.headerDefault }}
       >
-        <CardDragHandle />
-        {/* TITLE dialect — design-system-fixed; the per-panel body-font
-            picker (`bibBodyStyle`) applies to the publication-details body
-            row, never to this header line. */}
-        <div
-          className="flex-1 min-w-0 leading-snug"
-          style={{
-            ...cardTitleStyle(theme),
-            overflowWrap: "anywhere",
-          }}
-          data-hint={headerText} aria-label={headerText}
-        >
-          {author && <span className="font-semibold">{author}</span>}
-          {author && year && <span className="text-ink-muted mx-1.5">&middot;</span>}
-          {year && <span className="font-semibold">{year}</span>}
-          {(author || year) && title && <span className="text-ink-muted mx-1.5">&middot;</span>}
-          {title && <span className="italic">{title}</span>}
-        </div>
-        {addAction ? (
+        {/* Layer 1 — text: author · year · title (full width, wraps naturally). */}
+        <div className="flex items-center gap-2">
+          <CardDragHandle />
+          {/* TITLE dialect — design-system-fixed; the per-panel body-font
+              picker (`bibBodyStyle`) applies to the publication-details body
+              row, never to this header line. */}
           <div
-            className="shrink-0"
-            onClick={(e) => e.stopPropagation()}
-            draggable={false}
-            onDragStart={(e) => { e.stopPropagation(); e.preventDefault(); }}
+            className="flex-1 min-w-0 leading-snug"
+            style={{
+              ...cardTitleStyle(theme),
+              overflowWrap: "anywhere",
+            }}
+            data-hint={headerText} aria-label={headerText}
           >
-            {addAction.alreadyAdded ? (
-              <span className="text-[10px] text-ink-muted py-0.5">Added</span>
-            ) : (
-              <button
-                onClick={addAction.onAdd}
-                className="text-[10px] text-emerald-600 hover:text-emerald-700 hover:bg-emerald-50 px-1.5 py-0.5 rounded"
-              >
-                Add
-              </button>
-            )}
+            {author && <span className="font-semibold">{author}</span>}
+            {author && year && <span className="text-ink-muted mx-1.5">&middot;</span>}
+            {year && <span className="font-semibold">{year}</span>}
+            {(author || year) && title && <span className="text-ink-muted mx-1.5">&middot;</span>}
+            {title && <span className="italic">{title}</span>}
           </div>
-        ) : null}
-        {libraryChip ? (
+          {addAction ? (
+            <div
+              className="shrink-0"
+              onClick={(e) => e.stopPropagation()}
+              draggable={false}
+              onDragStart={(e) => { e.stopPropagation(); e.preventDefault(); }}
+            >
+              {addAction.alreadyAdded ? (
+                <span className="text-[10px] text-ink-muted py-0.5">Added</span>
+              ) : (
+                <button
+                  onClick={addAction.onAdd}
+                  className="text-[10px] text-emerald-600 hover:text-emerald-700 hover:bg-emerald-50 px-1.5 py-0.5 rounded"
+                >
+                  Add
+                </button>
+              )}
+            </div>
+          ) : null}
+        </div>
+        {/* Layers 2 + 3 — library membership chips, then the verification /
+            processing-tier status row. The outer header's pr-14 already
+            bounds this block clear of the absolute top-right control cluster
+            (no own right reserve needed). pl-[18px] aligns the meta under the
+            title text: drag-handle box (10px svg + 2×2px pad − 4px -ml-1 =
+            10px) + gap-2 (8px) = 18px. */}
+        {headerMeta ? (
           <div
-            className="shrink-0"
+            className="flex flex-col gap-1 pl-[18px]"
             onClick={(e) => e.stopPropagation()}
             draggable={false}
             onDragStart={(e) => { e.stopPropagation(); e.preventDefault(); }}
           >
-            {libraryChip}
+            {headerMeta}
           </div>
         ) : null}
       </div>

@@ -30,6 +30,7 @@ vi.mock("@/hooks/useLibrary", () => ({
   useLibraryItems: () => ({ items: [], loading: false }),
   useLibraryMasterBib: () => ({ entries: [], loading: false }),
   useLibraryMemberships: () => ({ memberships: new Map(), loading: false }),
+  useLibraryEntryLookup: () => () => undefined,
 }));
 
 vi.mock("@/components/RichTextField", () => ({

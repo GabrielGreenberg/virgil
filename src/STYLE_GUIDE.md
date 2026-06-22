@@ -107,6 +107,27 @@ class (Tailwind's `font-mono` skips the user's mono override pref; apply
 `.card-mono` directly and set the size alongside it). CODE/key mono sits on
 the META tier (10px).
 
+**Status badges (library cards).** Two documented chip dialects coexist on
+the bibliography/citation card's stacked header, distinguished by role, not
+drift:
+
+| Dialect | Spec | Use |
+|---|---|---|
+| **Membership chip** | 9px / uppercase / tracking-wide | "location tags" — which library an entry lives in (Local / Central / a custom library). `provenance-chips.tsx`. |
+| **Status badge** | 10px / sentence-case / tracking-wide / colored | the entry's *state* — `✓ Verified` (bib-auth) and the processing tier (`Bib only` / `Indexed PDF` / `Deep-indexed PDF`). `library-entry-status.tsx`. |
+
+Sentence-case on the status badge is deliberate: the labels are user-facing
+vocabulary that reads as words, not shouted tags. Membership chips stay the
+denser uppercase tag so the two layers read as distinct registers.
+
+**Stacked card header (library cards).** The bibliography card header is a
+**three-layer vertical stack** — (1) text: author · year · title, full width;
+(2) libraries: membership chips; (3) status: the verification + tier badges +
+the "Open" link. Stacking (not a single trailing chip row) is what keeps the
+title legible when the panel is narrow — a trailing `shrink-0` chip row would
+otherwise squeeze the title to one character per line. The library-aware meta
+is composed by the panel and passed to the card-agnostic `headerMeta` slot.
+
 ### Picker scope — body content only
 
 The per-panel font picker (`usePanelBodyStyle`) styles **body content
@@ -173,6 +194,12 @@ Icons are stroke-only, stroke-width 2, round caps and joins, single
 color (`currentColor`). Three exceptions are filled by design: the AI
 star (sky `#0ea5e9`), the trash icon (`text-danger`), and the
 heading-fold chevron (`--footnote-color` when folded).
+
+The **external-link / "open in new tab"** glyph (`ExternalLinkIcon` —
+`src/components/icons/`, a lucide box-with-arrow leaf, 12px default) is the
+shared mark for opening a library entry as its own tab; like `DropChevrons`
+it is a domain-neutral leaf (no card/library imports) so any surface —
+bibliography cards, citation cards — can reuse it.
 
 Marginalia margin icons are 16px, rendered via the components in
 `src/components/editor-layout/panel-icons.tsx`.

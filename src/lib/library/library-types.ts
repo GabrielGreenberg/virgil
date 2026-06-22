@@ -23,6 +23,21 @@ export type LibraryBibState =
   | "canonical"
   | "failed";
 
+/**
+ * Coarse, paper-side processing tier for a library entry — derived from the
+ * catalog's `indexed.state` (`none | queued | running | indexed | deepIndexed
+ * | failed`). This is the human-readable axis surfaced on bibliography /
+ * citation cards (Bib only / Indexed PDF / Deep-indexed PDF), kept distinct
+ * from the orthogonal `LibraryBibState` auth axis. A paper-side derived
+ * vocabulary, so the card layer never imports the library's `IndexedState`.
+ */
+export type LibraryIndexTier =
+  | "bib-only" // no PDF / not indexed (indexed.state none)
+  | "processing" // queued or extracting (indexed.state queued|running)
+  | "indexed" // standard extraction (indexed.state indexed)
+  | "deep-indexed" // structural cleanup applied (indexed.state deepIndexed)
+  | "failed"; // extraction failed
+
 /** One row in `library-index.json` — the manifest Virgil polls. */
 export interface LibraryIndexItem {
   /** Stable UUID assigned by Cowork; also the folder name for this item. */
@@ -41,6 +56,9 @@ export interface LibraryIndexItem {
   updatedAt?: string;
   /** Auth state for the matching `master.bib` entry, when known. */
   bibState?: LibraryBibState;
+  /** Processing tier derived from the catalog's `indexed.state` — the
+   *  Bib only / Indexed PDF / Deep-indexed PDF axis. */
+  indexTier?: LibraryIndexTier;
 }
 
 /** Whole-manifest shape written at `library-index.json`. */

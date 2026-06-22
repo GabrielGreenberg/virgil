@@ -20,6 +20,7 @@ import type { BibEntry } from "@/lib/types";
 import { mintBibUid } from "@/lib/bib-uid";
 import type {
   LibraryIndexItem,
+  LibraryIndexTier,
   LibraryItemStatus,
 } from "@/lib/library/library-types";
 
@@ -39,6 +40,26 @@ function mapStatus(s: IndexedState): LibraryItemStatus {
   }
 }
 
+/** Catalog `indexed.state` → the paper-side Bib only / Indexed / Deep-indexed
+ *  tier. Keeps the indexed-vs-deepIndexed distinction that `mapStatus`
+ *  collapses, so cards can surface a readable processing tier. */
+function mapTier(s: IndexedState): LibraryIndexTier {
+  switch (s) {
+    case "deepIndexed":
+      return "deep-indexed";
+    case "indexed":
+      return "indexed";
+    case "queued":
+    case "running":
+      return "processing";
+    case "failed":
+      return "failed";
+    case "none":
+    default:
+      return "bib-only";
+  }
+}
+
 function entryToItem(e: CatalogEntry): LibraryIndexItem | null {
   // BibliographyPanel keys by citekey; entries without one (mid-triage
   // unsorted PDFs) have nothing to match against in a doc's bib.
@@ -54,6 +75,7 @@ function entryToItem(e: CatalogEntry): LibraryIndexItem | null {
     pageCount: e.pdf.pageCount,
     updatedAt: e.updatedAt,
     bibState: e.bib?.state,
+    indexTier: mapTier(e.indexed.state),
   };
 }
 
@@ -69,6 +91,26 @@ export function useLibraryItems(): {
     if (item) items.push(item);
   }
   return { items, revision, hasFolder };
+}
+
+/**
+ * Shared per-citekey library resolver. Returns a stable `(citekey) =>
+ * LibraryIndexItem | undefined` lookup over the live catalog, so any card
+ * (bibliography, citation, …) can ask "is this reference in the library, and
+ * what's its index tier / bib-state?" without rebuilding the map itself.
+ */
+export function useLibraryEntryLookup(): (
+  citekey: string,
+) => LibraryIndexItem | undefined {
+  const { items } = useLibraryItems();
+  const byCitekey = useMemo(() => {
+    const map = new Map<string, LibraryIndexItem>();
+    for (const it of items) {
+      if (it.citekey) map.set(it.citekey, it);
+    }
+    return map;
+  }, [items]);
+  return useMemo(() => (citekey: string) => byCitekey.get(citekey), [byCitekey]);
 }
 
 /**

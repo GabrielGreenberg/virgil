@@ -430,7 +430,7 @@ export default function EditorLayout() {
   const libraryRegistry = useLibraryRegistry();
   const { myPaperIds, addMyPaper, removeMyPaper } = useMyPapers();
 
-  useLibraryBridge({ activateLibraryOuterPane });
+  useLibraryBridge({ activateLibraryOuterPane, openPaperTab });
 
   // "New document" modal state. `mode: "fresh"` uses the OS directory
   // picker; `mode: "inFolder"` writes into the already-picked folder
