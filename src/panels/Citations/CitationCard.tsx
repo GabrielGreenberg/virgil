@@ -33,6 +33,8 @@ import { useAnchoredCard } from "@/links/_shared/useAnchoredCard";
 import { cardStore } from "@/links/_shared/anchored-card-store";
 import { useConfirmDialog } from "@/components/ConfirmDialog";
 import { cardHasContent } from "@/cards/has-content";
+import { useLibraryEntryLookup } from "@/hooks/useLibrary";
+import { OpenEntryLink } from "@/components/library/open-library-entry";
 import { CitekeyPicker } from "./CitekeyPicker";
 
 /* ── Command type options per package ─────────────────────────────── */
@@ -244,6 +246,9 @@ export function CitationCard({
   const bodyStyle = usePanelBodyStyle("citation");
   const popped = usePoppedCards();
   const cardKey = popKey("citations", cit.id);
+  // Shared per-citekey library resolver — lets each cited reference offer the
+  // same "open entry" affordance as the bibliography card (modular reuse).
+  const lookupEntry = useLibraryEntryLookup();
   const ac = useAnchoredCard({ kind: "citation", id: cit.id });
   const isExpanded = isDraft || ac.expanded;
   const isHaloed = ac.selected || isSelected;
@@ -821,6 +826,7 @@ export function CitationCard({
                   bibExpanded={
                     !!row.key.trim() && expandedBibKey === row.key.trim()
                   }
+                  entryInLibrary={!!lookupEntry(row.key.trim())}
                   pickerOpenHere={pickerRowId === row.id && pickerExternalInputEl !== null}
                   pickerQuery={pickerRowId === row.id ? pickerExternalQuery : null}
                   onToggleBib={() => toggleBibKey(row.key.trim())}
@@ -1094,6 +1100,9 @@ interface CitationKeyRowProps {
   bibEntryMap: Map<string, BibEntry>;
   canRemove: boolean;
   bibExpanded: boolean;
+  /** True when this row's citekey resolves to a Virgil Library entry — gates
+   *  the shared "open entry" link. */
+  entryInLibrary?: boolean;
   /** True iff the picker is currently open on this row's empty input. The
    *  card owns the open/close state; the row uses this to know whether
    *  its input is the live search field. */
@@ -1115,6 +1124,7 @@ function CitationKeyRow({
   bibEntryMap,
   canRemove,
   bibExpanded,
+  entryInLibrary,
   pickerOpenHere,
   pickerQuery,
   onToggleBib,
@@ -1321,6 +1331,12 @@ function CitationKeyRow({
             >
               Bib
             </button>
+          )}
+          {entryInLibrary && trimmed && (
+            <OpenEntryLink
+              citekey={trimmed}
+              className="inline-flex items-center gap-0.5 text-[10px] text-[var(--muted)] hover:text-ink-body px-1 py-0 rounded hover:bg-edge-subtle"
+            />
           )}
           {pgOpen ? (
             <span className="flex items-center gap-1">

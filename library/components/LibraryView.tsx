@@ -320,7 +320,11 @@ export default function LibraryView({
   // left panel so it lands as a tab on the right.
   useEffect(() => {
     const onOpen = (e: Event) => {
-      const detail = (e as CustomEvent<{ citekey?: string; itemId?: string }>).detail;
+      const detail = (e as CustomEvent<{ citekey?: string; itemId?: string; target?: string }>).detail;
+      // `target: "tab"` opens the entry as its own outer Virgil-bar paper tab
+      // (handled by the outer bridge) — don't also select + open it as an
+      // inner tab inside the (possibly background) Library view.
+      if (detail?.target === "tab") return;
       const key = detail?.citekey ?? detail?.itemId;
       if (!key) return;
       // The source row lives in the left panel's list (openPaper lands the

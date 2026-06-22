@@ -17,9 +17,10 @@ import {
 import { useTabIndent } from "@/hooks/useTabIndent";
 import type { LibraryIndexItem } from "@/lib/library/library-types";
 import {
-  ProvenanceChips,
-  provenanceFor,
+  LibraryMembershipChips,
+  membershipChipsFor,
 } from "@/components/library/provenance-chips";
+import { LibraryStatusRow } from "@/components/library/library-entry-status";
 import {
   LibraryEntryMenu,
   type RowState,
@@ -994,16 +995,32 @@ function BibliographyPanel({
               alreadyAdded: alreadyAddedFlag,
             }
           : undefined;
-        const provenance = provenanceFor(
-          entry.key,
-          searchScope,
-          {
-            inLocal: localEntryByKey.has(entry.key),
-            inCentral: libraryByCitekey.has(entry.key),
-            customLibraries: membershipMap.get(entry.key),
-            bibState: libraryByCitekey.get(entry.key)?.bibState,
-          },
-        );
+        // Library meta, stacked under the title as two layers:
+        //   layer 2 — membership chips (local / central / custom libraries),
+        //   layer 3 — verification + processing-tier status + open link.
+        // Scope-aware like the old `provenanceFor`: hide the chip that matches
+        // the current search scope (a local result doesn't need a "local"
+        // chip; a library result doesn't need a "central" one).
+        const libItem = libraryByCitekey.get(entry.key);
+        const membershipChips = membershipChipsFor({
+          inLocal: localEntryByKey.has(entry.key) && searchScope !== "local",
+          inCentral: libraryByCitekey.has(entry.key) && searchScope !== "library",
+          customLibraries: membershipMap.get(entry.key),
+        });
+        const headerMeta =
+          membershipChips.length > 0 || libItem ? (
+            <>
+              {membershipChips.length > 0 && (
+                <LibraryMembershipChips chips={membershipChips} />
+              )}
+              <LibraryStatusRow
+                indexTier={libItem?.indexTier}
+                bibState={libItem?.bibState}
+                citekey={entry.key}
+                inLibrary={!!libItem}
+              />
+            </>
+          ) : undefined;
         return (
           <BibEntryCard
             entry={entry}
@@ -1024,11 +1041,7 @@ function BibliographyPanel({
             bibPackage={bibPackage}
             bibEntries={bibEntries}
             isCited={isCited}
-            libraryChip={
-              provenance.length > 0 ? (
-                <ProvenanceChips chips={provenance} />
-              ) : undefined
-            }
+            headerMeta={headerMeta}
             addAction={addAction}
             draggable={!isPreviewResult}
             occurrenceInfo={
