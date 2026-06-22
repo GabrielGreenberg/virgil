@@ -35,10 +35,10 @@ Status legend: `open` · `in-progress` · `done`
 > `handleFigureSave(editor, pos, newText)` routes into THAT editor with a
 > bounds/`isDestroyed` guard, and FigureFloatView wires click-to-edit (round-
 > trips via figure-body's `writeBackToMain`). Pinned by `figure-save-routing.test.ts`
-> (5) + insert-seed `editor` assertions in `block-atom-cells.test.ts`. tsc + 2497
-> vitest + eslint green. NOT committed (working tree on `main`). OWED: live FSA
-> gesture feel-check (pop a figure/graphics float → click image → popover opens →
-> save round-trips to main).
+> (5) + insert-seed `editor` assertions in `block-atom-cells.test.ts`. tsc + full
+> vitest + eslint green. ✅ COMMITTED to local main (`22bb9fbd`, not pushed). OWED:
+> live FSA gesture feel-check (pop a figure/graphics float → click image → popover
+> opens → save round-trips to main).
 
 ---
 
@@ -1564,7 +1564,7 @@ node (not MAIN). File pointer: `src/lib/tiptap/math.ts:73` (the surface gate);
 
 ## 55. 🔴 LaTeX compile broken — the committed SwiftLaTeX `.fmt` is a 15-byte CDN error blob
 
-**Reported:** 2026-06-15 · **Status:** deferred (2026-06-21 — staged as a one-click chip with the exact 9.88 MB version-matched source URL; external binary download needs user OK) · **Priority: HIGH (functional — compile is dead)** · **Area:** LaTeX compile / SwiftLaTeX engine
+**Reported:** 2026-06-15 · **Status:** ✅ DONE (2026-06-21, merge `7059e5d3`, not pushed — restored the real ~9.88 MB version-matched `swiftlatexpdftex.fmt` from SwiftLaTeX/Texlive-Ondemand, replacing the 15-byte CDN-error stub; compile revived) · **Priority: HIGH (functional — compile is dead)** · **Area:** LaTeX compile / SwiftLaTeX engine
 
 **Reported behavior** — compiling fails: `[compile] SwiftLaTeX failed (status=1)` …
 `This is pdfTeX … (preloaded format=swiftlatexpdftex)` … `I can't find the format
@@ -1657,7 +1657,7 @@ back to a `localPristine` tracker that isn't connected to the click-away discard
 
 ## 55. Give footnotes (and all remaining cards) an AI-request click; retire the AI-request cards
 
-**Reported:** 2026-06-15 · **Status:** done — part (a) footnote (+ all relevant cards) AI-request click, end-to-end drainable (2026-06-21, backlog-drain); part (b) retire legacy "ai" kind staged as a chip (needs data migration) · **Area:** AI-request system / card chrome
+**Reported:** 2026-06-15 · **Status:** ✅ DONE (2026-06-21) — part (a) footnote (+ all relevant cards) AI-request click, end-to-end drainable (backlog-drain); part (b) retire legacy "ai" kind merged WITH data migration (merge `95e7b989`, not pushed) · **Area:** AI-request system / card chrome
 
 **Reported behavior / ask** — (a) give **footnotes** an AI-request click on the
 bottom row, like other cards have; (b) **remove the AI-request *cards*** (the old
