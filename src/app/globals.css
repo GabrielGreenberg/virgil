@@ -4205,10 +4205,12 @@ body[data-pref-mode="on"] [data-panel-theme]:hover {
    bare hover-only .drag-gap line that the editor/code splitter keeps.
    Scoped to `.band-grip`, so HSplit is unaffected. */
 .drag-gap-h.band-grip {
-  /* Opaque manilla backing (the panel pod fill) so the grip strip reads
-     as panel chrome and isn't lost against the omni cards showing
-     through behind/below the bands. */
-  background: var(--pod-panel);
+  /* Opaque manilla (--background, the canvas) backing so the gutter strip
+     between/below stacked panels reads as the cream desktop — each band a
+     distinct sheet — while still occluding the omni cards showing through
+     behind it. NOT --pod-panel (the warm panel fill), which made the gutter
+     look like panel material bridging the sheets. */
+  background: var(--background);
 }
 .drag-gap-h.band-grip::before {
   content: '';
