@@ -588,7 +588,7 @@ function FloatingPanelInner({
           border: surface === "panel"
             ? "var(--panel-border, 3px solid #c9c5c5)"
             : "var(--pod-border, 1px solid #e5e2dd)",
-          boxShadow: "var(--pod-shadow-light)",
+          boxShadow: "var(--card-shadow-ambient)",
           zIndex,
         }
       : {

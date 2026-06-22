@@ -347,11 +347,13 @@ add button, AI button, extras, popout chevron. Order is fixed even
 when slots are absent.
 
 Panel pods are **borderless warm sheets**: `--pod-panel` fill, a larger
-`--panel-radius` (14px, vs the editor pod's 8px `--pod-radius`), and a
-single warm-tinted `--pod-shadow-light`; **no border** (`--panel-border:
-none`). Separation between stacked pods comes from the cream `--pod-gap`
-gutter + each sheet's shadow — not a border. Don't add backdrops, glows,
-gradients, or a border.
+`--panel-radius` (14px, vs the editor pod's 8px `--pod-radius`), and the
+**same ambient shadow as cards** (`--card-shadow-ambient`); **no border**
+(`--panel-border: none`). The **header shares the body fill**
+(`--pod-panel`) with **no divider** — header and body read as one
+continuous sheet. Separation between stacked pods comes from the cream
+`--pod-gap` gutter + each sheet's shadow — not a border. Don't add
+backdrops, glows, gradients, a border, or a header divider.
 
 Body is a scrollable list with `space-y-2` between cards. No `border-b`
 between cards.
