@@ -11,7 +11,7 @@ import { BandDivider } from "../panel-primitives";
 export function PlaceholderPanel({ title }: { title: string }) {
   return (
     <div className="w-full bg-transparent flex flex-col overflow-hidden h-full">
-      <div className="px-4 border-b border-[var(--border)] h-[var(--header-h)] shrink-0 flex items-center justify-between bg-[var(--header-bg)]">
+      <div className="px-4 h-[var(--header-h)] shrink-0 flex items-center justify-between bg-[var(--pod-panel)]">
         <h3 className="text-sm font-semibold text-ink-body">{title}</h3>
       </div>
       <div className="flex-1 flex items-center justify-center p-6">

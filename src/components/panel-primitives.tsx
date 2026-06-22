@@ -1304,8 +1304,10 @@ export const PANEL = {
   subpod: "rounded-md border border-edge-subtle bg-surface-muted/70 p-3 overflow-hidden",
   /** Sub-pod with white background (for rich-text editors, etc.). */
   subpodWhite: "rounded-md border border-edge-subtle bg-white overflow-hidden",
-  /** Standard panel header bar — height set by --header-h so all headers align. */
-  header: "px-4 border-b border-[var(--border-light)] h-[var(--header-h)] shrink-0 bg-[var(--header-bg)]",
+  /** Standard panel header bar — height set by --header-h so all headers align.
+   *  Borderless: shares the body fill (--pod-panel), no divider — header and
+   *  body read as one continuous warm sheet. */
+  header: "px-4 h-[var(--header-h)] shrink-0 bg-[var(--pod-panel)]",
   /** Empty-state message. */
   empty: "p-6 text-center text-sm text-[var(--muted)]",
 } as const;
