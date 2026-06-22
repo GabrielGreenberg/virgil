@@ -42,6 +42,16 @@ export interface UseMenuItemOptions {
   run: () => void;
   /** ARIA role override for checkbox/option rows (defaults from the menu role). */
   role?: MenuItemProps["role"];
+  /**
+   * Live VISUAL index (the row's position in the rendered list). Pass this from
+   * a list whose rows REORDER without remounting — a fuzzy-ranked combobox whose
+   * React `key` survives a re-rank — so nav follows what the user sees. The
+   * registry's default insertion `order` is correct only while DOM order ==
+   * registration order; this republishes the live index via `registry.setOrder`
+   * whenever it changes, so arrow-nav steps strictly through visual order. Omit
+   * for static menus (their DOM order already equals registration order).
+   */
+  order?: number;
 }
 
 export function useMenuItem(opts: UseMenuItemOptions): UseMenuItemResult {
@@ -54,6 +64,7 @@ export function useMenuItem(opts: UseMenuItemOptions): UseMenuItemResult {
     letterAliases,
     run,
     role: roleOverride,
+    order,
   } = opts;
   const { registry, role: menuRole } = useMenuContext();
 
@@ -87,6 +98,17 @@ export function useMenuItem(opts: UseMenuItemOptions): UseMenuItemResult {
     // aliasesKey stands in for the array identity.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [registry, id, region, coordsRow, coordsCol, disabled, letter, aliasesKey, stableRun]);
+
+  // Republish the live visual index (reorderable lists only). Kept SEPARATE
+  // from the register effect on purpose: a re-rank changes only `order`, so this
+  // updates the sort key WITHOUT the register effect's unregister/re-register
+  // churn (which would transiently clear `active` and drop the highlight). The
+  // registry no-ops when the order is unchanged, so this is inert for the
+  // common (index-stable) re-render and entirely absent for menus that omit it.
+  useEffect(() => {
+    if (order == null) return;
+    registry.setOrder(id, order);
+  }, [registry, id, order]);
 
   // Subscribe to the active id; re-render only when THIS node's active flag
   // flips (not on every active change — the selector narrows it).

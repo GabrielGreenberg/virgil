@@ -143,6 +143,52 @@ describe("MenuRegistry — active id + navigation + activation", () => {
   });
 });
 
+describe("MenuRegistry — setOrder (combobox re-rank: snapshot follows live VISUAL order)", () => {
+  it("re-sorts items() to the published visual index without re-registering", () => {
+    const r = new MenuRegistry("m", "combobox");
+    ["a", "b", "c"].forEach((id) => r.register(reg({ id })));
+    expect(r.items().map((n) => n.id)).toEqual(["a", "b", "c"]);
+    // A fuzzy re-rank reorders the VISUAL rows to c, a, b. The rows are
+    // key-stable, so they never re-register — they publish their live index.
+    r.setOrder("c", 0);
+    r.setOrder("a", 1);
+    r.setOrder("b", 2);
+    expect(r.items().map((n) => n.id)).toEqual(["c", "a", "b"]);
+  });
+
+  it("arrow nav follows visual order after a NON-CYCLIC re-rank (fails pre-fix)", () => {
+    const r = new MenuRegistry("m", "combobox");
+    ["a", "b", "c", "d", "e"].forEach((id) => r.register(reg({ id })));
+    // Visual order becomes b, a, c, d, e — swapping the first two is a NON-cyclic
+    // permutation, so insertion-order nav and visual-order nav DIVERGE (a cyclic
+    // rotation would walk identically and hide the bug — the skip-bug only shows
+    // under a non-cyclic permutation).
+    const visual = ["b", "a", "c", "d", "e"];
+    visual.forEach((id, i) => r.setOrder(id, i));
+    expect(r.items().map((n) => n.id)).toEqual(visual);
+    r.setActive("b"); // the visually-first row
+    r.move("down");
+    // Visual-next is "a". Pre-fix (snapshot sorted by insertion order
+    // [a,b,c,d,e]) "b" sat at index 1, so down → "c" — the skip this fixes.
+    expect(r.activeId()).toBe("a");
+    r.move("down");
+    expect(r.activeId()).toBe("c");
+  });
+
+  it("setOrder is idempotent (no bump on an unchanged order) and never clears active", () => {
+    const r = new MenuRegistry("m", "combobox");
+    r.register(reg({ id: "a" })); // insertion order 0
+    r.register(reg({ id: "b" }));
+    r.setActive("a");
+    const v0 = r.getVersion();
+    r.setOrder("a", 0); // unchanged → no bump
+    expect(r.getVersion()).toBe(v0);
+    r.setOrder("a", 5); // changed → bump, but active survives (unlike unregister)
+    expect(r.getVersion()).toBeGreaterThan(v0);
+    expect(r.activeId()).toBe("a");
+  });
+});
+
 describe("registryFor — the cross-backend lookup seam (§2.3)", () => {
   it("publish / lookup / unpublish round-trips", () => {
     const r = new MenuRegistry("seam-test", "list");

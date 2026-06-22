@@ -559,6 +559,10 @@ function BibEntryPickerRow({
     region: "list",
     role: "option",
     run: onPickClick,
+    // The fuzzy search re-ranks key-stable rows (key={entry.key}), reordering
+    // the DOM without remount — publish the live visual index so arrow-nav steps
+    // through what the user sees, not stale insertion order.
+    order: index,
   });
   const itemProps = getItemProps();
 
