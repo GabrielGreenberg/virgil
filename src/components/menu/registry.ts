@@ -54,7 +54,9 @@ export class MenuRegistry implements MenuRegistryHandle {
   // Insertion-ordered records. A Map preserves insertion order, but bespoke
   // JSX items mount in DOM order and the registry-mapper appends in row order,
   // so we additionally sort the snapshot by a stable `order` we stamp at
-  // registration (DOM order ≈ registration order for both sources).
+  // registration (DOM order ≈ registration order for both sources). A consumer
+  // whose rows REORDER without remount (a fuzzy-ranked combobox) breaks that
+  // equivalence and republishes its live visual index via `setOrder` (see there).
   private records = new Map<string, MenuNode & { order: number }>();
   private nextOrder = 0;
 
@@ -124,6 +126,30 @@ export class MenuRegistry implements MenuRegistryHandle {
   setRef(id: string, el: HTMLElement | null): void {
     const rec = this.records.get(id);
     if (rec) rec.ref = el; // ref churn does NOT bump (not nav-structural)
+  }
+
+  /**
+   * Override an item's sort `order` from the consumer's live RENDERED INDEX.
+   *
+   * `items()` otherwise sorts by the insertion `order` stamped once at first
+   * registration (`register`) — correct only while DOM order == registration
+   * order. A key-stable list that REORDERS its rows without remounting breaks
+   * that: a fuzzy-ranked combobox renders `key={citekey}`, so React reorders the
+   * DOM nodes on a re-rank without unmount/remount, and `useMenuItem`'s register
+   * effect (whose deps exclude the visual index) never re-fires — leaving the
+   * snapshot frozen in stale insertion order. Arrow-nav then walks that stale
+   * order and the roving highlight SKIPS visually non-adjacent rows. So such a
+   * consumer publishes its live index here and `items()` re-sorts to visual
+   * order. Bumps only on an actual change (idempotent → keystroke-safe) and —
+   * unlike `unregister` — NEVER clears `active`, so the highlight survives a
+   * re-rank. Consumers whose DOM order already equals registration order (every
+   * static menu) never call this, so their behavior is unchanged.
+   */
+  setOrder(id: string, order: number): void {
+    const rec = this.records.get(id);
+    if (!rec || rec.order === order) return;
+    rec.order = order;
+    this.bump();
   }
 
   /** The live element for a node id, or null. Used by the keyboard controller

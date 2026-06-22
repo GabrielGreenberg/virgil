@@ -221,6 +221,73 @@ describe("BibEntryPickerMenu combobox — nav over a filtered list", () => {
   });
 });
 
+describe("BibEntryPickerMenu combobox — ArrowDown steps VISUAL order under a fuzzy re-rank (regression)", () => {
+  // The reported bug: typing re-ranks the rows by fuzzy score; ArrowDown then
+  // SKIPPED whole swaths of rows. Root cause: the rows are key-stable
+  // (key={entry.key}), so a re-rank reorders the DOM WITHOUT remount and the
+  // registry's nav order stayed frozen at insertion order. The fix republishes
+  // each row's live visual index (useMenuItem `order`). These entries are
+  // crafted so the "realism" query re-ranks them into a DIFFERENT visual order
+  // than insertion order (the exact-match "realism" title sorts above "zzz
+  // realism core"), exercising the divergence.
+  const RERANK: BibEntry[] = [
+    entry("k0", "Zed Zeta", "zzz realism core"),
+    entry("k1", "Ann Alpha", "realism"),
+    entry("k2", "Bea Beta", "mid realism text"),
+    entry("k3", "Cy Gamma", "realism appears here too somewhat"),
+    entry("k4", "Del Delta", "another realism mention buried deep in a very long title"),
+  ];
+
+  function setupRerank() {
+    render(
+      <BibEntryPickerMenu
+        open
+        anchorRect={ANCHOR}
+        entries={RERANK}
+        onPick={vi.fn(async () => "added" as const)}
+        onCommitRaw={vi.fn()}
+        onClose={vi.fn()}
+        placeholder="Search…"
+        ariaLabel="Search entries"
+      />,
+    );
+    const input = screen.getByPlaceholderText("Search…") as HTMLInputElement;
+    fireEvent.change(input, { target: { value: "realism" } });
+    return input;
+  }
+
+  it("the fuzzy query reorders the rows away from insertion order (guards vacuity)", () => {
+    setupRerank();
+    const domOrder = options().map(keyOf);
+    expect(domOrder.length).toBeGreaterThan(2);
+    const insertionOrder = RERANK.map((e) => e.key).filter((k) =>
+      domOrder.includes(k),
+    );
+    // If this ever stops diverging, the test below would pass vacuously — fail
+    // loudly here instead so the fixture is fixed rather than the guard silently lost.
+    expect(domOrder).not.toEqual(insertionOrder);
+  });
+
+  it("ArrowDown visits each rendered row top-to-bottom with no skips; ArrowUp reverses", () => {
+    const input = setupRerank();
+    const domOrder = options().map(keyOf);
+
+    // Default highlight is the FIRST visual row.
+    expect(keyOf(activeOption())).toBe(domOrder[0]);
+
+    // Each ArrowDown advances to the next VISUAL row — never a skip.
+    for (let i = 1; i < domOrder.length; i++) {
+      fireEvent.keyDown(input, { key: "ArrowDown" });
+      expect(keyOf(activeOption())).toBe(domOrder[i]);
+    }
+    // ArrowUp walks back up the same visual order.
+    for (let i = domOrder.length - 2; i >= 0; i--) {
+      fireEvent.keyDown(input, { key: "ArrowUp" });
+      expect(keyOf(activeOption())).toBe(domOrder[i]);
+    }
+  });
+});
+
 describe("BibEntryPickerMenu combobox — input is the keyboard source (no focus theft)", () => {
   it("arrows keep DOM focus in the input; aria-activedescendant tracks the option", () => {
     const { input } = setup();
