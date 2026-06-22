@@ -395,7 +395,12 @@ export function PanelColumn({
                 position: 'sticky',
                 top: hasStack ? 'var(--pod-gap)' : 64,
                 height: frameH,
-                overflow: 'hidden',
+                // visible (not hidden) so docked pods' ambient shadow
+                // (--card-shadow-ambient) isn't clipped at the frame edge — the
+                // column's overflow:clip + its padding is the outer bound. Pods
+                // cap their own content via internal scroll, so the frame needn't
+                // clip; clipping here would flatten every docked pod.
+                overflow: 'visible',
                 display: 'flex',
                 flexDirection: 'column',
                 zIndex: hasStack ? 30 : undefined,
@@ -492,7 +497,11 @@ function BandFragment({
         style={{
           position: 'relative',
           pointerEvents: 'auto',
-          overflow: 'hidden',
+          // visible (not hidden) so the docked pod's ambient shadow renders
+          // instead of being clipped at the pod edge. The pod itself
+          // (FloatingPanel: overflow-hidden + internal PANEL.list scroll) caps
+          // its OWN content, so this anchor doesn't need to clip.
+          overflow: 'visible',
           minHeight: 0,
           // Flex column so the portaled pod (FloatingPanel, flex: 1 1 auto)
           // fills this anchor's flex-determined height exactly — content
