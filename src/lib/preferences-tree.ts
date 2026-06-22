@@ -366,7 +366,10 @@ export const DERIVED_CSS: DerivedCssMapping[] = [
   { cssVar: "--footnote-bg", compute: (p) => deriveLight(p.footnoteColor, 0.08) },
   { cssVar: "--note-bg", compute: (p) => deriveLight(p.noteColor, 0.06) },
   { cssVar: "--pod-border", compute: (p) => `1px solid ${p.borderLight}` },
-  { cssVar: "--panel-border", compute: (p) => `3px solid ${p.borderLight}` },
+  // Panels are borderless warm sheets (separation via gutter + shadow). Keep
+  // in sync with the static `--panel-border: none` in globals.css. Don't
+  // re-derive a border from borderLight — that's the editor pod's `--pod-border`.
+  { cssVar: "--panel-border", compute: () => "none" },
   // Per-category font families. When the user picks "Pin to body family"
   // (stored as null) we resolve to the body family here so the rendered
   // CSS var always carries a usable value.

@@ -39,7 +39,7 @@
      --pod-editor is locked to --surface so the editor pod and all
      "paper" surfaces (cards, popovers, inputs) stay identical. */
   --pod-editor: var(--surface);
-  --pod-panel: #f3f0eb;
+  --pod-panel: #fdfaf5;
   --pod-toolbar: #f5f3ef;
   --pod-dark: #eae6df;
   --header-bg: #e8e5de;
@@ -47,11 +47,12 @@
   --panel-admin-text-font: "Inter";
   --header-h: 26px;
   --pod-radius: 8px;
+  --panel-radius: 14px; /* panel-only; editor pod & menus stay 8px */
   --pod-gap: 10px;
   --pod-border: 1px solid var(--border-light);
-  --panel-border: 3px solid var(--border-light);
+  --panel-border: none; /* borderless: panels are warm sheets; separation via --pod-gap + shadow. Also derived at runtime in preferences-tree.ts — keep both in sync. */
   --pod-shadow: 0 1px 6px rgba(0,0,0,0.12), 0 0 2px rgba(0,0,0,0.06);
-  --pod-shadow-light: 0 1px 5px rgba(0,0,0,0.09), 0 0 2px rgba(0,0,0,0.05);
+  --pod-shadow-light: 0 1px 2px rgba(72,55,38,0.05), 0 9px 26px rgba(72,55,38,0.09); /* warm-tinted (ink-brown), single soft shadow — docked panel only */
   /* Ambient lift for omni-view cards floating on the canvas. Smaller
    * than the main editor pod's shadow but still readable as "raised". */
   --card-shadow-ambient: 0 2px 6px rgba(0,0,0,0.10), 0 1px 2px rgba(0,0,0,0.06);
@@ -247,7 +248,7 @@
   --tab-bg: #c5dbe2;
   --library-bg: #d6e5ea;
   --virgil-bar-text: #78716c;
-  --pod-panel: #f3f0eb;
+  --pod-panel: #fdfaf5;
   --pod-toolbar: #f5f3ef;
   --pod-dark: #eae6df;
   --header-bg: #c6cbcd;
