@@ -13,6 +13,10 @@ import { suppressNextPlacement } from "@/links/_shared/usePlacement";
 import { cardStore } from "@/links/_shared/anchored-card-store";
 import { openForCard, type OpenForCardDeps } from "./open-for-card";
 import { cardPopKey, cardDomSelector } from "@/panels/panel-registry";
+import {
+  ATOM_CREATE_POPOVER_EVENT,
+  type AtomCreateRequest,
+} from "@/lib/actions/atom-create";
 
 /** The card kinds that route through the shared anchor-click body
  *  (`routeAnchorClick`): the five Mode-B text-range kinds (dispatched by
@@ -200,6 +204,11 @@ export function useMarkerClickBridges(deps: {
   setActiveRefLabel: Dispatch<SetStateAction<string | null>>;
   setActiveRefRect: Dispatch<SetStateAction<DOMRect | null>>;
   setActiveRefCommand: Dispatch<SetStateAction<"ref" | "getref" | "getfullref">>;
+  /** Opens the SHARED inline-atom create popover (citation + `\ref`). The
+   *  trigger surfaces dispatch `virgil-atom-create-popover` with an
+   *  `AtomCreateRequest` (kind + caret rect + captured insertion pos); this
+   *  setter lands it in EditorLayout's `atomCreateRequest` state. */
+  setAtomCreateRequest: Dispatch<SetStateAction<AtomCreateRequest | null>>;
   setActiveMath: Dispatch<
     SetStateAction<{
       kind: "inline" | "display";
@@ -244,6 +253,7 @@ export function useMarkerClickBridges(deps: {
     setActiveRefLabel,
     setActiveRefRect,
     setActiveRefCommand,
+    setAtomCreateRequest,
     setActiveMath,
     setActiveFigure,
     alignOmniCardWithClick,
@@ -361,29 +371,34 @@ export function useMarkerClickBridges(deps: {
     return () => window.removeEventListener("virgil-label-ref-click", handler);
   }, [setActiveRefLabel, setActiveRefRect, setActiveRefCommand]);
 
-  // CHIP 7a: open the LabelRef popover in CREATE mode at the caret. The slash
-  // `\ref` (via EditorPane's bridge → `refRun` → `openRefPopover`) and the new
-  // lightning 'Cross-ref' grid cell both compute the caret rect and dispatch
-  // `virgil-ref-create-popover` with it in `detail.rect`; we open create mode
-  // (`label=""` → the popover lists every `\label{…}` site and inserts the chosen
-  // `labelRef` atom at the cursor). REPLACES the retired `virgil-ref-create`
-  // event + its command-input.ts handler (which computed the rect itself; that
-  // now happens at the calling surface, mirroring `openFigurePopover`). The
-  // EDIT-existing-`\ref` listener above (`virgil-label-ref-click`) is untouched.
+  // (`\ref` CREATE now flows through the SHARED `virgil-atom-create-popover`
+  // event below — `kind: "ref"` — alongside citation. The retired
+  // `virgil-ref-create-popover` event is gone; the EDIT-existing-`\ref` listener
+  // above (`virgil-label-ref-click`) is untouched.)
+
+  // The SHARED inline-atom create popover (citation + `\ref`). Trigger surfaces
+  // (slash / lightning / grab / typed-bare) compute the caret rect + the
+  // captured insertion `pos` and dispatch `virgil-atom-create-popover` with an
+  // `AtomCreateRequest`; we land it in EditorLayout's `atomCreateRequest` state,
+  // which mounts the right deferred-commit popover body. The atom + card
+  // materialize only on the popover's commit — nothing lands here.
   useEffect(() => {
     const handler = (e: Event) => {
-      const detail = (e as CustomEvent).detail;
-      const rect = detail?.rect;
-      if (!(rect instanceof DOMRect)) return;
-      setActiveRefLabel("");
-      setActiveRefRect(rect);
-      // Create mode defaults to the plain `\ref` command (matching the prior
-      // command-input.ts create path, which never set a command).
-      setActiveRefCommand("ref");
+      const detail = (e as CustomEvent).detail as Partial<AtomCreateRequest> | undefined;
+      if (!detail) return;
+      const { kind, rect, pos } = detail;
+      if (kind !== "citation" && kind !== "ref") return;
+      if (!(rect instanceof DOMRect) || typeof pos !== "number") return;
+      setAtomCreateRequest({
+        kind,
+        rect,
+        pos,
+        refCommand: detail.refCommand ?? "ref",
+      });
     };
-    window.addEventListener("virgil-ref-create-popover", handler);
-    return () => window.removeEventListener("virgil-ref-create-popover", handler);
-  }, [setActiveRefLabel, setActiveRefRect, setActiveRefCommand]);
+    window.addEventListener(ATOM_CREATE_POPOVER_EVENT, handler);
+    return () => window.removeEventListener(ATOM_CREATE_POPOVER_EVENT, handler);
+  }, [setAtomCreateRequest]);
 
   useEffect(() => {
     const handler = (e: Event) => {

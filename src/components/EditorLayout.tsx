@@ -170,6 +170,12 @@ import { FULL_CHROME } from "./editor-layout/chrome-config";
 import { useConfirmDialog } from "./ConfirmDialog";
 import { useDocumentClassMismatchDialog } from "./DocumentClassMismatchDialog";
 import LabelRefPopover from "./LabelRefPopover";
+import { CitationCreatePopover } from "@/panels/Citations/CitationCreatePopover";
+import type { AtomCreateRequest } from "@/lib/actions/atom-create";
+import { getEditorActionsHandle } from "@/lib/actions/editor-actions-bridge";
+import { insertInlineAtom } from "@/lib/tiptap/insert-inline-atom";
+import { serializeCiteCommand } from "@/lib/bib-parser";
+import { generateShortId } from "@/lib/uuid";
 import MathPopover from "./MathPopover";
 import FigurePopover from "./FigurePopover";
 import { extractFigureAttrs, extractGraphicsAttrs } from "@/lib/figures/parse-attrs";
@@ -1205,6 +1211,12 @@ export default function EditorLayout() {
   const [activeRefCommand, setActiveRefCommand] = useState<
     "ref" | "getref" | "getfullref"
   >("ref");
+  // ── Shared inline-atom CREATE popover state (citation + `\ref`) ──
+  // The deferred-commit front door: a trigger surface opens this at the caret;
+  // the popover materializes the atom only on commit. `\ref` create folds onto
+  // this in a later chip — for now only `kind: "citation"` is dispatched.
+  const [atomCreateRequest, setAtomCreateRequest] =
+    useState<AtomCreateRequest | null>(null);
   // ── Math popover state ──
   const [activeMath, setActiveMath] = useState<{
     kind: "inline" | "display";
@@ -2583,6 +2595,7 @@ export default function EditorLayout() {
     setActiveRefLabel,
     setActiveRefRect,
     setActiveRefCommand,
+    setAtomCreateRequest,
     setActiveMath,
     setActiveFigure,
     alignOmniCardWithClick,
@@ -2613,6 +2626,43 @@ export default function EditorLayout() {
     editorRef,
     setActiveRefLabel,
   });
+
+  // ── Citation create-popover commit ──
+  // Materialize a citation from the staged citekeys (≥1), at the position the
+  // popover captured at trigger time. Insert the real `\cite{…}` atom no-scroll
+  // (insertInlineAtom's `at` lands it at the captured pos even if the live
+  // selection drifted while the popover was open), then register the gutter card
+  // + soft-route via the proven citation cursor path (`runAction` carrying the
+  // payload — the COMMIT half of `citationRun`). One atom + one card, no blank
+  // pristine flash, all subsequent edits in the gutter at the standard position.
+  const commitCitationCreate = useCallback(
+    (pos: number, keys: string[]) => {
+      const handle = editorRef.current;
+      const ed = handle?.getEditor();
+      if (!handle || !ed || keys.length === 0) return;
+      const command = serializeCiteCommand(
+        {
+          type: "cite",
+          starred: false,
+          capitalized: false,
+          entries: keys.map((key) => ({ key })),
+        },
+        "natbib",
+      );
+      const citationId = generateShortId(handle.getCitationIds());
+      insertInlineAtom({
+        editor: ed,
+        type: "citation",
+        attrs: { citationId, command, displayText: "" },
+        at: pos,
+      });
+      getEditorActionsHandle()?.runAction("citation", {
+        surface: "slash",
+        payload: { citationId, command },
+      });
+    },
+    [editorRef],
+  );
 
   // ── Math popover save handler ──
   // EX-F4-02: route the math edit back to the editor that OWNS the clicked node
@@ -2736,13 +2786,13 @@ export default function EditorLayout() {
     }
   }, []);
 
-  // CHIP 7a: the `\ref` create-mode popover (the LAST slash command on this
-  // hook) MIGRATED to the action-registry bridge — slash `\ref` → `refRun` →
-  // `ctx.openRefPopover()` (EditorPane) and the new lightning 'Cross-ref' cell
-  // both dispatch `virgil-ref-create-popover`, consumed in `marker-clicks.ts`.
-  // With citation (CHIP 4a-ii), footnote (CHIP 4b), and example (CHIP 5c) already
-  // migrated, the `virgil-ref-create` event + the whole `useCommandInputBridges`
-  // hook (which only handled it) are RETIRED — `command-input.ts` is deleted.
+  // The `\ref` CREATE popover folds onto the SHARED inline-atom create
+  // controller — slash `\ref` → `refRun` → `ctx.openAtomCreate("ref")`
+  // (EditorPane) and the lightning 'Cross-ref' cell both dispatch
+  // `virgil-atom-create-popover` (kind "ref"), consumed in `marker-clicks.ts`
+  // into `atomCreateRequest`. The EDIT-existing-`\ref` path stays separate
+  // (`virgil-label-ref-click` → `activeRef*`). The `virgil-ref-create` /
+  // `virgil-ref-create-popover` events + `useCommandInputBridges` are retired.
 
   // Handle drag-and-drop of an archive snippet CARD into the editor to
   // RESTORE its text: ProseMirror inserts the text from text/plain (an
@@ -4568,6 +4618,35 @@ export default function EditorLayout() {
             setActiveRefLabel(null);
             setActiveRefRect(null);
           }}
+        />
+      )}
+      {atomCreateRequest?.kind === "citation" && (
+        <CitationCreatePopover
+          anchorRect={atomCreateRequest.rect}
+          paperBibEntries={bibEntries}
+          onAddBibEntry={citationsHook.addBibEntry}
+          onCommit={(keys) => commitCitationCreate(atomCreateRequest.pos, keys)}
+          onClose={() => setAtomCreateRequest(null)}
+        />
+      )}
+      {atomCreateRequest?.kind === "ref" && (
+        // `\ref` CREATE mode (the shared controller's ref body). The label-edit
+        // popover, in create mode (`label=""`), lists every `\label{…}` site and
+        // inserts the chosen `labelRef` atom — no-scroll, at the captured pos —
+        // on pick. (The EDIT-existing-`\ref` render below stays on its own
+        // `activeRef*` path, triggered by clicking a live `\ref`.)
+        <LabelRefPopover
+          label=""
+          anchorRect={atomCreateRequest.rect}
+          labels={gatherLabels()}
+          refCommand={atomCreateRequest.refCommand ?? "ref"}
+          onChangeLabel={handleRefChangeLabel}
+          onChangeRefCommand={handleRefChangeCommand}
+          onJumpToLabel={handleRefJump}
+          onInsertRef={(label, cmd) =>
+            handleInsertRef(label, cmd, atomCreateRequest.pos)
+          }
+          onClose={() => setAtomCreateRequest(null)}
         />
       )}
       {activeMath && (

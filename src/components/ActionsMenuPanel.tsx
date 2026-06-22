@@ -49,6 +49,7 @@ import {
   type ActionContext,
   type ActionId,
 } from "@/lib/actions/action-registry";
+import { ATOM_CREATE_POPOVER_EVENT } from "@/lib/actions/atom-create";
 import { BlockTypeDropdown } from "./MenuBar";
 import { IconExample } from "./editor-layout/panel-icons";
 import { insertTexBlock } from "@/lib/tiptap/tex-block";
@@ -301,17 +302,19 @@ export function ActionsMenuPanel({
         if (from !== to) stashedRangeRef.current = { from, to };
         setColorPopoverAnchor(rect);
       },
-      // The `\ref` create-mode popover seam (CHIP 7a). The 'Cross-ref' grid cell's
-      // `run()` (`refRun`) calls this to open the `LabelRef` popover at the caret
-      // (the popover is the creator). Like `openFigurePopover`, the grid is a
-      // React subtree separate from EditorLayout's ref-popover state, so we
-      // compute the caret rect and hop the `virgil-ref-create-popover` CustomEvent
-      // the marker-clicks listener consumes to open create mode. SAME event the
-      // slash surface's bridge dispatches, so the two surfaces converge.
-      openRefPopover: () => {
+      // The SHARED create-popover seam (citation + `\ref`). The 'Cross-ref' grid
+      // cell's `run()` (`refRun`) calls this with kind "ref" to open the create
+      // popover at the caret (the popover is the creator). Like `openFigurePopover`,
+      // the grid is a React subtree separate from EditorLayout's popover state, so
+      // we compute the caret rect + captured pos and hop the
+      // `virgil-atom-create-popover` event EditorLayout consumes. SAME event the
+      // slash surface's bridge dispatches, so the two surfaces converge on ONE
+      // controller. (The grid only exposes `ref` today; citation routes through
+      // the dispatcher, which dispatches the same event at the passage end.)
+      openAtomCreate: (kind, opts) => {
         if (typeof window === "undefined") return;
-        const { from } = editor.state.selection;
-        const coords = editor.view.coordsAtPos(from);
+        const pos = opts?.pos ?? editor.state.selection.from;
+        const coords = editor.view.coordsAtPos(pos);
         const rect = new DOMRect(
           coords.left,
           coords.top,
@@ -319,7 +322,9 @@ export function ActionsMenuPanel({
           coords.bottom - coords.top,
         );
         window.dispatchEvent(
-          new CustomEvent("virgil-ref-create-popover", { detail: { rect } }),
+          new CustomEvent(ATOM_CREATE_POPOVER_EVENT, {
+            detail: { kind, rect, pos, refCommand: opts?.refCommand },
+          }),
         );
       },
     };
@@ -692,9 +697,9 @@ export function ActionsMenuPanel({
               <path d="M2.5 12.5 L6 9 L9 11 L11 9.5 L13.5 12" />
             </svg>
           </FmtBtn>
-          {/* CHIP 7a: the 'Cross-ref' cell — the lightning surface for `\ref`.
-              Routes through `runGridAction("ref")` → the registry's `refRun` →
-              `ctx.openRefPopover()`, opening the LabelRef create-mode popover at
+          {/* The 'Cross-ref' cell — the lightning surface for `\ref`. Routes
+              through `runGridAction("ref")` → the registry's `refRun` →
+              `ctx.openAtomCreate("ref")`, opening the shared create popover at
               the caret (the SAME `run()` the slash `\ref` reaches). */}
           <FmtBtn
             id="ref"

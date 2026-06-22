@@ -49,6 +49,16 @@ export interface CitekeyPickerProps {
   /** External-input mode (see `BibEntryPickerMenuProps.externalQuery`). */
   externalQuery?: string;
   externalInputEl?: HTMLElement | null;
+  /**
+   * Stay open after a pick (the deferred citation CREATE popover). When true,
+   * `onPick` / `onCommitRaw` report the key + add the bib entry but do NOT close
+   * — the caller stages keys and commits on OK / click-away. Default `false`
+   * keeps the in-card / panel behavior byte-identical (pick → commit → close).
+   */
+  keepOpenOnPick?: boolean;
+  /** Sticky strip rendered inside the popover below the list (staged chips +
+   *  OK), forwarded to `BibEntryPickerMenu`. */
+  footer?: React.ReactNode;
 }
 
 export function CitekeyPicker({
@@ -62,6 +72,8 @@ export function CitekeyPicker({
   initialQuery,
   externalQuery,
   externalInputEl,
+  keepOpenOnPick = false,
+  footer,
 }: CitekeyPickerProps) {
   const { entries: libraryBibEntries } = useLibraryMasterBib();
   const { items: libraryItems } = useLibraryItems();
@@ -121,10 +133,12 @@ export function CitekeyPicker({
         onAddBibEntry(entry);
       }
       onSelectKey(entry.key);
-      onClose();
+      // Deferred create popover stays open to stage more keys (the caller
+      // commits on OK / click-away); the in-card / panel picker closes on pick.
+      if (!keepOpenOnPick) onClose();
       return "added";
     },
-    [paperByCitekey, onAddBibEntry, onSelectKey, onClose],
+    [paperByCitekey, onAddBibEntry, onSelectKey, onClose, keepOpenOnPick],
   );
 
   const onCommitRaw = useCallback(
@@ -132,9 +146,9 @@ export function CitekeyPicker({
       const trimmed = raw.trim();
       if (!trimmed) return;
       onSelectKey(trimmed);
-      onClose();
+      if (!keepOpenOnPick) onClose();
     },
-    [onSelectKey, onClose],
+    [onSelectKey, onClose, keepOpenOnPick],
   );
 
   return (
@@ -159,6 +173,7 @@ export function CitekeyPicker({
       }}
       externalQuery={externalQuery}
       externalInputEl={externalInputEl}
+      footer={footer}
     />
   );
 }

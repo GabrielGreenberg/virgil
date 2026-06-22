@@ -64,7 +64,10 @@ import {
   type CursorRef,
   type EditorActionsHandle,
 } from "@/lib/actions/action-registry";
-import { setEditorActionsHandle } from "@/lib/actions/editor-actions-bridge";
+import {
+  setEditorActionsHandle,
+  getEditorActionsHandle,
+} from "@/lib/actions/editor-actions-bridge";
 import { buildFloatKey } from "@/floats/float-key";
 import { paragraphUuidAt } from "@/links/links";
 import { parseCiteCommand } from "@/lib/bib-parser";
@@ -249,53 +252,52 @@ afterEach(() => {
 // CITATION — cross-surface byte-identity
 // ===========================================================================
 
-describe("citation: slash ⇄ bare-typed atom + card byte-identity", () => {
-  it("slash \\cite and typed \\cite·(space) produce byte-identical atom attrs (modulo id) and createCitation shape", () => {
-    // --- surface A: slash \cite ---
-    const slashEd = mountEditor("");
-    publishHandle(slashEd, prefsWith("citations", "right", null));
-    COMMAND_MAP.get("cite")!.action(slashEd.view, "\\cite");
-    const slashAtom = citationAtoms(slashEd)[0];
-    const slashCall = createCitation.mock.calls[0][0];
+describe("citation: bare-typed ⇄ popover-commit card byte-identity", () => {
+  it("typed \\cite·(space) and a popover commit produce byte-identical createCitation shape (modulo id)", () => {
+    // --- surface A: the popover COMMIT (deferred create) — registers the card
+    //     from a `\cite{}` command; the popover, not run(), owns the atom. ---
+    const commitEd = mountEditor("");
+    publishHandle(commitEd, prefsWith("citations", "right", null));
+    getEditorActionsHandle()!.runAction("citation", {
+      surface: "slash",
+      payload: { citationId: "cit-a", command: "\\cite{}" },
+    });
+    const commitCall = createCitation.mock.calls[0][0];
 
     createCitation.mockClear();
 
-    // --- surface B: typed bare \cite + " " ---
+    // --- surface B: typed bare \cite + " " (atom-first, command preserved) ---
     const typedEd = mountEditor("\\cite");
     publishHandle(typedEd, prefsWith("citations", "right", null));
     expect(typeChar(typedEd, " ")).toBe(true);
     const typedAtom = citationAtoms(typedEd)[0];
     const typedCall = createCitation.mock.calls[0][0];
 
-    // ATOM: command + displayText byte-identical; only the minted id differs.
-    expect(slashAtom.command).toBe("\\cite{}");
-    expect(typedAtom.command).toBe(slashAtom.command);
-    expect(typedAtom.displayText).toBe(slashAtom.displayText); // ""
-    expect(slashAtom.citationId).toBeTruthy();
-    expect(typedAtom.citationId).toBeTruthy();
+    // The bare atom carries the empty command.
+    expect(typedAtom.command).toBe("\\cite{}");
+    expect(typedAtom.displayText).toBe(""); // ""
 
     // CARD CALL: identical shape (command/unanchored/mode) modulo the minted id.
-    expect({ ...slashCall, citationId: "_" }).toEqual({
+    expect({ ...commitCall, citationId: "_" }).toEqual({
       command: "\\cite{}",
       citationId: "_",
       unanchored: false,
       mode: "omni",
     });
-    expect({ ...typedCall, citationId: "_" }).toEqual({ ...slashCall, citationId: "_" });
+    expect({ ...typedCall, citationId: "_" }).toEqual({ ...commitCall, citationId: "_" });
 
-    // IDENTITY JOIN: the card's citationId === the in-doc atom's id (both surfaces).
-    expect(slashCall.citationId).toBe(slashAtom.citationId);
+    // IDENTITY JOIN: the typed card's citationId === the in-doc atom's id.
     expect(typedCall.citationId).toBe(typedAtom.citationId);
   });
 });
 
-describe("citation: typed \\cite{key} carries the FULL command (the CHIP 4a-ii fix)", () => {
-  it("the typed-full surface DIVERGES from slash ONLY in the documented way: command preserves the key", () => {
-    // slash carries the empty \cite{}
-    const slashEd = mountEditor("");
-    publishHandle(slashEd, prefsWith("citations", "right", null));
-    COMMAND_MAP.get("cite")!.action(slashEd.view, "\\cite");
-    const slashCall = createCitation.mock.calls[0][0];
+describe("citation: typed \\cite{key} carries the FULL command", () => {
+  it("the typed-full surface carries the key; bare carries the empty \\cite{}, else identical", () => {
+    // bare carries the empty \cite{}
+    const bareEd = mountEditor("\\cite");
+    publishHandle(bareEd, prefsWith("citations", "right", null));
+    expect(typeChar(bareEd, " ")).toBe(true);
+    const bareCall = createCitation.mock.calls[0][0];
     createCitation.mockClear();
 
     // typed-full carries \cite{smith}
@@ -305,17 +307,15 @@ describe("citation: typed \\cite{key} carries the FULL command (the CHIP 4a-ii f
     const typedAtom = citationAtoms(typedEd)[0];
     const typedCall = createCitation.mock.calls[0][0];
 
-    // THE FIX: typed \cite{key} now makes a card (it made NONE before 4a-ii).
+    // A card is registered, carrying the FULL command on both atom + call.
     expect(createCitation).toHaveBeenCalledTimes(1);
-
-    // The FULL command is preserved on BOTH the atom and the card call.
     expect(typedAtom.command).toBe("\\cite{smith}");
     expect(typedCall.command).toBe("\\cite{smith}");
 
-    // The ONLY oracle-documented difference vs slash: the command string (key).
-    // Everything else (unanchored/mode + the id-join) is byte-identical.
-    expect(typedCall.unanchored).toBe(slashCall.unanchored); // false
-    expect(typedCall.mode).toBe(slashCall.mode); // "omni"
+    // The ONLY difference vs bare: the command string (key). Everything else
+    // (unanchored/mode + the id-join) is byte-identical.
+    expect(typedCall.unanchored).toBe(bareCall.unanchored); // false
+    expect(typedCall.mode).toBe(bareCall.mode); // "omni"
     expect(typedCall.citationId).toBe(typedAtom.citationId);
   });
 });
@@ -581,7 +581,11 @@ describe("sidecar asymmetry: citation entry shaped vs footnote body in the atom"
   it("a new citation forwards command+id → a citations.json CitationRef is shaped", () => {
     const ed = mountEditor("");
     publishHandle(ed, prefsWith("citations", "right", null));
-    COMMAND_MAP.get("cite")!.action(ed.view, "\\cite");
+    // The popover commit is the create path that shapes the card from \cite{}.
+    getEditorActionsHandle()!.runAction("citation", {
+      surface: "slash",
+      payload: { citationId: "cit-x", command: "\\cite{}" },
+    });
     const call = createCitation.mock.calls[0][0];
     // createCitation receives the full data needed to build the CitationRef
     // (command + id) — the sidecar entry IS shaped on create.
@@ -616,13 +620,16 @@ describe("sidecar asymmetry: citation entry shaped vs footnote body in the atom"
 // A cross-action proof: BOTH cite and footnote keep the synchronous PM insert.
 // ===========================================================================
 
-describe("durability: atom lands with the bridge cleared (both kinds)", () => {
-  it("slash \\cite + typed \\footnote{} both insert the atom with no handle, no throw", () => {
+describe("durability: typed atom lands with the bridge cleared (both kinds)", () => {
+  it("slash \\cite no-ops (deferred) + typed \\footnote{} inserts the atom with no handle, no throw", () => {
     setEditorActionsHandle(null);
 
+    // Slash now only OPENS the popover (deferred) — with no bridge it no-ops and
+    // never inserts a blank atom. The synchronous-durability property belongs to
+    // the TYPED surfaces, which still land their atom even with the host gone.
     const citeEd = mountEditor("");
     expect(() => COMMAND_MAP.get("cite")!.action(citeEd.view, "\\cite")).not.toThrow();
-    expect(citationAtoms(citeEd)).toHaveLength(1);
+    expect(citationAtoms(citeEd)).toHaveLength(0);
     expect(createCitation).not.toHaveBeenCalled();
 
     const fnEd = mountEditor("\\footnote{}".slice(0, -1));

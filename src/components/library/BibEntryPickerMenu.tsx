@@ -105,6 +105,11 @@ export interface BibEntryPickerMenuProps {
    *  The picker uses it both as the dismiss-exclusion zone (clicking the
    *  input doesn't close the picker) and as the keydown listener target. */
   externalInputEl?: HTMLElement | null;
+  /** Optional sticky strip rendered INSIDE the popover, below the results list.
+   *  The citation create popover uses it for the staged-citekey chips + the OK
+   *  button (so they read as one floating surface with the search). Rendered as
+   *  a `shrink-0` flex child; absent for every plain picker use. */
+  footer?: React.ReactNode;
 }
 
 const POPUP_WIDTH = 360;
@@ -149,6 +154,7 @@ function BibEntryPickerMenuInner({
   emptyHint = DEFAULT_HINTS,
   externalQuery,
   externalInputEl,
+  footer,
 }: BibEntryPickerMenuProps) {
   // The internal search input ref lives at the provider level so the
   // `getActiveDescendantHost` thunk (which the provider's keyboard controller
@@ -221,6 +227,7 @@ function BibEntryPickerMenuInner({
         inputRef={inputRef}
         onClose={onClose}
       />
+      {footer}
     </MenuProvider>
   );
 }

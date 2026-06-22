@@ -7,11 +7,12 @@
  * mount (`EditorPane.tsx`). CONSUMERS: the `\cite` slash command + `\cite{}` /
  * `\cite ` typed input rules (CHIP 4a-ii), the `\footnote` slash command +
  * `\footnote{}` typed input rule (CHIP 4b), the `\ex` slash command (CHIP 5c),
- * and — as of CHIP 7a — the `\ref` slash command all call
+ * and the `\ref` slash command all call
  * `getEditorActionsHandle()?.runAction(id, seed)` to reach their React-land
- * `run()` (register a CARD, or — for `\ref` — open the LabelRef create-mode
- * popover via the `openRefPopover` seam; the inline atom for cite/footnote is
- * still inserted synchronously in plugin-land). The pure-PM slash commands
+ * `run()` (register a CARD, or — for `\cite` / `\ref` — open the SHARED create
+ * popover via the `openAtomCreate` seam; the inline atom for a typed `\cite{key}`
+ * / `\footnote` is still inserted synchronously in plugin-land). The pure-PM
+ * slash commands
  * (`\chapter`…`\subsubsection`, `\tex`, `\title`/`\author`/`\date`) take the
  * view-only path (`runViewOnlyAction`), NOT this bridge. NO PM command rides a
  * legacy `virgil-*` CustomEvent anymore.
@@ -39,10 +40,10 @@
  *   - `virgil-footnote-input`    (CHIP 4b)
  *   - `virgil-footnote-created`  (dead event, zero listeners — CHIP 4b)
  *   - `virgil-ex-create`         (CHIP 5c)
- *   - `virgil-ref-create`        (CHIP 7a — `\ref` now rides this bridge; the
- *                                  create-mode popover open hops the new
- *                                  rect-carrying `virgil-ref-create-popover`
- *                                  event from the surface to EditorLayout)
+ *   - `virgil-ref-create`        (`\ref` rides this bridge; the create popover
+ *                                  open hops the shared rect+pos-carrying
+ *                                  `virgil-atom-create-popover` event — kind
+ *                                  "ref" — from the surface to EditorLayout)
  * plus the two citation listeners (`command-input.ts` + `citations-host.tsx`
  * both bound `virgil-citation-create`). Those untyped string events collapsed to
  * `getEditorActionsHandle()?.runAction(id, seed)` calls with a typed id + seed.

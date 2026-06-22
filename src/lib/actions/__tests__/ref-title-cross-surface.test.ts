@@ -8,10 +8,10 @@
 // THE GOALS (MEMO_ACTION_ALIGNMENT.md §3 `\ref` + title rows):
 //
 //   `\ref` — was SLASH-ONLY. SETTLED: ADD a lightning cell. BOTH surfaces now
-//   route through the SAME `refRun` → `ctx.openRefPopover()` (the LabelRef
+//   route through the SAME `refRun` → `ctx.openAtomCreate()` (the LabelRef
 //   create-mode popover IS the creator). This file drives the REAL editor stack
 //   (the actual `commands.ts` `\ref` slash action via a published bridge handle,
-//   exactly like EditorPane) and asserts the `openRefPopover` seam fires from
+//   exactly like EditorPane) and asserts the `openAtomCreate` seam fires from
 //   both the slash and the grid path. The retired `virgil-ref-create` event has
 //   ZERO emitters/listeners.
 //
@@ -112,11 +112,11 @@ function titleFields(editor: Editor): PMNode[] {
   return out;
 }
 
-let openRefPopover: ReturnType<typeof vi.fn>;
+let openAtomCreate: ReturnType<typeof vi.fn>;
 
 /** Publish a bridge handle EXACTLY like EditorPane: synthesize a CursorRef from
- *  the live selection head, build the ActionContext with the spy `openRefPopover`
- *  seam, invoke `spec.run(ctx)`. `refRun` calls `ctx.openRefPopover()`. */
+ *  the live selection head, build the ActionContext with the spy `openAtomCreate`
+ *  seam, invoke `spec.run(ctx)`. `refRun` calls `ctx.openAtomCreate()`. */
 function publishHandle(editor: Editor): void {
   const handle: EditorActionsHandle = {
     runAction(id: ActionId, seed) {
@@ -133,7 +133,7 @@ function publishHandle(editor: Editor): void {
         view: editor.view,
         ref,
         surface: seed.surface,
-        openRefPopover: openRefPopover as () => void,
+        openAtomCreate: openAtomCreate as () => void,
       };
       void spec.run(ctx);
     },
@@ -142,7 +142,7 @@ function publishHandle(editor: Editor): void {
 }
 
 beforeEach(() => {
-  openRefPopover = vi.fn();
+  openAtomCreate = vi.fn();
 });
 
 afterEach(() => {
@@ -156,13 +156,14 @@ afterEach(() => {
 // ───────────────────────────────────────────────────────────────────────────
 
 describe("\\ref (cross-reference)", () => {
-  it("slash \\ref opens the LabelRef popover via the openRefPopover seam (bridge)", () => {
+  it("slash \\ref opens the LabelRef popover via the openAtomCreate seam (bridge)", () => {
     const editor = mountEditor("see ");
     publishHandle(editor);
 
     COMMAND_MAP.get("ref")!.action(editor.view, "\\ref");
 
-    expect(openRefPopover).toHaveBeenCalledTimes(1);
+    expect(openAtomCreate).toHaveBeenCalledTimes(1);
+    expect(openAtomCreate).toHaveBeenCalledWith("ref");
     // No atom is inserted by the action itself — the popover is the creator.
     let labelRefs = 0;
     editor.state.doc.descendants((n) => {
@@ -174,7 +175,7 @@ describe("\\ref (cross-reference)", () => {
 
   it("the lightning 'Cross-ref' cell opens the same popover (direct refRun, the grid path)", () => {
     const editor = mountEditor("see ");
-    // The grid cell builds a view-only ctx with the openRefPopover seam and calls
+    // The grid cell builds a view-only ctx with the openAtomCreate seam and calls
     // refRun, exactly like ActionsMenuPanel's runGridAction("ref").
     refRun({
       editor,
@@ -186,10 +187,11 @@ describe("\\ref (cross-reference)", () => {
         paragraphId: "",
       },
       surface: "lightning",
-      openRefPopover: openRefPopover as () => void,
+      openAtomCreate: openAtomCreate as ActionContext["openAtomCreate"],
     });
 
-    expect(openRefPopover).toHaveBeenCalledTimes(1);
+    expect(openAtomCreate).toHaveBeenCalledTimes(1);
+    expect(openAtomCreate).toHaveBeenCalledWith("ref");
   });
 
   it("refRun no-ops cleanly when no popover seam is supplied (view-only path)", () => {
@@ -214,8 +216,8 @@ describe("\\ref (cross-reference)", () => {
     window.addEventListener("virgil-ref-create", spy);
     window.dispatchEvent(new CustomEvent("virgil-ref-create"));
     // Our own spy fires (we added it), but the real `\ref` route does NOT depend
-    // on it: openRefPopover stayed untouched by the bare event.
-    expect(openRefPopover).not.toHaveBeenCalled();
+    // on it: openAtomCreate stayed untouched by the bare event.
+    expect(openAtomCreate).not.toHaveBeenCalled();
     window.removeEventListener("virgil-ref-create", spy);
   });
 });
