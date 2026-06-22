@@ -677,11 +677,14 @@ export default function BibEntryCard({
           ) : null}
         </div>
         {/* Layers 2 + 3 — library membership chips, then the verification /
-            processing-tier status row. Indented to sit under the title text
-            (past the drag handle). */}
+            processing-tier status row. The outer header's pr-14 already
+            bounds this block clear of the absolute top-right control cluster
+            (no own right reserve needed). pl-[18px] aligns the meta under the
+            title text: drag-handle box (10px svg + 2×2px pad − 4px -ml-1 =
+            10px) + gap-2 (8px) = 18px. */}
         {headerMeta ? (
           <div
-            className="flex flex-col gap-1 pl-[22px]"
+            className="flex flex-col gap-1 pl-[18px]"
             onClick={(e) => e.stopPropagation()}
             draggable={false}
             onDragStart={(e) => { e.stopPropagation(); e.preventDefault(); }}

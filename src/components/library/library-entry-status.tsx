@@ -21,8 +21,13 @@ import type {
 } from "@/lib/library/library-types";
 import { OpenEntryLink } from "./open-library-entry";
 
+// Status-badge dialect — a documented sibling of the META tier: 10px, but
+// sentence-case (the user-facing vocabulary reads "Verified" / "Indexed PDF",
+// not shouty uppercase) with tracking-wide to stay in the chip family. The
+// membership chips on the layer above keep their denser 9px-uppercase
+// "location tag" look. See STYLE_GUIDE § In-card type scale.
 const CHIP_BASE =
-  "inline-flex items-center gap-0.5 text-[10px] px-1.5 py-0.5 rounded whitespace-nowrap";
+  "inline-flex items-center gap-0.5 text-[10px] tracking-wide px-1.5 py-0.5 rounded whitespace-nowrap";
 
 /** Verification badge from the bib-auth axis. `none`/undefined → nothing. */
 function verifiedChip(state: LibraryBibState | undefined) {
