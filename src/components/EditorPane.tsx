@@ -168,6 +168,7 @@ import {
   type EditorActionsHandle,
 } from "@/lib/actions/action-registry";
 import { setEditorActionsHandle } from "@/lib/actions/editor-actions-bridge";
+import { ATOM_CREATE_POPOVER_EVENT } from "@/lib/actions/atom-create";
 import { isRenameCitekey } from "@/lib/identity/identity-cascade";
 import { rewriteCiteKeyInDoc } from "@/lib/identity/bib-cite-rewrite";
 import { useIdentityBusConsumer } from "@/lib/identity/useIdentityBusConsumer";
@@ -2910,19 +2911,18 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
           cardLifecycle: deps.cardLifecycle,
           dispatch: deps.dispatch,
           payload: seed.payload,
-          // CHIP 7a: the `\ref` create-mode popover seam. `refRun` calls this to
-          // open the `LabelRef` popover at the caret (the popover is the creator).
-          // The bridge can't reach EditorLayout's `setActiveRefLabel`/
-          // `setActiveRefRect` directly (they live up in the shell), so — exactly
-          // like the grid's `openFigurePopover` — we compute the caret rect here
-          // and hop the `virgil-ref-create-popover` CustomEvent that EditorLayout's
-          // marker-clicks listener consumes to open create mode. REPLACES the
-          // retired `virgil-ref-create` event (which carried no rect — the old
-          // command-input.ts listener computed it; that logic moves here).
-          openRefPopover: () => {
+          // The SHARED inline-atom create-popover seam (citation + `\ref`). Both
+          // `citationRun` and `refRun` call this to open the deferred create
+          // popover. We compute the caret rect AND capture the insertion `pos`
+          // (`opts.pos` for grab/lightning passage-end; else the live caret) at
+          // TRIGGER time, then hop the `virgil-atom-create-popover` event
+          // EditorLayout consumes into `atomCreateRequest`. The captured `pos` is
+          // the `insertInlineAtom` `at` the commit lands the atom at — robust to
+          // selection drift while the modal-ish popover is open.
+          openAtomCreate: (kind, opts) => {
             if (typeof window === "undefined") return;
-            const { from } = ed.state.selection;
-            const coords = ed.view.coordsAtPos(from);
+            const pos = opts?.pos ?? ed.state.selection.from;
+            const coords = ed.view.coordsAtPos(pos);
             const rect = new DOMRect(
               coords.left,
               coords.top,
@@ -2930,7 +2930,9 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
               coords.bottom - coords.top,
             );
             window.dispatchEvent(
-              new CustomEvent("virgil-ref-create-popover", { detail: { rect } }),
+              new CustomEvent(ATOM_CREATE_POPOVER_EVENT, {
+                detail: { kind, rect, pos, refCommand: opts?.refCommand },
+              }),
             );
           },
           // Panel-routing wiring the citation soft-route (CHIP 4a-ii) reads to

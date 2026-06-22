@@ -323,7 +323,7 @@ export function useRefActions(deps: {
   );
 
   const handleInsertRef = useCallback(
-    (newLabel: string, refCommand: RefCommand = "ref") => {
+    (newLabel: string, refCommand: RefCommand = "ref", at?: number) => {
       const editor = editorRef.current?.getEditor();
       if (!editor) return;
       const { display, targetKind } = resolveLabelDisplay(
@@ -331,12 +331,16 @@ export function useRefActions(deps: {
         newLabel,
         refCommand,
       );
-      // No scroll: `labelRef` is an inline atom — inserting one at the (already
-      // on-screen) caret must never jump the viewport (insertInlineAtom invariant).
+      // No scroll: `labelRef` is an inline atom — inserting one must never jump
+      // the viewport (insertInlineAtom invariant). `at` is the position the
+      // create popover captured at trigger time (the shared create controller),
+      // so the atom lands there even if the live selection drifted; omitted ⇒
+      // insert at the current caret (the edit-mode / legacy path).
       insertInlineAtom({
         editor,
         type: "labelRef",
         attrs: { label: newLabel, displayText: display, refCommand, targetKind },
+        at,
       });
     },
     [editorRef],

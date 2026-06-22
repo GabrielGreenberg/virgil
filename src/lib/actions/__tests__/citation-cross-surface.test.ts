@@ -1,31 +1,35 @@
 // @vitest-environment jsdom
 //
-// CHIP 4a-ii — the CITATION cross-surface alignment proof.
+// The CITATION cross-surface proof — UPDATED for the deferred create popover.
 //
-// THE GOAL (MEMO_ACTION_ALIGNMENT.md §3 citation row): a citation created from
-// any of the four surfaces — menu (grab/lightning), slash `\cite`, typed
-// `\cite{key}`, typed `\cite ` — must land at the SAME destination: a
-// byte-identical `\cite{}` inline atom (`{citationId, command, displayText}`)
-// AND a registered citation CARD via `cardCreation.createCitation`. This file
-// drives the REAL editor stack (the actual `commands.ts` slash action + the
-// actual `citation.ts` typed input rules + the real `buildEditorExtensions`
-// schema) with a REAL published bridge handle (mirroring EditorPane), so the
-// join is exercised end-to-end, not stubbed.
+// THE MODEL: the explicit "create citation" surfaces (slash `\cite`, menu
+// grab/lightning) no longer land a blank `\cite{}` atom + pristine card up
+// front. They OPEN the deferred create popover (`citation.run` →
+// `ctx.openAtomCreate("citation")`); the popover stages citekeys and, on commit
+// (OK / click-away with ≥1 key), inserts the real atom + calls `citation.run`
+// AGAIN with a `{citationId, command}` payload — the COMMIT half — which
+// registers the anchored card + soft-routes. The TYPED LaTeX surfaces stay
+// atom-first (the user typed the exact command, key and all): `\cite{key}`
+// (full) and `\cite ` / `\citep ` (bare) still insert synchronously + register
+// the card via a payload, preserving the typed command verbatim.
+//
+// This drives the REAL editor stack (the actual `commands.ts` slash action +
+// the actual `citation.ts` typed input rules + the real `buildEditorExtensions`
+// schema) with a REAL published bridge handle (mirroring EditorPane).
 //
 // WHAT IS PROVEN
-//   1. ATOM SHAPE — every surface inserts a citation node whose attrs are
-//      `{citationId: <minted>, command: <\cite…>, displayText: ""}`.
-//   2. CARD REGISTRATION — every surface calls `createCitation` exactly once,
-//      with `{citationId: <same as the atom>, command, unanchored:false,
-//      mode:"omni"}` — so the card is anchored to the atom + soft-routed.
-//   3. THE BUG FIX — typed `\cite{key}` now creates a card (it made NONE before
-//      CHIP 4a-ii). Explicitly asserted.
-//   4. ATOM DURABILITY — with the card host unmounted (bridge handle cleared),
-//      slash + typed STILL insert the atom (and don't throw); only the card is
-//      skipped. The PM-synchronous insert is the robustness feature.
-//   5. SOFT-ROUTE — slash/typed surface OMNI only when the citations side is
-//      collapsed/blank; never when another panel covers it (backlog #2). The
-//      EXACT prefs-inspecting route now lives inside `citation.run`.
+//   1. SLASH `\cite` OPENS THE POPOVER — `openAtomCreate("citation")` fires;
+//      NO atom + NO card land at the trigger (deferred to commit).
+//   2. TYPED `\cite{key}` / `\cite ` — atom-first, command preserved, card
+//      registered via the payload (COMMIT half) — unchanged.
+//   3. POPOVER COMMIT — `citation.run` WITH a `{citationId, command}` payload
+//      registers the card (`createCitation({…unanchored:false, mode:"omni"})`)
+//      + focuses + soft-routes. This is the unified destination.
+//   4. DURABILITY — typed insert lands the atom even with the card host
+//      unmounted; slash with no host no-ops cleanly (no atom, no throw).
+//   5. SOFT-ROUTE — the COMMIT surfaces OMNI only when the citations side is
+//      collapsed/blank (backlog #2). The prefs-inspecting route lives in
+//      `citation.run`'s commit branch.
 //
 // (The extension barrel transitively imports `@/lib/storage`; stub it — the
 // same gotcha as the sibling action tests.)
@@ -141,6 +145,7 @@ function citationAtoms(editor: Editor): Array<{
 // ---------------------------------------------------------------------------
 
 let createCitation: ReturnType<typeof vi.fn>;
+let openAtomCreate: ReturnType<typeof vi.fn>;
 let setActiveLeft: ReturnType<typeof vi.fn>;
 let setActiveRight: ReturnType<typeof vi.fn>;
 let expandLeft: ReturnType<typeof vi.fn>;
@@ -189,6 +194,7 @@ function publishHandle(editor: Editor, prefs: ViewPrefs): void {
         surface: seed.surface,
         position: seed.position,
         cardCreation: { createCitation } as unknown as ActionContext["cardCreation"],
+        openAtomCreate: openAtomCreate as ActionContext["openAtomCreate"],
         payload: seed.payload,
         panelRouting: {
           prefs,
@@ -232,6 +238,7 @@ beforeEach(() => {
   createCitation = vi.fn((opts: { citationId?: string }) => ({
     id: opts.citationId ?? "ref-id",
   }));
+  openAtomCreate = vi.fn();
   setActiveLeft = vi.fn();
   setActiveRight = vi.fn();
   expandLeft = vi.fn();
@@ -247,33 +254,22 @@ afterEach(() => {
 });
 
 // ---------------------------------------------------------------------------
-// (1) Slash `\cite` — commands.ts cite action + the published bridge
+// (1) Slash `\cite` — opens the deferred create popover (no atom, no card)
 // ---------------------------------------------------------------------------
 
-describe("slash \\cite", () => {
-  it("inserts the \\cite{} atom AND registers an anchored card via the bridge", () => {
+describe("slash \\cite opens the create popover", () => {
+  it("routes to openAtomCreate('citation') and lands NO atom + NO card", () => {
     const editor = mountEditor("");
     publishHandle(editor, prefsWith("right", "shown"));
 
     COMMAND_MAP.get("cite")!.action(editor.view, "\\cite");
 
-    const atoms = citationAtoms(editor);
-    expect(atoms).toHaveLength(1);
-    expect(atoms[0].command).toBe("\\cite{}");
-    expect(atoms[0].displayText).toBe("");
-    expect(atoms[0].citationId).toBeTruthy();
-
-    expect(createCitation).toHaveBeenCalledTimes(1);
-    expect(createCitation).toHaveBeenCalledWith({
-      command: "\\cite{}",
-      citationId: atoms[0].citationId,
-      unanchored: false,
-      mode: "omni",
-    });
-    // focus drops into the card's library-picker via the canonical float key.
-    expect(focusCard).toHaveBeenCalledWith(
-      buildFloatKey({ domain: "card", kind: "citation", id: atoms[0].citationId }),
-    );
+    // Deferred: nothing materializes at the trigger.
+    expect(citationAtoms(editor)).toHaveLength(0);
+    expect(createCitation).not.toHaveBeenCalled();
+    // The front door opened instead.
+    expect(openAtomCreate).toHaveBeenCalledTimes(1);
+    expect(openAtomCreate).toHaveBeenCalledWith("citation");
   });
 });
 
@@ -367,15 +363,15 @@ describe("menu (grab/lightning) citation", () => {
 // ---------------------------------------------------------------------------
 
 describe("atom lands even when the card host is unmounted", () => {
-  it("slash \\cite still inserts the atom (no card, no throw)", () => {
+  it("slash \\cite with no host no-ops cleanly (no atom, no throw)", () => {
     const editor = mountEditor("");
     setEditorActionsHandle(null); // host unmounted — getEditorActionsHandle() → null
 
+    // Slash now only OPENS the popover via the bridge; with no bridge it no-ops
+    // (and never inserted a blank atom in the first place — deferred model).
     expect(() => COMMAND_MAP.get("cite")!.action(editor.view, "\\cite")).not.toThrow();
 
-    const atoms = citationAtoms(editor);
-    expect(atoms).toHaveLength(1);
-    expect(atoms[0].command).toBe("\\cite{}");
+    expect(citationAtoms(editor)).toHaveLength(0);
     expect(createCitation).not.toHaveBeenCalled();
   });
 
@@ -393,74 +389,102 @@ describe("atom lands even when the card host is unmounted", () => {
 });
 
 // ---------------------------------------------------------------------------
-// (6) Cross-surface CONSISTENCY — the four surfaces agree on atom + card shape
+// (6) The POPOVER COMMIT — `citation.run` WITH a payload registers the card.
+//     This is the unified destination both the popover commit and the typed
+//     surfaces funnel through (the atom is already inserted; run() only does the
+//     card registration + focus + soft-route).
 // ---------------------------------------------------------------------------
 
-describe("cross-surface consistency", () => {
-  it("slash and bare-typed produce the SAME atom + createCitation shape", () => {
-    // slash
-    const e1 = mountEditor("");
-    publishHandle(e1, prefsWith("right", "shown"));
-    COMMAND_MAP.get("cite")!.action(e1.view, "\\cite");
-    const slashAtom = citationAtoms(e1)[0];
-    const slashCall = createCitation.mock.calls[0][0];
+describe("popover commit (citation.run with payload)", () => {
+  it("registers the anchored card with the payload's id + command, and focuses it", () => {
+    const editor = mountEditor("");
+    publishHandle(editor, prefsWith("right", "shown"));
 
-    // reset spies + DOM, then bare-typed
-    createCitation.mockClear();
-    const e2 = mountEditor("\\cite");
-    publishHandle(e2, prefsWith("right", "shown"));
-    typeChar(e2, " ");
-    const typedAtom = citationAtoms(e2)[0];
+    // Simulate the commit: the popover already inserted the atom; it calls
+    // run() again carrying the citationId + the staged command.
+    getEditorActionsHandle()!.runAction("citation", {
+      surface: "slash",
+      payload: { citationId: "cit-1", command: "\\cite{smith,jones}" },
+    });
+
+    expect(createCitation).toHaveBeenCalledTimes(1);
+    expect(createCitation).toHaveBeenCalledWith({
+      command: "\\cite{smith,jones}",
+      citationId: "cit-1",
+      unanchored: false,
+      mode: "omni",
+    });
+    expect(focusCard).toHaveBeenCalledWith(
+      buildFloatKey({ domain: "card", kind: "citation", id: "cit-1" }),
+    );
+    // The popover owns the atom insert; run() itself lands none.
+    expect(citationAtoms(editor)).toHaveLength(0);
+    // It did NOT re-open the popover (a payload means commit, not front-door).
+    expect(openAtomCreate).not.toHaveBeenCalled();
+  });
+
+  it("typed `\\cite{key}` and a popover commit register the SAME createCitation shape", () => {
+    // typed full
+    const e1 = mountEditor("\\cite{smith}".slice(0, -1));
+    publishHandle(e1, prefsWith("right", "shown"));
+    typeChar(e1, "}");
     const typedCall = createCitation.mock.calls[0][0];
 
-    // Atom shape identical except the minted id.
-    expect(typedAtom.command).toBe(slashAtom.command); // "\cite{}"
-    expect(typedAtom.displayText).toBe(slashAtom.displayText); // ""
-    // createCitation shape identical except the minted id.
-    expect({ ...typedCall, citationId: "_" }).toEqual({ ...slashCall, citationId: "_" });
-    expect(typedCall.citationId).toBe(typedAtom.citationId);
-    expect(slashCall.citationId).toBe(slashAtom.citationId);
+    // reset + a popover commit carrying the same command
+    createCitation.mockClear();
+    const e2 = mountEditor("");
+    publishHandle(e2, prefsWith("right", "shown"));
+    getEditorActionsHandle()!.runAction("citation", {
+      surface: "slash",
+      payload: { citationId: typedCall.citationId, command: "\\cite{smith}" },
+    });
+    const commitCall = createCitation.mock.calls[0][0];
+
+    expect(commitCall).toEqual(typedCall);
   });
 });
 
 // ---------------------------------------------------------------------------
-// (7) backlog #2 soft-route — in the band-stack model omni is the always-on
-//     background, so `setActiveX("omni")` is gone. The soft-route REVEALS omni
-//     only when the citations side is HIDDEN: un-collapse a collapsed side, or
-//     un-blank a blanked side. An already-shown side is a no-op (omni's already
-//     behind any docked bands), and the OTHER side is never touched.
+// (7) backlog #2 soft-route — fires on the COMMIT (run with payload), where the
+//     card is actually registered. In the band-stack model omni is the always-on
+//     background, so the soft-route REVEALS omni only when the citations side is
+//     HIDDEN: un-collapse a collapsed side, or un-blank a blanked side. An
+//     already-shown side is a no-op, and the OTHER side is never touched.
 // ---------------------------------------------------------------------------
 
 describe("soft-route into omni (backlog #2)", () => {
-  function runSlash(prefs: ViewPrefs): void {
+  function runCommit(prefs: ViewPrefs): void {
     const editor = mountEditor("");
     publishHandle(editor, prefs);
-    COMMAND_MAP.get("cite")!.action(editor.view, "\\cite");
+    getEditorActionsHandle()!.runAction("citation", {
+      surface: "slash",
+      payload: { citationId: "cit-sr", command: "\\cite{a}" },
+    });
   }
 
   it("un-collapses the RIGHT side when the citations (right) side is collapsed", () => {
-    runSlash(prefsWith("right", "collapsed"));
+    runCommit(prefsWith("right", "collapsed"));
     expect(expandRight).toHaveBeenCalledTimes(1);
     expect(expandLeft).not.toHaveBeenCalled();
     expect(clearBlankIfSet).not.toHaveBeenCalled();
   });
 
   it("clears the blank when the citations side is blank", () => {
-    runSlash(prefsWith("right", "blank"));
+    runCommit(prefsWith("right", "blank"));
     expect(clearBlankIfSet).toHaveBeenCalledTimes(1);
     expect(expandLeft).not.toHaveBeenCalled();
     expect(expandRight).not.toHaveBeenCalled();
   });
 
   it("leaves the side ALONE when it's already shown (omni already behind any bands)", () => {
-    runSlash(prefsWith("right", "shown"));
+    runCommit(prefsWith("right", "shown"));
     expect(expandLeft).not.toHaveBeenCalled();
     expect(expandRight).not.toHaveBeenCalled();
     expect(clearBlankIfSet).not.toHaveBeenCalled();
   });
 
   it("respects a LEFT dock placement for the citations panel", () => {
-    runSlash(prefsWith("left", "collapsed"));
+    runCommit(prefsWith("left", "collapsed"));
     expect(expandLeft).toHaveBeenCalledTimes(1);
     expect(expandRight).not.toHaveBeenCalled();
     expect(clearBlankIfSet).not.toHaveBeenCalled();

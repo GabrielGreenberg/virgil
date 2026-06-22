@@ -304,23 +304,23 @@ describe("uniform collab read-only gate — run() no-ops (covers all 4 surfaces 
   });
 
   it("ref run() does NOT open the popover when collab read-only", () => {
-    let opened = false;
+    let opened: string | null = null;
     const ctx = ctxFor(cursor, { canEdit: false });
-    ctx.openRefPopover = () => {
-      opened = true;
+    ctx.openAtomCreate = (kind) => {
+      opened = kind;
     };
     row("ref").run(ctx);
-    expect(opened).toBe(false);
+    expect(opened).toBe(null);
   });
 
   it("ref run() DOES open the popover when editable", () => {
-    let opened = false;
+    let opened: string | null = null;
     const ctx = ctxFor(cursor, { canEdit: true });
-    ctx.openRefPopover = () => {
-      opened = true;
+    ctx.openAtomCreate = (kind) => {
+      opened = kind;
     };
     row("ref").run(ctx);
-    expect(opened).toBe(true);
+    expect(opened).toBe("ref");
   });
 
   it("format run() does NOT touch the editor chain when collab read-only", () => {

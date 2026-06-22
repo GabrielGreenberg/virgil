@@ -14,7 +14,7 @@
 //
 // SCOPE (per the CHIP-8 dispatch brief):
 //
-//   REF  — `refRun` → `openRefPopover` seam. The popover IS the creator; `refRun`
+//   REF  — `refRun` → `openAtomCreate` seam. The popover IS the creator; `refRun`
 //          itself produces ZERO docDelta (oracle: "the cross-surface test asserts
 //          labelRefs===0 after the action"). We assert the seam fires from BOTH
 //          the slash bridge path AND the lightning grid `refRun` path, that the
@@ -147,15 +147,15 @@ function countLabelRefs(editor: Editor): number {
   return n;
 }
 
-let openRefPopover: ReturnType<typeof vi.fn>;
+let openAtomCreate: ReturnType<typeof vi.fn>;
 let lastSeed: { surface: ActionSurfaceLite } | null;
 
 type ActionSurfaceLite = "grab" | "lightning" | "slash" | "typed" | "keyboard";
 
 /** Publish a bridge handle EXACTLY like EditorPane: synthesize a CursorRef from
- *  the live selection head, build the ActionContext with the spy `openRefPopover`
+ *  the live selection head, build the ActionContext with the spy `openAtomCreate`
  *  seam + a `canEdit` that mirrors the live editable flag, invoke `spec.run(ctx)`.
- *  `refRun` calls `ctx.openRefPopover()`. */
+ *  `refRun` calls `ctx.openAtomCreate()`. */
 function publishHandle(editor: Editor): void {
   const handle: EditorActionsHandle = {
     runAction(id: ActionId, seed) {
@@ -176,7 +176,7 @@ function publishHandle(editor: Editor): void {
         // EditorPane threads the live editable flag down as canEdit so the
         // uniform collab gate fires on the slash bridge path too.
         canEdit: editor.isEditable,
-        openRefPopover: openRefPopover as () => void,
+        openAtomCreate: openAtomCreate as () => void,
       };
       void spec.run(ctx);
     },
@@ -198,7 +198,7 @@ function runLightningRef(editor: Editor): void {
     },
     surface: "lightning",
     canEdit: editor.isEditable,
-    openRefPopover: openRefPopover as () => void,
+    openAtomCreate: openAtomCreate as () => void,
   });
 }
 
@@ -214,7 +214,7 @@ function applyCtx(editor: Editor, ref: ActionRef, canEdit = true): ActionContext
 }
 
 beforeEach(() => {
-  openRefPopover = vi.fn();
+  openAtomCreate = vi.fn();
   lastSeed = null;
 });
 
@@ -225,24 +225,24 @@ afterEach(() => {
 });
 
 // ═══════════════════════════════════════════════════════════════════════════
-// REF — `\ref` cross-reference: the refRun → openRefPopover seam
+// REF — `\ref` cross-reference: the refRun → openAtomCreate seam
 // ═══════════════════════════════════════════════════════════════════════════
 
-describe("REF: refRun → openRefPopover seam reached from slash AND lightning", () => {
-  it("slash \\ref fires the openRefPopover seam exactly once via the bridge", () => {
+describe("REF: refRun → openAtomCreate seam reached from slash AND lightning", () => {
+  it("slash \\ref fires the openAtomCreate seam exactly once via the bridge", () => {
     const editor = mountParagraph("see ");
     publishHandle(editor);
 
     COMMAND_MAP.get("ref")!.action(editor.view, "\\ref");
 
-    expect(openRefPopover).toHaveBeenCalledTimes(1);
+    expect(openAtomCreate).toHaveBeenCalledTimes(1);
     expect(lastSeed?.surface).toBe("slash");
   });
 
   it("the lightning 'Cross-ref' cell fires the SAME seam (direct refRun, grid path)", () => {
     const editor = mountParagraph("see ");
     runLightningRef(editor);
-    expect(openRefPopover).toHaveBeenCalledTimes(1);
+    expect(openAtomCreate).toHaveBeenCalledTimes(1);
   });
 
   it("refRun ALONE produces NO docDelta — labelRefs===0 after BOTH surfaces (oracle)", () => {
@@ -268,14 +268,14 @@ describe("REF: refRun → openRefPopover seam reached from slash AND lightning",
     const slashEd = mountParagraph("alpha ");
     publishHandle(slashEd);
     const slashSeam = vi.fn();
-    openRefPopover = slashSeam;
+    openAtomCreate = slashSeam;
     publishHandle(slashEd); // re-publish so the handle closes over the new spy
     COMMAND_MAP.get("ref")!.action(slashEd.view, "\\ref");
     const slashDoc = slashEd.state.doc.toString();
 
     const lightEd = mountParagraph("alpha ");
     const lightSeam = vi.fn();
-    openRefPopover = lightSeam;
+    openAtomCreate = lightSeam;
     runLightningRef(lightEd);
     const lightDoc = lightEd.state.doc.toString();
 
@@ -307,7 +307,7 @@ describe("REF: collab read-only gates BOTH surfaces (no popover, no atom)", () =
     // so refRun's isCollabReadOnly gate fires before the seam.
     COMMAND_MAP.get("ref")!.action(editor.view, "\\ref");
 
-    expect(openRefPopover).not.toHaveBeenCalled();
+    expect(openAtomCreate).not.toHaveBeenCalled();
     expect(countLabelRefs(editor)).toBe(0);
   });
 
@@ -315,7 +315,7 @@ describe("REF: collab read-only gates BOTH surfaces (no popover, no atom)", () =
     const editor = mountParagraph("see ");
     editor.setEditable(false);
     runLightningRef(editor);
-    expect(openRefPopover).not.toHaveBeenCalled();
+    expect(openAtomCreate).not.toHaveBeenCalled();
     expect(countLabelRefs(editor)).toBe(0);
   });
 });

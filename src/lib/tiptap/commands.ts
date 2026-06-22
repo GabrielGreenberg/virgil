@@ -45,7 +45,7 @@ export interface VirgilCommand {
  * which reads the live doc/selection off `ctx.view.state`).
  *
  * Only safe for view-only actions: `cardCreation` / `cardLifecycle` /
- * `panelRouting` / `openRefPopover` are intentionally absent — a card/atom action
+ * `panelRouting` / `openAtomCreate` are intentionally absent — a card/atom action
  * (`\cite` / `\footnote` / `\ref`) would no-op here and must route through the
  * bridge (`getEditorActionsHandle`) instead.
  */
@@ -104,17 +104,15 @@ export const VIRGIL_COMMANDS: VirgilCommand[] = [
   {
     name: "ref",
     action: () => {
-      // CHIP 7a: `\ref` routes through the SINGLE canonical `refRun` in the
-      // action registry — the SAME `run()` the NEW lightning 'Cross-ref' grid
-      // cell calls. `refRun` opens the `LabelRef` create-mode popover at the
-      // caret (the popover IS the creator: `useRefActions.handleInsertRef` lands
-      // the `labelRef` atom when the user picks/types a label). Opening the
-      // popover is a React-land side-effect (it sets EditorLayout's
-      // `activeRefLabel`/`activeRefRect`), so `\ref` rides the bridge (like
-      // `\cite`/`\footnote`) rather than the view-only path — `refRun` receives
-      // `ctx.openRefPopover` from EditorPane's bridge handle. The former
-      // `virgil-ref-create` CustomEvent + its command-input.ts listener are
-      // retired.
+      // `\ref` routes through the SINGLE canonical `refRun` in the action
+      // registry — the SAME `run()` the lightning 'Cross-ref' grid cell calls.
+      // `refRun` opens the SHARED create popover (the same deferred-commit
+      // controller citation uses) in ref mode at the caret — the popover IS the
+      // creator: `useRefActions.handleInsertRef` lands the `labelRef` atom when
+      // the user picks/types a label. Opening the popover is a React-land
+      // side-effect (it sets EditorLayout's `atomCreateRequest`), so `\ref` rides
+      // the bridge (like `\cite`/`\footnote`) — `refRun` receives
+      // `ctx.openAtomCreate` from EditorPane's bridge handle.
       getEditorActionsHandle()?.runAction("ref", { surface: "slash" });
     },
   },
@@ -137,40 +135,18 @@ export const VIRGIL_COMMANDS: VirgilCommand[] = [
   {
     name: "cite",
     action: (view) => {
-      // CHIP 7b: uniform collab read-only gate — refuse BEFORE inserting the
-      // synchronous atom so the doc isn't mutated when the partner holds the pen
-      // (the bridge's `runAction` ALSO no-ops on read-only; this stops the atom
-      // landing at all). `view.editable` mirrors `collab.canEditMainText`.
+      // CHIP 7b: uniform collab read-only gate — refuse when the partner holds
+      // the pen (the bridge's `runAction` ALSO no-ops on read-only, but bail
+      // here too so we never even open the popover). `view.editable` mirrors
+      // `collab.canEditMainText`.
       if (!view.editable) return;
-      const { state } = view;
-      const citationNodeType = state.schema.nodes.citation;
-      if (!citationNodeType) return;
-      const existing = new Set<string>();
-      state.doc.descendants((node) => {
-        if (node.type.name === "citation" && node.attrs.citationId) {
-          existing.add(node.attrs.citationId as string);
-        }
-        return true;
-      });
-      const citationId = generateShortId(existing);
-      const command = "\\cite{}";
-      // Insert the atom SYNCHRONOUSLY — it must land even if React is
-      // unmounted (durability decision). Only the CARD registration routes
-      // through the bridge.
-      const tr = state.tr.replaceSelectionWith(
-        citationNodeType.create({ citationId, command, displayText: "" }),
-      );
-      view.dispatch(tr);
-      // Register the panel card via the registry's `citation.run` (surface
-      // "slash"). The bridge synthesizes the CursorRef + supplies cardCreation
-      // + the soft-route wiring; `run` calls `createCitation({ ...unanchored:
-      // false })` and soft-routes into omni (backlog #2 — never force-opens
-      // the Citations panel). Replaces the retired `virgil-citation-create`
-      // event + its two listeners (command-input.ts + citations-host.tsx).
-      getEditorActionsHandle()?.runAction("citation", {
-        surface: "slash",
-        payload: { citationId, command },
-      });
+      // Citation creation popover (deferred-commit): `/cite` no longer inserts a
+      // blank `\cite{}` atom + pristine card up front. It routes through the
+      // registry's `citation.run` (surface "slash") with NO payload, which opens
+      // the create popover at the caret (`openAtomCreate("citation")`). The user
+      // searches citekeys; the atom + card materialize only on commit (OK /
+      // click-away with ≥1 key), via a second `runAction` carrying the payload.
+      getEditorActionsHandle()?.runAction("citation", { surface: "slash" });
     },
   },
   {

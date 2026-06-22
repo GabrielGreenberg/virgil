@@ -46,7 +46,7 @@ import {
   type LinkedAnchorKind,
 } from "@/links/links";
 import { getSectionRangeByUuid } from "@/lib/section-range";
-import { generateShortId } from "@/lib/uuid";
+import { ATOM_CREATE_POPOVER_EVENT } from "@/lib/actions/atom-create";
 import { focusNewCard } from "@/lib/focus-new-card";
 import { cardPopKey } from "@/panels/panel-registry";
 import type { DragHandleAction } from "@/components/DragHandleMenu";
@@ -298,26 +298,30 @@ export function useDragHandleActions(deps: DragHandleActionsDeps) {
           break;
         }
         case "citation": {
-          // Drop a [cite] placeholder pill at the end of the captured
-          // passage (matches the footnote convention above), then register
-          // an *anchored* panel ref with the same citationId so the card
-          // appears under the anchored group with the picker open.
-          try {
-            ed.commands.setTextSelection(range.to);
-          } catch {
-            /* ignore */
+          // Deferred create popover — the menu/lightning twin of slash `/cite`.
+          // Instead of dropping a blank `\cite{}` pill + pristine card, OPEN the
+          // create popover at the END of the captured passage. The popover stages
+          // citekeys and materializes the real atom (no-scroll, at this captured
+          // pos) + the gutter card only on commit, so no blank card flashes. We
+          // leave `panelId` / `focusCardKey` null — there's no card to route yet.
+          if (typeof window !== "undefined") {
+            try {
+              const coords = ed.view.coordsAtPos(range.to);
+              const rect = new DOMRect(
+                coords.left,
+                coords.top,
+                0,
+                coords.bottom - coords.top,
+              );
+              window.dispatchEvent(
+                new CustomEvent(ATOM_CREATE_POPOVER_EVENT, {
+                  detail: { kind: "citation", rect, pos: range.to },
+                }),
+              );
+            } catch {
+              /* coordsAtPos can throw on a stale pos — bail without opening */
+            }
           }
-          const existingIds = handle.getCitationIds();
-          const citationId = generateShortId(existingIds);
-          handle.insertCitation("\\cite{}", citationId, "");
-          const ref = cardCreation.createCitation({
-            command: "\\cite{}",
-            citationId,
-            unanchored: false,
-            mode: "omni",
-          });
-          panelId = "citations";
-          focusCardKey = cardPopKey("citation", ref.id);
           break;
         }
         case "note": {

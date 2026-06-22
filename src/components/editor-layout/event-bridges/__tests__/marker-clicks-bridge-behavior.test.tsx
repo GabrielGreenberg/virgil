@@ -76,6 +76,7 @@ function makeDeps(prefsOverrides: Partial<ViewPrefs> = {}) {
     setActiveRefLabel: vi.fn(),
     setActiveRefRect: vi.fn(),
     setActiveRefCommand: vi.fn(),
+    setAtomCreateRequest: vi.fn(),
     setActiveMath: vi.fn(),
     setActiveFigure: vi.fn(),
     alignOmniCardWithClick: vi.fn(),

@@ -8,7 +8,7 @@
  * `cardActionRows`), the slash/typed citation + footnote (CHIP 4), the heading /
  * tex / example / block-atom / format grid slices (CHIP 5/6), and — landing in
  * THIS chip — the final two slices: `ref` (the `\ref` cross-reference, slash +
- * the NEW lightning 'Cross-ref' cell, via the `openRefPopover` seam) and the
+ * the lightning 'Cross-ref' cell, via the shared `openAtomCreate` seam) and the
  * `title`/`author`/`date` title fields (pure-PM `titleFieldRun`, SLASH-ONLY by
  * design — a doc-top singleton has no menu twin). The coverage assertion asserts
  * **ZERO pending ids** (covered == `EXPECTED_ACTION_IDS`, both directions) — a
@@ -116,6 +116,7 @@ import type { Slice, Fragment, Node as PMNode } from "@tiptap/pm/model";
 // `freshTexBlockAttrs`). A plain string-id leaf — no React/DOM/TipTap — so the
 // value import is free for every consumer of this registry.
 import { generateShortId } from "@/lib/uuid";
+import type { AtomCreateKind, OpenAtomCreateOpts } from "./atom-create";
 // VALUE import: the ONE container-aware block-atom insert helper (CHIP 6a, DA-2).
 // `figureRun` / `graphicsRun` insert their block through `smartInsertBlock` so
 // the grid cell and any future figure/graphics FILE-DROP path converge on one
@@ -563,23 +564,18 @@ export interface ActionContext {
    */
   openColorPopover?: (anchorRect: DOMRect) => void;
   /**
-   * Open the `LabelRef` create-mode popover at the caret (CHIP 7a). The `ref`
-   * (`\ref{}` cross-reference) action is NOT a fire-and-forget insert — the
-   * popover IS the creator: it lists every `\label{…}` site in the doc and
-   * `useRefActions.handleInsertRef` lands the chosen `labelRef` atom at the
-   * cursor when the user picks/types a label. So `refRun()` calls THIS rather
-   * than mutating the doc directly.
-   *
-   * Supplied by EditorPane's bridge handle (for the slash surface) and by
-   * `ActionsMenuPanel` (for the new lightning `\ref` cell) — both compute the
-   * live caret rect and route to EditorLayout's `LabelRefPopover` create mode
-   * (`setActiveRefLabel("")` + `setActiveRefRect(rect)`), REPLACING the retired
-   * `virgil-ref-create` CustomEvent. Absent on any pure view-only path (the row
-   * then no-ops — there is no popover to open without React state). The EDIT-
-   * existing-`\ref` path (`virgil-label-ref-click`, marker-clicks.ts) is
-   * untouched.
+   * Open the SHARED inline-atom CREATE popover at the caret (the deferred-commit
+   * front door both citation and `\ref` use). The popover is the creator: it
+   * searches candidate targets (citekeys / `\label{…}` sites) and materializes
+   * the atom via the no-scroll `insertInlineAtom` only on commit (OK / click-away
+   * for citation; pick for ref) — nothing lands up front, so the gutter never
+   * flashes a blank pristine card. `citationRun` / `refRun` call this instead of
+   * inserting an atom; the bridge / `ActionsMenuPanel` compute the caret rect +
+   * the captured insertion `pos` and hop the `virgil-atom-create-popover` event
+   * EditorLayout consumes. Absent on a pure view-only path (the row no-ops —
+   * there is no popover without React state).
    */
-  openRefPopover?: () => void;
+  openAtomCreate?: (kind: AtomCreateKind, opts?: OpenAtomCreateOpts) => void;
   panelRouting?: {
     prefs: ViewPrefs;
     setActiveLeft: (id: PanelId) => void;
@@ -1046,19 +1042,20 @@ function cardRun(id: CardActionId, ctx: ActionContext): void {
 }
 
 // ---------------------------------------------------------------------------
-// citation.run — the FIRST card action whose `run()` handles ALL FOUR surfaces
-// (CHIP 4a-ii). It is the join point that makes menu-Citation, slash `\cite`,
-// typed `\cite{key}`, and typed `\cite ` land at the SAME destination.
+// citation.run — the join point every citation-create surface funnels through.
 //
 //   - grab / lightning (a `DragHandleRef`): DELEGATE to the legacy dispatcher
-//     exactly like every other card row — `ctx.dispatch("citation", ref)`
-//     inserts the atom + registers the anchored card. BYTE-IDENTICAL to today.
-//   - slash / typed (a `CursorRef`): the PM caller ALREADY inserted the `\cite`
-//     atom SYNCHRONOUSLY (durability decision — the atom lands even if React is
-//     unmounted), passing the atom's `citationId` + `command` in `ctx.payload`.
-//     Here we register the matching panel card via `cardCreation.createCitation`
-//     and apply the backlog-#2 SOFT-ROUTE. This is the bug fix: typed
-//     `\cite{key}` previously made NO card.
+//     (`ctx.dispatch("citation", ref)`). [Chip 3 reroutes this branch to the
+//     create popover at the passage end.]
+//   - slash `/cite` / bare `\cite ` / popover-trigger (a `CursorRef`, NO
+//     payload): OPEN the deferred create popover (`ctx.openAtomCreate`). Nothing
+//     lands in the doc — the popover is the creator.
+//   - popover-COMMIT (a `CursorRef` WITH a `citationId` + `command` payload):
+//     the popover already inserted the real `\cite{…}` atom (no-scroll, at the
+//     captured pos); register the matching panel card with the SAME id + apply
+//     the backlog-#2 SOFT-ROUTE. Full `\cite{key}` typed input still lands the
+//     atom synchronously and routes here with a payload (the key's already
+//     supplied — no popover needed).
 // ---------------------------------------------------------------------------
 
 /**
@@ -1105,10 +1102,21 @@ function citationRun(ctx: ActionContext): void {
     ctx.dispatch?.("citation", ctx.ref);
     return;
   }
-  // Surfaces 3 & 4 (slash / typed): the PM caller inserted the atom already.
-  // Register the panel card with the SAME `citationId` so the card and the
-  // in-doc atom share an identity (the card renders anchored), mirroring the
-  // dispatcher's anchored `createCitation({ unanchored: false, mode: "omni" })`.
+  // Surfaces 3 & 4 (slash / typed / popover) — a `CursorRef`. TWO sub-cases,
+  // discriminated by the payload:
+  //
+  //   • NO `citationId` payload ⇒ the CREATE FRONT DOOR. Slash `/cite` (and bare
+  //     `\cite ` with no key) no longer insert a blank atom up front; they route
+  //     here to OPEN the deferred create popover. The popover searches citekeys
+  //     and, on commit (OK / click-away with ≥1 key), inserts the atom + calls
+  //     back through this same `run()` WITH a payload (the case below). Nothing
+  //     lands until commit — no blank pristine card flashes in the gutter.
+  //
+  //   • `citationId` + `command` payload ⇒ the COMMIT. The popover already
+  //     inserted the real `\cite{…}` atom (no-scroll, at the captured pos); we
+  //     register the matching panel card with the SAME id so the card renders
+  //     anchored, then soft-route into omni — identical to the old slash-create
+  //     card registration, just deferred to commit and carrying real keys.
   const payload = ctx.payload ?? {};
   const citationId =
     typeof payload.citationId === "string" ? payload.citationId : undefined;
@@ -1116,7 +1124,12 @@ function citationRun(ctx: ActionContext): void {
     typeof payload.command === "string" && payload.command
       ? payload.command
       : "\\cite{}";
-  if (!citationId || !ctx.cardCreation) return; // misconfigured caller — atom already landed; no card
+  if (!citationId) {
+    // Front door: open the create popover at the caret (no atom yet).
+    ctx.openAtomCreate?.("citation");
+    return;
+  }
+  if (!ctx.cardCreation) return; // misconfigured caller — atom already landed; no card
   ctx.cardCreation.createCitation({
     command,
     citationId,
@@ -1530,14 +1543,12 @@ const TEX_ACTION_ROW: ActionSpec = {
 };
 
 // ---------------------------------------------------------------------------
-// refRun — the `\ref` cross-reference action (CHIP 7a). The LAST inline-Atom id
-// to migrate. Unlike citation/footnote (the atom is inserted synchronously in
-// plugin-land, the CARD registered via the bridge), `\ref` has NO card: the
-// `LabelRef` POPOVER is the creator. So `refRun` is a one-liner that opens that
-// popover at the caret via the `ctx.openRefPopover` seam — the SAME create-mode
-// open the retired `virgil-ref-create` CustomEvent triggered (label="" +
-// caret-rect → `setActiveRefLabel("")` / `setActiveRefRect`). The user then
-// picks/types a label and `useRefActions.handleInsertRef` lands the `labelRef`
+// refRun — the `\ref` cross-reference action. Unlike citation/footnote, `\ref`
+// has NO card: the `LabelRef` POPOVER is the creator. `refRun` opens the SHARED
+// inline-atom create popover in ref mode via the `ctx.openAtomCreate("ref")`
+// seam — the same deferred-commit controller citation uses (label="" +
+// caret-rect + captured pos → `atomCreateRequest`). The user then picks/types a
+// label and `useRefActions.handleInsertRef` lands the `labelRef`
 // atom at the cursor.
 //
 // THE DIVERGENCE THIS FIXES (MEMO_ACTION_ALIGNMENT.md §3 `\ref` row): `\ref` was
@@ -1554,7 +1565,11 @@ const TEX_ACTION_ROW: ActionSpec = {
 // ---------------------------------------------------------------------------
 export function refRun(ctx: ActionContext): void {
   if (isCollabReadOnly(ctx)) return; // CHIP 7b: uniform collab gate — no popover
-  ctx.openRefPopover?.();
+  // `\ref` folds onto the SHARED create-popover controller (the same one
+  // citation uses): open the create popover in ref mode at the caret. The
+  // popover lists `\label{…}` sites and `useRefActions.handleInsertRef` lands the
+  // chosen `labelRef` atom (no-scroll, at the captured pos) when the user picks.
+  ctx.openAtomCreate?.("ref");
 }
 
 /**
@@ -1563,7 +1578,7 @@ export function refRun(ctx: ActionContext): void {
  * lightning surface (the new 'Cross-ref' grid cell, CHIP 7a). No grab/typed/
  * keyboard surface (a cross-reference is not a grab-handle action, and there is
  * no `\ref{}`-style typed input rule — `\ref` is a slash command, and the popover
- * is the creator). Both surfaces call `refRun` → `ctx.openRefPopover()`.
+ * is the creator). Both surfaces call `refRun` → `ctx.openAtomCreate("ref")`.
  *
  * `applies`: a `\ref` is insertable at any caret / selection (the popover lands
  * the atom at the cursor). A non-text ATOM-BLOCK ref (the `isAtomBlock:true`
@@ -2833,8 +2848,8 @@ const COVERED_FORMAT_IDS: readonly FormatActionId[] = FORMAT_ACTION_IDS;
 /**
  * The single ATOM id — `ref` — the slice CHIP 7a populates. `category: "atom"`,
  * exposed on the slash surface (`\ref`) AND the lightning surface (the new
- * 'Cross-ref' grid cell). Routes through `refRun` → `ctx.openRefPopover()` (the
- * LabelRef create-mode popover is the creator). Moves `ref` from EXPECTED-
+ * 'Cross-ref' grid cell). Routes through `refRun` → `ctx.openAtomCreate("ref")`
+ * (the shared create popover is the creator). Moves `ref` from EXPECTED-
  * PENDING to COVERED. Typed against `AtomActionId` so a drift trips the
  * typechecker.
  */

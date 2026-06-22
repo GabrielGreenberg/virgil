@@ -44,6 +44,19 @@ export interface InsertInlineAtomArgs {
   /** The node attrs (e.g. `{ footnoteId, content, number, title }`). Passed
    *  through to `insertContent` unchanged — including any nested-doc attr. */
   attrs: Record<string, unknown>;
+  /**
+   * Optional doc position to insert AT — the **captured-position contract** the
+   * deferred creation popover needs. When given, the selection is moved here
+   * (still no-scroll, inside the same chain) BEFORE inserting, so the atom lands
+   * at a position captured at TRIGGER time even though the live PM selection may
+   * have drifted while a modal-ish popover was open (the user picked citekeys in
+   * a portal `<input>`, never touching the doc). Clamped to the live doc so a
+   * collab-shifted / stale pos can't throw — it just lands at the nearest valid
+   * spot. Omitted ⇒ insert at the current selection (the original behavior, used
+   * by every in-place create helper). `setTextSelection` adds NO `scrollIntoView`
+   * of its own, so the no-scroll invariant holds with or without this.
+   */
+  at?: number;
 }
 
 export interface InsertInlineAtomResult {
@@ -66,12 +79,21 @@ export interface InsertInlineAtomResult {
  * wraps prosemirror-commands' version, which appends `.scrollIntoView()` to the tr.
  */
 export function insertInlineAtom(args: InsertInlineAtomArgs): InsertInlineAtomResult {
-  const { editor, type, attrs } = args;
+  const { editor, type, attrs, at } = args;
 
   // focus(null, { scrollIntoView: false }): focus the doc (the grab-bar /
   // action-menu item is a button, so focus may be off the doc) but suppress the
   // deferred scrollIntoView that `focus()` schedules by default — the whole point.
-  editor.chain().focus(null, { scrollIntoView: false }).insertContent({ type, attrs }).run();
+  const chain = editor.chain().focus(null, { scrollIntoView: false });
+  // Captured-position contract (deferred popover commit): land the atom at the
+  // trigger-time `at` even if the live selection drifted. Clamp to the live doc
+  // so a stale/collab-shifted pos can't throw — `setTextSelection` carries no
+  // scrollIntoView, so the no-scroll invariant is preserved.
+  if (typeof at === "number") {
+    const max = editor.state.doc.content.size;
+    chain.setTextSelection(Math.max(0, Math.min(at, max)));
+  }
+  chain.insertContent({ type, attrs }).run();
 
   // Locate the inserted atom: insertContent rests the caret just past it, so the
   // node immediately before the caret IS the atom. Generic over nodeSize so it

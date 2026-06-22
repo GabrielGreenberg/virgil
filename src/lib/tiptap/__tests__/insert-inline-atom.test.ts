@@ -154,6 +154,56 @@ describe("insertInlineAtom — never scrolls the viewport", () => {
     editor.destroy();
   });
 
+  it("inserts at the captured `at` position even when the live selection drifted, still no scroll", () => {
+    const editor = mount();
+    // Trigger captured the caret at position 4 ("hel|lo world"). Then the live
+    // selection drifts to the end of the doc (simulating any selection move
+    // while a deferred popover was open — the citation create popover case).
+    const capturedPos = 4;
+    editor.commands.setTextSelection(editor.state.doc.content.size - 1);
+    const seen = spyDispatch(editor);
+
+    insertInlineAtom({
+      editor,
+      type: "citation",
+      attrs: { citationId: "cit-at", command: "\\cite{a}", displayText: "A 2020" },
+      at: capturedPos,
+    });
+    flushRaf();
+
+    expect(countType(editor, "citation")).toBe(1);
+    // The atom landed at the CAPTURED position (between "hel" and "lo"), not at
+    // the drifted live selection at the doc end.
+    const before = editor.state.doc.textBetween(0, capturedPos, " ");
+    expect(before).toBe("hel");
+    // And the citation node sits exactly at the captured pos.
+    const nodeAtCaptured = editor.state.doc.nodeAt(capturedPos);
+    expect(nodeAtCaptured?.type.name).toBe("citation");
+    expect(seen.some((tr) => tr.scrolledIntoView)).toBe(false);
+    editor.destroy();
+  });
+
+  it("clamps an out-of-range `at` to the live doc instead of throwing", () => {
+    const editor = mount();
+    editor.commands.setTextSelection(4);
+    const seen = spyDispatch(editor);
+
+    // A wildly stale pos (past the doc end) must clamp, not throw.
+    expect(() =>
+      insertInlineAtom({
+        editor,
+        type: "citation",
+        attrs: { citationId: "cit-oob", command: "\\cite{a}", displayText: "A" },
+        at: 9999,
+      }),
+    ).not.toThrow();
+    flushRaf();
+
+    expect(countType(editor, "citation")).toBe(1);
+    expect(seen.some((tr) => tr.scrolledIntoView)).toBe(false);
+    editor.destroy();
+  });
+
   it("CONTRAST: the old `.chain().focus().insertContent()` DOES scroll (guards the regression)", () => {
     const editor = mount();
     editor.commands.setTextSelection(4);
