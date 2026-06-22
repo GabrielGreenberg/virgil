@@ -319,8 +319,12 @@ slots, in order: leading menu/swatch, title + count, after-title tool,
 add button, AI button, extras, popout chevron. Order is fixed even
 when slots are absent.
 
-Panel pods use `bg-pod-panel`, `pod-border`, `pod-radius`,
-`pod-shadow-light`. Don't add backdrops, glows, or gradients.
+Panel pods are **borderless warm sheets**: `--pod-panel` fill, a larger
+`--panel-radius` (14px, vs the editor pod's 8px `--pod-radius`), and a
+single warm-tinted `--pod-shadow-light`; **no border** (`--panel-border:
+none`). Separation between stacked pods comes from the cream `--pod-gap`
+gutter + each sheet's shadow — not a border. Don't add backdrops, glows,
+gradients, or a border.
 
 Body is a scrollable list with `space-y-2` between cards. No `border-b`
 between cards.
@@ -329,8 +333,9 @@ Every panel has a designed empty state — icon, title sentence,
 description, optional example card. "No items yet" is not enough.
 
 The panel strip (vertical column of toggles) uses 32×32 icon buttons.
-Active toggle: `bg-pod-dark/80 text-ink-strong`. The panel currently
-focused gets a 2px accent stripe on its leading edge.
+Active toggle: `bg-pod-dark/80 text-ink-strong` — the lit strip icon is
+the **only** active-panel cue. A panel looks **identical whether or not it
+has focus**: no per-pod stripe, ring, border, or shadow-change on focus.
 
 ## Code view
 
