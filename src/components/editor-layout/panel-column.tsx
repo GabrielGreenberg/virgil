@@ -162,9 +162,10 @@ function BottomEdgeHandle({
         className="drag-gap drag-gap-h band-grip w-full h-full"
         onMouseDown={onMouseDown}
       />
-      {/* Lone panel: extend the manilla backing past the handle and fade it
-          into the omni gap, so the single band dissolves into the desktop
-          instead of ending in a hard manilla edge. Non-interactive. */}
+      {/* Lone panel: a manilla fade past the handle into the omni gap, so the
+          omni cards behind it dissolve into the desktop. Must be --background
+          (the canvas/manilla), NOT --pod-panel (the warm panel fill) — same
+          color as ColumnEdgeFade above. Non-interactive. */}
       {lone && (
         <div
           aria-hidden="true"
@@ -172,7 +173,7 @@ function BottomEdgeHandle({
           style={{
             top: '100%',
             height: 22,
-            background: 'linear-gradient(to bottom, var(--pod-panel), transparent)',
+            background: 'linear-gradient(to bottom, var(--background), transparent)',
             pointerEvents: 'none',
           }}
         />
