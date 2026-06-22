@@ -310,11 +310,22 @@ function BibEntryPickerBody({
     registry.setActive(firstId);
   }, [registry, firstId]);
 
-  // Internal-input mode auto-focuses + selects the search field on open.
+  // Internal-input mode auto-focuses + selects the search field on open. Focus
+  // synchronously AND re-assert on the next frame: the create popover (citation
+  // / `\ref`) opens from an editor surface whose slash command re-focuses the
+  // view (`view.focus()` after it deletes the typed `\cite`) and whose lightning/
+  // grab menu blurs as it closes — either can steal the caret from the just-
+  // mounted input. The rAF re-assert (mirroring `LabelRefPopover` create-mode)
+  // lands the cursor in the search field regardless of that competition.
   useEffect(() => {
     if (isExternalInput) return;
-    inputRef.current?.focus();
-    inputRef.current?.select();
+    const focusInput = () => {
+      inputRef.current?.focus();
+      inputRef.current?.select();
+    };
+    focusInput();
+    const raf = requestAnimationFrame(focusInput);
+    return () => cancelAnimationFrame(raf);
   }, [isExternalInput, inputRef]);
 
   const rowStateFor = useCallback(
