@@ -114,6 +114,7 @@ import {
   alignEntryToY,
   scrollEntryIntoView,
   findEditorScrollFor,
+  SECTION_ACTIVE_LINE_FRACTION,
 } from "./editor-layout/layout-scroll";
 import { omniPinStore } from "./editor-layout/omni-pin-store";
 import {
@@ -2017,12 +2018,25 @@ export default function EditorLayout() {
       const doc = editorInstance.state.doc;
       // Collect all top-level headings with their text + level + DOM top
       const scrollRect = scrollEl.getBoundingClientRect();
-      // Reference line: top 25% of the editor viewport. A heading or
-      // parTitle becomes "active" once it has scrolled above this line.
-      // Conservative on purpose — when a doc first opens the user is
-      // typically looking at the title, and we don't want to announce
-      // the first section until they've actually scrolled toward it.
-      const referenceY = scrollRect.top + scrollRect.height * 0.25;
+      // Reference line: the SHARED section-active line (top 25% of the editor
+      // viewport — see SECTION_ACTIVE_LINE_FRACTION). A heading/parTitle
+      // becomes "active" once its top scrolls above this line. Conservative on
+      // purpose — when a doc first opens the user is looking at the title and
+      // we don't announce the first section until they scroll toward it. The
+      // Outline's click-to-jump lands a heading exactly on this same line, so
+      // the clicked section registers as current (OUT-#6).
+      //
+      // Bottom clamp: a final section near the end of the doc can't be scrolled
+      // up to the 25% line (not enough content below it), so it could never
+      // become "current". When we're parked at the bottom of a scrollable
+      // viewport, extend the reference line to the viewport bottom so the
+      // last visible section wins. Guarded on real scrollability so a short,
+      // unscrollable doc keeps the conservative top-line behavior.
+      const maxScroll = scrollEl.scrollHeight - scrollEl.clientHeight;
+      const atBottom = maxScroll > 4 && maxScroll - scrollEl.scrollTop <= 2;
+      const referenceY = atBottom
+        ? scrollRect.bottom
+        : scrollRect.top + scrollRect.height * SECTION_ACTIVE_LINE_FRACTION;
 
       const stack: { level: number; text: string; index: number; sectionNumber: string | null }[] = [];
       let lastCrossedStack: { level: number; text: string; index: number; sectionNumber: string | null }[] = [];
@@ -2161,8 +2175,13 @@ export default function EditorLayout() {
     const compute = () => {
       const doc = mirrorView.state.doc;
       const scrollRect = scrollEl.getBoundingClientRect();
-      // Same top-25% reference as the canonical pane — see note above.
-      const referenceY = scrollRect.top + scrollRect.height * 0.25;
+      // Same shared section-active line + bottom clamp as the canonical pane —
+      // see note above.
+      const maxScroll = scrollEl.scrollHeight - scrollEl.clientHeight;
+      const atBottom = maxScroll > 4 && maxScroll - scrollEl.scrollTop <= 2;
+      const referenceY = atBottom
+        ? scrollRect.bottom
+        : scrollRect.top + scrollRect.height * SECTION_ACTIVE_LINE_FRACTION;
 
       const stack: { level: number; text: string; index: number; sectionNumber: string | null }[] = [];
       let lastCrossedStack: { level: number; text: string; index: number; sectionNumber: string | null }[] = [];

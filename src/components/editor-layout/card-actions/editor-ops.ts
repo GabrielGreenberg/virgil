@@ -2,7 +2,7 @@ import { useCallback, useRef, type RefObject } from "react";
 import type { Editor, JSONContent } from "@tiptap/react";
 import type { EditorView } from "prosemirror-view";
 import type { EditorHandle } from "../../Editor";
-import { findEditorScrollFor } from "../layout-scroll";
+import { findEditorScrollFor, scrollHeadingToActiveLine } from "../layout-scroll";
 import {
   renameHeadingByUuid,
   renameParTitleByUuid,
@@ -85,7 +85,9 @@ export function useEditorOps(deps: {
             const el = domAtPos.node instanceof HTMLElement
               ? domAtPos.node
               : domAtPos.node.parentElement;
-            el?.scrollIntoView({ behavior: "instant", block: "center" });
+            // Land on the shared section-active line so the mirror's position
+            // detector reports the clicked section as current (OUT-#6).
+            if (el) scrollHeadingToActiveLine(mirrorView.dom, el);
           } catch { /* noop */ }
         }
         return;

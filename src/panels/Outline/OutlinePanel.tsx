@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo, useCallback, useRef, useEffect, useLayoutEffect, memo } from "react";
+import { useState, useMemo, useCallback, useRef, useEffect, useLayoutEffect, useSyncExternalStore, memo } from "react";
 import type { JSONContent } from "@tiptap/react";
 import {
   type Category,
@@ -11,6 +11,34 @@ import type { FocusState } from "@/hooks/useFocusMode";
 import { sectionRange } from "@/hooks/useFocusMode";
 import { Panel } from "@/panels/_shared/Panel";
 import { flattenInlineText } from "@/lib/inline-content";
+import {
+  subscribeOutlinePrefs,
+  getOutlinePrefsSnapshot,
+  getOutlinePrefsServerSnapshot,
+  setOutlinePrefs,
+  setOutlineCollapsed,
+} from "./outline-prefs-store";
+
+/* ── Indentation model (single source of truth) ─────────────────────────
+ * One place defines the outline's left-edge geometry, used by both the view
+ * tree and the edit-mode pods (and the focus-band / position measurement that
+ * key off the same rows). Goals: minimize the fixed left inset (#4), deepen
+ * the per-level step so nesting reads clearly (#5), and give a fixed number
+ * column so wrapped heading text hangs like a numbered list (#2). */
+const OUTLINE_BASE_INSET = 2;    // px — fixed left gutter (was 8)
+const OUTLINE_INDENT_STEP = 20;  // px per heading level (was 16)
+const OUTLINE_TWIST_COL = 15;    // px — chevron / spacer column width
+const OUTLINE_ROW_GAP = 4;       // px — gap between twist column and text
+
+/** Left pad (px) for a heading row at the given tree depth. */
+function headingIndent(depth: number): number {
+  return OUTLINE_BASE_INSET + depth * OUTLINE_INDENT_STEP;
+}
+/** Left pad (px) for a parTitle row under a heading at `depth` — one step
+ *  deeper than the heading text so it reads as belonging to the section. */
+function parTitleIndent(depth: number): number {
+  return headingIndent(depth) + OUTLINE_TWIST_COL + OUTLINE_ROW_GAP + OUTLINE_INDENT_STEP;
+}
 
 interface HeadingItem {
   id: string;
@@ -103,11 +131,21 @@ function posToAttr(pos: ResolvedPosition | null): string | null {
   return `h-${pos.headingIndex}`;
 }
 
-/** Thin lozenge that slides along the left gutter of the outline. */
-function PositionLozenge({ scrollRef, attr, color }: {
+/**
+ * Light selector that highlights the whole row of the current section,
+ * instead of a thin bar sliding up and down the gutter (#3). It reuses the
+ * by-`data-outline-pos` measurement and paints a soft full-width tint BEHIND
+ * the row (rows sit at zIndex 5 with transparent backgrounds, so the tint
+ * shows through). `variant` distinguishes the canonical pane ("fill", a soft
+ * red wash — the primary current-section selector) from the mirror pane
+ * ("edge", a slim accent bar) so a split view shows both without two clashing
+ * washes.
+ */
+function PositionHighlight({ scrollRef, attr, color, variant }: {
   scrollRef: React.RefObject<HTMLDivElement | null>;
   attr: string | null;
   color: string;
+  variant: "fill" | "edge";
 }) {
   const [pos, setPos] = useState<{ y: number; h: number } | null>(null);
 
@@ -118,7 +156,7 @@ function PositionLozenge({ scrollRef, attr, color }: {
     setPos({ y: el.offsetTop, h: el.offsetHeight });
   }, [attr, scrollRef]);
 
-  // Run before paint so the lozenge lands on the right pixel without a
+  // Run before paint so the selector lands on the right pixel without a
   // visible "old position then new" flash.
   useLayoutEffect(() => { measure(); }, [measure]);
 
@@ -137,21 +175,41 @@ function PositionLozenge({ scrollRef, attr, color }: {
 
   if (!pos) return null;
 
+  if (variant === "edge") {
+    return (
+      <div
+        style={{
+          position: "absolute",
+          left: 0,
+          top: 0,
+          width: 3,
+          borderRadius: 1.5,
+          background: color,
+          opacity: 0.75,
+          transform: `translateY(${pos.y}px)`,
+          height: pos.h,
+          transition: "transform 200ms ease-out, height 200ms ease-out, opacity 200ms ease",
+          pointerEvents: "none",
+          zIndex: 2,
+        }}
+      />
+    );
+  }
+
   return (
     <div
       style={{
         position: "absolute",
-        left: 5,
+        left: 0,
+        right: 0,
         top: 0,
-        width: 3,
-        borderRadius: 1.5,
         background: color,
-        opacity: 0.7,
         transform: `translateY(${pos.y}px)`,
         height: pos.h,
-        transition: "transform 250ms ease-out, height 250ms ease-out, opacity 200ms ease",
+        borderRadius: 6,
+        transition: "transform 200ms ease-out, height 200ms ease-out",
         pointerEvents: "none",
-        zIndex: 10,
+        zIndex: 1,
       }}
     />
   );
@@ -663,8 +721,8 @@ function OutlineNode({
     <div>
       <div
         data-outline-pos={`h-${node.heading.index}`}
-        className={`flex items-start gap-1 group cursor-pointer rounded ${isFocusEditing ? "" : "hover-on-light"}`}
-        style={{ paddingLeft: `${depth * 16 + 8}px`, paddingRight: 8, paddingTop: 4, paddingBottom: 4, opacity: dimOutsideFocus ? 0.3 : 1, transition: "opacity 200ms ease", position: "relative", zIndex: 5 }}
+        className={`flex items-start group cursor-pointer rounded ${isFocusEditing ? "" : "hover-on-light"}`}
+        style={{ paddingLeft: `${headingIndent(depth)}px`, paddingRight: 8, paddingTop: 4, paddingBottom: 4, gap: OUTLINE_ROW_GAP, opacity: dimOutsideFocus ? 0.3 : 1, transition: "opacity 200ms ease", position: "relative", zIndex: 5 }}
         onClick={handleRowClick(node.heading.index)}
       >
         {hasChildren ? (
@@ -673,7 +731,8 @@ function OutlineNode({
               e.stopPropagation();
               onToggle(node.heading.id);
             }}
-            className="mt-0.5 p-0.5 rounded text-[var(--muted)] hover:text-ink-body transition-colors shrink-0"
+            className="mt-0.5 rounded text-[var(--muted)] hover:text-ink-body transition-colors shrink-0 flex items-center justify-center"
+            style={{ width: OUTLINE_TWIST_COL, height: 16 }}
           >
             <svg
               width="12"
@@ -690,23 +749,33 @@ function OutlineNode({
             </svg>
           </button>
         ) : (
-          <span className="w-4 shrink-0" />
+          <span className="shrink-0" style={{ width: OUTLINE_TWIST_COL }} />
         )}
         <div className="min-w-0 flex-1">
-          <span
-            className={`text-sm leading-snug ${
-              node.heading.level <= 1
-                ? "font-semibold text-ink-strong"
-                : node.heading.level === 2
-                  ? "font-medium text-ink-body"
-                  : "text-ink-body"
-            }`}
-          >
+          {/* Number + text as a two-column flex row so a wrapped heading hangs
+              under its own text, not under the number (#2 \u2014 like a numbered
+              list). */}
+          <div className="flex">
             {showNumbers && node.heading.sectionNumber && (
-              <span className="text-ink-muted font-normal">{node.heading.sectionNumber}{"\u00a0\u00a0"}</span>
+              <span
+                className="shrink-0 text-ink-muted font-normal text-sm leading-snug tabular-nums"
+                style={{ minWidth: "2.1em", paddingRight: 6 }}
+              >
+                {node.heading.sectionNumber}
+              </span>
             )}
-            {node.heading.text}
-          </span>
+            <span
+              className={`min-w-0 flex-1 text-sm leading-snug break-words ${
+                node.heading.level <= 1
+                  ? "font-semibold text-ink-strong"
+                  : node.heading.level === 2
+                    ? "font-medium text-ink-body"
+                    : "text-ink-body"
+              }`}
+            >
+              {node.heading.text}
+            </span>
+          </div>
           {showLabels && onUpdateLabel && node.heading.uuid && (
             <InlineLabel
               label={node.heading.label}
@@ -738,7 +807,7 @@ function OutlineNode({
                 data-outline-pos={`pt-${pt.index}`}
                 className={`cursor-pointer rounded text-[11px] text-[#857070] truncate ${isFocusEditing ? "" : "hover-on-light"}`}
                 style={{
-                  paddingLeft: `${(depth + 1) * 16 + 24}px`,
+                  paddingLeft: `${parTitleIndent(depth)}px`,
                   paddingRight: 8,
                   paddingTop: 2,
                   paddingBottom: 2,
@@ -953,9 +1022,9 @@ function EditablePod({
     setEditing(false);
   };
 
-  const indent = pod.type === "parTitle"
-    ? (3 * 16 + 8) // parTitles indent at level 4
-    : ((pod.level - 1) * 16 + 8);
+  // Edit-mode pods indent by their level through the shared model (parTitles
+  // are level 4). Same base-inset + per-level step as the view tree.
+  const indent = headingIndent(pod.level - 1);
 
   const isParTitle = pod.type === "parTitle";
   const showChevron = !isParTitle && pod.hasCollapsibleChildren;
@@ -1189,58 +1258,11 @@ function EditableOutline({
   );
 }
 
-/* ── Storage ───────────────────────────────────────────────────────── */
-
-const OUTLINE_STORAGE_KEY = "virgil-outline-prefs";
-
-interface OutlinePrefs {
-  collapsed: string[];
-  showLabels: boolean;
-  showTitles: boolean;
-  showWordCount: boolean;
-  showPosition: boolean;
-  showNumbers: boolean;
-}
-
-function loadOutlinePrefs(): OutlinePrefs {
-  const defaults: OutlinePrefs = {
-    collapsed: [],
-    showLabels: true,
-    showTitles: true,
-    showWordCount: true,
-    showPosition: true,
-    showNumbers: false,
-  };
-  if (typeof window === "undefined") return defaults;
-  try {
-    const raw = localStorage.getItem(OUTLINE_STORAGE_KEY);
-    if (!raw) return defaults;
-    const parsed = JSON.parse(raw) as Partial<OutlinePrefs>;
-    return { ...defaults, ...parsed };
-  } catch {
-    return defaults;
-  }
-}
-
-function saveOutlinePrefs(
-  collapsed: Set<string>,
-  showLabels: boolean,
-  showTitles: boolean,
-  showWordCount: boolean,
-  showPosition: boolean,
-  showNumbers: boolean,
-) {
-  try {
-    localStorage.setItem(OUTLINE_STORAGE_KEY, JSON.stringify({
-      collapsed: [...collapsed],
-      showLabels,
-      showTitles,
-      showWordCount,
-      showPosition,
-      showNumbers,
-    }));
-  } catch {}
-}
+/* ── Storage ───────────────────────────────────────────────────────────
+ * View prefs now live in a shared, localStorage-backed external store
+ * (./outline-prefs-store) consumed via useSyncExternalStore, so they survive
+ * BOTH reload and the docked↔popped-out remount (OUT-#7). The old per-instance
+ * useState + load/save-effects pair lived here. */
 
 /* ── Focus band overlay ──────────────────────────────────────────── */
 
@@ -1568,40 +1590,32 @@ function FocusBand({
 /* ── Main OutlinePanel ─────────────────────────────────────────────── */
 
 function OutlinePanel({ content, onScrollTo, onReorderBlocks, onRenameHeading, onRenameParTitle, onUpdateLabel, isLabelTaken, activeSectionPath, activeParTitleIndex, editorSplit, mirrorSectionPath, mirrorParTitleIndex, focusState, onFocusActivate, onFocusDeactivate, onFocusToggleLock, onFocusMoveTo, onFocusExpandTo, onFocusSnapBoundary }: OutlinePanelProps) {
-  const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
-  const [showLabels, setShowLabels] = useState(true);
-  const [showTitles, setShowTitles] = useState(true);
-  const [showWordCount, setShowWordCount] = useState(true);
-  const [showPosition, setShowPosition] = useState(true);
-  const [showNumbers, setShowNumbers] = useState(false);
+  // View prefs come from the shared external store — survive reload AND the
+  // docked↔popped-out remount (OUT-#7). No per-instance useState/localStorage.
+  const prefs = useSyncExternalStore(
+    subscribeOutlinePrefs,
+    getOutlinePrefsSnapshot,
+    getOutlinePrefsServerSnapshot,
+  );
+  // `collapsed` is exposed as a mutable Set for the existing consumers; its
+  // identity only changes when the stored fold set does.
+  const collapsed = useMemo(() => new Set(prefs.collapsed), [prefs.collapsed]);
+  const { showLabels, showTitles, showWordCount, showPosition, showNumbers } = prefs;
+  // Fold-set writes go straight to the stable module setter (referencing it
+  // directly keeps the toggle/collapse callbacks dependency-free).
+  const setShowLabels = (v: boolean) => setOutlinePrefs({ showLabels: v });
+  const setShowTitles = (v: boolean) => setOutlinePrefs({ showTitles: v });
+  const setShowWordCount = (v: boolean) => setOutlinePrefs({ showWordCount: v });
+  const setShowPosition = (v: boolean) => setOutlinePrefs({ showPosition: v });
+  const setShowNumbers = (v: boolean) => setOutlinePrefs({ showNumbers: v });
+
   const [menuOpen, setMenuOpen] = useState(false);
   const [editMode, setEditMode] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
-  const initialized = useRef(false);
   // Per-section counts inherit the shared Word Count config — the
   // outline view menu no longer exposes category toggles of its own.
   const { config: wcConfig } = useWordCountConfig();
-
-  // Load persisted prefs on mount
-  useEffect(() => {
-    const saved = loadOutlinePrefs();
-    setCollapsed(new Set(saved.collapsed));
-    setShowLabels(saved.showLabels);
-    setShowTitles(saved.showTitles);
-    setShowWordCount(saved.showWordCount);
-    setShowPosition(saved.showPosition);
-    setShowNumbers(saved.showNumbers);
-  }, []);
-
-  // Mark initialized after first render with loaded state
-  useEffect(() => {
-    if (!initialized.current) {
-      initialized.current = true;
-      return;
-    }
-    saveOutlinePrefs(collapsed, showLabels, showTitles, showWordCount, showPosition, showNumbers);
-  }, [collapsed, showLabels, showTitles, showWordCount, showPosition, showNumbers]);
 
   useEffect(() => {
     if (!menuOpen) return;
@@ -1643,7 +1657,7 @@ function OutlinePanel({ content, onScrollTo, onReorderBlocks, onRenameHeading, o
   }, [editMode, showWordCount, headings, perBlockCounts, totalBlocks, wcConfig.include]);
 
   const toggleNode = useCallback((id: string) => {
-    setCollapsed((prev) => {
+    setOutlineCollapsed((prev) => {
       const next = new Set(prev);
       if (next.has(id)) next.delete(id);
       else next.add(id);
@@ -1693,7 +1707,7 @@ function OutlinePanel({ content, onScrollTo, onReorderBlocks, onRenameHeading, o
   const isSplit = !!editorSplit;
 
   const collapseAll = useCallback(() => {
-    setCollapsed(new Set(headings.filter((h, i) => {
+    setOutlineCollapsed(new Set(headings.filter((h, i) => {
       const hasSubHeading = i < headings.length - 1 && headings[i + 1].level > h.level;
       const hasTitles = showTitles && h.parTitles.length > 0;
       return hasSubHeading || hasTitles;
@@ -1701,7 +1715,7 @@ function OutlinePanel({ content, onScrollTo, onReorderBlocks, onRenameHeading, o
   }, [headings, showTitles]);
 
   const expandAll = useCallback(() => {
-    setCollapsed(new Set());
+    setOutlineCollapsed(new Set());
   }, []);
 
   const headerLeading = (
@@ -1822,6 +1836,29 @@ function OutlinePanel({ content, onScrollTo, onReorderBlocks, onRenameHeading, o
           )}
         </button>
       )}
+      {/* Expand / collapse all — relocated from the scroll body into the
+          header, after Focus/Lock (#9). */}
+      <span className="w-px h-3.5 bg-[var(--border)] mx-0.5" aria-hidden="true" />
+      <button
+        onClick={expandAll}
+        className="p-0.5 rounded-md text-[var(--muted)] hover:text-ink-body transition-colors"
+        data-hint="Expand all"
+      >
+        <svg width="12" height="9" viewBox="0 0 14 10" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+          <path d="M2 1 L7 4.5 L12 1" />
+          <path d="M2 5.5 L7 9 L12 5.5" />
+        </svg>
+      </button>
+      <button
+        onClick={collapseAll}
+        className="p-0.5 rounded-md text-[var(--muted)] hover:text-ink-body transition-colors"
+        data-hint="Collapse all"
+      >
+        <svg width="12" height="9" viewBox="0 0 14 10" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+          <path d="M2 4.5 L7 1 L12 4.5" />
+          <path d="M2 9 L7 5.5 L12 9" />
+        </svg>
+      </button>
     </div>
   );
 
@@ -1833,28 +1870,6 @@ function OutlinePanel({ content, onScrollTo, onReorderBlocks, onRenameHeading, o
       variant="raw"
     >
       <div ref={scrollRef} className="flex-1 overflow-y-auto p-1 relative">
-        <div className="absolute top-2.5 left-3 z-10 flex items-center gap-1">
-          <button
-            onClick={expandAll}
-            className="text-[var(--muted)] hover:text-ink-body transition-colors"
-            data-hint="Expand all"
-          >
-            <svg width="11" height="8" viewBox="0 0 14 10" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M2 1 L7 4.5 L12 1" />
-              <path d="M2 5.5 L7 9 L12 5.5" />
-            </svg>
-          </button>
-          <button
-            onClick={collapseAll}
-            className="text-[var(--muted)] hover:text-ink-body transition-colors"
-            data-hint="Collapse all"
-          >
-            <svg width="11" height="8" viewBox="0 0 14 10" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M2 4.5 L7 1 L12 4.5" />
-              <path d="M2 9 L7 5.5 L12 9" />
-            </svg>
-          </button>
-        </div>
         {editMode && onReorderBlocks && onRenameHeading && onRenameParTitle ? (
           <EditableOutline
             headings={headings}
@@ -1866,7 +1881,10 @@ function OutlinePanel({ content, onScrollTo, onReorderBlocks, onRenameHeading, o
             onRenameParTitle={onRenameParTitle}
           />
         ) : (
-          <div className="bg-surface rounded-lg border border-edge-subtle pt-3 pb-5 px-1 relative min-h-full">
+          // No inner card — the outline sits directly on the panel's warm
+          // sheet (#1). This div stays `relative` as the positioning context
+          // for the focus band + the current-section selector.
+          <div className="relative min-h-full pt-1.5 pb-4">
             {/* Focus band overlay — only in unlocked mode */}
             {focusState?.active && !focusState.locked && (
               <FocusBand
@@ -1878,11 +1896,13 @@ function OutlinePanel({ content, onScrollTo, onReorderBlocks, onRenameHeading, o
                 onSnapBoundary={onFocusSnapBoundary}
               />
             )}
-            {/* Position lozenge(s) — absolutely positioned, slides to current row */}
+            {/* Current-position selector — a soft full-row tint behind the
+                active section (#3), not a sliding bar. Mirror pane (split) gets
+                a slim green edge so both panes stay legible. */}
             {showPosition && (
               <>
-                <PositionLozenge scrollRef={scrollRef} attr={posToAttr(pos1)} color="var(--footnote-color, #b45757)" />
-                {isSplit && <PositionLozenge scrollRef={scrollRef} attr={posToAttr(pos2)} color="#5b8a72" />}
+                <PositionHighlight scrollRef={scrollRef} attr={posToAttr(pos1)} color="rgba(180, 87, 87, 0.13)" variant="fill" />
+                {isSplit && <PositionHighlight scrollRef={scrollRef} attr={posToAttr(pos2)} color="#5b8a72" variant="edge" />}
               </>
             )}
 
@@ -1891,9 +1911,9 @@ function OutlinePanel({ content, onScrollTo, onReorderBlocks, onRenameHeading, o
             {!(focusState?.active && focusState.locked && headings.length > 0 && (0 < focusState.startBlockIndex || 0 > focusState.endBlockIndex)) && (
               <div
                 data-outline-pos="docstart"
-                className={`flex items-start gap-1 cursor-pointer rounded ${focusState?.active && !focusState.locked ? "" : "hover-on-light"}`}
+                className={`flex items-start cursor-pointer rounded ${focusState?.active && !focusState.locked ? "" : "hover-on-light"}`}
                 style={{
-                  paddingLeft: 8, paddingRight: 8, paddingTop: 4, paddingBottom: 4,
+                  paddingLeft: headingIndent(0), paddingRight: 8, paddingTop: 4, paddingBottom: 4, gap: OUTLINE_ROW_GAP,
                   // Dim docstart only when LOCKED focus excludes block 0 — a mere
                   // selection dims nothing (CHIP A).
                   opacity: focusState?.active && focusState.locked && headings.length > 0 && (0 < focusState.startBlockIndex || 0 > focusState.endBlockIndex) ? 0.3 : 1,
@@ -1910,8 +1930,8 @@ function OutlinePanel({ content, onScrollTo, onReorderBlocks, onRenameHeading, o
                   }
                 }}
               >
-                <span className="w-4 shrink-0" />
-                <div className="min-w-0 flex-1 text-sm leading-snug truncate">
+                <span className="shrink-0" style={{ width: OUTLINE_TWIST_COL }} />
+                <div className="min-w-0 flex-1 text-sm leading-snug break-words">
                   {docTitle ? (
                     <>
                       <span className="font-normal text-ink-muted">Title: </span>
@@ -1945,7 +1965,7 @@ function OutlinePanel({ content, onScrollTo, onReorderBlocks, onRenameHeading, o
                       data-outline-pos={`pt-${pt.index}`}
                       className={`cursor-pointer rounded text-[11px] text-[#857070] truncate ${focusState?.active && !focusState.locked ? "" : "hover-on-light"}`}
                       style={{
-                        paddingLeft: 40, paddingRight: 8, paddingTop: 2, paddingBottom: 2,
+                        paddingLeft: parTitleIndent(0), paddingRight: 8, paddingTop: 2, paddingBottom: 2,
                         opacity: ptDim ? 0.3 : 1,
                         transition: "opacity 200ms ease",
                         position: "relative",
