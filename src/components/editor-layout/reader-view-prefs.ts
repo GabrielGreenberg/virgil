@@ -1,37 +1,46 @@
 /**
- * Reader-mode `EditorPaneViewPrefs` — minimal stateful shim.
+ * Reader-mode `EditorPaneViewPrefs` — a THIN consumer of the real
+ * view-state engine.
  *
- * The Reader is read-only and doesn't persist popout / dock state, but
- * the strip-icon click flow needs *some* mutable state to do anything
- * useful (`openPanelDocked` is a no-op without it). This hook keeps a
- * tiny session-only slice of state — the active panel per side, plus
- * default-enabled omni categories — and stubs the rest.
+ * The Library Reader mounts the canonical `<EditorPane>` read-only. It used
+ * to drive a ~378-line hand-rolled shim that re-implemented half of
+ * `useViewPrefs` and stubbed the rest as no-ops — which left the panel-strip
+ * buttons, the panel↔text divider, Outline click-to-scroll, the Bibliography
+ * filter, and the omni "hide all" toggle all dead.
  *
- * The shim's purpose is to satisfy the canonical `if (viewPrefs)`
- * branch in PaneRail (and the OmniHost / FloatingPanel / SectionLozenge
- * / expand-all gates), unlocking the full panel-rail surface for
- * Reader mounts without adding a separate placeholder render path.
+ * Now the Reader runs the SAME `useViewPrefs` engine in `"ephemeral"` mode
+ * (in-memory, no persistence) and assembles its bundle through the SAME
+ * `buildEditorPaneViewPrefs` builder the main app uses. The only delta is a
+ * single NAMED set of editor handlers (`EditorMutationHandlers`): because the
+ * Reader is read-only, MOST are no-ops — but they satisfy the type IN FULL,
+ * so a Reader control that's secretly a no-op is now a compile error, not a
+ * silent dead control. The one real exception is `onScrollToHeading` (Outline
+ * click-to-scroll), ported from the formerly-dead Reader outline branch in
+ * EditorPane (it needs the live editor, threaded in as the hook arg).
+ *
+ * Margins, panel widths, the stacked dock engine, popouts, band heights, and
+ * omni toggles all come from the real `vp` now, so they are FUNCTIONAL.
  */
 
 "use client";
 
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useMemo } from "react";
+import type { Editor } from "@tiptap/react";
 import type { EditorPaneViewPrefs } from "@/components/EditorPane";
+import { useViewPrefs, type Side } from "@/hooks/useViewPrefs";
 import {
-  useViewPrefs,
-  type PanelId,
-  type Side,
-  type ViewPrefs,
-} from "@/hooks/useViewPrefs";
+  buildEditorPaneViewPrefs,
+  type EditorMutationHandlers,
+  type EditorPaneViewDerivations,
+} from "./build-editor-pane-view-prefs";
 import { PANEL_REGISTRY } from "@/panels/panel-registry";
-import { DEFAULT_PRINT_OPTIONS } from "@/lib/print";
 import {
-  DEFAULT_OMNI_CATEGORIES,
   PANEL_TO_CATEGORY,
   type OmniCategory,
 } from "@/panels/Omni/OmniViewPanel";
 
-// Each OmniCategory → its native side, sourced from PANEL_REGISTRY.
+// Each OmniCategory → its native side, sourced from PANEL_REGISTRY. Used as
+// the `categorySides` map the OmniFilterMenu renders against.
 const READER_CATEGORY_SIDES: Record<OmniCategory, Side> = (() => {
   const out: Partial<Record<OmniCategory, Side>> = {};
   for (const entry of Object.values(PANEL_REGISTRY)) {
@@ -43,336 +52,134 @@ const READER_CATEGORY_SIDES: Record<OmniCategory, Side> = (() => {
   return out as Record<OmniCategory, Side>;
 })();
 
-// Default omni categories per side for the Reader. Mirrors the 6
-// reader-visible panel kinds in `READER_CHROME.visiblePanelKinds`. The
-// OmniHost surfaces the matching cards when the user clicks a strip
-// icon (the click drives the reader's active-panel state → `dockStack`).
-const DEFAULT_READER_OMNI_LEFT = new Set<OmniCategory>([
-  "outline",
-  "footnotes",
-  "citations",
-  "bibliography",
-  "examples",
-]);
-const DEFAULT_READER_OMNI_RIGHT = new Set<OmniCategory>(["notes"]);
+/**
+ * The Reader's no-op editor handlers (everything EXCEPT `onScrollToHeading`,
+ * which is supplied per-mount because it needs the live editor). The Reader
+ * is read-only, so every doc mutation is a no-op. Typed as the named
+ * `EditorMutationHandlers` minus the one live handler so any future addition
+ * forces an explicit choice here rather than silently defaulting to nothing.
+ */
+const READER_NOOP_HANDLERS: Omit<EditorMutationHandlers, "onScrollToHeading"> = {
+  orphanedFootnotes: [],
+  onEditOrphan: () => {},
+  onDeleteOrphan: () => {},
+  onEditOrphanTitle: () => {},
+  onReorderBlocks: () => {},
+  onRenameHeading: () => {},
+  onRenameParTitle: () => {},
+  onUpdateLabel: () => {},
+  isLabelTaken: () => false,
+  onFocusActivate: () => {},
+  onFocusDeactivate: () => {},
+  onFocusToggleLock: () => {},
+  onFocusMoveTo: () => {},
+  onFocusExpandTo: () => {},
+  onFocusSnapBoundary: () => {},
+  focusFloating: () => {},
+  setIsResizingPanels: () => {},
+  // The real `vp` engine already holds the widths/margins — nothing to snap
+  // to a rendered width before a drag.
+  syncPanelPrefsToRendered: () => {},
+  setZenLeftMargin: () => {},
+  setZenRightMargin: () => {},
+  // Reader writes are intentionally scoped to note annotations; per-card
+  // archive view + the atom-archive warning never change in a read-only doc.
+  setCardArchiveView: () => {},
+  setSuppressArchiveAtomWarning: () => {},
+};
 
 /**
- * Returns a stable `EditorPaneViewPrefs` for the Reader, with minimal
- * state for active-panel tracking. Most callbacks are no-ops; popouts,
- * float positions, dock slots beyond the current click, and zen mode
- * remain inert.
+ * Returns a stable `EditorPaneViewPrefs` for the Reader, backed by the real
+ * `useViewPrefs` engine in ephemeral mode. Strip clicks, the panel↔text
+ * divider, dock stacking, margins, popouts, the Bibliography filter, Outline
+ * click-to-scroll, and the omni hide-all toggle are all functional by
+ * construction.
+ *
+ * @param editor the live TipTap editor (for Outline click-to-scroll); null
+ *   until the editor mounts, in which case scroll is a no-op.
  */
-export function useReaderViewPrefs(): EditorPaneViewPrefs {
-  // Placements + movePanel come from the persistent global pref store,
-  // so dragging a panel-icon in the Reader updates the same value the
-  // main editor reads, and vice versa.
-  const realPrefs = useViewPrefs();
-  const persistentPlacements = realPrefs.prefs.placements;
-  const persistentMovePanel = realPrefs.movePanel;
+export function useReaderViewPrefs(editor: Editor | null): EditorPaneViewPrefs {
+  // The real engine, but in-memory only — its setters mutate session state
+  // and never touch the user's persisted editor layout.
+  const vp = useViewPrefs({ persistence: "ephemeral" });
 
-  const sideForPanel = useCallback(
-    (id: PanelId): Side => {
-      const placed = persistentPlacements.find((p) => p.id === id);
-      // PANEL_REGISTRY is keyed by PanelKind; "blank" isn't a registered
-      // panel — the lookup returns undefined for it and the optional
-      // chain handles the fallback to "right".
-      const reg = (PANEL_REGISTRY as Record<string, { defaultStripSide: Side | null } | undefined>)[id];
-      return placed?.side ?? reg?.defaultStripSide ?? "right";
-    },
-    [persistentPlacements],
+  // Omni read-helpers derived from the live ephemeral prefs (same shape the
+  // main app derives in EditorLayout). Reference-stable per side so the
+  // OmniViewPanel `memo()` isn't broken on each render.
+  const leftEnabled = useMemo(
+    () => new Set(vp.prefs.omniCategories.left),
+    [vp.prefs.omniCategories.left],
   );
-
-  const [activeLeft, setActiveLeft] = useState<PanelId | null>(null);
-  const [activeRight, setActiveRight] = useState<PanelId | null>(null);
-  const [omniEnabledLeft, setOmniEnabledLeft] = useState(
-    DEFAULT_READER_OMNI_LEFT,
+  const rightEnabled = useMemo(
+    () => new Set(vp.prefs.omniCategories.right),
+    [vp.prefs.omniCategories.right],
   );
-  const [omniEnabledRight, setOmniEnabledRight] = useState(
-    DEFAULT_READER_OMNI_RIGHT,
-  );
-  // Session-only L/R panel-column widths so the user can drag the
-  // boundary between the panel rail and the editor pod.
-  const [panelWidths, setPanelWidthsState] = useState<Record<string, number>>({});
-  const setPanelWidth = useCallback(
-    (side: Side, _id: PanelId, width: number) => {
-      setPanelWidthsState((prev) => ({ ...prev, [side]: width }));
-    },
-    [],
-  );
-  const getPanelWidth = useCallback(
-    (side: Side, _id: PanelId): number => panelWidths[side] || 320,
-    [panelWidths],
-  );
-  // Session-only popout state. Reader doesn't persist popouts across
-  // reloads, but the lift-gesture from the paragraph/selection drag
-  // handles needs real state to drive `EditorPane`'s popouts render
-  // block (gated on `viewPrefs.prefs.poppedOutCards`). Mirrors the
-  // contract in `useViewPrefs` (toggle on re-dock wipes the saved
-  // position) so consumers behave identically.
-  const [poppedOutCards, setPoppedOutCards] = useState<string[]>([]);
-  const [cardFloatPositions, setCardFloatPositions] = useState<
-    Record<string, { x: number; y: number; width: number; height: number }>
-  >({});
-  const toggleCardPopout = useCallback((key: string) => {
-    setPoppedOutCards((prev) => {
-      if (prev.includes(key)) return prev.filter((k) => k !== key);
-      return [...prev, key];
-    });
-    setCardFloatPositions((prev) => {
-      if (!(key in prev)) return prev;
-      const { [key]: _dropped, ...rest } = prev;
-      return rest;
-    });
-  }, []);
-  const closeCardPopout = useCallback((key: string) => {
-    setPoppedOutCards((prev) =>
-      prev.includes(key) ? prev.filter((k) => k !== key) : prev,
-    );
-    setCardFloatPositions((prev) => {
-      if (!(key in prev)) return prev;
-      const { [key]: _dropped, ...rest } = prev;
-      return rest;
-    });
-  }, []);
-  const setCardFloatPosition = useCallback(
-    (key: string, rect: { x: number; y: number; width: number; height: number }) => {
-      setCardFloatPositions((prev) => ({ ...prev, [key]: rect }));
-    },
-    [],
-  );
-  // Lockstep popout-key remap (a card morphing kind while popped). Mirrors the
-  // editor's `migratePoppedOutCards` over the shim's local state so the saved
-  // rect follows the key. Inert in practice (the Reader is read-only), but kept
-  // honest so `EditorPaneViewPrefs` is satisfiable without a cast.
-  const remapCardPopKey = useCallback((oldKey: string, newKey: string) => {
-    if (oldKey === newKey) return;
-    setPoppedOutCards((prev) =>
-      prev.includes(oldKey) ? prev.map((k) => (k === oldKey ? newKey : k)) : prev,
-    );
-    setCardFloatPositions((prev) => {
-      if (!(oldKey in prev)) return prev;
-      const { [oldKey]: rect, ...rest } = prev;
-      return { ...rest, [newKey]: rect };
-    });
-  }, []);
-
-  // Build a `ViewPrefs` snapshot. The band-stack `dockStack` reflects the
-  // reader's single active panel per side so OmniHost / PanelColumn render
-  // their content. `omni`/`blank` are NOT bands — omni is the always-mounted
-  // background; `blank` is an empty-state marker tracked on `blankLeft/Right`.
-  const prefs = useMemo<ViewPrefs>(() => {
-    const leftBand =
-      activeLeft && activeLeft !== "omni" && activeLeft !== "blank"
-        ? activeLeft
-        : null;
-    const rightBand =
-      activeRight && activeRight !== "omni" && activeRight !== "blank"
-        ? activeRight
-        : null;
-    const dockStack: ViewPrefs["dockStack"] = {
-      left: leftBand ? [leftBand] : [],
-      right: rightBand ? [rightBand] : [],
-    };
-    return {
-      placements: persistentPlacements,
-      dockStack,
-      panelHeights: {},
-      panelMRU: { left: [], right: [] },
-      collapsedLeft: false,
-      collapsedRight: false,
-      blankLeft: activeLeft === "blank",
-      blankRight: activeRight === "blank",
-      panelWidths,
-      editorSplit: false,
-      editorSplitRatio: 0.5,
-      codePaneRatio: 0.55,
-      poppedOutPanels: [],
-      poppedOutOrigins: {},
-      floatPositions: {},
-      panelModes: {},
-      poppedOutCards,
-      cardFloatPositions,
-      showHighlights: true,
-      hiddenHighlightTypes: [],
-      pageWidth: 880,
-      editorLeftMargin: 88,
-      editorRightMargin: 72,
-      editorTopMargin: 40,
-      editorBottomMargin: 40,
-      printOptions: DEFAULT_PRINT_OPTIONS,
-      topbarRightCollapsed: false,
-      // Reader exposes the same decoration schema as the editor, but
-      // hard-coded to the reader-appropriate defaults (no persistence).
-      showParTitles: true,
-      showLatexComments: true,
-      showMarginalia: true,
-      hiddenMarginaliaTypes: [],
-      showSectionIndicator: true,
-      showHeadingLabels: true,
-      dividerLevels: [],
-      dividerWidth: "full",
-      // Reader bibliography filter — no persistence; the panel's own
-      // session-only fallback drives it when no setter is provided.
-      bibFilter: "cited",
-      omniCategories: DEFAULT_OMNI_CATEGORIES,
-      omniHideAllCards: { left: false, right: false },
-      // Reader is read-only: no per-card archive view state, never suppressed.
-      cardArchiveView: {},
-      suppressArchiveAtomWarning: false,
-    };
-  }, [
-    persistentPlacements,
-    activeLeft,
-    activeRight,
-    panelWidths,
-    poppedOutCards,
-    cardFloatPositions,
-  ]);
-
-  const openPanelDocked = useCallback(
-    (id: PanelId, side?: Side) => {
-      const s = side ?? sideForPanel(id);
-      if (s === "left") setActiveLeft(id);
-      else setActiveRight(id);
-    },
-    [sideForPanel],
-  );
-
-  const closePopout = useCallback((id: PanelId) => {
-    setActiveLeft((cur) => (cur === id ? null : cur));
-    setActiveRight((cur) => (cur === id ? null : cur));
-  }, []);
-
-  const togglePanel = useCallback(
-    (id: PanelId) => {
-      const s = sideForPanel(id);
-      if (s === "left") {
-        setActiveLeft((cur) => (cur === id ? null : id));
-      } else {
-        setActiveRight((cur) => (cur === id ? null : id));
-      }
-    },
-    [sideForPanel],
-  );
-
   const getOmniEnabled = useCallback(
-    (side: Side) =>
-      side === "left" ? omniEnabledLeft : omniEnabledRight,
-    [omniEnabledLeft, omniEnabledRight],
+    (side: Side) => (side === "left" ? leftEnabled : rightEnabled),
+    [leftEnabled, rightEnabled],
+  );
+  const getOmniHideAll = useCallback(
+    (side: Side) => vp.prefs.omniHideAllCards[side],
+    [vp.prefs.omniHideAllCards],
   );
 
-  const toggleOmniCategory = useCallback((side: Side, cat: OmniCategory) => {
-    const setter = side === "left" ? setOmniEnabledLeft : setOmniEnabledRight;
-    setter((prev) => {
-      const next = new Set(prev);
-      if (next.has(cat)) next.delete(cat);
-      else next.add(cat);
-      return next;
-    });
-  }, []);
+  // Outline click-to-scroll — the one REAL Reader handler. Ported verbatim
+  // from the formerly-dead `// Reader path — direct OutlinePanel` branch in
+  // EditorPane: find the heading by its top-level block index, select it,
+  // and scroll its DOM node into view.
+  const onScrollToHeading = useCallback(
+    (headingIndex: number) => {
+      if (!editor) return;
+      let idx = 0;
+      let foundPos: number | null = null;
+      editor.state.doc.forEach((_node, pos) => {
+        if (idx === headingIndex) foundPos = pos;
+        idx++;
+      });
+      if (foundPos == null) return;
+      editor.commands.focus();
+      editor.commands.setTextSelection(foundPos);
+      const { view } = editor;
+      const dom = view.nodeDOM(foundPos) as HTMLElement | null;
+      dom?.scrollIntoView({ behavior: "smooth", block: "start" });
+    },
+    [editor],
+  );
 
-  const setOmniSideToDefault = useCallback((side: Side) => {
-    if (side === "left") setOmniEnabledLeft(DEFAULT_READER_OMNI_LEFT);
-    else setOmniEnabledRight(DEFAULT_READER_OMNI_RIGHT);
-  }, []);
+  const handlers = useMemo<EditorMutationHandlers>(
+    () => ({ ...READER_NOOP_HANDLERS, onScrollToHeading }),
+    [onScrollToHeading],
+  );
 
-  return useMemo<EditorPaneViewPrefs>(
+  const derivations = useMemo<EditorPaneViewDerivations>(
     () => ({
-      prefs,
+      // Reader has no focus mode, no section-path band, no zen mode.
       isResizingPanels: false,
       focusState: null,
       activeSectionPath: [],
       activeParTitleIndex: null,
       mirrorSectionPath: [],
       mirrorParTitleIndex: null,
-      setIsResizingPanels: () => {},
-      syncPanelPrefsToRendered: () => {},
-      getPanelWidth,
-      setPanelWidth,
-      setEditorLeftMargin: () => {},
-      setEditorRightMargin: () => {},
-      setEditorTopMargin: () => {},
-      setEditorBottomMargin: () => {},
       zenMode: false,
       zenLeftMargin: 0,
       zenRightMargin: 0,
-      setZenLeftMargin: () => {},
-      setZenRightMargin: () => {},
-      setActiveLeft,
-      setActiveRight,
-      togglePanel,
-      movePanel: persistentMovePanel,
-      closePopout,
-      setFloatPosition: () => {},
-      undockPanel: () => {},
-      redockPanel: (_id: PanelId, _side: Side, _index?: number) => {},
-      notePanelUse: () => {},
-      setPanelHeight: () => {},
-      clearPanelHeight: () => {},
-      tradePanelHeights: () => {},
-      toggleCardPopout,
-      closeCardPopout,
-      setCardFloatPosition,
-      remapCardPopKey,
       getOmniEnabled,
-      getOmniHideAll: () => false,
-      toggleOmniHideAllCards: () => {},
-      orphanedFootnotes: [],
-      onEditOrphan: () => {},
-      onDeleteOrphan: () => {},
-      onEditOrphanTitle: () => {},
-      onScrollToHeading: () => {},
-      onReorderBlocks: () => {},
-      onRenameHeading: () => {},
-      onRenameParTitle: () => {},
-      onUpdateLabel: () => {},
-      isLabelTaken: () => false,
-      onFocusActivate: () => {},
-      onFocusDeactivate: () => {},
-      onFocusToggleLock: () => {},
-      onFocusMoveTo: () => {},
-      onFocusExpandTo: () => {},
-      onFocusSnapBoundary: () => {},
-      focusFloating: () => {},
-      collapseLeft: () => setActiveLeft(null),
-      collapseRight: () => setActiveRight(null),
-      expandLeft: () => setActiveLeft("omni"),
-      expandRight: () => setActiveRight("omni"),
-      setBlank: (side) => {
-        if (side === "left") setActiveLeft("blank");
-        else setActiveRight("blank");
-      },
-      clearBlankIfSet: () => {
-        setActiveLeft((cur) => (cur === "blank" ? null : cur));
-        setActiveRight((cur) => (cur === "blank" ? null : cur));
-      },
-      openPanelDocked,
-      toggleOmniCategory,
-      setOmniSideToDefault,
+      getOmniHideAll,
+      setOmniSideToDefault: vp.resetOmniSide,
       categorySides: READER_CATEGORY_SIDES,
-      // Reader is read-only — card archive view never changes.
-      setCardArchiveView: () => {},
-      setSuppressArchiveAtomWarning: () => {},
-      // Reader is read-only / session-only; the bib filter has no persistence
-      // here, so the panel's local fallback drives it (this no-op is never
-      // wired through because the Reader passes no setter to the panel).
-      setBibFilter: () => {},
+      // The real engine owns the card-popout-key remap; route it through.
+      remapCardPopKey: (oldKey: string, newKey: string) =>
+        vp.migratePoppedOutCards((k) => (k === oldKey ? newKey : k)),
+      // No float z-index painter in the Reader (no MRU focus stack).
     }),
-    [
-      prefs,
-      togglePanel,
-      closePopout,
-      getOmniEnabled,
-      openPanelDocked,
-      persistentMovePanel,
-      toggleOmniCategory,
-      setOmniSideToDefault,
-      getPanelWidth,
-      setPanelWidth,
-      toggleCardPopout,
-      closeCardPopout,
-      setCardFloatPosition,
-      remapCardPopKey,
-    ],
+    // `vp` is referentially stable (useViewPrefs memoizes its return), so
+    // listing the whole object — which exhaustive-deps prefers over the
+    // individual `vp.*` member reads used here — adds no spurious recompute.
+    [vp, getOmniEnabled, getOmniHideAll],
+  );
+
+  return useMemo<EditorPaneViewPrefs>(
+    () => buildEditorPaneViewPrefs(vp, handlers, derivations),
+    [vp, handlers, derivations],
   );
 }

@@ -121,3 +121,62 @@ export function filterPanelKinds<K extends PanelKind>(
   const set = new Set(chrome.visiblePanelKinds);
   return kinds.filter((k) => set.has(k));
 }
+
+/**
+ * Map from a CARD-bearing `CardKind` → its per-doc sidecar filename. This is
+ * the *card-content* sidecar set ONLY — it intentionally omits non-card state
+ * (focus-mode, document-style, view-ui, bib-settings) which the write guard
+ * below treats as out of scope (always writable). Used to translate the
+ * chrome's `editableCardKinds` whitelist into a writable-sidecar allowlist so
+ * a read-mostly host (the Reader) can't write a card sidecar whose kind it
+ * doesn't expose an editor for — even if that kind later gains a live editor.
+ *
+ * `highlight` shares `notes.json` with `note` (one hook owns both); kinds
+ * that have no standalone editable sidecar (footnote/citation atoms,
+ * example/bib/error, the suggestion families) are omitted — they are not
+ * gated here (their editing is governed elsewhere).
+ */
+const CARD_KIND_SIDECAR: Partial<Record<CardKind, string>> = {
+  note: "notes.json",
+  highlight: "notes.json",
+  todo: "todos.json",
+  report: "reports.json",
+  "report-request": "reports.json",
+  archive: "archive.json",
+  "revision-comment": "revisions.json",
+  "cutter-comment": "cutter.json",
+};
+
+/** The set of card sidecar filenames known to the guard. A filename NOT in
+ *  this set is non-card state (focus/style/view-ui/etc.) and is never gated. */
+const KNOWN_CARD_SIDECARS = new Set(Object.values(CARD_KIND_SIDECAR));
+
+/**
+ * Safety guard for the sidecar write path: is a write to `filename` allowed
+ * under this chrome?
+ *
+ * - `editableCardKinds` undefined (FULL_CHROME / main app) → always allowed.
+ * - `filename` isn't a known CARD sidecar → always allowed (non-card state
+ *   like focus-mode / document-style is out of scope for this card guard).
+ * - `filename` IS a card sidecar → allowed only if AT LEAST ONE card kind
+ *   that maps to that sidecar is in `editableCardKinds`.
+ *
+ * The Reader (`editableCardKinds: ["note"]`) thus permits writes ONLY to
+ * `notes.json` (note + highlight share it) among the card sidecars — its
+ * note annotations land, every other card sidecar is refused. The guard is
+ * intentionally scoped to note annotations: Reader writes exist solely so a
+ * user can annotate while reading.
+ */
+export function isSidecarWriteAllowed(
+  chrome: EditorChromeConfig,
+  filename: string,
+): boolean {
+  if (!chrome.editableCardKinds) return true; // main app: everything writable
+  if (!KNOWN_CARD_SIDECARS.has(filename)) return true; // non-card state
+  const allowed = new Set(
+    chrome.editableCardKinds
+      .map((k) => CARD_KIND_SIDECAR[k])
+      .filter((f): f is string => Boolean(f)),
+  );
+  return allowed.has(filename);
+}

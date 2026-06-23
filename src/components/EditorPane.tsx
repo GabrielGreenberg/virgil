@@ -68,7 +68,9 @@ import {
   viewToggleClasses,
   type EditorChromeConfig,
 } from "./editor-layout/chrome-config";
-import OutlinePanel from "@/panels/Outline/OutlinePanel";
+// The Reader's direct `<OutlinePanel>` branch was collapsed into the single
+// `<OutlineHost>` path (both surfaces now pass `viewPrefs`), so OutlinePanel
+// is no longer mounted here — OutlineHost owns the outline render.
 import ExamplesPanel from "@/panels/Examples";
 import { PANEL_REGISTRY, cardPopKey } from "@/panels/panel-registry";
 import { focusNewCard } from "@/lib/focus-new-card";
@@ -246,7 +248,7 @@ import type {
   Side,
   DockSlotKey,
 } from "@/hooks/useViewPrefs";
-import { bandSlotKey } from "@/hooks/useViewPrefs";
+import { bandSlotKey, dockedSideOf } from "@/hooks/useViewPrefs";
 import { useMarginEdit, MARGIN_AXIS } from "@/hooks/useMarginEdit";
 import type { FocusState } from "@/hooks/useFocusMode";
 import type { OmniCategory } from "@/panels/Omni";
@@ -734,8 +736,8 @@ export interface EditorPaneProps {
   // optional props here (added during the 7.6 partial). Step 7.6
   // collapses them — they're now derived locally from
   // `viewPrefs.toggleCardPopout` + `viewPrefs.setCardFloatPosition`.
-  // Reader (no viewPrefs) gets no-op popouts; main app post-7.8
-  // wires them automatically once it passes the bundle.
+  // Both surfaces now pass the bundle (the Reader via the ephemeral
+  // `useReaderViewPrefs()`), so popouts wire automatically in each.
 }
 
 // Stable empty defaults for the (optional) error-state props. The Library
@@ -1720,11 +1722,11 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
       popped.includes(`texBlock:${uuid}`);
   }
   // Per-doc PoppedCardsContext value. Built from the `viewPrefs` prop so
-  // both the main app (full `useViewPrefs`) and the Library Reader
-  // (`useReaderViewPrefs` session shim) supply the same shape. Consumers
-  // (panel cards, SelectionDragHandle, paragraph/heading/example floats)
-  // read this via `usePoppedCards()` and tolerate a `null` value when
-  // `viewPrefs` is absent.
+  // both the main app (persisted `useViewPrefs`) and the Library Reader
+  // (`useReaderViewPrefs`, the same engine in ephemeral mode) supply the
+  // same shape. Consumers (panel cards, SelectionDragHandle,
+  // paragraph/heading/example floats) read this via `usePoppedCards()` and
+  // tolerate a `null` value if no `viewPrefs` is supplied.
   const poppedCardsValue = useMemo<PoppedCardsValue | null>(() => {
     if (!viewPrefs) return null;
     const isPopped = (key: string) => viewPrefs.prefs.poppedOutCards.includes(key);
@@ -1966,11 +1968,14 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
     footnotesHook,
     citationsHook,
   ]);
-  // Reader has no real `useViewPrefs` (that's per-window shell state).
-  // Synthesize a minimal snapshot — `useCardCreation` reads only
-  // `prefs.placements` + the docked-stack/collapsed sentinels. With
-  // an empty placements array, `ensurePanelActive` defaults to "right"
-  // for every panel id and the no-op setters keep things quiet.
+  // Fallback `ViewPrefs` snapshot for the (now theoretical) case where
+  // NO `viewPrefs` bundle is supplied at all. Both real surfaces pass one
+  // — the main app's persisted `useViewPrefs()` and the Reader's ephemeral
+  // `useReaderViewPrefs()` — so this is just a crash-guard default.
+  // `useCardCreation` reads only `prefs.placements` + the
+  // docked-stack/collapsed sentinels; with an empty placements array,
+  // `ensurePanelActive` defaults to "right" for every panel id and the
+  // no-op setters keep things quiet.
   const readerPrefs = useMemo<ViewPrefs>(
     () =>
       ({
@@ -2670,9 +2675,10 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
   // cutter, duplicate, archive, delete). The dispatch hook resolves
   // the passage to a doc range, plants the selection over it, runs
   // the matching create path with `mode: "omni"`, and ensures the
-  // omni-view is showing on the new card's panel side. Reader mode
-  // (no viewPrefs) still computes a dispatch — the omni activation
-  // steps no-op.
+  // omni-view is showing on the new card's panel side. The Reader's
+  // ephemeral `viewPrefs` makes the omni activation real, but its
+  // read-only chrome never surfaces the create handles, so the
+  // dispatch is effectively unreachable there.
   //
   // Per-CardKind clone/delete is plugged in here from each per-doc
   // sidecar hook and exposed to the dispatcher via a stable API; the
@@ -2803,9 +2809,11 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
   // gated on the reactive `editor` mount), so the publish effect runs only on
   // mount/unmount, not per render.
   // The live prefs + active-side setters the citation soft-route inspects
-  // (CHIP 4a-ii). `viewPrefs` is the FULL chrome's prefs hook; the Reader pane
-  // has no rail focus, so it falls back to the read-only `readerPrefs` + the
-  // no-op `stubSetActive` (a `\cite` in the Reader has no panel to surface).
+  // (CHIP 4a-ii). Both surfaces pass `viewPrefs` (the Reader via the
+  // ephemeral `useReaderViewPrefs()`), so `bridgeRoutingPrefs` resolves to
+  // real prefs in each; the `readerPrefs` / `stubSetActive` fallbacks only
+  // apply if no `viewPrefs` bundle is supplied at all. (The Reader is
+  // read-only, so a `\cite` never actually originates there.)
   const bridgeRoutingPrefs = viewPrefs?.prefs ?? readerPrefs;
   const bridgeSetActiveLeft = viewPrefs?.setActiveLeft ?? stubSetActive;
   const bridgeSetActiveRight = viewPrefs?.setActiveRight ?? stubSetActive;
@@ -3094,8 +3102,9 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
   // dragging them updates `liveMargins`, which the editor reads via
   // `--editor-pl/pr/pt/pb` CSS vars on the column wrapper. Save
   // commits to viewPrefs; Cancel/Escape restores the captured
-  // snapshot. Reader doesn't pass `viewPrefs` so this whole block
-  // stays dormant. State machine lives in `useMarginEdit`.
+  // snapshot. Both surfaces pass `viewPrefs` now (the Reader via the
+  // ephemeral `useReaderViewPrefs()`), so margin edit is live in the
+  // Reader too (session-only). State machine lives in `useMarginEdit`.
   const {
     marginEditMode,
     effective: effectiveMargins,
@@ -3631,28 +3640,32 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
     [setActivePanelKindBySide],
   );
 
-  // Side derivations — which side each panel is currently mounted on.
-  // Hosts use these to align cross-panel highlight sync (e.g. citations
-  // panel ↔ bibliography panel).
-  const notesPanelSide: "left" | "right" | null =
-    activeLeftPanelKind === "notes" ? "left" : activeRightPanelKind === "notes" ? "right" : null;
-  const bibliographyPanelSide: "left" | "right" | null =
-    activeLeftPanelKind === "bibliography" ? "left" : activeRightPanelKind === "bibliography" ? "right" : null;
-  const todoPanelSide: "left" | "right" | null =
-    activeLeftPanelKind === "todo" ? "left" : activeRightPanelKind === "todo" ? "right" : null;
-  const cutterPanelSide: "left" | "right" | null =
-    activeLeftPanelKind === "cutter" ? "left" : activeRightPanelKind === "cutter" ? "right" : null;
-  const reportsPanelSide: "left" | "right" | null =
-    activeLeftPanelKind === "reports" ? "left" : activeRightPanelKind === "reports" ? "right" : null;
-  const revisionsPanelSide: "left" | "right" | null =
-    activeLeftPanelKind === "revisions" ? "left" : activeRightPanelKind === "revisions" ? "right" : null;
+  // Side derivations — which side each panel is currently DOCKED on. Hosts
+  // use these to align cross-panel highlight sync (e.g. citations panel ↔
+  // bibliography panel). Read from the live `dockStack` (the canonical
+  // strip-click target) via `dockedSideOf`, NOT the retired
+  // `activeLeftPanelKind`/`activeRightPanelKind` model — those were never
+  // written by the canonical strip path, so they read stale. Null-safe when
+  // a caller omits `viewPrefs` (no panel is docked → null).
+  const dockedSide = useCallback(
+    (kind: PanelKind): "left" | "right" | null =>
+      viewPrefs ? dockedSideOf(viewPrefs.prefs, kind as PanelId) : null,
+    [viewPrefs],
+  );
+  const notesPanelSide = dockedSide("notes");
+  const bibliographyPanelSide = dockedSide("bibliography");
+  const todoPanelSide = dockedSide("todo");
+  const cutterPanelSide = dockedSide("cutter");
+  const reportsPanelSide = dockedSide("reports");
+  const revisionsPanelSide = dockedSide("revisions");
 
   // ── Per-doc popped-card render bag ───────────────────────────────
   // Constructed once over the underlying hook slices so a fresh
   // `renderPoppedCard` mount doesn't see new prop identities each
-  // frame. The Reader doesn't pass `viewPrefs` so the mount below
-  // stays dormant — but we still build the bag unconditionally for
-  // simpler memoization and to keep `useMemo` deps stable.
+  // frame. Both surfaces pass `viewPrefs` now (the Reader via the
+  // ephemeral `useReaderViewPrefs()`), so the popout mount below is
+  // live in each; the bag is built unconditionally for simpler
+  // memoization and to keep `useMemo` deps stable.
   const popoutsDeps = useMemo<PoppedCardDeps>(
     () => ({
       // Entity collections
@@ -4244,8 +4257,9 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
               AND text-object floats (paragraph / heading / example blocks),
               dispatched through AF's unified `FloatHost`. Each entry in
               `prefs.poppedOutCards` keys a `Floatable` mounted in a
-              `FloatWindow`. Reader passes no `viewPrefs` → dormant; main app
-              gates on `!zenMode` so Zen retains popout state but hides floats. */}
+              `FloatWindow`. Both surfaces pass `viewPrefs` (the Reader via
+              the ephemeral `useReaderViewPrefs()`), so this is live in each;
+              the `!zenMode` gate lets Zen retain popout state while hiding floats. */}
           {viewPrefs && !viewPrefs.zenMode && (
             <FloatHost
               keys={viewPrefs.prefs.poppedOutCards}
@@ -4286,8 +4300,9 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
               the PanelColumn's dock-slot anchor; floating panels portal
               to body. The shell preserves its component instance across
               mode flips so drag-to-undock stays one continuous gesture.
-              Reader doesn't pass viewPrefs → no panels open → block
-              doesn't render. */}
+              Both surfaces pass `viewPrefs` now (the Reader via the
+              ephemeral `useReaderViewPrefs()`), so docked/floating panels
+              render in each. */}
           {viewPrefs && (() => {
             const open: Array<{ pid: PanelId; mode: "docked" | "floating"; slotKey: DockSlotKey | null }> = [];
             const seen = new Set<PanelId>();
@@ -4860,7 +4875,8 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
                 The container bleeds 14px past the pod on each side
                 (-4 - var(--pod-gap)) to extend the manilla into the
                 column gutter — load-bearing because it masks the pod's
-                lateral box-shadow (clipPath inset(0 -20px) on the pod)
+                lateral edge (`.editor-pane-pod` is `overflow: clip`,
+                clipping descendants right at the box edge — 0px lateral)
                 at the corner. For the manila OUTER corner to be a
                 single smooth arc CONCENTRIC with the white inner's 8px
                 corner, its radius must be `pod-radius + bleed` (= 8 +
@@ -4990,6 +5006,19 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
                 // While !ready the whole thing reads as the manilla
                 // LoadingScreen field.
                 background: ready ? "var(--surface)" : "var(--background)",
+                // Pod-top fill: round the pod's OWN top corners to match the
+                // sticky frame ring so the white surface reaches the rounded
+                // top of the pod frame (otherwise the white rectangle's square
+                // top corner peeks past the frame's rounded one). TOP corners
+                // only — the bottom is owned by the sticky bottom cap, which
+                // must keep latching, so we leave the bottom square here. Use
+                // `clip` (NOT `hidden`): `clip` doesn't establish a scroll
+                // container or new containing block, so the pod's sticky
+                // descendants (frame ring, caps, lozenge) still latch to the
+                // scroll root unchanged.
+                borderTopLeftRadius: "var(--pod-radius)",
+                borderTopRightRadius: "var(--pod-radius)",
+                overflow: "clip",
                 // Marginalia portals markers as `position: absolute`
                 // children of the closest `[data-marginalia-host]`. The
                 // pod must therefore be a positioning context.
@@ -5422,10 +5451,11 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
             {/* Grab-handle portal root — TextObjectGrabHandle portals
                 its absolute-positioned handles into this div. Lives at
                 the column level (sibling of the pod), so it ESCAPES the
-                pod's clipPath (`inset(0 -20px 0 -20px)`) that clips
-                lateral descendants of the pod past ±20px — handles
-                render ~22px left of the content edge (in the margin)
-                and would otherwise be clipped. The column-level
+                pod's clip (`overflow: clip` on `.editor-pane-pod`, which
+                clips at the box edge — 0px lateral, so ANY descendant in
+                the margin is cut) — handles render ~22px left of the
+                content edge (in the margin) and would otherwise be
+                clipped. The column-level
                 placement still: (a) scrolls with content (column is
                 inside [data-virgil-row-scroll]); (b) clips behind the
                 sticky pod caps (top z:30, bottom z:31) which sit
@@ -6235,9 +6265,9 @@ interface PaneRailBodyProps {
   setSearchHighlightRange: React.Dispatch<React.SetStateAction<{ from: number; to: number } | null>>;
   openItemInPanel: (panel: PanelId, itemId: string) => void;
   wordCountHook: ReturnType<typeof useWordCount>;
-  /** Optional bundle. When provided, the body's outline branch routes
-   *  to `<OutlineHost>` (focus-mode + section-path aware); otherwise
-   *  to the simpler direct `<OutlinePanel>` (Reader path). */
+  /** View-state bundle. Both the main app and the Library Reader now supply
+   *  it (the Reader via `useReaderViewPrefs()`), so the body's outline branch
+   *  always routes to `<OutlineHost>`. Kept optional for any future caller. */
   viewPrefs?: EditorPaneViewPrefs;
 }
 
@@ -6309,53 +6339,36 @@ function PaneRailBody({
   viewPrefs,
 }: PaneRailBodyProps) {
   if (panelKind === "outline") {
-    // Main app path — full OutlineHost with section-path + focus mode.
-    if (viewPrefs) {
-      return (
-        <OutlineHost
-          content={content}
-          onScrollTo={viewPrefs.onScrollToHeading}
-          onReorderBlocks={viewPrefs.onReorderBlocks}
-          onRenameHeading={viewPrefs.onRenameHeading}
-          onRenameParTitle={viewPrefs.onRenameParTitle}
-          onUpdateLabel={viewPrefs.onUpdateLabel}
-          isLabelTaken={viewPrefs.isLabelTaken}
-          activeSectionPath={viewPrefs.activeSectionPath}
-          activeParTitleIndex={viewPrefs.activeParTitleIndex}
-          editorSplit={viewPrefs.prefs.editorSplit}
-          mirrorSectionPath={viewPrefs.mirrorSectionPath}
-          mirrorParTitleIndex={viewPrefs.mirrorParTitleIndex}
-          focusState={viewPrefs.focusState ?? { active: false } as FocusState}
-          onFocusActivate={viewPrefs.onFocusActivate}
-          onFocusDeactivate={viewPrefs.onFocusDeactivate}
-          onFocusToggleLock={viewPrefs.onFocusToggleLock}
-          onFocusMoveTo={viewPrefs.onFocusMoveTo}
-          onFocusExpandTo={viewPrefs.onFocusExpandTo}
-          onFocusSnapBoundary={viewPrefs.onFocusSnapBoundary}
-        />
-      );
-    }
-    // Reader path — direct OutlinePanel, no focus / section-path
-    // chrome (Reader chrome doesn't surface those affordances).
+    // Single OutlineHost path. Both the main app AND the Library Reader now
+    // pass `viewPrefs` (the Reader via `useReaderViewPrefs()` in ephemeral
+    // mode), so the formerly-separate Reader branch — a direct `<OutlinePanel>`
+    // with its own inline `onScrollTo` body — is gone. The Reader's real
+    // click-to-scroll now lives in `READER_EDITOR_HANDLERS.onScrollToHeading`
+    // (ported verbatim) and arrives here via `viewPrefs.onScrollToHeading`.
+    // The `!viewPrefs` early-out below keeps the prop type permissive for any
+    // future non-viewPrefs caller, but no live caller hits it.
+    if (!viewPrefs) return null;
     return (
-      <OutlinePanel
+      <OutlineHost
         content={content}
-        onScrollTo={(headingIndex: number) => {
-          if (!editor) return;
-          // Find the heading by its top-level block index in the doc.
-          let idx = 0;
-          let foundPos: number | null = null;
-          editor.state.doc.forEach((_node, pos) => {
-            if (idx === headingIndex) foundPos = pos;
-            idx++;
-          });
-          if (foundPos == null) return;
-          editor.commands.focus();
-          editor.commands.setTextSelection(foundPos);
-          const { view } = editor;
-          const dom = view.nodeDOM(foundPos) as HTMLElement | null;
-          dom?.scrollIntoView({ behavior: "smooth", block: "start" });
-        }}
+        onScrollTo={viewPrefs.onScrollToHeading}
+        onReorderBlocks={viewPrefs.onReorderBlocks}
+        onRenameHeading={viewPrefs.onRenameHeading}
+        onRenameParTitle={viewPrefs.onRenameParTitle}
+        onUpdateLabel={viewPrefs.onUpdateLabel}
+        isLabelTaken={viewPrefs.isLabelTaken}
+        activeSectionPath={viewPrefs.activeSectionPath}
+        activeParTitleIndex={viewPrefs.activeParTitleIndex}
+        editorSplit={viewPrefs.prefs.editorSplit}
+        mirrorSectionPath={viewPrefs.mirrorSectionPath}
+        mirrorParTitleIndex={viewPrefs.mirrorParTitleIndex}
+        focusState={viewPrefs.focusState ?? { active: false } as FocusState}
+        onFocusActivate={viewPrefs.onFocusActivate}
+        onFocusDeactivate={viewPrefs.onFocusDeactivate}
+        onFocusToggleLock={viewPrefs.onFocusToggleLock}
+        onFocusMoveTo={viewPrefs.onFocusMoveTo}
+        onFocusExpandTo={viewPrefs.onFocusExpandTo}
+        onFocusSnapBoundary={viewPrefs.onFocusSnapBoundary}
       />
     );
   }

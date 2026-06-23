@@ -6,6 +6,7 @@ import type { JSONContent } from "@tiptap/react";
 import EditorPane from "@/components/EditorPane";
 import type { EditorHandle } from "@/components/Editor";
 import { READER_CHROME } from "@/components/editor-layout/chrome-config";
+import { EditorChromeProvider } from "@/components/editor-layout/chrome-context";
 import { DocPipeline } from "@/components/editor-layout/DocPipeline";
 import { useReaderViewPrefs } from "@/components/editor-layout/reader-view-prefs";
 import { setDocHandle, deleteDocHandle } from "@/lib/doc-index";
@@ -41,23 +42,19 @@ interface Props {
  * Library-specific chrome layered on top of the editor:
  *  - floating `PageScrollLozenge` (`p. N` pill near the right scrollbar)
  *    surfacing the current `\pgmark{N}` printed page while scrolling
- *  - right-side panel rail with the Outline panel (more panels follow
- *    the EditorPane extraction)
  *
- * Panels currently inherited (Reader subset):
- *  - **Outline** — derived from the editor's parsed content; click any
- *    heading to scroll the reader to it.
- *
- * Panels deferred (require EditorPane extraction from EditorLayout):
- *  - Notes, Footnotes, Citations, Bibliography, Examples — depend on
- *    sidecar persistence wired through `usePersistentState`, the
- *    pristine-card manager, and the popped-cards / FloatingCards
- *    portal system.
- *  - Marginalia rendering (left + right gutter chips) — depends on
- *    `linksByParagraph` derived from all card hooks plus per-card
- *    hover/selection coupling.
- *  - Omni view, drag-drop card creation, action toolbar, formatting
- *    toolbar — orchestrated by EditorLayout.
+ * Panel + view-state inheritance (NOT a Reader subset anymore): the
+ * Reader runs the SAME `useViewPrefs` engine as the main app, in
+ * `"ephemeral"` (session-only) mode via `useReaderViewPrefs()`, assembled
+ * by the shared `buildEditorPaneViewPrefs(...)` builder. So the panel rail
+ * (for the 6 whitelisted kinds — outline, footnotes, examples, citations,
+ * bibliography, notes), the panel↔text divider, dock stacking, card
+ * popouts, omni toggles, and margins are all LIVE here (session-only). The
+ * Outline panel's click-to-scroll is wired through the one REAL Reader
+ * editor-handler (`onScrollToHeading`); the rest of the editor-mutation
+ * handlers are typed no-ops because the doc is read-only. The Reader passes
+ * no `menuBar` bundle, so only the docked MenuBar + detached toolbars stay
+ * dormant. Note cards stay editable (`READER_CHROME.editableCardKinds`).
  */
 export default function PaperRender({
   handle,
@@ -175,13 +172,16 @@ function PaperReader({
   scope,
   panel,
 }: PaperReaderProps) {
-  const readerViewPrefs = useReaderViewPrefs();
   const [content, setContent] = useState<JSONContent | null>(null);
   // PageScrollLozenge needs the live TipTap Editor instance to compute
   // page-mark scroll positions. Editor.tsx hands one back via
   // `onEditorReady`; we keep it in state (not a ref) so the lozenge
   // re-renders once the editor is mounted.
   const [editor, setEditor] = useState<Editor | null>(null);
+  // Reader view-prefs run the real `useViewPrefs` engine in ephemeral mode.
+  // The editor is threaded in so the Outline panel's click-to-scroll works
+  // (the only live editor-handler in an otherwise read-only doc).
+  const readerViewPrefs = useReaderViewPrefs(editor);
   // Tracked as state (not a ref) so the lozenge re-mounts/relays out once
   // the scroll container exists. A plain ref would leave the lozenge
   // with `null` on its first render.
@@ -368,15 +368,27 @@ function PaperReader({
             contract and gives the Reader the same `key=`-driven remount
             on docId change as the main app. */}
         <DocPipeline key={docId} docId={docId}>
-          <EditorPane
-            ref={editorRef}
-            docId={docId}
-            initialContent={content as JSONContent}
-            editable={false}
-            chrome={READER_CHROME}
-            viewPrefs={readerViewPrefs}
-            onEditorReady={setEditor}
-          />
+          {/* EditorChromeProvider here (above EditorPane) so EditorPane's
+              OWN body hooks — useNotes/useTodos/useReports/... and the
+              persistent-state write-guard inside them — resolve READER_CHROME
+              rather than the FULL_CHROME context default. EditorPane's inner
+              provider (which adds `menuBar`) only wraps its CHILDREN, so
+              without this ancestor the body hooks would read FULL_CHROME and
+              the Reader's note-only sidecar write-guard would never engage,
+              letting a load-only Mode-A anchor reconcile write card sidecars
+              to disk on a read-only open. Value MUST match EditorPane's
+              `chrome` prop below (READER_CHROME) so there's no split-brain. */}
+          <EditorChromeProvider value={READER_CHROME}>
+            <EditorPane
+              ref={editorRef}
+              docId={docId}
+              initialContent={content as JSONContent}
+              editable={false}
+              chrome={READER_CHROME}
+              viewPrefs={readerViewPrefs}
+              onEditorReady={setEditor}
+            />
+          </EditorChromeProvider>
         </DocPipeline>
       </div>
       {/* Page lozenge — a floating `p. N` pill pinned near the right

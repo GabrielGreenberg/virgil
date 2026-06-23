@@ -166,8 +166,14 @@ import { PREF_TO_CSS, DERIVED_CSS } from "@/lib/preferences-tree";
 import PreferencesModal from "./PreferencesModal";
 import EditorPane, { stubAddStyleMergeRequest } from "./EditorPane";
 import type { PaneState, EditorPaneViewPrefs, EditorPaneMenuBarBundle } from "./EditorPane";
+import {
+  buildEditorPaneViewPrefs,
+  type EditorMutationHandlers,
+  type EditorPaneViewDerivations,
+} from "./editor-layout/build-editor-pane-view-prefs";
 import { SplitWithCode } from "./editor-layout/split-with-code";
 import { FULL_CHROME } from "./editor-layout/chrome-config";
+import { EditorChromeProvider } from "./editor-layout/chrome-context";
 import { useConfirmDialog } from "./ConfirmDialog";
 import { useDocumentClassMismatchDialog } from "./DocumentClassMismatchDialog";
 import LabelRefPopover from "./LabelRefPopover";
@@ -658,6 +664,11 @@ export default function EditorLayout() {
     />
   );
 
+  // Main-app view-state engine (global persistence — the default). Captured
+  // whole so the shared `buildEditorPaneViewPrefs` builder can read every
+  // layout setter off it; the destructure below keeps the ~100 existing
+  // call sites in EditorLayout working unchanged.
+  const viewPrefsResult = useViewPrefs();
   const {
     prefs,
     togglePanel,
@@ -713,7 +724,7 @@ export default function EditorLayout() {
     setCardArchiveView,
     setSuppressArchiveAtomWarning,
     setBibFilter,
-  } = useViewPrefs();
+  } = viewPrefsResult;
   const prefsRef = useRef(prefs);
   prefsRef.current = prefs;
 
@@ -2858,46 +2869,10 @@ export default function EditorLayout() {
   // EditorPane's single live manager (see EditorPane.tsx). The duplicate set
   // that used to live here drove the render-dead shell manager and is gone.
 
-  const editorPaneViewPrefs: EditorPaneViewPrefs = useMemo(() => ({
-    prefs,
-    isResizingPanels,
-    focusState: focusMode.state,
-    activeSectionPath: currentSectionPath,
-    activeParTitleIndex: currentParTitleIndex,
-    mirrorSectionPath,
-    mirrorParTitleIndex,
-    setIsResizingPanels,
-    syncPanelPrefsToRendered,
-    getPanelWidth,
-    setPanelWidth,
-    setPanelHeight,
-    clearPanelHeight,
-    tradePanelHeights,
-    notePanelUse,
-    setEditorLeftMargin,
-    setEditorRightMargin,
-    setEditorTopMargin,
-    setEditorBottomMargin,
-    zenMode: zenModeOn,
-    zenLeftMargin,
-    zenRightMargin,
-    setZenLeftMargin,
-    setZenRightMargin,
-    setActiveLeft,
-    setActiveRight,
-    togglePanel,
-    movePanel,
-    closePopout,
-    setFloatPosition,
-    undockPanel,
-    redockPanel,
-    toggleCardPopout,
-    closeCardPopout,
-    setCardFloatPosition,
-    remapCardPopKey,
-    getOmniEnabled,
-    getOmniHideAll,
-    toggleOmniHideAllCards,
+  // The editor-only mutation handlers — the single named delta between the
+  // main app and the Reader. Memoized so the builder's `useMemo` below stays
+  // referentially stable across renders.
+  const editorMutationHandlers = useMemo<EditorMutationHandlers>(() => ({
     orphanedFootnotes,
     onEditOrphan: handleEditOrphan,
     onDeleteOrphan: handleDeleteOrphan,
@@ -2915,62 +2890,13 @@ export default function EditorLayout() {
     onFocusExpandTo: handleFocusExpandTo,
     onFocusSnapBoundary: handleFocusSnapBoundary,
     focusFloating,
-    cardFloatZIndex,
-    // ── Icon strip ─────────────────────────────────────────────────
-    collapseLeft,
-    collapseRight,
-    expandLeft,
-    expandRight,
-    setBlank,
-    clearBlankIfSet,
-    openPanelDocked,
-    toggleOmniCategory,
-    setOmniSideToDefault,
-    categorySides,
-    setCardArchiveView,
-    setSuppressArchiveAtomWarning,
-    setBibFilter,
-  }), [
-    prefs,
-    isResizingPanels,
-    focusMode.state,
-    focusMode.deactivate,
-    focusMode.toggleLock,
-    currentSectionPath,
-    currentParTitleIndex,
-    mirrorSectionPath,
-    mirrorParTitleIndex,
+    setIsResizingPanels,
     syncPanelPrefsToRendered,
-    getPanelWidth,
-    setPanelWidth,
-    setPanelHeight,
-    clearPanelHeight,
-    tradePanelHeights,
-    notePanelUse,
-    setEditorLeftMargin,
-    setEditorRightMargin,
-    setEditorTopMargin,
-    setEditorBottomMargin,
-    zenModeOn,
-    zenLeftMargin,
-    zenRightMargin,
     setZenLeftMargin,
     setZenRightMargin,
-    setActiveLeft,
-    setActiveRight,
-    togglePanel,
-    movePanel,
-    closePopout,
-    setFloatPosition,
-    undockPanel,
-    redockPanel,
-    toggleCardPopout,
-    closeCardPopout,
-    setCardFloatPosition,
-    remapCardPopKey,
-    getOmniEnabled,
-    getOmniHideAll,
-    toggleOmniHideAllCards,
+    setCardArchiveView,
+    setSuppressArchiveAtomWarning,
+  }), [
     orphanedFootnotes,
     handleEditOrphan,
     handleDeleteOrphan,
@@ -2982,25 +2908,68 @@ export default function EditorLayout() {
     handleUpdateLabel,
     checkLabelTaken,
     handleFocusActivate,
+    focusMode.deactivate,
+    focusMode.toggleLock,
     handleFocusMoveTo,
     handleFocusExpandTo,
     handleFocusSnapBoundary,
     focusFloating,
     setIsResizingPanels,
-    collapseLeft,
-    collapseRight,
-    expandLeft,
-    expandRight,
-    setBlank,
-    clearBlankIfSet,
-    openPanelDocked,
-    toggleOmniCategory,
-    setOmniSideToDefault,
-    categorySides,
+    syncPanelPrefsToRendered,
+    setZenLeftMargin,
+    setZenRightMargin,
     setCardArchiveView,
     setSuppressArchiveAtomWarning,
-    setBibFilter,
   ]);
+
+  // The EditorLayout-computed view derivations (section paths, focus state,
+  // zen geometry, omni read-helpers, category sides, float z-index painter).
+  const editorPaneViewDerivations = useMemo<EditorPaneViewDerivations>(() => ({
+    isResizingPanels,
+    focusState: focusMode.state,
+    activeSectionPath: currentSectionPath,
+    activeParTitleIndex: currentParTitleIndex,
+    mirrorSectionPath,
+    mirrorParTitleIndex,
+    zenMode: zenModeOn,
+    zenLeftMargin,
+    zenRightMargin,
+    getOmniEnabled,
+    getOmniHideAll,
+    setOmniSideToDefault,
+    categorySides,
+    remapCardPopKey,
+    cardFloatZIndex,
+  }), [
+    isResizingPanels,
+    focusMode.state,
+    currentSectionPath,
+    currentParTitleIndex,
+    mirrorSectionPath,
+    mirrorParTitleIndex,
+    zenModeOn,
+    zenLeftMargin,
+    zenRightMargin,
+    getOmniEnabled,
+    getOmniHideAll,
+    setOmniSideToDefault,
+    categorySides,
+    remapCardPopKey,
+    cardFloatZIndex,
+  ]);
+
+  // Assemble the bundle through the SAME builder the Reader uses, so the two
+  // surfaces share one view-state engine and the Editor/Reader delta is the
+  // single named `editorMutationHandlers` set above.
+  const editorPaneViewPrefs: EditorPaneViewPrefs = useMemo(
+    () =>
+      buildEditorPaneViewPrefs(
+        viewPrefsResult,
+        editorMutationHandlers,
+        editorPaneViewDerivations,
+      ),
+    [viewPrefsResult, editorMutationHandlers, editorPaneViewDerivations],
+  );
 
   const {
     handleDocPermissionGranted,
@@ -4431,6 +4400,16 @@ export default function EditorLayout() {
                 codeEditorHandleRef.current?.moveTextToCodeCursor()
               }
               left={
+                // EditorChromeProvider here (above EditorPane) so EditorPane's
+                // OWN body hooks (useNotes/useTodos/... and the persistent-state
+                // write-guard) resolve FULL_CHROME instead of the createContext
+                // default. The default also happens to be FULL_CHROME, so the
+                // main app's behavior is unchanged either way — but making the
+                // provider an ancestor keeps it parallel to the Reader mount and
+                // guarantees body hooks and EditorPane's `chrome` prop read ONE
+                // source. EditorPane's inner provider (adding `menuBar`) still
+                // wraps its children. Value MUST match the `chrome` prop below.
+                <EditorChromeProvider value={FULL_CHROME}>
                 <EditorPane
                   ref={editorRef}
                   docId={currentDocId}
@@ -4464,6 +4443,7 @@ export default function EditorLayout() {
                   toggleErrorExpanded={toggleErrorExpanded}
                   onJumpToError={jumpToError}
                 />
+                </EditorChromeProvider>
               }
               right={
                 codeView && editorInstance ? (

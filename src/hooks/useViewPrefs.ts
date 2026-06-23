@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback, useEffect, useRef } from "react";
+import { useState, useCallback, useEffect, useRef, useMemo } from "react";
 import { DEFAULT_PRINT_OPTIONS, type PrintOptions } from "@/lib/print";
 import { computeColumnSpawnRect } from "@/components/editor-layout/spawn-position";
 import { PANEL_REGISTRY } from "@/panels/panel-registry";
@@ -669,8 +669,64 @@ export function loadPrefs(): ViewPrefs {
   }
 }
 
-export function useViewPrefs() {
-  const [prefs, setPrefs] = useState<ViewPrefs>(DEFAULT_PREFS);
+/** Persistence mode for `useViewPrefs`.
+ *  - `"global"` (default): the full localStorage round-trip + cross-window
+ *    bus — the main app's behavior, unchanged.
+ *  - `"ephemeral"`: in-memory only. Every setter, the stacked-panel engine,
+ *    margins, popouts, and omni toggles run unchanged, but nothing reads
+ *    from or writes to localStorage and no cross-window bus subscription is
+ *    opened. Used by the Library Reader so its panel state is functional but
+ *    session-only (it must never clobber the user's real editor layout). */
+export type ViewPrefsPersistence = "global" | "ephemeral";
+
+/** The full return shape of `useViewPrefs` — named so the shared
+ *  `buildEditorPaneViewPrefs` builder (and the Reader) can type the bundle
+ *  they assemble from it. Inferred from the hook so it never drifts. */
+export type UseViewPrefsResult = ReturnType<typeof useViewPrefs>;
+
+/** Seed ephemeral state from `DEFAULT_PREFS`, folding in ONLY the user's
+ *  saved global page geometry + strip placements (read once, no subscribe) so
+ *  the Reader opens at the same page width / margins / strip order the editor
+ *  uses. Everything else (dock state, popouts, omni) starts fresh from
+ *  defaults and lives in-memory. Falls back to `DEFAULT_PREFS` if the read or
+ *  parse fails — never touches the per-window or legacy keys. */
+function seedEphemeralPrefs(): ViewPrefs {
+  if (typeof window === "undefined") return DEFAULT_PREFS;
+  try {
+    const raw = localStorage.getItem(GLOBAL_STORAGE_KEY);
+    if (!raw) return DEFAULT_PREFS;
+    const globalSlice = JSON.parse(raw) as Partial<ViewPrefs>;
+    // Only fold in the page-geometry + placement globals as a starting point;
+    // a deep merge of arbitrary global keys could re-introduce layout state we
+    // intentionally want defaulted. Keep this list narrow and value-typed.
+    const seed: ViewPrefs = { ...DEFAULT_PREFS };
+    if (typeof globalSlice.pageWidth === "number") seed.pageWidth = globalSlice.pageWidth;
+    if (typeof globalSlice.editorLeftMargin === "number") seed.editorLeftMargin = globalSlice.editorLeftMargin;
+    if (typeof globalSlice.editorRightMargin === "number") seed.editorRightMargin = globalSlice.editorRightMargin;
+    if (typeof globalSlice.editorTopMargin === "number") seed.editorTopMargin = globalSlice.editorTopMargin;
+    if (typeof globalSlice.editorBottomMargin === "number") seed.editorBottomMargin = globalSlice.editorBottomMargin;
+    if (Array.isArray(globalSlice.placements)) {
+      seed.placements = filterPlacements<PanelPlacement>(globalSlice.placements as PanelPlacement[]);
+    }
+    return seed;
+  } catch {
+    return DEFAULT_PREFS;
+  }
+}
+
+export function useViewPrefs(opts?: { persistence?: ViewPrefsPersistence }) {
+  // `"global"` is the default; passing no arg is byte-identical to the prior
+  // behavior. `"ephemeral"` gates off the three persistence touch-points
+  // (initial load, cross-window subscribe, and `persist`) below.
+  const ephemeral = opts?.persistence === "ephemeral";
+  const [prefs, setPrefs] = useState<ViewPrefs>(() =>
+    // Ephemeral seeds from DEFAULT_PREFS, but folds in the user's existing
+    // global page geometry / placements read ONCE at init (a pleasant
+    // starting point — same page width / margins / strip order as the editor)
+    // without subscribing to later changes. Global mode starts from
+    // DEFAULT_PREFS and hydrates from localStorage in the load effect below.
+    ephemeral ? seedEphemeralPrefs() : DEFAULT_PREFS,
+  );
   const initialized = useRef(false);
   // Deferred-persistence handoff: `update` records the change here (a pure ref
   // write) and the post-commit effect below flushes it. See the comment on
@@ -680,14 +736,25 @@ export function useViewPrefs() {
   );
 
   useEffect(() => {
+    // (a) Initial-load-from-localStorage. Ephemeral mode skips it entirely —
+    // its state was seeded in-memory from DEFAULT_PREFS (+ a one-shot global
+    // geometry read) and must not be overwritten by the persisted layout.
+    if (ephemeral) {
+      initialized.current = true;
+      return;
+    }
     setPrefs(loadPrefs());
     initialized.current = true;
-  }, []);
+  }, [ephemeral]);
 
   // Listen for global pref changes published by peer windows. Re-read
   // the global slice and merge into local state. Per-window keys are
   // never broadcast — each window's layout is its own.
   useEffect(() => {
+    // (b) Cross-window + same-window global-pref subscribe. Ephemeral mode
+    // opens no subscription — it's a read-only session store that must not be
+    // mutated by peer windows' global-pref changes.
+    if (ephemeral) return;
     const rereadGlobal = () => {
       try {
         const raw = localStorage.getItem(GLOBAL_STORAGE_KEY);
@@ -708,10 +775,15 @@ export function useViewPrefs() {
       unsubBus();
       sameWindowListeners.delete(rereadGlobal);
     };
-  }, []);
+  }, [ephemeral]);
 
   const persist = useCallback(
     (newPrefs: ViewPrefs, prevPrefs: ViewPrefs) => {
+      // (c) Persist tail (localStorage.setItem + publish/notify). Ephemeral
+      // mode never writes prefs to disk and never fans out to peers — the
+      // setters still update in-memory state via the `update`/effect path
+      // above; only this storage/notify tail is suppressed.
+      if (ephemeral) return;
       try {
         const windowSlice: Record<string, unknown> = {};
         const globalSlice: Record<string, unknown> = {};
@@ -743,7 +815,7 @@ export function useViewPrefs() {
         }
       } catch {}
     },
-    [],
+    [ephemeral],
   );
 
   const update = useCallback((fn: (prev: ViewPrefs) => ViewPrefs) => {
@@ -1505,7 +1577,19 @@ export function useViewPrefs() {
   const leftItems = prefs.placements.filter((p) => p.side === "left");
   const rightItems = prefs.placements.filter((p) => p.side === "right");
 
-  return {
+  // Referential stability: this hook runs on every render of its host
+  // (EditorLayout / the Reader). A bare object literal here would hand every
+  // consumer a fresh identity on EVERY host render — including non-prefs bumps
+  // (pdfStale / focus / presence) that touch none of these inputs. Downstream,
+  // EditorLayout's `editorPaneViewPrefs` memo depends on this whole object, so a
+  // fresh identity made it recompute every render, which cascaded into
+  // EditorPane's `poppedCardsValue` memo and re-rendered every float / grab
+  // handle / LiftHost consumer. Memoizing here restores the pre-refactor
+  // stability: the result only changes when `prefs` does. `prefs` is the sole
+  // changing input — `leftItems`/`rightItems` derive purely from it, and every
+  // setter/toggle/getter below is a referentially-stable `useCallback`, so they
+  // need not (and cannot meaningfully) be listed as deps.
+  return useMemo(() => ({
     prefs,
     leftItems,
     rightItems,
@@ -1566,5 +1650,11 @@ export function useViewPrefs() {
     migratePoppedOutCards,
     setPrintOptions,
     setTopbarRightCollapsed,
-  };
+    // `prefs` is the only changing input; `leftItems`/`rightItems` derive purely
+    // from it and every setter/toggle/getter is a stable `useCallback` (see the
+    // block comment above the `useMemo`). The result only changes when `prefs`
+    // does — listing the ~60 stable members would add noise without changing
+    // behavior, so the dep list is intentionally `[prefs]`.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }), [prefs]);
 }
