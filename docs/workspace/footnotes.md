@@ -1,4 +1,4 @@
-<!-- last-verified: 985d891 2026-06-19 -->
+<!-- last-verified: 7b5335f8 2026-06-22 -->
 <!-- derives-from: docs/architecture/VIRGIL.md#cowork-pattern -->
 <!-- covers-code: src/lib/tiptap/footnote.ts, src/lib/footnote-commands.ts, src/lib/types.ts, src/hooks/useOrphanedFootnotes.ts, src/cards/has-content.ts, editor/scripts/create_card.py, editor/scripts/apply_response.py -->
 
@@ -57,9 +57,12 @@ contract just places it.
 ```
 
 `FootnoteRef` (`src/lib/types.ts`) is `id`, `content` (Tiptap `JSONContent` doc;
-legacy HTML strings migrate on read), `createdAt`, plus the family-wide optional
-`archived?` flag (present for type-uniformity but **inert for footnotes** — see
-the delete-only note below). **There is no anchor / paragraphId field**: the
+legacy HTML strings migrate on read), `createdAt`, an optional `title` (a
+`\thanks`-style heading), an optional **`aiRequest?`** flag (#55a — see
+[the AI-request flag](#the-per-card-ai-request-flag-55a)), plus the family-wide
+optional `archived?` flag (present for type-uniformity but **inert for
+footnotes** — see the delete-only note below). **There is no anchor / paragraphId
+field**: the
 `\vfid{<id>}` in the `.tex` *is*
 the anchor, and the entry's `id` **must equal** that `\vfid` id (the id-equality
 link rule — [identity.md#footnote-and-citation-ids](identity.md#footnote-and-citation-ids)).
@@ -85,6 +88,26 @@ specifically, a Level-3 `--propose` drafts the entry into `footnotes.json` while
 leaving the `.tex` untouched until the user accepts; every other level lands the
 `\vfid{}\footnote{}` splice and the `footnotes.json` entry together, atomically,
 alongside `ai-requests.json` + `notifications.json` + `version.txt`.
+
+## The per-card AI-request flag (#55a)
+
+A footnote card carries the same per-card **AI request** affordance the other
+flag-bearing kinds have (note / highlight / todo / cutter-comment /
+revision-comment / report-request). Flipping the card's `AiRequestCheckbox`
+sets the `aiRequest?` flag on the `footnotes.json` entry AND bridges a
+`kind: "footnote"` Task into `ai-requests.json` (`bridgeCardAiRequestFlag`,
+`linkedTo: { panel: "footnotes", cardId }`); the routing is declared on
+`CARD_REGISTRY` (`{ kind: "footnote", linkPanel: "footnotes" }`), not a bespoke
+path. The flag rides the `...existing` spread through `syncFromEditor`, so it
+survives a re-parse.
+
+That Task is **drainable end-to-end** (#55b rework): `/editor/draft-footnote`
+reads the `kind: "footnote"` queue entry and, because `linkedTo.panel ===
+"footnotes"`, **REVISES the existing footnote in place** via `/editor/edit-card`
+rather than creating a duplicate (with no `linkedTo`, it composes a brand-new
+footnote — the create flow below). The footnote AI-request lives in the AIWindow
+(it is **not** in `list_requests.py`'s `PANEL_FILES` fallback — footnote flags
+are always bridged, never unbridged-virtual).
 
 ## Delete-only + orphaned footnotes
 

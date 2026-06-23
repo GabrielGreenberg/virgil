@@ -1,4 +1,4 @@
-<!-- last-verified: 590ed60 2026-06-20 -->
+<!-- last-verified: 7b5335f8 2026-06-22 -->
 <!-- derives-from: docs/architecture/VIRGIL.md#ontology -->
 <!-- covers-code: src/lib/tiptap/footnote.ts, src/lib/tiptap/citation.ts, src/lib/tiptap/math.ts, src/lib/tiptap/label.ts, src/lib/tiptap/linked-anchor.ts, src/lib/tiptap/insert-inline-atom.ts, src/lib/tiptap/chrome-scroll-margin.ts, src/lib/cite-commands.ts, src/lib/latex-parser.ts, src/lib/identity/, src/lib/bib-uid.ts -->
 
@@ -108,6 +108,11 @@ not Atoms, but a skill editing inline content meets them:
    labelRef / inlineMath) all route through the one no-scroll primitive
    `insertInlineAtom` (`src/lib/tiptap/insert-inline-atom.ts`) — focus without
    scroll, then `insertContent` — instead of hand-rolling `.chain().focus()`.
+   Citation and `\ref` creation share **one** deferred-commit popover controller
+   (the `openAtomCreate` seam in `src/lib/actions/atom-create.ts`); it passes
+   `insertInlineAtom`'s optional `at` arg — a position captured at trigger time —
+   so the atom lands where the user invoked it even though the live PM selection
+   drifted while the portal popover was open.
    Deliberate scrolls (block inserts, jump-to-link) land below the sticky chrome
    via the chrome-aware `scrollMargin` in `src/lib/tiptap/chrome-scroll-margin.ts`.
 

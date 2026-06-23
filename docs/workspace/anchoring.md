@@ -1,4 +1,4 @@
-<!-- last-verified: 590ed60 2026-06-20 -->
+<!-- last-verified: 7b5335f8 2026-06-22 -->
 <!-- derives-from: docs/architecture/VIRGIL.md#ontology -->
 <!-- covers-code: src/links/_shared/types.ts, src/links/links.ts, src/links/resolve-card-anchor.ts, src/links/_shared/reapply-mode-b-anchors.ts, src/links/_shared/apply-linked-anchors.ts, src/links/_shared/normalize-text.ts, src/hooks/useReconcileModeAAnchors.ts, src/lib/anchor-mint-signal.ts, src/lib/tiptap/linked-anchor.ts, src/lib/latex-serializer.ts -->
 
@@ -62,7 +62,7 @@ is derived, never declared**:
   (gained range-anchor symmetry with note/cutter as of fa7b898/5257b1a),
   `revision`, `cutter-comment`, `cutter-suggestion`, `report`, `report-request`.
 
-Every `"textObject"` anchor also carries a `margin` gutter entry (which side the
+Every `"textObject"` anchor also carries a `margin` entry (which side the
 Omni-View icon sits on). Resolution at measure time returns a `LinkResolution`
 (`paragraph` / `text-range` / `inline-atom`) — skills don't compute it; they read
 `textObjectIds` (Mode A) or the `textRange` (Mode B).

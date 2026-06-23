@@ -1,4 +1,4 @@
-<!-- last-verified: 590ed60 2026-06-20 -->
+<!-- last-verified: 7b5335f8 2026-06-22 -->
 <!-- derives-from: docs/architecture/VIRGIL.md#ontology, docs/architecture/VIRGIL.md#code-organization -->
 <!-- covers-code: src/lib/actions/action-registry.ts, src/lib/actions/editor-actions-bridge.ts, src/lib/actions/action-icons.tsx, src/lib/tiptap/smart-insert.ts, src/components/menu, src/components/DragHandleMenu.tsx, src/components/ActionsMenuPanel.tsx, src/components/SelectionActionsMenu.tsx, src/components/editor-layout/card-actions, src/lib/editor-extensions.ts, src/lib/tiptap/tab-indent.ts, src/lib/tiptap/expex.ts, src/lib/tiptap/latex-comment.ts, src/lib/section-folding.ts, src/lib/focus-view.ts, src/lib/tiptap/uuid-attr.ts, src/lib/tiptap/anchor-highlight-deco.ts, src/lib/tiptap/pgmark.ts, src/lib/tiptap/latex-command.ts, src/text-objects/text-object-registry.ts, src/text-objects/TextObjectGrabHandle.tsx, src/text-objects/LiftHost.tsx, src/text-objects/drop-adapters.ts, src/components/drop-mode, src/cards/drop-specs, src/lib/tiptap/atom-registry.ts, src/lib/tiptap/structural-edit.ts, src/lib/tiptap/insert-inline-atom.ts, src/lib/tiptap/chrome-scroll-margin.ts -->
 
@@ -61,7 +61,7 @@ an `applies()` gate + `run()`.
 | 1 | `highlight` | Highlight | `H` | annotation | `cardCreation.createHighlight` |
 | 2 | `note` | Note | `N` | annotation | `cardCreation.createNote` |
 | 3 | `footnote` | Footnote | `F` | atom + card | `cardCreation.createFootnote` |
-| 4 | `citation` | Citation | `C` | atom + card | `cardCreation.createCitation` |
+| 4 | `citation` | Citation | `C` | atom + card | `citationRun` (cursor/slash front-door → `openAtomCreate("citation")`; grab/lightning ref → legacy `dispatch("citation")`; commit → `cardCreation.createCitation`) — see [below](#the-unified-inline-atom-create-popover) |
 | 5 | `todo` | Todo | `T` | annotation | `cardCreation.createTodo` |
 | 6 | `suggest-edit` | Suggest edit | `E` | annotation | `cardCreation.createRevisionComment` |
 | 7 | `cutter` | Suggest cut | `X` | annotation | `cardCreation.createCutterComment` |
@@ -99,6 +99,22 @@ jump-to-link) get a chrome-aware `scrollMargin`
 land below the sticky MenuBar + reading-mask instead of beneath them. `displayMath`
 stays on the block-insert (scrolling) path — bringing a block into view is intended.
 
+#### The unified inline-atom create popover
+
+Citation and `\ref` now share **one deferred-commit create controller** — the
+**`openAtomCreate(kind, opts?)`** seam on `ActionContext`
+([action-registry.ts](../../src/lib/actions/action-registry.ts)). `citationRun`
+and `refRun` call it instead of inserting an atom up front; the bridge /
+`ActionsMenuPanel` compute the caret rect + captured insertion `pos` and hop the
+`virgil-atom-create-popover` event `EditorLayout` consumes. The popover IS the
+creator: it searches candidate targets (citekeys / `\label{…}` sites) and
+materializes the atom via the no-scroll `insertInlineAtom` **only on commit** (OK
+/ click-away for citation; pick for ref) at the captured `pos`. Nothing lands up
+front, so the gutter never flashes a blank pristine card (the same defer-until-OK
+pattern `\ref` introduced, now covering citation too). Typed `\cite{key}` /
+`\footnote{…}` still insert synchronously in plugin-land (Family 3) — the popover
+is the *menu/grid/slash* front door, not the typed one.
+
 **Per-kind subset.** The registry's card-action rows are the *global*
 vocabulary; the per-kind allowed subset is `TEXT_OBJECT_REGISTRY[kind].actions`
 ([text-object-registry.ts](../../src/text-objects/text-object-registry.ts)),
@@ -128,7 +144,7 @@ reach). Two cells are still direct local calls (`\tex` → `insertTexBlock`,
 | Inline math (`$x$`) / Display math (`$$`) | wrap selection in math | `runGridAction("inline-math" / "display-math")` → registry row |
 | Text color (`A`) | apply/clear text color | `runGridAction("text-color")` → `openColorPopover` → `SelectionColorPopover` → `setTextColor` / `unsetTextColor` |
 | `\tex` | insert a raw-LaTeX block | `insertTexBlock` ([tex-block.ts](../../src/lib/tiptap/tex-block.ts)) — grid cell still calls it directly; the slash `\tex` uses the registry's `texRun` |
-| Cross-ref (`\ref`) | open the `\ref` create-mode popover (NEW, CHIP 7a) | `runGridAction("ref")` → registry `refRun` → `openRefPopover` |
+| Cross-ref (`\ref`) | open the shared inline-atom create popover in `\ref` mode | `runGridAction("ref")` → registry `refRun` → `openAtomCreate("ref")` (the unified seam — see [the create popover](#the-unified-inline-atom-create-popover), below) |
 | Figure (`fig.`) | insert a figure block | `runGridAction("figure")` → registry `figureRun` → `smartInsertBlock` ([smart-insert.ts](../../src/lib/tiptap/smart-insert.ts)) |
 | Image | insert a graphics block | `runGridAction("graphics")` → registry `graphicsRun` → `smartInsertBlock` ([smart-insert.ts](../../src/lib/tiptap/smart-insert.ts)) |
 

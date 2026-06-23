@@ -1,4 +1,4 @@
-<!-- last-verified: 590ed60 2026-06-20 -->
+<!-- last-verified: 7b5335f8 2026-06-22 -->
 <!-- derives-from: docs/architecture/VIRGIL.md#card-kind-taxonomy -->
 <!-- covers-code: src/cards/types.ts, src/cards/card-registry.tsx, src/cards/predicates.ts, src/cards/has-content.ts, src/cards/lifecycle/run-event.ts, src/cards/lifecycle/card-lifecycle-signal.ts, src/cards/lifecycle/useCardLifecycleReconciler.ts, src/panels/panel-registry.ts, src/panels/_shared/card-archive-actions.tsx, src/panels/_shared/card-archive-view.tsx, src/panels/_shared/CardViewModeMenu.tsx, src/components/panel-primitives.tsx, src/lib/types.ts, src/hooks/useReports.ts, src/lib/ai-request-bridge.ts, src/cards/drop-specs/index.ts, src/components/drop-mode/card-drop-gesture.ts, src/components/icons/DropChevrons.tsx, src/hooks/useReconcileModeAAnchors.ts, src/links/resolve-card-anchor.ts -->
 
@@ -20,21 +20,26 @@ A **Card** is the parallel structure — "almost everything that isn't text"
 before it touches one: *which kind is this? where does it persist? how is it
 tied to text?*
 
-## The `CardKind` vocabulary — 16 kinds
+## The `CardKind` vocabulary — 15 kinds
 
 `CardKind` (SSOT: [src/cards/types.ts](../../src/cards/types.ts), the type
-layer beside the registry) is the canonical card vocabulary — **16 kinds** as
+layer beside the registry) is the canonical card vocabulary — **15 kinds** as
 shipped:
 
 `note` · `highlight` · `footnote` · `citation` · `example` · `todo` ·
 `archive` · `report` · `report-request` · `revision-comment` ·
 `revision-suggestion` · `cutter-comment` · `cutter-suggestion` · `bib` ·
-`ai` · `error`.
+`error`.
 
 (The card-system refactor removed `quotation`, added `report` +
 `report-request`, renamed the bare `comment` spine kind to `revision-comment`,
 and dropped bare `suggestion` from the spine — `comment`/`suggestion` survive
-only as the on-disk data discriminators, [below](#two-taxonomies-registry-cardkind-vs-the-persisted-discriminator).)
+only as the on-disk data discriminators, [below](#two-taxonomies-registry-cardkind-vs-the-persisted-discriminator).
+The legacy **`ai`** CardKind was **retired** (#55b): there is no `AiRequestCard`
+anymore — an unlinked note/todo AI-request becomes a *real* note/todo card
+carrying a per-card `aiRequest` flag, while footnote/citation AI-requests stay
+in the AIWindow. The Task itself persists in `ai-requests.json` as an
+`AiRequest`, not as a card kind — [below](#the-task-ai-requestsjson).)
 
 Every per-kind fact hangs off **one registry**: `CARD_REGISTRY`
 ([src/cards/card-registry.tsx](../../src/cards/card-registry.tsx)), a
@@ -100,7 +105,7 @@ load. ADDITIVE/optional; mechanism in [anchoring.md](anchoring.md).
 |---|---|---|---|---|---|
 | `note` | Notes (poly) | `notes.json` · `cards` | `"note"` | anchor (A or B) | `aiRequest` → Task `note` |
 | `highlight` | Notes (poly) | `notes.json` · `cards` | `"highlight"` | anchor (B only — exactly one range) | `aiRequest` → Task `highlight` |
-| `footnote` | Footnotes | `footnotes.json` · `footnotes` | — | **atom-link** to `\footnote{}`/`\thanks{}` (`id` = `\vfid`); unanchored OK | none |
+| `footnote` | Footnotes | `footnotes.json` · `footnotes` | — | **atom-link** to `\footnote{}`/`\thanks{}` (`id` = `\vfid`); unanchored OK | `aiRequest` → Task `footnote` (#55a) |
 | `archive` | Archive | `archive.json` · `snippets` | — | anchor (A; may pin many paragraphs) | none |
 | `todo` | Todo | `todos.json` · `items` | — | anchor (A) | `done` bool; `aiRequest` → Task `todo` |
 | `bib` | Bibliography | the **`.bib` file** (+ `bib-settings.json` / `annotations.json` / `bib-review-requests.json`) | — | **atom-link** to every `\cite{}` of its key | reviewed via `bib-review-requests.json` |
@@ -112,8 +117,12 @@ load. ADDITIVE/optional; mechanism in [anchoring.md](anchoring.md).
 | `report` | Reports (poly) | `reports.json` · `cards` | `"report"` | anchor (A or B) | `author` byline (human/ai) |
 | `report-request` | Reports (poly) | `reports.json` · `cards` | `"report-request"` | anchor (A or B) | `aiRequest` → Task `report` |
 | `example` | Examples | `examples.json` · `examples` | — | **is a TextObject** (`exampleBlock`, `\vexid`/`\vxid`); sidecar is a metadata *shadow* | none |
-| `ai` | *(Inbox)* | `ai-requests.json` · `requests` | — (carries `kind: AiRequestKind`) | flexible — anchor and/or atom-links, or neither | the full Task machine ([below](#the-task-card-ai)) |
 | `error` | Errors | *(not persisted)* | — | maps to a `.tex` line / paragraph | ephemeral — re-derived each lint pass |
+
+The **Task** (`ai-requests.json` · `requests`) is **not a CardKind** — it persists
+as an `AiRequest` (carries `kind: AiRequestKind`), surfaces in every panel's Inbox,
+and has flexible linkage (anchor and/or atom-links, or neither). See
+[the Task](#the-task-ai-requestsjson).
 
 ## The declarative content model — `CardMeta.content`
 
@@ -126,7 +135,7 @@ that ALSO count — e.g. `title` on note/report/footnote, `text` on todo/report,
 `keys` on citation), and `aiPrefilledFields` (the suggestion family's AI-filled
 `original_text`/`suggested_text` — named for the coverage assertion but NEVER
 counted as user content). `null` for the no-user-content kinds (`highlight` /
-`bib` / `ai` / `error`) — a `null` descriptor always reports "no content."
+`bib` / `error`) — a `null` descriptor always reports "no content."
 
 One walker reads it: `cardHasContent(kind, card)`
 ([src/cards/has-content.ts](../../src/cards/has-content.ts)), consumed by BOTH
@@ -196,7 +205,7 @@ native drag (`event-bridges/panel-drops.ts` + `anchor-rebind.ts`, both DELETED).
 
 - **`droppable: boolean`** — does the kind get the button. Read via
   `isDroppable(k)` ([predicates.ts](../../src/cards/predicates.ts)). True for
-  every anchored/atom kind; **false** for `bib` / `ai` / `error` (no anchor)
+  every anchored/atom kind; **false** for `bib` / `error` (no anchor)
   and `example` (its `dropSpec` is a `between-blocks` block content-MOVE, not a
   card re-anchor).
 - **`dropPlacement: "in-text" | "margin" | null`** — where a (re)anchor drop
@@ -239,20 +248,22 @@ registered through `registerCardMorph`
 `ai-requests.json` entry (the report→report-request flip). `lossy` is pinned to
 `drops.length > 0` by `assertMorphCoverage`.
 
-## The homeless kind: `ai` (and the ghost `suggestion`)
+## The ghost kinds: `ai` and `suggestion` (neither is a `CardKind`)
 
-Exactly one kind has **no hosting panel** (`CardMeta.panel === null`,
-`panelForCardKind` → `null`):
+Two names look like card kinds but aren't. The Task lives in `ai-requests.json`
+([the Task](#the-task-ai-requestsjson)), not the registry — there is no panel-less
+`ai` `CardMeta`. Both are cross-cutting by design (a Task surfaces in *every*
+panel's Inbox, with no parent panel of its own):
 
-- **`ai`** — the **Task**, cross-cutting by design. AI requests surface in *every*
-  panel's inbox, so they have no parent panel; the Inbox is their surfacing
-  surface. See [the Task Card](#the-task-card-ai).
-
-A bare **`suggestion`** is **not a `CardKind` at all** — it survives only as
-(1) the on-disk data discriminator on `cutter-suggestion` /
-`revision-suggestion` records, and (2) the *generic* "respond with a doc edit"
-**Task kind** (`AiRequestKind`): the registry's `aiRequest` routing declares
-both `cutter-comment` and `revision-comment` → Task kind `suggestion`.
+- **`ai`** is **retired as a `CardKind`** (#55b). It survives only as the second
+  taxonomic axis — the `AiRequestKind` *Task kind* values — and as the
+  `ai-requests.json` store. An unlinked note/todo AI-request is now a real
+  note/todo card with an `aiRequest` flag, not an `AiRequestCard`.
+- A bare **`suggestion`** is **not a `CardKind` at all** — it survives only as
+  (1) the on-disk data discriminator on `cutter-suggestion` /
+  `revision-suggestion` records, and (2) the *generic* "respond with a doc edit"
+  **Task kind** (`AiRequestKind`): the registry's `aiRequest` routing declares
+  both `cutter-comment` and `revision-comment` → Task kind `suggestion`.
 
 ## The Reports panel
 
@@ -283,13 +294,15 @@ There is **no `quotations.json` → `reports.json` data migration**
 — the refactor was a replacement, so a pre-refactor paper's `quotations.json` is
 simply not read.
 
-## The Task Card (`ai`)
+## The Task (`ai-requests.json`)
 
-A **Task** is a Card kind with a lifecycle the others lack — the unit of work the
-user files and the Inbox surfaces ([VIRGIL.md → Tasks as a Card kind](../architecture/VIRGIL.md#tasks-as-a-card-kind)).
-It is the `ai` kind, stored as an `AiRequest` in `ai-requests.json` · `requests`
-(schema in [sidecars.md → `ai-requests.json`](sidecars.md#the-task-store-ai-requestsjson)).
-What makes it special:
+A **Task** is the unit of work the user files and the Inbox surfaces
+([VIRGIL.md → Tasks as a Card kind](../architecture/VIRGIL.md#tasks-as-a-card-kind)).
+It is **no longer a `CardKind`** (the `ai` kind was retired, #55b) — it lives
+purely as an `AiRequest` in `ai-requests.json` · `requests` (schema in
+[sidecars.md → `ai-requests.json`](sidecars.md#the-task-store-ai-requestsjson)),
+with the result landing as a *real* card of the appropriate kind. What makes it
+special:
 
 - **It is polymorphic over `AiRequestKind`** (8 values: `footnote` · `note` ·
   `highlight` · `citation` · `todo` · `suggestion` · `report` · `style-merge`) —
@@ -303,7 +316,7 @@ What makes it special:
   *vocabulary and the `safetyLevel` → subcommand mapping* are owned by
   [VIRGIL.md → Cowork pattern](../architecture/VIRGIL.md#cowork-pattern) and
   [structure.md → the write path](structure.md#the-write-path) — don't re-derive
-  them; this doc only records that the `ai` card *is* where they live.
+  them; this doc only records that the Task *is* where they live.
 - **It is created two ways.** *Workflow A* — bridged from a card's `aiRequest`
   flag (`bridgeCardAiRequestFlag`, `linkedTo: { panel, cardId }`); *Workflow B* —
   synthesized on the fly for a chat-initiated call (`--synthesize-task`). Either

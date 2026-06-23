@@ -1,4 +1,4 @@
-<!-- last-verified: 590ed60 2026-06-20 -->
+<!-- last-verified: 7b5335f8 2026-06-22 -->
 <!-- derives-from: docs/architecture/VIRGIL.md#code-organization -->
 <!-- covers-code: src/lib/tiptap/doc-structure, src/hooks/useStructuralRevisions.ts, src/hooks/useInTextPositions.ts -->
 
@@ -54,7 +54,7 @@ The keystroke-sanctity sweep allows these direct subscriptions, because each is 
 - `EditorLayout.tsx` + `EditorPane.tsx` PDF-stale bump (O(1): stamp a timestamp ref, flip `pdfStale` at most once per compile cycle)
 - `EditorLayout.tsx` section-path recompute, main pane (`:2083`, `on('update')`; the handler only `cancelAnimationFrame`+`requestAnimationFrame` — the doc-walk/`coordsAtPos` is RAF-coalesced to one frame, plus a perf-flag gate)
 - `EditorLayout.tsx` section-path recompute, mirror pane (`:2176`, same RAF-coalesced pattern scoped to the mirror view)
-- `SelectionActionsMenu.tsx` gutter-bolt reposition (`:236`, `on('update')`; suppression check + RAF-already-scheduled bail — the single `coordsAtPos` placement math is RAF-coalesced and short-circuits on a placement-equality bail)
+- `SelectionActionsMenu.tsx` margin-bolt reposition (`:236`, `on('update')`; suppression check + RAF-already-scheduled bail — the single `coordsAtPos` placement math is RAF-coalesced and short-circuits on a placement-equality bail)
 - `src/components/editor-layout/panels/omni-host.tsx` fold-aware OmniHost tick (`:184`, `on('transaction')`; a single `getMeta(sectionFoldingPluginKey)` check — bumps ONLY on a fold-meta tx, returns immediately on a plain keystroke)
 - `lib/code-pane-bridge.ts` TipTap→code sync (`:431`, `on('transaction')`; docChanged-gated + own-write (`syncing`) filtered, then a debounced serialize — O(1) per tx)
 - `lib/section-folding.ts` shared fold-chevron refresher (the `sectionFoldingPlugin` `view()`; ONE plugin-view per editor, not N per-heading subscribers — #29 nit-3). Its `update(view, prevState)` does an O(1) reference-compare of the `SectionFoldingState` (`sectionFoldingPluginKey.getState` old vs new) and bails on a plain keystroke — the apply reducer returns the SAME object on a structurally-null tx. Only on a real fold change does it `querySelectorAll('.heading-fold-chevron')` and resync each from live state via `closest('[data-uuid]')`, off the keystroke path. The per-NodeView `refreshFoldBtn()` at construction + in `update()` (editor-extensions.ts) is retained and is O(1)-per-affected-node — it is NOT an `on('transaction')` subscriber, so needs no list entry.

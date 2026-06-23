@@ -1,4 +1,4 @@
-<!-- last-verified: 590ed60 2026-06-20 -->
+<!-- last-verified: 7b5335f8 2026-06-22 -->
 <!-- derives-from: docs/architecture/VIRGIL.md#public-type-registry -->
 <!-- covers-code: src/lib/types.ts, src/lib/storage-fsa.ts, src/hooks/useOrphanedFootnotes.ts -->
 
@@ -82,7 +82,7 @@ TodoItem { id; text; notes; done: boolean; aiRequest; createdAt; links: Link[] }
 **`footnotes.json` — `FootnotesState { footnotes: FootnoteRef[] }`:**
 
 ```ts
-FootnoteRef { id; content; createdAt }   // exactly three fields; no links/anchor
+FootnoteRef { id; content; createdAt; archived?; aiRequest? }  // no links/anchor
 ```
 
 The `id` **is** the anchor — it equals the `\vfid{}` marker. Splice recipe +
@@ -197,7 +197,7 @@ AiRequest {
   selectedText?;             // Mode-B selection at filing time
   linkedTo?: AiRequestLink;  // origin card when bridged from a flag
 }
-AiRequestLink    { panel: "notes"|"todos"|"cutter"|"revisions"|"reports"; cardId }
+AiRequestLink    { panel: "notes"|"todos"|"cutter"|"revisions"|"reports"|"footnotes"; cardId }
 AiRequestPayload = { kind: "style-merge"; targetStyleId; targetStyleName;
                      targetPreamble; currentPreamble }   // only kind today
 ```

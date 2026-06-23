@@ -1,4 +1,4 @@
-<!-- last-verified: 590ed60 2026-06-20 -->
+<!-- last-verified: 7b5335f8 2026-06-22 -->
 <!-- derives-from: docs/architecture/VIRGIL.md#ontology -->
 <!-- covers-code: src/text-objects/text-object-registry.ts, src/cards/card-registry.tsx, src/cards/types.ts, src/panels/_shared/types.ts, src/links/link-registry.ts, src/lib/tiptap, src/lib/latex-serializer.ts, src/lib/bib-uid.ts -->
 
@@ -76,12 +76,15 @@ A Card is "almost everything else." Operationally:
 - Each kind declares a **`content` descriptor** (`CardContentModel | null` on
   `CardMeta`, `src/cards/types.ts`) naming the user-content fields. One walker
   (`cardHasContent`) reads it so a delete-confirm can never miss content; the
-  `null` descriptor is the no-user-content kinds (`bib`/`ai`/`error`/`highlight`).
+  `null` descriptor is the no-user-content kinds (`bib`/`error`/`highlight`).
   A kind's `morph` carries a `drops` field listing the fields the target shape
   can't hold (drives the confirm copy + the lossy-morph unbridge). The `CardKind`
   union itself is unchanged — this is data-model metadata, not a new kind.
-- **Tasks are a Card kind** (`ai`, stored in `ai-requests.json`) with a lifecycle
-  the others lack (`status` / `result` / `safetyLevel`). The Inbox surfaces them.
+- **Tasks** live in `ai-requests.json` with a lifecycle the others lack
+  (`status` / `result` / `safetyLevel`); the Inbox surfaces them. (The legacy
+  `"ai"` CardKind was retired in #55b — unlinked note/todo requests now migrate
+  to real cards with a per-card `aiRequest` flag; the `AiRequest` store remains
+  the parallel Task structure.)
   A Task may have an anchor, Atom links, both, or neither (a "review the whole
   doc" Task has none). Full Task detail is [cards.md](cards.md).
 
