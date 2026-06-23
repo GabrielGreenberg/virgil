@@ -1,0 +1,66 @@
+{
+  "file": "examples-g-interact",
+  "verifier": "A",
+  "verdicts": [
+    {
+      "findingId": "EX-F2-01",
+      "isReal": true,
+      "disposition": "CONFIRMED",
+      "severityFinal": "MEDIUM",
+      "rationale": "Verified the dual-source halo. ExampleCard halo = `ac.selected || isSelected` (ExampleCard.tsx:371). Mouse body-click runs BOTH ac.onActivate()→cardStore.select + onSelect() (ExampleCard.tsx:391-394). The keyboard cycle routes through useCycle (panel-primitives.tsx:2615-2627) → ExamplesPanel's panel-level onActivate (ExamplesPanel.tsx:31-37), which calls props.onSelect(ex.exampleId) (host setSelectedId, non-toggling) + onJump — and onJump only invokes scrollToExample (EditorPane.tsx:5666-5668), never cardStore. So keyboard nav moves panel selectedId without touching cardStore.selected. The reconciler's pruner clears cardStore.selected only on entity DELETION (useAnchorHighlightReconciler.ts:155-166), not on a keyboard-select of a different card, and there is no selectedExampleId→cardStore bridge for examples (no gutter marker; markerType null). Net: after click-A then ArrowDown-to-B, card A keeps ac.selected (cardStore=A) and card B gains isSelected (panel selectedId=B) → two haloed cards, violating the ≤1 invariant (anchored-card-store.ts:18-20,100). The rubric explicitly lists 'desync halo' as MEDIUM.",
+      "correctedRootCause": null,
+      "class": "dual selection authority: a panel-local selectedId ORed with the cross-surface cardStore.selected, with the keyboard path bypassing cardStore.select (src/panels/Examples/ExampleCard.tsx:371). Verify Footnotes/Citations panels for the same OR + bypassed-cycle pattern.",
+      "confidence": "high"
+    },
+    {
+      "findingId": "EX-F2-02",
+      "isReal": true,
+      "disposition": "CONFIRMED",
+      "severityFinal": "LOW",
+      "rationale": "Verified. Card body-click composes a select-only store primitive ac.onActivate() (useAnchoredCard.ts:66-69, never deselects) with a TOGGLING panel onSelect (ExamplesPanel.tsx:98-100: `selectedId === ex.exampleId ? null : ex.exampleId`). Re-clicking a selected card A leaves cardStore.selected=A (idempotent select) but flips panel selectedId→null, so the halo persists via ac.selected while the cycle-sync effect resets cycleIdx→null (ExamplesPanel.tsx:45-52). Next ArrowDown starts from index 0 (useCycle next(): idx==null → n=0, panel-primitives.tsx:2615-2620), i.e. the first example rather than next-after-A — halo and keyboard cursor desynced. Edge path (re-click then keyboard), recoverable; LOW is correct.",
+      "correctedRootCause": null,
+      "class": "select-only store primitive composed with a panel-level toggling onSelect; the re-click diverges. Any card calling ac.onActivate()+a toggling onSelect shares it.",
+      "confidence": "high"
+    },
+    {
+      "findingId": "EX-F3-01",
+      "isReal": true,
+      "disposition": "CONFIRMED",
+      "severityFinal": "MEDIUM",
+      "rationale": "Verified end-to-end. example is anchored:true (card-registry.tsx:444) so it enters the reconciler, but findEntity normalizes an example hit to bare { id } with NO links (entity-hover.ts:80-83). linksForRef returns entity?.links ?? [] = [] for examples (useAnchorHighlightReconciler.ts:92-98), so collectAnchorEls iterates zero links and paints nothing in the editor body (useAnchorHighlightReconciler.ts:188-210). The card-key sweep (useAnchorHighlightReconciler.ts:259-277) paints only elements bearing data-card-key; the exampleBlock NodeView stamps data-type/data-number/data-tag/data-label but NO data-card-key/data-link-card (expex.ts:747-758), so the in-text block is never matched. Confirmed via grep that globals.css has NO .expex-block[data-card-selected] rule — the only in-text selected rules are .footnote-marker / .citation-node / .linked-anchor / [data-card-selected=\"paragraph\"] (globals.css:2771-2819), none of which the example block carries. Jump (scrollToExample) still works, but selecting/hovering an example paints only the panel card, not the \\ex block — the three-surface contract anchored:true advertises is unfulfilled. Rubric MEDIUM ('function works but misbehaves in a realistic case').",
+      "correctedRootCause": null,
+      "class": "anchored:true set on a kind with neither a Mode-A/Mode-B link nor a synthesized inline-atom link, so the reconciler has nothing to resolve to an in-text element. Verify any other derived anchored kind (figure/graphics) for the same anchored-but-unpaintable gap.",
+      "confidence": "high"
+    },
+    {
+      "findingId": "EX-F3-02",
+      "isReal": true,
+      "disposition": "CONFIRMED",
+      "severityFinal": "LOW",
+      "rationale": "Verified the three closed jump paths for a docked, expanded example. (1) Expanded body onClick calls e.stopPropagation() when canEdit (ExampleCard.tsx:465-468), so the jump-bearing card-root onClick (ExampleCard.tsx:391-394) never fires. (2) The header click runs onHeaderActivate = select + toggleExpanded with NO jump (useAnchoredCard.ts:77-80; PanelCard header onClick stopPropagation+headerActivate, panel-primitives.tsx:1983-1988). (3) The jump chevron renders only when isPoppedOut && canJump && onJump (panel-primitives.tsx:2012-2014), so docked cards never show it. The collapsed body intentionally omits stopPropagation (ExampleCard.tsx:426), so the only docked jump path is the collapsed body — to jump you must collapse first, then click. Minor UX gap, recoverable; LOW correct.",
+      "correctedRootCause": null,
+      "class": "editable-body cards whose expanded body stopPropagation's the card-root jump while the header is toggle-only and the jump chevron is popout-gated — no docked jump affordance.",
+      "confidence": "high"
+    },
+    {
+      "findingId": "EX-F3-03",
+      "isReal": true,
+      "disposition": "CONFIRMED",
+      "severityFinal": "LOW",
+      "rationale": "Verified. The Omni builder wires onJump as `() => a.onJump(ex.exampleId)` (omni.tsx:36-38), discarding the sourceEl the card supplies (ExampleCard.tsx:412 passes the closest [data-card] element). scrollToExample takes its alignEntryToY branch only when sourceEl is truthy (Editor.tsx:1288-1294); without it, it falls to `setTextSelection().scrollIntoView()` (Editor.tsx:1295). The docked panel passes onJump(ex.exampleId, sourceEl) (ExamplesPanel.tsx:101), keeping alignment. So omni jump just scrolls into view while docked aligns the block to the card Y — a real behavioral difference, minor; LOW correct.",
+      "correctedRootCause": null,
+      "class": "Omni builders that drop the sourceEl arg when wiring onJump. Check footnote/citation/report omni.tsx for `() => onJump(id)` vs `(el) => onJump(id, el)`.",
+      "confidence": "high"
+    },
+    {
+      "findingId": "EX-F7-01",
+      "isReal": true,
+      "disposition": "CONFIRMED",
+      "severityFinal": "LOW",
+      "rationale": "Verified useExamples is dead code with a test pinning it. grep across src/ shows `useExamples(` appears ONLY at its own definition (useExamples.ts:23) — zero imports, zero call sites. The live example flow is fully derived: getExamples() walks the doc and never reads examples.json (Editor.tsx:1179-1218), and ExampleCard exposes no title input or onDelete (lifecycle { clone:false, delete:false }, card-registry.tsx:449). So updateExampleTitle, deleteExample, syncFromEditor, and the BUG#31 isAutoTitle-on-load strip (useExamples.ts:42-48,68-143) are all unreachable. Meanwhile auto-title.test.ts pins migrateTitle('example','Example 7')==='' (line 147) and source-guards hooks/useExamples.ts for isAutoTitle + no-nextCardTitle (lines 182,197) — a contract enforced against code with no production caller. Real test-vs-reality divergence per the brief ('a divergence between code and a test's intent is itself a finding'). No user-observable symptom (latent landmine, not a live bug), so LOW is appropriate.",
+      "correctedRootCause": null,
+      "class": "derived-kind panels retaining an unwired persisted-sidecar hook 'for parity' while a test guards it as if it ran. Check figure/graphics for similar unwired sidecar hooks under tests.",
+      "confidence": "high"
+    }
+  ]
+}

@@ -1,0 +1,159 @@
+{
+  "subject": "omni-left",
+  "group": "g-display",
+  "clusters": ["F1", "F4", "F5"],
+  "cells": [
+    {
+      "cluster": "F1",
+      "status": "BUG",
+      "note": "Aggregation/cascade render + builders traced (omni-host.tsx:392-584, OmniViewPanel.tsx:405-588). Anchored cards cascade via useInTextPositions; free/orphaned route to bins. Defects: (a) legit user titles matching '^Report N$' / '^Example N$' silently stripped on load (useReports.ts:55-59, useExamples.ts:42-47) so the omni report card renders titleless; (b) the omni-host fold/focus filter (omni-host.tsx:618-642) keys off the CAPTURED item.pos, while the cascade keys off the LIVE resolvePos snapshot — asymmetric staleness near a fold/focus boundary; (c) sans-bodyClass kinds (report/citation) hard-cut compressed summary at 80*lines chars with no ellipsis (panel-primitives.tsx:183-186), and borrowed-compressed kinds (footnote) show a blank line, not the 'empty' placeholder, for an empty body (panel-primitives.tsx:1066-1075).",
+      "bugIds": ["OMNI-F1-01", "OMNI-F1-02", "OMNI-F1-03"]
+    },
+    {
+      "cluster": "F4",
+      "status": "BUG",
+      "note": "Card bodies render inline atoms via RichTextField + buildBorrowedAtomSchema (Citation registered bare, borrowed-schema.ts:149-151). Click-through dispatches virgil-citation-click from the card-body editor's NodeView (citation.ts:261-288). Defects: (a) report/report-request bodies receive NO getCitationDisplayText/onCitationCreated (omni.tsx:42-73; native ReportsPanel.tsx:92-122 same) → a citation dropped into a report body renders its raw \\cite{} command and is never registered as a citation card, so its click selects a phantom id (RichTextField.tsx:284-299; marker-clicks.ts:276-327). (b) Even for footnote bodies (which DO wire onCitationCreated), the registered citation is unanchored (no main-doc marker; citationPositionMap miss), so it lives in the collapsed unanchored bin — click-through sets selection but the target card is hidden.",
+      "bugIds": ["OMNI-F4-01", "OMNI-F4-02"]
+    },
+    {
+      "cluster": "F5",
+      "status": "BUG",
+      "note": "Body edit (RichTextField via EditableCard), bodyTitle edit (FootnoteCard.tsx:123-124, ReportCard.tsx:106-107), and the report-request AI-request flag toggle + inbox bridge (ReportRequestCard.tsx:115-124 → useReports.ts:232-258 bridgeCardAiRequestFlag) all work from the omni. Footnote delete-confirm uses hasJsonContent(value) directly (panel-primitives.tsx:891) so it is correctly gated. Low-value gap: report/report-request card bodies are mounted WITHOUT onEditorFocus / setOverrideEditor wiring in both the omni builder (omni-host.tsx:522-534) and native panel, so focusing a report body never routes the format toolbar to the main bar (parity-with-native, hideToolbar leaves keyboard shortcuts only).",
+      "bugIds": ["OMNI-F5-01"]
+    }
+  ],
+  "findings": [
+    {
+      "id": "OMNI-F1-01",
+      "subject": "omni-left",
+      "cluster": "F1",
+      "severity": "MEDIUM",
+      "symptom": "A report the user deliberately titled 'Report 3' (or an example titled 'Example 3') loads with a blank title in the omni cascade — the user's title silently vanishes.",
+      "suspectedRootCause": "On load, useReports.migrateReportRecord nulls any title matching the kind's auto-title regex via isAutoTitle('report', r.title) (panel-registry.ts:254-258 builds ^Report \\d+$). The strip was intended to drop legacy generated 'Report N' defaults (BUG #31), but it cannot distinguish a generated default from a title the user typed in the same shape, so it clobbers legitimate user titles. The omni report card renders bodyTitle=report.title (ReportCard.tsx:106), so the loss shows directly in the collapsed/expanded omni card title row (panel-primitives.tsx:1040-1047).",
+      "evidence": [
+        { "file": "src/hooks/useReports.ts", "line": 55, "note": "title: isAutoTitle('report', r.title) ? '' : r.title — strips any '^Report N$' title on load with no provenance check" },
+        { "file": "src/hooks/useExamples.ts", "line": 45, "note": "sibling: isAutoTitle('example', e.title) ? {...e, title: ''} : e — same false-positive for examples" },
+        { "file": "src/panels/panel-registry.ts", "line": 258, "note": "isAutoTitle builds RegExp `^${label} \\d+$` — matches user-typed 'Report 3' identically to a generated default" },
+        { "file": "src/panels/Reports/ReportCard.tsx", "line": 106, "note": "bodyTitle={report.title} — the stripped title is what the omni card renders" }
+      ],
+      "reproSteps": [
+        "Create a Report and name it 'Report 3' (a title a user might plausibly choose).",
+        "Reload the document so useReports re-migrates from the sidecar.",
+        "Open the omni column on the left; the report card now shows no title."
+      ],
+      "reproChannel": "code-trace",
+      "confidence": "high",
+      "suspectedClass": "Every isAutoTitle('<kind>', title) load-strip is a false-positive surface: useReports.ts:57 (report), useExamples.ts:45 (example), useArchive.ts:28 (archive), useNotes.ts:38 (note), useTodos.ts:30 (todo). Examples/archive/notes/todos carry the same regex clobber, though example titles aren't surfaced by ExampleCard so its user impact is latent."
+    },
+    {
+      "id": "OMNI-F1-02",
+      "subject": "omni-left",
+      "cluster": "F1",
+      "severity": "LOW",
+      "symptom": "After plain typing that shifts content across a collapsed-section or focus-band boundary, an omni card can be wrongly dropped by the fold filter or wrongly stamped 'outside focus' until the next structural rebuild.",
+      "suspectedRootCause": "The omni-host fold filter (pass 1) and focus filter (pass 2) resolve each card's block via doc.resolve(item.pos).index(0), where item.pos is the CAPTURED position baked into the OmniItem when the items array was last (structurally) rebuilt. The cascade positioning was deliberately moved to a LIVE resolvePos snapshot (OmniViewPanel.tsx:471-491, re-mapped every transaction) to fix keystroke drift, but the fold/focus classification was NOT migrated to the live pos — so the two disagree once a captured pos goes stale relative to a fold/focus boundary.",
+      "evidence": [
+        { "file": "src/components/editor-layout/panels/omni-host.tsx", "line": 621, "note": "bi = doc.resolve(item.pos).index(0) — fold filter uses captured item.pos" },
+        { "file": "src/components/editor-layout/panels/omni-host.tsx", "line": 637, "note": "focus filter also resolves item.pos (captured) to decide outsideFocus stamping" },
+        { "file": "src/panels/Omni/OmniViewPanel.tsx", "line": 471, "note": "resolvePos: the cascade resolves LIVE pos from the DocStructureObserver snapshot — the asymmetry the fold/focus filter doesn't share" },
+        { "file": "src/hooks/useInTextPositions.ts", "line": 261, "note": "measure() prefers resolvePos(item.id) over item.pos precisely because item.pos goes stale on plain typing" }
+      ],
+      "reproSteps": [
+        "Collapse a section so getHiddenTopLevelIndices is non-empty.",
+        "Position a footnote/citation near the top-level boundary between the collapsed section and the next visible one.",
+        "Type enough plain text in the block above the marker to push the captured pos across the boundary before a structural rebuild fires.",
+        "Observe the card may be dropped (fold) or mis-binned (focus) using the stale block index rather than its live one."
+      ],
+      "reproChannel": "code-trace",
+      "confidence": "low",
+      "suspectedClass": "Any consumer of OmniItem.pos that makes a structural-boundary decision (fold drop, focus stamp) inherits the captured-pos staleness; only useInTextPositions opts into resolvePos. The fold/focus filter is the one classification path that didn't migrate."
+    },
+    {
+      "id": "OMNI-F1-03",
+      "subject": "omni-left",
+      "cluster": "F1",
+      "severity": "COSMETIC",
+      "symptom": "A long report/citation body collapsed in the omni is hard-cut mid-word with no ellipsis; an empty footnote collapsed in the omni shows a blank line rather than an 'empty' placeholder.",
+      "suspectedRootCause": "makeCompressedSummary slices the flattened text to 80*lines characters and returns the bare substring (no '\\u2026'); EditableCard renders that string for sans-bodyClass kinds (report/citation). For borrowed-bodyClass kinds (footnote), the compressed view renders BorrowedMainText with the raw content and never falls through to <CardEmptyText/>, so an empty body paints nothing instead of the 'empty' marker that the summary-string branch shows.",
+      "evidence": [
+        { "file": "src/components/panel-primitives.tsx", "line": 185, "note": "return text.slice(0, 80 * Math.max(1, lines)) — hard truncation, no ellipsis" },
+        { "file": "src/components/panel-primitives.tsx", "line": 1066, "note": "useBorrowedCompressed branch renders BorrowedMainText with no empty fallback; only the else branch uses compressedSummary ?? <CardEmptyText/>" },
+        { "file": "src/cards/card-registry.tsx", "line": 411, "note": "report bodyClass 'sans' → string-summary path (hard cut)" }
+      ],
+      "reproSteps": [
+        "Add a report with a >160-char body and collapse it in the omni — the summary ends abruptly with no ellipsis.",
+        "Add an empty footnote (\\footnote{}) and view it collapsed in the omni — the body row is blank instead of showing 'empty'."
+      ],
+      "reproChannel": "code-trace",
+      "confidence": "high",
+      "suspectedClass": "makeCompressedSummary is shared by every sans-bodyClass compressed card (notes, todos, cutter/revision comments, reports, citations) so the missing-ellipsis is panel-wide; the empty-blank affects every borrowed-bodyClass kind (footnote, archive, example)."
+    },
+    {
+      "id": "OMNI-F4-01",
+      "subject": "omni-left",
+      "cluster": "F4",
+      "severity": "MEDIUM",
+      "symptom": "A citation dropped into a report/report-request body in the omni shows its raw '\\cite{key}' command instead of the formatted name, and clicking it selects nothing real (it is never registered as a citation card).",
+      "suspectedRootCause": "buildReportsOmniItems threads neither getCitationDisplayText nor onCitationCreated into ReportCard/ReportRequestCard (and the native ReportsPanel doesn't either), so the report body's RichTextField has refreshCitationDisplay return the doc unchanged (raw command shown) and the drop handler skips registration: with onCitationCreatedRef.current undefined it mints a local generateShortId and inserts an UNREGISTERED Citation node. That node's NodeView still dispatches virgil-citation-click on click; the bridge does setSelectedCitationId(phantomId) + openForCard('citations') but no matching citation card exists, so the click-through dead-ends.",
+      "evidence": [
+        { "file": "src/panels/Reports/omni.tsx", "line": 42, "note": "renderCard passes no getCitationDisplayText/onCitationCreated to ReportCard/ReportRequestCard" },
+        { "file": "src/components/RichTextField.tsx", "line": 205, "note": "refreshCitationDisplay returns doc unchanged when getCitationDisplayText lookup is absent → raw \\cite shown" },
+        { "file": "src/components/RichTextField.tsx", "line": 284, "note": "onCitationCreated guard skipped when undefined → resolvedId falls to a local generateShortId, never registered with the citations store" },
+        { "file": "src/components/editor-layout/event-bridges/marker-clicks.ts", "line": 284, "note": "handler does setSelectedCitationId(detail.citationId) for an id that has no card" }
+      ],
+      "reproSteps": [
+        "Open the Reports omni on the left and expand a Report (or Report Request).",
+        "Drag a citation from the Bibliography panel into the report body.",
+        "Note it renders the raw \\cite{key} rather than 'Author Year'.",
+        "Click the inserted citation — no citation card is selected/opened."
+      ],
+      "reproChannel": "code-trace",
+      "confidence": "high",
+      "suspectedClass": "Any card body that mounts RichTextField without wiring getCitationDisplayText/onCitationCreated degrades identically; reports are the omni-left instance. The deeper class: a citation NodeView authored inside ANY card-body editor dispatches a citationId that is not a top-level citation in citationPositionMap, so click-through can never resolve it (also affects footnote/note bodies — see OMNI-F4-02)."
+    },
+    {
+      "id": "OMNI-F4-02",
+      "subject": "omni-left",
+      "cluster": "F4",
+      "severity": "LOW",
+      "symptom": "Clicking a citation inside a footnote body in the omni selects the citation but the target card is invisible — it sits in the collapsed 'N unanchored' bin.",
+      "suspectedRootCause": "Footnote bodies DO wire onCitationCreated, so a dropped citation is registered via addCitation as a CitationRef. But it has no \\cite marker in the MAIN document (it lives inside the footnote's attrs.content JSON, which DocStructureObserver explicitly excludes), so citationPositionMap.get(id) is null → buildCitationOmniItems classifies it 'orphaned' (omni.tsx:46-49) → OmniViewPanel routes it into the default-collapsed OmniUnanchoredBin. The virgil-citation-click handler sets selection and calls alignOmniCardWithClick on the omniKey, but the bin's contents carry no data-omni-entry-wrapper and are unmounted while collapsed, so the pin/scroll finds nothing.",
+      "evidence": [
+        { "file": "src/components/editor-layout/card-actions/citations.ts", "line": 29, "note": "handleCitationCreated registers the citation but yields an unanchored CitationRef (no main-doc marker)" },
+        { "file": "src/lib/tiptap/doc-structure/types.ts", "line": 114, "note": "citations nested inside footnote attrs.content are NOT tracked → never in citationPositionMap" },
+        { "file": "src/panels/Citations/omni.tsx", "line": 49, "note": "anchorState: pos == null ? 'orphaned' : 'anchored' → bin-bound" },
+        { "file": "src/panels/Omni/OmniViewPanel.tsx", "line": 299, "note": "OmniUnanchoredBin renders item.content only when expanded (default collapsed)" }
+      ],
+      "reproSteps": [
+        "Open the Footnotes omni and expand a footnote.",
+        "Drag a citation from the Bibliography into the footnote body (it registers but stays unanchored).",
+        "Click that citation inside the footnote body.",
+        "Selection state updates but no visible card appears — it is collapsed inside the unanchored bin."
+      ],
+      "reproChannel": "code-trace",
+      "confidence": "medium",
+      "suspectedClass": "Same root as OMNI-F4-01: a citationId authored inside a card body never resolves to a cascaded omni card; for footnotes it at least exists (in the bin), for reports it doesn't exist at all."
+    },
+    {
+      "id": "OMNI-F5-01",
+      "subject": "omni-left",
+      "cluster": "F5",
+      "severity": "LOW",
+      "symptom": "Focusing a report/report-request body in the omni does not route formatting controls to the main toolbar (the per-card B/I/U toolbar is suppressed and there is no main-bar hand-off), unlike footnote/note bodies.",
+      "suspectedRootCause": "The omni reports builder and the native ReportsPanel both omit onEditorFocus (and setOverrideEditor) when rendering ReportCard/ReportRequestCard, whereas the footnote/note/archive builders thread setOverrideEditor. With hideToolbar=true, EditableCard portals the FormatToolbar to null, so report bodies are keyboard-shortcut-only and never promote their editor to the main formatting bar on focus.",
+      "evidence": [
+        { "file": "src/components/editor-layout/panels/omni-host.tsx", "line": 522, "note": "buildReportsOmniItems args: no onEditorFocus/setOverrideEditor passed" },
+        { "file": "src/panels/Reports/omni.tsx", "line": 42, "note": "renderCard never sets onEditorFocus on ReportCard/ReportRequestCard" },
+        { "file": "src/panels/Footnotes/omni.tsx", "line": 48, "note": "contrast: footnote builder threads onEditorFocus={a.setOverrideEditor}" }
+      ],
+      "reproSteps": [
+        "Open the Reports omni and expand a Report.",
+        "Click into the report body to focus the editor.",
+        "Note the formatting toolbar is absent (no inline toolbar, no main-bar routing) — only keyboard shortcuts (Cmd-B/I) work."
+      ],
+      "reproChannel": "code-trace",
+      "confidence": "medium",
+      "suspectedClass": "Parity-with-native gap: every report-kind body (omni + docked) lacks onEditorFocus wiring, unlike footnote/note/archive. Not omni-introduced, but the omni exhibits it."
+    }
+  ]
+}

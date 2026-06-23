@@ -1,0 +1,76 @@
+{
+  "file": "omni-left-g-interact",
+  "verifier": "A",
+  "verdicts": [
+    {
+      "findingId": "OMNI-F2-01",
+      "isReal": true,
+      "disposition": "CONFIRMED",
+      "severityFinal": "LOW",
+      "rationale": "Code analysis verified accurate. In selections.tsx every per-kind selection slot is DERIVED from the single cardStore.selected via idFor(k) (selections.tsx:119) and makeKindSetter clears the store only when its current kind matches (selections.tsx:60-72). So in the omni-host's setFootnoteInOmni (omni-host.tsx:221-235), setSelectedFootnoteId(id) moves the store to {footnote,id}, then the follow-up setSelectedCitationId(null) finds s.kind!=='citation' (selections.tsx:68) and no-ops. Single-selection is structurally guaranteed by the single `selected` slot; the cross-clears are inert dead code. The finder is upfront that there is NO user-visible misbehavior — this is a maintainability/latent observation (the inert code invites a future mis-fix at the wrong layer), correctly classified LOW and NOT over-reported. Confirmed as an accurate code observation rather than a behavioral defect; there is no user-facing bug.",
+      "correctedRootCause": null,
+      "class": "inert-invariant-enforcement-mirroring-a-lower-layer-guarantee",
+      "confidence": "high"
+    },
+    {
+      "findingId": "OMNI-F3-01",
+      "isReal": true,
+      "disposition": "CONFIRMED",
+      "severityFinal": "MEDIUM",
+      "rationale": "Full chain traced and verified. A multi-paragraph report emits one gutter marker per paragraph (EditorPane.tsx:1793-1808 loop), each with entityId: c.id (the PLAIN card id). Clicking dispatches virgil-linked-anchor-click with {entityId: c.id, kind, clickY} (EditorPane.tsx:1594-1598). routeAnchorClick builds omniKey = cardPopKey(route.cardKind, id) — UNSUFFIXED (marker-clicks.ts:130) — and calls alignOmniCardWithClick(omniKey, clickY) (marker-clicks.ts:157). But buildReportsOmniItems gives a multi-anchor report's wrappers an @N suffix on the item id (Reports/omni.tsx:86-93), so data-omni-entry-wrapper is `...:abc@0`/`@1` (OmniViewPanel.tsx:553). alignOmniCardWithClick does EXACT-match querySelector(`[data-omni-entry-wrapper=\"${cardId}\"]`) (EditorLayout.tsx:1127) — misses the @N wrapper; and even if matched, the pin store holds the unsuffixed id while OmniViewPanel checks pinRequest?.cardId === item.id (OmniViewPanel.tsx:547) against `...@0` → false → pin never applies. openForCard DOES handle the suffix via the `^=`+`@` prefix matcher (open-for-card.ts:88,150) so the card OPENS, but the align/pin to click-Y silently fails. The bridge test bakes the unsuffixed contract (marker-clicks-bridge-behavior.test.tsx:164-168 asserts alignOmniCardWithClick called with the plain `float:card:todo:t1`) and has no @N case — reinforcing the gap. Single-anchor reports (no suffix) work; the regression is specific to multi-anchor. MEDIUM is right (card opens but doesn't pin to the click).",
+      "correctedRootCause": "@N multi-anchor omni grammar honored in open-for-card.ts (prefix matcher) but NOT in the two pin/align consumers: alignOmniCardWithClick exact-match (EditorLayout.tsx:1127) and the OmniViewPanel pin equality (OmniViewPanel.tsx:547). The virgil-card-jumped handler (EditorLayout.tsx:1161) is also exact-match. Any omni-eligible kind that builds @N wrappers for multiple paragraph anchors (notes/todos/cutter/revisions builders) hits the same text->card pin miss.",
+      "class": "suffixed-omni-key-grammar-not-propagated-to-pin-align-sites",
+      "confidence": "high"
+    },
+    {
+      "findingId": "OMNI-F3-02",
+      "isReal": true,
+      "disposition": "RECLASSIFIED",
+      "severityFinal": "MEDIUM",
+      "rationale": "The finder rated this low-confidence/UNVERIFIED because it could not establish whether a mid-session re-parse re-derives node ids WITHOUT remounting the editor (which would leave syncFromEditor, gated on [editor] at EditorPane.tsx:1177-1182, un-rerun). I traced that path and it EXISTS: the code-pane bridge's flushCodeToTipTap calls parseLatex(text) then editor.commands.setContent(parsed) IN PLACE (code-pane-bridge.ts:183,202) — same editor instance, no remount — so syncFromEditor does not re-run. The parser assigns a fresh generateShortId() for any \\cite/\\footnote lacking a \\vcid/\\vfid marker (latex-parser.ts:481,509). Normal round-trips are safe (the serializer re-emits \\vcid/\\vfid: document-styles.ts:31-32, footnote-content.ts:313, latex-serializer.ts:46-74), so divergence requires a code-view edit that drops/omits a marker or pastes a markerless \\cite. When that happens, the live node citationId changes but the sidecar citations list keeps the old id, so resolvePos's live map keyed cardPopKey('citation',c.id) misses (OmniViewPanel.tsx:477), jump no-ops, and the reconciler inline-atom exemption (entityExists=>true, useAnchorHighlightReconciler.ts:84-90) never clears the dead selection ref. Real defect on a narrow path; recovers on reload (no .tex/data loss). Reclassified: deeper root cause is the in-place setContent without a citation/footnote re-sync; bumping confidence from the finder's `low` to `medium` now that the no-remount re-parse path is confirmed; severity held at MEDIUM (narrow trigger, session-local, recoverable).",
+      "correctedRootCause": "code-pane-bridge.ts:202 editor.commands.setContent(parsed) re-derives inline-atom node ids in place on a code-view edit WITHOUT remounting the editor, but the citation/footnote sidecar re-sync (syncFromEditor) is gated on [editor] (EditorPane.tsx:1182) and never re-runs — so a marker-dropping code edit desyncs sidecar ids from live node ids for the rest of the session.",
+      "class": "identity-by-regenerated-id across the inline-atom spine; in-place re-parse without a sidecar re-sync",
+      "confidence": "medium"
+    },
+    {
+      "findingId": "OMNI-F6-01",
+      "isReal": true,
+      "disposition": "CONFIRMED",
+      "severityFinal": "MEDIUM",
+      "rationale": "Fully verified. requestToReport drops the aiRequest field (morphs/index.ts:149-161) and the registry confirms 'report' has NO aiRequest routing while 'report-request' does (card-registry.tsx:468-491 report block has no aiRequest key; :498 report-request has aiRequest:{kind:'report',linkPanel:'reports'}). The only writer of ai-requests.json for this flag is setRequestAiRequest -> bridgeCardAiRequestFlag (useReports.ts:232-261). convertCard (useReports.ts:267-279) mutates only the sidecar via applyCardMorph and NEVER calls bridgeCardAiRequestFlag(...,false); convertCardWithRemap (EditorPane.tsx:863-918) remaps only the float key (line 915) and the confirm text mentions only title/byline (lines 874-876). bridgeCardAiRequestFlag drops an entry ONLY on value=false (ai-request-bridge.ts:132-134). So a report-request with aiRequest ON keeps its pending ai-requests.json entry (linkedTo.cardId=X, panel=reports) after the morph, the morphed report has no AI-request toggle to clear it, and a draining skill finds an orphaned request. The suspectedClass holds: revision-comment (card-registry.tsx:388 aiRequest routing) -> suggestion (revision-suggestion has no aiRequest routing, confirmed) and cutter-comment (:412) -> suggestion drop the flag the same way via the comment->suggestion morphs (morphs/index.ts:51-66,93-108), and useRevisions/useCutter.convertCard likewise never unbridge. MEDIUM is right (orphaned pending request, user-unclearable, no doc data loss).",
+      "correctedRootCause": "convertCardWithRemap (EditorPane.tsx:863-918) is the single morph chokepoint but unbridges nothing; when the FROM kind has aiRequest registry routing and the TO kind does not, the ai-requests.json entry is never dropped. The fix belongs there (unbridge on a routing-losing morph).",
+      "class": "lossy-morph-drops-aiRequest-flag-without-unbridging-the-inbox-entry",
+      "confidence": "high"
+    },
+    {
+      "findingId": "OMNI-F6-02",
+      "isReal": true,
+      "disposition": "CONFIRMED",
+      "severityFinal": "LOW",
+      "rationale": "Verified. cardStore.selected holds {kind:'report',id:X}. convertCardWithRemap flips the on-disk kind via reportsHookRaw.convertCard and remaps ONLY the float popout key (EditorPane.tsx:915) — it never remaps the cardStore selection ref. The reconciler's dangling-ref pruner then runs on the changed reportCards collection (useAnchorHighlightReconciler.ts:155-159): entityExists({kind:'report',id:X}) -> findEntity, which for report/report-request requires cardKindFromRecord(card,'reports')===ref.kind (entity-hover.ts:70-74); post-morph the card's kind is 'report-request' !== 'report' -> returns undefined -> pruner calls cardStore.clearSelection(). So the stale halo is correctly cleared (no ghost) but nothing re-selects under the new kind -> halo lost across the morph. Recoverable by re-click; LOW is right. Class holds: every kind-changing morph (note<->highlight, revision/cutter comment<->suggestion, report<->report-request) leaves selected pointing at the pre-morph kind, which the kind-discriminated findEntity prunes; a re-select in convertCardWithRemap would fix all pairs.",
+      "correctedRootCause": "Selection identity is baked with the mutable card KIND; convertCardWithRemap (EditorPane.tsx:915) remaps the float key but not the cardStore selection ref, so the kind-discriminated findEntity (entity-hover.ts:70-74) prunes it after the morph.",
+      "class": "selection-ref-keyed-by-mutable-kind-not-re-selected-on-morph",
+      "confidence": "high"
+    },
+    {
+      "findingId": "OMNI-F7-01",
+      "isReal": true,
+      "disposition": "CONFIRMED",
+      "severityFinal": "MEDIUM",
+      "rationale": "Verified. CitationCard renders a raw PanelCard (not EditableCard) and wires onTrashClick={!compressed && onDelete ? () => onDelete(cit.id) : undefined} (CitationCard.tsx:697). PanelCard's CardTrashButton calls onTrashClick directly with no confirm (panel-primitives.tsx:2046; CardTrashButton at :1562-1581 just stopPropagation+onClick). The omni passes deleteCitation=onDeleteCitation=handleDeleteCitation (EditorPane.tsx:5041; render sites pass handleDeleteCitation at :3439/:3634 etc.), and handleDeleteCitation FIRST strips the in-doc \\cite{} atom via innerRef.current?.deleteCitation(id) — a real doc transaction — then filters the sidecar (EditorPane.tsx:1971-1976; the comment there calls it the 'hard-delete contract'). So one trash click destructively edits the user's .tex with no confirmation. The asymmetry is real: a footnote routes through EditableCard.tryDelete, which confirms when hasJsonContent(value) is true (panel-primitives.tsx:894-901), so a footnote with body text prompts; a citation never does. The cardHasContent gap (no citation/footnote/example/bib case, has-content.ts) is a latent supporting issue — even a wired confirm couldn't classify a citation — but the operative defect is that CitationCard bypasses the confirm path entirely. Undo (PM) can recover, but a destructive doc-mutating delete with no prompt warrants MEDIUM.",
+      "correctedRootCause": "CitationCard uses raw PanelCard whose trash calls onDelete directly (CitationCard.tsx:697 -> panel-primitives.tsx:2046), and the wired delete (handleDeleteCitation, EditorPane.tsx:1971-1976) removes the in-doc \\cite{} atom; no kind has a content-aware confirm for inline-atom cards because cardHasContent lacks footnote/citation/example/bib cases.",
+      "class": "destructive-doc-mutating-delete-bypasses-confirm-for-bodyless-inline-atom-card",
+      "confidence": "high"
+    },
+    {
+      "findingId": "OMNI-F7-02",
+      "isReal": true,
+      "disposition": "CONFIRMED",
+      "severityFinal": "LOW",
+      "rationale": "Verified. The reconciler's prune (useAnchorHighlightReconciler.ts:155-166) is the only path that clears stale cardStore refs, and entityExists short-circuits to true for inline atoms (isInlineAtomCardKind(ref.kind) => true, :84-90; predicate at predicates.ts:116-117 returns true for footnote/citation), so a deleted footnote/citation is NEVER pruned across either axis (selected at :157-159, expandedSet at :163-165). No delete-time handler clears these refs: useCitations.deleteCitation (useCitations.ts:213) and the footnote delete only filter their lists — neither calls cardStore.clearSelection()/collapse() (grep confirms no such calls in those hooks). So after deleting a selected+expanded footnote/citation the store keeps {kind,id} on both axes. The selected ref is TRANSIENT — EditorLayout's global outside-mousedown handler clears it on the next click outside any card/marker/anchor (EditorLayout.tsx:1525-1537) — but that handler only clearSelection()'s; the expandedSet membership leaks indefinitely (collapse is unreachable once the card is gone). Visible only if the id is revived (PM undo restores the atom with its original id) -> the card returns pre-selected/pre-expanded. LOW, medium confidence is well-calibrated. Compounds with OMNI-F3-02 (a regenerated id makes the old ref permanently dead yet un-prunable).",
+      "correctedRootCause": "Inline-atom prune exemption (useAnchorHighlightReconciler.ts:84-90) has no positive 'this atom was truly deleted' counterpart, so genuine footnote/citation deletes leak the cardStore selected (transient) and expandedSet (indefinite) refs. A delete handler that explicitly clearSelection()/collapse()'s the deleted ref would close it.",
+      "class": "inline-atom-prune-exemption-leaks-store-refs-on-genuine-delete",
+      "confidence": "medium"
+    }
+  ]
+}

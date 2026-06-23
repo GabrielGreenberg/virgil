@@ -1,0 +1,86 @@
+{
+  "file": "search-g-display",
+  "verifier": "B",
+  "verdicts": [
+    {
+      "findingId": "SR-F1-01",
+      "isReal": true,
+      "disposition": "CONFIRMED",
+      "severityFinal": "HIGH",
+      "rationale": "Independently traced and confirmed. The `results` useMemo deps (SearchPanel.tsx:363-380) are: editor identity + query/flags + the per-scope source arrays. None is a doc-position counter. `searchMainText` computes pmFrom/pmTo against editor.state.doc AT MEMO TIME (SearchPanel.tsx:179-208) and stores them on the hit; they are never re-resolved. The mainText source is the editor doc itself but the memo does not depend on a per-edit version of it. The two card-position sources are footnoteInfos (gated `[editor, rev.footnotes]`, EditorPane.tsx:2772-2775) and allEditorCitations (gated `[editor, rev.citations]`, EditorPane.tsx:2611-2626) — passed straight into SearchPanel as `footnotes`/`editorCitations` (search-host.tsx:46-50, EditorPane.tsx:5571-5575). useStructuralRevisions only bumps a counter on a STRUCTURAL bus event and deliberately keeps positions OUT (useStructuralRevisions.ts:24-28, 90-91). So a plain-text edit (typing/deleting chars, or even inserting/deleting a whole paragraph — note rev.blocks is NOT a results dep) bumps no dep the memo watches, the memo does not recompute, and every cached from/to is stale. navigateToResult passes them verbatim to onHighlightRange (SearchPanel.tsx:390); applyHighlight does setTextSelection(range)+scrollIntoView with a try/catch that ONLY guards out-of-range (Editor.tsx:1733-1749) — a stale-but-still-valid range silently highlights the WRONG span. Matches the rubric's HIGH example verbatim ('stale positions cause mis-navigation'). Not data-loss (no content mutated). The searchState being lifted (EditorPane.tsx:2662) means the stale window persists across panel close/reopen, widening the exposure.",
+      "correctedRootCause": "Deeper than the finder framed it: the architectural mismatch is that searchMainText snapshots ABSOLUTE PM positions into the memo's value, but the memo is gated on CONTENT-change counters (per keystroke-sanctity, useStructuralRevisions.ts:24-28 explicitly excludes positions). The correct design re-resolves stored positions at navigate time against the live doc (e.g. map through tr.mapping or re-run the per-hit descend), exactly as useInTextPositions does for in-text markers. SearchPanel.tsx:382-406 navigateToResult is the single chokepoint where a live re-resolve belongs.",
+      "class": "Position-snapshot-in-content-gated-memo. Siblings: any onHighlightRange producer that stores absolute from/to and replays later (errorHighlightRange via effectiveHighlightRange, EditorLayout.tsx ~:3352); FootnoteSearchItem.pos / EditorCitationItem.pos themselves go stale identically when only mainText edits intervene (their gating counter is silent). The general anti-pattern: caching editor positions outside the live snapshot layer.",
+      "confidence": "high"
+    },
+    {
+      "findingId": "SR-F1-02",
+      "isReal": true,
+      "disposition": "CONFIRMED",
+      "severityFinal": "MEDIUM",
+      "rationale": "Confirmed. selectedIdx lives in lifted SearchPanelState and is reset to null ONLY on query/caseSensitive/wholeWord/scope changes (SearchPanel.tsx:258,269,280,298). No effect clamps it when `results` shrinks for another reason (e.g. deleting footnotes bumps rev.footnotes → footnoteInfos identity changes → results recomputes to fewer hits while selectedIdx is untouched). PrevNextCounter renders `${current + 1} of ${total}` with no bounds check (panel-primitives.tsx:2592) → reachable '16 of 10'. ResultCard `selected={selectedIdx === i}` (SearchPanel.tsx:524) then matches no card. goNext computes `(selectedIdx + 1) % results.length` (SearchPanel.tsx:411) = arbitrary index. The contrast with useCycle's read-clamp `rawIdx < items.length ? rawIdx : null` (panel-primitives.tsx:2613) is the exact pattern Search fails to apply. MEDIUM is right: realistic-but-secondary (requires the result set to shrink mid-session); recoverable by a fresh query.",
+      "correctedRootCause": "SearchPanel reimplements the prev/next cursor by hand instead of using the shared useCycle hook (panel-primitives.tsx:2606-2629) which already solves this with a read-time clamp. The defect is the divergence from the canonical helper, not a one-off oversight: goNext/goPrev/PrevNextCounter all consume the unclamped raw selectedIdx (SearchPanel.tsx:408-422,446).",
+      "class": "Manual selected-index without read-clamp. The brief notes Search owns its own selectedIdx precisely because it does NOT route through the shared card-store selection — so it inherits none of the store's pruning either. Any other hand-rolled index cursor that bypasses useCycle is a sibling.",
+      "confidence": "high"
+    },
+    {
+      "findingId": "SR-F1-03",
+      "isReal": true,
+      "disposition": "CONFIRMED",
+      "severityFinal": "LOW",
+      "rationale": "Confirmed. before/after are clamped to CTX=40 with an ellipsis affordance (SearchPanel.tsx:176-177, 787, 797) but `<mark>{result.match}</mark>` is rendered verbatim with no length clamp (SearchPanel.tsx:791-793). compileQuery escapes all regex metacharacters (search-sources.ts:133) so the match equals the literal query length, which is unbounded by the input field. A multi-thousand-char query that exists in the doc would render its full run in the mark and blow out the card. Real but an unlikely human path (nobody pastes a 3000-char search query intending to read it) and purely a layout/overflow nuisance with no functional or data consequence — LOW is generous; borderline COSMETIC. Keeping LOW per finder.",
+      "correctedRootCause": null,
+      "class": "Snippet renderers that clamp surrounding context but not the matched span. Same module's card preview/snippet code paths would share it if they render an unclamped match.",
+      "confidence": "high"
+    },
+    {
+      "findingId": "SR-F1-04",
+      "isReal": true,
+      "disposition": "CONFIRMED",
+      "severityFinal": "LOW",
+      "rationale": "Confirmed. compileQuery unconditionally wraps the escaped pattern as `\\b${pattern}\\b` when wholeWord is on (search-sources.ts:134). \\b requires a word/non-word transition at that edge; if the query's first or last char is a non-word char (punctuation/space), the adjacent \\b is unsatisfiable and the regex matches nothing, indistinguishable from a genuine no-match. Verified the regex is then used for both searchMainText (SearchPanel.tsx:307,172) and every collection scanText. Real, deterministic, but an edge: whole-word search for a punctuation-bounded token is uncommon, and the workaround (turn W off) is obvious. LOW.",
+      "correctedRootCause": "Naive \\b-bracketing without inspecting word-char adjacency at each boundary. A correct impl conditions each boundary on whether the adjacent query char is a word char (or uses lookarounds). The escape step (search-sources.ts:133) does not strip/flag leading/trailing non-word chars before the \\b wrap.",
+      "class": "Generic \\b-wrapping whole-word matchers. Any other regex search in the codebase that prepends/appends \\b without the adjacency guard (the brief's hypothesized siblings) shares it.",
+      "confidence": "high"
+    },
+    {
+      "findingId": "SR-F1-05",
+      "isReal": true,
+      "disposition": "RECLASSIFIED",
+      "severityFinal": "COSMETIC",
+      "rationale": "Real but the finder's own 'cosmetic' aside is the accurate severity and the LOW label overstates it; downgrading to COSMETIC. buildBreadcrumb uses `while (sections.length > 0 && sections.length >= level) sections.pop()` (SearchPanel.tsx:126), treating crumb-stack DEPTH as a proxy for heading LEVEL. I traced several sequences: the common ones (H1/H2/H2, H1/H2/H3/H2) crumb correctly. The genuine divergence is sibling headings at a SKIPPED level — e.g. H1, H4, H4: stack becomes [H1,H4,H4] because at the second H4 `sections.length(2) >= level(4)` is false so nothing pops and the sibling is appended as a child instead of replacing its sibling. Result: the breadcrumb shows a bogus extra nesting level. Crucially the match still navigates correctly (breadcrumb is display-only, fed from h.from at SearchPanel.tsx:361) so there is ZERO functional or navigational impact — it is purely a mislabeled crumb chain in rare skipped-level docs. COSMETIC.",
+      "correctedRootCause": "Same class as the finder named but the precise failure is append-instead-of-replace for skipped-level siblings, not generic 'under/over-pop'. Correct fix tracks the actual `level` attr per pushed crumb and pops while the TOP crumb's level >= the incoming level, rather than comparing array length to level (SearchPanel.tsx:123-128).",
+      "class": "Stack-depth-as-level-proxy heading-tree builders. OutlinePanel's heading-tree indentation, if it infers nesting from running stack length rather than the explicit level attr, is the prime sibling to check.",
+      "confidence": "high"
+    },
+    {
+      "findingId": "SR-F4-01",
+      "isReal": true,
+      "disposition": "CONFIRMED",
+      "severityFinal": "LOW",
+      "rationale": "Confirmed asymmetry. searchFootnotes flattens the body via richJsonToPlainText(f.content) (search-sources.ts:254) and searchNotes does the same (search-sources.ts:289); richJsonToPlainText renders an embedded citation node as `displayText || command` (footnote-content.ts:615), so when displayText is populated ('Smith 2020') the raw citekey/command is absent from the searchable footnote/note string. Meanwhile searchCitations explicitly scans BOTH c.command and the resolved display text (search-sources.ts:310-318, 323-334), so the dedicated Citations scope WOULD find the same citekey. The inconsistency is invisible to the user. Real but a narrow miss (only when searching a citekey against the footnotes/notes scope specifically, AND the embedded citation has a rendered display string) with an available workaround (enable the Citations scope). LOW.",
+      "correctedRootCause": "The flattening helper is lossy-by-design for atoms (footnote-content.ts:602-628 says it's for ghosts/tooltips/previews), and search reuses it as if it were a search index. A search-specific projection would emit BOTH the display string and the underlying command for citation nodes. The reuse of the display-projection for indexing is the root.",
+      "class": "Any plain-text flattening of card bodies that collapses citation atoms to display-only and is then used for matching/indexing (compressed-card previews, drag ghosts, tooltips per footnote-content.ts:623-628) drops the underlying citekey there too.",
+      "confidence": "medium"
+    },
+    {
+      "findingId": "SR-F5-01",
+      "isReal": true,
+      "disposition": "CONFIRMED",
+      "severityFinal": "LOW",
+      "rationale": "Confirmed. navigateToResult fires onOpenItem(targetPanel, itemId) for any scope with a SCOPE_PANEL mapping (SearchPanel.tsx:393-396). openItemInPanel → setActivePanelKindBySide(panel) (EditorPane.tsx:2895-2903), which sets setActiveLeftPanelKind/setActiveRightPanelKind based on the TARGET kind's placement side (EditorPane.tsx:2876-2882). If Search occupies the same side the target panel resolves to, Search is evicted from that dock slot and the result list disappears from view. Mitigated: searchState is lifted in EditorPane (EditorPane.tsx:2662) so reopening Search restores the full result list and selectedIdx — the user loses the view, not the work. The text jump/highlight still fires. UX regression only. LOW.",
+      "correctedRootCause": "openItemInPanel side-activates the target panel with no check for whether the originating (Search) panel shares that side; there is no notion of 'keep the source panel docked'. The cross-panel jump is a flat setActive*PanelKind with no conflict resolution (EditorPane.tsx:2889-2906). The code comment even flags it as interim ('Step 7.8 will replace this').",
+      "class": "Cross-panel 'open item' that side-activates a target without checking whether the originating panel shares that side. Any other onOpenItem-style fan-out (marker-click panel activation) is a candidate sibling.",
+      "confidence": "high"
+    },
+    {
+      "findingId": "SR-F5-02",
+      "isReal": true,
+      "disposition": "CONFIRMED",
+      "severityFinal": "LOW",
+      "rationale": "Confirmed. Because results does not recompute on edits that bump no watched dep (shares the SR-F1-01 root), a result can outlive its underlying card. navigateToResult unconditionally calls onOpenItem(targetPanel, result.itemId) (SearchPanel.tsx:393-395) and openItemInPanel calls setSelected<Kind>Id(itemId) with NO liveness guard (EditorPane.tsx:2895-2903). For footnote/citation kinds the reconciler's entityExists⇒true exemption (useAnchorHighlightReconciler.ts:84-89) means the pruner never clears the dead selection, so a stale ghost halo can persist. Real but low-impact: the worst outcome is an empty/ghost selection in the target panel (no crash, no data change), and the prerequisite (delete the target card while a stale result is still displayed) is a narrow sequence. LOW.",
+      "correctedRootCause": "Two compounding gaps: (1) the same stale-results root as SR-F1-01 lets a dead itemId survive in the list; (2) openItemInPanel performs no existence check before selecting, and (3) the reconciler explicitly refuses to prune inline-atom selections (useAnchorHighlightReconciler.ts:84-89, intentional for the live-atom case) so a dead fn/cite id is never cleared. A liveness guard at EditorPane.tsx:2895-2903 or at navigateToResult would close it.",
+      "class": "Selecting a card by id from a stale derived list with no existence check. Shares root with SR-F1-01; the reconciler inline-atom exemption is the known-fragile lead #2 amplifier.",
+      "confidence": "medium"
+    }
+  ]
+}

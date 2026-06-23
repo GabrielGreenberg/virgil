@@ -1,0 +1,175 @@
+{
+  "subject": "search",
+  "group": "G-interact",
+  "clusters": ["F2", "F3", "F6", "F7"],
+  "cells": [
+    {
+      "cluster": "F2",
+      "status": "BUG",
+      "note": "Search has no card halo; its 'selection' axis is the single `selectedIdx` in SearchPanelState. Query/scope/case/word setters all reset selectedIdx to null (axis-pure for those). BUT when `results` shrinks via a DATA change (item deleted in another panel while search is open, query unchanged) selectedIdx is never clamped — SearchPanel.tsx never uses the `useCycle` clamp-on-read helper (panel-primitives.tsx:2613) that exists for exactly this. selectedIdx can point past results.length → wrong PrevNextCounter ('11 of 5') + stale selection/highlight. SR-F2-01.",
+      "bugIds": ["SR-F2-01"]
+    },
+    {
+      "cluster": "F3",
+      "status": "BUG",
+      "note": "Bidirectional jump is the core search payoff and it is BROKEN in the live path. (a) card->text editor highlight/scroll is dead: SearchHost in canonical EditorPane wires onHighlightRange to EditorPane's LOCAL `searchHighlightRange` state which is `void`-ed (EditorPane.tsx:2664) and never reaches the inner Editor; the only live consumer is EditorLayout's separate `searchHighlightRange` (EditorLayout.tsx:1270) which is ONLY ever set to null (:3160), never to a range. SR-F3-01. (b) A mainText result click therefore does nothing at all (mainText has no SCOPE_PANEL entry so onOpenItem is skipped too). SR-F3-01. (c) The 'Reports' scope chip is toggleable in the More dropdown but searchReports is never called in the results memo -> zero results, silent dead scope. SR-F3-02. (d) Same-side cross-panel jump REPLACES the search panel instead of splitting. SR-F3-03. (e) Cached PM positions go stale on plain keystrokes (no structural counter bump) so the would-be highlight targets the wrong offset once (a) is fixed. SR-F3-04.",
+      "bugIds": ["SR-F3-01", "SR-F3-02", "SR-F3-03", "SR-F3-04"]
+    },
+    {
+      "cluster": "F6",
+      "status": "N-A",
+      "note": "Search is a structural panel with no card and no morph/convert analogue. The nearest mode-change is scope toggling, which is a non-destructive filter (toggleScope, SearchPanel.tsx:291) not a lossy kind-conversion. Nothing in the morph defect class (lossy title/author drop, host-confirm gate, AI-request orphan) applies.",
+      "bugIds": []
+    },
+    {
+      "cluster": "F7",
+      "status": "BUG",
+      "note": "No card lifecycle (delete/dup/drag) for search results. Reinterpreted as 'backing item removed while search open': result vanishes on next memo recompute (data arrays change identity on mutation) which is fine, BUT the unclamped selectedIdx (SR-F2-01) survives item removal -> stale index + stale highlight. Also the live orphaned-footnote scope is dead: canonical EditorPane hardcodes orphanedFootnotes={[]} (EditorPane.tsx:5572) so orphaned-footnote bodies are never searchable even though searchFootnotes handles them. SR-F7-01.",
+      "bugIds": ["SR-F7-01"]
+    }
+  ],
+  "findings": [
+    {
+      "id": "SR-F3-01",
+      "subject": "search",
+      "cluster": "F3",
+      "severity": "HIGH",
+      "symptom": "Clicking a search result never scrolls or highlights the matched text in the main editor; for a Main-text result the click does nothing visible at all.",
+      "suspectedRootCause": "Incomplete '7.8' migration left a dangling state wire. The canonical SearchHost lives in EditorPane and sets EditorPane's LOCAL `searchHighlightRange` state, which is explicitly discarded (`void searchHighlightRange; // surfaces in the editor's highlight overlay post-7.8`). The inner <Editor> only consumes the `highlightRange` PROP, which EditorLayout feeds from `effectiveHighlightRange = searchHighlightRange ?? errorHighlightRange` using EditorLayout's OWN `searchHighlightRange` state. Nothing ever sets EditorLayout's `searchHighlightRange` to a real range — its only write site sets it to null. So the search-result range never reaches Editor.applyHighlight()'s `highlightRangeRef` path. For mainText scope there is additionally no SCOPE_PANEL entry, so the onOpenItem fallback is also skipped, leaving the click totally inert.",
+      "evidence": [
+        { "file": "src/components/EditorPane.tsx", "line": 2664, "note": "`void searchHighlightRange; // surfaces in the editor's highlight overlay post-7.8` — the SearchHost's highlight state is intentionally discarded; the wiring was deferred and never landed." },
+        { "file": "src/components/EditorPane.tsx", "line": 5584, "note": "SearchHost mounted with setSearchHighlightRange={setSearchHighlightRange} -> EditorPane's local (void) state, NOT a prop from EditorLayout." },
+        { "file": "src/components/EditorLayout.tsx", "line": 3160, "note": "The ONLY write to EditorLayout's searchHighlightRange: `if (!searchPanelOpen) setSearchHighlightRange(null);` — only ever sets null, never a range." },
+        { "file": "src/components/EditorLayout.tsx", "line": 3352, "note": "effectiveHighlightRange = searchHighlightRange ?? errorHighlightRange — searchHighlightRange is always null, so search never contributes a range." },
+        { "file": "src/components/EditorLayout.tsx", "line": 4401, "note": "highlightRange={effectiveHighlightRange} passed to EditorPane (the live editor highlight input) — receives only errorHighlightRange, never the search range." },
+        { "file": "src/panels/Search/SearchPanel.tsx", "line": 388, "note": "navigateToResult calls onHighlightRange({from,to}) which is the dead local void setter." },
+        { "file": "src/panels/Search/SearchPanel.tsx", "line": 393, "note": "targetPanel = SCOPE_PANEL[result.scope]; mainText has no entry (search-sources.ts:87) so onOpenItem is skipped for mainText hits." },
+        { "file": "src/components/Editor.tsx", "line": 1731, "note": "applyHighlight reads highlightRangeRef.current (the prop) for the search-range scroll+highlight; with the prop always null for search, this branch never fires." }
+      ],
+      "reproSteps": [
+        "Open a paper; open the Search panel (left).",
+        "Type a query that matches Main text (default scopes include mainText).",
+        "Click any Main-text result (or press Enter).",
+        "Observe: the main editor does not scroll to or highlight the match — nothing happens in the document.",
+        "Repeat with a Footnotes/Notes result: the target panel selects the item (onOpenItem works) but the in-text range is still never highlighted/scrolled."
+      ],
+      "reproChannel": "code-trace",
+      "confidence": "high",
+      "suspectedClass": "Dual-state-with-dangling-wire: a state lifted into a child component during a migration whose only live consumer reads a sibling state of the same name in the parent. Same hazard exists anywhere EditorPane holds a `void`-ed state that EditorLayout is supposed to own — grep for other `void <state>; // ... post-7.8` markers in EditorPane.tsx."
+    },
+    {
+      "id": "SR-F3-02",
+      "subject": "search",
+      "cluster": "F3",
+      "severity": "MEDIUM",
+      "symptom": "Enabling the 'Reports' scope chip yields zero results no matter what the document contains.",
+      "suspectedRootCause": "`reports` is listed in SCOPE_ORDER (and thus DROPDOWN_SCOPES) so the chip is rendered and toggleable, but SearchPanel's results memo has no `enabledScopes.has('reports')` branch and never calls the exported `searchReports`. The function is dead code from the panel's perspective; the EditorPane SearchHost also passes no report cards to SearchPanel.",
+      "evidence": [
+        { "file": "src/lib/search-sources.ts", "line": 114, "note": "SCOPE_ORDER includes 'reports' -> DROPDOWN_SCOPES (SearchPanel.tsx:91) includes it -> a 'Reports' chip appears in the More menu." },
+        { "file": "src/panels/Search/SearchPanel.tsx", "line": 312, "note": "results memo branches for mainText/footnotes/notes/citations/todos/archive/cuts/revisions/bibliography — NO 'reports' branch (verified: grep for 'reports' in SearchPanel.tsx hits only the SCOPE_TO_CARD_THEME map at :704)." },
+        { "file": "src/lib/search-sources.ts", "line": 417, "note": "searchReports is exported but never imported/called by SearchPanel.tsx (not in its import list, :22-33)." },
+        { "file": "src/components/editor-layout/panels/search-host.tsx", "line": 22, "note": "SearchHostProps has no reportCards field; EditorPane passes no reports to the panel even if the branch existed." }
+      ],
+      "reproSteps": [
+        "Open Search, open the 'More' dropdown.",
+        "Enable 'Reports'.",
+        "Search for text that appears in a Report card title/body.",
+        "Observe: no results from Reports (the count does not include any report match)."
+      ],
+      "reproChannel": "code-trace",
+      "confidence": "high",
+      "suspectedClass": "Registry-vs-dispatch drift: a scope/kind enumerated in the order/label/color maps but missing from the actual dispatch switch. Check that every SCOPE_ORDER entry has both a results-memo branch AND a SearchHost data prop; 'reports' is the proven gap."
+    },
+    {
+      "id": "SR-F3-03",
+      "subject": "search",
+      "cluster": "F3",
+      "severity": "MEDIUM",
+      "symptom": "Jumping from a search result to a target panel that sits on the SAME side as Search closes the Search panel, losing the visible query/results.",
+      "suspectedRootCause": "The canonical EditorPane `openItemInPanel` only calls `setActivePanelKindBySide(kind)` (one active panel per side) plus the per-kind select setter. It dropped the split-into-top/bottom behavior that the legacy (unrendered) EditorLayout.openItemInPanel had (EditorLayout.tsx:1292-1297 `setActiveHalf(searchSide,'top','search'); setActiveHalf(searchSide,'bottom',panel)`). The comment at EditorPane.tsx:2891 flags it as deferred ('Step 7.8 will replace this ... + dock-slot expansion'). Search state is preserved so reopening restores it, but the jump no longer shows source + destination together.",
+      "evidence": [
+        { "file": "src/components/EditorPane.tsx", "line": 2889, "note": "openItemInPanel: per-kind setSelectedXId + setActivePanelKindBySide(kind) only — no split." },
+        { "file": "src/components/EditorPane.tsx", "line": 2876, "note": "setActivePanelKindBySide replaces the active panel on the kind's placement side (single active per side)." },
+        { "file": "src/components/EditorPane.tsx", "line": 2891, "note": "Comment: 'Step 7.8 will replace this with the shell's cross-panel jump (which also handles dock-slot expansion + scroll-into-view).' — explicitly incomplete." },
+        { "file": "src/components/EditorLayout.tsx", "line": 1292, "note": "Legacy (unrendered) version DID split top/bottom on same side — the intended UX that was lost." }
+      ],
+      "reproSteps": [
+        "Place Search and Citations both on the LEFT side.",
+        "Search for a citation, get a Citations-scope result.",
+        "Click the result.",
+        "Observe: the left side switches from Search to Citations; the Search panel (with its query and result list) is replaced rather than split alongside."
+      ],
+      "reproChannel": "code-trace",
+      "confidence": "medium",
+      "suspectedClass": "Migration regression where a richer parent-shell behavior (auto-split) was reduced to a single setActivePanelKind during the EditorPane consolidation. Any other cross-panel jump relying on the old setActiveHalf split is similarly degraded."
+    },
+    {
+      "id": "SR-F3-04",
+      "subject": "search",
+      "cluster": "F3",
+      "severity": "MEDIUM",
+      "symptom": "After running a search, typing inside a paragraph that precedes a match shifts the real text but the search result keeps its old PM positions, so the (would-be) highlight/scroll lands at the wrong offset.",
+      "suspectedRootCause": "The results memo recomputes only when one of its deps changes. The mainText PM positions come from searchMainText(editor,re) inside the memo, whose deps are [editor (stable identity across all transactions), query, caseSensitive, wholeWord, enabledScopes, footnotes, citations, ...]. A plain keystroke (typing inside a paragraph) bumps NO structural revision counter, so allEditorCitations/footnoteInfos keep identity and the memo does not recompute — but the PM positions in the doc have shifted by the inserted character count. The cached from/to are now stale. (Structural edits DO refresh, because allEditorCitations is memoized on rev.citations and feeds the deps; the gap is specifically the keystroke path.) Today this is masked by SR-F3-01 making the highlight dead, but it is the latent root that surfaces once the highlight wire is restored.",
+      "evidence": [
+        { "file": "src/panels/Search/SearchPanel.tsx", "line": 305, "note": "results memo; deps (:363-380) include `editor` (stable across edits) and the structural-counter-backed arrays, but nothing that bumps on a plain keystroke." },
+        { "file": "src/panels/Search/SearchPanel.tsx", "line": 162, "note": "searchMainText computes pmFrom/pmTo at memo time from the doc snapshot; the values are frozen in the result objects." },
+        { "file": "src/components/EditorPane.tsx", "line": 2626, "note": "allEditorCitations memo deps [editor, rev.citations] — refreshes on structural edits only, so the dep chain that drives a re-search is silent on plain typing." },
+        { "file": "src/components/EditorPane.tsx", "line": 2774, "note": "footnoteInfos memo deps [editor, rev.footnotes] — same: no keystroke-time refresh." }
+      ],
+      "reproSteps": [
+        "Search for a word that appears in paragraph 3.",
+        "Without changing the query, click into paragraph 1 and type a sentence (plain keystrokes, no structural change).",
+        "Click the paragraph-3 result.",
+        "Observe (once SR-F3-01 is fixed): the highlight/scroll lands N characters off, where N is the number of characters typed before the match."
+      ],
+      "reproChannel": "code-trace",
+      "confidence": "medium",
+      "suspectedClass": "Position-cache memoized on stable editor identity rather than a live per-transaction-mapped snapshot. Per root AGENTS.md, live in-text positions should resolve at measure time (useInTextPositions / getBus(editor).structure), not be frozen in a memo gated on `editor` identity. Any panel freezing PM positions in a memo keyed on `editor` has the same drift."
+    },
+    {
+      "id": "SR-F2-01",
+      "subject": "search",
+      "cluster": "F2",
+      "severity": "LOW",
+      "symptom": "After a search result is selected, deleting backing items elsewhere (shrinking the result list without changing the query) leaves the result counter showing an out-of-range index (e.g. '11 of 5') and a stale selection/highlight.",
+      "suspectedRootCause": "SearchPanel manages selectedIdx directly in SearchPanelState and only resets it to null on query/scope/case/word changes (setQuery/toggleScope/etc.). It never clamps selectedIdx when `results` shrinks for any OTHER reason (data-array change). The panel pointedly does not use the shared useCycle helper, which clamps the exposed index on read (`rawIdx != null && rawIdx < items.length ? rawIdx : null`) precisely to 'handle list shrinking'. PrevNextCounter then renders `${current+1} of ${total}` with a current past total.",
+      "evidence": [
+        { "file": "src/panels/Search/SearchPanel.tsx", "line": 285, "note": "setSelectedIdx just stores idx; no clamp against results.length." },
+        { "file": "src/panels/Search/SearchPanel.tsx", "line": 444, "note": "headerExtras passes current={selectedIdx} total={results.length} directly to PrevNextCounter — no clamp." },
+        { "file": "src/components/panel-primitives.tsx", "line": 2592, "note": "PrevNextCounter renders `${current + 1} of ${total}` with no bounds check on current vs total." },
+        { "file": "src/components/panel-primitives.tsx", "line": 2613, "note": "useCycle clamps on read ('Handles list shrinking by clamping the exposed index on read') — the helper SearchPanel should have used but doesn't." }
+      ],
+      "reproSteps": [
+        "Search across multiple scopes so there are e.g. 8 results.",
+        "Select result #8 (last).",
+        "In another panel, delete the notes/footnotes that produced the early results so the list shrinks to 4 — query unchanged.",
+        "Observe: header reads '8 of 4' (out of range); no card shows as selected; the editor still shows the stale highlight (once SR-F3-01 fixed)."
+      ],
+      "reproChannel": "code-trace",
+      "confidence": "medium",
+      "suspectedClass": "Index-into-derived-list not clamped on list mutation. PrevNextCounter has no internal guard, so every caller that doesn't route through useCycle (search here) is exposed; audit other PrevNextCounter consumers that hold their own index in panel state."
+    },
+    {
+      "id": "SR-F7-01",
+      "subject": "search",
+      "cluster": "F7",
+      "severity": "MEDIUM",
+      "symptom": "Orphaned footnotes (callout deleted, body preserved) are never found by search even with the Footnotes scope on.",
+      "suspectedRootCause": "The canonical EditorPane SearchHost hardcodes orphanedFootnotes={[]}. searchFootnotes(footnotes, orphans, re) is written to scan orphan titles/bodies (and emit unanchored hits), but it always receives an empty orphan list in the live path, so orphan footnote content is silently unsearchable. (The unrendered EditorLayout path also imports SearchHost but never mounts it, so there is no working fallback.)",
+      "evidence": [
+        { "file": "src/components/EditorPane.tsx", "line": 5572, "note": "<SearchHost ... orphanedFootnotes={[]} ...> — empty literal, never the real orphan list." },
+        { "file": "src/lib/search-sources.ts", "line": 259, "note": "searchFootnotes iterates `orphans` and emits unanchored hits (hitFromMatch with pos=null) — capability exists but is fed nothing." },
+        { "file": "src/panels/Search/SearchPanel.tsx", "line": 326, "note": "searchFootnotes(footnotes, orphanedFootnotes, re) — orphanedFootnotes prop is the empty array from the host." }
+      ],
+      "reproSteps": [
+        "Create a footnote, then delete its in-text marker so the body is orphaned (orphaned-footnote card appears in Footnotes panel).",
+        "Open Search with the Footnotes scope enabled.",
+        "Search for a word that appears only in the orphaned footnote body.",
+        "Observe: no result, even though the orphaned-footnote card still holds that text."
+      ],
+      "reproChannel": "code-trace",
+      "confidence": "high",
+      "suspectedClass": "Host passes an empty literal for a data slice the panel claims to support — a 'wired-but-starved' input. Check other SearchHost inputs for stubbed literals (none others spotted, but the pattern is the same class as SR-F3-02's missing report data)."
+    }
+  ]
+}

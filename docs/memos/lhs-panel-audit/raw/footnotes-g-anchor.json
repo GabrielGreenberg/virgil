@@ -1,0 +1,209 @@
+{
+  "subject": "footnotes",
+  "group": "g-anchor",
+  "clusters": ["A1", "A2", "A3", "F8", "C1"],
+  "cells": [
+    {
+      "cluster": "A1",
+      "status": "BUG",
+      "note": "Orphan path works in-session (footnote.ts:188-214 dispatches virgil-footnote-orphaned; footnote-sync.ts:40-48 mirrors into orphanedFootnotes; OrphanedFootnoteCard renders with BadgeOrphaned + no jump). BUT empty-bodied footnotes are silently dropped (footnote.ts:204 gates on non-empty plain text), and orphans first/anchored second concat (FootnotePanel.tsx:114-121) has no de-dup. The reconciler pruner can never clear a stale cardStore ref for a deleted footnote (useAnchorHighlightReconciler.ts:84-90, isInlineAtomCardKind ⇒ entityExists=true).",
+      "bugIds": ["FN-A1-01", "FN-A1-02"]
+    },
+    {
+      "cluster": "A2",
+      "status": "BUG",
+      "note": "orphanedFootnotes is ephemeral React state in EditorLayout (EditorLayout.tsx:1106), never read from or written to any sidecar (useFootnotes.syncFromEditor is NEVER called for footnotes — only citationsHook.syncFromEditor at EditorPane.tsx:1180). Orphan content is lost on reload. Title + thanks are dropped at orphaning (footnote.ts:208 detail carries only {footnoteId, content}). No reset on doc switch → cross-doc orphan leak.",
+      "bugIds": ["FN-A2-01", "FN-A2-02", "FN-A2-03"]
+    },
+    {
+      "cluster": "A3",
+      "status": "BUG",
+      "note": "Footnote atoms are their own anchors, so two cards can't statically share an anchor. BUT the orphan re-drop window (Editor.tsx:753 inserts atom synchronously, virgil-footnote-panel-dropped fires via setTimeout(0) at :755) leaves the panel rendering BOTH the freshly-anchored footnote AND the still-present orphan with the SAME footnoteId — React key collision (CardListPanel.tsx:143 Fragment key=id) + identical data-card-key.",
+      "bugIds": ["FN-A3-01"]
+    },
+    {
+      "cluster": "F8",
+      "status": "BUG",
+      "note": "Docked↔omni↔float selection sync is unified through cardStore (setSelectedFootnoteId === makeKindSetter('footnote') routes to cardStore.select; selections.tsx:124,201) — PASS for selection. Footnote ids are stable (not regenerated like citations), so pin store (omni-pin-store.ts) keys hold — lead #3 N-A for footnotes. BUG: popping out a footnote then orphaning it (delete marker) makes FloatHost render null (FloatHost.tsx:44-45 via floats/index.tsx:218-220 getFootnotes().find ⇒ undefined) but the key stays in poppedOutCards — float silently vanishes, content stranded in the un-floatable orphan card. Sidecar (footnotes.json) is vestigial for anchored footnotes (content lives in node attrs/.tex).",
+      "bugIds": ["FN-F8-01"]
+    },
+    {
+      "cluster": "C1",
+      "status": "BUG",
+      "note": "Generic panel toggle/reorder/collapse/split go through the shared system (panel-registry.ts:59-67 omniEligible:true, omniSide:left) — PASS. BUG: count badge = footnotes.length (anchored only, FootnotePanel.tsx:132) but items[] includes orphans (FootnotePanel.tsx:114-121). With orphans present the badge undercounts (or shows nothing at count=0, PanelHeader hides it at panel-primitives.tsx:2088). Citations (orderedCitations.length, includes unanchored) and Reports (cards.length) count correctly — footnotes is the outlier.",
+      "bugIds": ["FN-C1-01"]
+    }
+  ],
+  "findings": [
+    {
+      "id": "FN-A2-01",
+      "subject": "footnotes",
+      "cluster": "A2",
+      "severity": "HIGH",
+      "symptom": "An orphaned footnote (marker deleted in-text, content recoverable in the panel) vanishes permanently on document reload or doc switch — the recovery affordance only survives within the live session.",
+      "suspectedRootCause": "orphanedFootnotes is a plain useState([]) in EditorLayout (EditorLayout.tsx:1106) that is never serialized to any sidecar. useFootnotes owns footnotes.json and exposes syncFromEditor, but EditorPane never calls footnotesHook.syncFromEditor (only citationsHook.syncFromEditor at EditorPane.tsx:1180) and createFootnote never calls footnotesHook.addFootnote (card-creation.ts:516-554), so the footnote sidecar is effectively never populated. When the marker is deleted the \\footnote{} text is already gone from the .tex, so the orphan's content lives ONLY in ephemeral React state. No persistence path exists.",
+      "evidence": [
+        { "file": "src/components/EditorLayout.tsx", "line": 1106, "note": "const [orphanedFootnotes, setOrphanedFootnotes] = useState<OrphanedFootnote[]>([]) — ephemeral, never hydrated from disk" },
+        { "file": "src/components/editor-layout/card-actions/orphans.ts", "line": 17, "note": "all orphan handlers mutate React state only; no writeSidecar anywhere" },
+        { "file": "src/hooks/useFootnotes.ts", "line": 121, "note": "syncFromEditor (the only path that would persist unanchored footnotes) exists but is never invoked for footnotes" },
+        { "file": "src/components/EditorPane.tsx", "line": 1180, "note": "only citationsHook.syncFromEditor is called on editor mount; the footnote equivalent is absent" }
+      ],
+      "reproSteps": [
+        "Open a paper with a footnote that has prose content",
+        "Delete the footnote's superscript marker in the main text (backspace over it)",
+        "Observe the orphaned-footnote card appears in the Footnotes panel with its content intact",
+        "Reload the document (or switch to another doc and back)",
+        "The orphaned footnote — and its content — is gone with no warning"
+      ],
+      "reproChannel": "code-trace",
+      "confidence": "high",
+      "suspectedClass": "Any panel state held at the EditorLayout shell level (vs a sidecar-backed per-doc hook) shares this loss-on-reload + leak-on-doc-switch risk. Orphan/transient-recovery collections that are not persisted are the class."
+    },
+    {
+      "id": "FN-A2-02",
+      "subject": "footnotes",
+      "cluster": "A2",
+      "severity": "MEDIUM",
+      "symptom": "When a footnote that has a user-authored title (or is a \\thanks acknowledgement) is orphaned, the title and the acknowledgement identity are silently dropped — the orphan card shows an empty +T title and a generic orphan badge instead of the 'A' acknowledgement badge.",
+      "suspectedRootCause": "The orphan-detector builds the virgil-footnote-orphaned event detail with only {footnoteId, content} (footnote.ts:208), discarding oldNode.attrs.title and oldNode.attrs.thanks even though OrphanedFootnote has a title field (types.ts:568) and the anchored card renders a 'Acknowledgement'/'A' identity from fn.thanks (FootnoteCard.tsx:116,122). The orphan record therefore never receives the title/thanks.",
+      "evidence": [
+        { "file": "src/lib/tiptap/footnote.ts", "line": 208, "note": "detail: { footnoteId: removed.id, content } — title and thanks attrs are not read or forwarded" },
+        { "file": "src/lib/types.ts", "line": 568, "note": "OrphanedFootnote.title?: string — the slot exists but is never populated by the detector" },
+        { "file": "src/panels/Footnotes/FootnoteCard.tsx", "line": 116, "note": "anchored card derives 'Acknowledgement' label + 'A' badge from fn.thanks — lost when orphaned (OrphanedFootnoteCard always renders BadgeOrphaned)" }
+      ],
+      "reproSteps": [
+        "Create a footnote, give it a title via the +T affordance (or make it a \\thanks acknowledgement)",
+        "Delete its marker in the main text",
+        "Observe the orphan card has no title (+T placeholder) and a plain orphan dot — the title/acknowledgement identity is gone even before reload"
+      ],
+      "reproChannel": "code-trace",
+      "confidence": "high",
+      "suspectedClass": "Any teardown→recovery event that reconstructs a record from a subset of the source node's attrs. The detector pulls content but not the full attr set; the same omission would affect any future per-footnote attr (e.g. a future kind discriminator)."
+    },
+    {
+      "id": "FN-A2-03",
+      "subject": "footnotes",
+      "cluster": "A2",
+      "severity": "MEDIUM",
+      "symptom": "Orphaned footnotes from one document persist into a different document's Footnotes panel after switching docs — orphans with footnoteIds that belong to the previous paper appear (and can't jump, can't re-anchor meaningfully) in the new paper's panel.",
+      "suspectedRootCause": "orphanedFootnotes lives in EditorLayout (the multi-doc shell, EditorLayout.tsx:1106) which is not remounted per doc (EditorPane is the per-doc owner). No effect resets orphanedFootnotes on docId change (grep confirms only setter calls are the bridge handlers). So the orphan list accumulates across the session and across doc switches.",
+      "evidence": [
+        { "file": "src/components/EditorLayout.tsx", "line": 1106, "note": "shell-level state with no docId-keyed reset effect" },
+        { "file": "src/components/editor-layout/event-bridges/footnote-sync.ts", "line": 40, "note": "the only producer just appends; nothing clears on doc switch" }
+      ],
+      "reproSteps": [
+        "In doc A, orphan a footnote (delete its marker) so an orphan card appears",
+        "Switch to doc B (different paper) without reloading",
+        "Observe doc B's Footnotes panel shows doc A's orphan footnote"
+      ],
+      "reproChannel": "code-trace",
+      "confidence": "medium",
+      "suspectedClass": "Any shell-level (EditorLayout) state that should be per-doc but isn't reset on docId change. Companion to the suppressOrphanRef latch which is also shell-level and never reset."
+    },
+    {
+      "id": "FN-A1-01",
+      "subject": "footnotes",
+      "cluster": "A1",
+      "severity": "MEDIUM",
+      "symptom": "A deleted footnote can leave a stale selection/expansion/hover reference in the global cardStore that is never pruned, so the selection slot keeps pointing at a footnote that no longer exists anywhere (no atom, no orphan, no sidecar).",
+      "suspectedRootCause": "The dangling-ref pruner exempts inline-atom kinds: entityExists() returns true unconditionally for footnote/citation (useAnchorHighlightReconciler.ts:84-90 via isInlineAtomCardKind), so when a footnote is hard-deleted (trash on card → handleDeleteFootnote, which suppresses the orphan) the pruner at :157-165 can never clear cardStore.selected / hover / expandedSet entries for it. The reconciler then resolves the link to no DOM (findInlineAtomPos returns null) so nothing visibly paints, but selectedFootnoteId (derived from the store) reports a ghost id until the user selects another card or clicks away.",
+      "evidence": [
+        { "file": "src/links/_shared/useAnchorHighlightReconciler.ts", "line": 88, "note": "if (isInlineAtomCardKind(ref.kind)) return true — footnote refs are treated as always-present, defeating the pruner" },
+        { "file": "src/links/_shared/useAnchorHighlightReconciler.ts", "line": 157, "note": "the prune block calls entityExists and so never clears a deleted footnote's selection/hover/expansion" },
+        { "file": "src/components/EditorPane.tsx", "line": 2745, "note": "handleDeleteFootnote removes the atom and arms the suppress latch — no cardStore.clearSelection for the deleted id" }
+      ],
+      "reproSteps": [
+        "Select a footnote card (halo on)",
+        "Delete it via the card's trash button",
+        "cardStore.selected still holds {kind:'footnote', id} (now non-existent); the derived selectedFootnoteId is a ghost until the next select/click-away",
+        "Equivalent: hover a footnote card then delete it — cardStore.hover is not pruned"
+      ],
+      "reproChannel": "code-trace",
+      "confidence": "medium",
+      "suspectedClass": "Lead #2: the inline-atom exemption affects BOTH footnotes and citations identically — a deleted citation has the same stale-ghost-ref risk. Any kind the pruner can't classify is exempt."
+    },
+    {
+      "id": "FN-A1-02",
+      "subject": "footnotes",
+      "cluster": "A1",
+      "severity": "LOW",
+      "symptom": "Deleting the marker of a footnote whose body is empty (e.g. a title-only footnote, or a freshly-created blank one the user titled) produces NO orphan card — the footnote and any title silently disappear with no recovery affordance.",
+      "suspectedRootCause": "The orphan-detector only dispatches virgil-footnote-orphaned when richJsonToPlainText(content).trim() is non-empty (footnote.ts:204). A footnote with an empty body but a non-empty title still fails this gate, so it is never orphaned and its title is lost (compounds FN-A2-02).",
+      "evidence": [
+        { "file": "src/lib/tiptap/footnote.ts", "line": 204, "note": "if (content && richJsonToPlainText(content).trim()) — title-only / empty-body footnotes skip orphan creation entirely" }
+      ],
+      "reproSteps": [
+        "Create a footnote, give it a title but leave the body empty",
+        "Delete its marker in text",
+        "No orphan card appears; the title is gone"
+      ],
+      "reproChannel": "code-trace",
+      "confidence": "high",
+      "suspectedClass": "Content-emptiness gates that ignore non-body fields (title/metadata). The has-content predicate family (cardHasContent / hasJsonContent) similarly considers only body content for footnotes — see the F7 lead #1."
+    },
+    {
+      "id": "FN-A3-01",
+      "subject": "footnotes",
+      "cluster": "A3",
+      "severity": "LOW",
+      "symptom": "During an orphan re-drop, the Footnotes panel briefly renders two cards with the SAME footnoteId — the freshly re-anchored footnote and the not-yet-removed orphan — causing a React key collision and a one-frame duplicate (both share the same data-card-key, so a halo would paint both).",
+      "suspectedRootCause": "The re-drop inserts the new footnote atom synchronously (Editor.tsx:752-753 view.dispatch) which immediately bumps rev.footnotes and re-derives footnoteInfos, but the orphan is only removed when the deferred virgil-footnote-panel-dropped fires via setTimeout(0) (Editor.tsx:755-761). FootnotePanel.items concatenates orphanedFootnotes + footnotes with no de-dup by id (FootnotePanel.tsx:114-121), and the omni builder does the same (omni.tsx:30-82). CardListPanel keys each item by footnoteId (CardListPanel.tsx:143).",
+      "evidence": [
+        { "file": "src/components/Editor.tsx", "line": 752, "note": "synchronous tr.insert of the re-dropped footnote atom" },
+        { "file": "src/components/Editor.tsx", "line": 755, "note": "setTimeout(0) before dispatching virgil-footnote-panel-dropped that removes the orphan — opens the duplicate window" },
+        { "file": "src/panels/Footnotes/FootnotePanel.tsx", "line": 114, "note": "items = [...orphanedFootnotes, ...footnotes] with getId = footnoteId for both; no de-dup → React key collision when an id is in both lists" }
+      ],
+      "reproSteps": [
+        "Orphan a footnote (delete its marker)",
+        "Drag the orphan card back into the document text",
+        "For one render cycle the panel shows both an anchored and an orphan card with the same id (React key-collision warning in console)"
+      ],
+      "reproChannel": "code-trace",
+      "confidence": "medium",
+      "suspectedClass": "Any two lists merged by id without a de-dup pass while one list is updated synchronously and the other via a deferred event. The orphan↔anchored seam is the canonical instance."
+    },
+    {
+      "id": "FN-F8-01",
+      "subject": "footnotes",
+      "cluster": "F8",
+      "severity": "MEDIUM",
+      "symptom": "If a footnote is popped out into a floating window and then orphaned (its marker deleted in text), the float window silently disappears and its key is leaked in poppedOutCards; the (still-recoverable) content is stranded in the docked orphan card, which has no popout affordance.",
+      "suspectedRootCause": "The footnote Floatable resolves its data from the live editor (floats/index.tsx:218-220 getFootnotes().find) and returns null when the atom is gone. FloatHost renders null for that key (FloatHost.tsx:44-45) but never removes it from poppedOutCards / prefs. There is no orphan-footnote Floatable registration, and no migration of the float to the orphan record on orphaning.",
+      "evidence": [
+        { "file": "src/cards/floats/index.tsx", "line": 218, "note": "liveFootnotes = getFootnotes(); fn = find(id); if (!fn) return null — orphaned footnote yields no float body" },
+        { "file": "src/floats/FloatHost.tsx", "line": 44, "note": "resolveFloatable returns null ⇒ FloatHost renders nothing, but the key persists in keys/poppedOutCards" },
+        { "file": "src/components/editor-layout/event-bridges/footnote-sync.ts", "line": 40, "note": "orphaning path adds the orphan but does not close/remap any open float for that footnote" }
+      ],
+      "reproSteps": [
+        "Pop out a footnote card into a floating window",
+        "Delete the footnote's marker in the main text (orphaning it)",
+        "The float window vanishes with no explanation; the orphan card appears docked but cannot be re-popped; the float key remains in prefs"
+      ],
+      "reproChannel": "code-trace",
+      "confidence": "medium",
+      "suspectedClass": "Float keys whose underlying entity can transition to a state with no Floatable resolver (orphan footnote, deleted citation) leak in poppedOutCards. Any kind without a defensive 'close float on entity disappearance' is in the class."
+    },
+    {
+      "id": "FN-C1-01",
+      "subject": "footnotes",
+      "cluster": "C1",
+      "severity": "LOW",
+      "symptom": "The Footnotes panel header count badge undercounts when orphaned footnotes are present — it shows only the anchored count (and shows nothing at all when there are 0 anchored + N orphans), while the panel body renders N more cards than the badge claims.",
+      "suspectedRootCause": "FootnotePanel passes count={footnotes.length} (anchored only, FootnotePanel.tsx:132) but builds items from [...orphanedFootnotes, ...footnotes] (FootnotePanel.tsx:114-121). PanelHeader hides the badge entirely when count <= 0 (panel-primitives.tsx:2088). By contrast Citations counts orderedCitations.length (includes unanchored drafts) and Reports counts cards.length — footnotes is the only left card panel that excludes its unanchored/orphan items from the count.",
+      "evidence": [
+        { "file": "src/panels/Footnotes/FootnotePanel.tsx", "line": 132, "note": "count={footnotes.length} — orphans excluded" },
+        { "file": "src/panels/Footnotes/FootnotePanel.tsx", "line": 114, "note": "items include orphans first, then anchored — rendered count diverges from badge count" },
+        { "file": "src/components/panel-primitives.tsx", "line": 2088, "note": "{count != null && count > 0 && ...} — badge hidden at 0, so 0-anchored+N-orphan reads as no badge" },
+        { "file": "src/panels/Citations/CitationsPanel.tsx", "line": 241, "note": "count={orderedCitations.length} includes unanchored — establishes the inconsistency" }
+      ],
+      "reproSteps": [
+        "Have a paper with 2 anchored footnotes and 1 orphan",
+        "Observe the Footnotes panel badge reads '2' while 3 cards render",
+        "Delete the markers of all anchored footnotes so only orphans remain — the badge disappears entirely while orphan cards still render"
+      ],
+      "reproChannel": "code-trace",
+      "confidence": "high",
+      "suspectedClass": "Panels with a separate orphan/unanchored sub-list passing only the anchored count to the badge. Footnotes is the outlier vs Citations/Reports — the class is 'badge count derived from a narrower list than items'."
+    }
+  ]
+}

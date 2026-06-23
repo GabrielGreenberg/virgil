@@ -1,0 +1,167 @@
+{
+  "subject": "examples",
+  "group": "g-anchor",
+  "clusters": ["A1", "A2", "A3", "F8", "C1"],
+  "cells": [
+    {
+      "cluster": "A1",
+      "status": "BUG",
+      "note": "Examples are DERIVED purely from live exampleBlock nodes (getExamples, Editor.tsx:1179-1275 always pushes a numeric pos). The omni 'orphaned' branch (omni.tsx:27 `ex.pos == null ? \"orphaned\"`) is UNREACHABLE — pos is never null. When a user deletes the \\ex block, the card simply vanishes; there is NO orphan card, NO 'block deleted' recovery affordance, and NO jump-disabled orphan state. The docked card surface auto-clears its selection/expand refs via the reconciler pruner (findEntity('example') returns undefined once the block leaves c.examples, useAnchorHighlightReconciler.ts:81-83,157-165), which is correct. But the spec'd S5 orphan-render function is dead code and diverges from the in-editor block float, which DOES show a SourceMissingBanner.",
+      "bugIds": ["EX-A1-01", "EX-A1-02"]
+    },
+    {
+      "cluster": "A2",
+      "status": "BUG",
+      "note": "No Mode-A/Mode-B link drift exists for examples: scrollToExample (Editor.tsx:1277-1296) resolves the block by uuid live on every jump, so the 'anchor' is never stale — reanchorByText/id-regeneration is N-A in the link sense (PASS for jump freshness). HOWEVER the entire useExamples sidecar hook (title persist / delete / syncFromEditor / isAutoTitle strip — useExamples.ts) is DEAD: it is imported nowhere in the live app (only comment mentions in EditorPane.tsx:30 and Reader explicitly states 'no sidecar storage', EditorPane.tsx:5645). examples.json is never read or written; title + createdAt round-trip does not happen. isAutoTitle('example', 'Example 3') would null a legit user title if the hook were wired (latent DATA-LOSS). A2 status reflects this dead-recovery-machinery finding.",
+      "bugIds": ["EX-A2-01"]
+    },
+    {
+      "cluster": "A3",
+      "status": "PASS",
+      "note": "exampleBlock declares `uuid: {default:null}` (expex.ts:675) so isAnchorableNode(exampleBlock)=true (marginalia.ts:41-43); BlockUuidBackfill (block-uuid-backfill.ts) re-mints a duplicate exampleBlock uuid in the SAME appendTransaction as the paste, before any observer/React read sees it (move/re-sync exempted via removedUuids). getExamples keys on attrs.uuid and SKIPS uuid-less blocks (Editor.tsx:1185), so two cards with the same exampleId is not reachable post-backfill. Float write-back forces `uuid: src.node.attrs.uuid` (ExampleCard.tsx:193) — single block, no dup. No A3 defect found.",
+      "bugIds": []
+    },
+    {
+      "cluster": "F8",
+      "status": "BUG",
+      "note": "Two distinct float surfaces represent the same example: the panel-card float (key float:card:example:<id>, ExampleCard via cards/floats/index.tsx:626-649) and the in-editor block float (key textobject:example:<uuid>, ExampleBlockBody). On block delete they DIVERGE: the block float shows a SourceMissingBanner + Close (float-sync.tsx:85-109, example-block-body.tsx:279-284); the card float's toFloatable returns null (ex not found) so FloatHost renders null (FloatHost.tsx:46) — the card float silently vanishes with no banner and leaves a DANGLING key in poppedOutCards (no pruning, useViewPrefs.ts/usePoppedCards has no entity-existence prune). Docked<->omni<->float selection/hover/expand sync via cardStore+cardKey is sound. Re-seed cursor restore (ExampleCard.tsx:288-298) clamps raw {from,to} without mapping through the change — a foreign main edit landing BEFORE a parked card caret misplaces it (same limitation in float-sync.tsx:221-228). Docked card editable + card-float editable share floatId 'example-card:<id>' (ExampleCard.tsx:177) — currently harmless (re-seed is bus-driven, not FLOAT_WRITE_META-driven) but a latent trap.",
+      "bugIds": ["EX-F8-01", "EX-F8-02", "EX-F8-03"]
+    },
+    {
+      "cluster": "C1",
+      "status": "PASS",
+      "note": "Examples panel chrome is the generic CardListPanel/Panel system (omniEligible:true, omniSide:left, defaultStripSide:left — panel-registry.ts:98-106). count={examples.length} (ExamplesPanel.tsx:73) where `examples` recomputes on rev.examples (EditorPane.tsx:2780-2783), so the count badge tracks live blocks (no orphan inflation, no separate stale count source — strip badge is driven by the same array). Toggle/reorder/collapse/split inherit shared infra; no example-specific chrome. No delete-confirm path exists (lifecycle.delete=false, markerType:null, card-registry.tsx:445-449), so the known-fragile cardHasContent-missing-example-case (has-content.ts:22-32) is UNREACHABLE for examples (N-A, not a bug here). No C1 defect found.",
+      "bugIds": []
+    }
+  ],
+  "findings": [
+    {
+      "id": "EX-A1-01",
+      "subject": "examples",
+      "cluster": "A1",
+      "severity": "LOW",
+      "symptom": "An example card can never appear as an orphan; deleting the \\ex block in the text makes the card silently disappear with no 'source deleted' affordance.",
+      "suspectedRootCause": "Examples are derived entirely from live exampleBlock nodes. getExamples() walks the doc with descendants and always assigns a numeric `pos` to every ExampleInfo it pushes; it never emits an entry for a deleted block. The omni builder's orphan classification `ex.pos == null ? \"orphaned\" : \"anchored\"` therefore has an unreachable left branch — pos is structurally never null. There is no parallel persisted record (the examples.json sidecar is dead, see EX-A2-01) that could outlive the block to surface an orphan/recovery card the way archive/note/report orphans do.",
+      "evidence": [
+        { "file": "src/components/Editor.tsx", "line": 1258, "note": "getExamples pushes ExampleInfo with pos = the descendants position (always a number); a uuid-less block is skipped at :1185, a deleted block emits nothing." },
+        { "file": "src/panels/Examples/omni.tsx", "line": 27, "note": "anchorState: ex.pos == null ? 'orphaned' : 'anchored' — the 'orphaned' arm is dead because pos is never null for a derived example." },
+        { "file": "src/hooks/useExamples.ts", "line": 100, "note": "syncFromEditor DROPS the sidecar metadata row for any example absent from the editor list, so even the sidecar can't retain an orphan stub (and the hook is unwired anyway)." }
+      ],
+      "reproSteps": [
+        "Open a doc with an \\ex block and the Examples panel/omni populated.",
+        "Delete the example block text in the main editor.",
+        "Observe the example card vanishes immediately on the next rev.examples bump — no orphan card, no 'block deleted' notice, no disabled-jump state. The omni 'orphaned' label never renders for any example."
+      ],
+      "reproChannel": "code-trace",
+      "confidence": "high",
+      "suspectedClass": "Any DERIVED card kind whose card list is rebuilt from live nodes (rather than a persisted sidecar) cannot represent an orphan — the orphan/unanchored UX only works for sidecar-backed kinds (note/archive/todo/report). Footnotes are the sibling: they DO keep an orphan list (FootnotePanel orphans, useFootnotes sidecar) precisely because the sidecar outlives the atom; examples lack that, so the brief-listed orphan-example function is structurally impossible."
+    },
+    {
+      "id": "EX-A1-02",
+      "subject": "examples",
+      "cluster": "A1",
+      "severity": "LOW",
+      "symptom": "A popped-out example panel card vanishes without explanation when its block is deleted, whereas the in-editor example block float shows a 'Source example deleted' banner — inconsistent disconnection UX for the same underlying block.",
+      "suspectedRootCause": "The panel-card float resolves its data through CARD_REGISTRY.example.toFloatable, which looks up `ctx.examples.find(e => e.exampleId === id)` and returns null when the block is gone, so FloatHost renders nothing for that key. The in-editor block float (textObjectFloatable -> ExampleBlockBody) instead always mounts and uses useFloatMainSync's `missing` flag to render SourceMissingBanner. Two parallel float code paths for the same entity implement source-deletion differently.",
+      "evidence": [
+        { "file": "src/cards/floats/index.tsx", "line": 627, "note": "toFloatable('example'): `const ex = ctx.examples.find(...); if (!ex) return null;` — float disappears on delete, no banner." },
+        { "file": "src/floats/FloatHost.tsx", "line": 46, "note": "if (!f) return null — a null Floatable renders nothing; the stored key is left in place." },
+        { "file": "src/text-objects/floats/example-block-body.tsx", "line": 279, "note": "block float renders SourceMissingBanner kind='example' when useFloatMainSync reports missing — the divergent, friendlier behavior." }
+      ],
+      "reproSteps": [
+        "Pop out an example from the Examples panel card (float key float:card:example:<id>).",
+        "Delete the \\ex block in the main editor.",
+        "Observe the floating card silently disappears (no banner, no Close affordance).",
+        "Compare: pop out the SAME example via the in-editor block grab handle and delete the block — a 'Source example deleted — float is disconnected' banner appears with a Close button."
+      ],
+      "reproChannel": "code-trace",
+      "confidence": "high",
+      "suspectedClass": "Any poppable card kind whose toFloatable resolves from a live-derived collection (example; also footnote/citation read live via ctx) returns null on entity deletion and the float silently vanishes, while text-object floats banner instead. Footnote/citation card floats share this null-return pattern (cards/floats/index.tsx:220,488)."
+    },
+    {
+      "id": "EX-A2-01",
+      "subject": "examples",
+      "cluster": "A2",
+      "severity": "LOW",
+      "symptom": "The Examples sidecar hook (custom title persistence, delete, editor reconciliation) is wired into nothing; an example's custom title and createdAt are never saved or restored, and the auto-title stripper would silently null a legit user title 'Example N' if ever connected.",
+      "suspectedRootCause": "useExamples (the documented S5 sidecar owner) is dead code: it is not imported by EditorPane, EditorLayout, the omni host, or any Reader path — only referenced in comments. The live Examples panel sources everything from getExamples() (live blocks), and ExampleInfo carries no `title` field, so the panel/card has no title-edit UI at all. The examples.json sidecar therefore never round-trips. Embedded in the (unreachable) load path is isAutoTitle('example', title) which strips any title matching ^Example \\d+$ — a latent DATA-LOSS for a user who named an example 'Example 3'.",
+      "evidence": [
+        { "file": "src/hooks/useExamples.ts", "line": 23, "note": "useExamples exposes exampleRefs/updateExampleTitle/deleteExample/syncFromEditor — none consumed; grep across src finds only comment references." },
+        { "file": "src/components/EditorPane.tsx", "line": 5645, "note": "Reader comment: 'Examples ... are derived from the editor's live doc (no sidecar storage)' — confirms the sidecar is intentionally bypassed in the live app." },
+        { "file": "src/hooks/useExamples.ts", "line": 45, "note": "load-time map runs isAutoTitle('example', e.title) ? { ...e, title: '' } : e — would null a real 'Example 3' title (CARD_TITLE_LABELS.example = 'Example', isAutoTitle regex ^Example \\d+$, panel-registry.ts:254-259)." }
+      ],
+      "reproSteps": [
+        "Inspect the running Examples panel/card: there is no title input and no createdAt persistence.",
+        "Confirm examples.json is never written (no live caller of writeSidecar('examples.json', ...)).",
+        "Latent: were the hook reconnected, name an example 'Example 3' and reload — the title is silently cleared by the isAutoTitle migrator."
+      ],
+      "reproChannel": "code-trace",
+      "confidence": "high",
+      "suspectedClass": "isAutoTitle false-positive (known-fragile lead #7) is a defect class shared by every kind whose titleLabel is a common word — 'Report 2' for reports is the live sibling (reports DO persist titles and DO run the stripper on load, useReports.ts:57-60), so the report panel actually exhibits the loss; examples only carry the latent version because the hook is dead."
+    },
+    {
+      "id": "EX-F8-01",
+      "subject": "examples",
+      "cluster": "F8",
+      "severity": "MEDIUM",
+      "symptom": "Deleting an example's block while its panel-card float is open leaves a stale popped-out key in saved view prefs; on a later doc load (or undo) the dead key persists silently rather than being cleaned up, and the float gave no disconnection feedback.",
+      "suspectedRootCause": "poppedOutCards keys are only added/removed by explicit toggle/close gestures (useViewPrefs.ts:1357-1380). There is no pruner that drops a popped key whose underlying entity no longer resolves. When toFloatable('example') returns null on block delete, FloatHost renders nothing but the key stays in poppedOutCards. Unlike the docked-card surface (whose stale cardStore refs ARE pruned by useDanglingRefPruner via entityExists), the popout-key store has no equivalent reconciler, so the key accumulates as cruft and the float disappears with no SourceMissingBanner.",
+      "evidence": [
+        { "file": "src/cards/floats/index.tsx", "line": 628, "note": "if (!ex) return null — float for a deleted example resolves to null." },
+        { "file": "src/hooks/usePoppedCards.ts", "line": 1, "note": "PoppedCardsValue has no prune/reconcile op; close() is the only removal and is user-driven." },
+        { "file": "src/hooks/useViewPrefs.ts", "line": 1357, "note": "togglePopout add/remove is the only mutation of poppedOutCards; no entity-existence sweep." },
+        { "file": "src/links/_shared/useAnchorHighlightReconciler.ts", "line": 157, "note": "the docked-surface pruner clears cardStore refs for deleted entities — but it does NOT touch poppedOutCards, so the float key is not cleaned." }
+      ],
+      "reproSteps": [
+        "Pop out an example from the Examples panel card.",
+        "Delete the \\ex block in the main text.",
+        "The float vanishes with no banner; inspect view prefs — float:card:example:<id> remains in poppedOutCards.",
+        "Undo the deletion: the float reappears (key was still live), confirming the key persisted dead in the interim."
+      ],
+      "reproChannel": "code-trace",
+      "confidence": "medium",
+      "suspectedClass": "All card-float keys for derived/live-resolved entities (example; footnote/citation card floats) can become dangling popout keys on entity deletion because no reconciler prunes poppedOutCards against entity existence — the dangling-ref pruner only covers cardStore (selection/hover/expand), not the popout store."
+    },
+    {
+      "id": "EX-F8-02",
+      "subject": "examples",
+      "cluster": "F8",
+      "severity": "LOW",
+      "symptom": "When an example is edited from one surface (e.g. the main editor or a second open card) while the user's caret sits mid-text in another open example card, the re-seed can drop the caret at the wrong logical position if the foreign edit inserted text BEFORE the caret.",
+      "suspectedRootCause": "The card editor's main->card re-seed captures the embedded editor's {from,to} and re-applies the SAME numeric offsets (clamped to doc size) after setContent, instead of mapping them through the structural change. An insertion upstream of the caret shifts the content but not the restored offset, so the caret lands earlier than the user's logical position. The block float shares the identical raw-offset restore (no mapping) in float-sync.syncFromMain.",
+      "evidence": [
+        { "file": "src/panels/Examples/ExampleCard.tsx", "line": 288, "note": "re-seed saves `const { from, to } = editor.state.selection` then setContent then setTextSelection with min/max-clamped from/to — no tr.mapping applied." },
+        { "file": "src/lib/float-sync.tsx", "line": 221, "note": "syncFromMain does the same raw {from,to} clamp+restore for every text-object float — the shared class." }
+      ],
+      "reproSteps": [
+        "Open example A's card expanded (editable) and place the caret mid-text (e.g. after the 3rd char).",
+        "In the main editor (or a second open surface for A), insert text at the START of example A's body.",
+        "Observe the card re-seeds and the caret is restored to the same numeric offset, now pointing earlier in the logical text than where the user had it."
+      ],
+      "reproChannel": "code-trace",
+      "confidence": "medium",
+      "suspectedClass": "Raw-offset caret restore across a setContent re-seed (no ProseMirror mapping) is shared by every float/embedded editor: float-sync.tsx (all text-object floats) and ExampleCard.tsx (example card editor). A position-mapped restore would fix the whole class."
+    },
+    {
+      "id": "EX-F8-03",
+      "subject": "examples",
+      "cluster": "F8",
+      "severity": "LOW",
+      "symptom": "The docked example card editor and its popped-out card-float editor use the identical write-back floatId 'example-card:<id>', so their own-write echo tags collide — currently masked, but fragile against future wiring.",
+      "suspectedRootCause": "ExampleCardEditor derives floatId = `example-card:${exampleId}` from the example id alone, with no per-surface (docked vs float) discriminator. Both instances tag their main write-backs with FLOAT_WRITE_META = the same string. It is harmless today only because the card editor's main->card re-seed is driven by the per-uuid DocStructureBus contentRev signal (which ignores FLOAT_WRITE_META) plus a JSON-equality echo guard — NOT by useMainTransactionSync's floatId filter. If anyone migrates the example card onto the shared useFloatMainSync (as the block float uses), the shared floatId would make one surface swallow the other's legitimate updates.",
+      "evidence": [
+        { "file": "src/panels/Examples/ExampleCard.tsx", "line": 177, "note": "const floatId = `example-card:${exampleId}` — identical for the docked instance and the popped-out card-float instance of the same example." },
+        { "file": "src/panels/Examples/ExampleCard.tsx", "line": 198, "note": "writeBackToMain tags tr with FLOAT_WRITE_META, floatId — both surfaces emit the same tag." },
+        { "file": "src/lib/float-sync.tsx", "line": 152, "note": "useMainTransactionSync skips a tx whose FLOAT_WRITE_META === floatId — would mis-skip cross-surface if examples ever route through it." }
+      ],
+      "reproSteps": [
+        "Expand the docked example A card (editable) AND pop A out as a card float simultaneously.",
+        "Confirm both ExampleCardEditor instances compute floatId 'example-card:A'.",
+        "Today: type in either — the other re-seeds correctly (bus-driven). Latent risk surfaces only if the re-seed is changed to a floatId-filtered subscription."
+      ],
+      "reproChannel": "code-trace",
+      "confidence": "low",
+      "suspectedClass": "Float ids derived from entity id alone (no surface discriminator) are a latent collision class for any kind that can be open on two surfaces at once. The block float uses 'example:<uuid>' (distinct from the card's 'example-card:<id>'), so the docked/float-card pair is the specific collision; a surface-tagged floatId would harden it."
+    }
+  ]
+}

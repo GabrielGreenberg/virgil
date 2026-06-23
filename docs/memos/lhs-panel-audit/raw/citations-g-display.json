@@ -1,0 +1,219 @@
+{
+  "subject": "citations",
+  "group": "g-display",
+  "clusters": ["F1", "F4", "F5"],
+  "cells": [
+    {
+      "cluster": "F1",
+      "status": "PASS",
+      "note": "Initial/populated render: orderedCitations sort (CitationsPanel.tsx:109-122) is stable; unknown ids sort last (ai/bi === -1 branches). Empty state at :308-319; strip badge count={orderedCitations.length} (:241). Missing-entry render '<key> — not in your bibliography' (CitationCard.tsx:1155-1160). Preview HTML sink is sanitized via sanitizeInlineCitationHtml (CitationCard.tsx:952-953, bib-parser.ts:497-504)."
+    },
+    {
+      "cluster": "F1",
+      "status": "BUG",
+      "note": "Compressed header renders ALL headerRowData rows uncapped (CitationCard.tsx:608-659 inside px-3 py-1.5 :752) — a multi-key \\cites collapsed card grows N lines tall, no line-clamp unlike every borrowed/sans compressed body.",
+      "bugIds": ["CI-F1-01"]
+    },
+    {
+      "cluster": "F1",
+      "status": "UNVERIFIED",
+      "note": "Whether a SELECTED citation's halo survives an editor remount/.tex re-parse. Editor regenerates citation ids on parse (useCitations.ts:352-374; syncFromEditor runs once per editor mount, EditorPane.tsx:1177-1182), so the sidecar gets fresh ids while cardStore.selected/selectedCitationId hold the OLD id. Code strongly implies the halo is lost + the selected-id is dangling, but confirming the reload sequence (does cardStore reset on remount?) needs a live reload step. Resolve: open a doc, select a citation card, reload the doc, observe halo + window.__virgil cardStore.selected.",
+      "bugIds": ["CI-F1-02"]
+    },
+    {
+      "cluster": "F4",
+      "status": "BUG",
+      "note": "A \\cite atom embedded in a footnote/note card BODY (RichTextField editable, or BorrowedMainText read-only — both mount the Citation node-view via buildBorrowedAtomSchema) dispatches virgil-citation-click with the citationId persisted in THAT body's JSON. The main-doc citation observer regenerates ids on parse and rewrites the sidecar, but nested-body atom ids never re-sync, so detail.citationId drifts → setSelectedCitationId(staleId) selects no/ wrong card.",
+      "bugIds": ["CI-F4-01"]
+    },
+    {
+      "cluster": "F4",
+      "status": "BUG",
+      "note": "marker-clicks.ts:319-322 resolves the click sourceEl with document.querySelector('.citation-node[data-citation-id=...]') — the FIRST instance in the document, which for a nested-body click is typically the main-text instance, not the clicked one. alignOmniCardWithClick then aligns to the wrong source rect (clickY is right, sourceEl is wrong).",
+      "bugIds": ["CI-F4-02"]
+    },
+    {
+      "cluster": "F4",
+      "status": "PASS",
+      "note": "Inline BibEntryCard ('Bib' toggle) nested in the citation card body (CitationCard.tsx:978-1005) renders only when all callbacks present (canRenderBib :967-976) and self-clears when the row's key disappears (:451-455). Citation displayText inside borrowed bodies refreshed at mount via refreshCitationDisplay (BorrowedMainText.tsx:86-106)."
+    },
+    {
+      "cluster": "F5",
+      "status": "BUG",
+      "note": "biblatex singular→plural auto-promote (CitationCard.tsx:375-388) has NO demote. After promote type='cites', reducing to one row (removeRow :392-402) or re-equalizing postnotes never resets type → serializeCiteCommand emits '\\cites{key}' for a single key (bib-parser.ts:337-339 uses cmdBase verbatim) and the Type dropdown stays stuck on \\cites. Lead #4 confirmed.",
+      "bugIds": ["CI-F5-01"]
+    },
+    {
+      "cluster": "F5",
+      "status": "BUG",
+      "note": "Switching bibPackage biblatex→natbib (panel menu) while a card holds a biblatex command (e.g. \\cites/\\autocite) leaves type unchanged: the Type <select value={type}> (CitationCard.tsx:836-850) has no matching option in NATBIB_TYPES so it shows wrong/first option, and the next persist serializes with bibPackage='natbib' but cmdBase='cites'/'autocite' → emits a biblatex command under natbib (bib-parser.ts:324-333). No package-migration of existing card commands.",
+      "bugIds": ["CI-F5-02"]
+    },
+    {
+      "cluster": "F5",
+      "status": "BUG",
+      "note": "setRowKey (CitationCard.tsx:361-368) / the picker do NOT dedup keys, so two rows can hold the same citekey → serializeCiteCommand emits a duplicate-key command (\\citep{smith,smith}) and the header shows it twice. handleCardDrop dedups (:514) but the picker path does not — inconsistent.",
+      "bugIds": ["CI-F5-03"]
+    },
+    {
+      "cluster": "F5",
+      "status": "N-A",
+      "note": "Per-card AI-request flag toggle: CitationRef (types.ts:312-326) has no aiRequest field and CitationCard renders no AiRequestCheckbox. Citations only CONSUME the AI-request inbox list (myAiRequests filter, CitationsPanel.tsx:104-107) via CardListPanel; bib-review requests route through the nested BibEntryCard, not a citation-card flag. No flag→inbox bridging exists for this kind."
+    },
+    {
+      "cluster": "F5",
+      "status": "PASS",
+      "note": "Edit body (rows/keys/prenote/postnote/type/* /Aa/raw Code 250ms debounce): persist computes next at event time then onUpdateCitation (CitationCard.tsx:304-351); own-write echo guarded by lastWrittenRef (:288-300); commitCodeDraft/updateCodeDraft (:534-560). Postnote round-trips via pgDraft (:1080-1099). Emptying all rows emits '' (:317-322) which the parent store drops correctly. No bodyTitle for citations (they have no title field) — N/A subcell within PASS."
+    }
+  ],
+  "findings": [
+    {
+      "id": "CI-F1-01",
+      "subject": "citations",
+      "cluster": "F1",
+      "severity": "COSMETIC",
+      "symptom": "A collapsed multi-key citation card (e.g. \\cites{a,b,c,d}) renders one header line per key, growing several rows tall instead of staying compact like every other collapsed card.",
+      "suspectedRootCause": "The citation header bypasses the shared compressed-body line-clamp. CitationCard renders headerContent (which maps over ALL headerRowData rows) inside the compressed branch (CitationCard.tsx:751-752) with only overflowWrap:'anywhere' and no WebkitLineClamp / compressedBodyStyle ceiling — unlike EditableCard's compressed body (panel-primitives.tsx:1048-1076) which clamps to compressedLines.",
+      "evidence": [
+        { "file": "src/panels/Citations/CitationCard.tsx", "line": 751, "note": "compressed branch wraps the full multi-row headerContent in px-3 py-1.5 with no clamp" },
+        { "file": "src/panels/Citations/CitationCard.tsx", "line": 637, "note": "headerRowData.map renders a <div> per key — N rows tall when collapsed" }
+      ],
+      "reproSteps": [
+        "Create a citation with 4+ keys (\\cites{a,b,c,d}).",
+        "Collapse the card.",
+        "Observe the collapsed header is 4 lines tall, breaking the uniform single/clamped-line collapsed card rhythm."
+      ],
+      "reproChannel": "code-trace",
+      "confidence": "high",
+      "suspectedClass": "Any bespoke card header that lists per-row content in its compressed view without routing through compressedBodyStyle — check the multi-paragraph report omni rows and any future multi-anchor card."
+    },
+    {
+      "id": "CI-F1-02",
+      "subject": "citations",
+      "cluster": "F1",
+      "severity": "HIGH",
+      "symptom": "After the doc reloads / the editor re-parses the .tex, a previously-selected citation card loses its selection halo (and the panel's selectedCitationId points at an id that no longer exists).",
+      "suspectedRootCause": "The editor regenerates citation ids on every parse; syncFromEditor rewrites citations.json with the NEW ids (useCitations.ts:357-374) while cardStore.selected and the layout's selectedCitationId still hold the OLD id. Because citation is an inline-atom kind, the reconciler's pruner treats it as entityExists⇒true (useAnchorHighlightReconciler.ts:84-90) and never clears the dangling selection, so the halo silently mismatches.",
+      "evidence": [
+        { "file": "src/hooks/useCitations.ts", "line": 357, "note": "syncFromEditor maps editor citations to fresh ids (id: ec.citationId), dropping prior anchored ids" },
+        { "file": "src/components/EditorPane.tsx", "line": 1177, "note": "syncFromEditor runs once per editor mount → ids rotate on remount/reparse" },
+        { "file": "src/links/_shared/useAnchorHighlightReconciler.ts", "line": 84, "note": "entityExists returns true for any inline-atom kind, so the pruner never clears a citation's stale cardStore.selected" }
+      ],
+      "reproSteps": [
+        "Open a doc with \\cite atoms.",
+        "Select a citation card (halo on).",
+        "Trigger a doc reload / editor remount.",
+        "Observe the halo is gone and selectedCitationId no longer matches any rendered card."
+      ],
+      "reproChannel": "code-trace",
+      "confidence": "medium",
+      "suspectedClass": "Footnotes share the inline-atom entityExists⇒true exemption and the same id-keyed selection — verify whether footnote selection survives the same remount. The deeper class: any selection keyed on an editor-regenerated id (omni pos cache, omniPinStore) is invalidated by a re-parse for both citation and footnote."
+    },
+    {
+      "id": "CI-F4-01",
+      "subject": "citations",
+      "cluster": "F4",
+      "severity": "MEDIUM",
+      "symptom": "Clicking a citation that is nested inside a footnote/note card body selects no card (or the wrong one) instead of selecting that citation's card.",
+      "suspectedRootCause": "The nested citation atom's citationId is persisted in the host card's body JSON and is NEVER re-synced when the main-doc citation observer regenerates ids on parse (only top-level doc atoms feed getCitations()/syncFromEditor). The node-view dispatches virgil-citation-click with the stale body-JSON id (citation.ts:269-287); the bridge does setSelectedCitationId(detail.citationId) (marker-clicks.ts:284) against a sidecar that now holds different ids → mismatch.",
+      "evidence": [
+        { "file": "src/lib/tiptap/citation.ts", "line": 269, "note": "node-view dispatches virgil-citation-click carrying node.attrs.citationId from the local (card-body) JSON" },
+        { "file": "src/components/editor-layout/event-bridges/marker-clicks.ts", "line": 284, "note": "setSelectedCitationId(detail.citationId) — assumes the dispatched id matches a sidecar citation" },
+        { "file": "src/components/EditorPane.tsx", "line": 2611, "note": "allEditorCitations / citationPositionMap derive only from main-doc atoms (rev.citations), never from card-body editors" }
+      ],
+      "reproSteps": [
+        "Put a \\cite inside a footnote body, save.",
+        "Reload so the main-doc citation ids regenerate.",
+        "Expand the footnote card and click the nested citation.",
+        "Observe no citation card highlights (the dispatched id is stale relative to the rebuilt sidecar)."
+      ],
+      "reproChannel": "code-trace",
+      "confidence": "medium",
+      "suspectedClass": "Same drift hits nested footnote markers (data-footnote-id) inside other card bodies; any inline-atom id stored in a sub-editor's JSON diverges from the main-doc/sidecar id space after a re-parse (id-regeneration class, lead #3)."
+    },
+    {
+      "id": "CI-F4-02",
+      "subject": "citations",
+      "cluster": "F4",
+      "severity": "LOW",
+      "symptom": "Clicking a repeated citation (or one inside a card body) aligns the omni card to the wrong on-screen citation instance.",
+      "suspectedRootCause": "marker-clicks.ts resolves the alignment sourceEl with a document-wide querySelector for the FIRST '.citation-node[data-citation-id=...]', which is whichever instance appears first in DOM order — not the clicked one. The clicked element's true rect is available (clickY in the event detail), but the sourceEl handed to alignOmniCardWithClick can be a different instance.",
+      "evidence": [
+        { "file": "src/components/editor-layout/event-bridges/marker-clicks.ts", "line": 319, "note": "document.querySelector('.citation-node[data-citation-id=...]') returns the first match, not the clicked node" },
+        { "file": "src/lib/tiptap/citation.ts", "line": 262, "note": "the node-view already has the exact clicked dom element but only forwards clickY, not the element" }
+      ],
+      "reproSteps": [
+        "Cite the same key twice in a doc (two \\cite atoms, same id is NOT shared — but a repeated nested vs main instance reproduces).",
+        "Click the second/nested instance.",
+        "Observe the omni card aligns to the first instance's vertical position."
+      ],
+      "reproChannel": "code-trace",
+      "confidence": "low",
+      "suspectedClass": "The parallel footnote handler (marker-clicks.ts:262-269) uses the same first-match querySelector for .footnote-marker — same wrong-instance alignment for repeated/nested footnote markers."
+    },
+    {
+      "id": "CI-F5-01",
+      "subject": "citations",
+      "cluster": "F5",
+      "severity": "MEDIUM",
+      "symptom": "After adding a second key with a distinct page range and then removing it (or making the ranges equal again), the citation stays a plural \\cites command for a single key and the Type dropdown is stuck on \\cites.",
+      "suspectedRootCause": "The singular→plural promotion (setRowPostnote) is one-way: it sets type='cites' when rows≥2 with distinct postnotes, but no code path demotes back to the singular form when rows drop to 1 or postnotes re-equalize. removeRow re-persists with the unchanged plural type, and serializeCiteCommand emits the plural base verbatim for a single entry.",
+      "evidence": [
+        { "file": "src/panels/Citations/CitationCard.tsx", "line": 375, "note": "shouldPromote → setType(type+'s'); no inverse demote anywhere" },
+        { "file": "src/panels/Citations/CitationCard.tsx", "line": 392, "note": "removeRow persists with the closure's current (plural) type unchanged" },
+        { "file": "src/lib/bib-parser.ts", "line": 337, "note": "serializeCiteCommand single-entry branch uses cmdBase ('cites') verbatim → \\cites{key}" }
+      ],
+      "reproSteps": [
+        "biblatex package; create \\cite{a}.",
+        "Add a second key b and give a and b different +range postnotes → auto-promotes to \\cites[..]{a}[..]{b}.",
+        "Remove row b.",
+        "Observe the command is now \\cites{a} (plural, single key) and the Type select shows \\cites."
+      ],
+      "reproChannel": "code-trace",
+      "confidence": "high",
+      "suspectedClass": "Lead #4. Any one-way command-shape mutation driven by row count/postnote distinctness without a symmetric inverse — same pattern would bite a future biblatex shorthand auto-switch."
+    },
+    {
+      "id": "CI-F5-02",
+      "subject": "citations",
+      "cluster": "F5",
+      "severity": "MEDIUM",
+      "symptom": "Switching the bibliography package (biblatex→natbib) leaves existing citation cards holding biblatex-only commands (e.g. \\cites, \\autocite), which then serialize unchanged and show an inconsistent Type dropdown.",
+      "suspectedRootCause": "Package switch only flips the shared bibPackage; it does not migrate per-card type. The Type <select value={type}> over the package-specific option list has no matching option for the now-invalid command, and the next persist serializes with the new package but the old (foreign) cmdBase.",
+      "evidence": [
+        { "file": "src/panels/Citations/CitationCard.tsx", "line": 836, "note": "<select value={type}> over `types` (natbib OR biblatex) — a biblatex-only `type` has no option after switch" },
+        { "file": "src/panels/Citations/CitationCard.tsx", "line": 675, "note": "types is package-derived but `type` state is not reconciled when bibPackage changes" },
+        { "file": "src/lib/bib-parser.ts", "line": 324, "note": "serializeCiteCommand(natbib) still emits cmdBase verbatim → \\cites under natbib" }
+      ],
+      "reproSteps": [
+        "biblatex; create a \\autocite or a 2-key \\cites card.",
+        "Open the panel menu and switch Package to natbib.",
+        "Open the card's Type dropdown (shows no/incorrect selection) and/or edit a row.",
+        "Observe the persisted command is still a biblatex-only command under natbib."
+      ],
+      "reproChannel": "code-trace",
+      "confidence": "medium",
+      "suspectedClass": "Any per-card command shape that depends on the panel-wide bibPackage but is not re-derived when the package toggles — also affects the inline display formatter path for the same cards."
+    },
+    {
+      "id": "CI-F5-03",
+      "subject": "citations",
+      "cluster": "F5",
+      "severity": "LOW",
+      "symptom": "A citation card can end up with two rows holding the same citekey, producing a duplicate-key LaTeX command and a doubled header line.",
+      "suspectedRootCause": "setRowKey (picker commit path) writes the chosen key without checking the other rows, unlike handleCardDrop which dedups. So picking the same key on two rows persists \\citep{k,k}.",
+      "evidence": [
+        { "file": "src/panels/Citations/CitationCard.tsx", "line": 361, "note": "setRowKey maps the key onto the target row with no cross-row dedup" },
+        { "file": "src/panels/Citations/CitationCard.tsx", "line": 514, "note": "handleCardDrop DOES dedup (prev.some(r => r.key === bibKey)) — inconsistent with the picker path" }
+      ],
+      "reproSteps": [
+        "Open a citation card, add a second row.",
+        "Use the picker to set both rows to the same citekey.",
+        "Observe the serialized command repeats the key and the header lists it twice."
+      ],
+      "reproChannel": "code-trace",
+      "confidence": "high",
+      "suspectedClass": "Inconsistent dedup invariants between the drag-merge path and the picker path — any multi-key editor that dedups on one entry route but not another."
+    }
+  ]
+}

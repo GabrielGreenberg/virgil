@@ -1,0 +1,175 @@
+{
+  "subject": "search",
+  "group": "g-anchor",
+  "clusters": ["A1", "A2", "A3", "F8", "C1"],
+  "cells": [
+    {
+      "cluster": "A1",
+      "status": "BUG",
+      "note": "Search is structural (panel-registry.ts:156 card:null, omniEligible:false) — A1 reinterpreted as 'unanchored/orphan results'. Unanchored results are modeled (search-sources.ts:226-238 hitFromMatch sets from=MAX_SAFE_INTEGER + unanchored:true; bib/citation-no-pos/orphan-footnote feed it) and render correctly (SearchPanel.tsx:361 skips breadcrumb, :748 shows '(unanchored)'). BUT the live SearchHost is hardcoded with orphanedFootnotes={[]} (EditorPane.tsx:5572) while the real orphan list (viewPrefs.orphanedFootnotes) is available (EditorPane.tsx:364, used at :5029) — orphaned-footnote bodies are silently excluded from the Footnotes search scope.",
+      "bugIds": ["SR-A1-01"]
+    },
+    {
+      "cluster": "A2",
+      "status": "BUG",
+      "note": "A2 reinterpreted as 'stale positions + recovery'. The results memo (SearchPanel.tsx:305-380) keys off the editor INSTANCE identity (stable across keystrokes) plus query/scope/source-array deps — NOT a doc-version counter. searchMainText (SearchPanel.tsx:162-224) computes PM positions (result.from/to) against the doc snapshot at search time. Editing main-text body after searching (without changing query or any source array) does NOT re-run the memo, so result.from/to drift; navigateToResult then forwards stale positions. No reanchor/recovery exists (positions are raw PM offsets, not text snapshots).",
+      "bugIds": ["SR-A2-01"]
+    },
+    {
+      "cluster": "A3",
+      "status": "PASS",
+      "note": "Two matches at/within the same anchor: React keys include the index (SearchPanel.tsx:521 `${scope}-${itemId}-${from}-${i}`) so list rows stay unique; navigation is index-based (goNext/goPrev modulo, :408-422) and selectedIdx disambiguates which of N same-anchor hits is active. Two hits pointing at the same card both call onOpenItem with the same id (harmless). No duplicate-collapse defect."
+    },
+    {
+      "cluster": "F8",
+      "status": "BUG",
+      "note": "Search has no card/sidecar (sidecar round-trip N-A; state is ephemeral React useState, survives close/reopen per EditorPane.tsx:2658 comment). The cross-surface sync that DOES exist — search result -> editor text-range highlight — is BROKEN on the live path: the only mounted SearchHost (EditorPane.tsx:5570) wires onHighlightRange to EditorPane's OWN searchHighlightRange state (EditorPane.tsx:2663) which is `void`ed/never forwarded (EditorPane.tsx:2664 'surfaces ... post-7.8'). The editor's actual highlightRange prop is fed by EditorLayout.effectiveHighlightRange (EditorLayout.tsx:3352,4401) <- EditorLayout.searchHighlightRange (state 1270) which has NO producer (only set to null at :3160). The EditorLayout-side SearchHost is imported (EditorLayout.tsx:166) but never rendered (0 JSX mounts).",
+      "bugIds": ["SR-F8-01", "SR-F8-02"]
+    },
+    {
+      "cluster": "C1",
+      "status": "BUG",
+      "note": "Panel toggle/collapse/split/reorder reuse the generic IconStrip (EditorPane.tsx:4813-4901) + StripButton (drag-drop.tsx:67) — search rides the same chrome as every panel; no search-specific chrome defect found there. Strip count badge: StripButton renders icon only (no badge) so 'strip count badge' is N-A for search; the only count is the header PrevNextCounter (SearchPanel.tsx:444-450). BUG: PrevNextCounter (panel-primitives.tsx:2577-2599) is unclamped and selectedIdx is reset only on query/scope/case/word change (SearchPanel.tsx:258,269,279,298) — never when a source array shrinks. A source change while a query is active re-derives results (shorter) without resetting selectedIdx, yielding a stale 'i of N' (e.g. '8 of 3') and no highlighted row.",
+      "bugIds": ["SR-C1-01"]
+    },
+    {
+      "cluster": "C1",
+      "status": "BUG",
+      "note": "Cross-panel open-from-search regressed vs documented intent. EditorLayout.openItemInPanel (EditorLayout.tsx:1275-1298) auto-SPLITS the search side (setActiveHalf top=search, bottom=target) when target is same-side. The LIVE path is EditorPane.openItemInPanel (EditorPane.tsx:2889-2906) which calls setActivePanelKindBySide (EditorPane.tsx:2876) — flips the WHOLE side to the target, REPLACING the Search panel. Clicking a card-scope result (footnote/note/citation/etc.) on the same side as search closes Search and loses the result list.",
+      "bugIds": ["SR-C1-02"]
+    }
+  ],
+  "findings": [
+    {
+      "id": "SR-F8-01",
+      "subject": "search",
+      "cluster": "F8",
+      "severity": "HIGH",
+      "symptom": "Clicking a search result does not highlight the matched text in the editor; for a Main-text result it has no editor effect at all (no highlight, no scroll).",
+      "suspectedRootCause": "The search->editor highlight wiring is severed across the EditorLayout/EditorPane split. The live SearchHost is mounted inside EditorPane (EditorPane.tsx:5570) and its onHighlightRange is wired to EditorPane's own `searchHighlightRange` useState (EditorPane.tsx:2663), which is explicitly dead-ended ('void searchHighlightRange; // surfaces in the editor's highlight overlay post-7.8', EditorPane.tsx:2664) — it is never forwarded to the editor and never bubbled up. The editor's real highlightRange prop comes from EditorLayout.effectiveHighlightRange (EditorLayout.tsx:3352 -> passed at :4401), which is `searchHighlightRange ?? errorHighlightRange`; EditorLayout.searchHighlightRange (state EditorLayout.tsx:1270) has NO producer — the only call site sets it to null (EditorLayout.tsx:3160). errorHighlightRange, by contrast, HAS live producers (EditorLayout.tsx:1650,1672), so error-highlight works while search-highlight is dead. The EditorLayout-side SearchHost import (EditorLayout.tsx:166) is never rendered (grep: 0 `<SearchHost` in EditorLayout). For Main-text scope this is total: SCOPE_PANEL has no 'mainText' entry (search-sources.ts:87) and mainText hits carry no itemId, so onOpenItem is gated out (SearchPanel.tsx:393-396) — the click only sets selectedIdx and scrolls the result CARD in the list (SearchPanel.tsx:398-403); the editor never moves or highlights.",
+      "evidence": [
+        { "file": "src/components/EditorPane.tsx", "line": 2664, "note": "`void searchHighlightRange; // surfaces in the editor's highlight overlay post-7.8` — the live SearchHost's highlight setter target is dead-ended" },
+        { "file": "src/components/EditorPane.tsx", "line": 5584, "note": "live SearchHost wires setSearchHighlightRange to EditorPane's own voided state" },
+        { "file": "src/components/EditorLayout.tsx", "line": 3160, "note": "only set-site of EditorLayout.searchHighlightRange is `setSearchHighlightRange(null)` — no producer ever sets a real range" },
+        { "file": "src/components/EditorLayout.tsx", "line": 4401, "note": "editor receives highlightRange={effectiveHighlightRange}, which is searchHighlightRange(null) ?? errorHighlightRange" },
+        { "file": "src/components/EditorLayout.tsx", "line": 166, "note": "SearchHost imported here but never mounted in EditorLayout JSX (0 occurrences)" },
+        { "file": "src/components/Editor.tsx", "line": 1731, "note": "applyHighlight reads highlightRangeRef (fed by the prop) — the only mechanism that paints the search highlight; with the prop perpetually null it never fires for search" }
+      ],
+      "reproSteps": [
+        "Open the Search panel; type a word that appears in the main body text.",
+        "Click a Main-text result (or press Enter / ArrowDown).",
+        "Observe: the result card in the list highlights and the list scrolls, but the editor does NOT scroll to the match and the match is NOT highlighted.",
+        "Compare with the Errors panel jump (errorHighlightRange path) which DOES highlight — confirming the asymmetry."
+      ],
+      "reproChannel": "code-trace",
+      "confidence": "high",
+      "suspectedClass": "Any state that was meant to bubble EditorPane->EditorLayout but was deferred 'post-7.8' and left voided. Same shape risk for any feature whose producer moved into EditorPane while its consumer (editor prop) still reads an EditorLayout state with no live producer. The dead EditorLayout SearchHost import + dead EditorLayout.searchHighlightRange + dead EditorLayout.openItemInPanel auto-split (see SR-C1-02) are a cluster of orphaned EditorLayout search plumbing."
+    },
+    {
+      "id": "SR-F8-02",
+      "subject": "search",
+      "cluster": "F8",
+      "severity": "LOW",
+      "symptom": "Clear-search-highlight-on-panel-close operates on the dead state, so even the cleanup is a no-op.",
+      "suspectedRootCause": "The 'clear highlight when search panel no longer visible' effect (EditorLayout.tsx:3157-3161) calls EditorLayout's setSearchHighlightRange(null) — the same dead state SR-F8-01 identifies. Because the live highlight producer (EditorPane.searchHighlightRange) is never consumed by the editor anyway, this clear is doubly inert. It is a symptom of the same severed wiring; if SR-F8-01 is fixed by re-pointing the editor prop at EditorPane's state, this cleanup must move too or stale highlights would persist after closing Search.",
+      "evidence": [
+        { "file": "src/components/EditorLayout.tsx", "line": 3159, "note": "useEffect clears EditorLayout.searchHighlightRange when !searchPanelOpen — wrong (dead) state" },
+        { "file": "src/components/EditorPane.tsx", "line": 2663, "note": "the live highlight state has no analogous clear-on-close effect" }
+      ],
+      "reproSteps": [
+        "(Latent — only observable once SR-F8-01 is fixed.) After fixing the highlight path to read EditorPane's state, close the Search panel and confirm the in-editor highlight is removed; today's clear effect targets the wrong state."
+      ],
+      "reproChannel": "code-trace",
+      "confidence": "high",
+      "suspectedClass": "Cleanup effects left attached to the old owner after a state's producer migrated to the new owner."
+    },
+    {
+      "id": "SR-A2-01",
+      "subject": "search",
+      "cluster": "A2",
+      "severity": "HIGH",
+      "symptom": "After searching, editing the document and then navigating results jumps/highlights the wrong text (or silently no-ops) because result positions are stale.",
+      "suspectedRootCause": "The results memo (SearchPanel.tsx:305-380) depends on the editor INSTANCE identity (stable across all keystrokes — same TipTap Editor object), the query/case/word flags, the scope Set, and the source-data arrays — but NOT on any per-transaction doc-version/structural counter. searchMainText (SearchPanel.tsx:162-224) resolves each match to absolute ProseMirror positions (pmFrom/pmTo) by walking the doc once at memo time and stores them as result.from/result.to. A plain edit to body text mutates the doc WITHOUT changing the editor identity, the query, or any source array (footnotes/citations/etc. are gated on their own structural revs, not generic text edits), so the memo does not re-run and the stored PM offsets drift relative to the edited doc. navigateToResult (SearchPanel.tsx:382-406) then forwards those stale offsets to onHighlightRange; applyHighlight (Editor.tsx:1731-1751) does setTextSelection(staleRange) -> if still in range it highlights/scrolls to the WRONG text; if out of range the try/catch swallows it (no highlight). There is no text-snapshot reanchor for mainText hits (positions are raw offsets), so no recovery. (The not-subscribing-to-updates is correct for keystroke-sanctity — but it is exactly why positions go stale.)",
+      "evidence": [
+        { "file": "src/panels/Search/SearchPanel.tsx", "line": 363, "note": "memo dep array: `editor` (stable instance) + query/flags/scopes/source-arrays; no doc-version/structural counter" },
+        { "file": "src/panels/Search/SearchPanel.tsx", "line": 198, "note": "pmFrom = nodePos + (matchStart - textOffset) — absolute PM offset captured at search time, never re-mapped" },
+        { "file": "src/panels/Search/SearchPanel.tsx", "line": 390, "note": "navigateToResult forwards result.from/result.to (possibly stale) to onHighlightRange" },
+        { "file": "src/components/Editor.tsx", "line": 1736, "note": "applyHighlight does setTextSelection(range) on the raw stored offsets; mis-targets shifted text, try/catch (1749) hides out-of-range" }
+      ],
+      "reproSteps": [
+        "Search for a word; note its result and (if SR-F8-01 were fixed) its highlight position.",
+        "Type several characters into a paragraph ABOVE the match (shifting all positions after it) — do not change the query and do not add/remove footnotes/citations.",
+        "Click the same result again: the highlight/scroll lands on text offset-by-the-typed-length from the real match (mis-navigation), or no-ops if the doc shrank past the stored offset.",
+        "Note SR-F8-01 currently masks the visible symptom (highlight is dead); the stale-position defect is independent and would surface the moment the highlight wiring is restored."
+      ],
+      "reproChannel": "code-trace",
+      "confidence": "high",
+      "suspectedClass": "Any panel memo that caches absolute PM positions keyed on editor-instance identity rather than a per-transaction structural snapshot (per AGENTS.md, live positions must come from the observer's mapped snapshot resolved at measure time, not from re-walked/cached arrays). Sibling: errorHighlightRange ranges (EditorLayout.tsx:1650) computed once and not re-mapped on subsequent edits; any onHighlightRange caller that stores from/to without DecorationSet.map-style remapping."
+    },
+    {
+      "id": "SR-A1-01",
+      "subject": "search",
+      "cluster": "A1",
+      "severity": "MEDIUM",
+      "symptom": "Searching the Footnotes scope never finds text in orphaned (detached) footnotes — content the user most needs to recover via search is invisible to it.",
+      "suspectedRootCause": "The live SearchHost is constructed with a hardcoded empty orphan list `orphanedFootnotes={[]}` (EditorPane.tsx:5572), even though the real list is available in the same component (prop declared EditorPane.tsx:364, threaded as viewPrefs.orphanedFootnotes and used elsewhere at EditorPane.tsx:5029). SearchPanel passes orphanedFootnotes straight into searchFootnotes (SearchPanel.tsx:326), which DOES scan orphan titles/bodies and emit unanchored hits (search-sources.ts:259-269). So the search machinery supports orphan results; the data is just never supplied. Orphaned footnotes are themselves a recovery surface (FootnoteCard orphan render), so a user hunting for an accidentally-detached footnote cannot locate it by text.",
+      "evidence": [
+        { "file": "src/components/EditorPane.tsx", "line": 5572, "note": "live SearchHost mount passes orphanedFootnotes={[]} — hardcoded empty" },
+        { "file": "src/components/EditorPane.tsx", "line": 5029, "note": "the real orphan list (viewPrefs.orphanedFootnotes) IS available and passed to a different host here" },
+        { "file": "src/lib/search-sources.ts", "line": 259, "note": "searchFootnotes scans orphans for title+body matches and emits hits — dead code given the empty input" },
+        { "file": "src/panels/Search/SearchPanel.tsx", "line": 326, "note": "searchFootnotes(footnotes, orphanedFootnotes, re) — orphan param wired through but fed []" }
+      ],
+      "reproSteps": [
+        "Create a footnote with distinctive body text, then delete its in-text marker so the footnote becomes orphaned (orphan card appears in the Footnotes panel).",
+        "Open Search, enable the Footnotes scope, type a distinctive word from the orphaned footnote's body.",
+        "Observe: no result. The same word in an anchored footnote IS found — confirming orphans are excluded, not the query."
+      ],
+      "reproChannel": "code-trace",
+      "confidence": "high",
+      "suspectedClass": "Hardcoded-empty collection props at a host mount that silently drop a real, available data source. Audit other `={[]}` literals at SearchHost/host mounts (e.g. EditorPane.tsx:5405) and any host that lost a data slice during the EditorLayout->EditorPane migration."
+    },
+    {
+      "id": "SR-C1-01",
+      "subject": "search",
+      "cluster": "C1",
+      "severity": "LOW",
+      "symptom": "The 'i of N' results counter can show an impossible value (e.g. '8 of 3') and leave no row highlighted after the source data changes mid-search.",
+      "suspectedRootCause": "selectedIdx is persisted in searchState and is reset to null only by the query/case/word/scope setters (SearchPanel.tsx:258,269,279,298) — NOT when any source-data array changes. When a source array shrinks while a query is active (e.g. a footnote/note/citation is deleted in another panel), the results memo re-derives a shorter list (those props ARE deps, SearchPanel.tsx:363-380) but selectedIdx is untouched. PrevNextCounter (panel-primitives.tsx:2577-2599) renders `${current + 1} of ${total}` with no clamp, so it shows e.g. '8 of 3'; and `selected={selectedIdx === i}` (SearchPanel.tsx:523) matches no rendered row, so no card shows the selected border. goNext/goPrev recover via modulo on next press, but the displayed state is wrong until then.",
+      "evidence": [
+        { "file": "src/panels/Search/SearchPanel.tsx", "line": 285, "note": "setSelectedIdx — only the navigation path sets it; no source-change reset" },
+        { "file": "src/components/panel-primitives.tsx", "line": 2592, "note": "`${current + 1} of ${total}` — no clamp of current against total" },
+        { "file": "src/panels/Search/SearchPanel.tsx", "line": 523, "note": "selected={selectedIdx === i} — stale index matches no row when results shrank" }
+      ],
+      "reproSteps": [
+        "Search a term that yields many results; navigate to a high index (e.g. result 8 of 10).",
+        "In another panel, delete several of the matched items (footnotes/notes/etc.) so the results list shrinks below 8.",
+        "Observe the Search header counter shows '8 of 3' (or similar) and no result row is highlighted until ArrowDown/Up is pressed."
+      ],
+      "reproChannel": "code-trace",
+      "confidence": "medium",
+      "suspectedClass": "Persisted selection indices not clamped/reset against a derived list that can shrink from an external source. useCycle (panel-primitives.tsx:2606-2613) clamps on read; SearchPanel rolls its own selectedIdx and does NOT — any hand-rolled index-over-derived-list has this gap."
+    },
+    {
+      "id": "SR-C1-02",
+      "subject": "search",
+      "cluster": "C1",
+      "severity": "MEDIUM",
+      "symptom": "Opening a search result whose target panel sits on the same side as Search closes the Search panel (and its result list) instead of splitting the side to show both.",
+      "suspectedRootCause": "Two divergent openItemInPanel implementations exist; the live one regressed. EditorLayout.openItemInPanel (EditorLayout.tsx:1275-1298) computes searchSide vs targetSide and, when equal, auto-splits: setActiveHalf(searchSide,'top','search') + setActiveHalf(searchSide,'bottom',panel) — keeping Search visible above the target. But EditorLayout never mounts SearchHost, so this is dead. The LIVE SearchHost (EditorPane.tsx:5570) wires openItemInPanel to EditorPane.openItemInPanel (EditorPane.tsx:2889-2906), which calls setActivePanelKindBySide (EditorPane.tsx:2876-2882) — that flips the ENTIRE side (setActiveLeftPanelKind/setActiveRightPanelKind) to the target with no top/bottom split, replacing Search. The code comment at EditorPane.tsx:2891 even acknowledges this is a placeholder ('Step 7.8 will replace this with the shell's cross-panel jump').",
+      "evidence": [
+        { "file": "src/components/EditorLayout.tsx", "line": 1292, "note": "dead EditorLayout path auto-splits the search side (top=search, bottom=target)" },
+        { "file": "src/components/EditorPane.tsx", "line": 2891, "note": "comment: 'Step 7.8 will replace this ... For now, side-activate the panel + best-effort select' — placeholder, no split" },
+        { "file": "src/components/EditorPane.tsx", "line": 2878, "note": "setActivePanelKindBySide flips the whole side to the target — replaces Search" },
+        { "file": "src/components/EditorPane.tsx", "line": 5581, "note": "live SearchHost wires openItemInPanel to the placeholder EditorPane version" }
+      ],
+      "reproSteps": [
+        "Place Search and (say) Footnotes on the same sidebar side.",
+        "Open Search, enable Footnotes scope, search a term, click a footnote result.",
+        "Observe: the side switches wholesale to the Footnotes panel; the Search panel and its result list are gone (no split), forcing a manual reopen of Search to continue navigating results."
+      ],
+      "reproChannel": "code-trace",
+      "confidence": "medium",
+      "suspectedClass": "EditorLayout->EditorPane migration left a richer behavior (auto-split) stranded in the unmounted EditorLayout copy while the live EditorPane copy is a deliberate placeholder. Same migration-orphan pattern as SR-F8-01 (dead EditorLayout.searchHighlightRange + dead SearchHost import). Any cross-panel-jump that depended on EditorLayout.setActiveHalf split logic is likely similarly degraded on the live path."
+    }
+  ]
+}

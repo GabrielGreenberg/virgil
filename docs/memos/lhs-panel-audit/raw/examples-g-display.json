@@ -1,0 +1,191 @@
+{
+  "subject": "examples",
+  "group": "g-display",
+  "clusters": ["F1", "F4", "F5"],
+  "cells": [
+    {
+      "cluster": "F1",
+      "status": "BUG",
+      "note": "Initial mount / populated render OK (ExampleCard via getExamples-derived ExampleInfo[]; collapsed read-only clamped expex editor #43). Empty state OK (ExamplesPanel.tsx:86-91). But: (a) preview truncation is purely CSS height-clamp over a CSS grid — a \\pex with a body paragraph + multiple \\a items clips to a sliver showing only (N) at 1-line docked clamp (ExampleCard.tsx:334-343, useCompressedLines docked=1); (b) per-collapsed-card a FULL read-only TipTap editor is mounted (N editors for N collapsed cards, acknowledged #43 ExampleCard.tsx:430-433) — mount-footprint, not a keystroke regression. See EX-F1-01, EX-F1-02.",
+      "bugIds": ["EX-F1-01", "EX-F1-02"]
+    },
+    {
+      "cluster": "F4",
+      "status": "BUG",
+      "note": "Editable example body mounts a SEPARATE embedded editor (buildEditorExtensions surface:float). Citation/footnote atom click-through WORKS (their NodeViews dispatch window events unconditionally — citation.ts:261, footnote.ts:271). But inline/display MATH is inert: math.ts:73 `if (surface !== \"main\") return` suppresses virgil-math-click on every float surface, so clicking math in the example card body opens no editor (EX-F4-02). \\ref (LabelRef) IS clickable (label.ts:53, not surface-gated) but marker-clicks.ts:333 anchors the ref popover via a GLOBAL document.querySelector('.label-ref-node[data-label]') that returns the FIRST match — when the same label is also referenced in main text, the popover anchors to the wrong element (EX-F4-01). Read-only fallback (BorrowedMainText) is dead in production (editor context always present). Citation alignment sourceEl querySelector has the same first-match ambiguity (EX-F4-03).",
+      "bugIds": ["EX-F4-01", "EX-F4-02", "EX-F4-03"]
+    },
+    {
+      "cluster": "F5",
+      "status": "BUG",
+      "note": "Edit body WORKS (directly-editable expex editor writes back via writeBackToMain). BUT two defects on that path: write-back sets addToHistory:false (ExampleCard.tsx:197) so card-body edits are NOT undoable in the main editor (EX-F5-02); and the nodeFromJSON write-back is wrapped in a silent `catch {}` (ExampleCard.tsx:200) so a schema-invalid edit silently fails to reach the doc → card↔doc divergence (EX-F5-03). TITLE EDIT is entirely unwired: ExampleCard renders no title/+T, ExampleInfo carries no title field, useExamples (updateExampleTitle/deleteExample/syncFromEditor + the BUG#31 isAutoTitle strip) is NEVER invoked anywhere in the app — dead code over an unreachable examples.json sidecar (R2) (EX-F5-01). AI-request flag N-A for examples per subject map.",
+      "bugIds": ["EX-F5-01", "EX-F5-02", "EX-F5-03"]
+    }
+  ],
+  "findings": [
+    {
+      "id": "EX-F5-01",
+      "subject": "examples",
+      "cluster": "F5",
+      "severity": "MEDIUM",
+      "symptom": "An example card's title can never be edited or displayed, and the examples.json sidecar (title + createdAt persistence) is never written or read — the entire useExamples hook is dead code.",
+      "suspectedRootCause": "useExamples(docId) is never invoked by any component (grep: only referenced in comments + the hook file itself). The two panel hosts that actually render examples — ExamplesPanelHost (EditorPane.tsx:5659, the main-app docked panel) and buildExampleOmniItems (omni.tsx, the main-app omni column) — both thread only the editor-derived ExampleInfo[] (no `title`), `selectedId`/`selectedExampleId`, `onSelect`, and `onJump`. Neither wires updateExampleTitle, deleteExample, syncFromEditor, or onAdd. ExampleInfo (Editor.tsx:193-221) has no `title` field, and ExampleCard.tsx renders no CardBodyTitle / bodyTitle. So the sidecar metadata layer the hook implements has no surface. The codebase even documents this state: cards/types.ts:177 and cards/floats/index.tsx:24 call it 'no reachable ExampleRef sidecar (R2)'.",
+      "evidence": [
+        { "file": "src/hooks/useExamples.ts", "line": 23, "note": "useExamples defined but never imported/called by any component (only comment references elsewhere)." },
+        { "file": "src/components/EditorPane.tsx", "line": 5659, "note": "ExamplesPanelHost (main-app docked panel) wires only examples/selectedId(local useState)/onSelect/onJump — no title-edit, delete, or add; never calls useExamples." },
+        { "file": "src/panels/Examples/omni.tsx", "line": 18, "note": "buildExampleOmniItems (main-app omni surface) passes only examples/selectedExampleId/setSelectedExampleId/onJump — no title-edit or delete." },
+        { "file": "src/panels/Examples/ExampleCard.tsx", "line": 387, "note": "ExampleCard renders no CardBodyTitle/bodyTitle and references no example.title — title is never shown nor editable." },
+        { "file": "src/components/Editor.tsx", "line": 193, "note": "ExampleInfo has no title field, so even if a sidecar title existed it isn't merged into the card's data shape." }
+      ],
+      "reproSteps": [
+        "Open a paper with an \\ex/\\pex example.",
+        "Open the Examples panel (or omni) — the example card shows the expex body but no title affordance (no +T, no editable title input).",
+        "There is no path in the UI to set or persist an example title; examples.json is never written."
+      ],
+      "reproChannel": "code-trace",
+      "confidence": "high",
+      "suspectedClass": "Hook-without-a-consumer dead code: any per-doc sidecar hook (useTodos/useReports/useArchive) wired through a panel host that drops its mutators would silently disable that panel's persistence. Worth auditing each *PanelHost in EditorPane.tsx for dropped hook outputs."
+    },
+    {
+      "id": "EX-F5-02",
+      "subject": "examples",
+      "cluster": "F5",
+      "severity": "MEDIUM",
+      "symptom": "Edits typed directly into an example card's body cannot be undone with Ctrl+Z in the main editor.",
+      "suspectedRootCause": "The card body's write-back to the main doc tags its transaction with `tr.setMeta('addToHistory', false)` (ExampleCard.tsx:197) — copied verbatim from the in-editor example float ('parity with the float'). For a popped float that mirrors a doc the user is also editing in place, suppressing history avoids double-recording; but the example card body is a primary directly-editable surface (#32/#33). Every keystroke in the card writes back history-suppressed, so the main editor's undo stack never records the change. A subsequent main-text edit + undo will skip past the card edits, and the user has no way to revert what they typed in the card.",
+      "evidence": [
+        { "file": "src/panels/Examples/ExampleCard.tsx", "line": 197, "note": "writeBackToMain: tr.setMeta('addToHistory', false) on the replaceWith transaction." },
+        { "file": "src/panels/Examples/ExampleCard.tsx", "line": 243, "note": "onUpdate fires writeBackToMain(ed.getJSON()) on every embedded-editor change — so all card-body typing rides the history-suppressed write-back." }
+      ],
+      "reproSteps": [
+        "Open the Examples panel, expand an example card.",
+        "Type text into the example body inside the card.",
+        "Focus the main editor and press Ctrl+Z — the card-body edit is not undone (it was never added to history)."
+      ],
+      "reproChannel": "code-trace",
+      "confidence": "high",
+      "suspectedClass": "Any directly-editable card body that writes back to the main doc with addToHistory:false loses undo. The example float pattern (text-objects/floats/example-block-body.tsx) shares this and is defensible for a float; the question is whether a primary editable card surface should differ. Check other FLOAT_WRITE_META writers for the same history loss when the surface is a card rather than a float."
+    },
+    {
+      "id": "EX-F5-03",
+      "subject": "examples",
+      "cluster": "F5",
+      "severity": "MEDIUM",
+      "symptom": "An example-body edit that produces schema-invalid expex JSON is silently dropped from the main doc — the card shows the new content but the document never receives it (until a re-seed reverts the card).",
+      "suspectedRootCause": "writeBackToMain wraps `ed.state.schema.nodeFromJSON(...)` + dispatch in a bare `try { ... } catch { /* swallow */ }` (ExampleCard.tsx:187-202). If the embedded editor's serialized JSON fails to rebuild as a valid exampleBlock node (stale uuid, malformed gloss/xlist nesting, attr mismatch), the catch swallows it with no user feedback and no error. The card's local editor still shows the edit, so the user believes it landed; the main doc is unchanged. On the next rev.examples/contentRev re-seed (ExampleCard.tsx:268-299) the card silently reverts to the doc's content, discarding the user's edit.",
+      "evidence": [
+        { "file": "src/panels/Examples/ExampleCard.tsx", "line": 187, "note": "try { nodeFromJSON + replaceWith + dispatch } ..." },
+        { "file": "src/panels/Examples/ExampleCard.tsx", "line": 200, "note": "catch { /* schema mismatch / stale uuid — swallow */ } — no user-visible error, write silently lost." },
+        { "file": "src/panels/Examples/ExampleCard.tsx", "line": 282, "note": "re-seed effect compares serialized JSON and setContent's the live block back into the card, reverting the swallowed edit on the next structural/content signal." }
+      ],
+      "reproSteps": [
+        "Edit an example body in the card in a way that yields invalid expex node JSON (e.g. an edit the float schema can't reconstruct).",
+        "The card displays the edit but writeBackToMain's nodeFromJSON throws and is swallowed — the doc is untouched.",
+        "Trigger a re-seed (add/remove any example, or a content edit to this example from elsewhere) — the card reverts, losing the typed content with no warning."
+      ],
+      "reproChannel": "code-trace",
+      "confidence": "medium",
+      "suspectedClass": "Silent swallow-on-write-back: the same try/catch-swallow appears in the example float (intentional parity). Lead #9's 'swallowed schema errors'. Any card/float that writes back via nodeFromJSON inside a bare catch can silently diverge from the doc — audit FLOAT_WRITE_META write-back sites for surfaced-vs-swallowed errors."
+    },
+    {
+      "id": "EX-F4-01",
+      "subject": "examples",
+      "cluster": "F4",
+      "severity": "LOW",
+      "symptom": "Clicking a \\ref inside an example card body can open the ref-edit popover anchored to a DIFFERENT ref of the same label in the main text, not the one clicked.",
+      "suspectedRootCause": "The LabelRef NodeView (label.ts:53-65) dispatches virgil-label-ref-click with only the label string in detail — no position/element identity. The bridge (marker-clicks.ts:333) resolves the anchor element by a GLOBAL document.querySelector('.label-ref-node[data-label=\"<label>\"]'), which returns the FIRST matching element in DOM order. The example card body is a second editor whose DOM also contains a .label-ref-node for the same label (the card is seeded from a copy of the block). If the same label is also \\ref'd in main text, querySelector matches whichever is earlier in the DOM — typically the main-text ref — so the popover's rect/setActiveRefRect points at the wrong instance.",
+      "evidence": [
+        { "file": "src/lib/tiptap/label.ts", "line": 53, "note": "LabelRef click dispatches virgil-label-ref-click from ANY surface (not surface-gated, unlike math)." },
+        { "file": "src/components/editor-layout/event-bridges/marker-clicks.ts", "line": 333, "note": "handler resolves anchor via global document.querySelector('.label-ref-node[data-label=...]') — first match wins, ambiguous across main + card-body copies." }
+      ],
+      "reproSteps": [
+        "Have a label that is \\ref'd in main text AND inside an example whose body is shown in an example card.",
+        "Click the \\ref rendered inside the example card body.",
+        "The ref popover opens anchored to the main-text ref instead of the clicked card-body ref."
+      ],
+      "reproChannel": "code-trace",
+      "confidence": "medium",
+      "suspectedClass": "Global-querySelector-by-shared-key after a click that originated in an embedded/duplicate editor. The citation alignment path (EX-F4-03) has the same shape. Any bridge that re-resolves the clicked element by a global attribute selector instead of carrying the element/rect in the event will mis-target when the same atom id/label exists in more than one mounted editor (card body, omni copy, float copy)."
+    },
+    {
+      "id": "EX-F4-02",
+      "subject": "examples",
+      "cluster": "F4",
+      "severity": "LOW",
+      "symptom": "Clicking inline or display math inside an example card body does nothing — no math editor/popover opens, so math nested in an example can't be edited from the card.",
+      "suspectedRootCause": "The example card body mounts buildEditorExtensions({surface:'float'}); the InlineMath/DisplayMath NodeViews are configured surface:'float' (editor-extensions.ts:1752-1753), and the math click handler bails on any non-main surface (math.ts:73 `if (surface !== 'main') return`). This is deliberate for floats (a float's getPos indexes the float doc, so firing virgil-math-click would mis-target MAIN by position). The side effect is that the directly-editable example card body — which users reasonably expect to be a full editing surface — silently swallows math clicks. Math is an atom (not free-text), so there's also no inline keyboard edit path; the only way to edit example math is the code/source view.",
+      "evidence": [
+        { "file": "src/lib/editor-extensions.ts", "line": 1752, "note": "InlineMath.configure({ surface: isFloat ? 'float' : 'main' }) — example card body is isFloat=true." },
+        { "file": "src/lib/tiptap/math.ts", "line": 73, "note": "click handler: if (surface !== 'main') return; — inert in every float, incl. the example card body." }
+      ],
+      "reproSteps": [
+        "Open an example containing inline math (\\ex with $...$) in the Examples panel; expand the card.",
+        "Click the rendered math inside the card body.",
+        "Nothing happens — no math popover; the math cannot be edited from the card."
+      ],
+      "reproChannel": "code-trace",
+      "confidence": "high",
+      "suspectedClass": "Surface-gated atom interactivity vs. card-as-editable-surface tension: the example card body is the one float-surface editor that is also a primary editing surface, so the 'inert in every float' rule under-serves it. Any other atom whose interactivity is gated to surface:'main' (vs. carrying a host/position remap) is similarly dead inside the example card body."
+    },
+    {
+      "id": "EX-F4-03",
+      "subject": "examples",
+      "cluster": "F4",
+      "severity": "COSMETIC",
+      "symptom": "Clicking a citation inside an example card body may vertically align the citation card to the wrong on-screen citation instance.",
+      "suspectedRootCause": "virgil-citation-click is handled by selecting the citation and calling alignOmniCardWithClick with a sourceEl resolved via a global document.querySelector('.citation-node[data-citation-id=\"<id>\"]') (marker-clicks.ts:319-321). The example card body is a separate editor whose DOM also holds a .citation-node with the same citationId (seeded from the block copy), so the first-match query can return the card-body copy or the main-text copy depending on DOM order — the alignment math then references the wrong element. (Selection + card-open are correct; only the click-Y alignment can be off.) Note: the NodeView also passes clickedPos=getPos() in the float's coordinate space, but that detail field is never consumed (citation.ts:281; no reader in marker-clicks.ts), so it causes no mis-targeting itself.",
+      "evidence": [
+        { "file": "src/components/editor-layout/event-bridges/marker-clicks.ts", "line": 319, "note": "sourceEl = document.querySelector('.citation-node[data-citation-id=...]') — first match across main + card-body copies." },
+        { "file": "src/lib/tiptap/citation.ts", "line": 268, "note": "clickedPos=getPos() dispatched in the embedded editor's coordinate space, but unconsumed downstream." }
+      ],
+      "reproSteps": [
+        "Have a citation that appears both in main text and inside an example whose body shows in a card.",
+        "Click the citation inside the example card body.",
+        "The citation card selects correctly but may align to the main-text citation's Y rather than the clicked one."
+      ],
+      "reproChannel": "code-trace",
+      "confidence": "low",
+      "suspectedClass": "Same global-querySelector-by-shared-key class as EX-F4-01. The fix shape (carry the clicked element/rect in the event) would resolve both."
+    },
+    {
+      "id": "EX-F1-01",
+      "subject": "examples",
+      "cluster": "F1",
+      "severity": "LOW",
+      "symptom": "The collapsed preview of a multi-part example (\\pex with a body paragraph + several \\a items, or a long interlinear gloss) clips to a tiny sliver — often just '(N)' and a fragment of the first line.",
+      "suspectedRootCause": "The collapsed example preview renders the FULL read-only expex editor and clamps it by a fixed maxHeight = calc(var(--editor-line-height,1.8) * 1em * clampLines), clampLines = useCompressedLines() (docked=1, omni=2) (ExampleCard.tsx:334-343, card-display.tsx:28-29). Because the expex content is a CSS grid (not text flow), the comment correctly notes -webkit-line-clamp can't be used, so it just hard-caps height and overflow:hidden. For a single short \\ex this is fine, but a \\pex's number row + body + multiple sub-item rows + gloss rows are far taller than 1-2 lines, so the clamp clips after the first line — the preview conveys almost nothing about the example.",
+      "evidence": [
+        { "file": "src/panels/Examples/ExampleCard.tsx", "line": 334, "note": "maxHeight clamp over the expex grid at clampLines prose lines, overflow:hidden." },
+        { "file": "src/components/editor-layout/contexts/card-display.tsx", "line": 29, "note": "DOCKED_COMPRESSED_LINES=1 — a single line ceiling for a multi-row expex grid." }
+      ],
+      "reproSteps": [
+        "Open a paper with a \\pex example that has a top body line plus 2-3 \\a sub-items (or a \\begingl gloss).",
+        "View it collapsed in the docked Examples panel (1-line clamp).",
+        "The preview shows only the (N) and a sliver of the first row; sub-items/gloss are clipped."
+      ],
+      "reproChannel": "code-trace",
+      "confidence": "medium",
+      "suspectedClass": "Line-count clamp applied to non-text-flow (grid) content: any borrowed-body kind that renders structured (non-paragraph) content under compressedBodyStyle's height ceiling will clip unhelpfully. Worth checking figure/graphics block previews and any future structured card body."
+    },
+    {
+      "id": "EX-F1-02",
+      "subject": "examples",
+      "cluster": "F1",
+      "severity": "LOW",
+      "symptom": "Every collapsed example card mounts a full (read-only) TipTap editor; a panel/omni with N collapsed example cards holds N live embedded editors.",
+      "suspectedRootCause": "Since #43 the collapsed preview renders through the SAME ExampleCardEditor (read-only + height-clamped) as the expanded body, rather than a static string, to keep collapsed≡expanded rendering parity (ExampleCard.tsx:434-444, 426-433). The comment explicitly acknowledges this mount footprint. It is NOT a keystroke-sanctity regression (the editors re-seed only on rev.examples/contentRev, never per keystroke — pinned by ExampleCardEditor.test.tsx 'keystroke sanctity'), but it is a real memory/CPU cost that scales with the number of examples and informs any future panel/omni virtualization. Flagged as a verified non-keystroke footprint cost, not a correctness bug.",
+      "evidence": [
+        { "file": "src/panels/Examples/ExampleCard.tsx", "line": 430, "note": "Mount-footprint note (#43): N embedded read-only editors for N collapsed cards." },
+        { "file": "src/panels/Examples/ExampleCard.tsx", "line": 436, "note": "collapsed branch mounts ExampleCardEditor (readOnly, clampLines) rather than a static summary string." }
+      ],
+      "reproSteps": [
+        "Open a paper with many (e.g. 20+) examples.",
+        "View the Examples panel / omni with all cards collapsed.",
+        "20+ embedded TipTap editors are mounted simultaneously (one per collapsed card)."
+      ],
+      "reproChannel": "code-trace",
+      "confidence": "high",
+      "suspectedClass": "Per-card embedded-editor mount as the default collapsed renderer: any card kind that renders its collapsed preview through a real editor (vs. a string) scales editor count with list length. Examples is the only borrowed-body kind doing this for collapsed previews today."
+    }
+  ]
+}

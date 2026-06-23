@@ -1,0 +1,96 @@
+{
+  "file": "citations-g-anchor",
+  "verifier": "A",
+  "verdicts": [
+    {
+      "findingId": "CI-A1-01",
+      "isReal": true,
+      "disposition": "CONFIRMED",
+      "severityFinal": "MEDIUM",
+      "rationale": "Mechanism verified end-to-end. Citations have NO orphan/teardown bridge: the citation NodeView (src/lib/tiptap/citation.ts) fires only 'virgil-citation-click' — no analog to footnotes' 'virgil-footnote-orphaned' (src/components/editor-layout/event-bridges/footnote-sync.ts:49). The only sidecar rebuild, syncFromEditor (src/hooks/useCitations.ts:357-374), is wired with dep [editor] (src/components/EditorPane.tsx:1177-1182) so it runs once per mount and never on rev.citations. Deleting a \\cite atom bumps rev.citations → citationPositionMap/citationOrder re-derive from getCitations() (EditorPane.tsx:2627-2633, 2765-2768) and drop the id → anchoredIds.has(id) false → card renders dashed (CitationsPanel.tsx:133,331). The citations.json entry survives (deleteCitation only fires from the panel trash, useCitations.ts:213). The card's body-click jump is gated on isAnchored (CitationCard.tsx:722), but the EditableCard jump button stays enabled (canJump={!isDraft}, CitationCard.tsx:737) and routes scrollToCitation(id) → jumpToLink against a now-absent atom (Editor.tsx:1329) → no-op. Ghost persists until reload self-heals via mount-time syncFromEditor. Real, common path (Backspace over an inline cite), recoverable → MEDIUM.",
+      "correctedRootCause": "Sidecar↔editor reconciliation for citations is mount-only (EditorPane.tsx:1177-1182, [editor] dep) and there is no structural-diff/teardown event bridge to drop a sidecar entry whose atom was removed (contrast footnote-sync.ts). Class: any id-bearing inline-atom sidecar whose resync is not event-driven from the DocStructureBus citation diff.",
+      "class": "mount-only-sync-from-editor / missing orphan event bridge",
+      "confidence": "high"
+    },
+    {
+      "findingId": "CI-A1-02",
+      "isReal": false,
+      "disposition": "REFUTED",
+      "severityFinal": "LOW",
+      "rationale": "By-design, and explicitly contract-tested. buildCitationOmniItems sets anchorState purely from position resolution (src/panels/Citations/omni.tsx:46-49), and the in-code comment (omni.tsx:43-45) states the intent: a citation is intrinsically an in-text \\cite reference and is 'never free' — it is either anchored (pos resolved) or orphaned (marker missing). The anchor-state contract test codifies this as accepted behavior, including for panel-created unanchored citations (src/panels/Omni/__tests__/anchor-state-classify-contract.test.ts:452-455). Both states (never-anchored vs lost-anchor) are equally non-jumpable, dashed, and recoverable, so there is no functional divergence — only an absence of a visual distinction the design deliberately does not draw. This is a documented design choice with a test contract, not a defect.",
+      "correctedRootCause": null,
+      "class": "by-design (documented + contract-tested)",
+      "confidence": "high"
+    },
+    {
+      "findingId": "CI-A2-01",
+      "isReal": true,
+      "disposition": "RECLASSIFIED",
+      "severityFinal": "MEDIUM",
+      "rationale": "Dead affordance confirmed, but HIGH is overstated. The panel '+ Add citation' button creates a genuinely-reachable unanchored citation: onStartCreate sets pendingCitationMode='unanchored' (src/components/editor-layout/panels/citations-host.tsx:96-99) and createCitation passes unanchored:true into addCitation (card-creation.ts:581-590, useCitations.ts:162-171), so the dashed card with tooltip 'Unanchored citation — drag into the editor to anchor it' (CitationCard.tsx:745-749) is real. The card IS draggable and sets MIME_CITATION (CitationCard.tsx:461-481, 711). Editor.tsx's drop handler gates the MIME_CITATION branch on onCitationDropRef.current (Editor.tsx:562); onCitationDrop is an optional prop (Editor.tsx:81,368) stored in a ref (380-381) and is passed NOWHERE — EditorPane renders <VirgilEditor> without it (EditorPane.tsx:4313-4343), and grep finds no other caller. So the branch never fires and the MIME_CITATION payload is consumed by no later branch (each checks a different MIME) → true no-op. Reclassified to MEDIUM: the advertised drag-to-anchor gesture is fully broken, but no user content is lost (the unanchored card persists) and anchoring is still reachable by typing \\cite / slash / toolbar in the editor. Harm is a falsely-advertised, non-functional convenience path.",
+      "correctedRootCause": "An optional callback prop (onCitationDrop) left unwired at every host while the producing surface (CitationCard) still advertises and arms the gesture. There is no alternative working drag-anchor path (see CI-F8-01). addCitation already contains the intended re-anchor logic (useCitations.ts:182-189), but it is never reached because the drop callback is undefined.",
+      "class": "unwired-optional-callback / dead advertised affordance",
+      "confidence": "high"
+    },
+    {
+      "findingId": "CI-A2-02",
+      "isReal": true,
+      "disposition": "CONFIRMED",
+      "severityFinal": "MEDIUM",
+      "rationale": "Mechanism verified, trigger is narrow. The parser preserves a citation id only when a \\vcid{uuid} marker precedes the \\cite, else it mints fresh: citationId: pendingCitationId || generateShortId() (src/lib/latex-parser.ts:481; vcid stash at 351-356). A code-view flush does editor.commands.setContent(parseLatex(text)) (src/lib/code-pane-bridge.ts:183,202), fully replacing the doc; the editor instance is unchanged, so the mount-only syncFromEditor effect ([editor] dep, EditorPane.tsx:1182) does not re-fire and citations.json keeps the old id. The card then fails anchoredIds.has(id) → dashed, and scrollToCitation(old_id) resolves no atom → jump no-op. For an EXISTING serialized citation the serializer normally emits its \\vcid so the id round-trips; the 'existing card goes dashed' case requires the \\vcid to be absent/desynced from its \\cite (manual code-view mangling) — a real but uncommon path. Same MEDIUM/medium as the finder; the more common manifestation is CI-F8-03 (freshly-typed \\cite has no card at all).",
+      "correctedRootCause": "Same root as CI-A1-01: citation sidecar resync is mount-only and not event-driven; combined with id regeneration on any \\cite lacking a \\vcid marker under a full setContent re-parse.",
+      "class": "mount-only-sync-from-editor under full re-parse + id regen on missing vcid",
+      "confidence": "medium"
+    },
+    {
+      "findingId": "CI-A3-01",
+      "isReal": true,
+      "disposition": "CONFIRMED",
+      "severityFinal": "LOW",
+      "rationale": "Latent loss verified. cloneCitation mints a CitationRef with a fresh id and NO unanchored flag (and CitationRef has no links[]) (src/hooks/useCitations.ts:227-242). isUnanchored returns false when neither unanchored===true nor an empty links array is present (src/links/links.ts:1093-1099) → the clone is not isUnanchored. syncFromEditor keeps only prev.citations.filter(isUnanchored) (useCitations.ts:369), so on reload a clone with no editor atom is dropped. Confirmed the only live caller is the lifecycle clone path (src/text-objects/duplicate-slice.ts:146,195), which assigns the returned cloned id to a freshly-minted atom (duplicate-slice.ts:206) — so the clone is actually anchored and survives. The loss is therefore strictly latent today (no standalone duplicate-card UI calls cloneCitation). Correctly LOW/low.",
+      "correctedRootCause": "cloneCitation does not stamp the clone's anchor state (no unanchored flag), relying entirely on its caller to also create the in-doc atom and reuse the cloned id. A future standalone 'duplicate card' action would surface silent loss.",
+      "class": "sidecar clone helper assumes caller creates the matching node",
+      "confidence": "high"
+    },
+    {
+      "findingId": "CI-F8-01",
+      "isReal": true,
+      "disposition": "CONFIRMED",
+      "severityFinal": "MEDIUM",
+      "rationale": "Verified. citation registers citationDropSpec = inlineAtomMoveSpec({nodeName:'citation', idAttr:'citationId'}) for float-header drops (src/panels/Citations/drop-spec.ts:10; registered at src/cards/drop-specs/index.ts:44). The move spec resolves its source via locateAtom, which scans every registered editor for a node whose idAttr matches and returns null when none is found (src/components/drop-mode/util/inline-atom-move.ts:204-229). An unanchored citation has no \\cite atom, so locateAtom → null → classifyDrop returns {kind:'no-op'} (inline-atom-move.ts:69-71) → applyDrop bails (89-92). With CI-A2-01 (native drag path unwired), there is no working drag path to anchor a panel-created unanchored citation from any surface. MEDIUM (consistent with CI-A2-01): broken advertised path, no data loss, typed-cite alternative exists.",
+      "correctedRootCause": "An inline-atom MOVE drop-spec is used as the only float-drop path; it presumes an existing atom and conflates 'move an existing atom' with 'anchor a not-yet-placed atom'. Sibling confirmed: footnoteDropSpec is the identical inlineAtomMoveSpec (src/panels/Footnotes/drop-spec.ts:11) and would likewise fail to place an atom that has no node in the doc.",
+      "class": "move-only drop spec cannot anchor an atom-less card",
+      "confidence": "high"
+    },
+    {
+      "findingId": "CI-F8-02",
+      "isReal": true,
+      "disposition": "CONFIRMED",
+      "severityFinal": "LOW",
+      "rationale": "Verified, genuinely an extreme edge. entityExists returns true unconditionally for inline-atom kinds (src/links/_shared/useAnchorHighlightReconciler.ts:84-90), so the dangling-ref pruner (155-164) never clears a cardStore selected/hover/expand ref for a deleted citation. The dangling ref is inert while no element matches it (the reconciler's positive paint finds no atom and no panel card). generateShortId only dedupes against the passed live-doc `existing` set and has no record of deleted ids (src/lib/uuid.ts:21-27), over a 4-char (65536) space — so a future citation can reuse a deleted id (~1/65536 per mint, only when that id is absent from the live doc) and inherit the phantom selection halo. Recoverable by a click. Correctly LOW/medium.",
+      "correctedRootCause": "The reconciler exempts kinds whose existence it can't verify (inline atoms) from pruning, so it never clears those kinds' dangling interaction state; combined with short-id reuse having no historical-id memory. Sibling: footnotes share the same exemption (entityExists line 88 covers both via isInlineAtomCardKind).",
+      "class": "pruner exemption for unverifiable kind + id-reuse window",
+      "confidence": "medium"
+    },
+    {
+      "findingId": "CI-F8-03",
+      "isReal": true,
+      "disposition": "CONFIRMED",
+      "severityFinal": "MEDIUM",
+      "rationale": "Verified. A \\cite typed in the MAIN editor inserts the atom synchronously AND registers the sidecar card via runAction('citation', ...) from the input rule (src/lib/tiptap/citation.ts:202-214). The code-view path has no such bridge: a flush is editor.commands.setContent(parseLatex(text)) (code-pane-bridge.ts:183,202) which mints citation nodes with no per-citation registration. The display-sync effect only updates nodes already present in citations.json via panelById.get(c.citationId) and never creates an entry (EditorPane.tsx:1141-1161); for a brand-new editor id panelRef is undefined. syncFromEditor (which would register it) is mount-only (EditorPane.tsx:1177-1182). So a code-view-added \\cite has a live inline atom but no Citations card until reload. Real, recoverable on reload → MEDIUM.",
+      "correctedRootCause": "Code-view-originated structural additions bypass the action-registry create bridge that the visual editor uses; in-session card registration relies on either runAction (visual only) or mount-time syncFromEditor. Likely affects other code-view-added inline atoms/blocks (footnotes/examples) the same way.",
+      "class": "code-view structural add bypasses action-registry card creation",
+      "confidence": "medium"
+    },
+    {
+      "findingId": "CI-C1-01",
+      "isReal": false,
+      "disposition": "RECLASSIFIED",
+      "severityFinal": "COSMETIC",
+      "rationale": "Mechanism is accurate but the framing as a defect is wrong. count={orderedCitations.length} (src/panels/Citations/CitationsPanel.tsx:241) passes the full sorted CitationRef list (109-122), which includes dashed/unanchored and orphaned cards. But the strip badge is a CARD count for a card-list panel, and that is the consistent, intended contract across panels — FootnotePanel uses count={footnotes.length} including orphans (src/panels/Footnotes/FootnotePanel.tsx:132), and CardListPanel forwards `count` verbatim (CardListPanel.tsx:84,122). The badge accurately reflects the cards shown in the panel; the claimed 'over-count' only exists relative to an in-text-\\cite-count semantic the badge was never meant to carry. No malfunction → reclassified to COSMETIC. The card-count is correct as displayed.",
+      "correctedRootCause": "Not a bug: the badge intentionally counts panel cards (the cross-panel norm), not live in-text references. The 'divergence' is an interpretation mismatch, not incorrect behavior.",
+      "class": "card-count badge vs in-text-count interpretation (by-design)",
+      "confidence": "medium"
+    }
+  ]
+}

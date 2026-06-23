@@ -1,0 +1,3656 @@
+{
+  "items": [
+    {
+      "id": "BIB-A2-01",
+      "subject": "bibliography",
+      "cluster": "A2",
+      "finalDisposition": "CONFIRMED",
+      "reclassified": false,
+      "severityFinal": "DATA-LOSS",
+      "rootCause": "updateBibKeyAndType (src/hooks/useCitations.ts:281-315) is the single rename chokepoint and migrates exactly two stores (bibEntries fields/raw + citationsHook citation refs).",
+      "class": "rename-doesn't-cascade: citekey used as a join key across multiple sidecars (annotations / bib-review-requests / keyOccurrenceIdx) with no single migration point",
+      "confidence": "high",
+      "a": {
+        "disp": "CONFIRMED",
+        "sev": "DATA-LOSS",
+        "isReal": true
+      },
+      "b": {
+        "disp": "CONFIRMED",
+        "sev": "DATA-LOSS",
+        "isReal": true
+      },
+      "needsAdj": false
+    },
+    {
+      "id": "BIB-A2-02",
+      "subject": "bibliography",
+      "cluster": "A2",
+      "finalDisposition": "CONFIRMED",
+      "reclassified": false,
+      "severityFinal": "MEDIUM",
+      "rootCause": "Same chokepoint gap as BIB-A2-01: updateBibKeyAndType (src/hooks/useCitations.ts:299-312) only iterates prev.citations, never the bib-review request log keyed by bibKey (src/hooks/useBibReview.ts:70-77).",
+      "class": "rename-doesn't-cascade (shared with BIB-A2-01)",
+      "confidence": "high",
+      "a": {
+        "disp": "CONFIRMED",
+        "sev": "MEDIUM",
+        "isReal": true
+      },
+      "b": {
+        "disp": "CONFIRMED",
+        "sev": "MEDIUM",
+        "isReal": true
+      },
+      "needsAdj": false
+    },
+    {
+      "id": "BIB-A2-03",
+      "subject": "bibliography",
+      "cluster": "A2",
+      "finalDisposition": "CONFIRMED",
+      "reclassified": true,
+      "severityFinal": "HIGH",
+      "rootCause": "Selection is keyed off a mutable citekey (selectedBibKey === e.key, BibliographyPanel.tsx:294-297) and commitEditBib has no post-rename onSelect(newKey) call (BibEntryCard.tsx:185-192). The rename mutates the very key the selection points at.",
+      "class": "identity-change-loses-selection: selecting by a mutable key (citekey) rather than a stable id; cf. citation id regeneration on parse (brief lead #3)",
+      "confidence": "high",
+      "a": {
+        "disp": "CONFIRMED",
+        "sev": "HIGH",
+        "isReal": true
+      },
+      "b": {
+        "disp": "RECLASSIFIED",
+        "sev": "MEDIUM",
+        "isReal": true
+      },
+      "needsAdj": false
+    },
+    {
+      "id": "BIB-A2-04",
+      "subject": "bibliography",
+      "cluster": "A2",
+      "finalDisposition": "CONFIRMED",
+      "reclassified": true,
+      "severityFinal": "HIGH",
+      "rootCause": "Float keys embed the registry id (float:card:bib:<citekey>) and the only key-remap hook (remapCardPopKey, EditorLayout.tsx:879-884) is wired solely to convertCardWithRemap's morph paths; updateBibKeyAndType (useCitations.ts:281-315) mutates the very id the float key embeds wit...",
+      "class": "mutable-key floats with no remap: any popped card whose registry id can change without a remapCardPopKey call (bib citekey here; citations regenerate ids on parse per brief lead #3)",
+      "confidence": "medium",
+      "a": {
+        "disp": "CONFIRMED",
+        "sev": "HIGH",
+        "isReal": true
+      },
+      "b": {
+        "disp": "RECLASSIFIED",
+        "sev": "MEDIUM",
+        "isReal": true
+      },
+      "needsAdj": false
+    },
+    {
+      "id": "BIB-A3-01",
+      "subject": "bibliography",
+      "cluster": "A3",
+      "finalDisposition": "CONFIRMED",
+      "reclassified": false,
+      "severityFinal": "MEDIUM",
+      "rootCause": "Citekey-as-unique-identity assumption pervades the bib subsystem: panel seen-set dedup (BibliographyPanel.tsx:219-235,350-355), parse-time raw collision (bib-parser.ts:874, last-write-wins on a citekey-keyed object), and bibEntryMap = new Map(bibEntries.map(e=>[e.key,e])) (use...",
+      "class": "citekey-as-unique-identity: bibEntryMap (last wins), getBibEntry/.find (first wins), extractRawEntries object key (last wins) all silently collapse duplicate-keyed pairs inconsistently",
+      "confidence": "high",
+      "a": {
+        "disp": "CONFIRMED",
+        "sev": "MEDIUM",
+        "isReal": true
+      },
+      "b": {
+        "disp": "CONFIRMED",
+        "sev": "MEDIUM",
+        "isReal": true
+      },
+      "needsAdj": false
+    },
+    {
+      "id": "BIB-A3-02",
+      "subject": "bibliography",
+      "cluster": "A3",
+      "finalDisposition": "CONFIRMED",
+      "reclassified": true,
+      "severityFinal": "MEDIUM",
+      "rootCause": "updateBibEntry (src/hooks/useCitations.ts:260-279) is a field-merge, used by a 'replace' caller (handleConflictReplace, BibliographyPanel.tsx:498).",
+      "class": "merge-vs-replace ambiguity: a single field-merge primitive (updateBibEntry) serves both 'edit some fields' and 'replace entirely' intents; clearing a field in the edit UI can't remove it",
+      "confidence": "high",
+      "a": {
+        "disp": "CONFIRMED",
+        "sev": "MEDIUM",
+        "isReal": true
+      },
+      "b": {
+        "disp": "RECLASSIFIED",
+        "sev": "LOW",
+        "isReal": true
+      },
+      "needsAdj": false
+    },
+    {
+      "id": "BIB-F8-01",
+      "subject": "bibliography",
+      "cluster": "F8",
+      "finalDisposition": "CONFIRMED",
+      "reclassified": false,
+      "severityFinal": "DATA-LOSS",
+      "rootCause": "No unmount-flush/clear for the debounce timer in AnnotationEditor (src/components/BibEntryCard.tsx:117-123) combined with the null-ref-reads-as-empty pattern at line 120 (editorRef.current?.innerHTML || '') and setAnnotation's empty-string-deletes semantics (src/hooks/useAnnot...",
+      "class": "debounced contentEditable writer that reads a possibly-null ref in the timer and coerces null to empty content; any sidecar editor without an unmount flush/clear can empty-write on unmount",
+      "confidence": "high",
+      "a": {
+        "disp": "CONFIRMED",
+        "sev": "DATA-LOSS",
+        "isReal": true
+      },
+      "b": {
+        "disp": "CONFIRMED",
+        "sev": "DATA-LOSS",
+        "isReal": true
+      },
+      "needsAdj": false
+    },
+    {
+      "id": "BIB-F8-02",
+      "subject": "bibliography",
+      "cluster": "F8",
+      "finalDisposition": "CONFIRMED",
+      "reclassified": false,
+      "severityFinal": "HIGH",
+      "rootCause": "Uncontrolled contentEditable: the innerHTML seed effect deps exclude `content` (src/components/BibEntryCard.tsx:111-115), so two live instances of the same key cannot converge.",
+      "class": "uncontrolled contentEditable mirrored across surfaces: any rich-text/contentEditable that seeds from props once while two instances (docked vs float) coexist will diverge and last-writer-wins clobber",
+      "confidence": "high",
+      "a": {
+        "disp": "CONFIRMED",
+        "sev": "HIGH",
+        "isReal": true
+      },
+      "b": {
+        "disp": "CONFIRMED",
+        "sev": "HIGH",
+        "isReal": true
+      },
+      "needsAdj": false
+    },
+    {
+      "id": "BIB-F8-03",
+      "subject": "bibliography",
+      "cluster": "F8",
+      "finalDisposition": "CONFIRMED",
+      "reclassified": false,
+      "severityFinal": "MEDIUM",
+      "rootCause": "First-match lookup over an append-only request log: getRequestStatus .find returns the earliest row not the latest (src/hooks/useBibReview.ts:96-99), and requestReview's pending-only dedup (lines 66-69) lets stale completed rows accumulate because nothing wires clearRequest in...",
+      "class": "first-match lookup over an append-only log without clear/dedup; any per-kind request reader that must read the LATEST matching record but uses .find reads the oldest",
+      "confidence": "high",
+      "a": {
+        "disp": "CONFIRMED",
+        "sev": "MEDIUM",
+        "isReal": true
+      },
+      "b": {
+        "disp": "CONFIRMED",
+        "sev": "MEDIUM",
+        "isReal": true
+      },
+      "needsAdj": false
+    },
+    {
+      "id": "BIB-F8-04",
+      "subject": "bibliography",
+      "cluster": "F8",
+      "finalDisposition": "CONFIRMED",
+      "reclassified": false,
+      "severityFinal": "MEDIUM",
+      "rootCause": "Export reads e.raw directly (BibliographyPanel.tsx:363) while persistence reads through serializeBibFile (which reconstructs from fields).",
+      "class": "export-via-raw vs persist-via-serializer divergence; shared with BIB-A3-01 (raw+filter(Boolean) also silently drops the duplicate-key entry on export). Any consumer reading e.raw directly is fragile to in-memory entries.",
+      "confidence": "medium",
+      "a": {
+        "disp": "CONFIRMED",
+        "sev": "MEDIUM",
+        "isReal": true
+      },
+      "b": {
+        "disp": "CONFIRMED",
+        "sev": "MEDIUM",
+        "isReal": true
+      },
+      "needsAdj": false
+    },
+    {
+      "id": "BIB-C1-01",
+      "subject": "bibliography",
+      "cluster": "C1",
+      "finalDisposition": "CONFIRMED",
+      "reclassified": false,
+      "severityFinal": "LOW",
+      "rootCause": "addMenuRef (BibliographyPanel.tsx:607) wraps only the dropdown content, not the '+' trigger (which PanelHeader renders, panel-primitives.tsx:2097), and the close handler fires on mousedown (BibliographyPanel.tsx:138) while the toggle fires on the subsequent click \u2014 so the two...",
+      "class": "outside-click-ref that excludes the toggling trigger + mousedown-close vs click-toggle ordering; any panel whose menu trigger lives outside the ref and whose handler listens on mousedown while the toggle runs on click",
+      "confidence": "medium",
+      "a": {
+        "disp": "CONFIRMED",
+        "sev": "LOW",
+        "isReal": true
+      },
+      "b": {
+        "disp": "CONFIRMED",
+        "sev": "LOW",
+        "isReal": true
+      },
+      "needsAdj": false
+    },
+    {
+      "id": "BIB-A1-01",
+      "subject": "bibliography",
+      "cluster": "A1",
+      "finalDisposition": "CONFIRMED",
+      "reclassified": false,
+      "severityFinal": "LOW",
+      "rootCause": "Two sources of truth for 'is this entry cited / where does it jump': the persisted citationsHook.citations sidecar (used for citedKeys, BibliographyPanel.tsx:211) vs the live-editor allEditorCitations (used for keyToCitationIds, BibliographyPanel.tsx:154 / EditorPane.tsx:2611).",
+      "class": "two-source-of-truth for the same fact (sidecar citations vs live-editor citations); the cited-count badge and occurrence counters also read allEditorCitations while the filter reads the sidecar",
+      "confidence": "low",
+      "a": {
+        "disp": "CONFIRMED",
+        "sev": "LOW",
+        "isReal": true
+      },
+      "b": {
+        "disp": "CONFIRMED",
+        "sev": "LOW",
+        "isReal": true
+      },
+      "needsAdj": false
+    },
+    {
+      "id": "BIB-F1-01",
+      "subject": "bibliography",
+      "cluster": "F1",
+      "finalDisposition": "CONFIRMED",
+      "reclassified": false,
+      "severityFinal": "MEDIUM",
+      "rootCause": "The `showEmpty` gate at src/panels/_shared/CardListPanel.tsx:112 omits `listTrailing` from its emptiness calculation; the structural fix is to render `listTrailing` outside the showEmpty branch (or fold its presence into `showEmpty`).",
+      "class": "Empty-state gate that swallows independent trailing/auxiliary panel content. Bibliography is currently the ONLY `listTrailing` consumer (verified by grep) so the live blast radius is one panel; the class is 'any future trailing-section content routed through CardListPanel'.",
+      "confidence": "high",
+      "a": {
+        "disp": "CONFIRMED",
+        "sev": "MEDIUM",
+        "isReal": true
+      },
+      "b": {
+        "disp": "CONFIRMED",
+        "sev": "MEDIUM",
+        "isReal": true
+      },
+      "needsAdj": false
+    },
+    {
+      "id": "BIB-F1-02",
+      "subject": "bibliography",
+      "cluster": "F1",
+      "finalDisposition": "CONFIRMED",
+      "reclassified": true,
+      "severityFinal": "LOW",
+      "rootCause": "Not a dead prop. `formatBibliography`/`getFormattedBib` is wired and exercised by the Citations full-cite preview (src/panels/Citations/CitationCard.tsx:992) and \\fullcite rendering (src/lib/bib-parser.ts:521).",
+      "class": "Missing/absent UI surface (spec implies a CSL preview in the bib card; code never builds it). Not the 'prop survives refactor but loses render site' class the finder hypothesizes, since the prop is live elsewhere.",
+      "confidence": "high",
+      "a": {
+        "disp": "CONFIRMED",
+        "sev": "LOW",
+        "isReal": true
+      },
+      "b": {
+        "disp": "RECLASSIFIED",
+        "sev": "LOW",
+        "isReal": true
+      },
+      "needsAdj": false
+    },
+    {
+      "id": "BIB-F1-03",
+      "subject": "bibliography",
+      "cluster": "F1",
+      "finalDisposition": "CONFIRMED",
+      "reclassified": false,
+      "severityFinal": "COSMETIC",
+      "rootCause": "The compressed-card height contract (DOCKED_COMPRESSED_LINES via CardDisplayProvider) clamps only the body; the always-rendered header has no per-line clamp, so author\u00b7year\u00b7title wraps freely. src/components/BibEntryCard.tsx:476-489.",
+      "class": "Card headers that derive a summary line from arbitrary user/.bib text without a clamp in the compressed state. Worth checking the citation header and footnote bodyTitle for the same omission, as the finder suggests.",
+      "confidence": "high",
+      "a": {
+        "disp": "CONFIRMED",
+        "sev": "COSMETIC",
+        "isReal": true
+      },
+      "b": {
+        "disp": "CONFIRMED",
+        "sev": "COSMETIC",
+        "isReal": true
+      },
+      "needsAdj": false
+    },
+    {
+      "id": "BIB-F1-04",
+      "subject": "bibliography",
+      "cluster": "F1",
+      "finalDisposition": "CONFIRMED",
+      "reclassified": false,
+      "severityFinal": "LOW",
+      "rootCause": "Two stacked silent drops: (1) parser-level Record-keyed collapse by lowercased citekey (src/lib/bib-parser.ts:874) and (2) panel-level `seen.has(e.key)` filter (src/panels/Bibliography/BibliographyPanel.tsx:224).",
+      "class": "Lead-#5 silent seen-set / .filter(Boolean) drops on the bib display+export path. The export raw='' sibling is the more concerning member and deserves its own ticket.",
+      "confidence": "medium",
+      "a": {
+        "disp": "CONFIRMED",
+        "sev": "LOW",
+        "isReal": true
+      },
+      "b": {
+        "disp": "CONFIRMED",
+        "sev": "LOW",
+        "isReal": true
+      },
+      "needsAdj": false
+    },
+    {
+      "id": "BIB-F5-01",
+      "subject": "bibliography",
+      "cluster": "F5",
+      "finalDisposition": "CONFIRMED",
+      "reclassified": false,
+      "severityFinal": "HIGH",
+      "rootCause": "Unsanitized imperative innerHTML write at src/components/BibEntryCard.tsx:113; the #28 field-row hardening was applied to the JSX field row but not to the sibling contentEditable annotation editor that loads the same class of untrusted persisted/AI HTML.",
+      "class": "Any contentEditable/innerHTML sink that loads persisted or AI-authored HTML without DOMPurify. Check footnote/report rich-text bodies and any other annotation/notes editor that seeds via innerHTML. The escaping-test coverage gap (row pinned, editor not) is itself the class of regression risk.",
+      "confidence": "high",
+      "a": {
+        "disp": "CONFIRMED",
+        "sev": "HIGH",
+        "isReal": true
+      },
+      "b": {
+        "disp": "CONFIRMED",
+        "sev": "HIGH",
+        "isReal": true
+      },
+      "needsAdj": false
+    },
+    {
+      "id": "BIB-F5-02",
+      "subject": "bibliography",
+      "cluster": "F5",
+      "finalDisposition": "CONFIRMED",
+      "reclassified": false,
+      "severityFinal": "MEDIUM",
+      "rootCause": "Asymmetric refresh: the request-status sidecar polls (useBibReview 10s) but the two content sidecars it gates do not \u2014 annotations.json (usePersistentState, load-once) and references.bib (DOC_BIB_CHANGED_EVENT only, never dispatched by external skill writes).",
+      "class": "All sidecars/.bib written out-of-band by editor skills but loaded once per docId or refreshed only on a narrowly-scoped in-app event with no FS-watch. Sibling: any panel whose contentEditable is seeded once on mount (the AnnotationEditor `[bibKey]`-only seed pattern) won't reflect an external same-key content change even if the backing state updates.",
+      "confidence": "high",
+      "a": {
+        "disp": "CONFIRMED",
+        "sev": "MEDIUM",
+        "isReal": true
+      },
+      "b": {
+        "disp": "CONFIRMED",
+        "sev": "MEDIUM",
+        "isReal": true
+      },
+      "needsAdj": false
+    },
+    {
+      "id": "BIB-F5-03",
+      "subject": "bibliography",
+      "cluster": "F5",
+      "finalDisposition": "REFUTED",
+      "reclassified": false,
+      "severityFinal": "HIGH",
+      "rootCause": null,
+      "class": "Reactive sidecar-command\u2192editor-node sync; the same effect covers cite-type changes (\\citet\u2194\\citep).",
+      "confidence": "high",
+      "a": {
+        "disp": "REFUTED",
+        "sev": "LOW",
+        "isReal": false
+      },
+      "b": {
+        "disp": "REFUTED",
+        "sev": "MEDIUM",
+        "isReal": false
+      },
+      "needsAdj": false
+    },
+    {
+      "id": "BIB-F5-04",
+      "subject": "bibliography",
+      "cluster": "F5",
+      "finalDisposition": "CONFIRMED",
+      "reclassified": false,
+      "severityFinal": "MEDIUM",
+      "rootCause": "Two compounding gaps: no add-field row in the edit form (src/components/BibEntryCard.tsx:362-369) AND merge-only field semantics with no deletion honored (src/hooks/useCitations.ts:265). A set-fields-by-merge updater structurally cannot express a field removal.",
+      "class": "Merge-only field updaters across the bib/card edit surface (any onUpdate that spreads new over old without honoring deletions). The skill's explicit 'replace-all-fields' mode exists precisely to work around set-fields' inability to delete; the manual UI lacks that escape hatch.",
+      "confidence": "high",
+      "a": {
+        "disp": "CONFIRMED",
+        "sev": "MEDIUM",
+        "isReal": true
+      },
+      "b": {
+        "disp": "CONFIRMED",
+        "sev": "MEDIUM",
+        "isReal": true
+      },
+      "needsAdj": false
+    },
+    {
+      "id": "BIB-F5-05",
+      "subject": "bibliography",
+      "cluster": "F5",
+      "finalDisposition": "CONFIRMED",
+      "reclassified": false,
+      "severityFinal": "LOW",
+      "rootCause": "Tri-state status (none|pending|complete) collapsed to a binary `=== 'pending'` check at every UI branch (src/components/BibEntryCard.tsx:222,320,408), combined with requestReview's pending-only dedup (src/hooks/useBibReview.ts:66-69) and getRequestStatus returning the first ar...",
+      "class": "Tri-state status collapsed to binary pending/not-pending at the UI. Any card consuming a 'complete' status without a distinct rendering (citation bib-review, report-request fulfillment) risks the same re-fire-on-complete and missing-acknowledgement behavior.",
+      "confidence": "high",
+      "a": {
+        "disp": "CONFIRMED",
+        "sev": "LOW",
+        "isReal": true
+      },
+      "b": {
+        "disp": "CONFIRMED",
+        "sev": "LOW",
+        "isReal": true
+      },
+      "needsAdj": false
+    },
+    {
+      "id": "BIB-F3-01",
+      "subject": "bibliography",
+      "cluster": "F3",
+      "finalDisposition": "CONFIRMED",
+      "reclassified": false,
+      "severityFinal": "HIGH",
+      "rootCause": "Shared resolver blind spot: findInlineAtomPos (links.ts:645-662) and resolveLink (links.ts:429-431) only traverse editor.state.doc.descendants, which by ProseMirror design does not descend into atomic-node attrs holding a JSONContent literal (footnote.attrs.content).",
+      "class": "descendants-only-traversal blind spot for footnote-nested atoms \u2014 siblings: citations CI-F3-01 (same resolver), the reconciler's collectAnchorEls (selection-driven highlight EditorLayout.tsx:1899-1916 can't paint an in-footnote marker), and cycleOccurrence's jump when the cycled occurrence is in a footnote (BibliographyPanel.tsx:165-179 inherits the same scrollToCitation no-op).",
+      "confidence": "high",
+      "a": {
+        "disp": "CONFIRMED",
+        "sev": "HIGH",
+        "isReal": true
+      },
+      "b": {
+        "disp": "CONFIRMED",
+        "sev": "HIGH",
+        "isReal": true
+      },
+      "needsAdj": false
+    },
+    {
+      "id": "BIB-F3-02",
+      "subject": "bibliography",
+      "cluster": "F3",
+      "finalDisposition": "CONFIRMED",
+      "reclassified": true,
+      "severityFinal": "LOW",
+      "rootCause": "Per-citekey index stored in component state (keyOccurrenceIdx) is never reconciled against the live citation-id list when allEditorCitations changes \u2014 there is no clamp at read time (BibliographyPanel.tsx:910) nor a reconcile effect.",
+      "class": "stale-index-keyed-by-natural-key \u2014 sibling: the Citations panel's own per-key occurrence cycling (same keyOccurrenceIdx pattern + regenerate-ids-on-parse).",
+      "confidence": "medium",
+      "a": {
+        "disp": "RECLASSIFIED",
+        "sev": "LOW",
+        "isReal": true
+      },
+      "b": {
+        "disp": "RECLASSIFIED",
+        "sev": "LOW",
+        "isReal": true
+      },
+      "needsAdj": false
+    },
+    {
+      "id": "BIB-F7-01",
+      "subject": "bibliography",
+      "cluster": "F7",
+      "finalDisposition": "CONFIRMED",
+      "reclassified": false,
+      "severityFinal": "DATA-LOSS",
+      "rootCause": "Export path reads entry.raw directly (BibliographyPanel.tsx:363) instead of routing through serializeBibFile, which reconstructs from fields when raw is empty (bib-parser.ts:128-139).",
+      "class": "raw-only consumer ignoring the fields fallback \u2014 any future 'copy bibtex'/'export all' reading entry.raw inherits the empty-raw blind spot. Sibling of lead #5.",
+      "confidence": "high",
+      "a": {
+        "disp": "CONFIRMED",
+        "sev": "DATA-LOSS",
+        "isReal": true
+      },
+      "b": {
+        "disp": "CONFIRMED",
+        "sev": "DATA-LOSS",
+        "isReal": true
+      },
+      "needsAdj": false
+    },
+    {
+      "id": "BIB-F7-02",
+      "subject": "bibliography",
+      "cluster": "F7",
+      "finalDisposition": "CONFIRMED",
+      "reclassified": true,
+      "severityFinal": "LOW",
+      "rootCause": "Citekey collisions are resolved by last-wins overwrite at the parser (extractRawEntries, bib-parser.ts:874) \u2014 both parsed entries share the last block's raw \u2014 so the data is already mangled upstream of the export/display dedup.",
+      "class": "citekey treated as a unique map key throughout (parse + display + export) \u2014 the .bib data model assumes unique keys; a colliding key corrupts at the parser layer first.",
+      "confidence": "medium",
+      "a": {
+        "disp": "RECLASSIFIED",
+        "sev": "LOW",
+        "isReal": true
+      },
+      "b": {
+        "disp": "RECLASSIFIED",
+        "sev": "LOW",
+        "isReal": true
+      },
+      "needsAdj": false
+    },
+    {
+      "id": "BIB-F7-03",
+      "subject": "bibliography",
+      "cluster": "F7",
+      "finalDisposition": "CONFIRMED",
+      "reclassified": true,
+      "severityFinal": "LOW",
+      "rootCause": "Dead prop / stale doc-comment: bibPackage threaded + in deps but never consumed (BibEntryCard.tsx:203-219); the comment at :28 documents behavior that was never implemented.",
+      "class": "threaded-but-unread prop with a misleading doc-comment \u2014 a maintainability hazard, not a user-facing bug.",
+      "confidence": "high",
+      "a": {
+        "disp": "CONFIRMED",
+        "sev": "LOW",
+        "isReal": true
+      },
+      "b": {
+        "disp": "RECLASSIFIED",
+        "sev": "COSMETIC",
+        "isReal": true
+      },
+      "needsAdj": false
+    },
+    {
+      "id": "BIB-F7-04",
+      "subject": "bibliography",
+      "cluster": "F7",
+      "finalDisposition": "CONFIRMED",
+      "reclassified": false,
+      "severityFinal": "LOW",
+      "rootCause": "Asymmetric update in updateBibKeyAndType: keys[] is rewritten unconditionally (useCitations.ts:303-304) but the command string only via a \\b-bounded regex (useCitations.ts:305-308) that assumes citekeys are word-char-bounded \u2014 JS \\b requires a [A-Za-z0-9_]/non-word adjacency t...",
+      "class": "word-boundary regex assuming word-char-bounded citekeys \u2014 siblings: any other site rewriting cite commands with \\b (search/replace citekey rename, editor/sync-bib-to-library's rename). The unconditional-keys vs conditional-command split is the corrupting asymmetry.",
+      "confidence": "medium",
+      "a": {
+        "disp": "CONFIRMED",
+        "sev": "LOW",
+        "isReal": true
+      },
+      "b": {
+        "disp": "CONFIRMED",
+        "sev": "LOW",
+        "isReal": true
+      },
+      "needsAdj": false
+    },
+    {
+      "id": "BIB-F2-01",
+      "subject": "bibliography",
+      "cluster": "F2",
+      "finalDisposition": "CONFIRMED",
+      "reclassified": false,
+      "severityFinal": "LOW",
+      "rootCause": "Selection keyed by a mutable natural key (citekey) rather than a stable id: commitEditBib mutates the key without re-pointing selectedBibKey (BibEntryCard.tsx:185-192). It should call the panel's re-select with newKey, exactly as the conflict handlers do.",
+      "class": "selection-by-renameable-field \u2014 any panel selecting by a mutable field instead of an immutable id breaks selection when that field is renamed in place.",
+      "confidence": "high",
+      "a": {
+        "disp": "CONFIRMED",
+        "sev": "LOW",
+        "isReal": true
+      },
+      "b": {
+        "disp": "CONFIRMED",
+        "sev": "LOW",
+        "isReal": true
+      },
+      "needsAdj": false
+    },
+    {
+      "id": "CI-A1-01",
+      "subject": "citations",
+      "cluster": "A1",
+      "finalDisposition": "CONFIRMED",
+      "reclassified": false,
+      "severityFinal": "MEDIUM",
+      "rootCause": "Mount-only sidecar\u2194editor reconciliation for an id-bearing inline-atom kind: EditorPane.tsx:1177-1182 gates syncFromEditor on [editor] (stable across in-place edits), so no structural-diff-driven resync exists.",
+      "class": "Mount-only sync-from-editor for id-bearing sidecars not driven by the structural diff \u2014 same root as CI-A2-02/CI-F8-03. Footnotes mitigate via their orphan bridge; citations have none.",
+      "confidence": "high",
+      "a": {
+        "disp": "CONFIRMED",
+        "sev": "MEDIUM",
+        "isReal": true
+      },
+      "b": {
+        "disp": "CONFIRMED",
+        "sev": "MEDIUM",
+        "isReal": true
+      },
+      "needsAdj": false
+    },
+    {
+      "id": "CI-A1-02",
+      "subject": "citations",
+      "cluster": "A1",
+      "finalDisposition": "SPLIT",
+      "reclassified": false,
+      "severityFinal": "LOW",
+      "rootCause": "Position-only anchor-state derivation in the omni builder (omni.tsx:46-49) ignores the card's own unanchored flag, collapsing 'never-anchored (free)' and 'lost-anchor (orphan)' into one bucket.",
+      "class": "Builders that derive anchor-state from position-resolution alone rather than from the card's own flag. Mostly citation-specific (citation is the only intrinsically-in-text kind that also has a panel-created unanchored mode).",
+      "confidence": "high",
+      "a": {
+        "disp": "REFUTED",
+        "sev": "LOW",
+        "isReal": false
+      },
+      "b": {
+        "disp": "CONFIRMED",
+        "sev": "LOW",
+        "isReal": true
+      },
+      "needsAdj": true
+    },
+    {
+      "id": "CI-A2-01",
+      "subject": "citations",
+      "cluster": "A2",
+      "finalDisposition": "CONFIRMED",
+      "reclassified": true,
+      "severityFinal": "HIGH",
+      "rootCause": "Optional callback onCitationDrop left unwired at every host while Editor.tsx:562 hard-gates the drop on it, AND the panel's default '+ Add citation' mode is 'unanchored' (citations-host.tsx:97) so the broken gesture is on the primary path, not an edge.",
+      "class": "Host-unwired optional drop callbacks whose producing surface still advertises the action. Verified the sibling footnote/archive paths are NOT affected: footnote panel-drop is self-wired in Editor.tsx:713-765 (works). Citation is the lone broken member.",
+      "confidence": "high",
+      "a": {
+        "disp": "RECLASSIFIED",
+        "sev": "MEDIUM",
+        "isReal": true
+      },
+      "b": {
+        "disp": "CONFIRMED",
+        "sev": "HIGH",
+        "isReal": true
+      },
+      "needsAdj": false
+    },
+    {
+      "id": "CI-A2-02",
+      "subject": "citations",
+      "cluster": "A2",
+      "finalDisposition": "CONFIRMED",
+      "reclassified": true,
+      "severityFinal": "MEDIUM",
+      "rootCause": "Same mount-only-sync root as CI-A1-01 (EditorPane.tsx:1177-1182), but the id-regeneration trigger is gated by \\vcid-marker survival: the serializer emits \\vcid unconditionally (latex-serializer.ts:404,699), so id loss for an existing citation only occurs when the user hand-edi...",
+      "class": "Mount-only sidecar resync (shared with CI-A1-01/CI-F8-03). The id-regen-under-reparse exposure is bounded by the \\vcid round-trip guarantee, so it is materially narrower than the finder implies.",
+      "confidence": "medium",
+      "a": {
+        "disp": "CONFIRMED",
+        "sev": "MEDIUM",
+        "isReal": true
+      },
+      "b": {
+        "disp": "RECLASSIFIED",
+        "sev": "LOW",
+        "isReal": true
+      },
+      "needsAdj": false
+    },
+    {
+      "id": "CI-A3-01",
+      "subject": "citations",
+      "cluster": "A3",
+      "finalDisposition": "CONFIRMED",
+      "reclassified": false,
+      "severityFinal": "LOW",
+      "rootCause": "cloneCitation does not mark the clone unanchored:true, relying on its caller to also create the in-doc atom \u2014 a fragile contract. The mount-only filter (syncFromEditor) silently discards any unflagged, atom-less clone. Latent because the only live caller honors the contract.",
+      "class": "Sidecar clone helpers that don't self-mark anchor state and depend on the caller to create the node. Footnote clone (useFootnotes.ts:106-119) should be audited for the same assumption (G-display/G-interact territory).",
+      "confidence": "high",
+      "a": {
+        "disp": "CONFIRMED",
+        "sev": "LOW",
+        "isReal": true
+      },
+      "b": {
+        "disp": "CONFIRMED",
+        "sev": "LOW",
+        "isReal": true
+      },
+      "needsAdj": false
+    },
+    {
+      "id": "CI-F8-01",
+      "subject": "citations",
+      "cluster": "F8",
+      "finalDisposition": "CONFIRMED",
+      "reclassified": false,
+      "severityFinal": "MEDIUM",
+      "rootCause": "Inline-atom MOVE spec (inlineAtomMoveSpec) is the only float-drop path for citations; it presumes a pre-existing atom (locateAtom) and has no 'create-and-anchor' branch for an unanchored card.",
+      "class": "Move-only inline-atom float-drop specs conflated with 'anchor a not-yet-placed atom'. Footnote shares the move-only float spec but is rescued by its self-wired native-drag handler; citation is not.",
+      "confidence": "high",
+      "a": {
+        "disp": "CONFIRMED",
+        "sev": "MEDIUM",
+        "isReal": true
+      },
+      "b": {
+        "disp": "CONFIRMED",
+        "sev": "MEDIUM",
+        "isReal": true
+      },
+      "needsAdj": false
+    },
+    {
+      "id": "CI-F8-02",
+      "subject": "citations",
+      "cluster": "F8",
+      "finalDisposition": "CONFIRMED",
+      "reclassified": false,
+      "severityFinal": "LOW",
+      "rootCause": "Pruner exempts the very kinds (inline atoms) whose existence it cannot verify (useAnchorHighlightReconciler.ts:88), so it can never clear their dangling interaction state; combined with no historical-id avoidance in generateShortId (uuid.ts:21-25), a reused short id picks up t...",
+      "class": "Pruner exemption shared by footnotes \u2014 a deleted footnote leaves the identical dangling cardStore ref with the same id-reuse mis-paint window. Class: 'pruner skips a kind it can't verify, never clearing that kind's dangling selection/hover/expand state.'",
+      "confidence": "medium",
+      "a": {
+        "disp": "CONFIRMED",
+        "sev": "LOW",
+        "isReal": true
+      },
+      "b": {
+        "disp": "CONFIRMED",
+        "sev": "LOW",
+        "isReal": true
+      },
+      "needsAdj": false
+    },
+    {
+      "id": "CI-F8-03",
+      "subject": "citations",
+      "cluster": "F8",
+      "finalDisposition": "CONFIRMED",
+      "reclassified": false,
+      "severityFinal": "MEDIUM",
+      "rootCause": "Code-view-originated structural additions bypass the action-registry create bridge (runAction('citation')), and the only catch-all that would register them (syncFromEditor) is mount-only (EditorPane.tsx:1177-1182).",
+      "class": "Code-view structural additions that skip the visual-editor create bridge. Footnotes/examples added in code view likely share the gap (their sidecar registration also rides the visual-editor create path + mount-time sync). Same mount-only-sync family as CI-A1-01/CI-A2-02.",
+      "confidence": "medium",
+      "a": {
+        "disp": "CONFIRMED",
+        "sev": "MEDIUM",
+        "isReal": true
+      },
+      "b": {
+        "disp": "CONFIRMED",
+        "sev": "MEDIUM",
+        "isReal": true
+      },
+      "needsAdj": false
+    },
+    {
+      "id": "CI-C1-01",
+      "subject": "citations",
+      "cluster": "C1",
+      "finalDisposition": "SPLIT",
+      "reclassified": false,
+      "severityFinal": "COSMETIC",
+      "rootCause": "Definitional, not a defect: the panel badge intentionally reports card-array length (CitationsPanel.tsx:241), consistent across panels. Divergence from in-text \\cite count is a labeling-expectation gap, not wrong behavior.",
+      "class": "Strip badges that report raw card-array length; uniform across panels by design \u2014 not a bug class.",
+      "confidence": "medium",
+      "a": {
+        "disp": "RECLASSIFIED",
+        "sev": "COSMETIC",
+        "isReal": false
+      },
+      "b": {
+        "disp": "RECLASSIFIED",
+        "sev": "COSMETIC",
+        "isReal": true
+      },
+      "needsAdj": true
+    },
+    {
+      "id": "CI-F1-01",
+      "subject": "citations",
+      "cluster": "F1",
+      "finalDisposition": "CONFIRMED",
+      "reclassified": false,
+      "severityFinal": "COSMETIC",
+      "rootCause": "CitationCard never participates in the EditableCard compressed-body pipeline at all \u2014 it short-circuits with its own header at CitationCard.tsx:751-752 \u2014 so it inherits none of the compressedBodyStyle clamp (panel-primitives.tsx:150-172).",
+      "class": "Bespoke card chrome that bypasses the shared EditableCard compressed-body clamp \u2014 any card rendering PanelCard directly (citation is the notable case) must re-implement the clamp itself.",
+      "confidence": "high",
+      "a": {
+        "disp": "CONFIRMED",
+        "sev": "COSMETIC",
+        "isReal": true
+      },
+      "b": {
+        "disp": "CONFIRMED",
+        "sev": "COSMETIC",
+        "isReal": true
+      },
+      "needsAdj": false
+    },
+    {
+      "id": "CI-F1-02",
+      "subject": "citations",
+      "cluster": "F1",
+      "finalDisposition": "REFUTED",
+      "reclassified": false,
+      "severityFinal": "HIGH",
+      "rootCause": null,
+      "class": null,
+      "confidence": "high",
+      "a": {
+        "disp": "REFUTED",
+        "sev": "LOW",
+        "isReal": false
+      },
+      "b": {
+        "disp": "REFUTED",
+        "sev": "LOW",
+        "isReal": false
+      },
+      "needsAdj": false
+    },
+    {
+      "id": "CI-F4-01",
+      "subject": "citations",
+      "cluster": "F4",
+      "finalDisposition": "REFUTED",
+      "reclassified": false,
+      "severityFinal": "MEDIUM",
+      "rootCause": null,
+      "class": null,
+      "confidence": "high",
+      "a": {
+        "disp": "REFUTED",
+        "sev": "LOW",
+        "isReal": false
+      },
+      "b": {
+        "disp": "REFUTED",
+        "sev": "LOW",
+        "isReal": false
+      },
+      "needsAdj": false
+    },
+    {
+      "id": "CI-F4-02",
+      "subject": "citations",
+      "cluster": "F4",
+      "finalDisposition": "REFUTED",
+      "reclassified": false,
+      "severityFinal": "LOW",
+      "rootCause": null,
+      "class": "Dead/vestigial argument threaded through a call but never consumed \u2014 marker-clicks.ts passes sourceEl to alignOmniCardWithClick for both citation (:322) and footnote (:269); both are ignored.",
+      "confidence": "high",
+      "a": {
+        "disp": "REFUTED",
+        "sev": "LOW",
+        "isReal": false
+      },
+      "b": {
+        "disp": "REFUTED",
+        "sev": "COSMETIC",
+        "isReal": false
+      },
+      "needsAdj": false
+    },
+    {
+      "id": "CI-F5-01",
+      "subject": "citations",
+      "cluster": "F5",
+      "finalDisposition": "CONFIRMED",
+      "reclassified": false,
+      "severityFinal": "MEDIUM",
+      "rootCause": "Asymmetric command-shape mutation: the only writer of type that depends on row-count/postnote-distinctness is the one-way promote at CitationCard.tsx:383; neither removeRow (:392-402) nor setRowPostnote's else-branch demotes, and serializeCiteCommand (bib-parser.ts:337-339) tr...",
+      "class": "One-way state mutation lacking a symmetric inverse (lead #4). Same shape as the biblatex singular\u2194plural toggle; any future row-count-driven command auto-switch would inherit it.",
+      "confidence": "high",
+      "a": {
+        "disp": "CONFIRMED",
+        "sev": "MEDIUM",
+        "isReal": true
+      },
+      "b": {
+        "disp": "CONFIRMED",
+        "sev": "MEDIUM",
+        "isReal": true
+      },
+      "needsAdj": false
+    },
+    {
+      "id": "CI-F5-02",
+      "subject": "citations",
+      "cluster": "F5",
+      "finalDisposition": "CONFIRMED",
+      "reclassified": true,
+      "severityFinal": "MEDIUM",
+      "rootCause": "No package-migration of per-card `type`: `type` is derived once from cit.command (parseCiteCommand) and the panel-wide bibPackage flip (setBibPackage) never re-derives or validates it against the new `types` list (CitationCard.tsx:675, :836-850); serializeCiteCommand then emit...",
+      "class": "Per-card derived state not reconciled when its panel-wide source-of-truth (bibPackage) changes \u2014 the inline display formatter (formatInlineCitation, useCitations.ts:343) reads the same stale type for these cards.",
+      "confidence": "medium",
+      "a": {
+        "disp": "RECLASSIFIED",
+        "sev": "LOW",
+        "isReal": true
+      },
+      "b": {
+        "disp": "CONFIRMED",
+        "sev": "MEDIUM",
+        "isReal": true
+      },
+      "needsAdj": false
+    },
+    {
+      "id": "CI-F5-03",
+      "subject": "citations",
+      "cluster": "F5",
+      "finalDisposition": "CONFIRMED",
+      "reclassified": false,
+      "severityFinal": "LOW",
+      "rootCause": "Dedup invariant enforced only on the drag-merge route (CitationCard.tsx:514), absent on the picker route (setRowKey :361-368) \u2014 the picker writes the chosen key without consulting the other rows.",
+      "class": "Inconsistent dedup invariant between two write paths to the same multi-key model (drag-merge vs picker); any future third entry route (paste, AI-fill) would also need its own dedup.",
+      "confidence": "high",
+      "a": {
+        "disp": "CONFIRMED",
+        "sev": "LOW",
+        "isReal": true
+      },
+      "b": {
+        "disp": "CONFIRMED",
+        "sev": "LOW",
+        "isReal": true
+      },
+      "needsAdj": false
+    },
+    {
+      "id": "CI-F3-01",
+      "subject": "citations",
+      "cluster": "F3",
+      "finalDisposition": "CONFIRMED",
+      "reclassified": false,
+      "severityFinal": "HIGH",
+      "rootCause": "Descendants-only traversal in findInlineAtomPos (links.ts:652) cannot reach atoms living inside a footnote's attrs.content JSONContent literal; the panel-side enumerators (getCitations/getCitationIds/getCitationOrder, Editor.tsx:1318/1365/1381) DO walk that literal and attribu...",
+      "class": "resolveLink + findInlineAtomPos + reconciler collectAnchorEls all share the descendants-only blind spot for nested inline atoms. Any footnote-nested citation jump/hover/select highlight is affected; a footnote-nested footnote (if reachable) would be the mirror. Bibliography 'jump to first citation' (cited-only) routes through the same resolveLink and likely inherits it.",
+      "confidence": "high",
+      "a": {
+        "disp": "CONFIRMED",
+        "sev": "HIGH",
+        "isReal": true
+      },
+      "b": {
+        "disp": "CONFIRMED",
+        "sev": "HIGH",
+        "isReal": true
+      },
+      "needsAdj": false
+    },
+    {
+      "id": "CI-F2-01",
+      "subject": "citations",
+      "cluster": "F2",
+      "finalDisposition": "CONFIRMED",
+      "reclassified": true,
+      "severityFinal": "MEDIUM",
+      "rootCause": "Two selection sources of truth (cardStore.selected, monotonic; React selectedId, toggled).",
+      "class": "Any card whose body onClick pairs a monotonic store select (ac.onActivate) with a TOGGLE-style React onSelect AND skips the jump (unanchored/orphan rows) has this. FootnotePanel uses the same renderCard onSelect-toggle pattern \u2014 but only its orphan/unanchored footnotes (jump disabled) would show it.",
+      "confidence": "high",
+      "a": {
+        "disp": "CONFIRMED",
+        "sev": "MEDIUM",
+        "isReal": true
+      },
+      "b": {
+        "disp": "RECLASSIFIED",
+        "sev": "LOW",
+        "isReal": true
+      },
+      "needsAdj": false
+    },
+    {
+      "id": "CI-F2-02",
+      "subject": "citations",
+      "cluster": "F2",
+      "finalDisposition": "CONFIRMED",
+      "reclassified": true,
+      "severityFinal": "LOW",
+      "rootCause": "Inline-atom cards have no liveness signal feeding the pruner (entityExists hard-codes true, useAnchorHighlightReconciler.ts:88), so cardStore refs to a deleted/renamed citation/footnote never self-clear.",
+      "class": "Footnotes share the identical isInlineAtomCardKind pruner exemption \u2014 same benign dangling ref. The broader latent risk is the 4-char generateShortId collision space used for atom ids minted without an `existing` set (latex-parser.ts:481/509).",
+      "confidence": "high",
+      "a": {
+        "disp": "RECLASSIFIED",
+        "sev": "LOW",
+        "isReal": true
+      },
+      "b": {
+        "disp": "RECLASSIFIED",
+        "sev": "LOW",
+        "isReal": true
+      },
+      "needsAdj": false
+    },
+    {
+      "id": "CI-F2-03",
+      "subject": "citations",
+      "cluster": "F2",
+      "finalDisposition": "REFUTED",
+      "reclassified": false,
+      "severityFinal": "LOW",
+      "rootCause": null,
+      "class": "Cross-subject by-design item (kind-agnostic reconciler); affects every anchored kind identically and is a documented design choice, not a citation defect.",
+      "confidence": "high",
+      "a": {
+        "disp": "REFUTED",
+        "sev": "LOW",
+        "isReal": false
+      },
+      "b": {
+        "disp": "REFUTED",
+        "sev": "COSMETIC",
+        "isReal": false
+      },
+      "needsAdj": false
+    },
+    {
+      "id": "CI-F7-01",
+      "subject": "citations",
+      "cluster": "F7",
+      "finalDisposition": "CONFIRMED",
+      "reclassified": true,
+      "severityFinal": "MEDIUM",
+      "rootCause": "CitationCard bypasses the shared EditableCard confirm flow entirely (uses PanelCard directly); compounded by has-content.ts having no citation case so no shared predicate could classify it even if wired.",
+      "class": "Brief lead #1. cardHasContent omits footnote/citation/example/bib. Examples (ExampleCard) and any other atom/derived card using PanelCard-direct trash share the missing confirm. Footnotes route through EditableCard, so they DO get a confirm via hasJsonContent(value) \u2014 the gap is specifically the cards that bypass EditableCard.",
+      "confidence": "high",
+      "a": {
+        "disp": "RECLASSIFIED",
+        "sev": "LOW",
+        "isReal": true
+      },
+      "b": {
+        "disp": "CONFIRMED",
+        "sev": "MEDIUM",
+        "isReal": true
+      },
+      "needsAdj": false
+    },
+    {
+      "id": "CI-F7-02",
+      "subject": "citations",
+      "cluster": "F7",
+      "finalDisposition": "CONFIRMED",
+      "reclassified": false,
+      "severityFinal": "MEDIUM",
+      "rootCause": "One-directional auto-promote in setRowPostnote (CitationCard.tsx:383) with no inverse on row reduction, AND serializeCiteCommand has no plural\u2192singular normalization for a single entry (it honors whatever `type` carries, bib-parser.ts:337-339), so the stuck type both serialize...",
+      "class": "Brief lead #4. Every HAS_PLURAL command (cite/textcite/parencite/autocite/footcite/smartcite, CitationCard.tsx:73-80) strands plural after row reduction. The deeper class: any state promotion with no symmetric demotion + a serializer that trusts the type string verbatim.",
+      "confidence": "high",
+      "a": {
+        "disp": "CONFIRMED",
+        "sev": "MEDIUM",
+        "isReal": true
+      },
+      "b": {
+        "disp": "CONFIRMED",
+        "sev": "MEDIUM",
+        "isReal": true
+      },
+      "needsAdj": false
+    },
+    {
+      "id": "CI-F7-03",
+      "subject": "citations",
+      "cluster": "F7",
+      "finalDisposition": "CONFIRMED",
+      "reclassified": false,
+      "severityFinal": "LOW",
+      "rootCause": "No transition from 'cleared all keys' to deleting the citation; the empty-command state is the same pristine-draft sentinel addCitation produces (useCitations.ts), just reached by subtraction with no cleanup affordance.",
+      "class": "Same shape as a footnote whose body is fully deleted but the marker stays \u2014 atom-bearing cards leave a dangling empty marker when their content is emptied rather than the card being removed.",
+      "confidence": "high",
+      "a": {
+        "disp": "CONFIRMED",
+        "sev": "LOW",
+        "isReal": true
+      },
+      "b": {
+        "disp": "CONFIRMED",
+        "sev": "LOW",
+        "isReal": true
+      },
+      "needsAdj": false
+    },
+    {
+      "id": "CI-F7-04",
+      "subject": "citations",
+      "cluster": "F7",
+      "finalDisposition": "REFUTED",
+      "reclassified": false,
+      "severityFinal": "LOW",
+      "rootCause": null,
+      "class": "Hypothetical only: a FUTURE add path that writes a citation sidecar entry without inserting an atom and without unanchored:true would be GC'd by syncFromEditor. No such path exists today (verified the AI-request/import paths do not clone citations into the sidecar bare).",
+      "confidence": "high",
+      "a": {
+        "disp": "REFUTED",
+        "sev": "LOW",
+        "isReal": false
+      },
+      "b": {
+        "disp": "REFUTED",
+        "sev": "LOW",
+        "isReal": false
+      },
+      "needsAdj": false
+    },
+    {
+      "id": "EX-A1-01",
+      "subject": "examples",
+      "cluster": "A1",
+      "finalDisposition": "CONFIRMED",
+      "reclassified": false,
+      "severityFinal": "LOW",
+      "rootCause": "Root cause is the derived-from-live-nodes model: examples have no persisted sidecar that outlives the block (useExamples is dead \u2014 see EX-A2-01), so there is structurally no record to surface an orphan.",
+      "class": "Derived (live-node-sourced) card kinds cannot represent orphans \u2014 confirmed the contrast: footnotes/notes/archive are sidecar-backed and DO keep orphan lists; examples (and any future purely-derived kind) cannot. Genuine class label.",
+      "confidence": "high",
+      "a": {
+        "disp": "CONFIRMED",
+        "sev": "LOW",
+        "isReal": true
+      },
+      "b": {
+        "disp": "CONFIRMED",
+        "sev": "LOW",
+        "isReal": true
+      },
+      "needsAdj": false
+    },
+    {
+      "id": "EX-A1-02",
+      "subject": "examples",
+      "cluster": "A1",
+      "finalDisposition": "CONFIRMED",
+      "reclassified": false,
+      "severityFinal": "LOW",
+      "rootCause": "Two parallel float code paths: card floats resolve from a live ctx collection and bail to null on miss (no missing-state UI), whereas text-object floats carry an explicit `missing` flag \u2192 banner.",
+      "class": "Confirmed sibling sites: footnote card float returns null at cards/floats/index.tsx:220 and citation card float at :488 \u2014 identical null-on-deletion-no-banner pattern. Genuine shared class across all live-resolved card floats.",
+      "confidence": "high",
+      "a": {
+        "disp": "CONFIRMED",
+        "sev": "LOW",
+        "isReal": true
+      },
+      "b": {
+        "disp": "CONFIRMED",
+        "sev": "LOW",
+        "isReal": true
+      },
+      "needsAdj": false
+    },
+    {
+      "id": "EX-A2-01",
+      "subject": "examples",
+      "cluster": "A2",
+      "finalDisposition": "CONFIRMED",
+      "reclassified": false,
+      "severityFinal": "LOW",
+      "rootCause": "useExamples.ts is orphaned code; the live derivation deliberately bypasses the sidecar (EditorPane.tsx:5645 comment confirms 'no sidecar storage'). The latent isAutoTitle stripper at useExamples.ts:45 mirrors the wired one in useReports.ts.",
+      "class": "isAutoTitle false-positive (known-fragile lead #7). Verified the LIVE sibling: useReports.ts:56-59 runs isAutoTitle('report', r.title) on every load and nulls any title matching ^Report \\d+$ \u2014 that one IS wired and exhibits real DATA-LOSS for a user-named 'Report 2'. Examples carry only the dormant copy. Class is genuine; the live exemplar belongs to the reports subject, not examples.",
+      "confidence": "high",
+      "a": {
+        "disp": "CONFIRMED",
+        "sev": "LOW",
+        "isReal": true
+      },
+      "b": {
+        "disp": "CONFIRMED",
+        "sev": "LOW",
+        "isReal": true
+      },
+      "needsAdj": false
+    },
+    {
+      "id": "EX-F8-01",
+      "subject": "examples",
+      "cluster": "F8",
+      "finalDisposition": "CONFIRMED",
+      "reclassified": true,
+      "severityFinal": "LOW",
+      "rootCause": "Same null-return-no-missing-state root as EX-A1-02 (cards/floats/index.tsx:628) plus the absence of any poppedOutCards reconciler.",
+      "class": "All card-float popout keys for live-resolved entities (example + footnote/citation) can dangle on deletion; the dangling-ref pruner covers cardStore only. Real class, but benign-severity.",
+      "confidence": "high",
+      "a": {
+        "disp": "RECLASSIFIED",
+        "sev": "LOW",
+        "isReal": true
+      },
+      "b": {
+        "disp": "RECLASSIFIED",
+        "sev": "LOW",
+        "isReal": true
+      },
+      "needsAdj": false
+    },
+    {
+      "id": "EX-F8-02",
+      "subject": "examples",
+      "cluster": "F8",
+      "finalDisposition": "CONFIRMED",
+      "reclassified": false,
+      "severityFinal": "LOW",
+      "rootCause": "Raw-offset caret restore across a setContent re-seed (no ProseMirror position mapping) at ExampleCard.tsx:288-295 and float-sync.tsx:221-227. A mapped restore (map old from/to through the doc delta) fixes the whole class.",
+      "class": "Genuine shared class: float-sync.tsx (all text-object floats) and ExampleCard.tsx (example card editor) both restore raw offsets post-setContent. Confirmed by reading both sites.",
+      "confidence": "high",
+      "a": {
+        "disp": "CONFIRMED",
+        "sev": "LOW",
+        "isReal": true
+      },
+      "b": {
+        "disp": "CONFIRMED",
+        "sev": "LOW",
+        "isReal": true
+      },
+      "needsAdj": false
+    },
+    {
+      "id": "EX-F8-03",
+      "subject": "examples",
+      "cluster": "F8",
+      "finalDisposition": "SPLIT",
+      "reclassified": false,
+      "severityFinal": "LOW",
+      "rootCause": null,
+      "class": "Float ids derived from entity id alone (no surface discriminator) are a latent collision class for any kind openable on two surfaces at once. The block float uses example:<uuid> (distinct), so the docked/card-float pair is the specific collision. Accurate.",
+      "confidence": "medium",
+      "a": {
+        "disp": "CONFIRMED",
+        "sev": "LOW",
+        "isReal": true
+      },
+      "b": {
+        "disp": "RECLASSIFIED",
+        "sev": "LOW",
+        "isReal": false
+      },
+      "needsAdj": true
+    },
+    {
+      "id": "EX-F5-01",
+      "subject": "examples",
+      "cluster": "F5",
+      "finalDisposition": "CONFIRMED",
+      "reclassified": true,
+      "severityFinal": "MEDIUM",
+      "rootCause": "Hook-without-a-consumer: the examples sidecar metadata layer (useExamples) was never wired into either render surface; ExampleInfo (Editor.tsx:193-221) carries no title field, and ExampleCard.tsx:387-616 renders no title affordance.",
+      "class": "Hook-without-a-consumer dead code \u2014 a per-doc sidecar hook whose mutators are dropped by the panel host. Audit other *PanelHost wirings in EditorPane.tsx for dropped hook outputs, though most (notes/todos/reports) ARE wired unlike examples.",
+      "confidence": "high",
+      "a": {
+        "disp": "CONFIRMED",
+        "sev": "MEDIUM",
+        "isReal": true
+      },
+      "b": {
+        "disp": "RECLASSIFIED",
+        "sev": "LOW",
+        "isReal": true
+      },
+      "needsAdj": false
+    },
+    {
+      "id": "EX-F5-02",
+      "subject": "examples",
+      "cluster": "F5",
+      "finalDisposition": "CONFIRMED",
+      "reclassified": true,
+      "severityFinal": "MEDIUM",
+      "rootCause": "addToHistory:false copied verbatim from the example float for double-record avoidance (ExampleCard.tsx:197); the card-body editor still owns a StarterKit History so undo is available within the card \u2014 the inconsistency is only that main-editor undo doesn't traverse into the ca...",
+      "class": "addToHistory:false on float-parity write-backs splits the undo stack between the card editor and main; valid for a mirror-float, debatable for a primary editable card surface. Audit other FLOAT_WRITE_META writers, but each has a local history so none silently lose content.",
+      "confidence": "high",
+      "a": {
+        "disp": "CONFIRMED",
+        "sev": "MEDIUM",
+        "isReal": true
+      },
+      "b": {
+        "disp": "RECLASSIFIED",
+        "sev": "LOW",
+        "isReal": true
+      },
+      "needsAdj": false
+    },
+    {
+      "id": "EX-F5-03",
+      "subject": "examples",
+      "cluster": "F5",
+      "finalDisposition": "CONFIRMED",
+      "reclassified": true,
+      "severityFinal": "LOW",
+      "rootCause": "Bare catch on the nodeFromJSON/dispatch write-back (ExampleCard.tsx:200), copied for float parity.",
+      "class": "Silent swallow-on-write-back (lead #9). The same bare catch lives on the example float; any nodeFromJSON-inside-bare-catch write-back can in principle diverge from the doc. Worth surfacing the error for diagnostics, but not a live data-loss vector here.",
+      "confidence": "medium",
+      "a": {
+        "disp": "RECLASSIFIED",
+        "sev": "LOW",
+        "isReal": true
+      },
+      "b": {
+        "disp": "RECLASSIFIED",
+        "sev": "LOW",
+        "isReal": true
+      },
+      "needsAdj": false
+    },
+    {
+      "id": "EX-F4-01",
+      "subject": "examples",
+      "cluster": "F4",
+      "finalDisposition": "CONFIRMED",
+      "reclassified": false,
+      "severityFinal": "LOW",
+      "rootCause": "Event carries no clicked-element identity; bridge re-resolves by a global attribute selector that returns the first match (marker-clicks.ts:333-338).",
+      "class": "Global-querySelector-by-shared-key after a click from a duplicate/embedded editor. The label-ref path is the genuine instance because the resolved rect is consumed; the sibling citation path (EX-F4-03) shares the selector shape but its downstream consumer ignores sourceEl, so it does NOT manifest.",
+      "confidence": "medium",
+      "a": {
+        "disp": "CONFIRMED",
+        "sev": "LOW",
+        "isReal": true
+      },
+      "b": {
+        "disp": "CONFIRMED",
+        "sev": "LOW",
+        "isReal": true
+      },
+      "needsAdj": false
+    },
+    {
+      "id": "EX-F4-02",
+      "subject": "examples",
+      "cluster": "F4",
+      "finalDisposition": "CONFIRMED",
+      "reclassified": false,
+      "severityFinal": "LOW",
+      "rootCause": "Surface-gated atom interactivity (math.ts:73) vs. the example card body being the one float-surface editor that is ALSO a primary editing surface.",
+      "class": "Atoms whose interactivity is hard-gated to surface:'main' are inert inside the example card body. Math is the only such atom today (citation/footnote/labelRef are not surface-gated); any future surface-main-gated atom would be similarly dead in the card.",
+      "confidence": "high",
+      "a": {
+        "disp": "CONFIRMED",
+        "sev": "LOW",
+        "isReal": true
+      },
+      "b": {
+        "disp": "CONFIRMED",
+        "sev": "LOW",
+        "isReal": true
+      },
+      "needsAdj": false
+    },
+    {
+      "id": "EX-F4-03",
+      "subject": "examples",
+      "cluster": "F4",
+      "finalDisposition": "REFUTED",
+      "reclassified": false,
+      "severityFinal": "COSMETIC",
+      "rootCause": null,
+      "class": null,
+      "confidence": "high",
+      "a": {
+        "disp": "REFUTED",
+        "sev": "COSMETIC",
+        "isReal": false
+      },
+      "b": {
+        "disp": "REFUTED",
+        "sev": "COSMETIC",
+        "isReal": false
+      },
+      "needsAdj": false
+    },
+    {
+      "id": "EX-F1-01",
+      "subject": "examples",
+      "cluster": "F1",
+      "finalDisposition": "CONFIRMED",
+      "reclassified": true,
+      "severityFinal": "COSMETIC",
+      "rootCause": "Fixed line-count height clamp applied to non-text-flow (CSS grid) expex content (ExampleCard.tsx:337); 1-2 prose lines underserves a multi-row grid, but this is the intended compact-preview ceiling.",
+      "class": "Line-count clamp over structured (grid/non-paragraph) borrowed-body content \u2014 figure/graphics block previews under the same compressedBodyStyle ceiling would clip similarly. Purely presentational across the class.",
+      "confidence": "medium",
+      "a": {
+        "disp": "RECLASSIFIED",
+        "sev": "COSMETIC",
+        "isReal": true
+      },
+      "b": {
+        "disp": "RECLASSIFIED",
+        "sev": "COSMETIC",
+        "isReal": true
+      },
+      "needsAdj": false
+    },
+    {
+      "id": "EX-F1-02",
+      "subject": "examples",
+      "cluster": "F1",
+      "finalDisposition": "CONFIRMED",
+      "reclassified": true,
+      "severityFinal": "COSMETIC",
+      "rootCause": "By-design: collapsed\u2261expanded render parity (#43) chose a real read-only editor over a static summary, accepting N embedded editors for N collapsed cards (ExampleCard.tsx:436). Documented, gated to structural re-seeds only.",
+      "class": "Per-card embedded-editor as the default collapsed renderer scales editor count with list length; examples is the only borrowed-body kind doing this today. A footprint concern for virtualization, not a defect.",
+      "confidence": "high",
+      "a": {
+        "disp": "RECLASSIFIED",
+        "sev": "COSMETIC",
+        "isReal": true
+      },
+      "b": {
+        "disp": "RECLASSIFIED",
+        "sev": "COSMETIC",
+        "isReal": true
+      },
+      "needsAdj": false
+    },
+    {
+      "id": "EX-F2-01",
+      "subject": "examples",
+      "cluster": "F2",
+      "finalDisposition": "CONFIRMED",
+      "reclassified": false,
+      "severityFinal": "MEDIUM",
+      "rootCause": "Two independent selection authorities for one rendered halo: the cross-surface module store (cardStore.selected) and the panel-controlled selectedId prop, OR'd at ExampleCard.tsx:371.",
+      "class": "Dual-source halo across the whole left card-panel family: any panel ORing `ac.selected || isSelected` while routing keyboard cycling through a path that bypasses cardStore.select. CONFIRMED siblings: FootnotePanel (FootnoteCard.tsx:104,204 `ac.selected || isSelected`; FootnotePanel.tsx:73-78 onActivateFootnote\u2192onSelect+onScrollToMarker, no cardStore) and CitationCard (CitationCard.tsx:257 same OR; citation omni/panel onSelect sets panel id only). Examples are NOT unique \u2014 the same defect lives in footnotes and citations.",
+      "confidence": "high",
+      "a": {
+        "disp": "CONFIRMED",
+        "sev": "MEDIUM",
+        "isReal": true
+      },
+      "b": {
+        "disp": "CONFIRMED",
+        "sev": "MEDIUM",
+        "isReal": true
+      },
+      "needsAdj": false
+    },
+    {
+      "id": "EX-F2-02",
+      "subject": "examples",
+      "cluster": "F2",
+      "finalDisposition": "CONFIRMED",
+      "reclassified": false,
+      "severityFinal": "LOW",
+      "rootCause": "Composition of a select-only store primitive (ac.onActivate, useAnchoredCard.ts:66) with a panel-level TOGGLING onSelect (ExamplesPanel.tsx:98-100): the two disagree on the second click of the same card.",
+      "class": "Cards composing a select-only store primitive (ac.onActivate) with a panel-local toggling onSelect. FootnotePanel.tsx:160-161,175-176 and Citations both pass the same `selectedId === id ? null : id` toggle alongside ac.onActivate \u2014 same re-click desync. Note FootnoteCard.tsx:226 binds the docked card onClick to ac.onActivate() ONLY (no onSelect), so the footnote DOCKED card avoids the toggle-divergence for body clicks, but its panel onSelect toggle is still wired for other surfaces; partial sibling.",
+      "confidence": "high",
+      "a": {
+        "disp": "CONFIRMED",
+        "sev": "LOW",
+        "isReal": true
+      },
+      "b": {
+        "disp": "CONFIRMED",
+        "sev": "LOW",
+        "isReal": true
+      },
+      "needsAdj": false
+    },
+    {
+      "id": "EX-F3-01",
+      "subject": "examples",
+      "cluster": "F3",
+      "finalDisposition": "CONFIRMED",
+      "reclassified": true,
+      "severityFinal": "MEDIUM",
+      "rootCause": "An `anchored: true` registry flag (card-registry.tsx:444) with no link the reconciler can resolve: examples carry neither a Mode-A/Mode-B Link nor a synthesized inline-atom link (the way footnote/citation get one via linkForInlineAtom, useAnchorHighlightReconciler.ts:71-82, 93...",
+      "class": "'anchored flag set without a resolvable link AND without a data-card-key on the in-text DOM' \u2014 derived in-text-block kinds. Examples are the clear case. Sibling candidates: figure/graphics derived kinds \u2014 if any are anchored:true yet their NodeView omits data-card-key and they have no link, they share the gap. (Audit scope note: verifying figure/graphics is outside this slice.)",
+      "confidence": "high",
+      "a": {
+        "disp": "CONFIRMED",
+        "sev": "MEDIUM",
+        "isReal": true
+      },
+      "b": {
+        "disp": "RECLASSIFIED",
+        "sev": "LOW",
+        "isReal": true
+      },
+      "needsAdj": false
+    },
+    {
+      "id": "EX-F3-02",
+      "subject": "examples",
+      "cluster": "F3",
+      "finalDisposition": "CONFIRMED",
+      "reclassified": false,
+      "severityFinal": "LOW",
+      "rootCause": "Editable-body card with a popout-gated jump chevron: the expanded body is an embedded expex editor that must stopPropagation to absorb typing clicks (ExampleCard.tsx:467), which collides with the card-root being the sole docked jump trigger; the header is toggle/select-only an...",
+      "class": "Editable-body cards whose expanded body stopPropagation's the card-root jump while the header is toggle-only and the jump chevron is popout-gated. Any card mounting a live editor in its expanded body shares this \u2014 examples are the only editable-body left card-kind, so the class is essentially this one card today.",
+      "confidence": "high",
+      "a": {
+        "disp": "CONFIRMED",
+        "sev": "LOW",
+        "isReal": true
+      },
+      "b": {
+        "disp": "CONFIRMED",
+        "sev": "LOW",
+        "isReal": true
+      },
+      "needsAdj": false
+    },
+    {
+      "id": "EX-F3-03",
+      "subject": "examples",
+      "cluster": "F3",
+      "finalDisposition": "CONFIRMED",
+      "reclassified": false,
+      "severityFinal": "LOW",
+      "rootCause": "The example omni builder's onJump type/wiring (Examples/omni.tsx:12,36) drops the sourceEl that ExampleCard supplies (ExampleCard.tsx:412), forcing scrollToExample down its no-source fallback branch (Editor.tsx:1295) instead of alignEntryToY (Editor.tsx:1291).",
+      "class": "REFUTED as a broad class: the finder's hypothesized siblings (footnote/citation/report omni builders) all CORRECTLY thread sourceEl (Footnotes/omni.tsx:44, Citations/omni.tsx:60, Reports/omni.tsx:53,68). Examples are the sole offender \u2014 narrow, single-site defect, not a family.",
+      "confidence": "high",
+      "a": {
+        "disp": "CONFIRMED",
+        "sev": "LOW",
+        "isReal": true
+      },
+      "b": {
+        "disp": "CONFIRMED",
+        "sev": "LOW",
+        "isReal": true
+      },
+      "needsAdj": false
+    },
+    {
+      "id": "EX-F7-01",
+      "subject": "examples",
+      "cluster": "F7",
+      "finalDisposition": "CONFIRMED",
+      "reclassified": true,
+      "severityFinal": "LOW",
+      "rootCause": "Retained-for-parity persisted-sidecar hook (useExamples.ts) with zero call sites, kept alive by a static source-text guard test (auto-title.test.ts:192-202 readFileSync(...).toContain('isAutoTitle')) rather than any runtime exercise.",
+      "class": "Derived-kind panels whose persisted-sidecar hook is retained 'for parity' but unwired, guarded by source-grep tests that imply (but never exercise) a runtime path. Check figure/graphics for analogous unwired hooks under similar source-guard tests.",
+      "confidence": "high",
+      "a": {
+        "disp": "CONFIRMED",
+        "sev": "LOW",
+        "isReal": true
+      },
+      "b": {
+        "disp": "RECLASSIFIED",
+        "sev": "LOW",
+        "isReal": true
+      },
+      "needsAdj": false
+    },
+    {
+      "id": "FN-A2-01",
+      "subject": "footnotes",
+      "cluster": "A2",
+      "finalDisposition": "CONFIRMED",
+      "reclassified": true,
+      "severityFinal": "DATA-LOSS",
+      "rootCause": "No persistence path for the orphan recovery store at all: orphanedFootnotes lives at the EditorLayout shell (EditorLayout.tsx:1106, outside the `<DocPipeline key={currentDocId}>` per-doc boundary at EditorLayout.tsx:4370) and is never serialized; useFootnotes.syncFromEditor (u...",
+      "class": "Recovery/transient collections held as shell-level React state with no sidecar backing (orphanedFootnotes). Sibling: any in-RAM-only 'recoverable' store. Companion architectural smell: useFootnotes.syncFromEditor is implemented-but-uncalled, so the footnotes.json `unanchored` retention branch (useFootnotes.ts:127) is also dead.",
+      "confidence": "high",
+      "a": {
+        "disp": "CONFIRMED",
+        "sev": "HIGH",
+        "isReal": true
+      },
+      "b": {
+        "disp": "RECLASSIFIED",
+        "sev": "DATA-LOSS",
+        "isReal": true
+      },
+      "needsAdj": false
+    },
+    {
+      "id": "FN-A2-02",
+      "subject": "footnotes",
+      "cluster": "A2",
+      "finalDisposition": "CONFIRMED",
+      "reclassified": false,
+      "severityFinal": "MEDIUM",
+      "rootCause": "Two-part gap: (1) the orphan detector projects only `content` from the dying node (footnote.ts:202-209), dropping title+thanks; (2) the OrphanedFootnote type (types.ts:564-570) has a `title?` slot but NO `thanks` field, so the acknowledgement identity is structurally unreprese...",
+      "class": "Teardown\u2192recovery record reconstructed from a subset of the source node's attrs (footnote.ts:202). Any future per-footnote attr (e.g. a kind discriminator) is silently dropped on orphaning. The missing `thanks` slot on OrphanedFootnote is the type-level instance of the same omission.",
+      "confidence": "high",
+      "a": {
+        "disp": "CONFIRMED",
+        "sev": "MEDIUM",
+        "isReal": true
+      },
+      "b": {
+        "disp": "CONFIRMED",
+        "sev": "MEDIUM",
+        "isReal": true
+      },
+      "needsAdj": false
+    },
+    {
+      "id": "FN-A2-03",
+      "subject": "footnotes",
+      "cluster": "A2",
+      "finalDisposition": "CONFIRMED",
+      "reclassified": false,
+      "severityFinal": "MEDIUM",
+      "rootCause": "Per-doc state hoisted above the per-doc remount boundary with no docId-keyed reset effect: orphanedFootnotes sits at EditorLayout.tsx:1106 (above `<DocPipeline key={currentDocId}>` at :4370) and no effect clears it on currentDocId change.",
+      "class": "Shell-level (EditorLayout) state that is logically per-doc but lives above the DocPipeline key boundary and lacks a docId-reset effect. Companion confirmed by the finder: suppressOrphanRef (EditorLayout.tsx:1107) is also shell-level and never reset, so a doc-switch mid-suppression could swallow an orphan in the new doc.",
+      "confidence": "high",
+      "a": {
+        "disp": "CONFIRMED",
+        "sev": "MEDIUM",
+        "isReal": true
+      },
+      "b": {
+        "disp": "CONFIRMED",
+        "sev": "MEDIUM",
+        "isReal": true
+      },
+      "needsAdj": false
+    },
+    {
+      "id": "FN-A1-01",
+      "subject": "footnotes",
+      "cluster": "A1",
+      "finalDisposition": "CONFIRMED",
+      "reclassified": true,
+      "severityFinal": "LOW",
+      "rootCause": "The pruner cannot classify inline-atom existence because those kinds aren't in any EntityCollectionSlots collection, so entityExists short-circuits to true (useAnchorHighlightReconciler.ts:88); the deliberate-delete path (EditorPane.tsx:2758) does not compensate with an explic...",
+      "class": "Lead #2 \u2014 inline-atom pruner exemption affects footnote AND citation identically (isInlineAtomCardKind covers both); a hard-deleted citation has the same stale-store-ref hygiene gap. Class: any cardStore ref whose existence the pruner cannot verify is permanently exempt from pruning.",
+      "confidence": "high",
+      "a": {
+        "disp": "RECLASSIFIED",
+        "sev": "LOW",
+        "isReal": true
+      },
+      "b": {
+        "disp": "RECLASSIFIED",
+        "sev": "LOW",
+        "isReal": true
+      },
+      "needsAdj": false
+    },
+    {
+      "id": "FN-A1-02",
+      "subject": "footnotes",
+      "cluster": "A1",
+      "finalDisposition": "CONFIRMED",
+      "reclassified": false,
+      "severityFinal": "LOW",
+      "rootCause": "Emptiness gate considers only body content, ignoring the title attr: footnote.ts:204 short-circuits on `richJsonToPlainText(content).trim()` without OR-ing in `oldNode.attrs.title?.trim()`.",
+      "class": "Lead #1 family \u2014 has-content predicates that ignore non-body fields. cardHasContent (src/cards/has-content.ts) similarly has no footnote case and would classify a title-only footnote as empty. Class: content-emptiness checks that omit title/metadata fields.",
+      "confidence": "high",
+      "a": {
+        "disp": "CONFIRMED",
+        "sev": "LOW",
+        "isReal": true
+      },
+      "b": {
+        "disp": "CONFIRMED",
+        "sev": "LOW",
+        "isReal": true
+      },
+      "needsAdj": false
+    },
+    {
+      "id": "FN-A3-01",
+      "subject": "footnotes",
+      "cluster": "A3",
+      "finalDisposition": "CONFIRMED",
+      "reclassified": false,
+      "severityFinal": "LOW",
+      "rootCause": "Two id-keyed lists (orphanedFootnotes, footnotes) merged without de-dup while one is updated synchronously (view.dispatch \u2192 rev bump \u2192 memo) and the other via a deferred macrotask (setTimeout(0)); the merge sites (FootnotePanel.tsx:114, omni.tsx:30/57) assume disjoint ids.",
+      "class": "Any synchronous-insert + deferred-remove seam where the transient overlap is rendered through an id-keyed list with no de-dup. The orphan\u2194anchored footnote seam is the canonical instance.",
+      "confidence": "medium",
+      "a": {
+        "disp": "CONFIRMED",
+        "sev": "LOW",
+        "isReal": true
+      },
+      "b": {
+        "disp": "CONFIRMED",
+        "sev": "LOW",
+        "isReal": true
+      },
+      "needsAdj": false
+    },
+    {
+      "id": "FN-F8-01",
+      "subject": "footnotes",
+      "cluster": "F8",
+      "finalDisposition": "CONFIRMED",
+      "reclassified": true,
+      "severityFinal": "MEDIUM",
+      "rootCause": "Float keys are not invalidated when the underlying entity transitions to an unresolvable state: FloatHost renders null for an unresolvable key but never reaps it from poppedOutCards (FloatHost.tsx:43-46), and the orphaning bridge (footnote-sync.ts:40-47) has no float-close/rem...",
+      "class": "Float keys whose entity can become unresolvable (orphaned footnote, hard-deleted citation) leak in poppedOutCards. Any card kind without a defensive 'close float on entity disappearance' shares the leak; the missing orphan popout affordance is a separate parity gap.",
+      "confidence": "high",
+      "a": {
+        "disp": "RECLASSIFIED",
+        "sev": "LOW",
+        "isReal": true
+      },
+      "b": {
+        "disp": "CONFIRMED",
+        "sev": "MEDIUM",
+        "isReal": true
+      },
+      "needsAdj": false
+    },
+    {
+      "id": "FN-C1-01",
+      "subject": "footnotes",
+      "cluster": "C1",
+      "finalDisposition": "CONFIRMED",
+      "reclassified": false,
+      "severityFinal": "LOW",
+      "rootCause": "Badge count derived from a narrower list than the rendered items: FootnotePanel.tsx:132 uses footnotes.length while items at :114 prepend orphanedFootnotes \u2014 should be footnotes.length + orphanedFootnotes.length (or items.length).",
+      "class": "Panels whose header count is computed from a sub-list rather than the union actually rendered. Footnotes is the only left card panel doing this (Citations/Reports count the full list).",
+      "confidence": "high",
+      "a": {
+        "disp": "CONFIRMED",
+        "sev": "LOW",
+        "isReal": true
+      },
+      "b": {
+        "disp": "CONFIRMED",
+        "sev": "LOW",
+        "isReal": true
+      },
+      "needsAdj": false
+    },
+    {
+      "id": "FN-F5-01",
+      "subject": "footnotes",
+      "cluster": "F5",
+      "finalDisposition": "CONFIRMED",
+      "reclassified": true,
+      "severityFinal": "MEDIUM",
+      "rootCause": "Triple-broken path, deepest layer is serialization: even a fully-wired handler+imperative-setter would lose the title because latex-serializer.ts:393 has no title emission and latex-parser.ts:404 reconstructs the node with the default empty title on every reparse.",
+      "class": "Affordance rendered for a node-attr that the LaTeX serializer never emits (silent-drop-on-reparse) AND/OR routed to a stubbed no-op handler. Sibling candidates: any panel CardBodyTitle wired to a handle*Title stub; any panel-mutable node attr absent from the serializer switch.",
+      "confidence": "high",
+      "a": {
+        "disp": "RECLASSIFIED",
+        "sev": "LOW",
+        "isReal": true
+      },
+      "b": {
+        "disp": "CONFIRMED",
+        "sev": "MEDIUM",
+        "isReal": true
+      },
+      "needsAdj": false
+    },
+    {
+      "id": "FN-F5-02",
+      "subject": "footnotes",
+      "cluster": "F5",
+      "finalDisposition": "CONFIRMED",
+      "reclassified": true,
+      "severityFinal": "LOW",
+      "rootCause": "Editable surface (OrphanedFootnoteCard's RichTextField + CardBodyTitle, FootnoteCard.tsx:220-243) mounted on an item whose only backing store is volatile event-sourced state (orphans.ts:26/35 setOrphanedFootnotes-only; no usePersistentState/writeSidecar).",
+      "class": "Editable card backed by volatile-only state (no sidecar). Sibling candidates flagged by finder are sound: any 'rescued from deletion' transient card; derived/Examples cards whose write-back is to the doc rather than a sidecar should be checked separately for a true write-back path.",
+      "confidence": "high",
+      "a": {
+        "disp": "RECLASSIFIED",
+        "sev": "LOW",
+        "isReal": true
+      },
+      "b": {
+        "disp": "RECLASSIFIED",
+        "sev": "LOW",
+        "isReal": true
+      },
+      "needsAdj": false
+    },
+    {
+      "id": "FN-F1-01",
+      "subject": "footnotes",
+      "cluster": "F1",
+      "finalDisposition": "SPLIT",
+      "reclassified": false,
+      "severityFinal": "HIGH",
+      "rootCause": "No load-time seed of the derived `number` attr: renumber is exclusively appendTransaction-driven (footnote.ts:220) and the observer emits no diff for the initial doc (observer-plugin.ts:131 state.init \u2192 buildInitial; apply bails on !tr.docChanged at :138).",
+      "class": "Lazily-derived display ordinal refreshed only by a structural diff and never seeded on load (initial-population class, AGENTS.md keystroke-sanctity). Verify the same for citation order display and example numbering on a freshly-loaded paper before any edit; the example numbering plugin (live decoration) likely differs and should be checked separately.",
+      "confidence": "high",
+      "a": {
+        "disp": "RECLASSIFIED",
+        "sev": "LOW",
+        "isReal": false
+      },
+      "b": {
+        "disp": "RECLASSIFIED",
+        "sev": "HIGH",
+        "isReal": true
+      },
+      "needsAdj": true
+    },
+    {
+      "id": "FN-F1-02",
+      "subject": "footnotes",
+      "cluster": "F1",
+      "finalDisposition": "REFUTED",
+      "reclassified": false,
+      "severityFinal": "MEDIUM",
+      "rootCause": null,
+      "class": "Imperative-one-shot vs observer-driven numberers diverging on \\thanks \u2014 but only the LOAD-path copy (parser) actually escapes correction; the create-path copy is self-healing.",
+      "confidence": "high",
+      "a": {
+        "disp": "REFUTED",
+        "sev": "MEDIUM",
+        "isReal": false
+      },
+      "b": {
+        "disp": "REFUTED",
+        "sev": "LOW",
+        "isReal": false
+      },
+      "needsAdj": false
+    },
+    {
+      "id": "FN-F1-03",
+      "subject": "footnotes",
+      "cluster": "F1",
+      "finalDisposition": "CONFIRMED",
+      "reclassified": false,
+      "severityFinal": "LOW",
+      "rootCause": "count derived from a subset (footnotes.length, FootnotePanel.tsx:132) of the rendered union (orphans + anchored, FootnotePanel.tsx:114-121). Same file, two lines apart.",
+      "class": "Header/strip count derived from a subset of the rendered list. Check any panel that renders orphans/pending-AI rows but counts only the primary array.",
+      "confidence": "high",
+      "a": {
+        "disp": "CONFIRMED",
+        "sev": "LOW",
+        "isReal": true
+      },
+      "b": {
+        "disp": "CONFIRMED",
+        "sev": "LOW",
+        "isReal": true
+      },
+      "needsAdj": false
+    },
+    {
+      "id": "FN-F4-01",
+      "subject": "footnotes",
+      "cluster": "F4",
+      "finalDisposition": "REFUTED",
+      "reclassified": false,
+      "severityFinal": "LOW",
+      "rootCause": null,
+      "class": null,
+      "confidence": "high",
+      "a": {
+        "disp": "REFUTED",
+        "sev": "LOW",
+        "isReal": false
+      },
+      "b": {
+        "disp": "REFUTED",
+        "sev": "COSMETIC",
+        "isReal": false
+      },
+      "needsAdj": false
+    },
+    {
+      "id": "FN-F1-04",
+      "subject": "footnotes",
+      "cluster": "F1",
+      "finalDisposition": "CONFIRMED",
+      "reclassified": false,
+      "severityFinal": "COSMETIC",
+      "rootCause": "Constant glyph for a kind that can legitimately repeat (FootnoteCard.tsx:122 / footnote.ts:266), combined with the deliberate number:0 for thanks (footnote.ts:235) leaving no per-thanks ordinal.",
+      "class": "Hardcoded badge glyph for a kind with no ordinal; any constant-marker kind is ambiguous when repeated.",
+      "confidence": "high",
+      "a": {
+        "disp": "CONFIRMED",
+        "sev": "COSMETIC",
+        "isReal": true
+      },
+      "b": {
+        "disp": "CONFIRMED",
+        "sev": "COSMETIC",
+        "isReal": true
+      },
+      "needsAdj": false
+    },
+    {
+      "id": "FN-F2-01",
+      "subject": "footnotes",
+      "cluster": "F2",
+      "finalDisposition": "CONFIRMED",
+      "reclassified": false,
+      "severityFinal": "MEDIUM",
+      "rootCause": "Deeper than the finder: the trigger SURFACE is narrower than 'any body click'.",
+      "class": "Any docked panel card whose body onClick composes ac.onActivate() AND a host-supplied TOGGLING onSelect, where the panel selected-id slot is cardStore-derived. CONFIRMED present in Citations: CitationCard.tsx:718-721 composes ac.onActivate()+onSelect(); CitationsPanel.tsx:332-333 passes onSelect(selected ? null : cit.id) with selectedCitationId also cardStore-derived (selections.tsx:202). Same defect, same severity. Other docked cards (note/todo/archive) that route selection through cardStore-derived slots are suspect \u2014 only the orphan footnote was patched.",
+      "confidence": "high",
+      "a": {
+        "disp": "CONFIRMED",
+        "sev": "MEDIUM",
+        "isReal": true
+      },
+      "b": {
+        "disp": "CONFIRMED",
+        "sev": "MEDIUM",
+        "isReal": true
+      },
+      "needsAdj": false
+    },
+    {
+      "id": "FN-F2-02",
+      "subject": "footnotes",
+      "cluster": "F2",
+      "finalDisposition": "CONFIRMED",
+      "reclassified": false,
+      "severityFinal": "LOW",
+      "rootCause": "Finder's mechanism is correct. Adding the precise clamp interaction: useCycle clamps idx on read (`rawIdx != null && rawIdx < items.length ? rawIdx : null`, panel-primitives.tsx:2613) against the ANCHORED array length only, so an orphan-selection's stale cycleIdx is never reco...",
+      "class": "Any panel rendering a merged list (orphan/unanchored bin + anchored) but constructing useCycle over only one sub-array. Citations is the prime suspect \u2014 CitationsPanel renders anchored + unanchored citations but builds its useCycle over a single source array; verify whether unanchored citations are excluded from the cycle the same way.",
+      "confidence": "high",
+      "a": {
+        "disp": "CONFIRMED",
+        "sev": "LOW",
+        "isReal": true
+      },
+      "b": {
+        "disp": "CONFIRMED",
+        "sev": "LOW",
+        "isReal": true
+      },
+      "needsAdj": false
+    },
+    {
+      "id": "FN-F3-01",
+      "subject": "footnotes",
+      "cluster": "F3",
+      "finalDisposition": "CONFIRMED",
+      "reclassified": false,
+      "severityFinal": "LOW",
+      "rootCause": "Finder's root cause is correct (the blanket inline-atom exemption at useAnchorHighlightReconciler.ts:88).",
+      "class": "Citations share the identical exemption (isInlineAtomCardKind covers footnote AND citation, predicates.ts:97-98) \u2014 deleting a selected citation atom leaves the same stale cardStore selection ghost via the same handler gap (no clearSelection on citation delete). This is known-fragile lead #2.",
+      "confidence": "high",
+      "a": {
+        "disp": "CONFIRMED",
+        "sev": "LOW",
+        "isReal": true
+      },
+      "b": {
+        "disp": "CONFIRMED",
+        "sev": "LOW",
+        "isReal": true
+      },
+      "needsAdj": false
+    },
+    {
+      "id": "FN-F7-01",
+      "subject": "footnotes",
+      "cluster": "F7",
+      "finalDisposition": "CONFIRMED",
+      "reclassified": true,
+      "severityFinal": "LOW",
+      "rootCause": "Both sub-claims confirmed at the cited lines (FootnoteCard.tsx:25; Editor.tsx:712-785; panel-primitives.tsx:933 not 502 as cited \u2014 the draggable gate lives at the cardDraggable computation, line 933, not the static drag-chrome preventDefault at 503; duplicate-slice.ts:185-208).",
+      "class": "Dead drag exports + live receiving drop handlers after the InlineAtomGrab migration. Audit startCitationDrag/MIME_CITATION for the same unwired-sender pattern (CitationCard.tsx:712 DOES thread handleDragStart, so citations may still be a LIVE sender \u2014 verify before assuming dead). Duplicate-slice id-only reminting (no linkId/linkCard) applies identically to citationId and is the same dormant divergence.",
+      "confidence": "high",
+      "a": {
+        "disp": "CONFIRMED",
+        "sev": "LOW",
+        "isReal": true
+      },
+      "b": {
+        "disp": "RECLASSIFIED",
+        "sev": "LOW",
+        "isReal": true
+      },
+      "needsAdj": false
+    },
+    {
+      "id": "OMNI-C2-01",
+      "subject": "omni-left",
+      "cluster": "C2",
+      "finalDisposition": "CONFIRMED",
+      "reclassified": false,
+      "severityFinal": "MEDIUM",
+      "rootCause": "Two prefs that must move in lockstep (placements vs omniCategories) are decoupled at the movePanel writeback (useViewPrefs.ts:1011); the display filter keys off omniCategories while the menu-row visibility keys off categorySides(placements), and resetOmniSide is registry-based...",
+      "class": "Pref derived from two independent sources expected to stay coherent (placements vs omniCategories); sibling: a category enabled on a side whose panel was closed.",
+      "confidence": "high",
+      "a": {
+        "disp": "CONFIRMED",
+        "sev": "MEDIUM",
+        "isReal": true
+      },
+      "b": {
+        "disp": "CONFIRMED",
+        "sev": "MEDIUM",
+        "isReal": true
+      },
+      "needsAdj": false
+    },
+    {
+      "id": "OMNI-C2-02",
+      "subject": "omni-left",
+      "cluster": "C2",
+      "finalDisposition": "CONFIRMED",
+      "reclassified": true,
+      "severityFinal": "LOW",
+      "rootCause": "Same as finder: hardcoded 30px offset between independently-sized absolute siblings (src/panels/Omni/OmniViewPanel.tsx:544) measured against the COLLAPSED unanchored pill height only. Robust fix is flow-stacking or measuring the predecessor's live height.",
+      "class": "Hardcoded layout offset between independently-sized absolute siblings (audit lead #10).",
+      "confidence": "high",
+      "a": {
+        "disp": "RECLASSIFIED",
+        "sev": "LOW",
+        "isReal": true
+      },
+      "b": {
+        "disp": "RECLASSIFIED",
+        "sev": "LOW",
+        "isReal": true
+      },
+      "needsAdj": false
+    },
+    {
+      "id": "OMNI-F8-01",
+      "subject": "omni-left",
+      "cluster": "F8",
+      "finalDisposition": "CONFIRMED",
+      "reclassified": false,
+      "severityFinal": "MEDIUM",
+      "rootCause": "Dual selection sources are OR'd at the card (`ac.selected || isSelected`) but the single-slot cardStore (the only true mutual-exclusion chokepoint) is shadowed by a bag of per-side selected*Id values whose setters cross-clear asymmetrically; the report/cutter/revision setters...",
+      "class": "Every omni card kind whose per-side setter doesn't fully cross-clear is a sibling; right-column kinds (notes/todo/archive/cutter/revision) share the same `|| isSelected` pattern \u2192 same double-halo reachable there.",
+      "confidence": "high",
+      "a": {
+        "disp": "CONFIRMED",
+        "sev": "MEDIUM",
+        "isReal": true
+      },
+      "b": {
+        "disp": "CONFIRMED",
+        "sev": "MEDIUM",
+        "isReal": true
+      },
+      "needsAdj": false
+    },
+    {
+      "id": "OMNI-F8-02",
+      "subject": "omni-left",
+      "cluster": "F8",
+      "finalDisposition": "CONFIRMED",
+      "reclassified": true,
+      "severityFinal": "LOW",
+      "rootCause": "Wrapper id (suffixed @i, OmniViewPanel.tsx:553 from Reports/omni.tsx:87) diverges from the canonical cardPopKey the marker/jump path reconstructs (marker-clicks.ts:130; EditorLayout.tsx:1127,1162); the marker event also carries no anchor index so even with two markers the hand...",
+      "class": "Any omni item whose wrapper id diverges from cardPopKey; the multi-anchor @i fan-out is the only current divergence but any future per-anchor row would inherit it.",
+      "confidence": "high",
+      "a": {
+        "disp": "RECLASSIFIED",
+        "sev": "LOW",
+        "isReal": true
+      },
+      "b": {
+        "disp": "RECLASSIFIED",
+        "sev": "LOW",
+        "isReal": true
+      },
+      "needsAdj": false
+    },
+    {
+      "id": "OMNI-A1-01",
+      "subject": "omni-left",
+      "cluster": "A1",
+      "finalDisposition": "CONFIRMED",
+      "reclassified": false,
+      "severityFinal": "LOW",
+      "rootCause": "Same omission (orphan render path drops data-card-key, FootnoteCard.tsx:237), but the popout half of the repro is structurally impossible because the same missing cardKey disables the lift gesture (panel-primitives.tsx:1775) \u2014 so impact is bounded to the multi-docked-surface c...",
+      "class": "Orphan/fallback card render paths that forget to stamp data-card-key (the cross-surface paint key); worth auditing other empty-state/orphan variants.",
+      "confidence": "high",
+      "a": {
+        "disp": "CONFIRMED",
+        "sev": "LOW",
+        "isReal": true
+      },
+      "b": {
+        "disp": "CONFIRMED",
+        "sev": "LOW",
+        "isReal": true
+      },
+      "needsAdj": false
+    },
+    {
+      "id": "OMNI-C2-03",
+      "subject": "omni-left",
+      "cluster": "C2",
+      "finalDisposition": "SPLIT",
+      "reclassified": false,
+      "severityFinal": "LOW",
+      "rootCause": "Same as finder: pass-1 fold filter drops rather than stamps (omni-host.tsx:622-625), an intentional asymmetry with the pass-2 focus filter. Not a coding error \u2014 a deliberate design decision whose only cost is a missing in-omni signal.",
+      "class": "Asymmetric handling of two 'anchor hidden in-text' conditions (fold drop vs focus stamp) in the same displayedItems memo.",
+      "confidence": "high",
+      "a": {
+        "disp": "REFUTED",
+        "sev": "COSMETIC",
+        "isReal": false
+      },
+      "b": {
+        "disp": "CONFIRMED",
+        "sev": "LOW",
+        "isReal": true
+      },
+      "needsAdj": true
+    },
+    {
+      "id": "OMNI-F8-03",
+      "subject": "omni-left",
+      "cluster": "F8",
+      "finalDisposition": "CONFIRMED",
+      "reclassified": true,
+      "severityFinal": "LOW",
+      "rootCause": "Same as finder: omniPinStore keys by the kind-baked float key but is omitted from the morph remap set (EditorPane.tsx:915 remaps only the viewPrefs float key). Self-replacing on next requestPin.",
+      "class": "Modules keying interaction state by a kind-baked float key but excluded from convertCardWithRemap's remap (which covers poppedOutCards + cardFloatPositions but not omniPinStore).",
+      "confidence": "medium",
+      "a": {
+        "disp": "RECLASSIFIED",
+        "sev": "COSMETIC",
+        "isReal": true
+      },
+      "b": {
+        "disp": "CONFIRMED",
+        "sev": "LOW",
+        "isReal": true
+      },
+      "needsAdj": false
+    },
+    {
+      "id": "OMNI-A2-01",
+      "subject": "omni-left",
+      "cluster": "A2",
+      "finalDisposition": "SPLIT",
+      "reclassified": false,
+      "severityFinal": "LOW",
+      "rootCause": "src/panels/Citations/omni.tsx:40-49 derives anchorState from pos alone and ignores the citation's own `unanchored` flag (set at src/hooks/useCitations.ts:170, preserved at 369-370); the discriminator the finder said was missing already exists and is simply unused, so the corre...",
+      "class": "Builders collapsing 'free' (intentionally never-anchored) and 'orphaned' (anchor lost) at the pos==null fork while ignoring an available intent flag; the example builder shares the pos-only collapse.",
+      "confidence": "high",
+      "a": {
+        "disp": "REFUTED",
+        "sev": "COSMETIC",
+        "isReal": false
+      },
+      "b": {
+        "disp": "RECLASSIFIED",
+        "sev": "LOW",
+        "isReal": true
+      },
+      "needsAdj": true
+    },
+    {
+      "id": "OMNI-F8-04",
+      "subject": "omni-left",
+      "cluster": "F8",
+      "finalDisposition": "CONFIRMED",
+      "reclassified": false,
+      "severityFinal": "LOW",
+      "rootCause": "Same as finder: unguarded navigator.clipboard.writeText with no undefined-check and (in CitationCard) no .catch (CitationCard.tsx:1104). Note the sibling at suggestion-fields.tsx:151 already adds a .catch, so the codebase is inconsistent rather than uniformly missing the guard.",
+      "class": "Unguarded navigator.clipboard across copy affordances (audit lead #12); CitationCard.copyCitekey is the worst variant (no guard AND no catch).",
+      "confidence": "high",
+      "a": {
+        "disp": "CONFIRMED",
+        "sev": "LOW",
+        "isReal": true
+      },
+      "b": {
+        "disp": "CONFIRMED",
+        "sev": "LOW",
+        "isReal": true
+      },
+      "needsAdj": false
+    },
+    {
+      "id": "OMNI-F1-01",
+      "subject": "omni-left",
+      "cluster": "F1",
+      "finalDisposition": "CONFIRMED",
+      "reclassified": true,
+      "severityFinal": "MEDIUM",
+      "rootCause": "Design flaw, not a code-vs-test divergence: isAutoTitle (panel-registry.ts:254-258) uses ONLY the title's textual shape `^<Label> <digits>$` as the strip predicate, with no provenance/origin bit recorded at create time to distinguish a generated default from a user-typed look-...",
+      "class": "Shape-only auto-title detection: 5 load-strip sites share the identical false-positive \u2014 useArchive.ts:28, useReports.ts:57, useTodos.ts:30 (strips the BODY text, not just a title \u2014 higher-impact, but right-side/out of omni-left scope), useNotes.ts:38, useExamples.ts:45. All route through the same isAutoTitle shape predicate.",
+      "confidence": "high",
+      "a": {
+        "disp": "RECLASSIFIED",
+        "sev": "LOW",
+        "isReal": true
+      },
+      "b": {
+        "disp": "CONFIRMED",
+        "sev": "MEDIUM",
+        "isReal": true
+      },
+      "needsAdj": false
+    },
+    {
+      "id": "OMNI-F1-02",
+      "subject": "omni-left",
+      "cluster": "F1",
+      "finalDisposition": "CONFIRMED",
+      "reclassified": true,
+      "severityFinal": "LOW",
+      "rootCause": "omni-host.tsx:609-643 \u2014 the fold/focus classification was never migrated to the resolvePos live-snapshot mechanism that the cascade adopted (OmniViewPanel.tsx:471-488) to defeat keystroke pos-drift; it still trusts OmniItem.pos baked at the last structural items rebuild.",
+      "class": "Any structural-boundary decision keyed on the captured OmniItem.pos rather than resolvePos inherits the same staleness; the fold filter and the focus filter are the two such consumers. useInTextPositions is the only path that opted into resolvePos.",
+      "confidence": "medium",
+      "a": {
+        "disp": "RECLASSIFIED",
+        "sev": "LOW",
+        "isReal": true
+      },
+      "b": {
+        "disp": "CONFIRMED",
+        "sev": "LOW",
+        "isReal": true
+      },
+      "needsAdj": false
+    },
+    {
+      "id": "OMNI-F1-03",
+      "subject": "omni-left",
+      "cluster": "F1",
+      "finalDisposition": "CONFIRMED",
+      "reclassified": true,
+      "severityFinal": "COSMETIC",
+      "rootCause": "Surviving issue: panel-primitives.tsx:1066-1075 \u2014 the useBorrowedCompressed branch has no `value-empty ? <CardEmptyText/>` guard, unlike the summary-string branch.",
+      "class": "The empty-blank affects every borrowed-bodyClass compressed kind (footnote/archive/example). The `'' ?? <CardEmptyText/>` nullish-vs-falsy miss affects every sans-bodyClass collapsed empty card. The no-ellipsis claim does NOT generalize \u2014 CSS line-clamp covers all of them.",
+      "confidence": "high",
+      "a": {
+        "disp": "RECLASSIFIED",
+        "sev": "COSMETIC",
+        "isReal": true
+      },
+      "b": {
+        "disp": "RECLASSIFIED",
+        "sev": "COSMETIC",
+        "isReal": true
+      },
+      "needsAdj": false
+    },
+    {
+      "id": "OMNI-F4-01",
+      "subject": "omni-left",
+      "cluster": "F4",
+      "finalDisposition": "CONFIRMED",
+      "reclassified": true,
+      "severityFinal": "MEDIUM",
+      "rootCause": "Two adjacent panels (Reports/omni.tsx and ReportsPanel.tsx) construct ReportCard/ReportRequestCard without wiring the citation lookup+creation props that the component already declares (ReportCard.tsx:38-39).",
+      "class": "Any card body mounting RichTextField without getCitationDisplayText/onCitationCreated degrades identically. Verified report (omni + native) is the only omni-left instance; footnote/note bodies DO wire both (Footnotes/omni.tsx:49-50), so they are NOT siblings of the raw-command / unregistered-node defect.",
+      "confidence": "high",
+      "a": {
+        "disp": "CONFIRMED",
+        "sev": "MEDIUM",
+        "isReal": true
+      },
+      "b": {
+        "disp": "RECLASSIFIED",
+        "sev": "LOW",
+        "isReal": true
+      },
+      "needsAdj": false
+    },
+    {
+      "id": "OMNI-F4-02",
+      "subject": "omni-left",
+      "cluster": "F4",
+      "finalDisposition": "REFUTED",
+      "reclassified": false,
+      "severityFinal": "LOW",
+      "rootCause": null,
+      "class": null,
+      "confidence": "high",
+      "a": {
+        "disp": "REFUTED",
+        "sev": "LOW",
+        "isReal": false
+      },
+      "b": {
+        "disp": "REFUTED",
+        "sev": "LOW",
+        "isReal": false
+      },
+      "needsAdj": false
+    },
+    {
+      "id": "OMNI-F5-01",
+      "subject": "omni-left",
+      "cluster": "F5",
+      "finalDisposition": "CONFIRMED",
+      "reclassified": false,
+      "severityFinal": "LOW",
+      "rootCause": "panel-primitives.tsx:914-926 gates the main-bar editor promotion entirely on the optional onEditorFocus prop; report builders omit it (Reports/omni.tsx, ReportsPanel.tsx) where footnote/note/archive builders thread setOverrideEditor.",
+      "class": "Every report-kind body mount (omni + docked) lacks onEditorFocus wiring; footnote/note/archive bodies thread it. Report-request shares the gap with report.",
+      "confidence": "medium",
+      "a": {
+        "disp": "CONFIRMED",
+        "sev": "LOW",
+        "isReal": true
+      },
+      "b": {
+        "disp": "CONFIRMED",
+        "sev": "LOW",
+        "isReal": true
+      },
+      "needsAdj": false
+    },
+    {
+      "id": "OMNI-F2-01",
+      "subject": "omni-left",
+      "cluster": "F2",
+      "finalDisposition": "CONFIRMED",
+      "reclassified": false,
+      "severityFinal": "LOW",
+      "rootCause": "Confirmed by reading selections.tsx end-to-end. Every per-kind 'selected*Id' slot is DERIVED live from the single cardStore.selected: useSelectionsValue's idFor(k)=sel.kind===k?sel.id:null (selections.tsx:119, 199-216) and makeKindSetter clears the store ONLY when cardStore.ge...",
+      "class": "Dead 'enforcement' code mirroring an invariant already guaranteed one layer down. Genuine latent sibling: selectedErrorId is a real non-store useState wired straight through omni-host.tsx:494-495 with NO cross-clear and not routed via cardStore \u2014 selecting an error then a card can leave BOTH marked, the one place the inert code provides false reassurance. Confirmed errors bypass the store at omni-host.tsx:122-123,550,554.",
+      "confidence": "high",
+      "a": {
+        "disp": "CONFIRMED",
+        "sev": "LOW",
+        "isReal": true
+      },
+      "b": {
+        "disp": "CONFIRMED",
+        "sev": "LOW",
+        "isReal": true
+      },
+      "needsAdj": false
+    },
+    {
+      "id": "OMNI-F3-01",
+      "subject": "omni-left",
+      "cluster": "F3",
+      "finalDisposition": "CONFIRMED",
+      "reclassified": false,
+      "severityFinal": "MEDIUM",
+      "rootCause": "Deepest cause: the @N omni-wrapper grammar (Reports/omni.tsx:86) is a per-paragraph fan-out that the pin/align consumers treat as an exact card key.",
+      "class": "Multi-anchor @N omni grammar honored only in open-for-card.ts's prefix matcher, broken in all three exact-match pin/align sites. Same break for every omni-eligible kind that fans out per paragraph: notes/todos/cutter/revisions all build @N marker rows the same way (EditorPane.tsx:1811-1828 todo loop is the visible sibling). Any multi-paragraph anchored card hits the identical marker-click pin miss.",
+      "confidence": "high",
+      "a": {
+        "disp": "CONFIRMED",
+        "sev": "MEDIUM",
+        "isReal": true
+      },
+      "b": {
+        "disp": "CONFIRMED",
+        "sev": "MEDIUM",
+        "isReal": true
+      },
+      "needsAdj": false
+    },
+    {
+      "id": "OMNI-F3-02",
+      "subject": "omni-left",
+      "cluster": "F3",
+      "finalDisposition": "CONFIRMED",
+      "reclassified": true,
+      "severityFinal": "MEDIUM",
+      "rootCause": "The concrete trigger the finder only hypothesized: code-pane-bridge.ts:202 editor.commands.setContent(parseLatex(text)) re-parses into the existing editor WITHOUT remounting, so the mount-gated syncFromEditor (EditorPane.tsx:1177-1182) never re-reconciles the sidecar id agains...",
+      "class": "Identity-by-regenerated-id across the inline-atom spine (cardStore selection, omni item id cardPopKey, resolvePos live map, jump link.id). Footnotes share it byte-for-byte (latex-parser.ts:509 footnoteId fallback, useFootnotes mount-only sync). The \\vcid/\\vfid round-trip is the mitigation; any markerless-source path (raw code-view edit, external tool, foreign first-load) reopens it.",
+      "confidence": "medium",
+      "a": {
+        "disp": "RECLASSIFIED",
+        "sev": "MEDIUM",
+        "isReal": true
+      },
+      "b": {
+        "disp": "RECLASSIFIED",
+        "sev": "LOW",
+        "isReal": true
+      },
+      "needsAdj": false
+    },
+    {
+      "id": "OMNI-F6-01",
+      "subject": "omni-left",
+      "cluster": "F6",
+      "finalDisposition": "CONFIRMED",
+      "reclassified": false,
+      "severityFinal": "MEDIUM",
+      "rootCause": "Single chokepoint gap: convertCardWithRemap (EditorPane.tsx:863-918) remaps the float key but never reconciles the ai-requests.json bridge when FROM-kind declares aiRequest routing (card-registry.tsx:498) and TO-kind does not (card-registry.tsx:468).",
+      "class": "Lossy/kind-changing morphs that drop an aiRequest flag without unbridging the inbox entry. Confirmed siblings: revision-comment->suggestion and cutter-comment->suggestion \u2014 revision-comment (card-registry.tsx:388) and cutter-comment (card-registry.tsx:412) carry aiRequest routing; their morph targets revision-suggestion (card-registry.tsx:448-467, no aiRequest) and cutter-suggestion (card-registry.tsx:428-446, no aiRequest) do not, and revisionCommentToSuggestion/cutterCommentToSuggestion (morphs/index.ts:51-66/93-108) drop the flag (these pairs are even lossy:false so NO confirm fires at all). note<->highlight is genuinely safe: noteToHighlight preserves aiRequest:n.aiRequest (morphs/index.ts:183) and both route linkPanel:'notes'.",
+      "confidence": "high",
+      "a": {
+        "disp": "CONFIRMED",
+        "sev": "MEDIUM",
+        "isReal": true
+      },
+      "b": {
+        "disp": "CONFIRMED",
+        "sev": "MEDIUM",
+        "isReal": true
+      },
+      "needsAdj": false
+    },
+    {
+      "id": "OMNI-F6-02",
+      "subject": "omni-left",
+      "cluster": "F6",
+      "finalDisposition": "CONFIRMED",
+      "reclassified": false,
+      "severityFinal": "LOW",
+      "rootCause": "Selection identity is baked with the mutable card KIND; convertCardWithRemap (EditorPane.tsx:915) remaps the float key but not the cardStore selection ref, so the kind-discriminated findEntity (entity-hover.ts:70-74) prunes it after the morph.",
+      "class": "Selection identity baked with the mutable card KIND, dropped by every kind-changing morph (note<->highlight, revision/cutter comment<->suggestion, report<->report-request) because the kind-discriminated findEntity (entity-hover.ts:70-95) prunes the pre-morph-kind ref. The one chokepoint convertCardWithRemap remaps the float key but not the selection ref; a cardStore.select to the new kind there fixes all four pairs.",
+      "confidence": "high",
+      "a": {
+        "disp": "CONFIRMED",
+        "sev": "LOW",
+        "isReal": true
+      },
+      "b": {
+        "disp": "CONFIRMED",
+        "sev": "LOW",
+        "isReal": true
+      },
+      "needsAdj": false
+    },
+    {
+      "id": "OMNI-F7-01",
+      "subject": "omni-left",
+      "cluster": "F7",
+      "finalDisposition": "CONFIRMED",
+      "reclassified": false,
+      "severityFinal": "MEDIUM",
+      "rootCause": "Finder slightly mis-attributed the atom-deletion to citationsHook.deleteCitation (which is sidecar-only filter, useCitations.ts:213-222); the actual destructive doc edit is the compound wrapper handleDeleteCitation (EditorPane.tsx:1971-1977 -> innerRef.deleteCitation), which i...",
+      "class": "Destructive doc-mutating deletes that skip the confirm because the card has no rich body and cardHasContent lacks a case for the kind (lead #1). Empty-bodied FOOTNOTE is the live sibling: FootnoteCard uses EditableCard with value={fn.content} (FootnoteCard.tsx:112-136) so it is guarded ONLY when a body exists \u2014 an empty footnote deletes the \\footnote{} atom with no confirm via the same hasJsonContent gate. Examples have no card trash; bib has its own .bib-warning. The systemic gap: 'no body text' == 'safe to destroy doc content' for inline-atom kinds.",
+      "confidence": "high",
+      "a": {
+        "disp": "CONFIRMED",
+        "sev": "MEDIUM",
+        "isReal": true
+      },
+      "b": {
+        "disp": "CONFIRMED",
+        "sev": "MEDIUM",
+        "isReal": true
+      },
+      "needsAdj": false
+    },
+    {
+      "id": "OMNI-F7-02",
+      "subject": "omni-left",
+      "cluster": "F7",
+      "finalDisposition": "CONFIRMED",
+      "reclassified": false,
+      "severityFinal": "LOW",
+      "rootCause": "Inline-atom prune exemption (useAnchorHighlightReconciler.ts:84-90) has no positive 'this atom was truly deleted' counterpart, so genuine footnote/citation deletes leak the cardStore selected (transient) and expandedSet (indefinite) refs.",
+      "class": "The inline-atom prune exemption (lead #2): added so a transient parse-gap won't drop a still-valid footnote/citation selection, but it has no positive 'this atom was truly deleted' counter-signal, so genuine deletes leak refs on both axes. Compounds with OMNI-F3-02: a regenerated markerless id makes the old ref permanently dead AND un-prunable. A footnote/citation delete handler that explicitly clearSelection()/collapse()'s the deleted ref closes it.",
+      "confidence": "medium",
+      "a": {
+        "disp": "CONFIRMED",
+        "sev": "LOW",
+        "isReal": true
+      },
+      "b": {
+        "disp": "CONFIRMED",
+        "sev": "LOW",
+        "isReal": true
+      },
+      "needsAdj": false
+    },
+    {
+      "id": "OUT-A2-01",
+      "subject": "outline",
+      "cluster": "A2",
+      "finalDisposition": "CONFIRMED",
+      "reclassified": false,
+      "severityFinal": "MEDIUM",
+      "rootCause": "Confirmed as finder stated. Deepest cause: persistent identity (the collapsed Set, both in-memory and the localStorage `virgil-outline-prefs.collapsed` array) is keyed on a live array index (`heading-${idx}`, OutlinePanel.tsx:322) that extractHeadings regenerates on every pass...",
+      "class": "Persistent/cached structural identity keyed on a live array index instead of a stable UUID. In-file sibling: buildPods reuses `h.id` for edit-mode pod collapse (OutlinePanel.tsx:800,806) inheriting the same drift. Contrast self-healing index attrs (`data-outline-pos=\"h-${index}\"`, posToAttr:97) which are recomputed live each render and so never corrupt. The whole focus subsystem (useFocusMode/focus-view) is the correct UUID-anchored counter-example.",
+      "confidence": "high",
+      "a": {
+        "disp": "CONFIRMED",
+        "sev": "MEDIUM",
+        "isReal": true
+      },
+      "b": {
+        "disp": "CONFIRMED",
+        "sev": "MEDIUM",
+        "isReal": true
+      },
+      "needsAdj": false
+    },
+    {
+      "id": "OUT-F8-02",
+      "subject": "outline",
+      "cluster": "F8",
+      "finalDisposition": "CONFIRMED",
+      "reclassified": true,
+      "severityFinal": "MEDIUM",
+      "rootCause": "Confirmed as finder stated. Canonical fix would be to source outlineHeadings/outlineTotalBlocks from the SAME live snapshot the panel renders from (a rev-gated editor.getJSON()) rather than the 300ms-debounced latestDoc (EditorLayout.tsx:2360 docForOutline = latestDoc; editor-...",
+      "class": "Mixing a debounced doc snapshot (latestDoc) with live-doc index math where the index originates from a fresher snapshot. In-file siblings: focusWordCount sums per-block counts over the focus range using buildPerBlockCounts(docForOutline=latestDoc) (EditorPane.tsx:2387-2392) \u2014 transient count wobble; handleFocusActivate uses the same stale outlineHeadings[0].index (focus.ts:22). availableDividerLevels (EditorLayout.tsx:2363-2369) also derives from the stale outlineHeadings but is cosmetic.",
+      "confidence": "medium",
+      "a": {
+        "disp": "RECLASSIFIED",
+        "sev": "LOW",
+        "isReal": true
+      },
+      "b": {
+        "disp": "CONFIRMED",
+        "sev": "MEDIUM",
+        "isReal": true
+      },
+      "needsAdj": false
+    },
+    {
+      "id": "OUT-F8-03",
+      "subject": "outline",
+      "cluster": "F8",
+      "finalDisposition": "CONFIRMED",
+      "reclassified": false,
+      "severityFinal": "MEDIUM",
+      "rootCause": "Confirmed as finder stated. Warning-only validation: the conflict predicate is computed and rendered but never consulted at the write boundary (OutlinePanel.tsx:179-183 commit; editor-ops.ts:148 handleUpdateLabel; editor-extensions.ts:999-1081 main-editor commit).",
+      "class": "Warning-only validation that never gates the commit. CONFIRMED sibling: main-editor heading-label input (editor-extensions.ts:999-1081). Suspected (not verified here, out of subject scope): Bibliography rename-citekey collision path.",
+      "confidence": "high",
+      "a": {
+        "disp": "CONFIRMED",
+        "sev": "MEDIUM",
+        "isReal": true
+      },
+      "b": {
+        "disp": "CONFIRMED",
+        "sev": "MEDIUM",
+        "isReal": true
+      },
+      "needsAdj": false
+    },
+    {
+      "id": "OUT-F8-04",
+      "subject": "outline",
+      "cluster": "F8",
+      "finalDisposition": "CONFIRMED",
+      "reclassified": true,
+      "severityFinal": "LOW",
+      "rootCause": "Real cause: handleRenameParTitle (editor-ops.ts:166-167) omits the `node.type.name === 'heading'`-style guard its sibling mutators carry.",
+      "class": "Index-addressed structural mutators that omit the node-type assertion their sibling handlers carry (editor-ops.ts handleRenameParTitle vs handleRenameHeading/handleUpdateLabel). The graver members of this class are wrong-target WRITES on a snapshot-divergent index (the OUT-F8-02 class), not throws \u2014 e.g. renaming the wrong PARAGRAPH's parTitle if the index lands on a different paragraph rather than a heading.",
+      "confidence": "low",
+      "a": {
+        "disp": "CONFIRMED",
+        "sev": "LOW",
+        "isReal": true
+      },
+      "b": {
+        "disp": "RECLASSIFIED",
+        "sev": "LOW",
+        "isReal": true
+      },
+      "needsAdj": false
+    },
+    {
+      "id": "OUT-F5-01",
+      "subject": "outline",
+      "cluster": "F5",
+      "finalDisposition": "CONFIRMED",
+      "reclassified": false,
+      "severityFinal": "DATA-LOSS",
+      "rootCause": "Truest root cause: handleRenameHeading (src/components/editor-layout/card-actions/editor-ops.ts:132) models the heading as a plain-text container and uses delete-inner + insertText, discarding the existing inline node/mark structure rather than diffing/patching the text runs i...",
+      "class": "Edit-a-structured-node via plain-text input seeded from a flattened projection, committed with delete+insertText instead of attr-patch or text-run-diff. The same flatten-then-destroy pattern would apply to any future 'rename by flat string' over a rich-content node range.",
+      "confidence": "high",
+      "a": {
+        "disp": "CONFIRMED",
+        "sev": "DATA-LOSS",
+        "isReal": true
+      },
+      "b": {
+        "disp": "CONFIRMED",
+        "sev": "DATA-LOSS",
+        "isReal": true
+      },
+      "needsAdj": false
+    },
+    {
+      "id": "OUT-F4-01",
+      "subject": "outline",
+      "cluster": "F4",
+      "finalDisposition": "CONFIRMED",
+      "reclassified": false,
+      "severityFinal": "LOW",
+      "rootCause": "Same as finder (extractText drops attrs-only atoms). CORRECTION to the finder's proposed fix: the 'canonical' getAtomText registry (src/lib/atom-text.ts:19-30) only covers inlineMath among the three atom kinds that appear in headings \u2014 it has NO citation and NO labelRef extrac...",
+      "class": "Every hand-rolled heading/title content flatten that ignores attrs-only atoms: OutlinePanel.extractText (display + rename seed + drag-ghost label at handleDragStart), getDocTitle. The internal word-count walk collectInline (OutlinePanel.tsx:468) DOES pull inlineMath.attrs.latex but skips citation (:473) \u2014 an internal inconsistency, but that path is counting not display so it is benign.",
+      "confidence": "high",
+      "a": {
+        "disp": "CONFIRMED",
+        "sev": "LOW",
+        "isReal": true
+      },
+      "b": {
+        "disp": "CONFIRMED",
+        "sev": "LOW",
+        "isReal": true
+      },
+      "needsAdj": false
+    },
+    {
+      "id": "OUT-F5-02",
+      "subject": "outline",
+      "cluster": "F5",
+      "finalDisposition": "CONFIRMED",
+      "reclassified": false,
+      "severityFinal": "LOW",
+      "rootCause": "Same as finder: missing node.type.name guard at editor-ops.ts:165-167 plus integer-blockIndex addressing of a snapshot while mutating the live doc. The missing guard is the specific instance; the class is the snapshot-vs-live index addressing scheme.",
+      "class": "All index-based block addressing in editor-ops.ts (handleRenameHeading, handleUpdateLabel, handleReorderBlocks, handleScrollToHeading) is exposed to snapshot/live drift; the guarded handlers degrade to a safe no-op, the unguarded parTitle handler degrades to a wrong-target attr write. UUID anchoring (as useFocusMode adopted) is the structural fix.",
+      "confidence": "medium",
+      "a": {
+        "disp": "CONFIRMED",
+        "sev": "LOW",
+        "isReal": true
+      },
+      "b": {
+        "disp": "CONFIRMED",
+        "sev": "LOW",
+        "isReal": true
+      },
+      "needsAdj": false
+    },
+    {
+      "id": "OUT-F5-03",
+      "subject": "outline",
+      "cluster": "F5",
+      "finalDisposition": "CONFIRMED",
+      "reclassified": false,
+      "severityFinal": "LOW",
+      "rootCause": "Same as finder: commit() ignores the advisory conflict flag (OutlinePanel.tsx:179) and the downstream handler writes unconditionally (editor-ops.ts:148).",
+      "class": "Advisory-only conflict checks that surface a warning but don't gate commit \u2014 compare any other isTaken/isLabelTaken-backed label/citekey input. The in-editor heading-label node-view should be checked for the same advisory-without-gate pattern.",
+      "confidence": "high",
+      "a": {
+        "disp": "CONFIRMED",
+        "sev": "LOW",
+        "isReal": true
+      },
+      "b": {
+        "disp": "CONFIRMED",
+        "sev": "LOW",
+        "isReal": true
+      },
+      "needsAdj": false
+    },
+    {
+      "id": "OUT-F5-04",
+      "subject": "outline",
+      "cluster": "F5",
+      "finalDisposition": "CONFIRMED",
+      "reclassified": true,
+      "severityFinal": "MEDIUM",
+      "rootCause": "Affordance visibility gated on callback-presence (truthiness) rather than an explicit editable/read-only flag (OutlinePanel.tsx:676, :1661, :1676, :1755), combined with the Reader shim supplying truthy no-op callbacks to satisfy the canonical `if (viewPrefs)` branch (reader-vi...",
+      "class": "Gating editor affordances on callback-presence rather than a read-only flag \u2014 any panel mounted via the reader shim that exposes edit/move/morph controls. Focus row-click handlers (onFocusMoveTo/onFocusExpandTo) share the same rendered-but-no-op trap in Reader.",
+      "confidence": "high",
+      "a": {
+        "disp": "RECLASSIFIED",
+        "sev": "MEDIUM",
+        "isReal": true
+      },
+      "b": {
+        "disp": "RECLASSIFIED",
+        "sev": "LOW",
+        "isReal": true
+      },
+      "needsAdj": false
+    },
+    {
+      "id": "OUT-F1-02",
+      "subject": "outline",
+      "cluster": "F1",
+      "finalDisposition": "SPLIT",
+      "reclassified": false,
+      "severityFinal": "COSMETIC",
+      "rootCause": "Same line as finder (OutlinePanel.tsx:1820). Likely by-design legend rather than a defect \u2014 the preamble/pre-first-heading region simply has no per-section bucket, so the row shows the unit word instead of a count.",
+      "class": "Preamble/document-start region has no computed word count in the outline even though buildPerBlockCounts holds index-0 numbers; minor and isolated.",
+      "confidence": "medium",
+      "a": {
+        "disp": "REFUTED",
+        "sev": "COSMETIC",
+        "isReal": false
+      },
+      "b": {
+        "disp": "CONFIRMED",
+        "sev": "COSMETIC",
+        "isReal": true
+      },
+      "needsAdj": true
+    },
+    {
+      "id": "OUT-F1-01",
+      "subject": "outline",
+      "cluster": "F1",
+      "finalDisposition": "CONFIRMED",
+      "reclassified": false,
+      "severityFinal": "LOW",
+      "rootCause": "Same root as OUT-F4-01 (extractText drops attrs-only inlineMath/citation/labelRef); the `|| 'Untitled'` fallback at OutlinePanel.tsx:324 amplifies a fully-stripped heading into an outright wrong label.",
+      "class": "Duplicate-root with OUT-F4-01 (extractText atom-dropping); the Untitled fallback is the amplification.",
+      "confidence": "high",
+      "a": {
+        "disp": "CONFIRMED",
+        "sev": "LOW",
+        "isReal": true
+      },
+      "b": {
+        "disp": "CONFIRMED",
+        "sev": "LOW",
+        "isReal": true
+      },
+      "needsAdj": false
+    },
+    {
+      "id": "OUT-F2-01",
+      "subject": "outline",
+      "cluster": "F2",
+      "finalDisposition": "CONFIRMED",
+      "reclassified": false,
+      "severityFinal": "MEDIUM",
+      "rootCause": "The focus engine is fed structure derived from the 300ms-debounced `latestDoc` snapshot (EditorLayout.tsx:2360-2362 via useFocusActions/focus.ts:21-38) while every render-time consumer reads the live editor.getJSON(); `latestDoc` is never seeded on editor-ready, only inside th...",
+      "class": "Consumers that derive document structure from the debounced `latestDoc` rather than the live editor, all empty/wrong until the first edit settles: availableDividerLevels/activeDividerLevels (EditorLayout.tsx:2363-2374 \u2014 divider menu empty on pristine doc) and focusWordCount (EditorLayout.tsx:2387-2392, reads docForOutline). Same live-vs-debounced snapshot split flagged for the post-edit window in the sibling g-anchor finding.",
+      "confidence": "high",
+      "a": {
+        "disp": "CONFIRMED",
+        "sev": "MEDIUM",
+        "isReal": true
+      },
+      "b": {
+        "disp": "CONFIRMED",
+        "sev": "MEDIUM",
+        "isReal": true
+      },
+      "needsAdj": false
+    },
+    {
+      "id": "OUT-F7-01",
+      "subject": "outline",
+      "cluster": "F7",
+      "finalDisposition": "SPLIT",
+      "reclassified": false,
+      "severityFinal": "MEDIUM",
+      "rootCause": "Same no-counter-bump root as the finder (in-place text edit + untracked parTitle attr fire no DocStructureBus event the rev.* counters listen to: step-inspector.ts:247-249, 483-528; useStructuralRevisions.ts:93-128), AND the EditorPane content snapshot (editor.getJSON(), Edito...",
+      "class": "Derived/memoized views sourced from editor.getJSON() that must reflect an edit firing no structural counter: outline word-count + section-number columns ride the same `content` snapshot; live heading-row text fails to update while typing a heading title directly in the main editor (same path, partially masked by the section-path recompute). Deeper class: 'in-place text / untracked-attr edits that no structural counter observes, consumed by a counter-gated render.'",
+      "confidence": "medium",
+      "a": {
+        "disp": "REFUTED",
+        "sev": "LOW",
+        "isReal": false
+      },
+      "b": {
+        "disp": "RECLASSIFIED",
+        "sev": "MEDIUM",
+        "isReal": true
+      },
+      "needsAdj": true
+    },
+    {
+      "id": "OUT-F3-01",
+      "subject": "outline",
+      "cluster": "F3",
+      "finalDisposition": "CONFIRMED",
+      "reclassified": false,
+      "severityFinal": "LOW",
+      "rootCause": "snapBoundary applies section-rounding to one edge (bottom via sectionRange, useFocusMode.ts:368) and raw-index to the other (top, useFocusMode.ts:365); for a non-heading (parTitle) snap target the bottom edge expands to the enclosing section instead of the row.",
+      "class": "Boundary operations that round one edge through sectionRange and pass the other edge as a raw index. nudgeBoundary (useFocusMode.ts:318-349) repeats the identical top=raw / bottom=sectionRange split and would inherit the asymmetry if its keyboard wiring is ever enabled (currently unwired \u2014 verified: only snapBoundary is called from OutlinePanel).",
+      "confidence": "high",
+      "a": {
+        "disp": "CONFIRMED",
+        "sev": "LOW",
+        "isReal": true
+      },
+      "b": {
+        "disp": "CONFIRMED",
+        "sev": "LOW",
+        "isReal": true
+      },
+      "needsAdj": false
+    },
+    {
+      "id": "OUT-F3-02",
+      "subject": "outline",
+      "cluster": "F3",
+      "finalDisposition": "CONFIRMED",
+      "reclassified": false,
+      "severityFinal": "LOW",
+      "rootCause": "`setTextSelection` is used as the mirror-scroll mechanism (editor-ops.ts:60,72) on a shared EditorState (EditorMirror.tsx:58); a navigation-only intent therefore relocates the single shared caret. The cleaner fix scrolls the mirror DOM without mutating the selection.",
+      "class": "Jump/scroll handlers that set the single shared editor selection as a means of moving a secondary mirror view. Any panel jump routed to the mirror via the same setTextSelection-on-shared-state pattern perturbs the main pane caret; the docstart and heading branches (editor-ops.ts:59-63, 71-80) are the two concrete sites.",
+      "confidence": "high",
+      "a": {
+        "disp": "CONFIRMED",
+        "sev": "LOW",
+        "isReal": true
+      },
+      "b": {
+        "disp": "CONFIRMED",
+        "sev": "LOW",
+        "isReal": true
+      },
+      "needsAdj": false
+    },
+    {
+      "id": "REP-A1-01",
+      "subject": "reports",
+      "cluster": "A1",
+      "finalDisposition": "CONFIRMED",
+      "reclassified": false,
+      "severityFinal": "MEDIUM",
+      "rootCause": "The deeper cause is a broken contract, not just a missing listener: linked-anchor.ts:148 enumerates `useTodos / useReports / useExamples / useArchive` as the four Mode-A orphan consumers, but only useTodos and useArchive ever registered the `virgil-textobject-orphaned` handler.",
+      "class": "Mode-A-anchorable card hooks that omit the `virgil-textobject-orphaned` listener while still recording Mode-A textObjectIds. Confirmed siblings: useNotes.ts (only :207 virgil-anchor-orphaned, no textobject sweep) \u2014 same defect for notes' Mode-A links, equal severity. useTodos + useArchive are correct; useReports + useNotes diverge.",
+      "confidence": "high",
+      "a": {
+        "disp": "CONFIRMED",
+        "sev": "MEDIUM",
+        "isReal": true
+      },
+      "b": {
+        "disp": "CONFIRMED",
+        "sev": "MEDIUM",
+        "isReal": true
+      },
+      "needsAdj": false
+    },
+    {
+      "id": "REP-A2-01",
+      "subject": "reports",
+      "cluster": "A2",
+      "finalDisposition": "CONFIRMED",
+      "reclassified": true,
+      "severityFinal": "MEDIUM",
+      "rootCause": "Same root cause as the finder (reports omitted from EditorLayout.tsx:3265-3306 applyLinkedAnchors restore loop + the :3312 dep array), but the impact ceiling is paragraph-level degradation + lost tint, NOT total resolution loss, because the drag-handle always co-records a Mode...",
+      "class": "Any Mode-B-capable card kind omitted from the EditorLayout.tsx:3265-3306 restore loop. Reports/report-requests are the omitted pair; no other newer Mode-B kind currently exists in the loop's blind spot (examples are derived-block, not Mode-B range-anchored).",
+      "confidence": "high",
+      "a": {
+        "disp": "CONFIRMED",
+        "sev": "MEDIUM",
+        "isReal": true
+      },
+      "b": {
+        "disp": "RECLASSIFIED",
+        "sev": "MEDIUM",
+        "isReal": true
+      },
+      "needsAdj": false
+    },
+    {
+      "id": "REP-A2-02",
+      "subject": "reports",
+      "cluster": "A2",
+      "finalDisposition": "CONFIRMED",
+      "reclassified": true,
+      "severityFinal": "HIGH",
+      "rootCause": "isAutoTitle is purely shape-based (panel-registry.ts:258 regex) and cannot distinguish a stale generated title from a deliberate user title of the same shape.",
+      "class": "Every auto-titling kind whose titleLabel yields a human-plausible '<Label> N' title and that strips on load via isAutoTitle: report ('Report 8'), example ('Example 4' \u2014 most likely to be human-numbered), note ('Note 3'), todo ('Task 5'), footnote ('Footnote 1'), archive ('Archive Text 1'). All run isAutoTitle in their migrate*Record. Reports and examples are the highest-risk because users number them as a series. auto-title.test.ts:51-64 enshrines the false-positive across note/footnote/archive/todo/report/example.",
+      "confidence": "high",
+      "a": {
+        "disp": "CONFIRMED",
+        "sev": "MEDIUM",
+        "isReal": true
+      },
+      "b": {
+        "disp": "RECLASSIFIED",
+        "sev": "HIGH",
+        "isReal": true
+      },
+      "needsAdj": false
+    },
+    {
+      "id": "REP-F8-01",
+      "subject": "reports",
+      "cluster": "F8",
+      "finalDisposition": "CONFIRMED",
+      "reclassified": false,
+      "severityFinal": "MEDIUM",
+      "rootCause": "The morph chokepoint (EditorPane.tsx:863-918) never reconciles the AI-request inbox: it remaps the float key (:915) but does not bridge a dropped aiRequest flag.",
+      "class": "Every morph whose source kind carries an aiRequest flag the target kind drops, with no bridge-clear in the morph path. cutter-comment\u2192suggestion and revision-comment\u2192suggestion route through the same un-bridged convertCardWithRemap. note\u2192highlight CARRIES aiRequest across (morphs/index.ts:183) so highlight inherits it but highlight also has no toggle UI (card-registry.tsx:206 routing exists, no checkbox) \u2014 verify highlight's inbox reachability. The A9 morph chokepoint reconciles float keys but never the AI-request inbox for any pair.",
+      "confidence": "high",
+      "a": {
+        "disp": "CONFIRMED",
+        "sev": "MEDIUM",
+        "isReal": true
+      },
+      "b": {
+        "disp": "CONFIRMED",
+        "sev": "MEDIUM",
+        "isReal": true
+      },
+      "needsAdj": false
+    },
+    {
+      "id": "REP-C1-01",
+      "subject": "reports",
+      "cluster": "C1",
+      "finalDisposition": "CONFIRMED",
+      "reclassified": true,
+      "severityFinal": "MEDIUM",
+      "rootCause": "Two-seam omission (host forgot useAiRequestsContext + panel has no aiRequests prop / no r.kind filter), same as the finder.",
+      "class": "Any AI-request-bearing panel that forgets to thread aiRequests through host+panel. Reports is the only one of the five named in ai-requests.tsx that omits it; the other four (notes/footnotes/todo/citations) wire it. Verify citations actually filters (CitationsPanel is in the r.kind=== grep hit-list, so it does).",
+      "confidence": "high",
+      "a": {
+        "disp": "CONFIRMED",
+        "sev": "MEDIUM",
+        "isReal": true
+      },
+      "b": {
+        "disp": "RECLASSIFIED",
+        "sev": "LOW",
+        "isReal": true
+      },
+      "needsAdj": false
+    },
+    {
+      "id": "REP-F4-01",
+      "subject": "reports",
+      "cluster": "F4",
+      "finalDisposition": "CONFIRMED",
+      "reclassified": false,
+      "severityFinal": "MEDIUM",
+      "rootCause": "reports-host.tsx is the single host that never threads the CitationDisplayProvider values; RichTextField.tsx:206 (display refresh no-ops) and :283-284 (drop falls back to raw command, skips registration) are the downstream failure sites.",
+      "class": "Any RichTextField-bearing panel host (or float-body builder) that forgets to thread getCitationDisplayText/onCitationCreated from CitationDisplayProvider. Reports docked + omni are the confirmed instances; future card panels and float builders are the suspected siblings.",
+      "confidence": "high",
+      "a": {
+        "disp": "CONFIRMED",
+        "sev": "MEDIUM",
+        "isReal": true
+      },
+      "b": {
+        "disp": "CONFIRMED",
+        "sev": "MEDIUM",
+        "isReal": true
+      },
+      "needsAdj": false
+    },
+    {
+      "id": "REP-F5-01",
+      "subject": "reports",
+      "cluster": "F5",
+      "finalDisposition": "CONFIRMED",
+      "reclassified": true,
+      "severityFinal": "HIGH",
+      "rootCause": "Two distinct defects bundled: (1) convertCard (useReports.ts:267) performs no aiRequest bridge cleanup on the lossy report-request\u2192report flip \u2192 orphaned ai-requests.json entry; (2) the morph confirm copy (EditorPane.tsx:875) is direction-blind \u2014 both report\u2194report-request dir...",
+      "class": "Lossy morphs that change aiRequest routing/presence without bridging the flag off. Verified-adjacent: note\u2194highlight (morphs/index.ts:183 PRESERVES aiRequest, but note routes {kind:'note'} and highlight routes {kind:'highlight'} per card-registry.tsx:184,206 \u2014 so the on-disk inbox entry's `kind` token goes STALE across that morph even though the flag value survives). Check every morph pair where the two kinds' CARD_REGISTRY.aiRequest.kind differs.",
+      "confidence": "high",
+      "a": {
+        "disp": "RECLASSIFIED",
+        "sev": "HIGH",
+        "isReal": true
+      },
+      "b": {
+        "disp": "RECLASSIFIED",
+        "sev": "MEDIUM",
+        "isReal": true
+      },
+      "needsAdj": false
+    },
+    {
+      "id": "REP-F5-02",
+      "subject": "reports",
+      "cluster": "F5",
+      "finalDisposition": "CONFIRMED",
+      "reclassified": true,
+      "severityFinal": "MEDIUM",
+      "rootCause": "reports-host.tsx lacks the useAiRequestsContext wiring AND ReportsPanel.tsx has no aiRequests prop/filter; the visibility gap is real only for inbox entries with no live report-request card to render their checkbox.",
+      "class": "Polymorphic-request panels whose docked host omits the inbox section. Cutter and Revisions hosts host suggestion-kind requests \u2014 cutter-host.tsx:77 only pulls addAiRequest (not the read/update/delete trio), so worth checking those hosts for the same omission.",
+      "confidence": "high",
+      "a": {
+        "disp": "CONFIRMED",
+        "sev": "MEDIUM",
+        "isReal": true
+      },
+      "b": {
+        "disp": "RECLASSIFIED",
+        "sev": "LOW",
+        "isReal": true
+      },
+      "needsAdj": false
+    },
+    {
+      "id": "REP-F5-03",
+      "subject": "reports",
+      "cluster": "F5",
+      "finalDisposition": "CONFIRMED",
+      "reclassified": false,
+      "severityFinal": "MEDIUM",
+      "rootCause": "isAutoTitle (panel-registry.ts:254-258) is an ambiguous heuristic \u2014 a generated-title pattern is indistinguishable from a legitimate user title of the same shape; the migrator (useReports.ts:57) applies it destructively on every load with no provenance flag (e.g.",
+      "class": "Every auto-titling kind shares the strip-on-load + same-shape false positive: note ('Note N'), archive ('Archive Text N'), todo ('Task N' in BODY), example ('Example N'). auto-title.test.ts:142-150 codifies all of them \u2014 so this is a class-wide hazard, not report-specific.",
+      "confidence": "high",
+      "a": {
+        "disp": "CONFIRMED",
+        "sev": "MEDIUM",
+        "isReal": true
+      },
+      "b": {
+        "disp": "CONFIRMED",
+        "sev": "MEDIUM",
+        "isReal": true
+      },
+      "needsAdj": false
+    },
+    {
+      "id": "REP-F1-01",
+      "subject": "reports",
+      "cluster": "F1",
+      "finalDisposition": "CONFIRMED",
+      "reclassified": false,
+      "severityFinal": "COSMETIC",
+      "rootCause": "Inconsistent empty-sentinel between cards: '' (falsy but not nullish) vs undefined feeding a `?? <CardEmptyText/>` fallback. The fix belongs either at the call sites (`|| undefined`) or at panel-primitives.tsx:1074 (treat empty-string as empty).",
+      "class": "Cards passing `makeCompressedSummary(...) || ''`: NoteCard, ArchiveCard, FootnoteCard (both anchored and orphan summaries), RevisionCommentCard all share the blank-instead-of-placeholder behavior per the finder; only CutterCommentCard.tsx:91 surfaces the placeholder. Verified the CutterCommentCard divergence directly.",
+      "confidence": "high",
+      "a": {
+        "disp": "CONFIRMED",
+        "sev": "COSMETIC",
+        "isReal": true
+      },
+      "b": {
+        "disp": "CONFIRMED",
+        "sev": "COSMETIC",
+        "isReal": true
+      },
+      "needsAdj": false
+    },
+    {
+      "id": "REP-F5-04",
+      "subject": "reports",
+      "cluster": "F5",
+      "finalDisposition": "CONFIRMED",
+      "reclassified": false,
+      "severityFinal": "LOW",
+      "rootCause": "Uncontrolled-input pattern in CardBodyTitle (panel-primitives.tsx:552) with a sync effect gated on editing-state only (:535); no key-on-value remount and no controlled value, so external prop changes can't reach the DOM input while mounted.",
+      "class": "Shared CardBodyTitle is used by every bodyTitle-bearing card (footnote/note/archive/example/report) \u2014 all desync the expanded title input on an external/cross-surface title write. Single shared root, so one fix covers the class.",
+      "confidence": "medium",
+      "a": {
+        "disp": "CONFIRMED",
+        "sev": "LOW",
+        "isReal": true
+      },
+      "b": {
+        "disp": "CONFIRMED",
+        "sev": "LOW",
+        "isReal": true
+      },
+      "needsAdj": false
+    },
+    {
+      "id": "REP-F6-01",
+      "subject": "reports",
+      "cluster": "F6",
+      "finalDisposition": "CONFIRMED",
+      "reclassified": false,
+      "severityFinal": "MEDIUM",
+      "rootCause": "Lifecycle-incomplete inbox bridging: bridgeCardAiRequestFlag is bound only to the explicit flag setter (useReports.ts:247), not to the morph/delete lifecycle.",
+      "class": "Inbox cleanup wired to the toggle, not the lifecycle \u2014 siblings: every delete/morph on notes/todos/cutter/revisions/reports that crosses an aiRequest-bearing kind (REP-F7-02 is the delete twin).",
+      "confidence": "high",
+      "a": {
+        "disp": "CONFIRMED",
+        "sev": "MEDIUM",
+        "isReal": true
+      },
+      "b": {
+        "disp": "CONFIRMED",
+        "sev": "MEDIUM",
+        "isReal": true
+      },
+      "needsAdj": false
+    },
+    {
+      "id": "REP-F6-02",
+      "subject": "reports",
+      "cluster": "F6",
+      "finalDisposition": "CONFIRMED",
+      "reclassified": false,
+      "severityFinal": "MEDIUM",
+      "rootCause": "Incomplete kind-remap on morph: cross-surface interaction state (cardStore.selected/expandedSet, keyed {kind,id}) is not remapped when the morph flips the record kind; only the float-key is (EditorPane.tsx:915).",
+      "class": "All four morph pairs \u2014 entity-hover.ts gates cutter (84-95) and revision (91-95) the same kind-equality way; any cardStore-selected/expanded card loses its store-driven halo+expansion on morph. note<->highlight escapes only because highlight carries no body to lose and its halo is range-driven.",
+      "confidence": "high",
+      "a": {
+        "disp": "CONFIRMED",
+        "sev": "MEDIUM",
+        "isReal": true
+      },
+      "b": {
+        "disp": "CONFIRMED",
+        "sev": "MEDIUM",
+        "isReal": true
+      },
+      "needsAdj": false
+    },
+    {
+      "id": "REP-F6-03",
+      "subject": "reports",
+      "cluster": "F6",
+      "finalDisposition": "CONFIRMED",
+      "reclassified": false,
+      "severityFinal": "LOW",
+      "rootCause": "Direction-blind confirm copy: the lossy branch keys the message only on whether the body survives (preservesBody), not on the morph direction, and hard-codes 'title and byline' which is correct only for report->request (EditorPane.tsx:872-876).",
+      "class": "Any reused lossy-morph confirm string that doesn't branch on direction; the note<->highlight (!preservesBody) arm uses a direction-neutral 'fields a {toLabel} can't hold' message, so only the report arm is wrong.",
+      "confidence": "high",
+      "a": {
+        "disp": "CONFIRMED",
+        "sev": "LOW",
+        "isReal": true
+      },
+      "b": {
+        "disp": "CONFIRMED",
+        "sev": "LOW",
+        "isReal": true
+      },
+      "needsAdj": false
+    },
+    {
+      "id": "REP-F7-01",
+      "subject": "reports",
+      "cluster": "F7",
+      "finalDisposition": "CONFIRMED",
+      "reclassified": true,
+      "severityFinal": "DATA-LOSS",
+      "rootCause": "Two divergent delete-confirm predicates: tryDelete inspects only the body JSON (panel-primitives.tsx:891) while the marker path uses the kind-aware cardHasContent (delete-margin-item.ts:108).",
+      "class": "Every EditableCard consumer whose user content lives outside the body JSON: report.title (here), and the plain-text mirror counted by cardHasContent for todo/cutter-comment/revision-comment/report-request, plus user_text/explanation for suggestions \u2014 all dodge the trash/keyboard confirm while the marker confirm fires. Same-finder sibling class as REP-F7-02 (lifecycle vs. setter), but a distinct root (predicate divergence).",
+      "confidence": "high",
+      "a": {
+        "disp": "CONFIRMED",
+        "sev": "MEDIUM",
+        "isReal": true
+      },
+      "b": {
+        "disp": "RECLASSIFIED",
+        "sev": "DATA-LOSS",
+        "isReal": true
+      },
+      "needsAdj": false
+    },
+    {
+      "id": "REP-F7-02",
+      "subject": "reports",
+      "cluster": "F7",
+      "finalDisposition": "CONFIRMED",
+      "reclassified": false,
+      "severityFinal": "MEDIUM",
+      "rootCause": "Same lifecycle-incomplete bridging as REP-F6-01: inbox cleanup is bound to the flag setter, not to the delete lifecycle (useReports.ts:305-311 omits the bridge-off call). A delete/morph-level cleanup (bridge off if the source kind had a flag) would close the whole class.",
+      "class": "All aiRequest-bearing panel deletes: useNotes.deleteNote, useTodos.deleteItem, useCutter.deleteCard, useRevisions.deleteCard \u2014 same filter-only shape, same orphaned-inbox-entry gap.",
+      "confidence": "high",
+      "a": {
+        "disp": "CONFIRMED",
+        "sev": "MEDIUM",
+        "isReal": true
+      },
+      "b": {
+        "disp": "CONFIRMED",
+        "sev": "MEDIUM",
+        "isReal": true
+      },
+      "needsAdj": false
+    },
+    {
+      "id": "REP-F7-03",
+      "subject": "reports",
+      "cluster": "F7",
+      "finalDisposition": "CONFIRMED",
+      "reclassified": false,
+      "severityFinal": "LOW",
+      "rootCause": "Adapter omits preserveModeBAnchor for a Mode-B-capable kind: dropReportsApi (EditorPane.tsx:1351-1362) lacks the method, so the gated mark-strip in text-object-side-reanchor.ts:68 no-ops.",
+      "class": "Every paragraph-side re-anchor adapter for a Mode-B-capable kind that omits preserveModeBAnchor: dropTodosApi, dropArchiveApi, dropCutterApi, dropRevisionsApi (EditorPane.tsx:1303-1350) all omit it; cutter and revisions definitively carry Mode-B ranges, so the stale-tint repeats there. Only notes/highlights thread it.",
+      "confidence": "medium",
+      "a": {
+        "disp": "CONFIRMED",
+        "sev": "LOW",
+        "isReal": true
+      },
+      "b": {
+        "disp": "CONFIRMED",
+        "sev": "LOW",
+        "isReal": true
+      },
+      "needsAdj": false
+    },
+    {
+      "id": "REP-F3-01",
+      "subject": "reports",
+      "cluster": "F3",
+      "finalDisposition": "CONFIRMED",
+      "reclassified": true,
+      "severityFinal": "HIGH",
+      "rootCause": "jumpToCard has no target-anchor parameter (links.ts:579-620) and the omni fan-out passes the whole card instead of the row's pid (omni.tsx:53-54,68-69). The per-row @N label promises a per-paragraph jump the jump primitive cannot honor.",
+      "class": "Any omni builder that emits per-anchor @N rows but jumps via card-level jumpToCard. Reports is the clearest fan-out; any other multi-anchor card kind that fans out in omni shares the same mis-jump because jumpToCard is fundamentally card-scoped, not link-scoped. A per-row jump must pass the row's pid (or a single-link slice) into the jump.",
+      "confidence": "high",
+      "a": {
+        "disp": "CONFIRMED",
+        "sev": "MEDIUM",
+        "isReal": true
+      },
+      "b": {
+        "disp": "RECLASSIFIED",
+        "sev": "HIGH",
+        "isReal": true
+      },
+      "needsAdj": false
+    },
+    {
+      "id": "SR-F8-01",
+      "subject": "search",
+      "cluster": "F8",
+      "finalDisposition": "CONFIRMED",
+      "reclassified": false,
+      "severityFinal": "HIGH",
+      "rootCause": "Severed EditorLayout<->EditorPane wiring during the (incomplete) 7.8 migration: the highlight PRODUCER moved into EditorPane (searchHighlightRange state, EditorPane.tsx:2663) and was voided, while the CONSUMER (the editor's highlightRange prop) still reads EditorLayout.searchH...",
+      "class": "Migration-orphan: a feature whose producer relocated to EditorPane while its consumer still reads an EditorLayout state with no live producer. Cluster-mates: dead EditorLayout SearchHost import (166), dead EditorLayout.searchHighlightRange (1270), dead EditorLayout.openItemInPanel auto-split (1275-1298, see SR-C1-02). Same shape risk for any other state marked `void ...; // post-7.8`.",
+      "confidence": "high",
+      "a": {
+        "disp": "CONFIRMED",
+        "sev": "HIGH",
+        "isReal": true
+      },
+      "b": {
+        "disp": "CONFIRMED",
+        "sev": "HIGH",
+        "isReal": true
+      },
+      "needsAdj": false
+    },
+    {
+      "id": "SR-F8-02",
+      "subject": "search",
+      "cluster": "F8",
+      "finalDisposition": "CONFIRMED",
+      "reclassified": false,
+      "severityFinal": "LOW",
+      "rootCause": "Cleanup effect left attached to the old owner (EditorLayout) after the state's producer migrated to EditorPane \u2014 the inverse of SR-F8-01's severed wiring.",
+      "class": "Cleanup/teardown effects stranded on the pre-migration owner after a state's producer moved.",
+      "confidence": "high",
+      "a": {
+        "disp": "CONFIRMED",
+        "sev": "LOW",
+        "isReal": true
+      },
+      "b": {
+        "disp": "CONFIRMED",
+        "sev": "LOW",
+        "isReal": true
+      },
+      "needsAdj": false
+    },
+    {
+      "id": "SR-A2-01",
+      "subject": "search",
+      "cluster": "A2",
+      "finalDisposition": "CONFIRMED",
+      "reclassified": true,
+      "severityFinal": "MEDIUM",
+      "rootCause": "Position cache keyed on editor-instance identity instead of a per-transaction structural snapshot, violating AGENTS.md's rule that live positions must be resolved at measure time from the observer's mapped snapshot (useInTextPositions), never from re-walked/cached arrays.",
+      "class": "Any panel memo caching absolute PM positions gated on editor-instance identity rather than the DocStructureBus snapshot. Sibling to inspect: errorHighlightRange (EditorLayout.tsx:1650) is computed once and not re-mapped on subsequent edits; any onHighlightRange caller storing from/to without tr.mapping-style remapping.",
+      "confidence": "high",
+      "a": {
+        "disp": "RECLASSIFIED",
+        "sev": "MEDIUM",
+        "isReal": true
+      },
+      "b": {
+        "disp": "RECLASSIFIED",
+        "sev": "MEDIUM",
+        "isReal": true
+      },
+      "needsAdj": false
+    },
+    {
+      "id": "SR-A1-01",
+      "subject": "search",
+      "cluster": "A1",
+      "finalDisposition": "CONFIRMED",
+      "reclassified": false,
+      "severityFinal": "MEDIUM",
+      "rootCause": "Hardcoded-empty collection literal at the SearchHost mount (EditorPane.tsx:5572) silently drops an available, populated data source \u2014 a migration leftover from the Reader-only origin of EditorPane where orphans were genuinely empty.",
+      "class": "Hardcoded `={[]}` literals at host mounts that drop a real data slice lost during the EditorLayout->EditorPane migration. Confirmed sibling: FootnotesHost orphanedFootnotes={[]} (EditorPane.tsx:5405) \u2014 out-of-scope here (S1 footnotes) but the same defect; the main-app Footnotes panel would show no orphan cards if this is the live path. Audit every host-mount `={[]}` against whether viewPrefs carries the real list.",
+      "confidence": "high",
+      "a": {
+        "disp": "CONFIRMED",
+        "sev": "MEDIUM",
+        "isReal": true
+      },
+      "b": {
+        "disp": "CONFIRMED",
+        "sev": "MEDIUM",
+        "isReal": true
+      },
+      "needsAdj": false
+    },
+    {
+      "id": "SR-C1-01",
+      "subject": "search",
+      "cluster": "C1",
+      "finalDisposition": "CONFIRMED",
+      "reclassified": false,
+      "severityFinal": "LOW",
+      "rootCause": "Hand-rolled selection index over a derived list that can shrink from an external source, with no clamp-on-read and no source-change reset \u2014 the exact thing useCycle's read-clamp (panel-primitives.tsx:2613) was built to prevent, bypassed here.",
+      "class": "Any hand-rolled index-over-derived-list that doesn't reuse useCycle's read-clamp. Same gap would surface in any panel header pairing a raw useState index with PrevNextCounter over externally-shrinkable data.",
+      "confidence": "high",
+      "a": {
+        "disp": "CONFIRMED",
+        "sev": "LOW",
+        "isReal": true
+      },
+      "b": {
+        "disp": "CONFIRMED",
+        "sev": "LOW",
+        "isReal": true
+      },
+      "needsAdj": false
+    },
+    {
+      "id": "SR-C1-02",
+      "subject": "search",
+      "cluster": "C1",
+      "finalDisposition": "CONFIRMED",
+      "reclassified": false,
+      "severityFinal": "MEDIUM",
+      "rootCause": "Incomplete 7.8 migration: the cross-panel-jump's split logic was left stranded in the unmounted EditorLayout.openItemInPanel while the live EditorPane copy is an explicit placeholder that whole-side-switches.",
+      "class": "Migration-orphan cluster with SR-F8-01/SR-F8-02: behavior left in the dead EditorLayout copy while the live EditorPane copy is a placeholder. Any cross-panel jump that relied on EditorLayout.setActiveHalf split logic is similarly degraded on the live path.",
+      "confidence": "high",
+      "a": {
+        "disp": "CONFIRMED",
+        "sev": "MEDIUM",
+        "isReal": true
+      },
+      "b": {
+        "disp": "CONFIRMED",
+        "sev": "MEDIUM",
+        "isReal": true
+      },
+      "needsAdj": false
+    },
+    {
+      "id": "SR-F1-01",
+      "subject": "search",
+      "cluster": "F1",
+      "finalDisposition": "CONFIRMED",
+      "reclassified": false,
+      "severityFinal": "HIGH",
+      "rootCause": "Deeper than the finder framed it: the architectural mismatch is that searchMainText snapshots ABSOLUTE PM positions into the memo's value, but the memo is gated on CONTENT-change counters (per keystroke-sanctity, useStructuralRevisions.ts:24-28 explicitly excludes positions).",
+      "class": "Position-snapshot-in-content-gated-memo. Siblings: any onHighlightRange producer that stores absolute from/to and replays later (errorHighlightRange via effectiveHighlightRange, EditorLayout.tsx ~:3352); FootnoteSearchItem.pos / EditorCitationItem.pos themselves go stale identically when only mainText edits intervene (their gating counter is silent). The general anti-pattern: caching editor positions outside the live snapshot layer.",
+      "confidence": "high",
+      "a": {
+        "disp": "CONFIRMED",
+        "sev": "HIGH",
+        "isReal": true
+      },
+      "b": {
+        "disp": "CONFIRMED",
+        "sev": "HIGH",
+        "isReal": true
+      },
+      "needsAdj": false
+    },
+    {
+      "id": "SR-F1-02",
+      "subject": "search",
+      "cluster": "F1",
+      "finalDisposition": "CONFIRMED",
+      "reclassified": false,
+      "severityFinal": "MEDIUM",
+      "rootCause": "SearchPanel reimplements the prev/next cursor by hand instead of using the shared useCycle hook (panel-primitives.tsx:2606-2629) which already solves this with a read-time clamp.",
+      "class": "Manual selected-index without read-clamp. The brief notes Search owns its own selectedIdx precisely because it does NOT route through the shared card-store selection \u2014 so it inherits none of the store's pruning either. Any other hand-rolled index cursor that bypasses useCycle is a sibling.",
+      "confidence": "high",
+      "a": {
+        "disp": "CONFIRMED",
+        "sev": "MEDIUM",
+        "isReal": true
+      },
+      "b": {
+        "disp": "CONFIRMED",
+        "sev": "MEDIUM",
+        "isReal": true
+      },
+      "needsAdj": false
+    },
+    {
+      "id": "SR-F1-03",
+      "subject": "search",
+      "cluster": "F1",
+      "finalDisposition": "CONFIRMED",
+      "reclassified": false,
+      "severityFinal": "LOW",
+      "rootCause": "Confirmed. before/after are clamped to CTX=40 with an ellipsis affordance (SearchPanel.tsx:176-177, 787, 797) but `<mark>{result.match}</mark>` is rendered verbatim with no length clamp (SearchPanel.tsx:791-793).",
+      "class": "Snippet renderers that clamp surrounding context but not the matched span. Same module's card preview/snippet code paths would share it if they render an unclamped match.",
+      "confidence": "high",
+      "a": {
+        "disp": "CONFIRMED",
+        "sev": "LOW",
+        "isReal": true
+      },
+      "b": {
+        "disp": "CONFIRMED",
+        "sev": "LOW",
+        "isReal": true
+      },
+      "needsAdj": false
+    },
+    {
+      "id": "SR-F1-04",
+      "subject": "search",
+      "cluster": "F1",
+      "finalDisposition": "CONFIRMED",
+      "reclassified": false,
+      "severityFinal": "LOW",
+      "rootCause": "Naive \\b-bracketing without inspecting word-char adjacency at each boundary.",
+      "class": "Generic \\b-wrapping whole-word matchers. Any other regex search in the codebase that prepends/appends \\b without the adjacency guard (the brief's hypothesized siblings) shares it.",
+      "confidence": "high",
+      "a": {
+        "disp": "CONFIRMED",
+        "sev": "LOW",
+        "isReal": true
+      },
+      "b": {
+        "disp": "CONFIRMED",
+        "sev": "LOW",
+        "isReal": true
+      },
+      "needsAdj": false
+    },
+    {
+      "id": "SR-F1-05",
+      "subject": "search",
+      "cluster": "F1",
+      "finalDisposition": "CONFIRMED",
+      "reclassified": true,
+      "severityFinal": "COSMETIC",
+      "rootCause": "Same class as the finder named but the precise failure is append-instead-of-replace for skipped-level siblings, not generic 'under/over-pop'.",
+      "class": "Stack-depth-as-level-proxy heading-tree builders. OutlinePanel's heading-tree indentation, if it infers nesting from running stack length rather than the explicit level attr, is the prime sibling to check.",
+      "confidence": "high",
+      "a": {
+        "disp": "RECLASSIFIED",
+        "sev": "COSMETIC",
+        "isReal": true
+      },
+      "b": {
+        "disp": "RECLASSIFIED",
+        "sev": "COSMETIC",
+        "isReal": true
+      },
+      "needsAdj": false
+    },
+    {
+      "id": "SR-F4-01",
+      "subject": "search",
+      "cluster": "F4",
+      "finalDisposition": "CONFIRMED",
+      "reclassified": false,
+      "severityFinal": "LOW",
+      "rootCause": "The flattening helper is lossy-by-design for atoms (footnote-content.ts:602-628 says it's for ghosts/tooltips/previews), and search reuses it as if it were a search index.",
+      "class": "Any plain-text flattening of card bodies that collapses citation atoms to display-only and is then used for matching/indexing (compressed-card previews, drag ghosts, tooltips per footnote-content.ts:623-628) drops the underlying citekey there too.",
+      "confidence": "medium",
+      "a": {
+        "disp": "CONFIRMED",
+        "sev": "LOW",
+        "isReal": true
+      },
+      "b": {
+        "disp": "CONFIRMED",
+        "sev": "LOW",
+        "isReal": true
+      },
+      "needsAdj": false
+    },
+    {
+      "id": "SR-F5-01",
+      "subject": "search",
+      "cluster": "F5",
+      "finalDisposition": "CONFIRMED",
+      "reclassified": false,
+      "severityFinal": "LOW",
+      "rootCause": "openItemInPanel side-activates the target panel with no check for whether the originating (Search) panel shares that side; there is no notion of 'keep the source panel docked'.",
+      "class": "Cross-panel 'open item' that side-activates a target without checking whether the originating panel shares that side. Any other onOpenItem-style fan-out (marker-click panel activation) is a candidate sibling.",
+      "confidence": "medium",
+      "a": {
+        "disp": "CONFIRMED",
+        "sev": "LOW",
+        "isReal": true
+      },
+      "b": {
+        "disp": "CONFIRMED",
+        "sev": "LOW",
+        "isReal": true
+      },
+      "needsAdj": false
+    },
+    {
+      "id": "SR-F5-02",
+      "subject": "search",
+      "cluster": "F5",
+      "finalDisposition": "SPLIT",
+      "reclassified": false,
+      "severityFinal": "LOW",
+      "rootCause": "Two compounding gaps: (1) the same stale-results root as SR-F1-01 lets a dead itemId survive in the list; (2) openItemInPanel performs no existence check before selecting, and (3) the reconciler explicitly refuses to prune inline-atom selections (useAnchorHighlightReconciler.t...",
+      "class": "Selecting a card by id from a stale derived list with no existence check. Shares root with SR-F1-01; the reconciler inline-atom exemption is the known-fragile lead #2 amplifier.",
+      "confidence": "medium",
+      "a": {
+        "disp": "REFUTED",
+        "sev": "LOW",
+        "isReal": false
+      },
+      "b": {
+        "disp": "CONFIRMED",
+        "sev": "LOW",
+        "isReal": true
+      },
+      "needsAdj": true
+    },
+    {
+      "id": "SR-F3-01",
+      "subject": "search",
+      "cluster": "F3",
+      "finalDisposition": "CONFIRMED",
+      "reclassified": false,
+      "severityFinal": "HIGH",
+      "rootCause": "Incomplete 'post-7.8' migration: the search highlight state was lifted into EditorPane but its only live consumer reads the same-named sibling state in EditorLayout, which is hard-wired to null.",
+      "class": "Dual-state-with-dangling-wire across a parent/child migration boundary \u2014 a state lifted into a child whose live consumer reads a sibling of the same name in the parent. Grep EditorPane.tsx for other `void <state>; // ... post-7.8` markers; same hazard for any state EditorLayout is meant to own but EditorPane locally holds.",
+      "confidence": "high",
+      "a": {
+        "disp": "CONFIRMED",
+        "sev": "HIGH",
+        "isReal": true
+      },
+      "b": {
+        "disp": "CONFIRMED",
+        "sev": "HIGH",
+        "isReal": true
+      },
+      "needsAdj": false
+    },
+    {
+      "id": "SR-F3-02",
+      "subject": "search",
+      "cluster": "F3",
+      "finalDisposition": "CONFIRMED",
+      "reclassified": false,
+      "severityFinal": "MEDIUM",
+      "rootCause": "Registry-vs-dispatch drift: 'reports' is enumerated in the order/label/color maps (driving chip render) but absent from both the results-memo dispatch switch (SearchPanel.tsx:312-355) and the SearchHost data props (search-host.tsx:22-37), so the dead `searchReports` is never r...",
+      "class": "Enum-listed-but-undispatched: any SCOPE_ORDER entry lacking BOTH a results-memo branch AND a SearchHost data prop. 'reports' is the proven gap; audit every SCOPE_ORDER member for the matching pair.",
+      "confidence": "high",
+      "a": {
+        "disp": "CONFIRMED",
+        "sev": "MEDIUM",
+        "isReal": true
+      },
+      "b": {
+        "disp": "CONFIRMED",
+        "sev": "MEDIUM",
+        "isReal": true
+      },
+      "needsAdj": false
+    },
+    {
+      "id": "SR-F3-03",
+      "subject": "search",
+      "cluster": "F3",
+      "finalDisposition": "CONFIRMED",
+      "reclassified": true,
+      "severityFinal": "LOW",
+      "rootCause": "Migration reduction: the parent shell's auto-split (setActiveHalf top/bottom) was not ported into EditorPane's single-active-per-side openItemInPanel (EditorPane.tsx:2889); the richer EditorLayout version (:1275-1298) was left dead.",
+      "class": "Behavior-reduced-during-consolidation: any cross-panel jump that previously relied on EditorLayout.setActiveHalf split and now routes through EditorPane's single setActivePanelKindBySide.",
+      "confidence": "high",
+      "a": {
+        "disp": "RECLASSIFIED",
+        "sev": "LOW",
+        "isReal": true
+      },
+      "b": {
+        "disp": "RECLASSIFIED",
+        "sev": "LOW",
+        "isReal": true
+      },
+      "needsAdj": false
+    },
+    {
+      "id": "SR-F3-04",
+      "subject": "search",
+      "cluster": "F3",
+      "finalDisposition": "CONFIRMED",
+      "reclassified": true,
+      "severityFinal": "LOW",
+      "rootCause": "Position cache frozen in a useMemo keyed on stable `editor` identity + structural counters (SearchPanel.tsx:305/363-380) rather than resolved at measure time from a per-transaction-mapped snapshot; plain keystrokes don't bump the gating counters.",
+      "class": "PM-positions-frozen-in-an-editor-identity-memo: any panel that snapshots doc offsets into a memo gated on `editor` identity + structural revisions drifts on the plain-keystroke path.",
+      "confidence": "high",
+      "a": {
+        "disp": "RECLASSIFIED",
+        "sev": "LOW",
+        "isReal": true
+      },
+      "b": {
+        "disp": "RECLASSIFIED",
+        "sev": "LOW",
+        "isReal": true
+      },
+      "needsAdj": false
+    },
+    {
+      "id": "SR-F2-01",
+      "subject": "search",
+      "cluster": "F2",
+      "finalDisposition": "CONFIRMED",
+      "reclassified": false,
+      "severityFinal": "LOW",
+      "rootCause": "Index-into-derived-list not clamped on list mutation: selectedIdx is reset only on query/filter setters (SearchPanel.tsx:258/268/278/298), never reconciled against results.length when the underlying data arrays shrink; PrevNextCounter provides no internal guard (panel-primitiv...",
+      "class": "Unclamped-index-into-shrinkable-list: every PrevNextCounter consumer that holds its own index in panel state instead of routing through useCycle is exposed.",
+      "confidence": "high",
+      "a": {
+        "disp": "CONFIRMED",
+        "sev": "LOW",
+        "isReal": true
+      },
+      "b": {
+        "disp": "CONFIRMED",
+        "sev": "LOW",
+        "isReal": true
+      },
+      "needsAdj": false
+    },
+    {
+      "id": "SR-F7-01",
+      "subject": "search",
+      "cluster": "F7",
+      "finalDisposition": "CONFIRMED",
+      "reclassified": true,
+      "severityFinal": "MEDIUM",
+      "rootCause": "Wired-but-starved input: SearchHost (and FootnotesHost) receive an empty-literal orphan list (EditorPane.tsx:5572 / :5405) under a stale 'Reader has no orphans' rationale, even though EditorPane mounts editable (EditorLayout.tsx:4385) and the real orphan list is available in t...",
+      "class": "Empty-literal for a data slice the consumer supports \u2014 same class as SR-F3-02's missing report data; audit every SearchHost prop and the two other `orphanedFootnotes={[]}` sites for stubbed literals.",
+      "confidence": "high",
+      "a": {
+        "disp": "CONFIRMED",
+        "sev": "MEDIUM",
+        "isReal": true
+      },
+      "b": {
+        "disp": "RECLASSIFIED",
+        "sev": "LOW",
+        "isReal": true
+      },
+      "needsAdj": false
+    }
+  ]
+}

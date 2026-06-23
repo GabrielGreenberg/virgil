@@ -1,0 +1,129 @@
+{
+  "subject": "outline",
+  "group": "G-interact",
+  "clusters": ["F2", "F3", "F6", "F7"],
+  "cells": [
+    {
+      "cluster": "F2",
+      "status": "BUG",
+      "note": "Outline is structural (no card halo); F2 reinterpreted as fold/collapse + focus activate/move/expand. Collapse vs jump axis purity holds (chevron onClick stopPropagation, OutlinePanel.tsx:638-641,959). Focus-edit row click routes to onFocusMoveTo/onFocusExpandTo not onScrollTo (:617-625) — clean. BUT focus activate/move/expand reads outlineHeadings derived from latestDoc which is NULL until the first doc edit (EditorLayout.tsx:1094,2360-2362; latestDoc only set by 300ms-debounced handleUpdate which fires on doc CHANGE, never on create — Editor.tsx:796) → on a pristine doc Focus targets the whole doc, not the first section. See OUT-F2-01.",
+      "bugIds": ["OUT-F2-01"]
+    },
+    {
+      "cluster": "F3",
+      "status": "BUG",
+      "note": "Card→text jump (row click → onScrollTo(blockIndex) → handleScrollToHeading → scrollToHeading) is index-consistent: both the outline rows and scrollToHeading walk the LIVE editor doc, so indices align even with duplicate heading names (keyed by block index, OutlinePanel.tsx:322; Editor.tsx:944-958). Reverse (text→outline) position lozenge matches data-outline-pos live (OutlinePanel.tsx:631,1268). Defects: (a) focus-band bottom-handle snap onto a parTitle row expands to the WHOLE enclosing section while the top-handle snaps to the exact paragraph — asymmetric (OUT-F3-01); (b) split-pane bottom-pane docstart/heading jump moves the MAIN editor's text selection as a side effect (OUT-F3-02); (c) outline row LABEL can be stale after an in-place heading rename so the row a user clicks shows old text though the jump target is correct (see OUT-F7-01).",
+      "bugIds": ["OUT-F3-01", "OUT-F3-02"]
+    },
+    {
+      "cluster": "F6",
+      "status": "N-A",
+      "note": "Outline is a structural panel with no cards; there is no card kind to morph (panel-registry/no card-registry entry; OutlinePanel.tsx renders headings/parTitles, not EditableCard). Morph (report↔report-request etc.) does not apply. Brief S6 lists F6 as N/A.",
+      "bugIds": []
+    },
+    {
+      "cluster": "F7",
+      "status": "BUG",
+      "note": "No delete/duplicate affordance (structural panel). Lifecycle here = drag-reorder (edit mode) + inline rename. Drag-reorder mechanics are sound (slice/delete/insert with self-range guard, OutlinePanel.tsx:1089 + editor-ops.ts:88-119; the observer emits changedBlocks+blockOrderChanged for the single-tx move so footnote/citation renumber is preserved per step-inspector.test.ts:81-102). Defects: (a) after a successful heading or parTitle rename via the edit-mode pod, the outline keeps showing the OLD title because an in-place text/attr edit fires no structural bus event → no rev.* bump → EditorPane does not re-render → content (editor.getJSON()) stays stale (OUT-F7-01); (b) the outline's OWN drag-reorder shifts block indices, corrupting the index-keyed persisted collapse Set — same root as the sibling A2 finding (OUT-outline-g-anchor OUT-A2-01); cross-referenced, not re-claimed. Heading-rename atom DATA-LOSS is claimed by g-display (OUT-F5-01); parTitle setNodeMarkup type-guard gap by g-anchor (OUT-F8-04).",
+      "bugIds": ["OUT-F7-01"]
+    }
+  ],
+  "findings": [
+    {
+      "id": "OUT-F2-01",
+      "subject": "outline",
+      "cluster": "F2",
+      "severity": "MEDIUM",
+      "symptom": "On a freshly-opened document that has not been edited yet, clicking the outline 'Focus' button focuses the ENTIRE document instead of the first section, and (once in focus-edit mode) clicking any section row focuses the whole document rather than that section.",
+      "suspectedRootCause": "The focus-mode action handlers are fed `outlineHeadings`/`outlineTotalBlocks` derived exclusively from `latestDoc` (EditorLayout.tsx:2360-2362, `const docForOutline = latestDoc`). `latestDoc` starts `null` (EditorLayout.tsx:1094) and is only ever assigned inside the 300ms-debounced `handleUpdate` (editor-ops.ts:39-51), which is wired to TipTap's `onUpdate` (Editor.tsx:796) — `onUpdate` fires on a doc CHANGE, never on editor create. So until the user makes their first edit, `outlineHeadings === []` and `outlineTotalBlocks === 0`. `useFocusActions` threads that empty list into `focusMode.activate`/`moveTo`/`expandTo` (focus.ts:21-38); with `headings.length === 0`, `activate` takes its `start=0,end=totalBlocks-1` branch = `[0,-1]` (useFocusMode.ts:264-268) and `sectionRange` returns `[0, totalBlocks-1]` for moveTo (useFocusMode.ts:144) → `bandFromIndices(doc,0,-1)` resolves to `{startUuid:null,endUuid:null}` = whole-doc band (useFocusMode.ts:99-113). Meanwhile the OUTLINE itself renders fine because its `content` prop is the LIVE `editor.getJSON()` (EditorPane.tsx:3400/3473), so the user sees real sections but the focus engine sees none. This is the empty/null-snapshot endpoint of the same debounced-vs-live divergence the sibling g-anchor finding OUT-F8-02 reports for the 300ms post-edit window; the pristine-doc case is both more common (every doc open) and more severe (band is empty, not merely off-by-a-section).",
+      "evidence": [
+        { "file": "src/components/EditorLayout.tsx", "line": 1094, "note": "latestDoc initialized to null" },
+        { "file": "src/components/EditorLayout.tsx", "line": 2360, "note": "docForOutline = latestDoc; outlineHeadings/outlineTotalBlocks derived from it (2361-2362)" },
+        { "file": "src/components/editor-layout/card-actions/editor-ops.ts", "line": 45, "note": "setLatestDoc fired only inside the 300ms debounce timer; never seeded on editor ready" },
+        { "file": "src/components/Editor.tsx", "line": 796, "note": "onUpdate handler — fires on doc change only, not on create, so latestDoc stays null on a never-edited doc" },
+        { "file": "src/hooks/useFocusMode.ts", "line": 264, "note": "activate: headings.length===0 → start=0,end=totalBlocks-1 (=-1 when totalBlocks 0) → whole-doc band" },
+        { "file": "src/components/editor-layout/card-actions/focus.ts", "line": 22, "note": "handleFocusActivate passes the (empty) outlineHeadings/outlineTotalBlocks through" }
+      ],
+      "reproSteps": [
+        "Open a document containing several headings and do NOT type anything.",
+        "Click the outline panel's 'Focus' button.",
+        "Observe: the whole document is 'focused' (no section is dimmed) instead of the first section being isolated.",
+        "Alternatively, enter focus-edit mode (Focus on) on a pristine doc and click section 3's row → the band still covers the whole doc rather than section 3.",
+        "Now type one character anywhere, wait ~300ms, repeat: Focus now correctly isolates the first section."
+      ],
+      "reproChannel": "code-trace",
+      "confidence": "high",
+      "suspectedClass": "Any consumer that derives structure from the debounced `latestDoc` instead of the live editor while the user can interact before the first edit. Sibling: `availableDividerLevels`/`activeDividerLevels` (EditorLayout.tsx:2363-2374) is also empty until the first edit, so the toolbar's divider-level menu is empty on a pristine doc; `focusWordCount` (EditorLayout.tsx:2387-2392) likewise reads `docForOutline`. The deeper class is the live-vs-debounced snapshot split flagged in g-anchor OUT-F8-02."
+    },
+    {
+      "id": "OUT-F7-01",
+      "subject": "outline",
+      "cluster": "F7",
+      "severity": "MEDIUM",
+      "symptom": "After renaming a heading or a paragraph-title from the outline's edit-mode pod, the outline keeps displaying the OLD title; the rename did land in the document but the panel does not reflect it until some unrelated structural edit (e.g. adding/removing a block) forces a refresh.",
+      "suspectedRootCause": "The outline's `content` prop is `editor.getJSON()` evaluated during EditorPane render (EditorPane.tsx:3400/3473), and EditorPane only re-renders when a `useStructuralRevisions` counter bumps (it consumes `rev` whose object identity changes on any counter bump — useStructuralRevisions.ts:79-91). Heading-text rename goes through `handleRenameHeading` = `tr.delete(from,to).insertText(newText, from)` strictly INSIDE the heading node (editor-ops.ts:123-138); this is an in-place ReplaceStep that neither adds/removes the heading block nor changes a structural attr, so the step inspector emits no heading event (headingStructurallyChanged compares only level/label/numbered — step-inspector.ts:247; text-only changes don't surface in changedHeadings — :622-623) → `rev.headings` does not bump → EditorPane does not re-render → `editor.getJSON()` is not recomputed → the OutlineNode/EditablePod text (read from `content`) stays stale. ParTitle rename is worse: `handleRenameParTitle` does `setNodeMarkup(offset, undefined, {...attrs, parTitle})` (editor-ops.ts:160-174); the step inspector synthesizes added/removed entries ONLY for heading level/label/numbered and figureBlock label/numbered (step-inspector.ts:483-528), NOT for a paragraph's `parTitle` attr, so no counter bumps at all. By contrast a heading LABEL edit DOES refresh (it bumps rev.headings via the synthesized entries at :486-507), which is exactly why the discrepancy is easy to miss. Net: the propose→apply round-trip for the two rename operations the outline edit-mode pod exposes is not reflected back into the panel.",
+      "evidence": [
+        { "file": "src/components/editor-layout/card-actions/editor-ops.ts", "line": 132, "note": "handleRenameHeading: in-place delete+insertText inside the heading node — no block add/remove, no attr change" },
+        { "file": "src/components/editor-layout/card-actions/editor-ops.ts", "line": 167, "note": "handleRenameParTitle: setNodeMarkup parTitle attr — not tracked by the step inspector" },
+        { "file": "src/lib/tiptap/doc-structure/step-inspector.ts", "line": 247, "note": "headingStructurallyChanged compares level/label/numbered only — heading text edits never produce changedHeadings" },
+        { "file": "src/lib/tiptap/doc-structure/step-inspector.ts", "line": 483, "note": "attr-step synthesis only for heading level/label/numbered and figureBlock — paragraph parTitle attr not handled" },
+        { "file": "src/components/EditorPane.tsx", "line": 3400, "note": "outline content = editor.getJSON() at render time; only refreshed when EditorPane re-renders" },
+        { "file": "src/hooks/useStructuralRevisions.ts", "line": 90, "note": "rev counters bump only on bus events; a structurally-null edit fires none, so no re-render" }
+      ],
+      "reproSteps": [
+        "Open the outline panel and click 'Edit' to enter edit mode.",
+        "Click a heading pod's text, change the title (e.g. 'Intro' → 'Introduction'), press Enter.",
+        "Observe the document heading updates but the outline pod still reads 'Intro'.",
+        "Repeat with a paragraph-title pod — same staleness.",
+        "Add or delete any block to force a structural re-render → the outline now shows the new titles.",
+        "Contrast: editing a heading's label refreshes the outline immediately (label is a tracked structural attr)."
+      ],
+      "reproChannel": "code-trace",
+      "confidence": "medium",
+      "suspectedClass": "Any outline/derived-view value sourced from `editor.getJSON()` that must reflect an in-place text or untracked-attr edit: the outline heading row text also fails to live-update while a user types a heading title directly in the main editor (same no-rev-bump path), and the per-section word count + section-number columns ride the same `content` snapshot. The deeper class is 'in-place content edits that no structural counter observes, consumed by a memoized/gated render.' Live verification would confirm whether any incidental EditorPane re-render (selectionUpdate subscriber, etc.) masks this in practice."
+    },
+    {
+      "id": "OUT-F3-01",
+      "subject": "outline",
+      "cluster": "F3",
+      "severity": "LOW",
+      "symptom": "Dragging the focus-band BOTTOM handle and releasing it on a paragraph-title (parTitle) row extends the band to the end of that paragraph's entire enclosing section, whereas dragging the TOP handle onto a parTitle row snaps the band start to that exact paragraph — the two handles treat the same row type inconsistently.",
+      "suspectedRootCause": "FocusBand's drag candidate set (`allRowAttrs`) includes parTitle rows as snap targets (OutlinePanel.tsx:1236-1249), and onSnapBoundary is called with the raw block index of the snapped row (:1326). In `focusMode.snapBoundary` the TOP edge uses the index directly as the new start (`bandFromIndices(doc, blockIndex, cur.endIdx, ...)`, useFocusMode.ts:363-366), but the BOTTOM edge passes the index through `sectionRange(blockIndex, headings, totalBlocks)` and uses `newEnd` (useFocusMode.ts:367-369). When `blockIndex` is a parTitle (a paragraph, not a heading), `sectionRange` finds no matching heading (findIndex === -1) and falls through to the enclosing-heading branch, returning that heading's WHOLE [start,end] range (useFocusMode.ts:133-153) — so the bottom edge jumps to the section end rather than to the dropped paragraph. The asymmetry is structural: top treats the row as a literal boundary, bottom treats it as 'the section this row belongs to'.",
+      "evidence": [
+        { "file": "src/panels/Outline/OutlinePanel.tsx", "line": 1244, "note": "allRowAttrs includes h.parTitles as draggable snap candidates" },
+        { "file": "src/hooks/useFocusMode.ts", "line": 364, "note": "snapBoundary top edge: uses blockIndex directly as start" },
+        { "file": "src/hooks/useFocusMode.ts", "line": 368, "note": "snapBoundary bottom edge: routes blockIndex through sectionRange → whole-section end for a parTitle" },
+        { "file": "src/hooks/useFocusMode.ts", "line": 133, "note": "sectionRange returns the enclosing heading's full range when blockIndex is not itself a heading" }
+      ],
+      "reproSteps": [
+        "Enable 'Show par. titles' and activate (unlocked) Focus mode on a section that contains several titled paragraphs.",
+        "Drag the band's TOP handle down onto the row of the 2nd titled paragraph — the band start snaps to exactly that paragraph.",
+        "Drag the band's BOTTOM handle up onto the row of a titled paragraph mid-section — the band end snaps to the END of the whole enclosing section, not to that paragraph.",
+        "Observe the two handles do not behave symmetrically for the same kind of target row."
+      ],
+      "reproChannel": "code-trace",
+      "confidence": "high",
+      "suspectedClass": "Boundary operations that route one edge through section-rounding (`sectionRange`) and the other through a raw index. `nudgeBoundary` (useFocusMode.ts:318-349, currently UNWIRED) repeats the same top=raw / bottom=sectionRange split, so if keyboard nudge is ever wired it inherits the asymmetry."
+    },
+    {
+      "id": "OUT-F3-02",
+      "subject": "outline",
+      "cluster": "F3",
+      "severity": "LOW",
+      "symptom": "In split-pane mode with the bottom pane active, clicking an outline heading (or the 'Document start' row) to navigate the bottom pane also silently moves the MAIN (top) editor's text cursor.",
+      "suspectedRootCause": "`handleScrollToHeading`, when routing a jump to the mirror (bottom) pane, calls `editor.commands.setTextSelection(...)` on the canonical MAIN editor and then scrolls the MIRROR view's DOM (editor-ops.ts:56-81). Because the mirror is a second EditorView over the same shared state, setting the selection moves the single shared selection — felt as the top pane's cursor jumping even though the user only intended to navigate the bottom pane. The docstart branch is the same: `editor.commands.setTextSelection(1)` then scrolls the mirror scroll container (editor-ops.ts:59-63).",
+      "evidence": [
+        { "file": "src/components/editor-layout/card-actions/editor-ops.ts", "line": 60, "note": "split bottom-pane docstart: setTextSelection(1) on the main editor, then scroll mirror" },
+        { "file": "src/components/editor-layout/card-actions/editor-ops.ts", "line": 72, "note": "split bottom-pane heading jump: setTextSelection(pos) on the main editor (shared selection) before scrolling mirror" }
+      ],
+      "reproSteps": [
+        "Open split-pane view; click into the bottom pane to make it active.",
+        "Click a heading in the outline.",
+        "Observe the bottom pane scrolls to the heading AND the top pane's text cursor relocates to that heading position."
+      ],
+      "reproChannel": "code-trace",
+      "confidence": "medium",
+      "suspectedClass": "Jump handlers that set the shared editor selection as a means of scrolling a secondary view. Any panel jump routed to the mirror via the same setTextSelection-on-shared-state pattern would perturb the main pane's caret."
+    }
+  ]
+}

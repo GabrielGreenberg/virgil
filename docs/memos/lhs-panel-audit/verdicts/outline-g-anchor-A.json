@@ -1,0 +1,46 @@
+{
+  "file": "outline-g-anchor",
+  "verifier": "A",
+  "verdicts": [
+    {
+      "findingId": "OUT-A2-01",
+      "isReal": true,
+      "disposition": "CONFIRMED",
+      "severityFinal": "MEDIUM",
+      "rationale": "Mechanism fully verified by code trace. extractHeadings stamps `id: heading-${idx}` (OutlinePanel.tsx:322) where idx is the doc.content array position, regenerated every pass (the panel re-runs extractHeadings(content) on every content change, OutlinePanel.tsx:1516). The `collapsed` Set is keyed by these ids — toggleNode adds/removes by id (OutlinePanel.tsx:1544-1551), view render gates on `collapsed.has(node.heading.id)` (OutlinePanel.tsx:600), edit-mode pods reuse h.id (OutlinePanel.tsx:800,816). The Set is persisted verbatim to localStorage (saveOutlinePrefs `collapsed: [...collapsed]`, OutlinePanel.tsx:1188-1196, effect :1502) and rehydrated `new Set(saved.collapsed)` (OutlinePanel.tsx:1488). There is NO reconciliation against the live heading id set — stale ids simply linger. When a block is inserted above a collapsed heading, that heading re-derives id heading-(idx+1) and is no longer in the Set (auto-expands), while a different heading now at the old index renders collapsed. Same-session (next structural re-render) and cross-session both reproduce. Severity MEDIUM not data-loss: collapse/fold is a view preference, not user content, and is recoverable by re-toggling. WORSE than finder noted: OUTLINE_STORAGE_KEY = 'virgil-outline-prefs' is a SINGLE GLOBAL key (OutlinePanel.tsx:1148) with no docId — collapse state also bleeds across documents, so a reload after switching docs restores by-index collapse from an unrelated doc.",
+      "correctedRootCause": "Index-based structural identity persisted without UUID anchoring AND without per-doc namespacing: heading id = `heading-${idx}` (OutlinePanel.tsx:322) keyed into a globally-persisted Set (OutlinePanel.tsx:1148,1188-1196). The focus-view rework migrated the focus band to attrs.uuid (useFocusMode.ts / focus-view.ts) for exactly this reason but the outline collapse-set/buildPods were never migrated.",
+      "class": "structural-identity-keyed-on-live-array-index-then-persisted",
+      "confidence": "high"
+    },
+    {
+      "findingId": "OUT-F8-02",
+      "isReal": true,
+      "disposition": "RECLASSIFIED",
+      "severityFinal": "LOW",
+      "rationale": "The two-snapshot divergence is real and verified. The OutlinePanel renders row indices from `content = editor.getJSON()` evaluated at EditorPane render time (EditorPane.tsx:3400/3473, threaded through OutlineHost content={content} :5348), recomputed on a structural rev bump (useStructuralRevisions, EditorPane.tsx:746 — synchronous, no debounce); extractHeadings(content) gives the FRESH node.heading.index passed by handleRowClick → onFocusMoveTo (OutlinePanel.tsx:616-624). The focus handlers instead receive outlineHeadings/outlineTotalBlocks derived from docForOutline = latestDoc (EditorLayout.tsx:2360-2362), and latestDoc is set inside a 300ms setTimeout (editor-ops.ts:39-49). useFocusActions threads the STALE headings into focusMode.moveTo (focus.ts:25-27), which calls sectionRange(freshBlockIndex, staleHeadings, staleTotalBlocks) (useFocusMode.ts:296) then bandFromIndices against the LIVE doc (useFocusMode.ts:99-113). A fresh blockIndex that no longer matches any stale heading.index falls into sectionRange's backwards-walk fallback (useFocusMode.ts:144-155) → wrong section. RECLASSIFIED MEDIUM→LOW: the divergence window is bounded by the 300ms debounce and SELF-HEALS once latestDoc settles (re-clicking corrects it); the human path to hit it (click an outline row or drag a band handle within 300ms of a structural edit) is an unlikely race during normal solo editing. The finder's AI-agent vector does NOT strengthen it — agents write the .tex on disk and reach the doc via reparse/reload, not a sub-300ms in-memory race. The persisted focus truth is UUID-anchored and staleness-free (focus-view.ts header), so no lasting corruption — only a transient mis-band.",
+      "correctedRootCause": "Mixing a 300ms-debounced doc snapshot (latestDoc → outlineHeadings, EditorLayout.tsx:2360-2362 / editor-ops.ts:45) with a live-doc index that originated from the fresher rev-gated content snapshot (EditorPane.tsx:3400 → OutlinePanel.tsx:1516,616). The fix is to source outlineHeadings for the focus handlers from the same fresh snapshot the panel renders from (or to resolve sectionRange against the live editor.state.doc), not latestDoc.",
+      "class": "debounced-snapshot-vs-live-index-mismatch",
+      "confidence": "medium"
+    },
+    {
+      "findingId": "OUT-F8-03",
+      "isReal": true,
+      "disposition": "CONFIRMED",
+      "severityFinal": "MEDIUM",
+      "rationale": "Confirmed by code trace. InlineLabel.commit() unconditionally calls onCommit(trimmed || null) (OutlinePanel.tsx:179-183) on both Enter and blur; `conflict` (OutlinePanel.tsx:185-186, via isTaken) is computed ONLY to drive the warning class/message (rendered :208-212), never read by commit. The downstream handleUpdateLabel writes setNodeMarkup({...attrs, label}) with no taken-key check (editor-ops.ts:141-158). isLabelTaken (labels.ts:54-63) is therefore advisory only; nothing enforces uniqueness at the write boundary, so two headings can declare \\label{sec:intro} → ambiguous \\ref. Severity MEDIUM: it produces a real LaTeX-correctness defect in the compiled output (ambiguous reference resolution), but the user IS warned live and it is recoverable. SIBLING-CLASS VALIDATED: the main-editor heading-label NodeView consults the same predicate purely for a live warning (editor-extensions.ts:986-996, 'label already in use' :982) and its commit() (editor-extensions.ts:999-1054) writes setNodeMarkup with the new label regardless of the has-conflict flag — same warn-only-never-gate pattern, so this is systemic, not a one-off.",
+      "correctedRootCause": "Warning-only validation that never gates the commit, replicated at both label-editing surfaces (OutlinePanel.tsx:179-186 InlineLabel + editor-extensions.ts:986-1054 heading NodeView), both consuming the central isLabelTaken (labels.ts:54-63) advisorily. No write boundary rejects a colliding key.",
+      "class": "advisory-validation-not-enforced-at-write-boundary",
+      "confidence": "high"
+    },
+    {
+      "findingId": "OUT-F8-04",
+      "isReal": true,
+      "disposition": "CONFIRMED",
+      "severityFinal": "LOW",
+      "rationale": "Confirmed defensive gap. handleRenameParTitle iterates the live doc and at the matching index calls setNodeMarkup(offset, undefined, {...node.attrs, parTitle: newTitle}) with NO node-type guard (editor-ops.ts:160-174, the bare `if (idx === blockIndex)` at :166), whereas its sibling handleRenameHeading DOES guard `node.type.name === 'heading'` (editor-ops.ts:129). Verified the heading node's addAttributes() declares level/label/uuid/numbered/sectionNumber but NOT parTitle (editor-extensions.ts:772-779), while parTitle is declared on paragraph (editor-extensions.ts:138) and lists (:664,:681). ProseMirror's computeAttrs rejects an undeclared attr, so setNodeMarkup with parTitle on a heading throws RangeError, and the dispatch is unguarded. Realism is LOW: unlike OUT-F8-02 this handler reads the LIVE editor.state.doc (editor-ops.ts:165) and the pod blockIndex comes from the FRESH content snapshot (buildPods, OutlinePanel.tsx:765-820, pt.index off extractHeadings(content) :1516) — both fresh, so in steady state the index resolves to the same paragraph node the pod was built from. The only window is a structural edit landing in the React-commit lag between content render and the click, shifting a heading into that index. A parTitle pod is only ever built over a paragraph/list, so a non-race click cannot target a heading. The finder's LOW/low rating is correct; the missing guard is a genuine inconsistency worth fixing for robustness.",
+      "correctedRootCause": "Index-addressed structural mutator missing the node-type assertion its sibling carries (editor-ops.ts:166 vs :129); reachable only via the same live-vs-snapshot index race behind OUT-F8-02, but the deeper class is the per-handler inconsistency in guarding externally-supplied blockIndex writes.",
+      "class": "index-addressed-mutator-omits-node-type-guard",
+      "confidence": "low"
+    }
+  ]
+}

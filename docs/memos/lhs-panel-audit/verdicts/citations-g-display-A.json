@@ -1,0 +1,76 @@
+{
+  "file": "citations-g-display",
+  "verifier": "A",
+  "verdicts": [
+    {
+      "findingId": "CI-F1-01",
+      "isReal": true,
+      "disposition": "CONFIRMED",
+      "severityFinal": "COSMETIC",
+      "rationale": "Verified. The CitationCard collapsed branch (CitationCard.tsx:751-752) renders its own bespoke `<div className=\"px-3 py-1.5\">{headerContent}</div>` instead of routing through EditableCard's clamped compressed body. `headerContent` (CitationCard.tsx:608-659) maps over ALL `headerRowData` rows (line 638) with only `overflowWrap:'anywhere'` (line 614) and no WebkitLineClamp. By contrast every EditableCard collapsed body applies `compressedBodyStyle(compressedLines, …)` which sets `WebkitLineClamp` + `-webkit-box` (panel-primitives.tsx:1058-1064, compressedBodyStyle :150-172). So a collapsed multi-key \\cites{a,b,c,d} card genuinely grows N lines tall, breaking the uniform clamped-line rhythm. Purely visual, no data effect.",
+      "correctedRootCause": "CitationCard never participates in the EditableCard compressed-body pipeline at all — it short-circuits with its own header at CitationCard.tsx:751-752 — so it inherits none of the compressedBodyStyle clamp (panel-primitives.tsx:150-172).",
+      "class": "Bespoke card compressed views that bypass compressedBodyStyle — any card kind that renders its own collapsed branch rather than EditableCard's clamped body.",
+      "confidence": "high"
+    },
+    {
+      "findingId": "CI-F1-02",
+      "isReal": false,
+      "disposition": "REFUTED",
+      "severityFinal": "LOW",
+      "rationale": "The core premise — 'editor regenerates citation ids on every parse so the sidecar gets fresh ids while the halo holds the old id' — is FALSE for any saved Virgil doc. The serializer emits a `\\vcid{<citationId>}` no-op marker immediately before each `\\cite` (latex-serializer.ts:403-405, and the same for nested cites), and the parser consumes it via `pendingCitationId || generateShortId()` (latex-parser.ts:481,509; doc comment :167-173) so the citationId ROUND-TRIPS and is STABLE across parse cycles. Fresh ids are generated ONLY for a legacy .tex that has never been saved by Virgil, and only until its first save — a path with no prior selection to lose. Additionally, a full doc reload remounts EditorPane/EditorLayout, so `selectedCitationId` (React state) resets to null regardless; there is no surviving stale id to mismatch a halo. syncFromEditor (useCitations.ts:357-374) does map editor ids to sidecar entries, but because the editor ids are the stable \\vcid ids, the sidecar keeps the SAME id the selection holds. The finder's own status was UNVERIFIED with medium confidence; the \\vcid mechanism resolves it as not-a-bug.",
+      "correctedRootCause": "No defect. ID stability across parses is guaranteed by the \\vcid{uuid} serializer marker (latex-serializer.ts:403-405) + parser consumption (latex-parser.ts:167-173, 481-509); the 'ids regenerate on every parse' comment in useCitations.ts:352-356 describes only the marker-less legacy case.",
+      "class": null,
+      "confidence": "high"
+    },
+    {
+      "findingId": "CI-F4-01",
+      "isReal": false,
+      "disposition": "REFUTED",
+      "severityFinal": "LOW",
+      "rationale": "The nested-body citation id does NOT drift relative to the sidecar. (1) getCitations() explicitly walks footnote `attrs.content` (Editor.tsx:1314-1323, via walkJsonContentForCitations) and registers nested-in-footnote citations into the sidecar with the EXACT `citationId` stored in that body JSON. So the sidecar entry and the body atom share one id by construction. (2) Both RichTextField.refreshCitationDisplay (RichTextField.tsx:204-223) and BorrowedMainText.refreshCitationDisplay (BorrowedMainText.tsx:86-106) rewrite ONLY `displayText`, never `citationId` — the body id is preserved verbatim. (3) IDs are stable across parses via \\vcid (latex-serializer.ts:402-405 applies to ANY citation node including nested ones). When the user clicks the nested cite, citation.ts:269-287 dispatches `virgil-citation-click` with `node.attrs.citationId` = the same id getCitations() registered, and marker-clicks.ts:284 setSelectedCitationId(detail.citationId) selects the matching card. The 'never re-sync → drift' premise is false on every realistic path.",
+      "correctedRootCause": "No defect. Nested-footnote citations are surfaced to the sidecar with their own body-JSON id by Editor.tsx:1314-1323, and that id is parse-stable via \\vcid — so dispatched click id == sidecar id.",
+      "class": null,
+      "confidence": "high"
+    },
+    {
+      "findingId": "CI-F4-02",
+      "isReal": false,
+      "disposition": "REFUTED",
+      "severityFinal": "LOW",
+      "rationale": "The resolved `sourceEl` is DEAD CODE on this path. marker-clicks.ts:319-322 does compute `sourceEl = document.querySelector('.citation-node[data-citation-id=...]')` (first match) and passes it to alignOmniCardWithClick, but the implementation (EditorLayout.tsx:1122-1145) names the third arg `_sourceEl` and NEVER reads it — alignment is `pinTop = clickY - pod.getBoundingClientRect().top` using only the (correct) clickY from the clicked node-view's own rect (citation.ts:264,276) and the omni pod position. So a wrong-instance sourceEl cannot misalign anything. Moreover, each main-text \\cite atom and each nested cite carries a UNIQUE citationId (the finder concedes 'the same id is NOT shared'), so the querySelector-by-unique-id collision the finding requires only arises if the SAME card body is mounted in two surfaces at once — and even then the unused sourceEl makes it moot. No user-visible misalignment.",
+      "correctedRootCause": "alignOmniCardWithClick ignores its sourceEl argument entirely (EditorLayout.tsx:1123 `_sourceEl`, unused); alignment is driven solely by clickY. The first-match querySelector at marker-clicks.ts:319 (and the parallel footnote one at :263) is wasted work but harmless.",
+      "class": "Vestigial sourceEl resolution in marker-clicks.ts (citation :319 + footnote :263) — dead-code cleanup candidate, not a behavioral defect.",
+      "confidence": "high"
+    },
+    {
+      "findingId": "CI-F5-01",
+      "isReal": true,
+      "disposition": "CONFIRMED",
+      "severityFinal": "MEDIUM",
+      "rationale": "Verified. setRowPostnote (CitationCard.tsx:370-390) promotes singular→plural one-way: `shouldPromote` sets `nextType = type + 's'` (e.g. cite→cites) when biblatex + HAS_PLURAL.has(type) + >=2 rows + distinct postnotes (lines 376-386); there is no inverse anywhere. removeRow (CitationCard.tsx:392-402) re-persists with the closure's unchanged plural `type`. serializeCiteCommand's single-entry biblatex branch (bib-parser.ts:337-339) emits `\\${cmdBase}...{key}` verbatim — with cmdBase='cites' that is `\\cites{key}`, a plural command wrapping one key, and the Type dropdown stays stuck on \\cites (value={type}, CitationCard.tsx:837). Note HAS_PLURAL (card, lines 73-80) holds only singular bases so promotion never double-applies, but nothing demotes. Realistic path (add a per-key range, then remove the row). MEDIUM is right: wrong/non-idiomatic command shape, recoverable by reselecting the Type, no data loss.",
+      "correctedRootCause": "Asymmetric one-way command-shape mutation: the promote at CitationCard.tsx:383-386 has no counterpart in removeRow (:392-402) or setRowPostnote's re-equalize path, and serializeCiteCommand's single-entry branch (bib-parser.ts:337-339) does not normalize a plural cmdBase back to singular.",
+      "class": "Lead #4 — any row-count/postnote-driven command mutation lacking a symmetric inverse; the same shape would bite a future biblatex shorthand auto-switch.",
+      "confidence": "high"
+    },
+    {
+      "findingId": "CI-F5-02",
+      "isReal": true,
+      "disposition": "RECLASSIFIED",
+      "severityFinal": "LOW",
+      "rationale": "Mechanism confirmed but severity overstated. The package toggle is real and user-reachable (CitationsPanel.tsx:254-265, onSetBibPackage). On switch the card's `type` state is NOT reconciled: the cit.command-sync effect (CitationCard.tsx:292-300) keys only on cit.command, never on bibPackage, and `types` flips to the other package's option list (line 675). A `<select value=\"cites\">` with no matching option in NATBIB_TYPES renders unselected (CitationCard.tsx:836-850), and the next persist serializes the foreign cmdBase under the new package (bib-parser.ts:324-333 / 337-339 use cmdBase verbatim). So the two symptoms (empty/wrong dropdown + foreign command emitted) are genuine. BUT: this requires a deliberate mid-document package switch with pre-existing package-specific commands — an uncommon, somewhat self-inflicted operation (package is normally auto-detected from the preamble, useCitations.ts:114-117) — and the result is recoverable by editing the Type. Downgraded from MEDIUM to LOW (edge path, recoverable, no silent data loss).",
+      "correctedRootCause": "No reconciliation of per-card `type` against `bibPackage`: the only command-resync (CitationCard.tsx:292-300) ignores bibPackage, so a stale package-specific `type` survives a package toggle and serializes under the wrong package (bib-parser.ts:324-339).",
+      "class": "Per-card state that depends on the panel-wide bibPackage but is re-derived only on command change, not on package change.",
+      "confidence": "high"
+    },
+    {
+      "findingId": "CI-F5-03",
+      "isReal": true,
+      "disposition": "CONFIRMED",
+      "severityFinal": "LOW",
+      "rationale": "Verified. setRowKey (CitationCard.tsx:361-368) writes the chosen key onto the target row with no cross-row dedup, and the picker commit routes straight to it (onSelectKey → setRowKey, CitationCard.tsx:1027-1029). handleCardDrop, by contrast, dedups: `if (prev.some(r => r.key === parsed.bibKey)) return prev` (CitationCard.tsx:513-514). So picking the same citekey on two rows persists e.g. `\\citep{smith,smith}` (serializeCiteCommand joins keys verbatim, bib-parser.ts:331/353/359) and the header lists the key twice (headerRowData maps every filled row, CitationCard.tsx:590-606). Real but a deliberate, unusual manual action; biblatex/natbib typically dedupe duplicate keys at render so impact is minor and recoverable. LOW is correct.",
+      "correctedRootCause": "Inconsistent dedup invariant between the drag-merge path (deduped, CitationCard.tsx:513-514) and the picker/setRowKey path (no dedup, :361-368).",
+      "class": "Divergent dedup invariants across the two multi-key entry routes (drag-merge vs picker) — same risk for any multi-key editor that guards one route only.",
+      "confidence": "high"
+    }
+  ]
+}

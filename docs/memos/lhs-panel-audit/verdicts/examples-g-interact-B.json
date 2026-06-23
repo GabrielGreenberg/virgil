@@ -1,0 +1,66 @@
+{
+  "file": "examples-g-interact",
+  "verifier": "B",
+  "verdicts": [
+    {
+      "findingId": "EX-F2-01",
+      "isReal": true,
+      "disposition": "CONFIRMED",
+      "severityFinal": "MEDIUM",
+      "rationale": "Traced the full keyboard path and confirmed the dual-halo. ExampleCard halo = `ac.selected || isSelected` (ExampleCard.tsx:371). `ac.selected` is the cross-surface store slot (anchored-card-store.ts:100 select), set ONLY via mouse body-click (ExampleCard.tsx:392 ac.onActivate). `isSelected` derives from the panel-local `selectedId` (CardListPanel.tsx:144 `selectedId === id`). The keyboard cycle path is handleNavKeys → cycleNext/cyclePrev (ExamplesPanel.tsx:57-65) → useCycle.next/prev (panel-primitives.tsx:2615-2627) → onActivate (ExamplesPanel.tsx:31-37) → onSelect(id)+onJump(id) ONLY — it never calls cardStore.select. So after mouse-selecting A (cardStore.selected=A) then arrowing to B (selectedId=B), card A keeps its store halo (ac.selected true) while card B gets the panel halo (isSelected true) → two cards haloed, violating the documented ≤1 invariant (anchored-card-store.ts:18-20). The pruner only clears the store slot on entity DELETION (useAnchorHighlightReconciler.ts:155-159), never on keyboard re-selection, so the stale halo persists. Realistic path (click then arrow). Brief lists 'desync halo' as MEDIUM; rating upheld.",
+      "correctedRootCause": "Two independent selection authorities for one rendered halo: the cross-surface module store (cardStore.selected) and the panel-controlled selectedId prop, OR'd at ExampleCard.tsx:371. The keyboard authority (useCycle→onSelect, ExamplesPanel.tsx:31-37) writes only the panel authority and there is no reverse bridge selectedId→cardStore, nor a cardStore.clearSelection on cycle. Deepest fix: route keyboard activation through ac.onActivate (or derive the halo from a single source).",
+      "class": "Dual-source halo across the whole left card-panel family: any panel ORing `ac.selected || isSelected` while routing keyboard cycling through a path that bypasses cardStore.select. CONFIRMED siblings: FootnotePanel (FootnoteCard.tsx:104,204 `ac.selected || isSelected`; FootnotePanel.tsx:73-78 onActivateFootnote→onSelect+onScrollToMarker, no cardStore) and CitationCard (CitationCard.tsx:257 same OR; citation omni/panel onSelect sets panel id only). Examples are NOT unique — the same defect lives in footnotes and citations.",
+      "confidence": "high"
+    },
+    {
+      "findingId": "EX-F2-02",
+      "isReal": true,
+      "disposition": "CONFIRMED",
+      "severityFinal": "LOW",
+      "rationale": "Confirmed by trace. The docked panel passes a TOGGLING onSelect (`onSelect(selectedId === ex.exampleId ? null : ex.exampleId)`, ExamplesPanel.tsx:98-100) while ExampleCard's body onClick calls `ac.onActivate()` which is select-ONLY/idempotent (useAnchoredCard.ts:66-69 → cardStore.select+expand, never deselect). Re-clicking an already-selected card toggles panel selectedId→null while cardStore.selected stays = the card. The effect at ExamplesPanel.tsx:45-47 then resets cycleIdx to null on selectedId===null, so the keyboard cursor restarts from index 0, while the halo persists via ac.selected (ExampleCard.tsx:371). Halo vs keyboard-cursor desync. Edge path (re-click a selected card), recoverable — LOW upheld.",
+      "correctedRootCause": "Composition of a select-only store primitive (ac.onActivate, useAnchoredCard.ts:66) with a panel-level TOGGLING onSelect (ExamplesPanel.tsx:98-100): the two disagree on the second click of the same card. The store can't deselect via onActivate, so only the panel id flips, desyncing the visible halo from the keyboard operand. Same root family as EX-F2-01 (two authorities), here surfacing on re-click rather than keyboard-after-click.",
+      "class": "Cards composing a select-only store primitive (ac.onActivate) with a panel-local toggling onSelect. FootnotePanel.tsx:160-161,175-176 and Citations both pass the same `selectedId === id ? null : id` toggle alongside ac.onActivate — same re-click desync. Note FootnoteCard.tsx:226 binds the docked card onClick to ac.onActivate() ONLY (no onSelect), so the footnote DOCKED card avoids the toggle-divergence for body clicks, but its panel onSelect toggle is still wired for other surfaces; partial sibling.",
+      "confidence": "high"
+    },
+    {
+      "findingId": "EX-F3-01",
+      "isReal": true,
+      "disposition": "RECLASSIFIED",
+      "severityFinal": "LOW",
+      "rationale": "Mechanism confirmed: findEntity normalizes an example hit to a bare `{ id }` with no links (entity-hover.ts:80-83), so linksForRef returns [] (useAnchorHighlightReconciler.ts:92,96-97) and collectAnchorEls paints nothing in the editor body (lines 188-209). Verified the exampleBlock NodeView stamps data-type/data-kind/data-number/class/data-glyph-anchor but NO data-card-key and NO data-link-card (expex.ts:747-758), so the document-wide [data-card-key] sweep (reconciler:266-271) also cannot reach the in-text block — it only paints the panel card. Confirmed globals.css has `.expex-block.ProseMirror-selectednode` / `[data-node-selection]` rules (3811-3812) but NO `.expex-block[data-card-selected]` rule, and useTextHoverBridge resolves only footnote/citation (useTextHoverBridge.ts:135), so even the inert data-link-card on the CARD is unreachable from in-text. So selecting/hovering an example paints only the panel card — real gap. DOWNGRADE MEDIUM→LOW: this is a MISSING in-text highlight affordance, not a wrong/broken result — card→text JUMP itself works (scrollToExample, Editor.tsx:1277-1296), nothing is lost or mis-navigated. Brief MEDIUM = 'function misbehaves'; here the highlight function simply doesn't exist for this kind (a polish/consistency gap), which the rubric places at LOW (minor/edge wrongness, recoverable).",
+      "correctedRootCause": "An `anchored: true` registry flag (card-registry.tsx:444) with no link the reconciler can resolve: examples carry neither a Mode-A/Mode-B Link nor a synthesized inline-atom link (the way footnote/citation get one via linkForInlineAtom, useAnchorHighlightReconciler.ts:71-82, 93-95), AND the NodeView stamps no data-card-key for the card-key sweep to latch onto (expex.ts:747-758). The flag advertises three-surface participation the resolver structurally cannot deliver for this kind.",
+      "class": "'anchored flag set without a resolvable link AND without a data-card-key on the in-text DOM' — derived in-text-block kinds. Examples are the clear case. Sibling candidates: figure/graphics derived kinds — if any are anchored:true yet their NodeView omits data-card-key and they have no link, they share the gap. (Audit scope note: verifying figure/graphics is outside this slice.)",
+      "confidence": "high"
+    },
+    {
+      "findingId": "EX-F3-02",
+      "isReal": true,
+      "disposition": "CONFIRMED",
+      "severityFinal": "LOW",
+      "rationale": "Confirmed by trace of the click routing. PanelCard root onClick (panel-primitives.tsx:1927-1931) fires onJump only if the click bubbles to the root. ExampleCard's expanded body wrapper calls `if (canEdit) e.stopPropagation()` (ExampleCard.tsx:465-468), swallowing the click before it reaches the root onClick/onJump (ExampleCard.tsx:391-394). The header path is headerActivate = onHeaderActivate = cardStore.select + toggleExpanded, NO jump (useAnchoredCard.ts:77-80; panel-primitives.tsx:1905-1907). The jump chevron renders only when `isPoppedOut && canJump && onJump` (panel-primitives.tsx:2012), so docked cards never show it. The collapsed body deliberately omits stopPropagation (ExampleCard.tsx:425-426 comment), so the only docked jump path is via the collapsed body. Net: to jump from a docked expanded card you must collapse first. Real but minor UX limitation, recoverable — LOW upheld.",
+      "correctedRootCause": "Editable-body card with a popout-gated jump chevron: the expanded body is an embedded expex editor that must stopPropagation to absorb typing clicks (ExampleCard.tsx:467), which collides with the card-root being the sole docked jump trigger; the header is toggle/select-only and the chevron is isPoppedOut-only (panel-primitives.tsx:2012). No docked jump affordance independent of the body editor.",
+      "class": "Editable-body cards whose expanded body stopPropagation's the card-root jump while the header is toggle-only and the jump chevron is popout-gated. Any card mounting a live editor in its expanded body shares this — examples are the only editable-body left card-kind, so the class is essentially this one card today.",
+      "confidence": "high"
+    },
+    {
+      "findingId": "EX-F3-03",
+      "isReal": true,
+      "disposition": "CONFIRMED",
+      "severityFinal": "LOW",
+      "rationale": "Confirmed and the example is the ODD ONE OUT. Examples/omni.tsx:36 wires `onJump={() => a.onJump(ex.exampleId)}`, and the BuildArgs.onJump type is `(id: string) => void` (omni.tsx:12) — the sourceEl the card hands its onJump (ExampleCard.tsx:412 passes the closest [data-card]) is dropped. omni-host passes a sourceEl-capable scrollToExample (omni-host.tsx:329-331, 475), but the builder's signature/wiring discards it, so scrollToExample takes its no-sourceEl branch (plain setTextSelection().scrollIntoView(), Editor.tsx:1295) instead of the alignEntryToY branch (Editor.tsx:1288-1293). The docked panel keeps it (ExamplesPanel.tsx:101 onJump(id, sourceEl)). Verified peer omni builders do NOT have this: Footnotes/omni.tsx:44 `onJump={(sourceEl) => a.scrollToFootnote(fn.footnoteId, sourceEl)}`, Citations/omni.tsx:60-63 and Reports/omni.tsx:53-55,68-70 all thread sourceEl. Minor visual-alignment difference (block lands but not Y-aligned to the clicked card), no functional loss — LOW upheld.",
+      "correctedRootCause": "The example omni builder's onJump type/wiring (Examples/omni.tsx:12,36) drops the sourceEl that ExampleCard supplies (ExampleCard.tsx:412), forcing scrollToExample down its no-source fallback branch (Editor.tsx:1295) instead of alignEntryToY (Editor.tsx:1291). Purely an omni-builder wiring omission specific to examples.",
+      "class": "REFUTED as a broad class: the finder's hypothesized siblings (footnote/citation/report omni builders) all CORRECTLY thread sourceEl (Footnotes/omni.tsx:44, Citations/omni.tsx:60, Reports/omni.tsx:53,68). Examples are the sole offender — narrow, single-site defect, not a family.",
+      "confidence": "high"
+    },
+    {
+      "findingId": "EX-F7-01",
+      "isReal": true,
+      "disposition": "RECLASSIFIED",
+      "severityFinal": "LOW",
+      "rationale": "Dead-code claim CONFIRMED: grep for `useExamples(` returns only the definition (useExamples.ts:23), zero call sites. The live examples flow is fully derived — EditorPane.tsx:2780-2782 memoizes `innerRef.current?.getExamples()` on [editor, rev.examples]; examples.json sidecar is never read/written by the app. So deleteExample/updateExampleTitle/syncFromEditor/the BUG#31 isAutoTitle-on-load strip (useExamples.ts:42-49,68-94,100-143) are unreachable. Card-registry confirms intent: example lifecycle { clone:false, delete:false, bindAnchor:false } (card-registry.tsx:449) and ExampleCard exposes no delete/title affordance. CORRECTION to the finder's test framing: auto-title.test.ts:138-150 tests a LOCAL `migrateTitle` calling isAutoTitle directly — it does NOT exercise the useExamples hook. The only tie to the hook is the SOURCE-TEXT guard at auto-title.test.ts:192-202, which merely asserts the file string-contains 'isAutoTitle' (readFileSync grep) — it never mounts/invokes the hook. So 'the test passes by exercising useExamples directly' (finder reproStep 3) is INACCURATE; the test pins a static source invariant trivially satisfied by dead code. This is a code-hygiene/latent-landmine observation, NOT a bug a user can hit (no user-facing failure path exists). Down to LOW — actually borderline out-of-scope as a 'defect' (it's dead code, not a malfunction), but the source-guard test pinning a hook with no production caller is a legitimate maintenance hazard worth logging at LOW.",
+      "correctedRootCause": "Retained-for-parity persisted-sidecar hook (useExamples.ts) with zero call sites, kept alive by a static source-text guard test (auto-title.test.ts:192-202 readFileSync(...).toContain('isAutoTitle')) rather than any runtime exercise. The live panel derives examples from the editor (EditorPane.tsx:2780, getExamples), so the entire hook + examples.json sidecar path is unreachable.",
+      "class": "Derived-kind panels whose persisted-sidecar hook is retained 'for parity' but unwired, guarded by source-grep tests that imply (but never exercise) a runtime path. Check figure/graphics for analogous unwired hooks under similar source-guard tests.",
+      "confidence": "high"
+    }
+  ]
+}

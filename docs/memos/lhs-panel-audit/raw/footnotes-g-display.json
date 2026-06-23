@@ -1,0 +1,186 @@
+{
+  "subject": "footnotes",
+  "group": "g-display",
+  "clusters": ["F1", "F4", "F5"],
+  "cells": [
+    {
+      "cluster": "F1",
+      "status": "BUG",
+      "note": "Initial mount + populated render: panel `items` = orphans-first then anchored (FootnotePanel.tsx:112-127), derived from editorRef.getFootnotes() gated on rev.footnotes + editorInstance (EditorPane.tsx:2772, correct on-load pattern). Empty-state renders when items.length===0 (CardListPanel.tsx:112). Compressed footnote bodies render via BorrowedMainText (bodyClass 'borrowed', card-registry.tsx:232), clamped by compressedBodyStyle line-clamp — `makeCompressedSummary` is computed (FootnoteCard.tsx:108) but UNUSED for footnotes (dead). Strip count badge = footnotes.length only. BUGS: (a) footnote `number` stays 0 on a freshly-loaded paper — the parser writes number:0 (latex-parser.ts:404) and the only on-load structure pass is buildInitial which emits NO diff (observer-plugin.ts:133), so the renumber appendTransaction (footnote.ts:220-247, gated on add/remove/orderChanged) never fires until the first structural footnote op; the panel BadgeLabel renders fn.number directly = '0' while the in-text marker shows '1' via `number||\"1\"` fallback (footnote.ts:266). (b) the imperative renumberFootnotes() (Editor.tsx:1161-1177, called on EVERY create, card-creation.ts:528,550) numbers \\thanks footnotes sequentially instead of 0, mis-numbering all real footnotes in a doc with a \\thanks. (c) panel header count excludes orphans (FootnotePanel.tsx:132 count=footnotes.length). (d) multiple \\thanks all show identical 'A'/'Acknowledgement' (FootnoteCard.tsx:116,122).",
+      "bugIds": ["FN-F1-01", "FN-F1-02", "FN-F1-03", "FN-F1-04"]
+    },
+    {
+      "cluster": "F4",
+      "status": "BUG",
+      "note": "Nested body links: footnote bodies render real inline atoms in BOTH surfaces — editable RichTextField (expanded; buildBorrowedAtomSchema(), citations/math round-trip; refreshCitationDisplay rewrites displayText) and read-only BorrowedMainText (compressed; includeLabelRefFootnote:true). Both compose the SAME Citation extension whose NodeView dispatches `virgil-citation-click` on click (citation.ts:261-288), and the marker-clicks handler selects the citation card via setSelectedCitationId (marker-clicks.ts:276-323) — so click-through from inside a footnote body correctly selects that atom's card. Citation display resolver flows via CitationDisplayProvider context (EditorLayout.tsx:3418) for the compressed body (EditableCard passes no explicit resolver, BorrowedMainText.tsx:120-121 falls back to context). Footnote-nested cites ARE collected into the Citations panel (walkJsonContentForCitations; footnote-nested-citation-delete.test.ts) so they have real cards. BUG: the in-body citation click's vertical-alignment sourceEl is resolved by `document.querySelector('.citation-node[data-citation-id=X]')` (marker-clicks.ts:319-321) which returns the FIRST DOM match — if the same citationId appears in both main text and a footnote body, the click in the body aligns the card to the wrong (first) instance.",
+      "bugIds": ["FN-F4-01"]
+    },
+    {
+      "cluster": "F5",
+      "status": "BUG",
+      "note": "Edit body works: anchored body onEdit -> handleEditFootnote -> updateFootnoteContent setNodeMarkup on the node (Editor.tsx:1058-1077); a content edit surfaces as footnoteOrderChanged (step-inspector.ts:399 collects same-id footnote into both removed+added) so footnoteInfos re-derives cross-surface (useStructuralRevisions.ts:47,103). RichTextField debounces 250ms + flushes on blur (RichTextField.tsx:374-396). The per-footnote-card AI-request FLAG subcell is N-A: footnote cards have no AiRequestCheckbox (FootnoteCard passes no headerTrailing); footnote AI help is via free-text AiRequestCard inbox rows filtered by r.kind===\"footnote\" (FootnotePanel.tsx:68-71, CardListPanel.tsx:98-110) — that inbox bridging is sound. BUGS: (a) the bodyTitle (+T) affordance is rendered (FootnoteCard.tsx:123-124 onBodyTitleChange=onEditTitle) and editable, but onEditTitle -> handleEditFootnoteTitle is a NO-OP in the main app (EditorPane.tsx:2740-2744, the ONLY definition, wired into every main render path 3437/3510/3632/4397/4617 and omni omni.tsx:18,47) AND the serializer never emits `title` (latex-serializer.ts:393) — so a typed footnote title is silently discarded with no persistence path anywhere. (b) orphaned-footnote body/title edits update only React state (orphans.ts:24-40) with no sidecar write — lost on reload (orphans are also never persisted, footnote-sync.ts:40-47).",
+      "bugIds": ["FN-F5-01", "FN-F5-02"]
+    }
+  ],
+  "findings": [
+    {
+      "id": "FN-F5-01",
+      "subject": "footnotes",
+      "cluster": "F5",
+      "severity": "MEDIUM",
+      "symptom": "The footnote card's title (+T) affordance lets the user type a title, but the title is silently discarded — it is never stored on the footnote, never persisted, and never reappears (the collapsed-card title row stays blank and the +T affordance returns on the next render).",
+      "suspectedRootCause": "End-to-end dead path. The panel/omni surface a CardBodyTitle +T input on every footnote (FootnoteCard.tsx:123-124 passes onBodyTitleChange={onEditTitle ?? undefined}; in the main app onEditTitle is truthy so the input renders). On blur it calls onChange(v) -> the panel's onEditTitle(id,title) -> FootnotesHost.onEditTitle (footnotes-host.tsx:51) -> EditorPane.handleEditFootnoteTitle, which is the ONLY definition of that handler and is an explicit no-op (EditorPane.tsx:2740-2744 'Wired as a no-op until the main app needs it'). The EditorHandle DOES expose updateFootnoteTitle (Editor.tsx:1079-1099) that would setNodeMarkup the node's `title` attr, but NOTHING in the codebase calls it (grep: zero callers). Even if it were wired, the footnote LaTeX serializer emits only `\\footnote{content}` and drops the `title` attr entirely (latex-serializer.ts:389-394), so the title would not round-trip to .tex and would be lost on the next parse cycle (the parser reconstructs the node with the default empty title). So the affordance is functional-looking but inert: getFootnotes() always reads node.attrs.title==='' (Editor.tsx:1039) and CardBodyTitle is uncontrolled (defaultValue, panel-primitives.tsx:552) so the typed text persists only visually until the next re-render.",
+      "evidence": [
+        { "file": "src/components/EditorPane.tsx", "line": 2740, "note": "handleEditFootnoteTitle = useCallback((_id,_title) => {}) — the ONLY footnote-title handler; a no-op, wired into all main render paths (3437/3510/3632/4397/4617)" },
+        { "file": "src/panels/Footnotes/FootnoteCard.tsx", "line": 123, "note": "bodyTitle={fn.title} + onBodyTitleChange={onEditTitle ?? undefined} — the +T input IS rendered and editable" },
+        { "file": "src/components/Editor.tsx", "line": 1079, "note": "updateFootnoteTitle exists on the EditorHandle (would setNodeMarkup title) but has ZERO callers anywhere in src/" },
+        { "file": "src/lib/latex-serializer.ts", "line": 393, "note": "footnote case serializes only `\\footnote{richJsonToLatex(content)}` with the vfid marker — the `title` attr is never emitted, so it cannot round-trip to .tex even if set" },
+        { "file": "src/components/panel-primitives.tsx", "line": 552, "note": "CardBodyTitle input is uncontrolled (defaultValue) — the typed title shows until re-render, masking that it was dropped" }
+      ],
+      "reproSteps": [
+        "Open a paper with a footnote; show the Footnotes panel; expand the footnote card.",
+        "Click the +T affordance and type a title (e.g. 'Methodology note'); press Enter or click away.",
+        "The title appears briefly in the input.",
+        "Collapse and re-expand the card (or switch panels and back) — the title is gone and the +T placeholder is back.",
+        "Reload the paper — no title; the .tex never recorded one."
+      ],
+      "reproChannel": "code-trace",
+      "confidence": "high",
+      "suspectedClass": "Affordances rendered for a kind whose write-handler is an unwired stub. Check the same handleEdit*Title no-op pattern for any other panel that surfaces CardBodyTitle but routes to a stubbed handler; and check any node-attr (here `title`) that the panel can mutate but the LaTeX serializer does not round-trip (silent-drop-on-reparse class)."
+    },
+    {
+      "id": "FN-F5-02",
+      "subject": "footnotes",
+      "cluster": "F5",
+      "severity": "MEDIUM",
+      "symptom": "Edits to an orphaned footnote's body or title are kept only in volatile React state and are lost on reload; the orphan card itself also vanishes on reload (orphans are never persisted).",
+      "suspectedRootCause": "Orphaned footnotes live entirely in the `orphanedFootnotes` useState array (EditorLayout.tsx:1106), populated at runtime by the `virgil-footnote-orphaned` window event the orphan-detector fires when a non-empty footnote node is deleted (footnote.ts:200-214). The orphan edit handlers (useOrphanActions) only setOrphanedFootnotes — handleEditOrphan maps content, handleEditOrphanTitle maps title (orphans.ts:24-40) — with NO writeSidecar / persistence call. There is no orphan sidecar: the footnotes.json sidecar (useFootnotes) tracks anchored/sidecar entries and 'unanchored' refs that survive syncFromEditor (useFootnotes.ts:127), but the panel does NOT render from that hook for orphans — it renders the event-sourced orphanedFootnotes state. So on a full reload the doc no longer contains the deleted atom, the orphan event never re-fires, and the orphan (with any edits) is gone. This is partly by-design (orphans are a transient 'you deleted the marker, here is the rescued body' affordance), but the panel exposes a full editable RichTextField + title on the orphan card (OrphanedFootnoteCard, FootnoteCard.tsx:210-245), inviting edits that are then silently discarded.",
+      "evidence": [
+        { "file": "src/components/editor-layout/card-actions/orphans.ts", "line": 24, "note": "handleEditOrphan / handleEditOrphanTitle only setOrphanedFootnotes(state); no sidecar write" },
+        { "file": "src/components/editor-layout/event-bridges/footnote-sync.ts", "line": 40, "note": "orphan creation is purely state from the virgil-footnote-orphaned event; nothing persists it" },
+        { "file": "src/components/EditorLayout.tsx", "line": 1106, "note": "orphanedFootnotes = useState([]) — volatile, reset on every mount (key={docId} remounts on doc switch)" },
+        { "file": "src/panels/Footnotes/FootnoteCard.tsx", "line": 210, "note": "OrphanedFootnoteCard mounts a full editable RichTextField + onEditTitle — the user is invited to edit a non-persisted card" }
+      ],
+      "reproSteps": [
+        "In a paper, delete a footnote's in-text marker (leaving non-empty body) so it appears as an orphan card in the Footnotes panel.",
+        "Expand the orphan and edit its body and/or add a title.",
+        "Reload the paper (or switch documents and back).",
+        "Observe: the orphan card is gone entirely, and any body/title edits made to it are lost."
+      ],
+      "reproChannel": "code-trace",
+      "confidence": "high",
+      "suspectedClass": "Editable cards backed by volatile-only state (no sidecar). Any panel that surfaces an editor on an item it never persists has this loss class — check examples-panel derived items and any 'rescued from deletion' transient card."
+    },
+    {
+      "id": "FN-F1-01",
+      "subject": "footnotes",
+      "cluster": "F1",
+      "severity": "MEDIUM",
+      "symptom": "On a freshly-loaded paper, every footnote card's number badge in the Footnotes panel shows '0' (and every in-text marker shows '1'), instead of the correct 1,2,3,... — the numbers only become correct after the user adds, removes, reorders, or edits a footnote.",
+      "suspectedRootCause": "Footnote numbering is computed lazily by the renumber appendTransaction plugin, which is gated on a structural footnote diff (footnote.ts:220-247: addedFootnotes||removedFootnotes||footnoteOrderChanged). On doc load the editor is constructed with `content: initialContent` (Editor.tsx:462) — not via a docChanged transaction — and the DocStructureObserver's init runs buildInitial which emits NO diff (observer-plugin.ts:130-134; apply only diffs on tr.docChanged). The LaTeX parser writes number:0 for every footnote (latex-parser.ts:404,425) and getFootnotes() surfaces node.attrs.number||0 (Editor.tsx:1037). The panel's BadgeLabel renders fn.number directly with no fallback (FootnoteCard.tsx:122, panel-primitives.tsx:288-293) → '0'. The in-text NodeView uses `number||'1'` (footnote.ts:266) → '1'. So before any footnote op, panel shows '0' and text shows '1' (and all footnotes share the same wrong value). The state self-heals once any structural footnote op (including a body edit, which surfaces as footnoteOrderChanged per step-inspector.ts:399) triggers the appendTransaction renumber. renumberFootnotes() is NOT called on load (only from card-creation.ts).",
+      "evidence": [
+        { "file": "src/lib/latex-parser.ts", "line": 404, "note": "parser sets number:0 for every \\footnote (and 425 for \\thanks)" },
+        { "file": "src/lib/tiptap/doc-structure/observer-plugin.ts", "line": 130, "note": "state.init returns buildInitial(doc) with pendingDiff:null; apply bails on !tr.docChanged — so no diff exists at load" },
+        { "file": "src/lib/tiptap/footnote.ts", "line": 220, "note": "renumber appendTransaction is gated on addedFootnotes||removedFootnotes||footnoteOrderChanged — none present on the initial mount" },
+        { "file": "src/panels/Footnotes/FootnoteCard.tsx", "line": 122, "note": "footnoteBadge=BadgeLabel label={fn.number} — renders 0 directly (no ||'1' fallback like the NodeView)" },
+        { "file": "src/components/Editor.tsx", "line": 1037, "note": "getFootnotes reads node.attrs.number||0 — surfaces 0 to the panel" }
+      ],
+      "reproSteps": [
+        "Open a paper that already contains 2+ footnotes (do not add/edit any yet).",
+        "Open the Footnotes panel.",
+        "Observe each footnote card's left badge reads '0' (all the same), while the in-text markers read '1'.",
+        "Add or edit any footnote — the appendTransaction renumber now runs and the badges correct to 1,2,3,...",
+        "LIVE STEP TO CONFIRM: open virgil-data/doc_devtest, count footnotes, and read the panel badges before touching any footnote; confirm they show 0 vs the 1.. in the body."
+      ],
+      "reproChannel": "code-trace",
+      "confidence": "high",
+      "suspectedClass": "Lazily-computed display attributes that are only refreshed by a structural diff and never seeded on load. Citation ordering / example numbering use the same observer-diff cadence — verify they show correct ordinals on a freshly-loaded paper before any edit (initial-population class flagged in AGENTS.md keystroke-sanctity)."
+    },
+    {
+      "id": "FN-F1-02",
+      "subject": "footnotes",
+      "cluster": "F1",
+      "severity": "MEDIUM",
+      "symptom": "In a paper that contains a \\thanks{} acknowledgement, creating any new footnote re-numbers the document so that the acknowledgement consumes footnote number 1 and every real footnote is shifted up by one (the first real footnote shows '2' in the text), and the wrong numbering persists.",
+      "suspectedRootCause": "Two divergent renumber implementations disagree on \\thanks handling. The canonical appendTransaction renumber sets thanks footnotes to number:0 and does NOT advance the counter for them (footnote.ts:235-244), so acknowledgements are excluded from footnote numbering — matching LaTeX. But the imperative EditorHandle.renumberFootnotes() walks ALL footnotes and assigns counter++ to every one regardless of `thanks` (Editor.tsx:1171-1176). This imperative version is invoked on EVERY footnote creation (card-creation.ts:528 adopt-path, 550 normal-path). Its dispatched setNodeMarkup changes only `number`, which footnoteChanged detects (step-inspector.ts:268) but feeds `changedFootnotes`, NOT `footnoteOrderChanged` — and the appendTransaction renumber is gated on order/add/remove, not changedFootnotes (footnote.ts:220-223) — so it does NOT re-fire to correct the mis-numbering. The wrong numbers therefore persist until a later genuine add/remove/reorder triggers the canonical pass.",
+      "evidence": [
+        { "file": "src/components/Editor.tsx", "line": 1171, "note": "renumberFootnotes: `let counter=1; for(...) setNodeMarkup(pos,{...attrs,number:counter++})` — increments for thanks footnotes too (no thanks skip)" },
+        { "file": "src/lib/tiptap/footnote.ts", "line": 235, "note": "canonical renumber: if f.thanks set number:0 and do NOT advance num; else number=num++ — the correct LaTeX behavior the imperative path contradicts" },
+        { "file": "src/components/editor-layout/card-actions/card-creation.ts", "line": 528, "note": "handle.renumberFootnotes() called on the adopt-path of every footnote create (also 550)" },
+        { "file": "src/lib/tiptap/doc-structure/step-inspector.ts", "line": 399, "note": "footnoteOrderChanged only set when removed/added footnotes>0; a number-only setNodeMarkup does not set it, so the canonical renumber won't auto-correct the imperative mis-numbering" }
+      ],
+      "reproSteps": [
+        "Open a paper whose \\author{} contains a \\thanks{...} acknowledgement and that has at least one \\footnote.",
+        "Create a new footnote (toolbar / slash / typed).",
+        "Observe the acknowledgement now behaves as footnote #1 and the previously-first footnote shows '2' in the text; the panel reflects the shifted numbers.",
+        "The mis-numbering remains until a footnote is deleted/reordered."
+      ],
+      "reproChannel": "code-trace",
+      "confidence": "high",
+      "suspectedClass": "Two implementations of one derived-numbering rule that drift on an edge case (here \\thanks). Any 'imperative one-shot' vs 'observer-driven' pair (citation ordering, example sub-labels) is a candidate for the same divergence — audit whether the imperative path mirrors the appendTransaction's special-cases exactly."
+    },
+    {
+      "id": "FN-F1-03",
+      "subject": "footnotes",
+      "cluster": "F1",
+      "severity": "LOW",
+      "symptom": "The Footnotes panel/strip header count excludes orphaned footnotes — a panel showing only orphan cards displays no count badge at all, and a mixed panel undercounts by the number of orphans.",
+      "suspectedRootCause": "FootnotePanel passes count={footnotes.length} (anchored only) to CardListPanel (FootnotePanel.tsx:132), but the rendered `items` are orphans + anchored (FootnotePanel.tsx:112-121). PanelHeader only shows the count when >0 (panel-primitives.tsx:2088), so a panel with 0 anchored + N orphans shows nothing despite N cards. The header count and the visible card list disagree.",
+      "evidence": [
+        { "file": "src/panels/Footnotes/FootnotePanel.tsx", "line": 132, "note": "count={footnotes.length} — anchored only, excludes orphanedFootnotes" },
+        { "file": "src/panels/Footnotes/FootnotePanel.tsx", "line": 112, "note": "items merges orphanedFootnotes (first) + footnotes — the rendered set the count should reflect" },
+        { "file": "src/components/panel-primitives.tsx", "line": 2088, "note": "PanelHeader hides the count entirely when count is 0" }
+      ],
+      "reproSteps": [
+        "In a paper, delete all in-text footnote markers but keep their bodies so they become orphan cards.",
+        "Open the Footnotes panel.",
+        "Observe the orphan cards render but the header count badge is absent (count=0)."
+      ],
+      "reproChannel": "code-trace",
+      "confidence": "high",
+      "suspectedClass": "Header/strip count derived from a subset of the rendered list. Any panel that renders orphans + anchored but counts only anchored (or pending-AI-requests not counted) has the same count-vs-render mismatch."
+    },
+    {
+      "id": "FN-F4-01",
+      "subject": "footnotes",
+      "cluster": "F4",
+      "severity": "LOW",
+      "symptom": "Clicking a citation embedded inside a footnote body selects the correct citation card, but the card's vertical alignment can snap to a DIFFERENT citation instance (one in the main text or another footnote) when the same citation key appears more than once.",
+      "suspectedRootCause": "The footnote-body Citation NodeView dispatches virgil-citation-click with the citationId (citation.ts:269-287). The handler selects the card correctly (setSelectedCitationId, marker-clicks.ts:284) but resolves the alignment source element via document.querySelector('.citation-node[data-citation-id=\"X\"]') (marker-clicks.ts:319-321), which returns the FIRST DOM node with that id. Citation nodes inside footnote-body mini-editors also set data-citation-id (citation.ts:256), and the same citationId can legitimately occur in several places. So the click's clickY is honored but the resolved sourceEl (used by alignOmniCardWithClick) may be a different occurrence, pulling the omni card to align with the wrong anchor. (The selection itself is correct; only the alignment target is ambiguous.)",
+      "evidence": [
+        { "file": "src/lib/tiptap/citation.ts", "line": 269, "note": "footnote-body citation click dispatches virgil-citation-click with citationId + clickY + clickedPos (clickedPos is in the footnote mini-editor's coordinate space)" },
+        { "file": "src/components/editor-layout/event-bridges/marker-clicks.ts", "line": 319, "note": "sourceEl = document.querySelector('.citation-node[data-citation-id=X]') — first match wins, ambiguous when the id repeats" },
+        { "file": "src/lib/tiptap/citation.ts", "line": 256, "note": "the in-footnote citation NodeView also sets dom.dataset.citationId, so it is itself a querySelector candidate" }
+      ],
+      "reproSteps": [
+        "Have a paper where one citation key is cited in the main body AND inside a footnote body (same citationId).",
+        "Click the citation rendered inside the footnote body.",
+        "The citation card is selected, but it vertically aligns to the first .citation-node occurrence (the main-text one) rather than the clicked in-footnote instance."
+      ],
+      "reproChannel": "code-trace",
+      "confidence": "medium",
+      "suspectedClass": "DOM lookups by a non-unique id attribute (document.querySelector first-match) when the same atom id is rendered on multiple surfaces. The same first-match alignment is used for footnote markers (marker-clicks.ts:263-265) and could mis-target if a footnote marker is mirrored across surfaces."
+    },
+    {
+      "id": "FN-F1-04",
+      "subject": "footnotes",
+      "cluster": "F1",
+      "severity": "COSMETIC",
+      "symptom": "When a paper has multiple \\thanks{} acknowledgements (e.g. one per author), every acknowledgement footnote card renders an identical 'A' badge and 'Acknowledgement' overline, with nothing to distinguish them in the panel.",
+      "suspectedRootCause": "Both the panel badge and the in-text marker hardcode 'A' for any thanks footnote (FootnoteCard.tsx:122 BadgeLabel label={fn.thanks ? 'A' : fn.number}; footnote.ts:266 dom.textContent = thanks ? 'A' : number) and the kind label override is the constant 'Acknowledgement' (FootnoteCard.tsx:116). The renumber pass deliberately sets thanks footnotes to number:0 (footnote.ts:235) so they carry no distinguishing ordinal, and there is no per-thanks sub-label. Multiple acknowledgements are therefore visually identical.",
+      "evidence": [
+        { "file": "src/panels/Footnotes/FootnoteCard.tsx", "line": 122, "note": "footnoteBadge = BadgeLabel label={fn.thanks ? 'A' : fn.number} — constant 'A' for all thanks" },
+        { "file": "src/panels/Footnotes/FootnoteCard.tsx", "line": 116, "note": "kindLabelOverride = fn.thanks ? 'Acknowledgement' : undefined — constant label" },
+        { "file": "src/lib/tiptap/footnote.ts", "line": 235, "note": "renumber sets thanks footnotes to number:0 (no ordinal), so there is no per-thanks distinguisher" }
+      ],
+      "reproSteps": [
+        "Open a paper whose \\author{} block has two or more \\thanks{...} acknowledgements.",
+        "Open the Footnotes panel.",
+        "Observe both acknowledgement cards show the same 'A' badge and 'Acknowledgement' overline — only the body text differs."
+      ],
+      "reproChannel": "code-trace",
+      "confidence": "high",
+      "suspectedClass": "Hardcoded badge glyph for a kind that can occur multiple times. Any kind whose marker text is a constant (rather than an ordinal) shows the same ambiguity when repeated."
+    }
+  ]
+}

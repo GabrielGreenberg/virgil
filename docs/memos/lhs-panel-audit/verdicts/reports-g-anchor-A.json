@@ -1,0 +1,56 @@
+{
+  "file": "reports-g-anchor",
+  "verifier": "A",
+  "verdicts": [
+    {
+      "findingId": "REP-A1-01",
+      "isReal": true,
+      "disposition": "CONFIRMED",
+      "severityFinal": "MEDIUM",
+      "rationale": "Verified independently. useReports.ts:407-416 registers ONLY a virgil-anchor-orphaned (Mode-B) listener; there is no virgil-textobject-orphaned (Mode-A) listener, unlike useTodos.ts:226-243 and useArchive.ts:131. The orphan path is reachable: a report-request created via the drag-handle 'report' gesture always records a Mode-A paragraphId (drag-handle-actions.ts:229-236, 415-420 — paragraphId passed unconditionally), and the Archive/Delete drag actions carry LIFECYCLE_DELETE_META which makes MarginaliaAnchorGuard early-return (linked-anchor.ts:246-248) so the block actually vanishes without uuid resurrection. The jump chevron is gated on getLinkedTextObjectIds(...).length>0 (ReportsPanel.tsx:101,118) which stays true with the dead uuid; jumpToCard then iterates links, resolveLink returns null for the dead uuid (links.ts:470-487 — findParagraphByUuid==null → continue → null), and jumpToCard returns false silently (links.ts:619). The omni 'free' bin would show it orphaned, so the two surfaces disagree. Code-vs-doc divergence: linked-anchor.ts:148 explicitly names useReports as an intended consumer of the event it never subscribes to. Recoverable, function misbehaves on a realistic path → MEDIUM.",
+      "correctedRootCause": null,
+      "class": "Mode-A orphan-sweep listener omission: any Mode-A-anchorable card hook missing the virgil-textobject-orphaned subscriber. Confirmed sibling: useNotes.ts only registers virgil-anchor-orphaned at :207-208, no Mode-A sweep (same defect for notes). useTodos and useArchive have the listener; useReports and useNotes diverge.",
+      "confidence": "high"
+    },
+    {
+      "findingId": "REP-A2-01",
+      "isReal": true,
+      "disposition": "CONFIRMED",
+      "severityFinal": "MEDIUM",
+      "rationale": "Verified. EditorLayout.tsx:3265-3312 builds the applyLinkedAnchors restore record set from notes, todoItems, comments, cutterCards and highlights ONLY; the effect dependency array (:3312) confirms no reports/report-requests are iterated. A report-request created via the drag-handle 'report' gesture with a non-empty selection stamps a Mode-B linkedAnchor (drag-handle-actions.ts:412-428 via createAnchor) which is display-only and not serialized to .tex, so on reload it must be re-stamped from the sidecar — and it is not. The same omission was found-and-fixed for todos and is documented at todo-mode-b-reconciler.test.tsx:372-378 ('EditorLayout's applyLinkedAnchors restore loop omitted todos, so a selection-anchored todo's range tint vanished on reload and jump-to degraded to paragraph level'). Dominant symptom (in-text tint lost on reload) is real and reproducible. NUANCE: the finding's secondary 'stops resolving entirely if no paragraph id' branch is NOT reachable on the standard drag-handle path — that path always also records a Mode-A paragraphId (card-creation.ts:455-456), so resolveLink falls back to textObjectIds (links.ts:466-486) and jump degrades to paragraph-level rather than failing outright. Core defect (restore-loop omission) is unambiguous → CONFIRMED at MEDIUM; worst realistic case is lost tint + paragraph-level degrade, not total loss.",
+      "correctedRootCause": null,
+      "class": "applyLinkedAnchors restore-loop omission: any Mode-B-capable card kind absent from EditorLayout.tsx:3265-3306. Reports/report-requests are the omitted pair. Worth checking any newer Mode-B kind (e.g. example range anchors) is not also missing.",
+      "confidence": "high"
+    },
+    {
+      "findingId": "REP-A2-02",
+      "isReal": true,
+      "disposition": "CONFIRMED",
+      "severityFinal": "MEDIUM",
+      "rationale": "Verified. isAutoTitle (panel-registry.ts:254-258) returns true for any ^<Label> \\d+$ where Label is CARD_TITLE_LABELS[kind]; report's titleLabel is 'Report' (card-registry.tsx:396), so isAutoTitle('report','Report 8') matches ^Report \\d+$ → true. migrateReportRecord (useReports.ts:57-59) nulls title to '' when isAutoTitle returns true, and it runs on every load via migrateReports → usePersistentState migrate. auto-title.test.ts:59 pins ['report','Report 8'] as a positive case, enshrining the false-positive as intended behavior. So a user who deliberately titles a report exactly 'Report 8' silently loses that title on the next reload, with no warning. Genuine silent unrecoverable loss of a user-entered field. SEVERITY: the rubric lists 'lost title' under DATA-LOSS, but the trigger is a low-probability exact-shape match on a single field (not a guaranteed loss on a common action like the morph DATA-LOSS examples); the finder's MEDIUM is defensible — silent + unrecoverable keeps it above LOW, narrow conditional trigger keeps it below DATA-LOSS.",
+      "correctedRootCause": null,
+      "class": "Shape-based isAutoTitle false-positive on load for every auto-titling kind with a human-plausible '<Label> N' title: notes ('Note 3'), todos ('Task 5'), examples ('Example 2'), footnotes ('Footnote 1'), archive ('Archive Text 1'). All hit the same isAutoTitle strip in their migrators. Reports and examples are the most likely to be human-named that way.",
+      "confidence": "high"
+    },
+    {
+      "findingId": "REP-F8-01",
+      "isReal": true,
+      "disposition": "CONFIRMED",
+      "severityFinal": "MEDIUM",
+      "rationale": "Verified. requestToReport (morphs/index.ts:149-161) produces a report with no aiRequest field — the flag is dropped. convertCardWithRemap (EditorPane.tsx:863-918) for the report-request→report case (:903-905) calls reportsHookRaw.convertCard(id,'report') then remapCardPopKey, and never calls bridgeCardAiRequestFlag. convertCard (useReports.ts:267-279) is a pure applyCardMorph data flip inside update() with no inbox side effect — contrast setRequestAiRequest (:246-258) which DOES bridge. The inbox entry was filed under routing {kind:'report', linkPanel:'reports'} (card-registry.tsx:422) keyed by linkedTo.cardId (ai-request-bridge.ts:96-98); morph preserves the card id (morphs/index.ts:152), so the pending entry now points at the morphed report card. It is only ever dropped on a value=false toggle (ai-request-bridge.ts:132-134), and the report kind has NO aiRequest routing (no aiRequest entry on report in card-registry.tsx; bridge would warn-and-return at :71-77) and ReportCard.tsx exposes only onConvert, no AI-request checkbox — so the user cannot clear it. Entry stays status:'pending' forever; /editor/answer-report-request would act on a stale request. SECONDARY (corroborated): the lossy confirm copy (EditorPane.tsx:874-876) reads 'This drops the title and byline' for BOTH directions, but in the request→report direction title+byline are GAINED not dropped — the actually-dropped field is the AI-request flag, which the message never mentions. Function misbehaves in a realistic flow → MEDIUM.",
+      "correctedRootCause": null,
+      "class": "Morph chokepoint never reconciles the AI-request inbox: any morph whose source kind carries an aiRequest flag the target drops with no bridge-clear. note→highlight CARRIES aiRequest across (morphs/index.ts:183) but highlight has no toggle UI either. The convertCardWithRemap chokepoint (EditorPane.tsx) is the single seam for all 4 morph pairs and bridges none of them.",
+      "confidence": "high"
+    },
+    {
+      "findingId": "REP-C1-01",
+      "isReal": true,
+      "disposition": "CONFIRMED",
+      "severityFinal": "MEDIUM",
+      "rationale": "Verified. ReportsHost (reports-host.tsx:29-65) never calls useAiRequestsContext and forwards no aiRequests/onUpdateAiRequestText/onDeleteAiRequest to ReportsPanel; ReportsPanel (ReportsPanel.tsx:21-49) declares no aiRequests prop and invokes CardListPanel (:68-71) without it. CardListPanel only renders its pending-requests section when aiRequests is non-empty (CardListPanel.tsx:96-98 hasAiRequests gate; :139 aiRequestsSection), so the section is structurally absent for reports. Contrast the working pattern: FootnotesHost (footnotes-host.tsx:30,48-50) reads useAiRequestsContext and forwards the three props, and FootnotePanel filters r.kind==='footnote' (:69) before passing to CardListPanel (:150). 'report' is a first-class AiRequestKind (types.ts:203) drained by /editor/answer-report-request, and ai-requests.tsx:7-8 explicitly states FIVE panels host AI request cards (notes, footnotes, todo, reports, citations) — reports is the one gap. A kind:'report' request filed from the editor 'can-I-request' gesture (no card) is therefore invisible in the docked panel. Function (the inbox section) is structurally missing → MEDIUM.",
+      "correctedRootCause": null,
+      "class": "Any AI-request-bearing panel that forgets to thread aiRequests through both its host (useAiRequestsContext) and its panel (aiRequests prop + r.kind filter). Reports is the only one of the five named panels with the gap; the seam is host + panel both omitting it.",
+      "confidence": "high"
+    }
+  ]
+}

@@ -1,0 +1,160 @@
+{
+  "subject": "reports",
+  "group": "g-display",
+  "clusters": ["F1", "F4", "F5"],
+  "cells": [
+    {
+      "cluster": "F1",
+      "status": "BUG",
+      "note": "Initial mount + populated render OK (ReportsPanel.tsx:50-58 sort by createdAt, withRecentlyAddedFirst; CardListPanel renders count=cards.length covering both kinds). Empty state OK (ReportsPanel.tsx:84-88). BUT collapsed EMPTY report renders a blank line, not the 'empty' placeholder: ReportCard.tsx:79 passes `makeCompressedSummary(...) || ''`, and EditableCard panel-primitives.tsx:1074 does `compressedSummary ?? <CardEmptyText/>` — `'' ?? x` returns '' (nullish only catches null/undefined). Truncation: makeCompressedSummary slices 80*lines chars (panel-primitives.tsx:183-186) with CSS WebkitLineClamp — sans-class, designed.",
+      "bugIds": ["REP-F1-01"]
+    },
+    {
+      "cluster": "F4",
+      "status": "BUG",
+      "note": "Report bodies are editable RichTextField (bodyClass 'sans', card-registry.tsx:411; not BorrowedMainText). Citation atoms render via the SAME Citation extension as main editor (borrowed-schema.ts:150) so click-through DOES select the citation card (citation.ts:269 fires virgil-citation-click). BUT reports-host.tsx:50-64 never reads useCitationDisplayContext() nor passes getCitationDisplayText/onCitationCreated to ReportsPanel — and ReportsPanel doesn't accept them — so citations in report bodies render raw \\cite{key} (RichTextField.tsx:205-207,283 fall back to command) and dropped new citations don't register. Every sibling panel (notes/footnotes/archive/citations host) wires these. Compressed report uses flat summary string (sans → useBorrowedCompressed false, panel-primitives.tsx:864) so collapsed bodies lose atom rendering — designed for sans kinds.",
+      "bugIds": ["REP-F4-01"]
+    },
+    {
+      "cluster": "F5",
+      "status": "BUG",
+      "note": "Edit body (updateReportContent/updateRequestContent useReports.ts:191-230) and AI-request flag toggle (setRequestAiRequest:232-261 → bridgeCardAiRequestFlag) work. BUT: (1) report-request→report morph orphans the pending ai-requests.json entry — requestToReport (morphs/index.ts:149) drops aiRequest with NO bridge(false) call, convertCard (useReports.ts:267) only applyCardMorph; morph confirm (EditorPane.tsx:875) never mentions the dropped flag [REP-F5-01]. (2) Reports docked panel renders NO Pending-AI-Requests section: reports-host.tsx passes no aiRequests/onUpdate/onDelete to ReportsPanel (Footnotes/Notes do), so a kind:report request (answer-report-request skill) has no inbox row [REP-F5-02]. (3) A user title matching ^Report \\d+$ is silently nulled on reload (isAutoTitle, panel-registry.ts:254-258; migrateReportRecord useReports.ts:57-59) [REP-F5-03]. (4) Expanded title input (CardBodyTitle uncontrolled defaultValue, panel-primitives.tsx:552) doesn't re-sync on external title write [REP-F5-04].",
+      "bugIds": ["REP-F5-01", "REP-F5-02", "REP-F5-03", "REP-F5-04"]
+    }
+  ],
+  "findings": [
+    {
+      "id": "REP-F4-01",
+      "subject": "reports",
+      "cluster": "F4",
+      "severity": "MEDIUM",
+      "symptom": "A citation placed inside a Report (or Report Request) body shows the raw LaTeX command \\cite{smith2020} instead of the formatted name (e.g. 'Smith 2020'), and a brand-new citation dropped into a report body never appears in the Citations panel / gets no stable id.",
+      "suspectedRootCause": "reports-host.tsx never consumes the surrounding CitationDisplayProvider: it neither calls useCitationDisplayContext() nor forwards getCitationDisplayText/onCitationCreated to ReportsPanel, and ReportsPanel/buildReportsOmniItems do not accept or thread those props. ReportCard/ReportRequestCard declare the props but receive undefined. RichTextField.refreshCitationDisplay returns the doc unchanged when getCitationDisplayTextRef is undefined (returns doc at the `if (!lookup) return doc` guard), and the drop handler skips onCitationCreated, so citation atoms render `displayText || command` = the bare command and never register. Every other RichTextField-bearing panel host (notes/footnotes/archive/citations) wires these from the same provider.",
+      "evidence": [
+        { "file": "src/components/editor-layout/panels/reports-host.tsx", "line": 50, "note": "ReportsPanel mounted with NO getCitationDisplayText/onCitationCreated props and no useCitationDisplayContext() call" },
+        { "file": "src/components/editor-layout/panels/notes-host.tsx", "line": 94, "note": "sibling notes-host passes getCitationDisplayText/onCitationCreated from useCitationDisplayContext() — the wiring reports-host lacks" },
+        { "file": "src/panels/Reports/ReportCard.tsx", "line": 124, "note": "ReportCard forwards getCitationDisplayText/onCitationCreated to EditableCard but they arrive undefined (panel never supplies them)" },
+        { "file": "src/components/RichTextField.tsx", "line": 205, "note": "refreshCitationDisplay short-circuits (returns doc unchanged) when the lookup is undefined → stored displayText='' renders the raw command" },
+        { "file": "src/panels/Reports/omni.tsx", "line": 42, "note": "buildReportsOmniItems renderCard also omits citation-display props → omni report cards have the same raw-\\cite defect" }
+      ],
+      "reproSteps": [
+        "Open a paper with a bibliography in the dev doc.",
+        "Add a Report card; drop or type a \\cite{...} into its body (expanded).",
+        "Observe the citation pill shows the raw \\cite{key} command rather than the formatted author-year, while the same citation in the main text shows the formatted name.",
+        "Drop a brand-new \\cite{newkey} into the report body: it never shows up in the Citations panel (no onCitationCreated registration)."
+      ],
+      "reproChannel": "code-trace",
+      "confidence": "high",
+      "suspectedClass": "Any panel host that mounts a RichTextField-bearing card but forgets to thread the CitationDisplayProvider values. Reports is the one left-side card panel that missed it; check any future card panel and the float-body builders for the same omission."
+    },
+    {
+      "id": "REP-F5-01",
+      "subject": "reports",
+      "cluster": "F5",
+      "severity": "DATA-LOSS",
+      "symptom": "Morphing a Report Request that has its 'AI request' flag on into a Report silently drops the flag AND leaves a stale pending entry in ai-requests.json that can never be cleared through the UI; the confirm dialog never warns the user about either.",
+      "suspectedRootCause": "report-request → report morph flips kind via requestToReport (drops aiRequest) inside useReports.convertCard, but neither the morph transform nor convertCard calls bridgeCardAiRequestFlag(docId, 'report-request', id, false). The on-disk ai-requests.json request with linkedTo={panel:'reports',cardId} stays 'pending'. The new card is a `report`, which has no aiRequest field and no AI-request checkbox UI, so the user cannot toggle it off; a skill draining the inbox resolves linkedTo.cardId to a `report` (not a request) and is confused. The lossy-morph confirm message (EditorPane.tsx:875) only says 'drops the title and byline' — it never mentions the AI-request flag, and for the request→report direction the message is doubly wrong (a request has no title/byline; the real loss is the flag + orphaned inbox entry).",
+      "evidence": [
+        { "file": "src/cards/morphs/index.ts", "line": 149, "note": "requestToReport flips kind→report and omits aiRequest entirely — no inbox bridge cleanup" },
+        { "file": "src/hooks/useReports.ts", "line": 267, "note": "convertCard only calls applyCardMorph inside update(); never bridges the dropped aiRequest flag to ai-requests.json" },
+        { "file": "src/lib/ai-request-bridge.ts", "line": 132, "note": "the only path that removes an inbox entry is a value=false bridge call — which the morph never makes, so the pending request is orphaned" },
+        { "file": "src/components/EditorPane.tsx", "line": 875, "note": "lossy confirm message mentions only title/byline; never the aiRequest flag or the orphaned inbox entry; same message used for both morph directions" },
+        { "file": "src/cards/card-registry.tsx", "line": 422, "note": "report-request declares aiRequest routing {kind:'report',linkPanel:'reports'}; report (line 394) declares none — so the flag has no home post-morph" }
+      ],
+      "reproSteps": [
+        "Add a Report Request, type a body, tick its 'AI request' checkbox (this writes a pending entry to ai-requests.json).",
+        "Use the kind chevron to morph it to a Report; confirm the (incomplete) dialog.",
+        "Inspect virgil/ai-requests.json: the linked request is still status:'pending' but the card is now a Report with no way to surface or clear it.",
+        "Re-morph back to Report Request: a fresh request may be filed, leaving a stale duplicate."
+      ],
+      "reproChannel": "code-trace",
+      "confidence": "high",
+      "suspectedClass": "Any lossy morph that drops an aiRequest flag without bridging it off. note→highlight: noteToHighlight preserves aiRequest (morphs/index.ts:184) so highlight keeps the flag — but highlight's aiRequest routing differs ({kind:'highlight'}) from note's ({kind:'note'}), so the on-disk inbox entry's kind goes stale across that morph too. Check all morph pairs where the two kinds declare different aiRequest routing for inbox drift."
+    },
+    {
+      "id": "REP-F5-02",
+      "subject": "reports",
+      "cluster": "F5",
+      "severity": "MEDIUM",
+      "symptom": "The docked Reports panel never shows a 'Pending AI Requests' section, unlike Footnotes/Notes/Todos — a standalone or orphaned report AI-request (e.g. one whose request-card was morphed or deleted) is invisible and cannot be edited or dismissed from the panel.",
+      "suspectedRootCause": "reports-host.tsx does not call useAiRequestsContext() and passes no aiRequests / onUpdateAiRequestText / onDeleteAiRequest to ReportsPanel, and ReportsPanel does not declare or filter aiRequests (no `r.kind === 'report'` filter the way FootnotePanel.tsx:69 / NotesPanel.tsx:83 do). CardListPanel renders the AI-requests section only when given a non-empty aiRequests prop. Yet reports fully participate in the unified inbox (CARD_REGISTRY report-request routes kind:'report'/linkPanel:'reports'; the answer-report-request skill drains kind:'report' entries). Visibility is partly served by the request card's own checkbox, but a request entry with no live card (after REP-F5-01's morph orphan, or after the request card is deleted) has nowhere to render.",
+      "evidence": [
+        { "file": "src/components/editor-layout/panels/reports-host.tsx", "line": 50, "note": "ReportsPanel mounted with no aiRequests/onUpdateAiRequestText/onDeleteAiRequest; reports-host never imports useAiRequestsContext" },
+        { "file": "src/panels/Reports/ReportsPanel.tsx", "line": 21, "note": "ReportsPanel props omit aiRequests entirely; CardListPanel below it therefore renders no AI-requests section" },
+        { "file": "src/panels/Footnotes/FootnotePanel.tsx", "line": 69, "note": "sibling panels filter aiRequests by kind and pass them to CardListPanel — the section reports lacks" },
+        { "file": "src/panels/_shared/CardListPanel.tsx", "line": 98, "note": "the AI-requests section only appears when a non-empty aiRequests prop is supplied" }
+      ],
+      "reproSteps": [
+        "File a kind:'report' AI request (tick AI-request on a report-request, or have a skill create a virtual reports request).",
+        "Delete or morph away the originating report-request card.",
+        "Open the Reports panel: there is no Pending-AI-Requests section, so the still-pending request is invisible and unclearable from the UI."
+      ],
+      "reproChannel": "code-trace",
+      "confidence": "high",
+      "suspectedClass": "Polymorphic panels whose request kind lives in the inbox but whose docked host forgot the inbox wiring. Cutter/Revisions hosts should be checked for the same omission (suggestion-kind requests)."
+    },
+    {
+      "id": "REP-F5-03",
+      "subject": "reports",
+      "cluster": "F5",
+      "severity": "MEDIUM",
+      "symptom": "A user who titles a report exactly like the legacy auto-pattern — e.g. 'Report 2', 'Report 14' — loses that title silently on the next document load; it reverts to the empty +T placeholder.",
+      "suspectedRootCause": "On load, migrateReportRecord nulls any title for which isAutoTitle('report', title) is true. isAutoTitle matches the regex ^Report \\d+$ (the kind's CARD_TITLE_LABELS prefix), which cannot distinguish a user-typed 'Report 2' from the legacy generated title that BUG #31 stopped persisting. The auto-title.test.ts even codifies migrateTitle('report','Report 2') === '' as intended, so the lossy behavior is deliberate — but it still destroys a legitimate user title with no warning or recovery.",
+      "evidence": [
+        { "file": "src/hooks/useReports.ts", "line": 57, "note": "migrateReportRecord: `title: isAutoTitle('report', r.title) ? r.title-or-'' ` — nulls on the auto pattern at load" },
+        { "file": "src/panels/panel-registry.ts", "line": 254, "note": "isAutoTitle tests ^<Label> \\d+$ — 'Report 2' matches regardless of whether the user typed it" },
+        { "file": "src/panels/__tests__/auto-title.test.ts", "line": 146, "note": "test asserts migrateTitle('report','Report 2') === '' as intended behavior — confirms the loss is by design, hence a known-fragile UX hazard, not an accident" }
+      ],
+      "reproSteps": [
+        "Add a Report and set its title to 'Report 2' (e.g. a paper whose section 2 you are reporting on).",
+        "Reload the document (close/reopen the paper folder).",
+        "The report's title is gone — it shows the +T placeholder."
+      ],
+      "reproChannel": "code-trace",
+      "confidence": "high",
+      "suspectedClass": "Every auto-titling kind: note ('Note 3'), footnote ('Footnote 2'), archive ('Archive Text 1'), todo ('Task 9'), example ('Example 4'). All five share the same isAutoTitle strip-on-load and the same false-positive on a legitimately-typed matching title (auto-title.test.ts:142-163 codifies it for all of them)."
+    },
+    {
+      "id": "REP-F1-01",
+      "subject": "reports",
+      "cluster": "F1",
+      "severity": "COSMETIC",
+      "symptom": "A collapsed Report (or Report Request) with an empty body shows a blank summary line instead of the muted italic 'empty' placeholder that other empty collapsed cards (e.g. Cutter comments) show.",
+      "suspectedRootCause": "ReportCard/ReportRequestCard build compressedSummary as `makeCompressedSummary(...) || ''` (empty body → ''), and EditableCard renders `{compressedSummary ?? <CardEmptyText/>}`. Because '' is not null/undefined, the nullish-coalescing fallback never fires, so an empty string renders (a blank line) rather than CardEmptyText. CutterCommentCard uses `|| undefined`, which DOES fall through to the placeholder — so the cards disagree.",
+      "evidence": [
+        { "file": "src/panels/Reports/ReportCard.tsx", "line": 79, "note": "compressedSummary = makeCompressedSummary(...) || '' → empty body yields '' not undefined" },
+        { "file": "src/components/panel-primitives.tsx", "line": 1074, "note": "`compressedSummary ?? <CardEmptyText/>` — '' bypasses the fallback, renders a blank line" },
+        { "file": "src/panels/Cutter/CutterCommentCard.tsx", "line": 91, "note": "CutterCommentCard uses `|| undefined` so its empty collapsed card shows the placeholder — proves the intended behavior and the report divergence" }
+      ],
+      "reproSteps": [
+        "Add a Report Request and leave its body empty.",
+        "Collapse it (or view it collapsed in the docked panel).",
+        "It shows a blank body row; compare to a collapsed empty Cutter comment which shows 'empty'."
+      ],
+      "reproChannel": "code-trace",
+      "confidence": "high",
+      "suspectedClass": "Cards that pass `makeCompressedSummary(...) || ''` instead of `|| undefined`: NoteCard.tsx:95, ArchiveCard.tsx:74, FootnoteCard.tsx:108 & :207, RevisionCommentCard.tsx:75 all share the same blank-instead-of-placeholder behavior; only CutterCommentCard does it the way that surfaces the placeholder."
+    },
+    {
+      "id": "REP-F5-04",
+      "subject": "reports",
+      "cluster": "F5",
+      "severity": "LOW",
+      "symptom": "When a report's title is changed externally (a skill writes reports.json, or the user edits the title on a different surface) while the expanded card stays mounted, the editable title input keeps showing the old value.",
+      "suspectedRootCause": "CardBodyTitle (the expanded +T title input) is uncontrolled — it reads `defaultValue={value ?? ''}` once and its only useEffect keys on `[editing]`, never on `value`. There is no instanceKey/remount on value change (EditableCard's instanceKey drives only the RichTextField body). So a prop change to bodyTitle does not propagate into the visible expanded input. The collapsed static title row (panel-primitives.tsx:1040) uses the reactive bodyTitle prop and updates correctly, so the two views can disagree.",
+      "evidence": [
+        { "file": "src/components/panel-primitives.tsx", "line": 552, "note": "CardBodyTitle input uses defaultValue (uncontrolled), no key on value" },
+        { "file": "src/components/panel-primitives.tsx", "line": 535, "note": "the only re-sync effect depends on [editing], not [value] — external value changes never refresh the input" },
+        { "file": "src/components/panel-primitives.tsx", "line": 1040, "note": "the collapsed title row uses the reactive bodyTitle prop, so collapsed vs expanded can desync after an external write" }
+      ],
+      "reproSteps": [
+        "Open a report expanded in the docked panel.",
+        "Have a skill (or another open surface) rewrite that report's title in reports.json.",
+        "The expanded title input still shows the old title until the card is unmounted/remounted; collapsing shows the new one."
+      ],
+      "reproChannel": "code-trace",
+      "confidence": "medium",
+      "suspectedClass": "Shared CardBodyTitle affects every bodyTitle-bearing card: footnotes (FootnoteCard), notes, archive, examples. Any external/cross-surface title write desyncs the expanded input on all of them."
+    }
+  ]
+}

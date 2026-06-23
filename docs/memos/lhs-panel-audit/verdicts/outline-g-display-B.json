@@ -1,0 +1,76 @@
+{
+  "file": "outline-g-display",
+  "verifier": "B",
+  "verdicts": [
+    {
+      "findingId": "OUT-F5-01",
+      "isReal": true,
+      "disposition": "CONFIRMED",
+      "severityFinal": "DATA-LOSS",
+      "rationale": "Verified full chain. Outline edit-mode heading rename routes pod.text (= h.text = extractText(node) || 'Untitled', a lossy flatten that drops inlineMath/citation/labelRef and is seeded into the EditablePod input at OutlinePanel.tsx:896) → commitRename (OutlinePanel.tsx:906-912, fires when trimmed !== pod.text) → onRenameHeading → handleRenameHeading (editor-ops.ts:123-137). Line 132 does tr.delete(from,to).insertText(newText,from) where from=offset+1 / to=offset+nodeSize-1 spans the ENTIRE heading inner content, then re-inserts only the flat string. All inline marks (bold/italic), inlineMath ($..$), citation atoms, and \\ref/labelRef atoms inside the heading are permanently destroyed. Headings legitimately hold these (latex-parser.ts:1197 parses headings via parseInlineContent; inlineMath at :209, citation at :478, labelRef at :539 are all attrs-only leaves). The user never even sees the atoms in the input (already stripped by extractText), so the loss is invisible. Inline-math/citation headings are common in Virgil's academic-LaTeX audience, and editing one word silently corrupts the source. This is silent loss of user content on a path a human hits.",
+      "correctedRootCause": "Truest root cause: handleRenameHeading (src/components/editor-layout/card-actions/editor-ops.ts:132) models the heading as a plain-text container and uses delete-inner + insertText, discarding the existing inline node/mark structure rather than diffing/patching the text runs in place. The lossy extractText seed (OutlinePanel.tsx:280-284, used at :324) is a contributing amplifier — it hides from the user what the rename will destroy. Note this destructive flatten is UNIQUE to the outline rename handler: in-editor heading editing edits the live node content directly (atoms preserved), and the in-editor parTitle node-view (editor-extensions.ts:200-235) writes parTitle as a preserved attr via setNodeMarkup, not delete+insertText — so the finder's 'parTitle node-views share the flaw' suspicion is incorrect for content destruction.",
+      "class": "Edit-a-structured-node via plain-text input seeded from a flattened projection, committed with delete+insertText instead of attr-patch or text-run-diff. The same flatten-then-destroy pattern would apply to any future 'rename by flat string' over a rich-content node range.",
+      "confidence": "high"
+    },
+    {
+      "findingId": "OUT-F4-01",
+      "isReal": true,
+      "disposition": "CONFIRMED",
+      "severityFinal": "LOW",
+      "rationale": "Verified. extractText (OutlinePanel.tsx:280-284) returns node.text for type==='text', recurses node.content, else ''. inlineMath (latex-parser.ts:209), citation (:478), and labelRef (:539) are attrs-only leaves with neither .text nor .content, so extractText yields '' for each — they vanish from the rendered heading row and, via getDocTitle reusing extractText (OutlinePanel.tsx:286-294), from the title row. Display-only, fully recoverable (source untouched); LOW is correct.",
+      "correctedRootCause": "Same as finder (extractText drops attrs-only atoms). CORRECTION to the finder's proposed fix: the 'canonical' getAtomText registry (src/lib/atom-text.ts:19-30) only covers inlineMath among the three atom kinds that appear in headings — it has NO citation and NO labelRef extractor, so for those it falls back to node.textContent which is ALSO '' for attrs-only atoms. getAtomText would fix only the inline-math case; citations and \\ref would still drop. The true fix needs citation/labelRef display-text resolution (e.g. the displayText/command attrs), not merely calling getAtomText.",
+      "class": "Every hand-rolled heading/title content flatten that ignores attrs-only atoms: OutlinePanel.extractText (display + rename seed + drag-ghost label at handleDragStart), getDocTitle. The internal word-count walk collectInline (OutlinePanel.tsx:468) DOES pull inlineMath.attrs.latex but skips citation (:473) — an internal inconsistency, but that path is counting not display so it is benign.",
+      "confidence": "high"
+    },
+    {
+      "findingId": "OUT-F5-02",
+      "isReal": true,
+      "disposition": "CONFIRMED",
+      "severityFinal": "LOW",
+      "rationale": "Verified. handleRenameParTitle (editor-ops.ts:160-174) calls setNodeMarkup(offset, undefined, {...node.attrs, parTitle:newTitle}) at line 167 with NO node.type.name guard, whereas the sibling handleRenameHeading (:129) and handleUpdateLabel (:147) both guard on 'heading'. parTitle is a declared attr only on paragraph (editor-extensions.ts:138), bulletList (:664), orderedList (:681) — not on heading. The outline addresses blocks by integer index from a debounced content snapshot (handleUpdate debounces setLatestDoc 300ms, editor-ops.ts:45-48) while the handler mutates the live doc, so a structural drift inside that window in edit mode can point the index at the wrong block. Worst case is stamping parTitle onto a different-but-valid paragraph/list (mislabeled, recoverable) or onto a heading where the undeclared attr silently drops / no-ops. No irrecoverable corruption; rare trigger (edit-mode + concurrent structural edit within the snapshot lag). LOW with low confidence is honest.",
+      "correctedRootCause": "Same as finder: missing node.type.name guard at editor-ops.ts:165-167 plus integer-blockIndex addressing of a snapshot while mutating the live doc. The missing guard is the specific instance; the class is the snapshot-vs-live index addressing scheme.",
+      "class": "All index-based block addressing in editor-ops.ts (handleRenameHeading, handleUpdateLabel, handleReorderBlocks, handleScrollToHeading) is exposed to snapshot/live drift; the guarded handlers degrade to a safe no-op, the unguarded parTitle handler degrades to a wrong-target attr write. UUID anchoring (as useFocusMode adopted) is the structural fix.",
+      "confidence": "medium"
+    },
+    {
+      "findingId": "OUT-F5-03",
+      "isReal": true,
+      "disposition": "CONFIRMED",
+      "severityFinal": "LOW",
+      "rationale": "Verified. InlineLabel.commit() (OutlinePanel.tsx:179-183) calls onCommit(trimmed || null) and closes, never consulting `conflict` (computed only for the warning render at :185-186). The warning (:208-212) is purely presentational. onCommit → onUpdateLabel → handleUpdateLabel (editor-ops.ts:141-158) writes the label markup unconditionally (:148-151) with no taken-check. isLabelTaken (src/lib/labels.ts:54) is a pure advisory predicate. So pressing Enter / blurring with a colliding key does commit a duplicate \\label{}. Real, but recoverable (LaTeX warns at compile, user sees the live warning and chose to proceed, easy to fix); arguably warn-not-block is partly by design. LOW is correct.",
+      "correctedRootCause": "Same as finder: commit() ignores the advisory conflict flag (OutlinePanel.tsx:179) and the downstream handler writes unconditionally (editor-ops.ts:148).",
+      "class": "Advisory-only conflict checks that surface a warning but don't gate commit — compare any other isTaken/isLabelTaken-backed label/citekey input. The in-editor heading-label node-view should be checked for the same advisory-without-gate pattern.",
+      "confidence": "high"
+    },
+    {
+      "findingId": "OUT-F5-04",
+      "isReal": true,
+      "disposition": "RECLASSIFIED",
+      "severityFinal": "LOW",
+      "rationale": "Mechanism CONFIRMED, severity downgraded MEDIUM→LOW. The Library Reader DOES pass a viewPrefs shim: PaperRender.tsx:154 calls useReaderViewPrefs() and :241 passes viewPrefs={readerViewPrefs} into <EditorPane editable={false} chrome={READER_CHROME}>. That drives the `if (viewPrefs)` branch (EditorPane.tsx:5345) which mounts the FULL OutlineHost with the shim's truthy no-op callbacks (reader-view-prefs.ts:323-333: onReorderBlocks/onRenameHeading/onRenameParTitle/onUpdateLabel/onFocusActivate all () => {}). OutlinePanel gates affordances on callback truthiness, not a read-only flag: Edit button on onReorderBlocks (:1661), Focus on onFocusActivate (:1676), InlineLabel on showLabels && onUpdateLabel (:676), edit-mode render on onReorderBlocks && onRenameHeading && onRenameParTitle (:1755) — all satisfied by truthy no-ops. So in the Reader the Edit/Focus buttons and label '+' render and 'commit' into no-ops. (The CLAUDE.md / READER_INHERITANCE.md claim 'Reader passes no viewPrefs' is STALE — the code at PaperRender.tsx:241 contradicts it; code wins.) Downgraded to LOW because the callbacks are inert no-ops: NO data is written, lost, or corrupted — it is purely dead/misleading UI with no consequence beyond the user noticing the edit silently does nothing. That is minor recoverable wrongness (LOW), not 'function broken / wrong result' (MEDIUM).",
+      "correctedRootCause": "Affordance visibility gated on callback-presence (truthiness) rather than an explicit editable/read-only flag (OutlinePanel.tsx:676, :1661, :1676, :1755), combined with the Reader shim supplying truthy no-op callbacks to satisfy the canonical `if (viewPrefs)` branch (reader-view-prefs.ts:323-333 by design, per its header comment) — and a stale doc that asserts the Reader passes no viewPrefs (PaperRender.tsx:241 proves otherwise).",
+      "class": "Gating editor affordances on callback-presence rather than a read-only flag — any panel mounted via the reader shim that exposes edit/move/morph controls. Focus row-click handlers (onFocusMoveTo/onFocusExpandTo) share the same rendered-but-no-op trap in Reader.",
+      "confidence": "high"
+    },
+    {
+      "findingId": "OUT-F1-02",
+      "isReal": true,
+      "disposition": "CONFIRMED",
+      "severityFinal": "COSMETIC",
+      "rationale": "Verified. The Document-start row hardcodes the literal 'words' in its count span (OutlinePanel.tsx:1819-1823) while every heading data row renders the numeric {sectionWordCount} (:684-688). Confirmed COSMETIC. Strong evidence it is an intentional one-row unit legend, not a missing computation: the docstart span deliberately OMITS the `tabular-nums` class that all numeric data rows carry (compare :1820 vs :685), which is exactly what you'd do for a label rather than a number. No data impact; at most a mild visual inconsistency. Finder's low confidence and COSMETIC rating are appropriate.",
+      "correctedRootCause": "Same line as finder (OutlinePanel.tsx:1820). Likely by-design legend rather than a defect — the preamble/pre-first-heading region simply has no per-section bucket, so the row shows the unit word instead of a count.",
+      "class": "Preamble/document-start region has no computed word count in the outline even though buildPerBlockCounts holds index-0 numbers; minor and isolated.",
+      "confidence": "medium"
+    },
+    {
+      "findingId": "OUT-F1-01",
+      "isReal": true,
+      "disposition": "CONFIRMED",
+      "severityFinal": "LOW",
+      "rationale": "Verified. Render text is node.heading.text (OutlinePanel.tsx:674) = extractText(node) || 'Untitled' (:324). extractText drops attrs-only atoms (see OUT-F4-01), so a heading like 'Step 3: $n+1$' renders 'Step 3: ', and a heading that is ENTIRELY atoms (e.g. \\section{$\\Sigma$}) extracts to '' and falls back to the literal 'Untitled' (:324). Display-only, source intact, recoverable; LOW correct. The all-atom→'Untitled' case is real but uncommon (a heading composed entirely of math/citation); the partial-strip case is the more frequent one. Shares the extractText root with OUT-F4-01.",
+      "correctedRootCause": "Same root as OUT-F4-01 (extractText drops attrs-only inlineMath/citation/labelRef); the `|| 'Untitled'` fallback at OutlinePanel.tsx:324 amplifies a fully-stripped heading into an outright wrong label. Same fix caveat applies: getAtomText alone only recovers inlineMath, not citation/labelRef.",
+      "class": "Duplicate-root with OUT-F4-01 (extractText atom-dropping); the Untitled fallback is the amplification.",
+      "confidence": "high"
+    }
+  ]
+}

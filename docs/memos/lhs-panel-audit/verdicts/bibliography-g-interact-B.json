@@ -1,0 +1,76 @@
+{
+  "file": "bibliography-g-interact",
+  "verifier": "B",
+  "verdicts": [
+    {
+      "findingId": "BIB-F3-01",
+      "isReal": true,
+      "disposition": "CONFIRMED",
+      "severityFinal": "HIGH",
+      "rationale": "Traced end-to-end and fully confirmed. getCitations()/getCitationIds() explicitly walk a footnote's attrs.content via walkJsonContentForCitations, attributing the footnote's own pos to nested cites (Editor.tsx:1318-1323, 1365-1369). That feeds both citationsHook.citations (via EditorPane syncFromEditor → getCitations, EditorPane.tsx:1177) and EditorLayout's allEditorCitations (EditorLayout.tsx:1886 ← getCitations()). The bib panel derives citedKeys from `citations` (BibliographyPanel.tsx:211-217) and renders the jump arrow only when isCited (BibliographyPanel.tsx:950, isCited=citedKeys.has at :911) — so an in-footnote-only key shows a LIVE arrow. The jump path (bibliography-host.tsx:60 → editorRef.scrollToCitation → Editor.tsx:1329-1338 builds an inline-atom VirgilLink with pos:null → jumpToLink('to-marker') → resolveLink, links.ts:429-431) calls findInlineAtomPos which scans ONLY editor.state.doc.descendants (links.ts:645-662). descendants() never enters footnote attrs.content (a JSONContent literal), so it returns null → resolveLink returns null at links.ts:431 (BEFORE any DOM querySelector fallback at :436 is reached) → jumpToLink's `if (resolved?.domEl)` (links.ts:513) is false → no scroll. The asymmetry is acknowledged in the codebase's own comment (Editor.tsx:327-329: 'every place that COLLECTS a footnote-nested cite has a matching remover') — delete WAS special-cased (stripFootnoteNestedCitation, Editor.tsx:1422) but jump/hover/highlight were not. A cited entry showing a clickable jump arrow that silently does nothing is a core-function break on a path a real paper hits (footnote-only citations are common). HIGH confirmed.",
+      "correctedRootCause": "Shared resolver blind spot: findInlineAtomPos (links.ts:645-662) and resolveLink (links.ts:429-431) only traverse editor.state.doc.descendants, which by ProseMirror design does not descend into atomic-node attrs holding a JSONContent literal (footnote.attrs.content). The deeper fix is to make the inline-atom resolver footnote-content-aware (mirroring stripFootnoteNestedCitation's traversal) so jump/hover/highlight share the same reach the collectors already have.",
+      "class": "descendants-only-traversal blind spot for footnote-nested atoms — siblings: citations CI-F3-01 (same resolver), the reconciler's collectAnchorEls (selection-driven highlight EditorLayout.tsx:1899-1916 can't paint an in-footnote marker), and cycleOccurrence's jump when the cycled occurrence is in a footnote (BibliographyPanel.tsx:165-179 inherits the same scrollToCitation no-op).",
+      "confidence": "high"
+    },
+    {
+      "findingId": "BIB-F3-02",
+      "isReal": true,
+      "disposition": "RECLASSIFIED",
+      "severityFinal": "LOW",
+      "rationale": "Mechanism confirmed. keyOccurrenceIdx is component state keyed by citekey (BibliographyPanel.tsx:99); renderCard reads idx=keyOccurrenceIdx[entry.key]||0 unclamped (BibliographyPanel.tsx:910) and passes occurrenceInfo={total: ids.length, current: idx} (BibliographyPanel.tsx:969-976). BibEntryCard renders `{current+1}/{total}` verbatim (BibEntryCard.tsx:561). cycleOccurrence only re-clamps via modulo on the NEXT user cycle (BibliographyPanel.tsx:170); there is no effect that resets keyOccurrenceIdx when allEditorCitations shrinks. So after cycling to the last of 3 and then deleting an occurrence (ids.length→2 while idx stays 2) the counter reads '3/2' and handleJumpToBibKey falls to ids[idx]||ids[0]=ids[0] (BibliographyPanel.tsx:201-202), landing on a different occurrence than the counter implies. All real. DOWNGRADED to LOW: the precondition is a specific, narrow sequence (cite N times, select, cycle to the tail, then delete an occurrence WITHOUT re-cycling), the counter glitch is cosmetic, the jump still lands on a valid in-doc occurrence (no data loss, no dead navigation), and it self-heals on the next cycle. This is edge wrongness, not a core-function break.",
+      "correctedRootCause": "Per-citekey index stored in component state (keyOccurrenceIdx) is never reconciled against the live citation-id list when allEditorCitations changes — there is no clamp at read time (BibliographyPanel.tsx:910) nor a reconcile effect. Citation ids regenerate on every parse (useCitations.ts:357-374) so the list refreshes on any structural edit while the stored idx survives.",
+      "class": "stale-index-keyed-by-natural-key — sibling: the Citations panel's own per-key occurrence cycling (same keyOccurrenceIdx pattern + regenerate-ids-on-parse).",
+      "confidence": "high"
+    },
+    {
+      "findingId": "BIB-F7-01",
+      "isReal": true,
+      "disposition": "CONFIRMED",
+      "severityFinal": "DATA-LOSS",
+      "rationale": "Confirmed on the primary repro path. handleExportCited builds content as `cited.map(e => e.raw).filter(Boolean).join(...)` (BibliographyPanel.tsx:363). handleConflictNewCitekey deliberately adds the entry with raw:'' (BibliographyPanel.tsx:524) so the whole-file serializer rebuilds the block under the new citekey. addBibEntry pushes the entry verbatim (raw stays '') and only re-serializes the whole-file bibRaw via serializeBibFile, never back-filling the per-entry .raw (useCitations.ts:317-327). The in-memory bibEntries array therefore contains an entry with raw:'' for the rest of the session (until a disk reload re-parses raw from the freshly-written bibRaw, bib-parser.ts:61). The display path reads fields not raw, so the entry is fully visible in the panel; but on Export cited.bib the .filter(Boolean) silently drops it. serializeBibFile (bib-parser.ts:128-139) has the CORRECT fields-fallback that the export path fails to reuse, so disk and export disagree. A user sees N cited entries in the panel but the downloaded cited.bib is missing one with no warning — silent loss of user-visible content on a deliberate export action. DATA-LOSS confirmed. (Note: the secondary 'Add from library' sub-claim is weaker — library entries parsed from master.bib carry a non-empty raw, bib-parser.ts:61, so that path usually does NOT trip the bug; the 'Save under new citekey' path is the solid, reproducible loss.)",
+      "correctedRootCause": "Export path reads entry.raw directly (BibliographyPanel.tsx:363) instead of routing through serializeBibFile, which reconstructs from fields when raw is empty (bib-parser.ts:128-139). The empty-raw state originates because addBibEntry never back-fills per-entry .raw (useCitations.ts:317-327) — it only refreshes the whole-file bibRaw.",
+      "class": "raw-only consumer ignoring the fields fallback — any future 'copy bibtex'/'export all' reading entry.raw inherits the empty-raw blind spot. Sibling of lead #5.",
+      "confidence": "high"
+    },
+    {
+      "findingId": "BIB-F7-02",
+      "isReal": true,
+      "disposition": "RECLASSIFIED",
+      "severityFinal": "LOW",
+      "rationale": "The export-dedup mechanism is real (handleExportCited's seen-set on e.key keeps first-wins, BibliographyPanel.tsx:350-355; sortedEntries applies the same display dedup at :219-235). BUT the deeper truth weakens it materially: two distinct entries sharing a citekey are ALREADY corrupted at parse, before export ever runs. extractRawEntries keys rawEntries by key.toLowerCase() and OVERWRITES on a duplicate (bib-parser.ts:874), so both BibEntry objects produced by citation-js (whole-file parse, bib-parser.ts:101-105) receive the SAME raw — the LAST block's text. So even the surviving 'first' entry carries the wrong raw, and the user's .bib was hand-malformed (two different @article blocks, identical key) to begin with — a precondition the app never creates itself. The export 'drop' is a secondary symptom of a parse-level key collision on a user-authored malformed file. No app-generated path reaches this; it is recoverable by renaming the colliding key. DOWNGRADED from MEDIUM to LOW.",
+      "correctedRootCause": "Citekey collisions are resolved by last-wins overwrite at the parser (extractRawEntries, bib-parser.ts:874) — both parsed entries share the last block's raw — so the data is already mangled upstream of the export/display dedup. The seen-set dedup (BibliographyPanel.tsx:350,219) is a downstream symptom, not the root.",
+      "class": "citekey treated as a unique map key throughout (parse + display + export) — the .bib data model assumes unique keys; a colliding key corrupts at the parser layer first.",
+      "confidence": "high"
+    },
+    {
+      "findingId": "BIB-F7-03",
+      "isReal": true,
+      "disposition": "RECLASSIFIED",
+      "severityFinal": "COSMETIC",
+      "rationale": "Code claim verified: handleDragStart hardcodes `\\cite{${entry.key}}` (BibEntryCard.tsx:203), bibPackage is in the useCallback deps (BibEntryCard.tsx:219) but never read in the body, and the prop doc-comment (BibEntryCard.tsx:28) falsely claims it 'is used to determine the default cite command for drag.' So it is a genuine dead-prop + stale-comment defect. BUT the produced citation is functionally correct under BOTH bib packages — `\\cite{key}` is valid natbib AND biblatex — so the dropped citation always works; nothing breaks, no data is wrong, the user just gets `\\cite` instead of an idiomatic `\\citep`. The finder's own note concedes 'impact is cosmetic/idiomatic.' DOWNGRADED from LOW to COSMETIC.",
+      "correctedRootCause": "Dead prop / stale doc-comment: bibPackage threaded + in deps but never consumed (BibEntryCard.tsx:203-219); the comment at :28 documents behavior that was never implemented.",
+      "class": "threaded-but-unread prop with a misleading doc-comment — a maintainability hazard, not a user-facing bug.",
+      "confidence": "high"
+    },
+    {
+      "findingId": "BIB-F7-04",
+      "isReal": true,
+      "disposition": "CONFIRMED",
+      "severityFinal": "LOW",
+      "rationale": "Mechanism confirmed (note: the finder's evidence note mis-transcribed the regex — the actual code DOES escape the key: `new RegExp(\\`\\\\b${oldKey.replace(/[.*+?^${}()|[\\]\\\\]/g,'\\\\$&')}\\\\b\\`,'g')`, useCitations.ts:305-308 — but the \\b-boundary argument is sound regardless of escaping). For oldKey '+foo' the pattern is `\\b\\+foo\\b`; in `\\cite{+foo}` the char before '+' is '{' (non-word) and '+' is non-word, so there is no \\b adjacency at the leading edge → the replace misses. keys[] is updated UNCONDITIONALLY by direct map (useCitations.ts:303-304) while command is only rewritten if the regex hits, so keys[]=[newKey] but command stays `\\cite{+foo}`. The editor-atom sync only fires updateCitationDisplay when nextCommand !== c.command (EditorPane.tsx:1152), so the unchanged command means the in-text \\cite atom is never rewritten → .bib defines @...{bar} but the in-doc cite still says +foo = orphaned reference, silently. Real and corrupting. KEPT at LOW: BibTeX keys legally permit non-word edge chars but in practice are alphanumeric + internal _:- ; a key STARTING or ENDING with a non-word char is a rare user choice, and the corruption is to a single citation the user can see/fix. Genuine edge data-corruption but low-frequency.",
+      "correctedRootCause": "Asymmetric update in updateBibKeyAndType: keys[] is rewritten unconditionally (useCitations.ts:303-304) but the command string only via a \\b-bounded regex (useCitations.ts:305-308) that assumes citekeys are word-char-bounded — JS \\b requires a [A-Za-z0-9_]/non-word adjacency that a non-word edge char lacks. keys[] and command should be derived from the same matcher (or command rebuilt from keys[]) so they cannot diverge.",
+      "class": "word-boundary regex assuming word-char-bounded citekeys — siblings: any other site rewriting cite commands with \\b (search/replace citekey rename, editor/sync-bib-to-library's rename). The unconditional-keys vs conditional-command split is the corrupting asymmetry.",
+      "confidence": "high"
+    },
+    {
+      "findingId": "BIB-F2-01",
+      "isReal": true,
+      "disposition": "CONFIRMED",
+      "severityFinal": "LOW",
+      "rationale": "Confirmed. Selection is a citekey string (selectedBibKey, BibliographyPanel.tsx:55,294). commitEditBib calls onUpdateBibKeyAndType(oldKey,newKey,...) then setEditingBib(false) with no re-selection (BibEntryCard.tsx:185-192). After the rename the entry's key is newKey while selectedBibKey still holds oldKey, so selectedIdx = displayedEntries.findIndex(e => e.key === selectedBibKey) → -1 (BibliographyPanel.tsx:294-297), isSelected goes false, and compressed = !isSelected && !isPoppedOut (BibEntryCard.tsx:449) collapses the card the user just edited. The conflict-resolution handlers all DO re-point selection (handleConflictReplace/NewCitekey/RequestMerge call handleSelectBibKey, BibliographyPanel.tsx:503,526,538), so the in-place field-edit rename is the single path that forgot. LOW is correct: purely a transient UI annoyance (card collapses + loses halo), fully recoverable with one click, no data loss, and renaming your own citekey via the field editor is itself an uncommon action.",
+      "correctedRootCause": "Selection keyed by a mutable natural key (citekey) rather than a stable id: commitEditBib mutates the key without re-pointing selectedBibKey (BibEntryCard.tsx:185-192). It should call the panel's re-select with newKey, exactly as the conflict handlers do.",
+      "class": "selection-by-renameable-field — any panel selecting by a mutable field instead of an immutable id breaks selection when that field is renamed in place.",
+      "confidence": "high"
+    }
+  ]
+}

@@ -1,0 +1,85 @@
+{
+  "rulings": [
+    {
+      "id": "CI-A1-02",
+      "ruling": "CONFIRMED",
+      "severityFinal": "LOW",
+      "rootCause": "buildCitationOmniItems derives anchorState from position resolution alone — `pos == null ? 'orphaned' : 'anchored'` (src/panels/Citations/omni.tsx:49) — and never consults the citation's own `unanchored` flag (defined on CitationRef at src/lib/types.ts:325, set for panel-created entries at src/hooks/useCitations.ts:170 and preserved across re-parse at 369-370, surfaced via isUnanchored at src/links/links.ts:1093). A deliberately-unanchored panel citation and a true lost-marker orphan therefore collapse into one 'orphaned' bucket.",
+      "rationale": "B prevailed. The conflation is real and the unanchored citation is reachable in the omni list (preserved at useCitations.ts:369-370). A's 'by-design' defense rests on the omni.tsx:43-45 comment ('a citation is never free') and the contract test (anchor-state-classify-contract.test.ts:455), but the comment's premise is factually contradicted by the data model, which DOES carry a free/never-anchored intent flag; the test only documents 'current behavior,' it does not endorse it as correct. The two states are user-meaningfully distinct, so this is a genuine classification defect, not a deliberate design. Low because recoverable and cosmetic-classification.",
+      "class": "Builders deriving anchor-state from position-resolution alone while ignoring the card's own intent flag (citation-specific: the only intrinsically-in-text kind with a panel-created unanchored mode).",
+      "confidence": "high"
+    },
+    {
+      "id": "CI-C1-01",
+      "ruling": "RECLASSIFIED",
+      "severityFinal": "COSMETIC",
+      "rootCause": "Not a defect mechanism: count={orderedCitations.length} (src/panels/Citations/CitationsPanel.tsx:241) reports the full card-array length, including dashed/unanchored and orphaned cards. This is the uniform card-count contract across EVERY panel — FootnotePanel count={footnotes.length} (FootnotePanel.tsx:132), Notes/Reports/Revisions/Cutter count={cards.length}, etc. — forwarded verbatim by CardListPanel. The badge is a card count, never an in-text-reference count.",
+      "rationale": "A and B agreed on substance (both RECLASSIFIED to COSMETIC, isReal differs only in label). Verified the cross-panel uniformity: all card panels pass raw array length as `count`. The 'over-count' only exists relative to an in-text \\cite semantic the badge was never meant to carry. No malfunction, no data loss, no mis-navigation — a labeling-expectation gap, not a defect.",
+      "class": "Strip count badges report raw card-array length, uniform across panels by design — not a bug class.",
+      "confidence": "high"
+    },
+    {
+      "id": "EX-F8-03",
+      "ruling": "REFUTED",
+      "severityFinal": "LOW",
+      "rootCause": "floatId = `example-card:${exampleId}` (src/panels/Examples/ExampleCard.tsx:177) carries no docked-vs-float surface discriminator, so the docked editor and the popped card-float compute the same id and both tag write-backs with FLOAT_WRITE_META,floatId (ExampleCard.tsx:199). But the card editor's main->card re-seed is driven by the rev.examples/contentRev DocStructureBus counters + a JSON-equality echo guard (ExampleCard.tsx:268-299), NOT by the floatId-filtered useMainTransactionSync (src/lib/float-sync.tsx:152). ExampleCard imports neither useMainTransactionSync nor useFloatMainSync; the block float uses the distinct `example:${uuid}` and its own useFloatMainSync (src/text-objects/floats/example-block-body.tsx:125,262). The collision path is therefore unreachable.",
+      "rationale": "B prevailed on substance. The collision is provably dormant — no user-reachable path triggers it today, by the finder's own admission ('currently masked', 'latent risk surfaces only if anyone migrates'). For a current-behavior audit there is no live defect, so REFUTED as a defect (A's CONFIRMED over-credits a non-firing trap). The latent-hardening observation — surface-tag the floatId before any migration onto the shared float sync — remains a valid code-quality note.",
+      "class": "Entity-id-only float ids (no docked/float discriminator) are a latent collision class for any kind openable on two surfaces; real as a class, no live instance fires.",
+      "confidence": "high"
+    },
+    {
+      "id": "FN-F1-01",
+      "ruling": "RECLASSIFIED",
+      "severityFinal": "MEDIUM",
+      "rootCause": "The finder's symptom (all panel badges '0', all in-text markers '1' on load) CANNOT occur: parseLatex runs numberFootnotes(doc) at src/lib/latex-parser.ts:709 on every load (the early `return doc` at :683 only fires for an empty body), overwriting the transient number:0 set at node-construction (:404/:425) with sequential 1,2,3,... before the doc ever reaches the editor (storage-fsa.ts:283 / storage-dev.ts:241 -> useDocument -> Editor.tsx:462). The REAL defect is narrower: parser numberFootnotes (latex-parser.ts:787-799) increments its counter for EVERY footnote node and does NOT skip \\thanks, whereas the canonical appendTransaction renumber (src/lib/tiptap/footnote.ts:235-243) sets a \\thanks footnote's number to 0 and only non-thanks footnotes advance the counter. So on a paper that contains a \\thanks (e.g. the frozen showcase sample, samples/annotation-history/document.tex:24, which also has 8 \\footnotes), the \\thanks consumes #1 on load and every real footnote badge AND in-text marker is off-by-one (real fn #1 shows '2', etc.) until the first structural footnote op fires the thanks-aware canonical renumber. The \\thanks marker itself renders the literal 'A' regardless (footnote.ts:266; FootnoteCard.tsx:122), so only the real footnotes are mis-numbered.",
+      "rationale": "A prevailed decisively. A correctly caught the post-parse numberFootnotes pass the finder and B both missed, refuting the stated number:0/all-'1' symptom, AND identified the genuine adjacent bug (parser/canonical thanks-skip divergence). B's HIGH rests entirely on the false premise that no load-time numbering runs. I upgrade A's LOW to MEDIUM: the off-by-one is a wrong result in Virgil's core function (meaningful .tex rendering of the in-text markers, not just a panel badge) and it manifests on the canonical sample paper on every fresh load — but it is gated on a \\thanks coexisting with \\footnotes, self-heals after one footnote op, and corrupts nothing on disk (the serializer carries no number, latex-serializer.ts), so it is below HIGH and well above LOW.",
+      "class": "A numbering rule implemented twice (parser numberFootnotes + canonical appendTransaction renumber) that diverge on the \\thanks edge case; same divergence flagged for the imperative renumberFootnotes in FN-F1-02.",
+      "confidence": "high"
+    },
+    {
+      "id": "OMNI-C2-03",
+      "ruling": "REFUTED",
+      "severityFinal": "COSMETIC",
+      "rootCause": "Pass 1 of the displayedItems memo (src/components/editor-layout/panels/omni-host.tsx:612-627) drops any item whose resolved block index is in hiddenTopLevel (explicit 'drop — card lives in a collapsed section' at :625), while pass 2 (focus, :629-641) stamps outsideFocus instead. The asymmetry is real but intentional and documented (omni-host.tsx:586-590): the omni mirror deliberately follows the section-folding CSS that already hides the prose, the docked panel list is unaffected, and recovery is the very chevron the user just clicked.",
+      "rationale": "A prevailed. Both verifiers agree on the mechanism and that it is a documented design choice; they split only on label. The fold case differs materially from the focus case A correctly notes the rationale: folding hides the prose, so a card sitting next to invisible prose would be the anomaly; the docked panel still lists the cards; recovery is one click. There is no data loss and no malfunction — the behavior is correct-by-design. B's 'missing N-folded signal' point is a legitimate UX-consistency feature request, not a defect on a realistic path.",
+      "class": "Asymmetric handling of two anchor-hidden-in-text conditions (fold drop vs focus stamp); deliberate, not a coding error.",
+      "confidence": "high"
+    },
+    {
+      "id": "OMNI-A2-01",
+      "ruling": "RECLASSIFIED",
+      "severityFinal": "LOW",
+      "rootCause": "Same site/mechanism as CI-A1-02: buildCitationOmniItems classifies anchorState on pos alone (src/panels/Citations/omni.tsx:49) so a panel-created unanchored citation lands in the orphaned bin under BadgeOrphaned's error theme (src/panels/Omni/OmniViewPanel.tsx:304). The finder's stated root cause ('there is no flag distinguishing marker-missing from panel-created unanchored') is FALSE: the `unanchored` flag exists on CitationRef (src/lib/types.ts:325), is set in useCitations.ts:170 and preserved at :369-370; the builder simply never reads it. Correct fix: `pos==null ? (cit.unanchored ? 'free' : 'orphaned') : 'anchored'`.",
+      "rationale": "B prevailed. The defect is real and reachable, but the finder's root cause is materially wrong (the discriminator exists, it is ignored — not absent), so this is RECLASSIFIED, not REFUTED. A's 'by-design' rests on the same omni.tsx:43-45 comment whose 'never free' premise the data model contradicts; the contract test only pins current behavior. The intentionally-unanchored citation reads as an error/orphan to the user. LOW: cosmetic/UX mislabel, recoverable, no data loss.",
+      "class": "Builders collapsing 'free' (intentionally never-anchored) and 'orphaned' (anchor lost) at the pos==null fork while ignoring an available intent flag; the example builder shares the pos-only collapse.",
+      "confidence": "high"
+    },
+    {
+      "id": "OUT-F1-02",
+      "ruling": "REFUTED",
+      "severityFinal": "COSMETIC",
+      "rootCause": "The Document-start/Title row hardcodes the literal string 'words' in its count span (src/panels/Outline/OutlinePanel.tsx:1819-1823) while heading data rows render numeric {sectionWordCount} (:684-688). The docstart span deliberately omits the `tabular-nums` class that every numeric data row carries (:1820 vs :685) — the signature of an intentional one-row unit legend, not a failed per-section count. The docstart row is not a heading and has no per-section word-count bucket (perSectionCounts is keyed by heading id).",
+      "rationale": "Effectively a tie on severity — both verifiers rated COSMETIC and both noted the likely-legend reading; they split only on isReal. A's reading (intentional unit legend) is the better-supported one: the deliberate tabular-nums omission is exactly what you do for a label rather than a number. No user-visible wrongness on a realistic path, so REFUTED as a defect; at most a trivial visual nicety.",
+      "class": "Preamble/document-start region has no computed word count in the outline; isolated and most likely a by-design legend.",
+      "confidence": "medium"
+    },
+    {
+      "id": "OUT-F7-01",
+      "ruling": "RECLASSIFIED",
+      "severityFinal": "COSMETIC",
+      "rootCause": "The no-counter-bump mechanism is real: handleRenameHeading is an in-place delete+insertText inside the heading node (src/components/editor-layout/card-actions/editor-ops.ts:130-136) — text-only, so headingStructurallyChanged (compares level/label/numbered only, src/lib/tiptap/doc-structure/step-inspector.ts:249) emits no changedHeadings; handleRenameParTitle setNodeMarkup parTitle (editor-ops.ts:166-171) has no attr synthesis (only heading level/label/numbered + figureBlock are synthesized, step-inspector.ts:483-508). useStructuralRevisions subscribes to NO content-change event (src/hooks/useStructuralRevisions.ts:79-128), so neither rename bumps a rev counter, and the outline content snapshot is editor.getJSON() recomputed only on EditorPane re-render (EditorPane.tsx:3400/3473). BUT the finding's claimed PERSISTENT staleness does not occur: useWordCount(editor) (called unconditionally at EditorPane.tsx:1121) registers an ungated editor.on('update') handler (src/hooks/useWordCount.ts:287) that, 300ms after ANY transaction, calls setCounts(walkDoc(...)) — walkDoc returns a fresh object every call (useWordCount.ts:199) so EditorPane always re-renders, recomputing editor.getJSON() and the OutlinePanel headings memo -> the pod shows the new title within ~300ms.",
+      "rationale": "A prevailed. A correctly identified the unconditional useWordCount re-render path that masks the staleness into a sub-second flicker; B's MEDIUM missed this and only found the section-path recompute (which masks only active-breadcrumb headings), leaving a false impression of persistent staleness for off-breadcrumb headings and parTitles. Since the word-count subscriber re-renders EditorPane on EVERY transaction regardless of breadcrumb, even those refresh within 300ms. The finding's stated defect (stale until an unrelated structural edit) is refuted; a genuine ~300ms transient flicker remains, plus the underlying no-rev-bump architectural gap is real — hence RECLASSIFIED to COSMETIC rather than flat REFUTED.",
+      "class": "Derived view sourced from editor.getJSON() consumed by a counter-gated render, refreshed incidentally by the permitted O(doc) useWordCount subscriber rather than a structural counter; the artifact is a sub-second flicker, not persistent staleness.",
+      "confidence": "high"
+    },
+    {
+      "id": "SR-F5-02",
+      "ruling": "REFUTED",
+      "severityFinal": "LOW",
+      "rootCause": "The premise (a deleted card's result outlives it and a click selects the dead id) cannot occur on a realistic path. Deleting a card IS a structural change: a footnote deletion bumps rev.footnotes -> footnoteInfos recomputes with new identity (src/components/EditorPane.tsx:2772-2775), a citation deletion bumps rev.citations -> allEditorCitations recomputes (:2611-2626); notes/todos/archive/cutter/comments arrive via hook arrays whose identity changes on mutation. All of these are deps of the results memo (src/panels/Search/SearchPanel.tsx:363-380), so the stale result is dropped before it can be clicked. The only genuinely-stale case is main-text position drift (SR-F1-01), but main-text results carry no itemId (SearchPanel.tsx:211-219) and SCOPE_PANEL has no mainText entry (src/lib/search-sources.ts:87, a Partial Record) -> navigateToResult's `targetPanel && result.itemId` guard (SearchPanel.tsx:394) never fires onOpenItem -> setSelected<Kind>Id(deadId) is never reached.",
+      "rationale": "A prevailed. B's CONFIRMED rests on the false claim that card deletion shares SR-F1-01's no-recompute root; SR-F1-01 is specifically about plain-text edits that bump no rev (position drift), whereas card deletion is exactly the structural event the rev-gating catches, recomputing and pruning the result. The reconciler entityExists exemption is irrelevant because the dead-id selection call never fires. No realistic path produces the dead-id selection.",
+      "class": "Not a live defect: card deletion is a structural change that prunes the stale result, and the only non-structural stale case (mainText drift) has no itemId/panel target so it cannot drive a selection.",
+      "confidence": "high"
+    }
+  ]
+}

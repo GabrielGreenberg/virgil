@@ -1,0 +1,66 @@
+{
+  "file": "reports-g-display",
+  "verifier": "A",
+  "verdicts": [
+    {
+      "findingId": "REP-F4-01",
+      "isReal": true,
+      "disposition": "CONFIRMED",
+      "severityFinal": "MEDIUM",
+      "rationale": "Verified the full data path. reports-host.tsx:49-65 mounts ReportsPanel with NO getCitationDisplayText/onCitationCreated and never calls useCitationDisplayContext() — unlike notes-host.tsx:39,94-95 which threads both from useCitationDisplayContext(). ReportsPanel.tsx:89-124 does not declare or forward those props, so ReportCard.tsx:124-125 / ReportRequestCard.tsx:130-131 receive them undefined. EditableCard does NOT self-consume the context (panel-primitives.tsx:842,1108-1109 just pass the props down), so RichTextField.refreshCitationDisplay short-circuits at RichTextField.tsx:205-206 (`if (!lookup) return doc`), leaving displayText='' . citation.ts:88 renders `displayText || command || ''` so the bare \\cite{key} shows. The drop handler at RichTextField.tsx:283-290 falls back to the raw command and skips onCitationCreated (no registration). The reports-host IS mounted inside the CitationDisplayProvider tree (EditorPane.tsx:3251 provider → PaneRailBody → ReportsHost at :5519), and citation-display.tsx:6-7 explicitly lists 'reports' among the panels that need these helpers — so the context is reachable and the omission is a genuine wiring gap, not by-design. Omni builder (omni.tsx:42-73) likewise omits the props, so omni report cards share the defect. Severity MEDIUM is correct: a real misbehavior on a realistic path (user/AI places a citation in a report body) but recoverable and not content loss.",
+      "correctedRootCause": null,
+      "class": "Panel host that mounts a RichTextField-bearing card without threading the CitationDisplayProvider values. Reports (docked host + omni builder) is the lone left-side card panel missing it; any future card panel or float-body builder is a sibling-risk.",
+      "confidence": "high"
+    },
+    {
+      "findingId": "REP-F5-01",
+      "isReal": true,
+      "disposition": "RECLASSIFIED",
+      "severityFinal": "HIGH",
+      "rationale": "The mechanism is real and verified: morphs/index.ts:149-161 requestToReport flips kind→report and omits aiRequest; useReports.ts:267-279 convertCard only calls applyCardMorph and never calls bridgeCardAiRequestFlag(...,false); the only inbox-removal path is ai-request-bridge.ts:132-134 (value=false), which the morph never invokes — so a pending ai-requests.json entry with linkedTo={panel:'reports',cardId} is orphaned. The resulting card is a `report`, which has no AiRequestCheckbox (only ReportRequestCard.tsx:116-122 renders one) and the docked reports panel shows no inbox section (see REP-F5-02), so the user has no UI to clear it. The confirm message is also genuinely wrong for this direction: EditorPane.tsx:872-876 sets preservesBody=true for BOTH `report` and `report-request`, so a request→report morph shows 'This drops the title and byline (a Report can't hold them)' — nonsensical, since the request has no title/byline and a Report DOES hold them; the actual loss (the aiRequest flag + orphaned inbox entry) is never mentioned. RECLASSIFIED from DATA-LOSS to HIGH: the user's prose content (body/text) is fully preserved by normalizeRichContent (morphs/index.ts:155); what is lost is the aiRequest intent flag plus a dangling pending request — an inbox/state-integrity defect with no in-UI recovery and a misleading confirm, which is a core-function/wrong-result HIGH, not silent loss of user prose. (The OTHER direction, report→request, does drop title+author prose and IS correctly warned by the confirm — so the bona fide DATA-LOSS direction is actually handled.)",
+      "correctedRootCause": "Two coupled root causes: (1) the morph transform layer has no hook to bridge an aiRequest flag off when the target kind lacks the flag — requestToReport (morphs/index.ts:149) and convertCard (useReports.ts:267) both omit the bridge(false) call; and (2) the lossy-confirm message in EditorPane.tsx:872-876 keys 'preservesBody' on kind membership rather than on which fields the specific direction actually drops, so the request→report direction prints a backwards message.",
+      "class": "Any lossy morph whose two kinds declare DIFFERENT aiRequest routing, or where one side has the flag and the other does not, will orphan/stale the on-disk inbox entry on flip (no bridge call in any convertCard). Check note↔highlight (morphs/index.ts:177-203 preserves the flag but the two kinds' aiRequest routing differs, so the on-disk entry's kind goes stale) and revision/cutter comment→suggestion (comment carries aiRequest, suggestion does not — same orphan risk). Also: every lossy-morph confirm that derives its wording from kind membership rather than per-direction dropped fields.",
+      "confidence": "high"
+    },
+    {
+      "findingId": "REP-F5-02",
+      "isReal": true,
+      "disposition": "CONFIRMED",
+      "severityFinal": "MEDIUM",
+      "rationale": "Verified: reports-host.tsx:49-65 passes no aiRequests/onUpdateAiRequestText/onDeleteAiRequest and never imports useAiRequestsContext (notes-host.tsx:38 does). ReportsPanel.tsx:21-49 props omit aiRequests entirely, and CardListPanel.tsx:96-110 renders the AI-requests section ONLY when given a non-empty aiRequests prop (hasAiRequests gate) — so the Reports panel never shows a Pending-AI-Requests section. Yet reports fully participate in the unified inbox: card-registry.tsx:422 routes report-request → {kind:'report',linkPanel:'reports'}, and the answer-report-request skill (editor/skills/answer-report-request.md) drains kind:'report' entries. A request entry with no live card (after REP-F5-01's morph orphan, or after the originating request card is deleted) therefore has nowhere to render or be dismissed in the docked panel. MEDIUM is appropriate: the common case (live report-request card) is served by that card's own checkbox, but the orphaned/standalone case is invisible.",
+      "correctedRootCause": null,
+      "class": "Polymorphic panels whose request kind lives in the unified inbox but whose docked host never wired the inbox section. Cutter and Revisions hosts (suggestion/comment-kind requests) should be checked for the same omission.",
+      "confidence": "high"
+    },
+    {
+      "findingId": "REP-F5-03",
+      "isReal": true,
+      "disposition": "CONFIRMED",
+      "severityFinal": "MEDIUM",
+      "rationale": "Verified: useReports.ts:55-59 migrateReportRecord sets title='' whenever isAutoTitle('report', r.title) is true. panel-registry.ts:254-258 isAutoTitle tests the kind-label regex `^Report \\d+$`, which cannot distinguish a user-typed 'Report 2' from the legacy generated title that BUG #31 stopped persisting. auto-title.test.ts:146 codifies migrateTitle('report','Report 2')==='' as INTENDED behavior, so the loss is deliberate-by-design — but it still silently destroys a legitimate user title on the next load with no warning or recovery. MEDIUM is correct: it's an edge title pattern but a realistic one (a user reporting on section 2 typing 'Report 2'), and the loss is silent and unrecoverable on reload.",
+      "correctedRootCause": null,
+      "class": "Every auto-titling kind shares the same isAutoTitle strip-on-load false-positive: note ('Note 3'), archive ('Archive Text 1'), todo body ('Task 9'), example ('Example 4'). auto-title.test.ts:144-149 codifies the strip for all of them, so a user title matching the kind's `^<Label> \\d+$` shape is nulled on load across the board.",
+      "confidence": "high"
+    },
+    {
+      "findingId": "REP-F1-01",
+      "isReal": true,
+      "disposition": "CONFIRMED",
+      "severityFinal": "COSMETIC",
+      "rationale": "Verified: ReportCard.tsx:78-79 and ReportRequestCard.tsx:77-78 build compressedSummary as `makeCompressedSummary(...) || ''`, so an empty body yields '' (not undefined). report bodyClass is 'sans' (card-registry.tsx:411), so useBorrowedCompressed is false (panel-primitives.tsx:864-867) and the render hits the `compressedSummary ?? <CardEmptyText/>` branch at panel-primitives.tsx:1074. Because '' is neither null nor undefined, the nullish fallback never fires and a blank line renders. CutterCommentCard.tsx:91 uses `|| undefined`, which DOES fall through to CardEmptyText (the 'empty' placeholder, panel-primitives.tsx:358) — proving intended behavior and the divergence. COSMETIC is correct (visual only, no function/data impact).",
+      "correctedRootCause": null,
+      "class": "Confirmed divergence across cards passing `makeCompressedSummary(...) || ''` rather than `|| undefined`: NoteCard, ArchiveCard, FootnoteCard, RevisionCommentCard all suppress the CardEmptyText placeholder the same way; only CutterCommentCard surfaces it. (Did not independently open those sibling files; the report pair is verified.)",
+      "confidence": "high"
+    },
+    {
+      "findingId": "REP-F5-04",
+      "isReal": true,
+      "disposition": "CONFIRMED",
+      "severityFinal": "LOW",
+      "rationale": "Verified: CardBodyTitle (panel-primitives.tsx:520-597) renders the expanded title input with `defaultValue={value ?? ''}` (uncontrolled, line 552), and its only effect keys on `[editing]` (line 535-540) — there is no effect on `value` and no instanceKey/remount tied to the title prop (EditableCard's instanceKey drives only the RichTextField body). So an external prop change to bodyTitle does not propagate into the visible expanded input until remount. The collapsed static title row (panel-primitives.tsx:1040-1047) uses the reactive bodyTitle prop and updates correctly, so collapsed vs expanded can disagree after an external write. LOW is appropriate: the trigger is narrow (a skill or another open surface rewriting reports.json while the card stays expanded-mounted) and recoverable on collapse/remount.",
+      "correctedRootCause": null,
+      "class": "Shared CardBodyTitle affects every bodyTitle-bearing card (footnotes, notes, archive, examples). Any external/cross-surface title write desyncs the expanded uncontrolled input on all of them.",
+      "confidence": "medium"
+    }
+  ]
+}

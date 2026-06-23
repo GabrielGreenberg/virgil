@@ -1,0 +1,126 @@
+{
+  "file": "bibliography-g-anchor",
+  "verifier": "B",
+  "verdicts": [
+    {
+      "findingId": "BIB-A2-01",
+      "isReal": true,
+      "disposition": "CONFIRMED",
+      "severityFinal": "DATA-LOSS",
+      "rationale": "Traced and confirmed. updateBibKeyAndType (useCitations.ts:281-315) rewrites the .bib block and remaps citation refs only; it never touches annotations. Annotations live in annotations.json keyed purely by citekey (useAnnotations.ts:21-35); getAnnotation(newKey)=annotations[newKey]||'' returns '' after a rename, and the old value remains orphaned under oldKey with no UI path. commitEditBib (BibEntryCard.tsx:185-192) only calls onUpdateBibEntry + onUpdateBibKeyAndType, no annotation re-key. The annotation prose is real user content silently stranded — DATA-LOSS is correct (the content is unreachable through the UI, only recoverable by hand-editing annotations.json under the old key).",
+      "correctedRootCause": "updateBibKeyAndType (src/hooks/useCitations.ts:281-315) is the single rename chokepoint and migrates exactly two stores (bibEntries fields/raw + citationsHook citation refs). Every other per-citekey sidecar is keyed by citekey and left stale: annotations.json (useAnnotations.ts:29 setAnnotation/getAnnotation by key), bib-review-requests.json (BIB-A2-02), and the panel's keyOccurrenceIdx[citekey] in-memory map (BibliographyPanel.tsx:99,169). The deepest cause is that citekey is used as a durable cross-store join key with no central rename-cascade.",
+      "class": "rename-doesn't-cascade: citekey used as a join key across multiple sidecars (annotations / bib-review-requests / keyOccurrenceIdx) with no single migration point",
+      "confidence": "high"
+    },
+    {
+      "findingId": "BIB-A2-02",
+      "isReal": true,
+      "disposition": "CONFIRMED",
+      "severityFinal": "MEDIUM",
+      "rationale": "Confirmed. requestReview stores req.bibKey = the citekey at request time (useBibReview.ts:70-77); getRequestStatus matches by exact bibKey (useBibReview.ts:96-99). updateBibKeyAndType (useCitations.ts:281-315) never rewrites request bibKeys, so a pending request stays bound to oldKey. After rename, getReviewStatus(newKey,...) returns 'none' so the pulsing 'Requested' state vanishes from the card while the on-disk row still points at the nonexistent oldKey. Same rename-doesn't-cascade class as BIB-A2-01. MEDIUM is right: a pending request is orphaned (recoverable by re-requesting) and the on-disk row goes stale, but no settled user content is lost.",
+      "correctedRootCause": "Same chokepoint gap as BIB-A2-01: updateBibKeyAndType (src/hooks/useCitations.ts:299-312) only iterates prev.citations, never the bib-review request log keyed by bibKey (src/hooks/useBibReview.ts:70-77).",
+      "class": "rename-doesn't-cascade (shared with BIB-A2-01)",
+      "confidence": "high"
+    },
+    {
+      "findingId": "BIB-A2-03",
+      "isReal": true,
+      "disposition": "RECLASSIFIED",
+      "severityFinal": "MEDIUM",
+      "rationale": "Real but severity overstated. commitEditBib (BibEntryCard.tsx:185-192) renames via onUpdateBibKeyAndType and never re-selects. selectedId={selectedBibKey} and getId={(e)=>e.key} (BibliographyPanel.tsx:888-889), so after rename selectedBibKey still holds oldKey, no displayed entry's key matches, selected=false for the renamed card, and compressed=!isSelected&&!isPoppedOut=true (BibEntryCard.tsx:449) collapses the card the user just edited. The rename itself SUCCEEDS and the entry is intact — this is a selection/collapse-loss UX bug, not a wrong result or lost data, and is recoverable in one click. Downgrade HIGH->MEDIUM: 'function works but misbehaves in a realistic case'. (Note: if the user was also mid-annotation, the collapse unmounts the AnnotationEditor and can trigger the BIB-F8-01 empty-write — but that compounding is the F8-01 defect.)",
+      "correctedRootCause": "Selection is keyed off a mutable citekey (selectedBibKey === e.key, BibliographyPanel.tsx:294-297) and commitEditBib has no post-rename onSelect(newKey) call (BibEntryCard.tsx:185-192). The rename mutates the very key the selection points at.",
+      "class": "identity-change-loses-selection: selecting by a mutable key (citekey) rather than a stable id; cf. citation id regeneration on parse (brief lead #3)",
+      "confidence": "high"
+    },
+    {
+      "findingId": "BIB-A2-04",
+      "isReal": true,
+      "disposition": "RECLASSIFIED",
+      "severityFinal": "MEDIUM",
+      "rationale": "Mechanism confirmed, severity overstated. The bib floatable resolves entry = ctx.bibEntries.find(e=>e.key===id) and returns null when not found (cards/floats/index.tsx:455-457); FloatHost maps resolveFloatable->null to `return null` (FloatHost.tsx:44-46), so the persisted key float:card:bib:<oldKey> renders nothing after rename. remapCardPopKey is invoked ONLY through convertCardWithRemap on kind morphs (EditorPane.tsx:863-953; grep shows no rename caller), so updateBibKeyAndType never remaps the float key. The orphan oldKey lingers in poppedOutCards. BUT: no user data is lost (the entry is correctly renamed in .bib), the bug requires the uncommon combination of popping a bib card out AND renaming its citekey, and it is recoverable by re-popping the renamed entry. The 'no UI to dismiss' point is accurate (null float = no X button). Downgrade HIGH->MEDIUM.",
+      "correctedRootCause": "Float keys embed the registry id (float:card:bib:<citekey>) and the only key-remap hook (remapCardPopKey, EditorLayout.tsx:879-884) is wired solely to convertCardWithRemap's morph paths; updateBibKeyAndType (useCitations.ts:281-315) mutates the very id the float key embeds without a remap.",
+      "class": "mutable-key floats with no remap: any popped card whose registry id can change without a remapCardPopKey call (bib citekey here; citations regenerate ids on parse per brief lead #3)",
+      "confidence": "medium"
+    },
+    {
+      "findingId": "BIB-A3-01",
+      "isReal": true,
+      "disposition": "CONFIRMED",
+      "severityFinal": "MEDIUM",
+      "rationale": "Confirmed at the panel layer. sortedEntries dedups by citekey via a seen-set in both filter branches (BibliographyPanel.tsx:219-235) and handleExportCited dedups by the same seen-set AND .filter(Boolean) (BibliographyPanel.tsx:350-355,363), so a second entry sharing a citekey is invisible in the panel and dropped from cited.bib. Symptom holds. ONE CORRECTION to the finder's cause: parseBibFile does NOT cleanly keep two distinct duplicate-key entries — extractRawEntries is a citekey-keyed object (bib-parser.ts:854-877, result[key.toLowerCase()]=...), so the two entries collide on raw (both get the LAST block's raw via cslItemToEntry line 61), and the citation-js whole-file parse (line 100-105) may itself dedup by id. So the duplicate's data is already partly corrupted at parse time, before the panel seen-set. Net symptom (only first shown, second dropped on export) is still correct. MEDIUM is right: duplicate citekeys are a malformed-bib edge case (LaTeX errors on them) — real but uncommon, and the on-disk .bib is untouched.",
+      "correctedRootCause": "Citekey-as-unique-identity assumption pervades the bib subsystem: panel seen-set dedup (BibliographyPanel.tsx:219-235,350-355), parse-time raw collision (bib-parser.ts:874, last-write-wins on a citekey-keyed object), and bibEntryMap = new Map(bibEntries.map(e=>[e.key,e])) (useCitations.ts:336-339, last-write-wins) plus getBibEntry .find (useCitations.ts:331-333, first-write-wins). The data model has no entry-level stable id distinct from the citekey.",
+      "class": "citekey-as-unique-identity: bibEntryMap (last wins), getBibEntry/.find (first wins), extractRawEntries object key (last wins) all silently collapse duplicate-keyed pairs inconsistently",
+      "confidence": "high"
+    },
+    {
+      "findingId": "BIB-A3-02",
+      "isReal": true,
+      "disposition": "RECLASSIFIED",
+      "severityFinal": "LOW",
+      "rationale": "Real behavior, severity overstated. handleConflictReplace passes only libraryEntry.fields to onUpdateBibEntry (BibliographyPanel.tsx:495-501); updateBibEntry merges via {...e.fields, ...fields} (useCitations.ts:265), so a local-only field absent in the library version survives — contradicting the data-hint 'Overwrite local fields with the library version' (BibliographyPanel.tsx:756). But this RETAINS user data rather than losing it; the only defect is the hint label promising a full replace. The overlapping fields ARE overwritten as the hint implies; the surviving extra field is arguably the safer behavior. No content lost, no wrong navigation. Downgrade MEDIUM->LOW (label/behavior mismatch, edge case, non-destructive).",
+      "correctedRootCause": "updateBibEntry (src/hooks/useCitations.ts:260-279) is a field-merge, used by a 'replace' caller (handleConflictReplace, BibliographyPanel.tsx:498). A true replace would pass the full field set or clear keys not in libraryEntry.fields. Same merge-semantics is reused by the BibEntryCard 'Edit entry' Save (commitEditBib -> onUpdateBibEntry), so clearing a field in the edit form does not delete it.",
+      "class": "merge-vs-replace ambiguity: a single field-merge primitive (updateBibEntry) serves both 'edit some fields' and 'replace entirely' intents; clearing a field in the edit UI can't remove it",
+      "confidence": "high"
+    },
+    {
+      "findingId": "BIB-F8-01",
+      "isReal": true,
+      "disposition": "CONFIRMED",
+      "severityFinal": "DATA-LOSS",
+      "rationale": "Confirmed as genuine silent data loss. AnnotationEditor's handleInput schedules a 400ms debounce whose callback reads editorRef.current?.innerHTML||'' (BibEntryCard.tsx:117-123). The only useEffect (lines 111-115, deps [bibKey]) returns NO cleanup, so the timer is never cleared on unmount. When the card collapses (compressed=!isSelected&&!isPoppedOut, line 449; the whole body incl. AnnotationEditor lives under {!compressed && (...)} at line 567) React unmounts the editor and sets editorRef.current=null. The orphaned timer then fires: editorRef.current?.innerHTML => undefined, ||'' => '', so onUpdate(bibKey,'') => setAnnotation(key,'') which DELETES the key (useAnnotations.ts:26-32 deletes when !text). The user's just-typed annotation is silently erased. Realistic path: type, then click another card within ~400ms of the last keystroke. DATA-LOSS confirmed, high confidence.",
+      "correctedRootCause": "No unmount-flush/clear for the debounce timer in AnnotationEditor (src/components/BibEntryCard.tsx:117-123) combined with the null-ref-reads-as-empty pattern at line 120 (editorRef.current?.innerHTML || '') and setAnnotation's empty-string-deletes semantics (src/hooks/useAnnotations.ts:28-32). Any one of: a cleanup effect clearing debounceRef, a non-optional flush of last-known-text, or treating null-ref as 'no change' would close it.",
+      "class": "debounced contentEditable writer that reads a possibly-null ref in the timer and coerces null to empty content; any sidecar editor without an unmount flush/clear can empty-write on unmount",
+      "confidence": "high"
+    },
+    {
+      "findingId": "BIB-F8-02",
+      "isReal": true,
+      "disposition": "CONFIRMED",
+      "severityFinal": "HIGH",
+      "rationale": "Confirmed. AnnotationEditor seeds innerHTML from content only on mount/bibKey change (useEffect deps=[bibKey], BibEntryCard.tsx:111-115) and never resyncs on content prop change. A popped bib card mounts a SECOND BibEntryCard in the float (cards/floats/index.tsx:464-481) while the docked BibEntryCard in the panel (BibliographyPanel.tsx:943, isPoppedOut not passed => defaults false) stays fully rendered — verified the docked card is not hidden when popped. Both surfaces own an independent AnnotationEditor for the same key. An edit in surface A (after 400ms) calls setAnnotation; surface B's content prop updates but its innerHTML is not re-synced, so B shows stale text, and a later edit in B serializes B's stale DOM and overwrites A's edit (last-writer-wins clobber of user content). Requires the dual docked+float scenario (a deliberate popout) but is a realistic cross-surface clobber. HIGH stands.",
+      "correctedRootCause": "Uncontrolled contentEditable: the innerHTML seed effect deps exclude `content` (src/components/BibEntryCard.tsx:111-115), so two live instances of the same key cannot converge. Combined with the same key being rendered in two surfaces simultaneously (docked card never receives isPoppedOut, so it doesn't suppress its body — BibliographyPanel.tsx:943).",
+      "class": "uncontrolled contentEditable mirrored across surfaces: any rich-text/contentEditable that seeds from props once while two instances (docked vs float) coexist will diverge and last-writer-wins clobber",
+      "confidence": "high"
+    },
+    {
+      "findingId": "BIB-F8-03",
+      "isReal": true,
+      "disposition": "CONFIRMED",
+      "severityFinal": "MEDIUM",
+      "rationale": "Confirmed. clearRequest is defined and exported (useBibReview.ts:105-115,127) but grep across src/ shows it is never called by any UI — the card only ever calls cancelRequest (onCancelReview) for a pending request (BibEntryCard.tsx:225). So a completed request row is never removed. requestReview de-dups ONLY against status==='pending' (useBibReview.ts:66-69), so after a completed row exists a new pending row is appended (line 77). getRequestStatus uses .find which returns the FIRST matching bibKey+type row (useBibReview.ts:97-99) = the stale completed one, so the card reports 'complete' and the new pending 'Requested'/pulsing state never renders. MEDIUM is right: the request is still filed on disk (the responder could act on the new pending row), only the UI affordance is stuck.",
+      "correctedRootCause": "First-match lookup over an append-only request log: getRequestStatus .find returns the earliest row not the latest (src/hooks/useBibReview.ts:96-99), and requestReview's pending-only dedup (lines 66-69) lets stale completed rows accumulate because nothing wires clearRequest into the panel/card.",
+      "class": "first-match lookup over an append-only log without clear/dedup; any per-kind request reader that must read the LATEST matching record but uses .find reads the oldest",
+      "confidence": "high"
+    },
+    {
+      "findingId": "BIB-F8-04",
+      "isReal": true,
+      "disposition": "CONFIRMED",
+      "severityFinal": "MEDIUM",
+      "rationale": "Confirmed. handleConflictNewCitekey adds the entry with raw:'' deliberately so serializeBibFile rebuilds the block from fields (BibliographyPanel.tsx:511-527). addBibEntry stores it verbatim (raw stays '') (useCitations.ts:317-329) and serializeBibFile reconstructs empty-raw blocks correctly (bib-parser.ts:131-138), so the on-disk references.bib is fine. But handleExportCited builds cited.bib via cited.map(e=>e.raw).filter(Boolean) (BibliographyPanel.tsx:363), dropping any in-memory entry whose raw is empty — until a reload re-parses and repopulates raw (citing the new key does NOT re-parse the .bib). So a cited entry is silently missing from the exported cited.bib in the pre-reload window. Severity stays MEDIUM (NOT data-loss): the source-of-truth references.bib retains the entry; cited.bib is a derived convenience artifact and the omission is transient/recoverable by reload+re-export. Confidence medium->high on the mechanism; the only soft step is whether the user exports before reloading, which is plausible.",
+      "correctedRootCause": "Export reads e.raw directly (BibliographyPanel.tsx:363) while persistence reads through serializeBibFile (which reconstructs from fields). The two diverge for any in-memory entry with empty raw (added via handleConflictNewCitekey, BibliographyPanel.tsx:524). Fix: handleExportCited should serialize via serializeBibFile rather than raw+filter(Boolean).",
+      "class": "export-via-raw vs persist-via-serializer divergence; shared with BIB-A3-01 (raw+filter(Boolean) also silently drops the duplicate-key entry on export). Any consumer reading e.raw directly is fragile to in-memory entries.",
+      "confidence": "medium"
+    },
+    {
+      "findingId": "BIB-C1-01",
+      "isReal": true,
+      "disposition": "CONFIRMED",
+      "severityFinal": "LOW",
+      "rationale": "Confirmed by tracing the event sequence. The '+' button is rendered by PanelHeader (panel-primitives.tsx:2097-2105) with a plain onClick={()=>onAdd(...)} and NO onMouseDown stopPropagation, and it sits before {children} (headerExtras) — outside the addMenuRef div which wraps only the dropdown content (BibliographyPanel.tsx:607). onAdd is wired to setAddMenuOpen((o)=>!o) (BibliographyPanel.tsx:883). The outside-click handler listens on document 'mousedown' and closes when target is not in addMenuRef (BibliographyPanel.tsx:136-144). Click sequence on '+' while open: native mousedown fires first -> handler sets addMenuOpen=false (committed before the click); then the button's click -> onAdd -> (o)=>!o reads false -> sets true. Net: menu flickers closed then reopens, so '+' cannot toggle it shut. LOW is correct (minor, recoverable — clicking elsewhere closes it).",
+      "correctedRootCause": "addMenuRef (BibliographyPanel.tsx:607) wraps only the dropdown content, not the '+' trigger (which PanelHeader renders, panel-primitives.tsx:2097), and the close handler fires on mousedown (BibliographyPanel.tsx:138) while the toggle fires on the subsequent click — so the two events race and net to reopen. Including the trigger in the ref, or closing on click instead of mousedown, or stopPropagation on the '+' mousedown would fix it.",
+      "class": "outside-click-ref that excludes the toggling trigger + mousedown-close vs click-toggle ordering; any panel whose menu trigger lives outside the ref and whose handler listens on mousedown while the toggle runs on click",
+      "confidence": "high"
+    },
+    {
+      "findingId": "BIB-A1-01",
+      "isReal": true,
+      "disposition": "CONFIRMED",
+      "severityFinal": "LOW",
+      "rationale": "Confirmed the two-source structure, low severity preserved. citedKeys/isCited derive from the sidecar `citations` prop (BibliographyPanel.tsx:211-217), while keyToCitationIds (the jump-target map) derives from `allEditorCitations`, the live-editor parse (BibliographyPanel.tsx:154-163; EditorPane.tsx:2611-2626 recomputed on rev.citations). During the transient window where the editor parse and citations.json disagree (initial load before syncFromEditor, or a structural edit before the sidecar catches up), an entry can show a jump icon whose handler finds no targetId, or be hidden by 'Cited only' despite being cited live. syncFromEditor (useCitations.ts:357-374) keeps the sidecar in lockstep on parse, so the divergence self-heals quickly. LOW/low-confidence is honest: transient, self-correcting, mild symptom (a dead jump icon momentarily).",
+      "correctedRootCause": "Two sources of truth for 'is this entry cited / where does it jump': the persisted citationsHook.citations sidecar (used for citedKeys, BibliographyPanel.tsx:211) vs the live-editor allEditorCitations (used for keyToCitationIds, BibliographyPanel.tsx:154 / EditorPane.tsx:2611). They are reconciled only by syncFromEditor on parse, leaving a brief load/edit window of disagreement.",
+      "class": "two-source-of-truth for the same fact (sidecar citations vs live-editor citations); the cited-count badge and occurrence counters also read allEditorCitations while the filter reads the sidecar",
+      "confidence": "medium"
+    }
+  ]
+}

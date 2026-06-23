@@ -1,0 +1,1662 @@
+[
+  {
+    "id": "BIB-A2-01",
+    "subject": "bibliography",
+    "cluster": "A2",
+    "severity": "DATA-LOSS",
+    "confidence": "high",
+    "symptom": "Renaming a bibliography entry's citekey silently strands its annotation — the renamed entry shows a blank Annotations pod and the user's annotation prose dis...",
+    "suspectedClass": "Any per-citekey sidecar that updateBibKeyAndType does not touch: bib-review-requests.json (BIB-A2-02), and citation-occurrence keyOccurrenceIdx state (BibliographyPanel.tsx:99, keyed by citekey, retains stale index under old key).",
+    "rawFile": "bibliography-g-anchor.json"
+  },
+  {
+    "id": "BIB-A2-02",
+    "subject": "bibliography",
+    "cluster": "A2",
+    "severity": "MEDIUM",
+    "confidence": "high",
+    "symptom": "A pending AI bib-review request orphans when the user renames the entry's citekey mid-flight — the responder keys off the old citekey and the renamed card sh...",
+    "suspectedClass": "Same rename-doesn't-cascade class as BIB-A2-01; the AI request-inbox routing (editor/answer-bib-review) resolves by citekey and would fail to find the renamed entry.",
+    "rawFile": "bibliography-g-anchor.json"
+  },
+  {
+    "id": "BIB-A2-03",
+    "subject": "bibliography",
+    "cluster": "A2",
+    "severity": "HIGH",
+    "confidence": "high",
+    "symptom": "Renaming the citekey of the currently-selected entry loses selection — the just-edited card collapses out from under the user instead of staying open and sel...",
+    "suspectedClass": "Identity-change-loses-selection: any panel selecting by a mutable key rather than a stable id; cf. citation id regeneration on parse (citations) which the brief flags as lead #3.",
+    "rawFile": "bibliography-g-anchor.json"
+  },
+  {
+    "id": "BIB-A2-04",
+    "subject": "bibliography",
+    "cluster": "A2",
+    "severity": "HIGH",
+    "confidence": "medium",
+    "symptom": "A popped-out bib float silently goes blank (or vanishes) when its citekey is renamed, and the dead float key persists in localStorage with no UI to dismiss it.",
+    "suspectedClass": "Mutable-key floats with no remap: any popped card whose registry id can change without a remapCardPopKey hook (bib citekey here; citations regenerate ids on parse per lead #3, so a popped citation float can blank on the next structural edit).",
+    "rawFile": "bibliography-g-anchor.json"
+  },
+  {
+    "id": "BIB-A3-01",
+    "subject": "bibliography",
+    "cluster": "A3",
+    "severity": "MEDIUM",
+    "confidence": "high",
+    "symptom": "When a .bib file contains two distinct entries that share a citekey, only the first is shown and editable; the second is invisible in the panel and is silent...",
+    "suspectedClass": "Citekey-as-unique-identity assumption across the bib subsystem; bibEntryMap (useCitations.ts:336) and getBibEntry (.find) also silently pick the first of any duplicate-keyed pair.",
+    "rawFile": "bibliography-g-anchor.json"
+  },
+  {
+    "id": "BIB-A3-02",
+    "subject": "bibliography",
+    "cluster": "A3",
+    "severity": "MEDIUM",
+    "confidence": "high",
+    "symptom": "The conflict-strip 'Replace with library' button merges the library entry's fields onto the local entry rather than overwriting — local-only fields the libra...",
+    "suspectedClass": "Merge-vs-replace ambiguity wherever updateBibEntry is used for a 'replace' intent; the BibEntryCard 'Edit entry' Save also merges, so deleting a field by clearing it leaves an empty `field = {}` rather than removing it.",
+    "rawFile": "bibliography-g-anchor.json"
+  },
+  {
+    "id": "BIB-F8-01",
+    "subject": "bibliography",
+    "cluster": "F8",
+    "severity": "DATA-LOSS",
+    "confidence": "high",
+    "symptom": "Typing a bibliography annotation and then collapsing/closing the card (or switching docs) within ~400ms silently wipes the annotation to empty.",
+    "suspectedClass": "Debounced contentEditable writers that read a possibly-null ref in the timer and treat null as empty content; any sidecar editor without an unmount flush/clear is at risk of an empty-write-on-unmount.",
+    "rawFile": "bibliography-g-anchor.json"
+  },
+  {
+    "id": "BIB-F8-02",
+    "subject": "bibliography",
+    "cluster": "F8",
+    "severity": "HIGH",
+    "confidence": "high",
+    "symptom": "When the same bib entry is open both docked and as a float, editing the annotation in one surface does not update the other, and a subsequent edit in the sta...",
+    "suspectedClass": "Uncontrolled contentEditable mirroring across surfaces; any RichText/contentEditable that seeds from props once but two instances exist (docked vs float) will diverge and last-writer-wins clobber.",
+    "rawFile": "bibliography-g-anchor.json"
+  },
+  {
+    "id": "BIB-F8-03",
+    "subject": "bibliography",
+    "cluster": "F8",
+    "severity": "MEDIUM",
+    "confidence": "high",
+    "symptom": "After an AI bib-review request completes, re-requesting a review of the same entry+type shows no pending state, and the card can never re-enter the visible '...",
+    "suspectedClass": "First-match lookup over an append-only request log without dedup/clear; the AI-request inbox pattern (per-kind) generally must read the latest, not the first, matching record.",
+    "rawFile": "bibliography-g-anchor.json"
+  },
+  {
+    "id": "BIB-F8-04",
+    "subject": "bibliography",
+    "cluster": "F8",
+    "severity": "MEDIUM",
+    "confidence": "medium",
+    "symptom": "Adding a library entry via the conflict strip's 'Save under new citekey' creates an in-memory entry that is silently omitted from a 'Export cited.bib' perfor...",
+    "suspectedClass": "Export-via-raw vs persist-via-serializer divergence: handleExportCited should use serializeBibFile (which reconstructs from fields) rather than raw+filter(Boolean); any consumer reading e.raw directly is fragile to in-memory entries.",
+    "rawFile": "bibliography-g-anchor.json"
+  },
+  {
+    "id": "BIB-C1-01",
+    "subject": "bibliography",
+    "cluster": "C1",
+    "severity": "LOW",
+    "confidence": "medium",
+    "symptom": "Clicking the Bibliography panel's '+' button while its Add menu is open reopens the menu instead of closing it.",
+    "suspectedClass": "Outside-click-ref that excludes the toggling trigger; any panel where the menu trigger lives outside the ref and the handler listens on mousedown while the toggle runs on click.",
+    "rawFile": "bibliography-g-anchor.json"
+  },
+  {
+    "id": "BIB-A1-01",
+    "subject": "bibliography",
+    "cluster": "A1",
+    "severity": "LOW",
+    "confidence": "low",
+    "symptom": "The cited/uncited classification that drives whether the jump icon shows and whether the 'Cited only' filter hides an entry can disagree with the entry's act...",
+    "suspectedClass": "Two-source-of-truth for the same fact (sidecar citations vs live-editor citations); cited-count badge and occurrence counters also read allEditorCitations while the filter reads the sidecar.",
+    "rawFile": "bibliography-g-anchor.json"
+  },
+  {
+    "id": "BIB-F1-01",
+    "subject": "bibliography",
+    "cluster": "F1",
+    "severity": "MEDIUM",
+    "confidence": "high",
+    "symptom": "When the displayed bibliography list is empty (e.g. 'Cited entries only' before any citation exists, or a search with no matches), the user's pending 'Reques...",
+    "suspectedClass": "Any panel that uses CardListPanel `listTrailing` for content that should survive an empty item list. Same trap would hit any future trailing-section content; the structural fix is to render `listTrailing` outside the showEmpty gate (or fold it into the empty calculation).",
+    "rawFile": "bibliography-g-display.json"
+  },
+  {
+    "id": "BIB-F1-02",
+    "subject": "bibliography",
+    "cluster": "F1",
+    "severity": "LOW",
+    "confidence": "high",
+    "symptom": "The CSL-formatted bibliography preview that the panel's `getFormattedBib` prop implies (the brief lists it as a bibliography function) is never shown anywher...",
+    "suspectedClass": "Dead prop threaded through panel→host→float. Sibling risk: any card prop that survives a refactor but loses its render site (e.g. occurrence/jump props on other cards) — same audit pattern of 'prop exists, never read'.",
+    "rawFile": "bibliography-g-display.json"
+  },
+  {
+    "id": "BIB-F1-03",
+    "subject": "bibliography",
+    "cluster": "F1",
+    "severity": "COSMETIC",
+    "confidence": "high",
+    "symptom": "An entry with a very long title produces a tall multi-line header even in the compressed (collapsed, unselected) card state, breaking the uniform compressed-...",
+    "suspectedClass": "Other card headers that derive a single-line summary from arbitrary user/.bib text without a clamp (citation header, footnote bodyTitle) — check whether their compressed summary clamps the header line specifically.",
+    "rawFile": "bibliography-g-display.json"
+  },
+  {
+    "id": "BIB-F1-04",
+    "subject": "bibliography",
+    "cluster": "F1",
+    "severity": "LOW",
+    "confidence": "medium",
+    "symptom": "If two .bib entries share a citekey, only the first is ever displayed; the second is silently dropped from both the list and the cited.bib export.",
+    "suspectedClass": "Silent seen-set dedup is the lead-#5 class; the empty-`raw` `.filter(Boolean)` export drop (handleExportCited :363) is the sibling — an entry whose `raw` is '' (e.g. assembled in-memory, or library-add with raw cleared) is silently omitted from cited.bib while still counting in the list.",
+    "rawFile": "bibliography-g-display.json"
+  },
+  {
+    "id": "BIB-F5-01",
+    "subject": "bibliography",
+    "cluster": "F5",
+    "severity": "HIGH",
+    "confidence": "high",
+    "symptom": "A bibliography annotation containing HTML (e.g. <img src=x onerror=...>, <svg onload=...>, <iframe>) injects live, event-firing DOM into the panel when the c...",
+    "suspectedClass": "Any other contentEditable/innerHTML annotation/notes sink that loads persisted or AI-authored HTML without DOMPurify. The #28 hardening was applied to the field row but the parallel annotation editor was missed — check footnote/report rich bodies for the same raw-innerHTML pattern.",
+    "rawFile": "bibliography-g-display.json"
+  },
+  {
+    "id": "BIB-F5-02",
+    "subject": "bibliography",
+    "cluster": "F5",
+    "severity": "MEDIUM",
+    "confidence": "high",
+    "symptom": "After the AI completes a bib-review (notes or fields), the freshly-written annotation / corrected fields do not appear in the open Bibliography panel — the p...",
+    "suspectedClass": "All sidecars/.bib written out-of-band by editor skills but only loaded once per docId or refreshed on a narrowly-dispatched in-app event (no FS-watch). Sibling: any panel relying on a contentEditable seeded once on mount (AnnotationEditor pattern) won't reflect an external same-key content change.",
+    "rawFile": "bibliography-g-display.json"
+  },
+  {
+    "id": "BIB-F5-03",
+    "subject": "bibliography",
+    "cluster": "F5",
+    "severity": "HIGH",
+    "confidence": "high",
+    "symptom": "Renaming a citekey via a bib card's 'Edit entry' changes the .bib key and the citations.json sidecar, but every live \\cite{oldKey} in the editor keeps the ol...",
+    "suspectedClass": "Any panel-side mutation of a value whose source of truth is the editor doc (citekeys, footnote text, labels) that only patches the sidecar and not the PM doc — it will be silently reverted by the next syncFromEditor/observer pass. The deep fix is to route citekey renames through an editor transaction, mirroring how the find-citation/sync-bib skills rewrite \\cite in the .tex.",
+    "rawFile": "bibliography-g-display.json"
+  },
+  {
+    "id": "BIB-F5-04",
+    "subject": "bibliography",
+    "cluster": "F5",
+    "severity": "MEDIUM",
+    "confidence": "high",
+    "symptom": "The inline BibTeX-fields editor can neither add a new field (e.g. supply a missing DOI) nor remove an existing one — clearing a field to blank leaves an empt...",
+    "suspectedClass": "Merge-only field updaters across the bib/card edit surface (any onUpdate that spreads new over old without honoring deletions); the answer-bib-review skill's 'replace-all-fields' mode (answer-bib-review.md:109-115) exists precisely because set-fields can't delete — the manual UI lacks that escape hatch.",
+    "rawFile": "bibliography-g-display.json"
+  },
+  {
+    "id": "BIB-F5-05",
+    "subject": "bibliography",
+    "cluster": "F5",
+    "severity": "LOW",
+    "confidence": "high",
+    "symptom": "Once a bib-review is marked 'complete', the card gives no completion affordance — the request button reverts to its idle 'Request review' label, and clicking...",
+    "suspectedClass": "Tri-state status (none/pending/complete) collapsed to a binary pending/not check at the UI; any other card consuming a 'complete' status without a distinct rendering (citation bib-review, report-request fulfillment) risks the same re-fire-on-complete behavior.",
+    "rawFile": "bibliography-g-display.json"
+  },
+  {
+    "id": "BIB-F3-01",
+    "subject": "bibliography",
+    "cluster": "F3",
+    "severity": "HIGH",
+    "confidence": "high",
+    "symptom": "Clicking the jump-to-citation target on a bibliography entry that is cited only inside a footnote does nothing — the editor never scrolls — even though the e...",
+    "suspectedClass": "Identical descendants-only blind spot to citations CI-F3-01 (same shared resolver). The delete path was special-cased for nested cites (Editor.tsx ~1422 stripFootnoteNestedCitation) but jump/hover/highlight were not: resolveLink + findInlineAtomPos + the reconciler's collectAnchorEls all share it, so the bib panel's selection-driven citation-highlight (EditorLayout.tsx:1899-1916) also can't paint a marker that lives inside a footnote, and the occurrence-cycling jump (cycleOccurrence) inherits the same no-op when the cycled occurrence is in a footnote.",
+    "rawFile": "bibliography-g-interact.json"
+  },
+  {
+    "id": "BIB-F3-02",
+    "subject": "bibliography",
+    "cluster": "F3",
+    "severity": "MEDIUM",
+    "confidence": "medium",
+    "symptom": "The occurrence counter on a multiply-cited bib entry can read past its total (e.g. shows '3/2'), and the prev/next occurrence arrows + jump target lag a stal...",
+    "suspectedClass": "Any per-id index stored in component state and keyed by a value (citekey) whose underlying id-list is regenerated on parse will drift unless reconciled on the list-change. The Citations panel's own occurrence cycling (keyOccurrenceIdx analogue / cyclePrev-cycleNext) is the sibling to audit; same regenerate-ids-on-parse hazard as lead #3.",
+    "rawFile": "bibliography-g-interact.json"
+  },
+  {
+    "id": "BIB-F7-01",
+    "subject": "bibliography",
+    "cluster": "F7",
+    "severity": "DATA-LOSS",
+    "confidence": "high",
+    "symptom": "Exporting cited.bib silently omits any cited entry that was added during the current session (e.g. via 'Save under new citekey' or 'Add from library') — the...",
+    "suspectedClass": "Any consumer that reads entry.raw directly instead of routing through serializeBibFile/reconstructBibtex inherits the empty-raw blind spot. Audit every BibEntry.raw read (formatBibEntryForNote uses fields, OK; handleConflictRequestMerge falls back to formatBibEntryForNote, OK; but any future 'copy bibtex' or 'export all' that uses .raw is at risk). Sibling of lead #5.",
+    "rawFile": "bibliography-g-interact.json"
+  },
+  {
+    "id": "BIB-F7-02",
+    "subject": "bibliography",
+    "cluster": "F7",
+    "severity": "MEDIUM",
+    "confidence": "medium",
+    "symptom": "When a .bib file contains two genuinely distinct entries that happen to share a citekey, exporting cited.bib silently writes only the first and drops the sec...",
+    "suspectedClass": "Export-path instance of the display dedup in lead #5. Any seen-set keyed only on citekey treats a colliding-key collision as a duplicate. The whole-doc bibRaw serialize path (serializeBibFile) does NOT dedup, so disk and export disagree on entry count when keys collide.",
+    "rawFile": "bibliography-g-interact.json"
+  },
+  {
+    "id": "BIB-F7-03",
+    "subject": "bibliography",
+    "cluster": "F7",
+    "severity": "LOW",
+    "confidence": "high",
+    "symptom": "Dragging a bib entry into the editor always inserts a plain \\cite{key} regardless of the document's bib package, even though the card was wired to choose a p...",
+    "suspectedClass": "Dead-prop / stale-doc-comment class: a threaded prop that is in deps but never consumed. The drop still produces a working citation (\\cite is valid under both packages) so impact is cosmetic/idiomatic, but the comment misleads maintainers.",
+    "rawFile": "bibliography-g-interact.json"
+  },
+  {
+    "id": "BIB-F7-04",
+    "subject": "bibliography",
+    "cluster": "F7",
+    "severity": "LOW",
+    "confidence": "medium",
+    "symptom": "Renaming a citekey to/from a key that begins or ends with a non-word character (e.g. '+foo', a key wrapped only in punctuation) updates the entry and the par...",
+    "suspectedClass": "Word-boundary regex assumes citekeys are word-char-bounded. BibTeX keys legally contain almost any non-{},space char. Any other site that rewrites cite commands with \\b (search/replace, sync-bib-to-library citekey rename) shares this. The asymmetry between unconditional keys[] update and conditional command update is the corrupting mechanism — they should be updated together or both via the same matcher.",
+    "rawFile": "bibliography-g-interact.json"
+  },
+  {
+    "id": "BIB-F2-01",
+    "subject": "bibliography",
+    "cluster": "F2",
+    "severity": "LOW",
+    "confidence": "medium",
+    "symptom": "Editing a bib entry's citekey in the BibTeX-fields editor and saving drops the entry's selection halo (the card you just edited is no longer highlighted/expa...",
+    "suspectedClass": "Any selection-by-natural-key (vs stable id) breaks when that key mutates. The conflict-resolution handlers DO re-select (handleConflictReplace/NewCitekey/RequestMerge all call handleSelectBibKey afterward), so the in-place field-edit rename is the one path that forgot to re-point selection. Same hazard would hit any panel that selects by a renameable field rather than an immutable id.",
+    "rawFile": "bibliography-g-interact.json"
+  },
+  {
+    "id": "CI-A1-01",
+    "subject": "citations",
+    "cluster": "A1",
+    "severity": "MEDIUM",
+    "confidence": "high",
+    "symptom": "Deleting a \\cite marker directly in the editor (e.g. Backspace over it, or a code-view edit) leaves a dead, dashed citation card in the panel that cannot jum...",
+    "suspectedClass": "Any inline-atom sidecar (footnote partially mitigates via its orphan bridge; citation has none). The 'sync-from-editor only at mount' pattern is the class — anywhere the editor is the source of truth for an id-bearing sidecar but resync isn't event-driven from the structural diff.",
+    "rawFile": "citations-g-anchor.json"
+  },
+  {
+    "id": "CI-A1-02",
+    "subject": "citations",
+    "cluster": "A1",
+    "severity": "LOW",
+    "confidence": "medium",
+    "symptom": "A panel-created unanchored citation (deliberately not yet in the text) is shown in the Omni unanchored bin indistinguishably from a citation whose in-text ma...",
+    "suspectedClass": "Conflation of 'free/never-anchored' vs 'orphaned/lost-anchor' wherever a builder derives state from position-resolution alone rather than from the card's own flag (citation is the only intrinsically-in-text kind, so this is somewhat citation-specific).",
+    "rawFile": "citations-g-anchor.json"
+  },
+  {
+    "id": "CI-A2-01",
+    "subject": "citations",
+    "cluster": "A2",
+    "severity": "HIGH",
+    "confidence": "high",
+    "symptom": "Dragging an unanchored citation card into the editor does nothing — it never anchors, despite the card's own tooltip instructing the user to do exactly that.",
+    "suspectedClass": "Optional callback props left unwired at the host while the producing surface still advertises the action. Worth checking the analogous MIME_FOOTNOTE / MIME_ARCHIVE / MIME_NOTE drop branches in Editor.tsx are actually wired by EditorPane (footnote panel-drop is wired via a separate event bridge, but citation is the unwired one here).",
+    "rawFile": "citations-g-anchor.json"
+  },
+  {
+    "id": "CI-A2-02",
+    "subject": "citations",
+    "cluster": "A2",
+    "severity": "MEDIUM",
+    "confidence": "medium",
+    "symptom": "After a code-view re-parse that regenerates a citation's id (e.g. a manually-typed \\cite with no \\vcid marker, or a code edit that desyncs the marker), the m...",
+    "suspectedClass": "Mount-only sync-from-editor for an id-bearing sidecar (same root as CI-A1-01). Any kind whose editor node id can change under a full re-parse and whose sidecar isn't event-driven off the structural diff is exposed.",
+    "rawFile": "citations-g-anchor.json"
+  },
+  {
+    "id": "CI-A3-01",
+    "subject": "citations",
+    "cluster": "A3",
+    "severity": "LOW",
+    "confidence": "low",
+    "symptom": "A citation cloned via cloneCitation without a corresponding new \\cite atom is silently discarded on the next reload.",
+    "suspectedClass": "Sidecar clone helpers that don't mark the clone's anchor state, relying on a caller to also create the in-doc node. Footnote clone (useFootnotes.ts) should be checked for the same assumption.",
+    "rawFile": "citations-g-anchor.json"
+  },
+  {
+    "id": "CI-F8-01",
+    "subject": "citations",
+    "cluster": "F8",
+    "severity": "MEDIUM",
+    "confidence": "high",
+    "symptom": "A popped-out (floating) unanchored citation card cannot be dropped into the editor to anchor it — the drop is a silent no-op.",
+    "suspectedClass": "Inline-atom 'move' drop specs used as the only float-drop path conflate 'move an existing atom' with 'anchor a not-yet-placed atom'. Footnote float-drop (footnoteDropSpec) shares the same move-only semantics and would also fail to place an orphaned footnote.",
+    "rawFile": "citations-g-anchor.json"
+  },
+  {
+    "id": "CI-F8-02",
+    "subject": "citations",
+    "cluster": "F8",
+    "severity": "LOW",
+    "confidence": "medium",
+    "symptom": "After a citation is deleted, cardStore.selected can keep pointing at the deleted citation's id; in the rare event a new citation is later assigned that same...",
+    "suspectedClass": "The inline-atom pruner exemption is shared by footnotes — a deleted footnote leaves the same dangling cardStore ref with the same id-reuse mis-paint window. The class is 'pruner exempts a kind it can't verify, so it never clears that kind's dangling interaction state'.",
+    "rawFile": "citations-g-anchor.json"
+  },
+  {
+    "id": "CI-F8-03",
+    "subject": "citations",
+    "cluster": "F8",
+    "severity": "MEDIUM",
+    "confidence": "medium",
+    "symptom": "A \\cite added or typed via the code view does not appear as a card in the Citations panel until the document is reloaded.",
+    "suspectedClass": "Code-view-originated structural additions that bypass the action-registry create path. The same gap likely affects footnotes/examples added in code view (their sidecar registration also rides the visual-editor create bridge / mount-time sync).",
+    "rawFile": "citations-g-anchor.json"
+  },
+  {
+    "id": "CI-C1-01",
+    "subject": "citations",
+    "cluster": "C1",
+    "severity": "LOW",
+    "confidence": "medium",
+    "symptom": "The Citations panel strip count badge can exceed the number of actual in-text citations because it counts orphaned and panel-only unanchored cards too.",
+    "suspectedClass": "Strip count badges that use the raw card-array length rather than an anchored/visible subset — check footnotes (orphans listed before anchored) for the same over-count.",
+    "rawFile": "citations-g-anchor.json"
+  },
+  {
+    "id": "CI-F1-01",
+    "subject": "citations",
+    "cluster": "F1",
+    "severity": "COSMETIC",
+    "confidence": "high",
+    "symptom": "A collapsed multi-key citation card (e.g. \\cites{a,b,c,d}) renders one header line per key, growing several rows tall instead of staying compact like every o...",
+    "suspectedClass": "Any bespoke card header that lists per-row content in its compressed view without routing through compressedBodyStyle — check the multi-paragraph report omni rows and any future multi-anchor card.",
+    "rawFile": "citations-g-display.json"
+  },
+  {
+    "id": "CI-F1-02",
+    "subject": "citations",
+    "cluster": "F1",
+    "severity": "HIGH",
+    "confidence": "medium",
+    "symptom": "After the doc reloads / the editor re-parses the .tex, a previously-selected citation card loses its selection halo (and the panel's selectedCitationId point...",
+    "suspectedClass": "Footnotes share the inline-atom entityExists⇒true exemption and the same id-keyed selection — verify whether footnote selection survives the same remount. The deeper class: any selection keyed on an editor-regenerated id (omni pos cache, omniPinStore) is invalidated by a re-parse for both citation and footnote.",
+    "rawFile": "citations-g-display.json"
+  },
+  {
+    "id": "CI-F4-01",
+    "subject": "citations",
+    "cluster": "F4",
+    "severity": "MEDIUM",
+    "confidence": "medium",
+    "symptom": "Clicking a citation that is nested inside a footnote/note card body selects no card (or the wrong one) instead of selecting that citation's card.",
+    "suspectedClass": "Same drift hits nested footnote markers (data-footnote-id) inside other card bodies; any inline-atom id stored in a sub-editor's JSON diverges from the main-doc/sidecar id space after a re-parse (id-regeneration class, lead #3).",
+    "rawFile": "citations-g-display.json"
+  },
+  {
+    "id": "CI-F4-02",
+    "subject": "citations",
+    "cluster": "F4",
+    "severity": "LOW",
+    "confidence": "low",
+    "symptom": "Clicking a repeated citation (or one inside a card body) aligns the omni card to the wrong on-screen citation instance.",
+    "suspectedClass": "The parallel footnote handler (marker-clicks.ts:262-269) uses the same first-match querySelector for .footnote-marker — same wrong-instance alignment for repeated/nested footnote markers.",
+    "rawFile": "citations-g-display.json"
+  },
+  {
+    "id": "CI-F5-01",
+    "subject": "citations",
+    "cluster": "F5",
+    "severity": "MEDIUM",
+    "confidence": "high",
+    "symptom": "After adding a second key with a distinct page range and then removing it (or making the ranges equal again), the citation stays a plural \\cites command for...",
+    "suspectedClass": "Lead #4. Any one-way command-shape mutation driven by row count/postnote distinctness without a symmetric inverse — same pattern would bite a future biblatex shorthand auto-switch.",
+    "rawFile": "citations-g-display.json"
+  },
+  {
+    "id": "CI-F5-02",
+    "subject": "citations",
+    "cluster": "F5",
+    "severity": "MEDIUM",
+    "confidence": "medium",
+    "symptom": "Switching the bibliography package (biblatex→natbib) leaves existing citation cards holding biblatex-only commands (e.g. \\cites, \\autocite), which then seria...",
+    "suspectedClass": "Any per-card command shape that depends on the panel-wide bibPackage but is not re-derived when the package toggles — also affects the inline display formatter path for the same cards.",
+    "rawFile": "citations-g-display.json"
+  },
+  {
+    "id": "CI-F5-03",
+    "subject": "citations",
+    "cluster": "F5",
+    "severity": "LOW",
+    "confidence": "high",
+    "symptom": "A citation card can end up with two rows holding the same citekey, producing a duplicate-key LaTeX command and a doubled header line.",
+    "suspectedClass": "Inconsistent dedup invariants between the drag-merge path and the picker path — any multi-key editor that dedups on one entry route but not another.",
+    "rawFile": "citations-g-display.json"
+  },
+  {
+    "id": "CI-F3-01",
+    "subject": "citations",
+    "cluster": "F3",
+    "severity": "HIGH",
+    "confidence": "high",
+    "symptom": "Clicking jump (or the card body) on a citation that lives inside a footnote does nothing — the editor never scrolls to the marker — even though the citation...",
+    "suspectedClass": "Same descend-asymmetry exists for footnotes-in-footnotes if any, and is the mirror of the delete path that DID get special-cased: Editor.tsx:1422 calls stripFootnoteNestedCitation for delete but no analogous nested-resolve exists for jump/hover/highlight. resolveLink + findInlineAtomPos + reconciler collectAnchorEls all share the 'descendants-only' blind spot, so highlight-on-select for an in-footnote citation also can't paint its marker. Bibliography 'jump to first citation' (cited-only) likely shares it.",
+    "rawFile": "citations-g-interact.json"
+  },
+  {
+    "id": "CI-F2-01",
+    "subject": "citations",
+    "cluster": "F2",
+    "severity": "MEDIUM",
+    "confidence": "medium",
+    "symptom": "After selecting a citation card then clicking its body again, the halo stays painted but keyboard arrow-cycling and the panel's selectedId-driven behaviors a...",
+    "suspectedClass": "Any card whose body onClick pairs a monotonic store select (ac.onActivate) with a TOGGLE-style React onSelect has this dual-source desync. Footnotes use the same panel pattern (renderCard onSelect toggle) — check FootnotePanel. The clean fix is one source of truth (drive selectedId from the store, or make onActivate/onSelect agree on toggle semantics).",
+    "rawFile": "citations-g-interact.json"
+  },
+  {
+    "id": "CI-F2-02",
+    "subject": "citations",
+    "cluster": "F2",
+    "severity": "MEDIUM",
+    "confidence": "medium",
+    "symptom": "A deleted citation (or one whose id changed across a raw .tex round-trip) can leave a stale halo/expanded-body ghost painted on a now-unrelated or absent car...",
+    "suspectedClass": "Footnotes share the exact same inline-atom pruner exemption (entityExists⇒true), so a deleted/renumbered footnote leaves an identical ghost. The deeper issue is that inline-atom cards have no liveness signal feeding the pruner — a citation/footnote-id-set diff from the editor would close it. This is the brief's known-fragile lead #2.",
+    "rawFile": "citations-g-interact.json"
+  },
+  {
+    "id": "CI-F2-03",
+    "subject": "citations",
+    "cluster": "F2",
+    "severity": "LOW",
+    "confidence": "high",
+    "symptom": "Expanding a citation card (chevron) does not move the halo, and selecting it does not expand it — correct per the axis-purity contract — but a card can remai...",
+    "suspectedClass": "Affects every anchored card kind equally (the reconciler is kind-agnostic); the missing expanded-marker is a cross-subject A6 item, not citation-specific.",
+    "rawFile": "citations-g-interact.json"
+  },
+  {
+    "id": "CI-F7-01",
+    "subject": "citations",
+    "cluster": "F7",
+    "severity": "MEDIUM",
+    "confidence": "high",
+    "symptom": "Deleting a citation from the panel (trash button) removes it immediately with no 'this has content?' confirmation, even when the card carries keys/postnotes/...",
+    "suspectedClass": "Brief lead #1: cardHasContent omits footnote/citation/example/bib, so all four atom/derived kinds skip the delete-confirm. Footnotes (FootnoteCard) and examples should be checked for the same unconfirmed trash. The class is 'atom/derived card kinds have no content predicate, so the shared confirm gate silently no-ops or is bypassed entirely.'",
+    "rawFile": "citations-g-interact.json"
+  },
+  {
+    "id": "CI-F7-02",
+    "subject": "citations",
+    "cluster": "F7",
+    "severity": "MEDIUM",
+    "confidence": "high",
+    "symptom": "After biblatex auto-promotes \\cite to \\cites for a multi-key citation with distinct postnotes, removing keys back down to one leaves the command stuck as the...",
+    "suspectedClass": "Brief lead #4. Any auto-promote with no symmetric demote is a stuck-state bug; the same one-directional logic would strand \\textcites/\\parencites/\\autocites etc. (all in HAS_PLURAL) plural after row reduction.",
+    "rawFile": "citations-g-interact.json"
+  },
+  {
+    "id": "CI-F7-03",
+    "subject": "citations",
+    "cluster": "F7",
+    "severity": "LOW",
+    "confidence": "high",
+    "symptom": "Removing the last/only key from a citation card empties the command (\\cite{}) but leaves the in-text \\cite atom and the citation card in place as a dangling...",
+    "suspectedClass": "Empty-but-anchored placeholder is the intended 'pristine draft' state (useCitations.addCitation markNew), but reaching it by REMOVING the last key (vs. inserting a blank) gives no affordance to clean up — same shape as a footnote whose body is fully deleted but the marker stays.",
+    "rawFile": "citations-g-interact.json"
+  },
+  {
+    "id": "CI-F7-04",
+    "subject": "citations",
+    "cluster": "F7",
+    "severity": "LOW",
+    "confidence": "medium",
+    "symptom": "cloneCitation duplicates a citation into a new sidecar entry that has no in-text atom (it is effectively an unanchored phantom that renders with dashed styli...",
+    "suspectedClass": "Any code path that adds a citation to the sidecar without either inserting an atom or setting unanchored:true creates an entry that syncFromEditor will garbage-collect. cloneCitation is the clearest instance; verify no other add path (e.g. AI-request import) forgets the unanchored flag. Cannot confirm cloneCitation is reachable from the citations panel UI (it's in the hook + CITATIONS_INERT but I found no panel/omni caller) — the loss is real wherever it is invoked.",
+    "rawFile": "citations-g-interact.json"
+  },
+  {
+    "id": "EX-A1-01",
+    "subject": "examples",
+    "cluster": "A1",
+    "severity": "LOW",
+    "confidence": "high",
+    "symptom": "An example card can never appear as an orphan; deleting the \\ex block in the text makes the card silently disappear with no 'source deleted' affordance.",
+    "suspectedClass": "Any DERIVED card kind whose card list is rebuilt from live nodes (rather than a persisted sidecar) cannot represent an orphan — the orphan/unanchored UX only works for sidecar-backed kinds (note/archive/todo/report). Footnotes are the sibling: they DO keep an orphan list (FootnotePanel orphans, useFootnotes sidecar) precisely because the sidecar outlives the atom; examples lack that, so the brief-listed orphan-example function is structurally impossible.",
+    "rawFile": "examples-g-anchor.json"
+  },
+  {
+    "id": "EX-A1-02",
+    "subject": "examples",
+    "cluster": "A1",
+    "severity": "LOW",
+    "confidence": "high",
+    "symptom": "A popped-out example panel card vanishes without explanation when its block is deleted, whereas the in-editor example block float shows a 'Source example del...",
+    "suspectedClass": "Any poppable card kind whose toFloatable resolves from a live-derived collection (example; also footnote/citation read live via ctx) returns null on entity deletion and the float silently vanishes, while text-object floats banner instead. Footnote/citation card floats share this null-return pattern (cards/floats/index.tsx:220,488).",
+    "rawFile": "examples-g-anchor.json"
+  },
+  {
+    "id": "EX-A2-01",
+    "subject": "examples",
+    "cluster": "A2",
+    "severity": "LOW",
+    "confidence": "high",
+    "symptom": "The Examples sidecar hook (custom title persistence, delete, editor reconciliation) is wired into nothing; an example's custom title and createdAt are never...",
+    "suspectedClass": "isAutoTitle false-positive (known-fragile lead #7) is a defect class shared by every kind whose titleLabel is a common word — 'Report 2' for reports is the live sibling (reports DO persist titles and DO run the stripper on load, useReports.ts:57-60), so the report panel actually exhibits the loss; examples only carry the latent version because the hook is dead.",
+    "rawFile": "examples-g-anchor.json"
+  },
+  {
+    "id": "EX-F8-01",
+    "subject": "examples",
+    "cluster": "F8",
+    "severity": "MEDIUM",
+    "confidence": "medium",
+    "symptom": "Deleting an example's block while its panel-card float is open leaves a stale popped-out key in saved view prefs; on a later doc load (or undo) the dead key...",
+    "suspectedClass": "All card-float keys for derived/live-resolved entities (example; footnote/citation card floats) can become dangling popout keys on entity deletion because no reconciler prunes poppedOutCards against entity existence — the dangling-ref pruner only covers cardStore (selection/hover/expand), not the popout store.",
+    "rawFile": "examples-g-anchor.json"
+  },
+  {
+    "id": "EX-F8-02",
+    "subject": "examples",
+    "cluster": "F8",
+    "severity": "LOW",
+    "confidence": "medium",
+    "symptom": "When an example is edited from one surface (e.g. the main editor or a second open card) while the user's caret sits mid-text in another open example card, th...",
+    "suspectedClass": "Raw-offset caret restore across a setContent re-seed (no ProseMirror mapping) is shared by every float/embedded editor: float-sync.tsx (all text-object floats) and ExampleCard.tsx (example card editor). A position-mapped restore would fix the whole class.",
+    "rawFile": "examples-g-anchor.json"
+  },
+  {
+    "id": "EX-F8-03",
+    "subject": "examples",
+    "cluster": "F8",
+    "severity": "LOW",
+    "confidence": "low",
+    "symptom": "The docked example card editor and its popped-out card-float editor use the identical write-back floatId 'example-card:<id>', so their own-write echo tags co...",
+    "suspectedClass": "Float ids derived from entity id alone (no surface discriminator) are a latent collision class for any kind that can be open on two surfaces at once. The block float uses 'example:<uuid>' (distinct from the card's 'example-card:<id>'), so the docked/float-card pair is the specific collision; a surface-tagged floatId would harden it.",
+    "rawFile": "examples-g-anchor.json"
+  },
+  {
+    "id": "EX-F5-01",
+    "subject": "examples",
+    "cluster": "F5",
+    "severity": "MEDIUM",
+    "confidence": "high",
+    "symptom": "An example card's title can never be edited or displayed, and the examples.json sidecar (title + createdAt persistence) is never written or read — the entire...",
+    "suspectedClass": "Hook-without-a-consumer dead code: any per-doc sidecar hook (useTodos/useReports/useArchive) wired through a panel host that drops its mutators would silently disable that panel's persistence. Worth auditing each *PanelHost in EditorPane.tsx for dropped hook outputs.",
+    "rawFile": "examples-g-display.json"
+  },
+  {
+    "id": "EX-F5-02",
+    "subject": "examples",
+    "cluster": "F5",
+    "severity": "MEDIUM",
+    "confidence": "high",
+    "symptom": "Edits typed directly into an example card's body cannot be undone with Ctrl+Z in the main editor.",
+    "suspectedClass": "Any directly-editable card body that writes back to the main doc with addToHistory:false loses undo. The example float pattern (text-objects/floats/example-block-body.tsx) shares this and is defensible for a float; the question is whether a primary editable card surface should differ. Check other FLOAT_WRITE_META writers for the same history loss when the surface is a card rather than a float.",
+    "rawFile": "examples-g-display.json"
+  },
+  {
+    "id": "EX-F5-03",
+    "subject": "examples",
+    "cluster": "F5",
+    "severity": "MEDIUM",
+    "confidence": "medium",
+    "symptom": "An example-body edit that produces schema-invalid expex JSON is silently dropped from the main doc — the card shows the new content but the document never re...",
+    "suspectedClass": "Silent swallow-on-write-back: the same try/catch-swallow appears in the example float (intentional parity). Lead #9's 'swallowed schema errors'. Any card/float that writes back via nodeFromJSON inside a bare catch can silently diverge from the doc — audit FLOAT_WRITE_META write-back sites for surfaced-vs-swallowed errors.",
+    "rawFile": "examples-g-display.json"
+  },
+  {
+    "id": "EX-F4-01",
+    "subject": "examples",
+    "cluster": "F4",
+    "severity": "LOW",
+    "confidence": "medium",
+    "symptom": "Clicking a \\ref inside an example card body can open the ref-edit popover anchored to a DIFFERENT ref of the same label in the main text, not the one clicked.",
+    "suspectedClass": "Global-querySelector-by-shared-key after a click that originated in an embedded/duplicate editor. The citation alignment path (EX-F4-03) has the same shape. Any bridge that re-resolves the clicked element by a global attribute selector instead of carrying the element/rect in the event will mis-target when the same atom id/label exists in more than one mounted editor (card body, omni copy, float copy).",
+    "rawFile": "examples-g-display.json"
+  },
+  {
+    "id": "EX-F4-02",
+    "subject": "examples",
+    "cluster": "F4",
+    "severity": "LOW",
+    "confidence": "high",
+    "symptom": "Clicking inline or display math inside an example card body does nothing — no math editor/popover opens, so math nested in an example can't be edited from th...",
+    "suspectedClass": "Surface-gated atom interactivity vs. card-as-editable-surface tension: the example card body is the one float-surface editor that is also a primary editing surface, so the 'inert in every float' rule under-serves it. Any other atom whose interactivity is gated to surface:'main' (vs. carrying a host/position remap) is similarly dead inside the example card body.",
+    "rawFile": "examples-g-display.json"
+  },
+  {
+    "id": "EX-F4-03",
+    "subject": "examples",
+    "cluster": "F4",
+    "severity": "COSMETIC",
+    "confidence": "low",
+    "symptom": "Clicking a citation inside an example card body may vertically align the citation card to the wrong on-screen citation instance.",
+    "suspectedClass": "Same global-querySelector-by-shared-key class as EX-F4-01. The fix shape (carry the clicked element/rect in the event) would resolve both.",
+    "rawFile": "examples-g-display.json"
+  },
+  {
+    "id": "EX-F1-01",
+    "subject": "examples",
+    "cluster": "F1",
+    "severity": "LOW",
+    "confidence": "medium",
+    "symptom": "The collapsed preview of a multi-part example (\\pex with a body paragraph + several \\a items, or a long interlinear gloss) clips to a tiny sliver — often jus...",
+    "suspectedClass": "Line-count clamp applied to non-text-flow (grid) content: any borrowed-body kind that renders structured (non-paragraph) content under compressedBodyStyle's height ceiling will clip unhelpfully. Worth checking figure/graphics block previews and any future structured card body.",
+    "rawFile": "examples-g-display.json"
+  },
+  {
+    "id": "EX-F1-02",
+    "subject": "examples",
+    "cluster": "F1",
+    "severity": "LOW",
+    "confidence": "high",
+    "symptom": "Every collapsed example card mounts a full (read-only) TipTap editor; a panel/omni with N collapsed example cards holds N live embedded editors.",
+    "suspectedClass": "Per-card embedded-editor mount as the default collapsed renderer: any card kind that renders its collapsed preview through a real editor (vs. a string) scales editor count with list length. Examples is the only borrowed-body kind doing this for collapsed previews today.",
+    "rawFile": "examples-g-display.json"
+  },
+  {
+    "id": "EX-F2-01",
+    "subject": "examples",
+    "cluster": "F2",
+    "severity": "MEDIUM",
+    "confidence": "high",
+    "symptom": "After clicking one example card then pressing ArrowDown/ArrowUp to move through the list, TWO example cards can show the selection halo at once (the previous...",
+    "suspectedClass": "Any panel that ORs a panel-local selectedId halo with the cross-surface cardStore halo while routing keyboard cycling through a path that bypasses cardStore.select. Footnotes/Citations also use useCycle + cardStore; check whether their keyboard cycle calls ac.onActivate (footnotes' panel onActivate at FootnotePanel may avoid this if it derives selection FROM cardStore rather than ORing). The general mistake is two selection authorities for one halo.",
+    "rawFile": "examples-g-interact.json"
+  },
+  {
+    "id": "EX-F2-02",
+    "subject": "examples",
+    "cluster": "F2",
+    "severity": "LOW",
+    "confidence": "high",
+    "symptom": "Clicking the body of an already-selected example card leaves it visibly haloed but silently drops it as the keyboard/operand target (the halo and the keyboar...",
+    "suspectedClass": "Cards that compose a select-only store primitive (ac.onActivate) with a panel-level toggling onSelect. Anywhere a body click both selects-in-store and toggles-a-panel-id, the re-click diverges. Footnote/Citation cards call ac.onActivate()+onSelect() too — check whether their panel onSelect toggles.",
+    "rawFile": "examples-g-interact.json"
+  },
+  {
+    "id": "EX-F3-01",
+    "subject": "examples",
+    "cluster": "F3",
+    "severity": "MEDIUM",
+    "confidence": "high",
+    "symptom": "Selecting (or hovering) an example card highlights only the panel card — the corresponding \\ex/\\pex block in the main text gets no selection halo or hover ti...",
+    "suspectedClass": "Any anchored:true kind that lacks both a Mode-A/Mode-B link and a synthesized inline-atom link. Examples are the clearest case; verify figure/graphics-derived kinds aren't similarly anchored-but-unpaintable. The class is 'anchored flag set without a link the reconciler can resolve'.",
+    "rawFile": "examples-g-interact.json"
+  },
+  {
+    "id": "EX-F3-02",
+    "subject": "examples",
+    "cluster": "F3",
+    "severity": "LOW",
+    "confidence": "medium",
+    "symptom": "A docked, expanded example card offers no way to jump to its block in the text — the user must first collapse it, then click the collapsed body.",
+    "suspectedClass": "Cards whose expanded body is an interactive editor that stopPropagation's the card-root jump, while the header is toggle-only and the jump chevron is popout-gated. Any 'editable-body' card with no docked jump button shares this. The fix class is a docked jump affordance independent of the body editor.",
+    "rawFile": "examples-g-interact.json"
+  },
+  {
+    "id": "EX-F3-03",
+    "subject": "examples",
+    "cluster": "F3",
+    "severity": "LOW",
+    "confidence": "high",
+    "symptom": "Jumping to an example from the unified Omni column scrolls the block into view but does not align it to the clicked card's vertical position (unlike jumping...",
+    "suspectedClass": "Omni builders that drop the sourceEl when wiring onJump. Check footnote/citation/report omni.tsx — if any pass `() => onJump(id)` instead of `(el) => onJump(id, el)`, they lose alignEntryToY too.",
+    "rawFile": "examples-g-interact.json"
+  },
+  {
+    "id": "EX-F7-01",
+    "subject": "examples",
+    "cluster": "F7",
+    "severity": "LOW",
+    "confidence": "high",
+    "symptom": "The Examples sidecar/lifecycle hook (useExamples) is entirely dead code — example titles, deletes, and auto-title stripping it implements never run, while a...",
+    "suspectedClass": "Derived-kind panels whose persisted-sidecar hook is retained 'for parity' but never wired. Check whether other derived kinds (figure/graphics) carry similar unwired sidecar hooks guarded by tests that imply they run.",
+    "rawFile": "examples-g-interact.json"
+  },
+  {
+    "id": "FN-A2-01",
+    "subject": "footnotes",
+    "cluster": "A2",
+    "severity": "HIGH",
+    "confidence": "high",
+    "symptom": "An orphaned footnote (marker deleted in-text, content recoverable in the panel) vanishes permanently on document reload or doc switch — the recovery affordan...",
+    "suspectedClass": "Any panel state held at the EditorLayout shell level (vs a sidecar-backed per-doc hook) shares this loss-on-reload + leak-on-doc-switch risk. Orphan/transient-recovery collections that are not persisted are the class.",
+    "rawFile": "footnotes-g-anchor.json"
+  },
+  {
+    "id": "FN-A2-02",
+    "subject": "footnotes",
+    "cluster": "A2",
+    "severity": "MEDIUM",
+    "confidence": "high",
+    "symptom": "When a footnote that has a user-authored title (or is a \\thanks acknowledgement) is orphaned, the title and the acknowledgement identity are silently dropped...",
+    "suspectedClass": "Any teardown→recovery event that reconstructs a record from a subset of the source node's attrs. The detector pulls content but not the full attr set; the same omission would affect any future per-footnote attr (e.g. a future kind discriminator).",
+    "rawFile": "footnotes-g-anchor.json"
+  },
+  {
+    "id": "FN-A2-03",
+    "subject": "footnotes",
+    "cluster": "A2",
+    "severity": "MEDIUM",
+    "confidence": "medium",
+    "symptom": "Orphaned footnotes from one document persist into a different document's Footnotes panel after switching docs — orphans with footnoteIds that belong to the p...",
+    "suspectedClass": "Any shell-level (EditorLayout) state that should be per-doc but isn't reset on docId change. Companion to the suppressOrphanRef latch which is also shell-level and never reset.",
+    "rawFile": "footnotes-g-anchor.json"
+  },
+  {
+    "id": "FN-A1-01",
+    "subject": "footnotes",
+    "cluster": "A1",
+    "severity": "MEDIUM",
+    "confidence": "medium",
+    "symptom": "A deleted footnote can leave a stale selection/expansion/hover reference in the global cardStore that is never pruned, so the selection slot keeps pointing a...",
+    "suspectedClass": "Lead #2: the inline-atom exemption affects BOTH footnotes and citations identically — a deleted citation has the same stale-ghost-ref risk. Any kind the pruner can't classify is exempt.",
+    "rawFile": "footnotes-g-anchor.json"
+  },
+  {
+    "id": "FN-A1-02",
+    "subject": "footnotes",
+    "cluster": "A1",
+    "severity": "LOW",
+    "confidence": "high",
+    "symptom": "Deleting the marker of a footnote whose body is empty (e.g. a title-only footnote, or a freshly-created blank one the user titled) produces NO orphan card —...",
+    "suspectedClass": "Content-emptiness gates that ignore non-body fields (title/metadata). The has-content predicate family (cardHasContent / hasJsonContent) similarly considers only body content for footnotes — see the F7 lead #1.",
+    "rawFile": "footnotes-g-anchor.json"
+  },
+  {
+    "id": "FN-A3-01",
+    "subject": "footnotes",
+    "cluster": "A3",
+    "severity": "LOW",
+    "confidence": "medium",
+    "symptom": "During an orphan re-drop, the Footnotes panel briefly renders two cards with the SAME footnoteId — the freshly re-anchored footnote and the not-yet-removed o...",
+    "suspectedClass": "Any two lists merged by id without a de-dup pass while one list is updated synchronously and the other via a deferred event. The orphan↔anchored seam is the canonical instance.",
+    "rawFile": "footnotes-g-anchor.json"
+  },
+  {
+    "id": "FN-F8-01",
+    "subject": "footnotes",
+    "cluster": "F8",
+    "severity": "MEDIUM",
+    "confidence": "medium",
+    "symptom": "If a footnote is popped out into a floating window and then orphaned (its marker deleted in text), the float window silently disappears and its key is leaked...",
+    "suspectedClass": "Float keys whose underlying entity can transition to a state with no Floatable resolver (orphan footnote, deleted citation) leak in poppedOutCards. Any kind without a defensive 'close float on entity disappearance' is in the class.",
+    "rawFile": "footnotes-g-anchor.json"
+  },
+  {
+    "id": "FN-C1-01",
+    "subject": "footnotes",
+    "cluster": "C1",
+    "severity": "LOW",
+    "confidence": "high",
+    "symptom": "The Footnotes panel header count badge undercounts when orphaned footnotes are present — it shows only the anchored count (and shows nothing at all when ther...",
+    "suspectedClass": "Panels with a separate orphan/unanchored sub-list passing only the anchored count to the badge. Footnotes is the outlier vs Citations/Reports — the class is 'badge count derived from a narrower list than items'.",
+    "rawFile": "footnotes-g-anchor.json"
+  },
+  {
+    "id": "FN-F5-01",
+    "subject": "footnotes",
+    "cluster": "F5",
+    "severity": "MEDIUM",
+    "confidence": "high",
+    "symptom": "The footnote card's title (+T) affordance lets the user type a title, but the title is silently discarded — it is never stored on the footnote, never persist...",
+    "suspectedClass": "Affordances rendered for a kind whose write-handler is an unwired stub. Check the same handleEdit*Title no-op pattern for any other panel that surfaces CardBodyTitle but routes to a stubbed handler; and check any node-attr (here `title`) that the panel can mutate but the LaTeX serializer does not round-trip (silent-drop-on-reparse class).",
+    "rawFile": "footnotes-g-display.json"
+  },
+  {
+    "id": "FN-F5-02",
+    "subject": "footnotes",
+    "cluster": "F5",
+    "severity": "MEDIUM",
+    "confidence": "high",
+    "symptom": "Edits to an orphaned footnote's body or title are kept only in volatile React state and are lost on reload; the orphan card itself also vanishes on reload (o...",
+    "suspectedClass": "Editable cards backed by volatile-only state (no sidecar). Any panel that surfaces an editor on an item it never persists has this loss class — check examples-panel derived items and any 'rescued from deletion' transient card.",
+    "rawFile": "footnotes-g-display.json"
+  },
+  {
+    "id": "FN-F1-01",
+    "subject": "footnotes",
+    "cluster": "F1",
+    "severity": "MEDIUM",
+    "confidence": "high",
+    "symptom": "On a freshly-loaded paper, every footnote card's number badge in the Footnotes panel shows '0' (and every in-text marker shows '1'), instead of the correct 1...",
+    "suspectedClass": "Lazily-computed display attributes that are only refreshed by a structural diff and never seeded on load. Citation ordering / example numbering use the same observer-diff cadence — verify they show correct ordinals on a freshly-loaded paper before any edit (initial-population class flagged in AGENTS.md keystroke-sanctity).",
+    "rawFile": "footnotes-g-display.json"
+  },
+  {
+    "id": "FN-F1-02",
+    "subject": "footnotes",
+    "cluster": "F1",
+    "severity": "MEDIUM",
+    "confidence": "high",
+    "symptom": "In a paper that contains a \\thanks{} acknowledgement, creating any new footnote re-numbers the document so that the acknowledgement consumes footnote number...",
+    "suspectedClass": "Two implementations of one derived-numbering rule that drift on an edge case (here \\thanks). Any 'imperative one-shot' vs 'observer-driven' pair (citation ordering, example sub-labels) is a candidate for the same divergence — audit whether the imperative path mirrors the appendTransaction's special-cases exactly.",
+    "rawFile": "footnotes-g-display.json"
+  },
+  {
+    "id": "FN-F1-03",
+    "subject": "footnotes",
+    "cluster": "F1",
+    "severity": "LOW",
+    "confidence": "high",
+    "symptom": "The Footnotes panel/strip header count excludes orphaned footnotes — a panel showing only orphan cards displays no count badge at all, and a mixed panel unde...",
+    "suspectedClass": "Header/strip count derived from a subset of the rendered list. Any panel that renders orphans + anchored but counts only anchored (or pending-AI-requests not counted) has the same count-vs-render mismatch.",
+    "rawFile": "footnotes-g-display.json"
+  },
+  {
+    "id": "FN-F4-01",
+    "subject": "footnotes",
+    "cluster": "F4",
+    "severity": "LOW",
+    "confidence": "medium",
+    "symptom": "Clicking a citation embedded inside a footnote body selects the correct citation card, but the card's vertical alignment can snap to a DIFFERENT citation ins...",
+    "suspectedClass": "DOM lookups by a non-unique id attribute (document.querySelector first-match) when the same atom id is rendered on multiple surfaces. The same first-match alignment is used for footnote markers (marker-clicks.ts:263-265) and could mis-target if a footnote marker is mirrored across surfaces.",
+    "rawFile": "footnotes-g-display.json"
+  },
+  {
+    "id": "FN-F1-04",
+    "subject": "footnotes",
+    "cluster": "F1",
+    "severity": "COSMETIC",
+    "confidence": "high",
+    "symptom": "When a paper has multiple \\thanks{} acknowledgements (e.g. one per author), every acknowledgement footnote card renders an identical 'A' badge and 'Acknowled...",
+    "suspectedClass": "Hardcoded badge glyph for a kind that can occur multiple times. Any kind whose marker text is a constant (rather than an ordinal) shows the same ambiguity when repeated.",
+    "rawFile": "footnotes-g-display.json"
+  },
+  {
+    "id": "FN-F2-01",
+    "subject": "footnotes",
+    "cluster": "F2",
+    "severity": "MEDIUM",
+    "confidence": "high",
+    "symptom": "Clicking the body of an already-selected (haloed) anchored footnote card a second time drops its halo AND fires a spurious second jump-scroll, instead of kee...",
+    "suspectedClass": "Any docked panel card whose body onClick composes BOTH ac.onActivate() and a host-supplied TOGGLING onSelect, where the panel's selected-id slot is cardStore-derived, has the identical re-click halo drop. Audit Citations CitationCard (CitationsPanel passes the same toggling onSelect pattern), Reports, Notes, Todos, Archive docked cards for the same composition. The orphan-footnote fix is the template; only the orphan was patched.",
+    "rawFile": "footnotes-g-interact.json"
+  },
+  {
+    "id": "FN-F2-02",
+    "subject": "footnotes",
+    "cluster": "F2",
+    "severity": "LOW",
+    "confidence": "medium",
+    "symptom": "Keyboard ArrowUp/ArrowDown navigation in the Footnotes panel skips orphaned footnotes entirely and cycles only anchored footnotes, even though orphans are re...",
+    "suspectedClass": "Any panel that renders a merged list (orphan/unanchored bin + anchored) but builds useCycle over only one sub-array has the same keyboard-vs-visual order mismatch. Check Citations panel (unanchored citations are styled distinctly and may be ordered separately from the cycle source).",
+    "rawFile": "footnotes-g-interact.json"
+  },
+  {
+    "id": "FN-F3-01",
+    "subject": "footnotes",
+    "cluster": "F3",
+    "severity": "LOW",
+    "confidence": "medium",
+    "symptom": "After deleting a footnote whose card was the selected one, the global selection ('selectedFootnoteId') keeps pointing at the now-deleted footnote id until th...",
+    "suspectedClass": "Citations share the identical inline-atom pruner exemption (isInlineAtomCardKind covers footnote AND citation) — deleting a selected citation atom leaves the same stale cardStore selection ghost. This is known-fragile lead #2; the deepest fix is to let the pruner consult live editor presence for inline atoms (resolveLink == null => prune) rather than the blanket always-present exemption.",
+    "rawFile": "footnotes-g-interact.json"
+  },
+  {
+    "id": "FN-F7-01",
+    "subject": "footnotes",
+    "cluster": "F7",
+    "severity": "LOW",
+    "confidence": "medium",
+    "symptom": "The footnote panel-card drag affordance (startFootnoteDrag / MIME_FOOTNOTE, with an 80-char-truncated ghost) is exported and the editor has a matching MIME_F...",
+    "suspectedClass": "Dead drag exports + live receiving drop handlers are a recurring pattern after the InlineAtomGrab migration; audit startCitationDrag (MIME_CITATION) for the same unwired sender, and verify the duplicate-slice id-only reminting against citationId (same omission of linkId/linkCard for citations).",
+    "rawFile": "footnotes-g-interact.json"
+  },
+  {
+    "id": "OMNI-C2-01",
+    "subject": "omni-left",
+    "cluster": "C2",
+    "severity": "MEDIUM",
+    "confidence": "high",
+    "symptom": "After dragging a left-side panel (e.g. Reports) to the right strip, its cards keep showing in the LEFT omni column and the user has NO way to turn them off —...",
+    "suspectedClass": "Any pref derived from two independent sources that should move in lockstep (placements vs omniCategories). Same class as: a category enabled on a side whose panel was closed; deriveCategorySides falling back to registry omniSide while omniCategories keeps a user override. The fix is to either gate visibleItems on categorySides too, or have movePanel migrate the category's enabled-membership to the destination side.",
+    "rawFile": "omni-left-g-anchor.json"
+  },
+  {
+    "id": "OMNI-C2-02",
+    "subject": "omni-left",
+    "cluster": "C2",
+    "severity": "MEDIUM",
+    "confidence": "high",
+    "symptom": "When focus view is active AND there are unanchored cards, expanding the 'N unanchored' bin covers the '◎ N outside focus' pill, making it unclickable and vis...",
+    "suspectedClass": "Hardcoded layout offsets between independently-sized absolute siblings (lead #10). Same class: any future third bin stacked below these; the unanchored pill's own height changing if the count reaches 3+ digits or the orphan badge grows. The robust fix is flow-stacking the bins or measuring the predecessor's live height.",
+    "rawFile": "omni-left-g-anchor.json"
+  },
+  {
+    "id": "OMNI-F8-01",
+    "subject": "omni-left",
+    "cluster": "F8",
+    "severity": "MEDIUM",
+    "confidence": "high",
+    "symptom": "Two omni cards can show a selection halo at once — e.g. select a footnote (marker or omni card), then click a Report omni card; the footnote stays haloed alo...",
+    "suspectedClass": "Dual selection sources (`ac.selected || isSelected`) with a per-kind id bag that lacks a single mutual-exclusion chokepoint. Every left/right omni card kind whose per-side setter doesn't fully cross-clear is a sibling. Right-column kinds (notes/todo/archive/cutter/revision) share the same `|| isSelected` pattern and the same incomplete cross-clear, so the same double-halo is reachable there too.",
+    "rawFile": "omni-left-g-anchor.json"
+  },
+  {
+    "id": "OMNI-F8-02",
+    "subject": "omni-left",
+    "cluster": "F8",
+    "severity": "MEDIUM",
+    "confidence": "high",
+    "symptom": "Clicking the in-text gutter marker of a Report anchored to MULTIPLE paragraphs selects/opens the card but never pin-aligns it to the click — the card jumps t...",
+    "suspectedClass": "Any omni item whose wrapper id diverges from the card's canonical cardPopKey — the multi-anchor `@i` suffix is the only current divergence, but the same break would hit any future per-anchor row fan-out. The fix is to align on a wrapper id the marker path can reconstruct (or have the marker event carry the anchor index).",
+    "rawFile": "omni-left-g-anchor.json"
+  },
+  {
+    "id": "OMNI-A1-01",
+    "subject": "omni-left",
+    "cluster": "A1",
+    "severity": "LOW",
+    "confidence": "medium",
+    "symptom": "An orphaned footnote card selected/hovered in one surface does not show its selection/hover halo in another surface (e.g. a popped-out float of the same orph...",
+    "suspectedClass": "Any card variant that forgets to stamp data-card-key (the cross-surface paint key). Orphan/fallback render paths are the usual offenders since they diverge from the primary card body. Worth auditing other orphan/empty-state card variants for the same omission.",
+    "rawFile": "omni-left-g-anchor.json"
+  },
+  {
+    "id": "OMNI-C2-03",
+    "subject": "omni-left",
+    "cluster": "C2",
+    "severity": "LOW",
+    "confidence": "high",
+    "symptom": "Folding a section silently removes its anchored omni cards from the column with no 'N folded' bin or count — unlike focus view, which collects out-of-band ca...",
+    "suspectedClass": "Asymmetric handling of two 'anchor hidden in-text' conditions (fold vs focus). The same rationale that justified the outside-focus bin (don't silently hide user cards) argues a folded-section bin or count. Low because it's fully recoverable and the docked list is unaffected.",
+    "rawFile": "omni-left-g-anchor.json"
+  },
+  {
+    "id": "OMNI-F8-03",
+    "subject": "omni-left",
+    "cluster": "F8",
+    "severity": "LOW",
+    "confidence": "medium",
+    "symptom": "After morphing a popped/pinned Report to a Report-Request (or back), a stale omni pin can linger keyed to the old kind until a different card is clicked.",
+    "suspectedClass": "Any module that keys interaction state by a kind-baked float key but isn't included in the morph remap (convertCardWithRemap remaps poppedOutCards + cardFloatPositions but not omniPinStore, nor the per-side selected*Id which is keyed by raw id and survives). Low impact: the pin is one-shot and self-replaces on the next click.",
+    "rawFile": "omni-left-g-anchor.json"
+  },
+  {
+    "id": "OMNI-A2-01",
+    "subject": "omni-left",
+    "cluster": "A2",
+    "severity": "LOW",
+    "confidence": "medium",
+    "symptom": "A citation the user deliberately created unanchored (panel-only, never placed in text) shows in the omni unanchored bin with the red 'No anchor in document'...",
+    "suspectedClass": "Conflating 'free' (never anchored, intentional) with 'orphaned' (anchor lost) at the pos==null fork. The footnote builder distinguishes them (separate orphanedFootnotes list ⇒ 'orphaned' vs would-be 'free'), but citations and examples collapse both into 'orphaned'. Cosmetic/UX, recoverable.",
+    "rawFile": "omni-left-g-anchor.json"
+  },
+  {
+    "id": "OMNI-F8-04",
+    "subject": "omni-left",
+    "cluster": "F8",
+    "severity": "LOW",
+    "confidence": "medium",
+    "symptom": "Clicking 'copy citekey' on a citation card (rendered in the omni column) throws / produces an unhandled promise rejection in an insecure or clipboard-unavail...",
+    "suspectedClass": "Unguarded navigator.clipboard across the codebase (lead #12). At least suggestion-fields.tsx shares it; any copy-to-clipboard affordance lacking the `if (!navigator.clipboard) return` guard + .catch is a sibling. Low because Virgil normally runs on https/localhost where clipboard is present.",
+    "rawFile": "omni-left-g-anchor.json"
+  },
+  {
+    "id": "OMNI-F1-01",
+    "subject": "omni-left",
+    "cluster": "F1",
+    "severity": "MEDIUM",
+    "confidence": "high",
+    "symptom": "A report the user deliberately titled 'Report 3' (or an example titled 'Example 3') loads with a blank title in the omni cascade — the user's title silently...",
+    "suspectedClass": "Every isAutoTitle('<kind>', title) load-strip is a false-positive surface: useReports.ts:57 (report), useExamples.ts:45 (example), useArchive.ts:28 (archive), useNotes.ts:38 (note), useTodos.ts:30 (todo). Examples/archive/notes/todos carry the same regex clobber, though example titles aren't surfaced by ExampleCard so its user impact is latent.",
+    "rawFile": "omni-left-g-display.json"
+  },
+  {
+    "id": "OMNI-F1-02",
+    "subject": "omni-left",
+    "cluster": "F1",
+    "severity": "LOW",
+    "confidence": "low",
+    "symptom": "After plain typing that shifts content across a collapsed-section or focus-band boundary, an omni card can be wrongly dropped by the fold filter or wrongly s...",
+    "suspectedClass": "Any consumer of OmniItem.pos that makes a structural-boundary decision (fold drop, focus stamp) inherits the captured-pos staleness; only useInTextPositions opts into resolvePos. The fold/focus filter is the one classification path that didn't migrate.",
+    "rawFile": "omni-left-g-display.json"
+  },
+  {
+    "id": "OMNI-F1-03",
+    "subject": "omni-left",
+    "cluster": "F1",
+    "severity": "COSMETIC",
+    "confidence": "high",
+    "symptom": "A long report/citation body collapsed in the omni is hard-cut mid-word with no ellipsis; an empty footnote collapsed in the omni shows a blank line rather th...",
+    "suspectedClass": "makeCompressedSummary is shared by every sans-bodyClass compressed card (notes, todos, cutter/revision comments, reports, citations) so the missing-ellipsis is panel-wide; the empty-blank affects every borrowed-bodyClass kind (footnote, archive, example).",
+    "rawFile": "omni-left-g-display.json"
+  },
+  {
+    "id": "OMNI-F4-01",
+    "subject": "omni-left",
+    "cluster": "F4",
+    "severity": "MEDIUM",
+    "confidence": "high",
+    "symptom": "A citation dropped into a report/report-request body in the omni shows its raw '\\cite{key}' command instead of the formatted name, and clicking it selects no...",
+    "suspectedClass": "Any card body that mounts RichTextField without wiring getCitationDisplayText/onCitationCreated degrades identically; reports are the omni-left instance. The deeper class: a citation NodeView authored inside ANY card-body editor dispatches a citationId that is not a top-level citation in citationPositionMap, so click-through can never resolve it (also affects footnote/note bodies — see OMNI-F4-02).",
+    "rawFile": "omni-left-g-display.json"
+  },
+  {
+    "id": "OMNI-F4-02",
+    "subject": "omni-left",
+    "cluster": "F4",
+    "severity": "LOW",
+    "confidence": "medium",
+    "symptom": "Clicking a citation inside a footnote body in the omni selects the citation but the target card is invisible — it sits in the collapsed 'N unanchored' bin.",
+    "suspectedClass": "Same root as OMNI-F4-01: a citationId authored inside a card body never resolves to a cascaded omni card; for footnotes it at least exists (in the bin), for reports it doesn't exist at all.",
+    "rawFile": "omni-left-g-display.json"
+  },
+  {
+    "id": "OMNI-F5-01",
+    "subject": "omni-left",
+    "cluster": "F5",
+    "severity": "LOW",
+    "confidence": "medium",
+    "symptom": "Focusing a report/report-request body in the omni does not route formatting controls to the main toolbar (the per-card B/I/U toolbar is suppressed and there...",
+    "suspectedClass": "Parity-with-native gap: every report-kind body (omni + docked) lacks onEditorFocus wiring, unlike footnote/note/archive. Not omni-introduced, but the omni exhibits it.",
+    "rawFile": "omni-left-g-display.json"
+  },
+  {
+    "id": "OMNI-F2-01",
+    "subject": "omni-left",
+    "cluster": "F2",
+    "severity": "LOW",
+    "confidence": "high",
+    "symptom": "No user-visible misbehavior; the omni-host carries dead single-selection-enforcement code that looks load-bearing but is a no-op, inviting a future maintaine...",
+    "suspectedClass": "Dead 'enforcement' code that mirrors an invariant already guaranteed at a lower layer. Sibling risk: any future addition of a NON-derived per-pane selection slot (e.g. bib/error are real useState, selections.tsx:209/internal) would NOT be cross-cleared by these setters and WOULD then produce a true multi-halo — the inert code provides false reassurance. The error slot is exactly such a non-store slot (selectedErrorId).",
+    "rawFile": "omni-left-g-interact.json"
+  },
+  {
+    "id": "OMNI-F3-01",
+    "subject": "omni-left",
+    "cluster": "F3",
+    "severity": "MEDIUM",
+    "confidence": "high",
+    "symptom": "Clicking the in-text gutter marker (or anchor) of a report that is anchored to MULTIPLE paragraphs opens the report card in the omni column but fails to alig...",
+    "suspectedClass": "The `@N` multi-anchor omni grammar is honored in open-for-card.ts (prefix matcher) but NOT in the two pin/align consumers (alignOmniCardWithClick EditorLayout.tsx:1126, virgil-card-jumped handler EditorLayout.tsx:1161 — both exact-match). Any omni-eligible card kind that can carry multiple paragraph anchors (notes/todos/cutter/revisions also build @N via their builders) hits the same marker-click pin miss. The card→text direction (jumpToCard reads omniWrapper.dataset.omniEntryWrapper, the live suffixed key, links.ts:599) is correct — only the text→card direction regresses.",
+    "rawFile": "omni-left-g-interact.json"
+  },
+  {
+    "id": "OMNI-F3-02",
+    "subject": "omni-left",
+    "cluster": "F3",
+    "severity": "MEDIUM",
+    "confidence": "low",
+    "symptom": "After a full document re-parse from a .tex that lacks the \\vcid/\\vfid stable-id markers (legacy file, external edit, or a code-view round-trip on a markerles...",
+    "suspectedClass": "Identity-by-regenerated-id across the whole inline-atom spine (selection, omni item id, pin key, live-pos cache, jump link.id). The stable-marker round-trip (\\vcid/\\vfid) is the mitigation; any path that produces markerless source (paste-into-code-view, external tool edit, first-load of a foreign .tex) reopens the divergence. Footnotes share the identical mechanism (latex-parser.ts:509, useFootnotes sync).",
+    "rawFile": "omni-left-g-interact.json"
+  },
+  {
+    "id": "OMNI-F6-01",
+    "subject": "omni-left",
+    "cluster": "F6",
+    "severity": "MEDIUM",
+    "confidence": "high",
+    "symptom": "Morphing a Report-Request that has its AI-request flag ON into a Report (via the kind chevron, available in the omni) silently leaves a dangling 'pending' en...",
+    "suspectedClass": "Lossy morphs that drop an aiRequest flag without unbridging the ai-requests.json entry. Same defect at revision-comment→suggestion and cutter-comment→suggestion: 'revision-comment'/'cutter-comment' carry aiRequest routing (card-registry.tsx:322/344) and their morph targets ('suggestion') do not, while revisionCommentToSuggestion/cutterCommentToSuggestion (morphs/index.ts:51-66/93-108) drop the flag and useRevisions/useCutter.convertCard likewise never unbridge. note⇄highlight is SAFE because both kinds route to linkPanel:'notes' and noteToHighlight carries aiRequest across. The fix belongs in convertCardWithRemap (the single chokepoint), which should unbridge when the FROM kind has aiRequest routing and the TO kind does not.",
+    "rawFile": "omni-left-g-interact.json"
+  },
+  {
+    "id": "OMNI-F6-02",
+    "subject": "omni-left",
+    "cluster": "F6",
+    "severity": "LOW",
+    "confidence": "high",
+    "symptom": "Morphing the currently-SELECTED report card (report⇄report-request) in the omni silently drops its selection halo — the user morphs the card they just clicke...",
+    "suspectedClass": "Selection identity baked with the (mutable) card KIND. Every kind-changing morph drops selection the same way: note⇄highlight, revision/cutter comment⇄suggestion, report⇄report-request — all leave cardStore.selected pointing at the pre-morph kind, which the kind-discriminated findEntity then prunes. convertCardWithRemap (the one chokepoint) remaps the float key but not the selection ref; adding a cardStore re-select to the new kind there would fix all four pairs.",
+    "rawFile": "omni-left-g-interact.json"
+  },
+  {
+    "id": "OMNI-F7-01",
+    "subject": "omni-left",
+    "cluster": "F7",
+    "severity": "MEDIUM",
+    "confidence": "high",
+    "symptom": "Deleting a citation from its expanded card (in the omni or docked) removes the in-text \\cite{} from the document immediately, with no confirmation — a one-cl...",
+    "suspectedClass": "Destructive doc-mutating deletes that bypass the confirm because the card has no rich body and cardHasContent lacks a case for the kind (lead #1). Footnote is GUARDED only incidentally (it has a body → hasJsonContent gate). Examples have no trash on the card at all (ExampleCard PanelCard passes no onTrashClick). Bib has its own .bib-warning flow. The systemic gap: 'no body text' is treated as 'safe to delete', but inline-atom cards (citation, and a markerless footnote) destroy real .tex content. cardHasContent's missing footnote/citation/example/bib cases (has-content.ts:22-32,50-89) make a content-aware confirm impossible for these kinds even if one were added.",
+    "rawFile": "omni-left-g-interact.json"
+  },
+  {
+    "id": "OMNI-F7-02",
+    "subject": "omni-left",
+    "cluster": "F7",
+    "severity": "LOW",
+    "confidence": "medium",
+    "symptom": "After deleting a footnote or citation whose card was selected and/or expanded in the omni, the global card store retains a dead reference to it forever — inv...",
+    "suspectedClass": "The inline-atom prune exemption (lead #2) is the class: it was added so a transient parse-gap wouldn't drop a still-valid footnote/citation selection, but it has no positive 'this atom was truly deleted' signal to balance it, so genuine deletes leak refs across BOTH axes (selected + expandedSet). Compounds with OMNI-F3-02 (id divergence): a regenerated id makes the old ref permanently dead yet un-prunable. A footnote/citation delete handler that explicitly cardStore.clearSelection()/collapse()'s the deleted ref would close it.",
+    "rawFile": "omni-left-g-interact.json"
+  },
+  {
+    "id": "OUT-A2-01",
+    "subject": "outline",
+    "cluster": "A2",
+    "severity": "MEDIUM",
+    "confidence": "high",
+    "symptom": "Collapse/fold state in the outline jumps to the wrong sections after a block is inserted or removed above a collapsed heading (same session, on the next stru...",
+    "suspectedClass": "Any structural identity keyed on a live array index rather than a persistent UUID. Siblings: outline edit-mode pod collapse (buildPods h.id), and the dev-only `data-outline-pos=\\\"h-${index}\\\"` attr keyed on block index (FocusBand/PositionLozenge measurement, OutlinePanel.tsx:631,1268) — these are recomputed live so they self-heal, but anything that PERSISTS or CACHES an index id (this collapsed-set) corrupts. Contrast useFocusMode which anchors on attrs.uuid for exactly this reason.",
+    "rawFile": "outline-g-anchor.json"
+  },
+  {
+    "id": "OUT-F8-02",
+    "subject": "outline",
+    "cluster": "F8",
+    "severity": "MEDIUM",
+    "confidence": "medium",
+    "symptom": "Clicking an outline row to move/expand the focus band (or dragging a band handle) within ~300ms of a structural edit sets the band to the wrong block range —...",
+    "suspectedClass": "Mixing a debounced doc snapshot (latestDoc) with live-doc index math anywhere the index originates from a different (fresher) snapshot. Sibling risk: focusWordCount (EditorLayout.tsx:2387-2392) sums per-block counts over focusMode.state.start/endBlockIndex using buildPerBlockCounts(docForOutline=latestDoc) — momentarily mismatched range vs live content, though only a transient count wobble. handleFocusActivate (focus.ts:22) uses the same stale outlineHeadings[0].index.",
+    "rawFile": "outline-g-anchor.json"
+  },
+  {
+    "id": "OUT-F8-03",
+    "subject": "outline",
+    "cluster": "F8",
+    "severity": "MEDIUM",
+    "confidence": "high",
+    "symptom": "A user can commit a heading label that duplicates an existing \\label{} key in the document — the live 'label already in use' warning shows but does not preve...",
+    "suspectedClass": "Warning-only validation that never gates the commit. Sibling: the main-editor heading label input consults the same checkLabelTaken (EditorLayout.tsx:896-902) — verify it too blocks (not just warns). The Bibliography rename-citekey path is the analog elsewhere (does it block on collision?).",
+    "rawFile": "outline-g-anchor.json"
+  },
+  {
+    "id": "OUT-F8-04",
+    "subject": "outline",
+    "cluster": "F8",
+    "severity": "LOW",
+    "confidence": "low",
+    "symptom": "Renaming a paragraph title (parTitle) via the outline can throw / mis-write if the block index it targets has diverged to a heading (e.g. after a concurrent...",
+    "suspectedClass": "Index-addressed structural mutators that omit the node-type assertion present on their sibling handlers. handleReorderBlocks (editor-ops.ts:88) and handleScrollToHeading (:53) also index the live doc by an externally-supplied blockIndex; they are range-checked but not all type-checked. The deeper class is the same live-vs-snapshot index divergence behind OUT-F8-02.",
+    "rawFile": "outline-g-anchor.json"
+  },
+  {
+    "id": "OUT-F5-01",
+    "subject": "outline",
+    "cluster": "F5",
+    "severity": "DATA-LOSS",
+    "confidence": "high",
+    "symptom": "Renaming a heading from the outline edit-mode pod replaces the entire heading body with plain text, silently destroying any inline formatting, inline math, c...",
+    "suspectedClass": "Any rename-by-flat-string path that re-seeds from a lossy text extraction: handleRenameParTitle (editor-ops.ts:160-174) sets parTitle attr to a plain string but parTitles are attr-strings so loss is inherent there; the in-editor heading/parTitle rename node-views (editor-extensions.ts ~:216,:517) should be compared — if they round-trip through textContent they share the flaw. The deeper class is 'edit a structured node via plain-text input seeded from a flattened projection'.",
+    "rawFile": "outline-g-display.json"
+  },
+  {
+    "id": "OUT-F4-01",
+    "subject": "outline",
+    "cluster": "F4",
+    "severity": "LOW",
+    "confidence": "high",
+    "symptom": "Headings (and the document title) that contain inline math, citations, or \\ref render in the outline with those atoms silently omitted, e.g. \\section{The $G$...",
+    "suspectedClass": "Every consumer that flattens heading/title content via a hand-rolled text walk instead of getAtomText: OutlinePanel.extractText (display + rename seed + word-count headings bucket via collectInline which DOES handle inlineMath at :468, so the inconsistency is internal), getDocTitle, and the drag-ghost label (handleDragStart ghost.textContent = pod.text, :1052).",
+    "rawFile": "outline-g-display.json"
+  },
+  {
+    "id": "OUT-F5-02",
+    "subject": "outline",
+    "cluster": "F5",
+    "severity": "LOW",
+    "confidence": "low",
+    "symptom": "Renaming a paragraph title (parTitle) from the outline can stamp a parTitle attr onto a non-paragraph node if the block index drifted, and unlike heading ren...",
+    "suspectedClass": "All index-based block addressing in editor-ops.ts (handleRenameHeading, handleUpdateLabel, handleRenameParTitle, handleReorderBlocks, handleScrollToHeading) is vulnerable to snapshot-vs-live drift because the outline uses integer blockIndex rather than the UUID anchoring that useFocusMode adopted to fix exactly this drift (useFocusMode.ts:90-96 blockIndexOfUuid). The missing type guard is the specific instance; the addressing scheme is the class.",
+    "rawFile": "outline-g-display.json"
+  },
+  {
+    "id": "OUT-F5-03",
+    "subject": "outline",
+    "cluster": "F5",
+    "severity": "LOW",
+    "confidence": "high",
+    "symptom": "The outline label editor shows a live '⚠ label already in use' warning but still commits the duplicate label when the user presses Enter or blurs, producing...",
+    "suspectedClass": "Advisory-only conflict checks that don't block commit; compare any other label/citekey rename input that surfaces isTaken/isLabelTaken as a warning. The in-editor heading-label node-view should be checked for the same advisory-without-gate pattern.",
+    "rawFile": "outline-g-display.json"
+  },
+  {
+    "id": "OUT-F5-04",
+    "subject": "outline",
+    "cluster": "F5",
+    "severity": "MEDIUM",
+    "confidence": "medium",
+    "symptom": "In the read-only Reader, the Outline panel still shows the Edit button, the Focus button, and the inline label '+'; using them appears to work (input opens,...",
+    "suspectedClass": "Gating editor affordances on callback-presence rather than an explicit editable/read-only flag — any panel mounted via the reader shim that exposes edit/move/morph controls. The Focus button (:1676) and the focus row-click handlers (onFocusMoveTo/onFocusExpandTo) share the same no-op-but-rendered trap in Reader.",
+    "rawFile": "outline-g-display.json"
+  },
+  {
+    "id": "OUT-F1-02",
+    "subject": "outline",
+    "cluster": "F1",
+    "severity": "COSMETIC",
+    "confidence": "low",
+    "symptom": "When 'Show word count' is on, the Document-start row's word-count column shows the literal text 'words' rather than a number, while every heading row shows a...",
+    "suspectedClass": "Preamble/document-start region never gets a computed word count in the outline even though buildPerBlockCounts has the per-block numbers for index 0; if a real count was intended it is missing for the pre-first-heading blocks.",
+    "rawFile": "outline-g-display.json"
+  },
+  {
+    "id": "OUT-F1-01",
+    "subject": "outline",
+    "cluster": "F1",
+    "severity": "LOW",
+    "confidence": "high",
+    "symptom": "Outline rows for headings that contain inline atoms render with the atom text missing (e.g. a heading 'Step 3: $n+1$' shows as 'Step 3: '), and a heading who...",
+    "suspectedClass": "Shares the extractText atom-dropping root with OUT-F4-01; the 'Untitled' fallback amplifies the same flatten into an outright wrong label.",
+    "rawFile": "outline-g-display.json"
+  },
+  {
+    "id": "OUT-F2-01",
+    "subject": "outline",
+    "cluster": "F2",
+    "severity": "MEDIUM",
+    "confidence": "high",
+    "symptom": "On a freshly-opened document that has not been edited yet, clicking the outline 'Focus' button focuses the ENTIRE document instead of the first section, and...",
+    "suspectedClass": "Any consumer that derives structure from the debounced `latestDoc` instead of the live editor while the user can interact before the first edit. Sibling: `availableDividerLevels`/`activeDividerLevels` (EditorLayout.tsx:2363-2374) is also empty until the first edit, so the toolbar's divider-level menu is empty on a pristine doc; `focusWordCount` (EditorLayout.tsx:2387-2392) likewise reads `docForOutline`. The deeper class is the live-vs-debounced snapshot split flagged in g-anchor OUT-F8-02.",
+    "rawFile": "outline-g-interact.json"
+  },
+  {
+    "id": "OUT-F7-01",
+    "subject": "outline",
+    "cluster": "F7",
+    "severity": "MEDIUM",
+    "confidence": "medium",
+    "symptom": "After renaming a heading or a paragraph-title from the outline's edit-mode pod, the outline keeps displaying the OLD title; the rename did land in the docume...",
+    "suspectedClass": "Any outline/derived-view value sourced from `editor.getJSON()` that must reflect an in-place text or untracked-attr edit: the outline heading row text also fails to live-update while a user types a heading title directly in the main editor (same no-rev-bump path), and the per-section word count + section-number columns ride the same `content` snapshot. The deeper class is 'in-place content edits that no structural counter observes, consumed by a memoized/gated render.' Live verification would confirm whether any incidental EditorPane re-render (selectionUpdate subscriber, etc.) masks this in practice.",
+    "rawFile": "outline-g-interact.json"
+  },
+  {
+    "id": "OUT-F3-01",
+    "subject": "outline",
+    "cluster": "F3",
+    "severity": "LOW",
+    "confidence": "high",
+    "symptom": "Dragging the focus-band BOTTOM handle and releasing it on a paragraph-title (parTitle) row extends the band to the end of that paragraph's entire enclosing s...",
+    "suspectedClass": "Boundary operations that route one edge through section-rounding (`sectionRange`) and the other through a raw index. `nudgeBoundary` (useFocusMode.ts:318-349, currently UNWIRED) repeats the same top=raw / bottom=sectionRange split, so if keyboard nudge is ever wired it inherits the asymmetry.",
+    "rawFile": "outline-g-interact.json"
+  },
+  {
+    "id": "OUT-F3-02",
+    "subject": "outline",
+    "cluster": "F3",
+    "severity": "LOW",
+    "confidence": "medium",
+    "symptom": "In split-pane mode with the bottom pane active, clicking an outline heading (or the 'Document start' row) to navigate the bottom pane also silently moves the...",
+    "suspectedClass": "Jump handlers that set the shared editor selection as a means of scrolling a secondary view. Any panel jump routed to the mirror via the same setTextSelection-on-shared-state pattern would perturb the main pane's caret.",
+    "rawFile": "outline-g-interact.json"
+  },
+  {
+    "id": "REP-A1-01",
+    "subject": "reports",
+    "cluster": "A1",
+    "severity": "MEDIUM",
+    "confidence": "high",
+    "symptom": "After deliberately deleting or archiving a paragraph a report is Mode-A anchored to, the report keeps a dead anchor: its panel jump button stays enabled but...",
+    "suspectedClass": "Any Mode-A-anchorable card hook that omits the virgil-textobject-orphaned listener. useNotes also lacks it (useNotes.ts only registers virgil-anchor-orphaned at :207) — same defect for notes' Mode-A links. useReports and useNotes both diverge from the useTodos pattern.",
+    "rawFile": "reports-g-anchor.json"
+  },
+  {
+    "id": "REP-A2-01",
+    "subject": "reports",
+    "cluster": "A2",
+    "severity": "MEDIUM",
+    "confidence": "high",
+    "symptom": "A report-request anchored to a text RANGE (Mode B, via the drag-handle 'report' gesture) loses its in-text tinted highlight after a reload; if no paragraph i...",
+    "suspectedClass": "Any Mode-B-capable card kind omitted from the applyLinkedAnchors restore loop. Reports/report-requests are the omitted pair here; verify no other newer Mode-B kind (e.g. example range anchors) is also missing from EditorLayout.tsx:3265-3306.",
+    "rawFile": "reports-g-anchor.json"
+  },
+  {
+    "id": "REP-A2-02",
+    "subject": "reports",
+    "cluster": "A2",
+    "severity": "MEDIUM",
+    "confidence": "high",
+    "symptom": "A user who titles a report exactly 'Report 8' (or 'Report 2', etc. — a natural name for a numbered report series) silently loses that title on the next reloa...",
+    "suspectedClass": "Every auto-titling kind with a human-plausible '<Label> N' title: 'Note 3' (notes), 'Task 5' (todos), 'Example 2' (examples), 'Footnote 1' (footnotes), 'Archive Text 1' (archive). All hit the same isAutoTitle strip on load; reports and examples are the most likely to be named that way by a human.",
+    "rawFile": "reports-g-anchor.json"
+  },
+  {
+    "id": "REP-F8-01",
+    "subject": "reports",
+    "cluster": "F8",
+    "severity": "MEDIUM",
+    "confidence": "high",
+    "symptom": "Toggling a Report Request's AI flag on, then morphing it to a Report (kind chevron), leaves a pending 'report' request stranded in ai-requests.json that the...",
+    "suspectedClass": "Every morph whose source kind carries an aiRequest flag the target kind drops, with no bridge-clear in the morph path. note→highlight: noteToHighlight CARRIES aiRequest across (morphs/index.ts:177-186) so highlight keeps it but highlight has no toggle UI either — verify highlight's inbox handling. revision/cutter comment→suggestion drop aiRequest with the same un-bridged path. The whole A9 morph chokepoint never reconciles the AI-request inbox.",
+    "rawFile": "reports-g-anchor.json"
+  },
+  {
+    "id": "REP-C1-01",
+    "subject": "reports",
+    "cluster": "C1",
+    "severity": "MEDIUM",
+    "confidence": "high",
+    "symptom": "Pending Report AI requests (kind:'report') never appear in the docked Reports panel — there is no 'Pending AI requests' section — so a user filing a report r...",
+    "suspectedClass": "Any AI-request-bearing panel that forgets to thread aiRequests through its host+panel. Reports is the one panel of the five named in ai-requests.tsx that omits it; the seam is the host (forgot useAiRequestsContext) + the panel (no aiRequests prop + no r.kind filter).",
+    "rawFile": "reports-g-anchor.json"
+  },
+  {
+    "id": "REP-F4-01",
+    "subject": "reports",
+    "cluster": "F4",
+    "severity": "MEDIUM",
+    "confidence": "high",
+    "symptom": "A citation placed inside a Report (or Report Request) body shows the raw LaTeX command \\cite{smith2020} instead of the formatted name (e.g. 'Smith 2020'), an...",
+    "suspectedClass": "Any panel host that mounts a RichTextField-bearing card but forgets to thread the CitationDisplayProvider values. Reports is the one left-side card panel that missed it; check any future card panel and the float-body builders for the same omission.",
+    "rawFile": "reports-g-display.json"
+  },
+  {
+    "id": "REP-F5-01",
+    "subject": "reports",
+    "cluster": "F5",
+    "severity": "DATA-LOSS",
+    "confidence": "high",
+    "symptom": "Morphing a Report Request that has its 'AI request' flag on into a Report silently drops the flag AND leaves a stale pending entry in ai-requests.json that c...",
+    "suspectedClass": "Any lossy morph that drops an aiRequest flag without bridging it off. note→highlight: noteToHighlight preserves aiRequest (morphs/index.ts:184) so highlight keeps the flag — but highlight's aiRequest routing differs ({kind:'highlight'}) from note's ({kind:'note'}), so the on-disk inbox entry's kind goes stale across that morph too. Check all morph pairs where the two kinds declare different aiRequest routing for inbox drift.",
+    "rawFile": "reports-g-display.json"
+  },
+  {
+    "id": "REP-F5-02",
+    "subject": "reports",
+    "cluster": "F5",
+    "severity": "MEDIUM",
+    "confidence": "high",
+    "symptom": "The docked Reports panel never shows a 'Pending AI Requests' section, unlike Footnotes/Notes/Todos — a standalone or orphaned report AI-request (e.g. one who...",
+    "suspectedClass": "Polymorphic panels whose request kind lives in the inbox but whose docked host forgot the inbox wiring. Cutter/Revisions hosts should be checked for the same omission (suggestion-kind requests).",
+    "rawFile": "reports-g-display.json"
+  },
+  {
+    "id": "REP-F5-03",
+    "subject": "reports",
+    "cluster": "F5",
+    "severity": "MEDIUM",
+    "confidence": "high",
+    "symptom": "A user who titles a report exactly like the legacy auto-pattern — e.g. 'Report 2', 'Report 14' — loses that title silently on the next document load; it reve...",
+    "suspectedClass": "Every auto-titling kind: note ('Note 3'), footnote ('Footnote 2'), archive ('Archive Text 1'), todo ('Task 9'), example ('Example 4'). All five share the same isAutoTitle strip-on-load and the same false-positive on a legitimately-typed matching title (auto-title.test.ts:142-163 codifies it for all of them).",
+    "rawFile": "reports-g-display.json"
+  },
+  {
+    "id": "REP-F1-01",
+    "subject": "reports",
+    "cluster": "F1",
+    "severity": "COSMETIC",
+    "confidence": "high",
+    "symptom": "A collapsed Report (or Report Request) with an empty body shows a blank summary line instead of the muted italic 'empty' placeholder that other empty collaps...",
+    "suspectedClass": "Cards that pass `makeCompressedSummary(...) || ''` instead of `|| undefined`: NoteCard.tsx:95, ArchiveCard.tsx:74, FootnoteCard.tsx:108 & :207, RevisionCommentCard.tsx:75 all share the same blank-instead-of-placeholder behavior; only CutterCommentCard does it the way that surfaces the placeholder.",
+    "rawFile": "reports-g-display.json"
+  },
+  {
+    "id": "REP-F5-04",
+    "subject": "reports",
+    "cluster": "F5",
+    "severity": "LOW",
+    "confidence": "medium",
+    "symptom": "When a report's title is changed externally (a skill writes reports.json, or the user edits the title on a different surface) while the expanded card stays m...",
+    "suspectedClass": "Shared CardBodyTitle affects every bodyTitle-bearing card: footnotes (FootnoteCard), notes, archive, examples. Any external/cross-surface title write desyncs the expanded input on all of them.",
+    "rawFile": "reports-g-display.json"
+  },
+  {
+    "id": "REP-F6-01",
+    "subject": "reports",
+    "cluster": "F6",
+    "severity": "MEDIUM",
+    "confidence": "high",
+    "symptom": "Morphing a Report Request that has its AI-request checkbox ON into a Report leaves a dangling, never-completing entry in the paper's AI-request inbox (ai-req...",
+    "suspectedClass": "Every morph that drops an aiRequest flag without bridging it off. note->highlight and highlight->note (morphs/index.ts:177-203) both carry aiRequest across (no leak), but ANY future lossy morph from an aiRequest-bearing kind into a non-aiRequest kind has the same gap. Sibling: card DELETE on every aiRequest-bearing panel (notes/todos/cutter/revisions/reports) also never bridges the flag off on delete (see REP-F7-02) — the deeper class is 'inbox cleanup is only wired to the explicit toggle, not to delete/morph lifecycle transitions'.",
+    "rawFile": "reports-g-interact.json"
+  },
+  {
+    "id": "REP-F6-02",
+    "subject": "reports",
+    "cluster": "F6",
+    "severity": "MEDIUM",
+    "confidence": "high",
+    "symptom": "After morphing the currently-selected/expanded report card, its in-text + gutter-marker halo disappears and the card collapses to its summary, while the pane...",
+    "suspectedClass": "All four morph pairs (note<->highlight, revision comment<->suggestion, cutter comment<->suggestion, report<->report-request) — findEntity gates cutter/revision the same kind-equality way (entity-hover.ts:84-95), and convertCardWithRemap remaps only the popout key for all of them (EditorPane.tsx:887-915). Any cardStore-selected/expanded card loses its store-driven halo + expansion on morph. The deeper class: cross-surface interaction state (selection halo, expansion) is keyed on kind but the kind-remap on morph is incomplete (popout key only).",
+    "rawFile": "reports-g-interact.json"
+  },
+  {
+    "id": "REP-F6-03",
+    "subject": "reports",
+    "cluster": "F6",
+    "severity": "LOW",
+    "confidence": "high",
+    "symptom": "The lossy-morph confirm dialog shown when converting a Report Request -> Report says 'This drops the title and byline (a Report can't hold them)', which is b...",
+    "suspectedClass": "Any reused lossy-morph confirm copy that doesn't branch on direction. The note<->highlight branch (the !preservesBody arm) uses a generic 'fields a {toLabel} can't hold' message that is at least direction-neutral; the report arm bakes in 'title and byline' which is only correct one way.",
+    "rawFile": "reports-g-interact.json"
+  },
+  {
+    "id": "REP-F7-01",
+    "subject": "reports",
+    "cluster": "F7",
+    "severity": "MEDIUM",
+    "confidence": "high",
+    "symptom": "Deleting a Report that has a title but an empty body — via the in-card trash button or by pressing Delete/Backspace on the selected card — does NOT show the...",
+    "suspectedClass": "Every EditableCard consumer with a content field outside the body JSON. cardHasContent counts report.title, and the plain-text mirror (.text) for todo/cutter-comment/revision-comment/report-request, plus user_text/explanation for suggestions — but EditableCard.tryDelete only ever inspects the body JSON. Any title-only Report, or a card whose only user content is a non-body field, dodges the trash/keyboard confirm while the marker-delete confirm fires. The fix class: route EditableCard.tryDelete through the same cardHasContent(kind,card) the marker path uses.",
+    "rawFile": "reports-g-interact.json"
+  },
+  {
+    "id": "REP-F7-02",
+    "subject": "reports",
+    "cluster": "F7",
+    "severity": "MEDIUM",
+    "confidence": "high",
+    "symptom": "Deleting a Report Request that has its AI-request checkbox ON leaves a dangling pending entry in ai-requests.json that points at a now-deleted card.",
+    "suspectedClass": "Same defect across all aiRequest-bearing panels: useNotes.deleteNote, useTodos.deleteItem, useCutter.deleteCard, useRevisions.deleteCard all follow the same filter-only pattern with no bridge-off. The shared root with REP-F6-01: inbox cleanup is bound only to the checkbox toggle, not to the delete/morph lifecycle. A lifecycle-level cleanup (delete/morph -> bridge off if the source kind had a flag) would close the whole class.",
+    "rawFile": "reports-g-interact.json"
+  },
+  {
+    "id": "REP-F7-03",
+    "subject": "reports",
+    "cluster": "F7",
+    "severity": "LOW",
+    "confidence": "medium",
+    "symptom": "Dragging a Report (or Report Request) that is anchored to a text RANGE (Mode-B) to re-anchor it onto a different paragraph leaves the original text still tin...",
+    "suspectedClass": "All paragraph-side re-anchor adapters that omit preserveModeBAnchor while their card kind can carry a Mode-B anchor: dropTodosApi, dropArchiveApi, dropCutterApi, dropRevisionsApi (EditorPane.tsx:1303-1350) all omit it. cutter and revisions certainly carry Mode-B ranges, so the stale-tint bug repeats there. Only notes/highlights wire it. The fix class: every adapter for a Mode-B-capable kind must thread preserveModeBAnchor (each hook has the method shape — see notesHook.preserveModeBAnchor).",
+    "rawFile": "reports-g-interact.json"
+  },
+  {
+    "id": "REP-F3-01",
+    "subject": "reports",
+    "cluster": "F3",
+    "severity": "MEDIUM",
+    "confidence": "high",
+    "symptom": "For a report anchored to two or more paragraphs, the Omni column shows one row per anchor (labelled @0, @1, …) but clicking any of them jumps the editor to t...",
+    "suspectedClass": "Any omni builder that emits per-anchor @N rows but jumps via the card-level jumpToCard. The report omni is the clearest because it explicitly fans out per pid; any other multi-anchor card kind that fans out in omni shares the same mis-jump (jumpToCard has no target-anchor parameter). A per-row jump would need to pass the row's paragraph id (or a single-link slice) into the jump.",
+    "rawFile": "reports-g-interact.json"
+  },
+  {
+    "id": "SR-F8-01",
+    "subject": "search",
+    "cluster": "F8",
+    "severity": "HIGH",
+    "confidence": "high",
+    "symptom": "Clicking a search result does not highlight the matched text in the editor; for a Main-text result it has no editor effect at all (no highlight, no scroll).",
+    "suspectedClass": "Any state that was meant to bubble EditorPane->EditorLayout but was deferred 'post-7.8' and left voided. Same shape risk for any feature whose producer moved into EditorPane while its consumer (editor prop) still reads an EditorLayout state with no live producer. The dead EditorLayout SearchHost import + dead EditorLayout.searchHighlightRange + dead EditorLayout.openItemInPanel auto-split (see SR-C1-02) are a cluster of orphaned EditorLayout search plumbing.",
+    "rawFile": "search-g-anchor.json"
+  },
+  {
+    "id": "SR-F8-02",
+    "subject": "search",
+    "cluster": "F8",
+    "severity": "LOW",
+    "confidence": "high",
+    "symptom": "Clear-search-highlight-on-panel-close operates on the dead state, so even the cleanup is a no-op.",
+    "suspectedClass": "Cleanup effects left attached to the old owner after a state's producer migrated to the new owner.",
+    "rawFile": "search-g-anchor.json"
+  },
+  {
+    "id": "SR-A2-01",
+    "subject": "search",
+    "cluster": "A2",
+    "severity": "HIGH",
+    "confidence": "high",
+    "symptom": "After searching, editing the document and then navigating results jumps/highlights the wrong text (or silently no-ops) because result positions are stale.",
+    "suspectedClass": "Any panel memo that caches absolute PM positions keyed on editor-instance identity rather than a per-transaction structural snapshot (per AGENTS.md, live positions must come from the observer's mapped snapshot resolved at measure time, not from re-walked/cached arrays). Sibling: errorHighlightRange ranges (EditorLayout.tsx:1650) computed once and not re-mapped on subsequent edits; any onHighlightRange caller that stores from/to without DecorationSet.map-style remapping.",
+    "rawFile": "search-g-anchor.json"
+  },
+  {
+    "id": "SR-A1-01",
+    "subject": "search",
+    "cluster": "A1",
+    "severity": "MEDIUM",
+    "confidence": "high",
+    "symptom": "Searching the Footnotes scope never finds text in orphaned (detached) footnotes — content the user most needs to recover via search is invisible to it.",
+    "suspectedClass": "Hardcoded-empty collection props at a host mount that silently drop a real, available data source. Audit other `={[]}` literals at SearchHost/host mounts (e.g. EditorPane.tsx:5405) and any host that lost a data slice during the EditorLayout->EditorPane migration.",
+    "rawFile": "search-g-anchor.json"
+  },
+  {
+    "id": "SR-C1-01",
+    "subject": "search",
+    "cluster": "C1",
+    "severity": "LOW",
+    "confidence": "medium",
+    "symptom": "The 'i of N' results counter can show an impossible value (e.g. '8 of 3') and leave no row highlighted after the source data changes mid-search.",
+    "suspectedClass": "Persisted selection indices not clamped/reset against a derived list that can shrink from an external source. useCycle (panel-primitives.tsx:2606-2613) clamps on read; SearchPanel rolls its own selectedIdx and does NOT — any hand-rolled index-over-derived-list has this gap.",
+    "rawFile": "search-g-anchor.json"
+  },
+  {
+    "id": "SR-C1-02",
+    "subject": "search",
+    "cluster": "C1",
+    "severity": "MEDIUM",
+    "confidence": "medium",
+    "symptom": "Opening a search result whose target panel sits on the same side as Search closes the Search panel (and its result list) instead of splitting the side to sho...",
+    "suspectedClass": "EditorLayout->EditorPane migration left a richer behavior (auto-split) stranded in the unmounted EditorLayout copy while the live EditorPane copy is a deliberate placeholder. Same migration-orphan pattern as SR-F8-01 (dead EditorLayout.searchHighlightRange + dead SearchHost import). Any cross-panel-jump that depended on EditorLayout.setActiveHalf split logic is likely similarly degraded on the live path.",
+    "rawFile": "search-g-anchor.json"
+  },
+  {
+    "id": "SR-F1-01",
+    "subject": "search",
+    "cluster": "F1",
+    "severity": "HIGH",
+    "confidence": "high",
+    "symptom": "After running a search and then editing the document (typing/deleting in a plain paragraph) without changing the query, clicking a Main-text result highlight...",
+    "suspectedClass": "Any consumer that caches absolute PM positions in a structural-rev-gated memo and replays them later without re-resolving: errorHighlightRange (shares effectiveHighlightRange in EditorLayout.tsx:3352), and any onHighlightRange producer. Also FootnoteSearchItem.pos / EditorCitationItem.pos held in search hits go stale the same way for footnote/citation results when only mainText edits intervene.",
+    "rawFile": "search-g-display.json"
+  },
+  {
+    "id": "SR-F1-02",
+    "subject": "search",
+    "cluster": "F1",
+    "severity": "MEDIUM",
+    "confidence": "high",
+    "symptom": "The 'N of M' results counter can read e.g. '16 of 10', no card shows selected, and pressing Down/Enter jumps to an unrelated result rather than the next one,...",
+    "suspectedClass": "Any panel tracking a manual selected index in lifted state without the useCycle read-clamp; the brief notes Search owns its own selectedIdx specifically because it does NOT route through the shared card-store selection.",
+    "rawFile": "search-g-display.json"
+  },
+  {
+    "id": "SR-F1-03",
+    "subject": "search",
+    "cluster": "F1",
+    "severity": "LOW",
+    "confidence": "high",
+    "symptom": "A very long query (e.g. a multi-thousand-character pasted string) renders its full matched text inside the result <mark> with no truncation, blowing out the...",
+    "suspectedClass": "Any snippet renderer that clamps surrounding context but not the matched span itself.",
+    "rawFile": "search-g-display.json"
+  },
+  {
+    "id": "SR-F1-04",
+    "subject": "search",
+    "cluster": "F1",
+    "severity": "LOW",
+    "confidence": "high",
+    "symptom": "Enabling 'Whole word' (W) and searching for a token that begins/ends with punctuation (e.g. 'foo!' or '(cf.') silently returns zero results even though the l...",
+    "suspectedClass": "Generic \\b-wrapping whole-word implementations elsewhere (any other regex search that prepends/appends \\b without checking word-char adjacency).",
+    "rawFile": "search-g-display.json"
+  },
+  {
+    "id": "SR-F1-05",
+    "subject": "search",
+    "cluster": "F1",
+    "severity": "LOW",
+    "confidence": "medium",
+    "symptom": "The breadcrumb shown above a Main-text result can list the wrong section ancestry when the document skips heading levels (e.g. an H1 followed directly by an...",
+    "suspectedClass": "Outline/heading-tree builders that infer nesting from a running stack length vs the explicit level attr (compare OutlinePanel heading-tree indentation logic).",
+    "rawFile": "search-g-display.json"
+  },
+  {
+    "id": "SR-F4-01",
+    "subject": "search",
+    "cluster": "F4",
+    "severity": "LOW",
+    "confidence": "medium",
+    "symptom": "Searching the Footnotes/Notes scopes for a citekey or LaTeX cite command that is embedded inside a footnote/note body fails to find it when the embedded cita...",
+    "suspectedClass": "Any plain-text flattening of card bodies that collapses citation atoms to display-only (compressed-card previews, drag ghosts, tooltips per the footnote-content.ts:623-628 note) loses the underlying citekey for matching/search there too.",
+    "rawFile": "search-g-display.json"
+  },
+  {
+    "id": "SR-F5-01",
+    "subject": "search",
+    "cluster": "F5",
+    "severity": "LOW",
+    "confidence": "medium",
+    "symptom": "Clicking a non-mainText result (e.g. a footnote/citation hit) whose target panel is configured to mount on the SAME rail as the Search panel replaces Search...",
+    "suspectedClass": "Any cross-panel 'open item' that side-activates a target without checking whether the originating panel shares that side.",
+    "rawFile": "search-g-display.json"
+  },
+  {
+    "id": "SR-F5-02",
+    "subject": "search",
+    "cluster": "F5",
+    "severity": "LOW",
+    "confidence": "medium",
+    "symptom": "Clicking a search result for a card that was deleted/orphaned after the search ran still drives a selection for the now-dead id in the target panel, producin...",
+    "suspectedClass": "Shares root with SR-F1-01 (stale results) and the reconciler inline-atom entityExists exemption (audit known-fragile lead 2): any consumer selecting a card by id from a stale derived list.",
+    "rawFile": "search-g-display.json"
+  },
+  {
+    "id": "SR-F3-01",
+    "subject": "search",
+    "cluster": "F3",
+    "severity": "HIGH",
+    "confidence": "high",
+    "symptom": "Clicking a search result never scrolls or highlights the matched text in the main editor; for a Main-text result the click does nothing visible at all.",
+    "suspectedClass": "Dual-state-with-dangling-wire: a state lifted into a child component during a migration whose only live consumer reads a sibling state of the same name in the parent. Same hazard exists anywhere EditorPane holds a `void`-ed state that EditorLayout is supposed to own — grep for other `void <state>; // ... post-7.8` markers in EditorPane.tsx.",
+    "rawFile": "search-g-interact.json"
+  },
+  {
+    "id": "SR-F3-02",
+    "subject": "search",
+    "cluster": "F3",
+    "severity": "MEDIUM",
+    "confidence": "high",
+    "symptom": "Enabling the 'Reports' scope chip yields zero results no matter what the document contains.",
+    "suspectedClass": "Registry-vs-dispatch drift: a scope/kind enumerated in the order/label/color maps but missing from the actual dispatch switch. Check that every SCOPE_ORDER entry has both a results-memo branch AND a SearchHost data prop; 'reports' is the proven gap.",
+    "rawFile": "search-g-interact.json"
+  },
+  {
+    "id": "SR-F3-03",
+    "subject": "search",
+    "cluster": "F3",
+    "severity": "MEDIUM",
+    "confidence": "medium",
+    "symptom": "Jumping from a search result to a target panel that sits on the SAME side as Search closes the Search panel, losing the visible query/results.",
+    "suspectedClass": "Migration regression where a richer parent-shell behavior (auto-split) was reduced to a single setActivePanelKind during the EditorPane consolidation. Any other cross-panel jump relying on the old setActiveHalf split is similarly degraded.",
+    "rawFile": "search-g-interact.json"
+  },
+  {
+    "id": "SR-F3-04",
+    "subject": "search",
+    "cluster": "F3",
+    "severity": "MEDIUM",
+    "confidence": "medium",
+    "symptom": "After running a search, typing inside a paragraph that precedes a match shifts the real text but the search result keeps its old PM positions, so the (would-...",
+    "suspectedClass": "Position-cache memoized on stable editor identity rather than a live per-transaction-mapped snapshot. Per root AGENTS.md, live in-text positions should resolve at measure time (useInTextPositions / getBus(editor).structure), not be frozen in a memo gated on `editor` identity. Any panel freezing PM positions in a memo keyed on `editor` has the same drift.",
+    "rawFile": "search-g-interact.json"
+  },
+  {
+    "id": "SR-F2-01",
+    "subject": "search",
+    "cluster": "F2",
+    "severity": "LOW",
+    "confidence": "medium",
+    "symptom": "After a search result is selected, deleting backing items elsewhere (shrinking the result list without changing the query) leaves the result counter showing...",
+    "suspectedClass": "Index-into-derived-list not clamped on list mutation. PrevNextCounter has no internal guard, so every caller that doesn't route through useCycle (search here) is exposed; audit other PrevNextCounter consumers that hold their own index in panel state.",
+    "rawFile": "search-g-interact.json"
+  },
+  {
+    "id": "SR-F7-01",
+    "subject": "search",
+    "cluster": "F7",
+    "severity": "MEDIUM",
+    "confidence": "high",
+    "symptom": "Orphaned footnotes (callout deleted, body preserved) are never found by search even with the Footnotes scope on.",
+    "suspectedClass": "Host passes an empty literal for a data slice the panel claims to support — a 'wired-but-starved' input. Check other SearchHost inputs for stubbed literals (none others spotted, but the pattern is the same class as SR-F3-02's missing report data).",
+    "rawFile": "search-g-interact.json"
+  }
+]

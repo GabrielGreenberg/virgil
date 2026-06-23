@@ -1,0 +1,66 @@
+{
+  "file": "search-g-interact",
+  "verifier": "A",
+  "verdicts": [
+    {
+      "findingId": "SR-F3-01",
+      "isReal": true,
+      "disposition": "CONFIRMED",
+      "severityFinal": "HIGH",
+      "rationale": "Search-result highlight/scroll in the main editor is genuinely dead. The canonical render path is EditorLayout -> <EditorPane> (EditorLayout.tsx:4382) -> <PaneRailBody> -> <SearchHost> (EditorPane.tsx:5570). SearchHost is given setSearchHighlightRange={setSearchHighlightRange} = EditorPane's LOCAL state, which is explicitly discarded: `void searchHighlightRange; // surfaces in the editor's highlight overlay post-7.8` (EditorPane.tsx:2664). The inner <Editor> only consumes EditorPane's `highlightRange` prop (EditorPane.tsx:4333), which EditorLayout feeds from effectiveHighlightRange = searchHighlightRange ?? errorHighlightRange (EditorLayout.tsx:3352). EditorLayout's own searchHighlightRange (declared :1270) is written ONLY at :3160 and ONLY to null (`if (!searchPanelOpen) setSearchHighlightRange(null)`) — no call site ever sets a real range (verified by grep: only the declaration and the null-set exist). So the search range never reaches Editor.applyHighlight's highlightRangeRef branch (Editor.tsx:1730-1751). For mainText, SCOPE_PANEL has no entry (search-sources.ts:87-97) so onOpenItem is skipped (SearchPanel.tsx:393-396) — a mainText result click is fully inert. EditorLayout imports SearchHost (:166) but never mounts it (grep confirms only <EditorPane> is mounted), so there is no working fallback. Core search payoff broken on a real user path (search is a registered, openable panel — panel-registry.ts:156).",
+      "correctedRootCause": "Incomplete '7.8' migration: SearchHost was lifted into EditorPane but its highlight-range state was deferred (void'd) and the parent EditorLayout state of the same name was never wired to write a real range — a dual-state dangling wire. EditorPane.tsx:2664, EditorLayout.tsx:3160/3352.",
+      "class": "dual-state-dangling-wire (state lifted during migration whose only live consumer reads a sibling same-named state in the parent)",
+      "confidence": "high"
+    },
+    {
+      "findingId": "SR-F3-02",
+      "isReal": true,
+      "disposition": "CONFIRMED",
+      "severityFinal": "MEDIUM",
+      "rationale": "The 'Reports' scope is a dead scope. `reports` is in SCOPE_ORDER (search-sources.ts:114) so it appears in DROPDOWN_SCOPES (SearchPanel.tsx:91) and renders a toggleable chip in the More dropdown. But the results memo (SearchPanel.tsx:305-380) has NO enabledScopes.has('reports') branch — the only occurrence of 'reports' anywhere in SearchPanel.tsx is the SCOPE_TO_CARD_THEME map at :704 (grep-verified). searchReports is exported (search-sources.ts:417) but never imported by SearchPanel (import list :22-33 has no searchReports). Doubly dead: SearchHostProps has no reportCards field (search-host.tsx:22-37) and the SearchHost mount passes no report cards (EditorPane.tsx:5570-5585). Enabling the chip yields zero results regardless of document content — silent dead scope.",
+      "correctedRootCause": null,
+      "class": "registry-vs-dispatch drift (scope enumerated in order/label/color/theme maps but absent from the results-memo dispatch and the host data props)",
+      "confidence": "high"
+    },
+    {
+      "findingId": "SR-F3-03",
+      "isReal": true,
+      "disposition": "RECLASSIFIED",
+      "severityFinal": "LOW",
+      "rationale": "Real behavior change but lower impact than MEDIUM. EditorPane.openItemInPanel only calls setActivePanelKindBySide(kind) (EditorPane.tsx:2889-2906), which does setActiveLeftPanelKind/setActiveRightPanelKind (:2876-2882) — replacing the active panel on that side, no top/bottom split. The legacy EditorLayout.openItemInPanel DID split same-side (EditorLayout.tsx:1292-1294: setActiveHalf top='search', bottom=panel) but that path is unrendered. The EditorPane comment at :2891 explicitly flags it deferred ('Step 7.8 will replace this ... + dock-slot expansion'). Reclassified to LOW because: (a) searchState is preserved across panel close/reopen (EditorPane.tsx:2658-2662 comment + the state lives in EditorPane), so the query/results are recoverable by reopening Search; (b) the jump still functions (target panel opens, item selected); (c) split-into-dock-slot is a known-deferred feature in the always-float model, not a broken core function — only the side-by-side convenience is lost. Recoverable, minor UX degradation.",
+      "correctedRootCause": "Deferred dock-slot-expansion feature in the post-7.8 always-float consolidation; the richer auto-split was not re-implemented in EditorPane.openItemInPanel. EditorPane.tsx:2889-2906.",
+      "class": "migration feature-reduction (richer parent-shell behavior collapsed to a single setActivePanelKind during EditorPane consolidation)",
+      "confidence": "high"
+    },
+    {
+      "findingId": "SR-F3-04",
+      "isReal": true,
+      "disposition": "RECLASSIFIED",
+      "severityFinal": "LOW",
+      "rationale": "The stale-position mechanism is real but has NO current user-observable effect (fully masked) so it cannot be hit on today's user path. Mechanism confirmed: the results memo deps (SearchPanel.tsx:363-380) are `editor` (stable identity across all transactions) plus structural-counter-backed arrays — footnoteInfos is memoized on [editor, rev.footnotes] (EditorPane.tsx:2772-2775) and allEditorCitations on [editor, rev.citations] (EditorPane.tsx:2611-2626). A plain keystroke bumps no structural counter, so the memo does not recompute and the mainText pmFrom/pmTo frozen in each result (SearchPanel.tsx:162-224) go stale by the inserted char count. HOWEVER those cached from/to are consumed ONLY by onHighlightRange (SearchPanel.tsx:390), which is dead per SR-F3-01; mainText skips onOpenItem; and navigateToResult's scrollIntoView (:398-403) targets the result CARD in the list, not the editor. So today the stale positions produce nothing observable. The finder itself acknowledges this is 'masked by SR-F3-01' and 'the latent root that surfaces once the highlight wire is restored.' Real root cause and class are sound; severity reduced to LOW because the defect is entirely conditional on first fixing SR-F3-01.",
+      "correctedRootCause": "Position cache frozen in a memo gated on stable `editor` identity rather than resolved at measure time against a live per-transaction-mapped snapshot (per root AGENTS.md, in-text positions should come from getBus(editor).structure / useInTextPositions). Latent until SR-F3-01 is fixed. SearchPanel.tsx:162-224, :363-380.",
+      "class": "position-cache-on-stable-editor-identity (PM positions frozen in a memo keyed on editor identity drift after non-structural edits)",
+      "confidence": "high"
+    },
+    {
+      "findingId": "SR-F2-01",
+      "isReal": true,
+      "disposition": "CONFIRMED",
+      "severityFinal": "LOW",
+      "rationale": "Confirmed real and correctly rated LOW. selectedIdx lives in SearchPanelState and is reset to null only on query/case/word changes (setQuery :258, setCaseSensitive :268, setWholeWord :279) and on toggleScope (:298). setSelectedIdx just stores the value with no clamp (SearchPanel.tsx:285-290). When `results` shrinks for a DATA reason (a backing item deleted in another open panel while Search stays active — possible in the always-float model), selectedIdx is never re-clamped, and headerExtras passes current={selectedIdx} total={results.length} raw to PrevNextCounter (SearchPanel.tsx:444-449). PrevNextCounter renders `${current + 1} of ${total}` with no bounds check (panel-primitives.tsx:2592), yielding an out-of-range counter (e.g. '8 of 4'); no ResultCard matches selectedIdx so none shows selected. The shared useCycle helper clamps on read precisely for this ('Handles list shrinking by clamping the exposed index on read', panel-primitives.tsx:2604/2613) and SearchPanel does not use it. Edge path (cross-panel deletion with a search result selected), recoverable on any query/scope change — LOW is right.",
+      "correctedRootCause": null,
+      "class": "index-into-derived-list not clamped on list mutation; PrevNextCounter has no internal guard so every caller not routed through useCycle is exposed",
+      "confidence": "high"
+    },
+    {
+      "findingId": "SR-F7-01",
+      "isReal": true,
+      "disposition": "CONFIRMED",
+      "severityFinal": "MEDIUM",
+      "rationale": "Confirmed. The sole SearchHost mount hardcodes orphanedFootnotes={[]} (EditorPane.tsx:5572). searchFootnotes is written to scan orphan titles/bodies and emit unanchored hits (search-sources.ts:259-269), and SearchPanel passes the prop straight through (SearchPanel.tsx:326). A real orphan list exists and is available in the same scope: PaneRailBody receives `viewPrefs` (EditorPane.tsx:5341) and viewPrefs.orphanedFootnotes is passed to OmniHost two branches up (EditorPane.tsx:5029) — but SearchHost gets the empty literal instead. So orphaned-footnote body text (which still shows as an orphaned-footnote card in the Footnotes panel) is silently unsearchable even with the Footnotes scope on. Wired-but-starved input on a realistic path (orphaning a footnote is a supported flow).",
+      "correctedRootCause": "SearchHost mount is fed an empty literal for the orphanedFootnotes slice it supports, despite the real list being in scope as viewPrefs.orphanedFootnotes. EditorPane.tsx:5572 vs :5029.",
+      "class": "wired-but-starved host input (host passes an empty literal for a data slice the panel claims to support) — same family as SR-F3-02's missing report data",
+      "confidence": "high"
+    }
+  ]
+}

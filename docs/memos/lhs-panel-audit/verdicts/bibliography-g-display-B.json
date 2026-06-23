@@ -1,0 +1,96 @@
+{
+  "file": "bibliography-g-display",
+  "verifier": "B",
+  "verdicts": [
+    {
+      "findingId": "BIB-F1-01",
+      "isReal": true,
+      "disposition": "CONFIRMED",
+      "severityFinal": "MEDIUM",
+      "rationale": "Mechanism verified end to end. CardListPanel computes `showEmpty = items.length === 0 && !hasAiRequests && emptyState != null` (src/panels/_shared/CardListPanel.tsx:112) WITHOUT regard to `listTrailing`. When true the component returns `emptyState` alone (src/panels/_shared/CardListPanel.tsx:135-136) and never reaches the else-branch that emits items + `{listTrailing}` (src/panels/_shared/CardListPanel.tsx:148). BibliographyPanel always passes a non-null `emptyState` (src/panels/Bibliography/BibliographyPanel.tsx:891-903) and routes its Pending-requests block through `listTrailing` (src/panels/Bibliography/BibliographyPanel.tsx:837,907). So with 0 displayed entries (fresh paper with no citations under 'Cited only', or a no-match search) plus a filed 'Request entry', the pending-requests block is suppressed. Reachable on a realistic path — 'Request entry' exists precisely for entries you don't yet have, and a new paper's cited list is empty. NOT data loss: the request stays in the entryRequests sidecar/array and reappears the moment any entry is displayed (switch to Full bibliography) — purely a render-visibility gap. MEDIUM ('misbehaves in a realistic case') is the correct rung.",
+      "correctedRootCause": "The `showEmpty` gate at src/panels/_shared/CardListPanel.tsx:112 omits `listTrailing` from its emptiness calculation; the structural fix is to render `listTrailing` outside the showEmpty branch (or fold its presence into `showEmpty`). Deeper: CardListPanel conflates 'no items' with 'nothing to show', but `listTrailing` is independent panel-owned content.",
+      "class": "Empty-state gate that swallows independent trailing/auxiliary panel content. Bibliography is currently the ONLY `listTrailing` consumer (verified by grep) so the live blast radius is one panel; the class is 'any future trailing-section content routed through CardListPanel'.",
+      "confidence": "high"
+    },
+    {
+      "findingId": "BIB-F1-02",
+      "isReal": true,
+      "disposition": "RECLASSIFIED",
+      "severityFinal": "LOW",
+      "rationale": "Half-right. CONFIRMED that `getFormattedBib` is destructured in BibEntryCard (src/components/BibEntryCard.tsx:146) but never referenced in its render body — grep shows only lines 19 (prop type) and 146 (destructure), no call site; the body renders only the hand-built publication-details JSX row (src/components/BibEntryCard.tsx:248-287), so no CSL-formatted reference string ever appears in a Bibliography card. REFUTED the 'dead feature / unused prop threaded through panel→host→float' characterization: `getFormattedBib` IS consumed — CitationCard renders an embedded BibEntryCard for the full-cite preview and gates it on `!!getFormattedBib` (src/panels/Citations/CitationCard.tsx:967-976) and `renderFullEntry` in the parser calls `formatBibliography` for \\fullcite (src/lib/bib-parser.ts:521). So it is a genuine but globally-live formatter that the bib card simply doesn't surface. No user data affected, no broken function — an absent nicety. LOW, not 'dead'.",
+      "correctedRootCause": "Not a dead prop. `formatBibliography`/`getFormattedBib` is wired and exercised by the Citations full-cite preview (src/panels/Citations/CitationCard.tsx:992) and \\fullcite rendering (src/lib/bib-parser.ts:521). The defect is narrowly that BibEntryCard never renders a CSL preview row from it — a missing-feature in the bib card, not a refactor-orphaned sink.",
+      "class": "Missing/absent UI surface (spec implies a CSL preview in the bib card; code never builds it). Not the 'prop survives refactor but loses render site' class the finder hypothesizes, since the prop is live elsewhere.",
+      "confidence": "high"
+    },
+    {
+      "findingId": "BIB-F1-03",
+      "isReal": true,
+      "disposition": "CONFIRMED",
+      "severityFinal": "COSMETIC",
+      "rationale": "Verified. The header line is `flex-1 min-w-0 leading-snug` with inline `overflowWrap: anywhere` (src/components/BibEntryCard.tsx:476-481) and carries no `truncate`/`line-clamp`. `compressed = !isSelected && !isPoppedOut` (src/components/BibEntryCard.tsx:449) gates ONLY the body+separator via `{!compressed && (…)}` (src/components/BibEntryCard.tsx:567) — the header div sits outside that gate and always renders in full. A 200-char title therefore wraps unbounded even in the collapsed/unselected state, making the card taller than its neighbors and breaking uniform compressed-row height. Visual-only, no data or function impact. COSMETIC is correct.",
+      "correctedRootCause": "The compressed-card height contract (DOCKED_COMPRESSED_LINES via CardDisplayProvider) clamps only the body; the always-rendered header has no per-line clamp, so author·year·title wraps freely. src/components/BibEntryCard.tsx:476-489.",
+      "class": "Card headers that derive a summary line from arbitrary user/.bib text without a clamp in the compressed state. Worth checking the citation header and footnote bodyTitle for the same omission, as the finder suggests.",
+      "confidence": "high"
+    },
+    {
+      "findingId": "BIB-F1-04",
+      "isReal": true,
+      "disposition": "CONFIRMED",
+      "severityFinal": "LOW",
+      "rationale": "Verified both the display dedup and the upstream collapse. `sortedEntries` filters via a `seen` Set keyed on `e.key` (src/panels/Bibliography/BibliographyPanel.tsx:220-235) and `handleExportCited` repeats the identical seen-set filter (src/panels/Bibliography/BibliographyPanel.tsx:350-355) — a genuine duplicate-citekey entry never reaches the user, no warning. The finder's own caveat is correct and important: `extractRawEntries` keys raw blocks by `key.toLowerCase()` into a Record (src/lib/bib-parser.ts:854-877), so the second raw block is usually lost UPSTREAM before the panel ever sees it; the panel-level dedup only becomes the visible drop when citation-js `cite.data` emits two CSL items from one parse (src/lib/bib-parser.ts:101-104). Duplicate citekeys are a LaTeX/biber error anyway, so this is a rare malformed-input edge. LOW is right.",
+      "correctedRootCause": "Two stacked silent drops: (1) parser-level Record-keyed collapse by lowercased citekey (src/lib/bib-parser.ts:874) and (2) panel-level `seen.has(e.key)` filter (src/panels/Bibliography/BibliographyPanel.tsx:224). Neither warns. Separately verified the finder's sibling: `handleExportCited` does `cited.map((e) => e.raw).filter(Boolean)` (src/panels/Bibliography/BibliographyPanel.tsx:363), so a cited entry whose in-memory `raw` is '' is silently omitted from cited.bib while persistence (serializeBibFile reconstructs from fields when !raw, src/lib/bib-parser.ts:132-137) and the list still include it. This raw='' window is hit by handleConflictNewCitekey which intentionally sets `raw: ''` (src/panels/Bibliography/BibliographyPanel.tsx:524) and persists before any reparse repopulates raw — a real export-drop on a real path, arguably higher than LOW for that specific sibling, but conditioned on exporting before reload.",
+      "class": "Lead-#5 silent seen-set / .filter(Boolean) drops on the bib display+export path. The export raw='' sibling is the more concerning member and deserves its own ticket.",
+      "confidence": "medium"
+    },
+    {
+      "findingId": "BIB-F5-01",
+      "isReal": true,
+      "disposition": "CONFIRMED",
+      "severityFinal": "HIGH",
+      "rationale": "Stored-XSS sink confirmed. AnnotationEditor assigns `editorRef.current.innerHTML = content || ''` with zero sanitization (src/components/BibEntryCard.tsx:112-113), seeding from the raw annotation string. img/svg/iframe/event-handler payloads execute on innerHTML insertion (top-level <script> won't, but onerror/onload do — standard DOM behavior). The editor round-trips innerHTML back through onUpdate → setAnnotation → annotations.json (src/components/BibEntryCard.tsx:117-123), so injected markup also persists. Threat model is real and non-self: (a) annotations.json travels with a shared/synced paper and is loaded verbatim by useAnnotations via usePersistentState (src/hooks/useAnnotations.ts:13-19, no sanitize); (b) the answer-bib-review skill writes the annotation into annotations.json for type:notes (editor/skills/answer-bib-review.md:22-23,134-146). The #28 hardening explicitly removed the dangerouslySetInnerHTML sink on the PARALLEL publication-details field row (src/components/BibEntryCard.tsx:248-255 comment) and pinned it with a test that covers ONLY that row (src/components/__tests__/bib-entry-card-escaping.test.tsx:70-104 — journal/booktitle field sinks; the AnnotationEditor innerHTML sink is untested). The same threat-model author left the annotation editor raw. HIGH (stored XSS reachable from shared/AI-authored content) is correct.",
+      "correctedRootCause": "Unsanitized imperative innerHTML write at src/components/BibEntryCard.tsx:113; the #28 field-row hardening was applied to the JSX field row but not to the sibling contentEditable annotation editor that loads the same class of untrusted persisted/AI HTML. Needs DOMPurify (or to drop innerHTML for a text/structured representation) on both seed (line 113) and the persisted round-trip (line 120).",
+      "class": "Any contentEditable/innerHTML sink that loads persisted or AI-authored HTML without DOMPurify. Check footnote/report rich-text bodies and any other annotation/notes editor that seeds via innerHTML. The escaping-test coverage gap (row pinned, editor not) is itself the class of regression risk.",
+      "confidence": "high"
+    },
+    {
+      "findingId": "BIB-F5-02",
+      "isReal": true,
+      "disposition": "CONFIRMED",
+      "severityFinal": "MEDIUM",
+      "rationale": "Both refresh gaps verified. (1) Annotations: useAnnotations is backed by usePersistentState, which reads the sidecar ONLY on mount/docId-change (src/hooks/usePersistentState.ts:113-146) — no poll, no FS-watch, no external-write listener; and AnnotationEditor re-seeds innerHTML only on a `[bibKey]` dep (src/components/BibEntryCard.tsx:111-115), so even if the `annotation` prop did update, the imperatively-set editor wouldn't re-render new content for the same open key. (2) Fields: useCitations.refreshBib runs only on docId-change and on DOC_BIB_CHANGED_EVENT (src/hooks/useCitations.ts:131,137-147); the only dispatchers of that event are in-app project-bib writes (src/lib/project-bib.ts:71,128) — an out-of-band skill write to references.bib (via apply_response.py, a disk-side Python writer with no browser-event access) fires nothing, and grep confirms no visibilitychange/focus-refresh fallback exists for bib or annotations. Meanwhile useBibReview polls bib-review-requests.json every 10s (src/hooks/useBibReview.ts:42-48), so the 'Requested' pill clears while content stays stale — the misleading 'done but unchanged' state. CONFIRMED. Severity stays MEDIUM, not data-loss: the AI content IS written to disk correctly; only the in-session display is stale and a doc reload fixes it. No content lost or corrupted.",
+      "correctedRootCause": "Asymmetric refresh: the request-status sidecar polls (useBibReview 10s) but the two content sidecars it gates do not — annotations.json (usePersistentState, load-once) and references.bib (DOC_BIB_CHANGED_EVENT only, never dispatched by external skill writes). The completion signal and the content it signals refresh on different (and for content, non-existent for out-of-band writes) triggers.",
+      "class": "All sidecars/.bib written out-of-band by editor skills but loaded once per docId or refreshed only on a narrowly-scoped in-app event with no FS-watch. Sibling: any panel whose contentEditable is seeded once on mount (the AnnotationEditor `[bibKey]`-only seed pattern) won't reflect an external same-key content change even if the backing state updates.",
+      "confidence": "high"
+    },
+    {
+      "findingId": "BIB-F5-03",
+      "isReal": false,
+      "disposition": "REFUTED",
+      "severityFinal": "MEDIUM",
+      "rationale": "The central claim — that a citekey rename never propagates to the live \\cite, leaving in-text citations rendering '??', and that the next reparse reverts the sidecar — does NOT hold. There is a dedicated sync effect in EditorPane (src/components/EditorPane.tsx:1141-1168) whose explicit purpose is: 'command follows the panel's latest CitationRef.command, so that changing the cite-type in the citation card refreshes the inline citation in the editor body.' It maps panel citations by id (`panelById.get(c.citationId)`), and when `nextCommand !== c.command` it calls `innerRef.current.updateCitationDisplay(citationId, nextDisplay, nextCommand)`. `updateCitationDisplay` (src/components/Editor.tsx:1341-1358) does `setNodeMarkup` on the matching citation node, overwriting BOTH the `command` and `displayText` attrs in the live PM doc. updateBibKeyAndType rewrites the sidecar CitationRef.command via the \\b-bounded regex (src/hooks/useCitations.ts:299-311); because the sidecar ids are seeded FROM the editor's citationIds (syncFromEditor: `id: ec.citationId`, src/hooks/useCitations.ts:359), the map hit succeeds and the new \\cite{newKey} is pushed into the editor node. The effect also recomputes display from the updated bibEntries (which now contains newKey), so there is no '??' window in steady state. Reparse-revert claim is also wrong: syncFromEditor runs only on `[editor]` (mount, src/components/EditorPane.tsx:1177-1182), not per keystroke, and by the time it does re-run the editor node already carries \\cite{newKey}, so the sidecar rebuilds consistently. The renamed citekey reaches the .tex. NOT a real bug. (Residual minor risk: the regex `\\b${oldKey}\\b` could over/under-match an oldKey containing regex-special or non-\\w boundary chars, but oldKey is escaped at :306 and citekeys are word-ish, so this is theoretical — well below the finder's HIGH.)",
+      "correctedRootCause": "No defect: rename → sidecar command patch (useCitations.ts:299-311) → EditorPane sync effect detects commandChanged (EditorPane.tsx:1148-1160) → updateCitationDisplay setNodeMarkup rewrites the live citation node's command+displayText (Editor.tsx:1345). The propagation path the finder claims is 'missing' exists and is the very effect documented at EditorPane.tsx:1133-1138.",
+      "class": null,
+      "confidence": "high"
+    },
+    {
+      "findingId": "BIB-F5-04",
+      "isReal": true,
+      "disposition": "CONFIRMED",
+      "severityFinal": "MEDIUM",
+      "rationale": "Verified. The edit form maps only `Object.entries(editBibFields)` (src/components/BibEntryCard.tsx:362-369), seeded from `{...entry.fields}` in startEditBib (src/components/BibEntryCard.tsx:180) plus the @type/key rows — there is no affordance to append a new field key, so a missing DOI cannot be supplied via the UI. On Save, commitEditBib hands editBibFields wholesale to onUpdateBibEntry (src/components/BibEntryCard.tsx:186), and updateBibEntry MERGES `{ ...e.fields, ...fields }` (src/hooks/useCitations.ts:265) — a field the user cleared to blank is written through as an empty string, never deleted, and the serializer emits `field = {}` because Object.entries maps `[k, '']` to `  ${k} = {}` (src/hooks/useCitations.ts:266-269). So both add and delete are impossible from the inline editor. Recoverable via the answer-bib-review 'replace-all-fields' skill mode, and an empty `field = {}` is cosmetically ugly but not corrupting. MEDIUM ('function works but misbehaves in a realistic case') is correct.",
+      "correctedRootCause": "Two compounding gaps: no add-field row in the edit form (src/components/BibEntryCard.tsx:362-369) AND merge-only field semantics with no deletion honored (src/hooks/useCitations.ts:265). A set-fields-by-merge updater structurally cannot express a field removal.",
+      "class": "Merge-only field updaters across the bib/card edit surface (any onUpdate that spreads new over old without honoring deletions). The skill's explicit 'replace-all-fields' mode exists precisely to work around set-fields' inability to delete; the manual UI lacks that escape hatch.",
+      "confidence": "high"
+    },
+    {
+      "findingId": "BIB-F5-05",
+      "isReal": true,
+      "disposition": "CONFIRMED",
+      "severityFinal": "LOW",
+      "rationale": "Verified, and the re-fire is slightly worse than described. handleRequestToggle special-cases only `status === 'pending'` (src/components/BibEntryCard.tsx:222-235); the else-branch calls onRequestReview unconditionally, so a 'complete' status falls into re-request. The pill label/style checks only `fieldsReviewStatus === 'pending'` / `notesReviewStatus === 'pending'` (src/components/BibEntryCard.tsx:320-328, 408-416), so a 'complete' entry shows the idle 'Request review' label with no 'reviewed' badge. getRequestStatus can return 'complete' (src/hooks/useBibReview.ts:95-103). On re-click, requestReview dedupes ONLY against an existing PENDING request (src/hooks/useBibReview.ts:66-69), so it appends a fresh pending request alongside the existing complete one — and because getRequestStatus returns the FIRST `.find()` match by key+type (the complete one, added first), the pill can even keep showing idle while a duplicate pending sits in the list. clearRequest exists but the card never calls it. Minor/recoverable polish bug, no data impact. LOW is correct.",
+      "correctedRootCause": "Tri-state status (none|pending|complete) collapsed to a binary `=== 'pending'` check at every UI branch (src/components/BibEntryCard.tsx:222,320,408), combined with requestReview's pending-only dedup (src/hooks/useBibReview.ts:66-69) and getRequestStatus returning the first array match regardless of status (src/hooks/useBibReview.ts:97-100). 'complete' is rendered identically to 'none' and is freely re-requestable.",
+      "class": "Tri-state status collapsed to binary pending/not-pending at the UI. Any card consuming a 'complete' status without a distinct rendering (citation bib-review, report-request fulfillment) risks the same re-fire-on-complete and missing-acknowledgement behavior.",
+      "confidence": "high"
+    }
+  ]
+}

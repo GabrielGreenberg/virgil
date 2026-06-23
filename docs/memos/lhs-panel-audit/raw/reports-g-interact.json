@@ -1,0 +1,186 @@
+{
+  "subject": "reports",
+  "group": "G-interact",
+  "clusters": ["F2", "F3", "F6", "F7"],
+  "cells": [
+    {
+      "cluster": "F2",
+      "status": "BUG",
+      "note": "Two parallel selection systems: cardStore.selected (halo via useAnchoredCard, keyed {kind,id}) AND host-level selectedReportCardId (kind-agnostic id). ReportCard.isSelected = ac.selected || selected (ReportCard.tsx:72). Axis-purity primitives themselves are clean (anchored-card-store.ts:74-114 are axis-pure; body onClick = onActivate select+expand, header = onHeaderActivate select+toggle, ReportCard.tsx:110-116,135-136). But the dual-source halo desyncs after a morph/prune (see REP-F6-02). On plain select/expand the axes are correct.",
+      "bugIds": ["REP-F6-02"]
+    },
+    {
+      "cluster": "F3",
+      "status": "BUG",
+      "note": "card->text jump gated linked-only (ReportsPanel.tsx:100-104,117-121 getLinkedTextObjectIds>0). text->card works: Mode-A via gutter marker (markerType 'report'), Mode-B via useTextHoverBridge linked-anchor click resolving kind through cardKindFromRecord(rep,'reports') (useTextHoverBridge.ts:74-78,170-189). BUG: a multi-anchor report emits N omni rows @0/@1 (omni.tsx:83-94) but every row's onJump calls jumpToCard(card,sourceEl) with NO target paragraph (omni.tsx:54,69; links.ts:579), so jumpToCard always lands on the FIRST resolvable link — clicking @1 jumps to @0. Also: orphaned omni rows (pos==null) still get a live onJump (gated on pids.length, not pos) — a no-op jump button.",
+      "bugIds": ["REP-F3-01"]
+    },
+    {
+      "cluster": "F6",
+      "status": "BUG",
+      "note": "report<->report-request morph fires the lossy confirm at the EditorPane chokepoint (EditorPane.tsx:863-918) and remaps the popout key (line 915) — so the 'host confirms first' gate DOES fire (lead #6 partial-clear). But three real defects: (1) morphing a report-request with aiRequest:true to a report drops the flag (morphs/index.ts:149-161 requestToReport omits aiRequest) WITHOUT calling bridgeCardAiRequestFlag(...,false), orphaning the ai-requests.json inbox entry. (2) the morph never remaps cardStore selection/expansion (keyed by {kind,id}), so the pruner clears the halo + collapses the card, while host selectedReportCardId (kind-agnostic) keeps the panel halo on -> desynced halo. (3) the request->report confirm copy is backwards/wrong (EditorPane.tsx:872-876).",
+      "bugIds": ["REP-F6-01", "REP-F6-02", "REP-F6-03"]
+    },
+    {
+      "cluster": "F7",
+      "status": "BUG",
+      "note": "Delete: in-card trash / keyboard-Delete uses EditableCard.tryDelete -> hasJsonContent(value) which checks ONLY the body JSON (panel-primitives.tsx:891-901), diverging from the shared cardHasContent('report',...) (has-content.ts:71-76) which also counts the title; a title-only report skips the confirm and silently loses the title. Deleting a report-request with aiRequest:true never calls the bridge (useReports.ts:305-311) -> orphaned inbox entry. Re-anchor (drag): dropReportsApi (EditorPane.tsx:1351-1362) OMITS preserveModeBAnchor, so dragging a Mode-B-anchored report (createReportRequest with range anchor, drag-handle-actions.ts:412-428) to a new paragraph leaves the stale linkedAnchor tint over the old text. Clone: report lifecycle.clone=false (registry 405,428); hook cloneReport/cloneRequest are dead code (never called).",
+      "bugIds": ["REP-F7-01", "REP-F7-02", "REP-F7-03"]
+    }
+  ],
+  "findings": [
+    {
+      "id": "REP-F6-01",
+      "subject": "reports",
+      "cluster": "F6",
+      "severity": "MEDIUM",
+      "symptom": "Morphing a Report Request that has its AI-request checkbox ON into a Report leaves a dangling, never-completing entry in the paper's AI-request inbox (ai-requests.json) that points at a card which is no longer a request.",
+      "suspectedRootCause": "useReports.convertCard (useReports.ts:267-279) -> applyCardMorph('report-request', card) -> requestToReport (morphs/index.ts:149-161) drops the aiRequest field entirely, but the morph path NEVER calls bridgeCardAiRequestFlag(docId,'report-request',id,false,...). The bridge is only invoked from setRequestAiRequest (useReports.ts:246-258). The report-request kind declares aiRequest routing { kind:'report', linkPanel:'reports' } (card-registry.tsx:422; pinned by ai-request-routing-contract.test.ts:49), so a true flag created a real inbox entry keyed (panel:'reports', cardId). After the morph the card is a 'report' (no aiRequest checkbox at all), so the inbox entry can never be toggled off and never self-heals via the UI; only a skill drain or manual edit clears it. The bridge's own 'self-heals on next toggle' note (ai-request-bridge.ts:55-56) is false here because the toggle surface is gone.",
+      "evidence": [
+        { "file": "src/cards/morphs/index.ts", "line": 149, "note": "requestToReport returns a ReportCard with no aiRequest field — silently drops the flag" },
+        { "file": "src/hooks/useReports.ts", "line": 267, "note": "convertCard only calls applyCardMorph inside update(); no bridge cleanup call" },
+        { "file": "src/lib/ai-request-bridge.ts", "line": 132, "note": "bridge drops the inbox entry ONLY when called with value=false; the morph never calls it" },
+        { "file": "src/cards/card-registry.tsx", "line": 422, "note": "report-request aiRequest routing -> a true flag created a (panel:'reports',cardId) inbox entry" }
+      ],
+      "reproSteps": [
+        "Create a Report Request anchored to a paragraph.",
+        "Tick its 'AI request' checkbox ON (bridge writes a pending entry to ai-requests.json with linkedTo.cardId = this card).",
+        "Use the kind chevron to morph it to a Report; confirm the lossy dialog.",
+        "Inspect ai-requests.json: the pending entry is still present, linkedTo.cardId now points at a Report (no aiRequest flag), so it can never be cleared from the UI."
+      ],
+      "reproChannel": "code-trace",
+      "confidence": "high",
+      "suspectedClass": "Every morph that drops an aiRequest flag without bridging it off. note->highlight and highlight->note (morphs/index.ts:177-203) both carry aiRequest across (no leak), but ANY future lossy morph from an aiRequest-bearing kind into a non-aiRequest kind has the same gap. Sibling: card DELETE on every aiRequest-bearing panel (notes/todos/cutter/revisions/reports) also never bridges the flag off on delete (see REP-F7-02) — the deeper class is 'inbox cleanup is only wired to the explicit toggle, not to delete/morph lifecycle transitions'."
+    },
+    {
+      "id": "REP-F6-02",
+      "subject": "reports",
+      "cluster": "F6",
+      "severity": "MEDIUM",
+      "symptom": "After morphing the currently-selected/expanded report card, its in-text + gutter-marker halo disappears and the card collapses to its summary, while the panel card keeps showing the selected halo — a visible cross-surface desync, and the user's expanded-body view is lost.",
+      "suspectedRootCause": "cardStore selection (anchored-card-store.ts:100) and expansion (line 74) are keyed by {kind,id}. The morph flips the record's kind but never remaps the cardStore refs. On the morph update(), reportCards array identity changes -> the reconciler's pruner effect re-fires (useAnchorHighlightReconciler.ts:155-166) and calls entityExists(s.selected/expandedSet,...) -> findEntity (entity-hover.ts:70-74) gates report/report-request on cardKindFromRecord(card,'reports')===ref.kind. The stale ref still carries the OLD kind, so findEntity returns undefined -> clearSelection() + collapse(). Meanwhile the host's selectedReportCardId is kind-agnostic (just an id, never pruned on morph), so ReportCard.isSelected = ac.selected || selected (ReportCard.tsx:72) stays true via the host slot — the panel halo survives but the reconciler-painted text/marker halo (which keys off cardStore only) is cleared. The popout KEY is remapped (EditorPane.tsx:915) but the selection/expansion refs are not.",
+      "evidence": [
+        { "file": "src/links/_shared/entity-hover.ts", "line": 70, "note": "findEntity for report/report-request requires cardKindFromRecord(...)===ref.kind; stale old-kind ref no longer matches after morph" },
+        { "file": "src/links/_shared/useAnchorHighlightReconciler.ts", "line": 157, "note": "pruner clears selection/expansion for refs whose entityExists() is false — fires on the morph re-render" },
+        { "file": "src/components/EditorPane.tsx", "line": 915, "note": "morph remaps the popout key but NOT cardStore.selected / expandedSet" },
+        { "file": "src/panels/Reports/ReportCard.tsx", "line": 72, "note": "isSelected = ac.selected || selected — the kind-agnostic host `selected` keeps the panel halo on while cardStore halo is pruned" }
+      ],
+      "reproSteps": [
+        "Click a report card to select+expand it (halo paints in panel + over its anchored text + gutter marker).",
+        "Use the kind chevron to morph it to the other kind; confirm.",
+        "Observe: the panel card still shows the amber halo, but the anchored text and gutter marker lose their highlight, and the card body collapses to the summary view."
+      ],
+      "reproChannel": "code-trace",
+      "confidence": "high",
+      "suspectedClass": "All four morph pairs (note<->highlight, revision comment<->suggestion, cutter comment<->suggestion, report<->report-request) — findEntity gates cutter/revision the same kind-equality way (entity-hover.ts:84-95), and convertCardWithRemap remaps only the popout key for all of them (EditorPane.tsx:887-915). Any cardStore-selected/expanded card loses its store-driven halo + expansion on morph. The deeper class: cross-surface interaction state (selection halo, expansion) is keyed on kind but the kind-remap on morph is incomplete (popout key only)."
+    },
+    {
+      "id": "REP-F6-03",
+      "subject": "reports",
+      "cluster": "F6",
+      "severity": "LOW",
+      "symptom": "The lossy-morph confirm dialog shown when converting a Report Request -> Report says 'This drops the title and byline (a Report can't hold them)', which is backwards — a Report Request has no title/byline, a Report DOES hold them — and never warns that the AI-request flag (and its inbox entry) is the thing actually being dropped.",
+      "suspectedRootCause": "convertCardWithRemap computes preservesBody = (fromCardKind==='report' || fromCardKind==='report-request') (EditorPane.tsx:872-873), i.e. true for BOTH directions, then uses the single message 'This drops the title and byline (a ${toLabel} can't hold them); the body and text anchor stay.' (line 874-876). For the request->report direction that message is wrong twice over: (a) the request has no title/byline to drop, (b) a Report CAN hold a title/byline, and (c) the real lossy field (aiRequest + the orphaned inbox entry, REP-F6-01) is never mentioned. The message was written for the report->request direction and reused verbatim for the inverse without direction-specific copy.",
+      "evidence": [
+        { "file": "src/components/EditorPane.tsx", "line": 872, "note": "preservesBody true for both report directions; single message branch covers both" },
+        { "file": "src/components/EditorPane.tsx", "line": 875, "note": "message hard-codes 'drops the title and byline' regardless of which way the morph goes" },
+        { "file": "src/cards/morphs/index.ts", "line": 149, "note": "request->report actually drops aiRequest, not title/byline" }
+      ],
+      "reproSteps": [
+        "Create a Report Request, optionally tick its AI-request box.",
+        "Morph it to a Report via the kind chevron.",
+        "Read the confirm dialog: it claims the title and byline are dropped (neither exists on a request) and omits the AI-request flag loss."
+      ],
+      "reproChannel": "code-trace",
+      "confidence": "high",
+      "suspectedClass": "Any reused lossy-morph confirm copy that doesn't branch on direction. The note<->highlight branch (the !preservesBody arm) uses a generic 'fields a {toLabel} can't hold' message that is at least direction-neutral; the report arm bakes in 'title and byline' which is only correct one way."
+    },
+    {
+      "id": "REP-F7-01",
+      "subject": "reports",
+      "cluster": "F7",
+      "severity": "MEDIUM",
+      "symptom": "Deleting a Report that has a title but an empty body — via the in-card trash button or by pressing Delete/Backspace on the selected card — does NOT show the 'This item has text. Delete it?' confirm, silently discarding the title.",
+      "suspectedRootCause": "EditableCard.tryDelete decides the confirm on a LOCAL predicate hasContent() = hasJsonContent(value) where value is report.content (the body JSON only) — panel-primitives.tsx:891-901. The report's title (report.title, threaded as bodyTitle) is invisible to hasJsonContent. The shared, kind-aware cardHasContent('report',card) DOES count the title (has-content.ts:71-76: returns true if title.trim()!==''), and the gutter-marker delete path uses it (delete-margin-item.ts:104-115). So the two delete-confirm paths diverge: marker-delete classifies a title-only report as 'has content' and confirms; trash/keyboard-delete classifies it as empty and skips the confirm. ReportCard wires inlineDelete + onDelete (ReportCard.tsx:104,117), so the trash button routes through tryDelete -> body-only check.",
+      "evidence": [
+        { "file": "src/components/panel-primitives.tsx", "line": 891, "note": "hasContent = hasJsonContent(value) — value is the body JSON, title not considered" },
+        { "file": "src/components/panel-primitives.tsx", "line": 894, "note": "tryDelete: if(hasContent()) confirm else onDelete() — title-only report falls to the silent else" },
+        { "file": "src/cards/has-content.ts", "line": 71, "note": "cardHasContent('report') returns true when title.trim() is non-empty" },
+        { "file": "src/cards/delete-margin-item.ts", "line": 108, "note": "marker-delete path uses cardHasContent (title-aware) — the divergent, correct path" }
+      ],
+      "reproSteps": [
+        "Add a Report, give it a title via the +T affordance, leave the body empty.",
+        "Click the in-card trash button (or select the card and press Delete).",
+        "The card is deleted immediately with no 'This item has text' confirm; the title is lost without warning."
+      ],
+      "reproChannel": "code-trace",
+      "confidence": "high",
+      "suspectedClass": "Every EditableCard consumer with a content field outside the body JSON. cardHasContent counts report.title, and the plain-text mirror (.text) for todo/cutter-comment/revision-comment/report-request, plus user_text/explanation for suggestions — but EditableCard.tryDelete only ever inspects the body JSON. Any title-only Report, or a card whose only user content is a non-body field, dodges the trash/keyboard confirm while the marker-delete confirm fires. The fix class: route EditableCard.tryDelete through the same cardHasContent(kind,card) the marker path uses."
+    },
+    {
+      "id": "REP-F7-02",
+      "subject": "reports",
+      "cluster": "F7",
+      "severity": "MEDIUM",
+      "symptom": "Deleting a Report Request that has its AI-request checkbox ON leaves a dangling pending entry in ai-requests.json that points at a now-deleted card.",
+      "suspectedRootCause": "useReports.deleteCard simply filters the card out of the sidecar (useReports.ts:305-311) and never calls bridgeCardAiRequestFlag(...,false) to drop the linked inbox entry. The bridge is only wired to the explicit checkbox toggle (setRequestAiRequest, useReports.ts:246-258). With the card gone, the inbox entry's linkedTo.cardId resolves to nothing; it cannot self-heal via a toggle (no card) and survives until a skill drain or manual edit.",
+      "evidence": [
+        { "file": "src/hooks/useReports.ts", "line": 305, "note": "deleteCard filters the card; no bridge cleanup" },
+        { "file": "src/hooks/useReports.ts", "line": 246, "note": "bridge is only called from setRequestAiRequest, never from delete" },
+        { "file": "src/lib/ai-request-bridge.ts", "line": 94, "note": "the inbox match is by (panel,cardId); after delete nothing toggles it off" }
+      ],
+      "reproSteps": [
+        "Create a Report Request, tick its AI-request box ON (writes a pending inbox entry).",
+        "Delete the Report Request card.",
+        "Inspect ai-requests.json: the pending entry is still there with a linkedTo.cardId that no longer exists."
+      ],
+      "reproChannel": "code-trace",
+      "confidence": "high",
+      "suspectedClass": "Same defect across all aiRequest-bearing panels: useNotes.deleteNote, useTodos.deleteItem, useCutter.deleteCard, useRevisions.deleteCard all follow the same filter-only pattern with no bridge-off. The shared root with REP-F6-01: inbox cleanup is bound only to the checkbox toggle, not to the delete/morph lifecycle. A lifecycle-level cleanup (delete/morph -> bridge off if the source kind had a flag) would close the whole class."
+    },
+    {
+      "id": "REP-F7-03",
+      "subject": "reports",
+      "cluster": "F7",
+      "severity": "LOW",
+      "symptom": "Dragging a Report (or Report Request) that is anchored to a text RANGE (Mode-B) to re-anchor it onto a different paragraph leaves the original text still tinted/underlined as if the report were still anchored there — a stale highlight that no longer corresponds to any card anchor.",
+      "suspectedRootCause": "The reports paragraph-side re-anchor adapter (dropReportsApi, EditorPane.tsx:1351-1362) OMITS the preserveModeBAnchor method, unlike the notes/highlights adapters (EditorPane.tsx:1286,1299). textObjectSideReanchorSpec.applyDrop calls api.preserveModeBAnchor?.(id) and only strips the editor's linkedAnchor mark when that returns a non-null anchorId (text-object-side-reanchor.ts:68-75). With it undefined for reports, the mark is never stripped, so the Mode-B tint lingers over the old text. Worse, the link-mutators fold the new paragraph into the SAME Mode-B link (removeTextObjectLink keeps Mode-B links even when textObjectIds empties — links.ts:1206; addTextObjectLink folds into the existing Mode-B link — links.ts:1162-1175), so the card ends up with its Mode-B range still on the old text plus a new paragraph id, desynced. Mode-B reports are reachable: the drag-handle quick gesture on a selection files a report-request with a range anchor (drag-handle-actions.ts:412-428) and createReport/createReportRequest accept opts.anchor (card-creation.ts:439-465 -> setTextAnchorLink, useReports.ts:154,182).",
+      "evidence": [
+        { "file": "src/components/EditorPane.tsx", "line": 1351, "note": "dropReportsApi has no preserveModeBAnchor field" },
+        { "file": "src/components/EditorPane.tsx", "line": 1286, "note": "dropNotesApi DOES provide preserveModeBAnchor — the contrast that exposes the omission" },
+        { "file": "src/components/drop-mode/util/text-object-side-reanchor.ts", "line": 68, "note": "mark strip is gated on preserveModeBAnchor?.(id) returning a non-null id; undefined -> no strip" },
+        { "file": "src/links/links.ts", "line": 1206, "note": "removeTextObjectLink preserves Mode-B links even when paragraph ids empty -> stale range survives" },
+        { "file": "src/components/editor-layout/card-actions/drag-handle-actions.ts", "line": 412, "note": "report quick gesture creates a range (Mode-B) anchor via createAnchor — Mode-B reports are user-reachable" }
+      ],
+      "reproSteps": [
+        "Select a span of text and use the drag-handle 'report' quick action to file a Report Request anchored to that range (tint appears over the span).",
+        "Drag the report's grab handle and drop it onto a different paragraph (confirm the re-anchor).",
+        "The original span stays tinted/underlined even though the card now also points at the new paragraph; the Mode-B range and the card's anchors are desynced."
+      ],
+      "reproChannel": "code-trace",
+      "confidence": "medium",
+      "suspectedClass": "All paragraph-side re-anchor adapters that omit preserveModeBAnchor while their card kind can carry a Mode-B anchor: dropTodosApi, dropArchiveApi, dropCutterApi, dropRevisionsApi (EditorPane.tsx:1303-1350) all omit it. cutter and revisions certainly carry Mode-B ranges, so the stale-tint bug repeats there. Only notes/highlights wire it. The fix class: every adapter for a Mode-B-capable kind must thread preserveModeBAnchor (each hook has the method shape — see notesHook.preserveModeBAnchor)."
+    },
+    {
+      "id": "REP-F3-01",
+      "subject": "reports",
+      "cluster": "F3",
+      "severity": "MEDIUM",
+      "symptom": "For a report anchored to two or more paragraphs, the Omni column shows one row per anchor (labelled @0, @1, …) but clicking any of them jumps the editor to the FIRST anchor only — the @1 row does not jump to the second paragraph.",
+      "suspectedRootCause": "buildReportsOmniItems creates a row per paragraph id with distinct omniIds (omni.tsx:83-94), but every row's onJump is the same closure (sourceEl) => jumpToCard(card, sourceEl) (omni.tsx:54,69) — the per-row paragraph id (pid) is never passed. jumpToCard(editor,card,sourceEl) (links.ts:579-620) iterates card.links and scrolls to the FIRST link whose anchor resolves, with no notion of which omni row was clicked. So @0 and @1 both resolve to links[0]'s anchor.",
+      "evidence": [
+        { "file": "src/panels/Reports/omni.tsx", "line": 83, "note": "one omni row per pid with @i suffix when pids.length>1" },
+        { "file": "src/panels/Reports/omni.tsx", "line": 54, "note": "onJump passes the whole card, not the row's pid" },
+        { "file": "src/links/links.ts", "line": 584, "note": "jumpToCard iterates links and returns on the first resolvable — no target-paragraph parameter" }
+      ],
+      "reproSteps": [
+        "Create a report and anchor it to two different paragraphs (e.g. drag-reanchor adds a second link, or a multi-paragraph anchor).",
+        "Open the left Omni column; observe two rows for the report (@0 and @1).",
+        "Click the @1 row's jump/target — the editor scrolls to the first paragraph, not the second."
+      ],
+      "reproChannel": "code-trace",
+      "confidence": "high",
+      "suspectedClass": "Any omni builder that emits per-anchor @N rows but jumps via the card-level jumpToCard. The report omni is the clearest because it explicitly fans out per pid; any other multi-anchor card kind that fans out in omni shares the same mis-jump (jumpToCard has no target-anchor parameter). A per-row jump would need to pass the row's paragraph id (or a single-link slice) into the jump."
+    }
+  ]
+}

@@ -1,0 +1,66 @@
+{
+  "file": "omni-left-g-display",
+  "verifier": "A",
+  "verdicts": [
+    {
+      "findingId": "OMNI-F1-01",
+      "isReal": true,
+      "disposition": "RECLASSIFIED",
+      "severityFinal": "LOW",
+      "rationale": "Mechanism confirmed exactly. useReports.ts:57 strips any title matching isAutoTitle('report', r.title); panel-registry.ts:254-258 builds RegExp `^Report \\d+$` with no provenance check, so a user-typed 'Report 3' is nulled identically to a legacy default. ReportCard.tsx:106 binds bodyTitle={report.title} and panel-primitives.tsx:1040-1047 renders no title row when blank, so the loss surfaces in the omni card. useExamples.ts:45 is the same strip for examples. HOWEVER this is a documented, test-contracted design tradeoff, not an accidental defect: src/panels/__tests__/auto-title.test.ts:59-60 asserts isAutoTitle('report','Report 8')===true and 'Example 4'===true as INTENDED positive cases, and the file header (lines 13-14) states any '^<Label> <digits>$' title 'must be stripped on load' (BUG #31 cleanup). Brief lead #7 already anticipates this exact false-positive. Code matches intent — no code/test divergence. Severity downgraded MEDIUM→LOW: the collision requires the user to type a title in exactly the historical auto-default shape (an unlikely path, since that shape WAS the default the user would normally edit away from), the loss is immediately visible, and it is recoverable by retyping. Not 'a realistic case' (MEDIUM rubric) — an edge/unlikely path (LOW rubric).",
+      "correctedRootCause": "Deliberate provenance-blind strip: isAutoTitle (src/panels/panel-registry.ts:254-258) cannot distinguish a generated default from a user title of the same shape, an accepted tradeoff codified by src/panels/__tests__/auto-title.test.ts:51-65. Sibling strips at useExamples.ts:45, and per the finding useArchive/useNotes/useTodos migrators carry the same regex (example impact is latent — ExampleCard does not surface a title row in the same way).",
+      "class": "intended-behavior-edge / provenance-blind heuristic",
+      "confidence": "high"
+    },
+    {
+      "findingId": "OMNI-F1-02",
+      "isReal": true,
+      "disposition": "RECLASSIFIED",
+      "severityFinal": "LOW",
+      "rationale": "The captured-vs-live asymmetry is real: the fold filter (omni-host.tsx:621) and focus filter (omni-host.tsx:637) resolve doc.resolve(item.pos).index(0) on the CAPTURED item.pos, while the cascade positions cards via useInTextPositions which prefers the LIVE resolvePos (useInTextPositions.ts:261-262; resolvePos built from the DocStructureObserver snapshot at OmniViewPanel.tsx:471-488). item.pos is genuinely stale on plain typing: footnoteInfos/citationPositionMap are memoized on rev.footnotes/rev.citations (EditorPane.tsx:2772-2774, 2627-2633), structural counters that do NOT bump on a plain keystroke. BUT the finding's mechanism is materially wrong on one point that changes the failure profile: the comment at omni-host.tsx:594 ('forces re-eval on every editor transaction') is itself stale — the actual editorTick bumper (omni-host.tsx:171-196, onTr at :179-183) only bumps on a sectionFoldingPluginKey-meta transaction or onHeadingsAdded/Removed. A plain keystroke bumps NOTHING, so hiddenTopLevel keeps its identity and the displayedItems memo (deps [items, hiddenTopLevel, p.focusState, editorInstance], omni-host.tsx:643) does NOT recompute during typing — the fold/focus classification is frozen, not 'disagreeing per transaction.' The mis-classification can therefore only surface at the NEXT fold-toggle / heading-add/remove transaction, while a captured pos happens to straddle a top-level block boundary relative to the live doc. That is a narrow latent inconsistency, not the continuous per-keystroke drift the repro implies. Confidence-low / LOW severity preserved; root cause corrected.",
+      "correctedRootCause": "Two-part: (1) the captured OmniItem.pos goes stale between structural revisions (footnoteInfos/allEditorCitations gated on rev.* counters, EditorPane.tsx:2772, 2611) while the cascade opts into live resolvePos; (2) the fold/focus filter does NOT re-evaluate on plain typing (editorTick bumps only on fold-meta/heading tx — omni-host.tsx:179-190), so the stale-pos classification is computed against the current doc only when a fold-toggle/heading tx fires. The misleading 'every editor transaction' comment at omni-host.tsx:594 is the proximate documentation defect.",
+      "class": "stale-captured-position vs live-snapshot asymmetry (boundary classification)",
+      "confidence": "medium"
+    },
+    {
+      "findingId": "OMNI-F1-03",
+      "isReal": true,
+      "disposition": "RECLASSIFIED",
+      "severityFinal": "COSMETIC",
+      "rationale": "Two sub-claims, both COSMETIC; mechanism confirmed for (b), partially mischaracterized for (a). (a) makeCompressedSummary (panel-primitives.tsx:185) does text.slice(0, 80*max(1,lines)) and returns a bare substring with no ellipsis — confirmed. But the rendered string sits inside a div with compressedBodyStyle/WebkitLineClamp (panel-primitives.tsx:1058-1064), so in the COMMON case CSS line-clamp supplies the visual ellipsis; the 80-char slice is a string-length safety cap, not the visual truncation. A truly ellipsis-less hard cut only occurs when the 80-chars-per-line estimate undershoots the actual chars that fill `lines` visual lines (wide card / narrow glyphs) so the slice ends before the clamp triggers — a real but minor and conditional cosmetic edge. (b) Fully confirmed: useBorrowedCompressed (panel-primitives.tsx:864-867) is true for footnote (bodyClass 'borrowed') when compressedContent != null; FootnoteCard.tsx:154 passes compressedContent={fn.content}, and an empty \\footnote{} still yields non-null normalized JSONContent, so the branch renders <BorrowedMainText/> (panel-primitives.tsx:1066-1072) blank and never falls to compressedSummary ?? <CardEmptyText/> (the else branch at :1074). So an empty footnote shows a blank line, not 'empty'. Severity COSMETIC confirmed; disposition RECLASSIFIED only because sub-claim (a)'s mechanism over-states the missing-ellipsis (CSS clamp usually provides it).",
+      "correctedRootCause": "(b) The borrowed-compressed branch (panel-primitives.tsx:1066-1075) has no empty fallback — only the sans-bodyClass else branch uses CardEmptyText; affects every bodyClass='borrowed' kind (footnote/archive/example). (a) makeCompressedSummary returns no ellipsis (panel-primitives.tsx:185) but the visible ellipsis normally comes from WebkitLineClamp in compressedBodyStyle (panel-primitives.tsx:1058-1064), so the hard cut is only visible when the 80*lines char estimate is shorter than the clamp's line capacity.",
+      "class": "compressed-summary rendering edge (empty-fallback gap + char-vs-line truncation mismatch)",
+      "confidence": "high"
+    },
+    {
+      "findingId": "OMNI-F4-01",
+      "isReal": true,
+      "disposition": "CONFIRMED",
+      "severityFinal": "MEDIUM",
+      "rationale": "Confirmed for the report/report-request body case. Reports/omni.tsx:42-73 (renderCard) and native ReportsPanel.tsx:92-122 both omit getCitationDisplayText and onCitationCreated when mounting ReportCard/ReportRequestCard, and buildReportsOmniItems' BuildArgs (Reports/omni.tsx:15-27) does not even declare them, while omni-host.tsx:522-534 passes neither. With getCitationDisplayText absent, RichTextField.refreshCitationDisplay returns the doc unchanged (RichTextField.tsx:205-206) → the citation node keeps displayText=raw '\\cite{key}'. With onCitationCreated absent, the drop handler skips registration (RichTextField.tsx:284 guard false) and mints a local generateShortId (RichTextField.tsx:291-299) never added to the citations store. The citation NodeView still dispatches virgil-citation-click with that phantom id (citation.ts:261-272), and the bridge does setSelectedCitationId(phantomId) + openForCard('citations') for a card that does not exist (marker-clicks.ts:284-312) → click dead-ends. Report card bodies live in reports.json sidecar, never in editor.state.doc, so getCitations() (Editor.tsx:1302-1326) can never pick them up — the phantom is permanent. Drag from the Bibliography panel into an expanded report body in the omni is a real user path. MEDIUM is right: a user-intended formatted/clickable citation silently renders raw and is inert (function misbehaves on a realistic path); not DATA-LOSS since the raw command text is retained in the report content JSON. NOTE: the finding's suspectedClass over-reaches in claiming footnote/note bodies dead-end identically 'see OMNI-F4-02' — footnote bodies DO resolve (see that verdict); the class is correct only for sidecar-body card kinds whose content is never walked by getCitations() (reports).",
+      "correctedRootCause": "Any card body mounting RichTextField without getCitationDisplayText/onCitationCreated degrades; for reports it is permanent because the report body content is a sidecar JSON never present in editor.state.doc, so getCitations()' explicit footnote-content walk (Editor.tsx:1318-1323) cannot rescue it. Root files: Reports/omni.tsx:15-27,42-73 + ReportsPanel.tsx:92-122 (missing props), RichTextField.tsx:205,284-299 (degraded paths).",
+      "class": "card-body citation wiring gap (sidecar bodies → phantom citation id)",
+      "confidence": "high"
+    },
+    {
+      "findingId": "OMNI-F4-02",
+      "isReal": false,
+      "disposition": "REFUTED",
+      "severityFinal": "LOW",
+      "rationale": "The finding's claimed end-state (footnote-nested citation is orphaned → routed to the default-collapsed unanchored bin → click selects an invisible card) does NOT occur. The finding cited the DocStructureObserver exclusion (types.ts:114-117) but misidentified the source of citationPositionMap. citationPositionMap is built from allEditorCitations (EditorPane.tsx:2627-2633), which is built from innerRef.current.getCitations() (EditorPane.tsx:2611-2625), and getCitations() (Editor.tsx:1302-1327) EXPLICITLY walks footnote attrs.content (lines 1318-1323) and registers each footnote-nested citation WITH pos = the footnote's own position. So citationPositionMap.get(cit.id) is non-null for a citation dropped into a footnote body → buildCitationOmniItems sets anchorState:'anchored' (Citations/omni.tsx:40,49), not 'orphaned'. The citation card therefore cascades inline at the footnote's position and is NOT hidden in the OmniUnanchoredBin. Timing is also covered: allEditorCitations is gated on rev.citations, and useStructuralRevisions.ts:104-105 bumps rev.citations on onFootnoteOrderChanged precisely because a footnote-content edit surfaces as a footnote-order change ('re-derive citations then too'), so the drop re-derives the position rather than leaving it stale. The observer's types.ts:114 exclusion the finding leaned on is irrelevant to citationPositionMap (which sources getCitations(), not the observer's citations array). Click-through resolves to a real, visible, anchored card.",
+      "correctedRootCause": "No defect: footnote-nested citations are deliberately tracked via the getCitations() footnote-content re-walk (Editor.tsx:1318-1323) feeding citationPositionMap (EditorPane.tsx:2618-2633), with re-derivation triggered by onFootnoteOrderChanged → rev.citations (useStructuralRevisions.ts:104-105). The finding mislocated the data source (observer types.ts:114 instead of getCitations()).",
+      "class": null,
+      "confidence": "high"
+    },
+    {
+      "findingId": "OMNI-F5-01",
+      "isReal": true,
+      "disposition": "CONFIRMED",
+      "severityFinal": "LOW",
+      "rationale": "Confirmed. The omni reports builder (omni-host.tsx:522-534) and native ReportsPanel.tsx:92-122 both omit onEditorFocus, and buildReportsOmniItems' BuildArgs (Reports/omni.tsx:15-27) does not declare it, so ReportCard's onEditorFocus prop (ReportCard.tsx:37,105) is undefined and EditableCard never calls setOverrideEditor on focus. By contrast the footnote omni builder threads onEditorFocus={a.setOverrideEditor} (Footnotes/omni.tsx:48,75). overrideEditor is what promotes a focused card body to the main MenuBar/format toolbar (EditorPane.tsx:735 state, used as `overrideEditor ?? editor` at :3820 etc.), so without it a report body never routes to the main bar. Combined with hideToolbar=true on ReportCard (ReportCard.tsx:103 → RichTextField.tsx:1111 toolbarPortalTarget=null), the per-card FormatToolbar is also suppressed. Net: report bodies are keyboard-shortcut-only formatting, unlike footnote/note bodies. LOW is correct — formatting still works via Cmd-B/I keyboard shortcuts; this is a discoverability/parity gap, not a broken core function. Accurately framed as a parity-with-native gap the omni merely exhibits.",
+      "correctedRootCause": "Parity gap: report-kind card bodies (omni + native docked) never wire onEditorFocus→setOverrideEditor, so a focused report body is not promoted to the main format bar (EditorPane.tsx overrideEditor ?? editor), and hideToolbar suppresses the inline toolbar (ReportCard.tsx:103). Root: Reports/omni.tsx:15-27,42-73 + ReportsPanel.tsx:92-122 omit the prop the footnote builder threads (Footnotes/omni.tsx:48).",
+      "class": "format-toolbar routing parity gap (report bodies lack setOverrideEditor wiring)",
+      "confidence": "high"
+    }
+  ]
+}

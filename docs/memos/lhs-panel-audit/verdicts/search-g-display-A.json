@@ -1,0 +1,86 @@
+{
+  "file": "search-g-display",
+  "verifier": "A",
+  "verdicts": [
+    {
+      "findingId": "SR-F1-01",
+      "isReal": true,
+      "disposition": "CONFIRMED",
+      "severityFinal": "HIGH",
+      "rationale": "Verified end-to-end. The `results` useMemo (SearchPanel.tsx:305-380) deps are editor (stable Editor identity through edits), query/caseSensitive/wholeWord/enabledScopes, and the source arrays. The mainText positions are computed only inside this memo by searchMainText (SearchPanel.tsx:162-224), against the doc AT memo time. footnoteInfos (EditorPane.tsx:2772-2775 [editor, rev.footnotes]) and allEditorCitations (EditorPane.tsx:2611-2626 [editor, rev.citations]) are gated on structural counters from useStructuralRevisions (useStructuralRevisions.ts:90-128 — bumps only on add/remove/reorder/attr events). getCitationDisplayText is citationsHook.getDisplayText (stable, keyed on bib data; citation-display.tsx memo). A plain-text edit in a paragraph with no footnote/citation/anchor fires NO bus event, so no rev bumps, no source-array identity change, no query/scope change, and editor identity is unchanged -> the memo does NOT recompute and main-text from/to are stale. navigateToResult passes them verbatim (SearchPanel.tsx:390) to applyHighlight, which does editor.chain().setTextSelection(range)...scrollIntoView (Editor.tsx:1732-1748); the try/catch only catches throws (truly out-of-range), so an in-bounds-but-now-wrong position silently highlights/scrolls to the WRONG passage. The rendered ResultCard captures the stale `r` so the bug fires even without a re-render. Realistic path: search, edit an earlier paragraph while reviewing, click a result -> wrong jump.",
+      "correctedRootCause": "Result memo caches absolute PM positions but is gated only on structural-rev counters, never on a position-shifting signal; main-text edits shift positions without firing any structural event. SearchPanel.tsx:305-380 + searchMainText:162-224; replay at Editor.tsx:1732-1748 clamps in-bounds stale ranges instead of rejecting them.",
+      "class": "stale-cached-PM-position",
+      "confidence": "high"
+    },
+    {
+      "findingId": "SR-F1-02",
+      "isReal": true,
+      "disposition": "CONFIRMED",
+      "severityFinal": "MEDIUM",
+      "rationale": "Verified. selectedIdx is lifted state reset to null ONLY on query (SearchPanel.tsx:258), caseSensitive (:268), wholeWord (:279), scope toggle (:298) — never clamped when results shrinks for any other reason, and there is no clamping effect (grep over SearchPanel.tsx:60-524 shows no reset path beyond those four). When a card source array recomputes to fewer hits (e.g. a footnote deleted -> rev.footnotes bump -> footnoteInfos changes -> memo recomputes to fewer results), selectedIdx is left past the new end. PrevNextCounter renders `${current+1} of ${total}` with NO bounds check (panel-primitives.tsx:2592) -> '16 of 10'; ResultCard selected={selectedIdx === i} (SearchPanel.tsx:524) matches no card; goNext computes (selectedIdx+1)%results.length (SearchPanel.tsx:411) = an arbitrary index. The shared useCycle clamps on read ('rawIdx < items.length ? rawIdx : null', panel-primitives.tsx:2613) — the pattern Search deliberately does not use (owns its own lifted index). Realistic but requires deleting items after navigating to a high index; recoverable -> MEDIUM.",
+      "correctedRootCause": "Manual lifted selectedIdx without the useCycle read-clamp; reset only on query/scope/flag change, not on result-set shrink. SearchPanel.tsx:244,411,446,524 vs panel-primitives.tsx:2613.",
+      "class": "unclamped-manual-selection-index",
+      "confidence": "high"
+    },
+    {
+      "findingId": "SR-F1-03",
+      "isReal": true,
+      "disposition": "CONFIRMED",
+      "severityFinal": "LOW",
+      "rationale": "Verified. before/after are sliced to CTX=40 and get an ellipsis (SearchPanel.tsx:176-177,787,797), but result.match is rendered raw inside <mark> with no clamp (SearchPanel.tsx:791-793). compileQuery escapes all regex metachars (search-sources.ts:133) so the matched run equals the literal query length, which is unbounded by the input (no maxLength on the search input). Genuine but purely visual overflow on a very unlikely path (pasting a multi-thousand-char query into search). Kept at LOW per rubric ('edge wrongness, unlikely path, recoverable'); borderline COSMETIC.",
+      "correctedRootCause": null,
+      "class": "snippet-context-clamped-but-match-unclamped",
+      "confidence": "high"
+    },
+    {
+      "findingId": "SR-F1-04",
+      "isReal": true,
+      "disposition": "CONFIRMED",
+      "severityFinal": "LOW",
+      "rationale": "Verified by direct regex execution. compileQuery wraps the escaped pattern in \\b...\\b unconditionally (search-sources.ts:134). Confirmed empirically: 'foo!' -> /\\bfoo!\\b/ misses 'foo! and more' (punctuation followed by space, the common case) but DOES match 'foo!bar'; '(cf.' -> /\\b\\(cf\\.\\b/ misses both 'see (cf. Smith)' and '(cf.Smith)'. So the finding's 'never matches' framing is slightly overstated (it can match when the punctuation is adjacent to a word char), but the practical, common-case miss (token bounded by whitespace/punctuation) is real and silent (indistinguishable from genuine no-match). Whole-word is an opt-in toggle and querying punctuation-bracketed tokens is an edge path -> LOW.",
+      "correctedRootCause": "Unconditional \\b boundary wrapping without checking whether the query's first/last char is a word char; \\b adjacent to a non-word char is satisfiable only when the neighboring doc char is a word char. search-sources.ts:134.",
+      "class": "word-boundary-wrap-ignores-nonword-edges",
+      "confidence": "high"
+    },
+    {
+      "findingId": "SR-F1-05",
+      "isReal": true,
+      "disposition": "RECLASSIFIED",
+      "severityFinal": "COSMETIC",
+      "rationale": "Root cause confirmed but repro corrected and severity tightened. buildBreadcrumb pops using `while (sections.length > 0 && sections.length >= level) sections.pop()` (SearchPanel.tsx:126) — using crumb-count as a proxy for heading level. Traced against a correct level-stack: the finding's exact repro (single H1 then H4) does NOT misbehave (both yield H1>H4). The defect manifests only when levels are skipped AND there are sibling repeats at the skipped level — e.g. H1,H4,H4: correct ancestry for text under the 2nd H4 is [H1,H4] but the buggy heuristic yields [H1,H4,H4], listing a sibling as an ancestor. Confirmed real via simulation. Breadcrumb is display-only (navigation uses h.from, SearchPanel.tsx:361,390) so impact is purely visual -> COSMETIC (finding said LOW); repro must use sibling headings at a skipped level, not a single skip.",
+      "correctedRootCause": "sections.length (count of pushed crumbs) used as a proxy for the current heading level in the pop condition; diverges from true ancestry when levels are skipped and siblings repeat at the skipped depth. SearchPanel.tsx:123-128.",
+      "class": "stack-length-as-level-proxy",
+      "confidence": "high"
+    },
+    {
+      "findingId": "SR-F4-01",
+      "isReal": true,
+      "disposition": "CONFIRMED",
+      "severityFinal": "LOW",
+      "rationale": "Verified. richJsonToPlainText flattens a citation node to `displayText || command || ''` (footnote-content.ts:615). searchFootnotes (search-sources.ts:254) and searchNotes (:289) search only richJsonToPlainText(body) — no separate pass over embedded citation commands. So when an embedded citation carries a populated displayText (e.g. 'Smith 2020'), a raw-citekey query against the Footnotes/Notes scope misses it, while searchCitations DOES scan both c.command and the display text (search-sources.ts:308-318) -> a real, silent asymmetry. Edge case (citekey living inside a footnote/note body, displayText populated, user searching the footnote/note scope rather than the natural Citations scope) -> LOW, confidence medium as the finder noted.",
+      "correctedRootCause": "Plain-text flattening collapses citation atoms to display-only, dropping the underlying citekey/command from the searchable body; footnote/note search has no fallback pass over the command. footnote-content.ts:615 + search-sources.ts:254,289.",
+      "class": "atom-flatten-drops-searchable-key",
+      "confidence": "medium"
+    },
+    {
+      "findingId": "SR-F5-01",
+      "isReal": true,
+      "disposition": "CONFIRMED",
+      "severityFinal": "LOW",
+      "rationale": "Verified. navigateToResult fires onOpenItem(targetPanel, itemId) for any non-mainText scope with a SCOPE_PANEL mapping (SearchPanel.tsx:393-396). openItemInPanel -> setActivePanelKindBySide(panel) (EditorPane.tsx:2895-2903), which sets the active panel on whichever side that kind is placed on (EditorPane.tsx:2876-2882). If Search shares that rail, activating the target panel replaces Search on that side, so the result list is evicted. The text jump/highlight still fires (SearchPanel.tsx:390) so it is a UX regression, not a navigation failure. Reachable whenever Search and the target panel are configured to the same rail -> LOW.",
+      "correctedRootCause": "Cross-panel open side-activates the target kind without checking whether the originating (Search) panel shares that side. EditorPane.tsx:2876-2903.",
+      "class": "same-side-panel-eviction-on-open",
+      "confidence": "medium"
+    },
+    {
+      "findingId": "SR-F5-02",
+      "isReal": false,
+      "disposition": "REFUTED",
+      "severityFinal": "LOW",
+      "rationale": "Premise false on a realistic path. The finding asserts a result outlives its deleted card (citing SR-F1-01), then a click drives setSelected<Kind>Id with a dead id. But deleting any card-scope item IS a structural change that refreshes the relevant source array, which IS a results-memo dep (SearchPanel.tsx:363-380), so the stale result is removed before it can be clicked: deleting a footnote fires onFootnotesRemoved -> rev.footnotes bump (useStructuralRevisions.ts:95, synchronous, no debounce) -> footnoteInfos recomputes (EditorPane.tsx:2772-2775) -> memo drops the hit; citation removal fires onCitationsRemoved -> rev.citations bump (:99) -> same; notes/todos/archive/cutter/comments deletions change their hook-array identity (notesHook.notes etc.), also memo deps, recomputing the memo. The ONLY genuinely-stale case is main-text plain-edit position drift (SR-F1-01), but main-text results carry no itemId, and navigateToResult guards onOpenItem on `targetPanel && result.itemId` (SearchPanel.tsx:394) — SCOPE_PANEL['mainText'] is undefined (search-sources.ts:87-97) — so a stale main-text result NEVER calls onOpenItem. Therefore setSelected<Kind>Id(deadId) cannot be driven from a stale result. The reconciler entityExists=>true exemption is irrelevant here since the selection call never fires. Distinct from SR-F1-01 (which is a position-drift bug, not a deleted-card-id bug).",
+      "correctedRootCause": "No defect: card-item deletion is a structural change that recomputes the results memo (removing the result), and the only non-structural stale case (mainText position drift) has no itemId so it never invokes onOpenItem. SearchPanel.tsx:363-380,394; useStructuralRevisions.ts:90-128.",
+      "class": null,
+      "confidence": "high"
+    }
+  ]
+}

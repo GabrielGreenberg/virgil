@@ -1,0 +1,125 @@
+{
+  "subject": "footnotes",
+  "group": "G-interact",
+  "clusters": ["F2", "F3", "F6", "F7"],
+  "cells": [
+    {
+      "cluster": "F2",
+      "status": "BUG",
+      "note": "Anchored FootnoteCard body onClick composes ac.onActivate() (select+expand) AND the panel's TOGGLING onSelect (FootnoteCard.tsx:127-133, FootnotePanel.tsx:160-162). Since selectedFootnoteId is DERIVED from cardStore (selections.tsx:201,124), a second body click on an already-selected anchored footnote clears the halo — the exact regression the OrphanedFootnoteCard was fixed for (FootnoteCard.tsx:223-226) and pinned against (orphan-expansion.test.tsx:119-128) but the anchored card still has it. Axis-purity (select≠collapse) holds for the store primitives themselves (anchored-card-store.ts) and the header-activate composition (useAnchoredCard.ts:77-80) is correct. Keyboard cycle (useCycle) operates on anchored `footnotes` only, excluding orphans which render first (see FN-F2-02).",
+      "bugIds": ["FN-F2-01", "FN-F2-02"]
+    },
+    {
+      "cluster": "F3",
+      "status": "BUG",
+      "note": "Card->text jump (scrollToFootnote -> jumpToLink to-marker, Editor.tsx:1047-1057) and text->card (footnote NodeView click -> virgil-footnote-click -> marker-clicks.ts:232-274) both resolve by footnoteId and are sound for menu/selection footnotes (linkId always '' so renderHTML's `linkId||footnoteId` == footnoteId; footnote.ts:78-84). Gutter-marker text->card subcell is N-A (no markerType). BUG: a deleted footnote leaves a STALE cardStore selection ghost because the reconciler pruner exempts inline-atom kinds (entityExists => true, useAnchorHighlightReconciler.ts:84-90) and handleDeleteFootnote (EditorPane.tsx:2745-2759) never clears selection — the derived selectedFootnoteId keeps pointing at the dead id until the next click-away. Orphaned footnotes correctly have no jump affordance (FootnoteCard.tsx:210-245).",
+      "bugIds": ["FN-F3-01"]
+    },
+    {
+      "cluster": "F6",
+      "status": "N-A",
+      "note": "Footnote kind has morph:null in CARD_REGISTRY (card-registry.tsx:231); canMorph(footnote)===false (predicates.ts:88). No kind-chevron is rendered and no morph converter is registered (morphs/index.ts). Footnotes do not participate in any morph pair — cluster genuinely inapplicable.",
+      "bugIds": []
+    },
+    {
+      "cluster": "F7",
+      "status": "BUG",
+      "note": "Delete-confirm: EditableCard.tryDelete uses hasJsonContent(value) DIRECTLY (panel-primitives.tsx:888-901), NOT cardHasContent — so the known-fragile lead #1 (cardHasContent missing footnote case) does NOT affect the footnote panel; delete-confirm works for both anchored and orphan cards (value=fn.content / orphan.content). Clone via duplicate-slice correctly remints footnoteId + clones sidecar (duplicate-slice.ts:188-208) and is wired (EditorPane.tsx:2030). In-text atom drag/reanchor (InlineAtomGrab -> inTextAtomGrab) MOVES the same node preserving id; panel-drop (Editor.tsx:712-785) re-inserts the same id. Orphan<->anchored bookkeeping (footnote-sync.ts) is coherent with a suppress-orphan latch. BUG: duplicate-slice remints only the id-attr, never linkId/linkCard (latent, dormant because no live path sets linkId). The panel-card HTML5 drag (startFootnoteDrag/MIME_FOOTNOTE) is exported but UNWIRED — dead affordance (see FN-F7-01).",
+      "bugIds": ["FN-F7-01"]
+    }
+  ],
+  "findings": [
+    {
+      "id": "FN-F2-01",
+      "subject": "footnotes",
+      "cluster": "F2",
+      "severity": "MEDIUM",
+      "symptom": "Clicking the body of an already-selected (haloed) anchored footnote card a second time drops its halo AND fires a spurious second jump-scroll, instead of keeping it selected. The body click is supposed to be a pure select+expand composition (collapse is the header chevron).",
+      "suspectedRootCause": "The anchored FootnoteCard's body onClick composes TWO selection mutations in sequence: `ac.onActivate()` (cardStore.select + expand) then the panel's TOGGLING `onSelect()` whose argument is `selectedId === id ? null : id`. Because `selectedFootnoteId`/`selectedId` is DERIVED from the same cardStore (selections.tsx:201 idFor('footnote'); makeKindSetter routes setSelectedFootnoteId through cardStore.select/clearSelection at selections.tsx:60-72,124), and the toggle reads the STALE render-time `selectedId` (already === id), the toggle resolves to onSelect(null) -> setSelectedFootnoteId(null) -> cardStore.clearSelection(). ac.onActivate's re-select is invisible to the toggle (prop not re-read), so the net effect of a re-click is: select (no-op) then clear. The OrphanedFootnoteCard was explicitly fixed for exactly this (drop the composed toggling onSelect; rely on cardStore.select only) and a test pins it, but the anchored card was never given the same fix. The body onClick also calls onJump unconditionally, so the deselecting click also re-scrolls.",
+      "evidence": [
+        { "file": "src/panels/Footnotes/FootnoteCard.tsx", "line": 127, "note": "anchored card body onClick: ac.onActivate(); onSelect(); onJump(...) — composes both store-select and the toggling host onSelect, plus an unconditional jump" },
+        { "file": "src/panels/Footnotes/FootnotePanel.tsx", "line": 160, "note": "onSelect prop passed to anchored FootnoteCard is the TOGGLING `() => onSelect(selectedId === id ? null : id)`" },
+        { "file": "src/panels/Footnotes/FootnoteCard.tsx", "line": 223, "note": "OrphanedFootnoteCard comment: composing the host's TOGGLING onSelect 'made a second body click drop the halo (review nit)' — the orphan deliberately calls only ac.onActivate()" },
+        { "file": "src/components/editor-layout/contexts/selections.tsx", "line": 201, "note": "selectedFootnoteId is derived from cardStore (idFor('footnote')); setter routes through cardStore — so the panel selectedId and the halo share one source, making the toggle clear the halo" },
+        { "file": "src/panels/Footnotes/__tests__/orphan-expansion.test.tsx", "line": 119, "note": "contract test pins 'a second body click must not drop the halo' — only for the orphan card; the anchored card violates this same contract" }
+      ],
+      "reproSteps": [
+        "Open a paper with at least one anchored footnote; show the Footnotes panel.",
+        "Click the body of footnote card A (not yet selected) — A gets the halo, body expands, editor scrolls to the marker.",
+        "Click the body of card A again.",
+        "Observe: the halo disappears (cardStore selection cleared) even though the body stays expanded, and the editor re-scrolls to the same marker — the click that should keep A selected instead deselects it."
+      ],
+      "reproChannel": "code-trace",
+      "confidence": "high",
+      "suspectedClass": "Any docked panel card whose body onClick composes BOTH ac.onActivate() and a host-supplied TOGGLING onSelect, where the panel's selected-id slot is cardStore-derived, has the identical re-click halo drop. Audit Citations CitationCard (CitationsPanel passes the same toggling onSelect pattern), Reports, Notes, Todos, Archive docked cards for the same composition. The orphan-footnote fix is the template; only the orphan was patched."
+    },
+    {
+      "id": "FN-F2-02",
+      "subject": "footnotes",
+      "cluster": "F2",
+      "severity": "LOW",
+      "symptom": "Keyboard ArrowUp/ArrowDown navigation in the Footnotes panel skips orphaned footnotes entirely and cycles only anchored footnotes, even though orphans are rendered FIRST in the visible list — so the keyboard cursor order does not match the on-screen order, and an orphan can never be reached by keyboard.",
+      "suspectedRootCause": "useCycle is constructed over the `footnotes` array (anchored only), not the combined `items` array that interleaves orphans-first + anchored (FootnotePanel.tsx:80-85,112-127). handleNavKeys guards on `footnotes.length` and drives cycleNext/cyclePrev which index into `footnotes`. The selectedId->cycleIdx sync (FootnotePanel.tsx:87-94) does footnotes.findIndex(selectedId); when the current selection is an ORPHAN id this returns -1, so cycleIdx stays stale/null and the next arrow press jumps to an arbitrary anchored footnote rather than the neighbor of the visually-selected orphan.",
+      "evidence": [
+        { "file": "src/panels/Footnotes/FootnotePanel.tsx", "line": 80, "note": "useCycle(footnotes, onActivateFootnote) — cycles the anchored array only" },
+        { "file": "src/panels/Footnotes/FootnotePanel.tsx", "line": 114, "note": "items list places orphanedFootnotes BEFORE footnotes — visual order differs from the cycle order" },
+        { "file": "src/panels/Footnotes/FootnotePanel.tsx", "line": 92, "note": "footnotes.findIndex(selectedId) returns -1 for an orphan selection, leaving cycleIdx unsynced so the next arrow key navigates from a stale index" },
+        { "file": "src/panels/Footnotes/FootnotePanel.tsx", "line": 96, "note": "handleNavKeys only checks footnotes.length and calls cycleNext/cyclePrev (anchored cycle) — orphans are unreachable by keyboard" }
+      ],
+      "reproSteps": [
+        "Open a paper that has at least one orphaned footnote and several anchored footnotes (delete the in-text callout of a footnote that has body text to create an orphan).",
+        "The orphan card appears at the TOP of the Footnotes panel; click to select it.",
+        "Press ArrowDown.",
+        "Observe: focus jumps to an anchored footnote (cycle index 0 or stale), not the next card below the orphan; arrowing never lands on the orphan."
+      ],
+      "reproChannel": "code-trace",
+      "confidence": "medium",
+      "suspectedClass": "Any panel that renders a merged list (orphan/unanchored bin + anchored) but builds useCycle over only one sub-array has the same keyboard-vs-visual order mismatch. Check Citations panel (unanchored citations are styled distinctly and may be ordered separately from the cycle source)."
+    },
+    {
+      "id": "FN-F3-01",
+      "subject": "footnotes",
+      "cluster": "F3",
+      "severity": "LOW",
+      "symptom": "After deleting a footnote whose card was the selected one, the global selection ('selectedFootnoteId') keeps pointing at the now-deleted footnote id until the user next clicks somewhere — so transient state keyed on the selection (e.g. a collab focus-claim on that footnote) stays stale for that window, and an immediate keyboard Delete/Backspace targets a phantom.",
+      "suspectedRootCause": "The dangling-ref pruner in useAnchorHighlightReconciler unconditionally treats inline-atom kinds (footnote/citation) as always-present (`isInlineAtomCardKind(ref.kind) => true`, entityExists, lines 84-90), so when a footnote atom is removed the pruner does NOT clear cardStore.selected/hover/expanded for it. handleDeleteFootnote (EditorPane.tsx:2745-2759) removes the atom and arms the orphan-suppress latch but never calls cardStore.clearSelection(). No phantom halo paints (resolveLink/findInlineAtomPos returns null so collectAnchorEls finds no DOM el), but the cardStore selection slot — and thus the derived selectedFootnoteId consumed by the collab-claim list (EditorLayout.tsx:3131) and recently-added auto-clear — remains a ghost until the global click-away mousedown (EditorLayout.tsx:1521-1541) or another selection clears it.",
+      "evidence": [
+        { "file": "src/links/_shared/useAnchorHighlightReconciler.ts", "line": 84, "note": "entityExists() returns true for inline-atom kinds always — the pruner can never auto-clear a deleted footnote/citation selection" },
+        { "file": "src/components/EditorPane.tsx", "line": 2745, "note": "handleDeleteFootnote removes the atom + arms suppress-orphan but does not clear cardStore selection" },
+        { "file": "src/components/EditorLayout.tsx", "line": 3131, "note": "collab claim list pushes the footnote claim while selectedFootnoteId is non-null — a stale id keeps a claim on a deleted footnote" },
+        { "file": "src/components/EditorLayout.tsx", "line": 1535, "note": "the only routine clear path is the click-away mousedown handler (and selecting another card) — so the ghost persists until the next interaction" }
+      ],
+      "reproSteps": [
+        "Select a footnote card (halo on) so cardStore.selected = {footnote, id}.",
+        "Delete that footnote via its trash button (confirm if it has text).",
+        "Without clicking anywhere else, inspect the derived selection (selectedFootnoteId) — it still equals the deleted id; in a collab session the focus-claim list still includes the deleted footnote.",
+        "Click any empty area — only then is the ghost selection cleared."
+      ],
+      "reproChannel": "code-trace",
+      "confidence": "medium",
+      "suspectedClass": "Citations share the identical inline-atom pruner exemption (isInlineAtomCardKind covers footnote AND citation) — deleting a selected citation atom leaves the same stale cardStore selection ghost. This is known-fragile lead #2; the deepest fix is to let the pruner consult live editor presence for inline atoms (resolveLink == null => prune) rather than the blanket always-present exemption."
+    },
+    {
+      "id": "FN-F7-01",
+      "subject": "footnotes",
+      "cluster": "F7",
+      "severity": "LOW",
+      "symptom": "The footnote panel-card drag affordance (startFootnoteDrag / MIME_FOOTNOTE, with an 80-char-truncated ghost) is exported and the editor has a matching MIME_FOOTNOTE drop handler, but nothing in the live UI ever calls startFootnoteDrag — so dragging a footnote card from the panel onto the document (the documented re-anchor/move gesture, incl. the orphan re-drop path) is wired on the receiving end but has no sender; it is effectively dead.",
+      "suspectedRootCause": "startFootnoteDrag is defined in FootnoteCard.tsx and re-exported from the panel barrel, but no component passes onDragStart to the footnote card (EditableCard's wrapper sets draggable=false / preventDefault on its drag chrome by default). The only footnote-move gesture actually reachable is the in-text InlineAtomGrab (drop-mode). The Editor.tsx MIME_FOOTNOTE handleDrop branch (incl. the anchored-footnote confirm dialog and the orphan immediate-move) is thus unexercised from the panel. Separately, the duplicate-slice walker remints only footnoteId, never linkId/linkCard (latent: dormant because no live creation path sets linkId, but a footnote created via links.createLink would duplicate with a stale linkId/linkCard and renderHTML would emit the SOURCE's data-link-id).",
+      "evidence": [
+        { "file": "src/panels/Footnotes/FootnoteCard.tsx", "line": 25, "note": "startFootnoteDrag defined (sets MIME_FOOTNOTE + truncates ghost at 80 chars) — exported but never invoked" },
+        { "file": "src/components/Editor.tsx", "line": 712, "note": "handleDrop has a full MIME_FOOTNOTE branch (confirm-on-anchored, immediate-on-orphan) with no live producer dispatching the drag" },
+        { "file": "src/components/panel-primitives.tsx", "line": 502, "note": "EditableCard drag chrome defaults to draggable=false + preventDefault; no footnote-specific onDragStart is threaded to re-enable startFootnoteDrag" },
+        { "file": "src/text-objects/duplicate-slice.ts", "line": 188, "note": "duplicate walker remints only the inline-atom idAttr (footnoteId), not linkId/linkCard — a latent divergence for any footnote created with a non-empty linkId" }
+      ],
+      "reproSteps": [
+        "grep the source: startFootnoteDrag is referenced only by its definition and the panel barrel re-export (no call site).",
+        "In the running app, attempt to drag a footnote card from the Footnotes panel into the document body.",
+        "Observe: no MIME_FOOTNOTE dataTransfer is set (the card's own drag chrome is suppressed), so the documented panel->doc footnote move/re-drop does not occur — only the in-text grab gesture moves a footnote."
+      ],
+      "reproChannel": "code-trace",
+      "confidence": "medium",
+      "suspectedClass": "Dead drag exports + live receiving drop handlers are a recurring pattern after the InlineAtomGrab migration; audit startCitationDrag (MIME_CITATION) for the same unwired sender, and verify the duplicate-slice id-only reminting against citationId (same omission of linkId/linkCard for citations)."
+    }
+  ]
+}

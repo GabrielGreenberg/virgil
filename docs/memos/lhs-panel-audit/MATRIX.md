@@ -1,0 +1,29 @@
+# LHS Panel Coverage Matrix (8 subjects × 13 clusters)
+
+Status legend: **U** = UNVERIFIED (to fill) · **PASS** · **BUG: <ids>** (finding ids in that cluster) · **N-A** (inapplicable, reason in finder JSON).
+Columns: F1 render · F2 select/expand · F3 jump · F4 nested-links · F5 edit · F6 morph · F7 lifecycle · F8 float/sync · A1 orphan · A2 stale · A3 dup-anchor · C1 chrome · C2 omni.
+
+A subject's three groups (g-display = F1/F4/F5 · g-interact = F2/F3/F6/F7 · g-anchor = A1/A2/A3/F8/C1 [+C2 for omni]) are merged into one row. When a cluster carried multiple finder cells, a single BUG anywhere wins the cell and all reported finding ids are listed. The C2 column is structurally N-A for every subject except Omni-left (no omni cluster on the others; matches the seed and every finder).
+
+| Subject | F1 | F2 | F3 | F4 | F5 | F6 | F7 | F8 | A1 | A2 | A3 | C1 | C2 |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| S1 Footnotes | BUG: FN-F1-01, FN-F1-03, FN-F1-04 | BUG: FN-F2-01, FN-F2-02 | BUG: FN-F3-01 | PASS (was BUG; FN-F4-01 refuted) | BUG: FN-F5-01, FN-F5-02 | N-A | BUG: FN-F7-01 | BUG: FN-F8-01 | BUG: FN-A1-01, FN-A1-02 | BUG: FN-A2-01, FN-A2-02, FN-A2-03 | BUG: FN-A3-01 | BUG: FN-C1-01 | N-A |
+| S2 Citations | BUG: CI-F1-01 | BUG: CI-F2-01, CI-F2-02 | BUG: CI-F3-01 | PASS (was BUG; CI-F4-01, CI-F4-02 refuted) | BUG: CI-F5-01, CI-F5-02, CI-F5-03 | N-A | BUG: CI-F7-01, CI-F7-02, CI-F7-03 | BUG: CI-F8-01, CI-F8-02, CI-F8-03 | BUG: CI-A1-01, CI-A1-02 | BUG: CI-A2-01, CI-A2-02 | BUG: CI-A3-01 | BUG: CI-C1-01 | N-A |
+| S3 Bibliography | BUG: BIB-F1-01, BIB-F1-02, BIB-F1-03, BIB-F1-04 | BUG: BIB-F2-01 | BUG: BIB-F3-01, BIB-F3-02 | N-A | BUG: BIB-F5-01, BIB-F5-02, BIB-F5-04, BIB-F5-05 | N-A | BUG: BIB-F7-01, BIB-F7-02, BIB-F7-03, BIB-F7-04 | BUG: BIB-F8-01, BIB-F8-02, BIB-F8-03, BIB-F8-04 | BUG: BIB-A1-01 | BUG: BIB-A2-01, BIB-A2-02, BIB-A2-03, BIB-A2-04 | BUG: BIB-A3-01, BIB-A3-02 | BUG: BIB-C1-01 | N-A |
+| S4 Reports | BUG: REP-F1-01 | BUG: REP-F6-02 | BUG: REP-F3-01 | BUG: REP-F4-01 | BUG: REP-F5-01, REP-F5-02, REP-F5-03, REP-F5-04 | BUG: REP-F6-01, REP-F6-02, REP-F6-03 | BUG: REP-F7-01, REP-F7-02, REP-F7-03 | BUG: REP-F8-01 | BUG: REP-A1-01 | BUG: REP-A2-01, REP-A2-02 | PASS | BUG: REP-C1-01 | N-A |
+| S5 Examples | BUG: EX-F1-01, EX-F1-02 | BUG: EX-F2-01, EX-F2-02 | BUG: EX-F3-01, EX-F3-02, EX-F3-03 | BUG: EX-F4-01, EX-F4-02 | BUG: EX-F5-01, EX-F5-02, EX-F5-03 | N-A | BUG: EX-F7-01 | BUG: EX-F8-01, EX-F8-02 | BUG: EX-A1-01, EX-A1-02 | BUG: EX-A2-01 | PASS | PASS | N-A |
+| S6 Outline | BUG: OUT-F1-01 | BUG: OUT-F2-01 | BUG: OUT-F3-01, OUT-F3-02 | BUG: OUT-F4-01 | BUG: OUT-F5-01, OUT-F5-02, OUT-F5-03, OUT-F5-04 | N-A | BUG: OUT-F7-01 | BUG: OUT-F8-02, OUT-F8-03, OUT-F8-04 | N-A | BUG: OUT-A2-01 | N-A | PASS | N-A |
+| S7 Search | BUG: SR-F1-01, SR-F1-02, SR-F1-03, SR-F1-04, SR-F1-05 | BUG: SR-F2-01 | BUG: SR-F3-01, SR-F3-02, SR-F3-03, SR-F3-04 | BUG: SR-F4-01 | BUG: SR-F5-01 | N-A | BUG: SR-F7-01 | BUG: SR-F8-01, SR-F8-02 | BUG: SR-A1-01 | BUG: SR-A2-01 | PASS | BUG: SR-C1-01, SR-C1-02 | N-A |
+| S8 Omni-left | BUG: OMNI-F1-01, OMNI-F1-02, OMNI-F1-03 | BUG: OMNI-F2-01 | BUG: OMNI-F3-01, OMNI-F3-02 | BUG: OMNI-F4-01 | BUG: OMNI-F5-01 | BUG: OMNI-F6-01, OMNI-F6-02 | BUG: OMNI-F7-01, OMNI-F7-02 | BUG: OMNI-F8-01, OMNI-F8-02, OMNI-F8-03, OMNI-F8-04, OMNI-A1-01 | BUG: OMNI-A1-01 | BUG: OMNI-A2-01 | BUG: OMNI-F8-02 | PASS | BUG: OMNI-C2-01, OMNI-C2-02, OMNI-F8-01 |
+
+_Applicable cells (non-N-A) must all reach PASS / BUG before Phase C closes; any residual UNVERIFIED is listed below with a resolution path. Structural subjects (S6 Outline / S7 Search) reinterpret card clusters as their nearest structural function (e.g. outline fold/focus under F2, reorder under F7, prefs persistence under F8). Some finder cells cross-reference a sibling cluster's id (e.g. Reports F2 → REP-F6-02; Omni-left A1/A3/F8 ↔ OMNI-F8-02 / OMNI-A1-01 / OMNI-C2-03) — ids are reproduced verbatim from each finder's `cells[].bugIds`; gate-2 should reconcile cluster ownership._
+
+**Final-disposition update (synthesizer pass):** 2 cells flipped BUG → PASS because every finding in them was refuted — **S1 Footnotes·F4** (FN-F4-01 refuted) and **S2 Citations·F4** (CI-F4-01 + CI-F4-02 refuted). All other BUG cells retain ≥1 real bug; the 12 individually-refuted ids that shared a still-BUG cell (FN-F1-02, CI-F1-02, CI-F2-03, CI-F7-04, BIB-F5-03, EX-F4-03, EX-F8-03, OUT-F1-02, SR-F5-02, OMNI-C2-03, plus the F4-cell pair) were struck from their cell id-lists. The three former UNVERIFIED cells are now resolved (see below): Citations·C1 → BUG (CI-C1-01, reclassified COSMETIC but real), Omni-left·A2 → BUG (OMNI-A2-01, reclassified to a real LOW), Citations·F1 sub-claim CI-F1-02 → refuted (dropped). Two cells the original seed had left PASS were corrected to BUG because a real finding belongs there — **S3 Bibliography·A1** (BIB-A1-01, the seed omitted it) and **S8 Omni-left·F2** (OMNI-F2-01). 152 real bugs are now all represented across the matrix.
+
+## UNVERIFIED cells — RESOLVED (synthesizer pass)
+
+All three formerly-`UNVERIFIED` cells (plus the CI-F1-02 sub-claim) are now decided by verification + adjudication:
+
+1. **Citations · F1** — `CI-F1-02`: **REFUTED.** The serializer emits a `\vcid{<citationId>}` no-op marker so citation ids round-trip across re-parse; the selected halo's id survives. Dropped from the cell (CI-F1-01 still wins it as BUG).
+2. **Citations · C1** — `CI-C1-01`: **BUG (RECLASSIFIED → COSMETIC).** Adjudicated: the count badge reports raw card-array length uniformly across every panel — a labeling-expectation gap, not a malfunction. Real but cosmetic; cell reads BUG.
+3. **Omni-left · A2** — `OMNI-A2-01`: **BUG (RECLASSIFIED → LOW).** Adjudicated: `buildCitationOmniItems` classifies anchor-state on position alone (omni.tsx:49) and ignores the available `unanchored` intent flag, so a panel-created free citation reads as an orphan/error. Real LOW defect; cell reads BUG.

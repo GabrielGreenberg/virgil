@@ -1,0 +1,86 @@
+{
+  "file": "footnotes-g-anchor",
+  "verifier": "B",
+  "verdicts": [
+    {
+      "findingId": "FN-A2-01",
+      "isReal": true,
+      "disposition": "RECLASSIFIED",
+      "severityFinal": "DATA-LOSS",
+      "rationale": "Confirmed and UPGRADED HIGH→DATA-LOSS. Traced fully: orphanedFootnotes is the ONLY copy of an orphaned footnote's prose, and it is pure ephemeral React state. EditorLayout.tsx:1106 declares `useState<OrphanedFootnote[]>([])`; a repo-wide grep for orphanedFootnotes/setOrphanedFootnotes touching writeSidecar/readSidecar/persist returns NOTHING — the only mutators are the bridge (footnote-sync.ts:40-47) and the orphan handlers (card-actions/orphans.ts:17-40), all of which mutate React state only. useFootnotes.syncFromEditor (useFootnotes.ts:121-143) is the sole path that would persist an unanchored footnote into footnotes.json, and a grep confirms it is NEVER called (EditorPane.tsx:1180 calls only citationsHook.syncFromEditor). When the marker is deleted the footnote node leaves the PM doc (the orphan detector fires precisely on diff.removedFootnotes, footnote.ts:196) so the \\footnote{} text is gone from the serialized .tex on the next autosave (1500ms). After reload the prose is unrecoverable. The orphan card IS the recovery affordance and it does not survive a reload/crash/tab-close — this is exactly the rubric's 'orphaned-without-recovery' DATA-LOSS case, and the audit instruction to upgrade anything that silently loses user prose applies.",
+      "correctedRootCause": "No persistence path for the orphan recovery store at all: orphanedFootnotes lives at the EditorLayout shell (EditorLayout.tsx:1106, outside the `<DocPipeline key={currentDocId}>` per-doc boundary at EditorLayout.tsx:4370) and is never serialized; useFootnotes.syncFromEditor (useFootnotes.ts:121) — which retains `unanchored` footnotes in footnotes.json — is dead code for footnotes because EditorPane never invokes it (only the citation equivalent at EditorPane.tsx:1180).",
+      "class": "Recovery/transient collections held as shell-level React state with no sidecar backing (orphanedFootnotes). Sibling: any in-RAM-only 'recoverable' store. Companion architectural smell: useFootnotes.syncFromEditor is implemented-but-uncalled, so the footnotes.json `unanchored` retention branch (useFootnotes.ts:127) is also dead.",
+      "confidence": "high"
+    },
+    {
+      "findingId": "FN-A2-02",
+      "isReal": true,
+      "disposition": "CONFIRMED",
+      "severityFinal": "MEDIUM",
+      "rationale": "Confirmed on both legs. The footnote node carries `title` (footnote.ts:56) and `thanks` (footnote.ts:69) attrs; the anchored FootnoteCard renders both (kindLabelOverride 'Acknowledgement' + 'A' badge from fn.thanks at FootnoteCard.tsx:116,122, and bodyTitle={fn.title} at FootnoteCard.tsx:123). The orphan detector builds the event detail as `{ footnoteId: removed.id, content }` ONLY (footnote.ts:202-209) — it reads oldNode.attrs.content but never oldNode.attrs.title or oldNode.attrs.thanks. The bridge then writes `{footnoteId, content, orphanedAt}` (footnote-sync.ts:42-46), so the orphan record's title slot (types.ts:568) is never populated and OrphanedFootnoteCard always renders BadgeOrphaned (FootnoteCard.tsx:220) with an empty bodyTitle. The title/acknowledgement loss happens immediately on orphaning, in-session, distinct from FN-A2-01's reload loss.",
+      "correctedRootCause": "Two-part gap: (1) the orphan detector projects only `content` from the dying node (footnote.ts:202-209), dropping title+thanks; (2) the OrphanedFootnote type (types.ts:564-570) has a `title?` slot but NO `thanks` field, so the acknowledgement identity is structurally unrepresentable in an orphan even if the detector forwarded it — BadgeOrphaned is hardcoded (FootnoteCard.tsx:220).",
+      "class": "Teardown→recovery record reconstructed from a subset of the source node's attrs (footnote.ts:202). Any future per-footnote attr (e.g. a kind discriminator) is silently dropped on orphaning. The missing `thanks` slot on OrphanedFootnote is the type-level instance of the same omission.",
+      "confidence": "high"
+    },
+    {
+      "findingId": "FN-A2-03",
+      "isReal": true,
+      "disposition": "CONFIRMED",
+      "severityFinal": "MEDIUM",
+      "rationale": "Confirmed. orphanedFootnotes is declared in EditorLayout (EditorLayout.tsx:1106), the top-level single-instance shell (export default function EditorLayout, :353). The per-doc remount boundary is `<DocPipeline key={currentDocId}>` wrapping EditorPane (EditorLayout.tsx:4370) — EditorPane remounts per doc, but EditorLayout (and thus orphanedFootnotes) does NOT. The orphan list is threaded DOWN into EditorPane as a prop (EditorPane.tsx:5029 viewPrefs.orphanedFootnotes). The only setOrphanedFootnotes call sites are the bridge wiring (EditorLayout.tsx:2477, 2562); a scan of every `[currentDocId]` effect (517, 1414, 1831, 2310) confirms NONE resets orphanedFootnotes on doc switch. So an orphan from doc A appears in doc B's Footnotes panel after switching without reload. Recoverable (user can delete the phantom), hence MEDIUM not higher.",
+      "correctedRootCause": "Per-doc state hoisted above the per-doc remount boundary with no docId-keyed reset effect: orphanedFootnotes sits at EditorLayout.tsx:1106 (above `<DocPipeline key={currentDocId}>` at :4370) and no effect clears it on currentDocId change.",
+      "class": "Shell-level (EditorLayout) state that is logically per-doc but lives above the DocPipeline key boundary and lacks a docId-reset effect. Companion confirmed by the finder: suppressOrphanRef (EditorLayout.tsx:1107) is also shell-level and never reset, so a doc-switch mid-suppression could swallow an orphan in the new doc.",
+      "confidence": "high"
+    },
+    {
+      "findingId": "FN-A1-01",
+      "isReal": true,
+      "disposition": "RECLASSIFIED",
+      "severityFinal": "LOW",
+      "rationale": "Mechanism confirmed but severity DOWNGRADED MEDIUM→LOW. The pruner's inline-atom exemption is real: entityExists() returns true unconditionally for footnote/citation (useAnchorHighlightReconciler.ts:84-90 via isInlineAtomCardKind), so the prune block (:155-166) can never clear cardStore.selected/hover/expandedSet for a hard-deleted footnote. handleDeleteFootnote (EditorPane.tsx:2745-2759) arms the suppress latch and calls deleteFootnote — it never clears cardStore selection for the id. BUT the user-observable harm is minimal: the reconciler's paint phase resolves the footnote link to its in-text atom, which is gone, so findInlineAtomPos returns null and NOTHING paints (the finder concedes 'nothing visibly paints'); and the footnote card itself is also removed from footnotes[] so there is no docked card to show a stale halo. The single `selected` slot is reclaimed on the very next card select. The only residual real symptom is a dead entry lingering in expandedSet that could make a same-id re-created footnote (clone/re-drop) render pre-expanded — an edge, recoverable. No data loss, no persistent visible ghost → LOW.",
+      "correctedRootCause": "The pruner cannot classify inline-atom existence because those kinds aren't in any EntityCollectionSlots collection, so entityExists short-circuits to true (useAnchorHighlightReconciler.ts:88); the deliberate-delete path (EditorPane.tsx:2758) does not compensate with an explicit cardStore.clearSelection/collapse for the deleted id.",
+      "class": "Lead #2 — inline-atom pruner exemption affects footnote AND citation identically (isInlineAtomCardKind covers both); a hard-deleted citation has the same stale-store-ref hygiene gap. Class: any cardStore ref whose existence the pruner cannot verify is permanently exempt from pruning.",
+      "confidence": "high"
+    },
+    {
+      "findingId": "FN-A1-02",
+      "isReal": true,
+      "disposition": "CONFIRMED",
+      "severityFinal": "LOW",
+      "rationale": "Confirmed. The orphan detector gates dispatch on `if (content && richJsonToPlainText(content).trim())` (footnote.ts:204). A footnote with an empty body but a non-empty title fails this gate, so no virgil-footnote-orphaned fires, no orphan card is created, and the title is silently lost (the title attr also dies with the node). LOW is correct: a titled-but-bodyless footnote is an uncommon shape, and the loss compounds FN-A2-02 (which already can't carry the title onto an orphan anyway).",
+      "correctedRootCause": "Emptiness gate considers only body content, ignoring the title attr: footnote.ts:204 short-circuits on `richJsonToPlainText(content).trim()` without OR-ing in `oldNode.attrs.title?.trim()`.",
+      "class": "Lead #1 family — has-content predicates that ignore non-body fields. cardHasContent (src/cards/has-content.ts) similarly has no footnote case and would classify a title-only footnote as empty. Class: content-emptiness checks that omit title/metadata fields.",
+      "confidence": "high"
+    },
+    {
+      "findingId": "FN-A3-01",
+      "isReal": true,
+      "disposition": "CONFIRMED",
+      "severityFinal": "LOW",
+      "rationale": "Confirmed at the code level with the finder's own honest medium confidence on timing. The re-drop inserts the new footnote atom synchronously (Editor.tsx:752 tr.insert + :753 view.dispatch), which bumps rev.footnotes and re-derives footnoteInfos (EditorPane.tsx:2772-2775), while the orphan is removed only via setTimeout(0)→virgil-footnote-panel-dropped (Editor.tsx:755-761; footnote-sync.ts:69-79). Both lists are merged by footnoteId with NO de-dup: FootnotePanel.items = [...orphanedFootnotes, ...footnotes] (FootnotePanel.tsx:114-121, getId=footnoteId at :142) and the omni builder pushes footnotes then orphans both via popKey('footnotes', id) (omni.tsx:30-82). CardListPanel keys by id (CardListPanel.tsx:143 Fragment key=id), so the macrotask setTimeout(0) firing after the synchronous-dispatch-driven render yields a one-frame duplicate-key collision. Self-healing within one frame, no data loss, console warning + possible one-frame double-halo only → LOW (borderline COSMETIC).",
+      "correctedRootCause": "Two id-keyed lists (orphanedFootnotes, footnotes) merged without de-dup while one is updated synchronously (view.dispatch → rev bump → memo) and the other via a deferred macrotask (setTimeout(0)); the merge sites (FootnotePanel.tsx:114, omni.tsx:30/57) assume disjoint ids.",
+      "class": "Any synchronous-insert + deferred-remove seam where the transient overlap is rendered through an id-keyed list with no de-dup. The orphan↔anchored footnote seam is the canonical instance.",
+      "confidence": "medium"
+    },
+    {
+      "findingId": "FN-F8-01",
+      "isReal": true,
+      "disposition": "CONFIRMED",
+      "severityFinal": "MEDIUM",
+      "rationale": "Confirmed. The footnote Floatable resolves from the live editor: `const fn = liveFootnotes.find(...); if (!fn) return null` (floats/index.tsx:218-220). Once orphaned, getFootnotes() no longer includes the id → null. FloatHost maps over keys and `if (!f) return null` (FloatHost.tsx:43-45) — it renders nothing but never removes the key from `keys`/poppedOutCards, so the float silently vanishes while leaking its key in prefs. There is no orphan-footnote Floatable registration (only `registerCardFloatable('footnote', ...)` reading live atoms) and no float-close/migrate on orphaning (footnote-sync.ts:40-47 only appends the orphan). Confirmed the content is stranded: OrphanedFootnoteCard (FootnoteCard.tsx:177-247) has NO onTogglePopout/isPoppedOut props, unlike the anchored card (FootnoteCard.tsx:148-151), so it cannot be re-popped. MEDIUM: confusing float-vanish + leaked pref key, but content survives in the docked orphan card (no data loss) and is recoverable in-session.",
+      "correctedRootCause": "Float keys are not invalidated when the underlying entity transitions to an unresolvable state: FloatHost renders null for an unresolvable key but never reaps it from poppedOutCards (FloatHost.tsx:43-46), and the orphaning bridge (footnote-sync.ts:40-47) has no float-close/remap step; compounded by OrphanedFootnoteCard lacking any popout affordance (FootnoteCard.tsx:177-247).",
+      "class": "Float keys whose entity can become unresolvable (orphaned footnote, hard-deleted citation) leak in poppedOutCards. Any card kind without a defensive 'close float on entity disappearance' shares the leak; the missing orphan popout affordance is a separate parity gap.",
+      "confidence": "high"
+    },
+    {
+      "findingId": "FN-C1-01",
+      "isReal": true,
+      "disposition": "CONFIRMED",
+      "severityFinal": "LOW",
+      "rationale": "Confirmed. FootnotePanel passes count={footnotes.length} (anchored only, FootnotePanel.tsx:132) but builds items from [...orphanedFootnotes, ...footnotes] (FootnotePanel.tsx:114-121), so the badge undercounts by the orphan count and the rendered card count exceeds the badge. PanelHeader hides the badge entirely when count <= 0 (panel-primitives.tsx:2088 `count != null && count > 0`), so a 0-anchored + N-orphan state shows no badge while N orphan cards render. CitationsPanel uses count={orderedCitations.length} (CitationsPanel.tsx:241, the full ordered list incl. unanchored drafts), so footnotes is genuinely the outlier. LOW/borderline COSMETIC: a badge-number discrepancy with no functional consequence.",
+      "correctedRootCause": "Badge count derived from a narrower list than the rendered items: FootnotePanel.tsx:132 uses footnotes.length while items at :114 prepend orphanedFootnotes — should be footnotes.length + orphanedFootnotes.length (or items.length).",
+      "class": "Panels whose header count is computed from a sub-list rather than the union actually rendered. Footnotes is the only left card panel doing this (Citations/Reports count the full list).",
+      "confidence": "high"
+    }
+  ]
+}

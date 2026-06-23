@@ -1,0 +1,290 @@
+{
+  "subject": "bibliography",
+  "group": "g-anchor",
+  "clusters": ["A1", "A2", "A3", "F8", "C1"],
+  "cells": [
+    {
+      "cluster": "A1",
+      "status": "PASS",
+      "note": "Bib 'orphan' analog = uncited .bib entry. In 'Cited only' filter it is hidden (BibliographyPanel.tsx:223-228); in 'Full' it renders with opacity-60 and NO jump icon (BibEntryCard.tsx:460 `!isCited` dim; BibliographyPanel.tsx:950 `onJump={isCited ? ... : undefined}`). Render + jump-disabled both correct. One caveat split into BIB-A1-01.",
+      "bugIds": ["BIB-A1-01"]
+    },
+    {
+      "cluster": "A2",
+      "status": "BUG",
+      "note": "Renaming a citekey (commitEditBib → updateBibKeyAndType) propagates only to .bib + citation refs (useCitations.ts:281-315). It does NOT migrate the annotation (annotations.json keyed by citekey, useAnnotations.ts:26-35), the pending bib-review request (bib-review-requests.json keyed by bibKey, useBibReview.ts), or the popped-out float key (float:card:bib:<oldKey>, no remapCardPopKey call), and does not re-select the new key. Multiple orphan/recovery failures.",
+      "bugIds": ["BIB-A2-01", "BIB-A2-02", "BIB-A2-03", "BIB-A2-04"]
+    },
+    {
+      "cluster": "A3",
+      "status": "BUG",
+      "note": "Two .bib entries with the same citekey: sortedEntries dedups via a seen-set (BibliographyPanel.tsx:219-235) so only the FIRST renders; the second is invisible and uneditable, and is also dropped from export (handleExportCited:350-355). parseBibFile keeps both (bib-parser.ts:90-115, no dedup), so the data exists but the panel hides the second. Replace-with-library merge leaves stale local-only fields (split to BIB-A3-02).",
+      "bugIds": ["BIB-A3-01", "BIB-A3-02"]
+    },
+    {
+      "cluster": "F8",
+      "status": "BUG",
+      "note": "Float/popout exists (cards/floats/index.tsx:455-484, bareWindow bib floatable; omni-sync N-A per scope correction). Cross-surface annotation editing diverges and can clobber (AnnotationEditor useEffect deps=[bibKey], BibEntryCard.tsx:111-115); annotation debounce has no unmount flush so a fast collapse writes '' and wipes the annotation (BibEntryCard.tsx:117-123); popped float blanks silently when its citekey is renamed (FloatHost.tsx:45,64 + floats/index.tsx:456-457 return null); completed bib-review requests are never cleared so getRequestStatus .find returns the stale completed entry (useBibReview.ts:96-103).",
+      "bugIds": ["BIB-F8-01", "BIB-F8-02", "BIB-F8-03", "BIB-F8-04"]
+    },
+    {
+      "cluster": "C1",
+      "status": "BUG",
+      "note": "Panel toggle/collapse/reorder/split + header count badge ride shared Panel/CardListPanel/PANEL_REGISTRY (omniEligible false, defaultStripSide left) — generic, no bib-specific breakage there. But the bib Add-menu can't be closed by re-clicking '+': the outside-mousedown handler's ref (addMenuRef, BibliographyPanel.tsx:607) wraps only the dropdown, not the '+' trigger (rendered by PanelHeader), so mousedown closes then click re-toggles open.",
+      "bugIds": ["BIB-C1-01"]
+    }
+  ],
+  "findings": [
+    {
+      "id": "BIB-A2-01",
+      "subject": "bibliography",
+      "cluster": "A2",
+      "severity": "DATA-LOSS",
+      "symptom": "Renaming a bibliography entry's citekey silently strands its annotation — the renamed entry shows a blank Annotations pod and the user's annotation prose disappears from the UI with no recovery path.",
+      "suspectedRootCause": "Annotations are persisted in annotations.json keyed by citekey (useAnnotations.ts:21-35). updateBibKeyAndType (useCitations.ts:281-315) rewrites the .bib block and remaps citation refs, but never migrates the annotation key from oldKey→newKey. The annotation remains under oldKey, which no entry references, so getAnnotation(newKey) returns '' and the old value is orphaned and unreachable through the UI.",
+      "evidence": [
+        { "file": "src/hooks/useCitations.ts", "line": 281, "note": "updateBibKeyAndType touches bibEntries + citation refs only; no annotation migration" },
+        { "file": "src/hooks/useAnnotations.ts", "line": 26, "note": "setAnnotation/getAnnotation keyed purely by citekey; nothing renames the key" },
+        { "file": "src/components/BibEntryCard.tsx", "line": 185, "note": "commitEditBib calls onUpdateBibKeyAndType but no annotation re-key" }
+      ],
+      "reproSteps": [
+        "Open a bib entry, expand Annotations, type and save an annotation.",
+        "Expand BibTeX Fields → Edit entry, change the key, Save.",
+        "Re-open the renamed entry: the annotation is gone (it is still in annotations.json under the old key, but invisible)."
+      ],
+      "reproChannel": "code-trace",
+      "confidence": "high",
+      "suspectedClass": "Any per-citekey sidecar that updateBibKeyAndType does not touch: bib-review-requests.json (BIB-A2-02), and citation-occurrence keyOccurrenceIdx state (BibliographyPanel.tsx:99, keyed by citekey, retains stale index under old key)."
+    },
+    {
+      "id": "BIB-A2-02",
+      "subject": "bibliography",
+      "cluster": "A2",
+      "severity": "MEDIUM",
+      "symptom": "A pending AI bib-review request orphans when the user renames the entry's citekey mid-flight — the responder keys off the old citekey and the renamed card shows no pending state.",
+      "suspectedRootCause": "bib-review-requests.json rows are keyed by bibKey (useBibReview.ts:70-77). updateBibKeyAndType does not rewrite request bibKeys, so a pending request stays bound to oldKey. getReviewStatus(newKey,...) returns 'none' (the pulsing 'Requested' state vanishes) while the on-disk request still points at the now-nonexistent oldKey.",
+      "evidence": [
+        { "file": "src/hooks/useBibReview.ts", "line": 63, "note": "requestReview stores req.bibKey = the citekey at request time" },
+        { "file": "src/hooks/useBibReview.ts", "line": 96, "note": "getRequestStatus matches by exact bibKey; no alias for renamed key" },
+        { "file": "src/hooks/useCitations.ts", "line": 281, "note": "updateBibKeyAndType never updates bib-review request bibKeys" }
+      ],
+      "reproSteps": [
+        "Click 'Request review' on an entry's BibTeX Fields (status → pending, pulsing).",
+        "Edit the entry and rename its citekey, Save.",
+        "Card no longer shows 'Requested'; the request row in bib-review-requests.json still has the old bibKey."
+      ],
+      "reproChannel": "code-trace",
+      "confidence": "high",
+      "suspectedClass": "Same rename-doesn't-cascade class as BIB-A2-01; the AI request-inbox routing (editor/answer-bib-review) resolves by citekey and would fail to find the renamed entry."
+    },
+    {
+      "id": "BIB-A2-03",
+      "subject": "bibliography",
+      "cluster": "A2",
+      "severity": "HIGH",
+      "symptom": "Renaming the citekey of the currently-selected entry loses selection — the just-edited card collapses out from under the user instead of staying open and selected on its new key.",
+      "suspectedRootCause": "selectedBibKey (useSelectionsContext) holds the old citekey. commitEditBib (BibEntryCard.tsx:185-192) renames but never re-selects newKey. After rename, selectedIdx = displayedEntries.findIndex(e=>e.key===oldKey) = -1 (BibliographyPanel.tsx:294-297), so the renamed card renders selected=false → compressed = !isSelected && !isPoppedOut = true (BibEntryCard.tsx:449) → the body (mid-edit) collapses.",
+      "evidence": [
+        { "file": "src/components/BibEntryCard.tsx", "line": 185, "note": "commitEditBib has no onClick/select call after rename" },
+        { "file": "src/panels/Bibliography/BibliographyPanel.tsx", "line": 294, "note": "selectedIdx resolves by selectedBibKey === e.key; oldKey no longer matches → -1" },
+        { "file": "src/components/BibEntryCard.tsx", "line": 449, "note": "compressed collapses the unselected card" }
+      ],
+      "reproSteps": [
+        "Select a bib entry (it expands).",
+        "Edit its citekey and Save.",
+        "The entry collapses and is no longer selected; user must scroll to find and re-open it."
+      ],
+      "reproChannel": "code-trace",
+      "confidence": "high",
+      "suspectedClass": "Identity-change-loses-selection: any panel selecting by a mutable key rather than a stable id; cf. citation id regeneration on parse (citations) which the brief flags as lead #3."
+    },
+    {
+      "id": "BIB-A2-04",
+      "subject": "bibliography",
+      "cluster": "A2",
+      "severity": "HIGH",
+      "symptom": "A popped-out bib float silently goes blank (or vanishes) when its citekey is renamed, and the dead float key persists in localStorage with no UI to dismiss it.",
+      "suspectedRootCause": "The float key is float:card:bib:<oldKey> (panel-registry.ts:265-278). Renaming routes through updateBibKeyAndType, which never calls remapCardPopKey (only morph paths do — reader-view-prefs.ts:144-148). FloatHost resolves the stored key via toFloatable('bib', oldKey, ctx), which returns null because no entry with oldKey exists (cards/floats/index.tsx:456-457), so FloatHost renders nothing (FloatHost.tsx:45,64). The renamed entry's float would need float:card:bib:<newKey>, which is never created, and the orphan oldKey stays in poppedKeys.",
+      "evidence": [
+        { "file": "src/cards/floats/index.tsx", "line": 456, "note": "bib floatable resolves entry by id; returns null when not found" },
+        { "file": "src/floats/FloatHost.tsx", "line": 64, "note": "toFloatable result null → no FloatWindow for the persisted key" },
+        { "file": "src/components/editor-layout/reader-view-prefs.ts", "line": 144, "note": "remapCardPopKey exists but is only invoked on kind morph, never on bib rename" }
+      ],
+      "reproSteps": [
+        "Pop a bib card out into a float (lift the header).",
+        "In the docked card (or any surface) rename that entry's citekey and Save.",
+        "The float blanks/disappears; the old key lingers in poppedOutCards and the renamed entry is not re-floated."
+      ],
+      "reproChannel": "code-trace",
+      "confidence": "medium",
+      "suspectedClass": "Mutable-key floats with no remap: any popped card whose registry id can change without a remapCardPopKey hook (bib citekey here; citations regenerate ids on parse per lead #3, so a popped citation float can blank on the next structural edit)."
+    },
+    {
+      "id": "BIB-A3-01",
+      "subject": "bibliography",
+      "cluster": "A3",
+      "severity": "MEDIUM",
+      "symptom": "When a .bib file contains two distinct entries that share a citekey, only the first is shown and editable; the second is invisible in the panel and is silently dropped from the exported cited.bib.",
+      "suspectedRootCause": "parseBibFile keeps every parsed entry (bib-parser.ts:90-115, no key dedup), but the panel's display and export both dedup by citekey with a seen-set: sortedEntries (BibliographyPanel.tsx:219-235) and handleExportCited (BibliographyPanel.tsx:350-355) both `if (seen.has(e.key)) return false`. The 'anchor' for a bib card is its citekey, so two cards on one anchor collapse to one with no disambiguation.",
+      "evidence": [
+        { "file": "src/panels/Bibliography/BibliographyPanel.tsx", "line": 219, "note": "sortedEntries seen-set keeps only first per key" },
+        { "file": "src/panels/Bibliography/BibliographyPanel.tsx", "line": 350, "note": "handleExportCited seen-set drops the duplicate on export too" },
+        { "file": "src/lib/bib-parser.ts", "line": 90, "note": "parseBibFile pushes all entries; duplicates survive in bibEntries" }
+      ],
+      "reproSteps": [
+        "Create a references.bib with two different @article entries that share a citekey (e.g. from two sources).",
+        "Open the Bibliography panel: only the first appears.",
+        "Export cited.bib: only the first is written; the second is silently lost."
+      ],
+      "reproChannel": "code-trace",
+      "confidence": "high",
+      "suspectedClass": "Citekey-as-unique-identity assumption across the bib subsystem; bibEntryMap (useCitations.ts:336) and getBibEntry (.find) also silently pick the first of any duplicate-keyed pair."
+    },
+    {
+      "id": "BIB-A3-02",
+      "subject": "bibliography",
+      "cluster": "A3",
+      "severity": "MEDIUM",
+      "symptom": "The conflict-strip 'Replace with library' button merges the library entry's fields onto the local entry rather than overwriting — local-only fields the library version lacks survive, contradicting the button's 'Overwrite local fields with the library version' hint.",
+      "suspectedRootCause": "handleConflictReplace calls onUpdateBibEntry(localEntry.key, libraryEntry.fields) (BibliographyPanel.tsx:498). updateBibEntry merges with `{ ...e.fields, ...fields }` (useCitations.ts:265), so any field present locally but absent in libraryEntry.fields is retained. A true replace would need to clear fields not in the library version.",
+      "evidence": [
+        { "file": "src/panels/Bibliography/BibliographyPanel.tsx", "line": 498, "note": "handleConflictReplace passes only libraryEntry.fields" },
+        { "file": "src/hooks/useCitations.ts", "line": 265, "note": "updateBibEntry spreads onto existing fields (merge, not replace)" },
+        { "file": "src/panels/Bibliography/BibliographyPanel.tsx", "line": 757, "note": "button data-hint claims 'Overwrite local fields'" }
+      ],
+      "reproSteps": [
+        "Have a local entry with an extra field (e.g. note={...}) whose citekey also exists in the library with different/fewer fields.",
+        "Search library, click Add → conflict strip → 'Replace with library'.",
+        "The local entry keeps its stale note field; only overlapping fields are overwritten."
+      ],
+      "reproChannel": "code-trace",
+      "confidence": "high",
+      "suspectedClass": "Merge-vs-replace ambiguity wherever updateBibEntry is used for a 'replace' intent; the BibEntryCard 'Edit entry' Save also merges, so deleting a field by clearing it leaves an empty `field = {}` rather than removing it."
+    },
+    {
+      "id": "BIB-F8-01",
+      "subject": "bibliography",
+      "cluster": "F8",
+      "severity": "DATA-LOSS",
+      "symptom": "Typing a bibliography annotation and then collapsing/closing the card (or switching docs) within ~400ms silently wipes the annotation to empty.",
+      "suspectedRootCause": "AnnotationEditor's input handler schedules a 400ms debounce whose callback reads `editorRef.current?.innerHTML || ''` (BibEntryCard.tsx:117-123). There is NO useEffect cleanup clearing the timer on unmount. When the card collapses (compressed → the whole body incl. AnnotationEditor unmounts, BibEntryCard.tsx:449,567) the orphaned timer still fires; editorRef.current is now null → `undefined || '' = ''` → onUpdate(bibKey, '') → setAnnotation deletes the key (useAnnotations.ts:28-33). Last typed content is lost.",
+      "evidence": [
+        { "file": "src/components/BibEntryCard.tsx", "line": 117, "note": "handleInput debounce with no unmount-flush/clear" },
+        { "file": "src/components/BibEntryCard.tsx", "line": 120, "note": "`editorRef.current?.innerHTML || ''` yields '' after unmount" },
+        { "file": "src/hooks/useAnnotations.ts", "line": 28, "note": "setAnnotation with empty text deletes the entry" }
+      ],
+      "reproSteps": [
+        "Select a bib entry, expand Annotations, type some text.",
+        "Within ~400ms click another card (deselects → this card collapses, unmounting the editor).",
+        "Re-open the entry: the annotation is empty — the in-flight debounce wrote '' against the now-null ref."
+      ],
+      "reproChannel": "code-trace",
+      "confidence": "high",
+      "suspectedClass": "Debounced contentEditable writers that read a possibly-null ref in the timer and treat null as empty content; any sidecar editor without an unmount flush/clear is at risk of an empty-write-on-unmount."
+    },
+    {
+      "id": "BIB-F8-02",
+      "subject": "bibliography",
+      "cluster": "F8",
+      "severity": "HIGH",
+      "symptom": "When the same bib entry is open both docked and as a float, editing the annotation in one surface does not update the other, and a subsequent edit in the stale surface clobbers the first surface's edit.",
+      "suspectedRootCause": "AnnotationEditor seeds its contentEditable innerHTML from `content` only on mount/bibKey change (useEffect deps=[bibKey], BibEntryCard.tsx:111-115) — never on `content` prop change. Pop residue means docked + float render two independent AnnotationEditor instances for the same key. An edit in surface A (after 400ms) calls setAnnotation; surface B's `content` prop updates but its innerHTML is not re-synced, so B shows stale text. A later edit in B serializes B's stale DOM and overwrites A's change.",
+      "evidence": [
+        { "file": "src/components/BibEntryCard.tsx", "line": 111, "note": "innerHTML sync effect deps are [bibKey] only — ignores content changes" },
+        { "file": "src/cards/floats/index.tsx", "line": 464, "note": "float renderBody mounts a second BibEntryCard (hence second AnnotationEditor) for the same key" },
+        { "file": "src/hooks/usePoppedCards.ts", "line": 14, "note": "doc: popped card's docked render stays fully live (both surfaces mounted)" }
+      ],
+      "reproSteps": [
+        "Pop a bib card out to a float; its docked card stays visible.",
+        "Type an annotation in the float; wait for save.",
+        "Look at the docked card's Annotations pod: it still shows the old text. Type there → the float's edit is overwritten."
+      ],
+      "reproChannel": "code-trace",
+      "confidence": "high",
+      "suspectedClass": "Uncontrolled contentEditable mirroring across surfaces; any RichText/contentEditable that seeds from props once but two instances exist (docked vs float) will diverge and last-writer-wins clobber."
+    },
+    {
+      "id": "BIB-F8-03",
+      "subject": "bibliography",
+      "cluster": "F8",
+      "severity": "MEDIUM",
+      "symptom": "After an AI bib-review request completes, re-requesting a review of the same entry+type shows no pending state, and the card can never re-enter the visible 'Requested' state for that field.",
+      "suspectedRootCause": "Completed requests are never removed from bib-review-requests.json — clearRequest exists (useBibReview.ts:105-115) but is not wired into the panel/card. requestReview only blocks a duplicate that is still 'pending' (useBibReview.ts:66-69), so a new pending row is appended after a completed one. getRequestStatus uses `.find` which returns the FIRST matching bibKey+type row (useBibReview.ts:96-103) — the stale completed one — so the UI reports 'complete' and the pulsing 'Requested' state for the new request never renders.",
+      "evidence": [
+        { "file": "src/hooks/useBibReview.ts", "line": 96, "note": "getRequestStatus .find returns first match, not the latest" },
+        { "file": "src/hooks/useBibReview.ts", "line": 66, "note": "requestReview only de-dups against pending, so a second row accrues post-complete" },
+        { "file": "src/hooks/useBibReview.ts", "line": 105, "note": "clearRequest defined but never called from the bibliography UI" }
+      ],
+      "reproSteps": [
+        "Request a fields review; let the responder mark it complete (status flips in the JSON, picked up by the 10s poll).",
+        "Click 'Request review' again on the same entry+type.",
+        "The button does not show 'Requested'/pulsing; getRequestStatus still reads the first (completed) row."
+      ],
+      "reproChannel": "code-trace",
+      "confidence": "high",
+      "suspectedClass": "First-match lookup over an append-only request log without dedup/clear; the AI-request inbox pattern (per-kind) generally must read the latest, not the first, matching record."
+    },
+    {
+      "id": "BIB-F8-04",
+      "subject": "bibliography",
+      "cluster": "F8",
+      "severity": "MEDIUM",
+      "symptom": "Adding a library entry via the conflict strip's 'Save under new citekey' creates an in-memory entry that is silently omitted from a 'Export cited.bib' performed before the next doc reload.",
+      "suspectedRootCause": "handleConflictNewCitekey adds the entry with raw:'' so the serializer rebuilds it from fields (BibliographyPanel.tsx:524). addBibEntry pushes the entry verbatim (raw still '') and writes the file via serializeBibFile, which reconstructs empty-raw blocks correctly (bib-parser.ts:131-138) — so disk is fine. But handleExportCited builds cited.bib with `cited.map((e) => e.raw).filter(Boolean)` (BibliographyPanel.tsx:363), which drops any entry whose in-memory raw is empty. Until a reload re-parses (repopulating raw), that cited entry is missing from the export.",
+      "evidence": [
+        { "file": "src/panels/Bibliography/BibliographyPanel.tsx", "line": 363, "note": "export uses .raw + filter(Boolean) — empty-raw entries dropped" },
+        { "file": "src/panels/Bibliography/BibliographyPanel.tsx", "line": 524, "note": "handleConflictNewCitekey adds raw:'' on purpose" },
+        { "file": "src/hooks/useCitations.ts", "line": 318, "note": "addBibEntry stores entry as-is (raw stays '') in bibEntries" }
+      ],
+      "reproSteps": [
+        "Search library, Add an entry that conflicts → 'Save under new citekey' (raw becomes '').",
+        "Cite the new key in the editor so it counts as cited.",
+        "Without reloading, Export cited.bib → the new entry is missing from the file."
+      ],
+      "reproChannel": "code-trace",
+      "confidence": "medium",
+      "suspectedClass": "Export-via-raw vs persist-via-serializer divergence: handleExportCited should use serializeBibFile (which reconstructs from fields) rather than raw+filter(Boolean); any consumer reading e.raw directly is fragile to in-memory entries."
+    },
+    {
+      "id": "BIB-C1-01",
+      "subject": "bibliography",
+      "cluster": "C1",
+      "severity": "LOW",
+      "symptom": "Clicking the Bibliography panel's '+' button while its Add menu is open reopens the menu instead of closing it.",
+      "suspectedRootCause": "The outside-click handler closes the menu on any document mousedown not contained by addMenuRef (BibliographyPanel.tsx:136-144), but addMenuRef wraps only the dropdown content (line 607), not the '+' trigger (rendered by PanelHeader, outside the ref). On a click of '+' while open: mousedown fires first → handler sets addMenuOpen(false); then click fires onAdd → setAddMenuOpen(o=>!o) reads false → sets true. Net effect: the menu flickers closed then reopens, so '+' cannot toggle it shut.",
+      "evidence": [
+        { "file": "src/panels/Bibliography/BibliographyPanel.tsx", "line": 136, "note": "mousedown outside-click handler closes when target not in addMenuRef" },
+        { "file": "src/panels/Bibliography/BibliographyPanel.tsx", "line": 607, "note": "addMenuRef wraps only the dropdown, not the '+' button" },
+        { "file": "src/panels/Bibliography/BibliographyPanel.tsx", "line": 883, "note": "onAdd toggles with (o)=>!o; runs on click after the mousedown close" }
+      ],
+      "reproSteps": [
+        "Click '+' to open the Add menu.",
+        "Click '+' again to close it.",
+        "The menu closes (mousedown) then immediately reopens (click), so it stays open."
+      ],
+      "reproChannel": "code-trace",
+      "confidence": "medium",
+      "suspectedClass": "Outside-click-ref that excludes the toggling trigger; any panel where the menu trigger lives outside the ref and the handler listens on mousedown while the toggle runs on click."
+    },
+    {
+      "id": "BIB-A1-01",
+      "subject": "bibliography",
+      "cluster": "A1",
+      "severity": "LOW",
+      "symptom": "The cited/uncited classification that drives whether the jump icon shows and whether the 'Cited only' filter hides an entry can disagree with the entry's actual jump targets, because the two are derived from different citation sources.",
+      "suspectedRootCause": "isCited / citedKeys derive from the sidecar `citations` prop (BibliographyPanel.tsx:211-217), while the jump target map keyToCitationIds() derives from the live-editor `allEditorCitations` (BibliographyPanel.tsx:154-163; EditorPane.tsx:2611-2626). During the window where the editor parse and the citations.json sidecar disagree (initial load before syncFromEditor, or a structural edit), an entry may show the jump icon yet have no resolvable target (handleJumpToBibKey returns no targetId), or be hidden by 'Cited only' despite being cited in the editor.",
+      "evidence": [
+        { "file": "src/panels/Bibliography/BibliographyPanel.tsx", "line": 211, "note": "citedKeys from sidecar `citations`" },
+        { "file": "src/panels/Bibliography/BibliographyPanel.tsx", "line": 154, "note": "keyToCitationIds from `allEditorCitations` (live editor)" },
+        { "file": "src/components/EditorPane.tsx", "line": 2611, "note": "allEditorCitations parsed live from editor nodes (rev.citations)" }
+      ],
+      "reproSteps": [
+        "Open a doc; before citations.json syncs, observe an entry that the editor cites.",
+        "If the sidecar lags, the entry may be filtered out of 'Cited only' or show a jump icon whose handler finds no target."
+      ],
+      "reproChannel": "code-trace",
+      "confidence": "low",
+      "suspectedClass": "Two-source-of-truth for the same fact (sidecar citations vs live-editor citations); cited-count badge and occurrence counters also read allEditorCitations while the filter reads the sidecar."
+    }
+  ]
+}

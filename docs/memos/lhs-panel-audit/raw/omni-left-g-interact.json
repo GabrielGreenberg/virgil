@@ -1,0 +1,192 @@
+{
+  "subject": "omni-left",
+  "group": "G-interact",
+  "clusters": ["F2", "F3", "F6", "F7"],
+  "cells": [
+    {
+      "cluster": "F2",
+      "status": "PASS",
+      "note": "Single-selection halo + selection⊥expansion axis purity is enforced at the store layer, not the omni surface. The per-kind `selectedXId` slots are ALL derived from the single `cardStore.selected` (selections.tsx:117-227 `idFor(k)` returns sel.id only when sel.kind===k), so at most one slot is non-null and the omni-host's cross-clear calls (omni-host.tsx:221-352) are redundant DEAD code, not a multi-halo source (initial 'two halos' hypothesis disproved). Cards OR `ac.selected || isSelected` (FootnoteCard:104, ReportCard:72, CitationCard:257, ExampleCard:371) but both resolve from the same store. Background click clears selection only; expansion is sticky (omni-host.tsx:213-215 handleBackgroundClick → cardStore.clearSelection). Axis-pure primitives verified in anchored-card-store.test.ts. See OMNI-F2-01 (LOW: dead cross-clear code).",
+      "bugIds": ["OMNI-F2-01"]
+    },
+    {
+      "cluster": "F3",
+      "status": "BUG",
+      "note": "Atom-click text→card (footnote/citation have NO gutter marker; click dispatches virgil-footnote-click/virgil-citation-click → marker-clicks.ts:232-327 → openForCard omni-first + alignOmniCardWithClick) works for single-anchor cards. Card→text jump gated correctly (orphaned footnote/citation NO jump: OrphanedFootnoteCard onClick has no onJump FootnoteCard.tsx:226; CitationCard onJump gated on isAnchored CitationCard.tsx:722). BUG OMNI-F3-01: multi-paragraph-anchored REPORTS — marker-click pin uses the UNSUFFIXED cardPopKey while omni wrappers carry @N suffixes, so the pin never matches. UNVERIFIED OMNI-F3-02: citation-id divergence on full re-parse (markerless .tex) breaks jump+selection.",
+      "bugIds": ["OMNI-F3-01", "OMNI-F3-02"]
+    },
+    {
+      "cluster": "F6",
+      "status": "BUG",
+      "note": "report⇄report-request morph is threaded into omni (buildReportsOmniItems onConvert=convertReportCard → EditorPane.convertCardWithRemap chokepoint, EditorPane.tsx:863-918). Lossy confirm fires (host confirms first — the 'gate actually fires' check PASSES). BUG OMNI-F6-01: report-request→report drops aiRequest (morphs/index.ts:136-160, registry: report has NO aiRequest routing) but convertCard (useReports.ts:267-279) never calls bridgeCardAiRequestFlag(...,false) → orphaned pending ai-requests.json entry. BUG OMNI-F6-02: morphing the SELECTED report drops its halo (pruner clears the stale kind-keyed selection, no re-select to the new kind).",
+      "bugIds": ["OMNI-F6-01", "OMNI-F6-02"]
+    },
+    {
+      "cluster": "F7",
+      "status": "BUG",
+      "note": "Delete: footnote omni card (EditableCard, inlineDelete, value=fn.content) confirms via hasJsonContent(value) — correct; cardHasContent's missing footnote/citation/example/bib cases (has-content.ts:22-32) are LATENT here because footnote/citation have no gutter (deleteMarginItem path unreached) and EditableCard uses its own hasContent (panel-primitives.tsx:891). BUG OMNI-F7-01: citation card (raw PanelCard, CitationCard.tsx:697) deletes the \\cite{} atom with NO confirm. BUG OMNI-F7-02: reconciler inline-atom exemption (entityExists⇒true useAnchorHighlightReconciler.ts:84-90) leaves dead footnote/citation refs in cardStore selected/expandedSet after delete. Clone is N-A for omni (no clone handler threaded). Drag re-anchor is shared infra (covered by per-subject finders).",
+      "bugIds": ["OMNI-F7-01", "OMNI-F7-02"]
+    }
+  ],
+  "findings": [
+    {
+      "id": "OMNI-F2-01",
+      "subject": "omni-left",
+      "cluster": "F2",
+      "severity": "LOW",
+      "symptom": "No user-visible misbehavior; the omni-host carries dead single-selection-enforcement code that looks load-bearing but is a no-op, inviting a future maintainer to 'fix' the wrong layer.",
+      "suspectedRootCause": "The per-kind selection setters (setFootnoteInOmni etc., omni-host.tsx:221-352) imperatively call setSelectedCitationId(null)/setSelectedNoteId(null)/... after setting their own slot, to 'enforce' single-selection. But every per-kind slot is DERIVED live from the single cardStore.selected via useSelectionsValue (selections.tsx:117-227): idFor(k)=sel.kind===k?sel.id:null, and makeKindSetter(k) clears the store only if cardStore.getState().selected.kind===k. Since setSelectedFootnoteId already moved the store to {footnote,id}, the follow-up setSelectedCitationId(null) sees s.kind!=='citation' and no-ops. Single-selection is structurally guaranteed by the store's single `selected` slot; the omni-host cross-clears are inert. The setters are also asymmetric/incomplete (setReportInOmni/setCutterInOmni/setRevisionInOmni clear nothing; footnote/citation/note/archive/todo setters omit example/report/cutter/revision/error) which LOOKS like a single-selection gap but isn't one because of the derived-slot design.",
+      "evidence": [
+        { "file": "src/components/editor-layout/panels/omni-host.tsx", "line": 221, "note": "setFootnoteInOmni clears citation/note/archive/todo but not example/report/cutter/revision/error — looks like a gap" },
+        { "file": "src/components/editor-layout/panels/omni-host.tsx", "line": 363, "note": "setReportInOmni clears NOTHING else — would be a real multi-halo bug IF slots were independent" },
+        { "file": "src/components/editor-layout/contexts/selections.tsx", "line": 119, "note": "idFor(k)=sel&&sel.kind===k?sel.id:null — every slot derived from the single store selection, so at most one is non-null" },
+        { "file": "src/components/editor-layout/contexts/selections.tsx", "line": 60, "note": "makeKindSetter: clearSelection only if cardStore.selected.kind===kind — the cross-clear calls are no-ops once the store moved to a new kind" }
+      ],
+      "reproSteps": [
+        "Read selections.tsx: confirm per-kind slots are derived, not independent useState.",
+        "Trace setFootnoteInOmni → setSelectedFootnoteId(id) (store=footnote) → setSelectedCitationId(null) (s.kind!=='citation' → no-op).",
+        "Conclude the cross-clears are inert; single-selection is store-enforced. No user-visible defect."
+      ],
+      "reproChannel": "code-trace",
+      "confidence": "high",
+      "suspectedClass": "Dead 'enforcement' code that mirrors an invariant already guaranteed at a lower layer. Sibling risk: any future addition of a NON-derived per-pane selection slot (e.g. bib/error are real useState, selections.tsx:209/internal) would NOT be cross-cleared by these setters and WOULD then produce a true multi-halo — the inert code provides false reassurance. The error slot is exactly such a non-store slot (selectedErrorId)."
+    },
+    {
+      "id": "OMNI-F3-01",
+      "subject": "omni-left",
+      "cluster": "F3",
+      "severity": "MEDIUM",
+      "symptom": "Clicking the in-text gutter marker (or anchor) of a report that is anchored to MULTIPLE paragraphs opens the report card in the omni column but fails to align it to the click — the card lands at its natural cascade position instead of next to the clicked marker, so it can scroll off-screen / appear unmoved.",
+      "suspectedRootCause": "Multi-anchor reports emit one omni item per paragraph with an `@N` suffix on the wrapper id (buildReportsOmniItems omni.tsx:83-94: omniId=`${baseId}@${pi}` when pids.length>1). But the marker-click → omni pin path keys off the UNSUFFIXED cardPopKey: routeAnchorClick builds omniKey=cardPopKey('report',id) (marker-clicks.ts:130) and alignOmniCardWithClick (EditorLayout.tsx:1126-1140) does an EXACT-match querySelector(`[data-omni-entry-wrapper=\"${cardId}\"]`) which never matches `...:abc@0`/`...:abc@1`. The pin store then holds cardId=`float:card:report:abc` while OmniViewPanel checks `pinRequest.cardId===item.id` (OmniViewPanel.tsx:547) against `float:card:report:abc@0` → false → the pin never applies. open-for-card.ts:88 correctly uses the `^=`+`@` prefix matcher, proving the suffix grammar exists — but the alignment/pin sites were never taught it, so they regress only for multi-anchor cards.",
+      "evidence": [
+        { "file": "src/panels/Reports/omni.tsx", "line": 86, "note": "omniId = `${baseId}${suffix}` with suffix=`@${pi}` when pids.length>1 — wrapper ids carry @N" },
+        { "file": "src/components/editor-layout/event-bridges/marker-clicks.ts", "line": 130, "note": "omniKey = cardPopKey(route.cardKind, id) — UNSUFFIXED; passed to alignOmniCardWithClick at :157" },
+        { "file": "src/components/EditorLayout.tsx", "line": 1126, "note": "alignOmniCardWithClick: querySelector(`[data-omni-entry-wrapper=\"${cardId}\"]`) EXACT match — misses the @N-suffixed wrapper" },
+        { "file": "src/panels/Omni/OmniViewPanel.tsx", "line": 547, "note": "isPinned = pinRequest.cardId === item.id — `...abc` !== `...abc@0`, so pin never applies to multi-anchor report" },
+        { "file": "src/components/editor-layout/event-bridges/open-for-card.ts", "line": 88, "note": "Rule-1 omni check DOES use `[data-omni-entry^=\"${omniKey}@\"]` prefix match — the suffix grammar is known here but not at the pin/align sites" }
+      ],
+      "reproSteps": [
+        "Create a Report card and anchor it to two paragraphs (so buildReportsOmniItems emits @0 and @1 wrappers).",
+        "Open the omni column on the reports' home side.",
+        "Click the report's gutter marker at one paragraph.",
+        "Observe the card opens but is NOT pinned to the click Y (alignOmniCardWithClick exact-match miss); compare with a single-anchor report which DOES align."
+      ],
+      "reproChannel": "code-trace",
+      "confidence": "high",
+      "suspectedClass": "The `@N` multi-anchor omni grammar is honored in open-for-card.ts (prefix matcher) but NOT in the two pin/align consumers (alignOmniCardWithClick EditorLayout.tsx:1126, virgil-card-jumped handler EditorLayout.tsx:1161 — both exact-match). Any omni-eligible card kind that can carry multiple paragraph anchors (notes/todos/cutter/revisions also build @N via their builders) hits the same marker-click pin miss. The card→text direction (jumpToCard reads omniWrapper.dataset.omniEntryWrapper, the live suffixed key, links.ts:599) is correct — only the text→card direction regresses."
+    },
+    {
+      "id": "OMNI-F3-02",
+      "subject": "omni-left",
+      "cluster": "F3",
+      "severity": "MEDIUM",
+      "symptom": "After a full document re-parse from a .tex that lacks the \\vcid/\\vfid stable-id markers (legacy file, external edit, or a code-view round-trip on a markerless doc), an omni footnote/citation card's selection halo, live-position resolve, and jump-to-marker can silently break — the card stops responding to clicks or jumps nowhere.",
+      "suspectedRootCause": "The editor regenerates citation/footnote ids on parse when no \\vcid{uuid}/\\vfid{uuid} stable-id marker precedes the \\cite{}/\\footnote{} (latex-parser.ts:481/509: `pendingCitationId || generateShortId()`; useCitations.syncFromEditor comment :352-356 confirms 'prev anchored ids never match new editor ids'). The omni keys EVERYTHING off the sidecar-snapshot id: the item id cardPopKey('citation',cit.id) (Citations/omni.tsx:43), the cardStore selection ({kind:'citation',id:cit.id}), and resolvePos's live map keyed cardPopKey('citation',c.id) from getBus(editor).structure (OmniViewPanel.tsx:471-488). syncFromEditor runs ONCE per editor mount (EditorPane.tsx:1177-1182 deps:[editor]) so a re-parse that does NOT remount the editor (or one whose markerless ids drift) leaves the sidecar id != the live node citationId → resolvePos misses → falls back to a stale captured pos, jumpToLink's findInlineAtomPos misses → jump no-ops, and the reconciler's inline-atom pruner exemption (entityExists⇒true) means the now-dead selection ref is never cleared. Compounds with OMNI-F7-02.",
+      "evidence": [
+        { "file": "src/hooks/useCitations.ts", "line": 352, "note": "'The editor regenerates citation ids on each parse, so prev anchored ids never match new editor ids — they must be dropped'" },
+        { "file": "src/lib/latex-parser.ts", "line": 481, "note": "citationId: pendingCitationId || generateShortId() — fresh id when no \\vcid marker present" },
+        { "file": "src/components/EditorPane.tsx", "line": 1177, "note": "syncFromEditor runs once per editor mount (deps:[editor]); a mid-session re-parse without remount can desync the sidecar id from the live node id" },
+        { "file": "src/panels/Omni/OmniViewPanel.tsx", "line": 477, "note": "resolvePos map keyed cardPopKey('citation',c.id) from the LIVE structure — will not match a stale sidecar cit.id" }
+      ],
+      "reproSteps": [
+        "Open a legacy .tex with \\cite{}/\\footnote{} but no \\vcid/\\vfid markers (or simulate a markerless external edit).",
+        "Confirm parseInlineContent assigns generateShortId() ids (latex-parser.ts:481/509).",
+        "Select/jump a citation in the omni; trigger a re-parse that re-derives node ids without remounting the editor.",
+        "LIVE STEP NEEDED: observe whether the omni card's halo persists, resolvePos still resolves, and scrollToCitation still navigates — cannot be confirmed purely by code because whether a mid-session re-parse remounts the editor (re-running syncFromEditor) depends on runtime mount/key behavior not resolvable by reading."
+      ],
+      "reproChannel": "code-trace",
+      "confidence": "low",
+      "suspectedClass": "Identity-by-regenerated-id across the whole inline-atom spine (selection, omni item id, pin key, live-pos cache, jump link.id). The stable-marker round-trip (\\vcid/\\vfid) is the mitigation; any path that produces markerless source (paste-into-code-view, external tool edit, first-load of a foreign .tex) reopens the divergence. Footnotes share the identical mechanism (latex-parser.ts:509, useFootnotes sync)."
+    },
+    {
+      "id": "OMNI-F6-01",
+      "subject": "omni-left",
+      "cluster": "F6",
+      "severity": "MEDIUM",
+      "symptom": "Morphing a Report-Request that has its AI-request flag ON into a Report (via the kind chevron, available in the omni) silently leaves a dangling 'pending' entry in ai-requests.json: the inbox still lists a request linked to a card that is no longer a request, so a draining skill mis-handles it and the user cannot clear it from the UI (a report has no AI-request toggle).",
+      "suspectedRootCause": "The lossy report-request→report morph drops aiRequest (requestToReport, morphs/index.ts:149-160; registry: 'report' declares NO aiRequest routing, card-registry.tsx:394-415, whereas 'report-request' does, :422). But the only place aiRequest is bridged into ai-requests.json is setRequestAiRequest → bridgeCardAiRequestFlag (useReports.ts:232-261). convertCard (useReports.ts:267-279) and the convertCardWithRemap chokepoint (EditorPane.tsx:863-918) NEVER call bridgeCardAiRequestFlag(...,false). So the on-disk request (status:'pending', linkedTo:{panel:'reports', cardId:X}) survives the morph even though the card's aiRequest field is now gone. The confirm dialog text (EditorPane.tsx:874-876) only mentions title/byline, not the pending AI request, so the user has no warning. ai-request-bridge only drops an entry on an explicit value=false toggle (ai-request-bridge.ts:46-48), which the morph never issues.",
+      "evidence": [
+        { "file": "src/cards/morphs/index.ts", "line": 149, "note": "requestToReport: builds a ReportCard with no aiRequest field — the flag is dropped" },
+        { "file": "src/cards/card-registry.tsx", "line": 394, "note": "'report' kind block has NO aiRequest routing; 'report-request' :422 has aiRequest:{kind:'report',linkPanel:'reports'}" },
+        { "file": "src/hooks/useReports.ts", "line": 267, "note": "convertCard mutates only the sidecar via applyCardMorph; no bridgeCardAiRequestFlag(...,false) call to drop the inbox entry" },
+        { "file": "src/lib/ai-request-bridge.ts", "line": 46, "note": "Entry is dropped ONLY on value=false; the morph never issues a toggle-off, so the pending request orphans" },
+        { "file": "src/components/EditorPane.tsx", "line": 874, "note": "Lossy-morph confirm text mentions only title/byline — silent about the orphaned AI request" }
+      ],
+      "reproSteps": [
+        "Create a Report-Request card and toggle its AI-request flag ON (writes a pending entry to ai-requests.json with linkedTo.cardId=X).",
+        "In the omni column, use the kind chevron to morph it Report-Request → Report and confirm the lossy dialog.",
+        "Inspect ai-requests.json: the pending request linked to cardId=X is still present (status:'pending').",
+        "Observe the morphed card now renders as a Report with no AI-request toggle, so the user cannot clear the stale request; a skill draining the inbox finds a 'report-request' request pointing at a 'report' card."
+      ],
+      "reproChannel": "code-trace",
+      "confidence": "high",
+      "suspectedClass": "Lossy morphs that drop an aiRequest flag without unbridging the ai-requests.json entry. Same defect at revision-comment→suggestion and cutter-comment→suggestion: 'revision-comment'/'cutter-comment' carry aiRequest routing (card-registry.tsx:322/344) and their morph targets ('suggestion') do not, while revisionCommentToSuggestion/cutterCommentToSuggestion (morphs/index.ts:51-66/93-108) drop the flag and useRevisions/useCutter.convertCard likewise never unbridge. note⇄highlight is SAFE because both kinds route to linkPanel:'notes' and noteToHighlight carries aiRequest across. The fix belongs in convertCardWithRemap (the single chokepoint), which should unbridge when the FROM kind has aiRequest routing and the TO kind does not."
+    },
+    {
+      "id": "OMNI-F6-02",
+      "subject": "omni-left",
+      "cluster": "F6",
+      "severity": "LOW",
+      "symptom": "Morphing the currently-SELECTED report card (report⇄report-request) in the omni silently drops its selection halo — the user morphs the card they just clicked and the highlight vanishes, requiring a re-click to re-select.",
+      "suspectedRootCause": "cardStore.selected holds {kind:'report', id:X}. The morph flips the on-disk kind to 'report-request' (useReports.convertCard → applyCardMorph) and remaps only the FLOAT key (convertCardWithRemap → viewPrefs.remapCardPopKey, EditorPane.tsx:915) — it does NOT remap the cardStore selection ref. The reconciler's dangling-ref pruner then runs on the changed reportCards collection: entityExists({kind:'report',id:X}) → findEntity (entity-hover.ts:70-73) finds the card by id but cardKindFromRecord(card,'reports')==='report-request' !== ref.kind('report') → returns undefined → pruner calls cardStore.clearSelection() (useAnchorHighlightReconciler.ts:155-159). So the stale selection is correctly cleared (no ghost), but nothing re-selects the card under its new kind → the halo is simply lost across the morph.",
+      "evidence": [
+        { "file": "src/components/EditorPane.tsx", "line": 915, "note": "convertCardWithRemap remaps the float popout key but never the cardStore selection ref" },
+        { "file": "src/links/_shared/entity-hover.ts", "line": 70, "note": "findEntity for report/report-request requires cardKindFromRecord match — post-morph the old-kind ref fails to resolve" },
+        { "file": "src/links/_shared/useAnchorHighlightReconciler.ts", "line": 155, "note": "pruner clears selected when entityExists is false — clears the stale report ref after morph, with no re-select to report-request" }
+      ],
+      "reproSteps": [
+        "Click a Report card in the omni to select it (cardStore.selected={kind:'report',id:X}, halo visible).",
+        "Use the kind chevron to morph Report → Report-Request and confirm.",
+        "Observe the halo disappears (pruner cleared the stale 'report'-kinded ref); the card is no longer selected even though it was the user's active card."
+      ],
+      "reproChannel": "code-trace",
+      "confidence": "high",
+      "suspectedClass": "Selection identity baked with the (mutable) card KIND. Every kind-changing morph drops selection the same way: note⇄highlight, revision/cutter comment⇄suggestion, report⇄report-request — all leave cardStore.selected pointing at the pre-morph kind, which the kind-discriminated findEntity then prunes. convertCardWithRemap (the one chokepoint) remaps the float key but not the selection ref; adding a cardStore re-select to the new kind there would fix all four pairs."
+    },
+    {
+      "id": "OMNI-F7-01",
+      "subject": "omni-left",
+      "cluster": "F7",
+      "severity": "MEDIUM",
+      "symptom": "Deleting a citation from its expanded card (in the omni or docked) removes the in-text \\cite{} from the document immediately, with no confirmation — a one-click destructive edit to the user's paper.",
+      "suspectedRootCause": "CitationCard renders a raw PanelCard (not EditableCard) and wires onTrashClick={!compressed && onDelete ? () => onDelete(cit.id) : undefined} (CitationCard.tsx:697). PanelCard's trash button calls onTrashClick directly with no confirm (panel-primitives.tsx:2046). Only EditableCard interposes tryDelete → confirm-on-content (panel-primitives.tsx:894-901, gated on hasJsonContent(value)). deleteCitation removes the \\cite atom (the link's inline-atom delete path). Unlike a footnote (FootnoteCard uses EditableCard + inlineDelete + value=fn.content, so an authored body triggers the confirm), a citation has no rich body to gate on, and the design seemingly treats it as 'no content → delete freely' — but that conflates 'no card body text' with 'safe to destroy the doc marker'. The shared cardHasContent has no 'citation' case at all (has-content.ts:50-89), so even if a confirm were wired it would mis-classify the citation as empty.",
+      "evidence": [
+        { "file": "src/panels/Citations/CitationCard.tsx", "line": 697, "note": "onTrashClick = () => onDelete(cit.id) — direct delete, raw PanelCard, no confirm" },
+        { "file": "src/components/panel-primitives.tsx", "line": 2046, "note": "PanelCard CardTrashButton calls onTrashClick directly — no built-in confirm" },
+        { "file": "src/components/panel-primitives.tsx", "line": 894, "note": "EditableCard.tryDelete is the ONLY confirm gate, and CitationCard doesn't use EditableCard" },
+        { "file": "src/cards/has-content.ts", "line": 50, "note": "cardHasContent switch has no 'citation'/'footnote'/'example'/'bib' case (lead #1) — a citation can never be classified as having content" }
+      ],
+      "reproSteps": [
+        "Open a citation card in the omni and expand it (trash only shows when !compressed).",
+        "Click the trash button.",
+        "Observe the \\cite{} disappears from the document with no 'delete?' prompt; there is no in-card undo."
+      ],
+      "reproChannel": "code-trace",
+      "confidence": "high",
+      "suspectedClass": "Destructive doc-mutating deletes that bypass the confirm because the card has no rich body and cardHasContent lacks a case for the kind (lead #1). Footnote is GUARDED only incidentally (it has a body → hasJsonContent gate). Examples have no trash on the card at all (ExampleCard PanelCard passes no onTrashClick). Bib has its own .bib-warning flow. The systemic gap: 'no body text' is treated as 'safe to delete', but inline-atom cards (citation, and a markerless footnote) destroy real .tex content. cardHasContent's missing footnote/citation/example/bib cases (has-content.ts:22-32,50-89) make a content-aware confirm impossible for these kinds even if one were added."
+    },
+    {
+      "id": "OMNI-F7-02",
+      "subject": "omni-left",
+      "cluster": "F7",
+      "severity": "LOW",
+      "symptom": "After deleting a footnote or citation whose card was selected and/or expanded in the omni, the global card store retains a dead reference to it forever — invisible at first, but if that id is ever revived (undo, re-parse reusing it) the card re-appears already-selected/already-expanded, and a stale 'selected' keyboard target lingers until the next background click.",
+      "suspectedRootCause": "The reconciler's dangling-ref pruner clears cardStore selected/hover/expanded refs for cards no longer in the collections — EXCEPT inline atoms: entityExists() short-circuits to true for footnote/citation (useAnchorHighlightReconciler.ts:84-90, isInlineAtomCardKind⇒true) on the theory 'their existence is the editor's job'. But the pruner has no editor-driven counterpart that clears these refs when the atom is actually deleted. So on deleteCitation/deleteFootnote the entry leaves the live list yet cardStore.selected (and any expandedSet membership, useAnchorHighlightReconciler.ts:163-165) keeps {kind:'footnote'|'citation', id} indefinitely. The halo doesn't paint (resolveLink finds no atom DOM → nothing to mark), so it's silent — but the store leaks and the expanded ref never collapses (collapse is unreachable once the card is gone).",
+      "evidence": [
+        { "file": "src/links/_shared/useAnchorHighlightReconciler.ts", "line": 84, "note": "entityExists: isInlineAtomCardKind(ref.kind) ⇒ return true — footnote/citation NEVER pruned" },
+        { "file": "src/links/_shared/useAnchorHighlightReconciler.ts", "line": 163, "note": "expandedSet prune loop also relies on entityExists — a deleted footnote/citation stays in expandedSet forever" },
+        { "file": "src/cards/predicates.ts", "line": 0, "note": "isInlineAtomCardKind returns true for footnote/citation — the exemption applies to both axes (selection AND expansion)" },
+        { "file": "src/components/editor-layout/panels/omni-host.tsx", "line": 213, "note": "handleBackgroundClick → cardStore.clearSelection() is the only thing that clears the stale selection ref (expanded ref still leaks)" }
+      ],
+      "reproSteps": [
+        "Select and expand a footnote/citation card in the omni (cardStore.selected + expandedSet hold its ref).",
+        "Delete that footnote/citation.",
+        "Inspect cardStore.getState(): the selected ref and expandedSet membership for the deleted id persist (entityExists exemption skips the prune).",
+        "LIVE STEP: confirm via window.__virgil store inspection that the ref is not collected; visible only if the id is later revived (undo) — the card returns pre-expanded/pre-selected."
+      ],
+      "reproChannel": "code-trace",
+      "confidence": "medium",
+      "suspectedClass": "The inline-atom prune exemption (lead #2) is the class: it was added so a transient parse-gap wouldn't drop a still-valid footnote/citation selection, but it has no positive 'this atom was truly deleted' signal to balance it, so genuine deletes leak refs across BOTH axes (selected + expandedSet). Compounds with OMNI-F3-02 (id divergence): a regenerated id makes the old ref permanently dead yet un-prunable. A footnote/citation delete handler that explicitly cardStore.clearSelection()/collapse()'s the deleted ref would close it."
+    }
+  ]
+}

@@ -1,0 +1,86 @@
+{
+  "file": "citations-g-interact",
+  "verifier": "B",
+  "verdicts": [
+    {
+      "findingId": "CI-F3-01",
+      "isReal": true,
+      "disposition": "CONFIRMED",
+      "severityFinal": "HIGH",
+      "rationale": "Verified the full asymmetry independently. getCitations() walks footnote attrs.content via walkJsonContentForCitations and pushes the nested cite with the FOOTNOTE node's pos (Editor.tsx:1318-1323), so citationPositionMap.set(c.citationId, c.pos) records a non-null pos (EditorPane.tsx:2627-2633). omni.tsx:49 then classifies anchorState='anchored' and isAnchored={pos!==null} (omni.tsx:53), so the card renders solid + jump-enabled, and CitationCard's body onClick gates jump on isAnchored (CitationCard.tsx:722). But scrollToCitation builds an inline-atom link with pos:null (Editor.tsx:1329-1338) → jumpToLink('to-marker') → resolveLink (links.ts:429-431) → findInlineAtomPos (links.ts:645-663) scans ONLY editor.state.doc.descendants matching node.type.name==='citation'; it never enters a footnote's attrs.content JSONContent literal, so it returns null → resolveLink null → jumpToLink no-ops (links.ts:512-513). The same null resolution also blocks the reconciler's collectAnchorEls from painting any in-text highlight (useAnchorHighlightReconciler.ts:193-208). So both scroll AND highlight are dead for an in-footnote citation that the UI advertises as live. Citations inside footnotes are common in academic writing; HIGH (core jump function silently broken on a realistic path, no error surfaced).",
+      "correctedRootCause": "Descendants-only traversal in findInlineAtomPos (links.ts:652) cannot reach atoms living inside a footnote's attrs.content JSONContent literal; the panel-side enumerators (getCitations/getCitationIds/getCitationOrder, Editor.tsx:1318/1365/1381) DO walk that literal and attribute the footnote's pos, creating a render-vs-resolve contract mismatch. The delete path was special-cased for exactly this (stripFootnoteNestedCitation, Editor.tsx:1415-1422) but jump/highlight/hover were not.",
+      "class": "resolveLink + findInlineAtomPos + reconciler collectAnchorEls all share the descendants-only blind spot for nested inline atoms. Any footnote-nested citation jump/hover/select highlight is affected; a footnote-nested footnote (if reachable) would be the mirror. Bibliography 'jump to first citation' (cited-only) routes through the same resolveLink and likely inherits it.",
+      "confidence": "high"
+    },
+    {
+      "findingId": "CI-F2-01",
+      "isReal": true,
+      "disposition": "RECLASSIFIED",
+      "severityFinal": "LOW",
+      "rationale": "The dual-source mechanism is real: body onClick runs ac.onActivate() (cardStore.select+expand, monotonic — never deselects, useAnchoredCard.ts:66-69) then onSelect(), where the panel wires onSelect={() => onSelect(selected ? null : cit.id)} (CitationsPanel.tsx:332-335), a TOGGLE on React selectedId; isHaloed=ac.selected||isSelected (CitationCard.tsx:257) keeps the halo lit from the store while selectedId flips to null, and the cycleIdx effect resets to null when selectedId is falsy (CitationsPanel.tsx:162-166). HOWEVER the finder missed that for ANCHORED citations the SAME body onClick then calls onJump (CitationCard.tsx:722-728), and onJump→jumpToCitation calls onSelect(cit.id) (CitationsPanel.tsx:135-138), re-setting selectedId back to cit.id in the same batched event. So selectedId ends at cit.id and cycleIdx stays correct — NO desync for the common anchored case. The desync only occurs for UNANCHORED citations (draft/dashed), where the isAnchored guard skips onJump, leaving selectedId=null with the halo lit. Consequence is a minor recoverable keyboard-nav annoyance (next ArrowDown starts from index 0) on a narrow card class. Downgraded MEDIUM→LOW.",
+      "correctedRootCause": "Two selection sources of truth (cardStore.selected, monotonic; React selectedId, toggled). The desync surfaces only when onJump does NOT re-assert selectedId — i.e. unanchored citations (CitationCard.tsx:722 isAnchored guard short-circuits the corrective onSelect(cit.id) inside jumpToCitation, CitationsPanel.tsx:136-138).",
+      "class": "Any card whose body onClick pairs a monotonic store select (ac.onActivate) with a TOGGLE-style React onSelect AND skips the jump (unanchored/orphan rows) has this. FootnotePanel uses the same renderCard onSelect-toggle pattern — but only its orphan/unanchored footnotes (jump disabled) would show it.",
+      "confidence": "high"
+    },
+    {
+      "findingId": "CI-F2-02",
+      "isReal": true,
+      "disposition": "RECLASSIFIED",
+      "severityFinal": "LOW",
+      "rationale": "The pruner exemption is real: entityExists returns true unconditionally for isInlineAtomCardKind (useAnchorHighlightReconciler.ts:84-89), so the prune effect's clearSelection/setHover(null)/collapse branches (lines 157-165) are dead for citations, and latex-parser.ts:481/509 mints a fresh id (generateShortId, no \\vcid marker) on a raw-edit round-trip. BUT the finder overstates the impact. When the citation atom is gone (deleted) or its id changed, the reconciler's collectAnchorEls→resolveLink→findInlineAtomPos returns null for the stale ref (links.ts:429-431), so NO editor-body halo is painted; and the panel card with that data-card-key is also gone, so the panel paint matches nothing (useAnchorHighlightReconciler.ts:266-271). The result is a benign dangling ref in cardStore.selected that paints nothing and is replaced the next time any card is selected — not a visible 'stale ghost halo.' The 'paint the wrong card' tail requires a 4-char-hex id collision (generateShortId is Math.random().slice(2,6), 16^4 space, and latex-parser passes no `existing` set) AND the stale ref matching the reused id — a compound low-probability event. No data corruption. Downgraded MEDIUM→LOW.",
+      "correctedRootCause": "Inline-atom cards have no liveness signal feeding the pruner (entityExists hard-codes true, useAnchorHighlightReconciler.ts:88), so cardStore refs to a deleted/renamed citation/footnote never self-clear. The reason it is nonetheless near-harmless is resolveLink's own null-guard for a missing atom (links.ts:431), which keeps the stale ref from painting; the only residual exposure is the small generateShortId id space (uuid.ts:24).",
+      "class": "Footnotes share the identical isInlineAtomCardKind pruner exemption — same benign dangling ref. The broader latent risk is the 4-char generateShortId collision space used for atom ids minted without an `existing` set (latex-parser.ts:481/509).",
+      "confidence": "high"
+    },
+    {
+      "findingId": "CI-F2-03",
+      "isReal": false,
+      "disposition": "REFUTED",
+      "severityFinal": "COSMETIC",
+      "rationale": "By design and acknowledged by the finder itself ('this is by design (N1) ... not a regression'). The reconciler docstring (useAnchorHighlightReconciler.ts:26-27, 217-219) and the anchored-card-store contract (anchored-card-store.ts:15-27) explicitly define selection ⟂ expansion: the halo/in-text highlight paints from the SELECTION slot only (line 220), expansion is sticky/multi and intentionally drives NO text/margin highlight. useAnchoredCard.onToggleExpanded is correctly axis-pure (useAnchoredCard.ts:71-74). 'Expanded card shows no in-text marker' is the ratified A6 follow-up, not a defect — there is no code-vs-intent divergence. Not a bug.",
+      "correctedRootCause": null,
+      "class": "Cross-subject by-design item (kind-agnostic reconciler); affects every anchored kind identically and is a documented design choice, not a citation defect.",
+      "confidence": "high"
+    },
+    {
+      "findingId": "CI-F7-01",
+      "isReal": true,
+      "disposition": "CONFIRMED",
+      "severityFinal": "MEDIUM",
+      "rationale": "Verified: CitationCard imports PanelCard (CitationCard.tsx:18-23), NOT EditableCard, and wires onTrashClick={!compressed && onDelete ? () => onDelete(cit.id) : undefined} (CitationCard.tsx:697) — PanelCard renders CardTrashButton with that onClick verbatim (panel-primitives.tsx:2046), so there is NO confirm gate at all. (Minor correction to the finding's secondary claim: EditableCard.tryDelete gates on hasJsonContent(value) directly, panel-primitives.tsx:891/894, NOT cardHasContent — but cardHasContent's CardContentKind union does indeed omit citation, has-content.ts:22-32, so even the gutter-marker path could not classify a citation; immaterial since citations have markerType null and never use EditableCard.) The delete is compound-destructive of in-text content: deleteCitation→deleteLink strips the \\cite atom plus stripFootnoteNestedCitation the nested one (Editor.tsx:1403-1422). One stray trash click silently removes a real in-text reference with no warning. MEDIUM (rubric: 'confirm skipped'; recoverable via editor undo, deliberate click).",
+      "correctedRootCause": "CitationCard bypasses the shared EditableCard confirm flow entirely (uses PanelCard directly); compounded by has-content.ts having no citation case so no shared predicate could classify it even if wired. Atom/derived kinds (footnote/citation/example/bib) are excluded from CardContentKind.",
+      "class": "Brief lead #1. cardHasContent omits footnote/citation/example/bib. Examples (ExampleCard) and any other atom/derived card using PanelCard-direct trash share the missing confirm. Footnotes route through EditableCard, so they DO get a confirm via hasJsonContent(value) — the gap is specifically the cards that bypass EditableCard.",
+      "confidence": "high"
+    },
+    {
+      "findingId": "CI-F7-02",
+      "isReal": true,
+      "disposition": "CONFIRMED",
+      "severityFinal": "MEDIUM",
+      "rationale": "Verified end-to-end including the serialize/parse round-trip the finder didn't trace. setRowPostnote promotes type→type+'s' when biblatex && HAS_PLURAL.has(type) && next.length>=2 && distinctPostnotes (CitationCard.tsx:376-386); removeRow (392-402) and setRowKey (361-368) never demote; persist uses nextType=overrides.type ?? type (CitationCard.tsx:312). Critically, serializeCiteCommand's single-entry biblatex branch returns `\\${cmdBase}...{key}` where cmdBase derives from the (stuck) type (bib-parser.ts:321,336-339) — so a stuck 'cites' yields the malformed `\\cites{onekey}`, NOT a demoted `\\cite{onekey}`. parseBiblatexCommand round-trips type=cmdName='cites' (bib-parser.ts:276) with no normalization, so the useEffect re-syncs type='cites' on reload (CitationCard.tsx:292-300) — the stuck-plural state survives serialize AND reload. Wrong serialized command in a realistic biblatex multi-key→single-key edit; recoverable by re-typing. MEDIUM matches the rubric's own 'stale plural command' example.",
+      "correctedRootCause": "One-directional auto-promote in setRowPostnote (CitationCard.tsx:383) with no inverse on row reduction, AND serializeCiteCommand has no plural→singular normalization for a single entry (it honors whatever `type` carries, bib-parser.ts:337-339), so the stuck type both serializes and parses back as plural.",
+      "class": "Brief lead #4. Every HAS_PLURAL command (cite/textcite/parencite/autocite/footcite/smartcite, CitationCard.tsx:73-80) strands plural after row reduction. The deeper class: any state promotion with no symmetric demotion + a serializer that trusts the type string verbatim.",
+      "confidence": "high"
+    },
+    {
+      "findingId": "CI-F7-03",
+      "isReal": true,
+      "disposition": "CONFIRMED",
+      "severityFinal": "LOW",
+      "rationale": "Verified: removeRow on a single row resets to [{id,key:''}] (CitationCard.tsx:392-397), persist sees validRows.length===0 and emits onUpdateCitation(cit.id,'') which only sets command='' (CitationCard.tsx:316-321), and the empty \\cite{} renders as the dotted [cite] placeholder pill via isEmptyCiteCommand (citation.ts:236-242). The card and in-doc atom remain as a visible empty placeholder; the user must separately trash it. This is the intended 'pristine draft' shape reached by an awkward path; recoverable. LOW is correct, as the finder rated.",
+      "correctedRootCause": "No transition from 'cleared all keys' to deleting the citation; the empty-command state is the same pristine-draft sentinel addCitation produces (useCitations.ts), just reached by subtraction with no cleanup affordance.",
+      "class": "Same shape as a footnote whose body is fully deleted but the marker stays — atom-bearing cards leave a dangling empty marker when their content is emptied rather than the card being removed.",
+      "confidence": "high"
+    },
+    {
+      "findingId": "CI-F7-04",
+      "isReal": false,
+      "disposition": "REFUTED",
+      "severityFinal": "LOW",
+      "rationale": "The finder's own confidence was medium with the caveat 'could not find a panel/omni caller'; tracing the actual caller refutes the data-loss. cloneCitation (useCitations.ts:227-242) is registered ONLY in cardLifecycleRegistry under kind 'citation' (EditorPane.tsx:2033-2036), and the SOLE production caller is duplicateSlice via the drag-handle block-duplicate dispatcher (drag-handle-actions.ts:459). duplicateSlice, for every citation atom node it walks, calls lifecycle.get('citation').clone(oldId) AND writes the returned cloned id onto a freshly created in-doc atom: newAttrs[atom.idAttr]=cloned (duplicate-slice.ts:194-207) then node.type.create(newAttrs,...) (line 224); the dispatcher inserts that slice with tr.replace(outer.to, outer.to, cloned) and dispatches it (drag-handle-actions.ts:460). So the cloned citation entry is ALWAYS paired with a real new \\cite atom in the document. On the next syncFromEditor, getCitations() finds that atom carrying the cloned id, so refs includes it (useCitations.ts:357-371) — it is NOT garbage-collected. There is no path that adds a cloned citation sidecar entry WITHOUT inserting a matching atom, so the 'silent loss on reload' the finding describes cannot occur on any human path. isUnanchored returning false for a clone (links.ts:1093-1100) is moot because the clone is editor-anchored. Not real; the residual is at most a LOW note about cloneCitation being unsafe IF ever called standalone (no such caller exists).",
+      "correctedRootCause": "No defect on any reachable path. cloneCitation is never invoked except by duplicateSlice, which co-mints the in-doc atom (duplicate-slice.ts:206,224), guaranteeing the cloned sidecar id is editor-anchored before any sync runs.",
+      "class": "Hypothetical only: a FUTURE add path that writes a citation sidecar entry without inserting an atom and without unanchored:true would be GC'd by syncFromEditor. No such path exists today (verified the AI-request/import paths do not clone citations into the sidecar bare).",
+      "confidence": "high"
+    }
+  ]
+}

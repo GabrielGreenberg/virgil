@@ -1,0 +1,66 @@
+{
+  "file": "reports-g-display",
+  "verifier": "B",
+  "verdicts": [
+    {
+      "findingId": "REP-F4-01",
+      "isReal": true,
+      "disposition": "CONFIRMED",
+      "severityFinal": "MEDIUM",
+      "rationale": "Traced end-to-end. reports-host.tsx (no import of useCitationDisplayContext; props at :50-64 omit getCitationDisplayText/onCitationCreated) is the ONLY left-side card host that skips the wiring — archive/footnotes/citations/omni/notes/search hosts all consume it (grep confirmed; notes-host.tsx:39,94-95 is the canonical reference). ReportCard.tsx:124 and ReportRequestCard.tsx:130 forward the props but receive undefined. RichTextField.refreshCitationDisplay short-circuits `if (!lookup) return doc` (RichTextField.tsx:206), so a persisted citation node with displayText='' renders the bare \\cite command. The drop path (RichTextField.tsx:283-284) falls back to `command` and skips onCitationCreated when the ref is undefined, so a freshly-dropped citation in a report body never registers in the Citations panel. omni.tsx:42 renderCard repeats the omission. User-visible functional gap; NOT data-loss (the \\cite command text is preserved in the doc, just unformatted).",
+      "correctedRootCause": "reports-host.tsx is the single host that never threads the CitationDisplayProvider values; RichTextField.tsx:206 (display refresh no-ops) and :283-284 (drop falls back to raw command, skips registration) are the downstream failure sites. ReportsPanel.tsx (:21-49) also lacks the props in its signature, so even adding them in the host would require a panel-prop addition.",
+      "class": "Any RichTextField-bearing panel host (or float-body builder) that forgets to thread getCitationDisplayText/onCitationCreated from CitationDisplayProvider. Reports docked + omni are the confirmed instances; future card panels and float builders are the suspected siblings.",
+      "confidence": "high"
+    },
+    {
+      "findingId": "REP-F5-01",
+      "isReal": true,
+      "disposition": "RECLASSIFIED",
+      "severityFinal": "MEDIUM",
+      "rationale": "Mechanism confirmed: requestToReport (morphs/index.ts:149-161) flips kind→report and omits aiRequest; useReports.convertCard (:267-279) only calls applyCardMorph and never bridges; ai-request-bridge.ts:132-134 shows the ONLY removal path is a value=false call. The new card is a `report`, whose registry entry (card-registry.tsx:394-415) declares no aiRequest routing and whose ReportCard renders no AiRequestCheckbox (footer is AuthorByline only, ReportCard.tsx:118) — so the pending ai-requests.json entry is stranded and unclearable via the report card. The confirm message (EditorPane.tsx:874-876) is genuinely WRONG for the request→report direction: it says 'drops the title and byline (a Report can't hold them)' but a Report CAN hold title/byline — the real loss in that direction is the aiRequest flag, which the message never names. DOWNGRADE from DATA-LOSS: no user CONTENT is lost (body + text anchor carry across via normalizeRichContent; the lost item is a boolean intent flag), and the orphan is recoverable — answer-report-request.md:57 has create_card.py 'clear the source flag', and morphing back re-exposes the checkbox. Per the rubric, DATA-LOSS is reserved for silent loss/corruption of user content; this is a stale-inbox-entry + misleading-dialog misbehavior in a realistic case = MEDIUM.",
+      "correctedRootCause": "Two distinct defects bundled: (1) convertCard (useReports.ts:267) performs no aiRequest bridge cleanup on the lossy report-request→report flip → orphaned ai-requests.json entry; (2) the morph confirm copy (EditorPane.tsx:875) is direction-blind — both report↔report-request directions share one `preservesBody` string that is factually inverted for request→report and silent about the flag in both directions.",
+      "class": "Lossy morphs that change aiRequest routing/presence without bridging the flag off. Verified-adjacent: note↔highlight (morphs/index.ts:183 PRESERVES aiRequest, but note routes {kind:'note'} and highlight routes {kind:'highlight'} per card-registry.tsx:184,206 — so the on-disk inbox entry's `kind` token goes STALE across that morph even though the flag value survives). Check every morph pair where the two kinds' CARD_REGISTRY.aiRequest.kind differs.",
+      "confidence": "high"
+    },
+    {
+      "findingId": "REP-F5-02",
+      "isReal": true,
+      "disposition": "RECLASSIFIED",
+      "severityFinal": "LOW",
+      "rationale": "Confirmed: reports-host.tsx never imports/consumes useAiRequestsContext and passes no aiRequests/onUpdateAiRequestText/onDeleteAiRequest; ReportsPanel.tsx:21-49 omits them from its signature; CardListPanel.tsx:96-98 renders the AI-requests section only when `aiRequests && aiRequests.length > 0`. FootnotePanel.tsx:69 (filter r.kind==='footnote') + footnotes-host.tsx:30,48 are the wired reference; notes/citations hosts likewise. DOWNGRADE from MEDIUM: the common path is served — a live ReportRequestCard renders its own AiRequestCheckbox (ReportRequestCard.tsx:116-121) wired to setRequestAiRequest→bridge, so a user can both set and clear the flag on the live request. The missing panel section only bites the narrow orphan/virtual cases (a kind:report request whose card was morphed away per REP-F5-01, or deleted, or a skill-filed virtual:reports request per answer-report-request.md:27). Real inconsistency vs sibling panels, but not a core-function break on a path a typical user hits → LOW.",
+      "correctedRootCause": "reports-host.tsx lacks the useAiRequestsContext wiring AND ReportsPanel.tsx has no aiRequests prop/filter; the visibility gap is real only for inbox entries with no live report-request card to render their checkbox.",
+      "class": "Polymorphic-request panels whose docked host omits the inbox section. Cutter and Revisions hosts host suggestion-kind requests — cutter-host.tsx:77 only pulls addAiRequest (not the read/update/delete trio), so worth checking those hosts for the same omission.",
+      "confidence": "high"
+    },
+    {
+      "findingId": "REP-F5-03",
+      "isReal": true,
+      "disposition": "CONFIRMED",
+      "severityFinal": "MEDIUM",
+      "rationale": "Confirmed: migrateReportRecord (useReports.ts:57-59) nulls any title where isAutoTitle('report', title) is true. isAutoTitle (panel-registry.ts:254-258) tests `^Report \\\\d+$` and cannot distinguish a user-typed 'Report 2' from the legacy generated title. auto-title.test.ts:146 codifies migrateTitle('report','Report 2')==='' as INTENDED, confirming the loss is by design. This is silent loss of user-typed content (a title) with no warning or recovery beyond retyping. Held at MEDIUM rather than DATA-LOSS: the collision is narrow (title must match the exact `<Label> N` shape), the lost content is a short label not body prose, and it is trivially recoverable by retyping — but it IS a genuine silent strip of user input, so not lower than MEDIUM.",
+      "correctedRootCause": "isAutoTitle (panel-registry.ts:254-258) is an ambiguous heuristic — a generated-title pattern is indistinguishable from a legitimate user title of the same shape; the migrator (useReports.ts:57) applies it destructively on every load with no provenance flag (e.g. an 'authored' marker) to disambiguate.",
+      "class": "Every auto-titling kind shares the strip-on-load + same-shape false positive: note ('Note N'), archive ('Archive Text N'), todo ('Task N' in BODY), example ('Example N'). auto-title.test.ts:142-150 codifies all of them — so this is a class-wide hazard, not report-specific.",
+      "confidence": "high"
+    },
+    {
+      "findingId": "REP-F1-01",
+      "isReal": true,
+      "disposition": "CONFIRMED",
+      "severityFinal": "COSMETIC",
+      "rationale": "Confirmed: ReportCard.tsx:79 and ReportRequestCard.tsx:78 build compressedSummary as `makeCompressedSummary(...) || ''` → empty body yields '' (a string). panel-primitives.tsx:1074 renders `compressedSummary ?? <CardEmptyText/>`; since '' is not null/undefined, the nullish fallback never fires and a blank line renders. CutterCommentCard.tsx:91 uses `|| undefined`, which DOES fall through to the placeholder — proving the intended behavior and the report divergence. Purely visual (blank row vs muted 'empty'); no functional or data impact. COSMETIC stands.",
+      "correctedRootCause": "Inconsistent empty-sentinel between cards: '' (falsy but not nullish) vs undefined feeding a `?? <CardEmptyText/>` fallback. The fix belongs either at the call sites (`|| undefined`) or at panel-primitives.tsx:1074 (treat empty-string as empty).",
+      "class": "Cards passing `makeCompressedSummary(...) || ''`: NoteCard, ArchiveCard, FootnoteCard (both anchored and orphan summaries), RevisionCommentCard all share the blank-instead-of-placeholder behavior per the finder; only CutterCommentCard.tsx:91 surfaces the placeholder. Verified the CutterCommentCard divergence directly.",
+      "confidence": "high"
+    },
+    {
+      "findingId": "REP-F5-04",
+      "isReal": true,
+      "disposition": "CONFIRMED",
+      "severityFinal": "LOW",
+      "rationale": "Confirmed: CardBodyTitle (panel-primitives.tsx:546-552) renders an uncontrolled `<input defaultValue={value ?? ''}>`; its only sync effect (panel-primitives.tsx:535-540) keys on `[editing]`, never `[value]`. So an external bodyTitle write (a skill rewriting reports.json, or another open surface) does not propagate into the visible expanded input. The collapsed static title row (panel-primitives.tsx:1040-1046) reads the reactive bodyTitle prop and updates, so collapsed vs expanded can disagree. Real but narrow — requires a concurrent external title write while the card stays expanded; the value re-appears on remount/collapse. LOW stands.",
+      "correctedRootCause": "Uncontrolled-input pattern in CardBodyTitle (panel-primitives.tsx:552) with a sync effect gated on editing-state only (:535); no key-on-value remount and no controlled value, so external prop changes can't reach the DOM input while mounted.",
+      "class": "Shared CardBodyTitle is used by every bodyTitle-bearing card (footnote/note/archive/example/report) — all desync the expanded title input on an external/cross-surface title write. Single shared root, so one fix covers the class.",
+      "confidence": "medium"
+    }
+  ]
+}

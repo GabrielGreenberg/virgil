@@ -1,0 +1,188 @@
+{
+  "subject": "bibliography",
+  "group": "G-interact",
+  "clusters": ["F2", "F3", "F6", "F7"],
+  "cells": [
+    {
+      "cluster": "F2",
+      "status": "BUG",
+      "note": "Bibliography has a SINGLE combined axis: selection == expansion (BibEntryCard compressed = !isSelected && !isPoppedOut, BibEntryCard.tsx:449), tracked by a plain `selectedBibKey` string in SelectionsContext (NOT the anchored-card-store), so the cardStore axis-purity/reconciler-pruner machinery does not apply (reconciler never paints bib). Single-halo + toggle-on-reclick is sound (BibliographyPanel.tsx:946-949). DEFECT: selection is never re-pointed when the entry's citekey is renamed in-place — editing the BibTeX `key` field and Save (BibEntryCard.tsx:185-192 → onUpdateBibKeyAndType) changes the entry to newKey but `selectedBibKey` still holds oldKey, so the just-edited card loses its halo and selectedIdx falls to -1 (BibliographyPanel.tsx:294-297). Multi-card-expand subcell N-A (no independent expansion axis).",
+      "bugIds": ["BIB-F2-01"]
+    },
+    {
+      "cluster": "F3",
+      "status": "BUG",
+      "note": "card→text 'jump to citation' (cited-only gate, BibliographyPanel.tsx:950) silently no-ops when the entry is cited ONLY inside a footnote body: getCitations() walks footnote attrs.content and attributes the footnote's pos to the nested cite (Editor.tsx:1318-1323), so keyToCitationIds()/citedKeys mark the entry cited and render the jump arrow live, but scrollToCitation→jumpToLink('to-marker')→resolveLink→findInlineAtomPos scans only editor.state.doc.descendants (links.ts:430-450,645-663), which never descends into footnote JSON-literal content → returns null → no scroll. Same descend-asymmetry CI-F3-01 flagged for citations; confirmed for bibliography. Live in-doc resolution means NO stale-position class (unlike Search). text→card subcell is N-A: a bib card is keyed by citekey (float:card:bib:<key>), not by an in-text atom; an in-text citation atom click routes to the Citations panel (kind:'citation', useTextHoverBridge.ts:110-114), never selects the bib entry — by design. Gutter-marker subcell N-A (bib markerType null).",
+      "bugIds": ["BIB-F3-01", "BIB-F3-02"]
+    },
+    {
+      "cluster": "F6",
+      "status": "N-A",
+      "note": "bib kind declares morph:null in CARD_REGISTRY (canMorph('bib')===false, predicates.ts:88) and is not registered in cards/morphs/index.ts; no convert affordance on BibEntryCard. The card is unanchored, derived from .bib, omniEligible:false (panel-registry.ts:83). Morph is genuinely inapplicable."
+    },
+    {
+      "cluster": "F7",
+      "status": "BUG",
+      "note": "No in-panel delete/clone/drag-reanchor for the bib CARD kind itself: bib entries are .bib-derived, deletion happens externally; the only removable item is a pending entry-request (onRemoveEntryRequest, BibliographyPanel.tsx:853). cardHasContent has no 'bib' case (has-content.ts:22-32) but bib is never gutter-deletable (markerType null, not in MarginItemKind) so delete-confirm is moot — N-A for the lead-#1 class here. DEFECTS on the lifecycle paths that DO exist: (1) Export cited.bib drops any cited entry whose `raw` is empty via `.filter(Boolean)` (BibliographyPanel.tsx:363) instead of reconstructing from fields like serializeBibFile does (bib-parser.ts:128-140) → a same-session entry added via 'Save under new citekey' (raw:'' set deliberately, line 524) or 'Add from library' is SILENTLY OMITTED from the export. (2) Export's seen-set dedup (line 350-355) silently drops the 2nd of two genuinely-distinct .bib entries that share a citekey (export-side instance of the lead-#5 display dedup). (3) Drag bib→editor builds a hardcoded `\\cite{key}` ignoring bibPackage (BibEntryCard.tsx:202-219) — the bibPackage prop is threaded + in deps but never used. (4) citekey rename uses a word-boundary regex that fails to update the in-text command for keys with a leading/trailing non-word char, desyncing keys[] vs command (useCitations.ts:304-308).",
+      "bugIds": ["BIB-F7-01", "BIB-F7-02", "BIB-F7-03", "BIB-F7-04"]
+    }
+  ],
+  "findings": [
+    {
+      "id": "BIB-F3-01",
+      "subject": "bibliography",
+      "cluster": "F3",
+      "severity": "HIGH",
+      "symptom": "Clicking the jump-to-citation target on a bibliography entry that is cited only inside a footnote does nothing — the editor never scrolls — even though the entry renders as cited with a live jump arrow.",
+      "suspectedRootCause": "Two doc-traversal strategies disagree about whether an in-footnote citation is reachable. getCitations() explicitly walks a footnote's attrs.content (a JSONContent literal PM's descendants() won't enter) via walkJsonContentForCitations and attributes the footnote's own pos to the nested citation, so the citation id flows into allEditorCitations and keyToCitationIds(), the entry's key lands in citedKeys, isCited=true, and onJump is wired (live arrow). But the jump path — handleJumpToBibKey → onScrollToCitation(targetId) → editorRef.scrollToCitation(citationId) → jumpToLink('to-marker') → resolveLink(inline-atom) → findInlineAtomPos — resolves ONLY against editor.state.doc.descendants, which stops at the footnote atom and never sees the citation node inside it. findInlineAtomPos returns null → resolveLink returns null → jumpToLink finds no domEl → no scroll. The cited/jumpable UI is a promise the resolver can't keep.",
+      "evidence": [
+        { "file": "src/components/Editor.tsx", "line": 1318, "note": "getCitations walks footnote attrs.content via walkJsonContentForCitations, pushing nested cites with the FOOTNOTE's pos" },
+        { "file": "src/panels/Bibliography/BibliographyPanel.tsx", "line": 154, "note": "keyToCitationIds builds citekey→citationIds from allEditorCitations, which includes in-footnote cites" },
+        { "file": "src/panels/Bibliography/BibliographyPanel.tsx", "line": 211, "note": "citedKeys collects every cited key from `citations` (which mirror allEditorCitations) → in-footnote-only key is marked cited" },
+        { "file": "src/panels/Bibliography/BibliographyPanel.tsx", "line": 950, "note": "onJump wired only when isCited — so the in-footnote-only entry shows a live jump arrow" },
+        { "file": "src/panels/Bibliography/BibliographyPanel.tsx", "line": 198, "note": "handleJumpToBibKey resolves targetId then calls onScrollToCitation(targetId, sourceEl)" },
+        { "file": "src/components/Editor.tsx", "line": 1329, "note": "scrollToCitation builds an inline-atom VirgilLink and calls jumpToLink(...,'to-marker')" },
+        { "file": "src/links/links.ts", "line": 645, "note": "findInlineAtomPos uses editor.state.doc.descendants only — does NOT recurse into footnote attrs.content, so a nested citation is never located → returns null" }
+      ],
+      "reproSteps": [
+        "Open a paper where some citekey is cited ONLY inside a \\footnote{...\\cite{key}...} and nowhere in the main flow.",
+        "Open the Bibliography panel (Cited entries only); the entry for that key appears with a live jump (target) arrow.",
+        "Click the jump arrow (or select the card and click jump).",
+        "Editor does not scroll to any marker — handleJumpToBibKey → scrollToCitation → resolveLink returned null. No navigation occurs."
+      ],
+      "reproChannel": "code-trace",
+      "confidence": "high",
+      "suspectedClass": "Identical descendants-only blind spot to citations CI-F3-01 (same shared resolver). The delete path was special-cased for nested cites (Editor.tsx ~1422 stripFootnoteNestedCitation) but jump/hover/highlight were not: resolveLink + findInlineAtomPos + the reconciler's collectAnchorEls all share it, so the bib panel's selection-driven citation-highlight (EditorLayout.tsx:1899-1916) also can't paint a marker that lives inside a footnote, and the occurrence-cycling jump (cycleOccurrence) inherits the same no-op when the cycled occurrence is in a footnote."
+    },
+    {
+      "id": "BIB-F3-02",
+      "subject": "bibliography",
+      "cluster": "F3",
+      "severity": "MEDIUM",
+      "symptom": "The occurrence counter on a multiply-cited bib entry can read past its total (e.g. shows '3/2'), and the prev/next occurrence arrows + jump target lag a stale index after a citation of that key is deleted or added elsewhere.",
+      "suspectedRootCause": "keyOccurrenceIdx is a per-citekey index into the (live) citation-id list, but it is never reconciled when allEditorCitations changes. cycleOccurrence clamps via modulo on the NEXT cycle, but the rendered counter reads the raw stored idx unclamped (current: idx, passed straight to occurrenceInfo.current) and the displayed total is the fresh ids.length, so after the doc loses an occurrence the counter can show current+1 > total until the user cycles again. The jump (handleJumpToBibKey) is protected by `ids[idx] || ids[0]`, so it lands SOMEWHERE valid, but on a stale idx it lands on ids[0] rather than the occurrence the counter claims to be showing — a quiet target mismatch.",
+      "evidence": [
+        { "file": "src/panels/Bibliography/BibliographyPanel.tsx", "line": 909, "note": "renderCard reads idx = keyOccurrenceIdx[entry.key] || 0 — no clamp against ids.length" },
+        { "file": "src/panels/Bibliography/BibliographyPanel.tsx", "line": 969, "note": "occurrenceInfo passes { total: ids.length, current: idx } — current is the unclamped stored idx, total is fresh → counter can read current+1 > total" },
+        { "file": "src/components/BibEntryCard.tsx", "line": 561, "note": "counter renders {occurrenceInfo.current + 1}/{occurrenceInfo.total} verbatim → '3/2' when idx is stale" },
+        { "file": "src/panels/Bibliography/BibliographyPanel.tsx", "line": 165, "note": "cycleOccurrence reclamps via (cur+delta+len)%len only on the next user cycle; no effect resets keyOccurrenceIdx when allEditorCitations changes" },
+        { "file": "src/panels/Bibliography/BibliographyPanel.tsx", "line": 198, "note": "handleJumpToBibKey uses ids[idx] || ids[0] so a stale idx silently jumps to ids[0], not the occurrence the counter shows" }
+      ],
+      "reproSteps": [
+        "Cite the same key 3 times; select its bib card; cycle the occurrence counter to 3/3.",
+        "Delete one of those \\cite occurrences in the editor so the key now has 2 occurrences.",
+        "Re-open / re-render the bib card without cycling: counter reads '3/2'.",
+        "Click jump: it scrolls to the first occurrence (ids[0]) rather than the one the counter implies."
+      ],
+      "reproChannel": "code-trace",
+      "confidence": "medium",
+      "suspectedClass": "Any per-id index stored in component state and keyed by a value (citekey) whose underlying id-list is regenerated on parse will drift unless reconciled on the list-change. The Citations panel's own occurrence cycling (keyOccurrenceIdx analogue / cyclePrev-cycleNext) is the sibling to audit; same regenerate-ids-on-parse hazard as lead #3."
+    },
+    {
+      "id": "BIB-F7-01",
+      "subject": "bibliography",
+      "cluster": "F7",
+      "severity": "DATA-LOSS",
+      "symptom": "Exporting cited.bib silently omits any cited entry that was added during the current session (e.g. via 'Save under new citekey' or 'Add from library') — the downloaded file is missing references the user can see in the panel.",
+      "suspectedRootCause": "handleExportCited builds the file as `cited.map(e => e.raw).filter(Boolean).join('\\n\\n')`. Entries assembled in-memory carry `raw: ''` — most starkly handleConflictNewCitekey deliberately sets `raw: ''` so the serializer rebuilds the block from fields, and addBibEntry pushes the entry verbatim without ever back-filling its per-entry `.raw` (it only re-serializes the whole-file bibRaw). On reload parseBibFile assigns raw from disk, but within the same session the entry's `.raw` stays '' and `.filter(Boolean)` drops it entirely. The whole-file write path is safe (serializeBibFile reconstructs from fields when raw is empty), so the bug is unique to the export path's use of raw-only.",
+      "evidence": [
+        { "file": "src/panels/Bibliography/BibliographyPanel.tsx", "line": 363, "note": "content = cited.map((e) => e.raw).filter(Boolean).join('\\n\\n') — an empty-raw entry is dropped silently" },
+        { "file": "src/panels/Bibliography/BibliographyPanel.tsx", "line": 524, "note": "handleConflictNewCitekey adds entry with raw:'' on purpose (so serializer rebuilds with the new citekey)" },
+        { "file": "src/hooks/useCitations.ts", "line": 317, "note": "addBibEntry pushes the entry as-is (raw stays whatever was passed, e.g. '') and only re-serializes the whole-file bibRaw, never the per-entry raw" },
+        { "file": "src/lib/bib-parser.ts", "line": 128, "note": "serializeBibFile reconstructs from fields when e.raw is empty — the CORRECT fallback that the export path fails to use" }
+      ],
+      "reproSteps": [
+        "Connect a library; in the bib panel add a library entry whose citekey clashes locally and choose 'Save under new citekey' (entry stored with raw:'').",
+        "Cite that new key once in the editor so it's 'cited'.",
+        "Without reloading the doc, open the panel menu → Export cited.bib.",
+        "Open the downloaded cited.bib: the newly-added entry is missing (its empty raw was filtered out)."
+      ],
+      "reproChannel": "code-trace",
+      "confidence": "high",
+      "suspectedClass": "Any consumer that reads entry.raw directly instead of routing through serializeBibFile/reconstructBibtex inherits the empty-raw blind spot. Audit every BibEntry.raw read (formatBibEntryForNote uses fields, OK; handleConflictRequestMerge falls back to formatBibEntryForNote, OK; but any future 'copy bibtex' or 'export all' that uses .raw is at risk). Sibling of lead #5."
+    },
+    {
+      "id": "BIB-F7-02",
+      "subject": "bibliography",
+      "cluster": "F7",
+      "severity": "MEDIUM",
+      "symptom": "When a .bib file contains two genuinely distinct entries that happen to share a citekey, exporting cited.bib silently writes only the first and drops the second.",
+      "suspectedRootCause": "handleExportCited dedups by a `seen` Set on `e.key`, keeping the first occurrence and discarding any later entry with the same key — the same first-wins dedup the display path (sortedEntries) uses. Two distinct records with a colliding key (common after a sloppy merge or a find-citation import) collapse to one on export with no warning.",
+      "evidence": [
+        { "file": "src/panels/Bibliography/BibliographyPanel.tsx", "line": 350, "note": "const seen = new Set(); cited = bibEntries.filter(...) returns false on seen.has(e.key) — first-wins drop of duplicate-key entries" },
+        { "file": "src/panels/Bibliography/BibliographyPanel.tsx", "line": 219, "note": "sortedEntries applies the identical seen-set dedup for DISPLAY — so the dropped duplicate is also invisible in the panel, masking the loss" }
+      ],
+      "reproSteps": [
+        "Hand-edit (or import) a references.bib with two different @article blocks that share a citekey.",
+        "Cite that key; both are 'cited'.",
+        "Export cited.bib: only the first block is written; the second is silently absent."
+      ],
+      "reproChannel": "code-trace",
+      "confidence": "medium",
+      "suspectedClass": "Export-path instance of the display dedup in lead #5. Any seen-set keyed only on citekey treats a colliding-key collision as a duplicate. The whole-doc bibRaw serialize path (serializeBibFile) does NOT dedup, so disk and export disagree on entry count when keys collide."
+    },
+    {
+      "id": "BIB-F7-03",
+      "subject": "bibliography",
+      "cluster": "F7",
+      "severity": "LOW",
+      "symptom": "Dragging a bib entry into the editor always inserts a plain \\cite{key} regardless of the document's bib package, even though the card was wired to choose a package-appropriate command.",
+      "suspectedRootCause": "handleDragStart hardcodes `\\cite{${entry.key}}` and only the display ghost varies; the bibPackage prop is threaded into BibEntryCard and listed in the useCallback deps but is never read to pick \\citep/\\citet (natbib) vs \\cite (biblatex). The prop's own doc-comment ('used to determine the default cite command for drag') describes behavior that does not exist.",
+      "evidence": [
+        { "file": "src/components/BibEntryCard.tsx", "line": 203, "note": "const cmd = `\\\\cite{${entry.key}}` — hardcoded, package-agnostic" },
+        { "file": "src/components/BibEntryCard.tsx", "line": 219, "note": "useCallback deps include bibPackage but the body never reads it" },
+        { "file": "src/components/BibEntryCard.tsx", "line": 28, "note": "prop doc-comment claims bibPackage 'is used to determine the default cite command for drag' — not implemented" }
+      ],
+      "reproSteps": [
+        "Set the citation package to natbib in the Citations panel menu.",
+        "Drag a bib entry from the Bibliography panel into the editor body.",
+        "Observe the inserted citation is \\cite{key} (biblatex default) rather than a natbib \\citep{key}."
+      ],
+      "reproChannel": "code-trace",
+      "confidence": "high",
+      "suspectedClass": "Dead-prop / stale-doc-comment class: a threaded prop that is in deps but never consumed. The drop still produces a working citation (\\cite is valid under both packages) so impact is cosmetic/idiomatic, but the comment misleads maintainers."
+    },
+    {
+      "id": "BIB-F7-04",
+      "subject": "bibliography",
+      "cluster": "F7",
+      "severity": "LOW",
+      "symptom": "Renaming a citekey to/from a key that begins or ends with a non-word character (e.g. '+foo', a key wrapped only in punctuation) updates the entry and the parsed keys[] but leaves the in-text \\cite command pointing at the old key — keys[] and command desync, and the in-doc citation is orphaned.",
+      "suspectedRootCause": "updateBibKeyAndType rewrites the citation command with a word-boundary regex `\\b${oldKey}\\b`. JS \\b only matches between a [A-Za-z0-9_] char and a non-word char; a citekey whose boundary char is itself non-word (leading '+', trailing punctuation) has no \\b adjacency at the relevant edge, so the replace misses. The keys[] array is updated unconditionally (direct map of oldKey→newKey), but the command string is not, so the panel ref's command stays \\cite{oldKey}; the editor-sync effect (EditorPane.tsx:1141-1168) sees command unchanged and never rewrites the atom. Result: .bib has newKey, keys[]=[newKey], but the rendered/serialized command + .tex still say oldKey → broken cite.",
+      "evidence": [
+        { "file": "src/hooks/useCitations.ts", "line": 304, "note": "c.command.replace(new RegExp(`\\\\b${oldKey...}\\\\b`,'g'), newKey) — word-boundary fails for keys with non-word edge chars" },
+        { "file": "src/hooks/useCitations.ts", "line": 303, "note": "keys mapped oldKey→newKey unconditionally — so keys[] and command desync when the regex misses" },
+        { "file": "src/components/EditorPane.tsx", "line": 1152, "note": "editor-atom sync only fires updateCitationDisplay when nextCommand !== c.command — a missed regex means command unchanged so the in-text atom is never rewritten" }
+      ],
+      "reproSteps": [
+        "Have a .bib entry with citekey '+foo' (or any key with a leading/trailing non-word character) cited in the doc.",
+        "Edit the entry's key field to 'bar' and Save.",
+        "Inspect the in-text citation: it still reads \\cite{+foo} while the .bib now defines @...{bar,...} → broken reference; the panel ref's keys[] reports ['bar']."
+      ],
+      "reproChannel": "code-trace",
+      "confidence": "medium",
+      "suspectedClass": "Word-boundary regex assumes citekeys are word-char-bounded. BibTeX keys legally contain almost any non-{},space char. Any other site that rewrites cite commands with \\b (search/replace, sync-bib-to-library citekey rename) shares this. The asymmetry between unconditional keys[] update and conditional command update is the corrupting mechanism — they should be updated together or both via the same matcher."
+    },
+    {
+      "id": "BIB-F2-01",
+      "subject": "bibliography",
+      "cluster": "F2",
+      "severity": "LOW",
+      "symptom": "Editing a bib entry's citekey in the BibTeX-fields editor and saving drops the entry's selection halo (the card you just edited is no longer highlighted/expanded) even though nothing else changed selection.",
+      "suspectedRootCause": "Selection is a citekey string (selectedBibKey). commitEditBib calls onUpdateBibKeyAndType(oldKey, newKey, ...) which renames the entry to newKey but never re-points selectedBibKey, which still equals oldKey. The renamed card now has key=newKey, so isSelected (selected === entry.key match in CardListPanel) is false and selectedIdx falls to -1. The body collapses (compressed = !isSelected) right after the user saved an edit to it.",
+      "evidence": [
+        { "file": "src/components/BibEntryCard.tsx", "line": 185, "note": "commitEditBib calls onUpdateBibKeyAndType then setEditingBib(false) — no re-selection of newKey" },
+        { "file": "src/panels/Bibliography/BibliographyPanel.tsx", "line": 294, "note": "selectedIdx = displayedEntries.findIndex(e => e.key === selectedBibKey) → -1 after rename (selectedBibKey is the stale oldKey)" },
+        { "file": "src/components/BibEntryCard.tsx", "line": 449, "note": "compressed = !isSelected && !isPoppedOut → renamed card collapses since isSelected goes false" }
+      ],
+      "reproSteps": [
+        "Select a bib entry (card expands, halo on).",
+        "Expand BibTeX Fields → Edit entry → change the key field → Save.",
+        "The card collapses and loses its halo; you must click it again to re-select."
+      ],
+      "reproChannel": "code-trace",
+      "confidence": "medium",
+      "suspectedClass": "Any selection-by-natural-key (vs stable id) breaks when that key mutates. The conflict-resolution handlers DO re-select (handleConflictReplace/NewCitekey/RequestMerge all call handleSelectBibKey afterward), so the in-place field-edit rename is the one path that forgot to re-point selection. Same hazard would hit any panel that selects by a renameable field rather than an immutable id."
+    }
+  ]
+}

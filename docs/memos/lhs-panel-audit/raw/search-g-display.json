@@ -1,0 +1,196 @@
+{
+  "subject": "search",
+  "group": "g-display",
+  "clusters": ["F1", "F4", "F5"],
+  "cells": [
+    {
+      "cluster": "F1",
+      "status": "BUG",
+      "note": "Results memoized on editor IDENTITY + structural-rev-gated source arrays, NOT a doc-position counter (SearchPanel.tsx:363-380). Plain-text edits that don't bump rev.footnotes/rev.citations leave cached PM positions stale -> click navigates to WRONG text (HIGH, SR-F1-01). selectedIdx never clamped on results shrink -> counter lies + modulo nav jumps wrong (MEDIUM, SR-F1-02). match render unbounded (LOW, SR-F1-03). whole-word + punctuation query never matches (LOW, SR-F1-04). breadcrumb level-as-stack-length heuristic mis-crumbs on skipped heading levels (LOW/COSMETIC, SR-F1-05). Empty/initial render PASS.",
+      "bugIds": ["SR-F1-01", "SR-F1-02", "SR-F1-03", "SR-F1-04", "SR-F1-05"]
+    },
+    {
+      "cluster": "F4",
+      "status": "BUG",
+      "note": "Search renders result bodies as FLAT plain text via richJsonToPlainText (search-sources.ts:254,289,376), so there is no editable RichTextField/BorrowedMainText and NO click-through-into-body to a nested atom's card -> the literal F4 affordance is N-A for search. Reinterpreted as 'nested content surfacing in snippets': a citation embedded in a footnote/note body is flattened to displayText||command (footnote-content.ts:615); when displayText is populated (e.g. 'Smith 2020') a search for the raw citekey misses it (LOW, SR-F4-01).",
+      "bugIds": ["SR-F4-01"]
+    },
+    {
+      "cluster": "F5",
+      "status": "BUG",
+      "note": "Search has NO card edit / bodyTitle / AI-request flag -> those subcells N-A (no card kind, no inbox). Reinterpreted as query/scope editing: input + Aa/W + scope toggles all reset selectedIdx + clear highlight correctly (SearchPanel.tsx:256-303) = PASS. Two edge defects: clicking a result whose target panel maps to the SAME side as Search evicts the Search panel/list (openItemInPanel via setActivePanelKindBySide, EditorPane.tsx:2895-2903) (LOW, SR-F5-01); clicking a stale result for a since-deleted item still drives setSelected<Kind>Id with a dead id (LOW, SR-F5-02).",
+      "bugIds": ["SR-F5-01", "SR-F5-02"]
+    }
+  ],
+  "findings": [
+    {
+      "id": "SR-F1-01",
+      "subject": "search",
+      "cluster": "F1",
+      "severity": "HIGH",
+      "symptom": "After running a search and then editing the document (typing/deleting in a plain paragraph) without changing the query, clicking a Main-text result highlights and scrolls to the WRONG passage (or silently no-ops), because the stored PM positions are stale.",
+      "suspectedRootCause": "The `results` useMemo is keyed on the editor INSTANCE identity (stable for the doc's lifetime) plus the per-scope source arrays (footnotes/citations/notes/...). Those source arrays are derived in EditorPane via useMemo gated on STRUCTURAL revision counters (footnoteInfos on [editor, rev.footnotes] EditorPane.tsx:2772-2775; allEditorCitations on [editor, rev.citations] :2611-2626) per the keystroke-sanctity card-source rule. A plain-text edit that changes no footnote/citation/note/etc. fires no structural event, so none of those array identities change, the editor identity is unchanged, and the memo does NOT recompute. searchMainText's cached `from`/`to` PM positions (SearchPanel.tsx:162-224) therefore reflect the PRE-edit document. navigateToResult passes them verbatim to onHighlightRange (SearchPanel.tsx:387-391) -> Editor.applyHighlight does editor.chain().setTextSelection(range)...scrollIntoView (Editor.tsx:1731-1748). The try/catch there only guards positions BEYOND doc size; a position that now resolves to a different VALID location silently highlights/scrolls to the wrong text. Window persists across panel close/reopen since searchState is component-local useState (EditorPane.tsx:2662) not cleared on edit.",
+      "evidence": [
+        { "file": "src/panels/Search/SearchPanel.tsx", "line": 363, "note": "results useMemo deps: editor (stable identity) + source arrays gated on structural revs, no doc-position/docVersion counter -> no recompute on a position-shifting plain edit" },
+        { "file": "src/components/EditorPane.tsx", "line": 2772, "note": "footnoteInfos memo gated on rev.footnotes (structural counter) -> identity stable through a plain-text edit, so the search memo's dep is unchanged" },
+        { "file": "src/components/EditorPane.tsx", "line": 2611, "note": "allEditorCitations memo gated on rev.citations -> same stability; mainText positions can drift while this dep is frozen" },
+        { "file": "src/panels/Search/SearchPanel.tsx", "line": 162, "note": "searchMainText computes pmFrom/pmTo against the editor at memo time; never re-resolved at navigate time" },
+        { "file": "src/components/Editor.tsx", "line": 1731, "note": "applyHighlight applies the stale range with setTextSelection + scrollIntoView; catch only handles out-of-range, not 'now-valid-but-wrong' positions" }
+      ],
+      "reproSteps": [
+        "Open a doc; open Search; query a word that appears late in the body; navigate to a Main-text result so it highlights.",
+        "Without changing the query, delete or insert a paragraph EARLIER in the doc (one with no footnote/citation), shifting later PM positions.",
+        "Click the same result (or any Main-text result) again.",
+        "Observe: the highlight/scroll lands on the wrong text (offset by the edit) or silently does nothing if the old position now exceeds doc size."
+      ],
+      "reproChannel": "code-trace",
+      "confidence": "high",
+      "suspectedClass": "Any consumer that caches absolute PM positions in a structural-rev-gated memo and replays them later without re-resolving: errorHighlightRange (shares effectiveHighlightRange in EditorLayout.tsx:3352), and any onHighlightRange producer. Also FootnoteSearchItem.pos / EditorCitationItem.pos held in search hits go stale the same way for footnote/citation results when only mainText edits intervene."
+    },
+    {
+      "id": "SR-F1-02",
+      "subject": "search",
+      "cluster": "F1",
+      "severity": "MEDIUM",
+      "symptom": "The 'N of M' results counter can read e.g. '16 of 10', no card shows selected, and pressing Down/Enter jumps to an unrelated result rather than the next one, after the result set shrinks while a later index was selected.",
+      "suspectedRootCause": "selectedIdx is managed manually in lifted state (SearchPanelState) and is ONLY reset to null on query/scope/flag change (SearchPanel.tsx:258,269,280,298). When results shrink for any other reason (a source array changes and the memo recomputes to fewer hits), selectedIdx is left pointing past the new end. Unlike useCycle (panel-primitives.tsx:2613) which clamps on read, search never clamps: PrevNextCounter renders `${current+1} of ${total}` = '16 of 10' (panel-primitives.tsx:2592); ResultCard `selected={selectedIdx === i}` matches no card; goNext computes (selectedIdx+1)%results.length (SearchPanel.tsx:411) = an arbitrary index, not adjacent to where the user believes the cursor is.",
+      "evidence": [
+        { "file": "src/panels/Search/SearchPanel.tsx", "line": 411, "note": "goNext modulo over results.length with a possibly-out-of-range selectedIdx -> jumps to a wrong index" },
+        { "file": "src/panels/Search/SearchPanel.tsx", "line": 446, "note": "PrevNextCounter current={selectedIdx} not clamped to results.length" },
+        { "file": "src/components/panel-primitives.tsx", "line": 2592, "note": "PrevNextCounter shows current+1 of total with no bounds check -> '16 of 10'" },
+        { "file": "src/components/panel-primitives.tsx", "line": 2613, "note": "useCycle clamps idx on read ('rawIdx < items.length ? rawIdx : null') — the pattern Search FAILS to apply" }
+      ],
+      "reproSteps": [
+        "Search across mainText + a card scope (e.g. footnotes); navigate to a high index (e.g. result 16 of 20).",
+        "Cause the result set to shrink without changing the query — e.g. delete several footnotes so footnote hits drop and total becomes 10; the memo recomputes but selectedIdx stays 15.",
+        "Observe counter reads '16 of 10' and no card is highlighted.",
+        "Press Down/Enter -> goNext computes (15+1)%10 = 6, jumping to result 6 instead of advancing from the user's position."
+      ],
+      "reproChannel": "code-trace",
+      "confidence": "high",
+      "suspectedClass": "Any panel tracking a manual selected index in lifted state without the useCycle read-clamp; the brief notes Search owns its own selectedIdx specifically because it does NOT route through the shared card-store selection."
+    },
+    {
+      "id": "SR-F1-03",
+      "subject": "search",
+      "cluster": "F1",
+      "severity": "LOW",
+      "symptom": "A very long query (e.g. a multi-thousand-character pasted string) renders its full matched text inside the result <mark> with no truncation, blowing out the result card height; only the before/after context is clamped.",
+      "suspectedRootCause": "before/after are sliced to CTX=40 chars (SearchPanel.tsx:176-177) and get an ellipsis affordance, but result.match is rendered verbatim with no length clamp (SearchPanel.tsx:791-793). Because compileQuery escapes all regex metacharacters (search-sources.ts:133), match length equals the literal query length, which is unbounded by the input.",
+      "evidence": [
+        { "file": "src/panels/Search/SearchPanel.tsx", "line": 791, "note": "<mark>{result.match}</mark> rendered without truncation" },
+        { "file": "src/panels/Search/SearchPanel.tsx", "line": 176, "note": "before/after clamped to CTX=40 + ellipsis, but match itself is not" },
+        { "file": "src/lib/search-sources.ts", "line": 133, "note": "query escaped to a literal, so match === query verbatim -> as long as the user-pasted query" }
+      ],
+      "reproSteps": [
+        "Paste a several-thousand-character string into the search box that exists somewhere in the doc.",
+        "Observe the matching result card renders the entire matched run inside the amber <mark>, growing to fill/overflow the panel with no clamp/ellipsis."
+      ],
+      "reproChannel": "code-trace",
+      "confidence": "high",
+      "suspectedClass": "Any snippet renderer that clamps surrounding context but not the matched span itself."
+    },
+    {
+      "id": "SR-F1-04",
+      "subject": "search",
+      "cluster": "F1",
+      "severity": "LOW",
+      "symptom": "Enabling 'Whole word' (W) and searching for a token that begins/ends with punctuation (e.g. 'foo!' or '(cf.') silently returns zero results even though the literal substring is present in the document.",
+      "suspectedRootCause": "compileQuery wraps the escaped pattern in \\b...\\b unconditionally (search-sources.ts:134). \\b is a word/non-word boundary; when the query's first/last character is a non-word character, the adjacent \\b can never be satisfied, so the regex matches nothing — there is no fallback or warning, just an empty result set indistinguishable from a genuine no-match.",
+      "evidence": [
+        { "file": "src/lib/search-sources.ts", "line": 134, "note": "pattern = `\\b${pattern}\\b` applied even when pattern starts/ends with a non-word char, making the boundary unsatisfiable" }
+      ],
+      "reproSteps": [
+        "Type a query ending in punctuation, e.g. 'foo!' (where 'foo!' literally appears in the doc).",
+        "Toggle W (Whole word) on.",
+        "Observe 'No matches found.' despite the substring existing."
+      ],
+      "reproChannel": "code-trace",
+      "confidence": "high",
+      "suspectedClass": "Generic \\b-wrapping whole-word implementations elsewhere (any other regex search that prepends/appends \\b without checking word-char adjacency)."
+    },
+    {
+      "id": "SR-F1-05",
+      "subject": "search",
+      "cluster": "F1",
+      "severity": "LOW",
+      "symptom": "The breadcrumb shown above a Main-text result can list the wrong section ancestry when the document skips heading levels (e.g. an H1 followed directly by an H4).",
+      "suspectedRootCause": "buildBreadcrumb treats sections.length (count of pushed crumbs) as a proxy for the current heading level: `while (sections.length > 0 && sections.length >= level) sections.pop()` (SearchPanel.tsx:126). When levels are skipped, sections.length diverges from the true heading level, so the pop loop under-/over-pops and the crumb stack no longer reflects the real H1>..>Hn ancestry. The match still navigates correctly (breadcrumb is display-only), so impact is cosmetic.",
+      "evidence": [
+        { "file": "src/panels/Search/SearchPanel.tsx", "line": 126, "note": "pop condition compares sections.length (crumb count) to the heading's `level` attribute — only correct when no levels are skipped" },
+        { "file": "src/panels/Search/SearchPanel.tsx", "line": 123, "note": "every heading pushes exactly one crumb regardless of the gap to the previous level" }
+      ],
+      "reproSteps": [
+        "Create a doc with an H1, then jump straight to an H4 (skipping H2/H3), then put searchable text under the H4.",
+        "Search for that text; inspect the result's breadcrumb.",
+        "Observe the crumb chain mislabels the nesting because the stack depth (1) was compared against level (4)."
+      ],
+      "reproChannel": "code-trace",
+      "confidence": "medium",
+      "suspectedClass": "Outline/heading-tree builders that infer nesting from a running stack length vs the explicit level attr (compare OutlinePanel heading-tree indentation logic)."
+    },
+    {
+      "id": "SR-F4-01",
+      "subject": "search",
+      "cluster": "F4",
+      "severity": "LOW",
+      "symptom": "Searching the Footnotes/Notes scopes for a citekey or LaTeX cite command that is embedded inside a footnote/note body fails to find it when the embedded citation has a rendered display string.",
+      "suspectedRootCause": "Footnote/note bodies are searched after flattening through richJsonToPlainText, which renders an embedded citation node as `displayText || command` (footnote-content.ts:615). When the citation node carries a populated displayText (e.g. 'Smith 2020' / '[12]'), the raw command (\\citep{smith2020}) is never present in the searched string, so a citekey query against the footnote/note scope yields no hit — even though the dedicated Citations scope WOULD find it (searchCitations scans both c.command and the display text, search-sources.ts:310-318). The asymmetry is invisible to the user.",
+      "evidence": [
+        { "file": "src/lib/footnote-content.ts", "line": 615, "note": "citation node flattened to displayText||command — citekey/command dropped from the searchable footnote/note body whenever displayText is set" },
+        { "file": "src/lib/search-sources.ts", "line": 254, "note": "searchFootnotes searches only richJsonToPlainText(body) — no separate pass over embedded citation commands" },
+        { "file": "src/lib/search-sources.ts", "line": 289, "note": "searchNotes has the same single flattened-body pass" },
+        { "file": "src/lib/search-sources.ts", "line": 310, "note": "searchCitations DOES scan both command and display — the inconsistency that makes the footnote/note miss surprising" }
+      ],
+      "reproSteps": [
+        "Insert a footnote whose body contains a citation node with a non-empty displayText (e.g. a \\citep that resolved to 'Smith 2020').",
+        "Open Search, enable the Footnotes scope, and query the citekey (e.g. 'smith2020').",
+        "Observe no footnote result, even though the citation lives in that footnote body (the Citations scope would have matched it)."
+      ],
+      "reproChannel": "code-trace",
+      "confidence": "medium",
+      "suspectedClass": "Any plain-text flattening of card bodies that collapses citation atoms to display-only (compressed-card previews, drag ghosts, tooltips per the footnote-content.ts:623-628 note) loses the underlying citekey for matching/search there too."
+    },
+    {
+      "id": "SR-F5-01",
+      "subject": "search",
+      "cluster": "F5",
+      "severity": "LOW",
+      "symptom": "Clicking a non-mainText result (e.g. a footnote/citation hit) whose target panel is configured to mount on the SAME rail as the Search panel replaces Search with that panel, so the user loses their result list and must reopen Search to continue navigating matches.",
+      "suspectedRootCause": "navigateToResult calls onOpenItem(targetPanel, itemId) for any non-mainText scope (SearchPanel.tsx:393-396). EditorPane.openItemInPanel resolves the target via setActivePanelKindBySide(panel) (EditorPane.tsx:2895-2903), which swaps the active panel on that side. If Search occupies the side the target panel resolves to, Search is evicted. The text jump/highlight still happens, so it's a UX regression rather than a navigation failure.",
+      "evidence": [
+        { "file": "src/panels/Search/SearchPanel.tsx", "line": 393, "note": "navigateToResult fires onOpenItem for every scope with a SCOPE_PANEL mapping" },
+        { "file": "src/components/EditorPane.tsx", "line": 2895, "note": "openItemInPanel calls setActivePanelKindBySide(panel) — swaps the active panel on the resolved side, can evict Search" }
+      ],
+      "reproSteps": [
+        "Arrange Search on the same rail that footnotes/citations resolve to.",
+        "Search across mainText + footnotes; click a footnote result.",
+        "Observe the Search panel is replaced by the Footnotes panel; the result list is gone."
+      ],
+      "reproChannel": "code-trace",
+      "confidence": "medium",
+      "suspectedClass": "Any cross-panel 'open item' that side-activates a target without checking whether the originating panel shares that side."
+    },
+    {
+      "id": "SR-F5-02",
+      "subject": "search",
+      "cluster": "F5",
+      "severity": "LOW",
+      "symptom": "Clicking a search result for a card that was deleted/orphaned after the search ran still drives a selection for the now-dead id in the target panel, producing a stale/empty selection.",
+      "suspectedRootCause": "Because the results memo does not recompute on edits that don't bump the relevant structural rev (same root as SR-F1-01), a result can outlive its underlying card. navigateToResult unconditionally calls onOpenItem(targetPanel, itemId) (SearchPanel.tsx:393), and openItemInPanel calls setSelected<Kind>Id(itemId) (EditorPane.tsx:2895-2903) with no existence check, selecting a dead id. For inline-atom kinds (footnote/citation) the reconciler's entityExists=>true exemption (useAnchorHighlightReconciler.ts) can leave a stale ghost selection.",
+      "evidence": [
+        { "file": "src/panels/Search/SearchPanel.tsx", "line": 394, "note": "onOpenItem fired with result.itemId without verifying the item still exists" },
+        { "file": "src/components/EditorPane.tsx", "line": 2896, "note": "setSelectedFootnoteId(itemId) etc. set with no liveness guard" }
+      ],
+      "reproSteps": [
+        "Search across a card scope (e.g. footnotes); leave results visible.",
+        "Delete the footnote a particular result points to (without changing the query — the stale result remains, per SR-F1-01).",
+        "Click that result.",
+        "Observe the target panel activates and attempts to select a card id that no longer exists (empty/stale selection)."
+      ],
+      "reproChannel": "code-trace",
+      "confidence": "medium",
+      "suspectedClass": "Shares root with SR-F1-01 (stale results) and the reconciler inline-atom entityExists exemption (audit known-fragile lead 2): any consumer selecting a card by id from a stale derived list."
+    }
+  ]
+}

@@ -1720,3 +1720,15 @@ either.
 If #1 reproduces, then do the "anything else that triggers this" sweep (any other
 transient that mounts a portaled overlay or fires the same recompute); if it can't
 be reproduced with a real keystroke on current main, it's #2 — close as fixed.
+
+---
+
+## Omni margin cards stack at the top of the gutter on load / after idle — `ROOT-CAUSE-FOUND` / `FIX-PROPOSED`
+
+**Full diagnosis:** `MEMO_CARD_GUTTER_STACKING.md` (repo root). Filed by bug-catcher session 2026-06-21, live-reproduced.
+
+- **Current behavior:** citation/note/footnote cards in the Omni **margin column** pile up in a tight stack at the top of the column (cascade `0, 64, 128…`) on cold doc-open, and when scrolling to cards "not viewed in a while". Clicking any one card snaps the whole deck to correct positions; sometimes self-resolves after reload.
+- **Desired:** cards sit beside their anchors from first paint, no stale stack.
+- **Root cause:** `useInTextPositions.measure()` runs **once** in `useLayoutEffect` against a layout that isn't final yet — `coordsAtPos(pos).top` is read **before** web-font swap + KaTeX/`expex`/figure NodeViews lay out, so `naturalTop = coords.top - podRect.top` goes negative → silent clamp-to-0 at [`useInTextPositions.ts:284`](src/hooks/useInTextPositions.ts:284) → `resolveCascade` spreads the zeros into the top-stack. **No trigger re-measures after layout settles** (structural bus emits nothing on load; plain scroll has no trigger; the `editor.view.dom` ResizeObserver is leaky). Clicking heals only because the selection scroll/expand incidentally fires a re-measure. NOT a scroll regression (positions are scroll-invariant) — "not viewed in a while" = encountering a stale stack baked at load.
+- **Deep fix (one file, all Omni card kinds):** make `useInTextPositions` measurement **settle-aware + self-validating** — (A) add `onFontReady(schedule)` (reuse [`text-metrics.ts:231`](src/lib/text-metrics.ts:231), precedent at `TextObjectGrabHandle.tsx:829`) + a bounded self-terminating post-mount rAF stabilization loop; (B) reject a degenerate (strongly-negative pre-clamp) measure instead of caching the clamped garbage. **Refuted dead-end:** bootstrapping `editorContentHeight`/pod `minHeight` — `podRect.top` is invariant to it; the corrupt quantity is `coords.top`. Same downstream clamp as the typing-time `MEMO_MARGINALIA_OMNI_FLASH.md` fix, different (cold-load) cause.
+- **Repro note:** current `doc_devtest` is a plain-paragraph filler fixture with no reflow-after-paint → won't repro. Restore `samples/annotation-history` (has expex+citations+figures) to reproduce naturally.

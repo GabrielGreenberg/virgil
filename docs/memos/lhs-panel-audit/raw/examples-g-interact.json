@@ -1,0 +1,169 @@
+{
+  "subject": "examples",
+  "group": "G-interact",
+  "clusters": ["F2", "F3", "F6", "F7"],
+  "cells": [
+    {
+      "cluster": "F2",
+      "status": "BUG",
+      "note": "Single-halo (≤1) invariant violated: ExampleCard halo = `ac.selected || isSelected` (ExampleCard.tsx:371) draws from TWO independent sources — cardStore.selected (set only by mouse body-click via ac.onActivate, ExampleCard.tsx:392) and the panel-local selectedId (set by both click AND keyboard cycle, ExamplesPanel.tsx:31-37 + useCycle panel-primitives.tsx:2615-2627). Keyboard nav moves selectedId without touching cardStore, so a prior mouse-selected card keeps its cardStore halo while the keyboard-targeted card gains the panel halo → two example cards haloed at once. Axis purity for expand/collapse via ac.onToggleExpanded/onHeaderActivate is otherwise clean.",
+      "bugIds": ["EX-F2-01", "EX-F2-02"]
+    },
+    {
+      "cluster": "F3",
+      "status": "BUG",
+      "note": "card→text JUMP works (scrollToExample, Editor.tsx:1277-1296) but produces NO in-text selection/hover paint: findEntity returns {id} with NO links for example (entity-hover.ts:80-83), so linksForRef→[] and collectAnchorEls paints nothing (useAnchorHighlightReconciler.ts:92-98,193-209); the exampleBlock NodeView stamps no data-card-key/data-link-card (expex.ts:703-757) and globals.css has no .expex-block[data-card-selected] rule — so the card-key sweep also misses it. Selecting an example highlights ONLY the panel card, never the in-text block, breaking the three-surface model that anchored:true (card-registry.tsx:444) promises. text→card is N-A (no marker, no atom; the data-link-card=\"example:\" on the CARD at ExampleCard.tsx:408 is inert — useTextHoverBridge only matches footnote/citation, useTextHoverBridge.ts:135). Expanded docked card has no jump affordance (body click swallowed when canEdit, ExampleCard.tsx:465-468; header collapses w/o jump; jump chevron is popout-only, panel-primitives.tsx:2012). Omni jump discards sourceEl so it skips alignEntryToY (omni.tsx:37 vs ExamplesPanel.tsx:101).",
+      "bugIds": ["EX-F3-01", "EX-F3-02", "EX-F3-03"]
+    },
+    {
+      "cluster": "F6",
+      "status": "N-A",
+      "note": "Examples do not morph: CARD_REGISTRY.example.morph === null (card-registry.tsx:451) and cards/morphs/index.ts registers no example converter. canMorph(\"example\")===false. No kind dropdown rendered (ExampleCard passes no kindOptions).",
+      "bugIds": []
+    },
+    {
+      "cluster": "F7",
+      "status": "BUG",
+      "note": "Lifecycle is intentionally editor-owned: CARD_REGISTRY.example.lifecycle = { clone:false, delete:false, bindAnchor:false } (card-registry.tsx:449, R19) — ExampleCard exposes NO onDelete/clone affordance; deleting an example means deleting the block in main text (correct by design; cardHasContent has no example case but is unreachable since no card-level delete-confirm path exists for examples). DEFECT: the entire useExamples hook (deleteExample, updateExampleTitle, syncFromEditor, BUG#31 auto-title strip) is DEAD CODE — useExamples(...) is never invoked in the live app (grep: only its own definition at useExamples.ts:23), yet auto-title.test.ts pins example title-persistence/strip behavior that never runs in production (test-vs-reality divergence). Drag/lift popout works (cardKey=popKey(\"examples\",id), isPoppable(\"example\")=true, float builder cards/floats/index.tsx:626-649; returns null if block deleted while popped → blank float).",
+      "bugIds": ["EX-F7-01"]
+    }
+  ],
+  "findings": [
+    {
+      "id": "EX-F2-01",
+      "subject": "examples",
+      "cluster": "F2",
+      "severity": "MEDIUM",
+      "symptom": "After clicking one example card then pressing ArrowDown/ArrowUp to move through the list, TWO example cards can show the selection halo at once (the previously-clicked one and the keyboard-targeted one).",
+      "suspectedRootCause": "ExampleCard's halo is `ac.selected || isSelected` (two independent selection sources). The cross-surface store halo (cardStore.selected) is set ONLY on a mouse body-click via `ac.onActivate()`; the panel-local `selectedId` is set by BOTH mouse click (ExampleCard onSelect) AND keyboard cycle (ExamplesPanel `onActivate`→`onSelect`, via useCycle). The keyboard path never calls `ac.onActivate`/`cardStore.select`, so it moves the panel halo without moving (or clearing) the store halo. The reconciler's pruner only clears the store halo when the entity is DELETED, not when another card is keyboard-selected, so the stale store halo persists — violating the documented ≤1 single-halo invariant.",
+      "evidence": [
+        { "file": "src/panels/Examples/ExampleCard.tsx", "line": 371, "note": "isHaloed = ac.selected || isSelected — OR of two independent selection sources" },
+        { "file": "src/panels/Examples/ExampleCard.tsx", "line": 392, "note": "body/card onClick calls ac.onActivate() (cardStore.select) + onSelect() — mouse path sets BOTH halos" },
+        { "file": "src/panels/Examples/ExamplesPanel.tsx", "line": 31, "note": "panel-level onActivate calls onSelect()+onJump() ONLY — never ac.onActivate/cardStore" },
+        { "file": "src/components/panel-primitives.tsx", "line": 2615, "note": "useCycle.next/prev invoke that onActivate on ArrowDown/Up — keyboard path moves selectedId without touching cardStore" },
+        { "file": "src/links/_shared/anchored-card-store.ts", "line": 18, "note": "doc: selected is ≤1 (the single halo) — invariant the dual-source OR breaks" }
+      ],
+      "reproSteps": [
+        "Open a doc with ≥2 examples; open the Examples panel.",
+        "Click example A's card body (selects A in both cardStore and panel selectedId).",
+        "Focus the panel scroll region and press ArrowDown to cycle to example B.",
+        "Observe: B gains the panel halo (selectedId=B) AND A keeps its cardStore halo (ac.selected=A) — two cards haloed simultaneously."
+      ],
+      "reproChannel": "code-trace",
+      "confidence": "high",
+      "suspectedClass": "Any panel that ORs a panel-local selectedId halo with the cross-surface cardStore halo while routing keyboard cycling through a path that bypasses cardStore.select. Footnotes/Citations also use useCycle + cardStore; check whether their keyboard cycle calls ac.onActivate (footnotes' panel onActivate at FootnotePanel may avoid this if it derives selection FROM cardStore rather than ORing). The general mistake is two selection authorities for one halo."
+    },
+    {
+      "id": "EX-F2-02",
+      "subject": "examples",
+      "cluster": "F2",
+      "severity": "LOW",
+      "symptom": "Clicking the body of an already-selected example card leaves it visibly haloed but silently drops it as the keyboard/operand target (the halo and the keyboard cursor desync).",
+      "suspectedRootCause": "The panel passes a TOGGLING onSelect (`onSelect(selectedId === id ? null : id)`, ExamplesPanel.tsx:98-100) but ExampleCard's body click also calls `ac.onActivate()` which is select-ONLY (idempotent, never deselects). Re-clicking a selected card toggles panel selectedId→null (so useCycle resets cycleIdx via the selectedId effect) while cardStore.selected stays = the card. The halo persists (via ac.selected) but the panel no longer considers anything selected, so keyboard nav restarts from index 0 instead of from the visibly-haloed card.",
+      "evidence": [
+        { "file": "src/panels/Examples/ExamplesPanel.tsx", "line": 98, "note": "onSelect={() => onSelect(selectedId === ex.exampleId ? null : ex.exampleId)} — toggling deselect on re-click" },
+        { "file": "src/panels/Examples/ExampleCard.tsx", "line": 392, "note": "onClick: ac.onActivate() (select-only, idempotent) + onSelect() (toggle) — the two disagree on a re-click" },
+        { "file": "src/panels/Examples/ExamplesPanel.tsx", "line": 45, "note": "effect resets cycleIdx to null when selectedId becomes null — keyboard cursor lost while halo remains" },
+        { "file": "src/links/_shared/useAnchoredCard.ts", "line": 66, "note": "onActivate = cardStore.select + cardStore.expand — never deselects" }
+      ],
+      "reproSteps": [
+        "Select example A by clicking its card.",
+        "Click example A's card body again.",
+        "Observe: A still shows its halo (ac.selected) but the panel selectedId is now null — pressing ArrowDown jumps to the first example, not the next-after-A."
+      ],
+      "reproChannel": "code-trace",
+      "confidence": "high",
+      "suspectedClass": "Cards that compose a select-only store primitive (ac.onActivate) with a panel-level toggling onSelect. Anywhere a body click both selects-in-store and toggles-a-panel-id, the re-click diverges. Footnote/Citation cards call ac.onActivate()+onSelect() too — check whether their panel onSelect toggles."
+    },
+    {
+      "id": "EX-F3-01",
+      "subject": "examples",
+      "cluster": "F3",
+      "severity": "MEDIUM",
+      "symptom": "Selecting (or hovering) an example card highlights only the panel card — the corresponding \\ex/\\pex block in the main text gets no selection halo or hover tint, unlike every other anchored card kind.",
+      "suspectedRootCause": "Examples are anchored:true (so they enter ANCHORED_CARD_KINDS and the three-surface reconciler) but carry no resolvable Link: findEntity normalizes an example hit to a bare { id } with NO links array (it has no Mode-B anchor and no synthesized inline-atom link the way footnote/citation get). linksForRef therefore returns [] and collectAnchorEls paints nothing in the editor body. Separately, the exampleBlock NodeView stamps neither data-card-key nor data-link-card, so the reconciler's document-wide [data-card-key] sweep also can't reach the in-text block, and globals.css carries no .expex-block[data-card-selected] rule. Net: the only painted surface is the panel card. The three-surface contract that anchored:true advertises is unfulfilled for examples.",
+      "evidence": [
+        { "file": "src/links/_shared/entity-hover.ts", "line": 80, "note": "example case returns { id } with no links — nothing for resolveLink to follow" },
+        { "file": "src/links/_shared/useAnchorHighlightReconciler.ts", "line": 92, "note": "linksForRef: non-fn/cite kinds use entity?.links ?? [] — examples → []" },
+        { "file": "src/links/_shared/useAnchorHighlightReconciler.ts", "line": 193, "note": "collectAnchorEls iterates links — zero links → no editor-body paint" },
+        { "file": "src/lib/tiptap/expex.ts", "line": 703, "note": "exampleBlock NodeView contentDOM stamps class only — no data-card-key / data-link-card, so the card-key sweep misses it" },
+        { "file": "src/cards/card-registry.tsx", "line": 444, "note": "example anchored:true — promises three-surface participation the resolver can't deliver" }
+      ],
+      "reproSteps": [
+        "Open a doc with an example block.",
+        "Click the example's card in the panel (or hover it).",
+        "Observe the main-text \\ex block: no halo, no accent rail, no hover tint — contrast a footnote/citation atom or a note paragraph, which paint."
+      ],
+      "reproChannel": "code-trace",
+      "confidence": "high",
+      "suspectedClass": "Any anchored:true kind that lacks both a Mode-A/Mode-B link and a synthesized inline-atom link. Examples are the clearest case; verify figure/graphics-derived kinds aren't similarly anchored-but-unpaintable. The class is 'anchored flag set without a link the reconciler can resolve'."
+    },
+    {
+      "id": "EX-F3-02",
+      "subject": "examples",
+      "cluster": "F3",
+      "severity": "LOW",
+      "symptom": "A docked, expanded example card offers no way to jump to its block in the text — the user must first collapse it, then click the collapsed body.",
+      "suspectedRootCause": "When the editor context is present (main app, canEdit=true) the expanded body's onClick calls e.stopPropagation() (so editing the embedded expex doesn't trigger a jump), which prevents the card-root onClick (ac.onActivate + onSelect + onJump) from firing. The header click is onHeaderActivate (select + toggle-expand, never jump), so it collapses without jumping. The jump chevron only renders when isPoppedOut (PanelCard), so docked cards never show it. The only jump path is via the collapsed body (which does NOT stopPropagation), so jump-to-text requires collapsing first.",
+      "evidence": [
+        { "file": "src/panels/Examples/ExampleCard.tsx", "line": 465, "note": "expanded body onClick: if (canEdit) e.stopPropagation() — swallows the jump-bearing card-root onClick" },
+        { "file": "src/panels/Examples/ExampleCard.tsx", "line": 407, "note": "onHeaderActivate = ac.onHeaderActivate (select + toggle expand, no jump)" },
+        { "file": "src/components/panel-primitives.tsx", "line": 2012, "note": "jump chevron rendered only when isPoppedOut && canJump && onJump — docked cards never show it" },
+        { "file": "src/panels/Examples/ExampleCard.tsx", "line": 424, "note": "collapsed body deliberately omits stopPropagation so an expand/jump click bubbles — the only docked jump path" }
+      ],
+      "reproSteps": [
+        "Expand an example card (header click toggles it open).",
+        "Click anywhere in the expanded expex body — nothing jumps (editing focus only).",
+        "Click the header — the card collapses, still no jump.",
+        "Conclude: to jump you must collapse, then click the collapsed body."
+      ],
+      "reproChannel": "code-trace",
+      "confidence": "medium",
+      "suspectedClass": "Cards whose expanded body is an interactive editor that stopPropagation's the card-root jump, while the header is toggle-only and the jump chevron is popout-gated. Any 'editable-body' card with no docked jump button shares this. The fix class is a docked jump affordance independent of the body editor."
+    },
+    {
+      "id": "EX-F3-03",
+      "subject": "examples",
+      "cluster": "F3",
+      "severity": "LOW",
+      "symptom": "Jumping to an example from the unified Omni column scrolls the block into view but does not align it to the clicked card's vertical position (unlike jumping from the docked Examples panel).",
+      "suspectedRootCause": "The Omni builder passes onJump as `() => a.onJump(ex.exampleId)`, dropping the sourceEl the card hands it; scrollToExample then takes its no-sourceEl branch (plain setTextSelection().scrollIntoView()) instead of the alignEntryToY branch. The docked panel passes the sourceEl through (onJump(id, sourceEl)), so docked and omni jumps behave differently.",
+      "evidence": [
+        { "file": "src/panels/Examples/omni.tsx", "line": 37, "note": "onJump={() => a.onJump(ex.exampleId)} — discards the sourceEl arg the card supplies" },
+        { "file": "src/panels/Examples/ExamplesPanel.tsx", "line": 101, "note": "docked passes onJump(ex.exampleId, sourceEl) — keeps the source element" },
+        { "file": "src/components/Editor.tsx", "line": 1288, "note": "scrollToExample uses sourceEl for alignEntryToY; without it falls back to scrollIntoView" }
+      ],
+      "reproSteps": [
+        "Open the Omni (unified) left column and the docked Examples panel.",
+        "Click an example card in each and watch where the block lands.",
+        "Observe: docked aligns the block to the card's Y; omni just scrolls it into view."
+      ],
+      "reproChannel": "code-trace",
+      "confidence": "high",
+      "suspectedClass": "Omni builders that drop the sourceEl when wiring onJump. Check footnote/citation/report omni.tsx — if any pass `() => onJump(id)` instead of `(el) => onJump(id, el)`, they lose alignEntryToY too."
+    },
+    {
+      "id": "EX-F7-01",
+      "subject": "examples",
+      "cluster": "F7",
+      "severity": "LOW",
+      "symptom": "The Examples sidecar/lifecycle hook (useExamples) is entirely dead code — example titles, deletes, and auto-title stripping it implements never run, while a test suite asserts they do.",
+      "suspectedRootCause": "useExamples(...) is never invoked anywhere in the live app (only its definition exists). The live examples flow is fully derived: getExamples() walks the doc on rev.examples, and examples.json is never read or written. So deleteExample (the only sidecar-delete path), updateExampleTitle (there is no title field on ExampleCard), syncFromEditor, and the BUG#31 isAutoTitle-on-load strip are unreachable. auto-title.test.ts (and its source-guard test) pin example title persistence/strip behavior against useExamples.ts, creating a test-vs-reality divergence: the contract the test enforces has no production caller. This is a latent landmine — a future wiring of the panel's delete/title to useExamples would surface a never-exercised path.",
+      "evidence": [
+        { "file": "src/hooks/useExamples.ts", "line": 23, "note": "useExamples definition — grep confirms it has ZERO call sites in app code" },
+        { "file": "src/hooks/useExamples.ts", "line": 84, "note": "deleteExample — unwired (ExampleCard has no onDelete; lifecycle.delete:false)" },
+        { "file": "src/hooks/useExamples.ts", "line": 42, "note": "BUG#31 isAutoTitle strip on load — never runs (sidecar never read)" },
+        { "file": "src/panels/__tests__/auto-title.test.ts", "line": 147, "note": "asserts migrateTitle('example','Example 7')==='' and source-guards useExamples.ts for isAutoTitle — contract with no production caller" },
+        { "file": "src/cards/card-registry.tsx", "line": 449, "note": "example lifecycle { clone:false, delete:false } — confirms intent that the block, not a card, owns lifecycle" }
+      ],
+      "reproSteps": [
+        "Grep the codebase for `useExamples(` — only the definition matches; no component/host calls it.",
+        "Inspect ExampleCard — no delete button, no title input, no onDelete prop.",
+        "Run auto-title.test.ts — it passes by exercising useExamples directly, though the app never mounts it."
+      ],
+      "reproChannel": "code-trace",
+      "confidence": "high",
+      "suspectedClass": "Derived-kind panels whose persisted-sidecar hook is retained 'for parity' but never wired. Check whether other derived kinds (figure/graphics) carry similar unwired sidecar hooks guarded by tests that imply they run."
+    }
+  ]
+}

@@ -1,0 +1,209 @@
+{
+  "subject": "citations",
+  "group": "G-interact",
+  "clusters": ["F2", "F3", "F6", "F7"],
+  "cells": [
+    {
+      "cluster": "F2",
+      "status": "BUG",
+      "note": "Axis-pure store is sound (anchored-card-store.ts:69-114; draft-pin tested in citation-draft-header.test.tsx). But the card body onClick composes ac.onActivate() (store select+expand, never deselects) with the panel's onSelect that TOGGLES React selectedId to null on a re-click (CitationCard.tsx:718-729 + CitationsPanel.tsx:332-335) → cardStore.selected (halo) and React selectedId (keyboard cycle/jump target) desync on a 2nd body click. Also reconciler pruner exempts inline atoms (entityExists⇒true, useAnchorHighlightReconciler.ts:84-90) so a deleted/round-tripped citation's selected/expanded refs are never pruned → stale ghost.",
+      "bugIds": ["CI-F2-01", "CI-F2-02", "CI-F2-03"]
+    },
+    {
+      "cluster": "F3",
+      "status": "BUG",
+      "note": "card→text jump for a citation atom living ONLY inside a footnote body silently no-ops while the UI presents it as anchored/jumpable: getCitations() walks footnote attrs.content and assigns the footnote's pos (Editor.tsx:1318-1323, EditorPane.tsx:2618-2633) so omni marks it anchored (omni.tsx:46-49), but scrollToCitation→jumpToLink→resolveLink→findInlineAtomPos scans only editor.state.doc.descendants (links.ts:430-450,645-663), which never descends into a footnote's JSON-literal content. text→card atom-click path itself is sound (citation.ts:261-288 → marker-clicks.ts:276-327). Gutter-marker subcell N-A (citation has markerType null).",
+      "bugIds": ["CI-F3-01"]
+    },
+    {
+      "cluster": "F6",
+      "status": "N-A",
+      "note": "Citation kind declares morph:null in CARD_REGISTRY (card-registry.tsx ~:231) and is not registered in cards/morphs/index.ts (only revision/cutter/report/note/highlight pairs). No convert affordance on the card. Morph is genuinely inapplicable to citations."
+    },
+    {
+      "cluster": "F7",
+      "status": "BUG",
+      "note": "delete-confirm is entirely absent for citations: CitationCard wires PanelCard onTrashClick directly to onDelete(cit.id) (CitationCard.tsx:697) with NO cardHasContent/confirm gate; cardHasContent has no citation case anyway (has-content.ts:22-32,50-89). Compound delete itself is robust incl. footnote-nested atoms (Editor.tsx:1403-1423). Other lifecycle defects: removeRow on the last key sets command='' without removing the in-doc atom (CitationCard.tsx:392-402 + persist 316-323); biblatex singular→plural auto-promote has NO demote, leaving the command stuck plural after rows shrink (CitationCard.tsx:370-390); cloneCitation always mints an unanchored duplicate with no atom (useCitations.ts:227-244).",
+      "bugIds": ["CI-F7-01", "CI-F7-02", "CI-F7-03", "CI-F7-04"]
+    }
+  ],
+  "findings": [
+    {
+      "id": "CI-F3-01",
+      "subject": "citations",
+      "cluster": "F3",
+      "severity": "HIGH",
+      "symptom": "Clicking jump (or the card body) on a citation that lives inside a footnote does nothing — the editor never scrolls to the marker — even though the citation card renders as anchored (solid, jump-enabled), not unanchored/orphaned.",
+      "suspectedRootCause": "Two doc-traversal strategies disagree about whether an in-footnote citation is reachable. getCitations()/getCitationOrder() explicitly walk a footnote's attrs.content (a JSONContent literal PM's descendants() won't enter) via walkJsonContentForCitations and attribute the footnote's own pos to the nested citation, so citationPositionMap has a non-null pos and omni.tsx classifies anchorState='anchored'. But the jump path (scrollToCitation → jumpToLink('to-marker') → resolveLink(inline-atom) → findInlineAtomPos) uses ONLY editor.state.doc.descendants, which stops at the footnote atom and never sees the citation inside it, so findInlineAtomPos returns null and resolveLink returns null → jumpToLink finds no domEl → no scroll. The anchored/jump UI is a promise the resolver can't keep.",
+      "evidence": [
+        { "file": "src/components/Editor.tsx", "line": 1318, "note": "getCitations walks footnote attrs.content via walkJsonContentForCitations, pushing nested cites with the FOOTNOTE's pos" },
+        { "file": "src/components/EditorPane.tsx", "line": 2630, "note": "citationPositionMap.set(c.citationId, c.pos) — an in-footnote cite gets a non-null pos (the footnote's)" },
+        { "file": "src/panels/Citations/omni.tsx", "line": 49, "note": "anchorState: pos == null ? 'orphaned' : 'anchored' → in-footnote cite shows as anchored + jumpable" },
+        { "file": "src/components/Editor.tsx", "line": 1329, "note": "scrollToCitation builds an inline-atom VirgilLink and calls jumpToLink(...,'to-marker')" },
+        { "file": "src/links/links.ts", "line": 645, "note": "findInlineAtomPos uses editor.state.doc.descendants only — does NOT recurse into footnote attrs.content, so a nested citation is never located → returns null" }
+      ],
+      "reproSteps": [
+        "Open a paper with a \\footnote{...\\cite{key}...} (a citation inside a footnote).",
+        "Observe the citation appears in the Citations panel rendered as anchored (solid border, jump arrow live).",
+        "Click the card body / jump arrow.",
+        "Editor does not scroll to any marker (resolveLink returned null); selection halo may set but no navigation occurs."
+      ],
+      "reproChannel": "code-trace",
+      "confidence": "high",
+      "suspectedClass": "Same descend-asymmetry exists for footnotes-in-footnotes if any, and is the mirror of the delete path that DID get special-cased: Editor.tsx:1422 calls stripFootnoteNestedCitation for delete but no analogous nested-resolve exists for jump/hover/highlight. resolveLink + findInlineAtomPos + reconciler collectAnchorEls all share the 'descendants-only' blind spot, so highlight-on-select for an in-footnote citation also can't paint its marker. Bibliography 'jump to first citation' (cited-only) likely shares it."
+    },
+    {
+      "id": "CI-F2-01",
+      "subject": "citations",
+      "cluster": "F2",
+      "severity": "MEDIUM",
+      "symptom": "After selecting a citation card then clicking its body again, the halo stays painted but keyboard arrow-cycling and the panel's selectedId-driven behaviors act as if nothing is selected (and a single subsequent ArrowDown jumps to the wrong card).",
+      "suspectedRootCause": "Two selection sources of truth disagree. The card body onClick runs ac.onActivate() (cardStore.select + expand — select is monotonic, never clears) AND the panel-supplied onSelect, which is `() => onSelect(selected ? null : cit.id)` — a TOGGLE on the React selectedId. On a second click of an already-selected card, the store stays selected (halo persists via isHaloed = ac.selected || isSelected) but React selectedId flips to null. The useCycle index effect keys off selectedId (CitationsPanel.tsx:162-169), so cycleIdx resets to null and the next ArrowDown starts from the top rather than the visually-haloed card.",
+      "evidence": [
+        { "file": "src/panels/Citations/CitationCard.tsx", "line": 718, "note": "body onClick: ac.onActivate() (store select, monotonic) then onSelect()" },
+        { "file": "src/panels/Citations/CitationsPanel.tsx", "line": 332, "note": "renderCard onSelect toggles React selectedId to null when already selected" },
+        { "file": "src/panels/Citations/CitationCard.tsx", "line": 257, "note": "isHaloed = ac.selected || isSelected → halo stays lit from the store even after selectedId is nulled" },
+        { "file": "src/panels/Citations/CitationsPanel.tsx", "line": 162, "note": "useEffect resets cycleIdx to null when selectedId is falsy → keyboard cycle desyncs from the painted halo" }
+      ],
+      "reproSteps": [
+        "Click a citation card (selects: halo + selectedId set).",
+        "Click the same card's body again.",
+        "Halo remains; press ArrowDown.",
+        "Cycle starts from index 0 instead of advancing from the haloed card."
+      ],
+      "reproChannel": "code-trace",
+      "confidence": "medium",
+      "suspectedClass": "Any card whose body onClick pairs a monotonic store select (ac.onActivate) with a TOGGLE-style React onSelect has this dual-source desync. Footnotes use the same panel pattern (renderCard onSelect toggle) — check FootnotePanel. The clean fix is one source of truth (drive selectedId from the store, or make onActivate/onSelect agree on toggle semantics)."
+    },
+    {
+      "id": "CI-F2-02",
+      "subject": "citations",
+      "cluster": "F2",
+      "severity": "MEDIUM",
+      "symptom": "A deleted citation (or one whose id changed across a raw .tex round-trip) can leave a stale halo/expanded-body ghost painted on a now-unrelated or absent card, and the cardStore selection/expansion never self-clears.",
+      "suspectedRootCause": "The dangling-ref pruner in useAnchorHighlightReconciler treats inline-atom kinds (footnote/citation) as always-present: entityExists() returns true unconditionally for isInlineAtomCardKind, so the pruner's clearSelection/setHover(null)/collapse branches are dead for citations. Citations aren't in the entity collections (they're editor-derived), so the pruner has nothing to check against and deliberately exempts them. Result: when a citation atom is deleted, or its citationId is regenerated (e.g. a raw code-pane edit that drops the \\vcid{} marker, then re-parse mints a fresh id via latex-parser.ts:481/509), the old {kind:'citation',id} ref lingers in cardStore.selected/expandedSet and the reconciler keeps trying to paint it.",
+      "evidence": [
+        { "file": "src/links/_shared/useAnchorHighlightReconciler.ts", "line": 84, "note": "entityExists: isInlineAtomCardKind(ref.kind) ⇒ true always — pruner can never drop a citation ref" },
+        { "file": "src/links/_shared/useAnchorHighlightReconciler.ts", "line": 155, "note": "prune effect: clearSelection / setHover(null) / collapse all gated on !entityExists → no-ops for citations" },
+        { "file": "src/lib/latex-parser.ts", "line": 481, "note": "citationId: pendingCitationId || generateShortId() — fresh id when the \\vcid marker is absent (raw .tex / external edit)" },
+        { "file": "src/links/_shared/anchored-card-store.ts", "line": 100, "note": "select keeps the ref until something clears it; nothing clears a dropped citation id" }
+      ],
+      "reproSteps": [
+        "Select a citation (halo on, ref in cardStore.selected).",
+        "Delete that citation's \\cite atom directly via the raw Code field / code pane (not the panel trash), OR edit the .tex so the \\vcid marker is lost and the doc re-parses.",
+        "The card's id changes / the card disappears; cardStore.selected still holds the old id.",
+        "Reconciler re-runs but the pruner exempts citations, so the stale ref is never cleared; a card-key collision (id reused) would paint the wrong card."
+      ],
+      "reproChannel": "code-trace",
+      "confidence": "medium",
+      "suspectedClass": "Footnotes share the exact same inline-atom pruner exemption (entityExists⇒true), so a deleted/renumbered footnote leaves an identical ghost. The deeper issue is that inline-atom cards have no liveness signal feeding the pruner — a citation/footnote-id-set diff from the editor would close it. This is the brief's known-fragile lead #2."
+    },
+    {
+      "id": "CI-F2-03",
+      "subject": "citations",
+      "cluster": "F2",
+      "severity": "LOW",
+      "symptom": "Expanding a citation card (chevron) does not move the halo, and selecting it does not expand it — correct per the axis-purity contract — but a card can remain visually expanded with no halo after click-away, while the omni 'single-selection' projection assumes selection drives visibility.",
+      "suspectedRootCause": "expandedSet is sticky and multi (anchored-card-store.ts:74-92) and is intentionally independent of the ≤1 selection slot. This is by design (N1) and the draft-pin test confirms the intended split. Flagged only because expanded-but-unselected citation cards do NOT paint any text/margin highlight (reconciler paints from the selection slot only, useAnchorHighlightReconciler.ts:218-227), so an expanded citation gives no in-text feedback — an A6 follow-up the reconciler docstring itself acknowledges, not a regression.",
+      "evidence": [
+        { "file": "src/links/_shared/useAnchorHighlightReconciler.ts", "line": 218, "note": "halo paints from SELECTION slot only; expansion no longer drives text/margin highlight (acknowledged A6 follow-up)" },
+        { "file": "src/links/_shared/useAnchoredCard.ts", "line": 72, "note": "onToggleExpanded is axis-pure (expansion only) — correct, but yields no in-text marker feedback for the expanded citation" }
+      ],
+      "reproSteps": [
+        "Expand a citation card via the chevron (not body click).",
+        "Observe the body opens but no halo and no in-text marker highlight appears.",
+        "Click elsewhere; the card stays expanded with no selection."
+      ],
+      "reproChannel": "code-trace",
+      "confidence": "high",
+      "suspectedClass": "Affects every anchored card kind equally (the reconciler is kind-agnostic); the missing expanded-marker is a cross-subject A6 item, not citation-specific."
+    },
+    {
+      "id": "CI-F7-01",
+      "subject": "citations",
+      "cluster": "F7",
+      "severity": "MEDIUM",
+      "symptom": "Deleting a citation from the panel (trash button) removes it immediately with no 'this has content?' confirmation, even when the card carries keys/postnotes/a typed raw command — one stray click loses the citation and strips its in-text \\cite atom.",
+      "suspectedRootCause": "CitationCard does not use EditableCard's confirm flow at all — it wires PanelCard.onTrashClick straight to onDelete(cit.id). Even if it did route through EditableCard, the confirm there is gated on hasJsonContent(value) (panel-primitives.tsx:891-901), and the shared cardHasContent helper has no citation case (its CardContentKind union excludes footnote/citation/example/bib), so the 'has content?' classification is structurally unavailable for citations. The hard-delete is compound (atom + sidecar, incl. footnote-nested) so it is genuinely destructive of an in-text reference, making the missing guard worse than for a body-only card.",
+      "evidence": [
+        { "file": "src/panels/Citations/CitationCard.tsx", "line": 697, "note": "onTrashClick={!compressed && onDelete ? () => onDelete(cit.id) : undefined} — direct delete, no confirm" },
+        { "file": "src/cards/has-content.ts", "line": 22, "note": "CardContentKind union has no citation/footnote case → cardHasContent can't classify a citation" },
+        { "file": "src/components/panel-primitives.tsx", "line": 894, "note": "EditableCard.tryDelete confirm gated on hasJsonContent — and CitationCard never uses EditableCard anyway" },
+        { "file": "src/components/Editor.tsx", "line": 1414, "note": "deleteLink strips the in-text \\cite atom (and stripFootnoteNestedCitation the nested one) — the delete is destructive of doc text" }
+      ],
+      "reproSteps": [
+        "Expand a citation card with one or more keys and a postnote.",
+        "Click the trash icon.",
+        "The card and its in-text \\cite atom are removed instantly, no confirmation dialog."
+      ],
+      "reproChannel": "code-trace",
+      "confidence": "high",
+      "suspectedClass": "Brief lead #1: cardHasContent omits footnote/citation/example/bib, so all four atom/derived kinds skip the delete-confirm. Footnotes (FootnoteCard) and examples should be checked for the same unconfirmed trash. The class is 'atom/derived card kinds have no content predicate, so the shared confirm gate silently no-ops or is bypassed entirely.'"
+    },
+    {
+      "id": "CI-F7-02",
+      "subject": "citations",
+      "cluster": "F7",
+      "severity": "MEDIUM",
+      "symptom": "After biblatex auto-promotes \\cite to \\cites for a multi-key citation with distinct postnotes, removing keys back down to one leaves the command stuck as the plural \\cites{...} form forever.",
+      "suspectedRootCause": "setRowPostnote promotes type→type+'s' when biblatex + HAS_PLURAL + >=2 rows + distinct postnotes, but there is NO inverse: removeRow (and setRowKey) never demote the plural back to singular when the row count drops to one or the postnotes collapse to identical. The promote only fires inside setRowPostnote, so once `type` state is 'cites' it persists through every later serialize regardless of row count.",
+      "evidence": [
+        { "file": "src/panels/Citations/CitationCard.tsx", "line": 376, "note": "shouldPromote: biblatex && HAS_PLURAL && next.length>=2 && distinctPostnotes → setType(type+'s')" },
+        { "file": "src/panels/Citations/CitationCard.tsx", "line": 392, "note": "removeRow computes next rows and persist({rows:next}) but never recomputes/demotes type" },
+        { "file": "src/panels/Citations/CitationCard.tsx", "line": 304, "note": "persist uses nextType = overrides.type ?? type, so the stuck-plural type carries through serialize" }
+      ],
+      "reproSteps": [
+        "biblatex package; create a citation with type \\cite and two keys.",
+        "Give the two rows distinct postnotes → command auto-promotes to \\cites{...}{...}.",
+        "Remove one row.",
+        "Command stays \\cites{...} (plural) for a single key instead of returning to \\cite{...}."
+      ],
+      "reproChannel": "code-trace",
+      "confidence": "high",
+      "suspectedClass": "Brief lead #4. Any auto-promote with no symmetric demote is a stuck-state bug; the same one-directional logic would strand \\textcites/\\parencites/\\autocites etc. (all in HAS_PLURAL) plural after row reduction."
+    },
+    {
+      "id": "CI-F7-03",
+      "subject": "citations",
+      "cluster": "F7",
+      "severity": "LOW",
+      "symptom": "Removing the last/only key from a citation card empties the command (\\cite{}) but leaves the in-text \\cite atom and the citation card in place as a dangling empty-pill reference rather than deleting it.",
+      "suspectedRootCause": "removeRow on a single row resets to one empty row, then persist sees validRows.length===0 and emits onUpdateCitation(cit.id, '') — which only sets command='' in the sidecar (and the atom re-renders as the dotted [cite] placeholder). There is no path from 'cleared all keys' to deleting the citation, so the user is left with an empty anchored placeholder that they must separately trash.",
+      "evidence": [
+        { "file": "src/panels/Citations/CitationCard.tsx", "line": 392, "note": "removeRow: rows.length<=1 → [{id,key:''}] (an empty row), not a delete" },
+        { "file": "src/panels/Citations/CitationCard.tsx", "line": 316, "note": "persist: validRows.length===0 → onUpdateCitation(cit.id,'') — empties command, keeps the card" },
+        { "file": "src/lib/tiptap/citation.ts", "line": 239, "note": "empty \\cite{} renders as the dotted [cite] placeholder pill in the doc — a visible dangling marker" }
+      ],
+      "reproSteps": [
+        "Open a single-key citation card.",
+        "Remove the only key (X on the row).",
+        "Card remains as an empty [cite] placeholder; the in-text atom stays as a dotted [cite] pill."
+      ],
+      "reproChannel": "code-trace",
+      "confidence": "high",
+      "suspectedClass": "Empty-but-anchored placeholder is the intended 'pristine draft' state (useCitations.addCitation markNew), but reaching it by REMOVING the last key (vs. inserting a blank) gives no affordance to clean up — same shape as a footnote whose body is fully deleted but the marker stays."
+    },
+    {
+      "id": "CI-F7-04",
+      "subject": "citations",
+      "cluster": "F7",
+      "severity": "LOW",
+      "symptom": "cloneCitation duplicates a citation into a new sidecar entry that has no in-text atom (it is effectively an unanchored phantom that renders with dashed styling and no jump), with no way to anchor it short of dragging it into the editor.",
+      "suspectedRootCause": "cloneCitation copies command+keys with a fresh id but never inserts a corresponding \\cite atom and never sets unanchored:true. So the clone is neither in citationOrder (→ sorts last, isAnchored=false → dashed) nor flagged unanchored, an ambiguous in-between: syncFromEditor only carries forward isUnanchored entries, so on the next editor-sync rebuild the clone (not unanchored, not in the editor) is DROPPED from state.citations entirely — a silent loss of the cloned entry on reload.",
+      "evidence": [
+        { "file": "src/hooks/useCitations.ts", "line": 227, "note": "cloneCitation mints a fresh id + copies command/keys but inserts NO atom and sets NO unanchored flag" },
+        { "file": "src/hooks/useCitations.ts", "line": 357, "note": "syncFromEditor: keeps refs from the editor PLUS only prev.citations.filter(isUnanchored) — a clone that's neither editor-anchored nor flagged unanchored is dropped" },
+        { "file": "src/links/links.ts", "line": 1093, "note": "isUnanchored returns true only for unanchored===true or empty links[]; a clone has neither → not preserved by syncFromEditor" }
+      ],
+      "reproSteps": [
+        "Clone a citation (cloneCitation, e.g. via a duplicate action).",
+        "The clone appears as a dashed unanchored-looking card but is NOT flagged unanchored.",
+        "Trigger an editor citation re-sync (any structural edit that calls syncFromEditor) or reload.",
+        "The cloned citation silently disappears from the panel."
+      ],
+      "reproChannel": "code-trace",
+      "confidence": "medium",
+      "suspectedClass": "Any code path that adds a citation to the sidecar without either inserting an atom or setting unanchored:true creates an entry that syncFromEditor will garbage-collect. cloneCitation is the clearest instance; verify no other add path (e.g. AI-request import) forgets the unanchored flag. Cannot confirm cloneCitation is reachable from the citations panel UI (it's in the hook + CITATIONS_INERT but I found no panel/omni caller) — the loss is real wherever it is invoked."
+    }
+  ]
+}

@@ -1,0 +1,46 @@
+{
+  "file": "outline-g-interact",
+  "verifier": "A",
+  "verdicts": [
+    {
+      "findingId": "OUT-F2-01",
+      "isReal": true,
+      "disposition": "CONFIRMED",
+      "severityFinal": "MEDIUM",
+      "rationale": "Traced end-to-end and confirmed on a realistic path. `latestDoc` is initialized null (EditorLayout.tsx:1094) and the ONLY writer is the 300ms-debounced `handleUpdate` (editor-ops.ts:39-48), wired to TipTap's `onUpdate` (Editor.tsx:796) which fires on doc CHANGE only — `onEditorReady` (Editor.tsx:801-803) does NOT seed it. No other `setLatestDoc` call site exists (grep: only editor-ops.ts:47). So on a never-edited doc, `docForOutline=latestDoc=null` (EditorLayout.tsx:2360) → `outlineHeadings=extractHeadings(null).headings=[]`, `outlineTotalBlocks=0` (2361-2362). `useFocusActions` threads these into the focus handlers (focus.ts:21-38). `focusMode.activate([], 0)` takes the `headings.length===0` branch → `start=0, end=-1` (useFocusMode.ts:264-266) → `bandFromIndices(doc,0,-1,...)` → startUuid null (0<=0), endUuid null (uuidOfIndex(doc,-1) returns null at useFocusMode.ts:86) → null/null band → `resolveFocusBand` maps null/null to [0, lastIdx] = WHOLE DOC (focus-view.ts:115-116). `moveTo(blockIndex)` is identical: `sectionRange(idx, [], 0)` returns [0, totalBlocks-1]=[0,-1] (useFocusMode.ts:144) → whole doc. Critically the OUTLINE DISPLAY is NOT affected — its `content` is live `editor.getJSON()` (EditorPane.tsx:3473), so the user sees real sections but the focus engine sees none. Repro is realistic: open an existing paper, click Focus before typing → whole doc focused instead of section 1; one keystroke + ~300ms fixes it. Sibling instances real: `availableDividerLevels`/`activeDividerLevels` (EditorLayout.tsx:2363-2374) and `focusWordCount` (2387-2392) also read `docForOutline` and are empty/degraded until the first edit.",
+      "correctedRootCause": "live-vs-debounced snapshot split: focus-mode structure (outlineHeadings/outlineTotalBlocks) is derived from the debounced `latestDoc` (EditorLayout.tsx:2360-2362) while the outline display and the focus engine's band application both read the live editor doc — so the two disagree for the entire pre-first-edit window. EditorLayout.tsx:1094 + editor-ops.ts:39-48 + Editor.tsx:796/801.",
+      "class": "structure derived from debounced latestDoc instead of live editor before first edit (also availableDividerLevels, activeDividerLevels, focusWordCount)",
+      "confidence": "high"
+    },
+    {
+      "findingId": "OUT-F7-01",
+      "isReal": false,
+      "disposition": "REFUTED",
+      "severityFinal": "LOW",
+      "rationale": "The step-inspector mechanism the finder describes is accurate (a heading TEXT rename via tr.delete+insertText produces no changedHeadings — headingStructurallyChanged compares level/label/numbered only, step-inspector.ts:247; same-UUID text-only goes to contentChangedUuids which emits onContentChanged, NOT one of the useStructuralRevisions subscriptions; useStructuralRevisions.ts:90-128. ParTitle setNodeMarkup has no attr synthesis at all — only heading level/label/numbered + figureBlock label/numbered are synthesized, step-inspector.ts:483-529 — so no counter bumps). BUT the finder's CONCLUSION — the outline 'keeps displaying the OLD title... until some unrelated structural edit forces a refresh' — does not occur. Both rename ops dispatch a real transaction, which fires `editor.on('update')`. `useWordCount(editor)` is called in EditorPane's body (EditorPane.tsx:1121) and its `onUpdate` (useWordCount.ts:278-281, NO perf-flag gate) unconditionally `setCounts(walkDoc(...))` after a 300ms debounce (useWordCount.ts:263) — walkDoc returns a FRESH object every call, so React never bails (object identity differs) and EditorPane re-renders. On re-render the outline `content` = live `editor.getJSON()` (EditorPane.tsx:3473) is recomputed and threaded to OutlineHost→OutlinePanel, whose headings memo keys on `[content]` (OutlinePanel.tsx:1516); the EditablePod, no longer editing, renders `pod.text` (OutlinePanel.tsx:996-1000) = the NEW title. Net: the pod reverts to the new title within ~300ms automatically — a sub-second transient, not the persistent staleness claimed. (The section-path recompute at EditorLayout.tsx:2127-2134/2104-2113 ALSO re-renders for a heading rename whenever the renamed heading is in the active breadcrumb, an additional masking path.) The finder's own suspectedClass concedes 'Live verification would confirm whether any incidental EditorPane re-render masks this in practice' — it does. At most this is a ~300ms flicker (the pod shows old text between commit and the word-count recount). Downgraded REFUTED for the stated defect; residual flicker is LOW/COSMETIC and self-healing.",
+      "correctedRootCause": "No persistent defect. The transient (~300ms pod flicker after commit) is the EditablePod reverting to the prop-derived `pod.text` (OutlinePanel.tsx:996-1000) before the next EditorPane re-render lands; the re-render is guaranteed by the unconditional `setCounts` in useWordCount.ts:263 (300ms debounce), not by any rev.* bump.",
+      "class": "finder over-scoped a missing rev.* bump into persistent staleness without accounting for the permitted O(doc) word-count subscriber (useWordCount.ts:278) that re-renders EditorPane on every transaction",
+      "confidence": "high"
+    },
+    {
+      "findingId": "OUT-F3-01",
+      "isReal": true,
+      "disposition": "CONFIRMED",
+      "severityFinal": "LOW",
+      "rationale": "Verified the asymmetry exactly as described. The focus-band drag candidate set `allRowAttrs` includes parTitle rows (OutlinePanel.tsx:1244-1246), and the drag flush calls `onSnapBoundary(drag.edge, drag.rows[bestIdx].blockIndex)` with the raw block index of the nearest row (OutlinePanel.tsx:1326). In `snapBoundary` (useFocusMode.ts:351-373): the TOP edge uses `blockIndex` directly as the new start — `bandFromIndices(doc, blockIndex, cur.endIdx, ...)` (useFocusMode.ts:365); the BOTTOM edge routes through `sectionRange(blockIndex, headings, totalBlocks)` and uses `newEnd` (useFocusMode.ts:368-369). When `blockIndex` is a parTitle (a paragraph, not a heading), `sectionRange`'s `findIndex(h.index===blockIndex)` is -1 (useFocusMode.ts:133), falls through to the enclosing-heading branch (149-152) and returns the heading's WHOLE [start, sectionEnd] range — so the bottom edge jumps to the section end instead of the dropped paragraph, while the top edge snaps to the exact paragraph. Real but narrow: requires Show-par-titles + active+unlocked focus + dragging a band handle onto a parTitle row; non-destructive and re-draggable. LOW is correct. The unwired `nudgeBoundary` (useFocusMode.ts:339-345) repeats the same top=raw/bottom=sectionRange split, so the suspected sibling is accurate.",
+      "correctedRootCause": "snapBoundary applies section-rounding to one edge (bottom via sectionRange, useFocusMode.ts:368) and raw-index to the other (top, useFocusMode.ts:365); for a non-heading (parTitle) snap target the bottom edge expands to the enclosing section instead of the row. Same split in the unwired nudgeBoundary (useFocusMode.ts:344).",
+      "class": "boundary op routing one edge through sectionRange and the other through a raw index (snapBoundary bottom vs top; mirrored in nudgeBoundary)",
+      "confidence": "high"
+    },
+    {
+      "findingId": "OUT-F3-02",
+      "isReal": true,
+      "disposition": "CONFIRMED",
+      "severityFinal": "LOW",
+      "rationale": "Verified the mechanism. In split mode with the bottom pane active, `handleScrollToHeading` calls `editor.commands.setTextSelection(...)` on the canonical MAIN editor (docstart at editor-ops.ts:60, heading at :72) before scrolling the mirror DOM. The mirror is a second EditorView over the SAME shared EditorState (EditorMirror.tsx:58 `state: editor.state`; dispatches routed through `editor.view.dispatch`, :65; comment 'multiple views, one state', :4-6), so the selection is shared and the single caret moves — felt as the top pane's cursor relocating. CONFIRMED that `setTextSelection` perturbs the shared caret. Severity LOW is right and the framing is slightly overstated: (a) the non-split jump `scrollToHeading` ALSO calls `setTextSelection` (Editor.tsx:936,951), so caret-moves-on-jump is the established behavior across both paths, not a split-only regression; (b) with a single shared selection the split fundamentally has one caret, so any navigation that touches selection moves it in both panes. The genuinely avoidable part is using `setTextSelection` purely as a scroll mechanism for the mirror (one could scroll the mirror container without touching the selection). Real, low, recoverable (user re-clicks the top pane to resume editing — no content loss).",
+      "correctedRootCause": "`setTextSelection` is used as the mirror-scroll mechanism (editor-ops.ts:60,72) on a shared EditorState (EditorMirror.tsx:58); a navigation-only intent therefore relocates the single shared caret. The cleaner fix scrolls the mirror DOM without mutating the selection.",
+      "class": "jump handlers that mutate the shared editor selection as a means of scrolling a secondary mirror view (same setTextSelection-as-scroll pattern would perturb the main caret for any mirror-routed panel jump)",
+      "confidence": "high"
+    }
+  ]
+}

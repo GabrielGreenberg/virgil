@@ -1,0 +1,86 @@
+{
+  "file": "examples-g-display",
+  "verifier": "B",
+  "verdicts": [
+    {
+      "findingId": "EX-F5-01",
+      "isReal": true,
+      "disposition": "RECLASSIFIED",
+      "severityFinal": "LOW",
+      "rationale": "CONFIRMED that useExamples is dead code: grep shows it is never imported/called (src/hooks/useExamples.ts; the only references — card-registry.tsx:443, EditorPane.tsx:30, linked-anchor.ts:148 — are comments). updateExampleTitle/deleteExample/syncFromEditor/exampleRefs are referenced only inside useExamples.ts itself. The docked panel path (EditorPane.tsx:5394 → ExamplesPanelHost:5659 → ExamplesPanel) and the omni path (omni.tsx:18 buildExampleOmniItems) both thread only the editor-derived ExampleInfo[] (Editor.tsx:193 — no `title` field) + selectedId/onSelect/onJump; ExamplesPanel.tsx exposes no title-edit/delete props and ExampleCard.tsx renders no CardBodyTitle/title (verified full file). The EditorLayout.tsx:167 import of ExamplesPanel is unused (no JSX render there). So examples.json is never written/read and titles can't be set. DOWNGRADE MEDIUM→LOW: this is missing-affordance / hook-without-consumer dead code, NOT a path a user hits that loses content — there is no UI to enter a title, so nothing the user typed is ever lost or clobbered. No data-loss, no broken core function; the example cards render and jump correctly without the hook.",
+      "correctedRootCause": "Hook-without-a-consumer: the examples sidecar metadata layer (useExamples) was never wired into either render surface; ExampleInfo (Editor.tsx:193-221) carries no title field, and ExampleCard.tsx:387-616 renders no title affordance. cards/types.ts and cards/floats document the state as 'no reachable ExampleRef sidecar (R2)'.",
+      "class": "Hook-without-a-consumer dead code — a per-doc sidecar hook whose mutators are dropped by the panel host. Audit other *PanelHost wirings in EditorPane.tsx for dropped hook outputs, though most (notes/todos/reports) ARE wired unlike examples.",
+      "confidence": "high"
+    },
+    {
+      "findingId": "EX-F5-02",
+      "isReal": true,
+      "disposition": "RECLASSIFIED",
+      "severityFinal": "LOW",
+      "rationale": "CONFIRMED at code level: writeBackToMain tags the replaceWith tr with setMeta('addToHistory', false) (ExampleCard.tsx:197) and onUpdate fires it on every card-body change (:243), so card-body edits never land on the MAIN editor's undo stack. BUT the symptom is materially narrower than 'no way to revert': the embedded card editor mounts the full StarterKit (editor-extensions.ts:1652) which includes its own History extension, so Ctrl+Z WHILE FOCUSED IN THE CARD undoes the edit normally. The only gap is that focusing the main editor and undoing won't reach the card edit — a deliberate float-parity choice (comment :201, and the float at text-objects/floats/example-block-body.tsx shares it) made to avoid double-recording when the same content is editable in two places. The edit is recoverable and not silently lost. DOWNGRADE MEDIUM→LOW: real cross-surface undo inconsistency, recoverable via card-local undo, by-design parity.",
+      "correctedRootCause": "addToHistory:false copied verbatim from the example float for double-record avoidance (ExampleCard.tsx:197); the card-body editor still owns a StarterKit History so undo is available within the card — the inconsistency is only that main-editor undo doesn't traverse into the card write-back.",
+      "class": "addToHistory:false on float-parity write-backs splits the undo stack between the card editor and main; valid for a mirror-float, debatable for a primary editable card surface. Audit other FLOAT_WRITE_META writers, but each has a local history so none silently lose content.",
+      "confidence": "high"
+    },
+    {
+      "findingId": "EX-F5-03",
+      "isReal": true,
+      "disposition": "RECLASSIFIED",
+      "severityFinal": "LOW",
+      "rationale": "CONFIRMED the bare catch exists: writeBackToMain wraps nodeFromJSON + replaceWith + dispatch in try{...}catch{/* swallow */} (ExampleCard.tsx:187-202), and the re-seed effect (:268-299) would silently revert a swallowed edit on the next rev.examples/contentRev bump. HOWEVER the data-loss path is essentially UNREACHABLE on a normal edit: the card editor and main editor build from the SAME node schema — buildEditorExtensions's surface/isFloat branches (editor-extensions.ts:1641-1767) gate only NodeView rendering, click handling, and plugins (e.g. InlineMath surface:float, ExpexNumbering omission), never node types/attrs/marks. So valid JSON produced by the card editor deserializes fine against main's schema (ed.state.schema.nodeFromJSON). The uuid is force-overwritten to src.node.attrs.uuid (:193), removing the most plausible mismatch. The ExampleCardEditor.test.tsx write-back tests confirm valid edits round-trip. The catch can fire only on truly malformed/stale JSON that the shared-schema card editor cannot itself hold. DOWNGRADE MEDIUM→LOW: real swallow-on-write-back latent risk, but no realistic user edit triggers it; confidence the finder cited 'medium' overstates reachability.",
+      "correctedRootCause": "Bare catch on the nodeFromJSON/dispatch write-back (ExampleCard.tsx:200), copied for float parity. The divergence requires schema-invalid JSON, which the card editor — sharing main's node schema — does not produce on normal editing; the surface differences are render/plugin only, not schema.",
+      "class": "Silent swallow-on-write-back (lead #9). The same bare catch lives on the example float; any nodeFromJSON-inside-bare-catch write-back can in principle diverge from the doc. Worth surfacing the error for diagnostics, but not a live data-loss vector here.",
+      "confidence": "medium"
+    },
+    {
+      "findingId": "EX-F4-01",
+      "isReal": true,
+      "disposition": "CONFIRMED",
+      "severityFinal": "LOW",
+      "rationale": "CONFIRMED. LabelRef's NodeView click handler (label.ts:53-65) dispatches virgil-label-ref-click with ONLY {label, refCommand, targetKind} — no element/position identity — and is NOT surface-gated (unlike math), so it fires from the example card body's float-surface editor. The card body mounts buildEditorExtensions({surface:'float'}) and LabelRef is appended unconditionally (editor-extensions.ts:1761), so a labelRef node inside the example block renders a .label-ref-node[data-label] in the card DOM. The bridge resolves the anchor by GLOBAL document.querySelector('.label-ref-node[data-label=...]') (marker-clicks.ts:333) — first DOM match — and DOES consume the result: setActiveRefRect(el.getBoundingClientRect()) (:338). So when the same label is \\ref'd in both main text and the example body, the popover anchors to whichever instance is earlier in DOM order, not the clicked one. Precondition (a \\ref inside an example whose label is also \\ref'd in main) is niche but reachable → LOW is correct.",
+      "correctedRootCause": "Event carries no clicked-element identity; bridge re-resolves by a global attribute selector that returns the first match (marker-clicks.ts:333-338). Fix shape: carry the clicked element/rect in the CustomEvent detail (as the citation path already does with clickY/rect) instead of re-querying globally.",
+      "class": "Global-querySelector-by-shared-key after a click from a duplicate/embedded editor. The label-ref path is the genuine instance because the resolved rect is consumed; the sibling citation path (EX-F4-03) shares the selector shape but its downstream consumer ignores sourceEl, so it does NOT manifest.",
+      "confidence": "medium"
+    },
+    {
+      "findingId": "EX-F4-02",
+      "isReal": true,
+      "disposition": "CONFIRMED",
+      "severityFinal": "LOW",
+      "rationale": "CONFIRMED. The example card body mounts surface:'float' (ExampleCard.tsx:215); InlineMath/DisplayMath are configured surface:isFloat?'float':'main' (editor-extensions.ts:1752-1753); the math click handler bails on any non-main surface: `if (surface !== 'main') return` (math.ts:73). The gate is deliberate (the click→edit bridge edits MAIN by absolute pos, which mis-targets from a float — documented math.ts:57-72). Consequence: clicking math inside the directly-editable example card body does nothing, and since math is an atom there's no inline keyboard edit path either — the only way to edit example math is the code/source view. Real interactivity gap; no data loss, alternate edit path exists → LOW.",
+      "correctedRootCause": "Surface-gated atom interactivity (math.ts:73) vs. the example card body being the one float-surface editor that is ALSO a primary editing surface. The gate protects against pos mis-targeting but has no host/position-remap escape hatch for the card surface, unlike citation/footnote/labelRef which fire from any surface.",
+      "class": "Atoms whose interactivity is hard-gated to surface:'main' are inert inside the example card body. Math is the only such atom today (citation/footnote/labelRef are not surface-gated); any future surface-main-gated atom would be similarly dead in the card.",
+      "confidence": "high"
+    },
+    {
+      "findingId": "EX-F4-03",
+      "isReal": false,
+      "disposition": "REFUTED",
+      "severityFinal": "COSMETIC",
+      "rationale": "REFUTED. The premise (a stale sourceEl causes wrong-instance citation alignment) does not hold because the LIVE alignOmniCardWithClick IGNORES sourceEl entirely. The only implementation (EditorLayout.tsx:1122-1145, wired into the bridge env at :2559) names the third parameter `_sourceEl` and never reads it — alignment is computed purely from clickY (clickY - pod.getBoundingClientRect().top → omniPinStore.requestPin) where clickY is the ACTUALLY-CLICKED element's rect.top (citation.ts:264,276 — dom.getBoundingClientRect() of the clicked NodeView). marker-clicks.ts:319-322 still resolves sourceEl via global first-match querySelector, but it is passed to a function that discards it. So a wrong sourceEl has ZERO effect on alignment; the card aligns to the genuinely-clicked Y. The finder's own note already conceded clickedPos is unconsumed (citation.ts:281 dispatched, no reader — confirmed by grep) and that selection+open are correct; the residual alignment claim is the dead-param case. No misbehavior on any path.",
+      "correctedRootCause": "Dead parameter: alignOmniCardWithClick(cardId, clickY, _sourceEl) at EditorLayout.tsx:1123 ignores its third arg; alignment uses clickY only. The global querySelector at marker-clicks.ts:319 is dead-code feeding a discarded argument — a cleanup opportunity, not a bug.",
+      "class": null,
+      "confidence": "high"
+    },
+    {
+      "findingId": "EX-F1-01",
+      "isReal": true,
+      "disposition": "RECLASSIFIED",
+      "severityFinal": "COSMETIC",
+      "rationale": "CONFIRMED at code level: the collapsed preview renders the full expex editor under maxHeight: calc(var(--editor-line-height,1.8) * 1em * clampLines) with overflow:hidden (ExampleCard.tsx:334-343), clampLines = useCompressedLines() = DOCKED 1 / OMNI 2 (card-display.tsx:28-29). A \\pex with body + multiple \\a rows + a gloss is far taller than 1-2 prose lines so the collapsed preview clips after the first row. The comment (:328-333) explicitly notes -webkit-line-clamp can't apply to the expex CSS grid, hence the deliberate height-cap. DOWNGRADE LOW→COSMETIC: this is a collapsed-by-user-choice preview affordance; expanding the card reveals the whole example; nothing is lost or mis-navigated. It is a designed space tradeoff, purely visual.",
+      "correctedRootCause": "Fixed line-count height clamp applied to non-text-flow (CSS grid) expex content (ExampleCard.tsx:337); 1-2 prose lines underserves a multi-row grid, but this is the intended compact-preview ceiling.",
+      "class": "Line-count clamp over structured (grid/non-paragraph) borrowed-body content — figure/graphics block previews under the same compressedBodyStyle ceiling would clip similarly. Purely presentational across the class.",
+      "confidence": "high"
+    },
+    {
+      "findingId": "EX-F1-02",
+      "isReal": true,
+      "disposition": "RECLASSIFIED",
+      "severityFinal": "COSMETIC",
+      "rationale": "CONFIRMED: the collapsed branch mounts ExampleCardEditor (readOnly, clampLines) rather than a static string (ExampleCard.tsx:434-444), so a panel/omni with N collapsed example cards holds N live embedded TipTap editors. This is acknowledged in-code (#43 comment :427-433) and the finder itself states 'not a correctness bug.' Verified it is NOT a keystroke-sanctity regression: the editor re-seeds only on rev.examples/contentRev (ExampleCard.tsx:268-299), pinned by ExampleCardEditor.test.tsx 'keystroke sanctity' (emitCount flat on plain typing). DOWNGRADE LOW→COSMETIC/non-defect: a deliberate render-parity tradeoff with a documented memory/CPU footprint that scales with example count; no user-observable misbehavior, no correctness impact. Flag for future virtualization, not a bug.",
+      "correctedRootCause": "By-design: collapsed≡expanded render parity (#43) chose a real read-only editor over a static summary, accepting N embedded editors for N collapsed cards (ExampleCard.tsx:436). Documented, gated to structural re-seeds only.",
+      "class": "Per-card embedded-editor as the default collapsed renderer scales editor count with list length; examples is the only borrowed-body kind doing this today. A footprint concern for virtualization, not a defect.",
+      "confidence": "high"
+    }
+  ]
+}

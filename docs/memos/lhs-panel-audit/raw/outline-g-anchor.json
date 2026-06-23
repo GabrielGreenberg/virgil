@@ -1,0 +1,128 @@
+{
+  "subject": "outline",
+  "group": "G-anchor",
+  "clusters": ["A1", "A2", "A3", "F8", "C1"],
+  "cells": [
+    {
+      "cluster": "A1",
+      "status": "N-A",
+      "note": "Outline is structural (panel-registry.ts:147-155 card:null). No anchored cards → classic orphan-anchor cluster doesn't apply. Reinterpreted as 'orphan heading/block reference': headings & parTitles are derived from the live doc (extractHeadings, OutlinePanel.tsx:302-347) so a deleted heading simply vanishes from the tree — there is no dangling card to orphan. Focus-band edge whose anchor block is deleted IS the nearest analog and is covered under A2.",
+      "bugIds": []
+    },
+    {
+      "cluster": "A2",
+      "status": "BUG",
+      "note": "Focus-band UUID re-anchor on deleted block is sound (useFocusMode.ts:230-256, resolveFocusBand degrades to null on dead anchor, focus-view.ts:127-128). BUT the OUTLINE's own collapse identity is INDEX-based (id:`heading-${idx}`, OutlinePanel.tsx:322) and drifts when blocks are added/removed above a heading — the exact staleness the focus rework migrated away from. See OUT-A2-01. Heading-index→live-block staleness also mis-targets focus math (OUT-F8-02).",
+      "bugIds": ["OUT-A2-01"]
+    },
+    {
+      "cluster": "A3",
+      "status": "N-A",
+      "note": "No cards on this panel → no 'two cards one anchor' case. Reinterpreted as duplicate structural identity: two headings with identical text are disambiguated correctly by block index, not text (resolvePosition matches by entry.index, OutlinePanel.tsx:64-69; sectionNumber/text collisions handled). The one duplicate-identity hazard is duplicate \\label{} keys, which the InlineLabel warning flags but does NOT block on commit — filed under F8 as OUT-F8-03 (it's the label-write path, anchor-adjacent).",
+      "bugIds": []
+    },
+    {
+      "cluster": "F8",
+      "status": "BUG",
+      "note": "Prefs persistence: view toggles persist fine (localStorage virgil-outline-prefs, load OutlinePanel.tsx:1486-1494 / save :1497-1503). Focus.json sidecar round-trip is UUID-anchored & migration-safe (useFocusMode.ts:59-82,220-225). Defects: (1) collapsed-set persisted as index-based ids → wrong sections collapsed after edits/reload (OUT-A2-01, shared with A2); (2) focus-handler math reads EditorLayout's 300ms-debounced latestDoc while the panel renders live indices → focus lands on wrong band within the debounce window (OUT-F8-02); (3) duplicate-\\label commit not blocked despite live warning (OUT-F8-03); (4) handleRenameParTitle lacks the node-type guard handleRenameHeading has → setNodeMarkup may throw on a divergent heading index (OUT-F8-04).",
+      "bugIds": ["OUT-F8-02", "OUT-F8-03", "OUT-F8-04"]
+    },
+    {
+      "cluster": "C1",
+      "status": "PASS",
+      "note": "Outline panel chrome: omniEligible:false, card:null, no count badge passed to Panel (variant='raw', OutlinePanel.tsx:1726-1731; Panel.tsx never receives count) → count-badge subcell N-A. Panel toggle/reorder/split/collapse are shared EditorLayout infra (togglePanel/movePanel/toggleSplit), not outline-specific. Outline-specific header: Edit/Focus buttons are correctly mutually exclusive — Edit onClick bails if focusState.active (OutlinePanel.tsx:1663), Focus onClick bails if editMode (:1679); the only activate callers are these guarded buttons, so no both-active state is reachable. Position lozenge uses live activeSectionPath matched against live `content` headings (both fresh on a structural rev bump) → consistent.",
+      "bugIds": []
+    }
+  ],
+  "findings": [
+    {
+      "id": "OUT-A2-01",
+      "subject": "outline",
+      "cluster": "A2",
+      "severity": "MEDIUM",
+      "symptom": "Collapse/fold state in the outline jumps to the wrong sections after a block is inserted or removed above a collapsed heading (same session, on the next structural re-render), and across reloads when the doc structure changed between sessions.",
+      "suspectedRootCause": "Heading identity is the top-level BLOCK INDEX, not a stable UUID: extractHeadings stamps `id: \\`heading-${idx}\\`` (OutlinePanel.tsx:322) where idx is the doc.content array position. The collapsed Set is keyed by these ids and PERSISTED verbatim to localStorage (saveOutlinePrefs writes `collapsed: [...collapsed]`, OutlinePanel.tsx:1188-1196; loaded back into a Set at :1488). When a block is added before a heading, every later heading re-derives a NEW `heading-<idx+1>` id on the next `content` refresh — so the previously-collapsed heading is no longer in the Set (auto-expands) while a different heading that now occupies the old index appears collapsed. This is the exact index-vs-UUID staleness the focus-view rework deliberately migrated away from (useFocusMode/focus-view anchor on attrs.uuid), but the outline collapse-set and buildPods (`id: h.id`, :800) were never migrated.",
+      "evidence": [
+        { "file": "src/panels/Outline/OutlinePanel.tsx", "line": 322, "note": "heading id = `heading-${idx}` — pure block-index identity, regenerated every extractHeadings pass" },
+        { "file": "src/panels/Outline/OutlinePanel.tsx", "line": 1189, "note": "saveOutlinePrefs persists the index-based collapsed ids array to localStorage" },
+        { "file": "src/panels/Outline/OutlinePanel.tsx", "line": 1488, "note": "loadOutlinePrefs rehydrates `new Set(saved.collapsed)` — index ids resolved against a possibly-reordered doc" },
+        { "file": "src/panels/Outline/OutlinePanel.tsx", "line": 800, "note": "buildPods reuses h.id for the edit-mode collapse identity, inheriting the same drift" }
+      ],
+      "reproSteps": [
+        "Open a doc with sections A, B, C. Collapse section B in the outline.",
+        "Place the cursor above B and insert a new top-level paragraph (or heading), shifting B's block index by 1.",
+        "On the next structural re-render, B re-derives id `heading-<idx+1>` — it is no longer in the collapsed Set and visibly EXPANDS; the heading now occupying B's old index (e.g. C) may render collapsed instead.",
+        "Cross-session variant: collapse B, reload after the doc gained a block above B — the wrong section restores collapsed."
+      ],
+      "reproChannel": "code-trace",
+      "confidence": "high",
+      "suspectedClass": "Any structural identity keyed on a live array index rather than a persistent UUID. Siblings: outline edit-mode pod collapse (buildPods h.id), and the dev-only `data-outline-pos=\\\"h-${index}\\\"` attr keyed on block index (FocusBand/PositionLozenge measurement, OutlinePanel.tsx:631,1268) — these are recomputed live so they self-heal, but anything that PERSISTS or CACHES an index id (this collapsed-set) corrupts. Contrast useFocusMode which anchors on attrs.uuid for exactly this reason."
+    },
+    {
+      "id": "OUT-F8-02",
+      "subject": "outline",
+      "cluster": "F8",
+      "severity": "MEDIUM",
+      "symptom": "Clicking an outline row to move/expand the focus band (or dragging a band handle) within ~300ms of a structural edit sets the band to the wrong block range — focus covers the wrong section.",
+      "suspectedRootCause": "Two divergent doc snapshots feed the outline subsystem. The OutlinePanel RENDERS heading indices from EditorPane's `editor.getJSON()` (EditorPane.tsx:3473) which is gated on `useStructuralRevisions` and is fresh on a structural change. But the focus-mode action handlers read EditorLayout's `outlineHeadings`/`outlineTotalBlocks` derived from `latestDoc` (EditorLayout.tsx:2360-2362, `docForOutline = latestDoc`), and `latestDoc` is set by the 300ms-debounced `handleUpdate` (editor-ops.ts:39-51). useFocusActions threads the STALE outlineHeadings into focusMode.moveTo/expandTo/snapBoundary (focus.ts:25-38). sectionRange() computes [start,end] from the stale heading list (useFocusMode.ts:128-156); bandFromIndices then resolves those indices against the LIVE doc (useFocusMode.ts:99-113), so a heading added/removed in the 300ms window yields a band end/start pointing at the wrong live block.",
+      "evidence": [
+        { "file": "src/components/editor-layout/card-actions/editor-ops.ts", "line": 45, "note": "setLatestDoc(editor.getJSON()) is fired inside a 300ms setTimeout — the outline-heading source lags the live doc by up to 300ms" },
+        { "file": "src/components/EditorLayout.tsx", "line": 2360, "note": "docForOutline = latestDoc; outlineHeadings = extractHeadings(latestDoc).headings (:2361) — the STALE source the focus handlers use" },
+        { "file": "src/components/editor-layout/card-actions/focus.ts", "line": 26, "note": "handleFocusMoveTo passes the stale outlineHeadings into focusMode.moveTo alongside a blockIndex that came from the FRESH panel render" },
+        { "file": "src/hooks/useFocusMode.ts", "line": 296, "note": "moveTo runs sectionRange(blockIndex, staleHeadings, staleTotalBlocks) then bandFromIndices against the live doc — fresh index meets stale section map" },
+        { "file": "src/components/EditorPane.tsx", "line": 3473, "note": "OutlinePanel content = editor.getJSON() (live, rev-gated) — the FRESH source the clicked blockIndex is computed from" }
+      ],
+      "reproSteps": [
+        "Activate Focus mode (or just be in the panel) on a multi-section doc.",
+        "Make a structural edit that changes heading positions — e.g. delete a heading, or have an AI agent insert a block above the current section.",
+        "Within 300ms (before latestDoc's debounce settles), click a heading row to move/expand the band, or drag a focus-band handle.",
+        "sectionRange uses the pre-edit heading map → the band covers a different section than the clicked row; re-clicking after ~300ms corrects it."
+      ],
+      "reproChannel": "code-trace",
+      "confidence": "medium",
+      "suspectedClass": "Mixing a debounced doc snapshot (latestDoc) with live-doc index math anywhere the index originates from a different (fresher) snapshot. Sibling risk: focusWordCount (EditorLayout.tsx:2387-2392) sums per-block counts over focusMode.state.start/endBlockIndex using buildPerBlockCounts(docForOutline=latestDoc) — momentarily mismatched range vs live content, though only a transient count wobble. handleFocusActivate (focus.ts:22) uses the same stale outlineHeadings[0].index."
+    },
+    {
+      "id": "OUT-F8-03",
+      "subject": "outline",
+      "cluster": "F8",
+      "severity": "MEDIUM",
+      "symptom": "A user can commit a heading label that duplicates an existing \\label{} key in the document — the live 'label already in use' warning shows but does not prevent the write, producing two identical \\label keys (ambiguous \\ref resolution).",
+      "suspectedRootCause": "InlineLabel computes `conflict` live on each keystroke via isTaken (OutlinePanel.tsx:185-186) and renders a warning, but `commit()` unconditionally calls `onCommit(trimmed || null)` regardless of conflict state (OutlinePanel.tsx:179-183) on both Enter and blur. The downstream handleUpdateLabel performs NO conflict check either — it just setNodeMarkup({...attrs, label}) (editor-ops.ts:141-158). So the central isLabelTaken registry (labels.ts:54-63) is advisory only; nothing enforces uniqueness at the write boundary.",
+      "evidence": [
+        { "file": "src/panels/Outline/OutlinePanel.tsx", "line": 179, "note": "commit() calls onCommit(trimmed || null) with no guard on the `conflict` value computed just above" },
+        { "file": "src/panels/Outline/OutlinePanel.tsx", "line": 185, "note": "conflict is computed (isTaken) purely to drive the warning class/message, never to block commit" },
+        { "file": "src/components/editor-layout/card-actions/editor-ops.ts", "line": 148, "note": "handleUpdateLabel writes the label via setNodeMarkup with no taken-key check" }
+      ],
+      "reproSteps": [
+        "Have two headings, one already labelled `sec:intro`.",
+        "Click '+' on the second heading's label row, type `sec:intro` — the live '⚠ label already in use' warning appears.",
+        "Press Enter (or blur) — the duplicate label is committed; two headings now declare \\label{sec:intro}."
+      ],
+      "reproChannel": "code-trace",
+      "confidence": "high",
+      "suspectedClass": "Warning-only validation that never gates the commit. Sibling: the main-editor heading label input consults the same checkLabelTaken (EditorLayout.tsx:896-902) — verify it too blocks (not just warns). The Bibliography rename-citekey path is the analog elsewhere (does it block on collision?)."
+    },
+    {
+      "id": "OUT-F8-04",
+      "subject": "outline",
+      "cluster": "F8",
+      "severity": "LOW",
+      "symptom": "Renaming a paragraph title (parTitle) via the outline can throw / mis-write if the block index it targets has diverged to a heading (e.g. after a concurrent structural edit), because the handler sets a parTitle attr on a node whose schema may not declare it.",
+      "suspectedRootCause": "handleRenameParTitle iterates the live doc and, at the matching index, calls setNodeMarkup(offset, undefined, {...node.attrs, parTitle: newTitle}) with NO node-type guard (editor-ops.ts:160-174) — unlike its sibling handleRenameHeading which guards `node.type.name === 'heading'` (editor-ops.ts:129). parTitle is declared on paragraph/bulletList/orderedList/exampleBlock/texBlock (editor-extensions.ts:138,664,681; expex.ts:686; tex-block.ts:67) but NOT on heading. If the parTitle pod's blockIndex (computed from the rendered content) lands on a heading after a divergence, setNodeMarkup attempts an attr the heading schema rejects → ProseMirror RangeError, or at best a silent no-op writing an unsupported attr.",
+      "evidence": [
+        { "file": "src/components/editor-layout/card-actions/editor-ops.ts", "line": 166, "note": "handleRenameParTitle: `if (idx === blockIndex)` with no node.type check before setNodeMarkup({...node.attrs, parTitle})" },
+        { "file": "src/components/editor-layout/card-actions/editor-ops.ts", "line": 129, "note": "handleRenameHeading DOES guard node.type.name === 'heading' — the inconsistency that flags this as a defect" },
+        { "file": "src/lib/editor-extensions.ts", "line": 138, "note": "parTitle declared only on paragraph (and lists at :664/:681); heading has no parTitle attr" }
+      ],
+      "reproSteps": [
+        "Trigger an index divergence (concurrent structural edit / undo) so a parTitle pod's blockIndex now resolves to a heading in the live doc.",
+        "Rename that parTitle pod in outline edit mode.",
+        "setNodeMarkup writes parTitle onto a heading node → RangeError or unsupported-attr write."
+      ],
+      "reproChannel": "code-trace",
+      "confidence": "low",
+      "suspectedClass": "Index-addressed structural mutators that omit the node-type assertion present on their sibling handlers. handleReorderBlocks (editor-ops.ts:88) and handleScrollToHeading (:53) also index the live doc by an externally-supplied blockIndex; they are range-checked but not all type-checked. The deeper class is the same live-vs-snapshot index divergence behind OUT-F8-02."
+    }
+  ]
+}

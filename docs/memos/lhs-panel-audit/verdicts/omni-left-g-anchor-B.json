@@ -1,0 +1,96 @@
+{
+  "file": "omni-left-g-anchor",
+  "verifier": "B",
+  "verdicts": [
+    {
+      "findingId": "OMNI-C2-01",
+      "isReal": true,
+      "disposition": "CONFIRMED",
+      "severityFinal": "MEDIUM",
+      "rationale": "Traced end to end and the desync is real. movePanel (src/hooks/useViewPrefs.ts:1011-1037) rewrites placements/activeLeft/activeRight and never touches omniCategories. getOmniEnabled (src/components/EditorLayout.tsx:1319-1322) returns new Set(omniCategories[side]) keyed only off the raw per-side set, and OmniViewPanel.visibleItems gates on enabledCategories.has(cat) (src/panels/Omni/OmniViewPanel.tsx:397-403). Both left and right OmniHosts build the FULL items array and filter by their own enabled set, so a category still enabled on the source side keeps rendering after its panel moves. localCats (OmniViewPanel.tsx:192) is derived from categorySides (placements), so the moved category's row leaves the source-side filter menu — no toggle to hide it. Crucially there is NO escape via 'Default view': resetOmniSide (useViewPrefs.ts:1204-1209) resets to DEFAULT_OMNI_CATEGORIES[side] which is registry-omniSide-based, so on the left it would RE-ADD reports (registry omniSide='left') rather than clear it. The only recovery is hide-all-cards or dragging the panel back. Common action (panel reorder across strips), no per-category UI escape → MEDIUM.",
+      "correctedRootCause": "Two prefs that must move in lockstep (placements vs omniCategories) are decoupled at the movePanel writeback (useViewPrefs.ts:1011); the display filter keys off omniCategories while the menu-row visibility keys off categorySides(placements), and resetOmniSide is registry-based not placement-based, so 'Default view' cannot undo the stuck state.",
+      "class": "Pref derived from two independent sources expected to stay coherent (placements vs omniCategories); sibling: a category enabled on a side whose panel was closed.",
+      "confidence": "high"
+    },
+    {
+      "findingId": "OMNI-C2-02",
+      "isReal": true,
+      "disposition": "RECLASSIFIED",
+      "severityFinal": "LOW",
+      "rationale": "Mechanism confirmed: topPx is hardcoded to 30 (src/panels/Omni/OmniViewPanel.tsx:544), the unanchored bin is position:absolute top:4 zIndex:20 and grows DOWNWARD when expanded (lines 280,299-302), and the outside-focus bin sits at top:topPx(30) zIndex:19 (line 344). z-20 > z-19 + expanded list exceeding 30px → the expanded unanchored list paints over and intercepts clicks on the outside-focus pill. Real interaction-blocking overlap. Downgraded from MEDIUM to LOW: it requires a four-way conjunction (focus active + >=1 card outside band + >=1 unanchored card + user expands the unanchored bin), is purely visual/click-occlusion of ONE pill, and is fully recoverable by collapsing the unanchored bin (no content lost, no mis-navigation). Per rubric that is 'minor/edge wrongness, unlikely path, recoverable' = LOW.",
+      "correctedRootCause": "Same as finder: hardcoded 30px offset between independently-sized absolute siblings (src/panels/Omni/OmniViewPanel.tsx:544) measured against the COLLAPSED unanchored pill height only. Robust fix is flow-stacking or measuring the predecessor's live height.",
+      "class": "Hardcoded layout offset between independently-sized absolute siblings (audit lead #10).",
+      "confidence": "high"
+    },
+    {
+      "findingId": "OMNI-F8-01",
+      "isReal": true,
+      "disposition": "CONFIRMED",
+      "severityFinal": "MEDIUM",
+      "rationale": "Fully traced; double-halo is real on a common path. setReportInOmni/setCutterInOmni/setRevisionInOmni (src/components/editor-layout/panels/omni-host.tsx:357-365) clear ONLY their own selected*Id and cross-clear nothing, whereas setFootnoteInOmni etc. (omni-host.tsx:221-235) cross-clear a partial subset (citation/note/archive/todo). Halo derivation is `ac.selected || isSelected` in FootnoteCard (src/panels/Footnotes/FootnoteCard.tsx:104) and `ac.selected || selected` in ReportCard (src/panels/Reports/ReportCard.tsx:72). Sequence: click footnote omni card → ac.onActivate() does cardStore.select({footnote,id}) + onSelect()→setFootnoteInOmni sets selectedFootnoteId. Click report → ac.onActivate() does cardStore.select({report,id}) (single-slot store, anchored-card-store.ts:100-104, evicts footnote from ac.selected) + onSelect(report.id)→setReportInOmni sets selectedReportCardId but does NOT clear selectedFootnoteId. Result: footnote isHaloed = false(ac) || true(selectedFootnoteId still set) = haloed; report isHaloed = true. Two simultaneous halos. selectedFootnoteId from the omni builder (Footnotes/omni.tsx:31). Selection-state desync on a realistic path, no data loss → MEDIUM.",
+      "correctedRootCause": "Dual selection sources are OR'd at the card (`ac.selected || isSelected`) but the single-slot cardStore (the only true mutual-exclusion chokepoint) is shadowed by a bag of per-side selected*Id values whose setters cross-clear asymmetrically; the report/cutter/revision setters (omni-host.tsx:357-365) skip the cross-clear entirely.",
+      "class": "Every omni card kind whose per-side setter doesn't fully cross-clear is a sibling; right-column kinds (notes/todo/archive/cutter/revision) share the same `|| isSelected` pattern → same double-halo reachable there.",
+      "confidence": "high"
+    },
+    {
+      "findingId": "OMNI-F8-02",
+      "isReal": true,
+      "disposition": "RECLASSIFIED",
+      "severityFinal": "LOW",
+      "rationale": "Mechanism confirmed. A report on >1 paragraph fans out N omni rows with suffixed ids `${baseId}@${pi}` (src/panels/Reports/omni.tsx:83-95); OmniViewPanel stamps data-omni-entry-wrapper with that suffixed item.id (OmniViewPanel.tsx:553). The gutter marker builder emits one marker per pid (src/components/EditorPane.tsx:1793-1808) and each onClick fires handleGutterMarkerClick({kind:c.kind,id:c.id}) (unsuffixed, line 1802) → virgil-linked-anchor-click {entityId:c.id} (EditorPane.tsx:1594-1598). routeAnchorClick computes omniKey=cardPopKey('report',id) UNSUFFIXED (src/components/editor-layout/event-bridges/marker-clicks.ts:130,157) and alignOmniCardWithClick queries [data-omni-entry-wrapper=\"${unsuffixed}\"] (EditorLayout.tsx:1126-1128) which matches no @0/@1 wrapper; the retry rAF (1133-1136) re-queries the same key and also misses, so requestPin never fires. The virgil-card-jumped handler (EditorLayout.tsx:1161-1167) has the identical unsuffixed miss. Downgraded MEDIUM→LOW: this is a niche anchor configuration (multi-paragraph report), the card STILL selects and opens correctly (cardStore.select + setReportInOmni use the raw id), and the only failure is graceful — the card lands at its natural cascade Y instead of pinning to the click. No wrong navigation, no data loss, recoverable. The common single-anchor report has empty suffix so the key matches and pin works. = LOW.",
+      "correctedRootCause": "Wrapper id (suffixed @i, OmniViewPanel.tsx:553 from Reports/omni.tsx:87) diverges from the canonical cardPopKey the marker/jump path reconstructs (marker-clicks.ts:130; EditorLayout.tsx:1127,1162); the marker event also carries no anchor index so even with two markers the handler couldn't pick the right @i row. Pin alignment only — selection unaffected.",
+      "class": "Any omni item whose wrapper id diverges from cardPopKey; the multi-anchor @i fan-out is the only current divergence but any future per-anchor row would inherit it.",
+      "confidence": "high"
+    },
+    {
+      "findingId": "OMNI-A1-01",
+      "isReal": true,
+      "disposition": "CONFIRMED",
+      "severityFinal": "LOW",
+      "rationale": "Confirmed at the mechanism level with a path correction. OrphanedFootnoteCard passes neither a cardKey prop nor data-card-key (src/panels/Footnotes/FootnoteCard.tsx:211-245; only extraDataAttrs={extraDataAttrs} at line 237), whereas anchored FootnoteCard stamps data-card-key in extraDataAttrs (line 145) and passes cardKey (line 151). EditableCard forwards cardKey to PanelCard (panel-primitives.tsx:983) which renders data-card-key={cardKey} (line 1913); undefined → no attribute. The reconciler's cross-surface sweep keys entirely on [data-card-key] (src/links/_shared/useAnchorHighlightReconciler.ts:259-277), so the orphan is never painted across surfaces — only its local isHaloed boolean (FootnoteCard.tsx:204) paints it in its own bin. PATH CORRECTION that REINFORCES the LOW rating: an orphan footnote ALSO cannot be popped out — the lift-to-popout gesture bails when cardKey is falsy (panel-primitives.tsx:1775), so the finder's 'pop the orphan out to a float' repro is unreachable. The cross-surface desync is therefore only observable with a second DOCKED Footnotes surface (split) showing the same orphan. Narrow path, visual-only, recoverable → LOW.",
+      "correctedRootCause": "Same omission (orphan render path drops data-card-key, FootnoteCard.tsx:237), but the popout half of the repro is structurally impossible because the same missing cardKey disables the lift gesture (panel-primitives.tsx:1775) — so impact is bounded to the multi-docked-surface case.",
+      "class": "Orphan/fallback card render paths that forget to stamp data-card-key (the cross-surface paint key); worth auditing other empty-state/orphan variants.",
+      "confidence": "high"
+    },
+    {
+      "findingId": "OMNI-C2-03",
+      "isReal": true,
+      "disposition": "CONFIRMED",
+      "severityFinal": "LOW",
+      "rationale": "Confirmed. The fold filter (pass 1, src/components/editor-layout/panels/omni-host.tsx:612-627) pushes an item only when bi==null or !hiddenTopLevel.has(bi) — an item in a hidden top-level index is silently NOT pushed (implicit drop, comment 'else: drop — card lives in a collapsed section' line 625), with no bin and no count. Pass 2 (focus, lines 629-642) instead STAMPS outsideFocus to avoid silent hide. The asymmetry is real. However this is an explicit, documented design choice (omni-host.tsx:586-590 'Native panel lists are unaffected'): folded cards remain fully listed in the docked panel and reappear on unfold, so it is fully recoverable and signal-less only at the omni layer. Borderline by-design; kept CONFIRMED at LOW because the UX-consistency argument vs the focus bin is legitimate but the condition is recoverable and low-impact.",
+      "correctedRootCause": "Same as finder: pass-1 fold filter drops rather than stamps (omni-host.tsx:622-625), an intentional asymmetry with the pass-2 focus filter. Not a coding error — a deliberate design decision whose only cost is a missing in-omni signal.",
+      "class": "Asymmetric handling of two 'anchor hidden in-text' conditions (fold drop vs focus stamp) in the same displayedItems memo.",
+      "confidence": "high"
+    },
+    {
+      "findingId": "OMNI-F8-03",
+      "isReal": true,
+      "disposition": "CONFIRMED",
+      "severityFinal": "LOW",
+      "rationale": "Confirmed. convertCardWithRemap (src/components/EditorPane.tsx:863-918) calls viewPrefs.remapCardPopKey(cardPopKey(from,id), cardPopKey(to,id)) for the FLOAT popout key (line 915) but does not remap omniPinStore. The pin store has no kind-change remap — clearPin only fires explicitly and requestPin only replaces on a new interaction (src/components/editor-layout/omni-pin-store.ts:61-83). After report→report-request the new omni row id is float:card:report-request:<id> while an active pin still holds float:card:report:<id>; OmniViewPanel matches isPinned by pinRequest.cardId===item.id (OmniViewPanel.tsx:547), so the stale pin matches no wrapper and is neither applied nor cleared until the next requestPin replaces it. Genuinely real but self-healing: the pin is one-shot, invisible until matched, and replaced on the next card interaction. No data loss. = LOW.",
+      "correctedRootCause": "Same as finder: omniPinStore keys by the kind-baked float key but is omitted from the morph remap set (EditorPane.tsx:915 remaps only the viewPrefs float key). Self-replacing on next requestPin.",
+      "class": "Modules keying interaction state by a kind-baked float key but excluded from convertCardWithRemap's remap (which covers poppedOutCards + cardFloatPositions but not omniPinStore).",
+      "confidence": "high"
+    },
+    {
+      "findingId": "OMNI-A2-01",
+      "isReal": true,
+      "disposition": "RECLASSIFIED",
+      "severityFinal": "LOW",
+      "rationale": "Real and reachable, but the finder's root cause is materially wrong. buildCitationOmniItems classifies anchorState purely on pos (src/panels/Citations/omni.tsx:40,49) and the contract test documents this as current behavior (src/panels/Omni/__tests__/anchor-state-classify-contract.test.ts:450-455). The finder claims 'There is no flag distinguishing marker-missing from panel-created unanchored' — that is FALSE. The data model DOES carry that discriminator: useCitations marks panel-created unanchored entries with `unanchored: true` (src/hooks/useCitations.ts:163-186) and syncFromEditor preserves them across re-parse (useCitations.ts:369-370). So an intentionally-unanchored citation genuinely persists and IS reachable in the omni — but the builder simply never reads cit.unanchored; it collapses everything pos==null to 'orphaned' (BadgeOrphaned error theme, OmniViewPanel.tsx:304). Deeper root cause = builder ignores an existing flag, not an absent one. Severity stays LOW (cosmetic/UX mislabel, recoverable, no data loss).",
+      "correctedRootCause": "src/panels/Citations/omni.tsx:40-49 derives anchorState from pos alone and ignores the citation's own `unanchored` flag (set at src/hooks/useCitations.ts:170, preserved at 369-370); the discriminator the finder said was missing already exists and is simply unused, so the correct fix is `pos==null ? (cit.unanchored ? 'free' : 'orphaned') : 'anchored'`.",
+      "class": "Builders collapsing 'free' (intentionally never-anchored) and 'orphaned' (anchor lost) at the pos==null fork while ignoring an available intent flag; the example builder shares the pos-only collapse.",
+      "confidence": "high"
+    },
+    {
+      "findingId": "OMNI-F8-04",
+      "isReal": true,
+      "disposition": "CONFIRMED",
+      "severityFinal": "LOW",
+      "rationale": "Confirmed. copyCitekey calls navigator.clipboard.writeText(trimmed).then(...) with no `navigator.clipboard?` guard and no .catch (src/panels/Citations/CitationCard.tsx:1101-1108). In an insecure/sandboxed context navigator.clipboard is undefined → synchronous TypeError in the click handler; where it exists but rejects (denied permission, unfocused doc) the missing .catch surfaces an unhandled rejection, and the 'copied' confirmation only runs on resolve so failures are silent. The cited sibling (src/panels/_shared/suggestion-fields.tsx:145-151) is partly better — it HAS a .catch but still lacks the undefined-guard — so CitationCard is strictly worse. LOW upheld: Virgil 'runs fully client-side' and is normally served on https/localhost where navigator.clipboard is present; no data loss, only a silent copy failure + console noise.",
+      "correctedRootCause": "Same as finder: unguarded navigator.clipboard.writeText with no undefined-check and (in CitationCard) no .catch (CitationCard.tsx:1104). Note the sibling at suggestion-fields.tsx:151 already adds a .catch, so the codebase is inconsistent rather than uniformly missing the guard.",
+      "class": "Unguarded navigator.clipboard across copy affordances (audit lead #12); CitationCard.copyCitekey is the worst variant (no guard AND no catch).",
+      "confidence": "high"
+    }
+  ]
+}

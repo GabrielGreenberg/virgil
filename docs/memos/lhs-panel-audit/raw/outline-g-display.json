@@ -1,0 +1,177 @@
+{
+  "subject": "outline",
+  "group": "g-display",
+  "clusters": ["F1", "F4", "F5"],
+  "cells": [
+    {
+      "cluster": "F1",
+      "status": "BUG",
+      "note": "Heading-tree render (view) + pods (edit) mount fine; empty state covered ('No sections found.' OutlinePanel.tsx:1863, EditableOutline:1108-1114). BUT (a) inline atoms (math/citation/ref) inside a heading are dropped from the rendered row text (extractText OutlinePanel.tsx:280-284 returns '' for inlineMath/citation/ref nodes that carry payload only in attrs) and (b) Document-start row's word-count column shows the literal string 'words' (OutlinePanel.tsx:1819-1823) instead of a preamble count.",
+      "bugIds": ["OUT-F1-01", "OUT-F1-02"]
+    },
+    {
+      "cluster": "F4",
+      "status": "BUG",
+      "note": "Outline has no card-body / nested-link surface, so the classic F4 (click-through from inside a borrowed body) is N-A; reinterpreted as inline-atom display fidelity in heading rows. Headings DO carry inlineMath/citation/ref nodes (parser latex-parser.ts:1197 uses parseInlineContent), but extractText (OutlinePanel.tsx:280-284) silently drops every atom whose payload lives in attrs. Same defect also strips atoms from getDocTitle's title row (OutlinePanel.tsx:286-294).",
+      "bugIds": ["OUT-F4-01"]
+    },
+    {
+      "cluster": "F5",
+      "status": "BUG",
+      "note": "Edit affordances: heading rename, parTitle rename, inline label edit. (1) handleRenameHeading (editor-ops.ts:123-139) does delete(from,to)+insertText(plainText) which DESTROYS all inline marks/atoms in a heading on ANY rename = data loss. (2) handleRenameParTitle (editor-ops.ts:160-174) has NO node-type guard (unlike handleRenameHeading) so a stale blockIndex can target a wrong/heading node. (3) InlineLabel shows a live conflict warning but commit() (OutlinePanel.tsx:179-183) ignores it and writes the duplicate anyway. (4) Reader path renders Edit/Focus buttons + InlineLabel '+' because the reader shim supplies truthy no-op callbacks (reader-view-prefs.ts:323-327), so the user edits a heading/label/parTitle and it silently no-ops.",
+      "bugIds": ["OUT-F5-01", "OUT-F5-02", "OUT-F5-03", "OUT-F5-04"]
+    }
+  ],
+  "findings": [
+    {
+      "id": "OUT-F5-01",
+      "subject": "outline",
+      "cluster": "F5",
+      "severity": "DATA-LOSS",
+      "symptom": "Renaming a heading from the outline edit-mode pod replaces the entire heading body with plain text, silently destroying any inline formatting, inline math, citations, or \\ref it contained — even when the user only fixed one word.",
+      "suspectedRootCause": "handleRenameHeading wipes the heading's inner content range and re-inserts a flat string. The edit-input is seeded from pod.text = extractHeadings()'s extractText() (OutlinePanel.tsx:765 buildPods -> text:h.text; h.text from extractText at :324), which is already a lossy flatten (drops inlineMath/citation/ref, see OUT-F4-01). On commit, editor.state.tr.delete(from,to).insertText(newText,from) removes the whole content slice (from=offset+1, to=offset+nodeSize-1) and inserts only the plain string, so marks (bold/italic), inlineMath nodes, citation atoms, and \\ref atoms are gone. The whole roundtrip never sees the rich content.",
+      "evidence": [
+        { "file": "src/components/editor-layout/card-actions/editor-ops.ts", "line": 132, "note": "tr.delete(from,to).insertText(newText,from) — full inner-content delete then plain-text insert, no mark/atom preservation" },
+        { "file": "src/panels/Outline/OutlinePanel.tsx", "line": 324, "note": "h.text = extractText(node) || 'Untitled' — the seed text already strips inline atoms" },
+        { "file": "src/panels/Outline/OutlinePanel.tsx", "line": 896, "note": "EditablePod editText initialized from pod.text; commitRename (:906-912) sends this plain string to onRename" },
+        { "file": "src/lib/latex-parser.ts", "line": 1197, "note": "headings parsed with parseInlineContent — they legitimately hold inlineMath/citation/ref/marked text that the rename then destroys" }
+      ],
+      "reproSteps": [
+        "Open a paper with a heading like \\section{The $G$-action on \\citet{foo}} (or a heading with bold/italic).",
+        "Open the Outline panel, click Edit to enter edit mode.",
+        "Click the heading pod text, change one character, press Enter.",
+        "Heading is rewritten as the flat 'The -action on ' text — math, citation, and any marks are permanently lost from the doc."
+      ],
+      "reproChannel": "code-trace",
+      "confidence": "high",
+      "suspectedClass": "Any rename-by-flat-string path that re-seeds from a lossy text extraction: handleRenameParTitle (editor-ops.ts:160-174) sets parTitle attr to a plain string but parTitles are attr-strings so loss is inherent there; the in-editor heading/parTitle rename node-views (editor-extensions.ts ~:216,:517) should be compared — if they round-trip through textContent they share the flaw. The deeper class is 'edit a structured node via plain-text input seeded from a flattened projection'."
+    },
+    {
+      "id": "OUT-F4-01",
+      "subject": "outline",
+      "cluster": "F4",
+      "severity": "LOW",
+      "symptom": "Headings (and the document title) that contain inline math, citations, or \\ref render in the outline with those atoms silently omitted, e.g. \\section{The $G$-theorem} shows as 'The -theorem'.",
+      "suspectedRootCause": "OutlinePanel.extractText only returns text for type==='text' and recurses into node.content; inline-atom nodes (inlineMath, citation, \\ref/crossref) carry their payload in attrs (attrs.latex / attrs.command / attrs.target) and have neither .text nor .content, so extractText returns '' for them. The codebase already has a canonical atom-text registry (src/lib/atom-text.ts getAtomText) precisely to avoid this empty-string trap, but the outline reimplements its own walk and doesn't consult it.",
+      "evidence": [
+        { "file": "src/panels/Outline/OutlinePanel.tsx", "line": 280, "note": "extractText: returns node.text for text, recurses content, else '' — no attrs.latex / atom handling" },
+        { "file": "src/lib/atom-text.ts", "line": 19, "note": "canonical extractor map (inlineMath -> attrs.latex etc.) that extractText fails to use" },
+        { "file": "src/lib/latex-parser.ts", "line": 209, "note": "inlineMath node has only attrs.latex (no text/content) -> extractText yields '' " },
+        { "file": "src/lib/latex-parser.ts", "line": 478, "note": "citation node is attrs-only (citationId/command/displayText, no content) -> dropped from outline text" },
+        { "file": "src/panels/Outline/OutlinePanel.tsx", "line": 286, "note": "getDocTitle reuses extractText so the Document-start title row strips the same atoms" }
+      ],
+      "reproSteps": [
+        "Add a heading containing inline math or a citation, e.g. \\subsection{Bounds on $n$ from \\citet{smith}}.",
+        "Open the Outline panel (view mode).",
+        "The row shows 'Bounds on  from ' — the math and citation are missing."
+      ],
+      "reproChannel": "code-trace",
+      "confidence": "high",
+      "suspectedClass": "Every consumer that flattens heading/title content via a hand-rolled text walk instead of getAtomText: OutlinePanel.extractText (display + rename seed + word-count headings bucket via collectInline which DOES handle inlineMath at :468, so the inconsistency is internal), getDocTitle, and the drag-ghost label (handleDragStart ghost.textContent = pod.text, :1052)."
+    },
+    {
+      "id": "OUT-F5-02",
+      "subject": "outline",
+      "cluster": "F5",
+      "severity": "LOW",
+      "symptom": "Renaming a paragraph title (parTitle) from the outline can stamp a parTitle attr onto a non-paragraph node if the block index drifted, and unlike heading rename it never checks the target's node type.",
+      "suspectedRootCause": "handleRenameParTitle walks editor.state.doc and on the matching index calls setNodeMarkup(offset, undefined, {...node.attrs, parTitle:newTitle}) with NO node.type.name guard, whereas the sibling handleRenameHeading guards on 'heading'. parTitle is only a declared attribute on paragraph/bulletList/orderedList (editor-extensions.ts:138/664/681); a heading has no parTitle attr. The outline addresses blocks by integer index derived from a content snapshot while the handler mutates the live doc, so any structural drift between render and click (split-pane edit, AI apply, autosave race) can point the index at the wrong block.",
+      "evidence": [
+        { "file": "src/components/editor-layout/card-actions/editor-ops.ts", "line": 165, "note": "if (idx === blockIndex) setNodeMarkup(...) — no node.type.name check, contrast handleRenameHeading:129 which checks 'heading'" },
+        { "file": "src/lib/editor-extensions.ts", "line": 138, "note": "parTitle declared only on paragraph; not on heading -> setNodeMarkup with parTitle on a heading silently dropped or schema-rejected" },
+        { "file": "src/panels/Outline/OutlinePanel.tsx", "line": 813, "note": "parTitle pod id/index come from extractHeadings of the content snapshot; the rename then runs against the live doc" }
+      ],
+      "reproSteps": [
+        "Have a doc with paragraph titles in the outline.",
+        "Trigger a structural edit elsewhere (e.g. delete a block in the split pane) so the live doc shifts but the outline's snapshot lags.",
+        "Click a parTitle pod and rename it; the index now resolves to a different block and the parTitle attr is written to the wrong node (or silently no-ops if that node is a heading)."
+      ],
+      "reproChannel": "code-trace",
+      "confidence": "low",
+      "suspectedClass": "All index-based block addressing in editor-ops.ts (handleRenameHeading, handleUpdateLabel, handleRenameParTitle, handleReorderBlocks, handleScrollToHeading) is vulnerable to snapshot-vs-live drift because the outline uses integer blockIndex rather than the UUID anchoring that useFocusMode adopted to fix exactly this drift (useFocusMode.ts:90-96 blockIndexOfUuid). The missing type guard is the specific instance; the addressing scheme is the class."
+    },
+    {
+      "id": "OUT-F5-03",
+      "subject": "outline",
+      "cluster": "F5",
+      "severity": "LOW",
+      "symptom": "The outline label editor shows a live '⚠ label already in use' warning but still commits the duplicate label when the user presses Enter or blurs, producing two identical \\label{} keys.",
+      "suspectedRootCause": "InlineLabel.commit() unconditionally calls onCommit(trimmed || null) and closes the editor; it never consults the `conflict` value computed for the warning. The warning is purely presentational. Committing routes to handleUpdateLabel which sets the label attr regardless, so a colliding key lands in the doc and the central registry (labels.ts isLabelTaken) now reports a real duplicate.",
+      "evidence": [
+        { "file": "src/panels/Outline/OutlinePanel.tsx", "line": 179, "note": "commit(): onCommit(trimmed || null) with no conflict gate" },
+        { "file": "src/panels/Outline/OutlinePanel.tsx", "line": 185, "note": "conflict computed only for the warning render, never read by commit" },
+        { "file": "src/components/editor-layout/card-actions/editor-ops.ts", "line": 148, "note": "handleUpdateLabel writes the label attr unconditionally" }
+      ],
+      "reproSteps": [
+        "Have two headings; one already labelled 'sec:intro'.",
+        "On the other heading click '+' to add a label and type 'sec:intro'.",
+        "The '⚠ label already in use' warning appears.",
+        "Press Enter (or click away); the duplicate label is committed anyway, creating two \\label{sec:intro}."
+      ],
+      "reproChannel": "code-trace",
+      "confidence": "high",
+      "suspectedClass": "Advisory-only conflict checks that don't block commit; compare any other label/citekey rename input that surfaces isTaken/isLabelTaken as a warning. The in-editor heading-label node-view should be checked for the same advisory-without-gate pattern."
+    },
+    {
+      "id": "OUT-F5-04",
+      "subject": "outline",
+      "cluster": "F5",
+      "severity": "MEDIUM",
+      "symptom": "In the read-only Reader, the Outline panel still shows the Edit button, the Focus button, and the inline label '+'; using them appears to work (input opens, text commits) but the change is silently discarded.",
+      "suspectedRootCause": "The Reader mounts OutlineHost through the full viewPrefs branch (EditorPane.tsx:5345). The reader-view-prefs shim satisfies EditorPaneViewPrefs by supplying truthy no-op callbacks for onReorderBlocks/onRenameHeading/onRenameParTitle/onUpdateLabel/onFocusActivate. OutlinePanel gates these affordances on callback presence (truthiness), not on a read-only flag: the Edit button renders `if (onReorderBlocks)` (:1661), the Focus button `if (onFocusActivate)` (:1676), and InlineLabel `if (showLabels && onUpdateLabel)` (:676). Truthy no-ops pass all gates, so the affordances render and commit into a black hole.",
+      "evidence": [
+        { "file": "src/components/editor-layout/reader-view-prefs.ts", "line": 323, "note": "onReorderBlocks/onRenameHeading/onRenameParTitle/onUpdateLabel all () => {} truthy no-ops" },
+        { "file": "src/components/EditorPane.tsx", "line": 5345, "note": "Reader routes through `if (viewPrefs)` to full OutlineHost, not the simpler read-only branch" },
+        { "file": "src/panels/Outline/OutlinePanel.tsx", "line": 1661, "note": "Edit button gated only on `onReorderBlocks` presence" },
+        { "file": "src/panels/Outline/OutlinePanel.tsx", "line": 676, "note": "InlineLabel rendered when `showLabels && onUpdateLabel` — true with a no-op" }
+      ],
+      "reproSteps": [
+        "Open a paper in Reader (read-only) mode.",
+        "Open the Outline panel — note the Edit and Focus buttons and, on hover, the label '+'.",
+        "Click Edit, rename a heading and press Enter; or click '+' and type a label and press Enter.",
+        "The input closes as if it worked, but nothing changes in the document or persists."
+      ],
+      "reproChannel": "code-trace",
+      "confidence": "medium",
+      "suspectedClass": "Gating editor affordances on callback-presence rather than an explicit editable/read-only flag — any panel mounted via the reader shim that exposes edit/move/morph controls. The Focus button (:1676) and the focus row-click handlers (onFocusMoveTo/onFocusExpandTo) share the same no-op-but-rendered trap in Reader."
+    },
+    {
+      "id": "OUT-F1-02",
+      "subject": "outline",
+      "cluster": "F1",
+      "severity": "COSMETIC",
+      "symptom": "When 'Show word count' is on, the Document-start row's word-count column shows the literal text 'words' rather than a number, while every heading row shows a numeric count.",
+      "suspectedRootCause": "The docstart row hardcodes the string 'words' in the word-count span (OutlinePanel.tsx:1819-1823) instead of computing a preamble word count, whereas OutlineNode renders {sectionWordCount}. It is plausibly an intentional one-row 'unit legend' (the docstart span lacks the tabular-nums class the data rows use), so this may be by-design; flagged as the only word-count anomaly in the render.",
+      "evidence": [
+        { "file": "src/panels/Outline/OutlinePanel.tsx", "line": 1820, "note": "docstart row renders the literal 'words' in the count column" },
+        { "file": "src/panels/Outline/OutlinePanel.tsx", "line": 685, "note": "data rows render numeric {sectionWordCount} with tabular-nums" }
+      ],
+      "reproSteps": [
+        "Open the Outline panel with 'Show word count' enabled.",
+        "Look at the top 'Document start' / 'Title:' row's right column — it reads 'words', not a number."
+      ],
+      "reproChannel": "code-trace",
+      "confidence": "low",
+      "suspectedClass": "Preamble/document-start region never gets a computed word count in the outline even though buildPerBlockCounts has the per-block numbers for index 0; if a real count was intended it is missing for the pre-first-heading blocks."
+    },
+    {
+      "id": "OUT-F1-01",
+      "subject": "outline",
+      "cluster": "F1",
+      "severity": "LOW",
+      "symptom": "Outline rows for headings that contain inline atoms render with the atom text missing (e.g. a heading 'Step 3: $n+1$' shows as 'Step 3: '), and a heading whose entire visible text is atoms renders as the literal 'Untitled'.",
+      "suspectedRootCause": "Render text comes from extractText (see OUT-F4-01) which drops inlineMath/citation/ref payloads. When ALL of a heading's content is atoms, extractText returns '' and extractHeadings falls back to 'Untitled' (OutlinePanel.tsx:324), so an entirely-math heading mislabels as Untitled.",
+      "evidence": [
+        { "file": "src/panels/Outline/OutlinePanel.tsx", "line": 324, "note": "text: extractText(node) || 'Untitled' — empty extraction -> 'Untitled'" },
+        { "file": "src/panels/Outline/OutlinePanel.tsx", "line": 674, "note": "row renders {node.heading.text} verbatim, so the gap/Untitled is what the user sees" }
+      ],
+      "reproSteps": [
+        "Add a heading whose text is mostly or entirely inline math, e.g. \\section{$\\Sigma$}.",
+        "Open the Outline panel; the row shows 'Untitled' (or a partial string with the math omitted)."
+      ],
+      "reproChannel": "code-trace",
+      "confidence": "high",
+      "suspectedClass": "Shares the extractText atom-dropping root with OUT-F4-01; the 'Untitled' fallback amplifies the same flatten into an outright wrong label."
+    }
+  ]
+}
