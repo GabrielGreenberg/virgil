@@ -23,6 +23,9 @@ import { deleteFile, readJsonFile, SUBDIRS } from "@library/lib/library-storage"
 import { formatBibliography } from "@library/lib/bib-parser";
 import { ExpandedFields } from "./BibCard";
 import { StatusPills } from "./StatusPill";
+import PaperAiRequestsMenu, {
+  type AiRequestItem,
+} from "./PaperAiRequestsMenu";
 
 interface Props {
   handle: FileSystemDirectoryHandle | null;
@@ -35,8 +38,14 @@ interface Props {
    *  label ("Virgil Text" when deepIndexed, else "Raw Text"). */
   indexedState: IndexedState;
   /** Open the manual bib edit modal. Owned by the parent so the modal
-   *  state can outlive header re-renders. */
+   *  state can outlive header re-renders. Absent when editing isn't allowed
+   *  (no real full bib entry resolved yet — see RightDetail's `canEdit`). */
   onEdit?: () => void;
+  /** The full bib entry that edit needs is still loading. Shows the edit
+   *  affordance visible-but-disabled ("Loading bibliography…") instead of
+   *  hiding it, so the control doesn't pop in late. Ignored when `onEdit` is
+   *  present (already editable). */
+  editPending?: boolean;
 }
 
 type RequestKind = "index" | "deep" | "bib" | "doc" | "importbib";
@@ -62,6 +71,7 @@ export default function PaperHeader({
   pdfAvailable,
   indexedState,
   onEdit,
+  editPending = false,
 }: Props) {
   const citekey = entry.citekey;
   const [expanded, setExpanded] = useState(false);
@@ -232,6 +242,15 @@ export default function PaperHeader({
 
   const anyChecked = Object.values(queued).some(Boolean);
 
+  // Build the dropdown items from the static REQUESTS list + live queued/disabled
+  // state. Order + labels match the old checkbox row.
+  const aiRequestItems: AiRequestItem<RequestKind>[] = REQUESTS.map(
+    ({ kind, label }) => {
+      const { disabled, title } = disabledFor(kind);
+      return { kind, label, checked: queued[kind], disabled, title };
+    },
+  );
+
   return (
     <div
       style={{
@@ -293,7 +312,7 @@ export default function PaperHeader({
             >
               {expanded ? "▾ less" : "▸ more"}
             </button>
-            {onEdit && (
+            {onEdit ? (
               <button
                 type="button"
                 onClick={onEdit}
@@ -310,7 +329,26 @@ export default function PaperHeader({
               >
                 edit
               </button>
-            )}
+            ) : editPending ? (
+              <button
+                type="button"
+                disabled
+                title="Loading bibliography…"
+                style={{
+                  background: "transparent",
+                  border: "none",
+                  color: "var(--muted)",
+                  fontFamily: "var(--mono)",
+                  fontSize: 10,
+                  cursor: "not-allowed",
+                  padding: "0 4px",
+                  flexShrink: 0,
+                  opacity: 0.55,
+                }}
+              >
+                edit
+              </button>
+            ) : null}
           </div>
           {bib ? (
             <div
@@ -384,7 +422,10 @@ export default function PaperHeader({
             />
           </div>
 
-          {/* AI requests: label + checkboxes in a row. */}
+          {/* AI requests: a single dropdown of the five toggleable requests
+           *  (replaces the inline checkbox row). Each item stays an independent
+           *  toggle (multi-select); a ✓ marks queued ones and the trigger badge
+           *  counts them. */}
           <div
             style={{
               display: "flex",
@@ -394,45 +435,11 @@ export default function PaperHeader({
               minHeight: 22,
             }}
           >
-            <span
-              style={{
-                fontFamily: "var(--mono)",
-                fontSize: 11,
-                color: "var(--muted)",
-                letterSpacing: 0.3,
-                whiteSpace: "nowrap",
-              }}
-            >
-              AI requests:
-            </span>
-            {REQUESTS.map(({ kind, label }) => {
-              const { disabled, title } = disabledFor(kind);
-              const checked = queued[kind];
-              return (
-                <label
-                  key={kind}
-                  title={title}
-                  style={{
-                    display: "inline-flex",
-                    alignItems: "center",
-                    gap: 4,
-                    fontSize: 12,
-                    color: disabled ? "var(--muted)" : "var(--foreground)",
-                    cursor: disabled ? "not-allowed" : "pointer",
-                    opacity: disabled ? 0.55 : 1,
-                  }}
-                >
-                  <input
-                    type="checkbox"
-                    checked={checked}
-                    disabled={disabled}
-                    onChange={(e) => void onToggle(kind, e.target.checked)}
-                    style={{ cursor: disabled ? "not-allowed" : "pointer" }}
-                  />
-                  {label}
-                </label>
-              );
-            })}
+            <PaperAiRequestsMenu
+              items={aiRequestItems}
+              onToggle={(kind, next) => void onToggle(kind, next)}
+              disabled={!handle || !citekey}
+            />
             {flash && (
               <span
                 style={{

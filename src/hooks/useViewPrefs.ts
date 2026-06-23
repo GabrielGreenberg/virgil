@@ -271,6 +271,23 @@ type GlobalPrefKey =
   | (typeof REGISTRY_GLOBAL_KEYS)[number];
 const GLOBAL_PREF_SET = new Set<string>(GLOBAL_PREF_KEYS);
 
+/** The page-geometry subset of the global keys — the reading-measure prefs
+ *  (page width + the four margins) the ephemeral Reader DOES want to track
+ *  live. Ephemeral mode opens no full global subscription (its dock / popout /
+ *  omni state is session-only and must not be reachable by peer windows), but a
+ *  margin change made in the main editor SHOULD flow into an open Reader so the
+ *  Reader's prose measure stays in step. This narrow set is the only thing the
+ *  ephemeral subscription re-reads — never the layout keys. Numeric + value-
+ *  typed so a hostile blob can't inject layout state through it. */
+const MARGIN_PREF_KEYS = [
+  "pageWidth",
+  "editorLeftMargin",
+  "editorRightMargin",
+  "editorTopMargin",
+  "editorBottomMargin",
+] as const;
+const MARGIN_PREF_SET = new Set<string>(MARGIN_PREF_KEYS);
+
 function windowStorageKey(): string {
   return WINDOW_STORAGE_PREFIX + getWindowId();
 }
@@ -751,15 +768,33 @@ export function useViewPrefs(opts?: { persistence?: ViewPrefsPersistence }) {
   // the global slice and merge into local state. Per-window keys are
   // never broadcast — each window's layout is its own.
   useEffect(() => {
-    // (b) Cross-window + same-window global-pref subscribe. Ephemeral mode
-    // opens no subscription — it's a read-only session store that must not be
-    // mutated by peer windows' global-pref changes.
-    if (ephemeral) return;
+    // (b) Cross-window + same-window global-pref subscribe.
+    //
+    // Ephemeral mode (the Library Reader) opens a MARGIN-ONLY subscription: it
+    // re-reads ONLY the page-geometry keys (`MARGIN_PREF_KEYS` — page width +
+    // the four margins) so a margin change made in the main editor flows into
+    // an open Reader and the Reader's prose measure stays in step. It still
+    // never re-reads the layout keys (dock / popout / omni stay session-only)
+    // and NEVER writes — this is a read-only merge of the geometry slice into
+    // in-memory state. Global mode re-reads the WHOLE global slice as before.
     const rereadGlobal = () => {
       try {
         const raw = localStorage.getItem(GLOBAL_STORAGE_KEY);
         if (!raw) return;
         const globalSlice = JSON.parse(raw) as Partial<ViewPrefs>;
+        if (ephemeral) {
+          // Pull only the value-typed numeric geometry keys; ignore everything
+          // else in the blob so no layout state can leak into the Reader.
+          const geo: Partial<ViewPrefs> = {};
+          for (const k of MARGIN_PREF_KEYS) {
+            const v = globalSlice[k];
+            if (typeof v === "number") geo[k] = v;
+          }
+          if (Object.keys(geo).length > 0) {
+            setPrefs((prev) => ({ ...prev, ...geo }));
+          }
+          return;
+        }
         setPrefs((prev) => ({ ...prev, ...globalSlice }));
       } catch {
         // ignore parse failures
@@ -767,6 +802,9 @@ export function useViewPrefs(opts?: { persistence?: ViewPrefsPersistence }) {
     };
     const onEvent = (e: BusEvent) => {
       if (e.type !== "global-pref-changed") return;
+      // Ephemeral: ignore non-geometry global changes outright so a peer's
+      // dock/omni/placement change never wakes the Reader.
+      if (ephemeral && !MARGIN_PREF_SET.has(e.key)) return;
       rereadGlobal();
     };
     const unsubBus = subscribe(onEvent);

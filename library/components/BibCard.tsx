@@ -9,6 +9,7 @@ import {
   PUBLICATION_FIELDS_BY_TYPE,
   knownFieldsForType,
 } from "@library/lib/bib-edit";
+import { reconstructBibtex } from "@library/lib/reconstruct-bibtex";
 
 interface Props {
   entry: BibEntry | null;
@@ -539,14 +540,3 @@ function ActionButton({
   );
 }
 
-// ────────────────────────────────────────────────────────────────────────
-// Helpers
-// ────────────────────────────────────────────────────────────────────────
-
-function reconstructBibtex(entry: BibEntry): string {
-  const lines = Object.entries(entry.fields)
-    .filter(([, v]) => v && v.trim().length > 0)
-    .map(([k, v]) => `  ${k} = {${v}}`)
-    .join(",\n");
-  return `@${entry.type}{${entry.key},\n${lines}\n}\n`;
-}

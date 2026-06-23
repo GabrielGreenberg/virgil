@@ -121,6 +121,13 @@ interface OmniViewPanelProps {
    *  host uses this to promote a transient selection to sticky once the
    *  user starts working inside the card. */
   onCardFocus?: () => void;
+  /** Reports the count of currently-VISIBLE cards (after the enabled-category
+   *  + hideAll filter) so the column wrapper can keep itself open when the
+   *  omni-view alone is showing cards (no docked band). Fires only when the
+   *  count actually changes — `visibleItems` is structurally memoized, so a
+   *  plain keystroke never recomputes it and this never fires off the
+   *  keystroke path (keystroke sanctity). */
+  onVisibleCardsChange?: (count: number) => void;
   // Pin-driven per-card positioning replaces the old global `cardsOffset`
   // and `cardsSilent` props. See `@/components/editor-layout/omni-pin-store`.
 }
@@ -385,6 +392,7 @@ function OmniViewPanel({
   hideAllCards,
   onBackgroundClick,
   onCardFocus,
+  onVisibleCardsChange,
 }: OmniViewPanelProps) {
   const rootRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
@@ -404,6 +412,16 @@ function OmniViewPanel({
       return cat == null || enabledCategories.has(cat);
     });
   }, [items, enabledCategories, hideAllCards]);
+
+  // Report the visible-card count up so the column can stay open when the
+  // omni-view alone is showing cards (no docked band) — the Reader's narrow-
+  // pane collapse rule keys off this. Effect fires only when the count flips
+  // (visibleItems is structurally memoized; plain typing never recomputes it),
+  // so this is off the keystroke path.
+  const visibleCount = visibleItems.length;
+  useEffect(() => {
+    onVisibleCardsChange?.(visibleCount);
+  }, [visibleCount, onVisibleCardsChange]);
 
   // Live-position resolver (T5 Pillar A). Entity-anchored kinds (footnote /
   // citation / example) resolve their live pos from the DocStructureObserver

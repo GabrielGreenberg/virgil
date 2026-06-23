@@ -4,7 +4,11 @@ import { useEffect, useState } from "react";
 import type { CatalogEntry } from "@library/lib/catalog";
 import type { BibEntry } from "@library/lib/types";
 import { queueBibEdit } from "@library/lib/bib-edit";
-import { usePaperViewMode } from "@library/lib/view-session-store";
+import { isSynthesizedRaw } from "@library/lib/reconstruct-bibtex";
+import {
+  resetPaperViewModeOnOpen,
+  usePaperViewMode,
+} from "@library/lib/view-session-store";
 import type { PanelKey } from "@library/hooks/useLibraryTabs";
 import BibEditModal from "./BibEditModal";
 import PaperHeader from "./PaperHeader";
@@ -17,6 +21,11 @@ interface Props {
   bib: BibEntry | undefined;
   /** Reload master.bib after a save lands. */
   onBibChanged?: () => void;
+  /** The on-demand FULL-entry fetch hasn't settled yet (a slim/synthesized
+   *  `bib` is showing meanwhile). Drives a visible-but-disabled "Loading
+   *  bibliography…" edit affordance; once settled, edit is shown iff a real
+   *  full entry resolved (see `canEdit`), else hidden. */
+  editPending?: boolean;
   /** View-session scope + panel — threaded into PaperRender so the reader
    *  scroll persists under (scope, panel, paper:<citekey>). */
   scope: string;
@@ -39,48 +48,57 @@ export default function RightDetail({
   entry,
   bib,
   onBibChanged,
+  editPending = false,
   scope,
   panel,
 }: Props) {
-  // View mode is persisted per-paper under the same `paper:<citekey>` slice
-  // the reader scroll uses — so each source remembers Text vs PDF across
-  // reloads AND intra-session paper switches. A paper never toggled defaults
-  // to "text". `entry` can be null (empty-selection placeholder below); use a
-  // stable sentinel libId so the hook order stays constant — it's read only
-  // when a real paper is selected.
+  // View mode lives in the per-paper `paper:<citekey>` slice (the same slice the
+  // reader scroll uses), so the live Text/PDF toggle re-renders the detail pane.
+  // It is SESSION-ONLY in effect though: per the user decision ("always reset to
+  // PDF on open"), every paper open snaps the stored posture back to PDF (or to
+  // Text for a DOCX-only source). `entry` can be null (empty-selection
+  // placeholder below); use a stable sentinel libId so the hook order stays
+  // constant — it's read only when a real paper is selected.
   const viewModeLibId = `paper:${entry?.citekey ?? "__none__"}`;
   const { viewMode, setViewMode } = usePaperViewMode(scope, panel, viewModeLibId);
   const [editOpen, setEditOpen] = useState(false);
 
-  // Close the edit modal when the user navigates to a different paper. The
-  // view mode itself is NOT force-reset here — it's persisted per-paper now,
-  // so each source restores its own posture. The only place we coerce the
-  // mode is when the persisted choice is genuinely unavailable for THIS paper
-  // (e.g. a DOCX-only source that can't show "pdf"); see the `pdfOnDisk`
-  // coercion effect below.
+  // Whether a PDF source is on disk for THIS paper. Computed from `entry`
+  // directly (not the post-early-return `pdfAvailable`) so the hook order below
+  // stays stable; a null entry has no PDF.
+  const pdfOnDisk = !!entry && hasPdfSource(entry);
+
+  // On every paper (re)open: close any stale edit modal AND reset the view mode
+  // to the fresh-open default — PDF when a PDF exists, else Text. This makes the
+  // Text toggle session-only: it works while the paper is open, but reopening
+  // the paper goes back to PDF, ignoring any prior persisted Text choice. The
+  // reset also subsumes the old "coerce pdf→text when no PDF on disk" guard
+  // (DOCX-only sources reset straight to Text). Applies to ALL entry paths —
+  // catalogue row click, the `virgil-open-library` event, and the outer tab —
+  // since they all funnel through this component. Keyed on citekey (the open
+  // identity) + pdfOnDisk so a late-resolving catalog entry that flips PDF
+  // availability re-snaps correctly.
   useEffect(() => {
     setEditOpen(false);
-  }, [entry?.citekey]);
+    if (entry) resetPaperViewModeOnOpen(scope, panel, viewModeLibId, pdfOnDisk);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [entry?.citekey, pdfOnDisk, scope, panel]);
 
-  // Coerce the mode to "text" ONLY when the persisted/current choice is "pdf"
-  // but no PDF is on disk for this paper (e.g. a DOCX-only source) — otherwise
-  // the toggle would land on a disabled PDF view. This replaces the old
-  // unconditional reset-to-text on every paper switch. Computed from `entry`
-  // directly (not the post-early-return `pdfAvailable`) so the hook runs in a
-  // stable order; a null entry has no PDF, but the coercion is moot then since
-  // the mode isn't rendered.
-  const pdfOnDisk = !!entry && hasPdfSource(entry);
-  useEffect(() => {
-    if (viewMode === "pdf" && !pdfOnDisk) setViewMode("text");
-  }, [viewMode, pdfOnDisk, setViewMode]);
-
-  // Edit only when we hold the FULL entry, never the slim browse projection.
-  // Slim bib-index records carry raw="" and only browse fields; seeding the
-  // editor from one and saving would REPLACE the master.bib block and drop
-  // every non-browse field (+ rewrite the type to @misc). The on-demand full
-  // entry (PaperFileBody) and the fallback parse path both populate raw, so a
-  // non-empty raw is the authoritative "full entry loaded" signal.
-  const canEdit = !!(handle && bib && bib.raw && entry?.citekey);
+  // Edit must be gated on a REAL FULL bib entry, never on a slim-synthesized one
+  // (DATA-LOSS regression). PaperFileBody always hands us a populated `bib.raw`
+  // for DISPLAY: it prefers the on-demand FULL entry but, while that fetch is
+  // pending or has failed on a real 10 MB master.bib, it falls back to a `raw`
+  // synthesized from the slim browse record (type:"misc" + ~12 browse fields).
+  // BibEditModal seeds its form from `entry.type`+`entry.fields` (NOT `raw`) and
+  // onSave REPLACES the whole master.bib block — so editing a synthesized entry
+  // would overwrite the real entry with a lossy `@misc` block, silently dropping
+  // the real type + all non-browse fields. So `canEdit` requires a non-empty raw
+  // that is NOT synthesized; while the full entry is pending/failed, edit stays
+  // disabled. (Display still uses the synthesized `bib`, so the card always
+  // renders formatted text.) A `bib.raw` arriving from a real full entry — or any
+  // entry that carried its own raw — passes through untouched.
+  const hasRealFullEntry = !!(bib && bib.raw && !isSynthesizedRaw(bib));
+  const canEdit = !!(handle && hasRealFullEntry && entry?.citekey);
 
   if (!entry) {
     return (
@@ -124,11 +142,12 @@ export default function RightDetail({
           pdfAvailable={pdfAvailable}
           indexedState={entry.indexed.state}
           onEdit={canEdit ? () => setEditOpen(true) : undefined}
+          editPending={!canEdit && editPending}
         />
         <div style={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "column" }}>
           <PdfView handle={handle} citekey={entry.citekey} />
         </div>
-        {editOpen && bib && bib.raw && handle && entry.citekey && (
+        {editOpen && canEdit && bib && handle && entry.citekey && (
           <BibEditModal
             entry={bib}
             onClose={() => setEditOpen(false)}
@@ -165,6 +184,7 @@ export default function RightDetail({
         pdfAvailable={pdfAvailable}
         indexedState={entry.indexed.state}
         onEdit={canEdit ? () => setEditOpen(true) : undefined}
+        editPending={!canEdit && editPending}
       />
       <div
         style={{
@@ -182,7 +202,7 @@ export default function RightDetail({
           panel={panel}
         />
       </div>
-      {editOpen && bib && bib.raw && handle && entry.citekey && (
+      {editOpen && canEdit && bib && handle && entry.citekey && (
         <BibEditModal
           entry={bib}
           onClose={() => setEditOpen(false)}

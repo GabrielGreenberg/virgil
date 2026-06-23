@@ -212,6 +212,7 @@ export function PanelColumn({
   onSyncBeforeDrag,
   omni,
   stack,
+  omniHasCards,
   onTradeHeight,
   onResizeBottomEdge,
   onFocusBand,
@@ -228,6 +229,12 @@ export function PanelColumn({
   omni: React.ReactNode;
   /** Ordered docked bands, top→bottom (length ≤ MAX_STACK). */
   stack: BandSpec[];
+  /** True when this side's omni-view is currently showing ≥1 card (no docked
+   *  band needed). Combined with `stack.length > 0` into the `data-has-content`
+   *  signal so the Reader's narrow-pane collapse rule keeps a column open
+   *  whenever it has visible content — docked OR omni — and collapses it only
+   *  when the side is genuinely empty (gives the page room). */
+  omniHasCards?: boolean;
   /** Slide the boundary between two adjacent bands (divider drag). */
   onTradeHeight: (aboveId: PanelId, aboveH: number, belowId: PanelId, belowH: number) => void;
   /** Resize the bottom band from its bottom edge (reveal/cover omni). */
@@ -321,6 +328,11 @@ export function PanelColumn({
   // docked. Empty stack ⇒ omni-only column, toolbar stays, no z-lift.
   const hasStack = stack.length > 0;
   const extendsOverToolbar = hasStack;
+  // "This side has visible content" = a docked band OR the omni-view is
+  // showing ≥1 card. The Reader's narrow-pane collapse rule keys off this so
+  // an omni-only column (notes/footnotes/citations cards, no docked band)
+  // stays open; a truly empty side still collapses to give the page room.
+  const hasContent = hasStack || !!omniHasCards;
 
   // The sticky stack-frame height — the visible dock window. Exposed
   // column-wide as `--dock-slot-frame-h` so docked panels (and omni cards)
@@ -333,12 +345,12 @@ export function PanelColumn({
     <div
       data-flex-col={side}
       data-panel-column-side={side}
-      // Reflect whether this side currently has a docked band. The Reader's
-      // narrow-pane fit rule (library.css) collapses EMPTY dock columns to
-      // give the page room, but must NOT crush a populated one to 0 — it
-      // keys off this attribute. Inert in the wide main editor (no rule
-      // targets it there).
-      data-has-bands={hasStack ? "true" : undefined}
+      // Reflect whether this side currently has visible content — a docked
+      // band OR ≥1 omni card. The Reader's narrow-pane fit rule (library.css)
+      // collapses EMPTY dock columns to give the page room, but must NOT crush
+      // a populated one (docked OR omni-only) to 0 — it keys off this
+      // attribute. Inert in the wide main editor (no rule targets it there).
+      data-has-content={hasContent ? "true" : undefined}
       className="relative flex flex-col"
       style={{
         flex: collapsed ? '0 0 0px' : `0 0 ${panelPref}px`,

@@ -519,6 +519,36 @@ export function setListViewMode(
 }
 
 /**
+ * Reset the paper-detail view mode to the fresh-open default when a paper is
+ * (re)opened. User decision (2026-06-23): "always reset to PDF on open" — a
+ * prior in-session Text toggle must NOT stick across reopens. So this is called
+ * ONCE per paper open (keyed on citekey) by the sole consumer, RightDetail.
+ *
+ * The mode the toggle writes via `setListViewMode` still wins for the rest of
+ * the session — this only fires on the OPEN, snapping the stored posture back
+ * to PDF (when a PDF exists) or Text (DOCX-only sources with no PDF on disk, so
+ * the PDF default never strands them). Idempotent in effect: it always sets the
+ * mode to the open-default, so re-running it on the same open is harmless.
+ *
+ * No-op write skip: if the slice is already at the desired mode we don't commit
+ * (avoids a needless notify/render on the common PDF-source reopen).
+ */
+export function resetPaperViewModeOnOpen(
+  scope: string,
+  panel: PanelKey,
+  libId: string,
+  pdfAvailable: boolean,
+): void {
+  const open: "text" | "pdf" = pdfAvailable ? "pdf" : "text";
+  const s = ensureInit();
+  const existing = s.scopes[scope]?.[panel]?.lists[libId]?.viewMode;
+  if (existing === open) return;
+  commit(
+    withScopePanel(s, scope, panel, (p) => withList(p, libId, { viewMode: open })),
+  );
+}
+
+/**
  * Scroll-position write that does NOT notify subscribers (keystroke-sanctity:
  * scrolling a list fires per-frame; re-rendering every `useListView`/selection
  * consumer each frame is the kind of doc-size-proportional churn the subsystem
@@ -775,13 +805,17 @@ export function useListView(
 /**
  * Per-(panel, paper) Text/PDF view mode for the paper-detail header toggle.
  * `libId` is the `paper:<citekey>` key (the same slice the reader scroll uses).
- * Returns the persisted mode (default "pdf" for a never-toggled paper — we lead
- * with the source PDF, since the rendered text is a derived view) plus a setter.
- * Survives reload AND intra-session paper switches — the value is keyed by
- * citekey, so navigating away and back restores the prior posture (a paper the
- * user explicitly switched to Text stays Text) instead of snapping back.
- * DOCX-only sources with no PDF on disk are coerced back to "text" by the
- * consumer (RightDetail.tsx), so the PDF default never strands them.
+ * Returns the current mode (default "pdf" when the slice is unset) plus a setter.
+ *
+ * View-mode is now SESSION-ONLY in effect (user decision 2026-06-23: "always
+ * reset to PDF on open"). The store still HOLDS the value — so the live toggle
+ * re-renders the detail pane and an intra-session re-render restores the user's
+ * current choice — but RightDetail calls `resetPaperViewModeOnOpen()` once per
+ * paper open, snapping the stored posture back to PDF whenever a PDF exists.
+ * So a prior Text toggle does NOT stick across a reopen; reopening the paper
+ * lands on PDF again. DOCX-only sources with no PDF on disk reset to "text"
+ * instead (the open-reset passes pdfAvailable), so the PDF default never strands
+ * them — this subsumes the old post-load coercion.
  */
 export function usePaperViewMode(
   scope: string,

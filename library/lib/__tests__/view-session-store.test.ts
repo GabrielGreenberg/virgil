@@ -22,6 +22,7 @@ import {
   setLayout,
   setListSort,
   setListViewMode,
+  resetPaperViewModeOnOpen,
   migrateLegacyLayoutSizes,
   setPanelTabs,
   setProjectHidden,
@@ -312,6 +313,46 @@ describe("view-session-store — paper view mode (Text/PDF)", () => {
     const lv = getSession().scopes[""].left.lists["paper:foo"];
     expect(lv.viewMode).toBe("pdf");
     expect(lv.scrollTop).toBe(333);
+  });
+});
+
+describe("view-session-store — always-reset-to-PDF on open (FIX #3)", () => {
+  it("a fresh open defaults to PDF when a PDF exists, IGNORING a persisted Text choice", () => {
+    // User toggled this paper to Text last session; it persisted.
+    setListViewMode("", "left", "paper:foo", "text");
+    flushNow();
+    __resetViewSessionForTests(); // simulate reload (blob persists)
+    expect(getSession().scopes[""].left.lists["paper:foo"].viewMode).toBe("text");
+
+    // Reopening the paper (pdfAvailable=true) snaps it back to PDF — the prior
+    // Text choice does NOT stick across the reopen.
+    resetPaperViewModeOnOpen("", "left", "paper:foo", true);
+    expect(getSession().scopes[""].left.lists["paper:foo"].viewMode).toBe("pdf");
+  });
+
+  it("the Text toggle still works WITHIN the session after the open reset", () => {
+    resetPaperViewModeOnOpen("", "left", "paper:foo", true); // open → pdf
+    expect(getSession().scopes[""].left.lists["paper:foo"].viewMode).toBe("pdf");
+    // Live toggle to Text during the session.
+    setListViewMode("", "left", "paper:foo", "text");
+    expect(getSession().scopes[""].left.lists["paper:foo"].viewMode).toBe("text");
+  });
+
+  it("a DOCX-only source (no PDF on disk) resets to Text, never stranding on disabled PDF", () => {
+    setListViewMode("", "left", "paper:docx", "pdf"); // stale persisted pdf
+    resetPaperViewModeOnOpen("", "left", "paper:docx", /* pdfAvailable */ false);
+    expect(getSession().scopes[""].left.lists["paper:docx"].viewMode).toBe("text");
+  });
+
+  it("is a quiet no-op (no notify) when the slice is already at the open default", () => {
+    resetPaperViewModeOnOpen("", "left", "paper:foo", true); // open → pdf
+    const seen = vi.fn();
+    const unsub = subscribe(seen);
+    // Re-running on the same open (still pdf) must not commit/notify again.
+    resetPaperViewModeOnOpen("", "left", "paper:foo", true);
+    expect(seen).not.toHaveBeenCalled();
+    expect(getSession().scopes[""].left.lists["paper:foo"].viewMode).toBe("pdf");
+    unsub();
   });
 });
 

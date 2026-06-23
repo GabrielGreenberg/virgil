@@ -4,21 +4,29 @@
 //
 // `useViewPrefs({ persistence: "ephemeral" })` runs the SAME view-state engine
 // as the main app — every setter and the stacked dock engine still mutate the
-// in-memory `prefs` — but the three persistence touch-points are gated OFF:
-//   (a) the initial-load-from-localStorage effect,
-//   (b) the cross-window / same-window global-pref bus subscription, and
-//   (c) the `persist` tail (`localStorage.setItem` + peer `publish`/notify).
+// in-memory `prefs` — but the persistence touch-points are gated:
+//   (a) the initial-load-from-localStorage effect is OFF,
+//   (b) the cross-window / same-window subscribe is MARGIN-ONLY — ephemeral
+//       re-reads only the page-geometry keys (page width + the four margins)
+//       so a margin change in the main editor flows into an open Reader, but
+//       it ignores every non-geometry global-pref change (dock / omni /
+//       placements stay session-only) and NEVER writes, and
+//   (c) the `persist` tail (`localStorage.setItem` + peer `publish`/notify) is
+//       OFF.
 //
 // This guards the CORE invariant of the refactor: the Library Reader (which
 // mounts the hook ephemerally) must NEVER clobber the user's real, persisted
 // editor layout. If a future edit re-wires a setter to persist in ephemeral
 // mode, the localStorage spy here fails loudly.
 //
-// We assert all three legs:
+// We assert:
 //   1. ephemeral: a setter (`setEditorLeftMargin`) + a dockStack mutation
 //      (`openPanelDocked`) DO change the in-memory `prefs`, but
-//   2. ephemeral: NOTHING is written to the view-pref localStorage keys, and
-//   3. global (default / no-arg): the SAME setter DOES persist (contrast).
+//   2. ephemeral: NOTHING is written to the view-pref localStorage keys,
+//   3. global (default / no-arg): the SAME setter DOES persist (contrast), and
+//   4. ephemeral: a `global-pref-changed` MARGIN event merges into the
+//      Reader's in-memory prefs (live editor→Reader margin sync) while a
+//      non-geometry (dock-ish) global event is ignored — all without writing.
 import { describe, it, expect, afterEach, beforeAll, beforeEach, vi } from "vitest";
 
 const WINDOW_ID = "test-window";
@@ -30,12 +38,21 @@ vi.mock("@/lib/storage", () => ({ isDevStorage: false }));
 // the global-mode contrast case can persist without throwing, and capture it so
 // we can assert ephemeral mode never fans out to peers.
 const publishSpy = vi.fn();
+// Capture the subscribed bus handler so leg 4 can drive a `global-pref-changed`
+// event into the hook (the ephemeral margin-only subscription path).
+const busHandlers = new Set<(e: unknown) => void>();
+function emitBus(e: unknown) {
+  for (const fn of busHandlers) fn(e);
+}
 vi.mock("@/lib/multi-window/bus", () => ({
   publish: (...args: unknown[]) => publishSpy(...args),
-  subscribe: () => () => {},
+  subscribe: (fn: (e: unknown) => void) => {
+    busHandlers.add(fn);
+    return () => busHandlers.delete(fn);
+  },
 }));
 
-import { render, fireEvent, cleanup } from "@testing-library/react";
+import { render, fireEvent, cleanup, act } from "@testing-library/react";
 import { useViewPrefs } from "../useViewPrefs";
 
 const GLOBAL_KEY = "virgil-view-prefs/global";
@@ -87,6 +104,7 @@ describe("useViewPrefs — ephemeral mode mutates memory but never persists", ()
     localStorage.clear();
     sessionStorage.clear();
     publishSpy.mockClear();
+    busHandlers.clear();
   });
 
   afterEach(() => {
@@ -164,5 +182,52 @@ describe("useViewPrefs — ephemeral mode mutates memory but never persists", ()
     expect(getByTestId("btn").textContent).toBe("123");
     const globalBlob = JSON.parse(localStorage.getItem(GLOBAL_KEY) ?? "{}");
     expect(globalBlob.editorLeftMargin).toBe(123);
+  });
+
+  it("(d) ephemeral: a MARGIN global-pref event merges into the Reader (live editor→Reader sync), a non-geometry one does not — without writing", () => {
+    // Simulate the main editor having persisted a new left margin: the global
+    // blob on disk carries it, and the bus emits the change. The ephemeral
+    // Reader's margin-only subscription should re-read that ONE geometry key.
+    const setItemSpy = vi.spyOn(window.localStorage, "setItem");
+    const { getByTestId } = render(
+      <Harness
+        persistence="ephemeral"
+        onClick={() => {}}
+        read={(vp) =>
+          `${vp.prefs.editorLeftMargin}/${vp.prefs.dockStack.left.join(",")}`
+        }
+      />,
+    );
+    const btn = getByTestId("btn");
+    const before = btn.textContent;
+
+    // The editor wrote a new margin to the global blob and broadcast it.
+    localStorage.setItem(GLOBAL_KEY, JSON.stringify({ editorLeftMargin: 200 }));
+    setItemSpy.mockClear(); // ignore the simulated editor write above
+    act(() => {
+      emitBus({ type: "global-pref-changed", key: "editorLeftMargin", value: 200 });
+    });
+
+    // The Reader picked up the new margin live...
+    expect(btn.textContent).toBe(`200/`);
+    expect(btn.textContent).not.toBe(before);
+
+    // ...but a non-geometry global change (e.g. a peer docking a panel) is
+    // ignored — the Reader's dock stays empty and its margin is unchanged.
+    localStorage.setItem(
+      GLOBAL_KEY,
+      JSON.stringify({ editorLeftMargin: 200, placements: [{ id: "notes", side: "left" }] }),
+    );
+    setItemSpy.mockClear();
+    act(() => {
+      emitBus({ type: "global-pref-changed", key: "placements", value: [] });
+    });
+    expect(btn.textContent).toBe(`200/`); // dock still empty, margin still 200
+
+    // And through all of it the ephemeral hook never wrote a view-pref blob.
+    const touched = setItemSpy.mock.calls.map((c) => c[0]);
+    expect(touched).not.toContain(GLOBAL_KEY);
+    expect(touched).not.toContain(WINDOW_KEY);
+    expect(publishSpy).not.toHaveBeenCalled();
   });
 });
