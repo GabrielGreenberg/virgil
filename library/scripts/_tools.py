@@ -45,6 +45,7 @@ replace `fcntl.flock` with `msvcrt.locking`.
 
 from __future__ import annotations
 
+import atexit
 import fcntl
 import importlib.util
 import json
@@ -350,6 +351,7 @@ def write_catalog(library: Path, catalog: dict) -> None:
         json.dumps(catalog, indent=2) + "\n",
     )
     _bump_version_locked(library)
+    _mark_bib_index_dirty(library)
 
 
 def _bump_version_locked(library: Path) -> None:
@@ -362,6 +364,173 @@ def _bump_version_locked(library: Path) -> None:
         except Exception:
             cur = 0
     _atomic_write_text(p, str(cur + 1) + "\n")
+
+
+# ── slim browse index (bib-index.json) ───────────────────────────────
+#
+# `.virgil/bib-index.json` is a flat, slim projection of master.bib — one
+# record per citekey with only the fields the frontend BROWSE path reads
+# (list, search, citation picker). It exists so the browser never has to
+# run citation-js over the multi-MB master.bib just to draw a list: parsing
+# the real 34k-entry master.bib via citation-js blocks the main thread for
+# ~2.6s (and ~6s at 100k); JSON.parse of this slim index is ~15ms. See
+# MEMO_LIBRARY_SCALE_RESEARCH.md.
+#
+# Coherence: the index is a pure function of master.bib. We DON'T rebuild it
+# inside write_catalog (merge/index loops call that per-entry — thousands of
+# full re-parses). Instead any write that can touch master.bib OR the catalog
+# marks the library "dirty"; one rebuild fires at process exit (atexit),
+# stamp-gated so it's a no-op when master.bib is unchanged (e.g. catalog-only
+# status writes). The frontend polls the tiny `.virgil/bib-index.stamp` file
+# and re-reads bib-index.json only when the stamp changes.
+#
+# Schema (compact keys; the file is ~6-8MB at 34k). These are exactly the
+# fields the BROWSE path reads — list author column + sort (author/editor),
+# fuzzy search (title/author/year/journal/booktitle), and the citation
+# picker's expanded details (volume/number/pages/publisher/series). Anything
+# the browse path does NOT render stays out (it's fetched on demand for edit):
+#   k=citekey t=title a=author e=editor y=year d=doi
+#   j=journal b=booktitle v=volume n=number p=pages q=publisher s=series
+# Empty fields are omitted. The frontend maps these back to a BibEntry shape.
+
+BIB_INDEX_REL = ".virgil/bib-index.json"
+BIB_INDEX_STAMP_REL = ".virgil/bib-index.stamp"
+
+_BIB_INDEX_FIELDS = (
+    ("title", "t"),
+    ("author", "a"),
+    ("editor", "e"),
+    ("year", "y"),
+    ("doi", "d"),
+    ("journal", "j"),
+    ("booktitle", "b"),
+    ("volume", "v"),
+    ("number", "n"),
+    ("pages", "p"),
+    ("publisher", "q"),
+    ("series", "s"),
+)
+
+
+# Entry starts are line-anchored in master.bib (`@type{key,` at column 0).
+# We delimit entries by THIS marker rather than by global brace-matching,
+# because a single malformed entry with an unbalanced brace makes brace-
+# matching overrun and swallow the rest of the file (the real master.bib has
+# exactly such an entry — `read_master_bib` drops ~82% of the bibliography on
+# it). Line-anchored splitting contains any malformation to its own entry.
+_BIB_ENTRY_START_RE = re.compile(r"(?m)^@(\w+)[ \t]*\{[ \t]*([^,\s]+)[ \t]*,")
+
+
+def iter_master_bib_slim(text: str):
+    """Yield (citekey, entry_type, fields) for every entry in master.bib text.
+
+    Robust to malformed (brace-unbalanced) entries: each entry's body is the
+    text between its line-anchored `@type{key,` opener and the next opener
+    (or EOF), so a desync can never cross an entry boundary. `_parse_bib_fields`
+    is brace-aware within the body and ignores the trailing `}`.
+    """
+    starts = list(_BIB_ENTRY_START_RE.finditer(text))
+    for idx, m in enumerate(starts):
+        entry_type = m.group(1).lower()
+        citekey = m.group(2).strip()
+        body_start = m.end()
+        body_end = starts[idx + 1].start() if idx + 1 < len(starts) else len(text)
+        fields = _parse_bib_fields(text[body_start:body_end])
+        yield citekey, entry_type, fields
+
+
+def _master_bib_stamp(library: Path) -> str:
+    """A cheap content-change signal for master.bib (mtime_ns:size).
+
+    Avoids hashing the whole 10MB file on every dirty-flush; mtime+size
+    is sufficient to detect "did master.bib change since the last index".
+    """
+    p = library / "master.bib"
+    try:
+        st = p.stat()
+        return f"{st.st_mtime_ns}:{st.st_size}"
+    except FileNotFoundError:
+        return "0:0"
+
+
+def build_bib_index(library: Path, *, force: bool = False) -> bool:
+    """Emit `.virgil/bib-index.json` + `.virgil/bib-index.stamp`.
+
+    Stamp-gated: when master.bib is unchanged since the last build, this is
+    a tiny stamp-file read and returns False (no parse, no write). When it
+    changed (or `force`), it re-parses master.bib with the lightweight
+    `read_master_bib` parser, projects each entry to its slim fields, and
+    atomically writes both files. Returns True if it (re)wrote.
+
+    No lock is required: `read_master_bib` reads atomically-written files
+    (old-or-new, never partial), and the index is a derived cache the
+    frontend only reads. Safe to call repeatedly and from atexit.
+    """
+    stamp = _master_bib_stamp(library)
+    out_path = library / BIB_INDEX_REL
+    stamp_path = library / BIB_INDEX_STAMP_REL
+    if not force and out_path.exists() and stamp_path.exists():
+        try:
+            if stamp_path.read_text().strip() == stamp:
+                return False
+        except Exception:
+            pass
+
+    master_path = library / "master.bib"
+    text = master_path.read_text() if master_path.exists() else ""
+    entries: list[dict] = []
+    seen: set[str] = set()
+    for citekey, _entry_type, fields in iter_master_bib_slim(text):
+        if not citekey or citekey in seen:
+            continue
+        seen.add(citekey)
+        slim: dict = {"k": citekey}
+        for full, short in _BIB_INDEX_FIELDS:
+            val = fields.get(full)
+            if val:
+                slim[short] = val
+        entries.append(slim)
+
+    payload = {
+        "v": 1,
+        "stamp": stamp,
+        "generatedAt": _now(),
+        "schema": "k=citekey t=title a=author e=editor y=year d=doi "
+                  "j=journal b=booktitle v=volume n=number p=pages q=publisher s=series",
+        "count": len(entries),
+        "entries": entries,
+    }
+    _atomic_write_text(out_path, json.dumps(payload, separators=(",", ":")) + "\n")
+    _atomic_write_text(stamp_path, stamp + "\n")
+    return True
+
+
+# Coalesce all master/catalog writes in a process to ONE bib-index rebuild
+# at exit. Marking is O(1); the rebuild (stamp-gated) runs once when the
+# process ends, so a 1000-entry merge re-parses master.bib once, not 1000x.
+_BIB_INDEX_DIRTY: set[Path] = set()
+_bib_index_atexit_registered = False
+
+
+def _flush_bib_index_atexit() -> None:
+    for lib in list(_BIB_INDEX_DIRTY):
+        try:
+            build_bib_index(lib)
+        except Exception:
+            # A derived-cache rebuild must never crash a skill on the way out.
+            pass
+
+
+def _mark_bib_index_dirty(library: Path) -> None:
+    """Schedule a bib-index rebuild at process exit for `library`."""
+    global _bib_index_atexit_registered
+    try:
+        _BIB_INDEX_DIRTY.add(Path(library))
+        if not _bib_index_atexit_registered:
+            atexit.register(_flush_bib_index_atexit)
+            _bib_index_atexit_registered = True
+    except Exception:
+        pass
 
 
 def bump_catalog_version(library: Path) -> None:
@@ -628,40 +797,42 @@ def _parse_bib_fields(body: str) -> dict[str, str]:
 def read_master_bib(path: Path) -> dict[str, dict]:
     """Lightweight bib parser. Returns {citekey: {type, fields, raw}}.
 
+    Robust to malformed entries: entries are delimited by their line-anchored
+    `@type{key,` openers (`_BIB_ENTRY_START_RE`), and brace-matching for each
+    entry's `raw`/body is CAPPED at the next opener. A single brace-unbalanced
+    entry therefore overruns to (at most) the next entry boundary instead of
+    swallowing the rest of the file — the failure mode of the old global
+    brace-matcher, which silently dropped ~82% of a real 34k-entry library on
+    one bad entry (a `citekey in read_master_bib(...)` check then wrongly
+    reported real entries as missing). Last-wins on duplicate citekeys.
+
     No lock held — readers see whatever is on disk. Atomic writes
-    (`_atomic_write_text`) ensure readers never see a partially-written
-    file.
+    (`_atomic_write_text`) ensure readers never see a partially-written file.
     """
     if not path.exists():
         return {}
     text = path.read_text()
     entries: dict[str, dict] = {}
-    i = 0
-    while i < len(text):
-        if text[i] != "@":
-            i += 1
-            continue
-        type_end = text.find("{", i)
-        if type_end == -1:
-            break
-        entry_type = text[i + 1:type_end].strip().lower()
-        key_end = text.find(",", type_end)
-        if key_end == -1:
-            break
-        citekey = text[type_end + 1:key_end].strip()
+    starts = list(_BIB_ENTRY_START_RE.finditer(text))
+    for idx, m in enumerate(starts):
+        entry_type = m.group(1).lower()
+        citekey = m.group(2).strip()
+        seg_end = starts[idx + 1].start() if idx + 1 < len(starts) else len(text)
+        brace = text.find("{", m.start())
         depth = 1
-        j = type_end + 1
-        while j < len(text) and depth > 0:
+        j = brace + 1
+        while j < seg_end and depth > 0:
             if text[j] == "{":
                 depth += 1
             elif text[j] == "}":
                 depth -= 1
             j += 1
-        raw = text[i:j]
-        body = text[key_end + 1:j - 1]
+        raw = text[m.start():j]
+        body_start = text.find(",", brace) + 1
+        body = text[body_start:(j - 1) if depth == 0 else seg_end]
         fields = _parse_bib_fields(body)
-        entries[citekey] = {"type": entry_type, "fields": fields, "raw": raw}
-        i = j
+        if citekey:
+            entries[citekey] = {"type": entry_type, "fields": fields, "raw": raw}
     return entries
 
 
@@ -703,7 +874,8 @@ def rename_master_bib_entry(library: Path, old: str, new: str) -> bool:
         if n == 0:
             return False
         _atomic_write_text(master_path, new_text)
-        return True
+    _mark_bib_index_dirty(library)
+    return True
 
 
 def rename_catalog_entry(library: Path, old: str, new: str) -> bool:
@@ -792,3 +964,4 @@ def update_master_bib_entry(
                 text += "\n"
             text += "\n" + replacement
         _atomic_write_text(master_path, text)
+    _mark_bib_index_dirty(library)

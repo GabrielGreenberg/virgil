@@ -3,33 +3,68 @@
 import { useEffect, useState, useCallback, useRef } from "react";
 import { readTextFile, ROOT_FILES } from "@library/lib/library-storage";
 import { parseBibFile } from "@library/lib/bib-parser";
+import { readBibIndex, readBibIndexStamp } from "@library/lib/bib-index";
+import { libPerf, libPerfAsync } from "@library/lib/perf";
 import type { BibEntry } from "@library/lib/types";
 
+/**
+ * Library bib entries for the BROWSE path (list, search, citation picker).
+ *
+ * Fast path: read the skill-emitted slim `.virgil/bib-index.json` (stamp-gated
+ * via the tiny `.virgil/bib-index.stamp`, so an unchanged reload is a ~0ms
+ * file read). This replaces parsing the multi-MB master.bib with citation-js
+ * (~2.6s blocking at 34k, ~6s at 100k) on every Library open / first citation.
+ *
+ * Fallback: libraries that predate the bib-index (no stamp file) parse
+ * master.bib exactly as before. The returned entries carry only browse fields
+ * (raw=""); edit/format paths fetch the full entry on demand via
+ * getFullLibraryBibEntry (bib-entry-full.ts). See MEMO_LIBRARY_SCALE_RESEARCH.md.
+ */
 export function useMasterBib(handle: FileSystemDirectoryHandle | null) {
   const [entries, setEntries] = useState<BibEntry[]>([]);
   const [error, setError] = useState<Error | null>(null);
-  // Content cache: if the file text is byte-for-byte unchanged from the
-  // last successful parse, skip re-parsing. Keeps `parseBibFile`'s
-  // "Skipping unparseable bib entry" warnings (and the resulting new
-  // BibEntry[] reference) bounded to actual file changes — important for
-  // downstream consumers like BibliographyPanel's `displayedEntries`
-  // useMemo and the Fuse WeakMap in `bib-searcher.ts`, which both key on
-  // array reference identity. Defense-in-depth alongside the
-  // `state.handle === handle` gate removal in `catalog-store.ts`.
+  // Change signals that let an unchanged reload short-circuit (keeping the
+  // entries array reference stable for downstream identity-keyed memos /
+  // the Fuse WeakMap). `lastStampRef` guards the fast path; `lastTextRef`
+  // guards the master.bib-parse fallback.
+  const lastStampRef = useRef<string | null>(null);
   const lastTextRef = useRef<string | null>(null);
 
   const reload = useCallback(async () => {
     if (!handle) return;
     try {
+      const stamp = await readBibIndexStamp(handle);
+      if (stamp !== null) {
+        // Fast path: slim index present. lastStampRef is only set after a
+        // successful setEntries, so an equal stamp means our state is current.
+        if (stamp === lastStampRef.current) return;
+        const result = await libPerfAsync(
+          "bib-index read+map",
+          () => readBibIndex(handle),
+          (r) => (r ? `${r.entries.length} entries` : "null"),
+        );
+        if (result) {
+          lastStampRef.current = stamp;
+          lastTextRef.current = null;
+          setEntries(result.entries);
+          setError(null);
+          return;
+        }
+        // Index unreadable/malformed → fall through to master.bib parse.
+      }
+
+      // Fallback: parse master.bib (old libraries, or unreadable index).
       const text = await readTextFile(handle, ROOT_FILES.masterBib);
       if (text === undefined) {
         lastTextRef.current = null;
+        lastStampRef.current = null;
         setEntries([]);
         return;
       }
       if (text === lastTextRef.current) return;
       lastTextRef.current = text;
-      setEntries(parseBibFile(text));
+      lastStampRef.current = null;
+      setEntries(libPerf("master.bib citation-js parse", () => parseBibFile(text), (e) => `${e.length} entries`));
       setError(null);
     } catch (e) {
       setError(e as Error);
@@ -38,6 +73,9 @@ export function useMasterBib(handle: FileSystemDirectoryHandle | null) {
 
   useEffect(() => {
     if (!handle) return;
+    // Intentional mount-load + focus-refresh; reload() is stamp-gated so an
+    // unchanged poll is a ~0ms no-op and never churns state.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     void reload();
     const onFocus = () => void reload();
     window.addEventListener("focus", onFocus);

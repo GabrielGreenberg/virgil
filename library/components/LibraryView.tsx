@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { useCatalog } from "@library/hooks/useCatalog";
+import { useCatalogItems, refreshCatalogStore } from "@library/lib/catalog-store";
 import { useMasterBib } from "@library/hooks/useMasterBib";
 import { useDropPdf } from "@library/hooks/useDropPdf";
 import { useNotificationStream } from "@library/hooks/useNotificationStream";
@@ -100,7 +100,12 @@ export default function LibraryView({
   showNavigator = true,
   belowNavigator,
 }: Props) {
-  const { catalog, reload } = useCatalog(handle);
+  // Single shared catalog poll (catalog-store), not a second per-tab loop.
+  // The store resolves the same library-root handle this tab was given and
+  // refcounts one 6s poll across every catalog consumer (Bibliography panel,
+  // pickers, this tab) — see catalog-store.ts. refreshCatalogStore() forces an
+  // immediate re-read after a local mutation (drag-drop).
+  const { entries: catalogEntries } = useCatalogItems();
   const { entries: bibEntries, reload: reloadBib } = useMasterBib(handle);
   const { files: unsortedFiles, reload: reloadUnsorted } = useUnsortedPdfs(handle);
   const { byFile: unsortedBibByFile, reload: reloadUnsortedBib } =
@@ -405,7 +410,7 @@ export default function LibraryView({
   //      branch (1) takes over — citekey unchanged, library membership
   //      unchanged, no UI flicker.
   const mergedEntries = useMemo<CatalogEntry[]>(() => {
-    const rows: CatalogEntry[] = catalog?.entries ?? [];
+    const rows: CatalogEntry[] = catalogEntries;
     const seenKeys = new Set(rows.map((e) => e.citekey).filter(Boolean) as string[]);
     const seenFilenames = new Set<string>();
     for (const e of rows) {
@@ -470,7 +475,7 @@ export default function LibraryView({
       ...bibOnlySynthetic,
       ...unsortedBibSynthetic,
     ];
-  }, [catalog, bibEntries, unsortedFiles, unsortedBibByFile]);
+  }, [catalogEntries, bibEntries, unsortedFiles, unsortedBibByFile]);
 
   // Row keys that actually exist in the merged catalog. A row's selection
   // key is its citekey, falling back to its original filename for
@@ -511,10 +516,10 @@ export default function LibraryView({
   const onFiles = useCallback(
     async (files: File[]) => {
       await dropPdf(files);
-      void reload();
+      void refreshCatalogStore();
       void reloadUnsorted();
     },
-    [dropPdf, reload, reloadUnsorted],
+    [dropPdf, reloadUnsorted],
   );
 
   // Primitive entry-action helpers. TabbedLibraryPanel composes these into

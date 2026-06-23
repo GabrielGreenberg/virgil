@@ -74,7 +74,13 @@ export default function RightDetail({
     if (viewMode === "pdf" && !pdfOnDisk) setViewMode("text");
   }, [viewMode, pdfOnDisk, setViewMode]);
 
-  const canEdit = !!(handle && bib && entry?.citekey);
+  // Edit only when we hold the FULL entry, never the slim browse projection.
+  // Slim bib-index records carry raw="" and only browse fields; seeding the
+  // editor from one and saving would REPLACE the master.bib block and drop
+  // every non-browse field (+ rewrite the type to @misc). The on-demand full
+  // entry (PaperFileBody) and the fallback parse path both populate raw, so a
+  // non-empty raw is the authoritative "full entry loaded" signal.
+  const canEdit = !!(handle && bib && bib.raw && entry?.citekey);
 
   if (!entry) {
     return (
@@ -122,7 +128,7 @@ export default function RightDetail({
         <div style={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "column" }}>
           <PdfView handle={handle} citekey={entry.citekey} />
         </div>
-        {editOpen && bib && handle && entry.citekey && (
+        {editOpen && bib && bib.raw && handle && entry.citekey && (
           <BibEditModal
             entry={bib}
             onClose={() => setEditOpen(false)}
@@ -176,7 +182,7 @@ export default function RightDetail({
           panel={panel}
         />
       </div>
-      {editOpen && bib && handle && entry.citekey && (
+      {editOpen && bib && bib.raw && handle && entry.citekey && (
         <BibEditModal
           entry={bib}
           onClose={() => setEditOpen(false)}

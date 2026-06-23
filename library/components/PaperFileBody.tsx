@@ -1,9 +1,10 @@
 "use client";
 
-import { useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
 import type { CatalogEntry } from "@library/lib/catalog";
 import type { BibEntry } from "@library/lib/types";
 import type { PanelKey } from "@library/hooks/useLibraryTabs";
+import { getFullLibraryBibEntry } from "@library/lib/bib-entry-full";
 import RightDetail from "./RightDetail";
 
 interface Props {
@@ -50,7 +51,30 @@ export default function PaperFileBody({
       bib: { state: bib ? "unverified" : "none" },
     };
   }, [citekey, entries, bibByKey]);
-  const bib = citekey ? bibByKey.get(citekey) : undefined;
+
+  // bibByKey carries only slim browse fields (raw="", partial fields). The
+  // detail surface (PaperHeader's formatted bibliography, BibEditModal,
+  // copy-BibTeX) needs the FULL entry, so fetch it on demand for the selected
+  // citekey — parses just that one master.bib block (~1ms + a ~30ms read),
+  // not the whole 34k-entry file. Falls back to the slim entry while loading.
+  const slimBib = citekey ? bibByKey.get(citekey) : undefined;
+  // Key the fetched full entry to its citekey so a stale result is never shown
+  // after the selection changes — and so we avoid a synchronous reset setState
+  // in the effect (the only setState is the async resolve below).
+  const [fullBibState, setFullBibState] = useState<{ citekey: string; entry: BibEntry } | null>(null);
+  useEffect(() => {
+    if (!citekey) return;
+    let cancelled = false;
+    void getFullLibraryBibEntry(handle, citekey).then((full) => {
+      if (!cancelled && full) setFullBibState({ citekey, entry: full });
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [handle, citekey]);
+  const fullBib = fullBibState?.citekey === citekey ? fullBibState.entry : undefined;
+  const bib = fullBib ?? slimBib;
+
   return (
     <RightDetail
       handle={handle}
