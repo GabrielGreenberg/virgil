@@ -1939,10 +1939,7 @@ function OutlinePanel({ content, onScrollTo, onReorderBlocks, onRenameHeading, o
                 <span className="shrink-0" style={{ width: OUTLINE_TWIST_COL }} />
                 <div className="min-w-0 flex-1 text-sm leading-snug break-words">
                   {docTitle ? (
-                    <>
-                      <span className="font-normal text-ink-muted">Title: </span>
-                      <span className="font-semibold text-ink-strong">{docTitle}</span>
-                    </>
+                    <span className="font-semibold text-ink-strong">{docTitle}</span>
                   ) : (
                     <span className="italic text-ink-muted">Document start</span>
                   )}
