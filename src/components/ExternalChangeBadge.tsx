@@ -38,8 +38,8 @@ import {
   useState,
   type ReactNode,
 } from "react";
-import { useExternalChanges } from "@/hooks/useExternalChanges";
-import { useDiskWatcher } from "@/components/editor-layout/contexts/disk-watcher";
+import { useExternalChangesOrNull } from "@/hooks/useExternalChanges";
+import { useDiskWatcherOrNull } from "@/components/editor-layout/contexts/disk-watcher";
 import { useConfirmDialog } from "./ConfirmDialog";
 import { MenuProvider } from "./menu/MenuProvider";
 import { useMenuItem } from "./menu/useMenuItem";
@@ -171,8 +171,15 @@ function MenuRow({
 }
 
 export default function ExternalChangeBadge() {
-  const { state, watcher } = useExternalChanges();
-  const { reloadFromDisk } = useDiskWatcher();
+  // Nullable variants: the badge renders in the topbar even on the no-document
+  // landing screen, where DiskWatcherProviderGate mounts NO provider (it needs a
+  // real docId). The throwing hooks here crashed the whole app on that boot path
+  // — the dev preview masked it by auto-loading a doc. With no provider,
+  // useExternalChangesOrNull yields a clean snapshot (severity null) and the
+  // render gate below returns null, so the badge simply shows nothing.
+  const { state, watcher } = useExternalChangesOrNull();
+  const diskCtx = useDiskWatcherOrNull();
+  const reloadFromDisk = diskCtx?.reloadFromDisk;
   const { confirm, dialog } = useConfirmDialog();
 
   const [menuOpen, setMenuOpen] = useState(false);
@@ -218,7 +225,7 @@ export default function ExternalChangeBadge() {
       });
       if (!ok) return;
     }
-    await reloadFromDisk();
+    await reloadFromDisk?.();
   }, [closeMenu, isConflict, confirm, reloadFromDisk]);
 
   const handleDismiss = useCallback(async () => {
@@ -226,11 +233,13 @@ export default function ExternalChangeBadge() {
     // "Dismiss" (change) / "Keep my version" (conflict): re-baseline the ledger
     // to the current disk bytes so the badge clears; Virgil's version then wins
     // on the next save. Resolves `hasUnresolvedChange()` → autosave resumes.
-    await watcher.acknowledge();
+    await watcher?.acknowledge();
   }, [closeMenu, watcher]);
 
   // ── render gate ────────────────────────────────────────────────────
-  // Clean: render nothing (the common case).
+  // Clean — OR no provider at all (no doc open) → render nothing. The no-doc
+  // case arrives here as the clean snapshot (severity null) from
+  // useExternalChangesOrNull, so this single check covers both.
   if (state.severity == null) return null;
 
   // Paused (permission lost mid-session): a MUTED, non-actionable variant. We

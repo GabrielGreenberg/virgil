@@ -13,8 +13,10 @@
 //   5. paused                       → muted "Watching paused", NO Reload;
 //   6. the kebab menu portals to document.body (escapes the topbar z-30 trap).
 //
-// The two consumed hooks (useExternalChanges / useDiskWatcher) and the confirm
-// dialog are mocked so this is a focused chrome test, not a full app boot.
+// The two consumed hooks (useExternalChangesOrNull / useDiskWatcherOrNull) and
+// the confirm dialog are mocked so this is a focused chrome test, not a full app
+// boot. (The badge uses the NULLABLE hooks so it can render in the topbar on the
+// no-document landing screen without a provider — see the no-provider test.)
 
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { render, cleanup, fireEvent, screen } from "@testing-library/react";
@@ -34,11 +36,11 @@ const fakeWatcher = { acknowledge, clearChanges } as unknown;
 let currentState: ExternalChangeState;
 
 vi.mock("@/hooks/useExternalChanges", () => ({
-  useExternalChanges: () => ({ state: currentState, watcher: fakeWatcher }),
+  useExternalChangesOrNull: () => ({ state: currentState, watcher: fakeWatcher }),
 }));
 
 vi.mock("@/components/editor-layout/contexts/disk-watcher", () => ({
-  useDiskWatcher: () => ({ reloadFromDisk }),
+  useDiskWatcherOrNull: () => ({ reloadFromDisk }),
 }));
 
 // Control the confirm resolution deterministically. `confirmResult` flips per
