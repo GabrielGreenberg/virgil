@@ -384,8 +384,13 @@ def _bump_version_locked(library: Path) -> None:
 # status writes). The frontend polls the tiny `.virgil/bib-index.stamp` file
 # and re-reads bib-index.json only when the stamp changes.
 #
-# Schema (compact keys keep the file ~6MB at 34k):
-#   k=citekey  t=title  a=author  y=year  d=doi  j=journal  b=booktitle
+# Schema (compact keys; the file is ~6-8MB at 34k). These are exactly the
+# fields the BROWSE path reads — list author column + sort (author/editor),
+# fuzzy search (title/author/year/journal/booktitle), and the citation
+# picker's expanded details (volume/number/pages/publisher/series). Anything
+# the browse path does NOT render stays out (it's fetched on demand for edit):
+#   k=citekey t=title a=author e=editor y=year d=doi
+#   j=journal b=booktitle v=volume n=number p=pages q=publisher s=series
 # Empty fields are omitted. The frontend maps these back to a BibEntry shape.
 
 BIB_INDEX_REL = ".virgil/bib-index.json"
@@ -394,10 +399,16 @@ BIB_INDEX_STAMP_REL = ".virgil/bib-index.stamp"
 _BIB_INDEX_FIELDS = (
     ("title", "t"),
     ("author", "a"),
+    ("editor", "e"),
     ("year", "y"),
     ("doi", "d"),
     ("journal", "j"),
     ("booktitle", "b"),
+    ("volume", "v"),
+    ("number", "n"),
+    ("pages", "p"),
+    ("publisher", "q"),
+    ("series", "s"),
 )
 
 
@@ -484,7 +495,8 @@ def build_bib_index(library: Path, *, force: bool = False) -> bool:
         "v": 1,
         "stamp": stamp,
         "generatedAt": _now(),
-        "schema": "k=citekey t=title a=author y=year d=doi j=journal b=booktitle",
+        "schema": "k=citekey t=title a=author e=editor y=year d=doi "
+                  "j=journal b=booktitle v=volume n=number p=pages q=publisher s=series",
         "count": len(entries),
         "entries": entries,
     }

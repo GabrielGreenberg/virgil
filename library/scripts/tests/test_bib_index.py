@@ -54,6 +54,26 @@ def test_build_emits_slim_index_with_all_entries(tmp_path):
     assert (tmp_path / ".virgil" / "bib-index.stamp").exists()
 
 
+def test_slim_projection_carries_all_browse_fields(tmp_path):
+    # The browse path reads author/editor for the list, journal/booktitle for
+    # search, and volume/number/pages/publisher/series for the picker's
+    # expanded details — all must survive into the slim index.
+    _write(tmp_path, (
+        "@incollection{vol2018,\n  title = {A Chapter},\n  editor = {Ed, Eve},\n"
+        "  year = {2018},\n  booktitle = {The Volume},\n  volume = {3},\n"
+        "  number = {2},\n  pages = {10--20},\n  publisher = {Pub Co},\n"
+        "  series = {A Series},\n}\n"
+    ))
+    assert build_bib_index(tmp_path, force=True) is True
+    idx = json.loads((tmp_path / ".virgil" / "bib-index.json").read_text())
+    e = idx["entries"][0]
+    assert e == {
+        "k": "vol2018", "t": "A Chapter", "e": "Ed, Eve", "y": "2018",
+        "b": "The Volume", "v": "3", "n": "2", "p": "10--20",
+        "q": "Pub Co", "s": "A Series",
+    }
+
+
 def test_stamp_gate_skips_rebuild_when_master_unchanged(tmp_path):
     _write(tmp_path, "@article{a,\n  title = {T},\n}\n")
     assert build_bib_index(tmp_path, force=True) is True

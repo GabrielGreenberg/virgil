@@ -15,16 +15,24 @@
 import { readTextFile, ROOT_FILES } from "./library-storage";
 import type { BibEntry } from "./types";
 
-/** One slim record in bib-index.json. Compact keys keep the file ~6MB at 34k.
- *  k=citekey t=title a=author y=year d=doi j=journal b=booktitle. */
+/** One slim record in bib-index.json. Compact keys; these are exactly the
+ *  fields the browse path renders (list/sort, search, picker expanded details).
+ *  k=citekey t=title a=author e=editor y=year d=doi
+ *  j=journal b=booktitle v=volume n=number p=pages q=publisher s=series. */
 interface BibIndexRecord {
   k: string;
   t?: string;
   a?: string;
+  e?: string;
   y?: string;
   d?: string;
   j?: string;
   b?: string;
+  v?: string;
+  n?: string;
+  p?: string;
+  q?: string;
+  s?: string;
 }
 
 interface BibIndexFile {
@@ -46,10 +54,16 @@ function recordToBibEntry(r: BibIndexRecord): BibEntry {
   const fields: Record<string, string> = {};
   if (r.t) fields.title = r.t;
   if (r.a) fields.author = r.a;
+  if (r.e) fields.editor = r.e;
   if (r.y) fields.year = r.y;
   if (r.d) fields.doi = r.d;
   if (r.j) fields.journal = r.j;
   if (r.b) fields.booktitle = r.b;
+  if (r.v) fields.volume = r.v;
+  if (r.n) fields.number = r.n;
+  if (r.p) fields.pages = r.p;
+  if (r.q) fields.publisher = r.q;
+  if (r.s) fields.series = r.s;
   return { key: r.k, type: "misc", fields, raw: "" };
 }
 
@@ -63,15 +77,20 @@ export async function readBibIndexStamp(
   return text === undefined ? null : text.trim();
 }
 
-/** Read + widen `.virgil/bib-index.json`. Returns `null` when absent (caller
- *  falls back to citation-js parsing master.bib). Throws only on genuinely
- *  malformed JSON, which the caller treats as "fall back." */
+/** Read + widen `.virgil/bib-index.json`. Returns `null` when absent OR
+ *  unreadable/malformed (e.g. a torn write) — both cases route the caller
+ *  (useMasterBib) to its master.bib fallback, never to an empty list. */
 export async function readBibIndex(
   handle: FileSystemDirectoryHandle,
 ): Promise<BibIndexResult | null> {
   const text = await readTextFile(handle, ROOT_FILES.bibIndex);
   if (text === undefined) return null;
-  const parsed = JSON.parse(text) as BibIndexFile;
+  let parsed: BibIndexFile;
+  try {
+    parsed = JSON.parse(text) as BibIndexFile;
+  } catch {
+    return null; // truncated / corrupt index → fall back to master.bib
+  }
   if (!parsed || !Array.isArray(parsed.entries)) return null;
   return {
     stamp: parsed.stamp ?? "",

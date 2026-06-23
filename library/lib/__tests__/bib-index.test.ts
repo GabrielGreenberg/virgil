@@ -48,6 +48,28 @@ describe("readBibIndex — slim → BibEntry mapping", () => {
     expect(res!.entries[1].fields).toEqual({});
   });
 
+  it("widens the full browse-field set (editor + pub details)", async () => {
+    readTextFile.mockImplementation(async (_h: unknown, path?: string) =>
+      path?.endsWith("bib-index.json")
+        ? JSON.stringify({
+            v: 1, stamp: "s",
+            entries: [{ k: "vol", e: "Ed, Eve", v: "3", n: "2", p: "10-20", q: "Pub", s: "Ser" }],
+          })
+        : undefined,
+    );
+    const res = await readBibIndex(handle);
+    expect(res!.entries[0].fields).toEqual({
+      editor: "Ed, Eve", volume: "3", number: "2", pages: "10-20", publisher: "Pub", series: "Ser",
+    });
+  });
+
+  it("returns null on a CORRUPT index (truncated JSON) → caller falls back", async () => {
+    readTextFile.mockImplementation(async (_h: unknown, path?: string) =>
+      path?.endsWith("bib-index.json") ? '{"v":1,"entries":[{"k":"a"' : undefined,
+    );
+    expect(await readBibIndex(handle)).toBeNull();
+  });
+
   it("returns null when the index is absent (the fallback signal)", async () => {
     readTextFile.mockResolvedValue(undefined);
     expect(await readBibIndex(handle)).toBeNull();

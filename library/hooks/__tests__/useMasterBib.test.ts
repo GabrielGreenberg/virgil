@@ -97,4 +97,18 @@ describe("useMasterBib — master.bib fallback (no index)", () => {
     expect(parseBibFile).toHaveBeenCalledTimes(1);
     expect(result.current.entries[0].key).toBe("x");
   });
+
+  it("falls back to master.bib when the index is present but UNREADABLE", async () => {
+    // A torn/corrupt index: stamp file exists, but readBibIndex returns null.
+    // We must parse master.bib, never render an empty list.
+    readBibIndexStamp.mockResolvedValue("s1");
+    readBibIndex.mockResolvedValue(null);
+    readTextFile.mockResolvedValue("@article{x, title={X}}");
+    parseBibFile.mockReturnValue([{ key: "x", type: "article", fields: { title: "X" }, raw: "@article{x, title={X}}" }]);
+
+    const { result } = renderHook(() => useMasterBib(handle));
+    await waitFor(() => expect(result.current.entries).toHaveLength(1));
+    expect(parseBibFile).toHaveBeenCalledTimes(1);
+    expect(result.current.entries[0].key).toBe("x");
+  });
 });
