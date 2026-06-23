@@ -4,10 +4,12 @@ Run: python3 -m pytest library/scripts/tests/test_bib_index.py
 (or: python3 library/scripts/tests/test_bib_index.py)
 """
 import json
+import subprocess
 import sys
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+_SCRIPTS = str(Path(__file__).resolve().parent.parent)
+sys.path.insert(0, _SCRIPTS)
 
 from _tools import build_bib_index, iter_master_bib_slim, read_master_bib  # noqa: E402
 
@@ -90,6 +92,26 @@ def test_missing_master_bib_yields_empty_index(tmp_path):
     assert build_bib_index(tmp_path, force=True) is True
     idx = json.loads((tmp_path / ".virgil" / "bib-index.json").read_text())
     assert idx["count"] == 0
+
+
+def test_atexit_rebuilds_index_after_a_master_write(tmp_path):
+    # Coherence mechanism: a writer process that touches master.bib must
+    # rebuild bib-index.json once on exit (atexit-coalesced), with no explicit
+    # build call — this is how the index stays fresh during cowork.
+    (tmp_path / ".virgil").mkdir(parents=True)
+    (tmp_path / "master.bib").write_text(
+        "@article{first,\n  title = {One},\n  author = {A, A},\n}\n"
+    )
+    child = (
+        "import sys; sys.path.insert(0, %r)\n"
+        "from pathlib import Path\n"
+        "from _tools import update_master_bib_entry\n"
+        "update_master_bib_entry(Path(%r), 'second', 'article', {'title': 'Two'})\n"
+    ) % (_SCRIPTS, str(tmp_path))
+    subprocess.run([sys.executable, "-c", child], check=True)
+    idx = json.loads((tmp_path / ".virgil" / "bib-index.json").read_text())
+    keys = {e["k"] for e in idx["entries"]}
+    assert keys == {"first", "second"}, keys
 
 
 if __name__ == "__main__":
