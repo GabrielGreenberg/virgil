@@ -61,56 +61,57 @@ def parse_fields(body: str) -> dict[str, str]:
     return out
 
 
+# Entry starts are line-anchored in a .bib file (`@type{key,` at column 0).
+# We delimit entries by THIS marker rather than by global brace-matching,
+# because a single brace-unbalanced entry makes brace-matching overrun and
+# swallow the rest of the file as one "entry," silently dropping everything
+# after it. The real ~34k-entry master.bib has exactly such an entry — the old
+# global scanner dropped ~82% of the bibliography on it, so a
+# `citekey in read_master_bib(...)` membership check then wrongly reported real
+# entries as missing. Line-anchored splitting caps each entry's brace-matching
+# at the next opener, containing any malformation to its own entry.
+# `@string`/`@comment`/`@preamble` lack the `{key,` form, so the regex naturally
+# excludes them (matching the old explicit skip). This pattern is ported from
+# `_tools.read_master_bib` (`_tools._BIB_ENTRY_START_RE`); keep the two in sync.
+_BIB_ENTRY_START_RE = re.compile(r"(?m)^@(\w+)[ \t]*\{[ \t]*([^,\s]+)[ \t]*,")
+
+
 def parse_bib_text(text: str) -> list[dict]:
     """Parse a .bib string. Returns a list of {citekey, type, fields, raw}.
 
-    Order is preserved (file order). Skips blocks that don't open with `@`.
+    Order is preserved (file order). Entries are delimited by their
+    line-anchored `@type{key,` openers (`_BIB_ENTRY_START_RE`), and brace-
+    matching for each entry's raw/body is CAPPED at the next opener — so a
+    single brace-unbalanced entry overruns to (at most) the next entry boundary
+    instead of swallowing the rest of the file. `@string`/`@comment`/
+    `@preamble` lack the `{key,` form and are naturally skipped.
     """
     entries: list[dict] = []
-    i = 0
-    while i < len(text):
-        if text[i] != "@":
-            i += 1
-            continue
-        type_end = text.find("{", i)
-        if type_end == -1:
-            break
-        entry_type = text[i + 1:type_end].strip().lower()
-        # @comment / @preamble / @string aren't real entries.
-        if entry_type in ("comment", "preamble", "string"):
-            # Skip past the matching closing brace.
-            depth = 1
-            j = type_end + 1
-            while j < len(text) and depth > 0:
-                if text[j] == "{":
-                    depth += 1
-                elif text[j] == "}":
-                    depth -= 1
-                j += 1
-            i = j
-            continue
-        key_end = text.find(",", type_end)
-        if key_end == -1:
-            break
-        citekey = text[type_end + 1:key_end].strip()
+    starts = list(_BIB_ENTRY_START_RE.finditer(text))
+    for idx, m in enumerate(starts):
+        entry_type = m.group(1).lower()
+        citekey = m.group(2).strip()
+        seg_end = starts[idx + 1].start() if idx + 1 < len(starts) else len(text)
+        brace = text.find("{", m.start())
         depth = 1
-        j = type_end + 1
-        while j < len(text) and depth > 0:
+        j = brace + 1
+        while j < seg_end and depth > 0:
             if text[j] == "{":
                 depth += 1
             elif text[j] == "}":
                 depth -= 1
             j += 1
-        raw = text[i:j]
-        body = text[key_end + 1:j - 1]
+        raw = text[m.start():j]
+        body_start = text.find(",", brace) + 1
+        body = text[body_start:(j - 1) if depth == 0 else seg_end]
         fields = parse_fields(body)
-        entries.append({
-            "citekey": citekey,
-            "type": entry_type,
-            "fields": fields,
-            "raw": raw,
-        })
-        i = j
+        if citekey:
+            entries.append({
+                "citekey": citekey,
+                "type": entry_type,
+                "fields": fields,
+                "raw": raw,
+            })
     return entries
 
 
