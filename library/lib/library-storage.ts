@@ -21,6 +21,13 @@ export const ROOT_FILES = {
   catalog: `${VIRGIL_DIR}/catalog.json`,
   catalogVersion: `${VIRGIL_DIR}/catalog-version.txt`,
   masterBib: "master.bib",
+  // Slim, skill-emitted projection of master.bib for the browse path — read
+  // INSTEAD of parsing master.bib with citation-js (see library/lib/bib-index.ts
+  // and library/scripts/build_bib_index.py). The `.stamp` is a tiny
+  // change-signal file polled cheaply so we re-read the big index only when
+  // master.bib actually changed.
+  bibIndex: `${VIRGIL_DIR}/bib-index.json`,
+  bibIndexStamp: `${VIRGIL_DIR}/bib-index.stamp`,
 } as const;
 
 export const SUBDIRS = {
