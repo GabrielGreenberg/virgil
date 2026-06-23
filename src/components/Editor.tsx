@@ -14,7 +14,7 @@ import {
 import type { Link as VirgilLink, CardWithLinks } from "@/links/links";
 import { applyLinkedAnchorsImpl } from "@/links/_shared/apply-linked-anchors";
 import type { ModeBReapplyRecord } from "@/links/_shared/reapply-mode-b-anchors";
-import { alignEntryToY, findEditorScrollFor } from "@/components/editor-layout/layout-scroll";
+import { alignEntryToY, findEditorScrollFor, scrollHeadingToActiveLine } from "@/components/editor-layout/layout-scroll";
 import {
   isAnchorableNode,
   isAnchorableAtom,
@@ -858,12 +858,15 @@ const VirgilEditor = forwardRef<EditorHandle, EditorProps>(function VirgilEditor
       });
       if (pos > 0) {
         editor.commands.setTextSelection(pos);
-        // Scroll into view
+        // Jump so the heading lands on the shared section-active line — the
+        // same line the position detector reads — so the clicked section
+        // immediately registers as current (OUT-#6). (Was block:"center" at
+        // 0.5, below the detector's 0.25 line, so the prior section stuck.)
         const domAtPos = editor.view.domAtPos(pos);
         const el = domAtPos.node instanceof HTMLElement
           ? domAtPos.node
           : domAtPos.node.parentElement;
-        el?.scrollIntoView({ behavior: "instant", block: "center" });
+        if (el) scrollHeadingToActiveLine(editor.view.dom, el);
       }
     },
     archiveSelection(_archiveId: string): { content: unknown; paragraphId: string | null } | null {
