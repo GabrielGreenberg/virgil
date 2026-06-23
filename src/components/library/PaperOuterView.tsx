@@ -2,7 +2,7 @@
 
 import { useMemo } from "react";
 import { useLibraryHandle } from "@library/hooks/useLibraryHandle";
-import { useCatalog } from "@library/hooks/useCatalog";
+import { useCatalogItems, refreshCatalogStore } from "@library/lib/catalog-store";
 import { useMasterBib } from "@library/hooks/useMasterBib";
 import LibraryFolderPicker from "@library/components/LibraryFolderPicker";
 import LibraryPermissionGate from "@library/components/LibraryPermissionGate";
@@ -52,7 +52,8 @@ function ReadyView({
   handle: FileSystemDirectoryHandle;
   citekey: string;
 }) {
-  const { catalog, reload: reloadCatalog } = useCatalog(handle);
+  // Shared catalog poll (catalog-store) rather than a second per-view loop.
+  const { entries: catalogEntries } = useCatalogItems();
   const { entries: bibEntries, reload: reloadBib } = useMasterBib(handle);
 
   const bibByKey = useMemo(() => {
@@ -69,11 +70,11 @@ function ReadyView({
       <PaperFileBody
         handle={handle}
         citekey={citekey}
-        entries={catalog?.entries ?? []}
+        entries={catalogEntries}
         bibByKey={bibByKey}
         onBibChanged={() => {
           void reloadBib();
-          void reloadCatalog();
+          void refreshCatalogStore();
         }}
         // Standalone outer paper tab — no LibraryView panel context. Give
         // it its own isolated view-session scope so its reader scroll
