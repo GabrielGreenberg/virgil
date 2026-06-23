@@ -58,6 +58,21 @@ export async function drainDoc(docId: string): Promise<void> {
 export const detectBibPackage = backend.detectBibPackage;
 export const readPaperFolder = backend.readPaperFolder;
 export const getTexFilename = backend.getTexFilename;
+// Non-stamping resolver for the resolved .bib filename. Used by the
+// external-change watcher to resolve the watched .bib NAME without reading the
+// .bib content or stamping the disk ledger (the anti-flicker invariant —
+// readBib is a pure reader, name resolution stamps nothing).
+export const getBibFilename = backend.getBibFilename;
+// Cheap {mtimeMs,size} file-stat for the external-change watcher. Backend-
+// agnostic: FSA uses getFile(); dev issues HEAD requests to the dev route.
+// `null` for a path means the file is absent; FSA re-throws on permission loss.
+export const statFiles = backend.statFiles;
+// Generic NON-stamping reader of an EXACT relPath, used by the external-change
+// watcher for its prime + confirm-by-hash reads so the bytes hashed are the
+// same file that was stat'd (no name re-resolution, no ledger stamp). `null`
+// for absent; FSA re-throws on permission loss. Backend-agnostic: FSA walks the
+// dir handle; dev GETs the dev route.
+export const readTextFile = backend.readTextFile;
 export const writePdf = backend.writePdf;
 export const readPdf = backend.readPdf;
 export const getPdfFilename = backend.getPdfFilename;
@@ -79,7 +94,7 @@ export const getDocWriteHandle = backend.getDocWriteHandle;
 export const importFigureFile = backend.importFigureFile;
 
 // Re-export types (these are the same in both backends).
-export type { DocBundle, BibReadResult, BibPackage, FolderPickResult, PaperFile, PickedFigureFile } from "@/lib/storage-fsa";
+export type { DocBundle, BibReadResult, BibPackage, FolderPickResult, PaperFile, PickedFigureFile, FileStat } from "@/lib/storage-fsa";
 
 // Re-export the pipeline handle type so storage callers don't need to
 // import from the multi-window subdirectory.

@@ -36,6 +36,7 @@ import {
   isActive,
   type DocWriteHandle,
 } from "@/lib/multi-window/doc-pipeline";
+import { stampDiskFingerprint, fingerprintOf } from "@/lib/disk-ledger";
 
 // Re-export types that consumers import alongside functions.
 export type { FsaDocMeta } from "@/lib/doc-index";
@@ -137,6 +138,31 @@ async function putText(url: string, body: string): Promise<void> {
   await fetch(url, { method: "PUT", body }).catch(() => {});
 }
 
+/**
+ * Best-effort disk-ledger stamp (dev mirror of storage-fsa's `stampLedger`).
+ * Re-stats `relPath` via the HEAD-backed `statFiles` AFTER the write/read so
+ * the recorded `mtimeMs` is the dev server's real post-write value, combines
+ * it with the known `content` bytes' hash, and stamps the ledger — so the
+ * external-change watcher never misreads Virgil's own write as an external
+ * change (design: docs/memos/external-change-badge/DESIGN.md §3).
+ *
+ * NEVER throws: a stat failure during stamping must not break a save or load.
+ */
+async function stampLedger(
+  docId: string,
+  relPath: string,
+  content: string,
+): Promise<void> {
+  try {
+    const stats = await statFiles(docId, [relPath]);
+    const stat = stats[relPath];
+    if (!stat) return; // absent on re-stat — nothing authoritative to record
+    stampDiskFingerprint(docId, relPath, fingerprintOf(stat, content));
+  } catch (e) {
+    console.warn(`[storage-dev] disk-ledger stamp failed for ${relPath}:`, e);
+  }
+}
+
 // Keep an in-memory cache of the dev index to avoid re-fetching on every call.
 let _cachedIndex: DevIndexEntry[] | null = null;
 
@@ -230,6 +256,8 @@ export async function writeTex(h: DocWriteHandle, latex: string): Promise<void> 
   const entry = findEntry(docs, h.docId);
   const filename = entry ? texFilenameFromPath(entry.sourcePath) : "document.tex";
   await putText(`${API}/doc/${h.docId}/${filename}`, latex);
+  // Stamp the ledger with the authoritative post-write fingerprint.
+  await stampLedger(h.docId, filename, latex);
 }
 
 // ---------------------------------------------------------------------------
@@ -246,6 +274,11 @@ export async function readDocBundle(docId: string): Promise<{ content: JSONConte
     fetchJson<VirgilSidecar>(`${API}/doc/${docId}/virgil/virgil.json`, DEFAULT_SIDECAR),
     fetchJson<EditorStateData>(`${API}/doc/${docId}/virgil/editor-state.json`, DEFAULT_EDITOR_STATE),
   ]);
+
+  // Baseline the disk ledger from what we just read. Superseded below by the
+  // load-writeback stamp if the writeback fires — that's correct, the
+  // writeback is the newer authoritative on-disk state.
+  await stampLedger(docId, texFilename, latex);
 
   const content = parseLatex(latex, sidecar);
   // Assign UUIDs immediately on load so every paragraph is addressable
@@ -275,6 +308,10 @@ export async function readDocBundle(docId: string): Promise<{ content: JSONConte
           putText(`${API}/doc/${docId}/${texFilename}`, newLatex),
           putText(`${API}/doc/${docId}/virgil/virgil.json`, JSON.stringify(newSidecar, null, 2)),
         ]);
+        // CRITICAL false-positive guard (parity with storage-fsa): the load-
+        // writeback rewrites the .tex seconds after load. Stamp with the bytes
+        // we just wrote so the watcher recognizes it as Virgil's own write.
+        await stampLedger(docId, texFilename, newLatex);
       } catch {
         // Silent — this is an opportunistic UUID-stamp, not a save.
       }
@@ -332,6 +369,9 @@ export async function writeDocBundle(
     putText(`${API}/doc/${h.docId}/${texFilename}`, latex),
     putText(`${API}/doc/${h.docId}/virgil/virgil.json`, JSON.stringify(newSidecar, null, 2)),
   ]);
+  // Stamp the ledger with the FINAL serialized .tex that hit disk (preamble
+  // preserved), not the JSONContent — so the next poll matches exactly.
+  await stampLedger(h.docId, texFilename, latex);
 }
 
 // ---------------------------------------------------------------------------
@@ -339,6 +379,25 @@ export async function writeDocBundle(
 // ---------------------------------------------------------------------------
 
 const BIB_DECL_RE = /\\(?:bibliography|addbibresource)\{([^}]+)\}/;
+
+/**
+ * Resolve the .bib filename for a doc WITHOUT touching the ledger or reading
+ * the .bib content (dev parity with storage-fsa's `getBibFilename`). The
+ * watcher uses this for watched-set name resolution; a plain name lookup must
+ * never re-baseline the ledger (the anti-flicker invariant: only load +
+ * writes stamp). It reads the .tex (non-stamping `readTex`) to find
+ * `\bibliography{}`/`\addbibresource{}`, falling back to `references.bib`.
+ */
+export async function getBibFilename(docId: string): Promise<string> {
+  const tex = await readTex(docId);
+  const m = tex.match(BIB_DECL_RE);
+  let bibFilename = "references.bib";
+  if (m) {
+    bibFilename = m[1].trim();
+    if (!bibFilename.endsWith(".bib")) bibFilename += ".bib";
+  }
+  return bibFilename;
+}
 
 export async function readBib(docId: string): Promise<BibReadResult> {
   const tex = await readTex(docId);
@@ -349,6 +408,11 @@ export async function readBib(docId: string): Promise<BibReadResult> {
     if (!bibFilename.endsWith(".bib")) bibFilename += ".bib";
   }
   const bibText = (await fetchText(docFileUrl(docId, bibFilename))) ?? "";
+  // NOTE: readBib is a PURE reader — it does NOT stamp the disk ledger. The
+  // .bib baseline is established by the watcher's PRIME pass + by writeBib.
+  // Baselining here would let the watcher's own confirm-read re-baseline the
+  // very external edit it is trying to surface (the flicker bug). See
+  // docs/memos/external-change-badge/DESIGN.md §3.
   const detectedPackage = detectBibPackage(tex);
   return { bibText, bibFilename, detectedPackage };
 }
@@ -366,6 +430,8 @@ export async function writeBib(h: DocWriteHandle, bibText: string): Promise<void
   }
   assertNotSuperseded(h);
   await putText(docFileUrl(h.docId, bibFilename), bibText);
+  // Stamp the ledger with the authoritative post-write .bib fingerprint.
+  await stampLedger(h.docId, bibFilename, bibText);
 }
 
 // ---------------------------------------------------------------------------
@@ -521,6 +587,74 @@ export async function writeFigureIndex(
 // Stub so the storage facade compiles — dev callers walk via HTTP.
 export async function requireDocHandleForRead(): Promise<never> {
   throw new Error("requireDocHandleForRead is not available in dev storage mode");
+}
+
+// ---------------------------------------------------------------------------
+// File-stat capability — cheap {mtimeMs, size} fingerprints for the
+// external-change watcher (design: docs/memos/external-change-badge/DESIGN.md
+// §8). Issues a HEAD per file so a poll tick doesn't download the whole .tex.
+// The dev route's HEAD branch returns Last-Modified + Content-Length only.
+// ---------------------------------------------------------------------------
+
+/** Cheap on-disk fingerprint of a single file (the poll trigger). */
+export type FileStat = { mtimeMs: number; size: number };
+
+/**
+ * Stat a set of files relative to the doc folder. Returns a map keyed by the
+ * SAME `relPaths` passed in; a `null` value means the file is absent (404).
+ *
+ * For each path we HEAD `docFileUrl(docId, relPath)` and parse the two
+ * headers: `Last-Modified` → ms-since-epoch for `mtimeMs`, `Content-Length` →
+ * `size`. A non-OK response (404) → `null`. A network/fetch error also → null
+ * (the watcher treats a transient failure as "no observation this tick"
+ * rather than a delete; only the FSA permission-loss path throws).
+ */
+export async function statFiles(
+  docId: string,
+  relPaths: string[],
+): Promise<Record<string, FileStat | null>> {
+  const out: Record<string, FileStat | null> = {};
+  await Promise.all(
+    relPaths.map(async (relPath) => {
+      out[relPath] = await statOneFile(docId, relPath);
+    }),
+  );
+  return out;
+}
+
+async function statOneFile(
+  docId: string,
+  relPath: string,
+): Promise<FileStat | null> {
+  try {
+    const res = await fetch(docFileUrl(docId, relPath), { method: "HEAD" });
+    if (!res.ok) return null;
+    const lastMod = res.headers.get("last-modified");
+    const len = res.headers.get("content-length");
+    const mtimeMs = lastMod ? new Date(lastMod).getTime() : 0;
+    const size = len ? Number(len) : 0;
+    return {
+      mtimeMs: Number.isFinite(mtimeMs) ? mtimeMs : 0,
+      size: Number.isFinite(size) ? size : 0,
+    };
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Read the text content of the EXACT `relPath` under the doc folder —
+ * NON-STAMPING, NO name re-resolution (dev mirror of storage-fsa's
+ * `readTextFile`). GET `docFileUrl(docId, relPath)`; a non-OK response (404) or
+ * a network error → `null`. This is the generic reader the external-change
+ * watcher uses for both its prime baseline and confirm-by-hash read, so the
+ * bytes it hashes are the same file it just stat'd. NEVER touches the ledger.
+ */
+export async function readTextFile(
+  docId: string,
+  relPath: string,
+): Promise<string | null> {
+  return fetchText(docFileUrl(docId, relPath));
 }
 
 // Re-export the same active-handle helper so the storage facade has it

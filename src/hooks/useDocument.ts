@@ -11,6 +11,8 @@ import {
   registerPendingFlusher,
   unregisterPendingFlusher,
 } from "@/lib/multi-window/pending-saves";
+import { useDiskWatcherOrNull } from "@/components/editor-layout/contexts/disk-watcher";
+import { shouldPauseAutosave } from "@/lib/autosave-pause";
 
 type SaveStatus = "idle" | "saving" | "saved";
 
@@ -39,6 +41,22 @@ type SaveStatus = "idle" | "saving" | "saved";
 export function useDocument() {
   const handle = useDocWriteHandle();
   const docId = handle.docId;
+  // External-change watcher (null in bare test contexts / no provider). Used to
+  // (a) inject the dirty-getter so the watcher can flip change→conflict, and
+  // (b) PAUSE background autosave while an external change is unresolved so we
+  // never clobber the on-disk edit (DESIGN §4). Held in a ref so the memoized
+  // save closures read the CURRENT watcher without taking it as a dependency —
+  // its identity is stable per doc-mount anyway, but the ref keeps the
+  // keystroke-path callbacks (debouncedSave/flushNow/onUpdate) from re-creating.
+  const diskWatcherCtx = useDiskWatcherOrNull();
+  const watcher = diskWatcherCtx?.watcher ?? null;
+  const watcherRef = useRef(watcher);
+  // Sync the ref in an effect (never during render). The async save timers
+  // read `watcherRef.current` only after this effect has run, so they always
+  // see the current watcher.
+  useEffect(() => {
+    watcherRef.current = watcher;
+  }, [watcher]);
   const [content, setContent] = useState<JSONContent | null>(null);
   const [loading, setLoading] = useState(true);
   const [saveStatus, setSaveStatus] = useState<SaveStatus>("idle");
@@ -165,6 +183,22 @@ export function useDocument() {
     return () => unregisterPendingFlusher(docId, flushPending);
   }, [docId, flushPending]);
 
+  // Inject the canonical dirty-getter into the external-change watcher so it
+  // can pull "are there unsaved edits?" at poll time and flip severity
+  // change→conflict. `saveTimerRef.current !== null` is the SSOT dirty flag.
+  // This is set ONCE per mount (not per keystroke) and adds NO editor.on
+  // subscriber — the watcher PULLS this getter on its wall-clock poll. The
+  // getter reads a ref, so its identity never changes; the watcher's
+  // hasUnsavedEdits closes over `unsavedRef.current()` in the provider.
+  const registerUnsavedGetter = diskWatcherCtx?.registerUnsavedGetter;
+  useEffect(() => {
+    if (!registerUnsavedGetter) return;
+    const unregister = registerUnsavedGetter(
+      () => saveTimerRef.current !== null,
+    );
+    return unregister;
+  }, [registerUnsavedGetter]);
+
   // Flush pending edits on unmount. With the DocPipeline `key={docId}`
   // boundary, unmount IS the doc-switch event — the cleanup closes over
   // this mount's save closure (and its handle), so any pending edit
@@ -260,11 +294,28 @@ export function useDocument() {
   // moving serialization INSIDE the timer means we pay O(doc-size) at
   // most once per 1500 ms during sustained typing instead of once per
   // keystroke. See plan: ok-lets-do-a-dreamy-thacker.md.
+  // The re-arm path (autosave-pause guard) needs to call `debouncedSave`
+  // recursively. We route the re-arm through this ref to avoid a
+  // reference-before-declaration of the `useCallback` const (and to keep the
+  // closure stable). The ref is assigned to the callback immediately below.
+  const debouncedSaveRef = useRef<() => void>(() => {});
   const debouncedSave = useCallback(() => {
     if (saveTimerRef.current) {
       clearTimeout(saveTimerRef.current);
     }
     saveTimerRef.current = setTimeout(() => {
+      // AUTOSAVE-CLOBBER GUARD (DESIGN §4): while an external change is
+      // unresolved, do NOT overwrite disk. RE-ARM the debounce instead of
+      // writing, so (a) the dirty flag `saveTimerRef.current !== null` STAYS
+      // true — keeping the watcher's severity at 'conflict' — and (b) the edit
+      // is retried automatically once the user resolves the change (Reload or
+      // Dismiss → hasUnresolvedChange() returns false and the next fire writes
+      // normally). KEYSTROKE SANCTITY: this check runs at debounce-fire (off the
+      // hot path), never per keystroke; it is a single O(1) store read.
+      if (shouldPauseAutosave(watcherRef.current)) {
+        debouncedSaveRef.current();
+        return;
+      }
       saveTimerRef.current = null;
       const editor = editorRef.current;
       if (!editor || editor.isDestroyed) return;
@@ -275,6 +326,11 @@ export function useDocument() {
       save(doc);
     }, 1500);
   }, [save]);
+  // Sync the self-reference ref in an effect (never during render). The re-arm
+  // path inside the timer reads it only after this effect has run.
+  useEffect(() => {
+    debouncedSaveRef.current = debouncedSave;
+  }, [debouncedSave]);
 
   // Immediate doc-bundle flush for anchor-UUID mint transactions. Cancels the
   // pending 1500 ms debounce and writes the live editor JSON NOW, so a freshly
@@ -286,6 +342,15 @@ export function useDocument() {
   // tx is itself the "there is unsaved work" signal (it changed the doc), and
   // it always arrives with the debounce just armed by `debouncedSave()` below.
   const flushNow = useCallback(() => {
+    // AUTOSAVE-CLOBBER GUARD (DESIGN §4): while an external change is
+    // unresolved, do NOT write. Re-arm the debounce (leaving saveTimerRef
+    // armed) so the minted UUID is retried after the user resolves the change,
+    // and the dirty flag stays true (severity stays 'conflict'). This is a
+    // discrete commit path, not the keystroke path — O(1) store read.
+    if (shouldPauseAutosave(watcherRef.current)) {
+      debouncedSave();
+      return;
+    }
     if (saveTimerRef.current !== null) {
       clearTimeout(saveTimerRef.current);
       saveTimerRef.current = null;
@@ -295,7 +360,7 @@ export function useDocument() {
     const doc = editor.getJSON();
     latestContentRef.current = doc;
     void save(doc);
-  }, [save]);
+  }, [save, debouncedSave]);
 
   // CHIP-C: immediate doc-bundle flush requested on a drop-mode re-anchor
   // COMMIT (the single mouseup in `controller.finishApply`). RC3: a card can
@@ -338,6 +403,9 @@ export function useDocument() {
     ) {
       return;
     }
+    // AUTOSAVE-CLOBBER GUARD: inherited from `flushNow`, which re-arms the
+    // debounce (instead of writing) while an external change is unresolved — so
+    // the re-anchor commit is retried after the user resolves the change.
     flushNow();
   }, [flushNow]);
 
@@ -373,6 +441,19 @@ export function useDocument() {
         setLoading(false);
       });
   }, [docId]);
+
+  // Register `refetch` with the external-change watcher so the topbar badge can
+  // drive "Reload from disk" via the context's `reloadFromDisk()` without
+  // coupling to EditorPane. MIRRORS the `registerUnsavedGetter` effect above:
+  // set ONCE per mount (keyed on the stable `registerReload` + `refetch`
+  // identities), never per keystroke, and adds NO editor.on subscriber.
+  // `useDiskWatcherOrNull` keeps useDocument working with no provider (tests).
+  const registerReload = diskWatcherCtx?.registerReload;
+  useEffect(() => {
+    if (!registerReload) return;
+    const unregister = registerReload(refetch);
+    return unregister;
+  }, [registerReload, refetch]);
 
   return {
     content,

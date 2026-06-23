@@ -28,6 +28,8 @@ import { useSelectedAnchorSync } from "@/hooks/useSelectedAnchorSync";
 import { CollabProvider, COLLAB_INERT, type CollabHook } from "@/hooks/useCollab";
 import { collabClaimScope } from "@/cards/predicates";
 import CollabStatusPill from "./CollabStatusPill";
+import ExternalChangeBadge from "./ExternalChangeBadge";
+import { useExternalChangesOrNull } from "@/hooks/useExternalChanges";
 import { useCollaboratorIdentity } from "./CollaboratorIdentityDialog";
 import { useLatexLint } from "@/hooks/useLatexLint";
 import { mergeLatexErrors, type LatexError } from "@/lib/latex-errors";
@@ -136,6 +138,7 @@ import { useMarkerClickBridges } from "./editor-layout/event-bridges/marker-clic
 import { useFootnoteSyncBridges } from "./editor-layout/event-bridges/footnote-sync";
 import { EditorLayoutProvider } from "./editor-layout/context";
 import { EditorRefProvider } from "./editor-layout/contexts/editor-ref";
+import { DiskWatcherProviderGate } from "./editor-layout/contexts/disk-watcher";
 import { AiRequestsProvider } from "./editor-layout/contexts/ai-requests";
 import { CitationDisplayProvider } from "./editor-layout/contexts/citation-display";
 import { SelectionsProvider, useAnchoredSelectionSlots } from "./editor-layout/contexts/selections";
@@ -473,6 +476,16 @@ export default function EditorLayout() {
   // after hydration. Used in render to hide FSA-only chrome inside the
   // Claude Preview iframe; in a normal tab it stays false.
   const [devStorage, setDevStorage] = useState(false);
+
+  // "Is the external-change badge currently showing something?" — lifted from a
+  // provider-descendant reporter (ExternalChangeActiveReporter, rendered in the
+  // status cluster) so the topbar DIVIDER gate can OR it in. EditorLayout's own
+  // body sits ABOVE the DiskWatcherProvider in the tree, so it can't read
+  // useExternalChanges() directly; the reporter pushes the boolean up instead.
+  // KEYSTROKE SANCTITY: the reporter reads useSyncExternalStore over the
+  // watcher's stable snapshot — NOT any editor subscription — so this adds zero
+  // per-keystroke work.
+  const [externalChangeActive, setExternalChangeActive] = useState(false);
   useEffect(() => { setDevStorage(isDevStorage); }, []);
 
   // Hooks read from disk, so we gate their docId on the permission
@@ -3408,6 +3421,11 @@ export default function EditorLayout() {
     <RecentlyAddedProvider value={recentlyAdded}>
     <RecentlyAddedAutoClear />
     <CollabProvider value={collab}>
+    {/* DiskWatcherProviderGate wraps the WHOLE layout (topbar + panes) so both
+        the topbar status-cluster badge slot and EditorPane's useDocument call
+        site are descendants of the per-doc external-change watcher. It self-
+        gates on currentDocId (no provider when no doc is open). */}
+    <DiskWatcherProviderGate docId={currentDocId}>
     <div className="flex flex-col h-screen bg-[var(--background)]">
       {/* Top bar: logo + tabs */}
       <div
@@ -3944,6 +3962,10 @@ export default function EditorLayout() {
               empty when nothing's active. Suppressed in zen mode. */}
           {!zenModeOn && (
             <div className="flex items-center">
+              {/* Reporter: a provider-descendant that lifts the badge-active
+                  boolean up into EditorLayout so the divider gate can OR it in.
+                  Renders nothing itself. */}
+              <ExternalChangeActiveReporter onActiveChange={setExternalChangeActive} />
               {focusMode.state.active && (
                 <button
                   onClick={focusMode.deactivate}
@@ -3974,6 +3996,10 @@ export default function EditorLayout() {
                 </button>
               )}
               {collab.enabled && collabBadge}
+              {/* External-change badge — self-gates (renders null when
+                  severity == null), so it's mounted unconditionally inside the
+                  cluster. Sits left of the divider, beside the collab pill. */}
+              <ExternalChangeBadge />
             </div>
           )}
           {/* Divider — only shown when there's at least one status
@@ -3982,7 +4008,7 @@ export default function EditorLayout() {
               markers, the standard cluster simply starts at the
               edge. Uses the same stronger edge color as the tab
               separators. Suppressed in zen mode regardless. */}
-          {!zenModeOn && (focusMode.state.active || helperMode.on || collab.enabled) && (
+          {!zenModeOn && (focusMode.state.active || helperMode.on || collab.enabled || externalChangeActive) && (
             <span
               aria-hidden
               className="self-center h-5 w-px mx-2"
@@ -4682,6 +4708,7 @@ export default function EditorLayout() {
           earlier in 7.8; this entry was the last shell-rooted bit of
           per-doc rendering. */}
     </div>
+    </DiskWatcherProviderGate>
     </CollabProvider>
     </RecentlyAddedProvider>
     </SelectionsProvider>
@@ -4745,4 +4772,35 @@ function PaperDropIndicator({
       }}
     />
   );
+}
+
+/**
+ * ExternalChangeActiveReporter — a headless reporter that lifts the
+ * external-change badge's "is anything showing?" boolean up into EditorLayout.
+ *
+ * EditorLayout's own body sits ABOVE the DiskWatcherProvider in the React tree,
+ * so it can't call `useExternalChanges()` to gate the topbar divider. This tiny
+ * component IS a provider descendant (it renders inside the status cluster), so
+ * it can read the live state via `useExternalChangesOrNull` (nullable — works
+ * with no doc/provider) and push `state.severity != null` up through
+ * `onActiveChange`. Renders nothing.
+ *
+ * KEYSTROKE SANCTITY: it reads `useSyncExternalStore` over the watcher's stable
+ * snapshot — NOT any editor subscription — and fires `onActiveChange` only when
+ * the boolean flips. Zero per-keystroke work.
+ */
+function ExternalChangeActiveReporter({
+  onActiveChange,
+}: {
+  onActiveChange: (active: boolean) => void;
+}): null {
+  const { state } = useExternalChangesOrNull();
+  const active = state.severity != null;
+  useEffect(() => {
+    onActiveChange(active);
+  }, [active, onActiveChange]);
+  // Reset the lifted boolean when this reporter unmounts (e.g. the topbar-right
+  // cluster collapses), so a stale `true` can't outlive the live state.
+  useEffect(() => () => onActiveChange(false), [onActiveChange]);
+  return null;
 }
