@@ -175,6 +175,11 @@ function PositionHighlight({ scrollRef, attr, color, variant }: {
 
   if (!pos) return null;
 
+  // zIndex 6 puts the selector ABOVE the rows (zIndex 5) and therefore above
+  // their hover background (`hover-on-light` paints --surface-muted-strong on
+  // the row). Behind the rows it was covered — so hovering the current row made
+  // the selector vanish. It's a translucent, pointer-events-none wash, so it
+  // reads over the hover without eating clicks or hiding the text.
   if (variant === "edge") {
     return (
       <div
@@ -190,7 +195,7 @@ function PositionHighlight({ scrollRef, attr, color, variant }: {
           height: pos.h,
           transition: "transform 200ms ease-out, height 200ms ease-out, opacity 200ms ease",
           pointerEvents: "none",
-          zIndex: 2,
+          zIndex: 6,
         }}
       />
     );
@@ -209,7 +214,7 @@ function PositionHighlight({ scrollRef, attr, color, variant }: {
         borderRadius: 6,
         transition: "transform 200ms ease-out, height 200ms ease-out",
         pointerEvents: "none",
-        zIndex: 1,
+        zIndex: 6,
       }}
     />
   );
@@ -759,7 +764,7 @@ function OutlineNode({
             {showNumbers && node.heading.sectionNumber && (
               <span
                 className="shrink-0 text-ink-muted font-normal text-sm leading-snug tabular-nums"
-                style={{ minWidth: "2.1em", paddingRight: 6 }}
+                style={{ paddingRight: 5 }}
               >
                 {node.heading.sectionNumber}
               </span>
@@ -1868,6 +1873,7 @@ function OutlinePanel({ content, onScrollTo, onReorderBlocks, onRenameHeading, o
       headerLeading={headerLeading}
       headerTitleAfter={headerTitleAfter}
       variant="raw"
+      panelExtras={<div className="mx-3 h-px bg-[var(--border)] shrink-0" />}
     >
       <div ref={scrollRef} className="flex-1 overflow-y-auto p-1 relative">
         {editMode && onReorderBlocks && onRenameHeading && onRenameParTitle ? (
