@@ -1270,35 +1270,11 @@ export default function EditorLayout() {
   // (SR-F3-01/F8-01). EditorLayout reads it back below for `effectiveHighlightRange`.
   const searchHighlightRange = paneState?.searchHighlightRange ?? null;
 
-  /** SearchPanel dispatches selection + opens the target panel. In the
-   *  band-stack model both `search` and the target band coexist in their
-   *  side's stack (auto-arranged top→bottom), so we just dock both — no
-   *  split halves. When they share a side they stack together; the stack
-   *  evicts its LRU band if it's already full. */
-  const openItemInPanel = useCallback((panel: PanelId, itemId: string) => {
-    switch (panel) {
-      case "footnotes": setSelectedFootnoteId(itemId); break;
-      case "notes": setSelectedNoteId(itemId); break;
-      case "citations": setSelectedCitationId(itemId); break;
-      case "todo": setSelectedTodoId(itemId); break;
-      case "archive": setSelectedArchiveId(itemId); break;
-      case "cutter": setSelectedCutterCardId(itemId); break;
-      case "revisions": setSelectedCommentId(itemId); break;
-      case "bibliography": setSelectedBibKey(itemId); break;
-      default: break;
-    }
-
-    const p = prefsRef.current;
-    const searchSide = p.placements.find((x) => x.id === "search")?.side ?? "left";
-    const targetSide = p.placements.find((x) => x.id === panel)?.side ?? searchSide;
-
-    if (targetSide === searchSide) {
-      openPanelDocked("search", searchSide);
-      openPanelDocked(panel, searchSide);
-    } else {
-      openPanelDocked(panel, targetSide);
-    }
-  }, [openPanelDocked]);
+  // The SearchHost cross-panel jump (`openItemInPanel`) used to live here as a
+  // SECOND copy, but SearchHost mounts inside EditorPane and uses EditorPane's
+  // own `openItemInPanel` — this copy was never wired to the pane, so it was
+  // dead. The single live implementation now lives in EditorPane (it docks the
+  // target via `viewPrefs.openPanelDocked`, shared by the main app + Reader).
 
   // Omni-view category prefs + per-side hide-all toggle — sourced from
   // ViewPrefs (global, cross-window, promotable). The toggles arrive as

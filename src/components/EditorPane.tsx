@@ -68,6 +68,7 @@ import {
   viewToggleClasses,
   type EditorChromeConfig,
 } from "./editor-layout/chrome-config";
+import { planJumpDocks } from "./editor-layout/jump-docks";
 // The Reader's direct `<OutlinePanel>` branch was collapsed into the single
 // `<OutlineHost>` path (both surfaces now pass `viewPrefs`), so OutlinePanel
 // is no longer mounted here — OutlineHost owns the outline render.
@@ -3561,41 +3562,25 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
     () => orderedSidePanels("right"),
     [orderedSidePanels],
   );
-  // Initial active kind: Reader auto-shows the first panel (no
-  // viewPrefs → user has no other way to open them); main app starts
-  // collapsed (viewPrefs.prefs.activeLeft / activeRight drive the
-  // dock-slot rendering, so PaneRail only needs to expose the icon
-  // strip until the user clicks).
-  const [activeLeftPanelKind, setActiveLeftPanelKind] = useState<PanelKind | null>(
-    () => (viewPrefs ? null : visiblePanelsLeft[0] ?? null),
-  );
-  const [activeRightPanelKind, setActiveRightPanelKind] = useState<PanelKind | null>(
-    () => (viewPrefs ? null : visiblePanelsRight[0] ?? null),
-  );
-
-  // If the chrome's whitelist changes (or shrinks past the active
-  // panel), reset the active selection per side.
-  useEffect(() => {
-    if (activeLeftPanelKind && !visiblePanelsLeft.includes(activeLeftPanelKind)) {
-      setActiveLeftPanelKind(visiblePanelsLeft[0] ?? null);
-    }
-  }, [visiblePanelsLeft, activeLeftPanelKind]);
-  useEffect(() => {
-    if (activeRightPanelKind && !visiblePanelsRight.includes(activeRightPanelKind)) {
-      setActiveRightPanelKind(visiblePanelsRight[0] ?? null);
-    }
-  }, [visiblePanelsRight, activeRightPanelKind]);
+  // Panel docking is driven entirely by `viewPrefs.prefs.dockStack` — the
+  // canonical SSOT both the main app and the Reader render from (PaneRail lays
+  // out the docked bands straight off it, and strip clicks toggle it through
+  // `viewPrefs`). The legacy per-side `activeLeftPanelKind`/`activeRightPanelKind`
+  // useState model was retired here: nothing wrote it on the canonical
+  // strip-click path, so it only ever read stale. Cross-panel jumps dock via
+  // `openPanelDocked` (see `openItemInPanel` below).
 
   // SR-F8-02: clear the search highlight when the search panel is no longer
-  // visible, owned WHERE the producer is (EditorPane). Search is visible if
-  // it's docked on either side (main app) or it's the active kind (Reader).
-  // This replaces the dead EditorLayout clear that operated on a state nothing
-  // wrote.
-  const searchPanelOpen =
-    visiblePanelsLeft.includes("search") ||
-    visiblePanelsRight.includes("search") ||
-    activeLeftPanelKind === "search" ||
-    activeRightPanelKind === "search";
+  // visible, owned WHERE the producer is (EditorPane). "Visible" = the search
+  // panel is actually OPEN — docked in either side's stack or popped out as a
+  // float — read from the live `dockStack`/`poppedOutPanels` SSOT. (The old
+  // check keyed off the strip whitelist + the retired `activeLeftPanelKind`
+  // model: the whitelist only says the icon is available, not that the panel
+  // is open, so the highlight never cleared when search actually closed.)
+  const searchPanelOpen = viewPrefs
+    ? dockedSideOf(viewPrefs.prefs, "search") !== null ||
+      viewPrefs.prefs.poppedOutPanels.includes("search")
+    : false;
   useEffect(() => {
     if (!searchPanelOpen) setSearchHighlightRange(null);
   }, [searchPanelOpen]);
@@ -3607,46 +3592,48 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
   // range and passes it down (the seam that bubbles the OTHER direction).
   const effectiveHighlightRange = searchHighlightRange ?? highlightRange;
 
-  // Marker click → activate the panel on the side it's been placed on.
-  const setActivePanelKindBySide = useCallback(
-    (kind: PanelKind) => {
-      if (placementSideByKind.get(kind) === "left") setActiveLeftPanelKind(kind);
-      else setActiveRightPanelKind(kind);
-    },
-    [placementSideByKind],
-  );
-
-  // SearchHost cross-panel jump — switch the destination panel and
-  // select the target item. Caller supplies a PanelId (broader than
-  // PanelKind: includes shell-only ids like `omni`/`search`); we fan
-  // out to the matching per-kind selection setter when the panel id
-  // is one we recognize.
+  // SearchHost cross-panel jump — select the target item AND dock its panel
+  // into the live `dockStack` so the jump actually surfaces it. Caller supplies
+  // a PanelId (broader than PanelKind: includes shell-only ids like
+  // `omni`/`search`); we fan out to the matching per-kind selection setter for
+  // the ids we recognize, then open the panel via `viewPrefs.openPanelDocked`.
+  //
+  // This is the ONE shared jump for both the main app and the Reader (the
+  // duplicate that used to live in EditorLayout is gone). It previously only
+  // set the retired `activeLeftPanelKind` model — which PaneRail never renders
+  // from — so the panel never actually opened.
   const openItemInPanel = useCallback(
     (panel: PanelId, itemId: string) => {
-      // Step 7.8 will replace this with the shell's cross-panel jump
-      // (which also handles dock-slot expansion + scroll-into-view).
-      // For now, side-activate the panel + best-effort select the
-      // matching id on its native selection slot.
-      if (panel === "notes") { setSelectedNoteId(itemId); setActivePanelKindBySide("notes"); }
-      else if (panel === "footnotes") { setSelectedFootnoteId(itemId); setActivePanelKindBySide("footnotes"); }
-      else if (panel === "citations") { setSelectedCitationId(itemId); setActivePanelKindBySide("citations"); }
-      else if (panel === "todo") { setSelectedTodoId(itemId); setActivePanelKindBySide("todo"); }
-      else if (panel === "archive") { setSelectedArchiveId(itemId); setActivePanelKindBySide("archive"); }
-      else if (panel === "cutter") { setSelectedCutterCardId(itemId); setActivePanelKindBySide("cutter"); }
-      else if (panel === "revisions") { setSelectedCommentId(itemId); setActivePanelKindBySide("revisions"); }
-      else if (panel === "bibliography") { setSelectedBibKey(itemId); setActivePanelKindBySide("bibliography"); }
-      else if (panel === "examples") { setSelectedExampleId(itemId); setActivePanelKindBySide("examples"); }
+      // Select the target on the panel's native selection slot.
+      if (panel === "notes") setSelectedNoteId(itemId);
+      else if (panel === "footnotes") setSelectedFootnoteId(itemId);
+      else if (panel === "citations") setSelectedCitationId(itemId);
+      else if (panel === "todo") setSelectedTodoId(itemId);
+      else if (panel === "archive") setSelectedArchiveId(itemId);
+      else if (panel === "cutter") setSelectedCutterCardId(itemId);
+      else if (panel === "revisions") setSelectedCommentId(itemId);
+      else if (panel === "bibliography") setSelectedBibKey(itemId);
+      else if (panel === "examples") setSelectedExampleId(itemId);
+
+      // Dock the destination via the live `dockStack`. `viewPrefs` is always
+      // present on the canonical render path (PaneRail early-returns without
+      // it); the guard covers the permissive prop type. `planJumpDocks` resolves
+      // the target's side and re-docks search alongside it only when they share
+      // a side (Reader-safe: search is never docked there). See jump-docks.ts.
+      if (!viewPrefs) return;
+      for (const op of planJumpDocks(viewPrefs.prefs, panel)) {
+        viewPrefs.openPanelDocked(op.id, op.side);
+      }
     },
-    [setActivePanelKindBySide],
+    [viewPrefs],
   );
 
   // Side derivations — which side each panel is currently DOCKED on. Hosts
   // use these to align cross-panel highlight sync (e.g. citations panel ↔
   // bibliography panel). Read from the live `dockStack` (the canonical
-  // strip-click target) via `dockedSideOf`, NOT the retired
-  // `activeLeftPanelKind`/`activeRightPanelKind` model — those were never
-  // written by the canonical strip path, so they read stale. Null-safe when
-  // a caller omits `viewPrefs` (no panel is docked → null).
+  // strip-click target) via `dockedSideOf` — the single SSOT now that the
+  // legacy per-side active-kind model is gone. Null-safe when a caller omits
+  // `viewPrefs` (no panel is docked → null).
   const dockedSide = useCallback(
     (kind: PanelKind): "left" | "right" | null =>
       viewPrefs ? dockedSideOf(viewPrefs.prefs, kind as PanelId) : null,
@@ -4560,8 +4547,6 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
               <PaneRail
                 side="left"
                 visiblePanels={visiblePanelsLeft}
-                activePanelKind={activeLeftPanelKind}
-                onSelectPanel={setActiveLeftPanelKind}
                 editor={editor}
                 editorRef={innerRef}
                 examples={examples}
@@ -5600,8 +5585,6 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
               <PaneRail
                 side="right"
                 visiblePanels={visiblePanelsRight}
-                activePanelKind={activeRightPanelKind}
-                onSelectPanel={setActiveRightPanelKind}
                 editor={editor}
                 editorRef={innerRef}
                 examples={examples}
@@ -5752,8 +5735,6 @@ export default EditorPane;
 interface PaneRailProps {
   side: "left" | "right";
   visiblePanels: PanelKind[];
-  activePanelKind: PanelKind | null;
-  onSelectPanel: (kind: PanelKind | null) => void;
   editor: Editor | null;
   editorRef: RefObject<EditorHandle | null>;
   examples: ReturnType<NonNullable<RefObject<EditorHandle | null>["current"]>["getExamples"]>;
@@ -5943,8 +5924,6 @@ function IconStrip({
 function PaneRail({
   side,
   visiblePanels,
-  activePanelKind,
-  onSelectPanel,
   editor,
   editorRef,
   examples,
