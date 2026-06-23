@@ -333,6 +333,12 @@ export function PanelColumn({
     <div
       data-flex-col={side}
       data-panel-column-side={side}
+      // Reflect whether this side currently has a docked band. The Reader's
+      // narrow-pane fit rule (library.css) collapses EMPTY dock columns to
+      // give the page room, but must NOT crush a populated one to 0 — it
+      // keys off this attribute. Inert in the wide main editor (no rule
+      // targets it there).
+      data-has-bands={hasStack ? "true" : undefined}
       className="relative flex flex-col"
       style={{
         flex: collapsed ? '0 0 0px' : `0 0 ${panelPref}px`,

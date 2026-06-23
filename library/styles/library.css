@@ -92,25 +92,36 @@
    shoved right and the right margin runs off the edge (the user's
    "running off the page / weird gutter").
 
-   Reader-scoped fix (does NOT touch the wide editor): let the side
-   panel-dock columns shrink to fit, and relax the page's min-width floor
+   Reader-scoped fix (does NOT touch the wide editor): collapse the dock
+   columns ONLY while they're EMPTY, and relax the page's min-width floor
    so flexbox can size everything within the pane. The page keeps its
    high flex-grow + the bounded, centered `.tiptap` measure below, so it
    resolves to a comfortably-wide reading column centered between the two
    thin strip rails. For the common reader paper (no docked panel / no
    margin notes) the empty dock columns collapse to ~0, giving the page
-   the full pane width to center in. A paper that DOES dock a panel keeps
-   it rendered — just narrower — rather than forcing overflow. Marginalia
-   markers portal into the pod (`[data-marginalia-host]`), not these
-   columns, so margin-note papers are unaffected by the collapse. */
-[data-virgil-library-reader] .editor-pane-root > div:not(.editor-pane-column) {
+   the full pane width to center in.
+
+   Once a panel IS docked (strip-button click), the column carries
+   `data-has-bands="true"` (set in panel-column.tsx) and is EXCLUDED from
+   the collapse: it keeps its inline `flex: 0 0 <pref>px` + `min-width:
+   var(--panel-min)`, so the docked panel renders at full width and the
+   PAGE yields the space instead (it has `flex-shrink` + `min-width: 0`
+   below, plus the bounded centered measure, so it stays readable; the row
+   scrolls only if the pane is extremely narrow). Without this exclusion
+   the page's `flex-grow: 1000` would crush the docked column to ~0 — the
+   "strip buttons do nothing" bug. Marginalia markers portal into the pod
+   (`[data-marginalia-host]`), not these columns, so margin-note papers are
+   unaffected. */
+[data-virgil-library-reader] .editor-pane-root > div:not(.editor-pane-column):not(:has([data-panel-column-side][data-has-bands])) {
   /* !important is required: the dock columns carry inline `flex` +
      `min-width` from EditorPane, which a plain external rule can't beat.
-     Scoped to the reader root so the wide editor is untouched. */
+     Scoped to the reader root so the wide editor is untouched. The
+     `:has()` guard keeps the rail wrapper full-width when it holds a
+     docked panel. */
   flex-shrink: 1 !important;
   min-width: 0 !important;
 }
-[data-virgil-library-reader] .editor-pane-root [data-panel-column-side] {
+[data-virgil-library-reader] .editor-pane-root [data-panel-column-side]:not([data-has-bands]) {
   flex-shrink: 1 !important;
   min-width: 0 !important;
 }

@@ -14,6 +14,8 @@ import {
   getActiveHandle,
   isStalePipelineError,
 } from "@/lib/multi-window/doc-pipeline";
+import { useEditorChrome } from "@/components/editor-layout/chrome-context";
+import { isSidecarWriteAllowed } from "@/components/editor-layout/chrome-config";
 
 export interface PersistentStateOptions<S> {
   /**
@@ -105,6 +107,19 @@ export function usePersistentState<S>(
   const stateRef = useRef(state);
   stateRef.current = state;
 
+  // Reader-mode write guard. The active chrome's `editableCardKinds` whitelist
+  // (e.g. the Library Reader's `["note"]`) restricts which CARD sidecars this
+  // host may write — `isSidecarWriteAllowed` refuses a write to any card
+  // sidecar whose kind the chrome doesn't expose an editor for, so a read-only
+  // host can only ever persist the note annotation sidecar even if some other
+  // card kind later gains a live editor. Defaults to FULL_CHROME (everything
+  // writable) outside an `EditorChromeProvider`, so the main app + any non-
+  // editor caller are unaffected. Read into a ref so `persist` (a stable
+  // callback) sees the latest chrome without re-creating the closure.
+  const chrome = useEditorChrome();
+  const writeAllowedRef = useRef(true);
+  writeAllowedRef.current = isSidecarWriteAllowed(chrome, filename);
+
   // True after the initial read for the current docId resolves (loaded,
   // absent, or errored). The Mode-A reconcile gate depends on this so it
   // never fires over the pre-load default. Reset on docId change below.
@@ -180,7 +195,9 @@ export function usePersistentState<S>(
         if (hasMutatedRef.current) return;
         const migrated = migrate ? migrate(raw) : raw;
         setState(migrated);
-        if (persistMigrationOnLoad) {
+        // Same Reader-mode guard as `persist`: never write a disallowed card
+        // sidecar back to disk, even for a migration upgrade.
+        if (persistMigrationOnLoad && writeAllowedRef.current) {
           const h = resolveHandle();
           if (h) writeSidecar(h, filename, migrated).catch(() => {});
         }
@@ -204,6 +221,11 @@ export function usePersistentState<S>(
 
   const persist = useCallback(
     async (s: S) => {
+      // Reader-mode safety guard: refuse a write the active chrome disallows
+      // (read-only host writing a non-note card sidecar). The note annotation
+      // sidecar passes; everything else is dropped silently — the in-memory
+      // state still updated, only the disk write is suppressed.
+      if (!writeAllowedRef.current) return;
       const h = resolveHandle();
       if (!h) return;
       try {

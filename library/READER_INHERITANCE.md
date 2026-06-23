@@ -6,17 +6,19 @@ The goal of this doc is to **constrain the solution space**. The Reader is not a
 
 ---
 
-## The architectural pattern: shared component + chrome config + state shim
+## The architectural pattern: shared component + chrome config + shared view-state engine
 
 The Reader and the main Editor mount **the same React component** — `<EditorPane>` at [src/components/EditorPane.tsx](src/components/EditorPane.tsx). Every TipTap extension, every panel, every marginalia chip, every keyboard handler is the same code in both surfaces.
 
 What differs between the two is *only*:
 
 1. **`chrome` config** — [src/components/editor-layout/chrome-config.ts](src/components/editor-layout/chrome-config.ts). Two values: `FULL_CHROME` (Editor) and `READER_CHROME` (Reader). Boolean flags + whitelists that suppress affordances the Reader doesn't want (e.g., `showFormattingToolbar: false`, `editableCardKinds: ["note"]`, `visiblePanelKinds: [...]`).
-2. **`viewPrefs` bundle** — Editor passes `editorPaneViewPrefs` from `useViewPrefs()` (persisted, full-featured). Reader passes the result of `useReaderViewPrefs()` at [src/components/editor-layout/reader-view-prefs.ts](src/components/editor-layout/reader-view-prefs.ts) — session-only state with stub callbacks for things the Reader doesn't need.
-3. **`menuBar` bundle** — Editor passes a full menuBar bundle. Reader passes nothing, so the docked MenuBar and detached toolbars stay dormant.
+2. **`viewPrefs` bundle** — BOTH surfaces run the SAME `useViewPrefs()` engine and assemble the bundle through the SAME `buildEditorPaneViewPrefs(...)` builder ([src/components/editor-layout/build-editor-pane-view-prefs.ts](src/components/editor-layout/build-editor-pane-view-prefs.ts)). The Editor uses the persisted mode; the Reader runs `useReaderViewPrefs()` ([src/components/editor-layout/reader-view-prefs.ts](src/components/editor-layout/reader-view-prefs.ts)), which is the same engine in `"ephemeral"` mode — real, fully-functional view-state that lives in memory only (it never touches the user's persisted editor layout). So the panel rail, strip buttons, the panel↔text divider, dock stacking, card popouts, margins, omni toggles, and Outline click-to-scroll are all LIVE in the Reader (session-only). The ONLY delta is a single NAMED, type-checked `EditorMutationHandlers` set (`READER_NOOP_HANDLERS` in `reader-view-prefs.ts`): because the doc is read-only, most are no-ops — but `onScrollToHeading` (Outline click-to-scroll) is REAL.
+3. **`menuBar` bundle** — Editor passes a full menuBar bundle. Reader passes nothing, so the docked MenuBar and detached toolbars stay dormant. (This is the one piece of editor chrome that's genuinely absent in the Reader.)
 
 That's the entire delta. **There is no "Reader-specific render path"** inside `library/components/`. `PaperRender.tsx` is a thin mount: it parses LaTeX → JSON, then `<EditorPane editable={false} chrome={READER_CHROME} viewPrefs={readerViewPrefs} />`.
+
+**The invariant:** view-state is shared and real (ephemeral in the Reader); only the named `EditorMutationHandlers` set is stubbed, and it's type-checked — a missing handler is a **compile error**, not a silent dead control.
 
 If a feature works in Editor, the rendering code already exists and is already imported by Reader. A bug means one of three things has gone wrong — see below.
 
@@ -36,11 +38,11 @@ If the Editor's chrome shows something the Reader shouldn't show (or vice versa)
 
 Anti-pattern: hard-coding a Reader-only conditional inside `EditorPane.tsx` like `if (isLibraryReader) ...`.
 
-### 3. `useReaderViewPrefs()` (when a stateful interaction needs a shim)
+### 3. `reader-view-prefs.ts` (the `READER_NOOP_HANDLERS` set + Reader view-derivations)
 
-If a feature works in Editor because it depends on a `viewPrefs` field/setter that the Reader stubs as a no-op, the fix is to give the Reader real state for that field — usually `useState`-backed and session-only. The Reader doesn't persist most of its state across reloads; that's intentional.
+Most view-state already works in the Reader by construction — it runs the real `useViewPrefs` engine, so there's no per-field shim to wire. This layer is for the narrow remainder: the named `EditorMutationHandlers` (`READER_NOOP_HANDLERS`) and the Reader's `EditorPaneViewDerivations`. If a feature is broken because a Reader handler is a no-op that should be real (the way `onScrollToHeading` is real), promote it from `READER_NOOP_HANDLERS` to a live callback (threading in the editor if it needs one, the way `onScrollToHeading` does). The Reader's view-state itself is session-only (ephemeral) and doesn't persist across reloads; that's intentional.
 
-Anti-pattern: forcing the Editor's persistence layer onto the Reader, or duplicating the Editor's `useViewPrefs` hook.
+Anti-pattern: re-introducing a stateful hand-rolled shim that re-implements `useViewPrefs`, forcing the Editor's persistence layer onto the Reader, or duplicating the `useViewPrefs` engine.
 
 ## Triage flow
 
@@ -50,7 +52,7 @@ Use this when reporting an issue, and have the agent walk through it before chan
    - Yes → fix in the shared layer (location #1). Done.
    - No → continue.
 2. **Is something rendering in Editor but missing/wrong in Reader?**
-   - Yes → it's almost certainly a `READER_CHROME` flag (location #2) or a no-op'd `viewPrefs` field (location #3). Find which extension/component reads the flag or the prefs field, and verify the Reader's value.
+   - Yes → it's almost certainly a `READER_CHROME` flag (location #2) or a no-op'd `EditorMutationHandlers` entry (location #3). The shared `useViewPrefs` engine already feeds the Reader, so a *view-state* divergence is rare — check the chrome flag or the named handler set first. (If the missing piece is the MenuBar / detached toolbars, that's expected: the Reader passes no `menuBar` bundle.)
 3. **Is the Reader rendering raw LaTeX where Editor renders styled output?**
    - That's a TipTap extension that isn't loaded in the Reader's mount, or a parser branch that's gated on something the Reader doesn't pass. Find the extension/branch and unify it.
 4. **Is the bug ONLY in Reader, with no Editor parallel feature?**
@@ -62,7 +64,7 @@ When briefing an agent on a Reader bug, prefer this language. It signals "use th
 
 - **"Channel the fix through the shared `EditorPane` layer."** — Don't fork the render path.
 - **"This should be controlled by a chrome flag."** — Reader and Editor diverge via flags, not branches.
-- **"The view-prefs shim should provide real state for X."** — When a no-op stub is causing the bug.
+- **"Promote the no-op handler to a real one."** — When a stubbed `EditorMutationHandlers` entry is causing the bug (the way `onScrollToHeading` is already real).
 - **"Find the single source of truth."** — There's exactly one canonical implementation; both surfaces read from it.
 - **"Don't add a Reader-specific render path."** — `library/components/` should stay a thin mount, not a parallel renderer.
 - **"Honor inheritance."** — Catch-all term for "trust the shared component; configure, don't reimplement."
@@ -80,7 +82,7 @@ When briefing an agent on a Reader bug, prefer this language. It signals "use th
 1. Does Editor have the same bug? → No, Editor renders the chip correctly. So it's not a shared-layer parser bug.
 2. Is the citation TipTap extension loaded in the Reader's mount? → Check the extension list passed to `<EditorPane>`. If the extension is in `src/lib/tiptap/` and is part of the unified extension set, it should already be loaded.
 3. If yes, is the LaTeX→JSON conversion in `PaperRender.tsx` recognizing the `\citet` command and emitting a `citationNode`? → If the parser is dropping it as plain text, the bug is in the LaTeX parser at `src/lib/latex-parser.ts` (shared) or in PaperRender's parse step. Patch the shared parser.
-4. If the parser emits `citationNode` correctly but it still renders as text, check whether `citationNode`'s NodeView reads any `viewPrefs` field that the Reader's shim no-ops.
+4. If the parser emits `citationNode` correctly but it still renders as text, check whether `citationNode`'s NodeView reads any `viewPrefs` field — but remember the Reader runs the real `useViewPrefs` engine, so its view-state is populated; a divergence here is far more likely a chrome flag or a stubbed `EditorMutationHandlers` entry than a missing view-pref field.
 
 **Fix location**: shared layer (the LaTeX parser) or the Reader's parse/mount path in `PaperRender.tsx` — never a Reader-only citation renderer.
 
@@ -97,12 +99,13 @@ Actual (in Reader): <what happens>
 Where I see it: <citekey + section, or screenshot>
 
 Per the inheritance guide, the fix must live in (a) the shared
-component layer, (b) READER_CHROME, or (c) useReaderViewPrefs's
-session-state shim. Do NOT add a Reader-specific render path under
+component layer, (b) READER_CHROME, or (c) the named
+READER_NOOP_HANDLERS / view-derivations in reader-view-prefs.ts.
+Do NOT add a Reader-specific render path under
 library/components/. If you find yourself adding Reader-only rendering
 logic for a feature that already exists in the Editor, stop and ask
-me — there's almost certainly a chrome flag or shim wiring you've
-missed.
+me — there's almost certainly a chrome flag or a named editor-handler
+you've missed.
 
 Walk through the triage flow in the doc and tell me which layer the
 fix belongs in before you start coding.
