@@ -74,12 +74,26 @@
 
 /* ── TipTap rendering for indexed papers ──────────────────────────── */
 
-[data-virgil-library-reader] .paper-render { padding: 28px 32px; }
-/* Reader inserts 32px of horizontal padding via .paper-render between
-   the editor-pane-column and the prose. The column's min-width calc
-   in EditorPane.tsx subtracts this to keep the text-width floor at
-   300px in Reader mode. */
-[data-virgil-library-reader] { --editor-wrapper-inset: 64px; }
+/* The Reader inherits the main editor's reading measure: the prose `.tiptap`
+   is inset by `--editor-pl`/`--editor-pr`/`--editor-pt`/`--editor-pb` (set on
+   the editor column by the shared EditorPane from the global margin prefs the
+   Reader seeds + tracks live), exactly the way the main editor is. The Reader
+   used to ALSO add `.paper-render { padding: 28px 32px }` on top of those
+   inherited margins, double-insetting the prose (a Reader-only offset the main
+   editor doesn't have) and making the margins read as wrong. Dropped so the
+   inherited margins are the SOLE inset — Reader now matches the main editor's
+   margins 1:1. (The `.tiptap` max-width/centering was removed for the same
+   reason below.) With no extra padding the min-width floor compensation is 0. */
+[data-virgil-library-reader] {
+  --editor-wrapper-inset: 0px;
+  /* Minimum readable prose measure for the responsive margin clamp below.
+     In the Library's narrow split panes the inherited `--editor-pl`/`--editor-pr`
+     can resolve large (e.g. ~155px each); applied raw they crush the text (a
+     title rendered one letter per line). The clamp on `.tiptap` caps each
+     side's padding so the TEXT column never drops below this width — the
+     margins shrink, the text doesn't. Tunable here. */
+  --reader-min-measure: 400px;
+}
 
 /* ── Reader page fit (no horizontal overflow) ─────────────────────────
    The shared EditorPane lays the page out as a symmetric 3-column flex
@@ -95,51 +109,72 @@
    Reader-scoped fix (does NOT touch the wide editor): collapse the dock
    columns ONLY while they're EMPTY, and relax the page's min-width floor
    so flexbox can size everything within the pane. The page keeps its
-   high flex-grow + the bounded, centered `.tiptap` measure below, so it
-   resolves to a comfortably-wide reading column centered between the two
-   thin strip rails. For the common reader paper (no docked panel / no
+   high flex-grow + the bounded, centered `.editor-pane-column` page-object
+   measure below (the bound was MOVED off `.tiptap` onto the page object),
+   so it resolves to a comfortably-wide reading column centered between the
+   two thin strip rails. For the common reader paper (no docked panel / no
    margin notes) the empty dock columns collapse to ~0, giving the page
    the full pane width to center in.
 
-   Once a panel IS docked (strip-button click), the column carries
-   `data-has-bands="true"` (set in panel-column.tsx) and is EXCLUDED from
-   the collapse: it keeps its inline `flex: 0 0 <pref>px` + `min-width:
-   var(--panel-min)`, so the docked panel renders at full width and the
-   PAGE yields the space instead (it has `flex-shrink` + `min-width: 0`
-   below, plus the bounded centered measure, so it stays readable; the row
+   Once a column HAS visible content — a docked panel (strip-button click)
+   OR ≥1 omni card (notes / footnotes / citations etc. showing in the
+   omni-view) — it carries `data-has-content="true"` (set in
+   panel-column.tsx) and is EXCLUDED from the collapse: it keeps its inline
+   `flex: 0 0 <pref>px` + `min-width: var(--panel-min)`, so the populated
+   column renders at full width and the PAGE yields the space instead (it
+   has `flex-shrink` + `min-width: 0` below, so it stays readable; the row
    scrolls only if the pane is extremely narrow). Without this exclusion
-   the page's `flex-grow: 1000` would crush the docked column to ~0 — the
-   "strip buttons do nothing" bug. Marginalia markers portal into the pod
-   (`[data-marginalia-host]`), not these columns, so margin-note papers are
-   unaffected. */
-[data-virgil-library-reader] .editor-pane-root > div:not(.editor-pane-column):not(:has([data-panel-column-side][data-has-bands])) {
+   the page's `flex-grow: 1000` would crush the populated column to ~0 — the
+   "strip buttons do nothing" / "omni cards have no room" bug. Marginalia
+   markers portal into the pod (`[data-marginalia-host]`), not these columns,
+   so margin-note papers are unaffected. */
+[data-virgil-library-reader] .editor-pane-root > div:not(.editor-pane-column):not(:has([data-panel-column-side][data-has-content])) {
   /* !important is required: the dock columns carry inline `flex` +
      `min-width` from EditorPane, which a plain external rule can't beat.
      Scoped to the reader root so the wide editor is untouched. The
-     `:has()` guard keeps the rail wrapper full-width when it holds a
-     docked panel. */
+     `:has()` guard keeps the rail wrapper full-width when it holds visible
+     content (docked band or omni cards). */
   flex-shrink: 1 !important;
   min-width: 0 !important;
 }
-[data-virgil-library-reader] .editor-pane-root [data-panel-column-side]:not([data-has-bands]) {
+[data-virgil-library-reader] .editor-pane-root [data-panel-column-side]:not([data-has-content]) {
   flex-shrink: 1 !important;
   min-width: 0 !important;
 }
 [data-virgil-library-reader] .editor-pane-root > .editor-pane-column {
   min-width: 0 !important;
+  /* Bound + center the PAGE OBJECT (the editor column / pod), mirroring the
+     main editor — which sizes its column to `--page-preferred` (≈880px) and
+     lets the flanking rails center it in the canvas (EditorLayout's
+     `editorBasis`). The Reader mounts EditorPane directly with the column at
+     `flex: 1000 1 0` and no flanking 880 basis, so without this the pod would
+     fill the whole pane and the prose line would run very wide on a wide
+     monitor. Bounding HERE (the page object) rather than on `.tiptap` keeps
+     the bound SUBORDINATE to the inherited `--editor-pl`/`--editor-pr`
+     margins: the margins still define the gutters (so the Reader matches the
+     editor's margins 1:1), and the page is simply centered within any extra
+     pane width — exactly the editor's "page on a desk" behavior. Bounded to
+     `--page-preferred` (≈880px, the editor's resting pod width) so the Reader's
+     page width — and therefore its text column once the inherited margins are
+     applied inside — matches the main editor at the same margins; extra pane
+     width becomes centered canvas, as in the editor. */
+  max-width: var(--page-preferred, 880px);
+  margin-inline: auto;
 }
 
 [data-virgil-library-reader] .paper-render .tiptap {
   outline: none;
-  /* Bounded, centered prose column. Without this the read-only column
-     stretches to the full pod width on wide viewports, so the prose
-     sprawls and the asymmetric reader gutter (28px/32px padding) reads
-     as lopsided. Cap at --page-preferred (≈880px, the same token the
-     main editor column prefers in globals.css) and center, so the
-     Reader matches the editor's measure and narrow laptops are
-     unaffected — only very wide viewports reflow. */
-  max-width: var(--page-preferred, 880px);
-  margin-inline: auto;
+  /* No max-width / centering: the prose measure is defined by the inherited
+     `--editor-pl`/`--editor-pr` margins (applied as the prose box's padding by
+     the shared Editor.tsx), exactly as in the main editor. The old
+     `max-width: 880px; margin-inline: auto` centered a fixed column that
+     COMPETED with — and on wide panes overrode — those inherited margins, so
+     the Reader's gutters didn't match the editor's (and asymmetric margins
+     read as lopsided). Removing it makes the Reader honor the same margin
+     model as the main editor; a user who wants a narrower measure sets it via
+     the (now live) margin prefs, which both surfaces share. (The padding is
+     applied here, but the responsive margin clamp below caps it so a narrow
+     split pane can't crush the text below `--reader-min-measure`.) */
   /* Pinned to --library-editing-font so all indexed papers render in
      one face. Defined in src/app/globals.css; tracks the editor's
      serif font (and any FontsDialog override). */
@@ -160,6 +195,50 @@
 }
 [data-virgil-library-reader] .paper-render .tiptap [contenteditable] {
   caret-color: transparent;
+}
+
+/* ── Responsive margin clamp (Reader-only) ──────────────────────────────
+   The prose box is `.tiptap` (the ProseMirror contenteditable); the shared
+   Editor.tsx applies the inherited margins to it as
+   `padding-left: var(--editor-pl,88px)` / `padding-right: var(--editor-pr,72px)`
+   (Tailwind arbitrary utilities). In a wide pod those margins match the main
+   editor 1:1, but in a narrow Library split pane `--editor-pl`/`--editor-pr`
+   can resolve large enough to crush the text (the one-letter-per-line title).
+
+   The user's choice: INHERIT the margins when there's room, but CLAMP them so
+   the text column never drops below `--reader-min-measure`. Each side's padding
+   is capped at `(availableWidth − minMeasure) / 2`, computed per-side so
+   asymmetric margins clamp independently:
+
+     padding-left  = min(--editor-pl, max(0, (100% − minMeasure) / 2))
+     padding-right = min(--editor-pr, max(0, (100% − minMeasure) / 2))
+
+   `100%` here is a padding percentage, resolved against the inline-size of the
+   CONTAINING BLOCK of `.tiptap` — i.e. the content box of its parent
+   `.paper-render`, which has no padding/border and fills the bounded, centered
+   `.editor-pane-column` (capped at `--page-preferred` ≈880px above). So `100%`
+   ≈ the page/pod width, exactly the width the margins are carved out of.
+
+   Composition with the `.editor-pane-column` max-width:880 + margin-inline:auto
+   rule above (unchanged): WIDE pane → column caps at 880, clamp =
+   min(155, (880−400)/2 = 240) = 155 → full inherited margins (text ~570px,
+   matching the editor). NARROW pane (e.g. column 500px) → clamp =
+   min(155, (500−400)/2 = 50) = 50 → margins shrink, text held at 400px.
+   VERY narrow (<400px) → max(0,…) floors to 0 → padding 0, text fills the pod
+   (still readable, never one-char-per-line).
+
+   `!important` is required to beat the Tailwind arbitrary-value padding utility
+   on `.tiptap`. Scoped under `[data-virgil-library-reader]` — set ONLY by the
+   Reader (PaperRender.tsx) — so the main editor's margin behavior is untouched. */
+[data-virgil-library-reader] .paper-render .tiptap {
+  padding-left: min(
+    var(--editor-pl, 88px),
+    max(0px, (100% - var(--reader-min-measure, 400px)) / 2)
+  ) !important;
+  padding-right: min(
+    var(--editor-pr, 72px),
+    max(0px, (100% - var(--reader-min-measure, 400px)) / 2)
+  ) !important;
 }
 
 [data-virgil-library-reader] .paper-render .tiptap p { margin-bottom: 1em; }

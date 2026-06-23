@@ -4877,14 +4877,23 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
                 up from the card edge by the 14px bleed
                 (`--chrome-top` − `--pod-cap-bleed`). That surplus
                 manila lands behind the MenuBar band (cap z-30 < band z-40, both
-                manila) so it blends seamlessly. Reader (no band) keeps
-                top:0; its surplus tail clips above the scroll top. */}
+                manila) so it blends seamlessly. The SAME formula is
+                used in both modes: the cap `top` is always
+                `--chrome-top − --pod-cap-bleed`, so the bottom-aligned
+                white inner lands EXACTLY at `--chrome-top` (= the frame
+                top) in BOTH the main editor and the Reader. In the
+                Reader `--chrome-top` is 8 and the bleed is 14, so the
+                cap `top` is the (correct) negative −6px; the surplus
+                tail clips above the scroll top. The old Reader special-
+                case `top:0` left the white inner 6px below the frame
+                top, exposing a cream sliver inside the frame's rounded
+                arc. */}
             {ready && (overrideEditor ?? editor) && (
               <div
                 data-editor-pod-cap
                 className="sticky z-30 shrink-0 pointer-events-none flex flex-col"
                 style={{
-                  top: menuBar ? 'calc(var(--chrome-top) - var(--pod-cap-bleed))' : 0,
+                  top: 'calc(var(--chrome-top) - var(--pod-cap-bleed))',
                   height: 'var(--pod-cap-h)',
                   // The surplus 14px (= bleed) goes ABOVE the white
                   // inner. marginTop pulls the whole cap up by that
@@ -5990,6 +5999,14 @@ function PaneRail({
 }: PaneRailProps) {
   const isLeft = side === "left";
 
+  // Whether this side's omni-view is currently showing ≥1 card. Reported up
+  // from OmniViewPanel (post enabled-category + hideAll filter) and threaded
+  // into PanelColumn so a column with omni cards — but no docked band — keeps
+  // itself open in the narrow Reader pane (the `data-has-content` signal).
+  // Updated only when the visible count flips (structurally memoized upstream),
+  // so it's off the keystroke path.
+  const [omniCardCount, setOmniCardCount] = useState(0);
+
   // `examples` arrives as a prop — derived reactively in the EditorPane body
   // (keyed on the `editor` state, not a ref) and threaded down like
   // `footnoteInfos`. Deriving it here from `editorRef` gated on a structural
@@ -6099,6 +6116,7 @@ function PaneRail({
           getOmniEnabled={viewPrefs.getOmniEnabled}
           getOmniHideAll={viewPrefs.getOmniHideAll}
           focusState={viewPrefs.focusState}
+          onVisibleCardsChange={setOmniCardCount}
         />
     );
 
@@ -6119,6 +6137,7 @@ function PaneRail({
         side={side}
         omni={omniNode}
         stack={stack}
+        omniHasCards={omniCardCount > 0}
         onTradeHeight={viewPrefs.tradePanelHeights}
         onResizeBottomEdge={viewPrefs.setPanelHeight}
         onFocusBand={(id) => viewPrefs.notePanelUse(side, id)}

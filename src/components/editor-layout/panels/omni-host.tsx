@@ -159,6 +159,11 @@ export interface OmniHostProps {
    *  lock-gated hide. A mere focus selection (active && !locked) confines
    *  nothing, so no card is binned. Unanchored cards are always unaffected. */
   focusState?: FocusState | null;
+  /** Reports this side's visible-card count up to the PanelColumn so a column
+   *  showing omni cards (but no docked band) stays open in the narrow Reader
+   *  pane. Passed straight through to OmniViewPanel; never fires on a plain
+   *  keystroke. */
+  onVisibleCardsChange?: (count: number) => void;
 }
 
 export function OmniHost(p: OmniHostProps) {
@@ -675,6 +680,7 @@ export function OmniHost(p: OmniHostProps) {
       hideAllCards={p.getOmniHideAll(p.side)}
       onBackgroundClick={handleBackgroundClick}
       onCardFocus={handleCardFocus}
+      onVisibleCardsChange={p.onVisibleCardsChange}
     />
   );
 }

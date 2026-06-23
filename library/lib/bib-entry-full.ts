@@ -15,10 +15,22 @@ import { readTextFile, ROOT_FILES } from "./library-storage";
 import { parseBibFile } from "./bib-parser";
 import type { BibEntry } from "./types";
 
-/** Line-anchored entry starts: `@type{key,` at column 0. Robust to malformed
- *  (brace-unbalanced) entries — boundaries come from the next opener, not
- *  brace-matching (which can overrun a bad entry and swallow the rest). */
-const ENTRY_START_RE = /^@(\w+)[ \t]*\{[ \t]*([^,\s]+)[ \t]*,/gm;
+/** Entry starts: `@type{key,`. Robust to malformed (brace-unbalanced) entries —
+ *  boundaries come from the next opener, not brace-matching (which can overrun a
+ *  bad entry and swallow the rest).
+ *
+ *  Deliberately matches the SAME lenient opener convention every OTHER parser in
+ *  the library uses — `bib-parser.ts`'s `extractRawEntries` (`/@\w+\s*\{([^,]+),/`)
+ *  and the Python pipeline's `rename_master_bib_entry` (`@\w+\s*\{\s*<key>\s*,`).
+ *  An earlier `^@…[ \t]*,`-anchored form was an OUTLIER: it (a) required the
+ *  opener at COLUMN 0 (missing indented entries) and (b) forbade a newline
+ *  between the citekey and its comma, so a valid entry the rest of the system
+ *  matched could come back `null` here — the "bib edit does nothing" production
+ *  bug, since RightDetail then never gets a real full entry to enable edit. So:
+ *  no `^` anchor, and `\s*` (newline-tolerant) around the brace and before the
+ *  comma. The key is `[^,\s]+` (trimmed-equivalent — `\s*` eats surrounding
+ *  whitespace), compared exactly to the requested citekey. */
+const ENTRY_START_RE = /@(\w+)\s*\{\s*([^,\s]+)\s*,/g;
 
 /** Slice out the raw BibTeX block for `citekey` (opener → next opener/EOF). */
 function extractEntryBlock(text: string, citekey: string): string | null {
