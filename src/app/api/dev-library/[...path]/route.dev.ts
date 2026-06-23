@@ -118,6 +118,36 @@ export async function GET(
   }
 }
 
+/**
+ * HEAD /api/dev-library/<path>... → Last-Modified + Content-Length only, no
+ * body. Lets the external-change watcher's `statFiles` cheaply fingerprint a
+ * library-paper's `main.tex` / `.bib` without downloading it (design:
+ * docs/memos/external-change-badge/DESIGN.md §8). Missing file → 404, which
+ * the dev backend maps to `null`.
+ */
+export async function HEAD(
+  _req: NextRequest,
+  { params }: { params: Promise<{ path: string[] }> },
+) {
+  const segments = (await params).path ?? [];
+  const filePath = safeJoin(...segments);
+  if (!filePath) {
+    return new NextResponse(null, { status: 403 });
+  }
+  try {
+    const stat = fs.statSync(filePath);
+    if (!stat.isFile()) return new NextResponse(null, { status: 404 });
+    return new NextResponse(null, {
+      headers: {
+        "Last-Modified": stat.mtime.toUTCString(),
+        "Content-Length": String(stat.size),
+      },
+    });
+  } catch {
+    return new NextResponse(null, { status: 404 });
+  }
+}
+
 export async function PUT(
   req: NextRequest,
   { params }: { params: Promise<{ path: string[] }> },

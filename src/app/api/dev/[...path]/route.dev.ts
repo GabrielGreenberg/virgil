@@ -164,6 +164,47 @@ export async function GET(
   return NextResponse.json({ error: "bad path" }, { status: 400 });
 }
 
+/**
+ * HEAD /api/dev/doc/:id/... → return ONLY Last-Modified + Content-Length for
+ * the file, with no body. Used by the external-change watcher's `statFiles`
+ * poll so a tick does not download the whole `.tex` each time (design:
+ * docs/memos/external-change-badge/DESIGN.md §8). Mirrors GET's path
+ * resolution + traversal guard. A missing file → 404 (the dev backend's
+ * `statFiles` maps that to `null`).
+ */
+export async function HEAD(
+  _req: NextRequest,
+  { params }: { params: Promise<{ path: string[] }> },
+) {
+  const segments = (await params).path;
+
+  if (segments[0] === "doc" && segments.length >= 3) {
+    const docId = segments[1];
+    const folder = resolveDocFolder(docId);
+    if (!folder) {
+      return new NextResponse(null, { status: 404 });
+    }
+    const filePath = path.join(DATA_DIR, folder, ...segments.slice(2));
+    if (!filePath.startsWith(DATA_DIR)) {
+      return new NextResponse(null, { status: 403 });
+    }
+    try {
+      const stat = fs.statSync(filePath);
+      if (!stat.isFile()) return new NextResponse(null, { status: 404 });
+      return new NextResponse(null, {
+        headers: {
+          "Last-Modified": stat.mtime.toUTCString(),
+          "Content-Length": String(stat.size),
+        },
+      });
+    } catch {
+      return new NextResponse(null, { status: 404 });
+    }
+  }
+
+  return new NextResponse(null, { status: 400 });
+}
+
 function sanitizeFolderName(name: string): string {
   return name
     .trim()

@@ -60,6 +60,7 @@ import {
   type DocumentTemplate,
 } from "@/lib/document-templates";
 import { getLibraryHandle } from "@library/lib/library-folder";
+import { stampDiskFingerprint, fingerprintOf } from "@/lib/disk-ledger";
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -294,9 +295,13 @@ export async function readTex(docId: string): Promise<string> {
 
 export async function writeTex(h: DocWriteHandle, latex: string): Promise<void> {
   return enqueueDocWrite(h, "tex", async () => {
+    const meta = await getDocMetaOrThrow(h.docId);
     const fh = await getTexFileHandle(h.docId, { create: true });
     await writeTextToHandle(fh, latex);
     await touchDocTimestamp(h.docId);
+    // Stamp the ledger with the authoritative post-write fingerprint so the
+    // watcher never misreads this write as an external change.
+    await stampLedger(h.docId, meta.texFilename, latex);
   });
 }
 
@@ -318,6 +323,11 @@ export async function readDocBundle(docId: string): Promise<DocBundle> {
   const meta = await getDocMetaOrThrow(docId);
 
   const latex = await safeReadText(docHandle, meta.texFilename, DEFAULT_LATEX);
+  // Baseline the disk ledger from what we just read. If the load-writeback
+  // fires below it supersedes this stamp with the re-stamped bytes — correct,
+  // since the writeback is the newer authoritative on-disk state. `stampLedger`
+  // re-stats, so a missing .tex (latex === DEFAULT_LATEX fallback) is skipped.
+  await stampLedger(docId, meta.texFilename, latex);
   const virgil = await getVirgilSubdir(docHandle);
   const sidecar = await safeReadJson<VirgilSidecar>(
     virgil,
@@ -425,6 +435,11 @@ async function writeReStampedTexOnLoad(
     await writeTextToHandle(sidecarFh, JSON.stringify(newSidecar, null, 2));
 
     await touchDocTimestamp(h.docId);
+    // CRITICAL false-positive guard: the load-writeback is the #1 source of
+    // spurious "changed on disk" — it rewrites the .tex seconds after load
+    // (minted-UUID markers). Stamp the ledger with the bytes we just wrote so
+    // the watcher recognizes this as Virgil's own write, not an external edit.
+    await stampLedger(h.docId, meta.texFilename, latex);
   });
 }
 
@@ -489,6 +504,9 @@ export async function writeDocBundle(
     // editor-state.json is owned by useEditorUIState, not the bundle save.
 
     await touchDocTimestamp(h.docId);
+    // Stamp the ledger with the FINAL serialized .tex that hit disk (preamble
+    // preserved), not the JSONContent — so the next poll matches exactly.
+    await stampLedger(h.docId, meta.texFilename, latex);
   });
 }
 
@@ -555,11 +573,27 @@ export interface BibReadResult {
   detectedPackage: BibPackage;
 }
 
+/**
+ * Resolve the .bib filename for a doc WITHOUT touching the ledger or reading
+ * the .bib content. The watcher uses this for watched-set name resolution so
+ * a plain name lookup never re-baselines anything (the anti-flicker
+ * invariant: only load + writes stamp the ledger, never reads). It reads the
+ * .tex via the non-stamping `safeReadText` inside `resolveBibFilename`.
+ */
+export async function getBibFilename(docId: string): Promise<string> {
+  return resolveBibFilename(docId);
+}
+
 export async function readBib(docId: string): Promise<BibReadResult> {
   const docHandle = await requireDocHandle(docId);
   const meta = await getDocMetaOrThrow(docId);
   const bibFilename = await resolveBibFilename(docId);
   const bibText = await safeReadText(docHandle, bibFilename, "");
+  // NOTE: readBib is a PURE reader — it does NOT stamp the disk ledger. The
+  // .bib baseline is established by the watcher's PRIME pass + by writeBib;
+  // baselining here would let the watcher's own confirm-read re-baseline the
+  // very external edit it is trying to surface (the flicker bug). See
+  // docs/memos/external-change-badge/DESIGN.md §3.
   const tex = await safeReadText(docHandle, meta.texFilename, "");
   const detectedPackage = detectBibPackage(tex);
   return { bibText, bibFilename, detectedPackage };
@@ -573,6 +607,8 @@ export async function writeBib(h: DocWriteHandle, bibText: string): Promise<void
     await snapshotPriorBib(docHandle, virgil, bibFilename);
     const fh = await docHandle.getFileHandle(bibFilename, { create: true });
     await writeTextToHandle(fh, bibText);
+    // Stamp the ledger with the authoritative post-write .bib fingerprint.
+    await stampLedger(h.docId, bibFilename, bibText);
   });
 }
 
@@ -718,6 +754,131 @@ export async function requireDocHandleForRead(
   docId: string,
 ): Promise<FileSystemDirectoryHandle> {
   return requireDocHandle(docId);
+}
+
+// ---------------------------------------------------------------------------
+// File-stat capability — cheap {mtimeMs, size} fingerprints for the
+// external-change watcher (design: docs/memos/external-change-badge/DESIGN.md
+// §8). Reuses the figure-source fingerprint idiom (getFile() → lastModified +
+// size). getFile() does NOT take the write lock, so this is safe to call
+// concurrently with writes; it returns a stable snapshot.
+// ---------------------------------------------------------------------------
+
+/** Cheap on-disk fingerprint of a single file (the poll trigger). */
+export type FileStat = { mtimeMs: number; size: number };
+
+/**
+ * Stat a set of files relative to the paper root. Returns a map keyed by the
+ * SAME `relPaths` passed in; a `null` value means the file is absent on disk.
+ *
+ * `relPaths` may be nested (e.g. "virgil/citations.json"): each is resolved
+ * by walking `getDirectoryHandle` for every segment but the last, then
+ * `getFileHandle` + `getFile()` for the final segment.
+ *
+ * On a missing file (`NotFoundError`) the entry is `null`. On a permission
+ * loss (`NotAllowedError`) the original DOMException is RE-THROWN so the
+ * caller (the watcher) can pause rather than misread it as a delete.
+ */
+export async function statFiles(
+  docId: string,
+  relPaths: string[],
+): Promise<Record<string, FileStat | null>> {
+  const docHandle = await requireDocHandleForRead(docId);
+  const out: Record<string, FileStat | null> = {};
+  await Promise.all(
+    relPaths.map(async (relPath) => {
+      out[relPath] = await statOneFile(docHandle, relPath);
+    }),
+  );
+  return out;
+}
+
+/**
+ * Best-effort ledger stamp: re-stat `relPath` AFTER a write/read settles so
+ * the recorded `mtimeMs` is the OS's real post-write value, combine it with
+ * the known `content` bytes' hash, and stamp the disk ledger. This is the
+ * false-positive killer — it records "this is exactly what Virgil put on (or
+ * read from) disk" so the watcher never misreads Virgil's own write as an
+ * external change (design: docs/memos/external-change-badge/DESIGN.md §3).
+ *
+ * NEVER throws: a stat failure during stamping must not break a save or load.
+ * On a stat miss (file vanished between write and re-stat — should not happen
+ * but is harmless) we simply skip the stamp.
+ */
+async function stampLedger(
+  docId: string,
+  relPath: string,
+  content: string,
+): Promise<void> {
+  try {
+    const docHandle = await requireDocHandleForRead(docId);
+    const stat = await statOneFile(docHandle, relPath);
+    if (!stat) return; // absent on re-stat — nothing authoritative to record
+    stampDiskFingerprint(docId, relPath, fingerprintOf(stat, content));
+  } catch (e) {
+    console.warn(`[storage] disk-ledger stamp failed for ${relPath}:`, e);
+  }
+}
+
+/** Resolve+stat one possibly-nested relPath under a paper dir handle. */
+async function statOneFile(
+  docHandle: FileSystemDirectoryHandle,
+  relPath: string,
+): Promise<FileStat | null> {
+  const parts = relPath.split("/").filter((p) => p.length > 0);
+  if (parts.length === 0) return null;
+  const filename = parts[parts.length - 1];
+  const dirParts = parts.slice(0, -1);
+  let dir = docHandle;
+  try {
+    for (const part of dirParts) {
+      dir = await dir.getDirectoryHandle(part);
+    }
+    const fh = await dir.getFileHandle(filename);
+    const file = await fh.getFile();
+    return { mtimeMs: file.lastModified, size: file.size };
+  } catch (e) {
+    if (isNotFound(e)) return null;
+    // NotAllowedError (permission lost) — re-throw so the watcher pauses
+    // instead of reading a permission loss as a delete. Defer to
+    // DocPermissionGate for re-grant.
+    throw e;
+  }
+}
+
+/**
+ * Read the text content of the EXACT `relPath` under the paper root —
+ * NON-STAMPING, NO name re-resolution. This is the generic reader the
+ * external-change watcher uses for both its prime baseline and its
+ * confirm-by-hash read, so the bytes it hashes are guaranteed to be the same
+ * file it just stat'd (no mid-poll `.tex`-repoint race — `readTex`/`readBib`
+ * re-resolve the filename and could read a different file than the one stat'd).
+ *
+ * Returns `null` if the file is absent (NotFoundError); RE-THROWS on permission
+ * loss (NotAllowedError) so the watcher pauses rather than misreading it. The
+ * resolution walk mirrors `statOneFile` exactly so stat and read see the same
+ * path. This NEVER touches the disk ledger.
+ */
+export async function readTextFile(
+  docId: string,
+  relPath: string,
+): Promise<string | null> {
+  const docHandle = await requireDocHandleForRead(docId);
+  const parts = relPath.split("/").filter((p) => p.length > 0);
+  if (parts.length === 0) return null;
+  const filename = parts[parts.length - 1];
+  const dirParts = parts.slice(0, -1);
+  let dir = docHandle;
+  try {
+    for (const part of dirParts) {
+      dir = await dir.getDirectoryHandle(part);
+    }
+    const fh = await dir.getFileHandle(filename);
+    return await readTextFromHandle(fh);
+  } catch (e) {
+    if (isNotFound(e)) return null;
+    throw e;
+  }
 }
 
 /** Backend-agnostic figure source reader.

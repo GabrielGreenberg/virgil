@@ -271,6 +271,8 @@ Self-contained subsystem under `library/` (sibling of `src/`). See [library/AGEN
 - **"Action toolbar"** (user) — there is no standalone actions toolbar anymore. `ActionButtonsRow` / `ACTION_BUTTON_DEFS` / `DetachedActionsToolbar` / `MarginActionToolbar` are all deleted; every action now lives in the SSOT `VIRGIL_ACTION_REGISTRY` ([src/lib/actions/action-registry.ts](../../src/lib/actions/action-registry.ts)), surfaced via `SelectionActionsMenu` → `ActionsMenuPanel` and `DragHandleMenu`.
 - **"Formatting toolbar"** (user) — `FormatButtonsRow` / `DetachedFormattingToolbar` are deleted; the formatting grid now renders from the action registry inside `ActionsMenuPanel`, reached from the margin ⚡ (`SelectionActionsMenu`) or the `DragHandleMenu`.
 
+- **"External-change badge"** / **"changed on disk"** / **"disk-changed indicator"** (user) — `ExternalChangeBadge` ([src/components/ExternalChangeBadge.tsx](../../src/components/ExternalChangeBadge.tsx)), the topbar status-cluster pill (beside the collab pill) that appears when an external writer (Overleaf-via-sync, `git pull`, `vim`, Dropbox) edits the paper's `.tex`/`.bib` on disk. Amber = clean change (Reload); danger = conflict with unsaved edits. Driven by the `DiskWatcher` poller + `diskLedger` ([src/lib/disk-watcher.ts](../../src/lib/disk-watcher.ts), [src/lib/disk-ledger.ts](../../src/lib/disk-ledger.ts)); reconcile actions reuse `useDocument.refetch()`. Design: [docs/memos/external-change-badge/DESIGN.md](../memos/external-change-badge/DESIGN.md).
+
 ## Pending terminology
 
 _(Empty. Add entries here when the user uses a term not yet in the glossary.)_
