@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useSyncExternalStore } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useSyncExternalStore } from "react";
 import type { Editor } from "@tiptap/react";
 import { type AnchorNodeMetrics } from "@/lib/marginalia";
 import {
@@ -289,14 +289,27 @@ export function useMarginaliaRegistry(
   // tab switch) its IntersectionObserver / ResizeObserver / window-resize
   // followers still FIRE (display:none flips intersection + collapses element
   // boxes to 0) — but measuring then would read coordsAtPos/getBoundingClientRect
-  // as 0 and cache garbage. We make those callbacks INERT while hidden via a
-  // synchronous latest-value ref (so the long-lived observer closures see fresh
-  // state without re-subscribing, and a re-show — which itself fires the
-  // observers — re-measures correctly with the ref already true). Markers keep
-  // their last-good positions while hidden — no teardown, no flash.
+  // as 0 and cache garbage. We make those callbacks INERT while hidden.
+  //
+  // The signal is the keep-alive visibility CONTEXT, NOT a live offsetHeight read
+  // (the F6/F7/F8 viewport-cache guards use offsetHeight, but those gated paths
+  // aren't unit-tested). This hook's measurement callbacks ARE exercised directly
+  // by jsdom unit tests, where there is no layout so offsetHeight is ALWAYS 0 — an
+  // offsetHeight gate would spuriously fire there. The context defaults to `true`
+  // (no provider ⇒ every existing caller AND every test reads "visible").
+  //
+  // The long-lived observer closures (created once in the effect below, which
+  // does NOT re-run on a visibility flip) read the latest value via a ref. The
+  // ref is synced in a useLayoutEffect, NOT a passive useEffect: a visibility flip
+  // re-renders this consumer and React runs the layout effect synchronously at
+  // commit — BEFORE the browser delivers the re-show ResizeObserver notification
+  // (which fires in the post-commit "update the rendering" step). So the observer
+  // that re-measures on re-show already reads `true`. A passive effect runs after
+  // paint and would lose that race (markers stuck stale until the next trigger).
+  // Markers keep their last-good positions while hidden — no teardown, no flash.
   const isVisible = useIsVisible();
   const isVisibleRef = useRef(isVisible);
-  useEffect(() => {
+  useLayoutEffect(() => {
     isVisibleRef.current = isVisible;
   }, [isVisible]);
 

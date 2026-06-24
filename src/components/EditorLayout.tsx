@@ -4317,8 +4317,18 @@ export default function EditorLayout() {
           only display:none toggles. KeepAliveSlot publishes the visibility
           context the §2 measurement followers read to go INERT while hidden
           (keystroke sanctity). Hidden while pdfView (the PDF iframe replaces the
-          editor for the same doc) — the editor stays warm behind it. */}
-      {currentDocId && (
+          editor for the same doc) — the editor stays warm behind it.
+
+          PERMISSION GATE: do NOT mount the editor until the folder's readwrite
+          permission is granted (or dev-storage). The editor's hooks read from
+          disk on mount (useDocument → readDocBundle), which throws
+          NotAllowedError on a non-granted FSA handle; the old ternary gated this
+          via `currentDoc && docPermState !== "granted" ? null`. Restore that
+          here so the DocPermissionGate shows alone and the editor mounts fresh
+          (loading real content) the moment permission flips to granted. The
+          paper↔Library bounce never changes docPermState, so this never defeats
+          the keep-alive — it only blocks the one-time pre-grant cold mount. */}
+      {currentDocId && !(currentDoc && docPermState !== "granted") && (
         <KeepAliveSlot isVisible={activePane === "doc" && !pdfView}>
           <div data-virgil-row-scroll className="flex flex-1 min-h-0 overflow-x-auto overflow-y-auto">
             {/* `<DocPipeline key={currentDocId}>` is the architectural
