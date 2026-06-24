@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 
 export interface KeepAliveEntry {
   /** Canonical dedup key. For Library readers: `library-paper:${citekey}`. */
@@ -27,16 +27,24 @@ export function useKeepAliveLRU(
   activeId: string | null,
   capacity: number,
 ): KeepAliveEntry[] {
-  const [order, setOrder] = useState<string[]>([]); // most-recent first
-
-  useEffect(() => {
-    if (activeId == null) return; // no active paper → leave the list intact (all hidden)
-    setOrder((prev) => {
-      if (prev[0] === activeId && prev.length <= capacity) return prev; // already front + within cap → stable
-      const without = prev.filter((id) => id !== activeId); // DEDUP: drop any prior copy
-      return [activeId, ...without].slice(0, capacity); // promote + evict the tail
-    });
-  }, [activeId, capacity]);
+  const [order, setOrder] = useState<string[]>(
+    activeId != null ? [activeId] : [],
+  );
+  // "Adjust state during render" (React's documented pattern for deriving from a
+  // changed input without an effect): when the active id changes, promote it to
+  // the front + dedup + evict the tail, synchronously, before paint.
+  const [seenActiveId, setSeenActiveId] = useState<string | null>(activeId);
+  if (activeId !== seenActiveId) {
+    setSeenActiveId(activeId);
+    if (activeId != null) {
+      setOrder((prev) => {
+        if (prev[0] === activeId && prev.length <= capacity) return prev; // already front + within cap
+        const without = prev.filter((id) => id !== activeId); // DEDUP: drop any prior copy
+        return [activeId, ...without].slice(0, capacity); // promote + evict the tail
+      });
+    }
+    // activeId === null leaves `order` intact (kept warm, all hidden).
+  }
 
   return useMemo(
     () => order.map((id) => ({ id, isVisible: id === activeId })),

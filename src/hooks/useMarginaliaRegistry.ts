@@ -296,7 +296,9 @@ export function useMarginaliaRegistry(
   // their last-good positions while hidden — no teardown, no flash.
   const isVisible = useIsVisible();
   const isVisibleRef = useRef(isVisible);
-  isVisibleRef.current = isVisible;
+  useEffect(() => {
+    isVisibleRef.current = isVisible;
+  }, [isVisible]);
 
   const registry = useMemo<MarginaliaRegistry>(
     () => ({
