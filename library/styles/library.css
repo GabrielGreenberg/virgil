@@ -93,6 +93,14 @@
      side's padding so the TEXT column never drops below this width — the
      margins shrink, the text doesn't. Tunable here. */
   --reader-min-measure: 400px;
+  /* Maximum prose measure for the responsive margin clamp below. The page
+     object fills the pane (it is NOT max-width-capped + centered — that left a
+     dead cream gap between the centered page and the panel/divider). Instead,
+     on a WIDE pane the prose margins GROW (as white page margin, not cream
+     canvas) so the text column never exceeds this width — bounding the line
+     length the way the old 880 cap did, but with no empty gap. Between the two
+     bounds the inherited `--editor-pl`/`--editor-pr` apply 1:1 with the editor. */
+  --reader-max-measure: 760px;
 }
 
 /* ── Reader page fit (no horizontal overflow) ─────────────────────────
@@ -142,24 +150,18 @@
   min-width: 0 !important;
 }
 [data-virgil-library-reader] .editor-pane-root > .editor-pane-column {
+  /* The PAGE OBJECT (editor column / pod) FILLS the pane — it is intentionally
+     NOT `max-width`-capped + `margin-inline: auto`-centered. That earlier model
+     (cap at ≈880px, center in the canvas) left a dead CREAM GAP between the
+     centered white page and the panel rail / gutter-drag divider on a wide
+     monitor — empty desk canvas the user (rightly) wanted closed. Instead the
+     page fills to the divider, and the prose line length is bounded by the
+     responsive margin clamp on `.tiptap` below: on a wide pane the margins grow
+     as WHITE PAGE MARGIN (part of the pod, flush to the divider) rather than as
+     cream canvas, capping the text at `--reader-max-measure` while the inherited
+     `--editor-pl`/`--editor-pr` apply 1:1 with the editor between the bounds.
+     `min-width: 0` lets the flex item shrink to fit a narrow split pane. */
   min-width: 0 !important;
-  /* Bound + center the PAGE OBJECT (the editor column / pod), mirroring the
-     main editor — which sizes its column to `--page-preferred` (≈880px) and
-     lets the flanking rails center it in the canvas (EditorLayout's
-     `editorBasis`). The Reader mounts EditorPane directly with the column at
-     `flex: 1000 1 0` and no flanking 880 basis, so without this the pod would
-     fill the whole pane and the prose line would run very wide on a wide
-     monitor. Bounding HERE (the page object) rather than on `.tiptap` keeps
-     the bound SUBORDINATE to the inherited `--editor-pl`/`--editor-pr`
-     margins: the margins still define the gutters (so the Reader matches the
-     editor's margins 1:1), and the page is simply centered within any extra
-     pane width — exactly the editor's "page on a desk" behavior. Bounded to
-     `--page-preferred` (≈880px, the editor's resting pod width) so the Reader's
-     page width — and therefore its text column once the inherited margins are
-     applied inside — matches the main editor at the same margins; extra pane
-     width becomes centered canvas, as in the editor. */
-  max-width: var(--page-preferred, 880px);
-  margin-inline: auto;
 }
 
 [data-virgil-library-reader] .paper-render .tiptap {
@@ -201,41 +203,49 @@
    The prose box is `.tiptap` (the ProseMirror contenteditable); the shared
    Editor.tsx applies the inherited margins to it as
    `padding-left: var(--editor-pl,88px)` / `padding-right: var(--editor-pr,72px)`
-   (Tailwind arbitrary utilities). In a wide pod those margins match the main
-   editor 1:1, but in a narrow Library split pane `--editor-pl`/`--editor-pr`
-   can resolve large enough to crush the text (the one-letter-per-line title).
+   (Tailwind arbitrary utilities). The page object fills the pane (the 880 cap +
+   centering was removed above), so without a clamp the margins would (a) crush
+   the text in a NARROW split pane (one-letter-per-line title) and (b) leave the
+   line uncomfortably long on a WIDE monitor.
 
-   The user's choice: INHERIT the margins when there's room, but CLAMP them so
-   the text column never drops below `--reader-min-measure`. Each side's padding
-   is capped at `(availableWidth − minMeasure) / 2`, computed per-side so
-   asymmetric margins clamp independently:
+   Fix: `clamp()` the inherited margin between TWO bounds, per-side (so
+   asymmetric margins clamp independently). The inherited `--editor-pl`/`-pr`
+   apply 1:1 with the editor whenever they keep the text within
+   [`--reader-min-measure`, `--reader-max-measure`]; outside that the margin is
+   pinned so the text stays in range:
 
-     padding-left  = min(--editor-pl, max(0, (100% − minMeasure) / 2))
-     padding-right = min(--editor-pr, max(0, (100% − minMeasure) / 2))
+     padding = clamp(
+       max(0, (100% − maxMeasure) / 2),   // lower bound on margin → text ≤ max (grows white margin on a wide page)
+       --editor-pl / --editor-pr,          // inherited margin (the common case)
+       max(0, (100% − minMeasure) / 2)     // upper bound on margin → text ≥ min (shrinks margin in a narrow pane)
+     )
 
-   `100%` here is a padding percentage, resolved against the inline-size of the
-   CONTAINING BLOCK of `.tiptap` — i.e. the content box of its parent
-   `.paper-render`, which has no padding/border and fills the bounded, centered
-   `.editor-pane-column` (capped at `--page-preferred` ≈880px above). So `100%`
-   ≈ the page/pod width, exactly the width the margins are carved out of.
+   `100%` is a padding percentage, resolved against the inline-size of the
+   CONTAINING BLOCK of `.tiptap` — the content box of its parent `.paper-render`,
+   which has no padding/border and now fills the FULL (uncapped) page column. So
+   `100%` ≈ the page/pod width, exactly the width the margins are carved out of.
+   The grown margin is WHITE (the pod fills the column flush to the divider), so
+   there is no cream gap — that was the whole point of removing the page cap.
 
-   Composition with the `.editor-pane-column` max-width:880 + margin-inline:auto
-   rule above (unchanged): WIDE pane → column caps at 880, clamp =
-   min(155, (880−400)/2 = 240) = 155 → full inherited margins (text ~570px,
-   matching the editor). NARROW pane (e.g. column 500px) → clamp =
-   min(155, (500−400)/2 = 50) = 50 → margins shrink, text held at 400px.
-   VERY narrow (<400px) → max(0,…) floors to 0 → padding 0, text fills the pod
-   (still readable, never one-char-per-line).
+   Worked cases (inherited 155, min 400, max 760):
+     • WIDE page (1582px): clamp(411, 155, 591) = 411 → text 760, white margins,
+       page flush to the divider (no cream gap).
+     • TYPICAL page (≈1000px): clamp(120, 155, 300) = 155 → inherited margins,
+       text 690 — matches the editor.
+     • NARROW pane (500px): clamp(0, 155, 50) = 50 → margins shrink, text 400.
+     • VERY narrow (<400px): bounds floor to 0 → padding 0, text fills the pod.
 
-   `!important` is required to beat the Tailwind arbitrary-value padding utility
-   on `.tiptap`. Scoped under `[data-virgil-library-reader]` — set ONLY by the
-   Reader (PaperRender.tsx) — so the main editor's margin behavior is untouched. */
+   `!important` beats the Tailwind arbitrary-value padding utility on `.tiptap`.
+   Scoped under `[data-virgil-library-reader]` (set ONLY by PaperRender.tsx), so
+   the main editor's margin behavior is untouched. */
 [data-virgil-library-reader] .paper-render .tiptap {
-  padding-left: min(
+  padding-left: clamp(
+    max(0px, (100% - var(--reader-max-measure, 760px)) / 2),
     var(--editor-pl, 88px),
     max(0px, (100% - var(--reader-min-measure, 400px)) / 2)
   ) !important;
-  padding-right: min(
+  padding-right: clamp(
+    max(0px, (100% - var(--reader-max-measure, 760px)) / 2),
     var(--editor-pr, 72px),
     max(0px, (100% - var(--reader-min-measure, 400px)) / 2)
   ) !important;
