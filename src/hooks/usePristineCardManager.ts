@@ -79,11 +79,27 @@ export function usePristineCardManager(): PristineCardManager {
           if (!inside) pending.push({ kind, id });
         }
       }
-      for (const { kind, id } of pending) {
-        getSet(kind).delete(id);
-        const discard = discardRef.current.get(kind);
-        if (discard) discard(id);
-      }
+      if (pending.length === 0) return;
+      // Defer the actual discard past the click-away's blur-flush. A card body
+      // editor (RichTextField) debounces its `onChange` (250ms) and only flushes
+      // it on `blur` — and `blur` fires AFTER this `pointerdown`. The flushed
+      // onChange routes through the owning hook's edit setter, which calls
+      // `markDirty(id)` (removing it from the Set). So a card the user typed
+      // into within the debounce window is still pristine at pointerdown time
+      // but becomes dirty by the next macrotask. Re-checking membership on a
+      // `setTimeout(0)` spares it; a genuinely-untouched blank card stays in the
+      // Set and is still discarded. (Footnotes layer their own deferred
+      // content-check in EditorPane's discard handler — that composes: this
+      // re-check short-circuits before it for a footnote the user typed into.)
+      setTimeout(() => {
+        for (const { kind, id } of pending) {
+          const ids = setsRef.current.get(kind);
+          if (!ids || !ids.has(id)) continue; // typed into during the defer → keep it
+          ids.delete(id);
+          const discard = discardRef.current.get(kind);
+          if (discard) discard(id);
+        }
+      }, 0);
     };
     document.addEventListener("pointerdown", handler, true);
     return () => document.removeEventListener("pointerdown", handler, true);
