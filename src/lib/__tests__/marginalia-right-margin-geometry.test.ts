@@ -39,6 +39,8 @@ import {
   MARGINALIA_MARGIN_WIDTH_LEFT,
   MARGINALIA_MIN_MARGIN_RIGHT,
   MARGINALIA_MIN_MARGIN_LEFT,
+  CODE_VIEW_GUTTER_PX,
+  resolveHorizontalMargin,
   MARGINALIA_BOLT_LEFT_FROM_TEXT,
   MARGINALIA_BOLT_SIZE,
   MARGINALIA_BOLT_MARKER_GAP,
@@ -332,5 +334,98 @@ describe("right-margin geometry SSOT — min-margin floor (gated on marker visib
     // can shrink well below the lane width, so reading modes are not forced
     // into a wide margin.
     expect(MARGIN_MIN.right).toBeLessThan(MARGINALIA_MIN_MARGIN_RIGHT);
+  });
+});
+
+describe("resolveHorizontalMargin — compressed-code-split comfort cap vs. marker floor", () => {
+  // A doc saved with generous margins; well above both the 48 cap and the
+  // 104/80 lane floor, so the resolution rules are what move the number.
+  const WIDE = 160;
+
+  it("NORMAL markers-on editor (not compressed): the marker floor applies — margins rise to the 104/80 lane", () => {
+    // Lane reserved, NOT compressed: a narrow saved margin is floored UP to the
+    // full lane so the marker grid never eats the prose/scrollbar/bolt.
+    const right = resolveHorizontalMargin(40, {
+      compress: false,
+      laneReserved: true,
+      floor: MARGINALIA_MIN_MARGIN_RIGHT,
+    });
+    const left = resolveHorizontalMargin(40, {
+      compress: false,
+      laneReserved: true,
+      floor: MARGINALIA_MIN_MARGIN_LEFT,
+    });
+    expect(right).toBe(MARGINALIA_MIN_MARGIN_RIGHT); // 104
+    expect(left).toBe(MARGINALIA_MIN_MARGIN_LEFT); //  80
+    // A wide saved margin is left untouched (floor only RAISES).
+    expect(
+      resolveHorizontalMargin(WIDE, {
+        compress: false,
+        laneReserved: true,
+        floor: MARGINALIA_MIN_MARGIN_RIGHT,
+      }),
+    ).toBe(WIDE);
+  });
+
+  it("COMPRESSED code-split: the lane is NOT reserved, so the 48px comfort cap WINS (floor is NOT applied)", () => {
+    // THE FIX: in compressed code-split `marginaliaLaneReserved` is false, so
+    // the margin compresses to the 48 cap instead of being floored to 104/80.
+    // The editor keeps its width; markers gracefully degrade (same as zen).
+    const right = resolveHorizontalMargin(WIDE, {
+      compress: true,
+      laneReserved: false,
+      floor: MARGINALIA_MIN_MARGIN_RIGHT,
+    });
+    const left = resolveHorizontalMargin(WIDE, {
+      compress: true,
+      laneReserved: false,
+      floor: MARGINALIA_MIN_MARGIN_LEFT,
+    });
+    expect(right).toBe(CODE_VIEW_GUTTER_PX); // 48, NOT 104
+    expect(left).toBe(CODE_VIEW_GUTTER_PX); //  48, NOT 80
+    // Explicitly: the floor did NOT win — both sides sit BELOW the lane minimum.
+    expect(right).toBeLessThan(MARGINALIA_MIN_MARGIN_RIGHT);
+    expect(left).toBeLessThan(MARGINALIA_MIN_MARGIN_LEFT);
+  });
+
+  it("regression guard: the OLD (buggy) behavior — floor still reserved while compressed — would have pinned 104/80", () => {
+    // Before the fix, the lane stayed reserved in compressed code-split, so the
+    // floor over-rode the cap: max(min(160,48), 104) = 104. This pins that the
+    // new wiring no longer does that, by reproducing the old inputs
+    // (laneReserved=true) and the new ones (laneReserved=false) side by side.
+    const oldBuggy = resolveHorizontalMargin(WIDE, {
+      compress: true,
+      laneReserved: true, // the bug: lane stayed reserved while compressed
+      floor: MARGINALIA_MIN_MARGIN_RIGHT,
+    });
+    const fixed = resolveHorizontalMargin(WIDE, {
+      compress: true,
+      laneReserved: false, // the fix: lane opted OUT in compressed code-split
+      floor: MARGINALIA_MIN_MARGIN_RIGHT,
+    });
+    expect(oldBuggy).toBe(MARGINALIA_MIN_MARGIN_RIGHT); // 104 — the lost width
+    expect(fixed).toBe(CODE_VIEW_GUTTER_PX); // 48 — width preserved
+    expect(fixed).toBeLessThan(oldBuggy);
+  });
+
+  it("compressed but lane STILL reserved (markers on, NOT code-split → never happens, but pins the priority): floor wins over cap", () => {
+    // Defensive pin of the `Math.max` LAST ordering: if a caller ever passed
+    // compress+laneReserved together, the floor outranks the cap. EditorPane
+    // never does (compress ⇒ !laneReserved), but the priority must be stable.
+    expect(
+      resolveHorizontalMargin(WIDE, {
+        compress: true,
+        laneReserved: true,
+        floor: MARGINALIA_MIN_MARGIN_RIGHT,
+      }),
+    ).toBe(MARGINALIA_MIN_MARGIN_RIGHT);
+  });
+
+  it("CODE_VIEW_GUTTER_PX is the 48px comfort cap (kept in sync with SplitWithCode)", () => {
+    expect(CODE_VIEW_GUTTER_PX).toBe(48);
+    // The cap is below both lane floors — that's why the floor would otherwise
+    // override it (the whole bug).
+    expect(CODE_VIEW_GUTTER_PX).toBeLessThan(MARGINALIA_MIN_MARGIN_LEFT);
+    expect(CODE_VIEW_GUTTER_PX).toBeLessThan(MARGINALIA_MIN_MARGIN_RIGHT);
   });
 });

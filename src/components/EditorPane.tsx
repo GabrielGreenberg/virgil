@@ -108,6 +108,7 @@ import {
   isAnchorableNode,
   MARGINALIA_MIN_MARGIN_LEFT,
   MARGINALIA_MIN_MARGIN_RIGHT,
+  resolveHorizontalMargin,
 } from "@/lib/marginalia";
 import { isTier1CDisabled } from "@/lib/perf-flags";
 import { useCitations, type CitationsHook } from "@/hooks/useCitations";
@@ -3156,6 +3157,25 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
   // ephemeral `useReaderViewPrefs()`), so margin edit is live in the
   // Reader too (session-only). State machine lives in `useMarginEdit`.
   //
+  // When the Code pane is open and SplitWithCode signals `compressed`
+  // (the editor is narrower than its natural width — the common case at
+  // typical split ratios), cap the horizontal gutters at a COMFORTABLE
+  // code-view value (CODE_VIEW_GUTTER_PX = 48) instead of letting the prose
+  // jam against the pane edge. This is the "appropriate left padding in code
+  // view" that the old bare 16px floor denied — the editor reads as a clean
+  // document column, not a squeezed strip. `compressed` is only ever set while
+  // the code pane is open (SplitWithCode: `compressed: open && …`), so this
+  // cap exclusively governs code view. Vertical margins are unaffected —
+  // compression is a horizontal squeeze; stomping vertical prefs would be
+  // gratuitous.
+  //
+  // Read the split signal FIRST: `marginaliaLaneReserved` (below) needs
+  // `compressX` to opt the marker lane OUT in compressed code-split.
+  // `useCodePaneSplit()` is a `useContext` read — keystroke-free, and it
+  // changes only when the code pane opens/closes or crosses its
+  // compressed threshold, never per keystroke.
+  const codeSplit = useCodePaneSplit();
+  const compressX = codeSplit.compressed;
   // Marginalia lane reservation (backlog #8): the right/left margin min-floor
   // that keeps the marker grid from colliding with the scrollbar / bolt /
   // text applies ONLY when the marginalia margins are actually rendered. That
@@ -3164,8 +3184,19 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
   // zen, both of which hide the markers and must keep full margin freedom
   // (memo §4.1). Gating here, not unconditionally, avoids forcing wasted
   // margins in those reading modes.
+  //
+  // COMPRESSED CODE-SPLIT exclusion: when the code pane is open and the editor
+  // is compressed, the 48px comfort cap WINS — the lane is NOT reserved, so the
+  // marker floor never fights the user's deliberate compression-for-code. This
+  // mirrors the `!zenMode` term exactly: an intentionally-narrow reading mode
+  // where markers gracefully degrade (non-reserved, same as zen / the Library
+  // reader) rather than eating ~150px+ of prose width. The normal (non-code-
+  // split) editor keeps the floor untouched.
   const marginaliaLaneReserved =
-    !!menuBar && menuBar.showMarginalia !== false && !viewPrefs?.zenMode;
+    !!menuBar &&
+    menuBar.showMarginalia !== false &&
+    !viewPrefs?.zenMode &&
+    !compressX;
   const {
     marginEditMode,
     effective: effectiveMargins,
@@ -3176,39 +3207,26 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
     cancel: cancelMarginEdit,
     beginDrag: beginMarginDrag,
   } = useMarginEdit({ viewPrefs, marginaliaLaneReserved });
-  // When the Code pane is open and SplitWithCode signals `compressed`
-  // (the editor is narrower than its natural width — the common case at
-  // typical split ratios), cap the horizontal gutters at a COMFORTABLE
-  // code-view value instead of letting the prose jam against the pane
-  // edge. This is the "appropriate left padding in code view" that the
-  // old bare 16px floor denied — the editor reads as a clean document
-  // column, not a squeezed strip. `compressed` is only ever set while
-  // the code pane is open (SplitWithCode: `compressed: open && …`), so
-  // this floor exclusively governs code view. A mechanical layout value
-  // (not a pref), kept in sync with SplitWithCode's
-  // EDITOR_PANE_COMPRESSED_MIN_PX. Vertical margins are unaffected —
-  // compression is a horizontal squeeze; stomping vertical prefs would
-  // be gratuitous.
-  const CODE_VIEW_GUTTER_PX = 48;
-  const codeSplit = useCodePaneSplit();
-  const compressX = codeSplit.compressed;
-  // Right-margin geometry min-floor (backlog #8): when the marginalia marker
-  // lane is reserved, the rendered horizontal margins are floored at the lane
-  // minimum so the marker grid never collides with the scrollbar / bolt /
-  // text — even for a doc saved with a narrower margin, and even in the
-  // compressed code-view gutter (the floor outranks the 48px comfort cap when
-  // markers are shown; reading modes that hide markers keep the lower cap).
-  // `Math.max` is applied LAST so it wins over the compress `Math.min`.
-  const clampMarkerFloor = (px: number, floor: number) =>
-    marginaliaLaneReserved ? Math.max(px, floor) : px;
-  const effectiveLeftMargin = clampMarkerFloor(
-    compressX ? Math.min(effectiveMargins.left, CODE_VIEW_GUTTER_PX) : effectiveMargins.left,
-    MARGINALIA_MIN_MARGIN_LEFT,
-  );
-  const effectiveRightMargin = clampMarkerFloor(
-    compressX ? Math.min(effectiveMargins.right, CODE_VIEW_GUTTER_PX) : effectiveMargins.right,
-    MARGINALIA_MIN_MARGIN_RIGHT,
-  );
+  // Right-margin geometry min-floor (backlog #8) vs. the compressed code-view
+  // comfort cap, resolved by the shared pure `resolveHorizontalMargin`:
+  //   - compressed code-split caps the margin at CODE_VIEW_GUTTER_PX (48);
+  //   - when the marker lane is reserved the margin is floored at the lane
+  //     minimum so the grid never collides with the scrollbar / bolt / text.
+  // In compressed code-split the lane is NOT reserved (see
+  // `marginaliaLaneReserved` above — `!compressX`), so the comfort cap WINS and
+  // the floor is a pass-through; reading modes that hide markers (zen / Reader)
+  // likewise keep the lower cap. The floor `Math.max` only bites in the normal
+  // markers-on editor (where `compressX` is false).
+  const effectiveLeftMargin = resolveHorizontalMargin(effectiveMargins.left, {
+    compress: compressX,
+    laneReserved: marginaliaLaneReserved,
+    floor: MARGINALIA_MIN_MARGIN_LEFT,
+  });
+  const effectiveRightMargin = resolveHorizontalMargin(effectiveMargins.right, {
+    compress: compressX,
+    laneReserved: marginaliaLaneReserved,
+    floor: MARGINALIA_MIN_MARGIN_RIGHT,
+  });
   const effectiveTopMargin = effectiveMargins.top;
   const effectiveBottomMargin = effectiveMargins.bottom;
 
@@ -4728,7 +4746,10 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
                 // transitively: when the marginalia lane is reserved,
                 // `--editor-pl/pr` are floored to MARGINALIA_MIN_MARGIN_*
                 // (above), so this min-width already includes the full marker
-                // lanes — no separate term needed.
+                // lanes — no separate term needed. In compressed code-split
+                // the lane is NOT reserved, so `--editor-pl/pr` collapse to the
+                // 48px comfort cap and this floor follows them down — the
+                // editor keeps its width instead of reserving an unused lane.
                 minWidth: 'calc(300px + var(--editor-pl, 88px) + var(--editor-pr, 72px) + 2px + var(--editor-wrapper-inset, 0px))',
                 display: "flex",
                 flexDirection: "column",
