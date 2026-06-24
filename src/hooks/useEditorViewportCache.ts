@@ -164,7 +164,14 @@ export function useEditorViewportCache(editor: Editor | null): {
     if (!editorEl) return;
 
     const refresh = () => {
-      if (!editorEl.isConnected) return;
+      // Keep-alive: a hidden (display:none) editor has offsetHeight 0 and all
+      // its rects collapse to 0×0. Bailing here is the highest-leverage guard —
+      // it stops the stale-geometry cascade (this cache's `version` bump drives
+      // the margin-bolt, grab-handle, and in-text-position followers). The
+      // ResizeObserver / window-resize that call refresh() fire on hide/show
+      // regardless of editor transactions, so this offsetHeight check (not a
+      // transaction gate) is the authoritative signal.
+      if (!editorEl.isConnected || editorEl.offsetHeight === 0) return;
       const cs = window.getComputedStyle(editorEl);
       const rect = editorEl.getBoundingClientRect();
       const padLeft = parseFloat(cs.paddingLeft) || 0;

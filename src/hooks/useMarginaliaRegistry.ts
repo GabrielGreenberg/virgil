@@ -9,6 +9,7 @@ import {
 } from "@/lib/marginalia-blocks";
 import { findRowScroll } from "@/components/editor-layout/layout-scroll";
 import { getBus } from "@/lib/tiptap/doc-structure";
+import { useIsVisible } from "@/lib/keep-alive/visibility-context";
 
 /**
  * Viewport-scoped, on-demand layout registry for UUID-bearing blocks.
@@ -284,6 +285,19 @@ export function useMarginaliaRegistry(
 ): MarginaliaRegistry {
   const stateRef = useRef<RegistryState>(emptyState());
 
+  // Keep-alive: when this editor is hidden (display:none, kept alive across a
+  // tab switch) its IntersectionObserver / ResizeObserver / window-resize
+  // followers still FIRE (display:none flips intersection + collapses element
+  // boxes to 0) — but measuring then would read coordsAtPos/getBoundingClientRect
+  // as 0 and cache garbage. We make those callbacks INERT while hidden via a
+  // synchronous latest-value ref (so the long-lived observer closures see fresh
+  // state without re-subscribing, and a re-show — which itself fires the
+  // observers — re-measures correctly with the ref already true). Markers keep
+  // their last-good positions while hidden — no teardown, no flash.
+  const isVisible = useIsVisible();
+  const isVisibleRef = useRef(isVisible);
+  isVisibleRef.current = isVisible;
+
   const registry = useMemo<MarginaliaRegistry>(
     () => ({
       getMetrics: (uuid: string) =>
@@ -333,7 +347,7 @@ export function useMarginaliaRegistry(
     }
 
     function flushRecompute() {
-      if (!editor || editor.isDestroyed) return;
+      if (!editor || editor.isDestroyed || !isVisibleRef.current) return;
       const host = state.hostEl ?? resolveHost(editor);
       if (!host) return;
       const hostRect = host.getBoundingClientRect();
@@ -532,7 +546,7 @@ export function useMarginaliaRegistry(
      * O(doc) sync to every frame.
      */
     function scheduleObserveRetry() {
-      if (state.observeRetryRafId) return;
+      if (state.observeRetryRafId || !isVisibleRef.current) return;
       state.observeRetryRafId = requestAnimationFrame(() => {
         state.observeRetryRafId = 0;
         if (!editor || editor.isDestroyed) return;
@@ -546,7 +560,7 @@ export function useMarginaliaRegistry(
     }
 
     function onIntersection(entries: IntersectionObserverEntry[]) {
-      if (!editor || editor.isDestroyed) return;
+      if (!editor || editor.isDestroyed || !isVisibleRef.current) return;
       const host = state.hostEl ?? resolveHost(editor);
       if (!host) return;
       const hostRect = host.getBoundingClientRect();
@@ -659,6 +673,7 @@ export function useMarginaliaRegistry(
     }
 
     function onResize(entries: ResizeObserverEntry[]) {
+      if (!isVisibleRef.current) return; // hidden editor → boxes are 0; skip
       for (const entry of entries) {
         const el = entry.target as HTMLElement;
         const uuid = el.getAttribute("data-uuid");
@@ -668,6 +683,7 @@ export function useMarginaliaRegistry(
     }
 
     function onWindowResize() {
+      if (!isVisibleRef.current) return; // hidden editor → nothing to re-measure
       // Belt-and-suspenders: ResizeObserver covers per-element box changes
       // but not (e.g.) viewport-only DPR changes that don't resize any
       // observed element. Re-measure everything observed.

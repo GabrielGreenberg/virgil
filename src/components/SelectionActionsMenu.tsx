@@ -77,7 +77,10 @@ function computePlacement(editor: Editor, cache: EditorViewportCache): Placement
   // at the document's default cursor position on first paint, before the
   // user has ever clicked into the prose.
   if (sel.empty && !editor.isFocused) return INVISIBLE_PLACEMENT;
-  if (!cache.editorEl) return INVISIBLE_PLACEMENT;
+  // Keep-alive: a hidden (display:none) editor has offsetHeight 0 and
+  // coordsAtPos → {0,0,0,0}; bail BEFORE coordsAtPos so the margin bolt never
+  // jitters and the hidden editor does zero placement measurement.
+  if (!cache.editorEl || cache.editorEl.offsetHeight === 0) return INVISIBLE_PLACEMENT;
 
   const { from, to, head } = sel;
   const anchor = resolveAnchorableNode(editor.view, head);

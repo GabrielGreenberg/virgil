@@ -6,6 +6,7 @@ import { isAnchorableNode } from "@/lib/marginalia";
 import { getLinkedTextObjectIds } from "@/links/links";
 import type { Link } from "@/links/_shared/types";
 import { findEditorScrollFor } from "@/components/editor-layout/layout-scroll";
+import { useIsVisible } from "@/lib/keep-alive/visibility-context";
 import { getBus } from "@/lib/tiptap/doc-structure";
 
 /** Viewport gating margin — items within ±NEAR_ZONE_PX of the visible
@@ -210,7 +211,7 @@ function resolveCascade(
 export function useInTextPositions(
   editor: Editor | null,
   items: PositionItem[],
-  enabled: boolean,
+  enabledProp: boolean,
   entry: string | ((id: string) => string) = DEFAULT_ENTRY,
   pinned: Pinned | null = null,
   /**
@@ -225,6 +226,13 @@ export function useInTextPositions(
    */
   resolvePos?: (id: string) => number | undefined,
 ) {
+  // Keep-alive: a hidden (display:none) editor measures nothing — coordsAtPos
+  // and getBoundingClientRect both return 0, which would cache naturalTop=0 for
+  // every card. Folding visibility into `enabled` makes the whole measure path
+  // (and its ResizeObserver/window-resize wiring) bail while hidden; the
+  // existing `!enabled` early-outs already clear cleanly. Re-show flips it back.
+  const isVisible = useIsVisible();
+  const enabled = enabledProp && isVisible;
   const [editorContentHeight, setEditorContentHeight] = useState(0);
   const panelScrollRef = useRef<HTMLDivElement>(null);
   const naturalRef = useRef<Map<string, NaturalEntry>>(new Map());
