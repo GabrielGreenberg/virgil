@@ -1,4 +1,5 @@
 import { useCallback, type Dispatch, type RefObject, type SetStateAction } from "react";
+import type { Editor } from "@tiptap/react";
 import type { EditorHandle } from "../../Editor";
 import type { LabelInfo, RefCommand } from "../../LabelRefPopover";
 import { insertInlineAtom } from "@/lib/tiptap/insert-inline-atom";
@@ -323,11 +324,34 @@ export function useRefActions(deps: {
   );
 
   const handleInsertRef = useCallback(
-    (newLabel: string, refCommand: RefCommand = "ref", at?: number) => {
-      const editor = editorRef.current?.getEditor();
+    (
+      newLabel: string,
+      refCommand: RefCommand = "ref",
+      at?: number,
+      owner?: Editor | null,
+    ) => {
+      // Insert into the editor that OWNS the create — the footnote/card editor
+      // whose pos-space the popover captured `at` in — falling back to MAIN
+      // (CHIP 5; mirrors `handleMathSave(activeMath.editor, …)` and
+      // `commitCitationCreate`). Edit-mode / legacy callers pass no owner ⇒ MAIN.
+      const mainEd = editorRef.current?.getEditor();
+      // An explicitly-threaded owner that has since been DESTROYED (the footnote
+      // card closed / scrolled away while the deferred-commit popover stayed
+      // open) leaves `at` stranded in that editor's pos-space — silently
+      // retargeting to MAIN would insert at a bogus main position. Abort. A
+      // null/undefined owner is a MAIN create (`at` is main-space / caret).
+      if (owner && owner.isDestroyed) return;
+      const editor = owner ?? mainEd;
       if (!editor) return;
+      // Resolve the ref's display number from the MAIN doc, where the referenced
+      // doc-level label (heading / figure / example) actually lives — a footnote
+      // body owns no headings/examples, so resolving against the owner's doc
+      // would always yield "??" for a footnote-nested `\ref`. The atom still
+      // INSERTS into `editor` (the footnote body); only the number lookup reads
+      // MAIN. Falls back to the owner's doc when MAIN is unavailable.
+      const displaySource = (mainEd ?? editor).state.doc;
       const { display, targetKind } = resolveLabelDisplay(
-        editor.state.doc,
+        displaySource,
         newLabel,
         refCommand,
       );
@@ -369,7 +393,17 @@ function exampleBlockPreview(node: import("@tiptap/pm/model").Node): string {
   return (text.trim() || "(empty example)").slice(0, 80);
 }
 
-function resolveLabelDisplay(
+/**
+ * Resolve a `\ref`/`\getref`/`\getfullref` label against a doc to its display
+ * number + target kind. Exported because it's the SSOT for "what number does
+ * this ref show" used by BOTH the create flow (`handleInsertRef`, which reads
+ * MAIN since a footnote/card body owns no headings/examples) AND the card
+ * mini-editors' load-time display refresh (`RichTextField`'s refreshRefDisplay,
+ * which likewise resolves footnote-nested refs against MAIN — the doc-level
+ * ref-display pass in editor-extensions.ts can't reach footnote sub-docs).
+ * Keeping one resolver guarantees create-time and load-time agree.
+ */
+export function resolveLabelDisplay(
   doc: import("@tiptap/pm/model").Node,
   label: string,
   refCommand: RefCommand,

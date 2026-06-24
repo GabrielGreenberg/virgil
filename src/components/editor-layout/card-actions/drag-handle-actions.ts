@@ -312,9 +312,14 @@ export function useDragHandleActions(deps: DragHandleActionsDeps) {
                 0,
                 coords.bottom - coords.top,
               );
+              // Thread the OWNING editor (CHIP 5). The grab handle is a
+              // MAIN-editor NodeView (footnotes are inline atoms — you can't
+              // grab inside one), so `ed` is MAIN here; threading it keeps the
+              // owning-editor channel uniform with the slash/lightning surfaces
+              // so the commit always reads `pos` in the right pos-space.
               window.dispatchEvent(
                 new CustomEvent(ATOM_CREATE_POPOVER_EVENT, {
-                  detail: { kind: "citation", rect, pos: range.to },
+                  detail: { kind: "citation", rect, pos: range.to, editor: ed },
                 }),
               );
             } catch {

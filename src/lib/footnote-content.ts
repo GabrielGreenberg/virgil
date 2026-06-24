@@ -331,6 +331,19 @@ function serializeInlineNode(node: JSONContent): string {
     const idMarker = cid ? `\\vcid{${cid}}` : "";
     return `${idMarker}${(node.attrs?.command as string) || ""}`;
   }
+  // labelRef (\ref / \getref / \getfullref) — a footnote body can now hold a
+  // nested cross-reference (CHIP 5: `\ref` created while editing inside a
+  // footnote). Without this case `richJsonToLatex` would DROP the ref on save,
+  // since the footnote node serializes its body through here (latex-serializer's
+  // footnote case → richJsonToLatex). Mirror the main serializer's
+  // `serializeLabelRef` so the body round-trips to `\footnote{… \ref{x} …}`.
+  if (node.type === "labelRef") {
+    const label = (node.attrs?.label as string) || "";
+    const cmd = (node.attrs?.refCommand as string) || "ref";
+    if (cmd === "getref") return `\\getref{${label}}`;
+    if (cmd === "getfullref") return `\\getfullref{${label}}`;
+    return `\\ref{${label}}`;
+  }
   if (node.type === "hardBreak") return " ";
   return "";
 }
@@ -544,6 +557,39 @@ function parseInlineLatex(text: string, inCode = false): JSONContent[] {
         }
       }
 
+      // \ref{key} / \getref{key} / \getfullref{key} — cross-reference, the
+      // re-parse twin of the labelRef serialize case above (CHIP 5). A footnote
+      // body that round-trips through `\footnote{… \ref{x} …}` must re-parse the
+      // ref back into a `labelRef` node here; otherwise it falls through to the
+      // unknown-\command branch and renders as grey monospace inside the
+      // footnote. `displayText`/`targetKind` are resolved later by the doc-level
+      // ref-display pass — mirror the main parser's labelRef attrs.
+      const refCmdMatch = rest.match(/^\\(getfullref|getref|ref)\{/);
+      if (refCmdMatch) {
+        const open = i + refCmdMatch[0].length - 1; // index of the `{`
+        const closed = findClose(text, open);
+        if (closed !== -1) {
+          flush();
+          const refCommand =
+            refCmdMatch[1] === "getfullref"
+              ? "getfullref"
+              : refCmdMatch[1] === "getref"
+                ? "getref"
+                : "ref";
+          nodes.push({
+            type: "labelRef",
+            attrs: {
+              label: text.slice(open + 1, closed),
+              displayText: "",
+              refCommand,
+              targetKind: null,
+            },
+          });
+          i = closed + 1;
+          continue;
+        }
+      }
+
       // Common text macros
       const textCmdMatch = rest.match(/^\\(ldots|dots|LaTeX|TeX)\b/);
       if (textCmdMatch) {
@@ -652,6 +698,18 @@ export function richJsonToPlainText(json: JSONContent | unknown): string {
     if (node.type === "text") return node.text || "";
     if (node.type === "inlineMath") return `$${node.attrs?.latex || ""}$`;
     if (node.type === "citation") return (node.attrs?.displayText as string) || (node.attrs?.command as string) || "";
+    // labelRef (\ref / \getref / \getfullref) — a footnote body can hold a
+    // nested cross-reference (CHIP 5). Like citation, it's a leaf atom with no
+    // `content`, so without this case it falls through to `return ""` and the
+    // ref VANISHES from the plain-text projection (drag ghosts, clipboard,
+    // tooltips, search, compressed/omni previews). Mirror the citation case:
+    // prefer the resolved number, fall back to the raw `\ref{label}` command.
+    if (node.type === "labelRef") {
+      const display = node.attrs?.displayText as string | undefined;
+      if (display) return display;
+      const cmd = (node.attrs?.refCommand as string) || "ref";
+      return `\\${cmd}{${(node.attrs?.label as string) || ""}}`;
+    }
     if (node.type === "hardBreak") return "\n";
     if (node.type === "paragraph") return (node.content || []).map(walk).join("");
     if (node.type === "bulletList" || node.type === "orderedList") {

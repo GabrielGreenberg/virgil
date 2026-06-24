@@ -321,9 +321,16 @@ export function ActionsMenuPanel({
           0,
           coords.bottom - coords.top,
         );
+        // Carry the OWNING editor into the event detail (CHIP 5). This panel's
+        // `editor` prop is `overrideEditor ?? mainEditor` (EditorPane wires the
+        // MenuBar/lightning grid that way), so when a footnote/note RichTextField
+        // is focused `editor` IS that nested editor — and the captured `pos` is
+        // in ITS pos-space. Threading it through lets the commit insert the
+        // `\cite`/`\ref` atom into the focused footnote body, not blindly into
+        // MAIN (mirrors `activeMath.editor` / `activeFigure.editor`).
         window.dispatchEvent(
           new CustomEvent(ATOM_CREATE_POPOVER_EVENT, {
-            detail: { kind, rect, pos, refCommand: opts?.refCommand },
+            detail: { kind, rect, pos, refCommand: opts?.refCommand, editor },
           }),
         );
       },

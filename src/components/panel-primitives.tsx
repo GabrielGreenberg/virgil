@@ -290,7 +290,7 @@ export const CARD_THEMES: Record<PanelThemeKey, CardTheme> = Object.fromEntries(
 
 /* ── Shared badge classes ────────────────────────────────────────── */
 
-const BADGE_BASE = "inline-flex items-center justify-center w-5 h-5 rounded text-[10px] font-semibold shrink-0";
+const BADGE_BASE = "inline-flex items-center justify-center w-[18px] h-[18px] rounded text-[10px] font-semibold shrink-0";
 
 /** Anchored badge with a label (e.g. number or letter). */
 export function BadgeLabel({ label, theme }: { label: string | number; theme: CardTheme }) {
@@ -327,7 +327,7 @@ export function AnchorBadge({
 /** Orphaned/unanchored badge — a small faded color dot-squircle (~10px).
  *  Matches the "outside focus" ◎ dot; the data-hint/aria-label carry the
  *  "no anchor" meaning (no cross-out glyph). Deliberately NOT BADGE_BASE —
- *  it is smaller than the 20px count badge it sits beside. */
+ *  it is smaller than the 18px count badge it sits beside. */
 export function BadgeOrphaned({ theme }: { theme: CardTheme }) {
   return (
     <span

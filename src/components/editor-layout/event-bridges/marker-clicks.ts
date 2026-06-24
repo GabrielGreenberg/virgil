@@ -389,11 +389,20 @@ export function useMarkerClickBridges(deps: {
       const { kind, rect, pos } = detail;
       if (kind !== "citation" && kind !== "ref") return;
       if (!(rect instanceof DOMRect) || typeof pos !== "number") return;
+      // The OWNING editor — the surface whose pos-space `pos` was captured at
+      // trigger time. The commit inserts the atom into THIS editor (main OR an
+      // embedded footnote/card editor), never blindly into MAIN. Mirrors the
+      // math/figure click bridges below storing `detail.editor`. Validated by
+      // the `isEditable` boolean shape the same way they do; a malformed detail
+      // without it leaves `editor` undefined → the commit falls back to MAIN
+      // (back-compatible) (CHIP 5).
+      const owner = detail.editor as Editor | undefined;
       setAtomCreateRequest({
         kind,
         rect,
         pos,
         refCommand: detail.refCommand ?? "ref",
+        editor: owner && typeof owner.isEditable === "boolean" ? owner : undefined,
       });
     };
     window.addEventListener(ATOM_CREATE_POPOVER_EVENT, handler);

@@ -103,6 +103,7 @@ import {
 } from "@/panels/_shared/card-archive-view";
 import { useCardCreation } from "./editor-layout/card-actions/card-creation";
 import { useCitationActions } from "./editor-layout/card-actions/citations";
+import { resolveLabelDisplay } from "./editor-layout/card-actions/ref";
 import {
   isAnchorableNode,
   MARGINALIA_MIN_MARGIN_LEFT,
@@ -1618,6 +1619,26 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
     addCitation: citationsHook.addCitation,
   });
 
+  // labelRef sibling of `getCitationDisplayText`: resolve a footnote/note-nested
+  // `\ref`'s display number against the MAIN doc (where the referenced
+  // heading/example/figure lives — a card body owns none). Lands in the
+  // CitationDisplayContext so RichTextField's load-time `refreshRefDisplay` can
+  // turn a reloaded ref's empty displayText into its number instead of "??".
+  // Reuses `resolveLabelDisplay` — the SAME resolver the create flow
+  // (`handleInsertRef`) uses — so create-time and load-time agree. Returns null
+  // when the main editor isn't mounted yet (caller keeps the existing display).
+  const getRefDisplayText = useCallback(
+    (label: string, refCommand: string): string | null => {
+      const mainDoc = innerRef.current?.getEditor()?.state.doc;
+      if (!mainDoc) return null;
+      const cmd = (refCommand === "getref" || refCommand === "getfullref"
+        ? refCommand
+        : "ref") as "ref" | "getref" | "getfullref";
+      return resolveLabelDisplay(mainDoc, label, cmd).display;
+    },
+    [],
+  );
+
   // Sync every editor citation node with the panel's CitationRef store:
   //   - displayText follows whatever getDisplayText(command) yields
   //   - command follows the panel's latest CitationRef.command, so that
@@ -2959,9 +2980,16 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
               0,
               coords.bottom - coords.top,
             );
+            // Carry the OWNING editor (`ed` — the one whose pos-space `pos`/`rect`
+            // we just captured) into the event detail, so the commit inserts the
+            // atom back into THIS editor and never mis-targets MAIN. Mirrors the
+            // math/figure click bridges threading `activeMath.editor` /
+            // `activeFigure.editor` (CHIP 5). Here `ed` is the registry bridge's
+            // MAIN editor; the lightning/footnote surface threads its own editor
+            // from ActionsMenuPanel below.
             window.dispatchEvent(
               new CustomEvent(ATOM_CREATE_POPOVER_EVENT, {
-                detail: { kind, rect, pos, refCommand: opts?.refCommand },
+                detail: { kind, rect, pos, refCommand: opts?.refCommand, editor: ed },
               }),
             );
           },
@@ -4183,6 +4211,7 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
           value={{
             getCitationDisplayText: citationsHook.getDisplayText,
             onCitationCreated: handleCitationCreated,
+            getRefDisplayText,
           }}
         >
         <PristineCardsProvider value={pristineManager}>
