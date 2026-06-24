@@ -71,11 +71,23 @@ Status legend: `open` · `in-progress` · `done`
 > scrollbar can't all be disjoint in the 70px lane, currently anchored outboard),
 > gutter-stacking (hard-reload `annotation-history` and watch the margin deck),
 > edge-resize gesture (+ the LOW right-edge/scrollbar overlap note), nested-cite/
-> ref creation, autofocus, badge size. **Follow-ups noted:** keep-alive re-show
-> re-measure (gutter-stacking, needs the L2/L3 visibility trigger); footnote-
-> nesting Phase 2 (`\ref` nesting + docked-panel surface); code-split-with-markers
-> margin floor (LOW). **Deferred features left alone** (Gabriel's FORK-2 call,
-> not bugs): #52 CSL bib preview, first-#53 footnote native-drag.
+> ref creation, autofocus, badge size. **Deferred features left alone**
+> (Gabriel's FORK-2 call, not bugs): #52 CSL bib preview, first-#53 footnote
+> native-drag.
+>
+> **POST-DRAIN, same session (all merged to local main no-ff, NOT pushed; full
+> `tsc` 0 + full vitest 2891 green):**
+> - **Bolt/marker design call RESOLVED** (`8d815147`) — Gabriel chose "widen the
+>   minimum lane". Markers do NOT move; the bolt gets its own band OUTBOARD of the
+>   grid (`[64,92]`); scrollbar `[95,104]`; min right lane 70→104, all DISJOINT;
+>   the geometry test now asserts the disjointness the prior test lacked.
+> - **Follow-ups — all DONE:** keep-alive re-show re-measure (merge `93e5eb69` —
+>   found already-correct-by-construction via the L2 `enabled`-folding; locked
+>   with a comment fix + regression test); footnote-nesting Phase 2 (merge
+>   `c8dca933` — `\ref` is not a card kind ⇒ nothing to nest; docked Citations
+>   panel nesting built); code-split-with-markers margin floor (merge `4ddcad78`
+>   — `!compressX` lane exclusion mirrors zen; cap-vs-floor → pure
+>   `resolveHorizontalMargin` SSOT). OWED: the same live FSA feel-checks.
 
 ---
 
