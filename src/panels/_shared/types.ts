@@ -77,6 +77,26 @@ export interface OmniItem {
    *  focus" bin instead of dropping it (which would read as data loss). Stamped
    *  by the omni-host focus filter; unset/false otherwise. */
   outsideFocus?: boolean;
+  /** When set, this card NESTS under another omni card (its parent) — it
+   *  stays a STANDALONE positioned card in the cascade (NOT a DOM child of
+   *  the parent), but renders one indent step (16px, `ml-4`) to the right and
+   *  is routed to the parent's filter category, so it reads visually like a
+   *  bib card under its cite card. The value is the parent's omni-item `id`
+   *  (the canonical `float:card:<kind>:<id>` key built by `cardPopKey`).
+   *
+   *  Phase 1 (shipped): a `\cite` nested inside a footnote body
+   *  (`structure.citations[].nestedInFootnoteId`) → its footnote's omni item.
+   *  The footnote-nested cite already shares the footnote's anchor `pos`, so
+   *  the cascade already stacks it directly below the footnote card; this
+   *  field adds the indent + the parent-following ordering + the category
+   *  routing. Stamped in `nest-footnote-children.ts` from a snapshot-gated
+   *  map (keystroke-safe — no per-keystroke doc walk).
+   *
+   *  Phase 2 (seam, NOT yet implemented): once `\ref` carries a
+   *  `nestedInFootnoteId`-equivalent tag in the footnote-body walk, refs nest
+   *  the same way for free. Block cards (examples) are out of scope — footnote
+   *  bodies hold only inline content. */
+  parentCardId?: string;
   /** Pre-rendered card. Must include `data-omni-entry={id}` on its
    *  outermost element so `useInTextPositions` can measure it. */
   content: ReactNode;

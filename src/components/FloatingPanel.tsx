@@ -25,6 +25,46 @@ import {
 import { WINDOW_DRAG_BLOCK_SELECTOR } from "@/lib/drag-blocklist";
 
 /**
+ * Floating-shell resize clamps — the single source of truth for how small
+ * or large a floating pop-out may be dragged. Consumed by EVERY edge/corner
+ * resize zone AND by the undock lift-off clamp (which used to duplicate these
+ * magic numbers inline). Height has no fixed max — it's clamped against the
+ * live viewport (`window.innerHeight - FLOAT_VIEWPORT_MARGIN`) so a window
+ * can't grow taller than the screen leaves room for.
+ */
+export const FLOAT_MIN_W = 240;
+export const FLOAT_MAX_W = 900;
+export const FLOAT_MIN_H = 200;
+/** Bottom inset kept clear of the viewport edge when clamping height. */
+export const FLOAT_VIEWPORT_MARGIN = 40;
+
+const clampW = (v: number) => Math.max(FLOAT_MIN_W, Math.min(FLOAT_MAX_W, v));
+const clampH = (v: number) =>
+  Math.max(
+    FLOAT_MIN_H,
+    Math.min(
+      typeof window !== "undefined" ? window.innerHeight - FLOAT_VIEWPORT_MARGIN : Infinity,
+      v,
+    ),
+  );
+
+/** Which edges a resize gesture is dragging. Corners set two flags. Top is
+ *  never resizable — the header strip owns it for move/undock. */
+type ResizeEdges = { left?: boolean; right?: boolean; bottom?: boolean };
+
+/** Body cursor for a given edge combination. Single-axis edges → ew/ns;
+ *  corners → the matching diagonal. */
+function resizeCursor(edges: ResizeEdges): string {
+  const horizontal = edges.left || edges.right;
+  if (edges.bottom && horizontal) {
+    // bottom-left = nesw, bottom-right = nwse.
+    return edges.left ? "nesw-resize" : "nwse-resize";
+  }
+  if (edges.bottom) return "ns-resize";
+  return "ew-resize"; // left or right
+}
+
+/**
  * Imperative handle exposed via `forwardRef`. Used by FloatCard to hand
  * off an in-progress mouse drag from the source card's lift gesture
  * directly into this floating panel — see `card-lift.ts` for the flow.
@@ -173,7 +213,21 @@ function FloatingPanelInner({
         dockedWidth: number | null;
         dockedHeight: number | null;
       }
-    | { mode: "resize"; startX: number; startY: number; origW: number; origH: number }
+    | {
+        mode: "resize";
+        // Which edges are live this gesture. Left moves the left side (right
+        // edge stays pinned); right/bottom grow from a fixed top-left.
+        edges: ResizeEdges;
+        startX: number;
+        startY: number;
+        // Original geometry captured at mousedown. origX/origY are needed for
+        // the left edge: clamping the new width re-derives x from the pinned
+        // right edge (origX + origW), so hitting min/max freezes the left side.
+        origX: number;
+        origY: number;
+        origW: number;
+        origH: number;
+      }
     | null
   >(null);
   const latestPosRef = useRef(pos);
@@ -241,8 +295,8 @@ function FloatingPanelInner({
           const initialFloatRect = {
             x: s.origX + dx,
             y: s.origY + dy,
-            width: Math.max(240, Math.min(900, rawW)),
-            height: Math.max(200, Math.min(window.innerHeight - 40, rawH)),
+            width: clampW(rawW),
+            height: clampH(rawH),
           };
           // Flip the gesture into a normal floating-move: from now on,
           // origX/Y stay anchored to the docked rect's top-left and the
@@ -339,11 +393,35 @@ function FloatingPanelInner({
           setDockDragTarget(proximity);
         }
       } else {
-        const dw = e.clientX - s.startX;
-        const dh = e.clientY - s.startY;
-        const nw = Math.max(240, Math.min(900, s.origW + dw));
-        const nh = Math.max(200, Math.min(window.innerHeight - 40, s.origH + dh));
-        setPos((p) => ({ ...p, width: nw, height: nh }));
+        // Edge-aware resize. Start from the gesture's ORIGINAL geometry
+        // (captured at mousedown) so each axis is a pure function of the
+        // cursor delta — never an accumulation off the live pos.
+        const dx = e.clientX - s.startX;
+        const dy = e.clientY - s.startY;
+        let x = s.origX;
+        // y (top) is never resizable — the header owns the top edge for
+        // move/undock — so it always stays at the gesture's original top.
+        const y = s.origY;
+        let width = s.origW;
+        let height = s.origH;
+        if (s.edges.right) {
+          // Right edge follows the cursor; top-left stays fixed.
+          width = clampW(s.origW + dx);
+        }
+        if (s.edges.left) {
+          // Left edge follows the cursor while the RIGHT edge stays pinned.
+          // Pin the right edge, clamp the width, then re-derive x from it —
+          // so hitting FLOAT_MIN_W / FLOAT_MAX_W naturally freezes the left
+          // side without any separate x clamp.
+          const rightEdge = s.origX + s.origW;
+          width = clampW(s.origW - dx);
+          x = rightEdge - width;
+        }
+        if (s.edges.bottom) {
+          // Bottom edge follows the cursor; top (y) stays fixed.
+          height = clampH(s.origH + dy);
+        }
+        setPos((p) => ({ ...p, x, y, width, height }));
       }
     };
     const onUp = (e: MouseEvent) => {
@@ -518,16 +596,24 @@ function FloatingPanelInner({
     },
   }), []);
 
-  const onResizeMouseDown = (e: React.MouseEvent) => {
+  // Resize-gesture factory. Each edge zone's onMouseDown calls
+  // beginResize({...}) with the edges it controls; the handler captures the
+  // full original geometry (origX/Y/W/H) — left-edge resize needs origX +
+  // origW to keep the right edge pinned — and sets the matching body cursor.
+  // stopPropagation keeps the header move/undock gesture from co-firing.
+  const beginResize = (edges: ResizeEdges) => (e: React.MouseEvent) => {
     dragStateRef.current = {
       mode: "resize",
+      edges,
       startX: e.clientX,
       startY: e.clientY,
+      origX: pos.x,
+      origY: pos.y,
       origW: pos.width,
       origH: pos.height,
     };
     document.body.style.userSelect = "none";
-    document.body.style.cursor = "nwse-resize";
+    document.body.style.cursor = resizeCursor(edges);
     e.preventDefault();
     e.stopPropagation();
   };
@@ -634,15 +720,44 @@ function FloatingPanelInner({
         {children}
       </div>
       {mode === "floating" && (
-        <div
-          onMouseDown={onResizeMouseDown}
-          className="absolute bottom-0 right-0 w-3.5 h-3.5 cursor-nwse-resize"
-          style={{
-            background:
-              "linear-gradient(135deg, transparent 0%, transparent 45%, #b8b4ad 45%, #b8b4ad 55%, transparent 55%, transparent 75%, #b8b4ad 75%, #b8b4ad 85%, transparent 85%)",
-          }}
-          aria-label="Resize"
-        />
+        <>
+          {/* Edge hit-zones — thin (6px) and fully transparent (no styling).
+              L/R span full height, B spans full width. Top is intentionally
+              omitted: the header strip owns it for move/undock. */}
+          <div
+            data-resize-edge="left"
+            onMouseDown={beginResize({ left: true })}
+            className="absolute top-0 left-0 h-full w-1.5 cursor-ew-resize"
+            aria-label="Resize left edge"
+          />
+          <div
+            data-resize-edge="right"
+            onMouseDown={beginResize({ right: true })}
+            className="absolute top-0 right-0 h-full w-1.5 cursor-ew-resize"
+            aria-label="Resize right edge"
+          />
+          <div
+            data-resize-edge="bottom"
+            onMouseDown={beginResize({ bottom: true })}
+            className="absolute bottom-0 left-0 w-full h-1.5 cursor-ns-resize"
+            aria-label="Resize bottom edge"
+          />
+          {/* Invisible 2-axis corner zones (RATIFIED: keep corner ergonomics,
+              zero visible styling). Rendered after the edges so they win the
+              overlapping corner pixels. */}
+          <div
+            data-resize-edge="bottom-left"
+            onMouseDown={beginResize({ bottom: true, left: true })}
+            className="absolute bottom-0 left-0 w-3 h-3 cursor-nesw-resize"
+            aria-label="Resize bottom-left corner"
+          />
+          <div
+            data-resize-edge="bottom-right"
+            onMouseDown={beginResize({ bottom: true, right: true })}
+            className="absolute bottom-0 right-0 w-3 h-3 cursor-nwse-resize"
+            aria-label="Resize bottom-right corner"
+          />
+        </>
       )}
     </div>,
     target,
