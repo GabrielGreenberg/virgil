@@ -395,6 +395,48 @@ export const MARGINALIA_MARGIN_WIDTH = MARGINALIA_MARGIN_WIDTH_LEFT;
 export const MARGINALIA_MIN_MARGIN_RIGHT = MARGINALIA_MARGIN_WIDTH_RIGHT;
 export const MARGINALIA_MIN_MARGIN_LEFT = MARGINALIA_MARGIN_WIDTH_LEFT;
 
+/** The COMFORTABLE per-side horizontal gutter the editor caps margins at when
+ *  the Code pane is open and compressing the editor. A building block of
+ *  SplitWithCode's EDITOR_PANE_COMPRESSED_MIN_PX (≈300px prose + one of these
+ *  per side + border) — they are NOT the same number and are deliberately
+ *  decoupled (398 is visually tuned). A mechanical layout value, not a pref.
+ *  Lives here so the compressed-cap-vs-marker-floor resolution
+ *  (`resolveHorizontalMargin`) is a single pure, testable unit. */
+export const CODE_VIEW_GUTTER_PX = 48;
+
+/**
+ * Resolve ONE side's effective horizontal editor margin from its persisted /
+ * live value, given (a) whether the Code pane is compressing the editor and
+ * (b) whether the marginalia marker lane is reserved.
+ *
+ * Two competing constraints, resolved by a single ratified priority:
+ *   - Compressed code-split caps the margin at the 48px comfort gutter so the
+ *     prose column reads cleanly in a narrow code view (the user's deliberate
+ *     compression FOR code).
+ *   - When markers are shown the margin is floored at the full lane width so
+ *     the marker grid never collides with the scrollbar / bolt / text.
+ *
+ * The lane is NOT reserved in compressed code-split (the caller passes
+ * `laneReserved=false` there, mirroring the zen / Library-reader exclusion):
+ * the comfort cap WINS, markers gracefully degrade, and the editor keeps its
+ * width instead of losing ~150px+ to an unused lane. So the two paths never
+ * both fire — when `compress` is true the floor is inactive, and the `Math.max`
+ * only bites in the normal markers-on editor (where `compress` is false).
+ *
+ * Pure (no React, no DOM) so it's unit-testable away from EditorPane.
+ */
+export function resolveHorizontalMargin(
+  margin: number,
+  {
+    compress,
+    laneReserved,
+    floor,
+  }: { compress: boolean; laneReserved: boolean; floor: number },
+): number {
+  const capped = compress ? Math.min(margin, CODE_VIEW_GUTTER_PX) : margin;
+  return laneReserved ? Math.max(capped, floor) : capped;
+}
+
 /**
  * X-offset, measured rightward from the text edge (`editorRight`), of the
  * selection bolt's LEFT edge. The bolt is the transient ⚡ affordance shown at
