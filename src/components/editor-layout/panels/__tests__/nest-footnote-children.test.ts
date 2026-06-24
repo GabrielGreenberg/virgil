@@ -13,7 +13,10 @@
 import { describe, it, expect } from "vitest";
 import {
   buildNestedFootnoteChildMap,
+  buildNestedFootnoteInfoMap,
   nestFootnoteChildren,
+  partitionDockedCitations,
+  type NestedFootnoteInfo,
 } from "../nest-footnote-children";
 import type { OmniItem } from "@/panels/_shared/types";
 import type { DocStructure } from "@/lib/tiptap/doc-structure/types";
@@ -183,5 +186,125 @@ describe("nestFootnoteChildren", () => {
   it("returns the same array reference when nothing nests", () => {
     const items: OmniItem[] = [item(fnKey("fn1")), item(citKey("cTop"))];
     expect(nestFootnoteChildren(items, new Map())).toBe(items);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Part B — DOCKED surface. The kind-segregated docked Citations panel pulls a
+// footnote-nested cite out of the flat list and renders it as an indented child
+// tagged with its host footnote ("in footnote N"). Same snapshot datum, same
+// 16px indent token; pure helpers below.
+// ---------------------------------------------------------------------------
+
+describe("buildNestedFootnoteInfoMap", () => {
+  it("maps a footnote-nested cite → host footnote id + live number", () => {
+    const structure: DocStructure = {
+      ...EMPTY_STRUCTURE,
+      footnotes: [
+        { id: "fn1", pos: 8, thanks: false, number: 3 },
+        { id: "fn2", pos: 20, thanks: false, number: 4 },
+      ],
+      citations: [
+        { id: "cTop", pos: 5, command: "\\cite{a}", displayText: "A" },
+        {
+          id: "cNested",
+          pos: 8,
+          command: "\\cite{b}",
+          displayText: "B",
+          nestedInFootnoteId: "fn1",
+        },
+      ],
+    };
+    const map = buildNestedFootnoteInfoMap(structure);
+    expect(map.size).toBe(1);
+    expect(map.get("cNested")).toEqual({ footnoteId: "fn1", footnoteNumber: 3 });
+    expect(map.has("cTop")).toBe(false);
+  });
+
+  it("falls back to a null number when the host footnote is not in the snapshot", () => {
+    const structure: DocStructure = {
+      ...EMPTY_STRUCTURE,
+      // No footnotes array entry for fnGone (e.g. mid-edit / pre-renumber).
+      citations: [
+        {
+          id: "cNested",
+          pos: 8,
+          command: "\\cite{b}",
+          displayText: "B",
+          nestedInFootnoteId: "fnGone",
+        },
+      ],
+    };
+    const map = buildNestedFootnoteInfoMap(structure);
+    expect(map.get("cNested")).toEqual({
+      footnoteId: "fnGone",
+      footnoteNumber: null,
+    });
+  });
+
+  it("is empty when no citation is footnote-nested", () => {
+    const structure: DocStructure = {
+      ...EMPTY_STRUCTURE,
+      footnotes: [{ id: "fn1", pos: 8, thanks: false, number: 1 }],
+      citations: [{ id: "cTop", pos: 5, command: "\\cite{a}", displayText: "A" }],
+    };
+    expect(buildNestedFootnoteInfoMap(structure).size).toBe(0);
+  });
+});
+
+describe("partitionDockedCitations", () => {
+  const info = (footnoteId: string, footnoteNumber: number | null): NestedFootnoteInfo => ({
+    footnoteId,
+    footnoteNumber,
+  });
+
+  it("splits flat vs nested, preserving order within each group", () => {
+    const citations = [
+      { id: "a" },
+      { id: "bNested" },
+      { id: "c" },
+      { id: "dNested" },
+    ];
+    const map = new Map<string, NestedFootnoteInfo>([
+      ["bNested", info("fn1", 1)],
+      ["dNested", info("fn2", 2)],
+    ]);
+    const { topLevel, nested } = partitionDockedCitations(citations, map);
+    expect(topLevel.map((c) => c.id)).toEqual(["a", "c"]);
+    expect(nested.map((n) => n.citation.id)).toEqual(["bNested", "dNested"]);
+    expect(nested[0].info).toEqual(info("fn1", 1));
+    expect(nested[1].info).toEqual(info("fn2", 2));
+  });
+
+  it("is identity-stable (same topLevel ref, empty nested) when the map is empty", () => {
+    const citations = [{ id: "a" }, { id: "b" }];
+    const { topLevel, nested } = partitionDockedCitations(citations, new Map());
+    expect(topLevel).toBe(citations);
+    expect(nested).toEqual([]);
+  });
+
+  it("is identity-stable when the map has entries but none match the citations", () => {
+    const citations = [{ id: "a" }, { id: "b" }];
+    // Map references a cite that isn't in this panel's list (host footnote
+    // gone / cite deleted) → no actual nesting, so passthrough.
+    const map = new Map<string, NestedFootnoteInfo>([["zzz", info("fn1", 1)]]);
+    const { topLevel, nested } = partitionDockedCitations(citations, map);
+    expect(topLevel).toBe(citations);
+    expect(nested).toEqual([]);
+  });
+
+  it("two nested cites under one footnote stay grouped after the flat cites, in order", () => {
+    const citations = [{ id: "flat" }, { id: "n1" }, { id: "n2" }];
+    const map = new Map<string, NestedFootnoteInfo>([
+      ["n1", info("fn1", 7)],
+      ["n2", info("fn1", 7)],
+    ]);
+    const { topLevel, nested } = partitionDockedCitations(citations, map);
+    expect(topLevel.map((c) => c.id)).toEqual(["flat"]);
+    expect(nested.map((n) => n.citation.id)).toEqual(["n1", "n2"]);
+    // Combined render order (what the panel feeds CardListPanel + the cycle):
+    // every flat cite, then the nested group.
+    const combined = [...topLevel, ...nested.map((n) => n.citation)];
+    expect(combined.map((c) => c.id)).toEqual(["flat", "n1", "n2"]);
   });
 });
