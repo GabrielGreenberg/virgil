@@ -11,6 +11,8 @@ const mockWrite = vi.fn();
 vi.mock("@/lib/storage", () => ({
   readDocBundle: (...args: unknown[]) => mockRead(...args),
   writeDocBundle: (...args: unknown[]) => mockWrite(...args),
+  // DocPipeline invalidates the sidecar bundle on cleanup (L1).
+  invalidateSidecarBundle: () => {},
 }));
 
 import { useDocument } from "../useDocument";
