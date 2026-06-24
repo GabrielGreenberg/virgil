@@ -305,19 +305,53 @@ export const MARGINALIA_ICON_SIZE = 22;
 export const MARGINALIA_COL_GAP = 6;
 /** Inner padding between the icon column and the text-pod edge */
 export const MARGINALIA_INNER_PAD = 8;
+
+/**
+ * Edge length (px) of the square selection-bolt (⚡) button. Hoisted ABOVE the
+ * right-margin width derivation because the lane width now reserves a dedicated
+ * bolt band outboard of the marker grid (see `MARGINALIA_OUTER_PAD_RIGHT`), so
+ * the width formula depends on this. The bolt's lane geometry derives from it,
+ * so the one place the button's pixel size lives is here in the right-margin
+ * SSOT (SelectionActionsMenu.tsx imports it for its `width`/`height`). Sized to
+ * one menu row's vertical rhythm.
+ */
+export const MARGINALIA_BOLT_SIZE = 28;
+
+/**
+ * Breathing gap between the marker grid's outer (right) edge and the bolt
+ * band's left edge — reuses the inter-column gap (6px), so the bolt reads as a
+ * third "column" one gap outboard of the marker grid.
+ */
+export const MARGINALIA_BOLT_MARKER_GAP = MARGINALIA_COL_GAP;
+/**
+ * Breathing gap between the bolt band's right edge and the scrollbar gutter —
+ * reuses the marker→scrollbar gap (3px) so the bolt clears the scrollbar by the
+ * same ratified margin the grid used to.
+ */
+export const MARGINALIA_BOLT_SCROLLBAR_GAP = MARKER_SCROLLBAR_GAP;
+
 /** Outer padding between the icon column and the panel/viewport edge.
  *
  *  LEFT is widened to 22px to host the heading fold-chevron in that strip
  *  (no scrollbar on the left).
  *
- *  RIGHT is the right-margin geometry SSOT (backlog #8): it must clear the
- *  overlay scrollbar, whose footprint is `SCROLLBAR_GUTTER`. It was a private
- *  `6`, which is < the 9px gutter — so the rightmost marker column sat ~3px
- *  UNDER the scrollbar thumb. Now derived as `SCROLLBAR_GUTTER +
- *  MARKER_SCROLLBAR_GAP` so the marker grid's outer edge sits a few px LEFT
- *  of the scrollbar at any margin width. (= 9 + 3 = 12) */
+ *  RIGHT is the right-margin geometry SSOT (backlog #8, widened follow-up):
+ *  the lane must seat THREE disjoint elements outboard of the marker grid —
+ *  the selection bolt (⚡), then the overlay scrollbar — with breathing gaps:
+ *
+ *    [BOLT_MARKER_GAP 6] [BOLT 28] [BOLT_SCROLLBAR_GAP 3] [SCROLLBAR_GUTTER 9]
+ *
+ *  = 6 + 28 + 3 + 9 = 46. The old value packed the bolt ON TOP of the outboard
+ *  marker column (only 12px of outer-pad, no room for a 28px bolt). Now the
+ *  bolt gets its own dedicated band, disjoint from both marker columns AND the
+ *  scrollbar. The marker grid's column x-offsets are UNCHANGED — only the lane
+ *  (and hence the reserved `--editor-pr`) widens, so the markers don't move. */
 export const MARGINALIA_OUTER_PAD_LEFT = 22;
-export const MARGINALIA_OUTER_PAD_RIGHT = SCROLLBAR_GUTTER + MARKER_SCROLLBAR_GAP;
+export const MARGINALIA_OUTER_PAD_RIGHT =
+  MARGINALIA_BOLT_MARKER_GAP +
+  MARGINALIA_BOLT_SIZE +
+  MARGINALIA_BOLT_SCROLLBAR_GAP +
+  SCROLLBAR_GUTTER;
 /** Back-compat alias — equal to LEFT, the side whose icon packing
  *  depends on the margin width. */
 export const MARGINALIA_OUTER_PAD = MARGINALIA_OUTER_PAD_LEFT;
@@ -355,54 +389,39 @@ export const MARGINALIA_MARGIN_WIDTH = MARGINALIA_MARGIN_WIDTH_LEFT;
  * read-only Library reader hide markers, so they keep their margin freedom
  * down to 0 and never have this floor imposed.
  *
- *   right = INNER_PAD(8) + ICONS_BLOCK_WIDTH(50) + OUTER_PAD_RIGHT(12) = 70
+ *   right = INNER_PAD(8) + ICONS_BLOCK_WIDTH(50) + OUTER_PAD_RIGHT(46) = 104
  *   left  = INNER_PAD(8) + ICONS_BLOCK_WIDTH(50) + OUTER_PAD_LEFT(22)  = 80
  */
 export const MARGINALIA_MIN_MARGIN_RIGHT = MARGINALIA_MARGIN_WIDTH_RIGHT;
 export const MARGINALIA_MIN_MARGIN_LEFT = MARGINALIA_MARGIN_WIDTH_LEFT;
 
 /**
- * Edge length (px) of the square selection-bolt (⚡) button. The bolt's lane
- * geometry derives from this, so the one place the button's pixel size lives
- * is here in the right-margin SSOT (SelectionActionsMenu.tsx imports it for
- * its `width`/`height`). Sized to one menu row's vertical rhythm.
- */
-export const MARGINALIA_BOLT_SIZE = 28;
-
-/**
  * X-offset, measured rightward from the text edge (`editorRight`), of the
  * selection bolt's LEFT edge. The bolt is the transient ⚡ affordance shown at
  * the selection head; it lives in the right margin, NOT over the prose.
  *
- * ── Why the bolt is OUTBOARD-anchored, not at the grid origin ──────────────
- * The reserved right margin is exactly `MARGINALIA_MARGIN_WIDTH_RIGHT` (= 70)
- * wide and already fully packed:
+ * ── The bolt now has its OWN dedicated band (Option A — widened lane) ───────
+ * The earlier design crammed the bolt into a 70px lane already packed with two
+ * 22px marker columns + a 9px scrollbar gutter — there was no 28px hole, so the
+ * bolt had to overlap the outboard marker column. The lane has since been
+ * WIDENED (to 104px) to reserve a dedicated bolt band outboard of the marker
+ * grid, so the bolt is disjoint from BOTH columns AND the scrollbar:
  *
- *   [INNER_PAD 8] [col0 8…30] [gap 30…36] [col1 36…58] [outer 58…70]
- *                                                       (scrollbar 61…70)
+ *   [INNER_PAD 8] [col0 8…30] [gap 30…36] [col1 36…58]   ← markers UNCHANGED
+ *   [BOLT_MARKER_GAP 6] [BOLT 64…92] [BOLT_SCROLLBAR_GAP 3] [SCROLLBAR 95…104]
  *
- * A 28px bolt cannot fit in any sub-band that is disjoint from BOTH marker
- * columns AND the scrollbar — there is no 28px gap in a 70px lane holding two
- * 22px columns plus a 9px scrollbar gutter. So a "never intersects the marker
- * grid" placement is geometrically impossible while the lane is reserved.
+ * The bolt's left edge is anchored just outboard of the marker grid's inner
+ * edge: `INNER_PAD + ICONS_BLOCK_WIDTH + BOLT_MARKER_GAP` = 8 + 50 + 6 = 64,
+ * so the band spans [64…92]. That is:
+ *   - disjoint from col0 (`8…30`) and col1 (`36…58`) — the bolt no longer
+ *     paints over ANY marker column (the user's original complaint);
+ *   - disjoint from the scrollbar (`95…104` at the min lane) — its right edge
+ *     (92) clears the scrollbar's left edge (95) by exactly the
+ *     BOLT_SCROLLBAR_GAP (3). For wider-than-min margins the scrollbar tracks
+ *     the pod's right edge while the bolt stays fixed-from-text, so the gap
+ *     only GROWS — the min lane is the tight case, and it is disjoint.
  *
- * Given that, the bolt is anchored OUTBOARD: its RIGHT edge sits exactly on
- * the scrollbar's left edge (`marginWidth − SCROLLBAR_GUTTER`), pushing its
- * left edge as far right as the lane allows. The result:
- *   - clears the scrollbar entirely (right edge == gutter left edge);
- *   - clears the LEFT marker column entirely — the user's actual complaint
- *     was the bolt painting over a left-column marker; the single-marker /
- *     default case puts the only marker in col0 (`8…30`), and the bolt's left
- *     edge lands at `70 − 9 − 28 = 33`, a 3px clearance past col0's `30`;
- *   - transiently overlaps only the OUTBOARD (right) marker column (`36…58`),
- *     which is occupied only when a line already carries ≥2 markers — and the
- *     bolt is transient (selection-head only) while markers are persistent, so
- *     the two coincide only briefly and only in the dense-marker case.
- *
- * This replaces the old standalone `RIGHT_GAP = 6` (bolt at `textRight + 6`,
- * straddling the text/grid boundary, landing half on the prose and squarely on
- * the LEFT marker column `8…30`) — the worst case, which is exactly what the
- * user flagged. The placement is fully derived from the lane SSOT, not ad-hoc.
+ * The placement is fully derived from the lane SSOT, not ad-hoc.
  */
 export const MARGINALIA_BOLT_LEFT_FROM_TEXT =
-  MARGINALIA_MARGIN_WIDTH_RIGHT - SCROLLBAR_GUTTER - MARGINALIA_BOLT_SIZE;
+  MARGINALIA_INNER_PAD + ICONS_BLOCK_WIDTH + MARGINALIA_BOLT_MARKER_GAP;

@@ -7,12 +7,14 @@
  * Clicking it mounts {@link ActionsMenuPanel} at the button's position.
  *
  * Single placement rule: the bolt's left edge sits at `textRight +
- * MARGINALIA_BOLT_LEFT_FROM_TEXT` (the right-margin geometry SSOT). That
- * offset anchors the bolt OUTBOARD in the reserved margin — right edge on the
- * scrollbar's left edge, left edge clear of the LEFT marker column — instead
- * of at the grid's inner edge (where a 28px bolt covers the left column) or at
- * the old `textRight + 6` (straddling the text/grid boundary). See the
- * constant's docstring for the lane geometry. RAF-batched updates on PM
+ * MARGINALIA_BOLT_LEFT_FROM_TEXT` (the right-margin geometry SSOT). The lane
+ * was widened to give the bolt its OWN dedicated band just outboard of the
+ * marker grid (`INNER_PAD + ICONS_BLOCK_WIDTH + BOLT_MARKER_GAP`), so the bolt
+ * is disjoint from BOTH marker columns AND the scrollbar — fixing the original
+ * complaint (a 28px bolt painting over the left marker column) without moving
+ * any marker. This replaces both the grid-inner-edge placement and the old
+ * `textRight + 6` (straddling the text/grid boundary). See the constant's
+ * docstring for the lane geometry. RAF-batched updates on PM
  * `selectionUpdate` / `update` / `focus` / `blur` plus window `scroll` /
  * `resize`.
  *
@@ -124,9 +126,9 @@ function computePlacement(editor: Editor, cache: EditorViewportCache): Placement
   // Bolt x from the right-margin geometry SSOT (NOT the old standalone
   // `textRight + 6`, which straddled the text/grid boundary and landed
   // squarely on the marginalia grid's LEFT column — the user's complaint).
-  // `MARGINALIA_BOLT_LEFT_FROM_TEXT` anchors the bolt OUTBOARD in the reserved
-  // margin: its right edge meets the scrollbar's left edge, so it clears both
-  // the scrollbar and the left marker column (see the constant's docstring).
+  // `MARGINALIA_BOLT_LEFT_FROM_TEXT` seats the bolt in its OWN dedicated band
+  // just outboard of the marker grid — disjoint from both marker columns AND
+  // the scrollbar (the lane was widened to make room; see the docstring).
   let left = textRight + MARGINALIA_BOLT_LEFT_FROM_TEXT;
   if (left + BUTTON_SIZE > vw - VIEWPORT_MARGIN) {
     left = Math.max(VIEWPORT_MARGIN, vw - BUTTON_SIZE - VIEWPORT_MARGIN);

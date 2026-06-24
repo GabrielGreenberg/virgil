@@ -91,8 +91,9 @@ export const MARGIN_MAX = 240;
  * rise to the right-margin geometry SSOT minimums so the marker grid always
  * fits beside the scrollbar / bolt without eating into the prose (backlog #8).
  * `Math.max` with the base floor so we never LOWER an existing floor (left's
- * 80px lane min already exceeds its 72px base; right's 70px lane min exceeds
- * its 24px base). Top/bottom are unchanged — markers are a horizontal lane.
+ * 80px lane min already exceeds its 72px base; right's 104px lane min — widened
+ * to hold the bolt's own band beside the markers + scrollbar — exceeds its 24px
+ * base). Top/bottom are unchanged — markers are a horizontal lane.
  */
 export const MARGIN_MIN_WITH_MARKERS: Record<MarginSide, number> = {
   left: Math.max(MARGIN_MIN.left, MARGINALIA_MIN_MARGIN_LEFT),

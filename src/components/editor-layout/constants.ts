@@ -28,23 +28,28 @@ export const FLOATING_PANEL_Z_BASE = 1000;
 // left marker column). These constants are the ONE shared lane model that all
 // three derive from, so nothing collides at any margin width.
 //
-// The right margin, measured inward (leftward) from the pod's right edge:
+// The right margin (widened so all four bands are DISJOINT — backlog #8 +
+// follow-up), measured inward (leftward) from the pod's right edge:
 //
 //   pod right edge
 //        │
 //        ▼
-//   ┌────────────┐ SCROLLBAR_GUTTER (the scrollbar thumb's footprint)
-//   ├────┐         MARKER_SCROLLBAR_GAP (breathing room so markers clear it)
-//   │grid│←──────── marker grid (right column ends a gap inboard of the gutter)
+//   ┌──────────┐   SCROLLBAR_GUTTER (the scrollbar thumb's footprint)
+//   ├──┐           MARGINALIA_BOLT_SCROLLBAR_GAP (bolt clears the scrollbar)
+//   │⚡│←────────── selection bolt — its OWN band, OUTBOARD of the grid
+//   ├──┘
+//   ├────┐         MARGINALIA_BOLT_MARKER_GAP (bolt clears the marker grid)
+//   │grid│←──────── marker grid (UNCHANGED x; columns nearest the text)
 //   └────┘
 //   [INNER_PAD]    gap between the grid's inner edge and the text edge
 //        │
 //   text right edge
 //
 // Consumed by: editor-scrollbar.tsx (thumb width/inset), marginalia.ts
-// (MARGINALIA_OUTER_PAD_RIGHT + the right margin width + the min-margin floor),
-// and SelectionActionsMenu.tsx (the bolt's x, derived from the grid's inner
-// edge so the bolt sits in its own sub-band inboard of the grid).
+// (MARGINALIA_OUTER_PAD_RIGHT now spans bolt-gap + bolt + scrollbar-gap +
+// scrollbar; the right margin width + the min-margin floor), and
+// SelectionActionsMenu.tsx (the bolt's x = MARGINALIA_BOLT_LEFT_FROM_TEXT, a
+// dedicated band OUTBOARD of the grid, disjoint from the markers + scrollbar).
 
 /** Width of the overlay scrollbar thumb, in px. */
 export const SCROLLBAR_THUMB_WIDTH = 6;

@@ -9,17 +9,16 @@
  * straddled the marker grid's left column.
  *
  * These tests pin the ONE shared lane model so the three never drift:
- *  (a) the marker outer-pad = scrollbar gutter + breathing gap;
+ *  (a) the marker outer-pad reserves the bolt band + the scrollbar gutter;
  *  (b) the rightmost marker column's right edge clears the scrollbar gutter
  *      (modelled through `computeMarkerPositions`, the real placement fn);
- *  (c) the bolt's x is derived from the lane (anchored OUTBOARD: right edge on
- *      the scrollbar's left edge). A 28px bolt cannot get a sub-band disjoint
- *      from BOTH marker columns AND the scrollbar inside a 70px lane already
- *      holding two 22px columns + the gutter — so the bolt instead clears the
- *      scrollbar AND the LEFT marker column (the user's actual complaint:
- *      single/default markers sit in col0), overlapping only the outboard
- *      right column in the dense-marker case. Pinned through the real
- *      `computeMarkerPositions` so the column x-ranges aren't re-derived.
+ *  (c) the bolt gets its OWN dedicated band just outboard of the marker grid
+ *      (the lane was widened to make room), so the bolt is FULLY DISJOINT from
+ *      BOTH marker columns AND the scrollbar. The disjointness is asserted
+ *      against the column x-ranges from the REAL `computeMarkerPositions` (so
+ *      they aren't hand-derived) and against the scrollbar band at the minimum
+ *      lane (the tight case — the gap only grows for wider margins). The test
+ *      FAILS if anyone shrinks the lane back under the disjoint minimum.
  *  (d) the per-side min-floor equals the full lane width, and the margin-edit
  *      floor rises to it ONLY when the marker lane is reserved.
  */
@@ -42,6 +41,8 @@ import {
   MARGINALIA_MIN_MARGIN_LEFT,
   MARGINALIA_BOLT_LEFT_FROM_TEXT,
   MARGINALIA_BOLT_SIZE,
+  MARGINALIA_BOLT_MARKER_GAP,
+  MARGINALIA_BOLT_SCROLLBAR_GAP,
   type AnchorNodeMetrics,
   type MarginaliaMarker,
 } from "@/lib/marginalia";
@@ -108,10 +109,24 @@ describe("right-margin geometry SSOT — scrollbar gutter", () => {
 });
 
 describe("right-margin geometry SSOT — marker grid clears the scrollbar", () => {
-  it("the right outer-pad = scrollbar gutter + breathing gap (markers clear the scrollbar, not 6 < 9)", () => {
-    expect(MARGINALIA_OUTER_PAD_RIGHT).toBe(SCROLLBAR_GUTTER + MARKER_SCROLLBAR_GAP);
-    // The old bug: outer-pad 6 < gutter 9 → ~3px overlap. The fix puts it ABOVE.
+  it("the right outer-pad reserves the bolt band + the scrollbar gutter (outboard of the markers)", () => {
+    // The outer-pad now seats THREE elements outboard of the marker grid:
+    //   [BOLT_MARKER_GAP] [BOLT] [BOLT_SCROLLBAR_GAP] [SCROLLBAR_GUTTER]
+    expect(MARGINALIA_OUTER_PAD_RIGHT).toBe(
+      MARGINALIA_BOLT_MARKER_GAP +
+        MARGINALIA_BOLT_SIZE +
+        MARGINALIA_BOLT_SCROLLBAR_GAP +
+        SCROLLBAR_GUTTER,
+    );
+    // Concrete pin: 6 + 28 + 3 + 9 = 46.
+    expect(MARGINALIA_OUTER_PAD_RIGHT).toBe(46);
+    // It still clears the scrollbar (the old 6 < 9 bug stays fixed) — and now
+    // also clears the whole bolt band.
     expect(MARGINALIA_OUTER_PAD_RIGHT).toBeGreaterThan(SCROLLBAR_GUTTER);
+    // The reused gap consts are the ratified inter-column / marker-scrollbar
+    // gaps, so the bolt band reads consistently with the grid.
+    expect(MARGINALIA_BOLT_MARKER_GAP).toBe(6);
+    expect(MARGINALIA_BOLT_SCROLLBAR_GAP).toBe(MARKER_SCROLLBAR_GAP);
   });
 
   it("the right margin width recomputes from the new outer-pad", () => {
@@ -120,7 +135,7 @@ describe("right-margin geometry SSOT — marker grid clears the scrollbar", () =
     );
   });
 
-  it("the rightmost marker column's right edge sits LEFT of the scrollbar gutter by exactly the breathing gap", () => {
+  it("the rightmost marker column's right edge sits LEFT of the scrollbar gutter, clearing the whole bolt band", () => {
     // Model the real placement: a 1-line node, right side, 2 markers → both
     // columns placed. The MarginColumn div is `right:0` width
     // MARGINALIA_MARGIN_WIDTH_RIGHT, so cell.x is measured from the column's
@@ -157,42 +172,53 @@ describe("right-margin geometry SSOT — marker grid clears the scrollbar", () =
 
     // Marker right edge must clear (be ≤) the scrollbar's left edge.
     expect(iconRightEdge).toBeLessThanOrEqual(scrollbarLeft);
-    // ...and the clearance is exactly the ratified breathing gap.
-    expect(scrollbarLeft - iconRightEdge).toBe(MARKER_SCROLLBAR_GAP);
+    // ...and the clearance now spans the whole bolt band that sits between the
+    // marker grid and the scrollbar: BOLT_MARKER_GAP + BOLT + BOLT_SCROLLBAR_GAP.
+    expect(scrollbarLeft - iconRightEdge).toBe(
+      MARGINALIA_BOLT_MARKER_GAP +
+        MARGINALIA_BOLT_SIZE +
+        MARGINALIA_BOLT_SCROLLBAR_GAP,
+    );
   });
 });
 
 describe("right-margin geometry SSOT — selection bolt joins the lane", () => {
-  it("the bolt is anchored OUTBOARD: its left offset is derived from the lane (margin − gutter − bolt size)", () => {
+  it("the bolt sits in its OWN band just outboard of the marker grid (INNER_PAD + ICONS_BLOCK_WIDTH + BOLT_MARKER_GAP)", () => {
     expect(MARGINALIA_BOLT_LEFT_FROM_TEXT).toBe(
-      MARGINALIA_MARGIN_WIDTH_RIGHT - SCROLLBAR_GUTTER - BOLT_SIZE,
+      MARGINALIA_INNER_PAD + ICONS_BLOCK_WIDTH + MARGINALIA_BOLT_MARKER_GAP,
     );
-    // It is NOT the grid's inner edge anymore (that put a 28px bolt squarely
-    // over the 22px left marker column — the user's complaint).
+    // Concrete pin: 8 + 50 + 6 = 64 → band [64…92].
+    expect(MARGINALIA_BOLT_LEFT_FROM_TEXT).toBe(64);
+    // It is NOT the grid's inner edge (that put a 28px bolt squarely over the
+    // 22px left marker column — the user's complaint).
     expect(MARGINALIA_BOLT_LEFT_FROM_TEXT).not.toBe(MARGINALIA_INNER_PAD);
   });
 
-  it("the bolt sits in the margin (not over the prose) and clears the scrollbar exactly", () => {
+  it("the bolt sits in the margin (not over the prose) and clears the scrollbar at the minimum lane", () => {
     const textRight = 0; // measure offsets from the text edge
     const boltLeft = textRight + MARGINALIA_BOLT_LEFT_FROM_TEXT;
     const boltRight = boltLeft + BOLT_SIZE;
 
-    // Left edge is in the margin, off the prose (past the inner pad even).
+    // Left edge is in the margin, off the prose (past the marker grid even).
     expect(boltLeft).toBeGreaterThanOrEqual(textRight + MARGINALIA_INNER_PAD);
-    // The bolt clears the scrollbar: its right edge meets the gutter's left
-    // edge exactly (outboard anchor). At the min-margin floor the scrollbar's
-    // left edge sits at textRight + (MIN_MARGIN_RIGHT − SCROLLBAR_GUTTER).
+    // The bolt clears the scrollbar with a strictly-positive gap. The bolt is
+    // FIXED-from-text; the scrollbar tracks the pod's right edge, so the
+    // tightest case is the MINIMUM lane (where the pod edge is closest to the
+    // text). Its right edge (92) sits a BOLT_SCROLLBAR_GAP (3) left of the
+    // scrollbar's left edge (95).
     const scrollbarLeft =
       textRight + (MARGINALIA_MIN_MARGIN_RIGHT - SCROLLBAR_GUTTER);
-    expect(boltRight).toBe(scrollbarLeft);
-    expect(boltRight).toBeLessThanOrEqual(scrollbarLeft);
+    expect(boltRight).toBeLessThan(scrollbarLeft);
+    expect(scrollbarLeft - boltRight).toBe(MARGINALIA_BOLT_SCROLLBAR_GAP);
+    // Concrete pins for the band and the scrollbar at the min lane.
+    expect(boltRight).toBe(92);
+    expect(scrollbarLeft).toBe(95);
   });
 
-  // THE worst-one test the reviewer flagged as MISSING: the bolt must not
-  // paint over the LEFT marker column (the column the default/single marker
-  // occupies — the user's literal complaint). Driven through the REAL grid
-  // placement fn so the column x-ranges are not hand-derived.
-  it("the bolt's x-range does NOT intersect the LEFT marker column (the user's collision)", () => {
+  // THE original complaint: the bolt must not paint over the LEFT marker
+  // column (the column the default/single marker occupies). Driven through the
+  // REAL grid placement fn so the column x-ranges are not hand-derived.
+  it("the bolt's x-range does NOT intersect the LEFT marker column (col0 — the user's collision)", () => {
     const boltRange: [number, number] = [
       MARGINALIA_BOLT_LEFT_FROM_TEXT,
       MARGINALIA_BOLT_LEFT_FROM_TEXT + BOLT_SIZE,
@@ -204,25 +230,71 @@ describe("right-margin geometry SSOT — selection bolt joins the lane", () => {
     expect(boltRange[0]).toBeGreaterThan(leftCol[1]);
   });
 
-  it("the bolt only ever transiently shares the OUTBOARD (right) marker column — and that's the worst case", () => {
-    // Honesty pin: the 70px lane cannot host a 28px bolt disjoint from BOTH
-    // columns + the scrollbar, so the bolt DOES overlap the outboard column
-    // (occupied only when a line carries ≥2 markers). This documents the
-    // accepted, minimized collision so a future edit can't silently regress
-    // it back onto the left column without tripping the test above.
+  // NEW (the widened-lane invariant the prior test pair LACKED): the bolt band
+  // is now disjoint from BOTH marker columns AND the scrollbar. These pins
+  // FAIL the moment anyone shrinks the lane back under the disjoint minimum.
+  it("the bolt's x-range does NOT intersect the OUTBOARD (right) marker column (col1) — the widened-lane fix", () => {
     const boltRange: [number, number] = [
       MARGINALIA_BOLT_LEFT_FROM_TEXT,
       MARGINALIA_BOLT_LEFT_FROM_TEXT + BOLT_SIZE,
     ];
     const ranges = rightColumnRangesFromText();
     const rightCol = ranges[ranges.length - 1]; // col1 = outboard
-    expect(rangesIntersect(boltRange, rightCol)).toBe(true);
+    // Previously the bolt OVERLAPPED this column (the accepted-collision bug).
+    // The lane was widened so it no longer does.
+    expect(rangesIntersect(boltRange, rightCol)).toBe(false);
+    // ...with a strictly-positive clearance: the bolt is to the RIGHT of col1.
+    expect(boltRange[0]).toBeGreaterThan(rightCol[1]);
+    // The gap is exactly the ratified BOLT_MARKER_GAP.
+    expect(boltRange[0] - rightCol[1]).toBe(MARGINALIA_BOLT_MARKER_GAP);
+  });
+
+  it("the bolt's x-range does NOT intersect the scrollbar band (computed from the SSOT, at the minimum lane)", () => {
+    const boltRange: [number, number] = [
+      MARGINALIA_BOLT_LEFT_FROM_TEXT,
+      MARGINALIA_BOLT_LEFT_FROM_TEXT + BOLT_SIZE,
+    ];
+    // Scrollbar band at the minimum lane, in text-edge offsets: it occupies
+    // the outer SCROLLBAR_GUTTER of the lane → [MIN − GUTTER, MIN].
+    const scrollbarBand: [number, number] = [
+      MARGINALIA_MIN_MARGIN_RIGHT - SCROLLBAR_GUTTER,
+      MARGINALIA_MIN_MARGIN_RIGHT,
+    ];
+    expect(rangesIntersect(boltRange, scrollbarBand)).toBe(false);
+    // ...with a strictly-positive clearance: the bolt is to the LEFT of the bar.
+    expect(boltRange[1]).toBeLessThan(scrollbarBand[0]);
+    expect(scrollbarBand[0] - boltRange[1]).toBe(MARGINALIA_BOLT_SCROLLBAR_GAP);
+  });
+
+  it("the three outboard elements tile the lane with no overlap: col1 < bolt < scrollbar, all disjoint", () => {
+    // One assertion that the entire outboard run is monotone + disjoint, so a
+    // future pad/gap edit can't quietly re-introduce ANY pairwise overlap.
+    const ranges = rightColumnRangesFromText();
+    const col0 = ranges[0];
+    const col1 = ranges[ranges.length - 1];
+    const boltRange: [number, number] = [
+      MARGINALIA_BOLT_LEFT_FROM_TEXT,
+      MARGINALIA_BOLT_LEFT_FROM_TEXT + BOLT_SIZE,
+    ];
+    const scrollbarBand: [number, number] = [
+      MARGINALIA_MIN_MARGIN_RIGHT - SCROLLBAR_GUTTER,
+      MARGINALIA_MIN_MARGIN_RIGHT,
+    ];
+    // Strictly increasing left-to-right with no shared x anywhere.
+    expect(col0[1]).toBeLessThanOrEqual(col1[0]); // col0 ≤ col1 (gap between)
+    expect(col1[1]).toBeLessThan(boltRange[0]); // col1 < bolt
+    expect(boltRange[1]).toBeLessThan(scrollbarBand[0]); // bolt < scrollbar
+    // Concrete band pins (col0 8…30, col1 36…58, bolt 64…92, scrollbar 95…104).
+    expect(col0).toEqual([8, 30]);
+    expect(col1).toEqual([36, 58]);
+    expect(boltRange).toEqual([64, 92]);
+    expect(scrollbarBand).toEqual([95, 104]);
   });
 
   it("the bolt's left edge no longer straddles the text/grid boundary (the old `textRight + 6` bug)", () => {
     // Old placement dropped the bolt at textRight + 6, landing half on the
     // prose (< INNER_PAD) and squarely on the grid's left column. The derived
-    // outboard placement starts well past the inner pad instead.
+    // band placement starts well past the marker grid instead.
     const OLD_RIGHT_GAP = 6;
     expect(MARGINALIA_BOLT_LEFT_FROM_TEXT).toBeGreaterThan(OLD_RIGHT_GAP);
     expect(MARGINALIA_BOLT_LEFT_FROM_TEXT).toBeGreaterThan(MARGINALIA_INNER_PAD);
