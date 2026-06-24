@@ -94,8 +94,18 @@ export function useFootnotes(
     return ref;
   }, [persist]);
 
+  /** Persist an edited footnote body into the sidecar mirror. The body's source
+   *  of truth is the editor node (it serializes to the `.tex` `\footnote{}`);
+   *  this keeps `footnotes.json`'s `content` coherent so consumers that read the
+   *  ref — the AI-request inbox summary in `setFootnoteAiRequest`, plus any
+   *  archived/unanchored ref that outlives its atom — don't show creation-time
+   *  (often empty) text. Called from EditorPane's `handleEditFootnote`.
+   *  Deliberately does NOT touch pristine state: a footnote stays
+   *  click-away-discardable while its body is empty, and the caller already
+   *  clears pristine — gated on `cardHasContent` — so marking dirty here
+   *  (unconditionally, before the gate) would reintroduce the lingering-blank
+   *  regression. (task_9768c44e) */
   const updateFootnoteContent = useCallback((id: string, content: JSONContent) => {
-    pristine?.markDirty(id);
     setState((prev) => {
       const next = {
         footnotes: prev.footnotes.map((f) =>
@@ -106,7 +116,7 @@ export function useFootnotes(
       persist(next);
       return next;
     });
-  }, [persist, pristine]);
+  }, [persist]);
 
   const deleteFootnote = useCallback((id: string) => {
     pristine?.markDirty(id);

@@ -3458,6 +3458,14 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
   const handleEditFootnote = useCallback(
     (id: string, newContent: JSONContent) => {
       innerRef.current?.updateFootnoteContent(id, newContent);
+      // Mirror the edit into the footnotes.json sidecar. The body's source of
+      // truth is the editor node (updated above) — but the sidecar `content` is
+      // a mirror read by the AI-request inbox summary (and any archived/
+      // unanchored ref that outlives its atom), and the editor handle never
+      // touches the hook, so without this the sidecar keeps stale creation-time
+      // (often empty) text. Same debounced cadence as the node update, so it
+      // adds no per-keystroke work. (task_9768c44e)
+      footnotesHook.updateFootnoteContent(id, newContent);
       // A blank footnote is registered "pristine" (click-away-discardable).
       // Every OTHER card kind clears that flag through its hook setter when
       // edited; footnotes never did — their edit routes through the editor
@@ -3468,7 +3476,7 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
         footnotePristine.markDirty(id);
       }
     },
-    [footnotePristine],
+    [footnotesHook.updateFootnoteContent, footnotePristine],
   );
   const handleEditFootnoteTitle = useCallback((_id: string, _title: string) => {
     // Footnote titles aren't part of the EditorHandle imperative API

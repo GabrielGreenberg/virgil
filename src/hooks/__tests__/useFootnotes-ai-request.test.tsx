@@ -40,6 +40,7 @@ vi.mock("@/lib/storage", () => ({
 }));
 
 import { useFootnotes } from "../useFootnotes";
+import { richJsonToPlainText } from "@/lib/footnote-content";
 import {
   beginDocPipeline,
   __resetForTests,
@@ -225,5 +226,105 @@ describe("useFootnotes — per-card AI-request flag (BUG #55)", () => {
     // syncFromEditor spreads `...existing`, so the flag must ride along.
     const ref = result.current.footnoteRefs.find((f) => f.id === "fn-3");
     expect(ref?.aiRequest).toBe(true);
+  });
+});
+
+// task_9768c44e — the footnotes.json sidecar `content` is a MIRROR of the editor
+// node body. The edit path (EditorPane.handleEditFootnote) updates the node and
+// then calls `useFootnotes.updateFootnoteContent` to keep the mirror coherent.
+// Without that call the sidecar held creation-time (often empty) text, and the
+// one active consumer — the AI-request inbox summary in `setFootnoteAiRequest` —
+// bridged a stale/empty preview. These pin: (1) the edit reaches the sidecar and
+// flows into a subsequently-bridged request; (2) the edit does NOT clear pristine
+// (a still-empty footnote must stay click-away-discardable — the predecessor
+// pristine fix's invariant).
+function makePristineStub() {
+  return {
+    markNew: vi.fn(),
+    markDirty: vi.fn(),
+    isPristine: vi.fn(() => false),
+    registerDiscard: vi.fn(() => () => {}),
+    discardAll: vi.fn(),
+  };
+}
+
+describe("useFootnotes — sidecar content stays coherent on edit (task_9768c44e)", () => {
+  it("updateFootnoteContent persists the edited body so a later AI-request summary reflects it (not stale seed text)", async () => {
+    beginDocPipeline(DOC);
+    // Seed the creation-time body — the stale value the bug used to bridge.
+    DISK["footnotes.json"] = {
+      footnotes: [
+        {
+          id: "fn-edit",
+          content: { type: "doc", content: [{ type: "paragraph", content: [{ type: "text", text: "stale seed" }] }] },
+          createdAt: "2026-01-01T00:00:00.000Z",
+        },
+      ],
+    } satisfies FootnotesState;
+
+    const resolveAnchor = vi.fn(() => ({ paragraphIds: ["para-7"] }));
+    const { result } = renderHook(() => useFootnotes(DOC, undefined, resolveAnchor));
+    await waitFor(() => expect(result.current.footnoteRefs).toHaveLength(1));
+
+    // The user edits the footnote body (EditorPane routes this through the hook).
+    await act(async () => {
+      result.current.updateFootnoteContent("fn-edit", {
+        type: "doc",
+        content: [{ type: "paragraph", content: [{ type: "text", text: "the edited footnote body" }] }],
+      });
+    });
+
+    // (1) the sidecar mirror now holds the edited body.
+    await waitFor(() => {
+      const s = lastWrite("footnotes.json") as FootnotesState | undefined;
+      const ref = s?.footnotes.find((f) => f.id === "fn-edit");
+      expect(richJsonToPlainText(ref?.content ?? {})).toContain("the edited footnote body");
+    });
+
+    // (2) a subsequently-bridged AI request carries the FRESH summary, never the seed.
+    await act(async () => {
+      result.current.setFootnoteAiRequest("fn-edit", true);
+    });
+    await waitFor(() => {
+      const q = lastWrite("ai-requests.json") as AiRequestsState | undefined;
+      expect(q?.requests).toHaveLength(1);
+    });
+    const req = (lastWrite("ai-requests.json") as AiRequestsState).requests[0];
+    expect(req.text).toContain("the edited footnote body");
+    expect(req.text).not.toContain("stale seed");
+  });
+
+  it("updateFootnoteContent does NOT clear pristine (a still-empty footnote stays discardable)", async () => {
+    beginDocPipeline(DOC);
+    DISK["footnotes.json"] = {
+      footnotes: [
+        {
+          id: "fn-blank",
+          content: { type: "doc", content: [{ type: "paragraph" }] },
+          createdAt: "2026-01-01T00:00:00.000Z",
+        },
+      ],
+    } satisfies FootnotesState;
+
+    const pristine = makePristineStub();
+    const { result } = renderHook(() => useFootnotes(DOC, pristine));
+    await waitFor(() => expect(result.current.footnoteRefs).toHaveLength(1));
+
+    // An edit that leaves the body empty must not mark the footnote dirty —
+    // the caller (handleEditFootnote) owns that decision, gated on cardHasContent.
+    await act(async () => {
+      result.current.updateFootnoteContent("fn-blank", {
+        type: "doc",
+        content: [{ type: "paragraph" }],
+      });
+    });
+    expect(pristine.markDirty).not.toHaveBeenCalled();
+
+    // Contrast: delete DOES clear pristine — pins that the hook still wires
+    // pristine where it should, so the above is a deliberate exemption.
+    await act(async () => {
+      result.current.deleteFootnote("fn-blank");
+    });
+    expect(pristine.markDirty).toHaveBeenCalledWith("fn-blank");
   });
 });
