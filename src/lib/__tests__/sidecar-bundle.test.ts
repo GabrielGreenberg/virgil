@@ -80,7 +80,6 @@ import {
   writeSidecar,
 } from "@/lib/storage-fsa";
 import { beginDocPipeline, __resetForTests as resetPipelines } from "@/lib/multi-window/doc-pipeline";
-import { flushWrites } from "@/lib/write-queue";
 
 /** Seed a fresh doc dir with a virgil/ subdir holding the given sidecar files. */
 function seed(sidecars: Record<string, string>): FakeDirHandle {
@@ -136,8 +135,9 @@ describe("sidecar bundle — write-then-read coherence", () => {
     seed({ "notes.json": '{"notes":[]}' });
     await readSidecarIfExists(DOC_ID, "notes.json"); // warm the bundle
     const handle = beginDocPipeline(DOC_ID);
+    // awaiting writeSidecar awaits the queued write task, which updates the
+    // bundle in place — so the read below sees the fresh value with no flush.
     await writeSidecar(handle, "notes.json", { notes: ["fresh"] });
-    await flushWrites();
     expect(await readSidecarIfExists(DOC_ID, "notes.json")).toEqual({ notes: ["fresh"] });
   });
 });
