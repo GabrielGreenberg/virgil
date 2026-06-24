@@ -141,6 +141,7 @@ import { FLOAT_DEFAULT_SIZE } from "@/floats/float-policy";
 import { textObjectPopoutKey } from "@/text-objects/text-object-registry";
 import { LiftHost } from "@/text-objects/LiftHost";
 import { CARD_REGISTRY } from "@/cards/card-registry";
+import { cardHasContent } from "@/cards/has-content";
 import { runCardLifecycleEvent } from "@/cards/lifecycle/run-event";
 import { bridgeCardAiRequestFlag } from "@/lib/ai-request-bridge";
 import { isCardKind, panelForCardKind, isArchivable, archiveRemovesAtom } from "@/cards/predicates";
@@ -2664,7 +2665,24 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
   useEffect(
     () =>
       footnotePristine.registerDiscard((id) => {
-        innerRef.current?.deleteFootnote(id);
+        // Click-away discard of a blank footnote. The body editor's onChange is
+        // debounced (250ms) and only flushed on blur — which fires AFTER this
+        // pointerdown — so the just-typed content may not have reached the node
+        // yet. Defer past the blur-flush, then delete ONLY if the footnote is
+        // still genuinely empty. Resolved by id against the LIVE editor, so a
+        // doc-switch before the timer fires can't misfire (the stale id won't
+        // resolve). Footnotes never call `discardAll`, so this handler is only
+        // ever the pointerdown path — the defer is safe.
+        setTimeout(() => {
+          const fn = innerRef.current
+            ?.getFootnotes()
+            .find((f) => f.footnoteId === id);
+          if (!fn) return; // already gone, or the doc switched out from under us
+          if (cardHasContent("footnote", { content: fn.content, title: fn.title })) {
+            return; // the user typed something — keep it
+          }
+          innerRef.current?.deleteFootnote(id);
+        }, 0);
       }),
     [footnotePristine],
   );
@@ -3440,8 +3458,17 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
   const handleEditFootnote = useCallback(
     (id: string, newContent: JSONContent) => {
       innerRef.current?.updateFootnoteContent(id, newContent);
+      // A blank footnote is registered "pristine" (click-away-discardable).
+      // Every OTHER card kind clears that flag through its hook setter when
+      // edited; footnotes never did — their edit routes through the editor
+      // handle, not the hook — so a typed-into footnote stayed pristine and the
+      // click-away watcher reaped it. Mark dirty here once it carries real
+      // content (a still-empty footnote stays discardable, as intended).
+      if (cardHasContent("footnote", { content: newContent })) {
+        footnotePristine.markDirty(id);
+      }
     },
-    [],
+    [footnotePristine],
   );
   const handleEditFootnoteTitle = useCallback((_id: string, _title: string) => {
     // Footnote titles aren't part of the EditorHandle imperative API
