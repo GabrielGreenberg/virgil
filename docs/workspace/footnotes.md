@@ -1,4 +1,4 @@
-<!-- last-verified: 7b5335f8 2026-06-22 -->
+<!-- last-verified: a7b0a41a 2026-06-24 -->
 <!-- derives-from: docs/architecture/VIRGIL.md#cowork-pattern -->
 <!-- covers-code: src/lib/tiptap/footnote.ts, src/lib/footnote-commands.ts, src/lib/types.ts, src/hooks/useOrphanedFootnotes.ts, src/cards/has-content.ts, editor/scripts/create_card.py, editor/scripts/apply_response.py -->
 
@@ -57,8 +57,7 @@ contract just places it.
 ```
 
 `FootnoteRef` (`src/lib/types.ts`) is `id`, `content` (Tiptap `JSONContent` doc;
-legacy HTML strings migrate on read), `createdAt`, an optional `title` (a
-`\thanks`-style heading), an optional **`aiRequest?`** flag (#55a — see
+legacy HTML strings migrate on read), `createdAt`, an optional **`aiRequest?`** flag (#55a — see
 [the AI-request flag](#the-per-card-ai-request-flag-55a)), plus the family-wide
 optional `archived?` flag (present for type-uniformity but **inert for
 footnotes** — see the delete-only note below). **There is no anchor / paragraphId

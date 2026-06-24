@@ -1,4 +1,4 @@
-<!-- last-verified: 7b5335f8 2026-06-22 -->
+<!-- last-verified: a7b0a41a 2026-06-24 -->
 <!-- derives-from: docs/architecture/VIRGIL.md#code-organization -->
 <!-- covers-code: src/lib/tiptap/doc-structure, src/hooks/useStructuralRevisions.ts, src/hooks/useInTextPositions.ts -->
 
@@ -50,10 +50,10 @@ The keystroke-sanctity sweep allows these direct subscriptions, because each is 
 - `useDocument.ts` autosaver (1500 ms debounce; subscribes via TipTap's `onUpdate` option through the `EditorPane` wrapper)
 - `useEditorUIState.ts` (transaction subscriber persists section folds, gated via the shared `transactionTouchesFold` predicate — fold-meta or docChanged; the last-paragraph saver rides `selectionUpdate`, 400 ms debounce)
 - `useWordCount.ts` (300 ms debounce, then full doc walk)
-- `EditorLayout.tsx` activity-presence bumper (`:884`, docChanged-gated counter increment)
+- `EditorLayout.tsx` activity-presence bumper (`:917`, docChanged-gated counter increment)
 - `EditorLayout.tsx` + `EditorPane.tsx` PDF-stale bump (O(1): stamp a timestamp ref, flip `pdfStale` at most once per compile cycle)
-- `EditorLayout.tsx` section-path recompute, main pane (`:2083`, `on('update')`; the handler only `cancelAnimationFrame`+`requestAnimationFrame` — the doc-walk/`coordsAtPos` is RAF-coalesced to one frame, plus a perf-flag gate)
-- `EditorLayout.tsx` section-path recompute, mirror pane (`:2176`, same RAF-coalesced pattern scoped to the mirror view)
+- `EditorLayout.tsx` section-path recompute, main pane (`:2147`, `on('update')`; the handler only `cancelAnimationFrame`+`requestAnimationFrame` — the doc-walk/`coordsAtPos` is RAF-coalesced to one frame, plus a perf-flag gate)
+- `EditorLayout.tsx` section-path recompute, mirror pane (`:2251`, same RAF-coalesced pattern scoped to the mirror view)
 - `SelectionActionsMenu.tsx` margin-bolt reposition (`:236`, `on('update')`; suppression check + RAF-already-scheduled bail — the single `coordsAtPos` placement math is RAF-coalesced and short-circuits on a placement-equality bail)
 - `src/components/editor-layout/panels/omni-host.tsx` fold-aware OmniHost tick (`:184`, `on('transaction')`; a single `getMeta(sectionFoldingPluginKey)` check — bumps ONLY on a fold-meta tx, returns immediately on a plain keystroke)
 - `lib/code-pane-bridge.ts` TipTap→code sync (`:431`, `on('transaction')`; docChanged-gated + own-write (`syncing`) filtered, then a debounced serialize — O(1) per tx)

@@ -1,6 +1,6 @@
-<!-- last-verified: 7b5335f8 2026-06-22 -->
+<!-- last-verified: a7b0a41a 2026-06-24 -->
 <!-- derives-from: docs/architecture/VIRGIL.md#latex-round-trip-vocabulary -->
-<!-- covers-code: src/lib/latex-parser.ts, src/lib/latex-serializer.ts, src/lib/tiptap, src/lib/cite-commands.ts, src/lib/heading-types.ts, src/lib/bib-uid.ts -->
+<!-- covers-code: src/lib/latex-parser.ts, src/lib/latex-serializer.ts, src/lib/latex-typography.ts, src/lib/tiptap, src/lib/cite-commands.ts, src/lib/heading-types.ts, src/lib/bib-uid.ts -->
 
 # LaTeX round-trip — operational manifest
 
@@ -59,6 +59,7 @@ examples, figures) → resolve `\ref` display text → merge sidecar paragraph t
 | the natbib + biblatex cite family | `citation` atom (consumes a pending `\vcid`) |
 | `\ref{}` / `\getref{}` / `\getfullref{}` | `labelRef` node |
 | `\ldots` `\dots` `\LaTeX` `\TeX` | literal text (`…`, `LaTeX`, `TeX`) |
+| accents / special letters (`\'e` `\`e` `\^o` `\"u` `\~n` `\v{s}` `\c{c}` `\=o` …; `\ss` `\o` `\ae` `\oe` `\i` `\j` …) and en/em dashes (`--`→–, `---`→—) | the composed Unicode glyph — **round-tripped bidirectionally** via the typography table (SSOT [src/lib/latex-typography.ts](../../src/lib/latex-typography.ts): `matchAccent` / `matchSpecialLetter` / `dashesToGlyphs` parse→glyph, `typographyToLatex` serialize→command). Skipped inside code/verbatim/math/`latexCommand` spans |
 | `\&` `\%` `\$` `\#` `\_` `\{` `\}` `\textbackslash{}` `\textasciitilde{}` `\textasciicircum{}` | the literal character |
 | `\\` | `hardBreak` |
 
@@ -89,6 +90,9 @@ and trust it to round-trip. But text inside a grey `latexCommand` block is opaqu
   **deliberately does not escape** `\ { } $` — those stay live LaTeX syntax the
   editor preserves. So plain text a skill inserts as a Card body is escaped for
   those six, but braces/backslashes/dollars you write are treated as real LaTeX.
+  With `{ typography }` set it also runs `typographyToLatex` after char-escaping,
+  reverse-mapping directly-typed glyphs (é, –, —, …) back to canonical LaTeX
+  commands (the smart-quote precedent), suppressed inside code spans.
 - **Preamble:** with none supplied, `CLASSIC_PREAMBLE` is the default;
   `ensureVirgilCommands` tops up the seven `\v*` no-ops (`\vfid \vcid \vbid
   \vexid \vxid \vlid \vlidend`) + `\usepackage{xcolor}` on every save

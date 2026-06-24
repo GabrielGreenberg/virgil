@@ -1,4 +1,4 @@
-<!-- last-verified: 7b5335f8 2026-06-22 -->
+<!-- last-verified: a7b0a41a 2026-06-24 -->
 <!-- derives-from: docs/architecture/VIRGIL.md#code-organization, docs/architecture/VIRGIL.md#sidecar-and-panel-inventory -->
 <!-- covers-code: src/hooks, src/lib/storage-fsa.ts, src/lib/types.ts, src/panels/panel-registry.ts, src/links/link-registry.ts, src/links/resolve-card-anchor.ts, src/lib/anchor-mint-signal.ts, src/text-objects/text-object-registry.ts, src/text-objects/LiftHost.tsx, src/lib/marginalia.ts, src/lib/actions/action-registry.ts, src/lib/actions/editor-actions-bridge.ts, src/lib/actions/action-icons.tsx, src/lib/tiptap/smart-insert.ts, src/lib/tiptap/insert-inline-atom.ts, src/lib/tiptap/chrome-scroll-margin.ts, src/lib/view-prefs/registry.ts, src/lib/focus-view.ts, src/lib/identity, src/lib/bib-uid.ts, src/cards/has-content.ts, src/cards/lifecycle -->
 
@@ -31,7 +31,7 @@ All in `src/hooks/`. Full list (~50 files) is large; these are the ones most oft
 |---|---|
 | `useDocument` | Main doc state + autosave queue; `paragraphUuids`, `paragraphTitles` maps. Exposes `flushNow` — an immediate doc-bundle write that cancels the 1500 ms debounce, fired on an anchor-UUID **mint** transaction (`isAnchorMintTransaction`, [src/lib/anchor-mint-signal.ts](../../src/lib/anchor-mint-signal.ts)) and on a drop-mode re-anchor COMMIT, so a freshly anchored paragraph's `%!v:<uuid>` reaches the `.tex` on the card's fast clock instead of the doc's slow autosave clock (anchor-persistence race) |
 | `useCitations` | Citation refs + `.bib` loading; `commandFor(id)` serializes a card's `\cite{…}` for the drop spec's create-if-absent branch (returns null for a keyless draft, via the shared `citationCommandOrNull` keyless-citation predicate). When the identity-cascade flag is on, a citekey rename routes through the `IdentityCascade` (registers the `\cite{}` doc-rewrite migrator) and `replaceBibEntry`/`updateBibEntry` carry the durable `BibEntry.uid` so uid-keyed sidecars don't strand |
-| `useFootnotes` | Footnote persistence + numbering |
+| `useFootnotes` | Footnote persistence + numbering; `updateFootnoteContent` mirrors body edits into the `footnotes.json` sidecar (9e53587d) so a footnote you typed into survives click-away, and owns the `FootnoteRef.aiRequest` flag |
 | `useOrphanedFootnotes` | Durable per-doc home for orphaned footnotes (marker gone, body recoverable), backed by the `orphaned-footnotes.json` sidecar via `usePersistentState` (load-on-docId, debounced persist, docId-reset so orphans don't bleed cross-doc). Feeds the Footnotes + Search panels. Cutover gated behind `virgil:inline-atom-lifecycle` |
 | `useRevisions` | Revision/comment threads |
 | `useSuggestions` | AI line-edit suggestion state |
@@ -93,6 +93,8 @@ Every writer funnels through `enqueueDocWrite`, and that funnel is where the **r
 
 On load, `readDocBundle` assigns paragraph UUIDs and now writes the re-stamped `.tex` (+ `virgil.json` sidecar) back to disk opportunistically (`writeReStampedTexOnLoad`, 10e86d6) — parity with storage-dev, so a UUID minted for a paragraph that lacked a `%!v:` marker is durable BEFORE the editor mounts (not volatile until the next 1500 ms autosave; closes the production-only anchor-orphan-on-reload window). Fire-and-forget, routed through `enqueueDocWrite` with the active-handle / pipeline staleness guard so a read during a doc switch can't write to the wrong file, and preamble-preserving like `writeDocBundle`.
 
+On a fresh paper mount, `readSidecarBundle(docId)` (`storage-fsa.ts:277`) coalesces what used to be ~17 per-sidecar reads into ONE `virgil/` directory acquire — cache-first, reading every `ALL_SIDECAR_FILENAMES` entry ([src/lib/sidecar-files.ts](../../src/lib/sidecar-files.ts)) in a single parallel pass. This is the L1 layer that made the paper↔Library tab bounce cheap (5f718bd8); per-hook `readSidecar` calls hit the warm bundle instead of re-acquiring the directory each.
+
 Files on disk (per paper):
 - `<name>.tex` — the paper (source of truth)
 - `<name>.bib` (optional) — bibliography
@@ -116,13 +118,18 @@ All are JSON files. Schemas in [src/lib/types.ts](../../src/lib/types.ts).
 | `notifications.json` | Per-doc inbox of completion entries written by editor-side skills | [src/hooks/useDocNotificationStream.ts](../../src/hooks/useDocNotificationStream.ts) polls and toasts unseen items |
 | `bib-review-requests.json` | Per-entry bibliography field/note reviews. `BibReviewRequest.entryUid` (T1) targets the durable `BibEntry.uid` so a citekey rename re-points nothing; `bibKey` is a human-readable mirror / legacy fallback | Bibliography cards |
 | `annotations.json` | Per-entry bibliography annotations. Legacy flat `citekey → html` (`AnnotationsState`); under `virgil:identity-cascade` migrates non-destructively to uid-keyed `AnnotationsStateV2` (`{ v:2, byUid, orphanByKey }`) so a citekey rename never strands a note (BIB-A2-01) | Bibliography annotation editor |
+| `footnotes.json` | Footnote bodies (Tiptap `JSONContent`) + the per-card `FootnoteRef.aiRequest`/`archived` flags. Numbering and in-text positions derive live from the `.tex`, NOT here | Footnotes panel / omni; [src/hooks/useFootnotes.ts](../../src/hooks/useFootnotes.ts) |
 | `orphaned-footnotes.json` | Durable orphaned-footnote bodies (versioned `{ version:1, orphans }`; absent ⇒ empty) | [src/hooks/useOrphanedFootnotes.ts](../../src/hooks/useOrphanedFootnotes.ts); Footnotes + Search panels |
 | `editor-state.json` | Last-edited paragraph + collapsed section folds + misc editor state. Schema moved from PM positions to paragraph UUIDs in 7d702de so structural edits between sessions don't lose the target | Restored on reopen — scrolls back to the last paragraph and reapplies folds |
 | `cutter.json` | Cutter cards (comments + suggestions) and optional word-count goal | Cutter panel; [src/hooks/useCutter.ts](../../src/hooks/useCutter.ts) |
 | `collab.json` | Turn-taking collab state: pen holder, heartbeat timestamps, per-user presence entries (cursor paragraph, card focus claims) | [src/hooks/useCollab.ts](../../src/hooks/useCollab.ts); types/constants in [src/lib/collab.ts](../../src/lib/collab.ts) |
-| `doc-settings.json` | Per-document settings (currently: `style` id for the preamble preset) | `useDocumentStyle` reads/writes; schema in [src/lib/document-settings.ts](../../src/lib/document-settings.ts) |
+| `document-settings.json` | Per-document settings (currently: `style` id for the preamble preset) | `useDocumentStyle` reads/writes; schema in [src/lib/document-settings.ts](../../src/lib/document-settings.ts) |
 
 Agents never touch this app — they read the same `.tex`/`.bib` and write these sidecars. Virgil polls/watches and surfaces changes.
+
+### External-change detection
+
+[src/lib/disk-watcher.ts](../../src/lib/disk-watcher.ts) (mounted by `DiskWatcherProvider`) is a per-doc wall-clock `setInterval` poller (~3 s, paused while `document.hidden`, immediate on tab-focus) that detects out-of-band edits to the `.tex`/`.bib` on disk — Overleaf-via-sync, `git pull`, `vim`, Dropbox — and raises the `ExternalChangeBadge` topbar pill ([src/components/ExternalChangeBadge.tsx](../../src/components/ExternalChangeBadge.tsx); amber = clean reload, danger = conflict with unsaved edits). It compares a content fingerprint owned by the `diskLedger` ([src/lib/disk-ledger.ts](../../src/lib/disk-ledger.ts)) — stamped ONLY on load + writes, never on plain reads (the anti-flicker lynchpin) — against fresh `statFiles` / `readTextFile` reads (`getBibFilename` resolves the `.bib` name). Autosave pauses on a detected change; reconcile reuses `useDocument.refetch()` and never auto-merges. The watcher *pulls* the dirty flag at poll time rather than subscribing to the editor, so it does zero per-keystroke work (a wall-clock-service keystroke-sanctity exemption — see AGENTS.md).
 
 ## EditorPane vs EditorLayout
 
@@ -135,6 +142,8 @@ The two bundles passed to EditorPane:
 - `menuBar: EditorPaneMenuBarBundle` — toggle state + setters, para-nav, dialog openers, detached-toolbar refs from the shell. Reader passes none → docked MenuBar + detached toolbars stay dormant. (This is the one bundle the Reader genuinely omits.)
 
 The `chrome` prop ([src/components/editor-layout/chrome-config.ts](../../src/components/editor-layout/chrome-config.ts)) gates feature visibility per surface: main app passes `FULL_CHROME`, Reader passes `READER_CHROME` (note-only action toolbar, no formatting toolbar, no MenuBar edit items, 6-kind panel whitelist).
+
+**Tab-switch keep-alive.** The main doc editor is hoisted into a `display:none` `KeepAliveSlot` ([src/lib/keep-alive/KeepAliveSlot.tsx](../../src/lib/keep-alive/KeepAliveSlot.tsx)) so the paper↔Library tab bounce doesn't remount it — `currentDocId` stays stable, so the autosave wall holds and the in-memory doc + selection survive the bounce instead of reloading fresh. A hidden editor is inert (keystroke-safe: nothing runs while it's `display:none`). `useKeepAliveLRU.ts` keeps the last N Library readers warm; `visibility-context.tsx` threads the visible/hidden signal so children can pause their own work.
 
 ## Panel / card rendering
 
@@ -173,7 +182,7 @@ Floats spawn near their trigger element via `popCardAtAnchor` in EditorPane (whi
 
 Two related abstractions, both now mounted inside EditorPane:
 
-- **`cardCreation` context** ([contexts/card-creation.tsx](../../src/components/editor-layout/contexts/card-creation.tsx) + [card-actions/card-creation.ts](../../src/components/editor-layout/card-actions/card-creation.ts)) — collapses the historical "create + select + pop-at-anchor" dance into single `cardCreation.createNote/createCut/createTodo/createFootnote/createCitation/createReport/createReportRequest` calls. Each action trigger (the gutter `SelectionActionsMenu`, the `DragHandleMenu`) routes through it, so creation behavior stays consistent across entry points. (The old margin `MarginActionToolbar` and the redundant strip `ActionsStripButton` that also fed it were deleted in bcc583a and backlog #6 respectively.) The pop-at-anchor side now flows through `popCardAtAnchor` inside EditorPane (gated on `viewPrefs`).
+- **`cardCreation` context** ([contexts/card-creation.tsx](../../src/components/editor-layout/contexts/card-creation.tsx) + [card-actions/card-creation.ts](../../src/components/editor-layout/card-actions/card-creation.ts)) — collapses the historical "create + select + pop-at-anchor" dance into single `cardCreation.createNote/createCut/createTodo/createFootnote/createCitation/createReport/createReportRequest` calls. Each action trigger (the gutter `SelectionActionsMenu`, the `DragHandleMenu`) routes through it, so creation behavior stays consistent across entry points. (The old margin `MarginActionToolbar` and the redundant strip `ActionsStripButton` that also fed it were deleted in bcc583a and backlog #6 respectively.) The pop-at-anchor side now flows through `popCardAtAnchor` inside EditorPane (gated on `viewPrefs`). On a **user-initiated** create of an editable-body kind (`cardKindHasEditableBody` SSOT), the central `finishCreate` chokepoint now auto-expands + selects + **focuses** the new card's body via `focusNewCard` (picking the visible instance); AI/programmatic callers pass `autoFocus:false` and citation keeps its own popover focus (5424f49a).
 - **`pristine-cards` context** + `usePristineCardManager` — tracks cards that were just created but never edited by the user; auto-discards them if the user closes/blurs without typing. Every card-bearing hook (`useNotes`, `useCutter`, `useTodos`, `useReports`, `useCitations`, `useFootnotes`) plugs into this. EditorPane owns the manager; EditorLayout still constructs a parallel manager because AIWindow + the click-away mutex effect read selection state on the shell side.
 
 ## System dialog primitive
