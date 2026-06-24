@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import { SCROLLBAR_THUMB_WIDTH, SCROLLBAR_RIGHT_INSET } from "./constants";
 
 /**
  * Custom thin scrollbar tucked just inside the editor column's right edge.
@@ -27,8 +28,12 @@ export function EditorScrollbar({
   editorColRef,
   topInset = 40,
   bottomInset = 18,
-  width = 6,
-  rightInset = 3,
+  // Width + rightInset default to the right-margin geometry SSOT
+  // (constants.ts) so the scrollbar's footprint (SCROLLBAR_GUTTER) and the
+  // marginalia / selection-bolt clearances that derive from it can never
+  // drift apart. Callers may still override per-surface.
+  width = SCROLLBAR_THUMB_WIDTH,
+  rightInset = SCROLLBAR_RIGHT_INSET,
 }: {
   rowRef: React.RefObject<HTMLElement | null>;
   editorColRef: React.RefObject<HTMLElement | null>;

@@ -12,10 +12,19 @@ import { createContext, useContext, useMemo, type ReactNode } from "react";
  * - `onCitationCreated(command)` registers a brand-new citation so its
  *   card shows up in the citations panel, and returns the stable id +
  *   display for the mini-editor's Citation node to attach.
+ * - `getRefDisplayText(label, refCommand)` resolves a `\ref`/`\getref`/
+ *   `\getfullref` to its display number against the MAIN doc — the
+ *   labelRef sibling of `getCitationDisplayText`. A footnote/note body
+ *   owns no headings/examples/figures, and the doc-level ref-display
+ *   pass (editor-extensions.ts) can't recurse into a footnote's opaque
+ *   sub-doc, so a freshly-RELOADED footnote-nested ref would render as
+ *   "??" without this. Returns null when no provider can resolve it
+ *   (caller keeps whatever displayText it already had).
  */
 export interface CitationDisplayContextValue {
   getCitationDisplayText: (command: string) => string;
   onCitationCreated: (command: string) => { id: string; displayText: string };
+  getRefDisplayText?: (label: string, refCommand: string) => string | null;
 }
 
 const CitationDisplayCtx = createContext<CitationDisplayContextValue | null>(null);
@@ -35,7 +44,7 @@ export function CitationDisplayProvider({
   // resolution would actually differ.
   const memoValue = useMemo(
     () => value,
-    [value.getCitationDisplayText, value.onCitationCreated],
+    [value.getCitationDisplayText, value.onCitationCreated, value.getRefDisplayText],
   );
   return <CitationDisplayCtx.Provider value={memoValue}>{children}</CitationDisplayCtx.Provider>;
 }

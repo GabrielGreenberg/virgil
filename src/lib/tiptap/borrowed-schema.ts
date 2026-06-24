@@ -117,12 +117,25 @@ export const BORROWED_BLOCK_ATOM_NAMES = [
 
 export interface BorrowedSchemaOptions {
   /**
-   * Include the read-only `labelRef` (\ref) + `footnote` (nested footnote
-   * marker) atoms. BorrowedMainText sets this so borrowed prose renders refs
-   * and nested footnote markers; RichTextField omits it (its editable cards
-   * never need to author those). Default `false`.
+   * Include BOTH the `labelRef` (\ref) AND `footnote` (nested footnote marker)
+   * atoms. BorrowedMainText sets this so borrowed prose renders refs and nested
+   * footnote markers in read-only display. Equivalent to
+   * `{ includeLabelRef: true, includeFootnote: true }`. Default `false`.
    */
   includeLabelRefFootnote?: boolean;
+  /**
+   * Include the `labelRef` (\ref) atom only. RichTextField (the editable
+   * footnote/note body) sets this so a `\ref` CREATED inside a footnote (CHIP 5)
+   * has a node type to insert into and round-trips — WITHOUT pulling in the
+   * nested-`footnote` marker (footnotes can't nest). Implied by
+   * `includeLabelRefFootnote`. Default `false`.
+   */
+  includeLabelRef?: boolean;
+  /**
+   * Include the nested `footnote` marker atom only. Implied by
+   * `includeLabelRefFootnote`. Default `false`.
+   */
+  includeFootnote?: boolean;
 }
 
 /**
@@ -141,14 +154,21 @@ export interface BorrowedSchemaOptions {
 export function buildBorrowedAtomSchema(
   opts: BorrowedSchemaOptions = {},
 ): AnyExtension[] {
-  const { includeLabelRefFootnote = false } = opts;
+  const { includeLabelRefFootnote = false, includeLabelRef = false, includeFootnote = false } = opts;
+  // `includeLabelRefFootnote` is the combined alias (both); the granular flags
+  // let a surface opt into just one (RichTextField wants `labelRef` for a
+  // footnote-nested `\ref` but NOT the nested-`footnote` marker — footnotes
+  // can't nest). CHIP 5.
+  const wantLabelRef = includeLabelRefFootnote || includeLabelRef;
+  const wantFootnote = includeLabelRefFootnote || includeFootnote;
   return [
     // ── Inline atoms ────────────────────────────────────────────────────
     // Registered BARE (default `surface: "main"`) to preserve the card
     // surfaces' historical behavior exactly — see the module header.
     InlineMath,
     Citation,
-    ...(includeLabelRefFootnote ? [LabelRef, Footnote] : []),
+    ...(wantLabelRef ? [LabelRef] : []),
+    ...(wantFootnote ? [Footnote] : []),
     LatexCommandMark,
     DisplayMath,
     // ── Block-atom previews (cardContext: compact static preview) ────────

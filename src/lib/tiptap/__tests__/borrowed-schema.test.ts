@@ -110,6 +110,40 @@ describe("borrowed-schema (backlog #11)", () => {
     ]);
   });
 
+  it("includeLabelRef (CHIP 5) adds labelRef but NOT the nested footnote marker", () => {
+    // RichTextField's actual config: a footnote-nested `\ref` needs a labelRef
+    // node to insert into + round-trip, but footnotes can't nest — so the
+    // `footnote` marker stays out of the editable footnote body's schema.
+    const exts = buildBorrowedAtomSchema({ includeLabelRef: true });
+    const got = names(exts);
+    expect(got).toContain("labelRef");
+    expect(got).not.toContain("footnote");
+    expect(got).toEqual([
+      "inlineMath",
+      "citation",
+      "labelRef",
+      "latexCommand",
+      "displayMath",
+      "texBlock",
+      "figureBlock",
+      "figureCaption",
+      "graphicsBlock",
+      "latexComment",
+    ]);
+  });
+
+  it("includeFootnote adds the footnote marker but NOT labelRef", () => {
+    const got = names(buildBorrowedAtomSchema({ includeFootnote: true }));
+    expect(got).toContain("footnote");
+    expect(got).not.toContain("labelRef");
+  });
+
+  it("includeLabelRefFootnote remains the combined alias (both)", () => {
+    const got = names(buildBorrowedAtomSchema({ includeLabelRefFootnote: true }));
+    expect(got).toContain("labelRef");
+    expect(got).toContain("footnote");
+  });
+
   it("registers block atoms in cardContext (compact-preview) mode", () => {
     const exts = buildBorrowedAtomSchema({ includeLabelRefFootnote: true });
     for (const blockName of ["texBlock", "figureBlock", "graphicsBlock", "latexComment"]) {

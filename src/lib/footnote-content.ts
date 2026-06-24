@@ -9,6 +9,12 @@
 
 import type { JSONContent } from "@tiptap/react";
 import { generateShortId } from "@/lib/uuid";
+import {
+  matchAccent,
+  matchSpecialLetter,
+  dashesToGlyphs,
+  typographyToLatex,
+} from "@/lib/latex-typography";
 
 const HTML_TAG_RE = /<[^>]+>/;
 
@@ -272,8 +278,8 @@ export function htmlToJson(html: string): JSONContent {
 // JSON ↔ LaTeX (used by latex-parser / latex-serializer)
 // ─────────────────────────────────────────────────────────────────────────────
 
-function escapeLatex(text: string): string {
-  return text
+function escapeLatex(text: string, opts?: { typography?: boolean }): string {
+  const escaped = text
     .replace(/(?<!\\)([&%#_])/g, "\\$1")
     .replace(/~/g, "\\textasciitilde{}")
     .replace(/\^/g, "\\textasciicircum{}")
@@ -281,6 +287,9 @@ function escapeLatex(text: string): string {
     .replace(/”/g, "''")
     .replace(/(^|[\s([{—–])"/g, "$1``")
     .replace(/"/g, "''");
+  // Typographic reverse-map runs AFTER char-escaping so its `\^{e}`/`\~{n}`
+  // output isn't re-escaped. Suppressed for code spans by the caller.
+  return opts?.typography === false ? escaped : typographyToLatex(escaped);
 }
 
 function serializeMarks(text: string, marks?: { type: string }[]): string {
@@ -292,7 +301,9 @@ function serializeMarks(text: string, marks?: { type: string }[]): string {
       .replace(/(^|[\s([{—–])"/g, "$1``")
       .replace(/"/g, "''");
   }
-  let result = escapeLatex(text);
+  // Code spans are verbatim — suppress typography (memo §A exclusion).
+  const inCode = marks.some((m) => m.type === "code");
+  let result = escapeLatex(text, { typography: !inCode });
   for (const mark of marks) {
     switch (mark.type) {
       case "bold":
@@ -319,6 +330,19 @@ function serializeInlineNode(node: JSONContent): string {
     const cid = node.attrs?.citationId as string | undefined;
     const idMarker = cid ? `\\vcid{${cid}}` : "";
     return `${idMarker}${(node.attrs?.command as string) || ""}`;
+  }
+  // labelRef (\ref / \getref / \getfullref) — a footnote body can now hold a
+  // nested cross-reference (CHIP 5: `\ref` created while editing inside a
+  // footnote). Without this case `richJsonToLatex` would DROP the ref on save,
+  // since the footnote node serializes its body through here (latex-serializer's
+  // footnote case → richJsonToLatex). Mirror the main serializer's
+  // `serializeLabelRef` so the body round-trips to `\footnote{… \ref{x} …}`.
+  if (node.type === "labelRef") {
+    const label = (node.attrs?.label as string) || "";
+    const cmd = (node.attrs?.refCommand as string) || "ref";
+    if (cmd === "getref") return `\\getref{${label}}`;
+    if (cmd === "getfullref") return `\\getfullref{${label}}`;
+    return `\\ref{${label}}`;
   }
   if (node.type === "hardBreak") return " ";
   return "";
@@ -411,7 +435,7 @@ export function richLatexToJson(latex: string): JSONContent {
   };
 }
 
-function parseInlineLatex(text: string): JSONContent[] {
+function parseInlineLatex(text: string, inCode = false): JSONContent[] {
   const nodes: JSONContent[] = [];
   let i = 0;
   let buffer = "";
@@ -421,7 +445,9 @@ function parseInlineLatex(text: string): JSONContent[] {
 
   const flush = () => {
     if (buffer) {
-      nodes.push({ type: "text", text: buffer });
+      // Dashes → en/em glyph at flush, except inside code spans (memo §A).
+      const flushed = inCode ? buffer : dashesToGlyphs(buffer);
+      nodes.push({ type: "text", text: flushed });
       buffer = "";
     }
   };
@@ -462,7 +488,8 @@ function parseInlineLatex(text: string): JSONContent[] {
         if (closed !== -1) {
           flush();
           const inner = text.slice(open, closed);
-          const innerNodes = parseInlineLatex(inner);
+          // `\texttt{}` is a code span — suppress typography in its body.
+          const innerNodes = parseInlineLatex(inner, cmdName === "texttt");
           const markType =
             cmdName === "textbf" ? "bold" :
             cmdName === "textit" ? "italic" :
@@ -530,6 +557,39 @@ function parseInlineLatex(text: string): JSONContent[] {
         }
       }
 
+      // \ref{key} / \getref{key} / \getfullref{key} — cross-reference, the
+      // re-parse twin of the labelRef serialize case above (CHIP 5). A footnote
+      // body that round-trips through `\footnote{… \ref{x} …}` must re-parse the
+      // ref back into a `labelRef` node here; otherwise it falls through to the
+      // unknown-\command branch and renders as grey monospace inside the
+      // footnote. `displayText`/`targetKind` are resolved later by the doc-level
+      // ref-display pass — mirror the main parser's labelRef attrs.
+      const refCmdMatch = rest.match(/^\\(getfullref|getref|ref)\{/);
+      if (refCmdMatch) {
+        const open = i + refCmdMatch[0].length - 1; // index of the `{`
+        const closed = findClose(text, open);
+        if (closed !== -1) {
+          flush();
+          const refCommand =
+            refCmdMatch[1] === "getfullref"
+              ? "getfullref"
+              : refCmdMatch[1] === "getref"
+                ? "getref"
+                : "ref";
+          nodes.push({
+            type: "labelRef",
+            attrs: {
+              label: text.slice(open + 1, closed),
+              displayText: "",
+              refCommand,
+              targetKind: null,
+            },
+          });
+          i = closed + 1;
+          continue;
+        }
+      }
+
       // Common text macros
       const textCmdMatch = rest.match(/^\\(ldots|dots|LaTeX|TeX)\b/);
       if (textCmdMatch) {
@@ -551,6 +611,24 @@ function parseInlineLatex(text: string): JSONContent[] {
         else buffer += ch;
         i += escMatch[0].length;
         continue;
+      }
+
+      // Typographic accents (\'e \v{s} \c{c} …) + special letters (\ss \o …)
+      // → composed glyph, BEFORE the unknown-\command fallback so they don't
+      // become grey monospace. Suppressed inside code spans (memo §A).
+      if (!inCode) {
+        const accent = matchAccent(text, i);
+        if (accent) {
+          buffer += accent.glyph;
+          i = accent.end;
+          continue;
+        }
+        const special = matchSpecialLetter(text, i);
+        if (special) {
+          buffer += special.glyph;
+          i = special.end;
+          continue;
+        }
       }
 
       // Unknown \command — preserve as raw text marked latexCommand
@@ -620,6 +698,18 @@ export function richJsonToPlainText(json: JSONContent | unknown): string {
     if (node.type === "text") return node.text || "";
     if (node.type === "inlineMath") return `$${node.attrs?.latex || ""}$`;
     if (node.type === "citation") return (node.attrs?.displayText as string) || (node.attrs?.command as string) || "";
+    // labelRef (\ref / \getref / \getfullref) — a footnote body can hold a
+    // nested cross-reference (CHIP 5). Like citation, it's a leaf atom with no
+    // `content`, so without this case it falls through to `return ""` and the
+    // ref VANISHES from the plain-text projection (drag ghosts, clipboard,
+    // tooltips, search, compressed/omni previews). Mirror the citation case:
+    // prefer the resolved number, fall back to the raw `\ref{label}` command.
+    if (node.type === "labelRef") {
+      const display = node.attrs?.displayText as string | undefined;
+      if (display) return display;
+      const cmd = (node.attrs?.refCommand as string) || "ref";
+      return `\\${cmd}{${(node.attrs?.label as string) || ""}}`;
+    }
     if (node.type === "hardBreak") return "\n";
     if (node.type === "paragraph") return (node.content || []).map(walk).join("");
     if (node.type === "bulletList" || node.type === "orderedList") {

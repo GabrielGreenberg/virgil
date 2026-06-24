@@ -19,6 +19,9 @@ import type { TextObjectKind } from "@/text-objects/types";
 import type { CardKind } from "@/cards/types";
 import { panelForCardKind } from "@/cards/predicates";
 import { suppressNextPlacement } from "@/links/_shared/usePlacement";
+import { cardStore } from "@/links/_shared/anchored-card-store";
+import { cardPopKey } from "@/panels/panel-registry";
+import { focusNewCard, cardKindHasEditableBody } from "@/lib/focus-new-card";
 import type { EditorHandle } from "../../Editor";
 import type {
   RecentlyAddedKind,
@@ -141,6 +144,18 @@ export interface CardCreationDeps {
  */
 export type CardCreateMode = "float" | "omni";
 
+/**
+ * Caret-into-body gate (CHIP B). When omitted it defaults to `true`
+ * (user-initiated create → drop the cursor into the new card's body). AI /
+ * programmatic create paths pass `false` so they don't yank focus mid-edit.
+ * Threaded through every factory's opts and read centrally in `finishCreate`.
+ */
+type AutoFocusOpt = {
+  /** Drop the caret into the new card's body. Defaults to `true`
+   *  (user-initiated). Pass `false` for AI/programmatic creation. */
+  autoFocus?: boolean;
+};
+
 export interface CardCreationApi {
   createNote: (opts: {
     paragraphId?: string | null;
@@ -153,7 +168,7 @@ export interface CardCreationApi {
      *  `TextObjectRef` (e.g. anchoring to a `listItem` or `exampleItem`)
      *  so the link records the right `targetKind`. */
     targetKind?: TextObjectKind;
-  }) => UserNote;
+  } & AutoFocusOpt) => UserNote;
   createHighlight: (opts: {
     /** Mandatory — highlights are always a text-range gesture. */
     anchor: AnchorRef;
@@ -161,7 +176,7 @@ export interface CardCreationApi {
     color?: string | null;
     anchorRect?: DOMRect | null;
     mode?: CardCreateMode;
-  }) => HighlightCard;
+  } & AutoFocusOpt) => HighlightCard;
   /** Delete a note OR highlight by id. For highlights, also strips the
    *  in-doc `linkedAnchor` mark so the yellow tint goes away. */
   deleteHighlightOrNote: (id: string) => void;
@@ -172,14 +187,14 @@ export interface CardCreationApi {
     anchorRect?: DOMRect | null;
     mode?: CardCreateMode;
     targetKind?: TextObjectKind;
-  }) => CutterCommentCard;
+  } & AutoFocusOpt) => CutterCommentCard;
   createCutterSuggestion: (opts: {
     paragraphId?: string | null;
     originalText?: string;
     anchor?: AnchorRef;
     anchorRect?: DOMRect | null;
     mode?: CardCreateMode;
-  }) => CutterSuggestionCard;
+  } & AutoFocusOpt) => CutterSuggestionCard;
   createReport: (opts: {
     paragraphId?: string | null;
     content?: JSONContent;
@@ -187,7 +202,7 @@ export interface CardCreationApi {
     anchorRect?: DOMRect | null;
     mode?: CardCreateMode;
     targetKind?: TextObjectKind;
-  }) => ReportCard;
+  } & AutoFocusOpt) => ReportCard;
   createReportRequest: (opts: {
     paragraphId?: string | null;
     content?: JSONContent;
@@ -195,7 +210,7 @@ export interface CardCreationApi {
     anchorRect?: DOMRect | null;
     mode?: CardCreateMode;
     targetKind?: TextObjectKind;
-  }) => ReportRequestCard;
+  } & AutoFocusOpt) => ReportRequestCard;
   createRevisionComment: (opts: {
     paragraphId?: string | null;
     content?: JSONContent;
@@ -203,14 +218,14 @@ export interface CardCreationApi {
     anchorRect?: DOMRect | null;
     mode?: CardCreateMode;
     targetKind?: TextObjectKind;
-  }) => RevisionCommentCard;
+  } & AutoFocusOpt) => RevisionCommentCard;
   createRevisionSuggestion: (opts: {
     paragraphId?: string | null;
     originalText?: string;
     anchor?: AnchorRef;
     anchorRect?: DOMRect | null;
     mode?: CardCreateMode;
-  }) => RevisionSuggestionCard;
+  } & AutoFocusOpt) => RevisionSuggestionCard;
   createTodo: (opts: {
     text?: string;
     paragraphId?: string | null;
@@ -222,7 +237,7 @@ export interface CardCreationApi {
     anchorRect?: DOMRect | null;
     mode?: CardCreateMode;
     targetKind?: TextObjectKind;
-  }) => TodoItem;
+  } & AutoFocusOpt) => TodoItem;
   createFootnote: (opts: {
     fromSelection?: boolean;
     /**
@@ -247,7 +262,7 @@ export interface CardCreationApi {
     pristine?: boolean;
     anchorRect?: DOMRect | null;
     mode?: CardCreateMode;
-  }) => { footnoteId: string } | null;
+  } & AutoFocusOpt) => { footnoteId: string } | null;
   createCitation: (opts: {
     command?: string;
     /** Pre-allocated id for the panel ref. Use when the caller has
@@ -258,7 +273,7 @@ export interface CardCreationApi {
     unanchored?: boolean;
     anchorRect?: DOMRect | null;
     mode?: CardCreateMode;
-  }) => CitationRef;
+  } & AutoFocusOpt) => CitationRef;
   /** Archive snippet — created post-extraction (the dispatcher slices the
    *  doc content first, then hands the content + the surviving paragraph
    *  uuid in here). Mode A link is written when `paragraphId` is given.
@@ -275,7 +290,7 @@ export interface CardCreationApi {
     targetKind?: TextObjectKind;
     anchorRect?: DOMRect | null;
     mode?: CardCreateMode;
-  }) => ArchivedSnippet;
+  } & AutoFocusOpt) => ArchivedSnippet;
 }
 
 export function useCardCreation(deps: CardCreationDeps): CardCreationApi {
@@ -346,11 +361,21 @@ export function useCardCreation(deps: CardCreationDeps): CardCreationApi {
 
   /**
    * Shared post-create tail for every factory: select the new card (through
-   * the kind's existing setter — already A4-correct: `cardStore.select({kind,id})`
-   * only, NEVER expand), pin it to the top of its panel, then surface it —
-   * either as a floating popup at the trigger rect (the toolbar path) or by
-   * activating its panel on the placed side (the in-panel "+" path). The
-   * omni-view path leaves the panel alone.
+   * the kind's existing per-panel setter), pin it to the top of its panel, then
+   * surface it — either as a floating popup at the trigger rect (the toolbar
+   * path) or by activating its panel on the placed side (the in-panel "+"
+   * path). The omni-view path leaves the panel alone.
+   *
+   * CREATION FOCUS (CHIP B — drop the caret into the new card's body): for a
+   * USER-INITIATED create of an editable-body kind, we additionally EXPAND the
+   * card (so its body mounts) + mark it selected in the shared `cardStore` (so
+   * the body renders) + call the SSOT `focusNewCard` helper (which retries past
+   * the async mount and drops the caret into the kind-appropriate editable). The
+   * old "NEVER expand" rule on this tail was about *selecting an existing* card
+   * (selection = halo, not body-open); *creating* a card the user means to type
+   * into is the opposite intent, so the expand is scoped to the creation path.
+   * `autoFocus` (default `true`) gates it: AI/programmatic callers pass `false`
+   * so they never steal focus while the user is doing something else.
    *
    * `kind` is the canonical CardKind (drives the float key + the derived
    * panel). `pinToken` is the parallel `RecentlyAddedKind` enum's bucket —
@@ -365,7 +390,7 @@ export function useCardCreation(deps: CardCreationDeps): CardCreationApi {
       pinToken: RecentlyAddedKind,
       setSelected: (id: string) => void,
       id: string,
-      opts: { mode?: CardCreateMode; anchorRect?: DOMRect | null },
+      opts: { mode?: CardCreateMode; anchorRect?: DOMRect | null; autoFocus?: boolean },
     ) => {
       // Suppress card→text placement for THIS selection change. A brand-new
       // card is already surfaced at the right spot — floated at its anchorRect
@@ -378,6 +403,21 @@ export function useCardCreation(deps: CardCreationDeps): CardCreationApi {
       suppressNextPlacement();
       setSelected(id);
       pin(pinToken, id);
+      // Drop the caret into the new card's body (CHIP B). User-initiated
+      // (`autoFocus` defaults true); editable-body kinds only — `focusNewCard`
+      // is self-gating (returns a null target for bodiless kinds), but we also
+      // gate the EXPAND so a bodiless/citation card isn't needlessly opened.
+      // The citation carve-out lives in `cardKindHasEditableBody` (its create
+      // popover owns its own focus).
+      if (opts.autoFocus !== false && cardKindHasEditableBody(kind)) {
+        // Expand so the RichTextField body actually mounts (a compressed card
+        // has no contenteditable for `focusNewCard` to find) + select in the
+        // shared store so the card paints as the active one. Both are
+        // single store writes — no per-keystroke work.
+        cardStore.expand({ kind, id });
+        cardStore.select({ kind, id });
+        focusNewCard(cardPopKey(kind, id));
+      }
       if (opts.mode === "omni") return;
       if (fromToolbar(opts)) popCardAtAnchor(kind, id, opts.anchorRect!);
       // Every creatable kind owns a panel (panelForCardKind is non-null for

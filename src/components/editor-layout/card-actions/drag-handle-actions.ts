@@ -47,7 +47,6 @@ import {
 } from "@/links/links";
 import { getSectionRangeByUuid } from "@/lib/section-range";
 import { ATOM_CREATE_POPOVER_EVENT } from "@/lib/actions/atom-create";
-import { focusNewCard } from "@/lib/focus-new-card";
 import { cardPopKey } from "@/panels/panel-registry";
 import type { DragHandleAction } from "@/components/DragHandleMenu";
 import type { CardLifecycleApi } from "@/panels/card-lifecycle-registry";
@@ -313,9 +312,14 @@ export function useDragHandleActions(deps: DragHandleActionsDeps) {
                 0,
                 coords.bottom - coords.top,
               );
+              // Thread the OWNING editor (CHIP 5). The grab handle is a
+              // MAIN-editor NodeView (footnotes are inline atoms — you can't
+              // grab inside one), so `ed` is MAIN here; threading it keeps the
+              // owning-editor channel uniform with the slash/lightning surfaces
+              // so the commit always reads `pos` in the right pos-space.
               window.dispatchEvent(
                 new CustomEvent(ATOM_CREATE_POPOVER_EVENT, {
-                  detail: { kind: "citation", rect, pos: range.to },
+                  detail: { kind: "citation", rect, pos: range.to, editor: ed },
                 }),
               );
             } catch {
@@ -685,10 +689,11 @@ export function useDragHandleActions(deps: DragHandleActionsDeps) {
         /* ignore */
       }
 
-      // Drop cursor into the new card's main editable field once it
-      // mounts. The card needs a couple of React commits to render
-      // (state update → panel re-render → card mount), so we retry a
-      // handful of frames before giving up.
+      // Drop cursor into the new card's main editable field: CHIP B moved
+      // this into the central `finishCreate` chokepoint, so every `createX`
+      // above (a user-initiated create ⇒ `autoFocus` defaults true) already
+      // expanded + focused its new card's body. `focusCardKey` now serves
+      // only as the "was a card created?" signal for the no-card branch.
       //
       // No new card to take focus → return focus to the editor so the
       // user's next keypress (Cmd-Z to undo, arrow keys to navigate)
@@ -697,9 +702,7 @@ export function useDragHandleActions(deps: DragHandleActionsDeps) {
       // close orphans focus on the body; without this re-focus, Cmd-Z
       // does nothing until the user clicks back into the editor. See
       // post-refactor followup B4.
-      if (focusCardKey) {
-        focusNewCard(focusCardKey);
-      } else {
+      if (!focusCardKey) {
         try {
           ed.view.focus();
         } catch {

@@ -15,6 +15,8 @@
  * still happen in the gutter card at its standard position.
  */
 
+import type { Editor } from "@tiptap/core";
+
 /** The two inline-atom kinds that flow through the shared create popover. */
 export type AtomCreateKind = "citation" | "ref";
 
@@ -38,6 +40,19 @@ export interface AtomCreateRequest {
   pos: number;
   /** ref-only: which `\ref`-family command to insert (defaults to `"ref"`). */
   refCommand?: AtomRefCommand;
+  /**
+   * The editor instance that OWNS this create — the surface whose pos-space
+   * `pos` was captured at trigger time. The COMMIT inserts the atom into THIS
+   * editor (main OR an embedded footnote/card/float editor), never blindly into
+   * MAIN. Mirrors `activeMath.editor` / `activeFigure.editor` exactly: the
+   * trigger surface (slash via EditorPane, lightning via ActionsMenuPanel, grab
+   * via drag-handle-actions) computes `pos`/`rect` against this editor, so the
+   * insert must read `pos` in the same instance's pos-space. Optional only to
+   * stay back-compatible with a malformed/legacy detail — the commit falls back
+   * to MAIN when absent (CHIP 5 / TYPO #5: `\ref`/`\cite` started inside a
+   * focused footnote editor land in the footnote body, not main).
+   */
+  editor?: Editor;
 }
 
 /** Options a trigger surface may thread into `openAtomCreate`. */

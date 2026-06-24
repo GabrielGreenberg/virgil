@@ -54,7 +54,7 @@ function ErrorBadge({ severity }: { severity: LatexErrorSeverity }) {
   const color = SEVERITY_COLOR[severity];
   return (
     <span
-      className="inline-flex items-center justify-center w-5 h-5 shrink-0"
+      className="inline-flex items-center justify-center w-[18px] h-[18px] shrink-0"
       data-hint={severity} aria-label={severity}
     >
       <svg

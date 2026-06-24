@@ -29,6 +29,7 @@ import { MIME_CITATION, MIME_FOOTNOTE, MIME_ARCHIVE } from "@/lib/marginalia";
 import type { PanelBodyKey } from "@/lib/panel-typography";
 import { usePanelBodyStyle } from "@/hooks/usePanelTypography";
 import { registerDropTarget } from "@/components/drop-mode/target-registry";
+import { useCitationDisplayContextOrNull } from "@/components/editor-layout/contexts/citation-display";
 
 interface RichTextFieldProps {
   /** Initial content. The editor remounts when `instanceKey` changes. */
@@ -178,11 +179,21 @@ function RichTextFieldImpl({
   editable = true,
 }: RichTextFieldProps) {
   const bodyStyle = usePanelBodyStyle(panelKey);
+  // labelRef display resolver — the sibling of `getCitationDisplayText`, taken
+  // from the same CitationDisplayContext that already feeds these mini-editors.
+  // It resolves a `\ref`'s number against the MAIN doc (a footnote/note body
+  // owns no headings/examples/figures, and the doc-level ref-display pass can't
+  // recurse into a footnote's opaque sub-doc), so a freshly-RELOADED nested ref
+  // shows its number instead of "??". Null outside a provider (tests / reader
+  // floats with no host) — then we leave the persisted displayText untouched.
+  const citationDisplayCtx = useCitationDisplayContextOrNull();
+  const getRefDisplayText = citationDisplayCtx?.getRefDisplayText;
   const onChangeRef = useRef(onChange);
   const onFocusChangeRef = useRef(onFocusChange);
   const onArchiveConsumedRef = useRef(onArchiveConsumed);
   const getCitationDisplayTextRef = useRef(getCitationDisplayText);
   const onCitationCreatedRef = useRef(onCitationCreated);
+  const getRefDisplayTextRef = useRef(getRefDisplayText);
   // Refs update in an effect so we don't write to refs during render
   // (the lint config flags that — refs are for stable identities, not state).
   useEffect(() => {
@@ -191,6 +202,7 @@ function RichTextFieldImpl({
     onArchiveConsumedRef.current = onArchiveConsumed;
     getCitationDisplayTextRef.current = getCitationDisplayText;
     onCitationCreatedRef.current = onCitationCreated;
+    getRefDisplayTextRef.current = getRefDisplayText;
   });
 
   /**
@@ -221,11 +233,52 @@ function RichTextFieldImpl({
     return walk(doc);
   }, []);
 
+  /**
+   * The labelRef sibling of `refreshCitationDisplay`. A footnote/note-nested
+   * `\ref` gets its `displayText` resolved at INSERT time (handleInsertRef reads
+   * MAIN — correct in-session), but on RELOAD `richLatexToJson` re-parses it
+   * with `displayText: ""`, and the doc-level ref-display pass can't reach a
+   * footnote's opaque sub-doc — so the NodeView would show `displayText || "??"`
+   * = "??". Resolve each labelRef's number against MAIN here (via the context
+   * resolver) so the reloaded ref shows its number, mirroring the citation path.
+   * When the resolver yields "??"/empty we KEEP the persisted displayText (e.g.
+   * a transient unresolved label) rather than overwriting a good value with "??".
+   */
+  const refreshRefDisplay = useCallback((doc: JSONContent): JSONContent => {
+    const resolve = getRefDisplayTextRef.current;
+    if (!resolve) return doc;
+    function walk(node: JSONContent): JSONContent {
+      if (node.type === "labelRef" && node.attrs) {
+        const label = (node.attrs.label as string) || "";
+        const refCommand = (node.attrs.refCommand as string) || "ref";
+        const resolved = resolve!(label, refCommand);
+        // Only adopt a real resolution; "??"/"" means MAIN couldn't place the
+        // label — don't clobber whatever displayText we already had.
+        if (resolved && resolved !== "??" && node.attrs.displayText !== resolved) {
+          return { ...node, attrs: { ...node.attrs, displayText: resolved } };
+        }
+        return node;
+      }
+      if (node.content) {
+        return { ...node, content: node.content.map(walk) };
+      }
+      return node;
+    }
+    return walk(doc);
+  }, []);
+
+  // Compose both atom-display refreshes (citation + labelRef) into one pass —
+  // applied identically before mount and on each external value sync.
+  const refreshAtomDisplay = useCallback(
+    (doc: JSONContent): JSONContent => refreshRefDisplay(refreshCitationDisplay(doc)),
+    [refreshCitationDisplay, refreshRefDisplay],
+  );
+
   const debounceRef = useRef<ReturnType<typeof setTimeout>>(undefined);
   const isFocusedRef = useRef(false);
   const [isDragOver, setIsDragOver] = useState(false);
 
-  const initialContent = refreshCitationDisplay(normalizeRichContent(value));
+  const initialContent = refreshAtomDisplay(normalizeRichContent(value));
 
   const editor = useEditor({
     extensions: [
@@ -241,12 +294,18 @@ function RichTextFieldImpl({
       TabIndent,
       // Shared card-context inline-atom + block-atom-preview sub-schema
       // (borrowed-schema.ts — backlog #11). The block atoms render compact
-      // cardContext previews; the inline atoms (math, citation, latexCommand,
-      // displayMath) round-trip without being stripped. Adding a new atom kind
-      // there surfaces it here automatically (the contract test gates the main
-      // editor too). RichTextField omits LabelRef/Footnote — its editable cards
-      // never author `\ref` or nested footnote markers.
-      ...buildBorrowedAtomSchema(),
+      // cardContext previews; the inline atoms (math, citation, labelRef,
+      // latexCommand, displayMath) round-trip without being stripped. Adding a
+      // new atom kind there surfaces it here automatically (the contract test
+      // gates the main editor too).
+      //
+      // CHIP 5: `includeLabelRef` adds the `\ref` (LabelRef) node so a
+      // cross-reference CREATED while editing inside a footnote (the lightning
+      // 'Cross-ref' cell routes the create to THIS focused editor — see the
+      // owning-editor threading in atom-create) has a schema node to insert
+      // into and survives the JSON↔LaTeX round-trip. The nested-`footnote`
+      // marker stays omitted — footnotes can't nest.
+      ...buildBorrowedAtomSchema({ includeLabelRef: true }),
     ],
     content: initialContent,
     editable,
@@ -364,17 +423,17 @@ function RichTextFieldImpl({
 
   // External value sync — only when the editor isn't focused (otherwise we'd
   // wipe the caret on every debounced parent update). We also refresh
-  // citation displayText here so that bibliography edits picked up by the
-  // parent propagate into the mini editor.
+  // citation + ref displayText here so that bibliography edits / newly-numbered
+  // sections picked up by the parent propagate into the mini editor.
   useEffect(() => {
     if (!editor) return;
     if (isFocusedRef.current) return;
-    const desired = refreshCitationDisplay(normalizeRichContent(value));
+    const desired = refreshAtomDisplay(normalizeRichContent(value));
     const current = editor.getJSON();
     if (JSON.stringify(current) !== JSON.stringify(desired)) {
       editor.commands.setContent(desired, { emitUpdate: false });
     }
-  }, [editor, value, refreshCitationDisplay]);
+  }, [editor, value, refreshAtomDisplay]);
 
   // Intercept beforeinput in the CAPTURE phase, before the browser commits
   // its native input handling and before PM's own bubble-phase handler
@@ -441,6 +500,11 @@ function RichTextFieldImpl({
     const dom = editor.view.dom as HTMLElement;
     if (panelKey) dom.setAttribute("data-panel-kind", panelKey);
     else dom.removeAttribute("data-panel-kind");
+    // We mutate the live ProseMirror DOM node's inline style, not the `editor`
+    // hook value — React Compiler's `react-hooks/immutability` rule can't tell
+    // the two apart and flags `editor cannot be modified`. See BorrowedMainText.tsx,
+    // which documents and suppresses this same error on its identical panel-typography effect.
+    /* eslint-disable react-hooks/immutability */
     if (bodyStyle.fontFamily) dom.style.fontFamily = String(bodyStyle.fontFamily);
     else dom.style.removeProperty("font-family");
     // Setting --editor-font-size (rather than just `font-size`) is required
@@ -456,6 +520,7 @@ function RichTextFieldImpl({
     }
     if (bodyStyle.color) dom.style.color = String(bodyStyle.color);
     else dom.style.removeProperty("color");
+    /* eslint-enable react-hooks/immutability */
   }, [editor, panelKey, bodyStyle]);
 
   // Drop visual cue (handled at the wrapper, ProseMirror handles the actual drop)

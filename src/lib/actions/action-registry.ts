@@ -1136,7 +1136,11 @@ function citationRun(ctx: ActionContext): void {
     unanchored: false,
     mode: "omni",
   });
-  // Soft-route + focus the new card's library-picker (mirrors the retired
+  // Soft-route + focus the new card's library-picker. CITATION CARVE-OUT
+  // (CHIP B): citation is deliberately NOT an editable-body kind in
+  // `cardKindHasEditableBody`, so `finishCreate` does NOT auto-focus it — its
+  // create flow owns its own focus (the library "Add from library…" picker
+  // input). So we keep this explicit `focusCard` here (mirrors the retired
   // citations-host listener's `focusNewCard(cardPopKey("citation", id))`).
   if (ctx.panelRouting) {
     softRouteCitationToOmni(ctx.panelRouting);
@@ -1226,14 +1230,13 @@ function footnoteRun(ctx: ActionContext): void {
     pristine,
     mode: "omni",
   });
-  // Soft-route + focus the new card (mirrors the dispatcher's
-  // `cardPopKey("footnote", id)` focus key). Backlog #2: surface omni only
-  // when the footnotes side is collapsed/blank — never force-open Footnotes.
+  // Soft-route only. The caret-into-body focus is now owned centrally by
+  // `finishCreate` (CHIP B) — footnote is an editable-body kind, so
+  // `createFootnote` above already expanded + focused the new card. Backlog
+  // #2: surface omni only when the footnotes side is collapsed/blank — never
+  // force-open Footnotes.
   if (ctx.panelRouting) {
     softRouteFootnoteToOmni(ctx.panelRouting);
-    ctx.panelRouting.focusCard(
-      buildFloatKey({ domain: "card", kind: "footnote", id: footnoteId }),
-    );
   }
 }
 

@@ -8,6 +8,11 @@ import {
   extractGraphicsAttrs,
   matchIncludegraphics,
 } from "@/lib/figures/parse-attrs";
+import {
+  matchAccent,
+  matchSpecialLetter,
+  dashesToGlyphs,
+} from "@/lib/latex-typography";
 
 interface ParseContext {
   pos: number;
@@ -172,7 +177,10 @@ function parsePreambleTitleFields(preamble: string): JSONContent[] {
  * `generateShortId()` for legacy `.tex` files without markers — first
  * save will anchor the generated id back into the source.
  */
-export function parseInlineContent(text: string): JSONContent[] {
+export function parseInlineContent(
+  text: string,
+  inCode = false,
+): JSONContent[] {
   const nodes: JSONContent[] = [];
   let i = 0;
   let buffer = "";
@@ -181,7 +189,11 @@ export function parseInlineContent(text: string): JSONContent[] {
 
   const flush = () => {
     if (buffer) {
-      nodes.push({ type: "text", text: unescapeLatex(buffer) });
+      // Dashes (-- / ---) → en/em glyph at flush time, EXCEPT inside code
+      // spans where `--` is literal (memo §A exclusion). Accents/special
+      // letters are matched as commands below, also gated by `inCode`.
+      const flushed = inCode ? buffer : dashesToGlyphs(buffer);
+      nodes.push({ type: "text", text: unescapeLatex(flushed) });
       buffer = "";
     }
   };
@@ -201,6 +213,30 @@ export function parseInlineContent(text: string): JSONContent[] {
       continue;
     }
 
+    // Display math: $$...$$  (checked BEFORE single-$ — longest-first).
+    // Its content is LITERAL math and must NEVER reach the dash/accent buffer
+    // (memo §A "Critical exclusions": math stays literal). Preserving it as a
+    // math node keeps `--`, `\'e`, etc. verbatim in the latex attr — the
+    // transforms only run on the plain-text buffer, which math content never
+    // enters. (Pre-typography behavior left two empty inlineMath nodes with
+    // the content leaking as glyphified plain text — the D2 regression.)
+    if (
+      text[i] === "$" &&
+      text[i + 1] === "$" &&
+      (i === 0 || text[i - 1] !== "\\")
+    ) {
+      const end = text.indexOf("$$", i + 2);
+      if (end !== -1) {
+        flush();
+        nodes.push({
+          type: "inlineMath",
+          attrs: { latex: text.slice(i + 2, end) },
+        });
+        i = end + 2;
+        continue;
+      }
+    }
+
     // Inline math: $...$
     if (text[i] === "$" && (i === 0 || text[i - 1] !== "\\")) {
       flush();
@@ -218,6 +254,61 @@ export function parseInlineContent(text: string): JSONContent[] {
     // LaTeX commands for marks
     if (text[i] === "\\") {
       const rest = text.slice(i);
+
+      // Display / inline math via \[ … \] and \( … \). Like $$…$$ above, the
+      // math content is LITERAL and must NEVER reach the dash/accent buffer
+      // (memo §A exclusion). We preserve it as an inlineMath node so its
+      // latex (`a -- b`, `\'e`) survives verbatim. Block-level \[…\] at a
+      // paragraph boundary is handled by the block parser; this catches the
+      // mid-paragraph case the block parser doesn't split out — without it the
+      // `--`/accent inside leaks into the plain buffer (the D2 regression).
+      if (rest.startsWith("\\[") || rest.startsWith("\\(")) {
+        const closer = rest.startsWith("\\[") ? "\\]" : "\\)";
+        const closeIdx = text.indexOf(closer, i + 2);
+        if (closeIdx !== -1) {
+          flush();
+          nodes.push({
+            type: "inlineMath",
+            attrs: { latex: text.slice(i + 2, closeIdx).trim() },
+          });
+          i = closeIdx + 2;
+          continue;
+        }
+      }
+
+      // \verb<delim>…<delim> and \verb*<delim>…<delim> — verbatim. The
+      // delimiter-paired payload is LITERAL (`--` is two hyphens, `\'e` is raw)
+      // and must be excluded from the dash/accent transforms (memo §A). We
+      // consume the whole `\verb|…|` and emit the payload as a code-marked text
+      // node (round-trips through the serializer's code path, which suppresses
+      // typography). Without this the payload fell into the plain buffer and
+      // got glyphified (the D2 verbatim regression).
+      // `\verb` is a control word, so it is terminated by a non-letter — its
+      // delimiter must NOT be a letter (else `\verbatim` would mis-match as
+      // `\verb` + delimiter `a`). The delimiter is any single non-letter char
+      // (LaTeX also forbids `*` and space as the delimiter).
+      const verbMatch = rest.match(/^\\verb(\*?)([^a-zA-Z*\s])/);
+      if (verbMatch) {
+        const delim = verbMatch[2];
+        const payloadStart = i + verbMatch[0].length;
+        const closeIdx = text.indexOf(delim, payloadStart);
+        if (closeIdx !== -1) {
+          flush();
+          // Preserve the exact `\verb<delim>…<delim>` spelling so it round-
+          // trips: a `code` mark would serialize to `\texttt{…}` (wrong — and
+          // would re-run typography on edit), so we keep the literal command
+          // form as a raw latexCommand. The serializer's latexCommand path
+          // returns it as-is, so the source stays byte-faithful AND excluded
+          // from the dash/accent transforms.
+          nodes.push({
+            type: "text",
+            text: text.slice(i, closeIdx + 1),
+            marks: [{ type: "latexCommand" }],
+          });
+          i = closeIdx + 1;
+          continue;
+        }
+      }
 
       // \textbf{...}
       const boldMatch = rest.match(/^\\textbf\{/);
@@ -297,7 +388,9 @@ export function parseInlineContent(text: string): JSONContent[] {
         flush();
         const inner = extractBraced(text, i + "\\texttt".length);
         if (inner !== null) {
-          const innerNodes = parseInlineContent(inner.content);
+          // Code span: suppress typographic transforms (`--` is literal,
+          // accent commands stay raw) — memo §A exclusion.
+          const innerNodes = parseInlineContent(inner.content, true);
           for (const n of innerNodes) {
             nodes.push({
               ...n,
@@ -583,6 +676,27 @@ export function parseInlineContent(text: string): JSONContent[] {
         // skip optional newline
         if (i < text.length && text[i] === "\n") i++;
         continue;
+      }
+
+      // Typographic accents (\'e \v{s} \c{c} …) and special letters
+      // (\ss \o \ae …) → composed Unicode glyph. Matched HERE, before the
+      // unknown-`\command` grey-monospace fallback below, so accents render
+      // as real glyphs instead of falling through to `latexCommand`.
+      // Suppressed inside code spans (memo §A exclusion). The glyph goes
+      // into `buffer` so adjacent letters stay one text node.
+      if (!inCode) {
+        const accent = matchAccent(text, i);
+        if (accent) {
+          buffer += accent.glyph;
+          i = accent.end;
+          continue;
+        }
+        const special = matchSpecialLetter(text, i);
+        if (special) {
+          buffer += special.glyph;
+          i = special.end;
+          continue;
+        }
       }
 
       // Unknown \command{...} or \command[...]{...} — render as grey monospace

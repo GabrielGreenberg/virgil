@@ -132,7 +132,7 @@ import { useCommentActions } from "./editor-layout/card-actions/comments";
 import { useFileActions } from "./editor-layout/card-actions/files";
 import { useOrphanActions } from "./editor-layout/card-actions/orphans";
 import { useCitationActions } from "./editor-layout/card-actions/citations";
-import { useRefActions } from "./editor-layout/card-actions/ref";
+import { useRefActions, resolveLabelDisplay } from "./editor-layout/card-actions/ref";
 import { useLibraryBridge } from "./editor-layout/event-bridges/library";
 import { findOmniEntry } from "./editor-layout/event-bridges/open-for-card";
 import { useMarkerClickBridges } from "./editor-layout/event-bridges/marker-clicks";
@@ -726,7 +726,6 @@ export default function EditorLayout() {
     setTopbarRightCollapsed,
     toggleMarginalia,
     toggleMarginaliaType,
-    toggleSectionIndicator,
     toggleHeadingLabels,
     toggleDividerLevel,
     setDividerWidth,
@@ -943,7 +942,6 @@ export default function EditorLayout() {
     () => new Set(prefs.hiddenMarginaliaTypes),
     [prefs.hiddenMarginaliaTypes],
   );
-  const showSectionIndicator = prefs.showSectionIndicator;
   const showHeadingLabels = prefs.showHeadingLabels;
   const dividerLevels = useMemo(
     () => new Set(prefs.dividerLevels),
@@ -2539,6 +2537,21 @@ export default function EditorLayout() {
     addCitation,
   });
 
+  // labelRef sibling of `getCitationDisplayText` — resolves a card-nested
+  // `\ref`'s number against MAIN for RichTextField's load-time refresh. Mirrors
+  // the EditorPane mount; reuses the create flow's `resolveLabelDisplay`.
+  const getRefDisplayText = useCallback(
+    (label: string, refCommand: string): string | null => {
+      const mainDoc = editorRef.current?.getEditor()?.state.doc;
+      if (!mainDoc) return null;
+      const cmd = (refCommand === "getref" || refCommand === "getfullref"
+        ? refCommand
+        : "ref") as "ref" | "getref" | "getfullref";
+      return resolveLabelDisplay(mainDoc, label, cmd).display;
+    },
+    [],
+  );
+
 
   const { handleDeleteOrphan, handleEditOrphan, handleEditOrphanTitle } = useOrphanActions({
     setOrphanedFootnotes,
@@ -2548,7 +2561,6 @@ export default function EditorLayout() {
     showParTitles,
     showLatexComments,
     showHeadingLabels,
-    showSectionIndicator,
     showMarginalia,
     hiddenMarginaliaTypes,
     hiddenHighlightTypes,
@@ -2560,7 +2572,6 @@ export default function EditorLayout() {
     onToggleParTitles: toggleParTitles,
     onToggleLatexComments: toggleLatexComments,
     toggleHeadingLabels,
-    toggleSectionIndicator,
     toggleMarginalia,
     toggleMarginaliaType,
     toggleHighlightType,
@@ -2580,7 +2591,6 @@ export default function EditorLayout() {
     showParTitles,
     showLatexComments,
     showHeadingLabels,
-    showSectionIndicator,
     showMarginalia,
     hiddenMarginaliaTypes,
     hiddenHighlightTypes,
@@ -2592,7 +2602,6 @@ export default function EditorLayout() {
     toggleParTitles,
     toggleLatexComments,
     toggleHeadingLabels,
-    toggleSectionIndicator,
     toggleMarginalia,
     toggleMarginaliaType,
     toggleHighlightType,
@@ -2663,10 +2672,24 @@ export default function EditorLayout() {
   // payload — the COMMIT half of `citationRun`). One atom + one card, no blank
   // pristine flash, all subsequent edits in the gutter at the standard position.
   const commitCitationCreate = useCallback(
-    (pos: number, keys: string[]) => {
+    (pos: number, keys: string[], owner?: Editor | null) => {
       const handle = editorRef.current;
-      const ed = handle?.getEditor();
-      if (!handle || !ed || keys.length === 0) return;
+      const mainEd = handle?.getEditor();
+      // Insert into the editor that OWNS the create — the footnote/card editor
+      // whose pos-space the popover captured `pos` in, falling back to MAIN
+      // (CHIP 5; mirrors `handleMathSave(activeMath.editor, …)`). The citation
+      // id stays globally unique because `getCitationIds()` already walks the
+      // MAIN doc INCLUDING footnote-nested cites (Editor.tsx), so a cite created
+      // inside a footnote can't collide with one in the body.
+      // An explicitly-threaded owner that has since been DESTROYED (the footnote
+      // card closed / scrolled away while the deferred-commit popover stayed
+      // open) leaves `pos` stranded in that editor's pos-space — silently
+      // retargeting to MAIN would insert the atom at a bogus main position.
+      // Abort instead. A null/undefined owner is a MAIN-editor create (pos is
+      // main-space), so it falls through to mainEd.
+      if (owner && owner.isDestroyed) return;
+      const targetEd = owner ?? mainEd;
+      if (!handle || !targetEd || keys.length === 0) return;
       const command = serializeCiteCommand(
         {
           type: "cite",
@@ -2678,11 +2701,15 @@ export default function EditorLayout() {
       );
       const citationId = generateShortId(handle.getCitationIds());
       insertInlineAtom({
-        editor: ed,
+        editor: targetEd,
         type: "citation",
         attrs: { citationId, command, displayText: "" },
         at: pos,
       });
+      // Card registration is editor-independent — it lands a panel card keyed by
+      // `citationId` (no second atom, no cursor read), so it works the same for
+      // a footnote-nested cite (the `nestedInFootnoteId` machinery resolves its
+      // in-text position from the host footnote marker).
       getEditorActionsHandle()?.runAction("citation", {
         surface: "slash",
         payload: { citationId, command },
@@ -3420,7 +3447,7 @@ export default function EditorLayout() {
     >
     <EditorRefProvider value={{ editorInstance, editorRef, setOverrideEditor }}>
     <AiRequestsProvider value={{ aiRequests, addAiRequest, updateAiRequestText, deleteAiRequest }}>
-    <CitationDisplayProvider value={{ getCitationDisplayText, onCitationCreated: handleCitationCreated }}>
+    <CitationDisplayProvider value={{ getCitationDisplayText, onCitationCreated: handleCitationCreated, getRefDisplayText }}>
     {/* SelectionsProvider derives the 9 anchored slots from the cardStore;
         we only thread the bib slot in through `value` because bib isn't
         an anchored kind. The other 9 props on the legacy value shape are
@@ -4645,7 +4672,13 @@ export default function EditorLayout() {
           anchorRect={atomCreateRequest.rect}
           paperBibEntries={bibEntries}
           onAddBibEntry={citationsHook.addBibEntry}
-          onCommit={(keys) => commitCitationCreate(atomCreateRequest.pos, keys)}
+          onCommit={(keys) =>
+            commitCitationCreate(
+              atomCreateRequest.pos,
+              keys,
+              atomCreateRequest.editor,
+            )
+          }
           onClose={() => setAtomCreateRequest(null)}
         />
       )}
@@ -4664,7 +4697,7 @@ export default function EditorLayout() {
           onChangeRefCommand={handleRefChangeCommand}
           onJumpToLabel={handleRefJump}
           onInsertRef={(label, cmd) =>
-            handleInsertRef(label, cmd, atomCreateRequest.pos)
+            handleInsertRef(label, cmd, atomCreateRequest.pos, atomCreateRequest.editor)
           }
           onClose={() => setAtomCreateRequest(null)}
         />

@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect } from "react";
+import { useCallback } from "react";
 import { bodyVariantForCardKind } from "@/cards/predicates";
 import type { Editor, JSONContent } from "@tiptap/react";
 import type { RevisionCommentCard as RevisionCommentCardData } from "@/lib/types";
@@ -76,17 +76,11 @@ export function RevisionCommentCard({
     [card.id, onUpdateContent],
   );
 
-  // Focus the body when a brand-new (empty) card is selected — mirrors the
-  // textarea autofocus the old chrome did. Keeps the "click + → start
-  // typing" path snappy.
-  useEffect(() => {
-    if (!isSelected) return;
-    if (card.text) return;
-    const el = document.querySelector<HTMLElement>(
-      `[data-pristine-card-id="${card.id}"] [contenteditable="true"]`,
-    );
-    el?.focus();
-  }, [isSelected, card.id, card.text]);
+  // (Caret-into-body on create is now owned centrally by `finishCreate` →
+  // `focusNewCard` (CHIP B). The hand-rolled select+empty focus effect that
+  // used to live here is removed — the chokepoint expands + focuses the body
+  // for every editable-body kind at creation, so this per-kind workaround is
+  // redundant.)
 
   const cardEl = (
     <EditableCard

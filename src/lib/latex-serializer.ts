@@ -3,6 +3,7 @@ import type { VirgilSidecar } from "@/lib/types";
 import { generateShortId } from "@/lib/uuid";
 import { richJsonToLatex, richJsonToPlainText, normalizeRichContent } from "@/lib/footnote-content";
 import { CLASSIC_PREAMBLE } from "@/lib/document-styles";
+import { typographyToLatex } from "@/lib/latex-typography";
 
 // The classic preset is the historical default — used as the fallback
 // when a doc has no preserved preamble and the caller didn't pass one.
@@ -108,7 +109,11 @@ function serializeMarks(
       .replace(/"/g, "''");
   }
 
-  let result = escapeLatex(text);
+  // Code spans are verbatim — `--` is literal and accent commands stay raw,
+  // so the typographic reverse-map is suppressed for `code`-marked text
+  // (memo §A exclusion). Smart-quote + char escaping still applies.
+  const inCode = marks.some((m) => m.type === "code");
+  let result = escapeLatex(text, { typography: !inCode });
   for (const mark of marks) {
     switch (mark.type) {
       case "bold":
@@ -137,12 +142,15 @@ function serializeMarks(
   return result;
 }
 
-function escapeLatex(text: string): string {
+function escapeLatex(
+  text: string,
+  opts?: { typography?: boolean },
+): string {
   // Don't escape backslashes — they're intentional LaTeX commands.
   // The editor preserves raw LaTeX, so we only escape the few chars
   // that would break LaTeX if they appeared as literal text.
   // We also don't escape {, }, $ since those are part of LaTeX syntax.
-  return text
+  const escaped = text
     .replace(/(?<!\\)([&%#_])/g, "\\$1")
     .replace(/~/g, "\\textasciitilde{}")
     .replace(/\^/g, "\\textasciicircum{}")
@@ -152,6 +160,12 @@ function escapeLatex(text: string): string {
     // whitespace / opening punctuation; otherwise closing.
     .replace(/(^|[\s([{—–])"/g, "$1``")
     .replace(/"/g, "''");
+  // Typographic reverse-map (accents/special-letters/dashes/ellipsis →
+  // canonical LaTeX) runs AFTER char-escaping so its emitted `\^{e}` / `\~{n}`
+  // commands aren't re-escaped by the `^`/`~` rules above. Suppressed for
+  // code spans by the caller (memo §A). The dash-glyph used as a `"`-opening
+  // lookbehind (— –) is preserved by that rule above before being mapped here.
+  return opts?.typography === false ? escaped : typographyToLatex(escaped);
 }
 
 function serializeTitleField(node: JSONContent): string {

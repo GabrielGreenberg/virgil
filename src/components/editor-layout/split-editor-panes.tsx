@@ -21,7 +21,6 @@ export function SplitEditorPanes({
   onMirrorViewReady,
   sectionPath,
   mirrorSectionPath,
-  showSectionIndicator,
 }: {
   editorInstance: Editor | null;
   canonical: React.ReactNode;
@@ -32,7 +31,6 @@ export function SplitEditorPanes({
   onMirrorViewReady?: (view: import("prosemirror-view").EditorView | null) => void;
   sectionPath: SectionPathEntry[];
   mirrorSectionPath: SectionPathEntry[];
-  showSectionIndicator: boolean;
 }) {
   const containerRef = useRef<HTMLDivElement>(null);
 
@@ -59,7 +57,7 @@ export function SplitEditorPanes({
         style={{ flex: `${ratio} 1 0`, background: 'var(--pod-editor)', borderRadius: 'var(--pod-radius)', border: 'var(--pod-border)', boxShadow: 'var(--pod-shadow)' }}
       >
         {canonical}
-        {showSectionIndicator && <SectionLozenge sectionPath={sectionPath} />}
+        <SectionLozenge sectionPath={sectionPath} />
       </div>
       {/* Drag gap — canvas shows between the two editor pods */}
       <div className="relative shrink-0 z-10" style={{ height: 'var(--pod-gap)' }}>
@@ -86,7 +84,7 @@ export function SplitEditorPanes({
           onFocus={onMirrorFocus}
           onViewReady={onMirrorViewReady}
         />
-        {showSectionIndicator && <SectionLozenge sectionPath={mirrorSectionPath} />}
+        <SectionLozenge sectionPath={mirrorSectionPath} />
       </div>
     </div>
   );
