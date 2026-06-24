@@ -491,26 +491,38 @@ export function useInTextPositions(
     // re-measure so the deck snaps to the corrected coordinates. `onFontReady`
     // has no per-caller unsubscribe, so guard the ping with a mounted ref.
     //
-    // KNOWN LIMITATION — `onFontReady` is a one-shot module-global that arms
+    // `onFontReady` is a one-shot module-global that arms
     // `document.fonts.ready.then(...)` ONCE (see text-metrics.ts ~:221). Any
     // mount that happens AFTER fonts have already resolved registers a callback
-    // that NEVER fires. That residual gap is harmless for a true REMOUNT — the
-    // A.1 settle loop above runs unconditionally on every effect run regardless
-    // of font-ready state, so a remount always re-measures once layout settles.
+    // that NEVER fires. That residual gap is harmless: the A.1 settle loop above
+    // runs unconditionally on every run of THIS effect (regardless of font-ready
+    // state), so whenever this effect runs it re-measures once layout settles.
     //
-    // The genuine uncovered case is a keep-alive RE-SHOW WITHOUT remount
-    // (tab-switch / display:none→show — the L2/L3 keep-alive subsystem): this
-    // effect does not re-run at all, so neither the settle loop NOR this
-    // font-ready ping re-arms, and a deck measured against a then-hidden /
-    // un-laid-out editor can stay stale until some other trigger (structural
-    // bus, resize, card RO) fires. A future fix should trigger a re-measure on
-    // VISIBILITY RESTORE (e.g. drive `schedule()` off the keep-alive visibility
-    // signal — `useIsVisible` is already imported here), coordinated with the
-    // keep-alive layer and live-verified. Deliberately NOT done here: an
-    // IntersectionObserver / visibility re-measure interacts with the separate
-    // keep-alive subsystem and needs real-browser verification, out of scope for
-    // this change. (Must stay keystroke-safe — any such trigger must NOT be an
-    // editor update/transaction subscriber.)
+    // KEEP-ALIVE RE-SHOW (display:none→show without remount — the L2/L3
+    // keep-alive subsystem): this is handled by construction, not by a separate
+    // visibility trigger. Visibility is folded into `enabled`
+    // (`enabled = enabledProp && isVisible`, see :311), and `enabled` is in BOTH
+    // `measure`'s `useCallback` deps and THIS effect's dep array. So a
+    // hidden→visible transition flips `enabled` false→true, which re-creates
+    // `measure` and RE-RUNS this whole effect — re-arming the A.1 settle loop
+    // against the now-laid-out editor. (The font-ready ping re-registers but is
+    // INERT on re-show: `onFontReady` is a one-shot module-global that already
+    // fired at cold load, so the A.1 settle loop is the SOLE re-show healer —
+    // consistent with the one-shot caveat noted above.)
+    // While hidden, the `!enabled` branch at the top of this effect cleared
+    // `naturalRef` to empty, so the re-show takes the first-paint path (the
+    // degeneracy guard is inactive at size 0 ⇒ commit, then the settle loop
+    // heals) — exactly the cold-load lifecycle, re-triggered. No `editor.on`
+    // subscriber and no IntersectionObserver is involved, so keystroke sanctity
+    // is preserved: the trigger is the rare visibility flip, never a transaction.
+    // (The degenerate-measure guard does NOT help on re-show — the hidden-state
+    // clear emptied `naturalRef`, so size 0 ⇒ no good cache to retain ⇒ the
+    // re-show commits first-paint and relies on the settle loop, same as a cold
+    // open.) Locked by `useInTextPositions-visibility-remeasure.test.tsx`.
+    // (LIVE-FSA OWED: jsdom can't lay out, so the real hidden→show layout settle
+    // — fonts/KaTeX/expex reflow correcting the deck — is verified by the unit
+    // test's re-fire assertion here and must still be feel-checked in a real
+    // browser against the L2 paper↔Library bounce.)
     fontReadyActiveRef.current = true;
     onFontReady(() => {
       if (fontReadyActiveRef.current) schedule();
