@@ -132,14 +132,22 @@ interface OmniViewPanelProps {
   // and `cardsSilent` props. See `@/components/editor-layout/omni-pin-store`.
 }
 
-/** Resolve the owning panel (filter category) from an OmniItem id. Item ids are
+/** Resolve the owning panel (filter category) from an OmniItem. Item ids are
  *  the canonical `float:card:<kind>:<id>` grammar (AF). Parse the kind, then map
  *  kind → owning panel via the registry — which collapses the polymorphic kinds
  *  (revision-comment/-suggestion → revisions, the cutter pair → cutter) for
  *  free. Replaces the old first-colon slice, which yielded `"float"` → null →
- *  every card always visible regardless of the category toggles. */
-function categoryOf(id: string): OmniCategory | null {
-  const parsed = parseAnyKey(id);
+ *  every card always visible regardless of the category toggles.
+ *
+ *  NESTED children (an item carrying `parentCardId` — e.g. a footnote-nested
+ *  cite): the child's filter category is its PARENT's, not its own. A nested
+ *  cite shows/hides with its footnote card (it follows the footnote's column +
+ *  filter row) and is thereby suppressed from the flat Citations filter — so it
+ *  appears exactly once, under its footnote. Falls back to the child's own
+ *  category if the parent key can't be parsed (defensive). */
+function categoryOf(item: { id: string; parentCardId?: string }): OmniCategory | null {
+  const key = item.parentCardId ?? item.id;
+  const parsed = parseAnyKey(key);
   if (!parsed || parsed.domain !== "card") return null;
   const entry = getPanelByCardKind(parsed.kind as CardKind);
   if (!entry?.omniEligible) return null;
@@ -408,7 +416,7 @@ function OmniViewPanel({
   const visibleItems = useMemo(() => {
     if (hideAllCards) return [];
     return items.filter((item) => {
-      const cat = categoryOf(item.id);
+      const cat = categoryOf(item);
       return cat == null || enabledCategories.has(cat);
     });
   }, [items, enabledCategories, hideAllCards]);
@@ -564,11 +572,19 @@ function OmniViewPanel({
           const isPinned = pinRequest?.cardId === item.id;
           const top = positions.get(item.id);
           if (top === undefined) return null;
+          // Nested children (footnote-owned cards, e.g. a footnote-nested
+          // cite) read as standalone cascade cards but sit one indent step
+          // (16px = `pl-4`) to the right of their footnote card — pixel-
+          // matching CitationCard's bib-under-cite `ml-4`. `pl-4` shifts the
+          // content right without changing the absolute wrapper's measured
+          // width/height, so the cascade math (translateY only) is untouched.
+          const isNested = item.parentCardId != null;
           return (
             <div
               key={item.id}
               data-omni-entry-wrapper={item.id}
-              className="absolute left-2 right-2"
+              data-omni-nested-child={isNested ? "" : undefined}
+              className={`absolute left-2 right-2${isNested ? " pl-4" : ""}`}
               style={{
                 top: 0,
                 transform: `translateY(${top}px)`,

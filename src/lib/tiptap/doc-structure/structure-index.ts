@@ -171,7 +171,15 @@ export function buildInitial(doc: PMNode): DocStructure {
       // per-transaction `applyDiff` path never re-walks a footnote body, so
       // keystroke sanctity is preserved. The nested cite has no own PM node —
       // its address is the HOST footnote's `pos` plus `nestedInFootnoteId`.
-      const hostId = attrs.linkId || attrs.footnoteId || "";
+      //
+      // `hostId` MUST be the RAW `footnoteId` — the same id `FootnoteEntry.id`
+      // carries (line ~158) and the footnote omni item is keyed by
+      // (`popKey("footnotes", fn.footnoteId)` / `cardPopKey("footnote", …)`).
+      // Do NOT prefer `linkId`: when a footnote has a non-empty `linkId` that
+      // differs from `footnoteId`, a `linkId`-derived host would never match
+      // the footnote item's key, so `nest-footnote-children.ts` would silently
+      // degrade the nested cite to a flat card instead of nesting it.
+      const hostId = attrs.footnoteId || "";
       const body = attrs.content;
       if (body && typeof body === "object") {
         for (const hit of inlineAtoms(body)) {

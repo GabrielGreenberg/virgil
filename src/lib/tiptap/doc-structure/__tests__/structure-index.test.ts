@@ -97,7 +97,15 @@ describe("buildInitial", () => {
     expect(nested?.displayText).toBe("Nested");
   });
 
-  it("prefers the footnote's linkId over footnoteId as the nested-cite host id", () => {
+  it("uses the raw footnoteId (not linkId) as the nested-cite host id, for identity-consistency with the footnote's omni-item key", () => {
+    // The nested-cite host id MUST be the footnote's canonical identity — the
+    // raw `footnoteId` — because that is what `FootnoteEntry.id`, `FootnoteInfo
+    // .footnoteId`, and the footnote omni item key (`cardPopKey("footnote",
+    // footnoteId)`) all use. The footnote-child nesting (omni) resolves a nested
+    // cite to its parent by matching `nestedInFootnoteId` against that key, so a
+    // `linkId`-preferred host (when linkId !== footnoteId) would silently fail
+    // to nest and degrade to a flat card. linkId was a lone inconsistency with
+    // no consumer until nesting landed; we unify on footnoteId.
     const body = {
       type: "doc",
       content: [
@@ -109,7 +117,7 @@ describe("buildInitial", () => {
     ]);
     const s = buildInitial(doc(para));
     expect(s.citations.find((c) => c.id === "c-x")?.nestedInFootnoteId).toBe(
-      "fn-link",
+      "fn-legacy",
     );
   });
 

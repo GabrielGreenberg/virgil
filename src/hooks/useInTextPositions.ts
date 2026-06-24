@@ -8,6 +8,7 @@ import type { Link } from "@/links/_shared/types";
 import { findEditorScrollFor } from "@/components/editor-layout/layout-scroll";
 import { useIsVisible } from "@/lib/keep-alive/visibility-context";
 import { getBus } from "@/lib/tiptap/doc-structure";
+import { onFontReady } from "@/lib/text-metrics";
 
 /** Viewport gating margin — items within ±NEAR_ZONE_PX of the visible
  *  range still get measured, so scrolling slightly doesn't flash through
@@ -91,6 +92,81 @@ export function findTextPosition(editor: Editor | null, text: string): number {
 
 const MIN_GAP = 4; // small extra gap between entries beyond their height
 const DEFAULT_ENTRY_HEIGHT = 60; // fallback before entries are rendered
+
+/**
+ * Settle-loop tuning. The post-mount rAF stabilization loop re-measures
+ * after layout settles (web-font swap, KaTeX/expex/figure NodeView mount).
+ * It is self-terminating: it stops the FIRST frame the editor's
+ * `scrollHeight` is unchanged from the prior frame (`SETTLE_STABLE_FRAMES`
+ * = 1 stable observation), or hard-stops after `SETTLE_MAX_FRAMES` frames
+ * (~500ms @ 60fps) so a perpetually-animating doc can never spin it
+ * forever. It is armed ONCE per mount/enable and never re-armed by a
+ * transaction — so it is off the keystroke path entirely.
+ */
+const SETTLE_MAX_FRAMES = 30;
+const SETTLE_STABLE_FRAMES = 1;
+
+/**
+ * Degenerate-measure threshold. On a cold/un-laid-out editor `coordsAtPos`
+ * reports anchors above the pod top, so the *pre-clamp* natural goes
+ * strongly negative; the old `if (naturalTop < 0) naturalTop = 0` clamp
+ * baked those into a top-stack. A legitimate all-top-anchored deck sits at
+ * pre-clamp natural ≈ 0 (a few px negative at most), NOT well below this,
+ * so the sign+magnitude distinguishes the two. Tuned conservative (one card
+ * height) so a single near-top card never trips the guard. */
+const DEGENERATE_NATURAL_PX = -DEFAULT_ENTRY_HEIGHT; // -60px
+/** Min count of strongly-negative items required to call a measure
+ *  degenerate. ≥2 distinct anchors landing well above the pod is the
+ *  signature of an un-laid-out editor, not a real layout. */
+const DEGENERATE_MIN_COUNT = 2;
+
+/** A single item's raw (pre-clamp) measurement. `preClampTop` is the raw
+ *  `coords.top - podRect.top` before the ≥0 clamp; the degeneracy guard
+ *  reads it to decide whether the whole measure is trustworthy. */
+interface RawMeasure {
+  preClampTop: number;
+  height: number;
+  pos: number;
+}
+
+/**
+ * Pure self-validation: is this freshly-read measure degenerate (taken
+ * against an un-laid-out editor) rather than a real layout?
+ *
+ * A measure is degenerate when ≥`DEGENERATE_MIN_COUNT` items have a
+ * pre-clamp natural top at or below `DEGENERATE_NATURAL_PX` (strongly
+ * negative) AND their resolved `pos` values are spread across the doc
+ * (so it's genuinely "many distinct anchors all reporting above the pod",
+ * the un-laid-out signature, not a couple of co-located top cards). A
+ * legitimate deck anchored at the very top of the document sits at
+ * pre-clamp ≈ 0, never strongly negative, so it does NOT trip this.
+ *
+ * Caller only ACTS on a degenerate verdict when it already holds a good
+ * cached measure to retain — there's no previous-good to keep on the very
+ * first paint, so a first-paint degenerate still commits (and the settle
+ * loop / font-ready ping corrects it), never leaving a permanently blank
+ * column.
+ */
+export function isDegenerateMeasure(
+  raws: ReadonlyArray<RawMeasure>,
+): boolean {
+  let negCount = 0;
+  let minPos = Infinity;
+  let maxPos = -Infinity;
+  for (const r of raws) {
+    if (r.preClampTop <= DEGENERATE_NATURAL_PX) {
+      negCount += 1;
+      if (r.pos < minPos) minPos = r.pos;
+      if (r.pos > maxPos) maxPos = r.pos;
+    }
+  }
+  if (negCount < DEGENERATE_MIN_COUNT) return false;
+  // Pos-spread guard: the strongly-negative items must span distinct doc
+  // anchors. (Co-located items can't both be legitimately far above the
+  // pod once laid out; a spread of anchors all above the pod is the
+  // un-laid-out fingerprint.)
+  return maxPos > minPos;
+}
 
 const DEFAULT_ENTRY = (id: string) => `[data-link-card$=":${id}"]`;
 
@@ -238,6 +314,12 @@ export function useInTextPositions(
   const naturalRef = useRef<Map<string, NaturalEntry>>(new Map());
   const [measureVersion, setMeasureVersion] = useState(0);
   const computeRafRef = useRef(0);
+  // Settle loop bookkeeping — armed once per mount/enable, self-terminating.
+  const settleRafRef = useRef(0);
+  // `onFontReady` registers a module-global callback with NO per-caller
+  // unsubscribe; this ref lets the registered ping bail after unmount/disable
+  // so a late `document.fonts.ready` never measures a torn-down editor.
+  const fontReadyActiveRef = useRef(false);
 
   const measure = useCallback(() => {
     if (!editor || !enabled || items.length === 0) {
@@ -274,22 +356,22 @@ export function useInTextPositions(
     }
 
     const next = new Map<string, NaturalEntry>();
+    const raws: RawMeasure[] = [];
     for (const item of items) {
       // Prefer the live snapshot pos (re-mapped every transaction) so cards
       // track their anchor as plain typing shifts content; fall back to the
       // captured pos for kinds the resolver doesn't cover.
       const livePos = resolvePos?.(item.id);
       const pos = Math.min(livePos ?? item.pos, editor.state.doc.content.size);
-      let naturalTop: number;
+      let preClampTop: number;
       let coordsTop: number;
       try {
         const coords = editor.view.coordsAtPos(pos);
         coordsTop = coords.top;
-        naturalTop = coords.top - podRect.top;
+        preClampTop = coords.top - podRect.top;
       } catch {
         continue; // skip items with invalid positions
       }
-      if (naturalTop < 0) naturalTop = 0;
 
       const inViewport = coordsTop >= viewTop && coordsTop <= viewBottom;
       let height: number = DEFAULT_ENTRY_HEIGHT;
@@ -300,7 +382,29 @@ export function useInTextPositions(
         if (el) height = el.getBoundingClientRect().height;
       }
 
-      next.set(item.id, { naturalTop, height });
+      raws.push({ preClampTop, height, pos });
+      // The committed natural retains the historical ≥0 clamp (negative
+      // values legitimately appear when an unanchored block sits just above
+      // the pod). The degeneracy guard below — which reads the *pre-clamp*
+      // values in `raws` — is what protects against baking a top-stack from
+      // an un-laid-out editor.
+      next.set(item.id, {
+        naturalTop: preClampTop < 0 ? 0 : preClampTop,
+        height,
+      });
+    }
+
+    // Self-validation (Part B): if this measure is degenerate — many
+    // distinct anchors reporting strongly above the pod, the signature of
+    // an editor that hasn't reached final layout — DON'T overwrite the
+    // previously-cached good naturals with clamped-to-0 garbage (which the
+    // cascade would spread into a top-stack). Retain the last good positions
+    // and let the settle loop / font-ready ping re-measure once layout is
+    // final. Only enforced when we HAVE a previous-good measure to keep; on
+    // the very first paint there's nothing to retain, so we still commit
+    // (the settle loop then corrects it) rather than render a blank column.
+    if (naturalRef.current.size > 0 && isDegenerateMeasure(raws)) {
+      return;
     }
 
     // Only bump measureVersion if measurements *actually* changed.
@@ -343,6 +447,74 @@ export function useInTextPositions(
       cancelAnimationFrame(computeRafRef.current);
       computeRafRef.current = requestAnimationFrame(measure);
     };
+
+    // Part A — settle-aware re-measure. The initial `measure()` above races
+    // async layout: web fonts swap (FOUT) and React NodeViews (KaTeX math,
+    // expex examples, figures/images) mount and size AFTER first paint,
+    // moving every line. `coordsAtPos` read before that returns tops that are
+    // too small → cards collapse to the top. None of the existing triggers
+    // (structural bus, window resize, editor RO) reliably fire on a cold-load
+    // settle, so we add two transient, self-terminating correctors. Neither
+    // is an editor update/transaction subscriber, so both stay OFF the
+    // keystroke path: they fire once on mount-settle and on font-ready only.
+
+    // A.1 — bounded post-mount stabilization loop. Re-measure each rAF until
+    // the editor's laid-out height is stable across consecutive frames, or a
+    // hard frame cap elapses (~500ms). Self-terminating: it only reschedules
+    // while height is still changing AND under the cap, so a settled doc
+    // costs zero further frames and a perpetually-animating one can't spin it
+    // forever.
+    const editorDomForSettle = editor.view?.dom as HTMLElement | undefined;
+    let settleFrames = 0;
+    let settleStable = 0;
+    let lastSettleHeight = editorDomForSettle?.scrollHeight ?? -1;
+    const settleStep = () => {
+      if (!enabled) return;
+      measure();
+      const h = editorDomForSettle?.scrollHeight ?? -1;
+      if (h === lastSettleHeight) {
+        settleStable += 1;
+      } else {
+        settleStable = 0;
+        lastSettleHeight = h;
+      }
+      settleFrames += 1;
+      if (settleStable >= SETTLE_STABLE_FRAMES || settleFrames >= SETTLE_MAX_FRAMES) {
+        return; // settled or capped — stop (no reschedule = self-terminating)
+      }
+      settleRafRef.current = requestAnimationFrame(settleStep);
+    };
+    settleRafRef.current = requestAnimationFrame(settleStep);
+
+    // A.2 — FOUT corrector. When web fonts swap in, every line shifts; the
+    // metrics module clears its own caches on `document.fonts.ready` and we
+    // re-measure so the deck snaps to the corrected coordinates. `onFontReady`
+    // has no per-caller unsubscribe, so guard the ping with a mounted ref.
+    //
+    // KNOWN LIMITATION — `onFontReady` is a one-shot module-global that arms
+    // `document.fonts.ready.then(...)` ONCE (see text-metrics.ts ~:221). Any
+    // mount that happens AFTER fonts have already resolved registers a callback
+    // that NEVER fires. That residual gap is harmless for a true REMOUNT — the
+    // A.1 settle loop above runs unconditionally on every effect run regardless
+    // of font-ready state, so a remount always re-measures once layout settles.
+    //
+    // The genuine uncovered case is a keep-alive RE-SHOW WITHOUT remount
+    // (tab-switch / display:none→show — the L2/L3 keep-alive subsystem): this
+    // effect does not re-run at all, so neither the settle loop NOR this
+    // font-ready ping re-arms, and a deck measured against a then-hidden /
+    // un-laid-out editor can stay stale until some other trigger (structural
+    // bus, resize, card RO) fires. A future fix should trigger a re-measure on
+    // VISIBILITY RESTORE (e.g. drive `schedule()` off the keep-alive visibility
+    // signal — `useIsVisible` is already imported here), coordinated with the
+    // keep-alive layer and live-verified. Deliberately NOT done here: an
+    // IntersectionObserver / visibility re-measure interacts with the separate
+    // keep-alive subsystem and needs real-browser verification, out of scope for
+    // this change. (Must stay keystroke-safe — any such trigger must NOT be an
+    // editor update/transaction subscriber.)
+    fontReadyActiveRef.current = true;
+    onFontReady(() => {
+      if (fontReadyActiveRef.current) schedule();
+    });
     // Card positions are anchored to PM coords. Subscribe to the
     // DocStructureObserver: structural changes (block add/remove) are
     // when card mappings might shift. Pure text edits don't move
@@ -375,6 +547,8 @@ export function useInTextPositions(
 
     return () => {
       cancelAnimationFrame(computeRafRef.current);
+      cancelAnimationFrame(settleRafRef.current);
+      fontReadyActiveRef.current = false;
       unsubBlocks?.();
       window.removeEventListener("resize", schedule);
       editorObs?.disconnect();
