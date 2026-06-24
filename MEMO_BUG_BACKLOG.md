@@ -40,6 +40,43 @@ Status legend: `open` · `in-progress` · `done`
 > live FSA gesture feel-check (pop a figure/graphics float → click image → popover
 > opens → save round-trips to main).
 
+> **DRAINED 2026-06-24 (manager session, ultracode):** the open tail items were
+> worked through as six grouped implement→verify→adversarial-review workflows,
+> merged to **local `main` (no-ff, NOT pushed)** as two disjoint lanes (merges
+> `db6a610e` lane A + `948f9f1d` lane B; full `tsc` 0 + full vitest green on the
+> merged tree). **Shipped:**
+> - **LaTeX typography (TYPO #1+#2)** — `6c1b075b`. One bidirectional `latex-typography.ts`
+>   table: accents `\'e`→é, `--`/`---`→en/em dash, `\ldots`→… round-trip, source-canonical
+>   on save; wired into parser+serializer+footnote-content; excludes code/math/verbatim/
+>   raw-LaTeX. (Review caught+fixed dotless-ı accents + a display-math/`\verb` leak.)
+> - **Float edge-resize (#2)** — `6bd01bcb`. L/R/B edges + invisible corner zones drag-resize
+>   every pop-out (single `FloatingPanel` shell); diagonal corner grip removed; clamps centralized.
+> - **Omni cascade (gutter-stacking + footnote-nesting P1)** — `0cd533fe`. Settle-aware,
+>   self-validating measurement (onFontReady + bounded rAF; rejects degenerate cold-load
+>   measures → no top-stack); footnote-nested **citations** nest indented under their footnote
+>   card via one snapshot-gated `parentCardId`. Keystroke-sanctity preserved.
+> - **ViewMenu retire (TYPO #3) + card autofocus** — `5424f49a`. `showSectionIndicator`
+>   removed end-to-end (lozenge unconditional; stale key inert); `finishCreate` chokepoint now
+>   expands+focuses a new card body (AI/programmatic opt-out; citation carve-out).
+> - **Margin geometry (#8 marginalia + #9 top/bottom)** — `c178218e`. Dead `--doc-top-extra`
+>   removed + floors→0 (top/bottom slider reaches the pod edge); ONE `SCROLLBAR_GUTTER=9` SSOT
+>   for markers/bolt/scrollbar + marker-visibility-gated min-floor (zen/Library-reader keep freedom).
+> - **Footnote atoms (TYPO #4+#5)** — `26b48b9c`. `\ref`/`\cite` created inside a footnote target
+>   the footnote editor (owning-editor threaded like activeMath/activeFigure); closed two latent
+>   data-loss bugs (footnote `labelRef` serialize + schema); header squircle 20→18px.
+>
+> **OWED — live FSA feel-checks** (dev preview unfaithful for geometry): margin
+> geometry (first line clears toolbar at min top-margin; marker/scrollbar/bolt
+> non-overlap; **bolt/marker design call** — a 28px bolt + 2 marker cols +
+> scrollbar can't all be disjoint in the 70px lane, currently anchored outboard),
+> gutter-stacking (hard-reload `annotation-history` and watch the margin deck),
+> edge-resize gesture (+ the LOW right-edge/scrollbar overlap note), nested-cite/
+> ref creation, autofocus, badge size. **Follow-ups noted:** keep-alive re-show
+> re-measure (gutter-stacking, needs the L2/L3 visibility trigger); footnote-
+> nesting Phase 2 (`\ref` nesting + docked-panel surface); code-split-with-markers
+> margin floor (LOW). **Deferred features left alone** (Gabriel's FORK-2 call,
+> not bugs): #52 CSL bib preview, first-#53 footnote native-drag.
+
 ---
 
 ## 1. Inline-math popup: save-by-default, add a Cancel button
