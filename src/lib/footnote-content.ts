@@ -9,6 +9,12 @@
 
 import type { JSONContent } from "@tiptap/react";
 import { generateShortId } from "@/lib/uuid";
+import {
+  matchAccent,
+  matchSpecialLetter,
+  dashesToGlyphs,
+  typographyToLatex,
+} from "@/lib/latex-typography";
 
 const HTML_TAG_RE = /<[^>]+>/;
 
@@ -272,8 +278,8 @@ export function htmlToJson(html: string): JSONContent {
 // JSON ↔ LaTeX (used by latex-parser / latex-serializer)
 // ─────────────────────────────────────────────────────────────────────────────
 
-function escapeLatex(text: string): string {
-  return text
+function escapeLatex(text: string, opts?: { typography?: boolean }): string {
+  const escaped = text
     .replace(/(?<!\\)([&%#_])/g, "\\$1")
     .replace(/~/g, "\\textasciitilde{}")
     .replace(/\^/g, "\\textasciicircum{}")
@@ -281,6 +287,9 @@ function escapeLatex(text: string): string {
     .replace(/”/g, "''")
     .replace(/(^|[\s([{—–])"/g, "$1``")
     .replace(/"/g, "''");
+  // Typographic reverse-map runs AFTER char-escaping so its `\^{e}`/`\~{n}`
+  // output isn't re-escaped. Suppressed for code spans by the caller.
+  return opts?.typography === false ? escaped : typographyToLatex(escaped);
 }
 
 function serializeMarks(text: string, marks?: { type: string }[]): string {
@@ -292,7 +301,9 @@ function serializeMarks(text: string, marks?: { type: string }[]): string {
       .replace(/(^|[\s([{—–])"/g, "$1``")
       .replace(/"/g, "''");
   }
-  let result = escapeLatex(text);
+  // Code spans are verbatim — suppress typography (memo §A exclusion).
+  const inCode = marks.some((m) => m.type === "code");
+  let result = escapeLatex(text, { typography: !inCode });
   for (const mark of marks) {
     switch (mark.type) {
       case "bold":
@@ -411,7 +422,7 @@ export function richLatexToJson(latex: string): JSONContent {
   };
 }
 
-function parseInlineLatex(text: string): JSONContent[] {
+function parseInlineLatex(text: string, inCode = false): JSONContent[] {
   const nodes: JSONContent[] = [];
   let i = 0;
   let buffer = "";
@@ -421,7 +432,9 @@ function parseInlineLatex(text: string): JSONContent[] {
 
   const flush = () => {
     if (buffer) {
-      nodes.push({ type: "text", text: buffer });
+      // Dashes → en/em glyph at flush, except inside code spans (memo §A).
+      const flushed = inCode ? buffer : dashesToGlyphs(buffer);
+      nodes.push({ type: "text", text: flushed });
       buffer = "";
     }
   };
@@ -462,7 +475,8 @@ function parseInlineLatex(text: string): JSONContent[] {
         if (closed !== -1) {
           flush();
           const inner = text.slice(open, closed);
-          const innerNodes = parseInlineLatex(inner);
+          // `\texttt{}` is a code span — suppress typography in its body.
+          const innerNodes = parseInlineLatex(inner, cmdName === "texttt");
           const markType =
             cmdName === "textbf" ? "bold" :
             cmdName === "textit" ? "italic" :
@@ -551,6 +565,24 @@ function parseInlineLatex(text: string): JSONContent[] {
         else buffer += ch;
         i += escMatch[0].length;
         continue;
+      }
+
+      // Typographic accents (\'e \v{s} \c{c} …) + special letters (\ss \o …)
+      // → composed glyph, BEFORE the unknown-\command fallback so they don't
+      // become grey monospace. Suppressed inside code spans (memo §A).
+      if (!inCode) {
+        const accent = matchAccent(text, i);
+        if (accent) {
+          buffer += accent.glyph;
+          i = accent.end;
+          continue;
+        }
+        const special = matchSpecialLetter(text, i);
+        if (special) {
+          buffer += special.glyph;
+          i = special.end;
+          continue;
+        }
       }
 
       // Unknown \command — preserve as raw text marked latexCommand
