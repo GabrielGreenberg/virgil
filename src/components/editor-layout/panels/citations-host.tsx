@@ -1,11 +1,14 @@
 "use client";
 
-import { type Dispatch, type SetStateAction } from "react";
+import { type Dispatch, type SetStateAction, useMemo } from "react";
 import CitationsPanel from "@/panels/Citations";
 import type { useCitations } from "@/hooks/useCitations";
 import type { useAnnotations } from "@/hooks/useAnnotations";
 import type { useBibReview } from "@/hooks/useBibReview";
 import type { Side } from "@/hooks/useViewPrefs";
+import { getBus } from "@/lib/tiptap/doc-structure";
+import { useStructuralRevisions } from "@/hooks/useStructuralRevisions";
+import { buildNestedFootnoteInfoMap } from "./nest-footnote-children";
 import { useEditorRefContext } from "../contexts/editor-ref";
 import { useSelectionsContext } from "../contexts/selections";
 import { useCitationDisplayContext } from "../contexts/citation-display";
@@ -48,11 +51,29 @@ export interface CitationsHostProps {
 }
 
 export function CitationsHost(p: CitationsHostProps) {
-  const { editorRef } = useEditorRefContext();
+  const { editorRef, editorInstance } = useEditorRefContext();
   const { selectedCitationId, setSelectedCitationId } = useSelectionsContext();
   const { getCitationDisplayText } = useCitationDisplayContext();
   const { createCitation } = useCardCreationContext();
   const recentlyAddedId = useRecentlyAddedId("citation");
+
+  // Part B — footnote-child nesting on the DOCKED surface. Derive the
+  // `citationId → { footnoteId, footnoteNumber }` map from the
+  // DocStructureObserver snapshot (`structure.citations[].nestedInFootnoteId`,
+  // already in the snapshot — no doc walk). Gated on `[editorInstance,
+  // rev.citations]`: runs once the editor mounts (the counter is silent on
+  // load, so the editor dep triggers the first derive) and re-runs only when
+  // citations / footnote-bodies change — NEVER on a plain keystroke, so
+  // `__virgilBusStats().emitCount` stays flat while typing (keystroke sanctity;
+  // mirrors the omni-host derivation exactly).
+  const rev = useStructuralRevisions(editorInstance);
+  const nestedFootnoteOf = useMemo(() => {
+    if (!editorInstance) return undefined;
+    const bus = getBus(editorInstance);
+    if (!bus) return undefined;
+    return buildNestedFootnoteInfoMap(bus.structure);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [editorInstance, rev.citations]);
 
   // CHIP 4a-ii: the `virgil-citation-create` listener that registered the card
   // for slash/typed `\cite` is GONE. The slash command + typed input rules now
@@ -105,6 +126,7 @@ export function CitationsHost(p: CitationsHostProps) {
       onUpdateBibKeyAndType={p.updateBibKeyAndType}
       onAddBibEntry={p.addBibEntry}
       recentlyAddedId={recentlyAddedId}
+      nestedFootnoteOf={nestedFootnoteOf}
     />
   );
 }
