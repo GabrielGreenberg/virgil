@@ -1,6 +1,6 @@
 {
-  "version": "f961096a648d",
-  "syncedAt": "2026-06-21T01:08:43.650Z",
+  "version": "133d362bd207",
+  "syncedAt": "2026-06-24T01:06:17.358Z",
   "files": [
     "library/CLAUDE.md",
     "library/claude-commands/_doctrine.md",
@@ -33,6 +33,7 @@
     "library/scripts/backfill_auth.py",
     "library/scripts/bib_auth.py",
     "library/scripts/book_chapter_locator.py",
+    "library/scripts/build_bib_index.py",
     "library/scripts/bulk_convert_numbered_examples.py",
     "library/scripts/bump_catalog_version.py",
     "library/scripts/clean_fn_trailing_pagenum.py",

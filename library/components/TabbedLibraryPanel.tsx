@@ -22,7 +22,7 @@ import {
 } from "@library/lib/view-session-store";
 import LeftList from "./LeftList";
 import LibraryCentralDashboard from "./LibraryCentralDashboard";
-import PaperFileBody from "./PaperFileBody";
+import ReaderLRU from "./ReaderLRU";
 import type { RowActions } from "./LeftListRow";
 
 /** Primitive entry-action helpers passed down from LibraryView. The panel
@@ -476,9 +476,12 @@ export default function TabbedLibraryPanel({
           }}
         >
           {isPaper(activeLibrary) ? (
-            <PaperFileBody
+            // L3 keep-alive: an LRU of the last N reader papers stays mounted
+            // (hidden) so switching between inner paper tabs is instant. Reuses
+            // the same KeepAliveSlot/visibility primitive as the main-doc bounce.
+            <ReaderLRU
               handle={handle}
-              citekey={activeLibrary.citekey ?? null}
+              activeCitekey={activeLibrary.citekey ?? null}
               entries={entries}
               bibByKey={bibByKey}
               onBibChanged={onBibChanged}

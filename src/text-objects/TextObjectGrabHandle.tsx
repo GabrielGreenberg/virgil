@@ -341,6 +341,11 @@ function computePlacement(
   ref: TextObjectRef | SelectionRef,
   preEl: HTMLElement | null,
 ): Placement | null {
+  // Keep-alive: a hidden (display:none) editor has offsetHeight 0 and all
+  // block rects collapse to 0×0, so any placement would be garbage. Bail before
+  // any geometry read. (F6's viewport cache also stops refreshing while hidden,
+  // so the hover zone self-clears — this is the explicit defense.)
+  if (!cache.editorEl || cache.editorEl.offsetHeight === 0) return null;
   let anchorDom: HTMLElement | null = null;
   // For a selection, the handle aligns to the SELECTION's first line, not
   // the containing block's — captured here as a viewport-y, null otherwise.

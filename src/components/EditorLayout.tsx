@@ -24,6 +24,7 @@ import { useFloatingMenuPosition } from "@/hooks/useFloatingMenuPosition";
 import { useUpdateAvailable, applyUpdate } from "@/hooks/useUpdateAvailable";
 import SkillSyncControls from "./SkillSyncControls";
 import { DocPipeline } from "./editor-layout/DocPipeline";
+import { KeepAliveSlot } from "@/lib/keep-alive/KeepAliveSlot";
 import { useSelectedAnchorSync } from "@/hooks/useSelectedAnchorSync";
 import { CollabProvider, COLLAB_INERT, type CollabHook } from "@/hooks/useCollab";
 import { collabClaimScope } from "@/cards/predicates";
@@ -2015,6 +2016,11 @@ export default function EditorLayout() {
     if (!scrollEl) return;
 
     const compute = () => {
+      // Keep-alive: skip the breadcrumb recompute when the doc editor is hidden
+      // (display:none ⇒ scrollEl.offsetHeight 0 ⇒ every coordsAtPos/rect is 0).
+      // Bailing leaves the last-good section path in place (the cursor/scroll
+      // can't change while hidden) and avoids caching a 0-coord breadcrumb.
+      if ((scrollEl as HTMLElement).offsetHeight === 0) return;
       const doc = editorInstance.state.doc;
       // Collect all top-level headings with their text + level + DOM top
       const scrollRect = scrollEl.getBoundingClientRect();
@@ -2173,6 +2179,8 @@ export default function EditorLayout() {
     if (!scrollEl) return;
 
     const compute = () => {
+      // Keep-alive: skip when the mirror pane is hidden (see the main-pane note).
+      if ((scrollEl as HTMLElement).offsetHeight === 0) return;
       const doc = mirrorView.state.doc;
       const scrollRect = scrollEl.getBoundingClientRect();
       // Same shared section-active line + bottom clamp as the canonical pane —
@@ -4302,6 +4310,163 @@ export default function EditorLayout() {
 
       {/* Path bar removed — podification */}
 
+      {/* ── Always-mounted main doc editor (keep-alive) ──────────────────────
+          HOISTED out of the activePane ternary. A paper↔Library bounce leaves
+          currentDocId UNCHANGED, so DocPipeline's key={currentDocId} is stable
+          ⇒ the editor never remounts ⇒ the autosave wall holds by construction;
+          only display:none toggles. KeepAliveSlot publishes the visibility
+          context the §2 measurement followers read to go INERT while hidden
+          (keystroke sanctity). Hidden while pdfView (the PDF iframe replaces the
+          editor for the same doc) — the editor stays warm behind it.
+
+          PERMISSION GATE: do NOT mount the editor until the folder's readwrite
+          permission is granted (or dev-storage). The editor's hooks read from
+          disk on mount (useDocument → readDocBundle), which throws
+          NotAllowedError on a non-granted FSA handle; the old ternary gated this
+          via `currentDoc && docPermState !== "granted" ? null`. Restore that
+          here so the DocPermissionGate shows alone and the editor mounts fresh
+          (loading real content) the moment permission flips to granted. The
+          paper↔Library bounce never changes docPermState, so this never defeats
+          the keep-alive — it only blocks the one-time pre-grant cold mount. */}
+      {currentDocId && !(currentDoc && docPermState !== "granted") && (
+        <KeepAliveSlot isVisible={activePane === "doc" && !pdfView}>
+          <div data-virgil-row-scroll className="flex flex-1 min-h-0 overflow-x-auto overflow-y-auto">
+            {/* `<DocPipeline key={currentDocId}>` is the architectural
+                wall against the cross-doc autosave bug: a doc SWITCH (different
+                currentDocId) remounts EditorPane/useDocument/TipTap so no stale
+                closure carries the prior doc's content into the next doc's save.
+                The boundary also opens the per-doc write pipeline used by
+                writeDocBundle's assertActive check. Toggling code-view does NOT
+                remount this boundary — SplitWithCode handles open/close inline so
+                TipTap stays alive across the toggle. */}
+            <DocPipeline key={currentDocId} docId={currentDocId}>
+              <SplitWithCode
+                open={codeView}
+                ratio={prefs.codePaneRatio}
+                onRatioChange={setCodePaneRatio}
+                onMoveCodeToText={() =>
+                  codeEditorHandleRef.current?.moveCodeToTextCursor()
+                }
+                onMoveTextToCode={() =>
+                  codeEditorHandleRef.current?.moveTextToCodeCursor()
+                }
+                left={
+                  <EditorChromeProvider value={FULL_CHROME}>
+                    <EditorPane
+                      ref={editorRef}
+                      docId={currentDocId}
+                      editable={collab.canEditMainText}
+                      chrome={FULL_CHROME}
+                      onUpdate={handleUpdate}
+                      onEditorReady={setEditorInstance}
+                      onActivate={handleEditorPaneActivate}
+                      onPaneStateChange={setPaneState}
+                      pdfView={pdfView}
+                      onTogglePdfView={togglePdfView}
+                      codeView={codeView}
+                      onToggleCodeView={toggleCodeView}
+                      placements={prefs.placements}
+                      viewPrefs={editorPaneViewPrefs}
+                      menuBar={editorPaneMenuBar}
+                      aiWindowOpen={aiWindowOpen}
+                      onAiWindowClose={() => setAiWindowOpen(false)}
+                      highlightText={highlightText}
+                      highlightRange={effectiveHighlightRange}
+                      onDocumentClassMismatch={promptDocClassMismatch}
+                      latexErrors={allLatexErrors}
+                      paragraphByErrorId={paragraphByErrorId}
+                      errorSnippets={errorSnippets}
+                      selectedErrorId={selectedErrorId}
+                      setSelectedErrorId={setSelectedErrorId}
+                      dismissedErrorIds={dismissedErrorIds}
+                      dismissError={dismissError}
+                      expandedErrorIds={expandedErrorIds}
+                      expandError={expandError}
+                      toggleErrorExpanded={toggleErrorExpanded}
+                      onJumpToError={jumpToError}
+                    />
+                  </EditorChromeProvider>
+                }
+                right={
+                  codeView && editorInstance ? (
+                    <div
+                      className="flex flex-1 min-h-0 overflow-hidden"
+                      style={{
+                        background: "var(--pod-editor)",
+                        borderRadius: "var(--pod-radius)",
+                        border: "var(--pod-border)",
+                        boxShadow: "var(--pod-shadow)",
+                        marginTop: 4,
+                        marginBottom: zenModeOn ? 4 : "var(--pod-gap)",
+                        marginRight: 4,
+                      }}
+                    >
+                      <CodeEditor
+                        docId={currentDocId!}
+                        editor={editorInstance}
+                        initialLine={codeViewLine}
+                        initialParagraphId={codeViewParagraphId}
+                        onReady={(handle) => {
+                          codeEditorHandleRef.current = handle;
+                        }}
+                        onTextChange={handleCodeEditorTextChange}
+                        compileLog={paneState?.compileLog ?? null}
+                        compileStatus={paneState?.compileStatus ?? null}
+                        isCompiling={paneState?.isCompiling ?? false}
+                      />
+                      {errorsSidebarOpen ? (
+                        <div className="w-[260px] shrink-0 border-l border-edge-subtle bg-surface flex flex-col h-full relative">
+                          <button
+                            type="button"
+                            onClick={() => setErrorsSidebarOpen(false)}
+                            className="absolute top-2 right-2 z-10 w-5 h-5 flex items-center justify-center rounded text-ink-muted hover:text-ink-body hover-on-light text-sm leading-none"
+                            data-hint="Hide errors panel"
+                            aria-label="Hide errors panel"
+                          >
+                            ×
+                          </button>
+                          <ErrorsHost
+                            errors={allLatexErrors}
+                            selectedId={selectedErrorId}
+                            onSelect={setSelectedErrorId}
+                            dismissedIds={dismissedErrorIds}
+                            onDismiss={dismissError}
+                            onJump={jumpToError}
+                            snippets={errorSnippets}
+                            paragraphByErrorId={paragraphByErrorId}
+                            expandedIds={expandedErrorIds}
+                            onExpand={expandError}
+                            onToggleExpanded={toggleErrorExpanded}
+                          />
+                        </div>
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={() => setErrorsSidebarOpen(true)}
+                          className="w-7 shrink-0 border-l border-edge-subtle bg-surface flex items-start justify-center pt-3 hover-on-light relative text-ink-muted hover:text-ink-body"
+                          data-hint={`Show errors (${allLatexErrors.length})`}
+                          aria-label="Show errors panel"
+                        >
+                          <IconErrors active={false} />
+                          {allLatexErrors.length > 0 && (
+                            <span
+                              className="absolute top-1 right-1 min-w-[14px] h-[14px] px-1 rounded-full text-[9px] leading-[14px] tabular-nums text-white text-center"
+                              style={{ backgroundColor: "var(--danger)" }}
+                            >
+                              {allLatexErrors.length > 99 ? "99+" : allLatexErrors.length}
+                            </span>
+                          )}
+                        </button>
+                      )}
+                    </div>
+                  ) : null
+                }
+              />
+            </DocPipeline>
+          </div>
+        </KeepAliveSlot>
+      )}
+
       {/* Main area */}
       {activePane === "paper" && currentPaperCitekey ? (
         <div className="flex flex-1 overflow-hidden bg-[var(--background)]">
@@ -4378,153 +4543,7 @@ export default function EditorLayout() {
             )}
           </div>
         </div>
-      ) : currentDocId ? (
-        <div data-virgil-row-scroll className="flex flex-1 min-h-0 overflow-x-auto overflow-y-auto">
-          {/* `<DocPipeline key={currentDocId}>` is the architectural
-              wall against the cross-doc autosave bug: every doc switch
-              fully unmounts EditorPane, useDocument, and TipTap, so no
-              stale closure / editor state can carry the prior doc's
-              content into the next doc's save. The boundary also opens
-              the per-doc write pipeline used by writeDocBundle's
-              assertActive check. Toggling code-view does NOT remount
-              this boundary — SplitWithCode handles open/close inline
-              so TipTap stays alive across the toggle (and the code
-              bridge keeps the two views in sync). */}
-          <DocPipeline key={currentDocId} docId={currentDocId}>
-            <SplitWithCode
-              open={codeView}
-              ratio={prefs.codePaneRatio}
-              onRatioChange={setCodePaneRatio}
-              onMoveCodeToText={() =>
-                codeEditorHandleRef.current?.moveCodeToTextCursor()
-              }
-              onMoveTextToCode={() =>
-                codeEditorHandleRef.current?.moveTextToCodeCursor()
-              }
-              left={
-                // EditorChromeProvider here (above EditorPane) so EditorPane's
-                // OWN body hooks (useNotes/useTodos/... and the persistent-state
-                // write-guard) resolve FULL_CHROME instead of the createContext
-                // default. The default also happens to be FULL_CHROME, so the
-                // main app's behavior is unchanged either way — but making the
-                // provider an ancestor keeps it parallel to the Reader mount and
-                // guarantees body hooks and EditorPane's `chrome` prop read ONE
-                // source. EditorPane's inner provider (adding `menuBar`) still
-                // wraps its children. Value MUST match the `chrome` prop below.
-                <EditorChromeProvider value={FULL_CHROME}>
-                <EditorPane
-                  ref={editorRef}
-                  docId={currentDocId}
-                  editable={collab.canEditMainText}
-                  chrome={FULL_CHROME}
-                  onUpdate={handleUpdate}
-                  onEditorReady={setEditorInstance}
-                  onActivate={handleEditorPaneActivate}
-                  onPaneStateChange={setPaneState}
-                  pdfView={pdfView}
-                  onTogglePdfView={togglePdfView}
-                  codeView={codeView}
-                  onToggleCodeView={toggleCodeView}
-                  placements={prefs.placements}
-                  viewPrefs={editorPaneViewPrefs}
-                  menuBar={editorPaneMenuBar}
-                  aiWindowOpen={aiWindowOpen}
-                  onAiWindowClose={() => setAiWindowOpen(false)}
-                  highlightText={highlightText}
-                  highlightRange={effectiveHighlightRange}
-                  onDocumentClassMismatch={promptDocClassMismatch}
-                  latexErrors={allLatexErrors}
-                  paragraphByErrorId={paragraphByErrorId}
-                  errorSnippets={errorSnippets}
-                  selectedErrorId={selectedErrorId}
-                  setSelectedErrorId={setSelectedErrorId}
-                  dismissedErrorIds={dismissedErrorIds}
-                  dismissError={dismissError}
-                  expandedErrorIds={expandedErrorIds}
-                  expandError={expandError}
-                  toggleErrorExpanded={toggleErrorExpanded}
-                  onJumpToError={jumpToError}
-                />
-                </EditorChromeProvider>
-              }
-              right={
-                codeView && editorInstance ? (
-                  <div
-                    className="flex flex-1 min-h-0 overflow-hidden"
-                    style={{
-                      background: "var(--pod-editor)",
-                      borderRadius: "var(--pod-radius)",
-                      border: "var(--pod-border)",
-                      boxShadow: "var(--pod-shadow)",
-                      marginTop: 4,
-                      marginBottom: zenModeOn ? 4 : "var(--pod-gap)",
-                      marginRight: 4,
-                    }}
-                  >
-                    <CodeEditor
-                      docId={currentDocId!}
-                      editor={editorInstance}
-                      initialLine={codeViewLine}
-                      initialParagraphId={codeViewParagraphId}
-                      onReady={(handle) => {
-                        codeEditorHandleRef.current = handle;
-                      }}
-                      onTextChange={handleCodeEditorTextChange}
-                      compileLog={paneState?.compileLog ?? null}
-                      compileStatus={paneState?.compileStatus ?? null}
-                      isCompiling={paneState?.isCompiling ?? false}
-                    />
-                    {errorsSidebarOpen ? (
-                      <div className="w-[260px] shrink-0 border-l border-edge-subtle bg-surface flex flex-col h-full relative">
-                        <button
-                          type="button"
-                          onClick={() => setErrorsSidebarOpen(false)}
-                          className="absolute top-2 right-2 z-10 w-5 h-5 flex items-center justify-center rounded text-ink-muted hover:text-ink-body hover-on-light text-sm leading-none"
-                          data-hint="Hide errors panel"
-                          aria-label="Hide errors panel"
-                        >
-                          ×
-                        </button>
-                        <ErrorsHost
-                          errors={allLatexErrors}
-                          selectedId={selectedErrorId}
-                          onSelect={setSelectedErrorId}
-                          dismissedIds={dismissedErrorIds}
-                          onDismiss={dismissError}
-                          onJump={jumpToError}
-                          snippets={errorSnippets}
-                          paragraphByErrorId={paragraphByErrorId}
-                          expandedIds={expandedErrorIds}
-                          onExpand={expandError}
-                          onToggleExpanded={toggleErrorExpanded}
-                        />
-                      </div>
-                    ) : (
-                      <button
-                        type="button"
-                        onClick={() => setErrorsSidebarOpen(true)}
-                        className="w-7 shrink-0 border-l border-edge-subtle bg-surface flex items-start justify-center pt-3 hover-on-light relative text-ink-muted hover:text-ink-body"
-                        data-hint={`Show errors (${allLatexErrors.length})`}
-                        aria-label="Show errors panel"
-                      >
-                        <IconErrors active={false} />
-                        {allLatexErrors.length > 0 && (
-                          <span
-                            className="absolute top-1 right-1 min-w-[14px] h-[14px] px-1 rounded-full text-[9px] leading-[14px] tabular-nums text-white text-center"
-                            style={{ backgroundColor: "var(--danger)" }}
-                          >
-                            {allLatexErrors.length > 99 ? "99+" : allLatexErrors.length}
-                          </span>
-                        )}
-                      </button>
-                    )}
-                  </div>
-                ) : null
-              }
-            />
-          </DocPipeline>
-        </div>
-      ) : (
+      ) : currentDocId ? null : (
         <div className="flex flex-1 items-center justify-center bg-[var(--background)]">
           <div className="flex flex-col items-center gap-6 px-6 py-8 w-full max-w-md">
             {docs.length > 0 ? (
