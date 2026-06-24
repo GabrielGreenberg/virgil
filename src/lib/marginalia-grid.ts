@@ -24,6 +24,7 @@ import {
   MARGINALIA_MARGIN_WIDTH,
   MARGINALIA_ICON_SIZE,
   MARGINALIA_INNER_PAD,
+  ICONS_BLOCK_WIDTH,
   type AnchorNodeMetrics,
   type GridCell,
   type MarginaliaMarker,
@@ -60,14 +61,13 @@ function cellAt(
   // Pixel X: icons are inset from the text edge by MARGINALIA_INNER_PAD.
   // Left margin packs from right (text edge) toward left (outer edge).
   // Right margin packs from left (text edge) toward right (outer edge).
-  const iconsWidth =
-    MARGINALIA_COLS * MARGINALIA_ICON_SIZE +
-    (MARGINALIA_COLS - 1) * MARGINALIA_COL_GAP;
+  // `ICONS_BLOCK_WIDTH` is the shared icon-block width (both columns + gap),
+  // exported from the right-margin geometry SSOT in marginalia.ts.
   const x =
     side === "left"
       ? MARGINALIA_MARGIN_WIDTH -
         MARGINALIA_INNER_PAD -
-        iconsWidth +
+        ICONS_BLOCK_WIDTH +
         col * (MARGINALIA_ICON_SIZE + MARGINALIA_COL_GAP)
       : MARGINALIA_INNER_PAD +
         col * (MARGINALIA_ICON_SIZE + MARGINALIA_COL_GAP);

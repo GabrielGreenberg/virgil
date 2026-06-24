@@ -2,6 +2,10 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type React from "react";
 
 import type { ViewPrefs } from "./useViewPrefs";
+import {
+  MARGINALIA_MIN_MARGIN_LEFT,
+  MARGINALIA_MIN_MARGIN_RIGHT,
+} from "@/lib/marginalia";
 
 /**
  * Margin-edit state machine for the editor pod's reading viewport.
@@ -66,18 +70,36 @@ export const MARGIN_OPPOSITE: Record<MarginSide, MarginSide> = {
   bottom: "top",
 };
 
-// Per-side minimum padding. Left must clear the 72px marginalia
-// margin (plus heading fold-chevron breathing strip). The other
-// three floor at 24px so the prose has air without bumping into the
-// pod border. All four cap at MARGIN_MAX so an extreme drag can't
-// collapse the column.
+// Per-side minimum padding when the marginalia marker lane is NOT reserved
+// (reading modes that hide markers: zen + the read-only Library Reader). Left
+// keeps its 72px historical floor (heading fold-chevron breathing strip);
+// right and top/bottom floor low so the slider can drive the prose nearly to
+// the pod edge — the residual ~8px gap is the irreducible --pod-cap-inner
+// rounded-corner arc, not slider-controllable padding. All four cap at
+// MARGIN_MAX so an extreme drag can't collapse the column.
 export const MARGIN_MIN: Record<MarginSide, number> = {
   left: 72,
   right: 24,
-  top: 24,
-  bottom: 24,
+  top: 0,
+  bottom: 0,
 };
 export const MARGIN_MAX = 240;
+
+/**
+ * Per-side minimum padding when the marginalia marker lane IS reserved (the
+ * editor with the Marginalia toggle on, outside zen). The horizontal floors
+ * rise to the right-margin geometry SSOT minimums so the marker grid always
+ * fits beside the scrollbar / bolt without eating into the prose (backlog #8).
+ * `Math.max` with the base floor so we never LOWER an existing floor (left's
+ * 80px lane min already exceeds its 72px base; right's 70px lane min exceeds
+ * its 24px base). Top/bottom are unchanged — markers are a horizontal lane.
+ */
+export const MARGIN_MIN_WITH_MARKERS: Record<MarginSide, number> = {
+  left: Math.max(MARGIN_MIN.left, MARGINALIA_MIN_MARGIN_LEFT),
+  right: Math.max(MARGIN_MIN.right, MARGINALIA_MIN_MARGIN_RIGHT),
+  top: MARGIN_MIN.top,
+  bottom: MARGIN_MIN.bottom,
+};
 
 // CSS custom property each side writes through. The editor column
 // reads these to set its prose padding (see EditorPane's column
@@ -172,6 +194,15 @@ export interface MarginEditViewPrefs {
 
 interface UseMarginEditOpts {
   viewPrefs: MarginEditViewPrefs | null | undefined;
+  /**
+   * True when the marginalia marker lane is rendered and must be reserved —
+   * the editor with the Marginalia toggle on, outside zen (backlog #8). When
+   * true, the horizontal margin drag floors at `MARGIN_MIN_WITH_MARKERS` so a
+   * drag can't shrink the margin below the marker lane. False in reading modes
+   * that hide markers (zen, read-only Library Reader), which keep full margin
+   * freedom via the lower `MARGIN_MIN`. Defaults to false (no extra floor).
+   */
+  marginaliaLaneReserved?: boolean;
 }
 
 export interface UseMarginEditResult {
@@ -202,7 +233,10 @@ export interface UseMarginEditResult {
 // move 8px past the opposite-side value before the snap breaks).
 const SNAP_PX = 8;
 
-export function useMarginEdit({ viewPrefs }: UseMarginEditOpts): UseMarginEditResult {
+export function useMarginEdit({
+  viewPrefs,
+  marginaliaLaneReserved = false,
+}: UseMarginEditOpts): UseMarginEditResult {
   const [marginEditMode, setMarginEditMode] = useState(false);
   // Single React state slot for live values. Updated ONCE per
   // gesture (at enter/save/cancel and at mouseup), never per rAF.
@@ -218,6 +252,17 @@ export function useMarginEdit({ viewPrefs }: UseMarginEditOpts): UseMarginEditRe
   const committedRef = useRef<Margins | null>(null);
   committedRef.current = liveMargins;
   const snapshotRef = useRef<Margins | null>(null);
+
+  // Latest marker-lane-reserved flag, mirrored to a ref so the stable
+  // (`[]`-dep) `beginDrag` reads the current value at drag-start without
+  // re-subscribing. Picks the per-side floor table for the drag clamp.
+  // Synced in an effect (not during render) so it's keystroke-free — the
+  // flag changes only on a mode toggle (Marginalia on/off, zen, reader),
+  // never per keystroke.
+  const laneReservedRef = useRef(marginaliaLaneReserved);
+  useEffect(() => {
+    laneReservedRef.current = marginaliaLaneReserved;
+  }, [marginaliaLaneReserved]);
 
   const persisted: Margins = useMemo(
     () => ({
@@ -342,7 +387,14 @@ export function useMarginEdit({ viewPrefs }: UseMarginEditOpts): UseMarginEditRe
         committedRef.current ?? { ...persistedRef.current };
       const oppositeSide = MARGIN_OPPOSITE[side];
 
-      const min = MARGIN_MIN[side];
+      // Pick the floor table: when the marginalia marker lane is reserved
+      // (editor, markers on, not zen), the horizontal sides floor at the lane
+      // minimum so the drag can't shrink the margin under the marker grid
+      // (backlog #8). Reading modes that hide markers use the lower base min.
+      const minTable = laneReservedRef.current
+        ? MARGIN_MIN_WITH_MARKERS
+        : MARGIN_MIN;
+      const min = minTable[side];
       const cssVar = MARGIN_CSS_VAR[side];
       const symCssVar = MARGIN_SYM_CSS_VAR[axis];
 

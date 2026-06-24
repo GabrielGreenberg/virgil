@@ -6,9 +6,15 @@
  * head line of the current selection (or cursor, when no selection).
  * Clicking it mounts {@link ActionsMenuPanel} at the button's position.
  *
- * Single placement rule: `textRight + RIGHT_GAP` at the head line.
- * RAF-batched updates on PM `selectionUpdate` / `update` / `focus` /
- * `blur` plus window `scroll` / `resize`.
+ * Single placement rule: the bolt's left edge sits at `textRight +
+ * MARGINALIA_BOLT_LEFT_FROM_TEXT` (the right-margin geometry SSOT). That
+ * offset anchors the bolt OUTBOARD in the reserved margin — right edge on the
+ * scrollbar's left edge, left edge clear of the LEFT marker column — instead
+ * of at the grid's inner edge (where a 28px bolt covers the left column) or at
+ * the old `textRight + 6` (straddling the text/grid boundary). See the
+ * constant's docstring for the lane geometry. RAF-batched updates on PM
+ * `selectionUpdate` / `update` / `focus` / `blur` plus window `scroll` /
+ * `resize`.
  *
  * Counterpart triggers:
  *  - {@link SelectionDragHandle} (left side) for the drag-to-lift gesture.
@@ -29,12 +35,17 @@ import {
 } from "@/hooks/useEditorViewportCache";
 import { findEditorScrollFor } from "@/components/editor-layout/layout-scroll";
 import { RESTING_MARGIN_TRIGGER_Z } from "@/floats/float-policy";
+import {
+  MARGINALIA_BOLT_LEFT_FROM_TEXT,
+  MARGINALIA_BOLT_SIZE,
+} from "@/lib/marginalia";
 
 const VIEWPORT_MARGIN = 8;
-const RIGHT_GAP = 6;
 // Action-button (collapsed state) dimensions — sized to match one menu row's
 // vertical rhythm so the button feels like a single seed of the menu it opens.
-const BUTTON_SIZE = 28;
+// The pixel size lives in the right-margin SSOT (the bolt's lane offset is
+// derived from it), re-exported here under the local name.
+const BUTTON_SIZE = MARGINALIA_BOLT_SIZE;
 
 const INVISIBLE_PLACEMENT: Placement = {
   visible: false,
@@ -110,7 +121,13 @@ function computePlacement(editor: Editor, cache: EditorViewportCache): Placement
 
   const vw = window.innerWidth;
   const vh = window.innerHeight;
-  let left = textRight + RIGHT_GAP;
+  // Bolt x from the right-margin geometry SSOT (NOT the old standalone
+  // `textRight + 6`, which straddled the text/grid boundary and landed
+  // squarely on the marginalia grid's LEFT column — the user's complaint).
+  // `MARGINALIA_BOLT_LEFT_FROM_TEXT` anchors the bolt OUTBOARD in the reserved
+  // margin: its right edge meets the scrollbar's left edge, so it clears both
+  // the scrollbar and the left marker column (see the constant's docstring).
+  let left = textRight + MARGINALIA_BOLT_LEFT_FROM_TEXT;
   if (left + BUTTON_SIZE > vw - VIEWPORT_MARGIN) {
     left = Math.max(VIEWPORT_MARGIN, vw - BUTTON_SIZE - VIEWPORT_MARGIN);
   }

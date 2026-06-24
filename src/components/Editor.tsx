@@ -501,7 +501,7 @@ const VirgilEditor = forwardRef<EditorHandle, EditorProps>(function VirgilEditor
         // The "Margins…" ViewMenu mode renders draggable in-text guides
         // on all four sides that update these vars live.
         class:
-          "prose prose-stone max-w-none focus:outline-none min-h-[calc(100vh-8rem)] pl-[var(--editor-pl,88px)] pr-[var(--editor-pr,72px)] pt-[calc(var(--editor-pt,40px)_+_var(--doc-top-extra,40px))] pb-[var(--editor-pb,40px)]",
+          "prose prose-stone max-w-none focus:outline-none min-h-[calc(100vh-8rem)] pl-[var(--editor-pl,88px)] pr-[var(--editor-pr,72px)] pt-[var(--editor-pt,40px)] pb-[var(--editor-pb,40px)]",
         // PM keeps the DOM at `contenteditable="true"` even in Reader
         // mode (so native drag-to-select reaches `view.state.selection`,
         // and the unified TextObjectGrabHandle / linkedRange-float flow

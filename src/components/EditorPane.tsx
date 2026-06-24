@@ -103,7 +103,11 @@ import {
 } from "@/panels/_shared/card-archive-view";
 import { useCardCreation } from "./editor-layout/card-actions/card-creation";
 import { useCitationActions } from "./editor-layout/card-actions/citations";
-import { isAnchorableNode } from "@/lib/marginalia";
+import {
+  isAnchorableNode,
+  MARGINALIA_MIN_MARGIN_LEFT,
+  MARGINALIA_MIN_MARGIN_RIGHT,
+} from "@/lib/marginalia";
 import { isTier1CDisabled } from "@/lib/perf-flags";
 import { useCitations, type CitationsHook } from "@/hooks/useCitations";
 import { useAutoAddLibraryEntriesForCitations } from "@/hooks/useAutoAddLibraryEntriesForCitations";
@@ -203,6 +207,7 @@ import {
   FLOATING_PANEL_VIEWPORT_MARGIN,
   FLOATING_PANEL_STACK_OFFSET,
   FLOATING_PANEL_Z_BASE,
+  SCROLLBAR_RIGHT_INSET,
 } from "./editor-layout/constants";
 import { computeSpawnPosition } from "./editor-layout/spawn-position";
 import { BibliographyHost } from "./editor-layout/panels/bibliography-host";
@@ -3122,6 +3127,17 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
   // snapshot. Both surfaces pass `viewPrefs` now (the Reader via the
   // ephemeral `useReaderViewPrefs()`), so margin edit is live in the
   // Reader too (session-only). State machine lives in `useMarginEdit`.
+  //
+  // Marginalia lane reservation (backlog #8): the right/left margin min-floor
+  // that keeps the marker grid from colliding with the scrollbar / bolt /
+  // text applies ONLY when the marginalia margins are actually rendered. That
+  // is true in the editor when the Marginalia toggle is on AND not in zen
+  // reading; it is FALSE in the read-only Library Reader (no `menuBar`) and in
+  // zen, both of which hide the markers and must keep full margin freedom
+  // (memo §4.1). Gating here, not unconditionally, avoids forcing wasted
+  // margins in those reading modes.
+  const marginaliaLaneReserved =
+    !!menuBar && menuBar.showMarginalia !== false && !viewPrefs?.zenMode;
   const {
     marginEditMode,
     effective: effectiveMargins,
@@ -3131,7 +3147,7 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
     save: saveMarginEdit,
     cancel: cancelMarginEdit,
     beginDrag: beginMarginDrag,
-  } = useMarginEdit({ viewPrefs });
+  } = useMarginEdit({ viewPrefs, marginaliaLaneReserved });
   // When the Code pane is open and SplitWithCode signals `compressed`
   // (the editor is narrower than its natural width — the common case at
   // typical split ratios), cap the horizontal gutters at a COMFORTABLE
@@ -3148,12 +3164,23 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
   const CODE_VIEW_GUTTER_PX = 48;
   const codeSplit = useCodePaneSplit();
   const compressX = codeSplit.compressed;
-  const effectiveLeftMargin = compressX
-    ? Math.min(effectiveMargins.left, CODE_VIEW_GUTTER_PX)
-    : effectiveMargins.left;
-  const effectiveRightMargin = compressX
-    ? Math.min(effectiveMargins.right, CODE_VIEW_GUTTER_PX)
-    : effectiveMargins.right;
+  // Right-margin geometry min-floor (backlog #8): when the marginalia marker
+  // lane is reserved, the rendered horizontal margins are floored at the lane
+  // minimum so the marker grid never collides with the scrollbar / bolt /
+  // text — even for a doc saved with a narrower margin, and even in the
+  // compressed code-view gutter (the floor outranks the 48px comfort cap when
+  // markers are shown; reading modes that hide markers keep the lower cap).
+  // `Math.max` is applied LAST so it wins over the compress `Math.min`.
+  const clampMarkerFloor = (px: number, floor: number) =>
+    marginaliaLaneReserved ? Math.max(px, floor) : px;
+  const effectiveLeftMargin = clampMarkerFloor(
+    compressX ? Math.min(effectiveMargins.left, CODE_VIEW_GUTTER_PX) : effectiveMargins.left,
+    MARGINALIA_MIN_MARGIN_LEFT,
+  );
+  const effectiveRightMargin = clampMarkerFloor(
+    compressX ? Math.min(effectiveMargins.right, CODE_VIEW_GUTTER_PX) : effectiveMargins.right,
+    MARGINALIA_MIN_MARGIN_RIGHT,
+  );
   const effectiveTopMargin = effectiveMargins.top;
   const effectiveBottomMargin = effectiveMargins.bottom;
 
@@ -4662,12 +4689,17 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
                 // `flex: 1000 1 ${editorBasis}px` editor-column rule.
                 flex: "1000 1 0",
                 // Text-width floor: ensure the prose column never collapses
-                // below 300px on narrow windows. Subtract `--editor-pl` /
+                // below 300px on narrow windows. Adds `--editor-pl` /
                 // `--editor-pr` (set just below; consumed by Editor.tsx's
                 // prose padding), the pod's 2px horizontal border (1px each
                 // side from `--pod-border`), and any wrapper inset
                 // (`--editor-wrapper-inset`, set by Reader's `.paper-render`
                 // padding via library.css; 0 in Editor mode).
+                // The marker-lane min-floor (backlog #8) is reserved
+                // transitively: when the marginalia lane is reserved,
+                // `--editor-pl/pr` are floored to MARGINALIA_MIN_MARGIN_*
+                // (above), so this min-width already includes the full marker
+                // lanes — no separate term needed.
                 minWidth: 'calc(300px + var(--editor-pl, 88px) + var(--editor-pr, 72px) + 2px + var(--editor-wrapper-inset, 0px))',
                 display: "flex",
                 flexDirection: "column",
@@ -5701,7 +5733,7 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
             <EditorScrollbar
               rowRef={rowScrollRef}
               editorColRef={editorColRef}
-              rightInset={3}
+              rightInset={SCROLLBAR_RIGHT_INSET}
             />
           )}
           {dragHandleMenuState && (

@@ -80,8 +80,21 @@ function _subscribe(listener: () => void) {
   return () => { _listeners.delete(listener); };
 }
 
-function _clamp(n: number) {
-  return Math.max(MIN_MARGIN, Math.min(MAX_MARGIN, n));
+/**
+ * Clamp a zen page-margin width.
+ *
+ * `floor` is the right-margin geometry min-floor (backlog #8): the smallest
+ * margin that still fully reserves the marginalia marker lane. It is applied
+ * ONLY WHEN MARKERS ARE VISIBLE. Zen mode is distraction-free reading and
+ * always hides the marginalia margins (see this hook's docstring), so the
+ * marker lane is never live here — the setters below pass the default
+ * `MIN_MARGIN` (0) and zen keeps its full freedom down to a zero margin, the
+ * regression the floor must NOT cause in reading modes. The parameter is
+ * threaded so the gate is explicit (and so a future zen-with-markers mode
+ * could opt in by passing the lane floor).
+ */
+function _clamp(n: number, floor: number = MIN_MARGIN) {
+  return Math.max(floor, Math.min(MAX_MARGIN, n));
 }
 
 /**
