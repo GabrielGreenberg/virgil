@@ -230,8 +230,6 @@ function makeViewProps(overrides: Partial<ViewMenuProps> = {}): ViewMenuProps {
     onToggleParTitles: vi.fn(),
     showLatexComments: false,
     onToggleLatexComments: vi.fn(),
-    showSectionIndicator: false,
-    onToggleSectionIndicator: vi.fn(),
     showHeadingLabels: false,
     onToggleHeadingLabels: vi.fn(),
     onOpenPreferences: vi.fn(),

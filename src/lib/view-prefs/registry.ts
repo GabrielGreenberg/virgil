@@ -65,7 +65,6 @@ export const VIEW_PREF_REGISTRY = {
   // Display group (flat toggles)
   showParTitles:        { kind: "toggle", scope: "global", default: true, label: "Paragraph titles", menu: "display" },
   showLatexComments:    { kind: "toggle", scope: "global", default: true, label: "% comments",        menu: "display" },
-  showSectionIndicator: { kind: "toggle", scope: "global", default: true, label: "Current section",   menu: "display" },
   showHeadingLabels:    { kind: "toggle", scope: "global", default: true, label: "Labels",            menu: "display" },
   // Marginalia
   showMarginalia:       { kind: "toggle", scope: "global", default: true, label: "Show marginalia",   menu: "marginalia" },

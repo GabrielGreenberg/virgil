@@ -726,7 +726,6 @@ export default function EditorLayout() {
     setTopbarRightCollapsed,
     toggleMarginalia,
     toggleMarginaliaType,
-    toggleSectionIndicator,
     toggleHeadingLabels,
     toggleDividerLevel,
     setDividerWidth,
@@ -943,7 +942,6 @@ export default function EditorLayout() {
     () => new Set(prefs.hiddenMarginaliaTypes),
     [prefs.hiddenMarginaliaTypes],
   );
-  const showSectionIndicator = prefs.showSectionIndicator;
   const showHeadingLabels = prefs.showHeadingLabels;
   const dividerLevels = useMemo(
     () => new Set(prefs.dividerLevels),
@@ -2548,7 +2546,6 @@ export default function EditorLayout() {
     showParTitles,
     showLatexComments,
     showHeadingLabels,
-    showSectionIndicator,
     showMarginalia,
     hiddenMarginaliaTypes,
     hiddenHighlightTypes,
@@ -2560,7 +2557,6 @@ export default function EditorLayout() {
     onToggleParTitles: toggleParTitles,
     onToggleLatexComments: toggleLatexComments,
     toggleHeadingLabels,
-    toggleSectionIndicator,
     toggleMarginalia,
     toggleMarginaliaType,
     toggleHighlightType,
@@ -2580,7 +2576,6 @@ export default function EditorLayout() {
     showParTitles,
     showLatexComments,
     showHeadingLabels,
-    showSectionIndicator,
     showMarginalia,
     hiddenMarginaliaTypes,
     hiddenHighlightTypes,
@@ -2592,7 +2587,6 @@ export default function EditorLayout() {
     toggleParTitles,
     toggleLatexComments,
     toggleHeadingLabels,
-    toggleSectionIndicator,
     toggleMarginalia,
     toggleMarginaliaType,
     toggleHighlightType,

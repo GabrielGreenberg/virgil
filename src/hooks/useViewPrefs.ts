@@ -163,7 +163,7 @@ export interface ViewPrefs extends RegistryPrefs {
   topbarRightCollapsed: boolean;
 
   /* ── Editor decoration prefs (global; promote to defaults) ───────── */
-  /*  `showMarginalia` / `hiddenMarginaliaTypes` / `showSectionIndicator` /
+  /*  `showMarginalia` / `hiddenMarginaliaTypes` /
    *  `showHeadingLabels` / `dividerLevels` / `dividerWidth` are all
    *  registry-owned (`VIEW_PREF_REGISTRY`, global scope) and arrive via
    *  `RegistryPrefs`. Add a new decoration toggle there, not here. */
@@ -392,7 +392,6 @@ export function loadPrefs(): ViewPrefs {
           return Array.isArray(arr) ? arr : [];
         },
       },
-      { key: "virgil-show-section-indicator", field: "showSectionIndicator", parse: (r) => r !== "false" },
       { key: "virgil-show-heading-labels", field: "showHeadingLabels", parse: (r) => r !== "false" },
       {
         key: "virgil-divider-levels",
@@ -1264,10 +1263,6 @@ export function useViewPrefs(opts?: { persistence?: ViewPrefsPersistence }) {
     });
   }, [update]);
 
-  const toggleSectionIndicator = useCallback(() => {
-    update((p) => ({ ...p, showSectionIndicator: !p.showSectionIndicator }));
-  }, [update]);
-
   const toggleHeadingLabels = useCallback(() => {
     update((p) => ({ ...p, showHeadingLabels: !p.showHeadingLabels }));
   }, [update]);
@@ -1660,7 +1655,6 @@ export function useViewPrefs(opts?: { persistence?: ViewPrefsPersistence }) {
     toggleHighlightType,
     toggleMarginalia,
     toggleMarginaliaType,
-    toggleSectionIndicator,
     toggleHeadingLabels,
     toggleDividerLevel,
     setDividerWidth,

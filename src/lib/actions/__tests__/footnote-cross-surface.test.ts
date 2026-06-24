@@ -261,10 +261,13 @@ describe("slash \\footnote", () => {
       pristine: true,
       mode: "omni",
     });
-    // focus drops onto the new card via the canonical float key.
-    expect(focusCard).toHaveBeenCalledWith(
-      buildFloatKey({ domain: "card", kind: "footnote", id: atoms[0].footnoteId }),
-    );
+    // CHIP B: caret-into-body focus is now owned by the central `finishCreate`
+    // chokepoint (which the real `createFootnote` runs — footnote is an
+    // editable-body kind), NOT by `footnoteRun` plumbing. So `footnoteRun` no
+    // longer calls `panelRouting.focusCard` for footnote; the focus contract is
+    // proven at the `createFootnote` boundary above (+ in the dedicated
+    // finish-create-autofocus test).
+    expect(focusCard).not.toHaveBeenCalled();
   });
 });
 

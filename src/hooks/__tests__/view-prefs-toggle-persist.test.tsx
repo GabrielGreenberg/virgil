@@ -148,19 +148,19 @@ describe("useViewPrefs — global toggles persist through a real click (no rever
     expect(persistedGlobal().showLatexComments).toBe(false);
   });
 
-  it("a generic registry toggle (section indicator) persists (no revert)", () => {
+  it("a generic registry toggle (heading labels) persists (no revert)", () => {
     const { getByTestId } = render(
       <StrictMode>
         <Toggle
-          testId="si"
-          pick={(p) => p.showSectionIndicator}
-          onClick={(vp) => vp.toggleViewPref("showSectionIndicator")}
+          testId="hl"
+          pick={(p) => p.showHeadingLabels}
+          onClick={(vp) => vp.toggleViewPref("showHeadingLabels")}
         />
       </StrictMode>,
     );
-    const btn = getByTestId("si");
+    const btn = getByTestId("hl");
     fireEvent.click(btn);
     expect(btn.textContent).toBe("false");
-    expect(persistedGlobal().showSectionIndicator).toBe(false);
+    expect(persistedGlobal().showHeadingLabels).toBe(false);
   });
 });

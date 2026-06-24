@@ -25,9 +25,18 @@ export function focusNewCard(cardKey: string): void {
   let attempts = 0;
   const MAX_ATTEMPTS = 12;
   const tryFocus = () => {
-    const card = document.querySelector<HTMLElement>(
-      `[data-card-key="${CSS.escape(domKey)}"]`,
+    // A card can render in MULTIPLE places at once — the docked panel AND the
+    // omni margin. `querySelector` returns the first in DOM order, which may be
+    // a HIDDEN (compressed / `display:none` keep-alive) instance whose body
+    // isn't mounted. Pick the VISIBLE one (`offsetParent != null`, the
+    // `usePlacement.ts` visible-instance pattern) so we focus a real body, not a
+    // collapsed twin. Fall back to the first match (offsetParent is null inside
+    // jsdom/tests, where there's a single instance anyway).
+    const candidates = Array.from(
+      document.querySelectorAll<HTMLElement>(`[data-card-key="${CSS.escape(domKey)}"]`),
     );
+    const card =
+      candidates.find((el) => el.offsetParent != null) ?? candidates[0] ?? null;
     if (!card) {
       if (++attempts < MAX_ATTEMPTS) requestAnimationFrame(tryFocus);
       return;
@@ -122,4 +131,41 @@ function pickFocusTarget(card: HTMLElement, kind: string): HTMLElement | null {
     default:
       return findEditable() ?? findTextarea() ?? findTextInput();
   }
+}
+
+/**
+ * The SSOT for "creating a card of this kind should drop the caret into its
+ * body" — read by the central `finishCreate` chokepoint to decide whether to
+ * expand + focus a freshly-created card. It mirrors the editable-body kinds
+ * `pickFocusTarget` knows how to target, with two deliberate carve-outs:
+ *
+ *  - `highlight` — no user-typed body (a color + range); `pickFocusTarget`
+ *    returns `null` for it anyway, so it would be a harmless no-op, but gating
+ *    the EXPAND keeps a bodiless highlight from being needlessly expanded.
+ *  - `citation` — its create popover / library-picker owns its own focus
+ *    (CHIP 4a-ii); the user's request ("drop the cursor into the new card's
+ *    body") is satisfied by the popover, so we do NOT expand/focus the citation
+ *    panel card.
+ *
+ * `example` / `bib` / `error` are system/derived kinds with no user-initiated
+ * "type into the body" create gesture, so they're out too.
+ *
+ * Keep this in lockstep with `pickFocusTarget`'s editable kinds: a new
+ * editable-body kind should appear in BOTH.
+ */
+const EDITABLE_BODY_KINDS: ReadonlySet<string> = new Set([
+  "note",
+  "footnote",
+  "archive",
+  "report",
+  "report-request",
+  "todo",
+  "revision-comment",
+  "revision-suggestion",
+  "cutter-comment",
+  "cutter-suggestion",
+]);
+
+export function cardKindHasEditableBody(kind: string): boolean {
+  return EDITABLE_BODY_KINDS.has(kind);
 }

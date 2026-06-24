@@ -52,7 +52,6 @@ const DIVIDER_WIDTH_LABELS = VIEW_PREF_REGISTRY.dividerWidth.valueLabels as Reco
 const DISPLAY_ROWS = [
   { id: "par-titles", key: "showParTitles", label: VIEW_PREF_REGISTRY.showParTitles.label },
   { id: "latex-comments", key: "showLatexComments", label: VIEW_PREF_REGISTRY.showLatexComments.label },
-  { id: "section-indicator", key: "showSectionIndicator", label: VIEW_PREF_REGISTRY.showSectionIndicator.label },
   { id: "heading-labels", key: "showHeadingLabels", label: VIEW_PREF_REGISTRY.showHeadingLabels.label },
 ] as const;
 /** Marginalia per-type sub-rows (members + labels from the registry). */
@@ -97,8 +96,6 @@ interface MenuBarProps extends ActionToolbarCallbacks {
   onToggleParTitles: () => void;
   showLatexComments: boolean;
   onToggleLatexComments: () => void;
-  showSectionIndicator: boolean;
-  onToggleSectionIndicator: () => void;
   showHeadingLabels: boolean;
   onToggleHeadingLabels: () => void;
   onOpenPreferences?: () => void;
@@ -550,8 +547,6 @@ export function ViewMenu({
   onToggleParTitles,
   showLatexComments,
   onToggleLatexComments,
-  showSectionIndicator,
-  onToggleSectionIndicator,
   showHeadingLabels,
   onToggleHeadingLabels,
   onOpenPreferences,
@@ -576,7 +571,6 @@ export function ViewMenu({
 }: Pick<MenuBarProps,
   | "showParTitles" | "onToggleParTitles"
   | "showLatexComments" | "onToggleLatexComments"
-  | "showSectionIndicator" | "onToggleSectionIndicator"
   | "showHeadingLabels" | "onToggleHeadingLabels"
   | "onOpenPreferences"
   | "showMarginalia" | "onToggleMarginalia"
@@ -703,13 +697,11 @@ export function ViewMenu({
             const displayChecked: Record<(typeof DISPLAY_ROWS)[number]["key"], boolean> = {
               showParTitles,
               showLatexComments,
-              showSectionIndicator,
               showHeadingLabels,
             };
             const displayToggle: Record<(typeof DISPLAY_ROWS)[number]["key"], () => void> = {
               showParTitles: onToggleParTitles,
               showLatexComments: onToggleLatexComments,
-              showSectionIndicator: onToggleSectionIndicator,
               showHeadingLabels: onToggleHeadingLabels,
             };
             return DISPLAY_ROWS.map((row) => (
@@ -825,7 +817,6 @@ function MenuBarContent({
   onAddComment, onArchive, onCreateFootnote, onAddNote, onAddHighlight, onAddTodo, onCutSelection, onInsertCitation,
   showParTitles, onToggleParTitles,
   showLatexComments, onToggleLatexComments,
-  showSectionIndicator, onToggleSectionIndicator,
   showHeadingLabels, onToggleHeadingLabels,
   onOpenPreferences,
   editorSplit, onToggleEditorSplit, activeSplitPane,
@@ -859,8 +850,6 @@ function MenuBarContent({
       onToggleParTitles={onToggleParTitles}
       showLatexComments={showLatexComments}
       onToggleLatexComments={onToggleLatexComments}
-      showSectionIndicator={showSectionIndicator}
-      onToggleSectionIndicator={onToggleSectionIndicator}
       showHeadingLabels={showHeadingLabels}
       onToggleHeadingLabels={onToggleHeadingLabels}
       onOpenPreferences={onOpenPreferences}

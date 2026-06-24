@@ -509,7 +509,7 @@ describe("footnote: pristine alignment — empty vs body (the footnote.ts:172 fi
 });
 
 describe("footnote: registry footnote.run creator destination (grab/lightning twin)", () => {
-  it("a cursor-ref footnote.run adopts via createFootnote({existingFootnoteId,pristine,mode}) + focuses the card", () => {
+  it("a cursor-ref footnote.run adopts via createFootnote({existingFootnoteId,pristine,mode}); focus delegated to finishCreate (no focusCard plumbing)", () => {
     const ed = mountEditor("");
     const ctx = {
       editor: ed,
@@ -534,9 +534,12 @@ describe("footnote: registry footnote.run creator destination (grab/lightning tw
       pristine: true,
       mode: "omni",
     });
-    expect(focusCard).toHaveBeenCalledWith(
-      buildFloatKey({ domain: "card", kind: "footnote", id: "fn99" }),
-    );
+    // CHIP B: footnote caret-into-body focus is now owned by the central
+    // `finishCreate` chokepoint (run by the real `createFootnote` — footnote is
+    // an editable-body kind), NOT by `footnoteRun` plumbing. So `footnoteRun`
+    // no longer calls `panelRouting.focusCard` for footnote. (Citation KEEPS
+    // its `focusCard` — it's the deliberate carve-out; see the citation case.)
+    expect(focusCard).not.toHaveBeenCalled();
   });
 
   it("footnote.run honors a pristine:false payload (typed-with-body twin)", () => {

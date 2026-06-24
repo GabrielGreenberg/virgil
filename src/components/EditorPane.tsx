@@ -487,7 +487,6 @@ export interface EditorPaneMenuBarBundle {
   showParTitles: boolean;
   showLatexComments: boolean;
   showHeadingLabels: boolean;
-  showSectionIndicator: boolean;
   showMarginalia: boolean;
   hiddenMarginaliaTypes: Set<import("./MenuBar").MarginaliaType>;
   hiddenHighlightTypes: Set<import("@/hooks/useViewPrefs").HighlightType>;
@@ -501,7 +500,6 @@ export interface EditorPaneMenuBarBundle {
   onToggleParTitles: () => void;
   onToggleLatexComments: () => void;
   toggleHeadingLabels: () => void;
-  toggleSectionIndicator: () => void;
   toggleMarginalia: () => void;
   toggleMarginaliaType: (type: import("./MenuBar").MarginaliaType) => void;
   toggleHighlightType: (type: import("@/hooks/useViewPrefs").HighlightType) => void;
@@ -4802,7 +4800,7 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
                 it above the band's background) with a calc'd max-width
                 that prevents it from crossing into the centered
                 MenuBar's column. */}
-            {ready && menuBar?.showSectionIndicator && viewPrefs && (overrideEditor ?? editor) && (
+            {ready && viewPrefs && (overrideEditor ?? editor) && (
               <div
                 className="sticky shrink-0 pointer-events-none"
                 style={{ top: 0, height: 0, zIndex: 41 }}
@@ -4850,8 +4848,6 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
                     onToggleParTitles={menuBar.onToggleParTitles}
                     showLatexComments={menuBar.showLatexComments}
                     onToggleLatexComments={menuBar.onToggleLatexComments}
-                    showSectionIndicator={menuBar.showSectionIndicator}
-                    onToggleSectionIndicator={menuBar.toggleSectionIndicator}
                     showHeadingLabels={menuBar.showHeadingLabels}
                     onToggleHeadingLabels={menuBar.toggleHeadingLabels}
                     onOpenPreferences={menuBar.onOpenPreferences}

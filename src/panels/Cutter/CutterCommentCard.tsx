@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useState } from "react";
 import type { Editor, JSONContent } from "@tiptap/react";
 import type { CutterCommentCard as CutterCommentCardData } from "@/lib/types";
 import {
@@ -89,16 +89,11 @@ export function CutterCommentCard({
     [card.id, onUpdateContent],
   );
 
-  // Focus the body when a brand-new (empty) card is selected — mirrors the
-  // textarea autofocus the old chrome did.
-  useEffect(() => {
-    if (!isSelected) return;
-    if (card.text) return;
-    const el = document.querySelector<HTMLElement>(
-      `[data-pristine-card-id="${card.id}"] [contenteditable="true"]`,
-    );
-    el?.focus();
-  }, [isSelected, card.id, card.text]);
+  // (Caret-into-body on create is now owned centrally by `finishCreate` →
+  // `focusNewCard` (CHIP B). The hand-rolled select+empty focus effect that
+  // used to live here is removed — the chokepoint expands + focuses the body
+  // for every editable-body kind at creation, so this per-kind workaround is
+  // redundant.)
 
   // The one structural element unique to cutter comments: the excised text,
   // rendered as an "Original" section ABOVE the comment body (via EditableCard's

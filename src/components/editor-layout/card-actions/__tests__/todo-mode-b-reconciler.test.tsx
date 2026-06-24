@@ -44,7 +44,12 @@ vi.mock("@/lib/storage", () => {
   return mod;
 });
 
-vi.mock("@/lib/focus-new-card", () => ({ focusNewCard: vi.fn() }));
+// Neuter `focusNewCard` (no DOM card mounts in this harness) but keep the real
+// `cardKindHasEditableBody` the central `finishCreate` gate reads (CHIP B).
+vi.mock("@/lib/focus-new-card", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/lib/focus-new-card")>();
+  return { ...actual, focusNewCard: vi.fn() };
+});
 
 import { Editor } from "@tiptap/core";
 import type { JSONContent } from "@tiptap/core";
