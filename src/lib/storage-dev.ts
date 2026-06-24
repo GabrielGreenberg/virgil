@@ -20,6 +20,7 @@ import { resolveStyle } from "@/lib/style-library";
 import { migrateDocumentSettings } from "@/lib/document-settings";
 import type { FsaDocMeta } from "@/lib/doc-index";
 import type { FolderPickResult, PickedFigureFile } from "@/lib/storage-fsa";
+import { ALL_SIDECAR_FILENAMES } from "@/lib/sidecar-files";
 
 import {
   detectBibPackage,
@@ -201,6 +202,44 @@ Start writing here...
 \\end{document}
 `;
 
+// Sidecar bundle cache — dev mirror of storage-fsa's. The first read for a
+// docId fetches ALL_SIDECAR_FILENAMES in PARALLEL (NOT a 17-deep waterfall),
+// caches the result, and the other ~16 mount hooks hit memory.
+interface SidecarBundle {
+  files: Map<string, unknown | null>;
+  inflight: Promise<void> | null;
+}
+const sidecarCache = new Map<string, SidecarBundle>();
+
+function ensureSidecarBundle(docId: string): SidecarBundle {
+  let bundle = sidecarCache.get(docId);
+  if (bundle) return bundle;
+  bundle = { files: new Map(), inflight: null };
+  sidecarCache.set(docId, bundle);
+  const run = (async () => {
+    await Promise.all(
+      ALL_SIDECAR_FILENAMES.map(async (f) => {
+        const v = await fetchJsonIfExists<unknown>(docFileUrl(docId, `virgil/${f}`));
+        bundle!.files.set(f, v);
+      }),
+    );
+  })();
+  bundle.inflight = run.finally(() => {
+    const cur = sidecarCache.get(docId);
+    if (cur === bundle && cur.inflight === run) cur.inflight = null;
+  });
+  return bundle;
+}
+
+export async function readSidecarBundle(docId: string): Promise<void> {
+  const bundle = ensureSidecarBundle(docId);
+  if (bundle.inflight) await bundle.inflight;
+}
+
+export function invalidateSidecarBundle(docId: string): void {
+  sidecarCache.delete(docId);
+}
+
 export async function readSidecar<T>(
   docId: string,
   filename: string,
@@ -213,6 +252,9 @@ export async function readSidecarIfExists<T>(
   docId: string,
   filename: string,
 ): Promise<T | null> {
+  const bundle = ensureSidecarBundle(docId);
+  if (bundle.inflight) await bundle.inflight;
+  if (bundle.files.has(filename)) return (bundle.files.get(filename) ?? null) as T | null;
   return fetchJsonIfExists<T>(docFileUrl(docId, `virgil/${filename}`));
 }
 
@@ -228,6 +270,8 @@ export async function writeSidecar<T>(
   if (isLibraryPaper(h.docId)) return;
   assertActive(h);
   await putText(docFileUrl(h.docId, `virgil/${filename}`), JSON.stringify(data, null, 2));
+  const bundle = sidecarCache.get(h.docId);
+  if (bundle) bundle.files.set(filename, data);
 }
 
 // ---------------------------------------------------------------------------

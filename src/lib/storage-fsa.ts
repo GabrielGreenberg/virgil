@@ -26,6 +26,7 @@
  */
 
 import { generateEntityId } from "@/lib/uuid";
+import { ALL_SIDECAR_FILENAMES } from "@/lib/sidecar-files";
 import type { JSONContent } from "@tiptap/react";
 import type { EditorStateData, VirgilSidecar } from "@/lib/types";
 import { parseLatex, extractPreambleAndPostamble } from "@/lib/latex-parser";
@@ -212,6 +213,79 @@ function enqueueDocWrite<T>(
 // Sidecar JSON files (everything in `virgil/`)
 // ---------------------------------------------------------------------------
 
+// On mount ~17 hooks each independently re-acquire the doc handle, re-enter
+// `virgil/`, and read one file. We coalesce them: the first read for a docId
+// reads ALL `ALL_SIDECAR_FILENAMES` in ONE directory acquire + a parallel
+// batch, cached per docId, so the other 16 hooks (and any same-session re-read)
+// hit memory.
+interface SidecarBundle {
+  // filename → parsed JSON, or null = CONFIRMED absent (a NotFoundError on
+  // read). A filename is ABSENT from this map when its read threw a NON-
+  // NotFound error (corrupt/truncated JSON, transient IO) — so the cache-first
+  // `readSidecarIfExists` falls through to a direct disk read that re-throws,
+  // preserving `usePersistentState`'s `loadError` data-loss guard.
+  files: Map<string, unknown | null>;
+  inflight: Promise<void> | null;
+}
+const sidecarCache = new Map<string, SidecarBundle>();
+
+async function readOneSidecarInto(
+  virgil: FileSystemDirectoryHandle,
+  filename: string,
+  files: Map<string, unknown | null>,
+): Promise<void> {
+  try {
+    const fileHandle = await virgil.getFileHandle(filename);
+    const text = await readTextFromHandle(fileHandle);
+    files.set(filename, JSON.parse(text));
+  } catch (e) {
+    if (isNotFound(e)) files.set(filename, null); // confirmed absent
+    // Non-NotFound: leave UNSET so the per-file fallback re-throws (loadError).
+  }
+}
+
+/** The bundle for `docId`, creating + kicking off its one-shot whole-`virgil/`
+ *  read on first touch. Subsequent callers share the same `inflight`. */
+function ensureSidecarBundle(docId: string): SidecarBundle {
+  let bundle = sidecarCache.get(docId);
+  if (bundle) return bundle;
+  bundle = { files: new Map(), inflight: null };
+  sidecarCache.set(docId, bundle);
+  const run = (async () => {
+    let virgil: FileSystemDirectoryHandle;
+    try {
+      const docHandle = await requireDocHandle(docId);
+      virgil = await getVirgilSubdir(docHandle);
+    } catch {
+      // Unresolvable handle (e.g. a library paper with no granted folder) —
+      // leave the bundle empty; the per-file fallback reproduces today's error.
+      return;
+    }
+    await Promise.all(
+      ALL_SIDECAR_FILENAMES.map((f) => readOneSidecarInto(virgil, f, bundle!.files)),
+    );
+  })();
+  bundle.inflight = run.finally(() => {
+    const cur = sidecarCache.get(docId);
+    if (cur === bundle && cur.inflight === run) cur.inflight = null;
+  });
+  return bundle;
+}
+
+/** Pre-warm the sidecar bundle for a doc (optional — `readSidecarIfExists`
+ *  self-primes too). Returns when the one directory read has settled. */
+export async function readSidecarBundle(docId: string): Promise<void> {
+  const bundle = ensureSidecarBundle(docId);
+  if (bundle.inflight) await bundle.inflight;
+}
+
+/** Drop the cached sidecar snapshot for a doc so the next read re-hits disk.
+ *  Called on pipeline end (cold remount → fresh read) and on a confirmed
+ *  external change (a skill rewriting the paper folder). */
+export function invalidateSidecarBundle(docId: string): void {
+  sidecarCache.delete(docId);
+}
+
 export async function readSidecar<T>(
   docId: string,
   filename: string,
@@ -242,6 +316,16 @@ export async function readSidecarIfExists<T>(
   docId: string,
   filename: string,
 ): Promise<T | null> {
+  // Cache-first: the bundle coalesces all of a mount's sidecar reads into one
+  // directory walk. `has(filename)` distinguishes "bundled (value or confirmed
+  // null)" from "not bundled" (outside ALL_SIDECAR_FILENAMES, or left UNSET by a
+  // non-NotFound read error). Not-bundled falls through to the direct read,
+  // which re-throws real errors → preserves the `loadError` data-loss guard.
+  const bundle = ensureSidecarBundle(docId);
+  if (bundle.inflight) await bundle.inflight;
+  if (bundle.files.has(filename)) {
+    return (bundle.files.get(filename) ?? null) as T | null;
+  }
   const docHandle = await requireDocHandle(docId);
   try {
     const virgil = await getVirgilSubdir(docHandle);
@@ -267,6 +351,10 @@ export async function writeSidecar<T>(
     const virgil = await getVirgilSubdir(docHandle);
     const fileHandle = await virgil.getFileHandle(filename, { create: true });
     await writeTextToHandle(fileHandle, JSON.stringify(data, null, 2));
+    // Keep the bundle coherent: the value we just wrote IS the freshest, so
+    // update it in place rather than invalidating (a read-after-write sees it).
+    const bundle = sidecarCache.get(h.docId);
+    if (bundle) bundle.files.set(filename, data);
   });
 }
 

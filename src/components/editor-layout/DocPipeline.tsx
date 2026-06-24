@@ -23,6 +23,7 @@ import {
   endDocPipeline,
   type DocWriteHandle,
 } from "@/lib/multi-window/doc-pipeline";
+import { invalidateSidecarBundle } from "@/lib/storage";
 
 const HandleContext = createContext<DocWriteHandle | null>(null);
 
@@ -59,7 +60,14 @@ export function DocPipeline({ docId, children }: DocPipelineProps) {
   // the user's edits.
   useEffect(() => {
     beginDocPipeline(handle.docId);
-    return () => endDocPipeline(handle);
+    return () => {
+      // Tie the sidecar-bundle cache to the pipeline lifetime: a real unmount
+      // (close / LRU-evict — NOT a keep-alive display:none hide) drops the
+      // snapshot so the next cold (re)mount re-reads fresh from disk, picking up
+      // any out-of-band skill rewrite of the doc's sidecars.
+      invalidateSidecarBundle(handle.docId);
+      endDocPipeline(handle);
+    };
   }, [handle]);
 
   return <HandleContext.Provider value={handle}>{children}</HandleContext.Provider>;
