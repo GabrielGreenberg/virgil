@@ -1425,6 +1425,11 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
   const uiRestoredRef = useRef(false);
   const scrollRestoredRef = useRef(false); // Phase D: once-per-mount scroll restore
   const cancelScrollRestoreRef = useRef<(() => void) | null>(null);
+  // Last scroll offset captured WHILE VISIBLE. A hidden (display:none) container
+  // reports scrollTop 0, so we must never read it while hidden — this ref is the
+  // trustworthy value to re-assert on a warm re-show (and to persist).
+  const liveScrollRef = useRef<number | null>(null);
+  const wasVisibleRef = useRef(true);
   useEffect(() => {
     if (uiRestoredRef.current) return;
     if (!editor || !docHook.content || !uiStateHook.loaded) return;
@@ -1434,7 +1439,17 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
       innerRef.current?.setFolded(ui.foldedSections);
     }
     if (ui.lastParagraphId) {
-      innerRef.current?.restoreCursorToParagraph(ui.lastParagraphId);
+      // Scroll-restoration ownership: when a saved scroll offset will be
+      // restored (cold mount, below), the cursor restore must NOT scroll the
+      // paragraph into view — its deferred focus-scroll would beat the offset
+      // restore and land the doc on the cursor paragraph instead of where the
+      // user was last looking. Restore the selection only; the scroll-restore
+      // effect owns the viewport. With no saved scroll, fall back to the
+      // classic scroll-cursor-into-view behavior.
+      const hasSavedScroll = (ui.scrollTop ?? 0) > 0;
+      innerRef.current?.restoreCursorToParagraph(ui.lastParagraphId, {
+        scrollIntoView: !hasSavedScroll,
+      });
     }
   }, [editor, docHook.content, uiStateHook.loaded, uiStateHook.stateRef]);
 
@@ -3192,9 +3207,14 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
     }
     let timer: ReturnType<typeof setTimeout> | null = null;
     const onScroll = () => {
+      // NEVER read scrollTop while hidden: a display:none container reports 0,
+      // which would corrupt both liveScrollRef and the persisted value to 0
+      // (sending the doc to the top on the next show / cold mount).
+      if (!isVisibleRef.current || el.offsetHeight === 0) return;
+      liveScrollRef.current = el.scrollTop;
       if (timer) clearTimeout(timer);
       timer = setTimeout(() => {
-        if (rowScrollRef.current) {
+        if (rowScrollRef.current && isVisibleRef.current) {
           uiStateHook.writeScroll(rowScrollRef.current.scrollTop);
         }
       }, 400);
@@ -3206,6 +3226,32 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
       el.removeEventListener("scroll", onScroll);
     };
   }, [uiStateHook.loaded, uiStateHook.stateRef, uiStateHook.writeScroll]);
+
+  // Phase D (the warm-switch fix) — restore scroll on a WARM re-show. Switching
+  // papers is a display:none→flex flip on a kept-alive pane. Most browsers keep
+  // a scroll container's offset across that toggle, but some (PWA/embedded
+  // engines) clamp it to 0 — and any re-show measurement/focus can nudge it too.
+  // So when this pane becomes visible again, authoritatively re-assert the last
+  // offset captured while it was visible (liveScrollRef), across a couple of
+  // frames + a short timeout to win past a focus-scroll. No-op the first time
+  // (liveScrollRef null → the cold-mount disk restore above owns it).
+  useEffect(() => {
+    const becameVisible = isVisible && !wasVisibleRef.current;
+    wasVisibleRef.current = isVisible;
+    if (!becameVisible) return;
+    const saved = liveScrollRef.current;
+    if (saved == null || saved <= 0) return;
+    const apply = () => {
+      const el = rowScrollRef.current;
+      if (el && el.offsetHeight > 0) el.scrollTop = saved;
+    };
+    requestAnimationFrame(() => {
+      apply();
+      requestAnimationFrame(apply);
+    });
+    const t = setTimeout(apply, 90);
+    return () => clearTimeout(t);
+  }, [isVisible]);
 
   // Track the docked MenuBar's rendered width so the section lozenge can
   // compute a max-width that keeps it from crossing into the centered
