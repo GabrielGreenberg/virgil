@@ -607,6 +607,20 @@ export function useMarginaliaRegistry(
       if (!host) return;
       const hostRect = host.getBoundingClientRect();
 
+      // Resolve positions with ONE doc walk per IO batch — O(doc + K), not one
+      // walk per ENTER entry (the O(K × doc) re-show storm). Built LAZILY so a
+      // pure viewport-LEAVE batch (scroll-away) pays nothing. Mirrors
+      // flushRecompute's posByUuid map.
+      let posByUuid: Map<string, { pos: number; isAtom: boolean }> | null = null;
+      const blocksFor = () => {
+        if (!posByUuid) {
+          posByUuid = new Map();
+          for (const b of walkAnchorableBlocks(editor))
+            posByUuid.set(b.uuid, { pos: b.pos, isAtom: b.isAtom });
+        }
+        return posByUuid;
+      };
+
       let changed = false;
       for (const entry of entries) {
         const el = entry.target as HTMLElement;
@@ -618,16 +632,14 @@ export function useMarginaliaRegistry(
             state.observed.set(uuid, el);
             state.resizeObserver?.observe(el);
           }
-          // Resolve pos by walking the doc — cheap relative to the
-          // measurement itself, and the position can have shifted since
-          // the last walk (e.g., upstream paragraph split).
-          const blocks = walkAnchorableBlocks(editor);
-          const block = blocks.find((b) => b.uuid === uuid);
-          if (!block) continue;
+          // Resolve pos from the once-per-batch walk (positions can have shifted
+          // since the last walk, e.g. an upstream paragraph split).
+          const meta = blocksFor().get(uuid);
+          if (!meta) continue;
           const next = measureBlock(
             editor,
-            block.pos,
-            block.isAtom,
+            meta.pos,
+            meta.isAtom,
             hostRect,
             uuid,
           );

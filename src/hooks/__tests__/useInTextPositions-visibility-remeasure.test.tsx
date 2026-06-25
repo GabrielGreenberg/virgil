@@ -1,36 +1,36 @@
 // @vitest-environment jsdom
 //
-// Regression guard for the KEEP-ALIVE RE-SHOW re-measure path in
-// `useInTextPositions` (MEMO_KEEPALIVE_BUILD.md §2 F2 + MEMO_CARD_GUTTER_STACKING.md).
+// Regression guard for the KEEP-ALIVE RE-SHOW path in `useInTextPositions`
+// (MEMO_INSTANT_SWITCH.md §4 — the "instant warm switch" fix).
 //
-// THE BUG CLASS: the L2/L3 keep-alive subsystem hides the doc editor with
+// THE INVARIANT: "hidden is frozen, not torn down; re-show is a REPUBLISH of
+// cached geometry, not a re-measure — unless something provably changed while
+// hidden." The L2/L3 keep-alive subsystem hides the doc editor with
 // `display:none` and re-shows it WITHOUT remounting. While hidden, a card
-// measured by `useInTextPositions` reads `coordsAtPos`/`getBoundingClientRect`
-// as zero rects (the `display:none` signature) — so if the deck were measured
-// while hidden, or if NOTHING re-measured on re-show, the Omni margin cards
-// could stay stale / piled at the top after a tab-switch back.
+// measured by `useInTextPositions` would read `coordsAtPos`/`getBoundingClientRect`
+// as zero rects (the `display:none` signature).
 //
-// THE FIX (by construction, not a separate visibility trigger): visibility is
-// folded into `enabled` (`enabled = enabledProp && isVisible`), and `enabled`
-// is a dep of BOTH the `measure` callback and the measurement `useLayoutEffect`.
-// So:
-//   - hidden  (isVisible=false ⇒ enabled=false): the effect's `!enabled` branch
-//     bails and clears — NO measurement runs (hidden editor stays INERT, the
-//     keystroke-sanctity invariant).
-//   - re-show (isVisible=true  ⇒ enabled=true): `measure` is re-created and the
-//     whole effect RE-RUNS, re-arming the settle loop and re-measuring against
-//     the now-laid-out editor.
+// THE FIX (this is what these pins lock — note step 4 INVERTS the prior guard):
+//   - hidden:        measurement BAILS before any DOM read AND the cached
+//                    `naturalRef` is RETAINED (not cleared). Inert.
+//   - CLEAN re-show: NO re-measure — the cached deck is still correct (doc
+//                    unchanged, pod-relative tops are scroll-invariant). ZERO
+//                    `coordsAtPos`. (Previously this re-fired a full measure; the
+//                    whole point of the fix is that it no longer does.)
+//   - DIRTY re-show: a structural change while hidden (or a width change) opts
+//                    back into ONE bounded re-measure (deferred), so cards that
+//                    shifted while hidden land correctly.
+//   - disabled:      `enabledProp=false` still CLEARS (genuinely-off panel).
 //
-// These pins lock that lifecycle. The observable proxy for "measurement ran
-// against the DOM" is a spy on `editor.view.coordsAtPos` — `measure()` calls it
-// once per item, and bails BEFORE reaching it when not enabled. A plain
-// re-render that does NOT change visibility must NOT re-fire measurement (no
-// keystroke-path / steady-state churn).
+// The observable proxy for "measurement ran against the DOM" is a spy on
+// `editor.view.coordsAtPos` — `measure()` calls it once per item and bails BEFORE
+// reaching it when hidden / clean. (jsdom lays nothing out, so the returned
+// `positions` map is empty regardless — the spy is the only faithful signal; the
+// pixel correction is feel-checked in a real browser against the L2 bounce.)
 //
-// (LIVE-FSA OWED: jsdom can't lay out, so the real hidden→show layout settle —
-// fonts/KaTeX/expex reflow that corrects the deck's pixel tops — is not
-// exercised here; only the re-FIRE of measurement is. The pixel correction must
-// still be feel-checked in a real browser against the L2 paper↔Library bounce.)
+// The CLEAR-vs-RETAIN distinction is observed indirectly: a HIDDEN→shown editor
+// does NOT re-measure (retained cache ⇒ clean re-show ⇒ 0 coords), whereas a
+// DISABLED→re-enabled editor DOES (cleared cache ⇒ cold re-measure ⇒ >0 coords).
 
 import { describe, it, expect, vi } from "vitest";
 
@@ -76,66 +76,82 @@ function mountDoc(): Editor {
   });
 }
 
-/** Mounts the hook with its `panelScrollRef` attached to a real DOM node and a
- *  rendered card so `measure()` reaches `coordsAtPos` (it bails early if the
- *  pod ref isn't attached). `bumpRef` lets a test force a plain re-render that
- *  changes NOTHING about visibility or items. */
+/** Capture the hook's live return so tests can assert on positions retention. */
+type HookOut = ReturnType<typeof useInTextPositions>;
+
 function Harness({
   editor,
   items,
   bump,
+  enabledProp = true,
+  sink,
 }: {
   editor: Editor;
   items: PositionItem[];
   bump: number;
+  enabledProp?: boolean;
+  sink: { current: HookOut | null };
 }) {
-  const { panelScrollRef } = useInTextPositions(
+  const out = useInTextPositions(
     editor,
     items,
-    true,
+    enabledProp,
     "data-omni-entry-wrapper",
   );
-  // `bump` is read so a re-render with a new bump is a genuine React re-render.
+  sink.current = out;
   return React.createElement(
     "div",
-    { ref: panelScrollRef, "data-bump": bump },
-    React.createElement(
-      "div",
-      { "data-omni-entry-wrapper": "a" },
-      "card a",
-    ),
-    React.createElement(
-      "div",
-      { "data-omni-entry-wrapper": "b" },
-      "card b",
-    ),
+    { ref: out.panelScrollRef, "data-bump": bump },
+    React.createElement("div", { "data-omni-entry-wrapper": "a" }, "card a"),
+    React.createElement("div", { "data-omni-entry-wrapper": "b" }, "card b"),
   );
 }
 
-describe("useInTextPositions — keep-alive re-show re-measures", () => {
-  it("re-runs measurement on hidden→visible, stays inert while hidden, and does not re-fire on a plain re-render", () => {
+/** Flush the requestLowPriority deferral (double-rAF / setTimeout fallback). */
+async function flushDeferred() {
+  await act(async () => {
+    await new Promise((r) => setTimeout(r, 60));
+  });
+}
+
+describe("useInTextPositions — keep-alive re-show is a republish, not a re-measure", () => {
+  it("stays inert + retains cache while hidden; CLEAN re-show does NOT re-measure; DIRTY re-show does", async () => {
     const editor = mountDoc();
     const items: PositionItem[] = [
       { id: "a", pos: 1 },
       { id: "b", pos: 5 },
     ];
-    const coordsSpy = vi.spyOn(editor.view, "coordsAtPos");
+    // jsdom lays nothing out, so real coordsAtPos throws (→ every item skipped →
+    // naturalRef never populates → the retain/dirty logic can't be exercised).
+    // Mock a valid rect so naturalRef populates; the spy still counts each call
+    // (the observable proxy for "a measure pass ran against the DOM").
+    const coordsSpy = vi
+      .spyOn(editor.view, "coordsAtPos")
+      .mockImplementation((pos: number) => ({
+        top: 10 + pos,
+        bottom: 22 + pos,
+        left: 0,
+        right: 0,
+      }));
+    const sink: { current: HookOut | null } = { current: null };
 
     let visible = true;
     let bump = 0;
     const Tree = () => (
       <KeepAliveVisibilityProvider isVisible={visible}>
-        <Harness editor={editor} items={items} bump={bump} />
+        <Harness editor={editor} items={items} bump={bump} sink={sink} />
       </KeepAliveVisibilityProvider>
     );
 
     const r = render(<Tree />);
+    void sink; // retained for symmetry; positions are empty under jsdom
 
-    // (1) Initial VISIBLE mount measures: one coordsAtPos per item.
+    // (1) Initial VISIBLE mount measures: one coordsAtPos per item. Drain the
+    //     cold-mount settle rAF so it can't bleed into a later step's flush.
     expect(coordsSpy.mock.calls.length).toBeGreaterThan(0);
+    await flushDeferred();
 
-    // (2) A plain re-render with NO visibility/items change must NOT re-fire
-    //     measurement — nothing on the keystroke/steady-state path.
+    // (2) A plain re-render with NO visibility/items change must NOT re-fire.
     coordsSpy.mockClear();
     act(() => {
       bump = 1;
@@ -143,8 +159,8 @@ describe("useInTextPositions — keep-alive re-show re-measures", () => {
     });
     expect(coordsSpy.mock.calls.length).toBe(0);
 
-    // (3) HIDE (keep-alive display:none): the measurement effect bails before
-    //     any DOM read — the hidden editor is INERT (keystroke sanctity).
+    // (3) HIDE: the measurement bails before any DOM read (inert) AND the cached
+    //     positions are RETAINED (not cleared) — the deck survives the hide.
     coordsSpy.mockClear();
     act(() => {
       visible = false;
@@ -159,11 +175,82 @@ describe("useInTextPositions — keep-alive re-show re-measures", () => {
     });
     expect(coordsSpy.mock.calls.length).toBe(0);
 
-    // (4) RE-SHOW (display:none→show, no remount): measurement RE-FIRES against
-    //     the now-laid-out editor. This is the keep-alive re-show fix.
+    // (4) CLEAN RE-SHOW (no structural/width change while hidden): the cached deck
+    //     is still correct, so NO re-measure fires. THIS IS THE FIX — it INVERTS
+    //     the old guard (which asserted a re-measure here). Assert synchronously
+    //     AND after a flush: the clean path neither measures now nor schedules a
+    //     deferred one.
     coordsSpy.mockClear();
     act(() => {
       visible = true;
+      r.rerender(<Tree />);
+    });
+    expect(coordsSpy.mock.calls.length).toBe(0); // no synchronous re-measure
+    await flushDeferred();
+    expect(coordsSpy.mock.calls.length).toBe(0); // and none deferred
+
+    // (5) DIRTY RE-SHOW: a structural change while hidden marks the hook dirty, so
+    //     the next re-show runs ONE bounded (deferred) re-measure.
+    // Hide again.
+    act(() => {
+      visible = false;
+      r.rerender(<Tree />);
+    });
+    // Structural change while hidden → onBlocksAdded → dirty flag set.
+    act(() => {
+      editor
+        .chain()
+        .insertContentAt(editor.state.doc.content.size, {
+          type: "paragraph",
+          attrs: { uuid: "P0" },
+          content: [{ type: "text", text: "Inserted while hidden." }],
+        })
+        .run();
+    });
+    coordsSpy.mockClear();
+    act(() => {
+      visible = true;
+      r.rerender(<Tree />);
+    });
+    await flushDeferred();
+    expect(coordsSpy.mock.calls.length).toBeGreaterThan(0);
+
+    r.unmount();
+    editor.destroy();
+  });
+
+  it("genuinely-disabled (enabledProp=false) clears + re-enable re-measures (distinct from hidden retention)", () => {
+    const editor = mountDoc();
+    const items: PositionItem[] = [
+      { id: "a", pos: 1 },
+      { id: "b", pos: 5 },
+    ];
+    const coordsSpy = vi.spyOn(editor.view, "coordsAtPos");
+    const sink: { current: HookOut | null } = { current: null };
+
+    let enabledProp = true;
+    const Tree = () => (
+      <KeepAliveVisibilityProvider isVisible={true}>
+        <Harness editor={editor} items={items} bump={0} enabledProp={enabledProp} sink={sink} />
+      </KeepAliveVisibilityProvider>
+    );
+    const r = render(<Tree />);
+    void sink;
+    expect(coordsSpy.mock.calls.length).toBeGreaterThan(0); // measured on mount
+
+    // Disable: bail, no measure.
+    coordsSpy.mockClear();
+    act(() => {
+      enabledProp = false;
+      r.rerender(<Tree />);
+    });
+    expect(coordsSpy.mock.calls.length).toBe(0);
+
+    // Re-enable: the wiring effect (keyed on enabledProp) re-runs and re-measures
+    // the cleared cache cold — UNLIKE a hidden→shown re-show, which is a no-op.
+    coordsSpy.mockClear();
+    act(() => {
+      enabledProp = true;
       r.rerender(<Tree />);
     });
     expect(coordsSpy.mock.calls.length).toBeGreaterThan(0);
