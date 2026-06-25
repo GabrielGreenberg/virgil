@@ -1,6 +1,6 @@
 # BUG DIAGNOSIS — Omni margin cards stack at the top of the gutter on load / after idle
 
-**Status:** `ROOT-CAUSE-FOUND` · `FIX-PROPOSED` (designed, **not** implemented) · confidence **high** (live-reproduced)
+**Status:** `IMPLEMENTED` (0cd533fe settle-aware omni cascade, 2026-06-24, prior drain) — owes live FSA feel-check · confidence **high** (live-reproduced)
 **Filed by:** bug-catcher session, 2026-06-21
 **Surface:** Omni margin view only (`useInTextPositions` cascade). Docked panels are unaffected.
 **Class:** premature/stale in-text-position **measurement** with no guaranteed corrective re-measure — same *symptom* as the already-fixed "note cards stack while typing" bug, **different cause** (cold-load layout race, not typing-time stale `pos`).

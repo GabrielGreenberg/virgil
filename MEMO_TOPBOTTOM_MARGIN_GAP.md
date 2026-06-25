@@ -1,6 +1,6 @@
 # BUG — Top/bottom margin slider can't collapse the white strip between text and the pod border
 
-**Status:** `IMPLEMENTED` (shipped 2026-06-24, commit `c178218e`) · **⚠️ PARTIAL REGRESSION — see correction below**
+**Status:** `IMPLEMENTED` (item 3 geometry `c178218e`; item-2 lead-in regression FIXED + item-3 strip zero-flow `597c9f08`, both 2026-06-24) — owes live FSA feel-check
 **Filed by:** bug-catcher session, 2026-06-21
 **Surface:** editor pod top/bottom vertical padding (margin-edit slider)
 
@@ -122,7 +122,9 @@ to the edge" in practice. The grep confirms nothing else reads `MARGIN_MIN.top/b
 
 ---
 
-## 10. RECONCILED PLAN (2026-06-24) — items (2) restore lead-in + (3) reach the pod edge · `PLAN-READY`
+## 10. RECONCILED PLAN (2026-06-24) — items (2) restore lead-in + (3) reach the pod edge · `IMPLEMENTED` 597c9f08 2026-06-24 — owes live FSA feel-check
+
+Implemented 597c9f08: decoupled .doc-prose-leadin::before (~40px, scoped to the document editor via a marker class — main + Reader, never leaks into floats/lift-clones); expand/collapse strip made genuine zero-flow (height:0 sticky + zero-flow full-width hover band).
 
 The two top-whitespace concerns are **separate mechanisms** and must be decoupled (the original memo conflated them in
 one `pt` calc). Current shipped state (`c178218e`): `pt = var(--editor-pt,40px)` only; `MARGIN_MIN.top/bottom = 0`; the

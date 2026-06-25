@@ -112,7 +112,9 @@ either way.
 
 ---
 
-## 5a. PHASE 2a — citations inside EXAMPLES nest under the example card (user ask, 2026-06-24) · `NEEDS-DESIGN-DECISION`
+## 5a. PHASE 2a — citations inside EXAMPLES nest under the example card (user ask, 2026-06-24) · `IMPLEMENTED` 2b283abf 2026-06-24 — owes live FSA feel-check
+
+Implemented 2b283abf (2026-06-24): nestedInContainerId generalization; omni + docked surfaces both nest example cites; applyDiff carries the owner tag across edit/move.
 
 **Phase 1 (footnote-nested cites) is SHIPPED** ([`nest-footnote-children.ts`](src/components/editor-layout/panels/nest-footnote-children.ts)).
 The user now wants the **same** indented nesting for citations that live **inside an EXAMPLE block** (the very first

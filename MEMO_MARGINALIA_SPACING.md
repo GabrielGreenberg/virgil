@@ -1,6 +1,6 @@
 # BUG — Marginalia marker spacing/position: overlaps scrollbar, collides with selection bolt, no minimum-margin floor
 
-**Status:** `ROOT-CAUSE-FOUND` / `PLAN-READY` (geometry fully mapped; 2 small design decisions flagged) · confidence **high**
+**Status:** `IMPLEMENTED` (c178218e marginalia geometry SSOT + 8d815147 widened bolt/marker lane, 2026-06-24, prior drain) — owes live FSA feel-check (geometry fully mapped; 2 small design decisions flagged) · confidence **high**
 **Filed by:** bug-catcher session, 2026-06-21
 **Surface:** editor right margin chrome (marginalia markers + selection bolt + overlay scrollbar)
 **Repo note:** diagnosis only (no source edits). The `library-reader-followups` worktree is unrelated; whoever

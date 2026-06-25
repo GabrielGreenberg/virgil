@@ -1,6 +1,6 @@
 # FEATURE / UX — Edge-resizable pop-outs (L / R / Bottom) + remove the corner grip styling
 
-**Status:** `PLAN-READY` (researched + designed, **not** implemented; single-file change, low risk)
+**Status:** `IMPLEMENTED` (6bd01bcb L/R/B edge-resize + corner-grip removed, 2026-06-24, prior drain) — owes live FSA feel-check
 **Filed by:** bug-catcher session, 2026-06-21
 **Request (verbatim intent):** "For any kind of pop out — text object, card, panel — I'd like the L, R, and Bottom
 edges all to be drag-resizable. At the same time let's get rid of the bottom-right-hand corner styling."
