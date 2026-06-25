@@ -12,7 +12,7 @@ import PanelThemePicker from "@/components/PanelThemePicker";
 import { CardListPanel } from "@/panels/_shared/CardListPanel";
 import { CardViewModeMenuItems } from "@/panels/_shared/CardViewModeMenu";
 import { withRecentlyAddedFirst } from "@/hooks/useRecentlyAddedTracker";
-import type { NestedFootnoteInfo } from "@/components/editor-layout/panels/nest-footnote-children";
+import type { NestedContainerInfo } from "@/components/editor-layout/panels/nest-footnote-children";
 import { partitionDockedCitations } from "@/components/editor-layout/panels/nest-footnote-children";
 import { CitationCard } from "./CitationCard";
 
@@ -54,15 +54,16 @@ interface CitationsPanelProps {
   onUpdateBibKeyAndType: (oldKey: string, newKey: string, newType: string) => void;
   onAddBibEntry: (entry: BibEntry) => void;
   recentlyAddedId?: string | null;
-  /** Footnote-nested cite nesting (Part B). `citationId → { footnoteId,
-   *  footnoteNumber }` for every cite whose `\cite` lives inside a footnote
-   *  body, derived snapshot-gated in `CitationsHost` from
-   *  `structure.citations[].nestedInFootnoteId` (no per-keystroke doc walk).
+  /** Container-nested cite nesting (Part B / Phase 2a). `citationId →
+   *  NestedContainerInfo` (kind footnote OR example) for every cite whose
+   *  `\cite` lives inside a footnote body OR an example block, derived
+   *  snapshot-gated in `CitationsHost` from
+   *  `structure.citations[].nestedInContainerId` (no per-keystroke doc walk).
    *  Such cites are pulled out of the flat top-level list and rendered as
-   *  indented children, tagged "in footnote N" — the docked analog of the omni
-   *  "nested under the footnote card" behavior. Absent / empty ⇒ the panel
-   *  renders a flat list exactly as before. */
-  nestedFootnoteOf?: ReadonlyMap<string, NestedFootnoteInfo>;
+   *  indented children, tagged "in footnote N" / "in example N" — the docked
+   *  analog of the omni "nested under the container card" behavior. Absent /
+   *  empty ⇒ the panel renders a flat list exactly as before. */
+  nestedContainerOf?: ReadonlyMap<string, NestedContainerInfo>;
 }
 
 const STYLES = [
@@ -72,8 +73,8 @@ const STYLES = [
 ];
 
 /** Stable empty map so the partition memo doesn't churn when the host passes
- *  no nesting info (the common, no-footnote-nested-cite case). */
-const EMPTY_NESTED: ReadonlyMap<string, NestedFootnoteInfo> = new Map();
+ *  no nesting info (the common, no-nested-cite case). */
+const EMPTY_NESTED: ReadonlyMap<string, NestedContainerInfo> = new Map();
 
 const BIB_PACKAGES = [
   { value: "biblatex", label: "biblatex" },
@@ -110,7 +111,7 @@ function CitationsPanel({
   onUpdateBibKeyAndType,
   onAddBibEntry,
   recentlyAddedId,
-  nestedFootnoteOf,
+  nestedContainerOf,
 }: CitationsPanelProps) {
   const panelScrollRef = useRef<HTMLDivElement>(null);
   const sortedCitations = useMemo(
@@ -128,31 +129,43 @@ function CitationsPanel({
     [citations, citationOrder, recentlyAddedId],
   );
 
-  // Part B — footnote-child nesting. Split the flat list into top-level cites
-  // and footnote-nested children (identity-stable when nothing nests, so the
-  // common case pays zero churn). The rendered order is: every flat cite, then
-  // the nested cites grouped after — each nested cite carries its host footnote
-  // info for the "in footnote N" label + the `ml-4` indent. `orderedCitations`
-  // (the array driving CardListPanel + the keyboard cycle + selection) is this
-  // combined order so nav/selection stay consistent with what's on screen.
+  // Part B / Phase 2a — container-child nesting. Split the flat list into
+  // top-level cites and container-nested children (footnote OR example;
+  // identity-stable when nothing nests, so the common case pays zero churn).
+  // The rendered order is: every flat cite, then the nested cites grouped after
+  // — each nested cite carries its host container info for the "in footnote N" /
+  // "in example N" label + the `ml-4` indent. We order the nested run with
+  // footnote-nested cites first, then example-nested, so each kind clusters
+  // under its own section divider. `orderedCitations` (the array driving
+  // CardListPanel + the keyboard cycle + selection) is this combined order so
+  // nav/selection stay consistent with what's on screen.
   const { topLevel, nested } = useMemo(
-    () => partitionDockedCitations(sortedCitations, nestedFootnoteOf ?? EMPTY_NESTED),
-    [sortedCitations, nestedFootnoteOf],
+    () => partitionDockedCitations(sortedCitations, nestedContainerOf ?? EMPTY_NESTED),
+    [sortedCitations, nestedContainerOf],
   );
+  const nestedOrdered = useMemo(() => {
+    if (nested.length === 0) return nested;
+    // Stable partition by kind (footnotes first, then examples), preserving
+    // document order within each kind.
+    const footnoteNested = nested.filter((n) => n.info.kind === "footnote");
+    const exampleNested = nested.filter((n) => n.info.kind === "example");
+    return [...footnoteNested, ...exampleNested];
+  }, [nested]);
   const orderedCitations = useMemo<CitationRef[]>(
     () =>
-      nested.length === 0
+      nestedOrdered.length === 0
         ? [...topLevel]
-        : [...topLevel, ...nested.map((n) => n.citation)],
-    [topLevel, nested],
+        : [...topLevel, ...nestedOrdered.map((n) => n.citation)],
+    [topLevel, nestedOrdered],
   );
   const nestedInfoById = useMemo(() => {
-    const m = new Map<string, NestedFootnoteInfo>();
-    for (const n of nested) m.set(n.citation.id, n.info);
+    const m = new Map<string, NestedContainerInfo>();
+    for (const n of nestedOrdered) m.set(n.citation.id, n.info);
     return m;
-  }, [nested]);
-  // (The "In footnotes" section divider is placed in `renderCard` below, on the
-  // first nested cite that actually renders — see the flag at the return site.)
+  }, [nestedOrdered]);
+  // (The "In footnotes" / "In examples" section dividers are placed in
+  // `renderCard` below, on the first nested cite of each kind that actually
+  // renders — see the flags at the return site.)
 
   const handleBuilderCreate = (command: string) => {
     const id = onCreateCitation(command);
@@ -268,12 +281,17 @@ function CitationsPanel({
     ],
   );
 
-  // Render-scoped flag (reset every render): the first nested cite that
-  // CardListPanel actually RENDERS gets the "In footnotes" divider. Tracking the
-  // first rendered card (not a fixed pre-filter id) keeps the divider present
-  // even when the archive-view filter drops the document-first nested cite.
-  // `renderCard` is called synchronously in list order during this render.
-  let footnoteDividerShown = false;
+  // Render-scoped flags (reset every render): the first nested cite of each
+  // kind that CardListPanel actually RENDERS gets its kind's divider ("In
+  // footnotes" / "In examples"). Tracking the first rendered card per kind (not
+  // a fixed pre-filter id) keeps the divider present even when the archive-view
+  // filter drops the document-first nested cite. `renderCard` is called
+  // synchronously in list order during this render; `nestedOrdered` clusters
+  // footnote- then example-nested, so each divider appears once, before its run.
+  const dividerShown: Record<NestedContainerInfo["kind"], boolean> = {
+    footnote: false,
+    example: false,
+  };
   return (
     <CardListPanel
       kind="citations"
@@ -363,19 +381,25 @@ function CitationsPanel({
       onKeyDown={handleNavKeys}
       scrollTabIndex={0}
       renderCard={(cit, { selected }) => {
-        // Part B — a footnote-nested cite renders indented (`ml-4`, pixel-
-        // matching the omni nesting + bib-under-cite) and carries a small
-        // "in footnote N" context line above it, the docked analog of sitting
-        // under the footnote card. Top-level cites are unchanged.
+        // Part B / Phase 2a — a container-nested cite renders indented (`ml-4`,
+        // pixel-matching the omni nesting + bib-under-cite) and carries a small
+        // "in footnote N" / "in example N" context line above it, the docked
+        // analog of sitting under the container card. Top-level cites are
+        // unchanged.
         //
         // The nested cites are grouped after every top-level cite (see
-        // `orderedCitations`), so the first nested card that RENDERS gets an
-        // "In footnotes" section divider above it. A render-scoped flag (not a
-        // fixed id) keeps the divider present even if the archive-view filter
-        // drops the document-first nested cite.
+        // `orderedCitations`), clustered by kind (footnotes then examples), so
+        // the first rendered card OF EACH KIND gets its kind's section divider
+        // ("In footnotes" / "In examples") above it. Render-scoped per-kind
+        // flags (not fixed ids) keep each divider present even if the
+        // archive-view filter drops a kind's document-first nested cite.
         const nestedInfo = nestedInfoById.get(cit.id);
-        const showSectionDivider = nestedInfo != null && !footnoteDividerShown;
-        if (showSectionDivider) footnoteDividerShown = true;
+        const kindLabel = nestedInfo?.kind === "example" ? "example" : "footnote";
+        const showSectionDivider =
+          nestedInfo != null && !dividerShown[nestedInfo.kind];
+        if (nestedInfo != null && showSectionDivider) {
+          dividerShown[nestedInfo.kind] = true;
+        }
         const card = (
           <CitationCard
             citation={cit}
@@ -384,7 +408,7 @@ function CitationsPanel({
             wrapperClassName={nestedInfo ? "ml-4" : undefined}
             extraDataAttrs={
               nestedInfo
-                ? { "data-citation-nested-in-footnote": nestedInfo.footnoteId }
+                ? { "data-citation-nested-in-container": `${nestedInfo.kind}:${nestedInfo.id}` }
                 : undefined
             }
             onSelect={() => {
@@ -401,19 +425,19 @@ function CitationsPanel({
         );
         if (!nestedInfo) return card;
         return (
-          <div data-citation-nested-group="">
+          <div data-citation-nested-group={nestedInfo.kind}>
             {showSectionDivider && (
               <div className="mt-1 mb-1 px-1 flex items-center gap-2">
                 <span className="text-[10px] font-medium text-ink-muted uppercase tracking-wide">
-                  In footnotes
+                  {nestedInfo.kind === "example" ? "In examples" : "In footnotes"}
                 </span>
                 <span className="flex-1 border-t border-edge-subtle" />
               </div>
             )}
             <div className="ml-4 mb-0.5 text-[10px] font-medium text-ink-muted">
-              {nestedInfo.footnoteNumber != null
-                ? `↳ in footnote ${nestedInfo.footnoteNumber}`
-                : "↳ in footnote"}
+              {nestedInfo.number != null
+                ? `↳ in ${kindLabel} ${nestedInfo.number}`
+                : `↳ in ${kindLabel}`}
             </div>
             {card}
           </div>

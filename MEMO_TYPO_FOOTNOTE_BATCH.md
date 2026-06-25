@@ -5,10 +5,10 @@ Per-item status markers below. A separate cleaning session implements from this.
 
 | § | Item(s) | Title | Status |
 |---|---|---|---|
-| A | #1, #2 | LaTeX accents + en/em dashes, source-preserving | `ROOT-CAUSE-FOUND` / `PLAN-READY` |
-| B | #3 | Remove obsolete "Current section" View-menu toggle (breadcrumb always-on) | `PLAN-READY` (confirmed) |
-| C | #4 | Footnote-header squircle too big | `PLAN-READY` |
-| D | #5 | `\ref`/`\cite` Virgil commands inside footnotes | `ROOT-CAUSE-FOUND` / `PLAN-READY` |
+| A | #1, #2 | LaTeX accents + en/em dashes, source-preserving | `IMPLEMENTED` 6c1b075b 2026-06-24 — owes live FSA feel-check |
+| B | #3 | Remove obsolete "Current section" View-menu toggle (breadcrumb always-on) | `IMPLEMENTED` 5424f49a 2026-06-24 — owes live FSA feel-check |
+| C | #4 | Footnote-header squircle too big | `IMPLEMENTED` 26b48b9c 2026-06-24 — owes live FSA feel-check |
+| D | #5 | `\ref`/`\cite` Virgil commands inside footnotes | `IMPLEMENTED` 26b48b9c 2026-06-24 — owes live FSA feel-check |
 
 ---
 

@@ -8,6 +8,7 @@ import {
   doc,
   exampleBlock,
   exampleItem,
+  exampleItemWith,
   figureBlock,
   footnoteNode,
   footnoteWithBody,
@@ -63,9 +64,9 @@ describe("buildInitial", () => {
     expect(s.citations[0]?.command).toBe("\\cite{a}");
   });
 
-  it("stamps structure version 2 (T3: footnote-nested citation descent)", () => {
+  it("stamps structure version 3 (Phase 2a: generalized container-nested cite owner)", () => {
     const s = buildInitial(doc(paragraph("p1", "body")));
-    expect(s.version).toBe(2);
+    expect(s.version).toBe(3);
   });
 
   it("surfaces a footnote-NESTED citation in structure.citations with its host footnote id (T3 / C10)", () => {
@@ -95,6 +96,9 @@ describe("buildInitial", () => {
     expect(nested?.nestedInFootnoteId).toBe("fn1");
     expect(nested?.command).toBe("\\cite{nested}");
     expect(nested?.displayText).toBe("Nested");
+    // Phase 2a — the generalized container owner is populated alongside the
+    // retained legacy field, carrying the SAME host id under kind "footnote".
+    expect(nested?.nestedInContainerId).toEqual({ kind: "footnote", id: "fn1" });
   });
 
   it("uses the raw footnoteId (not linkId) as the nested-cite host id, for identity-consistency with the footnote's omni-item key", () => {
@@ -150,6 +154,68 @@ describe("buildInitial", () => {
     const s = buildInitial(doc(para));
     expect(s.footnotes.map((f) => f.id)).toEqual(["fn1"]);
     expect(s.citations).toHaveLength(0);
+  });
+
+  // -------------------------------------------------------------------------
+  // Phase 2a — EXAMPLE-nested citations. Unlike a footnote-body cite (a
+  // JSONContent literal), an example child is a real PM node the walk already
+  // reaches; the load-only pass tags it with its enclosing exampleBlock so its
+  // Omni card nests under the example's card.
+  // -------------------------------------------------------------------------
+
+  it("tags a citation inside an example block with nestedInContainerId.kind === 'example' + the example id", () => {
+    const ex = exampleBlock("ex1", { tag: "myex" }, [
+      exampleItemWith({}, [
+        testSchema.text("see "),
+        citationNode("c-in-ex", "\\cite{e}", "E"),
+      ]),
+    ]);
+    const s = buildInitial(doc(paragraph("p1", "before"), ex));
+
+    expect(s.examples.map((e) => e.id)).toEqual(["ex1"]);
+    const cit = s.citations.find((c) => c.id === "c-in-ex");
+    expect(cit).toBeDefined();
+    expect(cit?.nestedInContainerId).toEqual({ kind: "example", id: "ex1" });
+    // Example nesting routes ONLY through the generalized field — the legacy
+    // footnote-only field stays undefined for an example-nested cite.
+    expect(cit?.nestedInFootnoteId).toBeUndefined();
+    // pos is the cite's OWN PM position (a real node), so a jump lands on it.
+    expect(typeof cit?.pos).toBe("number");
+  });
+
+  it("tags multiple cites inside one example, all with the same example id, in document order", () => {
+    const ex = exampleBlock("ex2", {}, [
+      exampleItemWith({}, [
+        citationNode("c-a", "\\cite{a}", "A"),
+        testSchema.text(" and "),
+        citationNode("c-b", "\\cite{b}", "B"),
+      ]),
+    ]);
+    const s = buildInitial(doc(ex));
+
+    const inEx = s.citations.filter(
+      (c) => c.nestedInContainerId?.kind === "example",
+    );
+    expect(inEx.map((c) => c.id)).toEqual(["c-a", "c-b"]);
+    expect(inEx.every((c) => c.nestedInContainerId?.id === "ex2")).toBe(true);
+  });
+
+  it("a citation OUTSIDE any example is NOT tagged (top-level, no container owner)", () => {
+    // A cite after the example must not pick up the example's id once the walk
+    // has exited the block's range (the enclosing-example stack pops on exit).
+    const ex = exampleBlock("ex3", {}, [
+      exampleItemWith({}, [citationNode("c-inside", "\\cite{i}", "I")]),
+    ]);
+    const after = testSchema.nodes.paragraph.create({ uuid: "p2" }, [
+      citationNode("c-outside", "\\cite{o}", "O"),
+    ]);
+    const s = buildInitial(doc(ex, after));
+
+    const inside = s.citations.find((c) => c.id === "c-inside");
+    const outside = s.citations.find((c) => c.id === "c-outside");
+    expect(inside?.nestedInContainerId).toEqual({ kind: "example", id: "ex3" });
+    expect(outside?.nestedInContainerId).toBeUndefined();
+    expect(outside?.nestedInFootnoteId).toBeUndefined();
   });
 
   it("returns EMPTY_STRUCTURE-shaped snapshot for an empty doc", () => {
@@ -272,6 +338,97 @@ describe("applyDiff", () => {
     };
     const afterRemove = applyDiff(afterChange, remove);
     expect(afterRemove.citations.map((c) => c.id)).toEqual(["c-early"]);
+  });
+
+  // ---------------------------------------------------------------------------
+  // Phase 2a regression — example-nested cite must keep its container tag across
+  // an in-place edit / move. `buildInitial` stamps `nestedInContainerId` from
+  // the enclosing exampleBlock, but the step-inspector rebuilds a
+  // `changedCitations` entry from node attrs ALONE (no enclosing container), so
+  // `applyDiff` must carry the prior owner tag forward — else the cite un-nests
+  // to a flat card on every citekey edit / move until reload.
+  // ---------------------------------------------------------------------------
+
+  it("changedCitations on an example-nested cite KEEPS nestedInContainerId (core regression)", () => {
+    const ex = exampleBlock("ex1", { tag: "myex" }, [
+      exampleItemWith({}, [
+        testSchema.text("see "),
+        citationNode("c-in-ex", "\\cite{e}", "E"),
+      ]),
+    ]);
+    const prev = buildInitial(doc(paragraph("p1", "before"), ex));
+    // Sanity: the load pass tagged it under the example.
+    const before = prev.citations.find((c) => c.id === "c-in-ex");
+    expect(before?.nestedInContainerId).toEqual({ kind: "example", id: "ex1" });
+
+    // A citekey edit AND a new position — the rebuilt entry carries NO tag.
+    const change: StructureDiff = {
+      ...EMPTY_DIFF,
+      changedCitations: [
+        { id: "c-in-ex", pos: 999, command: "\\cite{e2}", displayText: "E2" },
+      ],
+    };
+    const after = applyDiff(prev, change);
+    const cit = after.citations.find((c) => c.id === "c-in-ex");
+    // The attr edit + new pos took effect…
+    expect(cit?.command).toBe("\\cite{e2}");
+    expect(cit?.pos).toBe(999);
+    // …but the container tag SURVIVED (the regression being fixed).
+    expect(cit?.nestedInContainerId).toEqual({ kind: "example", id: "ex1" });
+  });
+
+  it("changedCitations carries a footnote-nested cite's owner tag forward too (defensive)", () => {
+    // Footnote-nested cites are stamped from a JSONContent literal the diff
+    // can't enter, so they typically never appear in `changedCitations` (no own
+    // PM node to edit). We still defensively carry `nestedInFootnoteId` +
+    // `nestedInContainerId` forward if such an entry ever surfaces, so a
+    // hypothetical change can't strip the tag. This synthesizes that prev shape.
+    const fnBody = {
+      type: "doc",
+      content: [
+        {
+          type: "paragraph",
+          content: [citationLiteral("c-in-fn", "\\cite{f}", "F")],
+        },
+      ],
+    };
+    const para = paragraph("p1", "body");
+    const withFn = doc(para, footnoteWithBody("fn1", fnBody));
+    const prev = buildInitial(withFn);
+    const before = prev.citations.find((c) => c.id === "c-in-fn");
+    expect(before?.nestedInFootnoteId).toBe("fn1");
+    expect(before?.nestedInContainerId).toEqual({ kind: "footnote", id: "fn1" });
+
+    const change: StructureDiff = {
+      ...EMPTY_DIFF,
+      changedCitations: [
+        { id: "c-in-fn", pos: 42, command: "\\cite{f2}", displayText: "F2" },
+      ],
+    };
+    const after = applyDiff(prev, change);
+    const cit = after.citations.find((c) => c.id === "c-in-fn");
+    expect(cit?.command).toBe("\\cite{f2}");
+    expect(cit?.nestedInFootnoteId).toBe("fn1");
+    expect(cit?.nestedInContainerId).toEqual({ kind: "footnote", id: "fn1" });
+  });
+
+  it("addedCitations with NO nestedInContainerId folds in as a FLAT top-level cite (graceful-degradation contract for the live-add limitation)", () => {
+    // A cite ADDED live inside an example mid-session has no tag on the live
+    // `addedCitations` path (the tag is load-only). It must degrade to a flat
+    // top-level card — never be dropped — until reload re-runs buildInitial.
+    const prev = buildInitial(doc(paragraph("p1", "body")));
+    const add: StructureDiff = {
+      ...EMPTY_DIFF,
+      addedCitations: [
+        { id: "c-live", pos: 20, command: "\\cite{live}", displayText: "Live" },
+      ],
+    };
+    const after = applyDiff(prev, add);
+    const cit = after.citations.find((c) => c.id === "c-live");
+    expect(cit).toBeDefined();
+    // Folded in (not dropped) and FLAT (no owner tag).
+    expect(cit?.nestedInContainerId).toBeUndefined();
+    expect(cit?.nestedInFootnoteId).toBeUndefined();
   });
 
   it("addedAnchors and removedAnchors update the anchors Map", () => {

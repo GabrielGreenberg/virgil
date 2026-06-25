@@ -137,6 +137,15 @@ export function exampleItem(
   );
 }
 
+/** An exampleItem whose inline content is arbitrary PM nodes (so a test can put
+ *  a `citationNode` INSIDE an example — the example-nested-cite case). */
+export function exampleItemWith(
+  attrs: Record<string, unknown>,
+  content: PMNode[],
+): PMNode {
+  return testSchema.nodes.exampleItem.create(attrs, content);
+}
+
 export function footnoteNode(footnoteId: string, number = 1, thanks = false): PMNode {
   return testSchema.nodes.footnote.create({ footnoteId, number, thanks });
 }

@@ -45,6 +45,20 @@ export function buildInitial(doc: PMNode): DocStructure {
   const figures: FigureEntry[] = [];
   const labels = new Map<string, LabelEntry>();
 
+  // Phase 2a — enclosing-exampleBlock tracking for example-NESTED citations.
+  // A `\cite` inside an example body/item/gloss is a REAL PM node the walk
+  // below already reaches and collects as a top-level `CitationEntry` — but
+  // with no owner tag, so its Omni card floats free instead of nesting under
+  // the example's card. We track a stack of currently-open exampleBlocks
+  // `{ id, end }` and, when we hit a citation, stamp it with the innermost
+  // enclosing example's id (`nestedInContainerId.kind === "example"`). The
+  // stack is O(depth) and runs INSIDE the single load-only `buildInitial`
+  // walk — no extra doc pass, and `applyDiff` never re-walks (keystroke
+  // sanctity; see AGENTS.md "Card-source derivation"). `id` is the example's
+  // `ExampleEntry.id` (block uuid ?? tag ?? label) so it matches the example
+  // omni item key `cardPopKey("example", id)` the nesting transform resolves.
+  const exampleStack: { id: string; end: number }[] = [];
+
   // Walk top-level UUID-bearing blocks. For nested anchor-bearing marks
   // we need to descend into text-bearing content, so the walk is
   // recursive but only collects when a node's type matches a tracked
@@ -52,6 +66,14 @@ export function buildInitial(doc: PMNode): DocStructure {
   doc.descendants((node, pos) => {
     const typeName = node.type.name;
     const uuid = (node.attrs as { uuid?: string | null } | undefined)?.uuid;
+
+    // Pop any exampleBlocks we've now walked past (the walk is depth-first in
+    // document order, so once `pos` reaches a tracked example's `end` we've
+    // left it). Done BEFORE collecting this node so a citation's enclosing
+    // example reflects only blocks that actually contain it.
+    while (exampleStack.length > 0 && pos >= exampleStack[exampleStack.length - 1].end) {
+      exampleStack.pop();
+    }
 
     // Anchorable block — every entity-bearing node has a UUID, including
     // headings / figureBlock / exampleBlock / paragraph / etc.
@@ -130,6 +152,11 @@ export function buildInitial(doc: PMNode): DocStructure {
             pos,
           });
         }
+        // Phase 2a — push this example onto the enclosing-block stack so any
+        // citation collected while we're inside its range gets tagged as
+        // example-nested. `end` is the position one past the block's close
+        // token; we pop the stack when the walk reaches it (above).
+        exampleStack.push({ id, end: pos + node.nodeSize });
       }
     }
 
@@ -189,7 +216,11 @@ export function buildInitial(doc: PMNode): DocStructure {
             pos,
             command: hit.command ?? "",
             displayText: hit.displayText ?? "",
+            // Keep the legacy field working byte-for-byte (every existing
+            // consumer reads it) AND populate the generalized container owner
+            // so the render-side nesting covers footnote + example uniformly.
             nestedInFootnoteId: hostId,
+            nestedInContainerId: { kind: "footnote", id: hostId },
           });
         }
       }
@@ -202,11 +233,22 @@ export function buildInitial(doc: PMNode): DocStructure {
         displayText?: string;
       };
       if (attrs.citationId) {
+        // Phase 2a — if this real-PM-node citation sits inside an exampleBlock,
+        // tag it with the innermost enclosing example so its Omni card nests
+        // under the example's card. A cite NOT inside any example keeps no
+        // container owner (top-level), so it stays a flat card unchanged.
+        const enclosingExample =
+          exampleStack.length > 0
+            ? exampleStack[exampleStack.length - 1].id
+            : null;
         citations.push({
           id: attrs.citationId,
           pos,
           command: attrs.command ?? "",
           displayText: attrs.displayText ?? "",
+          ...(enclosingExample
+            ? { nestedInContainerId: { kind: "example", id: enclosingExample } }
+            : {}),
         });
       }
     }
@@ -236,10 +278,13 @@ export function buildInitial(doc: PMNode): DocStructure {
   });
 
   return {
-    // version 2 (T3 / C10): `structure.citations` now includes footnote-nested
-    // citations carrying `nestedInFootnoteId`. In-process sanity stamp only —
-    // no persisted consumer reads it; it bumps per `applyDiff` thereafter.
-    version: 2,
+    // version 3 (Phase 2a): `structure.citations` carries `nestedInContainerId`
+    // — the generalized "container owner" — for BOTH footnote-nested cites
+    // (`{kind:"footnote"}`, alongside the retained `nestedInFootnoteId`) and
+    // example-nested cites (`{kind:"example"}`). version 2 (T3 / C10) added the
+    // footnote-nested descent + `nestedInFootnoteId`. In-process sanity stamp
+    // only — no persisted consumer reads it; it bumps per `applyDiff` after.
+    version: 3,
     blocks,
     headings,
     footnotes,
@@ -332,7 +377,43 @@ export function applyDiff(prev: DocStructure, diff: StructureDiff): DocStructure
     const next: CitationEntry[] = [];
     for (const c of prev.citations) {
       if (removedIds.has(c.id)) continue;
-      next.push(changedById.get(c.id) ?? c);
+      const changed = changedById.get(c.id);
+      if (changed) {
+        // The container-nesting tag (`nestedInContainerId` / `nestedInFootnoteId`)
+        // is stamped ONLY by the load-only `buildInitial` descend pass — it needs
+        // the enclosing example/footnote, which `applyDiff` can't see (it gets
+        // only `(prev, diff)`, no doc, and `ExampleEntry` has no end-extent). The
+        // step-inspector rebuilds a `changedCitations` entry from the citation
+        // node's attrs ALONE (`{id, pos, command, displayText}`), so it drops the
+        // tag. A `changedCitations` entry is an in-place attr edit (citekey edit)
+        // or an atom MOVE — neither removes the cite from its container in the
+        // common case — so carry the PRIOR entry's owner tag forward when the
+        // rebuilt entry lacks one, or an example/footnote-nested cite would
+        // visibly un-nest to a flat card on every edit until the next reload.
+        //
+        // Accepted edge: a cite MOVED OUT of its example/footnote keeps a stale
+        // tag here (we can't detect the exit without container extents). It
+        // self-heals on the next reload, when `buildInitial` re-runs the descend
+        // pass and re-derives ownership — matching the Phase-1 footnote behavior.
+        // Low-severity + self-healing, so accepted.
+        next.push(
+          (c.nestedInContainerId || c.nestedInFootnoteId) &&
+            !changed.nestedInContainerId &&
+            !changed.nestedInFootnoteId
+            ? {
+                ...changed,
+                ...(c.nestedInContainerId
+                  ? { nestedInContainerId: c.nestedInContainerId }
+                  : {}),
+                ...(c.nestedInFootnoteId
+                  ? { nestedInFootnoteId: c.nestedInFootnoteId }
+                  : {}),
+              }
+            : changed,
+        );
+      } else {
+        next.push(c);
+      }
     }
     for (const added of diff.addedCitations) next.push(added);
     next.sort((a, b) => a.pos - b.pos);

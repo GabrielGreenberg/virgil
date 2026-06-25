@@ -1,6 +1,6 @@
 # FEATURE — On card creation, drop the cursor into the card body (auto-select + auto-focus), for every input-requiring kind
 
-**Status:** `PLAN-READY` (the focus seam already exists; the fix is small + central) · 2 design decisions flagged
+**Status:** `IMPLEMENTED` (5424f49a finishCreate expand+focusNewCard chokepoint, 2026-06-24, prior drain) — owes live FSA feel-check (the focus seam already exists; the fix is small + central) · 2 design decisions flagged
 **Filed by:** bug-catcher session, 2026-06-21
 **Repo note:** diagnosis only (no source edits); unrelated to the `keep-alive` worktree.
 
