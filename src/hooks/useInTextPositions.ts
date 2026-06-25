@@ -7,6 +7,7 @@ import { getLinkedTextObjectIds } from "@/links/links";
 import type { Link } from "@/links/_shared/types";
 import { findEditorScrollFor } from "@/components/editor-layout/layout-scroll";
 import { useIsVisible } from "@/lib/keep-alive/visibility-context";
+import { requestLowPriority } from "@/lib/keep-alive/schedule-low-priority";
 import { getBus } from "@/lib/tiptap/doc-structure";
 import { onFontReady } from "@/lib/text-metrics";
 
@@ -105,6 +106,17 @@ const DEFAULT_ENTRY_HEIGHT = 60; // fallback before entries are rendered
  */
 const SETTLE_MAX_FRAMES = 30;
 const SETTLE_STABLE_FRAMES = 1;
+
+/**
+ * Clean-re-show suppression window (ms). On a clean keep-alive re-show the
+ * display:none→flex flip resizes the editor and every omni card 0→real, which
+ * detonates the editor + per-card ResizeObservers into a wasted full measure
+ * pass even though cached geometry is already correct. The re-show effect opens
+ * this window so those reflow-storm triggers are swallowed; cached positions
+ * render instantly. Short enough that a genuine post-switch resize re-measures
+ * normally just after.
+ */
+const RESHOW_SUPPRESS_MS = 250;
 
 /**
  * Degenerate-measure threshold. On a cold/un-laid-out editor `coordsAtPos`
@@ -302,13 +314,39 @@ export function useInTextPositions(
    */
   resolvePos?: (id: string) => number | undefined,
 ) {
-  // Keep-alive: a hidden (display:none) editor measures nothing — coordsAtPos
-  // and getBoundingClientRect both return 0, which would cache naturalTop=0 for
-  // every card. Folding visibility into `enabled` makes the whole measure path
-  // (and its ResizeObserver/window-resize wiring) bail while hidden; the
-  // existing `!enabled` early-outs already clear cleanly. Re-show flips it back.
+  // Keep-alive re-show invariant: "hidden is frozen, not torn down; re-show is a
+  // REPUBLISH of cached geometry, not a re-measure — unless something provably
+  // changed while hidden." A hidden (display:none) editor measures nothing —
+  // coordsAtPos/getBoundingClientRect both return 0 — so while hidden we RETAIN
+  // the last-good `naturalRef` (the doc got zero transactions and pod-relative
+  // tops are scroll-invariant, so it stays correct). `enabled` is DECOUPLED from
+  // visibility: `enabledProp` is the identity axis (genuinely-off panel ⇒ clear),
+  // and `isVisible` is read LIVE via a ref so a hidden↔visible flip never
+  // re-creates `measure`/re-runs the wiring effect by identity. The dirty-gate
+  // (a structural bus event OR a container-WIDTH change while hidden) is the only
+  // thing that opts a re-show back into a (bounded) re-measure. See
+  // MEMO_INSTANT_SWITCH.md §4.
   const isVisible = useIsVisible();
-  const enabled = enabledProp && isVisible;
+  const isVisibleRef = useRef(isVisible);
+  // Set only when a real invalidation occurs WHILE HIDDEN: a DocStructureBus
+  // structural event (the existing onBlocksAdded/Removed subscription, gated on
+  // !isVisible) or — detected on re-show — a container-width change. Consumed
+  // (and reset) once per hidden→visible transition by the re-show effect.
+  const dirtyWhileHiddenRef = useRef(false);
+  // Editor content width at the last VISIBLE measure. A width change invalidates
+  // pod-relative tops (wrap reflows anchors); height/scroll changes do not.
+  const lastWidthRef = useRef(0);
+  // On a re-show the display flip resizes the (display:none→flex) editor and every
+  // omni card 0→real, which detonates the editor/per-card ResizeObservers — and
+  // the switch's upstream re-renders can spuriously re-run the wiring effect's
+  // measure() — into wasted full measure passes even though cached geometry is
+  // already correct. The sync effect below opens this window on EVERY
+  // hidden→visible flip so ALL measure paths are swallowed; the re-show effect
+  // then adds back exactly ONE bounded measure iff the hook is dirty.
+  const suppressMeasureUntilRef = useRef(0);
+  // Set by the sync effect on a genuine hidden→visible flip; consumed by the
+  // re-show effect (which runs later in the same commit, after the wiring effect).
+  const reshowPendingRef = useRef(false);
   const [editorContentHeight, setEditorContentHeight] = useState(0);
   const panelScrollRef = useRef<HTMLDivElement>(null);
   const naturalRef = useRef<Map<string, NaturalEntry>>(new Map());
@@ -321,8 +359,53 @@ export function useInTextPositions(
   // so a late `document.fonts.ready` never measures a torn-down editor.
   const fontReadyActiveRef = useRef(false);
 
+  // A measure TRIGGER (RO/resize/settle/font-ready) AND the wiring effect's own
+  // measure() may fire when measuring would be wrong or wasteful: while hidden
+  // (coords read 0), or during the brief re-show suppression window. measure()
+  // itself also bails when hidden; this gate additionally swallows the re-show
+  // reflow storm. The dirty re-show path calls measure() directly (not via this
+  // gate) so its single bounded re-measure is never suppressed.
+  const canMeasureNow = useCallback(
+    () =>
+      isVisibleRef.current &&
+      (typeof performance === "undefined" ||
+        performance.now() >= suppressMeasureUntilRef.current),
+    [],
+  );
+
+  // Visibility flip detector — the FIRST effect to run on a flip (declared before
+  // the wiring + re-show effects), so the suppression window is already open by
+  // the time the wiring effect's measure() runs in the same commit.
+  // useLayoutEffect (not passive): the long-lived observer/RAF closures must see
+  // fresh visibility at commit, BEFORE the browser delivers the post-flip
+  // ResizeObserver batch — otherwise a re-show measure could race a stale `false`.
+  const syncWasVisibleRef = useRef(isVisible);
+  useLayoutEffect(() => {
+    const wasVisible = syncWasVisibleRef.current;
+    syncWasVisibleRef.current = isVisible;
+    isVisibleRef.current = isVisible;
+    if (isVisible && !wasVisible) {
+      // Genuine hidden→visible re-show: pre-emptively swallow the reflow storm
+      // and any spurious wiring-effect re-run. The re-show effect (later this
+      // commit) downgrades to a single bounded measure iff the hook is dirty.
+      suppressMeasureUntilRef.current =
+        (typeof performance !== "undefined" ? performance.now() : 0) +
+        RESHOW_SUPPRESS_MS;
+      reshowPendingRef.current = true;
+    }
+  }, [isVisible]);
+
   const measure = useCallback(() => {
-    if (!editor || !enabled || items.length === 0) {
+    // HIDDEN (but enabled): RETAIN the cached geometry — bail before any DOM read
+    // (coordsAtPos/getBoundingClientRect return 0 under display:none, which would
+    // corrupt naturalTop to 0 for every card). The doc received zero transactions
+    // while hidden and pod-relative tops are scroll-invariant, so the retained
+    // cache is still correct on re-show. This RETAINS (does not clear) so the
+    // degeneracy guard below stays armed and the warm re-show never enters the
+    // size-0 cold heal.
+    if (!isVisibleRef.current) return;
+    // GENUINELY disabled or empty: clear (keyed on enabledProp, NOT visibility).
+    if (!editor || !enabledProp || items.length === 0) {
       if (naturalRef.current.size > 0) {
         naturalRef.current = new Map();
         setMeasureVersion((v) => v + 1);
@@ -336,6 +419,11 @@ export function useInTextPositions(
 
     const podRect = panelEl.getBoundingClientRect();
     const editorDom = editor.view.dom as HTMLElement;
+    // Dirty-gate width baseline: record the content width at each visible measure.
+    // A width change while hidden (window resize / panel toggle) re-wraps text and
+    // moves anchors, so the re-show effect compares against this to decide dirty.
+    // clientWidth reads layout without forcing a reflow beyond what follows.
+    lastWidthRef.current = editorDom.clientWidth;
     const nextContentHeight = editorDom.scrollHeight;
     setEditorContentHeight((prev) =>
       prev === nextContentHeight ? prev : nextContentHeight,
@@ -423,7 +511,7 @@ export function useInTextPositions(
     }
     naturalRef.current = next;
     if (changed) setMeasureVersion((v) => v + 1);
-  }, [editor, items, enabled, entry, resolvePos]);
+  }, [editor, items, enabledProp, entry, resolvePos]);
 
   // Trigger measurement on editor updates, viewport resize, editor
   // content-height changes, and on the next paint after items change.
@@ -431,7 +519,11 @@ export function useInTextPositions(
   // setMeasureVersion schedules a re-render that picks up the new natural
   // data via the useMemo below.
   useLayoutEffect(() => {
-    if (!enabled) {
+    // Keyed on `enabledProp` (NOT visibility): a hidden↔visible flip no longer
+    // tears down / re-arms this wiring, and the cache is RETAINED across a hide
+    // (cleared only on a genuine disable). Re-show is handled by the dedicated
+    // visibility effect below.
+    if (!enabledProp) {
       if (naturalRef.current.size > 0) {
         naturalRef.current = new Map();
         setMeasureVersion((v) => v + 1);
@@ -439,11 +531,18 @@ export function useInTextPositions(
       return;
     }
 
-    measure();
+    // Cold mount / items-change / re-enable: measure once. Gated by canMeasureNow
+    // so it's swallowed while hidden AND during a re-show suppression window (a
+    // switch's upstream re-renders can spuriously re-run this effect — the cached
+    // deck is already correct, so don't re-measure on the flip).
+    if (canMeasureNow()) measure();
 
     if (!editor) return;
 
     const schedule = () => {
+      // Gate every trigger-driven measure: skip while hidden (coords read 0) and
+      // during the clean-re-show suppression window (swallow the reflow storm).
+      if (!canMeasureNow()) return;
       cancelAnimationFrame(computeRafRef.current);
       computeRafRef.current = requestAnimationFrame(measure);
     };
@@ -469,7 +568,7 @@ export function useInTextPositions(
     let settleStable = 0;
     let lastSettleHeight = editorDomForSettle?.scrollHeight ?? -1;
     const settleStep = () => {
-      if (!enabled) return;
+      if (!canMeasureNow()) return;
       measure();
       const h = editorDomForSettle?.scrollHeight ?? -1;
       if (h === lastSettleHeight) {
@@ -498,31 +597,17 @@ export function useInTextPositions(
     // runs unconditionally on every run of THIS effect (regardless of font-ready
     // state), so whenever this effect runs it re-measures once layout settles.
     //
-    // KEEP-ALIVE RE-SHOW (display:none→show without remount — the L2/L3
-    // keep-alive subsystem): this is handled by construction, not by a separate
-    // visibility trigger. Visibility is folded into `enabled`
-    // (`enabled = enabledProp && isVisible`, see :311), and `enabled` is in BOTH
-    // `measure`'s `useCallback` deps and THIS effect's dep array. So a
-    // hidden→visible transition flips `enabled` false→true, which re-creates
-    // `measure` and RE-RUNS this whole effect — re-arming the A.1 settle loop
-    // against the now-laid-out editor. (The font-ready ping re-registers but is
-    // INERT on re-show: `onFontReady` is a one-shot module-global that already
-    // fired at cold load, so the A.1 settle loop is the SOLE re-show healer —
-    // consistent with the one-shot caveat noted above.)
-    // While hidden, the `!enabled` branch at the top of this effect cleared
-    // `naturalRef` to empty, so the re-show takes the first-paint path (the
-    // degeneracy guard is inactive at size 0 ⇒ commit, then the settle loop
-    // heals) — exactly the cold-load lifecycle, re-triggered. No `editor.on`
-    // subscriber and no IntersectionObserver is involved, so keystroke sanctity
-    // is preserved: the trigger is the rare visibility flip, never a transaction.
-    // (The degenerate-measure guard does NOT help on re-show — the hidden-state
-    // clear emptied `naturalRef`, so size 0 ⇒ no good cache to retain ⇒ the
-    // re-show commits first-paint and relies on the settle loop, same as a cold
-    // open.) Locked by `useInTextPositions-visibility-remeasure.test.tsx`.
-    // (LIVE-FSA OWED: jsdom can't lay out, so the real hidden→show layout settle
-    // — fonts/KaTeX/expex reflow correcting the deck — is verified by the unit
-    // test's re-fire assertion here and must still be feel-checked in a real
-    // browser against the L2 paper↔Library bounce.)
+    // KEEP-ALIVE RE-SHOW (display:none→show without remount) is NO LONGER handled
+    // by this effect re-running. `enabled` is decoupled from visibility, so this
+    // wiring effect does not re-run on a flip, the cache is RETAINED across the
+    // hide, and the dedicated `[isVisible]` re-show effect below decides: a CLEAN
+    // re-show republishes cached geometry (zero coordsAtPos, zero settle); a DIRTY
+    // re-show (structural-while-hidden or a width change) runs ONE bounded
+    // re-measure, deferred off the flip. The settle loop here is the COLD-mount
+    // healer only. Locked by `useInTextPositions-visibility-remeasure.test.tsx`.
+    // (LIVE-FSA OWED: jsdom can't lay out, so the real hidden→show layout settle —
+    // fonts/KaTeX/expex reflow — must still be feel-checked in a real browser
+    // against the L2 paper↔Library bounce.)
     fontReadyActiveRef.current = true;
     onFontReady(() => {
       if (fontReadyActiveRef.current) schedule();
@@ -532,11 +617,26 @@ export function useInTextPositions(
     // when card mappings might shift. Pure text edits don't move
     // cards; the editor DOM's ResizeObserver below covers any
     // wrap-induced reflow that would shift Y coords.
+    //
+    // DIRTY-GATE (keystroke-safe): these are the SAME emitCount-gated channels
+    // already used here (no new subscriber). When the editor is HIDDEN, a
+    // structural change can't be measured (coords read 0) — instead mark the
+    // hook dirty so the re-show effect re-measures once. When visible, behave
+    // exactly as before (schedule a re-measure). A plain keystroke in the
+    // VISIBLE editor fires no onBlocks* event (content-only diff), so this never
+    // runs on the keystroke path and `emitCount` stays flat.
+    const onStructural = () => {
+      if (!isVisibleRef.current) {
+        dirtyWhileHiddenRef.current = true;
+        return;
+      }
+      schedule();
+    };
     const bus = getBus(editor);
     const unsubBlocks = bus
       ? (() => {
-          const u1 = bus.onBlocksAdded(schedule);
-          const u2 = bus.onBlocksRemoved(schedule);
+          const u1 = bus.onBlocksAdded(onStructural);
+          const u2 = bus.onBlocksRemoved(onStructural);
           return () => {
             u1();
             u2();
@@ -565,7 +665,48 @@ export function useInTextPositions(
       window.removeEventListener("resize", schedule);
       editorObs?.disconnect();
     };
-  }, [editor, measure, enabled]);
+  }, [editor, measure, enabledProp, canMeasureNow]);
+
+  // Keep-alive re-show effect — the heart of the instant-switch fix. Fires ONLY
+  // on a genuine hidden→visible transition (a tab switch back to this doc), never
+  // on mount or an editor/enabledProp change. Three outcomes:
+  //   • CLEAN  ⇒ the cached `naturalRef` is still correct (doc unchanged, tops are
+  //     scroll-invariant). Do NOTHING but open a brief suppression window so the
+  //     display-flip reflow storm (editor + per-card ResizeObservers firing
+  //     0→real) doesn't detonate a wasted full measure. Cards render at cached
+  //     positions instantly — zero coordsAtPos, zero settle.
+  //   • DIRTY  ⇒ a structural change happened while hidden, OR the container width
+  //     changed (re-wrap). Run ONE bounded re-measure, deferred off the visible
+  //     flip via requestLowPriority so no long task blocks the transition. The
+  //     degeneracy guard is armed (cache retained ⇒ size>0), so a transient bad
+  //     read can't corrupt the deck.
+  //   • COLD   ⇒ never measured yet (size 0): leave it to the wiring effect's
+  //     measure()+settle (first open).
+  // KEYSTROKE SANCTITY: fires on visibility transitions only — never per
+  // transaction, no new editor.on/bus subscriber. `emitCount` stays flat.
+  useLayoutEffect(() => {
+    if (!reshowPendingRef.current) return; // only a genuine hidden→visible flip
+    reshowPendingRef.current = false;
+    if (!enabledProp || !editor) return;
+    if (naturalRef.current.size === 0) return; // cold mount — wiring effect handles it
+
+    const editorDom = editor.view?.dom as HTMLElement | undefined;
+    const widthChanged =
+      !!editorDom &&
+      lastWidthRef.current !== 0 &&
+      editorDom.clientWidth !== lastWidthRef.current;
+    const dirty = dirtyWhileHiddenRef.current || widthChanged;
+    dirtyWhileHiddenRef.current = false;
+
+    // CLEAN: the suppression window opened by the sync effect already swallows
+    // every measure path — render from cache, nothing more to do.
+    if (!dirty) return;
+
+    // DIRTY: add back exactly ONE bounded re-measure, off the critical flip.
+    // measure() is called directly (not via a suppressed trigger) so it runs even
+    // within the suppression window; the window still swallows the reflow storm.
+    return requestLowPriority(() => measure());
+  }, [editor, enabledProp, isVisible, measure]);
 
   // Observe card-size changes (e.g. bibliography pod expanding) so the
   // cascade reflows correctly. Dep on `measureVersion` so we re-observe
@@ -581,7 +722,7 @@ export function useInTextPositions(
   // absorbed by neighbors. When the user blurs the editor, the focusout
   // handler runs a final measure() so positions snap to truth.
   useEffect(() => {
-    if (!enabled) return;
+    if (!enabledProp) return;
     const panelEl = panelScrollRef.current;
     if (!panelEl || typeof ResizeObserver === "undefined") return;
     const isTypingInPanel = () => {
@@ -593,6 +734,10 @@ export function useInTextPositions(
       );
     };
     const onResize = () => {
+      // Gate: skip while hidden and during the clean-re-show suppression window
+      // (the display-flip 0→real card resizes would otherwise force a wasted
+      // measure even though cached geometry is correct).
+      if (!canMeasureNow()) return;
       if (isTypingInPanel()) return;
       cancelAnimationFrame(computeRafRef.current);
       computeRafRef.current = requestAnimationFrame(measure);
@@ -601,6 +746,7 @@ export function useInTextPositions(
       // Defer one frame so the activeElement transition settles before
       // we re-measure (otherwise activeElement might still be the just-
       // -blurred contenteditable).
+      if (!canMeasureNow()) return;
       cancelAnimationFrame(computeRafRef.current);
       computeRafRef.current = requestAnimationFrame(measure);
     };
@@ -612,7 +758,7 @@ export function useInTextPositions(
       obs.disconnect();
       panelEl.removeEventListener("focusout", onFocusOut);
     };
-  }, [measureVersion, enabled, entry, measure]);
+  }, [measureVersion, enabledProp, entry, measure, canMeasureNow]);
 
   // Pure-JS resolution. On a pin change, this is the ONLY thing that
   // re-runs — no DOM reads, no layout flush, no second commit.
