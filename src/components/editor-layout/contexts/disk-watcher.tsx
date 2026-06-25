@@ -2,6 +2,7 @@
 
 import {
   createContext,
+  useCallback,
   useContext,
   useEffect,
   useMemo,
@@ -43,20 +44,31 @@ import { createDiskWatcher, type DiskWatcher } from "@/lib/disk-watcher";
 export interface DiskWatcherContextValue {
   watcher: DiskWatcher;
   /**
-   * Inject the canonical "are there unsaved in-editor edits?" getter (the
-   * `saveTimerRef.current !== null` SSOT). Called ONCE per `useDocument` mount,
-   * never per keystroke. Returns an unregister that restores the default
-   * `() => false`.
+   * The docId this provider is currently watching (= the active doc). Multi-doc
+   * keep-alive mounts N `useDocument` instances at once (1 active + warm), all
+   * descendants of THIS single provider. Each compares its own docId to
+   * `activeDocId` to decide whether to honor the autosave-pause guard — only the
+   * active doc (the one whose external-change badge is visible) may pause; a warm
+   * doc must never pause on the active doc's conflict state.
    */
-  registerUnsavedGetter: (fn: () => boolean) => () => void;
+  activeDocId: string;
   /**
-   * Inject the doc's `refetch()` (readDocBundle → setContent → re-baseline the
-   * ledger). Called ONCE per `useDocument` mount, never per keystroke. Returns
-   * an unregister that restores the default no-op. MIRRORS
-   * `registerUnsavedGetter` — same ref-swap lifecycle — so the badge can drive
-   * "Reload from disk" without coupling to EditorPane.
+   * Inject a doc's canonical "are there unsaved in-editor edits?" getter (the
+   * `saveTimerRef.current !== null` SSOT), keyed by its docId. Called ONCE per
+   * `useDocument` mount, never per keystroke. The watcher reads ONLY the active
+   * doc's entry (`get(activeDocId)`), so N warm docs registering concurrently no
+   * longer clobber each other (the pre-keep-alive last-writer-wins hazard).
+   * Returns an unregister that drops this doc's entry (iff still ours).
    */
-  registerReload: (fn: () => void | Promise<void>) => () => void;
+  registerUnsavedGetter: (docId: string, fn: () => boolean) => () => void;
+  /**
+   * Inject a doc's `refetch()` (readDocBundle → setContent → re-baseline the
+   * ledger), keyed by docId. Called ONCE per `useDocument` mount, never per
+   * keystroke. MIRRORS `registerUnsavedGetter` — `reloadFromDisk` drives ONLY
+   * the active doc's refetch (`get(activeDocId)`), so the badge's "Reload" can
+   * never target the wrong warm doc.
+   */
+  registerReload: (docId: string, fn: () => void | Promise<void>) => () => void;
   /**
    * "Reload from disk": optimistically clear the watcher's change ledger, THEN
    * run the registered `refetch()`. The load path re-baselines the disk ledger
@@ -70,89 +82,157 @@ const DiskWatcherCtx = createContext<DiskWatcherContextValue | null>(null);
 
 export function DiskWatcherProvider({
   docId,
+  liveDocIds,
   children,
 }: {
   docId: string;
+  /**
+   * The docIds currently kept alive (the active doc + warm keep-alive slots).
+   * Defaults to `[docId]` (single-doc / no keep-alive). A doc's watcher lives —
+   * and keeps polling, preserving its conflict store + ledger baseline across an
+   * A→B→A round-trip — as long as it's in this set; it is disposed (stop +
+   * clear ledger) only when it LEAVES the set (LRU eviction / tab close), so a
+   * mere visibility round-trip never re-primes the badge away. (Pre-F2 the
+   * watcher was re-created on every active-doc change and re-primed clean, which
+   * silently dropped an unacknowledged external-change badge on switch-back.)
+   */
+  liveDocIds?: string[];
   children: ReactNode;
 }) {
-  // The dirty-getter, injected by useDocument. Default `() => false` so the
-  // watcher reports "no unsaved edits" until useDocument wires the real flag.
-  const unsavedRef = useRef<() => boolean>(() => false);
-
-  // The doc's `refetch()`, injected by useDocument (mirrors `unsavedRef`).
-  // Default no-op so `reloadFromDisk` is harmless until useDocument wires the
-  // real refetch. Read only inside `reloadFromDisk` (a user gesture), never
+  // Per-docId dirty-getters + refetches, injected by each descendant
+  // useDocument. Multi-doc keep-alive mounts N useDocument instances (1 active +
+  // warm) under this single provider; keying by docId (mirrors
+  // multi-window/pending-saves.ts) means the watcher reads the ACTIVE doc's
+  // entry (`get(docId)`) instead of whichever instance registered last. The
+  // maps live in refs — read only at poll time / on the Reload gesture, never
   // during render or per keystroke.
-  const reloadRef = useRef<() => void | Promise<void>>(() => {});
+  const unsavedGetters = useRef(new Map<string, () => boolean>());
+  const reloadFns = useRef(new Map<string, () => void | Promise<void>>());
 
-  // ONE watcher per doc. Keying the memo on `docId` gives a stable-per-doc
-  // watcher without depending on a React remount, so this provider can sit
-  // above DocPipeline and still hand a fresh watcher to every doc.
-  //
-  // The `hasUnsavedEdits` thunk reads `unsavedRef.current()` — but ONLY at poll
-  // time (wall-clock), never during render. That deferred read is exactly the
-  // false positive React Compiler's `react-hooks/refs` rule flags ("passing a
-  // ref to a function may read its value during render"). We opt this one memo
-  // out, following the repo convention (see LiftHost.tsx's documented coupling).
-  const watcher = useMemo(
-    () =>
-      // eslint-disable-next-line react-hooks/refs
-      createDiskWatcher({
-        docId,
-        statFiles,
-        readTextFile,
-        getTexFilename,
-        getBibFilename,
-        hasUnsavedEdits: () => unsavedRef.current(),
-        // `now` defaults to Date.now() inside createDiskWatcher; we rely on that
-        // default rather than passing a thunk here (keeps this useMemo body
-        // free of an impure call per react-hooks/purity).
-        isHidden: () =>
-          typeof document !== "undefined" &&
-          document.visibilityState === "hidden",
-      }),
-    [docId],
+  // Stable register fns (identity never changes), so a descendant useDocument's
+  // register effect does NOT re-run when the ACTIVE doc switches. Each takes the
+  // registering doc's id; the unregister drops the entry iff it's still ours
+  // (guards a stale late-unregister from clobbering a re-registration under
+  // StrictMode's double-invoke).
+  const registerUnsavedGetter = useCallback(
+    (regDocId: string, fn: () => boolean) => {
+      unsavedGetters.current.set(regDocId, fn);
+      return () => {
+        if (unsavedGetters.current.get(regDocId) === fn) {
+          unsavedGetters.current.delete(regDocId);
+        }
+      };
+    },
+    [],
+  );
+  const registerReload = useCallback(
+    (regDocId: string, fn: () => void | Promise<void>) => {
+      reloadFns.current.set(regDocId, fn);
+      return () => {
+        if (reloadFns.current.get(regDocId) === fn) {
+          reloadFns.current.delete(regDocId);
+        }
+      };
+    },
+    [],
   );
 
-  // Start the watcher on mount / doc switch; stop + clear the ledger on
-  // teardown. We clear the ledger here because NOTHING else owns doc-unload
-  // ledger cleanup (verified: no other clearDiskLedger caller in the tree), and
-  // a stale per-doc ledger would otherwise leak across the session. `stop()`
-  // alone only tears down timers (it deliberately leaves the ledger to the
-  // unload owner — which is this effect's cleanup).
+  // ONE warm-stable watcher per docId, cached so a doc keeps the SAME watcher
+  // (and its conflict store) across an A→B→A round-trip. The cache lives in a
+  // ref; a watcher is created lazily the first time its doc becomes active and
+  // survives until the doc leaves the keep-alive set (the dispose effect below).
+  //
+  // Each watcher's `hasUnsavedEdits` reads ONLY its own doc's dirty-getter
+  // (`get(wDocId)`) — N warm docs register their own entry, so reading by docId
+  // avoids the pre-keep-alive last-writer-wins clobber. The deferred ref read at
+  // poll time is the false positive React Compiler's `react-hooks/refs` rule
+  // flags; we opt out per the repo convention (see LiftHost.tsx).
+  const watchersByDoc = useRef(new Map<string, DiskWatcher>());
+  const startedWatchers = useRef(new WeakSet<DiskWatcher>());
+  const getOrCreateWatcher = (wDocId: string): DiskWatcher => {
+    const existing = watchersByDoc.current.get(wDocId);
+    if (existing) return existing;
+    // eslint-disable-next-line react-hooks/refs
+    const created = createDiskWatcher({
+      docId: wDocId,
+      statFiles,
+      readTextFile,
+      getTexFilename,
+      getBibFilename,
+      hasUnsavedEdits: () => unsavedGetters.current.get(wDocId)?.() ?? false,
+      isHidden: () =>
+        typeof document !== "undefined" &&
+        document.visibilityState === "hidden",
+    });
+    watchersByDoc.current.set(wDocId, created);
+    return created;
+  };
+  const watcher = useMemo(() => getOrCreateWatcher(docId), [docId]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Start each watcher EXACTLY ONCE (on first activation) and NEVER stop it on a
+  // switch — a warm doc's watcher keeps polling, so returning to it shows its
+  // already-detected change with no re-prime (the F2 fix). `start()` re-primes
+  // (re-baselines to current disk bytes), so re-starting a cached watcher would
+  // re-clobber an unacknowledged conflict; the started-set prevents that.
   useEffect(() => {
-    watcher.start();
+    if (!startedWatchers.current.has(watcher)) {
+      watcher.start();
+      startedWatchers.current.add(watcher);
+    }
+    // No stop-on-cleanup: disposal is owned by the dispose effect below (true
+    // unload only), not by an active-doc switch.
+  }, [watcher]);
+
+  // Dispose watchers whose doc has LEFT the keep-alive set (LRU eviction / tab
+  // close) — the ONLY place a watcher stops + its ledger is cleared. A mere
+  // active⇄warm switch leaves the set unchanged, so it never disposes. Keyed on
+  // the set's CONTENT (join) so it doesn't thrash on unrelated re-renders.
+  const live = liveDocIds ?? [docId];
+  const liveKey = live.join(" ");
+  useEffect(() => {
+    const alive = new Set(liveKey ? liveKey.split(" ") : []);
+    for (const [id, w] of [...watchersByDoc.current]) {
+      // Never dispose the active doc (defensive — it's always in `alive`).
+      if (id !== docId && !alive.has(id)) {
+        w.stop();
+        clearDiskLedger(id);
+        watchersByDoc.current.delete(id);
+        startedWatchers.current.delete(w);
+      }
+    }
+  }, [liveKey, docId]);
+
+  // Provider unmount (no doc open / app teardown): dispose everything still
+  // cached so no watcher timer or ledger baseline leaks across the session.
+  useEffect(() => {
+    const cache = watchersByDoc.current;
     return () => {
-      watcher.stop();
-      clearDiskLedger(docId);
+      for (const [id, w] of cache) {
+        w.stop();
+        clearDiskLedger(id);
+      }
+      cache.clear();
     };
-  }, [watcher, docId]);
+  }, []);
 
   const value = useMemo<DiskWatcherContextValue>(
     () => ({
       watcher,
-      registerUnsavedGetter: (fn: () => boolean) => {
-        unsavedRef.current = fn;
-        return () => {
-          unsavedRef.current = () => false;
-        };
-      },
-      registerReload: (fn: () => void | Promise<void>) => {
-        reloadRef.current = fn;
-        return () => {
-          reloadRef.current = () => {};
-        };
-      },
-      // Optimistic clear THEN the registered refetch: clearing first hides the
-      // badge immediately; the refetch re-baselines the disk ledger on load so
-      // the next poll reads clean. `watcher.clearChanges()` is sync; we await
-      // the refetch so callers can disable UI until the reload settles.
+      activeDocId: docId,
+      registerUnsavedGetter,
+      registerReload,
+      // Optimistic clear THEN the ACTIVE doc's registered refetch: clearing
+      // first hides the badge immediately; the refetch re-baselines the disk
+      // ledger on load so the next poll reads clean. `watcher.clearChanges()` is
+      // sync; we await the refetch so callers can disable UI until the reload
+      // settles. Reading `get(docId)` (not last-writer-wins) guarantees the
+      // badge's Reload drives the active doc, never a warm one.
       reloadFromDisk: async () => {
         watcher.clearChanges();
-        await reloadRef.current();
+        await (reloadFns.current.get(docId) ?? (() => {}))();
       },
     }),
-    [watcher],
+    [watcher, docId, registerUnsavedGetter, registerReload],
   );
 
   return (
@@ -169,13 +249,21 @@ export function DiskWatcherProvider({
  */
 export function DiskWatcherProviderGate({
   docId,
+  liveDocIds,
   children,
 }: {
   docId: string | null | undefined;
+  /** The kept-alive docIds (active + warm). Forwarded to the provider so a warm
+   *  doc's watcher survives an A→B→A round-trip; see DiskWatcherProvider. */
+  liveDocIds?: string[];
   children: ReactNode;
 }) {
   if (!docId) return <>{children}</>;
-  return <DiskWatcherProvider docId={docId}>{children}</DiskWatcherProvider>;
+  return (
+    <DiskWatcherProvider docId={docId} liveDocIds={liveDocIds}>
+      {children}
+    </DiskWatcherProvider>
+  );
 }
 
 /** Throws if used outside a DiskWatcherProvider. */

@@ -49,7 +49,14 @@ export function useDocument() {
   // its identity is stable per doc-mount anyway, but the ref keeps the
   // keystroke-path callbacks (debouncedSave/flushNow/onUpdate) from re-creating.
   const diskWatcherCtx = useDiskWatcherOrNull();
-  const watcher = diskWatcherCtx?.watcher ?? null;
+  // Multi-doc keep-alive: ONE DiskWatcherProvider sits above N mounted
+  // useDocument instances (1 active + warm). The provider watches only the
+  // ACTIVE doc, so a warm doc must see a null watcher — else its background
+  // autosave would pause on the ACTIVE doc's external-conflict state
+  // (`shouldPauseAutosave(null)` is false, so null = "never pause"). Only the
+  // doc whose id matches the provider's `activeDocId` honors the pause guard.
+  const isActiveDoc = diskWatcherCtx?.activeDocId === docId;
+  const watcher = isActiveDoc ? (diskWatcherCtx?.watcher ?? null) : null;
   const watcherRef = useRef(watcher);
   // Sync the ref in an effect (never during render). The async save timers
   // read `watcherRef.current` only after this effect has run, so they always
@@ -194,10 +201,11 @@ export function useDocument() {
   useEffect(() => {
     if (!registerUnsavedGetter) return;
     const unregister = registerUnsavedGetter(
+      docId,
       () => saveTimerRef.current !== null,
     );
     return unregister;
-  }, [registerUnsavedGetter]);
+  }, [registerUnsavedGetter, docId]);
 
   // Flush pending edits on unmount. With the DocPipeline `key={docId}`
   // boundary, unmount IS the doc-switch event — the cleanup closes over
@@ -451,9 +459,9 @@ export function useDocument() {
   const registerReload = diskWatcherCtx?.registerReload;
   useEffect(() => {
     if (!registerReload) return;
-    const unregister = registerReload(refetch);
+    const unregister = registerReload(docId, refetch);
     return unregister;
-  }, [registerReload, refetch]);
+  }, [registerReload, docId, refetch]);
 
   return {
     content,

@@ -246,6 +246,16 @@ export function useFiles() {
    * lost. With it, A's writes complete on A's still-active pipeline
    * before <DocPipeline key={docId}> remounts and ends the pipeline.
    *
+   * LOAD-BEARING UNDER MULTI-DOC KEEP-ALIVE: when the outgoing doc stays
+   * mounted-but-hidden across the switch (the keep-alive LRU keeps it warm),
+   * there is NO unmount, so `useDocument`'s unmount-cleanup flush does NOT fire
+   * on the switch. This `drainDoc` is then the SOLE switch-time flush barrier
+   * (it captures the outgoing editor's live `getJSON()` snapshot synchronously
+   * at call time, then lets the write settle in the background on the warm
+   * pipeline). Any future refactor of the switch handlers MUST keep calling
+   * `flushOutgoing` first, or in-debounce edits silently drop with no remount to
+   * catch them.
+   *
    * Sync paths fire-and-forget; the data-loss risk window is small and
    * the storage layer's correctness guarantee is unaffected either way.
    */

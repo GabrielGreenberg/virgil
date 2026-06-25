@@ -24,7 +24,12 @@ import { useFloatingMenuPosition } from "@/hooks/useFloatingMenuPosition";
 import { useUpdateAvailable, applyUpdate } from "@/hooks/useUpdateAvailable";
 import SkillSyncControls from "./SkillSyncControls";
 import { DocPipeline } from "./editor-layout/DocPipeline";
-import { KeepAliveSlot } from "@/lib/keep-alive/KeepAliveSlot";
+import {
+  DocKeepAliveSlot,
+  useDocKeepAliveLRU,
+  DOC_KEEP_ALIVE_CAPACITY,
+} from "./editor-layout/DocKeepAliveLRU";
+import { isMultiDocKeepAliveOn } from "@/lib/multi-doc-keepalive-flag";
 import { useSelectedAnchorSync } from "@/hooks/useSelectedAnchorSync";
 import { CollabProvider, COLLAB_INERT, type CollabHook } from "@/hooks/useCollab";
 import { collabClaimScope } from "@/cards/predicates";
@@ -40,16 +45,9 @@ import { pruneExpanded } from "@/panels/Errors/expansion";
 import { IconErrors } from "./editor-layout/panel-icons";
 import PrintDialog from "./PrintDialog";
 import FontsDialog from "./FontsDialog";
-import { useSuggestions } from "@/hooks/useSuggestions";
-import { useRevisions } from "@/hooks/useRevisions";
-import { useTodos } from "@/hooks/useTodos";
-import { useAiRequests } from "@/hooks/useAiRequests";
 import type { AiRequest } from "@/lib/types";
-import { useArchive } from "@/hooks/useArchive";
 import { CITATIONS_INERT } from "@/hooks/useCitations";
 import ManageStylesModal from "./ManageStylesModal";
-import { useNotes } from "@/hooks/useNotes";
-import { useCutter } from "@/hooks/useCutter";
 import {
   isAnchorableNode,
   MIME_ARCHIVE,
@@ -206,6 +204,16 @@ const APP_VERSION = pkg.version;
 // vbar source. Module-scope so JSX references stay referentially
 // stable across renders.
 const noop = () => {};
+// Phase-C INERT fallbacks for the pane-owned sidecar slices (read only in the
+// brief pre-bubble window — same as citationsHook/collab). Stable module-level
+// identities so they don't churn the anchor-sync/hover consumers. Typed via
+// PaneState indexed access so no element-type imports are needed.
+const EMPTY_REVISIONS: PaneState["revisions"] = [];
+const EMPTY_NOTES: PaneState["notes"] = [];
+const EMPTY_CUTTER: PaneState["cutterCards"] = [];
+const EMPTY_TODOS: PaneState["todoItems"] = [];
+const EMPTY_ARCHIVE: PaneState["archiveSnippets"] = [];
+const EMPTY_AI_REQUESTS: PaneState["aiRequests"] = [];
 import type { OrphanedFootnote } from "@/lib/types";
 import { hasFsaSupport } from "@/lib/fsa-support";
 import { queryRW } from "@/lib/fsa-permissions";
@@ -467,10 +475,22 @@ export default function EditorLayout() {
   const [docPermState, setDocPermState] = useState<DocPermState>("loading");
   const [activeDocHandle, setActiveDocHandle] = useState<FileSystemDirectoryHandle | null>(null);
 
-  // EditorPane bubbles its per-doc state here via `onPaneStateChange`
-  // so the Virgil bar can read editor / compile / view-switch / AI-dot
-  // status against the live values without owning the hooks itself.
-  const [paneState, setPaneState] = useState<PaneState | null>(null);
+  // EditorPane bubbles its per-doc state here via `onPaneStateChange` so the
+  // Virgil bar can read editor / compile / view-switch / AI-dot status against
+  // the live values without owning the hooks itself.
+  //
+  // Multi-doc keep-alive: N doc editors can be mounted at once (1 visible + a
+  // warm LRU). Each pane writes its OWN slot in a docId-keyed map; the layout
+  // reads the ACTIVE doc's slot. Keeping the derived `paneState` name identical
+  // means every downstream consumer is unchanged — they still see "the active
+  // pane's state". (A warm pane writing its slot leaves the derived active
+  // `paneState` reference untouched, so no active-doc memo/effect re-runs.)
+  const [paneStateByDocId, setPaneStateByDocId] = useState<
+    Record<string, PaneState | null>
+  >({});
+  const paneState: PaneState | null = currentDocId
+    ? paneStateByDocId[currentDocId] ?? null
+    : null;
 
   // SSR-safe mirror of `isDevStorage`. The runtime check requires `window`
   // (iframe + FSA detection), so we start false on the server and update
@@ -542,42 +562,21 @@ export default function EditorLayout() {
   // the live pane via `paneState` (the single authoritative compile source).
   const { prompt: promptDocClassMismatch, dialog: docClassDialog } =
     useDocumentClassMismatchDialog();
-  const {
-    state: suggestionsState,
-    currentSuggestion,
-    isComplete,
-    updateSuggestionField,
-    jumpToSuggestion,
-    clearSuggestions,
-  } = useSuggestions(docIdForHooks);
-  const {
-    cards: revisionCards,
-  } = useRevisions(docIdForHooks);
-  const comments = revisionCards;
-  // R21: the pristine-card manager lives ONLY in EditorPane (its single live
-  // manager owns blank-on-create click-away discard for every kind). The
-  // duplicate manager that used to mount here was render-dead — the panels
-  // moved to EditorPane post-7.8, so this shell's parity mounts of useNotes/
-  // useCutter/useTodos never surfaced a pristine card. Those parity hooks now
-  // fall back to their own usePristineTracker (the `?? localPristine` net,
-  // kept per the WS2 defer ruling). The margin-marker pipeline (markers +
-  // delete handlers) lives entirely in EditorPane; this shell keeps only the
-  // card arrays it still reads (anchor re-apply, hover→anchor derivation,
-  // selected-anchor sync) plus the add/drop-bridge mutators.
+  // Pane-owns-all (Phase C): useSuggestions is mounted ONLY in EditorPane now;
+  // the layout reads the current pending suggestion off the active pane's bubble
+  // (the other fields were dead in the layout). Mirrors citationsHook/collab.
+  const currentSuggestion = paneState?.currentSuggestion ?? null;
+  const comments = paneState?.revisions ?? EMPTY_REVISIONS;
+  // Pane-owns-all (Phase C, completing the R21 consolidation): the sidecar hooks
+  // (suggestions/revisions/notes/cutter/todos/aiRequests/archive) are mounted
+  // ONLY in EditorPane now. This shell no longer mounts its own parity copies on
+  // docIdForHooks; it reads the card arrays it still consumes (anchor re-apply,
+  // hover→anchor derivation, selected-anchor sync, the archive/footnote drop
+  // bridges) off the active pane's bubbled PaneState slices, with stable INERT
+  // fallbacks for the brief pre-bubble window — exactly like citationsHook/collab.
   const recentlyAdded = useRecentlyAddedTracker();
-  const {
-    notes,
-    highlights,
-    addNote,
-    addHighlight,
-    setNoteAnchor,
-  } = useNotes(docIdForHooks);
-  const {
-    cards: cutterCards,
-    goal: cutterGoal,
-    setGoal: setCutterGoal,
-    clearGoal: clearCutterGoal,
-  } = useCutter(docIdForHooks);
+  const notes = paneState?.notes ?? EMPTY_NOTES;
+  const cutterCards = paneState?.cutterCards ?? EMPTY_CUTTER;
   // Anchored selection slots (note, footnote, citation, example,
   // todo, archive, comment, cutter-comment) are now derived from the global
   // cardStore via this hook — single source of truth, shared with EditorPane
@@ -594,28 +593,20 @@ export default function EditorLayout() {
     selectedCommentId, setSelectedCommentId,
     selectedExampleId, setSelectedExampleId,
   } = useAnchoredSelectionSlots();
-  const {
-    items: todoItems,
-    addItem: addTodo,
-    updateItem: updateTodo,
-    archiveDone: archiveTodos,
-  } = useTodos(docIdForHooks);
+  const todoItems = paneState?.todoItems ?? EMPTY_TODOS;
 
-  const {
-    requests: aiRequests,
-    addRequest: addAiRequest,
-    addStyleMergeRequest,
-    updateRequestText: updateAiRequestText,
-    deleteRequest: deleteAiRequest,
-  } = useAiRequests(docIdForHooks);
+  // AI requests: EditorPane owns the live hook; the layout reads the slice it
+  // feeds into AiRequestsProvider (the user-facing create/edit path is shadowed
+  // by EditorPane's OWN inner AiRequestsProvider, so this is correctness-only).
+  const aiRequests = paneState?.aiRequests ?? EMPTY_AI_REQUESTS;
+  const addAiRequest = paneState?.addRequest ?? noop;
+  const updateAiRequestText = paneState?.updateRequestText ?? noop;
+  const deleteAiRequest = paneState?.deleteRequest ?? noop;
 
-  const {
-    snippets: archiveSnippets,
-    archiveContent,
-    updateSnippet: updateArchiveSnippet,
-    restoreSnippet,
-    deleteSnippet,
-  } = useArchive(docIdForHooks);
+  // Archive: only `snippets` (panel/hover/anchor-sync) + `deleteSnippet` (the two
+  // data-desync bridges: footnote-consumes-archive + drop-restore) are live.
+  const archiveSnippets = paneState?.archiveSnippets ?? EMPTY_ARCHIVE;
+  const deleteSnippet = paneState?.deleteArchiveSnippet ?? noop;
 
   // Citations bubble up from EditorPane — see PaneState in EditorPane.tsx.
   // Previously both EditorLayout and EditorPane independently called
@@ -886,7 +877,97 @@ export default function EditorLayout() {
   // unification), those buttons are gone and the editor-mounted
   // TextObjectGrabHandle subscribes to viewPrefs directly via
   // `usePoppedCards()` — no manual refresh ping needed.
-  const [editorInstance, setEditorInstance] = useState<Editor | null>(null);
+  // Multi-doc keep-alive: see `paneStateByDocId` above. The active editor is
+  // derived from a docId-keyed map; `editorInstance` keeps its name so the ~70
+  // downstream consumers (collab gate, focus mode, code-pane bridge, popout
+  // migration, …) are unchanged — they all operate on the active doc's editor.
+  const [editorInstanceByDocId, setEditorInstanceByDocId] = useState<
+    Record<string, Editor>
+  >({});
+  const editorInstance: Editor | null = currentDocId
+    ? editorInstanceByDocId[currentDocId] ?? null
+    : null;
+
+  // Stable per-slot writers. Each mounted pane gets ONE cached callback keyed by
+  // its docId so its identity never changes across renders — an unstable
+  // `onEditorReady` would re-fire VirgilEditor's `setEditor` effect and loop.
+  // A pane writes only its own slot; the layout reads `[currentDocId]`.
+  const onEditorReadyCacheRef = useRef(
+    new Map<string, (ed: Editor) => void>(),
+  );
+  const onPaneStateCacheRef = useRef(
+    new Map<string, (st: PaneState | null) => void>(),
+  );
+  const getOnEditorReady = useCallback((slotDocId: string) => {
+    const cache = onEditorReadyCacheRef.current;
+    let cb = cache.get(slotDocId);
+    if (!cb) {
+      cb = (ed: Editor) =>
+        setEditorInstanceByDocId((m) =>
+          m[slotDocId] === ed ? m : { ...m, [slotDocId]: ed },
+        );
+      cache.set(slotDocId, cb);
+    }
+    return cb;
+  }, []);
+  const getOnPaneStateChange = useCallback((slotDocId: string) => {
+    const cache = onPaneStateCacheRef.current;
+    let cb = cache.get(slotDocId);
+    if (!cb) {
+      cb = (st: PaneState | null) =>
+        setPaneStateByDocId((m) => ({ ...m, [slotDocId]: st }));
+      cache.set(slotDocId, cb);
+    }
+    return cb;
+  }, []);
+  // Fired by DocKeepAliveSlot on a TRUE unmount (LRU eviction / tab close),
+  // never a visibility flip. Drop the doc's map slots + cached callbacks.
+  // Idempotent (functional-update bail) so StrictMode's double-invoke is safe.
+  const pruneDocMaps = useCallback((slotDocId: string) => {
+    setEditorInstanceByDocId((m) => {
+      if (!(slotDocId in m)) return m;
+      const { [slotDocId]: _drop, ...rest } = m;
+      return rest;
+    });
+    setPaneStateByDocId((m) => {
+      if (!(slotDocId in m)) return m;
+      const { [slotDocId]: _drop, ...rest } = m;
+      return rest;
+    });
+    onEditorReadyCacheRef.current.delete(slotDocId);
+    onPaneStateCacheRef.current.delete(slotDocId);
+  }, []);
+
+  // Keep-alive LRU of authored docs. Only a GRANTED, active doc may lead the
+  // warm set; an ungranted active doc → activeId=null → the LRU order is left
+  // intact (previously-granted warm docs stay hidden) while the standalone
+  // DocPermissionGate below handles the one-time cold first-grant. Folding the
+  // permission test in here is what lets `docPermState` stay a single
+  // active-doc state — no per-doc permission effects needed.
+  const grantedActiveDocId =
+    activePane === "doc" && docPermState === "granted" ? currentDocId : null;
+  // Flag-gated capacity. Default ON → keep the last N papers warm so a
+  // paper↔paper switch is an instant visibility flip. The localStorage opt-out
+  // (`virgil:multi-doc-keepalive` = "0") clamps to 1 = the legacy behavior: one
+  // mounted doc, cold-remounted on a switch (the same-docId paper↔Library bounce
+  // from L2 still stays warm at capacity 1). Read once on mount; the flag needs a
+  // reload to take effect (same as the other virgil: flags).
+  const docKeepAliveCapacity = useMemo(
+    () => (isMultiDocKeepAliveOn() ? DOC_KEEP_ALIVE_CAPACITY : 1),
+    [],
+  );
+  const docKeepAliveEntries = useDocKeepAliveLRU(
+    grantedActiveDocId,
+    docKeepAliveCapacity,
+  );
+  // The actually-rendered keep-alive slots = LRU order ∩ open tabs (a just-closed
+  // id can linger in the LRU order; filter it out). Derived once so the render
+  // block and the DiskWatcher's live-set reconciliation agree on the set.
+  const renderedKeepAliveEntries = docKeepAliveEntries.filter((e) =>
+    openTabs.some((t) => t.id === e.id),
+  );
+  const keepAliveDocIds = renderedKeepAliveEntries.map((e) => e.id);
+
   // A plain selection grab pops out a cardless `linkedRange` whose invisible
   // transient anchor must be stripped from the doc when the popout closes
   // (it's a gesture handle, not an annotation). Watches poppedOutCards so it
@@ -2271,32 +2352,8 @@ export default function EditorLayout() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [rev.footnotes, editorInstance]);
 
-  // Snippets sorted: anchored first (by paragraph position in doc), orphaned after
-  const sortedArchiveSnippets = useMemo(() => {
-    // Build a paragraph-order map from the editor doc
-    const paragraphOrder = new Map<string, number>();
-    const ed = editorRef.current?.getEditor();
-    if (ed) {
-      let idx = 0;
-      ed.state.doc.descendants((node) => {
-        if (isAnchorableNode(node.type) && node.attrs?.uuid) {
-          paragraphOrder.set(node.attrs.uuid as string, idx++);
-        }
-        return true;
-      });
-    }
-    return [...archiveSnippets].sort((a, b) => {
-      const aPids = getLinkedTextObjectIds(a);
-      const bPids = getLinkedTextObjectIds(b);
-      const aPos = aPids.length > 0 ? paragraphOrder.get(aPids[0]) : undefined;
-      const bPos = bPids.length > 0 ? paragraphOrder.get(bPids[0]) : undefined;
-      if (aPos != null && bPos != null) return aPos - bPos;
-      if (aPos != null) return -1;
-      if (bPos != null) return 1;
-      return 0;
-    });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [archiveSnippets, rev.blocks, editorInstance]);
+  // (Phase C) the dead `sortedArchiveSnippets` memo was removed — it was never
+  // read or passed; the Archive panel sorts inside EditorPane now.
   const [editingTabId, setEditingTabId] = useState<string | null>(null);
   const [nameInput, setNameInput] = useState("");
   // Refs to each rendered outer-tab pair (keyed by entry id — doc id or
@@ -3105,11 +3162,10 @@ export default function EditorLayout() {
       } catch { /* fallback: no line */ }
     }
     setCodeViewLine(line);
-    // NOTE: do NOT setEditorInstance(null). In the new split-pane
-    // layout, EditorPane (and the live TipTap instance) stay mounted
-    // while CodeEditor opens in the right pane. The code-pane bridge
-    // requires `editorInstance` to be a live TipTap editor so it can
-    // sync edits both directions.
+    // NOTE: nothing clears the active editor here. EditorPane (and the live
+    // TipTap instance) stay mounted while CodeEditor opens in the right pane;
+    // the derived `editorInstance` (= editorInstanceByDocId[currentDocId]) stays
+    // live so the code-pane bridge can sync edits both directions.
     setPdfView(false);
     setCodeView(true);
   }, [latestDoc]);
@@ -3460,7 +3516,7 @@ export default function EditorLayout() {
         the topbar status-cluster badge slot and EditorPane's useDocument call
         site are descendants of the per-doc external-change watcher. It self-
         gates on currentDocId (no provider when no doc is open). */}
-    <DiskWatcherProviderGate docId={currentDocId}>
+    <DiskWatcherProviderGate docId={currentDocId} liveDocIds={keepAliveDocIds}>
     <div className="flex flex-col h-screen bg-[var(--background)]">
       {/* Top bar: logo + tabs */}
       <div
@@ -4337,162 +4393,175 @@ export default function EditorLayout() {
 
       {/* Path bar removed — podification */}
 
-      {/* ── Always-mounted main doc editor (keep-alive) ──────────────────────
-          HOISTED out of the activePane ternary. A paper↔Library bounce leaves
-          currentDocId UNCHANGED, so DocPipeline's key={currentDocId} is stable
-          ⇒ the editor never remounts ⇒ the autosave wall holds by construction;
-          only display:none toggles. KeepAliveSlot publishes the visibility
-          context the §2 measurement followers read to go INERT while hidden
-          (keystroke sanctity). Hidden while pdfView (the PDF iframe replaces the
-          editor for the same doc) — the editor stays warm behind it.
+      {/* ── Multi-doc keep-alive ─────────────────────────────────────────────
+          The last N authored docs (DOC_KEEP_ALIVE_CAPACITY) stay mounted, one
+          visible and the rest display:none, so switching among already-opened
+          papers is an instant visibility flip — no cold remount, no "Loading…",
+          cursor/scroll/content preserved by the warm mount. Each slot is its own
+          `<DocPipeline key={slotDocId}>`: the autosave wall holds PER SLOT because
+          every mounted pane's docId is its fixed React key, so no instance's
+          docId ever mutates underneath it (the cross-doc save bug can't recur).
+          KeepAliveSlot publishes the visibility context the §2 measurement
+          followers read to go INERT while hidden (keystroke sanctity).
 
-          PERMISSION GATE: do NOT mount the editor until the folder's readwrite
-          permission is granted (or dev-storage). The editor's hooks read from
-          disk on mount (useDocument → readDocBundle), which throws
-          NotAllowedError on a non-granted FSA handle; the old ternary gated this
-          via `currentDoc && docPermState !== "granted" ? null`. Restore that
-          here so the DocPermissionGate shows alone and the editor mounts fresh
-          (loading real content) the moment permission flips to granted. The
-          paper↔Library bounce never changes docPermState, so this never defeats
-          the keep-alive — it only blocks the one-time pre-grant cold mount. */}
-      {currentDocId && !(currentDoc && docPermState !== "granted") && (
-        <KeepAliveSlot isVisible={activePane === "doc" && !pdfView}>
-          <div data-virgil-row-scroll className="flex flex-1 min-h-0 overflow-x-auto overflow-y-auto">
-            {/* `<DocPipeline key={currentDocId}>` is the architectural
-                wall against the cross-doc autosave bug: a doc SWITCH (different
-                currentDocId) remounts EditorPane/useDocument/TipTap so no stale
-                closure carries the prior doc's content into the next doc's save.
-                The boundary also opens the per-doc write pipeline used by
-                writeDocBundle's assertActive check. Toggling code-view does NOT
-                remount this boundary — SplitWithCode handles open/close inline so
-                TipTap stays alive across the toggle. */}
-            <DocPipeline key={currentDocId} docId={currentDocId}>
-              <SplitWithCode
-                open={codeView}
-                ratio={prefs.codePaneRatio}
-                onRatioChange={setCodePaneRatio}
-                onMoveCodeToText={() =>
-                  codeEditorHandleRef.current?.moveCodeToTextCursor()
-                }
-                onMoveTextToCode={() =>
-                  codeEditorHandleRef.current?.moveTextToCodeCursor()
-                }
-                left={
-                  <EditorChromeProvider value={FULL_CHROME}>
-                    <EditorPane
-                      ref={editorRef}
-                      docId={currentDocId}
-                      editable={collab.canEditMainText}
-                      chrome={FULL_CHROME}
-                      onUpdate={handleUpdate}
-                      onEditorReady={setEditorInstance}
-                      onActivate={handleEditorPaneActivate}
-                      onPaneStateChange={setPaneState}
-                      pdfView={pdfView}
-                      onTogglePdfView={togglePdfView}
-                      codeView={codeView}
-                      onToggleCodeView={toggleCodeView}
-                      placements={prefs.placements}
-                      viewPrefs={editorPaneViewPrefs}
-                      menuBar={editorPaneMenuBar}
-                      aiWindowOpen={aiWindowOpen}
-                      onAiWindowClose={() => setAiWindowOpen(false)}
-                      highlightText={highlightText}
-                      highlightRange={effectiveHighlightRange}
-                      onDocumentClassMismatch={promptDocClassMismatch}
-                      latexErrors={allLatexErrors}
-                      paragraphByErrorId={paragraphByErrorId}
-                      errorSnippets={errorSnippets}
-                      selectedErrorId={selectedErrorId}
-                      setSelectedErrorId={setSelectedErrorId}
-                      dismissedErrorIds={dismissedErrorIds}
-                      dismissError={dismissError}
-                      expandedErrorIds={expandedErrorIds}
-                      expandError={expandError}
-                      toggleErrorExpanded={toggleErrorExpanded}
-                      onJumpToError={jumpToError}
-                    />
-                  </EditorChromeProvider>
-                }
-                right={
-                  codeView && editorInstance ? (
-                    <div
-                      className="flex flex-1 min-h-0 overflow-hidden"
-                      style={{
-                        background: "var(--pod-editor)",
-                        borderRadius: "var(--pod-radius)",
-                        border: "var(--pod-border)",
-                        boxShadow: "var(--pod-shadow)",
-                        marginTop: 4,
-                        marginBottom: zenModeOn ? 4 : "var(--pod-gap)",
-                        marginRight: 4,
-                      }}
-                    >
-                      <CodeEditor
-                        docId={currentDocId!}
-                        editor={editorInstance}
-                        initialLine={codeViewLine}
-                        initialParagraphId={codeViewParagraphId}
-                        onReady={(handle) => {
-                          codeEditorHandleRef.current = handle;
-                        }}
-                        onTextChange={handleCodeEditorTextChange}
-                        compileLog={paneState?.compileLog ?? null}
-                        compileStatus={paneState?.compileStatus ?? null}
-                        isCompiling={paneState?.isCompiling ?? false}
-                      />
-                      {errorsSidebarOpen ? (
-                        <div className="w-[260px] shrink-0 border-l border-edge-subtle bg-surface flex flex-col h-full relative">
-                          <button
-                            type="button"
-                            onClick={() => setErrorsSidebarOpen(false)}
-                            className="absolute top-2 right-2 z-10 w-5 h-5 flex items-center justify-center rounded text-ink-muted hover:text-ink-body hover-on-light text-sm leading-none"
-                            data-hint="Hide errors panel"
-                            aria-label="Hide errors panel"
-                          >
-                            ×
-                          </button>
-                          <ErrorsHost
-                            errors={allLatexErrors}
-                            selectedId={selectedErrorId}
-                            onSelect={setSelectedErrorId}
-                            dismissedIds={dismissedErrorIds}
-                            onDismiss={dismissError}
-                            onJump={jumpToError}
-                            snippets={errorSnippets}
-                            paragraphByErrorId={paragraphByErrorId}
-                            expandedIds={expandedErrorIds}
-                            onExpand={expandError}
-                            onToggleExpanded={toggleErrorExpanded}
-                          />
-                        </div>
-                      ) : (
-                        <button
-                          type="button"
-                          onClick={() => setErrorsSidebarOpen(true)}
-                          className="w-7 shrink-0 border-l border-edge-subtle bg-surface flex items-start justify-center pt-3 hover-on-light relative text-ink-muted hover:text-ink-body"
-                          data-hint={`Show errors (${allLatexErrors.length})`}
-                          aria-label="Show errors panel"
+          MEMBERSHIP = the LRU order ∩ openTabs. `grantedActiveDocId` keeps an
+          ungranted active doc OUT of the set, so the editor never mounts before
+          its folder is granted (its hooks read disk on mount → NotAllowedError);
+          the standalone DocPermissionGate above shows alone until the user grants,
+          then the doc joins the set and mounts fresh. Filtering on `openTabs`
+          unmounts a closed tab promptly (→ DocPipeline cleanup flush +
+          pruneDocMaps). A just-closed id can briefly linger in the LRU order
+          (render-filtered out, harmless); we intentionally don't extend the shared
+          primitive to prune it in v1. */}
+      {renderedKeepAliveEntries.map((entry) => {
+          const slotDocId = entry.id;
+          const isActive = slotDocId === currentDocId;
+          return (
+            <DocKeepAliveSlot
+              key={slotDocId}
+              slotDocId={slotDocId}
+              isVisible={isActive && activePane === "doc" && !pdfView}
+              onUnmount={pruneDocMaps}
+            >
+              <div data-virgil-row-scroll className="flex flex-1 min-h-0 overflow-x-auto overflow-y-auto">
+                <DocPipeline key={slotDocId} docId={slotDocId}>
+                  <SplitWithCode
+                    open={isActive && codeView}
+                    ratio={prefs.codePaneRatio}
+                    onRatioChange={setCodePaneRatio}
+                    onMoveCodeToText={() =>
+                      codeEditorHandleRef.current?.moveCodeToTextCursor()
+                    }
+                    onMoveTextToCode={() =>
+                      codeEditorHandleRef.current?.moveTextToCodeCursor()
+                    }
+                    left={
+                      <EditorChromeProvider value={FULL_CHROME}>
+                        <EditorPane
+                          ref={isActive ? editorRef : undefined}
+                          docId={slotDocId}
+                          editable={isActive ? collab.canEditMainText : false}
+                          chrome={FULL_CHROME}
+                          onUpdate={isActive ? handleUpdate : undefined}
+                          onEditorReady={getOnEditorReady(slotDocId)}
+                          onActivate={
+                            isActive ? handleEditorPaneActivate : undefined
+                          }
+                          onPaneStateChange={getOnPaneStateChange(slotDocId)}
+                          pdfView={isActive && pdfView}
+                          onTogglePdfView={togglePdfView}
+                          codeView={isActive && codeView}
+                          onToggleCodeView={toggleCodeView}
+                          placements={prefs.placements}
+                          viewPrefs={editorPaneViewPrefs}
+                          menuBar={editorPaneMenuBar}
+                          aiWindowOpen={isActive && aiWindowOpen}
+                          onAiWindowClose={() => setAiWindowOpen(false)}
+                          highlightText={isActive ? highlightText : undefined}
+                          highlightRange={
+                            isActive ? effectiveHighlightRange : undefined
+                          }
+                          onDocumentClassMismatch={promptDocClassMismatch}
+                          latexErrors={isActive ? allLatexErrors : undefined}
+                          paragraphByErrorId={
+                            isActive ? paragraphByErrorId : undefined
+                          }
+                          errorSnippets={isActive ? errorSnippets : undefined}
+                          selectedErrorId={isActive ? selectedErrorId : undefined}
+                          setSelectedErrorId={setSelectedErrorId}
+                          dismissedErrorIds={
+                            isActive ? dismissedErrorIds : undefined
+                          }
+                          dismissError={dismissError}
+                          expandedErrorIds={
+                            isActive ? expandedErrorIds : undefined
+                          }
+                          expandError={expandError}
+                          toggleErrorExpanded={toggleErrorExpanded}
+                          onJumpToError={jumpToError}
+                        />
+                      </EditorChromeProvider>
+                    }
+                    right={
+                      isActive && codeView && editorInstance ? (
+                        <div
+                          className="flex flex-1 min-h-0 overflow-hidden"
+                          style={{
+                            background: "var(--pod-editor)",
+                            borderRadius: "var(--pod-radius)",
+                            border: "var(--pod-border)",
+                            boxShadow: "var(--pod-shadow)",
+                            marginTop: 4,
+                            marginBottom: zenModeOn ? 4 : "var(--pod-gap)",
+                            marginRight: 4,
+                          }}
                         >
-                          <IconErrors active={false} />
-                          {allLatexErrors.length > 0 && (
-                            <span
-                              className="absolute top-1 right-1 min-w-[14px] h-[14px] px-1 rounded-full text-[9px] leading-[14px] tabular-nums text-white text-center"
-                              style={{ backgroundColor: "var(--danger)" }}
+                          <CodeEditor
+                            docId={slotDocId}
+                            editor={editorInstance}
+                            initialLine={codeViewLine}
+                            initialParagraphId={codeViewParagraphId}
+                            onReady={(handle) => {
+                              codeEditorHandleRef.current = handle;
+                            }}
+                            onTextChange={handleCodeEditorTextChange}
+                            compileLog={paneState?.compileLog ?? null}
+                            compileStatus={paneState?.compileStatus ?? null}
+                            isCompiling={paneState?.isCompiling ?? false}
+                          />
+                          {errorsSidebarOpen ? (
+                            <div className="w-[260px] shrink-0 border-l border-edge-subtle bg-surface flex flex-col h-full relative">
+                              <button
+                                type="button"
+                                onClick={() => setErrorsSidebarOpen(false)}
+                                className="absolute top-2 right-2 z-10 w-5 h-5 flex items-center justify-center rounded text-ink-muted hover:text-ink-body hover-on-light text-sm leading-none"
+                                data-hint="Hide errors panel"
+                                aria-label="Hide errors panel"
+                              >
+                                ×
+                              </button>
+                              <ErrorsHost
+                                errors={allLatexErrors}
+                                selectedId={selectedErrorId}
+                                onSelect={setSelectedErrorId}
+                                dismissedIds={dismissedErrorIds}
+                                onDismiss={dismissError}
+                                onJump={jumpToError}
+                                snippets={errorSnippets}
+                                paragraphByErrorId={paragraphByErrorId}
+                                expandedIds={expandedErrorIds}
+                                onExpand={expandError}
+                                onToggleExpanded={toggleErrorExpanded}
+                              />
+                            </div>
+                          ) : (
+                            <button
+                              type="button"
+                              onClick={() => setErrorsSidebarOpen(true)}
+                              className="w-7 shrink-0 border-l border-edge-subtle bg-surface flex items-start justify-center pt-3 hover-on-light relative text-ink-muted hover:text-ink-body"
+                              data-hint={`Show errors (${allLatexErrors.length})`}
+                              aria-label="Show errors panel"
                             >
-                              {allLatexErrors.length > 99 ? "99+" : allLatexErrors.length}
-                            </span>
+                              <IconErrors active={false} />
+                              {allLatexErrors.length > 0 && (
+                                <span
+                                  className="absolute top-1 right-1 min-w-[14px] h-[14px] px-1 rounded-full text-[9px] leading-[14px] tabular-nums text-white text-center"
+                                  style={{ backgroundColor: "var(--danger)" }}
+                                >
+                                  {allLatexErrors.length > 99 ? "99+" : allLatexErrors.length}
+                                </span>
+                              )}
+                            </button>
                           )}
-                        </button>
-                      )}
-                    </div>
-                  ) : null
-                }
-              />
-            </DocPipeline>
-          </div>
-        </KeepAliveSlot>
-      )}
+                        </div>
+                      ) : null
+                    }
+                  />
+                </DocPipeline>
+              </div>
+            </DocKeepAliveSlot>
+          );
+        })}
 
       {/* Main area */}
       {activePane === "paper" && currentPaperCitekey ? (

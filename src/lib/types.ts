@@ -17,6 +17,10 @@ export interface EditorStateData {
   lastParagraphId: string | null;
   /** UUIDs of top-level headings currently folded. */
   foldedSections: string[];
+  /** Scroll offset (px) of the editor's scroll container at last write. Restored
+   *  on cold mount so an evicted/reloaded doc returns to exactly where it was —
+   *  matching the warm-mount experience (Phase D). undefined = top / unknown. */
+  scrollTop?: number;
   lastModified: string;
   /** @deprecated kept optional so older on-disk sidecars don't error on read. */
   cursorPosition?: number;

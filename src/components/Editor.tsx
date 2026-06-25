@@ -1,6 +1,7 @@
 "use client";
 
 import { useEditor, EditorContent, JSONContent, Editor } from "@tiptap/react";
+import { pickProbeEditor } from "@/lib/active-editor-probe";
 import { useEffect, useCallback, useRef, useImperativeHandle, forwardRef } from "react";
 import { NodeSelection } from "@tiptap/pm/state";
 import { Node as PMNode } from "@tiptap/pm/model";
@@ -361,6 +362,33 @@ function findTextRange(editor: Editor, searchText: string): { from: number; to: 
     return { from: fromPos, to: toPos };
   }
   return null;
+}
+
+// ── Dev keystroke-sanctity probe (multi-doc safe) ──────────────────────────
+// `window.__virgilBusStats()` must read the editor being TYPED INTO so the
+// "type N chars → emitCount stays flat" check stays trustworthy when N warm
+// editors are mounted at once (multi-doc keep-alive). A single last-mount-wins
+// global would read the wrong (often hidden) editor. We keep a registry of live
+// editors and resolve the FOCUSED one on demand (falling back to the sole
+// editor). Dev-only and lazy: the getter touches the bus only when called from
+// the console — zero per-keystroke cost.
+type BusStats = { emitCount: number; version: number };
+const busStatsEditors = new Set<Editor>();
+let busStatsInstalled = false;
+function installBusStatsProbe() {
+  if (busStatsInstalled || typeof window === "undefined") return;
+  busStatsInstalled = true;
+  void import("@/lib/tiptap/doc-structure").then(({ getBus }) => {
+    (
+      window as unknown as { __virgilBusStats?: (() => BusStats | null) | null }
+    ).__virgilBusStats = (): BusStats | null => {
+      const ed = pickProbeEditor(busStatsEditors);
+      if (!ed) return null;
+      const bus = getBus(ed);
+      if (!bus) return null;
+      return { emitCount: bus.emitCount, version: bus.structure.version };
+    };
+  });
 }
 
 const VirgilEditor = forwardRef<EditorHandle, EditorProps>(function VirgilEditor(
@@ -1705,30 +1733,18 @@ const VirgilEditor = forwardRef<EditorHandle, EditorProps>(function VirgilEditor
     };
   }, [editor]);
 
-  // Verification hook: expose the DocStructureObserver's emit counter
-  // on `window.__virgilBusStats` so the keystroke-sanctity success
-  // criteria can be checked live in the dev preview. The getter reads
-  // the bus on demand — no RAF polling, zero per-keystroke cost.
+  // Verification hook: expose the DocStructureObserver's emit counter on
+  // `window.__virgilBusStats` so the keystroke-sanctity success criteria can be
+  // checked live in the dev preview. Registers this editor in the shared probe
+  // registry (multi-doc safe — resolves the FOCUSED editor on call); the getter
+  // reads the bus on demand, with no RAF polling and zero per-keystroke cost.
   // See `docs/perf/keystroke-sanctity-findings.md` §9.
   useEffect(() => {
     if (typeof window === "undefined" || !editor) return;
-    type BusStats = { emitCount: number; version: number };
-    type StatsHost = {
-      __virgilBusStats?: BusStats | (() => BusStats | null) | null;
-    };
-    const w = window as unknown as StatsHost;
-    let cancelled = false;
-    void import("@/lib/tiptap/doc-structure").then(({ getBus }) => {
-      if (cancelled) return;
-      w.__virgilBusStats = (): BusStats | null => {
-        const bus = getBus(editor);
-        if (!bus) return null;
-        return { emitCount: bus.emitCount, version: bus.structure.version };
-      };
-    });
+    busStatsEditors.add(editor);
+    installBusStatsProbe();
     return () => {
-      cancelled = true;
-      w.__virgilBusStats = null;
+      busStatsEditors.delete(editor);
     };
   }, [editor]);
 

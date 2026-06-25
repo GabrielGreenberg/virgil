@@ -2,6 +2,7 @@
 
 import { useEffect, useLayoutEffect, useMemo, useRef, useSyncExternalStore } from "react";
 import type { Editor } from "@tiptap/react";
+import { pickProbeEditor } from "@/lib/active-editor-probe";
 import { type AnchorNodeMetrics } from "@/lib/marginalia";
 import {
   walkAnchorableBlocks,
@@ -280,6 +281,26 @@ function resolveHost(editor: Editor | null | undefined): HTMLElement | null {
   }
 }
 
+// ── Dev perf probe (multi-doc safe) ────────────────────────────────────────
+// `window.__marginaliaStats()` must read the registry of the editor being
+// TYPED INTO so the recompute-count check stays trustworthy with N warm editors
+// mounted (keep-alive). A single last-render-wins global would read the wrong
+// (often hidden) registry. We keep a per-editor registry and resolve the
+// FOCUSED editor on demand (falling back to the sole one). Dev-only.
+const marginaliaStatsByEditor = new Map<Editor, () => unknown>();
+let marginaliaProbeInstalled = false;
+function installMarginaliaProbe() {
+  if (marginaliaProbeInstalled || typeof window === "undefined") return;
+  marginaliaProbeInstalled = true;
+  (
+    window as unknown as { __marginaliaStats?: () => unknown }
+  ).__marginaliaStats = () => {
+    const ed = pickProbeEditor(marginaliaStatsByEditor.keys());
+    const stats = ed ? marginaliaStatsByEditor.get(ed) : undefined;
+    return stats ? stats() : null;
+  };
+}
+
 export function useMarginaliaRegistry(
   editor: Editor | null,
 ): MarginaliaRegistry {
@@ -336,11 +357,17 @@ export function useMarginaliaRegistry(
   // Dev-only handle for performance verification. Lets test harnesses read
   // the recompute counter without needing to crawl the React fiber tree.
   // See the audit memo's success criteria: typing 100 chars in a long doc
-  // should produce <10 recomputes (≤1 per real reflow keystroke).
-  if (typeof window !== "undefined") {
-    (window as unknown as { __marginaliaStats?: () => unknown }).__marginaliaStats =
-      registry.stats;
-  }
+  // should produce <10 recomputes (≤1 per real reflow keystroke). Registered
+  // per-editor (resolved to the focused one on call) so it's trustworthy with
+  // N warm editors mounted — see installMarginaliaProbe above.
+  useEffect(() => {
+    if (typeof window === "undefined" || !editor) return;
+    marginaliaStatsByEditor.set(editor, registry.stats);
+    installMarginaliaProbe();
+    return () => {
+      marginaliaStatsByEditor.delete(editor);
+    };
+  }, [editor, registry]);
 
   useEffect(() => {
     if (!editor) return;

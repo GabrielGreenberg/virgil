@@ -25,6 +25,7 @@ const DEFAULT: EditorStateData = {
 };
 
 const CURSOR_DEBOUNCE_MS = 400;
+const SCROLL_DEBOUNCE_MS = 400;
 
 /**
  * Normalize whatever's on disk into the current schema. Older sidecars
@@ -41,6 +42,10 @@ function migrate(raw: unknown): EditorStateData {
     foldedSections: Array.isArray(r.foldedSections)
       ? r.foldedSections.filter((u): u is string => typeof u === "string")
       : [],
+    scrollTop:
+      typeof r.scrollTop === "number" && r.scrollTop >= 0
+        ? r.scrollTop
+        : undefined,
     lastModified: typeof r.lastModified === "string" ? r.lastModified : "",
   };
 }
@@ -66,6 +71,9 @@ export interface UseEditorUIStateApi {
    *  The restore effect must wait for this — otherwise it would read the
    *  pre-load default and skip restoration. */
   loaded: boolean;
+  /** Persist the editor scroll offset (debounced upstream by the caller's scroll
+   *  listener). Gated on `loaded`; same-value writes bail. */
+  writeScroll: (scrollTop: number) => void;
 }
 
 /**
@@ -146,6 +154,23 @@ export function useEditorUIState(
     [persist],
   );
 
+  const writeScroll = useCallback(
+    (scrollTop: number) => {
+      if (!loadedRef.current) return;
+      const rounded = Math.max(0, Math.round(scrollTop));
+      // Same-value bail (the programmatic restore-scroll re-fires 'scroll').
+      if (stateRef.current.scrollTop === rounded) return;
+      const next: EditorStateData = {
+        ...stateRef.current,
+        scrollTop: rounded,
+        lastModified: new Date().toISOString(),
+      };
+      setState(next);
+      void persist(next);
+    },
+    [persist],
+  );
+
   const writeFolds = useCallback(
     (uuids: string[]) => {
       if (!loadedRef.current) return;
@@ -202,5 +227,5 @@ export function useEditorUIState(
     };
   }, [editor, writeCursor, writeFolds]);
 
-  return { state, stateRef, loaded };
+  return { state, stateRef, loaded, writeScroll };
 }

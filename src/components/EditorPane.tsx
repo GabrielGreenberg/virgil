@@ -122,6 +122,7 @@ import { useAiRequests } from "@/hooks/useAiRequests";
 import { useAiRequestCardMigration } from "@/hooks/useAiRequestCardMigration";
 import { useRecentlyAddedTracker } from "@/hooks/useRecentlyAddedTracker";
 import { useDocument } from "@/hooks/useDocument";
+import { useIsVisible } from "@/lib/keep-alive/visibility-context";
 import { useEditorUIState } from "@/hooks/useEditorUIState";
 import { useLatexCompile, type DocumentClassMismatchHandler } from "@/hooks/useLatexCompile";
 import { useWordCount } from "@/hooks/useWordCount";
@@ -263,7 +264,7 @@ import type { FocusState } from "@/hooks/useFocusMode";
 import type { OmniCategory } from "@/panels/Omni";
 import type { SectionPathEntry } from "@/panels/Outline";
 import type { PanelKind, CardKind } from "@/panels/_shared/types";
-import type { AiRequest } from "@/lib/types";
+import type { AiRequest, Suggestion } from "@/lib/types";
 import {
   useCardLifecycleApi,
   assertLifecycleCoverage,
@@ -582,6 +583,25 @@ export interface PaneState {
   // `DOC_BIB_CHANGED_EVENT` listeners. Now EditorLayout reads the live
   // hook from here.
   citationsHook: CitationsHook;
+  // Pane-owns-all (Phase C): the formerly double-mounted sidecar hooks bubble up
+  // so EditorLayout reads the active pane's live data (`paneState?.X ?? INERT`)
+  // instead of re-mounting its own singleton copy on docIdForHooks. We bubble
+  // the SLICE EditorLayout actually consumes (not the whole hook) for the hooks
+  // whose return object isn't memoized, to keep the bubble effect's deps stable.
+  // useSuggestions: EditorLayout reads only the current pending suggestion.
+  currentSuggestion: Suggestion | null;
+  // The remaining Phase-C slices (typed via indexed access so no extra type
+  // imports). EditorLayout reads these off `paneState?.X ?? INERT` and no longer
+  // mounts its own singleton copy of these hooks on docIdForHooks.
+  revisions: ReturnType<typeof useRevisions>["cards"];
+  notes: ReturnType<typeof useNotes>["notes"];
+  cutterCards: ReturnType<typeof useCutter>["cards"];
+  todoItems: ReturnType<typeof useTodos>["items"];
+  archiveSnippets: ReturnType<typeof useArchive>["snippets"];
+  deleteArchiveSnippet: ReturnType<typeof useArchive>["deleteSnippet"];
+  addRequest: ReturnType<typeof useAiRequests>["addRequest"];
+  updateRequestText: ReturnType<typeof useAiRequests>["updateRequestText"];
+  deleteRequest: ReturnType<typeof useAiRequests>["deleteRequest"];
   // The search-panel highlight range. EditorPane is the canonical owner —
   // SearchHost mounts INSIDE EditorPane and writes this local, and EditorPane's
   // own <Editor> renders the highlight overlay. It bubbles up so EditorLayout
@@ -1328,7 +1348,6 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
   );
   const footnotesHook = useFootnotes(docId, footnotePristine, resolveFootnoteAnchor);
   const suggestionsHook = useSuggestions(docId);
-  void suggestionsHook; // surfaces in the suggestions panel mounting later
   const collab = useCollab(docId);
   const documentStyleHook = useDocumentStyle(docId);
   void documentStyleHook; // surfaces in DocStyleDropdown post-swap
@@ -1382,6 +1401,20 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
   // sidecar-aware parse) so that path stays unchanged.
   const docHook = useDocument();
 
+  // Keep-alive inertness (multi-doc): a warm/hidden pane must not arm its
+  // background autosave. The pane stays mounted while hidden (display:none), so
+  // we gate the canonical `docHook.onUpdate` writeback on visibility — read via
+  // a REF because VirgilEditor captures its `onUpdate` closure at editor
+  // creation and a warm pane is NOT remounted on a switch, so a render-value
+  // capture would freeze the gate at its mount-time value. Defense-in-depth:
+  // hidden editors receive no transactions today, but this makes a cross-doc
+  // background-write structurally impossible even if that invariant is ever
+  // broken (the active-doc props — onUpdate, editable — are already inert for
+  // warm panes; this closes the one unconditional path, docHook.onUpdate).
+  const isVisible = useIsVisible();
+  const isVisibleRef = useRef(isVisible);
+  isVisibleRef.current = isVisible;
+
   // ── Per-doc editor UI state (last-edited paragraph + section folds) ──
   // Captures cursor paragraph (debounced) and fold state (immediate) to
   // `editor-state.json`. The restore effect below waits for the editor,
@@ -1390,6 +1423,8 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
   // mandatory to avoid restoring the pre-load default.
   const uiStateHook = useEditorUIState(docId, editor);
   const uiRestoredRef = useRef(false);
+  const scrollRestoredRef = useRef(false); // Phase D: once-per-mount scroll restore
+  const cancelScrollRestoreRef = useRef<(() => void) | null>(null);
   useEffect(() => {
     if (uiRestoredRef.current) return;
     if (!editor || !docHook.content || !uiStateHook.loaded) return;
@@ -3124,6 +3159,54 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
     rowScrollRef.current = null;
   }, []);
 
+  // Phase D — durable per-doc scroll memory. The warm mount preserves scroll for
+  // the last N docs; this makes a COLD mount (LRU-evicted or post-reload) restore
+  // to the same offset, so the cold path matches the warm one. Owned entirely by
+  // the per-doc layer (useEditorUIState → editor-state.json); view-mode stays
+  // app-wide per the v1 choice. Runs after the cursor-restore effect above (which
+  // scrolls to the last paragraph), so the exact saved offset wins; the capture
+  // listener persists scroll changes (debounced). A hidden/warm pane emits no
+  // scroll events (display:none), so this is inert while warm.
+  useEffect(() => {
+    const el = rowScrollRef.current;
+    if (!el || !uiStateHook.loaded) return;
+    if (!scrollRestoredRef.current) {
+      scrollRestoredRef.current = true;
+      const saved = uiStateHook.stateRef.current.scrollTop;
+      if (saved != null && saved > 0) {
+        // The cursor-restore effect above scrolls the last-edit paragraph into
+        // view (incl. a deferred focus-scroll). To make the COLD mount match the
+        // WARM mount (exact scroll), re-assert the saved offset across the next
+        // couple of frames + a short timeout so it wins past the focus-scroll.
+        const apply = () => {
+          if (rowScrollRef.current) rowScrollRef.current.scrollTop = saved;
+        };
+        requestAnimationFrame(() => {
+          apply();
+          requestAnimationFrame(apply);
+        });
+        const t = setTimeout(apply, 90);
+        // best-effort; cleared if the pane unmounts before it fires
+        cancelScrollRestoreRef.current = () => clearTimeout(t);
+      }
+    }
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    const onScroll = () => {
+      if (timer) clearTimeout(timer);
+      timer = setTimeout(() => {
+        if (rowScrollRef.current) {
+          uiStateHook.writeScroll(rowScrollRef.current.scrollTop);
+        }
+      }, 400);
+    };
+    el.addEventListener("scroll", onScroll, { passive: true });
+    return () => {
+      if (timer) clearTimeout(timer);
+      cancelScrollRestoreRef.current?.();
+      el.removeEventListener("scroll", onScroll);
+    };
+  }, [uiStateHook.loaded, uiStateHook.stateRef, uiStateHook.writeScroll]);
+
   // Track the docked MenuBar's rendered width so the section lozenge can
   // compute a max-width that keeps it from crossing into the centered
   // MenuBar's column. Exposed as `--menubar-width` on editor-pane-column.
@@ -3993,6 +4076,16 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
       collab,
       citationsHook,
       searchHighlightRange,
+      currentSuggestion: suggestionsHook.currentSuggestion,
+      revisions: revisionsHook.cards,
+      notes: notesHook.notes,
+      cutterCards: cutterHook.cards,
+      todoItems: todosHook.items,
+      archiveSnippets: archiveHook.snippets,
+      deleteArchiveSnippet: archiveHook.deleteSnippet,
+      addRequest: aiRequestsHook.addRequest,
+      updateRequestText: aiRequestsHook.updateRequestText,
+      deleteRequest: aiRequestsHook.deleteRequest,
     });
   }, [
     onPaneStateChange,
@@ -4015,6 +4108,15 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
     onToggleCodeView,
     collab,
     citationsHook,
+    suggestionsHook.currentSuggestion,
+    notesHook.notes,
+    cutterHook.cards,
+    todosHook.items,
+    archiveHook.snippets,
+    archiveHook.deleteSnippet,
+    aiRequestsHook.addRequest,
+    aiRequestsHook.updateRequestText,
+    aiRequestsHook.deleteRequest,
   ]);
 
   // ── Anchored-card hover/selection bridges + highlight painters ────
@@ -5456,7 +5558,10 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
                       // can flush immediately on an anchor-mint transaction
                       // (closing the anchor-persistence race; @/lib/anchor-mint-signal).
                       onUpdate?.(editor, tx);
-                      docHook.onUpdate(editor, tx);
+                      // Keep-alive: a hidden/warm pane never arms autosave (see
+                      // isVisibleRef above). Terminal flushes (drainDoc / unmount
+                      // / pagehide) are unaffected — they don't route through here.
+                      if (isVisibleRef.current) docHook.onUpdate(editor, tx);
                     }}
                     highlightText={highlightText}
                     highlightRange={effectiveHighlightRange}

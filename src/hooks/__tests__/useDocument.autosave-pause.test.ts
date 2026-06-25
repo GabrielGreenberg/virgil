@@ -25,12 +25,19 @@ vi.mock("@/lib/storage", () => ({
 // Controllable fake watcher: the test flips `unresolved` to model an external
 // change appearing / being resolved. registerUnsavedGetter is a no-op here (the
 // guard we exercise is hasUnresolvedChange, not the dirty-getter injection).
+// `activeDocId` (read live via the getter) is which doc the single provider is
+// watching — multi-doc keep-alive: only that doc honors the pause guard, so a
+// WARM doc (docId !== activeDocId) sees a null watcher and never pauses.
 let unresolved = false;
+let activeDocId = "doc-1";
 const fakeWatcher = {
   hasUnresolvedChange: () => unresolved,
 };
 const fakeCtx = {
   watcher: fakeWatcher,
+  get activeDocId() {
+    return activeDocId;
+  },
   registerUnsavedGetter: () => () => {},
 };
 vi.mock("@/components/editor-layout/contexts/disk-watcher", () => ({
@@ -56,6 +63,7 @@ beforeEach(() => {
   resetPipelines();
   resetFlushers();
   unresolved = false;
+  activeDocId = "doc-1";
 });
 
 function makeMockEditor(content: JSONContent): Editor {
@@ -108,6 +116,34 @@ describe("useDocument autosave-pause guard (DESIGN §4)", () => {
       // dropped.
       await act(async () => {
         await vi.advanceTimersByTimeAsync(2000);
+      });
+      expect(mockWrite).toHaveBeenCalledTimes(1);
+      expect(mockWrite.mock.calls[0][1]).toEqual(SAMPLE_CONTENT);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("a WARM doc (not the active/watched doc) does NOT pause — it never inherits the active doc's conflict", async () => {
+    vi.useFakeTimers();
+    try {
+      // The ACTIVE doc (doc-1) has a live, unresolved external conflict...
+      unresolved = true;
+      activeDocId = "doc-1";
+
+      // ...but THIS hook is a warm doc-2 (mounted-but-hidden under keep-alive).
+      // It is NOT the watched doc, so the active doc's conflict must not pause
+      // doc-2's autosave — it sees a null watcher and writes normally.
+      const { result } = renderHook(() => useDocument(), {
+        wrapper: withPipeline("doc-2"),
+      });
+      await vi.runOnlyPendingTimersAsync();
+
+      act(() => {
+        result.current.onUpdate(makeMockEditor(SAMPLE_CONTENT));
+      });
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(1500);
       });
       expect(mockWrite).toHaveBeenCalledTimes(1);
       expect(mockWrite.mock.calls[0][1]).toEqual(SAMPLE_CONTENT);
