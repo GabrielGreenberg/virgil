@@ -318,10 +318,19 @@ export interface EditorHandle {
    *  UUIDs that no longer exist in the doc are silently dropped. Used to
    *  restore section folds from persisted UI state on reload. */
   setFolded: (uuids: string[]) => void;
-  /** Scroll to the paragraph with this UUID and place the cursor at its
-   *  end. Silently no-ops if the UUID is no longer in the doc. Used to
-   *  restore the last-edited paragraph from persisted UI state on reload. */
-  restoreCursorToParagraph: (uuid: string) => void;
+  /** Place the cursor at the end of the paragraph with this UUID. Silently
+   *  no-ops if the UUID is no longer in the doc. Used to restore the
+   *  last-edited paragraph from persisted UI state on reload.
+   *
+   *  `scrollIntoView` (default true) controls whether the paragraph is
+   *  ALSO scrolled into view. Pass `false` when a saved/live scroll offset
+   *  is being restored by the pane's scroll-restoration owner — restoring
+   *  the cursor must not fight the viewport. The selection (for resuming an
+   *  edit) is restored either way; only the competing scroll is suppressed. */
+  restoreCursorToParagraph: (
+    uuid: string,
+    opts?: { scrollIntoView?: boolean },
+  ) => void;
 }
 
 // Citation collectors/mutators (including footnote-nested cites) live in a
@@ -1618,8 +1627,12 @@ const VirgilEditor = forwardRef<EditorHandle, EditorProps>(function VirgilEditor
       tr.setMeta("addToHistory", false);
       editor.view.dispatch(tr);
     },
-    restoreCursorToParagraph(uuid: string): void {
+    restoreCursorToParagraph(
+      uuid: string,
+      opts?: { scrollIntoView?: boolean },
+    ): void {
       if (!editor) return;
+      const scrollIntoView = opts?.scrollIntoView ?? true;
       let targetPos = -1;
       let targetNodeSize = 0;
       editor.state.doc.descendants((node, pos) => {
@@ -1633,14 +1646,25 @@ const VirgilEditor = forwardRef<EditorHandle, EditorProps>(function VirgilEditor
       if (targetPos < 0) return;
       const endPos = targetPos + targetNodeSize - 1;
       try {
-        // Scroll first (moves selection to paragraph start internally),
-        // then place cursor at end + take DOM focus. Focus can silently
-        // no-op on the very first load if the browser blocks autofocus
-        // without a user gesture — the selection still lands correctly,
-        // so the cursor is ready the moment the user clicks anywhere.
-        (this as EditorHandle).scrollToParagraphId(uuid);
-        editor.commands.setTextSelection(endPos);
-        editor.view.focus();
+        if (scrollIntoView) {
+          // Scroll first (moves selection to paragraph start internally),
+          // then place cursor at end + take DOM focus. Focus can silently
+          // no-op on the very first load if the browser blocks autofocus
+          // without a user gesture — the selection still lands correctly,
+          // so the cursor is ready the moment the user clicks anywhere.
+          (this as EditorHandle).scrollToParagraphId(uuid);
+          editor.commands.setTextSelection(endPos);
+          editor.view.focus();
+        } else {
+          // A saved/live scroll offset is being restored by the pane's
+          // scroll-restoration owner; the cursor must NOT pull the viewport.
+          // Place the selection and take focus WITHOUT the default deferred
+          // focus-scroll (`scrollIntoView: false`) — otherwise the focus-scroll
+          // races the offset restore and the doc lands on the cursor paragraph
+          // instead of where the user was last looking.
+          editor.commands.setTextSelection(endPos);
+          editor.commands.focus(null, { scrollIntoView: false });
+        }
       } catch {
         /* position out of range — silently skip */
       }

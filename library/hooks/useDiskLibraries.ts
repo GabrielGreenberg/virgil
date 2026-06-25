@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { readCatalogVersion } from "@library/lib/catalog";
 import {
   deleteLibraryManifest,
@@ -612,10 +612,18 @@ export function useDiskLibraries(
     [mutate],
   );
 
-  // Derived: ordered list of `Library` objects for consumers.
-  const libraries: Library[] = Array.from(records.values())
-    .sort((a, b) => a.manifest.createdAt - b.manifest.createdAt)
-    .map((r) => manifestToLibrary(r.manifest));
+  // Derived: ordered list of `Library` objects for consumers. Memoized on
+  // `records` so its identity is stable across unrelated renders — a fresh
+  // array every render churns `useLibraryRegistry`'s Map, which (via the
+  // outer tab strip) would defeat the memoized top bar on every unrelated
+  // EditorLayout tick.
+  const libraries: Library[] = useMemo(
+    () =>
+      Array.from(records.values())
+        .sort((a, b) => a.manifest.createdAt - b.manifest.createdAt)
+        .map((r) => manifestToLibrary(r.manifest)),
+    [records],
+  );
 
   return {
     libraries,

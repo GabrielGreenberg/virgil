@@ -1,11 +1,9 @@
 "use client";
 
-import { useState, useCallback, useEffect, useLayoutEffect, useRef, useMemo, type ReactNode } from "react";
-import { createPortal } from "react-dom";
+import { useState, useCallback, useEffect, useLayoutEffect, useRef, useMemo } from "react";
 import { JSONContent } from "@tiptap/react";
 import VirgilEditor, { EditorHandle } from "./Editor";
 import { LoadingScreen } from "./LoadingScreen";
-import { VIRGIL_COMMAND_NAMES } from "@/lib/tiptap-extensions";
 import { setFocusBandMeta } from "@/lib/focus-view";
 import { isLabelTaken as isLabelTakenIn } from "@/lib/labels";
 import { isDevStorage } from "@/lib/storage-mode";
@@ -21,8 +19,7 @@ import { getBus } from "@/lib/tiptap/doc-structure";
 import { useStructuralRevisions } from "@/hooks/useStructuralRevisions";
 import { useMyPapers } from "@/hooks/useMyPapers";
 import { useFloatingMenuPosition } from "@/hooks/useFloatingMenuPosition";
-import { useUpdateAvailable, applyUpdate } from "@/hooks/useUpdateAvailable";
-import SkillSyncControls from "./SkillSyncControls";
+import { useUpdateAvailable } from "@/hooks/useUpdateAvailable";
 import { DocPipeline } from "./editor-layout/DocPipeline";
 import {
   DocKeepAliveSlot,
@@ -33,9 +30,6 @@ import { isMultiDocKeepAliveOn } from "@/lib/multi-doc-keepalive-flag";
 import { useSelectedAnchorSync } from "@/hooks/useSelectedAnchorSync";
 import { CollabProvider, COLLAB_INERT, type CollabHook } from "@/hooks/useCollab";
 import { collabClaimScope } from "@/cards/predicates";
-import CollabStatusPill from "./CollabStatusPill";
-import ExternalChangeBadge from "./ExternalChangeBadge";
-import { useExternalChangesOrNull } from "@/hooks/useExternalChanges";
 import { useCollaboratorIdentity } from "./CollaboratorIdentityDialog";
 import { useLatexLint } from "@/hooks/useLatexLint";
 import { mergeLatexErrors, type LatexError } from "@/lib/latex-errors";
@@ -110,7 +104,7 @@ import {
   FLOATING_PANEL_STACK_OFFSET,
   FLOATING_PANEL_Z_BASE,
 } from "./editor-layout/constants";
-import { FLOAT_Z_BASE, OPEN_CHROME_MENU_Z } from "@/floats/float-policy";
+import { FLOAT_Z_BASE } from "@/floats/float-policy";
 import {
   alignEntryToY,
   scrollEntryIntoView,
@@ -118,11 +112,9 @@ import {
   SECTION_ACTIVE_LINE_FRACTION,
 } from "./editor-layout/layout-scroll";
 import { omniPinStore } from "./editor-layout/omni-pin-store";
-import {
-  IconX,
-  IconLibrary,
-} from "./editor-layout/panel-icons";
-import { DocumentFolderTab } from "./editor-layout/DocumentFolderTab";
+import { TopBar } from "./editor-layout/TopBar";
+import type { TabStripProps } from "./editor-layout/TabStrip";
+import type { StatusClusterProps } from "./editor-layout/StatusCluster";
 import { useStripHandlers } from "./editor-layout/drag-drop";
 import { useEditorOps } from "./editor-layout/card-actions/editor-ops";
 import { useFocusActions } from "./editor-layout/card-actions/focus";
@@ -222,146 +214,14 @@ import { UnsupportedBrowserNotice } from "./UnsupportedBrowserNotice";
 import { DocPermissionGate } from "./DocPermissionGate";
 import { RecentPapersList } from "./RecentPapersList";
 import { InstallPwaPrompt } from "./InstallPwaPrompt";
-import { TabPlusMenu } from "./TabPlusMenu";
 import { LibraryTabView } from "./library/LibraryTabView";
 import PaperOuterView from "./library/PaperOuterView";
 import LibraryOuterView from "./library/LibraryOuterView";
 import {
-  OUTER_LIBRARY_PREFIX,
   OUTER_LIBRARY_ROOT_ID,
-  OUTER_PAPER_PREFIX,
 } from "@/lib/doc-index";
-import { ENTRY_DT_TYPE, LIBRARY_DT_TYPE, PAPER_DT_TYPE } from "@library/lib/dnd-types";
-import { addEntryToLibraryGlobal } from "@library/lib/library-store";
 import { useLibraryRegistry } from "@library/hooks/useLibraryRegistry";
 
-/**
- * Negative margins applied to the active folder tab's wrapper so the
- * layout stays pixel-stable when promoting/demoting an inline tab:
- *
- *   • LEFT (-18px): the folder's content text sits 26px in from its visual
- *     left edge (12px swoop + 14px pl-3.5). Inline labels place text 8px
- *     in (pl-2). Shifting the active wrapper left by their difference
- *     keeps the text x-position fixed across activation.
- *
- *   • RIGHT (-8px): the folder is 26px wider than the inline (12+14+4+12
- *     vs 8+8 of horizontal padding). After the -18 left shift, the folder
- *     still claims 8 more px on the right of the layout slot than the
- *     inline did. The negative marginRight reclaims that space so right-
- *     hand neighbors don't shift when a tab is activated.
- *
- * The silhouette visually extends past the inline slot on both sides —
- * fine because only one active tab exists at a time and the swoop just
- * pleasantly overlaps the gap between adjacent items.
- *
- * Both margins assume the inline label uses gap-1.5 (matching the folder's
- * child gap), so the children's combined width is identical in both
- * states regardless of the number of children (icon + label + close X).
- */
-const ACTIVE_TAB_LEFT_SHIFT_PX = 18;
-const ACTIVE_TAB_RIGHT_SHIFT_PX = 8;
-
-/**
- * Inline (inactive) tab label rendered as flat clickable text in the Virgil
- * bar. Used for every outer tab that isn't the currently-active item —
- * those keep the full DocumentFolderTab silhouette.
- *
- * `variant` defaults to "tight" (pl-2 pr-2): used by paper/library/doc
- * tabs whose active counterpart applies negative margins to keep text and
- * neighbors pixel-stable across activation. The Library root tab passes
- * "library-pinned" instead (pl-[26px] pr-[26px]) — Library can't shift
- * its silhouette leftward (it's the leftmost item), so the inline label
- * pre-reserves the swoop+inner-padding space, matching the folder
- * geometry exactly.
- *
- * Omitting `onClose` hides the × button (used by the Library root tab,
- * which is permanent and can't be closed).
- */
-function InlineTabLabel({
-  icon,
-  label,
-  title,
-  monospace,
-  variant = "tight",
-  onClick,
-  onClose,
-}: {
-  icon?: ReactNode;
-  label: string;
-  title: string;
-  monospace?: boolean;
-  variant?: "tight" | "library-pinned";
-  onClick: () => void;
-  onClose?: () => void;
-}) {
-  const padding =
-    variant === "library-pinned" ? "pl-[26px] pr-[26px]" : "pl-2 pr-2";
-  // Hover lozenge hugs the content with ~8px breathing room on each
-  // side. The tight variant's wrapper already sits at content + 8px,
-  // so `inset-x-0` is correct. The library-pinned wrapper carries 26px
-  // of padding (to keep the inline footprint stable with the active
-  // Library folder silhouette), so the lozenge insets 18px to land at
-  // the same content + 8px feel.
-  const hoverBgInsetX =
-    variant === "library-pinned" ? "inset-x-[18px]" : "inset-x-0";
-  return (
-    <div
-      role="button"
-      tabIndex={0}
-      onClick={onClick}
-      onKeyDown={(e) => {
-        if (e.key === "Enter" || e.key === " ") {
-          e.preventDefault();
-          onClick();
-        }
-      }}
-      data-hint={title}
-      className={`group relative flex items-center gap-1.5 ${padding} h-[24px] cursor-default shrink-0`} aria-label={title}
-    >
-      <div
-        aria-hidden
-        className={`absolute inset-y-0 rounded transition-colors group-hover:bg-black/5 ${hoverBgInsetX}`}
-      />
-      {icon ? <span className="relative inline-flex">{icon}</span> : null}
-      <span
-        className="relative text-[13px] leading-4 truncate max-w-[220px]"
-        style={monospace ? { fontFamily: "var(--mono)" } : undefined}
-      >
-        {label}
-      </span>
-      {onClose ? (
-        <button
-          onClick={(e) => {
-            e.stopPropagation();
-            onClose();
-          }}
-          className="relative topbarbtn topbarbtn-icon opacity-40 group-hover:opacity-100 hover:!opacity-100 transition-opacity"
-          data-hint="Close tab"
-        >
-          <IconX />
-        </button>
-      ) : null}
-    </div>
-  );
-}
-
-/** Thin vertical divider drawn between non-Library tabs. Always occupies
- *  layout space (so promoting/demoting a tab doesn't shift its neighbors);
- *  only painted when both adjacent tabs are inline — adjacent to the active
- *  folder tab, the silhouette's edge serves as the divider so the line is
- *  hidden via `visibility: hidden`. Same pattern as Chrome/Edge. */
-function TabSeparator({ visible }: { visible: boolean }) {
-  return (
-    <span
-      aria-hidden
-      className="self-center inline-block shrink-0 w-px h-4 mx-1"
-      style={{
-        background: "var(--edge-strong, #a8a29e)",
-        visibility: visible ? "visible" : "hidden",
-      }}
-    />
-  );
-}
 
 export default function EditorLayout() {
   // Dev-only: mirror personal localStorage prefs to disk for the
@@ -631,43 +491,46 @@ export default function EditorLayout() {
   // it back here so the topbar's collab icon/badge drive real
   // mutations. Falls back to the inert no-op hook when no doc is
   // loaded — every action is a safe no-op until paneState bubbles up.
-  const collab: CollabHook = paneState?.collab ?? COLLAB_INERT;
+  // useMemo so the bar's StatusCluster memo holds: the ternary would otherwise
+  // be evaluated fresh each render, but the resolved reference (the bubbled
+  // pane collab hook or the COLLAB_INERT singleton) is stable across renders
+  // where the active pane's collab object is unchanged.
+  const collab: CollabHook = useMemo(
+    () => paneState?.collab ?? COLLAB_INERT,
+    [paneState?.collab],
+  );
+  // Latest-ref so the collab action handlers (threaded into the memoized status
+  // cluster) stay referentially stable across collab pen/presence/sidecar ticks
+  // — only the context-consuming CollabStatusPill re-renders on those, not the
+  // whole cluster.
+  const collabRef = useRef(collab);
+  collabRef.current = collab;
   const { ensureIdentity, dialog: identityDialog } = useCollaboratorIdentity();
 
   const handleEnableCollab = useCallback(async () => {
     const id = await ensureIdentity();
     if (!id) return;
-    collab.setIdentity(id);
-    await collab.enableCollab();
-  }, [ensureIdentity, collab]);
+    collabRef.current.setIdentity(id);
+    await collabRef.current.enableCollab();
+  }, [ensureIdentity]);
 
   const handleEditIdentity = useCallback(async () => {
     const id = await ensureIdentity({ force: true });
-    if (id) collab.setIdentity(id);
-  }, [ensureIdentity, collab]);
+    if (id) collabRef.current.setIdentity(id);
+  }, [ensureIdentity]);
 
   const handleDisableCollab = useCallback(() => {
-    void collab.disableCollab();
-  }, [collab]);
+    void collabRef.current.disableCollab();
+  }, []);
 
-  const collabIconBtn = (
-    <CollabStatusPill
-      collab={collab}
-      onEnableRequest={() => void handleEnableCollab()}
-      onEditIdentity={() => void handleEditIdentity()}
-      onDisable={handleDisableCollab}
-      variant="icon"
-    />
-  );
-  const collabBadge = (
-    <CollabStatusPill
-      collab={collab}
-      onEnableRequest={() => void handleEnableCollab()}
-      onEditIdentity={() => void handleEditIdentity()}
-      onDisable={handleDisableCollab}
-      variant="badge"
-    />
-  );
+  // Stable () => void wrappers for the async collab handlers, threaded into
+  // StatusCluster (which builds the CollabStatusPill from these).
+  const onEnableCollab = useCallback(() => {
+    void handleEnableCollab();
+  }, [handleEnableCollab]);
+  const onEditIdentity = useCallback(() => {
+    void handleEditIdentity();
+  }, [handleEditIdentity]);
 
   // Main-app view-state engine (global persistence — the default). Captured
   // whole so the shared `buildEditorPaneViewPrefs` builder can read every
@@ -3410,6 +3273,264 @@ export default function EditorLayout() {
   }, [editorInstance, docIdForHooks, migratePoppedOutCards]);
 
 
+  // Virgil-bar right-cluster source: post-7.8 the bar reads per-doc
+  // state from `paneState`, populated by EditorPane via
+  // `onPaneStateChange`. EditorLayout's own per-doc hooks (compile,
+  // ai-requests) feed dialogs and other shell-only consumers; the
+  // bar's view of them comes through here.
+  // useMemo so the memoized TopBar/StatusCluster can bail on a background
+  // paneState tick that doesn't touch any field the bar reads. Deps are the
+  // individual paneState fields (NOT the whole `paneState` object), so a warm
+  // pane bumping an UNRELATED slice leaves `vbar`'s identity stable.
+  //
+  // The bubbled paneState slices recreate their FUNCTION refs (compilePdf,
+  // switch*, addStyleMergeRequest) on each pane render — during a paper switch
+  // the incoming pane re-renders ~dozens of times as its slices settle, so
+  // depending on those function identities directly would rebuild `vbar` (and
+  // thus re-render the whole status cluster) on every one of those ticks. Route
+  // the functions through a latest-ref + stable wrappers so `vbar` changes ONLY
+  // when a DISPLAY value the bar actually paints (aiDot/isCompiling/pdfStale/
+  // pdfView/codeView/pdfBlobUrl/aiRequests) changes. The wrappers always invoke
+  // the current pane function, so behavior is unchanged.
+  const paneStateRef = useRef(paneState);
+  paneStateRef.current = paneState;
+  const stableCompilePdf = useCallback(() => paneStateRef.current?.compilePdf?.(), []);
+  const stableSwitchToPdfView = useCallback(() => paneStateRef.current?.switchToPdfView?.(), []);
+  const stableSwitchFromPdfView = useCallback(() => paneStateRef.current?.switchFromPdfView?.(), []);
+  const stableSwitchToCodeView = useCallback(() => paneStateRef.current?.switchToCodeView?.(), []);
+  const stableSwitchToVisualView = useCallback(() => paneStateRef.current?.switchToVisualView?.(), []);
+  const stableAddStyleMergeRequest: NonNullable<PaneState["addStyleMergeRequest"]> =
+    useCallback(
+      (...args: Parameters<NonNullable<PaneState["addStyleMergeRequest"]>>) =>
+        (paneStateRef.current?.addStyleMergeRequest ?? stubAddStyleMergeRequest)(
+          ...args,
+        ),
+      [],
+    );
+  const vbar = useMemo(
+    () => ({
+      aiDot: paneState?.aiDot ?? null,
+      aiRequests: paneState?.aiRequests ?? EMPTY_AI_REQUESTS,
+      addStyleMergeRequest: stableAddStyleMergeRequest,
+      compilePdf: stableCompilePdf,
+      isCompiling: paneState?.isCompiling ?? false,
+      pdfStale: paneState?.pdfStale ?? false,
+      pdfBlobUrl: paneState?.pdfBlobUrl ?? null,
+      pdfView: paneState?.pdfView ?? false,
+      codeView: paneState?.codeView ?? false,
+      switchToPdfView: stableSwitchToPdfView,
+      switchFromPdfView: stableSwitchFromPdfView,
+      switchToCodeView: stableSwitchToCodeView,
+      switchToVisualView: stableSwitchToVisualView,
+    }),
+    [
+      paneState?.aiDot,
+      paneState?.aiRequests,
+      paneState?.isCompiling,
+      paneState?.pdfStale,
+      paneState?.pdfBlobUrl,
+      paneState?.pdfView,
+      paneState?.codeView,
+      stableAddStyleMergeRequest,
+      stableCompilePdf,
+      stableSwitchToPdfView,
+      stableSwitchFromPdfView,
+      stableSwitchToCodeView,
+      stableSwitchToVisualView,
+    ],
+  );
+
+  // The status cluster paints only these four vbar fields. Isolating them keeps
+  // the cluster from re-rendering on aiRequests / pdfBlobUrl / pdfView / codeView
+  // churn (those are consumed by the PDF view / AI window, not the cluster).
+  const statusVbar = useMemo(
+    () => ({
+      aiDot: vbar.aiDot,
+      compilePdf: vbar.compilePdf,
+      isCompiling: vbar.isCompiling,
+      pdfStale: vbar.pdfStale,
+    }),
+    [vbar.aiDot, vbar.compilePdf, vbar.isCompiling, vbar.pdfStale],
+  );
+
+  // ── Stable callbacks for the extracted, memoized TopBar ──────────────────
+  // The per-tab call-site arrows (onClick={() => activateDocPane(doc.id)})
+  // have been pushed INTO the leaf components, which now receive the live id +
+  // the already-useCallback-stable handler. These wrappers cover the few
+  // remaining inline arrows so the memoized children can bail on a paneState
+  // tick.
+  const onCreateNewTab = useCallback(() => {
+    setNewDocModal({ mode: "fresh" });
+  }, []);
+  const onResyncSkills = useCallback(() => {
+    void resyncSkills();
+  }, [resyncSkills]);
+
+  // useMemo so the array isn't a fresh identity each render (TabPlusMenu deps).
+  const openTabIds = useMemo(() => openTabs.map((t) => t.id), [openTabs]);
+
+  // Grouped, referentially-stable props for the two memoized bar regions. Each
+  // group's identity changes only when one of its constituent inputs does, so a
+  // background paneState tick (which leaves all of these stable) no longer
+  // re-renders the tab strip or the status cluster.
+  const tabStripProps: TabStripProps = useMemo(
+    () => ({
+      docs,
+      openTabIds,
+      outerOrder,
+      activePane,
+      currentDocId,
+      currentLibraryOuterId,
+      currentPaperCitekey,
+      libraryRegistry,
+      devStorage,
+      editingTabId,
+      setEditingTabId,
+      nameInput,
+      setNameInput,
+      nameInputRef,
+      tabStripRef,
+      outerTabRefs,
+      paperDropIndex,
+      setPaperDropIndex,
+      entryDropOuterLibId,
+      setEntryDropOuterLibId,
+      onActivateDoc: activateDocPane,
+      onCloseDoc: closeTab,
+      onActivatePaper: activatePaperPane,
+      onClosePaper: closePaperTab,
+      onActivateLibraryOuter: activateLibraryOuterPane,
+      onCloseLibraryOuter: closeLibraryOuterTab,
+      onRenameDoc: renameFile,
+      openPaperTab,
+      openLibraryOuterTab,
+      onOpenRecent: openFile,
+      onOpenFolder: handleNativeOpen,
+      onCreateNew: onCreateNewTab,
+      onOpenNewWindow: openNewVirgilWindow,
+    }),
+    [
+      docs,
+      openTabIds,
+      outerOrder,
+      activePane,
+      currentDocId,
+      currentLibraryOuterId,
+      currentPaperCitekey,
+      libraryRegistry,
+      devStorage,
+      editingTabId,
+      setEditingTabId,
+      nameInput,
+      setNameInput,
+      paperDropIndex,
+      setPaperDropIndex,
+      entryDropOuterLibId,
+      setEntryDropOuterLibId,
+      activateDocPane,
+      closeTab,
+      activatePaperPane,
+      closePaperTab,
+      activateLibraryOuterPane,
+      closeLibraryOuterTab,
+      renameFile,
+      openPaperTab,
+      openLibraryOuterTab,
+      openFile,
+      handleNativeOpen,
+      onCreateNewTab,
+      openNewVirgilWindow,
+    ],
+  );
+
+  const statusClusterProps: StatusClusterProps = useMemo(
+    () => ({
+      vbar: statusVbar,
+      collabEnabled: collab.enabled,
+      zenModeOn,
+      topbarRightCollapsed: prefs.topbarRightCollapsed,
+      setTopbarRightCollapsed,
+      updateAvailable,
+      hasDoc: !!currentDoc,
+      skillSyncError,
+      skillSyncNotice,
+      onResyncSkills,
+      onDismissSkillSyncError: dismissSkillSyncError,
+      onDismissSkillSyncNotice: dismissSkillSyncNotice,
+      externalChangeActive,
+      setExternalChangeActive,
+      focusActive: focusMode.state.active,
+      onFocusDeactivate: focusMode.deactivate,
+      helperOn: helperMode.on,
+      onHelperToggle: helperMode.toggle,
+      onEnableCollab,
+      onEditIdentity,
+      onDisableCollab: handleDisableCollab,
+      onToggleZen: handleToggleZen,
+      preferencesOpen,
+      setPreferencesOpen,
+      appVersion: APP_VERSION,
+      helperBtnRef,
+      helperMenuOpen,
+      setHelperMenuOpen,
+      helperPositionRef,
+      helperPositionStyle,
+      commandsPopoutOpen,
+      setCommandsPopoutOpen,
+      onInsertVirgilCommand: insertVirgilCommand,
+      currentDocId,
+      codeView,
+      pdfView,
+      printOpen,
+      setPrintOpen,
+      aiWindowOpen,
+      setAiWindowOpen,
+      manageStylesOpen,
+      setManageStylesOpen,
+      onToggleCodeView: toggleCodeView,
+      onTogglePdfView: togglePdfView,
+    }),
+    [
+      statusVbar,
+      collab.enabled,
+      zenModeOn,
+      prefs.topbarRightCollapsed,
+      setTopbarRightCollapsed,
+      updateAvailable,
+      currentDoc,
+      skillSyncError,
+      skillSyncNotice,
+      onResyncSkills,
+      dismissSkillSyncError,
+      dismissSkillSyncNotice,
+      externalChangeActive,
+      setExternalChangeActive,
+      focusMode.state.active,
+      focusMode.deactivate,
+      helperMode.on,
+      helperMode.toggle,
+      onEnableCollab,
+      onEditIdentity,
+      handleDisableCollab,
+      handleToggleZen,
+      preferencesOpen,
+      helperBtnRef,
+      helperMenuOpen,
+      helperPositionRef,
+      helperPositionStyle,
+      commandsPopoutOpen,
+      insertVirgilCommand,
+      currentDocId,
+      codeView,
+      pdfView,
+      printOpen,
+      aiWindowOpen,
+      manageStylesOpen,
+      toggleCodeView,
+      togglePdfView,
+    ],
+  );
+
   // Loading
   if (filesLoading) {
     return <LoadingScreen className="h-screen" />;
@@ -3475,26 +3596,6 @@ export default function EditorLayout() {
   // retains only the `*PoppedKeys` memo + refresh effects above so the
   // editor refreshes its node-view glyphs when prefs change.
 
-  // Virgil-bar right-cluster source: post-7.8 the bar reads per-doc
-  // state from `paneState`, populated by EditorPane via
-  // `onPaneStateChange`. EditorLayout's own per-doc hooks (compile,
-  // ai-requests) feed dialogs and other shell-only consumers; the
-  // bar's view of them comes through here.
-  const vbar = {
-    aiDot: paneState?.aiDot ?? null,
-    aiRequests: paneState?.aiRequests ?? [],
-    addStyleMergeRequest: paneState?.addStyleMergeRequest ?? stubAddStyleMergeRequest,
-    compilePdf: paneState?.compilePdf ?? noop,
-    isCompiling: paneState?.isCompiling ?? false,
-    pdfStale: paneState?.pdfStale ?? false,
-    pdfBlobUrl: paneState?.pdfBlobUrl ?? null,
-    pdfView: paneState?.pdfView ?? false,
-    codeView: paneState?.codeView ?? false,
-    switchToPdfView: paneState?.switchToPdfView ?? noop,
-    switchFromPdfView: paneState?.switchFromPdfView ?? noop,
-    switchToCodeView: paneState?.switchToCodeView ?? noop,
-    switchToVisualView: paneState?.switchToVisualView ?? noop,
-  };
 
   return (
     <EditorLayoutProvider
@@ -3518,865 +3619,18 @@ export default function EditorLayout() {
         gates on currentDocId (no provider when no doc is open). */}
     <DiskWatcherProviderGate docId={currentDocId} liveDocIds={keepAliveDocIds}>
     <div className="flex flex-col h-screen bg-[var(--background)]">
-      {/* Top bar: logo + tabs */}
-      <div
-        // Preference-mode: the VIRGIL top bar. topbarBackground is locked to
-        // the PWA/browser theme-color (see globals.css merger notes), so
-        // changing it updates both the in-app bar and the browser chrome.
-        // min-height gives the docked MenuBar breathing room inside the
-        // bar without pushing the tabs taller (tabs are items-end anchored
-        // at the bottom edge, so the extra space accumulates above them).
-        // In zen mode the bar's background and bottom border drop out so
-        // it visually melts into the canvas, but the height stays so the
-        // Zen toggle (last child of the right cluster) keeps the same Y
-        // position in both modes.
-        data-prefs="topbarBackground,topbarBackgroundBottom,virgilBarText"
-        data-bar-h="32"
-        className={`virgil-bar flex items-center min-h-[32px] sticky top-0 z-30 ${zenModeOn ? '' : 'border-b border-[var(--topbar-border,#d5d3ce)]'}`}
-        style={{
-          color: "var(--virgil-bar-text)",
-          background: zenModeOn
-            ? "transparent"
-            : "linear-gradient(to bottom, var(--topbar-bg), var(--topbar-bg-bottom))",
-        }}
-      >
-        {/* Logo + file buttons + tabs — all bottom-aligned. The MenuBar's
-            "home" position clamps against the topbar-left sentinel at the
-            end of this group (after the "Open folder" "+" button), so the
-            toolbar never overlaps tabs even when they crowd the middle.
-            Zen mode hides this whole group; the MenuBar is also gated off
-            in zen, so dropping the sentinel is safe. The flex spacer below
-            keeps the right-group buttons (incl. Zen toggle) right-aligned. */}
-        {zenModeOn ? (
-          <div className="flex-1" />
-        ) : (
-        <div
-          ref={tabStripRef}
-          className="flex items-end flex-1 min-w-0 gap-0.5 px-2 self-stretch relative"
-          onDragOver={(e) => {
-            const types = e.dataTransfer.types;
-            let acceptable = false;
-            for (let i = 0; i < types.length; i++) {
-              if (types[i] === PAPER_DT_TYPE || types[i] === LIBRARY_DT_TYPE) {
-                acceptable = true;
-                break;
-              }
-            }
-            if (!acceptable) return;
-            e.preventDefault();
-            e.dataTransfer.dropEffect = "copy";
-            // Insertion index = first outer-tab whose midpoint is right of cursor.
-            let idx = outerOrder.length;
-            for (let i = 0; i < outerOrder.length; i++) {
-              const el = outerTabRefs.current.get(outerOrder[i]);
-              if (!el) continue;
-              const r = el.getBoundingClientRect();
-              if (e.clientX < r.left + r.width / 2) { idx = i; break; }
-            }
-            if (paperDropIndex !== idx) setPaperDropIndex(idx);
-          }}
-          onDragLeave={(e) => {
-            const next = e.relatedTarget as Node | null;
-            if (next && tabStripRef.current?.contains(next)) return;
-            setPaperDropIndex(null);
-          }}
-          onDrop={(e) => {
-            const citekey = e.dataTransfer.getData(PAPER_DT_TYPE);
-            const libId = e.dataTransfer.getData(LIBRARY_DT_TYPE);
-            if (!citekey && !libId) return;
-            e.preventDefault();
-            const dropIdx = paperDropIndex ?? outerOrder.length;
-            setPaperDropIndex(null);
-            if (citekey) {
-              // Paper tearout (move): close the donor inner tab first so
-              // the paper exists in only one place. The LibraryView
-              // listener writes its panel state to localStorage on the
-              // next render. We defer activating the new outer paper tab
-              // to the next macrotask so React processes the inner-tab
-              // close + persist BEFORE switching activePane to "paper"
-              // (which unmounts LibraryView and would otherwise drop the
-              // queued persist).
-              window.dispatchEvent(
-                new CustomEvent("virgil-library-close-paper-tab", {
-                  detail: { citekey },
-                }),
-              );
-              setTimeout(() => openPaperTab(citekey, dropIdx), 0);
-              return;
-            }
-            // Library copy: donor inner tab stays put. Just spawn the
-            // outer tab synchronously and activate it.
-            openLibraryOuterTab(libId, dropIdx);
-          }}
-        >
-          <TabPlusMenu
-            docs={docs}
-            openTabIds={openTabs.map((t) => t.id)}
-            onOpenRecent={openFile}
-            onOpenFolder={handleNativeOpen}
-            onCreateNew={() => setNewDocModal({ mode: "fresh" })}
-            onOpenNewWindow={openNewVirgilWindow}
-            devStorage={devStorage}
-          />
-          {(() => {
-            // Outer-tab strip render. Library root + the currently active
-            // entry render as full DocumentFolderTab silhouettes; every
-            // other entry collapses to a flat InlineTabLabel. A vertical
-            // separator slot sits between every pair of non-Library tabs
-            // and is only painted when both neighbors are inline — when
-            // one side is the active folder, the silhouette's edge takes
-            // the divider's job and we hide the line via `visibility`
-            // (without removing it from layout, so promoting/demoting a
-            // tab leaves the surrounding layout pixel-stable). Click an
-            // inline label to promote it; the previously active tab
-            // demotes back to inline. Order in `outerOrder` is preserved.
-            const tabNodes: ReactNode[] = [];
-            type PrevKind = "inline" | "folder" | null;
-            let prevKind: PrevKind = null;
-            const pushSeparator = (currentKind: "inline" | "folder", entryId: string) => {
-              if (prevKind !== null) {
-                const visible = prevKind === "inline" && currentKind === "inline";
-                tabNodes.push(<TabSeparator key={`sep-${entryId}`} visible={visible} />);
-              }
-            };
-            for (const entryId of outerOrder) {
-              if (entryId === OUTER_LIBRARY_ROOT_ID) {
-                const isActive =
-                  activePane === "library-outer" &&
-                  currentLibraryOuterId === OUTER_LIBRARY_ROOT_ID;
-                if (isActive) {
-                  pushSeparator("folder", entryId);
-                  tabNodes.push(
-                    <div
-                      key={entryId}
-                      ref={(el) => {
-                        if (el) outerTabRefs.current.set(entryId, el);
-                        else outerTabRefs.current.delete(entryId);
-                      }}
-                      className="flex items-end shrink-0"
-                    >
-                      <DocumentFolderTab
-                        active
-                        fill="var(--library-bg)"
-                        dataPrefs="libraryBg,topbarBorder"
-                        title="Library"
-                        onClick={() => {}}
-                      >
-                        <IconLibrary />
-                        <span className="text-[13px] leading-4 mr-2.5">Library</span>
-                      </DocumentFolderTab>
-                    </div>,
-                  );
-                  prevKind = "folder";
-                } else {
-                  pushSeparator("inline", entryId);
-                  tabNodes.push(
-                    <div
-                      key={entryId}
-                      ref={(el) => {
-                        if (el) outerTabRefs.current.set(entryId, el);
-                        else outerTabRefs.current.delete(entryId);
-                      }}
-                      className="self-center shrink-0"
-                    >
-                      <InlineTabLabel
-                        icon={<IconLibrary />}
-                        label="Library"
-                        title="Library"
-                        variant="library-pinned"
-                        onClick={() =>
-                          activateLibraryOuterPane(OUTER_LIBRARY_ROOT_ID)
-                        }
-                      />
-                    </div>,
-                  );
-                  prevKind = "inline";
-                }
-                continue;
-              }
-
-              if (entryId.startsWith(OUTER_PAPER_PREFIX)) {
-                const citekey = entryId.slice(OUTER_PAPER_PREFIX.length);
-                const isActive =
-                  activePane === "paper" && currentPaperCitekey === citekey;
-                if (isActive) {
-                  pushSeparator("folder", entryId);
-                  tabNodes.push(
-                    <div
-                      key={entryId}
-                      ref={(el) => {
-                        if (el) outerTabRefs.current.set(entryId, el);
-                        else outerTabRefs.current.delete(entryId);
-                      }}
-                      className="flex items-end shrink-0"
-                      style={{
-                        marginLeft: -ACTIVE_TAB_LEFT_SHIFT_PX,
-                        marginRight: -ACTIVE_TAB_RIGHT_SHIFT_PX,
-                      }}
-                    >
-                      <DocumentFolderTab
-                        active
-                        fill="var(--background)"
-                        dataPrefs="background,topbarBorder"
-                        title={citekey}
-                        onClick={() => {}}
-                      >
-                        <span
-                          className="text-[13px] leading-4 truncate min-w-0"
-                          style={{ fontFamily: "var(--mono)" }}
-                        >
-                          {citekey}
-                        </span>
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            closePaperTab(citekey);
-                          }}
-                          className="topbarbtn topbarbtn-icon"
-                          data-hint="Close tab"
-                        >
-                          <IconX />
-                        </button>
-                      </DocumentFolderTab>
-                    </div>,
-                  );
-                  prevKind = "folder";
-                } else {
-                  pushSeparator("inline", entryId);
-                  tabNodes.push(
-                    <div
-                      key={entryId}
-                      ref={(el) => {
-                        if (el) outerTabRefs.current.set(entryId, el);
-                        else outerTabRefs.current.delete(entryId);
-                      }}
-                      className="self-center shrink-0"
-                    >
-                      <InlineTabLabel
-                        label={citekey}
-                        title={citekey}
-                        monospace
-                        onClick={() => activatePaperPane(citekey)}
-                        onClose={() => closePaperTab(citekey)}
-                      />
-                    </div>,
-                  );
-                  prevKind = "inline";
-                }
-                continue;
-              }
-
-              if (entryId.startsWith(OUTER_LIBRARY_PREFIX)) {
-                const libId = entryId.slice(OUTER_LIBRARY_PREFIX.length);
-                const isActive =
-                  activePane === "library-outer" && currentLibraryOuterId === libId;
-                const lib = libraryRegistry.get(libId);
-                const label = lib?.label ?? libId;
-                // Entry drops are accepted on custom libraries only —
-                // Central / Project / paper compute their membership and
-                // can't be appended to. (Mirrors useLibraryTabs's
-                // addEntryToLibrary guard.)
-                const acceptsEntryDrop = lib?.kind === "custom";
-                const isEntryDropTarget =
-                  acceptsEntryDrop && entryDropOuterLibId === libId;
-                const dropHandlers = {
-                  onDragOver: (e: React.DragEvent<HTMLDivElement>) => {
-                    if (!acceptsEntryDrop) return;
-                    const types = e.dataTransfer.types;
-                    let hasEntry = false;
-                    for (let i = 0; i < types.length; i++) {
-                      if (types[i] === ENTRY_DT_TYPE) { hasEntry = true; break; }
-                    }
-                    if (!hasEntry) return;
-                    e.preventDefault();
-                    e.stopPropagation(); // beat the strip-level paper-tab handler
-                    e.dataTransfer.dropEffect = "copy";
-                    if (entryDropOuterLibId !== libId) setEntryDropOuterLibId(libId);
-                  },
-                  onDragLeave: (e: React.DragEvent<HTMLDivElement>) => {
-                    const next = e.relatedTarget as Node | null;
-                    if (next && (e.currentTarget as HTMLElement).contains(next)) return;
-                    if (entryDropOuterLibId === libId) setEntryDropOuterLibId(null);
-                  },
-                  onDrop: (e: React.DragEvent<HTMLDivElement>) => {
-                    if (!acceptsEntryDrop) return;
-                    const entryKey = e.dataTransfer.getData(ENTRY_DT_TYPE);
-                    if (!entryKey) return;
-                    e.preventDefault();
-                    e.stopPropagation();
-                    setEntryDropOuterLibId(null);
-                    addEntryToLibraryGlobal(libId, entryKey);
-                  },
-                };
-                const dropStyle = {
-                  outline: isEntryDropTarget
-                    ? "2px solid var(--accent)"
-                    : undefined,
-                  outlineOffset: isEntryDropTarget ? -2 : undefined,
-                  borderRadius: isEntryDropTarget ? 8 : undefined,
-                  background: isEntryDropTarget
-                    ? "var(--accent-light)"
-                    : undefined,
-                };
-                if (isActive) {
-                  pushSeparator("folder", entryId);
-                  tabNodes.push(
-                    <div
-                      key={entryId}
-                      ref={(el) => {
-                        if (el) outerTabRefs.current.set(entryId, el);
-                        else outerTabRefs.current.delete(entryId);
-                      }}
-                      className="flex items-end shrink-0"
-                      {...dropHandlers}
-                      style={{
-                        ...dropStyle,
-                        marginLeft: -ACTIVE_TAB_LEFT_SHIFT_PX,
-                        marginRight: -ACTIVE_TAB_RIGHT_SHIFT_PX,
-                      }}
-                    >
-                      <DocumentFolderTab
-                        active
-                        fill="var(--library-bg)"
-                        dataPrefs="libraryBg,topbarBorder"
-                        title={label}
-                        onClick={() => {}}
-                      >
-                        <IconLibrary />
-                        <span className="text-[13px] leading-4 truncate min-w-0">
-                          {label}
-                        </span>
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            closeLibraryOuterTab(libId);
-                          }}
-                          className="topbarbtn topbarbtn-icon"
-                          data-hint="Close tab"
-                        >
-                          <IconX />
-                        </button>
-                      </DocumentFolderTab>
-                    </div>,
-                  );
-                  prevKind = "folder";
-                } else {
-                  pushSeparator("inline", entryId);
-                  tabNodes.push(
-                    <div
-                      key={entryId}
-                      ref={(el) => {
-                        if (el) outerTabRefs.current.set(entryId, el);
-                        else outerTabRefs.current.delete(entryId);
-                      }}
-                      className="self-center shrink-0"
-                      {...dropHandlers}
-                      style={dropStyle}
-                    >
-                      <InlineTabLabel
-                        icon={<IconLibrary />}
-                        label={label}
-                        title={label}
-                        onClick={() => activateLibraryOuterPane(libId)}
-                        onClose={() => closeLibraryOuterTab(libId)}
-                      />
-                    </div>,
-                  );
-                  prevKind = "inline";
-                }
-                continue;
-              }
-
-              const doc = docs.find((d) => d.id === entryId);
-              if (!doc) continue;
-              const isCurrentDoc = doc.id === currentDocId;
-              const isDocPaneActive = isCurrentDoc && activePane === "doc";
-              const composedDefault = `${doc.folderName}: ${doc.texFilename}`;
-              const displayName =
-                doc.name && doc.name !== doc.folderName ? doc.name : composedDefault;
-              if (isDocPaneActive) {
-                const isEditing = editingTabId === doc.id;
-                const commit = () => {
-                  const next = nameInput.trim();
-                  if (next && next !== displayName) renameFile(doc.id, next);
-                  setEditingTabId(null);
-                };
-                pushSeparator("folder", doc.id);
-                tabNodes.push(
-                  <div
-                    key={doc.id}
-                    ref={(el) => {
-                      if (el) outerTabRefs.current.set(doc.id, el);
-                      else outerTabRefs.current.delete(doc.id);
-                    }}
-                    className="flex items-end shrink-0"
-                    style={{
-                      marginLeft: -ACTIVE_TAB_LEFT_SHIFT_PX,
-                      marginRight: -ACTIVE_TAB_RIGHT_SHIFT_PX,
-                    }}
-                  >
-                    <DocumentFolderTab
-                      active
-                      fill="var(--main-tab-bg)"
-                      dataPrefs="backgroundColor,topbarBorder"
-                      title={displayName}
-                      onClick={() => {
-                        if (isEditing) return;
-                      }}
-                    >
-                      {isEditing ? (
-                        <input
-                          ref={nameInputRef}
-                          type="text"
-                          value={nameInput}
-                          size={Math.max(nameInput.length + 1, 8)}
-                          onChange={(e) => setNameInput(e.target.value)}
-                          onClick={(e) => e.stopPropagation()}
-                          onDoubleClick={(e) => e.stopPropagation()}
-                          onKeyDown={(e) => {
-                            if (e.key === "Enter") {
-                              e.preventDefault();
-                              commit();
-                            } else if (e.key === "Escape") {
-                              e.preventDefault();
-                              setEditingTabId(null);
-                            }
-                          }}
-                          onBlur={commit}
-                          className="text-[13px] leading-4 bg-transparent outline-none border-b border-ink-muted min-w-0 px-0"
-                        />
-                      ) : (
-                        <span
-                          className="text-[13px] leading-4 truncate min-w-0"
-                          onDoubleClick={(e) => {
-                            e.stopPropagation();
-                            setNameInput(displayName);
-                            setEditingTabId(doc.id);
-                          }}
-                        >
-                          {displayName}
-                        </span>
-                      )}
-                      <button
-                        onClick={(e) => { e.stopPropagation(); closeTab(doc.id); }}
-                        className="topbarbtn topbarbtn-icon"
-                        data-hint="Close tab"
-                      >
-                        <IconX />
-                      </button>
-                    </DocumentFolderTab>
-                  </div>,
-                );
-                prevKind = "folder";
-              } else {
-                pushSeparator("inline", doc.id);
-                tabNodes.push(
-                  <div
-                    key={doc.id}
-                    ref={(el) => {
-                      if (el) outerTabRefs.current.set(doc.id, el);
-                      else outerTabRefs.current.delete(doc.id);
-                    }}
-                    className="self-center shrink-0"
-                  >
-                    <InlineTabLabel
-                      label={displayName}
-                      title={displayName}
-                      onClick={() => activateDocPane(doc.id)}
-                      onClose={() => closeTab(doc.id)}
-                    />
-                  </div>,
-                );
-                prevKind = "inline";
-              }
-            }
-            return tabNodes;
-          })()}
-          {paperDropIndex !== null && (
-            <PaperDropIndicator
-              stripEl={tabStripRef.current}
-              tabRefs={outerTabRefs.current}
-              order={outerOrder}
-              index={paperDropIndex}
-            />
-          )}
-          {/* Zero-width sentinel marking the end of the top-bar's left
-              content (tabs + logo + "+" button). The floating MenuBar's
-              home position uses this x-coordinate as its left clamp —
-              measuring the flex-1 parent's right edge would be wrong
-              because flex-1 expands to fill the whole middle gap. */}
-        </div>
-        )}
-
-        <div className="shrink-0 flex items-center px-2">
-          {/* Service-worker update banner. Visible whenever a new SW
-              has installed and is waiting (see public/sw.js +
-              ServiceWorkerRegistration.tsx). Click → posts SKIP_WAITING
-              → SW activates → controllerchange fires → page reloads
-              and pulls the new skill bundle into folders on next open.
-              Sits before the topbarRightCollapsed gate so an update
-              prompt isn't hidden by the user's collapsed-right setting. */}
-          {updateAvailable && (
-            <button
-              onClick={applyUpdate}
-              className="topbarbtn"
-              data-hint="Virgil update"
-            >
-              <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M2.5 8a5.5 5.5 0 0 1 9.4-3.9L13.5 5.5" />
-                <path d="M13.5 2.5v3h-3" />
-                <path d="M13.5 8a5.5 5.5 0 0 1-9.4 3.9L2.5 10.5" />
-                <path d="M2.5 13.5v-3h3" />
-              </svg>
-              Virgil update — click to refresh
-            </button>
-          )}
-          {/* Skill-bundle sync surface — a failed/stale skill sync must
-              never again silently strand a paper on old skills. Sits
-              before the topbarRightCollapsed gate (like the Virgil-update
-              banner) so a sync failure can't be hidden by a collapsed
-              right toolbar. Pure UI: no per-keystroke work. */}
-          <SkillSyncControls
-            hasDoc={!!currentDoc}
-            error={skillSyncError}
-            notice={skillSyncNotice}
-            onResync={() => void resyncSkills()}
-            onDismissError={dismissSkillSyncError}
-            onDismissNotice={dismissSkillSyncNotice}
-          />
-          {!prefs.topbarRightCollapsed && (<>
-          {/* ── Status-indicator group (left of divider) ───────────────
-              Passive indicators for system-wide modes that are
-              activated elsewhere (Focus from card actions, Helper from
-              the "?" menu, Collab from the icon button on the right).
-              Each entry doubles as the off-toggle for its mode. Stays
-              empty when nothing's active. Suppressed in zen mode. */}
-          {!zenModeOn && (
-            <div className="flex items-center">
-              {/* Reporter: a provider-descendant that lifts the badge-active
-                  boolean up into EditorLayout so the divider gate can OR it in.
-                  Renders nothing itself. */}
-              <ExternalChangeActiveReporter onActiveChange={setExternalChangeActive} />
-              {focusMode.state.active && (
-                <button
-                  onClick={focusMode.deactivate}
-                  className="topbarbtn"
-                  aria-pressed="true"
-                  data-hint="Focus view"
-                >
-                  <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
-                    <circle cx="8" cy="8" r="2.25" />
-                    <path d="M8 2.5v1.5M8 12v1.5M2.5 8H4M12 8h1.5" />
-                  </svg>
-                  Focus view
-                </button>
-              )}
-              {helperMode.on && (
-                <button
-                  onClick={helperMode.toggle}
-                  className="topbarbtn"
-                  aria-pressed="true"
-                  data-hint="Exit helper mode"
-                >
-                  <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
-                    <circle cx="8" cy="8" r="6" />
-                    <path d="M5.8 6.2a2.2 2.2 0 0 1 4.08.8c0 1.2-1.68 1.6-1.68 1.6" />
-                    <circle cx="8" cy="11.5" r="0.3" fill="currentColor" stroke="none" />
-                  </svg>
-                  Helper mode
-                </button>
-              )}
-              {collab.enabled && collabBadge}
-              {/* External-change badge — self-gates (renders null when
-                  severity == null), so it's mounted unconditionally inside the
-                  cluster. Sits left of the divider, beside the collab pill. */}
-              <ExternalChangeBadge />
-            </div>
-          )}
-          {/* Divider — only shown when there's at least one status
-              marker on the left, so the line reads as a real
-              boundary between markers and standard buttons. With no
-              markers, the standard cluster simply starts at the
-              edge. Uses the same stronger edge color as the tab
-              separators. Suppressed in zen mode regardless. */}
-          {!zenModeOn && (focusMode.state.active || helperMode.on || collab.enabled || externalChangeActive) && (
-            <span
-              aria-hidden
-              className="self-center h-5 w-px mx-2"
-              style={{ background: "var(--edge-strong, #a8a29e)" }}
-            />
-          )}
-          {/* Zen mode toggle — render-gates editor chrome (icon
-              strips, panel columns, floating MenuBar, marginalia,
-              popped-out panels/cards) so the document area stands
-              alone. Top bar stays visible so this button is always
-              reachable. Sits at the leftmost of the standard-buttons
-              group (right of the divider) so Zen sequences with the
-              collab icon and other modal toggles. */}
-          <button
-            onClick={handleToggleZen}
-            className="topbarbtn"
-            aria-pressed={zenModeOn}
-            data-hint="Zen mode"
-          >
-            Zen
-          </button>
-          {!zenModeOn && (<>
-          {/* ── Preference Mode toggle ─────────────────────────────────
-              Flips the global preference-mode state. When on, every DOM
-              element with `data-prefs="<pref-key>"` becomes ctrl+clickable
-              and opens a picker showing just those preference entries.
-
-              Related files (keep in sync):
-                - src/hooks/usePreferenceMode.ts   — state + architecture guide
-                - src/components/PreferenceModePicker.tsx — picker + ctrl+click listener
-                - src/app/globals.css "Preference mode" — hover outline rule
-
-              The active-state styling matches the AI-requests button
-              directly below: accent text/bg when on, subtle ink-subtle
-              when off. Keep them visually parallel if you restyle either.
-
-              To move / restyle this button without changing its behaviour,
-              edit this JSX only. Don't hardcode the on/off logic anywhere
-              else — always drive it through usePreferenceMode(). */}
-          {collabIconBtn}
-          <button
-            onClick={() => setPreferencesOpen((v) => !v)}
-            className="topbarbtn"
-            aria-pressed={preferencesOpen}
-            data-hint="Preferences"
-          >
-            {/* Painter's palette icon — solid silhouette with the classic
-                thumb-hole cutout on the right and four color wells punched
-                through via fill-rule="evenodd". */}
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
-              <path fillRule="evenodd" clipRule="evenodd" d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10c1.1 0 2-.9 2-2 0-.52-.2-.97-.54-1.32-.34-.36-.54-.82-.54-1.33 0-1.1.9-2 2-2h2.35C19.93 15.35 22 13.24 22 10.65 22 5.88 17.52 2 12 2zM6.5 12a1.5 1.5 0 1 1 0-3 1.5 1.5 0 0 1 0 3zm3-4a1.5 1.5 0 1 1 0-3 1.5 1.5 0 0 1 0 3zm5 0a1.5 1.5 0 1 1 0-3 1.5 1.5 0 0 1 0 3zm3 4a1.5 1.5 0 1 1 0-3 1.5 1.5 0 0 1 0 3z" />
-            </svg>
-          </button>
-          <div className="relative">
-            <button
-              ref={helperBtnRef}
-              onClick={(e) => { e.stopPropagation(); setHelperMenuOpen((v) => !v); }}
-              className="topbarbtn"
-              data-hint="Help"
-            >
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <circle cx="12" cy="12" r="10" />
-                <path d="M9.5 9a2.75 2.75 0 0 1 5.25 1.1c0 1.6-2.25 2.4-2.75 3.4" />
-                <path d="M12 17h.01" />
-              </svg>
-            </button>
-            {helperMenuOpen && typeof document !== "undefined" && createPortal(
-              <div
-                ref={helperPositionRef}
-                className="bg-surface border border-edge-subtle rounded shadow-md text-xs text-ink-body whitespace-nowrap text-left min-w-[160px]"
-                style={{ ...helperPositionStyle, zIndex: OPEN_CHROME_MENU_Z }}
-                onClick={(e) => e.stopPropagation()}
-                onMouseLeave={() => setCommandsPopoutOpen(false)}
-              >
-                <div className="px-3 py-2">
-                  <div className="font-medium text-ink-body mb-0.5">Version</div>
-                  <div>Virgil v{APP_VERSION}</div>
-                </div>
-                <div className="border-t border-edge-subtle" />
-                <div
-                  className="relative flex items-center justify-between px-3 py-2 cursor-default hover-on-light"
-                  onMouseEnter={() => setCommandsPopoutOpen(true)}
-                >
-                  <span className="font-medium text-ink-body">Commands</span>
-                  <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-ink-muted">
-                    <polyline points="9 18 15 12 9 6" />
-                  </svg>
-                  {commandsPopoutOpen && (
-                    <div
-                      className="absolute left-full top-0 ml-1 bg-surface border border-edge-subtle rounded shadow-md text-xs text-ink-body py-1 min-w-[160px]"
-                      onClick={(e) => e.stopPropagation()}
-                    >
-                      {VIRGIL_COMMAND_NAMES.map((name) => (
-                        <button
-                          key={name}
-                          onClick={() => insertVirgilCommand(name)}
-                          className="block w-full text-left px-3 py-1 font-mono text-ink-body hover-on-light"
-                        >
-                          {`\\${name}`}
-                        </button>
-                      ))}
-                      <div className="border-t border-edge-subtle mt-1 pt-1.5 pb-1 px-3 text-[10px] text-ink-muted flex items-center gap-1">
-                        <span>Type text +</span>
-                        <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                          <polyline points="9 10 4 15 9 20" />
-                          <path d="M20 4v7a4 4 0 0 1-4 4H4" />
-                        </svg>
-                      </div>
-                    </div>
-                  )}
-                </div>
-                <div className="border-t border-edge-subtle" />
-                <button
-                  onClick={() => { helperMode.toggle(); setHelperMenuOpen(false); }}
-                  className="w-full text-left px-3 py-2 hover-on-light flex items-center justify-between gap-3"
-                >
-                  <span>Helper mode</span>
-                  <span className="text-[var(--accent)]">{helperMode.on ? "✓" : ""}</span>
-                </button>
-              </div>,
-              document.body,
-            )}
-          </div>
-          {/* Print — opens a dialog with toggles for which document
-              elements and panel appendices to include, then hands off
-              to the browser's native print sheet. Cmd/Ctrl+P routes to
-              the same dialog. Disabled in code view (CodeMirror's
-              virtualized rendering doesn't paginate cleanly). Mode
-              toggle: aria-pressed while the dialog is open; clicking
-              again closes it. */}
-          <button
-            onClick={() => setPrintOpen((v) => !v)}
-            disabled={!currentDocId || codeView || pdfView}
-            className="topbarbtn"
-            aria-pressed={printOpen}
-            data-hint="Print"
-          >
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <polyline points="6 9 6 2 18 2 18 9" />
-              <path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2" />
-              <rect x="6" y="14" width="12" height="8" />
-            </svg>
-          </button>
-          {/* AI request — sun-star: eight equal-length rays meeting
-              at the center. Cardinal lines span 20 units (2→22);
-              diagonals span ~20 units using 12 ± 7.07 ≈ 4.93/19.07.
-              Mode toggle: clicking again closes the window. */}
-          <button
-            onClick={() => setAiWindowOpen((v) => !v)}
-            className="topbarbtn relative"
-            aria-pressed={aiWindowOpen}
-            data-hint="AI requests"
-          >
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-              <g transform="rotate(15 12 12)">
-                {/* Cardinals */}
-                <line x1="12" y1="2" x2="12" y2="22" />
-                <line x1="2" y1="12" x2="22" y2="12" />
-                {/* Diagonals (length 10 each half = matches cardinals) */}
-                <line x1="4.93" y1="4.93" x2="19.07" y2="19.07" />
-                <line x1="19.07" y1="4.93" x2="4.93" y2="19.07" />
-              </g>
-            </svg>
-            {vbar.aiDot && (
-              <span
-                className="absolute top-0 right-0 w-1.5 h-1.5 rounded-full"
-                style={{
-                  backgroundColor:
-                    vbar.aiDot === "red" ? "#ef4444"
-                    : vbar.aiDot === "green" ? "#22c55e"
-                    : "#eab308",
-                }}
-              />
-            )}
-          </button>
-          {/* ── Document style ─────────────────────────────────────────
-              Mode toggle: opens ManageStylesModal where the user can
-              apply a style to the active doc, edit/rename/delete
-              library entries, save the current preamble as a new
-              style, and add new entries. aria-pressed mirrors the
-              modal's open state. */}
-          <button
-            onClick={() => setManageStylesOpen((v) => !v)}
-            disabled={!currentDocId}
-            className="topbarbtn"
-            aria-pressed={manageStylesOpen}
-            data-hint="Document style"
-          >
-            Style
-          </button>
-          {/* Code view toggle — reads local `codeView` (not
-              `vbar.codeView`) because EditorPane unmounts in code
-              view, leaving paneState's mirror stale. `toggleCodeView`
-              dispatches to the correct switchTo/switchFrom internally. */}
-          <button
-            onClick={toggleCodeView}
-            className="topbarbtn"
-            aria-pressed={codeView}
-            data-hint="Code"
-          >
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <polyline points="16 18 22 12 16 6" />
-              <polyline points="8 6 2 12 8 18" />
-              <line x1="14.5" y1="4" x2="9.5" y2="20" />
-            </svg>
-            Code
-          </button>
-          {/* Compile — runs SwiftLaTeX's pdfTeX over the paper folder and
-              saves the resulting PDF to the paper folder. Disabled while a
-              compile is in flight; spinner replaces the play-triangle. */}
-          <button
-            onClick={vbar.compilePdf}
-            disabled={!currentDocId || vbar.isCompiling}
-            className="topbarbtn"
-            data-hint="Compile"
-          >
-            {vbar.isCompiling ? (
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="animate-spin">
-                <path d="M21 12a9 9 0 1 1-6.219-8.56" />
-              </svg>
-            ) : (
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" stroke="none">
-                <polygon points="6 4 20 12 6 20 6 4" />
-              </svg>
-            )}
-            Compile
-          </button>
-          {/* PDF view toggle — same indirection trap as code view:
-              EditorPane unmounts in PDF view so paneState's mirror
-              goes stale. Read local `pdfView` directly. */}
-          <button
-            onClick={togglePdfView}
-            disabled={!currentDocId}
-            className="topbarbtn"
-            aria-pressed={pdfView}
-            data-hint={pdfView ? "Back to editor" : "View PDF"}
-          >
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
-              <polyline points="14 2 14 8 20 8" />
-            </svg>
-            PDF
-            {vbar.pdfStale && pdfView && (
-              <span className="w-1.5 h-1.5 rounded-full bg-yellow-500 ml-1" data-hint="PDF is out of date" aria-label="PDF is out of date" />
-            )}
-          </button>
-          </>)}
-          </>)}
-          {/* Collapse toggle — always rendered. Hides everything to its
-              left in this cluster (modes section, divider, icon/text
-              buttons, Zen) so the document area can breathe. State is
-              per-window via useViewPrefs. The chevron flips direction so
-              the button reads as "collapse to right" or "expand from
-              right" depending on state. */}
-          <button
-            onClick={() => setTopbarRightCollapsed((v) => !v)}
-            className="topbarbtn"
-            aria-pressed={prefs.topbarRightCollapsed}
-            aria-label={prefs.topbarRightCollapsed ? "Expand toolbar" : "Collapse toolbar"}
-            data-hint="Collapse toolbar"
-          >
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              {prefs.topbarRightCollapsed ? (
-                <>
-                  <polyline points="11 17 6 12 11 7" />
-                  <polyline points="18 17 13 12 18 7" />
-                </>
-              ) : (
-                <>
-                  <polyline points="13 17 18 12 13 7" />
-                  <polyline points="6 17 11 12 6 7" />
-                </>
-              )}
-            </svg>
-          </button>
-        </div>
-      </div>
+      {/* Top bar: logo + tabs + right-side status/action cluster.
+          Extracted into the memoized <TopBar> (with its memoized <TabStrip>
+          and <StatusCluster> children) so background paneState ticks no
+          longer re-execute the whole bar JSX tree. All invariants
+          (data-prefs/data-bar-h attrs, zen gating, the tab strip ref +
+          drag/drop, the MenuBar docking sentinel) live inside those
+          components verbatim. */}
+      <TopBar
+        zenModeOn={zenModeOn}
+        tabStrip={tabStripProps}
+        statusCluster={statusClusterProps}
+      />
 
       {/* Per-doc permission gate. When the active doc's folder handle
           needs a fresh readwrite grant, we replace everything below the
@@ -4838,90 +4092,4 @@ export default function EditorLayout() {
     </EditorRefProvider>
     </EditorLayoutProvider>
   );
-}
-
-/**
- * Vertical line marking the insertion point during a paper-tab drag
- * onto the Virgil bar. Mirrors the inner library strip's drop indicator
- * shape (2px accent line) but positioned inside the outer tab strip.
- */
-function PaperDropIndicator({
-  stripEl,
-  tabRefs,
-  order,
-  index,
-}: {
-  stripEl: HTMLDivElement | null;
-  tabRefs: Map<string, HTMLElement>;
-  order: string[];
-  index: number;
-}) {
-  if (!stripEl) return null;
-  const stripRect = stripEl.getBoundingClientRect();
-  let x: number;
-  if (order.length === 0) {
-    x = 4;
-  } else if (index <= 0) {
-    const first = tabRefs.get(order[0]);
-    x = first ? first.getBoundingClientRect().left - stripRect.left - 1 : 4;
-  } else if (index >= order.length) {
-    const last = tabRefs.get(order[order.length - 1]);
-    x = last ? last.getBoundingClientRect().right - stripRect.left + 1 : 4;
-  } else {
-    const left = tabRefs.get(order[index - 1]);
-    const right = tabRefs.get(order[index]);
-    if (left && right) {
-      const lr = left.getBoundingClientRect();
-      const rr = right.getBoundingClientRect();
-      x = (lr.right + rr.left) / 2 - stripRect.left - 1;
-    } else {
-      x = 4;
-    }
-  }
-  return (
-    <div
-      style={{
-        position: "absolute",
-        top: 4,
-        bottom: 0,
-        left: x,
-        width: 2,
-        background: "var(--accent)",
-        borderRadius: 1,
-        pointerEvents: "none",
-        zIndex: 30,
-      }}
-    />
-  );
-}
-
-/**
- * ExternalChangeActiveReporter — a headless reporter that lifts the
- * external-change badge's "is anything showing?" boolean up into EditorLayout.
- *
- * EditorLayout's own body sits ABOVE the DiskWatcherProvider in the React tree,
- * so it can't call `useExternalChanges()` to gate the topbar divider. This tiny
- * component IS a provider descendant (it renders inside the status cluster), so
- * it can read the live state via `useExternalChangesOrNull` (nullable — works
- * with no doc/provider) and push `state.severity != null` up through
- * `onActiveChange`. Renders nothing.
- *
- * KEYSTROKE SANCTITY: it reads `useSyncExternalStore` over the watcher's stable
- * snapshot — NOT any editor subscription — and fires `onActiveChange` only when
- * the boolean flips. Zero per-keystroke work.
- */
-function ExternalChangeActiveReporter({
-  onActiveChange,
-}: {
-  onActiveChange: (active: boolean) => void;
-}): null {
-  const { state } = useExternalChangesOrNull();
-  const active = state.severity != null;
-  useEffect(() => {
-    onActiveChange(active);
-  }, [active, onActiveChange]);
-  // Reset the lifted boolean when this reporter unmounts (e.g. the topbar-right
-  // cluster collapses), so a stale `true` can't outlive the live state.
-  useEffect(() => () => onActiveChange(false), [onActiveChange]);
-  return null;
 }

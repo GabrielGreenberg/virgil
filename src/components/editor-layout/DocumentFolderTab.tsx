@@ -1,6 +1,6 @@
 "use client";
 
-import { type ReactNode, useLayoutEffect, useRef, useState } from "react";
+import { memo, type ReactNode, useLayoutEffect, useRef, useState } from "react";
 import { buildActiveTabStrokePath, buildTabFillPath } from "./folder-path";
 
 const R = 10;
@@ -34,7 +34,7 @@ type Props = {
  * Auto-measures content width with a ResizeObserver so labels of varying
  * lengths produce correctly-sized SVG paths.
  */
-export function DocumentFolderTab({
+function DocumentFolderTabImpl({
   active,
   fill,
   onClick,
@@ -137,3 +137,5 @@ export function DocumentFolderTab({
     </div>
   );
 }
+
+export const DocumentFolderTab = memo(DocumentFolderTabImpl);

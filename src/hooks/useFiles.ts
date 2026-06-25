@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback, useEffect, useRef } from "react";
+import { useState, useCallback, useEffect, useMemo, useRef } from "react";
 import {
   listDocs,
   createDocFromPicker,
@@ -729,9 +729,18 @@ export function useFiles() {
   }, []);
 
   const currentDoc = docs.find((d) => d.id === currentDocId) || null;
-  const openTabs = openTabIds
-    .map((id) => docs.find((d) => d.id === id))
-    .filter(Boolean) as FsaDocMeta[];
+  // Memoized so its identity is stable across renders where neither the open
+  // set nor the doc list changed. The top bar's memoized <TabStrip> derives
+  // `openTabIds` from this; a fresh array every render would defeat that memo
+  // and re-render the whole tab strip on every unrelated EditorLayout tick
+  // (e.g. the keep-alive paneState bubble cascade during a paper switch).
+  const openTabs = useMemo(
+    () =>
+      openTabIds
+        .map((id) => docs.find((d) => d.id === id))
+        .filter(Boolean) as FsaDocMeta[],
+    [openTabIds, docs],
+  );
 
   // ───────────────────────────────────────────────────────────────────
   // Paper outer-tabs (Virgil bar)
