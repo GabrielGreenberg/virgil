@@ -1,5 +1,6 @@
 "use client";
 
+import { memo } from "react";
 import type { SkillSyncError, SkillSyncNotice } from "@/hooks/useFiles";
 
 interface Props {
@@ -34,7 +35,7 @@ const PILL: React.CSSProperties = {
  * per-keystroke work (keystroke-sanctity, AGENTS.md). All three pieces
  * are sync-time / explicit-click driven.
  */
-export default function SkillSyncControls({
+function SkillSyncControls({
   hasDoc,
   error,
   notice,
@@ -191,3 +192,5 @@ export default function SkillSyncControls({
     </>
   );
 }
+
+export default memo(SkillSyncControls);

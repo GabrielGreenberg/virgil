@@ -33,6 +33,7 @@
  */
 
 import {
+  memo,
   useCallback,
   useRef,
   useState,
@@ -170,7 +171,7 @@ function MenuRow({
   );
 }
 
-export default function ExternalChangeBadge() {
+function ExternalChangeBadge() {
   // Nullable variants: the badge renders in the topbar even on the no-document
   // landing screen, where DiskWatcherProviderGate mounts NO provider (it needs a
   // real docId). The throwing hooks here crashed the whole app on that boot path
@@ -404,3 +405,5 @@ function PausedDot() {
     />
   );
 }
+
+export default memo(ExternalChangeBadge);

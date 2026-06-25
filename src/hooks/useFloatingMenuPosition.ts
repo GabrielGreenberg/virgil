@@ -370,16 +370,25 @@ export function useFloatingMenuPosition(
     };
   }, [tracking]);
 
-  const style: CSSProperties = pos
-    ? {
-        position: "fixed",
-        left: pos.left,
-        top: pos.top,
-        ...(clampHeight !== null
-          ? { maxHeight: clampHeight, overflowY: "auto" as const }
-          : null),
-      }
-    : { position: "fixed", left: 0, top: 0, visibility: "hidden" };
+  // Memoized so the returned `style` keeps a stable identity across renders
+  // where the computed position/clamp didn't change. An un-memoized fresh
+  // object every render churns every consumer's memo (e.g. EditorLayout's
+  // memoized status cluster reads the Help menu's position style), defeating
+  // the bail on unrelated ticks.
+  const style: CSSProperties = useMemo(
+    () =>
+      pos
+        ? {
+            position: "fixed",
+            left: pos.left,
+            top: pos.top,
+            ...(clampHeight !== null
+              ? { maxHeight: clampHeight, overflowY: "auto" as const }
+              : null),
+          }
+        : { position: "fixed", left: 0, top: 0, visibility: "hidden" },
+    [pos?.left, pos?.top, clampHeight],
+  );
 
   return { ref: setRef, style };
 }

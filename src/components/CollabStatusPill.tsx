@@ -20,7 +20,7 @@
  *   when collab is off.
  */
 
-import { useEffect, useRef, useState } from "react";
+import { memo, useEffect, useRef, useState } from "react";
 import { formatRelativeShort } from "@/lib/collab";
 import type { CollabHook } from "@/hooks/useCollab";
 
@@ -59,7 +59,7 @@ function CollaboratorsIcon() {
   );
 }
 
-export default function CollabStatusPill({
+function CollabStatusPill({
   collab,
   onEnableRequest,
   onEditIdentity,
@@ -208,3 +208,5 @@ export default function CollabStatusPill({
     </div>
   );
 }
+
+export default memo(CollabStatusPill);
