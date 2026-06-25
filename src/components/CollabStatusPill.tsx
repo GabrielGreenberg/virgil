@@ -22,10 +22,9 @@
 
 import { memo, useEffect, useRef, useState } from "react";
 import { formatRelativeShort } from "@/lib/collab";
-import type { CollabHook } from "@/hooks/useCollab";
+import { useCollabContext } from "@/hooks/useCollab";
 
 interface CollabStatusPillProps {
-  collab: CollabHook;
   /** Called when the user wants to set up / enter collaborator mode. */
   onEnableRequest: () => void;
   /** Called when the user wants to edit their identity. */
@@ -60,12 +59,15 @@ function CollaboratorsIcon() {
 }
 
 function CollabStatusPill({
-  collab,
   onEnableRequest,
   onEditIdentity,
   onDisable,
   variant,
 }: CollabStatusPillProps) {
+  // Read collab from the shared context (CollabProvider) rather than a prop:
+  // it lets the owning StatusCluster bail on collab pen/presence ticks (frequent
+  // during active collaboration) — only this memoized pill re-renders.
+  const collab = useCollabContext();
   const [menuOpen, setMenuOpen] = useState(false);
   const ref = useRef<HTMLDivElement | null>(null);
 

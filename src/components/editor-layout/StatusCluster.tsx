@@ -7,7 +7,6 @@ import {
   type SetStateAction,
 } from "react";
 import { createPortal } from "react-dom";
-import type { CollabHook } from "@/hooks/useCollab";
 import type { SkillSyncError, SkillSyncNotice } from "@/hooks/useFiles";
 import { VIRGIL_COMMAND_NAMES } from "@/lib/tiptap-extensions";
 import { applyUpdate } from "@/hooks/useUpdateAvailable";
@@ -27,7 +26,10 @@ export type StatusClusterVBar = {
 
 export type StatusClusterProps = {
   vbar: StatusClusterVBar;
-  collab: CollabHook;
+  /** Whether collab mode is on (for the badge/marker conditionals). The live
+   *  collab object itself is read from CollabContext by CollabStatusPill, so a
+   *  collab pen/presence tick re-renders only the pill, not this whole cluster. */
+  collabEnabled: boolean;
 
   // Whether the bar's owning layout is in zen mode (suppresses status markers
   // + the divider + the prefs/help/print/etc. button group).
@@ -92,7 +94,7 @@ export type StatusClusterProps = {
 function StatusClusterImpl(props: StatusClusterProps) {
   const {
     vbar,
-    collab,
+    collabEnabled,
     zenModeOn,
     topbarRightCollapsed,
     setTopbarRightCollapsed,
@@ -139,7 +141,6 @@ function StatusClusterImpl(props: StatusClusterProps) {
 
   const collabIconBtn = (
     <CollabStatusPill
-      collab={collab}
       onEnableRequest={onEnableCollab}
       onEditIdentity={onEditIdentity}
       onDisable={onDisableCollab}
@@ -148,7 +149,6 @@ function StatusClusterImpl(props: StatusClusterProps) {
   );
   const collabBadge = (
     <CollabStatusPill
-      collab={collab}
       onEnableRequest={onEnableCollab}
       onEditIdentity={onEditIdentity}
       onDisable={onDisableCollab}
@@ -230,7 +230,7 @@ function StatusClusterImpl(props: StatusClusterProps) {
               Helper mode
             </button>
           )}
-          {collab.enabled && collabBadge}
+          {collabEnabled && collabBadge}
           {/* External-change badge — self-gates (renders null when
               severity == null), so it's mounted unconditionally inside the
               cluster. Sits left of the divider, beside the collab pill. */}
@@ -240,7 +240,7 @@ function StatusClusterImpl(props: StatusClusterProps) {
       {/* Divider — only shown when there's at least one status marker on the
           left, so the line reads as a real boundary between markers and
           standard buttons. Suppressed in zen mode regardless. */}
-      {!zenModeOn && (focusActive || helperOn || collab.enabled || externalChangeActive) && (
+      {!zenModeOn && (focusActive || helperOn || collabEnabled || externalChangeActive) && (
         <span
           aria-hidden
           className="self-center h-5 w-px mx-2"

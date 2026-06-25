@@ -499,23 +499,29 @@ export default function EditorLayout() {
     () => paneState?.collab ?? COLLAB_INERT,
     [paneState?.collab],
   );
+  // Latest-ref so the collab action handlers (threaded into the memoized status
+  // cluster) stay referentially stable across collab pen/presence/sidecar ticks
+  // — only the context-consuming CollabStatusPill re-renders on those, not the
+  // whole cluster.
+  const collabRef = useRef(collab);
+  collabRef.current = collab;
   const { ensureIdentity, dialog: identityDialog } = useCollaboratorIdentity();
 
   const handleEnableCollab = useCallback(async () => {
     const id = await ensureIdentity();
     if (!id) return;
-    collab.setIdentity(id);
-    await collab.enableCollab();
-  }, [ensureIdentity, collab]);
+    collabRef.current.setIdentity(id);
+    await collabRef.current.enableCollab();
+  }, [ensureIdentity]);
 
   const handleEditIdentity = useCallback(async () => {
     const id = await ensureIdentity({ force: true });
-    if (id) collab.setIdentity(id);
-  }, [ensureIdentity, collab]);
+    if (id) collabRef.current.setIdentity(id);
+  }, [ensureIdentity]);
 
   const handleDisableCollab = useCallback(() => {
-    void collab.disableCollab();
-  }, [collab]);
+    void collabRef.current.disableCollab();
+  }, []);
 
   // Stable () => void wrappers for the async collab handlers, threaded into
   // StatusCluster (which builds the CollabStatusPill from these).
@@ -3440,7 +3446,7 @@ export default function EditorLayout() {
   const statusClusterProps: StatusClusterProps = useMemo(
     () => ({
       vbar: statusVbar,
-      collab,
+      collabEnabled: collab.enabled,
       zenModeOn,
       topbarRightCollapsed: prefs.topbarRightCollapsed,
       setTopbarRightCollapsed,
@@ -3486,7 +3492,7 @@ export default function EditorLayout() {
     }),
     [
       statusVbar,
-      collab,
+      collab.enabled,
       zenModeOn,
       prefs.topbarRightCollapsed,
       setTopbarRightCollapsed,
