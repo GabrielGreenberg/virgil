@@ -588,6 +588,37 @@ body {
   overflow-wrap: break-word;
 }
 
+/* One-off "healthy top space" lead-in above the document title (restores the
+ * feel of the old fixed top-extra baseline, but DECOUPLED). A scroll-away
+ * pseudo-element at the very top of the prose: it contributes ~40px of flow
+ * ONCE, above the first real block, then scrolls off with the content.
+ * Crucially it is INDEPENDENT of the adjustable top margin (--editor-pt / the
+ * reading-frame mask) — so the top-margin slider stays free to reach 0 while
+ * every doc still opens with a comfortable gap above the title.
+ *
+ * SCOPED PER SURFACE via the `.doc-prose-leadin` marker class (set in
+ * Editor.tsx's editorProps.attributes.class), NOT the bare `.tiptap` class.
+ * Only the document editor's prose root carries the marker — the main editor
+ * AND the read-only Library Reader (which reuses the same Editor config →
+ * desired parity). The text-object pop-out floats and the lifted drag clones
+ * are bare `.tiptap` surfaces (own class strings, no marker), so they MUST
+ * NOT inherit this 40px gap — it would defeat their deliberate flush-top
+ * campaigns and the LiftedTextOverlay "no geometry" invariant.
+ *
+ * Why a ::before and not first-child padding: ::before is NOT matched by
+ * `:where(.tiptap) > :first-child { margin-top: 0 }` (that selector matches
+ * elements, not generated content), so the first real block still zeroes its
+ * own margin-top and the lead-in sits cleanly above it (the prose root still
+ * carries `.tiptap`, so that zeroing rule still applies). Height (not margin)
+ * avoids margin-collapse into the first child. Deliberately does NOT reuse the
+ * old top-extra var name (a static guard asserts that var's absence). */
+.doc-prose-leadin::before {
+  content: "";
+  display: block;
+  height: var(--doc-title-leadin, 40px);
+  pointer-events: none;
+}
+
 /* Non-editable chrome must NOT inherit the `break-spaces` above (L3d.3).
    The lifted-overlay drag clone is `.tiptap` but NOT `.ProseMirror` (L3b.1),
    so it misses prosemirror-view's base shield

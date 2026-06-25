@@ -529,7 +529,15 @@ const VirgilEditor = forwardRef<EditorHandle, EditorProps>(function VirgilEditor
         // The "Margins…" ViewMenu mode renders draggable in-text guides
         // on all four sides that update these vars live.
         class:
-          "prose prose-stone max-w-none focus:outline-none min-h-[calc(100vh-8rem)] pl-[var(--editor-pl,88px)] pr-[var(--editor-pr,72px)] pt-[var(--editor-pt,40px)] pb-[var(--editor-pb,40px)]",
+          // `doc-prose-leadin` is a pure CSS hook (no behavior of its own):
+          // it scopes the globals.css `.doc-prose-leadin::before` title
+          // lead-in to THIS prose root — the main document editor and the
+          // read-only Library Reader (which reuses this same Editor config,
+          // so it inherits the marker → desired parity). The text-object
+          // pop-out floats and lifted drag clones build their OWN bare
+          // `.tiptap` class strings (they don't route through this config),
+          // so they never inherit the 40px lead-in.
+          "doc-prose-leadin prose prose-stone max-w-none focus:outline-none min-h-[calc(100vh-8rem)] pl-[var(--editor-pl,88px)] pr-[var(--editor-pr,72px)] pt-[var(--editor-pt,40px)] pb-[var(--editor-pb,40px)]",
         // PM keeps the DOM at `contenteditable="true"` even in Reader
         // mode (so native drag-to-select reaches `view.state.selection`,
         // and the unified TextObjectGrabHandle / linkedRange-float flow

@@ -5240,14 +5240,29 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
                 panelSides={marginaliaPanelSides}
               />
               {/* Sticky expand-all / collapse-all controls — fade in on
-                  hover anywhere in the 24px band. Wrapper takes no flow
-                  space (marginBottom: -24) so editor content stays at
-                  its natural top. */}
+                  hover near the pod top. GENUINE zero-flow: a height:0
+                  sticky container (same pattern as the SectionLozenge
+                  breadcrumb above) so it contributes ZERO height in both
+                  block and flex layouts, regardless of any parent `gap`
+                  — no phantom band at the pod top. The button row
+                  overflows below top:0 (container does NOT clip). Stays
+                  position:sticky so it remains pinned + hover-reachable
+                  while scrolling. */}
               {viewPrefs && (overrideEditor ?? editor) && (
                 <div
                   className="sticky z-20 shrink-0 group"
-                  style={{ top: 0, height: 24, marginBottom: -24 }}
+                  style={{ top: 0, height: 0 }}
                 >
+                  {/* Full-width zero-flow hover band. The container is
+                      height:0 (the gap fix), so an `absolute` band adds ZERO
+                      flow height while restoring a full-width × 24px hover
+                      target that makes `group-hover` fire across the whole
+                      pod top — exactly the old 24px band. Without it the
+                      hover target collapses to just the tiny button
+                      footprint, and these buttons are the SOLE entry point
+                      for expand/collapse-all (no menu/keyboard fallback), so
+                      discoverability would be badly hurt. */}
+                  <div className="absolute top-0 left-0 right-0 h-6 pointer-events-auto" aria-hidden="true" />
                   <div className="absolute top-2 left-3 flex items-center gap-1 opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition-opacity duration-150 pointer-events-auto">
                     <button
                       onClick={() => innerRef.current?.expandAllSections()}
