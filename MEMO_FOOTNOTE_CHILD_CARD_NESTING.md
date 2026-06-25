@@ -112,6 +112,45 @@ either way.
 
 ---
 
+## 5a. PHASE 2a — citations inside EXAMPLES nest under the example card (user ask, 2026-06-24) · `NEEDS-DESIGN-DECISION`
+
+**Phase 1 (footnote-nested cites) is SHIPPED** ([`nest-footnote-children.ts`](src/components/editor-layout/panels/nest-footnote-children.ts)).
+The user now wants the **same** indented nesting for citations that live **inside an EXAMPLE block** (the very first
+gutter screenshot this session showed examples (8)/(9)/(10) each with a CITATION card). The **render side reuses Phase 1
+verbatim** — `parentCardId` + 16px indent + order-under-parent + cascade (`nest-footnote-children.ts:61-126`,
+[omni-host.tsx](src/components/editor-layout/panels/omni-host.tsx) application). Only the **parent-resolution data** is new.
+
+### The gap (verified)
+Citations inside an example are indexed as **top-level** citations with **no example-owner tag**. The DocStructureObserver
+descends into **footnote** `attrs.content` literals only ([structure-index.ts](src/lib/tiptap/doc-structure/structure-index.ts),
+`inlineAtoms` with `descendInto:["footnote"]`). **`exampleBlock` is a BLOCK node** ([expex.ts:392-410](src/lib/tiptap/expex.ts:392))
+whose children are real PM paragraph nodes — it is never descended for the owner tag. `CitationEntry` has
+`nestedInFootnoteId` ([types.ts:63](src/lib/tiptap/doc-structure/types.ts:63)) but **no `nestedInExampleId`**.
+
+### Deep fix — generalize "footnote owner" → "container owner"
+1. **Data:** tag example-nested cites. Either add a parallel `nestedInExampleId?` to `CitationEntry`, **or** (cleaner,
+   recommended) generalize to `nestedInContainerId?: { kind: "footnote" | "example"; id: string }` so future containers
+   are free. Populate it in `buildInitial` by descending into each `exampleBlock`'s child paragraphs.
+   - ⚠️ **Walk discriminant:** footnotes store content as **JSONContent literals** in `attrs.content`; examples store
+     **PM Node children**. The `inlineAtoms` generator must handle BOTH (a `descendInto:["footnote","exampleBlock"]`
+     with a literal-vs-PM-node branch), OR add a separate example paragraph scan in `structure-index`. Keep it load-only
+     (`buildInitial`) + the existing `applyDiff` gating → keystroke-sanctity holds.
+2. **Parent resolution:** generalize `footnoteOwnerOf` → `containerOwnerOf` (footnote OR example); the omni-host
+   child-stamp reads it and sets `parentCardId = <the example's omni item id>` (the example omni builder,
+   [src/panels/Examples/omni.tsx](src/panels/Examples/omni.tsx) — examples are entity-anchored like footnotes).
+3. **Render:** unchanged — `nest-footnote-children.ts` becomes `nest-container-children.ts` (rename optional); the child
+   citation orders directly under its example card and indents 16px, exactly as under footnotes.
+
+### Decisions / risks
+- **Field shape:** `nestedInExampleId` (bite-identical to Phase 1) vs `nestedInContainerId:{kind,id}` (future-proof) —
+  recommend the generalized form since this is the *second* container (the class is now real).
+- **Risk:** the literal-vs-PM-node branch in the shared `inlineAtoms` walk is the one subtle spot — unit-test a citation
+  inside an example paragraph surfaces with the right owner, multiple nested cites order correctly, and a deleted example
+  degrades to flat (owner resolves null → non-indented card, not dropped).
+- Same cross-surface + suppress-from-flat-list rules as Phase 1 (§4c/§4d).
+
+---
+
 ## 6. Recommended design decisions (decisive defaults; flag if you disagree)
 - **Always-indented**, not collapsible — the user said "show it indented under." The footnote card is the visible
   parent; the child keeps its *own* expand/collapse for its content (e.g. the bib under a nested cite).
