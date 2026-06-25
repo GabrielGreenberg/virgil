@@ -1578,12 +1578,18 @@ export function useViewPrefs(opts?: { persistence?: ViewPrefsPersistence }) {
     update((p) => ({ ...p, editorRightMargin: Math.max(24, Math.min(240, Math.round(px))) }));
   }, [update]);
 
+  // The persist-side floors here MUST mirror the drag-side floors in
+  // `MARGIN_MIN` (useMarginEdit). If they drift, a drag below the persist
+  // floor commits clamped and the margin "snaps back" on the checkmark.
+  // top/bottom floor at 0 (chip 9 — slider reaches the pod edge); left 72 /
+  // right 24 above match `MARGIN_MIN.left/right` (chip 8). Guarded by
+  // useMarginEdit-topbottom-floor.test.ts.
   const setEditorTopMargin = useCallback((px: number) => {
-    update((p) => ({ ...p, editorTopMargin: Math.max(24, Math.min(240, Math.round(px))) }));
+    update((p) => ({ ...p, editorTopMargin: Math.max(0, Math.min(240, Math.round(px))) }));
   }, [update]);
 
   const setEditorBottomMargin = useCallback((px: number) => {
-    update((p) => ({ ...p, editorBottomMargin: Math.max(24, Math.min(240, Math.round(px))) }));
+    update((p) => ({ ...p, editorBottomMargin: Math.max(0, Math.min(240, Math.round(px))) }));
   }, [update]);
 
   const setPrintOptions = useCallback(
