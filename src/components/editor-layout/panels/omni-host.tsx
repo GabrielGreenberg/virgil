@@ -7,8 +7,9 @@ import { useStructuralRevisions } from "@/hooks/useStructuralRevisions";
 import { useLivePosResolver, buildParagraphAnchorMap } from "@/hooks/useLivePosResolver";
 import { filterOmniItemsByFoldAndFocus } from "./omni-fold-focus-filter";
 import {
-  buildNestedFootnoteChildMap,
-  nestFootnoteChildren,
+  buildNestedContainerChildMap,
+  nestContainerChildren,
+  type NestedContainer,
 } from "./nest-footnote-children";
 import { cardPopKey } from "@/panels/panel-registry";
 import type { Side } from "@/hooks/useViewPrefs";
@@ -634,32 +635,34 @@ export function OmniHost(p: OmniHostProps) {
     p.convertReportCard,
   ]);
 
-  // Footnote-child nesting (PHASE 1 — citations). Derive the
-  // `citationId → footnoteId` map from the DocStructureObserver snapshot
-  // (`nestedInFootnoteId`, already in the snapshot — no doc walk). Gated on
-  // `[editorInstance, rev.citations]`: it runs once the editor mounts (the
-  // counter is silent on load, so the editor dep is what triggers the first
-  // derive) and re-runs only when citations/footnote-bodies change — NEVER on a
-  // plain keystroke, so `window.__virgilBusStats().emitCount` stays flat while
-  // typing (keystroke sanctity; see AGENTS.md "Card-source derivation").
-  const nestedFootnoteChildMap = useMemo(() => {
-    if (!editorInstance) return new Map<string, string>();
+  // Container-child nesting (PHASE 1 footnotes + PHASE 2a examples). Derive the
+  // `citationId → { kind, id }` container-owner map from the DocStructureObserver
+  // snapshot (`nestedInContainerId`, already in the snapshot — no doc walk).
+  // Gated on `[editorInstance, rev.citations]`: it runs once the editor mounts
+  // (the counter is silent on load, so the editor dep triggers the first derive)
+  // and re-runs only when citations / footnote-bodies / example-bodies change —
+  // NEVER on a plain keystroke, so `window.__virgilBusStats().emitCount` stays
+  // flat while typing (keystroke sanctity; see AGENTS.md "Card-source
+  // derivation"). `rev.citations` bumps on example-body cite changes too (the
+  // structural counter folds in `addedCitations`/`removedCitations`).
+  const nestedContainerChildMap = useMemo(() => {
+    if (!editorInstance) return new Map<string, NestedContainer>();
     const bus = getBus(editorInstance);
-    if (!bus) return new Map<string, string>();
-    return buildNestedFootnoteChildMap(bus.structure);
+    if (!bus) return new Map<string, NestedContainer>();
+    return buildNestedContainerChildMap(bus.structure);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [editorInstance, rev.citations]);
 
-  // Apply the nesting transform: stamp `parentCardId` on footnote-nested cites
-  // + reorder so each child immediately follows its parent footnote item. Pure
-  // + identity-stable (returns `items` unchanged when nothing nests), so this
-  // adds no churn for docs without footnote-nested cites and downstream memos
-  // stay cached. Children REMAIN in the list (they keep cascading as their own
-  // cards, sharing the footnote's pos — the useInTextPositions overlap pass
-  // stacks them directly below the footnote).
+  // Apply the nesting transform: stamp `parentCardId` on container-nested cites
+  // + reorder so each child immediately follows its parent container item
+  // (footnote OR example card). Pure + identity-stable (returns `items`
+  // unchanged when nothing nests), so this adds no churn for docs without nested
+  // cites and downstream memos stay cached. Children REMAIN in the list (they
+  // keep cascading as their own cards, sharing the container's pos — the
+  // useInTextPositions overlap pass stacks them directly below the container).
   const nestedItems: OmniItem[] = useMemo(
-    () => nestFootnoteChildren(items, nestedFootnoteChildMap),
-    [items, nestedFootnoteChildMap],
+    () => nestContainerChildren(items, nestedContainerChildMap),
+    [items, nestedContainerChildMap],
   );
 
   // Live in-text position resolver for the fold/focus binning below. The

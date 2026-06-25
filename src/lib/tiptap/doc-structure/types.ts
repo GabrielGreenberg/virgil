@@ -59,8 +59,32 @@ export interface CitationEntry {
    *  node — it's a JSONContent literal `descendants()` can't enter), so a
    *  position-keyed jump scrolls to the visible footnote marker. Absent/undefined
    *  for a top-level citation. Populated only by the load-only `buildInitial`
-   *  descend pass; the per-transaction `applyDiff` path does NOT touch it. */
+   *  descend pass; the per-transaction `applyDiff` path does NOT touch it.
+   *
+   *  RETAINED for back-compat: every existing consumer (T3 machinery, the
+   *  footnote omni/docked nesting, identity) reads this. It carries the SAME
+   *  value as `nestedInContainerId.id` when the container kind is "footnote".
+   *  For an EXAMPLE-nested cite this stays undefined (only the generalized
+   *  `nestedInContainerId` is set) — example nesting routes exclusively through
+   *  the generalized field. */
   nestedInFootnoteId?: string;
+  /** Phase 2a — generalized "container owner" for a citation nested inside a
+   *  card-bearing block container (footnote body OR example block). The render-
+   *  side nesting (`nest-footnote-children.ts`) reads THIS to stamp the cite's
+   *  Omni `parentCardId` = the container's omni card id, indent it, and order it
+   *  under the parent — covering both kinds with one datum.
+   *    - `{ kind: "footnote", id }` — populated alongside `nestedInFootnoteId`
+   *      (same id) by the footnote-body literal descend pass.
+   *    - `{ kind: "example", id }`  — populated by the exampleBlock descent;
+   *      `id` is the enclosing exampleBlock's address (its `ExampleEntry.id` =
+   *      the block uuid), so `cardPopKey("example", id)` resolves the example's
+   *      omni card. `pos` for an example-nested cite is the cite's OWN PM
+   *      position (unlike a footnote-nested cite — example children are real PM
+   *      nodes `descendants()` reaches), so a position-keyed jump still lands on
+   *      the cite.
+   *  Absent for a top-level citation. Populated only by the load-only
+   *  `buildInitial` pass; `applyDiff` does NOT touch it. */
+  nestedInContainerId?: { kind: "footnote" | "example"; id: string };
 }
 
 export interface AnchorEntry {

@@ -12,10 +12,15 @@
 
 import { describe, it, expect } from "vitest";
 import {
+  buildNestedContainerChildMap,
+  buildNestedContainerInfoMap,
   buildNestedFootnoteChildMap,
   buildNestedFootnoteInfoMap,
+  nestContainerChildren,
   nestFootnoteChildren,
   partitionDockedCitations,
+  type NestedContainer,
+  type NestedContainerInfo,
   type NestedFootnoteInfo,
 } from "../nest-footnote-children";
 import type { OmniItem } from "@/panels/_shared/types";
@@ -35,9 +40,10 @@ function item(id: string, extra: Partial<OmniItem> = {}): OmniItem {
   };
 }
 
-/** The omni keys the footnote / citation builders use. */
+/** The omni keys the footnote / citation / example builders use. */
 const fnKey = (id: string) => cardPopKey("footnote", id);
 const citKey = (id: string) => cardPopKey("citation", id);
+const exKey = (id: string) => cardPopKey("example", id);
 
 describe("buildNestedFootnoteChildMap", () => {
   it("maps only citations carrying nestedInFootnoteId → host footnote id", () => {
@@ -306,5 +312,328 @@ describe("partitionDockedCitations", () => {
     // every flat cite, then the nested group.
     const combined = [...topLevel, ...nested.map((n) => n.citation)];
     expect(combined.map((c) => c.id)).toEqual(["flat", "n1", "n2"]);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Phase 2a — GENERALIZED container nesting (footnote OR example). Same render
+// treatment (parentCardId + indent + ordered-under-parent), one transform.
+// ---------------------------------------------------------------------------
+
+describe("buildNestedContainerChildMap", () => {
+  it("maps citations carrying nestedInContainerId for BOTH kinds; leaves top-level cites out", () => {
+    const structure: DocStructure = {
+      ...EMPTY_STRUCTURE,
+      citations: [
+        { id: "cTop", pos: 1, command: "\\cite{t}", displayText: "T" }, // top-level
+        {
+          id: "cFn",
+          pos: 5,
+          command: "\\cite{f}",
+          displayText: "F",
+          nestedInFootnoteId: "fn1",
+          nestedInContainerId: { kind: "footnote", id: "fn1" },
+        },
+        {
+          id: "cEx",
+          pos: 9,
+          command: "\\cite{e}",
+          displayText: "E",
+          nestedInContainerId: { kind: "example", id: "ex1" },
+        },
+      ],
+    };
+    const map = buildNestedContainerChildMap(structure);
+    expect(map.size).toBe(2);
+    expect(map.get("cFn")).toEqual({ kind: "footnote", id: "fn1" });
+    expect(map.get("cEx")).toEqual({ kind: "example", id: "ex1" });
+    expect(map.has("cTop")).toBe(false);
+  });
+});
+
+describe("nestContainerChildren — example", () => {
+  it("nests an example-nested cite under the example's omni card (parentCardId + order)", () => {
+    const items: OmniItem[] = [
+      item(exKey("ex1")),
+      item(citKey("cTop")), // unrelated top-level cite
+      item(citKey("cInEx")), // the example-nested cite
+    ];
+    const map = new Map<string, NestedContainer>([
+      ["cInEx", { kind: "example", id: "ex1" }],
+    ]);
+
+    const out = nestContainerChildren(items, map);
+
+    const child = out.find((i) => i.id === citKey("cInEx"))!;
+    expect(child.parentCardId).toBe(exKey("ex1"));
+    // Ordered IMMEDIATELY after its example item.
+    const exIdx = out.findIndex((i) => i.id === exKey("ex1"));
+    expect(out.findIndex((i) => i.id === citKey("cInEx"))).toBe(exIdx + 1);
+    // Unrelated top-level cite untouched.
+    expect(out.find((i) => i.id === citKey("cTop"))!.parentCardId).toBeUndefined();
+    // The child's parent key routes to the EXAMPLES panel (suppressed from the
+    // flat Citations list — surfaces once, under its example).
+    const parsed = parseAnyKey(child.parentCardId!)!;
+    expect(getPanelByCardKind(parsed.kind as never)?.kind).toBe("examples");
+  });
+
+  it("keeps two cites under one example in document order, both stamped", () => {
+    const items: OmniItem[] = [
+      item(exKey("ex1")),
+      item(citKey("cA")),
+      item(citKey("cB")),
+    ];
+    const map = new Map<string, NestedContainer>([
+      ["cA", { kind: "example", id: "ex1" }],
+      ["cB", { kind: "example", id: "ex1" }],
+    ]);
+
+    const out = nestContainerChildren(items, map);
+    expect(out.map((i) => i.id)).toEqual([
+      exKey("ex1"),
+      citKey("cA"),
+      citKey("cB"),
+    ]);
+    expect(out[1].parentCardId).toBe(exKey("ex1"));
+    expect(out[2].parentCardId).toBe(exKey("ex1"));
+  });
+
+  it("degrades to a flat card (no parentCardId) when the example item is absent", () => {
+    // Example deleted / owner resolves null — only the cite remains.
+    const items: OmniItem[] = [item(citKey("cInEx"))];
+    const map = new Map<string, NestedContainer>([
+      ["cInEx", { kind: "example", id: "exGone" }],
+    ]);
+    const out = nestContainerChildren(items, map);
+    expect(out).toBe(items); // identity-stable: nothing nested
+    expect(out[0].parentCardId).toBeUndefined();
+  });
+
+  it("nests footnote AND example children side by side under their own parents", () => {
+    const items: OmniItem[] = [
+      item(fnKey("fn1")),
+      item(exKey("ex1")),
+      item(citKey("cFn")),
+      item(citKey("cEx")),
+    ];
+    const map = new Map<string, NestedContainer>([
+      ["cFn", { kind: "footnote", id: "fn1" }],
+      ["cEx", { kind: "example", id: "ex1" }],
+    ]);
+
+    const out = nestContainerChildren(items, map);
+    // Each child follows ITS parent (footnote run, then example run).
+    expect(out.map((i) => i.id)).toEqual([
+      fnKey("fn1"),
+      citKey("cFn"),
+      exKey("ex1"),
+      citKey("cEx"),
+    ]);
+    expect(out[1].parentCardId).toBe(fnKey("fn1"));
+    expect(out[3].parentCardId).toBe(exKey("ex1"));
+  });
+
+  it("returns the same array reference when nothing nests", () => {
+    const items: OmniItem[] = [item(exKey("ex1")), item(citKey("cTop"))];
+    expect(nestContainerChildren(items, new Map())).toBe(items);
+  });
+});
+
+describe("nestFootnoteChildren delegates to the generalized engine (no Phase 1 regression)", () => {
+  it("still stamps + orders a footnote-nested cite exactly as before", () => {
+    const items: OmniItem[] = [item(fnKey("fn1")), item(citKey("cNested"))];
+    const map = new Map<string, string>([["cNested", "fn1"]]);
+    const out = nestFootnoteChildren(items, map);
+    const child = out.find((i) => i.id === citKey("cNested"))!;
+    expect(child.parentCardId).toBe(fnKey("fn1"));
+    expect(out.findIndex((i) => i.id === citKey("cNested"))).toBe(
+      out.findIndex((i) => i.id === fnKey("fn1")) + 1,
+    );
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Phase 2a — DOCKED surface generalization. The docked Citations panel now
+// pulls BOTH footnote-nested AND example-nested cites out of the flat list,
+// resolving each container's live display number ("in footnote N" /
+// "in example N"). Footnote behavior stays byte-identical (back-compat).
+// ---------------------------------------------------------------------------
+
+describe("buildNestedContainerInfoMap", () => {
+  it("maps a footnote-nested cite (number from footnotes) AND an example-nested cite (number from examples); leaves top-level out", () => {
+    const structure: DocStructure = {
+      ...EMPTY_STRUCTURE,
+      footnotes: [{ id: "fn1", pos: 8, thanks: false, number: 3 }],
+      examples: [
+        {
+          id: "ex1",
+          uuid: "ex1",
+          pos: 12,
+          tag: "myex",
+          label: "",
+          number: 7,
+        },
+      ],
+      citations: [
+        { id: "cTop", pos: 5, command: "\\cite{a}", displayText: "A" }, // top-level
+        {
+          id: "cFn",
+          pos: 8,
+          command: "\\cite{b}",
+          displayText: "B",
+          nestedInFootnoteId: "fn1",
+          nestedInContainerId: { kind: "footnote", id: "fn1" },
+        },
+        {
+          id: "cEx",
+          pos: 12,
+          command: "\\cite{c}",
+          displayText: "C",
+          nestedInContainerId: { kind: "example", id: "ex1" },
+        },
+      ],
+    };
+    const map = buildNestedContainerInfoMap(structure);
+    expect(map.size).toBe(2);
+    expect(map.get("cFn")).toEqual({ kind: "footnote", id: "fn1", number: 3 });
+    expect(map.get("cEx")).toEqual({ kind: "example", id: "ex1", number: 7 });
+    expect(map.has("cTop")).toBe(false);
+  });
+
+  it("resolves a string-valued example number (e.g. '(3a)')", () => {
+    const structure: DocStructure = {
+      ...EMPTY_STRUCTURE,
+      examples: [
+        { id: "ex1", uuid: "ex1", pos: 12, tag: "", label: "", number: "(3a)" },
+      ],
+      citations: [
+        {
+          id: "cEx",
+          pos: 12,
+          command: "\\cite{c}",
+          displayText: "C",
+          nestedInContainerId: { kind: "example", id: "ex1" },
+        },
+      ],
+    };
+    expect(buildNestedContainerInfoMap(structure).get("cEx")).toEqual({
+      kind: "example",
+      id: "ex1",
+      number: "(3a)",
+    });
+  });
+
+  it("falls back to a null number when the host container is absent (degrade)", () => {
+    const structure: DocStructure = {
+      ...EMPTY_STRUCTURE,
+      // No examples entry for exGone (e.g. mid-edit / deleted).
+      citations: [
+        {
+          id: "cEx",
+          pos: 12,
+          command: "\\cite{c}",
+          displayText: "C",
+          nestedInContainerId: { kind: "example", id: "exGone" },
+        },
+      ],
+    };
+    expect(buildNestedContainerInfoMap(structure).get("cEx")).toEqual({
+      kind: "example",
+      id: "exGone",
+      number: null,
+    });
+  });
+
+  it("is empty when no citation carries nestedInContainerId", () => {
+    const structure: DocStructure = {
+      ...EMPTY_STRUCTURE,
+      citations: [{ id: "cTop", pos: 5, command: "\\cite{a}", displayText: "A" }],
+    };
+    expect(buildNestedContainerInfoMap(structure).size).toBe(0);
+  });
+});
+
+describe("buildNestedFootnoteInfoMap — back-compat over the generalized map", () => {
+  it("still maps a footnote-nested cite → { footnoteId, footnoteNumber } and ignores example-nested cites", () => {
+    const structure: DocStructure = {
+      ...EMPTY_STRUCTURE,
+      footnotes: [{ id: "fn1", pos: 8, thanks: false, number: 3 }],
+      examples: [
+        { id: "ex1", uuid: "ex1", pos: 12, tag: "", label: "", number: 7 },
+      ],
+      citations: [
+        {
+          id: "cFn",
+          pos: 8,
+          command: "\\cite{b}",
+          displayText: "B",
+          nestedInFootnoteId: "fn1",
+          nestedInContainerId: { kind: "footnote", id: "fn1" },
+        },
+        {
+          id: "cEx",
+          pos: 12,
+          command: "\\cite{c}",
+          displayText: "C",
+          nestedInContainerId: { kind: "example", id: "ex1" },
+        },
+      ],
+    };
+    const map = buildNestedFootnoteInfoMap(structure);
+    // Footnote shape unchanged; the example-nested cite is NOT in the
+    // footnote-only map.
+    expect(map.size).toBe(1);
+    expect(map.get("cFn")).toEqual({ footnoteId: "fn1", footnoteNumber: 3 });
+    expect(map.has("cEx")).toBe(false);
+  });
+});
+
+describe("partitionDockedCitations — example-nested", () => {
+  const exInfo = (id: string, number: string | number | null): NestedContainerInfo => ({
+    kind: "example",
+    id,
+    number,
+  });
+  const fnInfo = (id: string, number: string | number | null): NestedContainerInfo => ({
+    kind: "footnote",
+    id,
+    number,
+  });
+
+  it("pulls an example-nested cite into the nested group (not topLevel) with its example info", () => {
+    const citations = [{ id: "flat" }, { id: "cInEx" }];
+    const map = new Map<string, NestedContainerInfo>([
+      ["cInEx", exInfo("ex1", 7)],
+    ]);
+    const { topLevel, nested } = partitionDockedCitations(citations, map);
+    expect(topLevel.map((c) => c.id)).toEqual(["flat"]);
+    expect(nested.map((n) => n.citation.id)).toEqual(["cInEx"]);
+    expect(nested[0].info).toEqual(exInfo("ex1", 7));
+  });
+
+  it("nests footnote- AND example-nested cites side by side, each with its own info", () => {
+    const citations = [{ id: "flat" }, { id: "cFn" }, { id: "cEx" }];
+    const map = new Map<string, NestedContainerInfo>([
+      ["cFn", fnInfo("fn1", 3)],
+      ["cEx", exInfo("ex1", 7)],
+    ]);
+    const { topLevel, nested } = partitionDockedCitations(citations, map);
+    expect(topLevel.map((c) => c.id)).toEqual(["flat"]);
+    expect(nested.map((n) => n.citation.id)).toEqual(["cFn", "cEx"]);
+    expect(nested.find((n) => n.citation.id === "cFn")!.info).toEqual(fnInfo("fn1", 3));
+    expect(nested.find((n) => n.citation.id === "cEx")!.info).toEqual(exInfo("ex1", 7));
+  });
+
+  it("a cite whose example is absent from the snapshot stays flat (degrade)", () => {
+    // The host example was deleted, so the host-info builder never produced an
+    // entry for this cite — it isn't in the nesting map, so it stays top-level.
+    const citations = [{ id: "flat" }, { id: "cInEx" }];
+    const map = new Map<string, NestedContainerInfo>([
+      // Map references a DIFFERENT cite (its example gone → not surfaced here).
+      ["someOtherCite", exInfo("exGone", null)],
+    ]);
+    const { topLevel, nested } = partitionDockedCitations(citations, map);
+    expect(topLevel).toBe(citations); // identity-stable passthrough
+    expect(nested).toEqual([]);
   });
 });
