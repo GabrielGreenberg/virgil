@@ -588,6 +588,7 @@ export default function EditorLayout() {
     setDividerWidth,
     toggleParTitles,
     toggleLatexComments,
+    toggleViewPref,
     toggleOmniCategory,
     resetOmniSide,
     toggleOmniHideAllCards,
@@ -890,6 +891,13 @@ export default function EditorLayout() {
     [prefs.hiddenMarginaliaTypes],
   );
   const showHeadingLabels = prefs.showHeadingLabels;
+  const omniDimResting = prefs.omniDimResting;
+  // Stable toggle for the omni "dim at rest" view-pref via the generic
+  // registry-guarded setter (the blessed path for new toggles).
+  const toggleOmniDimResting = useCallback(
+    () => toggleViewPref("omniDimResting"),
+    [toggleViewPref],
+  );
   const dividerLevels = useMemo(
     () => new Set(prefs.dividerLevels),
     [prefs.dividerLevels],
@@ -2484,6 +2492,7 @@ export default function EditorLayout() {
     showParTitles,
     showLatexComments,
     showHeadingLabels,
+    omniDimResting,
     showMarginalia,
     hiddenMarginaliaTypes,
     hiddenHighlightTypes,
@@ -2495,6 +2504,7 @@ export default function EditorLayout() {
     onToggleParTitles: toggleParTitles,
     onToggleLatexComments: toggleLatexComments,
     toggleHeadingLabels,
+    onToggleOmniDimResting: toggleOmniDimResting,
     toggleMarginalia,
     toggleMarginaliaType,
     toggleHighlightType,
@@ -2514,6 +2524,7 @@ export default function EditorLayout() {
     showParTitles,
     showLatexComments,
     showHeadingLabels,
+    omniDimResting,
     showMarginalia,
     hiddenMarginaliaTypes,
     hiddenHighlightTypes,
@@ -2525,6 +2536,7 @@ export default function EditorLayout() {
     toggleParTitles,
     toggleLatexComments,
     toggleHeadingLabels,
+    toggleOmniDimResting,
     toggleMarginalia,
     toggleMarginaliaType,
     toggleHighlightType,

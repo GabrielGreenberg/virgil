@@ -4296,6 +4296,34 @@ body[data-pref-mode="on"] [data-panel-theme]:hover {
   border-bottom-right-radius: inherit;
 }
 
+/* ── Omni "dim at rest" mode (the `omniDimResting` view-pref) ─────────
+ * Inverts the default bright-rest / dim-hover relationship FOR OMNI CARDS
+ * ONLY (`[data-omni-entry]` is stamped on the card root in omni view; docked
+ * panel cards, floats and search rows lack it, so they are untouched). When
+ * the cascade root carries `data-omni-dim="true"`, a non-selected card RESTS
+ * in a recessed surface and BRIGHTENS to the full white surface on hover — so
+ * the cascade reads as a quiet gallery that lights up under the pointer.
+ *
+ * Selected cards are exempt via `:not([data-selected])` (PanelCard stamps
+ * `data-selected` on the same root) so selection keeps its bright surface +
+ * header tint + outline chrome. `transition-colors` (CARD_BASE) animates both
+ * directions. All values are TOKENS so the effect tracks the active theme.
+ *
+ * Tuning knobs (the resting "recede"): the two declarations below. `--surface-
+ * muted-strong` is one step beyond today's hover bg (`--surface-muted`) for a
+ * slightly-more-pronounced recede; `--edge-strong` matches today's hover
+ * border. Specificity (≥0,4,0 with `:hover`) beats Tailwind's
+ * `hover:bg-surface-muted/50` / `bg-surface`; unselected cards carry no inline
+ * background, so no `!important` is needed. */
+[data-omni-dim="true"] [data-omni-entry]:not([data-selected]) {
+  background-color: var(--surface-muted-strong);
+  border-color: var(--edge-strong);
+}
+[data-omni-dim="true"] [data-omni-entry]:not([data-selected]):hover {
+  background-color: var(--surface);
+  border-color: var(--edge-hover);
+}
+
 /* ── PrintAppendices: hidden in live UI, revealed in print media ──── */
 .print-only { display: none; }
 

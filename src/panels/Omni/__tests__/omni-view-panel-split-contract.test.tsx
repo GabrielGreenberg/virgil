@@ -178,3 +178,27 @@ describe("OmniViewPanel (REAL component) — split routing with a live editor", 
     expect((pod as HTMLElement).style.minHeight).toBe("600px");
   });
 });
+
+describe("OmniViewPanel — 'dim at rest' mode gates via data-omni-dim", () => {
+  const liveEditor = {} as Editor;
+
+  it("dimResting → cascade root carries data-omni-dim=\"true\" (the CSS gate)", () => {
+    const { container } = render(
+      <OmniViewPanel
+        side="right"
+        items={ITEMS}
+        editor={liveEditor}
+        enabledCategories={CATS}
+        dimResting
+      />,
+    );
+    // The omni inversion CSS keys off [data-omni-dim="true"]; without this
+    // gate on the cascade root, the toggle is inert.
+    expect(container.querySelector('[data-omni-dim="true"]')).not.toBeNull();
+  });
+
+  it("dimResting falsy → no data-omni-dim attribute (default bright-rest behavior)", () => {
+    const { container } = renderPanel(liveEditor);
+    expect(container.querySelector("[data-omni-dim]")).toBeNull();
+  });
+});
