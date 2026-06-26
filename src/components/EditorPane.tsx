@@ -1430,6 +1430,23 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
   // trustworthy value to re-assert on a warm re-show (and to persist).
   const liveScrollRef = useRef<number | null>(null);
   const wasVisibleRef = useRef(true);
+  // flushSync-during-commit fix (TipTap ReactRenderer race). When this editor
+  // mounts INSIDE the heavy multi-doc keep-alive slot-map cascade, the macrotask
+  // that flips the new editor's `isInitialized` (`setTimeout(…,0)` in TipTap's
+  // mount()) can fire BEFORE EditorContent's commit-phase `init()` →
+  // `createNodeViews()`. That makes TipTap's ReactRenderer take its
+  // `flushSync(...)` branch while constructing the figure/graphics/tex-block/
+  // figureCaption React NodeViews (the only `ReactNodeViewRenderer` kinds) — i.e.
+  // "flushSync was called from inside a lifecycle method". Gate the editor mount
+  // on a one-tick armed flag so the editor's creation + `init()` land together in
+  // a clean isolated commit (away from the cascade), where `isInitialized` is
+  // still false and the safe microtask path is taken. This delays only a COLD
+  // first mount by a frame; a warm keep-alive re-show keeps the already-mounted
+  // editor, so instant-switch is unaffected.
+  const [editorMountArmed, setEditorMountArmed] = useState(false);
+  useEffect(() => {
+    setEditorMountArmed(true);
+  }, []);
   useEffect(() => {
     if (uiRestoredRef.current) return;
     if (!editor || !docHook.content || !uiStateHook.loaded) return;
@@ -5597,7 +5614,7 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
                     </div>
                   );
                 })()}
-                {(initialContent ?? docHook.content) != null && (
+                {(initialContent ?? docHook.content) != null && editorMountArmed && (
                   <VirgilEditor
                     ref={innerRef}
                     initialContent={(initialContent ?? docHook.content) as JSONContent}
