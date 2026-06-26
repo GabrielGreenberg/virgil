@@ -1,0 +1,84 @@
+diff --git a/node_modules/@tiptap/react/dist/index.cjs b/node_modules/@tiptap/react/dist/index.cjs
+index 4ac88d0..748c37e 100644
+--- a/node_modules/@tiptap/react/dist/index.cjs
++++ b/node_modules/@tiptap/react/dist/index.cjs
+@@ -737,18 +737,25 @@ var ReactRenderer = class {
+     if (className) {
+       this.element.classList.add(...className.split(" "));
+     }
+-    if (this.editor.isInitialized) {
+-      (0, import_react_dom2.flushSync)(() => {
+-        this.render();
+-      });
+-    } else {
+-      queueMicrotask(() => {
+-        if (this.destroyed) {
+-          return;
+-        }
+-        this.render();
+-      });
+-    }
++    // [virgil patch — see patches/@tiptap+react+3.20.5.patch]
++    // Never flushSync while React may be committing. TipTap's original code
++    // synchronously flushSync-renders the node view when the editor is already
++    // initialized; but if this ReactRenderer is constructed inside a React
++    // commit — e.g. EditorContent.init() -> editor.createNodeViews() re-firing
++    // under React StrictMode's dev-only effect double-invoke (disappear/
++    // reappearLayoutEffects), or a future <Activity>/Offscreen-based keep-alive
++    // hide/show in production — that is the illegal "flushSync was called from
++    // inside a lifecycle method" call. Both branches call the identical
++    // this.render(); the queueMicrotask path is the exact one every node view
++    // already uses on initial document load (isInitialized still false), and
++    // microtasks drain before paint, so there is no node-view flash. Route the
++    // initialized case through the same safe path to kill the whole class.
++    queueMicrotask(() => {
++      if (this.destroyed) {
++        return;
++      }
++      this.render();
++    });
+   }
+   /**
+    * Render the React component.
+diff --git a/node_modules/@tiptap/react/dist/index.js b/node_modules/@tiptap/react/dist/index.js
+index b0abf6a..b234d24 100644
+--- a/node_modules/@tiptap/react/dist/index.js
++++ b/node_modules/@tiptap/react/dist/index.js
+@@ -675,18 +675,25 @@ var ReactRenderer = class {
+     if (className) {
+       this.element.classList.add(...className.split(" "));
+     }
+-    if (this.editor.isInitialized) {
+-      flushSync(() => {
+-        this.render();
+-      });
+-    } else {
+-      queueMicrotask(() => {
+-        if (this.destroyed) {
+-          return;
+-        }
+-        this.render();
+-      });
+-    }
++    // [virgil patch — see patches/@tiptap+react+3.20.5.patch]
++    // Never flushSync while React may be committing. TipTap's original code
++    // synchronously flushSync-renders the node view when the editor is already
++    // initialized; but if this ReactRenderer is constructed inside a React
++    // commit — e.g. EditorContent.init() -> editor.createNodeViews() re-firing
++    // under React StrictMode's dev-only effect double-invoke (disappear/
++    // reappearLayoutEffects), or a future <Activity>/Offscreen-based keep-alive
++    // hide/show in production — that is the illegal "flushSync was called from
++    // inside a lifecycle method" call. Both branches call the identical
++    // this.render(); the queueMicrotask path is the exact one every node view
++    // already uses on initial document load (isInitialized still false), and
++    // microtasks drain before paint, so there is no node-view flash. Route the
++    // initialized case through the same safe path to kill the whole class.
++    queueMicrotask(() => {
++      if (this.destroyed) {
++        return;
++      }
++      this.render();
++    });
+   }
+   /**
+    * Render the React component.
