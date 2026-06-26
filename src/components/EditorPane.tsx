@@ -1430,23 +1430,16 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
   // trustworthy value to re-assert on a warm re-show (and to persist).
   const liveScrollRef = useRef<number | null>(null);
   const wasVisibleRef = useRef(true);
-  // flushSync-during-commit fix (TipTap ReactRenderer race). When this editor
-  // mounts INSIDE the heavy multi-doc keep-alive slot-map cascade, the macrotask
-  // that flips the new editor's `isInitialized` (`setTimeout(…,0)` in TipTap's
-  // mount()) can fire BEFORE EditorContent's commit-phase `init()` →
-  // `createNodeViews()`. That makes TipTap's ReactRenderer take its
-  // `flushSync(...)` branch while constructing the figure/graphics/tex-block/
-  // figureCaption React NodeViews (the only `ReactNodeViewRenderer` kinds) — i.e.
-  // "flushSync was called from inside a lifecycle method". Gate the editor mount
-  // on a one-tick armed flag so the editor's creation + `init()` land together in
-  // a clean isolated commit (away from the cascade), where `isInitialized` is
-  // still false and the safe microtask path is taken. This delays only a COLD
-  // first mount by a frame; a warm keep-alive re-show keeps the already-mounted
-  // editor, so instant-switch is unaffected.
-  const [editorMountArmed, setEditorMountArmed] = useState(false);
-  useEffect(() => {
-    setEditorMountArmed(true);
-  }, []);
+  // NOTE: the former `editorMountArmed` one-tick mount-deferral that used to live
+  // here is GONE. It existed only to isolate the editor's create+`init()` into a
+  // clean commit so TipTap's `ReactRenderer` wouldn't take its illegal
+  // `flushSync(...)`-in-commit branch while building figure/graphics/tex-block/
+  // figureCaption React NodeViews. That whole flushSync-in-commit class is now
+  // killed at the source — `patches/@tiptap+react+3.20.5.patch` routes the
+  // ReactRenderer's initialized case through the same `queueMicrotask` path every
+  // NodeView already uses on initial load — so the gate is dead weight (it also
+  // never covered the warm StrictMode-reappear re-show). Mount the editor
+  // immediately; no extra frame.
   useEffect(() => {
     if (uiRestoredRef.current) return;
     if (!editor || !docHook.content || !uiStateHook.loaded) return;
@@ -5614,7 +5607,7 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
                     </div>
                   );
                 })()}
-                {(initialContent ?? docHook.content) != null && editorMountArmed && (
+                {(initialContent ?? docHook.content) != null && (
                   <VirgilEditor
                     ref={innerRef}
                     initialContent={(initialContent ?? docHook.content) as JSONContent}
