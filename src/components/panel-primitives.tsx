@@ -2089,6 +2089,11 @@ export const PanelCard = forwardRef<HTMLDivElement, PanelCardProps>(function Pan
       ref={setRefs}
       data-card="1"
       data-card-key={cardKey}
+      // Selection marker on the card ROOT (co-located with `data-omni-entry`
+      // for omni cards). Lets the omni "dim at rest" CSS exempt the selected
+      // card via `[data-omni-entry]:not([data-selected])` without depending on
+      // class internals. Present-only when selected (CSS matches on presence).
+      data-selected={selected ? "" : undefined}
       className={`group relative ${themedCard(theme, selected, extraCardClass)}${isPoppedOut ? (chromeless ? " flex-1 min-h-0 flex flex-col" : " h-full flex flex-col") : ""}${className ? ` ${className}` : ""}`}
       style={{
         ...themedCardStyle(theme, selected, { isPoppedOut }),

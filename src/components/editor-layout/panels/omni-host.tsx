@@ -160,6 +160,9 @@ export interface OmniHostProps {
   // Shell
   getOmniEnabled: (side: Side) => Set<OmniCategory>;
   getOmniHideAll: (side: Side) => boolean;
+  /** When true, omni cards rest dimmed and brighten on hover (the
+   *  `omniDimResting` view-pref). Forwarded to OmniViewPanel as `dimResting`. */
+  omniDimResting?: boolean;
   /** Only when focus is LOCKED, anchored cards outside the focused block range
    *  are routed to the "outside focus" bin — mirroring the editor's own
    *  lock-gated hide. A mere focus selection (active && !locked) confines
@@ -721,6 +724,7 @@ export function OmniHost(p: OmniHostProps) {
       editor={editorInstance}
       enabledCategories={p.getOmniEnabled(p.side)}
       hideAllCards={p.getOmniHideAll(p.side)}
+      dimResting={p.omniDimResting}
       onBackgroundClick={handleBackgroundClick}
       onCardFocus={handleCardFocus}
       onVisibleCardsChange={p.onVisibleCardsChange}

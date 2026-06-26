@@ -116,6 +116,12 @@ interface OmniViewPanelProps {
    *  categories. Driven by the per-side dashed-square button in the
    *  presentation-tools pod. */
   hideAllCards?: boolean;
+  /** When true, omni cards rest in a recessed/dimmed surface and brighten
+   *  to full on hover (the inverse of the default bright-rest / dim-hover).
+   *  Stamps `data-omni-dim="true"` on the cascade root; the inversion is
+   *  pure CSS (globals.css, `[data-omni-dim]`). Driven by the `omniDimResting`
+   *  view-pref. Selected cards are exempt. */
+  dimResting?: boolean;
   onBackgroundClick?: () => void;
   /** Fired when focus moves into any `[data-omni-entry]` card body. The
    *  host uses this to promote a transient selection to sticky once the
@@ -398,6 +404,7 @@ function OmniViewPanel({
   editor,
   enabledCategories,
   hideAllCards,
+  dimResting,
   onBackgroundClick,
   onCardFocus,
   onVisibleCardsChange,
@@ -526,6 +533,9 @@ function OmniViewPanel({
     <div
       ref={rootRef}
       className="relative w-full"
+      // "Dim at rest" mode: gates the omni-only CSS inversion in globals.css
+      // (`[data-omni-dim="true"] [data-omni-entry]`). Present-only when on.
+      data-omni-dim={dimResting ? "true" : undefined}
       onMouseDown={(e) => {
         if (!onBackgroundClick) return;
         const target = e.target as HTMLElement;

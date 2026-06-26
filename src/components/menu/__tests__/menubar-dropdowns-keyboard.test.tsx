@@ -232,6 +232,8 @@ function makeViewProps(overrides: Partial<ViewMenuProps> = {}): ViewMenuProps {
     onToggleLatexComments: vi.fn(),
     showHeadingLabels: false,
     onToggleHeadingLabels: vi.fn(),
+    omniDimResting: false,
+    onToggleOmniDimResting: vi.fn(),
     onOpenPreferences: vi.fn(),
     showMarginalia: true,
     onToggleMarginalia: vi.fn(),
