@@ -23,6 +23,7 @@ import {
   getStackDropTarget,
 } from "@/lib/stack/stack-drop-target";
 import { WINDOW_DRAG_BLOCK_SELECTOR } from "@/lib/drag-blocklist";
+import { useIsVisible } from "@/lib/keep-alive/visibility-context";
 
 /**
  * Floating-shell resize clamps — the single source of truth for how small
@@ -172,6 +173,16 @@ function FloatingPanelInner({
   onMaybeRedock,
   onFocus,
 }: FloatingPanelProps, handleRef: React.ForwardedRef<FloatingPanelHandle>) {
+  // Keep-alive invariant: a hidden (display:none) kept-alive pane must render NO
+  // floating/docked panels. FloatingPanel is the single portal-escape chokepoint
+  // — docked panels portal to a GLOBAL `[data-dock-slot]` (per-pane anchor, but
+  // resolved via a document-wide querySelector), so without this gate every warm
+  // pane's docked panel collapses onto the active pane's slot and stacks (the
+  // multi-outline bug). Returning null when hidden also keeps hidden panes inert
+  // (their panel subtrees never mount), extending the same "hidden is frozen"
+  // invariant the measurement hooks already enforce. Default `true` (no provider)
+  // ⇒ app-level dialogs/floats outside a keep-alive pane render normally.
+  const isVisible = useIsVisible();
   const [pos, setPos] = useState({
     x: initialX,
     y: initialY,
@@ -649,6 +660,8 @@ function FloatingPanelInner({
     }
   }, [mode, slotKey]);
 
+  // Hidden kept-alive pane → render nothing (no portal escape, no stacking).
+  if (!isVisible) return null;
   if (typeof document === "undefined" || !target) return null;
 
   // Container style differs by mode. Docked: the pod FILLS its band
