@@ -39,7 +39,10 @@ import type { OrphanedFootnote } from "@/lib/types";
  */
 export interface EditorMutationHandlers {
   // Orphaned-footnote editing (the panel's per-card edit/delete affordances).
-  orphanedFootnotes: OrphanedFootnote[];
+  // NOTE (Phase 5b): the orphan ARRAY no longer lives here — it was a per-doc
+  // shell `useState` whose churn busted the shared `viewPrefs` bundle on a
+  // paper switch. It now flows as EditorPane's dedicated `orphanedFootnotes`
+  // prop (gated per active pane). The edit/delete handlers remain.
   onEditOrphan: (id: string, newContent: unknown) => void;
   onDeleteOrphan: (id: string) => void;
   onEditOrphanTitle: (id: string, title: string) => void;
@@ -84,18 +87,50 @@ export interface EditorMutationHandlers {
 }
 
 /**
- * The view-derived values EditorLayout (or the Reader) computes outside the
- * `useViewPrefs` hook — section paths, focus state, zen geometry, omni
- * read-helpers, category-side map, and the optional float z-index painter.
- * Everything else in `EditorPaneViewPrefs` is read verbatim off `vp`.
+ * The four section-path fields, split OUT of `EditorPaneViewDerivations`
+ * (Phase 5a). These churn on every scroll/switch (the breadcrumb + Outline
+ * active-line follow the cursor), so bundling them with the otherwise-stable
+ * zen/omni derivations would give `editorPaneViewDerivations` — and therefore
+ * the whole `viewPrefs` prop — a fresh identity on every scroll, silently
+ * defeating `React.memo(EditorPane)`. They are merged back into the bundle by
+ * `buildEditorPaneViewPrefs` as a 4th argument so the EditorPane consumers
+ * (OutlineHost reading `viewPrefs.activeSectionPath`, SectionLozenge) are
+ * UNCHANGED — only the churn is isolated to a tiny separate memo.
  */
-export interface EditorPaneViewDerivations {
-  isResizingPanels: boolean;
-  focusState: FocusState | null;
+export interface EditorPaneSectionPaths {
   activeSectionPath: SectionPathEntry[];
   activeParTitleIndex: number | null;
   mirrorSectionPath: SectionPathEntry[];
   mirrorParTitleIndex: number | null;
+}
+
+/** Stable empty section-paths — for inactive keep-alive panes (their bundle
+ *  must keep a constant identity so the memo bails) and the Reader. A frozen
+ *  module constant so its identity never changes across renders. */
+export const EMPTY_SECTION_PATHS: EditorPaneSectionPaths = Object.freeze({
+  activeSectionPath: Object.freeze([]) as unknown as SectionPathEntry[],
+  activeParTitleIndex: null,
+  mirrorSectionPath: Object.freeze([]) as unknown as SectionPathEntry[],
+  mirrorParTitleIndex: null,
+});
+
+/** Stable empty orphaned-footnote list — the builder's default (Phase 5b) and
+ *  the inactive-pane value EditorLayout passes for the dedicated
+ *  `orphanedFootnotes` prop, so hidden panes keep a constant prop identity. */
+export const EMPTY_ORPHANED_FOOTNOTES: OrphanedFootnote[] = Object.freeze(
+  [],
+) as unknown as OrphanedFootnote[];
+
+/**
+ * The view-derived values EditorLayout (or the Reader) computes outside the
+ * `useViewPrefs` hook — focus state, zen geometry, omni read-helpers,
+ * category-side map, and the optional float z-index painter. (Section paths
+ * are split out into `EditorPaneSectionPaths` — Phase 5a.) Everything else in
+ * `EditorPaneViewPrefs` is read verbatim off `vp`.
+ */
+export interface EditorPaneViewDerivations {
+  isResizingPanels: boolean;
+  focusState: FocusState | null;
   zenMode: boolean;
   zenLeftMargin: number;
   zenRightMargin: number;
@@ -113,18 +148,29 @@ export interface EditorPaneViewDerivations {
 }
 
 /**
- * Assemble the `EditorPaneViewPrefs` bundle from the three sources. Pure:
+ * Assemble the `EditorPaneViewPrefs` bundle from the four sources. Pure:
  * the result is a plain object; the caller memoizes it.
  *
  * - `vp`: the live `useViewPrefs(...)` result — owns prefs + every layout
  *   setter (dock stack, margins, popouts, omni toggles, widths, bib filter).
  * - `editorHandlers`: the named editor-only delta.
- * - `view`: the EditorLayout/Reader-computed view derivations.
+ * - `view`: the EditorLayout/Reader-computed view derivations (stable across
+ *   a scroll/switch).
+ * - `sectionPaths`: the four scroll-churning section-path fields (Phase 5a),
+ *   split out so the caller can pass `EMPTY_SECTION_PATHS` for inactive panes
+ *   and keep their bundle identity-stable.
+ *
+ * NOTE: `orphanedFootnotes` is NOT set here (Phase 5b) — it is injected by
+ * EditorPane itself from its dedicated `orphanedFootnotes` prop (so the
+ * per-doc orphan churn no longer busts the shared bundle). The builder leaves
+ * it as the stable empty array; EditorPane's `effectiveViewPrefs` overwrites
+ * it (the Reader has none, so the empty default is correct there).
  */
 export function buildEditorPaneViewPrefs(
   vp: UseViewPrefsResult,
   editorHandlers: EditorMutationHandlers,
   view: EditorPaneViewDerivations,
+  sectionPaths: EditorPaneSectionPaths,
 ): EditorPaneViewPrefs {
   return {
     // ── Read state ──────────────────────────────────────────────────
@@ -132,11 +178,11 @@ export function buildEditorPaneViewPrefs(
     isResizingPanels: view.isResizingPanels,
     focusState: view.focusState,
 
-    // ── Section path (OutlineHost) ──────────────────────────────────
-    activeSectionPath: view.activeSectionPath,
-    activeParTitleIndex: view.activeParTitleIndex,
-    mirrorSectionPath: view.mirrorSectionPath,
-    mirrorParTitleIndex: view.mirrorParTitleIndex,
+    // ── Section path (OutlineHost) — Phase 5a: from the split arg ────
+    activeSectionPath: sectionPaths.activeSectionPath,
+    activeParTitleIndex: sectionPaths.activeParTitleIndex,
+    mirrorSectionPath: sectionPaths.mirrorSectionPath,
+    mirrorParTitleIndex: sectionPaths.mirrorParTitleIndex,
 
     // ── Layout setters / mutators (verbatim from the engine) ────────
     setIsResizingPanels: editorHandlers.setIsResizingPanels,
@@ -186,7 +232,13 @@ export function buildEditorPaneViewPrefs(
     setBibFilter: vp.setBibFilter,
 
     // ── Orphaned footnotes + editor-only handlers ───────────────────
-    orphanedFootnotes: editorHandlers.orphanedFootnotes,
+    // Phase 5b: the orphan ARRAY is no longer sourced from `editorHandlers`
+    // (it was a per-doc shell `useState` that busted the shared bundle on a
+    // switch). EditorPane injects the real list from its dedicated
+    // `orphanedFootnotes` prop via `effectiveViewPrefs`; the builder leaves
+    // the stable empty default (correct for the Reader, overwritten in the
+    // main app). The edit/delete handlers stay — they're stable per-doc cbs.
+    orphanedFootnotes: EMPTY_ORPHANED_FOOTNOTES,
     onEditOrphan: editorHandlers.onEditOrphan,
     onDeleteOrphan: editorHandlers.onDeleteOrphan,
     onEditOrphanTitle: editorHandlers.onEditOrphanTitle,

@@ -30,6 +30,7 @@ import type { EditorPaneViewPrefs } from "@/components/EditorPane";
 import { useViewPrefs, type Side } from "@/hooks/useViewPrefs";
 import {
   buildEditorPaneViewPrefs,
+  EMPTY_SECTION_PATHS,
   type EditorMutationHandlers,
   type EditorPaneViewDerivations,
 } from "./build-editor-pane-view-prefs";
@@ -60,7 +61,6 @@ const READER_CATEGORY_SIDES: Record<OmniCategory, Side> = (() => {
  * forces an explicit choice here rather than silently defaulting to nothing.
  */
 const READER_NOOP_HANDLERS: Omit<EditorMutationHandlers, "onScrollToHeading"> = {
-  orphanedFootnotes: [],
   onEditOrphan: () => {},
   onDeleteOrphan: () => {},
   onEditOrphanTitle: () => {},
@@ -154,12 +154,9 @@ export function useReaderViewPrefs(editor: Editor | null): EditorPaneViewPrefs {
   const derivations = useMemo<EditorPaneViewDerivations>(
     () => ({
       // Reader has no focus mode, no section-path band, no zen mode.
+      // (Section paths are passed separately as EMPTY_SECTION_PATHS — 5a.)
       isResizingPanels: false,
       focusState: null,
-      activeSectionPath: [],
-      activeParTitleIndex: null,
-      mirrorSectionPath: [],
-      mirrorParTitleIndex: null,
       zenMode: false,
       zenLeftMargin: 0,
       zenRightMargin: 0,
@@ -179,7 +176,7 @@ export function useReaderViewPrefs(editor: Editor | null): EditorPaneViewPrefs {
   );
 
   return useMemo<EditorPaneViewPrefs>(
-    () => buildEditorPaneViewPrefs(vp, handlers, derivations),
+    () => buildEditorPaneViewPrefs(vp, handlers, derivations, EMPTY_SECTION_PATHS),
     [vp, handlers, derivations],
   );
 }
