@@ -85,10 +85,10 @@
   "pageWidth": 880,
   "editorLeftMargin": 155,
   "editorRightMargin": 155,
-  "editorTopMargin": 24,
+  "editorTopMargin": 8,
   "editorBottomMargin": 24,
   "topbarRightCollapsed": false,
-  "showParTitles": true,
+  "showParTitles": false,
   "showLatexComments": true,
   "showMarginalia": true,
   "hiddenMarginaliaTypes": [],
@@ -108,8 +108,9 @@
   "omniCategories": {
     "left": [
       "footnotes",
-      "examples",
-      "citations"
+      "citations",
+      "reports",
+      "examples"
     ],
     "right": [
       "notes",

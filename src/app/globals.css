@@ -233,7 +233,7 @@
      wins rule lets a single managed block override the descriptive ones
      above without touching the comments that explain what each token does.
      Do not edit by hand; edit the JSON sidecars instead. */
-  --background: #fbf0e9;
+  --background: #ffead1;
   --foreground: #1a1a1a;
   --surface: #ffffff;
   --border: #e5e2dd;
@@ -245,7 +245,7 @@
   --topbar-bg-bottom: #d0d0cd;
   --topbar-border: #cbc3b8;
   --tab-bg: #c5dbe2;
-  --library-bg: #d6e5ea;
+  --library-bg: #ddeaee;
   --virgil-bar-text: #78716c;
   --pod-panel: #fffdfa;
   --pod-toolbar: #f5f3ef;
